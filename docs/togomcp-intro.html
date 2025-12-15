@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TogoMCP - Model Context Protocol Server for Life Sciences</title>
+    <link rel="stylesheet" href="https://dbcls.rois.ac.jp/style/default.css">
+    <style>
+        /* Mobile responsiveness */
+        @media screen and (max-width: 768px) {
+            body {
+                min-width: 100% !important;
+            }
+            .content__wrapper {
+                width: 100% !important;
+                flex-direction: column !important;
+            }
+            .main__contents {
+                width: 100% !important;
+                padding: 20px !important;
+            }
+            .section-content {
+                width: 100% !important;
+                padding: 15px !important;
+            }
+            .database-grid, .tools-grid {
+                grid-template-columns: 1fr !important;
+            }
+        }
+
+        /* Sticky menu */
+        .sticky-menu {
+            position: sticky;
+            top: 40px;
+            background: white;
+            z-index: 10;
+            padding: 15px 0;
+            border-bottom: 2px solid #004098;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .menu-container {
+            width: 1024px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .menu-links {
+            display: flex;
+            gap: 25px;
+            flex-wrap: wrap;
+        }
+
+        .menu-links a {
+            color: #004098;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .menu-links a:hover {
+            color: #2255BB;
+            border-bottom: 2px solid #004098;
+        }
+
+        /* Back to top button */
+        #back-to-top {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 50px;
+            height: 50px;
+            background: #004098;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+            box-shadow: 0 4px 8px rgba(0,64,152,0.3);
+            z-index: 1000;
+        }
+
+        #back-to-top.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        #back-to-top:hover {
+            background: #0056CC;
+            transform: translateY(-3px);
+            box-shadow: 0 6px 12px rgba(0,64,152,0.4);
+        }
+
+        #back-to-top::before {
+            content: "↑";
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        /* Enhanced content styling */
+        .hero-section {
+            background: linear-gradient(135deg, #E8EDED 0%, #f5f5f5 100%);
+            padding: 60px 0;
+            margin-bottom: 40px;
+        }
+
+        .hero-content {
+            width: 1024px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .hero-title {
+            color: #004098;
+            font-size: 42px;
+            font-weight: 800;
+            margin-bottom: 20px;
+        }
+
+        .hero-subtitle {
+            color: #333;
+            font-size: 18px;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .hero-endpoint {
+            margin-top: 30px;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,64,152,0.15);
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .hero-endpoint-label {
+            font-size: 14px;
+            color: #666;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .hero-endpoint-url {
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            color: #004098;
+            font-weight: 700;
+            word-break: break-all;
+        }
+
+        .hero-endpoint-url a {
+            color: #004098;
+            text-decoration: none;
+        }
+
+        .hero-endpoint-url a:hover {
+            text-decoration: underline;
+        }
+
+        .section-content {
+            background: white;
+            padding: 30px;
+            margin-bottom: 30px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .section-title {
+            color: #004098;
+            font-size: 24px;
+            font-weight: 800;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #004098;
+        }
+
+        .subsection-title {
+            color: #004098;
+            font-size: 18px;
+            font-weight: 700;
+            margin: 25px 0 15px 0;
+        }
+
+        .example-box {
+            background: #E8EDED;
+            padding: 20px;
+            margin: 15px 0;
+            border-left: 4px solid #004098;
+        }
+
+        .example-title {
+            font-weight: 700;
+            color: #004098;
+            margin-bottom: 10px;
+        }
+
+        .code-block {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .database-grid, .tools-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .database-card, .tool-card {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            transition: all 0.3s;
+        }
+
+        .database-card:hover, .tool-card:hover {
+            box-shadow: 0 4px 8px rgba(0,64,152,0.2);
+            transform: translateY(-2px);
+        }
+
+        .database-title, .tool-title {
+            color: #004098;
+            font-weight: 700;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+
+        .setup-steps {
+            counter-reset: step-counter;
+        }
+
+        .setup-step {
+            margin: 20px 0;
+            padding-left: 40px;
+            position: relative;
+        }
+
+        .setup-step::before {
+            counter-increment: step-counter;
+            content: counter(step-counter);
+            position: absolute;
+            left: 0;
+            top: 0;
+            background: #004098;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+        }
+
+        .mcp-badge {
+            display: inline-block;
+            background: #004098;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin: 0 5px;
+        }
+
+        footer {
+            margin-top: 100px;
+        }
+
+        .footer__common {
+            background-color: #f9f8f5;
+            padding: 40px 0;
+        }
+
+        .footer__info {
+            width: 1024px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        .footer__logo {
+            width: 150px;
+            height: auto;
+            margin-bottom: 15px;
+        }
+
+        .footer__organism-text {
+            text-align: center;
+        }
+
+        .footer__organism-main {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .footer__organism-sub {
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        ul, ol {
+            margin-left: 20px;
+        }
+
+        ul li, ol li {
+            margin: 8px 0;
+            line-height: 1.6;
+        }
+
+        a {
+            color: #004098;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        /* White logo for better contrast in header */
+        .header img {
+            filter: brightness(0) invert(1);
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="header__nav">
+            <div class="header__nav__contents">
+                <a href="https://dbcls.rois.ac.jp/en/">
+                    <img src="https://dbcls.rois.ac.jp/img/logo_dbcls.svg" alt="DBCLS">
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sticky Menu -->
+    <div class="sticky-menu">
+        <div class="menu-container">
+            <div class="menu-links">
+                <a href="#about">About</a>
+                <a href="#examples">Examples</a>
+                <a href="#setup">Setup</a>
+                <a href="#databases">Databases</a>
+                <a href="#tools">Tools</a>
+                <a href="#mcp-servers">MCP Servers</a>
+                <a href="#resources">Resources</a>
+                <a href="https://dbcls.rois.ac.jp/contact-en.html" target="_blank">Contact</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hero Section -->
+    <div class="hero-section">
+        <div class="hero-content">
+            <h1 class="hero-title">TogoMCP</h1>
+            <p class="hero-subtitle">
+                A comprehensive Model Context Protocol (MCP) server providing LLM agents with seamless access 
+                to over 20 major life sciences databases through SPARQL queries, RDF data exploration, and 
+                intelligent ID conversion services.
+            </p>
+            <div class="hero-endpoint">
+                <div class="hero-endpoint-label">MCP Endpoint:</div>
+                <div class="hero-endpoint-url">
+                    <a href="https://togomcp.rdfportal.org/mcp" target="_blank">https://togomcp.rdfportal.org/mcp</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="content__wrapper">
+        <div class="main__contents">
+            
+            <!-- About Section -->
+            <section id="about" class="section-content">
+                <h2 class="section-title">What is TogoMCP?</h2>
+                <p>
+                    TogoMCP is a powerful bridge between AI assistants and the vast ecosystem of biological and 
+                    biomedical databases. Developed by the Database Center for Life Science (DBCLS), it enables 
+                    researchers to interact with complex life sciences data using natural language through AI 
+                    assistants like Claude, ChatGPT, and other MCP-compatible clients.
+                </p>
+                <p style="margin-top: 15px;">
+                    <strong>Key Features:</strong>
+                </p>
+                <ul>
+                    <li><strong>Unified Access:</strong> Query 20+ databases including UniProt, PubChem, ChEMBL, PDB, Reactome, and more through a single interface</li>
+                    <li><strong>Intelligent Search:</strong> Specialized search tools for proteins, chemicals, pathways, and diseases</li>
+                    <li><strong>SPARQL Integration:</strong> Direct access to RDF databases with example queries and best practices</li>
+                    <li><strong>ID Conversion:</strong> Seamlessly convert between different database identifiers (TogoID integration)</li>
+                    <li><strong>Expert Guidance:</strong> Built-in MIE (Metadata Interoperability Exchange) files guide optimal query construction</li>
+                </ul>
+                <p style="margin-top: 15px;">
+                    <strong>Endpoint:</strong> <code>https://togomcp.rdfportal.org/mcp</code>
+                </p>
+            </section>
+
+            <!-- Usage Examples -->
+            <section id="examples" class="section-content">
+                <h2 class="section-title">Usage Examples</h2>
+                
+                <div class="example-box">
+                    <h3 class="example-title">Example 1: Cardiovascular Disease Protein-Drug Analysis</h3>
+                    <p><strong>Prompt:</strong> Find proteins that are associated with both cardiovascular diseases and have known small molecule inhibitors in ChEMBL, and classify them according to disease and drug availability.</p>
+                    
+                    <p style="margin-top: 15px;"><strong>Response Process:</strong></p>
+                    <p>The AI assistant systematically identified 75+ human proteins associated with cardiovascular diseases with known inhibitors by:</p>
+                    <ol>
+                        <li>Searching MeSH for cardiovascular disease terms</li>
+                        <li>Querying ChEMBL for cardiovascular targets using specialized search tools</li>
+                        <li>Constructing SPARQL queries to retrieve detailed protein-inhibitor relationships</li>
+                        <li>Analyzing drug development status and therapeutic classes</li>
+                    </ol>
+                    
+                    <p style="margin-top: 15px;"><strong>Tools Used:</strong></p>
+                    <ul>
+                        <li><span class="mcp-badge">list_databases</span> - Identified relevant databases</li>
+                        <li><span class="mcp-badge">search_mesh_entity</span> - Found cardiovascular disease terms</li>
+                        <li><span class="mcp-badge">search_chembl_target</span> - Searched for cardiovascular targets</li>
+                        <li><span class="mcp-badge">get_MIE_file</span> - Retrieved ChEMBL schema and examples</li>
+                        <li><span class="mcp-badge">run_sparql</span> - Executed multiple queries for comprehensive data</li>
+                    </ul>
+                    
+                    <p style="margin-top: 15px;"><strong>Key Results:</strong></p>
+                    <ul>
+                        <li>Identified 15+ targets for hypertension with approved drugs</li>
+                        <li>Found 20+ targets for coronary artery disease (approved + developmental)</li>
+                        <li>Discovered 57 sodium channel inhibitors and 27 calcium channel blockers</li>
+                        <li>Categorized targets by disease, drug status, and therapeutic class</li>
+                    </ul>
+                </div>
+
+                <div class="example-box">
+                    <h3 class="example-title">Example 2: Human Enzyme Distribution Analysis</h3>
+                    <p><strong>Prompt:</strong> Determine the distribution of human enzymes by their EC number classes.</p>
+                    
+                    <p style="margin-top: 15px;"><strong>Response Process:</strong></p>
+                    <p>The analysis categorized 4,442 unique human enzymes from UniProt's Swiss-Prot database across seven EC classes, revealing that transferases (41%) and hydrolases (37.3%) dominate human enzyme repertoire.</p>
+                    
+                    <p style="margin-top: 15px;"><strong>Tools Used:</strong></p>
+                    <ul>
+                        <li><span class="mcp-badge">get_MIE_file</span> - Retrieved UniProt schema and SPARQL examples</li>
+                        <li><span class="mcp-badge">run_sparql</span> - Queried enzyme data with EC classifications</li>
+                    </ul>
+                    
+                    <p style="margin-top: 15px;"><strong>Key Results:</strong></p>
+                    <ul>
+                        <li>EC 2 (Transferases): 1,823 proteins (41.0%)</li>
+                        <li>EC 3 (Hydrolases): 1,655 proteins (37.3%)</li>
+                        <li>EC 1 (Oxidoreductases): 545 proteins (12.3%)</li>
+                        <li>Smaller classes (EC 4-7) represent specialized metabolic functions (2.3-3.4% each)</li>
+                    </ul>
+                </div>
+
+                <div class="example-box">
+                    <h3 class="example-title">Example 3: Natural Products vs Synthetic Compounds</h3>
+                    <p><strong>Prompt:</strong> Use ChEBI (chemical classification) + ChEMBL (bioactivity) + PubChem (chemical descriptors) to compare the bioactivity profiles and chemical diversity of natural products versus synthetic compounds across different therapeutic areas.</p>
+                    
+                    <p style="margin-top: 15px;"><strong>Response Process:</strong></p>
+                    <p>A comprehensive multi-database analysis comparing natural products (e.g., Vinblastine, Paclitaxel) with synthetic compounds (e.g., Imatinib, Omeprazole) revealed distinct patterns in potency, selectivity, and chemical space occupation.</p>
+                    
+                    <p style="margin-top: 15px;"><strong>Tools Used:</strong></p>
+                    <ul>
+                        <li><span class="mcp-badge">get_MIE_file</span> - Retrieved schemas for ChEBI, ChEMBL, PubChem</li>
+                        <li><span class="mcp-badge">run_sparql</span> - Queried chemical classifications and bioactivity data</li>
+                        <li><span class="mcp-badge">get_compound_attributes_from_pubchem</span> - Retrieved molecular descriptors</li>
+                    </ul>
+                    
+                    <p style="margin-top: 15px;"><strong>Key Results:</strong></p>
+                    <ul>
+                        <li><strong>Natural Products:</strong> 70% show IC50 < 100 nM, average 8 chiral centers, hit 8.5 targets (polypharmacology), dominant in oncology</li>
+                        <li><strong>Synthetic Compounds:</strong> 40% show IC50 < 100 nM, average 1 chiral center, hit 2-3 targets (selective), dominant in cardiovascular/CNS/metabolic diseases</li>
+                        <li>Natural products occupy unique 3D chemical space with higher sp3 fraction (0.6 vs 0.3)</li>
+                        <li>Complementary strengths suggest optimal strategy combines both approaches</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Setup Guide -->
+            <section id="setup" class="section-content">
+                <h2 class="section-title">Setup Guide</h2>
+                
+                <h3 class="subsection-title">Claude Desktop</h3>
+                <p>TogoMCP is available for Claude users on Pro, Max, Team, and Enterprise plans.</p>
+                
+                <h4 style="color: #004098; font-weight: 700; margin: 20px 0 15px 0;">Method 1: Using the Settings UI (Recommended)</h4>
+                
+                <div class="setup-steps">
+                    <div class="setup-step">
+                        <strong>Navigate to Settings → Connectors</strong><br>
+                        Open Claude Desktop or Claude.ai and access the Connectors section in Settings.
+                    </div>
+                    
+                    <div class="setup-step">
+                        <strong>Click "Add custom connector"</strong><br>
+                        Scroll to the bottom of the Connectors section and click the "Add custom connector" button.
+                    </div>
+                    
+                    <div class="setup-step">
+                        <strong>Enter the TogoMCP URL</strong><br>
+                        Add the server URL: <code>https://togomcp.rdfportal.org/mcp</code>
+                    </div>
+                    
+                    <div class="setup-step">
+                        <strong>Configure and Add</strong><br>
+                        Click "Add" to finish the configuration. TogoMCP is ready to use!
+                    </div>
+                    
+                    <div class="setup-step">
+                        <strong>Enable in Conversation</strong><br>
+                        Click the "Search and tools" button in the chat interface and enable TogoMCP for your conversation.
+                    </div>
+                </div>
+
+                <h4 style="color: #004098; font-weight: 700; margin: 30px 0 15px 0;">Method 2: Editing Configuration File</h4>
+                <p>For advanced users who prefer to edit the configuration file directly:</p>
+                
+                <div class="setup-steps">
+                    <div class="setup-step">
+                        <strong>Locate the configuration file</strong><br>
+                        Find your Claude Desktop configuration file:
+                        <ul style="margin-top: 10px;">
+                            <li><strong>macOS:</strong> <code>~/Library/Application Support/Claude/claude_desktop_config.json</code></li>
+                            <li><strong>Windows:</strong> <code>%APPDATA%\Claude\claude_desktop_config.json</code></li>
+                        </ul>
+                    </div>
+                    
+                    <div class="setup-step">
+                        <strong>Edit the configuration file</strong><br>
+                        Open the file in a text editor and add TogoMCP using the <code>mcp-remote</code> wrapper:
+                    </div>
+                </div>
+
+                <div class="code-block" style="margin: 20px 0;">
+{
+  "mcpServers": {
+    "togomcp": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "https://togomcp.rdfportal.org/mcp"
+      ]
+    }
+  }
+}
+                </div>
+
+                <div class="setup-steps">
+                    <div class="setup-step" style="counter-reset: step-counter 2;">
+                        <strong>Save and restart Claude Desktop</strong><br>
+                        Save the configuration file and restart Claude Desktop for the changes to take effect.
+                    </div>
+                    
+                    <div class="setup-step">
+                        <strong>Verify installation</strong><br>
+                        Click the "Search and tools" button in the chat interface. You should see "togomcp" listed among available tools.
+                    </div>
+                </div>
+
+                <p style="margin-top: 20px; padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107; font-size: 14px;">
+                    <strong>Note:</strong> If you have multiple MCP servers, add them as separate entries within the <code>mcpServers</code> object. The <code>mcp-remote</code> package enables Claude Desktop to connect to remote HTTP/HTTPS MCP servers.
+                </p>
+
+                <h3 class="subsection-title" style="margin-top: 40px;">ChatGPT</h3>
+                <p>TogoMCP is available for ChatGPT Business and Enterprise/Edu customers through Developer Mode.</p>
+                
+                <div class="setup-steps">
+                    <div class="setup-step">
+                        <strong>Enable Developer Mode</strong><br>
+                        Go to Settings → Connectors → Advanced, and toggle on "Developer Mode".
+                    </div>
+                    
+                    <div class="setup-step">
+                        <strong>Add Custom Connector</strong><br>
+                        Navigate to Settings → Connectors and click "Create" or "Add custom connector".
+                    </div>
+                    
+                    <div class="setup-step">
+                        <strong>Configure TogoMCP</strong><br>
+                        Enter the connector details:
+                        <ul style="margin-top: 10px;">
+                            <li><strong>Name:</strong> TogoMCP</li>
+                            <li><strong>URL:</strong> <code>https://togomcp.rdfportal.org/mcp</code></li>
+                            <li><strong>Description:</strong> Life sciences database integration via MCP</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="setup-step">
+                        <strong>Create and Authorize</strong><br>
+                        Click "Create" and authorize ChatGPT to use the connector.
+                    </div>
+                    
+                    <div class="setup-step">
+                        <strong>Use in Chat</strong><br>
+                        In the chat panel, enable "Developer Mode" and select TogoMCP from available tools.
+                    </div>
+                </div>
+
+                <h3 class="subsection-title" style="margin-top: 40px;">Gemini CLI</h3>
+                <p><strong>Note:</strong> TogoMCP is provided via <strong>Streamable-HTTP</strong>, not SSE.</p>
+                
+                <div class="setup-steps">
+                    <div class="setup-step">
+                        <strong>Create settings.json</strong><br>
+                        Create or edit your Gemini CLI settings file with the following configuration:
+                    </div>
+                </div>
+
+                <div class="code-block" style="margin: 20px 0;">
+{
+  "mcpServers": {
+    "togomcp": {
+      "httpUrl": "https://togomcp.rdfportal.org/mcp"
+    }
+  }
+}
+                </div>
+
+                <div class="setup-steps">
+                    <div class="setup-step" style="counter-reset: step-counter 1;">
+                        <strong>Save and Restart</strong><br>
+                        Save the settings file and restart Gemini CLI to activate TogoMCP.
+                    </div>
+                </div>
+            </section>
+
+            <!-- Available Databases -->
+            <section id="databases" class="section-content">
+                <h2 class="section-title">Available Databases</h2>
+                <p>TogoMCP provides access to 20+ curated life sciences databases:</p>
+                
+                <div class="database-grid">
+                    <div class="database-card">
+                        <div class="database-title">UniProt</div>
+                        <p>Comprehensive protein sequences and functional information with 444M proteins. Includes Swiss-Prot (manually curated) and TrEMBL (automatically annotated).</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">PubChem</div>
+                        <p>119M chemical compounds with molecular descriptors, 339M substances, 1.7M bioassays, and extensive bioactivity data.</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">ChEMBL</div>
+                        <p>2.4M+ bioactive molecules with drug-like properties, 1.6M assays, and 20M bioactivity measurements.</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">PDB (Protein Data Bank)</div>
+                        <p>204K+ 3D structural data for proteins, nucleic acids, and complexes from X-ray, NMR, and cryo-EM experiments.</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">Reactome</div>
+                        <p>22,000+ curated biological pathways and processes across 30+ species with molecular interactions and disease associations.</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">Rhea</div>
+                        <p>17,078 expert-curated biochemical reactions, all atom-balanced and linked to ChEBI, enzyme classifications, and pathway databases.</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">ChEBI</div>
+                        <p>217,000+ chemical entities of biological interest with hierarchical classification, molecular data, and biological roles.</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">Gene Ontology (GO)</div>
+                        <p>Controlled vocabulary for gene and gene product attributes: 30,804 biological processes, 12,793 molecular functions, 4,568 cellular components.</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">NCBI Gene</div>
+                        <p>57M+ gene entries covering protein-coding genes, ncRNAs, and pseudogenes across all organisms with orthology relationships.</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">Ensembl</div>
+                        <p>Genome annotations for 100+ species with genes, transcripts, proteins, and cross-references to UniProt, HGNC, and OMIM.</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">MONDO</div>
+                        <p>Comprehensive disease ontology integrating OMIM, Orphanet, DOID, MESH, ICD, and 35+ databases for precision medicine.</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">MeSH</div>
+                        <p>NLM's controlled vocabulary thesaurus for biomedical literature with hierarchical descriptors and qualifiers across 16 main categories.</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">ClinVar</div>
+                        <p>3.5M+ variant records with clinical interpretations, gene associations, and disease conditions for genomic medicine.</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">MedGen</div>
+                        <p>233,000+ clinical concepts covering diseases, phenotypes, and clinical findings with links to OMIM, Orphanet, and HPO.</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">PubMed</div>
+                        <p>Bibliographic information for biomedical literature from MEDLINE with MeSH annotations and cross-references.</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">PubTator Central</div>
+                        <p>Biomedical entity annotations from PubMed literature using text mining and manual curation.</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">NCBI Taxonomy</div>
+                        <p>Comprehensive taxonomic classification covering 3M+ organisms with hierarchical relationships and genetic code assignments.</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">BacDive</div>
+                        <p>97,000+ bacterial and archaeal strain records with phenotypic and genotypic characterizations.</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">MediaDive</div>
+                        <p>3,289 standardized culture media recipes for bacteria, archaea, fungi, yeast, microalgae, and phages.</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">GlyCosmos</div>
+                        <p>Comprehensive glycoscience portal integrating glycan structures, glycoproteins, and lectin-glycan interactions.</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">DDBJ</div>
+                        <p>Nucleotide sequence data from INSDC with genomic annotations and cross-references to BioProject and BioSample.</p>
+                    </div>
+                    
+                    <div class="database-card">
+                        <div class="database-title">NANDO</div>
+                        <p>2,777 Japanese intractable (rare) disease classes with multilingual labels and cross-references to MONDO.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Available Tools -->
+            <section id="tools" class="section-content">
+                <h2 class="section-title">Available Tools</h2>
+                <p>TogoMCP provides specialized tools for efficient database interaction:</p>
+                
+                <div class="tools-grid">
+                    <div class="tool-card">
+                        <div class="tool-title">Database Management</div>
+                        <ul>
+                            <li><strong>list_databases:</strong> Get all available databases with descriptions</li>
+                            <li><strong>get_sparql_endpoints:</strong> Retrieve SPARQL endpoint URLs</li>
+                            <li><strong>get_graph_list:</strong> List named graphs in a database</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="tool-card">
+                        <div class="tool-title">Schema & Examples</div>
+                        <ul>
+                            <li><strong>get_MIE_file:</strong> Retrieve Metadata Interoperability Exchange (MIE) files with schemas, RDF samples, and SPARQL examples</li>
+                            <li><strong>get_sparql_example:</strong> Get example SPARQL queries for a database</li>
+                            <li><strong>keyword_search_instructions:</strong> Get search guidance for specific databases</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="tool-card">
+                        <div class="tool-title">Entity Search - Proteins</div>
+                        <ul>
+                            <li><strong>search_uniprot_entity:</strong> Search UniProt proteins by keywords</li>
+                            <li><strong>search_pdb_entity:</strong> Search PDB structures (pdb/cc/prd databases)</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="tool-card">
+                        <div class="tool-title">Entity Search - Chemicals</div>
+                        <ul>
+                            <li><strong>search_chembl_molecule:</strong> Search ChEMBL small molecules</li>
+                            <li><strong>search_chembl_target:</strong> Search ChEMBL drug targets</li>
+                            <li><strong>search_chembl_id_lookup:</strong> Lookup ChEMBL IDs</li>
+                            <li><strong>get_pubchem_compound_id:</strong> Get PubChem CID from compound name</li>
+                            <li><strong>get_compound_attributes_from_pubchem:</strong> Retrieve compound attributes</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="tool-card">
+                        <div class="tool-title">Entity Search - Pathways & Reactions</div>
+                        <ul>
+                            <li><strong>search_reactome_entity:</strong> Search Reactome pathways, reactions, and complexes</li>
+                            <li><strong>search_rhea_entity:</strong> Search biochemical reactions in Rhea</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="tool-card">
+                        <div class="tool-title">Entity Search - Diseases</div>
+                        <ul>
+                            <li><strong>search_mesh_entity:</strong> Search MeSH medical concepts</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="tool-card">
+                        <div class="tool-title">SPARQL Queries</div>
+                        <ul>
+                            <li><strong>run_sparql:</strong> Execute SPARQL queries on any database</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="tool-card">
+                        <div class="tool-title">ID Conversion (TogoID)</div>
+                        <ul>
+                            <li><strong>togoid_convertId:</strong> Convert IDs between databases</li>
+                            <li><strong>togoid_countId:</strong> Count convertible IDs</li>
+                            <li><strong>togoid_getAllRelation:</strong> Get all conversion relationships</li>
+                            <li><strong>togoid_getDataset:</strong> Get dataset configuration</li>
+                            <li><strong>togoid_getDescription:</strong> Get database descriptions</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="tool-card">
+                        <div class="tool-title">Usage Guidance</div>
+                        <ul>
+                            <li><strong>TogoMCP_Usage_Guide:</strong> Comprehensive workflow guide for optimal tool usage</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Other MCP Servers -->
+            <section id="mcp-servers" class="section-content">
+                <h2 class="section-title">Recommended MCP Servers</h2>
+                <p>These MCP servers work excellently with TogoMCP for comprehensive research:</p>
+                
+                <div class="example-box">
+                    <h3 class="example-title">PubDictionaries MCP Server</h3>
+                    <p><strong>URL:</strong> <a href="https://pubdictionaries.org/mcp" target="_blank">https://pubdictionaries.org/mcp</a></p>
+                    <p>Provides dictionary-based term lookup and ID conversion for biological entities. Perfect for finding standardized identifiers and term mappings to use with TogoMCP databases.</p>
+                </div>
+                
+                <div class="example-box">
+                    <h3 class="example-title">PubMed MCP Server</h3>
+                    <p><strong>Documentation:</strong> <a href="https://support.claude.com/en/articles/12614801-using-the-pubmed-connector-in-claude" target="_blank">Claude PubMed Connector</a></p>
+                    <p>Search and retrieve biomedical literature from PubMed. Combines well with TogoMCP for literature-based discovery and validation of biological findings.</p>
+                </div>
+                
+                <div class="example-box">
+                    <h3 class="example-title">OLS4 MCP Server</h3>
+                    <p><strong>URL:</strong> <a href="https://www.ebi.ac.uk/ols4/mcp" target="_blank">https://www.ebi.ac.uk/ols4/mcp</a></p>
+                    <p>Ontology Lookup Service providing access to biomedical ontologies. Essential for standardized terminology and semantic relationships in conjunction with TogoMCP data.</p>
+                </div>
+            </section>
+
+            <!-- Related Resources -->
+            <section id="resources" class="section-content">
+                <h2 class="section-title">Related Resources</h2>
+                
+                <div class="example-box">
+                    <h3 class="example-title">TogoMCP Server</h3>
+                    <p><strong>URL:</strong> <a href="https://togomcp.rdfportal.org/mcp" target="_blank">https://togomcp.rdfportal.org/mcp</a></p>
+                    <p>The main TogoMCP endpoint providing MCP access to life sciences databases. Developed and maintained by DBCLS to enable seamless integration between AI assistants and biological databases.</p>
+                </div>
+                
+                <div class="example-box">
+                    <h3 class="example-title">RDF Portal</h3>
+                    <p><strong>URL:</strong> <a href="https://rdfportal.org" target="_blank">https://rdfportal.org</a></p>
+                    <p>A comprehensive repository for semantic data in life sciences (formerly NBDC RDF Portal). Provides SPARQL endpoints, dataset downloads, and unified access to Japanese life science RDF databases. The portal houses the underlying infrastructure that TogoMCP builds upon, offering direct SPARQL access to 20+ curated databases with over 45 billion triples.</p>
+                </div>
+                
+                <div class="example-box">
+                    <h3 class="example-title">TogoID</h3>
+                    <p><strong>URL:</strong> <a href="https://togoid.dbcls.jp" target="_blank">https://togoid.dbcls.jp</a></p>
+                    <p>An ID conversion and exploration service that enables seamless navigation between different biological databases. TogoID powers the ID conversion tools in TogoMCP, allowing researchers to transform identifiers from one database format to another (e.g., UniProt to PDB, PubChem to ChEBI).</p>
+                </div>
+                
+                <div class="example-box">
+                    <h3 class="example-title">DBCLS (Database Center for Life Science)</h3>
+                    <p><strong>URL:</strong> <a href="https://dbcls.rois.jp" target="_blank">https://dbcls.rois.jp</a></p>
+                    <p>The Database Center for Life Science, part of the Research Organization of Information and Systems (ROIS), develops and maintains integrated databases and tools for life science research. DBCLS creates TogoMCP, RDF Portal, TogoID, and numerous other resources to advance data integration and accessibility in biological research through semantic web technologies and standardized protocols.</p>
+                </div>
+            </section>
+
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer__common">
+            <div class="footer__info">
+                <img src="https://dbcls.rois.ac.jp/img/logo_dbcls.svg" alt="DBCLS" class="footer__logo">
+                <div class='footer__organism-text'>
+                    <p class="footer__organism-main">Database Center for Life Science</p>
+                    <p class="footer__organism-sub">Joint Support-Center for Data Science Research</p>
+                    <p class="footer__organism-sub">Research Organization of Information and Systems</p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Back to Top Button -->
+    <div id="back-to-top"></div>
+
+    <script>
+        // Back to top button functionality
+        const backToTop = document.getElementById('back-to-top');
+        
+        window.addEventListener('scroll', function() {
+            if (window.pageYOffset > 300) {
+                backToTop.classList.add('visible');
+            } else {
+                backToTop.classList.remove('visible');
+            }
+        });
+        
+        backToTop.addEventListener('click', function() {
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        });
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    const offsetTop = target.offsetTop - 100;
+                    window.scrollTo({
+                        top: offsetTop,
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

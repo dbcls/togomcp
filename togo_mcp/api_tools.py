@@ -1,7 +1,9 @@
 import httpx
-from typing import List, Dict, Annotated
+from typing import List, Dict, Annotated, Any, Optional
+import requests
 from pydantic import Field
 import json
+import re
 
 from .server import *
 
@@ -254,3 +256,174 @@ async def search_mesh_entity(query: str, limit: int = 10) -> str:
     response.raise_for_status()
     return response.text
 
+# DB: Reactome
+@mcp.tool()
+async def search_reactome_entity(
+    query: str,
+    species: Optional[List[str]] = None,
+    types: Optional[List[str]] = None,
+    rows: int = 30
+) -> List[Dict[str, str]]:
+    """
+    Search the Reactome knowledgebase using keyword search.
+    
+    Parameters:
+    -----------
+    query : str
+        The search query string (e.g., "apoptosis", "TP53", "cell cycle")
+    species : list of str, optional
+        Filter by species (e.g., ["Homo sapiens"], ["9606"])
+    types : list of str, optional
+        Filter by entity types (e.g., ["Pathway", "Reaction", "Complex"])
+    rows : int, default=30
+        Number of results to return
+    
+    Returns:
+    --------
+    list of dict
+        List of results with 'id', 'name', and 'type' fields
+        Example: [
+            {'id': 'R-HSA-109581', 'name': 'Apoptosis', 'type': 'Pathway'},
+            {'id': 'R-HSA-204981', 'name': '14-3-3epsilon...', 'type': 'Reaction'}
+        ]
+        
+    Example:
+    --------
+    >>> results = search_reactome("apoptosis", rows=5)
+    >>> for entry in results:
+    ...     print(f"{entry['type']:10} {entry['id']}: {entry['name']}")
+    
+    >>> # Filter by type
+    >>> pathways = [r for r in results if r['type'] == 'Pathway']
+    """
+    toolcall_log("search_reactome_entity")
+    # Build API request
+    base_url = "https://reactome.org/ContentService/search/query"
+    params = {
+        "query": query,
+        "cluster": "true",
+        "start": 0,
+        "rows": rows
+    }
+    
+    if species:
+        params["species"] = ','.join(species)
+    if types:
+        params["types"] = ','.join(types)
+    
+    # Make API call
+    try:
+        response = requests.get(
+            base_url,
+            params=params,
+            headers={"Accept": "application/json"},
+            timeout=30
+        )
+        response.raise_for_status()
+        data = response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error querying Reactome: {e}")
+        raise
+    
+    # Extract and return results
+    results = []
+    for result_group in data.get("results", []):
+        for entry in result_group.get("entries", []):
+            # Clean HTML highlighting tags from name
+            name = entry.get('name', 'N/A')
+            name = re.sub(r'<span class="highlighting"\s*>', '', name)
+            name = re.sub(r'</span>', '', name)
+            
+            results.append({
+                'id': entry.get('stId', entry.get('id', 'N/A')),
+                'name': name.strip(),
+                'type': entry.get('type', 'Unknown')
+            })
+    
+    return results
+
+# DB: RhEA
+@mcp.tool()
+def search_rhea_entity(
+    query: str,
+    limit: Optional[int] = 100
+) -> List[Dict[str, str]]:
+    """
+    Search Rhea database for biochemical reactions using keyword search.
+    
+    Args:
+        query (str): Search query string. Examples:
+                    - "ATP" - find reactions involving ATP
+                    - "glucose" - find reactions with glucose
+                    - "uniprot:*" - reactions with UniProt annotations
+                    - "" - retrieve all reactions
+        limit (int, optional): Maximum number of results. Defaults to 100.
+    
+    Returns:
+        List[Dict[str, str]]: List of reactions, each containing:
+            - 'rhea_id': Reaction identifier (e.g., "RHEA:10000")
+            - 'equation': Reaction equation text
+    
+    Example:
+        >>> results = search_rhea_entity("ATP", limit=5)
+        >>> for reaction in results:
+        ...     print(f"{reaction['rhea_id']}: {reaction['equation']}")
+    """
+    toolcall_log("search_rhea_entity")
+    # API endpoint
+    url = "https://www.rhea-db.org/rhea"
+    
+    params = {
+        "query": query,
+        "columns": "rhea-id,equation",
+        "format": "tsv",
+        "limit": limit
+    }
+    
+    try:
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        
+        # Parse TSV response
+        lines = response.text.strip().split('\n')
+        
+        if len(lines) < 2:
+            return []
+        
+        # First line is header, skip it
+        results = []
+        for line in lines[1:]:
+            if line.strip():
+                parts = line.split('\t')
+                if len(parts) >= 2:
+                    results.append({
+                        'rhea_id': parts[0],
+                        'equation': parts[1]
+                    })
+        
+        return results
+    
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching data from Rhea API: {e}")
+        return []
+
+# Databases using SPARQL for keyword search
+@mcp.tool()
+async def keyword_search_instructions(dbname:str) -> str:
+    f"""
+    Instructions for keyword search using SPARQL queries.
+    
+    :param dbname: {DBNAME_DESCRIPTION}
+    :type dbname: str
+    :return: A prompt instructing how to perform SPARQL queries for keyword search.
+    :rtype: str
+    """
+    toolcall_log("keyword_search_instructions")
+    instruction_file = os.path.join(KW_SEARCH_INSTRUCTIONS, dbname + ".md")
+    if not os.path.exists(instruction_file):
+        return f"Use {SPARQL_ENDPOINT[dbname]['keyword_search']}"
+    try:
+        with open(instruction_file, "r", encoding="utf-8") as file:
+            return file.read()
+    except Exception as e:
+        return f"Error reading keyword search instructions for '{dbname}': {e}"
