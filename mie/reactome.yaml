@@ -1,0 +1,437 @@
+schema_info:
+  title: Reactome Pathway Database RDF
+  description: |
+    Open-source, curated knowledgebase of biological pathways and processes.
+    Contains 22,000+ pathways across 30+ species with molecular interactions,
+    biochemical reactions, protein complexes, and disease associations.
+    Based on BioPAX Level 3 ontology.
+  endpoint: https://rdfportal.org/backend/ebi/sparql
+  base_uri: http://www.reactome.org/biopax/
+  graphs:
+    - http://rdf.ebi.ac.uk/dataset/reactome
+  version:
+    mie_version: "1.0"
+    mie_created: "2025-12-08"
+    data_version: "Release 88"
+    update_frequency: "Quarterly"
+  license:
+    data_license: "CC BY 4.0"
+    license_url: "https://creativecommons.org/licenses/by/4.0/"
+  access:
+    rate_limiting: "No strict limits"
+    max_query_timeout: "60 seconds"
+
+shape_expressions: |
+  PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+  PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+  
+  <PathwayShape> {
+    a [ bp:Pathway ] ;
+    bp:displayName xsd:string ;
+    bp:organism @<BioSourceShape> ? ;
+    bp:comment xsd:string * ;
+    bp:pathwayComponent @<PathwayShape> * ;
+    bp:pathwayComponent @<BiochemicalReactionShape> * ;
+    bp:dataSource @<ProvenanceShape> * ;
+    bp:xref @<XrefShape> *
+  }
+  
+  <BiochemicalReactionShape> {
+    a [ bp:BiochemicalReaction ] ;
+    bp:displayName xsd:string ? ;
+    bp:left @<PhysicalEntityShape> * ;
+    bp:right @<PhysicalEntityShape> * ;
+    bp:eCNumber xsd:string * ;
+    bp:comment xsd:string * ;
+    bp:xref @<XrefShape> *
+  }
+  
+  <PhysicalEntityShape> {
+    a [ bp:Protein bp:Complex bp:SmallMolecule bp:Dna bp:Rna ] ;
+    bp:displayName xsd:string ? ;
+    bp:entityReference @<EntityReferenceShape> ? ;
+    bp:cellularLocation @<CellularLocationShape> ? ;
+    bp:feature @<EntityFeatureShape> *
+  }
+  
+  <EntityReferenceShape> {
+    a [ bp:ProteinReference bp:SmallMoleculeReference bp:DnaReference bp:RnaReference ] ;
+    bp:name xsd:string * ;
+    bp:xref @<UnificationXrefShape> *
+  }
+  
+  <ComplexShape> {
+    a [ bp:Complex ] ;
+    bp:component @<PhysicalEntityShape> + ;
+    bp:componentStoichiometry @<StoichiometryShape> *
+  }
+  
+  <XrefShape> {
+    a [ bp:UnificationXref bp:PublicationXref bp:RelationshipXref ] ;
+    bp:db xsd:string ? ;
+    bp:id xsd:string ?
+  }
+  
+  <UnificationXrefShape> {
+    a [ bp:UnificationXref ] ;
+    bp:db xsd:string ;
+    bp:id xsd:string
+  }
+  
+  <BioSourceShape> {
+    a [ bp:BioSource ] ;
+    bp:name xsd:string * ;
+    bp:xref @<UnificationXrefShape> *
+  }
+
+sample_rdf_entries:
+  - title: "Pathway with Hierarchy"
+    description: "Top-level pathway with sub-pathways and organism."
+    rdf: |
+      reactome:Pathway227 a bp:Pathway ;
+        bp:displayName "Platelet homeostasis" ;
+        bp:organism reactome:BioSource1 ;
+        bp:pathwayComponent reactome:Pathway234 ,
+                            reactome:Pathway235 .
+
+  - title: "Biochemical Reaction"
+    description: "Reaction with substrates, products, and EC number."
+    rdf: |
+      reactome:BiochemicalReaction1154 a bp:BiochemicalReaction ;
+        bp:displayName "Autophosphorylation of PDGFRA" ;
+        bp:left reactome:Complex630 ;
+        bp:right reactome:Complex1445 ;
+        bp:eCNumber "2.7.10.1" .
+
+  - title: "Protein Complex"
+    description: "Multi-component protein complex with stoichiometry."
+    rdf: |
+      reactome:Complex630 a bp:Complex ;
+        bp:component reactome:Protein728 ,
+                     reactome:Protein965 ;
+        bp:componentStoichiometry [
+          a bp:Stoichiometry ;
+          bp:physicalEntity reactome:Protein728 ;
+          bp:stoichiometricCoefficient 2
+        ] .
+
+  - title: "Protein with UniProt Reference"
+    description: "Protein entity with external database cross-reference."
+    rdf: |
+      reactome:Protein728 a bp:Protein ;
+        bp:displayName "PDGFRA" ;
+        bp:entityReference reactome:ProteinReference728 .
+      
+      reactome:ProteinReference728 a bp:ProteinReference ;
+        bp:name "PDGFRA" ;
+        bp:xref [
+          a bp:UnificationXref ;
+          bp:db "UniProt" ;
+          bp:id "P16234"
+        ] .
+
+  - title: "Small Molecule in Reaction"
+    description: "Chemical compound with ChEBI reference."
+    rdf: |
+      reactome:SmallMolecule1234 a bp:SmallMolecule ;
+        bp:entityReference [
+          a bp:SmallMoleculeReference ;
+          bp:name "ATP" ;
+          bp:xref [
+            a bp:UnificationXref ;
+            bp:db "ChEBI" ;
+            bp:id "CHEBI:15422"
+          ]
+        ] .
+
+sparql_query_examples:
+  - title: "Search Pathways by Keyword with bif:contains"
+    description: "Full-text search for pathways with relevance scoring"
+    question: "Which pathways are related to cancer?"
+    complexity: "basic"
+    sparql: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      
+      SELECT ?pathway ?name
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        ?pathway a bp:Pathway ;
+          bp:displayName ?name .
+        ?name bif:contains "'cancer'" option (score ?sc)
+      }
+      ORDER BY DESC(?sc)
+      LIMIT 20
+
+  - title: "Get Pathway Hierarchy"
+    description: "Retrieve sub-pathways and parent pathways"
+    question: "What are the sub-pathways of Platelet homeostasis?"
+    complexity: "basic"
+    sparql: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX reactome: <http://www.reactome.org/biopax/68/49646#>
+      
+      SELECT ?subPathway ?name
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        reactome:Pathway227 bp:pathwayComponent ?subPathway .
+        ?subPathway a bp:Pathway ;
+          bp:displayName ?name .
+      }
+
+  - title: "Find Reactions by EC Number"
+    description: "Search biochemical reactions by enzyme classification"
+    question: "Which reactions have EC number 2.7.10.1 (protein tyrosine kinases)?"
+    complexity: "intermediate"
+    sparql: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      
+      SELECT ?reaction ?name ?ecNumber
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        ?reaction a bp:BiochemicalReaction ;
+          bp:eCNumber ?ecNumber .
+        OPTIONAL { ?reaction bp:displayName ?name }
+        FILTER(CONTAINS(?ecNumber, "2.7.10.1"))
+      }
+      LIMIT 50
+
+  - title: "Get Pathway Proteins with UniProt IDs"
+    description: "Retrieve all proteins in a pathway with external references"
+    question: "What are the UniProt IDs of proteins in a specific pathway?"
+    complexity: "intermediate"
+    sparql: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX reactome: <http://www.reactome.org/biopax/68/49646#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      
+      SELECT DISTINCT ?proteinName ?uniprotId
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        reactome:Pathway227 bp:pathwayComponent*/bp:left ?entity .
+        ?entity bp:entityReference ?proteinRef .
+        ?proteinRef a bp:ProteinReference ;
+          bp:name ?proteinName ;
+          bp:xref ?xref .
+        ?xref a bp:UnificationXref ;
+          bp:db "UniProt"^^xsd:string ;
+          bp:id ?uniprotId .
+      }
+      LIMIT 100
+
+  - title: "Search Pathways by Boolean Keywords"
+    description: "Complex keyword search with AND/OR operators"
+    question: "Find pathways about kinase signaling but not apoptosis"
+    complexity: "intermediate"
+    sparql: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      
+      SELECT ?pathway ?name
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        ?pathway a bp:Pathway ;
+          bp:displayName ?name .
+        ?name bif:contains "('kinase' AND 'signaling' AND NOT 'apoptosis')" option (score ?sc)
+      }
+      ORDER BY DESC(?sc)
+      LIMIT 20
+
+  - title: "Find Protein Complexes with Stoichiometry"
+    description: "Retrieve complexes with component counts"
+    question: "Which complexes have specific protein stoichiometry?"
+    complexity: "advanced"
+    sparql: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      
+      SELECT ?complex ?componentName ?coefficient
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        ?complex a bp:Complex ;
+          bp:componentStoichiometry ?stoich .
+        ?stoich bp:physicalEntity ?component ;
+          bp:stoichiometricCoefficient ?coefficient .
+        ?component bp:entityReference/bp:name ?componentName .
+        FILTER(?coefficient > 1)
+      }
+      LIMIT 50
+
+  - title: "Pathway-Drug Integration via Guide to Pharmacology"
+    description: "Link pathways to drugs via protein targets"
+    question: "Which cancer pathways have proteins with known drug targets?"
+    complexity: "advanced"
+    sparql: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      
+      SELECT DISTINCT ?pathway ?pathwayName ?drugId
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        ?pathway a bp:Pathway ;
+          bp:displayName ?pathwayName ;
+          bp:pathwayComponent*/bp:left ?entity .
+        ?entity bp:entityReference ?proteinRef .
+        ?proteinRef bp:xref ?drugXref .
+        ?drugXref bp:db "Guide to Pharmacology"^^xsd:string ;
+          bp:id ?drugId .
+        ?pathwayName bif:contains "'cancer'" option (score ?sc)
+      }
+      ORDER BY DESC(?sc)
+      LIMIT 50
+
+cross_references:
+  - pattern: "bp:xref with bp:db"
+    description: |
+      Unified cross-references to external databases via bp:xref.
+      All entities (pathways, proteins, small molecules) link to external resources.
+      Use ^^xsd:string type restriction for database name matching.
+    databases:
+      proteins: "UniProt (87K proteins), Ensembl, RefSeq"
+      pathways: "GO, KEGG Pathway, PANTHER"
+      chemicals: "ChEBI (28K small molecules), PubChem (8K compounds), COMPOUND (14K)"
+      publications: "PubMed (268K evidence citations)"
+      drugs: "Guide to Pharmacology (8K drug targets)"
+      organisms: "NCBI Taxonomy"
+    sparql: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      
+      SELECT ?entity ?externalId
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        ?entity bp:xref ?xref .
+        ?xref a bp:UnificationXref ;
+          bp:db "UniProt"^^xsd:string ;
+          bp:id ?externalId .
+      }
+      LIMIT 50
+
+architectural_notes:
+  schema_design:
+    - "BioPAX Level 3 ontology for biological pathway representation"
+    - "Hierarchical pathways via bp:pathwayComponent relationships"
+    - "Reactions link to proteins, complexes, and small molecules"
+    - "Cross-references provide external database integration"
+  performance:
+    - "Use bif:contains for pathway name searches (full-text index)"
+    - "Boolean operators work: AND, OR, NOT in bif:contains"
+    - "Always specify FROM graph for multi-graph endpoints"
+    - "EC number filters efficient with CONTAINS or REGEX"
+  data_integration:
+    - "UniProt for protein sequences and annotations"
+    - "ChEBI for small molecule structures"
+    - "PubMed for evidence and citations"
+    - "GO for biological process mappings"
+    - "Guide to Pharmacology for drug-target information"
+  data_quality:
+    - "All pathways manually curated with evidence"
+    - "Computational inference noted in bp:comment"
+    - "Regular quarterly updates"
+    - "Organism-specific pathway instances"
+    - "CRITICAL: Use ^^xsd:string for bp:db comparisons to handle datatype issues"
+
+data_statistics:
+  total_pathways: 22000
+  total_reactions: 11000
+  total_proteins: 226000
+  total_complexes: 101000
+  total_small_molecules: 50000
+  coverage:
+    pathways_with_organisms: ">95%"
+    reactions_with_ec_numbers: "~60%"
+    proteins_with_uniprot: "~90%"
+    pathways_with_pubmed: "~85%"
+  cardinality:
+    avg_subpathways_per_pathway: 5.3
+    avg_proteins_per_complex: 3.2
+    avg_reactions_per_pathway: 8.7
+  performance_characteristics:
+    - "bif:contains pathway search very fast (<1s)"
+    - "Hierarchy traversal efficient with specific starting pathway"
+    - "Cross-reference queries fast when filtered by db with ^^xsd:string"
+
+anti_patterns:
+  - title: "Using FILTER Instead of bif:contains"
+    problem: "REGEX/CONTAINS is slow and not optimized for text search"
+    wrong_sparql: |
+      SELECT ?pathway ?name WHERE {
+        ?pathway a bp:Pathway ;
+          bp:displayName ?name .
+        FILTER(CONTAINS(LCASE(?name), "cancer"))
+      }
+    correct_sparql: |
+      SELECT ?pathway ?name WHERE {
+        ?pathway a bp:Pathway ;
+          bp:displayName ?name .
+        ?name bif:contains "'cancer'" option (score ?sc)
+      }
+      ORDER BY DESC(?sc)
+    explanation: "Use bif:contains for Virtuoso-optimized full-text search with relevance ranking"
+
+  - title: "Unbounded Pathway Traversal"
+    problem: "bp:pathwayComponent* without starting point causes timeout"
+    wrong_sparql: |
+      SELECT ?pathway ?subPathway WHERE {
+        ?pathway bp:pathwayComponent* ?subPathway
+      }
+    correct_sparql: |
+      SELECT ?subPathway WHERE {
+        reactome:Pathway227 bp:pathwayComponent+ ?subPathway .
+        ?subPathway a bp:Pathway .
+      }
+      LIMIT 100
+    explanation: "Start from specific pathway and add type filter and LIMIT"
+
+  - title: "Missing Type Restriction for Database Names"
+    problem: "Direct string comparison with bp:db fails due to datatype issues"
+    wrong_sparql: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      
+      SELECT ?entity ?id WHERE {
+        ?entity bp:xref ?xref .
+        ?xref bp:db "UniProt" ;
+          bp:id ?id .
+      }
+    correct_sparql: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      
+      SELECT ?entity ?id WHERE {
+        ?entity bp:xref ?xref .
+        ?xref bp:db "UniProt"^^xsd:string ;
+          bp:id ?id .
+      }
+    explanation: "Use ^^xsd:string type restriction to match database names correctly"
+
+common_errors:
+  - error: "Query returns empty results for cross-references"
+    causes:
+      - "Direct comparison with bp:db value without type restriction"
+      - "Datatype mismatch between literal strings and RDF values"
+      - "Wrong xref type (PublicationXref vs UnificationXref)"
+    solutions:
+      - "Use ^^xsd:string type restriction: bp:db \"UniProt\"^^xsd:string"
+      - "Alternative: Use FILTER(STR(?db) = \"UniProt\") if variable binding needed"
+      - "Use bp:UnificationXref for external database IDs"
+      - "Use OPTIONAL for xrefs that may not exist"
+
+  - error: "Query timeout on pathway search"
+    causes:
+      - "Using FILTER/REGEX instead of bif:contains"
+      - "Missing LIMIT clause"
+      - "Unbounded transitive queries (bp:pathwayComponent* without start)"
+    solutions:
+      - "Use bif:contains for keyword searches"
+      - "Add LIMIT 50-100 for exploratory queries"
+      - "Start transitive queries from specific entity"
+      - "Use bp:pathwayComponent+ instead of * when possible"
+
+  - error: "Missing pathway components or proteins"
+    causes:
+      - "Not following bp:pathwayComponent* for nested pathways"
+      - "Missing bp:left/bp:right for reaction participants"
+      - "Not checking both Protein and Complex types"
+    solutions:
+      - "Use bp:pathwayComponent+ for all descendants"
+      - "Include both bp:left and bp:right for complete reactions"
+      - "Use UNION for comprehensive entity retrieval"
+      - "Check entity types with explicit type filters"

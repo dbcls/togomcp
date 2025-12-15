@@ -1,0 +1,541 @@
+schema_info:
+  title: PubMed
+  description: |
+    PubMed RDF database contains bibliographic information for biomedical literature from MEDLINE, life science journals, and online books. The database includes publication metadata (titles, abstracts, authors, affiliations, journals), MeSH term annotations (descriptors, qualifiers, supplementary concepts), and cross-references to external databases. Primary entity types include PubMed articles with associated authors, journals, and MeSH annotations. The RDF representation enables semantic querying across millions of citations with rich metadata about biomedical research publications.
+  endpoint: https://rdfportal.org/ncbi/sparql
+  base_uri: http://rdf.ncbi.nlm.nih.gov/pubmed/
+  graphs:
+    - http://rdfportal.org/dataset/pubmed
+    - http://rdfportal.org/dataset/nlm_catalog
+    - http://rdfportal.org/dataset/pubtator_central
+  version:
+    mie_version: "1.1"
+    mie_created: "2025-12-08"
+    data_version: "Updated continuously"
+    update_frequency: "Daily"
+  license:
+    data_license: "Public Domain"
+    license_url: "https://www.ncbi.nlm.nih.gov/home/about/policies/"
+  access:
+    rate_limiting: "100 queries/min"
+    max_query_timeout: "60 seconds"
+
+shape_expressions: |
+  PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+  PREFIX dct: <http://purl.org/dc/terms/>
+  PREFIX bibo: <http://purl.org/ontology/bibo/>
+  PREFIX prism: <http://prismstandard.org/namespeces/1.2/basic/>
+  PREFIX fabio: <http://purl.org/spar/fabio/>
+  PREFIX pav: <http://purl.org/pav/>
+  PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+  PREFIX olo: <http://purl.org/ontology/olo/core#>
+  PREFIX org: <http://www.w3.org/ns/org#>
+  PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+  
+  <PubMedArticleShape> {
+    bibo:pmid xsd:string ;
+    dct:title xsd:string ;
+    dct:issued xsd:date ;
+    dct:created xsd:string + ;
+    dct:language xsd:string ? ;
+    dct:source xsd:string ;
+    dct:identifier xsd:string ;
+    dct:creator @<AuthorListShape> ;
+    bibo:abstract xsd:string ? ;
+    bibo:volume xsd:string ? ;
+    bibo:issue xsd:string ? ;
+    prism:publicationName xsd:string ;
+    prism:doi xsd:string ? ;
+    prism:eISSN xsd:string ? ;
+    prism:startingPage xsd:string ? ;
+    prism:endingPage xsd:string ? ;
+    fabio:hasIssnL xsd:string ? ;
+    fabio:hasNLMJournalTitleAbbreviation xsd:string ? ;
+    fabio:hasNationalLibraryOfMedicineJournalId xsd:string ? ;
+    fabio:hasPlaceOfPublication xsd:string ? ;
+    fabio:dateLastUpdated xsd:string ? ;
+    fabio:hasPII xsd:string ? ;
+    fabio:hasSubjectTerm IRI * ;
+    fabio:hasPrimarySubjectTerm IRI * ;
+    rdfs:seeAlso IRI * ;
+    pav:derivedFrom xsd:string ?
+  }
+  
+  <AuthorListShape> {
+    olo:slot @<AuthorSlotShape> +
+  }
+  
+  <AuthorSlotShape> {
+    olo:index xsd:integer ;
+    olo:item @<AuthorShape>
+  }
+  
+  <AuthorShape> {
+    a [ foaf:Person ] ;
+    foaf:name xsd:string ;
+    org:memberOf xsd:string ?
+  }
+
+sample_rdf_entries:
+  - title: "PubMed Article with Full Metadata"
+    description: "Complete PubMed citation with title, abstract, authors, publication details, and MeSH annotations."
+    rdf: |
+      @prefix pubmed: <http://rdf.ncbi.nlm.nih.gov/pubmed/> .
+      @prefix dct: <http://purl.org/dc/terms/> .
+      @prefix bibo: <http://purl.org/ontology/bibo/> .
+      @prefix prism: <http://prismstandard.org/namespeces/1.2/basic/> .
+      @prefix fabio: <http://purl.org/spar/fabio/> .
+      @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+      @prefix mesh: <http://id.nlm.nih.gov/mesh/> .
+      
+      pubmed:31558841
+        bibo:pmid "31558841" ;
+        dct:title "Functional variants in ADH1B and ALDH2 are non-additively associated with all-cause mortality in Japanese population." ;
+        dct:issued "2020-03"^^xsd:gYearMonth ;
+        dct:language "eng" ;
+        bibo:abstract "The functional variants involved in alcohol metabolism..." ;
+        prism:doi "10.1038/s41431-019-0518-y" ;
+        prism:publicationName "European journal of human genetics : EJHG" ;
+        fabio:hasNLMJournalTitleAbbreviation "Eur J Hum Genet" ;
+        fabio:hasPrimarySubjectTerm mesh:D020641 ;
+        rdfs:seeAlso mesh:D016428, mesh:D000426 .
+
+  - title: "Author Information with Affiliation"
+    description: "Author metadata including name and institutional affiliation within ordered author list."
+    rdf: |
+      @prefix olo: <http://purl.org/ontology/olo/core#> .
+      @prefix foaf: <http://xmlns.com/foaf/0.1/> .
+      @prefix org: <http://www.w3.org/ns/org#> .
+      
+      _:authorList olo:slot _:slot1 .
+      _:slot1 olo:index 1 ;
+              olo:item _:author1 .
+      _:author1 a foaf:Person ;
+                foaf:name "Sakaue S" ;
+                org:memberOf "Laboratory for Statistical Analysis, RIKEN Center for Integrative Medical Sciences, Yokohama, Japan." .
+
+  - title: "Journal Metadata"
+    description: "Publication venue information including journal name, ISSN, and NLM identifier."
+    rdf: |
+      @prefix pubmed: <http://rdf.ncbi.nlm.nih.gov/pubmed/> .
+      @prefix prism: <http://prismstandard.org/namespeces/1.2/basic/> .
+      @prefix fabio: <http://purl.org/spar/fabio/> .
+      @prefix bibo: <http://purl.org/ontology/bibo/> .
+      
+      pubmed:31558841
+        bibo:volume "28" ;
+        bibo:issue "3" ;
+        prism:startingPage "378" ;
+        prism:endingPage "382" ;
+        prism:publicationName "European journal of human genetics : EJHG" ;
+        prism:eISSN "1476-5438" ;
+        fabio:hasIssnL "1018-4813" ;
+        fabio:hasNationalLibraryOfMedicineJournalId "9302235" .
+
+  - title: "MeSH Term Annotation with Qualifiers"
+    description: "MeSH descriptor-qualifier pair indicating specific aspect of subject indexing."
+    rdf: |
+      @prefix pubmed: <http://rdf.ncbi.nlm.nih.gov/pubmed/> .
+      @prefix fabio: <http://purl.org/spar/fabio/> .
+      @prefix mesh: <http://id.nlm.nih.gov/mesh/> .
+      
+      pubmed:31558841
+        fabio:hasPrimarySubjectTerm mesh:D009026Q000639 ;
+        fabio:hasPrimarySubjectTerm mesh:D020641 ;
+        fabio:hasSubjectTerm mesh:D000428Q000453Q000235 ;
+        fabio:hasSubjectTerm mesh:D005260 .
+
+  - title: "Cross-References to MeSH Terms"
+    description: "Links to MeSH descriptors for topical indexing and supplementary chemical concepts."
+    rdf: |
+      @prefix pubmed: <http://rdf.ncbi.nlm.nih.gov/pubmed/> .
+      @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+      @prefix mesh: <http://id.nlm.nih.gov/mesh/> .
+      
+      pubmed:31558841
+        rdfs:seeAlso mesh:D016428 ;
+        rdfs:seeAlso mesh:D000426 ;
+        rdfs:seeAlso mesh:D013485 ;
+        rdfs:seeAlso mesh:C096127 ;
+        rdfs:seeAlso mesh:D000071396 .
+
+sparql_query_examples:
+  - title: "Retrieve Complete Article by PMID"
+    description: "Get all metadata for a specific PubMed article including title, abstract, authors, and annotations."
+    question: "What are the complete details of PubMed article 31558841?"
+    complexity: basic
+    sparql: |
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX prism: <http://prismstandard.org/namespeces/1.2/basic/>
+      PREFIX fabio: <http://purl.org/spar/fabio/>
+      
+      SELECT ?title ?abstract ?doi ?journal ?issued
+      FROM <http://rdfportal.org/dataset/pubmed>
+      WHERE {
+        ?article bibo:pmid "31558841" ;
+                 dct:title ?title ;
+                 bibo:abstract ?abstract ;
+                 prism:doi ?doi ;
+                 prism:publicationName ?journal ;
+                 dct:issued ?issued .
+      }
+
+  - title: "Search Articles by Keyword"
+    description: "Find articles matching keyword terms using full-text search on titles with bif:contains."
+    question: "Find articles about cancer screening."
+    complexity: basic
+    sparql: |
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      
+      SELECT ?pmid ?title
+      FROM <http://rdfportal.org/dataset/pubmed>
+      WHERE {
+        ?article bibo:pmid ?pmid ;
+                 dct:title ?title .
+        ?title bif:contains "'cancer' AND 'screening'" .
+      }
+      LIMIT 20
+
+  - title: "Find Articles with MeSH Terms"
+    description: "Retrieve articles annotated with specific MeSH descriptor terms for biological concepts like Alzheimer Disease (D016428)."
+    question: "What articles are indexed with the MeSH term for Alzheimer Disease?"
+    complexity: intermediate
+    sparql: |
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
+      
+      SELECT ?pmid ?title ?issued
+      FROM <http://rdfportal.org/dataset/pubmed>
+      WHERE {
+        ?article bibo:pmid ?pmid ;
+                 dct:title ?title ;
+                 dct:issued ?issued ;
+                 rdfs:seeAlso mesh:D016428 .
+      }
+      ORDER BY DESC(?issued)
+      LIMIT 50
+
+  - title: "Get Authors and Affiliations"
+    description: "Extract author names and institutional affiliations from article metadata using ordered lists."
+    question: "Who are the authors and their affiliations for a specific article?"
+    complexity: intermediate
+    sparql: |
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX olo: <http://purl.org/ontology/olo/core#>
+      PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+      PREFIX org: <http://www.w3.org/ns/org#>
+      
+      SELECT ?pmid ?index ?author_name ?affiliation
+      FROM <http://rdfportal.org/dataset/pubmed>
+      WHERE {
+        ?article bibo:pmid ?pmid ;
+                 dct:creator ?creator .
+        ?creator olo:slot ?slot .
+        ?slot olo:index ?index ;
+              olo:item ?author .
+        ?author foaf:name ?author_name .
+        OPTIONAL { ?author org:memberOf ?affiliation }
+        FILTER(?pmid = "31558841")
+      }
+      ORDER BY ?index
+
+  - title: "Search by Keywords and Filter by Publication Year"
+    description: "Combine keyword filtering with temporal constraints using publication dates and string-based year filtering."
+    question: "Find COVID-19 research from recent years."
+    complexity: intermediate
+    sparql: |
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      
+      SELECT ?pmid ?title ?issued
+      FROM <http://rdfportal.org/dataset/pubmed>
+      WHERE {
+        ?article bibo:pmid ?pmid ;
+                 dct:title ?title ;
+                 dct:issued ?issued .
+        ?title bif:contains "'COVID-19' OR 'SARS-CoV-2'" .
+        FILTER(STRSTARTS(STR(?issued), "2024") || STRSTARTS(STR(?issued), "2025"))
+      }
+      ORDER BY DESC(?issued)
+      LIMIT 100
+
+  - title: "Find Articles by Journal and Subject"
+    description: "Complex query combining journal filtering with MeSH term annotation and keyword analysis."
+    question: "What neuroscience articles were published in Nature journals?"
+    complexity: advanced
+    sparql: |
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX prism: <http://prismstandard.org/namespeces/1.2/basic/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT ?pmid ?title ?journal ?mesh_term
+      FROM <http://rdfportal.org/dataset/pubmed>
+      WHERE {
+        ?article bibo:pmid ?pmid ;
+                 dct:title ?title ;
+                 prism:publicationName ?journal ;
+                 rdfs:seeAlso ?mesh_term .
+        FILTER(CONTAINS(STR(?journal), "Nature"))
+        FILTER(STRSTARTS(STR(?mesh_term), "http://id.nlm.nih.gov/mesh/D"))
+        ?title bif:contains "'neuroscience' OR 'neurological'" .
+      }
+      LIMIT 100
+
+  - title: "Analyze Co-authorship Patterns"
+    description: "Advanced query identifying publications with shared authors across multiple articles using property paths."
+    question: "Find articles that share common authors with a reference article."
+    complexity: advanced
+    sparql: |
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX olo: <http://purl.org/ontology/olo/core#>
+      PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+      
+      SELECT ?related_pmid ?related_title ?shared_author_name
+      FROM <http://rdfportal.org/dataset/pubmed>
+      WHERE {
+        # Reference article
+        ?ref_article bibo:pmid "31558841" ;
+                     dct:creator ?ref_creator .
+        ?ref_creator olo:slot/olo:item ?ref_author .
+        ?ref_author foaf:name ?shared_author_name .
+        
+        # Related articles with same author
+        ?related_article bibo:pmid ?related_pmid ;
+                        dct:title ?related_title ;
+                        dct:creator ?related_creator .
+        ?related_creator olo:slot/olo:item ?related_author .
+        ?related_author foaf:name ?shared_author_name .
+        
+        FILTER(?related_pmid != "31558841")
+      }
+      LIMIT 50
+
+cross_references:
+  - pattern: "rdfs:seeAlso"
+    description: |
+      Links to MeSH vocabulary terms for subject indexing. Includes descriptors (D prefix), supplementary concepts (C prefix), publication types, and geographic terms. MeSH terms provide standardized biomedical concept annotations.
+    databases:
+      Medical_Subject_Headings:
+        - "MeSH Descriptors (D-terms): Full coverage of articles"
+        - "MeSH Supplementary Concepts (C-terms): Chemical and disease names"
+        - "MeSH Geographic Descriptors: Location-based terms"
+        - "MeSH Publication Types: Article classification"
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+      
+      SELECT ?pmid ?mesh_term
+      FROM <http://rdfportal.org/dataset/pubmed>
+      WHERE {
+        ?article bibo:pmid ?pmid ;
+                 rdfs:seeAlso ?mesh_term .
+        FILTER(STRSTARTS(STR(?mesh_term), "http://id.nlm.nih.gov/mesh/"))
+      }
+      LIMIT 100
+
+  - pattern: "fabio:hasSubjectTerm / fabio:hasPrimarySubjectTerm"
+    description: |
+      Primary and secondary subject indexing using MeSH descriptor-qualifier pairs. Format: {descriptor_id}Q{qualifier_id}, where qualifiers specify aspects like genetics (Q000235), metabolism (Q000378), or therapeutic use (Q000627). Multiple qualifiers can be chained.
+    databases:
+      MeSH_Descriptor_Qualifier_Pairs:
+        - "Primary subject terms: Major topics of article"
+        - "Secondary subject terms: Supporting concepts"
+        - "Qualifiers: Topical subheadings (e.g., Q000235 for genetics)"
+    sparql: |
+      PREFIX fabio: <http://purl.org/spar/fabio/>
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+      
+      SELECT ?pmid ?primary_term ?secondary_term
+      FROM <http://rdfportal.org/dataset/pubmed>
+      WHERE {
+        ?article bibo:pmid ?pmid .
+        OPTIONAL { ?article fabio:hasPrimarySubjectTerm ?primary_term }
+        OPTIONAL { ?article fabio:hasSubjectTerm ?secondary_term }
+      }
+      LIMIT 100
+
+architectural_notes:
+  schema_design:
+    - "Articles identified by PMID with URI pattern http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid}"
+    - "Authors organized in ordered lists using OLO ontology (Ordered List Ontology)"
+    - "MeSH annotations provided at multiple granularities: descriptors, descriptor-qualifier pairs, supplementary concepts"
+    - "Publication metadata follows BIBO, PRISM, and FaBIO vocabularies"
+    - "Temporal data uses both gYearMonth and date formats depending on precision"
+  performance:
+    - "Keyword search using bif:contains significantly faster than FILTER with REGEX or CONTAINS"
+    - "Count queries on entire dataset often timeout; use LIMIT and sampling approaches"
+    - "Queries with multiple graph patterns benefit from selective property paths"
+    - "Author queries more efficient when filtering by PMID first"
+    - "MeSH term filtering performs well but complex joins can timeout"
+  data_integration:
+    - "MeSH terms link to comprehensive medical vocabulary at http://id.nlm.nih.gov/mesh/"
+    - "Related datasets available: NLM Catalog (journals), PubTator Central (text mining annotations)"
+    - "Journal identifiers include ISSN, eISSN, and NLM Journal ID for cross-referencing"
+    - "DOI and PII available for external article resolution"
+  data_quality:
+    - "Not all articles have abstracts; check for optional abstract property"
+    - "Author affiliations may be concatenated strings with multiple institutions"
+    - "Publication dates vary in precision (year, year-month, full date)"
+    - "Some articles lack DOI; use PMID as primary identifier"
+    - "MeSH annotations update over time; dateLastUpdated tracks changes"
+    - "Future publication dates may appear in issued field for articles in press or ahead of print"
+
+data_statistics:
+  total_articles: "37+ million citations (exact count varies with updates)"
+  coverage:
+    abstracts: "~85% of articles"
+    doi: "~70% of articles"
+    mesh_annotations: "~95% of articles"
+    author_affiliations: "~60% of authors"
+  cardinality:
+    avg_authors_per_article: 5.2
+    avg_mesh_terms_per_article: 12.8
+    avg_qualifiers_per_descriptor: 1.4
+  performance_characteristics:
+    - "Simple PMID lookups: <1 second"
+    - "Keyword searches (20 results): 2-5 seconds"
+    - "Author list extraction: 1-3 seconds"
+    - "Complex joins across authors and MeSH: 10-30 seconds"
+    - "Count queries often timeout; use sampling"
+  data_quality_notes:
+    - "Historical articles may have incomplete metadata"
+    - "Recent articles updated more frequently"
+    - "MeSH annotations added/revised post-publication"
+
+anti_patterns:
+  - title: "Avoid Counting Entire Dataset"
+    problem: "Counting all articles causes query timeout"
+    wrong_sparql: |
+      # This will timeout
+      SELECT (COUNT(?article) as ?total)
+      FROM <http://rdfportal.org/dataset/pubmed>
+      WHERE {
+        ?article <http://purl.org/ontology/bibo/pmid> ?pmid .
+      }
+    correct_sparql: |
+      # Sample and estimate instead
+      SELECT (COUNT(?article) as ?sample_count)
+      FROM <http://rdfportal.org/dataset/pubmed>
+      WHERE {
+        ?article <http://purl.org/ontology/bibo/pmid> ?pmid .
+        FILTER(?pmid < "10000")
+      }
+    explanation: "Use sampling with FILTER limits or rely on documented counts rather than counting entire dataset"
+
+  - title: "Use bif:contains Instead of FILTER REGEX"
+    problem: "String filtering with REGEX is inefficient for keyword search"
+    wrong_sparql: |
+      # Slow approach
+      SELECT ?pmid ?title
+      FROM <http://rdfportal.org/dataset/pubmed>
+      WHERE {
+        ?article <http://purl.org/ontology/bibo/pmid> ?pmid ;
+                 <http://purl.org/dc/terms/title> ?title .
+        FILTER(REGEX(?title, "cancer", "i"))
+      }
+      LIMIT 20
+    correct_sparql: |
+      # Fast approach with bif:contains
+      SELECT ?pmid ?title
+      FROM <http://rdfportal.org/dataset/pubmed>
+      WHERE {
+        ?article <http://purl.org/ontology/bibo/pmid> ?pmid ;
+                 <http://purl.org/dc/terms/title> ?title .
+        ?title bif:contains "'cancer'" .
+      }
+      LIMIT 20
+    explanation: "Virtuoso's bif:contains uses indexed full-text search, dramatically faster than REGEX pattern matching"
+
+  - title: "Query Authors Only After Filtering Articles"
+    problem: "Joining authors without article filtering causes cartesian explosion"
+    wrong_sparql: |
+      # Inefficient: starts with authors
+      PREFIX olo: <http://purl.org/ontology/olo/core#>
+      PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+      SELECT ?author_name
+      WHERE {
+        ?creator olo:slot/olo:item ?author .
+        ?author foaf:name ?author_name .
+      }
+      LIMIT 100
+    correct_sparql: |
+      # Efficient: filter articles first
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX olo: <http://purl.org/ontology/olo/core#>
+      PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+      SELECT ?author_name
+      WHERE {
+        ?article bibo:pmid "31558841" ;
+                 dct:creator ?creator .
+        ?creator olo:slot/olo:item ?author .
+        ?author foaf:name ?author_name .
+      }
+    explanation: "Always filter to specific articles before traversing author lists to avoid processing millions of author relationships"
+
+common_errors:
+  - error: "Query Timeout"
+    causes:
+      - "Attempting to count or aggregate entire dataset"
+      - "Complex joins across multiple entity types without filtering"
+      - "Using REGEX or CONTAINS instead of bif:contains for text search"
+    solutions:
+      - "Add LIMIT clauses to all queries"
+      - "Use FILTER to restrict to specific PMIDs or date ranges first"
+      - "Replace REGEX with bif:contains for keyword searches"
+      - "Break complex queries into smaller, filtered steps"
+
+  - error: "No Results for MeSH Term Query"
+    causes:
+      - "Incorrect MeSH term URI format"
+      - "Using descriptor alone when descriptor-qualifier pair needed"
+      - "Querying wrong property (hasSubjectTerm vs hasPrimarySubjectTerm vs seeAlso)"
+      - "MeSH term ID changed or deprecated (e.g., old IDs may not exist in current data)"
+    solutions:
+      - "Verify MeSH URI: http://id.nlm.nih.gov/mesh/{term_id}"
+      - "Check if term is descriptor (D-prefix) or supplementary concept (C-prefix)"
+      - "Try all three MeSH-related properties when searching"
+      - "Use MeSH browser to verify term exists and get correct ID"
+      - "Search by keyword first to discover actual MeSH terms in use"
+    example_fix: |
+      # If you don't know the exact MeSH ID, search by keyword first:
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT ?pmid ?mesh_term
+      FROM <http://rdfportal.org/dataset/pubmed>
+      WHERE {
+        ?article bibo:pmid ?pmid ;
+                 dct:title ?title ;
+                 rdfs:seeAlso ?mesh_term .
+        ?title bif:contains "'Alzheimer'" .
+        FILTER(STRSTARTS(STR(?mesh_term), "http://id.nlm.nih.gov/mesh/"))
+      }
+      LIMIT 10
+
+  - error: "Missing or Unexpected Date Format"
+    causes:
+      - "Dates stored as gYearMonth, date, or string depending on precision"
+      - "Comparing dates with wrong XSD type"
+      - "Expecting consistent date format across all articles"
+      - "Future dates appearing for articles in press or ahead of print"
+    solutions:
+      - "Use STR() and string operations for date comparisons when type uncertain"
+      - "Check sample data to determine actual date format used"
+      - "Use FILTER with string-based comparison (STRSTARTS) for date ranges when format varies"
+      - "Be aware that publication dates may include future dates for upcoming issues"
+    example_fix: |
+      # Instead of strict date comparison:
+      FILTER(?issued >= "2024-01-01"^^xsd:date)
+      
+      # Use string-based approach for broader compatibility:
+      FILTER(STRSTARTS(STR(?issued), "2024") || STRSTARTS(STR(?issued), "2025"))

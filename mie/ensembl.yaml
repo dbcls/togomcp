@@ -1,0 +1,455 @@
+schema_info:
+  title: Ensembl RDF
+  description: |
+    Ensembl is a comprehensive genomics database providing genome annotations for 100+ species. Contains genes, transcripts, proteins, and exons with genomic locations. Main entities include EnsemblGene (genes with biotypes), EnsemblTranscript (transcript variants with quality flags), EnsemblProtein (translated products), and EnsemblExon (exon regions). Cross-referenced to UniProt, HGNC, NCBI Gene, Reactome, and OMIM.
+  endpoint: https://rdfportal.org/ebi/sparql
+  base_uri: http://rdf.ebi.ac.uk/resource/ensembl/
+  graphs:
+  - http://rdfportal.org/dataset/ensembl
+  - http://rdfportal.org/dataset/ensembl_grch38
+  - http://rdfportal.org/dataset/ensembl_grch37
+  version:
+    mie_version: '1.1'
+    mie_created: '2024-12-08'
+    data_version: Release 114
+    update_frequency: Quarterly
+  license:
+    data_license: Creative Commons Attribution 4.0 International
+    license_url: https://www.ensembl.org/info/about/legal/index.html
+  access:
+    rate_limiting: Reasonable use policy
+    max_query_timeout: 60 seconds
+    backend: Virtuoso (supports bif:contains)
+
+shape_expressions: |
+  PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+  PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+  PREFIX so: <http://purl.obolibrary.org/obo/so#>
+  PREFIX obo: <http://purl.obolibrary.org/obo/>
+  PREFIX sio: <http://semanticscience.org/resource/>
+  
+  <EnsemblGeneShape> {
+    a [ terms:EnsemblGene ] ;
+    rdfs:label xsd:string ;
+    dcterms:identifier xsd:string ;
+    dcterms:description xsd:string ;
+    terms:has_biotype IRI ;
+    obo:RO_0002162 IRI ;
+    so:part_of IRI + ;
+    faldo:location BNode ;
+    rdfs:seeAlso IRI *
+  }
+  
+  <EnsemblTranscriptShape> {
+    a [ terms:EnsemblTranscript ] ;
+    dcterms:identifier xsd:string ;
+    terms:has_biotype IRI ;
+    so:transcribed_from @<EnsemblGeneShape> ;
+    so:translates_to @<EnsemblProteinShape> ? ;
+    terms:has_transcript_flag IRI * ;
+    faldo:location BNode ;
+    sio:SIO_000974 @<EnsemblOrderedExonShape> +
+  }
+  
+  <EnsemblProteinShape> {
+    a [ terms:EnsemblProtein ] ;
+    dcterms:identifier xsd:string ;
+    so:translation_of @<EnsemblTranscriptShape> ;
+    rdfs:seeAlso IRI *
+  }
+  
+  <EnsemblExonShape> {
+    a [ terms:EnsemblExon ] ;
+    dcterms:identifier xsd:string ;
+    faldo:location BNode
+  }
+  
+  <EnsemblOrderedExonShape> {
+    a [ terms:EnsemblOrderedExon ] ;
+    sio:SIO_000628 @<EnsemblExonShape> ;
+    sio:SIO_000300 xsd:integer
+  }
+
+sample_rdf_entries:
+- title: Human BRCA1 Gene
+  description: Protein-coding gene on chromosome 17 with genomic coordinates and cross-references.
+  rdf: |
+    ensg:ENSG00000012048 a terms:EnsemblGene ;
+      rdfs:label "BRCA1" ;
+      dcterms:identifier "ENSG00000012048" ;
+      dcterms:description "BRCA1 DNA repair associated [Source:HGNC Symbol;Acc:HGNC:1100]" ;
+      terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+      obo:RO_0002162 <http://identifiers.org/taxonomy/9606> ;
+      so:part_of <http://rdf.ebi.ac.uk/resource/ensembl/114/homo_sapiens/GRCh38/17> ;
+      faldo:location [
+        faldo:begin [ faldo:position 43044295 ; rdf:type faldo:ReverseStrandPosition ] ;
+        faldo:end [ faldo:position 43170245 ; rdf:type faldo:ReverseStrandPosition ]
+      ] ;
+      rdfs:seeAlso <http://purl.uniprot.org/uniprot/P38398> ;
+      rdfs:seeAlso <http://identifiers.org/hgnc/HGNC:1100> .
+
+- title: Transcript with Quality Flags
+  description: BRCA1 transcript with MANE Select and canonical flags showing quality annotations.
+  rdf: |
+    enst:ENST00000468300 a terms:EnsemblTranscript ;
+      dcterms:identifier "ENST00000468300" ;
+      terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+      so:transcribed_from <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000012048> ;
+      so:translates_to <http://rdf.ebi.ac.uk/resource/ensembl.protein/ENSP00000418960> ;
+      terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000023> ;
+      terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000365> .
+
+- title: Protein with UniProt Link
+  description: Translated protein product with UniProt cross-reference.
+  rdf: |
+    ensp:ENSP00000418960 a terms:EnsemblProtein ;
+      dcterms:identifier "ENSP00000418960" ;
+      so:translation_of <http://rdf.ebi.ac.uk/resource/ensembl.transcript/ENST00000468300> ;
+      rdfs:seeAlso <http://purl.uniprot.org/uniprot/P38398> .
+
+- title: Ordered Exon
+  description: Exon with sequential ordering showing transcript structure.
+  rdf: |
+    <http://rdf.ebi.ac.uk/resource/ensembl.transcript/ENST00000468300#Exon_1>
+      a terms:EnsemblOrderedExon ;
+      sio:SIO_000628 ense:ENSE00003884397 ;
+      sio:SIO_000300 1 .
+    
+    ense:ENSE00003884397 a terms:EnsemblExon ;
+      dcterms:identifier "ENSE00003884397" ;
+      faldo:location [
+        faldo:begin [ faldo:position 43170245 ] ;
+        faldo:end [ faldo:position 43170403 ]
+      ] .
+
+- title: microRNA Gene
+  description: Gene classified as microRNA with biotype annotation.
+  rdf: |
+    ensg:ENSG00000266085 a terms:EnsemblGene ;
+      rdfs:label "MIR6723" ;
+      dcterms:identifier "ENSG00000266085" ;
+      terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000038> ;
+      obo:RO_0002162 <http://identifiers.org/taxonomy/9606> .
+
+sparql_query_examples:
+- title: Search Genes by Symbol with bif:contains
+  description: Find genes using full-text search with wildcard and relevance scoring.
+  question: Find human genes starting with BRCA.
+  complexity: basic
+  sparql: |
+    PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+    PREFIX obo: <http://purl.obolibrary.org/obo/>
+    PREFIX taxonomy: <http://identifiers.org/taxonomy/>
+    
+    SELECT ?gene ?id ?label ?description
+    FROM <http://rdfportal.org/dataset/ensembl>
+    WHERE {
+      ?gene a terms:EnsemblGene ;
+            dcterms:identifier ?id ;
+            rdfs:label ?label ;
+            dcterms:description ?description ;
+            obo:RO_0002162 taxonomy:9606 .
+      ?label bif:contains "'BRCA*'" option (score ?sc) .
+    }
+    ORDER BY DESC(?sc)
+    LIMIT 10
+
+- title: List Genes on Chromosome
+  description: Retrieve protein-coding genes from specific chromosome.
+  question: What are protein-coding genes on chromosome X?
+  complexity: basic
+  sparql: |
+    PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+    PREFIX so: <http://purl.obolibrary.org/obo/so#>
+    PREFIX obo: <http://purl.obolibrary.org/obo/>
+    PREFIX taxonomy: <http://identifiers.org/taxonomy/>
+    
+    SELECT ?gene ?id ?label
+    FROM <http://rdfportal.org/dataset/ensembl>
+    WHERE {
+      ?gene a terms:EnsemblGene ;
+            dcterms:identifier ?id ;
+            rdfs:label ?label ;
+            so:part_of ?chr ;
+            terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+            obo:RO_0002162 taxonomy:9606 .
+      FILTER(CONTAINS(STR(?chr), "GRCh38/X"))
+    }
+    LIMIT 100
+
+- title: Search by Functional Keywords
+  description: Find genes using keyword search in descriptions with boolean operators.
+  question: Find genes involved in kinase receptor activity.
+  complexity: intermediate
+  sparql: |
+    PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+    PREFIX obo: <http://purl.obolibrary.org/obo/>
+    PREFIX taxonomy: <http://identifiers.org/taxonomy/>
+    
+    SELECT ?gene ?id ?label ?description
+    FROM <http://rdfportal.org/dataset/ensembl>
+    WHERE {
+      ?gene a terms:EnsemblGene ;
+            dcterms:identifier ?id ;
+            rdfs:label ?label ;
+            dcterms:description ?description ;
+            obo:RO_0002162 taxonomy:9606 .
+      ?description bif:contains "('kinase' AND 'receptor')" option (score ?sc) .
+    }
+    ORDER BY DESC(?sc)
+    LIMIT 20
+
+- title: Get Gene Genomic Coordinates
+  description: Retrieve gene location with start, end, strand, and chromosome using FALDO.
+  question: What are genomic coordinates of BRCA1?
+  complexity: intermediate
+  sparql: |
+    PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+    PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+    PREFIX obo: <http://purl.obolibrary.org/obo/>
+    PREFIX so: <http://purl.obolibrary.org/obo/so#>
+    PREFIX taxonomy: <http://identifiers.org/taxonomy/>
+    
+    SELECT DISTINCT ?gene ?id ?label ?start ?end ?strand ?chr
+    FROM <http://rdfportal.org/dataset/ensembl>
+    WHERE {
+      ?gene a terms:EnsemblGene ;
+            dcterms:identifier ?id ;
+            rdfs:label ?label ;
+            faldo:location ?loc ;
+            so:part_of ?chr ;
+            obo:RO_0002162 taxonomy:9606 .
+      ?loc faldo:begin/faldo:position ?start ;
+           faldo:end/faldo:position ?end ;
+           faldo:begin/rdf:type ?strand_type .
+      BIND(IF(?strand_type = faldo:ForwardStrandPosition, "+", "-") AS ?strand)
+      FILTER(?id = "ENSG00000012048")
+    }
+
+- title: Gene-Transcript-Protein Mapping
+  description: Navigate gene to protein hierarchy with UniProt cross-references.
+  question: What proteins are encoded by BRCA1 with UniProt IDs?
+  complexity: intermediate
+  sparql: |
+    PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+    PREFIX so: <http://purl.obolibrary.org/obo/so#>
+    PREFIX obo: <http://purl.obolibrary.org/obo/>
+    PREFIX taxonomy: <http://identifiers.org/taxonomy/>
+    
+    SELECT ?gene_id ?gene_label ?transcript_id ?protein_id ?uniprot
+    FROM <http://rdfportal.org/dataset/ensembl>
+    WHERE {
+      ?gene a terms:EnsemblGene ;
+            dcterms:identifier ?gene_id ;
+            rdfs:label ?gene_label ;
+            obo:RO_0002162 taxonomy:9606 .
+      ?transcript so:transcribed_from ?gene ;
+                  dcterms:identifier ?transcript_id ;
+                  so:translates_to ?protein .
+      ?protein dcterms:identifier ?protein_id ;
+               rdfs:seeAlso ?uniprot .
+      FILTER(STRSTARTS(STR(?uniprot), "http://purl.uniprot.org/uniprot/"))
+      FILTER(?gene_label = "BRCA1")
+    }
+    LIMIT 20
+
+- title: Retrieve Ordered Exons
+  description: Get exons in sequential order with coordinates for transcript.
+  question: What are exons of ENST00000700182 in order?
+  complexity: advanced
+  sparql: |
+    PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+    PREFIX sio: <http://semanticscience.org/resource/>
+    PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+    
+    SELECT ?transcript_id ?exon_id ?order ?start ?end
+    FROM <http://rdfportal.org/dataset/ensembl>
+    WHERE {
+      ?transcript a terms:EnsemblTranscript ;
+                  dcterms:identifier ?transcript_id ;
+                  sio:SIO_000974 ?ordered_exon .
+      ?ordered_exon sio:SIO_000628 ?exon ;
+                    sio:SIO_000300 ?order .
+      ?exon dcterms:identifier ?exon_id ;
+            faldo:location/faldo:begin/faldo:position ?start ;
+            faldo:location/faldo:end/faldo:position ?end .
+      FILTER(?transcript_id = "ENST00000700182")
+    }
+    ORDER BY ?order
+    LIMIT 100
+
+- title: Species Gene Distribution
+  description: Count genes by species to see database coverage.
+  question: How many genes per species?
+  complexity: advanced
+  sparql: |
+    PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+    PREFIX obo: <http://purl.obolibrary.org/obo/>
+    
+    SELECT ?taxonomy (COUNT(?gene) as ?gene_count)
+    FROM <http://rdfportal.org/dataset/ensembl>
+    WHERE {
+      ?gene a terms:EnsemblGene ;
+            obo:RO_0002162 ?taxonomy .
+    }
+    GROUP BY ?taxonomy
+    ORDER BY DESC(?gene_count)
+    LIMIT 50
+
+cross_references:
+- pattern: rdfs:seeAlso
+  description: External database cross-references linking to proteins, gene nomenclature, pathways, and clinical databases.
+  databases:
+    proteins:
+    - UniProt
+    - UniParc
+    genes:
+    - HGNC (human)
+    - MGI (mouse)
+    - NCBI Gene
+    - GeneCards
+    pathways:
+    - Reactome
+    clinical:
+    - OMIM
+  sparql: |
+    SELECT ?gene_id ?xref
+    FROM <http://rdfportal.org/dataset/ensembl>
+    WHERE {
+      ?gene a terms:EnsemblGene ;
+            dcterms:identifier ?gene_id ;
+            rdfs:seeAlso ?xref .
+      FILTER(?gene_id = "ENSG00000012048")
+    }
+
+architectural_notes:
+  schema_design:
+  - Hierarchical Gene → Transcript → Protein following central dogma
+  - FALDO ontology for genomic coordinates with strand information
+  - SO (Sequence Ontology) defines feature relationships
+  - SIO ontology enables ordered exon structures
+  - Biotypes classify genes/transcripts into functional categories
+  performance:
+  - Use bif:contains for text search with relevance scoring and wildcards
+  - Filter by species (obo:RO_0002162) early in queries
+  - 'Chromosome filtering: CONTAINS(STR(?chr), ''GRCh38/X'')'
+  - Limit FALDO queries to specific genes
+  - Always use DISTINCT with FALDO location queries
+  data_integration:
+  - Multiple genome assemblies (GRCh38, GRCh37) in separate graphs
+  - Species via NCBI Taxonomy IDs
+  - External IDs use identifiers.org and purl.uniprot.org
+  data_quality:
+  - Not all transcripts encode proteins (non-coding RNAs)
+  - Transcript flags indicate confidence (MANE, APPRIS, TSL)
+  - FALDO positions may have duplicate entries
+
+data_statistics:
+  total_genes: 3000000
+  total_transcripts: 4000000
+  total_proteins: 2000000
+  species_coverage: 100+ vertebrate species
+  major_species:
+    human: 87,688 genes
+    mouse: 744,820 genes
+    rat: 143,695 genes
+  coverage:
+    genes_with_description: ~95%
+    transcripts_with_proteins: ~40%
+    genes_with_uniprot_xrefs: ~60%
+  cardinality:
+    transcripts_per_gene: 1-100+
+    exons_per_transcript: 1-300+
+  performance_characteristics:
+  - 'Gene symbol searches: <1s'
+  - 'Chromosome queries: 1-3s'
+  - 'Gene-transcript-protein: 2-5s'
+  - 'Exon retrieval: <1s'
+
+anti_patterns:
+- title: FILTER/REGEX vs bif:contains
+  problem: FILTER with regex is slow and doesn't support ranking.
+  wrong_sparql: |
+    SELECT ?gene ?label
+    WHERE {
+      ?gene rdfs:label ?label .
+      FILTER(REGEX(?label, "^BRCA", "i"))
+    }
+  correct_sparql: |
+    SELECT ?gene ?label
+    WHERE {
+      ?gene rdfs:label ?label .
+      ?label bif:contains "'BRCA*'" option (score ?sc) .
+    }
+    ORDER BY DESC(?sc)
+  explanation: Use bif:contains with wildcard (*) and scoring for faster, ranked results.
+
+- title: Missing Species Filter
+  problem: Querying without species returns mixed results from all organisms.
+  wrong_sparql: |
+    SELECT ?gene ?label
+    WHERE {
+      ?gene a terms:EnsemblGene ;
+            rdfs:label ?label .
+      FILTER(?label = "TP53")
+    }
+  correct_sparql: |
+    SELECT ?gene ?label
+    WHERE {
+      ?gene a terms:EnsemblGene ;
+            rdfs:label ?label ;
+            obo:RO_0002162 taxonomy:9606 .
+      FILTER(?label = "TP53")
+    }
+  explanation: Always filter by species taxonomy ID (9606 for human).
+
+- title: Incorrect Strand Detection
+  problem: Trying to get strand from non-existent property.
+  wrong_sparql: |
+    SELECT ?gene ?strand
+    WHERE {
+      ?gene faldo:location/faldo:strand ?strand .
+    }
+  correct_sparql: |
+    SELECT ?gene ?strand
+    WHERE {
+      ?gene faldo:location/faldo:begin/rdf:type ?strand_type .
+      BIND(IF(?strand_type = faldo:ForwardStrandPosition, "+", "-") AS ?strand)
+    }
+  explanation: Strand is encoded in position type (ForwardStrandPosition/ReverseStrandPosition).
+
+common_errors:
+- error: Query timeout on broad searches
+  causes:
+  - Querying all genes without species filter
+  - Scanning all FALDO locations without constraints
+  solutions:
+  - Include species filter (obo:RO_0002162 taxonomy:XXXX)
+  - Use LIMIT to restrict results
+  - Use bif:contains for text searches
+  - Start with specific gene or chromosome constraints
+
+- error: Empty results for proteins
+  causes:
+  - Not all transcripts encode proteins (lncRNA, miRNA)
+  - Using required pattern instead of OPTIONAL
+  solutions:
+  - Use OPTIONAL for so:translates_to
+  - Filter by protein-coding biotype (ENSGLOSSARY_0000026)
+  - Check transcript biotype before expecting proteins
+
+- error: Duplicate results with FALDO
+  causes:
+  - FALDO stores begin/end positions separately
+  - Not using DISTINCT
+  solutions:
+  - Always use DISTINCT with location queries
+  - Use LIMIT to control result size
+
+- error: Missing prefix causes 400 error
+  causes:
+  - Using so:part_of without defining PREFIX so:
+  - Other properties from ontologies without prefixes
+  solutions:
+  - Always define all prefixes at the start of queries
+  - Common prefixes needed - so:, obo:, faldo:, sio:, terms:

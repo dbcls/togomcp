@@ -1,0 +1,547 @@
+schema_info:
+  title: MedGen (Medical Genetics)
+  description: |
+    MedGen is NCBI's portal for information about medical conditions with a genetic component. It contains over 233,000 clinical concepts (ConceptID entities) covering diseases, phenotypes, and clinical findings. The database integrates data from multiple sources including OMIM, Orphanet, Human Phenotype Ontology (HPO), and MONDO. Each concept has relationships (MGREL), attributes (MGSAT), and terminology mappings (MGCONSO) that connect to external databases. MedGen serves as a comprehensive resource for clinical genetics research and variant interpretation.
+  endpoint: https://rdfportal.org/ncbi/sparql
+  base_uri: http://www.ncbi.nlm.nih.gov/medgen/
+  graphs:
+  - http://rdfportal.org/dataset/medgen
+  version:
+    mie_version: '1.0'
+    mie_created: '2025-01-27'
+    data_version: Current NCBI release
+    update_frequency: Monthly
+  license:
+    data_license: Public Domain (NCBI Data)
+    license_url: https://www.ncbi.nlm.nih.gov/home/about/policies/
+  access:
+    rate_limiting: 100 queries/min (RDF Portal limit)
+    max_query_timeout: 60 seconds
+
+shape_expressions: |
+  PREFIX mo: <http://med2rdf/ontology/medgen#>
+  PREFIX dct: <http://purl.org/dc/terms/>
+  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+  PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+  PREFIX sty: <http://purl.bioontology.org/ontology/STY/>
+  
+  <ConceptIDShape> {
+    a [ mo:ConceptID ] ;
+    dct:identifier xsd:string ;
+    rdfs:label xsd:string + ;
+    mo:sty IRI ;  # UMLS semantic type
+    skos:definition xsd:string ? ;
+    mo:name BNode ;
+    mo:mgdef BNode ? ;
+    mo:mgconso BNode + ;
+    mo:mgsat BNode +
+  }
+  
+  <MGRELShape> {
+    a [ mo:MGREL ] ;
+    dct:identifier xsd:string ;
+    mo:cui1 @<ConceptIDShape> ;
+    mo:aui1 xsd:string ;
+    mo:cui2 @<ConceptIDShape> ;
+    mo:aui2 xsd:string ;
+    dct:source IRI ;
+    mo:supress IRI ? ;
+    mo:rela xsd:string
+  }
+  
+  <MGSATShape> {
+    a [ mo:MGSAT ] ;
+    mo:atui xsd:string ;
+    mo:cui @<ConceptIDShape> ;
+    mo:atn xsd:string ;
+    mo:atv xsd:string ;
+    dct:source IRI
+  }
+  
+  <MGCONSOShape> {
+    rdfs:seeAlso IRI + ;  # Cross-references to external databases
+    mo:aui xsd:string ;
+    mo:lat xsd:string ;
+    mo:ts IRI ;
+    mo:tty xsd:string ;
+    dct:source IRI
+  }
+
+sample_rdf_entries:
+- title: Core Disease Concept - Acute Myeloid Leukemia
+  description: A disease concept with identifier, labels, semantic type, and definition.
+  rdf: |
+    @prefix mo: <http://med2rdf/ontology/medgen#> .
+    @prefix dct: <http://purl.org/dc/terms/> .
+    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+    @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+    @prefix medgen: <http://www.ncbi.nlm.nih.gov/medgen/> .
+    
+    medgen:C0023467 a mo:ConceptID ;
+        dct:identifier "C0023467" ;
+        rdfs:label "Acute myeloid leukemia"@en ;
+        mo:sty <http://purl.bioontology.org/ontology/STY/T191> ;
+        skos:definition "A myeloid neoplasm characterized by..."@en ;
+        mo:mgconso [
+            rdfs:seeAlso <http://id.nlm.nih.gov/mesh/D015470> ;
+            rdfs:seeAlso <http://purl.obolibrary.org/obo/MONDO_0018874>
+        ] .
+
+- title: Relationship Record (MGREL)
+  description: Represents a relationship between two clinical concepts with source attribution.
+  rdf: |
+    @prefix mo: <http://med2rdf/ontology/medgen#> .
+    @prefix dct: <http://purl.org/dc/terms/> .
+    
+    [] a mo:MGREL ;
+        dct:identifier "R001234567" ;
+        mo:cui1 <http://www.ncbi.nlm.nih.gov/medgen/C0023467> ;
+        mo:aui1 "A0123456" ;
+        mo:cui2 <http://www.ncbi.nlm.nih.gov/medgen/C0023470> ;
+        mo:aui2 "A0789012" ;
+        mo:rela "inverse_isa" ;
+        dct:source <http://id.nlm.nih.gov/mesh/vocab> .
+
+- title: Terminology Mapping (MGCONSO)
+  description: Maps MedGen concepts to external databases like MeSH, MONDO, HPO, and OMIM.
+  rdf: |
+    @prefix mo: <http://med2rdf/ontology/medgen#> .
+    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+    
+    <http://www.ncbi.nlm.nih.gov/medgen/C0000744> mo:mgconso [
+        rdfs:seeAlso <http://identifiers.org/mim/200100> ;
+        rdfs:seeAlso <http://id.nlm.nih.gov/mesh/D000744> ;
+        rdfs:seeAlso <http://purl.obolibrary.org/obo/MONDO_0007037>
+    ] .
+
+- title: Attribute Record (MGSAT)
+  description: Stores additional attributes for concepts such as inheritance patterns or phenotypic features.
+  rdf: |
+    @prefix mo: <http://med2rdf/ontology/medgen#> .
+    @prefix dct: <http://purl.org/dc/terms/> .
+    
+    [] a mo:MGSAT ;
+        mo:atui "AT0123456" ;
+        mo:cui <http://www.ncbi.nlm.nih.gov/medgen/C0000744> ;
+        mo:atn "INHERITANCE" ;
+        mo:atv "Autosomal recessive" ;
+        dct:source <http://id.nlm.nih.gov/mesh/vocab> .
+
+- title: Cross-Reference to External Databases
+  description: Links MedGen concepts to external resources through rdfs:seeAlso relationships.
+  rdf: |
+    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+    @prefix mo: <http://med2rdf/ontology/medgen#> .
+    
+    <http://www.ncbi.nlm.nih.gov/medgen/C0023467> mo:mgconso [
+        rdfs:seeAlso <http://identifiers.org/mim/601626> ;
+        rdfs:seeAlso <http://purl.obolibrary.org/obo/HP_0004808> ;
+        rdfs:seeAlso <http://purl.obolibrary.org/obo/MONDO_0018874> ;
+        rdfs:seeAlso <http://id.nlm.nih.gov/mesh/D015470>
+    ] .
+
+sparql_query_examples:
+- title: Basic - Find Concept by Identifier
+  description: Retrieve basic information about a specific MedGen concept using its CUI identifier.
+  question: What is the basic information for MedGen concept C0023467?
+  complexity: basic
+  sparql: |
+    PREFIX mo: <http://med2rdf/ontology/medgen#>
+    PREFIX dct: <http://purl.org/dc/terms/>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+    
+    SELECT ?concept ?identifier ?label ?sty ?definition
+    FROM <http://rdfportal.org/dataset/medgen>
+    WHERE {
+      ?concept a mo:ConceptID ;
+          dct:identifier "C0023467" ;
+          rdfs:label ?label ;
+          mo:sty ?sty .
+      BIND("C0023467" as ?identifier)
+      OPTIONAL { ?concept skos:definition ?definition }
+    }
+    LIMIT 10
+
+- title: Basic - Search by Keyword Using bif:contains
+  description: Search for disease concepts by keyword using Virtuoso's full-text search capability.
+  question: Find all concepts related to "diabetes" in their labels.
+  complexity: basic
+  sparql: |
+    PREFIX mo: <http://med2rdf/ontology/medgen#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX dct: <http://purl.org/dc/terms/>
+    
+    SELECT ?concept ?identifier ?label
+    FROM <http://rdfportal.org/dataset/medgen>
+    WHERE {
+      ?concept a mo:ConceptID ;
+          rdfs:label ?label ;
+          dct:identifier ?identifier .
+      ?label bif:contains "'diabetes'" option (score ?sc) .
+    }
+    ORDER BY DESC(?sc)
+    LIMIT 50
+
+- title: Intermediate - Find Concepts by Semantic Type
+  description: Retrieve all concepts classified under a specific UMLS semantic type (e.g., diseases).
+  question: What are disease concepts (semantic type T047) in MedGen?
+  complexity: intermediate
+  sparql: |
+    PREFIX mo: <http://med2rdf/ontology/medgen#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX dct: <http://purl.org/dc/terms/>
+    PREFIX sty: <http://purl.bioontology.org/ontology/STY/>
+    
+    SELECT ?concept ?identifier ?label
+    FROM <http://rdfportal.org/dataset/medgen>
+    WHERE {
+      ?concept a mo:ConceptID ;
+          mo:sty sty:T047 ;
+          rdfs:label ?label ;
+          dct:identifier ?identifier .
+    }
+    LIMIT 100
+
+- title: Intermediate - Find Relationships via MGREL
+  description: Identify relationships (hierarchical, manifestations, or gene associations) for a specific concept through MGREL entities.
+  question: What are the related concepts for acute myeloid leukemia?
+  complexity: intermediate
+  sparql: |
+    PREFIX mo: <http://med2rdf/ontology/medgen#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX dct: <http://purl.org/dc/terms/>
+    
+    SELECT ?disease ?disease_label ?related ?related_label ?rel_type
+    FROM <http://rdfportal.org/dataset/medgen>
+    WHERE {
+      ?disease a mo:ConceptID ;
+          dct:identifier "C0023467" ;
+          rdfs:label ?disease_label .
+      ?rel a mo:MGREL ;
+          mo:cui1 ?disease ;
+          mo:cui2 ?related ;
+          mo:rela ?rel_type .
+      ?related rdfs:label ?related_label .
+      FILTER(CONTAINS(LCASE(?rel_type), "gene") || CONTAINS(LCASE(?rel_type), "manifestation") || CONTAINS(LCASE(?rel_type), "isa"))
+      FILTER(?disease != ?related)
+    }
+    LIMIT 20
+
+- title: Intermediate - Retrieve External Database Cross-References
+  description: Get all external database identifiers linked to a MedGen concept via mgconso mappings.
+  question: What external databases reference MedGen concept C0023467?
+  complexity: intermediate
+  sparql: |
+    PREFIX mo: <http://med2rdf/ontology/medgen#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX dct: <http://purl.org/dc/terms/>
+    
+    SELECT DISTINCT ?concept ?identifier ?external_db
+    FROM <http://rdfportal.org/dataset/medgen>
+    WHERE {
+      ?concept a mo:ConceptID ;
+          dct:identifier "C0023467" ;
+          mo:mgconso ?bn .
+      ?bn rdfs:seeAlso ?external_db .
+      BIND("C0023467" as ?identifier)
+    }
+    LIMIT 20
+
+- title: Advanced - Find Disease Hierarchy via MGREL
+  description: Navigate the disease hierarchy using MGREL relationships to find parent (inverse_isa) and child (isa) concepts.
+  question: What are the parent and child diseases of a specific condition?
+  complexity: advanced
+  sparql: |
+    PREFIX mo: <http://med2rdf/ontology/medgen#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX dct: <http://purl.org/dc/terms/>
+    
+    SELECT ?concept ?label ?rel_type ?related ?related_label
+    FROM <http://rdfportal.org/dataset/medgen>
+    WHERE {
+      ?concept a mo:ConceptID ;
+          dct:identifier "C0023467" ;
+          rdfs:label ?label .
+      ?rel a mo:MGREL ;
+          mo:cui1 ?concept ;
+          mo:cui2 ?related ;
+          mo:rela ?rel_type .
+      ?related rdfs:label ?related_label .
+      FILTER(?rel_type = "isa" || ?rel_type = "inverse_isa")
+      FILTER(?concept != ?related)
+    }
+    LIMIT 100
+
+- title: Advanced - Complex Disease-Phenotype Network via MGREL
+  description: Retrieve a network connecting diseases with their phenotypic manifestations through MGREL relationships.
+  question: For a given disease, what are its phenotypic manifestations?
+  complexity: advanced
+  sparql: |
+    PREFIX mo: <http://med2rdf/ontology/medgen#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX dct: <http://purl.org/dc/terms/>
+    
+    SELECT DISTINCT ?disease ?disease_label ?phenotype ?phenotype_label
+    FROM <http://rdfportal.org/dataset/medgen>
+    WHERE {
+      ?disease a mo:ConceptID ;
+          dct:identifier "C0023467" ;
+          rdfs:label ?disease_label .
+      ?rel a mo:MGREL ;
+          mo:cui1 ?disease ;
+          mo:cui2 ?phenotype ;
+          mo:rela ?rel_type .
+      ?phenotype rdfs:label ?phenotype_label .
+      FILTER(?rel_type = "has_manifestation")
+      FILTER(?disease != ?phenotype)
+    }
+    LIMIT 100
+
+cross_references:
+- pattern: rdfs:seeAlso (via mo:mgconso blank nodes)
+  description: |
+    MedGen concepts link to external databases through mgconso blank nodes containing rdfs:seeAlso properties. This pattern provides terminology mappings to multiple external resources.
+  databases:
+    Medical Ontologies:
+    - 'MONDO (Monarch Disease Ontology): ~70% coverage'
+    - 'HPO (Human Phenotype Ontology): ~40% coverage'
+    - 'Orphanet: ~20% coverage for rare diseases'
+    Terminologies:
+    - 'MeSH (Medical Subject Headings): ~80% coverage'
+    - 'SNOMED CT: ~60% coverage'
+    - 'ICD-10: ~50% coverage'
+    Genetic Databases:
+    - 'OMIM (Online Mendelian Inheritance in Man): ~30% coverage'
+    - 'ClinVar: Direct links for genetic variants'
+    - 'NCBI Gene: Direct gene associations'
+  sparql: |
+    PREFIX mo: <http://med2rdf/ontology/medgen#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    
+    SELECT ?concept ?external_db
+    WHERE {
+      ?concept a mo:ConceptID ;
+          mo:mgconso ?bn .
+      ?bn rdfs:seeAlso ?external_db .
+      FILTER(STRSTARTS(STR(?external_db), "http://purl.obolibrary.org/obo/MONDO_"))
+    }
+    LIMIT 100
+
+architectural_notes:
+  schema_design:
+  - 'Four primary entity types: ConceptID (clinical concepts), MGREL (relationships), MGSAT (attributes), MGCONSO (terminology mappings)'
+  - ConceptID uses UMLS CUI identifiers (C-prefixed strings) as primary keys
+  - Blank nodes extensively used for MGCONSO and MGSAT to group related properties
+  - CRITICAL - Relationships between concepts are stored in MGREL entities, NOT as direct properties on ConceptID
+  - Semantic types from UMLS classify concepts into categories (diseases, genes, phenotypes)
+  performance:
+  - Queries on dct:identifier are fast due to indexing (< 1 second)
+  - Full-text search with bif:contains is recommended for keyword queries
+  - MGREL queries typically complete in 2-5 seconds
+  - Cross-database queries via rdfs:seeAlso may return many duplicates - use DISTINCT
+  - Avoid aggregating MGREL or MGSAT without LIMIT due to large record counts (>1M each)
+  data_integration:
+  - Primary integration point is mgconso mappings using rdfs:seeAlso to external URIs
+  - 'External database URIs follow patterns: identifiers.org for OMIM, purl.obolibrary.org for ontologies, id.nlm.nih.gov for MeSH'
+  - Gene-disease associations and hierarchical relationships use MGREL with mo:rela specifying the relationship type
+  - Common relationship types - isa (child-to-parent), inverse_isa (parent-to-child), has_manifestation, manifestation_of
+  data_quality:
+  - Not all concepts have definitions (skos:definition coverage ~34%)
+  - 'MGCONSO mappings vary in coverage: MeSH 80%, MONDO 70%, OMIM 30%'
+  - Some relationships use mo:undefined_relationship when the specific type is unclear
+  - Inheritance patterns stored as MGSAT attributes may not be standardized
+
+data_statistics:
+  total_concepts: 233939
+  total_relationships: 1130420
+  total_attributes: 1117180
+  coverage:
+    definition_coverage: ~34% of concepts have skos:definition
+    external_mapping_coverage: ~90% have at least one external cross-reference
+    relationship_coverage: relationships stored in MGREL, not as direct ConceptID properties
+  cardinality:
+    avg_relationships_per_concept: 4.8
+    avg_external_refs_per_concept: 3.2
+    avg_attributes_per_concept: 4.8
+  performance_characteristics:
+  - 'Identifier lookup: < 1 second'
+  - 'Keyword search with bif:contains: 2-5 seconds'
+  - 'MGREL relationship traversal: 2-5 seconds'
+  - 'Full cross-reference retrieval: 5-15 seconds (use DISTINCT to avoid duplicates)'
+  data_quality_notes:
+  - Definitions available for only ~34% of concepts
+  - Some relationships categorized as 'undefined_relationship'
+  - 'External mappings vary by database (MeSH: 80%, MONDO: 70%, OMIM: 30%)'
+  - Cross-references often duplicated - always use DISTINCT
+
+anti_patterns:
+- title: Using Direct Relationship Properties on ConceptID
+  problem: Relationships are stored in MGREL entities, not as direct properties like mo:disease_has_associated_gene or mo:isa on ConceptID
+  wrong_sparql: |
+    SELECT ?disease ?gene
+    WHERE {
+      ?disease mo:disease_has_associated_gene ?gene .
+    }
+  correct_sparql: |
+    SELECT ?disease ?gene
+    WHERE {
+      ?rel a mo:MGREL ;
+          mo:cui1 ?disease ;
+          mo:cui2 ?gene ;
+          mo:rela ?rel_type .
+      FILTER(CONTAINS(LCASE(?rel_type), "gene"))
+    }
+  explanation: CRITICAL - All relationships between concepts are stored in MGREL entities with mo:rela specifying the relationship type. Direct properties on ConceptID do not contain meaningful relationship data.
+
+- title: Not Using DISTINCT for Cross-References
+  problem: mgconso cross-references often return many duplicate rows
+  wrong_sparql: |
+    SELECT ?concept ?external_db
+    WHERE {
+      ?concept mo:mgconso ?bn .
+      ?bn rdfs:seeAlso ?external_db .
+    }
+  correct_sparql: |
+    SELECT DISTINCT ?concept ?external_db
+    WHERE {
+      ?concept mo:mgconso ?bn .
+      ?bn rdfs:seeAlso ?external_db .
+    }
+  explanation: Always use DISTINCT when querying mgconso to avoid duplicate external database references
+
+- title: Aggregating Without LIMIT on Large Entity Types
+  problem: MGREL and MGSAT have over 1 million records each, causing timeouts
+  wrong_sparql: |
+    SELECT (COUNT(?rel) as ?count)
+    WHERE {
+      ?rel a mo:MGREL .
+    }
+  correct_sparql: |
+    SELECT ?rel
+    WHERE {
+      ?rel a mo:MGREL .
+    }
+    LIMIT 1000
+  explanation: Always use LIMIT when working with MGREL or MGSAT to avoid timeouts
+
+- title: Not Using bif:contains for Keyword Search
+  problem: FILTER with CONTAINS is slow and inefficient for text searches
+  wrong_sparql: |
+    SELECT ?concept ?label
+    WHERE {
+      ?concept rdfs:label ?label .
+      FILTER(CONTAINS(LCASE(?label), "diabetes"))
+    }
+  correct_sparql: |
+    SELECT ?concept ?label
+    WHERE {
+      ?concept rdfs:label ?label .
+      ?label bif:contains "'diabetes'" option (score ?sc) .
+    }
+    ORDER BY DESC(?sc)
+    LIMIT 50
+  explanation: Use bif:contains with Virtuoso for efficient full-text search and relevance ranking
+
+- title: Forgetting to Include Graph URI
+  problem: Queries may return no results without specifying the correct graph
+  wrong_sparql: |
+    SELECT ?concept ?label
+    WHERE {
+      ?concept a mo:ConceptID ;
+          rdfs:label ?label .
+    }
+  correct_sparql: |
+    SELECT ?concept ?label
+    FROM <http://rdfportal.org/dataset/medgen>
+    WHERE {
+      ?concept a mo:ConceptID ;
+          rdfs:label ?label .
+    }
+    LIMIT 100
+  explanation: Always specify FROM <http://rdfportal.org/dataset/medgen> to query the correct graph
+
+common_errors:
+- error: Empty results when querying for relationships
+  causes:
+  - Using direct relationship properties on ConceptID instead of MGREL
+  - Attempting to query mo:disease_has_associated_gene, mo:isa, etc. as direct properties
+  - Missing FROM clause specifying the graph URI
+  solutions:
+  - CRITICAL - Always use MGREL entities for relationships
+  - 'Query pattern: ?rel a mo:MGREL ; mo:cui1 ?concept1 ; mo:cui2 ?concept2 ; mo:rela ?rel_type'
+  - 'Always include: FROM <http://rdfportal.org/dataset/medgen>'
+  example_fix: |
+    # Wrong - direct properties don't work
+    SELECT ?disease ?gene
+    WHERE {
+      ?disease mo:disease_has_associated_gene ?gene .
+    }
+    
+    # Correct - use MGREL
+    SELECT ?disease ?gene
+    FROM <http://rdfportal.org/dataset/medgen>
+    WHERE {
+      ?rel a mo:MGREL ;
+          mo:cui1 ?disease ;
+          mo:cui2 ?gene ;
+          mo:rela ?rel_type .
+      FILTER(CONTAINS(LCASE(?rel_type), "gene"))
+    }
+    LIMIT 100
+
+- error: Query timeout when exploring relationships
+  causes:
+  - Querying MGREL or MGSAT without LIMIT
+  - Complex relationship traversals without constraints
+  - Aggregations on large datasets
+  solutions:
+  - Always add LIMIT (suggest 100-1000 for exploration)
+  - Use specific concept identifiers to narrow scope
+  - Break complex queries into smaller steps
+  example_fix: |
+    # Timeout risk - no limit on million+ records
+    SELECT ?cui1 ?cui2 ?rela
+    WHERE {
+      ?rel a mo:MGREL ;
+          mo:cui1 ?cui1 ;
+          mo:cui2 ?cui2 ;
+          mo:rela ?rela .
+    }
+    
+    # Safe version
+    SELECT ?cui1 ?cui2 ?rela
+    FROM <http://rdfportal.org/dataset/medgen>
+    WHERE {
+      ?rel a mo:MGREL ;
+          mo:cui1 <http://www.ncbi.nlm.nih.gov/medgen/C0023467> ;
+          mo:cui2 ?cui2 ;
+          mo:rela ?rela .
+    }
+    LIMIT 100
+
+- error: Duplicate cross-references in results
+  causes:
+  - Not using DISTINCT with mo:mgconso queries
+  - Multiple mgconso blank nodes containing the same rdfs:seeAlso values
+  solutions:
+  - Always use DISTINCT when querying external cross-references
+  - This is expected behavior - duplicates come from multiple MGCONSO entries
+  example_fix: |
+    # Wrong - returns many duplicates
+    SELECT ?concept ?omim
+    WHERE {
+      ?concept mo:mgconso ?bn .
+      ?bn rdfs:seeAlso ?omim .
+      FILTER(STRSTARTS(STR(?omim), "http://identifiers.org/mim/"))
+    }
+    
+    # Correct - removes duplicates
+    SELECT DISTINCT ?concept ?omim
+    FROM <http://rdfportal.org/dataset/medgen>
+    WHERE {
+      ?concept mo:mgconso ?bn .
+      ?bn rdfs:seeAlso ?omim .
+      FILTER(STRSTARTS(STR(?omim), "http://identifiers.org/mim/"))
+    }
+    LIMIT 100

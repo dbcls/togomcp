@@ -1,0 +1,522 @@
+schema_info:
+  title: Rhea - Annotated Reactions Database
+  description: |
+    Rhea is a comprehensive expert-curated database of biochemical reactions.
+    It contains 17,078 reactions (including 34,156 directional and 17,078 bidirectional representations), 11,763 small molecule compounds, and 254 polymer structures.
+    All reactions are atom-balanced, chemically annotated, and linked to standard compound vocabularies (ChEBI).
+    Rhea provides extensive cross-references to metabolic pathway databases (KEGG, MetaCyc, Reactome), enzyme classifications (EC numbers), and gene/protein function annotations (Gene Ontology).
+    Transport reactions (5,984 total) include cellular location information. Reactions are classified by approval status and include literature citations.
+    Rhea serves as the reference reaction resource for UniProtKB enzyme annotation.
+  endpoint: https://sparql.rhea-db.org/sparql
+  base_uri: http://rdf.rhea-db.org/
+  graphs:
+  - http://rdfportal.org/dataset/rhea
+  version:
+    mie_version: '1.0'
+    mie_created: '2025-01-21'
+    data_version: Release 2024
+    update_frequency: Quarterly
+  license:
+    data_license: CC BY 4.0
+    license_url: https://www.rhea-db.org/help/license
+  access:
+    rate_limiting: No explicit rate limit
+    max_query_timeout: 60 seconds
+shape_expressions: |
+  PREFIX rhea: <http://rdf.rhea-db.org/>
+  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+  PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+  PREFIX chebi: <http://purl.obolibrary.org/obo/>
+  PREFIX uniprot: <http://purl.uniprot.org/enzyme/>
+
+  # Reaction (master/unspecified direction)
+  <ReactionShape> {
+    a [ rdfs:Class ] ;
+    rdfs:subClassOf [ rhea:Reaction ] ;
+    rdfs:label xsd:string ;
+    rhea:accession xsd:string ;
+    rhea:id xsd:integer ;
+    rhea:equation xsd:string ;
+    rhea:htmlEquation xsd:string ;
+    rhea:status IRI ;                        # rhea:Approved, rhea:Preliminary, rhea:Obsolete
+    rhea:isChemicallyBalanced xsd:boolean ;
+    rhea:isTransport xsd:boolean ;
+    rhea:side IRI + ;                        # Links to ReactionSide
+    rhea:directionalReaction IRI + ;         # Links to DirectionalReaction
+    rhea:bidirectionalReaction IRI ? ;
+    rhea:ec IRI * ;                          # Links to UniProt enzyme
+    rdfs:seeAlso IRI * ;                     # Cross-references to GO, KEGG, etc.
+    rdfs:comment xsd:string ?                # Literature citations
+  }
+
+  # DirectionalReaction (left-to-right or right-to-left)
+  <DirectionalReactionShape> {
+    a [ rdfs:Class ] ;
+    rdfs:subClassOf [ rhea:DirectionalReaction ] * ;
+    rdfs:subClassOf IRI +                    # Links to parent Reaction
+  }
+
+  # BidirectionalReaction (reversible)
+  <BidirectionalReactionShape> {
+    a [ rdfs:Class ] ;
+    rdfs:subClassOf [ rhea:BidirectionalReaction ] * ;
+    rdfs:subClassOf IRI +
+  }
+
+  # ReactionSide (left or right side of reaction)
+  <ReactionSideShape> {
+    a [ rdfs:Class ] ;
+    rdfs:subClassOf [ rhea:ReactionSide ] ;
+    rhea:contains IRI + ;                    # Links to Participant
+    rhea:contains1 IRI * ;                   # Stoichiometry = 1
+    rhea:contains2 IRI * ;                   # Stoichiometry = 2
+    rhea:contains3 IRI * ;                   # Stoichiometry = 3
+    rhea:containsN IRI * ;                   # Stoichiometry > 3
+    rhea:curatedOrder xsd:integer ;          # Display order
+    rhea:transformableTo IRI ?               # Links to opposite side
+  }
+
+  # ReactionParticipant (compound in a reaction)
+  <ParticipantShape> {
+    a [ rdfs:Class ] ;
+    rdfs:subClassOf [ rhea:ReactionParticipant ] ;
+    rdfs:subClassOf IRI + ;
+    rhea:compound IRI ;                      # Links to Compound
+    rhea:location IRI ?                      # rhea:In or rhea:Out for transport
+  }
+
+  # SmallMolecule compound
+  <SmallMoleculeShape> {
+    a [ rdfs:Class ] ;
+    rdfs:subClassOf [ rhea:SmallMolecule ] ;
+    rdfs:subClassOf IRI * ;                  # Links to ChEBI
+    rhea:id xsd:integer ;
+    rhea:accession xsd:string ;              # CHEBI ID
+    rhea:name xsd:string ;
+    rhea:htmlName xsd:string ;
+    rhea:formula xsd:string ;
+    rhea:charge xsd:integer ;
+    rhea:chebi IRI                           # ChEBI URI
+  }
+
+  # Polymer compound
+  <PolymerShape> {
+    a [ rdfs:Class ] ;
+    rdfs:subClassOf [ rhea:Polymer ] ;
+    rhea:id xsd:integer ;
+    rhea:accession xsd:string ;              # POLYMER:XXXXX
+    rhea:name xsd:string ;
+    rhea:htmlName xsd:string ;
+    rhea:formula xsd:string ;                # Contains (n) or (n-1)
+    rhea:charge xsd:string ;                 # May contain (n) notation
+    rhea:polymerizationIndex xsd:string ;    # e.g., "n", "n-1"
+    rhea:underlyingChebi IRI ?               # ChEBI of repeating unit
+  }
+sample_rdf_entries:
+- title: Master Reaction (Unspecified Direction)
+  description: A master reaction entry representing pentanamide hydrolysis. Links to directional and bidirectional forms, EC number, and external databases.
+  rdf: |
+    <http://rdf.rhea-db.org/10000> a rdfs:Class ;
+      rdfs:subClassOf rhea:Reaction ;
+      rdfs:label "H2O + pentanamide = NH4(+) + pentanoate" ;
+      rdfs:comment "Published in: Friedich, C.G. and Mitrenga, G. ..." ;
+      rdfs:seeAlso <http://purl.obolibrary.org/obo/GO_0050168> ;
+      rhea:accession "RHEA:10000" ;
+      rhea:id 10000 ;
+      rhea:equation "H2O + pentanamide = NH4(+) + pentanoate" ;
+      rhea:htmlEquation "H<small><sub>2</sub></small>O + pentanamide = ..." ;
+      rhea:status rhea:Approved ;
+      rhea:isChemicallyBalanced 1 ;
+      rhea:isTransport 0 ;
+      rhea:ec <http://purl.uniprot.org/enzyme/3.5.1.50> ;
+      rhea:side <http://rdf.rhea-db.org/10000_L> ;
+      rhea:side <http://rdf.rhea-db.org/10000_R> ;
+      rhea:directionalReaction <http://rdf.rhea-db.org/10001> ;
+      rhea:directionalReaction <http://rdf.rhea-db.org/10002> ;
+      rhea:bidirectionalReaction <http://rdf.rhea-db.org/10003> .
+- title: Reaction Side with Participants
+  description: Left side of a reaction, containing two participants (compounds) with defined stoichiometry and transformability to the opposite side.
+  rdf: |
+    <http://rdf.rhea-db.org/10000_L> a rdfs:Class ;
+      rdfs:subClassOf rhea:ReactionSide ;
+      rhea:contains <http://rdf.rhea-db.org/Participant_10000_compound_1283> ;
+      rhea:contains <http://rdf.rhea-db.org/Participant_10000_compound_4808> ;
+      rhea:contains1 <http://rdf.rhea-db.org/Participant_10000_compound_1283> ;
+      rhea:contains1 <http://rdf.rhea-db.org/Participant_10000_compound_4808> ;
+      rhea:curatedOrder 1 ;
+      rhea:transformableTo <http://rdf.rhea-db.org/10000_R> .
+- title: Small Molecule Compound
+  description: A small molecule compound (water) with chemical formula, charge, and ChEBI cross-reference.
+  rdf: |
+    <http://rdf.rhea-db.org/Compound_1283> a rdfs:Class ;
+      rdfs:subClassOf rhea:SmallMolecule ;
+      rdfs:subClassOf <http://purl.obolibrary.org/obo/CHEBI_15377> ;
+      rhea:id 1283 ;
+      rhea:accession "CHEBI:15377" ;
+      rhea:name "H2O" ;
+      rhea:htmlName "H<small><sub>2</sub></small>O" ;
+      rhea:formula "H2O" ;
+      rhea:charge 0 ;
+      rhea:chebi <http://purl.obolibrary.org/obo/CHEBI_15377> .
+- title: Polymer Compound
+  description: A polymer structure representing a polysaccharide chain with polymerization index notation and underlying ChEBI reference.
+  rdf: |
+    <http://rdf.rhea-db.org/Compound_10035> a rdfs:Class ;
+      rdfs:subClassOf rhea:Polymer ;
+      rhea:id 10035 ;
+      rhea:accession "POLYMER:10035" ;
+      rhea:name "[(1->4)-beta-D-glucosyl](n-1)" ;
+      rhea:htmlName "[(1&#8594;4)-&#946;-<small>D</small>-glucosyl]<small><sub>(<i>n</i>-1)</sub></small>" ;
+      rhea:formula "H2O(C6H10O5)<i><sub>n-1</sub></i>" ;
+      rhea:charge "(0)(0)<i><sub>n-1</sub></i>" ;
+      rhea:polymerizationIndex "n-1" ;
+      rhea:underlyingChebi <http://purl.obolibrary.org/obo/CHEBI_18246> .
+- title: Transport Reaction Participant with Location
+  description: Participant in a transport reaction with cellular location annotation indicating substrate is inside the cell.
+  rdf: |
+    <http://rdf.rhea-db.org/Participant_20621_compound_1073_in> a rdfs:Class ;
+      rdfs:subClassOf rhea:ReactionParticipant ;
+      rdfs:subClassOf <http://rdf.rhea-db.org/Compound_1073> ;
+      rhea:compound <http://rdf.rhea-db.org/Compound_1073> ;
+      rhea:location rhea:In .
+sparql_query_examples:
+- title: Search Reactions by Keyword
+  description: Find approved reactions containing specific keywords (e.g., "ATP") using full-text search with relevance ranking.
+  question: What are some approved reactions involving ATP?
+  complexity: basic
+  sparql: |
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX rhea: <http://rdf.rhea-db.org/>
+
+    SELECT ?reaction ?equation ?label
+    WHERE {
+      ?reaction rdfs:subClassOf rhea:Reaction ;
+                rhea:equation ?equation ;
+                rdfs:label ?label ;
+                rhea:status rhea:Approved .
+      ?equation bif:contains "'atp'" option (score ?sc) .
+    }
+    ORDER BY DESC(?sc)
+    LIMIT 20
+- title: Get Reaction Details by Accession
+  description: Retrieve complete information for a specific Rhea reaction using its accession ID.
+  question: What are the details of reaction RHEA:10000?
+  complexity: basic
+  sparql: |
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX rhea: <http://rdf.rhea-db.org/>
+
+    SELECT ?property ?value
+    WHERE {
+      ?reaction rhea:accession "RHEA:10000" ;
+                ?property ?value .
+    }
+- title: Find Transport Reactions
+  description: Identify reactions that involve transport across cellular membranes with their substrates and locations.
+  question: Which reactions are classified as transport reactions?
+  complexity: intermediate
+  sparql: |
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX rhea: <http://rdf.rhea-db.org/>
+
+    SELECT ?reaction ?equation ?participant ?compound ?location
+    WHERE {
+      ?reaction rdfs:subClassOf rhea:Reaction ;
+                rhea:equation ?equation ;
+                rhea:isTransport 1 ;
+                rhea:side ?side .
+      ?side rhea:contains ?participant .
+      ?participant rhea:compound ?compound ;
+                   rhea:location ?location .
+    }
+    LIMIT 50
+- title: Get Reactions with EC Number and GO Terms
+  description: Find reactions annotated with both enzyme commission numbers and Gene Ontology molecular function terms.
+  question: Which reactions have EC classification and GO annotations?
+  complexity: intermediate
+  sparql: |
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX rhea: <http://rdf.rhea-db.org/>
+    PREFIX go: <http://purl.obolibrary.org/obo/>
+
+    SELECT DISTINCT ?reaction ?equation ?ec ?goTerm
+    WHERE {
+      ?reaction rdfs:subClassOf rhea:Reaction ;
+                rhea:equation ?equation ;
+                rhea:ec ?ec ;
+                rdfs:seeAlso ?goTerm .
+      FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
+    }
+    LIMIT 50
+- title: Complex Keyword Search with Boolean Operators
+  description: Find reactions containing multiple keywords using AND/OR operators with relevance ranking.
+  question: What reactions involve both glucose and phosphate?
+  complexity: intermediate
+  sparql: |
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX rhea: <http://rdf.rhea-db.org/>
+
+    SELECT ?reaction ?equation
+    WHERE {
+      ?reaction rdfs:subClassOf rhea:Reaction ;
+                rhea:equation ?equation ;
+                rhea:status rhea:Approved .
+      ?equation bif:contains "'glucose' AND 'phosphate'" option (score ?sc) .
+    }
+    ORDER BY DESC(?sc)
+    LIMIT 20
+- title: Get Directional Variants of a Reaction
+  description: For a master reaction, retrieve all directional and bidirectional representations with their relationships.
+  question: What are all the directional forms of reaction RHEA:10000?
+  complexity: advanced
+  sparql: |
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX rhea: <http://rdf.rhea-db.org/>
+
+    SELECT ?masterReaction ?directional ?bidirectional ?type
+    WHERE {
+      ?masterReaction rhea:accession "RHEA:10000" .
+      OPTIONAL {
+        ?masterReaction rhea:directionalReaction ?directional .
+        ?directional rdfs:subClassOf ?dirType .
+        FILTER(?dirType = rhea:DirectionalReaction)
+        BIND("directional" AS ?type)
+      }
+      OPTIONAL {
+        ?masterReaction rhea:bidirectionalReaction ?bidirectional .
+        BIND("bidirectional" AS ?type)
+      }
+    }
+- title: Complex Query - Reactions with Polymers and Citations
+  description: Find reactions involving polymer substrates that have literature citations and cross-references to pathway databases.
+  question: Which reactions involve polymers and have extensive literature support?
+  complexity: advanced
+  sparql: |
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX rhea: <http://rdf.rhea-db.org/>
+
+    SELECT DISTINCT ?reaction ?equation ?polymer ?citation ?kegg
+    WHERE {
+      ?reaction rdfs:subClassOf rhea:Reaction ;
+                rhea:equation ?equation ;
+                rhea:side ?side .
+      ?side rhea:contains ?participant .
+      ?participant rhea:compound ?compound .
+      ?compound rdfs:subClassOf rhea:Polymer ;
+                rhea:name ?polymer .
+      OPTIONAL { ?reaction rdfs:comment ?citation . }
+      OPTIONAL { 
+        ?reaction rdfs:seeAlso ?kegg .
+        FILTER(CONTAINS(STR(?kegg), "kegg.reaction"))
+      }
+    }
+    LIMIT 30
+cross_references:
+- pattern: rdfs:seeAlso
+  description: |
+    Reactions link to external databases via rdfs:seeAlso. Cross-references use identifiers.org URIs or database-specific namespaces.
+    Transport reactions include cellular compartment annotations (rhea:In, rhea:Out).
+    Compounds link to ChEBI via rhea:chebi property and rdfs:subClassOf relationships.
+  databases:
+    Gene_Ontology:
+    - GO (Molecular Function): High coverage via http://purl.obolibrary.org/obo/GO_XXXXXXX
+    Metabolic_Pathways:
+    - KEGG Reaction: Extensive via http://identifiers.org/kegg.reaction/RXXXXX
+    - BioCyc/MetaCyc: Comprehensive via http://identifiers.org/biocyc/METACYC:XXX
+    - Reactome: Selected pathways via http://identifiers.org/reactome/R-HSA-XXXXXX
+    Enzyme_Mechanisms:
+    - MACiE: Mechanism annotations via http://identifiers.org/macie/MXXXX
+    Chemical_Structures:
+    - ChEBI: All compounds via http://purl.obolibrary.org/obo/CHEBI_XXXXX
+    Enzyme_Classification:
+    - EC Numbers: Via http://purl.uniprot.org/enzyme/X.X.X.X
+  sparql: |
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX rhea: <http://rdf.rhea-db.org/>
+
+    SELECT ?reaction ?equation ?externalDB
+    WHERE {
+      ?reaction rdfs:subClassOf rhea:Reaction ;
+                rhea:equation ?equation ;
+                rdfs:seeAlso ?externalDB .
+    }
+    LIMIT 100
+architectural_notes:
+  schema_design:
+  - Reactions have three representations - master (unspecified direction), directional (L→R, R→L), and bidirectional (reversible)
+  - Each reaction ID forms a quartet - e.g., 10000 (master), 10001 (L→R), 10002 (R→L), 10003 (bidirectional)
+  - Reaction sides (_L, _R suffixes) contain participants with stoichiometry encoded in property names (contains1, contains2, etc.)
+  - Participants link to compounds via rhea:compound, with optional rhea:location for transport reactions
+  - Compounds are either SmallMolecule (with ChEBI links) or Polymer (with polymerization indices)
+  - All reactions are subclasses of rdfs:Class using OWL/RDFS vocabulary
+  performance:
+  - Use bif:contains for text search in equations and labels with relevance scoring - much faster than FILTER(CONTAINS())
+  - Boolean operators work in bif:contains - use 'glucose' AND 'phosphate' or 'atp' OR 'gtp' for complex searches
+  - Filter by rhea:status early to focus on rhea:Approved reactions (66,740 vs 68,312 total)
+  - When querying participants, start from reactions then traverse to compounds for better performance
+  - Limit results when exploring relationships between reactions, sides, and participants
+  - ORDER BY DESC(?sc) after bif:contains to get most relevant results first
+  data_integration:
+  - ChEBI integration via rdfs:subClassOf and rhea:chebi properties enables compound-level queries
+  - EC numbers link to UniProt enzyme namespace for protein function connections
+  - GO molecular function terms provide gene/protein annotation pathways
+  - KEGG, MetaCyc, and Reactome links enable metabolic pathway mapping
+  data_quality:
+  - All approved reactions are chemically balanced (rhea:isChemicallyBalanced = 1)
+  - Some reactions have Preliminary status (452) indicating ongoing curation
+  - Obsolete reactions (1,120) are retained for historical reference
+  - Literature citations in rdfs:comment use structured format but require text parsing
+  - Polymers use specialized notation (n, n-1) in formulas and charges
+data_statistics:
+  total_reactions: 17078
+  directional_reactions: 34156
+  bidirectional_reactions: 17078
+  small_molecules: 11763
+  polymers: 254
+  transport_reactions: 5984
+  reaction_status:
+    approved: 66740
+    preliminary: 452
+    obsolete: 1120
+  coverage:
+    reactions_with_ec: ~45% (based on enzyme classification overlap)
+    reactions_with_go: ~55% (molecular function annotations)
+    reactions_with_kegg: ~35% (metabolic pathway coverage)
+    compounds_with_chebi: 100% (all small molecules have ChEBI IDs)
+  cardinality:
+    avg_participants_per_reaction: ~4-6 (substrates + products)
+    avg_cross_refs_per_reaction: 1-5 (GO, KEGG, MetaCyc, etc.)
+  performance_characteristics:
+  - Simple reaction lookups by ID or accession: < 1 second
+  - Keyword searches with bif:contains: < 1 second for 20 results
+  - Complex joins (reactions-participants-compounds): 2-5 seconds with LIMIT 50
+  - Full traversal queries may timeout without proper LIMIT clauses
+  data_quality_notes:
+  - All approved reactions are atom-balanced and charge-balanced
+  - Transport reactions consistently annotated with cellular locations
+  - Polymer notation is standardized but may require parsing for applications
+anti_patterns:
+- title: Using FILTER(CONTAINS()) Instead of bif:contains
+  problem: Standard FILTER(CONTAINS()) is much slower than Virtuoso's native full-text search and doesn't provide relevance ranking.
+  wrong_sparql: |
+    PREFIX rhea: <http://rdf.rhea-db.org/>
+
+    SELECT ?reaction ?equation
+    WHERE {
+      ?reaction rhea:equation ?equation .
+      FILTER(CONTAINS(LCASE(?equation), "atp"))
+    }
+  correct_sparql: |
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX rhea: <http://rdf.rhea-db.org/>
+
+    SELECT ?reaction ?equation
+    WHERE {
+      ?reaction rdfs:subClassOf rhea:Reaction ;
+                rhea:equation ?equation ;
+                rhea:status rhea:Approved .
+      ?equation bif:contains "'atp'" option (score ?sc) .
+    }
+    ORDER BY DESC(?sc)
+    LIMIT 20
+  explanation: Use bif:contains with single quotes around keywords for fast full-text search. Add ORDER BY DESC(?sc) to get most relevant results first.
+- title: Not Using LIMIT on Open-Ended Queries
+  problem: Queries exploring relationships without LIMIT clauses can timeout on large result sets.
+  wrong_sparql: |
+    SELECT ?reaction ?participant ?compound
+    WHERE {
+      ?reaction rhea:side ?side .
+      ?side rhea:contains ?participant .
+      ?participant rhea:compound ?compound .
+    }
+  correct_sparql: |
+    PREFIX rhea: <http://rdf.rhea-db.org/>
+
+    SELECT ?reaction ?participant ?compound
+    WHERE {
+      ?reaction rhea:side ?side .
+      ?side rhea:contains ?participant .
+      ?participant rhea:compound ?compound .
+    }
+    LIMIT 100
+  explanation: Always include LIMIT when exploring relationships to prevent timeouts and get manageable result sets.
+- title: Confusing Reaction Types
+  problem: Querying for master reactions but expecting directional properties, or vice versa.
+  wrong_sparql: |
+    # Trying to get directional info from master reaction directly
+    SELECT ?reaction ?direction
+    WHERE {
+      ?reaction rdfs:subClassOf rhea:Reaction ;
+                rhea:direction ?direction .
+    }
+  correct_sparql: |
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX rhea: <http://rdf.rhea-db.org/>
+
+    # Get master reaction and its directional variants
+    SELECT ?masterReaction ?directionalReaction
+    WHERE {
+      ?masterReaction rdfs:subClassOf rhea:Reaction ;
+                      rhea:directionalReaction ?directionalReaction .
+    }
+    LIMIT 50
+  explanation: Master reactions link to directional forms via rhea:directionalReaction. Use the appropriate reaction type for your query needs.
+common_errors:
+- error: Query timeout when counting all reactions
+  causes:
+  - Not using LIMIT on large aggregation queries
+  - Attempting to traverse entire reaction-participant-compound graph
+  solutions:
+  - Add LIMIT clause even to COUNT queries
+  - Break complex queries into smaller focused queries
+  - Use filters early (status, specific reaction IDs) to narrow results
+  example_fix: |
+    # Instead of: SELECT (COUNT(?reaction) as ?count) WHERE { ?reaction a ?type }
+    # Use:
+    SELECT (COUNT(?reaction) as ?count)
+    WHERE {
+      ?reaction rdfs:subClassOf rhea:Reaction .
+    }
+    LIMIT 1
+- error: Empty results when searching for compound by name
+  causes:
+  - Compound names are on compound entities, not participant entities
+  - Not following the reaction→side→participant→compound path correctly
+  - Using FILTER(CONTAINS()) instead of bif:contains for text search
+  solutions:
+  - Always query compound properties from the compound entity (rhea:Compound_XXXX)
+  - Use rhea:compound property to link participants to compounds
+  - Use bif:contains for efficient text searching in compound names
+  example_fix: |
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX rhea: <http://rdf.rhea-db.org/>
+
+    # Correct path with bif:contains
+    SELECT ?reaction ?equation ?compoundName
+    WHERE {
+      ?compound rhea:name ?compoundName .
+      ?compoundName bif:contains "'glucose'" option (score ?sc) .
+      ?participant rhea:compound ?compound .
+      ?side rhea:contains ?participant .
+      ?reaction rhea:side ?side ;
+                rhea:equation ?equation .
+    }
+    ORDER BY DESC(?sc)
+    LIMIT 20
+- error: Missing cross-references in results
+  causes:
+  - Using OPTIONAL without proper structure leads to cartesian products
+  - Not filtering cross-references by database type
+  solutions:
+  - Use FILTER to specify cross-reference patterns (e.g., KEGG, GO, BioCyc)
+  - Apply DISTINCT when querying multiple optional cross-references
+  - Query one cross-reference type at a time for clearer results
+  example_fix: |
+    SELECT DISTINCT ?reaction ?equation ?goTerm
+    WHERE {
+      ?reaction rdfs:subClassOf rhea:Reaction ;
+                rhea:equation ?equation ;
+                rdfs:seeAlso ?goTerm .
+      FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
+    }
+    LIMIT 50

@@ -1,0 +1,357 @@
+schema_info:
+  title: MONDO (Monarch Disease Ontology)
+  description: |
+    Comprehensive disease ontology integrating multiple disease databases into
+    unified classification. Provides cross-references to OMIM, Orphanet, DOID,
+    MESH, ICD, and 35+ databases for clinical research and precision medicine.
+  endpoint: https://rdfportal.org/primary/sparql
+  base_uri: http://purl.obolibrary.org/obo/
+  graphs:
+  - http://rdfportal.org/ontology/mondo
+  version:
+    mie_version: '1.0'
+    mie_created: '2025-12-08'
+    data_version: '2024'
+    update_frequency: Monthly
+  license:
+    data_license: CC BY 4.0
+    license_url: https://creativecommons.org/licenses/by/4.0/
+  access:
+    rate_limiting: No strict limits
+    max_query_timeout: 60 seconds
+shape_expressions: |
+  PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+  PREFIX owl: <http://www.w3.org/2002/07/owl#>
+  PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+  PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+  PREFIX IAO: <http://purl.obolibrary.org/obo/IAO_>
+
+  <DiseaseClass> {
+    a [ owl:Class ] ;
+    rdfs:label xsd:string ;
+    oboInOwl:id xsd:string ;
+    IAO:0000115 xsd:string ? ;
+    rdfs:subClassOf @<DiseaseClass> * ;
+    oboInOwl:hasExactSynonym xsd:string * ;
+    oboInOwl:hasRelatedSynonym xsd:string * ;
+    oboInOwl:hasDbXref xsd:string * ;
+    owl:deprecated xsd:boolean ?
+  }
+sample_rdf_entries:
+- title: Disease with Cross-References
+  description: Skeletal dysplasia with OMIM and Orphanet links.
+  rdf: |
+    obo:MONDO_0000003 a owl:Class ;
+      rdfs:label "achondroplasia" ;
+      oboInOwl:id "MONDO:0000003" ;
+      obo:IAO_0000115 "A skeletal dysplasia characterized by short-limb dwarfism." ;
+      rdfs:subClassOf obo:MONDO_0019695 ;
+      oboInOwl:hasExactSynonym "achondroplastic dwarfism" ;
+      oboInOwl:hasDbXref "OMIM:100800" ;
+      oboInOwl:hasDbXref "Orphanet:15" .
+- title: Root Disease Class
+  description: Top-level disease entity in ontology hierarchy.
+  rdf: |
+    obo:MONDO_0000001 a owl:Class ;
+      rdfs:label "disease or disorder" ;
+      oboInOwl:id "MONDO:0000001" ;
+      obo:IAO_0000115 "A disease is a disposition to undergo pathological processes." .
+- title: Disease with ICD Mapping
+  description: Diabetes with clinical classification codes.
+  rdf: |
+    obo:MONDO_0005147 a owl:Class ;
+      rdfs:label "type 1 diabetes mellitus" ;
+      oboInOwl:id "MONDO:0005147" ;
+      oboInOwl:hasDbXref "ICD10:E10" ;
+      oboInOwl:hasDbXref "MESH:D003922" .
+- title: Rare Disease Entry
+  description: Rare genetic disorder with orphan disease database references.
+  rdf: |
+    obo:MONDO_0007739 a owl:Class ;
+      rdfs:label "Huntington disease" ;
+      oboInOwl:id "MONDO:0007739" ;
+      oboInOwl:hasDbXref "Orphanet:399" ;
+      oboInOwl:hasDbXref "OMIM:143100" .
+- title: Cancer Classification
+  description: Neoplasm with hierarchical parent relationship.
+  rdf: |
+    obo:MONDO_0004992 a owl:Class ;
+      rdfs:label "cancer" ;
+      oboInOwl:id "MONDO:0004992" ;
+      rdfs:subClassOf obo:MONDO_0005070 .
+sparql_query_examples:
+- title: Search Diseases by Keyword with bif:contains
+  description: Full-text search with relevance scoring
+  question: Which diseases relate to diabetes?
+  complexity: basic
+  sparql: |
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX owl: <http://www.w3.org/2002/07/owl#>
+    PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+
+    SELECT ?disease ?mondoId ?label
+    FROM <http://rdfportal.org/ontology/mondo>
+    WHERE {
+      ?disease a owl:Class ;
+        rdfs:label ?label ;
+        oboInOwl:id ?mondoId .
+      ?label bif:contains "'diabetes'" option (score ?sc)
+    }
+    ORDER BY DESC(?sc)
+    LIMIT 20
+- title: Get Disease Biological Annotations
+  description: Retrieve definition, synonyms, and hierarchical classification
+  question: What are the biological annotations for a disease?
+  complexity: basic
+  sparql: |
+    PREFIX obo: <http://purl.obolibrary.org/obo/>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+    PREFIX IAO: <http://purl.obolibrary.org/obo/IAO_>
+
+    SELECT ?label ?definition ?synonym ?parentLabel
+    FROM <http://rdfportal.org/ontology/mondo>
+    WHERE {
+      obo:MONDO_0005147 rdfs:label ?label .
+      OPTIONAL { obo:MONDO_0005147 IAO:0000115 ?definition }
+      OPTIONAL { obo:MONDO_0005147 oboInOwl:hasExactSynonym ?synonym }
+      OPTIONAL { 
+        obo:MONDO_0005147 rdfs:subClassOf ?parent .
+        ?parent rdfs:label ?parentLabel .
+        FILTER(isIRI(?parent))
+      }
+    }
+- title: Get Disease Hierarchy Path
+  description: Retrieve all ancestor classes in classification tree
+  question: What are all parent classes of a disease?
+  complexity: intermediate
+  sparql: |
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX obo: <http://purl.obolibrary.org/obo/>
+    PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+
+    SELECT ?parent ?parentId ?parentLabel
+    FROM <http://rdfportal.org/ontology/mondo>
+    WHERE {
+      obo:MONDO_0005147 rdfs:subClassOf+ ?parent .
+      ?parent rdfs:label ?parentLabel ;
+        oboInOwl:id ?parentId .
+      FILTER(isIRI(?parent))
+    }
+- title: Count Diseases by Top-Level Category
+  description: Aggregate disease counts by immediate parent classes
+  question: How many diseases in each major category?
+  complexity: intermediate
+  sparql: |
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+    SELECT ?parentLabel (COUNT(?disease) as ?count)
+    FROM <http://rdfportal.org/ontology/mondo>
+    WHERE {
+      ?disease a owl:Class ;
+        rdfs:subClassOf ?parent .
+      ?parent rdfs:label ?parentLabel .
+      FILTER(isIRI(?parent))
+    }
+    GROUP BY ?parentLabel
+    ORDER BY DESC(?count)
+    LIMIT 20
+- title: Find Diseases with External Database Links
+  description: Retrieve diseases with specific cross-reference databases
+  question: Which diseases have OMIM references?
+  complexity: intermediate
+  sparql: |
+    PREFIX owl: <http://www.w3.org/2002/07/owl#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+
+    SELECT ?disease ?label ?xref
+    FROM <http://rdfportal.org/ontology/mondo>
+    WHERE {
+      ?disease a owl:Class ;
+        rdfs:label ?label ;
+        oboInOwl:hasDbXref ?xref .
+      FILTER(STRSTARTS(?xref, "OMIM:"))
+    }
+    LIMIT 50
+- title: Find Genetic Diseases with Transitive Hierarchy
+  description: Retrieve all diseases classified under genetic disorders
+  question: Which diseases are genetic disorders or subtypes?
+  complexity: advanced
+  sparql: |
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX owl: <http://www.w3.org/2002/07/owl#>
+    PREFIX obo: <http://purl.obolibrary.org/obo/>
+    PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+
+    SELECT ?disease ?mondoId ?label
+    FROM <http://rdfportal.org/ontology/mondo>
+    WHERE {
+      ?disease a owl:Class ;
+        rdfs:label ?label ;
+        oboInOwl:id ?mondoId ;
+        rdfs:subClassOf* obo:MONDO_0003847 .
+    }
+    LIMIT 50
+- title: Comprehensive Disease Profile with Aggregation
+  description: Multi-faceted query combining hierarchy, synonyms, and cross-references
+  question: Get complete annotation profile for cancer-related diseases
+  complexity: advanced
+  sparql: |
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX owl: <http://www.w3.org/2002/07/owl#>
+    PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+    PREFIX IAO: <http://purl.obolibrary.org/obo/IAO_>
+
+    SELECT ?disease ?mondoId ?label ?definition ?sc
+      (GROUP_CONCAT(DISTINCT ?synonym; SEPARATOR="|") as ?synonyms)
+      (GROUP_CONCAT(DISTINCT ?xref; SEPARATOR="|") as ?crossRefs)
+    FROM <http://rdfportal.org/ontology/mondo>
+    WHERE {
+      ?disease a owl:Class ;
+        rdfs:label ?label ;
+        oboInOwl:id ?mondoId .
+      OPTIONAL { ?disease IAO:0000115 ?definition }
+      OPTIONAL { ?disease oboInOwl:hasExactSynonym ?synonym }
+      OPTIONAL { ?disease oboInOwl:hasDbXref ?xref }
+      ?label bif:contains "'cancer'" option (score ?sc)
+    }
+    GROUP BY ?disease ?mondoId ?label ?definition ?sc
+    ORDER BY DESC(?sc)
+    LIMIT 10
+cross_references:
+- pattern: oboInOwl:hasDbXref
+  description: |
+    All external database cross-references via oboInOwl:hasDbXref.
+    Coverage: ~90% of diseases. Avg: 6.5 references per disease.
+  databases:
+    medical: UMLS (70%), MEDGEN (70%), SCTID (31%), MESH (28%), NCIT (25%)
+    genetic: GARD (35%), DOID (39%), OMIM (33%), Orphanet (34%)
+    clinical: ICD9 (19%), ICD11 (14%), ICD10CM (9%)
+    oncology: ICDO (3%), ONCOTREE (2%)
+    phenotype: EFO (8%), HP (2%)
+    japanese: NANDO (8%)
+  sparql: |
+    PREFIX owl: <http://www.w3.org/2002/07/owl#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+
+    SELECT ?disease ?label ?xref
+    FROM <http://rdfportal.org/ontology/mondo>
+    WHERE {
+      ?disease a owl:Class ;
+        rdfs:label ?label ;
+        oboInOwl:hasDbXref ?xref .
+      # FILTER(STRSTARTS(?xref, "OMIM:"))     # OMIM
+      # FILTER(STRSTARTS(?xref, "Orphanet:")) # Orphanet
+      # FILTER(STRSTARTS(?xref, "ICD10CM:"))  # ICD-10
+    }
+    LIMIT 50
+architectural_notes:
+  schema_design:
+  - OBO Foundry compliant with hierarchical rdfs:subClassOf
+  - Single cross-reference property (oboInOwl:hasDbXref) for all external links
+  - Exact and related synonyms for alternative disease names
+  - Comprehensive mapping to 39+ external databases
+  performance:
+  - Use bif:contains for label searches (full-text index + relevance scoring)
+  - Add FILTER(isIRI(?parent)) to exclude blank nodes in hierarchy
+  - Prefix filtering with STRSTARTS() efficient for cross-references
+  - Always use LIMIT for exploratory queries (30K+ classes)
+  data_integration:
+  - Genetic disorder databases (OMIM, Orphanet, GARD)
+  - Clinical classifications (ICD-9, ICD-10, ICD-11)
+  - Medical terminologies (UMLS, MEDGEN, SNOMED CT, MeSH)
+  - Disease ontologies (DOID, EFO)
+  - Oncology classifications (ICDO, OncoTree)
+  data_quality:
+  - Exact synonyms are semantically equivalent
+  - Related synonyms may have broader/narrower meaning
+  - Obsolete terms marked with owl:deprecated
+  - Cross-reference coverage varies by database (3-70%)
+data_statistics:
+  total_classes: 30304
+  active_diseases: 28500
+  diseases_with_xrefs: 27176
+  coverage:
+    diseases_with_labels: '>99%'
+    diseases_with_definitions: ~75%
+    diseases_with_cross_references: ~90%
+    diseases_with_synonyms: ~85%
+  cardinality:
+    avg_xrefs_per_disease: 6.5
+    max_xrefs_per_disease: 50+
+    avg_synonyms_per_disease: 2.8
+    avg_parents_per_disease: 1.2
+  performance_characteristics:
+  - bif:contains efficient for label searches with relevance ranking
+  - STRSTARTS() filtering fast for cross-reference prefix matching
+  - Transitive hierarchy queries (rdfs:subClassOf*) require specific starting points
+  - Recommend LIMIT 50 for exploratory queries
+anti_patterns:
+- title: Using FILTER Instead of bif:contains
+  problem: No full-text index or relevance ranking
+  wrong_sparql: |
+    SELECT ?label WHERE {
+      ?disease rdfs:label ?label .
+      FILTER(CONTAINS(LCASE(?label), "diabetes"))
+    }
+  correct_sparql: |
+    SELECT ?label WHERE {
+      ?disease rdfs:label ?label .
+      ?label bif:contains "'diabetes'" option (score ?sc)
+    }
+    ORDER BY DESC(?sc)
+  explanation: bif:contains uses full-text index and provides relevance scoring
+- title: Not Filtering Blank Nodes in Hierarchy
+  problem: Returns OWL restrictions instead of named disease classes
+  wrong_sparql: |
+    SELECT ?parent WHERE {
+      ?disease rdfs:subClassOf ?parent
+    }
+  correct_sparql: |
+    SELECT ?parent WHERE {
+      ?disease rdfs:subClassOf ?parent .
+      FILTER(isIRI(?parent))
+    }
+  explanation: FILTER(isIRI(?parent)) excludes blank node restrictions
+- title: Unbounded Transitive Queries
+  problem: rdfs:subClassOf* without constraints causes timeout
+  wrong_sparql: |
+    SELECT ?disease WHERE {
+      ?disease rdfs:subClassOf* ?parent
+    }
+  correct_sparql: |
+    SELECT ?disease 
+    FROM <http://rdfportal.org/ontology/mondo>
+    WHERE {
+      ?disease rdfs:subClassOf* obo:MONDO_0003847 .
+    }
+    LIMIT 50
+  explanation: Start from specific parent and add LIMIT for transitive queries
+common_errors:
+- error: Query timeout on hierarchy traversal
+  causes:
+  - Unbounded rdfs:subClassOf* without starting point
+  - Missing LIMIT clause
+  solutions:
+  - Start from specific disease class (e.g., obo:MONDO_0003847)
+  - Add LIMIT 50-100 for exploratory queries
+  - Use rdfs:subClassOf+ for ancestor-only (not self)
+- error: Unexpected blank nodes in results
+  causes:
+  - Not filtering OWL restrictions in hierarchy queries
+  - Missing FILTER(isIRI()) clause
+  solutions:
+  - Add FILTER(isIRI(?parent)) to exclude blank nodes
+  - Check for owl:Class type when needed
+- error: Poor search results for disease names
+  causes:
+  - Using FILTER(CONTAINS()) instead of bif:contains
+  - Case-sensitive searches
+  solutions:
+  - Use bif:contains for full-text search with relevance
+  - 'Order by score: ORDER BY DESC(?sc)'
+  - 'Use compound queries: bif:contains "''term1'' AND ''term2''"'

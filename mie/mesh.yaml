@@ -1,0 +1,406 @@
+schema_info:
+  title: Medical Subject Headings (MeSH) RDF
+  description: |
+    National Library of Medicine's controlled vocabulary thesaurus for biomedical
+    literature indexing. Hierarchical structure with descriptors, qualifiers,
+    supplementary chemical/disease records across 16 main categories.
+  endpoint: https://rdfportal.org/primary/sparql
+  base_uri: http://id.nlm.nih.gov/mesh/
+  graphs:
+  - http://id.nlm.nih.gov/mesh
+  version:
+    mie_version: '1.0'
+    mie_created: '2025-12-08'
+    data_version: '2024'
+    update_frequency: Annual
+  license:
+    data_license: Public Domain (U.S. Government)
+    license_url: https://www.nlm.nih.gov/databases/download/terms_and_conditions.html
+  access:
+    rate_limiting: No strict limits
+    max_query_timeout: 60 seconds
+shape_expressions: |
+  PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+  PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+  PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+
+  <TopicalDescriptorShape> {
+    a [ meshv:TopicalDescriptor ] ;
+    rdfs:label xsd:string ;
+    meshv:identifier xsd:string ;
+    meshv:treeNumber @<TreeNumberShape> * ;
+    meshv:broaderDescriptor @<TopicalDescriptorShape> * ;
+    meshv:annotation xsd:string ? ;
+    meshv:preferredConcept @<ConceptShape> ;
+    meshv:allowableQualifier @<QualifierShape> *
+  }
+
+  <ConceptShape> {
+    a [ meshv:Concept ] ;
+    rdfs:label xsd:string ;
+    meshv:preferredTerm @<TermShape>
+  }
+
+  <TermShape> {
+    a [ meshv:Term ] ;
+    rdfs:label xsd:string ;
+    meshv:prefLabel xsd:string
+  }
+
+  <TreeNumberShape> {
+    a [ meshv:TreeNumber ] ;
+    rdfs:label xsd:string
+  }
+
+  <QualifierShape> {
+    a [ meshv:Qualifier ] OR [ meshv:TopicalDescriptor ] ;
+    rdfs:label xsd:string
+  }
+sample_rdf_entries:
+- title: Topical Descriptor with Tree Numbers
+  description: Main subject heading with hierarchical classification.
+  rdf: |
+    mesh:D003920 a meshv:TopicalDescriptor ;
+      rdfs:label "Diabetes Mellitus" ;
+      meshv:identifier "D003920" ;
+      meshv:treeNumber mesh:C18.452.394.750 ;
+      meshv:annotation "general or unspecified; prefer specifics..." .
+- title: Descriptor with Broader Relationship
+  description: Subject heading showing parent-child hierarchy.
+  rdf: |
+    mesh:D003924 a meshv:TopicalDescriptor ;
+      rdfs:label "Diabetes Mellitus, Type 2" ;
+      meshv:identifier "D003924" ;
+      meshv:broaderDescriptor mesh:D003920 .
+- title: Supplementary Chemical Record
+  description: Chemical substance entry in MeSH.
+  rdf: |
+    mesh:C517652 a meshv:SCR_Chemical ;
+      rdfs:label "Insulin Glargine" ;
+      meshv:identifier "C517652" ;
+      meshv:registryNumber "2ZM8CX04RZ" .
+- title: Descriptor with Concept and Term
+  description: Complete descriptor with preferred concept and term.
+  rdf: |
+    mesh:D002318 a meshv:TopicalDescriptor ;
+      rdfs:label "Cardiovascular Diseases" ;
+      meshv:preferredConcept [
+        a meshv:Concept ;
+        meshv:preferredTerm [
+          a meshv:Term ;
+          rdfs:label "Cardiovascular Diseases"
+        ]
+      ] .
+- title: Descriptor with Allowable Qualifiers
+  description: Subject heading with permitted subheadings.
+  rdf: |
+    mesh:D003920 a meshv:TopicalDescriptor ;
+      rdfs:label "Diabetes Mellitus" ;
+      meshv:allowableQualifier mesh:Q000188 .
+    mesh:Q000188 a meshv:Qualifier ;
+      rdfs:label "drug therapy" .
+sparql_query_examples:
+- title: Search Descriptors by Keyword with bif:contains
+  description: Full-text search with relevance scoring
+  question: Which descriptors relate to diabetes?
+  complexity: basic
+  sparql: |
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+
+    SELECT ?descriptor ?label
+    FROM <http://id.nlm.nih.gov/mesh>
+    WHERE {
+      ?descriptor a meshv:TopicalDescriptor ;
+        rdfs:label ?label .
+      ?label bif:contains "'diabetes'" option (score ?sc)
+    }
+    ORDER BY DESC(?sc)
+    LIMIT 20
+- title: Get Biological Annotations for Descriptor
+  description: Retrieve annotations, tree numbers, and hierarchy
+  question: What are the annotations for diabetes mellitus descriptor?
+  complexity: basic
+  sparql: |
+    PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
+    PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+    SELECT ?label ?annotation ?treeNumber ?broaderLabel
+    FROM <http://id.nlm.nih.gov/mesh>
+    WHERE {
+      mesh:D003920 rdfs:label ?label .
+      OPTIONAL { mesh:D003920 meshv:annotation ?annotation }
+      OPTIONAL { 
+        mesh:D003920 meshv:treeNumber ?tree .
+        ?tree rdfs:label ?treeNumber
+      }
+      OPTIONAL {
+        mesh:D003920 meshv:broaderDescriptor ?broader .
+        ?broader rdfs:label ?broaderLabel
+      }
+    }
+- title: Get Hierarchical Classification Path
+  description: Retrieve all parent descriptors in tree structure
+  question: What are all parent categories of a descriptor?
+  complexity: intermediate
+  sparql: |
+    PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
+    PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+    SELECT ?parent ?parentLabel
+    FROM <http://id.nlm.nih.gov/mesh>
+    WHERE {
+      mesh:D003920 meshv:broaderDescriptor+ ?parent .
+      ?parent rdfs:label ?parentLabel .
+    }
+- title: Count Descriptors by Tree Category
+  description: Aggregate counts by major MeSH tree categories
+  question: How many descriptors in each major category?
+  complexity: intermediate
+  sparql: |
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+
+    SELECT ?category (COUNT(DISTINCT ?descriptor) as ?count)
+    FROM <http://id.nlm.nih.gov/mesh>
+    WHERE {
+      ?descriptor a meshv:TopicalDescriptor ;
+        meshv:treeNumber ?tree .
+      ?tree rdfs:label ?treeLabel .
+      BIND(SUBSTR(?treeLabel, 1, 1) as ?category)
+    }
+    GROUP BY ?category
+    ORDER BY DESC(?count)
+- title: Find Chemicals by Name
+  description: Search supplementary chemical records
+  question: Which chemical records contain "insulin"?
+  complexity: intermediate
+  sparql: |
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+
+    SELECT ?chemical ?label ?registryNumber
+    FROM <http://id.nlm.nih.gov/mesh>
+    WHERE {
+      ?chemical a meshv:SCR_Chemical ;
+        rdfs:label ?label .
+      OPTIONAL { ?chemical meshv:registryNumber ?registryNumber }
+      ?label bif:contains "'insulin'" option (score ?sc)
+    }
+    ORDER BY DESC(?sc)
+    LIMIT 20
+- title: Get Allowable Qualifiers for Descriptor
+  description: Retrieve permitted subheadings for subject heading
+  question: Which qualifiers can be used with diabetes descriptor?
+  complexity: advanced
+  sparql: |
+    PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
+    PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+    SELECT ?qualifier ?qualifierLabel
+    FROM <http://id.nlm.nih.gov/mesh>
+    WHERE {
+      mesh:D003920 meshv:allowableQualifier ?qualifier .
+      ?qualifier rdfs:label ?qualifierLabel .
+    }
+- title: Multi-Faceted Descriptor Analysis
+  description: Comprehensive query with annotations, tree numbers, and hierarchy
+  question: Get complete information for cancer-related descriptors
+  complexity: advanced
+  sparql: |
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+
+    SELECT DISTINCT ?descriptor ?label ?annotation ?treeNum ?broaderLabel
+    FROM <http://id.nlm.nih.gov/mesh>
+    WHERE {
+      ?descriptor a meshv:TopicalDescriptor ;
+        rdfs:label ?label .
+      OPTIONAL { ?descriptor meshv:annotation ?annotation }
+      OPTIONAL {
+        ?descriptor meshv:treeNumber/rdfs:label ?treeNum
+      }
+      OPTIONAL {
+        ?descriptor meshv:broaderDescriptor/rdfs:label ?broaderLabel
+      }
+      ?label bif:contains "'cancer'" option (score ?sc)
+    }
+    ORDER BY DESC(?sc)
+    LIMIT 10
+cross_references:
+- pattern: meshv:thesaurusID
+  description: |
+    Cross-references to external databases via thesaurusID property.
+    Coverage: 916K total references across all entities.
+  databases:
+    pharmaceutical: FDA SRS (22.6K), FDA UNII (22.6K), INN (8.8K)
+    genetic: OMIM (12.5K), GHR (3.8K)
+    specialized: ChEBI (2.5K), FMA (1.1K), SNOMED CT (800+)
+  sparql: |
+    PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+
+    SELECT ?entity ?xref
+    FROM <http://id.nlm.nih.gov/mesh>
+    WHERE {
+      ?entity meshv:thesaurusID ?xref .
+      FILTER(CONTAINS(STR(?xref), "OMIM"))
+    }
+    LIMIT 50
+architectural_notes:
+  schema_design:
+  - CRITICAL - Use meshv:broaderDescriptor (NOT meshv:broader) for hierarchical relationships
+  - CRITICAL - Use meshv:annotation (NOT meshv:scopeNote) for scope notes and indexing guidance
+  - CRITICAL - Terms use meshv:prefLabel (NOT rdfs:label) for their labels
+  - Tree numbers provide alphanumeric hierarchical codes for classification
+  - Descriptor-Concept-Term three-level structure
+  - Allowable qualifiers constrain descriptor-qualifier combinations
+  performance:
+  - Use bif:contains for label searches (full-text index + relevance scoring)
+  - Tree number filtering with STRSTARTS or REGEX is efficient
+  - broaderDescriptor+ transitive queries work well from specific descriptors
+  - Always use LIMIT for exploratory queries (2.5M+ entities)
+  data_integration:
+  - FDA SRS/UNII for pharmaceutical substances
+  - OMIM for genetic disorders
+  - ChEBI for chemical entities
+  - SNOMED CT for clinical terminology
+  data_quality:
+  - Topical descriptors are primary subject headings (30,248)
+  - Annotations available for ~40% of descriptors
+  - Tree numbers available for ~95% of descriptors
+  - broaderDescriptor relationships for ~99.6% of descriptors
+data_statistics:
+  total_entities: 2456909
+  topical_descriptors: 30248
+  terms: 869536
+  concepts: 466976
+  chemicals: 250445
+  coverage:
+    descriptors_with_labels: 100%
+    descriptors_with_annotations: ~40%
+    descriptors_with_tree_numbers: ~95%
+    descriptors_with_broader_relationships: ~99.6%
+    entities_with_thesaurus_ids: ~37%
+  cardinality:
+    avg_tree_numbers_per_descriptor: 2.7
+    avg_terms_per_concept: 1.9
+    avg_qualifiers_per_descriptor: 22
+  performance_characteristics:
+  - bif:contains efficient for label searches with relevance ranking
+  - Tree number filtering fast with STRSTARTS or REGEX patterns
+  - Transitive broaderDescriptor+ queries work from specific starting descriptors
+  - Recommend LIMIT 50 for exploratory queries
+anti_patterns:
+- title: Using meshv:broader Instead of meshv:broaderDescriptor
+  problem: Property name is incorrect - meshv:broader does not exist
+  wrong_sparql: |
+    SELECT ?parent WHERE {
+      mesh:D003920 meshv:broader+ ?parent .
+    }
+  correct_sparql: |
+    SELECT ?parent 
+    FROM <http://id.nlm.nih.gov/mesh>
+    WHERE {
+      mesh:D003920 meshv:broaderDescriptor+ ?parent .
+      ?parent a meshv:TopicalDescriptor .
+    }
+  explanation: The correct property is meshv:broaderDescriptor, not meshv:broader
+- title: Using meshv:scopeNote Instead of meshv:annotation
+  problem: Property name is incorrect - meshv:scopeNote does not exist
+  wrong_sparql: |
+    SELECT ?descriptor ?scopeNote WHERE {
+      ?descriptor meshv:scopeNote ?scopeNote .
+    }
+  correct_sparql: |
+    SELECT ?descriptor ?annotation
+    FROM <http://id.nlm.nih.gov/mesh>
+    WHERE {
+      ?descriptor meshv:annotation ?annotation .
+    }
+  explanation: The correct property is meshv:annotation, not meshv:scopeNote or skos:scopeNote
+- title: Using FILTER Instead of bif:contains
+  problem: No full-text index or relevance ranking
+  wrong_sparql: |
+    SELECT ?label WHERE {
+      ?descriptor rdfs:label ?label .
+      FILTER(CONTAINS(LCASE(?label), "diabetes"))
+    }
+  correct_sparql: |
+    SELECT ?label WHERE {
+      ?descriptor rdfs:label ?label .
+      ?label bif:contains "'diabetes'" option (score ?sc)
+    }
+    ORDER BY DESC(?sc)
+  explanation: bif:contains uses full-text index and provides relevance scoring
+- title: No LIMIT on Large Datasets
+  problem: 2.5M+ entities can cause timeout without pagination
+  wrong_sparql: |
+    SELECT ?term ?label WHERE {
+      ?term a meshv:Term ;
+        meshv:prefLabel ?label
+    }
+  correct_sparql: |
+    SELECT ?term ?label 
+    FROM <http://id.nlm.nih.gov/mesh>
+    WHERE {
+      ?term a meshv:Term ;
+        meshv:prefLabel ?label
+    }
+    LIMIT 100
+  explanation: Always add LIMIT for exploratory queries on large datasets. Note that Terms use meshv:prefLabel, not rdfs:label.
+common_errors:
+- error: Empty results when querying broader relationships
+  causes:
+  - Using wrong property name meshv:broader instead of meshv:broaderDescriptor
+  - Not starting from a specific descriptor for transitive queries
+  solutions:
+  - CRITICAL - Use meshv:broaderDescriptor, not meshv:broader
+  - Start transitive queries (broaderDescriptor+) from specific descriptors
+  - Use tree numbers as an alternative for category-based navigation
+  example_fix: |
+    # Wrong - incorrect property name
+    SELECT ?parent WHERE {
+      mesh:D003920 meshv:broader ?parent .
+    }
+
+    # Correct - use broaderDescriptor
+    SELECT ?parent ?parentLabel
+    FROM <http://id.nlm.nih.gov/mesh>
+    WHERE {
+      mesh:D003920 meshv:broaderDescriptor+ ?parent .
+      ?parent rdfs:label ?parentLabel .
+    }
+- error: Empty results when querying scope notes
+  causes:
+  - Using wrong property name meshv:scopeNote instead of meshv:annotation
+  - Using skos:scopeNote which doesn't exist in MeSH RDF
+  solutions:
+  - CRITICAL - Use meshv:annotation, not meshv:scopeNote
+  - Remember only ~40% of descriptors have annotations
+  - Always use OPTIONAL for annotation property
+  example_fix: |
+    # Wrong - incorrect property name
+    SELECT ?descriptor ?scopeNote WHERE {
+      ?descriptor meshv:scopeNote ?scopeNote .
+    }
+
+    # Correct - use annotation
+    SELECT ?descriptor ?annotation
+    FROM <http://id.nlm.nih.gov/mesh>
+    WHERE {
+      ?descriptor a meshv:TopicalDescriptor .
+      OPTIONAL { ?descriptor meshv:annotation ?annotation }
+    }
+    LIMIT 50
+- error: Query timeout on term searches
+  causes:
+  - Searching 869K terms without filters
+  - Missing LIMIT clause
+  solutions:
+  - Filter by descriptor type first
+  - Use bif:contains for keyword searches
+  - Add LIMIT 50-100 for exploratory queries

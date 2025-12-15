@@ -1,0 +1,469 @@
+schema_info:
+  title: PubChem RDF
+  description: |
+    Comprehensive public database of chemical molecules and biological activities. Contains 119M compounds with molecular descriptors (SMILES, InChI, properties), 339M substances, 1.7M bioassays with activity data, 167K genes, 249K proteins, and 81K pathways. Integrates chemical ontologies (ChEBI, SNOMED CT, NCI), patent information, drug classifications, stereoisomer relationships, and bioactivity measurements. Central hub linking compounds to genes, proteins, pathways, diseases, and literature.
+  endpoint: https://rdfportal.org/backend/pubchem/sparql
+  base_uri: http://rdf.ncbi.nlm.nih.gov/pubchem/
+  graphs:
+    - http://rdf.ncbi.nlm.nih.gov/pubchem/compound
+    - http://rdf.ncbi.nlm.nih.gov/pubchem/descriptor/compound
+    - http://rdf.ncbi.nlm.nih.gov/pubchem/substance
+    - http://rdf.ncbi.nlm.nih.gov/pubchem/bioassay
+    - http://rdf.ncbi.nlm.nih.gov/pubchem/gene
+    - http://rdf.ncbi.nlm.nih.gov/pubchem/protein
+    - http://rdf.ncbi.nlm.nih.gov/pubchem/pathway
+  version:
+    mie_version: "1.2"
+    mie_created: "2024-12-08"
+    data_version: Current
+    update_frequency: Continuous
+  license:
+    data_license: Public Domain
+    license_url: https://pubchem.ncbi.nlm.nih.gov/
+  access:
+    rate_limiting: Reasonable use
+    max_query_timeout: 60 seconds
+    backend: Virtuoso
+
+shape_expressions: |
+  PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
+  PREFIX sio: <http://semanticscience.org/resource/>
+  PREFIX cheminf: <http://semanticscience.org/resource/>
+  PREFIX obo: <http://purl.obolibrary.org/obo/>
+  PREFIX cito: <http://purl.org/spar/cito/>
+  PREFIX bao: <http://www.bioassayontology.org/bao#>
+  PREFIX dcterms: <http://purl.org/dc/terms/>
+  
+  <CompoundShape> {
+    a [ vocab:Compound ] ;
+    a IRI* ;
+    sio:SIO_000008 @<DescriptorShape>* ;
+    cheminf:CHEMINF_000455 @<CompoundShape>* ;
+    obo:RO_0000087 IRI* ;
+    cito:isDiscussedBy IRI* ;
+    rdfs:seeAlso IRI* ;
+    vocab:is_active_ingredient_of IRI*
+  }
+  
+  <DescriptorShape> {
+    a IRI ;
+    sio:SIO_000300 .
+  }
+  
+  <SubstanceShape> {
+    a [ vocab:Substance ] ;
+    a IRI* ;
+    vocab:is_standardized_into @<CompoundShape>*
+  }
+  
+  <BioAssayShape> {
+    a [ vocab:BioAssay ] ;
+    a [ bao:BAO_0000015 ] ;
+    dcterms:title xsd:string ;
+    dcterms:source IRI ;
+    bao:BAO_0000209 IRI*
+  }
+  
+  <GeneShape> {
+    a [ vocab:Gene ] ;
+    a [ sio:SIO_010035 ] ;
+    cito:isDiscussedBy IRI*
+  }
+  
+  <ProteinShape> {
+    a [ vocab:Protein ] ;
+    a [ sio:SIO_010043 ] ;
+    skos:prefLabel xsd:string ;
+    rdfs:seeAlso IRI* ;
+    obo:RO_0002180 IRI* ;
+    vocab:hasSimilarProtein IRI*
+  }
+  
+  <PathwayShape> {
+    a [ vocab:Pathway ] ;
+    rdfs:label xsd:string
+  }
+
+sample_rdf_entries:
+  - title: Aspirin with Molecular Descriptors
+    description: Compound with SMILES, InChI, molecular formula, weight, and TPSA.
+    rdf: |
+      compound:CID2244 a vocab:Compound ;
+        sio:SIO_000008 descriptor:CID2244_Molecular_Formula ,
+                       descriptor:CID2244_Molecular_Weight ,
+                       descriptor:CID2244_Canonical_SMILES ,
+                       descriptor:CID2244_IUPAC_InChI .
+      
+      descriptor:CID2244_Molecular_Formula a sio:CHEMINF_000335 ;
+        sio:SIO_000300 "C9H8O4" .
+      
+      descriptor:CID2244_Molecular_Weight a sio:CHEMINF_000334 ;
+        sio:SIO_000300 180.16 .
+  
+  - title: Compound with FDA Classification and Ontology
+    description: Compound with ChEBI and SNOMED CT classifications and FDA drug role.
+    rdf: |
+      compound:CID2244 a vocab:Compound ,
+                         chebi:15365 ,
+                         <http://purl.bioontology.org/ontology/SNOMEDCT/387458008> ;
+        obo:RO_0000087 vocab:FDAApprovedDrugs ;
+        rdfs:seeAlso <http://www.wikidata.org/entity/Q18216> .
+  
+  - title: BioAssay with Measurement Groups
+    description: Cell line growth inhibition bioassay with title and measurement group.
+    rdf: |
+      bioassay:AID1 a vocab:BioAssay , bao:BAO_0000015 ;
+        dcterms:title "NCI human tumor cell line growth inhibition assay" ;
+        dcterms:source source:DTP_NCI ;
+        bao:BAO_0000209 measuregroup:AID1 .
+  
+  - title: Gene with Patent References
+    description: Gene entity with patent references from multiple jurisdictions.
+    rdf: |
+      gene:GID1 a vocab:Gene , sio:SIO_010035 ;
+        cito:isDiscussedBy patent:US-10202640-B2 ,
+                           patent:EP-2153234-A2 ,
+                           patent:JP-2013156266-A .
+  
+  - title: Protein with PDB Links and Conserved Domains
+    description: Protein with organism, PDB structure links, and conserved domain annotations.
+    rdf: |
+      protein:ACC10GS_A a vocab:Protein , sio:SIO_010043 ;
+        skos:prefLabel "Chain A, Glutathione S-transferase P1-1" ;
+        rdfs:seeAlso <http://identifiers.org/ncbiprotein:10GS_A> ;
+        uniprot:organism taxonomy:TAXID9606 ;
+        pdbx:link_to_pdb <http://rdf.wwpdb.org/pdb/10GS> ;
+        obo:RO_0002180 conserveddomain:PSSMID198319 .
+
+sparql_query_examples:
+  - title: Find Compounds by CID
+    description: Retrieve compound types and properties by CID.
+    question: What types and properties does aspirin (CID2244) have?
+    complexity: basic
+    sparql: |
+      PREFIX compound: <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/>
+      PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
+      
+      SELECT ?type
+      WHERE {
+        compound:CID2244 a ?type .
+      }
+      LIMIT 20
+  
+  - title: Get Drug Roles and Classifications
+    description: Retrieve biological roles and ontology classifications for compound.
+    question: What are roles and classifications of CID2244?
+    complexity: basic
+    sparql: |
+      PREFIX compound: <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
+      
+      SELECT ?role ?ontologyType
+      WHERE {
+        compound:CID2244 obo:RO_0000087 ?role .
+        OPTIONAL {
+          compound:CID2244 a ?ontologyType .
+          FILTER(?ontologyType != vocab:Compound)
+        }
+      }
+  
+  - title: Get Molecular Descriptors
+    description: Retrieve formula, weight, SMILES, InChI for specific compound.
+    question: What are molecular properties of aspirin?
+    complexity: intermediate
+    sparql: |
+      PREFIX compound: <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      
+      SELECT ?descriptorType ?value
+      WHERE {
+        compound:CID2244 sio:SIO_000008 ?descriptor .
+        ?descriptor a ?descriptorType ;
+                    sio:SIO_000300 ?value .
+        FILTER(?descriptorType IN (
+          sio:CHEMINF_000335,
+          sio:CHEMINF_000334,
+          sio:CHEMINF_000376,
+          sio:CHEMINF_000396
+        ))
+      }
+  
+  - title: Find FDA Drugs by Molecular Weight
+    description: Identify FDA-approved drugs within molecular weight range.
+    question: Which FDA drugs have weights 150-200?
+    complexity: intermediate
+    sparql: |
+      PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      
+      SELECT ?compound ?weight
+      WHERE {
+        ?compound a vocab:Compound ;
+                  obo:RO_0000087 vocab:FDAApprovedDrugs ;
+                  sio:SIO_000008 ?weightDesc .
+        ?weightDesc a sio:CHEMINF_000334 ;
+                    sio:SIO_000300 ?weight .
+        FILTER(?weight >= 150 && ?weight <= 200)
+      }
+      LIMIT 100
+  
+  - title: Find BioAssays by Source
+    description: List bioassays from specific data source with identifiers.
+    question: What bioassays come from DTP_NCI?
+    complexity: intermediate
+    sparql: |
+      PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
+      PREFIX source: <http://rdf.ncbi.nlm.nih.gov/pubchem/source/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      
+      SELECT ?bioassay ?title ?aid
+      FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/bioassay>
+      WHERE {
+        ?bioassay a vocab:BioAssay ;
+                  dcterms:source source:DTP_NCI ;
+                  dcterms:title ?title ;
+                  dcterms:identifier ?aid .
+      }
+      LIMIT 50
+  
+  - title: Find Stereoisomers with SMILES
+    description: Retrieve stereoisomers with their canonical SMILES structures.
+    question: What are stereoisomers of CID2244 and their SMILES?
+    complexity: advanced
+    sparql: |
+      PREFIX compound: <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/>
+      PREFIX cheminf: <http://semanticscience.org/resource/>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      
+      SELECT ?stereoisomer ?smiles
+      WHERE {
+        compound:CID2244 cheminf:CHEMINF_000455 ?stereoisomer .
+        ?stereoisomer sio:SIO_000008 ?smilesDesc .
+        ?smilesDesc a sio:CHEMINF_000376 ;
+                    sio:SIO_000300 ?smiles .
+      }
+      LIMIT 50
+  
+  - title: Protein Links to PDB Structures
+    description: Find proteins with their PDB structure links and preferred labels.
+    question: Which proteins link to PDB structure 10GS?
+    complexity: advanced
+    sparql: |
+      PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
+      PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      
+      SELECT ?protein ?label ?pdb
+      FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/protein>
+      WHERE {
+        ?protein a vocab:Protein ;
+                 skos:prefLabel ?label ;
+                 pdbx:link_to_pdb ?pdb .
+        FILTER(CONTAINS(STR(?pdb), "10GS"))
+      }
+      LIMIT 20
+
+cross_references:
+  - pattern: rdfs:seeAlso
+    description: |
+      External database links via rdfs:seeAlso distinguished by URL patterns. Common for compounds and proteins.
+    databases:
+      knowledge:
+        - Wikidata (~2-5% compounds)
+        - identifiers.org
+      chemical:
+        - NCI Thesaurus (via identifiers.org)
+      protein:
+        - NCBI Protein (via identifiers.org)
+    sparql: |
+      SELECT ?entity ?externalDB
+      WHERE {
+        ?entity a <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#Compound> ;
+                rdfs:seeAlso ?externalDB .
+      } LIMIT 100
+  
+  - pattern: rdf:type
+    description: |
+      Ontology classifications via rdf:type for ChEBI, SNOMED CT, NCI, Protein Ontology.
+    databases:
+      ontologies:
+        - ChEBI (~5-10% compounds)
+        - SNOMED CT (drugs)
+        - NCI Thesaurus (drugs)
+        - Protein Ontology (proteins)
+    sparql: |
+      SELECT ?compound ?ontologyClass
+      WHERE {
+        ?compound a <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#Compound> ;
+                  a ?ontologyClass .
+        FILTER(?ontologyClass != <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#Compound>)
+      } LIMIT 100
+  
+  - pattern: cito:isDiscussedBy
+    description: |
+      Patent and literature references from multiple jurisdictions. Used for compounds, genes, and proteins.
+    databases:
+      patents:
+        - US, EP, CN, CA, JP, KR jurisdictions
+      literature:
+        - PubMed references
+    sparql: |
+      SELECT ?entity ?patent
+      WHERE {
+        ?entity cito:isDiscussedBy ?patent .
+        FILTER(CONTAINS(STR(?patent), "patent"))
+      }
+      LIMIT 100
+
+architectural_notes:
+  schema_design:
+    - Central hub model with compounds linked to descriptors, substances, bioassays, genes, proteins, pathways
+    - Descriptor pattern uses SIO ontology (SIO_000008 for links, SIO_000300 for values)
+    - Multi-layer architecture with separate named graphs per entity type
+    - Ontology integration via rdf:type for ChEBI, SNOMED CT, NCI, PRO
+    - Stereoisomer relationships via CHEMINF_000455
+  performance:
+    - CID-specific queries very efficient
+    - Descriptor queries efficient with type filtering
+    - Molecular weight range filtering works up to 10K results
+    - Aggregations with GROUP BY should use LIMIT <100
+    - Cross-graph joins can be slow without specific entity IDs
+  data_integration:
+    - External databases via rdfs:seeAlso
+    - Chemical ontologies via rdf:type
+    - Patent linkage via cito:isDiscussedBy
+    - Substance-to-compound via vocab:is_standardized_into
+    - Protein-to-PDB via pdbx:link_to_pdb
+    - Drug roles via obo:RO_0000087
+  data_quality:
+    - Descriptor values have mixed types (string/double/integer)
+    - Not all compounds have complete descriptor sets
+    - External link coverage varies (2-95% by database)
+    - Ontology mappings primarily for drug compounds
+    - Some graphs require specific FROM clauses
+
+data_statistics:
+  total_compounds: 119093251
+  total_substances: 339000000
+  total_bioassays: 1768183
+  total_genes: 167172
+  total_proteins: 248623
+  total_pathways: 80739
+  fda_approved_drugs: 17367
+  coverage:
+    molecular_formula: '>99%'
+    molecular_weight: '>99%'
+    smiles: '>99%'
+    inchi: '>95%'
+    wikidata_links: ~2%
+    chebi_classification: ~5%
+    patent_refs: ~10%
+  cardinality:
+    avg_descriptors_per_compound: 25
+    avg_stereoisomers: 2.3
+    avg_patents_per_compound: 8.5
+    avg_pdb_links_per_protein: 3.2
+  performance_characteristics:
+    - CID-based queries return in <1s
+    - Weight range queries efficient to 10K results
+    - Bioassay queries by source fast
+    - Protein queries by organism moderately fast
+    - Use LIMIT 100 for exploratory queries
+
+anti_patterns:
+  - title: Large Aggregation Without Limits
+    problem: GROUP BY queries on all compounds timeout without LIMIT and type filtering.
+    wrong_sparql: |
+      SELECT ?chebiClass (COUNT(?compound) as ?count)
+      WHERE {
+        ?compound a ?chebiClass .
+      }
+      GROUP BY ?chebiClass
+    correct_sparql: |
+      SELECT ?chebiClass (COUNT(DISTINCT ?compound) as ?count)
+      WHERE {
+        ?compound a vocab:Compound ;
+                  a ?chebiClass .
+        FILTER(STRSTARTS(STR(?chebiClass), STR(chebi:)))
+      }
+      GROUP BY ?chebiClass
+      ORDER BY DESC(?count)
+      LIMIT 50
+    explanation: Add type filter, ontology namespace filter, DISTINCT, and LIMIT for efficient aggregations.
+  
+  - title: Missing Descriptor Type Filter
+    problem: Retrieving all descriptors without type filtering returns too many results.
+    wrong_sparql: |
+      SELECT ?descriptor ?value
+      WHERE {
+        compound:CID2244 sio:SIO_000008 ?descriptor .
+        ?descriptor sio:SIO_000300 ?value .
+      }
+    correct_sparql: |
+      SELECT ?descriptorType ?value
+      WHERE {
+        compound:CID2244 sio:SIO_000008 ?descriptor .
+        ?descriptor a ?descriptorType ;
+                    sio:SIO_000300 ?value .
+        FILTER(?descriptorType IN (sio:CHEMINF_000335, sio:CHEMINF_000334))
+      }
+    explanation: Filter by specific descriptor types to get targeted properties efficiently.
+  
+  - title: Cross-Graph Query Without FROM Clause
+    problem: Querying bioassays without FROM clause may return empty results.
+    wrong_sparql: |
+      SELECT ?bioassay ?title
+      WHERE {
+        ?bioassay a vocab:BioAssay ;
+                  dcterms:title ?title .
+      }
+      LIMIT 20
+    correct_sparql: |
+      SELECT ?bioassay ?title
+      FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/bioassay>
+      WHERE {
+        ?bioassay a vocab:BioAssay ;
+                  dcterms:title ?title .
+      }
+      LIMIT 20
+    explanation: Use explicit FROM clauses for entity types in separate named graphs.
+
+common_errors:
+  - error: Query timeout on aggregation
+    causes:
+      - GROUP BY without LIMIT
+      - Not filtering by entity type
+      - Missing ontology namespace filter
+    solutions:
+      - Add type filter (a vocab:Compound)
+      - Use STRSTARTS for ontology filtering
+      - Always use LIMIT 50-100 for aggregations
+      - Add ORDER BY DESC for meaningful results
+    example_fix: |
+      # Add: FILTER(STRSTARTS(STR(?class), STR(chebi:)))
+      # Add: LIMIT 50
+  
+  - error: Mixed datatype comparison errors
+    causes:
+      - Descriptor values stored as different types
+      - Comparing numeric strings as numbers
+    solutions:
+      - Check descriptor type before filtering
+      - Use appropriate FILTER for each descriptor type
+      - Filter by specific descriptor types first
+    example_fix: |
+      # Always use: FILTER(?descriptorType = sio:CHEMINF_000334)
+      # Before: FILTER(?value > 100)
+  
+  - error: Empty results from bioassay/protein queries
+    causes:
+      - Missing FROM clause for separate graphs
+      - Wrong graph URI
+    solutions:
+      - Use explicit FROM <graph_uri> clauses
+      - Check available graphs with get_graph_list
+      - Verify entity exists in specific graph
+    example_fix: |
+      # Add: FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/bioassay>

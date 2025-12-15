@@ -1,0 +1,425 @@
+schema_info:
+  title: NCBI Taxonomy RDF
+  description: |
+    Comprehensive biological taxonomic classification covering 3M+ organisms from
+    bacteria to mammals with hierarchical relationships, scientific/common names,
+    and genetic code assignments. Essential for biological data integration.
+  endpoint: https://rdfportal.org/primary/sparql
+  base_uri: http://identifiers.org/taxonomy/
+  graphs:
+    - http://rdfportal.org/ontology/taxonomy
+  version:
+    mie_version: "1.0"
+    mie_created: "2025-12-08"
+    data_version: "2024"
+    update_frequency: Monthly
+  license:
+    data_license: Public Domain (U.S. Government)
+    license_url: https://www.ncbi.nlm.nih.gov/home/about/policies/
+  access:
+    rate_limiting: No strict limits
+    max_query_timeout: 60 seconds
+
+shape_expressions: |
+  PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+  PREFIX owl: <http://www.w3.org/2002/07/owl#>
+  PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+  PREFIX dcterms: <http://purl.org/dc/terms/>
+  PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+  
+  <Taxon> {
+    a [ tax:Taxon ] ;
+    rdfs:label xsd:string ;
+    dcterms:identifier xsd:string ;
+    tax:rank @<Rank> ;
+    rdfs:subClassOf @<Taxon> * ;
+    owl:sameAs IRI * ;
+    rdfs:seeAlso IRI * ;
+    tax:scientificName xsd:string ? ;
+    tax:authority xsd:string ? ;
+    tax:commonName xsd:string * ;
+    tax:synonym xsd:string * ;
+    tax:geneticCode @<GeneticCode> ? ;
+    tax:geneticCodeMt @<GeneticCode> ?
+  }
+  
+  <Rank> {
+    a [ tax:Rank ] ;
+    rdfs:label xsd:string
+  }
+  
+  <GeneticCode> {
+    rdfs:label xsd:string
+  }
+
+sample_rdf_entries:
+  - title: Human Species with Complete Metadata
+    description: Homo sapiens with hierarchy, names, and cross-references.
+    rdf: |
+      taxon:9606 a tax:Taxon ;
+        rdfs:label "Homo sapiens" ;
+        rdfs:subClassOf taxon:9605 ;
+        dcterms:identifier "9606" ;
+        tax:rank tax:Species ;
+        tax:scientificName "Homo sapiens" ;
+        tax:authority "Homo sapiens Linnaeus, 1758" ;
+        tax:commonName "human" ;
+        tax:geneticCode tax:GeneticCode1 ;
+        owl:sameAs obo:NCBITaxon_9606 ;
+        rdfs:seeAlso <http://purl.uniprot.org/taxonomy/9606> .
+
+  - title: Bacterial Strain Entry
+    description: Bacterial strain with complete taxonomic information.
+    rdf: |
+      taxon:1086030 a tax:Taxon ;
+        rdfs:label "Shigella flexneri 5a str. M90T" ;
+        rdfs:subClassOf taxon:424718 ;
+        dcterms:identifier "1086030" ;
+        tax:rank tax:Strain ;
+        tax:scientificName "Shigella flexneri 5a str. M90T" ;
+        tax:equivalentName "Shigella flexneri 5a strain M90T" ;
+        tax:geneticCode tax:GeneticCode11 ;
+        rdfs:seeAlso <http://purl.uniprot.org/taxonomy/1086030> .
+
+  - title: Genus Level Classification
+    description: Genus showing intermediate taxonomic rank.
+    rdf: |
+      taxon:561 a tax:Taxon ;
+        rdfs:label "Escherichia" ;
+        rdfs:subClassOf taxon:543 ;
+        dcterms:identifier "561" ;
+        tax:rank tax:Genus ;
+        tax:scientificName "Escherichia" ;
+        rdfs:seeAlso <http://purl.uniprot.org/taxonomy/561> .
+
+  - title: Kingdom Level
+    description: High-level classification (Animal kingdom).
+    rdf: |
+      taxon:33208 a tax:Taxon ;
+        rdfs:label "Metazoa" ;
+        rdfs:subClassOf taxon:2759 ;
+        dcterms:identifier "33208" ;
+        tax:rank tax:Kingdom ;
+        tax:scientificName "Metazoa" ;
+        tax:commonName "animals" .
+
+  - title: Root of Taxonomy Tree
+    description: Top-level root node of entire taxonomy.
+    rdf: |
+      taxon:1 a tax:Taxon ;
+        rdfs:label "root" ;
+        dcterms:identifier "1" ;
+        tax:rank tax:NoRank .
+
+sparql_query_examples:
+  - title: Search Taxa by Name with bif:contains
+    description: Full-text search with relevance scoring
+    question: Which taxa have "mouse" in their names?
+    complexity: basic
+    sparql: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      
+      SELECT ?taxon ?id ?label
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        ?taxon a tax:Taxon ;
+          rdfs:label ?label ;
+          dcterms:identifier ?id .
+        ?label bif:contains "'mouse'" option (score ?sc)
+      }
+      ORDER BY DESC(?sc)
+      LIMIT 20
+
+  - title: Get Biological Annotations for Taxa
+    description: Retrieve complete biological annotations and classifications
+    question: What are the biological annotations for taxonomy IDs 9606 and 10090?
+    complexity: basic
+    sparql: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      
+      SELECT ?taxon ?label ?id ?rank ?scientificName ?authority ?commonName ?geneticCode
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        VALUES ?taxon { taxon:9606 taxon:10090 }
+        ?taxon a tax:Taxon ;
+          rdfs:label ?label ;
+          dcterms:identifier ?id ;
+          tax:rank ?rank .
+        OPTIONAL { ?taxon tax:scientificName ?scientificName }
+        OPTIONAL { ?taxon tax:authority ?authority }
+        OPTIONAL { ?taxon tax:commonName ?commonName }
+        OPTIONAL { ?taxon tax:geneticCode ?geneticCode }
+      }
+
+  - title: Get Complete Lineage
+    description: Retrieve full taxonomic lineage for an organism
+    question: What is the complete lineage of humans?
+    complexity: intermediate
+    sparql: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      
+      SELECT ?ancestor ?rank ?label ?id
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        taxon:9606 rdfs:subClassOf* ?ancestor .
+        ?ancestor a tax:Taxon ;
+          tax:rank ?rank ;
+          rdfs:label ?label ;
+          dcterms:identifier ?id .
+      }
+      ORDER BY DESC(?id)
+
+  - title: Find Species in Genus
+    description: Get all species within a specific genus
+    question: What species are in genus Escherichia?
+    complexity: intermediate
+    sparql: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      
+      SELECT ?species ?label ?id
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        ?species a tax:Taxon ;
+          rdfs:label ?label ;
+          dcterms:identifier ?id ;
+          tax:rank tax:Species ;
+          rdfs:subClassOf ?genus .
+        ?genus rdfs:label "Escherichia" ;
+          tax:rank tax:Genus .
+      }
+      LIMIT 20
+
+  - title: Find Taxa with UniProt Cross-References
+    description: Retrieve organisms with UniProt Taxonomy links
+    question: Which organisms have UniProt Taxonomy references?
+    complexity: intermediate
+    sparql: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT ?taxon ?label ?uniprotLink
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        ?taxon a tax:Taxon ;
+          rdfs:label ?label ;
+          rdfs:seeAlso ?uniprotLink .
+        FILTER(CONTAINS(STR(?uniprotLink), "purl.uniprot.org"))
+      }
+      LIMIT 20
+
+  - title: Count Species Per Genus with Aggregation
+    description: Biodiversity analysis counting species in genera
+    question: Which genera have most species?
+    complexity: advanced
+    sparql: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT ?genus ?genus_label (COUNT(?species) AS ?count)
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        ?species a tax:Taxon ;
+          tax:rank tax:Species ;
+          rdfs:subClassOf ?genus .
+        ?genus tax:rank tax:Genus ;
+          rdfs:label ?genus_label .
+      }
+      GROUP BY ?genus ?genus_label
+      ORDER BY DESC(?count)
+      LIMIT 20
+
+  - title: Calculate Lineage Depth for Specific Species
+    description: Count taxonomic hierarchy levels for given species
+    question: What is the hierarchy depth from humans to root through major ranks?
+    complexity: advanced
+    sparql: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      
+      SELECT (COUNT(?ancestor) as ?depth)
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        taxon:9606 rdfs:subClassOf+ ?ancestor .
+        ?ancestor tax:rank ?rank .
+        FILTER(?rank IN (tax:Genus, tax:Family, tax:Order, tax:Class, tax:Phylum, tax:Kingdom, tax:Superkingdom))
+      }
+
+cross_references:
+  - pattern: owl:sameAs
+    description: |
+      Taxonomic identifier equivalences across ontology and database systems.
+      Coverage: ~100% of all taxa (5 identifiers per taxon on average).
+    databases:
+      ontologies: OBO NCBITaxon (100%), OBO OWL (100%), Berkeley BOP (100%)
+      databases: DDBJ (100%), NCBI Web (100%)
+    sparql: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT ?taxon ?label ?sameAs
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        ?taxon a tax:Taxon ;
+          rdfs:label ?label ;
+          owl:sameAs ?sameAs .
+      }
+      LIMIT 30
+
+  - pattern: rdfs:seeAlso
+    description: |
+      Links to UniProt Taxonomy database for protein-related information.
+      Coverage: ~100% of taxa.
+    databases:
+      protein: UniProt Taxonomy (purl.uniprot.org/taxonomy/)
+    sparql: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT ?taxon ?label ?uniprotLink
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        ?taxon a tax:Taxon ;
+          rdfs:label ?label ;
+          rdfs:seeAlso ?uniprotLink .
+        FILTER(CONTAINS(STR(?uniprotLink), "purl.uniprot.org"))
+      }
+      LIMIT 30
+
+architectural_notes:
+  schema_design:
+    - Hierarchical classification via rdfs:subClassOf for parent-child relationships
+    - owl:sameAs provides cross-database identifier equivalences (5 per taxon)
+    - rdfs:seeAlso links to UniProt Taxonomy for protein database integration
+    - Multiple naming systems (scientific, common, synonym, equivalent) for diverse contexts
+    - Genetic code properties for both nuclear and mitochondrial genomes
+  performance:
+    - Use bif:contains for label searches (full-text index + relevance scoring)
+    - 3M+ taxa require LIMIT clauses for all exploratory queries
+    - Hierarchical queries with rdfs:subClassOf* expensive on deep lineages
+    - Filtering by tax:rank improves performance significantly
+    - Always start transitive queries from specific taxa, not all taxa
+  data_integration:
+    - OBO NCBITaxon for ontology interoperability
+    - UniProt Taxonomy (rdfs:seeAlso) for protein database integration
+    - TogoID relations available in separate graphs for cross-database links
+    - Use owl:sameAs for identifier conversion across systems
+  data_quality:
+    - All taxa have complete identity cross-references (owl:sameAs ~100%)
+    - Scientific names >99% complete
+    - Common names ~30% complete (higher for vertebrates)
+    - UniProt links ~100% coverage via rdfs:seeAlso
+
+data_statistics:
+  total_taxa: 2698386
+  estimated_species: 1500000
+  taxonomic_ranks: 47
+  coverage:
+    taxa_with_owl_sameAs: ~100%
+    taxa_with_scientific_names: '>99%'
+    taxa_with_common_names: ~30%
+    taxa_with_genetic_codes: ~100%
+    taxa_with_uniprot_links: ~100%
+  cardinality:
+    avg_owl_sameAs_per_taxon: 5.0
+    avg_common_names_per_taxon: 1-3
+    avg_synonyms_per_taxon: 0.1
+  performance_characteristics:
+    - bif:contains efficient for label searches with relevance ranking
+    - Identity queries (owl:sameAs, rdfs:seeAlso) well-optimized
+    - Lineage traversal (rdfs:subClassOf*) can be slow for deep hierarchies
+    - Recommend LIMIT 100 for exploratory queries
+    - tax:rank filtering significantly improves performance
+
+anti_patterns:
+  - title: Using FILTER Instead of bif:contains
+    problem: No full-text index or relevance ranking
+    wrong_sparql: |
+      SELECT ?label WHERE {
+        ?taxon rdfs:label ?label .
+        FILTER(CONTAINS(LCASE(?label), "mouse"))
+      }
+    correct_sparql: |
+      SELECT ?label WHERE {
+        ?taxon rdfs:label ?label .
+        ?label bif:contains "'mouse'" option (score ?sc)
+      }
+      ORDER BY DESC(?sc)
+    explanation: bif:contains uses full-text index and provides relevance scoring
+
+  - title: Unbounded Lineage Traversal
+    problem: rdfs:subClassOf* without constraints causes timeout on 3M+ taxa
+    wrong_sparql: |
+      SELECT ?ancestor WHERE {
+        ?taxon rdfs:subClassOf* ?ancestor
+      }
+    correct_sparql: |
+      SELECT ?ancestor 
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        taxon:9606 rdfs:subClassOf* ?ancestor .
+        ?ancestor tax:rank ?rank .
+      }
+      LIMIT 50
+    explanation: Start from specific taxon and add LIMIT for transitive queries
+
+  - title: Expensive Queries on All Species
+    problem: Running transitive queries on all species causes timeout
+    wrong_sparql: |
+      SELECT ?species (COUNT(?ancestor) as ?depth)
+      WHERE {
+        ?species tax:rank tax:Species ;
+          rdfs:subClassOf+ ?ancestor .
+      }
+      GROUP BY ?species
+    correct_sparql: |
+      SELECT (COUNT(?ancestor) as ?depth)
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        taxon:9606 rdfs:subClassOf+ ?ancestor .
+        ?ancestor tax:rank ?rank .
+        FILTER(?rank IN (tax:Genus, tax:Family, tax:Order))
+      }
+    explanation: Query specific taxa instead of all species, add rank filters
+
+common_errors:
+  - error: Query timeout on lineage queries
+    causes:
+      - Unbounded rdfs:subClassOf* traversal
+      - Missing specific starting taxon
+      - No LIMIT clause
+    solutions:
+      - Start from specific taxon ID (e.g., taxon:9606)
+      - Add LIMIT 50-100 for exploratory queries
+      - Use rdfs:subClassOf+ for ancestors-only
+      - Add tax:rank filters to reduce traversal
+
+  - error: Empty results for cross-database queries
+    causes:
+      - Looking for TogoID properties in wrong graph
+      - TogoID relations are in separate graphs like http://rdfportal.org/dataset/togoid/relation/*
+    solutions:
+      - Use owl:sameAs and rdfs:seeAlso in the taxonomy graph
+      - Query TogoID relation graphs separately for cross-database links
+      - Use rdfs:seeAlso for UniProt Taxonomy links
+
+  - error: Poor search results for organism names
+    causes:
+      - Using FILTER(CONTAINS()) instead of bif:contains
+      - Case-sensitive searches
+    solutions:
+      - Use bif:contains for full-text search with relevance
+      - Order by score with ORDER BY DESC(?sc)
+      - Search both scientific and common names with OPTIONAL

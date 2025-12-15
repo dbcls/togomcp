@@ -1,0 +1,462 @@
+schema_info:
+  title: UniProt RDF
+  description: 'Comprehensive protein sequence and functional information integrating
+    Swiss-Prot (manually curated) and TrEMBL (automatically annotated). Contains 444M
+    proteins with sequences, functions, domains, structures, variants, and cross-references
+    to 200+ databases. CRITICAL: reviewed=1 (Swiss-Prot, 923K entries) vs reviewed=0
+    (TrEMBL, 444M entries). Always filter by reviewed=1 for quality and performance.
+
+    '
+  endpoint: https://rdfportal.org/backend/sib/sparql
+  base_uri: http://purl.uniprot.org/
+  graphs:
+  - http://sparql.uniprot.org/uniprot
+  version:
+    mie_version: '1.2'
+    mie_created: '2024-12-08'
+    data_version: Release 2024_06
+    update_frequency: Monthly
+  license:
+    data_license: Creative Commons Attribution 4.0 International
+    license_url: https://www.uniprot.org/help/license
+  access:
+    rate_limiting: Reasonable use policy
+    max_query_timeout: 60 seconds
+    backend: Virtuoso (supports bif:contains)
+shape_expressions: |
+  PREFIX up: <http://purl.uniprot.org/core/>
+
+  <ProteinShape> {
+    a [ up:Protein ] ;
+    dcterms:identifier xsd:string ;
+    up:mnemonic xsd:string ;
+    up:organism @<TaxonShape> ;
+    up:sequence @<IsoformShape> + ;
+    up:annotation @<AnnotationShape> * ;
+    up:classifiedWith IRI * ;
+    up:encodedBy @<GeneShape> ? ;
+    up:reviewed xsd:integer ;
+    up:recommendedName @<NameShape> ? ;
+    up:enzyme IRI * ;
+    rdfs:seeAlso IRI *
+  }
+
+  <IsoformShape> {
+    a [ up:Simple_Sequence ] ;
+    rdf:value xsd:string ;
+    up:mass xsd:integer ;
+    up:md5Checksum xsd:string
+  }
+
+  <NameShape> {
+    a [ up:Structured_Name ] ;
+    up:fullName xsd:string ;
+    up:shortName xsd:string ?
+  }
+
+  <TaxonShape> {
+    a [ up:Taxon ] ;
+    up:scientificName xsd:string ;
+    rdfs:subClassOf IRI *
+  }
+
+  <AnnotationShape> {
+    a [ up:Annotation ] ;
+    rdfs:comment xsd:string ?
+  }
+
+  <GeneShape> {
+    a [ up:Gene ] ;
+    skos:prefLabel xsd:string ?
+  }
+
+sample_rdf_entries:
+- title: Reviewed Human P53 Protein
+  description: Swiss-Prot tumor suppressor with expert curation and PDB structures.
+  rdf: |
+    uniprot:P04637 a up:Protein ;
+      dcterms:identifier "P04637" ;
+      up:mnemonic "P53_HUMAN" ;
+      up:organism taxon:9606 ;
+      up:reviewed 1 ;
+      up:version 307 ;
+      rdfs:seeAlso <http://rdf.wwpdb.org/pdb/1H26> .
+
+- title: Protein Sequence
+  description: Canonical isoform with validated amino acid sequence.
+  rdf: |
+    isoforms:P04637-1 a up:Simple_Sequence ;
+      rdf:value "MEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWF..." ;
+      up:mass 43653 ;
+      up:md5Checksum "c133dfce69f606f20865e9008199f852" .
+
+- title: Function Annotation
+  description: Expert-curated functional annotation from Swiss-Prot.
+  rdf: |
+    annotation:12345 a up:Function_Annotation ;
+      rdfs:comment "Acts as a tumor suppressor; induces growth arrest or apoptosis..." .
+
+- title: Reviewed Enzyme
+  description: Mitochondrial enzyme with Swiss-Prot quality assurance.
+  rdf: |
+    uniprot:P86925 a up:Protein ;
+      up:mnemonic "RLGM2_TRYB2" ;
+      up:organism taxon:185431 ;
+      up:reviewed 1 ;
+      up:recommendedName [
+        up:fullName "RNA-editing ligase 2, mitochondrial"
+      ] .
+
+- title: Kinase with Structures
+  description: Swiss-Prot kinase with multiple validated PDB structures.
+  rdf: |
+    uniprot:P17612 a up:Protein ;
+      up:mnemonic "KAPCA_HUMAN" ;
+      up:reviewed 1 ;
+      rdfs:seeAlso <http://rdf.wwpdb.org/pdb/6BYR> ;
+      up:recommendedName [
+        up:fullName "cAMP-dependent protein kinase catalytic subunit alpha"
+      ] .
+
+sparql_query_examples:
+- title: Find Reviewed Proteins by Organism
+  description: Retrieve expert-curated human proteins from Swiss-Prot.
+  question: What high-quality human proteins exist?
+  complexity: basic
+  sparql: |
+    PREFIX up: <http://purl.uniprot.org/core/>
+
+    SELECT ?protein ?mnemonic
+    WHERE {
+      ?protein a up:Protein ;
+               up:mnemonic ?mnemonic ;
+               up:reviewed 1 ;
+               up:organism <http://purl.uniprot.org/taxonomy/9606> .
+    }
+    LIMIT 30
+
+- title: Search by Function with bif:contains
+  description: Find reviewed proteins by validated functional descriptions using full-text search. Note that bif:contains requires splitting property paths.
+  question: Which reviewed proteins are kinases or involved in DNA repair?
+  complexity: basic
+  sparql: |
+    PREFIX up: <http://purl.uniprot.org/core/>
+
+    SELECT DISTINCT ?protein ?mnemonic ?fullName
+    WHERE {
+      ?protein a up:Protein ;
+               up:mnemonic ?mnemonic ;
+               up:reviewed 1 ;
+               up:recommendedName ?name .
+      ?name up:fullName ?fullName .
+      ?fullName bif:contains "'kinase' OR 'dna repair'"
+    }
+    LIMIT 15
+
+- title: Get Functional Annotations
+  description: Retrieve comprehensive functional annotations and GO terms for specific proteins.
+  question: What are functions and GO terms for P04637, P17612, P86925?
+  complexity: intermediate
+  sparql: |
+    PREFIX up: <http://purl.uniprot.org/core/>
+    PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+
+    SELECT ?protein ?mnemonic ?functionComment ?goLabel
+    WHERE {
+      VALUES ?protein { uniprot:P04637 uniprot:P17612 uniprot:P86925 }
+      ?protein up:mnemonic ?mnemonic .
+      OPTIONAL {
+        ?protein up:annotation ?annot .
+        ?annot a up:Function_Annotation ;
+               rdfs:comment ?functionComment .
+      }
+      OPTIONAL {
+        ?protein up:classifiedWith ?goTerm .
+        ?goTerm rdfs:label ?goLabel .
+        FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
+      }
+    }
+    LIMIT 20
+
+- title: Get Protein Sequences
+  description: Retrieve expert-validated amino acid sequences with molecular properties.
+  question: What are verified sequences and characteristics?
+  complexity: intermediate
+  sparql: |
+    PREFIX up: <http://purl.uniprot.org/core/>
+
+    SELECT DISTINCT ?protein ?mnemonic ?sequence ?mass ?checksum
+    WHERE {
+      ?protein a up:Protein ;
+               up:mnemonic ?mnemonic ;
+               up:reviewed 1 ;
+               up:sequence ?iso .
+      ?iso rdf:value ?sequence ;
+           up:mass ?mass ;
+           up:md5Checksum ?checksum .
+    }
+    LIMIT 10
+
+- title: Count Tumor Suppressors with bif:contains
+  description: Quantify expert-curated human tumor suppressors using full-text search. Note that bif:contains requires splitting property paths.
+  question: How many human tumor suppressors in Swiss-Prot?
+  complexity: intermediate
+  sparql: |
+    PREFIX up: <http://purl.uniprot.org/core/>
+
+    SELECT (COUNT(*) as ?count)
+    WHERE {
+      ?protein a up:Protein ;
+               up:reviewed 1 ;
+               up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+               up:annotation ?annot .
+      ?annot rdfs:comment ?function .
+      ?function bif:contains "'tumor suppressor'"
+    }
+
+- title: Enzyme Classification with GO
+  description: Link enzymatic classifications with Gene Ontology cellular components.
+  question: Which enzymes have specific GO localizations?
+  complexity: advanced
+  sparql: |
+    PREFIX up: <http://purl.uniprot.org/core/>
+
+    SELECT DISTINCT ?protein ?mnemonic ?fullName ?enzyme ?goLabel
+    WHERE {
+      ?protein a up:Protein ;
+               up:mnemonic ?mnemonic ;
+               up:reviewed 1 ;
+               up:enzyme ?enzyme ;
+               up:recommendedName/up:fullName ?fullName ;
+               up:classifiedWith ?goTerm .
+      ?goTerm rdfs:label ?goLabel .
+      FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
+    }
+    LIMIT 20
+
+- title: Taxonomic Hierarchy
+  description: Navigate protein taxonomic relationships showing organism lineage.
+  question: What is taxonomic classification hierarchy for human proteins?
+  complexity: advanced
+  sparql: |
+    PREFIX up: <http://purl.uniprot.org/core/>
+
+    SELECT DISTINCT ?protein ?mnemonic ?organism ?scientificName ?parentName
+    WHERE {
+      ?protein a up:Protein ;
+               up:mnemonic ?mnemonic ;
+               up:reviewed 1 ;
+               up:organism ?organism .
+      ?organism up:scientificName ?scientificName ;
+                rdfs:subClassOf/up:scientificName ?parentName .
+      FILTER(?organism = <http://purl.uniprot.org/taxonomy/9606>)
+    }
+    LIMIT 10
+
+cross_references:
+- pattern: rdfs:seeAlso
+  description: Links to 200+ external databases via rdfs:seeAlso. Filter by URL substring for specific databases.
+  databases:
+    structure:
+    - PDB (rdf.wwpdb.org, ~14-25%)
+    - AlphaFold (alphafolddb, >98%)
+    sequence:
+    - EMBL (~95%)
+    - RefSeq (~80%)
+    - Ensembl (high)
+    genes:
+    - HGNC (100% human)
+    - neXtProt (100% human)
+    - Gene IDs (~90%)
+    families:
+    - InterPro (>98%)
+    - Pfam (~85%)
+    - PANTHER (~80%)
+    interactions:
+    - IntAct (~16%)
+    - STRING (~85%)
+    - BioGRID (~25%)
+    pathways:
+    - KEGG (~95%)
+    - Reactome (~30%)
+  sparql: |
+    SELECT ?protein ?mnemonic ?externalDB
+    WHERE {
+      ?protein a up:Protein ;
+               up:mnemonic ?mnemonic ;
+               up:reviewed 1 ;
+               rdfs:seeAlso ?externalDB .
+      # Examples: FILTER(CONTAINS(STR(?externalDB), "rdf.wwpdb.org"))
+    } LIMIT 30
+
+- pattern: up:organism
+  description: Links proteins to NCBI Taxonomy classification. All proteins have exactly one organism.
+  databases:
+    taxonomy:
+    - NCBI Taxonomy (100%)
+  sparql: |
+    SELECT ?protein ?taxon ?scientificName
+    WHERE {
+      ?protein a up:Protein ;
+               up:reviewed 1 ;
+               up:organism ?taxon .
+      ?taxon up:scientificName ?scientificName .
+    } LIMIT 30
+
+- pattern: up:classifiedWith
+  description: Ontology-based classifications, primarily Gene Ontology (GO) terms.
+  databases:
+    ontology:
+    - Gene Ontology (>85% reviewed)
+    - Other classifications
+  sparql: |
+    SELECT ?protein ?classification ?label
+    WHERE {
+      ?protein a up:Protein ;
+               up:reviewed 1 ;
+               up:classifiedWith ?classification .
+      ?classification rdfs:label ?label .
+      FILTER(STRSTARTS(STR(?classification), "http://purl.obolibrary.org/obo/GO_"))
+    } LIMIT 30
+
+architectural_notes:
+  schema_design:
+  - Central up:Protein entity with reviewed property as quality indicator (0=TrEMBL, 1=Swiss-Prot)
+  - Hierarchical taxonomy via rdfs:subClassOf relationships
+  - Annotation system with specialized subtypes
+  - Cross-references via rdfs:seeAlso to 200+ databases
+  performance:
+  - 'CRITICAL: Always filter by up:reviewed 1 (reduces 444M to 923K, 99.8% reduction)'
+  - COUNT queries require reviewed=1 filter to prevent timeout
+  - Use bif:contains for keyword searches but split property paths (do not use /)
+  - Organism filtering optimized with reviewed status
+  data_integration:
+  - Swiss-Prot has vastly superior cross-reference coverage
+  - GO integration most reliable for reviewed proteins (>85% vs ~30%)
+  - PDB structures predominantly for reviewed entries (~14-25% vs <1%)
+  data_quality:
+  - 'reviewed=1: expert manual curation vs automated TrEMBL'
+  - Functional annotations 90%+ complete for Swiss-Prot vs 20-30% TrEMBL
+  - Use up:organism for organism filtering, never mnemonic suffixes
+
+data_statistics:
+  total_proteins: 444565015
+  reviewed_proteins: 923147
+  human_reviewed: 40209
+  coverage:
+    reviewed_with_sequences: '>99%'
+    reviewed_with_function: '>90%'
+    reviewed_with_go: '>85%'
+    reviewed_with_pdb: ~14-25%
+    reviewed_with_alphafold: '>98%'
+    reviewed_with_interpro: '>98%'
+  cardinality:
+    avg_isoforms_per_protein: 1.1
+    avg_pdb_per_protein: 4.8
+    avg_go_terms_per_protein: 12.5
+    avg_xrefs_per_protein: 45
+  performance_characteristics:
+  - COUNT requires reviewed=1 filter
+  - Reviewed filtering reduces dataset 99.8%
+  - bif:contains for efficient text search (requires split property paths)
+
+anti_patterns:
+- title: Querying Without Reviewed Filter
+  problem: Queries without up:reviewed 1 timeout and return unreliable automated annotations.
+  wrong_sparql: |
+    SELECT (COUNT(*) as ?count)
+    WHERE {
+      ?protein a up:Protein ;
+               up:organism <http://purl.uniprot.org/taxonomy/9606> .
+    }
+
+  correct_sparql: |
+    SELECT (COUNT(*) as ?count)
+    WHERE {
+      ?protein a up:Protein ;
+               up:reviewed 1 ;
+               up:organism <http://purl.uniprot.org/taxonomy/9606> .
+    }
+
+  explanation: Adding up:reviewed 1 reduces from 444M to 923K entries (99.8% reduction), enabling COUNT and ensuring expert-curated quality.
+
+- title: Using bif:contains with Property Paths
+  problem: bif:contains does not work with SPARQL property paths (/) and causes 400 errors.
+  wrong_sparql: |
+    SELECT ?protein ?fullName
+    WHERE {
+      ?protein up:reviewed 1 ;
+               up:recommendedName/up:fullName ?fullName .
+      ?fullName bif:contains "'kinase'"
+    }
+
+  correct_sparql: |
+    SELECT ?protein ?fullName
+    WHERE {
+      ?protein up:reviewed 1 ;
+               up:recommendedName ?name .
+      ?name up:fullName ?fullName .
+      ?fullName bif:contains "'kinase'"
+    }
+
+  explanation: Split property paths into separate triple patterns when using bif:contains. The magic predicate requires variables directly bound to RDF literals.
+
+- title: Using Mnemonic for Organism Filtering
+  problem: Filtering organisms via mnemonic suffixes is unreliable and incomplete.
+  wrong_sparql: |
+    SELECT ?protein ?mnemonic
+    WHERE {
+      ?protein up:reviewed 1 ;
+               up:mnemonic ?mnemonic .
+      FILTER(CONTAINS(?mnemonic, "_HUMAN"))
+    }
+
+  correct_sparql: |
+    SELECT ?protein ?mnemonic
+    WHERE {
+      ?protein up:reviewed 1 ;
+               up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+               up:mnemonic ?mnemonic .
+    }
+
+  explanation: Use up:organism with exact taxonomy URIs. Mnemonics are display-only, not semantic identifiers.
+
+common_errors:
+- error: Query timeout
+  causes:
+  - Missing up:reviewed 1 filter
+  - COUNT/aggregation on full 444M dataset
+  - Using CONTAINS() instead of bif:contains for large text searches
+  solutions:
+  - Always add up:reviewed 1 as first filter
+  - Use bif:contains for keyword filtering (but split property paths)
+  - Combine reviewed with organism filter
+  - Use LIMIT (30-50 recommended)
+
+- error: bif:contains returns 400 Bad Request
+  causes:
+  - Using bif:contains with property paths (e.g., up:recommendedName/up:fullName)
+  - Property path creates intermediate bindings that bif:contains cannot handle
+  solutions:
+  - Split property paths into separate triple patterns
+  - Example WRONG - up:annotation/rdfs:comment ?text . ?text bif:contains 'keyword'
+  - Example CORRECT - up:annotation ?a . ?a rdfs:comment ?text . ?text bif:contains 'keyword'
+
+- error: Empty organism results
+  causes:
+  - Using mnemonic pattern matching instead of up:organism
+  - Incorrect taxonomy URI format
+  solutions:
+  - Use up:organism <http://purl.uniprot.org/taxonomy/TAXID>
+  - Never filter by mnemonic text patterns
+  - Always include up:reviewed 1
+
+- error: Missing GO terms
+  causes:
+  - Incorrect GO URI FILTER syntax
+  - Not using OPTIONAL for GO terms
+  - Missing reviewed filter (lower GO coverage)
+  solutions:
+  - Use STRSTARTS(STR(?goTerm), 'http://purl.obolibrary.org/obo/GO_')
+  - Wrap GO patterns in OPTIONAL if not required
+  - Include up:reviewed 1 for >85% GO coverage
