@@ -15,7 +15,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Windows
 > powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
-### Install RDFPortal-MCP server
+### Install TogoMCP server
 ```bash
 # Clone the repository
 git clone https://github.com/dbcls/togo-mcp.git
