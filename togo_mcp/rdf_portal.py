@@ -10,26 +10,26 @@ from .server import *
 def boilerplate() -> str:
     return "Hello! I don't know why this is here. But, the server doesn't work without it."
 
-@mcp.tool(name="RDF_Portal_Guide",
-            description="A general guideline for using the RDF Portal.")
-def rdf_portal_guide() -> str:
+@mcp.tool(name="TogoMCP_Usage_Guide",
+            description="A general guideline for using TogoMCP.")
+def togomcp_usage_guide() -> str:
     """
-    A general guideline for using the RDF Portal.
-    Always use this before constructing any SPARQL queries for the database,
-    and strictly follow the instructions provided there.
+    A general guideline for using using TogoMCP.
+    Always use this before answering any questions.
+
 
     Returns:
-        str: The content of the RDF Portal Guide.
+        str: The content of the TogoMCP usage guide.
     """
-    toolcall_log("rdf_portal_guide")
-    with open(RDF_PORTAL_GUIDE, "r", encoding="utf-8") as file:
+    toolcall_log("togomcp_usage_guide")
+    with open(TOGOMCP_USAGE_GUIDE, "r", encoding="utf-8") as file:
         prompt = file.read()
     return prompt
 
 # --- Tools for RDF Portal --- #
 
 @mcp.tool()
-async def get_sparql_endpoints() -> Dict[str,str]:
+async def get_sparql_endpoints() -> Dict[str,Dict[str,str]]:
     """ Get the available SPARQL endpoints for RDF Portal. 
     Returns:
         Dict[str,str]: Dictionary of dbname-URL pairs.
@@ -217,7 +217,7 @@ SELECT DISTINCT ?graph WHERE {
 @mcp.tool(
         enabled=True,
         name="get_MIE_file",
-        description="Get the MIE file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database. Use this before constructing any SPARQL queries for the database."
+        description="Get the MIE (Metadata Interoperability Exchange) file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database. Use this before constructing any SPARQL queries for the database."
 )
 async def get_MIE_file(
     dbname: Annotated[str, Field(description=DBNAME_DESCRIPTION)]
