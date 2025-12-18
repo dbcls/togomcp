@@ -65,7 +65,18 @@
 
 4. **Query**: BRCA-related diseases (semantic type T047) → **Results**: 4 concepts - BRCA2-related disorder (CN239275), BRCA2-related cancer predisposition (CN377758), BRCA1-related cancer predisposition (CN377757), BROVCA2 hereditary breast and ovarian cancer (CN971385)
 
-5. **Query**: Search for Alzheimer disease and related concepts → **Description**: Keyword search for "Alzheimer" to find Alzheimer disease (C0002395) and related phenotypes, including early-onset forms, familial variants, and associated dementia syndromes. Expected to demonstrate concept hierarchy and cross-references to MONDO, MeSH, and OMIM for genetic forms.
+5. **Query**: Search for Alzheimer disease and related concepts → **Results**: 20 Alzheimer-related concepts including:
+   - C0002395: "Alzheimer disease" (main concept)
+   - C1847200: "Alzheimer disease 4"
+   - C1852223: "Dementia/parkinsonism with non-Alzheimer amyloid plaques"
+   - CN028944: "Alzheimer disease, type 15"
+   - CN043623: "Late-onset familial alzheimer disease"
+   - C3810041: "Alzheimer disease 18"
+   - C3810349: "Alzheimer disease 19"
+   - C0276496: "Familial Alzheimer disease"
+   - C0494463: "Primary degenerative dementia of the Alzheimer type, senile onset"
+   - C0750900: "Alzheimer Disease, Focal Onset"
+   - Shows comprehensive coverage of familial variants, subtypes, and associated dementia syndromes
 
 ## SPARQL Queries Tested
 

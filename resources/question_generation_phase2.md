@@ -12,7 +12,7 @@ SETUP:
 
 2. Read the format requirements:
    * /Users/arkinjo/work/GitHub/togo-mcp/evaluation/scripts/QUESTION_FORMAT.md
-   * /Users/arkinjo/work/GitHub/togo-mcp/evaluation/togomcp_evaluation_rubric.md
+   * /Users/arkinjo/work/GitHub/togo-mcp/evaluation/QUESTION_DESIGN_GUIDE.md
    * /Users/arkinjo/work/GitHub/togo-mcp/evaluation/scripts/example_questions.json
 
 QUESTION REQUIREMENTS:

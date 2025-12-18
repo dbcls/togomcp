@@ -8,7 +8,7 @@ SETUP:
    - If reports exist, note which databases are DONE and skip them
 
 2. Read these files to understand the context:
-   * /Users/arkinjo/work/GitHub/togo-mcp/evaluation/togomcp_evaluation_rubric.md
+   * /Users/arkinjo/work/GitHub/togo-mcp/evaluation/QUESTION_DESIGN_GUIDE.md
    * /Users/arkinjo/work/GitHub/togo-mcp/evaluation/scripts/QUESTION_FORMAT.md
    * /Users/arkinjo/work/GitHub/togo-mcp/evaluation/scripts/example_questions.json
 

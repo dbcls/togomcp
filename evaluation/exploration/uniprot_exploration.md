@@ -44,6 +44,63 @@
      - Q927P4 - Cas9 (Listeria innocua)
    - All are endonucleases (EC 3.1.-.-)
 
+2. **Query**: p53 tumor suppressor (using TogoMCP search_uniprot_entity)
+   - **Results**: Found 10 p53 proteins across species:
+     - Q29537 - Dog (Canis lupus familiaris)
+     - Q9TTA1 - Common tree shrew (Tupaia belangeri)
+     - P79734 - Zebrafish (Danio rerio)
+     - Q64662 - California ground squirrel
+     - P67939 - Bovine (Bos taurus)
+     - P56424 - Rhesus macaque (Macaca mulatta)
+     - P79892 - Horse (Equus caballus)
+     - P61260 - Japanese macaque (Macaca fuscata fuscata)
+     - O09185 - Chinese hamster (Cricetulus griseus)
+     - Q8SPZ3 - Beluga whale (Delphinapterus leucas)
+   - All named "Cellular tumor antigen p53 (Tumor suppressor p53)"
+   - Shows wide conservation across mammals, fish, and marine species
+
+3. **Query**: BRCA1 breast cancer susceptibility protein
+   - **Results**: Found 10 BRCA1 proteins across species:
+     - **P38398** - Human (Homo sapiens) - EC 2.3.2.27, RING-type E3 ubiquitin transferase
+     - Q95153 - Dog (Canis lupus familiaris)
+     - P48754 - Mouse (Mus musculus)
+     - B6VQ60 - C. elegans (worm model)
+     - Q864U1 - Bovine (Bos taurus)
+     - O54952 - Rat (Rattus norvegicus)
+     - Q6J6J0 - Bornean orangutan (Pongo pygmaeus)
+     - Q6J6I9 - Rhesus macaque (Macaca mulatta)
+     - Q9GKK8 - Chimpanzee (Pan troglodytes)
+     - Q8RXD4 - Arabidopsis thaliana (plant homolog)
+   - Shows evolutionary conservation from plants to primates
+
+4. **Query**: Insulin hormone
+   - **Results**: Found 10 insulin and insulin-related proteins:
+     - **P01308** - Human insulin (Homo sapiens)
+     - **P06213** - Human insulin receptor (IR, EC 2.7.10.1, CD220)
+     - P14735 - Human insulin-degrading enzyme (EC 3.4.24.56)
+     - P01317 - Bovine insulin
+     - P01321 - Dog insulin
+     - P01329 - Guinea pig insulin (Cavia porcellus)
+     - P17715 - Degu insulin (Octodon degus)
+     - P01315 - Pig insulin (Sus scrofa)
+     - P67970 - Chicken insulin (Gallus gallus)
+     - Q91XI3 - Ground squirrel insulin
+   - Shows diversity: hormone, receptor, and degrading enzyme
+
+5. **Query**: Hemoglobin alpha subunit
+   - **Results**: Found 10 hemoglobin alpha proteins:
+     - **P69905** - Human hemoglobin subunit alpha (includes hemopressin)
+     - P69892 - Human hemoglobin subunit gamma-2 (fetal hemoglobin)
+     - P01966 - Bovine hemoglobin alpha
+     - P02016 - Common carp alpha (Cyprinus carpio)
+     - P86882 - Arctic eelpout (Lycodes reticulatus)
+     - P83623 - Congolli fish (Pseudaphritis urvillii)
+     - P02017 - Desert sucker (Catostomus clarkii)
+     - P01994 - Chicken hemoglobin alpha-A
+     - P63112 - Yellow baboon (Papio cynocephalus)
+     - B3EWR7 - Serpent eel (Ophisurus serpens)
+   - Shows wide distribution across vertebrates (mammals, birds, fish)
+
 ## SPARQL Queries Tested
 
 ```sparql
