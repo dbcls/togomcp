@@ -1,8 +1,32 @@
 # ClinVar Keyword Search
 
-## No Specialized API - Use SPARQL
+## Specialized API (Use First)
+Use `ncbi_esearch()` to search ClinVar database:
 
-**CRITICAL: Read MIE file first:**
+**Parameters:**
+- `database`: "clinvar"
+- `query`: Search query (supports Entrez syntax with field tags and boolean operators)
+- `max_results`: Number of results (default 20)
+- `start_index`: For pagination (default 0)
+- `sort_by`: Optional sort order
+- `search_field`: Optional specific field to search in
+
+**Examples:**
+```python
+ncbi_esearch(database="clinvar", query="BRCA1", max_results=20)
+ncbi_esearch(database="clinvar", query="BRCA1 AND pathogenic", max_results=15)
+ncbi_esearch(database="clinvar", query="breast cancer", max_results=20)
+ncbi_esearch(database="clinvar", query="hypertrophic cardiomyopathy", max_results=10)
+```
+
+**Supported Query Syntax:**
+- Simple keywords: "BRCA1", "breast cancer"
+- Field tags: "BRCA1[gene]", "pathogenic[condition]"
+- Boolean operators: AND, OR, NOT
+- Example: "BRCA1 AND pathogenic"
+
+## Fallback: SPARQL Query
+If API is insufficient for complex queries, read MIE file first:
 ```python
 get_MIE_file("clinvar")
 ```
@@ -34,6 +58,7 @@ LIMIT 50
 - Cross-references to MedGen, OMIM, MeSH
 
 ## Notes
-- Search by variant name, gene, or associated condition
 - 3.5M+ variant records with clinical interpretations
-- Use clinical_significance for filtering pathogenic variants
+- ncbi_esearch is recommended for keyword searches by gene or condition
+- Use SPARQL for complex filtering by clinical_significance, variant_type, or specific annotations
+- Combine gene and pathogenicity terms in queries for targeted results
