@@ -32,7 +32,7 @@ def togomcp_usage_guide() -> str:
 async def get_sparql_endpoints() -> Dict[str,Dict[str,str]]:
     """ Get the available SPARQL endpoints for RDF Portal. 
     Returns:
-        Dict[str,str]: Dictionary of dbname-URL pairs.
+        Dict[str,Dict[str,str]]: Dictionary of dbname->(endpoint-URL,keyword search API) pair.
     """
     toolcall_log("get_sparql_endpoints")
     return SPARQL_ENDPOINT
