@@ -45,15 +45,13 @@ ollama pull nomic-embed-text
 
 This model is ~274MB and provides high-quality embeddings for text similarity tasks.
 
-### 4. Download a Generative LLM (Optional, for LLM Evaluation)
+### 4. Download a Generative LLM
 
 For LLM-based evaluation, pull a generative model like `llama3.2`:
 
 ```bash
 ollama pull llama3.2
 ```
-
-Other supported models: `mistral`, `gemma2`, `phi3`, etc.
 
 ### 5. Install Python Dependencies
 
@@ -103,17 +101,19 @@ python add_embedding_and_llm_evaluation.py ../results/Q01_out.csv -m mxbai-embed
 
 ### With LLM Evaluation
 
-Add generative LLM evaluation (e.g., llama3.2, mistral):
+Add generative LLM evaluation (llama3.2):
 
 ```bash
 python add_embedding_and_llm_evaluation.py ../results/Q01_out.csv --llm-model llama3.2
 ```
 
-### Quiet Mode (No Progress Output)
+## With Embeddings and LLM Evaluation
 
 ```bash
-python add_embedding_and_llm_evaluation.py ../results/Q01_out.csv -q
+python add_embedding_and_llm_evaluation.py ../results/Q01_out.csv --llm-model llama3.2 -o ../results/Q01_with_embeddings_and_llm.csv
 ```
+
+This will process the file `Q01_out.csv`, add the semantic similarity columns and LLM evaluation using the `llama3.2` model, and save the result to `Q01_with_embeddings_and_llm.csv`.
 
 ## Command Line Options
 
@@ -144,7 +144,7 @@ The script adds the following columns to the CSV:
 | `baseline_max_confidence` | Maximum of token confidence and semantic similarity |
 | `togomcp_max_confidence` | Maximum of token confidence and semantic similarity |
 
-### LLM-Based Columns (when using --llm-model)
+### LLM-Based Columns 
 
 | Column | Description |
 |--------|-------------|
@@ -169,81 +169,3 @@ This is useful because:
 1. **Semantic understanding**: LLMs can understand paraphrasing and different ways of expressing the same information
 2. **Context awareness**: Can identify if the core information is present even with additional details
 3. **Complements embeddings**: Catches matches that embedding similarity might miss
-
-## Example Output
-
-### Embeddings Only
-
-```
-Initializing embedding evaluator...
-  Embedding model: nomic-embed-text
-  Threshold: 0.75
-  LLM evaluation: disabled (use --llm-model to enable)
-
-Processing: Q01_out.csv
-  Found 12 rows
-  Evaluating Q1... baseline=0.565, togomcp=0.554
-  Evaluating Q2... baseline=0.438, togomcp=0.432
-  ...
-  Saved to: Q01_with_embeddings.csv
-
-============================================================
-Summary for Q01_out.csv
-============================================================
-
-Baseline Results (n=12):
-  Token-based matches:      6 (50.0%)
-  Semantic matches:         0 (0.0%)
-  Combined matches:         6 (50.0%)
-  Avg semantic similarity: 0.524
-
-TogoMCP Results (n=12):
-  Token-based matches:     10 (83.3%)
-  Semantic matches:         0 (0.0%)
-  Combined matches:        10 (83.3%)
-  Avg semantic similarity: 0.541
-
-✓ Processing complete!
-```
-
-### With LLM Evaluation
-
-```
-Initializing embedding evaluator...
-  Embedding model: nomic-embed-text
-  Threshold: 0.75
-  LLM model: llama3.2
-
-Processing: Q11_out.csv
-  Found 2 rows
-  Evaluating Q121... baseline=0.515, togomcp=0.586 | LLM: base=True, togo=True
-  Evaluating Q122... baseline=0.501, togomcp=0.446 | LLM: base=True, togo=True
-  Saved to: q11_with_embeddings_and_llms_evaluations.csv
-
-============================================================
-Summary for Q11_out.csv
-============================================================
-
-Baseline Results (n=2):
-  Token-based matches:      1 (50.0%)
-  Semantic matches:         0 (0.0%)
-  Combined matches:         1 (50.0%)
-  Avg semantic similarity: 0.508
-
-TogoMCP Results (n=2):
-  Token-based matches:      1 (50.0%)
-  Semantic matches:         0 (0.0%)
-  Combined matches:         1 (50.0%)
-  Avg semantic similarity: 0.516
-
-LLM-Based Evaluation:
-  Baseline LLM matches:     2 (100.0%)
-  TogoMCP LLM matches:      2 (100.0%)
-
-Full Combined (Token OR Semantic OR LLM):
-  Baseline full combined:   2 (100.0%)
-  TogoMCP full combined:    2 (100.0%)
-
-✓ Processing complete!
-```
----
