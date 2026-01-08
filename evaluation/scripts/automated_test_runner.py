@@ -62,77 +62,9 @@ except ImportError:
     print("Install with: pip install anthropic")
     sys.exit(1)
 
-SEMANTIC_AVAILABLE = False
-try:
-    import ollama
-    from sklearn.metrics.pairwise import cosine_similarity
-    import numpy as np
-    SEMANTIC_AVAILABLE = True
-except ImportError:
-    print("Note: Semantic matching dependencies not installed (optional).")
-    print("Install with: pip install ollama scikit-learn numpy")
-    print("Continuing with token-based matching only.\n")
-
 
 class CorrectnessEvaluator:
     """Evaluates response correctness and quality."""
-    
-    def __init__(self, use_semantic: bool = False, semantic_threshold: float = 0.75):
-        """
-        Initialize evaluator.
-        
-        Args:
-            use_semantic: Enable semantic similarity matching using embeddings
-            semantic_threshold: Cosine similarity threshold for semantic match (0.0-1.0)
-        """
-        self.use_semantic = use_semantic and SEMANTIC_AVAILABLE
-        self.semantic_threshold = semantic_threshold
-        self._embedding_model = "nomic-embed-text"
-        
-        if use_semantic and not SEMANTIC_AVAILABLE:
-            print("Warning: Semantic matching requested but dependencies not available.")
-            print("Install with: pip install ollama scikit-learn numpy")
-            print("Falling back to token-based matching.")
-    
-    def _get_embedding(self, text: str) -> Optional[np.ndarray]:
-        """Get embedding vector for text using Ollama."""
-        if not SEMANTIC_AVAILABLE:
-            return None
-        try:
-            response = ollama.embed(model=self._embedding_model, input=text)
-            # Handle both old and new ollama API response formats
-            if hasattr(response, 'embeddings'):
-                return np.array(response.embeddings[0])
-            elif isinstance(response, dict) and 'embeddings' in response:
-                return np.array(response['embeddings'][0])
-            elif isinstance(response, dict) and 'embedding' in response:
-                return np.array(response['embedding'])
-            return None
-        except Exception as e:
-            # Silently fall back to non-semantic matching
-            return None
-    
-    def _semantic_similarity(self, text: str, expected: str) -> Tuple[bool, float]:
-        """
-        Calculate semantic similarity between text and expected answer.
-        
-        Returns:
-            (found, similarity_score) where similarity_score is 0.0-1.0
-        """
-        emb_text = self._get_embedding(text.lower())
-        emb_expected = self._get_embedding(expected.lower())
-        
-        if emb_text is None or emb_expected is None:
-            return (False, 0.0)
-        
-        # Reshape for sklearn's cosine_similarity
-        similarity = cosine_similarity(
-            emb_expected.reshape(1, -1), 
-            emb_text.reshape(1, -1)
-        )[0][0]
-        
-        found = similarity >= self.semantic_threshold
-        return (found, float(similarity))
     
     # Phrases indicating inability to answer
     INABILITY_PHRASES = [
@@ -169,76 +101,38 @@ class CorrectnessEvaluator:
                 return True
         return False
     
-    def check_expected_answer(self, text: str, expected: str) -> Dict[str, Any]:
+    def check_expected_answer(self, text: str, expected: str) -> Tuple[bool, float]:
         """
         Check if response contains expected answer.
         
-        Computes both token-based partial matching and semantic similarity
-        (if enabled) simultaneously.
-        
         Returns:
-            Dict with:
-                - exact_match: bool (exact string match)
-                - token_found: bool (token-based match found)
-                - token_confidence: float (0.0-1.0)
-                - semantic_found: bool (semantic match found, if enabled)
-                - semantic_similarity: float (0.0-1.0, if enabled)
-                - combined_found: bool (either method found match)
-                - combined_confidence: float (max of both confidences)
+            (found, confidence) where confidence is 0.0-1.0
         """
-        result = {
-            "exact_match": False,
-            "token_found": False,
-            "token_confidence": 0.0,
-            "semantic_found": False,
-            "semantic_similarity": 0.0,
-            "combined_found": False,
-            "combined_confidence": 0.0
-        }
-        
         if not expected or not text:
-            return result
+            return (False, 0.0)
         
         text_lower = text.lower()
         expected_lower = expected.lower()
         
-        # 1. Quick exact match (always try first)
+        # Exact match
         if expected_lower in text_lower:
-            result["exact_match"] = True
-            result["token_found"] = True
-            result["token_confidence"] = 1.0
-            result["semantic_found"] = True
-            result["semantic_similarity"] = 1.0
-            result["combined_found"] = True
-            result["combined_confidence"] = 1.0
-            return result
+            return (True, 1.0)
         
-        # 2. Token-based partial match (split on punctuation/whitespace)
+        # Partial match (split on punctuation/whitespace)
         expected_parts = [
             p.strip() 
             for p in re.split(r'[,;\s]+', expected_lower) 
             if len(p.strip()) > 3
         ]
         
-        if expected_parts:
-            matches = sum(1 for part in expected_parts if part in text_lower)
-            result["token_confidence"] = matches / len(expected_parts)
-            result["token_found"] = result["token_confidence"] >= 0.5
+        if not expected_parts:
+            return (False, 0.0)
         
-        # 3. Semantic similarity matching (if enabled)
-        if self.use_semantic:
-            found, similarity = self._semantic_similarity(text, expected)
-            result["semantic_found"] = found
-            result["semantic_similarity"] = similarity
+        matches = sum(1 for part in expected_parts if part in text_lower)
+        confidence = matches / len(expected_parts)
+        found = confidence >= 0.5
         
-        # 4. Combined result (either method succeeds)
-        result["combined_found"] = result["token_found"] or result["semantic_found"]
-        result["combined_confidence"] = max(
-            result["token_confidence"], 
-            result["semantic_similarity"]
-        )
-        
-        return result
+        return (found, confidence)
     
     def evaluate_response(
         self, 
@@ -251,26 +145,16 @@ class CorrectnessEvaluator:
         
         Returns dict with:
             - actually_answered: bool
-            - has_expected: bool (combined result)
-            - confidence: float (combined confidence)
-            - exact_match: bool
-            - token_found: bool
-            - token_confidence: float
-            - semantic_found: bool
-            - semantic_similarity: float
+            - has_expected: bool
+            - confidence: float
         """
         actually_answered = not self.check_inability(text)
-        match_result = self.check_expected_answer(text, expected)
+        has_expected, confidence = self.check_expected_answer(text, expected)
         
         return {
             "actually_answered": actually_answered,
-            "has_expected": match_result["combined_found"],
-            "confidence": match_result["combined_confidence"],
-            "exact_match": match_result["exact_match"],
-            "token_found": match_result["token_found"],
-            "token_confidence": match_result["token_confidence"],
-            "semantic_found": match_result["semantic_found"],
-            "semantic_similarity": match_result["semantic_similarity"]
+            "has_expected": has_expected,
+            "confidence": confidence
         }
     
     def assess_value_add(
@@ -317,12 +201,7 @@ class EvaluationRunner:
     """
     
     def __init__(self, config_path: Optional[str] = None):
-        """
-        Initialize runner with configuration.
-        
-        Args:
-            config_path: Path to configuration JSON file
-        """
+        """Initialize runner with configuration."""
         self.config = self._load_config(config_path)
         self.api_key = os.environ.get("ANTHROPIC_API_KEY")
         
@@ -333,12 +212,7 @@ class EvaluationRunner:
             )
         
         self.baseline_client = anthropic.Anthropic(api_key=self.api_key)
-        self.evaluator = CorrectnessEvaluator(
-            use_semantic=self.config.get("use_semantic", False),
-            semantic_threshold=self.config.get("semantic_threshold", 0.75)
-        )
-        self.use_semantic = self.config.get("use_semantic", False)
-        self.semantic_threshold = self.config.get("semantic_threshold", 0.75)
+        self.evaluator = CorrectnessEvaluator()
         self.results = []
         
     def _load_config(self, config_path: Optional[str]) -> Dict:
@@ -367,8 +241,6 @@ class EvaluationRunner:
             },
             "allowed_tools": ["mcp__*"],
             "disallowed_tools": ["WebSearch", "WebFetch", "web_search", "web_fetch"],
-            "use_semantic": False,
-            "semantic_threshold": 0.75,
         }
         
         if config_path and Path(config_path).exists():
@@ -622,22 +494,12 @@ class EvaluationRunner:
             "baseline_actually_answered": baseline_eval["actually_answered"],
             "baseline_has_expected": baseline_eval["has_expected"],
             "baseline_confidence": baseline_eval["confidence"],
-            "baseline_exact_match": baseline_eval["exact_match"],
-            "baseline_token_found": baseline_eval["token_found"],
-            "baseline_token_confidence": baseline_eval["token_confidence"],
-            "baseline_semantic_found": baseline_eval["semantic_found"],
-            "baseline_semantic_similarity": baseline_eval["semantic_similarity"],
             "baseline_text": baseline_result.get("text", ""),
             "baseline_error": baseline_result.get("error", ""),
             "baseline_time": baseline_result["elapsed_time"],
             "togomcp_success": togomcp_result["success"],
             "togomcp_has_expected": togomcp_eval["has_expected"],
             "togomcp_confidence": togomcp_eval["confidence"],
-            "togomcp_exact_match": togomcp_eval["exact_match"],
-            "togomcp_token_found": togomcp_eval["token_found"],
-            "togomcp_token_confidence": togomcp_eval["token_confidence"],
-            "togomcp_semantic_found": togomcp_eval["semantic_found"],
-            "togomcp_semantic_similarity": togomcp_eval["semantic_similarity"],
             "togomcp_text": togomcp_result.get("text", ""),
             "togomcp_error": togomcp_result.get("error", ""),
             "togomcp_time": togomcp_result["elapsed_time"],
@@ -751,15 +613,9 @@ class EvaluationRunner:
         fieldnames = [
             "question_id", "date", "category", "question_text",
             "baseline_success", "baseline_actually_answered", "baseline_has_expected", 
-            "baseline_confidence", "baseline_exact_match",
-            "baseline_token_found", "baseline_token_confidence",
-            "baseline_semantic_found", "baseline_semantic_similarity",
-            "baseline_text", "baseline_error", "baseline_time",
+            "baseline_confidence", "baseline_text", "baseline_error", "baseline_time",
             "baseline_input_tokens", "baseline_output_tokens",
             "togomcp_success", "togomcp_has_expected", "togomcp_confidence",
-            "togomcp_exact_match",
-            "togomcp_token_found", "togomcp_token_confidence",
-            "togomcp_semantic_found", "togomcp_semantic_similarity",
             "togomcp_text", "togomcp_error", "togomcp_time",
             "togomcp_input_tokens", "togomcp_output_tokens",
             "togomcp_cache_creation_input_tokens", "togomcp_cache_read_input_tokens",
@@ -860,17 +716,11 @@ Examples:
   # Custom output path
   python automated_test_runner.py questions.json -o results.csv
   
-  # With custom config (can enable semantic matching via config file)
+  # With custom config
   python automated_test_runner.py questions.json -c config.json
   
   # JSON output
   python automated_test_runner.py questions.json --format json
-
-Config file options for semantic matching:
-  {
-    "use_semantic": true,
-    "semantic_threshold": 0.75
-  }
 
 Design:
   Each question runs in an isolated session (no conversation accumulation).
@@ -923,13 +773,6 @@ Next steps:
     # Initialize runner
     try:
         runner = EvaluationRunner(config_path=args.config)
-        if runner.use_semantic:
-            if SEMANTIC_AVAILABLE:
-                print(f"✓ Semantic matching enabled (threshold: {runner.semantic_threshold})")
-            else:
-                print("⚠ Semantic matching requested but dependencies not available.")
-        else:
-            print("ℹ Using token-based matching (semantic matching disabled)")
     except Exception as e:
         print(f"✗ Error initializing runner: {e}")
         sys.exit(1)
