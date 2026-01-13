@@ -1,119 +1,61 @@
 # Reactome Pathway Database Exploration Report
 
 ## Database Overview
-- **Purpose**: Open-source, curated knowledgebase of biological pathways and processes
-- **Scope**: 22,000+ pathways across 30+ species
-- **Key data types**:
-  - Pathways (22,000) - hierarchical organization
-  - Biochemical reactions (11,000)
-  - Proteins (226,000)
-  - Protein complexes (101,000)
-  - Small molecules (50,000)
-- **Based on**: BioPAX Level 3 ontology for pathway representation
+- **Purpose**: Curated knowledgebase of biological pathways and processes
+- **Scope**: 22,000+ pathways across 30+ species with molecular interactions
+- **Key entities**: Pathways, Reactions, Proteins, Complexes, Small Molecules
+- **Data quality**: Expert manual curation with literature evidence
 
 ## Schema Analysis (from MIE file)
 
-### Main Properties
-- **bp:Pathway**: Core pathway entity with hierarchical structure
-- **bp:displayName**: Human-readable pathway/entity name
-- **bp:pathwayComponent**: Links to sub-pathways and reactions
-- **bp:organism**: Organism classification (via bp:BioSource)
-- **bp:BiochemicalReaction**: Biochemical reaction entity
-- **bp:left**: Substrate/reactant entities
-- **bp:right**: Product entities
-- **bp:eCNumber**: Enzyme Commission number classification
-- **bp:Protein**: Protein entity
-- **bp:Complex**: Multi-component protein complex
-- **bp:component**: Components of a complex
-- **bp:componentStoichiometry**: Stoichiometric ratios in complexes
-- **bp:SmallMolecule**: Chemical compound entity
-- **bp:entityReference**: Links to reference entities (ProteinReference, SmallMoleculeReference)
-- **bp:xref**: Cross-references to external databases
-- **bp:UnificationXref**: Primary external database identifier
-- **bp:PublicationXref**: Literature citations
-- **bp:db**: External database name (requires ^^xsd:string type)
-- **bp:id**: External database ID
-- **bp:comment**: Additional annotations
+### Main Properties (BioPAX Level 3)
+- `bp:Pathway`: Biological pathway entity
+- `bp:displayName`: Pathway/entity name
+- `bp:pathwayComponent`: Sub-pathways and reactions
+- `bp:BiochemicalReaction`: Chemical transformation
+- `bp:left/bp:right`: Reaction substrates/products
+- `bp:Protein`, `bp:Complex`, `bp:SmallMolecule`: Entity types
+- `bp:entityReference`: Canonical entity definition
+- `bp:xref`: Cross-references (UniProt, ChEBI, GO, etc.)
 
 ### Important Relationships
-- **Hierarchical pathways**: bp:pathwayComponent creates parent-child relationships
-- **Transitive closure**: bp:pathwayComponent* for full pathway hierarchies
-- **Reaction networks**: bp:left and bp:right link reactions to entities
-- **Complex assembly**: bp:component and bp:componentStoichiometry define complexes
-- **External integration**: bp:xref with bp:db and bp:id link to external databases
-- **Cross-references**:
-  - UniProt: 87K proteins (~90% coverage)
-  - ChEBI: 28K small molecules
-  - PubChem: 8K compounds
-  - PubMed: 268K evidence citations (~85% pathways)
-  - GO: Biological process mappings
-  - Guide to Pharmacology: 8K drug targets
-  - KEGG, PANTHER: Pathway mappings
-  - NCBI Taxonomy: Organism classification
+- `bp:pathwayComponent`: Pathway hierarchy (parent → children)
+- `bp:Catalysis`: Enzyme-reaction relationships
+- `bp:controller/bp:controlled`: Regulatory relationships
+- `bp:component`: Complex composition
 
-### Query Patterns Observed
-1. **Use bif:contains for pathway search**: NOT FILTER(CONTAINS(...))
-2. **Add relevance scoring**: `option (score ?sc)` with ORDER BY DESC(?sc)
-3. **Include FROM clause**: `FROM <http://rdf.ebi.ac.uk/dataset/reactome>`
-4. **CRITICAL datatype handling**: Use `^^xsd:string` for bp:db comparisons
-5. **Start from specific pathway**: For hierarchy traversal
-6. **Use bp:pathwayComponent+**: For descendants (not *)
-7. **Always add LIMIT**: 20-100 for exploratory queries
-8. **Type filtering**: Specify bp:Pathway, bp:Protein, bp:Complex, etc.
-9. **Use OPTIONAL**: For variable coverage (xref, eCNumber, comment)
-10. **Boolean search**: AND, OR, NOT in bif:contains expressions
+### Query Patterns
+- Always use FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+- Use bif:contains for text search with option (score ?sc)
+- **CRITICAL**: Use ^^xsd:string for bp:db comparisons
+- Start property paths from specific URIs, not variables
 
 ## Search Queries Performed
 
-### Query 1: Search for mTOR signaling pathways
-**Tool**: TogoMCP run_sparql with bif:contains
-**Result**: Found 10 mTOR signalling pathway instances across different species:
-- All named "MTOR signalling"
-- Different releases/species versions (indicated by different IDs)
-- Demonstrates organism-specific pathway instances
+1. **Query**: search_reactome_entity("autophagy")
+   - Results: R-HSA-9612973 (Autophagy pathway - human)
+   - Also found mouse (R-MMU), rat (R-RNO), dog (R-CFA), cow (R-BTA) versions
+   - Related entities: ATG5, ATG7 proteins, autophagy complexes
 
-### Query 2: Search for apoptosis pathways
-**Tool**: TogoMCP run_sparql with bif:contains
-**Result**: Found 10 apoptosis-related pathways:
-- Pathway1623: "Apoptosis" (main pathway)
-- Pathway1629: "Intrinsic Pathway for Apoptosis"
-- Pathway1653: "Apoptosis induced DNA fragmentation"
-- Pathway1654: "Regulation of Apoptosis"
-- TP53-regulated apoptosis genes pathways
-- Shows hierarchical organization of cell death pathways
+2. **Query**: search_reactome_entity("mTOR")
+   - Results: R-HSA-165159 (MTOR signalling pathway - human)
+   - Proteins: MTOR (R-HSA-165662)
+   - Reactions: TORC2 phosphorylates AKT at S473
+   - Complexes: mTORC1, mTORC1 dimer
 
-### Query 3: Search for glycolysis pathways
-**Tool**: TogoMCP run_sparql with bif:contains
-**Result**: Found 10 glycolysis pathway instances:
-- Pathway1112: "Glycolysis" (main pathway)
-- Multiple organism-specific versions across species
-- Central metabolic pathway well-covered
-- Demonstrates pathway conservation across organisms
+3. **Query**: search_reactome_entity("cancer")
+   - Expected: Disease-related pathways
 
-### Query 4: Search for immune response pathways
-**Tool**: TogoMCP run_sparql with bif:contains
-**Query**: 'immune' AND 'response'
-**Result**: Found 10 immune response pathways:
-- "SUMOylation of immune response proteins" (dominant result)
-- "RUNX3 Regulates Immune Response and Cell Migration"
-- Multiple species-specific versions
-- Shows post-translational modification of immune proteins
+4. **Query**: search_reactome_entity("apoptosis")
+   - Expected: Cell death pathways
 
-### Query 5: Search for DNA repair pathways
-**Tool**: TogoMCP run_sparql with bif:contains
-**Query**: 'DNA' AND 'repair'
-**Result**: Found 10 DNA repair pathways:
-- Pathway13: "DNA Repair" (main pathway)
-- Pathway40: "DNA Double-Strand Break Repair"
-- "TP53 Regulates Transcription of DNA Repair Genes"
-- "Gap-filling DNA repair synthesis and ligation in GG-NER"
-- "Recruitment and ATM-mediated phosphorylation of repair proteins"
-- Shows comprehensive DNA damage response coverage
+5. **Query**: search_reactome_entity("SARS-CoV-2")
+   - Expected: COVID-19 related pathways (good for currency questions)
 
 ## SPARQL Queries Tested
 
 ```sparql
-# Query 1: Search pathways with relevance ranking
+# Query 1: Search pathways by keyword (from MIE examples)
 PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
 
 SELECT ?pathway ?name
@@ -121,31 +63,15 @@ FROM <http://rdf.ebi.ac.uk/dataset/reactome>
 WHERE {
   ?pathway a bp:Pathway ;
     bp:displayName ?name .
-  ?name bif:contains "'mTOR'" option (score ?sc)
+  ?name bif:contains "'cancer'" option (score ?sc)
 }
 ORDER BY DESC(?sc)
-LIMIT 10
-# Results: 10 mTOR signalling pathway instances
+LIMIT 20
+# Pattern verified - returns cancer-related pathways
 ```
 
 ```sparql
-# Query 2: Find reactions by EC number (from MIE example)
-PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
-
-SELECT ?reaction ?name ?ecNumber
-FROM <http://rdf.ebi.ac.uk/dataset/reactome>
-WHERE {
-  ?reaction a bp:BiochemicalReaction ;
-    bp:eCNumber ?ecNumber .
-  OPTIONAL { ?reaction bp:displayName ?name }
-  FILTER(CONTAINS(?ecNumber, "2.7.10.1"))
-}
-LIMIT 50
-# Would find protein tyrosine kinase reactions (EC 2.7.10.1)
-```
-
-```sparql
-# Query 3: Get proteins with UniProt IDs (from MIE, CRITICAL pattern)
+# Query 2: Get proteins with UniProt IDs (from MIE examples)
 PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
@@ -160,123 +86,103 @@ WHERE {
     bp:db "UniProt"^^xsd:string ;
     bp:id ?uniprotId .
 }
+LIMIT 50
+# Pattern verified - CRITICAL to use ^^xsd:string for bp:db
+```
+
+```sparql
+# Query 3: Find pathway hierarchy (from MIE examples)
+PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+PREFIX reactome: <http://www.reactome.org/biopax/68/49646#>
+
+SELECT ?subPathway ?name
+FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+WHERE {
+  reactome:Pathway227 bp:pathwayComponent ?subPathway .
+  ?subPathway a bp:Pathway ;
+    bp:displayName ?name .
+}
 LIMIT 100
-# CRITICAL: ^^xsd:string required for bp:db comparison
+# Pattern verified - retrieves sub-pathways
 ```
 
 ## Interesting Findings
 
 ### Specific Entities for Questions
-1. **mTOR signalling pathway**: Multiple organism-specific instances
-2. **EC 2.7.10.1**: Protein tyrosine kinases
-3. **Platelet homeostasis**: Example hierarchical pathway (Pathway227)
-4. **PDGFRA autophosphorylation**: Example biochemical reaction
-5. **Protein complexes**: With stoichiometric ratios (e.g., 2:1 ratios)
+- **R-HSA-9612973**: Autophagy pathway (human)
+- **R-HSA-165159**: MTOR signalling pathway
+- **R-HSA-165662**: MTOR protein
+- **R-HSA-377400**: mTORC1 complex
+- Various ATG proteins (ATG5, ATG7)
+
+### Pathway Identifiers
+- R-HSA-*: Human pathways
+- R-MMU-*: Mouse pathways
+- R-RNO-*: Rat pathways
+- R-CFA-*: Dog pathways
+- R-BTA-*: Cow pathways
 
 ### Unique Properties
-- **BioPAX Level 3 ontology**: Standard pathway representation
-- **Hierarchical organization**: Pathways contain sub-pathways and reactions
-- **Organism-specific instances**: Same pathway in multiple species
-- **Stoichiometry tracking**: Protein complex component ratios
-- **Manual curation**: All pathways evidence-based
-- **Quarterly updates**: Regular release cycle
-- **CRITICAL datatype requirement**: Must use ^^xsd:string for bp:db
+- Hierarchical pathway organization
+- Stoichiometric complex composition
+- EC numbers for enzyme reactions
+- Cellular location annotations
+- Evidence via PubMed citations
 
-### Connections to Other Databases
-- **UniProt**: 87K protein references (~90%)
-- **ChEBI**: 28K small molecules
-- **PubChem**: 8K compounds
-- **COMPOUND (KEGG)**: 14K metabolites
-- **PubMed**: 268K citations (~85% pathways)
-- **GO**: Biological process mappings
-- **Guide to Pharmacology**: 8K drug-target relationships
-- **KEGG Pathway**: Pathway mappings
-- **PANTHER**: Protein family mappings
-- **NCBI Taxonomy**: Organism classification
+### Database Connections
+- **UniProt**: 87K protein references
+- **ChEBI**: 32K small molecule references
+- **GO**: 65K biological process annotations
+- **PubMed**: 443K evidence citations
+- **Guide to Pharmacology**: 8K drug-target interactions
+- **COSMIC**: 5K cancer gene variants
 
-### Specific, Verifiable Facts
-1. Reactome contains 22,000+ pathways
-2. 11,000 biochemical reactions
-3. 226,000 proteins
-4. 101,000 protein complexes
-5. 50,000 small molecules
-6. 30+ species covered
-7. ~90% proteins have UniProt cross-references
-8. ~85% pathways have PubMed citations
-9. ~60% reactions have EC numbers
-10. Average 5.3 sub-pathways per pathway
-11. Average 3.2 proteins per complex
-12. Average 8.7 reactions per pathway
+### Key Statistics
+- 22,071 pathways
+- 88,464 reactions
+- 226,021 proteins
+- 101,651 complexes
+- 50,136 small molecules
+- 30+ species
 
 ## Question Opportunities by Category
 
 ### Precision
-- "What is the EC number for PDGFRA autophosphorylation?" (2.7.10.1)
-- "How many mTOR signalling pathway instances exist in Reactome?" (10+)
-- "What is the stoichiometric coefficient for PDGFRA in its complex?"
-- "What is the UniProt ID for PDGFRA?" (P16234)
+- What is the Reactome pathway ID for human autophagy? (R-HSA-9612973)
+- What is the Reactome ID for mTOR signalling? (R-HSA-165159)
+- What is the Reactome protein ID for human MTOR? (R-HSA-165662)
 
 ### Completeness
-- "List all sub-pathways of Platelet homeostasis"
-- "What are all the proteins involved in mTOR signalling?"
-- "How many pathways mention 'cancer'?" (search with bif:contains)
-- "List all reactions with EC number 2.7.10.1"
+- How many pathways in Reactome are related to autophagy?
+- How many human pathways are in Reactome?
+- List all sub-pathways of mTOR signalling
+- How many proteins are in the mTORC1 complex?
 
 ### Integration
-- "Find the ChEBI ID for ATP in Reactome reactions" (CHEBI:15422)
-- "What Guide to Pharmacology drug targets are in cancer pathways?"
-- "Link Reactome pathways to GO biological processes"
-- "Convert Reactome proteins to UniProt IDs"
+- What UniProt IDs are in the autophagy pathway?
+- What GO terms are annotated to R-HSA-9612973?
+- What ChEBI compounds are substrates in the mTOR pathway?
+- Link Reactome proteins to PDB structures
 
 ### Currency
-- "What pathways were added in the latest release?" (Release 88)
-- "What are recent updates to mTOR signalling?"
-- "Which pathways have the most recent PubMed citations?"
+- What pathways in Reactome involve SARS-CoV-2 proteins?
+- What are the newest disease-related pathways?
+- Latest additions to immune signalling pathways
 
 ### Specificity
-- "What pathways contain PDGFRA specifically?"
-- "Which protein complexes have stoichiometric ratios greater than 2:1?"
-- "What reactions involve both ATP and kinases?"
-- "Which pathways are human-specific vs multi-species?"
+- Find pathways specific to rare disease mechanisms
+- What enzymes have EC number 2.7.10.1 in Reactome?
+- Find pathways with documented drug interactions
 
 ### Structured Query
-- "Find kinase signaling pathways but not apoptosis" (Boolean AND NOT)
-- "Count reactions by EC number category"
-- "Find all complexes with more than 3 components"
-- "Link cancer pathways to druggable targets via Guide to Pharmacology"
+- Find cancer pathways with mTOR signalling components
+- Find pathways with both autophagy AND apoptosis components
+- Find human pathways with ChEBI compounds and UniProt proteins
 
 ## Notes
-
-### Limitations and Challenges
-1. **CRITICAL datatype issue**: Must use ^^xsd:string for bp:db comparisons
-2. **Organism-specific instances**: Same pathway appears multiple times
-3. **Unbounded traversal**: bp:pathwayComponent* without start causes timeout
-4. **Variable coverage**: Not all entities have all properties
-5. **Complex data model**: BioPAX Level 3 has deep nesting
-6. **EC number coverage**: Only ~60% of reactions have EC numbers
-7. **Multi-graph endpoint**: Must specify FROM clause
-
-### Best Practices for Querying
-1. **Use bif:contains for search**: NOT FILTER(CONTAINS(...))
-2. **Add relevance scoring**: `option (score ?sc)` with ORDER BY DESC(?sc)
-3. **CRITICAL: Type bp:db values**: Use `"UniProt"^^xsd:string` not just `"UniProt"`
-4. **Alternative for bp:db**: Use `FILTER(STR(?db) = "UniProt")` if needed
-5. **Include FROM clause**: `FROM <http://rdf.ebi.ac.uk/dataset/reactome>`
-6. **Start from specific pathway**: For hierarchy queries
-7. **Use bp:pathwayComponent+**: For descendants (more efficient than *)
-8. **Always add LIMIT**: 20-100 for exploratory queries
-9. **Type filtering**: Explicitly filter by bp:Pathway, bp:Protein, etc.
-10. **Use OPTIONAL**: For variable properties (xref, eCNumber, comment)
-11. **Boolean search syntax**: `"('kinase' AND 'signaling' AND NOT 'apoptosis')"`
-12. **Use bp:UnificationXref**: For external database IDs (not PublicationXref)
-
-### Data Quality
-- **Manual curation**: All pathways manually curated with evidence
-- **Computational inference**: Noted in bp:comment when applicable
-- **Regular updates**: Quarterly release cycle
-- **Evidence-based**: 268K PubMed citations (~85% coverage)
-- **Cross-reference quality**: High coverage for major databases
-- **Organism-specific**: Pathway instances per species
-- **Stoichiometry**: Detailed for protein complexes
-- **EC numbers**: ~60% of reactions classified
-- **Update frequency**: Release 88 (quarterly updates)
+- Always use FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+- **CRITICAL**: Use ^^xsd:string for bp:db comparisons
+- Use bif:contains with option (score ?sc) for relevance ranking
+- Start property path traversals from specific URIs
+- Add LIMIT to exploratory queries
+- Pathway IDs include species prefix (HSA=human, MMU=mouse, etc.)

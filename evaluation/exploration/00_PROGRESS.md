@@ -1,84 +1,155 @@
-# Exploration Progress
+# TogoMCP Database Exploration Summary
 
-## Session 1 - December 2025
+## Exploration Status: COMPLETE ✅
 
-### Completed Databases (22 of 23)
-- bacdive ✅
-- chebi ✅
-- chembl ✅
-- clinvar ✅
-- ddbj ✅
-- ensembl ✅
-- glycosmos ✅
-- go ✅
-- medgen ✅
-- mediadive ✅
-- mesh ✅
-- mondo ✅
-- nando ✅
-- ncbigene ✅
-- pdb ✅
-- pubchem ✅
-- pubmed ✅
-- pubtator ✅
-- reactome ✅
-- rhea ✅
-- taxonomy ✅
-- uniprot ✅
+All 23 databases have been explored and documented.
 
-### Remaining Databases (1 remaining)
-- amrportal ⏳
+## Database List with Exploration Files
 
-### Notes
-- Comprehensive exploration of all major life sciences databases
-- All exploration reports saved with detailed findings
-- Cross-database integration opportunities identified
+| # | Database | File | Status | Key Statistics |
+|---|----------|------|--------|----------------|
+| 1 | amrportal | amrportal_exploration.md | ✅ | 1.7M phenotypes, 1.1M genotypes |
+| 2 | bacdive | bacdive_exploration.md | ✅ | 97K bacterial strains, phenotypes |
+| 3 | chebi | chebi_exploration.md | ✅ | 161K entities, ontology hierarchy |
+| 4 | chembl | chembl_exploration.md | ✅ | 2.4M compounds, 15K targets, bioactivity |
+| 5 | clinvar | clinvar_exploration.md | ✅ | 2.7M variants, clinical significance |
+| 6 | ddbj | ddbj_exploration.md | ✅ | Nucleotide sequences, gene annotations |
+| 7 | ensembl | ensembl_exploration.md | ✅ | Multi-species genes, transcripts |
+| 8 | glycosmos | glycosmos_exploration.md | ✅ | 117K glycans, 153K glycoproteins |
+| 9 | go | go_exploration.md | ✅ | 44K terms, 3 aspects (BP/MF/CC) |
+| 10 | medgen | medgen_exploration.md | ✅ | 1.1M concepts, disease-gene links |
+| 11 | mediadive | mediadive_exploration.md | ✅ | 3,289 culture media recipes |
+| 12 | mesh | mesh_exploration.md | ✅ | 30K descriptors, tree hierarchy |
+| 13 | mondo | mondo_exploration.md | ✅ | 24K diseases, cross-refs to OMIM/Orphanet |
+| 14 | nando | nando_exploration.md | ✅ | 2,777 rare diseases (Japan), trilingual |
+| 15 | ncbigene | ncbigene_exploration.md | ✅ | Human genes, symbols, aliases |
+| 16 | pdb | pdb_exploration.md | ✅ | 228K structures, ligands, methods |
+| 17 | pubchem | pubchem_exploration.md | ✅ | 118M compounds, bioactivities, cross-refs |
+| 18 | pubmed | pubmed_exploration.md | ✅ | 35M+ articles, citations, MeSH |
+| 19 | pubtator | pubtator_exploration.md | ✅ | >10M text mining annotations |
+| 20 | reactome | reactome_exploration.md | ✅ | 15K pathways, 12K reactions, 11K proteins |
+| 21 | rhea | rhea_exploration.md | ✅ | 19K reactions, enzyme-substrate links |
+| 22 | taxonomy | taxonomy_exploration.md | ✅ | 2.6M taxa, lineage hierarchy |
+| 23 | uniprot | uniprot_exploration.md | ✅ | 571K proteins (Swiss-Prot), enzymes, pathways |
 
----
+## Key Findings Summary
 
-## Session 2 - January 2026
+### Universal Query Patterns
 
-### Completed Databases (1 of 1)
-- amrportal ✅
+1. **bif:contains syntax**:
+   ```sparql
+   ?label bif:contains "'keyword'" option (score ?sc)
+   ?label bif:contains "'keyword1' AND 'keyword2'" option (score ?sc)
+   ```
 
-### Summary
-- **amrportal** exploration completed with thorough analysis
-- Found unique antimicrobial resistance surveillance data
-- 1.7M phenotypic + 1.1M genotypic AMR measurements
-- Excellent phenotype-genotype correlation via BioSample
-- Geographic (150+ countries) and temporal (1911-2025) coverage
-- Strong integration with BioSample, SRA, INSDC, PubMed, ARO, Taxonomy
+2. **Always use FROM clause** for graph specification
 
-### Key Findings
-- Extreme MDR isolates (30+ drug resistance)
-- blaNDM-1 carbapenem resistance widely detected
-- Geographic hotspots: USA, UK, Norway for ciprofloxacin-resistant E. coli
-- Temporal resistance trends analyzable (2010-2023)
-- 65% of samples have phenotype-genotype linkage
-- 30% of phenotypes have quantitative MIC data
+3. **LIMIT required** for exploratory queries on large datasets
 
----
+4. **OPTIONAL** for incomplete coverage properties
 
-## Final Status
+### Cross-Database Integration Opportunities
 
-### All 23 Databases Explored ✅
+| Source DB | Target DB | Link Type |
+|-----------|-----------|-----------|
+| UniProt | GO | Function annotation |
+| UniProt | Reactome | Pathway participation |
+| UniProt | PDB | 3D structure |
+| ChEMBL | ChEBI | Compound identity |
+| ChEMBL | UniProt | Target protein |
+| ClinVar | MONDO | Disease classification |
+| ClinVar | NCBIGene | Gene association |
+| BacDive | MediaDive | Strain-medium compatibility |
+| BacDive | Taxonomy | Organism classification |
+| NANDO | MONDO | Disease mapping |
+| PubTator | MeSH | Disease annotation |
+| PubTator | NCBIGene | Gene annotation |
+| AMRPortal | Taxonomy | Organism |
+| AMRPortal | BioSample | Sample metadata |
 
-**Exploration Complete!**
-- Total databases: 23
-- Exploration sessions: 2
-- All reports saved to `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/`
-- Summary file created: `00_SUMMARY.md`
-- Ready for question generation phase (PROMPT 2)
+### Database-Specific Critical Notes
 
-### Database Coverage Recommended for 120 Questions
+| Database | Critical Pattern | Anti-Pattern |
+|----------|------------------|--------------|
+| DDBJ | Filter by entry ID before joins | Queries without entry filter timeout |
+| GlyCosmos | Always specify FROM (100+ graphs) | Omitting FROM causes timeout |
+| BacDive | Use OPTIONAL for phenotypes | Requiring all phenotypes excludes 60% |
+| PubTator | Filter by entity type ("Disease"/"Gene") | Mixed types confuse results |
+| AMRPortal | Filter by organism first | Broad aggregations timeout |
+| NANDO | Use language filter for labels | Returns all 3 languages |
 
-**Tier 1 (8-12 questions each):**
-UniProt (12), PubChem (10), ChEMBL (10), GO (10), ClinVar (10), Reactome (8), PDB (8)
+### Question Generation Opportunities
 
-**Tier 2 (4-6 questions each):**
-AMR Portal (6), NCBI Gene (6), MeSH (6), Rhea (6), ChEBI (5), MONDO (5), Ensembl (5)
+**High-Value Precision Questions** (specific answers):
+- UniProt accession numbers, PDB IDs, gene symbols
+- Pathway names, reaction equations, enzyme EC numbers
+- Disease identifiers (MONDO, NANDO), variant IDs (ClinVar)
 
-**Tier 3 (2-4 questions each):**
-NANDO (4), BacDive (4), MediaDive (4), MedGen (3), PubMed (3), PubTator (3), GlyCosmos (3), Taxonomy (3), DDBJ (2)
+**High-Value Completeness Questions** (counts, lists):
+- Number of entities in each database
+- Lists of specific categories (e.g., human kinases, beta-lactam genes)
+- Coverage statistics
 
-**Total: 120 questions** balanced across all databases
+**High-Value Integration Questions** (cross-database):
+- Protein → pathway → disease connections
+- Gene → variant → clinical significance chains
+- Organism → strain → culture medium links
+
+**High-Value Specificity Questions** (detailed properties):
+- Molecular weights, resolution values, coordinates
+- Phenotype values, geographic distributions
+- Temporal trends, frequency counts
+
+## Files Created
+
+Total: 24 files (1 summary + 23 exploration reports)
+
+```
+/Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/
+├── 00_PROGRESS.md (this file)
+├── amrportal_exploration.md
+├── bacdive_exploration.md
+├── chebi_exploration.md
+├── chembl_exploration.md
+├── clinvar_exploration.md
+├── ddbj_exploration.md
+├── ensembl_exploration.md
+├── glycosmos_exploration.md
+├── go_exploration.md
+├── medgen_exploration.md
+├── mediadive_exploration.md
+├── mesh_exploration.md
+├── mondo_exploration.md
+├── nando_exploration.md
+├── ncbigene_exploration.md
+├── pdb_exploration.md
+├── pubchem_exploration.md
+├── pubmed_exploration.md
+├── pubtator_exploration.md
+├── reactome_exploration.md
+├── rhea_exploration.md
+├── taxonomy_exploration.md
+└── uniprot_exploration.md
+```
+
+## Next Steps
+
+1. **Question Generation Phase**: Use exploration reports to generate evaluation questions
+2. **Question Categories**:
+   - Precision (specific identifier lookups)
+   - Completeness (counts, comprehensive lists)
+   - Integration (cross-database queries)
+   - Currency (recent updates, trends)
+   - Specificity (detailed property queries)
+   - Structured Query (complex SPARQL patterns)
+
+3. **Validation**: Each question should be tested with actual SPARQL queries
+
+## Summary Statistics
+
+- **Total databases explored**: 23
+- **Total exploration reports**: 23
+- **Estimated unique entities**: >100 million
+- **Cross-reference types**: 50+
+- **Geographic coverage**: Global (AMRPortal: 150+ countries)
+- **Temporal coverage**: Historical to present

@@ -1,4 +1,4 @@
-iend=02 # 10
+iend=10 # 10
 qsdir=../questions
 resdir=../results
 for i in {01..${iend}}; do

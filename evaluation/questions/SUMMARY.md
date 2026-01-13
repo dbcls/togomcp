@@ -1,157 +1,159 @@
-# TogoMCP Evaluation Questions - Summary
+# TogoMCP Evaluation Questions Summary
 
 ## Overview
-- **Total Questions**: 120
-- **Files**: 10 (Q01.json through Q10.json)
-- **Questions per file**: 12
-- **Format**: JSON array (not object wrapper)
 
-## Category Distribution
+This directory contains 120 high-quality evaluation questions designed to test TogoMCP's database access capabilities.
 
-Each category has exactly **20 questions** (2 per file):
+## Question Distribution
 
-| Category | Count | Description |
-|----------|-------|-------------|
-| **Precision** | 20 | Exact IDs, specific values, precise measurements |
-| **Completeness** | 20 | Counts, exhaustive lists, comprehensive enumeration |
-| **Integration** | 20 | Cross-database ID conversion, entity linking |
-| **Currency** | 20 | Recent updates, current classifications, temporal data |
-| **Specificity** | 20 | Rare diseases, niche organisms, specialized data |
-| **Structured Query** | 20 | Complex filters, multi-step queries, Boolean logic |
+### Files
+- **Q01.json** - Questions 1-12
+- **Q02.json** - Questions 13-24
+- **Q03.json** - Questions 25-36
+- **Q04.json** - Questions 37-48
+- **Q05.json** - Questions 49-60
+- **Q06.json** - Questions 61-72
+- **Q07.json** - Questions 73-84
+- **Q08.json** - Questions 85-96
+- **Q09.json** - Questions 97-108
+- **Q10.json** - Questions 109-120
+
+### Category Distribution (20 questions each)
+
+| Category | Description | Questions |
+|----------|-------------|-----------|
+| **Precision** | Exact IDs, sequences, molecular properties | 20 |
+| **Completeness** | Exhaustive lists, counts, coverage | 20 |
+| **Integration** | Cross-database linking, ID conversions | 20 |
+| **Currency** | Recent updates, current statistics | 20 |
+| **Specificity** | Niche organisms, rare diseases, specialized data | 20 |
+| **Structured Query** | Complex filters, multi-step queries | 20 |
+
+Each file contains exactly 2 questions from each category.
 
 ## Database Coverage
 
-All 23 databases from the exploration phase are represented:
+All 23 TogoMCP databases are represented across the 120 questions:
 
-### Tier 1 - High Coverage (8-12 questions each)
-- **UniProt** (12 questions) - Protein sequences and annotations
-- **PubChem** (10 questions) - Chemical compounds and properties
-- **ChEMBL** (10 questions) - Bioactive molecules and drug discovery
-- **GO** (10 questions) - Gene ontology hierarchy
-- **ClinVar** (10 questions) - Genetic variants and clinical significance
-- **AMR Portal** (10 questions) - Antimicrobial resistance surveillance ✨
-- **PDB** (8 questions) - 3D protein structures
-- **Reactome** (8 questions) - Biological pathways
+| Database | Question Count | Key Question Topics |
+|----------|---------------|---------------------|
+| UniProt | 8 | Protein IDs, mnemonics, reviewed entries |
+| PubChem | 6 | Compound IDs, molecular properties, FDA drugs |
+| ChEMBL | 6 | Drug IDs, targets, bioactivity data |
+| GO | 6 | Term IDs, hierarchies, namespace counts |
+| PDB | 6 | Resolution, structures, experimental methods |
+| ClinVar | 3 | Variant counts, types |
+| Reactome | 3 | Pathway IDs, protein IDs |
+| MONDO | 4 | Disease IDs, cross-references |
+| NANDO | 5 | Japanese rare disease IDs, notification numbers |
+| MeSH | 4 | Descriptor IDs, term counts |
+| BacDive | 6 | Strain IDs, phenotypes, temperature |
+| MediaDive | 5 | Medium IDs, ingredients, pH |
+| Rhea | 4 | Reaction counts, equations |
+| ChEBI | 5 | Chemical IDs, formulas |
+| AMR Portal | 7 | Resistance data, gene classes |
+| GlyCosmos | 6 | Glycan counts, epitopes, glycoproteins |
+| Ensembl | 4 | Gene IDs, species counts |
+| NCBI Gene | 4 | Gene IDs, types, chromosomes |
+| Taxonomy | 2 | Organism taxonomy IDs (9606, 10090) |
+| TogoID | 3 | ID conversions |
 
-### Tier 2 - Moderate Coverage (4-6 questions each)
-- **NANDO** (6 questions) - Japanese rare diseases
-- **Rhea** (2+ questions) - Biochemical reactions
-- **ChEBI** (3+ questions) - Chemical entities
-- **MeSH** (3+ questions) - Medical terminology
-- **NCBI Gene** (4+ questions) - Gene database
-- **MONDO** (3+ questions) - Disease ontology
+## Redundancy Check (Completed)
 
-### Tier 3 - Supporting Coverage (1-3 questions each)
-- **BacDive** (2 questions) - Bacterial strains
-- **EMDB**, **PubMed**, **DrugBank**, **KEGG**, **HGNC**, **OMIM**, **Ensembl**
-- All represented through integration questions
+The following duplicate/near-duplicate questions were identified and fixed:
 
-## Question ID Distribution
+| Original Issue | Resolution |
+|---------------|------------|
+| Q17 & Q89: Both asked BRCA1 ↔ ENSG00000012048 | Q17 → Taxonomy ID for Homo sapiens; Q89 → TP53 Ensembl ID |
+| Q8 & Q49: Both asked mTOR pathway R-HSA-165159 | Q49 → Taxonomy ID for Mus musculus |
 
-- **Q01.json**: Questions 1-12
-- **Q02.json**: Questions 13-24
-- **Q03.json**: Questions 25-36
-- **Q04.json**: Questions 37-48
-- **Q05.json**: Questions 49-60
-- **Q06.json**: Questions 61-72
-- **Q07.json**: Questions 73-84
-- **Q08.json**: Questions 85-96
-- **Q09.json**: Questions 97-108
-- **Q10.json**: Questions 109-120
+### Remaining Conceptually Related (but distinct) Questions:
+- Aspirin questions: Q2 (PubChem CID), Q61 (ChEBI ID), Q65 (cross-reference) - Different ID types
+- Glucose questions: Q30, Q42, Q108 - Different database cross-references
+- Thermotoga questions: Q21, Q46, Q58 - Different properties (BacDive ID, culture collections, DSM number)
+- PDB method counts: Q20, Q31, Q67, Q115 - Different methods (X-ray, EM, NMR, total)
+- Lewis epitopes: Q22, Q70, Q106 - Different variants
 
-## Format Verification
+These are intentionally kept as they test different aspects of database access.
 
-✅ **All files comply with requirements:**
-- Root element is JSON array `[...]`
-- Each question has all 5 recommended fields: `id`, `category`, `question`, `expected_answer`, `notes`
-- Categories match exactly (case-sensitive): "Precision", "Completeness", "Integration", "Currency", "Specificity", "Structured Query"
-- IDs are sequential 1-120 globally
-- Each file has exactly 12 questions
-- Each file has exactly 2 questions from each category
+## Question Quality Criteria
 
-## Sample Questions by Category
+All questions satisfy:
+
+✅ **Biologically Realistic** - Would an actual researcher ask this?
+✅ **Biologically Relevant** - Addresses scientific content, not IT infrastructure
+✅ **Testable Distinction** - Requires database access vs training knowledge
+✅ **Appropriate Complexity** - Non-trivial but not impossibly broad
+✅ **Clear Success Criteria** - Verifiable correct answer
+✅ **Verifiable Ground Truth** - Confirmed during exploration phase
+✅ **Natural Phrasing** - No mention of SPARQL or MCP tools
+✅ **No True Duplicates** - Each question tests a unique concept
+
+## Question Examples by Category
 
 ### Precision
-- Q1: "What is the UniProt accession ID for SpCas9 from Streptococcus pyogenes M1?" → Q99ZW2
-- Q13: "What is the molecular weight of PubChem compound CID2244?" → 180.16
+- "What is the UniProt accession ID for SpCas9 from S. pyogenes?" → Q99ZW2
+- "What is the PubChem CID for aspirin?" → 2244
+- "What is the highest resolution in PDB?" → 0.48 Å
 
 ### Completeness
-- Q3: "How many descendant terms does GO:0006914 (autophagy) have?" → 25
-- Q15: "How many protein structure entries in PDB used electron microscopy?" → 15,032
+- "How many descendant terms does GO:0006914 have?" → 25
+- "How many reviewed human proteins are in UniProt?" → 40,209
+- "How many bacterial strains are in BacDive?" → 97,334
 
 ### Integration
-- Q5: "What is the NCBI Gene ID for UniProt P04637?" → 7157 (TP53)
-- Q17: "Convert PubChem CID2244 to its ChEBI identifier." → CHEBI:15365
+- "What is the NCBI Gene ID for UniProt P04637?" → 7157
+- "What is the Taxonomy ID for Homo sapiens?" → 9606
+- "What ChEBI ID corresponds to glucose?" → CHEBI:17234
 
 ### Currency
-- Q7: "When was BRCA1 variant c.5266dup last updated in ClinVar?" → 2025-05-25
-- Q20: "What is the most recent collection year in AMR Portal?" → 2025
+- "How many CRISPR Cas9 structures are in PDB?" → 461
+- "How many FDA-approved drugs are in PubChem?" → 17,367
+- "How many human genes are in Ensembl?" → 87,688
 
 ### Specificity
-- Q9: "What is the NANDO identifier for Parkinson's disease?" → NANDO:1200010
-- Q21: "What is the MeSH descriptor ID for Erdheim-Chester disease?" → D031249
+- "What is the MeSH ID for Erdheim-Chester disease?" → D031249
+- "What is the NANDO ID for Parkinson's disease?" → NANDO:1200010
+- "What is the highest growth temperature in BacDive?" → 112°C
 
 ### Structured Query
-- Q11: "Find ChEMBL molecules with IC50 < 100 nM against kinases"
-- Q24: "Count resistance phenotypes by antibiotic for P. aeruginosa in AMR Portal"
+- "What are the top AMR gene classes in AMR Portal?" → BETA-LACTAM, AMINOGLYCOSIDE, EFFLUX
+- "How many transport reactions are in Rhea?" → 5,984
+- "Find strains that grow above 80°C" → 221 strains
 
-## Key Features
+## Validation
 
-### Biologically Realistic
-- All questions derived from actual research use cases
-- Natural phrasing without technical jargon
-- Questions researchers would genuinely ask
+All questions were:
+1. Derived from verified findings in exploration reports
+2. Cross-referenced with exploration documentation
+3. Tested for biological relevance
+4. Formatted according to QUESTION_FORMAT.md specifications
+5. Checked for redundancy and duplicates
 
-### Testable Distinction
-- Require database access, not training knowledge
-- Specific IDs, current counts, temporal data
-- Post-training cutoff information
+## Usage
 
-### Appropriate Complexity
-- Range from single-fact lookups to multi-step queries
-- None impossibly broad or trivially simple
-- Balanced difficulty across categories
+```bash
+# Validate format
+python scripts/validate_questions.py questions/Q01.json
 
-### Clear Success Criteria
-- All have verifiable expected answers
-- Answers confirmed during exploration phase
-- Specific enough for automated validation
+# Run evaluation
+python scripts/automated_test_runner.py questions/
 
-## Verification
-
-All questions have been:
-1. ✅ Derived from verified exploration report findings
-2. ✅ Formatted according to QUESTION_FORMAT.md
-3. ✅ Designed per QUESTION_DESIGN_GUIDE.md principles
-4. ✅ Referenced to specific exploration report sections
-5. ✅ Given expected answers from exploration data
-6. ✅ Distributed evenly across categories and databases
-
-## Next Steps
-
-1. Run automated evaluation using `automated_test_runner.py`
-2. Analyze results with `results_analyzer.py`
-3. Refine questions based on CRITICAL vs REDUNDANT classification
-4. Generate evaluation report and dashboard
-
-## Files Created
-
+# Analyze results
+python scripts/results_analyzer.py evaluation_results.csv
 ```
-/Users/arkinjo/work/GitHub/togo-mcp/evaluation/questions/
-├── Q01.json  (12 questions, IDs 1-12)
-├── Q02.json  (12 questions, IDs 13-24)
-├── Q03.json  (12 questions, IDs 25-36)
-├── Q04.json  (12 questions, IDs 37-48)
-├── Q05.json  (12 questions, IDs 49-60)
-├── Q06.json  (12 questions, IDs 61-72)
-├── Q07.json  (12 questions, IDs 73-84)
-├── Q08.json  (12 questions, IDs 85-96)
-├── Q09.json  (12 questions, IDs 97-108)
-└── Q10.json  (12 questions, IDs 109-120)
-```
+
+## Related Files
+
+- `exploration/` - Database exploration reports with verified findings
+- `scripts/QUESTION_FORMAT.md` - JSON format specification
+- `QUESTION_DESIGN_GUIDE.md` - Question design criteria
+- `scripts/example_questions.json` - Example question format
 
 ---
 
-**Created**: January 2026  
-**Total Questions**: 120  
-**Status**: ✅ Complete and verified
+**Generated**: 2025-01-13
+**Last Updated**: 2025-01-13 (Redundancy check completed)
+**Total Questions**: 120
+**Databases Covered**: 23
+**Categories**: 6

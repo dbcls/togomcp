@@ -74,12 +74,46 @@ For EACH database that needs exploration:
    - Specific, verifiable facts not commonly known
    
    ## Question Opportunities by Category
-   - Precision: [ideas]
-   - Completeness: [ideas]
-   - Integration: [ideas]
-   - Currency: [ideas]
-   - Specificity: [ideas]
-   - Structured Query: [ideas]
+   
+   **FOCUS ON BIOLOGICAL CONTENT, NOT INFRASTRUCTURE METADATA**
+   
+   When identifying question opportunities, prioritize:
+   ✅ Biological entities (proteins, genes, diseases, compounds)
+   ✅ Scientific properties (molecular weight, sequences, pathways)
+   ✅ Research-relevant metadata (clinical significance, resistance patterns)
+   ✅ Experimental methodology when it affects interpretation (AST methods, resolution)
+   
+   AVOID suggesting questions about:
+   ❌ Database versions or release numbers
+   ❌ Software tools used (unless methodology-critical)
+   ❌ Pure IT infrastructure (server details, update schedules)
+   ❌ Administrative metadata with no scientific value
+   
+   For each category, suggest questions about BIOLOGICAL/SCIENTIFIC CONTENT:
+   
+   - **Precision**: Specific biological IDs, measurements, sequences
+     Example: "What is the UniProt ID for SpCas9?" ✅
+     Avoid: "What version is the database?" ❌
+   
+   - **Completeness**: Counts of biological entities, comprehensive lists
+     Example: "How many kinase structures in PDB?" ✅
+     Avoid: "How many database updates this year?" ❌
+   
+   - **Integration**: Cross-database biological entity linking
+     Example: "Convert UniProt ID to NCBI Gene ID" ✅
+     Avoid: "Which databases link to this server?" ❌
+   
+   - **Currency**: Recent biological discoveries, updated classifications
+     Example: "What COVID-19 pathways added to Reactome?" ✅
+     Avoid: "What is the current database version?" ❌
+   
+   - **Specificity**: Rare diseases, specialized organisms, niche compounds
+     Example: "What is the NANDO ID for rare disease X?" ✅
+     Avoid: "What is the most common database format?" ❌
+   
+   - **Structured Query**: Complex biological queries with multiple criteria
+     Example: "Find kinase inhibitors with IC50 < 100 nM" ✅
+     Avoid: "Find databases updated after date X" ❌
    
    ## Notes
    - Any limitations or challenges with this database
@@ -196,5 +230,6 @@ IMPORTANT REMINDERS:
 - **Each database deserves thorough exploration**
 - **Existing exploration reports will be preserved** across sessions
 - **The prompt will automatically resume** where you left off
+- **Focus on biological/scientific content** - avoid pure infrastructure metadata
 
 Begin by checking for existing exploration reports, then proceed with thorough exploration of remaining databases.

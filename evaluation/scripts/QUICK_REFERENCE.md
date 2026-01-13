@@ -4,6 +4,8 @@
 
 ```bash
 export ANTHROPIC_API_KEY="your-key"
+./quick_start.sh
+# OR manually:
 python automated_test_runner.py example_questions.json
 python compute_costs.py evaluation_results.csv
 python results_analyzer.py evaluation_results.csv
@@ -25,6 +27,9 @@ python automated_test_runner.py questions.json -c config.json
 
 # JSON format output
 python automated_test_runner.py questions.json --format json
+
+# Run all Q01-Q10 batches
+./run_all_tests.sh
 ```
 
 ### Calculate Costs
@@ -54,6 +59,12 @@ python validate_questions.py questions.json --strict
 python validate_questions.py questions.json --estimate-cost
 ```
 
+### Verify Questions
+```bash
+# Verify question set completeness (for Q01-Q10 batch)
+python verify_questions.py
+```
+
 ### Analyze Results
 ```bash
 # Basic analysis
@@ -78,6 +89,27 @@ python generate_dashboard.py results.csv -o dashboard.html
 python generate_dashboard.py results.csv --open
 ```
 
+### Add LLM Evaluation
+```bash
+# Add LLM-based evaluation (requires Ollama)
+python add_llm_evaluation.py results.csv
+
+# With custom output
+python add_llm_evaluation.py results.csv -o results_with_llm.csv
+
+# Use different LLM model
+python add_llm_evaluation.py results.csv --llm-model mistral
+
+# Multiple files
+python add_llm_evaluation.py Q01_out.csv Q02_out.csv Q03_out.csv
+```
+
+### Query Usage (Conceptual)
+```bash
+# Shows how to query Anthropic usage API
+python query_anthropic_usage.py --start 2024-12-01 --end 2024-12-31
+```
+
 ## 📊 Complete Workflow
 
 ```bash
@@ -99,7 +131,10 @@ python results_analyzer.py results_$(date +%Y%m%d).csv -v
 # 6. Generate dashboard
 python generate_dashboard.py results_$(date +%Y%m%d).csv --open
 
-# 7. Export reports
+# 7. (Optional) Add LLM evaluation
+python add_llm_evaluation.py results_$(date +%Y%m%d).csv
+
+# 8. Export reports
 python results_analyzer.py results_$(date +%Y%m%d).csv --export analysis_$(date +%Y%m%d).md
 python compute_costs.py results_$(date +%Y%m%d).csv --export cost_$(date +%Y%m%d).json
 ```
@@ -129,7 +164,12 @@ python compute_costs.py results_$(date +%Y%m%d).csv --export cost_$(date +%Y%m%d
 | `compute_costs.py` | Calculate costs | results.csv | cost breakdown |
 | `results_analyzer.py` | Analyze results | results.csv | statistics + report.md |
 | `validate_questions.py` | Validate questions | questions.json | validation report |
+| `verify_questions.py` | Verify Q01-Q10 batch | (auto-detects) | verification report |
 | `generate_dashboard.py` | Create dashboard | results.csv | dashboard.html |
+| `add_llm_evaluation.py` | Add LLM evaluation | results.csv | enhanced results.csv |
+| `query_anthropic_usage.py` | Query usage API | (API call) | usage data |
+| `quick_start.sh` | Automated quickstart | - | runs full pipeline |
+| `run_all_tests.sh` | Run Q01-Q10 batch | Q01-Q10.json | combined results |
 
 ## 🎓 Question Categories
 
@@ -142,7 +182,7 @@ python compute_costs.py results_$(date +%Y%m%d).csv --export cost_$(date +%Y%m%d
 | **Specificity** | "MeSH ID for Erdheim-Chester?" | Niche topics |
 | **Structured Query** | "Find all kinases in UniProt+ChEMBL" | Complex queries |
 
-**Target**: 3-5 questions per category
+**Target**: 3-5 questions per category (or 2 per category for batch sets)
 
 ## 💰 Cost Information
 
@@ -175,6 +215,9 @@ python compute_costs.py results.csv
 
 # Export detailed breakdown
 python compute_costs.py results.csv --export cost_report.json
+
+# Check actual usage (conceptual)
+python query_anthropic_usage.py --start 2024-12-01 --end 2024-12-31
 ```
 
 ## 📈 Understanding Results
@@ -245,6 +288,8 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 | No tools used | Questions too simple, add DB requirements |
 | Low success | Simplify questions or check config |
 | High costs | Check cache metrics with compute_costs.py |
+| Ollama not found | Install Ollama for LLM evaluation |
+| Model not found | `ollama pull llama3.2` |
 
 ## 📊 Output Files
 
@@ -258,6 +303,18 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 - `togomcp_cache_read_input_tokens`: Cache read tokens
 - `tools_used`: Comma-separated MCP tools used
 - `value_add`: Assessment (CRITICAL/VALUABLE/MARGINAL/REDUNDANT)
+
+### Enhanced Results (with LLM evaluation)
+
+**Additional Columns**:
+- `baseline_llm_match`: LLM judges baseline contains answer
+- `baseline_llm_confidence`: LLM confidence (high/medium/low)
+- `baseline_llm_explanation`: Brief explanation
+- `togomcp_llm_match`: LLM judges TogoMCP contains answer
+- `togomcp_llm_confidence`: LLM confidence
+- `togomcp_llm_explanation`: Brief explanation
+- `full_combined_baseline_found`: Token OR LLM match
+- `full_combined_togomcp_found`: Token OR LLM match
 
 ### Cost Report (via compute_costs.py)
 
@@ -289,21 +346,24 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 
 ## 💡 Pro Tips
 
-1. **Estimate First**: Use `--estimate-cost` to budget before running
-2. **Calculate After**: Run `compute_costs.py` to verify spending
-3. **Start Small**: 5-10 questions to learn, then scale
-4. **Use Dates**: Name outputs with dates (`results_20250117.csv`)
-5. **Git Everything**: Version control questions, configs, and reports
-6. **Focus on CRITICAL**: These show clearest value-add
-7. **Check Tool Usage**: If <50%, questions may be too simple
-8. **Monitor Costs**: Track spending across iterations
-9. **Export Reports**: Save both cost and analysis reports
-10. **Iterate Fast**: Run → Calculate → Analyze → Refine → Repeat
+1. **Use Quick Start**: Run `./quick_start.sh` for automated setup
+2. **Batch Processing**: Use `./run_all_tests.sh` for Q01-Q10 files
+3. **Estimate First**: Use `--estimate-cost` to budget before running
+4. **Calculate After**: Run `compute_costs.py` to verify spending
+5. **Start Small**: 5-10 questions to learn, then scale
+6. **Use Dates**: Name outputs with dates (`results_20250117.csv`)
+7. **Git Everything**: Version control questions, configs, and reports
+8. **Focus on CRITICAL**: These show clearest value-add
+9. **Check Tool Usage**: If <50%, questions may be too simple
+10. **Monitor Costs**: Track spending across iterations
+11. **Export Reports**: Save both cost and analysis reports
+12. **LLM Evaluation**: Add semantic matching with `add_llm_evaluation.py`
+13. **Iterate Fast**: Run → Calculate → Analyze → Refine → Repeat
 
 ## 🎯 Quality Checklist
 
 **Good Question Set:**
-- [ ] 3-5 questions per category
+- [ ] 3-5 questions per category (or 2 for batch)
 - [ ] >70% tool usage rate
 - [ ] >70% questions show TogoMCP value-add
 - [ ] <10% problematic questions
@@ -318,6 +378,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 - [ ] Costs calculated after running
 - [ ] Analysis reports exported
 - [ ] Dashboard generated and reviewed
+- [ ] (Optional) LLM evaluation added
 - [ ] Insights documented
 - [ ] Iterations tracked in git
 
@@ -328,6 +389,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 | **Small** | 5-10 | 1-2h | ~$0.30 | Learn the system |
 | **Medium** | 20-40 | 3-6h | ~$1.30 | Comprehensive eval |
 | **Large** | 50+ | 1-2d | ~$3.00+ | Benchmark creation |
+| **Batch** | 120 (10×12) | 1-2d | ~$6.50 | Full evaluation |
 
 ## 🔄 Iteration Loop
 
@@ -337,6 +399,8 @@ Create Questions → Validate (+ estimate cost) → Run Eval
        |                                     Calculate Costs
        |                                            ↓
        └─────────── Refine ←────────── Analyze Results
+                                              ↓
+                                    (Optional) Add LLM Eval
 ```
 
 **Stop When:**
@@ -345,6 +409,48 @@ Create Questions → Validate (+ estimate cost) → Run Eval
 - <10% problematic questions
 - Clear CRITICAL candidates identified
 - Costs are within budget
+
+## 🧪 LLM Evaluation Feature
+
+### Prerequisites
+```bash
+# Install Ollama
+# macOS:
+brew install ollama
+
+# Linux:
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Windows:
+winget install Ollama.Ollama
+
+# Download model
+ollama pull llama3.2
+```
+
+### Usage
+```bash
+# Basic
+python add_llm_evaluation.py results.csv
+
+# Custom model
+python add_llm_evaluation.py results.csv --llm-model mistral
+
+# Multiple files
+python add_llm_evaluation.py Q01_out.csv Q02_out.csv
+```
+
+### What It Does
+- Uses generative LLM to judge if responses contain expected answers
+- Provides semantic understanding beyond token matching
+- Adds confidence levels and explanations
+- Complements token-based matching
+
+### Use Cases
+- Catch paraphrased answers
+- Understand context better
+- Validate borderline matches
+- Enhanced result analysis
 
 ## 📚 Quick Help
 
@@ -361,6 +467,9 @@ cat requirements.txt
 # View example questions
 cat example_questions.json | jq
 
+# View question schema
+cat question-schema.json | jq
+
 # Check config
 cat config.json | jq
 
@@ -368,32 +477,44 @@ cat config.json | jq
 python automated_test_runner.py --help
 python compute_costs.py --help
 python results_analyzer.py --help
+python validate_questions.py --help
+python add_llm_evaluation.py --help
 ```
 
 ## 🔗 Related Files
 
 - **README.md**: Full documentation with cost analysis section
+- **LLM_EVALUATION.md**: Guide to LLM-based evaluation
+- **QUESTION_FORMAT.md**: Detailed question format specification
 - **../README.md**: Main evaluation system overview
 - **../QUESTION_DESIGN_GUIDE.md**: How to create questions
 - **../PROJECT_STATUS.md**: Current progress and timeline
 - **requirements.txt**: Python dependencies
 - **config.json**: MCP configuration
 - **example_questions.json**: Sample questions
+- **question-schema.json**: JSON schema for validation
 
 ## ⚙️ Installation
 
 ```bash
-# Install dependencies
+# Quick start (recommended)
+./quick_start.sh
+
+# Or manual installation
 pip install -r requirements.txt
 
-# Or manually
+# Or install individually
 pip install claude-agent-sdk anthropic pandas
+
+# For LLM evaluation
+# Install Ollama (see LLM Evaluation section)
+pip install ollama
 
 # Set API key
 export ANTHROPIC_API_KEY="sk-ant-..."
 
 # Verify installation
-python -c "import anthropic, claude_agent_sdk; print('OK')"
+python -c "import anthropic, claude_agent_sdk, pandas; print('OK')"
 ```
 
 ## 🎨 Dashboard Features
@@ -429,11 +550,13 @@ The runner uses **isolated sessions**:
 ## 📞 Getting Help
 
 1. **Check README.md**: Full documentation with cost analysis
-2. **Run with --help**: `python script.py --help`
-3. **Check examples**: Review `example_questions.json`
-4. **Validate questions**: Find issues before running
-5. **Calculate costs**: Understand your spending
-6. **Review errors**: Error messages usually point to the issue
+2. **Check LLM_EVALUATION.md**: LLM evaluation guide
+3. **Check QUESTION_FORMAT.md**: Question format specification
+4. **Run with --help**: `python script.py --help`
+5. **Check examples**: Review `example_questions.json`
+6. **Validate questions**: Find issues before running
+7. **Calculate costs**: Understand your spending
+8. **Review errors**: Error messages usually point to the issue
 
 ## ✅ Success Indicators
 
@@ -447,6 +570,7 @@ You're on the right track when:
 - ✅ Dashboard shows clear patterns
 - ✅ Iteration improves results
 - ✅ Spending is within budget
+- ✅ LLM evaluation adds insights (if used)
 
 ## 🎯 Cost Optimization Tips
 
@@ -456,6 +580,42 @@ You're on the right track when:
 4. **Use Haiku for testing**: Much cheaper for question development
 5. **Track spending**: Monitor trends with compute_costs.py
 6. **Plan ahead**: Use --estimate-cost before large runs
+7. **Use quick_start.sh**: Automated pipeline saves time
+8. **Batch process**: Use run_all_tests.sh for Q01-Q10
+
+## 🔬 Advanced Features
+
+### Batch Processing
+```bash
+# Process Q01-Q10 automatically
+./run_all_tests.sh
+
+# Edit batch range in script
+vim run_all_tests.sh  # Change iend=10 to desired number
+```
+
+### Custom Pricing
+```bash
+# Create custom pricing file
+cp custom_pricing_example.json my_pricing.json
+vim my_pricing.json
+
+# Use custom pricing
+python compute_costs.py results.csv --pricing my_pricing.json
+```
+
+### Verify Question Batches
+```bash
+# Automatically checks Q01-Q10 batch
+python verify_questions.py
+
+# Verifies:
+# - 120 total questions
+# - 20 per category
+# - All IDs 1-120 present
+# - No duplicates
+# - Correct structure
+```
 
 ---
 
@@ -467,5 +627,6 @@ You're on the right track when:
 - Tool usage = question quality
 - CRITICAL questions = your benchmarks
 - Costs are predictable with isolated sessions
+- LLM evaluation adds semantic understanding
 
-**Need more details?** → Read [README.md](README.md)
+**Need more details?** → Read [README.md](README.md), [LLM_EVALUATION.md](LLM_EVALUATION.md), [QUESTION_FORMAT.md](QUESTION_FORMAT.md)
