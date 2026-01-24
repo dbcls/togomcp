@@ -1,4 +1,5 @@
 from fastmcp import FastMCP
+from fastmcp.server.dependencies import get_http_request
 import csv
 from typing import Dict
 import os
@@ -18,7 +19,9 @@ def toolcall_log(funname: str) -> None:
     :param funname: The name of the tool being called.
     :type funname: str
     """
-    logger.info(f"TogoMCP_tool: {funname}")
+    request: Request = get_http_request()
+    user_ip = request.headers.get("X-Forwarded-For",None)
+    logger.info(f"TogoMCP_tool: {funname}, IP: {user_ip}")
     return None
 
 
