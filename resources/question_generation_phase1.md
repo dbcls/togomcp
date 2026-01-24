@@ -1,238 +1,394 @@
-Your task is to thoroughly explore available databases in TogoMCP to prepare for question generation. Do NOT create any questions yet - this is purely an exploration phase.
+# TogoMCP Question Generation - Phase 1: Database Exploration
 
-⚠️ **TOKEN MANAGEMENT**: If you approach your token limit (around 150,000+ tokens used), STOP immediately. Do NOT rush through remaining databases with "concise" or "efficient" exploration. Quality over quantity. Save remaining databases for the next session.
+## Quick Reference
+- **Goal**: Thoroughly explore databases to prepare for question generation (DO NOT create questions yet)
+- **Output**: Exploration reports in `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/`
+- **Token Management**: STOP at ~180K tokens (Opus 4.5 has 200K context). Quality over quantity.
+- **Key Focus**: Biological/scientific content, not IT infrastructure
+- **Anti-Trivial**: Find facts requiring actual queries, not just MIE file reading
 
-SETUP:
-1. First, check which databases have already been explored:
-   - Look for existing exploration reports in `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/`
+---
+
+## Setup (First Session Only)
+
+1. **Check existing progress**:
+   - Look for exploration reports in `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/`
    - If reports exist, note which databases are DONE and skip them
 
-2. Read these files to understand the context:
-   * /Users/arkinjo/work/GitHub/togo-mcp/evaluation/QUESTION_DESIGN_GUIDE.md
-   * /Users/arkinjo/work/GitHub/togo-mcp/evaluation/scripts/QUESTION_FORMAT.md
-   * /Users/arkinjo/work/GitHub/togo-mcp/evaluation/scripts/example_questions.json
+2. **Read these context files**:
+   - `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/QUESTION_DESIGN_GUIDE.md`
+   - `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/scripts/QUESTION_FORMAT.md`
+   - `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/scripts/example_questions.json`
 
-3. Run list_databases() to see all available databases.
+3. **List available databases**: Run `list_databases()`
 
-4. Identify which databases still need exploration (databases without exploration reports).
+4. **Create exploration directory** (if it doesn't exist):
+   ```
+   /Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/
+   ```
 
-EXPLORATION TASK:
+---
+
+## CRITICAL WORKFLOW RULE
+
+⚠️ **EXPLORE → REPORT → (EVERY 3: PROGRESS) → NEXT DATABASE** ⚠️
+
+**DO THIS**:
+1. Explore database #1
+2. **IMMEDIATELY write report for database #1**
+3. Explore database #2
+4. **IMMEDIATELY write report for database #2**
+5. Explore database #3
+6. **IMMEDIATELY write report for database #3**
+7. **SAVE PROGRESS REPORT** (checkpoint: 3 databases done)
+8. Explore database #4
+9. **IMMEDIATELY write report for database #4**
+10. Explore database #5
+11. **IMMEDIATELY write report for database #5**
+12. Explore database #6
+13. **IMMEDIATELY write report for database #6**
+14. **SAVE PROGRESS REPORT** (checkpoint: 6 databases done)
+15. Continue pattern...
+
+**DO NOT DO THIS**:
+1. Explore database #1
+2. Explore database #2
+3. Explore database #3
+4. Try to write all reports ❌ (will hit token limit!)
+5. No progress checkpoints ❌ (can't resume if interrupted!)
+
+**Why**: 
+- Writing reports immediately prevents token overflow and captures findings while fresh
+- Progress checkpoints every 3 databases enable resuming if interrupted
+- Regular saves protect against context limit or session issues
+
+---
+
+## Exploration Workflow
+
 For EACH database that needs exploration:
 
-1. **Read the MIE file**: Call get_MIE_file(dbname)
+### 1. Read MIE File
+- Call `get_MIE_file(dbname)`
+- Study the ShEx schema (properties, relationships)
+- Review RDF examples (data patterns)
+- Study ALL SPARQL query examples
+- **CRITICAL**: MIE examples are for learning query patterns - NOT for direct use in questions
+  * Don't create questions that just reproduce MIE SPARQL queries
+  * Don't use the same entities shown in MIE examples
+  * Adapt query patterns to find DIFFERENT, real entities
 
-2. **Study the structure**:
-   - Carefully read the ShEx schema to understand properties and relationships
-   - Review the RDF examples to see data patterns
-   - Study ALL SPARQL query examples
+### 2. Explore Content (Go Beyond MIE Examples!)
 
-3. **Explore the content**:
-   - Run at least 5 different search queries using search_* functions
-   - Test at least 3 SPARQL queries from the MIE file examples
-   - Try variations to understand what data is available
-   - Look for interesting, specific entities
-   - **CRITICAL: When exploring cross-references/mappings, distinguish between:**
-     * **Entity count**: Number of unique entities that have mappings
-     * **Relationship count**: Total number of mapping relationships
-     * Example: If 100 proteins map to 120 gene IDs (some proteins map to multiple genes), then:
-       - Entity count = 100 proteins with mappings
-       - Relationship count = 120 total protein→gene mappings
+**CRITICAL**: Don't just read MIE files—actually query the database!
 
-4. **Document findings**: Create an exploration report at:
-   `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/[dbname]_exploration.md`
-   
-   Each report MUST include:
-````markdown
-   # [Database Name] Exploration Report
-   
-   ## Database Overview
-   - Purpose and scope of this database
-   - Key data types and entities
-   
-   ## Schema Analysis (from MIE file)
-   - Main properties available
-   - Important relationships
-   - Query patterns observed
-   
-   ## Search Queries Performed
-   1. Query: [search term] → Results: [summary]
-   2. Query: [search term] → Results: [summary]
-   3. [etc., at least 5 queries]
-   
-   ## SPARQL Queries Tested
+Run at least:
+- **5 search queries** using `search_*` functions to find REAL entities
+- **3 SPARQL queries** adapted from MIE examples but using DIFFERENT entities
+- Try variations to understand data scope and diversity
+- Look for specific, interesting entities NOT mentioned in MIE file
+
+**Example - BAD (trivial)**:
+- MIE shows example: "UniProt:P12345"
+- Question: "What is the organism for UniProt:P12345?" ❌ (just reading MIE)
+
+**Example - GOOD (requires query)**:
+- Run search: `search_uniprot_entity("BRCA1 human")`
+- Find real ID: P38398
+- Question: "What is the UniProt ID for human BRCA1?" ✅ (requires actual lookup)
+
+### 3. Document Cross-References (CRITICAL)
+
+When exploring mappings between databases, distinguish:
+
+**Entity Count** = Number of unique entities WITH mappings
 ```sparql
-   # Query 1: [purpose]
-   [SPARQL query]
-   # Results: [summary of what you found]
+SELECT (COUNT(DISTINCT ?entity) as ?entity_count)
+WHERE { ?entity <mapping_property> ?target . }
 ```
+
+**Relationship Count** = Total number of mapping relationships
 ```sparql
-   # Query 2: [purpose]
-   [SPARQL query]
-   # Results: [summary]
+SELECT (COUNT(?target) as ?relationship_count)
+WHERE { ?entity <mapping_property> ?target . }
 ```
-   
-   [At least 3 queries total]
-   
-   ## Interesting Findings
-   - Specific entities that could form good questions
-   - Unique properties or patterns
-   - Connections to other databases
-   - Specific, verifiable facts not commonly known
-   
-   **⚠️ CRITICAL: Cross-Reference/Mapping Analysis**
-   
-   When documenting cross-database mappings, ALWAYS clarify:
-   
-   1. **Entity Count** (unique entities with mappings):
-      - Query: `COUNT(DISTINCT ?source_entity)`
-      - Example: "2,150 NANDO diseases have MONDO mappings"
-   
-   2. **Relationship Count** (total mapping relationships):
-      - Query: `COUNT(?mapping_property)` (without DISTINCT)
-      - Example: "2,341 total NANDO→MONDO mapping relationships"
-   
-   3. **Mapping Distribution** (if entities can have multiple mappings):
-      - How many entities map to exactly 1, 2, 3+ targets?
-      - Example: "1,976 diseases (1 MONDO ID), 157 diseases (2 MONDO IDs), 17 diseases (3 MONDO IDs)"
-   
-   4. **Average Mappings** (if relevant):
-      - Total relationships ÷ Entity count
-      - Example: "Average 1.09 MONDO mappings per NANDO disease"
-   
-   **Why This Matters:**
-   - Questions like "How many diseases have MONDO mappings?" = Entity count (2,150)
-   - Questions like "How many MONDO mappings exist?" = Relationship count (2,341)
-   - Both are valid but measure different things!
-   - Document BOTH counts to enable precise question generation
-   
-   **Example SPARQL Queries for Mapping Analysis:**
-   
+
+**Why both matter**: Some entities map to multiple targets
+- Example: 2,150 diseases have mappings (entity count)
+- Example: 2,341 total mappings exist (relationship count)
+- Questions can ask about either count—document BOTH
+
+**Mapping Distribution** (if entities have multiple mappings):
 ```sparql
-   # Count unique entities WITH mappings
-   SELECT (COUNT(DISTINCT ?entity) as ?entity_count)
-   WHERE {
-     ?entity <mapping_property> ?target .
-   }
-   
-   # Count total mapping relationships
-   SELECT (COUNT(?target) as ?relationship_count)
-   WHERE {
-     ?entity <mapping_property> ?target .
-   }
-   
-   # Analyze mapping distribution
-   SELECT ?mapping_count (COUNT(?entity) as ?entity_count)
-   WHERE {
-     {
-       SELECT ?entity (COUNT(?target) as ?mapping_count)
-       WHERE {
-         ?entity <mapping_property> ?target .
-       }
-       GROUP BY ?entity
-     }
-   }
-   GROUP BY ?mapping_count
-   ORDER BY ?mapping_count
+SELECT ?mapping_count (COUNT(?entity) as ?entity_count)
+WHERE {
+  { SELECT ?entity (COUNT(?target) as ?mapping_count)
+    WHERE { ?entity <mapping_property> ?target . }
+    GROUP BY ?entity
+  }
+}
+GROUP BY ?mapping_count
+ORDER BY ?mapping_count
 ```
-   
-   ## Question Opportunities by Category
-   
-   **FOCUS ON BIOLOGICAL CONTENT, NOT INFRASTRUCTURE METADATA**
-   
-   When identifying question opportunities, prioritize:
-   ✅ Biological entities (proteins, genes, diseases, compounds)
-   ✅ Scientific properties (molecular weight, sequences, pathways)
-   ✅ Research-relevant metadata (clinical significance, resistance patterns)
-   ✅ Experimental methodology when it affects interpretation (AST methods, resolution)
-   
-   AVOID suggesting questions about:
-   ❌ Database versions or release numbers
-   ❌ Software tools used (unless methodology-critical)
-   ❌ Pure IT infrastructure (server details, update schedules)
-   ❌ Administrative metadata with no scientific value
-   
-   For each category, suggest questions about BIOLOGICAL/SCIENTIFIC CONTENT:
-   
-   - **Precision**: Specific biological IDs, measurements, sequences
-     Example: "What is the UniProt ID for SpCas9?" ✅
-     Avoid: "What version is the database?" ❌
-   
-   - **Completeness**: Counts of biological entities, comprehensive lists
-     Example: "How many kinase structures in PDB?" ✅
-     Example: "How many proteins have GO annotations?" ✅
-     **⚠️ For cross-references, specify WHICH count:**
-       - "How many proteins HAVE GO annotations?" (entity count) ✅
-       - "How many total protein→GO annotation relationships?" (relationship count) ✅
-     Avoid: "How many database updates this year?" ❌
-   
-   - **Integration**: Cross-database biological entity linking
-     Example: "Convert UniProt ID to NCBI Gene ID" ✅
-     Example: "What MONDO IDs map to NANDO:1200001?" ✅
-     **⚠️ Be aware of one-to-many mappings:**
-       - Some entities may map to multiple targets
-       - Document both directions if mappings are asymmetric
-     Avoid: "Which databases link to this server?" ❌
-   
-   - **Currency**: Recent biological discoveries, updated classifications
-     Example: "What COVID-19 pathways added to Reactome?" ✅
-     Avoid: "What is the current database version?" ❌
-   
-   - **Specificity**: Rare diseases, specialized organisms, niche compounds
-     Example: "What is the NANDO ID for rare disease X?" ✅
-     Avoid: "What is the most common database format?" ❌
-   
-   - **Structured Query**: Complex biological queries with multiple criteria
-     Example: "Find kinase inhibitors with IC50 < 100 nM" ✅
-     Example: "Find diseases that map to exactly 2 MONDO IDs" ✅
-     Avoid: "Find databases updated after date X" ❌
-   
-   ## Notes
-   - Any limitations or challenges with this database
-   - Best practices for querying
-   - **Important clarifications about counts (entity vs. relationship)**
-````
 
-5. **Monitor your progress**: After completing each database exploration, check your token usage. If approaching limits, proceed to the STOPPING POINT section below.
+### 4. IMMEDIATELY Create Exploration Report (CRITICAL!)
 
-WORKFLOW:
-1. Check for existing exploration reports and identify remaining databases
-2. Read the three required files (if first session)
-3. List all databases
-4. Create the exploration directory (if it doesn't exist):
-   `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/`
-5. For each database that needs exploration:
-   - Get MIE file
-   - Perform thorough exploration (searches, queries, analysis)
-   - **For databases with cross-references: Run queries to distinguish entity counts from relationship counts**
-   - Create detailed exploration report
-   - **Check token usage** - if approaching limit, go to STOPPING POINT
-6. If ALL databases are explored, proceed to COMPLETION section
+⚠️ **DO NOT WAIT - CREATE THE REPORT IMMEDIATELY AFTER EXPLORING EACH DATABASE** ⚠️
 
-STOPPING POINT (When Token Limit is Approaching):
-Create a progress file: `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/00_PROGRESS.md`
-````markdown
+**Why immediate**: Prevents token overflow, ensures findings are captured while fresh, allows continuation if stopped.
+
+Save to: `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/[dbname]_exploration.md`
+
+#### Required Report Structure:
+
+```markdown
+# [Database Name] Exploration Report
+
+## Database Overview
+- Purpose and scope
+- Key data types and entities
+
+## Schema Analysis (from MIE file)
+- Main properties
+- Important relationships
+- Query patterns
+
+## Search Queries Performed
+1. Query: [term] → Results: [summary of REAL entities found]
+2. Query: [term] → Results: [summary of REAL entities found]
+3. [etc., at least 5 total]
+
+**Note**: Document actual entities discovered, not just MIE examples
+
+## SPARQL Queries Tested
+```sparql
+# Query 1: [purpose - adapted from MIE with different entities]
+[SPARQL query]
+# Results: [summary of REAL data returned]
+```
+
+[At least 3 queries with REAL results]
+
+**CRITICAL - Using MIE SPARQL Examples Correctly:**
+
+❌ **BAD - Direct Copy from MIE**:
+- MIE shows: `SELECT ?name WHERE { uniprot:P12345 up:recommendedName ?name }`
+- You document: "Query tested: Get name for P12345"
+- Problem: Just copied MIE example verbatim
+
+✅ **GOOD - Adapted with Real Entities**:
+- MIE shows: `SELECT ?name WHERE { ?protein up:recommendedName ?name }`
+- You run: `SELECT ?name WHERE { uniprot:Q99ZW2 up:recommendedName ?name }`
+- You document: "Query tested: Get protein name for SpCas9 (Q99ZW2), found via search"
+- Result: You discovered Q99ZW2 is a real entity worth documenting for questions
+
+## Cross-Reference Analysis (if applicable)
+**Entity counts** (unique entities with mappings):
+- [Source] → [Target]: X entities have mappings
+
+**Relationship counts** (total mappings):
+- [Source] → [Target]: Y total mappings
+
+**Distribution** (if one-to-many):
+- Z entities with 1 mapping
+- Z entities with 2 mappings
+- Z entities with 3+ mappings
+
+## Interesting Findings
+
+**Focus on discoveries requiring actual database queries:**
+
+✅ **GOOD (non-trivial)**:
+- "Found 2,150 NANDO diseases with MONDO mappings (requires COUNT query)"
+- "BRCA1 (UniProt P38398) has 15 PDB structures (requires cross-database lookup)"
+- "Kinase inhibitors in ChEMBL with IC50 < 100 nM: 347 compounds (requires filtering)"
+- "Most common resistance mechanism in AMR Portal: efflux pump (requires aggregation)"
+
+❌ **BAD (trivial - just reading MIE)**:
+- "Example entity in MIE: UniProt:P12345" (no query needed)
+- "MIE shows this SPARQL pattern works" (just documentation)
+- "Database has organism property" (schema info, not data)
+
+**Document**:
+- Specific entities found through searches (NOT MIE examples)
+- Unique properties/patterns discovered through queries
+- Database connections requiring real lookups
+- Verifiable facts from actual data (not MIE metadata)
+
+## Question Opportunities by Category
+
+**FOCUS ON BIOLOGICAL CONTENT** ✅
+- Biological entities (proteins, genes, diseases, compounds)
+- Scientific properties (sequences, structures, molecular weights)
+- Research-relevant metadata (clinical significance, resistance)
+- Methodology when interpretation-critical (AST methods, resolution)
+
+**FOCUS ON EXPERT-RELEVANT QUESTIONS** ✅
+Ask: "Would a real biologist/biomedical researcher actually want to know this?"
+
+Examples of expert-relevant questions:
+- ✅ "What is the IC50 of imatinib for EGFR?" (drug development)
+- ✅ "How many pathogenic BRCA1 variants are in ClinVar?" (clinical genetics)
+- ✅ "What resistance mechanisms are most common for E. coli?" (epidemiology)
+- ✅ "Which kinases are targeted by approved drugs in ChEMBL?" (pharmacology)
+
+Examples of non-expert questions (technically valid but not realistic):
+- ⚠️ "What is the 15th protein alphabetically in UniProt?" (arbitrary, no research value)
+- ⚠️ "How many proteins have IDs starting with 'Q'?" (ID trivia, not biology)
+- ⚠️ "What is the shortest protein name in the database?" (curiosity, not research)
+- ⚠️ "Which database has the most entries?" (comparison trivia, not science)
+
+**AVOID INFRASTRUCTURE METADATA** ❌
+- Database versions/release numbers
+- Software tools (unless methodology-critical)
+- Administrative metadata
+- Pure IT infrastructure
+
+**AVOID STRUCTURAL METADATA** ❌
+- Classification system codes (MeSH tree numbers, ICD codes) - ask about the diseases/concepts themselves, not their organizational codes
+- Namespace prefixes or URI patterns
+- Property names or relationship types
+- Schema structure questions
+- Structural/organizational metadata (tree numbers, classification codes, namespace prefixes)
+- Database schema details (property names, relationship types)
+
+**AVOID TRIVIAL QUERIES** ❌
+- Questions answerable by reading MIE file
+- Questions using only example entities from MIE
+- Questions about schema structure (not real data)
+
+### Suggested Questions:
+
+**Precision**: Specific IDs, measurements, sequences (for REAL entities)
+- ✅ "What is the UniProt ID for human BRCA1?" (requires search)
+- ❌ "What is the organism for UniProt:P12345?" (P12345 is from MIE example)
+
+**Completeness**: Entity counts, comprehensive lists (from actual queries)
+- ✅ "How many kinase structures in PDB?" (requires COUNT query)
+- ✅ "How many proteins HAVE GO annotations?" (entity count from query)
+- ❌ "How many example queries are in the MIE file?" (just counting docs)
+
+**Integration**: Cross-database linking, ID conversions (for real lookups)
+- ✅ "Convert UniProt P38398 to NCBI Gene ID" (requires togoid or cross-db query)
+- ❌ "What properties link to other databases?" (schema info)
+
+**Currency**: Recent biological discoveries, updated classifications
+- ✅ "What COVID-19 pathways added to Reactome in 2024?" (requires date filtering)
+- ❌ "What is the current database version?" (infrastructure metadata)
+
+**Specificity**: Rare diseases, specialized organisms, niche compounds
+- ✅ "What is the NANDO ID for Fabry disease?" (requires search for real disease)
+- ❌ "What is an example rare disease in NANDO?" (trivial if MIE shows example)
+
+**Structured Query**: Complex biological queries, multiple criteria
+- ✅ "Find kinase inhibitors with IC50 < 100 nM" (requires filtering real data)
+- ✅ "Find diseases mapping to exactly 2 MONDO IDs" (requires aggregation)
+- ❌ "Show example of SPARQL query with FILTER" (just documentation)
+
+## Notes
+- Limitations or challenges
+- Best practices for querying
+- Important clarifications about counts
+- Distinction between MIE examples and real data findings
+```
+
+---
+
+## Token Management
+
+**After EACH database (including report writing)**:
+- Check token usage
+- If approaching ~180K tokens → **STOP IMMEDIATELY and save progress**
+- Opus 4.5 has 200K context window; leave buffer for completion message
+- Do NOT rush through remaining databases
+- Quality over quantity
+
+**After EVERY 3 databases (or before token limit)**:
+- **Save progress report** to `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/00_PROGRESS.md`
+- Update counts of completed vs remaining databases
+- Document current token usage
+- This ensures continuity if exploration is interrupted
+
+**Workflow Pattern**:
+```
+Database 1: Explore (10K tokens) + Report (3K tokens) = 13K used
+Database 2: Explore (12K tokens) + Report (4K tokens) = 16K used (29K total)
+Database 3: Explore (15K tokens) + Report (5K tokens) = 20K used (49K total)
+→ SAVE PROGRESS REPORT (1K tokens) = 50K total
+Database 4: Explore (10K tokens) + Report (3K tokens) = 13K used (63K total)
+Database 5: Explore (11K tokens) + Report (4K tokens) = 15K used (78K total)
+Database 6: Explore (14K tokens) + Report (4K tokens) = 18K used (96K total)
+→ SAVE PROGRESS REPORT (1K tokens) = 97K total
+...
+Check after each: Still under 180K? Continue : Stop and save final progress
+```
+
+**Why write reports immediately**:
+- Prevents accumulating too much context before documenting
+- Ensures findings are saved if token limit is hit
+- Allows accurate tracking of remaining capacity
+- Fresh memory = better reports
+
+**Why save progress every 3 databases**:
+- Provides checkpoint for resuming if interrupted
+- Documents momentum and patterns observed
+- Tracks token usage trends
+- Enables better session planning
+
+### When Stopping Early (or Every 3 Databases)
+
+**Update or Create**: `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/00_PROGRESS.md`
+
+**After every 3 databases OR when approaching token limit**, update this file:
+
+```markdown
 # Exploration Progress
 
-## Session [N] - [Date]
+## Current Session - [Date]
 
-### Completed Databases ([X] of [Total])
-- [database1] ✅
-- [database2] ✅
+### Session Summary
+- Databases explored this session: [N]
+- Total databases completed: [X] of [Total]
+- Token usage: ~[Y]K / 200K (Opus 4.5)
+- Status: [In Progress / Paused / Complete]
+
+### Completed ([X] of [Total])
+- [database1] ✅ (Session [N])
+- [database2] ✅ (Session [N])
+- [database3] ✅ (Session [N])
+- [database4] ✅ (Session [N-1])
 - [etc.]
 
-### Remaining Databases ([Y] remaining)
+### Remaining ([Y] remaining)
 - [database_a] ⏳
 - [database_b] ⏳
 - [etc.]
 
-### Notes
-- [Any observations about the databases explored so far]
-- [Any patterns or challenges noticed]
-````
+### Session Notes
+- [Observations about explored databases]
+- [Patterns or challenges noticed]
+- [Token usage trends: databases averaging ~XK tokens each]
+- [Estimated remaining capacity: can fit ~N more databases]
 
-Then respond with:
+### Next Steps
+- [Which databases to prioritize next session]
+- [Any special considerations for remaining databases]
+```
 
-"⏸️ EXPLORATION PAUSED - TOKEN LIMIT APPROACHING
+**Update frequency**:
+- ✅ After every 3rd database exploration
+- ✅ Before hitting token limit (~180K)
+- ✅ When ending a session (even if <3 databases done)
+
+**Why update regularly**:
+- Checkpoint progress for resuming
+- Track token usage patterns
+- Plan remaining work
+- Document insights while fresh
+
+**Then respond with**:
+```
+⏸️ EXPLORATION PAUSED - TOKEN LIMIT APPROACHING
 
 Explored [X] of [Y] databases in this session:
 ✅ Completed: [list]
@@ -240,70 +396,97 @@ Explored [X] of [Y] databases in this session:
 
 All exploration reports saved to /Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/
 
-To continue: Run this prompt again. It will automatically skip completed databases and continue with remaining ones.
+To continue: Run this prompt again. It will automatically skip completed databases.
 
-DO NOT proceed to question generation until ALL databases are explored."
+DO NOT proceed to question generation until ALL databases are explored.
+```
 
-COMPLETION (When ALL Databases Are Explored):
-Create a summary file: `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/00_SUMMARY.md`
-````markdown
+---
+
+## Completion (All Databases Explored)
+
+Create: `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/00_SUMMARY.md`
+
+```markdown
 # Database Exploration Summary
 
 ## Overview
 - Total databases explored: [N]
-- Total exploration sessions: [N]
+- Total sessions: [N]
 
 ## All Explored Databases
-[List all databases with brief description]
+[List with brief descriptions]
 
 ## Database Coverage Plan for 120 Questions
-Recommended distribution:
+Recommended distribution based on:
+- Database richness (data diversity, not just schema size)
+- Unique content (findings not in other databases)
+- Integration opportunities (useful cross-database queries)
+
+Suggested allocation:
 - [database1]: ~[X] questions
 - [database2]: ~[Y] questions
 - [etc.]
 
-Rationale: [Explain based on database richness, uniqueness, etc.]
-
-## Cross-Database Integration Opportunities
-[List potential multi-database questions identified]
-
 ## Database Characteristics
 
-### Rich Content (Good for multiple questions)
-- [databases with lots of interesting data]
+### Rich Content (good for multiple questions)
+- [databases with diverse, queryable data]
 
-### Specialized Content (Good for specificity questions)
-- [databases with niche/specific data]
+### Specialized Content (good for specificity)
+- [databases with niche/unique data]
 
-### Well-Connected (Good for integration questions)
-- [databases that link well to others]
+### Well-Connected (good for integration)
+- [databases with useful cross-references]
+
+## Cross-Database Integration Opportunities
+[Multi-database question possibilities requiring actual lookups]
 
 ## Recommendations
-- [Any insights for question generation]
-- [Databases that pair well together]
-- [Particularly interesting findings]
-````
+- Insights for question generation
+- Databases that pair well for integration questions
+- Particularly interesting findings (from queries, not MIE)
+```
 
-Then respond with:
-
-"✅ EXPLORATION COMPLETE
+**Then respond with**:
+```
+✅ EXPLORATION COMPLETE
 
 Explored ALL [N] databases:
-- [list database names]
+- [list]
 
-All exploration reports saved to /Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/
+All exploration reports saved.
+Summary with coverage plan created.
 
-Summary with database coverage plan created.
+Ready for Phase 2: Question Generation.
+```
 
-Ready for question generation phase (PROMPT 2)."
+---
 
-IMPORTANT REMINDERS:
-- **NEVER sacrifice exploration quality for speed**
-- **STOP when token limit approaches** - don't rush
-- **Each database deserves thorough exploration**
-- **Existing exploration reports will be preserved** across sessions
-- **The prompt will automatically resume** where you left off
-- **Focus on biological/scientific content** - avoid pure infrastructure metadata
-- **⚠️ CRITICAL: Distinguish entity counts from relationship counts in cross-reference mappings**
+## Important Reminders
 
-Begin by checking for existing exploration reports, then proceed with thorough exploration of remaining databases.
+✅ **DO**:
+- Thoroughly explore each database with REAL queries
+- **IMMEDIATELY write exploration report after each database (don't wait!)**
+- **Save progress report after every 3 databases** (checkpoint for resuming)
+- Document both entity and relationship counts for cross-references
+- Focus on biological/scientific content discovered through queries
+- Find actual entities (not just MIE examples)
+- Check token usage after each database + report
+- Stop when approaching token limit (~180K for Opus 4.5)
+- Preserve existing exploration reports across sessions
+
+❌ **DON'T**:
+- Create questions yet (that's Phase 2)
+- Explore multiple databases before writing reports ❌ (will hit token limit!)
+- Skip progress checkpoints ❌ (can't resume efficiently!)
+- Just read MIE files and call it exploration
+- Document only example entities from MIE
+- Focus on database versions or IT metadata
+- Rush through databases to finish
+- Continue past token limit
+- Suggest questions answerable from MIE alone
+
+---
+
+**Begin by checking for existing exploration reports, then proceed with thorough exploration using REAL database queries. WRITE EACH REPORT IMMEDIATELY after exploring that database. SAVE PROGRESS after every 3 databases.**

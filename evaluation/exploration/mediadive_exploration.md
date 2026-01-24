@@ -1,187 +1,153 @@
 # MediaDive Exploration Report
 
 ## Database Overview
-- **Purpose**: Comprehensive culture media database from DSMZ (German Collection of Microorganisms and Cell Cultures)
-- **Scope**: Standardized recipes for cultivating bacteria, archaea, fungi, yeast, microalgae, and phages
-- **Key data types**: Culture media (3,289), Ingredients (1,489), Strains (45,685), Growth conditions
+- **Purpose**: Comprehensive microbial culture media database from DSMZ with standardized recipes for bacteria, archaea, fungi, yeast, microalgae, and phages
+- **Endpoint**: https://rdfportal.org/primary/sparql
+- **Graph**: `http://rdfportal.org/dataset/mediadive`
+- **Key Features**: Hierarchical recipe structure (medium → solution → ingredient), chemical cross-references, strain-medium compatibility, growth conditions
+- **Data Version**: Current release
 
 ## Schema Analysis (from MIE file)
-
 ### Main Entities
-1. **CultureMedium** - Media recipes with pH ranges and complexity classification
-2. **Ingredient** - Chemical components with cross-references (ChEBI, KEGG, CAS, PubChem)
-3. **Strain** - Microbial strains with DSM numbers and species information
-4. **GrowthCondition** - Temperature, pH, oxygen requirements for cultivation
-5. **MediumComposition** - Links media to ingredients with concentrations
-6. **SolutionRecipe** - Hierarchical recipe structure
+- **CultureMedium**: Central entity with label, group, pH, complexity
+- **Ingredient**: Chemical components with cross-references (ChEBI, CAS, KEGG, PubChem, GMO)
+- **MediumComposition**: Links media to ingredients with concentrations (g/L)
+- **GrowthCondition**: Cultivation parameters (temperature, pH, oxygen requirement)
+- **Strain**: Microbial strains with DSM numbers, BacDive IDs, species names
 
-### Key Properties
-- `schema:hasFinalPH`, `schema:hasMinPH`, `schema:hasMaxPH` - pH specifications
-- `schema:growthTemperature` - Integer temperature in °C
-- `schema:hasOxygenRequirement` - "aerobic"/"anaerobic"
-- `schema:belongsTaxGroup` - Taxonomic classification
-- `schema:gramsPerLiter` - Concentration units
+### Important Relationships
+- Medium ↔ Composition ↔ Ingredient (hierarchical recipe)
+- Medium ↔ Growth ↔ Strain (cultivation compatibility)
+- Ingredient → Chemical databases (cross-references)
+- Strain → BacDive (phenotypic data integration)
 
-### Cross-References
-- ChEBI: 687 ingredients (46%)
-- CAS: 872 ingredients (59%)
-- PubChem: 616 ingredients (41%)
-- KEGG: 285 ingredients (19%)
-- GMO: 870 ingredients (58%)
-- BacDive: 33,226 strains (73%)
+### Query Patterns
+- Use `bif:contains` for keyword searches on labels
+- Use OPTIONAL for cross-references (partial coverage)
+- Filter by specific medium when querying compositions (many compositions per medium)
+- LIMIT recommended: 30-50 for typical queries
 
 ## Search Queries Performed
 
-1. **Marine media search** → Found 20+ marine media (e.g., "BACTO MARINE BROTH", "MARINE AGAR", "MARINE THERMOCOCCUS MEDIUM")
+1. **Query: "marine"** → Found 20+ marine-related media including BACTO MARINE BROTH (medium/514), MARINE AGAR (medium/123), MARINE CAULOBACTER MEDIUM (medium/601)
 
-2. **Anaerobic media search** → Found media for anaerobic cultivation
+2. **Query: "fungi" OR "yeast"** → Found media for osmophilic fungi (M 40 Y, medium/187), EMERSON'S YEAST STARCH AGAR (medium/551), specialized fungal media
 
-3. **Taxonomic group analysis** → Distribution across 12 groups:
-   - Bacterium: 32,662 strains
-   - Fungus: 5,079 strains
-   - Yeast: 3,125 strains
-   - Microalgae: 1,289 strains
-   - Archaeon: 952 strains
-   - Phage: 602 strains
+3. **Query: thermophile conditions (temp ≥ 55°C)** → Found 961 growth conditions for thermophilic organisms
 
-4. **Ingredient cross-reference search** → Many ingredients linked to ChEBI/KEGG (e.g., glucose, amino acids, vitamins)
+4. **Query: extreme thermophiles (temp ≥ 70°C)** → Found hyperthermophiles:
+   - Pyrolobus fumarii at 103°C (medium/792)
+   - Pyrococcus kukulkanii at 100°C (medium/377)
+   - Hyperthermus butylicus at 99°C (medium/491)
 
-5. **pH filtering** → Found extreme pH media from 0.8 to 11.5
+5. **Query: Ingredients with ChEBI** → 687 ingredients have ChEBI cross-references
 
 ## SPARQL Queries Tested
 
 ```sparql
-# Query 1: Find hyperthermophilic growth conditions (>70°C)
-PREFIX schema: <https://purl.dsmz.de/schema/>
-SELECT ?strain ?species ?temp ?mediumLabel
+# Query 1: Count total media
+SELECT (COUNT(DISTINCT ?medium) as ?media_count)
 FROM <http://rdfportal.org/dataset/mediadive>
+WHERE { ?medium a schema:CultureMedium . }
+# Results: 3,289 culture media
+```
+
+```sparql
+# Query 2: High temperature growth conditions (hyperthermophiles)
+SELECT ?strain ?species ?temp ?mediumLabel
 WHERE {
-  ?growth schema:growthTemperature ?temp ;
+  ?growth a schema:GrowthCondition ;
           schema:relatedToStrain ?strain ;
-          schema:partOfMedium ?medium .
+          schema:partOfMedium ?medium ;
+          schema:growthTemperature ?temp .
   ?strain schema:hasSpecies ?species .
   ?medium rdfs:label ?mediumLabel .
-  FILTER(?temp > 70)
+  FILTER(?temp >= 70)
 }
-ORDER BY DESC(?temp)
-LIMIT 20
-# Results: Pyrolobus fumarii at 103°C, Pyrococcus kukulkanii at 100°C, Hyperthermus butylicus at 99°C
+ORDER BY DESC(?temp) LIMIT 15
+# Results: Found 15 hyperthermophile strains with growth at 70-103°C
+# Highest: Pyrolobus fumarii at 103°C in PYROLOBUS FUMARII MEDIUM
 ```
 
 ```sparql
-# Query 2: Get medium composition with concentrations
-PREFIX schema: <https://purl.dsmz.de/schema/>
-SELECT ?ingredientLabel ?gPerL ?formula
+# Query 3: Strains with BacDive cross-references
+SELECT (COUNT(DISTINCT ?strain) as ?bacdive_linked_count)
 FROM <http://rdfportal.org/dataset/mediadive>
 WHERE {
-  ?composition schema:partOfMedium <https://purl.dsmz.de/mediadive/medium/1118> ;
-               schema:containsIngredient ?ingredient ;
-               schema:gramsPerLiter ?gPerL .
-  ?ingredient rdfs:label ?ingredientLabel .
-  OPTIONAL { ?ingredient schema:hasFormula ?formula }
+  ?strain a schema:Strain ;
+          schema:hasBacDiveID ?bacDiveID .
 }
-ORDER BY DESC(?gPerL)
-# Results: Casitone (3.0 g/L), MgSO4 (2.0 g/L), trace elements (µg/L levels)
+# Results: 33,226 strains have BacDive IDs (73% of total)
 ```
 
-```sparql
-# Query 3: Find psychrophilic organisms (cold-loving)
-PREFIX schema: <https://purl.dsmz.de/schema/>
-SELECT ?strain ?species ?temp ?mediumLabel
-FROM <http://rdfportal.org/dataset/mediadive>
-WHERE {
-  ?growth schema:growthTemperature ?temp ;
-          schema:relatedToStrain ?strain ;
-          schema:partOfMedium ?medium .
-  ?strain schema:hasSpecies ?species .
-  ?medium rdfs:label ?mediumLabel .
-  FILTER(?temp <= 10)
-}
-ORDER BY ?temp
-# Results: Neisseria zalophi at 0°C, Streptosporangium carneum at 2°C, various Antarctic bacteria at 4°C
-```
+## Cross-Reference Analysis
 
-```sparql
-# Query 4: Find extreme pH media
-PREFIX schema: <https://purl.dsmz.de/schema/>
-SELECT ?medium ?label ?minPH ?maxPH
-FROM <http://rdfportal.org/dataset/mediadive>
-WHERE {
-  ?medium a schema:CultureMedium ; rdfs:label ?label .
-  { ?medium schema:hasMinPH ?minPH . FILTER(?minPH < 4) }
-  UNION
-  { ?medium schema:hasMaxPH ?maxPH . FILTER(?maxPH > 10) }
-}
-# Results: ACIDIANUS SP. JP7 MEDIUM (pH 0.8), MJ/YTCT MEDIUM (pH 11.5)
-```
+**Entity counts** (unique entities with mappings):
+- Ingredients with ChEBI: 687 (46% of 1,489 ingredients - higher than documented)
+- Strains with BacDive IDs: 33,226 (73% of 45,685 strains)
+
+**Cross-reference coverage by type**:
+- GMO (General Media Object): 41% of ingredients
+- CAS Registry: 39% of ingredients
+- ChEBI: 32-46% of ingredients
+- PubChem: 18% of ingredients
+- KEGG: 13% of ingredients
+- MetaCyc: 7% of ingredients
+
+**BacDive Integration**:
+- 33,226 strains link to BacDive for phenotypic data
+- Enables cross-database queries for strain characterization + cultivation protocols
+- Shared "primary" endpoint allows efficient federated queries
 
 ## Interesting Findings
 
-### Extremophile Cultivation Data
-- **Hyperthermophiles**: Pyrolobus fumarii grows at 103°C - highest recorded temperature
-- **Psychrophiles**: Neisseria zalophi grows at 0°C
-- **Acidophiles**: ACIDIANUS SP. JP7 MEDIUM at pH 0.8
-- **Alkaliphiles**: MJ/YTCT MEDIUM at pH 11.5
+**Findings requiring actual database queries:**
 
-### Specific Verifiable Facts
-- DSM strain 5869 (Pyrolobus fumarii) requires 103°C cultivation temperature
-- Medium 1118 (MD1-MEDIUM) contains 13 ingredients including trace elements
-- 33,226 strains (73%) have BacDive database links
-- 602 phage strains are catalogued
+1. **961 thermophilic growth conditions (≥55°C)** exist in the database - enables studying extremophile cultivation requirements
 
-### Taxonomic Distribution
-- 12 distinct taxonomic groups covered
-- Bacteria dominate (71%), followed by fungi (11%)
-- Archaea represent 2% but include most extremophiles
+2. **Highest growth temperature: 103°C** for Pyrolobus fumarii (strain/5869) using PYROLOBUS FUMARII MEDIUM (medium/792) - one of the most extreme thermophiles
 
-### Cross-Database Integration
-- BacDive links enable phenotypic data integration
-- ChEBI/KEGG links enable metabolic pathway context
-- GMO links provide standardized vocabulary
+3. **Hyperthermophile diversity**: Multiple genera thrive at ≥95°C: Pyrolobus, Pyrococcus, Hyperthermus, Pyrodictium, Methanopyrus, Pyrobaculum
+
+4. **687 ingredients have ChEBI cross-references** - enables linking to chemical ontology for metabolic context
+
+5. **BACTO MARINE BROTH (medium/514)** contains high NaCl concentrations (19.45-150 g/L depending on variant) - critical for marine microbe cultivation
+
+6. **Marine media diversity**: 20+ specialized media for marine organisms including MARINE THERMOCOCCUS MEDIUM, MARINE CAULOBACTER MEDIUM
 
 ## Question Opportunities by Category
 
-### Precision Questions
-- What is the optimal growth temperature for Pyrolobus fumarii (DSM 5869)?
-- What is the ChEBI ID for glucose in MediaDive?
-- What pH range is specified for ACIDIANUS BRIERLEYI MEDIUM (medium/150)?
+### Precision
+- "What is the MediaDive medium ID for PYROLOBUS FUMARII MEDIUM?" → medium/792
+- "What is the growth temperature for Pyrolobus fumarii in MediaDive?" → 103°C
+- "What is the ChEBI ID for glucose in MediaDive?" → 17234 (ingredient/5)
 
-### Completeness Questions
-- How many culture media recipes are in MediaDive?
-- How many strains in MediaDive belong to the Archaeon taxonomic group?
-- How many ingredients have ChEBI cross-references?
+### Completeness
+- "How many culture media are in MediaDive?" → 3,289
+- "How many thermophilic growth conditions (≥55°C) exist in MediaDive?" → 961
+- "How many MediaDive ingredients have ChEBI cross-references?" → 687
 
-### Integration Questions
-- Which MediaDive ingredients link to ChEBI ID 17234 (glucose)?
-- What is the BacDive ID for DSM strain 5869?
-- Find MediaDive strains that have both BacDive and DSM identifiers
+### Integration
+- "Link BacDive strain to its MediaDive culture medium recommendation" → BacDive ID ↔ Growth conditions
+- "What ChEBI identifiers correspond to MediaDive ingredients with KEGG cross-references?" → Cross-database chemical mapping
 
-### Specificity Questions
-- What organisms in MediaDive can grow above 100°C?
-- Which media are designed for cultivation below pH 2?
-- What media support phage propagation?
+### Currency
+- "What is the current count of culture media in MediaDive?" → 3,289 (may update)
+- "How many strains have been added to MediaDive with BacDive links?" → 33,226
 
-### Structured Query Questions
-- List ingredients in PYROCOCCUS MEDIUM with their concentrations
-- Find all media supporting thermophilic (>50°C) anaerobic growth
-- Which archaeal strains have growth data in MediaDive?
+### Specificity
+- "What medium is recommended for growing Pyrococcus furiosus?" → PYROCOCCUS MEDIUM (medium/377)
+- "What is the NaCl concentration in BACTO MARINE BROTH?" → 19.45 g/L (standard formulation)
+- "What organisms can grow at temperatures above 100°C according to MediaDive?" → Pyrolobus fumarii (103°C), Pyrococcus kukulkanii (100°C)
 
-## Cross-Reference Mapping Analysis
-
-### BacDive Mappings
-- **Entity count**: 33,226 strains have BacDive IDs (73% of 45,685)
-- **Relationship count**: Same (1:1 mapping)
-- One-to-one mapping confirmed
-
-### Chemical Cross-References
-- **Ingredients with any cross-ref**: ~90%
-- **Coverage varies**: ChEBI 46%, CAS 59%, GMO 58%
-- Some ingredients have multiple database links
+### Structured Query
+- "Find all media supporting growth at ≥80°C" → Filter by growthTemperature
+- "List ingredients present in marine media with ChEBI cross-references" → Multi-criteria query
+- "Find strains that grow on PYROCOCCUS MEDIUM at temperatures above 90°C" → Combined conditions
 
 ## Notes
-- Use `bif:contains` for keyword searches (Virtuoso backend)
-- pH can be string ("7.0-7.2") or numeric (hasMinPH/hasMaxPH)
-- Growth conditions link strains to media via separate entities
-- Hierarchical recipe structure: medium → solution → solution_recipe → ingredient
-- Excellent for questions about extremophile cultivation
-- Good integration with BacDive for expanded phenotypic data
+- **Shared endpoint**: MediaDive is on the "primary" endpoint with BacDive, taxonomy, mesh, go, mondo, nando - enables powerful cross-database queries
+- **Performance**: Use `bif:contains` for keyword searches; filter by specific medium for composition queries
+- **Cross-reference coverage varies**: Use OPTIONAL for database-specific properties
+- **Hierarchical structure**: medium → solution → solution_recipe → ingredient with preparation protocols
+- **BacDive integration is key**: 73% of strains link to BacDive for phenotypic characterization

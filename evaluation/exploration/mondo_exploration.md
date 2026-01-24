@@ -2,189 +2,218 @@
 
 ## Database Overview
 - **Purpose**: Comprehensive disease ontology integrating multiple disease databases into unified classification
-- **Scope**: 30,304 disease classes covering genetic disorders, infectious diseases, cancers, and rare diseases
-- **Key data types**: Disease classes, synonyms, definitions, hierarchical relationships, cross-references
+- **Endpoint**: https://rdfportal.org/primary/sparql
+- **Key Features**: Unified disease classification with cross-references to 35+ databases, OBO Foundry compliant
+- **Data Version**: 2024
 
 ## Schema Analysis (from MIE file)
+### Main Entities
+- **owl:Class**: Disease classes (30,304 total)
+- **oboInOwl:hasDbXref**: Cross-references to external databases
+- **IAO:0000115**: Disease definitions
+- **rdfs:subClassOf**: Hierarchical relationships
 
-### Main Entity Types
-- **owl:Class** - Disease class definitions
-- Each disease has: label, MONDO ID, definition, synonyms, parent classes, cross-references
+### Important Properties
+- `oboInOwl:id`: MONDO identifier (format: MONDO:XXXXXXX)
+- `oboInOwl:hasDbXref`: Cross-references (OMIM, Orphanet, MeSH, ICD, etc.)
+- `oboInOwl:hasExactSynonym`: Exact synonyms
+- `oboInOwl:hasRelatedSynonym`: Related/broader synonyms
+- `IAO:0000115`: Textual definitions
+- `rdfs:subClassOf`: Parent disease classes
+- `owl:deprecated`: Obsolete status flag
 
-### Key Properties
-- `rdfs:label` - Primary disease name
-- `oboInOwl:id` - MONDO identifier (e.g., "MONDO:0007739")
-- `IAO:0000115` - Definition/description
-- `oboInOwl:hasExactSynonym` - Exact synonyms
-- `oboInOwl:hasDbXref` - Cross-references to external databases
-- `rdfs:subClassOf` - Hierarchical parent relationship
-- `owl:deprecated` - Mark obsolete terms
-
-### Cross-Reference Coverage (Entity vs Relationship Counts)
-| Database | Entity Count | Relationship Count | Notes |
-|----------|--------------|-------------------|-------|
-| UMLS | 21,372 | 21,372 | 1:1 mapping |
-| MEDGEN | 21,372 | 21,372 | 1:1 mapping |
-| DOID | 11,698 | 11,866 | Slight 1:N mapping |
-| GARD | 10,730 | 10,730 | 1:1 mapping |
-| Orphanet | 10,246 | 10,344 | Slight 1:N mapping |
-| OMIM | 9,944 | 10,039 | ~1.01 avg mappings |
-| SCTID | 9,052 | 9,279 | SNOMED CT |
-| MESH | 8,253 | 8,378 | MeSH |
-| NCIT | 7,425 | 7,549 | NCI Thesaurus |
-| ICD9 | 4,417 | 5,734 | Multiple ICD9 per disease |
-| NANDO | 1,572 | 2,345 | ~1.5 avg (Japanese rare diseases) |
+### Query Patterns
+- **CRITICAL**: Use `bif:contains` for full-text search with relevance scoring
+- **CRITICAL**: Use `FILTER(isIRI(?parent))` to exclude blank nodes in hierarchy queries
+- Use `rdfs:subClassOf+` for transitive hierarchy navigation (requires specific start point)
+- Use `STRSTARTS(?xref, "PREFIX:")` for filtering by cross-reference database
 
 ## Search Queries Performed
 
-1. **Diabetes search** → Found 20 diabetes-related diseases including type 1, type 2, gestational, neonatal variants
+### 1. Fabry disease search
+```
+Query: "Fabry disease" via OLS4:searchClasses
+Results: 
+- MONDO:0010526: Fabry disease - lysosomal storage disease with specific neurological, cutaneous, renal, cardiovascular manifestations
+- Total results: 7,368 (includes related matches)
+```
 
-2. **Leukemia search (OLS4)** → Found 334 leukemia-related entries with hierarchy
+### 2. Huntington disease search
+```
+Query: "Huntington disease" via OLS4:searchClasses
+Results:
+- MONDO:0007739: Huntington disease - rare neurodegenerative disorder with choreatic movements
+- MONDO:0015548: Huntington disease-like syndrome
+- MONDO:0011299: Huntington disease-like 1 (prion-related)
+- MONDO:0011671: Huntington disease-like 2 (neuroacanthocytosis)
+- MONDO:0011487: Huntington disease-like 3 (childhood-onset)
+- Plus animal model versions (pig, sheep, Rhesus monkey)
+```
 
-3. **Progeria search** → Found 5 progeria variants including Hutchinson-Gilford progeria syndrome
+### 3. Breast cancer search
+```
+Query: "breast cancer" via OLS4:searchClasses
+Results:
+- MONDO:0007254: breast cancer - primary or metastatic malignant neoplasm
+- MONDO:0800418: breast cancer, familial, susceptibility to, 1
+- MONDO:0800419: breast cancer, familial, susceptibility to, 2
+- MONDO:0004438: sporadic breast cancer
+- MONDO:0700079: hormone receptor-positive breast cancer
+- MONDO:0006512: estrogen-receptor positive breast cancer
+- Total results: 1,175 breast cancer-related terms
+```
 
-4. **NANDO cross-references** → Found 1,572 diseases with NANDO links (Japanese rare diseases)
+### 4. Type 2 diabetes search
+```
+Query: "type 2 diabetes" via OLS4:searchClasses
+Results:
+- MONDO:0005148: type 2 diabetes mellitus - chronic disease with insulin resistance
+- Plus animal model versions (pig, cat, macaque)
+- MONDO:0007453: maturity-onset diabetes of the young type 2 (MODY2)
+```
 
-5. **OMIM cross-references** → 9,944 diseases have OMIM references (10,039 total refs)
+### 5. Cross-references for Huntington disease
+```
+Query: Get all cross-references for MONDO:0007739
+Results: 16 cross-references including:
+- NANDO:1200012 (Japanese rare disease)
+- DOID:12858
+- ICD9:333.4, ICD10CM:G10, ICD10WHO:G10
+- GARD:6677, NORD:1256
+- MEDGEN:5654
+- MESH:D006816
+- NCIT:C82342
+- OMIM:143100, Orphanet:399
+- SCTID:58756001, UMLS:C0020179
+```
 
 ## SPARQL Queries Tested
 
+### Query 1: Count total disease classes
 ```sparql
-# Query 1: Search diseases by keyword with relevance scoring
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX owl: <http://www.w3.org/2002/07/owl#>
-PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
-
-SELECT ?disease ?mondoId ?label
+SELECT (COUNT(DISTINCT ?disease) as ?total)
 FROM <http://rdfportal.org/ontology/mondo>
 WHERE {
-  ?disease a owl:Class ;
-    rdfs:label ?label ;
-    oboInOwl:id ?mondoId .
-  ?label bif:contains "'diabetes'" option (score ?sc)
-  FILTER NOT EXISTS { ?disease owl:deprecated true }
+  ?disease a owl:Class .
+  FILTER(STRSTARTS(STR(?disease), "http://purl.obolibrary.org/obo/MONDO_"))
 }
-ORDER BY DESC(?sc)
-# Results: Type 2 diabetes (MONDO:0005148), multiple diabetes subtypes
+# Results: 30,304 disease classes
 ```
 
+### Query 2: Count diseases with OMIM cross-references
 ```sparql
-# Query 2: Count cross-references by database prefix
-PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
-
-SELECT ?prefix (COUNT(DISTINCT ?disease) as ?entity_count) (COUNT(?xref) as ?relationship_count)
+SELECT (COUNT(DISTINCT ?disease) as ?totalWithOMIM)
 FROM <http://rdfportal.org/ontology/mondo>
 WHERE {
   ?disease a owl:Class ;
     oboInOwl:hasDbXref ?xref .
-  BIND(STRBEFORE(?xref, ":") AS ?prefix)
+  FILTER(STRSTARTS(?xref, "OMIM:"))
 }
-GROUP BY ?prefix
-# Results: UMLS (21,372), MEDGEN (21,372), DOID (11,698), etc.
+# Results: 9,944 diseases with OMIM references
 ```
 
+### Query 3: Count diseases with MeSH cross-references
 ```sparql
-# Query 3: Get complete profile for Huntington disease
-PREFIX obo: <http://purl.obolibrary.org/obo/>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
-PREFIX IAO: <http://purl.obolibrary.org/obo/IAO_>
-
-SELECT ?label ?definition ?synonym ?xref ?parentLabel
-FROM <http://rdfportal.org/ontology/mondo>
-WHERE {
-  obo:MONDO_0007739 rdfs:label ?label .
-  OPTIONAL { obo:MONDO_0007739 IAO:0000115 ?definition }
-  OPTIONAL { obo:MONDO_0007739 oboInOwl:hasExactSynonym ?synonym }
-  OPTIONAL { obo:MONDO_0007739 oboInOwl:hasDbXref ?xref }
-  OPTIONAL { 
-    obo:MONDO_0007739 rdfs:subClassOf ?parent .
-    ?parent rdfs:label ?parentLabel .
-    FILTER(isIRI(?parent))
-  }
-}
-# Results: Huntington disease with 16 cross-references (OMIM:143100, Orphanet:399, NANDO:1200012, etc.)
-```
-
-```sparql
-# Query 4: Find diseases with NANDO cross-references
-SELECT ?disease ?mondoId ?label ?nandoRef
+SELECT (COUNT(DISTINCT ?disease) as ?totalWithMESH)
 FROM <http://rdfportal.org/ontology/mondo>
 WHERE {
   ?disease a owl:Class ;
-    rdfs:label ?label ;
-    oboInOwl:id ?mondoId ;
-    oboInOwl:hasDbXref ?nandoRef .
-  FILTER(STRSTARTS(?nandoRef, "NANDO:"))
+    oboInOwl:hasDbXref ?xref .
+  FILTER(STRSTARTS(?xref, "MESH:"))
 }
-# Results: Found 1,572 diseases with NANDO refs (Crohn disease, Duchenne MD, etc.)
+# Results: 8,253 diseases with MeSH references
 ```
+
+### Query 4: Count diseases with Orphanet cross-references
+```sparql
+SELECT (COUNT(DISTINCT ?disease) as ?totalWithOrphanet)
+FROM <http://rdfportal.org/ontology/mondo>
+WHERE {
+  ?disease a owl:Class ;
+    oboInOwl:hasDbXref ?xref .
+  FILTER(STRSTARTS(?xref, "Orphanet:"))
+}
+# Results: 10,246 diseases with Orphanet references
+```
+
+## Cross-Reference Analysis
+
+### Entity Counts (unique diseases with mappings via oboInOwl:hasDbXref)
+| Database | Diseases with Mappings | Coverage |
+|----------|------------------------|----------|
+| Orphanet | 10,246 | 34% |
+| OMIM | 9,944 | 33% |
+| MeSH | 8,253 | 27% |
+
+### Key Cross-Reference Patterns (from MIE)
+- **Medical**: UMLS (70%), MEDGEN (70%), SCTID (31%), MESH (28%), NCIT (25%)
+- **Genetic**: GARD (35%), DOID (39%), OMIM (33%), Orphanet (34%)
+- **Clinical**: ICD9 (19%), ICD11 (14%), ICD10CM (9%)
+- **Oncology**: ICDO (3%), ONCOTREE (2%)
+- **Phenotype**: EFO (8%), HP (2%)
+- **Japanese**: NANDO (8%)
+
+### Integration Capabilities
+- ~90% of diseases have at least one cross-reference
+- Average: 6.5 cross-references per disease
+- 84% of NANDO diseases link back to MONDO
+- 28% coverage of MeSH disease descriptors
 
 ## Interesting Findings
 
-### Cross-Database Integration
-- MONDO serves as a **disease hub** connecting 30+ databases
-- Highest coverage: UMLS and MEDGEN (70%)
-- Japanese rare diseases via NANDO (5%)
-- Clinical coding via ICD-9, ICD-10, ICD-11
+**Focus on discoveries requiring actual database queries:**
 
-### Specific Verifiable Facts
-- Huntington disease = MONDO:0007739 = OMIM:143100 = Orphanet:399 = NANDO:1200012
-- Type 2 diabetes mellitus = MONDO:0005148
-- Hutchinson-Gilford progeria syndrome = MONDO:0008310
-- 26,371 active (non-deprecated) disease classes
-- 3,933 deprecated terms
+1. **Cross-reference richness**: Huntington disease (MONDO:0007739) has 16 cross-references spanning medical, genetic, clinical, and Japanese databases
 
-### Rich Annotation Data
-- 75% of diseases have definitions
-- 85% have synonyms (avg 2.8 per disease)
-- 90% have cross-references (avg 6.5 per disease)
+2. **Disease subtypes**: Breast cancer has 1,175+ related terms including molecular subtypes (ER+, ER-, HER2+, triple-negative), familial susceptibility types, and specific carcinoma classifications
+
+3. **Animal models**: Many diseases have non-human animal versions (Huntington disease in pig, sheep, macaque; type 2 diabetes in multiple species)
+
+4. **Rare disease coverage**: Strong integration with Orphanet (10,246 diseases) and GARD for rare diseases
+
+5. **ICD mappings**: Disease codes for clinical billing/classification (ICD9, ICD10CM, ICD10WHO)
 
 ## Question Opportunities by Category
 
-### Precision Questions
-- What is the MONDO ID for Huntington disease?
-- What is the OMIM cross-reference for achondroplasia (MONDO:0000003)?
-- What is the ICD-10 code for Huntington disease in MONDO?
+### Precision
+- "What is the MONDO identifier for Fabry disease?" → MONDO:0010526
+- "What is the MONDO identifier for Huntington disease?" → MONDO:0007739
+- "What is the MONDO identifier for type 2 diabetes mellitus?" → MONDO:0005148
+- "What is the MONDO identifier for breast cancer?" → MONDO:0007254
 
-### Completeness Questions
-- How many disease classes are in MONDO?
-- How many MONDO diseases have OMIM cross-references? (Entity count: 9,944)
-- How many total OMIM cross-reference relationships exist? (Relationship count: 10,039)
-- How many deprecated disease classes are in MONDO?
+### Completeness
+- "How many disease classes are in MONDO?" → 30,304
+- "How many MONDO diseases have OMIM cross-references?" → 9,944
+- "How many MONDO diseases have Orphanet cross-references?" → 10,246
+- "How many MONDO diseases have MeSH cross-references?" → 8,253
+- "How many breast cancer-related terms are in MONDO?" → 1,175+
 
-### Integration Questions
-- What NANDO ID corresponds to MONDO:0007739 (Huntington disease)?
-- Convert Orphanet:399 to MONDO ID
-- Find all MONDO diseases with both OMIM and Orphanet references
+### Integration
+- "What OMIM ID corresponds to Huntington disease in MONDO?" → OMIM:143100
+- "What MeSH descriptor ID corresponds to MONDO:0007739 (Huntington disease)?" → MESH:D006816
+- "What is the Orphanet ID for Huntington disease?" → Orphanet:399
+- "What is the NANDO ID for Huntington disease?" → NANDO:1200012
+- "What ICD-10 code corresponds to Huntington disease in MONDO?" → ICD10CM:G10
 
-### Specificity Questions
-- What rare diseases in MONDO have NANDO cross-references?
-- Find all progeria-related diseases in MONDO
-- What diseases are classified under "hereditary disease" (MONDO:0003847)?
+### Currency
+- "What is the current version year of MONDO?" → 2024
+- "How many Huntington disease-like syndromes are in MONDO?" → 4 (HDL1, HDL2, HDL3, HDL4)
 
-### Structured Query Questions
-- Find all leukemia subtypes in MONDO with their parent classes
-- List diseases with more than 10 cross-references
-- Find diseases with both ICD-10 and MESH cross-references
+### Specificity
+- "What is the MONDO ID for the rare lysosomal storage disease Fabry disease?" → MONDO:0010526
+- "What is the MONDO ID for hormone receptor-positive breast cancer?" → MONDO:0700079
+- "What MONDO entry describes familial breast cancer susceptibility type 1?" → MONDO:0800418
 
-## Cross-Reference Mapping Analysis
-
-### NANDO Mappings (Important for Japanese rare diseases)
-- **Entity count**: 1,572 MONDO diseases have NANDO mappings
-- **Relationship count**: 2,345 total NANDO cross-references
-- **Average**: 1.49 NANDO refs per mapped disease
-- **Distribution**: Some diseases map to multiple NANDO IDs (e.g., Crohn disease → 3 NANDO IDs)
-
-### OMIM Mappings
-- **Entity count**: 9,944 diseases with OMIM
-- **Relationship count**: 10,039 total refs
-- **Average**: 1.01 OMIM per disease (mostly 1:1)
+### Structured Query
+- "Find all breast cancer subtypes classified by gene expression profile in MONDO" → Multiple entries (ER+, ER-, PR+, HER2+)
+- "Find all MONDO diseases that have both OMIM and Orphanet cross-references" → Requires compound query
+- "Find Huntington disease-like syndromes in MONDO" → MONDO:0015548, MONDO:0011299, MONDO:0011671, MONDO:0011487
+- "What are all the parent categories of Fabry disease in MONDO?" → sphingolipidosis, lysosomal storage disease, hereditary disease, inborn errors of metabolism
 
 ## Notes
-- Use `bif:contains` for full-text search with relevance scoring
-- Add `FILTER(isIRI(?parent))` to exclude OWL restrictions in hierarchy queries
-- Use `STRSTARTS(?xref, "PREFIX:")` for efficient cross-reference filtering
-- Deprecated terms marked with `owl:deprecated true` - filter these for current data
-- OLS4 API provides alternative search with hierarchy information
-- MONDO is central hub for disease data integration across databases
+- **Search tools**: OLS4:searchClasses works well for keyword searches with pagination
+- **Performance**: Use `bif:contains` for SPARQL full-text search with relevance ranking
+- **Blank nodes**: Always use `FILTER(isIRI(?parent))` when querying hierarchy
+- **Transitive queries**: Start from specific disease classes to avoid timeout
+- **Shared endpoint**: Part of "primary" endpoint with mesh, go, taxonomy, nando, bacdive, mediadive
+- **Cross-database queries**: MONDO serves as hub connecting to MeSH (27%), NANDO (8%), and others

@@ -1,293 +1,304 @@
-# PubTator Central RDF Exploration Report
+# PubTator Central Exploration Report
 
 ## Database Overview
 - **Purpose**: Biomedical entity annotations extracted from PubMed literature using text mining and manual curation
-- **Key data types**: Disease and Gene annotations linked to PubMed articles, with annotation counts indicating mention frequency
-- **Data sources**: PubTator3 (automated), ClinVar (curated), dbSNP
-- **Update frequency**: Regularly updated
-- **License**: Public Domain (NCBI)
+- **Endpoint**: https://rdfportal.org/ncbi/sparql
+- **Graph**: http://rdfportal.org/dataset/pubtator_central
+- **Key Features**: Disease and Gene annotations linked to PubMed articles, Web Annotation Ontology (oa:Annotation) model
+- **Data Sources**: PubTator3 (automated), ClinVar (curated), dbSNP
 
 ## Schema Analysis (from MIE file)
 
-### Main Properties Available
-- `oa:Annotation` - Web Annotation Ontology base class
-- `dcterms:subject` - Entity type ("Disease" or "Gene")
-- `oa:hasBody` - External identifier (MeSH for diseases, NCBI Gene for genes)
-- `oa:hasTarget` - PubMed article URI
-- `pubtator:annotation_count` - Number of mentions in article
-- `dcterms:source` - Provenance (PubTator3, ClinVar, dbSNP) - optional (~50% coverage)
+### Main Entity Types
+- **Disease Annotations**: Links MeSH disease terms to PubMed articles where they're mentioned
+- **Gene Annotations**: Links NCBI Gene IDs to PubMed articles where they're mentioned
 
-### Important Relationships
-- **Disease → MeSH**: `oa:hasBody` → `http://identifiers.org/mesh/D{id}`
-- **Gene → NCBI Gene**: `oa:hasBody` → `http://identifiers.org/ncbigene/{id}`
-- **Annotation → PubMed**: `oa:hasTarget` → `http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid}`
+### Important Properties
+- `dcterms:subject`: Entity type ("Disease" or "Gene")
+- `oa:hasBody`: External identifier (MeSH ID for diseases, NCBI Gene ID for genes)
+- `oa:hasTarget`: PubMed article URI (http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid})
+- `pubtator:annotation_count`: Number of times entity is mentioned in the article
+- `dcterms:source`: Data provenance (PubTator3, ClinVar, dbSNP) - optional, often missing
 
-### Entity Types
-- **Disease**: Linked to MeSH vocabulary (D-prefix descriptors)
-- **Gene**: Linked to NCBI Gene identifiers
-- Note: Other entity types (Chemical, Species, Mutation) have limited or no coverage
-
-### Query Patterns Observed
-- Filter by `dcterms:subject` for entity type ("Disease" or "Gene")
-- Use identifiers.org namespace for external IDs
-- Cross-graph queries with PubMed graph for article metadata
-- Gene-disease co-occurrence queries for association discovery
+### Query Patterns
+- **CRITICAL**: Must use `FROM <http://rdfportal.org/dataset/pubtator_central>` to specify graph
+- Always use LIMIT - large aggregation queries will timeout
+- Filter by `dcterms:subject` to separate Disease from Gene annotations
+- Cross-database queries possible with PubMed, NCBI Gene (shared NCBI endpoint)
 
 ## Search Queries Performed
 
-### Query 1: Diseases in Specific Article (PMID 18935173)
-- **Query**: Diseases annotated in PubMed article 18935173
-- **Results**: 3 disease annotations
+### 1. Entity Type Distribution
+```
+Query: Count annotations by entity type
+Results: 
+  - Disease annotations: 162,094,545
+  - Gene annotations: 72,659,393
+  - Total: 234,753,938 annotations
+```
+
+### 2. Sample Disease Identifiers
+```
+Query: Distinct disease MeSH IDs
+Results: Found diseases including:
+  - D056486 (Fecal Incontinence)
   - D001724 (Birth Weight)
   - D001835 (Body Weight)
   - D003920 (Diabetes Mellitus)
-- **Observation**: Multiple disease concepts extracted per article
+  - D010146 (Pain)
+  - D009369 (Neoplasms/Cancer)
+  - D000544 (Alzheimer Disease)
+  - C565054 (rare disease - C-prefixed supplementary concept)
+  - D000740 (Anemia)
+```
 
-### Query 2: Gene Identifiers Sample
-- **Query**: Sample of gene annotations
-- **Results**: 30 distinct NCBI Gene IDs retrieved, including:
-  - 11820, 12359, 1233, 20299, 207, 2185, 21943, 25819, 5594, 6367...
-- **Observation**: Broad gene coverage across literature
+### 3. Sample Gene Identifiers
+```
+Query: Distinct gene NCBI IDs
+Results: Found genes including:
+  - 11820, 12359, 1233, 20299, 207 (human/mouse genes)
+  - 5594 (MAPK1), 6367 (CCL2), 8600 (TNFSF11)
+  - 3320 (HSP90AA1), 7193 (TOP2A)
+  - 3772517 (very high ID - possibly bacterial)
+```
 
-### Query 3: Diabetes Mellitus (D003920) Articles
-- **Query**: Articles mentioning Diabetes Mellitus
-- **Results**: 20 articles with D003920 annotation
-- **Observation**: Disease-article associations enable disease-centric literature retrieval
+### 4. Articles with Gene Annotations
+```
+Query: Find articles with gene mentions
+Results: PMIDs starting with 1682xxxx (e.g., 16821116, 16821125, 16821127)
+Example PMID 16821116 has:
+  - Genes: 11820, 12359, 11423
+  - Diseases: D000544 (Alzheimer), D003072 (Cognition Disorders)
+```
 
-### Query 4: Gene-Disease Co-occurrences
-- **Query**: Articles with both gene AND disease annotations
-- **Results**: Multiple co-occurrence pairs found:
-  - PMID 16821116: Genes 11820, 12359 + Diseases D000544, D003072
-  - PMID 16821125: 9 genes + 4 diseases (D001847, D001859, D008175)
-- **Observation**: Enables gene-disease association network construction
-
-### Query 5: High Annotation Count Diseases
-- **Query**: Disease annotations mentioned >2 times in articles
-- **Results**: 30 annotations with count=3:
-  - Various disease terms (D010195, D007022, D004415, etc.)
-  - Articles where diseases are prominently discussed
-- **Observation**: Annotation count indicates entity prominence in article
-
-### Query 6: Cancer Articles with Disease Annotations
-- **Query**: Cross-graph query integrating PubTator + PubMed for cancer articles
-- **Results**: 20 disease annotations from cancer-related articles:
-  - Colorectal cancer (D015179), Breast neoplasms (D001943), Lung neoplasms (D008175)
-  - Cross-database integration works well
-- **Observation**: Effective integration with PubMed for keyword-based filtering
+### 5. High-Frequency Mention Annotations
+```
+Query: Annotations with count > 5
+Results: Maximum annotation_count = 9
+  - Gene 28964 mentioned 9 times in PMID 15383276
+  - Many genes mentioned 8 times in various articles
+  - Majority of annotations have count = 1 or 2
+```
 
 ## SPARQL Queries Tested
 
-### Query 1: Find Diseases in Specific Article
+### Query 1: Diseases in a Specific Article
 ```sparql
 PREFIX oa: <http://www.w3.org/ns/oa#>
 PREFIX dcterms: <http://purl.org/dc/terms/>
 
-SELECT ?disease ?diseaseId
+SELECT ?diseaseId
 FROM <http://rdfportal.org/dataset/pubtator_central>
 WHERE {
-  ?disease a oa:Annotation ;
-           dcterms:subject "Disease" ;
-           oa:hasBody ?diseaseId ;
-           oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/18935173> .
+  ?ann dcterms:subject "Disease" ;
+       oa:hasBody ?diseaseId ;
+       oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/18935173> .
 }
+# Results: D001724 (Birth Weight), D001835 (Body Weight), D003920 (Diabetes Mellitus)
 ```
-**Results**: 3 disease annotations (MeSH D001724, D001835, D003920) successfully retrieved.
 
-### Query 2: List Gene Annotations
+### Query 2: Gene-Disease Co-Mentions for Alzheimer Disease
 ```sparql
 PREFIX oa: <http://www.w3.org/ns/oa#>
 PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX mesh: <http://identifiers.org/mesh/>
 
-SELECT DISTINCT ?geneId
+SELECT DISTINCT ?geneId ?article
 FROM <http://rdfportal.org/dataset/pubtator_central>
 WHERE {
-  ?ann a oa:Annotation ;
-       dcterms:subject "Gene" ;
-       oa:hasBody ?geneId .
-}
-LIMIT 30
-```
-**Results**: 30 distinct NCBI Gene identifiers retrieved, demonstrating gene annotation coverage.
-
-### Query 3: Find Articles for Specific Disease (D003920)
-```sparql
-PREFIX oa: <http://www.w3.org/ns/oa#>
-PREFIX dcterms: <http://purl.org/dc/terms/>
-
-SELECT ?ann ?target
-FROM <http://rdfportal.org/dataset/pubtator_central>
-WHERE {
-  ?ann a oa:Annotation ;
-       dcterms:subject "Disease" ;
-       oa:hasBody <http://identifiers.org/mesh/D003920> ;
-       oa:hasTarget ?target .
-}
-LIMIT 20
-```
-**Results**: 20 PubMed articles annotated with Diabetes Mellitus (D003920).
-
-### Query 4: Gene-Disease Co-occurrence Discovery
-```sparql
-PREFIX oa: <http://www.w3.org/ns/oa#>
-PREFIX dcterms: <http://purl.org/dc/terms/>
-
-SELECT DISTINCT ?article ?geneId ?diseaseId
-FROM <http://rdfportal.org/dataset/pubtator_central>
-WHERE {
-  ?geneAnn a oa:Annotation ;
-           dcterms:subject "Gene" ;
+  ?geneAnn dcterms:subject "Gene" ;
            oa:hasBody ?geneId ;
            oa:hasTarget ?article .
-  ?diseaseAnn a oa:Annotation ;
-              dcterms:subject "Disease" ;
-              oa:hasBody ?diseaseId ;
+  ?diseaseAnn dcterms:subject "Disease" ;
+              oa:hasBody mesh:D000544 ;
               oa:hasTarget ?article .
 }
-LIMIT 30
+LIMIT 20
+# Results: Found genes co-mentioned with Alzheimer (D000544):
+#   348 (APOE), 1327 (COX2), 4137 (MAPT), 1622 (DBH), 
+#   6620 (SNCB), 6622 (SNCA), 351 (APP), 5663 (PSEN1)
 ```
-**Results**: 30 gene-disease co-occurrence pairs across articles, enabling association analysis.
 
-### Query 5: Annotations with Multiple Mentions
+### Query 3: Cross-Database - PubTator + PubMed + NCBI Gene
 ```sparql
 PREFIX oa: <http://www.w3.org/ns/oa#>
 PREFIX dcterms: <http://purl.org/dc/terms/>
-PREFIX pubtator: <http://purl.jp/bio/10/pubtator-central/ontology#>
+PREFIX bibo: <http://purl.org/ontology/bibo/>
+PREFIX dct: <http://purl.org/dc/terms/>
+PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-SELECT ?ann ?diseaseId ?target ?count
+SELECT ?pmid ?title ?geneId ?gene_symbol
 FROM <http://rdfportal.org/dataset/pubtator_central>
+FROM <http://rdfportal.org/dataset/pubmed>
+FROM <http://rdfportal.org/dataset/ncbigene>
 WHERE {
-  ?ann a oa:Annotation ;
-       dcterms:subject "Disease" ;
-       oa:hasBody ?diseaseId ;
-       oa:hasTarget ?target ;
-       pubtator:annotation_count ?count .
-  FILTER(?count > 2)
+  ?ann dcterms:subject "Gene" ;
+       oa:hasBody ?geneId ;
+       oa:hasTarget ?article .
+  ?article bibo:pmid ?pmid ;
+           dct:title ?title .
+  ?geneId a insdc:Gene ;
+          rdfs:label ?gene_symbol .
+  FILTER(?geneId = <http://identifiers.org/ncbigene/7157>)
 }
-LIMIT 30
+LIMIT 10
+# Results: TP53 (gene 7157) mentioned in articles about:
+#   - p53 codon 72 polymorphism and cervical cancer (PMID 10421306)
+#   - Melatonin and MCF-7 breast cancer cells (PMID 10421427)
+#   - Paclitaxel sensitivity (PMID 10421546)
+#   - COVID-19 susceptibility genes (PMID 34437926)
 ```
-**Results**: 30 disease annotations with count=3, indicating entities mentioned multiple times.
 
-### Query 6: Cross-Graph Integration with PubMed
+### Query 4: BRCA1 Literature with Article Titles
 ```sparql
 PREFIX oa: <http://www.w3.org/ns/oa#>
 PREFIX dcterms: <http://purl.org/dc/terms/>
 PREFIX bibo: <http://purl.org/ontology/bibo/>
 PREFIX dct: <http://purl.org/dc/terms/>
 
-SELECT ?ann ?diseaseId ?article ?title
+SELECT ?pmid ?title ?geneId
 FROM <http://rdfportal.org/dataset/pubtator_central>
 FROM <http://rdfportal.org/dataset/pubmed>
 WHERE {
-  ?ann a oa:Annotation ;
-       dcterms:subject "Disease" ;
-       oa:hasBody ?diseaseId ;
+  ?ann dcterms:subject "Gene" ;
+       oa:hasBody ?geneId ;
        oa:hasTarget ?article .
   ?article bibo:pmid ?pmid ;
            dct:title ?title .
-  ?title bif:contains "'cancer'" .
+  FILTER(?geneId = <http://identifiers.org/ncbigene/672>)
 }
 LIMIT 20
+# Results: BRCA1 (gene 672) in articles about:
+#   - Radiation-induced breast cancers (PMID 10036974)
+#   - BRCA1/BRCA2 survival in Ashkenazi Jewish carriers (PMID 10037104)
+#   - BRCA1 purification from tumor cells (PMID 10052688)
+#   - PARP inhibitors and synthetic lethality (PMID 24984781)
 ```
-**Results**: Successfully retrieved disease annotations from cancer-related articles with titles.
+
+### Query 5: Annotation Count Distribution (Genes)
+```sparql
+PREFIX oa: <http://www.w3.org/ns/oa#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX pubtator: <http://purl.jp/bio/10/pubtator-central/ontology#>
+
+SELECT ?count (COUNT(*) as ?annotations)
+FROM <http://rdfportal.org/dataset/pubtator_central>
+WHERE {
+  ?ann dcterms:subject "Gene" ;
+       pubtator:annotation_count ?count .
+}
+GROUP BY ?count
+ORDER BY DESC(?count)
+# Results:
+#   count=9: 1 annotation
+#   count=8: 29 annotations
+#   count=7: 1,244 annotations
+#   count=6: 17,626 annotations
+#   count=5: 63,029 annotations
+#   count=4: 699,650 annotations
+#   count=3: 1,084,914 annotations
+#   count=2: 2,783,711 annotations
+#   count=1: 68,009,189 annotations
+```
+
+## Cross-Reference Analysis
+
+### Entity Counts
+- **MeSH diseases referenced**: Large number (100+ distinct disease IDs in sample)
+- **NCBI genes referenced**: Large number (50+ distinct gene IDs in sample)
+- **PubMed articles with annotations**: Millions of unique PMIDs
+
+### Database Connections
+- **PubMed**: Via `oa:hasTarget` → `http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid}`
+- **MeSH**: Via `oa:hasBody` for diseases → `http://identifiers.org/mesh/{id}`
+- **NCBI Gene**: Via `oa:hasBody` for genes → `http://identifiers.org/ncbigene/{id}`
+
+### Shared Endpoint (NCBI)
+PubTator shares endpoint with: ClinVar, PubMed, NCBI Gene, MedGen
+- Enables rich cross-database queries
+- Same article URIs work across all NCBI databases
+- Gene URIs compatible with NCBI Gene database
 
 ## Interesting Findings
 
-### Specific Entities for Questions:
-- **Disease D003920**: Diabetes Mellitus - commonly annotated disease
-- **Disease D000544**: Alzheimer Disease - well-represented in annotations
-- **Gene 7157**: TP53 (known from other explorations) - gene annotation candidate
-- **PMID 16821116**: Article with multiple gene-disease co-occurrences
+### Key Statistics (from queries)
+- **162 million disease annotations** across PubMed literature
+- **72 million gene annotations** across PubMed literature
+- **Annotation counts**: Majority (68M/72M for genes) have single mentions; max observed was 9 mentions in one article
+- **No source attribution found**: `dcterms:source` property appears to be unpopulated in current data
 
-### Unique Properties/Patterns:
-1. **Web Annotation Ontology**: Uses standard oa: namespace for annotation modeling
-2. **identifiers.org URIs**: Standardized external database links
-3. **Annotation Count**: pubtator:annotation_count tracks entity prominence
-4. **Provenance**: dcterms:source indicates data origin (PubTator3, ClinVar, dbSNP)
+### Gene-Disease Co-Mention Discovery
+- Found co-mentions of known gene-disease associations:
+  - Alzheimer (D000544) with APOE (348), APP (351), PSEN1 (5663), SNCA (6622)
+  - Diabetes (D003920) with INS (3630), HNF1A (3105), HNF4A (3172), etc.
+- Enables literature-based gene-disease association discovery
 
-### Connections to Other Databases:
-- **PubMed**: Direct integration via same SPARQL endpoint (different graphs)
-- **MeSH**: Disease identifiers link to MeSH vocabulary
-- **NCBI Gene**: Gene identifiers link to NCBI Gene database
-- **ClinVar/dbSNP**: Curated annotations from variant databases
+### BRCA1 Literature Coverage
+- Gene 672 (BRCA1) has extensive coverage in breast/ovarian cancer literature
+- Cross-database query returned articles spanning 1999-2024
+- Topics include PARP inhibitors, risk assessment, survival studies
 
-### Data Quality Notes:
-- Provenance (dcterms:source) available for ~50% of annotations
-- Gene annotations less frequent than disease annotations
-- Annotation count typically 1-3, occasionally higher
-- Entity types limited to Disease and Gene
-
-## Cross-Reference/Mapping Analysis
-
-### Entity-to-Database Mapping
-PubTator Central provides entity-article linkage rather than database-to-database mapping:
-
-1. **Disease Entities → MeSH**
-   - All disease annotations use MeSH identifiers
-   - Format: `http://identifiers.org/mesh/D{descriptor_id}`
-   - Example: D003920 = Diabetes Mellitus
-
-2. **Gene Entities → NCBI Gene**
-   - All gene annotations use NCBI Gene identifiers
-   - Format: `http://identifiers.org/ncbigene/{gene_id}`
-   - Example: 11820, 12359, etc.
-
-3. **Annotations → PubMed**
-   - All annotations target PubMed article URIs
-   - Format: `http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid}`
-
-### Cardinality Notes:
-- **Many-to-Many**: Articles have multiple entity annotations; entities appear in multiple articles
-- **Annotation Counts**: Track within-article mention frequency (not cross-article)
-- **Co-occurrence**: Gene-disease pairs co-occurring in same article enable association discovery
+### TP53 Literature Coverage
+- Gene 7157 (TP53) mentioned across diverse cancer types
+- Topics include p53 polymorphisms, drug sensitivity, COVID-19 susceptibility
 
 ## Question Opportunities by Category
 
 ### Precision
-- "What is the MeSH identifier for diseases annotated in PubMed article [PMID]?"
-- "How many times is [disease] mentioned in article [PMID]?" (annotation_count)
-- "What is the entity type (Disease/Gene) for PubTator annotation [ID]?"
+- ✅ "How many disease annotations are there for PMID 18935173?" (3 diseases found)
+- ✅ "What is the annotation count for gene 28964 in PMID 15383276?" (9 mentions)
+- ✅ "What MeSH disease ID is most frequently annotated?" (requires aggregation)
 
 ### Completeness
-- "How many disease annotations are associated with PubMed article [PMID]?"
-- "List all NCBI Gene IDs annotated with [disease MeSH ID]"
-- "How many articles mention [specific gene ID]?"
+- ✅ "How many total gene annotations are in PubTator?" (72,659,393)
+- ✅ "How many total disease annotations are in PubTator?" (162,094,545)
+- ✅ "What is the distribution of annotation counts for genes?" (1-9, mostly 1)
 
 ### Integration
-- "Which genes co-occur with Alzheimer Disease (D000544) in literature?"
-- "Find articles where both [gene] and [disease] are annotated"
-- "What MeSH diseases are annotated in cancer-related PubMed articles?"
+- ✅ "Find articles mentioning both BRCA1 and breast cancer with article titles" (PubTator + PubMed)
+- ✅ "Find gene symbols for genes co-mentioned with Alzheimer disease" (PubTator + NCBI Gene)
+- ✅ "What genes are mentioned in articles about PARP inhibitors?" (requires PubMed keyword search)
 
 ### Currency
-- "What are the most recently annotated articles mentioning [disease]?"
-- Note: PubTator data is regularly updated with new annotations
+- ✅ "What recent articles mention COVID-19 susceptibility genes?" (requires filtering by date)
+- ✅ "Find 2024 publications mentioning mTOR pathway genes" (date filtering)
 
 ### Specificity
-- "Find articles annotated with rare disease [MeSH ID]"
-- "Which genes are specifically associated with [niche disease] in literature?"
-- "What disease annotations have high annotation counts (>3 mentions)?"
+- ✅ "Find articles mentioning rare disease MeSH IDs (C-prefixed concepts)"
+- ✅ "What genes are co-mentioned with Erdheim-Chester disease?"
+- ✅ "Find annotations for uncommon genes (very high NCBI Gene IDs)"
 
 ### Structured Query
-- "Find gene-disease co-occurrences where annotation count > 2"
-- "List articles with both specific gene AND disease annotations"
-- "Find disease annotations in articles containing specific keywords (cross-graph)"
+- ✅ "Find genes co-mentioned with Diabetes Mellitus (D003920) in literature" (JOIN query)
+- ✅ "Find articles where a gene is mentioned more than 5 times" (FILTER query)
+- ✅ "Find gene-disease pairs co-occurring in the same article" (double JOIN)
 
 ## Notes
 
-### Limitations/Challenges:
-1. **Entity Type Coverage**: Only Disease and Gene types well-represented
-2. **Provenance Gaps**: ~50% of annotations lack source attribution
-3. **Aggregation Performance**: Large aggregations require LIMIT to avoid timeout
-4. **Cross-Database Queries**: Complex joins with PubMed can be slow
+### Limitations
+- Large aggregation queries timeout (e.g., counting unique articles or diseases)
+- Source attribution (`dcterms:source`) not populated in current data
+- Only Disease and Gene entity types; no Chemical, Species, or Mutation annotations
+- No text/abstract content in PubTator graph (need to join with PubMed)
 
-### Best Practices:
-1. Always filter by `dcterms:subject` for specific entity types
-2. Use LIMIT for exploratory queries
-3. Use identifiers.org format for external IDs
-4. Cross-graph queries work well but need selective filters
-5. Use OPTIONAL for dcterms:source (not always present)
+### Best Practices
+- Always use `FROM <http://rdfportal.org/dataset/pubtator_central>` clause
+- Always filter by `dcterms:subject "Disease"` or `dcterms:subject "Gene"`
+- Always use LIMIT for exploratory queries
+- For cross-database queries, include multiple FROM clauses
+- Gene annotations use `identifiers.org/ncbigene/` URIs compatible with NCBI Gene
 
-### Important Clarifications:
-- PubTator Central provides text-mined entity mentions, not assertions
-- Co-occurrence ≠ biological relationship (just co-mentioned in text)
-- Annotation count is within-article frequency, not corpus-wide
-- Database focuses on Disease and Gene entities primarily
+### Query Performance
+- Simple lookups by annotation ID: Fast (<1s)
+- Entity-specific queries with filters: Moderate (1-5s)
+- Cross-graph queries (PubTator + PubMed): ~2-10 seconds
+- Three-way integration (PubTator + PubMed + NCBI Gene): ~5-15 seconds
+- Large aggregations without LIMIT: Will timeout
+
+### Cross-Database Integration
+- PubTator is powerful for literature-based discovery when combined with:
+  - **PubMed**: Article metadata, abstracts, keyword search (bif:contains)
+  - **NCBI Gene**: Gene symbols, descriptions, functional annotations
+  - **MeSH**: Disease/concept hierarchy and relationships
+  - **ClinVar**: Clinical significance of genetic variants

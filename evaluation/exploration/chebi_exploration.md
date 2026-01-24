@@ -1,181 +1,216 @@
-# ChEBI (Chemical Entities of Biological Interest) Exploration Report
+# ChEBI Exploration Report
 
 ## Database Overview
-- **Purpose**: Ontology database of chemical entities of biological interest
+- **Purpose**: ChEBI (Chemical Entities of Biological Interest) is an ontology database for chemical entities with biological relevance
 - **Key data types**: Small molecules, atoms, ions, functional groups, macromolecules with hierarchical classification
-- **Scale**: 223,078 chemical entities (217K+ originally reported, growing), 192,688 with molecular formulas
-- **Structure**: OWL ontology with rdfs:subClassOf hierarchy
+- **Total entities**: 223,078 chemical classes
+- **Entities with molecular formulas**: 192,688 (~86%)
+- **Endpoint**: https://rdfportal.org/ebi/sparql
+- **Search tool**: OLS4:searchClasses
 
 ## Schema Analysis (from MIE file)
-
-### Main Entity Types
-1. **ChemicalEntity (owl:Class)**: Core entity
-   - Properties: rdfs:label, oboInOwl:id, formula, mass, charge, smiles, inchi, inchikey
-   - Hierarchy: rdfs:subClassOf
-   - Synonyms: hasRelatedSynonym, hasExactSynonym
-   - Cross-refs: hasDbXref
+### Main Properties
+- `rdfs:label` - Chemical name
+- `chebi:formula` - Molecular formula (uses chebi/ namespace)
+- `chebi:mass` - Molecular mass
+- `chebi:smiles` - SMILES notation
+- `chebi:inchi` - InChI string
+- `chebi:inchikey` - InChI key (standardized)
+- `oboInOwl:hasDbXref` - Cross-references to external databases
+- `oboInOwl:hasRelatedSynonym` / `hasExactSynonym` - Alternative names
 
 ### Important Relationships
-- `rdfs:subClassOf` for ontology hierarchy
+- `rdfs:subClassOf` - Hierarchical classification (ontology structure)
 - Chemical relationships via OWL restrictions:
-  - `chebi#is_conjugate_acid_of`
-  - `chebi#is_conjugate_base_of`
-  - `chebi#is_tautomer_of`
-  - `chebi#is_enantiomer_of`
-- Biological roles via `obo:RO_0000087`
+  - `chebi:is_conjugate_acid_of` / `is_conjugate_base_of`
+  - `chebi:is_tautomer_of`
+  - `chebi:is_enantiomer_of`
+  - `RO_0000087` (has_role) - Biological roles
+
+**CRITICAL**: ChEBI uses TWO namespaces:
+- Data properties: `http://purl.obolibrary.org/obo/chebi/` (formula, mass, smiles)
+- Relationship properties: `http://purl.obolibrary.org/obo/chebi#` (is_conjugate_acid_of)
 
 ### Query Patterns
-- CRITICAL: Two namespaces - `chebi/` for data properties, `chebi#` for relationship properties
-- Use OLS4:searchClasses for keyword-based entity search
-- Use `bif:contains` for SPARQL full-text search
-- Filter by `CHEBI_` URI prefix to exclude non-entity classes
+- Use `bif:contains` for full-text keyword search (Virtuoso backend)
+- Filter by CHEBI_ URI prefix to exclude ontology metadata classes
+- Use OWL restriction patterns for chemical relationships
 
 ## Search Queries Performed
 
-1. **Query**: OLS4 search for "aspirin"
-   - Results: 19 matches including aspirin-based probe, aspirin-triggered resolvins, acetylsalicylic acid
+1. **Query: "antibiotic"** → 494 total results
+   - Found: CHEBI:80084 (Antibiotic TA), CHEBI:87114 (antibiotic fungicide), CHEBI:39208 (antibiotic insecticide), CHEBI:86478 (antibiotic antifungal agent)
+   - Shows classification of antibiotics by application type
 
-2. **Query**: OLS4 search for "rapamycin"
-   - Results: 15 matches including sirolimus (CHEBI:9168), various rapamycin derivatives
+2. **Query: "metformin"** → 5 results
+   - Found: CHEBI:6801 (metformin - main entry), CHEBI:6802 (metformin hydrochloride), CHEBI:90688 (metformin(1+) - protonated form), CHEBI:90875 (Synjardy - combination drug)
+   - Demonstrates drug and salt/ionization forms
 
-3. **Query**: Total chemical entities count
-   - Results: 223,078 entities
+3. **Query: "caffeine"** → 16 results
+   - Found: CHEBI:27732 (caffeine - main entry), CHEBI:31332 (caffeine monohydrate), CHEBI:177330 (caffeine-d9 - deuterated), CHEBI:62205 (3-methylxanthine - metabolite)
+   - Shows metabolites and isotope-labeled variants
 
-4. **Query**: Entities with molecular formulas
-   - Results: 192,688 entities (~86%)
+4. **Query: "statins"** → 8 results
+   - Found: CHEBI:87631 (statin - parent class), CHEBI:87635 (synthetic statin), CHEBI:87633 (semi-synthetic statin), CHEBI:39548 (atorvastatin), CHEBI:63618 (pravastatin)
+   - Hierarchical drug classification
 
-5. **Query**: Molecular properties of aspirin (CHEBI:15365)
-   - Results: Formula C9H8O4, mass 180.15740, SMILES CC(=O)Oc1ccccc1C(O)=O
-
-6. **Query**: ATP(4-) properties (CHEBI:30616)
-   - Results: Formula C10H12N5O13P3, mass 503.14946
+5. **Query: "omega-3 fatty acid"** → 50,688 results (includes related terms)
+   - Found: CHEBI:25681 (omega-3 fatty acid - main class)
+   - Definition: Polyunsaturated fatty acids with double bond at ω-3 position
+   - Large result set due to fatty acid derivatives
 
 ## SPARQL Queries Tested
 
+### Query 1: Get molecular properties of caffeine (CHEBI:27732)
 ```sparql
-# Query 1: Get molecular properties of aspirin
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX chebi: <http://purl.obolibrary.org/obo/chebi/>
 PREFIX obo: <http://purl.obolibrary.org/obo/>
-PREFIX chebi: <http://purl.obolibrary.org/obo/chebi/>
-SELECT ?label ?formula ?mass ?smiles ?inchikey
+
+SELECT ?label ?formula ?mass ?inchikey
 FROM <http://rdf.ebi.ac.uk/dataset/chebi>
 WHERE {
-  obo:CHEBI_15365 rdfs:label ?label .
-  OPTIONAL { obo:CHEBI_15365 chebi:formula ?formula }
-  OPTIONAL { obo:CHEBI_15365 chebi:mass ?mass }
-  OPTIONAL { obo:CHEBI_15365 chebi:smiles ?smiles }
-  OPTIONAL { obo:CHEBI_15365 chebi:inchikey ?inchikey }
+  obo:CHEBI_27732 rdfs:label ?label .
+  OPTIONAL { obo:CHEBI_27732 chebi:formula ?formula }
+  OPTIONAL { obo:CHEBI_27732 chebi:mass ?mass }
+  OPTIONAL { obo:CHEBI_27732 chebi:inchikey ?inchikey }
 }
-# Results: acetylsalicylic acid, C9H8O4, 180.15740, CC(=O)Oc1ccccc1C(O)=O
 ```
+**Results**: label="caffeine", formula="C8H10N4O2", mass="194.19076", inchikey="RYYVLZVUVIJVGH-UHFFFAOYSA-N"
 
+### Query 2: Count total chemical entities
 ```sparql
-# Query 2: Count total ChEBI entities
-PREFIX owl: <http://www.w3.org/2002/07/owl#>
-SELECT (COUNT(?entity) as ?totalEntities)
+SELECT (COUNT(DISTINCT ?entity) as ?total)
 FROM <http://rdf.ebi.ac.uk/dataset/chebi>
 WHERE {
   ?entity a owl:Class .
   FILTER(STRSTARTS(STR(?entity), "http://purl.obolibrary.org/obo/CHEBI_"))
 }
-# Results: 223,078 entities
 ```
+**Results**: 223,078 total chemical entities
 
+### Query 3: Count entities with molecular formulas
 ```sparql
-# Query 3: Count entities with molecular formulas
-PREFIX owl: <http://www.w3.org/2002/07/owl#>
-PREFIX chebi: <http://purl.obolibrary.org/obo/chebi/>
-SELECT (COUNT(DISTINCT ?entity) as ?entitiesWithFormula)
+SELECT (COUNT(DISTINCT ?entity) as ?with_formula)
 FROM <http://rdf.ebi.ac.uk/dataset/chebi>
 WHERE {
-  ?entity a owl:Class .
-  ?entity chebi:formula ?formula .
+  ?entity a owl:Class ;
+          chebi:formula ?formula .
   FILTER(STRSTARTS(STR(?entity), "http://purl.obolibrary.org/obo/CHEBI_"))
 }
-# Results: 192,688 entities
 ```
+**Results**: 192,688 entities with formulas (~86% coverage)
+
+### Query 4: Cross-reference database coverage
+```sparql
+SELECT ?prefix (COUNT(?entity) as ?count)
+FROM <http://rdf.ebi.ac.uk/dataset/chebi>
+WHERE {
+  ?entity a owl:Class ;
+          oboInOwl:hasDbXref ?xref .
+  BIND(STRBEFORE(?xref, ":") as ?prefix)
+}
+GROUP BY ?prefix ORDER BY DESC(?count) LIMIT 15
+```
+**Results** (top cross-reference sources):
+- PMID: 118,314 cross-references (literature)
+- Chemspider: 53,381
+- LINCS: 41,353
+- CAS: 29,869
+- KEGG: 22,364
+- HMDB: 19,788
+- Reaxys: 17,769
+- LIPID_MAPS_instance: 12,642
+- GlyTouCan: 10,621
+- MetaCyc: 7,323
+- Wikipedia: 6,725
+
+## Cross-Reference Analysis
+
+### Entity counts (unique entities with mappings):
+ChEBI provides extensive cross-references stored as literal strings in format "PREFIX:ID":
+- Literature (PMID): 118,314 cross-references to PubMed
+- CAS Registry: 29,869 mappings
+- KEGG compounds: 22,364 mappings
+- HMDB (metabolomics): 19,788 mappings
+
+### Integration with co-located databases (EBI endpoint):
+- ChEMBL links via `skos:exactMatch`
+- Reactome links via BioPAX `bp:xref` with ChEBI IDs
 
 ## Interesting Findings
 
-### Specific Entities for Questions
-- **Aspirin**: CHEBI:15365 (acetylsalicylic acid), formula C9H8O4, mass 180.15740
-- **ATP**: CHEBI:30616 (ATP(4-)), formula C10H12N5O13P3
-- **Sirolimus/Rapamycin**: CHEBI:9168, a macrolide lactam immunosuppressant
-- **Water**: CHEBI:15377, H2O, mass 18.01530
-- **L-proline**: CHEBI:17203, C5H9NO2, mass 115.13050
+**Findings requiring actual queries (non-trivial):**
 
-### Unique Properties
-- Hierarchical classification via rdfs:subClassOf
-- Chemical relationships (conjugate acid/base, tautomers, enantiomers) via OWL restrictions
-- Biological roles encoded through RO_0000087
-- Comprehensive structural identifiers: SMILES, InChI, InChIKey
+1. **223,078 total chemical entities** in ChEBI (requires COUNT query)
+   - 192,688 have molecular formulas (~86%)
+   - Shows comprehensive coverage with structural data
 
-### Cross-Database Connections
-- KEGG compound IDs
-- DrugBank IDs
-- PubChem IDs
-- HMDB (Human Metabolome Database)
-- CAS registry numbers
-- Wikipedia links
-- PubMed IDs
+2. **Cross-reference richness**: Over 118,000 PubMed references linking chemicals to literature
+   - Enables compound-to-literature queries
+   - Top referenced publication: PMID:20671299 (713 compounds reference it)
 
-### Verifiable Facts
-- 223,078 total ChEBI entities
-- 192,688 entities have molecular formulas (~86%)
-- Aspirin (CHEBI:15365) has molecular formula C9H8O4 and mass 180.15740
-- ATP(4-) (CHEBI:30616) has formula C10H12N5O13P3
-- Sirolimus (rapamycin) is CHEBI:9168
+3. **Drug classification hierarchy**: 
+   - Statins are organized into synthetic (CHEBI:87635), semi-synthetic (CHEBI:87633), and naturally occurring (CHEBI:87632)
+   - Example: Atorvastatin (CHEBI:39548) classified under synthetic statins
+
+4. **Caffeine molecular properties** (CHEBI:27732):
+   - Formula: C8H10N4O2
+   - Mass: 194.19076
+   - InChIKey: RYYVLZVUVIJVGH-UHFFFAOYSA-N
+
+5. **Metformin** (CHEBI:6801) - antidiabetic drug with multiple related entries for salt forms and ionization states
+
+6. **Dual namespace issue**: Data properties use `/chebi/` while relationship properties use `#chebi#` - critical for correct queries
 
 ## Question Opportunities by Category
 
-### Precision
-- "What is the ChEBI ID for aspirin?" (Answer: CHEBI:15365)
-- "What is the molecular formula of ATP according to ChEBI?" (Answer: C10H12N5O13P3)
-- "What is the molecular weight of acetylsalicylic acid in ChEBI?" (Answer: 180.15740)
-- "What is the InChIKey for water in ChEBI?" (Answer: XLYOFNOQVPJJNP-UHFFFAOYSA-N)
+### Precision (specific IDs, measurements)
+- ✅ "What is the ChEBI ID for metformin?" → CHEBI:6801
+- ✅ "What is the molecular formula of caffeine (CHEBI:27732)?" → C8H10N4O2
+- ✅ "What is the InChIKey for atorvastatin (CHEBI:39548)?"
+- ✅ "What is the molecular mass of metformin in ChEBI?"
 
-### Completeness
-- "How many chemical entities are in ChEBI?" (Answer: 223,078)
-- "How many ChEBI entities have molecular formula data?" (Answer: 192,688)
-- "What are the parent classes of L-proline in ChEBI?"
+### Completeness (counts, comprehensive lists)
+- ✅ "How many chemical entities are in ChEBI?" → 223,078
+- ✅ "How many ChEBI entities have molecular formulas?" → 192,688
+- ✅ "How many ChEBI entities have KEGG cross-references?" → 22,364
+- ✅ "How many statin drugs are classified in ChEBI?"
 
-### Integration
-- "What DrugBank ID is linked to sirolimus in ChEBI?" (via hasDbXref)
-- "What KEGG compound ID corresponds to ATP?" (KEGG:C00002)
-- "Find ChEBI entries cross-referenced to PubChem"
+### Integration (cross-database linking)
+- ✅ "What is the CAS registry number for caffeine in ChEBI?" (from hasDbXref)
+- ✅ "Find ChEBI entities with HMDB cross-references"
+- ✅ "Link ChEBI compounds to KEGG compound IDs"
+- ✅ "What ChEMBL molecules match to ChEBI entities?" (via skos:exactMatch on EBI endpoint)
 
-### Currency
-- "What new chemical entities have been added to ChEBI recently?"
+### Currency (recent/updated data)
+- ✅ "What is the current count of chemical entities in ChEBI?" (database updated monthly)
 
-### Specificity
-- "What is the ChEBI ID for the immunosuppressant rapamycin?" (Answer: CHEBI:9168)
-- "What are the aspirin-triggered resolvins in ChEBI?" (Multiple IDs)
-- "Find macrolide lactam compounds in ChEBI"
+### Specificity (niche/specialized)
+- ✅ "What is the ChEBI ID for omega-3 fatty acid class?" → CHEBI:25681
+- ✅ "What antibiotic subclasses are defined in ChEBI?"
+- ✅ "What caffeine metabolites are in ChEBI?"
 
-### Structured Query
-- "Find all ChEBI entities with molecular mass greater than 500"
-- "Find compounds that are conjugate acids of another compound"
-- "List ChEBI entities classified as antibiotics with DrugBank cross-references"
+### Structured Query (complex filtering)
+- ✅ "Find all statin drugs (synthetic and semi-synthetic) in ChEBI"
+- ✅ "Find chemical entities with both CAS and KEGG cross-references"
+- ✅ "Find all conjugate acid/base pairs in ChEBI"
+- ✅ "Find alkaloids classified as purine alkaloids"
 
 ## Notes
 
 ### Limitations
-- Not all entities have complete molecular properties
-- Abstract chemical classes lack molecular data
-- Chemical relationships encoded as OWL restrictions require specific query patterns
+- Abstract chemical classes lack molecular properties (formula, mass)
+- Cross-references stored as literal strings require parsing
+- Some deprecated entities remain in database (check owl:deprecated)
 
 ### Best Practices
-- Always use correct namespace: `chebi/` for data properties, `chebi#` for relationships
-- Filter by `CHEBI_` URI prefix to get only chemical entities
-- Use OLS4:searchClasses for keyword-based searches
-- Use `bif:contains` for advanced SPARQL text search
-- Use OPTIONAL for molecular properties (not all entities have all data)
-- Check owl:deprecated status for deprecated entries
+- Always filter by `CHEBI_` URI prefix to get only chemical entities
+- Use `bif:contains` for keyword search instead of `FILTER CONTAINS`
+- Use correct namespace for data properties (chebi/) vs relationship properties (chebi#)
+- Use OPTIONAL for molecular properties as not all entities have them
 
-### Important Namespace Notes
-```
-# Data properties (formula, mass, smiles, etc.)
-PREFIX chebi: <http://purl.obolibrary.org/obo/chebi/>
-
-# Relationship properties (is_conjugate_acid_of, etc.)
-PREFIX chebi_rel: <http://purl.obolibrary.org/obo/chebi#>
-```
+### Data Quality
+- Manual curation ensures high accuracy
+- Monthly updates
+- Well-maintained cross-references to ChEMBL and Reactome via co-located EBI endpoint

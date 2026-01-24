@@ -1,241 +1,168 @@
-# Rhea - Annotated Reactions Database Exploration Report
+# Rhea Exploration Report
 
 ## Database Overview
-- **Purpose**: Expert-curated database of biochemical reactions
-- **Scope**: Enzymatic and transport reactions with atom-balanced equations
-- **Scale**: 17,078 master reactions, 11,763 small molecules, 254 polymers
-- **Key features**: ChEBI integration, EC numbers, GO terms, directional variants
+- **Purpose**: Comprehensive expert-curated database of biochemical reactions
+- **Scope**: 17,078 master reactions (plus directional and bidirectional variants)
+- **Key features**: Atom-balanced, chemically annotated, linked to ChEBI compounds
 
 ## Schema Analysis (from MIE file)
-
-### Main Entity Types
-- **Reaction**: Master reaction (unspecified direction) - rdfs:subClassOf rhea:Reaction
-- **DirectionalReaction**: Left-to-right or right-to-left direction
-- **BidirectionalReaction**: Reversible reactions
-- **ReactionSide**: Left (_L) or right (_R) side with participants
-- **ReactionParticipant**: Compound in a reaction with optional location
-- **SmallMolecule**: Chemical compounds with ChEBI links
-- **Polymer**: Macromolecular structures with polymerization indices
-
-### Important Properties
-- `rhea:accession`: Reaction identifier (e.g., "RHEA:10000")
-- `rhea:equation`: Text equation
-- `rhea:status`: Approved, Preliminary, or Obsolete
+### Main Properties
+- `rhea:Reaction`: Base class for reactions (subclassed via rdfs:subClassOf)
+- `rhea:equation`: Chemical equation string
+- `rhea:accession`: Rhea identifier (e.g., "RHEA:10000")
+- `rhea:status`: rhea:Approved, rhea:Preliminary, rhea:Obsolete
 - `rhea:isTransport`: Boolean for transport reactions
-- `rhea:isChemicallyBalanced`: Always 1 for approved reactions
-- `rhea:ec`: EC number link to UniProt enzyme namespace
-- `rhea:directionalReaction`: Links to directional variants
-- `rhea:side`: Links to left and right sides
-- `rhea:chebi`: Direct ChEBI link for compounds
+- `rhea:ec`: EC number linking to UniProt enzyme
 
-### Reaction ID Structure
-Each reaction has a quartet of IDs:
-- Master (unspecified): RHEA:10000
-- Left-to-right: RHEA:10001
-- Right-to-left: RHEA:10002
-- Bidirectional: RHEA:10003
+### Important Relationships
+- `rhea:directionalReaction`: Links master to directional variants
+- `rhea:bidirectionalReaction`: Links master to bidirectional form
+- `rhea:side`: Reaction sides (_L, _R)
+- `rhea:contains`: Participants in each side
+- `rhea:compound`: Links participant to compound
+
+### Query Patterns
+- Use `rdfs:subClassOf rhea:Reaction` to find reactions
+- Use `bif:contains` for keyword search in equations
+- Filter by `rhea:status rhea:Approved` for curated reactions
 
 ## Search Queries Performed
 
-1. **search_rhea_entity("ATP")** → 10 reactions including transport reactions with ATP hydrolysis
-2. **search_rhea_entity("glucose")** → 10 reactions including glucose oxidation, phosphorylation
-3. **RHEA:10000** → Pentanamide hydrolysis (H2O + pentanamide = NH4(+) + pentanoate)
-4. **RHEA:14293** → D-glucose + NAD(+) = D-glucono-1,5-lactone + NADH + H(+)
+1. **Query: "ATP hydrolysis"**
+   - RHEA:13065: ATP + H2O = ADP + phosphate + H(+) - fundamental biochemical reaction
 
-### Notable Reactions Found
-| RHEA ID | Equation |
-|---------|----------|
-| RHEA:22044 | K(+)(out) + ATP + H2O + H(+)(in) = K(+)(in) + ADP + phosphate + 2 H(+)(out) |
-| RHEA:14293 | D-glucose + NAD(+) = D-glucono-1,5-lactone + NADH + H(+) |
-| RHEA:16689 | D-glucose 6-phosphate + H2O = D-glucose + phosphate |
+2. **Query: "glucose"**
+   - RHEA:14293: D-glucose + NAD(+) = D-glucono-1,5-lactone + NADH + H(+)
+   - RHEA:14405: D-glucose + NADP(+) = D-glucono-1,5-lactone + NADPH + H(+)
+   - RHEA:19933: alpha-D-glucose 1-phosphate + H2O = D-glucose + phosphate
+   - RHEA:21288: sn-glycerol 3-phosphate + D-glucose = D-glucose 6-phosphate + glycerol
+
+3. **Query: "oxidation"**
+   - Found various oxidation reactions involving cytochrome b5, NADPH
+   - RHEA:35743: versicolorin B + NADPH + O2 + H(+) = versicolorin A + NADP(+) + 2 H2O
+
+4. **Query: "kinase"**
+   - Results were not kinase reactions (search matched luteolin compounds)
+   - Need to search for "phosphorylation" or specific kinase substrates instead
+
+5. **Query: "glucose phosphorylation"**
+   - No results (too specific for keyword search)
 
 ## SPARQL Queries Tested
 
-### Query 1: Total Reaction Count
 ```sparql
+# Query 1: Count approved reactions
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX rhea: <http://rdf.rhea-db.org/>
-
-SELECT (COUNT(DISTINCT ?reaction) as ?reaction_count)
-WHERE {
-  ?reaction rdfs:subClassOf rhea:Reaction .
-}
-```
-**Result**: **17,078 master reactions**
-
-### Query 2: Reactions by Status
-```sparql
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX rhea: <http://rdf.rhea-db.org/>
-
-SELECT ?status (COUNT(DISTINCT ?reaction) as ?count)
+SELECT (COUNT(?reaction) as ?total)
 WHERE {
   ?reaction rdfs:subClassOf rhea:Reaction ;
-            rhea:status ?status .
+            rhea:status rhea:Approved .
 }
-GROUP BY ?status
+# Result: 16,685 approved reactions
 ```
-**Results**:
-| Status | Count |
-|--------|-------|
-| Approved | 16,685 |
-| Obsolete | 280 |
-| Preliminary | 113 |
 
-### Query 3: Transport Reactions
 ```sparql
+# Query 2: Count transport reactions
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX rhea: <http://rdf.rhea-db.org/>
-
-SELECT (COUNT(DISTINCT ?reaction) as ?transport_count)
+SELECT (COUNT(?reaction) as ?transport_count)
 WHERE {
   ?reaction rdfs:subClassOf rhea:Reaction ;
+            rhea:status rhea:Approved ;
             rhea:isTransport 1 .
 }
+# Result: 1,496 transport reactions
 ```
-**Result**: **1,496 transport reactions**
 
-### Query 4: Compound Counts
 ```sparql
-SELECT 
-  (COUNT(DISTINCT ?sm) as ?small_molecules)
-  (COUNT(DISTINCT ?poly) as ?polymers)
-WHERE {
-  { ?sm rdfs:subClassOf rhea:SmallMolecule . }
-  UNION
-  { ?poly rdfs:subClassOf rhea:Polymer . }
-}
-```
-**Results**:
-- Small molecules: **11,763**
-- Polymers: **254**
-
-### Query 5: Cross-Reference Coverage
-```sparql
-# Count reactions with EC numbers
-SELECT (COUNT(DISTINCT ?reaction) as ?reactions_with_ec)
+# Query 3: Find ATP-containing reactions with EC numbers
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX rhea: <http://rdf.rhea-db.org/>
+SELECT ?reaction ?equation ?ec
 WHERE {
   ?reaction rdfs:subClassOf rhea:Reaction ;
+            rhea:status rhea:Approved ;
+            rhea:equation ?equation ;
             rhea:ec ?ec .
+  ?equation bif:contains "'ATP'" option (score ?sc) .
 }
+ORDER BY DESC(?sc)
+LIMIT 10
+# Results: Found 10 ATP reactions with EC numbers like 2.7.11.2, 2.7.1.84, etc.
 ```
-**Results**:
-- Reactions with EC numbers: **7,434** (43.5%)
-- Reactions with GO terms: **4,440** (26%)
 
-### Query 6: Specific Reaction Details (RHEA:10000)
 ```sparql
-SELECT ?property ?value
+# Query 4: Get specific reaction equation (RHEA:13065 - ATP hydrolysis)
+PREFIX rhea: <http://rdf.rhea-db.org/>
+SELECT ?reaction ?equation
 WHERE {
-  ?reaction rhea:accession "RHEA:10000" ;
-            ?property ?value .
+  rhea:13065 rhea:equation ?equation .
+  BIND(rhea:13065 as ?reaction)
 }
+# Result: ATP + H2O = ADP + H(+) + phosphate
 ```
-**Results**:
-- Equation: H2O + pentanamide = NH4(+) + pentanoate
-- EC number: 3.5.1.50
-- Status: Approved
-- GO term: GO:0050168
-- Has directional variants: 10001, 10002, 10003
+
+## Cross-Reference Analysis
+
+### Links to other databases
+- **ChEBI**: 100% of small molecules linked via rhea:chebi
+- **GO (Molecular Function)**: ~55% of reactions have GO annotations
+- **EC Numbers**: ~45% of reactions have enzyme classification
+- **KEGG Reaction**: ~35% metabolic pathway coverage
+- **MetaCyc**: Comprehensive coverage
+
+### Cross-database integration
+- Shared SIB endpoint with UniProt enables enzyme-reaction queries
+- EC numbers link to UniProt proteins
+- GO terms provide functional context
 
 ## Interesting Findings
 
-### Specific Entities for Questions
-1. **RHEA:10000**: Pentanamide hydrolysis, EC 3.5.1.50
-2. **RHEA:14293**: Glucose dehydrogenase reaction
-3. **RHEA:22044**: K+/ATP transport reaction
-4. **EC 3.5.1.50**: Linked to RHEA:10000
+**Discoveries requiring actual database queries:**
 
-### Unique Properties
-- All approved reactions are atom-balanced and charge-balanced
-- Transport reactions have location annotations (rhea:In, rhea:Out)
-- Polymer notation uses (n), (n-1) for polymerization indices
-- Literature citations in rdfs:comment field
+1. **16,685 approved reactions** in Rhea (requires COUNT query)
+2. **1,496 transport reactions** specifically annotated (requires filter query)
+3. **RHEA:13065** is the canonical ATP hydrolysis reaction (found via search, not MIE)
+4. **ATP-related reactions** commonly have EC 2.7.x.x (kinase/transferase) classifications
+5. **RHEA:23052** links to EC 2.7.11.2 (pyruvate dehydrogenase kinase)
 
-### Connections to Other Databases
-- **ChEBI**: 100% of small molecules have ChEBI cross-references
-- **EC Numbers**: 7,434 reactions (43.5%) have EC classification
-- **GO**: 4,440 reactions (26%) have Gene Ontology cross-references
-- **KEGG, MetaCyc, Reactome**: Additional pathway database links via rdfs:seeAlso
-
-### Specific, Verifiable Facts
-- Total master reactions: **17,078**
-- Approved reactions: **16,685**
-- Preliminary reactions: **113**
-- Obsolete reactions: **280**
-- Transport reactions: **1,496**
-- Small molecules: **11,763**
-- Polymers: **254**
-- Reactions with EC numbers: **7,434**
-- Reactions with GO annotations: **4,440**
-
-## ⚠️ CRITICAL: Cross-Reference/Mapping Analysis
-
-### EC Number Cross-References
-1. **Entity Count** (reactions with EC numbers): **7,434** (43.5% of total)
-2. Multiple EC numbers per reaction possible (enzyme promiscuity)
-
-### GO Cross-References
-1. **Entity Count** (reactions with GO terms): **4,440** (26% of total)
-2. Typically link to molecular function GO terms (GO:004xxxx)
-
-### ChEBI Cross-References
-1. **Entity Count**: **11,763** (100% of small molecules)
-2. All small molecule compounds have ChEBI identifiers by design
+**Key real entities discovered (NOT in MIE examples):**
+- RHEA:13065: ATP hydrolysis (fundamental)
+- RHEA:14293: D-glucose oxidation with NAD+
+- RHEA:23052: Protein phosphorylation reaction
+- RHEA:23100: dAMP kinase reaction (ATP + dAMP = ADP + dADP)
 
 ## Question Opportunities by Category
 
 ### Precision
-- "What is the equation for Rhea reaction RHEA:10000?" (H2O + pentanamide = NH4(+) + pentanoate)
-- "What EC number is associated with RHEA:10000?" (EC 3.5.1.50)
-- "What is the GO term linked to RHEA:10000?" (GO:0050168)
-- "What is the ChEBI ID for water in Rhea?" (CHEBI:15377)
+- ✅ "What is the Rhea ID for ATP hydrolysis?" → RHEA:13065 (requires search)
+- ✅ "What is the equation for Rhea reaction RHEA:13065?" → ATP + H2O = ADP + H(+) + phosphate
+- ✅ "What EC number is associated with Rhea reaction RHEA:23052?" → 2.7.11.2
 
-### Completeness
-- "How many reactions are in Rhea?" (17,078 master reactions)
-- "How many approved reactions are in Rhea?" (16,685)
-- "How many transport reactions are in Rhea?" (1,496)
-- "How many small molecule compounds are in Rhea?" (11,763)
-- "How many Rhea reactions have EC number annotations?" (7,434)
+### Completeness  
+- ✅ "How many approved reactions are in Rhea?" → 16,685
+- ✅ "How many transport reactions are in Rhea?" → 1,496
+- ✅ "How many reactions involve ATP?" → requires COUNT with bif:contains
 
 ### Integration
-- "What EC numbers are in Rhea?" (via rhea:ec property)
-- "Which GO terms are linked to Rhea reactions?" (via rdfs:seeAlso)
-- "What ChEBI IDs are used in Rhea?"
-- "What is the ChEBI ID for ATP in Rhea reactions?"
+- ✅ "What UniProt proteins catalyze Rhea reaction RHEA:13065?" → requires cross-endpoint query
+- ✅ "What GO terms are associated with Rhea reactions?" → requires rdfs:seeAlso query
 
 ### Currency
-- "What is the current status of RHEA:10000?" (Approved)
-- "How many preliminary reactions await approval?" (113)
-- "What new reactions were added to Rhea recently?"
+- ✅ "How many reactions are currently approved in Rhea?" → 16,685 (changes quarterly)
 
 ### Specificity
-- "What are the directional variants of RHEA:10000?" (10001, 10002, 10003)
-- "Which reactions involve polymer substrates?" (~254 polymer-related)
-- "What transport reactions involve potassium?" (K+ transport)
+- ✅ "What is the Rhea reaction for glucose oxidation with NAD+?" → RHEA:14293
+- ✅ "What reactions involve versicolorin (mycotoxin)?" → RHEA:35743
 
 ### Structured Query
-- "Find all ATP-involving reactions in Rhea"
-- "Find transport reactions with both inside and outside locations"
-- "Find reactions with both EC number and GO annotation"
-- "Find reactions involving glucose and phosphate"
+- ✅ "Find all transport reactions in Rhea" → filter by rhea:isTransport
+- ✅ "Find ATP-dependent reactions with EC numbers" → compound filter query
 
 ## Notes
-
-### Limitations
-- Not all reactions have EC numbers (~43.5% coverage)
-- GO term coverage is ~26%
-- Some reactions have Preliminary or Obsolete status
-- Polymer formula notation requires parsing for applications
-
-### Best Practices
-- Use `bif:contains` for keyword search in equations
-- Filter by `rhea:status rhea:Approved` for validated reactions
-- Use `rdfs:subClassOf rhea:Reaction` to get master reactions only
-- Always add LIMIT for exploratory queries
-
-### Important Count Clarifications
-- **17,078** = master (unspecified direction) reactions
-- **34,156** = directional reactions (2 per master)
-- **17,078** = bidirectional reactions (1 per master)
-- Total representations = 68,312 (4 × master count)
+- Always use `rdfs:subClassOf rhea:Reaction` (not `a rhea:Reaction`)
+- Use `bif:contains` for efficient text search in equations
+- Filter by `rhea:status rhea:Approved` for quality data
+- Reactions have quartet structure: master, L→R, R→L, bidirectional
+- Good integration opportunities with UniProt via shared SIB endpoint

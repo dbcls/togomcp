@@ -2,116 +2,119 @@
 
 ## Database Overview
 - **Purpose**: National Library of Medicine's controlled vocabulary thesaurus for biomedical literature indexing
-- **Scope**: ~30K topical descriptors, ~250K chemical records, ~2.5M total entities with hierarchical organization
-- **Key entities**: TopicalDescriptor, SCR_Chemical, Concept, Term, Qualifier, TreeNumber
-- **Cross-references**: OMIM, ChEBI, FDA SRS/UNII, SNOMED CT
+- **Endpoint**: https://rdfportal.org/primary/sparql
+- **Key Features**: Hierarchical subject headings, qualifiers (subheadings), chemical records, tree number classification
+- **Data Version**: 2024
 
 ## Schema Analysis (from MIE file)
+### Main Entities
+- **TopicalDescriptor**: Main subject headings for indexing (~30K)
+- **Qualifier**: Subheadings for refining descriptors (84 total)
+- **SCR_Chemical**: Supplementary Chemical Records (~250K)
+- **Term**: Individual terminology entries (~870K)
+- **Concept**: Concept groupings (~467K)
+- **TreeNumber**: Hierarchical classification codes
 
-### Main Properties Available
-- **TopicalDescriptor**: rdfs:label, meshv:identifier (D-number), meshv:treeNumber, meshv:broaderDescriptor, meshv:annotation, meshv:allowableQualifier
-- **SCR_Chemical**: rdfs:label, meshv:identifier (C-number), meshv:registryNumber (CAS)
-- **Concept**: rdfs:label, meshv:preferredTerm
-- **Term**: meshv:prefLabel
+### Important Properties
+- `meshv:identifier`: Descriptor ID (D######) or Qualifier ID (Q######)
+- `meshv:broaderDescriptor`: Parent descriptor in hierarchy (NOT meshv:broader!)
+- `meshv:annotation`: Scope notes and indexing guidance (NOT meshv:scopeNote!)
+- `meshv:treeNumber`: Hierarchical classification codes
+- `meshv:allowableQualifier`: Permitted subheadings for a descriptor
+- `meshv:registryNumber`: CAS registry number for chemicals
 
-### Important Relationships
-- **CRITICAL**: Use `meshv:broaderDescriptor` (NOT meshv:broader) for hierarchy
-- **CRITICAL**: Use `meshv:annotation` (NOT meshv:scopeNote) for notes
-- Tree numbers provide alphanumeric hierarchical codes (A-Z categories)
-- Allowable qualifiers constrain valid descriptor-qualifier combinations
-
-### Key Query Patterns
-- Use bif:contains for keyword searches with relevance scoring
-- Use meshv:broaderDescriptor+ for transitive hierarchy traversal
-- Tree numbers useful for category-based queries
-- FROM <http://id.nlm.nih.gov/mesh> required for all queries
+### Query Patterns
+- **CRITICAL**: Use `bif:contains` for full-text search with relevance scoring
+- **CRITICAL**: Always use `FROM <http://id.nlm.nih.gov/mesh>` clause
+- Use `meshv:broaderDescriptor+` for transitive hierarchy navigation
+- Tree numbers use A-Z categories with numeric subcategories
 
 ## Search Queries Performed
 
-1. **Query: Diabetes mellitus descriptors**
-   - Results: D003920 (Diabetes Mellitus), D003922 (Type 1), D003924 (Type 2), D003923 (Lipoatrophic)
-   - Tree numbers: C18.452.394.750, C19.246
+### 1. Parkinson Disease search
+```
+Query: "Parkinson"
+Results: 
+- D010300: Parkinson Disease
+- D010301: Parkinson Disease, Postencephalitic
+- D010302: Parkinson Disease, Secondary
+- D014927: Wolff-Parkinson-White Syndrome
+- D000070579: Parkinson Disease Associated Proteins
+```
 
-2. **Query: Hierarchical parents of Type 2 Diabetes (D003924)**
-   - Results: Diabetes Mellitus → Glucose Metabolism Disorders → Metabolic Diseases → Nutritional and Metabolic Diseases
-   - broaderDescriptor+ transitive query works
+### 2. Rare disease search - Erdheim-Chester
+```
+Query: "Erdheim-Chester"
+Results: D031249 - Erdheim-Chester Disease (rare histiocytic disorder)
+```
 
-3. **Query: Insulin chemicals**
-   - Results: 15+ insulin variants including insulin combinations, modified insulins
-   - SCR_Chemical class with registryNumbers
+### 3. Rare disease search - Fabry
+```
+Query: "Fabry"
+Results: D000795 - Fabry Disease (lysosomal storage disorder)
+```
 
-4. **Query: Erdheim-Chester Disease (rare disease)**
-   - Results: D031249 with identifier confirmed
-   - Good for specificity questions
+### 4. Neurodegenerative disease searches
+```
+Query: "Huntington"
+Results: D006816 - Huntington Disease
 
-5. **Query: Category distribution**
-   - Results: D (Chemicals/Drugs): 10,541; C (Diseases): 5,032; B (Organisms): 3,964; E (Analytical/Diagnostic): 3,102
+Query: "Alzheimer"
+Results: 
+- D000544: Alzheimer Disease
+- D023582: Alzheimer Vaccines
+```
+
+### 5. Drug searches
+```
+Query: "Metformin" (diabetes drug)
+Results:
+- D008687: Metformin
+- D000068899: Sitagliptin Phosphate, Metformin Hydrochloride Drug Combination
+
+Query: "Insulin"
+Results: 20+ entries including:
+- D007328: Insulin
+- D000069036: Insulin Glargine
+- D061267: Insulin Aspart
+- D007333: Insulin Resistance
+```
+
+### 6. Modern biomedical technology search
+```
+Query: "CRISPR"
+Results:
+- D064113: CRISPR-Cas Systems
+- D000076987: CRISPR-Associated Protein 9
+- D064130: CRISPR-Associated Proteins
+- D000094704: RNA, Guide, CRISPR-Cas Systems
+```
 
 ## SPARQL Queries Tested
 
+### Query 1: Count total topical descriptors
 ```sparql
-# Query 1: Search descriptors by keyword
-PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
-PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-SELECT ?descriptor ?label ?identifier ?treeNumber
+SELECT (COUNT(DISTINCT ?descriptor) as ?total)
 FROM <http://id.nlm.nih.gov/mesh>
 WHERE {
-  ?descriptor a meshv:TopicalDescriptor ;
-    rdfs:label ?label ;
-    meshv:identifier ?identifier .
-  OPTIONAL { 
-    ?descriptor meshv:treeNumber ?tree .
-    ?tree rdfs:label ?treeNumber
-  }
-  ?label bif:contains "'diabetes mellitus'" option (score ?sc)
+  ?descriptor a meshv:TopicalDescriptor .
 }
-ORDER BY DESC(?sc)
-LIMIT 15
-# Results: D003920 (Diabetes Mellitus), D003922 (Type 1), D003924 (Type 2)
+# Results: 30,248 topical descriptors
 ```
 
+### Query 2: Count supplementary chemical records
 ```sparql
-# Query 2: Hierarchical parent traversal
-PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
-PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-SELECT ?parent ?parentLabel
+SELECT (COUNT(DISTINCT ?chemical) as ?total)
 FROM <http://id.nlm.nih.gov/mesh>
 WHERE {
-  mesh:D003924 meshv:broaderDescriptor+ ?parent .
-  ?parent rdfs:label ?parentLabel .
+  ?chemical a meshv:SCR_Chemical .
 }
-# Results: Diabetes Mellitus → Glucose Metabolism Disorders → Metabolic Diseases
+# Results: 250,445 chemical records
 ```
 
+### Query 3: Count descriptors by tree category
 ```sparql
-# Query 3: Chemical records search
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
-
-SELECT ?chemical ?label ?registryNumber
-FROM <http://id.nlm.nih.gov/mesh>
-WHERE {
-  ?chemical a meshv:SCR_Chemical ;
-    rdfs:label ?label .
-  OPTIONAL { ?chemical meshv:registryNumber ?registryNumber }
-  ?label bif:contains "'insulin'" option (score ?sc)
-}
-ORDER BY DESC(?sc)
-LIMIT 15
-# Results: Insulin variants and combinations
-```
-
-```sparql
-# Query 4: Category distribution
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
-
 SELECT ?category (COUNT(DISTINCT ?descriptor) as ?count)
-FROM <http://id.nlm.nih.gov/mesh>
 WHERE {
   ?descriptor a meshv:TopicalDescriptor ;
     meshv:treeNumber ?tree .
@@ -119,97 +122,137 @@ WHERE {
   BIND(SUBSTR(?treeLabel, 1, 1) as ?category)
 }
 GROUP BY ?category
-ORDER BY ?category
-# Results: D=10541, C=5032, B=3964, E=3102, G=2430, N=2002
+ORDER BY DESC(?count)
+# Results:
+# D (Chemicals/Drugs): 10,541 descriptors
+# C (Diseases): 5,032 descriptors
+# B (Organisms): 3,964 descriptors
+# E (Analytical/Diagnostic): 3,102 descriptors
+# G (Phenomena/Processes): 2,430 descriptors
+# N (Health Care): 2,002 descriptors
+# A (Anatomy): 1,904 descriptors
 ```
+
+### Query 4: Get parent descriptors (Alzheimer Disease hierarchy)
+```sparql
+SELECT ?parent ?parentLabel
+WHERE {
+  mesh:D000544 meshv:broaderDescriptor+ ?parent .
+  ?parent rdfs:label ?parentLabel .
+}
+# Results: Alzheimer Disease hierarchy includes:
+# - Dementia
+# - Tauopathies
+# - Neurodegenerative Diseases
+# - Brain Diseases
+# - Central Nervous System Diseases
+# - Nervous System Diseases
+# - Neurocognitive Disorders
+# - Mental Disorders
+```
+
+### Query 5: Get allowable qualifiers for Alzheimer Disease
+```sparql
+SELECT ?qualifier ?qualifierLabel
+WHERE {
+  mesh:D000544 meshv:allowableQualifier ?qualifier .
+  ?qualifier rdfs:label ?qualifierLabel .
+}
+# Results: 30+ qualifiers including:
+# - etiology
+# - drug therapy
+# - genetics
+# - pathology
+# - diagnosis
+# - epidemiology
+```
+
+### Query 6: Count total qualifiers
+```sparql
+SELECT (COUNT(DISTINCT ?qualifier) as ?total)
+WHERE {
+  ?qualifier a meshv:Qualifier .
+}
+# Results: 84 qualifiers total
+```
+
+## Cross-Reference Analysis
+
+### Entity Counts (unique entities with mappings via meshv:thesaurusID)
+Based on MIE documentation:
+- Total cross-references: ~916K
+- FDA SRS: 22.6K entities
+- FDA UNII: 22.6K entities
+- OMIM: 12.5K entities
+- INN: 8.8K entities
+- GHR: 3.8K entities
+- ChEBI: 2.5K entities
+- SNOMED CT: 800+ entities
+- FMA: 1.1K entities
+
+### Integration with MONDO
+- ~28% of MONDO diseases have MeSH cross-references via oboInOwl:hasDbXref
+- Cross-database queries with MONDO: 2-3 seconds
 
 ## Interesting Findings
 
-### Specific Entities for Questions
-- **Diabetes Mellitus, Type 2**: D003924, tree C18.452.394.750.149
-- **Erdheim-Chester Disease**: D031249 (rare disease)
-- **Insulin Glargine**: C517652
-- **Cardiovascular Diseases**: D002318
+**Focus on discoveries requiring actual database queries:**
 
-### Key Statistics
-- Total entities: 2,456,909
-- Topical descriptors: 30,248
-- Terms: 869,536
-- Chemical records: 250,445
-- ~40% of descriptors have annotations
-- ~95% have tree numbers
+1. **Tree category distribution**: Chemicals/Drugs (D) is the largest category with 10,541 descriptors, followed by Diseases (C) with 5,032 descriptors
 
-### Tree Category Codes
-- A: Anatomy (1,904)
-- B: Organisms (3,964)
-- C: Diseases (5,032)
-- D: Chemicals and Drugs (10,541)
-- E: Analytical, Diagnostic, Therapeutic (3,102)
-- F: Psychiatry and Psychology (1,227)
-- G: Phenomena and Processes (2,430)
-- N: Health Care (2,002)
+2. **Disease hierarchy depth**: Alzheimer Disease has 8+ parent categories including Dementia, Tauopathies, Neurodegenerative Diseases, Brain Diseases
 
-### Cross-Database Connections
-- OMIM: 12.5K links
-- ChEBI: 2.5K links
-- FDA SRS/UNII: 22.6K links
-- SNOMED CT: 800+ links
+3. **Qualifier richness**: 84 qualifiers available for refining descriptors. Alzheimer Disease alone can use 30+ qualifiers
 
-### Verifiable Facts
-- Diabetes Mellitus Type 2 has MeSH ID D003924
-- D003924 has parent D003920 (Diabetes Mellitus)
-- Erdheim-Chester Disease has MeSH ID D031249
-- Category C (Diseases) has 5,032 descriptors
+4. **Modern terminology coverage**: CRISPR-related terms are well-represented (4 main descriptors)
+
+5. **Rare disease coverage**: Both Erdheim-Chester Disease (D031249) and Fabry Disease (D000795) have dedicated descriptors
+
+6. **Drug organization**: Metformin (D008687) and insulin variants are systematically organized with related compounds
 
 ## Question Opportunities by Category
 
 ### Precision
-- "What is the MeSH descriptor ID for Diabetes Mellitus, Type 2?" (Answer: D003924)
-- "What is the MeSH ID for Erdheim-Chester Disease?" (Answer: D031249)
-- "What tree number is assigned to Diabetes Mellitus?" (Answer: C18.452.394.750)
+- "What is the MeSH descriptor ID for Alzheimer Disease?" → D000544
+- "What is the MeSH descriptor ID for Parkinson Disease?" → D010300
+- "What is the MeSH descriptor ID for CRISPR-Associated Protein 9?" → D000076987
+- "What is the MeSH descriptor ID for Fabry Disease?" → D000795
+- "What is the MeSH descriptor ID for Erdheim-Chester Disease?" → D031249
+- "What is the MeSH descriptor ID for Multiple Sclerosis?" → D009103
+- "What is the MeSH descriptor ID for Metformin?" → D008687
+- "What is the MeSH qualifier ID for 'drug therapy'?" → Q000188
 
 ### Completeness
-- "How many topical descriptors are in MeSH?" (Answer: 30,248)
-- "How many descriptors are in the Diseases category (C tree)?" (Answer: 5,032)
-- "List all broader descriptors of Diabetes Mellitus, Type 2"
+- "How many topical descriptors are in MeSH?" → 30,248
+- "How many supplementary chemical records are in MeSH?" → 250,445
+- "How many qualifiers are in MeSH?" → 84
+- "How many disease-related descriptors (tree category C) are in MeSH?" → 5,032
+- "How many drug/chemical descriptors (tree category D) are in MeSH?" → 10,541
 
 ### Integration
-- "What OMIM entries are linked to MeSH descriptors?"
-- "What ChEBI IDs correspond to MeSH chemical records?"
-- "What CAS registry numbers are associated with insulin variants?"
+- "What OMIM cross-references are in MeSH?" → 12.5K entities
+- "What ChEBI cross-references are in MeSH?" → 2.5K entities
+- "Which MONDO diseases link to MeSH descriptors?" → ~28% coverage
 
 ### Currency
-- "What are the most recently added MeSH descriptors?"
-- "What rare diseases are classified in MeSH?"
+- "What is the current version year of MeSH?" → 2024
+- "What new CRISPR-related terms are in MeSH?" → 4 descriptors covering systems, proteins, guide RNA
 
 ### Specificity
-- "What is the MeSH descriptor for the rare disease Erdheim-Chester?" (D031249)
-- "What chemical supplementary records exist for insulin analogs?"
-- "What is the tree path for a specific genetic disorder?"
+- "What is the MeSH ID for the rare histiocytic disorder Erdheim-Chester Disease?" → D031249
+- "What is the MeSH ID for the lysosomal storage disorder Fabry Disease?" → D000795
+- "What qualifiers can be used with Alzheimer Disease indexing?" → 30+ qualifiers
 
 ### Structured Query
-- "Find all MeSH descriptors under the Endocrine System Diseases hierarchy"
-- "List all allowable qualifiers for the diabetes mellitus descriptor"
-- "Find chemicals with CAS registry numbers containing 'insulin'"
+- "Find all parent categories of Alzheimer Disease in MeSH" → 8+ parents including Dementia, Tauopathies
+- "Find all insulin-related descriptors in MeSH" → 20+ entries
+- "Find all CRISPR-related descriptors in MeSH" → 4 entries
+- "How many descriptors are in each major MeSH tree category?" → D:10541, C:5032, B:3964...
 
 ## Notes
-
-### Critical Property Names
-- Use `meshv:broaderDescriptor` (NOT meshv:broader)
-- Use `meshv:annotation` (NOT meshv:scopeNote)
-- Terms use `meshv:prefLabel` (NOT rdfs:label for terms)
-
-### Best Practices
-- Always include FROM <http://id.nlm.nih.gov/mesh> clause
-- Use bif:contains for keyword searches with option (score ?sc)
-- Use OPTIONAL for annotation (only ~40% coverage)
-- Use LIMIT for exploratory queries (2.5M+ entities)
-
-### Search Tool
-- search_mesh_entity: Good for initial term lookup
-- Returns term IDs (T-numbers) which need conversion to descriptors
-
-### Cross-Reference Patterns
-- OMIM: via meshv:thesaurusID containing "OMIM"
-- ChEBI: via meshv:thesaurusID containing "ChEBI"
-- CAS: via meshv:registryNumber on SCR_Chemical
+- **Performance**: Use `bif:contains` with `option (score ?sc)` for relevance-ranked searches
+- **Property names**: Use `meshv:broaderDescriptor` (not `meshv:broader`) and `meshv:annotation` (not `meshv:scopeNote`)
+- **Hierarchy**: Tree numbers provide alphanumeric codes (A-Z categories)
+- **Multi-language**: Many descriptors have labels in multiple languages
+- **Shared endpoint**: Part of "primary" endpoint with go, taxonomy, mondo, nando, bacdive, mediadive
+- **Search tool issue**: `search_mesh_entity` tool returned empty errors; SPARQL queries work fine

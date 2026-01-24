@@ -1,91 +1,82 @@
-# NCBI Taxonomy RDF Exploration Report
+# NCBI Taxonomy Exploration Report
 
 ## Database Overview
-- **Purpose**: Comprehensive biological taxonomic classification
-- **Scope**: All organisms from bacteria to mammals with hierarchical relationships
-- **Scale**: 2,698,386 taxa (2.7M+), 2.2M species
-- **Key features**: Hierarchical classification, multiple naming systems, genetic codes
+- **Purpose**: Comprehensive biological taxonomic classification covering organisms from bacteria to mammals
+- **Endpoint**: https://rdfportal.org/primary/sparql
+- **Graph**: `http://rdfportal.org/ontology/taxonomy`
+- **Key Features**: Hierarchical relationships, scientific/common names, genetic code assignments, cross-references
+- **Search Tool**: ncbi_esearch (taxonomy database)
+- **Data Version**: 2024
 
 ## Schema Analysis (from MIE file)
-
-### Main Entity Type
-- **Taxon**: Organism classification with rank, names, and hierarchy
+### Main Entities
+- **Taxon**: Core taxonomic entity with hierarchical classification
+- **Rank**: Taxonomic rank (Species, Genus, Family, Order, etc.)
+- **GeneticCode**: Genetic code assignments for translation
 
 ### Important Properties
-- `rdfs:label`: Primary name
-- `tax:rank`: Taxonomic rank (Species, Genus, Family, etc.)
-- `rdfs:subClassOf`: Parent taxon (hierarchy)
-- `dcterms:identifier`: Taxonomy ID (e.g., 9606)
-- `tax:scientificName`: Scientific name
-- `tax:commonName`: Common/vernacular name
-- `tax:synonym`: Alternative names
+- `rdfs:label`: Organism name
+- `dcterms:identifier`: NCBI Taxonomy ID (TaxID)
+- `tax:rank`: Taxonomic rank (Species, Genus, etc.)
+- `rdfs:subClassOf`: Parent taxon in hierarchy
+- `tax:scientificName`: Full scientific name with authority
+- `tax:commonName`: Common/vernacular names (multiple)
 - `tax:geneticCode`: Nuclear genetic code
 - `tax:geneticCodeMt`: Mitochondrial genetic code
-- `owl:sameAs`: Cross-database identifiers
-- `rdfs:seeAlso`: UniProt Taxonomy link
+- `owl:sameAs`: Cross-references to ontology systems
+- `rdfs:seeAlso`: Links to UniProt Taxonomy
 
-### Taxonomic Ranks (top 10 by count)
-| Rank | Count |
-|------|-------|
-| Species | 2,214,294 |
-| NoRank | 253,143 |
-| Genus | 113,635 |
-| Strain | 46,887 |
-| Subspecies | 30,646 |
-| Family | 10,809 |
-| Varietas | 10,287 |
-| Subfamily | 3,348 |
-| Tribe | 2,423 |
-| Order | 2,062 |
+### Query Patterns
+- Use `bif:contains` for name searches with relevance scoring
+- Use `rdfs:subClassOf*` for lineage traversal (start from specific taxa)
+- Always add LIMIT clauses (3M+ taxa in database)
+- Filter by `tax:rank` for improved performance
 
 ## Search Queries Performed
 
-1. **ncbi_esearch("Homo sapiens")** → TaxID **9606**
-2. **ncbi_esearch("Escherichia coli")** → TaxID **562**
-3. **ncbi_esummary([9606, 10090, 562])** → Human, Mouse, E. coli details
+### 1. Model organism lookups
+```
+Query: Homo sapiens → TaxID: 9606
+Query: Mus musculus → TaxID: 10090
+Query: Drosophila melanogaster → TaxID: 7227
+Query: Caenorhabditis elegans → TaxID: 6239
+Query: Arabidopsis thaliana → TaxID: 3702
+```
 
-### Model Organisms Verified
-| TaxID | Scientific Name | Common Name | Rank |
-|-------|-----------------|-------------|------|
-| 9606 | Homo sapiens | human | species |
-| 10090 | Mus musculus | house mouse | species |
-| 562 | Escherichia coli | E. coli | species |
+### 2. Pathogenic bacteria
+```
+Query: Streptococcus pyogenes → TaxID: 1314
+```
+
+### 3. SARS-CoV-2 (COVID-19 virus)
+```
+Query: SARS-CoV-2 in SPARQL → Found TaxID: 2697049
+Full name: "Severe acute respiratory syndrome coronavirus 2"
+Parent species: Betacoronavirus pandemicum (TaxID: 3418604)
+```
 
 ## SPARQL Queries Tested
 
-### Query 1: Total Taxa Count
+### Query 1: Model organism biological annotations
 ```sparql
-PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
-
-SELECT (COUNT(DISTINCT ?taxon) as ?taxon_count)
+SELECT ?label ?id ?rank ?scientificName ?commonName ?geneticCode
 FROM <http://rdfportal.org/ontology/taxonomy>
 WHERE {
-  ?taxon a tax:Taxon .
-}
-```
-**Result**: **2,698,386 taxa**
-
-### Query 2: Taxa Count by Rank
-```sparql
-PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
-
-SELECT ?rank (COUNT(?taxon) as ?count)
-FROM <http://rdfportal.org/ontology/taxonomy>
-WHERE {
+  VALUES ?taxon { taxon:9606 taxon:10090 taxon:7227 taxon:6239 taxon:3702 }
   ?taxon a tax:Taxon ;
-         tax:rank ?rank .
+    rdfs:label ?label ;
+    dcterms:identifier ?id ;
+    tax:rank ?rank .
+  OPTIONAL { ?taxon tax:scientificName ?scientificName }
+  OPTIONAL { ?taxon tax:commonName ?commonName }
+  OPTIONAL { ?taxon tax:geneticCode ?geneticCode }
 }
-GROUP BY ?rank
-ORDER BY DESC(?count)
+# Results: All model organisms found with Species rank, GeneticCode1
+# Common names: mouse (Mus musculus), mouse-ear cress/thale-cress (Arabidopsis)
 ```
-**Results**: Species (2.2M), NoRank (253K), Genus (114K), Strain (47K)
 
-### Query 3: Human Lineage (Complete)
+### Query 2: Complete human lineage
 ```sparql
-PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
-PREFIX taxon: <http://identifiers.org/taxonomy/>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
 SELECT ?ancestor ?rank ?label ?id
 FROM <http://rdfportal.org/ontology/taxonomy>
 WHERE {
@@ -95,134 +86,178 @@ WHERE {
     rdfs:label ?label ;
     dcterms:identifier ?id .
 }
+ORDER BY DESC(?id)
+# Results: 32 ancestors from root (1) to species
+# Key ranks: Kingdom (Metazoa), Phylum (Chordata), Class (Mammalia), 
+#            Order (Primates), Family (Hominidae), Genus (Homo), Species
 ```
-**Results**: Complete lineage from Homo sapiens (9606) to root (1):
-- Species: Homo sapiens
-- Genus: Homo
-- Family: Hominidae
-- Order: Primates
-- Class: Mammalia
-- Phylum: Chordata
-- Kingdom: Metazoa
-- Superkingdom: Eukaryota
 
-### Query 4: Cross-References for E. coli
+### Query 3: Total taxa and species counts
 ```sparql
-PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
-PREFIX taxon: <http://identifiers.org/taxonomy/>
-PREFIX owl: <http://www.w3.org/2002/07/owl#>
+SELECT (COUNT(DISTINCT ?taxon) as ?total_taxa)
+FROM <http://rdfportal.org/ontology/taxonomy>
+WHERE { ?taxon a tax:Taxon . }
+# Results: 2,698,386 total taxa
+```
 
-SELECT ?label ?sameAs ?seeAlso
+### Query 4: Distribution by taxonomic rank
+```sparql
+SELECT ?rank (COUNT(?taxon) as ?count)
 FROM <http://rdfportal.org/ontology/taxonomy>
 WHERE {
-  taxon:562 a tax:Taxon ;
-    rdfs:label ?label .
-  OPTIONAL { taxon:562 owl:sameAs ?sameAs }
-  OPTIONAL { taxon:562 rdfs:seeAlso ?seeAlso }
+  ?taxon a tax:Taxon ;
+    tax:rank ?rank .
 }
+GROUP BY ?rank ORDER BY DESC(?count)
+# Results: Top ranks:
+# Species: 2,214,294
+# NoRank: 253,143
+# Genus: 113,635
+# Strain: 46,887
+# Subspecies: 30,646
+# 45 distinct taxonomic ranks total
 ```
-**Results**: E. coli (TaxID 562) has 5 owl:sameAs identifiers:
-- OBO NCBITaxon: http://purl.obolibrary.org/obo/NCBITaxon_562
-- Berkeley BOP: http://www.berkeleybop.org/ontologies/owl/NCBITaxon#562
-- DDBJ: http://ddbj.nig.ac.jp/ontologies/taxonomy/562
-- NCBI Web: http://www.ncbi.nlm.nih.gov/taxonomy/562
-- UniProt (seeAlso): http://purl.uniprot.org/taxonomy/562
+
+### Query 5: Genera with most species
+```sparql
+SELECT ?genus_label (COUNT(?species) AS ?count)
+FROM <http://rdfportal.org/ontology/taxonomy>
+WHERE {
+  ?species a tax:Taxon ;
+    tax:rank tax:Species ;
+    rdfs:subClassOf ?genus .
+  ?genus tax:rank tax:Genus ;
+    rdfs:label ?genus_label .
+}
+GROUP BY ?genus_label ORDER BY DESC(?count)
+# Results: Top genera by species count:
+# Cortinarius: 2,030 (mushroom genus)
+# Astragalus: 1,580 (plant genus)
+# Megaselia: 1,308 (fly genus)
+# Inocybe: 1,231 (mushroom)
+# Streptomyces: 1,141 (bacteria)
+```
+
+### Query 6: Escherichia species
+```sparql
+SELECT ?species ?label ?id
+FROM <http://rdfportal.org/ontology/taxonomy>
+WHERE {
+  ?species a tax:Taxon ;
+    tax:rank tax:Species ;
+    rdfs:subClassOf ?genus .
+  ?genus rdfs:label "Escherichia" ;
+    tax:rank tax:Genus .
+}
+# Results: 10 Escherichia species including:
+# E. coli (562), E. albertii (208962), E. fergusonii (564),
+# E. marmotae (1499973), E. ruysiae (2608867), E. senegalensis (223381)
+```
+
+### Query 7: SARS-CoV-2 lineage
+```sparql
+SELECT ?ancestor ?rank ?label ?id
+FROM <http://rdfportal.org/ontology/taxonomy>
+WHERE {
+  taxon:2697049 rdfs:subClassOf* ?ancestor .
+  ?ancestor a tax:Taxon ;
+    tax:rank ?rank ;
+    rdfs:label ?label .
+}
+# Results: Full viral taxonomy:
+# Viruses → Riboviria → Orthornavirae (Kingdom) → Pisuviricota (Phylum) →
+# Pisoniviricetes (Class) → Nidovirales (Order) → Coronaviridae (Family) →
+# Orthocoronavirinae (Subfamily) → Betacoronavirus (Genus) → 
+# Sarbecovirus (Subgenus) → Betacoronavirus pandemicum (Species) →
+# SARS-CoV-2 (NoRank)
+```
+
+## Cross-Reference Analysis
+
+### Entity Counts (owl:sameAs cross-references)
+- ~100% of taxa have owl:sameAs links (5 per taxon on average)
+- Linked to: OBO NCBITaxon, Berkeley BOP, DDBJ, NCBI Web
+
+### Relationship Patterns
+| Property | Target | Coverage |
+|----------|--------|----------|
+| owl:sameAs | OBO NCBITaxon | ~100% |
+| owl:sameAs | Berkeley BOP | ~100% |
+| owl:sameAs | DDBJ Taxonomy | ~100% |
+| owl:sameAs | NCBI Web | ~100% |
+| rdfs:seeAlso | UniProt Taxonomy | ~100% |
+
+### Cross-Database Integration
+- **Shared endpoint** (primary): mesh, go, mondo, nando, bacdive, mediadive
+- Keyword-based integration using bif:contains across graphs
 
 ## Interesting Findings
 
-### Specific Entities for Questions
-1. **TaxID 9606**: Homo sapiens (human) - Kingdom Metazoa
-2. **TaxID 10090**: Mus musculus (house mouse) - model organism
-3. **TaxID 562**: Escherichia coli - model bacterium
-4. **TaxID 9605**: Homo (human genus)
-5. **TaxID 9604**: Hominidae (great apes family)
-6. **TaxID 33208**: Metazoa (animal kingdom)
-7. **TaxID 2759**: Eukaryota (superkingdom)
+**Findings requiring actual database queries:**
 
-### Unique Properties
-- Hierarchical classification via rdfs:subClassOf allows lineage traversal
-- 47 different taxonomic ranks
-- 5 owl:sameAs identifiers per taxon for cross-database integration
-- Multiple name types: scientific, common, synonym, equivalent
+1. **2,698,386 total taxa** in NCBI Taxonomy RDF - verified via COUNT query
 
-### Connections to Other Databases
-- **UniProt Taxonomy**: rdfs:seeAlso with ~100% coverage
-- **OBO NCBITaxon**: owl:sameAs for ontology integration
-- **DDBJ/NCBI**: Additional owl:sameAs identifiers
+2. **2,214,294 species** - Species is by far the most common rank (82% of all taxa)
 
-### Specific, Verifiable Facts
-- Total taxa: **2,698,386**
-- Species count: **2,214,294**
-- Genus count: **113,635**
-- Family count: **10,809**
-- Order count: **2,062**
-- Class count: **594**
-- Human TaxID: **9606**
-- Mouse TaxID: **10090**
-- E. coli TaxID: **562**
+3. **45 distinct taxonomic ranks** including standard Linnaean ranks plus Clade, Strain, Serotype, etc.
 
-## ⚠️ CRITICAL: Cross-Reference/Mapping Analysis
+4. **Genus diversity**: Cortinarius (mushrooms) is the most species-rich genus with 2,030 species
 
-### owl:sameAs Cross-References
-1. **Entity Count**: ~100% of taxa have owl:sameAs
-2. **Relationship Count**: ~5 owl:sameAs per taxon (5 database systems)
-3. **Systems covered**: OBO, Berkeley BOP, DDBJ, NCBI Web, OBO Legacy
+5. **Human lineage has 32 hierarchical levels** from root to species, including 7 major Linnaean ranks
 
-### UniProt Taxonomy Links (rdfs:seeAlso)
-1. **Entity Count**: ~100% of taxa have UniProt links
-2. **Pattern**: `http://purl.uniprot.org/taxonomy/{taxid}`
+6. **Model organisms confirmed**: All major model organisms found with correct TaxIDs:
+   - Human: 9606
+   - Mouse: 10090
+   - Fruit fly: 7227
+   - C. elegans: 6239
+   - Arabidopsis: 3702
+
+7. **SARS-CoV-2 taxonomy** (TaxID 2697049): Classified under Betacoronavirus pandemicum (species), Sarbecovirus (subgenus), Coronaviridae (family)
+
+8. **Escherichia genus** contains 10 species including E. coli (562), E. albertii (208962), E. fergusonii (564)
+
+9. **Genetic codes**: Most eukaryotes use GeneticCode1 (standard); bacteria/viruses use GeneticCode11
+
+10. **Common names available**: ~30% of taxa have common names, higher for vertebrates (e.g., mouse, thale-cress)
 
 ## Question Opportunities by Category
 
 ### Precision
-- "What is the NCBI Taxonomy ID for Homo sapiens?" (9606)
-- "What is the NCBI Taxonomy ID for Escherichia coli?" (562)
-- "What is the scientific name for TaxID 10090?" (Mus musculus)
-- "What is the common name for TaxID 9606?" (human)
-- "What is the parent taxon of Homo sapiens?" (Homo, TaxID 9605)
+- "What is the NCBI Taxonomy ID for Homo sapiens?" → 9606
+- "What is the NCBI Taxonomy ID for SARS-CoV-2?" → 2697049
+- "What is the scientific name for TaxID 562?" → Escherichia coli
+- "What is the genus for Streptococcus pyogenes (TaxID 1314)?" → Streptococcus
 
 ### Completeness
-- "How many taxa are in NCBI Taxonomy?" (2,698,386)
-- "How many species are in NCBI Taxonomy?" (2,214,294)
-- "How many genera are in NCBI Taxonomy?" (113,635)
-- "How many taxonomic ranks are defined?" (47)
+- "How many total taxa are in NCBI Taxonomy?" → 2,698,386
+- "How many species are in NCBI Taxonomy?" → 2,214,294
+- "How many taxonomic ranks are used in NCBI Taxonomy?" → 45
+- "How many species are in the Escherichia genus?" → 10
 
 ### Integration
-- "What is the UniProt Taxonomy link for E. coli?" (http://purl.uniprot.org/taxonomy/562)
-- "What are the owl:sameAs identifiers for TaxID 562?" (5 identifiers)
-- "What is the OBO NCBITaxon identifier for human?" (NCBITaxon_9606)
+- "What is the OBO NCBITaxon URI for human?" → obo:NCBITaxon_9606
+- "What is the UniProt Taxonomy link for mouse?" → purl.uniprot.org/taxonomy/10090
+- "Convert TaxID 7227 to Berkeley BOP ontology format" → berkeleybop.org/...#7227
 
 ### Currency
-- "What is the current total count of taxa?" (2.7M+)
-- "When was the mouse taxonomy entry last modified?" (2025/06/16)
+- "Is SARS-CoV-2 classified in NCBI Taxonomy?" → Yes, TaxID 2697049
+- "What is the current species classification for SARS-CoV-2?" → Betacoronavirus pandemicum
 
 ### Specificity
-- "What is the complete lineage of Homo sapiens?" (32 levels)
-- "What taxonomic rank is 'Hominidae'?" (Family)
-- "What kingdom does Homo sapiens belong to?" (Metazoa)
-- "What phylum is Escherichia coli in?" (Pseudomonadota/Proteobacteria)
+- "What genus has the most species in NCBI Taxonomy?" → Cortinarius (2,030 species)
+- "How many ancestors does human have in the taxonomic hierarchy?" → 32
+- "What is the taxonomic rank of SARS-CoV-2?" → NoRank (subspecies-level isolate)
 
 ### Structured Query
-- "Find all species in genus Homo"
-- "Find all genera in family Hominidae"
-- "What organisms have 'mouse' in their common name?"
-- "Find mammals (Class Mammalia) with strains"
+- "Find all species in the Escherichia genus" → 10 species including E. coli
+- "Get the complete lineage for human from root to species" → 32 taxa
+- "Find organisms using non-standard genetic codes" → Ciliates (GeneticCode6), bacteria/viruses (GeneticCode11)
 
 ## Notes
-
-### Limitations
-- Lineage traversal (rdfs:subClassOf*) can be slow for deep hierarchies
-- Common names ~30% complete (better for vertebrates)
-- Property path queries need LIMIT to avoid timeout
-
-### Best Practices
-- Use `bif:contains` for name searches with relevance scoring
-- Always include `FROM <http://rdfportal.org/ontology/taxonomy>` clause
-- Add LIMIT for exploratory queries (2.7M+ taxa)
-- Filter by `tax:rank` to improve performance
-- Start lineage queries from specific taxon ID, not all taxa
-
-### Important Count Clarifications
-- Species count (2.2M) is subset of total taxa (2.7M)
-- NoRank entries (253K) include intermediate classification nodes
-- Strain count (47K) represents specific isolates/strains below species
+- **Performance**: Always use FROM clause and LIMIT; bif:contains for name searches
+- **Hierarchy**: rdfs:subClassOf* traversal is expensive; start from specific taxa
+- **Ranks**: tax:rank filtering significantly improves performance
+- **Names**: Scientific names >99% complete; common names ~30%
+- **Cross-references**: 5 owl:sameAs links per taxon on average
+- **Shared endpoint**: Can integrate with GO, MONDO, MeSH, BacDive via keyword matching
+- **Critical for integration**: Taxonomy IDs are used across all biological databases (UniProt, NCBI Gene, etc.)

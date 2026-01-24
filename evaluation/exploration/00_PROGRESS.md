@@ -1,53 +1,62 @@
 # Exploration Progress
 
-## Session 1 - January 15, 2026
+## Current Session - 2025-01-24
 
-### Completed Databases (6 of 22)
-1. amrportal ✅ - AMR Portal (antimicrobial resistance data)
-2. bacdive ✅ - Bacterial Diversity Metadatabase  
-3. chebi ✅ - Chemical Entities of Biological Interest
-4. chembl ✅ - ChEMBL bioactivity database
-5. clinvar ✅ - Clinical variant database
-6. go ✅ - Gene Ontology
+### Session Summary
+- Databases explored this session: 1
+- Total databases completed: 23 of 23
+- Status: **COMPLETE**
 
-## Session 2 - January 15, 2026
+### Completed (23 of 23)
+**All databases have exploration reports:**
+- amrportal ✅
+- bacdive ✅
+- chebi ✅
+- chembl ✅
+- clinvar ✅
+- ddbj ✅
+- ensembl ✅
+- glycosmos ✅
+- go ✅
+- medgen ✅
+- mediadive ✅
+- mesh ✅
+- mondo ✅
+- nando ✅
+- ncbigene ✅
+- pdb ✅
+- pubchem ✅
+- pubmed ✅
+- **pubtator ✅ (Session current - completed final database)**
+- reactome ✅
+- rhea ✅
+- taxonomy ✅
+- uniprot ✅
 
-### Completed Databases (10 of 22)
-7. ddbj ✅ - DNA Data Bank of Japan (nucleotide sequences)
-8. ensembl ✅ - Genome annotations (87K human genes)
-9. glycosmos ✅ - Glycoscience portal (117K glycans, 153K glycoproteins)
-10. medgen ✅ - Medical genetics (234K clinical concepts)
+### Remaining (0)
+None - all databases explored!
 
-## Session 3 - January 15, 2026
+### Session Notes
+**PubTator:**
+- 234 million total annotations (162M disease + 72M gene)
+- Text-mined entity annotations from PubMed literature
+- Links MeSH disease terms and NCBI Gene IDs to PubMed articles
+- Annotation counts track mention frequency within articles (1-9 range observed)
+- Rich cross-database integration with PubMed, NCBI Gene via shared endpoint
+- No source attribution populated in current data (dcterms:source empty)
+- Excellent for literature-based gene-disease association discovery
+- Key patterns: gene-disease co-mentions, high-frequency mentions, cross-database enrichment
 
-### Completed Databases (22 of 22)
-11. mediadive ✅ - Microbial culture media database
-12. mesh ✅ - Medical Subject Headings
-13. mondo ✅ - Disease ontology
-14. nando ✅ - Japanese rare diseases
-15. ncbigene ✅ - NCBI Gene database
-16. pdb ✅ - Protein Data Bank
-17. pubchem ✅ - Chemical molecules
-18. pubmed ✅ - Biomedical literature (37M+ citations)
-19. pubtator ✅ - Entity annotations (Disease/Gene from literature)
-20. reactome ✅ - Pathway database
-21. rhea ✅ - Biochemical reactions
-22. taxonomy ✅ - NCBI Taxonomy
-23. uniprot ✅ - Protein sequences
+### Exploration Summary
 
-### ALL DATABASES EXPLORED ✅
+All 23 databases have been thoroughly explored with:
+- MIE file analysis (schema, properties, relationships)
+- Search queries to discover real entities
+- SPARQL queries adapted from MIE patterns with different entities
+- Cross-reference analysis where applicable
+- Question opportunities identified by category
 
-### Notes from Session 3
-- PubMed: 37M+ citations with MeSH annotations, author metadata, DOI cross-refs
-- PubTator: Disease/Gene annotations from literature via text mining
-- Both integrate well via same SPARQL endpoint (different graphs)
-- Key tools: ncbi_esearch, get_article_metadata, search_articles, convert_article_ids
-
-### Key Patterns Discovered (All Sessions)
-1. FALDO ontology used consistently for genomic coordinates (DDBJ, Ensembl)
-2. Cross-references via rdfs:seeAlso are common
-3. Species filtering via taxonomy IDs essential for multi-species databases
-4. bif:contains works across all Virtuoso-backed databases
-5. identifiers.org namespace used for standardized cross-references
-6. Web Annotation Ontology (oa:) used in PubTator for annotation modeling
-7. OLO (Ordered List Ontology) used in PubMed for author ordering
+### Next Steps
+- Proceed to Phase 2: Question Generation
+- Use exploration reports to create 120 questions
+- Follow distribution plan in 00_SUMMARY.md
