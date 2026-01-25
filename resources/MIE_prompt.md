@@ -151,6 +151,7 @@ When an existing MIE file is retrieved, verify it complies with these instructio
 **Cross-Database Queries (if applicable):**
 - [ ] 2-3 examples if database shares endpoint with others
 - [ ] Uses proper GRAPH clauses for each database
+- [ ] Includes performance optimization patterns from best practices
 - [ ] Includes practical use cases
 - [ ] Performance notes documented
 
@@ -286,6 +287,7 @@ for co_db in shared_databases:
 - Property patterns and namespaces
 - Known cross-references and linking properties
 - Anti-patterns to avoid
+- **Performance optimization patterns already tested**
 
 **Step 2: Identify linking properties**
 ```sparql
@@ -303,37 +305,203 @@ LIMIT 100
 ```
 
 **Step 3: Verify cross-database queries work**
+
+**CRITICAL: Apply Optimization Strategies**
+
+When creating cross-database queries, follow these optimization patterns:
+
 ```sparql
-# Test query combining two databases
-# Use graph URIs, prefixes, and entity types from retrieved MIE files
+# OPTIMIZATION 1: Explicit GRAPH clauses (MANDATORY)
+# Use graph URIs from retrieved MIE files
+PREFIX db1: <...>
+PREFIX db2: <...>
+
 SELECT ?entity1 ?entity2 ?label1 ?label2
 WHERE {
   GRAPH <database1_graph> {  # From database1 MIE file
     ?entity1 a <Type1> ;      # From database1 shape expressions
              <link_property> ?entity2 ;
              rdfs:label ?label1 .
+    # OPTIMIZATION 2: Pre-filter in source database (CRITICAL)
+    FILTER(?restrictive_condition)  # Apply early!
   }
   GRAPH <database2_graph> {  # From database2 MIE file
     ?entity2 a <Type2> ;      # From database2 shape expressions
              rdfs:label ?label2 .
   }
 }
-LIMIT 10
+LIMIT 10  # OPTIMIZATION 3: Always add LIMIT
 ```
 
-**Step 4: Reference co-located database schemas**
+**Step 4: Apply Cross-Database Optimization Best Practices**
+
+When creating cross-database query examples, apply these proven optimization strategies:
+
+**✓ Strategy 1: Explicit GRAPH Clauses (MANDATORY)**
+```sparql
+# GOOD - Explicit GRAPH clauses
+WHERE {
+  GRAPH <http://db1/graph> { ?entity1 ?p1 ?o1 }
+  GRAPH <http://db2/graph> { ?entity2 ?p2 ?entity1 }
+}
+
+# BAD - No GRAPH clauses (cross-contamination risk)
+WHERE {
+  ?entity1 ?p1 ?o1 .
+  ?entity2 ?p2 ?entity1 .
+}
+```
+
+**✓ Strategy 2: Pre-Filter in Source Database (10-100x speedup)**
+```sparql
+# GOOD - Filter before join
+WHERE {
+  GRAPH <db1> {
+    ?entity1 ?p ?o .
+    FILTER(?phase >= 3)  # Reduce 2.4M → 10k BEFORE join
+  }
+  GRAPH <db2> { ?entity2 ?p2 ?entity1 }
+}
+
+# BAD - Filter after join
+WHERE {
+  GRAPH <db1> { ?entity1 ?p ?o }
+  GRAPH <db2> { ?entity2 ?p2 ?entity1 }
+  FILTER(?phase >= 3)  # Too late!
+}
+```
+
+**✓ Strategy 3: VALUES Clause for Known Entities**
+```sparql
+# When you have specific entity URIs
+WHERE {
+  GRAPH <db1> {
+    VALUES ?protein { <uniprot:P04637> <uniprot:P17612> }
+    ?protein up:enzyme ?enzyme .
+  }
+  GRAPH <db2> {
+    ?reaction rhea:ec ?enzyme .
+  }
+}
+```
+
+**✓ Strategy 4: bif:contains for Full-Text Search**
+```sparql
+# CRITICAL: Split property paths when using bif:contains
+# WRONG - Causes 400 error
+?protein up:recommendedName/up:fullName ?name .
+?name bif:contains "'kinase'"
+
+# CORRECT - Split the path
+?protein up:recommendedName ?nameObj .
+?nameObj up:fullName ?name .
+?name bif:contains "'kinase'" option (score ?sc)
+ORDER BY DESC(?sc)
+```
+
+**✓ Strategy 5: URI Conversion for Cross-Database Linking**
+```sparql
+# When databases use different URI patterns
+WHERE {
+  GRAPH <ncbigene> {
+    ?gene dct:identifier ?gene_id .
+  }
+  GRAPH <clinvar> {
+    # Convert URI pattern: identifiers.org → ncbi.nlm.nih.gov
+    BIND(IRI(CONCAT("http://ncbi.nlm.nih.gov/gene/", ?gene_id)) AS ?cv_uri)
+    ?variant med2rdf:gene ?cv_uri .
+  }
+}
+```
+
+**✓ Strategy 6: Property Path Optimization**
+```sparql
+# Simple paths OK
+?activity cco:hasMolecule/rdfs:label ?label .
+
+# Complex paths - break down
+# AVOID: ?pathway bp:pathwayComponent/bp:left|bp:right ?protein .
+# BETTER:
+?pathway bp:pathwayComponent ?component .
+{ ?component bp:left ?protein } UNION { ?component bp:right ?protein }
+```
+
+**✓ Strategy 7: OPTIONAL Block Ordering**
+```sparql
+WHERE {
+  # Required patterns first
+  ?entity required:property ?value1 .
+  ?entity required:property2 ?value2 .
+  
+  # OPTIONAL patterns last
+  OPTIONAL { ?entity optional:property ?opt1 }
+  OPTIONAL { ?entity optional:property2 ?opt2 }
+}
+```
+
+**✓ Strategy 8: Database-Specific Optimizations**
+
+Apply database-specific best practices from MIE files:
+
+```sparql
+# UniProt: ALWAYS filter by reviewed
+?protein up:reviewed 1 ;  # 444M → 923K (99.8% reduction!)
+         up:organism <taxonomy_uri> .  # Filter organism early
+
+# Rhea: Filter by status
+?reaction rhea:status rhea:Approved .
+
+# ChEMBL: Filter by development phase
+?molecule cco:highestDevelopmentPhase ?phase .
+FILTER(?phase >= 3)  # Marketed/late-stage drugs
+
+# NCBI Gene: Filter by organism immediately
+?gene ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+```
+
+**✓ Strategy 9: Handle Type Restrictions**
+```sparql
+# Some databases require ^^xsd:string for string comparisons
+# Example: Reactome bp:db comparisons
+?xref bp:db "UniProt"^^xsd:string .  # Required!
+
+# Without type restriction: query fails or returns empty
+```
+
+**✓ Strategy 10: Performance Tier Awareness**
+
+Document expected performance for users:
+- **Tier 1** (1-3s): Simple 2-database queries, pre-filtered, small results
+- **Tier 2** (3-8s): Property paths, text search on one side
+- **Tier 3** (8-20s): Three-way joins, multiple searches, URI conversions
+- **Tier 4** (20-60s): 4+ databases, complex aggregations
+
+**Step 5: Test Query Optimization Effectiveness**
+
+Before including a cross-database query:
+1. Test WITHOUT optimizations (baseline)
+2. Test WITH optimizations (compare performance)
+3. Document performance improvement in notes
+4. If query times out even with optimizations, simplify or exclude
+
+**Step 6: Reference co-located database schemas**
+
 When creating cross-database query examples:
 - Use correct entity type URIs from retrieved MIE files
 - Apply property patterns documented in co-database MIE files
 - Follow prefix conventions from co-database MIE files
 - Avoid anti-patterns documented in co-database MIE files
 - Use successful query patterns from co-database sparql_query_examples
+- **Apply optimization strategies from co-database architectural_notes**
 
-**Step 5: Document common link patterns**
-- Note which properties create links (e.g., `skos:exactMatch`, `rdfs:seeAlso`)
-- Identify most useful cross-database query patterns
-- Test performance of cross-database queries (may be slower)
-- Document which co-database MIE files were referenced
+**Step 7: Document optimization strategies used**
+
+In the query notes section, document:
+- Which optimization strategies were applied (by number)
+- Performance observed (e.g., "~2-3 seconds for 10 results")
+- Which MIE files were referenced for schema information
+- Any database-specific optimizations applied
+- Expected performance tier (1-4)
 
 ## 4. MIE File Construction
 
@@ -343,19 +511,19 @@ When creating cross-database query examples:
 2. **shape_expressions** - ShEx schemas for all entity types (minimal comments)
 3. **sample_rdf_entries** - 5 diverse examples (core entity, related entity, sequence/molecular, cross-ref, geographic/temporal)
 4. **sparql_query_examples** - 7 tested queries (2 basic, 3 intermediate, 2 advanced)
-5. **cross_database_queries** - 2-3 examples leveraging shared endpoint (ONLY if applicable)
+5. **cross_database_queries** - 2-3 examples leveraging shared endpoint with optimization patterns (ONLY if applicable)
 6. **cross_references** - Pattern-based organization with all external databases
-7. **architectural_notes** - schema_design, performance, data_integration, data_quality (YAML bullets, not prose)
+7. **architectural_notes** - schema_design, performance, data_integration, data_quality (YAML bullets, not prose) - **Include cross-database optimization strategies**
 8. **data_statistics** - Counts, coverage, cardinality, performance_characteristics, data_quality_notes
-9. **anti_patterns** - 2-3 common mistakes with wrong/correct versions
-10. **common_errors** - 2-3 error scenarios with solutions
+9. **anti_patterns** - 2-3 common mistakes with wrong/correct versions - **Include cross-database anti-patterns**
+10. **common_errors** - 2-3 error scenarios with solutions - **Include cross-database error patterns**
 
 ### Key Constraints:
 - RDF examples: Exactly 5, each 1-2 sentence description
 - SPARQL queries: Exactly 7, must include keyword filtering + biological annotations
-- Cross-database queries: 2-3 examples (ONLY if database shares endpoint with others)
-- Anti-patterns: 2-3 examples showing wrong query → correct query
-- Common errors: 2-3 scenarios with causes and solutions
+- Cross-database queries: 2-3 examples with optimization strategies applied (ONLY if database shares endpoint with others)
+- Anti-patterns: 2-3 examples showing wrong query → correct query (include cross-database anti-patterns if applicable)
+- Common errors: 2-3 scenarios with causes and solutions (include cross-database errors if applicable)
 - Keep everything concise - if it doesn't help query writing, omit it
 
 ## 5. Quality Assurance Checklist
@@ -387,17 +555,26 @@ Before finalizing, verify:
 - [ ] Statistics: counts, coverage, cardinality, performance
 - [ ] Everything concise - no unnecessary content
 
-**Cross-Database (if applicable):**
-- [ ] Identified all databases on same endpoint
+**Cross-Database Optimization (if applicable):**
 - [ ] Retrieved MIE files for all co-located databases using get_MIE_file()
 - [ ] Extracted graph URIs, entity types, and properties from co-database MIE files
-- [ ] Found at least 1 linking property to co-located databases
+- [ ] Applied explicit GRAPH clause optimization (Strategy 1)
+- [ ] Applied pre-filtering optimization (Strategy 2)
+- [ ] Used VALUES clause where appropriate (Strategy 3)
+- [ ] Used bif:contains with split property paths (Strategy 4)
+- [ ] Applied URI conversion where needed (Strategy 5)
+- [ ] Optimized property paths (Strategy 6)
+- [ ] Ordered OPTIONAL blocks correctly (Strategy 7)
+- [ ] Applied database-specific optimizations (Strategy 8)
+- [ ] Handled type restrictions properly (Strategy 9)
+- [ ] Documented performance tier (Strategy 10)
 - [ ] 2-3 cross-database query examples tested and working
 - [ ] Cross-database queries use proper GRAPH clauses from co-database MIE files
 - [ ] Cross-database queries use correct entity types from co-database shape expressions
 - [ ] Avoided anti-patterns documented in co-database MIE files
 - [ ] Performance notes for cross-database queries documented
 - [ ] Query notes document which MIE files were referenced
+- [ ] Query notes document which optimization strategies were applied
 
 ## Common Pitfalls to Avoid
 
@@ -410,6 +587,18 @@ Before finalizing, verify:
 **❌ Missing Error Guidance**: Not testing what fails → Note failing patterns during testing to document as anti-patterns
 
 **❌ Ignoring Cross-Database Opportunities**: Not exploring shared endpoint databases → Check for co-located databases and linking properties
+
+**❌ Unoptimized Cross-Database Queries**: Not applying optimization strategies → Follow 10 optimization strategies for all cross-database queries
+
+**❌ Missing GRAPH Clauses**: Querying without explicit graphs → Always use GRAPH clauses for cross-database queries
+
+**❌ Late Filtering**: Applying filters after joins → Filter early within GRAPH clauses
+
+**❌ Property Path + bif:contains**: Using together without splitting → Split property paths before using bif:contains
+
+**❌ URI Pattern Mismatch**: Not converting URIs → Use BIND with CONCAT for URI conversion
+
+**❌ Missing Type Restrictions**: String comparisons without ^^xsd:string → Add type restrictions where required
 
 ## Available Tools
 - `get_sparql_endpoints()` - Get available SPARQL endpoints and keyword search APIs for all databases
@@ -453,6 +642,22 @@ LIMIT 50
 You can sort the results by `?sc` (keyword relevance score).　
 **DON'T use `?score` for the variable name** That would result in an error.
 
+**CRITICAL: bif:contains + Property Paths Incompatibility**
+
+When using `bif:contains`, you MUST split property paths:
+
+```sparql
+# WRONG - Causes 400 error
+?protein up:recommendedName/up:fullName ?name .
+?name bif:contains "'kinase'"
+
+# CORRECT - Split the path
+?protein up:recommendedName ?nameObj .
+?nameObj up:fullName ?name .
+?name bif:contains "'kinase'" option (score ?sc)
+ORDER BY DESC(?sc)
+```
+
 ## YAML Formatting Rules
 
 **CRITICAL: Use "|" (pipe) syntax for ALL multiline strings**
@@ -483,6 +688,7 @@ sparql: "SELECT ?s ?p ?o WHERE { ?s ?p ?o . } LIMIT 10"
 - rdf examples
 - shape_expressions
 - explanation fields
+- notes fields (especially in cross_database_queries)
 - Any string value that spans multiple lines
 
 **Benefits:**
@@ -497,11 +703,13 @@ sparql: "SELECT ?s ?p ?o WHERE { ?s ?p ?o . } LIMIT 10"
 - Database shares SPARQL endpoint with 2+ other databases
 - Clear linking properties exist (skos:exactMatch, rdfs:seeAlso, etc.)
 - Practical use cases benefit from integration (don't force it)
+- **Queries can be optimized to complete in reasonable time (<20 seconds)**
 
 **When NOT to Include:**
 - Database is on standalone endpoint (PubChem, PDB, DDBJ, GlyCosmos)
 - No clear linking mechanisms exist
-- Cross-database queries consistently timeout
+- Cross-database queries consistently timeout even with optimizations
+- **Performance is poor despite applying all optimization strategies**
 
 **CRITICAL: Reference Co-Located Database MIE Files**
 
@@ -514,56 +722,80 @@ Before creating cross-database query examples:
    - Property patterns from `sample_rdf_entries`
    - Linking properties from `cross_references`
    - Anti-patterns to avoid from `anti_patterns`
-3. **Use this information** to create accurate, well-formed cross-database queries
-4. **Document which MIE files were consulted** in query notes
+   - **Optimization strategies from `architectural_notes`**
+   - **Performance characteristics from `data_statistics`**
+3. **Apply optimization strategies** from the 10-strategy framework
+4. **Use this information** to create accurate, well-formed, performant cross-database queries
+5. **Document which MIE files were consulted** in query notes
+6. **Document which optimization strategies were applied** in query notes
 
 **Why this matters:**
 - Ensures correct graph URIs (avoid query failures)
 - Uses proper entity types and properties (avoid empty results)
 - Follows established naming conventions (consistency)
 - Avoids known anti-patterns (better performance)
+- **Applies proven optimization patterns (10-100x speedup)**
 - Creates queries that align with existing documentation
 
-**Best Practices:**
-1. **Use explicit GRAPH clauses** for each database
-2. **Start with smaller LIMITs** (cross-database queries are slower)
-3. **Filter early** - apply constraints within each GRAPH clause
-4. **Document performance** - note if queries are slow
-5. **Show practical value** - examples should solve real research questions
-6. **Reference MIE files** - use correct URIs, types, and patterns from co-database documentation
+**Best Practices (Updated with Optimization Strategies):**
 
-**Example Pattern:**
+1. **Use explicit GRAPH clauses** (Strategy 1) - MANDATORY for each database
+2. **Apply restrictive filters early** (Strategy 2) - Within each GRAPH clause, before joins
+3. **Use VALUES for known entities** (Strategy 3) - When entity URIs are known
+4. **Use bif:contains with split paths** (Strategy 4) - For text search
+5. **Convert URIs when patterns differ** (Strategy 5) - NCBI databases especially
+6. **Optimize property paths** (Strategy 6) - Break down complex paths
+7. **Order OPTIONAL blocks** (Strategy 7) - Required patterns first
+8. **Apply database-specific optimizations** (Strategy 8) - From MIE files
+9. **Handle type restrictions** (Strategy 9) - ^^xsd:string where required
+10. **Document performance tier** (Strategy 10) - Set user expectations
+11. **Start with smaller LIMITs** - Cross-database queries are slower
+12. **Test before including** - Verify query completes in <20 seconds
+13. **Show practical value** - Examples should solve real research questions
+14. **Reference MIE files** - Use correct URIs, types, and patterns from co-database documentation
+
+**Example Pattern with Optimization Strategies:**
 ```sparql
-# Good: Filter within GRAPH clauses, explicit naming
+# OPTIMIZED: ChEMBL + ChEBI integration
+# Strategies applied: 1 (GRAPH), 2 (pre-filter), 7 (OPTIONAL ordering), 10 (LIMIT)
 PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
 PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+PREFIX chebi: <http://purl.obolibrary.org/obo/chebi/>
 
-SELECT ?molecule ?moleculeLabel ?chebiLabel ?formula
+SELECT DISTINCT ?moleculeLabel ?chebiLabel ?formula ?mass
 WHERE {
   GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
     ?molecule a cco:SmallMolecule ;
               rdfs:label ?moleculeLabel ;
               skos:exactMatch ?chebiId .
+    # Strategy 2: Pre-filter BEFORE join (reduces 2.4M → ~10k)
     FILTER(?moleculeLabel = "ASPIRIN")
   }
   GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
     ?chebiId a owl:Class ;
-             rdfs:label ?chebiLabel ;
-             chebi:formula ?formula .
+             rdfs:label ?chebiLabel .
+    # Strategy 7: OPTIONAL blocks after required patterns
+    OPTIONAL { ?chebiId chebi:formula ?formula }
+    OPTIONAL { ?chebiId chebi:mass ?mass }
   }
 }
-LIMIT 10
+LIMIT 10  # Strategy 10: Always limit results
 ```
+
+**Performance**: <1 second (Tier 1)
+**Optimization gain**: 99.5% reduction in join size
 
 **Common Link Patterns by Endpoint:**
 - **EBI** (chembl, chebi, reactome, ensembl, amrportal):
-  - ChEMBL ↔ ChEBI: `skos:exactMatch`
-  - ChEMBL targets ↔ Ensembl: via UniProt IDs
-  - Reactome ↔ Ensembl: gene identifiers
-  - Ensembl ↔ ChEMBL: protein targets
+  - ChEMBL ↔ ChEBI: `skos:exactMatch` (high performance)
+  - ChEMBL targets ↔ UniProt: via `skos:exactMatch` on target components
+  - Reactome ↔ UniProt: via `bp:xref` with `bp:db "UniProt"^^xsd:string` (CRITICAL: type restriction!)
+  - Ensembl ↔ ChEMBL: protein targets via gene identifiers
   
 - **SIB** (uniprot, rhea):
-  - UniProt ↔ Rhea: enzyme-catalyzed reactions
+  - UniProt ↔ Rhea: enzyme-catalyzed reactions via `up:enzyme` ↔ `rhea:ec`
+  - **Optimization**: ALWAYS filter UniProt by `up:reviewed 1` (99.8% reduction!)
   
 - **Primary** (mesh, go, taxonomy, mondo, nando, bacdive, mediadive):
   - MONDO ↔ MeSH: disease concept IDs
@@ -572,10 +804,12 @@ LIMIT 10
   
 - **NCBI** (clinvar, pubmed, pubtator, ncbigene, medgen):
   - ClinVar ↔ NCBI Gene: variant-to-gene mappings
-  - PubMed ↔ PubTator: article-to-entity annotations
-  - MedGen ↔ NCBI Gene: clinical genetics
+  - **Optimization**: URI conversion required (identifiers.org ↔ ncbi.nlm.nih.gov)
+  - PubMed ↔ NCBI Gene: via keyword matching (text search optimization critical)
+  - **Performance**: Expect 5-15 seconds for complex NCBI joins
 
 ## MIE File Structure Template
+
 ```yaml
 schema_info:
   title: [DATABASE_NAME]
@@ -588,15 +822,8 @@ schema_info:
     - http://example.org/ontology
   kw_search_tools:
     # Obtained from get_sparql_endpoints()
-    # Categories:
-    # - Dedicated: search_uniprot_entity, search_pdb_entity, search_chembl_molecule/target, 
-    #              search_reactome_entity, search_rhea_entity, search_mesh_entity
-    # - OLS4: OLS4:searchClasses (for chebi, go, mondo, nando)
-    # - NCBI: ncbi_esearch (for pubchem, taxonomy, clinvar, pubmed, ncbigene, medgen)
-    # - SPARQL-only: Use run_sparql with bif:contains for keyword search
-    - [keyword_search_api_name]  # e.g., search_uniprot_entity, OLS4:searchClasses, ncbi_esearch, or "sparql"
+    - [keyword_search_api_name]
 
-  # Metadata (integrated into schema_info)
   version:
     mie_version: "1.0"
     mie_created: "YYYY-MM-DD"
@@ -608,7 +835,7 @@ schema_info:
   access:
     rate_limiting: "100 queries/min"
     max_query_timeout: "60 seconds"
-    backend: "Virtuoso" or "Other"  # Important for bif:contains usage
+    backend: "Virtuoso" or "Other"
 
 shape_expressions: |
   # Minimal comments - only for non-obvious properties
@@ -619,7 +846,7 @@ shape_expressions: |
   <EntityShape> {
     a [ schema:Type ] ;
     schema:property xsd:string ;
-    schema:optional xsd:string ?     # Comment only if needed
+    schema:optional xsd:string ?
   }
 
 sample_rdf_entries:
@@ -641,8 +868,8 @@ sparql_query_examples:
 
 cross_database_queries:
   # Only include if database shares endpoint with others
-  # 2-3 examples showing practical integration
-  # CRITICAL: Reference co-database MIE files for accurate URIs and patterns
+  # 2-3 examples showing practical integration with optimization strategies
+  # CRITICAL: Apply all 10 optimization strategies where applicable
   shared_endpoint: ebi  # or sib, primary, ncbi, etc.
   co_located_databases:
     - database1
@@ -651,6 +878,7 @@ cross_database_queries:
     - title: [What integration achieves]
       description: |
         [Why this cross-database query is useful - 2-3 sentences]
+        [Mention which optimization strategies make it performant]
       databases_used:
         - database1
         - database2
@@ -662,25 +890,35 @@ cross_database_queries:
         
         SELECT ?entity1 ?entity2 ?property
         WHERE {
+          # Strategy 1: Explicit GRAPH clauses
           # Graph URI from database1 MIE file (schema_info.graphs)
           GRAPH <http://example1.org/dataset> {
             # Entity type from database1 MIE file (shape_expressions)
             ?entity1 a db1:Type ;
                      db1:links ?entity2 .
+            # Strategy 2: Pre-filter BEFORE join
+            FILTER(?restrictive_condition)
           }
           # Graph URI from database2 MIE file (schema_info.graphs)
           GRAPH <http://example2.org/dataset> {
             # Entity type from database2 MIE file (shape_expressions)
             ?entity2 a db2:Type ;
                      db2:property ?property .
+            # Strategy 7: OPTIONAL blocks after required
+            OPTIONAL { ?entity2 db2:optional ?opt }
           }
         }
-        LIMIT 50
+        LIMIT 50  # Strategy 10: Always add LIMIT
       notes: |
+        - Optimization strategies applied: 1 (GRAPH), 2 (pre-filter), 7 (OPTIONAL), 10 (LIMIT)
         - Query uses graph URIs from database1 and database2 MIE files
         - Entity types and properties verified against co-database shape expressions
-        - Performance: [timing or considerations]
+        - Pre-filtering reduces result set by [X]% before join
+        - Performance: ~[N] seconds for [M] results (Tier [1-4])
+        - Performance gain: [description of improvement from optimization]
         - Use case: [practical application]
+        - Referenced MIE files: database1, database2
+        - Avoided anti-patterns: [specific patterns from co-database MIE files]
 
 cross_references:
   - pattern: rdfs:seeAlso
@@ -697,9 +935,18 @@ architectural_notes:
     - [Bullet: entity relationships]
   performance:
     - [Bullet: optimization tips]
+    # For shared endpoint databases, add cross-database optimization guidance:
+    - "Cross-database query optimization: Use explicit GRAPH clauses (Strategy 1)"
+    - "Pre-filter within GRAPH blocks before joins (Strategy 2) - 10-100x speedup"
+    - "Use VALUES clause for known entity sets (Strategy 3)"
+    - "Use bif:contains with split property paths (Strategy 4)"
+    - "Convert URIs when linking to [specific database] (Strategy 5)"
   data_integration:
     - [Bullet: cross-references]
-    - [Bullet: cross-database opportunities if applicable]
+    # For shared endpoint databases, add:
+    - "Cross-database integration with [co_db1, co_db2] via shared [endpoint_name] endpoint"
+    - "Linking via [property_pattern]: [db1] ↔ [db2]"
+    - "Expected performance: [Tier 1-4] ([time_range] seconds)"
   data_quality:
     - [Bullet: data quirks]
 
@@ -710,30 +957,122 @@ data_statistics:
   cardinality:
     avg_per_entity: X.X
   performance_characteristics:
-    - "Tested observation"
-    - "Cross-database query performance (if applicable)"
+    - "Single-database queries: [timing]"
+    # For shared endpoint databases, add:
+    - "Cross-database queries: Tier 1 (1-3s) with pre-filtering"
+    - "Cross-database queries: Tier 2 (3-8s) with property paths"
+    - "Cross-database queries: Tier 3 (8-20s) for three-way joins"
+    - "Optimization gain: Pre-filtering reduces join size by [X]%"
   data_quality_notes:
     - "Data issue"
 
 anti_patterns:
-  # 2-3 examples
+  # 2-3 examples - Include cross-database anti-patterns if applicable
   - title: "Common mistake"
     problem: "Why wrong"
     wrong_sparql: |
       # Bad query
     correct_sparql: |
       # Fixed query
-    explanation: "What changed"
+    explanation: "What changed and optimization strategy applied"
+  
+  # For shared endpoint databases, add cross-database anti-pattern:
+  - title: "Cross-Database Query Without Pre-Filtering"
+    problem: "Filtering after join causes timeout by processing millions of intermediate results"
+    wrong_sparql: |
+      # BAD: Filter after join
+      WHERE {
+        GRAPH <db1> { ?entity1 db1:property ?value }
+        GRAPH <db2> { ?entity2 db2:link ?entity1 }
+        FILTER(?value >= 3)  # Too late!
+      }
+    correct_sparql: |
+      # GOOD: Filter before join (Strategy 2)
+      WHERE {
+        GRAPH <db1> {
+          ?entity1 db1:property ?value .
+          FILTER(?value >= 3)  # Early filtering!
+        }
+        GRAPH <db2> { ?entity2 db2:link ?entity1 }
+      }
+    explanation: "Pre-filtering in source database (Strategy 2) reduces intermediate results by 99.5% before cross-database join, improving performance 10-100x"
+
+  - title: "Property Path + bif:contains Incompatibility"
+    problem: "Using bif:contains with property paths causes 400 error"
+    wrong_sparql: |
+      # FAILS with 400 error
+      ?protein up:recommendedName/up:fullName ?name .
+      ?name bif:contains "'kinase'"
+    correct_sparql: |
+      # CORRECT: Split property path (Strategy 4)
+      ?protein up:recommendedName ?nameObj .
+      ?nameObj up:fullName ?name .
+      ?name bif:contains "'kinase'" option (score ?sc)
+      ORDER BY DESC(?sc)
+    explanation: "bif:contains requires splitting property paths into separate triple patterns (Strategy 4)"
 
 common_errors:
-  # 2-3 scenarios
+  # 2-3 scenarios - Include cross-database errors if applicable
   - error: "Error type"
     causes:
       - "Cause 1"
     solutions:
       - "Solution 1"
     example_fix: |
-      # Before/after (optional, if helpful)
+      # Before/after (optional)
+  
+  # For shared endpoint databases, add cross-database error:
+  - error: "Cross-database query timeout"
+    causes:
+      - "Missing pre-filtering (Strategy 2) - processing millions of rows"
+      - "Missing GRAPH clauses (Strategy 1) - cross-contamination"
+      - "Property path + bif:contains incompatibility (Strategy 4)"
+      - "Missing LIMIT clause (Strategy 10)"
+    solutions:
+      - "Apply restrictive FILTER within source GRAPH clause before join"
+      - "Use explicit GRAPH clauses for each database"
+      - "Split property paths when using bif:contains"
+      - "Add LIMIT to every query level"
+      - "Consider using VALUES for known entity sets (Strategy 3)"
+    example_fix: |
+      # BEFORE (times out):
+      WHERE {
+        GRAPH <db1> { ?e1 ?p1 ?o1 }
+        GRAPH <db2> { ?e2 ?p2 ?e1 }
+        FILTER(?condition)
+      }
+      
+      # AFTER (completes in 2s):
+      WHERE {
+        GRAPH <db1> {
+          ?e1 ?p1 ?o1 .
+          FILTER(?condition)  # Early filter!
+        }
+        GRAPH <db2> { ?e2 ?p2 ?e1 }
+      }
+      LIMIT 100
+  
+  - error: "Cross-database query returns empty results"
+    causes:
+      - "URI pattern mismatch between databases"
+      - "Missing type restriction (^^xsd:string) for Reactome bp:db"
+      - "Wrong graph URIs from co-database"
+      - "Wrong entity types from co-database"
+    solutions:
+      - "Use URI conversion with BIND(IRI(CONCAT(...))) (Strategy 5)"
+      - "Add ^^xsd:string type restriction (Strategy 9)"
+      - "Retrieve co-database MIE file to get correct graph URIs"
+      - "Use entity types from co-database shape expressions"
+      - "Test each GRAPH clause independently before combining"
+    example_fix: |
+      # URI conversion for NCBI databases:
+      GRAPH <ncbigene> {
+        ?gene dct:identifier ?gene_id .
+      }
+      GRAPH <clinvar> {
+        BIND(IRI(CONCAT("http://ncbi.nlm.nih.gov/gene/", ?gene_id)) AS ?cv_uri)
+        ?variant med2rdf:gene ?cv_uri .
+      }
 ```
 
 ## Success Criteria
@@ -741,22 +1080,28 @@ common_errors:
 - Multiple URI patterns explored
 - All SPARQL queries tested and working
 - Cross-database queries included if database shares endpoint (2-3 examples)
+- **Cross-database queries apply optimization strategies (document which ones)**
+- **Cross-database queries complete in reasonable time (<20 seconds)**
 - Shape expressions cover ALL major entity types with minimal comments
 - Sample RDF: exactly 5, covering different types
 - SPARQL queries: exactly 7 (2 basic, 3 intermediate, 2 advanced) including required ones
 - Cross-references by RDF pattern, all databases listed
-- Architectural notes in YAML bullets (include cross-database if applicable)
-- Statistics: counts, coverage, cardinality, performance (include cross-database notes if applicable)
-- 2-3 anti-patterns with wrong/correct versions
-- 2-3 common errors with solutions
+- Architectural notes in YAML bullets (include cross-database optimization strategies if applicable)
+- Statistics: counts, coverage, cardinality, performance (include cross-database performance tiers if applicable)
+- 2-3 anti-patterns with wrong/correct versions (include cross-database anti-patterns if applicable)
+- 2-3 common errors with solutions (include cross-database errors if applicable)
 - Metadata in schema_info (version, license, access)
 - File is valid YAML, compact yet complete
 
 ## Remember
-**The goal: Compact, Complete, Clear, Correct, Actionable**
+**The goal: Compact, Complete, Clear, Correct, Actionable, Optimized**
 - Document ALL entity types, not just some
 - Include cross-database queries if database shares endpoint with others
-- 2-3 anti-patterns prevent common mistakes  
+- **Apply 10 optimization strategies to all cross-database queries**
+- **Document which strategies were applied and performance gained**
+- 2-3 anti-patterns prevent common mistakes (include cross-database anti-patterns)
 - If it doesn't help query writing, omit it
 - NEVER assume first results represent entire database
 - Cross-database queries should show practical integration value
+- **Cross-database queries should demonstrate optimization best practices**
+- **Performance should be documented (Tier 1-4) to set user expectations**
