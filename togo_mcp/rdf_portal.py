@@ -117,16 +117,16 @@ WHERE {{
 )
 async def run_sparql(
     sparql_query: Annotated[str, Field(description="The SPARQL query to execute")],
-    dbname: Annotated[str, Field(description=DBNAME_DESCRIPTION, default=None)] = None,
+    dbname: Annotated[str, Field(description=DBNAME_DESCRIPTION, default="")] = "",
     endpoint_name: Annotated[str, Field(
         description=f"Endpoint name for cross-database queries. One of: {', '.join(ENDPOINT_NAMES)}. "
                     "Use this when querying multiple databases on the same endpoint.",
-        default=None
-    )] = None,
+        default=""
+    )] = "",
     endpoint_url: Annotated[str, Field(
         description="Direct SPARQL endpoint URL. Use this for explicit control over the endpoint.",
-        default=None
-    )] = None
+        default=""
+    )] = ""
 ) -> str:
     """
     Run a SPARQL query on an RDF database.
