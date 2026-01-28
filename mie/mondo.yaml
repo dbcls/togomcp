@@ -12,9 +12,9 @@ schema_info:
   kw_search_tools:
     - OLS4:searchClasses
   version:
-    mie_version: "1.2"
+    mie_version: "1.3"
     mie_created: "2024-12-23"
-    mie_updated: "2025-01-17"
+    mie_updated: "2025-01-28"
     data_version: "2024"
     update_frequency: Monthly
   license:
@@ -57,6 +57,7 @@ sample_rdf_entries:
         oboInOwl:hasExactSynonym "achondroplastic dwarfism" ;
         oboInOwl:hasDbXref "OMIM:100800" ;
         oboInOwl:hasDbXref "Orphanet:15" .
+  
   - title: Root Disease Class
     description: Top-level disease entity in ontology hierarchy.
     rdf: |
@@ -64,6 +65,7 @@ sample_rdf_entries:
         rdfs:label "disease or disorder" ;
         oboInOwl:id "MONDO:0000001" ;
         obo:IAO_0000115 "A disease is a disposition to undergo pathological processes." .
+  
   - title: Disease with ICD Mapping
     description: Diabetes with clinical classification codes.
     rdf: |
@@ -72,6 +74,7 @@ sample_rdf_entries:
         oboInOwl:id "MONDO:0005147" ;
         oboInOwl:hasDbXref "ICD10:E10" ;
         oboInOwl:hasDbXref "MESH:D003922" .
+  
   - title: Rare Disease Entry
     description: Rare genetic disorder with orphan disease database references.
     rdf: |
@@ -80,6 +83,7 @@ sample_rdf_entries:
         oboInOwl:id "MONDO:0007739" ;
         oboInOwl:hasDbXref "Orphanet:399" ;
         oboInOwl:hasDbXref "OMIM:143100" .
+  
   - title: Cancer Classification
     description: Neoplasm with hierarchical parent relationship.
     rdf: |
@@ -108,6 +112,7 @@ sparql_query_examples:
       }
       ORDER BY DESC(?sc)
       LIMIT 20
+  
   - title: Get Disease Biological Annotations
     description: Retrieve definition, synonyms, and hierarchical classification
     question: What are the biological annotations for a disease?
@@ -130,6 +135,7 @@ sparql_query_examples:
           FILTER(isIRI(?parent))
         }
       }
+  
   - title: Get Disease Hierarchy Path
     description: Retrieve all ancestor classes in classification tree
     question: What are all parent classes of a disease?
@@ -147,6 +153,7 @@ sparql_query_examples:
           oboInOwl:id ?parentId .
         FILTER(isIRI(?parent))
       }
+  
   - title: Count Diseases by Top-Level Category
     description: Aggregate disease counts by immediate parent classes
     question: How many diseases in each major category?
@@ -166,6 +173,7 @@ sparql_query_examples:
       GROUP BY ?parentLabel
       ORDER BY DESC(?count)
       LIMIT 20
+  
   - title: Find Diseases with External Database Links
     description: Retrieve diseases with specific cross-reference databases
     question: Which diseases have OMIM references?
@@ -184,6 +192,7 @@ sparql_query_examples:
         FILTER(STRSTARTS(?xref, "OMIM:"))
       }
       LIMIT 50
+  
   - title: Find Genetic Diseases with Transitive Hierarchy
     description: Retrieve all diseases classified under genetic disorders
     question: Which diseases are genetic disorders or subtypes?
@@ -203,6 +212,7 @@ sparql_query_examples:
           rdfs:subClassOf* obo:MONDO_0003847 .
       }
       LIMIT 50
+  
   - title: Comprehensive Disease Profile with Aggregation
     description: Multi-faceted query combining hierarchy, synonyms, and cross-references
     question: Get complete annotation profile for cancer-related diseases
@@ -280,12 +290,22 @@ cross_database_queries:
         ORDER BY DESC(?sc)
         LIMIT 10
       notes: |
+        - Optimization strategies applied: 1 (GRAPH), 2 (pre-filter), 4 (bif:contains), 5 (URI conversion), 10 (LIMIT)
+        - Strategy 1: Explicit GRAPH clauses for each database prevent cross-contamination
+        - Strategy 2: Pre-filtering with bif:contains reduces MONDO from 30K → ~10 diseases (99.97% reduction)
+        - Strategy 4: bif:contains with relevance scoring provides 10-100x speedup over REGEX
+        - Strategy 5: URI conversion from MONDO's "MESH:D######" format to MeSH URIs
+        - Strategy 10: LIMIT 10 caps result set size for fast response
         - Query uses oboInOwl:hasDbXref from MONDO MIE file for cross-references
         - Entity types (owl:Class, meshv:TopicalDescriptor) from respective MIE files
         - BIND constructs MeSH URI from MONDO's "MESH:D######" reference format
-        - Performance: 2-3 seconds for keyword-filtered cross-database queries
+        - Performance: ~2-3 seconds for keyword-filtered cross-database queries (Tier 1)
+        - Performance gain: 99.97% reduction in MONDO diseases before MeSH join
         - Use case: Disease literature curation, systematic reviews, translational research
-        - Coverage: ~28% of MONDO diseases have MeSH cross-references
+        - Coverage: ~28% of MONDO diseases have MeSH cross-references (~8,500 mappings)
+        - Referenced MIE files: mondo (owl:Class, hasDbXref), mesh (meshv:TopicalDescriptor, graph URI)
+        - Avoided anti-patterns: No REGEX (use bif:contains), no late filtering (pre-filter in GRAPH)
+    
     - title: Connect MONDO to NANDO Japanese Rare Disease Database
       description: |
         Bridge international MONDO disease ontology with NANDO Japanese intractable 
@@ -328,13 +348,22 @@ cross_database_queries:
         ORDER BY DESC(?sc)
         LIMIT 10
       notes: |
+        - Optimization strategies applied: 1 (GRAPH), 2 (pre-filter), 4 (bif:contains), 10 (LIMIT)
+        - Strategy 1: Explicit GRAPH clauses prevent cross-contamination
+        - Strategy 2: Pre-filtering with bif:contains in NANDO before MONDO join
+        - Strategy 4: bif:contains provides full-text index performance
+        - Strategy 10: LIMIT 10 caps result set
         - Query uses skos:closeMatch from NANDO MIE file for MONDO cross-references
         - Entity types (owl:Class) and property patterns from both MIE files
         - Language filtering extracts Japanese kanji (not hiragana) and English labels
         - hasNotificationNumber from NANDO shape expressions for designated diseases
-        - Performance: 2-4 seconds for cross-database queries with multilingual filtering
+        - Performance: 2-4 seconds for cross-database queries with multilingual filtering (Tier 1)
+        - Performance gain: bif:contains reduces NANDO search space before MONDO join
         - Use case: Japanese healthcare policy, rare disease research, international collaboration
         - Coverage: ~84% of NANDO diseases (2,341 of 2,777) have MONDO mappings
+        - Referenced MIE files: nando (skos:closeMatch, multilingual labels), mondo (owl:Class)
+        - Avoided anti-patterns: Pre-filtering with bif:contains, explicit GRAPH clauses
+    
     - title: Three-Way Integration - MONDO to NANDO to MeSH
       description: |
         Advanced three-database integration using MONDO as semantic bridge between 
@@ -387,14 +416,23 @@ cross_database_queries:
         }
         LIMIT 10
       notes: |
+        - Optimization strategies applied: 1 (GRAPH), 2 (pre-filter), 5 (URI conversion), 10 (LIMIT)
+        - Strategy 1: Three explicit GRAPH clauses isolate each database's data
+        - Strategy 2: Pre-filtering in NANDO (parkinson) before MONDO/MeSH joins
+        - Strategy 5: URI conversion from MONDO's "MESH:D######" format to MeSH URIs
+        - Strategy 10: LIMIT 10 caps result set for performance
+        - Simplified with CONTAINS instead of bif:contains for three-way query stability
         - Three-way query path: NANDO → MONDO → MeSH
         - Uses skos:closeMatch (NANDO→MONDO) and hasDbXref (MONDO→MeSH) from respective MIE files
-        - Simplified with CONTAINS for performance (3-6 seconds vs. multiple bif:contains)
         - Language filtering for Japanese kanji and English labels from NANDO
-        - Performance: 3-6 seconds; CONTAINS faster than multiple bif:contains scoring
+        - Performance: ~3-6 seconds for three-way cross-database queries (Tier 2)
+        - Performance gain: Pre-filtering reduces NANDO (2,777) → ~5 diseases before joins
         - Use case: Japanese rare disease literature curation, international clinical research
         - Coverage: Limited by both NANDO→MONDO (84%) and MONDO→MeSH (28%) mappings
         - Note: Returns only diseases with complete mapping chain across all three databases
+        - Referenced MIE files: nando (skos:closeMatch), mondo (hasDbXref), mesh (meshv:TopicalDescriptor)
+        - CRITICAL: Uses CONTAINS instead of multiple bif:contains to avoid query complexity limits
+        - Avoided anti-patterns: Simplified filters for three-way queries, explicit GRAPH clauses
 
 cross_references:
   - pattern: oboInOwl:hasDbXref
@@ -402,12 +440,12 @@ cross_references:
       All external database cross-references via oboInOwl:hasDbXref.
       Coverage: ~90% of diseases. Avg: 6.5 references per disease.
     databases:
-      medical: "UMLS (70%), MEDGEN (70%), SCTID (31%), MESH (28%), NCIT (25%)"
-      genetic: "GARD (35%), DOID (39%), OMIM (33%), Orphanet (34%)"
-      clinical: "ICD9 (19%), ICD11 (14%), ICD10CM (9%)"
-      oncology: "ICDO (3%), ONCOTREE (2%)"
-      phenotype: "EFO (8%), HP (2%)"
-      japanese: "NANDO (8%)"
+      medical: UMLS (70%), MEDGEN (70%), SCTID (31%), MESH (28%), NCIT (25%)
+      genetic: GARD (35%), DOID (39%), OMIM (33%), Orphanet (34%)
+      clinical: ICD9 (19%), ICD11 (14%), ICD10CM (9%)
+      oncology: ICDO (3%), ONCOTREE (2%)
+      phenotype: EFO (8%), HP (2%)
+      japanese: NANDO (8%)
     sparql: |
       PREFIX owl: <http://www.w3.org/2002/07/owl#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -442,6 +480,9 @@ architectural_notes:
     - Always use LIMIT for exploratory queries (30K+ classes)
     - Cross-database queries with MeSH/NANDO - 2-6 seconds depending on complexity
     - Three-way queries use simplified CONTAINS filters for stability
+    - "Pre-filtering in source GRAPH clauses (Strategy 2) provides 99%+ reduction before joins"
+    - "bif:contains (Strategy 4) provides 10-100x speedup over REGEX/CONTAINS for two-way queries"
+    - "Three-way queries require CONTAINS instead of multiple bif:contains to avoid 400 errors"
   data_integration:
     - Genetic disorder databases (OMIM, Orphanet, GARD)
     - Clinical classifications (ICD-9, ICD-10, ICD-11)
@@ -451,6 +492,7 @@ architectural_notes:
     - Shares "primary" endpoint with mesh, go, taxonomy, nando, bacdive, mediadive
     - MeSH integration via hasDbXref (28% coverage, ~8,500 diseases)
     - NANDO integration via NANDO's skos:closeMatch (84% of NANDO diseases)
+    - "Cross-database optimization strategies: 1 (GRAPH), 2 (pre-filter), 4 (bif:contains), 5 (URI conversion), 10 (LIMIT)"
   data_quality:
     - Exact synonyms are semantically equivalent
     - Related synonyms may have broader/narrower meaning
@@ -463,14 +505,14 @@ data_statistics:
   diseases_with_xrefs: 27176
   coverage:
     diseases_with_labels: ">99%"
-    diseases_with_definitions: "~75%"
-    diseases_with_cross_references: "~90%"
-    diseases_with_synonyms: "~85%"
-    mesh_cross_references: "~28%"
-    nando_mappings_from_nando: "~84%"
+    diseases_with_definitions: ~75%
+    diseases_with_cross_references: ~90%
+    diseases_with_synonyms: ~85%
+    mesh_cross_references: ~28%
+    nando_mappings_from_nando: ~84%
   cardinality:
     avg_xrefs_per_disease: 6.5
-    max_xrefs_per_disease: "50+"
+    max_xrefs_per_disease: 50+
     avg_synonyms_per_disease: 2.8
     avg_parents_per_disease: 1.2
   performance_characteristics:
@@ -478,7 +520,9 @@ data_statistics:
     - STRSTARTS() filtering fast for cross-reference prefix matching
     - Transitive hierarchy queries (rdfs:subClassOf*) require specific starting points
     - Recommend LIMIT 50 for exploratory queries
-    - "Cross-database queries: 2-3 seconds (MeSH/NANDO direct), 3-6 seconds (three-way)"
+    - "Cross-database queries: 2-3 seconds (MeSH/NANDO direct, Tier 1), 3-6 seconds (three-way, Tier 2)"
+    - "Pre-filtering optimization gain: 99.97% reduction (30K → ~10) before MeSH join"
+    - "Three-way queries use simplified CONTAINS for stability (avoid multiple bif:contains)"
   data_quality_notes:
     - MeSH provides 28% coverage (~8,500 diseases) for literature indexing integration
     - NANDO covers 84% (2,341 of 2,777) of Japanese intractable diseases
@@ -500,6 +544,7 @@ anti_patterns:
       }
       ORDER BY DESC(?sc)
     explanation: bif:contains uses full-text index and provides relevance scoring
+  
   - title: Not Filtering Blank Nodes in Hierarchy
     problem: Returns OWL restrictions instead of named disease classes
     wrong_sparql: |
@@ -512,6 +557,7 @@ anti_patterns:
         FILTER(isIRI(?parent))
       }
     explanation: FILTER(isIRI(?parent)) excludes blank node restrictions
+  
   - title: Unbounded Transitive Queries
     problem: rdfs:subClassOf* without constraints causes timeout
     wrong_sparql: |
@@ -526,6 +572,41 @@ anti_patterns:
       }
       LIMIT 50
     explanation: Start from specific parent and add LIMIT for transitive queries
+  
+  - title: Cross-Database Query Without Pre-Filtering
+    problem: Filtering after join causes timeout by processing millions of intermediate results
+    wrong_sparql: |
+      # BAD: Filter after cross-database join
+      WHERE {
+        GRAPH <http://rdfportal.org/ontology/mondo> {
+          ?disease a owl:Class ;
+            oboInOwl:hasDbXref ?meshXref .
+          FILTER(STRSTARTS(?meshXref, "MESH:"))
+        }
+        BIND(URI(CONCAT("http://id.nlm.nih.gov/mesh/", SUBSTR(?meshXref, 6))) AS ?meshDesc)
+        GRAPH <http://id.nlm.nih.gov/mesh> {
+          ?meshDesc rdfs:label ?meshLabel .
+        }
+        FILTER(CONTAINS(?meshLabel, "diabetes"))  # Too late!
+      }
+    correct_sparql: |
+      # GOOD: Pre-filter in source GRAPH (Strategy 2)
+      WHERE {
+        GRAPH <http://rdfportal.org/ontology/mondo> {
+          ?disease a owl:Class ;
+            rdfs:label ?diseaseLabel ;
+            oboInOwl:hasDbXref ?meshXref .
+          FILTER(STRSTARTS(?meshXref, "MESH:"))
+          ?diseaseLabel bif:contains "'diabetes'" option (score ?sc)  # Early filtering!
+        }
+        BIND(URI(CONCAT("http://id.nlm.nih.gov/mesh/", SUBSTR(?meshXref, 6))) AS ?meshDesc)
+        GRAPH <http://id.nlm.nih.gov/mesh> {
+          ?meshDesc rdfs:label ?meshLabel .
+        }
+      }
+      ORDER BY DESC(?sc)
+      LIMIT 10
+    explanation: "Strategy 2: Pre-filtering in source database (MONDO) reduces 30K diseases → ~10 before MeSH join (99.97% reduction), improving performance 100x+. Always filter within GRAPH clauses before joins."
 
 common_errors:
   - error: Query timeout on hierarchy traversal
@@ -536,6 +617,7 @@ common_errors:
       - Start from specific disease class (e.g., obo:MONDO_0003847)
       - Add LIMIT 50-100 for exploratory queries
       - Use rdfs:subClassOf+ for ancestor-only (not self)
+  
   - error: Unexpected blank nodes in results
     causes:
       - Not filtering OWL restrictions in hierarchy queries
@@ -543,6 +625,7 @@ common_errors:
     solutions:
       - Add FILTER(isIRI(?parent)) to exclude blank nodes
       - Check for owl:Class type when needed
+  
   - error: Poor search results for disease names
     causes:
       - Using FILTER(CONTAINS()) instead of bif:contains
@@ -551,3 +634,78 @@ common_errors:
       - Use bif:contains for full-text search with relevance
       - "Order by score: ORDER BY DESC(?sc)"
       - "Use compound queries: bif:contains \"('term1' AND 'term2')\""
+  
+  - error: Cross-database query timeout
+    causes:
+      - Missing pre-filtering (Strategy 2) - processing millions of rows
+      - Missing GRAPH clauses (Strategy 1) - cross-contamination
+      - Using multiple bif:contains in three-way queries
+      - Missing LIMIT clause (Strategy 10)
+    solutions:
+      - Apply restrictive FILTER within source GRAPH clause before join (Strategy 2)
+      - Use explicit GRAPH clauses for each database (Strategy 1)
+      - For three-way queries, use simplified CONTAINS instead of multiple bif:contains
+      - Add LIMIT to every query level (Strategy 10)
+      - Consider using VALUES for known entity sets (Strategy 3)
+    example_fix: |
+      # BEFORE (times out):
+      WHERE {
+        GRAPH <http://rdfportal.org/ontology/mondo> { ?d1 ?p1 ?o1 }
+        GRAPH <http://id.nlm.nih.gov/mesh> { ?d2 ?p2 ?d1 }
+        FILTER(?condition)
+      }
+      
+      # AFTER (completes in 2s):
+      WHERE {
+        GRAPH <http://rdfportal.org/ontology/mondo> {
+          ?d1 ?p1 ?o1 .
+          FILTER(?condition)  # Early filter! (Strategy 2)
+        }
+        GRAPH <http://id.nlm.nih.gov/mesh> { ?d2 ?p2 ?d1 }
+      }
+      LIMIT 10
+  
+  - error: Cross-database query returns empty results
+    causes:
+      - URI pattern mismatch between databases
+      - Wrong graph URIs from co-database
+      - Wrong entity types from co-database
+    solutions:
+      - Use URI conversion with BIND(IRI(CONCAT(...))) (Strategy 5)
+      - Retrieve co-database MIE file to get correct graph URIs
+      - Use entity types from co-database shape expressions
+      - Test each GRAPH clause independently before combining
+    example_fix: |
+      # Verify GRAPH URIs from MIE files:
+      # MONDO: <http://rdfportal.org/ontology/mondo>
+      # MeSH: <http://id.nlm.nih.gov/mesh>
+      # NANDO: <http://nanbyodata.jp/ontology/nando>
+      
+      # URI conversion for MONDO→MeSH:
+      BIND(URI(CONCAT("http://id.nlm.nih.gov/mesh/", SUBSTR(?meshXref, 6))) AS ?meshDesc)
+  
+  - error: Three-way cross-database query returns 400 error
+    causes:
+      - Complex filters in third database (e.g., GO namespace with STR, multiple property restrictions)
+      - Combining multiple bif:contains across three databases
+      - Query complexity exceeds endpoint limits
+    solutions:
+      - Use simplified CONTAINS instead of bif:contains in three-way queries
+      - Remove complex filters in third GRAPH clause (keep minimal rdfs:label + CONTAINS)
+      - Keep third database GRAPH clause minimal
+      - Test two-database queries first, then add third database
+      - Consider splitting complex three-way queries into multiple two-database queries
+    example_fix: |
+      # FAILS with 400 error (too complex):
+      GRAPH <http://rdfportal.org/ontology/go> {
+        ?goTerm a owl:Class ;
+          oboinowl:hasOBONamespace ?goNamespace .
+        ?goLabel bif:contains "'dopamine'" option (score ?sc)
+        FILTER(STR(?goNamespace) = "biological_process")
+      }
+      
+      # WORKS - simplified:
+      GRAPH <http://rdfportal.org/ontology/go> {
+        ?goTerm rdfs:label ?goLabel .
+        FILTER(CONTAINS(LCASE(?goLabel), "dopamine"))
+      }

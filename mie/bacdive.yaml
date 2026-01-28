@@ -13,8 +13,8 @@ schema_info:
   kw_search_tools:
     - sparql
   version:
-    mie_version: "1.5"
-    mie_created: "2025-01-16"
+    mie_version: "2.1"
+    mie_created: "2025-01-26"
     data_version: BacDive 2024
     update_frequency: Quarterly
   license:
@@ -366,12 +366,16 @@ cross_database_queries:
     - go
     - mondo
     - nando
+  mie_files_consulted:
+    - mediadive (graph URI, schema properties, URI patterns, BacDiveID coverage)
+    - taxonomy (graph URI, DDBJ namespace, taxon properties, URI pattern)
+    - mondo (graph URI, disease class structure, bif:contains patterns)
   examples:
-    - title: Strains with Detailed Culture Media Recipes
+    - title: Media Recipes via BacDiveID Linking (Primary Method)
       description: |
-        Link BacDive strains to MediaDive culture media database to access detailed preparation protocols, ingredient lists, and chemical cross-references. This enables researchers to retrieve complete growth recipes including exact concentrations, pH adjustments, and sterilization methods.
+        Link BacDive strains to MediaDive using shared BacDiveID integers for direct strain-to-growth-condition mapping. This is the primary integration method, working for ~34% of BacDive strains (those with BacDiveID < 170,041 that have MediaDive records).
         
-        This query demonstrates integration between BacDive's schema:hasMediaLink property and MediaDive's culture media entities. MediaDive provides hierarchical structure (medium → solution → recipe → ingredient) with ChEBI, CAS, and GMO cross-references for each ingredient.
+        MediaDive contains 33,226 strain records with BacDiveIDs (73% of MediaDive's 45,685 strains). This method retrieves actual growth conditions (temperature, pH, oxygen) and culture media used for successful strain cultivation, along with complete ingredient lists and chemical cross-references.
       databases_used:
         - bacdive
         - mediadive
@@ -380,7 +384,52 @@ cross_database_queries:
         PREFIX schema: <https://purl.dsmz.de/schema/>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         
-        SELECT ?strainLabel ?mediumLabel ?mediaLink ?mediumName
+        SELECT ?bacDiveLabel ?bacDiveID ?mediaDiveSpecies ?mediumLabel ?temp ?ph
+        WHERE {
+          GRAPH <http://rdfportal.org/dataset/bacdive> {
+            ?bacDiveStrain a schema:Strain ;
+                           rdfs:label ?bacDiveLabel ;
+                           schema:hasBacDiveID ?bacDiveID ;
+                           schema:hasGenus "Bacillus" .
+          }
+          
+          GRAPH <http://rdfportal.org/dataset/mediadive> {
+            ?mediaDiveStrain a schema:Strain ;
+                             schema:hasBacDiveID ?bacDiveID ;
+                             schema:hasSpecies ?mediaDiveSpecies .
+            
+            ?growth a schema:GrowthCondition ;
+                    schema:relatedToStrain ?mediaDiveStrain ;
+                    schema:partOfMedium ?medium ;
+                    schema:growthTemperature ?temp .
+            OPTIONAL { ?growth schema:growthPH ?ph }
+            ?medium rdfs:label ?mediumLabel .
+          }
+        }
+        LIMIT 10
+      notes: |
+        - Strategies: 1(GRAPH), 2(genus pre-filter), 7(OPTIONAL), 10(LIMIT)
+        - Direct integer matching on schema:hasBacDiveID (no URI conversion needed)
+        - Coverage: ~34% of BacDive strains (33,226 MediaDive records / 97,334 BacDive strains)
+        - Works for strains with BacDiveID 1-170,041 (MediaDive's range)
+        - Performance: ~2-3s (Tier 1)
+        - Use case: Retrieve verified growth conditions from actual cultivation records
+        - Referenced MediaDive MIE file for GrowthCondition structure and coverage statistics
+    
+    - title: Media Ingredients via MediaLink URI Conversion (Alternative Method)
+      description: |
+        Alternative integration using URI conversion from BacDive's culture medium web links to MediaDive RDF URIs. This method works for ~20% of BacDive strains that have MediaDive links in their culture medium records, retrieving hierarchical ingredient composition with concentrations and ChEBI cross-references.
+        
+        Demonstrates Strategy 5 (URI Conversion) when databases use different URI patterns for the same resources. BacDive stores web URLs while MediaDive uses RDF URIs.
+      databases_used:
+        - bacdive
+        - mediadive
+      complexity: intermediate
+      sparql: |
+        PREFIX schema: <https://purl.dsmz.de/schema/>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        
+        SELECT ?strainLabel ?mediumLabel ?ingredientLabel ?gPerL ?chebi
         WHERE {
           GRAPH <http://rdfportal.org/dataset/bacdive> {
             ?strain a schema:Strain ;
@@ -391,96 +440,109 @@ cross_database_queries:
                     rdfs:label ?mediumLabel ;
                     schema:hasMediaLink ?mediaLink .
             FILTER(CONTAINS(STR(?mediaLink), "mediadive"))
+            
+            BIND(REPLACE(STR(?mediaLink), "^https://mediadive\\.dsmz\\.de/medium/", "") AS ?mediumID)
           }
+          
+          BIND(URI(CONCAT("https://purl.dsmz.de/mediadive/medium/", ?mediumID)) AS ?mediaDiveMedium)
+          
           GRAPH <http://rdfportal.org/dataset/mediadive> {
-            ?mediaLink rdfs:label ?mediumName .
+            ?mediaDiveMedium a schema:CultureMedium .
+            
+            ?composition a schema:MediumComposition ;
+                         schema:partOfMedium ?mediaDiveMedium ;
+                         schema:containsIngredient ?ingredient ;
+                         schema:gramsPerLiter ?gPerL .
+            ?ingredient rdfs:label ?ingredientLabel .
+            OPTIONAL { ?ingredient schema:hasChEBI ?chebi }
           }
         }
-        LIMIT 50
+        ORDER BY ?strainLabel ?mediumLabel DESC(?gPerL)
+        LIMIT 20
       notes: |
-        - Referenced MediaDive MIE file for graph URI and entity structure
-        - MediaDive links available for ~20% of BacDive culture media
-        - MediaDive provides hierarchical structure: medium → solution → recipe → ingredient
-        - Ingredient data includes ChEBI, CAS, GMO cross-references
-        - Performance: Query completes in 3-5 seconds with genus filter
-        - Use case: Reproduce exact culture conditions for strain isolation
+        - Strategies: 1(GRAPH), 2(genus pre-filter), 5(URI conversion), 7(OPTIONAL), 10(LIMIT)
+        - URI conversion: https://mediadive.dsmz.de/medium/ID → https://purl.dsmz.de/mediadive/medium/ID
+        - Coverage: ~20% of BacDive strains have MediaDive links
+        - Accesses media recipes without growth conditions (different data than BacDiveID method)
+        - Performance: ~2-3s (Tier 1)
+        - Use case: Get standardized media formulations and ingredient chemical IDs
+        - Referenced MediaDive MIE file for MediumComposition and Ingredient structure
     
-    - title: Taxonomic Context for Strain Collections
+    - title: Strains with Taxonomic Context from NCBI Taxonomy
       description: |
-        Integrate BacDive strain data with NCBI Taxonomy ontology to retrieve complete taxonomic lineage, scientific names, and alternative names. Useful for phylogenetic studies and systematic comparison across different taxonomic groups.
-        
-        This query uses BacDive's schema:hasTaxID property to link strains with NCBI Taxonomy entities, accessing the full taxonomic hierarchy and nomenclature information from the taxonomy ontology graph.
+        Integrate BacDive strains with NCBI Taxonomy using URI conversion (Strategy 5) to transform TaxID integers into Taxonomy URIs following identifiers.org pattern. Provides complete phylogenetic context with scientific names, taxonomic ranks, and common names.
       databases_used:
         - bacdive
         - taxonomy
       complexity: intermediate
       sparql: |
         PREFIX schema: <https://purl.dsmz.de/schema/>
-        PREFIX up: <http://purl.uniprot.org/core/>
-        PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+        PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         
-        SELECT ?strain ?strainLabel ?taxID ?scientificName ?rank
+        SELECT ?strainLabel ?taxID ?scientificName ?rank ?commonName
         WHERE {
           GRAPH <http://rdfportal.org/dataset/bacdive> {
             ?strain a schema:Strain ;
                     rdfs:label ?strainLabel ;
-                    schema:hasTaxID ?taxID .
-            FILTER(?taxID IN (562, 1392, 1428))
+                    schema:hasTaxID ?taxID ;
+                    schema:hasGenus "Bacillus" .
           }
+          
+          BIND(URI(CONCAT("http://identifiers.org/taxonomy/", STR(?taxID))) AS ?taxonURI)
+          
           GRAPH <http://rdfportal.org/ontology/taxonomy> {
-            ?taxonNode up:scientificName ?scientificName ;
-                       up:rank ?rank .
-            FILTER(CONTAINS(STR(?taxonNode), STR(?taxID)))
+            ?taxonURI a tax:Taxon ;
+                      tax:rank ?rank .
+            OPTIONAL { ?taxonURI tax:scientificName ?scientificName }
+            OPTIONAL { ?taxonURI tax:commonName ?commonName }
           }
         }
-        LIMIT 100
+        LIMIT 10
       notes: |
-        - Referenced Taxonomy ontology graph from endpoint configuration
-        - All BacDive strains have NCBI Taxonomy IDs (100% coverage)
-        - Taxonomy graph provides additional metadata: common names, synonyms, genetic code
-        - Performance: Taxonomy lookups are fast (<2s) with specific TaxID filters
-        - Use IN clause for multiple TaxIDs to batch lookup related strains
-        - Use case: Phylogenetic analysis and taxonomic verification
+        - Strategies: 1(GRAPH), 2(genus pre-filter), 5(URI conversion), 7(OPTIONAL), 10(LIMIT)
+        - URI conversion: TaxID integer → http://identifiers.org/taxonomy/{ID}
+        - CRITICAL: Uses DDBJ namespace (tax:) not UniProt (up:)
+        - Coverage: 100% of BacDive strains have NCBI Taxonomy IDs
+        - Performance: ~1-2s (Tier 1)
+        - Use case: Phylogenetic analysis, taxonomic verification
+        - Referenced Taxonomy MIE file for DDBJ namespace and property names
     
-    - title: Disease-Associated Bacterial Strains
+    - title: Disease-Associated Strains via MONDO
       description: |
-        Cross-reference BacDive pathogenic strain descriptions with MONDO disease ontology to identify strains associated with specific diseases. Combines keyword search on strain descriptions with disease classification for biomedical research.
-        
-        This query demonstrates advanced text matching across both databases using bif:contains, linking BacDive's clinical annotations with MONDO's standardized disease terminology and hierarchy.
+        Keyword-based integration between pathogenic strains and disease ontology using bif:contains (Strategy 4). No direct RDF links exist, so uses full-text matching to correlate bacterial genera with disease terminology.
       databases_used:
         - bacdive
         - mondo
-      complexity: advanced
+      complexity: intermediate
       sparql: |
         PREFIX schema: <https://purl.dsmz.de/schema/>
-        PREFIX dct: <http://purl.org/dc/terms/>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         PREFIX owl: <http://www.w3.org/2002/07/owl#>
         
-        SELECT ?strainLabel ?description ?diseaseLabel ?sc
+        SELECT DISTINCT ?strainLabel ?genus ?diseaseLabel
         WHERE {
           GRAPH <http://rdfportal.org/dataset/bacdive> {
             ?strain a schema:Strain ;
                     rdfs:label ?strainLabel ;
-                    dct:description ?description .
-            ?description bif:contains "('tuberculosis' OR 'pneumonia')" option (score ?sc) .
+                    schema:hasGenus ?genus .
+            FILTER(?genus = "Mycobacterium")
           }
+          
           GRAPH <http://rdfportal.org/ontology/mondo> {
             ?disease a owl:Class ;
                      rdfs:label ?diseaseLabel .
-            ?diseaseLabel bif:contains "('tuberculosis' OR 'pneumonia')" option (score ?sc2) .
+            ?diseaseLabel bif:contains "'tuberculosis'" option (score ?sc2)
+            FILTER(STRSTARTS(STR(?disease), "http://purl.obolibrary.org/obo/MONDO_"))
           }
         }
-        ORDER BY DESC(?sc)
-        LIMIT 50
+        LIMIT 10
       notes: |
-        - Referenced MONDO ontology graph URI and entity structure from ontology configuration
-        - Linking is based on shared disease terminology in descriptions
-        - MONDO provides disease ontology with 30,000+ classes
-        - MONDO cross-references to OMIM, Orphanet, MeSH enable further integration
-        - Performance: May take 5-10 seconds due to complex text matching across both graphs
-        - Consider filtering by disease category in MONDO first for better performance
-        - Use case: Clinical microbiology research and pathogen identification
+        - Strategies: 1(GRAPH), 2(genus pre-filter), 4(bif:contains), 10(LIMIT)
+        - Keyword-based integration: No direct RDF links between databases
+        - Performance: ~2-3s (Tier 1)
+        - Use case: Pathogen-disease mapping, infectious disease research
+        - Referenced MONDO MIE file for owl:Class structure and URI patterns
 
 cross_references:
   - pattern: schema:hasLink
@@ -533,30 +595,21 @@ cross_references:
     sparql: |
       PREFIX schema: <https://purl.dsmz.de/schema/>
       
-      SELECT ?strain ?accession ?seqDB ?seqType
+      SELECT ?strain ?accession ?seqDB
       FROM <http://rdfportal.org/dataset/bacdive>
       WHERE {
-        {
-          ?seq a schema:16SSequence ;
-               schema:describesStrain ?strain ;
-               schema:hasSequenceAccession ?accession ;
-               schema:fromSequenceDB ?seqDB .
-          BIND("16S" as ?seqType)
-        } UNION {
-          ?seq a schema:GenomeSequence ;
-               schema:describesStrain ?strain ;
-               schema:hasSequenceAccession ?accession ;
-               schema:fromSequenceDB ?seqDB .
-          BIND("Genome" as ?seqType)
-        }
+        ?seq a schema:16SSequence ;
+             schema:describesStrain ?strain ;
+             schema:hasSequenceAccession ?accession ;
+             schema:fromSequenceDB ?seqDB .
       } LIMIT 50
   
   - pattern: schema:hasMediaLink
     description: |
-      Links to MediaDive and other media databases for detailed culture medium recipes and preparation protocols. Enables cross-database queries with MediaDive on the same endpoint.
+      Links to MediaDive and other media databases for detailed culture medium recipes and preparation protocols. Enables cross-database queries with MediaDive on the same endpoint using URI conversion (alternative to BacDiveID linking).
     databases:
       media:
-        - MediaDive (~20%)
+        - MediaDive (~20% have MediaLinks, ~34% have BacDiveID overlap)
         - CIP Media (~10%)
     sparql: |
       PREFIX schema: <https://purl.dsmz.de/schema/>
@@ -570,6 +623,23 @@ cross_references:
                 rdfs:label ?mediumLabel ;
                 schema:hasMediaLink ?mediaLink .
       } LIMIT 50
+  
+  - pattern: schema:hasBacDiveID
+    description: |
+      BacDive IDs enable direct linking to MediaDive strain records and growth conditions. Primary integration method for MediaDive cross-database queries (works for ~34% of BacDive strains that have corresponding MediaDive records).
+    databases:
+      culture_media:
+        - MediaDive (34% of BacDive strains have MediaDive records via BacDiveID)
+    sparql: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      
+      SELECT ?strain ?bacDiveID ?genus
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        ?strain a schema:Strain ;
+                schema:hasBacDiveID ?bacDiveID ;
+                schema:hasGenus ?genus .
+      } LIMIT 50
 
 architectural_notes:
   schema_design:
@@ -577,7 +647,6 @@ architectural_notes:
     - Phenotypes and conditions connect via schema:describesStrain property
     - Multiple inheritance for entity types (e.g., Enzyme is also Protein and GeneProduct)
     - Full taxonomic lineage embedded in Strain entities from domain to species
-  
   performance:
     - Use bif:contains for keyword search with boolean operators (AND, OR, NOT, parentheses)
     - bif:contains must be triple pattern with option (score ?var) for relevance scoring
@@ -585,24 +654,27 @@ architectural_notes:
     - Genus/species text filters using CONTAINS or FILTER are efficient
     - Use OPTIONAL blocks for phenotypes since coverage is incomplete (~40%)
     - Always include LIMIT to prevent query timeouts on large result sets
-    - Single-database queries: Always specify FROM <http://rdfportal.org/dataset/bacdive>
-    - Cross-database queries: Use GRAPH clauses without FROM for endpoint-level queries
-  
+    - Single-database queries - Always specify FROM <http://rdfportal.org/dataset/bacdive>
+    - Cross-database queries - Use GRAPH clauses without FROM for endpoint-level queries
+    - Cross-database query optimization - Use explicit GRAPH clauses (Strategy 1)
+    - Pre-filter within GRAPH blocks before joins (Strategy 2) - 10-100x speedup
+    - Use URI conversion when linking to MediaDive media or Taxonomy (Strategy 5)
+    - Direct integer matching on BacDiveID when linking to MediaDive strains (no conversion needed)
   data_integration:
-    - NCBI Taxonomy IDs (schema:hasTaxID) enable joins to taxonomy ontology on same endpoint
+    - NCBI Taxonomy IDs (schema:hasTaxID) enable joins to taxonomy ontology via URI conversion (100% coverage)
     - Culture collection numbers link to strain repositories (DSMZ, JCM, KCTC)
     - Sequence accessions (schema:hasSequenceAccession) connect to ENA/GenBank
-    - MediaDive links (schema:hasMediaLink) provide detailed culture media recipes via same endpoint
+    - MediaDive integration - TWO methods available
+    - Method 1 (Primary) - BacDiveID integer matching for growth conditions (~34% coverage, BacDiveID 1-170,041)
+    - Method 2 (Alternative) - MediaLink URI conversion for media recipes (~20% coverage)
     - Shared "primary" endpoint with mediadive, taxonomy, mesh, go, mondo, nando
-    - Cross-database opportunities: BacDive-MediaDive (culture protocols), BacDive-Taxonomy (phylogeny), BacDive-MONDO (disease associations)
-    - Use GRAPH clauses for cross-database queries to explicitly separate data sources
-    - Filter within each GRAPH clause before joining to optimize performance
-  
+    - Expected performance - Tier 1 (1-3s) for all optimized cross-database queries
   data_quality:
     - Phenotype coverage varies - ~40% Gram stain, ~35% 16S sequences, ~55% enzyme data
     - Type strains generally have more complete phenotypic characterization
     - Use OPTIONAL clauses for all phenotypes to avoid excluding strains with missing data
-    - MediaDive links primarily for DSMZ media, lower coverage for other collections
+    - MediaDive integration coverage - 34% via BacDiveID (strains 1-170,041), 20% via MediaLink
+    - MediaDive BacDiveID range limitation - only covers IDs 1-170,041 (newer strains excluded)
 
 data_statistics:
   total_strains: 97334
@@ -610,32 +682,32 @@ data_statistics:
   total_16s_sequences: 87045
   total_culture_collections: 149377
   total_references: 123819
-  
   coverage:
     strains_with_gram_stain: ~40%
     strains_with_16s_sequence: ~35%
     strains_with_culture_collections: ~60%
     strains_with_enzyme_data: ~55%
     strains_with_mediadive_links: ~20%
+    strains_with_mediadive_bacdiveid_overlap: ~34%
     strains_with_taxonomy_ids: 100%
-  
   cardinality:
     avg_enzymes_per_strain: 5.9
     avg_culture_collections_per_strain: 1.5
-  
   performance_characteristics:
-    - Simple strain queries (<5 properties) complete in <2s
-    - bif:contains keyword searches are very fast with complex boolean logic
-    - Multi-join phenotype queries (3+ optional blocks) may take 5-10s
-    - Cross-database queries (BacDive + MediaDive) complete in 3-5s with genus/family filters
-    - Cross-database queries (BacDive + Taxonomy) complete in <2s with specific TaxID filters
-    - Cross-database queries (BacDive + MONDO) may take 5-10s due to complex text matching across graphs
-    - Always use filtering within GRAPH clauses for optimal cross-database performance
-  
+    - "Simple strain queries (<5 properties) complete in <2s"
+    - "bif:contains keyword searches are very fast with complex boolean logic"
+    - "Multi-join phenotype queries (3+ optional blocks) may take 5-10s"
+    - "Cross-database queries: Tier 1 (1-3s) - All optimized methods (MediaDive via BacDiveID or MediaLink, Taxonomy, MONDO)"
+    - "BacDiveID integer matching faster than URI conversion (no string processing)"
+    - "URI conversion (Strategy 5) enables efficient cross-database joins when URI patterns differ"
+    - "Pre-filtering (Strategy 2) reduces intermediate results before cross-database joins"
   data_quality_notes:
     - All strains have taxonomic IDs but phenotype completeness varies significantly
     - Type strains have higher data completeness across all phenotype categories
-    - MediaDive links primarily for DSMZ media, coverage lower for other culture collections
+    - MediaDive integration - BacDiveID method (primary) covers ~34% of strains (IDs 1-170,041)
+    - MediaDive integration - MediaLink method (alternative) covers ~20% of strains
+    - MediaDive BacDiveID coverage gap - newer strains (IDs >170,041) not in MediaDive
+    - Taxonomy integration requires URI conversion from TaxID integers to identifiers.org URIs
     - 16S sequences favor well-characterized strains from major collections
     - Recent isolates may have limited phenotypic characterization
 
@@ -698,6 +770,31 @@ anti_patterns:
         }
       }
     explanation: Use OPTIONAL for all phenotypes since coverage is incomplete (~40% for most phenotypes).
+  
+  - title: Wrong MediaDive Integration Method
+    problem: Using MediaLink URI conversion when BacDiveID would be more appropriate (or vice versa).
+    wrong_sparql: |
+      # Using URI conversion when strain has BacDiveID
+      WHERE {
+        GRAPH <bacdive> {
+          ?strain schema:hasBacDiveID 1172 ;
+                  schema:hasMediaLink ?link .
+          BIND(REPLACE(STR(?link), ...) AS ?id)
+        }
+      }
+    correct_sparql: |
+      # Use BacDiveID directly for growth conditions
+      WHERE {
+        GRAPH <bacdive> {
+          ?strain schema:hasBacDiveID ?bacDiveID .
+          FILTER(?bacDiveID = 1172)
+        }
+        GRAPH <mediadive> {
+          ?mediaDiveStrain schema:hasBacDiveID ?bacDiveID .
+          ?growth schema:relatedToStrain ?mediaDiveStrain .
+        }
+      }
+    explanation: "Use BacDiveID integer matching (primary method) for growth conditions and strain data. Use MediaLink URI conversion (alternative method) when accessing media recipes without strain context. BacDiveID method: ~34% coverage, direct integer matching. MediaLink method: ~20% coverage, requires URI conversion."
 
 common_errors:
   - error: 400 Bad Request with bif:contains
@@ -736,3 +833,40 @@ common_errors:
       - "Single-database: Always specify FROM <http://rdfportal.org/dataset/bacdive>"
       - "Cross-database: Use GRAPH clauses instead of FROM"
       - For cross-database queries, filter within each GRAPH clause before joining
+  
+  - error: Empty MediaDive cross-database results
+    causes:
+      - Using wrong integration method (MediaLink URI conversion vs BacDiveID matching)
+      - Querying strains with BacDiveID >170,041 (outside MediaDive range)
+      - Wrong URI pattern in MediaLink conversion
+      - Wrong graph URIs
+    solutions:
+      - "Primary method: Use BacDiveID integer matching for growth conditions (34% coverage)"
+      - "Alternative method: Use MediaLink URI conversion for media recipes (20% coverage)"
+      - BacDiveID range check - MediaDive only has IDs 1-170,041
+      - "MediaLink pattern: https://mediadive.dsmz.de/medium/{ID} → https://purl.dsmz.de/mediadive/medium/{ID}"
+      - Test with Bacillus genus (has lower BacDiveIDs) instead of Escherichia (high IDs >130,000)
+      - Test each GRAPH clause independently before combining
+    example_fix: |
+      # BacDiveID method (primary):
+      GRAPH <bacdive> {
+        ?strain schema:hasBacDiveID ?bacDiveID ;
+                schema:hasGenus "Bacillus" .  # Lower IDs
+      }
+      GRAPH <mediadive> {
+        ?mediaDiveStrain schema:hasBacDiveID ?bacDiveID .
+        ?growth schema:relatedToStrain ?mediaDiveStrain .
+      }
+      
+      # MediaLink method (alternative):
+      BIND(REPLACE(STR(?mediaLink), "^https://mediadive\\.dsmz\\.de/medium/", "") AS ?id)
+      BIND(URI(CONCAT("https://purl.dsmz.de/mediadive/medium/", ?id)) AS ?uri)
+  
+  - error: Empty Taxonomy cross-database results
+    causes:
+      - Wrong namespace for Taxonomy (using UniProt namespace instead of DDBJ)
+      - Missing URI conversion for TaxID integers
+    solutions:
+      - "Taxonomy: Use DDBJ namespace (tax:) not UniProt (up:)"
+      - "Taxonomy: Convert TaxID to URI with BIND(URI(CONCAT('http://identifiers.org/taxonomy/', STR(?taxID))))"
+      - Retrieve Taxonomy MIE file to verify correct graph URIs and namespaces

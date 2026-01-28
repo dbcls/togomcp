@@ -9,9 +9,9 @@ schema_info:
   kw_search_tools:
     - ncbi_esearch
   version:
-    mie_version: '1.2'
-    mie_created: '2025-01-27'
-    mie_updated: '2025-01-18'
+    mie_version: "1.3"
+    mie_created: "2025-01-27"
+    mie_updated: "2025-01-27"
     data_version: Current NCBI release
     update_frequency: Monthly
   license:
@@ -101,6 +101,7 @@ sample_rdf_entries:
               rdfs:seeAlso <http://id.nlm.nih.gov/mesh/D015470> ;
               rdfs:seeAlso <http://purl.obolibrary.org/obo/MONDO_0018874>
           ] .
+
   - title: Relationship Record (MGREL)
     description: Represents a relationship between two clinical concepts with source attribution.
     rdf: |
@@ -115,6 +116,7 @@ sample_rdf_entries:
           mo:aui2 "A0789012" ;
           mo:rela "inverse_isa" ;
           dct:source <http://id.nlm.nih.gov/mesh/vocab> .
+
   - title: Terminology Mapping (MGCONSO)
     description: Maps MedGen concepts to external databases like MeSH, MONDO, HPO, and OMIM.
     rdf: |
@@ -126,6 +128,7 @@ sample_rdf_entries:
           rdfs:seeAlso <http://id.nlm.nih.gov/mesh/D000744> ;
           rdfs:seeAlso <http://purl.obolibrary.org/obo/MONDO_0007037>
       ] .
+
   - title: Attribute Record (MGSAT)
     description: Stores additional attributes for concepts such as inheritance patterns or phenotypic features.
     rdf: |
@@ -138,6 +141,7 @@ sample_rdf_entries:
           mo:atn "INHERITANCE" ;
           mo:atv "Autosomal recessive" ;
           dct:source <http://id.nlm.nih.gov/mesh/vocab> .
+
   - title: RDF Reification Statement for Relationship Provenance
     description: Tracks source attribution and metadata for relationships using RDF reification.
     rdf: |
@@ -174,6 +178,7 @@ sparql_query_examples:
         OPTIONAL { ?concept skos:definition ?definition }
       }
       LIMIT 10
+
   - title: Basic - Search by Keyword Using bif:contains
     description: Search for disease concepts by keyword using Virtuoso's full-text search capability.
     question: Find all concepts related to "diabetes" in their labels.
@@ -193,6 +198,7 @@ sparql_query_examples:
       }
       ORDER BY DESC(?sc)
       LIMIT 50
+
   - title: Intermediate - Find Concepts by Semantic Type
     description: Retrieve all concepts classified under a specific UMLS semantic type (e.g., diseases).
     question: What are disease concepts (semantic type T047) in MedGen?
@@ -212,6 +218,7 @@ sparql_query_examples:
             dct:identifier ?identifier .
       }
       LIMIT 100
+
   - title: Intermediate - Find Relationships via MGREL
     description: Identify relationships (hierarchical, manifestations, or gene associations) for a specific concept through MGREL entities.
     question: What are the related concepts for acute myeloid leukemia?
@@ -236,6 +243,7 @@ sparql_query_examples:
         FILTER(?disease != ?related)
       }
       LIMIT 20
+
   - title: Intermediate - Retrieve External Database Cross-References
     description: Get all external database identifiers linked to a MedGen concept via mgconso mappings.
     question: What external databases reference MedGen concept C0011849?
@@ -255,6 +263,7 @@ sparql_query_examples:
         BIND("C0011849" as ?identifier)
       }
       LIMIT 20
+
   - title: Advanced - Find Disease Hierarchy via MGREL
     description: Navigate the disease hierarchy using MGREL relationships to find parent (inverse_isa) and child (isa) concepts.
     question: What are the parent and child diseases of a specific condition?
@@ -279,6 +288,7 @@ sparql_query_examples:
         FILTER(?concept != ?related)
       }
       LIMIT 100
+
   - title: Advanced - Complex Disease-Phenotype Network via MGREL
     description: Retrieve a network connecting diseases with their phenotypic manifestations through MGREL relationships.
     question: For a given disease, what are its phenotypic manifestations?
@@ -312,9 +322,9 @@ cross_database_queries:
     - pubtator
     - ncbigene
   examples:
-    - title: Link Genetic Diseases to Associated Variants
+    - title: Link Genetic Diseases to Associated Variants (ClinVar)
       description: |
-        Integrates MedGen disease concepts with ClinVar genetic variant data to identify pathogenic mutations associated with clinical conditions. This query connects clinical diagnoses to specific genetic changes, enabling variant interpretation and clinical genetics workflows. Useful for genetic counseling, variant prioritization, and understanding genotype-phenotype relationships.
+        Integrates MedGen disease concepts with ClinVar genetic variant data using URI conversion to handle namespace differences (www.ncbi.nlm.nih.gov → ncbi.nlm.nih.gov). Identifies pathogenic mutations associated with clinical conditions by linking through ClinVar's disease references. Retrieves variants with their types and clinical significance classifications. This query enables variant interpretation and clinical genetics workflows by connecting clinical diagnoses to specific genetic changes.
       databases_used:
         - medgen
         - clinvar
@@ -325,131 +335,43 @@ cross_database_queries:
         PREFIX dct: <http://purl.org/dc/terms/>
         PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
         PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
-        PREFIX sio: <http://semanticscience.org/resource/>
         
-        SELECT ?medgen_cui ?medgen_label ?variant_id ?variant_label ?significance
+        SELECT ?medgen_cui ?medgen_label ?variant_label ?var_type ?significance
         WHERE {
           GRAPH <http://rdfportal.org/dataset/medgen> {
+            VALUES ?medgen_cui { "C0011849" }
             ?medgen_concept a mo:ConceptID ;
                             dct:identifier ?medgen_cui ;
                             rdfs:label ?medgen_label .
-            ?medgen_label bif:contains "'diabetes'" option (score ?sc) .
+            BIND(IRI(REPLACE(STR(?medgen_concept), "www.ncbi", "ncbi")) AS ?cv_medgen_uri)
           }
           GRAPH <http://rdfportal.org/dataset/clinvar> {
             ?disease a med2rdf:Disease ;
-                     dct:references ?medgen_concept .
+                     dct:references ?ref .
+            ?ref rdfs:seeAlso ?cv_medgen_uri .
             ?variant a cvo:VariationArchiveType ;
-                     cvo:variation_id ?variant_id ;
                      rdfs:label ?variant_label ;
+                     cvo:variation_type ?var_type ;
                      med2rdf:disease ?disease ;
                      cvo:classified_record ?classrec .
-            ?classrec cvo:classifications/cvo:germline_classification/cvo:description ?significance .
+            ?classrec cvo:classifications ?classi .
+            ?classi cvo:germline_classification ?germ .
+            ?germ cvo:description ?significance .
           }
         }
-        ORDER BY DESC(?sc)
-        LIMIT 20
+        LIMIT 10
       notes: |
-        - Links MedGen clinical concepts to ClinVar variants via dct:references property
-        - ClinVar disease entities reference MedGen URIs (http://www.ncbi.nlm.nih.gov/medgen/{CUI})
-        - Uses keyword search (bif:contains) to find disease concepts of interest
-        - Retrieves clinical significance classifications from ClinVar
-        - Performance: ~5-10 seconds for 20 results depending on disease prevalence
-        - Use case: Variant interpretation, genetic counseling, clinical genetics
-        - Referenced ClinVar MIE file for correct property paths (med2rdf:disease, cvo:classified_record)
-        - Note: dct:references creates the direct link between ClinVar diseases and MedGen concepts
-    - title: Find Biomedical Literature for Clinical Concepts via MeSH
-      description: |
-        Connects MedGen disease concepts to PubMed literature through shared MeSH term annotations. This integration enables systematic literature review and evidence gathering for clinical conditions. Retrieves recent publications indexed with MeSH descriptors that match MedGen's external references, facilitating evidence-based medicine and clinical research.
-      databases_used:
-        - medgen
-        - pubmed
-      complexity: advanced
-      sparql: |
-        PREFIX mo: <http://med2rdf/ontology/medgen#>
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX dct: <http://purl.org/dc/terms/>
-        PREFIX bibo: <http://purl.org/ontology/bibo/>
-        
-        SELECT ?medgen_cui ?medgen_label ?mesh_id ?pmid ?article_title ?published
-        WHERE {
-          GRAPH <http://rdfportal.org/dataset/medgen> {
-            VALUES ?medgen_cui { "C0002395" }
-            ?medgen_concept a mo:ConceptID ;
-                            dct:identifier ?medgen_cui ;
-                            rdfs:label ?medgen_label ;
-                            mo:mgconso ?bn .
-            ?bn rdfs:seeAlso ?mesh_id .
-            FILTER(STRSTARTS(STR(?mesh_id), "http://id.nlm.nih.gov/mesh/D"))
-          }
-          GRAPH <http://rdfportal.org/dataset/pubmed> {
-            ?article rdfs:seeAlso ?mesh_id ;
-                     bibo:pmid ?pmid ;
-                     dct:title ?article_title ;
-                     dct:issued ?published .
-          }
-        }
-        ORDER BY DESC(?published)
-        LIMIT 50
-      notes: |
-        - Integrates clinical genetics concepts with biomedical literature
-        - Uses MeSH terms (Medical Subject Headings) as the linking bridge
-        - MedGen concepts map to MeSH via mo:mgconso/rdfs:seeAlso
-        - PubMed articles annotated with same MeSH terms via rdfs:seeAlso
-        - Filters to MeSH Descriptors only (D-prefix) excluding supplementary concepts
-        - Performance: Variable (2-20 seconds) depending on MeSH term popularity
-        - Use case: Literature review, evidence synthesis, clinical decision support
-        - Referenced PubMed MIE file for article structure (bibo:pmid, dct:title, dct:issued)
-        - Note: Not all MedGen-MeSH mappings will have corresponding PubMed articles; filter by date for recent literature
-    - title: Enrich Disease Concepts with Gene Annotations
-      description: |
-        Combines MedGen disease information with comprehensive NCBI Gene database annotations to understand the genetic basis of clinical conditions. Links disease concepts to their associated genes and retrieves detailed gene information including chromosomal locations, gene types, and functional descriptions. Enables systematic analysis of disease-gene relationships for genomic medicine applications.
-      databases_used:
-        - medgen
-        - ncbigene
-      complexity: advanced
-      sparql: |
-        PREFIX mo: <http://med2rdf/ontology/medgen#>
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX dct: <http://purl.org/dc/terms/>
-        PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
-        PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
-        
-        SELECT ?disease_cui ?disease_label ?gene_id ?gene_symbol ?gene_desc ?gene_type ?chromosome
-        WHERE {
-          GRAPH <http://rdfportal.org/dataset/medgen> {
-            ?disease a mo:ConceptID ;
-                     dct:identifier ?disease_cui ;
-                     rdfs:label ?disease_label .
-            ?rel a mo:MGREL ;
-                 mo:cui1 ?disease ;
-                 mo:cui2 ?gene_concept ;
-                 mo:rela ?rel_type .
-            ?gene_concept dct:identifier ?gene_id_str .
-            ?disease_label bif:contains "'cancer'" .
-            FILTER(CONTAINS(LCASE(?rel_type), "gene") || ?rel_type = "gene_associated_with_disease")
-          }
-          GRAPH <http://rdfportal.org/dataset/ncbigene> {
-            ?gene a insdc:Gene ;
-                  dct:identifier ?gene_id_str ;
-                  rdfs:label ?gene_symbol ;
-                  ncbio:typeOfGene ?gene_type ;
-                  ncbio:taxid <http://identifiers.org/taxonomy/9606> .
-            OPTIONAL { ?gene dct:description ?gene_desc }
-            OPTIONAL { ?gene insdc:chromosome ?chromosome }
-          }
-        }
-        LIMIT 50
-      notes: |
-        - Links disease concepts to genes via MGREL relationships in MedGen
-        - Relationship types include "gene_associated_with_disease", "disease_has_associated_gene"
-        - Joins to NCBI Gene using gene identifier strings (not URIs due to URI pattern differences)
-        - MedGen uses concept identifiers while NCBI Gene uses dct:identifier property
-        - Retrieves comprehensive gene annotations: type, description, chromosomal location
-        - Filters to human genes only (taxonomy 9606)
-        - Performance: ~10-20 seconds for 50 results due to MGREL traversal and cross-database join
-        - Use case: Disease gene discovery, pathway analysis, therapeutic target identification
-        - Referenced NCBI Gene MIE file for gene properties and correct identifier matching
-        - Note: Gene identifiers link via string matching on dct:identifier, not URI equality
+        - Optimization strategies applied: 1 (GRAPH), 3 (VALUES), 4 (split property paths), 5 (URI conversion), 10 (LIMIT)
+        - CRITICAL: URI conversion required - MedGen uses www.ncbi.nlm.nih.gov, ClinVar references use ncbi.nlm.nih.gov
+        - Uses REPLACE to convert MedGen URIs to ClinVar-compatible format (Strategy 5)
+        - Pre-filtering with VALUES for specific MedGen CUI reduces search space (Strategy 3)
+        - Property path split into individual triple patterns (Strategy 4) - required for performance
+        - Links via dct:references → blank node → rdfs:seeAlso pattern in ClinVar
+        - Performance: ~3-5 seconds for 10 results (Tier 2)
+        - Performance gain: VALUES reduces MedGen from 233K to 1 concept, property path splitting prevents timeout
+        - Use case: Variant interpretation, genetic counseling, clinical genetics workflows
+        - Referenced MIE files: MedGen (mo:ConceptID), ClinVar (med2rdf:Disease, cvo:classifications pattern)
+        - Avoided anti-patterns: URI conversion handles namespace mismatch, split property paths prevent timeout
 
 cross_references:
   - pattern: rdfs:seeAlso (via mo:mgconso blank nodes)
@@ -466,8 +388,8 @@ cross_references:
         - ICD-10: ~50% coverage
       Genetic Databases:
         - OMIM (Online Mendelian Inheritance in Man): ~30% coverage
-        - ClinVar: Direct links for genetic variants
-        - NCBI Gene: Direct gene associations
+        - ClinVar: Linked via URI conversion for genetic variants
+        - NCBI Gene: Limited direct linkage (gene associations via concept IDs, not numeric gene IDs)
     sparql: |
       PREFIX mo: <http://med2rdf/ontology/medgen#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -495,21 +417,26 @@ architectural_notes:
     - MGREL queries typically complete in 2-5 seconds
     - Cross-database queries via rdfs:seeAlso may return many duplicates - use DISTINCT
     - Avoid aggregating MGREL, MGSAT, or rdf:Statement without LIMIT due to large record counts (>1M each)
-    - Cross-database queries to ClinVar, PubMed, or NCBI Gene typically take 5-20 seconds
+    - Cross-database query to ClinVar typically takes 3-5 seconds with optimizations
+    - "Cross-database optimization: Use explicit GRAPH clauses (Strategy 1)"
+    - Pre-filter within GRAPH blocks using VALUES (Strategy 3) - reduces search space by 99.9%+
+    - "CRITICAL: Split property paths when linking (Strategy 4) - prevents timeouts"
+    - "CRITICAL: MedGen→ClinVar requires URI conversion (Strategy 5) - www.ncbi vs ncbi namespace"
   data_integration:
     - Primary integration point is mgconso mappings using rdfs:seeAlso to external URIs
     - External database URIs follow patterns: identifiers.org for OMIM, purl.obolibrary.org for ontologies, id.nlm.nih.gov for MeSH
     - Gene-disease associations and hierarchical relationships use MGREL with mo:rela specifying the relationship type
-    - Common relationship types: isa (child-to-parent), inverse_isa (parent-to-child), has_manifestation, manifestation_of
+    - Common relationship types: isa (child-to-parent), inverse_isa (parent-to-child), has_manifestation, manifestation_of, process_involves_gene
     - Relationship provenance tracked via RDF reification statements with source attribution
-    - Cross-database integration with ClinVar via dct:references property linking variants to MedGen concepts
-    - PubMed integration via shared MeSH term annotations (rdfs:seeAlso to MeSH descriptors)
-    - NCBI Gene integration via gene identifier matching through MGREL relationships
+    - "Cross-database integration with ClinVar requires URI conversion (www.ncbi.nlm.nih.gov → ncbi.nlm.nih.gov)"
+    - "ClinVar linkage via: disease → dct:references → blank node → rdfs:seeAlso → MedGen URI"
+    - "Expected cross-database performance: Tier 2 (3-5s) for ClinVar integration with optimizations"
+    - "Note: PubMed and NCBI Gene integration limited due to linking mechanisms - gene associations use concept IDs not numeric gene IDs"
   data_quality:
     - Not all concepts have definitions (skos:definition coverage ~34%)
     - MGCONSO mappings vary in coverage: MeSH 80%, MONDO 70%, OMIM 30%
     - Some relationships use mo:undefined_relationship when the specific type is unclear
-    - Inheritance patterns stored as MGSAT attributes may not be standardized
+    - Gene associations in MGREL use concept IDs (C-prefixed), not numeric NCBI Gene IDs
 
 data_statistics:
   total_concepts: 233939
@@ -525,15 +452,16 @@ data_statistics:
     avg_external_refs_per_concept: 3.2
     avg_attributes_per_concept: 4.8
   performance_characteristics:
-    - Identifier lookup: < 1 second
-    - Keyword search with bif:contains: 2-5 seconds
-    - MGREL relationship traversal: 2-5 seconds
-    - Full cross-reference retrieval: 5-15 seconds (use DISTINCT to avoid duplicates)
-    - Cross-database queries (ClinVar/PubMed/NCBI Gene): 5-20 seconds
+    - "Identifier lookup: < 1 second"
+    - "Keyword search with bif:contains: 2-5 seconds"
+    - "MGREL relationship traversal: 2-5 seconds"
+    - "Full cross-reference retrieval: 5-15 seconds (use DISTINCT to avoid duplicates)"
+    - "Cross-database query (ClinVar): Tier 2 (3-5s) with VALUES pre-filtering and split property paths"
+    - "Optimization gain: VALUES reduces concepts from 233K to 1-2, property path splitting prevents timeout"
   data_quality_notes:
     - Definitions available for only ~34% of concepts
     - Some relationships categorized as 'undefined_relationship'
-    - "External mappings vary by database (MeSH: 80%, MONDO: 70%, OMIM: 30%)"
+    - 'External mappings vary by database (MeSH: 80%, MONDO: 70%, OMIM: 30%)'
     - Cross-references often duplicated - always use DISTINCT
 
 anti_patterns:
@@ -556,6 +484,7 @@ anti_patterns:
       }
       LIMIT 100
     explanation: CRITICAL - All relationships between concepts are stored in MGREL entities with mo:rela specifying the relationship type. Direct properties on ConceptID do not contain meaningful relationship data.
+
   - title: Not Using DISTINCT for Cross-References
     problem: mgconso cross-references often return many duplicate rows
     wrong_sparql: |
@@ -573,6 +502,7 @@ anti_patterns:
       }
       LIMIT 100
     explanation: Always use DISTINCT when querying mgconso to avoid duplicate external database references
+
   - title: Aggregating Without LIMIT on Large Entity Types
     problem: MGREL, MGSAT, and rdf:Statement have over 1 million records each, causing timeouts
     wrong_sparql: |
@@ -588,6 +518,28 @@ anti_patterns:
       }
       LIMIT 1000
     explanation: Always use LIMIT when working with MGREL, MGSAT, or rdf:Statement to avoid timeouts
+
+  - title: Cross-Database Property Paths Without Splitting
+    problem: Complex property paths in cross-database queries cause timeouts
+    wrong_sparql: |
+      # BAD: Property path causes timeout
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/clinvar> {
+          ?variant cvo:classified_record/cvo:classifications/cvo:germline_classification/cvo:description ?sig .
+        }
+      }
+    correct_sparql: |
+      # GOOD: Split property path (Strategy 4)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/clinvar> {
+          ?variant cvo:classified_record ?classrec .
+          ?classrec cvo:classifications ?classi .
+          ?classi cvo:germline_classification ?germ .
+          ?germ cvo:description ?sig .
+        }
+      }
+      LIMIT 100
+    explanation: Split property paths into individual triple patterns (Strategy 4) to prevent timeouts in cross-database queries
 
 common_errors:
   - error: Empty results when querying for relationships
@@ -617,6 +569,7 @@ common_errors:
         FILTER(CONTAINS(LCASE(?rel_type), "gene"))
       }
       LIMIT 100
+
   - error: Query timeout when exploring relationships
     causes:
       - Querying MGREL, MGSAT, or rdf:Statement without LIMIT
@@ -646,6 +599,7 @@ common_errors:
             mo:rela ?rela .
       }
       LIMIT 100
+
   - error: Duplicate cross-references in results
     causes:
       - Not using DISTINCT with mo:mgconso queries
@@ -669,5 +623,40 @@ common_errors:
         ?concept mo:mgconso ?bn .
         ?bn rdfs:seeAlso ?omim .
         FILTER(STRSTARTS(STR(?omim), "http://identifiers.org/mim/"))
+      }
+      LIMIT 100
+
+  - error: Cross-database query returns no results
+    causes:
+      - URI pattern mismatch (www.ncbi.nlm.nih.gov vs ncbi.nlm.nih.gov)
+      - Property paths causing timeouts
+      - Missing URI conversion with REPLACE
+    solutions:
+      - Convert MedGen URIs: BIND(IRI(REPLACE(STR(?medgen_concept), "www.ncbi", "ncbi")) AS ?cv_uri)
+      - Split complex property paths into individual triple patterns
+      - Use VALUES clause for specific concepts to reduce search space
+      - Test each GRAPH clause independently before combining
+    example_fix: |
+      # WRONG: No URI conversion
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/medgen> {
+          ?medgen_concept a mo:ConceptID .
+        }
+        GRAPH <http://rdfportal.org/dataset/clinvar> {
+          ?ref rdfs:seeAlso ?medgen_concept .  # Won't match!
+        }
+      }
+      
+      # CORRECT: URI conversion (Strategy 5)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/medgen> {
+          VALUES ?medgen_cui { "C0011849" }
+          ?medgen_concept a mo:ConceptID ;
+                          dct:identifier ?medgen_cui .
+          BIND(IRI(REPLACE(STR(?medgen_concept), "www.ncbi", "ncbi")) AS ?cv_uri)
+        }
+        GRAPH <http://rdfportal.org/dataset/clinvar> {
+          ?ref rdfs:seeAlso ?cv_uri .
+        }
       }
       LIMIT 100
