@@ -1,8 +1,13 @@
+ibeg=09
 iend=10 # 10
-qsdir=../questions
-resdir=../results
-config=config.json
-for i in {01..${iend}}; do
+qsdir="../questions"
+NO_MIE="_no_MIE"
+resdir="../results${NO_MIE}"
+config="config${NO_MIE}.json"
+
+mkdir -p ${resdir}
+
+for i in {${ibeg}..${iend}}; do
     qs=${qsdir}/Q${i}.json
     res=${resdir}/Q${i}_out.csv
     python automated_test_runner.py -c ${config} -o $res $qs

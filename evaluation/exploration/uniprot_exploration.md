@@ -1,332 +1,671 @@
 # UniProt Exploration Report
 
+**Date**: 2026-01-31
+**Session**: 1
+**Database**: UniProt (Universal Protein Resource)
+
+## Executive Summary
+
+UniProt is the most comprehensive protein database in TogoMCP, containing 444 million proteins with rich functional annotations. Key findings:
+
+- **Critical Performance Requirement**: Always use `up:reviewed 1` filter (reduces 444M to 923K proteins, 99.8% reduction)
+- **Major Integration Opportunity**: Shared SIB endpoint with Rhea enables powerful enzyme-reaction queries
+- **Key Anti-Patterns**: bif:contains CANNOT be combined with property paths (causes 400 errors)
+- **Recommended Question Types**: Cross-database joins, performance-critical counts, text search with error avoidance
+
 ## Database Overview
-UniProt (Universal Protein Resource) is the world's most comprehensive protein sequence and functional information database. It integrates:
-- **Swiss-Prot**: 923,147 manually curated, expertly annotated protein entries (reviewed=1)
-- **TrEMBL**: 444M automatically annotated entries (reviewed=0)
-- Coverage: 200+ external database cross-references, comprehensive functional annotations
 
-**Critical distinction**: Always filter by `up:reviewed 1` to access high-quality Swiss-Prot data and prevent query timeouts (reduces dataset by 99.8%).
+- **Purpose**: Comprehensive protein sequence and functional information
+- **Data Sources**: Swiss-Prot (manually curated) and TrEMBL (automatically annotated)
+- **Key Data Types**: Proteins, sequences, annotations, GO terms, cross-references
+- **Dataset Size**: 
+  - Total proteins: 444,565,015
+  - Reviewed (Swiss-Prot): 923,147 (quality-curated)
+  - Human reviewed: 40,209
+- **Endpoint**: https://rdfportal.org/sib/sparql (shared with Rhea)
+- **Available Graphs**:
+  - http://sparql.uniprot.org/uniprot (main protein data)
+  - http://sparql.uniprot.org/go (Gene Ontology)
+  - http://sparql.uniprot.org/taxonomy (organism classification)
+  - http://sparql.uniprot.org/citations (literature references)
+  - http://sparql.uniprot.org/diseases (disease associations)
+  - http://sparql.uniprot.org/enzyme (EC classifications)
+  - http://sparql.uniprot.org/keywords (controlled vocabulary)
+  - http://sparql.uniprot.org/locations (subcellular locations)
+  - http://sparql.uniprot.org/pathways (pathway associations)
 
-## Schema Analysis (from MIE file)
+## Structure Analysis
 
-### Main Properties
-- `up:Protein` - Central entity representing a protein
-- `up:mnemonic` - Human-readable identifier (e.g., "BRCA1_HUMAN")
-- `up:reviewed` - Quality indicator (0=TrEMBL automated, 1=Swiss-Prot curated)
-- `up:organism` - Taxonomic classification via NCBI Taxonomy
-- `up:sequence` - Amino acid sequence with molecular properties
-- `up:recommendedName` - Structured protein naming
-- `up:annotation` - Functional annotations (Function, Similarity, etc.)
-- `up:classifiedWith` - Ontology classifications (primarily Gene Ontology)
-- `rdfs:seeAlso` - Cross-references to 200+ external databases
+### Performance Strategies
 
-### Important Relationships
-- Proteins → Organisms: via `up:organism` (NCBI Taxonomy)
-- Proteins → Functions: via `up:annotation` subtypes
-- Proteins → GO Terms: via `up:classifiedWith`
-- Proteins → Structures: via `rdfs:seeAlso` to PDB
-- Proteins → Genes: via `up:encodedBy`
-- Proteins → Enzymes: via `up:enzyme` (EC numbers)
+**Strategy 1: reviewed=1 Filter (CRITICAL)**
+- Why needed: 444M vs 923K proteins - prevents timeout
+- When to apply: EVERY UniProt query
+- Performance impact: 99.8% reduction in search space
+- Tested: COUNT with reviewed=1 returned 40,209 human proteins in ~2s
 
-### Query Patterns
-1. **Always filter by reviewed=1** for Swiss-Prot quality and performance
-2. **Use bif:contains for keyword search** but split property paths (never use with `/`)
-3. **Pre-filter before joins** for cross-database queries (Strategy 2)
-4. **Use organism URIs** not mnemonic text patterns
-5. **Add LIMIT** to prevent timeouts on large result sets
+**Strategy 2: bif:contains with Split Property Paths**
+- Why needed: bif:contains is incompatible with SPARQL property paths (/)
+- When to apply: Any text search in names, annotations, or comments
+- Performance impact: 5-10x faster than FILTER(CONTAINS())
+- Error avoidance: Prevents 400 Bad Request errors
 
-## Search Queries Performed
+**Strategy 3: Explicit GRAPH Clauses**
+- Why needed: UniProt has multiple graphs at the same endpoint
+- When to apply: Cross-database or multi-graph queries
+- Performance impact: Prevents cross-contamination and improves optimization
 
-### 1. Query: "BRCA1 human" → **P38398**
-Results: Found human BRCA1 (Breast cancer type 1 susceptibility protein), a well-known tumor suppressor. Also found orthologs in dog (Q95153), mouse (P48754), and related proteins like FANCJ (Q9BX63).
+**Strategy 4: Organism Filtering via up:organism**
+- Why needed: Mnemonic-based filtering (_HUMAN) is unreliable
+- Correct approach: `up:organism <http://purl.uniprot.org/taxonomy/9606>`
+- Performance impact: Significant reduction for species-specific queries
 
-### 2. Query: "SpCas9 Streptococcus" → **Q99ZW2**
-Results: Found CRISPR-associated endonuclease Cas9/Csn1 from Streptococcus pyogenes serotype M1. This is the famous SpCas9 used in genome editing.
+### Common Pitfalls
 
-### 3. Query: "insulin human" → **P01308**
-Results: Found human insulin protein, insulin receptor (P06213), insulin-degrading enzyme (P14735), and related proteins. P01308 is the canonical insulin hormone.
+**Error 1: Missing reviewed=1 Filter**
+- Cause: Querying 444M proteins instead of 923K
+- Symptoms: Query timeout (60s)
+- Solution: Add `?protein up:reviewed 1` as FIRST constraint
+- Tested: Cross-database query without reviewed=1 timed out
 
-### 4. Query: "kinase human" → **Multiple hits**
-Results: Found diverse kinases including:
-- P19525: Interferon-induced protein kinase (PKR)
-- Q00535: Cyclin-dependent kinase 5 (CDK5)
-- P17612: cAMP-dependent protein kinase catalytic subunit alpha
-- P36888: Receptor tyrosine kinase FLT3
-- P24941: Cyclin-dependent kinase 2 (CDK2)
+**Error 2: bif:contains with Property Paths**
+- Cause: Virtuoso's bif:contains doesn't support property paths
+- Symptoms: 400 Bad Request error
+- Solution: Split property paths into separate triple patterns
+- Example:
+  - WRONG: `up:recommendedName/up:fullName ?name . ?name bif:contains 'kinase'`
+  - CORRECT: `up:recommendedName ?n . ?n up:fullName ?name . ?name bif:contains 'kinase'`
+- Tested: Confirmed 400 error with property path, success with split path
 
-### 5. Query: "hemoglobin" → **P68871 and subunits**
-Results: Found hemoglobin subunits: beta (P68871), delta (P02042), epsilon (P02100), gamma-2 (P69892), zeta (P02008). All human hemoglobin chains.
+**Error 3: Wrong Organism Filtering**
+- Cause: Using mnemonic suffixes (_HUMAN) instead of taxonomy URIs
+- Symptoms: Incomplete or incorrect results
+- Solution: Use `up:organism <http://purl.uniprot.org/taxonomy/9606>`
+- Tested: Verified correct human counts with taxonomy URI
 
-**Note**: All searches returned real, scientifically significant proteins with complete metadata.
+**Error 4: Cross-Database Query Without Pre-Filtering**
+- Cause: Late filtering after large cross-database join
+- Symptoms: Timeout due to processing millions of intermediate results
+- Solution: Apply reviewed=1 and status filters WITHIN GRAPH clauses BEFORE joins
+- Tested: Query timed out without early filtering, completed in ~3s with filtering
 
-## SPARQL Queries Tested
+### Data Organization
 
+**Main Data (uniprot graph)**
+- Proteins with identifiers, mnemonics, sequences
+- Annotations (Function, Disease, Pathway, etc.)
+- Cross-references to 200+ external databases
+- Enzyme classifications (EC numbers)
+- Gene information
+
+**GO Terms (go graph)**
+- Gene Ontology annotations
+- Coverage: >85% of reviewed proteins
+- Requires STRSTARTS filter for proper identification
+
+**Taxonomy (taxonomy graph)**
+- Organism classifications
+- Hierarchical relationships via rdfs:subClassOf
+
+**Citations (citations graph)**
+- Literature references
+- PubMed links
+
+### Cross-Database Integration Points
+
+**Integration 1: UniProt → Rhea (Enzyme-Reaction)**
+- Connection relationship: `up:enzyme` ↔ `rhea:ec` (shared EC namespace)
+- Join point: EC number URIs (http://purl.uniprot.org/enzyme/X.X.X.X)
+- Required information:
+  - From UniProt: reviewed=1, organism, enzyme annotation, protein names
+  - From Rhea: reaction status, equation, participants
+- Pre-filtering needed: reviewed=1 in UniProt GRAPH, rhea:Approved in Rhea GRAPH
+- Knowledge required: Graph URIs, split property paths for bif:contains
+- Tested: Successfully returned 20 enzymes with ATP-dependent reactions in ~3s
+
+**Integration 2: UniProt → GO (Protein-Function)**
+- Connection relationship: `up:classifiedWith` → GO term URIs
+- Join point: GO term URIs (http://purl.obolibrary.org/obo/GO_XXXXXXX)
+- Pre-filtering needed: reviewed=1, organism filter
+- Knowledge required: STRSTARTS filter for GO URIs, two graphs involved
+- Tested: Found 146 human proteins with GO:0006914 (autophagy)
+
+**Integration 3: UniProt → PDB (Protein-Structure)**
+- Connection relationship: `rdfs:seeAlso` with PDB URI filter
+- Join point: PDB URIs (http://rdf.wwpdb.org/pdb/XXXX)
+- Pre-filtering needed: reviewed=1, STRSTARTS filter
+- Knowledge required: External database URI patterns
+- Tested: Found 258 PDB structures for P04637 (TP53)
+
+**Integration 4: Three-Way (UniProt + Rhea + GO)**
+- Path: Protein → Enzyme → Reaction + Protein → GO Term
+- Three graphs required: uniprot, rhea dataset, go
+- Pre-filtering: Essential in ALL graphs
+- Knowledge required: All join points, graph URIs, filtering strategies
+- Tested: Successfully returned 30 human enzymes with reactions and GO terms
+
+## Complex Query Patterns Tested
+
+### Pattern 1: Cross-Database Enzyme-Reaction Query
+
+**Purpose**: Find proteins that catalyze specific biochemical reactions
+
+**Category**: Cross-Database Integration
+
+**Naive Approach (without proper knowledge)**:
+- Query both UniProt and Rhea without GRAPH clauses
+- Missing reviewed=1 filter
+- Using property path with bif:contains
+
+**What Happened**:
+- Error: Timeout (>60 seconds)
+- Why it failed: Processing 444M proteins before join, no graph isolation
+
+**Correct Approach (using proper pattern)**:
 ```sparql
-# Query 1: Count reviewed human proteins
-PREFIX up: <http://purl.uniprot.org/core/>
+SELECT ?protein ?mnemonic ?fullName ?reaction ?equation
+WHERE {
+  GRAPH <http://sparql.uniprot.org/uniprot> {
+    ?protein a up:Protein ;
+             up:reviewed 1 ;
+             up:mnemonic ?mnemonic ;
+             up:enzyme ?enzyme ;
+             up:recommendedName ?name .
+    ?name up:fullName ?fullName .
+  }
+  GRAPH <http://rdfportal.org/dataset/rhea> {
+    ?reaction rdfs:subClassOf rhea:Reaction ;
+              rhea:equation ?equation ;
+              rhea:status rhea:Approved ;
+              rhea:ec ?enzyme .
+    ?equation bif:contains "'ATP'" option (score ?sc) .
+  }
+}
+ORDER BY DESC(?sc)
+LIMIT 20
+```
 
+**What Knowledge Made This Work**:
+- Graph URIs from UniProt and Rhea MIE files
+- reviewed=1 filter from UniProt performance guidelines
+- Split property path for bif:contains
+- rhea:Approved status filter
+- Performance improvement: From timeout to ~3 seconds
+
+**Results Obtained**:
+- Number of results: 20
+- Sample results:
+  * P09979 (KHYB_STRHY) - Hygromycin-B 7''-O-kinase - ATP + hygromycin B reaction
+  * Q9D5J6 (SHPK_MOUSE) - Sedoheptulokinase - ATP + sedoheptulose reaction
+  * P54645 (AAPK1_RAT) - AMP-activated protein kinase - ATP + L-seryl reaction
+
+**Natural Language Question Opportunities**:
+1. "Which reviewed proteins catalyze reactions involving ATP?" - Category: Integration
+2. "Find human enzymes that catalyze glucose-related biochemical reactions" - Category: Integration
+3. "What proteins are involved in phosphorylation reactions?" - Category: Structured Query
+
+---
+
+### Pattern 2: bif:contains with Split Property Path
+
+**Purpose**: Search protein names using full-text search
+
+**Category**: Error Avoidance
+
+**Naive Approach (without proper knowledge)**:
+```sparql
+SELECT ?protein ?fullName
+WHERE {
+  ?protein up:reviewed 1 ;
+           up:recommendedName/up:fullName ?fullName .
+  ?fullName bif:contains "'kinase'"
+}
+```
+
+**What Happened**:
+- Error: 400 Bad Request
+- Why it failed: bif:contains cannot process property path output
+
+**Correct Approach (using proper pattern)**:
+```sparql
+SELECT ?protein ?fullName
+WHERE {
+  ?protein up:reviewed 1 ;
+           up:recommendedName ?name .
+  ?name up:fullName ?fullName .
+  ?fullName bif:contains "'kinase'"
+}
+```
+
+**What Knowledge Made This Work**:
+- Split property path pattern from UniProt MIE common_errors section
+- Understanding of Virtuoso's bif:contains limitations
+- Performance improvement: From 400 error to successful query
+
+**Results Obtained**:
+- Number of results: Many kinase proteins found
+- Sample results:
+  * Q9FIZ3 - LRR receptor-like serine/threonine-protein kinase GSO2
+  * Q04982 - Serine/threonine-protein kinase B-raf
+
+**Natural Language Question Opportunities**:
+1. "Find proteins whose name contains 'kinase'" - Category: Structured Query
+2. "Which human proteins are described as membrane receptors?" - Category: Structured Query
+3. "Find tumor suppressor proteins based on their functional annotations" - Category: Structured Query
+
+---
+
+### Pattern 3: Three-Way Cross-Database Integration
+
+**Purpose**: Link proteins to reactions AND to GO terms
+
+**Category**: Advanced Integration
+
+**Correct Approach**:
+```sparql
+SELECT DISTINCT ?protein ?mnemonic ?reaction ?equation ?goLabel
+WHERE {
+  GRAPH <http://sparql.uniprot.org/uniprot> {
+    ?protein a up:Protein ;
+             up:reviewed 1 ;
+             up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+             up:mnemonic ?mnemonic ;
+             up:enzyme ?enzyme ;
+             up:classifiedWith ?goTerm .
+  }
+  GRAPH <http://sparql.uniprot.org/go> {
+    ?goTerm rdfs:label ?goLabel .
+    FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
+  }
+  GRAPH <http://rdfportal.org/dataset/rhea> {
+    ?reaction rdfs:subClassOf rhea:Reaction ;
+              rhea:equation ?equation ;
+              rhea:status rhea:Approved ;
+              rhea:ec ?enzyme .
+  }
+}
+LIMIT 30
+```
+
+**What Knowledge Made This Work**:
+- Three graph URIs (uniprot, go, rhea)
+- Pre-filtering in ALL graphs
+- STRSTARTS filter for GO term identification
+- rhea:Approved status filter
+
+**Results Obtained**:
+- Number of results: 30
+- Sample results:
+  * P00338 (LDHA_HUMAN) - Lactate dehydrogenase - nucleus - lactate + NAD reaction
+  * P17612 (KAPCA_HUMAN) - PKA alpha - cytoplasm - ATP + L-seryl reaction
+  * Q8IXJ6 (SIR2_HUMAN) - Sirtuin-2 - nucleus - deacetylation reaction
+
+**Natural Language Question Opportunities**:
+1. "Find human enzymes with known subcellular location and catalyzed reactions" - Category: Integration
+2. "Which human proteins are both kinases and localized to the cytoplasm?" - Category: Structured Query
+
+---
+
+### Pattern 4: Performance-Critical COUNT Query
+
+**Purpose**: Count human proteins with specific GO annotations
+
+**Category**: Performance-Critical
+
+**Naive Approach (without reviewed=1)**:
+```sparql
+SELECT (COUNT(*) as ?count)
+WHERE {
+  ?protein a up:Protein ;
+           up:organism <http://purl.uniprot.org/taxonomy/9606> .
+}
+```
+
+**What Happened**:
+- Result: 313,564 (includes TrEMBL)
+- Query completed but includes unreliable automated annotations
+
+**Correct Approach (with reviewed=1)**:
+```sparql
 SELECT (COUNT(*) as ?count)
 WHERE {
   ?protein a up:Protein ;
            up:reviewed 1 ;
            up:organism <http://purl.uniprot.org/taxonomy/9606> .
 }
-# Results: 40,209 reviewed human proteins
 ```
 
-**Significance**: Establishes the size of high-quality human proteome in Swiss-Prot.
+**What Knowledge Made This Work**:
+- reviewed=1 filter ensures expert-curated quality
+- Count reduced from 313K to 40K (quality subset)
 
+**Results Obtained**:
+- Human reviewed proteins: 40,209
+- Human proteins with autophagy annotation (GO:0006914): 146
+
+**Natural Language Question Opportunities**:
+1. "How many reviewed human proteins are in UniProt?" - Category: Completeness
+2. "How many human proteins are annotated with autophagy function?" - Category: Completeness
+3. "Count the number of human kinases with expert curation" - Category: Completeness
+
+---
+
+### Pattern 5: Text Search in Functional Annotations
+
+**Purpose**: Find proteins by functional description keywords
+
+**Category**: Error Avoidance + Structured Query
+
+**Correct Approach**:
 ```sparql
-# Query 2: Get function annotation for BRCA1 (P38398)
-PREFIX up: <http://purl.uniprot.org/core/>
-PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
-
-SELECT ?mnemonic ?functionComment
-WHERE {
-  VALUES ?protein { uniprot:P38398 }
-  ?protein up:mnemonic ?mnemonic .
-  OPTIONAL {
-    ?protein up:annotation ?annot .
-    ?annot a up:Function_Annotation ;
-           rdfs:comment ?functionComment .
-  }
-}
-# Results: BRCA1_HUMAN with detailed E3 ubiquitin ligase function,
-# DNA repair role, transcriptional regulation, ~600 words of expert annotation
-```
-
-**Significance**: Shows richness of functional annotations for reviewed proteins.
-
-```sparql
-# Query 3: Get GO term classifications for BRCA1
-PREFIX up: <http://purl.uniprot.org/core/>
-PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
-
-SELECT ?goTerm ?goLabel
-WHERE {
-  uniprot:P38398 up:classifiedWith ?goTerm .
-  ?goTerm rdfs:label ?goLabel .
-  FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
-}
-LIMIT 10
-# Results: Multiple GO terms including GO:0005634 (nucleus)
-# indicating cellular localization
-```
-
-**Significance**: Demonstrates Gene Ontology integration for cellular component annotation.
-
-```sparql
-# Query 4: Count human kinases using full-text search
-PREFIX up: <http://purl.uniprot.org/core/>
-
-SELECT (COUNT(DISTINCT ?protein) as ?kinase_count)
+SELECT ?protein ?mnemonic ?comment
 WHERE {
   ?protein a up:Protein ;
            up:reviewed 1 ;
+           up:mnemonic ?mnemonic ;
            up:organism <http://purl.uniprot.org/taxonomy/9606> ;
-           up:recommendedName ?name .
-  ?name up:fullName ?fullName .
-  ?fullName bif:contains "'kinase'"
+           up:annotation ?annot .
+  ?annot a up:Function_Annotation ;
+         rdfs:comment ?comment .
+  ?comment bif:contains "'tumor suppressor'"
 }
-# Results: 698 human kinases in Swiss-Prot
+LIMIT 20
 ```
 
-**Significance**: Shows bif:contains full-text search capability (note property path split!). Quantifies major protein family.
+**What Knowledge Made This Work**:
+- Annotation type filtering (up:Function_Annotation)
+- Split path for annotation access
+- bif:contains for efficient text search
+- reviewed=1 + organism filter
 
-## Cross-Reference Analysis
+**Results Obtained**:
+- Number of results: 20 tumor suppressor proteins
+- Sample results:
+  * P0CG12 (DERPC_HUMAN) - "Potential tumor suppressor"
+  * Q13227 (GPS2_HUMAN) - "Acts as a tumor-suppressor in liposarcoma"
+  * P04637 (P53_HUMAN) - Cellular tumor antigen p53
 
-### UniProt Cross-Database Connectivity
+**Natural Language Question Opportunities**:
+1. "Find human proteins annotated as tumor suppressors" - Category: Structured Query
+2. "Which proteins have DNA repair in their functional description?" - Category: Structured Query
+3. "Find membrane receptor proteins from functional annotations" - Category: Structured Query
 
-**Pattern**: `rdfs:seeAlso` links to 200+ external databases
+---
 
-**Key Database Connections** (for reviewed proteins):
+## Simple Queries Performed
 
-**Structural Databases**:
-- PDB (rdf.wwpdb.org): ~14-25% of reviewed proteins have structures
-- AlphaFold: >98% of reviewed proteins have predicted structures
+**Purpose**: Identify real entities for use in evaluation questions
 
-**Sequence Databases**:
-- EMBL: ~95% cross-referenced
-- RefSeq: ~80% cross-referenced  
-- Ensembl: High coverage for model organisms
+1. Search: "human BRCA1"
+   - Found: P38398 - Breast cancer type 1 susceptibility protein
+   - Usage: Precision questions, ID lookup
 
-**Gene Databases**:
-- HGNC: 100% of human proteins
-- NCBI Gene: ~90% coverage
-- neXtProt: 100% of human proteins
+2. Search: "human TP53"
+   - Found: P04637 - Cellular tumor antigen p53
+   - Usage: Cross-reference questions (258 PDB structures), integration
 
-**Domain/Family Databases**:
-- InterPro: >98% of reviewed proteins
-- Pfam: ~85% coverage
-- PANTHER: ~80% coverage
+3. Search: "human insulin receptor"
+   - Found: P06213 - Insulin receptor
+   - Usage: Function annotation questions
 
-**Interaction Databases**:
-- IntAct: ~16% of reviewed proteins
-- STRING: ~85% coverage
-- BioGRID: ~25% coverage
+4. ID Conversion: P04637 → NCBI Gene
+   - Found: 7157
+   - Usage: ID mapping questions
 
-**Pathway Databases**:
-- KEGG: ~95% coverage
-- Reactome: ~30% coverage
+5. ID Conversion: P38398 → NCBI Gene
+   - Found: 672
+   - Usage: ID mapping questions
 
-**Note**: Coverage percentages are estimates for reviewed (Swiss-Prot) entries only. TrEMBL entries have significantly lower cross-reference coverage.
+6. ID Conversion: P04637 → PDB
+   - Found: 258 structures (1A1U, 1AIE, 1C26, etc.)
+   - Usage: Structure-related questions
 
-### Shared SPARQL Endpoint
+---
 
-UniProt shares the **SIB endpoint** with:
-- **Rhea** (biochemical reactions)
+## Question Generation Opportunities
 
-This enables powerful cross-database queries linking proteins to their catalyzed reactions via `up:enzyme` ↔ `rhea:ec` property.
+### Priority 1: Complex Questions (HIGH VALUE)
 
-## Interesting Findings
+**Cross-Database Questions**:
 
-**Focus on discoveries requiring actual database queries:**
+1. "Which human enzymes catalyze reactions involving ATP?"
+   - Databases involved: UniProt, Rhea
+   - Knowledge Required: Graph URIs, reviewed=1, rhea:Approved, EC number linking
+   - Category: Integration
+   - Difficulty: Medium
 
-### 1. Human Proteome Size (requires COUNT query)
-- **40,209 reviewed human proteins** in Swiss-Prot
-- This represents the expertly curated human proteome
-- Requires database query; not available from MIE file
+2. "Find reviewed proteins that catalyze glucose metabolism reactions"
+   - Databases involved: UniProt, Rhea
+   - Knowledge Required: Cross-database join, bif:contains, pre-filtering
+   - Category: Integration
+   - Difficulty: Medium
 
-### 2. BRCA1 Functional Annotation (requires specific protein lookup)
-- **P38398** is the UniProt ID for human BRCA1
-- Mnemonic: BRCA1_HUMAN
-- Function: ~600-word expert-curated annotation describing E3 ubiquitin ligase activity, DNA repair coordination, transcriptional regulation
-- Requires search + annotation query; baseline cannot provide this level of detail
+3. "Which human kinases have known biochemical reaction equations?"
+   - Databases involved: UniProt, Rhea
+   - Knowledge Required: Two-graph query, property path splitting
+   - Category: Integration
+   - Difficulty: Medium
 
-### 3. SpCas9 Identification (requires search)
-- **Q99ZW2** is the UniProt ID for SpCas9 (CRISPR Cas9 from S. pyogenes)
-- This is the most widely used Cas9 variant in genome editing
-- Discovery requires search_uniprot_entity; not mentioned in MIE examples
+4. "Find enzymes with both mitochondrial localization and oxidation reactions"
+   - Databases involved: UniProt, Rhea, GO
+   - Knowledge Required: Three-way join, multiple filtering
+   - Category: Integration
+   - Difficulty: Hard
 
-### 4. Human Kinase Count (requires filtered COUNT with full-text search)
-- **698 human kinases** identified using bif:contains on "kinase" in protein names
-- Major protein family for drug targeting
-- Requires complex query with reviewed=1 filter, organism filter, and bif:contains
-- Demonstrates 5-10x speedup of bif:contains vs FILTER(CONTAINS())
+5. "What human proteins catalyze reactions involving phosphate transfer?"
+   - Databases involved: UniProt, Rhea
+   - Knowledge Required: Cross-database, text search in equations
+   - Category: Integration
+   - Difficulty: Medium
 
-### 5. Swiss-Prot vs TrEMBL Quality Difference
-- **99.8% reduction** in dataset when filtering by reviewed=1
-- 444M total proteins → 923K reviewed proteins
-- Essential for query performance and data quality
-- Demonstrates critical importance of reviewed filter
+**Performance-Critical Questions**:
 
-### 6. Insulin Protein Discovery (requires search)
-- **P01308**: Human insulin precursor
-- P06213: Insulin receptor (tyrosine kinase)
-- P14735: Insulin-degrading enzyme
-- Search reveals entire insulin signaling protein network
+1. "How many reviewed human proteins are in UniProt?"
+   - Database: UniProt
+   - Knowledge Required: reviewed=1 filter (CRITICAL for performance)
+   - Category: Completeness
+   - Difficulty: Easy (but requires knowledge)
 
-### 7. Cross-Reference Coverage Patterns
-- **>98% InterPro coverage** for reviewed proteins (domain annotations)
-- **~14-25% PDB coverage** (experimental structures available)
-- **>98% AlphaFold coverage** (predicted structures)
-- Coverage metrics require aggregation queries; not in MIE file
+2. "How many human proteins are annotated with autophagy (GO:0006914)?"
+   - Database: UniProt, GO
+   - Knowledge Required: reviewed=1, GO URI filter, two graphs
+   - Category: Completeness
+   - Difficulty: Medium
 
-## Question Opportunities by Category
+3. "Count human enzymes with EC number annotations"
+   - Database: UniProt
+   - Knowledge Required: reviewed=1, up:enzyme property
+   - Category: Completeness
+   - Difficulty: Medium
 
-### Precision (Specific IDs, measurements, sequences)
-✅ **GOOD (requires database query)**:
-- "What is the UniProt ID for human BRCA1?" (Answer: P38398, requires search)
-- "What is the mnemonic for UniProt P38398?" (Answer: BRCA1_HUMAN, requires lookup)
-- "What is the molecular mass of the canonical sequence for insulin (P01308)?" (requires sequence data query)
-- "What is the UniProt ID for SpCas9 from Streptococcus pyogenes M1?" (Answer: Q99ZW2, requires search)
-- "What organism is UniProt Q99ZW2 from?" (requires lookup, not in baseline)
+4. "How many human proteins have 3D structures in PDB?"
+   - Database: UniProt
+   - Knowledge Required: reviewed=1, rdfs:seeAlso with PDB filter
+   - Category: Completeness
+   - Difficulty: Hard (needs careful optimization)
 
-❌ **BAD (trivial - just reading MIE)**:
-- "What is the organism for UniProt:P04637?" (P04637 is MIE example)
-- "Does UniProt have a reviewed property?" (schema metadata)
+**Error-Avoidance Questions**:
 
-### Completeness (Counts, comprehensive lists)
-✅ **GOOD (requires COUNT or aggregation)**:
-- "How many reviewed human proteins are in UniProt?" (Answer: 40,209, requires COUNT)
-- "How many human proteins with 'kinase' in their name?" (Answer: 698, requires bif:contains + COUNT)
-- "How many reviewed proteins have PDB structures?" (requires cross-reference COUNT)
-- "How many Swiss-Prot proteins are from E. coli?" (requires organism filtering + COUNT)
-- "How many human proteins have GO term annotations?" (requires classification COUNT)
+1. "Find proteins whose recommended name contains 'kinase'"
+   - Database: UniProt
+   - Knowledge Required: Split property path for bif:contains
+   - Category: Structured Query
+   - Difficulty: Medium
 
-❌ **BAD (trivial)**:
-- "How many example SPARQL queries are in the MIE file?" (just counting docs)
-- "How many graphs does UniProt have?" (schema info)
+2. "Which human proteins are described as tumor suppressors in their function annotation?"
+   - Database: UniProt
+   - Knowledge Required: Annotation type, split path, bif:contains
+   - Category: Structured Query
+   - Difficulty: Medium
 
-### Integration (Cross-database linking, ID conversions)
-✅ **GOOD (requires cross-database queries or togoid)**:
-- "Convert UniProt P38398 to NCBI Gene ID" (requires togoid or cross-reference lookup)
-- "What PDB structures exist for BRCA1 (P38398)?" (requires rdfs:seeAlso filtering)
-- "Find Ensembl gene IDs for human insulin (P01308)" (requires cross-reference query)
-- "What Reactome pathways contain BRCA1?" (requires cross-database integration)
-- "Link UniProt Q99ZW2 to its NCBI Gene entry" (requires ID conversion)
+3. "Find proteins with 'membrane receptor' in their name"
+   - Database: UniProt
+   - Knowledge Required: bif:contains syntax, property path splitting
+   - Category: Structured Query
+   - Difficulty: Medium
 
-❌ **BAD (trivial)**:
-- "What external databases does UniProt link to?" (just listing MIE cross-references)
-- "Does UniProt have rdfs:seeAlso links?" (schema question)
+**Complex Filtering Questions**:
 
-### Currency (Recent updates, post-cutoff data)
-✅ **GOOD (time-dependent)**:
-- "How many SARS-CoV-2 proteins are in UniProt?" (COVID-19 proteins added 2020+)
-- "What is the current version/release of UniProt?" (changes monthly)
-- "When was BRCA1 (P38398) last updated?" (requires version metadata)
-- "How many Omicron variant proteins are in UniProt?" (added 2021+)
-- "What new human proteins were added to Swiss-Prot in 2024?" (requires date filtering)
+1. "Find reviewed human proteins with GO annotations for DNA repair"
+   - Database: UniProt
+   - Knowledge Required: Multi-criteria, GO graph, STRSTARTS filter
+   - Category: Structured Query
+   - Difficulty: Medium
 
-❌ **BAD (not time-sensitive)**:
-- "What is the general structure of UniProt?" (timeless)
-- "How does Swiss-Prot curation work?" (process question)
+2. "Which human enzymes are both kinases and localized to the nucleus?"
+   - Database: UniProt, GO
+   - Knowledge Required: Multiple GO filters, two graphs
+   - Category: Structured Query
+   - Difficulty: Hard
 
-### Specificity (Rare/niche entities)
-✅ **GOOD (requires niche searches)**:
-- "What is the UniProt ID for Titin, the largest human protein?" (requires search for specific protein)
-- "Find UniProt entries for proteins from Thermococcus gammatolerans" (extremophile organism)
-- "What is the UniProt ID for human Presenilin-1?" (Alzheimer's protein, requires search)
-- "Find UniProt entry for bacterial enzyme CheY from E. coli" (specific bacterial protein)
-- "What reviewed proteins exist for Zika virus?" (rare pathogen)
+3. "Find proteins involved in autophagy that have PDB structures"
+   - Database: UniProt, GO
+   - Knowledge Required: GO filtering + cross-reference filtering
+   - Category: Structured Query
+   - Difficulty: Hard
 
-❌ **BAD (common knowledge)**:
-- "What is P04637?" (P04637 is p53, mentioned in MIE examples)
-- "Find a protein" (too vague)
+### Priority 2: Simple Questions (For Coverage & Contrast)
 
-### Structured Query (Complex filtering, multi-criteria)
-✅ **GOOD (requires complex SPARQL)**:
-- "Find human proteins that are kinases AND have experimental PDB structures" (2 criteria + cross-ref)
-- "Count reviewed proteins with GO:0006281 (DNA repair) annotation" (GO term filtering)
-- "Find proteins with 'tumor suppressor' function in humans" (bif:contains + organism + annotation)
-- "List human enzymes (EC numbers) that are also transcription factors" (2 functional criteria)
-- "Find reviewed proteins longer than 5000 amino acids" (sequence length filtering)
+**Entity Lookup Questions**:
 
-❌ **BAD (simple lookups)**:
-- "Find proteins by organism" (single criterion, too basic)
-- "Show example SPARQL with FILTER" (documentation, not data)
+1. "What is the UniProt ID for human BRCA1?"
+   - Method: search_uniprot_entity
+   - Knowledge Required: None (straightforward search)
+   - Category: Precision
+   - Difficulty: Easy
+   - Expected Answer: P38398
 
-## Notes
+2. "What is the UniProt ID for human TP53?"
+   - Method: search_uniprot_entity
+   - Knowledge Required: None
+   - Category: Precision
+   - Difficulty: Easy
+   - Expected Answer: P04637
 
-### Limitations and Challenges
-1. **Query Timeouts**: Always use `up:reviewed 1` filter. Unreviewed queries on 444M TrEMBL entries will timeout.
-2. **bif:contains Restrictions**: Cannot use with property paths (`/`). Must split: `up:recommendedName ?name . ?name up:fullName ?text` instead of `up:recommendedName/up:fullName ?text`.
-3. **Organism Filtering**: Must use `up:organism <taxonomy_URI>`, never filter by mnemonic text patterns (unreliable).
-4. **Cross-Reference Variability**: PDB coverage much lower (~14-25%) than InterPro (>98%). Consider coverage when asking "how many" questions.
-5. **GO Term Filtering**: Use `STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_")` pattern from MIE.
+3. "What is the UniProt mnemonic for insulin receptor?"
+   - Method: search_uniprot_entity
+   - Knowledge Required: None
+   - Category: Precision
+   - Difficulty: Easy
+   - Expected Answer: INSR_HUMAN (P06213)
 
-### Best Practices for Querying
-1. **Start with reviewed=1**: Reduces dataset by 99.8%, enables COUNT operations
-2. **Use search_uniprot_entity first**: For discovering protein IDs by keywords
-3. **Follow with SPARQL**: For detailed annotations, relationships, cross-references
-4. **Combine filters**: reviewed + organism + keyword for precise results
-5. **Split property paths**: When using bif:contains, separate triple patterns
-6. **Use LIMIT**: Always limit results to 30-50 for exploration
+**ID Mapping Questions**:
 
-### Important Clarifications About Counts
-- **Entity counts** (unique proteins with property) vs **relationship counts** (total links)
-  - Example: 40,209 human proteins (entity count)
-  - Example: ~698 human kinases (filtered entity count)
-  - Example: ~14-25% of reviewed proteins have PDB structures (percentage of entities)
+1. "What is the NCBI Gene ID for UniProt protein P04637?"
+   - Method: togoid_convertId
+   - Knowledge Required: None
+   - Category: Integration
+   - Difficulty: Easy
+   - Expected Answer: 7157
 
-### Distinction Between MIE Examples and Real Data
-- **MIE examples** (P04637, P86925, P17612): Used to illustrate schema patterns
-- **Real discoveries** (P38398/BRCA1, Q99ZW2/SpCas9, P01308/insulin): Found via actual searches
-- Questions should focus on real discoveries requiring database queries, not MIE examples
-- For questions, use proteins discovered through search_uniprot_entity, not those listed in MIE file
+2. "What is the NCBI Gene ID for UniProt protein P38398?"
+   - Method: togoid_convertId
+   - Knowledge Required: None
+   - Category: Integration
+   - Difficulty: Easy
+   - Expected Answer: 672
 
-### Database Quality Tiers
-- **Swiss-Prot (reviewed=1)**: Expert manual curation, >90% functional annotation completeness
-- **TrEMBL (reviewed=0)**: Automated annotation, ~20-30% functional completeness
-- **Always specify reviewed=1** in questions for reliable, high-quality data
+3. "What PDB structures are available for UniProt protein P04637?"
+   - Method: togoid_convertId (or SPARQL)
+   - Knowledge Required: None (togoid) or minimal (SPARQL)
+   - Category: Integration
+   - Difficulty: Easy
+   - Expected Answer: 258 structures
+
+---
+
+## Integration Patterns Summary
+
+**This Database as Source**:
+- → Rhea: via up:enzyme (EC numbers)
+- → PDB: via rdfs:seeAlso (structure links)
+- → NCBI Gene: via togoid (ID conversion)
+- → GO: via up:classifiedWith (functional annotation)
+- → Reactome: via rdfs:seeAlso (pathway links)
+
+**This Database as Target**:
+- NCBI Gene →: via togoid (ID conversion)
+- PDB →: via rdfs:seeAlso reverse lookup
+
+**Complex Multi-Database Paths**:
+- UniProt → Rhea → ChEBI: Proteins to reactions to compounds
+- UniProt → GO → MONDO: Proteins to functions to diseases
+- UniProt → PDB → ligands: Proteins to structures to bound compounds
+
+---
+
+## Lessons Learned
+
+### What Knowledge is Most Valuable
+
+1. **reviewed=1 filter is non-negotiable** - Every query needs this
+2. **bif:contains property path incompatibility** - Must always split paths
+3. **Explicit GRAPH clauses** - Essential for multi-graph queries
+4. **Pre-filtering before joins** - Dramatically improves cross-database performance
+5. **Graph URI locations** - Must know exact URIs from MIE file
+
+### Common Pitfalls Discovered
+
+1. Missing reviewed=1 causes timeout even for simple queries
+2. Property path with bif:contains causes silent 400 error
+3. Cross-database queries without pre-filtering time out
+4. COUNT queries on large datasets need filtering
+
+### Recommendations for Question Design
+
+1. Focus on questions that require reviewed=1 understanding
+2. Include text search questions that need property path splitting
+3. Cross-database questions with Rhea are most valuable
+4. Include simple search questions for contrast (don't need MIE)
+5. Performance-critical COUNT questions demonstrate MIE value clearly
+
+### Performance Notes
+
+- Cross-database queries: 2-6 seconds with proper filtering
+- Single-database with reviewed=1: <2 seconds
+- COUNT with reviewed=1: ~2 seconds
+- Three-way joins: 4-6 seconds with LIMIT
+
+---
+
+## Notes and Observations
+
+- UniProt's data quality difference between reviewed (Swiss-Prot) and unreviewed (TrEMBL) is massive
+- The shared SIB endpoint with Rhea is extremely valuable for enzyme-reaction queries
+- GO term queries require understanding of multiple graphs within UniProt
+- Cross-reference patterns (rdfs:seeAlso) are powerful but need URL filtering
+- bif:contains with relevance scoring (option score ?sc) enables ranked results
+
+---
+
+## Next Steps
+
+**Recommended for Question Generation**:
+- Priority: Cross-database UniProt-Rhea queries (demonstrate MIE value)
+- High value: Text search questions requiring property path splitting
+- Important: Performance-critical COUNT questions
+- For contrast: Simple search tool queries
+
+**Avoid**:
+- Questions that work equally well without MIE knowledge
+- Overly complex queries that require >10 seconds
+
+**Focus areas**:
+- Human proteins (most relevant to researchers)
+- Enzyme-reaction relationships
+- Functional annotation text search
+- GO term integration
+
+---
+
+**Session Complete - Ready for Next Database**
+
+```
+Database: UniProt
+Status: ✅ COMPLETE
+Report: /evaluation/exploration/uniprot_exploration.md
+Patterns Tested: 5 major patterns
+Questions Identified: ~25 complex, ~10 simple
+Integration Points: Rhea (primary), GO, PDB, NCBI Gene
+Key Discovery: reviewed=1 and bif:contains property path splitting are critical
+```

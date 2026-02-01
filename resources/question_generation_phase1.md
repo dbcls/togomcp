@@ -1,11 +1,38 @@
 # TogoMCP Question Generation - Phase 1: Database Exploration
+# REVISED VERSION - Natural Language Questions (No Tool References)
 
 ## Quick Reference
-- **Goal**: Thoroughly explore databases to prepare for question generation (DO NOT create questions yet)
+- **Goal**: Thoroughly explore ONE database per session, focusing on COMPLEX queries
+- **Workflow**: Explore → Report → STOP (continue next database in new session)
 - **Output**: Exploration reports in `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/`
-- **Token Management**: STOP at ~180K tokens (Opus 4.5 has 200K context). Quality over quantity.
-- **Key Focus**: Biological/scientific content, not IT infrastructure
-- **Anti-Trivial**: Find facts requiring actual queries, not just MIE file reading
+- **Key Focus**: Complex query patterns, cross-database connections, performance-critical queries
+- **CRITICAL**: Generated questions must sound natural - NO explicit tool/technology mentions
+- **No Rush**: Take time for thorough exploration - quality over speed
+
+---
+
+## IMPORTANT: Natural Language Question Principle
+
+⚠️ **Questions Must NOT Mention Technical Implementation** ⚠️
+
+The evaluation questions are designed to test whether TogoMCP can correctly interpret and answer researcher questions. Therefore, questions should be phrased naturally, as a biologist or researcher would ask them.
+
+**❌ AVOID in questions**:
+- "SPARQL", "query", "RDF", "triple"
+- "API", "endpoint", "tool", "function"
+- "MIE file", "schema", "ontology lookup"
+- "Full-text search", "bif:contains"
+- "ID conversion", "togoid", "cross-reference"
+- "GRAPH", "URI", "property path"
+- Database-specific technical terms (unless the researcher would naturally use them)
+
+**✅ NATURAL phrasing examples**:
+- Instead of "Use SPARQL to query UniProt for..." → "What human proteins are involved in..."
+- Instead of "Search using full-text search for..." → "Find proteins related to..."
+- Instead of "Convert UniProt ID to NCBI Gene ID using togoid..." → "What is the NCBI Gene ID for protein X?"
+- Instead of "Query the Rhea database API for..." → "What biochemical reactions involve..."
+
+**The technical details belong in the NOTES field, not in the question itself.**
 
 ---
 
@@ -31,111 +58,200 @@
 
 ## CRITICAL WORKFLOW RULE
 
-⚠️ **EXPLORE → REPORT → (EVERY 3: PROGRESS) → NEXT DATABASE** ⚠️
+⚠️ **ONE DATABASE PER SESSION** ⚠️
 
-**DO THIS**:
-1. Explore database #1
-2. **IMMEDIATELY write report for database #1**
-3. Explore database #2
-4. **IMMEDIATELY write report for database #2**
-5. Explore database #3
-6. **IMMEDIATELY write report for database #3**
-7. **SAVE PROGRESS REPORT** (checkpoint: 3 databases done)
-8. Explore database #4
-9. **IMMEDIATELY write report for database #4**
-10. Explore database #5
-11. **IMMEDIATELY write report for database #5**
-12. Explore database #6
-13. **IMMEDIATELY write report for database #6**
-14. **SAVE PROGRESS REPORT** (checkpoint: 6 databases done)
-15. Continue pattern...
+**Session Workflow**:
+1. Choose ONE unexplored database
+2. Thoroughly explore that database (no rushing)
+3. Create detailed exploration report
+4. **STOP - End session**
+5. Next session: Continue with next database
 
-**DO NOT DO THIS**:
-1. Explore database #1
-2. Explore database #2
-3. Explore database #3
-4. Try to write all reports ❌ (will hit token limit!)
-5. No progress checkpoints ❌ (can't resume if interrupted!)
+**Why One Database Per Session?**
+- Allows thorough, unhurried exploration
+- Prevents context overflow
+- Ensures high-quality documentation
+- Makes progress trackable and resumable
+- Avoids fatigue-induced errors
 
-**Why**: 
-- Writing reports immediately prevents token overflow and captures findings while fresh
-- Progress checkpoints every 3 databases enable resuming if interrupted
-- Regular saves protect against context limit or session issues
+**Progress Tracking**:
+- Each completed exploration creates a `[dbname]_exploration.md` file
+- Check `/evaluation/exploration/` directory to see what's done
+- Pick next unexplored database from the list
 
 ---
 
-## Exploration Workflow
+## Focus: Questions That Require Deep Database Knowledge
 
-For EACH database that needs exploration:
+### Primary Goal: Find Queries That Need Expert Knowledge
 
-### 1. Read MIE File
-- Call `get_MIE_file(dbname)`
-- Study the ShEx schema (properties, relationships)
-- Review RDF examples (data patterns)
-- Study ALL SPARQL query examples
-- **CRITICAL**: MIE examples are for learning query patterns - NOT for direct use in questions
-  * Don't create questions that just reproduce MIE SPARQL queries
-  * Don't use the same entities shown in MIE examples
-  * Adapt query patterns to find DIFFERENT, real entities
+The purpose of this exploration is to identify question patterns that:
+1. **Cannot be answered** without understanding the database structure
+2. **Will fail or produce wrong results** without optimization
+3. **Require specific knowledge** of how databases connect
+4. **Demonstrate the complexity** of real biological research questions
 
-### 2. Explore Content (Go Beyond MIE Examples!)
+### What Makes a Question "Complex"?
 
-**CRITICAL**: Don't just read MIE files—actually query the database!
+✅ **COMPLEX (Focus on these)**:
 
-Run at least:
-- **5 search queries** using `search_*` functions to find REAL entities
-- **3 SPARQL queries** adapted from MIE examples but using DIFFERENT entities
-- Try variations to understand data scope and diversity
-- Look for specific, interesting entities NOT mentioned in MIE file
+**Cross-Database Questions**
+- Questions spanning 2+ databases requiring knowledge of:
+  * How entities relate across databases
+  * What information exists in each database
+  * How to efficiently combine information
+- Example: "Which human enzymes catalyze reactions that involve ATP?"
+  (Needs: protein database + reaction database + compound database)
 
-**Example - BAD (trivial)**:
-- MIE shows example: "UniProt:P12345"
-- Question: "What is the organism for UniProt:P12345?" ❌ (just reading MIE)
+**Questions Requiring Optimization**
+- Questions on large datasets requiring:
+  * Efficient filtering strategies
+  * Proper ordering of conditions
+- Example: "How many human kinases have autophagy-related annotations?"
+  (Large dataset needs smart filtering)
 
-**Example - GOOD (requires query)**:
-- Run search: `search_uniprot_entity("BRCA1 human")`
-- Find real ID: P38398
-- Question: "What is the UniProt ID for human BRCA1?" ✅ (requires actual lookup)
+**Questions with Known Pitfalls**
+- Questions where naive approaches fail:
+  * Text search combined with complex conditions
+  * Missing scope specifications causing wrong results
+  * Inefficient ordering causing timeouts
+- Example: "Find proteins whose description mentions 'membrane receptor'"
+  (Text search has specific requirements)
 
-### 3. Document Cross-References (CRITICAL)
+**Questions Requiring Structural Knowledge**
+- Questions needing understanding of data organization:
+  * Multiple data sections per database
+  * Relationships between data types
+  * Correct scoping of queries
+- Example: "Find publications cited in UniProt entries about TP53"
+  (Publications stored separately from main protein data)
 
-When exploring mappings between databases, distinguish:
+❌ **SIMPLE (De-emphasize these)**:
 
-**Entity Count** = Number of unique entities WITH mappings
-```sparql
-SELECT (COUNT(DISTINCT ?entity) as ?entity_count)
-WHERE { ?entity <mapping_property> ?target . }
+**Simple Entity Lookups**
+- Direct search for a single entity
+- Basic property retrieval
+- Simple counting without complex filtering
+- Example: "What is the UniProt ID for BRCA1?"
+
+**Straightforward Aggregations**
+- Simple counts without performance concerns
+- Basic grouping operations
+- Example: "How many proteins are in the database?"
+
+**Direct ID Lookups**
+- Questions using standard identifiers directly
+- Simple cross-references
+- Example: "What are the child terms of GO:0006914?"
+
+---
+
+## Thorough Exploration Workflow
+
+**Remember**: You have ONE database for this entire session. Take your time and be thorough.
+
+### 1. Study the Database Structure THOROUGHLY
+
+**CRITICAL**: Study these aspects in detail - don't rush:
+
+**Performance Considerations**:
+- Read ALL documented optimization strategies
+- Understand WHY each strategy is needed
+- Note which strategies apply to large datasets
+- Document pre-filtering techniques
+- Study how to organize complex queries
+- Example: UniProt has ~444M proteins - filtering order matters
+
+**Common Mistakes**:
+- Read EVERY documented error pattern
+- Understand the root cause of each error
+- Study the before/after examples carefully
+- Note syntax requirements and limitations
+- Document cross-database pitfalls
+- Example: Study why certain text searches fail
+
+**Example Queries**:
+- **Carefully study COMPLEX examples** (multi-database, filtered, optimized)
+- Understand what makes each query work
+- Note patterns you can reuse
+- Document which queries demonstrate:
+  * Cross-database connections
+  * Performance optimization
+  * Error avoidance
+  * Structural knowledge
+- **Skip trivial examples** quickly (they're less informative)
+
+**Data Model**:
+- Understand the key entity types
+- Note important properties and relationships
+- Understand the data organization
+
+### 2. Test Complex Query Patterns Extensively
+
+**CRITICAL**: Focus exploration on queries that demonstrate database knowledge value.
+
+**No Rush - Test Thoroughly**:
+- **At least 5 cross-database queries** (combining 2+ databases)
+- **At least 5 performance-critical queries** (large datasets with filtering)
+- **At least 5 queries using error-avoidance patterns**
+- **3-5 simple searches** for finding real entities (to confirm data exists)
+
+**Test Systematically**:
+- For each pattern type, try multiple variations
+- Document what works and what doesn't
+- Note performance differences
+- Record actual results and entities found
+
+**Document Everything**:
+- Which queries FAILED without proper knowledge
+- Which queries SUCCEEDED after applying correct patterns
+- Performance differences (timeout vs. X second response)
+- Error messages before pattern applied
+- Actual results and real entities found
+- Variations you tried and their outcomes
+
+### 3. Document Cross-Database Connection Patterns
+
+**Take Time to Explore Integration Thoroughly**:
+
+**Identify ALL Integration Opportunities**:
+- Which databases can be combined?
+- What are ALL the connecting relationships?
+- What information is needed from each?
+- What pre-filtering is required to avoid timeouts?
+- Are there multiple ways to connect these databases?
+
+**Test Multiple Integration Patterns**:
+- Try different connection points
+- Test different filtering strategies
+- Document which patterns work best
+- Note performance characteristics
+
+**Example**: Protein Database Integration Analysis:
+```
+Connection Opportunities:
+1. Proteins → Reactions (via enzyme classification)
+   - Relationship: enzyme activity
+   - Pre-filtering: reviewed proteins, organism filter
+   - Both databases needed
+
+2. Proteins → Structures (via cross-references)
+   - Relationship: structural data links
+   - Pre-filtering: reviewed recommended
+
+3. Proteins → Gene Ontology (via annotations)
+   - Relationship: functional classification
+   - Pre-filtering: ESSENTIAL for performance
+
+4. Proteins → Compounds (indirect via reactions)
+   - Path: Proteins → Reactions → Compounds
+   - Three-database combination
+   - Multiple filtering points needed
 ```
 
-**Relationship Count** = Total number of mapping relationships
-```sparql
-SELECT (COUNT(?target) as ?relationship_count)
-WHERE { ?entity <mapping_property> ?target . }
-```
+### 4. Create Comprehensive Exploration Report
 
-**Why both matter**: Some entities map to multiple targets
-- Example: 2,150 diseases have mappings (entity count)
-- Example: 2,341 total mappings exist (relationship count)
-- Questions can ask about either count—document BOTH
-
-**Mapping Distribution** (if entities have multiple mappings):
-```sparql
-SELECT ?mapping_count (COUNT(?entity) as ?entity_count)
-WHERE {
-  { SELECT ?entity (COUNT(?target) as ?mapping_count)
-    WHERE { ?entity <mapping_property> ?target . }
-    GROUP BY ?entity
-  }
-}
-GROUP BY ?mapping_count
-ORDER BY ?mapping_count
-```
-
-### 4. IMMEDIATELY Create Exploration Report (CRITICAL!)
-
-⚠️ **DO NOT WAIT - CREATE THE REPORT IMMEDIATELY AFTER EXPLORING EACH DATABASE** ⚠️
-
-**Why immediate**: Prevents token overflow, ensures findings are captured while fresh, allows continuation if stopped.
+**Take Your Time - This is the Output of Your Session**
 
 Save to: `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/[dbname]_exploration.md`
 
@@ -144,349 +260,338 @@ Save to: `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/[dbname]_ex
 ```markdown
 # [Database Name] Exploration Report
 
+**Date**: [Current date]
+**Session**: [Session number for this database]
+
+## Executive Summary
+[Brief overview of what you learned about this database]
+- Key capabilities requiring deep knowledge
+- Major integration opportunities
+- Most valuable patterns discovered
+- Recommended question types
+
 ## Database Overview
 - Purpose and scope
 - Key data types and entities
+- Dataset size and performance considerations
+- Available access methods
 
-## Schema Analysis (from MIE file)
-- Main properties
-- Important relationships
-- Query patterns
+## Structure Analysis
 
-## Search Queries Performed
-1. Query: [term] → Results: [summary of REAL entities found]
-2. Query: [term] → Results: [summary of REAL entities found]
-3. [etc., at least 5 total]
+### Performance Strategies
+[List and explain ALL key performance strategies]
+- Strategy 1: [Description]
+  * Why it's needed
+  * When to apply
+  * Performance impact
+- [List all strategies - don't skip any]
 
-**Note**: Document actual entities discovered, not just MIE examples
+### Common Pitfalls
+[List and explain ALL error patterns and solutions]
+- Error 1: [Pattern]
+  * Cause
+  * Symptoms
+  * Solution
+  * Example before/after
+- [List all documented errors]
 
-## SPARQL Queries Tested
-```sparql
-# Query 1: [purpose - adapted from MIE with different entities]
-[SPARQL query]
-# Results: [summary of REAL data returned]
-```
+### Data Organization
+[Comprehensive view of data structure]
+- Data section 1: [Description]
+  * Purpose
+  * Content type
+  * Usage notes
+- [Document all sections]
 
-[At least 3 queries with REAL results]
+### Cross-Database Integration Points
+[Comprehensive analysis of how this database connects to others]
 
-**CRITICAL - Using MIE SPARQL Examples Correctly:**
+**Integration 1: [Database A] → [Database B]**
+- Connection relationship: [describe]
+- Join point: [describe]
+- Required information from each: [list]
+- Pre-filtering needed: [describe]
+- Knowledge required: [list]
+- Example tested: [reference to pattern below]
 
-❌ **BAD - Direct Copy from MIE**:
-- MIE shows: `SELECT ?name WHERE { uniprot:P12345 up:recommendedName ?name }`
-- You document: "Query tested: Get name for P12345"
-- Problem: Just copied MIE example verbatim
+[Document ALL integration opportunities discovered]
 
-✅ **GOOD - Adapted with Real Entities**:
-- MIE shows: `SELECT ?name WHERE { ?protein up:recommendedName ?name }`
-- You run: `SELECT ?name WHERE { uniprot:Q99ZW2 up:recommendedName ?name }`
-- You document: "Query tested: Get protein name for SpCas9 (Q99ZW2), found via search"
-- Result: You discovered Q99ZW2 is a real entity worth documenting for questions
+## Complex Query Patterns Tested
 
-## Cross-Reference Analysis (if applicable)
-**Entity counts** (unique entities with mappings):
-- [Source] → [Target]: X entities have mappings
+[For EACH pattern tested, provide comprehensive documentation]
 
-**Relationship counts** (total mappings):
-- [Source] → [Target]: Y total mappings
+### Pattern 1: [Pattern Name] (e.g., "Performance-Critical Filtering")
 
-**Distribution** (if one-to-many):
-- Z entities with 1 mapping
-- Z entities with 2 mappings
-- Z entities with 3+ mappings
+**Purpose**: [What biological/scientific question this answers]
 
-## Interesting Findings
+**Category**: [e.g., Performance-Critical, Error Avoidance, Cross-Database]
 
-**Focus on discoveries requiring actual database queries:**
+**Naive Approach (without proper knowledge)**:
+[Describe what happens without expert knowledge]
 
-✅ **GOOD (non-trivial)**:
-- "Found 2,150 NANDO diseases with MONDO mappings (requires COUNT query)"
-- "BRCA1 (UniProt P38398) has 15 PDB structures (requires cross-database lookup)"
-- "Kinase inhibitors in ChEMBL with IC50 < 100 nM: 347 compounds (requires filtering)"
-- "Most common resistance mechanism in AMR Portal: efflux pump (requires aggregation)"
+**What Happened**:
+- Error message: [exact error if any]
+- Timeout: [yes/no, after how long]
+- Other issues: [describe]
+- Why it failed: [explain root cause]
 
-❌ **BAD (trivial - just reading MIE)**:
-- "Example entity in MIE: UniProt:P12345" (no query needed)
-- "MIE shows this SPARQL pattern works" (just documentation)
-- "Database has organism property" (schema info, not data)
+**Correct Approach (using proper pattern)**:
+[Describe the working approach]
 
-**Document**:
-- Specific entities found through searches (NOT MIE examples)
-- Unique properties/patterns discovered through queries
-- Database connections requiring real lookups
-- Verifiable facts from actual data (not MIE metadata)
+**What Knowledge Made This Work**:
+- Key Insights:
+  * [Insight 1]
+  * [Insight 2]
+- Performance improvement: [X seconds vs timeout/error]
+- Why it works: [explain mechanism]
 
-## Question Opportunities by Category
+**Results Obtained**:
+- Number of results: [N]
+- Sample results:
+  * Result 1: [entity ID and description]
+  * Result 2: [entity ID and description]
+- Data quality observations: [any notes]
 
-**FOCUS ON BIOLOGICAL CONTENT** ✅
-- Biological entities (proteins, genes, diseases, compounds)
-- Scientific properties (sequences, structures, molecular weights)
-- Research-relevant metadata (clinical significance, resistance)
-- Methodology when interpretation-critical (AST methods, resolution)
+**Natural Language Question Opportunities**:
+[List 2-3 potential evaluation questions - phrased NATURALLY]
+1. "[Natural question text - no technical terms]" - Category: [category]
+2. "[Natural question text - no technical terms]" - Category: [category]
 
-**FOCUS ON EXPERT-RELEVANT QUESTIONS** ✅
-Ask: "Would a real biologist/biomedical researcher actually want to know this?"
+---
 
-Examples of expert-relevant questions:
-- ✅ "What is the IC50 of imatinib for EGFR?" (drug development)
-- ✅ "How many pathogenic BRCA1 variants are in ClinVar?" (clinical genetics)
-- ✅ "What resistance mechanisms are most common for E. coli?" (epidemiology)
-- ✅ "Which kinases are targeted by approved drugs in ChEMBL?" (pharmacology)
+[Continue for ALL patterns tested - aim for at least 10-15 patterns]
 
-Examples of non-expert questions (technically valid but not realistic):
-- ⚠️ "What is the 15th protein alphabetically in UniProt?" (arbitrary, no research value)
-- ⚠️ "How many proteins have IDs starting with 'Q'?" (ID trivia, not biology)
-- ⚠️ "What is the shortest protein name in the database?" (curiosity, not research)
-- ⚠️ "Which database has the most entries?" (comparison trivia, not science)
+---
 
-**AVOID INFRASTRUCTURE METADATA** ❌
-- Database versions/release numbers
-- Software tools (unless methodology-critical)
-- Administrative metadata
-- Pure IT infrastructure
+## Simple Queries Performed
 
-**AVOID STRUCTURAL METADATA** ❌
-- Classification system codes (MeSH tree numbers, ICD codes) - ask about the diseases/concepts themselves, not their organizational codes
-- Namespace prefixes or URI patterns
-- Property names or relationship types
-- Schema structure questions
-- Structural/organizational metadata (tree numbers, classification codes, namespace prefixes)
-- Database schema details (property names, relationship types)
+[Brief documentation of simple queries used to find real entities]
 
-**AVOID TRIVIAL QUERIES** ❌
-- Questions answerable by reading MIE file
-- Questions using only example entities from MIE
-- Questions about schema structure (not real data)
+**Purpose**: Identify real entities for use in evaluation questions
 
-### Suggested Questions:
+1. Search: "[term]"
+   - Found: [ID] - [Name/Description]
+   - Usage: [What question types this entity could support]
 
-**Precision**: Specific IDs, measurements, sequences (for REAL entities)
-- ✅ "What is the UniProt ID for human BRCA1?" (requires search)
-- ❌ "What is the organism for UniProt:P12345?" (P12345 is from MIE example)
+[Document 5-10 searches - enough to have diverse entity examples]
 
-**Completeness**: Entity counts, comprehensive lists (from actual queries)
-- ✅ "How many kinase structures in PDB?" (requires COUNT query)
-- ✅ "How many proteins HAVE GO annotations?" (entity count from query)
-- ❌ "How many example queries are in the MIE file?" (just counting docs)
+---
 
-**Integration**: Cross-database linking, ID conversions (for real lookups)
-- ✅ "Convert UniProt P38398 to NCBI Gene ID" (requires togoid or cross-db query)
-- ❌ "What properties link to other databases?" (schema info)
+## Question Generation Opportunities
 
-**Currency**: Recent biological discoveries, updated classifications
-- ✅ "What COVID-19 pathways added to Reactome in 2024?" (requires date filtering)
-- ❌ "What is the current database version?" (infrastructure metadata)
+### Priority 1: Complex Questions (HIGH VALUE)
 
-**Specificity**: Rare diseases, specialized organisms, niche compounds
-- ✅ "What is the NANDO ID for Fabry disease?" (requires search for real disease)
-- ❌ "What is an example rare disease in NANDO?" (trivial if MIE shows example)
+**Cross-Database Questions**:
+[List question opportunities - ALL phrased naturally without technical terms]
 
-**Structured Query**: Complex biological queries, multiple criteria
-- ✅ "Find kinase inhibitors with IC50 < 100 nM" (requires filtering real data)
-- ✅ "Find diseases mapping to exactly 2 MONDO IDs" (requires aggregation)
-- ❌ "Show example of SPARQL query with FILTER" (just documentation)
+1. "[Natural question: e.g., 'Which human enzymes catalyze reactions involving ATP?']"
+   - Databases involved: [A, B, (C)]
+   - Knowledge Required: [list what needs to be known - for notes field]
+   - Category: [Structured Query / Integration]
+   - Difficulty: [Easy/Medium/Hard]
+   - Pattern Reference: [Link to pattern tested above]
 
-## Notes
-- Limitations or challenges
-- Best practices for querying
-- Important clarifications about counts
-- Distinction between MIE examples and real data findings
+2. "[Another natural question]"
+   - [Same structure]
+
+[List 10-15 integration question opportunities - all natural language]
+
+**Performance-Critical Questions**:
+1. "[Natural question requiring optimization]"
+   - Database: [name]
+   - Knowledge Required: [specific strategies needed - for notes field]
+   - Category: [Completeness / Structured Query]
+   - Difficulty: [Easy/Medium/Hard]
+   - Pattern Reference: [Link to pattern tested above]
+
+[List 8-12 performance question opportunities]
+
+**Error-Avoidance Questions**:
+1. "[Natural question that triggers common pitfall]"
+   - Database: [name]
+   - Knowledge Required: [specific solution needed - for notes field]
+   - Category: [Structured Query]
+   - Difficulty: [Medium/Hard]
+   - Pattern Reference: [Link to pattern tested above]
+
+[List 5-8 error-avoidance question opportunities]
+
+**Complex Filtering Questions**:
+1. "[Natural question with multiple criteria]"
+   - Database: [name]
+   - Knowledge Required: [filtering strategies - for notes field]
+   - Category: [Structured Query / Completeness]
+   - Difficulty: [Medium/Hard]
+   - Pattern Reference: [Link to pattern tested above]
+
+[List 8-10 complex filtering opportunities]
+
+### Priority 2: Simple Questions (For Coverage & Contrast)
+
+**Entity Lookup Questions**:
+1. "[Simple natural question: e.g., 'What is the UniProt ID for human BRCA1?']"
+   - Method: [simple search]
+   - Knowledge Required: None (straightforward)
+   - Category: [Entity Lookup]
+   - Difficulty: [Easy]
+
+[List 5-8 simple lookup opportunities]
+
+**ID Mapping Questions**:
+1. "[Natural ID mapping question: e.g., 'What is the NCBI Gene ID for UniProt P04637?']"
+   - Method: [ID conversion]
+   - Knowledge Required: None
+   - Category: [ID Mapping]
+   - Difficulty: [Easy]
+
+[List 3-5 ID conversion opportunities]
+
+---
+
+## Integration Patterns Summary
+
+**This Database as Source**:
+[Which databases can receive data FROM this database]
+- → Database 1: [via what relationship]
+- → Database 2: [via what relationship]
+
+**This Database as Target**:
+[Which databases provide data TO this database]
+- Database 1 →: [via what relationship]
+- Database 2 →: [via what relationship]
+
+**Complex Multi-Database Paths**:
+[3+ database integration opportunities]
+- Path 1: [DB A] → [This DB] → [DB C]: [use case]
+- Path 2: [DB D] → [This DB] → [DB E]: [use case]
+
+---
+
+## Lessons Learned
+
+### What Knowledge is Most Valuable
+[Reflect on which aspects were most useful]
+1. [Insight 1]
+2. [Insight 2]
+
+### Common Pitfalls Discovered
+[What mistakes did you make and learn from?]
+1. [Pitfall 1]
+2. [Pitfall 2]
+
+### Recommendations for Question Design
+[Based on your exploration, what makes good NATURAL questions for this database?]
+1. [Recommendation 1]
+2. [Recommendation 2]
+
+### Performance Notes
+[What did you learn about query performance?]
+- [Note 1]
+- [Note 2]
+
+---
+
+## Notes and Observations
+
+[Any additional notes, surprises, or observations]
+- [Observation 1]
+- [Observation 2]
+
+---
+
+## Next Steps
+
+**Recommended for Question Generation**:
+- Priority questions: [list 3-5 highest priority question types]
+- Avoid: [any question types that don't work well]
+- Focus areas: [key topics this database handles well]
+
+**Further Exploration Needed** (if any):
+- [Any areas you didn't have time to explore fully]
+- [Any patterns you'd like to test more]
+
+---
+
+**Session Complete - Ready for Next Database**
 ```
 
 ---
 
-## Token Management
+## After Completing the Report
 
-**After EACH database (including report writing)**:
-- Check token usage
-- If approaching ~180K tokens → **STOP IMMEDIATELY and save progress**
-- Opus 4.5 has 200K context window; leave buffer for completion message
-- Do NOT rush through remaining databases
-- Quality over quantity
+**Before Ending Session**:
+1. ✅ Review the report for completeness
+2. ✅ Verify all patterns are documented
+3. ✅ Check that knowledge requirements are clearly identified (for notes field)
+4. ✅ Ensure integration opportunities are well-described
+5. ✅ **Confirm all question opportunities are phrased naturally (no technical terms)**
 
-**After EVERY 3 databases (or before token limit)**:
-- **Save progress report** to `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/00_PROGRESS.md`
-- Update counts of completed vs remaining databases
-- Document current token usage
-- This ensures continuity if exploration is interrupted
-
-**Workflow Pattern**:
+**Session Summary**:
 ```
-Database 1: Explore (10K tokens) + Report (3K tokens) = 13K used
-Database 2: Explore (12K tokens) + Report (4K tokens) = 16K used (29K total)
-Database 3: Explore (15K tokens) + Report (5K tokens) = 20K used (49K total)
-→ SAVE PROGRESS REPORT (1K tokens) = 50K total
-Database 4: Explore (10K tokens) + Report (3K tokens) = 13K used (63K total)
-Database 5: Explore (11K tokens) + Report (4K tokens) = 15K used (78K total)
-Database 6: Explore (14K tokens) + Report (4K tokens) = 18K used (96K total)
-→ SAVE PROGRESS REPORT (1K tokens) = 97K total
-...
-Check after each: Still under 180K? Continue : Stop and save final progress
+Database: [name]
+Status: ✅ COMPLETE
+Report: /evaluation/exploration/[dbname]_exploration.md
+Patterns Tested: [N]
+Questions Identified: [N]
+Integration Points: [N]
 ```
 
-**Why write reports immediately**:
-- Prevents accumulating too much context before documenting
-- Ensures findings are saved if token limit is hit
-- Allows accurate tracking of remaining capacity
-- Fresh memory = better reports
-
-**Why save progress every 3 databases**:
-- Provides checkpoint for resuming if interrupted
-- Documents momentum and patterns observed
-- Tracks token usage trends
-- Enables better session planning
-
-### When Stopping Early (or Every 3 Databases)
-
-**Update or Create**: `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/00_PROGRESS.md`
-
-**After every 3 databases OR when approaching token limit**, update this file:
-
-```markdown
-# Exploration Progress
-
-## Current Session - [Date]
-
-### Session Summary
-- Databases explored this session: [N]
-- Total databases completed: [X] of [Total]
-- Token usage: ~[Y]K / 200K (Opus 4.5)
-- Status: [In Progress / Paused / Complete]
-
-### Completed ([X] of [Total])
-- [database1] ✅ (Session [N])
-- [database2] ✅ (Session [N])
-- [database3] ✅ (Session [N])
-- [database4] ✅ (Session [N-1])
-- [etc.]
-
-### Remaining ([Y] remaining)
-- [database_a] ⏳
-- [database_b] ⏳
-- [etc.]
-
-### Session Notes
-- [Observations about explored databases]
-- [Patterns or challenges noticed]
-- [Token usage trends: databases averaging ~XK tokens each]
-- [Estimated remaining capacity: can fit ~N more databases]
-
-### Next Steps
-- [Which databases to prioritize next session]
-- [Any special considerations for remaining databases]
-```
-
-**Update frequency**:
-- ✅ After every 3rd database exploration
-- ✅ Before hitting token limit (~180K)
-- ✅ When ending a session (even if <3 databases done)
-
-**Why update regularly**:
-- Checkpoint progress for resuming
-- Track token usage patterns
-- Plan remaining work
-- Document insights while fresh
-
-**Then respond with**:
-```
-⏸️ EXPLORATION PAUSED - TOKEN LIMIT APPROACHING
-
-Explored [X] of [Y] databases in this session:
-✅ Completed: [list]
-⏳ Remaining: [list]
-
-All exploration reports saved to /Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/
-
-To continue: Run this prompt again. It will automatically skip completed databases.
-
-DO NOT proceed to question generation until ALL databases are explored.
-```
-
----
-
-## Completion (All Databases Explored)
-
-Create: `/Users/arkinjo/work/GitHub/togo-mcp/evaluation/exploration/00_SUMMARY.md`
-
-```markdown
-# Database Exploration Summary
-
-## Overview
-- Total databases explored: [N]
-- Total sessions: [N]
-
-## All Explored Databases
-[List with brief descriptions]
-
-## Database Coverage Plan for 120 Questions
-Recommended distribution based on:
-- Database richness (data diversity, not just schema size)
-- Unique content (findings not in other databases)
-- Integration opportunities (useful cross-database queries)
-
-Suggested allocation:
-- [database1]: ~[X] questions
-- [database2]: ~[Y] questions
-- [etc.]
-
-## Database Characteristics
-
-### Rich Content (good for multiple questions)
-- [databases with diverse, queryable data]
-
-### Specialized Content (good for specificity)
-- [databases with niche/unique data]
-
-### Well-Connected (good for integration)
-- [databases with useful cross-references]
-
-## Cross-Database Integration Opportunities
-[Multi-database question possibilities requiring actual lookups]
-
-## Recommendations
-- Insights for question generation
-- Databases that pair well for integration questions
-- Particularly interesting findings (from queries, not MIE)
-```
-
-**Then respond with**:
-```
-✅ EXPLORATION COMPLETE
-
-Explored ALL [N] databases:
-- [list]
-
-All exploration reports saved.
-Summary with coverage plan created.
-
-Ready for Phase 2: Question Generation.
-```
+**For Next Session**:
+- Check exploration directory for completed databases
+- Choose next unexplored database from the list
+- Start fresh with thorough exploration
 
 ---
 
 ## Important Reminders
 
 ✅ **DO**:
-- Thoroughly explore each database with REAL queries
-- **IMMEDIATELY write exploration report after each database (don't wait!)**
-- **Save progress report after every 3 databases** (checkpoint for resuming)
-- Document both entity and relationship counts for cross-references
-- Focus on biological/scientific content discovered through queries
-- Find actual entities (not just MIE examples)
-- Check token usage after each database + report
-- Stop when approaching token limit (~180K for Opus 4.5)
-- Preserve existing exploration reports across sessions
+- **Take your time - no rushing**
+- Focus on ONE database per session completely
+- Test complex queries extensively
+- Document wrong vs. correct approaches thoroughly
+- Test multiple variations of each pattern type
+- Identify ALL cross-database opportunities
+- Test error patterns and their solutions
+- Verify that complex queries fail WITHOUT proper knowledge
+- Write comprehensive exploration report before ending
+- **Phrase ALL question opportunities naturally (as a researcher would ask)**
+- Document technical details in the notes/knowledge-required sections
 
 ❌ **DON'T**:
-- Create questions yet (that's Phase 2)
-- Explore multiple databases before writing reports ❌ (will hit token limit!)
-- Skip progress checkpoints ❌ (can't resume efficiently!)
-- Just read MIE files and call it exploration
-- Document only example entities from MIE
-- Focus on database versions or IT metadata
-- Rush through databases to finish
-- Continue past token limit
-- Suggest questions answerable from MIE alone
+- Try to explore multiple databases in one session
+- Rush through the exploration due to perceived time limits
+- Skip testing complex patterns
+- Ignore performance strategy sections
+- Miss cross-database integration opportunities  
+- Create incomplete reports to "save time"
+- Move to next database before report is complete
+- **Include technical terms (SPARQL, API, MIE, etc.) in question text**
+- **Phrase questions in implementation-focused language**
 
 ---
 
-**Begin by checking for existing exploration reports, then proceed with thorough exploration using REAL database queries. WRITE EACH REPORT IMMEDIATELY after exploring that database. SAVE PROGRESS after every 3 databases.**
+## Natural Language Question Examples
+
+**GOOD (Natural) vs BAD (Technical)**:
+
+| ❌ BAD (Technical) | ✅ GOOD (Natural) |
+|-------------------|-------------------|
+| "Use SPARQL to find proteins with GO annotation GO:0006914" | "Which human proteins are involved in autophagy?" |
+| "Query the Rhea database API for reactions with ATP" | "What biochemical reactions involve ATP?" |
+| "Search UniProt using full-text search for 'kinase'" | "Find human proteins that function as kinases" |
+| "Convert P04637 to NCBI Gene ID using togoid" | "What is the NCBI Gene ID for UniProt protein P04637?" |
+| "Execute a cross-database join between UniProt and PDB" | "Which human proteins have 3D structures available?" |
+| "Query the citations graph in UniProt" | "What research papers cite UniProt entry P53_HUMAN?" |
+| "Use MIE performance strategy to count proteins" | "How many human enzymes are annotated in UniProt?" |
+| "Apply bif:contains to search annotation text" | "Find proteins described as 'membrane receptors'" |
+
+**The technical details should go in the NOTES field, explaining:**
+- What databases/tools are needed
+- What knowledge is required
+- What approach works vs. fails
+- Performance considerations
+
+---
+
+**Begin by checking for existing exploration reports, then select ONE database to explore thoroughly. Test complex queries that fail without proper knowledge and succeed with it. Create a comprehensive report with NATURALLY-PHRASED question opportunities before ending the session. Quality over speed.**

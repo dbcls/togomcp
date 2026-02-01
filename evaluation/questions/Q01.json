@@ -1,86 +1,86 @@
 [
   {
     "id": 1,
-    "category": "Precision",
-    "question": "What is the UniProt accession ID for the CRISPR-associated endonuclease Cas9 from Streptococcus pyogenes serotype M1?",
-    "expected_answer": "Q99ZW2",
-    "notes": "Database: UniProt. Tests precise protein identification. SpCas9 is the most widely used Cas9 variant in genome editing. Found via search_uniprot_entity('SpCas9 Streptococcus pyogenes'). Verified in uniprot_exploration.md. Requires actual search, not in MIE examples. Expert-relevant: Essential for CRISPR research and gene therapy applications."
+    "category": "Structured Query",
+    "question": "Which human enzymes catalyze reactions that involve ATP as a substrate?",
+    "expected_answer": "List of UniProt protein IDs with their names and associated Rhea reaction IDs, such as P09979 (Hygromycin-B 7''-O-kinase), Q9D5J6 (Sedoheptulokinase), P54645 (AMP-activated protein kinase)",
+    "notes": "COMPLEX QUERY requiring cross-database knowledge.\n\nDatabases/Resources: UniProt (proteins/enzymes), Rhea (biochemical reactions)\n\nKnowledge Required:\n- UniProt and Rhea GRAPH URIs on shared SIB endpoint\n- Pre-filtering with up:reviewed 1 essential (444M vs 923K proteins)\n- EC number linkage via up:enzyme and rhea:ec\n- bif:contains for ATP search in reaction equations\n- rhea:status rhea:Approved for quality reactions\n\nWithout proper knowledge: Query times out processing entire protein database before filtering.\n\nVerified in uniprot_exploration.md Pattern 1 and rhea_exploration.md Pattern 1."
   },
   {
     "id": 2,
-    "category": "Precision",
-    "question": "What is the MONDO disease ontology identifier for Fabry disease?",
-    "expected_answer": "MONDO:0010526",
-    "notes": "Database: MONDO. Tests rare disease identification in ontology databases. Fabry disease is a lysosomal storage disorder (alpha-galactosidase A deficiency). Found via OLS4 searchClasses. Verified in mondo_exploration.md. Requires database lookup; baseline cannot provide specific ontology IDs. Expert-relevant: Critical for orphan drug development and clinical genetics research."
+    "category": "Structured Query",
+    "question": "Find human proteins whose recommended name contains the word 'kinase'.",
+    "expected_answer": "List of human kinase proteins such as Q9FIZ3 (LRR receptor-like serine/threonine-protein kinase GSO2), Q04982 (Serine/threonine-protein kinase B-raf), and many others",
+    "notes": "COMPLEX QUERY requiring error-avoidance knowledge.\n\nDatabases/Resources: UniProt\n\nKnowledge Required:\n- Property path splitting for bif:contains (critical)\n- bif:contains cannot be combined with property paths like up:recommendedName/up:fullName\n- Must split into: up:recommendedName ?name . ?name up:fullName ?fullName\n- up:reviewed 1 filter for performance\n- Organism filter for human proteins\n\nWithout proper knowledge: Query fails with 400 Bad Request error due to bif:contains incompatibility with property paths.\n\nVerified in uniprot_exploration.md Pattern 2 (bif:contains with Split Property Path)."
   },
   {
     "id": 3,
-    "category": "Completeness",
-    "question": "How many reviewed (Swiss-Prot) human proteins are annotated in UniProt?",
-    "expected_answer": "40,209 reviewed human proteins",
-    "notes": "Database: UniProt. Tests ability to count high-quality curated entries. Requires COUNT query with reviewed=1 and organism filters. Verified in uniprot_exploration.md via SPARQL COUNT query. Entity count (proteins). Baseline cannot provide exact current counts. Expert-relevant: Establishes scope of expertly curated human proteome for systematic analyses."
+    "category": "Integration",
+    "question": "What human proteins are involved in membrane transport and have associated biochemical reaction equations?",
+    "expected_answer": "List of human transport enzymes with their Rhea reaction equations, such as P54707 (Potassium-transporting ATPase alpha chain 2), P20648 (Potassium-transporting ATPase alpha chain 1)",
+    "notes": "COMPLEX QUERY requiring cross-database knowledge.\n\nDatabases/Resources: UniProt (proteins), Rhea (reactions)\n\nKnowledge Required:\n- rhea:isTransport 1 filter for transport reactions\n- Cross-database join via EC numbers\n- up:reviewed 1 filter essential\n- Organism filter for human proteins\n- Both GRAPH clauses required on shared SIB endpoint\n\nWithout proper knowledge: Query timeout or incorrect results from missing transport filter or reviewed filter.\n\nVerified in rhea_exploration.md Pattern 2 (Human Transport Enzyme Discovery)."
   },
   {
     "id": 4,
-    "category": "Completeness",
-    "question": "How many descendant terms does the Gene Ontology term 'autophagy' (GO:0006914) have?",
-    "expected_answer": "25 descendant terms",
-    "notes": "Database: GO. Tests ontology hierarchy navigation and counting. Requires OLS4 getDescendants query. Includes all subtypes like macroautophagy, microautophagy, etc. Verified in go_exploration.md. Entity count (GO terms). Requires database query, not documented in MIE. Expert-relevant: Essential for understanding the scope of autophagy-related processes in cell biology research."
+    "category": "Integration",
+    "question": "How can I map UniProt protein P04637 to its corresponding gene in NCBI Gene database?",
+    "expected_answer": "NCBI Gene ID 7157 (TP53 gene)",
+    "notes": "COMPLEX QUERY requiring ID conversion knowledge.\n\nDatabases/Resources: UniProt, NCBI Gene (via TogoID)\n\nKnowledge Required:\n- TogoID route configuration: 'uniprot,ncbigene'\n- Understanding of protein-to-gene relationship\n- Validation that mapping exists\n- Alternative SPARQL approach via UniProt cross-references\n\nWithout proper knowledge: Cannot determine correct route or alternative approaches.\n\nVerified in uniprot_exploration.md simple queries section and togoid documentation."
   },
   {
     "id": 5,
-    "category": "Integration",
-    "question": "What is the NCBI Gene ID corresponding to UniProt accession P04637?",
-    "expected_answer": "7157",
-    "notes": "Databases: UniProt, NCBI Gene. Tests cross-database ID conversion. P04637 is TP53 (tumor protein p53), one of the most important tumor suppressors. Requires togoid_convertId or cross-reference lookup. Verified in uniprot_exploration.md. Requires integration tools; baseline has limited cross-reference knowledge. Expert-relevant: Fundamental for integrating protein data with genomic and clinical information in cancer research."
+    "category": "Completeness",
+    "question": "How many reviewed human proteins are recorded in UniProt?",
+    "expected_answer": "40,209 reviewed human proteins",
+    "notes": "COMPLEX QUERY requiring performance knowledge.\n\nDatabases/Resources: UniProt\n\nKnowledge Required:\n- up:reviewed 1 filter is CRITICAL (reduces 444M to 923K)\n- Organism filter via taxonomy URI\n- Proper COUNT pattern\n\nWithout proper knowledge: Query times out trying to count all 444M proteins, or returns incorrect count including unreviewed proteins (313,564).\n\nVerified in uniprot_exploration.md Pattern 4 (Performance-Critical COUNT Query)."
   },
   {
     "id": 6,
-    "category": "Integration",
-    "question": "What is the ChEBI identifier for the immunosuppressive drug sirolimus (rapamycin)?",
-    "expected_answer": "CHEBI:9168",
-    "notes": "Database: ChEBI. Tests chemical entity identification across naming systems. Sirolimus/rapamycin is a macrolide with immunosuppressive and anti-cancer properties. Found via OLS4 searchClasses in ChEBI ontology. Verified in chebi_exploration.md. Requires database search; baseline may know the drug but not specific ontology ID. Expert-relevant: Essential for drug mechanism studies and repurposing analyses."
+    "category": "Completeness",
+    "question": "How many descendant terms does the Gene Ontology term 'autophagy' (GO:0006914) have?",
+    "expected_answer": "25 descendant terms",
+    "notes": "SIMPLE QUERY - Straightforward ontology navigation via API.\n\nMethod: OLS4 getDescendants API for GO:0006914\n\nDemonstrates when baseline ontology tools suffice without complex SPARQL.\n\nVerified in go_exploration.md simple queries section."
   },
   {
     "id": 7,
-    "category": "Currency",
-    "question": "How many protein structure entries are currently available in the PDB for CRISPR Cas9?",
-    "expected_answer": "461 structures",
-    "notes": "Database: PDB. Tests access to current structural biology data. Requires search_pdb_entity with 'CRISPR Cas9' query. Number may increase as new structures are deposited. Verified in pdb_exploration.md. Baseline knowledge frozen at training cutoff; current count requires database access. Expert-relevant: Guides structure-based drug design and mechanistic studies of genome editing."
+    "category": "Specificity",
+    "question": "What genetic variants are associated with diabetes mellitus?",
+    "expected_answer": "List of ClinVar variants associated with diabetes mellitus, including variants in genes such as INS, WFS1, KCNJ11, GCK",
+    "notes": "COMPLEX QUERY requiring cross-database knowledge.\n\nDatabases/Resources: ClinVar, MedGen\n\nKnowledge Required:\n- URI conversion between MedGen (www.ncbi.nlm.nih.gov) and ClinVar (ncbi.nlm.nih.gov)\n- REPLACE function for URI pattern conversion\n- VALUES pre-filtering for performance\n- Property path through dct:references → rdfs:seeAlso\n\nWithout proper knowledge: Query returns 0 results due to URI namespace mismatch between databases.\n\nVerified in clinvar_exploration.md Pattern 2 (MedGen Disease Integration)."
   },
   {
     "id": 8,
-    "category": "Currency",
-    "question": "How many biomedical articles about mRNA vaccines are indexed in PubMed?",
-    "expected_answer": "Current count (verify at query time)",
-    "notes": "Database: PubMed. Tests access to current literature. mRNA vaccines are a rapidly evolving field post-COVID-19. Requires PubMed search_articles with 'mRNA vaccine' query. Count increases continuously with new publications. Verified in pubmed_exploration.md. Baseline frozen at Jan 2025; current literature requires database. Expert-relevant: Tracks research momentum in vaccine technology and identifies emerging trends."
+    "category": "Specificity",
+    "question": "What is the MONDO disease ontology identifier for Fabry disease?",
+    "expected_answer": "MONDO:0010526",
+    "notes": "SIMPLE QUERY - Straightforward ontology term lookup.\n\nMethod: OLS4 searchClasses for 'Fabry disease' in MONDO ontology\n\nDemonstrates when basic ontology search tools suffice.\n\nVerified in example_questions.json question 2."
   },
   {
     "id": 9,
-    "category": "Specificity",
-    "question": "What is the MeSH descriptor ID for Niemann-Pick disease?",
-    "expected_answer": "D009542",
-    "notes": "Database: MeSH. Tests retrieval of medical terminology for rare lysosomal storage disorder. Found via search_mesh_descriptor('Niemann-Pick'). Verified in mesh_exploration.md. Requires database search; baseline unlikely to know specific MeSH IDs for rare diseases. Expert-relevant: Essential for systematic literature reviews and clinical trial recruitment in rare disease research."
+    "category": "Currency",
+    "question": "What pathogenic variants were recently added to ClinVar?",
+    "expected_answer": "List of recently submitted pathogenic variants with their genes and dates, examples include variants in BTK, GRN, PAX2, PKD1 genes",
+    "notes": "COMPLEX QUERY requiring date filtering knowledge.\n\nDatabases/Resources: ClinVar\n\nKnowledge Required:\n- Date filtering with cvo:date_created >= date\n- Property path for clinical significance\n- record_status 'current' filter\n- xsd:date type for date comparison\n\nWithout proper knowledge: Incorrect date comparisons or missing significance path.\n\nVerified in clinvar_exploration.md Pattern 7 (Recently Updated Variants)."
   },
   {
     "id": 10,
-    "category": "Specificity",
-    "question": "What is the NANDO identifier for Parkinson's disease as designated in the Japanese intractable disease database?",
-    "expected_answer": "NANDO:1200010",
-    "notes": "Database: NANDO. Tests access to specialized Japanese rare disease database. Parkinson's is designated as an intractable disease in Japan. Requires NANDO database query. Verified in nando_exploration.md. Requires specialized database; not in baseline knowledge. Expert-relevant: Critical for Japanese healthcare policy, clinical trial enrollment, and international rare disease data harmonization."
+    "category": "Currency",
+    "question": "What biochemical pathways in Reactome database involve mTOR signaling?",
+    "expected_answer": "Multiple pathways including mTOR signaling, nutrient sensing, autophagy regulation, and related signaling pathways",
+    "notes": "COMPLEX QUERY requiring pathway database knowledge.\n\nDatabases/Resources: Reactome\n\nKnowledge Required:\n- Reactome entity model for pathways\n- Species filtering for human pathways\n- Keyword search across pathway names and descriptions\n- Understanding of pathway hierarchy\n\nWithout proper knowledge: Cannot effectively filter or navigate pathway relationships.\n\nVerified through Reactome search capabilities and exploration."
   },
   {
     "id": 11,
-    "category": "Structured Query",
-    "question": "How many human kinases are annotated in Swiss-Prot (UniProt reviewed entries)?",
-    "expected_answer": "698 human kinases",
-    "notes": "Database: UniProt. Tests complex filtering with multiple criteria: (1) organism=human, (2) reviewed=1, (3) fullName contains 'kinase'. Requires SPARQL query with bif:contains text search. Verified in uniprot_exploration.md. Entity count (proteins). Baseline cannot perform this specific multi-criteria query. Expert-relevant: Quantifies major drug target class; kinases represent ~30% of current drug development efforts."
+    "category": "Precision",
+    "question": "What is the UniProt accession number for human tumor protein p53?",
+    "expected_answer": "P04637",
+    "notes": "SIMPLE QUERY - Straightforward protein lookup.\n\nMethod: search_uniprot_entity('human p53')\n\nDemonstrates when basic protein search tools suffice.\n\nVerified in uniprot_exploration.md simple queries section."
   },
   {
     "id": 12,
-    "category": "Structured Query",
-    "question": "What are the direct parent terms of the Gene Ontology term 'macroautophagy' (GO:0016236)?",
-    "expected_answer": "GO:0006914 (autophagy)",
-    "notes": "Database: GO. Tests ontology relationship navigation. Requires OLS4 getAncestors or hierarchical query to find immediate parent. Verified in go_exploration.md. Requires database query to navigate ontology structure; baseline has limited GO hierarchy knowledge. Expert-relevant: Essential for understanding biological process relationships in systems biology and pathway analysis."
+    "category": "Precision",
+    "question": "How many protein crystal structures in the PDB have resolution better than 2.0 Angstroms?",
+    "expected_answer": "77,877 X-ray structures with resolution < 2.0 Å",
+    "notes": "COMPLEX QUERY requiring numeric type conversion knowledge.\n\nDatabases/Resources: PDB\n\nKnowledge Required:\n- xsd:decimal() conversion CRITICAL - resolution stored as string\n- Without conversion, string comparison '1.5' < '2.0' fails silently returning 0 results\n- Must use FILTER(xsd:decimal(?resolution) > 0 && xsd:decimal(?resolution) < 2.0)\n- Experimental method filter for X-ray diffraction\n\nWithout proper knowledge: Query returns 0 results due to string vs numeric comparison failure.\n\nVerified in pdb_exploration.md Pattern 1 (Numeric Type Conversion for Resolution Filtering)."
   }
 ]

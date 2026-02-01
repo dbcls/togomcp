@@ -1,289 +1,650 @@
-# MONDO Exploration Report
+# MONDO (Monarch Disease Ontology) Exploration Report
+
+**Date**: January 31, 2026
+**Session**: 1 (Complete)
+
+## Executive Summary
+
+MONDO is a comprehensive disease ontology integrating multiple disease databases into a unified classification system. Key findings:
+
+- **Key capabilities requiring deep knowledge**: Cross-database integration with MeSH and NANDO, hierarchical disease classification queries, cross-reference database filtering
+- **Major integration opportunities**: MONDO ↔ MeSH (28% coverage), MONDO ↔ NANDO (84% coverage), three-way NANDO → MONDO → MeSH integration
+- **Most valuable patterns discovered**: bif:contains for full-text search with relevance scoring, pre-filtering strategies for cross-database queries, URI conversion for MeSH integration
+- **Recommended question types**: Cross-database disease mapping, hierarchical classification queries, rare disease lookups, clinical terminology integration
 
 ## Database Overview
-MONDO (Monarch Disease Ontology) is a comprehensive disease ontology containing 30,230 disease classes that integrates multiple disease classification systems into a unified framework. It provides extensive cross-references to 39+ external databases including OMIM, Orphanet, DOID, MeSH, ICD codes, UMLS, and NANDO, making it a central hub for disease information integration in clinical research and precision medicine. MONDO covers genetic disorders, infectious diseases, cancers, rare diseases, and common conditions with rich semantic relationships and multilingual synonyms.
 
-Key data types:
-- **Disease Classes**: Hierarchically organized disease concepts with labels, definitions, synonyms
-- **Cross-References**: Links to 39+ databases (OMIM 33%, Orphanet 34%, UMLS 70%, MeSH 28%, NANDO 8%)
-- **Hierarchical Relationships**: Parent-child classifications via rdfs:subClassOf
-- **Synonyms**: Exact and related alternative disease names (avg 2.8 per disease)
+- **Purpose and scope**: Comprehensive disease ontology providing unified classification across genetic disorders, infectious diseases, cancers, and rare diseases
+- **Key data types and entities**: Disease classes (owl:Class), hierarchical relationships (rdfs:subClassOf), cross-references (oboInOwl:hasDbXref), synonyms, definitions
+- **Dataset size**: 30,230 disease classes (30,304 total including obsolete)
+- **Performance considerations**: Full-text index via bif:contains (10-100x faster than REGEX), transitive hierarchy queries need specific starting points and LIMIT
+- **Available access methods**: SPARQL endpoint (primary), OLS4 API for keyword search
 
-## Schema Analysis (from MIE file)
+## Structure Analysis
 
-**Main Properties:**
-- `owl:Class`: Disease entities with unique identifiers (MONDO:XXXXXXX)
-- `rdfs:label`: Primary disease name (>99% coverage)
-- `oboInOwl:id`: MONDO identifier string (e.g., "MONDO:0010526")
-- `IAO:0000115`: Textual definition (~75% coverage)
-- `oboInOwl:hasExactSynonym`: Semantically equivalent alternative names
-- `oboInOwl:hasRelatedSynonym`: Broader/narrower alternative names
-- `oboInOwl:hasDbXref`: All external database cross-references (~90% coverage, avg 6.5 per disease)
-- `owl:deprecated`: Obsolete term marker
+### Performance Strategies
 
-**Important Relationships:**
-- `rdfs:subClassOf`: Hierarchical parent-child disease classifications (avg 1.2 parents per disease)
-- `rdfs:subClassOf+`: Transitive ancestor relationships for full lineage
-- Cross-references to OMIM (genetic), Orphanet (rare diseases), ICD (clinical codes), MeSH (medical terminology), NANDO (Japanese rare diseases)
+1. **Use bif:contains for label searches**
+   - Why: Leverages Virtuoso's full-text index and provides relevance scoring
+   - When: Any keyword search on labels or definitions
+   - Performance impact: 10-100x faster than REGEX/CONTAINS
 
-**Query Patterns:**
-- Keyword search via `bif:contains` with relevance scoring for disease names/synonyms
-- OLS4 API functions (searchClasses, fetch) for user-friendly searches with pagination
-- Hierarchical navigation using rdfs:subClassOf with FILTER(isIRI(?parent)) to exclude blank nodes
-- Cross-reference filtering with STRSTARTS(?xref, "PREFIX:") for database-specific links
-- Cross-database joining via URI conversion (BIND) and explicit GRAPH clauses
+2. **Pre-filter in source GRAPH before joins**
+   - Why: Reduces dataset from 30K diseases → ~10 before cross-database joins
+   - When: Any cross-database query with MeSH, NANDO, or GO
+   - Performance impact: 99.97% reduction in intermediate results
 
-## Search Queries Performed
+3. **Add FILTER(isIRI(?parent)) for hierarchy queries**
+   - Why: Excludes OWL restriction blank nodes from results
+   - When: Any query using rdfs:subClassOf
+   - Performance impact: Cleaner results, prevents confusion
 
-1. **Query: Fabry disease via OLS4** → Found MONDO:0010526 with comprehensive metadata including definition: "progressive, inherited, multisystemic lysosomal storage disease characterized by specific neurological, cutaneous, renal, cardiovascular, cochleo-vestibular and cerebrovascular manifestations." OLS4 search returned 20 cross-database matches.
+4. **Use LIMIT for transitive hierarchy queries**
+   - Why: rdfs:subClassOf* without constraints can timeout
+   - When: Any query with rdfs:subClassOf* or rdfs:subClassOf+
+   - Performance impact: Prevents timeout on unbounded queries
 
-2. **Query: Fabry disease cross-references** → Retrieved 5+ cross-references for MONDO:0010526 including NANDO:1200157, NANDO:2200563, OMIM:301500, UMLS:C0002986, DOID:14499, demonstrating multi-database integration.
+5. **Use URI conversion for MeSH cross-references**
+   - Why: MONDO stores MeSH refs as strings ("MESH:D######"), MeSH uses URIs
+   - When: Joining MONDO to MeSH database
+   - Example: `BIND(URI(CONCAT("http://id.nlm.nih.gov/mesh/", SUBSTR(?meshXref, 6))) AS ?meshDescriptor)`
 
-3. **Query: Parkinson disease OMIM links** → Found 10+ Parkinson disease subtypes (PD 3, 10, 11, 16, 17, 18, 21, 22, 24, 26) with OMIM cross-references ranging from OMIM:602404 to OMIM:620923, demonstrating genetic heterogeneity cataloging.
+### Common Pitfalls
 
-4. **Query: Fabry disease hierarchy** → Retrieved 2 parent classes: "developmental anomaly of metabolic origin" (MONDO:0015327) and "sphingolipidosis" (MONDO:0019255), showing multiple inheritance in disease classification.
+1. **Using FILTER CONTAINS instead of bif:contains**
+   - Cause: No full-text index, no relevance ranking
+   - Symptoms: Slow queries, no scoring
+   - Solution: Use `?label bif:contains "'keyword'" option (score ?sc)`
 
-5. **Query: Total disease count** → Confirmed 30,230 disease classes with labels in MONDO database (current version 2024).
+2. **Not filtering blank nodes in hierarchy queries**
+   - Cause: OWL restrictions appear as blank nodes
+   - Symptoms: Unexpected blank node results
+   - Solution: Add `FILTER(isIRI(?parent))`
 
-6. **Query: NANDO cross-references** → Found 10 diseases with NANDO links including Crohn disease, renal cell carcinoma, melanoma, type 2 diabetes mellitus, familial amyloid neuropathy, hepatocellular carcinoma, familial hypercholesterolemia - demonstrating MONDO's integration with Japanese rare disease database.
+3. **Unbounded transitive queries**
+   - Cause: `rdfs:subClassOf*` without starting point or LIMIT
+   - Symptoms: Query timeout
+   - Solution: Start from specific parent, add LIMIT
 
-## SPARQL Queries Tested
+4. **Cross-database query timeout**
+   - Cause: Missing pre-filtering, missing GRAPH clauses
+   - Symptoms: 60+ second timeout
+   - Solution: Apply filters within source GRAPH clause before join
 
-```sparql
-# Query 1: Search for rare genetic disorders - adapted for "Gaucher disease"
-PREFIX owl: <http://www.w3.org/2002/07/owl#>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+5. **Three-way query 400 errors**
+   - Cause: Multiple bif:contains in complex three-way queries
+   - Symptoms: 400 Bad Request error
+   - Solution: Use simplified CONTAINS instead of bif:contains for third database
 
-SELECT ?disease ?label ?mondoId ?xref
-FROM <http://rdfportal.org/ontology/mondo>
-WHERE {
-  ?disease a owl:Class ;
-    rdfs:label ?label ;
-    oboInOwl:id ?mondoId ;
-    oboInOwl:hasDbXref ?xref .
-  ?label bif:contains "'Gaucher'" option (score ?sc)
-  FILTER(STRSTARTS(?xref, "OMIM:") || STRSTARTS(?xref, "Orphanet:"))
-}
-ORDER BY DESC(?sc)
-LIMIT 10
-# Results: Found Gaucher disease types (MONDO:0018150, 0018651, 0018652) with OMIM:230800, Orphanet:355 cross-references
+### Data Organization
+
+1. **Disease Classes (owl:Class)**
+   - Purpose: Core disease entities
+   - Content: 30,230 active diseases
+   - Usage: Filter by MONDO_ prefix to exclude other ontology terms
+
+2. **Hierarchical Relationships (rdfs:subClassOf)**
+   - Purpose: Disease classification tree
+   - Content: Directed acyclic graph structure
+   - Usage: Use rdfs:subClassOf+ for ancestors, rdfs:subClassOf* includes self
+
+3. **Cross-References (oboInOwl:hasDbXref)**
+   - Purpose: Links to external databases
+   - Content: ~6.5 references per disease on average
+   - Coverage: 90% of diseases have cross-references
+   - Databases: OMIM (33%), Orphanet (34%), MeSH (28%), ICD codes, UMLS, etc.
+
+4. **Synonyms**
+   - Exact synonyms (oboInOwl:hasExactSynonym): Semantically equivalent
+   - Related synonyms (oboInOwl:hasRelatedSynonym): Broader/narrower meaning
+   - Coverage: ~85% of diseases have synonyms
+
+5. **Definitions (IAO:0000115)**
+   - Purpose: Textual descriptions of diseases
+   - Coverage: ~75% of diseases have definitions
+
+### Cross-Database Integration Points
+
+**Integration 1: MONDO → MeSH**
+- Connection relationship: oboInOwl:hasDbXref with "MESH:D######" format
+- Join point: Convert string to URI with BIND(URI(CONCAT(...)))
+- Required information from each: MONDO disease labels, MeSH TopicalDescriptor labels
+- Pre-filtering needed: bif:contains on MONDO labels first (Strategy 2)
+- Knowledge required: MeSH graph URI, TopicalDescriptor type, URI conversion pattern
+- Coverage: ~28% of MONDO diseases (~8,500 mappings)
+- Performance: 2-3 seconds with pre-filtering
+
+**Integration 2: MONDO ← NANDO**
+- Connection relationship: NANDO's skos:closeMatch links to MONDO URIs
+- Join point: Direct URI reference from NANDO to MONDO
+- Required information: NANDO multilingual labels (Japanese kanji/English), notification numbers
+- Pre-filtering needed: bif:contains on NANDO English labels
+- Knowledge required: NANDO graph URI, skos:closeMatch property, language filters
+- Coverage: 84% of NANDO diseases (2,341 of 2,777 have MONDO mappings)
+- Performance: 2-4 seconds
+
+**Integration 3: NANDO → MONDO → MeSH (Three-way)**
+- Path: NANDO skos:closeMatch → MONDO hasDbXref → MeSH
+- Pre-filtering: Apply in NANDO GRAPH before joins
+- Knowledge required: All three MIE files, URI conversion
+- Performance: 3-6 seconds
+- Critical: Use CONTAINS instead of multiple bif:contains to avoid 400 errors
+
+**Integration 4: MONDO ↔ GO (Keyword-based)**
+- Connection relationship: No direct links; keyword-based integration
+- Join point: Matching terms by keyword
+- Required information: GO namespace filter, bif:contains patterns
+- Pre-filtering needed: bif:contains on both MONDO and GO labels
+- Knowledge required: GO graph URI, namespace types, type restrictions
+- Performance: 2-4 seconds
+
+## Complex Query Patterns Tested
+
+### Pattern 1: MONDO-MeSH Cross-Database Integration
+
+**Purpose**: Link disease ontology terms to medical literature indexing terminology
+
+**Category**: Cross-Database, Integration
+
+**Naive Approach (without proper knowledge)**:
+Filter on MeSH labels after joining all 30K MONDO diseases → timeout
+
+**What Happened**:
+- Error message: Query timeout after 60 seconds
+- Why it failed: Processing all 30K diseases before filtering
+
+**Correct Approach (using proper pattern)**:
+Pre-filter MONDO with bif:contains, then join to MeSH
+
+**What Knowledge Made This Work**:
+- Key Insights:
+  * Use bif:contains for MONDO label filtering (Strategy 4)
+  * Apply filter within MONDO GRAPH clause before join (Strategy 2)
+  * Convert MONDO's "MESH:D######" format to MeSH URIs (Strategy 5)
+- Performance improvement: 2-3 seconds vs timeout
+- Why it works: 99.97% reduction in MONDO diseases before MeSH join
+
+**Results Obtained**:
+- Sample results for "diabetes":
+  * MONDO:0005015 "diabetes mellitus" → MeSH:D003920
+  * MONDO:0005147 "type 1 diabetes mellitus" → MeSH:D003922
+  * MONDO:0005148 "type 2 diabetes mellitus" → MeSH:D003924
+  * MONDO:0005406 "gestational diabetes" → MeSH:D016640
+
+**Natural Language Question Opportunities**:
+1. "What is the MeSH term for type 1 diabetes in the MONDO ontology?" - Category: Integration, Difficulty: Medium
+2. "Find all diabetes-related diseases in MONDO and their corresponding MeSH identifiers" - Category: Integration, Difficulty: Medium
+3. "Which neurodegenerative diseases have both MONDO and MeSH classifications?" - Category: Integration, Difficulty: Hard
+
+---
+
+### Pattern 2: MONDO-NANDO Japanese Rare Disease Integration
+
+**Purpose**: Connect international disease classification to Japanese intractable disease database
+
+**Category**: Cross-Database, Integration, Specificity
+
+**Naive Approach (without proper knowledge)**:
+Query without language filters or proper GRAPH clauses
+
+**What Happened**:
+- Issues: Missing Japanese labels, incomplete results
+- Why it failed: Need language filters and proper graph specification
+
+**Correct Approach (using proper pattern)**:
+Use NANDO's skos:closeMatch, filter by language (ja/en), apply bif:contains in NANDO graph
+
+**What Knowledge Made This Work**:
+- Key Insights:
+  * NANDO uses skos:closeMatch (not hasDbXref) to link to MONDO
+  * Language filters needed: LANG(?label) = "ja" for Japanese, "en" for English
+  * NANDO has notification numbers (nando:hasNotificationNumber) for designated diseases
+- Performance improvement: 2-4 seconds with pre-filtering
+
+**Results Obtained**:
+- Sample results for "Parkinson":
+  * NANDO: パーキンソン病 (Parkinson's disease), notification #6 → MONDO:0005180
+
+**Natural Language Question Opportunities**:
+1. "What is the Japanese designation number for Parkinson's disease?" - Category: Specificity, Difficulty: Medium
+2. "Find Japanese rare diseases related to ALS with their MONDO equivalents" - Category: Integration, Difficulty: Hard
+3. "Which Japanese intractable diseases have corresponding entries in the international MONDO ontology?" - Category: Completeness, Difficulty: Hard
+
+---
+
+### Pattern 3: Three-Way NANDO → MONDO → MeSH Integration
+
+**Purpose**: Bridge Japanese rare disease classifications to international medical literature indexing
+
+**Category**: Cross-Database, Advanced Integration
+
+**Naive Approach (without proper knowledge)**:
+Use multiple bif:contains across all three databases
+
+**What Happened**:
+- Error message: 400 Bad Request
+- Why it failed: Query complexity exceeded endpoint limits with multiple bif:contains
+
+**Correct Approach (using proper pattern)**:
+Use CONTAINS instead of bif:contains, simplify third database GRAPH clause
+
+**What Knowledge Made This Work**:
+- Key Insights:
+  * Three-way queries need simplified filters
+  * Use CONTAINS(LCASE(?label), "keyword") for third database
+  * Keep third GRAPH clause minimal
+- Performance improvement: 3-6 seconds vs 400 error
+
+**Results Obtained**:
+- Sample results for "amyotrophic":
+  * NANDO: 筋萎縮性側索硬化症 (ALS), notification #2 → MONDO → MeSH:Amyotrophic Lateral Sclerosis
+
+**Natural Language Question Opportunities**:
+1. "For ALS, what are the Japanese disease name, international classification, and medical literature term?" - Category: Integration, Difficulty: Hard
+2. "Find rare diseases that have entries in Japanese NANDO, international MONDO, and medical MeSH databases" - Category: Completeness, Difficulty: Hard
+
+---
+
+### Pattern 4: Disease Hierarchy Traversal
+
+**Purpose**: Navigate the MONDO disease classification tree
+
+**Category**: Structured Query, Completeness
+
+**Naive Approach (without proper knowledge)**:
+Use rdfs:subClassOf* without starting point or LIMIT
+
+**What Happened**:
+- Error message: Query timeout
+- Why it failed: Unbounded transitive query processes entire ontology
+
+**Correct Approach (using proper pattern)**:
+Start from specific disease class (e.g., MONDO:0003847 hereditary disease), add LIMIT
+
+**What Knowledge Made This Work**:
+- Key Insights:
+  * Always specify starting point for transitive queries
+  * Add FILTER(isIRI(?parent)) to exclude blank nodes
+  * Use LIMIT for exploratory queries
+- Performance improvement: 2-5 seconds vs timeout
+
+**Results Obtained**:
+- Type 1 diabetes (MONDO:0005147) ancestors: diabetes mellitus, metabolic disease, endocrine system disorder, autoimmune disease, immune system disorder, disease
+- Hereditary disease descendants: 11,651+ diseases
+
+**Natural Language Question Opportunities**:
+1. "What are all the parent disease categories for type 1 diabetes?" - Category: Structured Query, Difficulty: Medium
+2. "How many genetic disorders are classified under hereditary disease in MONDO?" - Category: Completeness, Difficulty: Medium
+3. "What is the complete classification path from Huntington disease to the root disease category?" - Category: Structured Query, Difficulty: Medium
+
+---
+
+### Pattern 5: Full-Text Search with Relevance Scoring
+
+**Purpose**: Find diseases by keyword with relevance ranking
+
+**Category**: Precision, Structured Query
+
+**Naive Approach (without proper knowledge)**:
+Use FILTER(CONTAINS(LCASE(?label), "keyword"))
+
+**What Happened**:
+- Issues: Slow performance, no relevance ranking
+- Why it failed: No full-text index usage
+
+**Correct Approach (using proper pattern)**:
+Use bif:contains with option (score ?sc), ORDER BY DESC(?sc)
+
+**What Knowledge Made This Work**:
+- Key Insights:
+  * bif:contains leverages Virtuoso full-text index
+  * option (score ?sc) provides relevance ranking
+  * Can use boolean operators: "(term1 AND term2)", wildcards with *
+- Performance improvement: 10-100x faster
+
+**Results Obtained**:
+- "cancer" search returns "cancer" (exact match, score 15), then cancer types ranked by relevance
+- "Huntington" search returns Huntington disease variants ordered by relevance
+
+**Natural Language Question Opportunities**:
+1. "Find all cancer-related diseases in MONDO" - Category: Completeness, Difficulty: Easy
+2. "What Huntington disease variants exist in the MONDO ontology?" - Category: Precision, Difficulty: Easy
+3. "Find diseases whose names contain both 'diabetes' and 'mellitus'" - Category: Structured Query, Difficulty: Medium
+
+---
+
+### Pattern 6: Cross-Reference Database Filtering
+
+**Purpose**: Find diseases with specific external database links
+
+**Category**: Completeness, Specificity
+
+**Naive Approach (without proper knowledge)**:
+Use REGEX for pattern matching
+
+**What Happened**:
+- Issues: Slow performance
+- Why it failed: REGEX doesn't use indexes
+
+**Correct Approach (using proper pattern)**:
+Use STRSTARTS(?xref, "PREFIX:") for prefix matching
+
+**What Knowledge Made This Work**:
+- Key Insights:
+  * STRSTARTS is efficient for prefix matching
+  * Cross-reference format: "DATABASE:ID" (e.g., "OMIM:143100")
+  * Different databases have different coverage: OMIM 33%, Orphanet 34%, MeSH 28%, ICD10 ~10%
+
+**Results Obtained**:
+- OMIM-linked diseases: 9,944
+- Orphanet-linked diseases: 10,246
+- ICD10-linked diseases: 2,611
+
+**Natural Language Question Opportunities**:
+1. "How many diseases in MONDO have OMIM references?" - Category: Completeness, Difficulty: Easy
+2. "Which diseases have both Orphanet and ICD-10 classifications?" - Category: Structured Query, Difficulty: Medium
+3. "Find rare diseases with Orphanet references but no OMIM entry" - Category: Structured Query, Difficulty: Hard
+
+---
+
+## Simple Queries Performed
+
+**Purpose**: Identify real entities for use in evaluation questions
+
+1. Search: "Huntington disease"
+   - Found: MONDO:0007739 - Huntington disease
+   - Cross-refs: OMIM:143100, Orphanet:399, MESH:D006816
+   - Usage: Neurodegenerative disease questions, cross-reference questions
+
+2. Search: "diabetes"
+   - Found: MONDO:0005015 - diabetes mellitus, MONDO:0005147 - type 1, MONDO:0005148 - type 2
+   - Usage: Metabolic disease hierarchy, common disease classification
+
+3. Search: "cancer"
+   - Found: MONDO:0004992 - cancer (root), multiple cancer types
+   - Usage: Oncology classification, transitive hierarchy questions
+
+4. Search: "Parkinson"
+   - Found: MONDO:0005180 - Parkinson disease
+   - NANDO: notification #6
+   - Usage: Japanese rare disease integration
+
+5. Search: "amyotrophic lateral sclerosis"
+   - Found: MONDO equivalent linked to NANDO (notification #2)
+   - MeSH: Amyotrophic Lateral Sclerosis
+   - Usage: Three-way integration questions
+
+6. Search: "hereditary disease" (class)
+   - Found: MONDO:0003847 - hereditary disease
+   - Descendants: 11,651+ diseases
+   - Usage: Hierarchy traversal questions
+
+7. Search: "Fabry disease"
+   - Found: MONDO:0010526 - Fabry disease (lysosomal storage disorder)
+   - Usage: Rare disease questions
+
+---
+
+## Question Generation Opportunities
+
+### Priority 1: Complex Questions (HIGH VALUE)
+
+**Cross-Database Questions**:
+
+1. "What is the MeSH descriptor for Huntington disease?"
+   - Databases involved: MONDO, MeSH
+   - Knowledge Required: MONDO graph URI, MeSH graph URI, hasDbXref property, URI conversion pattern, meshv:TopicalDescriptor type
+   - Category: Integration
+   - Difficulty: Medium
+   - Pattern Reference: Pattern 1
+
+2. "Find all diabetes-related diseases and their corresponding MeSH terms"
+   - Databases involved: MONDO, MeSH
+   - Knowledge Required: bif:contains pattern, pre-filtering strategy, URI conversion
+   - Category: Integration
+   - Difficulty: Medium
+   - Pattern Reference: Pattern 1
+
+3. "What is the Japanese designation number for Parkinson's disease in the NANDO database?"
+   - Databases involved: MONDO, NANDO
+   - Knowledge Required: NANDO graph URI, skos:closeMatch property, nando:hasNotificationNumber
+   - Category: Specificity
+   - Difficulty: Medium
+   - Pattern Reference: Pattern 2
+
+4. "Which Japanese intractable diseases have corresponding MONDO entries?"
+   - Databases involved: NANDO, MONDO
+   - Knowledge Required: Language filters, skos:closeMatch, pre-filtering
+   - Category: Completeness
+   - Difficulty: Hard
+   - Pattern Reference: Pattern 2
+
+5. "For amyotrophic lateral sclerosis, provide the Japanese disease name, MONDO identifier, and MeSH term"
+   - Databases involved: NANDO, MONDO, MeSH
+   - Knowledge Required: Three-way query optimization, simplified CONTAINS for third database
+   - Category: Integration
+   - Difficulty: Hard
+   - Pattern Reference: Pattern 3
+
+6. "Find mitochondrial diseases that have related biological processes in Gene Ontology"
+   - Databases involved: MONDO, GO
+   - Knowledge Required: Keyword-based integration, both graph URIs
+   - Category: Integration
+   - Difficulty: Hard
+   - Pattern Reference: MONDO-GO integration tested
+
+**Hierarchy/Classification Questions**:
+
+7. "What are all the parent disease categories for type 1 diabetes mellitus?"
+   - Database: MONDO
+   - Knowledge Required: rdfs:subClassOf+ property path, FILTER(isIRI()), DISTINCT
+   - Category: Structured Query
+   - Difficulty: Medium
+   - Pattern Reference: Pattern 4
+
+8. "How many diseases are classified under hereditary disease in MONDO?"
+   - Database: MONDO
+   - Knowledge Required: rdfs:subClassOf* transitive query, starting point specification, LIMIT strategy
+   - Category: Completeness
+   - Difficulty: Medium
+   - Pattern Reference: Pattern 4
+
+9. "List all subtypes of Huntington disease and related disorders"
+   - Database: MONDO
+   - Knowledge Required: Transitive hierarchy, disease grouping class
+   - Category: Completeness
+   - Difficulty: Medium
+   - Pattern Reference: Pattern 4
+
+10. "What cancers are classified as subtypes of the cancer root class?"
+    - Database: MONDO
+    - Knowledge Required: rdfs:subClassOf* from MONDO:0004992
+    - Category: Completeness
+    - Difficulty: Medium
+    - Pattern Reference: Pattern 4
+
+**Cross-Reference Filtering Questions**:
+
+11. "How many diseases in MONDO have OMIM cross-references?"
+    - Database: MONDO
+    - Knowledge Required: STRSTARTS filter pattern, hasDbXref property
+    - Category: Completeness
+    - Difficulty: Easy
+    - Pattern Reference: Pattern 6
+
+12. "Find rare diseases with Orphanet references but no ICD-10 codes"
+    - Database: MONDO
+    - Knowledge Required: Combining STRSTARTS filters with NOT EXISTS
+    - Category: Structured Query
+    - Difficulty: Hard
+    - Pattern Reference: Pattern 6
+
+13. "Which neurodegenerative diseases have both OMIM and Orphanet cross-references?"
+    - Database: MONDO
+    - Knowledge Required: Multiple STRSTARTS filters, keyword search
+    - Category: Structured Query
+    - Difficulty: Medium
+    - Pattern Reference: Pattern 5, Pattern 6
+
+**Full-Text Search Questions**:
+
+14. "Find all diseases whose names contain 'cardiomyopathy'"
+    - Database: MONDO
+    - Knowledge Required: bif:contains with relevance scoring
+    - Category: Precision
+    - Difficulty: Easy
+    - Pattern Reference: Pattern 5
+
+15. "Search for diseases related to 'lysosomal storage'"
+    - Database: MONDO
+    - Knowledge Required: bif:contains with boolean operators
+    - Category: Precision
+    - Difficulty: Easy
+    - Pattern Reference: Pattern 5
+
+### Priority 2: Simple Questions (For Coverage & Contrast)
+
+**Entity Lookup Questions**:
+
+1. "What is the MONDO identifier for Huntington disease?"
+   - Method: OLS4:searchClasses or simple SPARQL
+   - Knowledge Required: None (straightforward search)
+   - Category: Precision
+   - Difficulty: Easy
+
+2. "What is the definition of Fabry disease in MONDO?"
+   - Method: Direct entity lookup
+   - Knowledge Required: None
+   - Category: Precision
+   - Difficulty: Easy
+
+3. "What are the synonyms for Huntington disease?"
+   - Method: Simple property retrieval
+   - Knowledge Required: None
+   - Category: Precision
+   - Difficulty: Easy
+
+4. "What is the OMIM reference for Huntington disease?"
+   - Method: hasDbXref lookup
+   - Knowledge Required: None (single entity)
+   - Category: Precision
+   - Difficulty: Easy
+
+**ID Mapping Questions**:
+
+5. "What is the Orphanet ID for Huntington disease?"
+   - Method: hasDbXref lookup
+   - Knowledge Required: None
+   - Category: Integration (simple)
+   - Difficulty: Easy
+
+**Simple API Queries**:
+
+6. "How many descendant terms does the hereditary disease class have in MONDO?"
+   - Method: OLS4:getDescendants
+   - Knowledge Required: None
+   - Category: Completeness
+   - Difficulty: Easy
+
+7. "What are the direct parent classes of type 1 diabetes in MONDO?"
+   - Method: OLS4 searchClasses returns directParent
+   - Knowledge Required: None
+   - Category: Structured Query (simple)
+   - Difficulty: Easy
+
+---
+
+## Integration Patterns Summary
+
+**MONDO as Source (provides data to)**:
+- → MeSH: via hasDbXref "MESH:D######" (28% coverage)
+- → (any database): via hasDbXref strings for 39+ databases
+
+**MONDO as Target (receives data from)**:
+- NANDO →: via skos:closeMatch (84% of NANDO diseases)
+
+**Complex Multi-Database Paths**:
+- Path 1: NANDO → MONDO → MeSH: Japanese rare diseases to medical literature indexing
+- Path 2: MONDO ↔ GO: Keyword-based integration for disease-process relationships
+- Path 3: MONDO → OMIM/Orphanet: Genetic disease databases (via hasDbXref)
+
+---
+
+## Lessons Learned
+
+### What Knowledge is Most Valuable
+1. **Pre-filtering strategy** (Strategy 2): Critical for any cross-database query - reduces 30K diseases to manageable subset before joins
+2. **bif:contains pattern** (Strategy 4): Essential for any keyword search - 10-100x performance improvement
+3. **URI conversion for MeSH**: MONDO stores strings, MeSH uses URIs - must convert
+4. **Three-way query simplification**: Cannot use multiple bif:contains - must use CONTAINS
+5. **GRAPH clause isolation**: Each database needs explicit GRAPH clause
+
+### Common Pitfalls Discovered
+1. **Timeout on cross-database queries**: Always filter in source GRAPH first
+2. **400 error on three-way queries**: Simplify third database clause
+3. **Missing blank node filter**: Add FILTER(isIRI()) for hierarchy queries
+4. **Wrong URI format for MeSH**: Must construct URI from string reference
+
+### Recommendations for Question Design
+1. **Best question types for MONDO**:
+   - Cross-database integration (MeSH, NANDO)
+   - Hierarchical classification queries
+   - Rare disease lookups with Orphanet/OMIM cross-refs
+   - Full-text search with relevance ranking
+
+2. **Question complexity sweet spots**:
+   - Medium: Two-database integration with pre-filtering
+   - Hard: Three-database integration or complex hierarchy traversal
+   - Easy: Single-entity lookups via API
+
+3. **Avoid these question types**:
+   - Unbounded aggregation over all 30K diseases (timeout risk)
+   - Questions requiring complex filters in third GRAPH clause
+
+### Performance Notes
+- Simple searches: <1 second
+- bif:contains searches: 1-2 seconds
+- Two-database cross-queries with pre-filter: 2-3 seconds
+- Three-database queries: 3-6 seconds
+- Hierarchy traversal with LIMIT: 2-5 seconds
+- Unbounded transitive queries: TIMEOUT
+
+---
+
+## Notes and Observations
+
+1. **MONDO integrates 39+ databases** - Extensive cross-reference coverage makes it an excellent hub for disease-related queries
+2. **MeSH coverage at 28%** - Not all diseases have MeSH mappings, which is important for setting expectations
+3. **NANDO integration is high** - 84% coverage makes MONDO-NANDO queries reliable
+4. **No direct GO links** - Disease-to-process integration must be keyword-based
+5. **Human vs non-human diseases** - MONDO includes animal disease variants (e.g., Huntington disease, pig)
+6. **Obsolete terms marked** - owl:deprecated flag indicates deprecated disease classes
+
+---
+
+## Next Steps
+
+**Recommended for Question Generation**:
+- Priority questions: MONDO-MeSH integration, MONDO-NANDO integration, hierarchy classification, cross-reference filtering
+- Avoid: Unbounded aggregations, questions requiring multiple bif:contains in three-way queries
+- Focus areas: Rare disease lookups, disease classification hierarchies, international disease mapping
+
+**Further Exploration Needed** (if any):
+- HP (Human Phenotype Ontology) cross-reference exploration - MONDO has some HP:##### references
+- More complex three-way integration patterns
+- Disease subtype classification depth analysis
+
+---
+
+**Session Complete - Ready for Next Database**
+
+## Session Summary
 ```
-
-```sparql
-# Query 2: Disease hierarchy navigation - adapted for cancer classification
-PREFIX obo: <http://purl.obolibrary.org/obo/>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
-
-SELECT ?disease ?label ?mondoId
-FROM <http://rdfportal.org/ontology/mondo>
-WHERE {
-  ?disease a owl:Class ;
-    rdfs:label ?label ;
-    oboInOwl:id ?mondoId ;
-    rdfs:subClassOf* obo:MONDO_0004992 .
-  ?label bif:contains "'breast'" option (score ?sc)
-  FILTER(?disease != obo:MONDO_0004992)
-}
-ORDER BY DESC(?sc)
-LIMIT 10
-# Results: Retrieved breast cancer subtypes classified under "cancer" (MONDO:0004992) including triple-negative, ER+, HER2+, inflammatory variants
+Database: MONDO
+Status: ✅ COMPLETE
+Report: /evaluation/exploration/mondo_exploration.md
+Patterns Tested: 6 major patterns
+Questions Identified: 22 (15 complex, 7 simple)
+Integration Points: 4 (MeSH, NANDO, GO keyword, OMIM/Orphanet via xref)
+Cross-Database Queries Tested: 5 (MONDO-MeSH, MONDO-NANDO, NANDO-MONDO-MeSH three-way, MONDO-GO)
 ```
-
-```sparql
-# Query 3: Cross-reference distribution - adapted for MeSH mapping counts
-PREFIX owl: <http://www.w3.org/2002/07/owl#>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
-
-SELECT (COUNT(DISTINCT ?disease) as ?diseaseCount)
-FROM <http://rdfportal.org/ontology/mondo>
-WHERE {
-  ?disease a owl:Class ;
-    rdfs:label ?label ;
-    oboInOwl:hasDbXref ?xref .
-  FILTER(STRSTARTS(?xref, "MESH:"))
-}
-# Results: Confirmed ~8,500 diseases (28% of MONDO) have MeSH cross-references for literature indexing
-```
-
-```sparql
-# Query 4: Synonym retrieval - adapted for diabetes alternative names
-PREFIX obo: <http://purl.obolibrary.org/obo/>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
-PREFIX IAO: <http://purl.obolibrary.org/obo/IAO_>
-
-SELECT ?label ?definition ?synonym
-FROM <http://rdfportal.org/ontology/mondo>
-WHERE {
-  obo:MONDO_0005148 rdfs:label ?label .
-  OPTIONAL { obo:MONDO_0005148 IAO:0000115 ?definition }
-  OPTIONAL { obo:MONDO_0005148 oboInOwl:hasExactSynonym ?synonym }
-}
-# Results: Retrieved type 2 diabetes mellitus with synonyms including "diabetes mellitus type 2", "NIDDM", "non-insulin-dependent diabetes mellitus"
-```
-
-```sparql
-# Query 5: Multi-database integration - adapted for rare disease cross-references
-PREFIX owl: <http://www.w3.org/2002/07/owl#>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
-
-SELECT ?disease ?label ?omimXref ?orphaXref ?nandoXref
-FROM <http://rdfportal.org/ontology/mondo>
-WHERE {
-  ?disease a owl:Class ;
-    rdfs:label ?label .
-  OPTIONAL { ?disease oboInOwl:hasDbXref ?omimXref . FILTER(STRSTARTS(?omimXref, "OMIM:")) }
-  OPTIONAL { ?disease oboInOwl:hasDbXref ?orphaXref . FILTER(STRSTARTS(?orphaXref, "Orphanet:")) }
-  OPTIONAL { ?disease oboInOwl:hasDbXref ?nandoXref . FILTER(STRSTARTS(?nandoXref, "NANDO:")) }
-  ?label bif:contains "'lysosomal storage'" option (score ?sc)
-  FILTER(BOUND(?omimXref) && BOUND(?orphaXref))
-}
-ORDER BY DESC(?sc)
-LIMIT 10
-# Results: Found lysosomal storage diseases with triple cross-references to genetic (OMIM), rare disease (Orphanet), and Japanese (NANDO) databases
-```
-
-## Cross-Reference Analysis
-
-**Entity counts** (unique diseases with mappings):
-
-MONDO Diseases → External Databases:
-- ~21,000 diseases (70%) have UMLS mappings (comprehensive medical terminology)
-- ~21,000 diseases (70%) have MEDGEN mappings (medical genetics)
-- ~10,000 diseases (33%) have OMIM mappings (genetic disorders)
-- ~10,300 diseases (34%) have Orphanet mappings (rare diseases)
-- ~11,800 diseases (39%) have DOID mappings (disease ontology)
-- ~9,400 diseases (31%) have SCTID mappings (SNOMED CT clinical terms)
-- ~8,500 diseases (28%) have MESH mappings (medical subject headings)
-- ~7,500 diseases (25%) have NCIT mappings (NCI Thesaurus)
-- ~10,600 diseases (35%) have GARD mappings (genetic and rare diseases)
-- ~2,400 diseases (8%) have NANDO mappings (Japanese intractable diseases)
-- ~5,700 diseases (19%) have ICD9 mappings
-- ~4,200 diseases (14%) have ICD11 mappings
-- ~2,700 diseases (9%) have ICD10CM mappings
-
-**Relationship counts** (total mappings):
-
-Average 6.5 cross-references per disease, with some diseases having 50+ references. Example distributions:
-- UMLS: ~21,000 mappings (1:1 ratio)
-- OMIM: ~10,000 mappings (1:1 for genetic disorders)
-- Orphanet: ~10,300 mappings (1:1 for rare diseases)
-- MeSH: ~8,500 mappings (1:1 for indexed diseases)
-- NANDO: ~2,400+ MONDO diseases map to NANDO (but 84% of NANDO's 2,777 diseases map to MONDO = 2,341 mappings from NANDO perspective)
-
-**Distribution:**
-- Most cross-references are 1:1 (one MONDO disease → one external database ID)
-- Some diseases have multiple mappings to same database (e.g., Fabry disease has 2 NANDO IDs: 1200157, 2200563)
-- Cross-reference coverage varies by database type:
-  * Comprehensive terminologies (UMLS, MEDGEN): 70%
-  * Specialized databases (OMIM, Orphanet, GARD): 33-35%
-  * Clinical codes (ICD9 19%, ICD11 14%, ICD10CM 9%)
-  * Japanese rare diseases (NANDO): 8%
-
-## Interesting Findings
-
-**Discoveries requiring actual database queries:**
-
-1. **Parkinson disease genetic heterogeneity**: Found 10+ distinct Parkinson disease subtypes (PD 3, 10, 11, 16, 17, 18, 21, 22, 24, 26) each with unique OMIM identifiers, requiring keyword search + OMIM cross-reference filtering. Demonstrates MONDO's comprehensive cataloging of genetic variants.
-
-2. **Multi-inheritance disease classification**: Fabry disease (MONDO:0010526) has 2 parent classes ("developmental anomaly of metabolic origin" and "sphingolipidosis"), requiring rdfs:subClassOf query with FILTER(isIRI()) to exclude OWL restrictions. Shows diseases can belong to multiple classification hierarchies.
-
-3. **Cross-reference density variation**: ~90% of diseases have at least one cross-reference, averaging 6.5 references per disease, but coverage ranges from 70% (UMLS, MEDGEN) to 3% (oncology codes ICDO). Requires aggregating oboInOwl:hasDbXref with STRSTARTS filtering to discover distribution.
-
-4. **NANDO-MONDO bidirectional integration**: 8% of MONDO diseases (2,400+) link to NANDO, but 84% of NANDO diseases (2,341 of 2,777) link to MONDO via skos:closeMatch. Asymmetric coverage demonstrates NANDO's specialized focus on Japanese designated intractable diseases. Requires cross-database query to discover.
-
-5. **MeSH medical literature integration**: 28% of MONDO diseases (~8,500) have MeSH descriptor cross-references, enabling systematic literature reviews. Requires COUNT with STRSTARTS filter on "MESH:" prefix.
-
-6. **Total disease class count**: 30,230 diseases (current 2024 version) with >99% having labels, ~75% having definitions. Requires counting owl:Class entities with rdfs:label.
-
-7. **Synonym richness**: Average 2.8 synonyms per disease with both exact (hasExactSynonym) and related (hasRelatedSynonym) variants. Enables flexible disease name matching across terminologies.
-
-8. **OLS4 API integration**: OLS4 searchClasses and fetch functions provide user-friendly search with pagination and metadata retrieval, complementing SPARQL for different query patterns. OLS4 search for "Fabry disease" returned 20 cross-database matches.
-
-## Question Opportunities by Category
-
-### Precision Questions ✅
-- "What is the MONDO identifier for Fabry disease?" (requires OLS4 search or SPARQL - answer: MONDO:0010526)
-- "What OMIM identifier does MONDO link to for Huntington disease?" (requires cross-reference query)
-- "What is the textual definition of MONDO:0005147 (type 1 diabetes)?" (requires IAO:0000115 property retrieval)
-- "What are the exact synonyms for Gaucher disease in MONDO?" (requires hasExactSynonym property query)
-
-### Completeness Questions ✅
-- "How many Parkinson disease subtypes are in MONDO with OMIM links?" (requires filtering OMIM cross-references - answer: 10+)
-- "How many diseases in MONDO have MeSH cross-references?" (requires COUNT with STRSTARTS filter - answer: ~8,500)
-- "List all parent disease classes of Fabry disease (MONDO:0010526)" (requires rdfs:subClassOf query - answer: 2 parents)
-- "How many diseases in MONDO are classified under 'genetic disorder' (MONDO:0003847)?" (requires transitive subClassOf query)
-
-### Integration Questions ✅
-- "What is the Orphanet ID for MONDO:0010526 (Fabry disease)?" (requires cross-reference lookup - answer: Orphanet:324)
-- "Convert MONDO:0005148 (type 2 diabetes) to NANDO identifiers" (requires hasDbXref filtering - answer: NANDO:2200461)
-- "Which MONDO diseases map to both OMIM and Orphanet for rare genetic disorders?" (requires multi-database cross-reference filtering)
-- "Link MONDO:0007739 (Huntington disease) to MeSH descriptor for literature search" (requires MONDO→MeSH cross-reference with URI conversion)
-
-### Currency Questions ✅
-- "What is the current total number of disease classes in MONDO?" (requires COUNT query - answer: 30,230 in 2024 version)
-- "How many COVID-19 related diseases are in MONDO?" (requires keyword search with bif:contains)
-- "What are the most recently added rare disease classifications in MONDO?" (requires temporal metadata if available)
-
-### Specificity Questions ✅
-- "What is the MONDO ID for Erdheim-Chester disease (rare histiocytic disorder)?" (requires disease-specific search)
-- "What ICD11 code does MONDO provide for Wilson disease?" (requires rare disease cross-reference)
-- "What is the NANDO ID for methylmalonic acidemia (Japanese rare disease)?" (requires NANDO cross-reference filtering)
-- "What Orphanet ID does MONDO link for Alexander disease (rare leukodystrophy)?" (requires rare genetic disorder lookup)
-
-### Structured Query Questions ✅
-- "Find all lysosomal storage diseases in MONDO with both OMIM and Orphanet cross-references" (requires multi-criteria filtering)
-- "List genetic disorders (subClassOf MONDO:0003847) that have MeSH terms for literature indexing" (requires hierarchy + cross-reference integration)
-- "Identify autosomal recessive diseases with NANDO links for Japanese rare disease research" (requires multiple property constraints)
-- "Find all cancer subtypes (under MONDO:0004992) with ICD10CM codes for clinical coding" (requires transitive hierarchy + cross-reference filtering)
-
-## Notes
-
-**OLS4 API integration**: MONDO benefits from both OLS4 searchClasses/fetch functions (user-friendly, paginated) and direct SPARQL queries (complex filtering). OLS4 is recommended for simple lookups, SPARQL for complex multi-criteria queries.
-
-**Cross-database optimization**: Shares "primary" endpoint with MeSH, GO, Taxonomy, NANDO, BacDive, MediaDive. Cross-database queries require:
-- Strategy 1: Explicit GRAPH clauses
-- Strategy 2: Pre-filtering within source GRAPH before joins (99%+ reduction)
-- Strategy 4: bif:contains for keyword search (10-100x speedup over REGEX)
-- Strategy 5: URI conversion with BIND for cross-reference linking
-- Strategy 10: LIMIT clauses for result management
-
-**Performance considerations**:
-- Use `bif:contains` with option (score ?sc) for keyword searches (full-text index + relevance ranking)
-- Always FILTER(isIRI(?parent)) in hierarchy queries to exclude OWL blank node restrictions
-- Transitive queries (rdfs:subClassOf*) require specific starting points and LIMIT clauses
-- Cross-database queries: 2-3 seconds (two-way, Tier 1), 3-6 seconds (three-way, Tier 2)
-- Three-way queries use simplified CONTAINS instead of multiple bif:contains to avoid 400 errors
-
-**Multi-database integration patterns**:
-- MONDO→MeSH: Use hasDbXref with STRSTARTS("MESH:"), then BIND URI conversion
-- MONDO→NANDO: Use NANDO's skos:closeMatch property (queries from NANDO side)
-- MONDO→OMIM/Orphanet: Use hasDbXref with STRSTARTS for genetic/rare disease lookups
-- Three-way (NANDO→MONDO→MeSH): Simplify filters to avoid complexity limits
-
-**Data quality**:
-- >99% of diseases have rdfs:label
-- ~75% have IAO:0000115 definitions
-- ~90% have at least one cross-reference
-- ~85% have synonyms (exact or related)
-- owl:deprecated marks obsolete terms
-- Cross-reference coverage varies: UMLS/MEDGEN 70%, OMIM/Orphanet 33-34%, NANDO 8%
-
-**Hierarchical classification**:
-- Average 1.2 parents per disease (some have multiple inheritance)
-- Use rdfs:subClassOf for direct parents, rdfs:subClassOf+ for all ancestors
-- Always apply FILTER(isIRI(?parent)) to exclude OWL restrictions
-- Root class: MONDO:0000001 "disease or disorder"
-
-**Unique value**: MONDO serves as central disease ontology hub integrating 39+ databases, making it essential for cross-database disease information queries. The extensive cross-referencing (avg 6.5 per disease) enables translation between clinical codes (ICD), genetic databases (OMIM), rare disease resources (Orphanet, NANDO), and medical terminologies (MeSH, UMLS).
-
-**Limitations**:
-- Cross-reference coverage incomplete (3-70% depending on database)
-- Some diseases lack definitions (~25%)
-- Transitive hierarchy queries can be slow without specific starting points
-- Three-way cross-database queries require simplified filters to avoid timeouts
-- OWL restrictions appear as blank nodes in hierarchy unless filtered with isIRI()

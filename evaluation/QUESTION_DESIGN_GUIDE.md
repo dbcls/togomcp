@@ -1,911 +1,477 @@
 # TogoMCP Question Design Guide
+# MINIMAL REFERENCE VERSION
 
-**Purpose**: Guide for creating high-quality evaluation questions that effectively test TogoMCP's database access capabilities.
+**Purpose**: Quick reference for understanding TogoMCP evaluation questions and MIE-dependency framework.
 
-**For**: Question authors and evaluation designers  
-**Not for**: Manual scoring (see automated evaluation in `scripts/`)
+**For**: Understanding existing questions, validating question quality, reviewing evaluation results  
+**Not for**: Creating new questions (see `question_generation_phase2.md` for creation)
 
 ---
 
 ## Quick Reference
 
-**Good evaluation questions**:
-- ✅ Test what Claude **can't** answer without database access
-- ✅ Have verifiable, specific expected answers
-- ✅ Are realistic questions researchers would ask
-- ✅ Match one of the six question categories
+**Question Distribution**:
+- 🔴 **70% MIE-Required** (85 questions): Demonstrate MIE file value
+- 🟢 **30% Simple** (35 questions): Show when MIE not needed (contrast)
 
-**See existing questions**: `questions/Q01.json` through `questions/Q10.json` (120 examples)
+**MIE-Required Patterns**:
+1. Multi-database SPARQL joins (25 questions)
+2. Performance-critical queries (20 questions)
+3. Error-avoidance queries (15 questions)
+4. Complex multi-criteria filtering (25 questions)
 
----
-
-## Question Quality Checklist
-
-Before adding a question to your evaluation set, verify:
-
-### ✅ **Biologically Realistic**
-Would an actual researcher ask this question?
-
-**Good examples** (from our question set):
-- ❌ "Tell me about proteins" (too vague)
-- ✅ "What is the UniProt ID for human BRCA1?" (specific, practical)
-- ❌ "List everything in UniProt" (impossibly broad)
-- ✅ "How many human proteins have signal peptides?" (reasonable scope)
-
-**Ask yourself**:
-- Would this come up in actual research?
-- Is it solving a real problem?
-- Would the answer be useful?
+**Simple Patterns**:
+1. Search tool queries (15 questions)
+2. API-based queries (12 questions)
+3. ID conversions (8 questions)
 
 ---
 
-### ✅ **Testable Distinction**
-Can you tell if the answer used databases vs baseline knowledge?
+## MIE-Dependency Framework
 
-**Key indicators of database dependency**:
-- **Exact IDs**: "What is the UniProt ID..." (baseline won't know specific IDs)
-- **Current counts**: "How many variants are in ClinVar?" (baseline data is frozen)
-- **Specific values**: "What is the molecular weight of compound X?" (requires lookup)
-- **Recent data**: "What SARS-CoV-2 pathways are in Reactome?" (post-training cutoff)
+### 🔴 MIE-Required Questions (85 total)
 
-**Good examples**:
-- ✅ "What is the PubChem CID for aspirin?" → Database gives: 2244
-- ✅ "How many descendants does GO:0006914 have?" → Database gives: 25
-- ✅ "What is the ChEBI ID for ATP?" → Database gives: CHEBI:30616
+Questions that **cannot be answered correctly without MIE file knowledge**.
 
-**Questions to avoid**:
-- ❌ "What does BRCA1 do?" → Baseline can answer from training
-- ❌ "What is a kinase?" → General knowledge, no database needed
-- ❌ "Why is DNA repair important?" → Conceptual, not database-specific
+#### Pattern 1: Multi-Database SPARQL Joins (25 questions)
 
----
+**Requires**: GRAPH URIs from multiple MIE files, join properties, pre-filtering strategies
 
-### ✅ **Appropriate Complexity**
-Not too simple, not impossibly broad.
+**Example**:
+```
+Q: "Find human reviewed proteins in UniProt that catalyze Rhea 
+    reactions involving ATP (ChEBI:30616)"
 
-**Too simple** (baseline can answer):
-- ❌ "What is DNA?"
-- ❌ "Name a protein database"
-- ❌ "What does UniProt stand for?"
+Why MIE-Required:
+- Needs UniProt GRAPH URI: http://sparql.uniprot.org/uniprot
+- Needs Rhea GRAPH URI: http://rdfportal.org/dataset/rhea
+- Needs join property: up:enzyme → rhea:ec
+- Needs reviewed=1 pre-filter to avoid timeout on 444M proteins
+- Needs ChEBI URI format for ATP
 
-**Just right** (requires database, achievable):
-- ✅ "What is the UniProt accession for SpCas9 from S. pyogenes M1?"
-- ✅ "How many human genes are annotated with GO:0006281?"
-- ✅ "What is the highest resolution structure in PDB?"
-
-**Too broad** (would timeout or be overwhelming):
-- ❌ "List all proteins in UniProt"
-- ❌ "Give me every compound in PubChem"
-- ❌ "What are all the pathways in Reactome?"
-
-**Rule of thumb**:
-- Single entity lookups: ✅ Good
-- Filtered counts (< 10,000): ✅ Good
-- Exhaustive lists of major categories: ✅ Good
-- Unlimited dumps: ❌ Too broad
-
----
-
-### ✅ **Clear Success Criteria**
-You can objectively verify if the answer is correct.
-
-**Verifiable answers**:
-- ✅ Specific IDs: "P38398" (can check UniProt)
-- ✅ Exact counts: "25 descendants" (can verify with query)
-- ✅ Molecular properties: "180.16 g/mol" (can look up)
-- ✅ Boolean facts: "Yes, it's in the database" (can confirm)
-
-**Hard to verify**:
-- ❌ Explanations: "BRCA1 is important because..." (subjective)
-- ❌ Opinions: "The best database is..." (no ground truth)
-- ❌ Predictions: "This will likely..." (not verifiable)
-
-**Best practice**: Include `expected_answer` field in your question JSON:
-
-```json
-{
-  "question": "What is the UniProt ID for human BRCA1?",
-  "expected_answer": "P38398"
-}
+Without MIE: Wrong GRAPH URIs (no results), timeout from missing 
+reviewed=1, or fails to identify join point
 ```
 
-The automated evaluation checks if the response contains this expected answer.
+#### Pattern 2: Performance-Critical Queries (20 questions)
 
----
+**Requires**: Early filtering patterns, bif:contains syntax, LIMIT strategies
 
-## The Six Question Categories
-
-Design at least 3-5 questions per category for balanced coverage.
-
-### 1. **Precision Questions**
-
-**Purpose**: Test ability to retrieve exact, specific data
-
-**What they test**:
-- Database ID lookups
-- Exact molecular properties
-- Specific sequences or values
-- Precise measurements
-
-**Examples from our question set**:
-
+**Example**:
 ```
-Q1: "What is the UniProt accession ID for SpCas9 from 
-     Streptococcus pyogenes M1?"
-Expected: Q99ZW2
+Q: "How many human reviewed proteins in UniProt have GO annotations 
+    for DNA repair processes?"
 
-Q15: "What is the PubChem Compound ID (CID) for aspirin?"
-Expected: 2244
+Why MIE-Required:
+- Needs early filtering: up:reviewed 1 must be FIRST constraint
+- Without early filter: processes 444M proteins → timeout (60s)
+- With MIE Strategy 8: reviewed=1 first → completes in 2 seconds
 
-Q39: "What is the highest resolution ever achieved for a 
-      structure in the PDB?"
-Expected: 0.48 Å
-
-Q51: "What is the MeSH descriptor ID for Diabetes Mellitus, 
-      Type 2?"
-Expected: D003924
+Without MIE: Query constructed as FILTER(?protein up:reviewed 1) 
+after property (too late) → timeout
 ```
 
-**Key characteristics**:
-- One specific, verifiable answer
-- Requires exact database lookup
-- Baseline can't provide specific IDs/values
-- Clear success: answer matches or doesn't
+#### Pattern 3: Error-Avoidance Queries (15 questions)
 
-**Good question starters**:
-- "What is the [database] ID for..."
-- "What is the exact [property] of..."
-- "What is the [measurement] for..."
+**Requires**: Property path splitting, correct URI formats, GRAPH specifications
 
----
-
-### 2. **Completeness Questions**
-
-**Purpose**: Test ability to retrieve exhaustive or comprehensive data
-
-**What they test**:
-- Counting entries matching criteria
-- Listing all members of a set
-- Comprehensive enumeration
-- Systematic coverage
-
-**Examples from our question set**:
-
+**Example**:
 ```
-Q2: "How many descendant terms does GO:0006914 (autophagy) 
-     have in the Gene Ontology?"
-Expected: 25
+Q: "Find human reviewed proteins where the recommended name contains 
+    'kinase' using full-text search"
 
-Q14: "How many single nucleotide variants (SNVs) are recorded 
-      in ClinVar?"
-Expected: 3,236,823
+Why MIE-Required:
+- bif:contains incompatible with property paths
+- Natural query: up:recommendedName/up:fullName + bif:contains
+- Result: 400 Bad Request error
 
-Q26: "How many compounds in PubChem are FDA-approved drugs?"
-Expected: ~4000 (verify current count)
+MIE Solution (common_errors section):
+- Split property path first:
+  up:recommendedName ?name .
+  ?name up:fullName ?text .
+  ?text bif:contains 'kinase' .
 
-Q74: "How many bacterial strains in BacDive can grow at 
-      temperatures above 70°C?"
-Expected: Count from query
+Without MIE: 400 error (backend-specific, not discoverable)
 ```
 
-**Key characteristics**:
-- Quantitative answer (count or list)
-- Requires systematic search
-- Baseline might estimate but can't give exact count
-- Clear success: correct count/complete list
+#### Pattern 4: Complex Multi-Criteria Filtering (25 questions)
 
-**Good question starters**:
-- "How many [entities] are in [database]..."
-- "List all [things] that match [criteria]..."
-- "What is the total count of..."
-- "How many [X] have [property]..."
+**Requires**: Schema knowledge from ShEx, filter optimization, data model understanding
 
----
-
-### 3. **Integration Questions**
-
-**Purpose**: Test cross-database linking and ID conversion
-
-**What they test**:
-- Converting IDs between databases
-- Finding related entries across databases
-- Linking entities through relationships
-- Multi-database workflows
-
-**Examples from our question set**:
-
+**Example**:
 ```
-Q3: "What is the NCBI Gene ID for the protein with UniProt 
-     accession P04637?"
-Expected: 7157 (TP53)
+Q: "Find ChEMBL compounds with IC50 < 100 nM against EGFR that 
+    reached Phase 2+ clinical trials"
 
-Q27: "What is the ChEBI ID for ATP as referenced in Rhea 
-      reactions?"
-Expected: CHEBI:30616
+Why MIE-Required:
+- Needs ChEMBL data model: molecule → activity → target
+- Needs bioactivity filtering: activity type + value threshold
+- Needs target specification: ChEMBL ID for EGFR
+- Needs development phase property: max_phase >= 2
+- Needs filter order optimization
 
-Q63: "Convert the Ensembl gene ID ENSG00000012048 to its 
-      corresponding NCBI Gene ID"
-Expected: 672 (BRCA1)
-
-Q99: "What is the UniProt ID for the protein encoded by mouse 
-      gene with NCBI Gene ID 11461?"
-Expected: P10107 (Anxa1)
+Without MIE: Cannot construct query without ChEMBL ShEx schema
 ```
 
-**Key characteristics**:
-- Requires cross-database navigation
-- Tests ID conversion capabilities
-- Baseline has limited cross-reference knowledge
-- Clear success: correct corresponding ID
+### 🟢 Simple Questions (35 total)
 
-**Good question starters**:
-- "Convert [database A] ID to [database B] ID..."
-- "What is the [database] ID for [entity in other database]..."
-- "Find the corresponding [ID type] for..."
-- "Link [entity] from [database A] to [database B]..."
+Questions answerable with **simple tools or basic SPARQL** (no MIE needed).
 
-**Databases that link well** (from exploration):
-- UniProt ↔ NCBI Gene
-- PubChem ↔ ChEBI
-- ChEMBL ↔ UniProt
-- ClinVar ↔ MedGen
-- Ensembl ↔ NCBI Gene
+#### Simple Pattern 1: Search Tool Queries (15 questions)
 
----
-
-### 4. **Currency Questions**
-
-**Purpose**: Test access to recent or time-sensitive information
-
-**What they test**:
-- Recently added entries
-- Current status/classifications
-- Latest updates
-- Post-training-cutoff data
-
-**Examples from our question set**:
-
+**Example**:
 ```
-Q4: "When was the BRCA1 variant c.5266dup last updated in 
-     ClinVar?"
-Expected: Recent date (2025-05-25)
+Q: "What is the UniProt ID for human BRCA1?"
 
-Q28: "How many structures related to CRISPR Cas9 are currently 
-      in the PDB?"
-Expected: 461 (current count)
-
-Q40: "What pathways in Reactome involve SARS-CoV-2 proteins?"
-Expected: List of COVID-related pathways
-
-Q88: "How many articles about mRNA vaccines are indexed in 
-      PubMed as of 2024?"
-Expected: Current count
+Why NOT MIE-Required:
+- Uses search_uniprot_entity('BRCA1 human')
+- Returns P38398 directly
+- No complex SPARQL construction needed
+- Demonstrates appropriate tool selection
 ```
 
-**Key characteristics**:
-- Time-dependent information
-- May change as databases update
-- Baseline knowledge frozen at training cutoff (Jan 2025)
-- Clear success: current/recent data provided
+#### Simple Pattern 2: API-Based Queries (12 questions)
 
-**Good question starters**:
-- "When was [entity] last updated in..."
-- "How many [recent topic] entries are in..."
-- "What [current status] is recorded for..."
-- "As of [current year], how many..."
-
-**Note**: Claude's training cutoff is January 2025, so anything after that is clearly demonstrating currency.
-
----
-
-### 5. **Specificity Questions**
-
-**Purpose**: Test ability to find niche or specialized information
-
-**What they test**:
-- Rare diseases or conditions
-- Specialized organisms
-- Uncommon compounds
-- Domain-specific terminology
-
-**Examples from our question set**:
-
+**Example**:
 ```
-Q5: "What is the MeSH descriptor ID for Erdheim-Chester 
-     disease?"
-Expected: D031249
+Q: "How many descendant terms does GO:0006914 (autophagy) have?"
 
-Q17: "What is the NANDO identifier for Parkinson's disease 
-      (Japanese rare disease database)?"
-Expected: NANDO:1200010
-
-Q53: "What is the strain number for Thermotoga maritima in 
-      BacDive?"
-Expected: DSM 3109
-
-Q89: "What culture medium does BacDive recommend for growing 
-      Methanococcus jannaschii?"
-Expected: Specific medium from MediaDive
+Why NOT MIE-Required:
+- Uses OLS4 getDescendants API
+- Returns 25 descendants directly
+- No SPARQL needed (API provides ontology navigation)
+- Demonstrates when baseline tools suffice
 ```
 
-**Key characteristics**:
-- Niche topics or rare entities
-- Specialized databases (NANDO, BacDive, MediaDive)
-- Baseline unlikely to know specifics
-- Tests depth of database coverage
+#### Simple Pattern 3: ID Conversions (8 questions)
 
-**Good question starters**:
-- "What is the [database] ID for [rare entity]..."
-- "Find information about [niche organism/compound]..."
-- "What specialized [property] does [uncommon entity] have..."
-- "In [specialized database], what is..."
-
-**Databases good for specificity**:
-- NANDO: Japanese rare diseases
-- BacDive: Bacterial strains
-- MediaDive: Culture media recipes
-- MeSH: Medical terminology
-- GlyCosmos: Glycoscience
-
----
-
-### 6. **Structured Query Questions**
-
-**Purpose**: Test ability to handle complex, multi-step queries
-
-**What they test**:
-- Filtering by multiple criteria
-- Complex SPARQL-like queries
-- Multi-step reasoning
-- Combining constraints
-
-**Examples from our question set**:
-
+**Example**:
 ```
-Q6: "Find ChEMBL molecules with IC50 values less than 100 nM 
-     against any kinase target"
-Expected: List of compounds with IDs
+Q: "Convert UniProt P04637 to NCBI Gene ID"
 
-Q30: "Search the Gene Ontology for terms in the 
-      biological_process namespace that contain 'DNA repair'"
-Expected: List of GO terms
-
-Q54: "Find all UniProt entries for human proteins that are 
-      kinases AND have associated ChEMBL bioactivity data"
-Expected: List of protein IDs
-
-Q102: "What Rhea reactions involve both ATP and ADP, and are 
-       classified as transport reactions?"
-Expected: List of reaction IDs
-```
-
-**Key characteristics**:
-- Multiple constraints (AND/OR logic)
-- Requires filtering or complex queries
-- May need multiple tool calls
-- Tests SPARQL/database query capabilities
-
-**Good question starters**:
-- "Find all [entities] that [condition 1] AND [condition 2]..."
-- "Search for [things] matching [complex criteria]..."
-- "Filter [database] for entries with [property X] < [value] AND [property Y]..."
-- "List [entities] that participate in [process] AND have [characteristic]..."
-
-**Complexity levels**:
-- Simple: One filter ("IC50 < 100 nM")
-- Medium: Two filters ("kinases AND IC50 < 100 nM")
-- Complex: Three+ filters or multi-database ("human kinases WITH ChEMBL data AND FDA approval")
-
----
-
-## Question Format
-
-### JSON Structure
-
-Each question should follow this format:
-
-```json
-{
-  "id": 1,
-  "category": "Precision",
-  "question": "What is the UniProt ID for human BRCA1?",
-  "expected_answer": "P38398",
-  "notes": "Tests basic UniProt ID lookup. Baseline cannot provide 
-           specific database IDs. Verified in uniprot_exploration.md 
-           using search_uniprot_entity tool."
-}
-```
-
-### Required Fields
-
-- **`question`** (string): Natural language question
-  - Use clear, direct phrasing
-  - Avoid mentioning "SPARQL" or "MCP tools"
-  - Write as a researcher would ask
-
-- **`expected_answer`** (string): Verifiable answer
-  - Specific enough to validate automatically
-  - Should appear in the correct response
-  - Can be ID, number, term, etc.
-
-### Recommended Fields
-
-- **`id`** (number): Unique sequential identifier
-- **`category`** (string): One of the six categories
-- **`notes`** (string): Design rationale
-  - Which database(s) are involved
-  - Reference to exploration report findings
-  - Why this requires database access
-  - How answer was verified
-
-### Optional Fields
-
-- **`organism`** (string): Target organism (human, mouse, etc.)
-- **`databases`** (array): Which databases are involved
-- **`difficulty`** (string): simple, medium, complex
-
----
-
-## Design Process
-
-### Step 1: Identify Database Capability
-
-Start with database exploration reports:
-
-```bash
-# Review database capabilities
-cat exploration/00_SUMMARY.md
-
-# Deep dive on specific database
-cat exploration/uniprot_exploration.md
-```
-
-Look for:
-- Unique data this database provides
-- Search tool examples that work well
-- SPARQL queries that retrieve interesting data
-- Cross-references to other databases
-
-### Step 2: Choose Question Category
-
-Pick which of the six categories this tests:
-- **Precision**: Specific ID or value?
-- **Completeness**: Count or exhaustive list?
-- **Integration**: Cross-database linking?
-- **Currency**: Recent or updated data?
-- **Specificity**: Niche or rare entity?
-- **Structured Query**: Complex filtering?
-
-### Step 3: Draft Question
-
-Write in natural language:
-- Be specific and concrete
-- Include necessary context (organism, database, criteria)
-- Avoid technical jargon about SPARQL/MCP
-- Make it sound like a real research question
-
-### Step 4: Determine Expected Answer
-
-Verify the answer exists:
-- Run the query yourself (use exploration tools)
-- Confirm the answer is stable/verifiable
-- Note where you found it (for documentation)
-
-### Step 5: Validate Against Checklist
-
-Check all four criteria:
-- ✅ Biologically realistic?
-- ✅ Testable distinction?
-- ✅ Appropriate complexity?
-- ✅ Clear success criteria?
-
-### Step 6: Document in JSON
-
-Add to appropriate question file (Q01-Q10.json):
-
-```json
-{
-  "id": 121,
-  "category": "Precision",
-  "question": "Your question here",
-  "expected_answer": "Verified answer",
-  "notes": "Database: uniprot. Found via search_uniprot_entity. 
-           Tests exact ID lookup vs baseline which cannot provide 
-           specific database accessions. Verified in 
-           uniprot_exploration.md."
-}
+Why NOT MIE-Required:
+- Uses togoid_convertId(ids='P04637', route='uniprot,ncbigene')
+- Returns 7157 directly
+- No complex query construction
+- Demonstrates simple cross-reference service
 ```
 
 ---
 
-## Common Pitfalls to Avoid
+## Category Targets
 
-### ❌ **Questions Baseline Can Answer**
+Each category has specific MIE-dependency targets:
 
-Bad:
-- "What is BRCA1?" → Baseline knows from training
-- "What does UniProt do?" → General knowledge
-- "Why is DNA repair important?" → Conceptual
+| Category | Total | 🔴 MIE-Required | 🟢 Simple | MIE % |
+|----------|-------|-----------------|-----------|-------|
+| **Structured Query** | 20 | 18 | 2 | 90% |
+| **Integration** | 20 | 16 | 4 | 80% |
+| **Completeness** | 20 | 12 | 8 | 60% |
+| **Specificity** | 20 | 10 | 10 | 50% |
+| **Currency** | 20 | 10 | 10 | 50% |
+| **Precision** | 20 | 9 | 11 | 45% |
+| **TOTAL** | **120** | **85** | **35** | **71%** |
 
-Good:
-- "What is the UniProt ID for BRCA1?" → Requires database
-- "How many entries are in UniProt?" → Current count needed
-- "What is the GO ID for DNA repair?" → Specific ID needed
-
----
-
-### ❌ **Ambiguous Questions**
-
-Bad:
-- "Tell me about aspirin" → Too vague
-- "Find some kinases" → How many? Which type?
-- "What pathways exist?" → In which database? All of them?
-
-Good:
-- "What is the PubChem CID for aspirin?" → Specific
-- "How many human kinases are in UniProt?" → Clear scope
-- "What Reactome pathways involve BRCA1?" → Clear database and entity
+**Why different targets?**
+- **Structured Query**: Most inherently complex (filtering, combining criteria)
+- **Integration**: Usually requires cross-database SPARQL (high MIE)
+- **Precision/Currency**: Often simple lookups (lower MIE)
+- **Completeness/Specificity**: Mixed (some complex, some simple)
 
 ---
 
-### ❌ **Impossible to Verify**
+## Category Definitions
 
-Bad:
-- "Is UniProt the best protein database?" → Opinion
-- "Will this protein be important?" → Prediction
-- "Explain the significance of..." → Subjective
+### 1. Precision (20 questions)
+Test ability to retrieve **exact, specific data**.
+- Examples: Specific IDs, exact measurements, precise sequences
+- MIE-Required: Complex lookups with multiple criteria
+- Simple: Direct ID lookups via search tools
 
-Good:
-- "Is Q99ZW2 the UniProt ID for SpCas9?" → Boolean, verifiable
-- "What is the function annotation for..." → Database field, verifiable
-- "What GO terms are associated with..." → List, verifiable
+### 2. Completeness (20 questions)
+Test ability to retrieve **exhaustive or comprehensive data**.
+- Examples: Counts, complete lists, systematic enumeration
+- MIE-Required: Performance-critical counts on large datasets
+- Simple: API-based counts (OLS4, E-utilities)
+
+### 3. Integration (20 questions)
+Test **cross-database linking and ID conversion**.
+- Examples: ID conversions, multi-database relationships
+- MIE-Required: Cross-database SPARQL joins
+- Simple: togoid ID conversions
+
+### 4. Currency (20 questions)
+Test access to **recent or time-sensitive information**.
+- Examples: Recent additions, current status, post-training data
+- MIE-Required: Complex queries on recent data
+- Simple: Basic recent counts via search
+
+### 5. Specificity (20 questions)
+Test ability to find **niche or specialized information**.
+- Examples: Rare diseases, specialized organisms, uncommon compounds
+- MIE-Required: Complex queries in specialized databases
+- Simple: Basic lookups in niche databases
+
+### 6. Structured Query (20 questions)
+Test ability to handle **complex, multi-step queries**.
+- Examples: Multiple criteria, filtering, combining constraints
+- MIE-Required: Most should be (90% target)
+- Simple: API-based filtering when available
 
 ---
 
-### ❌ **Too Technical**
+## Question Quality Criteria
 
-Bad:
-- "Write a SPARQL query to find..." → Implementation detail
-- "Use the MCP tool to..." → Too specific
-- "Query the RDF endpoint for..." → Technical jargon
+All questions (MIE-Required and Simple) must be:
 
-Good:
-- "How many proteins in UniProt have..." → Natural language
-- "Find all compounds that..." → Clear intent
-- "What is the [property] of..." → Direct question
+✅ **Biologically Realistic**
+- Would an actual researcher ask this?
+- Does it solve a real research problem?
+- Is the answer useful?
+
+✅ **Testable Distinction**
+- Can you verify if database was used?
+- Is the answer verifiable?
+- Clear success criteria?
+
+✅ **Appropriate Complexity**
+- Not too simple (baseline can't answer)
+- Not impossibly broad (wouldn't timeout)
+- Right scope for category and type
+
+✅ **Clear Success Criteria**
+- Specific expected answer
+- Objectively verifiable
+- Stable (not changing daily unless Currency)
 
 ---
 
-## Validation Before Running
+## Notes Field Format
 
-### Use the Validator
+### For 🔴 MIE-Required Questions
 
-```bash
-cd scripts
-python validate_questions.py ../questions/your_questions.json
+```
+"REQUIRES MIE FILE(S): [Database(s)] MIE - [sections needed].
+
+MIE Knowledge Required:
+- [Specific element 1]
+- [Specific element 2]
+- [Specific element 3]
+
+Without MIE: [what fails - timeout/error/wrong approach].
+
+With MIE: [what MIE provides that enables success].
+
+Verified in [dbname]_exploration.md [Pattern reference]."
 ```
 
-Checks:
-- ✅ Valid JSON syntax
-- ✅ Required fields present
-- ✅ Valid categories
-- ✅ No duplicate questions
-- ✅ Reasonable question length
+### For 🟢 Simple Questions
 
-### Estimate Cost
-
-```bash
-python validate_questions.py ../questions/your_questions.json --estimate-cost
 ```
+"Simple [query type] using [tool/API name]. Does NOT require MIE file - 
+demonstrates when baseline/simple tools suffice.
 
-Shows approximate API cost before running full evaluation.
+Query: [tool call]
+Returns: [direct result]
+
+Verified in [dbname]_exploration.md simple queries section."
+```
 
 ---
 
-## How Automated Evaluation Works
+## Validation Checklist
 
-After you create questions, the automated system:
+### MIE-Dependency Distribution
+- [ ] 85 questions marked "REQUIRES MIE FILE(S)"
+- [ ] 35 questions marked "Does NOT require MIE"
+- [ ] Structured Query: 18/20 MIE-Required (90%)
+- [ ] Integration: 16/20 MIE-Required (80%)
+- [ ] Other categories meet targets
 
-### 1. **Baseline Test**
-Runs question without MCP tools:
-```
-"Answer using only your training knowledge. 
-Do not use any database tools. 
-[Your question]"
-```
+### MIE-Required Quality
+- [ ] All cite specific MIE file(s) and sections
+- [ ] All explain what fails without MIE
+- [ ] All explain what MIE provides
+- [ ] All reference exploration report patterns
 
-### 2. **TogoMCP Test**
-Runs question with MCP tools enabled:
-```
-[Your question]
-```
-(Claude automatically uses available MCP tools)
+### Simple Question Quality
+- [ ] All explicitly state "Does NOT require MIE"
+- [ ] All name the tool/API used
+- [ ] All explain why MIE not needed
 
-### 3. **Comparison**
-Checks:
-- Does response contain `expected_answer`?
-- Which MCP tools were used?
-- Response time and token usage
-- Success vs failure patterns
-
-### 4. **Value-Add Assessment**
-Automatically categorizes:
-- **CRITICAL**: Baseline failed, TogoMCP succeeded
-- **VALUABLE**: Both answered, TogoMCP much better
-- **MARGINAL**: Minor improvement only
-- **REDUNDANT**: No meaningful difference
-
-### 5. **Results**
-Generates:
-- CSV with all metrics
-- Statistical analysis
-- Interactive dashboard
-- Identified high-value questions
-
-**See**: [`scripts/README.md`](scripts/README.md) for details on running evaluations.
+### Overall Quality
+- [ ] 120 questions total (20 per category)
+- [ ] All biologically relevant (not database trivia)
+- [ ] All expert-realistic (researchers would ask)
+- [ ] All have verifiable answers
+- [ ] All databases represented
 
 ---
 
-## Examples from Existing Questions
+## Expected Evaluation Results
 
-### Example 1: Precision Question
+With proper MIE-dependency distribution:
 
-```json
-{
-  "id": 1,
-  "category": "Precision",
-  "question": "What is the UniProt accession ID for SpCas9 from 
-               Streptococcus pyogenes M1 GAS?",
-  "expected_answer": "Q99ZW2",
-  "notes": "Database: UniProt. Tests exact protein ID lookup. 
-           Baseline cannot provide specific UniProt accessions. 
-           Found via search_uniprot_entity('SpCas9 Streptococcus 
-           pyogenes'). Verified in uniprot_exploration.md."
-}
+**Success Rates**:
+- WITH MIE: 85-90% overall
+  - MIE-Required questions: 90% (complex queries succeed)
+  - Simple questions: 95% (baseline sufficient)
+  
+- WITHOUT MIE: 60-70% overall
+  - MIE-Required questions: 40% (timeouts, errors, wrong SPARQL)
+  - Simple questions: 95% (no difference - proves fairness)
+
+**Tool Usage**:
+- WITH MIE: get_MIE_file called 70-80% of time
+- WITHOUT MIE: Tool not available (0% usage)
+
+**Performance Gap**:
+- Overall difference: 15-25%
+- On MIE-Required questions: 50% difference (90% vs 40%)
+- On Simple questions: 0% difference (proves unbiased)
+
+**Failure Categorization** (WITHOUT MIE):
+- Timeouts: Missing performance optimizations
+- 400 Errors: Missing error-avoidance patterns
+- Wrong Results: Missing GRAPH URIs or join properties
+- Empty Results: Missing cross-database knowledge
+
+---
+
+## Common Question Patterns
+
+### ✅ Good MIE-Required Questions
+
+**Multi-Database Join**:
+```
+"Find pathogenic ClinVar variants in genes encoding proteins with 
+ PDB structures better than 2.0Å resolution"
+
+Requires: ClinVar + Gene + UniProt + PDB MIE files
 ```
 
-**Why it's good**:
-- ✅ Specific organism strain mentioned
-- ✅ Exact ID requested (Q99ZW2)
-- ✅ Baseline won't know this specific accession
-- ✅ Easily verifiable in UniProt
+**Performance-Critical**:
+```
+"How many human reviewed proteins have transmembrane regions annotated?"
 
----
-
-### Example 2: Completeness Question
-
-```json
-{
-  "id": 2,
-  "category": "Completeness",
-  "question": "How many descendant terms does GO:0006914 
-               (autophagy) have in the Gene Ontology?",
-  "expected_answer": "25",
-  "notes": "Database: GO (Gene Ontology). Tests hierarchical 
-           navigation using getDescendants. Baseline cannot 
-           enumerate exact descendant counts. Requires database 
-           query to get complete list. Verified via 
-           getDescendants(GO:0006914)."
-}
+Requires: UniProt MIE early filtering strategy
 ```
 
-**Why it's good**:
-- ✅ Requires systematic enumeration
-- ✅ Exact count needed (25)
-- ✅ Baseline might estimate but can't give exact count
-- ✅ Tests database hierarchy navigation
+**Error-Avoidance**:
+```
+"Find proteins where annotation text contains 'membrane receptor'"
 
----
-
-### Example 3: Integration Question
-
-```json
-{
-  "id": 3,
-  "category": "Integration",
-  "question": "What is the NCBI Gene ID for the protein with 
-               UniProt accession P04637?",
-  "expected_answer": "7157",
-  "notes": "Database: UniProt, NCBI Gene. Tests ID conversion 
-           between databases. P04637 is TP53 (tumor protein p53). 
-           Baseline has limited cross-reference knowledge. Requires 
-           TogoID or direct cross-reference lookup. Verified in 
-           uniprot_exploration.md."
-}
+Requires: UniProt MIE property path splitting solution
 ```
 
-**Why it's good**:
-- ✅ Clear cross-database conversion
-- ✅ Specific IDs in both systems
-- ✅ Tests integration capability
-- ✅ Easily verified in either database
+**Complex Filtering**:
+```
+"Find ChEMBL kinase inhibitors with IC50 < 100 nM in Phase 2+ trials"
 
----
-
-### Example 4: Currency Question
-
-```json
-{
-  "id": 4,
-  "category": "Currency",
-  "question": "When was the BRCA1 variant c.5266dup (also known 
-               as 5382insC) last updated in ClinVar?",
-  "expected_answer": "2025-05-25",
-  "notes": "Database: ClinVar. Tests access to current database 
-           metadata. Update dates are beyond training cutoff and 
-           require live database access. This is a well-known 
-           pathogenic variant. Verified in clinvar_exploration.md 
-           via get_article_metadata on ClinVar entries."
-}
+Requires: ChEMBL MIE data model and filtering patterns
 ```
 
-**Why it's good**:
-- ✅ Time-sensitive information
-- ✅ Post-training cutoff data (2025-05-25)
-- ✅ Baseline frozen at Jan 2025
-- ✅ Demonstrates currency value
+### ✅ Good Simple Questions
 
----
+**Search Tool**:
+```
+"What is the UniProt ID for human BRCA1?"
 
-### Example 5: Specificity Question
-
-```json
-{
-  "id": 5,
-  "category": "Specificity",
-  "question": "What is the MeSH descriptor ID for Erdheim-Chester 
-               disease?",
-  "expected_answer": "D031249",
-  "notes": "Database: MeSH. Tests retrieval of rare disease 
-           terminology. Erdheim-Chester is a rare histiocytic 
-           disorder. Baseline unlikely to know specific MeSH ID 
-           for this rare condition. Verified via 
-           search_mesh_entity('Erdheim-Chester'). Found in 
-           mesh_exploration.md."
-}
+Uses: search_uniprot_entity tool
 ```
 
-**Why it's good**:
-- ✅ Rare disease (niche topic)
-- ✅ Specific terminology database (MeSH)
-- ✅ Baseline unlikely to know this ID
-- ✅ Tests depth of specialized knowledge
+**API Query**:
+```
+"How many descendants does GO:0006914 have?"
 
----
-
-### Example 6: Structured Query Question
-
-```json
-{
-  "id": 6,
-  "category": "Structured Query",
-  "question": "Find ChEMBL molecules with IC50 values less than 
-               100 nM against any kinase target",
-  "expected_answer": "List of ChEMBL IDs (e.g., CHEMBL25, 
-                      CHEMBL98, etc.)",
-  "notes": "Database: ChEMBL. Tests complex filtering with 
-           multiple criteria: (1) bioactivity type = IC50, 
-           (2) value < 100 nM, (3) target type = kinase. Requires 
-           structured database query. Baseline cannot perform 
-           such specific filtering. Verified in 
-           chembl_exploration.md using search and filter examples."
-}
+Uses: OLS4 getDescendants API
 ```
 
-**Why it's good**:
-- ✅ Multiple criteria (target type + measurement + threshold)
-- ✅ Requires database filtering capability
-- ✅ Baseline can't perform this specific query
-- ✅ Tests structured query handling
+**ID Conversion**:
+```
+"Convert UniProt P04637 to NCBI Gene ID"
 
----
+Uses: togoid_convertId service
+```
 
-## Question Set Balance
+### ❌ Bad Examples
 
-### Recommended Distribution (120 questions)
+**Claiming MIE-Required Without Justification**:
+```
+Question: "What is the UniProt ID for BRCA1?"
+Notes: "REQUIRES MIE FILE: UniProt MIE"
 
-- **20 questions per category** (6 categories × 20 = 120)
-- **All 22 databases represented**
-- **Mix of difficulty levels** (simple, medium, complex)
-- **Diverse organisms** (human, model organisms, microbes)
+Problem: This is actually a simple search, doesn't need MIE
+```
 
-### Current Distribution (Your Questions)
+**Vague About MIE Value**:
+```
+Notes: "REQUIRES MIE FILE: Helps with the query"
 
-See [`questions/SUMMARY.md`](questions/SUMMARY.md) for detailed breakdown:
+Problem: Doesn't explain WHAT from MIE or WHY needed
+```
 
-| Category | Count | Databases Emphasized |
-|----------|-------|---------------------|
-| Precision | 20 | UniProt, PubChem, PDB, MeSH |
-| Completeness | 20 | GO, ClinVar, NCBI Gene, BacDive |
-| Integration | 20 | UniProt↔Gene, PubChem↔ChEBI, ClinVar↔MedGen |
-| Currency | 20 | ClinVar, PDB, Reactome, NCBI Gene |
-| Specificity | 20 | NANDO, BacDive, MediaDive, MeSH |
-| Structured Query | 20 | ChEMBL, GO, Rhea, UniProt |
+**Not Explaining Failure Mode**:
+```
+Notes: "REQUIRES MIE FILE: Needs it to work"
 
----
-
-## Tips for Success
-
-### Start with High-Value Databases
-
-Focus on databases with:
-- Rich data (UniProt, PubChem, GO)
-- Good search tools (search_uniprot_entity, search_chembl_molecule)
-- Clear use cases (ClinVar for variants, PDB for structures)
-
-**See**: [`exploration/00_SUMMARY.md`](exploration/00_SUMMARY.md) for database rankings.
-
-### Use Exploration Reports
-
-Before writing questions:
-1. Read relevant exploration report
-2. Note successful search/SPARQL examples
-3. Identify interesting findings
-4. Verify data exists
-
-### Test Your Questions
-
-Before adding to evaluation set:
-- Try the query yourself
-- Confirm answer exists
-- Verify it's stable (not changing daily)
-- Check it's not in baseline knowledge
-
-### Iterate Based on Results
-
-After running evaluations:
-- Remove REDUNDANT questions (baseline answered well)
-- Keep CRITICAL questions (clear value-add)
-- Refine MARGINAL questions (improve specificity)
+Problem: Doesn't explain what goes wrong without MIE
+```
 
 ---
 
 ## Resources
 
-### Documentation
-- **Exploration Reports**: [`exploration/`](exploration/) - Database capabilities
-- **Existing Questions**: [`questions/Q01-Q10.json`](questions/) - 120 examples
-- **Automated Evaluation**: [`scripts/README.md`](scripts/README.md) - Running tests
-- **Project Status**: [`PROJECT_STATUS.md`](PROJECT_STATUS.md) - Current progress
+**For Creating Questions**:
+- **Phase 1**: `question_generation_phase1_REVISED.md` (exploration)
+- **Phase 2**: `question_generation_phase2_REVISED.md` (question creation)
+- **This Guide**: Reference only (understanding framework)
 
-### Tools
-- **Validator**: `scripts/validate_questions.py` - Check question format
-- **Test Runner**: `scripts/automated_test_runner.py` - Run evaluations
-- **Analyzer**: `scripts/results_analyzer.py` - Analyze results
-
-### Key Files
-- **Question Summary**: [`questions/SUMMARY.md`](questions/SUMMARY.md)
-- **Database Summary**: [`exploration/00_SUMMARY.md`](exploration/00_SUMMARY.md)
-- **This Guide**: `QUESTION_DESIGN_GUIDE.md` (you are here)
-
----
-
-## Quick Start for Question Creation
-
+**For Validation**:
 ```bash
-# 1. Review database capabilities
-cat exploration/00_SUMMARY.md
+# Validate JSON format
+python scripts/validate_questions.py questions/Q01.json
 
-# 2. Pick a database and review its report
-cat exploration/uniprot_exploration.md
+# Count MIE-Required questions
+grep -r "REQUIRES MIE FILE" questions/*.json | wc -l
 
-# 3. Draft your question (follow examples in questions/Q01.json)
-
-# 4. Add to appropriate question file or create new one
-
-# 5. Validate format
-cd scripts
-python validate_questions.py ../questions/your_questions.json
-
-# 6. Test with evaluation (optional)
-python automated_test_runner.py ../questions/your_questions.json
-
-# 7. Review results
-python results_analyzer.py evaluation_results.csv
+# Count Simple questions
+grep -r "Does NOT require MIE" questions/*.json | wc -l
 ```
 
+**For Running Evaluation**:
+- `scripts/automated_test_runner.py` - Run tests WITH and WITHOUT MIE
+- `scripts/add_llm_evaluation.py` - Add LLM-based scoring
+- `scripts/results_analyzer.py` - Analyze results
+
 ---
 
-**Last Updated**: 2025-12-18  
-**Related**: Automated evaluation in `scripts/`, existing questions in `questions/`  
-**For**: Question design and creation (not manual scoring)
+## Summary
+
+**MIE-Dependency is Key**:
+- 70% questions should REQUIRE MIE files (demonstrate value)
+- 30% questions should NOT need MIE (demonstrate fairness)
+- Different categories have different MIE targets
+- Notes must clearly explain MIE value or why not needed
+
+**Four MIE-Required Patterns**:
+1. Multi-database joins (need GRAPH URIs, join properties)
+2. Performance-critical (need early filtering, optimization)
+3. Error-avoidance (need solutions for backend-specific errors)
+4. Complex filtering (need schema knowledge, data models)
+
+**Three Simple Patterns**:
+1. Search tools (direct entity lookups)
+2. API queries (OLS4, E-utilities)
+3. ID conversions (togoid service)
+
+**Expected Impact**:
+- WITH MIE: 85-90% success (complex queries work)
+- WITHOUT MIE: 60-70% success (complex queries fail)
+- Performance gap: 15-25% (proves MIE value)
+
+---
+
+**For question creation instructions, see**: `question_generation_phase2_REVISED.md`
+
+**Last Updated**: 2026-01-30 (Minimal Reference Version)

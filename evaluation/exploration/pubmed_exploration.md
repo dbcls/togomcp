@@ -1,305 +1,702 @@
 # PubMed Exploration Report
 
+**Date**: 2026-01-31
+**Session**: 1
+
+## Executive Summary
+
+PubMed is a comprehensive biomedical literature database containing 38+ million citations. The database provides rich metadata including titles, abstracts, authors with affiliations, publication details, and MeSH term annotations. Key integration opportunities exist with PubTator (entity annotations), NCBI Gene (gene metadata), MeSH (vocabulary terms), and other NCBI co-located databases.
+
+Key capabilities requiring deep knowledge:
+- Cross-database queries with PubTator for gene/disease entity annotations
+- bif:contains full-text search (required for performance)
+- MeSH term annotation structure (multiple property types)
+- Author metadata navigation through OLO ontology patterns
+- Date filtering complexities with variable formats
+
+Major integration opportunities:
+- PubMed → PubTator → NCBI Gene: Three-way integration for gene-literature analysis
+- PubMed + MeSH: Literature by controlled vocabulary terms
+- PubMed + PubTator: Entity annotations from text mining
+
+Most valuable patterns discovered:
+- Pre-filtering with bif:contains before cross-database joins (essential)
+- Understanding rdfs:seeAlso vs fabio:hasPrimarySubjectTerm for MeSH
+- Author extraction through OLO ordered list ontology
+- Three-way GRAPH joins with progressive filtering
+
+Recommended question types:
+- Cross-database gene-disease-literature queries
+- Performance-critical keyword searches
+- Author/affiliation-based queries
+- MeSH term annotation queries
+
 ## Database Overview
-PubMed is the premier biomedical literature database containing 37+ million bibliographic records from MEDLINE, life science journals, and online books. The RDF representation provides comprehensive publication metadata including titles, abstracts, authors with affiliations, journal details, MeSH subject indexing, and cross-references to external databases. It enables semantic querying across decades of biomedical research publications with daily updates, making it essential for systematic literature reviews, bibliometric analysis, and biomedical knowledge discovery.
 
-Key data types:
-- **Articles**: PMID-identified citations with titles, abstracts, publication dates, DOIs
-- **Authors**: Ordered author lists with names, affiliations (60% coverage)
-- **Journals**: Publication venues with ISSN, eISSN, NLM Journal IDs
-- **MeSH Annotations**: Subject indexing with descriptors, qualifiers, supplementary concepts (~95% coverage)
-- **Cross-References**: DOIs, PMC IDs, external database links
+- **Purpose**: Biomedical literature citations and metadata
+- **Scope**: MEDLINE, life science journals, online books
+- **Key data types**: Articles, authors, affiliations, journals, MeSH annotations
+- **Dataset size**: ~39 million citations (37+ million as of documentation)
+- **Access methods**: SPARQL queries via ncbi endpoint, PubMed API tools
 
-## Schema Analysis (from MIE file)
+## Structure Analysis
 
-**Main Properties:**
-- `bibo:pmid`: PubMed identifier (string format, e.g., "31558841")
-- `dct:title`: Article title (>99% coverage)
-- `bibo:abstract`: Abstract text (~85% coverage)
-- `dct:issued`: Publication date (gYearMonth or date format)
-- `prism:doi`: Digital Object Identifier (~70% coverage)
-- `prism:publicationName`: Journal name
-- `dct:creator`: Ordered author list using OLO ontology
-- `rdfs:seeAlso`: Links to MeSH vocabulary terms (descriptors, supplementary concepts)
-- `fabio:hasPrimarySubjectTerm`: Major MeSH topic with qualifiers
-- `fabio:hasSubjectTerm`: Secondary MeSH indexing with qualifiers
+### Performance Strategies
 
-**Important Relationships:**
-- Author lists: `dct:creator` → `olo:slot` → `olo:item` (foaf:Person) with `org:memberOf` for affiliations
-- MeSH annotations: Three patterns - rdfs:seeAlso (descriptors), fabio:hasPrimarySubjectTerm (major topics), fabio:hasSubjectTerm (secondary)
-- Cross-database links: Article URIs (http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid}) enable joining with PubTator, NCBI Gene, ClinVar, MedGen
+**Strategy 1: Use bif:contains for text search (CRITICAL)**
+- Why needed: 39M articles makes FILTER/REGEX impossible
+- When to apply: All keyword searches on titles, abstracts
+- Performance impact: 10-100x faster than REGEX
+- Example: `?title bif:contains "'CRISPR' AND 'cancer'"` completes in 2-3s
 
-**Query Patterns:**
-- PMID lookup: Direct article retrieval via `bibo:pmid` filter
-- Keyword search: `bif:contains` on dct:title for full-text indexed search
-- MeSH filtering: `rdfs:seeAlso` with MeSH URI (http://id.nlm.nih.gov/mesh/{term})
-- Temporal filtering: STRSTARTS(STR(?issued), "YYYY") for year-based queries
-- Author extraction: Navigate olo:slot ordered lists with index sorting
-- Cross-database joins: Via shared article URIs with PubTator (gene/disease annotations) and NCBI Gene (gene metadata)
+**Strategy 2: Pre-filter within GRAPH before joins**
+- Why needed: Cross-database joins multiply search space
+- When to apply: All cross-database queries
+- Performance impact: 99.9%+ reduction in search space
+- Example: Filter PubMed to ~100 articles before PubTator join
 
-## Search Queries Performed
+**Strategy 3: Use explicit GRAPH clauses**
+- Why needed: Shared NCBI endpoint has multiple databases
+- When to apply: All cross-database queries
+- Performance impact: Prevents cross-contamination
 
-1. **Query: "CRISPR gene editing" via ncbi_esearch** → Found 23,437 articles with PMIDs including 41603733, 41603277, 41603018, 41602764, 41599380. Demonstrates MeSH query translation and massive literature corpus on genome editing technology.
+**Strategy 4: Always add LIMIT**
+- Why needed: Large result sets cause timeout
+- When to apply: Every exploratory query
+- Performance impact: Prevents 60s timeout
 
-2. **Query: "BRCA1 AND breast cancer" via ncbi_esearch** → Found 16,101 articles with PMIDs including 41597333, 41595712, 41595245, 41595228, 41594705. Shows extensive research on BRCA1 tumor suppressor in breast cancer context.
+**Strategy 5: Filter by PMID for author queries**
+- Why needed: Author lists span entire database
+- When to apply: When extracting author information
+- Performance impact: Must start with specific article(s)
 
-3. **Query: Full article metadata for PMID 31558841** → Retrieved complete record: "Functional variants in ADH1B and ALDH2 are non-additively associated with all-cause mortality in Japanese population" published in European Journal of Human Genetics (2020-03), DOI:10.1038/s41431-019-0518-y, with full abstract about alcohol metabolism genetic variants.
+### Common Pitfalls
 
-4. **Query: Recent mRNA vaccine publications** → Found 5 most recent articles (PMIDs 40573959, 40573932, 40573899, 40572220, 40564159) on influenza/COVID-19 combination vaccines, vaccine technology, infectious bronchitis, PRRSV, and monkeypox using bif:contains keyword search.
+**Error 1: Query timeout on full dataset**
+- Cause: Attempting to count or aggregate 39M articles
+- Symptoms: 60s timeout
+- Solution: Use LIMIT, sampling with FILTER(?pmid < "10000")
+- Example: Count queries always timeout without filtering
 
-5. **Query: Articles with Alzheimer Disease MeSH term (D016428)** → Retrieved 5 most recently indexed articles (issued 2026-2027) demonstrating MeSH cross-reference linking. Note: Future publication dates appear for articles in press or ahead of print.
+**Error 2: Using REGEX instead of bif:contains**
+- Cause: Natural approach without MIE knowledge
+- Symptoms: Very slow or timeout
+- Solution: `?title bif:contains "'keyword'"` with single quotes
+- Example before: `FILTER(REGEX(?title, "cancer", "i"))`
+- Example after: `?title bif:contains "'cancer'"`
 
-## SPARQL Queries Tested
+**Error 3: Cross-database filter after join**
+- Cause: FILTER(CONTAINS()) placed outside GRAPH
+- Symptoms: 370 trillion intermediate results → timeout
+- Solution: Pre-filter with bif:contains inside GRAPH
+- Example: Move keyword filter INTO PubMed GRAPH block
 
+**Error 4: Empty results for MeSH term queries**
+- Cause: Wrong MeSH ID or property
+- Symptoms: Empty results for valid-looking queries
+- Solution: Search by keyword first to discover actual MeSH terms in use
+- Example: D016428 is "Journal Article", not "Alzheimer Disease"
+
+**Error 5: Wrong date format assumptions**
+- Cause: Dates stored as gYearMonth, date, or string
+- Symptoms: Date comparisons fail
+- Solution: Use STR() and STRSTARTS for date ranges
+- Example: `FILTER(STRSTARTS(STR(?issued), "2024"))`
+
+### Data Organization
+
+**Article Data Section**
+- Purpose: Core publication metadata
+- Content: PMID, title, abstract, publication date, DOI
+- Usage: Primary entity for all queries
+
+**Author Data Section**
+- Purpose: Author information with institutional affiliations
+- Content: Ordered author lists using OLO ontology
+- Usage: Requires OLO slot/index navigation
+- Note: ~60% have affiliations
+
+**MeSH Annotations Section**
+- Purpose: Controlled vocabulary subject indexing
+- Content: Multiple property types for different annotation levels
+- Properties:
+  - `rdfs:seeAlso`: General MeSH term links (descriptors, supplementary concepts)
+  - `fabio:hasPrimarySubjectTerm`: Major topics (descriptor-qualifier pairs)
+  - `fabio:hasSubjectTerm`: Supporting concepts (descriptor-qualifier pairs)
+- Note: Descriptor-qualifier format is `D######Q######` (e.g., D000544Q000235)
+
+**Journal Data Section**
+- Purpose: Publication venue information
+- Content: Journal name, ISSN, NLM ID, volume, issue, pages
+- Usage: Filtering by journal name possible
+
+### Cross-Database Integration Points
+
+**Integration 1: PubMed → PubTator**
+- Connection relationship: Shared article URI
+- Join point: `http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid}` (identical in both)
+- Required from each:
+  - PubMed: Article metadata (pmid, title)
+  - PubTator: Entity annotations (Gene, Disease)
+- Pre-filtering needed: bif:contains in PubMed GRAPH (essential)
+- Knowledge required:
+  - PubTator entity types: `dcterms:subject "Gene"` or `dcterms:subject "Disease"`
+  - PubTator properties: `oa:hasBody`, `oa:hasTarget`
+- Performance: Tier 1 (1-3s) with pre-filtering
+
+**Integration 2: PubMed → PubTator → NCBI Gene**
+- Three-way integration for gene metadata enrichment
+- Connection chain: PubMed article → PubTator annotation → NCBI Gene metadata
+- Join points:
+  - PubMed ↔ PubTator: Shared article URI
+  - PubTator ↔ NCBI Gene: `http://identifiers.org/ncbigene/{id}`
+- Required from each:
+  - PubMed: Article metadata
+  - PubTator: Gene annotations
+  - NCBI Gene: Gene symbols, descriptions
+- Pre-filtering needed: Double pre-filter (bif:contains in PubMed + entity type in PubTator)
+- Knowledge required:
+  - NCBI Gene entity type: `insdc:Gene`
+  - NCBI Gene properties: `rdfs:label` (symbol), `dct:description`
+- Performance: Tier 2 (5-8s) with double pre-filtering
+
+**Integration 3: PubMed + MeSH (Indirect)**
+- Note: MeSH and PubMed are on DIFFERENT endpoints
+- MeSH: `https://rdfportal.org/primary/sparql`
+- PubMed: `https://rdfportal.org/ncbi/sparql`
+- Integration approach: Extract MeSH IDs from PubMed, then query MeSH separately
+- MeSH ID format in PubMed: `http://id.nlm.nih.gov/mesh/D######`
+
+**Integration 4: PubMed + ClinVar**
+- Not directly linked, but both on NCBI endpoint
+- Potential via gene-based linkage through PubTator
+
+## Complex Query Patterns Tested
+
+### Pattern 1: Cross-Database Gene Annotation Integration
+
+**Purpose**: Find genes mentioned in articles about specific topics
+
+**Category**: Cross-Database, Integration
+
+**Naive Approach (without proper knowledge)**:
 ```sparql
-# Query 1: Retrieve complete article metadata - adapted for PMID 35486828
-PREFIX bibo: <http://purl.org/ontology/bibo/>
-PREFIX dct: <http://purl.org/dc/terms/>
-PREFIX prism: <http://prismstandard.org/namespeces/1.2/basic/>
-PREFIX fabio: <http://purl.org/spar/fabio/>
-
-SELECT ?title ?abstract ?doi ?journal ?issued ?nlmJournalId
-FROM <http://rdfportal.org/dataset/pubmed>
+# BAD: No pre-filter, processes 37M × 10M join
 WHERE {
-  ?article bibo:pmid "35486828" ;
-           dct:title ?title ;
-           prism:publicationName ?journal ;
-           dct:issued ?issued .
-  OPTIONAL { ?article bibo:abstract ?abstract }
-  OPTIONAL { ?article prism:doi ?doi }
-  OPTIONAL { ?article fabio:hasNationalLibraryOfMedicineJournalId ?nlmJournalId }
+  GRAPH <http://rdfportal.org/dataset/pubmed> {
+    ?article bibo:pmid ?pmid ;
+             dct:title ?title .
+  }
+  GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+    ?ann oa:hasTarget ?article ;
+         oa:hasBody ?geneId .
+  }
+  FILTER(CONTAINS(?title, "BRCA1"))
 }
-# Results: Retrieved "Use of large language models..." article from Nature with full metadata
 ```
 
-```sparql
-# Query 2: Keyword search for COVID-19 research - adapted for specific time range
-PREFIX bibo: <http://purl.org/ontology/bibo/>
-PREFIX dct: <http://purl.org/dc/terms/>
+**What Happened**:
+- Error: Timeout after 60 seconds
+- Why: Processes 37M articles × 10M annotations = 370 trillion intermediate results
 
-SELECT ?pmid ?title ?issued
-FROM <http://rdfportal.org/dataset/pubmed>
+**Correct Approach (using proper pattern)**:
+```sparql
+WHERE {
+  GRAPH <http://rdfportal.org/dataset/pubmed> {
+    ?article bibo:pmid ?pmid ;
+             dct:title ?title .
+    ?title bif:contains "'BRCA1'" .  # Early filtering!
+  }
+  GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+    ?ann dcterms:subject "Gene" ;
+         oa:hasBody ?geneId ;
+         oa:hasTarget ?article .
+  }
+}
+LIMIT 50
+```
+
+**What Knowledge Made This Work**:
+- Key Insights:
+  - bif:contains provides indexed full-text search
+  - Pre-filter WITHIN source GRAPH before join
+  - PubTator properties: dcterms:subject, oa:hasBody, oa:hasTarget
+- Performance improvement: ~2 seconds vs timeout
+- Why it works: Reduces 37M to ~100 articles BEFORE join
+
+**Results Obtained**:
+- Number of results: 50 (limited)
+- Sample results:
+  - PMID 7866981: "Loss of heterozygosity of the BRCA1..." - Gene: 672 (BRCA1)
+  - PMID 8173065: "Molecular cloning of BRCA1..." - Gene: 672 (BRCA1)
+- Data quality: Good linkage between articles and gene mentions
+
+**Natural Language Question Opportunities**:
+1. "Which genes are mentioned in research articles about BRCA1 and cancer?" - Category: Integration
+2. "What genes have been studied in connection with Alzheimer's disease in the literature?" - Category: Integration, Structured Query
+3. "Find research articles that discuss both the TP53 gene and its role in cancer" - Category: Structured Query
+
+---
+
+### Pattern 2: Three-Way Integration (PubMed → PubTator → NCBI Gene)
+
+**Purpose**: Get gene symbols for genes mentioned in articles
+
+**Category**: Advanced Cross-Database, Integration
+
+**Naive Approach**:
+```sparql
+# Attempt to join three databases without optimization
+WHERE {
+  GRAPH <http://rdfportal.org/dataset/pubmed> { ... }
+  GRAPH <http://rdfportal.org/dataset/pubtator_central> { ... }
+  GRAPH <http://rdfportal.org/dataset/ncbigene> { ... }
+}
+```
+
+**What Happened**:
+- Error: Timeout or slow performance
+- Why: Three-way join without pre-filtering
+
+**Correct Approach**:
+```sparql
+WHERE {
+  GRAPH <http://rdfportal.org/dataset/pubmed> {
+    ?article bibo:pmid ?pmid ;
+             dct:title ?title .
+    ?title bif:contains "'Alzheimer' AND 'amyloid'" .
+  }
+  GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+    ?ann dcterms:subject "Gene" ;
+         oa:hasBody ?geneId ;
+         oa:hasTarget ?article .
+  }
+  GRAPH <http://rdfportal.org/dataset/ncbigene> {
+    ?geneId a insdc:Gene ;
+            rdfs:label ?gene_symbol .
+  }
+}
+LIMIT 20
+```
+
+**What Knowledge Made This Work**:
+- Key Insights:
+  - Double pre-filtering (bif:contains in PubMed)
+  - PubTator uses identifiers.org URIs directly compatible with NCBI Gene
+  - NCBI Gene entity type: insdc:Gene
+- Performance: ~5-8 seconds for 20 results
+
+**Results Obtained**:
+- Sample results:
+  - PMID 1465181: "Acetylcholinesterase..." - Gene symbol: CHAT
+  - PMID 1671712: "Segregation of a missense mutation..." - Gene symbol: App
+- Data quality: Good enrichment with official gene symbols
+
+**Natural Language Question Opportunities**:
+1. "What genes are discussed in research about Alzheimer's disease and amyloid?" - Category: Integration
+2. "Find the official gene symbols for genes mentioned in CRISPR gene editing research" - Category: Integration, Completeness
+3. "Which human genes appear in literature about COVID-19 treatment?" - Category: Integration, Currency
+
+---
+
+### Pattern 3: Keyword Search with bif:contains
+
+**Purpose**: Find recent articles about specific topics
+
+**Category**: Performance-Critical, Structured Query
+
+**Naive Approach**:
+```sparql
+# BAD: FILTER REGEX on 39M articles
+WHERE {
+  ?article dct:title ?title .
+  FILTER(REGEX(?title, "cancer.*screening", "i"))
+}
+```
+
+**What Happened**:
+- Error: Timeout
+- Why: REGEX not indexed, scans all 39M titles
+
+**Correct Approach**:
+```sparql
 WHERE {
   ?article bibo:pmid ?pmid ;
            dct:title ?title ;
            dct:issued ?issued .
-  ?title bif:contains "'COVID-19' AND 'vaccine'" .
-  FILTER(STRSTARTS(STR(?issued), "2025") || STRSTARTS(STR(?issued), "2024"))
+  ?title bif:contains "'cancer' AND 'screening'" .
 }
 ORDER BY DESC(?issued)
 LIMIT 20
-# Results: Found COVID-19 vaccine publications from 2024-2025 using bif:contains full-text search
 ```
 
-```sparql
-# Query 3: Extract author information - adapted for PMID 35486828
-PREFIX bibo: <http://purl.org/ontology/bibo/>
-PREFIX dct: <http://purl.org/dc/terms/>
-PREFIX olo: <http://purl.org/ontology/olo/core#>
-PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-PREFIX org: <http://www.w3.org/ns/org#>
+**What Knowledge Made This Work**:
+- bif:contains uses Virtuoso's indexed full-text search
+- Boolean operators: AND, OR, single quotes around terms
+- Performance: ~2-3 seconds for 20 results
 
-SELECT ?index ?author_name ?affiliation
-FROM <http://rdfportal.org/dataset/pubmed>
+**Results Obtained**:
+- Sample results for "CRISPR AND cancer":
+  - PMID 40157335: "Comprehensive strategies for constructing efficient CRISPR/Cas..." (2025-07)
+  - PMID 40300704: "Gasdermin E as a potential target..." (2025-07)
+
+**Natural Language Question Opportunities**:
+1. "What are the most recent research articles about CRISPR and cancer?" - Category: Currency
+2. "Find publications discussing COVID-19 vaccines from 2024" - Category: Currency, Structured Query
+3. "What literature exists on machine learning applications in drug discovery?" - Category: Structured Query
+
+---
+
+### Pattern 4: Author and Affiliation Extraction
+
+**Purpose**: Find papers by authors from specific institutions
+
+**Category**: Structured Query, Completeness
+
+**Naive Approach**:
+```sparql
+# BAD: Starts from all authors
+SELECT ?author_name
 WHERE {
-  ?article bibo:pmid "35486828" ;
+  ?creator olo:slot/olo:item ?author .
+  ?author foaf:name ?author_name .
+}
+```
+
+**What Happened**:
+- Error: Timeout or millions of results
+- Why: No article filtering first
+
+**Correct Approach**:
+```sparql
+WHERE {
+  ?article bibo:pmid ?pmid ;
+           dct:title ?title ;
            dct:creator ?creator .
   ?creator olo:slot ?slot .
-  ?slot olo:index ?index ;
-        olo:item ?author .
-  ?author foaf:name ?author_name .
-  OPTIONAL { ?author org:memberOf ?affiliation }
+  ?slot olo:item ?author .
+  ?author foaf:name ?author_name ;
+          org:memberOf ?affiliation .
+  ?affiliation bif:contains "'RIKEN'" .
 }
-ORDER BY ?index
-# Results: Retrieved ordered author list with affiliations for Nature article
-```
-
-```sparql
-# Query 4: MeSH-based literature search - adapted for cancer immunotherapy
-PREFIX bibo: <http://purl.org/ontology/bibo/>
-PREFIX dct: <http://purl.org/dc/terms/>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
-
-SELECT ?pmid ?title ?issued
-FROM <http://rdfportal.org/dataset/pubmed>
-WHERE {
-  ?article bibo:pmid ?pmid ;
-           dct:title ?title ;
-           dct:issued ?issued ;
-           rdfs:seeAlso mesh:D007155 .
-  ?title bif:contains "'PD-1' OR 'PD-L1'" .
-}
-ORDER BY DESC(?issued)
 LIMIT 20
-# Results: Found immunotherapy articles indexed with MeSH D007155 (Immunotherapy) containing PD-1/PD-L1 keywords
 ```
 
-```sparql
-# Query 5: Journal-specific research - adapted for Nature journals on neuroscience
-PREFIX bibo: <http://purl.org/ontology/bibo/>
-PREFIX dct: <http://purl.org/dc/terms/>
-PREFIX prism: <http://prismstandard.org/namespeces/1.2/basic/>
+**What Knowledge Made This Work**:
+- OLO (Ordered List Ontology) structure: creator → slot → item → author
+- Author properties: foaf:name, org:memberOf (optional)
+- bif:contains on affiliation text works
 
-SELECT ?pmid ?title ?journal ?doi
-FROM <http://rdfportal.org/dataset/pubmed>
+**Results Obtained**:
+- Sample results:
+  - PMID 2026459: "MHC gene Q8/9d..." - Author: Nakayama K (RIKEN)
+  - PMID 7568969: "[Mechanisms of the recognition...]" - Author: Kurumizaka H (RIKEN)
+
+**Natural Language Question Opportunities**:
+1. "Find publications from researchers at RIKEN institute" - Category: Structured Query
+2. "What papers have been published by scientists affiliated with Harvard Medical School?" - Category: Completeness
+3. "List recent publications from researchers at the National Institutes of Health" - Category: Currency, Structured Query
+
+---
+
+### Pattern 5: MeSH Term Annotation Queries
+
+**Purpose**: Find articles annotated with specific MeSH terms
+
+**Category**: Structured Query, Specificity
+
+**Naive Approach**:
+```sparql
+# BAD: Wrong MeSH ID format or property
+WHERE {
+  ?article rdfs:seeAlso mesh:D016428 .  # This is "Journal Article"!
+}
+```
+
+**What Happened**:
+- Returns general articles, not disease-specific ones
+- Why: D016428 is "Journal Article" publication type, not a disease
+
+**Correct Approach**:
+First, discover what MeSH terms are used:
+```sparql
 WHERE {
   ?article bibo:pmid ?pmid ;
            dct:title ?title ;
-           prism:publicationName ?journal .
-  OPTIONAL { ?article prism:doi ?doi }
-  FILTER(CONTAINS(STR(?journal), "Nature"))
-  ?title bif:contains "'brain' AND 'neuroimaging'" .
+           rdfs:seeAlso ?mesh_term .
+  ?title bif:contains "'Alzheimer'" .
+  FILTER(STRSTARTS(STR(?mesh_term), "http://id.nlm.nih.gov/mesh/"))
 }
-ORDER BY DESC(?pmid)
-LIMIT 15
-# Results: Retrieved Nature family journal articles on brain neuroimaging combining journal and keyword filtering
+LIMIT 20
 ```
 
-## Cross-Reference Analysis
+Or use fabio:hasPrimarySubjectTerm for major subjects:
+```sparql
+WHERE {
+  ?article bibo:pmid ?pmid ;
+           fabio:hasPrimarySubjectTerm ?primary_term .
+  ?title bif:contains "'Alzheimer'" .
+}
+```
 
-**Entity counts** (unique articles with mappings):
+**What Knowledge Made This Work**:
+- Multiple MeSH annotation properties:
+  - rdfs:seeAlso: All MeSH terms (descriptors, supplementary concepts, publication types)
+  - fabio:hasPrimarySubjectTerm: Major subjects with descriptor-qualifier pairs
+  - fabio:hasSubjectTerm: Supporting subjects
+- Descriptor-qualifier format: D000544Q000378 = Alzheimer Disease + metabolism
 
-PubMed Articles → External Databases:
-- ~26 million articles (70%) have DOI identifiers for external resolution
-- ~35 million articles (95%) have MeSH term annotations for subject indexing
-- ~31 million articles (85%) have abstracts for text mining
-- ~22 million authors (60%) have institutional affiliations
+**Results Obtained**:
+- MeSH terms found for Alzheimer articles:
+  - D000544 (Alzheimer Disease) with qualifiers
+  - D003704 (Dementia) with qualifiers
+  - D016428 (Journal Article) - publication type
 
-**MeSH Annotation Distribution:**
-- Average 12.8 MeSH terms per article
-- MeSH Descriptors (D-prefix): Topical subject headings covering all biomedical domains
-- MeSH Supplementary Concepts (C-prefix): Chemical and disease names (rare/specific terms)
-- MeSH Publication Types: Article classification (review, clinical trial, meta-analysis)
-- MeSH Geographic Descriptors: Location-based terms
+**Natural Language Question Opportunities**:
+1. "What MeSH terms are commonly used to annotate diabetes research articles?" - Category: Specificity
+2. "Find articles indexed with the MeSH term for Parkinson's disease" - Category: Precision
+3. "Which articles have primary subject annotations for breast cancer genetics?" - Category: Structured Query
 
-**Relationship counts** (total mappings):
+---
 
-Cross-database integration via shared article URIs:
-- PubMed ↔ PubTator: All articles potentially linkable via article URI pattern
-- PubMed ↔ NCBI Gene: Via PubTator gene annotations
-- PubMed ↔ ClinVar/MedGen: Via article citations in variant/disease records
+## Simple Queries Performed
 
-**Distribution:**
-- MeSH terms per article: Average 12.8, ranging from 1 to 100+
-- Authors per article: Average 5.2, ranging from 1 to 1,000+ for consortia
-- MeSH qualifiers per descriptor: Average 1.4 (e.g., D001943Q000235 = "Blood/genetics")
+**Purpose**: Identify real entities for use in evaluation questions
 
-## Interesting Findings
+1. Search: "BRCA1 breast cancer"
+   - Found: PMIDs 41612657, 41608012, etc.
+   - Usage: Cancer genetics questions
 
-**Discoveries requiring actual database queries:**
+2. Search: "Alzheimer amyloid"
+   - Found: PMIDs 1465181, 1671712, 1555768, etc.
+   - Usage: Neurodegenerative disease questions
 
-1. **Massive CRISPR literature**: 23,437 articles on "CRISPR gene editing" found via ncbi_esearch, demonstrating explosive growth since 2012 Nobel Prize. Requires E-utilities search to discover current count.
+3. Search: "CRISPR cancer"
+   - Found: PMIDs 40157335, 40300704, 40315964 (recent, 2025)
+   - Usage: Currency questions, gene editing research
 
-2. **BRCA1 breast cancer research depth**: 16,101 articles specifically on BRCA1 in breast cancer context, requiring combined gene + disease keyword search to quantify.
+4. Search: Article PMID 31558841
+   - Found: Alcohol metabolism genetics paper
+   - Authors with affiliations: RIKEN, Osaka University, etc.
+   - Usage: Author affiliation questions
 
-3. **Future publication dates in database**: Articles with issued dates of 2026-2027 found when querying recent publications, representing "ahead of print" or "in press" articles. Requires temporal query to discover.
+5. Search: MeSH terms in Alzheimer articles
+   - Found: D000544 (Alzheimer Disease), D003704 (Dementia)
+   - Usage: MeSH annotation questions
 
-4. **mRNA vaccine literature explosion**: Recent mRNA vaccine articles (PMIDs 40573959-40564159) on diverse pathogens (influenza, COVID-19, bronchitis, PRRSV, monkeypox) showing technology expansion beyond COVID-19. Requires bif:contains keyword search to find.
+---
 
-5. **Author affiliation coverage**: ~60% of authors have org:memberOf institutional affiliations, meaning 40% lack affiliation data. Requires OPTIONAL pattern analysis to discover distribution.
+## Question Generation Opportunities
 
-6. **MeSH term annotation completeness**: ~95% of articles have MeSH annotations (rdfs:seeAlso links), but coverage varies by publication year (older articles less complete). Requires aggregating rdfs:seeAlso property presence.
+### Priority 1: Complex Questions (HIGH VALUE)
 
-7. **DOI adoption rate**: ~70% of articles have DOI identifiers, with higher rates for recent publications (>90% post-2010) vs historical articles (<30% pre-2000). Requires temporal DOI presence analysis.
+**Cross-Database Questions**:
 
-8. **Abstract availability**: ~85% of articles have bibo:abstract text, with lower coverage for older publications and non-English articles. Requires OPTIONAL abstract query to discover coverage.
+1. "Which genes are most frequently mentioned in research articles about Alzheimer's disease?"
+   - Databases involved: PubMed, PubTator, NCBI Gene
+   - Knowledge Required: Three-way GRAPH joins, bif:contains pre-filtering, PubTator entity types, NCBI Gene properties
+   - Category: Integration
+   - Difficulty: Hard
+   - Pattern Reference: Pattern 2
 
-9. **Article URI pattern consistency**: All articles use http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid} format enabling seamless cross-database integration with PubTator, NCBI Gene, ClinVar on shared NCBI endpoint. Requires checking URI construction in cross-database queries.
+2. "What genes are discussed in the literature about diabetes and insulin resistance?"
+   - Databases involved: PubMed, PubTator, NCBI Gene
+   - Knowledge Required: Cross-database joins, keyword search optimization
+   - Category: Integration
+   - Difficulty: Hard
+   - Pattern Reference: Pattern 1, 2
 
-## Question Opportunities by Category
+3. "Find research articles that mention both BRCA1 and BRCA2 genes and identify the diseases discussed in those papers"
+   - Databases involved: PubMed, PubTator (Gene and Disease)
+   - Knowledge Required: Multi-entity PubTator queries, bif:contains
+   - Category: Integration, Structured Query
+   - Difficulty: Hard
+   - Pattern Reference: Pattern 1
 
-### Precision Questions ✅
-- "What is the DOI for PubMed article 31558841?" (requires metadata query - answer: 10.1038/s41431-019-0518-y)
-- "What journal published PMID 35486828?" (requires prism:publicationName lookup)
-- "What is the publication date of the first CRISPR article in PubMed?" (requires temporal sorting with keyword filter)
-- "Who is the first author of PMID 31558841?" (requires ordered author list navigation with olo:index=1)
+4. "What human kinase genes have been studied in cancer research in the past two years?"
+   - Databases involved: PubMed, PubTator, NCBI Gene
+   - Knowledge Required: Date filtering, gene type filtering, cross-database joins
+   - Category: Integration, Currency
+   - Difficulty: Hard
+   - Pattern Reference: Pattern 2, 3
 
-### Completeness Questions ✅
-- "How many articles about mRNA vaccines are in PubMed?" (requires COUNT with bif:contains - answer: thousands)
-- "List all MeSH terms assigned to PMID 31558841" (requires rdfs:seeAlso enumeration)
-- "How many authors are listed for PMID 35486828?" (requires COUNT on author slots)
-- "What are all the PMIDs for articles published in Nature in 2024?" (requires journal + temporal filtering)
+5. "Which diseases co-occur with cardiovascular disease in PubMed research articles?"
+   - Databases involved: PubMed, PubTator
+   - Knowledge Required: Disease co-occurrence queries, PubTator patterns
+   - Category: Integration, Completeness
+   - Difficulty: Medium
+   - Pattern Reference: Pattern 1
 
-### Integration Questions ✅
-- "What genes are annotated in PubMed articles about BRCA1?" (requires PubMed→PubTator→NCBI Gene cross-database query)
-- "Link PMID 31558841 to disease concepts in MedGen" (requires PubMed→PubTator→MedGen integration)
-- "Find PubMed articles citing ClinVar variant RCV000000001" (requires ClinVar→PubMed back-reference)
-- "What NCBI Gene IDs are mentioned in COVID-19 vaccine articles?" (requires PubMed keyword search → PubTator gene annotations)
+**Performance-Critical Questions**:
 
-### Currency Questions ✅
-- "How many COVID-19 articles were published in 2025?" (requires temporal filter with keyword search)
-- "What is the most recent PubMed article about Alzheimer disease?" (requires MeSH filter with ORDER BY DESC(?issued))
-- "How many mRNA vaccine articles were added to PubMed in the last month?" (requires recent date filtering)
+1. "How many research articles discuss CRISPR gene editing technology?"
+   - Database: PubMed
+   - Knowledge Required: bif:contains for counting (not full scan)
+   - Category: Completeness
+   - Difficulty: Medium
+   - Pattern Reference: Pattern 3
 
-### Specificity Questions ✅
-- "What PubMed articles discuss Erdheim-Chester disease?" (requires rare disease keyword search)
-- "Find articles about SARS-CoV-2 spike protein D614G mutation" (requires specific mutation keyword search)
-- "What articles are indexed with MeSH term D031249 (Erdheim-Chester disease)?" (requires rare disease MeSH lookup)
-- "Which Nature Neuroscience articles discuss optogenetics?" (requires journal + keyword filtering)
+2. "What are the most recent publications about mRNA vaccine development?"
+   - Database: PubMed
+   - Knowledge Required: bif:contains, date ordering, LIMIT
+   - Category: Currency, Structured Query
+   - Difficulty: Medium
+   - Pattern Reference: Pattern 3
 
-### Structured Query Questions ✅
-- "Find review articles about cancer immunotherapy published in Nature journals after 2020" (requires publication type + keyword + journal + temporal filtering)
-- "List articles with >10 authors about CRISPR that have DOIs" (requires author count + keyword + DOI presence filtering)
-- "Find PubMed articles indexed with both Alzheimer (D016428) and genetics (Q000235 qualifier)" (requires MeSH descriptor-qualifier pair matching)
-- "Identify articles mentioning BRCA1 gene that also have disease annotations in PubTator" (requires cross-database PubMed→PubTator with dual entity type filtering)
+3. "Find all articles published in Nature journals about artificial intelligence in healthcare"
+   - Database: PubMed
+   - Knowledge Required: Journal filtering, keyword search, proper FILTER ordering
+   - Category: Structured Query
+   - Difficulty: Medium
+   - Pattern Reference: Pattern 3
 
-## Notes
+**Error-Avoidance Questions**:
 
-**E-utilities integration**: PubMed benefits from both ncbi_esearch API (comprehensive search with MeSH query translation, pagination) and direct SPARQL queries (complex filtering, metadata extraction). E-utilities recommended for discovery, SPARQL for detailed analysis.
+1. "Find articles about diabetes mellitus that have primary MeSH subject annotations"
+   - Database: PubMed
+   - Knowledge Required: fabio:hasPrimarySubjectTerm property (not rdfs:seeAlso alone)
+   - Category: Structured Query
+   - Difficulty: Medium
+   - Pattern Reference: Pattern 5
 
-**Cross-database optimization**: Shares "ncbi" endpoint with ClinVar, PubTator, NCBI Gene, MedGen. Cross-database queries require:
-- **Strategy 1**: Explicit GRAPH clauses for each database
-- **Strategy 2**: Pre-filtering within source GRAPH before joins (99.97-99.9997% reduction)
-- **Strategy 4**: bif:contains for keyword search (10-100x speedup over REGEX)
-- **Strategy 10**: LIMIT clauses to prevent timeouts
-- **Critical MIE consultation**: Always retrieve MIE files for co-located databases (PubTator, NCBI Gene, ClinVar, MedGen) BEFORE creating cross-database queries to get correct graph URIs, entity types, and property patterns
+2. "What is the MeSH descriptor-qualifier format for articles about Alzheimer's disease genetics?"
+   - Database: PubMed
+   - Knowledge Required: MeSH annotation structure (D######Q######)
+   - Category: Specificity
+   - Difficulty: Hard
+   - Pattern Reference: Pattern 5
 
-**Performance tiers**:
-- Single-database PMID lookup: <1 second
-- Keyword searches (20 results): 2-5 seconds with bif:contains
-- MeSH filtering: 2-4 seconds for common terms, 10-30 seconds for complex joins
-- Cross-database (PubMed→PubTator): Tier 1 (1-3s) with bif:contains pre-filtering
-- Three-way (PubMed→PubTator→NCBI Gene): Tier 2 (5-8s) with double pre-filtering
+**Complex Filtering Questions**:
 
-**Author list handling**:
-- Authors stored as ordered lists using OLO (Ordered List Ontology)
-- Navigate via dct:creator → olo:slot → olo:item pattern
-- Sort by olo:index for correct author order
-- ~60% of authors have org:memberOf institutional affiliations
-- Always filter to specific PMIDs before extracting authors to avoid cartesian explosion
+1. "Find publications from researchers at Harvard with 'MIT' co-authors"
+   - Database: PubMed
+   - Knowledge Required: OLO author structure, multiple affiliation filters
+   - Category: Structured Query
+   - Difficulty: Hard
+   - Pattern Reference: Pattern 4
 
-**MeSH annotation patterns**:
-- Three levels: rdfs:seeAlso (all terms), fabio:hasPrimarySubjectTerm (major topics), fabio:hasSubjectTerm (secondary)
-- Descriptor-qualifier pairs: Format {descriptor_id}Q{qualifier_id} (e.g., D001943Q000235 = "Blood/genetics")
-- Multiple qualifiers can chain: D001943Q000235Q000378 = "Blood/genetics/metabolism"
-- Supplementary concepts (C-prefix) for chemical/disease names not in main MeSH
+2. "What articles published in 2024 discuss immunotherapy for lung cancer?"
+   - Database: PubMed
+   - Knowledge Required: Date filtering with string operations, keyword combination
+   - Category: Currency, Structured Query
+   - Difficulty: Medium
+   - Pattern Reference: Pattern 3
 
-**Temporal data handling**:
-- Publication dates vary in precision: gYearMonth ("2020-03"), full dates, or year strings
-- Use STR() and string-based comparison (STRSTARTS) for robust date filtering
-- Future dates (2026-2027) appear for articles "in press" or "ahead of print"
-- Use dct:issued for publication date, fabio:dateLastUpdated for record modification
+3. "Find review articles about machine learning in drug discovery"
+   - Database: PubMed
+   - Knowledge Required: Publication type filtering (if available), keyword search
+   - Category: Structured Query
+   - Difficulty: Medium
+   - Pattern Reference: Pattern 3
 
-**Data quality considerations**:
-- Abstract coverage: ~85% (lower for non-English, older articles)
-- DOI coverage: ~70% overall (>90% post-2010, <30% pre-2000)
-- Author affiliations: ~60% coverage (many historical articles lack affiliations)
-- MeSH annotations: ~95% coverage (added/revised post-publication)
-- Historical articles (pre-1980) may have incomplete metadata
+### Priority 2: Simple Questions (For Coverage & Contrast)
 
-**Cross-database integration patterns**:
-- PubMed→PubTator: Shared article URI (http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid}), no conversion needed
-- PubMed→NCBI Gene: Via PubTator gene annotations (oa:hasBody → identifiers.org/ncbigene)
-- PubMed→MeSH: Direct rdfs:seeAlso links to http://id.nlm.nih.gov/mesh/ URIs
-- PubMed→ClinVar/MedGen: Via article citations in variant/disease records
+**Entity Lookup Questions**:
 
-**Unique value**: PubMed RDF provides semantic access to 37+ million biomedical publications with rich metadata (authors, abstracts, MeSH indexing) and seamless cross-database integration via shared NCBI endpoint. Essential for systematic literature reviews, bibliometric analysis, gene-disease-publication networks, and biomedical knowledge graph construction.
+1. "What is the PubMed ID for the seminal paper on CRISPR-Cas9 gene editing by Doudna and Charpentier?"
+   - Method: PubMed search API
+   - Knowledge Required: None (straightforward)
+   - Category: Precision
+   - Difficulty: Easy
 
-**Limitations**:
-- Count queries on full dataset (37M articles) timeout without sampling
-- Complex author joins expensive without PMID pre-filtering
-- MeSH term IDs may change (deprecated terms require verification)
-- Date formats inconsistent across articles (require string-based comparison)
-- Cross-database queries require MIE file consultation to avoid wrong properties/URIs
-- Three-way joins need double pre-filtering to avoid timeout (bif:contains in PubMed + entity type in PubTator)
+2. "How many articles are indexed in PubMed about COVID-19?"
+   - Method: PubMed search API with count
+   - Knowledge Required: None
+   - Category: Completeness
+   - Difficulty: Easy
+
+3. "What are the keywords associated with PubMed article 35486828?"
+   - Method: get_article_metadata API
+   - Knowledge Required: None
+   - Category: Precision
+   - Difficulty: Easy
+
+**ID Mapping Questions**:
+
+1. "Convert PubMed ID 35486828 to its DOI"
+   - Method: convert_article_ids or get_article_metadata
+   - Knowledge Required: None
+   - Category: Integration
+   - Difficulty: Easy
+
+2. "Does PubMed article 35486828 have a full-text version in PubMed Central?"
+   - Method: convert_article_ids with pmcid check
+   - Knowledge Required: None
+   - Category: Integration
+   - Difficulty: Easy
+
+---
+
+## Integration Patterns Summary
+
+**PubMed as Source**:
+- → PubTator: Direct URI linkage (http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid})
+- → MeSH: MeSH IDs embedded in article metadata
+
+**PubMed as Target**:
+- Literature reference from virtually any biomedical database
+- PubTator annotations point back to PubMed articles
+
+**Complex Multi-Database Paths**:
+- PubMed → PubTator → NCBI Gene: Literature-to-gene enrichment
+- PubMed → PubTator (Disease) → MedGen: Literature-to-disease concepts (potential)
+- PubMed → ClinVar (via genes): Literature supporting variant interpretation
+
+---
+
+## Lessons Learned
+
+### What Knowledge is Most Valuable
+1. bif:contains syntax is ESSENTIAL - queries fail without it
+2. Pre-filtering within GRAPH before joins prevents timeout
+3. PubTator entity types and properties (dcterms:subject, oa:hasBody, oa:hasTarget)
+4. MeSH annotation property differences (rdfs:seeAlso vs fabio:hasPrimarySubjectTerm)
+5. OLO ontology pattern for author extraction
+
+### Common Pitfalls Discovered
+1. MeSH term D016428 is "Journal Article", not a disease - must verify MeSH IDs
+2. FILTER after cross-database join = timeout
+3. Author queries without article filtering = timeout
+4. Date formats vary - use string operations for filtering
+
+### Recommendations for Question Design
+1. Cross-database questions demonstrate clear MIE value
+2. Keyword search questions must require bif:contains optimization
+3. Author/affiliation questions show OLO pattern knowledge
+4. MeSH annotation questions reveal property understanding
+
+### Performance Notes
+- Single article lookups: <1 second
+- Keyword search (20 results): 2-3 seconds with bif:contains
+- Two-database joins: 2-5 seconds with pre-filtering
+- Three-database joins: 5-8 seconds with double pre-filtering
+- Unoptimized cross-database: Timeout (60s)
+
+---
+
+## Notes and Observations
+
+1. PubMed and MeSH are on DIFFERENT SPARQL endpoints (ncbi vs primary)
+2. PubTator uses Web Annotation Ontology (oa:Annotation)
+3. Gene annotations use identifiers.org URIs matching NCBI Gene
+4. Disease annotations use identifiers.org/mesh/ URIs
+5. ~85% of articles have abstracts, ~70% have DOIs, ~60% of authors have affiliations
+6. Future publication dates appear for articles "in press"
+
+---
+
+## Next Steps
+
+**Recommended for Question Generation**:
+- Priority questions: Cross-database gene-literature queries, bif:contains optimization, MeSH annotation queries
+- Avoid: Simple PubMed searches (use API instead), MeSH endpoint joins (different endpoints)
+- Focus areas: Three-way integration patterns, author affiliation queries, MeSH term structure
+
+**Further Exploration Needed** (if any):
+- MeSH endpoint queries for vocabulary navigation
+- ClinVar integration via gene linkage
+- PubTator disease annotation patterns
+
+---
+
+**Session Complete - Ready for Next Database**

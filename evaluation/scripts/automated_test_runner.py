@@ -63,6 +63,30 @@ except ImportError:
     sys.exit(1)
 
 
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('evaluation_errors.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+
+class MCPError(Exception):
+    """Base exception for MCP-related errors."""
+    pass
+
+
+class BufferOverflowError(MCPError):
+    """Exception for JSON buffer overflow errors."""
+    pass
+
+
 class CorrectnessEvaluator:
     """Evaluates response correctness and quality."""
     
@@ -230,9 +254,10 @@ class EvaluationRunner:
                 "You have access to biological databases through MCP tools. "
                 "Use them when they would improve the accuracy or completeness of your answer."
             ),
-            "timeout": 60,
+            "timeout": 120,  # Increased from 60 to 120 seconds
             "retry_attempts": 3,
             "retry_delay": 2,
+            "max_retry_delay": 30,
             "mcp_servers": {
                 "togomcp": {
                     "type": "http",
@@ -256,6 +281,24 @@ class EvaluationRunner:
             questions = json.load(f)
         print(f"✓ Loaded {len(questions)} questions from {questions_path}")
         return questions
+    
+    
+    def _classify_error(self, error_str: str) -> str:
+        """Classify error type based on error message."""
+        error_lower = error_str.lower()
+        
+        if "buffer size" in error_lower or "exceeded maximum" in error_lower:
+            return "buffer_overflow"
+        elif "timeout" in error_lower or "timed out" in error_lower:
+            return "timeout"
+        elif "connection" in error_lower:
+            return "connection_error"
+        elif "rate limit" in error_lower:
+            return "rate_limit"
+        elif "tool" in error_lower and ("failed" in error_lower or "error" in error_lower):
+            return "tool_execution_error"
+        else:
+            return "unknown_error"
     
     def _make_baseline_call(self, question: str) -> Dict:
         """
@@ -302,6 +345,7 @@ class EvaluationRunner:
             return {
                 "success": False,
                 "error": str(e),
+                "error_type": "api_error",
                 "elapsed_time": elapsed_time
             }
     
@@ -317,6 +361,83 @@ class EvaluationRunner:
                 message="Web tools not allowed in evaluation"
             )
         return PermissionResultAllow()
+    
+
+    async def _make_togomcp_call_with_retry(
+        self,
+        question: str,
+        mcp_servers: Optional[Dict] = None,
+        attempt: int = 1
+    ) -> Dict:
+        """Make TogoMCP call with retry logic."""
+        max_attempts = self.config["retry_attempts"]
+        base_delay = self.config["retry_delay"]
+        max_delay = self.config.get("max_retry_delay", 30)
+        
+        for current_attempt in range(attempt, max_attempts + 1):
+            try:
+                result = await self._make_togomcp_call(question, mcp_servers)
+                return result
+                
+            except asyncio.TimeoutError:
+                error_msg = f"Request timed out after {self.config['timeout']}s"
+                logger.warning(f"Attempt {current_attempt}/{max_attempts}: {error_msg}")
+                
+                if current_attempt < max_attempts:
+                    delay = min(base_delay * (2 ** (current_attempt - 1)), max_delay)
+                    logger.info(f"Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    return {
+                        "success": False,
+                        "error": error_msg,
+                        "error_type": "timeout",
+                        "elapsed_time": self.config["timeout"] * current_attempt
+                    }
+                    
+            except Exception as e:
+                error_str = str(e)
+                error_type = self._classify_error(error_str)
+                
+                logger.error(f"Attempt {current_attempt}/{max_attempts} failed: {error_str}")
+                
+                # Don't retry buffer overflow errors
+                if error_type == "buffer_overflow":
+                    logger.error(
+                        "Buffer overflow error detected. This likely means the MCP "
+                        "tool returned a response larger than 1MB. The query needs "
+                        "to be modified to return less data (e.g., add LIMIT clause)."
+                    )
+                    return {
+                        "success": False,
+                        "error": error_str,
+                        "error_type": error_type,
+                        "elapsed_time": 0,
+                        "suggestion": "Add LIMIT clause to SPARQL queries or reduce result set size"
+                    }
+                
+                # Retry connection errors and rate limits
+                if error_type in ["connection_error", "rate_limit", "timeout"]:
+                    if current_attempt < max_attempts:
+                        delay = min(base_delay * (2 ** (current_attempt - 1)), max_delay)
+                        logger.info(f"Retrying in {delay}s...")
+                        await asyncio.sleep(delay)
+                        continue
+                
+                return {
+                    "success": False,
+                    "error": error_str,
+                    "error_type": error_type,
+                    "elapsed_time": 0
+                }
+        
+        return {
+            "success": False,
+            "error": "Max retry attempts exceeded",
+            "error_type": "max_retries_exceeded",
+            "elapsed_time": 0
+        }
     
     async def _make_togomcp_call(
         self, 
@@ -360,7 +481,10 @@ class EvaluationRunner:
             # Create fresh client for this question only (isolated session)
             async with ClaudeSDKClient(options=options) as client:
                 # Single query - no follow-ups
-                await client.query(question)
+                await asyncio.wait_for(
+                    client.query(question),
+                    timeout=self.config["timeout"]
+                )
                 
                 # Collect response
                 async for message in client.receive_response():
@@ -445,7 +569,7 @@ class EvaluationRunner:
         
         # === TogoMCP Test (With Tools) ===
         print("  ⏳ Running TogoMCP test (with database access)...")
-        togomcp_result = await self._make_togomcp_call(
+        togomcp_result = await self._make_togomcp_call_with_retry(
             q_text,
             mcp_servers=question.get("mcp_servers")
         )
@@ -496,12 +620,15 @@ class EvaluationRunner:
             "baseline_confidence": baseline_eval["confidence"],
             "baseline_text": baseline_result.get("text", ""),
             "baseline_error": baseline_result.get("error", ""),
+            "baseline_error_type": baseline_result.get("error_type", ""),
             "baseline_time": baseline_result["elapsed_time"],
             "togomcp_success": togomcp_result["success"],
             "togomcp_has_expected": togomcp_eval["has_expected"],
             "togomcp_confidence": togomcp_eval["confidence"],
             "togomcp_text": togomcp_result.get("text", ""),
             "togomcp_error": togomcp_result.get("error", ""),
+            "togomcp_error_type": togomcp_result.get("error_type", ""),
+            "togomcp_suggestion": togomcp_result.get("suggestion", ""),
             "togomcp_time": togomcp_result["elapsed_time"],
             "tools_used": ", ".join([t["name"] for t in togomcp_result.get("tool_uses", [])]),
             "tool_details": json.dumps(togomcp_result.get("tool_uses", [])),
@@ -612,11 +739,11 @@ class EvaluationRunner:
         
         fieldnames = [
             "question_id", "date", "category", "question_text",
-            "baseline_success", "baseline_actually_answered", "baseline_has_expected", 
-            "baseline_confidence", "baseline_text", "baseline_error", "baseline_time",
+            "baseline_success", "baseline_actually_answered", "baseline_has_expected",
+            "baseline_confidence", "baseline_text", "baseline_error", "baseline_error_type", "baseline_time",
             "baseline_input_tokens", "baseline_output_tokens",
             "togomcp_success", "togomcp_has_expected", "togomcp_confidence",
-            "togomcp_text", "togomcp_error", "togomcp_time",
+            "togomcp_text", "togomcp_error", "togomcp_error_type", "togomcp_suggestion", "togomcp_time",
             "togomcp_input_tokens", "togomcp_output_tokens",
             "togomcp_cache_creation_input_tokens", "togomcp_cache_read_input_tokens",
             "tools_used", "tool_details",
