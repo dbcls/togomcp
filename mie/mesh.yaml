@@ -15,9 +15,9 @@ schema_info:
   kw_search_tools:
     - search_mesh_descriptor
   version:
-    mie_version: "1.3"
+    mie_version: "1.4"
     mie_created: "2025-01-17"
-    mie_updated: "2025-01-28"
+    mie_updated: "2025-02-04"
     data_version: "2024"
     update_frequency: Annual
   license:
@@ -477,7 +477,7 @@ architectural_notes:
     - Tree numbers provide alphanumeric hierarchical codes (A-Z categories with numeric subcategories)
     - "Three-level structure: Descriptor → Concept → Term for synonym management"
     - Allowable qualifiers constrain valid descriptor-qualifier combinations for indexing
-    - "MONDO cross-references can point to TopicalDescriptors (D######) OR SCR records (C######)"
+    - MONDO cross-references can point to TopicalDescriptors (D######) OR SCR records (C######)
   performance:
     - Use bif:contains for label searches (full-text index + relevance scoring with option (score ?sc))
     - Tree number filtering with STRSTARTS or REGEX is efficient for category-based queries
@@ -485,9 +485,9 @@ architectural_notes:
     - Always use LIMIT for exploratory queries (database contains 2.5M+ entities)
     - FROM <http://id.nlm.nih.gov/mesh> clause is required for queries
     - "Cross-database query optimization: Apply Strategies 1 (GRAPH), 2 (pre-filter), 4 (bif:contains), 5 (URI conversion), 10 (LIMIT)"
-    - "Pre-filtering within GRAPH clauses before joins provides 10-100x speedup (Strategy 2)"
-    - "bif:contains provides 10-100x speedup over REGEX for keyword matching (Strategy 4)"
-    - "Three-way queries use simplified CONTAINS filters for stability (avoid complex GO filters)"
+    - Pre-filtering within GRAPH clauses before joins provides 10-100x speedup (Strategy 2)
+    - bif:contains provides 10-100x speedup over REGEX for keyword matching (Strategy 4)
+    - Three-way queries use simplified CONTAINS filters for stability (avoid complex GO filters)
   data_integration:
     - FDA SRS/UNII for pharmaceutical substances and ingredient identification
     - OMIM for genetic disorders and Mendelian inheritance
@@ -500,30 +500,90 @@ architectural_notes:
     - "Cross-database performance tiers: Tier 1 (1-3s) for two-database queries, Tier 2 (3-5s) for three-way queries"
   data_quality:
     - Topical descriptors are primary subject headings (30,248 total)
-    - Annotations available for ~40% of descriptors (use OPTIONAL for queries)
-    - Tree numbers available for ~95% of descriptors
+    - Annotations available for ~31% of descriptors (use OPTIONAL for queries)
+    - All descriptors have tree numbers (100% coverage)
     - broaderDescriptor relationships for ~99.6% of descriptors
     - Chemical records lack hierarchical structure (no broaderDescriptor)
     - "MESH: cross-references in MONDO can be descriptors (D) or supplementary records (C)"
 
 data_statistics:
   total_entities: 2456909
-  topical_descriptors: 30248
-  terms: 869536
-  concepts: 466976
-  chemicals: 250445
-  supplementary_records: ~280000
+  verified_date: "2025-02-04"
+  verification_query: |
+    SELECT (COUNT(?entity) as ?count)
+    FROM <http://id.nlm.nih.gov/mesh>
+    WHERE { ?entity a ?type }
+  
+  entity_breakdown:
+    topical_descriptors: 30248
+    terms: 869536
+    concepts: 466976
+    chemicals: 250445
+    supplementary_records: 326812
+    tree_numbers: 81732
+    qualifiers: 84
+  
+  supplementary_record_breakdown:
+    scr_chemical: 250445
+    scr_organism: 66571
+    scr_disease: 6771
+    scr_population: 1764
+    scr_protocol: 1237
+    scr_anatomy: 24
+  
   coverage:
-    descriptors_with_labels: 100%
-    descriptors_with_annotations: ~40%
-    descriptors_with_tree_numbers: ~95%
-    descriptors_with_broader_relationships: ~99.6%
-    entities_with_thesaurus_ids: ~37%
-    mondo_diseases_with_mesh_xrefs: ~28%
+    descriptors_with_labels: "100%"
+    calculation: "All 30,248 TopicalDescriptors have rdfs:label"
+    verified_date: "2025-02-04"
+    
+    descriptors_with_annotations: "30.7%"
+    calculation: "9,293 descriptors with meshv:annotation / 30,248 total"
+    verified_date: "2025-02-04"
+    verification_query: |
+      SELECT (COUNT(DISTINCT ?desc) as ?with_ann)
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE { ?desc a meshv:TopicalDescriptor ; meshv:annotation ?ann }
+    
+    descriptors_with_tree_numbers: "100%"
+    calculation: "All 30,248 descriptors have at least one meshv:treeNumber"
+    verified_date: "2025-02-04"
+    verification_query: |
+      SELECT (COUNT(DISTINCT ?desc) as ?with_tree)
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE { ?desc a meshv:TopicalDescriptor ; meshv:treeNumber ?tree }
+    
+    descriptors_with_broader_relationships: "99.65%"
+    calculation: "30,142 descriptors with broaderDescriptor / 30,248 total (106 without)"
+    verified_date: "2025-02-04"
+    verification_query: |
+      SELECT (COUNT(DISTINCT ?desc) as ?with_broader)
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE { ?desc a meshv:TopicalDescriptor ; meshv:broaderDescriptor ?broader }
+    
+    entities_with_thesaurus_ids: "35.4%"
+    calculation: "869,206 entities with meshv:thesaurusID / 2,456,909 total (916,022 total xref statements)"
+    verified_date: "2025-02-04"
+    
+    mondo_diseases_with_mesh_xrefs: "~28%"
+    note: "Approximate coverage from MONDO to MeSH (~8,500 mappings)"
+  
   cardinality:
-    avg_tree_numbers_per_descriptor: 2.7
-    avg_terms_per_concept: 1.9
-    avg_qualifiers_per_descriptor: 22
+    avg_tree_numbers_per_descriptor: 2.1
+    verified_date: "2025-02-04"
+    verification_query: |
+      SELECT (AVG(?treeCount) as ?avg_trees)
+      WHERE {
+        { SELECT ?desc (COUNT(?tree) as ?treeCount)
+          WHERE { ?desc a meshv:TopicalDescriptor ; meshv:treeNumber ?tree }
+          GROUP BY ?desc }
+      }
+    
+    avg_terms_per_concept: 1.86
+    verified_date: "2025-02-04"
+    
+    avg_qualifiers_per_descriptor: 21.5
+    verified_date: "2025-02-04"
+  
   performance_characteristics:
     - bif:contains efficient for label searches with relevance ranking
     - Tree number filtering fast with STRSTARTS or REGEX patterns
@@ -531,11 +591,14 @@ data_statistics:
     - Recommend LIMIT 50 for exploratory queries
     - "Cross-database queries: Tier 1 (1-3s) for MONDO/GO two-database, Tier 2 (3-5s) for three-way"
     - "Optimization gain: Pre-filtering reduces join size by 99%+ before cross-database joins"
+  
   data_quality_notes:
     - MONDO provides 28% coverage (~8,500) of MeSH disease mappings via hasDbXref
     - GO integration requires keyword matching (no direct semantic links)
     - Cross-database queries benefit from filtering by keyword first
     - Three-way queries require simplified CONTAINS filters (complex GO filters cause 400 errors)
+  
+  staleness_warning: "MeSH is updated annually. Statistics verified 2025-02-04 against 2024 release."
 
 anti_patterns:
   - title: Using meshv:broader Instead of meshv:broaderDescriptor
@@ -560,14 +623,15 @@ anti_patterns:
         ?descriptor meshv:scopeNote ?scopeNote .
       }
     correct_sparql: |
-      SELECT ?descriptor ?annotation
+      SELECT ?descriptor ?label ?annotation
       FROM <http://id.nlm.nih.gov/mesh>
       WHERE {
-        ?descriptor a meshv:TopicalDescriptor .
+        ?descriptor a meshv:TopicalDescriptor ;
+          rdfs:label ?label .
         OPTIONAL { ?descriptor meshv:annotation ?annotation }
       }
       LIMIT 50
-    explanation: The correct property is meshv:annotation, not meshv:scopeNote or skos:scopeNote. Use OPTIONAL since only ~40% have annotations.
+    explanation: The correct property is meshv:annotation, not meshv:scopeNote or skos:scopeNote. Use OPTIONAL since only ~31% have annotations.
   
   - title: Using FILTER CONTAINS Instead of bif:contains
     problem: No full-text index or relevance ranking, very slow on large datasets
@@ -658,7 +722,7 @@ common_errors:
       - Not using OPTIONAL for annotation property
     solutions:
       - "CRITICAL: Use meshv:annotation, not meshv:scopeNote"
-      - Remember only ~40% of descriptors have annotations
+      - Remember only ~31% of descriptors have annotations
       - Always use OPTIONAL for annotation property
       - Include FROM clause
     example_fix: |

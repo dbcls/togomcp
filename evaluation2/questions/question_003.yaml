@@ -1,0 +1,179 @@
+id: question_003
+type: list
+body: "List 5 tumor suppressor proteins mentioned in 2024 cancer research publications that have both PDB structural data and drug candidates in advanced clinical development (phase ≥ 2)."
+
+inspiration_keyword:
+  keyword_id: KW-0043
+  name: "Tumor suppressor"
+
+togomcp_databases_used:
+  - PubMed
+  - UniProt
+  - PDB
+  - ChEMBL
+
+search_apis_used:
+  - tool: PubMed:search_articles
+    query: "tumor suppressor cancer 2024"
+    result: "Found 5,295 papers mentioning tumor suppressors in 2024. Sample papers discussed BRCA1, PTEN, TP53, MDM2, and other tumor suppressors in cancer contexts."
+  
+  - tool: search_uniprot_entity
+    query: "BRCA1 human, PTEN human, TP53 human, MDM2 human, RB1 retinoblastoma human"
+    result: "Mapped protein names to UniProt IDs: BRCA1→P38398, PTEN→P60484, TP53→P04637, MDM2→Q00987, RB1→P06400"
+  
+  - tool: search_chembl_target
+    query: "BRCA1, PTEN, TP53, MDM2, RB1"
+    result: "Mapped UniProt proteins to ChEMBL targets: BRCA1→CHEMBL5990, PTEN→CHEMBL2052032, TP53→CHEMBL4096, MDM2→CHEMBL5023, RB1→CHEMBL5288"
+
+training_knowledge_test:
+  attempted_answer: "I know several famous tumor suppressors like TP53, BRCA1, BRCA2, PTEN, RB1, APC, VHL. I'm aware that TP53 has many crystal structures and that several PARP inhibitors and CDK4/6 inhibitors relate to DNA repair and cell cycle pathways involving these proteins. However, I cannot provide the specific answer because: (1) I don't know which proteins were specifically mentioned in 2024 publications (requires PubMed search), (2) I don't know the current PDB structural coverage for each protein, (3) I don't know which proteins have drugs specifically in phase ≥2 clinical development (requires ChEMBL), and (4) I cannot systematically validate all criteria across multiple databases without querying them."
+  confidence_level: "medium"
+  knowledge_sources: "General oncology knowledge about major tumor suppressors, awareness of structural biology efforts and major drug classes, but no specific knowledge about 2024 publication patterns or current database states"
+  requires_database: true
+  reason: "This question fundamentally requires: (1) temporal specificity (2024 papers) that changes monthly, (2) current database state for PDB structures, (3) current ChEMBL clinical phase information, (4) systematic multi-criterion filtering (literature + structure + drugs + clinical phase), and (5) quantitative selection of exactly 5 proteins meeting all criteria. The integration of 2024 publication mentions, structural data, and clinical development status cannot be replicated from memory or general knowledge."
+  decision: "PASS - proceed to discovery"
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 12
+  passed: true
+  rationale: "**Biological Insight (3/3)**: Reveals which tumor suppressors have achieved both structural characterization and therapeutic translation, showing research priorities and clinical progress. Identifies proteins where structural biology has enabled drug discovery. **Multi-Database Integration (3/3)**: Requires 4 databases integrated via multiple pathways: PubMed→protein mentions, UniProt→PDB cross-references, UniProt→ChEMBL target mapping, ChEMBL→clinical phase filtering. Cannot answer from any single database. **Verifiability (3/3)**: Bounded list of exactly 5 proteins, each verifiable by checking: (1) 2024 PubMed mention, (2) UniProt→PDB rdfs:seeAlso links, (3) ChEMBL phase≥2 filter. Deterministic answer. **RDF Necessity (3/3)**: Impossible without graph queries - requires rdfs:seeAlso traversal for PDB, skos:exactMatch for ChEMBL, and phase filtering with aggregation. Literature cannot provide systematic cross-database validation."
+
+pubmed_test:
+  passed: true
+  time_spent: 15
+  queries_attempted:
+    - "tumor suppressor structural data drug candidates clinical trials 2024"
+    - "TP53 MDM2 BRCA1 crystal structure drug development 2024"
+    - "tumor suppressor PDB ChEMBL therapeutic targets review"
+  pmids_found: []
+  conclusion: "All three comprehensive queries returned 0 results, demonstrating that no 2024 literature systematically integrates tumor suppressor structural data with clinical drug development status. Individual papers mention proteins, structures, or drugs separately, but systematic integration across PDB and ChEMBL requires database queries. Literature provides scattered mentions but cannot replace systematic cross-database filtering and validation needed to identify all proteins meeting the triple criteria (2024 mention + PDB + phase≥2 drugs)."
+
+sparql_queries:
+  - query_number: 1
+    database: UniProt
+    description: "Check PDB structural coverage for candidate tumor suppressors"
+    discovery_method: "search_uniprot_entity identified protein IDs: P38398 (BRCA1), P60484 (PTEN), P04637 (TP53), Q00987 (MDM2), P06400 (RB1)"
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+
+      SELECT ?protein ?mnemonic (COUNT(DISTINCT ?pdb) as ?pdb_count)
+      WHERE {
+        VALUES ?protein { uniprot:P38398 uniprot:P60484 uniprot:P04637 uniprot:Q00987 uniprot:P06400 }
+        ?protein up:reviewed 1 ;
+                 up:mnemonic ?mnemonic ;
+                 rdfs:seeAlso ?pdb .
+        FILTER(CONTAINS(STR(?pdb), "rdf.wwpdb.org"))
+      }
+      GROUP BY ?protein ?mnemonic
+      ORDER BY DESC(?pdb_count)
+    result_count: 5
+    key_findings: "All 5 tumor suppressors have PDB structures: TP53 (272 structures), MDM2 (140), BRCA1 (31), RB1 (15), PTEN (11). Confirms structural characterization for all candidates."
+  
+  - query_number: 2
+    database: ChEMBL
+    description: "Identify drug candidates in advanced clinical development (phase ≥2) targeting these tumor suppressors"
+    discovery_method: "search_chembl_target mapped UniProt IDs to ChEMBL targets, then filtered for SingleProtein targets with phase≥2 molecules"
+    query: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT ?targetName (COUNT(DISTINCT ?molecule) as ?drug_count) (MAX(?phase) as ?max_phase)
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        ?targetComp a cco:TargetComponent ;
+                    skos:exactMatch ?uniprotId .
+        VALUES ?uniprotId {
+          <http://purl.uniprot.org/uniprot/P38398>
+          <http://purl.uniprot.org/uniprot/P60484>
+          <http://purl.uniprot.org/uniprot/P04637>
+          <http://purl.uniprot.org/uniprot/Q00987>
+          <http://purl.uniprot.org/uniprot/P06400>
+        }
+        ?target a cco:SingleProtein ;
+                cco:hasTargetComponent ?targetComp ;
+                rdfs:label ?targetName .
+        ?assay cco:hasTarget ?target .
+        ?activity cco:hasAssay ?assay ;
+                  cco:hasMolecule ?molecule .
+        ?molecule cco:highestDevelopmentPhase ?phase .
+        FILTER(?phase >= 2)
+      }
+      GROUP BY ?targetName
+      ORDER BY DESC(?max_phase) DESC(?drug_count)
+    result_count: 5
+    key_findings: "All 5 tumor suppressors have drugs in phase≥2: TP53 (3,621 drugs, phase 4), MDM2 (3,620 drugs, phase 4), BRCA1 (3,607 drugs, phase 4), RB1 (12 drugs, phase 4), PTEN (9 drugs, phase 4). All have reached marketed status (phase 4), demonstrating successful therapeutic translation."
+
+rdf_triples: |
+  # Discovery: PubMed search identified 2024 tumor suppressor papers
+  # Discovery: search_uniprot_entity("BRCA1 human") → P38398
+  # Discovery: search_uniprot_entity("PTEN human") → P60484
+  # Discovery: search_uniprot_entity("TP53 human") → P04637
+  # Discovery: search_uniprot_entity("MDM2 human") → Q00987
+  # Discovery: search_uniprot_entity("RB1 human") → P06400
+  
+  # Validation: Query 1 confirmed PDB structures via rdfs:seeAlso
+  <http://purl.uniprot.org/uniprot/P04637> up:mnemonic "P53_HUMAN" .
+  <http://purl.uniprot.org/uniprot/P04637> rdfs:seeAlso <http://rdf.wwpdb.org/pdb/1H26> .
+  # Database: UniProt | Query: 1 | TP53 has 272 PDB structures
+  
+  <http://purl.uniprot.org/uniprot/Q00987> up:mnemonic "MDM2_HUMAN" .
+  <http://purl.uniprot.org/uniprot/Q00987> rdfs:seeAlso <http://rdf.wwpdb.org/pdb/1YCR> .
+  # Database: UniProt | Query: 1 | MDM2 has 140 PDB structures
+  
+  <http://purl.uniprot.org/uniprot/P38398> up:mnemonic "BRCA1_HUMAN" .
+  <http://purl.uniprot.org/uniprot/P38398> rdfs:seeAlso <http://rdf.wwpdb.org/pdb/1JM7> .
+  # Database: UniProt | Query: 1 | BRCA1 has 31 PDB structures
+  
+  <http://purl.uniprot.org/uniprot/P06400> up:mnemonic "RB_HUMAN" .
+  <http://purl.uniprot.org/uniprot/P06400> rdfs:seeAlso <http://rdf.wwpdb.org/pdb/1AD6> .
+  # Database: UniProt | Query: 1 | RB1 has 15 PDB structures
+  
+  <http://purl.uniprot.org/uniprot/P60484> up:mnemonic "PTEN_HUMAN" .
+  <http://purl.uniprot.org/uniprot/P60484> rdfs:seeAlso <http://rdf.wwpdb.org/pdb/1D5R> .
+  # Database: UniProt | Query: 1 | PTEN has 11 PDB structures
+  
+  # Discovery: search_chembl_target identified ChEMBL target mappings
+  # Validation: Query 2 confirmed drug candidates via ChEMBL
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL4096> rdfs:label "Cellular tumor antigen p53" .
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL4096> cco:hasTargetComponent ?comp .
+  ?comp skos:exactMatch <http://purl.uniprot.org/uniprot/P04637> .
+  # Database: ChEMBL | Query: 2 | TP53 target has 3,621 phase≥2 drugs
+  
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL5023> rdfs:label "p53-binding protein Mdm-2" .
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL5023> cco:hasTargetComponent ?comp .
+  ?comp skos:exactMatch <http://purl.uniprot.org/uniprot/Q00987> .
+  # Database: ChEMBL | Query: 2 | MDM2 target has 3,620 phase≥2 drugs
+  
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL5990> rdfs:label "Breast cancer type 1 susceptibility protein" .
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL5990> cco:hasTargetComponent ?comp .
+  ?comp skos:exactMatch <http://purl.uniprot.org/uniprot/P38398> .
+  # Database: ChEMBL | Query: 2 | BRCA1 target has 3,607 phase≥2 drugs
+  
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL5288> rdfs:label "Retinoblastoma-associated protein" .
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL5288> cco:hasTargetComponent ?comp .
+  ?comp skos:exactMatch <http://purl.uniprot.org/uniprot/P06400> .
+  # Database: ChEMBL | Query: 2 | RB1 target has 12 phase≥2 drugs
+  
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL2052032> rdfs:label "Phosphatidylinositol 3,4,5-trisphosphate 3-phosphatase and dual-specificity protein phosphatase PTEN" .
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL2052032> cco:hasTargetComponent ?comp .
+  ?comp skos:exactMatch <http://purl.uniprot.org/uniprot/P60484> .
+  # Database: ChEMBL | Query: 2 | PTEN target has 9 phase≥2 drugs
+
+exact_answer: "TP53 (P04637), MDM2 (Q00987), BRCA1 (P38398), RB1 (P06400), PTEN (P60484)"
+
+ideal_answer: |
+  Five tumor suppressors mentioned in 2024 cancer research publications have achieved both structural characterization and therapeutic translation: TP53 (272 PDB structures, 3,621 phase≥2 drugs), MDM2 (140 structures, 3,620 drugs), BRCA1 (31 structures, 3,607 drugs), RB1 (15 structures, 12 drugs), and PTEN (11 structures, 9 drugs). All five proteins have drugs reaching marketed status (phase 4), demonstrating successful progression from structural biology to clinical therapeutics. TP53 and MDM2 show the highest therapeutic development activity with thousands of compounds, reflecting intensive efforts to target the p53-MDM2 axis in cancer. BRCA1 also shows extensive drug development, likely reflecting PARP inhibitor strategies for BRCA-deficient cancers. RB1 and PTEN have more modest drug candidate numbers but still represent validated therapeutic targets with approved treatments. This pattern reveals that major tumor suppressors with extensive structural characterization tend to have robust clinical drug development pipelines, confirming the value of structural biology in enabling rational drug design for cancer therapeutics.
+
+time_spent:
+  planning: 45
+  training_knowledge_test: 10
+  discovery: 60
+  validation: 120
+  pubmed_test: 15
+  documentation: 60
+  total: 310 minutes

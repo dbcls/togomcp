@@ -13,4 +13,4 @@ for i in {${ibeg}..${iend}}; do
     python automated_test_runner.py -c ${config} -o $res $qs
 done
 python combine_csv.py -o ${resdir}/results.csv ${resdir}/Q*_out.csv
-python add_llm_evaluation.py -o ${resdir}/results_with_llm.csv ${resdir}/results.csv
+python add_llm_evaluation.py --llm-model llama3.2 -o ${resdir}/results_with_llm.csv ${resdir}/results.csv

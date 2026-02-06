@@ -7,17 +7,18 @@ A comprehensive, step-by-step workflow for answering user questions using TogoMC
 ## Table of Contents
 
 1. [Quick Reference: Tool Categories](#quick-reference-tool-categories)
-2. [Complete Workflow](#complete-workflow)
-3. [Step 1: Analyze the Query](#step-1-analyze-the-query)
-4. [Step 2: Select the Right Database(s)](#step-2-select-the-right-databases)
-5. [Step 3: Execute Search Tools](#step-3-execute-search-tools)
-6. [Step 4: Use SPARQL for Advanced Queries](#step-4-use-sparql-for-advanced-queries)
-7. [Step 5: Convert and Link IDs](#step-5-convert-and-link-ids)
-8. [Step 6: Retrieve Additional Information](#step-6-retrieve-additional-information)
-9. [Step 7: Synthesize and Present Results](#step-7-synthesize-and-present-results)
-10. [Common Query Patterns](#common-query-patterns)
-11. [Critical Rules and Best Practices](#critical-rules-and-best-practices)
-12. [Troubleshooting](#troubleshooting)
+2. [⚠️ CRITICAL: Search vs. Comprehensive Queries](#critical-search-vs-comprehensive-queries)
+3. [Complete Workflow](#complete-workflow)
+4. [Step 1: Analyze the Query](#step-1-analyze-the-query)
+5. [Step 2: Select the Right Database(s)](#step-2-select-the-right-databases)
+6. [Step 3: Execute Search Tools](#step-3-execute-search-tools)
+7. [Step 4: Use SPARQL for Advanced Queries](#step-4-use-sparql-for-advanced-queries)
+8. [Step 5: Convert and Link IDs](#step-5-convert-and-link-ids)
+9. [Step 6: Retrieve Additional Information](#step-6-retrieve-additional-information)
+10. [Step 7: Synthesize and Present Results](#step-7-synthesize-and-present-results)
+11. [Common Query Patterns](#common-query-patterns)
+12. [Critical Rules and Best Practices](#critical-rules-and-best-practices)
+13. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -89,6 +90,83 @@ A comprehensive, step-by-step workflow for answering user questions using TogoMC
 
 ---
 
+## ⚠️ CRITICAL: Search vs. Comprehensive Queries
+
+### Understanding the Difference
+
+**Search APIs (Step 3)**: 
+- **Purpose**: Exploratory discovery, finding patterns and examples
+- **Returns**: 10-20 results typically
+- **Use for**: Understanding data, identifying entities, mapping cross-references
+- **NOT for**: Definitive answers to comprehensive questions
+
+**SPARQL Queries (Step 4)**:
+- **Purpose**: Validation, comprehensive analysis, definitive answers
+- **Returns**: Complete dataset matching criteria
+- **Use for**: Aggregations, existence claims, distribution patterns
+- **Required for**: Yes/no questions, phylogenetic distribution, negative claims
+
+### The Circular Reasoning Trap ⚠️
+
+**WRONG Approach** (Common Error):
+```
+1. Search API finds 8 example proteins
+2. Hardcode those 8 IDs into SPARQL VALUES clause
+3. Query properties of those 8 proteins
+4. Conclude based on incomplete data
+→ CIRCULAR REASONING - You only checked what you already found!
+```
+
+**CORRECT Approach**:
+```
+1. Search API finds examples (understand the pattern)
+2. SPARQL searches ALL entities using bif:contains with multiple search terms
+3. Aggregate/classify comprehensive results
+4. Conclude based on complete dataset
+→ COMPREHENSIVE ANALYSIS - You checked everything matching criteria
+```
+
+### When Each Approach Applies
+
+**Example-Based Queries (Can Use Search Results):**
+- ✅ Top-N rankings: "Which 5 kinases have most inhibitors?"
+- ✅ Specific lookups: "What PDB structures exist for protein P04637?"
+- ✅ Bounded verification: "Do these 3 specific proteins bind ATP?"
+
+**Comprehensive Queries (MUST Use Full SPARQL):**
+- ✅ Yes/No questions: "Do ANY proteins in category X have property Y?"
+- ✅ Existence claims: "Are there compounds with property Z?"
+- ✅ Phylogenetic distribution: "Are enzymes found in phyla beyond A and B?"
+- ✅ Negative claims: "No proteins of type Y have annotation Z"
+
+### How to Write Comprehensive SPARQL
+
+**WRONG - Using Hardcoded VALUES:**
+```sparql
+# DON'T DO THIS for comprehensive questions!
+VALUES ?protein { 
+  uniprot:P12345 uniprot:P67890 uniprot:P11111 
+}
+?protein up:organism ?organism .
+```
+
+**CORRECT - Using bif:contains with Multiple Search Terms:**
+```sparql
+# DO THIS for comprehensive questions!
+?protein up:recommendedName ?name .
+?name up:fullName ?fullName .
+?fullName bif:contains "'rhamnosyltransferase' OR 'protein-arginine rhamnosyl' OR 'WbbL' OR 'EF-P rhamnosyl'"
+?protein up:organism ?organism .
+```
+
+**Key Principles:**
+1. Use ALL known synonyms and variations in bif:contains
+2. Search comprehensively, don't limit to search API results
+3. Aggregate by classification when needed (GROUP BY)
+4. For phylogenetic questions: query all organisms, then classify by phylum
+
+---
+
 ## Complete Workflow
 
 ```
@@ -102,6 +180,7 @@ A comprehensive, step-by-step workflow for answering user questions using TogoMC
 │  • Extract keywords, IDs, entities                                  │
 │  • Identify domain (proteins, chemicals, diseases, etc.)           │
 │  • Determine query type (search, convert, annotate)                │
+│  • Is this comprehensive or example-based?                         │
 └─────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
@@ -114,44 +193,55 @@ A comprehensive, step-by-step workflow for answering user questions using TogoMC
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  STEP 3: Execute Search Tools                                      │
+│  STEP 3: Execute Search Tools (EXPLORATORY PHASE)                  │
 │  ⚠️  ALWAYS TRY SEARCH TOOLS FIRST                                 │
 │  • Use domain-specific search (see table above)                    │
-│  • Try multiple keywords if initial search fails                   │
+│  • Find patterns, examples, cross-references                       │
+│  • Document search terms for comprehensive SPARQL                  │
+│  • Try multiple keywords/synonyms                                  │
 └─────────────────────────────────────────────────────────────────────┘
                                     │
                     ┌───────────────┴───────────────┐
                     ▼                               ▼
-            ┌───────────┐                   ┌───────────────┐
-            │ Got IDs?  │───── YES ─────────│  STEP 5: ID   │
-            │           │                   │  Conversion   │
-            └───────────┘                   └───────────────┘
-                    │                               │
-                   NO                               │
-                    │                               │
-                    ▼                               │
-┌─────────────────────────────────────────────────────────────────────┐
-│  STEP 4: SPARQL (When Search Insufficient)                         │
-│  ⚠️  MANDATORY: Run get_MIE_file(dbname) FIRST                     │
-│  • Use for complex queries, specific annotations                   │
-│  • Always include LIMIT clause                                     │
-└─────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  STEP 6: Retrieve Additional Information                           │
-│  • ncbi_esummary() for detailed metadata                           │
-│  • ncbi_efetch() for full records                                  │
-│  • OLS4:fetch() for ontology details                               │
-└─────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  STEP 7: Synthesize Results                                        │
-│  • Combine data from multiple sources                              │
-│  • Cite databases used                                             │
-│  • Note any limitations or missing data                            │
-└─────────────────────────────────────────────────────────────────────┘
+         ┌──────────────────┐            ┌──────────────────┐
+         │ Need Comprehensive│───YES─────│  STEP 4: SPARQL  │
+         │ Analysis?         │            │  (bif:contains)  │
+         │ (yes/no, exists)  │            └──────────────────┘
+         └──────────────────┘                     │
+                    │                              │
+                   NO                              │
+                    │                              │
+                    ▼                              │
+         ┌──────────────────┐                     │
+         │ Got Specific IDs?│───── YES ───────────┤
+         └──────────────────┘                     │
+                    │                              │
+                   NO                              │
+                    │                              │
+                    ▼                              │
+         ┌──────────────────┐                     │
+         │  STEP 4: SPARQL  │                     │
+         │  (Advanced Query)│                     │
+         └──────────────────┘                     │
+                    │                              │
+                    └──────────────┬───────────────┘
+                                   ▼
+                         ┌──────────────────┐
+                         │  STEP 5: ID      │
+                         │  Conversion      │
+                         └──────────────────┘
+                                   │
+                                   ▼
+                         ┌──────────────────┐
+                         │  STEP 6: Retrieve│
+                         │  Additional Info │
+                         └──────────────────┘
+                                   │
+                                   ▼
+                         ┌──────────────────┐
+                         │  STEP 7: Present │
+                         │  Results         │
+                         └──────────────────┘
 ```
 
 ---
@@ -164,6 +254,7 @@ A comprehensive, step-by-step workflow for answering user questions using TogoMC
 - [ ] **Identify IDs**: Look for existing IDs (UniProt: P12345, PDB: 1ABC, etc.)
 - [ ] **Determine domain**: Which biological area? (See table below)
 - [ ] **Clarify intent**: What does the user want to know?
+- [ ] **Classify query type**: Comprehensive (yes/no, exists) or Example-based (specific lookup, top-N)?
 
 ### Domain Classification
 
@@ -180,6 +271,21 @@ A comprehensive, step-by-step workflow for answering user questions using TogoMC
 | **Variants** | mutation, variant, SNP, polymorphism | ClinVar, dbSNP |
 | **Glycans** | glycan, sugar, carbohydrate, glycoprotein | GlyCosmos, GlyTouCan |
 | **Literature** | paper, publication, abstract, citation | PubMed, PubTator |
+
+### Query Type Classification
+
+**Comprehensive Questions** (Require full SPARQL with bif:contains):
+- "Do ANY..."
+- "Are there..."
+- "Is X found in phyla other than..."
+- "Which organisms have..."
+- "Are ALL..."
+
+**Example-Based Questions** (Can use search API results):
+- "Which 5..."
+- "What is the top..."
+- "List the structures for protein X..."
+- "Show me examples of..."
 
 ---
 
@@ -226,9 +332,12 @@ A comprehensive, step-by-step workflow for answering user questions using TogoMC
 ### ✅ CHECKLIST - Do Not Skip
 
 - [ ] **ALWAYS try search tools FIRST** - They are often more capable than expected
+- [ ] **Remember: This is EXPLORATORY** - Finding patterns, not definitive answers
 - [ ] **Use the correct tool** for your domain (see table below)
-- [ ] **Try multiple keywords** if initial search returns insufficient results
+- [ ] **Try multiple keywords/synonyms** if initial search returns insufficient results
+- [ ] **Document search terms** for use in comprehensive SPARQL queries
 - [ ] **Adjust limit parameter** (default usually 20, increase if needed)
+- [ ] **For comprehensive questions**: Note ALL variations and synonyms found
 
 ### Search Tool Decision Matrix
 
@@ -273,6 +382,28 @@ What are you searching for?
 2. **Use synonyms**: If "hypertension" doesn't work, try "high blood pressure"
 3. **Include species**: Add "human" or organism name for more relevant results
 4. **Check multiple databases**: Cross-reference results for completeness
+5. **Document variations**: Note all alternative names/spellings for comprehensive SPARQL
+
+### Example: Exploratory Search for Comprehensive Query
+
+```python
+# User asks: "Are bacterial rhamnosyltransferases found in phyla beyond Pseudomonadota?"
+# This is a COMPREHENSIVE question - needs full SPARQL, not just search results
+
+# Step 3: Exploratory search (finding patterns)
+results = search_uniprot_entity("rhamnosyltransferase", limit=20)
+# Found examples in: Mycobacterium, E. coli, Pseudomonas, Treponema
+# Also found variations: "protein-arginine rhamnosyltransferase", "WbbL"
+
+# Document search terms for Step 4:
+# - "rhamnosyltransferase"
+# - "protein-arginine rhamnosyltransferase"
+# - "WbbL"
+# - "EF-P rhamnosyl"
+
+# DO NOT conclude yet - these are just examples!
+# Proceed to Step 4 for comprehensive SPARQL query
+```
 
 ---
 
@@ -294,6 +425,8 @@ get_MIE_file(dbname)  # Returns schema, RDF patterns, and examples
 - [ ] **Check `get_graph_list(dbname)`** if you need specific named graphs
 - [ ] **Include LIMIT clause** - Always limit results (20-100)
 - [ ] **Apply database-specific rules** (see below)
+- [ ] **For comprehensive questions**: Use bif:contains with ALL search terms from Step 3
+- [ ] **For example-based questions**: Can use VALUES with specific IDs from Step 3
 
 ### When to Use SPARQL
 
@@ -303,6 +436,7 @@ get_MIE_file(dbname)  # Returns schema, RDF patterns, and examples
 | Simple keyword search | Complex boolean logic (AND, NOT) |
 | Broad exploration | Precise field targeting |
 | Quick results needed | Aggregations (COUNT, GROUP BY) |
+| Finding examples (10-20 results) | Comprehensive analysis (ALL matching entities) |
 | | Cross-linking within database |
 
 ### Critical Database-Specific Rules
@@ -313,33 +447,132 @@ get_MIE_file(dbname)  # Returns schema, RDF patterns, and examples
 | **ChEMBL** | Use `FROM <http://rdf.ebi.ac.uk/dataset/chembl>` |
 | **Full-text search** | Split property paths when using `bif:contains` |
 | **All databases** | ALWAYS use `LIMIT` (start with 20-100) |
+| **Comprehensive queries** | Use bif:contains with multiple search terms, NOT VALUES |
 
-### SPARQL Workflow
+### SPARQL Workflow: Comprehensive vs. Example-Based
+
+#### Example-Based Workflow (Specific Lookups, Top-N)
 
 ```python
 # 1. Get the schema and examples (MANDATORY)
 mie_info = get_MIE_file("uniprot")
 
-# 2. Optionally get more examples
-examples = get_sparql_example("uniprot")
-
-# 3. Check named graphs if needed
-graphs = get_graph_list("uniprot")
-
-# 4. Write and execute query
+# 2. Can use specific IDs from search results
 query = """
 PREFIX up: <http://purl.uniprot.org/core/>
-SELECT ?protein ?name
+PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+
+SELECT ?protein ?name ?structure_count
 WHERE {
-  ?protein a up:Protein ;
-           up:reviewed 1 ;
-           up:recommendedName/up:fullName ?name .
-  FILTER(CONTAINS(LCASE(?name), "kinase"))
+  VALUES ?protein { uniprot:P04637 uniprot:P38398 uniprot:P00533 }
+  ?protein up:reviewed 1 ;
+           up:recommendedName/up:fullName ?name ;
+           rdfs:seeAlso ?pdb .
+  FILTER(CONTAINS(STR(?pdb), "rdf.wwpdb.org"))
 }
-LIMIT 50
+GROUP BY ?protein ?name
+ORDER BY DESC(COUNT(?pdb))
+LIMIT 5
 """
 
 results = run_sparql("uniprot", query)
+```
+
+#### Comprehensive Workflow (Yes/No, Existence, Distribution)
+
+```python
+# 1. Get the schema and examples (MANDATORY)
+mie_info = get_MIE_file("uniprot")
+
+# 2. MUST use bif:contains with ALL search terms (NO VALUES!)
+query = """
+PREFIX up: <http://purl.uniprot.org/core/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema/>
+
+SELECT DISTINCT ?protein ?organism ?phylum
+WHERE {
+  # Comprehensive search with ALL variations
+  ?protein a up:Protein ;
+           up:reviewed 1 ;
+           up:recommendedName ?name ;
+           up:organism ?organism .
+  ?name up:fullName ?fullName .
+  
+  # CRITICAL: Use bif:contains with ALL synonyms found in Step 3
+  ?fullName bif:contains "'rhamnosyltransferase' OR 'protein-arginine rhamnosyl' OR 'WbbL' OR 'EF-P rhamnosyl'"
+  
+  # Get phylum classification
+  ?organism rdfs:subClassOf+ ?phylumNode .
+  ?phylumNode up:rank "phylum" ;
+              up:scientificName ?phylum .
+}
+LIMIT 1000
+"""
+
+results = run_sparql("uniprot", query)
+
+# 3. Aggregate by phylum for comprehensive answer
+phyla = {}
+for result in results:
+    phylum = result['phylum']
+    phyla[phylum] = phyla.get(phylum, 0) + 1
+
+# Now you have a COMPLETE picture across all phyla
+```
+
+### Common SPARQL Patterns
+
+**Pattern 1: Comprehensive Existence Check**
+```sparql
+# Question: "Do ANY glycolysis enzymes localize to mitochondria?"
+# WRONG: VALUES ?protein { <pre-selected IDs> }
+# CORRECT: Use bif:contains to find ALL glycolysis enzymes
+
+PREFIX up: <http://purl.uniprot.org/core/>
+
+SELECT ?protein ?location
+WHERE {
+  ?protein up:reviewed 1 ;
+           up:annotation ?annot ;
+           up:classifiedWith ?go .
+  
+  # Find ALL glycolysis enzymes
+  ?go rdfs:label ?goLabel .
+  FILTER(CONTAINS(LCASE(?goLabel), "glycolysis") || CONTAINS(LCASE(?goLabel), "glycolytic"))
+  
+  # Check subcellular location
+  ?annot a up:Subcellular_Location_Annotation ;
+         rdfs:comment ?location .
+  FILTER(CONTAINS(LCASE(?location), "mitochondrion"))
+}
+LIMIT 100
+```
+
+**Pattern 2: Phylogenetic Distribution**
+```sparql
+# Question: "In which phyla are enzyme X found?"
+# WRONG: VALUES with pre-selected organisms
+# CORRECT: Search ALL organisms, aggregate by phylum
+
+PREFIX up: <http://purl.uniprot.org/core/>
+
+SELECT ?phylum (COUNT(DISTINCT ?protein) as ?count)
+WHERE {
+  ?protein up:reviewed 1 ;
+           up:recommendedName ?name ;
+           up:organism ?organism .
+  ?name up:fullName ?fullName .
+  
+  # Search ALL matching proteins
+  ?fullName bif:contains "'enzyme name' OR 'alternative name'"
+  
+  # Get phylum
+  ?organism rdfs:subClassOf+ ?phylumNode .
+  ?phylumNode up:rank "phylum" ;
+              up:scientificName ?phylum .
+}
+GROUP BY ?phylum
+ORDER BY DESC(?count)
 ```
 
 ---
@@ -435,20 +668,25 @@ go_terms = OLS4:search("BRCA1")
 - [ ] **Cite databases used** (UniProt, PDB, ChEMBL, etc.)
 - [ ] **Note limitations**: Missing data, incomplete conversions
 - [ ] **Provide IDs and links** for user follow-up
+- [ ] **For comprehensive questions**: State confidence in completeness
 
 ### Response Template
 
 ```markdown
 ## Summary
 [Brief answer to the user's question]
+[For comprehensive questions: "Based on comprehensive SPARQL query of all matching entities..."]
 
 ## Details
 [Organized findings from databases]
 
 ## Data Sources
-- UniProt: [IDs used]
+- UniProt: [IDs used, query type]
 - PDB: [IDs used]
 - [Other databases]
+
+## Methodology
+[For comprehensive questions: Explain search terms used and validation approach]
 
 ## Notes
 - [Any limitations or caveats]
@@ -552,19 +790,72 @@ chembl_targets = togoid_convertId("P00533", "uniprot,chembl_target")
 pathways = search_reactome_entity("EGFR signaling", rows=20)
 ```
 
+### Pattern 6: Comprehensive Phylogenetic Distribution (NEW)
+
+```python
+# Question: "Are bacterial rhamnosyltransferases found in phyla beyond X and Y?"
+
+# Step 1: Exploratory search (understanding patterns)
+search_results = search_uniprot_entity("rhamnosyltransferase", limit=20)
+# Found: Mycobacterium, E. coli, Pseudomonas, also "protein-arginine rhamnosyltransferase", "WbbL"
+
+# Step 2: Get MIE file
+get_MIE_file("uniprot")
+
+# Step 3: Comprehensive SPARQL query (NOT using VALUES!)
+query = """
+PREFIX up: <http://purl.uniprot.org/core/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema/>
+
+SELECT DISTINCT ?protein ?organism ?phylum
+WHERE {
+  ?protein a up:Protein ;
+           up:reviewed 1 ;
+           up:recommendedName ?name ;
+           up:organism ?organism .
+  ?name up:fullName ?fullName .
+  
+  # COMPREHENSIVE: Use ALL search terms found
+  ?fullName bif:contains "'rhamnosyltransferase' OR 'protein-arginine rhamnosyl' OR 'WbbL' OR 'EF-P rhamnosyl'"
+  
+  # Get phylum classification
+  ?organism rdfs:subClassOf+ ?phylumNode .
+  ?phylumNode up:rank "phylum" ;
+              up:scientificName ?phylum .
+}
+LIMIT 1000
+"""
+
+results = run_sparql("uniprot", query)
+
+# Step 4: Aggregate by phylum
+phyla = {}
+for result in results:
+    phylum = result['phylum']
+    protein_count = phyla.get(phylum, 0) + 1
+    phyla[phylum] = protein_count
+
+# Step 5: Answer definitively based on COMPLETE data
+print(f"Found rhamnosyltransferases in {len(phyla)} bacterial phyla:")
+for phylum, count in sorted(phyla.items(), key=lambda x: x[1], reverse=True):
+    print(f"  {phylum}: {count} proteins")
+```
+
 ---
 
 ## Critical Rules and Best Practices
 
 ### ✅ ALWAYS DO
 
-1. **Try search tools first** - They're more capable than you might think
+1. **Try search tools first** - They're more capable than you might think (exploratory phase)
 2. **Run `get_MIE_file()` before SPARQL** - This is mandatory, not optional
 3. **Use `LIMIT` in all SPARQL queries** - Start with 20-100
 4. **Filter UniProt by `up:reviewed 1`** - For Swiss-Prot quality data
 5. **Check conversion routes exist** before calling `togoid_convertId()`
 6. **Cite your data sources** in the final response
 7. **Handle empty results gracefully** - Try alternative keywords
+8. **For comprehensive questions**: Use bif:contains with ALL synonyms, not VALUES
+9. **Document methodology**: State whether query is comprehensive or example-based
 
 ### ❌ NEVER DO
 
@@ -575,6 +866,36 @@ pathways = search_reactome_entity("EGFR signaling", rows=20)
 5. **Don't omit LIMIT** - Can cause timeouts with large datasets
 6. **Don't use `bif:contains` with property paths** - Split them
 7. **Don't assume all IDs convert** - Check conversion availability
+8. **Don't use VALUES with search results for comprehensive questions** - This is circular reasoning!
+9. **Don't conclude from examples alone** - Comprehensive questions need comprehensive queries
+
+### 🔴 Critical Rule: Avoiding Circular Reasoning
+
+**NEVER do this for comprehensive questions:**
+```python
+# WRONG: Circular reasoning trap
+search_results = search_uniprot_entity("enzyme", limit=20)
+ids = extract_ids(search_results)  # Get 20 IDs
+
+query = f"""
+VALUES ?protein {{ {' '.join(ids)} }}  # ← Only checking the 20 found!
+?protein up:organism ?org .
+"""
+```
+
+**ALWAYS do this for comprehensive questions:**
+```python
+# CORRECT: Comprehensive analysis
+search_results = search_uniprot_entity("enzyme", limit=20)
+# Used to identify search terms and patterns
+
+query = """
+?protein up:recommendedName ?name .
+?name up:fullName ?fullName .
+?fullName bif:contains "'enzyme' OR 'variant1' OR 'variant2'"  # ← ALL matching entities
+?protein up:organism ?org .
+"""
+```
 
 ---
 
@@ -619,6 +940,16 @@ pathways = search_reactome_entity("EGFR signaling", rows=20)
 ✓ Consider using search tools instead
 ```
 
+### Problem: Incomplete Results for Comprehensive Question
+
+```
+✓ Did you use bif:contains with ALL search terms?
+✓ Check if you accidentally used VALUES with limited IDs
+✓ Try adding more synonyms and variations to bif:contains
+✓ Verify you're not limiting to examples from search API
+✓ Consider if database has incomplete coverage
+```
+
 ---
 
 ## Appendix: All Available Databases
@@ -653,4 +984,4 @@ Run `list_databases()` to see the complete list of 22 databases:
 
 ---
 
-**Remember: The goal is to find the best answer efficiently. Start simple, escalate complexity only when needed.**
+**Remember: Search APIs are for EXPLORATION (finding patterns, examples). SPARQL is for VALIDATION (comprehensive analysis, definitive answers). Know which type of question you're answering, and use the appropriate approach.**

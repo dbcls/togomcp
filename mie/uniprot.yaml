@@ -1,7 +1,7 @@
 schema_info:
   title: UniProt RDF
   description: |
-    Comprehensive protein sequence and functional information integrating Swiss-Prot (manually curated) and TrEMBL (automatically annotated). Contains 444M proteins with sequences, functions, domains, structures, variants, and cross-references to 200+ databases. CRITICAL: reviewed=1 (Swiss-Prot, 923K entries) vs reviewed=0 (TrEMBL, 444M entries). Always filter by reviewed=1 for quality and performance.
+    Comprehensive protein sequence and functional information integrating Swiss-Prot (manually curated, 586K) and TrEMBL (automatically annotated, ~444M). Contains sequences, functions, domains, structures, variants, and cross-references to 200+ databases. CRITICAL: Always filter by up:reviewed 1 for quality and performance (99.8% reduction).
   endpoint: https://rdfportal.org/sib/sparql
   base_uri: http://purl.uniprot.org/
   graphs:
@@ -19,17 +19,17 @@ schema_info:
   kw_search_tools:
     - search_uniprot_entity
   version:
-    mie_version: "1.5"
-    mie_created: "2025-01-29"
-    data_version: Release 2024_06
-    update_frequency: Monthly
+    mie_version: "1.6"
+    mie_created: "2025-02-04"
+    data_version: "Release 2024_06"
+    update_frequency: "Monthly"
   license:
-    data_license: Creative Commons Attribution 4.0 International
-    license_url: https://www.uniprot.org/help/license
+    data_license: "Creative Commons Attribution 4.0 International"
+    license_url: "https://www.uniprot.org/help/license"
   access:
-    rate_limiting: Reasonable use policy
-    max_query_timeout: 60 seconds
-    backend: Virtuoso (supports bif:contains)
+    rate_limiting: "Reasonable use policy"
+    max_query_timeout: "60 seconds"
+    backend: "Virtuoso (supports bif:contains)"
 
 shape_expressions: |
   PREFIX up: <http://purl.uniprot.org/core/>
@@ -89,7 +89,6 @@ sample_rdf_entries:
         up:reviewed 1 ;
         up:version 307 ;
         rdfs:seeAlso <http://rdf.wwpdb.org/pdb/1H26> .
-  
   - title: Protein Sequence
     description: Canonical isoform with validated amino acid sequence.
     rdf: |
@@ -97,13 +96,11 @@ sample_rdf_entries:
         rdf:value "MEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWF..." ;
         up:mass 43653 ;
         up:md5Checksum "c133dfce69f606f20865e9008199f852" .
-  
   - title: Function Annotation
     description: Expert-curated functional annotation from Swiss-Prot.
     rdf: |
       annotation:12345 a up:Function_Annotation ;
         rdfs:comment "Acts as a tumor suppressor; induces growth arrest or apoptosis..." .
-  
   - title: Reviewed Enzyme
     description: Mitochondrial enzyme with Swiss-Prot quality assurance.
     rdf: |
@@ -114,7 +111,6 @@ sample_rdf_entries:
         up:recommendedName [
           up:fullName "RNA-editing ligase 2, mitochondrial"
         ] .
-  
   - title: Kinase with Structures
     description: Swiss-Prot kinase with multiple validated PDB structures.
     rdf: |
@@ -142,9 +138,8 @@ sparql_query_examples:
                  up:organism <http://purl.uniprot.org/taxonomy/9606> .
       }
       LIMIT 30
-  
   - title: Search by Function with bif:contains
-    description: Find reviewed proteins by validated functional descriptions using full-text search. Note that bif:contains requires splitting property paths.
+    description: Find reviewed proteins by validated functional descriptions using full-text search.
     question: Which reviewed proteins are kinases or involved in DNA repair?
     complexity: basic
     sparql: |
@@ -160,7 +155,6 @@ sparql_query_examples:
         ?fullName bif:contains "'kinase' OR 'dna repair'"
       }
       LIMIT 15
-  
   - title: Get Functional Annotations
     description: Retrieve comprehensive functional annotations and GO terms for specific proteins.
     question: What are functions and GO terms for P04637, P17612, P86925?
@@ -185,7 +179,6 @@ sparql_query_examples:
         }
       }
       LIMIT 20
-  
   - title: Get Protein Sequences
     description: Retrieve expert-validated amino acid sequences with molecular properties.
     question: What are verified sequences and characteristics?
@@ -204,9 +197,8 @@ sparql_query_examples:
              up:md5Checksum ?checksum .
       }
       LIMIT 10
-  
   - title: Count Tumor Suppressors with bif:contains
-    description: Quantify expert-curated human tumor suppressors using full-text search. Note that bif:contains requires splitting property paths.
+    description: Quantify expert-curated human tumor suppressors using full-text search.
     question: How many human tumor suppressors in Swiss-Prot?
     complexity: intermediate
     sparql: |
@@ -221,7 +213,6 @@ sparql_query_examples:
         ?annot rdfs:comment ?function .
         ?function bif:contains "'tumor suppressor'"
       }
-  
   - title: Enzyme Classification with GO
     description: Link enzymatic classifications with Gene Ontology cellular components.
     question: Which enzymes have specific GO localizations?
@@ -241,7 +232,6 @@ sparql_query_examples:
         FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
       }
       LIMIT 20
-  
   - title: Taxonomic Hierarchy
     description: Navigate protein taxonomic relationships showing organism lineage.
     question: What is taxonomic classification hierarchy for human proteins?
@@ -268,9 +258,7 @@ cross_database_queries:
   examples:
     - title: Find Proteins Catalyzing ATP-Dependent Reactions
       description: |
-        Link UniProt enzymes to their catalyzed reactions in Rhea, focusing on ATP-dependent biochemical transformations.
-        This query demonstrates the power of the shared SIB endpoint by connecting protein function to reaction chemistry.
-        Useful for understanding enzyme mechanisms, metabolic pathways, and identifying drug targets.
+        Link UniProt enzymes to their catalyzed reactions in Rhea, focusing on ATP-dependent biochemical transformations for understanding enzyme mechanisms, metabolic pathways, and drug target identification.
       databases_used:
         - uniprot
         - rhea
@@ -301,24 +289,13 @@ cross_database_queries:
         ORDER BY DESC(?sc)
         LIMIT 20
       notes: |
-        - Optimization strategies applied: 1 (GRAPH clauses), 4 (bif:contains with split paths), 8 (reviewed=1 and approved status), 10 (LIMIT)
-        - Graph URIs retrieved from UniProt MIE (http://sparql.uniprot.org/uniprot) and Rhea MIE (http://rdfportal.org/dataset/rhea)
-        - Strategy 1 (GRAPH): Explicit GRAPH clauses prevent cross-contamination and ensure proper database isolation
-        - Strategy 4 (bif:contains): Full-text search with split property path (up:recommendedName → ?name → up:fullName) provides 5-10x speedup vs FILTER(CONTAINS())
-        - Strategy 8 (Database-specific): Applies reviewed=1 filter (99.8% reduction) and rhea:Approved status filter
-        - Strategy 10 (LIMIT): Prevents timeout on large result sets
-        - Linking mechanism: rhea:ec property references same EC namespace as UniProt's up:enzyme
-        - Performance: ~2-3 seconds for 20 results (Tier 1)
-        - Optimization gain: bif:contains + reviewed=1 filter reduces search space by 99.9% before cross-database join
-        - Use case: Drug target discovery, enzyme engineering, metabolic pathway analysis
-        - Referenced MIE files: uniprot, rhea
-        - Avoided anti-patterns: No property path + bif:contains combination, early filtering applied
-    
+        - Strategies: 1 (GRAPH), 4 (bif:contains split paths), 8 (reviewed=1, approved status), 10 (LIMIT)
+        - Performance: ~2-3s (Tier 1)
+        - Optimization: bif:contains + reviewed=1 reduces search by 99.9% before join
+        - MIE files: uniprot, rhea
     - title: Human Enzymes and Their Catalyzed Reactions with GO Terms
       description: |
-        Comprehensive view linking human proteins, their catalyzed reactions, and biological process annotations.
-        Combines UniProt's curated protein data with Rhea's reaction chemistry and GO biological context.
-        Demonstrates three-way integration across protein, reaction, and ontology data.
+        Comprehensive view linking human proteins, their catalyzed reactions, and biological process annotations for systems biology, pathway enrichment, and functional genomics.
       databases_used:
         - uniprot
         - rhea
@@ -351,27 +328,13 @@ cross_database_queries:
         }
         LIMIT 30
       notes: |
-        - Optimization strategies applied: 1 (GRAPH clauses), 2 (pre-filtering), 7 (OPTIONAL ordering), 8 (database-specific), 10 (LIMIT)
-        - Graph URIs verified from UniProt MIE (uniprot graph + go graph) and Rhea MIE (rhea dataset graph)
-        - Strategy 1 (GRAPH): Three explicit GRAPH clauses for clean separation of data sources
-        - Strategy 2 (Pre-filtering): Organism filtering (up:organism taxon:9606) and reviewed=1 applied before cross-database join
-        - Strategy 7 (OPTIONAL): All patterns are required (no OPTIONAL blocks), but proper ordering maintained
-        - Strategy 8 (Database-specific): reviewed=1 (UniProt), rhea:Approved (Rhea), STRSTARTS filter (GO terms)
-        - Strategy 10 (LIMIT): Three-way join requires LIMIT to prevent timeout
-        - Pre-filtering gain: Organism filter reduces human proteins from 923K to ~40K (95.7% reduction) before join
-        - GO term filtering pattern from UniProt MIE best practices
-        - Rhea status filter from Rhea MIE best practices
-        - Performance: ~4-6 seconds for 30 results (Tier 2-3)
-        - Optimization gain: Combined pre-filtering reduces three-way join complexity by ~99%
-        - Use case: Systems biology, pathway enrichment analysis, functional genomics
-        - Referenced MIE files: uniprot, rhea
-        - Avoided anti-patterns: Early filtering before joins, no missing GRAPH clauses
-    
+        - Strategies: 1 (GRAPH), 2 (pre-filtering), 7 (OPTIONAL ordering), 8 (database-specific), 10 (LIMIT)
+        - Performance: ~4-6s (Tier 2-3)
+        - Optimization: Organism filter reduces join by 95.7%; combined pre-filtering reduces complexity by ~99%
+        - MIE files: uniprot, rhea
     - title: Find Enzymes Catalyzing Glucose Metabolism Reactions
       description: |
-        Identify proteins involved in glucose metabolism by linking UniProt enzymes to Rhea glucose-related reactions.
-        Uses keyword search to find glucose-containing reactions, then retrieves the catalyzing proteins.
-        Demonstrates practical integration for studying specific metabolic pathways.
+        Identify proteins involved in glucose metabolism by linking UniProt enzymes to Rhea glucose-related reactions for carbohydrate metabolism research and diabetes studies.
       databases_used:
         - uniprot
         - rhea
@@ -403,20 +366,10 @@ cross_database_queries:
         ORDER BY DESC(?sc)
         LIMIT 25
       notes: |
-        - Optimization strategies applied: 1 (GRAPH clauses), 2 (pre-filtering in source), 4 (bif:contains), 8 (database-specific), 10 (LIMIT)
-        - Graph URIs from Rhea MIE and UniProt MIE files
-        - Strategy 1 (GRAPH): Explicit GRAPH clauses for each database
-        - Strategy 2 (Pre-filtering): Rhea reaction filtering by status and keyword happens before UniProt join
-        - Strategy 4 (bif:contains): Split property path (up:recommendedName → ?name → up:fullName) for compatibility
-        - Strategy 8 (Database-specific): reviewed=1 (UniProt quality filter), rhea:Approved (Rhea validation)
-        - Strategy 10 (LIMIT): Results limited to prevent timeout and get most relevant matches
-        - Query optimization pattern: Start with more restrictive database (Rhea with keyword search) then join to UniProt
-        - bif:contains relevance scoring: Results ordered by keyword match quality
-        - Performance: ~3-4 seconds for 25 results (Tier 1-2)
-        - Optimization gain: bif:contains keyword pre-filtering reduces Rhea reactions from 17K to ~500 before join (97% reduction)
-        - Use case: Carbohydrate metabolism research, diabetes studies, metabolic engineering
-        - Referenced MIE files: uniprot, rhea
-        - Avoided anti-patterns: Property path split for bif:contains, early status filtering
+        - Strategies: 1 (GRAPH), 2 (pre-filter in Rhea), 4 (bif:contains), 8 (reviewed=1, approved), 10 (LIMIT)
+        - Performance: ~3-4s (Tier 1-2)
+        - Optimization: Start with restrictive Rhea keyword search (97% reduction) then join to UniProt
+        - MIE files: uniprot, rhea
 
 cross_references:
   - pattern: rdfs:seeAlso
@@ -424,27 +377,27 @@ cross_references:
       Links to 200+ external databases via rdfs:seeAlso. Filter by URL substring for specific databases.
     databases:
       structure:
-        - PDB (rdf.wwpdb.org, ~14-25%)
-        - AlphaFold (alphafolddb, >98%)
+        - "PDB (rdf.wwpdb.org, ~14-25%)"
+        - "AlphaFold (alphafolddb, >98%)"
       sequence:
-        - EMBL (~95%)
-        - RefSeq (~80%)
-        - Ensembl (high)
+        - "EMBL (~95%)"
+        - "RefSeq (~80%)"
+        - "Ensembl (high)"
       genes:
-        - HGNC (100% human)
-        - neXtProt (100% human)
-        - Gene IDs (~90%)
+        - "HGNC (100% human)"
+        - "neXtProt (100% human)"
+        - "Gene IDs (~90%)"
       families:
-        - InterPro (>98%)
-        - Pfam (~85%)
-        - PANTHER (~80%)
+        - "InterPro (>98%)"
+        - "Pfam (~85%)"
+        - "PANTHER (~80%)"
       interactions:
-        - IntAct (~16%)
-        - STRING (~85%)
-        - BioGRID (~25%)
+        - "IntAct (~16%)"
+        - "STRING (~85%)"
+        - "BioGRID (~25%)"
       pathways:
-        - KEGG (~95%)
-        - Reactome (~30%)
+        - "KEGG (~95%)"
+        - "Reactome (~30%)"
     sparql: |
       SELECT ?protein ?mnemonic ?externalDB
       WHERE {
@@ -454,13 +407,12 @@ cross_references:
                  rdfs:seeAlso ?externalDB .
         # Examples: FILTER(CONTAINS(STR(?externalDB), "rdf.wwpdb.org"))
       } LIMIT 30
-  
   - pattern: up:organism
     description: |
       Links proteins to NCBI Taxonomy classification. All proteins have exactly one organism.
     databases:
       taxonomy:
-        - NCBI Taxonomy (100%)
+        - "NCBI Taxonomy (100%)"
     sparql: |
       SELECT ?protein ?taxon ?scientificName
       WHERE {
@@ -469,14 +421,13 @@ cross_references:
                  up:organism ?taxon .
         ?taxon up:scientificName ?scientificName .
       } LIMIT 30
-  
   - pattern: up:classifiedWith
     description: |
       Ontology-based classifications, primarily Gene Ontology (GO) terms.
     databases:
       ontology:
-        - Gene Ontology (>85% reviewed)
-        - Other classifications
+        - "Gene Ontology (>85% reviewed)"
+        - "Other classifications"
     sparql: |
       SELECT ?protein ?classification ?label
       WHERE {
@@ -492,65 +443,108 @@ architectural_notes:
     - Use search_uniprot_entity(query, limit) for initial protein discovery by keywords
     - Follow up with SPARQL queries for detailed protein information and relationships
     - For complex queries, combine keyword search results with SPARQL filtering
-  
   schema_design:
     - Central up:Protein entity with reviewed property as quality indicator (0=TrEMBL, 1=Swiss-Prot)
     - Hierarchical taxonomy via rdfs:subClassOf relationships
     - Annotation system with specialized subtypes
     - Cross-references via rdfs:seeAlso to 200+ databases
-  
   performance:
-    - "CRITICAL: Always filter by up:reviewed 1 (reduces 444M to 923K, 99.8% reduction)"
+    - "CRITICAL: Always filter by up:reviewed 1 (reduces ~444M to 586K, 99.8% reduction)"
     - COUNT queries require reviewed=1 filter to prevent timeout
     - Use bif:contains for keyword searches but split property paths (do not use /)
     - Organism filtering optimized with reviewed status
-    - "Cross-database query optimization: Use explicit GRAPH clauses (Strategy 1)"
-    - "Pre-filter within GRAPH blocks before joins (Strategy 2) - 10-100x speedup"
-    - "Use bif:contains with split property paths (Strategy 4) - never combine with /"
-    - "Apply database-specific optimizations (Strategy 8) - reviewed=1, organism filtering"
-    - "Always use LIMIT for cross-database queries (Strategy 10)"
-  
+    - "Cross-database: Use explicit GRAPH clauses (Strategy 1)"
+    - "Cross-database: Pre-filter within GRAPH blocks before joins (Strategy 2) - 10-100x speedup"
+    - "Cross-database: Use bif:contains with split property paths (Strategy 4)"
+    - "Cross-database: Apply database-specific optimizations (Strategy 8)"
+    - "Cross-database: Always use LIMIT (Strategy 10)"
   data_integration:
     - Swiss-Prot has vastly superior cross-reference coverage
     - GO integration most reliable for reviewed proteins (>85% vs ~30%)
     - PDB structures predominantly for reviewed entries (~14-25% vs <1%)
     - Cross-database integration with Rhea via shared SIB endpoint enables enzyme-reaction queries
-    - "Linking via up:enzyme property: UniProt enzymes ↔ Rhea reactions (rhea:ec)"
-    - "Expected cross-database performance: Tier 1 (1-3s) with bif:contains and reviewed=1 pre-filtering"
-    - "Expected cross-database performance: Tier 2-3 (3-8s) for three-way joins with GO terms"
-  
+    - "Linking: UniProt enzymes ↔ Rhea reactions (rhea:ec)"
+    - "Cross-DB performance: Tier 1 (1-3s) with bif:contains + reviewed=1 pre-filtering"
+    - "Cross-DB performance: Tier 2-3 (3-8s) for three-way joins with GO terms"
   data_quality:
     - "reviewed=1: expert manual curation vs automated TrEMBL"
-    - Functional annotations 90%+ complete for Swiss-Prot vs 20-30% TrEMBL
+    - Functional annotations 80%+ complete for Swiss-Prot vs 20-30% TrEMBL
     - Use up:organism for organism filtering, never mnemonic suffixes
 
 data_statistics:
-  total_proteins: 444565015
-  reviewed_proteins: 923147
-  human_reviewed: 40209
+  total_proteins: ~444000000
+  verified_date: "2025-02-04"
+  verification_method: "Database metadata (SPARQL timeout without reviewed filter)"
+  
+  reviewed_proteins: 586222
+  verified_date: "2025-02-04"
+  verification_query: |
+    SELECT (COUNT(DISTINCT ?protein) as ?count)
+    WHERE { ?protein a up:Protein ; up:reviewed 1 . }
+  
+  human_reviewed: 20435
+  verified_date: "2025-02-04"
+  verification_query: |
+    SELECT (COUNT(DISTINCT ?protein) as ?count)
+    WHERE {
+      ?protein a up:Protein ;
+               up:reviewed 1 ;
+               up:organism <http://purl.uniprot.org/taxonomy/9606> .
+    }
+  
   coverage:
-    reviewed_with_sequences: ">99%"
-    reviewed_with_function: ">90%"
+    reviewed_with_sequences: "97.6%"
+    calculation: "571,864 with sequences / 586,222 reviewed"
+    verified_date: "2025-02-04"
+    verification_query: |
+      SELECT (COUNT(DISTINCT ?protein) as ?count)
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:sequence ?seq .
+      }
+    
+    reviewed_with_function: "79.9%"
+    calculation: "468,538 with function / 586,222 reviewed"
+    verified_date: "2025-02-04"
+    verification_query: |
+      SELECT (COUNT(DISTINCT ?protein) as ?count)
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:annotation ?annot .
+        ?annot a up:Function_Annotation .
+      }
+    
     reviewed_with_go: ">85%"
-    reviewed_with_pdb: ~14-25%
+    note: "Query times out; estimate based on documentation and partial sampling"
+    
+    reviewed_with_pdb: "~13-15%"
+    methodology: "Sample-based estimation (130/1000 in random sample had PDB xrefs)"
+    
     reviewed_with_alphafold: ">98%"
+    note: "Based on AlphaFold coverage claims for reviewed entries"
+    
     reviewed_with_interpro: ">98%"
+    note: "Based on InterPro coverage documentation"
+  
   cardinality:
     avg_isoforms_per_protein: 1.1
     avg_pdb_per_protein: 4.8
     avg_go_terms_per_protein: 12.5
     avg_xrefs_per_protein: 45
+    note: "Estimates from documentation and sampling; exact counts timeout"
+  
   performance_characteristics:
-    - COUNT requires reviewed=1 filter
-    - Reviewed filtering reduces dataset 99.8%
-    - bif:contains for efficient text search (requires split property paths)
-    - "Cross-database queries with Rhea: Tier 1 (1-3s) for bif:contains with pre-filtering"
-    - "Cross-database queries with Rhea: Tier 2-3 (3-8s) for three-way joins with GO terms"
+    - "COUNT requires reviewed=1 filter"
+    - "Reviewed filtering reduces dataset 99.8%"
+    - "bif:contains for efficient text search (requires split property paths)"
+    - "Cross-database with Rhea: Tier 1 (1-3s) for bif:contains with pre-filtering"
+    - "Cross-database with Rhea: Tier 2-3 (3-8s) for three-way joins with GO terms"
     - "Optimization gain: bif:contains + reviewed=1 reduces search space by 99.9%"
     - "Optimization gain: Organism pre-filtering reduces join size by 95.7% (for human queries)"
-  data_quality_notes:
-    - reviewed=1 ensures expert curation quality
-    - Organism filtering critical for species-specific queries
+  
+  staleness_warning: "Monthly updates - statistics verified 2025-02-04 may become outdated. Always use reviewed=1 filter regardless of documented counts."
 
 anti_patterns:
   - title: Querying Without Reviewed Filter
@@ -568,7 +562,7 @@ anti_patterns:
                  up:reviewed 1 ;
                  up:organism <http://purl.uniprot.org/taxonomy/9606> .
       }
-    explanation: Adding up:reviewed 1 reduces from 444M to 923K entries (99.8% reduction), enabling COUNT and ensuring expert-curated quality.
+    explanation: Adding up:reviewed 1 reduces from ~444M to 586K entries (99.8% reduction), enabling COUNT and ensuring expert-curated quality.
   
   - title: Using bif:contains with Property Paths
     problem: bif:contains does not work with SPARQL property paths (/) and causes 400 errors.
@@ -587,7 +581,7 @@ anti_patterns:
         ?name up:fullName ?fullName .
         ?fullName bif:contains "'kinase'"
       }
-    explanation: Split property paths into separate triple patterns when using bif:contains. The magic predicate requires variables directly bound to RDF literals.
+    explanation: Split property paths into separate triple patterns when using bif:contains.
   
   - title: Using Mnemonic for Organism Filtering
     problem: Filtering organisms via mnemonic suffixes is unreliable and incomplete.
@@ -610,7 +604,6 @@ anti_patterns:
   - title: Cross-Database Query Without Pre-Filtering
     problem: Filtering after join causes timeout by processing millions of intermediate results.
     wrong_sparql: |
-      # BAD: Filter after join
       PREFIX rhea: <http://rdf.rhea-db.org/>
       PREFIX up: <http://purl.uniprot.org/core/>
       
@@ -622,33 +615,31 @@ anti_patterns:
         GRAPH <http://rdfportal.org/dataset/rhea> {
           ?reaction rhea:ec ?enzyme .
         }
-        # Filter too late - after 444M × 17K join!
         FILTER EXISTS { ?protein up:reviewed 1 }
       }
     correct_sparql: |
-      # GOOD: Filter before join (Strategy 2)
       PREFIX rhea: <http://rdf.rhea-db.org/>
       PREFIX up: <http://purl.uniprot.org/core/>
       
       SELECT ?protein ?reaction
       WHERE {
         GRAPH <http://sparql.uniprot.org/uniprot> {
-          ?protein up:reviewed 1 ;  # Early filtering!
+          ?protein up:reviewed 1 ;
                    up:enzyme ?enzyme .
         }
         GRAPH <http://rdfportal.org/dataset/rhea> {
-          ?reaction rhea:status rhea:Approved ;  # Early filtering!
+          ?reaction rhea:status rhea:Approved ;
                     rhea:ec ?enzyme .
         }
       }
       LIMIT 50
-    explanation: Pre-filtering in source database (Strategy 2) reduces intermediate results by 99.8% before cross-database join, improving performance 10-100x. Always filter within GRAPH clauses before joins.
+    explanation: Pre-filtering in source database (Strategy 2) reduces intermediate results by 99.8% before cross-database join, improving performance 10-100x.
 
 common_errors:
   - error: Query timeout
     causes:
       - Missing up:reviewed 1 filter
-      - COUNT/aggregation on full 444M dataset
+      - COUNT/aggregation on full ~444M dataset
       - Using CONTAINS() instead of bif:contains for large text searches
     solutions:
       - Always add up:reviewed 1 as first filter
@@ -662,8 +653,8 @@ common_errors:
       - Property path creates intermediate bindings that bif:contains cannot handle
     solutions:
       - Split property paths into separate triple patterns
-      - "Example WRONG: up:annotation/rdfs:comment ?text . ?text bif:contains 'keyword'"
-      - "Example CORRECT: up:annotation ?a . ?a rdfs:comment ?text . ?text bif:contains 'keyword'"
+      - "WRONG: up:annotation/rdfs:comment ?text . ?text bif:contains 'keyword'"
+      - "CORRECT: up:annotation ?a . ?a rdfs:comment ?text . ?text bif:contains 'keyword'"
   
   - error: Empty organism results
     causes:
@@ -706,17 +697,17 @@ common_errors:
         GRAPH <http://rdfportal.org/dataset/rhea> {
           ?reaction rhea:ec ?enzyme .
         }
-        FILTER(?protein has up:reviewed 1)  # Too late!
+        FILTER(?protein has up:reviewed 1)
       }
       
       # AFTER (completes in 2s):
       WHERE {
         GRAPH <http://sparql.uniprot.org/uniprot> {
-          ?protein up:reviewed 1 ;  # Early filter!
+          ?protein up:reviewed 1 ;
                    up:enzyme ?enzyme .
         }
         GRAPH <http://rdfportal.org/dataset/rhea> {
-          ?reaction rhea:status rhea:Approved ;  # Early filter!
+          ?reaction rhea:status rhea:Approved ;
                     rhea:ec ?enzyme .
         }
       }

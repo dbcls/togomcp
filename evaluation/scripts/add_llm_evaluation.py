@@ -171,15 +171,39 @@ def evaluate_row(row: Dict, llm_evaluator: LLMEvaluator) -> Dict[str, Any]:
             - full_combined_baseline_found
             - full_combined_togomcp_found
     """
-    expected = row.get('expected_answer', '')
-    baseline_text = row.get('baseline_text', '')
-    togomcp_text = row.get('togomcp_text', '')
+    # Get values and convert NaN to empty string
+    expected = str(row.get('expected_answer', '')) if row.get('expected_answer') == row.get('expected_answer') else ''
+    baseline_text = str(row.get('baseline_text', '')) if row.get('baseline_text') == row.get('baseline_text') else ''
+    togomcp_text = str(row.get('togomcp_text', '')) if row.get('togomcp_text') == row.get('togomcp_text') else ''
     
+    # Handle both old and new CSV formats
     baseline_token_found = str(row.get('baseline_has_expected', 'False')).lower() == 'true'
     togomcp_token_found = str(row.get('togomcp_has_expected', 'False')).lower() == 'true'
-
-    baseline_llm = llm_evaluator.evaluate_match(baseline_text, expected)
-    togomcp_llm = llm_evaluator.evaluate_match(togomcp_text, expected)
+    
+    # Check if responses were successful (handle errors)
+    baseline_success = str(row.get('baseline_success', 'True')).lower() == 'true'
+    togomcp_success = str(row.get('togomcp_success', 'True')).lower() == 'true'
+    
+    # Only evaluate with LLM if the response was successful and not empty
+    if baseline_success and baseline_text and baseline_text.strip():
+        baseline_llm = llm_evaluator.evaluate_match(baseline_text, expected)
+    else:
+        baseline_llm = {
+            "llm_match": False,
+            "llm_confidence": "low",
+            "llm_explanation": "No response text to evaluate (error or empty)",
+            "error": row.get('baseline_error', '') or row.get('baseline_error_type', '')
+        }
+    
+    if togomcp_success and togomcp_text and togomcp_text.strip():
+        togomcp_llm = llm_evaluator.evaluate_match(togomcp_text, expected)
+    else:
+        togomcp_llm = {
+            "llm_match": False,
+            "llm_confidence": "low",
+            "llm_explanation": "No response text to evaluate (error or empty)",
+            "error": row.get('togomcp_error', '') or row.get('togomcp_error_type', '')
+        }
         
     result = {
         "baseline_llm_match": baseline_llm["llm_match"],
@@ -228,6 +252,15 @@ def process_csv(
     
     if verbose:
         print(f"  Found {len(df)} rows")
+        
+        # Check for error fields and report statistics
+        if 'togomcp_error_type' in df.columns:
+            error_count = df['togomcp_error_type'].notna().sum()
+            if error_count > 0:
+                print(f"  Warning: Found {error_count} rows with errors")
+                error_types = df[df['togomcp_error_type'].notna()]['togomcp_error_type'].value_counts()
+                for error_type, count in error_types.items():
+                    print(f"    - {error_type}: {count}")
     
     # New columns to add
     new_columns = {
@@ -245,7 +278,10 @@ def process_csv(
     for idx, row in df.iterrows():
         if verbose:
             question_id = row.get('question_id', idx)
-            print(f"  Evaluating Q{question_id}...", end=" ")
+            error_status = ""
+            if pd.notna(row.get('togomcp_error_type')):
+                error_status = f" [ERROR: {row.get('togomcp_error_type')}]"
+            print(f"  Evaluating Q{question_id}{error_status}...", end=" ")
         
         result = evaluate_row(row.to_dict(), llm_evaluator)
         
@@ -281,13 +317,43 @@ def print_summary(df: pd.DataFrame, filename: str):
     
     total = len(df)
     
-    # LLM metrics
-    baseline_llm = df['baseline_llm_match'].sum()
-    togomcp_llm = df['togomcp_llm_match'].sum()
+    # Error statistics (if available)
+    if 'togomcp_error_type' in df.columns:
+        error_count = df['togomcp_error_type'].notna().sum()
+        if error_count > 0:
+            print(f"\nError Statistics:")
+            print(f"  Total errors:           {error_count:3d} ({100*error_count/total:.1f}%)")
+            
+            error_types = df[df['togomcp_error_type'].notna()]['togomcp_error_type'].value_counts()
+            for error_type, count in error_types.items():
+                print(f"    - {error_type:20s} {count:3d} ({100*count/total:.1f}%)")
+    
+    # Success statistics
+    if 'togomcp_success' in df.columns:
+        success_count = (df['togomcp_success'] == True).sum()
+        print(f"\nSuccess Rate:")
+        print(f"  TogoMCP successful:     {success_count:3d} ({100*success_count/total:.1f}%)")
+    
+    # LLM metrics (only count successful responses)
+    if 'togomcp_success' in df.columns:
+        successful_df = df[df['togomcp_success'] == True]
+        successful_total = len(successful_df)
         
-    print(f"\nLLM-Based Evaluation:")
-    print(f"  Baseline LLM matches:   {baseline_llm:3d} ({100*baseline_llm/total:.1f}%)")
-    print(f"  TogoMCP LLM matches:    {togomcp_llm:3d} ({100*togomcp_llm/total:.1f}%)")
+        if successful_total > 0:
+            baseline_llm = successful_df['baseline_llm_match'].sum()
+            togomcp_llm = successful_df['togomcp_llm_match'].sum()
+            
+            print(f"\nLLM-Based Evaluation (on successful responses only, n={successful_total}):")
+            print(f"  Baseline LLM matches:   {baseline_llm:3d} ({100*baseline_llm/successful_total:.1f}%)")
+            print(f"  TogoMCP LLM matches:    {togomcp_llm:3d} ({100*togomcp_llm/successful_total:.1f}%)")
+    else:
+        # Old format without success field
+        baseline_llm = df['baseline_llm_match'].sum()
+        togomcp_llm = df['togomcp_llm_match'].sum()
+        
+        print(f"\nLLM-Based Evaluation:")
+        print(f"  Baseline LLM matches:   {baseline_llm:3d} ({100*baseline_llm/total:.1f}%)")
+        print(f"  TogoMCP LLM matches:    {togomcp_llm:3d} ({100*togomcp_llm/total:.1f}%)")
 
 def main():
     parser = argparse.ArgumentParser(

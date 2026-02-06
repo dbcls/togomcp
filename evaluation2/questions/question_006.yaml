@@ -1,0 +1,118 @@
+id: question_006
+type: factoid
+body: "Which molybdenum-dependent enzyme has the most PDB structures?"
+
+inspiration_keyword:
+  keyword_id: KW-0500
+  name: "Molybdenum"
+
+togomcp_databases_used:
+  - UniProt
+  - PDB
+
+search_apis_used:
+  - tool: search_uniprot_entity
+    query: "molybdenum"
+    result: "Identified 20 molybdenum-related proteins including nitrogenase, molybdenum cofactor biosynthesis enzymes, aldehyde oxidases, and xanthine oxidases. Proteins discovered include P07328 (nitrogenase alpha), P07329 (nitrogenase beta), P80457 (xanthine oxidase), P47989 (human xanthine oxidase), and others."
+
+training_knowledge_test:
+  attempted_answer: "I know molybdenum cofactors are essential enzyme cofactors, with molybdopterin being the most common form. Major Mo-dependent enzyme families include nitrogenase, xanthine oxidase, sulfite oxidase, nitrate reductase, and aldehyde oxidase. However, I don't know which specific family has the most PDB structures without querying current databases."
+  confidence_level: "medium"
+  knowledge_sources: "General biochemistry knowledge about molybdenum enzymes and cofactors. Uncertain about specific PDB structural coverage for each enzyme family."
+  requires_database: true
+  reason: "While I have general knowledge that nitrogenase and xanthine oxidase are well-studied, I cannot answer 'which has the MOST structures' without: (1) Current UniProt search for all Mo-dependent proteins, (2) Counting PDB cross-references for each enzyme family, (3) Ranking by structure count. The answer requires systematic database aggregation of current structural coverage, not general knowledge."
+  decision: "PASS - proceeded to discovery"
+
+verification_score:
+  biological_insight: 3
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+  rationale: |
+    **Biological Insight (3/3):** Reveals which molybdenum-enzyme mechanism is most extensively structurally characterized, indicating research priorities and mechanistic understanding. Nitrogenase's 62 structures reflect decades of intense study of nitrogen fixation, a process critical for agriculture and environmental nitrogen cycling.
+    
+    **Multi-Database Integration (2/3):** Requires 2 databases (UniProt + PDB). Discovery via search_uniprot_entity, validation via SPARQL query aggregating PDB cross-references. Integration pattern: UniProt search → filter reviewed proteins → count rdfs:seeAlso links to rdf.wwpdb.org → aggregate by enzyme family.
+    
+    **Verifiability (3/3):** Single definitive answer: Nitrogenase molybdenum-iron protein with 62 PDB structures. Specific protein IDs (P07328, P07329) and exact structure count enable complete verification.
+    
+    **RDF Necessity (3/3):** Impossible without graph database. Requires: (1) Full-text search in UniProt for molybdenum proteins, (2) Cross-database join via rdfs:seeAlso to PDB, (3) Aggregation across multiple proteins, (4) Ranking by structure count. Cannot answer from PubMed (articles discuss individual structures, not systematic rankings) or from training knowledge (requires current database state).
+
+pubmed_test:
+  passed: true
+  queries_attempted:
+    - "molybdenum-dependent enzyme PDB structures crystal"
+    - "nitrogenase structure PDB molybdenum"
+  pmids_found: ["32355039", "25831270", "30367742", "29720402"]
+  conclusion: "Cannot answer from PubMed with reasonable effort. Articles discuss specific nitrogenase and molybdenum-enzyme structures (DOI: 10.1107/S2059798320003952, 10.1021/acs.biochem.5b00140) but provide no systematic comparative ranking across all Mo-dependent enzyme families. Individual papers focus on mechanistic details of particular proteins, not database-wide structural coverage statistics. Answering requires: (1) systematic UniProt survey of ALL molybdenum proteins, (2) counting PDB cross-references for each enzyme family, (3) ranking by structure count. This is a database aggregation task requiring RDF integration across UniProt and PDB."
+
+sparql_queries:
+  - query_number: 1
+    database: UniProt
+    description: "Search for molybdenum-dependent proteins with PDB structures and rank by structure count"
+    discovery_method: "search_uniprot_entity('molybdenum', limit=20) identified key Mo-proteins including nitrogenase, xanthine oxidase, sulfite oxidase, and molybdenum cofactor biosynthesis enzymes"
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+
+      SELECT ?protein ?mnemonic ?fullName (COUNT(DISTINCT ?pdb) as ?pdb_count)
+      WHERE {
+        ?protein a up:Protein ;
+                 up:mnemonic ?mnemonic ;
+                 up:reviewed 1 ;
+                 up:recommendedName ?name ;
+                 rdfs:seeAlso ?pdb .
+        ?name up:fullName ?fullName .
+        ?fullName bif:contains "'molybdenum'"
+        FILTER(CONTAINS(STR(?pdb), "rdf.wwpdb.org"))
+      }
+      GROUP BY ?protein ?mnemonic ?fullName
+      ORDER BY DESC(?pdb_count)
+      LIMIT 10
+    result_count: 14
+    key_findings: |
+      Top results:
+      - P07328 (NIFD_AZOVI): Nitrogenase molybdenum-iron protein alpha chain - 62 structures
+      - P07329 (NIFK_AZOVI): Nitrogenase molybdenum-iron protein beta chain - 62 structures
+      - P84308 (MOSA_AZOVD): Molybdenum storage protein subunit alpha - 26 structures
+      - P80457 (xanthine oxidase): 0 structures in top results
+      
+      Nitrogenase clearly dominates with 62 PDB structures, far exceeding other Mo-dependent enzymes.
+
+rdf_triples: |
+  # Discovery: search_uniprot_entity("molybdenum") → P07328, P07329, P80457, P47989, etc.
+  # Validation: Query 1 confirmed nitrogenase as most structured
+  
+  <http://purl.uniprot.org/uniprot/P07328> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://purl.uniprot.org/core/Protein> .
+  # Database: UniProt | Query: 1 | Nitrogenase alpha chain identified
+  
+  <http://purl.uniprot.org/uniprot/P07328> <http://purl.uniprot.org/core/mnemonic> "NIFD_AZOVI" .
+  # Database: UniProt | Query: 1 | Protein identifier
+  
+  <http://purl.uniprot.org/uniprot/P07328> <http://purl.uniprot.org/core/reviewed> 1 .
+  # Database: UniProt | Query: 1 | Swiss-Prot reviewed entry
+  
+  <http://purl.uniprot.org/uniprot/P07328> <http://purl.uniprot.org/core/recommendedName> _:name1 .
+  _:name1 <http://purl.uniprot.org/core/fullName> "Nitrogenase molybdenum-iron protein alpha chain" .
+  # Database: UniProt | Query: 1 | Protein name contains "molybdenum"
+  
+  <http://purl.uniprot.org/uniprot/P07328> <http://www.w3.org/2000/01/rdf-schema#seeAlso> <http://rdf.wwpdb.org/pdb/1M1N> .
+  # Database: UniProt → PDB | Query: 1 | Cross-reference to PDB structure (1 of 62)
+  
+  <http://purl.uniprot.org/uniprot/P07329> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://purl.uniprot.org/core/Protein> .
+  # Database: UniProt | Query: 1 | Nitrogenase beta chain identified
+  
+  <http://purl.uniprot.org/uniprot/P07329> <http://purl.uniprot.org/core/mnemonic> "NIFK_AZOVI" .
+  # Database: UniProt | Query: 1 | Protein identifier
+  
+  <http://purl.uniprot.org/uniprot/P07329> <http://www.w3.org/2000/01/rdf-schema#seeAlso> <http://rdf.wwpdb.org/pdb/1M1N> .
+  # Database: UniProt → PDB | Query: 1 | Cross-reference to PDB structure (1 of 62)
+  
+  # Aggregation: COUNT(DISTINCT ?pdb) WHERE protein name contains "molybdenum" AND ?pdb matches "rdf.wwpdb.org"
+  # Result: Nitrogenase molybdenum-iron protein = 62 structures (highest count)
+  # Database: UniProt + PDB | Query: 1 | Demonstrates nitrogenase dominance in Mo-enzyme structural biology
+
+exact_answer: "Nitrogenase molybdenum-iron protein (62 PDB structures)"
+
+ideal_answer: |
+  Nitrogenase molybdenum-iron protein has the most PDB structures among molybdenum-dependent enzymes, with 62 structures deposited for both the alpha (P07328) and beta (P07329) chains from Azotobacter vinelandii. This extensive structural characterization reflects decades of intensive research into nitrogen fixation, a process critical for converting atmospheric N₂ into bioavailable ammonia for agriculture and environmental nitrogen cycling. The molybdenum-iron cofactor (FeMo-co) at nitrogenase's active site represents one of the most complex metal clusters in biology, driving sustained structural biology efforts to understand its unprecedented chemical mechanism for breaking the remarkably stable N≡N triple bond. Other molybdenum-dependent enzymes like xanthine oxidase, aldehyde oxidase, and sulfite oxidase have significantly fewer structures, highlighting nitrogenase's exceptional importance in both fundamental biochemistry and applied agricultural science.

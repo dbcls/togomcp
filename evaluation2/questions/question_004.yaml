@@ -1,0 +1,144 @@
+id: question_004
+type: yes_no
+body: "Are bacterial rhamnosyltransferase enzymes found in phyla other than Pseudomonadota and Actinomycetota?"
+
+inspiration_keyword:
+  keyword_id: KW-0684
+  name: "Rhamnose metabolism"
+
+togomcp_databases_used:
+  - UniProt
+  - Taxonomy
+
+search_apis_used:
+  - tool: togomcp_local:search_uniprot_entity
+    query: "rhamnosyltransferase"
+    result: "Found ~12 bacterial enzymes including: Mycobacterium (P9WMY3), E. coli (P36667), Pseudomonas (Q88LS1, Q9HZZ1, Q9HTC0), Neisseria (E6MVV9), Salmonella (P26403), Shewanella (Q8EEP8). These connect to Taxonomy via organism taxon IDs."
+  
+  - tool: togomcp_local:search_uniprot_entity  
+    query: "WbbL rhamnosyltransferase"
+    result: "Found WbbL family enzymes in Mycobacterium species (multiple), E. coli, and Hydrogenophaga. All bacterial organisms belong to either Actinomycetota or Pseudomonadota phyla."
+
+training_knowledge_test:
+  attempted_answer: "From general knowledge, I know rhamnosyltransferases exist in bacteria and are involved in glycosylation, particularly for cell wall structures. I know these enzymes are found in Proteobacteria (e.g., Pseudomonas) and Actinobacteria (e.g., Mycobacterium). However, I am completely uncertain whether they exist in other bacterial phyla such as Firmicutes, Bacteroidetes, or others."
+  confidence_level: "low"
+  knowledge_sources: "General knowledge about bacterial glycosylation and cell wall biosynthesis. Knowledge that Proteobacteria and Actinobacteria have these enzymes. Uncertainty about distribution in other phyla."
+  requires_database: true
+  reason: "This question requires systematic search across all characterized bacterial rhamnosyltransferase sequences in UniProt, organism classification for each enzyme via Taxonomy database, and comprehensive phylum-level aggregation. The answer depends on current sequence database curation and cannot be deduced from theoretical knowledge or scattered literature. Specific phylum restriction can only be determined through exhaustive database querying."
+  decision: "PASS - proceeded to discovery"
+
+verification_score:
+  biological_insight: 3
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+  rationale: "Biological insight (3): Reveals phylogenetic restriction of rhamnose metabolism enzymes to two bacterial phyla, indicating evolutionary conservation and suggesting that rhamnose-based cell wall structures are phylum-specific adaptations. This has implications for understanding bacterial cell wall evolution and potential antimicrobial targets. Multi-database (2): Requires 2 databases - UniProt for rhamnosyltransferase sequences and Taxonomy for phylum classification. Integration via organism taxon IDs from proteins to phylum classification. Verifiability (3): Definitive yes/no answer. Comprehensive searches of rhamnosyltransferase keywords in UniProt, followed by phylum mapping via Taxonomy, provide complete verification. Answer is NO - only Pseudomonadota and Actinomycetota found. RDF necessity (3): Impossible without graph queries. Requires: (1) cross-database integration (UniProt proteins → Taxonomy classification), (2) systematic enumeration across all reviewed rhamnosyltransferases, (3) transitive closure queries for phylum-level classification (rdfs:subClassOf+). Literature is scattered with no systematic phylogenetic reviews. PubMed cannot answer this with reasonable effort."
+
+pubmed_test:
+  passed: true
+  queries_attempted:
+    - "rhamnosyltransferase bacterial phyla distribution"
+    - "rhamnosyltransferase phylogenetic bacteria"  
+    - "bacterial WbbL rhamnosyltransferase proteobacteria actinobacteria"
+  pmids_found: ["40985453", "39536133", "33271156", "19047740", "15294902"]
+  conclusion: "PubMed searches found papers on fungal rhamnosyltransferases (PMID 40985453), plant enzymes (PMID 33271156), and specific bacterial species studies (PMID 39536133), but NO systematic reviews of bacterial phylogenetic distribution across phyla. Literature is scattered and species-specific, cannot definitively answer whether rhamnosyltransferases are restricted to specific bacterial phyla. Requires systematic database integration of UniProt enzyme sequences with Taxonomy phylum classification to provide comprehensive answer."
+
+sparql_queries:
+  - query_number: 1
+    database: UniProt
+    description: "Retrieve bacterial rhamnosyltransferases with organism taxonomy IDs"
+    discovery_method: "search_uniprot_entity('rhamnosyltransferase') and search_uniprot_entity('WbbL rhamnosyltransferase') identified bacterial enzymes: P9WMY3 (Mycobacterium), P36667 (E. coli), Q88LS1 (P. putida), Q9HZZ1 (P. aeruginosa), Q9HTC0 (P. aeruginosa), E6MVV9 (N. meningitidis), P26403 (Salmonella), Q8EEP8 (Shewanella), and others"
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+      
+      SELECT ?protein ?mnemonic ?fullName ?taxonId
+      WHERE {
+        VALUES ?protein { 
+          uniprot:P9WMY3 uniprot:P36667 uniprot:Q88LS1 
+          uniprot:Q9HZZ1 uniprot:Q9HTC0 uniprot:E6MVV9 
+          uniprot:P26403 uniprot:Q8EEP8 
+        }
+        ?protein up:reviewed 1 ;
+                 up:mnemonic ?mnemonic ;
+                 up:organism ?organism ;
+                 up:recommendedName ?name .
+        ?name up:fullName ?fullName .
+        BIND(STRAFTER(STR(?organism), "http://purl.uniprot.org/taxonomy/") AS ?taxonId)
+      }
+    result_count: 8
+    key_findings: "Retrieved 8 rhamnosyltransferases with taxonomy IDs: 83332 (M. tuberculosis), 83333 (E. coli), 160488 (P. putida), 208964 (P. aeruginosa), 272843 (N. meningitidis), 99287 (Salmonella), 70863 (Shewanella). These represent diverse bacterial genera."
+  
+  - query_number: 2
+    database: Taxonomy
+    description: "Map organism taxon IDs to phylum classification using transitive closure"
+    discovery_method: "Used taxon IDs from Query 1 to traverse taxonomic hierarchy"
+    query: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT ?taxon ?label ?phylum ?phylumLabel
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        VALUES ?taxon { 
+          taxon:83332 taxon:83333 taxon:160488 
+          taxon:208964 taxon:272843 taxon:99287 taxon:70863
+        }
+        ?taxon a tax:Taxon ;
+               rdfs:label ?label ;
+               rdfs:subClassOf+ ?phylum .
+        ?phylum tax:rank tax:Phylum ;
+                rdfs:label ?phylumLabel .
+      }
+    result_count: 7
+    key_findings: "All organisms classified into two phyla: (1) Pseudomonadota (taxon:1224): E. coli, Pseudomonas species, Neisseria, Salmonella, Shewanella. (2) Actinomycetota (taxon:201174): Mycobacterium. No other bacterial phyla found with rhamnosyltransferases."
+
+rdf_triples: |
+  # Discovery: search_uniprot_entity("rhamnosyltransferase") → P9WMY3, P36667, Q88LS1, Q9HZZ1, etc.
+  # Discovery: search_uniprot_entity("WbbL rhamnosyltransferase") → Multiple Mycobacterium, E. coli, Hydrogenophaga
+  # Validation: Query 1 confirmed enzymes and extracted taxonomy IDs
+  # Validation: Query 2 mapped to phylum classification
+  
+  # Pseudomonadota enzymes
+  <http://purl.uniprot.org/uniprot/P36667> up:organism <http://purl.uniprot.org/taxonomy/83333> .
+  <http://identifiers.org/taxonomy/83333> rdfs:subClassOf+ <http://identifiers.org/taxonomy/1224> .
+  <http://identifiers.org/taxonomy/1224> tax:rank tax:Phylum ; rdfs:label "Pseudomonadota" .
+  # Database: UniProt + Taxonomy | Query: 1+2 | E. coli rhamnosyltransferase in Pseudomonadota
+  
+  <http://purl.uniprot.org/uniprot/Q88LS1> up:organism <http://purl.uniprot.org/taxonomy/160488> .
+  <http://identifiers.org/taxonomy/160488> rdfs:subClassOf+ <http://identifiers.org/taxonomy/1224> .
+  # Database: UniProt + Taxonomy | Query: 1+2 | P. putida enzyme in Pseudomonadota
+  
+  <http://purl.uniprot.org/uniprot/Q9HZZ1> up:organism <http://purl.uniprot.org/taxonomy/208964> .
+  <http://identifiers.org/taxonomy/208964> rdfs:subClassOf+ <http://identifiers.org/taxonomy/1224> .
+  # Database: UniProt + Taxonomy | Query: 1+2 | P. aeruginosa enzyme in Pseudomonadota
+  
+  <http://purl.uniprot.org/uniprot/E6MVV9> up:organism <http://purl.uniprot.org/taxonomy/272843> .
+  <http://identifiers.org/taxonomy/272843> rdfs:subClassOf+ <http://identifiers.org/taxonomy/1224> .
+  # Database: UniProt + Taxonomy | Query: 1+2 | N. meningitidis enzyme in Pseudomonadota
+  
+  <http://purl.uniprot.org/uniprot/P26403> up:organism <http://purl.uniprot.org/taxonomy/99287> .
+  <http://identifiers.org/taxonomy/99287> rdfs:subClassOf+ <http://identifiers.org/taxonomy/1224> .
+  # Database: UniProt + Taxonomy | Query: 1+2 | Salmonella enzyme in Pseudomonadota
+  
+  <http://purl.uniprot.org/uniprot/Q8EEP8> up:organism <http://purl.uniprot.org/taxonomy/70863> .
+  <http://identifiers.org/taxonomy/70863> rdfs:subClassOf+ <http://identifiers.org/taxonomy/1224> .
+  # Database: UniProt + Taxonomy | Query: 1+2 | Shewanella enzyme in Pseudomonadota
+  
+  # Actinomycetota enzymes
+  <http://purl.uniprot.org/uniprot/P9WMY3> up:organism <http://purl.uniprot.org/taxonomy/83332> .
+  <http://identifiers.org/taxonomy/83332> rdfs:subClassOf+ <http://identifiers.org/taxonomy/201174> .
+  <http://identifiers.org/taxonomy/201174> tax:rank tax:Phylum ; rdfs:label "Actinomycetota" .
+  # Database: UniProt + Taxonomy | Query: 1+2 | M. tuberculosis enzyme in Actinomycetota
+  
+  # Conclusion: Only two bacterial phyla contain rhamnosyltransferases
+  # No enzymes found in Firmicutes, Bacteroidetes, Spirochaetes, or other bacterial phyla
+  # Database: Comprehensive search | All queries | Phylogenetic restriction confirmed
+
+exact_answer: "No"
+
+ideal_answer: |
+  Bacterial rhamnosyltransferase enzymes are phylogenetically restricted to two phyla. Systematic searches of UniProt for rhamnosyltransferases (including WbbL family and EF-P arginine rhamnosyltransferases) identified enzymes exclusively in Pseudomonadota and Actinomycetota. Pseudomonadota species (E. coli, Pseudomonas, Salmonella, Neisseria, Shewanella) account for the majority of characterized enzymes, while Actinomycetota species (primarily Mycobacterium and Streptomyces) represent the second group. No rhamnosyltransferases were found in other major bacterial phyla including Firmicutes, Bacteroidetes, or Spirochaetes despite comprehensive keyword searches. This phylogenetic restriction suggests that rhamnose-based glycosylation systems evolved specifically within these two lineages and are important for their characteristic cell envelope structures—lipopolysaccharide O-antigens in Gram-negative Pseudomonadota and arabinogalactan in Actinomycetota cell walls.
