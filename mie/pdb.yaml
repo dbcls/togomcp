@@ -1,7 +1,11 @@
 schema_info:
   title: Protein Data Bank (PDB)
   description: |
-    The PDB RDF database contains 3D structural data for biological macromolecules (proteins, nucleic acids, complexes) derived from X-ray crystallography, NMR, and cryo-EM. The database includes 245K+ entries with experimental methods, structural coordinates, resolution data, sequences, biological assemblies, and cross-references to UniProt, EMDB, GenBank, and publications.
+    The PDB RDF database contains 3D structural data for biological macromolecules
+    (proteins, nucleic acids, complexes) derived from X-ray crystallography, NMR,
+    and cryo-EM. Contains 245K+ entries with experimental methods, structural
+    coordinates, resolution data, sequences, biological assemblies, and cross-references
+    to UniProt, EMDB, GenBank, and publications.
   endpoint: https://rdfportal.org/pdb/sparql
   base_uri: http://rdf.wwpdb.org/pdb/
   graphs:
@@ -10,13 +14,13 @@ schema_info:
   kw_search_tools:
     - search_pdb_entity
   version:
-    mie_version: "2.0"
-    mie_created: "2025-02-04"
+    mie_version: "3.0"
+    mie_created: "2025-02-09"
     data_version: "Current"
     update_frequency: "Weekly"
   license:
-    data_license: "Public Domain"
-    license_url: "https://www.wwpdb.org"
+    data_license: "Public Domain (CC0)"
+    license_url: "https://www.wwpdb.org/policy"
   access:
     rate_limiting: "Reasonable use"
     max_query_timeout: "60 seconds"
@@ -25,7 +29,6 @@ schema_info:
 shape_expressions: |
   PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
   PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-  PREFIX dct: <http://purl.org/dc/terms/>
   
   <Datablock> {
     a [ pdbx:datablock ] ;
@@ -39,11 +42,8 @@ shape_expressions: |
     pdbx:has_citationCategory @<CitationCategory> * ;
     pdbx:has_structCategory @<StructCategory> ;
     pdbx:has_struct_keywordsCategory @<StructKeywordsCategory> * ;
-    pdbx:has_cellCategory @<CellCategory> * ;
-    pdbx:has_symmetryCategory @<SymmetryCategory> * ;
-    pdbx:has_softwareCategory @<SoftwareCategory> * ;
-    pdbx:has_pdbx_struct_assemblyCategory @<AssemblyCategory> * ;
-    pdbx:has_struct_asymCategory @<StructAsymCategory> *
+    pdbx:has_entity_src_genCategory @<EntitySrcGenCategory> * ;
+    pdbx:has_softwareCategory @<SoftwareCategory> *
   }
   
   <Entry> {
@@ -55,11 +55,9 @@ shape_expressions: |
   <Entity> {
     a [ pdbx:entity ] ;
     pdbx:entity.id xsd:string ;
-    pdbx:entity.type [ "polymer" "non-polymer" "water" "macrolide" "branched" ] ;
+    pdbx:entity.type [ "polymer" "non-polymer" "water" "branched" ] ;
     pdbx:entity.pdbx_description xsd:string ? ;
     pdbx:entity.formula_weight xsd:decimal ? ;
-    pdbx:entity.pdbx_number_of_molecules xsd:integer ? ;
-    pdbx:entity.src_method xsd:string ? ;
     pdbx:referenced_by_entity_poly IRI * ;
     pdbx:referenced_by_struct_ref IRI * ;
     pdbx:of_datablock IRI
@@ -67,11 +65,23 @@ shape_expressions: |
   
   <EntityPoly> {
     a [ pdbx:entity_poly ] ;
-    pdbx:entity_poly.entity_id xsd:string ;
     pdbx:entity_poly.type xsd:string ;
     pdbx:entity_poly.pdbx_seq_one_letter_code xsd:string ? ;
-    pdbx:entity_poly.pdbx_seq_one_letter_code_can xsd:string ? ;
     pdbx:reference_to_entity IRI ;
+    pdbx:of_datablock IRI
+  }
+  
+  <EntitySrcGen> {
+    a [ pdbx:entity_src_gen ] ;
+    pdbx:link_to_taxonomy_source IRI ? ;
+    pdbx:entity_src_gen.pdbx_gene_src_scientific_name xsd:string ? ;
+    pdbx:of_datablock IRI
+  }
+  
+  <Exptl> {
+    a [ pdbx:exptl ] ;
+    pdbx:exptl.method xsd:string ;
+    pdbx:reference_to_entry IRI ;
     pdbx:of_datablock IRI
   }
   
@@ -84,36 +94,19 @@ shape_expressions: |
     pdbx:of_datablock IRI
   }
   
-  <Exptl> {
-    a [ pdbx:exptl ] ;
-    pdbx:exptl.method xsd:string ;
-    pdbx:reference_to_entry IRI ;
-    pdbx:of_datablock IRI
-  }
-  
   <StructRef> {
     a [ pdbx:struct_ref ] ;
     pdbx:struct_ref.db_name xsd:string ;
     pdbx:struct_ref.pdbx_db_accession xsd:string ? ;
+    pdbx:link_to_uniprot IRI ? ;
     pdbx:reference_to_entity IRI * ;
     pdbx:of_datablock IRI
   }
   
-  <Database2> {
-    a [ pdbx:database_2 ] ;
-    pdbx:database_2.database_id xsd:string ;
-    pdbx:database_2.database_code xsd:string ;
-    pdbx:of_datablock IRI
-  }
-  
-  <Citation> {
-    a [ pdbx:citation ] ;
-    pdbx:citation.title xsd:string ? ;
-    pdbx:citation.year xsd:integer ? ;
-    pdbx:citation.pdbx_database_id_PubMed xsd:string ? ;
-    pdbx:citation.pdbx_database_id_DOI xsd:string ? ;
-    pdbx:link_to_doi IRI ? ;
-    pdbx:link_to_pubmed IRI ? ;
+  <Software> {
+    a [ pdbx:software ] ;
+    pdbx:software.name xsd:string ;
+    pdbx:software.classification xsd:string ;
     pdbx:of_datablock IRI
   }
 
@@ -131,19 +124,17 @@ sample_rdf_entries:
         pdbx:refine.ls_d_res_high "0.48"^^xsd:decimal ;
         pdbx:refine.ls_R_factor_R_work "0.127"^^xsd:decimal ;
         pdbx:refine.ls_R_factor_R_free "0.139"^^xsd:decimal .
-
-  - title: DNA Structure with Sequence
-    description: Dickerson dodecamer B-DNA with complete nucleotide sequence.
+  
+  - title: Human Protein with Taxonomy IRI
+    description: Human protein kinase linked to taxonomy ID 9606.
     rdf: |
       @prefix pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#> .
       @prefix pdb: <http://rdf.wwpdb.org/pdb/> .
       
-      pdb:100D/entity/1 a pdbx:entity ;
-        pdbx:entity.id "1" ;
-        pdbx:entity.type "polymer" ;
-        pdbx:entity.pdbx_description "DNA (5'-R(*CP*)-D(*CP*GP*GP*CP*GP*CP*CP*GP*)-R(*G)-3')" ;
-        pdbx:referenced_by_entity_poly pdb:100D/entity_poly/1 .
-
+      pdb:1ATP/entity_src_gen/1 a pdbx:entity_src_gen ;
+        pdbx:link_to_taxonomy_source <http://purl.uniprot.org/taxonomy/9606> ;
+        pdbx:entity_src_gen.pdbx_gene_src_scientific_name "Homo sapiens" .
+  
   - title: Protein with UniProt Cross-Reference
     description: Pyruvate kinase linked to UniProt P07378.
     rdf: |
@@ -154,194 +145,217 @@ sample_rdf_entries:
         pdbx:struct_ref.db_name "UNP" ;
         pdbx:struct_ref.pdbx_db_accession "P07378" ;
         pdbx:link_to_uniprot <http://purl.uniprot.org/uniprot/P07378> .
-
-  - title: Cryo-EM Structure with EMDB Link
-    description: Electron microscopy structure with EMDB cross-reference.
+  
+  - title: Cryo-EM Structure
+    description: Electron microscopy structure using controlled method value.
     rdf: |
       @prefix pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#> .
       @prefix pdb: <http://rdf.wwpdb.org/pdb/> .
+      
+      pdb:8A2Z/exptl/1 a pdbx:exptl ;
+        pdbx:exptl.method "ELECTRON MICROSCOPY" .
       
       pdb:8A2Z/database_2/1 a pdbx:database_2 ;
         pdbx:database_2.database_id "EMDB" ;
         pdbx:database_2.database_code "EMD-15109" .
-      
-      pdb:8A2Z/exptl/1 a pdbx:exptl ;
-        pdbx:exptl.method "ELECTRON MICROSCOPY" .
-
-  - title: RNA Ribozyme Structure
-    description: Hammerhead ribozyme showing RNA structural representation.
+  
+  - title: Polymer Entity
+    description: Protein polymer entity with controlled type value.
     rdf: |
       @prefix pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#> .
       @prefix pdb: <http://rdf.wwpdb.org/pdb/> .
       
-      pdb:300D/entity_poly/1 a pdbx:entity_poly ;
-        pdbx:entity_poly.type "polyribonucleotide" ;
-        pdbx:entity_poly.pdbx_seq_one_letter_code "GUGGUCUGAUGAGGCC" .
+      pdb:1ATP/entity/1 a pdbx:entity ;
+        pdbx:entity.id "1" ;
+        pdbx:entity.type "polymer" ;
+        pdbx:entity.pdbx_description "cAMP-dependent protein kinase" ;
+        pdbx:referenced_by_entity_poly pdb:1ATP/entity_poly/1 .
 
 sparql_query_examples:
-  - title: Search Structures by Classification Keywords
-    description: Find structures by biological classification.
-    question: Find all kinase structures in the PDB
+  - title: Find Structures by Specific Organism
+    description: Query human structures using taxonomy IRI (not text search).
+    question: How many human protein structures are in PDB?
     complexity: basic
     sparql: |
       PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
       
-      SELECT ?entry_id ?title ?keywords
+      # Use specific taxonomy IRI for human
+      SELECT (COUNT(DISTINCT ?entry) as ?count)
+      FROM <http://rdfportal.org/dataset/pdbj>
+      WHERE {
+        ?entry a pdbx:datablock ;
+               pdbx:has_entity_src_genCategory/pdbx:has_entity_src_gen ?src .
+        ?src pdbx:link_to_taxonomy_source <http://purl.uniprot.org/taxonomy/9606> .
+      }
+  
+  - title: Query by Specific Experimental Method
+    description: Use controlled method values instead of text search.
+    question: Find cryo-EM structures with EMDB links
+    complexity: basic
+    sparql: |
+      PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
+      
+      # Use specific experimental method value
+      SELECT ?entry_id ?emdb_code
       FROM <http://rdfportal.org/dataset/pdbj>
       WHERE {
         ?entry a pdbx:datablock .
         BIND(STRAFTER(str(?entry), "http://rdf.wwpdb.org/pdb/") AS ?entry_id)
-        ?entry pdbx:has_structCategory/pdbx:has_struct ?struct ;
-               pdbx:has_struct_keywordsCategory/pdbx:has_struct_keywords ?kw .
-        ?struct pdbx:struct.title ?title .
-        ?kw pdbx:struct_keywords.pdbx_keywords ?keywords .
-        FILTER(CONTAINS(LCASE(?keywords), "kinase"))
+        
+        # Controlled method value - no text search needed
+        ?entry pdbx:has_exptlCategory/pdbx:has_exptl/pdbx:exptl.method "ELECTRON MICROSCOPY" ;
+               pdbx:has_database_2Category/pdbx:has_database_2 ?db .
+        
+        ?db pdbx:database_2.database_id "EMDB" ;
+            pdbx:database_2.database_code ?emdb_code .
       }
       LIMIT 20
-
-  - title: Analyze Software Usage
-    description: Statistical analysis of refinement software usage.
+  
+  - title: Compare Multiple Experimental Methods
+    description: Use VALUES with specific method strings for efficient multi-method queries.
+    question: What is the resolution distribution across X-ray, NMR, and cryo-EM?
+    complexity: intermediate
+    sparql: |
+      PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      
+      # Use VALUES with specific controlled method values
+      SELECT ?method 
+             (COUNT(?entry) as ?total_structures)
+             (AVG(xsd:decimal(?resolution)) as ?avg_resolution)
+      FROM <http://rdfportal.org/dataset/pdbj>
+      WHERE {
+        VALUES ?method { 
+          "X-RAY DIFFRACTION" 
+          "ELECTRON MICROSCOPY" 
+          "SOLUTION NMR" 
+        }
+        
+        ?entry a pdbx:datablock ;
+               pdbx:has_exptlCategory/pdbx:has_exptl/pdbx:exptl.method ?method .
+        
+        OPTIONAL {
+          ?entry pdbx:has_refineCategory/pdbx:has_refine ?refine .
+          ?refine pdbx:refine.ls_d_res_high ?resolution .
+          FILTER(xsd:decimal(?resolution) > 0 && xsd:decimal(?resolution) < 10)
+        }
+      }
+      GROUP BY ?method
+      ORDER BY ?method
+  
+  - title: Analyze Software Usage by Classification
+    description: Query using controlled software classification values.
     question: What refinement software is most commonly used?
-    complexity: basic
+    complexity: intermediate
     sparql: |
       PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
       
+      # Use specific classification value - no text search
       SELECT ?software_name (COUNT(?entry) as ?usage_count)
       FROM <http://rdfportal.org/dataset/pdbj>
       WHERE {
-        ?entry pdbx:has_softwareCategory/pdbx:has_software ?sw .
+        ?entry a pdbx:datablock ;
+               pdbx:has_softwareCategory/pdbx:has_software ?sw .
+        
         ?sw pdbx:software.name ?software_name ;
             pdbx:software.classification "refinement" .
       }
       GROUP BY ?software_name
       ORDER BY DESC(?usage_count)
       LIMIT 15
-
-  - title: Query Unit Cell Parameters
-    description: Find X-ray structures with specific cell dimensions.
-    question: What are cell parameters for structures with small unit cells?
-    complexity: intermediate
-    sparql: |
-      PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
-      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-      
-      SELECT ?entry_id ?a ?b ?c ?space_group
-      FROM <http://rdfportal.org/dataset/pdbj>
-      WHERE {
-        ?entry a pdbx:datablock .
-        BIND(STRAFTER(str(?entry), "http://rdf.wwpdb.org/pdb/") AS ?entry_id)
-        ?entry pdbx:has_cellCategory/pdbx:has_cell ?cell ;
-               pdbx:has_symmetryCategory/pdbx:has_symmetry ?sym ;
-               pdbx:has_exptlCategory/pdbx:has_exptl/pdbx:exptl.method "X-RAY DIFFRACTION" .
-        ?cell pdbx:cell.length_a ?a ;
-              pdbx:cell.length_b ?b ;
-              pdbx:cell.length_c ?c .
-        ?sym pdbx:symmetry.space_group_name_H-M ?space_group .
-        FILTER(xsd:decimal(?a) > 20 && xsd:decimal(?a) < 50)
-      }
-      LIMIT 20
-
-  - title: Find Biological Assemblies
-    description: Query quaternary structure and oligomeric states.
-    question: Which protein structures form tetrameric assemblies?
+  
+  - title: Search Keywords Using Text Filter
+    description: Use FILTER(CONTAINS()) for free-text keyword searches when needed.
+    question: Find kinase structures by keywords
     complexity: intermediate
     sparql: |
       PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
       
-      SELECT ?entry_id ?assembly_id ?oligomeric_count ?oligomeric_details
+      SELECT ?entry_id ?keywords ?title
       FROM <http://rdfportal.org/dataset/pdbj>
       WHERE {
         ?entry a pdbx:datablock .
         BIND(STRAFTER(str(?entry), "http://rdf.wwpdb.org/pdb/") AS ?entry_id)
-        ?entry pdbx:has_pdbx_struct_assemblyCategory/pdbx:has_pdbx_struct_assembly ?assembly .
-        ?assembly pdbx:pdbx_struct_assembly.id ?assembly_id ;
-                  pdbx:pdbx_struct_assembly.oligomeric_count ?oligomeric_count ;
-                  pdbx:pdbx_struct_assembly.oligomeric_details ?oligomeric_details .
-        FILTER(CONTAINS(?oligomeric_details, "tetrameric"))
+        
+        ?entry pdbx:has_struct_keywordsCategory/pdbx:has_struct_keywords ?kw ;
+               pdbx:has_structCategory/pdbx:has_struct ?struct .
+        
+        ?kw pdbx:struct_keywords.pdbx_keywords ?keywords .
+        ?struct pdbx:struct.title ?title .
+        
+        # Text search only because keywords are unstructured free text
+        FILTER(CONTAINS(LCASE(?keywords), "kinase"))
       }
       LIMIT 20
-
-  - title: Search Publications by Title
-    description: Find structures by publication keywords.
-    question: Find CRISPR-related structures with their publications
-    complexity: intermediate
+  
+  - title: Multi-Organism Comparison
+    description: Use VALUES with multiple taxonomy IRIs for efficient organism filtering.
+    question: Compare structure counts across human, mouse, and E. coli
+    complexity: advanced
     sparql: |
       PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
       
-      SELECT ?entry_id ?title ?year ?journal ?doi
+      # Use VALUES with specific taxonomy IRIs
+      SELECT ?organism_name (COUNT(DISTINCT ?entry) as ?structure_count)
       FROM <http://rdfportal.org/dataset/pdbj>
       WHERE {
-        ?entry a pdbx:datablock .
-        BIND(STRAFTER(str(?entry), "http://rdf.wwpdb.org/pdb/") AS ?entry_id)
-        ?entry pdbx:has_citationCategory/pdbx:has_citation ?citation .
-        ?citation pdbx:citation.title ?title ;
-                  pdbx:citation.year ?year ;
-                  pdbx:citation.journal_abbrev ?journal .
-        OPTIONAL { ?citation pdbx:citation.pdbx_database_id_DOI ?doi }
-        FILTER(CONTAINS(LCASE(?title), "crispr"))
+        VALUES (?taxonomy_iri ?organism_name) {
+          (<http://purl.uniprot.org/taxonomy/9606> "Homo sapiens")
+          (<http://purl.uniprot.org/taxonomy/10090> "Mus musculus")
+          (<http://purl.uniprot.org/taxonomy/562> "Escherichia coli")
+        }
+        
+        ?entry a pdbx:datablock ;
+               pdbx:has_entity_src_genCategory/pdbx:has_entity_src_gen ?src .
+        
+        ?src pdbx:link_to_taxonomy_source ?taxonomy_iri .
       }
-      LIMIT 20
-
-  - title: Comprehensive Structure Quality Analysis
-    description: Multi-category query combining method, quality, and publication data.
-    question: What are the highest quality recent kinase structures?
+      GROUP BY ?organism_name
+      ORDER BY DESC(?structure_count)
+  
+  - title: Comprehensive Quality Analysis by Organism and Method
+    description: Combine specific IRIs and controlled values for complex analytical queries.
+    question: What are the highest quality human protein structures by method?
     complexity: advanced
     sparql: |
       PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
       
-      SELECT ?entry_id ?title ?resolution ?r_work ?year ?keywords
+      SELECT ?entry_id ?method ?resolution ?r_work ?year ?title
       FROM <http://rdfportal.org/dataset/pdbj>
       WHERE {
         ?entry a pdbx:datablock .
         BIND(STRAFTER(str(?entry), "http://rdf.wwpdb.org/pdb/") AS ?entry_id)
-        ?entry pdbx:has_structCategory/pdbx:has_struct ?struct ;
-               pdbx:has_struct_keywordsCategory/pdbx:has_struct_keywords ?kw ;
+        
+        # Use specific taxonomy IRI for human
+        ?entry pdbx:has_entity_src_genCategory/pdbx:has_entity_src_gen ?src ;
+               pdbx:has_exptlCategory/pdbx:has_exptl ?exptl ;
                pdbx:has_refineCategory/pdbx:has_refine ?refine ;
+               pdbx:has_structCategory/pdbx:has_struct ?struct ;
                pdbx:has_citationCategory/pdbx:has_citation ?citation .
-        ?struct pdbx:struct.title ?title .
-        ?kw pdbx:struct_keywords.pdbx_keywords ?keywords .
+        
+        ?src pdbx:link_to_taxonomy_source <http://purl.uniprot.org/taxonomy/9606> .
+        
+        ?exptl pdbx:exptl.method ?method .
         ?refine pdbx:refine.ls_d_res_high ?resolution ;
                 pdbx:refine.ls_R_factor_R_work ?r_work .
+        ?struct pdbx:struct.title ?title .
         ?citation pdbx:citation.year ?year .
-        FILTER(CONTAINS(LCASE(?keywords), "kinase"))
-        FILTER(xsd:decimal(?resolution) < 2.0)
+        
+        # Quality filters using numeric comparisons
+        FILTER(xsd:decimal(?resolution) > 0 && xsd:decimal(?resolution) < 2.0)
+        FILTER(xsd:decimal(?r_work) > 0 && xsd:decimal(?r_work) < 0.20)
         FILTER(xsd:integer(?year) >= 2020)
       }
       ORDER BY xsd:decimal(?resolution)
-      LIMIT 20
-
-  - title: Trace Software Pipeline Workflows
-    description: Analyze integrated workflows across collection, reduction, and refinement.
-    question: What complete software pipelines are used together?
-    complexity: advanced
-    sparql: |
-      PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
-      
-      SELECT ?entry_id 
-             (GROUP_CONCAT(DISTINCT ?collection; separator=", ") as ?collection_sw)
-             (GROUP_CONCAT(DISTINCT ?reduction; separator=", ") as ?reduction_sw)
-             (GROUP_CONCAT(DISTINCT ?refinement; separator=", ") as ?refinement_sw)
-      FROM <http://rdfportal.org/dataset/pdbj>
-      WHERE {
-        ?entry a pdbx:datablock .
-        BIND(STRAFTER(str(?entry), "http://rdf.wwpdb.org/pdb/") AS ?entry_id)
-        ?entry pdbx:has_softwareCategory/pdbx:has_software ?sw1, ?sw2, ?sw3 .
-        ?sw1 pdbx:software.name ?collection ;
-             pdbx:software.classification "data collection" .
-        ?sw2 pdbx:software.name ?reduction ;
-             pdbx:software.classification "data reduction" .
-        ?sw3 pdbx:software.name ?refinement ;
-             pdbx:software.classification "refinement" .
-      }
-      GROUP BY ?entry_id
       LIMIT 20
 
 cross_references:
   - pattern: pdbx:struct_ref
     description: |
       Sequence database links via db_name and pdbx_db_accession properties.
-      UniProt is most common (~77% of entries have at least one reference).
+      UniProt is most common (~77% of entries). UNP = UniProt, GB = GenBank.
+      Use pdbx:link_to_uniprot IRI for direct links.
     databases:
       Protein:
         - "UNP (UniProt): 352K refs, ~77% entries"
@@ -353,31 +367,56 @@ cross_references:
     sparql: |
       PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
       
-      SELECT ?entry_id ?db_name ?db_accession
+      SELECT ?entry_id ?db_name ?db_accession ?uniprot_iri
       FROM <http://rdfportal.org/dataset/pdbj>
       WHERE {
         ?entry a pdbx:datablock .
         BIND(STRAFTER(str(?entry), "http://rdf.wwpdb.org/pdb/") AS ?entry_id)
+        
         ?entry pdbx:has_struct_refCategory/pdbx:has_struct_ref ?ref .
         ?ref pdbx:struct_ref.db_name ?db_name ;
              pdbx:struct_ref.pdbx_db_accession ?db_accession .
+        
+        OPTIONAL { ?ref pdbx:link_to_uniprot ?uniprot_iri }
+        FILTER(?db_name = "UNP")
       }
       LIMIT 30
-
+  
+  - pattern: pdbx:link_to_taxonomy_source
+    description: |
+      Direct taxonomy IRIs linking to UniProt taxonomy database.
+      Use for organism-specific queries. Human (9606) is most common (~81K entries).
+    databases:
+      Taxonomy:
+        - "Human (9606): 81K entries"
+        - "Mouse (10090): 10K entries"
+        - "E. coli K-12 (83333): 5K entries"
+    sparql: |
+      PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
+      
+      SELECT ?entry_id ?taxonomy_iri ?organism_name
+      FROM <http://rdfportal.org/dataset/pdbj>
+      WHERE {
+        ?entry a pdbx:datablock .
+        BIND(STRAFTER(str(?entry), "http://rdf.wwpdb.org/pdb/") AS ?entry_id)
+        
+        ?entry pdbx:has_entity_src_genCategory/pdbx:has_entity_src_gen ?src .
+        ?src pdbx:link_to_taxonomy_source ?taxonomy_iri ;
+             pdbx:entity_src_gen.pdbx_gene_src_scientific_name ?organism_name .
+      }
+      LIMIT 30
+  
   - pattern: pdbx:database_2
     description: |
-      External database links via database_id and database_code properties.
-      All entries have PDB and WWPDB identifiers.
+      External database links via database_id and database_code.
+      All entries have PDB and WWPDB identifiers. EMDB links for cryo-EM structures.
     databases:
       WWPDB:
         - "PDB: 100%"
         - "WWPDB: 100%"
-        - "RCSB: ~41%"
-        - "PDBE: ~8%"
       Structure:
         - "EMDB: ~6%"
         - "BMRB: ~3%"
-        - "NDB: ~2%"
     sparql: |
       PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
       
@@ -386,69 +425,65 @@ cross_references:
       WHERE {
         ?entry a pdbx:datablock .
         BIND(STRAFTER(str(?entry), "http://rdf.wwpdb.org/pdb/") AS ?entry_id)
+        
         ?entry pdbx:has_database_2Category/pdbx:has_database_2 ?db .
         ?db pdbx:database_2.database_id ?db_id ;
             pdbx:database_2.database_code ?db_code .
+        FILTER(?db_id IN ("EMDB", "BMRB"))
       }
       LIMIT 30
 
-  - pattern: pdbx:citation
-    description: |
-      Publication links via pdbx_database_id_DOI and pdbx_database_id_PubMed.
-      Most entries have at least one publication reference.
-    databases:
-      Publications:
-        - "DOI: ~75% entries"
-        - "PubMed: ~73% entries"
-    sparql: |
-      PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
-      
-      SELECT ?entry_id ?doi ?pubmed
-      FROM <http://rdfportal.org/dataset/pdbj>
-      WHERE {
-        ?entry a pdbx:datablock .
-        BIND(STRAFTER(str(?entry), "http://rdf.wwpdb.org/pdb/") AS ?entry_id)
-        ?entry pdbx:has_citationCategory/pdbx:has_citation ?citation .
-        OPTIONAL { ?citation pdbx:citation.pdbx_database_id_DOI ?doi }
-        OPTIONAL { ?citation pdbx:citation.pdbx_database_id_PubMed ?pubmed }
-        FILTER(BOUND(?doi) || BOUND(?pubmed))
-      }
-      LIMIT 20
-
 architectural_notes:
+  query_strategy:
+    - "Exploratory: Use search_pdb_entity(db='pdb', query='keyword') to find examples"
+    - "Comprehensive: Use specific experimental method strings (e.g., 'X-RAY DIFFRACTION')"
+    - "Organism filtering: Use taxonomy IRIs (e.g., <http://purl.uniprot.org/taxonomy/9606> for human)"
+    - "Entity filtering: Use controlled type values ('polymer', 'non-polymer', 'water', 'branched')"
+    - "Software queries: Use controlled classification values ('refinement', 'data collection', etc.)"
+    - "Text search: Use FILTER(CONTAINS(LCASE())) for keywords/titles (unstructured free text)"
+    - "Numeric comparisons: Always use xsd:decimal() for resolution, R-factors, cell parameters"
+  
   schema_design:
-    - PDBx/mmCIF ontology with Category-Item design pattern
-    - Datablock root with has_*Category properties linking to specialized categories
-    - Major categories include entity, exptl, refine, struct_ref, database_2, citation, struct, cell, software
-    - Bidirectional references via reference_to_* and referenced_by_* properties
+    - "PDBx/mmCIF ontology with Category-Item design pattern"
+    - "Datablock root (pdbx:datablock) with has_*Category properties"
+    - "Major categories: entity, exptl, refine, struct_ref, database_2, citation, struct"
+    - "Bidirectional references via reference_to_* and referenced_by_*"
+    - "Controlled vocabularies for experimental methods, entity types, software classifications"
+    - "Taxonomy IRIs link to UniProt taxonomy database"
+  
   performance:
-    - Use xsd:decimal() for numeric comparisons (resolution, R-factors)
-    - Use CONTAINS(LCASE()) for keyword/title searches
-    - Filter by pdbx:datablock type early
-    - Category traversal pattern (has_*Category/has_*) is efficient
+    - "Filter by pdbx:datablock type first"
+    - "Use specific values in WHERE clause (experimental methods, entity types, etc.)"
+    - "Use VALUES for multiple controlled values (methods, organisms, etc.)"
+    - "Use FILTER(CONTAINS()) only for truly unstructured text (keywords, titles)"
+    - "Use xsd:decimal() with range filters for numeric data"
+    - "Add LIMIT 20-100 for interactive queries"
+    - "Category traversal pattern (has_*Category/has_*) is efficient"
+  
   data_integration:
-    - UniProt for protein sequences (~77% entries)
-    - EMDB for cryo-EM density maps (~6%)
-    - GenBank/EMBL/RefSeq for nucleotide sequences
-    - DOI/PubMed for publications (~75%/73%)
+    - "UniProt for protein sequences (~77% via struct_ref.db_name = 'UNP')"
+    - "Taxonomy IRIs for organism identification (~33% via link_to_taxonomy_source)"
+    - "EMDB for cryo-EM density maps (~6% via database_2.database_id = 'EMDB')"
+    - "DOI/PubMed for publications (~75%/73%)"
+  
   data_quality:
-    - Resolution/R-factors vary by experimental method
-    - NMR structures lack resolution data
-    - Cryo-EM may lack traditional R-factors
-    - Cell/symmetry data only for crystallographic methods
+    - "Resolution/R-factors only for crystallographic and some cryo-EM structures"
+    - "NMR structures lack resolution data - use OPTIONAL"
+    - "Cell/symmetry data only for crystallographic methods"
+    - "Always validate numeric data with range filters"
 
 data_statistics:
   total_entries: 245833
-  verified_date: "2025-02-04"
+  verified_date: "2025-02-09"
   verification_query: |
     SELECT (COUNT(DISTINCT ?entry) as ?total)
     FROM <http://rdfportal.org/dataset/pdbj>
     WHERE { ?entry a pdbx:datablock }
   
   experimental_methods:
-    xray: "71.2%"
-    em: "6.1%"
-    nmr: "5.7%"
+    xray: "71.2% (174,904 structures)"
+    em: "6.1% (15,032 structures)"
+    nmr: "5.7% (13,902 structures)"
     verification_query: |
       SELECT ?method (COUNT(?exptl) as ?count)
       FROM <http://rdfportal.org/dataset/pdbj>
@@ -458,134 +493,122 @@ data_statistics:
       }
       GROUP BY ?method
   
-  coverage:
-    uniprot: "77.1%"
-    calculation: "189,677 entries with UNP / 245,833 total"
-    keywords: "83.1%"
-    verification_query: |
-      SELECT 
-        (COUNT(DISTINCT ?entry_with_unp) / COUNT(DISTINCT ?all_entries) as ?unp_pct)
-        (COUNT(DISTINCT ?entry_with_kw) / COUNT(DISTINCT ?all_entries) as ?kw_pct)
-      FROM <http://rdfportal.org/dataset/pdbj>
-      WHERE {
-        ?all_entries a pdbx:datablock .
-        OPTIONAL { 
-          ?entry_with_unp a pdbx:datablock ;
-                          pdbx:has_struct_refCategory/pdbx:has_struct_ref/pdbx:struct_ref.db_name "UNP" .
-        }
-        OPTIONAL { 
-          ?entry_with_kw a pdbx:datablock ;
-                         pdbx:has_struct_keywordsCategory/pdbx:has_struct_keywords/pdbx:struct_keywords.pdbx_keywords ?kw .
-        }
-      }
+  entity_types:
+    polymer: "418,171 entities"
+    non_polymer: "367,744 entities"
+    water: "162,843 entities"
+    branched: "18,329 entities"
   
-  cardinality:
-    avg_uniprot_refs_per_entry: 1.43
-    methodology: "352,114 UNP refs / 245,833 entries"
+  coverage:
+    uniprot_references: "77.1% (189,677 entries have UNP references)"
+    taxonomy_links: "33.1% (81,392 entries have taxonomy IRIs)"
+    keywords: "83.1% (204,307 entries have keywords)"
+    verification_methodology: |
+      UNP refs: 352,114 struct_ref with db_name='UNP' across entries
+      Taxonomy: 81,392 entries with link_to_taxonomy_source (human is most common)
+  
+  organism_distribution:
+    human_9606: "81,392 entries"
+    mouse_10090: "10,208 entries"
+    ecoli_562: "9,906 entries"
   
   performance_characteristics:
-    - "Resolution queries with numeric filters: <2s"
-    - "Cross-reference queries by db_name: <3s"
-    - "Keyword searches using CONTAINS: <5s"
-    - "Recommend LIMIT 20-100 for interactive queries"
+    - "Specific IRI/value queries: <1s"
+    - "Numeric filter queries: <2s"
+    - "Text search with FILTER(CONTAINS()): 3-8s"
+    - "Cross-category joins: 2-5s"
+    - "Complex analytical queries: 5-15s"
   
-  staleness_warning: "Database updates weekly; counts accurate as of 2025-02-04"
+  staleness_warning: "Database updates weekly; statistics accurate as of 2025-02-09"
 
 anti_patterns:
-  - title: Missing Numeric Type Conversion
-    problem: Resolution comparisons fail without xsd:decimal() conversion.
+  - title: "Text Search When Specific Value Exists"
+    problem: "Using FILTER(CONTAINS()) for experimental method when controlled value available."
     wrong_sparql: |
-      PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
-      
-      SELECT ?resolution
-      WHERE {
-        ?refine pdbx:refine.ls_d_res_high ?resolution .
-        FILTER(?resolution < 1.0)
-      }
+      # Slow: Text search on method
+      ?exptl pdbx:exptl.method ?method .
+      FILTER(CONTAINS(?method, "X-RAY"))
     correct_sparql: |
-      PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
-      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-      
-      SELECT ?resolution
-      WHERE {
-        ?refine pdbx:refine.ls_d_res_high ?resolution .
-        FILTER(xsd:decimal(?resolution) > 0 && xsd:decimal(?resolution) < 1.0)
-      }
-    explanation: Always use xsd:decimal() for numeric comparisons and filter invalid values.
-
-  - title: Inefficient Keyword Search
-    problem: Searching struct.title is slower than using indexed keywords field.
+      # Fast: Use specific controlled value
+      ?exptl pdbx:exptl.method "X-RAY DIFFRACTION" .
+    explanation: |
+      Experimental methods are controlled values:
+      "X-RAY DIFFRACTION", "ELECTRON MICROSCOPY", "SOLUTION NMR", etc.
+      Always use exact values instead of text search.
+  
+  - title: "Text Search for Organism When Taxonomy IRI Available"
+    problem: "Searching organism names as text instead of using taxonomy IRIs."
     wrong_sparql: |
-      PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
-      
-      SELECT ?entry_id ?title
-      WHERE {
-        ?entry pdbx:has_structCategory/pdbx:has_struct ?struct .
-        ?struct pdbx:struct.title ?title .
-        FILTER(CONTAINS(LCASE(?title), "kinase"))
-      }
+      # Slow: Text search on scientific name
+      ?src pdbx:entity_src_gen.pdbx_gene_src_scientific_name ?name .
+      FILTER(CONTAINS(?name, "Homo sapiens"))
     correct_sparql: |
-      PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
-      
-      SELECT ?entry_id ?keywords
-      FROM <http://rdfportal.org/dataset/pdbj>
+      # Fast: Use specific taxonomy IRI
+      ?src pdbx:link_to_taxonomy_source <http://purl.uniprot.org/taxonomy/9606> .
+    explanation: |
+      Taxonomy IRIs are available for ~33% of entries.
+      Top organisms: Human (9606), Mouse (10090), E. coli (562).
+      Use taxonomy IRI for reliable organism filtering.
+  
+  - title: "Circular Reasoning with Search Results"
+    problem: "Using search API results directly in comprehensive queries."
+    wrong_sparql: |
+      # Wrong: Only queries the 20 kinases found by search
+      VALUES ?entry_id { "8QCD" "8Q77" ... }  # From search_pdb_entity
+      SELECT (COUNT(?entry) as ?count)
       WHERE {
         ?entry a pdbx:datablock .
         BIND(STRAFTER(str(?entry), "http://rdf.wwpdb.org/pdb/") AS ?entry_id)
-        ?entry pdbx:has_struct_keywordsCategory/pdbx:has_struct_keywords ?kw .
+      }
+    correct_sparql: |
+      # Correct: Use FILTER(CONTAINS()) to query all matching structures
+      SELECT (COUNT(DISTINCT ?entry) as ?count)
+      FROM <http://rdfportal.org/dataset/pdbj>
+      WHERE {
+        ?entry a pdbx:datablock ;
+               pdbx:has_struct_keywordsCategory/pdbx:has_struct_keywords ?kw .
         ?kw pdbx:struct_keywords.pdbx_keywords ?keywords .
         FILTER(CONTAINS(LCASE(?keywords), "kinase"))
       }
-      LIMIT 20
-    explanation: Use struct_keywords.pdbx_keywords for classification searches as it's optimized.
-
-  - title: Missing Entry Type Filter
-    problem: Not filtering by pdbx:datablock returns non-entry artifacts.
-    wrong_sparql: |
-      SELECT ?entry
-      WHERE {
-        ?entry pdbx:has_refineCategory ?refine .
-      }
-    correct_sparql: |
-      PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
-      
-      SELECT ?entry_id
-      FROM <http://rdfportal.org/dataset/pdbj>
-      WHERE {
-        ?entry a pdbx:datablock .
-        BIND(STRAFTER(str(?entry), "http://rdf.wwpdb.org/pdb/") AS ?entry_id)
-        ?entry pdbx:has_refineCategory ?refine .
-      }
-    explanation: Always filter by pdbx:datablock type and extract clean entry_id.
+    explanation: |
+      Use search_pdb_entity to FIND patterns and keywords, not to get comprehensive lists.
+      For comprehensive queries, use text search or specific controlled values.
 
 common_errors:
-  - error: Type Conversion Errors
+  - error: "Empty results when querying specific organisms"
     causes:
-      - Comparing numeric strings without xsd:decimal() casting
-      - Missing validation filters for invalid values
+      - "Using text search on organism name instead of taxonomy IRI"
+      - "Taxonomy IRIs only present for ~33% of entries"
     solutions:
-      - Always use xsd:decimal() for resolution, R-factors, cell parameters
-      - Filter out invalid values with range checks
+      - "Use taxonomy IRI: <http://purl.uniprot.org/taxonomy/9606> for human"
+      - "Check if entry has link_to_taxonomy_source before filtering"
+      - "Use OPTIONAL for taxonomy links if querying all entries"
     example_fix: |
-      # Wrong: FILTER(?resolution < 1.0)
-      # Right: FILTER(xsd:decimal(?resolution) > 0 && xsd:decimal(?resolution) < 1.0)
-
-  - error: Missing Optional Data
+      # Use taxonomy IRI, not text search
+      ?src pdbx:link_to_taxonomy_source <http://purl.uniprot.org/taxonomy/9606> .
+  
+  - error: "Slow keyword/title searches"
     causes:
-      - NMR structures lack resolution/R-factor data
-      - Not using OPTIONAL for method-dependent properties
+      - "Not specifying FROM graph clause"
+      - "Not using LIMIT for exploratory queries"
     solutions:
-      - Use OPTIONAL for resolution, R-factors, cell parameters
-      - Filter by exptl.method if requiring specific data types
-      - Use FILTER(BOUND(?var)) to check optional values
-
-  - error: Query Timeouts
+      - "Add FROM <http://rdfportal.org/dataset/pdbj> clause"
+      - "Add LIMIT for interactive queries"
+      - "Use search_pdb_entity for initial exploration, then SPARQL for comprehensive analysis"
+    example_fix: |
+      # Add FROM clause and LIMIT
+      FROM <http://rdfportal.org/dataset/pdbj>
+      ...
+      LIMIT 20
+  
+  - error: "Type conversion errors for resolution/R-factors"
     causes:
-      - Using CONTAINS on long text fields
-      - Not limiting results
-      - Missing FROM graph clause
+      - "Comparing numeric strings without xsd:decimal() casting"
+      - "Not filtering invalid or missing values"
     solutions:
-      - Add LIMIT 20-100 for interactive queries
-      - Include FROM <http://rdfportal.org/dataset/pdbj> clause
-      - Use struct_keywords instead of struct.title
-      - Filter by entry_id early in complex queries
+      - "Always use xsd:decimal() for numeric comparisons"
+      - "Add range filters to exclude invalid values: > 0 && < 10"
+      - "Use OPTIONAL for method-specific properties"
+    example_fix: |
+      # Always use xsd:decimal() with range checks
+      FILTER(xsd:decimal(?resolution) > 0 && xsd:decimal(?resolution) < 2.0)

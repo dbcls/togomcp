@@ -4,6 +4,21 @@ schema_info:
     Open-source, curated knowledgebase of biological pathways and processes based on BioPAX Level 3 ontology.
     Contains 23K pathways, 93K biochemical reactions, 233K proteins, 109K complexes, and 51K small molecules across 30+ species.
     Includes hierarchical pathway organization and cross-references to UniProt, ChEBI, PubMed, GO, ChEMBL, and drug databases.
+    
+    ⚠️ CRITICAL RULE FOR REACTOME QUERIES:
+    ^^xsd:string is required for EXACT VALUE MATCHING (direct triple patterns, VALUES, FILTER with =)
+    but NOT for string functions (CONTAINS, REGEX, bif:contains).
+    
+    NEED ^^xsd:string:
+      ✅ Direct matching:    ?org bp:name "Homo sapiens"^^xsd:string .
+      ✅ VALUES clause:      VALUES ?ec { "2.7.10.1"^^xsd:string }
+      ✅ FILTER with =:      FILTER(?name = "Homo sapiens"^^xsd:string)
+    
+    DON'T NEED ^^xsd:string:
+      ✅ String functions:   FILTER(CONTAINS(?name, "cancer"))
+      ✅ Full-text search:   ?name bif:contains "'cancer'"
+      ✅ Retrieving values:  SELECT ?name WHERE { ?org bp:name ?name }
+  
   endpoint: https://rdfportal.org/ebi/sparql
   base_uri: http://www.reactome.org/biopax/
   graphs:
@@ -11,8 +26,8 @@ schema_info:
   kw_search_tools:
     - search_reactome_entity
   version:
-    mie_version: "1.3"
-    mie_created: "2025-02-04"
+    mie_version: "3.1"
+    mie_created: "2025-02-09"
     data_version: "Release 88"
     update_frequency: "Quarterly"
   license:
@@ -109,39 +124,33 @@ shape_expressions: |
     a [ bp:CellularLocationVocabulary ] ;
     bp:term xsd:string
   }
-  
-  <EvidenceShape> {
-    a [ bp:Evidence ] ;
-    bp:evidenceCode @<EvidenceCodeVocabularyShape> ? ;
-    bp:xref @<PublicationXrefShape> *
-  }
 
 sample_rdf_entries:
   - title: Pathway with Hierarchy and Organism
     description: Top-level human pathway with sub-pathways and GO cross-reference.
     rdf: |
       reactome:Pathway227 a bp:Pathway ;
-        bp:displayName "Platelet homeostasis" ;
+        bp:displayName "Platelet homeostasis"^^xsd:string ;
         bp:organism reactome:BioSource1 ;
         bp:pathwayComponent reactome:Pathway234 ,
                             reactome:Pathway235 ;
         bp:xref [
-          a bp:UnificationXref ;
+          a bp:RelationshipXref ;
           bp:db "GENE ONTOLOGY"^^xsd:string ;
-          bp:id "GO:0030168"
+          bp:id "GO:0030168"^^xsd:string
         ] .
       
       reactome:BioSource1 a bp:BioSource ;
-        bp:name "Homo sapiens" .
+        bp:name "Homo sapiens"^^xsd:string .
   
   - title: Biochemical Reaction with Catalysis
     description: Autophosphorylation reaction with enzyme catalyst and EC number.
     rdf: |
       reactome:BiochemicalReaction1154 a bp:BiochemicalReaction ;
-        bp:displayName "Autophosphorylation of PDGFRA" ;
+        bp:displayName "Autophosphorylation of PDGFRA"^^xsd:string ;
         bp:left reactome:Complex630 ;
         bp:right reactome:Complex1445 ;
-        bp:eCNumber "2.7.10.1" ;
+        bp:eCNumber "2.7.10.1"^^xsd:string ;
         bp:spontaneous false .
       
       reactome:Catalysis5678 a bp:Catalysis ;
@@ -152,7 +161,7 @@ sample_rdf_entries:
     description: Multi-component complex with stoichiometric coefficients and cellular localization.
     rdf: |
       reactome:Complex630 a bp:Complex ;
-        bp:displayName "PDGF-PDGFRA dimer" ;
+        bp:displayName "PDGF-PDGFRA dimer"^^xsd:string ;
         bp:component reactome:Protein728 ,
                      reactome:Protein965 ;
         bp:componentStoichiometry [
@@ -162,188 +171,222 @@ sample_rdf_entries:
         ] ;
         bp:cellularLocation [
           a bp:CellularLocationVocabulary ;
-          bp:term "plasma membrane"
+          bp:term "plasma membrane"^^xsd:string
         ] .
   
   - title: Protein with UniProt and GO Cross-References
     description: Protein entity with database identifiers and biological process annotation.
     rdf: |
       reactome:Protein728 a bp:Protein ;
-        bp:displayName "PDGFRA" ;
+        bp:displayName "PDGFRA"^^xsd:string ;
         bp:entityReference reactome:ProteinReference728 .
       
       reactome:ProteinReference728 a bp:ProteinReference ;
-        bp:name "PDGFRA" ;
+        bp:name "PDGFRA"^^xsd:string ;
         bp:xref [
           a bp:UnificationXref ;
           bp:db "UniProt"^^xsd:string ;
-          bp:id "P16234"
+          bp:id "P16234"^^xsd:string
         ] ;
         bp:xref [
           a bp:RelationshipXref ;
           bp:db "GENE ONTOLOGY"^^xsd:string ;
-          bp:id "GO:0004714"
+          bp:id "GO:0004714"^^xsd:string
         ] .
   
   - title: Small Molecule with ChEBI Reference
     description: Chemical compound with ChEBI identifier used in metabolic reactions.
     rdf: |
       reactome:SmallMolecule1234 a bp:SmallMolecule ;
-        bp:displayName "ATP" ;
+        bp:displayName "ATP"^^xsd:string ;
         bp:entityReference [
           a bp:SmallMoleculeReference ;
-          bp:name "ATP" ;
+          bp:name "ATP"^^xsd:string ;
           bp:xref [
             a bp:UnificationXref ;
             bp:db "ChEBI"^^xsd:string ;
-            bp:id "CHEBI:15422"
+            bp:id "CHEBI:15422"^^xsd:string
           ]
         ] .
 
 sparql_query_examples:
-  - title: Search Pathways by Keyword with Relevance Scoring
-    description: Full-text search using bif:contains with relevance ranking.
-    question: Which pathways are related to cancer?
+  - title: Get Human Pathways Using Organism Name with Type Restriction
+    description: Retrieve human pathways using organism name with ^^xsd:string. Direct value matching requires ^^xsd:string.
+    question: How many pathways are there for Homo sapiens?
     complexity: basic
-    sparql: |
-      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
-      
-      SELECT ?pathway ?name
-      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
-      WHERE {
-        ?pathway a bp:Pathway ;
-          bp:displayName ?name .
-        ?name bif:contains "'cancer'" option (score ?sc)
-      }
-      ORDER BY DESC(?sc)
-      LIMIT 20
-  
-  - title: Get Pathway Hierarchy and Sub-Components
-    description: Retrieve nested sub-pathways starting from a specific parent pathway.
-    question: What are the sub-pathways of Platelet homeostasis?
-    complexity: basic
-    sparql: |
-      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
-      PREFIX reactome: <http://www.reactome.org/biopax/68/49646#>
-      
-      SELECT ?subPathway ?name
-      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
-      WHERE {
-        reactome:Pathway227 bp:pathwayComponent ?subPathway .
-        ?subPathway a bp:Pathway ;
-          bp:displayName ?name .
-      }
-  
-  - title: Find Pathways with GO Biological Process Annotations
-    description: Retrieve pathways mapped to specific Gene Ontology processes.
-    question: Which pathways are annotated with the GO term for platelet activation?
-    complexity: intermediate
     sparql: |
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
       
-      SELECT ?pathway ?name ?goId
+      # Direct value matching requires ^^xsd:string
+      SELECT (COUNT(DISTINCT ?pathway) as ?count)
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
         ?pathway a bp:Pathway ;
-          bp:displayName ?name ;
-          bp:xref ?xref .
-        ?xref bp:db "GENE ONTOLOGY"^^xsd:string ;
-          bp:id ?goId .
-        FILTER(CONTAINS(?goId, "GO:0030168"))
+                 bp:organism ?org .
+        ?org bp:name "Homo sapiens"^^xsd:string .
+      }
+  
+  - title: Find Reactions by Specific EC Number
+    description: Retrieve reactions with specific enzyme commission numbers using exact value matching with ^^xsd:string.
+    question: What reactions are catalyzed by protein kinases (EC 2.7.10.1)?
+    complexity: basic
+    sparql: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      
+      # Direct value matching requires ^^xsd:string
+      SELECT ?reaction ?name
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        ?reaction a bp:BiochemicalReaction ;
+                  bp:displayName ?name ;
+                  bp:eCNumber "2.7.10.1"^^xsd:string .
       }
       LIMIT 50
   
-  - title: Find Disease-Related Pathways with Boolean Search
-    description: Search for pathways using keyword filtering with boolean operators.
-    question: Find pathways about Alzheimer's disease but not normal aging processes?
+  - title: Find Pathways Annotated with Specific GO Terms
+    description: Query pathways mapped to specific Gene Ontology terms using VALUES with ^^xsd:string for exact matching.
+    question: Which pathways are involved in RAF/MAP kinase cascade (GO:0000165)?
     complexity: intermediate
     sparql: |
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
-      
-      SELECT ?pathway ?name ?comment
-      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
-      WHERE {
-        ?pathway a bp:Pathway ;
-          bp:displayName ?name ;
-          bp:comment ?comment .
-        ?name bif:contains "('alzheimer' AND 'disease' AND NOT 'aging')" option (score ?sc)
-      }
-      ORDER BY DESC(?sc)
-      LIMIT 20
-  
-  - title: Get Pathway Proteins with Organism and UniProt IDs
-    description: Retrieve proteins in a pathway with species and database identifiers.
-    question: What are the UniProt IDs and organisms of proteins in a specific pathway?
-    complexity: intermediate
-    sparql: |
-      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
-      PREFIX reactome: <http://www.reactome.org/biopax/68/49646#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
       
-      SELECT DISTINCT ?proteinName ?uniprotId ?organism
+      # VALUES clause requires ^^xsd:string for each value
+      SELECT DISTINCT ?pathway ?name
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        reactome:Pathway227 bp:pathwayComponent*/bp:left ?entity .
-        ?entity bp:entityReference ?proteinRef .
-        ?proteinRef a bp:ProteinReference ;
-          bp:name ?proteinName ;
-          bp:organism ?org ;
-          bp:xref ?xref .
-        ?org bp:name ?organism .
-        ?xref a bp:UnificationXref ;
-          bp:db "UniProt"^^xsd:string ;
-          bp:id ?uniprotId .
+        VALUES ?goTerm { "GO:0000165"^^xsd:string "GO:0051897"^^xsd:string "GO:0007264"^^xsd:string }
+        ?pathway a bp:Pathway ;
+                 bp:displayName ?name ;
+                 bp:xref ?xref .
+        ?xref a bp:RelationshipXref ;
+              bp:db "GENE ONTOLOGY"^^xsd:string ;
+              bp:id ?goTerm .
+      }
+      LIMIT 50
+  
+  - title: Get Pathway Hierarchy from Specific Pathway
+    description: Navigate pathway component structure starting from a specific pathway. Use search_reactome_entity() to find pathway IRIs.
+    question: What are the sub-pathways of a specific pathway?
+    complexity: intermediate
+    sparql: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      
+      # Use specific pathway IRI (find via search_reactome_entity first)
+      # Example: http://www.reactome.org/biopax/40/48887#Pathway227
+      SELECT ?subPathway ?name ?subSubPathway ?subName
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        # Replace with actual pathway IRI from search
+        <http://www.reactome.org/biopax/40/48887#Pathway227> bp:pathwayComponent ?subPathway .
+        ?subPathway a bp:Pathway ;
+                    bp:displayName ?name .
+        
+        # Optional: Get one more level
+        OPTIONAL {
+          ?subPathway bp:pathwayComponent ?subSubPathway .
+          ?subSubPathway a bp:Pathway ;
+                         bp:displayName ?subName .
+        }
       }
       LIMIT 100
   
-  - title: Find Protein Complexes with Component Details
-    description: Retrieve complexes with stoichiometric coefficients and localization.
-    question: Which complexes have multiple copies of the same protein and where are they located?
-    complexity: advanced
+  - title: Find Reactions by Multiple EC Numbers
+    description: Query reactions across multiple enzyme classes using VALUES with ^^xsd:string for exact matching.
+    question: What are all the protein kinase and protein phosphatase reactions?
+    complexity: intermediate
     sparql: |
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
       
-      SELECT ?complex ?complexName ?componentName ?coefficient ?location
+      # VALUES clause requires ^^xsd:string for each value
+      SELECT ?reaction ?name ?ec (COUNT(?protein) as ?proteinCount)
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        ?complex a bp:Complex ;
-          bp:displayName ?complexName ;
-          bp:componentStoichiometry ?stoich .
-        OPTIONAL { 
-          ?complex bp:cellularLocation ?cellLoc .
-          ?cellLoc bp:term ?location .
+        VALUES ?ec { "2.7.11.1"^^xsd:string "2.7.10.2"^^xsd:string "3.1.3.16"^^xsd:string }
+        ?reaction a bp:BiochemicalReaction ;
+                  bp:displayName ?name ;
+                  bp:eCNumber ?ec .
+        OPTIONAL {
+          ?reaction bp:left|bp:right ?entity .
+          ?entity a bp:Protein .
+          ?entity bp:entityReference ?protein .
         }
-        ?stoich bp:physicalEntity ?component ;
-          bp:stoichiometricCoefficient ?coefficient .
-        ?component bp:entityReference/bp:name ?componentName .
-        FILTER(?coefficient > 1)
       }
-      LIMIT 50
+      GROUP BY ?reaction ?name ?ec
+      ORDER BY DESC(?proteinCount)
+      LIMIT 100
   
-  - title: Pathway-Drug Target Integration via Pharmacology Database
-    description: Link cancer pathways to drug targets through protein cross-references.
-    question: Which cancer pathways contain proteins with documented drug interactions?
+  - title: Search Pathways by Keyword with Relevance Scoring
+    description: Full-text search using bif:contains (no ^^xsd:string needed for text search functions). For general pathway discovery.
+    question: Which pathways mention cancer or apoptosis in their descriptions?
     complexity: advanced
     sparql: |
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
       
-      SELECT DISTINCT ?pathway ?pathwayName ?proteinName ?drugTargetId
+      # bif:contains doesn't need ^^xsd:string
+      # But FILTER with = does need it
+      SELECT ?pathway ?name ?organism
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
         ?pathway a bp:Pathway ;
-          bp:displayName ?pathwayName ;
-          bp:pathwayComponent*/bp:left ?entity .
-        ?entity bp:entityReference ?proteinRef .
-        ?proteinRef bp:name ?proteinName ;
-          bp:xref ?drugXref .
-        ?drugXref bp:db "Guide to Pharmacology"^^xsd:string ;
-          bp:id ?drugTargetId .
-        ?pathwayName bif:contains "'cancer'" option (score ?sc)
+                 bp:displayName ?name ;
+                 bp:organism ?org .
+        ?org bp:name ?organism .
+        
+        # Text search - no ^^xsd:string needed for bif:contains
+        ?name bif:contains "'cancer' OR 'apoptosis'" option (score ?sc)
+        
+        # Exact match comparison - ^^xsd:string required
+        FILTER(?organism = "Homo sapiens"^^xsd:string)
       }
       ORDER BY DESC(?sc)
       LIMIT 50
+  
+  - title: Comprehensive Protein Complex Analysis
+    description: Advanced query integrating complexes, stoichiometry, cellular location, and protein references for human pathways.
+    question: What multi-protein complexes exist with their components and locations?
+    complexity: advanced
+    sparql: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      
+      # Direct value matching requires ^^xsd:string
+      SELECT ?complex ?complexName ?componentName ?coefficient ?location ?uniprotId
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        ?complex a bp:Complex ;
+                 bp:displayName ?complexName ;
+                 bp:componentStoichiometry ?stoich ;
+                 bp:organism ?org .
+        ?org bp:name "Homo sapiens"^^xsd:string .
+        
+        # Stoichiometry details
+        ?stoich bp:physicalEntity ?component ;
+                bp:stoichiometricCoefficient ?coefficient .
+        
+        # Component protein details
+        ?component bp:entityReference ?proteinRef .
+        ?proteinRef bp:name ?componentName ;
+                    bp:xref ?xref .
+        ?xref a bp:UnificationXref ;
+              bp:db "UniProt"^^xsd:string ;
+              bp:id ?uniprotId .
+        
+        # Optional location
+        OPTIONAL {
+          ?complex bp:cellularLocation ?cellLoc .
+          ?cellLoc bp:term ?location .
+        }
+        
+        # Only multi-copy components
+        FILTER(?coefficient > 1)
+      }
+      ORDER BY ?complexName
+      LIMIT 100
 
 cross_database_queries:
   shared_endpoint: ebi
@@ -357,6 +400,7 @@ cross_database_queries:
       description: |
         Connect Reactome small molecules to ChEBI entities to enrich pathway metabolites with chemical ontology, molecular formulas, mass, InChI keys, and hierarchical classification.
         Reactome references ChEBI via UnificationXref with bp:db="ChEBI"^^xsd:string.
+        Demonstrates URI conversion from ChEBI IDs to ChEBI ontology IRIs.
       databases_used:
         - reactome
         - chebi
@@ -370,6 +414,14 @@ cross_database_queries:
         SELECT DISTINCT ?reactomeName ?chebiLabel ?formula ?mass ?pathwayName
         WHERE {
           GRAPH <http://rdf.ebi.ac.uk/dataset/reactome> {
+            # Pre-filter: human pathways with "metabolism" in name
+            ?pathway a bp:Pathway ;
+                     bp:displayName ?pathwayName ;
+                     bp:organism ?org ;
+                     bp:pathwayComponent+/bp:left|bp:right ?molecule .
+            ?org bp:name "Homo sapiens"^^xsd:string .
+            FILTER(CONTAINS(?pathwayName, "metabolism"))
+            
             ?molecule a bp:SmallMolecule ;
                       bp:displayName ?reactomeName ;
                       bp:entityReference/bp:xref ?xref .
@@ -378,12 +430,11 @@ cross_database_queries:
                   bp:id ?fullChebiId .
             FILTER(STRSTARTS(?fullChebiId, "CHEBI:"))
             BIND(SUBSTR(?fullChebiId, 7) AS ?chebiNum)
-            ?pathway a bp:Pathway ;
-                     bp:displayName ?pathwayName ;
-                     bp:pathwayComponent+/bp:left|bp:right ?molecule .
-            FILTER(CONTAINS(?pathwayName, "metabolism"))
           }
+          
+          # URI conversion: "CHEBI:15422" -> "http://purl.obolibrary.org/obo/CHEBI_15422"
           BIND(IRI(CONCAT("http://purl.obolibrary.org/obo/CHEBI_", ?chebiNum)) AS ?chebiUri)
+          
           GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
             ?chebiUri a owl:Class ;
                       rdfs:label ?chebiLabel .
@@ -393,17 +444,17 @@ cross_database_queries:
         }
         LIMIT 50
       notes: |
-        - Strategies: 1 (GRAPH), 2 (pre-filter), 5 (URI conversion), 7 (OPTIONAL), 9 (type), 10 (LIMIT)
-        - Pre-filter on "metabolism" reduces pathway search before URI conversion and ChEBI join
-        - URI conversion: BIND(IRI(CONCAT(...))) transforms "CHEBI:15422" to "http://purl.obolibrary.org/obo/CHEBI_15422"
-        - Type restriction bp:db "ChEBI"^^xsd:string prevents datatype mismatch (CRITICAL)
+        - Strategies: 1 (GRAPH), 2 (pre-filter), 5 (URI conversion), 7 (OPTIONAL), 9 (^^xsd:string), 10 (LIMIT)
+        - Pre-filtering: human + "metabolism" reduces pathways before complex property path traversal
+        - URI conversion: BIND(IRI(CONCAT(...))) transforms "CHEBI:15422" to ChEBI ontology IRI
+        - ^^xsd:string required for exact matches (bp:db, bp:name) but not for CONTAINS/STRSTARTS
         - Performance: ~3-5s (Tier 2) - property paths add overhead but pre-filtering maintains speed
-        - MIE files referenced: reactome (graph, type restriction, ChEBI format), chebi (graph, URI format, OPTIONAL)
+        - MIE refs: reactome (graph, type restrictions, ChEBI format), chebi (graph, URI format, OPTIONAL)
     
     - title: Integrate Reactome Pathways with ChEMBL Drug Targets
       description: |
         Link Reactome pathways to ChEMBL drug molecules targeting proteins in those pathways, enabling drug target validation and mechanism of action research.
-        Integration via UniProt as common protein identifier.
+        Integration via UniProt as common protein identifier. Uses organism name filtering for optimal performance.
       databases_used:
         - reactome
         - chembl
@@ -417,24 +468,35 @@ cross_database_queries:
         SELECT DISTINCT ?pathwayName ?proteinName ?drugName ?targetName ?phase
         WHERE {
           GRAPH <http://rdf.ebi.ac.uk/dataset/reactome> {
+            # Filter by organism name with ^^xsd:string
             ?pathway a bp:Pathway ;
                      bp:displayName ?pathwayName ;
+                     bp:organism ?org ;
                      bp:pathwayComponent*/bp:left|bp:right ?protein .
+            ?org bp:name "Homo sapiens"^^xsd:string .
+            
+            # Keyword filter - bif:contains doesn't need ^^xsd:string
+            ?pathwayName bif:contains "'cancer'" option (score ?sc)
+            
             ?protein a bp:Protein ;
                      bp:entityReference/bp:name ?proteinName ;
                      bp:entityReference/bp:xref ?protXref .
             ?protXref a bp:UnificationXref ;
                       bp:db "UniProt"^^xsd:string ;
                       bp:id ?uniprotIdStr .
-            ?pathwayName bif:contains "'cancer'" option (score ?sc)
           }
+          
+          # URI conversion: UniProt string to full IRI
           BIND(IRI(CONCAT("http://purl.uniprot.org/uniprot/", ?uniprotIdStr)) AS ?uniprotId)
+          
           GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
+            # Pre-filter: human targets, late-stage drugs
             ?target a cco:SingleProtein ;
                     rdfs:label ?targetName ;
                     cco:organismName "Homo sapiens" ;
                     cco:hasTargetComponent/skos:exactMatch ?uniprotId ;
                     cco:hasAssay/cco:hasActivity/cco:hasMolecule ?molecule .
+            
             ?molecule a cco:SmallMolecule ;
                       rdfs:label ?drugName ;
                       cco:highestDevelopmentPhase ?phase .
@@ -444,17 +506,18 @@ cross_database_queries:
         ORDER BY DESC(?sc) DESC(?phase)
         LIMIT 20
       notes: |
-        - Strategies: 1 (GRAPH), 2 (pre-filter), 4 (bif:contains), 5 (URI), 6 (paths), 9 (type), 10 (LIMIT)
-        - Double pre-filtering: cancer keyword + phase >=3 reduces join by >99%
+        - Strategies: 1 (GRAPH), 2 (pre-filter), 4 (bif:contains), 5 (URI), 6 (paths), 9 (^^xsd:string), 10 (LIMIT)
+        - Triple pre-filtering: organism name + cancer keyword + phase >=3 reduces join by >99%
         - URI conversion transforms UniProt string to full URI for ChEMBL join
-        - Type restriction bp:db "UniProt"^^xsd:string CRITICAL for preventing datatype mismatch
+        - ^^xsd:string required for exact matches (bp:db, bp:name) but not for bif:contains
         - Performance: ~4-6s (Tier 2) - complex property paths but pre-filtering enables execution
-        - MIE files referenced: reactome (type restriction, property paths), chembl (entity types, property paths, phase filter)
+        - Use case: Drug target validation and mechanism of action in pathway context
+        - MIE refs: reactome (^^xsd:string for exact matches, bif:contains for text search), chembl (entity types, phase filter)
     
-    - title: Three-Way Integration - Pathways, Drugs, and Chemical Structure
+    - title: Pathway-Drug-Chemistry Three-Way Integration
       description: |
-        Link Reactome pathways to ChEMBL drugs targeting pathway proteins, enriched with ChEBI structure data.
-        Demonstrates multi-database integration for systems pharmacology. Uses simplified pathway matching for performance.
+        Link Reactome pathways to ChEMBL drugs targeting pathway proteins, enriched with ChEBI chemical structure data.
+        Demonstrates multi-database integration for systems pharmacology. Simplified pathway matching for performance.
       databases_used:
         - reactome
         - chembl
@@ -471,20 +534,27 @@ cross_database_queries:
         SELECT DISTINCT ?pathwayName ?drugName ?chebiLabel ?formula
         WHERE {
           GRAPH <http://rdf.ebi.ac.uk/dataset/reactome> {
+            # Simplified pathway matching with organism filter
             ?pathway a bp:Pathway ;
-                     bp:displayName ?pathwayName .
+                     bp:displayName ?pathwayName ;
+                     bp:organism ?org .
+            ?org bp:name "Homo sapiens"^^xsd:string .
             FILTER(CONTAINS(?pathwayName, "EGFR"))
           }
+          
           GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
+            # Specific protein and phase filter
             ?target a cco:SingleProtein ;
                     cco:organismName "Homo sapiens" ;
                     cco:hasTargetComponent/skos:exactMatch <http://purl.uniprot.org/uniprot/P00533> ;
                     cco:hasAssay/cco:hasActivity/cco:hasMolecule ?molecule .
+            
             ?molecule a cco:SmallMolecule ;
                       rdfs:label ?drugName ;
                       skos:exactMatch ?chebiId ;
                       cco:highestDevelopmentPhase 4 .
           }
+          
           GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
             ?chebiId a owl:Class ;
                      rdfs:label ?chebiLabel .
@@ -493,344 +563,300 @@ cross_database_queries:
         }
         LIMIT 10
       notes: |
-        - Strategies: 1 (GRAPH), 2 (pre-filter), 3 (VALUES implicit), 6 (paths), 7 (OPTIONAL), 10 (LIMIT)
-        - Triple pre-filtering: EGFR pathway + protein P00533 + phase 4 + ChEBI match reduces by >99.99%
-        - Simplified pathway matching (CONTAINS on name) avoids complex bp:pathwayComponent* traversal
+        - Strategies: 1 (GRAPH), 2 (pre-filter), 3 (specific IRI), 6 (paths), 7 (OPTIONAL), 9 (^^xsd:string), 10 (LIMIT)
+        - Quadruple pre-filtering: EGFR pathway + organism + specific protein IRI + phase 4 + ChEBI match reduces by >99.99%
+        - Simplified pathway matching with CONTAINS (no ^^xsd:string needed)
+        - ^^xsd:string required for bp:name exact match
         - Performance: ~3-5s (Tier 2) - aggressive filtering enables fast 3-way integration
         - Finds marketed EGFR inhibitors (e.g., Lapatinib) with complete chemical structure data
-        - MIE files referenced: reactome (simplified matching), chembl (property paths, phase filter), chebi (OPTIONAL pattern)
+        - MIE refs: reactome (simplified matching, organism name), chembl (property paths, phase filter), chebi (OPTIONAL)
 
 cross_references:
-  - pattern: bp:xref with bp:db
+  - pattern: bp:xref with bp:db and bp:id
     description: |
-      Unified cross-reference pattern using bp:xref with database name in bp:db.
-      CRITICAL: Always use ^^xsd:string type restriction for bp:db comparisons.
+      Unified cross-reference pattern using bp:xref with database name in bp:db and identifier in bp:id.
+      CRITICAL: bp:db and bp:id require ^^xsd:string for exact value matching.
+      Two xref types: UnificationXref for primary identifiers, RelationshipXref for ontology terms (especially GO).
     databases:
       proteins:
-        - "UniProt: 87K protein references"
+        - "UniProt: 87K protein references (UnificationXref)"
         - "Ensembl: 2K gene mappings"
-        - "RefSeq: via NCBI Gene"
       pathways:
-        - "GENE ONTOLOGY: 65K GO term annotations"
+        - "GENE ONTOLOGY: 1.5K UnificationXref + 26.5K RelationshipXref annotations"
         - "KEGG Pathway: pathway mappings"
-        - "PANTHER: pathway classifications"
       chemicals:
         - "ChEBI: 32K small molecule references"
         - "COMPOUND: 22K compound identifiers"
-        - "PubChem Compound: 631 mappings"
       publications:
-        - "PubMed: 443K evidence citations"
+        - "PubMed: 443K evidence citations (PublicationXref)"
       drugs:
         - "Guide to Pharmacology: 8K drug-target interactions"
-      organisms:
-        - "NCBI Taxonomy: species identifiers"
-      diseases:
-        - "COSMIC: 5K cancer gene variants"
-        - "ClinGen: 288 clinical genomics annotations"
-        - "LOVD: 132 variant database entries"
-      structural:
-        - "ComplexPortal: 976 protein complex mappings"
-        - "MOD: 1K protein modifications"
     sparql: |
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
       
-      SELECT ?entity ?database ?externalId
+      # Direct value matching requires ^^xsd:string
+      SELECT ?entity ?externalId
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
         ?entity bp:xref ?xref .
         ?xref a bp:UnificationXref ;
-          bp:db ?database ;
-          bp:id ?externalId .
-        FILTER(?database = "UniProt"^^xsd:string)
+              bp:db "UniProt"^^xsd:string ;
+              bp:id ?externalId .
       }
       LIMIT 50
 
 architectural_notes:
+  query_strategy:
+    - "CRITICAL RULE: ^^xsd:string required for EXACT VALUE MATCHING only"
+    - "Need ^^xsd:string: Direct triple patterns (?x bp:p 'value'^^xsd:string), VALUES clauses, FILTER with ="
+    - "Don't need ^^xsd:string: CONTAINS(), STRSTARTS(), REGEX(), bif:contains, retrieving values"
+    - "Exploratory: Use search_reactome_entity() to find examples (~30 results)"
+    - "Extract values: Organism names, GO term IDs, EC numbers from examples"
+    - "Comprehensive: Use extracted values with ^^xsd:string for exact matching"
+    - "Organism filtering: bp:name 'Homo sapiens'^^xsd:string for exact match"
+    - "GO term queries: bp:id 'GO:0000165'^^xsd:string in RelationshipXref"
+    - "EC number queries: bp:eCNumber '2.7.10.1'^^xsd:string"
+    - "Pathway hierarchy: Start from specific pathway IRI, use bp:pathwayComponent+ with LIMIT"
+    - "Text search: Use bif:contains or FILTER(CONTAINS()) for discovery (no ^^xsd:string needed)"
+    - "Priority: Exact values with ^^xsd:string > VALUES with ^^xsd:string > Text functions > Graph navigation"
+  
   schema_design:
-    - BioPAX Level 3 ontology provides standardized biological pathway representation
-    - Hierarchical pathways via bp:pathwayComponent allow multi-level organization
-    - Reactions link to proteins, complexes, small molecules via bp:left/bp:right
-    - Entity references separate instances from canonical definitions
-    - Catalysis and Control classes model regulatory relationships
+    - "BioPAX Level 3 ontology provides standardized biological pathway representation"
+    - "Hierarchical pathways via bp:pathwayComponent allow multi-level organization"
+    - "Reactions link to proteins, complexes, small molecules via bp:left/bp:right"
+    - "Entity references separate instances from canonical definitions"
+    - "Two xref types: UnificationXref (identifiers), RelationshipXref (ontology terms, especially GO)"
+    - "String properties stored as typed xsd:string literals - exact matching requires type restriction"
+    - "GO terms primarily in RelationshipXref (26.5K) vs UnificationXref (1.5K)"
+  
   performance:
-    - Use bif:contains for keyword searches (full-text index optimized)
-    - Boolean operators in bif:contains - AND, OR, NOT for complex queries
-    - Always specify FROM graph for multi-graph endpoints
-    - Property path bp:pathwayComponent* works but add LIMIT to prevent timeouts
-    - Cross-database optimization - explicit GRAPH clauses (Strategy 1)
-    - Pre-filter within GRAPH before joins (Strategy 2) - 10-100x speedup
-    - Use bif:contains with split property paths (Strategy 4)
-    - Convert URIs when linking to ChEBI/ChEMBL (Strategy 5)
-    - Handle type restrictions properly (Strategy 9) - ^^xsd:string CRITICAL
+    - "Use ^^xsd:string for exact value matching (direct patterns, VALUES, FILTER with =)"
+    - "Don't use ^^xsd:string for text functions (faster without it)"
+    - "Use specific GO term IDs instead of pathway name text search"
+    - "Use bif:contains or FILTER(CONTAINS()) for keyword searches"
+    - "Boolean operators in bif:contains: AND, OR, NOT for complex queries"
+    - "Always specify FROM graph for multi-graph endpoints"
+    - "Property path bp:pathwayComponent* works but add LIMIT to prevent timeouts"
+    - "Start from specific pathway IRIs when navigating hierarchy"
+    - "Cross-database: GRAPH clauses (Strategy 1), pre-filter (Strategy 2)"
+    - "URI conversion with BIND(IRI(CONCAT(...))) for ChEBI integration (Strategy 5)"
+  
   data_integration:
-    - UniProt provides protein sequences and functional annotations
-    - ChEBI offers small molecule structures and chemical ontology (EBI endpoint)
-    - PubMed links to primary literature and evidence
-    - GO terms map pathways to biological processes
-    - Guide to Pharmacology connects proteins to drug targets
-    - ChEMBL integration for drug-target relationships (EBI endpoint)
-    - Cross-database integration with co-located databases (ChEMBL, ChEBI, Ensembl, AMRPortal)
-    - Expected performance - Tier 1 (1-3s) for simple ChEBI joins, Tier 2 (3-8s) for ChEMBL joins
+    - "UniProt provides protein sequences and functional annotations"
+    - "ChEBI offers small molecule structures via URI conversion (EBI endpoint)"
+    - "PubMed links to primary literature and evidence"
+    - "GO terms map pathways to biological processes (primarily via RelationshipXref)"
+    - "ChEMBL integration for drug-target relationships (EBI endpoint)"
+    - "Expected performance: Tier 1 (1-3s) for simple ChEBI joins, Tier 2 (3-8s) for ChEMBL joins"
+  
   data_quality:
-    - All pathways manually curated with expert review
-    - Evidence tracking via PublicationXref to PubMed
-    - Quarterly updates ensure current biological knowledge
-    - CRITICAL - Use ^^xsd:string for bp:db comparisons
+    - "All pathways manually curated with expert review"
+    - "Evidence tracking via PublicationXref to PubMed"
+    - "Quarterly updates ensure current biological knowledge"
+    - "Use ^^xsd:string for exact value matching in bp:db, bp:name, bp:eCNumber, bp:id, etc."
+    - "GO terms: Check both UnificationXref and RelationshipXref"
 
 data_statistics:
   total_pathways: 23145
-  verified_date: "2025-02-04"
+  verified_date: "2025-02-09"
   verification_query: |
+    PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
     SELECT (COUNT(DISTINCT ?p) as ?count)
     FROM <http://rdf.ebi.ac.uk/dataset/reactome>
     WHERE { ?p a bp:Pathway }
   
-  total_reactions: 92977
-  verification_query_reactions: |
-    SELECT (COUNT(DISTINCT ?r) as ?count)
-    FROM <http://rdf.ebi.ac.uk/dataset/reactome>
-    WHERE { ?r a bp:BiochemicalReaction }
-  
-  total_proteins: 233200
-  verification_query_proteins: |
+  human_pathways: 2825
+  human_pathways_verified_date: "2025-02-09"
+  human_pathways_verification_query: |
+    PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+    PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
     SELECT (COUNT(DISTINCT ?p) as ?count)
     FROM <http://rdf.ebi.ac.uk/dataset/reactome>
-    WHERE { ?p a bp:Protein }
+    WHERE {
+      ?p a bp:Pathway ;
+         bp:organism ?org .
+      ?org bp:name "Homo sapiens"^^xsd:string .
+    }
   
+  total_reactions: 92977
+  total_proteins: 233200
   total_complexes: 109261
-  verification_query_complexes: |
-    SELECT (COUNT(DISTINCT ?c) as ?count)
-    FROM <http://rdf.ebi.ac.uk/dataset/reactome>
-    WHERE { ?c a bp:Complex }
-  
   total_small_molecules: 51214
-  verification_query_molecules: |
-    SELECT (COUNT(DISTINCT ?m) as ?count)
-    FROM <http://rdf.ebi.ac.uk/dataset/reactome>
-    WHERE { ?m a bp:SmallMolecule }
-  
-  total_catalysis: 46901
+  total_catalysis: 50267
   total_species: 30
+  
+  reactions_with_ec_2_7_10_1: 290
+  reactions_with_ec_2_7_10_1_verified_date: "2025-02-09"
+  verification_query_ec: |
+    PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+    PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+    SELECT (COUNT(?r) as ?count)
+    FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+    WHERE {
+      ?r a bp:BiochemicalReaction ;
+         bp:eCNumber "2.7.10.1"^^xsd:string .
+    }
+  
+  pathways_with_go_0000165: 55
+  pathways_with_go_0000165_verified_date: "2025-02-09"
+  verification_query_go: |
+    PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+    PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+    SELECT (COUNT(DISTINCT ?p) as ?count)
+    FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+    WHERE {
+      ?p a bp:Pathway ;
+         bp:xref ?xref .
+      ?xref a bp:RelationshipXref ;
+            bp:db "GENE ONTOLOGY"^^xsd:string ;
+            bp:id "GO:0000165"^^xsd:string .
+    }
+  
+  go_unification_xrefs: 1525
+  go_relationship_xrefs: 26532
+  go_notes: "GO terms primarily stored as RelationshipXref. Always query both types for comprehensive GO coverage."
   
   coverage:
     pathways_with_organisms: ">95%"
     reactions_with_ec_numbers: "~60%"
     proteins_with_uniprot: "~90%"
-    pathways_with_go_terms: "~85%"
+    pathways_with_go_relationship_xrefs: "~85%"
     pathways_with_pubmed: "~85%"
     entities_with_cellular_location: "~40%"
   
-  cardinality:
-    avg_subpathways_per_pathway: 5.3
-    avg_proteins_per_complex: 3.2
-    avg_reactions_per_pathway: 8.7
-    avg_xrefs_per_entity: 4.5
-  
   performance_characteristics:
-    - "bif:contains pathway search: <1s for 20 results"
-    - "Hierarchy traversal from specific pathway: <2s"
-    - "Cross-reference queries with ^^xsd:string: <3s"
-    - "Complex stoichiometry queries: <5s"
-    - "Cross-database (ChEBI): 3-5s (Tier 2)"
-    - "Cross-database (ChEMBL): 4-6s (Tier 2)"
-    - "Three-way integration: 3-5s (Tier 2) with pre-filtering"
-    - "Pre-filtering optimization: 99-99.9% reduction in results"
+    - "Exact value matching with ^^xsd:string: <1s"
+    - "Text search with CONTAINS/bif:contains: <1s"
+    - "EC number filtering with ^^xsd:string: <2s"
+    - "GO term RelationshipXref queries with ^^xsd:string: <3s"
+    - "Pathway hierarchy from specific IRI: <2s"
+    - "Cross-database (ChEBI): 3-5s (Tier 2) with pre-filtering"
+    - "Cross-database (ChEMBL): 4-6s (Tier 2) with organism name + phase filter"
+    - "Three-way integration: 3-5s (Tier 2) with aggressive pre-filtering"
   
   staleness_warning: "Quarterly updates - verify current release for latest data"
 
 anti_patterns:
-  - title: Using FILTER Instead of bif:contains for Text Search
-    problem: REGEX and CONTAINS are slow and not optimized for full-text searches.
+  - title: "Missing ^^xsd:string for Exact Value Matching"
+    problem: "Exact value matching in triple patterns, VALUES, or FILTER with = requires ^^xsd:string, otherwise returns zero results."
     wrong_sparql: |
-      SELECT ?pathway ?name 
-      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
-      WHERE {
-        ?pathway a bp:Pathway ;
-          bp:displayName ?name .
-        FILTER(CONTAINS(LCASE(?name), "cancer"))
-      }
+      # ❌ WRONG: Returns nothing
+      
+      # Missing ^^xsd:string in direct pattern
+      ?org bp:name "Homo sapiens" .
+      
+      # Missing ^^xsd:string in VALUES
+      VALUES ?ec { "2.7.10.1" "2.7.11.1" }
+      ?reaction bp:eCNumber ?ec .
+      
+      # Missing ^^xsd:string in FILTER with =
+      FILTER(?organism = "Homo sapiens")
     correct_sparql: |
-      SELECT ?pathway ?name 
-      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
-      WHERE {
-        ?pathway a bp:Pathway ;
-          bp:displayName ?name .
-        ?name bif:contains "'cancer'" option (score ?sc)
-      }
-      ORDER BY DESC(?sc)
-    explanation: bif:contains uses Virtuoso's full-text index for 10-100x faster searches with relevance scoring.
+      # ✅ CORRECT: Exact matching requires ^^xsd:string
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      
+      # Direct pattern with ^^xsd:string
+      ?org bp:name "Homo sapiens"^^xsd:string .
+      
+      # VALUES with ^^xsd:string
+      VALUES ?ec { "2.7.10.1"^^xsd:string "2.7.11.1"^^xsd:string }
+      ?reaction bp:eCNumber ?ec .
+      
+      # FILTER with = and ^^xsd:string
+      FILTER(?organism = "Homo sapiens"^^xsd:string)
+    explanation: "Reactome stores string literals as typed xsd:string. Exact value matching requires type restriction. String functions (CONTAINS, REGEX, bif:contains) don't need it."
   
-  - title: Unbounded Property Path Without Starting Point
-    problem: Using bp:pathwayComponent* without specific starting pathway causes timeout.
+  - title: "Adding ^^xsd:string to String Functions"
+    problem: "String functions like CONTAINS, STRSTARTS, REGEX work without ^^xsd:string. Adding it is unnecessary."
     wrong_sparql: |
-      SELECT ?pathway ?subPathway 
-      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      # ❌ UNNECESSARY: Works fine without ^^xsd:string
+      FILTER(CONTAINS(?name, "cancer"^^xsd:string))
+      ?name bif:contains "'cancer'"^^xsd:string
+    correct_sparql: |
+      # ✅ CORRECT: String functions don't need ^^xsd:string
+      FILTER(CONTAINS(?name, "cancer"))
+      ?name bif:contains "'cancer'"
+    explanation: "String functions handle type coercion automatically. Only exact value matching needs ^^xsd:string."
+  
+  - title: "Unbounded Property Path Without Starting Point"
+    problem: "Using bp:pathwayComponent* without specific starting pathway causes timeout."
+    wrong_sparql: |
+      # ❌ Times out: No starting point
+      SELECT ?pathway ?subPathway
       WHERE {
         ?pathway bp:pathwayComponent* ?subPathway
       }
     correct_sparql: |
-      PREFIX reactome: <http://www.reactome.org/biopax/68/49646#>
-      
+      # ✅ Fast: Start from specific pathway IRI
       SELECT ?subPathway ?name
-      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        reactome:Pathway227 bp:pathwayComponent+ ?subPathway .
+        <http://www.reactome.org/biopax/40/48887#Pathway227> 
+          bp:pathwayComponent+ ?subPathway .
         ?subPathway a bp:Pathway ;
-          bp:displayName ?name .
+                    bp:displayName ?name .
       }
       LIMIT 100
-    explanation: Start from specific pathway URI, use + instead of *, add type filters, and include LIMIT.
-  
-  - title: Missing Type Restriction for Database Name Comparison
-    problem: Direct string comparison with bp:db fails due to RDF literal datatype mismatches.
-    wrong_sparql: |
-      SELECT ?entity ?id 
-      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
-      WHERE {
-        ?entity bp:xref ?xref .
-        ?xref bp:db "UniProt" ;
-          bp:id ?id .
-      }
-    correct_sparql: |
-      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-      
-      SELECT ?entity ?id 
-      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
-      WHERE {
-        ?entity bp:xref ?xref .
-        ?xref bp:db "UniProt"^^xsd:string ;
-          bp:id ?id .
-      }
-    explanation: Use ^^xsd:string type restriction to ensure proper literal matching - CRITICAL for all bp:db comparisons.
-  
-  - title: Cross-Database Query Without Pre-Filtering
-    problem: Filtering after join causes timeout by processing millions of intermediate results.
-    wrong_sparql: |
-      WHERE {
-        GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
-          ?molecule a cco:SmallMolecule ;
-                    skos:exactMatch ?chebiId ;
-                    cco:highestDevelopmentPhase ?phase .
-        }
-        GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
-          ?chebiId a owl:Class ;
-                   rdfs:label ?label .
-        }
-        FILTER(?phase >= 3)
-      }
-    correct_sparql: |
-      WHERE {
-        GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
-          ?molecule a cco:SmallMolecule ;
-                    skos:exactMatch ?chebiId ;
-                    cco:highestDevelopmentPhase ?phase .
-          FILTER(?phase >= 3)
-        }
-        GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
-          ?chebiId a owl:Class ;
-                   rdfs:label ?label .
-        }
-      }
-      LIMIT 100
-    explanation: Pre-filtering in source database reduces intermediate results by 99.5% before cross-database join, improving from timeout to 1-2 seconds.
+    explanation: "Start from specific pathway URI found via search_reactome_entity(), use + instead of *, add type filters, and include LIMIT."
 
 common_errors:
-  - error: Query returns empty results for cross-references despite known data
-    causes:
-      - Direct comparison with bp:db without ^^xsd:string type restriction
-      - Datatype mismatch between plain literals and typed literals
-      - Wrong xref type (PublicationXref instead of UnificationXref)
+  - error: "Query returns empty results for exact matching"
+    root_cause: "Missing ^^xsd:string for exact value matching"
+    symptoms:
+      - "Direct pattern matching returns 0 results when data exists"
+      - "VALUES clause returns nothing"
+      - "FILTER with = returns empty"
     solutions:
-      - Always use ^^xsd:string type restriction - bp:db 'UniProt'^^xsd:string
-      - Alternative - FILTER(STR(?db) = 'UniProt') for variable bindings
-      - Use bp:UnificationXref for external IDs, bp:PublicationXref for literature
+      - "Add ^^xsd:string to direct triple patterns: ?org bp:name 'Homo sapiens'^^xsd:string"
+      - "Add ^^xsd:string to each value in VALUES: VALUES ?ec { '2.7.10.1'^^xsd:string }"
+      - "Add ^^xsd:string to FILTER with =: FILTER(?x = 'value'^^xsd:string)"
     example_fix: |
-      # Before (returns nothing):
-      ?xref bp:db "ChEBI" ; bp:id ?chebiId .
+      # ❌ Before (returns nothing):
+      ?org bp:name "Homo sapiens" .
+      VALUES ?ec { "2.7.10.1" }
+      FILTER(?organism = "Homo sapiens")
       
-      # After (works correctly):
-      ?xref bp:db "ChEBI"^^xsd:string ; bp:id ?chebiId .
+      # ✅ After (works):
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      ?org bp:name "Homo sapiens"^^xsd:string .
+      VALUES ?ec { "2.7.10.1"^^xsd:string }
+      FILTER(?organism = "Homo sapiens"^^xsd:string)
   
-  - error: Query timeout when searching pathways or retrieving components
-    causes:
-      - Using FILTER with REGEX/CONTAINS instead of bif:contains
-      - Missing LIMIT clause on exploratory queries
-      - Unbounded property paths without starting entity
-      - Complex cross-database property paths
+  - error: "String functions not working"
+    root_cause: "Incorrectly added ^^xsd:string to string functions"
+    symptoms:
+      - "CONTAINS/REGEX/bif:contains returns unexpected results"
     solutions:
-      - Use bif:contains for all keyword searches in names
-      - Add LIMIT 50-100 during development
-      - Start property path traversals from specific URIs
-      - Use simplified matching for cross-database queries when possible
+      - "Remove ^^xsd:string from string function arguments"
+      - "String functions handle type coercion automatically"
     example_fix: |
-      # Before (timeout risk):
-      ?pathway bp:pathwayComponent* ?component .
+      # ❌ Before (unnecessary):
+      FILTER(CONTAINS(?name, "cancer"^^xsd:string))
       
-      # After (fast):
-      reactome:Pathway227 bp:pathwayComponent+ ?component .
-      ?component a bp:Pathway .
-      LIMIT 100
-      
-      # Cross-database (simplified):
-      FILTER(CONTAINS(?pathwayName, "keyword"))
+      # ✅ After (correct):
+      FILTER(CONTAINS(?name, "cancer"))
   
-  - error: Missing expected proteins or pathway components
-    causes:
-      - Not following complete property paths
-      - Missing bp:left and bp:right for reaction participants
-      - Not checking both Protein and Complex entity types
-      - Filtering too aggressively without OPTIONAL
+  - error: "Cross-database query timeout or empty results"
+    root_cause: "Missing ^^xsd:string for exact matches in Reactome GRAPH or missing pre-filtering"
+    symptoms:
+      - "Query times out or returns empty results"
+      - "Works when tested on single database"
     solutions:
-      - Use bp:pathwayComponent+ to get all descendants
-      - Include both bp:left and bp:right for reactions
-      - Use UNION or multiple patterns for different entity types
-      - Use OPTIONAL for properties that may not exist
+      - "Add ^^xsd:string to exact value matching in Reactome GRAPH"
+      - "Apply organism filter with ^^xsd:string within source GRAPH"
+      - "Use explicit GRAPH clauses for each database"
+      - "Use BIND(IRI(CONCAT(...))) for URI conversion"
+      - "Add LIMIT to every query level"
     example_fix: |
-      # Before (incomplete):
-      ?pathway bp:pathwayComponent/bp:left ?entity .
-      
-      # After (comprehensive):
-      ?pathway bp:pathwayComponent*/bp:left|bp:right ?entity .
-      ?entity a ?type .
-      FILTER(?type IN (bp:Protein, bp:Complex, bp:SmallMolecule))
-  
-  - error: Cross-database query timeout or empty results
-    causes:
-      - Missing ^^xsd:string type restriction for bp:db (CRITICAL)
-      - Missing pre-filtering before joins
-      - Missing GRAPH clauses
-      - Wrong graph URIs or entity types from co-database
-      - Missing URI conversion for different identifier formats
-    solutions:
-      - Always use ^^xsd:string for bp:db comparisons
-      - Apply restrictive FILTER within source GRAPH before join
-      - Use explicit GRAPH clauses for each database
-      - Verify graph URIs and patterns from co-database MIE files
-      - Use URI conversion with BIND(IRI(CONCAT(...))) for ChEBI
-      - Add LIMIT to every query level
-    example_fix: |
-      # BEFORE (times out or empty):
-      WHERE {
-        GRAPH <reactome> {
-          ?xref bp:db "UniProt" ; bp:id ?id .
-        }
-        GRAPH <chembl> { ?target skos:exactMatch ?uri }
-        FILTER(?phase >= 3)
+      # ❌ Before:
+      GRAPH <http://rdf.ebi.ac.uk/dataset/reactome> {
+        ?pathway bp:organism ?org .
+        ?org bp:name "Homo sapiens" .  # Missing ^^xsd:string
       }
       
-      # AFTER (works in 4-6s):
-      WHERE {
-        GRAPH <reactome> {
-          ?xref bp:db "UniProt"^^xsd:string ; bp:id ?id .
-          ?pathwayName bif:contains "'cancer'" option (score ?sc)
-        }
-        BIND(IRI(CONCAT("http://purl.uniprot.org/uniprot/", ?id)) AS ?uri)
-        GRAPH <chembl> {
-          ?target skos:exactMatch ?uri ;
-                  cco:hasAssay/cco:hasActivity/cco:hasMolecule ?molecule .
-          ?molecule cco:highestDevelopmentPhase ?phase .
-          FILTER(?phase >= 3)
-        }
+      # ✅ After:
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      GRAPH <http://rdf.ebi.ac.uk/dataset/reactome> {
+        ?pathway bp:organism ?org .
+        ?org bp:name "Homo sapiens"^^xsd:string .
       }
-      LIMIT 20

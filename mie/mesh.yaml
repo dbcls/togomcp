@@ -1,11 +1,10 @@
 schema_info:
   title: Medical Subject Headings (MeSH) RDF
   description: |
-    National Library of Medicine's controlled vocabulary thesaurus for biomedical literature indexing. 
-    Contains topical descriptors (subject headings), qualifiers (subheadings), supplementary chemical 
-    records, supplementary disease records, concepts, terms, and tree numbers organized in 16 hierarchical 
-    categories. Used for indexing articles in PubMed and other NLM databases. Includes ~30K descriptors 
-    with hierarchical relationships, ~250K chemical records, and ~2.5M total entities.
+    National Library of Medicine's controlled vocabulary thesaurus for biomedical literature indexing.
+    Contains ~30K topical descriptors with hierarchical tree numbers, ~250K supplementary chemical records,
+    ~867K terms, and ~467K concepts. Organized in 16 tree categories (A-Z) for systematic navigation.
+    Primary use: PubMed article indexing, biomedical database curation, clinical research queries.
   endpoint: https://rdfportal.org/primary/sparql
   base_uri: http://id.nlm.nih.gov/mesh/
   graphs:
@@ -15,18 +14,17 @@ schema_info:
   kw_search_tools:
     - search_mesh_descriptor
   version:
-    mie_version: "1.4"
-    mie_created: "2025-01-17"
-    mie_updated: "2025-02-04"
+    mie_version: "2.0"
+    mie_created: "2026-02-09"
     data_version: "2024"
-    update_frequency: Annual
+    update_frequency: "Annual"
   license:
-    data_license: Public Domain (U.S. Government)
-    license_url: https://www.nlm.nih.gov/databases/download/terms_and_conditions.html
+    data_license: "Public Domain (U.S. Government)"
+    license_url: "https://www.nlm.nih.gov/databases/download/terms_and_conditions.html"
   access:
-    rate_limiting: No strict limits
-    max_query_timeout: 60 seconds
-    backend: Virtuoso
+    rate_limiting: "No strict limits"
+    max_query_timeout: "60 seconds"
+    backend: "Virtuoso"
 
 shape_expressions: |
   PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -38,7 +36,7 @@ shape_expressions: |
     a [ meshv:TopicalDescriptor ] ;
     rdfs:label xsd:string ;
     meshv:identifier xsd:string ;
-    meshv:treeNumber @<TreeNumberShape> * ;
+    meshv:treeNumber @<TreeNumberShape> + ;
     meshv:broaderDescriptor @<TopicalDescriptorShape> * ;
     meshv:annotation xsd:string ? ;
     meshv:preferredConcept @<ConceptShape> ;
@@ -54,7 +52,7 @@ shape_expressions: |
   <TermShape> {
     a [ meshv:Term ] ;
     rdfs:label xsd:string ;
-    meshv:prefLabel xsd:string  # Terms use prefLabel, not rdfs:label
+    meshv:prefLabel xsd:string
   }
   
   <TreeNumberShape> {
@@ -63,108 +61,84 @@ shape_expressions: |
   }
   
   <QualifierShape> {
-    a [ meshv:Qualifier ] OR [ meshv:TopicalDescriptor ] ;
-    rdfs:label xsd:string
+    a [ meshv:Qualifier ] ;
+    rdfs:label xsd:string ;
+    meshv:identifier xsd:string
   }
   
   <SCR_ChemicalShape> {
     a [ meshv:SCR_Chemical ] ;
     rdfs:label xsd:string ;
     meshv:identifier xsd:string ;
-    meshv:registryNumber xsd:string ?  # CAS Registry Number
-  }
-  
-  <SCR_DiseaseShape> {
-    a [ meshv:SCR_Disease ] ;
-    rdfs:label xsd:string ;
-    meshv:identifier xsd:string
+    meshv:registryNumber xsd:string ?
   }
 
 sample_rdf_entries:
-  - title: Topical Descriptor with Tree Numbers
-    description: Main subject heading with hierarchical classification codes.
+  - title: Topical Descriptor with Complete Structure
+    description: Disease descriptor with tree numbers, broader relationship, and qualifier constraints.
     rdf: |
+      @prefix mesh: <http://id.nlm.nih.gov/mesh/> .
+      @prefix meshv: <http://id.nlm.nih.gov/mesh/vocab#> .
+      @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+      
       mesh:D003920 a meshv:TopicalDescriptor ;
         rdfs:label "Diabetes Mellitus" ;
         meshv:identifier "D003920" ;
-        meshv:treeNumber mesh:C18.452.394.750 ;
-        meshv:annotation "general or unspecified; prefer specifics..." .
+        meshv:treeNumber mesh:C18.452.394.750, mesh:C19.246 ;
+        meshv:broaderDescriptor mesh:D044882 ;
+        meshv:annotation "general or unspecified; prefer specifics..." ;
+        meshv:allowableQualifier mesh:Q000188, mesh:Q000209 .
   
-  - title: Descriptor with Broader Relationship
-    description: Subject heading showing parent-child hierarchy using broaderDescriptor.
+  - title: Hierarchical Relationship
+    description: Parent-child descriptor relationship using broaderDescriptor.
     rdf: |
-      mesh:D003924 a meshv:TopicalDescriptor ;
-        rdfs:label "Diabetes Mellitus, Type 2" ;
-        meshv:identifier "D003924" ;
-        meshv:broaderDescriptor mesh:D003920 .
+      mesh:D044882 a meshv:TopicalDescriptor ;
+        rdfs:label "Glucose Metabolism Disorders" ;
+        meshv:identifier "D044882" .
+      
+      mesh:D003920 a meshv:TopicalDescriptor ;
+        rdfs:label "Diabetes Mellitus" ;
+        meshv:broaderDescriptor mesh:D044882 .
+  
+  - title: Qualifier for Subheadings
+    description: Allowable qualifier for creating descriptor-qualifier pairs in indexing.
+    rdf: |
+      mesh:Q000188 a meshv:Qualifier ;
+        rdfs:label "drug therapy" ;
+        meshv:identifier "Q000188" .
   
   - title: Supplementary Chemical Record
-    description: Chemical substance entry with CAS registry number.
+    description: Chemical substance with CAS registry number cross-reference.
     rdf: |
       mesh:C517652 a meshv:SCR_Chemical ;
         rdfs:label "Insulin Glargine" ;
         meshv:identifier "C517652" ;
         meshv:registryNumber "2ZM8CX04RZ" .
   
-  - title: Descriptor with Concept and Term
-    description: Complete descriptor with preferred concept and term structure.
+  - title: Tree Number Classification
+    description: Hierarchical classification code for category navigation.
     rdf: |
-      mesh:D002318 a meshv:TopicalDescriptor ;
-        rdfs:label "Cardiovascular Diseases" ;
-        meshv:preferredConcept [
-          a meshv:Concept ;
-          meshv:preferredTerm [
-            a meshv:Term ;
-            rdfs:label "Cardiovascular Diseases" ;
-            meshv:prefLabel "Cardiovascular Diseases"
-          ]
-        ] .
-  
-  - title: Descriptor with Allowable Qualifiers
-    description: Subject heading with permitted subheadings for indexing combinations.
-    rdf: |
-      mesh:D003920 a meshv:TopicalDescriptor ;
-        rdfs:label "Diabetes Mellitus" ;
-        meshv:allowableQualifier mesh:Q000188 .
-      mesh:Q000188 a meshv:Qualifier ;
-        rdfs:label "drug therapy" .
+      mesh:C18.452.394.750 a meshv:TreeNumber ;
+        rdfs:label "C18.452.394.750" .
 
 sparql_query_examples:
-  - title: Search Descriptors by Keyword with bif:contains
-    description: Full-text search with relevance scoring
-    question: Which descriptors relate to diabetes?
-    complexity: basic
-    sparql: |
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
-      
-      SELECT ?descriptor ?label
-      FROM <http://id.nlm.nih.gov/mesh>
-      WHERE {
-        ?descriptor a meshv:TopicalDescriptor ;
-          rdfs:label ?label .
-        ?label bif:contains "'diabetes'" option (score ?sc)
-      }
-      ORDER BY DESC(?sc)
-      LIMIT 20
-  
-  - title: Get Biological Annotations for Descriptor
-    description: Retrieve annotations, tree numbers, and hierarchy for a descriptor
-    question: What are the annotations and hierarchical information for diabetes mellitus?
+  - title: Retrieve Specific Descriptor Annotations
+    description: Direct IRI lookup for complete descriptor information.
+    question: What are the annotations and hierarchical details for Diabetes Mellitus?
     complexity: basic
     sparql: |
       PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
       PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       
-      SELECT ?label ?annotation ?treeNumber ?broaderLabel
+      SELECT ?label ?annotation ?treeNum ?broaderLabel
       FROM <http://id.nlm.nih.gov/mesh>
       WHERE {
         mesh:D003920 rdfs:label ?label .
         OPTIONAL { mesh:D003920 meshv:annotation ?annotation }
         OPTIONAL { 
           mesh:D003920 meshv:treeNumber ?tree .
-          ?tree rdfs:label ?treeNumber
+          ?tree rdfs:label ?treeNum
         }
         OPTIONAL {
           mesh:D003920 meshv:broaderDescriptor ?broader .
@@ -172,120 +146,150 @@ sparql_query_examples:
         }
       }
   
-  - title: Get Hierarchical Classification Path
-    description: Retrieve all parent descriptors in tree structure using transitive property
-    question: What are all parent categories of a descriptor?
+  - title: Query Multiple Related Descriptors
+    description: Use VALUES to retrieve information for multiple specific disease IRIs.
+    question: Compare annotations for diabetes subtypes?
+    complexity: basic
+    sparql: |
+      PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT ?descriptor ?label ?annotation ?treeNum
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        VALUES ?descriptor { 
+          mesh:D003920  # Diabetes Mellitus
+          mesh:D003922  # Type 1
+          mesh:D003924  # Type 2
+        }
+        ?descriptor rdfs:label ?label .
+        OPTIONAL { ?descriptor meshv:annotation ?annotation }
+        OPTIONAL {
+          ?descriptor meshv:treeNumber ?tree .
+          ?tree rdfs:label ?treeNum
+        }
+      }
+  
+  - title: Navigate Hierarchical Tree Structure
+    description: Graph navigation using tree number prefix patterns for category filtering.
+    question: Which descriptors are under "Endocrine System Diseases" (C19 tree)?
+    complexity: intermediate
+    sparql: |
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT ?descriptor ?label ?treeNum
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        ?descriptor a meshv:TopicalDescriptor ;
+                    rdfs:label ?label ;
+                    meshv:treeNumber ?tree .
+        ?tree rdfs:label ?treeNum .
+        # Tree navigation: C19 category
+        FILTER(STRSTARTS(?treeNum, "C19"))
+      }
+      LIMIT 50
+  
+  - title: Retrieve Allowable Qualifiers
+    description: Use specific descriptor IRI to find permitted qualifier combinations.
+    question: Which qualifiers can be combined with Diabetes descriptor?
     complexity: intermediate
     sparql: |
       PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
       PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       
-      SELECT ?parent ?parentLabel
+      SELECT ?descriptor ?descLabel ?qualifier ?qualLabel
       FROM <http://id.nlm.nih.gov/mesh>
       WHERE {
-        mesh:D003920 meshv:broaderDescriptor+ ?parent .
-        ?parent rdfs:label ?parentLabel .
+        VALUES ?descriptor { 
+          mesh:D003920  # Diabetes Mellitus
+          mesh:D002318  # Cardiovascular Diseases
+        }
+        ?descriptor rdfs:label ?descLabel ;
+                    meshv:allowableQualifier ?qualifier .
+        ?qualifier rdfs:label ?qualLabel .
       }
+      ORDER BY ?descLabel ?qualLabel
   
   - title: Count Descriptors by Tree Category
-    description: Aggregate counts by major MeSH tree categories (A-Z letter codes)
-    question: How many descriptors in each major category?
+    description: Aggregate statistics using tree number structure for distribution analysis.
+    question: How many descriptors in each major MeSH category?
     complexity: intermediate
     sparql: |
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       
       SELECT ?category (COUNT(DISTINCT ?descriptor) as ?count)
       FROM <http://id.nlm.nih.gov/mesh>
       WHERE {
         ?descriptor a meshv:TopicalDescriptor ;
-          meshv:treeNumber ?tree .
+                    meshv:treeNumber ?tree .
         ?tree rdfs:label ?treeLabel .
+        # Extract first character for category
         BIND(SUBSTR(?treeLabel, 1, 1) as ?category)
       }
       GROUP BY ?category
-      ORDER BY DESC(?count)
+      ORDER BY ?category
   
-  - title: Find Chemicals by Name
-    description: Search supplementary chemical records with keyword search
-    question: Which chemical records contain 'insulin'?
-    complexity: intermediate
-    sparql: |
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
-      
-      SELECT ?chemical ?label ?registryNumber
-      FROM <http://id.nlm.nih.gov/mesh>
-      WHERE {
-        ?chemical a meshv:SCR_Chemical ;
-          rdfs:label ?label .
-        OPTIONAL { ?chemical meshv:registryNumber ?registryNumber }
-        ?label bif:contains "'insulin'" option (score ?sc)
-      }
-      ORDER BY DESC(?sc)
-      LIMIT 20
-  
-  - title: Get Allowable Qualifiers for Descriptor
-    description: Retrieve permitted subheadings for subject heading combinations
-    question: Which qualifiers can be used with diabetes descriptor?
+  - title: Find Transitive Hierarchical Ancestors
+    description: Use specific IRI with transitive broaderDescriptor for complete ancestry path.
+    question: What are all parent categories of Diabetes Mellitus?
     complexity: advanced
     sparql: |
       PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
       PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       
-      SELECT ?qualifier ?qualifierLabel
+      SELECT ?parent ?parentLabel ?parentId
       FROM <http://id.nlm.nih.gov/mesh>
       WHERE {
-        mesh:D003920 meshv:allowableQualifier ?qualifier .
-        ?qualifier rdfs:label ?qualifierLabel .
+        # Start from specific descriptor IRI
+        mesh:D003920 meshv:broaderDescriptor+ ?parent .
+        ?parent rdfs:label ?parentLabel ;
+                meshv:identifier ?parentId .
       }
+      ORDER BY ?parentLabel
   
-  - title: Multi-Faceted Descriptor Analysis
-    description: Comprehensive query with annotations, tree numbers, and hierarchy
-    question: Get complete information for cancer-related descriptors
+  - title: Search Chemicals by Name with Text Index
+    description: Full-text search for chemical records when exploring unknown concepts.
+    question: Find insulin-related chemical substances?
     complexity: advanced
     sparql: |
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       
-      SELECT DISTINCT ?descriptor ?label ?annotation ?treeNum ?broaderLabel
+      SELECT ?chemical ?label ?registryNumber
       FROM <http://id.nlm.nih.gov/mesh>
       WHERE {
-        ?descriptor a meshv:TopicalDescriptor ;
-          rdfs:label ?label .
-        OPTIONAL { ?descriptor meshv:annotation ?annotation }
-        OPTIONAL {
-          ?descriptor meshv:treeNumber/rdfs:label ?treeNum
-        }
-        OPTIONAL {
-          ?descriptor meshv:broaderDescriptor/rdfs:label ?broaderLabel
-        }
-        ?label bif:contains "'cancer'" option (score ?sc)
+        ?chemical a meshv:SCR_Chemical ;
+                  rdfs:label ?label .
+        OPTIONAL { ?chemical meshv:registryNumber ?registryNumber }
+        # Text search justified: exploring chemicals without known IRIs
+        ?label bif:contains "'insulin'" option (score ?sc)
       }
       ORDER BY DESC(?sc)
-      LIMIT 10
+      LIMIT 20
 
 cross_database_queries:
   shared_endpoint: primary
   co_located_databases:
+    - mondo
     - go
     - taxonomy
-    - mondo
     - nando
     - bacdive
     - mediadive
   mie_files_consulted:
-    - mondo (Disease class shape, hasDbXref property patterns, MESH:D##### format, graph URI)
-    - go (GO term shape, hasOBONamespace property, graph URI, bif:contains patterns, filter requirements)
+    - "mondo (owl:Class shape, oboInOwl:hasDbXref, graph URI, MESH: xref format)"
   examples:
-    - title: Link MeSH Descriptors to MONDO Disease Ontology
+    - title: Link MeSH Descriptors to MONDO Disease Classification
       description: |
-        Integrate MeSH medical subject headings with MONDO disease classifications using MONDO's 
-        cross-references. MONDO diseases contain oboInOwl:hasDbXref properties linking to MeSH 
-        descriptor/SCR IDs, enabling precise mapping between clinical literature terminology and 
-        disease ontology classifications. This supports translational research and systematic reviews.
+        Integrate medical subject headings with disease ontology using MONDO's hasDbXref.
+        MONDO diseases reference MeSH via "MESH:D######" or "MESH:C######" format.
+        Enables mapping between clinical literature terminology and formal disease classification.
+        Use specific disease IRIs in MONDO after exploratory keyword search.
       databases_used:
         - mesh
         - mondo
@@ -294,120 +298,131 @@ cross_database_queries:
         PREFIX owl: <http://www.w3.org/2002/07/owl#>
         PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX obo: <http://purl.obolibrary.org/obo/>
         PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
         
-        SELECT ?mondoDisease ?mondoLabel ?meshDescriptor ?meshLabel ?meshXref
+        SELECT ?mondoDisease ?mondoLabel ?meshDescriptor ?meshLabel ?meshType
         WHERE {
           GRAPH <http://rdfportal.org/ontology/mondo> {
+            # Use specific MONDO IRI after exploratory search
+            VALUES ?mondoDisease {
+              obo:MONDO_0005147  # Type 1 diabetes
+              obo:MONDO_0005148  # Type 2 diabetes
+            }
             ?mondoDisease a owl:Class ;
-              rdfs:label ?mondoLabel ;
-              oboInOwl:hasDbXref ?meshXref .
+                          rdfs:label ?mondoLabel ;
+                          oboInOwl:hasDbXref ?meshXref .
             FILTER(STRSTARTS(?meshXref, "MESH:"))
-            ?mondoLabel bif:contains "'diabetes'" option (score ?sc)
           }
           
+          # Convert MESH:D###### format to IRI
           BIND(URI(CONCAT("http://id.nlm.nih.gov/mesh/", SUBSTR(?meshXref, 6))) AS ?meshDescriptor)
           
           GRAPH <http://id.nlm.nih.gov/mesh> {
             ?meshDescriptor rdfs:label ?meshLabel .
+            # Type can be TopicalDescriptor or SCR_*
+            ?meshDescriptor a ?type .
+            BIND(STRAFTER(STR(?type), "vocab#") as ?meshType)
           }
         }
-        ORDER BY DESC(?sc)
-        LIMIT 10
+        ORDER BY ?mondoLabel
       notes: |
-        - Optimization strategies applied: 1 (GRAPH), 2 (pre-filter), 4 (bif:contains), 5 (URI conversion), 10 (LIMIT)
-        - Strategy 1: Explicit GRAPH clauses for each database prevent cross-contamination
-        - Strategy 2: Pre-filtering in MONDO with bif:contains before join reduces 30K → ~10 diseases (99.97% reduction)
-        - Strategy 4: bif:contains with relevance scoring provides 10-100x speedup over REGEX
-        - Strategy 5: URI conversion from MONDO's MESH: format to MeSH URIs
-        - Strategy 10: LIMIT 10 caps result set size for fast response
-        - Query uses oboInOwl:hasDbXref from MONDO MIE file for cross-references
-        - Entity types (owl:Class for MONDO) from MONDO MIE file shape expressions
-        - BIND constructs MeSH URI from MONDO's "MESH:D######" or "MESH:C######" reference format
-        - Note: MESH: references can point to TopicalDescriptors (D######) OR SCR records (C######)
-        - Performance: ~2-3 seconds for keyword-filtered cross-database queries (Tier 1)
-        - Performance gain: Pre-filtering reduces MONDO diseases from 30K to ~10 before MeSH join
-        - Use case: Disease literature curation, systematic reviews, translational research
-        - Coverage: ~28% of MONDO diseases have MeSH cross-references (~8,500 mappings)
-        - Referenced MIE files: mondo (for owl:Class shape, hasDbXref property, graph URI)
-        - Avoided anti-patterns: No REGEX (use bif:contains), no late filtering (pre-filter in GRAPH)
+        - Strategies: 1 (GRAPH), 2 (VALUES with IRIs), 5 (URI conversion), 10 (LIMIT implicit via VALUES)
+        - Strategy 1: Explicit GRAPH clauses isolate each database
+        - Strategy 2: Use specific MONDO IRIs found via exploratory search (not keyword filter here)
+        - Strategy 5: URI conversion from MONDO's "MESH:D######" format
+        - Performance: ~1-2s for small VALUES set (Tier 1)
+        - Coverage: ~28% of MONDO diseases have MeSH xrefs (~8,500 mappings)
+        - Note: MESH: xrefs can point to TopicalDescriptor (D) or SCR records (C)
+        - Workflow: (1) Use OLS4:searchClasses to find MONDO IRIs, (2) Use those in VALUES
     
-    - title: Correlate MeSH Terms with GO Biological Processes
+    - title: Multi-Category MeSH-MONDO Disease Integration
       description: |
-        Bridge MeSH medical subject headings with Gene Ontology biological processes using 
-        keyword-based integration. Since MeSH and GO don't have direct links, this query 
-        uses bif:contains on both databases to find related terms, enabling researchers 
-        to connect clinical concepts with molecular biology terminology for multi-scale 
-        biological studies.
-      databases_used:
-        - mesh
-        - go
-      complexity: intermediate
-      sparql: |
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
-        PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
-        
-        SELECT DISTINCT ?meshTerm ?meshLabel ?goTerm ?goLabel ?goNamespace
-        WHERE {
-          GRAPH <http://id.nlm.nih.gov/mesh> {
-            ?meshTerm a meshv:TopicalDescriptor ;
-              rdfs:label ?meshLabel .
-            ?meshLabel bif:contains "'apoptosis'" option (score ?sc1)
-          }
-          
-          GRAPH <http://rdfportal.org/ontology/go> {
-            ?goTerm a owl:Class ;
-              rdfs:label ?goLabel ;
-              oboinowl:hasOBONamespace ?goNamespace .
-            ?goLabel bif:contains "'apoptosis'" option (score ?sc2)
-            FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
-          }
-        }
-        ORDER BY DESC(?sc1)
-        LIMIT 10
-      notes: |
-        - Optimization strategies applied: 1 (GRAPH), 2 (pre-filter), 4 (bif:contains), 10 (LIMIT)
-        - Strategy 1: Explicit GRAPH clauses prevent query from mixing MeSH and GO data
-        - Strategy 2: Pre-filtering with bif:contains in both GRAPH clauses before Cartesian product
-        - Strategy 4: bif:contains with relevance scoring provides full-text index performance
-        - Strategy 10: LIMIT 10 prevents excessive result generation
-        - Uses owl:Class and oboinowl:hasOBONamespace from GO MIE file
-        - Uses meshv:TopicalDescriptor from MeSH MIE file
-        - Keyword-based integration (no direct semantic links between MeSH and GO)
-        - Performance: ~2-3 seconds for cross-ontology keyword queries (Tier 1)
-        - Performance gain: bif:contains reduces search from 869K MeSH terms × 48K GO terms to matched subset
-        - Use case: Literature mining, connecting clinical and molecular biology terms
-        - Note: Results based on keyword overlap, not semantic equivalence
-        - Referenced MIE files: go (for owl:Class shape, hasOBONamespace property, graph URI, STRSTARTS filter)
-        - Avoided anti-patterns: No REGEX (use bif:contains), explicit GRAPH clauses prevent cross-contamination
-    
-    - title: Find Disease-Related GO Terms via MONDO Cross-References
-      description: |
-        Three-way integration using MONDO as a semantic bridge between MeSH and GO. First filters 
-        MONDO diseases with MeSH cross-references, then retrieves MeSH labels, finally finds related 
-        GO terms via keyword matching. This approach enables disease-focused molecular biology queries 
-        by combining clinical terminology (MeSH), disease classification (MONDO), and biological 
-        processes (GO). Uses simplified CONTAINS for stability in three-way queries.
+        Cross-database query using multiple MONDO disease IRIs to retrieve their MeSH mappings.
+        Demonstrates efficient batch lookup of MeSH descriptors across disease categories.
+        Pre-selecting MONDO IRIs eliminates need for keyword filtering in cross-database context.
       databases_used:
         - mesh
         - mondo
-        - go
+      complexity: intermediate
+      sparql: |
+        PREFIX owl: <http://www.w3.org/2002/07/owl#>
+        PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX obo: <http://purl.obolibrary.org/obo/>
+        
+        SELECT ?mondoId ?mondoLabel ?meshId ?meshLabel ?meshAnnotation
+        WHERE {
+          GRAPH <http://rdfportal.org/ontology/mondo> {
+            # Multiple specific disease IRIs
+            VALUES ?mondoDisease {
+              obo:MONDO_0004992  # cancer
+              obo:MONDO_0005015  # diabetes mellitus
+              obo:MONDO_0005260  # autism
+            }
+            ?mondoDisease a owl:Class ;
+                          rdfs:label ?mondoLabel ;
+                          oboInOwl:id ?mondoId ;
+                          oboInOwl:hasDbXref ?meshXref .
+            FILTER(STRSTARTS(?meshXref, "MESH:"))
+          }
+          
+          BIND(URI(CONCAT("http://id.nlm.nih.gov/mesh/", SUBSTR(?meshXref, 6))) AS ?meshDescriptor)
+          BIND(SUBSTR(?meshXref, 6) as ?meshId)
+          
+          GRAPH <http://id.nlm.nih.gov/mesh> {
+            ?meshDescriptor rdfs:label ?meshLabel .
+            OPTIONAL {
+              ?meshDescriptor meshv:annotation ?meshAnnotation
+            }
+          }
+        }
+        ORDER BY ?mondoLabel
+      notes: |
+        - Strategies: 1 (GRAPH), 2 (VALUES with IRIs), 5 (URI conversion)
+        - No keyword filtering needed - using pre-selected IRIs
+        - Efficient batch retrieval for multiple disease categories
+        - Performance: ~1-2s (Tier 1)
+        - Use case: Disease classification mapping, clinical terminology alignment
+    
+    - title: Three-Way Integration with NANDO for Japanese Rare Disease Research
+      description: |
+        Complex three-database integration using MONDO as semantic bridge.
+        Links Japanese rare disease database (NANDO) to MeSH clinical terminology via MONDO.
+        Uses simplified CONTAINS for stability in three-way queries.
+        Pre-filtering in NANDO before cross-database joins.
+      databases_used:
+        - mesh
+        - mondo
+        - nando
       complexity: advanced
       sparql: |
         PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+        PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+        PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
         
-        SELECT DISTINCT ?meshLabel ?mondoLabel ?goLabel
+        SELECT DISTINCT ?nandoLabelJa ?mondoLabel ?meshLabel ?notifNum
         WHERE {
+          GRAPH <http://nanbyodata.jp/ontology/nando> {
+            ?nandoDisease a owl:Class ;
+                          skos:closeMatch ?mondoDisease ;
+                          rdfs:label ?nandoLabelJa ;
+                          rdfs:label ?nandoLabelEn .
+            OPTIONAL { ?nandoDisease nando:hasNotificationNumber ?notifNum }
+            FILTER(STRSTARTS(STR(?mondoDisease), "http://purl.obolibrary.org/obo/MONDO_"))
+            FILTER(LANG(?nandoLabelJa) = "ja")
+            FILTER(LANG(?nandoLabelEn) = "en")
+            # Pre-filter in NANDO (simplified CONTAINS for three-way stability)
+            FILTER(CONTAINS(LCASE(?nandoLabelEn), "diabetes"))
+          }
+          
           GRAPH <http://rdfportal.org/ontology/mondo> {
             ?mondoDisease a owl:Class ;
-              rdfs:label ?mondoLabel ;
-              oboInOwl:hasDbXref ?meshXref .
+                          rdfs:label ?mondoLabel ;
+                          oboInOwl:hasDbXref ?meshXref .
             FILTER(STRSTARTS(?meshXref, "MESH:"))
-            FILTER(CONTAINS(LCASE(?mondoLabel), "parkinson"))
           }
           
           BIND(URI(CONCAT("http://id.nlm.nih.gov/mesh/", SUBSTR(?meshXref, 6))) AS ?meshDescriptor)
@@ -415,100 +430,96 @@ cross_database_queries:
           GRAPH <http://id.nlm.nih.gov/mesh> {
             ?meshDescriptor rdfs:label ?meshLabel .
           }
-          
-          GRAPH <http://rdfportal.org/ontology/go> {
-            ?goTerm rdfs:label ?goLabel .
-            FILTER(CONTAINS(LCASE(?goLabel), "dopamine"))
-          }
         }
         LIMIT 10
       notes: |
-        - Optimization strategies applied: 1 (GRAPH), 2 (pre-filter), 5 (URI conversion), 10 (LIMIT)
-        - Strategy 1: Three explicit GRAPH clauses isolate each database's data
-        - Strategy 2: Pre-filtering in MONDO (parkinson) and GO (dopamine) before three-way join
-        - Strategy 5: URI conversion from MONDO's MESH:C###### format to MeSH URIs
-        - Strategy 10: LIMIT 10 caps result set for performance
-        - Simplified with CONTAINS instead of bif:contains for three-way query stability
-        - MONDO acts as semantic hub linking MeSH descriptors to disease context
-        - GO terms filtered by related keyword (dopamine for Parkinson's disease)
-        - Performance: ~3-5 seconds for three-way cross-database queries (Tier 2)
-        - Performance gain: Pre-filtering reduces MONDO (30K) → ~15 diseases, GO (48K) → ~50 terms before join
-        - Use case: Disease mechanism research, systems biology, translational medicine
-        - Note: Returns conceptual relationships, not direct molecular-clinical links
-        - Coverage: Limited by both MONDO→MeSH (28%) and availability of related GO terms
-        - Referenced MIE files: mondo (hasDbXref, graph URI), go (rdfs:label, graph URI, CONTAINS simplification)
-        - Avoided anti-patterns: Uses CONTAINS instead of multiple bif:contains (prevents timeout in three-way queries)
-        - CRITICAL: Three-way queries cannot use complex GO filters (namespace with STR) due to query complexity
+        - Strategies: 1 (GRAPH), 2 (pre-filter), 5 (URI conversion), 10 (LIMIT)
+        - Strategy 1: Three explicit GRAPH clauses isolate each database
+        - Strategy 2: Pre-filtering in NANDO before three-way join
+        - Uses simplified CONTAINS instead of bif:contains (three-way query stability)
+        - Performance: ~3-5s (Tier 2) for three-database integration
+        - Use case: Japanese rare disease research, international terminology alignment
+        - Coverage: ~84% of NANDO diseases map to MONDO, ~28% of those reach MeSH
 
 cross_references:
   - pattern: meshv:thesaurusID
     description: |
-      Cross-references to external databases via thesaurusID property. Coverage: 916K total 
-      references across all entities.
+      External database cross-references via thesaurusID property.
+      Coverage: 916K total references across 869K entities (~35% of all entities).
+      Primary use: linking MeSH concepts to external medical, chemical, and genomic databases.
     databases:
       pharmaceutical:
-        - "FDA SRS: 22.6K"
-        - "FDA UNII: 22.6K"
-        - "INN: 8.8K"
+        - "FDA SRS: 22.6K substance registrations"
+        - "FDA UNII: 22.6K unique ingredient identifiers"
+        - "INN: 8.8K international nonproprietary names"
       genetic:
-        - "OMIM: 12.5K"
-        - "GHR: 3.8K"
+        - "OMIM: 12.5K Mendelian disorders"
+        - "GHR: 3.8K genetics home reference"
       chemical:
-        - "ChEBI: 2.5K"
+        - "ChEBI: 2.5K chemical entities"
       clinical:
-        - "SNOMED CT: 800+"
-        - "FMA: 1.1K"
+        - "SNOMED CT: 800+ clinical terminology"
+        - "FMA: 1.1K foundational anatomy"
     sparql: |
       PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       
-      SELECT ?entity ?xref
+      SELECT ?entity ?label ?xref
       FROM <http://id.nlm.nih.gov/mesh>
       WHERE {
-        ?entity meshv:thesaurusID ?xref .
+        ?entity meshv:thesaurusID ?xref ;
+                rdfs:label ?label .
+        # Filter by database prefix
         FILTER(CONTAINS(STR(?xref), "OMIM"))
       }
       LIMIT 50
 
 architectural_notes:
+  query_strategy:
+    - "Exploratory: Use FILTER(CONTAINS()) to discover examples and extract specific IRIs/identifiers"
+    - "Comprehensive: Use specific descriptor IRIs (e.g., mesh:D003920) in direct queries"
+    - "Tree navigation: Use STRSTARTS() with tree number prefixes for category filtering"
+    - "Hierarchy: Use meshv:broaderDescriptor+ for transitive parent relationships"
+    - "Text search: bif:contains (Virtuoso) only when no IRIs available (e.g., chemical name exploration)"
+    - "Cross-database: Pre-filter in source GRAPH, use specific IRIs in VALUES when possible"
+    - "Priority: Specific IRIs > Tree numbers > Graph navigation > Text search"
+  
   schema_design:
-    - "CRITICAL: Use meshv:broaderDescriptor (NOT meshv:broader) for hierarchical parent-child relationships"
-    - "CRITICAL: Use meshv:annotation (NOT meshv:scopeNote) for scope notes and indexing guidance"
-    - "CRITICAL: Terms use meshv:prefLabel (NOT rdfs:label) for their preferred labels"
-    - Tree numbers provide alphanumeric hierarchical codes (A-Z categories with numeric subcategories)
-    - "Three-level structure: Descriptor → Concept → Term for synonym management"
-    - Allowable qualifiers constrain valid descriptor-qualifier combinations for indexing
-    - MONDO cross-references can point to TopicalDescriptors (D######) OR SCR records (C######)
+    - "Three-level structure: TopicalDescriptor → Concept → Term for synonym management"
+    - "Tree numbers provide hierarchical classification (A-Z categories, alphanumeric subcategories)"
+    - "CRITICAL: Use meshv:broaderDescriptor (NOT meshv:broader) for parent relationships"
+    - "CRITICAL: Use meshv:annotation (NOT meshv:scopeNote) for scope notes"
+    - "CRITICAL: Terms use meshv:prefLabel (NOT rdfs:label) for preferred labels"
+    - "Allowable qualifiers define valid descriptor-qualifier combinations for indexing"
+    - "Supplementary records (SCR) include chemicals, organisms, diseases, protocols"
+  
   performance:
-    - Use bif:contains for label searches (full-text index + relevance scoring with option (score ?sc))
-    - Tree number filtering with STRSTARTS or REGEX is efficient for category-based queries
-    - Transitive broaderDescriptor+ queries work well when starting from specific descriptors
-    - Always use LIMIT for exploratory queries (database contains 2.5M+ entities)
-    - FROM <http://id.nlm.nih.gov/mesh> clause is required for queries
-    - "Cross-database query optimization: Apply Strategies 1 (GRAPH), 2 (pre-filter), 4 (bif:contains), 5 (URI conversion), 10 (LIMIT)"
-    - Pre-filtering within GRAPH clauses before joins provides 10-100x speedup (Strategy 2)
-    - bif:contains provides 10-100x speedup over REGEX for keyword matching (Strategy 4)
-    - Three-way queries use simplified CONTAINS filters for stability (avoid complex GO filters)
+    - "Specific IRIs: Fastest approach for known descriptors (mesh:D003920)"
+    - "VALUES with IRIs: Efficient batch queries for multiple known concepts"
+    - "Tree number filtering: Fast with STRSTARTS() for category-based queries"
+    - "bif:contains: Use sparingly, only for exploratory searches without known IRIs"
+    - "Always include LIMIT for exploratory queries (2.5M+ total entities)"
+    - "FROM clause required: FROM <http://id.nlm.nih.gov/mesh>"
+    - "Transitive queries: Work well from specific starting points (mesh:D003920 meshv:broaderDescriptor+ ?parent)"
+  
   data_integration:
-    - FDA SRS/UNII for pharmaceutical substances and ingredient identification
-    - OMIM for genetic disorders and Mendelian inheritance
-    - ChEBI for chemical entities and small molecules
-    - SNOMED CT for clinical terminology alignment
-    - Use meshv:thesaurusID for cross-database linkage
-    - MONDO provides semantic bridge to MeSH via oboInOwl:hasDbXref (28% coverage, ~8,500 diseases)
-    - GO integration via keyword matching (no direct semantic links)
-    - Shares "primary" endpoint with go, taxonomy, mondo, nando, bacdive, mediadive
-    - "Cross-database performance tiers: Tier 1 (1-3s) for two-database queries, Tier 2 (3-5s) for three-way queries"
+    - "Pharmaceutical: FDA SRS/UNII for substance identification and regulation"
+    - "Genetic: OMIM for Mendelian disorders, rare disease research"
+    - "Chemical: ChEBI for small molecules, CAS registry numbers via meshv:registryNumber"
+    - "Clinical: SNOMED CT for clinical terminology, ICD coding alignment"
+    - "Cross-database: MONDO provides ~8,500 disease mappings via hasDbXref"
+    - "Shares 'primary' endpoint with mondo, go, taxonomy, nando, bacdive, mediadive"
+  
   data_quality:
-    - Topical descriptors are primary subject headings (30,248 total)
-    - Annotations available for ~31% of descriptors (use OPTIONAL for queries)
-    - All descriptors have tree numbers (100% coverage)
-    - broaderDescriptor relationships for ~99.6% of descriptors
-    - Chemical records lack hierarchical structure (no broaderDescriptor)
-    - "MESH: cross-references in MONDO can be descriptors (D) or supplementary records (C)"
+    - "All topical descriptors have tree numbers (100% coverage)"
+    - "Annotations available for ~31% of descriptors (use OPTIONAL)"
+    - "99.6% of descriptors have broader relationships"
+    - "Chemical records (SCR) lack hierarchical structure"
+    - "MONDO cross-references can point to descriptors (D) or supplementary records (C)"
 
 data_statistics:
   total_entities: 2456909
-  verified_date: "2025-02-04"
+  verified_date: "2026-02-09"
   verification_query: |
     SELECT (COUNT(?entity) as ?count)
     FROM <http://id.nlm.nih.gov/mesh>
@@ -518,192 +529,198 @@ data_statistics:
     topical_descriptors: 30248
     terms: 869536
     concepts: 466976
-    chemicals: 250445
-    supplementary_records: 326812
-    tree_numbers: 81732
-    qualifiers: 84
-  
-  supplementary_record_breakdown:
     scr_chemical: 250445
     scr_organism: 66571
-    scr_disease: 6771
-    scr_population: 1764
-    scr_protocol: 1237
-    scr_anatomy: 24
-  
-  coverage:
-    descriptors_with_labels: "100%"
-    calculation: "All 30,248 TopicalDescriptors have rdfs:label"
-    verified_date: "2025-02-04"
-    
-    descriptors_with_annotations: "30.7%"
-    calculation: "9,293 descriptors with meshv:annotation / 30,248 total"
-    verified_date: "2025-02-04"
+    tree_numbers: 81732
+    qualifiers: 84
+    verification_date: "2026-02-09"
     verification_query: |
-      SELECT (COUNT(DISTINCT ?desc) as ?with_ann)
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      
+      SELECT ?type (COUNT(?e) as ?count)
       FROM <http://id.nlm.nih.gov/mesh>
-      WHERE { ?desc a meshv:TopicalDescriptor ; meshv:annotation ?ann }
-    
-    descriptors_with_tree_numbers: "100%"
-    calculation: "All 30,248 descriptors have at least one meshv:treeNumber"
-    verified_date: "2025-02-04"
+      WHERE { 
+        ?e a ?type .
+        FILTER(STRSTARTS(STR(?type), "http://id.nlm.nih.gov/mesh/vocab#"))
+      }
+      GROUP BY ?type
+  
+  tree_category_distribution:
+    methodology: "Tree numbers categorized by first letter (A-Z)"
+    major_categories:
+      - "D (Chemicals and Drugs): 10,541 descriptors"
+      - "C (Diseases): 5,032 descriptors"
+      - "B (Organisms): 3,964 descriptors"
+      - "E (Analytical/Diagnostic Techniques): 3,102 descriptors"
+      - "G (Phenomena and Processes): 2,430 descriptors"
+      - "N (Health Care): 2,002 descriptors"
+      - "A (Anatomy): 1,904 descriptors"
     verification_query: |
-      SELECT (COUNT(DISTINCT ?desc) as ?with_tree)
-      FROM <http://id.nlm.nih.gov/mesh>
-      WHERE { ?desc a meshv:TopicalDescriptor ; meshv:treeNumber ?tree }
-    
-    descriptors_with_broader_relationships: "99.65%"
-    calculation: "30,142 descriptors with broaderDescriptor / 30,248 total (106 without)"
-    verified_date: "2025-02-04"
-    verification_query: |
-      SELECT (COUNT(DISTINCT ?desc) as ?with_broader)
-      FROM <http://id.nlm.nih.gov/mesh>
-      WHERE { ?desc a meshv:TopicalDescriptor ; meshv:broaderDescriptor ?broader }
-    
-    entities_with_thesaurus_ids: "35.4%"
-    calculation: "869,206 entities with meshv:thesaurusID / 2,456,909 total (916,022 total xref statements)"
-    verified_date: "2025-02-04"
-    
-    mondo_diseases_with_mesh_xrefs: "~28%"
-    note: "Approximate coverage from MONDO to MeSH (~8,500 mappings)"
-  
-  cardinality:
-    avg_tree_numbers_per_descriptor: 2.1
-    verified_date: "2025-02-04"
-    verification_query: |
-      SELECT (AVG(?treeCount) as ?avg_trees)
-      WHERE {
-        { SELECT ?desc (COUNT(?tree) as ?treeCount)
-          WHERE { ?desc a meshv:TopicalDescriptor ; meshv:treeNumber ?tree }
-          GROUP BY ?desc }
-      }
-    
-    avg_terms_per_concept: 1.86
-    verified_date: "2025-02-04"
-    
-    avg_qualifiers_per_descriptor: 21.5
-    verified_date: "2025-02-04"
-  
-  performance_characteristics:
-    - bif:contains efficient for label searches with relevance ranking
-    - Tree number filtering fast with STRSTARTS or REGEX patterns
-    - Transitive broaderDescriptor+ queries work from specific starting descriptors
-    - Recommend LIMIT 50 for exploratory queries
-    - "Cross-database queries: Tier 1 (1-3s) for MONDO/GO two-database, Tier 2 (3-5s) for three-way"
-    - "Optimization gain: Pre-filtering reduces join size by 99%+ before cross-database joins"
-  
-  data_quality_notes:
-    - MONDO provides 28% coverage (~8,500) of MeSH disease mappings via hasDbXref
-    - GO integration requires keyword matching (no direct semantic links)
-    - Cross-database queries benefit from filtering by keyword first
-    - Three-way queries require simplified CONTAINS filters (complex GO filters cause 400 errors)
-  
-  staleness_warning: "MeSH is updated annually. Statistics verified 2025-02-04 against 2024 release."
-
-anti_patterns:
-  - title: Using meshv:broader Instead of meshv:broaderDescriptor
-    problem: Property name is incorrect - meshv:broader does not exist in the MeSH vocabulary
-    wrong_sparql: |
-      SELECT ?parent WHERE {
-        mesh:D003920 meshv:broader+ ?parent .
-      }
-    correct_sparql: |
-      SELECT ?parent ?parentLabel
-      FROM <http://id.nlm.nih.gov/mesh>
-      WHERE {
-        mesh:D003920 meshv:broaderDescriptor+ ?parent .
-        ?parent rdfs:label ?parentLabel .
-      }
-    explanation: The correct property is meshv:broaderDescriptor, not meshv:broader. Always include FROM clause and retrieve labels.
-  
-  - title: Using meshv:scopeNote Instead of meshv:annotation
-    problem: Property name is incorrect - meshv:scopeNote does not exist in MeSH RDF
-    wrong_sparql: |
-      SELECT ?descriptor ?scopeNote WHERE {
-        ?descriptor meshv:scopeNote ?scopeNote .
-      }
-    correct_sparql: |
-      SELECT ?descriptor ?label ?annotation
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT ?category (COUNT(DISTINCT ?descriptor) as ?count)
       FROM <http://id.nlm.nih.gov/mesh>
       WHERE {
         ?descriptor a meshv:TopicalDescriptor ;
-          rdfs:label ?label .
-        OPTIONAL { ?descriptor meshv:annotation ?annotation }
+                    meshv:treeNumber ?tree .
+        ?tree rdfs:label ?treeLabel .
+        BIND(SUBSTR(?treeLabel, 1, 1) as ?category)
       }
-      LIMIT 50
-    explanation: The correct property is meshv:annotation, not meshv:scopeNote or skos:scopeNote. Use OPTIONAL since only ~31% have annotations.
+      GROUP BY ?category
+      ORDER BY DESC(?count)
   
-  - title: Using FILTER CONTAINS Instead of bif:contains
-    problem: No full-text index or relevance ranking, very slow on large datasets
+  coverage:
+    descriptors_with_labels: "100%"
+    descriptors_with_tree_numbers: "100%"
+    descriptors_with_annotations: "30.7%"
+    descriptors_with_broader_relationships: "99.65%"
+    entities_with_thesaurus_ids: "35.4%"
+    note: "916K total cross-references across 869K entities"
+    mondo_mesh_mappings: "~28% of MONDO diseases (~8,500 mappings)"
+  
+  cardinality:
+    avg_tree_numbers_per_descriptor: 2.1
+    avg_qualifiers_per_descriptor: 21.5
+    avg_terms_per_concept: 1.86
+  
+  performance_characteristics:
+    - "Specific IRI lookup: <100ms (e.g., mesh:D003920)"
+    - "VALUES with 3-10 IRIs: <500ms"
+    - "Tree category filtering: 1-2s (e.g., STRSTARTS 'C19')"
+    - "Transitive hierarchy: 2-5s from specific starting point"
+    - "bif:contains exploratory: 3-10s (use LIMIT)"
+    - "Cross-database (two-way): 1-3s with pre-filtering (Tier 1)"
+    - "Cross-database (three-way): 3-5s with simplified CONTAINS (Tier 2)"
+  
+  staleness_warning: "MeSH is updated annually. Statistics verified 2026-02-09 against 2024 release."
+
+anti_patterns:
+  - title: "Text Search When Specific IRI Known"
+    problem: "Using bif:contains when descriptor IRI is already known wastes full-text index"
     wrong_sparql: |
-      SELECT ?label WHERE {
-        ?descriptor rdfs:label ?label .
-        FILTER(CONTAINS(LCASE(?label), "diabetes"))
-      }
-    correct_sparql: |
-      SELECT ?label
+      # Slow: Text search for known concept
+      SELECT ?descriptor ?label
       FROM <http://id.nlm.nih.gov/mesh>
       WHERE {
-        ?descriptor rdfs:label ?label .
-        ?label bif:contains "'diabetes'" option (score ?sc)
-      }
-      ORDER BY DESC(?sc)
-      LIMIT 20
-    explanation: bif:contains uses Virtuoso's full-text index and provides relevance scoring (Strategy 4). Always include ORDER BY DESC(?sc) to get most relevant results first. Performance gain 10-100x over FILTER CONTAINS.
-  
-  - title: Cross-Database Query Without Pre-Filtering
-    problem: Filtering after join causes timeout by processing millions of intermediate results
-    wrong_sparql: |
-      # BAD: Filter after cross-database join
-      WHERE {
-        GRAPH <http://rdfportal.org/ontology/mondo> {
-          ?disease a owl:Class ;
-            oboInOwl:hasDbXref ?meshXref .
-          FILTER(STRSTARTS(?meshXref, "MESH:"))
-        }
-        GRAPH <http://id.nlm.nih.gov/mesh> {
-          BIND(URI(CONCAT("http://id.nlm.nih.gov/mesh/", SUBSTR(?meshXref, 6))) AS ?meshDesc)
-          ?meshDesc rdfs:label ?meshLabel .
-        }
-        FILTER(CONTAINS(?meshLabel, "diabetes"))  # Too late!
+        ?descriptor a meshv:TopicalDescriptor ;
+                    rdfs:label ?label .
+        ?label bif:contains "'Diabetes Mellitus'"
       }
     correct_sparql: |
-      # GOOD: Pre-filter in source GRAPH (Strategy 2)
+      # Fast: Direct IRI lookup
+      PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT ?label ?annotation
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        mesh:D003920 rdfs:label ?label .
+        OPTIONAL { mesh:D003920 meshv:annotation ?annotation }
+      }
+    explanation: |
+      When you know the descriptor IRI (e.g., from exploration or documentation),
+      use it directly instead of text search. Performance: 100ms vs 5s.
+  
+  - title: "Circular Reasoning with Search Results"
+    problem: "Using search results in VALUES for comprehensive count queries"
+    wrong_sparql: |
+      # Step 1: Search finds 20 diabetes descriptors
+      # Step 2: WRONG - Count only those 20
+      PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
+      
+      SELECT (COUNT(?descriptor) as ?count)
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        VALUES ?descriptor { 
+          mesh:D003920 mesh:D003922 ... mesh:D020790  # Only 20 from search
+        }
+        ?descriptor a meshv:TopicalDescriptor .
+      }
+      # Result: 20 (circular - only counted what we searched for!)
+    correct_sparql: |
+      # Correct: Use tree number pattern discovered from examples
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT (COUNT(DISTINCT ?descriptor) as ?count)
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        ?descriptor a meshv:TopicalDescriptor ;
+                    meshv:treeNumber ?tree .
+        ?tree rdfs:label ?treeNum .
+        # Use pattern from exploration: diabetes under C18.452 or C19
+        FILTER(STRSTARTS(?treeNum, "C18.452") || STRSTARTS(?treeNum, "C19"))
+      }
+    explanation: |
+      Workflow: (1) Use search to find examples, (2) Inspect to discover tree patterns,
+      (3) Use tree patterns to query ALL matching descriptors, not just search results.
+  
+  - title: "Cross-Database Query Without Pre-Filtering"
+    problem: "Filtering after join causes timeout by processing millions of intermediate rows"
+    wrong_sparql: |
+      # BAD: Filter after cross-database join
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
       WHERE {
         GRAPH <http://rdfportal.org/ontology/mondo> {
           ?disease a owl:Class ;
-            rdfs:label ?diseaseLabel ;
-            oboInOwl:hasDbXref ?meshXref .
+                   oboInOwl:hasDbXref ?meshXref .
           FILTER(STRSTARTS(?meshXref, "MESH:"))
-          ?diseaseLabel bif:contains "'diabetes'" option (score ?sc)  # Early filtering!
+        }
+        BIND(URI(CONCAT("http://id.nlm.nih.gov/mesh/", SUBSTR(?meshXref, 6))) AS ?meshDesc)
+        GRAPH <http://id.nlm.nih.gov/mesh> {
+          ?meshDesc rdfs:label ?meshLabel .
+        }
+        # TOO LATE! Already joined 30K MONDO × 8,500 mappings
+        FILTER(CONTAINS(?meshLabel, "diabetes"))
+      }
+    correct_sparql: |
+      # GOOD: Pre-filter using specific MONDO IRIs
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      
+      WHERE {
+        GRAPH <http://rdfportal.org/ontology/mondo> {
+          # Strategy 2: Use specific IRIs after exploratory search
+          VALUES ?disease {
+            obo:MONDO_0005147  # Type 1 diabetes
+            obo:MONDO_0005148  # Type 2 diabetes
+          }
+          ?disease a owl:Class ;
+                   rdfs:label ?diseaseLabel ;
+                   oboInOwl:hasDbXref ?meshXref .
+          FILTER(STRSTARTS(?meshXref, "MESH:"))
         }
         BIND(URI(CONCAT("http://id.nlm.nih.gov/mesh/", SUBSTR(?meshXref, 6))) AS ?meshDesc)
         GRAPH <http://id.nlm.nih.gov/mesh> {
           ?meshDesc rdfs:label ?meshLabel .
         }
       }
-      ORDER BY DESC(?sc)
-      LIMIT 10
-    explanation: "Strategy 2: Pre-filtering in source database (MONDO) reduces 30K diseases → ~10 before MeSH join (99.97% reduction), improving performance 100x+. Always filter within GRAPH clauses before joins."
+    explanation: |
+      Strategy 2 (pre-filtering): Use specific IRIs from exploratory search.
+      Reduces query from 30K diseases → 2 diseases before MeSH join.
+      Performance: 20s timeout → 1s completion.
 
 common_errors:
-  - error: Empty results when querying broader relationships
+  - error: "Empty results when querying hierarchy"
     causes:
-      - Using wrong property name meshv:broader instead of meshv:broaderDescriptor
-      - Not starting from a specific descriptor for transitive queries
-      - Forgetting FROM <http://id.nlm.nih.gov/mesh> clause
+      - "Using wrong property meshv:broader instead of meshv:broaderDescriptor"
+      - "Missing FROM <http://id.nlm.nih.gov/mesh> clause"
+      - "Unbounded transitive query without specific starting point"
     solutions:
       - "CRITICAL: Use meshv:broaderDescriptor, not meshv:broader"
-      - Start transitive queries (broaderDescriptor+) from specific descriptors
-      - Use tree numbers as an alternative for category-based navigation
-      - Always include FROM clause in queries
+      - "Always include FROM clause in queries"
+      - "Start transitive queries from specific IRI: mesh:D003920 meshv:broaderDescriptor+ ?parent"
     example_fix: |
-      # Wrong - incorrect property name and missing FROM
+      # Wrong - incorrect property and missing FROM
       SELECT ?parent WHERE {
         mesh:D003920 meshv:broader ?parent .
       }
       
-      # Correct - use broaderDescriptor with FROM clause
+      # Correct - proper property and FROM clause
       PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
       PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -715,114 +732,75 @@ common_errors:
         ?parent rdfs:label ?parentLabel .
       }
   
-  - error: Empty results when querying scope notes
+  - error: "Empty results when querying annotations"
     causes:
-      - Using wrong property name meshv:scopeNote instead of meshv:annotation
-      - Using skos:scopeNote which doesn't exist in MeSH RDF
-      - Not using OPTIONAL for annotation property
+      - "Using wrong property meshv:scopeNote instead of meshv:annotation"
+      - "Not using OPTIONAL (only 31% have annotations)"
     solutions:
       - "CRITICAL: Use meshv:annotation, not meshv:scopeNote"
-      - Remember only ~31% of descriptors have annotations
-      - Always use OPTIONAL for annotation property
-      - Include FROM clause
+      - "Always use OPTIONAL for annotation property"
+      - "Include FROM clause"
     example_fix: |
-      # Wrong - incorrect property name
-      SELECT ?descriptor ?scopeNote WHERE {
-        ?descriptor meshv:scopeNote ?scopeNote .
+      # Wrong
+      SELECT ?desc ?scopeNote WHERE {
+        ?desc meshv:scopeNote ?scopeNote .
       }
       
-      # Correct - use annotation with OPTIONAL
+      # Correct
       PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       
-      SELECT ?descriptor ?label ?annotation
+      SELECT ?desc ?label ?annotation
       FROM <http://id.nlm.nih.gov/mesh>
       WHERE {
-        ?descriptor a meshv:TopicalDescriptor ;
-          rdfs:label ?label .
-        OPTIONAL { ?descriptor meshv:annotation ?annotation }
+        ?desc a meshv:TopicalDescriptor ;
+              rdfs:label ?label .
+        OPTIONAL { ?desc meshv:annotation ?annotation }
       }
       LIMIT 50
   
-  - error: Query timeout on term searches
+  - error: "Query timeout on exploratory searches"
     causes:
-      - Searching 869K terms without filters
-      - Missing LIMIT clause
-      - Using FILTER CONTAINS instead of bif:contains
+      - "Missing LIMIT clause on bif:contains queries"
+      - "Searching 869K terms without type filter"
     solutions:
-      - Filter by entity type first (TopicalDescriptor, SCR_Chemical, etc.)
-      - Use bif:contains for keyword searches with full-text index (Strategy 4)
-      - Add LIMIT 50-100 for exploratory queries
-      - Use tree number filtering to narrow scope
-  
-  - error: Cross-database query timeout
-    causes:
-      - Missing pre-filtering (Strategy 2) - processing millions of rows
-      - Missing GRAPH clauses (Strategy 1) - cross-contamination
-      - Using multiple bif:contains in three-way queries
-      - Missing LIMIT clause (Strategy 10)
-    solutions:
-      - Apply restrictive FILTER within source GRAPH clause before join (Strategy 2)
-      - Use explicit GRAPH clauses for each database (Strategy 1)
-      - For three-way queries, use simplified CONTAINS instead of multiple bif:contains
-      - Add LIMIT to every query level (Strategy 10)
-      - Test each GRAPH clause independently before combining
+      - "Always add LIMIT 20-50 for exploratory bif:contains queries"
+      - "Filter by entity type first (meshv:TopicalDescriptor, meshv:SCR_Chemical)"
+      - "Consider using tree number filtering for category-based queries"
     example_fix: |
-      # BEFORE (times out):
+      # Add LIMIT and ORDER BY relevance
+      SELECT ?label
+      FROM <http://id.nlm.nih.gov/mesh>
       WHERE {
-        GRAPH <http://rdfportal.org/ontology/mondo> { ?d1 ?p1 ?o1 }
-        GRAPH <http://id.nlm.nih.gov/mesh> { ?d2 ?p2 ?d1 }
-        FILTER(?condition)
+        ?desc a meshv:TopicalDescriptor ;
+              rdfs:label ?label .
+        ?label bif:contains "'diabetes'" option (score ?sc)
       }
+      ORDER BY DESC(?sc)
+      LIMIT 20
+  
+  - error: "Cross-database query timeout"
+    causes:
+      - "Missing pre-filtering in source GRAPH (Strategy 2)"
+      - "Using bif:contains filter after join instead of before"
+      - "Missing VALUES with specific IRIs"
+    solutions:
+      - "Use specific IRIs in VALUES after exploratory search"
+      - "Pre-filter within source GRAPH before cross-database join"
+      - "For three-way queries, use simplified CONTAINS"
+      - "Add LIMIT to prevent runaway queries"
+    example_fix: |
+      # Instead of keyword filter after join:
+      GRAPH <http://rdfportal.org/ontology/mondo> {
+        ?disease oboInOwl:hasDbXref ?meshXref .
+      }
+      FILTER(CONTAINS(?diseaseLabel, "diabetes"))
       
-      # AFTER (completes in 2s):
-      WHERE {
-        GRAPH <http://rdfportal.org/ontology/mondo> {
-          ?d1 ?p1 ?o1 .
-          FILTER(?condition)  # Early filter! (Strategy 2)
+      # Use specific IRIs from exploration:
+      GRAPH <http://rdfportal.org/ontology/mondo> {
+        VALUES ?disease {
+          obo:MONDO_0005147
+          obo:MONDO_0005148
         }
-        GRAPH <http://id.nlm.nih.gov/mesh> { ?d2 ?p2 ?d1 }
-      }
-      LIMIT 10
-  
-  - error: Cross-database query returns empty results with MONDO
-    causes:
-      - Assuming all MESH: xrefs are TopicalDescriptors (D######)
-      - Not checking for SCR records (C######)
-      - Wrong entity type filter
-    solutions:
-      - Query for rdfs:label without type restriction (works for both D and C records)
-      - Note that MESH: xrefs can be descriptors OR supplementary records
-      - Test BIND URI construction separately before full query
-    example_fix: |
-      # More robust - works for both D and C records
-      GRAPH <http://id.nlm.nih.gov/mesh> {
-        ?meshDescriptor rdfs:label ?meshLabel .
-        # No type restriction - works for TopicalDescriptor AND SCR_Disease
-      }
-  
-  - error: Three-way cross-database query returns 400 error
-    causes:
-      - Complex GO filters (namespace with STR, multiple property restrictions)
-      - Combining multiple bif:contains across three databases
-      - Query complexity exceeds endpoint limits
-    solutions:
-      - Use simplified CONTAINS instead of bif:contains in three-way queries
-      - Remove complex GO filters like STR(?goNamespace) comparisons
-      - Keep GO GRAPH clause minimal (rdfs:label and simple CONTAINS filter)
-      - Test two-database queries first, then add third database
-      - Consider splitting complex three-way queries into multiple two-database queries
-    example_fix: |
-      # FAILS with 400 error:
-      GRAPH <http://rdfportal.org/ontology/go> {
-        ?goTerm a owl:Class ;
-          oboinowl:hasOBONamespace ?goNamespace .
-        ?goLabel bif:contains "'dopamine'" option (score ?sc)
-        FILTER(STR(?goNamespace) = "biological_process")
-      }
-      
-      # WORKS - simplified:
-      GRAPH <http://rdfportal.org/ontology/go> {
-        ?goTerm rdfs:label ?goLabel .
-        FILTER(CONTAINS(LCASE(?goLabel), "dopamine"))
+        ?disease oboInOwl:hasDbXref ?meshXref .
       }

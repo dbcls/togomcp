@@ -1,199 +1,337 @@
-# TogoMCP Usage Guide
+# TogoMCP Usage Guide (Concise)
 
-**Step-by-step workflow for answering biological questions using TogoMCP tools.**
+## Critical Concepts
+
+### ⚠️ Search vs. Comprehensive Queries
+
+**Search APIs (Exploratory)**
+- Purpose: Find patterns, examples, cross-references
+- Returns: 10-20 results typically
+- Use for: Understanding data, identifying entities
+- **NOT for**: Definitive answers to comprehensive questions
+
+**SPARQL (Comprehensive)**
+- Purpose: Validation, complete analysis, definitive answers
+- Returns: All matching entities
+- Use for: Aggregations, existence claims, phylogenetic distribution
+- **Required for**: Yes/no questions, "are there any...", "which organisms..."
+
+### Circular Reasoning Trap ⚠️
+
+**WRONG** - Using search results in SPARQL VALUES:
+```
+1. Search API finds 8 example proteins
+2. Hardcode those IDs: VALUES ?protein { uniprot:P1 uniprot:P2 ... }
+3. Query only those 8 proteins
+→ CIRCULAR: You only checked what you already found!
+```
+
+**CORRECT** - Comprehensive search with bif:contains:
+```
+1. Search API finds examples (identify patterns/synonyms)
+2. SPARQL searches ALL entities: bif:contains "'term1' OR 'term2' OR 'term3'"
+3. Aggregate complete results
+→ COMPREHENSIVE: Checked everything matching criteria
+```
 
 ---
 
-## ⭐ Complete Workflow (7 Steps)
+## Quick Reference: Tools by Purpose
 
-### 1. Analyze the Question
-- Extract keywords, IDs, entities
-- Identify domain (proteins, chemicals, diseases, pathways, etc.)
-- Classify query type:
-  - **Comprehensive**: yes/no, distribution, "Do ANY...", "Are there..."
-  - **Example-based**: top-N, specific lookup, "List the...", "Which 5..."
+### Discovery
+- `list_databases()` - List 22 RDF databases
+- `get_sparql_endpoints()` - Get endpoint URLs and search tools
+- `togoid_getAllDataset()` - ID conversion routes
+- `ncbi_list_databases()` - NCBI databases
 
-### 2. Identify Relevant Databases
+### Search (Exploratory)
+| Domain | Tool |
+|--------|------|
+| Proteins | `search_uniprot_entity(query, limit=20)` |
+| Drugs/Molecules | `search_chembl_molecule(query, limit=20)` |
+| Drug Targets | `search_chembl_target(query, limit=20)` |
+| 3D Structures | `search_pdb_entity(db, query, limit=20)` db: "pdb"/"cc"/"prd" |
+| Pathways | `search_reactome_entity(query, rows=30)` |
+| Reactions | `search_rhea_entity(query, limit=100)` |
+| Medical Terms | `search_mesh_descriptor(query, limit=10)` |
+| Ontologies | `OLS4:search(query)` or `OLS4:searchClasses(query, ontologyId)` |
+| Chemicals | `get_pubchem_compound_id(name)` → `get_compound_attributes_from_pubchem(id)` |
+| NCBI | `ncbi_esearch(database, query)` - Gene, Taxonomy, ClinVar, MedGen, PubMed, PubChem |
 
-```python
-# List all available databases with descriptions
-databases = list_databases()
+### SPARQL (Comprehensive)
+- `get_MIE_file(dbname)` - **MANDATORY** before SPARQL: schema + examples
+- `run_sparql(dbname, query)` - Execute query
+- `get_sparql_example(dbname)` - Example queries
+- `get_graph_list(dbname)` - Named graphs
+
+### ID Conversion (TogoID)
+- `togoid_convertId(ids, route)` - Convert IDs (e.g., "uniprot,pdb")
+- `togoid_getRelation(source, target)` - Check if route exists
+- `togoid_countId(ids, source, target)` - Count convertible IDs
+
+### Retrieval
+- `ncbi_esummary(database, ids)` - Summaries
+- `ncbi_efetch(database, ids, rettype)` - Full records
+- `OLS4:fetch(id)` - Ontology term details
+- `OLS4:getAncestors/getDescendants(classIri, ontologyId)` - Hierarchy
+
+---
+
+## Complete Workflow
+
+```
+1. ANALYZE QUERY
+   ├─ Extract keywords, IDs, entities
+   ├─ Identify domain (proteins/chemicals/diseases/etc.)
+   └─ Classify: Comprehensive (yes/no, exists) or Example-based (specific, top-N)?
+
+2. SELECT DATABASE(S)
+   └─ Run list_databases() if unsure
+
+3. EXECUTE SEARCH (EXPLORATORY)
+   ├─ ALWAYS try search tools first
+   ├─ Find patterns, examples, synonyms
+   ├─ Document ALL variations for Step 4
+   └─ Multiple keywords if needed
+
+4. INSPECT EXAMPLES (COMPREHENSIVE ONLY)
+   ├─ Take 2-3 example IDs from search
+   ├─ Use VALUES to examine their structure:
+   │  ├─ What annotation types exist?
+   │  ├─ What's in those annotations?
+   │  └─ Are there keywords/GO terms?
+   └─ Document: Best property found (keyword > annotation > text)
+
+5. SPARQL (if needed)
+   ├─ MANDATORY: get_MIE_file(dbname) first
+   ├─ Use discovered properties (Step 4) for comprehensive queries
+   ├─ Comprehensive: bif:contains with ALL synonyms (NO VALUES)
+   ├─ Example-based: VALUES with specific IDs is OK
+   └─ ALWAYS include LIMIT
+
+6. CONVERT IDs
+   ├─ Check route: togoid_getRelation(source, target)
+   └─ Convert: togoid_convertId(ids, route)
+
+7. RETRIEVE DETAILS
+   └─ Use ncbi_esummary/efetch, OLS4:fetch, etc.
+
+8. SYNTHESIZE RESULTS
+   ├─ Combine all sources
+   ├─ Cite databases used
+   └─ State methodology (comprehensive vs example-based)
 ```
 
-**Select database(s) based on domain:**
+---
 
-| Domain | Primary Databases |
-|--------|-------------------|
-| **Proteins** | uniprot, pdb, ensembl |
-| **Genes** | ncbigene, ensembl, go |
-| **Chemicals/Drugs** | chembl, pubchem, chebi |
-| **Diseases** | mondo, mesh, medgen, clinvar, nando |
-| **Pathways** | reactome, go |
-| **Reactions** | rhea, reactome |
-| **Taxonomy** | taxonomy, bacdive |
-| **Structures** | pdb |
-| **Variants** | clinvar |
-| **Glycans** | glycosmos |
-| **Literature** | pubmed, pubtator |
+## Inspection Queries (Step 4)
 
-### 3. Load MIE Files
+### Find What Annotation Types Exist
+```sparql
+PREFIX up: <http://purl.uniprot.org/core/>
 
-```python
-# Load MIE file for each selected database
-mie_info = get_MIE_file(dbname="your_database")
+SELECT ?annotType (COUNT(*) as ?count)
+WHERE {
+  VALUES ?protein { uniprot:ID1 uniprot:ID2 }  # From search
+  ?protein up:annotation ?annot .
+  ?annot a ?annotType .
+}
+GROUP BY ?annotType
+ORDER BY DESC(?count)
 ```
 
-**MIE file contains:**
-- **kw_search_tools**: Which search API to use (ncbi_esearch, search_*_entity, etc.)
-- **ShEx schema**: Available structured properties (keywords, GO terms, EC numbers)
-- **SPARQL examples**: Query patterns
-- **RDF examples**: Data organization
+### Examine Annotation Content
+```sparql
+PREFIX up: <http://purl.uniprot.org/core/>
 
-### 4. Discovery Phase (Use kw_search_tools)
-
-**Check MIE file's kw_search_tools field:**
-- **ncbi_esearch** → ClinVar, MedGen, PubMed, NCBI_Gene, PubChem
-- **search_*_entity** → UniProt, ChEMBL, PDB, Reactome, Rhea, MeSH
-- **OLS4:searchClasses** → GO, MONDO, ChEBI, NANDO
-- **Empty/SPARQL only** → BacDive, MediaDive, AMRPortal, PubTator, Glycosmos, DDBJ, Ensembl
-
-**Execute search to:**
-- Find 5-10 example entities
-- **Identify structured properties** (classifications, keywords, ontologies)
-- Document variations/synonyms
-
-```python
-# Example: UniProt
-results = search_uniprot_entity("transferase", limit=20)
-# Note: KW-0808 (Transferase keyword), GO:0016740 (Transferase activity)
+SELECT ?annotType ?comment
+WHERE {
+  VALUES ?protein { uniprot:ID1 uniprot:ID2 }
+  ?protein up:annotation ?annot .
+  ?annot a ?annotType ;
+         rdfs:comment ?comment .
+  FILTER(CONTAINS(LCASE(?comment), "search_term"))
+}
 ```
 
-### 5. Validation with SPARQL
+### Discover Keywords/GO Terms
+```sparql
+PREFIX up: <http://purl.uniprot.org/core/>
 
-**Query Priority (Best to Worst):**
-1. **Structured properties** (up:classifiedWith, ontology IDs, cross-references)
-2. **bif:contains** (full-text search - LAST RESORT only)
+SELECT ?keyword ?label
+WHERE {
+  VALUES ?protein { uniprot:ID1 uniprot:ID2 }
+  ?protein up:classifiedWith ?keyword .
+  OPTIONAL { ?keyword rdfs:label ?label }
+}
+```
 
-**Best Practice - Use Structured Properties:**
+---
+
+## Query Strategy by Discovered Property
+
+### Priority Order (Best → Worst)
+
+**1. Keywords (BEST)**
 ```sparql
 PREFIX up: <http://purl.uniprot.org/core/>
 PREFIX keywords: <http://purl.uniprot.org/keywords/>
 
-SELECT ?protein ?organism
+SELECT ?protein ?name
 WHERE {
   ?protein up:reviewed 1 ;
-           up:classifiedWith keywords:KW-0808 ;  # Transferase (from MIE schema)
-           up:organism ?organism .
+           up:classifiedWith keywords:KW-XXXX ;  # Found in Step 4
+           up:recommendedName/up:fullName ?name .
 }
-LIMIT 100
+LIMIT 1000
 ```
 
-**Last Resort - Use bif:contains:**
+**2. Annotation Patterns (GOOD)**
 ```sparql
-# Only when NO structured properties exist
-?protein up:recommendedName/up:fullName ?fullName .
-?fullName bif:contains "'transferase' OR 'enzyme'"
+PREFIX up: <http://purl.uniprot.org/core/>
+
+SELECT ?protein ?name
+WHERE {
+  ?protein up:reviewed 1 ;
+           up:annotation ?annot ;
+           up:recommendedName/up:fullName ?name .
+  ?annot a up:Cofactor_Annotation ;
+         rdfs:comment ?comment .
+  ?comment bif:contains "'pattern_from_step4'"
+}
+LIMIT 1000
 ```
 
-**Database-Specific Rules:**
-- **UniProt**: ALWAYS `?protein up:reviewed 1`
-- **ChEMBL**: Use `FROM <http://rdf.ebi.ac.uk/dataset/chembl>`
-- **All**: ALWAYS use `LIMIT` (20-100)
+**3. bif:contains (LAST RESORT)**
+```sparql
+PREFIX up: <http://purl.uniprot.org/core/>
 
-### 6. Link Across Databases (TogoID)
-
-**Use TogoID when you need data from multiple databases:**
-
-```python
-# Check if conversion route exists
-relation = togoid_getRelation("uniprot", "pdb")
-
-# Convert IDs from Step 4 or Step 5
-pdb_ids = togoid_convertId(ids="P04637,P12821", route="uniprot,pdb")
-
-# Multi-hop conversion
-ensembl_ids = togoid_convertId(ids="P04637", route="uniprot,ncbigene,ensembl_gene")
+SELECT ?protein ?fullName
+WHERE {
+  ?protein up:reviewed 1 ;
+           up:recommendedName ?name .
+  ?name up:fullName ?fullName .
+  ?fullName bif:contains "'term1' OR 'term2' OR 'term3'"  # All synonyms
+}
+LIMIT 1000
 ```
-
-**After conversion:**
-- If you need to query the new database → Return to Steps 3-5 for that database
-- If you just needed the IDs → Proceed to Step 7
-
-**Common conversion routes:**
-- UniProt → PDB (structures)
-- UniProt → ChEMBL (drug targets)
-- NCBI Gene → UniProt → PDB
-- UniProt → NCBI Gene → Ensembl
-
-### 7. Present Results
-
-- Synthesize information from all databases
-- Cite all databases used (UniProt, PDB, ChEMBL, etc.)
-- Provide IDs for user follow-up
-- Note limitations (missing data, failed conversions)
-- For comprehensive queries: State methodology and confidence
 
 ---
 
-## Quick Reference
+## Database Quick Reference
 
-### 🔍 Search Tools
+| Category | Database | Search Tool | Description |
+|----------|----------|-------------|-------------|
+| **Proteins** | uniprot | search_uniprot_entity | 444M proteins, functions |
+| | pdb | search_pdb_entity | 204K 3D structures |
+| **Chemicals** | pubchem | ncbi_esearch | 119M compounds |
+| | chembl | search_chembl_molecule/target | 2.4M bioactive molecules |
+| | chebi | OLS4:searchClasses | 217K entities |
+| **Diseases** | mondo | OLS4:searchClasses | 30K disease classes |
+| | mesh | search_mesh_descriptor | 30K descriptors |
+| | clinvar | ncbi_esearch | 3.5M variants |
+| **Pathways** | reactome | search_reactome_entity | 22K pathways |
+| | go | OLS4:searchClasses | 48K GO terms |
+| **Reactions** | rhea | search_rhea_entity | 17K reactions |
+| **Genes** | ncbigene | ncbi_esearch | 57M gene entries |
+| **Taxonomy** | taxonomy | ncbi_esearch | 3M organisms |
+| **Literature** | pubmed | ncbi_esearch | Biomedical lit |
 
-| Tool | Usage |
-|------|-------|
-| `search_uniprot_entity(query, limit)` | Proteins, functions, diseases |
-| `search_chembl_molecule/target(query, limit)` | Drugs, targets |
-| `search_pdb_entity(db, query, limit)` | 3D structures (db: "pdb", "cc", "prd") |
-| `search_reactome_entity(query, rows)` | Pathways, reactions |
-| `search_rhea_entity(query, limit)` | Biochemical reactions |
-| `search_mesh_entity(query, limit)` | Medical vocabulary |
-| `OLS4:search(query)` | All ontologies |
-| `OLS4:searchClasses(query, ontologyId)` | Specific ontology |
-| `ncbi_esearch(database, query)` | Gene, Taxonomy, ClinVar, MedGen, PubMed, PubChem |
-| `get_pubchem_compound_id(name)` | PubChem by name |
+---
 
-### 🗄️ SPARQL Tools
+## Critical SPARQL Rules
 
-| Tool | Purpose |
-|------|---------|
-| `get_MIE_file(dbname)` | Get schema, examples (do this in step 3) |
-| `get_sparql_example(dbname)` | Get additional query examples |
-| `run_sparql(dbname, query)` | Execute SPARQL query |
+### MANDATORY Prerequisites
+```python
+# ALWAYS run this BEFORE writing SPARQL
+get_MIE_file(dbname)  # Schema, RDF patterns, examples
+```
 
-### 🔗 ID Conversion
+### Database-Specific Rules
+| Database | Critical Rule |
+|----------|--------------|
+| **UniProt** | ALWAYS filter: `?protein up:reviewed 1` (Swiss-Prot quality) |
+| **ChEMBL** | Use: `FROM <http://rdf.ebi.ac.uk/dataset/chembl>` |
+| **Full-text** | Split property paths when using `bif:contains` |
+| **All** | ALWAYS use `LIMIT` (start with 20-100) |
+| **Comprehensive** | Use `bif:contains` with OR, NOT VALUES |
 
-| Tool | Purpose |
-|------|---------|
-| `togoid_convertId(ids, route)` | Convert between databases (e.g., "uniprot,pdb") |
-| `togoid_getRelation(source, target)` | Check if conversion route exists |
+### Comprehensive vs Example-Based Queries
 
-### 📚 Additional Tools
+**Example-Based (Specific lookups, Top-N)**
+```sparql
+# Can use VALUES with specific IDs from search
+VALUES ?protein { uniprot:P04637 uniprot:P38398 }
+?protein up:reviewed 1 ;
+         up:recommendedName/up:fullName ?name .
+```
 
-| Tool | Purpose |
-|------|---------|
-| `ncbi_esummary(database, ids)` | Get summaries |
-| `ncbi_efetch(database, ids, rettype)` | Get full records |
-| `OLS4:fetch(id)` | Get ontology term details |
-| `OLS4:getAncestors/Descendants(classIri, ontologyId)` | Get parent/child terms |
+**Comprehensive (Yes/No, Exists, Distribution)**
+```sparql
+# MUST use bif:contains with ALL search terms
+?protein up:reviewed 1 ;
+         up:recommendedName ?name .
+?name up:fullName ?fullName .
+# Use ALL synonyms found in exploratory search
+?fullName bif:contains "'term1' OR 'synonym1' OR 'variant1' OR 'abbrev1'"
+```
 
 ---
 
 ## Common Patterns
 
-### Pattern 1: Find Proteins by Disease
-
+### Pattern 1: Comprehensive Phylogenetic Distribution
 ```python
-# 1. Analyze: Disease question → Use uniprot, mondo, mesh
-# 2. Load MIE
-mie = get_MIE_file("uniprot")
+# Question: "Are X enzymes found in phyla beyond Y and Z?"
 
-# 3. Discovery (kw_search_tools: search_uniprot_entity)
-results = search_uniprot_entity("Alzheimer disease", limit=50)
+# Step 1: Exploratory search (find synonyms)
+results = search_uniprot_entity("enzyme name", limit=20)
+# Document: "enzyme", "alternative name", "abbreviation"
 
-# 4. Validation (if more precision needed)
+# Step 2: Get schema
+get_MIE_file("uniprot")
+
+# Step 3: Inspect examples
+# [Run inspection queries with VALUES on example IDs]
+# Found: keywords:KW-XXXX
+
+# Step 4: Comprehensive SPARQL
 query = """
 PREFIX up: <http://purl.uniprot.org/core/>
-SELECT ?protein ?name
+PREFIX keywords: <http://purl.uniprot.org/keywords/>
+
+SELECT DISTINCT ?protein ?phylum
+WHERE {
+  ?protein up:reviewed 1 ;
+           up:classifiedWith keywords:KW-XXXX ;
+           up:organism ?organism .
+  ?organism rdfs:subClassOf+ ?phylumNode .
+  ?phylumNode up:rank "phylum" ;
+              up:scientificName ?phylum .
+}
+LIMIT 1000
+"""
+results = run_sparql("uniprot", query)
+
+# Step 5: Aggregate by phylum
+phyla = {}
+for r in results:
+    phyla[r['phylum']] = phyla.get(r['phylum'], 0) + 1
+```
+
+### Pattern 2: Disease-Associated Proteins
+```python
+# Step 1: Search (exploratory)
+proteins = search_uniprot_entity("Alzheimer disease", limit=50)
+
+# Step 2: Inspect examples
+# [Find if disease keyword exists]
+
+# Step 3: Comprehensive query
+get_MIE_file("uniprot")
+query = """
+PREFIX up: <http://purl.uniprot.org/core/>
+SELECT ?protein ?name ?disease
 WHERE {
   ?protein up:reviewed 1 ;
            up:recommendedName/up:fullName ?name ;
@@ -206,72 +344,38 @@ LIMIT 50
 """
 ```
 
-### Pattern 2: Cross-Database Integration (Multi-Database Query)
-
+### Pattern 3: Drug Targets → Inhibitors
 ```python
-# 1. Analyze: "Find structures, drugs, and pathways for EGFR gene"
-#    Domain: genes, proteins, structures, drugs, pathways
+# Step 1: Find target
+protein = search_uniprot_entity("ACE human", limit=5)  # P12821
 
-# 2. Identify databases: ncbigene, uniprot, pdb, chembl, reactome
+# Step 2: Convert to ChEMBL
+target = togoid_convertId("P12821", "uniprot,chembl_target")
 
-# 3. Load MIE files
-mie_gene = get_MIE_file("ncbigene")
-mie_uniprot = get_MIE_file("uniprot")
-mie_reactome = get_MIE_file("reactome")
+# Step 3: Search inhibitors
+inhibitors = search_chembl_molecule("ACE inhibitor", limit=20)
 
-# 4. Discovery - Start with gene database
-gene_results = ncbi_esearch("gene", "EGFR human")
-# → Gene ID: 1956
-
-# 5. (Skip SPARQL for gene - we have the ID)
-
-# 6. TogoID - Convert gene ID to other databases
-uniprot_id = togoid_convertId("1956", "ncbigene,uniprot")
-# → P00533
-
-pdb_ids = togoid_convertId("P00533", "uniprot,pdb")
-# → 1M14, 1M17, ... (50+ structures)
-
-chembl_targets = togoid_convertId("P00533", "uniprot,chembl_target")
-# → CHEMBL203
-
-# 6a. Want pathway data? Return to steps 4-5 for reactome
-pathways = search_reactome_entity("EGFR signaling", rows=20)
-# → R-HSA-177929, ...
-
-# 7. Present: Gene 1956 → Protein P00533 → 50 structures → Drug target CHEMBL203 → 15 pathways
+# Step 4: Get properties
+cid = get_pubchem_compound_id("lisinopril")
+props = get_compound_attributes_from_pubchem(cid)
 ```
 
-### Pattern 3: Comprehensive Phylogenetic Distribution
-
+### Pattern 4: Gene → Structures/Drugs/Pathways
 ```python
-# 1. Analyze: "Are transferases found in phyla beyond X?" → Comprehensive query
-# 2. Select: uniprot, taxonomy
-# 3. Load MIE
-mie = get_MIE_file("uniprot")
+# 1. Find gene
+gene = ncbi_esearch("gene", "EGFR human")  # 1956
 
-# 4. Discovery - identify structured properties
-results = search_uniprot_entity("transferase", limit=20)
-# Found: KW-0808 (Transferase keyword in MIE schema)
+# 2. Convert to UniProt
+uniprot = togoid_convertId("1956", "ncbigene,uniprot")  # P00533
 
-# 5. Validation - use structured property for ALL matching entities
-query = """
-PREFIX up: <http://purl.uniprot.org/core/>
-PREFIX keywords: <http://purl.uniprot.org/keywords/>
+# 3. Get structures
+pdbs = togoid_convertId("P00533", "uniprot,pdb")
 
-SELECT ?phylum (COUNT(DISTINCT ?protein) as ?count)
-WHERE {
-  ?protein up:reviewed 1 ;
-           up:classifiedWith keywords:KW-0808 ;  # Structured property
-           up:organism ?organism .
-  ?organism rdfs:subClassOf+ ?phylumNode .
-  ?phylumNode up:rank "phylum" ;
-              up:scientificName ?phylum .
-}
-GROUP BY ?phylum
-ORDER BY DESC(?count)
-LIMIT 100
-"""
+# 4. Get drug targets
+targets = togoid_convertId("P00533", "uniprot,chembl_target")
+
+# 5. Search pathways
+pathways = search_reactome_entity("EGFR signaling", rows=20)
 ```
 
 ---
@@ -279,53 +383,37 @@ LIMIT 100
 ## Critical Rules
 
 ### ✅ ALWAYS
-
-1. **Analyze question first** - Understand domain and query type
-2. **Run list_databases()** - Identify relevant databases
-3. **Load MIE files** - Get schema and kw_search_tools for selected databases
-4. **Use kw_search_tools first** - Search before writing SPARQL
-5. **Prefer structured properties** - Use classifications/ontologies before bif:contains
-6. **Use LIMIT in SPARQL** - Start with 20-100
-7. **Filter UniProt** - Always add `?protein up:reviewed 1`
-8. **Use TogoID after getting IDs** - Convert to link across databases
-9. **Check ID conversion routes** - Use `togoid_getRelation()` before converting
+1. Try search tools first (exploratory)
+2. Run `get_MIE_file()` before SPARQL
+3. **Inspect 2-3 examples** before comprehensive queries (Step 4)
+4. Use `LIMIT` in SPARQL
+5. Filter UniProt: `up:reviewed 1`
+6. Document discovered properties (keywords > annotations > text)
+7. For comprehensive: Use discovered properties OR bif:contains with ALL synonyms
+8. Cite data sources
+9. State methodology (comprehensive vs example-based)
 
 ### ❌ NEVER
-
-1. **Don't skip list_databases()** - You might miss relevant databases
-2. **Don't skip get_MIE_file()** - You'll waste time guessing at structure
-3. **Don't use bif:contains first** - Always try structured properties
-4. **Don't use VALUES for comprehensive queries** - This is circular reasoning!
-   - ❌ WRONG: Search → Get 20 IDs → Query only those 20 → Conclude
-   - ✅ RIGHT: Search → Identify structured properties → Query ALL matching entities
-5. **Don't omit LIMIT** - Can cause timeouts
+1. Skip search tools
+2. Write SPARQL without MIE file
+3. **Skip inspection for comprehensive queries**
+4. Forget `up:reviewed 1` in UniProt
+5. Omit `LIMIT`
+6. Use VALUES with search results for comprehensive questions (circular reasoning!)
+7. Conclude from examples alone for comprehensive questions
+8. Use `bif:contains` with property paths (split them)
 
 ---
 
-## Circular Reasoning Trap
+## Self-Check
 
-**❌ WRONG Approach:**
-```python
-# Get 20 examples from search
-results = search_uniprot_entity("enzyme", limit=20)
-ids = [r['id'] for r in results]
+### For Comprehensive Queries:
 
-# Only query those 20 - CIRCULAR REASONING!
-query = f"VALUES ?protein {{ {' '.join(ids)} }}"
-```
-
-**✅ CORRECT Approach:**
-```python
-# Get examples to identify structured properties
-results = search_uniprot_entity("enzyme", limit=20)
-# Found: KW-0418 (Kinase), KW-0808 (Transferase)
-
-# Query ALL entities with that classification
-query = """
-?protein up:classifiedWith ?classification .
-VALUES ?classification { keywords:KW-0418 keywords:KW-0808 }
-"""
-```
+- [ ] Did I search for examples first?
+- [ ] Did I **inspect** those examples with VALUES?
+- [ ] Did I **discover** properties (keywords, GO, annotation patterns)?
+- [ ] Am I using discovered properties (NOT defaulting to bif:contains)?
+- [ ] Used bif:contains with ALL synonyms only as last resort?
 
 ---
 
@@ -333,51 +421,25 @@ VALUES ?classification { keywords:KW-0418 keywords:KW-0808 }
 
 | Problem | Solution |
 |---------|----------|
-| **Which database to use?** | Run `list_databases()`, match domain to databases |
-| **Which search tool?** | Check MIE file's kw_search_tools field |
-| **No search results** | Try synonyms, broader terms, different database |
-| **SPARQL fails** | Verify MIE file loaded, add LIMIT, check prefixes |
-| **Slow/timeout** | Reduce LIMIT, add `up:reviewed 1` for UniProt |
-| **ID conversion empty** | Check route: `togoid_getRelation(source, target)` |
-| **Incomplete comprehensive results** | Use structured properties from MIE, not VALUES with limited IDs |
+| **Which database?** | `list_databases()` |
+| **Which search tool?** | Check MIE's `kw_search_tools` |
+| **What properties exist?** | Inspect examples with VALUES |
+| **No structured properties found** | Use bif:contains with ALL synonyms |
+| **SPARQL fails** | Run get_MIE_file()? Check prefixes, add LIMIT, use up:reviewed 1 |
+| **Timeout** | Reduce LIMIT, add filters, use up:reviewed 1, try search instead |
+| **Incomplete comprehensive results** | Did you skip inspection? Use proper method (keywords/annotations/bif:contains) |
 
 ---
 
-## All 23 Databases
+## Key Databases & Routes
 
-**Proteins:** uniprot, pdb, ensembl  
-**Chemicals:** pubchem, chembl, chebi  
-**Diseases:** mondo, mesh, medgen, clinvar, nando  
-**Pathways:** reactome, go  
-**Reactions:** rhea  
-**Genes:** ncbigene  
-**Taxonomy:** taxonomy  
-**Literature:** pubmed, pubtator  
-**Microbiology:** bacdive, mediadive, amrportal  
-**Sequences:** ddbj  
-**Glycans:** glycosmos
+**Common ID Conversions:**
+- UniProt ↔ PDB: `"uniprot,pdb"` or `"pdb,uniprot"`
+- UniProt → NCBI Gene: `"uniprot,ncbigene"`
+- NCBI Gene → Ensembl: `"ncbigene,ensembl_gene"`
+- UniProt → ChEMBL: `"uniprot,chembl_target"`
+- ChEBI → PubChem: `"chebi,pubchem_compound"`
 
----
+**NCBI Databases:** gene, taxonomy, clinvar, medgen, pubmed, pccompound, pcsubstance, pcassay
 
-## Workflow Summary
-
-```
-1. Analyze Question
-   ↓
-2. list_databases() → Identify relevant databases
-   ↓
-3. get_MIE_file(dbname) for each database → Get kw_search_tools and schema
-   ↓
-4. Discovery: Use kw_search_tools → Find examples, identify structured properties
-   ↓
-5. Validation: SPARQL with structured properties → Get IDs and data
-   ↓
-6. TogoID: Convert IDs to other databases (if needed)
-   ↓ ─────┐
-   │       │ (If querying new database)
-   │       └→ Return to Steps 3-5 for new database
-   ↓
-7. Present results with citations from all databases
-```
-
-**Key Principle:** Structured properties FIRST, bif:contains LAST RESORT.
+**Ontologies (OLS4):** go, mondo, chebi, hp, uberon, doid, efo, obi, etc.

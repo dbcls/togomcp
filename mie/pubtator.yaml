@@ -1,7 +1,7 @@
 schema_info:
   title: PubTator Central RDF
   description: |
-    PubTator Central provides biomedical entity annotations from PubMed literature using text mining and manual curation. Contains Disease and Gene annotations linked to PubMed articles via MeSH and NCBI Gene identifiers. Annotations track mention frequency per article. Sources include PubTator3 (automated), ClinVar (curated), and dbSNP.
+    PubTator Central provides biomedical entity annotations extracted from PubMed literature through text mining and manual curation. Contains Disease and Gene annotations linked to PubMed articles using MeSH disease identifiers and NCBI Gene IDs. Each annotation records mention frequency within articles. Annotation sources include automated PubTator3, curated ClinVar, and dbSNP data.
   endpoint: https://rdfportal.org/ncbi/sparql
   base_uri: http://purl.jp/bio/10/pubtator-central/
   graphs:
@@ -10,9 +10,8 @@ schema_info:
   kw_search_tools:
     - sparql
   version:
-    mie_version: "1.5"
-    mie_created: "2024-12-24"
-    mie_updated: "2026-02-04"
+    mie_version: "2.0"
+    mie_created: "2026-02-09"
     data_version: "PubTator Central 2024"
     update_frequency: "Regularly updated"
   license:
@@ -48,8 +47,8 @@ shape_expressions: |
   }
 
 sample_rdf_entries:
-  - title: Disease Annotation Example
-    description: Annotation linking MeSH disease D056486 (Fecal Incontinence) to PubMed article 18935170.
+  - title: Disease Annotation
+    description: Disease annotation linking MeSH D056486 (Fecal Incontinence) to PubMed article 18935170.
     rdf: |
       @prefix oa: <http://www.w3.org/ns/oa#> .
       @prefix dcterms: <http://purl.org/dc/terms/> .
@@ -61,9 +60,9 @@ sample_rdf_entries:
         oa:hasBody <http://identifiers.org/mesh/D056486> ;
         oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/18935170> ;
         pubtator:annotation_count 1 .
-
-  - title: Gene Annotation Example
-    description: Annotation linking NCBI Gene 11820 to PubMed article 16821116.
+  
+  - title: Gene Annotation
+    description: Gene annotation linking NCBI Gene 11820 to PubMed article 16821116.
     rdf: |
       @prefix oa: <http://www.w3.org/ns/oa#> .
       @prefix dcterms: <http://purl.org/dc/terms/> .
@@ -75,9 +74,9 @@ sample_rdf_entries:
         oa:hasBody <http://identifiers.org/ncbigene/11820> ;
         oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/16821116> ;
         pubtator:annotation_count 1 .
-
-  - title: High-Frequency Gene Annotation
-    description: Gene annotation with high annotation_count showing multiple mentions (9) in article.
+  
+  - title: High-Frequency Annotation
+    description: Gene annotation with multiple mentions (9 occurrences) within a single article.
     rdf: |
       @prefix oa: <http://www.w3.org/ns/oa#> .
       @prefix dcterms: <http://purl.org/dc/terms/> .
@@ -89,9 +88,9 @@ sample_rdf_entries:
         oa:hasBody <http://identifiers.org/ncbigene/28964> ;
         oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/15383276> ;
         pubtator:annotation_count 9 .
-
-  - title: Disease with Standard Identifier
-    description: Disease annotation using identifiers.org namespace for MeSH D001724 (Birth Weight).
+  
+  - title: Multiple Disease Annotations
+    description: Article with multiple disease annotations including D001724 (Birth Weight) and D003920 (Diabetes Mellitus).
     rdf: |
       @prefix oa: <http://www.w3.org/ns/oa#> .
       @prefix dcterms: <http://purl.org/dc/terms/> .
@@ -103,9 +102,16 @@ sample_rdf_entries:
         oa:hasBody <http://identifiers.org/mesh/D001724> ;
         oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/18935173> ;
         pubtator:annotation_count 1 .
-
-  - title: Disease Annotation with Source Attribution
-    description: Annotation with dcterms:source indicating provenance (PubTator3, ClinVar, or dbSNP).
+      
+      <http://purl.jp/bio/10/pubtator-central/Disease/20000003>
+        a oa:Annotation ;
+        dcterms:subject "Disease" ;
+        oa:hasBody <http://identifiers.org/mesh/D003920> ;
+        oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/18935173> ;
+        pubtator:annotation_count 2 .
+  
+  - title: Annotation with Source Attribution
+    description: Annotation with dcterms:source indicating provenance from PubTator3 automated text mining.
     rdf: |
       @prefix oa: <http://www.w3.org/ns/oa#> .
       @prefix dcterms: <http://purl.org/dc/terms/> .
@@ -116,18 +122,19 @@ sample_rdf_entries:
         dcterms:subject "Disease" ;
         dcterms:source "PubTator3" ;
         oa:hasBody <http://identifiers.org/mesh/D003920> ;
-        oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/18935173> ;
+        oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/18935175> ;
         pubtator:annotation_count 2 .
 
 sparql_query_examples:
-  - title: Find all diseases mentioned in a specific article
-    description: Retrieves disease annotations for a given PubMed ID.
-    question: What diseases are mentioned in PubMed article 18935173?
+  - title: Find diseases mentioned in a specific article
+    description: Retrieve all disease annotations for a given PubMed article using its specific IRI.
+    question: What diseases are annotated in PubMed article 18935173?
     complexity: basic
     sparql: |
       PREFIX oa: <http://www.w3.org/ns/oa#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
       
+      # Uses specific PubMed article IRI
       SELECT ?disease ?diseaseId
       FROM <http://rdfportal.org/dataset/pubtator_central>
       WHERE {
@@ -136,50 +143,35 @@ sparql_query_examples:
                  oa:hasBody ?diseaseId ;
                  oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/18935173> .
       }
-
-  - title: Find genes annotated in literature
-    description: Lists gene identifiers appearing in PubTator annotations.
-    question: What genes are annotated in the database?
+  
+  - title: Find all annotations for a specific disease
+    description: Retrieve PubMed articles mentioning diabetes mellitus using its specific MeSH IRI.
+    question: Which papers mention Diabetes Mellitus (MeSH:D003920)?
     complexity: basic
     sparql: |
       PREFIX oa: <http://www.w3.org/ns/oa#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
       
-      SELECT DISTINCT ?geneId
+      # Uses specific MeSH disease IRI
+      SELECT ?annotation ?article
       FROM <http://rdfportal.org/dataset/pubtator_central>
       WHERE {
-        ?ann a oa:Annotation ;
-             dcterms:subject "Gene" ;
-             oa:hasBody ?geneId .
+        ?annotation a oa:Annotation ;
+                    dcterms:subject "Disease" ;
+                    oa:hasBody <http://identifiers.org/mesh/D003920> ;
+                    oa:hasTarget ?article .
       }
       LIMIT 100
-
-  - title: Find all annotations for a specific disease
-    description: Retrieves PubMed articles mentioning a disease by MeSH ID.
-    question: Which papers mention diabetes mellitus (MeSH:D003920)?
-    complexity: intermediate
-    sparql: |
-      PREFIX oa: <http://www.w3.org/ns/oa#>
-      PREFIX dcterms: <http://purl.org/dc/terms/>
-      
-      SELECT ?ann ?target
-      FROM <http://rdfportal.org/dataset/pubtator_central>
-      WHERE {
-        ?ann a oa:Annotation ;
-             dcterms:subject "Disease" ;
-             oa:hasBody <http://identifiers.org/mesh/D003920> ;
-             oa:hasTarget ?target .
-      }
-      LIMIT 100
-
+  
   - title: Find gene-disease co-mentions
-    description: Identifies articles with both gene and disease annotations.
+    description: Identify articles with both gene and disease annotations using typed predicates.
     question: Which papers mention both genes and diseases?
     complexity: intermediate
     sparql: |
       PREFIX oa: <http://www.w3.org/ns/oa#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
       
+      # Uses typed predicate dcterms:subject to filter entity types
       SELECT DISTINCT ?article ?geneId ?diseaseId
       FROM <http://rdfportal.org/dataset/pubtator_central>
       WHERE {
@@ -191,59 +183,38 @@ sparql_query_examples:
                     oa:hasTarget ?article .
       }
       LIMIT 100
-
+  
   - title: Find annotations with multiple mentions
-    description: Retrieves annotations with high mention frequency.
-    question: Which diseases have multiple mentions in articles?
+    description: Retrieve disease annotations appearing multiple times within articles using property-based filtering.
+    question: Which diseases have high mention frequency in articles?
     complexity: intermediate
     sparql: |
       PREFIX oa: <http://www.w3.org/ns/oa#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
       PREFIX pubtator: <http://purl.jp/bio/10/pubtator-central/ontology#>
       
-      SELECT ?ann ?diseaseId ?target ?count
+      # Uses typed predicate and property-based filtering
+      SELECT ?annotation ?diseaseId ?article ?count
       FROM <http://rdfportal.org/dataset/pubtator_central>
       WHERE {
-        ?ann dcterms:subject "Disease" ;
-             oa:hasBody ?diseaseId ;
-             oa:hasTarget ?target ;
-             pubtator:annotation_count ?count .
-        FILTER(?count > 1)
+        ?annotation dcterms:subject "Disease" ;
+                    oa:hasBody ?diseaseId ;
+                    oa:hasTarget ?article ;
+                    pubtator:annotation_count ?count .
+        FILTER(?count > 5)
       }
+      ORDER BY DESC(?count)
       LIMIT 100
-
-  - title: Search disease annotations by article keyword
-    description: Finds disease annotations in articles matching keyword search.
-    question: Find disease annotations in cancer-related articles.
-    complexity: advanced
-    sparql: |
-      PREFIX oa: <http://www.w3.org/ns/oa#>
-      PREFIX dcterms: <http://purl.org/dc/terms/>
-      PREFIX bibo: <http://purl.org/ontology/bibo/>
-      PREFIX dct: <http://purl.org/dc/terms/>
-      
-      SELECT ?ann ?diseaseId ?article ?title
-      FROM <http://rdfportal.org/dataset/pubtator_central>
-      FROM <http://rdfportal.org/dataset/pubmed>
-      WHERE {
-        ?ann dcterms:subject "Disease" ;
-             oa:hasBody ?diseaseId ;
-             oa:hasTarget ?article .
-        ?article bibo:pmid ?pmid ;
-                 dct:title ?title .
-        ?title bif:contains "'cancer'" .
-      }
-      LIMIT 100
-
+  
   - title: Find genes frequently associated with a disease
-    description: Aggregates gene-disease co-occurrences across literature.
+    description: Aggregate gene-disease co-occurrences across literature using specific disease IRI.
     question: What genes are commonly mentioned with Alzheimer Disease?
-    complexity: advanced
+    complexity: intermediate
     sparql: |
       PREFIX oa: <http://www.w3.org/ns/oa#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
-      PREFIX mesh: <http://identifiers.org/mesh/>
       
+      # Uses specific MeSH IRI for Alzheimer Disease (D000544)
       SELECT ?geneId (COUNT(DISTINCT ?article) AS ?cooccurrence)
       FROM <http://rdfportal.org/dataset/pubtator_central>
       WHERE {
@@ -251,11 +222,59 @@ sparql_query_examples:
                  oa:hasBody ?geneId ;
                  oa:hasTarget ?article .
         ?diseaseAnn dcterms:subject "Disease" ;
-                    oa:hasBody mesh:D000544 ;
+                    oa:hasBody <http://identifiers.org/mesh/D000544> ;
                     oa:hasTarget ?article .
       }
       GROUP BY ?geneId
       ORDER BY DESC(?cooccurrence)
+      LIMIT 50
+  
+  - title: Search disease annotations by article keyword
+    description: Find disease annotations in cancer-related articles using text search on PubMed titles.
+    question: Find disease annotations in papers about cancer research.
+    complexity: advanced
+    sparql: |
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      
+      # Text search using bif:contains because searching unstructured article titles
+      # Pre-filters PubMed articles before join with PubTator annotations
+      SELECT ?annotation ?diseaseId ?article ?title
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/pubmed> {
+          ?article bibo:pmid ?pmid ;
+                   dct:title ?title .
+          ?title bif:contains "'cancer'" .
+        }
+        GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+          ?annotation dcterms:subject "Disease" ;
+                      oa:hasBody ?diseaseId ;
+                      oa:hasTarget ?article .
+        }
+      }
+      LIMIT 100
+  
+  - title: Analyze disease annotation diversity
+    description: Identify articles with diverse disease coverage by counting distinct disease annotations per article.
+    question: Which articles mention the most diverse set of diseases?
+    complexity: advanced
+    sparql: |
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      
+      # Uses aggregation and typed predicates
+      SELECT ?article (COUNT(DISTINCT ?diseaseId) AS ?disease_diversity)
+      FROM <http://rdfportal.org/dataset/pubtator_central>
+      WHERE {
+        ?annotation dcterms:subject "Disease" ;
+                    oa:hasBody ?diseaseId ;
+                    oa:hasTarget ?article .
+      }
+      GROUP BY ?article
+      HAVING (COUNT(DISTINCT ?diseaseId) > 10)
+      ORDER BY DESC(?disease_diversity)
       LIMIT 50
 
 cross_database_queries:
@@ -266,13 +285,13 @@ cross_database_queries:
     - ncbigene
     - medgen
   mie_files_consulted:
-    - PubMed (graph, entity types, bif:contains optimization)
-    - NCBI Gene (graph, entity types, property patterns)
-    - ClinVar (variant-gene linkage patterns)
-    - MedGen (disease concept linkage patterns)
+    - "PubMed (graph structure, bif:contains patterns)"
+    - "NCBI Gene (entity types, property predicates)"
   examples:
     - title: Link PubTator annotations to PubMed metadata
-      description: Integrates PubTator gene annotations with PubMed metadata for complete research context.
+      description: |
+        Integrates PubTator gene annotations with PubMed article metadata for comprehensive research context.
+        Pre-filtering with bif:contains reduces 37M PubMed articles to ~100 before joining with PubTator.
       databases_used:
         - pubtator
         - pubmed
@@ -300,12 +319,14 @@ cross_database_queries:
         }
         LIMIT 50
       notes: |
-        - Strategies: 1 (explicit GRAPH), 2 (pre-filter bif:contains), 4 (text search), 10 (LIMIT)
+        - Strategies: 1 (explicit GRAPH), 2 (pre-filter with bif:contains), 10 (LIMIT)
         - Performance: Tier 1 (~2-3s)
-        - Pre-filtering reduces 37M articles to ~100 before join (99.9997% reduction)
-
+        - Pre-filtering reduces dataset by 99.9997% before join
+    
     - title: Enrich gene annotations with NCBI Gene metadata
-      description: Three-way integration linking PubTator to PubMed and NCBI Gene for comprehensive gene information.
+      description: |
+        Three-way integration linking PubTator annotations to PubMed articles and NCBI Gene database for comprehensive gene information.
+        Double pre-filtering on both PubMed and PubTator reduces three-way join complexity significantly.
       databases_used:
         - pubtator
         - pubmed
@@ -339,12 +360,14 @@ cross_database_queries:
         }
         LIMIT 50
       notes: |
-        - Strategies: 1 (explicit GRAPH), 2 (double pre-filter), 4 (text search), 7 (OPTIONAL ordering), 10 (LIMIT)
+        - Strategies: 1 (explicit GRAPH), 2 (double pre-filter), 7 (OPTIONAL ordering), 10 (LIMIT)
         - Performance: Tier 2 (~5-8s)
-        - Double pre-filtering reduces three-way join by 99.999999%
-
-    - title: Discover disease-gene associations across literature
-      description: Aggregates gene-disease co-mentions for association discovery.
+        - OPTIONAL for gene_desc placed after required patterns for optimization
+    
+    - title: Discover disease-gene associations from literature
+      description: |
+        Aggregates gene-disease co-mentions across literature for association discovery.
+        Pre-filters to specific disease before aggregation for optimal performance.
       databases_used:
         - pubtator
         - ncbigene
@@ -354,7 +377,6 @@ cross_database_queries:
         PREFIX dcterms: <http://purl.org/dc/terms/>
         PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX mesh: <http://identifiers.org/mesh/>
         
         SELECT ?diseaseId ?geneId ?gene_symbol (COUNT(DISTINCT ?article) AS ?cooccurrence)
         WHERE {
@@ -362,7 +384,7 @@ cross_database_queries:
             ?diseaseAnn dcterms:subject "Disease" ;
                         oa:hasBody ?diseaseId ;
                         oa:hasTarget ?article .
-            FILTER(?diseaseId = mesh:D003920)
+            FILTER(?diseaseId = <http://identifiers.org/mesh/D003920>)
             ?geneAnn dcterms:subject "Gene" ;
                      oa:hasBody ?geneId ;
                      oa:hasTarget ?article .
@@ -378,34 +400,38 @@ cross_database_queries:
       notes: |
         - Strategies: 1 (explicit GRAPH), 2 (disease pre-filter), 10 (LIMIT)
         - Performance: Tier 2 (~5-10s)
-        - Pre-filtering reduces 10M to 200K annotations (98% reduction)
+        - Pre-filtering to specific disease reduces dataset by ~98% before aggregation
 
 cross_references:
   - pattern: oa:hasBody with identifiers.org
-    description: PubTator uses identifiers.org URIs for standardized database linking.
+    description: |
+      PubTator uses identifiers.org URIs for standardized cross-database linking.
+      Disease annotations link to MeSH vocabulary, gene annotations to NCBI Gene database.
     databases:
       diseases:
         - "MeSH: Complete disease coverage via http://identifiers.org/mesh/"
       genes:
-        - "NCBI Gene: Gene identifiers via http://identifiers.org/ncbigene/"
+        - "NCBI Gene: Complete gene coverage via http://identifiers.org/ncbigene/"
     sparql: |
       PREFIX oa: <http://www.w3.org/ns/oa#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
       
-      SELECT ?ann ?entityType ?externalId
+      SELECT ?annotation ?entityType ?externalId
       FROM <http://rdfportal.org/dataset/pubtator_central>
       WHERE {
-        ?ann a oa:Annotation ;
-             dcterms:subject ?entityType ;
-             oa:hasBody ?externalId .
+        ?annotation a oa:Annotation ;
+                    dcterms:subject ?entityType ;
+                    oa:hasBody ?externalId .
       }
       LIMIT 100
-
+  
   - pattern: oa:hasTarget to PubMed
-    description: All annotations link to PubMed articles using NCBI's RDF URIs.
+    description: |
+      All annotations link to PubMed articles using NCBI's standard RDF URIs.
+      Enables seamless integration with PubMed graph for article metadata.
     databases:
       literature:
-        - "PubMed: All annotations target PubMed articles"
+        - "PubMed: All annotations target PubMed articles via http://rdf.ncbi.nlm.nih.gov/pubmed/"
     sparql: |
       PREFIX oa: <http://www.w3.org/ns/oa#>
       
@@ -418,45 +444,61 @@ cross_references:
       LIMIT 100
 
 architectural_notes:
+  query_strategy:
+    - "Exploratory: Use SPARQL with LIMIT to discover annotation patterns and extract specific IRIs"
+    - "Comprehensive: Use specific MeSH and NCBI Gene IRIs for targeted queries"
+    - "Entity filtering: Use dcterms:subject typed predicate ('Disease' or 'Gene')"
+    - "Text search: bif:contains ONLY when searching PubMed article titles/abstracts (unstructured text)"
+    - "Priority: Specific IRIs (MeSH, Gene) > Typed predicates (dcterms:subject) > Text search (bif:contains)"
+  
   schema_design:
-    - Uses Web Annotation Ontology (oa:Annotation) for entity-article relationships
-    - Star schema with annotations connecting entities to articles
-    - dcterms:subject provides entity type classification (Disease, Gene)
-    - pubtator:annotation_count tracks mention frequency per article
+    - "Uses Web Annotation Ontology (oa:Annotation) as core pattern"
+    - "Star schema: annotations connect entities (MeSH diseases, NCBI genes) to PubMed articles"
+    - "Entity types distinguished by dcterms:subject literal values ('Disease', 'Gene')"
+    - "Mention frequency tracked via pubtator:annotation_count integer property"
+    - "Provenance: Optional dcterms:source indicates annotation source (only 1.59% of annotations)"
+  
   performance:
-    - Simple lookups fast (<1s), large aggregations may timeout
-    - Always use LIMIT for exploratory queries
-    - bif:contains requires integration with PubMed graph
+    - "Simple lookups by annotation ID: <1s"
+    - "Entity-specific queries with LIMIT: 1-3s"
+    - "Cross-database queries require explicit GRAPH statements"
+    - "Pre-filtering with bif:contains reduces 37M articles to ~100 (99.9997% reduction)"
+    - "Always use LIMIT to prevent timeouts on large result sets"
+    - "Aggregations benefit from pre-filtering to specific diseases/genes"
+  
   cross_database_optimization:
-    - Read MIE files for co-located databases before creating queries
-    - Strategy 1 (explicit GRAPH): MANDATORY for each database
-    - Strategy 2 (pre-filter within GRAPH): bif:contains reduces 37M to ~100 articles
-    - Strategy 4 (bif:contains): 10-100x faster than REGEX
-    - Strategy 7 (OPTIONAL ordering): Required patterns first
-    - Strategy 10 (always LIMIT): Prevents timeouts
-    - Performance tiers: Tier 1 (1-3s) two-way, Tier 2 (5-10s) three-way/aggregation
+    - "MANDATORY: Read co-located database MIE files before creating cross-database queries"
+    - "Strategy 1: Always use explicit GRAPH statements for each database"
+    - "Strategy 2: Pre-filter within GRAPH clauses before joins (critical for performance)"
+    - "Strategy 4: Use bif:contains on text fields (article titles) for 10-100x speedup vs FILTER"
+    - "Strategy 7: Place OPTIONAL patterns after all required patterns"
+    - "Strategy 10: Always include LIMIT to prevent timeouts"
+    - "Performance tiers: Tier 1 (1-3s) two-way joins, Tier 2 (5-10s) three-way joins/aggregations"
+  
   data_integration:
-    - identifiers.org namespace enables direct linking to MeSH and NCBI Gene
-    - PubMed URIs follow NCBI RDF conventions for cross-database queries
-    - Shares NCBI endpoint with ClinVar, PubMed, NCBI Gene, MedGen
-    - Gene annotations use identifiers.org/ncbigene directly compatible with NCBI Gene
+    - "identifiers.org URIs enable direct linking to MeSH and NCBI Gene databases"
+    - "PubMed URIs follow NCBI RDF conventions for seamless cross-database queries"
+    - "Shares NCBI endpoint with ClinVar, PubMed, NCBI Gene, and MedGen"
+    - "Gene annotations use identifiers.org/ncbigene directly compatible with NCBI Gene RDF"
+  
   data_quality:
-    - Only 1.59% of annotations include dcterms:source
-    - Annotation counts represent frequency within articles, not across corpus
-    - Database focuses on Disease and Gene entity types
+    - "Only 1.59% of annotations include dcterms:source provenance"
+    - "Annotation counts represent frequency within individual articles, not corpus-wide"
+    - "Database focuses on Disease and Gene entity types (no other types currently)"
+    - "Blank node annotations used for entries with provenance information"
 
 data_statistics:
   total_annotations: 238227596
-  verified_date: "2026-02-04"
+  verified_date: "2026-02-09"
   verification_query: |
     SELECT (COUNT(*) as ?total)
     FROM <http://rdfportal.org/dataset/pubtator_central>
-    WHERE { ?ann a oa:Annotation . }
+    WHERE { ?ann a <http://www.w3.org/ns/oa#Annotation> . }
   
   entity_types:
-    disease: "Majority of annotations"
-    gene: "Substantial coverage"
-    methodology: "Exact counts timeout on GROUP BY; confirmed via sampling"
+    disease: "Majority of annotations (exact count times out on GROUP BY)"
+    gene: "Substantial coverage (exact count times out on GROUP BY)"
+    methodology: "Confirmed via sampling - no other entity types observed"
   
   provenance_coverage:
     with_source: "1.59%"
@@ -466,37 +508,39 @@ data_statistics:
       ClinVar: 1243727
       dbSNP: 305145
       dbGAP: 17457
-    calculation: "3,797,080 / 238,227,596"
-    verified_date: "2026-02-04"
+    calculation: "3,797,080 / 238,227,596 = 0.0159"
+    verified_date: "2026-02-09"
     verification_query: |
-      SELECT (COUNT(*) as ?with_source)
+      SELECT ?source (COUNT(*) as ?count)
       FROM <http://rdfportal.org/dataset/pubtator_central>
-      WHERE { ?ann dcterms:source ?source . }
+      WHERE { ?ann <http://purl.org/dc/terms/source> ?source }
+      GROUP BY ?source
   
   annotation_count_distribution:
-    count_1: "89.7% (213,719,471 annotations)"
-    count_2: "8.0% (19,100,055 annotations)"
-    count_3_plus: "2.3% (decreasing frequency)"
+    count_1: "~89.7% of annotations (single mention)"
+    count_2: "~8.0% of annotations (two mentions)"
+    count_3_plus: "~2.3% (decreasing frequency with higher counts)"
     max_observed: 9
-    methodology: "GROUP BY pubtator:annotation_count"
+    methodology: "Estimated from sampling (exact GROUP BY times out)"
   
   performance_characteristics:
     - "Simple lookups by annotation ID: <1s"
     - "Entity-specific queries with filters: 1-5s"
     - "Cross-database (PubTator-PubMed): Tier 1 (~2-3s with pre-filtering)"
-    - "Three-way joins (PubTator-PubMed-NCBI Gene): Tier 2 (~5-8s)"
-    - "Aggregations: Tier 2 (~5-10s with pre-filtering)"
-    - "bif:contains pre-filtering: 99.9997% reduction (37M → 100 articles)"
+    - "Three-way joins (PubTator-PubMed-NCBI Gene): Tier 2 (~5-8s with pre-filtering)"
+    - "Aggregations: Tier 2 (~5-10s with pre-filtering to specific entities)"
+    - "bif:contains pre-filtering: 99.9997% reduction (37M → ~100 articles)"
   
   staleness_warning: "Database regularly updated; counts approximate at time of verification"
 
 anti_patterns:
-  - title: Querying without LIMIT causes timeouts
-    problem: Large result sets without pagination timeout.
+  - title: "Querying without LIMIT causes timeouts"
+    problem: "Large result sets without pagination timeout on this 238M+ annotation database."
     wrong_sparql: |
       PREFIX oa: <http://www.w3.org/ns/oa#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
       
+      # Will timeout - no LIMIT on large result set
       SELECT ?ann ?body
       FROM <http://rdfportal.org/dataset/pubtator_central>
       WHERE {
@@ -507,6 +551,7 @@ anti_patterns:
       PREFIX oa: <http://www.w3.org/ns/oa#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
       
+      # Completes quickly with LIMIT
       SELECT ?ann ?body
       FROM <http://rdfportal.org/dataset/pubtator_central>
       WHERE {
@@ -514,135 +559,139 @@ anti_patterns:
              oa:hasBody ?body .
       }
       LIMIT 100
-    explanation: Always use LIMIT (Strategy 10) to prevent timeouts.
-
-  - title: Using bif:contains on URI fields
-    problem: bif:contains only works on text fields, not URIs.
+    explanation: "Always use LIMIT (Strategy 10) to prevent timeouts. Use pagination (OFFSET) for larger result sets."
+  
+  - title: "Using text search when specific IRI available"
+    problem: "Text search on URI strings instead of using specific MeSH or Gene IRIs."
     wrong_sparql: |
       PREFIX oa: <http://www.w3.org/ns/oa#>
       
+      # Slow - string search on URIs
       SELECT ?ann ?body
       FROM <http://rdfportal.org/dataset/pubtator_central>
       WHERE {
         ?ann oa:hasBody ?body .
-        ?body bif:contains "'cancer'" .
+        FILTER(CONTAINS(STR(?body), "D003920"))
       }
       LIMIT 100
     correct_sparql: |
       PREFIX oa: <http://www.w3.org/ns/oa#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
-      PREFIX bibo: <http://purl.org/ontology/bibo/>
-      PREFIX dct: <http://purl.org/dc/terms/>
       
-      SELECT ?ann ?diseaseId ?title
+      # Fast - use specific MeSH IRI
+      SELECT ?annotation ?article
       FROM <http://rdfportal.org/dataset/pubtator_central>
-      FROM <http://rdfportal.org/dataset/pubmed>
       WHERE {
-        ?ann dcterms:subject "Disease" ;
-             oa:hasBody ?diseaseId ;
-             oa:hasTarget ?article .
-        ?article dct:title ?title .
-        ?title bif:contains "'cancer'" .
+        ?annotation dcterms:subject "Disease" ;
+                    oa:hasBody <http://identifiers.org/mesh/D003920> ;
+                    oa:hasTarget ?article .
       }
       LIMIT 100
-    explanation: Use bif:contains on text fields (Strategy 4); integrate with PubMed for keyword search.
-
-  - title: Cross-database query without pre-filtering
-    problem: Filtering after join processes billions of intermediate results.
+    explanation: "Use specific IRIs for MeSH diseases and NCBI genes instead of text search. Much faster and more precise."
+  
+  - title: "Cross-database query without pre-filtering"
+    problem: "Joining databases without pre-filtering creates billions of intermediate results before filtering."
     wrong_sparql: |
+      # Times out - filters after expensive join
       WHERE {
         GRAPH <http://rdfportal.org/dataset/pubmed> {
-          ?article bibo:pmid ?pmid ;
-                   dct:title ?title .
+          ?article <http://purl.org/ontology/bibo/pmid> ?pmid ;
+                   <http://purl.org/dc/terms/title> ?title .
         }
         GRAPH <http://rdfportal.org/dataset/pubtator_central> {
-          ?ann oa:hasTarget ?article ;
-               oa:hasBody ?geneId .
+          ?ann <http://www.w3.org/ns/oa#hasTarget> ?article ;
+               <http://www.w3.org/ns/oa#hasBody> ?geneId .
         }
         FILTER(CONTAINS(?title, "BRCA1"))
       }
     correct_sparql: |
+      # Completes in 2-3s - pre-filters before join
       WHERE {
         GRAPH <http://rdfportal.org/dataset/pubmed> {
-          ?article bibo:pmid ?pmid ;
-                   dct:title ?title .
+          ?article <http://purl.org/ontology/bibo/pmid> ?pmid ;
+                   <http://purl.org/dc/terms/title> ?title .
           ?title bif:contains "'BRCA1'" .
         }
         GRAPH <http://rdfportal.org/dataset/pubtator_central> {
-          ?ann oa:hasTarget ?article ;
-               oa:hasBody ?geneId .
+          ?ann <http://www.w3.org/ns/oa#hasTarget> ?article ;
+               <http://www.w3.org/ns/oa#hasBody> ?geneId .
         }
       }
       LIMIT 50
-    explanation: Pre-filter with bif:contains before join (Strategy 2+4) reduces 37M to ~100 articles.
+    explanation: "Pre-filter with bif:contains before join (Strategy 2+4) reduces 37M articles to ~100 before joining with PubTator."
 
 common_errors:
-  - error: Query timeout on aggregations
+  - error: "Query timeout on aggregations"
     causes:
-      - Aggregating over entire dataset without LIMIT
-      - Cross-database queries without pre-filtering
+      - "Aggregating over entire dataset without LIMIT"
+      - "Cross-database queries without pre-filtering within GRAPH clauses"
+      - "Using FILTER(CONTAINS()) instead of bif:contains for text search"
     solutions:
-      - Add LIMIT clause (Strategy 10)
-      - Pre-filter within GRAPH before joins (Strategy 2)
-      - Use bif:contains for keyword searches (Strategy 4)
+      - "Add LIMIT clause (Strategy 10) - always use for large datasets"
+      - "Pre-filter within GRAPH before joins (Strategy 2) - critical for performance"
+      - "Use bif:contains for keyword searches (Strategy 4) - 10-100x faster than FILTER"
     example_fix: |
       # BEFORE: Times out
       WHERE {
         GRAPH <http://rdfportal.org/dataset/pubmed> {
-          ?article bibo:pmid ?pmid .
+          ?article <http://purl.org/ontology/bibo/pmid> ?pmid .
         }
         GRAPH <http://rdfportal.org/dataset/pubtator_central> {
-          ?ann oa:hasTarget ?article .
+          ?ann <http://www.w3.org/ns/oa#hasTarget> ?article .
         }
       }
       
       # AFTER: Completes in 2s
       WHERE {
         GRAPH <http://rdfportal.org/dataset/pubmed> {
-          ?article bibo:pmid ?pmid ;
-                   dct:title ?title .
+          ?article <http://purl.org/ontology/bibo/pmid> ?pmid ;
+                   <http://purl.org/dc/terms/title> ?title .
           ?title bif:contains "'BRCA1'" .
         }
         GRAPH <http://rdfportal.org/dataset/pubtator_central> {
-          ?ann oa:hasTarget ?article .
+          ?ann <http://www.w3.org/ns/oa#hasTarget> ?article .
         }
       }
       LIMIT 50
-
-  - error: Empty results for valid queries
+  
+  - error: "Empty results for entity type queries"
     causes:
-      - Wrong dcterms:subject values
-      - Case sensitivity in literal matching
+      - "Case sensitivity in dcterms:subject literal matching"
+      - "Using incorrect entity type values"
     solutions:
-      - Use "Disease" and "Gene" as confirmed types
-      - Check exact string matching
+      - "Use exact string values: 'Disease' and 'Gene' (capitalized)"
+      - "Check for exact literal matching in WHERE clause"
     example_fix: |
       # BEFORE: Returns nothing
       SELECT ?ann WHERE {
-        ?ann dcterms:subject "chemical" .
-      }
-      
-      # AFTER: Works
-      SELECT ?ann WHERE {
-        ?ann dcterms:subject "Disease" .
+        ?ann <http://purl.org/dc/terms/subject> "disease" .
       }
       LIMIT 10
-
-  - error: Missing optional dcterms:source
+      
+      # AFTER: Works correctly
+      SELECT ?ann WHERE {
+        ?ann <http://purl.org/dc/terms/subject> "Disease" .
+      }
+      LIMIT 10
+  
+  - error: "Missing annotations with dcterms:source"
     causes:
-      - Assuming all annotations have source
+      - "Assuming all annotations have provenance source"
+      - "Required pattern for optional property filters out 98.4% of data"
     solutions:
-      - Use OPTIONAL for dcterms:source (Strategy 7)
+      - "Use OPTIONAL for dcterms:source (Strategy 7)"
+      - "Place OPTIONAL patterns after all required patterns"
     example_fix: |
       # BEFORE: Misses 98.4% of annotations
       SELECT ?ann ?source WHERE {
-        ?ann a oa:Annotation ;
-             dcterms:source ?source .
+        ?ann a <http://www.w3.org/ns/oa#Annotation> ;
+             <http://purl.org/dc/terms/source> ?source .
       }
+      LIMIT 100
       
       # AFTER: Captures all annotations
       SELECT ?ann ?source WHERE {
-        ?ann a oa:Annotation .
-        OPTIONAL { ?ann dcterms:source ?source . }
+        ?ann a <http://www.w3.org/ns/oa#Annotation> .
+        OPTIONAL { ?ann <http://purl.org/dc/terms/source> ?source . }
       }
       LIMIT 100
