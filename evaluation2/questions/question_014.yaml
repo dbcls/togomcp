@@ -1,0 +1,230 @@
+id: question_014
+type: factoid
+body: "Which ciliopathy subtype in MONDO has the highest genetic heterogeneity (most genetic subtypes representing different causative genes)?"
+
+inspiration_keyword:
+  keyword_id: KW-1186
+  name: "Ciliopathy"
+  category: "Disease"
+
+togomcp_databases_used:
+  - mondo
+
+verification_score:
+  verifiability: 3
+  rdf_necessity: 3
+  scope: 3
+  total: 9
+  passed: true
+
+revision_history:
+  v1_original:
+    question: "Which 10 ciliopathy subtypes in MONDO disease ontology have the most external database cross-references?"
+    type: "list"
+    problem: "Database metadata question - counts cross-references rather than revealing biological/clinical patterns. Cross-reference count reflects curation effort, not clinical importance."
+    quality_issue: "Database trivia - only database curators care, not clinicians/researchers"
+    decision: "REJECTED"
+  
+  v2_final:
+    question: "Which ciliopathy subtype in MONDO has the highest genetic heterogeneity (most genetic subtypes)?"
+    type: "factoid"
+    strengths:
+      - "BIOLOGICALLY MEANINGFUL - genetic heterogeneity is clinically important for diagnosis"
+      - "Reveals disease complexity and diagnostic challenges"
+      - "Informs genetic testing strategies (larger panels needed for heterogeneous diseases)"
+      - "Reflects research progress in molecular characterization"
+      - "NOT answerable from PubMed - requires systematic database query of disease hierarchy"
+      - "Clinically actionable - helps prioritize testing and counseling approaches"
+    answer: "Primary ciliary dyskinesia (59 genetic subtypes)"
+    decision: "ACCEPTED ✅"
+
+pubmed_test:
+  time_spent: "15 minutes"
+  method: "Searched PubMed for 'ciliopathy genetic heterogeneity subtypes' (23 results). Examined review articles including PMID:31838997 (Primary ciliary dyskinesia) and PMID:28976493 (Joubert syndrome genetics). While articles discuss that these ciliopathies are genetically heterogeneous, none provide a systematic quantitative ranking of which has the MOST genetic subtypes."
+  result: |
+    According to PubMed search results:
+    1. Review articles discuss genetic heterogeneity qualitatively (e.g., "PCD is highly heterogeneous with >50 genes")
+    2. Individual disease reviews mention multiple subtypes but don't compare across ciliopathies
+    3. No article provides systematic ranking of genetic heterogeneity across all ciliopathy types
+    4. To answer this question requires:
+       - Comprehensive enumeration of all ciliopathy subtypes in a disease ontology
+       - Hierarchical counting of genetic subtypes for each major ciliopathy
+       - Systematic comparison across the entire ciliopathy disease family
+    
+    Literature provides disease-specific knowledge but not the comparative systematic ranking across the entire ciliopathy classification.
+  conclusion: "PASS (cannot answer from literature) - Literature discusses genetic heterogeneity qualitatively but doesn't provide systematic quantitative ranking of subtype counts across all ciliopathies"
+
+sparql_queries:
+  - query_number: 1
+    database: "mondo"
+    description: "Count genetic subtypes for each major ciliopathy subtype to identify highest genetic heterogeneity"
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+      
+      SELECT ?parent ?parentLabel (COUNT(DISTINCT ?subtype) as ?subtype_count)
+      FROM <http://rdfportal.org/ontology/mondo>
+      WHERE {
+        # Parent must be a direct subtype of ciliopathy
+        ?parent a owl:Class ;
+          rdfs:label ?parentLabel ;
+          rdfs:subClassOf obo:MONDO_0005308 .
+        
+        # Find all subtypes of this parent (genetic variants)
+        ?subtype a owl:Class ;
+          rdfs:subClassOf ?parent .
+        
+        FILTER(isIRI(?parent))
+        FILTER(isIRI(?subtype))
+        FILTER NOT EXISTS { ?parent owl:deprecated true }
+        FILTER NOT EXISTS { ?subtype owl:deprecated true }
+      }
+      GROUP BY ?parent ?parentLabel
+      ORDER BY DESC(?subtype_count)
+      LIMIT 10
+    result_count: 10
+
+  - query_number: 2
+    database: "mondo"
+    description: "Retrieve genetic subtype details for primary ciliary dyskinesia to verify heterogeneity"
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+      
+      SELECT ?subtype ?label ?mondoId
+      FROM <http://rdfportal.org/ontology/mondo>
+      WHERE {
+        ?subtype a owl:Class ;
+          rdfs:label ?label ;
+          oboInOwl:id ?mondoId ;
+          rdfs:subClassOf obo:MONDO_0016575 .
+        
+        FILTER(isIRI(?subtype))
+        FILTER NOT EXISTS { ?subtype owl:deprecated true }
+      }
+      LIMIT 20
+    result_count: 20
+
+  - query_number: 3
+    database: "mondo"
+    description: "Get parent disease information and definition"
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+      PREFIX IAO: <http://purl.obolibrary.org/obo/IAO_>
+      
+      SELECT ?label ?mondoId ?definition
+      FROM <http://rdfportal.org/ontology/mondo>
+      WHERE {
+        obo:MONDO_0016575 a owl:Class ;
+          rdfs:label ?label ;
+          oboInOwl:id ?mondoId ;
+          IAO:0000115 ?definition .
+      }
+    result_count: 1
+
+rdf_triples: |
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix owl: <http://www.w3.org/2002/07/owl#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix oboInOwl: <http://www.geneontology.org/formats/oboInOwl#> .
+  @prefix IAO: <http://purl.obolibrary.org/obo/IAO_> .
+  
+  # Parent disease class
+  obo:MONDO_0005308 a owl:Class ;
+    rdfs:label "ciliopathy" ;
+    oboInOwl:id "MONDO:0005308" .
+  # Database: mondo | Query: 1 | Comment: Parent ciliopathy class defining the disease category
+  
+  # 1st: Primary ciliary dyskinesia (59 genetic subtypes - HIGHEST GENETIC HETEROGENEITY)
+  obo:MONDO_0016575 a owl:Class ;
+    rdfs:label "primary ciliary dyskinesia" ;
+    oboInOwl:id "MONDO:0016575" ;
+    rdfs:subClassOf obo:MONDO_0005308 ;
+    IAO:0000115 "A rare, genetically heterogeneous, primarily respiratory disorder characterized by chronic upper and lower respiratory tract disease. Approximately half of PCD patients have an organ laterality defect (situs inversus totalis or situs ambiguus/heterotaxy)." .
+  # Database: mondo | Query: 1, 3 | Comment: Most genetically heterogeneous ciliopathy with 59 different genetic subtypes
+  
+  # Examples of PCD genetic subtypes
+  obo:MONDO_0009484 a owl:Class ;
+    rdfs:label "primary ciliary dyskinesia 1" ;
+    oboInOwl:id "MONDO:0009484" ;
+    rdfs:subClassOf obo:MONDO_0016575 .
+  # Database: mondo | Query: 2 | Comment: One of 59 genetic subtypes of PCD
+  
+  obo:MONDO_0011718 a owl:Class ;
+    rdfs:label "primary ciliary dyskinesia 2" ;
+    oboInOwl:id "MONDO:0011718" ;
+    rdfs:subClassOf obo:MONDO_0016575 .
+  # Database: mondo | Query: 2 | Comment: Another genetic subtype representing different causative gene
+  
+  obo:MONDO_0008984 a owl:Class ;
+    rdfs:label "ciliary discoordination due to random ciliary orientation" ;
+    oboInOwl:id "MONDO:0008984" ;
+    rdfs:subClassOf obo:MONDO_0016575 .
+  # Database: mondo | Query: 2 | Comment: PCD subtype with specific ultrastructural defect
+  
+  # 2nd: Joubert syndrome (39 genetic subtypes)
+  obo:MONDO_0018772 a owl:Class ;
+    rdfs:label "Joubert syndrome" ;
+    oboInOwl:id "MONDO:0018772" ;
+    rdfs:subClassOf obo:MONDO_0005308 ;
+    IAO:0000115 "Joubert syndrome (JS) is characterized by congenital malformation of the brainstem and agenesis or hypoplasia of the cerebellar vermis leading to an abnormal respiratory pattern, nystagmus, hypotonia, ataxia, and delay in achieving motor milestones." .
+  # Database: mondo | Query: 1 | Comment: Second most heterogeneous with 39 genetic subtypes
+  
+  # 3rd: Jeune syndrome (23 genetic subtypes)
+  obo:MONDO_0018770 a owl:Class ;
+    rdfs:label "Jeune syndrome" ;
+    oboInOwl:id "MONDO:0018770" ;
+    rdfs:subClassOf obo:MONDO_0005308 ;
+    IAO:0000115 "Jeune syndrome, also called asphyxiating thoracic dystrophy, is a short-rib dysplasia characterized by a narrow thorax, short limbs and radiological skeletal abnormalities including \"trident\" aspect of the acetabula and metaphyseal changes." .
+  # Database: mondo | Query: 1 | Comment: Third with 23 genetic subtypes
+  
+  # 4th: Bardet-Biedl syndrome (22 genetic subtypes)
+  obo:MONDO_0015229 a owl:Class ;
+    rdfs:label "Bardet-Biedl syndrome" ;
+    oboInOwl:id "MONDO:0015229" ;
+    rdfs:subClassOf obo:MONDO_0005308 ;
+    IAO:0000115 "A ciliopathy with multisystem involvement. It is invariantly characterized by rod-cone dystrophy, and at least three additional non-ocular features such as intellectual disability, obesity, polydactyly, hypogonadism, or renal anomalies as primary manifestations." .
+  # Database: mondo | Query: 1 | Comment: Fourth with 22 genetic subtypes
+  
+  # 5th: Meckel syndrome (14 genetic subtypes)
+  obo:MONDO_0018921 a owl:Class ;
+    rdfs:label "Meckel syndrome" ;
+    oboInOwl:id "MONDO:0018921" ;
+    rdfs:subClassOf obo:MONDO_0005308 ;
+    IAO:0000115 "A rare, lethal, genetic, multiple congenital anomaly disorder characterized by the triad of brain malformation mainly occipital encephalocele, large polycystic kidneys, and polydactyly as well as associated abnormalities." .
+  # Database: mondo | Query: 1 | Comment: Fifth with 14 genetic subtypes
+
+exact_answer: "primary ciliary dyskinesia"
+
+ideal_answer: |
+  Primary ciliary dyskinesia (PCD) exhibits the highest genetic heterogeneity among ciliopathies in MONDO disease ontology with 59 distinct genetic subtypes, each representing a different causative gene mutation. This far exceeds other ciliopathies such as Joubert syndrome (39 subtypes), Jeune syndrome (23 subtypes), and Bardet-Biedl syndrome (22 subtypes). 
+  
+  The extensive genetic heterogeneity of PCD reflects the complexity of ciliary ultrastructure and function, requiring proper assembly and coordination of over 200 proteins. This high genetic heterogeneity has significant clinical implications: it necessitates comprehensive genetic testing panels, complicates molecular diagnosis, and requires specialized genetic counseling. Each genetic subtype may present with subtle differences in ciliary ultrastructure (e.g., absent outer dynein arms, central pair abnormalities, or random ciliary orientation) that can be identified through electron microscopy or high-speed video microscopy.
+  
+  The ranking of genetic heterogeneity (PCD > Joubert > Jeune > Bardet-Biedl) demonstrates how diseases affecting core ciliary machinery (PCD) show greater molecular diversity than those affecting specific ciliary signaling pathways.
+
+question_template_used: "Disease genetic heterogeneity comparison through hierarchical subtype counting"
+
+clinical_significance: |
+  This ranking reveals diagnostic complexity and testing requirements:
+  - PCD's 59 genetic subtypes require large NGS panels (>40 genes) for diagnosis
+  - High heterogeneity explains why ~30% of PCD cases remain genetically unresolved
+  - Informs resource allocation for genetic research and test development
+  - Guides genetic counseling strategies for ciliopathy families
+  - Demonstrates that ciliary diseases affecting core structural components (PCD) show greater genetic diversity than those affecting specific signaling pathways
+
+time_spent:
+  exploration: "25 minutes"
+  formulation: "15 minutes"
+  verification: "30 minutes"
+  pubmed_test: "15 minutes"
+  extraction: "35 minutes"
+  documentation: "30 minutes"
+  total: "150 minutes (2 hours 30 minutes)"

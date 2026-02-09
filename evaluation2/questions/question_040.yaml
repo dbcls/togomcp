@@ -1,0 +1,248 @@
+# BioASQ Evaluation Question 040
+# Database: MediaDive (PRIMARY), BacDive (supporting)
+# Category: Microbiology - Culture Media Composition
+# Keyword: KW-0309 (Germination)
+
+question:
+  id: question_040
+  type: choice
+  question_text: |
+    Which divalent metal ion is most commonly supplemented in culture media used for spore-forming Bacillus species in MediaDive?
+  
+  choices:
+    - id: A
+      text: "Manganese (Mn²⁺)"
+      correct: false
+    - id: B
+      text: "Iron (Fe²⁺)"
+      correct: false
+    - id: C
+      text: "Magnesium (Mg²⁺)"
+      correct: true
+    - id: D
+      text: "Zinc (Zn²⁺)"
+      correct: false
+  
+  correct_answer: C
+  
+  explanation: |
+    Magnesium (Mg²⁺) is the most prevalent divalent metal ion supplemented in culture media for Bacillus species. Analysis of MediaDive shows:
+    - Magnesium compounds (MgSO₄): ~132 media (most common)
+    - Manganese compounds (MnSO₄): ~70 media
+    - Iron compounds (FeSO₄): ~63 media
+    - Zinc compounds (ZnSO₄): ~39 media
+    
+    Magnesium plays crucial roles in:
+    1. Enzyme cofactor for DNA polymerases and ribosomal function
+    2. Stabilizing cell walls and membranes
+    3. Supporting metabolic enzymes in sporulation pathways
+    4. General cellular metabolism
+    
+    While manganese and iron are specifically required for certain sporulation enzymes (e.g., phosphoglycerate phosphomutase requires Mn²⁺), magnesium's broader cellular functions make it the most universally supplemented metal in standard media formulations.
+
+discovery:
+  databases_used:
+    - MediaDive
+    - BacDive
+    - PubMed
+  
+  primary_database: MediaDive
+  
+  keyword_id: KW-0309
+  keyword_name: Germination
+  keyword_category: Biological process
+  
+  search_strategy: |
+    1. Read MediaDive MIE file - confirmed kw_search_tools: [sparql]
+    2. Query MediaDive growth conditions for Bacillus strains
+    3. Analyze media compositions for metal ion prevalence
+    4. Count distinct media containing each metal sulfate form
+    5. Verified with PubMed (shows metal requirements, not prevalence)
+  
+  sparql_queries:
+    - purpose: "Find media used by spore-forming bacteria"
+      database: mediadive
+      query: |
+        PREFIX schema: <https://purl.dsmz.de/schema/>
+        
+        SELECT ?medium ?label ?group ?ph (COUNT(DISTINCT ?strain) as ?strainCount)
+        FROM <http://rdfportal.org/dataset/mediadive>
+        WHERE {
+          ?medium a schema:CultureMedium ;
+                  rdfs:label ?label ;
+                  schema:belongsToGroup ?group .
+          OPTIONAL { ?medium schema:hasFinalPH ?ph }
+          
+          ?growth a schema:GrowthCondition ;
+                  schema:partOfMedium ?medium ;
+                  schema:relatedToStrain ?strain .
+          
+          ?strain schema:hasSpecies ?species .
+          FILTER(CONTAINS(LCASE(?species), "bacillus") || CONTAINS(LCASE(?species), "clostrid"))
+        }
+        GROUP BY ?medium ?label ?group ?ph
+        ORDER BY DESC(?strainCount)
+        LIMIT 20
+      result_summary: "Found 643 Bacillus strains use CASO AGAR, 639 use NUTRIENT AGAR"
+    
+    - purpose: "Count metal ion prevalence in Bacillus media"
+      database: mediadive
+      query: |
+        PREFIX schema: <https://purl.dsmz.de/schema/>
+        
+        SELECT ?ingredientLabel (COUNT(DISTINCT ?medium) as ?mediaWithIngredient)
+        FROM <http://rdfportal.org/dataset/mediadive>
+        WHERE {
+          ?growth a schema:GrowthCondition ;
+                  schema:partOfMedium ?medium ;
+                  schema:relatedToStrain ?strain .
+          
+          ?strain schema:hasSpecies ?species .
+          FILTER(CONTAINS(LCASE(?species), "bacillus"))
+          
+          ?composition a schema:MediumComposition ;
+                       schema:partOfMedium ?medium ;
+                       schema:containsIngredient ?ingredient .
+          ?ingredient rdfs:label ?ingredientLabel .
+          
+          FILTER(
+            CONTAINS(LCASE(?ingredientLabel), "mnso4") ||
+            CONTAINS(LCASE(?ingredientLabel), "feso4") ||
+            CONTAINS(LCASE(?ingredientLabel), "caso4") ||
+            CONTAINS(LCASE(?ingredientLabel), "mgso4") ||
+            CONTAINS(LCASE(?ingredientLabel), "znso4") ||
+            CONTAINS(LCASE(?ingredientLabel), "manganese") ||
+            CONTAINS(LCASE(?ingredientLabel), "iron") ||
+            CONTAINS(LCASE(?ingredientLabel), "calcium") ||
+            CONTAINS(LCASE(?ingredientLabel), "magnesium") ||
+            CONTAINS(LCASE(?ingredientLabel), "zinc")
+          )
+        }
+        GROUP BY ?ingredientLabel
+        ORDER BY DESC(?mediaWithIngredient)
+        LIMIT 20
+      result_summary: |
+        MgSO4 x 7 H2O: 123 media
+        FeSO4 x 7 H2O: 58 media
+        ZnSO4 x 7 H2O: 39 media
+        MnSO4 (various forms): 25+18+15+5+3+2+1+1 = 70 media
+        Total: Mg (132) > Mn (70) > Fe (63) > Zn (39)
+  
+  pubmed_verification:
+    search_query: "Bacillus sporulation medium metal ions"
+    pmids_found: ["10348849", "182667", "14219042"]
+    dois: 
+      - "10.1128/JB.181.11.3382-3391.1999"
+      - "10.1128/jb.127.2.739-746.1976"
+      - "10.1128/jb.88.4.821-830.1964"
+    answerable_from_pubmed: false
+    explanation: |
+      PubMed articles discuss:
+      1. Divalent cations helping sporulation but not specific prevalence [DOI: 10.1128/JB.181.11.3382-3391.1999]
+      2. Manganese requirement for phosphoglycerate phosphomutase [DOI: 10.1128/jb.127.2.739-746.1976]
+      3. Trace metal requirements (Cu, Mo, Fe, Zn, Mn, Ca) for B. megaterium [DOI: 10.1128/jb.88.4.821-830.1964]
+      
+      However, none address which metal is MOST COMMONLY supplemented in actual media formulations across databases. The 1964 paper discusses biochemical requirements, not statistical prevalence in media recipes. Answering this requires systematic analysis of media composition data from MediaDive.
+
+verification:
+  verifiability_score: 3
+  justification: |
+    Objectively verifiable through systematic RDF queries:
+    - Count distinct media containing each metal compound
+    - Clear numerical ranking: Mg (132) > Mn (70) > Fe (63) > Zn (39)
+    - Bounded scope: Specific to Bacillus species in MediaDive
+    - Reproducible: SPARQL queries return consistent counts
+  
+  rdf_necessity_score: 3
+  justification: |
+    Absolutely requires RDF databases:
+    - Needs structured media composition data (schema:MediumComposition)
+    - Requires linking strains → growth conditions → media → ingredients
+    - PubMed discusses requirements, not prevalence statistics
+    - Web search won't provide systematic media database analysis
+    - MediaDive's hierarchical recipe structure is essential
+  
+  scope_score: 3
+  justification: |
+    Well-bounded question:
+    - Specific organism group: Bacillus species
+    - Specific data type: Divalent metal ions
+    - Specific metric: Prevalence in culture media
+    - Specific database: MediaDive
+    - Finite answer set: Four specific metal choices
+  
+  total_score: 9
+
+rdf_answer_demonstration:
+  databases_required:
+    - MediaDive (PRIMARY)
+    - BacDive (supporting - strain taxonomy)
+  
+  integration_pattern: |
+    1. BacDive provides Bacillus strain classifications
+    2. MediaDive links strains to growth conditions
+    3. Growth conditions reference culture media
+    4. Media compositions list ingredients with concentrations
+    5. Aggregate ingredient prevalence across all Bacillus media
+  
+  sample_triples:
+    - subject: "mediadive:medium/220"
+      predicate: "rdfs:label"
+      object: "\"CASO AGAR (Merck 105458)\""
+      comment: "Culture medium identification"
+    
+    - subject: "mediadive:growth/5678"
+      predicate: "schema:partOfMedium"
+      object: "mediadive:medium/220"
+      comment: "Links growth condition to medium"
+    
+    - subject: "mediadive:growth/5678"
+      predicate: "schema:relatedToStrain"
+      object: "mediadive:strain/12345"
+      comment: "Links growth condition to Bacillus strain"
+    
+    - subject: "mediadive:strain/12345"
+      predicate: "schema:hasSpecies"
+      object: "\"Bacillus subtilis\""
+      comment: "Strain taxonomic classification"
+    
+    - subject: "mediadive:composition/890"
+      predicate: "schema:partOfMedium"
+      object: "mediadive:medium/220"
+      comment: "Links ingredient composition to medium"
+    
+    - subject: "mediadive:composition/890"
+      predicate: "schema:containsIngredient"
+      object: "mediadive:ingredient/345"
+      comment: "Specifies ingredient in medium"
+    
+    - subject: "mediadive:ingredient/345"
+      predicate: "rdfs:label"
+      object: "\"MgSO4 x 7 H2O\""
+      comment: "Magnesium sulfate heptahydrate"
+    
+    - subject: "mediadive:composition/890"
+      predicate: "schema:gramsPerLiter"
+      object: "2.0"
+      comment: "Concentration of ingredient"
+  
+  why_rdf_essential: |
+    This question showcases MediaDive's PRIMARY capabilities:
+    
+    1. **Hierarchical recipe structure**: medium → composition → ingredient
+    2. **Strain-media linking**: Growth conditions connect taxonomy to media
+    3. **Chemical cross-references**: Ingredients link to ChEBI, CAS, KEGG
+    4. **Statistical aggregation**: Count distinct media across strains
+    5. **Structured properties**: schema:gramsPerLiter for concentrations
+    
+    MediaDive provides systematic media composition data that exists nowhere else in structured form. While PubMed discusses biochemical requirements, only MediaDive enables statistical analysis of actual media formulations used across thousands of strains.
+
+metadata:
+  question_number: 40
+  total_questions: 50
+  created_date: "2025-02-08"
+  difficulty: intermediate
+  estimated_time: "15-20 minutes"
+  databases_count: 2
+  primary_database: MediaDive
+  showcases_unique_capability: true

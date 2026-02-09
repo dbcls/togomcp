@@ -1,0 +1,197 @@
+id: question_024
+type: factoid
+body: "Which two bacterial genera are tied for having the most tungsten-related protein annotations in Swiss-Prot?"
+
+inspiration_keyword:
+  keyword_id: KW-0826
+  name: "Tungsten"
+  category: "Ligand"
+
+togomcp_databases_used:
+  - uniprot
+  - taxonomy
+
+verification_score:
+  verifiability: 3
+  rdf_necessity: 3
+  scope: 3
+  total: 9
+  passed: true
+
+pubmed_test:
+  time_spent: "15 minutes"
+  method: "Searched PubMed for 'tungsten-containing enzymes bacteria' and 'tungsten proteins bacteria systematic review'. Found individual studies on specific organisms (Aromatoleum aromaticum, Campylobacter jejuni, Caldicellulosiruptor bescii, Pyrococcus furiosus) but no systematic enumeration across all bacterial genera."
+  result: |
+    Found 42 articles about tungsten-containing enzymes in bacteria, including studies on:
+    - Aromatoleum aromaticum (tungsten aldehyde oxidoreductase AOR)
+    - Campylobacter jejuni (tungsten formate dehydrogenase)
+    - Caldicellulosiruptor bescii (tungsten oxidoreductase XOR)
+    - Various archaea (Pyrococcus, Methanococcus, Thermococcus)
+    
+    However, no papers provide systematic enumeration of tungsten proteins by bacterial genus across SwissProt/UniProt. Papers focus on individual organisms and specific enzyme characterization. No systematic review or comparative analysis found.
+  conclusion: "PASS (cannot answer from literature) - Requires systematic database query and genus-level counting that is not available in published literature"
+
+sparql_queries:
+  - query_number: 1
+    database: "uniprot"
+    description: "Search for all reviewed proteins with tungsten mentioned in annotations"
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT DISTINCT ?protein ?mnemonic ?organism ?scientificName
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:mnemonic ?mnemonic ;
+                 up:organism ?organism .
+        
+        ?organism up:scientificName ?scientificName .
+        
+        ?protein up:annotation ?annot .
+        ?annot rdfs:comment ?comment .
+        ?comment bif:contains "'tungsten'"
+      }
+      ORDER BY ?scientificName
+      LIMIT 100
+    result_count: 33
+
+  - query_number: 2
+    database: "uniprot"
+    description: "Count tungsten-associated proteins by bacterial genus"
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT (COUNT(DISTINCT ?protein) as ?count) ?genus
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism ?organism .
+        
+        ?organism up:scientificName ?scientificName .
+        
+        ?protein up:annotation ?annot .
+        ?annot rdfs:comment ?comment .
+        ?comment bif:contains "'tungsten'"
+        
+        FILTER(
+          CONTAINS(?scientificName, "Paenarthrobacter") ||
+          CONTAINS(?scientificName, "Thauera") ||
+          CONTAINS(?scientificName, "Escherichia") ||
+          CONTAINS(?scientificName, "Campylobacter") ||
+          CONTAINS(?scientificName, "Thermus") ||
+          CONTAINS(?scientificName, "Neomoorella") ||
+          CONTAINS(?scientificName, "Nitratidesulfovibrio") ||
+          CONTAINS(?scientificName, "Syntrophotalea") ||
+          CONTAINS(?scientificName, "Caldithrix") ||
+          CONTAINS(?scientificName, "Abyssobacteria")
+        )
+        
+        BIND(REPLACE(?scientificName, " .*", "") AS ?genus)
+      }
+      GROUP BY ?genus
+      ORDER BY DESC(?count)
+    result_count: 10
+
+  - query_number: 3
+    database: "uniprot"
+    description: "Get detailed annotations for top two genera (Thauera and Paenarthrobacter)"
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+      
+      SELECT ?protein ?mnemonic ?fullName ?comment
+      WHERE {
+        VALUES ?protein { 
+          uniprot:Q9S1G7 uniprot:Q9S1G9 uniprot:Q9S1H0 
+          uniprot:Q93NH5 uniprot:Q59127 uniprot:Q59128 
+        }
+        ?protein up:reviewed 1 ;
+                 up:mnemonic ?mnemonic .
+        
+        OPTIONAL {
+          ?protein up:recommendedName ?name .
+          ?name up:fullName ?fullName .
+        }
+        
+        ?protein up:annotation ?annot .
+        ?annot rdfs:comment ?comment .
+        ?comment bif:contains "'tungsten'"
+      }
+      LIMIT 20
+    result_count: 9
+
+rdf_triples: |
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
+  @prefix taxon: <http://purl.uniprot.org/taxonomy/> .
+  
+  # Paenarthrobacter nicotinovorans proteins (3)
+  uniprot:Q93NH5 a up:Protein ;
+                 up:reviewed 1 ;
+                 up:mnemonic "NDHL_PAENI" ;
+                 up:organism taxon:29320 .
+  # Database: UniProt | Query: 1 | Comment: Nicotine dehydrogenase large subunit
+  
+  uniprot:Q59127 a up:Protein ;
+                 up:reviewed 1 ;
+                 up:mnemonic "NDHM_PAENI" ;
+                 up:organism taxon:29320 .
+  # Database: UniProt | Query: 1 | Comment: Nicotine dehydrogenase medium subunit
+  
+  uniprot:Q59128 a up:Protein ;
+                 up:reviewed 1 ;
+                 up:mnemonic "NDHS_PAENI" ;
+                 up:organism taxon:29320 .
+  # Database: UniProt | Query: 1 | Comment: Nicotine dehydrogenase small subunit
+  
+  taxon:29320 up:scientificName "Paenarthrobacter nicotinovorans" .
+  # Database: Taxonomy | Query: 2 | Comment: Organism classification
+  
+  # Thauera selenatis proteins (3)
+  uniprot:Q9S1H0 a up:Protein ;
+                 up:reviewed 1 ;
+                 up:mnemonic "SERA_THASE" ;
+                 up:organism taxon:33058 .
+  # Database: UniProt | Query: 1 | Comment: Selenate reductase alpha subunit
+  
+  uniprot:Q9S1G9 a up:Protein ;
+                 up:reviewed 1 ;
+                 up:mnemonic "SERB_THASE" ;
+                 up:organism taxon:33058 .
+  # Database: UniProt | Query: 1 | Comment: Selenate reductase beta subunit
+  
+  uniprot:Q9S1G7 a up:Protein ;
+                 up:reviewed 1 ;
+                 up:mnemonic "SERC_THASE" ;
+                 up:organism taxon:33058 .
+  # Database: UniProt | Query: 1 | Comment: Selenate reductase gamma subunit
+  
+  taxon:33058 up:scientificName "Thauera selenatis" .
+  # Database: Taxonomy | Query: 2 | Comment: Organism classification
+  
+  # Tungsten annotations - Paenarthrobacter
+  <annotation-NDHL> rdfs:comment "Nicotine dehydrogenase activity is inhibited by tungsten." .
+  # Database: UniProt | Query: 3 | Comment: Tungsten inhibits enzyme activity
+  
+  <annotation-SERA> rdfs:comment "Binds 1 molybdenum-bis(molybdopterin guanine dinucleotide) (Mo-bis-MGD) cofactor per subunit (Probable). Can also use tungsten, with much lower level of activity (PubMed:20547201)." .
+  # Database: UniProt | Query: 3 | Comment: Can substitute tungsten for molybdenum
+
+exact_answer: "Paenarthrobacter and Thauera"
+
+ideal_answer: |
+  Paenarthrobacter and Thauera are tied for having the most tungsten-related protein annotations in Swiss-Prot among bacterial genera, with 3 proteins each. Paenarthrobacter nicotinovorans has three nicotine dehydrogenase subunits (NDHL, NDHM, NDHS) whose activity is inhibited by tungsten. Thauera selenatis has three selenate reductase subunits (SERA, SERB, SERC) that normally use molybdenum but can substitute tungsten with reduced activity. While archaea dominate true tungsten-containing enzymes (15 proteins with "tungsten-containing" in their names), these bacterial genera represent the highest occurrence of tungsten-associated proteins in Swiss-Prot's curated bacterial data.
+
+question_template_used: "Systematic database search and counting by taxonomic classification - requires cross-referencing protein annotations with organism taxonomy"
+
+time_spent:
+  exploration: "25 minutes"
+  formulation: "10 minutes"
+  verification: "20 minutes"
+  pubmed_test: "15 minutes"
+  extraction: "15 minutes"
+  documentation: "20 minutes"
+  total: "105 minutes"

@@ -1,0 +1,216 @@
+id: question_025
+type: yes_no
+body: "Are there any cobalamin-dependent enzymes in thermophilic archaea?"
+
+inspiration_keyword:
+  keyword_id: KW-0170
+  name: "Cobalt"
+  category: "Ligand"
+
+togomcp_databases_used:
+  - uniprot
+  - taxonomy
+
+verification_score:
+  verifiability: 3
+  rdf_necessity: 3
+  scope: 3
+  total: 9
+  passed: true
+
+pubmed_test:
+  time_spent: "15 minutes"
+  method: "Searched PubMed for 'cobalt enzymes hyperthermophilic archaea' and retrieved 20 articles. Examined abstracts of top 4 articles (PMIDs: 34409984, 31935923, 23755111, 22848664)."
+  result: |
+    PubMed articles discuss cobalt in thermophilic archaea in various contexts:
+    - PMID 34409984: THI4 thiazole synthases from archaeal methanogens that prefer iron or cobalt as cofactor
+    - PMID 31935923: Palaeococcus pacificus transcriptomic analysis showing cobalt transfer and iron-sulfur cluster proteins
+    - PMID 23755111: Alcohol dehydrogenase from Pyrobaculum aerophilum with cobalt substitution experiments (cobalt as structural metal substitute, not natural cofactor)
+    - PMID 22848664: Thermococcus gammatolerans response to cadmium, showing cobalt tolerance mechanisms
+    
+    However, these articles:
+    1. Focus on specific enzyme studies rather than systematic enumeration
+    2. Often discuss cobalt as a metal substitute or in toxicity/tolerance contexts
+    3. Do NOT provide a comprehensive, database-level answer about which enzymes actually USE cobalamin/corrinoids as natural cofactors in thermophilic archaea
+    4. Do not systematically catalog all cobalamin-dependent enzymes across thermophilic archaea
+    
+    To definitively answer the question requires:
+    - Querying current Swiss-Prot annotations for cobalamin/corrinoid cofactor usage
+    - Cross-referencing with taxonomic classification (Archaea + thermophilic organisms)
+    - Distinguishing between enzymes that USE cobalamin vs those involved in cobalamin biosynthesis
+  conclusion: "PASS (cannot answer comprehensively from literature alone)"
+
+sparql_queries:
+  - query_number: 1
+    database: "uniprot"
+    description: "Search for proteins with cobalamin/corrinoid annotations in archaea"
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+      
+      SELECT DISTINCT ?protein ?mnemonic ?fullName ?scientificName
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:mnemonic ?mnemonic ;
+                 up:organism ?organism ;
+                 up:annotation ?annot .
+        ?organism up:scientificName ?scientificName ;
+                  rdfs:subClassOf* taxon:2157 .
+        ?annot rdfs:comment ?comment .
+        ?comment bif:contains "'cobalamin' OR 'methylcobamide' OR 'corrinoid'" option (score ?sc) .
+        OPTIONAL {
+          ?protein up:recommendedName ?name .
+          ?name up:fullName ?fullName .
+        }
+      }
+      ORDER BY DESC(?sc)
+      LIMIT 20
+    result_count: 10
+
+  - query_number: 2
+    database: "uniprot"
+    description: "Verify specific proteins (O30640, P80184) are from archaea and get annotations"
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+      
+      SELECT DISTINCT ?protein ?mnemonic ?fullName ?taxonUri ?scientificName ?isArchaea
+      WHERE {
+        VALUES ?protein { uniprot:O30640 uniprot:P80184 }
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:mnemonic ?mnemonic ;
+                 up:organism ?taxonUri .
+        ?taxonUri up:scientificName ?scientificName .
+        OPTIONAL {
+          ?protein up:recommendedName ?name .
+          ?name up:fullName ?fullName .
+        }
+        BIND(EXISTS { ?taxonUri rdfs:subClassOf* taxon:2157 } AS ?isArchaea)
+      }
+    result_count: 2
+
+  - query_number: 3
+    database: "uniprot"
+    description: "Extract RDF triples for verified proteins and their organisms"
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+      
+      CONSTRUCT {
+        ?protein rdf:type up:Protein .
+        ?protein up:mnemonic ?mnemonic .
+        ?protein up:reviewed ?reviewed .
+        ?protein up:organism ?organism .
+        ?protein up:recommendedName ?name .
+        ?name up:fullName ?fullName .
+        ?protein up:annotation ?annot .
+        ?annot rdfs:comment ?comment .
+        ?organism up:scientificName ?scientificName .
+        ?organism rdfs:subClassOf ?parent .
+      }
+      WHERE {
+        VALUES ?protein { uniprot:O30640 uniprot:P80184 }
+        ?protein rdf:type up:Protein ;
+                 up:mnemonic ?mnemonic ;
+                 up:reviewed ?reviewed ;
+                 up:organism ?organism .
+        ?organism up:scientificName ?scientificName .
+        OPTIONAL { ?organism rdfs:subClassOf ?parent }
+        OPTIONAL {
+          ?protein up:recommendedName ?name .
+          ?name up:fullName ?fullName .
+        }
+        OPTIONAL {
+          ?protein up:annotation ?annot .
+          ?annot rdfs:comment ?comment .
+          FILTER(CONTAINS(LCASE(?comment), "cobalamin") || 
+                 CONTAINS(LCASE(?comment), "methylcobamide") || 
+                 CONTAINS(LCASE(?comment), "corrinoid"))
+        }
+      }
+      LIMIT 50
+    result_count: 36
+
+rdf_triples: |
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+  @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
+  @prefix taxon: <http://purl.uniprot.org/taxonomy/> .
+  
+  uniprot:O30640 rdf:type up:Protein .
+  # Database: UniProt | Query: 2,3 | Comment: Methylcobamide-dependent methyltransferase
+  
+  uniprot:O30640 up:mnemonic "MTBA_METBA" .
+  # Database: UniProt | Query: 2,3 | Comment: Protein mnemonic identifier
+  
+  uniprot:O30640 up:reviewed 1 .
+  # Database: UniProt | Query: 2,3 | Comment: Swiss-Prot reviewed entry
+  
+  uniprot:O30640 up:organism taxon:2208 .
+  # Database: UniProt | Query: 2,3 | Comment: Link to organism taxonomy
+  
+  uniprot:O30640 up:recommendedName uniprot:O30640#SIPBB1BCE3787577986 .
+  # Database: UniProt | Query: 3 | Comment: Link to protein name
+  
+  uniprot:O30640#SIPBB1BCE3787577986 up:fullName "Methylcobamide:CoM methyltransferase MtbA" .
+  # Database: UniProt | Query: 2,3 | Comment: Full protein name indicating methylcobamide usage
+  
+  uniprot:O30640 up:annotation uniprot:O30640#SIP4C4F9A98253F16EE .
+  # Database: UniProt | Query: 3 | Comment: Link to function annotation
+  
+  uniprot:O30640#SIP4C4F9A98253F16EE rdfs:comment "Methyltransferase involved in methanogenesis from methylamines methanol pathway. Catalyzes the transfer of the methyl group from the methylated corrinoid protein MtmC (MtmC1 or MtmC2) or MtbC to coenzyme M, forming the substrate for coenzyme-B sulfoethylthiotransferase." .
+  # Database: UniProt | Query: 3 | Comment: Function annotation showing corrinoid (cobalamin-related) usage
+  
+  taxon:2208 up:scientificName "Methanosarcina barkeri" .
+  # Database: UniProt | Query: 2,3 | Comment: Organism scientific name
+  
+  taxon:2208 rdfs:subClassOf taxon:2157 .
+  # Database: UniProt | Query: 3 | Comment: Classification as Archaea (taxon:2157)
+  
+  uniprot:P80184 rdf:type up:Protein .
+  # Database: UniProt | Query: 2,3 | Comment: Tetrahydromethanopterin S-methyltransferase
+  
+  uniprot:P80184 up:mnemonic "MTRA1_METTM" .
+  # Database: UniProt | Query: 2,3 | Comment: Protein mnemonic identifier
+  
+  uniprot:P80184 up:reviewed 1 .
+  # Database: UniProt | Query: 2,3 | Comment: Swiss-Prot reviewed entry
+  
+  uniprot:P80184 up:organism taxon:79929 .
+  # Database: UniProt | Query: 2,3 | Comment: Link to thermophilic organism
+  
+  uniprot:P80184 up:recommendedName uniprot:P80184#SIP41CD5BAF3539ABCB .
+  # Database: UniProt | Query: 3 | Comment: Link to protein name
+  
+  uniprot:P80184#SIP41CD5BAF3539ABCB up:fullName "Tetrahydromethanopterin S-methyltransferase subunit A 1" .
+  # Database: UniProt | Query: 2,3 | Comment: Methyltransferase from thermophilic methanogen
+  
+  taxon:79929 up:scientificName "Methanothermobacter marburgensis (strain ATCC BAA-927 / DSM 2133 / JCM 14651 / NBRC 100331 / OCM 82 / Marburg)" .
+  # Database: UniProt | Query: 2,3 | Comment: Thermophilic archaeon (name contains 'thermo')
+  
+  taxon:79929 rdfs:subClassOf taxon:2157 .
+  # Database: UniProt | Query: 3 | Comment: Classification as Archaea (taxon:2157)
+
+exact_answer: "yes"
+
+ideal_answer: |
+  Yes, there are cobalamin-dependent enzymes in thermophilic archaea. Methylcobamide:CoM methyltransferase MtbA (UniProt:O30640) from Methanosarcina barkeri uses methylated corrinoid proteins (cobalamin-related cofactors) to catalyze methyl transfer in methanogenesis. Additionally, tetrahydromethanopterin S-methyltransferase (UniProt:P80184) from the thermophilic archaeon Methanothermobacter marburgensis participates in methanogenesis pathways that involve corrinoid-dependent methyltransferases. These enzymes exemplify how thermophilic archaea utilize cobalt-containing cofactors for essential metabolic processes.
+
+question_template_used: "Are there any [cofactor]-dependent enzymes in [organism type]?"
+
+time_spent:
+  exploration: "25 minutes"
+  formulation: "15 minutes"
+  verification: "30 minutes"
+  pubmed_test: "15 minutes"
+  extraction: "20 minutes"
+  documentation: "25 minutes"
+  total: "130 minutes (2.2 hours)"

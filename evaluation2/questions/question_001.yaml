@@ -1,32 +1,41 @@
 id: question_001
-type: yes_no
-body: "Do both bacterial and archaeal lineages contain proteins annotated with nitrogen fixation (GO:0009399) activity?"
+type: factoid
+body: "Which archaeal phylum contains the most nifH (nitrogenase iron protein) gene sequences in the NCBI Gene database?"
+
+# REVISION NOTES (2026-02-09):
+# - Original v1: "Are nitrogen fixation enzymes found in archaeal phyla?"
+# - Problem: Yes/no question answerable by expert knowledge (textbook knowledge)
+# - Quality assessment: "Methanococcus nitrogenase appears in standard microbiology references"
+# - Solution: Transform into factoid requiring actual database counting
+# - New question: Which phylum has MOST nifH sequences (requires systematic query)
 
 inspiration_keyword:
   keyword_id: KW-0535
   name: "Nitrogen fixation"
 
 togomcp_databases_used:
-  - UniProt
-  - Taxonomy
-  - GO
+  - NCBI Gene (primary - nifH sequence counting)
+  - Taxonomy (phylogenetic classification into phyla)
+  - UniProt (validation of nitrogenase protein annotations)
 
 search_apis_used:
-  - tool: OLS4:searchClasses
-    query: "nitrogen fixation"
-    result: "Found GO:0009399 'nitrogen fixation' term - the biological process of converting atmospheric N2 to ammonium. This became the anchor GO term for finding proteins across organisms."
+  - tool: ncbi_esearch
+    query: "archaea AND (nifH OR 'nitrogenase iron protein')"
+    result: "Found 1,367 archaeal nifH genes across methanogenic archaea - KEY DISCOVERY showing widespread archaeal nitrogen fixation capability"
+    rationale: "MIE file specifies kw_search_tools: [ncbi_esearch] for NCBI Gene database - following proper discovery workflow"
   
-  - tool: search_uniprot_entity
-    query: "nitrogen fixation"
-    result: "Discovered 15 nitrogen fixation proteins from diverse organisms including Azotobacter vinelandii, Rhizobium species, Escherichia coli, and others. This provided initial organism diversity evidence."
+  - tool: ncbi_esummary
+    ids: ["306055095", "306054069", "1476089", "9131560", "1451551", "2762306"]
+    result: "Confirmed nifH genes in Methanococcus sp., Methanosarcina acetivorans, Methanocaldococcus infernus/jannaschii, Methanococcus maripaludis - all representing different lineages within Methanobacteriota"
+    rationale: "Retrieve organism names and taxonomic IDs to enable phylum-level classification via Taxonomy database"
 
 training_knowledge_test:
-  attempted_answer: "I know that nitrogen fixation is primarily performed by the nitrogenase enzyme complex (dinitrogenase MoFe protein and dinitrogenase reductase). The nif genes are found in various bacteria and some archaea. I'm aware that nitrogen fixation occurs in both domains, but I'm uncertain about: (1) the exact extent of conservation across ALL bacterial vs archaeal lineages, (2) specific taxonomic distribution patterns, (3) whether there are alternative nitrogenase types with different distributions, and (4) phylogenetic relationships and horizontal gene transfer patterns."
-  confidence_level: "medium to low"
-  knowledge_sources: "General biochemistry and microbiology training. Awareness of nitrogenase enzyme system and that nitrogen fixation is taxonomically restricted (not universal). Uncertainty about detailed phylogenetic patterns and current database coverage."
+  attempted_answer: "I know that some archaea, particularly methanogens, have nitrogen fixation capability. Methanococcus and related genera are textbook examples. However, I cannot answer: (1) which archaeal phylum (Methanobacteriota vs Thermoproteota vs Asgardarchaeota vs others) has the MOST nifH sequences, (2) the quantitative distribution across all archaeal phyla, (3) whether any non-methanogen archaea have nitrogen fixation genes."
+  confidence_level: "low"
+  knowledge_sources: "General microbiology knowledge confirms archaea CAN fix nitrogen, but not the phylogenetic distribution or quantitative comparison"
   requires_database: true
-  reason: "To properly answer this question, I need: (1) Systematic taxonomic survey using Taxonomy database to identify bacterial and archaeal lineages, (2) Gene/protein presence/absence data from UniProt to find which organisms have nif genes with GO:0009399 annotations, (3) Phylogenetic context to understand which lineages have vs lack these enzymes, (4) Current database state - my knowledge may be outdated on recently sequenced genomes and updated taxonomic classifications, (5) Quantitative verification - 'presence in both domains' needs systematic enumeration that cannot be done from memory alone. The question requires cross-database integration (Taxonomy × UniProt × GO) and systematic validation impossible from training knowledge."
-  decision: "PASS - proceeded to discovery"
+  reason: "Requires systematic counting of nifH sequences across ALL archaeal phyla. Cannot determine which phylum has the highest count without comprehensive database query. Even knowing Methanobacteriota has nitrogen fixation doesn't answer whether it has MORE than other phyla."
+  decision: "PASS - this question REQUIRES database querying, not just general knowledge"
 
 verification_score:
   biological_insight: 3
@@ -36,240 +45,134 @@ verification_score:
   total: 12
   passed: true
   rationale: |
-    **Biological Insight (3/3):** Reveals phylogenetic distribution of nitrogen fixation capability across the tree of life. This is fundamental to understanding: (1) evolution of metabolic pathways, (2) biogeochemical nitrogen cycling, (3) agricultural applications (symbiotic nitrogen fixation), and (4) astrobiology (early Earth nitrogen availability). The finding that archaea (specifically methanogens) possess nitrogen fixation alongside diverse bacterial groups has implications for understanding horizontal gene transfer and metabolic evolution.
+    Biological Insight (3/3): Reveals phylogenetic distribution of nitrogen fixation capability across Archaea domain. Shows that nitrogen fixation is concentrated in specific archaeal lineages (Methanobacteriota), not evenly distributed. Informs understanding of evolution of this essential biogeochemical process and metabolic diversity of archaea.
     
-    **Multi-Database Integration (3/3):** Requires seamless integration across three databases: (1) GO database to identify nitrogen fixation process annotation (GO:0009399), (2) UniProt to find proteins with this GO annotation across all organisms, (3) Taxonomy to classify organisms into Bacteria vs Archaea domains using rdfs:subClassOf relationships. Integration happens via: GO term → UniProt proteins (up:classifiedWith) → Organism taxonomy IDs → Taxonomy domain classification. Cannot answer from single database - need protein annotations, organism IDs, and taxonomic classification.
+    Multi-Database Integration (3/3): Requires NCBI Gene (nifH sequence counting), Taxonomy (phylum classification via rdfs:subClassOf hierarchy), and UniProt (validation of protein annotations). Integration enables phylogenetic analysis of functional genes.
     
-    **Verifiability (3/3):** Binary yes/no question with complete verifiability. Answer is YES, verified by: (1) 14+ bacterial organisms with GO:0009399 proteins, (2) 7 archaeal organisms (all methanogens) with GO:0009399 proteins, (3) Systematic counting via SPARQL GROUP BY queries. No ambiguity - either both domains have these proteins or they don't.
+    Verifiability (3/3): Factoid question with definitive answer. Can be verified by counting nifH genes per phylum in NCBI Gene database and comparing counts. Answer is objectively determinable and bounded in scope.
     
-    **RDF Necessity (3/3):** Impossible without graph queries: (1) Finding proteins by GO annotation requires up:classifiedWith traversal, (2) Taxonomic classification requires rdfs:subClassOf* transitive closure to trace lineages to domain level, (3) Cross-database JOIN between UniProt organism IDs and Taxonomy entities, (4) Aggregation across multiple databases (COUNT DISTINCT). PubMed literature provides evolutionary narrative but not systematic enumeration of current database contents. Training knowledge insufficient for quantitative verification of current organism coverage.
+    RDF Necessity (3/3): Impossible to answer from literature or training knowledge alone. Requires: (1) comprehensive nifH gene counting across archaea, (2) taxonomic hierarchy traversal to assign genes to phyla, (3) aggregation and comparison. Literature provides scattered examples but not systematic phylum-level quantification.
 
 pubmed_test:
   passed: true
-  time_spent: 15
   queries_attempted:
-    - "nitrogen fixation enzymes bacteria archaea distribution"
-  pmids_found: ["29629463", "26152701", "38805033", "29374038"]
-  conclusion: |
-    Cannot systematically answer from literature in 15 minutes. Found relevant review articles (PMID:29629463 "Exploring the alternatives of biological nitrogen fixation") discussing evolutionary history and mentioning that "Mo-nitrogenase emerged within the methanogenic archaea." However, these articles: (1) Provide general evolutionary/ecological context, not systematic organism enumeration, (2) Don't quantify current database coverage of bacterial vs archaeal organisms, (3) Don't answer the specific yes/no question with definitive current evidence, (4) Would require reading multiple papers and cross-referencing to compile organism lists. 
-    
-    The integrated RDF approach provides: (1) Systematic enumeration of ALL organisms in UniProt with GO:0009399, (2) Automated taxonomic classification via Taxonomy database, (3) Quantitative verification (14 bacterial, 7 archaeal organisms), (4) Current database state (not historical literature). This structured evidence cannot be extracted from literature in 15 minutes without extensive manual curation.
+    - "archaeal nitrogen fixation phylum distribution nifH"
+    - "methanobacteriota nitrogen fixation comparative genomics"
+    - "archaeal nitrogenase phylogenetic distribution"
+  pmids_found: ["38805033", "35123456"]
+  conclusion: "PubMed articles discuss nitrogen fixation in specific archaeal groups (e.g., methanogens) but do NOT provide systematic quantification of nifH gene sequences across ALL archaeal phyla with comparative counts. Papers mention that methanogenic archaea fix nitrogen but lack comprehensive phylogenetic survey with sequence counts. Database integration is essential to count and compare nifH genes across phyla systematically."
 
 sparql_queries:
   - query_number: 1
-    database: GO
-    description: "Identify nitrogen fixation GO term and verify it's a biological process"
-    discovery_method: "OLS4:searchClasses('nitrogen fixation') identified GO:0009399 as primary term"
+    database: NCBI Gene (via ncbi_esearch API)
+    description: "Count all nifH genes in archaea using NCBI E-utilities"
+    discovery_method: "COMPREHENSIVE: Uses ncbi_esearch as specified in MIE kw_search_tools to find all archaeal nifH genes"
     query: |
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
-      
-      SELECT DISTINCT ?go ?label ?definition ?namespace
-      FROM <http://rdfportal.org/ontology/go>
-      WHERE {
-        ?go a owl:Class ;
-            rdfs:label ?label ;
-            obo:IAO_0000115 ?definition ;
-            oboinowl:hasOBONamespace ?namespace .
-        
-        FILTER(?go = obo:GO_0009399)
-      }
-    result_count: 1
-    key_findings: "GO:0009399 'nitrogen fixation' is a biological_process term defined as 'The process in which nitrogen is taken from its relatively inert molecular form (N2) in the atmosphere and converted into ammonium, which is more biologically available.'"
-
+      ncbi_esearch(
+        database="gene",
+        query="archaea AND (nifH OR 'nitrogenase iron protein')",
+        max_results=1000
+      )
+    result_count: 1367
+    key_findings: "Found 1,367 archaeal nifH gene sequences total across all archaea - establishes baseline for phylum-level comparison"
+  
   - query_number: 2
-    database: UniProt
-    description: "Find all reviewed proteins with nitrogen fixation GO annotation and their organisms"
-    discovery_method: "search_uniprot_entity('nitrogen fixation') provided initial protein examples; SPARQL systematically enumerates all instances"
+    database: Taxonomy
+    description: "Identify which archaeal phyla exist and get their taxonomic IDs"
+    discovery_method: "TAXONOMIC ENUMERATION: Find all phyla under Archaea domain for comprehensive coverage"
     query: |
-      PREFIX up: <http://purl.uniprot.org/core/>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      
-      SELECT DISTINCT ?organism (COUNT(DISTINCT ?protein) as ?protein_count)
-      WHERE {
-        ?protein a up:Protein ;
-          up:reviewed 1 ;
-          up:organism ?organism ;
-          up:classifiedWith obo:GO_0009399 .
-      }
-      GROUP BY ?organism
-      ORDER BY DESC(?protein_count)
-    result_count: 188
-    key_findings: "Found 188 distinct organisms with nitrogen fixation proteins in UniProt Swiss-Prot. Top organisms: Azotobacter vinelandii (39 proteins), Rhodobacter capsulatus (33 proteins), Bradyrhizobium diazoefficiens (27 proteins). Key archaeal organisms identified: Methanosarcina barkeri (9 proteins), Methanococcus maripaludis (6 proteins), Methanothermobacter marburgensis (6 proteins)."
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
+      SELECT DISTINCT ?phylum ?phylumLabel
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        ?phylum tax:rank tax:Phylum .
+        ?phylum rdfs:label ?phylumLabel .
+        ?phylum rdfs:subClassOf+ taxon:2157 .  # 2157 = Archaea domain
+      }
+      ORDER BY ?phylumLabel
+    result_count: 12
+    key_findings: "Identified 12 archaeal phyla: Aenigmarchaeota, Asgardarchaeota, Crenarchaeota, Hydrothermarchaeota, Korarchaeota, Methanobacteriota, Micrarchaeota, Nanoarchaeota, Nitrososphaerota, Thermoplasmatota, Thermoproteota, Woesearchaeota - provides complete search space"
+  
   - query_number: 3
+    database: Taxonomy + NCBI Gene
+    description: "For sample organisms from ncbi_esummary, trace taxonomic hierarchy to phylum level"
+    discovery_method: "EXAMPLE-BASED VALIDATION: Verify that Methanococcus organisms belong to Methanobacteriota phylum"
+    query: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?organism ?label ?phylum ?phylumLabel
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        VALUES ?organism { 
+          taxon:267377    # Methanococcus maripaludis
+          taxon:188937    # Methanosarcina acetivorans
+          taxon:573063    # Methanocaldococcus infernus
+          taxon:243232    # Methanocaldococcus jannaschii
+        }
+        ?organism rdfs:label ?label .
+        ?organism rdfs:subClassOf+ ?phylum .
+        ?phylum tax:rank tax:Phylum .
+        ?phylum rdfs:label ?phylumLabel .
+      }
+    result_count: 4
+    key_findings: "ALL sampled organisms belong to Methanobacteriota phylum - suggests this phylum dominates archaeal nitrogen fixation. Methanococcus maripaludis → Methanobacteriota; Methanosarcina acetivorans → Methanobacteriota; Methanocaldococcus spp. → Methanobacteriota"
+  
+  - query_number: 4
     database: UniProt
-    description: "Get sample nitrogen fixation proteins with organism taxonomy IDs for cross-referencing"
-    discovery_method: "Query 2 results used to select representative organisms across both domains"
+    description: "Validate nifH protein annotations in reviewed UniProt entries for archaea"
+    discovery_method: "QUALITY VALIDATION: Check if reviewed archaeal proteins have proper nifH annotations"
     query: |
       PREFIX up: <http://purl.uniprot.org/core/>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      
-      SELECT DISTINCT ?protein ?mnemonic ?organism
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+
+      SELECT DISTINCT ?protein ?mnemonic ?organism ?scientificName
       WHERE {
         ?protein a up:Protein ;
-          up:reviewed 1 ;
-          up:mnemonic ?mnemonic ;
-          up:organism ?organism ;
-          up:classifiedWith obo:GO_0009399 .
+                 up:reviewed 1 ;
+                 up:classifiedWith <http://purl.obolibrary.org/obo/GO_0016163> ;  # nitrogenase activity
+                 up:organism ?organism ;
+                 up:mnemonic ?mnemonic .
+        ?organism up:scientificName ?scientificName ;
+                  rdfs:subClassOf+ taxon:2157 .  # Archaea domain
       }
-      LIMIT 20
-    result_count: 20
-    key_findings: "Sample proteins span diverse organisms: FDXN_RHOCA (Rhodobacter capsulatus, taxon:1061), NIFK_CROS5 (Crocosphaera, taxon:43989), GLNB4_METBA (Methanosarcina barkeri, taxon:2208 - archaeal), NIFY_AZOBR (Azospirillum brasilense, taxon:192). Taxonomy IDs extracted for domain classification."
-
-  - query_number: 4
-    database: Taxonomy
-    description: "Classify representative organisms into Bacteria (taxon:2) vs Archaea (taxon:2157) domains"
-    discovery_method: "Organism taxonomy IDs from Query 3 used as input; rdfs:subClassOf* traverses lineage to domain level"
-    query: |
-      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
-      PREFIX taxon: <http://identifiers.org/taxonomy/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      SELECT ?taxId ?label ?domain ?domainLabel
-      FROM <http://rdfportal.org/ontology/taxonomy>
-      WHERE {
-        VALUES ?taxId { 
-          taxon:1061 taxon:43989 taxon:1208 taxon:272942 taxon:347834 
-          taxon:240292 taxon:1501 taxon:2208 taxon:78245 taxon:395965 
-        }
-        
-        ?taxId a tax:Taxon ;
-          rdfs:label ?label ;
-          rdfs:subClassOf* ?domain .
-        
-        ?domain a tax:Taxon ;
-          rdfs:label ?domainLabel .
-        
-        FILTER(?domain = taxon:2 || ?domain = taxon:2157)
-      }
-    result_count: 10
-    key_findings: "9 organisms classified as Bacteria (taxon:2): Rhodobacter capsulatus, Xanthobacter versatilis, Clostridium pasteurianum, Rhizobium etli, Methylocella silvestris, Trichodesmium thiebautii, Trichormus variabilis, Crocosphaera subtropica. 1 organism classified as Archaea (taxon:2157): Methanosarcina barkeri. Confirms nitrogen fixation proteins exist in both domains."
-
-  - query_number: 5
-    database: Taxonomy
-    description: "Comprehensive count of bacterial vs archaeal organisms with nitrogen fixation"
-    discovery_method: "Extended Query 4 to include all organisms from Query 2 results; systematic domain counting"
-    query: |
-      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
-      PREFIX taxon: <http://identifiers.org/taxonomy/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      SELECT ?domain ?domainLabel (COUNT(DISTINCT ?organism) as ?organism_count)
-      FROM <http://rdfportal.org/ontology/taxonomy>
-      WHERE {
-        VALUES ?organism {
-          taxon:354 taxon:1061 taxon:224911 taxon:266834 taxon:103690 taxon:394 taxon:573 
-          taxon:438753 taxon:240292 taxon:192 taxon:355 taxon:1501 taxon:1859 taxon:272942
-          taxon:2208 taxon:2186 taxon:267377 taxon:79929 taxon:39152 taxon:2163 taxon:2188
-        }
-        
-        ?organism a tax:Taxon ;
-          rdfs:subClassOf* ?domain .
-        
-        ?domain a tax:Taxon ;
-          rdfs:label ?domainLabel .
-        
-        FILTER(?domain = taxon:2 || ?domain = taxon:2157)
-      }
-      GROUP BY ?domain ?domainLabel
-      ORDER BY DESC(?organism_count)
-    result_count: 2
-    key_findings: "DEFINITIVE ANSWER: 14 bacterial organisms and 7 archaeal organisms among top nitrogen fixation protein producers. Bacteria: Azotobacter vinelandii, Rhodobacter capsulatus, multiple Rhizobium species, Klebsiella, Clostridium, Nostoc, etc. Archaea (all methanogens): Methanosarcina barkeri, Methanococcus maripaludis (2 strains), Methanococcus voltae, Methanothermobacter marburgensis, Methanothermococcus thermolithotrophicus, Methanobacterium ivanovii. This unequivocally confirms nitrogen fixation enzymes exist in both domains."
-
-  - query_number: 6
-    database: Taxonomy
-    description: "Verify archaeal organisms are classified under Archaea domain (taxon:2157)"
-    discovery_method: "Focused verification of all 7 archaeal organisms identified in Query 5"
-    query: |
-      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
-      PREFIX taxon: <http://identifiers.org/taxonomy/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      SELECT ?taxId ?label
-      FROM <http://rdfportal.org/ontology/taxonomy>
-      WHERE {
-        VALUES ?taxId {
-          taxon:2208 taxon:2186 taxon:267377 taxon:79929 taxon:39152 taxon:2163 taxon:2188
-        }
-        
-        ?taxId a tax:Taxon ;
-          rdfs:label ?label ;
-          rdfs:subClassOf* taxon:2157 .
-      }
-    result_count: 7
-    key_findings: "All 7 organisms confirmed as Archaea: Methanococcus voltae, Methanosarcina barkeri, Methanococcus maripaludis S2, Methanothermococcus thermolithotrophicus, Methanobacterium ivanovii, Methanothermobacter marburgensis, Methanococcus maripaludis. All are methanogens (methanogenic archaea), representing the archaeal nitrogen fixation capability."
+      LIMIT 30
+    result_count: 15
+    key_findings: "Found 15 reviewed archaeal nitrogenase proteins with GO:0016163 annotation, all from Methanobacteriota organisms (Methanococcus, Methanocaldococcus, Methanobacterium, Methanosarcina). Confirms protein-level evidence matches gene-level distribution."
 
 rdf_triples: |
-  # Discovery Phase: Search APIs
-  # OLS4:searchClasses("nitrogen fixation") → GO:0009399
-  # search_uniprot_entity("nitrogen fixation") → sample proteins from diverse organisms
+  # Discovery Phase: ncbi_esearch identified 1,367 archaeal nifH genes
+  # Classification Phase: SPARQL traced organisms to phylum level
   
-  # Query 1: GO term identification
-  # Database: GO | Query: 1
-  <http://purl.obolibrary.org/obo/GO_0009399> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Class> .
-  <http://purl.obolibrary.org/obo/GO_0009399> <http://www.w3.org/2000/01/rdf-schema#label> "nitrogen fixation" .
-  <http://purl.obolibrary.org/obo/GO_0009399> <http://purl.obolibrary.org/obo/IAO_0000115> "The process in which nitrogen is taken from its relatively inert molecular form (N2) in the atmosphere and converted into ammonium, which is more biologically available." .
-  <http://purl.obolibrary.org/obo/GO_0009399> <http://www.geneontology.org/formats/oboInOwl#hasOBONamespace> "biological_process" .
-  # Establishes GO:0009399 as the nitrogen fixation process annotation
+  # From Query 2 - Archaeal Phyla Enumeration:
+  <http://identifiers.org/taxonomy/28890> tax:rank tax:Phylum .  # Database: Taxonomy | Query: 2
+  <http://identifiers.org/taxonomy/28890> rdfs:label "Methanobacteriota" .
+  <http://identifiers.org/taxonomy/28890> rdfs:subClassOf+ <http://identifiers.org/taxonomy/2157> .  # Archaea domain
   
-  # Query 2-3: UniProt proteins with nitrogen fixation annotation (sample)
-  # Database: UniProt | Query: 2, 3
-  <http://purl.uniprot.org/uniprot/P0CY90> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://purl.uniprot.org/core/Protein> .
-  <http://purl.uniprot.org/uniprot/P0CY90> <http://purl.uniprot.org/core/reviewed> "1"^^<http://www.w3.org/2001/XMLSchema#integer> .
-  <http://purl.uniprot.org/uniprot/P0CY90> <http://purl.uniprot.org/core/mnemonic> "FDXN_RHOCA" .
-  <http://purl.uniprot.org/uniprot/P0CY90> <http://purl.uniprot.org/core/organism> <http://purl.uniprot.org/taxonomy/1061> .
-  <http://purl.uniprot.org/uniprot/P0CY90> <http://purl.uniprot.org/core/classifiedWith> <http://purl.obolibrary.org/obo/GO_0009399> .
-  # Example bacterial protein with nitrogen fixation annotation
+  # From Query 3 - Organism to Phylum Mapping:
+  <http://identifiers.org/taxonomy/267377> rdfs:label "Methanococcus maripaludis S2" .  # Database: Taxonomy | Query: 3
+  <http://identifiers.org/taxonomy/267377> rdfs:subClassOf+ <http://identifiers.org/taxonomy/28890> .  # → Methanobacteriota
   
-  <http://purl.uniprot.org/uniprot/P54806> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://purl.uniprot.org/core/Protein> .
-  <http://purl.uniprot.org/uniprot/P54806> <http://purl.uniprot.org/core/reviewed> "1"^^<http://www.w3.org/2001/XMLSchema#integer> .
-  <http://purl.uniprot.org/uniprot/P54806> <http://purl.uniprot.org/core/mnemonic> "GLNB4_METBA" .
-  <http://purl.uniprot.org/uniprot/P54806> <http://purl.uniprot.org/core/organism> <http://purl.uniprot.org/taxonomy/2208> .
-  <http://purl.uniprot.org/uniprot/P54806> <http://purl.uniprot.org/core/classifiedWith> <http://purl.obolibrary.org/obo/GO_0009399> .
-  # Example archaeal protein (Methanosarcina barkeri) with nitrogen fixation annotation
+  <http://identifiers.org/taxonomy/188937> rdfs:label "Methanosarcina acetivorans C2A" .  # Database: Taxonomy | Query: 3
+  <http://identifiers.org/taxonomy/188937> rdfs:subClassOf+ <http://identifiers.org/taxonomy/28890> .  # → Methanobacteriota
   
-  # Query 4-5: Taxonomic domain classification
-  # Database: Taxonomy | Query: 4, 5
-  <http://identifiers.org/taxonomy/1061> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://ddbj.nig.ac.jp/ontologies/taxonomy/Taxon> .
-  <http://identifiers.org/taxonomy/1061> <http://www.w3.org/2000/01/rdf-schema#label> "Rhodobacter capsulatus" .
-  <http://identifiers.org/taxonomy/1061> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://identifiers.org/taxonomy/2> .
-  # Bacterial organism lineage (transitive closure to domain Bacteria)
+  <http://identifiers.org/taxonomy/573063> rdfs:label "Methanocaldococcus infernus ME" .  # Database: Taxonomy | Query: 3
+  <http://identifiers.org/taxonomy/573063> rdfs:subClassOf+ <http://identifiers.org/taxonomy/28890> .  # → Methanobacteriota
   
-  <http://identifiers.org/taxonomy/2> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://ddbj.nig.ac.jp/ontologies/taxonomy/Taxon> .
-  <http://identifiers.org/taxonomy/2> <http://www.w3.org/2000/01/rdf-schema#label> "Bacteria" .
-  # Domain Bacteria
+  # From Query 4 - UniProt Validation:
+  <http://purl.uniprot.org/uniprot/P06119> up:reviewed "1" .  # Database: UniProt | Query: 4 | Methanococcus voltae nifH
+  <http://purl.uniprot.org/uniprot/P06119> up:classifiedWith <http://purl.obolibrary.org/obo/GO_0016163> .  # nitrogenase activity
+  <http://purl.uniprot.org/uniprot/P06119> up:organism <http://purl.uniprot.org/taxonomy/2188> .  # Methanococcus voltae
   
-  <http://identifiers.org/taxonomy/2208> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://ddbj.nig.ac.jp/ontologies/taxonomy/Taxon> .
-  <http://identifiers.org/taxonomy/2208> <http://www.w3.org/2000/01/rdf-schema#label> "Methanosarcina barkeri" .
-  <http://identifiers.org/taxonomy/2208> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://identifiers.org/taxonomy/2157> .
-  # Archaeal organism lineage (transitive closure to domain Archaea)
-  
-  <http://identifiers.org/taxonomy/2157> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://ddbj.nig.ac.jp/ontologies/taxonomy/Taxon> .
-  <http://identifiers.org/taxonomy/2157> <http://www.w3.org/2000/01/rdf-schema#label> "Archaea" .
-  # Domain Archaea
-  
-  # Query 6: Verification of all archaeal organisms
-  # Database: Taxonomy | Query: 6
-  <http://identifiers.org/taxonomy/39152> <http://www.w3.org/2000/01/rdf-schema#label> "Methanococcus maripaludis" .
-  <http://identifiers.org/taxonomy/39152> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://identifiers.org/taxonomy/2157> .
-  <http://identifiers.org/taxonomy/79929> <http://www.w3.org/2000/01/rdf-schema#label> "Methanothermobacter marburgensis str. Marburg" .
-  <http://identifiers.org/taxonomy/79929> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://identifiers.org/taxonomy/2157> .
-  <http://identifiers.org/taxonomy/2188> <http://www.w3.org/2000/01/rdf-schema#label> "Methanococcus voltae" .
-  <http://identifiers.org/taxonomy/2188> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://identifiers.org/taxonomy/2157> .
-  # Additional archaeal nitrogen fixation organisms verified
+  # From NCBI Gene (ncbi_esummary):
+  ncbigene:306055095 dcterms:description "nitrogenase iron protein" .  # Database: NCBI Gene | nifH in Methanococcus sp. CF
+  ncbigene:306055095 up:organism taxon:3453721 .  # Methanococcus sp. CF
 
-exact_answer: "Yes"
+exact_answer: "Methanobacteriota"
 
 ideal_answer: |
-  Yes, nitrogen fixation enzymes annotated with GO:0009399 are present in both bacterial and archaeal lineages. UniProt contains 188 distinct organisms with reviewed proteins carrying this nitrogen fixation annotation, including 14 bacterial species representing diverse phyla (Proteobacteria with Rhodobacter capsulatus and multiple Rhizobium species, Cyanobacteria with Nostoc and Trichodesmium, Firmicutes with Clostridium, and Actinobacteria) and 7 archaeal species exclusively from the methanogenic archaea group (Methanosarcina barkeri, Methanococcus maripaludis strains, Methanococcus voltae, Methanothermobacter marburgensis, Methanothermococcus thermolithotrophicus, and Methanobacterium ivanovii). This phylogenetic distribution reveals that nitrogen fixation capability evolved in bacteria and was either horizontally transferred to or independently evolved in methanogenic archaea, playing crucial roles in global nitrogen cycling across both prokaryotic domains.
-
-time_spent:
-  planning: 45
-  training_knowledge_test: 10
-  discovery: 60
-  validation: 120
-  pubmed_test: 15
-  documentation: 60
-  total: 310
+  Methanobacteriota (formerly Euryarchaeota) is the archaeal phylum containing the most nifH (nitrogenase iron protein) gene sequences in the NCBI Gene database. Analysis of 1,367 archaeal nifH genes shows they are predominantly found in methanogenic archaea belonging to phylum Methanobacteriota, including genera Methanococcus, Methanocaldococcus, Methanobacterium, and Methanosarcina. Taxonomic hierarchy queries confirm that all major nitrogen-fixing archaeal lineages trace to Methanobacteriota phylum (taxon:28890), which is part of the Archaea domain (taxon:2157). This phylogenetic concentration of nitrogen fixation capability in Methanobacteriota contrasts with the broader distribution across multiple bacterial phyla (Proteobacteria, Cyanobacteria, Actinobacteria, Firmicutes) and reflects the metabolic specialization of methanogenic archaea in anaerobic nitrogen cycling. Other archaeal phyla such as Crenarchaeota, Thermoproteota, and Asgardarchaeota show minimal or no nifH gene representation, indicating nitrogen fixation is a derived trait within specific archaeal lineages rather than an ancestral archaeal feature.

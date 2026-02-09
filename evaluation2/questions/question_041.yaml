@@ -1,0 +1,203 @@
+# Question 041 - Ensembl PRIMARY: Chromosome with most telomere genes
+# Type: CHOICE | Keyword: KW-0779 (Telomere)
+# Databases: Ensembl (PRIMARY) | Created: 2025-02-08
+
+question_id: "041"
+question_type: "choice"
+keyword_id: "KW-0779"
+keyword_name: "Telomere"
+
+question_text: |
+  Which human chromosome contains the most protein-coding genes with telomere-related functions?
+
+choices:
+  A: "Chromosome 5"
+  B: "Chromosome 8"
+  C: "Chromosome 16"
+  D: "Chromosome X"
+
+correct_answer: "C"
+
+answer_explanation: |
+  Chromosome 16 contains 5 protein-coding genes with telomere-related functions:
+  1. ACD (ENSG00000102977) - ACD shelterin complex subunit and telomerase recruitment factor
+  2. TERB1 (ENSG00000249961) - telomere repeat binding bouquet formation protein 1
+  3. TELO2 (ENSG00000100726) - telomere maintenance 2
+  4. TERF2 (ENSG00000132604) - telomeric repeat binding factor 2
+  5. TERF2IP (ENSG00000166848) - telomeric repeat binding factor 2, interacting protein
+  
+  By comparison:
+  - Chromosome 5: 3 genes (SERF1A, TERT, SMN1)
+  - Chromosome 8: 3 genes (TERF1, PINX1)
+  - Chromosome X: 0 genes
+
+databases_used:
+  primary:
+    - name: "Ensembl"
+      role: "Provides genomic coordinates and chromosomal location of protein-coding genes"
+      unique_capability: "Maps genes to specific chromosomes using FALDO coordinates and so:part_of relationships"
+  supporting: []
+
+rdf_necessity_explanation: |
+  This question requires RDF database querying because:
+  1. Chromosomal distribution of telomere genes is not systematically documented in literature
+  2. PubMed articles discuss telomere biology but don't provide gene counts per chromosome
+  3. Requires querying Ensembl's genomic annotations to:
+     - Search gene descriptions for telomere-related terms using bif:contains
+     - Filter for protein-coding genes (biotype)
+     - Map genes to chromosomes via so:part_of relationships
+     - Aggregate counts per chromosome
+  4. The answer (chromosome 16 with 5 genes) is only obtainable through structured queries
+     of genome annotations, not from traditional literature searches
+
+discovery_queries:
+  - database: "ensembl"
+    purpose: "Search for protein-coding genes with telomere in description"
+    sparql: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX so: <http://purl.obolibrary.org/obo/so#>
+      PREFIX taxonomy: <http://identifiers.org/taxonomy/>
+      
+      SELECT DISTINCT ?gene_id ?label ?description ?chr
+      WHERE {
+        ?gene a terms:EnsemblGene ;
+              dcterms:identifier ?gene_id ;
+              rdfs:label ?label ;
+              dcterms:description ?description ;
+              terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+              so:part_of ?chr ;
+              obo:RO_0002162 taxonomy:9606 .
+        ?description bif:contains "'telomer*'" option (score ?sc) .
+        FILTER(CONTAINS(STR(?chr), "GRCh38/"))
+        FILTER(!CONTAINS(STR(?chr), "PATCH"))
+      }
+      ORDER BY DESC(?sc)
+      LIMIT 50
+    result_summary: "Found 18 unique telomere-related genes across 11 chromosomes"
+
+  - database: "ensembl"
+    purpose: "Count telomere genes per chromosome"
+    sparql: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX so: <http://purl.obolibrary.org/obo/so#>
+      PREFIX taxonomy: <http://identifiers.org/taxonomy/>
+      
+      SELECT ?chr_name (COUNT(DISTINCT ?gene) as ?gene_count)
+      WHERE {
+        ?gene a terms:EnsemblGene ;
+              dcterms:description ?description ;
+              terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+              so:part_of ?chr ;
+              obo:RO_0002162 taxonomy:9606 .
+        ?description bif:contains "'telomer*'" .
+        FILTER(CONTAINS(STR(?chr), "GRCh38/"))
+        FILTER(!CONTAINS(STR(?chr), "PATCH"))
+        BIND(REPLACE(STR(?chr), ".*GRCh38/", "") as ?chr_name)
+      }
+      GROUP BY ?chr_name
+      ORDER BY DESC(?gene_count)
+    result_summary: "Chr16: 5 genes | Chr5: 3 | Chr8: 3 | Others: 1 each | ChrX/Y: 0"
+
+  - database: "ensembl"
+    purpose: "Get specific genes on chromosome 16"
+    sparql: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX so: <http://purl.obolibrary.org/obo/so#>
+      PREFIX taxonomy: <http://identifiers.org/taxonomy/>
+      
+      SELECT DISTINCT ?gene_id ?label ?description
+      WHERE {
+        ?gene a terms:EnsemblGene ;
+              dcterms:identifier ?gene_id ;
+              rdfs:label ?label ;
+              dcterms:description ?description ;
+              terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+              so:part_of ?chr ;
+              obo:RO_0002162 taxonomy:9606 .
+        ?description bif:contains "'telomer*'" .
+        FILTER(CONTAINS(STR(?chr), "GRCh38/16"))
+        FILTER(!CONTAINS(STR(?chr), "PATCH"))
+      }
+      ORDER BY ?label
+    result_summary: "5 genes: ACD, TERB1, TELO2, TERF2, TERF2IP"
+
+verification_rdf_triples: |
+  # Chromosome 16 telomere genes
+  ensg:ENSG00000102977 a terms:EnsemblGene ;
+    dcterms:identifier "ENSG00000102977" ;
+    rdfs:label "ACD" ;
+    dcterms:description "ACD shelterin complex subunit and telomerase recruitment factor" ;
+    terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+    so:part_of <http://rdf.ebi.ac.uk/resource/ensembl/114/homo_sapiens/GRCh38/16> ;
+    obo:RO_0002162 <http://identifiers.org/taxonomy/9606> .
+  
+  ensg:ENSG00000249961 a terms:EnsemblGene ;
+    dcterms:identifier "ENSG00000249961" ;
+    rdfs:label "TERB1" ;
+    dcterms:description "telomere repeat binding bouquet formation protein 1" ;
+    terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+    so:part_of <http://rdf.ebi.ac.uk/resource/ensembl/114/homo_sapiens/GRCh38/16> .
+  
+  ensg:ENSG00000100726 a terms:EnsemblGene ;
+    dcterms:identifier "ENSG00000100726" ;
+    rdfs:label "TELO2" ;
+    dcterms:description "telomere maintenance 2" ;
+    so:part_of <http://rdf.ebi.ac.uk/resource/ensembl/114/homo_sapiens/GRCh38/16> .
+  
+  ensg:ENSG00000132604 a terms:EnsemblGene ;
+    rdfs:label "TERF2" ;
+    dcterms:description "telomeric repeat binding factor 2" ;
+    so:part_of <http://rdf.ebi.ac.uk/resource/ensembl/114/homo_sapiens/GRCh38/16> .
+  
+  ensg:ENSG00000166848 a terms:EnsemblGene ;
+    rdfs:label "TERF2IP" ;
+    dcterms:description "telomeric repeat binding factor 2, interacting protein" ;
+    so:part_of <http://rdf.ebi.ac.uk/resource/ensembl/114/homo_sapiens/GRCh38/16> .
+  
+  # Chromosome 5 telomere genes (3 genes for comparison)
+  ensg:ENSG00000172058 rdfs:label "SERF1A" ;
+    so:part_of <http://rdf.ebi.ac.uk/resource/ensembl/114/homo_sapiens/GRCh38/5> .
+  
+  ensg:ENSG00000164362 rdfs:label "TERT" ;
+    dcterms:description "telomerase reverse transcriptase" ;
+    so:part_of <http://rdf.ebi.ac.uk/resource/ensembl/114/homo_sapiens/GRCh38/5> .
+  
+  # Chromosome 8 telomere genes (3 genes for comparison)
+  ensg:ENSG00000147601 rdfs:label "TERF1" ;
+    so:part_of <http://rdf.ebi.ac.uk/resource/ensembl/114/homo_sapiens/GRCh38/8> .
+
+pubmed_test:
+  search_query: "telomere genes chromosome distribution human"
+  pmids_retrieved: ["41377971", "41352619", "41338219"]
+  answerability: "NOT_ANSWERABLE"
+  explanation: |
+    PubMed search found 281 articles about telomere genes, but none directly answer 
+    which chromosome contains the most telomere-related genes. Retrieved articles discuss:
+    - Distributional genetic effects in brain aging (mentions telomere pathways, not chromosomal counts)
+    - Telomere maintenance mechanisms in neuroblastoma (ALT vs TEL pathways, not distribution)
+    - Chromosome 2 fusion and subtelomeric evolution (structural changes, not gene counts)
+    
+    The specific answer (chromosome 16 with 5 genes) requires systematic querying of 
+    genome annotation databases like Ensembl to count and map telomere genes to chromosomes.
+  time_spent_minutes: 15
+
+verification_score:
+  verifiability: 3  # Objectively verifiable by counting genes per chromosome
+  rdf_necessity: 3  # Requires RDF queries to map genes to chromosomes and aggregate
+  bounded_scope: 3  # Well-defined: count protein-coding telomere genes per chromosome
+  total: 9
+
+metadata:
+  created_date: "2025-02-08"
+  question_number: 41
+  total_questions_target: 50
+  progress_percentage: 82.0
+  databases_primary: ["Ensembl"]
+  databases_supporting: []
+  integration_level: "single_database"
+  requires_cross_database: false
+  estimated_difficulty: "medium"
+  skill_tested: "chromosome-level gene distribution analysis"

@@ -1,0 +1,177 @@
+question_id: "042"
+question_type: "choice"
+keyword_id: "KW-0523"
+keyword_name: "Neurodegeneration"
+question_text: "Which category in the NANDO (Nanbyo Data) rare disease ontology contains the most designated intractable diseases?"
+choices:
+  A: "Metabolic disease"
+  B: "Neuromuscular disease"
+  C: "Chromosome abnormality"
+  D: "Immune system disease"
+correct_answer: "B"
+explanation: |
+  According to NANDO's hierarchical disease classification, Neuromuscular disease 
+  (nando:1100001) contains 84 designated intractable diseases, the highest count 
+  among all 15 disease categories. This category includes various neurological and 
+  muscular disorders, many with neurodegenerative features such as corticobasal 
+  degeneration and spinocerebellar degeneration. The next largest categories are 
+  Metabolic disease (45), Chromosome abnormality (42), and Immune system disease (27).
+
+databases_used:
+  primary:
+    - name: "NANDO"
+      purpose: "Query disease category hierarchy and count diseases per category"
+      justification: "NANDO is the only database with Japanese rare disease classification and hierarchical category organization"
+  supporting: []
+
+why_not_pubmed: |
+  PubMed does not contain structured data about NANDO's internal category statistics 
+  or disease counts. While PubMed may have articles about individual rare diseases 
+  or the Global Burden of Disease, it does not provide the hierarchical disease 
+  classification or exact category counts that NANDO's RDF structure enables. 
+  
+  Search verification:
+  - "NANDO ontology intractable diseases category statistics" → 0 results
+  - "Japanese rare disease categories neuromuscular" → 1 result (Global Burden of 
+    Disease study, not about NANDO statistics)
+  
+  The answer requires querying NANDO's owl:Class hierarchy with rdfs:subClassOf 
+  relationships and counting diseases per category - information structure unique 
+  to NANDO's RDF representation.
+
+verification_methodology: |
+  **Discovery Phase:**
+  1. Listed all 15 disease categories under nando:1000001 (root intractable disease class)
+  2. For each category, counted diseases using rdfs:subClassOf relationships
+  3. Verified neurodegenerative diseases exist in Neuromuscular category using bif:contains
+  
+  **Answer Verification:**
+  Query: COUNT diseases GROUP BY category
+  Results:
+  - Neuromuscular disease: 84 diseases (CORRECT ANSWER)
+  - Metabolic disease: 45 diseases
+  - Chromosome abnormality: 42 diseases
+  - Immune system disease: 27 diseases
+  
+  **PubMed Non-Answerability:** (15 minutes)
+  - Searched "NANDO ontology intractable diseases category statistics" → 0 results
+  - Searched "Japanese rare disease categories neuromuscular" → 1 irrelevant result
+  - Confirmed: PubMed lacks NANDO internal category statistics
+
+sparql_queries:
+  - purpose: "List all disease categories"
+    query: |
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+      
+      SELECT ?category ?en_label ?ja_label
+      FROM <http://nanbyodata.jp/ontology/nando>
+      WHERE {
+        ?category a owl:Class ;
+                  rdfs:subClassOf nando:1000001 ;
+                  rdfs:label ?en_label ;
+                  rdfs:label ?ja_label .
+        FILTER(LANG(?en_label) = "en")
+        FILTER(LANG(?ja_label) = "ja" && !REGEX(STR(?ja_label), "^[\u3041-\u3093]+$"))
+      }
+      ORDER BY ?en_label
+    result_summary: "15 disease categories identified"
+  
+  - purpose: "Count diseases per category (answer query)"
+    query: |
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+      
+      SELECT ?category_label (COUNT(DISTINCT ?disease) as ?count)
+      FROM <http://nanbyodata.jp/ontology/nando>
+      WHERE {
+        ?category a owl:Class ;
+                  rdfs:subClassOf nando:1000001 ;
+                  rdfs:label ?category_label .
+        ?disease rdfs:subClassOf ?category ;
+                 a owl:Class .
+        FILTER(LANG(?category_label) = "en")
+      }
+      GROUP BY ?category_label
+      ORDER BY DESC(?count)
+    result_summary: "Neuromuscular disease: 84 (highest count)"
+  
+  - purpose: "Verify neurodegenerative diseases in Neuromuscular category"
+    query: |
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+      
+      SELECT ?disease ?label
+      FROM <http://nanbyodata.jp/ontology/nando>
+      WHERE {
+        ?disease a owl:Class ;
+                 rdfs:subClassOf nando:1100001 ;
+                 rdfs:label ?label .
+        FILTER(LANG(?label) = "en")
+        ?label bif:contains "'degenerat*'" option (score ?sc)
+      }
+      ORDER BY DESC(?sc)
+      LIMIT 10
+    result_summary: "3 neurodegenerative diseases found (corticobasal degeneration, spinocerebellar degeneration, frontotemporal lobar degeneration)"
+
+rdf_triples:
+  - subject: "nando:1100001"
+    predicate: "rdf:type"
+    object: "owl:Class"
+    comment: "Neuromuscular disease category"
+  - subject: "nando:1100001"
+    predicate: "rdfs:label"
+    object: "\"Neuromuscular disease\"@en"
+    comment: "English label for category"
+  - subject: "nando:1100001"
+    predicate: "rdfs:subClassOf"
+    object: "nando:1000001"
+    comment: "Parent is root intractable disease class"
+  - subject: "nando:1200011"
+    predicate: "rdfs:subClassOf"
+    object: "nando:1100001"
+    comment: "Example disease: Corticobasal degeneration under Neuromuscular"
+  - subject: "nando:1100002"
+    predicate: "rdfs:label"
+    object: "\"Metabolic disease\"@en"
+    comment: "Second-largest category with 45 diseases"
+
+verification_score:
+  verifiability: 3
+  rdf_necessity: 3
+  scope: 3
+  total: 9
+  justification: |
+    Verifiability (3/3): Objectively verifiable through SPARQL COUNT query grouped 
+    by disease category. Answer is definitively "Neuromuscular disease" with 84 
+    diseases vs 45/42/27 for other choices.
+    
+    RDF Necessity (3/3): Absolutely requires NANDO's RDF structure with owl:Class 
+    hierarchy and rdfs:subClassOf relationships. PubMed lacks NANDO's internal 
+    category statistics (verified: 0 relevant results). This showcases NANDO's 
+    unique hierarchical disease classification as PRIMARY database.
+    
+    Scope (3/3): Well-bounded to NANDO's 15 disease categories. Question has single 
+    correct answer (Neuromuscular disease, 84 diseases) with clear runner-ups. No 
+    ambiguity in category definitions or disease counts.
+
+tags:
+  - "disease_ontology"
+  - "hierarchical_classification"
+  - "rare_diseases"
+  - "category_statistics"
+  - "Japanese_medicine"
+
+created_date: "2025-02-08"
+notes: |
+  - Question 042 completes CHOICE quota (20/20 - 100%)
+  - NANDO advances from 2.4% (1/41) to 4.7% (2/42)
+  - Single-database question (NANDO only)
+  - Showcases NANDO's hierarchical disease categorization
+  - Keyword KW-0523 (Neurodegeneration) relates to subset of diseases in category
+  - Perfect 9/9 verification score maintained
+  - All 15 NANDO categories examined, clear winner identified
+  - Used bif:contains for keyword search as recommended in MIE file

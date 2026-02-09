@@ -1,0 +1,226 @@
+# Question 046: AMRPortal YES/NO Question
+# Created: 2025-02-08
+# Database Focus: AMRPortal (PRIMARY - geographic antimicrobial resistance surveillance)
+# Question Type: Yes/No
+# Keywords: KW-0929 (Antimicrobial)
+
+question_metadata:
+  question_id: question_046
+  question_type: yes_no
+  difficulty: intermediate
+  keywords:
+    - id: KW-0929
+      name: Antimicrobial
+      category: Molecular function
+  databases_used:
+    primary:
+      - name: AMRPortal
+        role: PRIMARY
+        purpose: "Geographic surveillance data for carbapenem-resistant K. pneumoniae - showcases AMRPortal's unique strength in structured antimicrobial resistance monitoring by country"
+    secondary: []
+
+question:
+  text: "Does any Asian country show more than 80% carbapenem resistance in Klebsiella pneumoniae isolates according to AMRPortal surveillance data?"
+  
+answer:
+  value: "YES"
+  explanation: |
+    According to AMRPortal surveillance data, Vietnam shows 90.2% carbapenem (meropenem) resistance in Klebsiella pneumoniae isolates, with 322 resistant isolates out of 357 total isolates tested. This exceeds the 80% threshold specified in the question.
+    
+    Pakistan also shows relatively high resistance at 32.6% (70/215 isolates), and Nepal at 20.8% (22/106 isolates), but only Vietnam exceeds 80%.
+  
+  verification_data:
+    vietnam:
+      total_isolates: 357
+      resistant_isolates: 322
+      resistance_percentage: 90.2
+      antibiotic: meropenem
+    pakistan:
+      total_isolates: 215
+      resistant_isolates: 70
+      resistance_percentage: 32.6
+    nepal:
+      total_isolates: 106
+      resistant_isolates: 22
+      resistance_percentage: 20.8
+
+database_queries:
+  amrportal:
+    - query_purpose: "Count resistant isolates by Asian country"
+      sparql: |
+        PREFIX amr: <http://example.org/ebiamr#>
+        
+        SELECT ?country (COUNT(*) as ?total)
+        FROM <http://rdfportal.org/dataset/amrportal>
+        WHERE {
+          ?s a amr:PhenotypeMeasurement ;
+             amr:organism ?organism ;
+             amr:antibioticName "meropenem" ;
+             amr:resistancePhenotype "resistant" ;
+             amr:country ?country ;
+             amr:geographicalRegion "Asia" .
+          ?organism bif:contains "'Klebsiella'" option (score ?sc) .
+        }
+        GROUP BY ?country
+        ORDER BY DESC(?total)
+        LIMIT 20
+      result_summary: "Vietnam: 322 resistant isolates; Pakistan: 70; Nepal: 22; Thailand: 4"
+      
+    - query_purpose: "Count total isolates tested by Asian country"
+      sparql: |
+        PREFIX amr: <http://example.org/ebiamr#>
+        
+        SELECT ?country 
+               (COUNT(*) as ?total)
+        FROM <http://rdfportal.org/dataset/amrportal>
+        WHERE {
+          ?s a amr:PhenotypeMeasurement ;
+             amr:organism ?organism ;
+             amr:antibioticName "meropenem" ;
+             amr:country ?country ;
+             amr:geographicalRegion "Asia" .
+          ?organism bif:contains "'Klebsiella'" option (score ?sc) .
+        }
+        GROUP BY ?country
+        ORDER BY DESC(?total)
+        LIMIT 20
+      result_summary: "Vietnam: 357 total; Pakistan: 215; Nepal: 106; Japan: 801 (low resistance)"
+      
+    - query_purpose: "Verify Vietnam data structure"
+      sparql: |
+        PREFIX amr: <http://example.org/ebiamr#>
+        
+        SELECT ?phenotype (COUNT(*) as ?count)
+        FROM <http://rdfportal.org/dataset/amrportal>
+        WHERE {
+          ?s a amr:PhenotypeMeasurement ;
+             amr:organism ?organism ;
+             amr:antibioticName "meropenem" ;
+             amr:country "Viet Nam" ;
+             amr:resistancePhenotype ?phenotype .
+          ?organism bif:contains "'Klebsiella'" option (score ?sc) .
+        }
+        GROUP BY ?phenotype
+      result_summary: "resistant: 322; susceptible: 35 (total: 357, 90.2% resistant)"
+
+rdf_evidence:
+  amrportal_sample_triples: |
+    # Example phenotype measurement from Vietnam showing carbapenem resistance
+    @prefix amr: <http://example.org/ebiamr#> .
+    
+    [] a amr:PhenotypeMeasurement ;
+      amr:organism "Klebsiella pneumoniae" ;
+      amr:antibioticName "meropenem" ;
+      amr:resistancePhenotype "resistant" ;
+      amr:bioSample <https://identifiers.org/biosample/SAMEA...> ;
+      amr:country "Viet Nam" ;
+      amr:geographicalRegion "Asia" ;
+      amr:collectionYear 2020 ;
+      amr:laboratoryTypingMethod "broth dilution" .
+    
+    # Geographic hierarchy enables country-level aggregation
+    # Resistance phenotype ("resistant", "susceptible", "intermediate")
+    # enables percentage calculations
+
+pubmed_verification:
+  search_strategy: "Search for country-level carbapenem resistance prevalence data in K. pneumoniae across Asian countries"
+  searches_performed:
+    - query: "Klebsiella pneumoniae carbapenem resistance Vietnam Asia percentage prevalence surveillance"
+      date_range: "2020-present"
+      results: 0
+      conclusion: "No papers providing specific country-level percentage data for Vietnam"
+    
+    - query: "Klebsiella pneumoniae carbapenem resistance Asia epidemiology"
+      date_range: "2018-present"
+      results: 936
+      sample_papers_checked:
+        - pmid: "41628963"
+          title: "Prevalence of CRE in ICUs in Saudi Arabia"
+          finding: "Reports >40% CRE prevalence in ICUs but not country-level K. pneumoniae data"
+        
+        - pmid: "41625151"
+          title: "Hypervirulent and classical K. pneumoniae in Southern China"
+          finding: "Reports rising carbapenem resistance in China but no specific percentage >80%"
+        
+        - pmid: "41607523"
+          title: "AMR in blood cultures in southern Jiangxi, China"
+          finding: "Reports 21.8% carbapenem-resistant K. pneumoniae in 2024, well below 80%"
+      
+      conclusion: "Papers discuss resistance in specific hospitals/regions but don't provide systematic country-level surveillance data. Cannot determine if any Asian country exceeds 80% from literature alone."
+  
+  time_spent_minutes: 15
+  answerability: "NOT_ANSWERABLE"
+  reasoning: |
+    PubMed literature provides hospital-level or regional studies but lacks the systematic, 
+    country-aggregated surveillance data needed to answer this question. The papers found 
+    discuss rising resistance rates but don't provide the specific country-level percentages 
+    required. AMRPortal's structured geographic hierarchy and phenotypic measurements enable 
+    the precise country-level percentage calculation (Vietnam: 90.2%) that cannot be easily 
+    extracted from published literature.
+
+verification_rubric:
+  criteria:
+    verifiability:
+      score: 3
+      explanation: "Answer is objectively verifiable through AMRPortal SPARQL queries with clear numeric results (322/357 = 90.2%)"
+    
+    rdf_necessity:
+      score: 3
+      explanation: "Essential - requires AMRPortal's structured geographic surveillance data with country-level aggregation. PubMed literature lacks systematic country-level data."
+    
+    scope:
+      score: 3
+      explanation: "Well-bounded YES/NO question with clear threshold (80%) and geographic scope (Asia). Single objective answer."
+  
+  total_score: 9
+  max_score: 9
+
+rationale:
+  why_this_question: |
+    This question showcases AMRPortal's PRIMARY strength: structured geographic antimicrobial 
+    resistance surveillance. It demonstrates capabilities that published literature cannot easily 
+    provide:
+    
+    1. Country-level aggregation of resistance data
+    2. Precise percentage calculations from phenotypic measurements
+    3. Geographic hierarchy (Asia → country) enabling regional analysis
+    4. Systematic surveillance data vs. scattered hospital reports
+    
+    The answer (Vietnam: 90.2% resistance) reveals a critical public health finding that 
+    requires structured RDF data to discover.
+  
+  why_not_pubmed: |
+    PubMed literature provides valuable but scattered information:
+    - Hospital-specific studies (not country-level)
+    - Regional analyses (not systematic national surveillance)
+    - Qualitative descriptions ("high", "rising") rather than precise percentages
+    - Fragmented data across multiple publications
+    
+    To answer this question from literature alone, one would need to:
+    1. Find all relevant papers for each Asian country
+    2. Extract resistance data from different methodologies
+    3. Aggregate across studies (risking bias)
+    4. Compare to the 80% threshold
+    
+    AMRPortal provides this answer in a single structured query.
+  
+  database_integration: |
+    This question uses AMRPortal as a STANDALONE PRIMARY database, demonstrating its core 
+    capability without requiring integration. Future questions could integrate:
+    - Taxonomy (for species-level analysis)
+    - ChEMBL (for carbapenem compound properties)
+    - MeSH (for literature linking)
+    
+    But for this surveillance question, AMRPortal alone is sufficient and appropriate.
+
+notes:
+  - "Question 046: YES/NO question featuring AMRPortal as PRIMARY database"
+  - "Uses KW-0929 (Antimicrobial) - molecular function category"
+  - "Answer: YES - Vietnam shows 90.2% carbapenem resistance (322/357 isolates)"
+  - "Showcases AMRPortal's unique strength: geographic antimicrobial resistance surveillance"
+  - "Cannot be answered from PubMed literature alone (15 min verification)"
+  - "Single-database question (AMRPortal only) - demonstrates standalone capability"
+  - "Advances AMRPortal from 1→2 questions (2.2% → 4.3%)"
+  - "Advances Yes/No category from 5→6 questions (50% → 60%)"
+  - "Perfect 9/9 verification score maintained"
+  - "Non-UniProt question - helps balance distribution"

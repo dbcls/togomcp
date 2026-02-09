@@ -1,0 +1,134 @@
+id: question_029
+type: choice
+body: "Among reviewed proteins containing molybdenum cofactor, which EC enzyme class has the most representatives?"
+
+choices:
+  a: "EC 1 (Oxidoreductases)"
+  b: "EC 2 (Transferases)"
+  c: "EC 3 (Hydrolases)"
+  d: "EC 7 (Translocases)"
+
+inspiration_keyword:
+  keyword_id: KW-0500
+  name: "Molybdenum"
+  category: "Ligand"
+  selection_rationale: "Selected molybdenum to showcase metal cofactor usage across enzyme classes. Molybdenum is an essential trace element that serves as a cofactor for various enzymes, primarily in redox reactions. This keyword enables comparison of enzyme class distribution for a specific cofactor, demonstrating UniProt's structured keyword classification system."
+
+togomcp_databases_used:
+  - uniprot
+
+verification_score:
+  verifiability: 3  # Objectively verifiable through counting proteins per EC class
+  rdf_necessity: 3  # Requires UniProt keyword classification + EC enzyme data + systematic counting
+  scope: 3  # Well-bounded: reviewed proteins with KW-0500, grouped by EC class
+  total: 9
+  passed: true
+
+pubmed_test:
+  time_spent: "15 minutes"
+  method: |
+    Tried three search strategies on PubMed:
+    1. "molybdenum enzymes EC class distribution" - 0 results
+    2. "molybdenum oxidoreductases transferases" - 130 results (mostly about specific enzyme families or cofactor deficiency)
+    3. "molybdenum-containing enzymes classification systematic" - 20 results (reviews on specific families)
+  
+  result: |
+    According to PubMed, retrieved articles discuss:
+    - Molybdenum cofactor deficiency pathology ([DOI](https://doi.org/10.1007/s11011-024-01510-9))
+    - Metal exposure and enzyme activity ([DOI](https://doi.org/10.1007/s12011-024-04316-z))
+    - Specific molybdenum enzyme families (reviews)
+    
+    None provide systematic quantitative enumeration of ALL molybdenum-containing proteins grouped by EC class across the entire reviewed protein database. Papers focus on specific enzyme families (e.g., xanthine oxidase family, DMSO reductase family) rather than comprehensive database-wide statistics.
+  
+  conclusion: "PASS - Requires current comprehensive protein database with keyword classification and EC number annotation. Needs systematic counting across all reviewed proteins, not achievable from literature + training alone."
+
+sparql_queries:
+  - query_number: 1
+    database: "uniprot"
+    description: "Count reviewed proteins with molybdenum cofactor by EC class"
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
+      
+      SELECT ?ecClass (COUNT(DISTINCT ?protein) as ?count)
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:classifiedWith keywords:500 ;
+                 up:enzyme ?enzyme .
+        BIND(REPLACE(STR(?enzyme), "http://purl.uniprot.org/enzyme/(\\d+)\\..*", "$1") as ?ecClass)
+      }
+      GROUP BY ?ecClass
+      ORDER BY DESC(?count)
+    result_count: 3
+
+  - query_number: 2
+    database: "uniprot"
+    description: "Sample molybdenum-containing proteins from dominant EC 1 class"
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
+      
+      SELECT ?protein ?mnemonic ?fullName ?enzyme
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:mnemonic ?mnemonic ;
+                 up:classifiedWith keywords:500 ;
+                 up:enzyme ?enzyme ;
+                 up:recommendedName ?name .
+        ?name up:fullName ?fullName .
+        FILTER(STRSTARTS(STR(?enzyme), "http://purl.uniprot.org/enzyme/1."))
+      }
+      LIMIT 10
+    result_count: 10
+
+rdf_triples: |
+  @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix keywords: <http://purl.uniprot.org/keywords/> .
+  @prefix enzyme: <http://purl.uniprot.org/enzyme/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  
+  # Database: UniProt | Query: 1 | EC class distribution
+  # EC 1 (Oxidoreductases): 446 proteins
+  # EC 7 (Translocases): 81 proteins
+  # EC 2 (Transferases): 22 proteins
+  
+  # Database: UniProt | Query: 2 | Example oxidoreductase
+  uniprot:P51687 a up:Protein ;
+    up:mnemonic "SUOX_HUMAN" ;
+    up:reviewed 1 ;
+    up:classifiedWith keywords:500 ;
+    up:enzyme enzyme:1.8.3.1 ;
+    up:recommendedName [
+      up:fullName "Sulfite oxidase"
+    ] .
+  # Sulfite oxidase - mitochondrial molybdenum oxidoreductase
+  
+  uniprot:P47989 a up:Protein ;
+    up:mnemonic "XDH_HUMAN" ;
+    up:reviewed 1 ;
+    up:classifiedWith keywords:500 ;
+    up:enzyme enzyme:1.17.3.- ;
+    up:recommendedName [
+      up:fullName "Xanthine dehydrogenase/oxidase"
+    ] .
+  # Xanthine dehydrogenase - purine catabolism molybdenum enzyme
+  
+  # Database: UniProt | Query: 2 | Example translocase
+  uniprot:P32173 a up:Protein ;
+    up:mnemonic "MOBA_ECOLI" ;
+    up:reviewed 1 ;
+    up:classifiedWith keywords:500 ;
+    up:enzyme enzyme:2.7.7.77 .
+  # Molybdenum cofactor guanylyltransferase - EC 2 (transferase)
+
+exact_answer: "EC 1 (Oxidoreductases)"
+
+ideal_answer: |
+  Among reviewed proteins containing molybdenum cofactor, EC 1 (Oxidoreductases) has the most representatives with 446 proteins, vastly outnumbering EC 7 (Translocases) with 81 proteins and EC 2 (Transferases) with 22 proteins. EC 3 (Hydrolases) has no molybdenum-containing representatives. This distribution reflects molybdenum's primary biochemical role in electron transfer reactions, particularly in oxidation-reduction processes involving sulfur, nitrogen, and carbon substrates. Notable molybdenum oxidoreductases include sulfite oxidase (EC 1.8.3.1), xanthine dehydrogenase (EC 1.17.3.-), nitrate reductases (EC 1.7.-.-), and formate dehydrogenases (EC 1.17.98.4), which catalyze critical reactions in nitrogen metabolism, purine catabolism, and anaerobic respiration.
+
+time_spent:
+  exploration: "45 min"
+  total: "65 min"

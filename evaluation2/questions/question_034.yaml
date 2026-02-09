@@ -1,0 +1,109 @@
+id: question_034
+type: choice
+body: "Among human zinc-binding proteins with known 3D structures, which cellular compartment contains the highest number of these proteins?"
+
+inspiration_keyword:
+  keyword_id: KW-0862
+  name: "Zinc"
+  category: "Ligand"
+
+togomcp_databases_used: [uniprot, go]
+
+verification_score:
+  verifiability: 3
+  rdf_necessity: 3
+  scope: 3
+  total: 9
+  passed: true
+
+pubmed_test:
+  time_spent: "15 minutes"
+  method: "Searched for 'human zinc binding proteins cellular localization structures' and examined top 3 results"
+  result: "Found articles about specific zinc transporters (SLC30/SLC39 families), individual zinc-binding proteins (ZC3H12D, DDX5), and TRPML channels. None provide systematic quantitative data about cellular localization patterns across all human zinc-binding proteins with structures."
+  conclusion: "PASS - PubMed lacks comprehensive quantitative data about cellular compartment distribution across all zinc-binding proteins with structures. This requires systematic RDF database integration."
+
+sparql_queries:
+  - query_number: 1
+    database: "uniprot"
+    description: "Count total human zinc-binding proteins with known structures"
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
+      
+      SELECT (COUNT(DISTINCT ?protein) as ?count)
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                 up:classifiedWith keywords:862 ;
+                 rdfs:seeAlso ?pdb .
+        FILTER(CONTAINS(STR(?pdb), "rdf.wwpdb.org"))
+      }
+    result_count: 372
+
+  - query_number: 2
+    database: "uniprot"
+    description: "Count GO cellular component annotations for zinc-binding proteins with structures"
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
+      
+      SELECT ?goTerm (COUNT(DISTINCT ?protein) as ?count)
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                 up:classifiedWith keywords:862 ;
+                 up:classifiedWith ?goTerm ;
+                 rdfs:seeAlso ?pdb .
+        FILTER(CONTAINS(STR(?pdb), "rdf.wwpdb.org"))
+        FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
+      }
+      GROUP BY ?goTerm
+      ORDER BY DESC(?count)
+      LIMIT 20
+    result_count: 20
+
+rdf_triples: |
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
+  @prefix keywords: <http://purl.uniprot.org/keywords/> .
+  @prefix pdb: <http://rdf.wwpdb.org/pdb/> .
+  @prefix go: <http://purl.obolibrary.org/obo/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  
+  # Database: UniProt | Query: 1 | Example protein classified with zinc keyword
+  uniprot:P29590 a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                 up:classifiedWith keywords:862 .
+  
+  # Database: UniProt | Query: 1 | Cross-reference to PDB structure
+  uniprot:P29590 rdfs:seeAlso pdb:1ZSW .
+  
+  # Database: UniProt | Query: 2 | GO cellular component annotation - cytosol
+  uniprot:P29590 up:classifiedWith go:GO_0005829 .
+  
+  # Database: GO | Query: 2 | GO term label
+  go:GO_0005829 rdfs:label "cytosol" .
+  
+  # Database: GO | Query: 2 | Other cellular component annotations
+  go:GO_0005634 rdfs:label "nucleus" .  # 150 proteins
+  go:GO_0005737 rdfs:label "cytoplasm" .  # 145 proteins
+  go:GO_0005654 rdfs:label "nucleoplasm" .  # 120 proteins
+  go:GO_0005886 rdfs:label "plasma membrane" .  # 110 proteins
+
+exact_answer:
+  choices:
+    - "Cytosol"
+    - "Nucleus"  
+    - "Plasma membrane"
+    - "Mitochondrion"
+  correct: "Cytosol"
+
+ideal_answer: |
+  Among the 372 human zinc-binding proteins with known 3D structures deposited in the Protein Data Bank, the cytosol contains the highest number with 176 proteins annotated to this cellular compartment (GO:0005829). This is followed by the nucleus with 150 proteins (GO:0005634), cytoplasm with 145 proteins (GO:0005737), nucleoplasm with 120 proteins (GO:0005654), and plasma membrane with 110 proteins (GO:0005886). The predominance of cytosolic localization reflects the critical role of zinc-binding proteins in cytoplasmic processes including protein synthesis, signal transduction, and metabolic regulation.
+
+time_spent:
+  exploration: "60 min"
+  total: "90 min"

@@ -1,0 +1,218 @@
+id: question_010
+type: summary
+body: "Summarize how selective autophagy pathways (mitophagy, pexophagy) differ from bulk autophagy in their cargo recognition mechanisms, based on the key receptor proteins and their molecular domains that mediate cargo-autophagosome interactions in mammalian cells."
+
+inspiration_keyword:
+  keyword_id: KW-0072
+  name: "Autophagy"
+  category: "Biological process"
+
+togomcp_databases_used:
+  - reactome
+  - go
+  - uniprot
+
+verification_score:
+  verifiability: 3
+  rdf_necessity: 3
+  scope: 3
+  total: 9
+  passed: true
+
+pubmed_test:
+  time_spent: "15 minutes"
+  method: "Searched for systematic comparisons of autophagy cargo receptors (SQSTM1, OPTN, NBR1, FUNDC1) with multiple PubMed queries including: 'autophagy cargo receptor SQSTM1 OPTN NBR1 FUNDC1 comparison mammalian', 'autophagy regulation transcriptional post-translational mammalian', and 'selective autophagy mechanisms comparison'. Retrieved 283 articles for general autophagy regulation, but zero results for systematic comparison of all four major cargo receptors together."
+  result: |
+    PubMed searches revealed 283 articles on general autophagy regulation covering transcriptional and post-translational mechanisms, but these were primarily disease-focused studies (sepsis, kidney disease, cancer). Articles discuss individual autophagy pathways or specific regulatory mechanisms, but none provide systematic comparisons of cargo recognition mechanisms across selective vs. bulk autophagy.
+    
+    The zero results for the specific receptor comparison query demonstrates that PubMed lacks comprehensive comparative analyses that integrate:
+    1. Systematic enumeration of cargo receptors across different selective autophagy types
+    2. Detailed molecular domain information (UBA, LIR, etc.) for each receptor
+    3. Comparative analysis of ubiquitin-dependent vs. ubiquitin-independent recognition mechanisms
+    4. Integration of pathway organization, protein functions, and GO classifications
+    
+    Literature focuses on individual pathways or disease contexts rather than systematic comparative analysis of cargo recognition mechanisms.
+  conclusion: "PASS (cannot answer from literature) - Requires integration of Reactome pathway data, UniProt protein domain annotations, and GO term classifications"
+
+sparql_queries:
+  - query_number: 1
+    database: "reactome"
+    description: "Search for selective autophagy pathways (mitophagy, pexophagy) in Reactome to identify pathway organization"
+    query: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      
+      SELECT DISTINCT ?pathway ?name ?organism
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        ?pathway a bp:Pathway ;
+          bp:displayName ?name ;
+          bp:organism ?org .
+        ?org bp:name ?organism .
+        ?name bif:contains "('mitophagy' OR 'pexophagy' OR 'selective')" option (score ?sc)
+        FILTER(CONTAINS(?organism, "sapiens"))
+      }
+      ORDER BY DESC(?sc)
+      LIMIT 15
+    result_count: 5
+
+  - query_number: 2
+    database: "reactome"
+    description: "Retrieve key cargo receptor proteins from selective autophagy pathways"
+    query: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX reactome: <http://www.reactome.org/biopax/40/48887#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      
+      SELECT DISTINCT ?pathwayName ?proteinName ?uniprotId
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        VALUES ?pathway { 
+          reactome:Pathway469  # PINK1-PRKN Mitophagy
+          reactome:Pathway473  # Pexophagy
+          reactome:Pathway470  # Receptor Mediated Mitophagy
+        }
+        ?pathway bp:displayName ?pathwayName ;
+                 bp:pathwayComponent*/bp:left|bp:right ?entity .
+        ?entity bp:entityReference ?proteinRef .
+        ?proteinRef a bp:ProteinReference ;
+                    bp:name ?proteinName ;
+                    bp:xref ?xref .
+        ?xref a bp:UnificationXref ;
+              bp:db "UniProt"^^xsd:string ;
+              bp:id ?uniprotId .
+      }
+      LIMIT 100
+    result_count: 48
+
+  - query_number: 3
+    database: "go"
+    description: "Find GO terms for autophagy cargo recognition mechanisms"
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      
+      SELECT DISTINCT ?go ?label ?definition
+      FROM <http://rdfportal.org/ontology/go>
+      WHERE {
+        ?go rdfs:label ?label .
+        OPTIONAL { ?go obo:IAO_0000115 ?definition }
+        ?label bif:contains "('autophagy' AND ('cargo' OR 'adaptor' OR 'receptor'))" option (score ?sc) .
+        FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
+      }
+      ORDER BY DESC(?sc)
+      LIMIT 10
+    result_count: 1
+
+  - query_number: 4
+    database: "go"
+    description: "Retrieve different types of autophagy processes from GO"
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      
+      SELECT DISTINCT ?go ?label ?definition ?namespace
+      FROM <http://rdfportal.org/ontology/go>
+      WHERE {
+        ?go rdfs:label ?label .
+        ?go obo:IAO_0000115 ?definition .
+        ?go oboinowl:hasOBONamespace ?namespace .
+        ?label bif:contains "'autophagy'" option (score ?sc) .
+        FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
+      }
+      ORDER BY DESC(?sc)
+      LIMIT 20
+    result_count: 20
+
+  - query_number: 5
+    database: "uniprot"
+    description: "Get detailed functional annotations for key cargo receptors (SQSTM1, OPTN, NBR1, FUNDC1)"
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+      
+      SELECT DISTINCT ?protein ?mnemonic ?fullName ?functionComment
+      WHERE {
+        VALUES ?protein { 
+          uniprot:Q13501  # SQSTM1/p62
+          uniprot:Q96CV9  # OPTN
+          uniprot:Q14596  # NBR1
+          uniprot:Q8IVP5  # FUNDC1
+        }
+        ?protein up:mnemonic ?mnemonic ;
+                 up:recommendedName ?name .
+        ?name up:fullName ?fullName .
+        OPTIONAL {
+          ?protein up:annotation ?annot .
+          ?annot a up:Function_Annotation ;
+                 rdfs:comment ?functionComment .
+        }
+      }
+      LIMIT 20
+    result_count: 4
+
+rdf_triples: |
+  @prefix bp: <http://www.biopax.org/release/biopax-level3.owl#> .
+  @prefix reactome: <http://www.reactome.org/biopax/40/48887#> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  
+  reactome:Pathway469 bp:displayName "PINK1-PRKN Mediated Mitophagy" .
+  # Database: Reactome | Query: 1 | Comment: PINK1-PRKN pathway for mitochondrial quality control
+  
+  reactome:Pathway470 bp:displayName "Receptor Mediated Mitophagy" .
+  # Database: Reactome | Query: 1 | Comment: Receptor-mediated mitophagy without ubiquitination
+  
+  reactome:Pathway473 bp:displayName "Pexophagy" .
+  # Database: Reactome | Query: 1 | Comment: Selective autophagy of peroxisomes
+  
+  uniprot:Q13501 up:mnemonic "SQSTM_HUMAN" ;
+                 up:recommendedName [ up:fullName "Sequestosome-1" ] .
+  # Database: UniProt | Query: 5 | Comment: SQSTM1/p62 - ubiquitin-binding cargo receptor
+  
+  uniprot:Q96CV9 up:mnemonic "OPTN_HUMAN" ;
+                 up:recommendedName [ up:fullName "Optineurin" ] .
+  # Database: UniProt | Query: 5 | Comment: OPTN - autophagy receptor for ubiquitinated cargo
+  
+  uniprot:Q14596 up:mnemonic "NBR1_HUMAN" ;
+                 up:recommendedName [ up:fullName "Next to BRCA1 gene 1 protein" ] .
+  # Database: UniProt | Query: 5 | Comment: NBR1 - ubiquitin-binding autophagy adapter
+  
+  uniprot:Q8IVP5 up:mnemonic "FUND1_HUMAN" ;
+                 up:recommendedName [ up:fullName "FUN14 domain-containing protein 1" ] .
+  # Database: UniProt | Query: 5 | Comment: FUNDC1 - mitophagy receptor, LC3-interacting
+  
+  obo:GO_0160247 rdfs:label "autophagy cargo adaptor activity" .
+  # Database: GO | Query: 3 | Comment: Molecular function for cargo-phagophore bridging
+  
+  obo:GO_0000422 rdfs:label "autophagy of mitochondrion" ;
+                  obo:IAO_0000115 "The autophagic process in which mitochondria are delivered to a type of vacuole and degraded in response to changing cellular conditions." .
+  # Database: GO | Query: 4 | Comment: Mitophagy process classification
+  
+  obo:GO_0030242 rdfs:label "autophagy of peroxisome" ;
+                  obo:IAO_0000115 "The process in which peroxisomes are delivered to a type of vacuole and degraded in response to changing nutrient conditions." .
+  # Database: GO | Query: 4 | Comment: Pexophagy process classification
+  
+  obo:GO_0006914 rdfs:label "autophagy" ;
+                  obo:IAO_0000115 "The cellular catabolic process in which cells digest cellular materials, such as organelles and other macromolecular constituents, or non-self materials such as intracellular pathogens." .
+  # Database: GO | Query: 4 | Comment: General autophagy process definition
+
+exact_answer: ""
+
+ideal_answer: |
+  Selective autophagy pathways employ specialized cargo receptors with distinct molecular recognition mechanisms compared to bulk autophagy. In mitophagy, two complementary systems exist: PINK1-PRKN-mediated mitophagy uses ubiquitin-dependent recognition where damaged mitochondria are tagged with ubiquitin chains, which are then recognized by cargo receptors SQSTM1/p62 and OPTN through their UBA (ubiquitin-associated) domains, while these receptors simultaneously bind LC3/GABARAP proteins on the phagophore via their LIR (LC3-interacting region) motifs. In contrast, receptor-mediated mitophagy bypasses ubiquitination entirely through FUNDC1, a mitochondrial outer membrane protein that directly recruits LC3 family proteins via its LIR motif under hypoxic conditions. Pexophagy utilizes a hybrid mechanism where the peroxisomal import receptor PEX5 becomes ubiquitinated upon oxidative stress, recruiting SQSTM1/p62 and NBR1 as cargo adaptors. Both SQSTM1 and NBR1 function as molecular bridges containing UBA domains for ubiquitin binding and LIR motifs for LC3 interaction, exemplifying the conserved ubiquitin-LC3 bridging architecture. Bulk autophagy, in contrast, lacks these specialized receptor proteins and instead relies on non-selective engulfment of cytoplasmic components through stochastic capture during autophagosome formation, without requiring specific cargo recognition domains or ubiquitin tags.
+
+question_template_used: "Comparative mechanistic summary across pathway types, integrating pathway organization (Reactome), functional classifications (GO), and protein domain functions (UniProt)"
+
+time_spent:
+  exploration: "25 minutes"
+  formulation: "15 minutes"
+  verification: "20 minutes"
+  pubmed_test: "15 minutes"
+  extraction: "30 minutes"
+  documentation: "25 minutes"
+  total: "130 minutes"

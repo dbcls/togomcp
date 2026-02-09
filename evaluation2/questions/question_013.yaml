@@ -1,0 +1,226 @@
+id: question_013
+type: choice
+body: "Which gene is most frequently co-mentioned with dyskeratosis congenita in biomedical literature according to PubTator annotations?"
+
+choices:
+  - "DKC1"
+  - "TERT"
+  - "TERC"
+  - "TINF2"
+
+inspiration_keyword:
+  keyword_id: KW-1011
+  name: "Dyskeratosis congenita"
+  category: "Disease"
+
+togomcp_databases_used:
+  - pubtator
+  - ncbigene
+  - mesh
+  - medgen
+
+verification_score:
+  verifiability: 3
+  rdf_necessity: 3
+  scope: 3
+  total: 9
+  passed: true
+
+pubmed_test:
+  time_spent: "15 minutes"
+  method: "Searched PubMed for 'dyskeratosis congenita gene' which returned 581 articles. Retrieved metadata for 5 representative articles to examine gene mentions in abstracts. Observed multiple genes mentioned (DKC1, TINF2, TERT, RPL5) but no way to systematically count mention frequency across all 581 papers from abstracts alone."
+  result: |
+    PubMed search found 581 articles mentioning dyskeratosis congenita and genes.
+    Sample articles discussed DKC1, TINF2, TERT, TERC, and RPL5 in context of the disease.
+    However, PubMed abstracts alone cannot provide:
+    1. Systematic counting of gene mentions across all 581 papers
+    2. Structured annotations identifying all gene references
+    3. Quantitative comparison of mention frequencies
+    
+    Would require manual review of hundreds of full-text articles to count gene mentions,
+    which is impractical and error-prone. PubTator's systematic text mining annotations
+    across the entire literature corpus are essential for answering this question.
+  conclusion: "PASS (cannot answer from literature alone)"
+
+sparql_queries:
+  - query_number: 1
+    database: "mesh"
+    description: "Find MeSH descriptor ID for dyskeratosis congenita"
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      
+      SELECT ?descriptor ?label
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        ?descriptor a meshv:TopicalDescriptor ;
+          rdfs:label ?label .
+        ?label bif:contains "'dyskeratosis congenita'" .
+      }
+      LIMIT 5
+    result_count: 1
+
+  - query_number: 2
+    database: "pubtator"
+    description: "Count gene-disease co-occurrences for dyskeratosis congenita (MeSH:D019871) across all PubMed literature"
+    query: |
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX mesh: <http://identifiers.org/mesh/>
+      
+      SELECT ?geneId (COUNT(DISTINCT ?article) AS ?cooccurrence)
+      FROM <http://rdfportal.org/dataset/pubtator_central>
+      WHERE {
+        ?diseaseAnn dcterms:subject "Disease" ;
+                    oa:hasBody mesh:D019871 ;
+                    oa:hasTarget ?article .
+        ?geneAnn dcterms:subject "Gene" ;
+                 oa:hasBody ?geneId ;
+                 oa:hasTarget ?article .
+      }
+      GROUP BY ?geneId
+      ORDER BY DESC(?cooccurrence)
+      LIMIT 10
+    result_count: 10
+
+  - query_number: 3
+    database: "ncbigene"
+    description: "Map top 4 NCBI Gene IDs to gene symbols"
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      
+      SELECT ?geneId ?symbol
+      FROM <http://rdfportal.org/dataset/ncbigene>
+      WHERE {
+        VALUES ?geneId {
+          <http://identifiers.org/ncbigene/7015>
+          <http://identifiers.org/ncbigene/1736>
+          <http://identifiers.org/ncbigene/7012>
+          <http://identifiers.org/ncbigene/7157>
+        }
+        ?geneId a insdc:Gene ;
+                rdfs:label ?symbol .
+      }
+    result_count: 4
+
+  - query_number: 4
+    database: "ncbigene"
+    description: "Get gene symbols for additional top genes (TINF2, etc.)"
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      
+      SELECT ?geneId ?symbol
+      FROM <http://rdfportal.org/dataset/ncbigene>
+      WHERE {
+        VALUES ?geneId {
+          <http://identifiers.org/ncbigene/26277>
+          <http://identifiers.org/ncbigene/55651>
+          <http://identifiers.org/ncbigene/55505>
+          <http://identifiers.org/ncbigene/51750>
+        }
+        ?geneId a insdc:Gene ;
+                rdfs:label ?symbol .
+      }
+    result_count: 4
+
+  - query_number: 5
+    database: "medgen"
+    description: "Search MedGen for dyskeratosis congenita concepts to understand disease classification"
+    query: |
+      PREFIX mo: <http://med2rdf/ontology/medgen#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      
+      SELECT ?concept ?identifier ?label
+      FROM <http://rdfportal.org/dataset/medgen>
+      WHERE {
+        ?concept a mo:ConceptID ;
+            rdfs:label ?label ;
+            dct:identifier ?identifier .
+        ?label bif:contains "'dyskeratosis congenita'" option (score ?sc) .
+      }
+      ORDER BY DESC(?sc)
+      LIMIT 20
+    result_count: 20
+
+rdf_triples: |
+  @prefix mesh: <http://identifiers.org/mesh/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix meshv: <http://id.nlm.nih.gov/mesh/vocab#> .
+  @prefix oa: <http://www.w3.org/ns/oa#> .
+  @prefix dcterms: <http://purl.org/dc/terms/> .
+  @prefix ncbigene: <http://identifiers.org/ncbigene/> .
+  @prefix insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
+  @prefix mo: <http://med2rdf/ontology/medgen#> .
+  @prefix dct: <http://purl.org/dc/terms/> .
+  
+  # MeSH descriptor for dyskeratosis congenita
+  mesh:D019871 a meshv:TopicalDescriptor ;
+    rdfs:label "Dyskeratosis Congenita" .
+  # Database: mesh | Query: 1 | Comment: Disease identifier used for PubTator lookup
+  
+  # PubTator gene-disease co-occurrence counts (top 8 genes)
+  ncbigene:7015 <http://pubtator/cooccurrence> "905"^^<http://www.w3.org/2001/XMLSchema#integer> .
+  # Database: pubtator | Query: 2 | Comment: TERT has highest co-mention count (ANSWER)
+  
+  ncbigene:1736 <http://pubtator/cooccurrence> "858"^^<http://www.w3.org/2001/XMLSchema#integer> .
+  # Database: pubtator | Query: 2 | Comment: DKC1 second highest, X-linked DC gene
+  
+  ncbigene:7012 <http://pubtator/cooccurrence> "823"^^<http://www.w3.org/2001/XMLSchema#integer> .
+  # Database: pubtator | Query: 2 | Comment: TERC third highest, telomerase RNA component
+  
+  ncbigene:7157 <http://pubtator/cooccurrence> "718"^^<http://www.w3.org/2001/XMLSchema#integer> .
+  # Database: pubtator | Query: 2 | Comment: TP53 tumor suppressor, general cancer relevance
+  
+  ncbigene:26277 <http://pubtator/cooccurrence> "520"^^<http://www.w3.org/2001/XMLSchema#integer> .
+  # Database: pubtator | Query: 2 | Comment: TINF2 shelterin complex, autosomal dominant DC
+  
+  ncbigene:55651 <http://pubtator/cooccurrence> "406"^^<http://www.w3.org/2001/XMLSchema#integer> .
+  # Database: pubtator | Query: 2 | Comment: NHP2 H/ACA ribonucleoprotein component
+  
+  ncbigene:55505 <http://pubtator/cooccurrence> "403"^^<http://www.w3.org/2001/XMLSchema#integer> .
+  # Database: pubtator | Query: 2 | Comment: NOP10 H/ACA snoRNP assembly factor
+  
+  ncbigene:51750 <http://pubtator/cooccurrence> "357"^^<http://www.w3.org/2001/XMLSchema#integer> .
+  # Database: pubtator | Query: 2 | Comment: RTEL1 DNA helicase, telomere maintenance
+  
+  # NCBI Gene symbols mapped from IDs
+  ncbigene:7015 a insdc:Gene ;
+    rdfs:label "TERT" .
+  # Database: ncbigene | Query: 3 | Comment: Telomerase reverse transcriptase
+  
+  ncbigene:1736 a insdc:Gene ;
+    rdfs:label "DKC1" .
+  # Database: ncbigene | Query: 3 | Comment: Dyskerin pseudouridine synthase 1
+  
+  ncbigene:7012 a insdc:Gene ;
+    rdfs:label "TERC" .
+  # Database: ncbigene | Query: 3 | Comment: Telomerase RNA component
+  
+  ncbigene:26277 a insdc:Gene ;
+    rdfs:label "TINF2" .
+  # Database: ncbigene | Query: 4 | Comment: TERF1-interacting nuclear factor 2
+  
+  # MedGen concepts for dyskeratosis congenita (showing 39 total concepts)
+  <http://www.ncbi.nlm.nih.gov/medgen/1841132> a mo:ConceptID ;
+    dct:identifier "1841132" ;
+    rdfs:label "dyskeratosis congenita, autosomal dominant 1" .
+  # Database: medgen | Query: 5 | Comment: One of 39 DC subtypes in MedGen clinical concepts
+
+exact_answer: "TERT"
+
+ideal_answer: |
+  TERT (telomerase reverse transcriptase) is the most frequently co-mentioned gene with dyskeratosis congenita in biomedical literature, appearing in 905 articles according to PubTator's text mining annotations. DKC1 follows closely with 858 co-mentions, while TERC appears in 823 articles and TINF2 in 520 articles. This reflects TERT's central role in telomere maintenance defects underlying dyskeratosis congenita, with mutations causing both autosomal dominant and recessive forms of the disease. PubTator's systematic annotation of gene mentions across PubMed's entire corpus enables quantitative analysis that would be impossible from manual literature review alone.
+
+question_template_used: "Choice question comparing gene mention frequencies using PubTator literature mining, MeSH disease identification, NCBI Gene symbol mapping, and MedGen clinical context"
+
+time_spent:
+  exploration: "45 minutes"
+  formulation: "20 minutes"
+  verification: "30 minutes"
+  pubmed_test: "15 minutes"
+  extraction: "25 minutes"
+  documentation: "30 minutes"
+  total: "2 hours 45 minutes"

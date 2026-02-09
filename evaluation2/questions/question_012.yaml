@@ -1,0 +1,202 @@
+id: question_012
+type: choice
+body: "Among spore-forming bacterial genera documented with growth conditions, which genus has the highest average optimal growth temperature?"
+
+inspiration_keyword:
+  keyword_id: KW-0749
+  name: "Sporulation"
+  category: "Biological process"
+
+togomcp_databases_used:
+  - bacdive
+  - mediadive
+
+verification_score:
+  verifiability: 3
+  rdf_necessity: 3
+  scope: 3
+  total: 9
+  passed: true
+
+pubmed_test:
+  time_spent: "15 minutes"
+  method: |
+    Attempted multiple PubMed searches to find comparative data on average optimal growth temperatures for spore-forming bacterial genera:
+    
+    Search 1: "spore-forming bacteria optimal growth temperature average Geobacillus Bacillus Clostridium" → 0 results
+    
+    Search 2: "comparative growth temperature spore forming bacterial genera thermophilic" → 1 result (PMID: 8140284)
+    - Retrieved: Ensign et al. (1993) "Physiology of some actinomycete genera" [DOI: 10.1016/0923-2508(93)90070-i]
+    - Content: General review mentioning Thermoactinomyces as thermophilic actinomycetes
+    - Limitation: Does not provide quantitative average temperatures or systematic comparison across Geobacillus, Bacillus, Clostridium, Paenibacillus
+  result: |
+    PubMed searches yielded no quantitative data on average optimal growth temperatures across spore-forming bacterial genera. The single relevant paper (PMID: 8140284) is a qualitative review mentioning thermophilic properties but provides no:
+    1. Quantitative average temperature values for genera
+    2. Systematic comparison across multiple genera (Geobacillus, Bacillus, Clostridium)
+    3. Data aggregation from culture collection records
+    
+    This question requires:
+    - Cross-database integration: BacDive (sporulation phenotype) + MediaDive (growth temperature data)
+    - Computational aggregation: Average temperatures calculated from 343 strain-growth condition records
+    - Systematic enumeration: Temperature data from 13 Geobacillus, 76 Bacillus, 100 Clostridium, 153 Paenibacillus, 1 Thermoactinomyces strains
+    
+    Literature provides general knowledge about thermophilic properties but not the quantitative systematic comparison required to answer this question definitively.
+  conclusion: "PASS (cannot answer from literature alone - requires database aggregation)"
+
+sparql_queries:
+  - query_number: 1
+    database: "bacdive"
+    description: "Identify spore-forming bacterial strains using keyword search on descriptions. Filter for key genera (Bacillus, Clostridium, Geobacillus, Thermoactinomyces, Paenibacillus) and retrieve BacDiveID for cross-database linking."
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT ?bacDiveStrain ?strainLabel ?genus ?bacDiveID ?description
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/bacdive> {
+          ?bacDiveStrain a schema:Strain ;
+                         rdfs:label ?strainLabel ;
+                         dct:description ?description ;
+                         schema:hasGenus ?genus ;
+                         schema:hasBacDiveID ?bacDiveID .
+          ?description bif:contains "'spore' OR 'sporulation' OR 'spore-forming'" .
+          FILTER(?genus IN ("Bacillus", "Clostridium", "Geobacillus", "Thermoactinomyces", "Paenibacillus"))
+        }
+      }
+      LIMIT 500
+    result_count: 343
+
+  - query_number: 2
+    database: "mediadive"
+    description: "Retrieve growth conditions (temperature, medium) for strains with matching BacDiveIDs from MediaDive. This links spore-forming bacteria to their documented cultivation temperatures."
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT ?mediaDiveStrain ?bacDiveID ?species ?growth ?temp ?medium ?mediumLabel
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/mediadive> {
+          ?mediaDiveStrain a schema:Strain ;
+                           schema:hasBacDiveID ?bacDiveID ;
+                           schema:hasSpecies ?species .
+          
+          ?growth a schema:GrowthCondition ;
+                  schema:relatedToStrain ?mediaDiveStrain ;
+                  schema:partOfMedium ?medium ;
+                  schema:growthTemperature ?temp .
+          ?medium rdfs:label ?mediumLabel .
+        }
+      }
+      LIMIT 500
+    result_count: 343
+
+  - query_number: 3
+    database: "bacdive + mediadive"
+    description: "Cross-database aggregation query joining BacDive spore-forming bacteria with MediaDive growth temperatures via shared BacDiveID. Calculate average optimal growth temperature for each genus."
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT ?genus (AVG(?temp) as ?avgTemp) (COUNT(DISTINCT ?bacDiveStrain) as ?strainCount)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/bacdive> {
+          ?bacDiveStrain a schema:Strain ;
+                         dct:description ?description ;
+                         schema:hasGenus ?genus ;
+                         schema:hasBacDiveID ?bacDiveID .
+          ?description bif:contains "'spore' OR 'sporulation' OR 'spore-forming'" .
+          FILTER(?genus IN ("Bacillus", "Clostridium", "Geobacillus", "Thermoactinomyces", "Paenibacillus"))
+        }
+        GRAPH <http://rdfportal.org/dataset/mediadive> {
+          ?mediaDiveStrain a schema:Strain ;
+                           schema:hasBacDiveID ?bacDiveID .
+          ?growth a schema:GrowthCondition ;
+                  schema:relatedToStrain ?mediaDiveStrain ;
+                  schema:growthTemperature ?temp .
+        }
+      }
+      GROUP BY ?genus
+      ORDER BY DESC(?avgTemp)
+    result_count: 5
+
+rdf_triples: |
+  @prefix schema: <https://purl.dsmz.de/schema/> .
+  @prefix dct: <http://purl.org/dc/terms/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+  
+  <https://purl.dsmz.de/bacdive/strain/1433> a schema:Strain ;
+    rdfs:label "Geobacillus thermoleovorans 1433" ;
+    schema:hasGenus "Geobacillus" ;
+    schema:hasBacDiveID 1433 ;
+    dct:description "Geobacillus thermoleovorans LEH-1 is a facultative anaerobe, spore-forming, thermophilic bacterium that forms circular colonies and was isolated from soil, near hot water effluent." .
+  # Database: BacDive | Query: 1 | Comment: Geobacillus strain with spore-forming capability and thermophilic classification
+  
+  <https://purl.dsmz.de/bacdive/strain/131725> a schema:Strain ;
+    rdfs:label "Geobacillus sp. 131725" ;
+    schema:hasGenus "Geobacillus" ;
+    schema:hasBacDiveID 131725 ;
+    dct:description "Geobacillus sp. 12 AMOR 1 is a spore-forming, thermophilic, Gram-positive bacterium that was isolated from thermophilic sediment bulk sample at the Troll Wall vent field, water depth of 470m." .
+  # Database: BacDive | Query: 1 | Comment: Thermophilic Geobacillus from deep-sea vent showing extreme temperature adaptation
+  
+  <https://purl.dsmz.de/bacdive/strain/1074> a schema:Strain ;
+    rdfs:label "Bacillus atrophaeus 1221A" ;
+    schema:hasGenus "Bacillus" ;
+    schema:hasBacDiveID 1074 ;
+    dct:description "Bacillus atrophaeus 1221A is a spore-forming, mesophilic, motile human pathogen that produces antibiotic compounds." .
+  # Database: BacDive | Query: 1 | Comment: Mesophilic Bacillus showing contrast with thermophilic genera
+  
+  <https://purl.dsmz.de/bacdive/strain/1263> a schema:Strain ;
+    rdfs:label "Bacillus altitudinis 41KF2b" ;
+    schema:hasGenus "Bacillus" ;
+    schema:hasBacDiveID 1263 ;
+    dct:description "Bacillus altitudinis 41KF2b is a spore-forming, thermophilic, Gram-positive bacterium that was isolated from cryogenic tubes used for collecting air samples from high altitudes." .
+  # Database: BacDive | Query: 1 | Comment: Thermophilic Bacillus but lower temperature optimum than Geobacillus
+  
+  <https://purl.dsmz.de/mediadive/strain/3320> a schema:Strain ;
+    schema:hasBacDiveID 1433 ;
+    schema:hasSpecies "Geobacillus thermoleovorans" .
+  # Database: MediaDive | Query: 2 | Comment: MediaDive strain record linking to BacDive via BacDiveID
+  
+  <https://purl.dsmz.de/mediadive/growth/3477> a schema:GrowthCondition ;
+    schema:relatedToStrain <https://purl.dsmz.de/mediadive/strain/3320> ;
+    schema:partOfMedium <https://purl.dsmz.de/mediadive/medium/1> ;
+    schema:growthTemperature 60 .
+  # Database: MediaDive | Query: 2 | Comment: High temperature (60°C) for Geobacillus thermoleovorans strain
+  
+  <https://purl.dsmz.de/mediadive/medium/1> a schema:CultureMedium ;
+    rdfs:label "NUTRIENT AGAR" .
+  # Database: MediaDive | Query: 2 | Comment: Standard culture medium for thermophilic bacteria
+  
+  <https://purl.dsmz.de/mediadive/strain/25451> a schema:Strain ;
+    schema:hasBacDiveID 131725 ;
+    schema:hasSpecies "Geobacillus sp." .
+  # Database: MediaDive | Query: 2 | Comment: Another Geobacillus strain with growth conditions documented
+  
+  <https://purl.dsmz.de/mediadive/growth/29705> a schema:GrowthCondition ;
+    schema:relatedToStrain <https://purl.dsmz.de/mediadive/strain/25451> ;
+    schema:partOfMedium <https://purl.dsmz.de/mediadive/medium/514> ;
+    schema:growthTemperature 55 .
+  # Database: MediaDive | Query: 2 | Comment: Temperature (55°C) for deep-sea vent Geobacillus strain
+  
+  <https://purl.dsmz.de/mediadive/medium/514> a schema:CultureMedium ;
+    rdfs:label "BACTO MARINE BROTH (DIFCO 2216)" .
+  # Database: MediaDive | Query: 2 | Comment: Marine medium for extremophile cultivation
+
+exact_answer: "C) Geobacillus"
+
+ideal_answer: |
+  Among spore-forming bacterial genera with documented growth conditions, Geobacillus has the highest average optimal growth temperature at 55.3°C (13 strains). This is followed by Thermoactinomyces at 50°C (1 strain), Clostridium at 33.7°C (100 strains), Bacillus at 31.1°C (76 strains), and Paenibacillus at 29.9°C (153 strains). The cross-database analysis integrating BacDive's sporulation phenotype data with MediaDive's quantitative growth temperature records reveals Geobacillus as the most thermophilic spore-forming genus, consistent with its ecological distribution in geothermal environments and deep-sea hydrothermal vents.
+
+question_template_used: "CHOICE question with quantitative comparison across bacterial genera using cross-database integration (BacDive phenotype + MediaDive cultivation data)"
+
+time_spent:
+  exploration: "20 minutes"
+  formulation: "15 minutes"
+  verification: "15 minutes"
+  pubmed_test: "15 minutes"
+  extraction: "20 minutes"
+  documentation: "25 minutes"
+  total: "110 minutes"

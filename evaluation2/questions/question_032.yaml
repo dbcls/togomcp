@@ -1,0 +1,137 @@
+id: question_032
+type: choice
+body: "Which cellular compartment contains the most aminotransferase enzymes in human cells?"
+
+inspiration_keyword:
+  keyword_id: KW-0032
+  name: "Aminotransferase"
+  category: "Molecular function"
+
+togomcp_databases_used:
+  - uniprot
+  - go
+
+verification_score:
+  verifiability: 3
+  rdf_necessity: 3
+  scope: 3
+  total: 9
+  passed: true
+
+pubmed_test:
+  time_spent: "15 minutes"
+  method: "Searched PubMed with: 'aminotransferase cellular compartment distribution human' and retrieved 10 articles. Examined abstracts of top 5 articles (PMIDs: 39768970, 38200664, 33308159, 33048175, 31873806)."
+  result: "Found articles discussing individual aminotransferases in specific contexts (metabolic dysfunction, glyoxylate metabolism, COVID-19 markers, drug pharmacokinetics). Papers mention specific aminotransferases (e.g., aspartate aminotransferase, alanine-glyoxylate aminotransferase) as clinical markers or in metabolic pathways, but none systematically enumerate all human aminotransferases by cellular compartment or provide quantitative comparisons across compartments."
+  conclusion: "PASS - PubMed articles focus on individual enzymes in clinical/metabolic contexts without systematic classification. Answering this question requires: (1) comprehensive enumeration of all human aminotransferases using UniProt keyword classification (KW-0032), (2) GO cellular component annotations for compartment assignments, and (3) systematic counting across compartments. This integration is not available in literature alone."
+
+sparql_queries:
+  - query_number: 1
+    database: "uniprot"
+    description: "Find all reviewed human aminotransferases and their GO cellular component annotations, filtering for major compartments (mitochondrion, cytoplasm, nucleus, plasma membrane)"
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT DISTINCT ?protein ?mnemonic ?fullName ?compartment ?compLabel
+      WHERE {
+        VALUES ?compartment {
+          <http://purl.obolibrary.org/obo/GO_0005739>
+          <http://purl.obolibrary.org/obo/GO_0005737>
+          <http://purl.obolibrary.org/obo/GO_0005634>
+          <http://purl.obolibrary.org/obo/GO_0005886>
+        }
+        
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                 up:mnemonic ?mnemonic ;
+                 up:classifiedWith keywords:32 ;
+                 up:classifiedWith ?compartment ;
+                 up:recommendedName ?name .
+        ?name up:fullName ?fullName .
+        ?compartment rdfs:label ?compLabel .
+      }
+      ORDER BY ?compartment ?mnemonic
+    result_count: 19
+
+  - query_number: 2
+    database: "uniprot"
+    description: "Count aminotransferases per cellular compartment to determine which has the most"
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT DISTINCT ?compLabel (COUNT(DISTINCT ?protein) AS ?count)
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                 up:classifiedWith keywords:32 ;
+                 up:classifiedWith ?goTerm .
+        ?goTerm rdfs:label ?compLabel .
+        FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
+        FILTER(CONTAINS(LCASE(?compLabel), "cytoplasm") || CONTAINS(LCASE(?compLabel), "mitochondri") || CONTAINS(LCASE(?compLabel), "nucleus") || CONTAINS(LCASE(?compLabel), "membrane"))
+      }
+      GROUP BY ?compLabel
+      ORDER BY DESC(?count)
+    result_count: 12
+
+rdf_triples: |
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix keywords: <http://purl.uniprot.org/keywords/> .
+  @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
+  @prefix GO: <http://purl.obolibrary.org/obo/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  
+  # Keyword classification for aminotransferase
+  # Database: UniProt | Query: 1,2 | All human aminotransferases classified with KW-0032
+  uniprot:Q8N5Z0 up:classifiedWith keywords:32 .
+  uniprot:P00505 up:classifiedWith keywords:32 .
+  uniprot:O15382 up:classifiedWith keywords:32 .
+  uniprot:P54687 up:classifiedWith keywords:32 .
+  
+  # Mitochondrion localization (GO:0005739) - 11 proteins
+  # Database: UniProt+GO | Query: 1,2 | Mitochondrion has the most aminotransferases
+  uniprot:Q8N5Z0 up:classifiedWith GO:GO_0005739 .
+  uniprot:P00505 up:classifiedWith GO:GO_0005739 .
+  uniprot:Q9BYV1 up:classifiedWith GO:GO_0005739 .
+  uniprot:Q8TD30 up:classifiedWith GO:GO_0005739 .
+  uniprot:P54687 up:classifiedWith GO:GO_0005739 .
+  uniprot:O15382 up:classifiedWith GO:GO_0005739 .
+  uniprot:P80404 up:classifiedWith GO:GO_0005739 .
+  uniprot:P48728 up:classifiedWith GO:GO_0005739 .
+  uniprot:Q16773 up:classifiedWith GO:GO_0005739 .
+  uniprot:Q6YP21 up:classifiedWith GO:GO_0005739 .
+  uniprot:P04181 up:classifiedWith GO:GO_0005739 .
+  GO:GO_0005739 rdfs:label "mitochondrion" .
+  
+  # Cytoplasm localization (GO:0005737) - 6 proteins
+  # Database: UniProt+GO | Query: 1,2 | Second most abundant compartment
+  uniprot:P17174 up:classifiedWith GO:GO_0005737 .
+  uniprot:P54687 up:classifiedWith GO:GO_0005737 .
+  uniprot:Q16773 up:classifiedWith GO:GO_0005737 .
+  uniprot:Q6YP21 up:classifiedWith GO:GO_0005737 .
+  uniprot:P04181 up:classifiedWith GO:GO_0005737 .
+  uniprot:Q9Y617 up:classifiedWith GO:GO_0005737 .
+  GO:GO_0005737 rdfs:label "cytoplasm" .
+  
+  # Nucleus localization (GO:0005634) - 1 protein
+  # Database: UniProt+GO | Query: 1,2 | Minimal presence
+  uniprot:P17174 up:classifiedWith GO:GO_0005634 .
+  GO:GO_0005634 rdfs:label "nucleus" .
+  
+  # Plasma membrane localization (GO:0005886) - 1 protein
+  # Database: UniProt+GO | Query: 1,2 | Minimal presence
+  uniprot:P00505 up:classifiedWith GO:GO_0005886 .
+  GO:GO_0005886 rdfs:label "plasma membrane" .
+
+exact_answer: "Mitochondrion"
+
+ideal_answer: |
+  The mitochondrion contains the most aminotransferase enzymes in human cells, with 11 distinct proteins classified under the aminotransferase keyword (KW-0032) and annotated with mitochondrial localization (GO:0005739). This is followed by the cytoplasm with 6 aminotransferases, while the nucleus and plasma membrane each contain only 1 aminotransferase enzyme. The enrichment of aminotransferases in mitochondria reflects the organelle's central role in amino acid catabolism and energy metabolism, where these enzymes catalyze transamination reactions that link amino acid degradation to the tricarboxylic acid cycle.
+
+time_spent:
+  exploration: "45 min"
+  total: "75 min"

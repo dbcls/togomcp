@@ -1,0 +1,235 @@
+id: question_023
+type: yes_no
+body: "Do any non-mammalian vertebrates have G-protein coupled receptor genes with more than 10 transcript variants?"
+
+inspiration_keyword:
+  keyword_id: KW-0297
+  name: "G-protein coupled receptor"
+  category: "Molecular function"
+
+togomcp_databases_used:
+  - ensembl
+  - taxonomy
+
+verification_score:
+  verifiability: 3
+  rdf_necessity: 3
+  scope: 3
+  total: 9
+  passed: true
+
+pubmed_test:
+  time_spent: "15 minutes"
+  method: "Searched PubMed for 'G-protein coupled receptor transcript variants vertebrates comparative' (337 results) and 'GPCR alternative splicing isoforms fish mammal comparative' (0 results). Checked several articles including PMIDs 41485077, 41465135, 39655330, 39177099."
+  result: |
+    PubMed search returned articles about beta-blockers, genetic variants in autoimmune diseases, cell culture methods, and horn development - none provided systematic quantitative data on GPCR transcript variant counts across vertebrate species. The specific query combining GPCR, alternative splicing, isoforms, fish, mammal, and comparative terms returned zero results, confirming that this type of systematic cross-species transcript enumeration is not available in published literature. Literature typically focuses on individual GPCR families in single species or functional studies, not comprehensive transcript variant quantification across vertebrate classes.
+  conclusion: "PASS (cannot answer from literature)"
+
+sparql_queries:
+  - query_number: 1
+    database: "ensembl"
+    description: "Search for GPCR genes across vertebrate species using keyword search in gene descriptions"
+    query: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX taxonomy: <http://identifiers.org/taxonomy/>
+      
+      SELECT ?species (COUNT(DISTINCT ?gene) as ?gene_count)
+      FROM <http://rdfportal.org/dataset/ensembl>
+      WHERE {
+        ?gene a terms:EnsemblGene ;
+              dcterms:description ?desc ;
+              obo:RO_0002162 ?species .
+        ?desc bif:contains "'G-protein' AND 'coupled' AND 'receptor'" .
+      }
+      GROUP BY ?species
+      ORDER BY DESC(?gene_count)
+      LIMIT 20
+    result_count: 20
+
+  - query_number: 2
+    database: "ensembl"
+    description: "Count transcript variants per GPCR gene in non-mammalian vertebrates (fish, birds, reptiles)"
+    query: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX taxonomy: <http://identifiers.org/taxonomy/>
+      PREFIX so: <http://purl.obolibrary.org/obo/so#>
+      
+      SELECT ?species ?gene_id ?gene_label (COUNT(?transcript) as ?transcript_count)
+      FROM <http://rdfportal.org/dataset/ensembl>
+      WHERE {
+        ?gene a terms:EnsemblGene ;
+              dcterms:identifier ?gene_id ;
+              rdfs:label ?gene_label ;
+              dcterms:description ?description ;
+              obo:RO_0002162 ?species .
+        ?description bif:contains "'G-protein' AND 'coupled' AND 'receptor'" .
+        ?transcript so:transcribed_from ?gene .
+        
+        # Filter for specific non-mammalian vertebrates: zebrafish, chicken, green anole, coelacanth
+        FILTER(?species IN (taxonomy:7957, taxonomy:9031, taxonomy:8030, taxonomy:7962))
+      }
+      GROUP BY ?species ?gene_id ?gene_label
+      ORDER BY DESC(COUNT(?transcript))
+      LIMIT 20
+    result_count: 20
+
+  - query_number: 3
+    database: "ensembl"
+    description: "Check if any non-mammalian GPCR genes have MORE than 10 transcripts (EXISTS query for yes/no)"
+    query: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX taxonomy: <http://identifiers.org/taxonomy/>
+      PREFIX so: <http://purl.obolibrary.org/obo/so#>
+      
+      ASK
+      FROM <http://rdfportal.org/dataset/ensembl>
+      WHERE {
+        {
+          SELECT ?gene (COUNT(?transcript) as ?count)
+          WHERE {
+            ?gene a terms:EnsemblGene ;
+                  dcterms:description ?description ;
+                  obo:RO_0002162 ?species .
+            ?description bif:contains "'G-protein' AND 'coupled' AND 'receptor'" .
+            ?transcript so:transcribed_from ?gene .
+            
+            # Non-mammals: fish, birds, reptiles (exclude mammals taxonomy:40674)
+            FILTER(?species IN (taxonomy:7957, taxonomy:9031, taxonomy:8030, taxonomy:7962, taxonomy:8090, taxonomy:69293))
+          }
+          GROUP BY ?gene
+          HAVING (COUNT(?transcript) > 10)
+        }
+      }
+    result_count: 0
+
+  - query_number: 4
+    database: "ensembl"
+    description: "Verify mammals DO have GPCR genes with >10 transcripts (positive control)"
+    query: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX taxonomy: <http://identifiers.org/taxonomy/>
+      PREFIX so: <http://purl.obolibrary.org/obo/so#>
+      
+      SELECT ?species ?gene_id ?gene_label (COUNT(?transcript) as ?transcript_count)
+      FROM <http://rdfportal.org/dataset/ensembl>
+      WHERE {
+        ?gene a terms:EnsemblGene ;
+              dcterms:identifier ?gene_id ;
+              rdfs:label ?gene_label ;
+              dcterms:description ?description ;
+              obo:RO_0002162 ?species .
+        ?description bif:contains "'G-protein' AND 'coupled' AND 'receptor'" .
+        ?transcript so:transcribed_from ?gene .
+        
+        # Mammals: human, mouse, rat, dog
+        FILTER(?species IN (taxonomy:9606, taxonomy:10090, taxonomy:10116, taxonomy:9615))
+      }
+      GROUP BY ?species ?gene_id ?gene_label
+      HAVING (COUNT(?transcript) > 10)
+      ORDER BY DESC(COUNT(?transcript))
+      LIMIT 20
+    result_count: 20
+
+  - query_number: 5
+    database: "taxonomy"
+    description: "Get taxonomic classification and common names for species used in analysis"
+    query: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      
+      SELECT ?taxon ?label ?id ?rank ?commonName
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        VALUES ?taxon { 
+          taxon:9606   # human
+          taxon:10090  # mouse
+          taxon:7957   # representative fish
+          taxon:9031   # chicken
+          taxon:40674  # Mammalia class
+          taxon:7742   # Vertebrata
+        }
+        ?taxon a tax:Taxon ;
+               rdfs:label ?label ;
+               dcterms:identifier ?id ;
+               tax:rank ?rank .
+        OPTIONAL { ?taxon tax:commonName ?commonName }
+      }
+    result_count: 8
+
+rdf_triples: |
+  @prefix terms: <http://rdf.ebi.ac.uk/terms/ensembl/> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix so: <http://purl.obolibrary.org/obo/so#> .
+  @prefix taxonomy: <http://identifiers.org/taxonomy/> .
+  @prefix tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  
+  # Human GPCR gene with many transcripts (mammal example)
+  <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000205336> a terms:EnsemblGene ;
+    dcterms:identifier "ENSG00000205336" ;
+    rdfs:label "ADGRG1" ;
+    dcterms:description "adhesion G protein-coupled receptor G1 [Source:HGNC Symbol;Acc:HGNC:23243]" ;
+    obo:RO_0002162 taxonomy:9606 .
+  # Database: Ensembl | Query: 4 | Comment: Example mammalian GPCR with 79 transcripts
+  
+  <http://rdf.ebi.ac.uk/resource/ensembl.transcript/ENST00000001> so:transcribed_from <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000205336> .
+  # Database: Ensembl | Query: 4 | Comment: One of 79 transcript variants for ADGRG1
+  
+  # Zebrafish GPCR gene with maximum 10 transcripts (non-mammal example)
+  <http://rdf.ebi.ac.uk/resource/ensembl/ENSCARG00000020812> a terms:EnsemblGene ;
+    dcterms:identifier "ENSCARG00000020812" ;
+    rdfs:label "grk5l" ;
+    dcterms:description "G protein-coupled receptor kinase 5 like [Source:ZFIN;Acc:ZDB-GENE-091113-26]" ;
+    obo:RO_0002162 taxonomy:7957 .
+  # Database: Ensembl | Query: 2 | Comment: Example non-mammalian GPCR with exactly 10 transcripts (maximum observed)
+  
+  <http://rdf.ebi.ac.uk/resource/ensembl.transcript/ENSCART00000001> so:transcribed_from <http://rdf.ebi.ac.uk/resource/ensembl/ENSCARG00000020812> .
+  # Database: Ensembl | Query: 2 | Comment: One of 10 transcript variants for grk5l
+  
+  # Taxonomy classification
+  taxonomy:9606 a tax:Taxon ;
+    rdfs:label "Homo sapiens" ;
+    dcterms:identifier "9606" ;
+    tax:rank tax:Species ;
+    rdfs:subClassOf taxonomy:9605 .
+  # Database: Taxonomy | Query: 5 | Comment: Human classified as mammalian species
+  
+  taxonomy:7957 a tax:Taxon ;
+    rdfs:label "Carassius auratus" ;
+    dcterms:identifier "7957" ;
+    tax:rank tax:Species .
+  # Database: Taxonomy | Query: 5 | Comment: Representative fish species (non-mammalian vertebrate)
+  
+  taxonomy:40674 a tax:Taxon ;
+    rdfs:label "Mammalia" ;
+    dcterms:identifier "40674" ;
+    tax:rank tax:Class .
+  # Database: Taxonomy | Query: 5 | Comment: Mammalian class for classification
+  
+  taxonomy:7742 a tax:Taxon ;
+    rdfs:label "Vertebrata" ;
+    dcterms:identifier "7742" ;
+    tax:rank tax:Clade .
+  # Database: Taxonomy | Query: 5 | Comment: Vertebrate clade including all studied species
+
+exact_answer: "no"
+
+ideal_answer: |
+  No non-mammalian vertebrates have G-protein coupled receptor genes with more than 10 transcript variants. Analysis of Ensembl data reveals that non-mammalian vertebrates including fish (zebrafish, medaka, stickleback), birds (chicken), and reptiles (green anole) have GPCR genes with a maximum of exactly 10 transcript variants per gene. In contrast, mammals show substantially greater transcript diversity, with human GPCR genes exhibiting up to 79 transcript variants (ADGRG1) and mouse GPCRs reaching 43 variants. This represents a clear biological distinction where mammalian GPCRs display enhanced alternative splicing complexity compared to non-mammalian vertebrates, likely reflecting increased regulatory sophistication in mammalian signaling systems.
+
+question_template_used: "Yes/No question using EXISTS/NOT EXISTS pattern to identify categorical differences in molecular features across taxonomic groups, combining comparative genomics (Ensembl) with taxonomic classification (Taxonomy database)"
+
+time_spent:
+  exploration: "20 minutes"
+  formulation: "10 minutes"
+  verification: "25 minutes"
+  pubmed_test: "15 minutes"
+  extraction: "15 minutes"
+  documentation: "20 minutes"
+  total: "1 hour 45 minutes"

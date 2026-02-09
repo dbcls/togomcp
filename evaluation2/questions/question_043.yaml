@@ -1,0 +1,253 @@
+# BioASQ-style Question for TogoMCP Evaluation
+# Question 043: DDBJ-focused factoid question on methanogenic archaea
+
+id: question_043
+type: factoid
+question: "Which cultured methanogenic archaeal species has the most nucleotide sequence entries in DDBJ?"
+
+# Golden Answer
+golden_answer: "Methanobrevibacter ruminantium"
+golden_answer_details: |
+  Methanobrevibacter ruminantium has 9,248 nucleotide sequence entries in DDBJ, 
+  significantly more than any other cultured methanogenic archaeal species. The 
+  second-highest is Methanosarcinales archaeon ANME-2c ERB4 with only 842 entries.
+
+# Keywords and Categories
+keywords:
+  - keyword_id: KW-0484
+    name: "Methanogenesis"
+    category: "Biological process"
+    relevance: "Central to question - identifies methanogenic archaea"
+
+categories:
+  - Genomics
+  - Microbiology
+  - Archaea
+  - Nucleotide sequences
+  - Database mining
+
+# Database Usage
+databases_used:
+  primary:
+    - name: DDBJ
+      role: "PRIMARY - Essential for counting nucleotide sequence entries by species"
+      justification: |
+        DDBJ is the only database that can answer this question. It contains comprehensive 
+        nucleotide sequence data for archaeal genomes. The question specifically asks about 
+        sequence entry counts in DDBJ, making it irreplaceable.
+      queries_needed: 1
+      query_types:
+        - "Organism search with bif:contains and GROUP BY counting"
+
+integration_level: single_database
+integration_justification: |
+  This is a single-database question by design to showcase DDBJ's unique 
+  capability for nucleotide sequence statistics. DDBJ contains the definitive 
+  record of sequence entries per species.
+
+# Question Design and Verification
+question_design:
+  focus: "Database-specific statistics on archaeal genome sequences"
+  
+  why_rdf_required: |
+    The question requires quantitative analysis of nucleotide sequence entry counts 
+    per species in DDBJ. This type of database-level statistics is:
+    1. Not available in literature (PubMed search returned 0 results)
+    2. Not accessible via training data (requires current database state)
+    3. Requires structured querying of DDBJ's RDF representation
+    4. Needs organism name filtering and GROUP BY aggregation
+  
+  why_not_pubmed: |
+    PubMed searches for "methanogenic archaea genome sequences DDBJ database count" 
+    returned 0 results. Searches for "Methanobrevibacter ruminantium" found articles 
+    about the organism's biology but none comparing database entry counts across species.
+  
+  verification_objective: "Objectively verifiable via SPARQL query counting entries"
+  scope_bounded: "Limited to cultured methanogenic archaea in DDBJ"
+
+# Verification Rubric Scores
+verification_scores:
+  verifiability: 3  # Precisely verifiable via counting query
+  rdf_necessity: 3  # Requires RDF database query, not in literature
+  scope: 3          # Well-bounded: cultured species, specific database
+  total: 9
+
+verification_notes: |
+  VERIFIABILITY (3/3): The answer is precisely verifiable by counting DDBJ entries 
+  per species using SPARQL with GROUP BY and ORDER BY DESC. Result: M. ruminantium 
+  has 9,248 entries vs 842 for second place.
+  
+  RDF NECESSITY (3/3): This question fundamentally requires querying DDBJ's RDF 
+  representation. PubMed literature doesn't track database entry counts. The 
+  answer requires current database state, not historical knowledge.
+  
+  SCOPE (3/3): Question is well-bounded with clear criteria:
+  - Cultured species only (excludes "uncultured" entries)
+  - Methanogenic archaea only (specific metabolic type)
+  - DDBJ entries only (specific database)
+  - Objective count comparison
+
+# Discovery Process
+discovery_process:
+  step1_keyword_selection: |
+    Selected KW-0484 (Methanogenesis) to showcase DDBJ's archaeal genome sequences. 
+    This keyword relates to a unique metabolic process in archaea, perfect for 
+    demonstrating DDBJ's microbial genomics capabilities.
+  
+  step2_mie_consultation: |
+    Read DDBJ MIE file to understand:
+    - kw_search_tools: sparql (use bif:contains for organism searches)
+    - Entry-centric design with organism names
+    - No specific search API (use bif:contains instead)
+    - Can search organisms and group by name
+  
+  step3_initial_exploration: |
+    SPARQL Query 1 - Count entries with "methan*" in organism name:
+    ```sparql
+    PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+    SELECT ?organism (COUNT(?entry) as ?count)
+    FROM <http://rdfportal.org/dataset/ddbj>
+    WHERE {
+      ?entry a nuc:Entry ;
+             nuc:organism ?organism .
+      ?organism bif:contains "'methan*'" option (score ?relevance) .
+    }
+    GROUP BY ?organism
+    ORDER BY DESC(?count)
+    LIMIT 20
+    ```
+    Result: Found both cultured and uncultured species
+  
+  step4_refinement: |
+    SPARQL Query 2 - Exclude uncultured species:
+    ```sparql
+    PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+    SELECT ?organism (COUNT(?entry) as ?count)
+    FROM <http://rdfportal.org/dataset/ddbj>
+    WHERE {
+      ?entry a nuc:Entry ;
+             nuc:organism ?organism .
+      ?organism bif:contains "'methan*'" option (score ?relevance) .
+      FILTER(!REGEX(?organism, "uncultured", "i"))
+    }
+    GROUP BY ?organism
+    ORDER BY DESC(?count)
+    LIMIT 15
+    ```
+    Result: Clear winner - Methanobrevibacter ruminantium (9,248 entries)
+  
+  step5_pubmed_verification: |
+    Searched PubMed to verify question requires RDF:
+    - "methanogenic archaea genome sequences DDBJ database count" → 0 results
+    - "Methanobrevibacter ruminantium genome sequences" → 4 results about organism 
+      biology, none comparing database entry counts
+    
+    Examined PMIDs 38162578 and 28704445:
+    - Both discuss M. ruminantium in biological contexts
+    - Neither compares sequence entry counts across species
+    - Confirms question cannot be answered from literature
+
+# RDF Knowledge Required
+rdf_triples:
+  example_entry: |
+    # Methanobrevibacter ruminantium genome entry
+    @prefix nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
+    @prefix dcterms: <http://purl.org/dc/terms/> .
+    
+    <http://identifiers.org/insdc/CP012345.1>
+      a nuc:Entry ;
+      dcterms:identifier "CP012345.1" ;
+      rdfs:label "Methanobrevibacter ruminantium strain M1 chromosome" ;
+      nuc:organism "Methanobrevibacter ruminantium" ;
+      nuc:sequence <http://identifiers.org/insdc/CP012345.1#sequence> .
+  
+  counting_pattern: |
+    # Pattern for counting entries per organism
+    ?entry a nuc:Entry ;
+           nuc:organism ?organism .
+    # Use GROUP BY ?organism and COUNT to aggregate
+  
+  filtering_pattern: |
+    # Use bif:contains for text search
+    ?organism bif:contains "'methan*'" option (score ?relevance) .
+    # Use FILTER with REGEX to exclude unwanted terms
+    FILTER(!REGEX(?organism, "uncultured", "i"))
+
+# SPARQL Queries
+sparql_queries:
+  discovery_query: |
+    # Initial exploration of methanogenic organisms
+    PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+    |
+    SELECT ?organism (COUNT(?entry) as ?count)
+    FROM <http://rdfportal.org/dataset/ddbj>
+    WHERE {
+      ?entry a nuc:Entry ;
+             nuc:organism ?organism .
+      ?organism bif:contains "'methan*'" option (score ?relevance) .
+    }
+    GROUP BY ?organism
+    ORDER BY DESC(?count)
+    LIMIT 20
+  
+  verification_query: |
+    # Final query excluding uncultured species
+    PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+    |
+    SELECT ?organism (COUNT(?entry) as ?count)
+    FROM <http://rdfportal.org/dataset/ddbj>
+    WHERE {
+      ?entry a nuc:Entry ;
+             nuc:organism ?organism .
+      ?organism bif:contains "'methan*'" option (score ?relevance) .
+      FILTER(!REGEX(?organism, "uncultured", "i"))
+    }
+    GROUP BY ?organism
+    ORDER BY DESC(?count)
+    LIMIT 15
+  
+  result_explanation: |
+    Top 5 cultured methanogenic archaea by entry count:
+    1. Methanobrevibacter ruminantium: 9,248 entries
+    2. Methanosarcinales archaeon ANME-2c ERB4: 842 entries
+    3. Methanocaldococcus jannaschii: 795 entries
+    4. Methanosarcina mazei: 415 entries
+    5. Methanothermobacter thermautotrophicus: 415 entries
+    
+    M. ruminantium has >10× more entries than the second-place species.
+
+# Alternative Formulations
+alternative_questions:
+  - "What is the most represented cultured methanogenic archaeon in DDBJ's nucleotide database?"
+  - "Among methanogenic archaea with complete species names, which has the highest number of sequence entries in DDBJ?"
+  - "Which methanogenic archaeal species (excluding uncultured strains) dominates DDBJ's sequence collection?"
+
+# Related Questions (not part of evaluation)
+related_concepts:
+  - Methanogenic archaea diversity in genome databases
+  - Rumen microbiome sequencing efforts
+  - Taxonomic representation bias in sequence databases
+  - Methanobrevibacter as model organism for methanogenesis research
+
+# Metadata
+metadata:
+  difficulty: medium
+  estimated_time: "10-15 minutes"
+  requires_skills:
+    - DDBJ SPARQL querying
+    - Text search with bif:contains
+    - GROUP BY aggregation
+    - REGEX filtering
+  date_created: "2025-02-08"
+  author: "TogoMCP Evaluation Team"
+  version: "1.0"
+
+# Success Criteria
+success_criteria:
+  must_identify: "Methanobrevibacter ruminantium"
+  must_use_databases: ["DDBJ"]
+  must_demonstrate:
+    - Organism search with bif:contains
+    - Entry counting with GROUP BY
+    - Filtering of uncultured species
+  response_format: "Species name with entry count justification"

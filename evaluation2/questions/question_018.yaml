@@ -1,0 +1,160 @@
+id: question_018
+type: choice
+body: "Among human inflammatory signaling pathways in Reactome (TNF signaling, Interleukin-1 signaling, Toll Like Receptor 4 Cascade, Interferon Signaling), which pathway contains the most biochemical reactions?"
+
+inspiration_keyword:
+  keyword_id: KW-0395
+  name: "Inflammatory response"
+  category: "Biological process"
+
+togomcp_databases_used:
+  - reactome
+
+verification_score:
+  verifiability: 3
+  rdf_necessity: 3
+  scope: 3
+  total: 9
+  passed: true
+
+pubmed_test:
+  time_spent: "15 minutes"
+  method: "Searched PubMed for systematic reaction count comparisons across inflammatory pathways"
+  result: |
+    Search 1: "inflammatory signaling pathway reaction count comparison" - 5 results
+    - Found general pathway studies but no systematic reaction enumeration
+    - Articles focused on specific signaling mechanisms (PTEN/Akt, TIM-3/Gal-9)
+    - No quantitative pathway complexity comparisons
+    
+    Search 2: "TNF interleukin TLR4 interferon pathway biochemical reactions Reactome" - 0 results
+    - Zero results for comprehensive pathway reaction analysis
+    - No literature systematically counts reactions across these pathways
+    - Reactome database structure not documented in searchable literature
+  conclusion: "PASS - Cannot answer from literature. Requires direct RDF database access to count reactions within hierarchical pathway structures. Literature discusses pathway mechanisms but does not provide quantitative reaction counts for comparison."
+
+sparql_queries:
+  - query_number: 1
+    database: "reactome"
+    description: "Search for human versions of the four inflammatory signaling pathways by name and organism"
+    query: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      
+      SELECT DISTINCT ?pathway ?name ?organism
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        VALUES ?searchTerm { "TNF signaling" "Interleukin-1 signaling" "Toll Like Receptor 4" "Interferon Signaling" }
+        ?pathway a bp:Pathway ;
+                 bp:displayName ?name ;
+                 bp:organism ?org .
+        ?org bp:name ?organism .
+        FILTER(CONTAINS(?name, ?searchTerm))
+        FILTER(CONTAINS(?organism, "Homo sapiens"))
+      }
+      LIMIT 20
+    result_count: 4
+
+  - query_number: 2
+    database: "reactome"
+    description: "Count biochemical reactions in each pathway using hierarchical pathwayComponent traversal"
+    query: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      
+      SELECT ?pathwayName (COUNT(DISTINCT ?reaction) AS ?reactionCount)
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        VALUES (?pathway ?pathwayName) { 
+          (<http://www.reactome.org/biopax/40/48887#Pathway1700> "TNF signaling")
+          (<http://www.reactome.org/biopax/40/48887#Pathway1896> "Interleukin-1 signaling")
+          (<http://www.reactome.org/biopax/40/48887#Pathway1799> "Toll Like Receptor 4 (TLR4) Cascade")
+          (<http://www.reactome.org/biopax/40/48887#Pathway1882> "Interferon Signaling")
+        }
+        ?pathway bp:pathwayComponent+ ?component .
+        ?component a bp:BiochemicalReaction .
+        BIND(?component AS ?reaction)
+      }
+      GROUP BY ?pathwayName
+      ORDER BY DESC(?reactionCount)
+    result_count: 4
+
+  - query_number: 3
+    database: "reactome"
+    description: "Sample reactions from Interferon Signaling pathway to verify data quality"
+    query: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      
+      SELECT ?pathway ?name ?organism ?reaction ?reactionName
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        VALUES ?pathway { 
+          <http://www.reactome.org/biopax/40/48887#Pathway1882>
+        }
+        ?pathway a bp:Pathway ;
+                 bp:displayName ?name ;
+                 bp:organism ?org ;
+                 bp:pathwayComponent+ ?reaction .
+        ?org bp:name ?organism .
+        ?reaction a bp:BiochemicalReaction ;
+                  bp:displayName ?reactionName .
+      }
+      LIMIT 5
+    result_count: 5
+
+rdf_triples: |
+  @prefix bp: <http://www.biopax.org/release/biopax-level3.owl#> .
+  @prefix reactome: <http://www.reactome.org/biopax/40/48887#> .
+  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+  
+  # Interferon Signaling Pathway (125 reactions - highest)
+  reactome:Pathway1882 a bp:Pathway ;
+    bp:displayName "Interferon Signaling"^^xsd:string ;
+    bp:organism reactome:BioSource48887_1 ;
+    bp:pathwayComponent reactome:BiochemicalReaction2183 ,
+                        reactome:BiochemicalReaction5292 ,
+                        reactome:BiochemicalReaction5342 .
+  # Database: reactome | Query: 2,3 | Comment: Pathway with 125 total reactions (highest count)
+  
+  reactome:BiochemicalReaction2183 a bp:BiochemicalReaction ;
+    bp:displayName "SUMOylation of PKR"^^xsd:string .
+  # Database: reactome | Query: 3 | Comment: Example reaction in Interferon Signaling
+  
+  reactome:BiochemicalReaction5292 a bp:BiochemicalReaction ;
+    bp:displayName "Phosphorylation of STAT1"^^xsd:string .
+  # Database: reactome | Query: 3 | Comment: Example reaction showing JAK-STAT signaling
+  
+  # Toll Like Receptor 4 (TLR4) Cascade (113 reactions)
+  reactome:Pathway1799 a bp:Pathway ;
+    bp:displayName "Toll Like Receptor 4 (TLR4) Cascade"^^xsd:string ;
+    bp:organism reactome:BioSource48887_1 .
+  # Database: reactome | Query: 2 | Comment: Pathway with 113 reactions (second highest)
+  
+  # Interleukin-1 signaling (59 reactions)
+  reactome:Pathway1896 a bp:Pathway ;
+    bp:displayName "Interleukin-1 signaling"^^xsd:string ;
+    bp:organism reactome:BioSource48887_1 .
+  # Database: reactome | Query: 2 | Comment: Pathway with 59 reactions (third)
+  
+  # TNF signaling (58 reactions)
+  reactome:Pathway1700 a bp:Pathway ;
+    bp:displayName "TNF signaling"^^xsd:string ;
+    bp:organism reactome:BioSource48887_1 .
+  # Database: reactome | Query: 2 | Comment: Pathway with 58 reactions (lowest among four)
+  
+  reactome:BioSource48887_1 a bp:BioSource ;
+    bp:name "Homo sapiens"^^xsd:string .
+  # Database: reactome | Query: 1,3 | Comment: Organism filter for human pathways
+
+exact_answer: "Interferon Signaling"
+
+ideal_answer: |
+  Among the four major human inflammatory signaling pathways in Reactome, Interferon Signaling contains the most biochemical reactions with 125 distinct reactions. The Toll Like Receptor 4 Cascade follows with 113 reactions, while Interleukin-1 signaling and TNF signaling have 59 and 58 reactions respectively. The higher complexity of Interferon Signaling reflects the diversity of Type I, Type II, and Type III interferon responses, each involving distinct receptor complexes, JAK-STAT cascades, and downstream transcriptional programs that regulate hundreds of interferon-stimulated genes critical for antiviral immunity.
+
+question_template_used: "Database-specific pathway comparison - Reactome pathway complexity comparison using hierarchical pathwayComponent traversal to count reactions"
+
+time_spent:
+  exploration: "20 minutes"
+  formulation: "15 minutes"
+  verification: "20 minutes"
+  pubmed_test: "15 minutes"
+  extraction: "15 minutes"
+  documentation: "25 minutes"
+  total: "110 minutes"
