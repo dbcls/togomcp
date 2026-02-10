@@ -10,16 +10,16 @@ schema_info:
     - OLS4:searchClasses
   version:
     mie_version: "2.0"
-    mie_created: "2025-02-09"
+    mie_created: "2025-02-10"
     data_version: "2024"
-    update_frequency: "Monthly"
+    update_frequency: Monthly
   license:
-    data_license: "CC BY 4.0"
-    license_url: "https://creativecommons.org/licenses/by/4.0/"
+    data_license: CC BY 4.0
+    license_url: https://creativecommons.org/licenses/by/4.0/
   access:
-    rate_limiting: "No strict limits"
-    max_query_timeout: "60 seconds"
-    backend: "Virtuoso"
+    rate_limiting: No strict limits
+    max_query_timeout: 60 seconds
+    backend: Virtuoso
 
 shape_expressions: |
   PREFIX owl: <http://www.w3.org/2002/07/owl#>
@@ -257,7 +257,8 @@ sparql_query_examples:
         ?disease a owl:Class ;
                  rdfs:label ?label ;
                  oboInOwl:id ?mondoId .
-        # Text search only because searching free-text labels/definitions
+        # Text search justified: searching free-text labels/definitions
+        # where no specific IRI exists for "Parkinson-related"
         # Uses bif:contains for indexed search on Virtuoso backend
         ?label bif:contains "'Parkinson'" option (score ?sc)
         FILTER NOT EXISTS { ?disease owl:deprecated true }
@@ -468,11 +469,11 @@ architectural_notes:
     - "Cross-database: Pre-filter in source GRAPH before joins, use structured linking predicates"
   
   schema_design:
-    - "OBO Foundry compliant ontology with hierarchical rdfs:subClassOf relationships"
-    - "Single cross-reference property (hasDbXref) handles all 39+ external database mappings"
+    - OBO Foundry compliant ontology with hierarchical rdfs:subClassOf relationships
+    - Single cross-reference property (hasDbXref) handles all 39+ external database mappings
     - "Dual synonym types: hasExactSynonym (semantically equivalent) vs hasRelatedSynonym (broader/narrower)"
     - "IRI pattern: http://purl.obolibrary.org/obo/MONDO_NNNNNNN"
-    - "Deprecated terms marked with owl:deprecated true (retained for historical reference)"
+    - Deprecated terms marked with owl:deprecated true (retained for historical reference)
   
   key_disease_iris:
     - "obo:MONDO_0000001 (disease - root class)"
@@ -484,10 +485,10 @@ architectural_notes:
     - "obo:MONDO_0021136 (rare - rare disease classification)"
   
   performance:
-    - "Use bif:contains for indexed full-text search on labels/definitions (Virtuoso backend)"
-    - "Add FILTER(isIRI(?parent)) to exclude OWL restriction blank nodes in hierarchy queries"
-    - "STRSTARTS() efficient for cross-reference prefix filtering"
-    - "Always use LIMIT for exploratory queries (30K+ classes)"
+    - Use bif:contains for indexed full-text search on labels/definitions (Virtuoso backend)
+    - Add FILTER(isIRI(?parent)) to exclude OWL restriction blank nodes in hierarchy queries
+    - STRSTARTS() efficient for cross-reference prefix filtering
+    - Always use LIMIT for exploratory queries (30K+ classes)
     - "Cross-DB timing: 2-3s (two-way with pre-filter), 3-6s (three-way)"
     - "Pre-filtering provides 99.9% reduction before joins (30K→10-20 results)"
   
@@ -500,9 +501,9 @@ architectural_notes:
   
   data_quality:
     - "Active curation: Monthly updates reflect current disease classification"
-    - "Exact synonyms are semantically equivalent (use for matching)"
-    - "Related synonyms may have broader/narrower semantics (use with caution)"
-    - "Obsolete terms retained with owl:deprecated for reproducibility"
+    - Exact synonyms are semantically equivalent (use for matching)
+    - Related synonyms may have broader/narrower semantics (use with caution)
+    - Obsolete terms retained with owl:deprecated for reproducibility
     - "Cross-reference coverage varies: 3% (ICDO) to 70% (UMLS/MEDGEN)"
 
 data_statistics:
@@ -552,13 +553,76 @@ data_statistics:
   
   cross_reference_statistics:
     avg_xrefs_per_disease: 6.5
-    max_xrefs_per_disease: "50+"
+    max_xrefs_per_disease: 50+
     avg_synonyms_per_disease: 2.8
     avg_parents_per_disease: 1.2
   
-  staleness_warning: "Monthly updates - verify current version for latest disease classifications and nomenclature"
+  staleness_warning: Monthly updates - verify current version for latest disease classifications and nomenclature
 
 anti_patterns:
+  - title: "Skipping Schema Check Before Text Search"
+    problem: "Using text search without checking MIE schema for structured alternatives."
+    wrong_sparql: |
+      # WRONG: Immediately using text search without checking schema
+      # User asks: "Find diseases related to hereditary disorders"
+      
+      # Step 1 (SKIPPED): Did not call get_MIE_file("mondo")
+      # Step 2 (SKIPPED): Did not examine shape_expressions for structured predicates
+      # Step 3 (SKIPPED): Did not use OLS4:searchClasses to find examples
+      # Step 4 (SKIPPED): Did not inspect examples to find IRI patterns
+      
+      # Result: Slow, incomplete text search
+      SELECT ?disease ?label
+      FROM <http://rdfportal.org/ontology/mondo>
+      WHERE {
+        ?disease rdfs:label ?label .
+        ?label bif:contains "'hereditary' OR 'genetic'"
+      }
+      LIMIT 20
+      # Only finds ~500 diseases with "hereditary" in label
+      # Misses 11,000+ hereditary diseases without keyword in label
+    correct_sparql: |
+      # CORRECT: Complete workflow following TogoMCP Usage Guide
+      
+      # Step 1: Get MIE file and examine schema
+      # get_MIE_file("mondo")
+      # → Found in shape_expressions: rdfs:subClassOf hierarchy
+      # → Found in key_disease_iris: obo:MONDO_0003847 (hereditary disease)
+      
+      # Step 2: Use OLS4:searchClasses for examples (if needed)
+      # OLS4:searchClasses(ontologyId="mondo", query="hereditary disease", limit=10)
+      # → Confirms MONDO:0003847 is the hereditary disease category
+      
+      # Step 3: Inspect examples to confirm structure
+      # SELECT * WHERE {
+      #   VALUES ?example { obo:MONDO_0007739 obo:MONDO_0008572 }
+      #   ?example ?p ?o .
+      # }
+      # → Confirmed: rdfs:subClassOf links to obo:MONDO_0003847
+      
+      # Step 4: Comprehensive query using discovered IRI
+      SELECT ?disease ?mondoId ?label
+      FROM <http://rdfportal.org/ontology/mondo>
+      WHERE {
+        ?disease a owl:Class ;
+                 rdfs:label ?label ;
+                 oboInOwl:id ?mondoId ;
+                 rdfs:subClassOf* obo:MONDO_0003847 .
+        FILTER NOT EXISTS { ?disease owl:deprecated true }
+      }
+      LIMIT 100
+      # Finds all 11,596 hereditary diseases - comprehensive results!
+    explanation: |
+      ALWAYS follow this workflow for comprehensive queries:
+      1. get_MIE_file(dbname) → examine shape_expressions for structured predicates
+      2. Check key_disease_iris or kw_search_tools for available search functions
+      3. Use search tools (OLS4:searchClasses) to find example diseases
+      4. Inspect examples: SELECT * WHERE { VALUES ?entity {...} ?entity ?p ?o }
+      5. Extract discovered IRIs/patterns → use in comprehensive query
+      
+      This is the #1 mistake: defaulting to text search without checking the schema.
+      Modern ontologies like MONDO have extensive hierarchies - use them!
+
   - title: "Using Text Search When Specific IRI Available"
     problem: "Slow, ambiguous text search instead of fast, precise IRI lookup."
     wrong_sparql: |
@@ -573,7 +637,9 @@ anti_patterns:
         ?disease rdfs:subClassOf* obo:MONDO_0003847 ;
                  rdfs:label ?label .
       }
-    explanation: "Find and use specific disease category IRIs (MONDO_0003847 for hereditary disease) instead of text search. Exploratory workflow: Use OLS4:searchClasses to find examples → extract category IRI → query all diseases under that category."
+    explanation: |
+      Find and use specific disease category IRIs (MONDO_0003847 for hereditary disease) instead of text search. 
+      Exploratory workflow: Use OLS4:searchClasses to find examples → extract category IRI → query all diseases under that category.
   
   - title: "Not Filtering Blank Nodes in Hierarchy"
     problem: "Returns OWL restrictions (blank nodes) instead of named disease classes."
@@ -621,19 +687,22 @@ anti_patterns:
         }
       }
       LIMIT 20
-    explanation: "Use specific disease IRI (MONDO_0005015 for diabetes) to pre-filter in source GRAPH before join. This reduces 30,000 diseases to ~10-20 (99.9% reduction), then joins with MeSH. Always add LIMIT to cross-database queries."
+    explanation: |
+      Use specific disease IRI (MONDO_0005015 for diabetes) to pre-filter in source GRAPH before join. 
+      This reduces 30,000 diseases to ~10-20 (99.9% reduction), then joins with MeSH. 
+      Always add LIMIT to cross-database queries.
 
 common_errors:
-  - error: "Query timeout on hierarchy traversal"
+  - error: Query timeout on hierarchy traversal
     causes:
-      - "Unbounded rdfs:subClassOf* without starting point"
-      - "Missing LIMIT clause on exploratory queries"
-      - "Not using specific disease category IRIs"
+      - Unbounded rdfs:subClassOf* without starting point
+      - Missing LIMIT clause on exploratory queries
+      - Not using specific disease category IRIs
     solutions:
-      - "Start from specific disease IRI (e.g., obo:MONDO_0003847 for hereditary)"
-      - "Use OLS4:searchClasses to find category IRIs first"
-      - "Add LIMIT 50-100 for exploratory queries"
-      - "Use rdfs:subClassOf+ for ancestors-only (exclude self)"
+      - Start from specific disease IRI (e.g., obo:MONDO_0003847 for hereditary)
+      - Use OLS4:searchClasses to find category IRIs first
+      - Add LIMIT 50-100 for exploratory queries
+      - Use rdfs:subClassOf+ for ancestors-only (exclude self)
     example_fix: |
       # WRONG (unbounded, times out):
       SELECT ?disease ?label WHERE {
@@ -647,18 +716,18 @@ common_errors:
       }
       LIMIT 100
   
-  - error: "Cross-database query timeout"
+  - error: Cross-database query timeout
     causes:
-      - "Missing pre-filtering in source GRAPH (Strategy 2)"
-      - "Missing explicit GRAPH clauses (Strategy 1)"
-      - "Using text search instead of specific IRIs"
-      - "No LIMIT on multi-database joins"
+      - Missing pre-filtering in source GRAPH (Strategy 2)
+      - Missing explicit GRAPH clauses (Strategy 1)
+      - Using text search instead of specific IRIs
+      - No LIMIT on multi-database joins
     solutions:
-      - "Use specific disease category IRI to pre-filter (e.g., obo:MONDO_0005015)"
-      - "Apply FILTER within source GRAPH before join"
-      - "Use explicit GRAPH clauses for each database"
-      - "Add LIMIT to every query level"
-      - "For three-way queries, keep third database clause minimal"
+      - Use specific disease category IRI to pre-filter (e.g., obo:MONDO_0005015)
+      - Apply FILTER within source GRAPH before join
+      - Use explicit GRAPH clauses for each database
+      - Add LIMIT to every query level
+      - For three-way queries, keep third database clause minimal
     example_fix: |
       # WRONG (filters after join, times out):
       WHERE {
@@ -681,16 +750,16 @@ common_errors:
       }
       LIMIT 20
   
-  - error: "Empty results from cross-reference query"
+  - error: Empty results from cross-reference query
     causes:
-      - "Incorrect cross-reference prefix format"
-      - "Querying deprecated diseases"
-      - "Wrong database identifier format"
+      - Incorrect cross-reference prefix format
+      - Querying deprecated diseases
+      - Wrong database identifier format
     solutions:
       - "Verify prefix format: 'MESH:', 'OMIM:', 'Orphanet:' (note colon)"
       - "Add: FILTER NOT EXISTS { ?disease owl:deprecated true }"
-      - "Inspect example disease first to verify cross-reference format"
-      - "Use STRSTARTS(?xref, 'PREFIX:') not CONTAINS"
+      - Inspect example disease first to verify cross-reference format
+      - Use STRSTARTS(?xref, 'PREFIX:') not CONTAINS
     example_fix: |
       # WRONG (incorrect prefix):
       FILTER(CONTAINS(?xref, "MESH"))  # Too broad

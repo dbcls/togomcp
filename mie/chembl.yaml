@@ -1,8 +1,8 @@
 schema_info:
   title: ChEMBL RDF
   description: |
-    Manually curated database of bioactive molecules with drug-like properties containing 1.9M compounds, 1.7M assays, 21M bioactivity measurements, and comprehensive drug development data. 
-    Major entities include small molecules, proteins, targets, assays, activities, documents, drug mechanisms, and drug indications. 
+    Manually curated database of bioactive molecules with drug-like properties containing 1.9M compounds, 1.7M assays, 21M bioactivity measurements, and comprehensive drug development data.
+    Major entities include small molecules, proteins, targets, assays, activities, documents, drug mechanisms, and drug indications.
     Enables queries for compound-target-activity relationships, mechanism of action, drug repositioning, and pharmaceutical research.
   endpoint: https://rdfportal.org/ebi/sparql
   base_uri: http://rdf.ebi.ac.uk/resource/chembl/
@@ -11,10 +11,9 @@ schema_info:
   kw_search_tools:
     - search_chembl_molecule
     - search_chembl_target
-    - search_mesh_descriptor
   version:
-    mie_version: "2.2"
-    mie_created: "2025-02-09"
+    mie_version: "2.3"
+    mie_created: "2025-02-10"
     data_version: "ChEMBL 33.0"
     update_frequency: "Quarterly"
   license:
@@ -105,9 +104,12 @@ shape_expressions: |
   }
 
 sample_rdf_entries:
-  - title: Small Molecule with Drug Development
-    description: Marketed drug with ATC classification, cross-references, and drug indications.
+  - title: Small Molecule with Drug Development Data
+    description: Marketed drug with ATC classification codes, cross-references, and development phase tracking.
     rdf: |
+      @prefix cco: <http://rdf.ebi.ac.uk/terms/chembl#> .
+      @prefix chembl_molecule: <http://rdf.ebi.ac.uk/resource/chembl/molecule/> .
+      
       chembl_molecule:CHEMBL1004
         a cco:SmallMolecule ;
         rdfs:label "DOXYLAMINE" ;
@@ -118,10 +120,13 @@ sample_rdf_entries:
         cco:moleculeXref <http://www.drugbank.ca/drugs/DB00366> ;
         cco:moleculeXref <http://pubchem.ncbi.nlm.nih.gov/compound/3162> ;
         skos:exactMatch <http://purl.obolibrary.org/obo/CHEBI_51380> .
-
-  - title: Bioactivity Measurement
-    description: Ki binding measurement linking molecule, assay, and document.
+  
+  - title: Bioactivity Measurement Linking Molecule to Target
+    description: Ki binding measurement connecting molecule, assay, and biological target via standardized activity data.
     rdf: |
+      @prefix cco: <http://rdf.ebi.ac.uk/terms/chembl#> .
+      @prefix chembl_activity: <http://rdf.ebi.ac.uk/resource/chembl/activity/> .
+      
       chembl_activity:CHEMBL_ACT_1000385
         a cco:Activity ;
         cco:chemblId "CHEMBL_ACT_1000385" ;
@@ -130,10 +135,13 @@ sample_rdf_entries:
         cco:standardUnits "nM" ;
         cco:hasMolecule chembl_molecule:CHEMBL331696 ;
         cco:hasAssay chembl_assay:CHEMBL696974 .
-
-  - title: Target with Protein Classification and Taxonomy
-    description: Single protein target with organism taxonomy IRI, protein classification, and UniProt link.
+  
+  - title: Target with Protein Classification and Organism Information
+    description: Single protein target with specific taxonomy IRI, hierarchical protein classification, and UniProt cross-reference.
     rdf: |
+      @prefix cco: <http://rdf.ebi.ac.uk/terms/chembl#> .
+      @prefix chembl_target: <http://rdf.ebi.ac.uk/resource/chembl/target/> .
+      
       chembl_target:CHEMBL1808
         a cco:SingleProtein ;
         rdfs:label "Angiotensin-converting enzyme" ;
@@ -146,19 +154,25 @@ sample_rdf_entries:
       
       chembl_target_cmpt:CHEMBL_TC_1332
         skos:exactMatch <http://purl.uniprot.org/uniprot/P12527> .
-
-  - title: Drug Mechanism
-    description: Inhibitor mechanism linking molecule and target.
+  
+  - title: Drug Mechanism with Action Type
+    description: Mechanism of action linking approved drug to target protein with specific action type classification.
     rdf: |
+      @prefix cco: <http://rdf.ebi.ac.uk/terms/chembl#> .
+      @prefix chembl_drug_mechanism: <http://rdf.ebi.ac.uk/resource/chembl/mechanism/> .
+      
       chembl_drug_mechanism:CHEMBL_MEC_100
         a cco:Mechanism ;
         cco:mechanismActionType "INHIBITOR" ;
         cco:hasMolecule chembl_molecule:CHEMBL1200475 ;
         cco:hasTarget chembl_target:CHEMBL1806 .
-
-  - title: Drug Indication with MeSH and EFO
-    description: Clinical indication with MeSH disease descriptor IRI, EFO ontology reference, and development phase.
+  
+  - title: Drug Indication with MeSH and EFO Disease Ontologies
+    description: Clinical indication with specific MeSH descriptor IRI, EFO ontology term, disease name, and clinical development phase.
     rdf: |
+      @prefix cco: <http://rdf.ebi.ac.uk/terms/chembl#> .
+      @prefix chembl_drug_indication: <http://rdf.ebi.ac.uk/resource/chembl/drugind/> .
+      
       chembl_drug_indication:CHEMBL_IND_107436
         a cco:DrugIndication ;
         cco:hasMolecule chembl_molecule:CHEMBL491473 ;
@@ -169,14 +183,18 @@ sample_rdf_entries:
         cco:highestDevelopmentPhase 1 .
 
 sparql_query_examples:
-  - title: Get Human Protein Kinases Using Specific Classification IRI
-    description: Find human protein kinase targets using specific protein classification IRI and taxonomy IRI. Demonstrates proper use of structured IRIs instead of text search.
+  - title: Find Human Protein Kinases Using Specific Classification IRI
+    description: |
+      Demonstrates proper use of specific protein classification IRI (CHEMBL_PC_1100) for protein kinases
+      and taxonomy IRI (9606) for human organism filtering.
+      Uses structured IRIs discovered by inspecting target examples, avoiding text search on labels.
     question: How many human protein kinase targets are in ChEMBL?
     complexity: basic
     sparql: |
       PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
       
-      # Use specific IRIs: CHEMBL_PC_1100 for protein kinase, 9606 for human
+      # Use specific IRIs: CHEMBL_PC_1100 for protein kinase classification, 9606 for human
+      # Discovered by: search_chembl_target() → inspect examples → extract classification IRI
       SELECT ?target ?label (COUNT(DISTINCT ?assay) as ?assayCount)
       FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
@@ -189,15 +207,19 @@ sparql_query_examples:
       GROUP BY ?target ?label
       ORDER BY DESC(?assayCount)
       LIMIT 50
-
-  - title: Find IC50 Activities for Multiple Targets Using VALUES
-    description: Retrieve IC50 measurements for specific targets. Uses VALUES with target IRIs and typed predicate (cco:standardType).
-    question: What are IC50 measurements for EGFR and VEGFR2?
+  
+  - title: Get IC50 Measurements for Multiple Targets Using VALUES with IRIs
+    description: |
+      Retrieves IC50 bioactivity data for specific drug targets using VALUES with target IRIs
+      and typed predicate cco:standardType. Demonstrates efficient multi-target querying
+      with specific entity IRIs discovered from search results.
+    question: What are IC50 measurements under 100nM for EGFR and VEGFR2?
     complexity: basic
     sparql: |
       PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
       
-      # Use VALUES with specific target IRIs and typed predicate
+      # Use VALUES with specific target IRIs and typed predicate for activity type
+      # Workflow: search_chembl_target("EGFR") → get CHEMBL203, CHEMBL279
       SELECT ?targetLabel ?molecule ?moleculeLabel ?value ?units
       FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
@@ -213,19 +235,23 @@ sparql_query_examples:
                   cco:hasMolecule ?molecule ;
                   cco:hasAssay/cco:hasTarget ?target .
         ?molecule rdfs:label ?moleculeLabel .
-        FILTER(xsd:decimal(?value) < 100)
+        FILTER(xsd:decimal(?value) < 100 && ?units = "nM")
       }
       ORDER BY ?targetLabel xsd:decimal(?value)
       LIMIT 100
-
-  - title: Get Binding Assays by Assay Type Predicate
-    description: Find binding assays for human targets using typed predicates. Demonstrates filtering by assay type and organism without text search.
-    question: What are binding assays against human targets?
+  
+  - title: Find Binding Assays for Human Targets Using Typed Predicates
+    description: |
+      Uses typed predicates cco:assayType and cco:organismName for filtering without text search.
+      Demonstrates comprehensive discovery of binding assays against human targets
+      using only structured properties from MIE schema.
+    question: What are the binding assays performed against human protein targets?
     complexity: intermediate
     sparql: |
       PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
       
-      # Use typed predicates: cco:assayType, cco:organismName
+      # Use typed predicates: cco:assayType="Binding", cco:organismName="Homo sapiens"
+      # No text search needed - these are controlled vocabulary values
       SELECT ?assay ?target ?targetLabel (COUNT(?activity) as ?activityCount)
       FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
@@ -240,15 +266,20 @@ sparql_query_examples:
       GROUP BY ?assay ?target ?targetLabel
       ORDER BY DESC(?activityCount)
       LIMIT 100
-
-  - title: Find Drugs for Specific Diseases Using MeSH Descriptor IRIs
-    description: Query approved and late-stage drugs for specific cancers using MeSH descriptor IRIs. Demonstrates integration with MeSH disease ontology using specific IRIs instead of text search on disease names.
-    question: What are approved drugs for melanoma, lung cancer, and breast cancer?
+  
+  - title: Query Approved Drugs for Specific Diseases Using MeSH Descriptor IRIs
+    description: |
+      Demonstrates disease-based drug discovery using specific MeSH descriptor IRIs instead of text search.
+      MeSH IRIs provide precise, comprehensive filtering for clinical indications (100% coverage).
+      Workflow: exploratory query to find MeSH IRIs → use IRIs for comprehensive results.
+    question: What are approved and late-stage drugs for melanoma, lung cancer, and breast cancer?
     complexity: intermediate
     sparql: |
       PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
       
-      # Use specific MeSH descriptor IRIs (find via search_mesh_descriptor or exploratory query)
+      # Use specific MeSH descriptor IRIs (100% coverage on drug indications)
+      # Discovered by: exploratory FILTER(CONTAINS(LCASE(?meshHeading), "disease"))
+      # Then extract MeSH IRIs for comprehensive query
       SELECT DISTINCT ?molecule ?moleculeLabel ?meshHeading ?phase
       FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
@@ -267,15 +298,17 @@ sparql_query_examples:
       }
       ORDER BY ?meshHeading DESC(?phase)
       LIMIT 100
-
-  - title: Find Activities by Specific Molecule IRI
-    description: Retrieve all bioactivity measurements for a specific molecule using its IRI. Shows comprehensive activity profile with assay and target information.
+  
+  - title: Retrieve All Bioactivities for Specific Molecule Using IRI
+    description: |
+      Comprehensive activity profile query using specific molecule IRI discovered from search.
+      Returns all bioactivity measurements with assay and target context for drug characterization.
     question: What are all bioactivities for aspirin (CHEMBL25)?
     complexity: intermediate
     sparql: |
       PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
       
-      # Use specific molecule IRI
+      # Use specific molecule IRI from search_chembl_molecule("aspirin") → CHEMBL25
       SELECT ?activity ?standardType ?value ?units ?target ?targetLabel
       FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
@@ -289,15 +322,19 @@ sparql_query_examples:
       }
       ORDER BY ?standardType xsd:decimal(?value)
       LIMIT 100
-
-  - title: Mechanism of Action for Approved Drugs
-    description: Analyze drug mechanisms with target information for marketed drugs. Uses typed predicates and filtering for comprehensive mechanism analysis.
-    question: What are inhibitor mechanisms for FDA-approved drugs?
+  
+  - title: Analyze Drug Mechanisms for FDA-Approved Inhibitors
+    description: |
+      Complex mechanism analysis using multiple typed predicates and filtering.
+      Demonstrates comprehensive discovery of approved drug mechanisms without text search,
+      using only structured properties: phase, mechanismActionType, targetType, organismName.
+    question: What are the inhibitor mechanisms for FDA-approved drugs targeting human proteins?
     complexity: advanced
     sparql: |
       PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
       
-      # Use typed predicates: phase, mechanismActionType, targetType, organismName
+      # Use typed predicates for all filters - no text search needed
+      # phase=4 (approved), mechanismActionType contains "INHIBITOR", targetType, organismName
       SELECT ?molecule ?moleculeLabel ?target ?targetLabel ?mechanismType ?phase
       FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
@@ -315,15 +352,19 @@ sparql_query_examples:
       }
       ORDER BY ?moleculeLabel
       LIMIT 100
-
-  - title: Alzheimer's Disease Drug Targets and Mechanisms
-    description: Complex query integrating drug indications (via MeSH IRI), mechanisms of action, and target information for Alzheimer's disease therapeutics. Demonstrates advanced multi-entity integration using structured IRIs throughout.
+  
+  - title: Integrate Drug Indications, Mechanisms, and Targets for Alzheimer's Disease
+    description: |
+      Advanced multi-entity integration using specific MeSH IRI for Alzheimer's disease (D000544).
+      Links drug indications → molecules → mechanisms → targets for comprehensive drug-target analysis.
+      Demonstrates complex relationship navigation using only structured IRIs and predicates.
     question: What are the mechanisms and targets of drugs in development for Alzheimer's disease?
     complexity: advanced
     sparql: |
       PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
       
-      # Use specific MeSH IRI for Alzheimer's disease (D000544)
+      # Use specific MeSH IRI for Alzheimer's disease (D000544) - 100% reliable
+      # Workflow: exploratory query found IRI → comprehensive multi-entity integration
       SELECT DISTINCT ?molecule ?moleculeLabel ?target ?targetLabel ?mechanismType ?phase
       FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
@@ -357,10 +398,17 @@ cross_database_queries:
     - ensembl
     - amrportal
   examples:
-    - title: Integrate ChEMBL Drugs with ChEBI Chemical Structure Data
+    - title: Link ChEMBL Approved Drugs to ChEBI Chemical Structure Data
       description: |
-        Link ChEMBL drug molecules to ChEBI chemical entities to enrich drug data with comprehensive chemical ontology information including molecular formulas, mass, InChI keys, and hierarchical classification. 
-        ChEMBL molecules reference ChEBI via skos:exactMatch, enabling seamless two-way integration.
+        Integrates ChEMBL drug molecules with ChEBI chemical ontology to enrich pharmaceutical data
+        with comprehensive chemical structure information including molecular formulas, mass, InChI keys,
+        and hierarchical chemical classification.
+        
+        Linking strategy:
+        - ChEMBL molecules: use skos:exactMatch predicate linking to ChEBI IRIs
+        - ChEBI entities: match by IRI in separate GRAPH
+        - Pre-filter ChEMBL to phase≥3 reduces dataset by 99.5% before join
+        - Direct IRI matching provides precise, comprehensive results
       databases_used:
         - chembl
         - chebi
@@ -392,14 +440,21 @@ cross_database_queries:
       notes: |
         - Strategies: 1 (GRAPH), 2 (pre-filter phase≥3), 7 (OPTIONAL), 10 (LIMIT)
         - Pre-filtering reduces 1.9M→~10k molecules (99.5% reduction) before join
-        - Performance: ~1-2s (Tier 1)
-        - Use case: Identify marketed/late-stage drugs with ChEBI ontology data
-        - MIE refs: chembl (graph, skos:exactMatch), chebi (graph, namespace)
-
+        - Performance: ~1-2s (Tier 1) - aggressive filtering enables fast execution
+        - Use case: Identify marketed/late-stage drugs with ChEBI ontology enrichment
+        - Both databases verified: checked MIE files for GRAPH URIs and linking predicates
+    
     - title: Link ChEMBL Drug Targets to Reactome Biological Pathways
       description: |
-        Connect ChEMBL drug targets to Reactome biological pathways to understand drug mechanism of action in systems biology context. 
-        ChEMBL targets link to UniProt, which Reactome also references through bp:xref with bp:db="UniProt"^^xsd:string, enabling protein-centric integration.
+        Connects ChEMBL drug targets to Reactome biological pathways to understand
+        drug mechanism of action in systems biology context.
+        
+        Linking strategy:
+        - ChEMBL targets: use cco:hasTargetComponent/skos:exactMatch to UniProt IRIs
+        - Reactome proteins: use bp:xref with bp:db="UniProt"^^xsd:string
+        - UniProt IRI matching bridges the two databases
+        - Pre-filter on drug name (or phase) reduces molecular search before cross-database join
+        - CRITICAL: ^^xsd:string required for Reactome bp:db comparisons
       databases_used:
         - chembl
         - reactome
@@ -443,13 +498,20 @@ cross_database_queries:
         - Pre-filter on drug name reduces molecular search before cross-database join
         - ^^xsd:string CRITICAL for bp:db (from Reactome MIE anti-patterns)
         - Performance: ~3-5s (Tier 2) - property paths add overhead
-        - Use case: Drug target validation and mechanism of action in pathway context
-        - MIE refs: chembl (property paths, entity types), reactome (^^xsd:string, UnificationXref)
-
-    - title: Marketed Kinase Inhibitors with ChEBI Chemical Ontology
+        - Use case: Drug target validation and mechanism in pathway context
+        - Both MIE files checked: verified GRAPH URIs and Reactome ^^xsd:string requirement
+    
+    - title: Find Marketed Kinase Inhibitors with ChEBI Chemical Ontology
       description: |
-        Link ChEMBL marketed drugs targeting kinase proteins to ChEBI chemical structure data. 
-        Demonstrates pharmaceutical research use case with optimized performance through pre-filtering on development phase and protein classification IRI.
+        Links ChEMBL marketed drugs targeting kinase proteins to ChEBI chemical structure data.
+        Demonstrates pharmaceutical research use case with optimized performance through
+        double pre-filtering on development phase and protein classification IRI.
+        
+        Linking strategy:
+        - ChEMBL molecules: filter by phase=4 AND target with classification IRI
+        - ChEMBL→ChEBI: link via skos:exactMatch predicate
+        - Protein classification IRI (CHEMBL_PC_1100) ensures kinase specificity
+        - Double filter: phase=4 (1.9M→~8k) + kinase IRI (~8k→hundreds) = >99.9% reduction
       databases_used:
         - chembl
         - chebi
@@ -485,26 +547,28 @@ cross_database_queries:
         - Double filter: phase=4 (1.9M→~8k) + kinase IRI (~8k→hundreds) = >99.9% reduction
         - Performance: ~2-3s (Tier 1) - aggressive filtering enables fast execution
         - Use case: Find FDA-approved kinase inhibitors (Imatinib, Sorafenib, etc.)
-        - Uses protein classification IRI instead of text search
-        - MIE refs: chembl (property paths, phase filter, classification IRI), chebi (namespace, OPTIONAL)
+        - Uses protein classification IRI instead of text search on labels
+        - Both MIE files verified: checked linking predicates and GRAPH URIs
 
 cross_references:
   - pattern: cco:moleculeXref
     description: |
-      Molecules link to external databases via cco:moleculeXref using database-specific URI patterns.
+      Molecules link to external chemical and drug databases via cco:moleculeXref using
+      database-specific URI patterns. Enables integration with chemical structure databases,
+      drug information resources, and research tools.
     databases:
       chemical:
-        - "PubChem (2.2M+)"
-        - "ZINC (1.2M+)"
-        - "ChEBI (35k)"
+        - "PubChem: 2.2M+ cross-references"
+        - "ZINC: 1.2M+ cross-references"
+        - "ChEBI: 35k cross-references via skos:exactMatch"
       drug:
-        - "DrugBank (8.4k)"
-        - "FDA SRS (32k)"
-        - "HMDB (12k)"
+        - "DrugBank: 8.4k cross-references"
+        - "FDA SRS: 32k cross-references"
+        - "HMDB: 12k cross-references"
       research:
-        - "LINCS (16k)"
-        - "SureChEMBL (540k)"
-        - "Wikipedia"
+        - "LINCS: 16k cross-references"
+        - "SureChEMBL: 540k cross-references"
+        - "Wikipedia: thousands of cross-references"
     sparql: |
       SELECT ?molecule ?xref
       FROM <http://rdf.ebi.ac.uk/dataset/chembl>
@@ -513,15 +577,16 @@ cross_references:
                   cco:moleculeXref ?xref .
         FILTER(STRSTARTS(STR(?xref), "http://www.drugbank.ca/"))
       } LIMIT 100
-
+  
   - pattern: skos:exactMatch
     description: |
-      Target components link to UniProt proteins for sequence and functional data.
+      Target components link to UniProt proteins for comprehensive sequence and functional data.
+      Also used for molecule-ChEBI linking. Enables protein-centric integration across databases.
     databases:
       protein:
-        - "UniProt (11k)"
-        - "Ensembl"
-        - "PDB (64k)"
+        - "UniProt: 11k protein cross-references"
+        - "Ensembl: gene and transcript cross-references"
+        - "PDB: 64k structure cross-references"
     sparql: |
       SELECT ?targetComponent ?uniprot
       FROM <http://rdf.ebi.ac.uk/dataset/chembl>
@@ -530,13 +595,15 @@ cross_references:
                          skos:exactMatch ?uniprot .
         FILTER(STRSTARTS(STR(?uniprot), "http://purl.uniprot.org/"))
       } LIMIT 100
-
+  
   - pattern: cco:taxonomy
     description: |
-      NCBI Taxonomy IRIs link targets, assays, and cell lines to organism information. Two IRI formats are used: identifiers.org and NCBI browser URLs.
+      NCBI Taxonomy IRIs link targets, assays, and cell lines to organism information.
+      Two IRI formats exist: identifiers.org and NCBI browser URLs.
+      Enables precise organism-based filtering using specific IRIs instead of text search.
     databases:
       taxonomy:
-        - "NCBI Taxonomy"
+        - "NCBI Taxonomy: comprehensive organism classification"
     sparql: |
       SELECT ?target ?organism ?taxonomy
       FROM <http://rdf.ebi.ac.uk/dataset/chembl>
@@ -546,17 +613,24 @@ cross_references:
                 cco:taxonomy ?taxonomy .
         FILTER(STRSTARTS(STR(?taxonomy), "http://identifiers.org/taxonomy/"))
       } LIMIT 100
-
+  
   - pattern: cco:hasMesh / cco:hasEFO
     description: |
-      Drug indications link to MeSH disease descriptors and EFO ontology terms via specific IRIs. 
-      All 55,442 drug indications include MeSH descriptor IRIs in the format http://identifiers.org/mesh/[ID] (e.g., D008545 for Melanoma, D000544 for Alzheimer's Disease).
-      This enables precise disease-based queries using MeSH's controlled vocabulary instead of free-text disease name search.
-      Use exploratory query or external MeSH browser to find descriptor IRIs, then query with specific IRIs for comprehensive disease-drug relationships.
+      Drug indications link to disease ontologies via specific IRIs, providing comprehensive
+      disease-based drug discovery capabilities.
+      
+      MeSH descriptors: ALL 55,442 drug indications include MeSH descriptor IRIs
+      in the format http://identifiers.org/mesh/[ID] (e.g., D008545 for Melanoma,
+      D000544 for Alzheimer's Disease). This provides 100% coverage for disease-based queries
+      using MeSH's controlled vocabulary instead of unreliable free-text disease name search.
+      
+      Workflow: Use exploratory query with FILTER(CONTAINS(LCASE(?meshHeading), "disease_name"))
+      to find MeSH descriptor IRIs, then query comprehensively with specific IRIs for
+      complete disease-drug relationships.
     databases:
       disease:
-        - "MeSH descriptors (55k indications, 100% coverage)"
-        - "EFO ontology terms (55k indications, 99.7% coverage)"
+        - "MeSH descriptors: 55k indications, 100% coverage"
+        - "EFO ontology terms: 55k indications, 99.7% coverage"
     sparql: |
       SELECT ?indication ?mesh ?meshHeading ?efo ?efoName ?phase
       FROM <http://rdf.ebi.ac.uk/dataset/chembl>
@@ -575,14 +649,15 @@ cross_references:
           <http://identifiers.org/mesh/D000544>   # Alzheimer's Disease
         ))
       } LIMIT 100
-
+  
   - pattern: bibo:pmid
     description: |
-      Documents link to PubMed for literature tracking and citation management.
+      Documents link to PubMed literature for citation tracking and evidence support.
+      Enables literature-based queries and document provenance.
     databases:
       literature:
-        - "PubMed (88k docs)"
-        - "DOI"
+        - "PubMed: 88k document cross-references"
+        - "DOI: digital object identifiers for publications"
     sparql: |
       SELECT ?document ?pmid ?doi
       FROM <http://rdf.ebi.ac.uk/dataset/chembl>
@@ -594,61 +669,64 @@ cross_references:
 
 architectural_notes:
   query_strategy:
-    - "Exploratory: Use search_chembl_molecule() and search_chembl_target() to find examples (20-100 results)"
-    - "MeSH IRIs: Use exploratory SPARQL to find disease descriptor IRIs (FILTER(CONTAINS(LCASE(?meshHeading), 'disease_term')))"
-    - "Extract structured data: From examples, identify protein classification IRIs (CHEMBL_PC_*), taxonomy IRIs (9606 for human), MeSH IRIs (D008545 for melanoma, D000544 for Alzheimer's), activity types (IC50, Ki), target types"
-    - "Comprehensive: Use extracted IRIs in VALUES or direct predicates for complete dataset queries"
-    - "Protein classification: Use cco:hasProteinClassification with specific IRIs (e.g., CHEMBL_PC_1100 for protein kinase)"
-    - "Organism filtering: Use cco:taxonomy with specific IRIs (e.g., http://identifiers.org/taxonomy/9606 for human)"
-    - "Disease filtering: Use cco:hasMesh with specific MeSH descriptor IRIs (e.g., http://identifiers.org/mesh/D008545 for melanoma)"
-    - "Activity filtering: Use typed predicates cco:standardType (IC50, Ki, EC50, etc.) and cco:standardUnits (nM, uM)"
-    - "Text search: Use bif:contains ONLY for genuinely unstructured text (comments) when no structured alternative exists (extremely rare)"
-    - "Priority: Specific IRIs > VALUES with IRIs > Typed predicates > Graph navigation > bif:contains > NEVER use FILTER(CONTAINS())"
+    - "MANDATORY FIRST STEP: Get MIE file and examine shape_expressions for entity types and their structured properties"
+    - "Exploratory: Use search_chembl_molecule() and search_chembl_target() to find 10-20 examples and discover patterns"
+    - "Inspection: Query examples with SELECT * WHERE { VALUES ?entity {...} ?entity ?p ?o } to confirm structured properties"
+    - "Extract IRIs: From examples, identify protein classification IRIs (CHEMBL_PC_*), taxonomy IRIs (9606=human), MeSH IRIs (D008545=melanoma), ATC codes, activity types"
+    - "Comprehensive: Use extracted IRIs in VALUES or direct predicates for complete dataset queries - NOT search result IDs"
+    - "MeSH IRIs: For disease queries, use exploratory SPARQL with FILTER(CONTAINS(LCASE(?meshHeading), 'disease')) to find descriptor IRIs, then query with specific IRIs (100% coverage)"
+    - "Protein classification: Use cco:hasProteinClassification with specific IRIs (e.g., CHEMBL_PC_1100 for protein kinase) discovered from target examples"
+    - "Organism filtering: Use cco:taxonomy with specific IRIs (e.g., http://identifiers.org/taxonomy/9606 for human) instead of text search"
+    - "Activity filtering: Use typed predicates cco:standardType (IC50, Ki, EC50) and cco:standardUnits (nM, uM) - controlled vocabulary values"
+    - "Text search: Use bif:contains ONLY for genuinely unstructured text (comments, descriptions) when no structured alternative exists after checking MIE schema"
+    - "Priority: Specific IRIs > VALUES with IRIs > Typed predicates > Graph navigation > bif:contains (extremely rare) > NEVER use FILTER(CONTAINS())"
   
   schema_design:
-    - "Molecule-Activity-Assay-Target core model for bioactivity measurements"
-    - "TargetComponent bridges Targets to UniProt identifiers"
-    - "Hierarchical protein classification using cco:ProteinClassification with rdfs:subClassOf"
-    - "Taxonomy IRIs link to NCBI Taxonomy (two formats: identifiers.org and NCBI browser)"
-    - "MeSH descriptor IRIs link drug indications to controlled disease vocabulary (100% coverage)"
-    - "EFO ontology IRIs provide additional disease classification (99.7% coverage)"
-    - "Drug mechanisms separate molecular interactions from bioactivities"
-    - "Development phases (0-4) track drug approval status"
-    - "CRITICAL: Use protein classification IRIs instead of text search on labels"
-    - "CRITICAL: Use MeSH descriptor IRIs instead of text search on disease names"
+    - "Molecule-Activity-Assay-Target core model links bioactive compounds to biological targets via standardized measurements"
+    - "TargetComponent bridges Targets to UniProt identifiers via skos:exactMatch for protein-centric integration"
+    - "Hierarchical protein classification using cco:ProteinClassification with rdfs:subClassOf - use specific IRIs for queries"
+    - "Taxonomy IRIs link to NCBI Taxonomy in two formats: identifiers.org (preferred) and NCBI browser URLs"
+    - "MeSH descriptor IRIs provide 100% disease coverage on drug indications - ALWAYS use IRIs, never text search on disease names"
+    - "EFO ontology IRIs provide additional disease classification (99.7% coverage) complementing MeSH"
+    - "Drug mechanisms separate molecular interactions from bioactivities, linking molecules to targets with action types"
+    - "Development phases (0-4) track drug approval status using typed predicate cco:highestDevelopmentPhase"
+    - "CRITICAL: All major entity types have structured classification/ontology predicates - text search is rarely needed"
   
   performance:
-    - "Always specify FROM graph clause"
-    - "Use specific IRIs for fast lookups (protein classifications, taxonomy, MeSH descriptors, etc.)"
-    - "Use bif:contains for keyword searches in unstructured text (faster than FILTER/REGEX, but avoid when IRIs available)"
-    - "Boolean operators in bif:contains work efficiently (AND, OR, NOT)"
-    - "Filter on development phase, assay type, or activity type (well-indexed)"
-    - "MeSH IRI filters are fast and precise (100% coverage on indications)"
-    - "Start with specific target types (cco:SingleProtein) before expanding"
-    - "Cross-DB: GRAPH clauses (Strategy 1), pre-filter (Strategy 2), IRIs over text (Strategy 4)"
+    - "Always specify FROM <http://rdf.ebi.ac.uk/dataset/chembl> graph clause"
+    - "Use specific IRIs for fast lookups: protein classification (CHEMBL_PC_*), taxonomy (9606=human), MeSH descriptors (D000544=Alzheimer's), ATC codes"
+    - "Filter on typed predicates: development phase, assay type, activity type, mechanism action type (well-indexed)"
+    - "MeSH IRI filters are fast and precise (100% coverage on indications) - discovered via exploratory query, then used in comprehensive query"
+    - "Protein classification IRI filters are fast - discovered by inspecting target examples"
+    - "Start with specific entity types (cco:SingleProtein) before expanding to complexes/families"
+    - "Use bif:contains for keyword searches ONLY in unstructured text after confirming no structured alternative (faster than FILTER/REGEX)"
+    - "Boolean operators in bif:contains work efficiently (AND, OR, NOT) but prefer structured IRIs when available"
+    - "Cross-DB optimization: GRAPH clauses (Strategy 1), pre-filter within GRAPH (Strategy 2), use IRIs over text (Strategy 4), ^^xsd:string for Reactome"
   
   data_integration:
-    - "UniProt mappings via TargetComponent for protein data"
-    - "PubChem/DrugBank/ChEBI for chemical structure enrichment via skos:exactMatch"
-    - "MeSH descriptor IRIs for precise disease-based drug queries (55k indications, 100% coverage)"
-    - "EFO ontology for additional disease classification (99.7% coverage)"
-    - "NCBI Taxonomy IRIs for organism-specific filtering (prefer over text search)"
-    - "Protein classification IRIs for protein family queries (prefer over text search)"
-    - "Cross-database queries with ChEBI (Tier 1, 1-3s) and Reactome (Tier 2, 3-8s) on EBI endpoint"
+    - "UniProt mappings via TargetComponent/skos:exactMatch for protein sequences and functional annotations"
+    - "ChEBI cross-references via skos:exactMatch for chemical structure enrichment and ontology classification"
+    - "MeSH descriptor IRIs for precise disease-based drug queries (55k indications, 100% coverage) - use specific IRIs from exploratory queries"
+    - "EFO ontology IRIs for additional disease classification (99.7% coverage) complementing MeSH"
+    - "NCBI Taxonomy IRIs for organism-specific filtering (prefer specific IRIs over organismName text search)"
+    - "Protein classification IRIs for protein family/domain queries (prefer specific IRIs over label text search)"
+    - "Cross-database queries with ChEBI (Tier 1, 1-3s) and Reactome (Tier 2, 3-8s) on EBI endpoint using structured linking"
+    - "CRITICAL for cross-DB: Check MIE files for both databases, use structured linking predicates, avoid text search"
   
   data_quality:
-    - "Not all molecules have chemical descriptors"
-    - "Activity values may lack units - always check cco:standardUnits"
-    - "Some targets lack UniProt mappings (non-human organisms)"
-    - "Development phase most complete for marketed drugs"
-    - "Protein classification available for ~36% of targets (~34k of 9.4k single proteins)"
-    - "Taxonomy IRIs exist in two formats - check both"
-    - "MeSH descriptors: 100% coverage (55,442/55,442 indications)"
-    - "EFO terms: 99.7% coverage (55,271/55,442 indications)"
+    - "Not all molecules have chemical descriptors (molecular weight, formula, etc.)"
+    - "Activity values may lack units - always check cco:standardUnits before comparing values"
+    - "Some targets lack UniProt mappings (primarily non-human organisms or synthetic constructs)"
+    - "Development phase most complete for marketed drugs (phase 4)"
+    - "Protein classification available for ~36% of targets (~3.4k of 9.4k single proteins) - check availability before filtering"
+    - "Taxonomy IRIs exist in two formats (identifiers.org and ncbi.nlm.nih.gov) - use STRSTARTS for matching"
+    - "MeSH descriptors: 100% coverage (55,442/55,442 indications) - most reliable disease filter"
+    - "EFO terms: 99.7% coverage (55,271/55,442 indications) - nearly complete alternative/complement to MeSH"
 
 data_statistics:
   total_molecules: 1920809
-  verified_date: "2025-02-09"
+  verified_date: "2025-02-10"
+  verification_method: "Direct count query on cco:SmallMolecule type"
   verification_query: |
     PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
     SELECT (COUNT(DISTINCT ?molecule) as ?count)
@@ -663,7 +741,7 @@ data_statistics:
   total_indications: 55442
   
   human_protein_kinases: 423
-  human_protein_kinases_verified_date: "2025-02-09"
+  human_protein_kinases_verified_date: "2025-02-10"
   human_protein_kinases_verification_query: |
     PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
     SELECT (COUNT(DISTINCT ?target) as ?count)
@@ -675,7 +753,7 @@ data_statistics:
     }
   
   alzheimers_drug_indications: 290
-  alzheimers_verified_date: "2025-02-09"
+  alzheimers_verified_date: "2025-02-10"
   alzheimers_mesh_iri: "http://identifiers.org/mesh/D000544"
   alzheimers_verification_query: |
     PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
@@ -687,210 +765,253 @@ data_statistics:
     }
   
   coverage:
-    targets_with_uniprot: "100%"
-    verified_date: "2025-02-09"
-    scope: "Single protein targets with target component links"
-    
     activities_with_standard_values: "92.4%"
-    calculation: "19,519,773 / 21,123,501"
+    calculation: "Activities with cco:standardValue / Total activities"
+    verified_date: "2025-02-10"
     verification_query: |
       PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
       SELECT (COUNT(?activity) as ?with_value)
       FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE { ?activity a cco:Activity ; cco:standardValue ?value . }
     
+    targets_with_uniprot: "100% of target components"
+    scope: "All target components are designed to link to UniProt - availability varies by organism"
+    
     targets_with_protein_classification: "~36%"
-    calculation: "34,256 classifications / ~9,432 single proteins"
-    scope: "Many targets have multiple classification levels"
+    scope: "Many targets have multiple classification levels in hierarchy"
     
     indications_with_mesh: "100%"
-    calculation: "55,442 / 55,442"
-    verified_date: "2025-02-09"
+    calculation: "55,442 / 55,442 drug indications"
+    verified_date: "2025-02-10"
+    note: "All drug indications include MeSH descriptor IRIs - enables comprehensive disease-based queries"
     
     indications_with_efo: "99.7%"
-    calculation: "55,271 / 55,442"
-    verified_date: "2025-02-09"
+    calculation: "55,271 / 55,442 drug indications"
+    verified_date: "2025-02-10"
   
   performance_characteristics:
-    - "Simple lookups by IRI: <1s for 100 results"
+    - "Simple lookups by specific IRI: <1s for 100 results"
     - "Activity queries with typed predicate filters: 1-3s"
-    - "Protein classification IRI queries: 1-2s"
-    - "MeSH descriptor IRI queries: 1-2s"
-    - "Cross-DB queries (ChEBI): 1-3s (Tier 1) with pre-filtering"
-    - "Cross-DB queries (Reactome): 3-8s (Tier 2) with property paths"
-    - "Optimization gain: Pre-filtering + IRIs reduce join size by 99.5%"
+    - "Protein classification IRI queries: 1-2s (using CHEMBL_PC_* IRIs)"
+    - "MeSH descriptor IRI queries: 1-2s (100% coverage, highly optimized)"
+    - "Taxonomy IRI queries: 1-2s (using identifiers.org/taxonomy/* IRIs)"
+    - "Cross-DB queries with ChEBI: 1-3s (Tier 1) with pre-filtering on phase/classification"
+    - "Cross-DB queries with Reactome: 3-8s (Tier 2) with property paths and ^^xsd:string"
+    - "Optimization gain: Pre-filtering with specific IRIs + typed predicates reduces join size by 99.5%+"
   
-  staleness_warning: "Quarterly updates - verify data freshness for time-sensitive research"
+  staleness_warning: "Quarterly updates - verify data freshness for time-sensitive pharmaceutical research"
 
 anti_patterns:
-  - title: "Text Search When Protein Classification IRI Exists"
-    problem: "Using bif:contains to search target labels for 'kinase' when specific protein classification IRIs exist."
+  - title: Text Search When Protein Classification IRI Exists
+    problem: |
+      Using bif:contains to search target labels for 'kinase' when specific protein classification IRIs
+      exist in the schema. This is slower, less precise, and may miss targets with non-standard labels.
     wrong_sparql: |
-      # Slow: Text search through target labels
+      # SLOW: Text search through target labels - inefficient and incomplete
+      # Did not check MIE schema for structured properties
       SELECT ?target ?label
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
         ?target a cco:SingleProtein ;
                 rdfs:label ?label .
         ?label bif:contains "'kinase'"
       }
     correct_sparql: |
-      # Fast: Use specific protein classification IRI
+      # FAST: Use specific protein classification IRI discovered from schema
+      # Workflow:
+      # 1. get_MIE_file("chembl") → examined TargetShape → found cco:hasProteinClassification
+      # 2. search_chembl_target("kinase") → got examples
+      # 3. Inspected examples → extracted CHEMBL_PC_1100 IRI
+      # 4. Query ALL kinases with that IRI:
       SELECT ?target ?label
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
         ?target a cco:SingleProtein ;
                 rdfs:label ?label ;
                 cco:hasProteinClassification <http://rdf.ebi.ac.uk/resource/chembl/protclass/CHEMBL_PC_1100> .
       }
-    explanation: "Use search_chembl_target() to find examples, inspect to find CHEMBL_PC_1100, then query ALL kinases with that IRI. Text search is slower and less precise."
+    explanation: |
+      MIE schema shows cco:hasProteinClassification predicate. Search finds examples.
+      Inspection extracts classification IRI. Use IRI for comprehensive, fast results.
+      Text search is last resort - only when no structured alternative exists.
   
-  - title: "Text Search When MeSH Descriptor IRI Exists"
-    problem: "Using text search on disease names when specific MeSH descriptor IRIs are available."
+  - title: Text Search When MeSH Descriptor IRI Exists
+    problem: |
+      Using text search on disease names when specific MeSH descriptor IRIs are available.
+      MeSH provides 100% coverage on drug indications with precise, controlled vocabulary IRIs.
     wrong_sparql: |
-      # Slow and imprecise: Text search on disease names
+      # SLOW and IMPRECISE: Text search on disease names
+      # Skipped MIE schema check - missed cco:hasMesh predicate
       SELECT ?molecule ?disease
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
         ?indication cco:hasMeshHeading ?disease ;
                     cco:hasMolecule ?molecule .
         FILTER(CONTAINS(LCASE(?disease), "alzheimer"))
       }
     correct_sparql: |
-      # Fast and precise: Use specific MeSH descriptor IRI
+      # FAST and PRECISE: Use specific MeSH descriptor IRI
+      # Workflow:
+      # 1. get_MIE_file("chembl") → examined DrugIndicationShape → found cco:hasMesh
+      # 2. Exploratory query: FILTER(CONTAINS(LCASE(?meshHeading), "alzheimer")) → found examples
+      # 3. Inspected examples → extracted MeSH IRI: D000544
+      # 4. Comprehensive query with specific IRI:
       SELECT ?molecule ?disease
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
         ?indication cco:hasMesh <http://identifiers.org/mesh/D000544> ;
                     cco:hasMeshHeading ?disease ;
                     cco:hasMolecule ?molecule .
       }
-    explanation: "Use exploratory SPARQL to find MeSH IRI (D000544 for Alzheimer's disease), then query with specific IRI. 100% of indications have MeSH IRIs."
+    explanation: |
+      MIE schema shows cco:hasMesh predicate (100% coverage). Exploratory query finds MeSH IRI.
+      Use specific IRI for comprehensive disease-drug queries. Text search unreliable for medical terms.
   
-  - title: "Text Search When Taxonomy IRI Exists"
-    problem: "Using text search on organism names when specific taxonomy IRIs are available."
+  - title: Text Search When Taxonomy IRI Exists
+    problem: |
+      Using text search on organism names when specific taxonomy IRIs are available for
+      precise organism filtering. Taxonomy IRIs are unambiguous and fast.
     wrong_sparql: |
-      # Slow: Text search on organism name
+      # SLOW: Text search on organism name - ambiguous and inefficient
+      # Did not check MIE schema for cco:taxonomy predicate
       SELECT ?target ?organism
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
         ?target cco:organismName ?organism .
         FILTER(CONTAINS(?organism, "sapiens"))
       }
     correct_sparql: |
-      # Fast: Use specific taxonomy IRI
+      # FAST: Use specific taxonomy IRI for human
+      # Workflow:
+      # 1. get_MIE_file("chembl") → examined TargetShape → found cco:taxonomy
+      # 2. Inspected examples → confirmed IRI format: http://identifiers.org/taxonomy/9606
+      # 3. Query with specific IRI:
       SELECT ?target ?organism
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
         ?target cco:organismName ?organism ;
                 cco:taxonomy <http://identifiers.org/taxonomy/9606> .
       }
-    explanation: "Taxonomy IRIs (9606 for human, 10090 for mouse, etc.) provide fast, unambiguous organism filtering."
+    explanation: |
+      MIE schema shows cco:taxonomy predicate. Taxonomy IRIs (9606=human, 10090=mouse, etc.)
+      provide fast, unambiguous organism filtering. Two IRI formats exist - both work.
   
-  - title: "Forgetting Activity Units"
-    problem: "Comparing activity values without checking units leads to incorrect conclusions."
+  - title: Forgetting Activity Units Leads to Incorrect Comparisons
+    problem: |
+      Comparing activity values without checking units (nM vs uM vs %) leads to
+      scientifically incorrect conclusions. Always filter by cco:standardUnits.
     wrong_sparql: |
-      # WRONG: Mixing units
+      # WRONG: Mixing units - scientifically invalid comparison
+      # 100nM ≠ 100uM ≠ 100%
       SELECT ?molecule ?value
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
         ?activity cco:hasMolecule ?molecule ;
                   cco:standardValue ?value .
         FILTER(xsd:decimal(?value) < 100)
       }
     correct_sparql: |
-      # CORRECT: Filter by units
+      # CORRECT: Filter by specific units for valid comparison
+      # MIE schema shows cco:standardUnits typed predicate
       SELECT ?molecule ?value ?units
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
         ?activity cco:hasMolecule ?molecule ;
                   cco:standardValue ?value ;
                   cco:standardUnits ?units .
         FILTER(xsd:decimal(?value) < 100 && ?units = "nM")
       }
-    explanation: "Always filter by cco:standardUnits when comparing activity values (nM, uM, %, etc.). Different units represent vastly different potencies."
+    explanation: |
+      Always filter by cco:standardUnits when comparing activity values. Different units
+      represent vastly different potencies (1nM is 1000× more potent than 1uM).
 
 common_errors:
-  - error: "Query timeout"
+  - error: "Query timeout or slow performance"
     causes:
-      - "Missing FROM clause or GRAPH specification"
-      - "Using text search when specific IRIs available"
+      - "Missing FROM <http://rdf.ebi.ac.uk/dataset/chembl> clause"
+      - "Using text search when specific IRIs or typed predicates available"
       - "Missing LIMIT clause"
+      - "Did not check MIE schema before writing query"
     solutions:
-      - "Always include FROM <http://rdf.ebi.ac.uk/dataset/chembl>"
+      - "Always include FROM graph clause"
+      - "MANDATORY: get_MIE_file('chembl') FIRST - examine entity shapes for structured properties"
       - "Use protein classification IRIs instead of text search on labels"
       - "Use MeSH descriptor IRIs instead of text search on disease names"
       - "Use taxonomy IRIs instead of text search on organism names"
-      - "Add type constraints before filtering"
-      - "Use LIMIT appropriately (100-10000)"
+      - "Use typed predicates (assayType, standardType, mechanismActionType) instead of text patterns"
+      - "Add type constraints (cco:SingleProtein, cco:SmallMolecule) before filtering"
+      - "Always include LIMIT (100-10000 depending on use case)"
   
-  - error: "Empty results for disease queries"
+  - error: "Empty results for disease-based queries"
     causes:
-      - "Using text search on disease names instead of MeSH IRIs"
+      - "Using text search on disease names instead of MeSH descriptor IRIs"
       - "Incorrect MeSH descriptor IRI format"
+      - "Did not check MIE schema for cco:hasMesh predicate"
     solutions:
-      - "Use exploratory SPARQL with FILTER(CONTAINS(LCASE(?meshHeading), 'disease_name')) to find MeSH IRIs"
+      - "MANDATORY: Check MIE schema - DrugIndicationShape shows cco:hasMesh (100% coverage)"
+      - "Use exploratory query: FILTER(CONTAINS(LCASE(?meshHeading), 'disease_term')) to find examples"
       - "Extract MeSH descriptor IRIs from examples (format: http://identifiers.org/mesh/[ID])"
-      - "Query with cco:hasMesh and specific IRIs"
-      - "100% of drug indications have MeSH descriptors"
+      - "Query comprehensively with cco:hasMesh and specific IRIs"
+      - "Example: D000544 for Alzheimer's, D008545 for Melanoma, D001943 for Breast Neoplasms"
+      - "100% of drug indications have MeSH descriptors - most reliable disease filter"
   
-  - error: "Empty results for protein queries"
+  - error: "Empty results for protein family queries"
     causes:
-      - "Using text search instead of protein classification IRIs"
-      - "Incorrect protein classification IRI"
+      - "Using text search on labels instead of protein classification IRIs"
+      - "Incorrect protein classification IRI format"
+      - "Did not inspect target examples to find classification IRIs"
     solutions:
-      - "Use search_chembl_target() to find examples"
-      - "Inspect examples to extract protein classification IRIs"
+      - "MANDATORY: Check MIE schema - TargetShape shows cco:hasProteinClassification"
+      - "Use search_chembl_target('family_name') to find examples"
+      - "Inspect examples with SELECT * WHERE { VALUES ?target {...} ?target ?p ?o }"
+      - "Extract protein classification IRIs (format: http://rdf.ebi.ac.uk/resource/chembl/protclass/CHEMBL_PC_*)"
       - "Query with cco:hasProteinClassification and specific IRIs"
-      - "Check CHEMBL_PC_* hierarchy (CHEMBL_PC_1100 for protein kinase, CHEMBL_PC_6 for kinase)"
-  
-  - error: "Empty results for cross-references"
-    causes:
-      - "Incorrect URI pattern for external database"
-      - "Querying wrong entity type"
-    solutions:
-      - "Check sample data for exact URI patterns"
-      - "Use STRSTARTS for URI matching"
-      - "Verify entity type supports cross-reference property"
-      - "Use OPTIONAL for cross-references that may not exist"
-  
-  - error: "Incorrect activity comparisons"
-    causes:
-      - "Comparing without checking standardType"
-      - "Missing units check (mixing nM and uM)"
-      - "Not handling NULL values"
-    solutions:
-      - "Always filter by cco:standardType (IC50, EC50, Ki)"
-      - "Include cco:standardUnits in WHERE and filter"
-      - "Use OPTIONAL with FILTER for numeric values"
-      - "Consider cco:pChembl for normalized comparison"
+      - "Example: CHEMBL_PC_1100 for protein kinase, CHEMBL_PC_6 for kinase superfamily"
+      - "Note: ~36% of targets have protein classification - check availability"
   
   - error: "Cross-database query timeout or empty results"
     causes:
+      - "Did not check MIE files for both databases before writing query"
       - "Missing ^^xsd:string for Reactome bp:db comparisons"
       - "Incorrect graph URIs from co-located databases"
-      - "Missing pre-filtering (Strategy 2)"
-      - "Using text search instead of specific IRIs"
+      - "Missing pre-filtering within GRAPH blocks (Strategy 2)"
+      - "Using text search instead of structured linking predicates"
     solutions:
-      - "Always use ^^xsd:string for Reactome bp:db (Strategy 9)"
-      - "Verify graph URIs from co-database MIE files"
-      - "Apply FILTER within source GRAPH before join (Strategy 2)"
-      - "Use protein classification IRIs instead of bif:contains"
-      - "Use MeSH descriptor IRIs instead of text search"
-      - "Use CONTAINS for UniProt ID matching (different URI formats)"
+      - "MANDATORY: get_MIE_file() for BOTH databases - examine linking predicates"
+      - "For Reactome: ALWAYS use ^^xsd:string for bp:db comparisons (Strategy 9)"
+      - "Verify graph URIs from both MIE files"
+      - "Apply FILTER within source GRAPH before join (Strategy 2 - reduces by 99%+)"
+      - "Use structured linking: skos:exactMatch for ChEBI, bp:xref/bp:db for Reactome"
+      - "Use protein classification/MeSH/taxonomy IRIs instead of text search"
       - "Add LIMIT to every query level (Strategy 10)"
     example_fix: |
       # BEFORE (times out):
       WHERE {
-        GRAPH <chembl> {
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
           ?indication cco:hasMolecule ?mol ;
                       cco:hasMeshHeading ?disease .
-          FILTER(CONTAINS(?disease, "alzheimer"))  # SLOW
+          FILTER(CONTAINS(?disease, "alzheimer"))  # SLOW - text search
         }
-        GRAPH <chebi> { ?mol skos:exactMatch ?chebi }
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> { 
+          ?mol skos:exactMatch ?chebi 
+        }
       }
       
       # AFTER (1-2s):
+      # 1. Checked both MIE files - verified GRAPH URIs and linking predicates
+      # 2. ChEMBL MIE shows cco:hasMesh for disease filtering
+      # 3. Used MeSH IRI instead of text search
+      # 4. Pre-filtered on phase before join
       WHERE {
-        GRAPH <chembl> {
-          ?indication cco:hasMesh <http://identifiers.org/mesh/D000544> ;  # Use MeSH IRI
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
+          ?indication cco:hasMesh <http://identifiers.org/mesh/D000544> ;  # MeSH IRI
                       cco:hasMolecule ?mol ;
                       cco:highestDevelopmentPhase ?phase .
           ?mol skos:exactMatch ?chebi .
-          FILTER(?phase >= 3)  # Pre-filter
+          FILTER(?phase >= 3)  # Pre-filter - reduces dataset 99.5%
         }
-        GRAPH <chebi> { ?chebi a owl:Class }
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> { 
+          ?chebi a owl:Class 
+        }
       }
       LIMIT 100

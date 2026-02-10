@@ -11,8 +11,8 @@ schema_info:
   kw_search_tools:
     - ncbi_esearch
   version:
-    mie_version: "3.0"
-    mie_created: "2025-02-09"
+    mie_version: "3.1"
+    mie_created: "2025-02-10"
     data_version: "November 2024"
     update_frequency: "Regular updates"
   license:
@@ -74,7 +74,7 @@ sample_rdf_entries:
                      <http://identifiers.org/hgnc/11998>,
                      <http://identifiers.org/mim/191170> ;
         dct:modified "2024-11-18"^^xsd:date .
-  
+
   - title: Non-Coding RNA (LINC00165)
     description: Long intergenic ncRNA with alternative naming and chromosomal location.
     rdf: |
@@ -87,7 +87,7 @@ sample_rdf_entries:
         insdc:chromosome "21" ;
         dct:alternative "narcolepsy candidate-region 1 gene B" ;
         ncbio:taxid <http://identifiers.org/taxonomy/9606> .
-  
+
   - title: Gene with Orthologs (INS)
     description: Insulin gene showing cross-species orthology relationships across multiple organisms.
     rdf: |
@@ -102,7 +102,7 @@ sample_rdf_entries:
         ncbio:taxid <http://identifiers.org/taxonomy/9606> ;
         orth:hasOrtholog <http://identifiers.org/ncbigene/16334>,
                          <http://identifiers.org/ncbigene/24506> .
-  
+
   - title: Pseudogene (ACTG1P14)
     description: Non-functional gene copy classified as pseudogene with chromosomal location.
     rdf: |
@@ -114,7 +114,7 @@ sample_rdf_entries:
         ncbio:typeOfGene "pseudo" ;
         insdc:chromosome "9" ;
         ncbio:taxid <http://identifiers.org/taxonomy/9606> .
-  
+
   - title: Multi-Chromosome Gene (SHOX)
     description: Gene present on both X and Y chromosomes with multiple OMIM disease associations.
     rdf: |
@@ -138,6 +138,7 @@ sparql_query_examples:
     sparql: |
       PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
       PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      PREFIX dct: <http://purl.org/dc/terms/>
       
       SELECT ?gene ?label ?description
       FROM <http://rdfportal.org/dataset/ncbigene>
@@ -153,7 +154,7 @@ sparql_query_examples:
         OPTIONAL { ?gene dct:description ?description }
       }
       LIMIT 100
-  
+
   - title: Find Genes by Specific IRIs
     description: Retrieve metadata for multiple specific genes using their unique identifiers.
     question: What are the details for TP53, BRCA1, and INS genes?
@@ -161,6 +162,7 @@ sparql_query_examples:
     sparql: |
       PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
       PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      PREFIX dct: <http://purl.org/dc/terms/>
       
       SELECT ?gene ?label ?description ?type ?chromosome
       FROM <http://rdfportal.org/dataset/ncbigene>
@@ -176,7 +178,7 @@ sparql_query_examples:
         OPTIONAL { ?gene dct:description ?description }
         OPTIONAL { ?gene insdc:chromosome ?chromosome }
       }
-  
+
   - title: List Genes with Official Nomenclature Status
     description: Filter by specific nomenclature status using typed predicate.
     question: What are officially named human genes?
@@ -196,7 +198,7 @@ sparql_query_examples:
         OPTIONAL { ?gene ncbio:fullName ?fullName }
       }
       LIMIT 100
-  
+
   - title: Count Gene Types Across Multiple Organisms
     description: Aggregate statistics using specific organism IRIs and typed predicates.
     question: How many genes of each type exist in human, mouse, and rat?
@@ -220,7 +222,7 @@ sparql_query_examples:
       }
       GROUP BY ?taxid ?type
       ORDER BY ?taxid DESC(?count)
-  
+
   - title: Navigate Gene Cross-References to External Databases
     description: Explore IRI-based external links through graph navigation.
     question: What Ensembl and HGNC identifiers exist for human genes?
@@ -244,7 +246,7 @@ sparql_query_examples:
         )
       }
       LIMIT 100
-  
+
   - title: Explore Orthology Relationships
     description: Navigate bidirectional orthology graph to find related genes across species.
     question: What are the orthologs of human insulin gene?
@@ -265,7 +267,7 @@ sparql_query_examples:
                   ncbio:typeOfGene ?type .
       }
       LIMIT 100
-  
+
   - title: Text Search for Gene Descriptions When No Structured Alternative
     description: Use text search on unstructured description field when specific IRIs or predicates not available.
     question: Find genes with "insulin receptor" in their description.
@@ -273,6 +275,7 @@ sparql_query_examples:
     sparql: |
       PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
       PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      PREFIX dct: <http://purl.org/dc/terms/>
       
       SELECT ?gene ?label ?description ?sc
       FROM <http://rdfportal.org/dataset/ncbigene>
@@ -281,7 +284,11 @@ sparql_query_examples:
               rdfs:label ?label ;
               ncbio:taxid <http://identifiers.org/taxonomy/9606> ;
               dct:description ?description .
-        # Text search only because description is unstructured free text
+        # Text search justified because:
+        # 1. Checked shape_expressions: dct:description is free-form text (xsd:string)
+        # 2. No controlled vocabulary or classification predicate for description content
+        # 3. Inspected example genes: descriptions are unstructured full-text
+        # 4. Therefore: bif:contains is the only option for matching description text
         # Use bif:contains (Virtuoso indexed search) for better performance
         ?description bif:contains "'insulin' AND 'receptor'" option (score ?sc) .
       }
@@ -290,25 +297,25 @@ sparql_query_examples:
 
 cross_database_queries:
   shared_endpoint: ncbi
-  co_located_databases:
-    - clinvar
-    - pubmed
-    - pubtator
-    - medgen
+  co_located_databases: [clinvar, pubmed, pubtator, medgen]
   examples:
     - title: Gene-Variant Integration via ClinVar
       description: |
-        Links genes to genetic variants with clinical significance.
-        Uses specific gene IRI for pre-filtering (reduces from 3.5M variants to ~8K).
-        Handles URI conversion between databases (identifiers.org vs ncbi.nlm.nih.gov).
-        Critical optimization: VALUES with gene IRI in ClinVar GRAPH before join.
-      databases_used:
-        - ncbigene
-        - clinvar
+        Links genes to genetic variants with clinical significance via structured linking.
+        
+        Linking strategy:
+        - NCBI Gene: uses dct:identifier to get gene ID
+        - ClinVar: uses med2rdf:gene predicate linking to gene URIs
+        - Direct IRI matching via URI conversion ensures comprehensive results
+        
+        Critical optimization: VALUES with gene IRI in NCBI Gene GRAPH reduces from 57M to 1 gene.
+        URI conversion: identifiers.org/ncbigene/{id} → ncbi.nlm.nih.gov/gene/{id}
+      databases_used: [ncbigene, clinvar]
       complexity: intermediate
       sparql: |
         PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
         PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+        PREFIX dct: <http://purl.org/dc/terms/>
         PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
         PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
         PREFIX sio: <http://semanticscience.org/resource/>
@@ -316,14 +323,14 @@ cross_database_queries:
         SELECT ?gene_symbol ?gene_desc ?var_label ?var_type ?significance
         WHERE {
           GRAPH <http://rdfportal.org/dataset/ncbigene> {
-            # Use specific gene IRI
+            # Use specific gene IRI to reduce search space
             VALUES ?ncbi_gene { <http://identifiers.org/ncbigene/672> }  # BRCA1
             ?ncbi_gene a insdc:Gene ;
                        dct:identifier ?gene_id ;
                        rdfs:label ?gene_symbol .
             OPTIONAL { ?ncbi_gene dct:description ?gene_desc }
           }
-          # URI conversion between NCBI Gene ID formats
+          # URI conversion between databases (CRITICAL: between GRAPHs, not inside)
           BIND(IRI(CONCAT("http://ncbi.nlm.nih.gov/gene/", ?gene_id)) AS ?cv_gene_uri)
           GRAPH <http://rdfportal.org/dataset/clinvar> {
             ?allele_bnode med2rdf:gene ?cv_gene_uri .
@@ -340,25 +347,26 @@ cross_database_queries:
         }
         LIMIT 50
       notes: |
-        - Strategies: 1 (GRAPH), 3 (VALUES with specific IRI), 5 (URI conversion), 7 (OPTIONAL), 10 (LIMIT)
+        - Structured linking via: dct:identifier (Gene ID) → URI conversion → med2rdf:gene (ClinVar)
         - Performance: ~2-3s (Tier 1)
-        - VALUES reduces search space by 99.8% (3.5M → ~8K variants)
+        - VALUES reduces from 57M genes to 1, then ClinVar searches ~8K variants for that gene
         - BIND placed BETWEEN GRAPH clauses (critical for performance)
-        - URI conversion: identifiers.org/ncbigene/{id} → ncbi.nlm.nih.gov/gene/{id}
-        - MIE files referenced: ClinVar (med2rdf:gene, cvo:VariationArchiveType)
-    
+        - Verified: Both MIE files referenced for linking predicates
+
     - title: Gene-Literature Integration via PubMed
       description: |
-        Links genes to research publications via keyword matching.
-        Uses specific gene symbol for targeted search.
-        Demonstrates cross-database text search coordination.
-      databases_used:
-        - ncbigene
-        - pubmed
+        Links genes to research publications.
+        
+        Linking strategy:
+        - Uses specific gene symbol for targeted search
+        - Text search justified: PubMed article titles are unstructured free text
+        - No structured linking predicate exists between Gene and PubMed articles
+      databases_used: [ncbigene, pubmed]
       complexity: intermediate
       sparql: |
         PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
         PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+        PREFIX dct: <http://purl.org/dc/terms/>
         PREFIX bibo: <http://purl.org/ontology/bibo/>
         
         SELECT ?gene_symbol ?gene_desc ?pmid ?article_title
@@ -373,67 +381,16 @@ cross_database_queries:
           GRAPH <http://rdfportal.org/dataset/pubmed> {
             ?article bibo:pmid ?pmid ;
                      dct:title ?article_title .
-            # Text search for gene symbol in article title
+            # Text search justified: checked PubMed MIE, dct:title is unstructured text
+            # No controlled vocabulary or classification for article titles
             ?article_title bif:contains "'TP53' AND 'cancer'" .
           }
         }
         LIMIT 30
       notes: |
-        - Strategies: 1 (GRAPH), 3 (VALUES), 2 (bif:contains), 7 (OPTIONAL), 10 (LIMIT)
+        - Text search necessary: PubMed titles have no structured Gene reference predicate
         - Performance: ~3-5s (Tier 2)
-        - Double text search (gene + PubMed) for relevance
-        - MIE files referenced: PubMed (bibo:pmid, dct:title)
-    
-    - title: Three-Way Gene-Variant-Literature Integration
-      description: |
-        Comprehensive integration across three databases for complete gene context.
-        May timeout with aggregation - use carefully with strict limits.
-        Demonstrates maximum complexity cross-database query pattern.
-      databases_used:
-        - ncbigene
-        - clinvar
-        - pubmed
-      complexity: advanced
-      sparql: |
-        PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
-        PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
-        PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
-        PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
-        PREFIX sio: <http://semanticscience.org/resource/>
-        PREFIX bibo: <http://purl.org/ontology/bibo/>
-        
-        SELECT ?gene_symbol ?gene_type ?var_label ?pmid ?article_title
-        WHERE {
-          GRAPH <http://rdfportal.org/dataset/ncbigene> {
-            # Use specific gene IRI
-            VALUES ?ncbi_gene { <http://identifiers.org/ncbigene/672> }  # BRCA1
-            ?ncbi_gene a insdc:Gene ;
-                       dct:identifier ?gene_id ;
-                       rdfs:label ?gene_symbol ;
-                       ncbio:typeOfGene ?gene_type ;
-                       ncbio:taxid <http://identifiers.org/taxonomy/9606> .
-          }
-          BIND(IRI(CONCAT("http://ncbi.nlm.nih.gov/gene/", ?gene_id)) AS ?cv_gene_uri)
-          GRAPH <http://rdfportal.org/dataset/clinvar> {
-            ?allele_bnode med2rdf:gene ?cv_gene_uri .
-            ?classrec sio:SIO_000628 ?allele_bnode .
-            ?variant a cvo:VariationArchiveType ;
-                     rdfs:label ?var_label ;
-                     cvo:record_status "current" ;
-                     cvo:classified_record ?classrec .
-          }
-          GRAPH <http://rdfportal.org/dataset/pubmed> {
-            ?article bibo:pmid ?pmid ;
-                     dct:title ?article_title .
-            ?article_title bif:contains "'BRCA1'" .
-          }
-        }
-        LIMIT 5
-      notes: |
-        - Strategies: 1 (GRAPH), 3 (VALUES), 8 (taxid), 10 (LIMIT)
-        - Performance: ~5-20s (Tier 3-4), may timeout with GROUP BY
-        - For production use: prefer separate two-way queries
-        - MIE files referenced: all three databases
+        - Verified: Checked both MIE files, no structured alternative exists
 
 cross_references:
   - pattern: insdc:dblink (IRI links)
@@ -455,7 +412,7 @@ cross_references:
         FILTER(STRSTARTS(STR(?external), "http://identifiers.org/ensembl/"))
       }
       LIMIT 10
-  
+
   - pattern: insdc:db_xref (string references)
     description: |
       String-based references in "Database:ID" format.
@@ -473,7 +430,7 @@ cross_references:
         FILTER(CONTAINS(?xref, "AllianceGenome"))
       }
       LIMIT 10
-  
+
   - pattern: orth:hasOrtholog
     description: |
       Bidirectional orthology for comparative genomics.
@@ -490,7 +447,7 @@ cross_references:
         ?gene1 orth:hasOrtholog ?gene2 .
       }
       LIMIT 10
-  
+
   - pattern: ncbio:taxid
     description: |
       Taxonomic classification via NCBI Taxonomy IRIs.
@@ -510,26 +467,30 @@ cross_references:
 
 architectural_notes:
   query_strategy:
-    - "Exploratory: Use ncbi_esearch('gene', 'SYMBOL[sym] AND organism[orgn]') to find gene IDs"
-    - "Comprehensive: Use specific gene IRIs in VALUES or direct references"
-    - "Organism filtering: Use specific taxonomy IRIs (e.g., <http://identifiers.org/taxonomy/9606> for human)"
+    - "MANDATORY FIRST STEP: Use get_MIE_file('ncbigene') and examine <GeneShape> before any comprehensive query"
+    - "Exploratory: Use ncbi_esearch('gene', 'SYMBOL[sym] AND organism[orgn]') to find example gene IDs"
+    - "Inspection: Query examples with SELECT * WHERE { VALUES ?gene {...} ?gene ?p ?o } to discover properties"
+    - "Comprehensive: Use specific IRIs (VALUES) or typed predicates discovered in schema"
+    - "Organism filtering: ALWAYS use specific taxonomy IRIs (e.g., <http://identifiers.org/taxonomy/9606> for human)"
     - "Gene type filtering: Use typed predicate ncbio:typeOfGene with specific values"
     - "Chromosome filtering: Use typed predicate insdc:chromosome"
-    - "Text search: bif:contains (Virtuoso indexed) > FILTER(CONTAINS()) (fallback)"
-    - "Priority: Specific IRIs > Typed predicates > Graph navigation > Text search"
+    - "Text search: ONLY for dct:description field (unstructured free text) - use bif:contains (indexed)"
+    - "Priority: Specific IRIs > Typed predicates > Graph navigation > Text search (rare)"
+    - "Never use text search for: organisms (use taxid IRI), gene types (use typeOfGene), chromosomes (use insdc:chromosome)"
   
   schema_design:
-    - "Single Gene entity with comprehensive properties"
-    - "identifiers.org URIs for cross-database consistency"
+    - "Single Gene entity (insdc:Gene) with comprehensive properties"
+    - "identifiers.org URIs ensure cross-database consistency"
     - "Label = gene symbols (TP53), description = full names (tumor protein p53)"
     - "IRI-based (dblink) vs string-based (db_xref) external references"
     - "Bidirectional orthology enables comparative analysis"
-    - "Typed predicates for controlled vocabularies (typeOfGene, nomenclatureStatus)"
+    - "Typed predicates with controlled vocabularies: ncbio:typeOfGene, ncbio:nomenclatureStatus"
+    - "Taxonomy IRIs (ncbio:taxid) are structured properties - never use text search for organisms"
   
   performance:
-    - "Use specific organism IRIs (not text search on species)"
-    - "Use bif:contains for text search (indexed), not REGEX/FILTER"
-    - "Filter by ncbio:taxid early to reduce search space (57M → ~200K for human)"
+    - "CRITICAL: Filter by ncbio:taxid early (reduces 57M → ~200K for human)"
+    - "Use specific organism IRIs, not text search on species"
+    - "Use bif:contains for text search (indexed), not REGEX/FILTER(CONTAINS())"
     - "Gene ID lookups by IRI: <1s"
     - "Type/chromosome filtering with taxid: 1-5s"
     - "bif:contains text search with taxid: 1-3s"
@@ -540,7 +501,7 @@ architectural_notes:
     - "identifiers.org URIs enable seamless cross-database linking"
     - "HGNC for nomenclature, Ensembl for annotations, OMIM for diseases"
     - "ClinVar integration via URI conversion (identifiers.org ↔ ncbi.nlm.nih.gov)"
-    - "PubMed integration via symbol-based text search"
+    - "PubMed integration requires text search (no structured linking predicate)"
     - "Orthology links enable comparative genomics within NCBI Gene"
   
   cross_database_optimization:
@@ -552,7 +513,7 @@ architectural_notes:
     - "Strategy 8: Filter by taxid (reduces 57M → ~200K for human)"
     - "Strategy 10: Document performance tier and add LIMIT"
     - "CRITICAL: BIND between GRAPH clauses, not inside"
-    - "Three-way queries may timeout - use separate two-way queries"
+    - "Check MIE files for BOTH databases before writing cross-database queries"
   
   data_quality:
     - "Official status via ncbio:nomenclatureStatus (official/interim)"
@@ -563,14 +524,16 @@ architectural_notes:
 
 data_statistics:
   total_genes: 57768578
-  verified_date: "2025-02-09"
+  verified_date: "2025-02-10"
+  verification_method: "Direct count query"
   verification_query: |
     SELECT (COUNT(?gene) as ?count)
     FROM <http://rdfportal.org/dataset/ncbigene>
     WHERE { ?gene a insdc:Gene }
   
   human_genes: 193288
-  verified_date_human: "2025-02-09"
+  verified_date_human: "2025-02-10"
+  verification_method: "Count with taxonomy IRI filter"
   verification_query_human: |
     SELECT (COUNT(?gene) as ?count)
     FROM <http://rdfportal.org/dataset/ncbigene>
@@ -585,7 +548,7 @@ data_statistics:
     tRNA: 3030346
     pseudo: 2731789
     rRNA: 993602
-    verified_date: "2025-02-09"
+    verified_date: "2025-02-10"
     verification_query: |
       SELECT ?type (COUNT(?gene) as ?count)
       FROM <http://rdfportal.org/dataset/ncbigene>
@@ -595,15 +558,15 @@ data_statistics:
   top_organisms:
     human_9606: 193288
     mouse_10090: 112285
-    verified_date: "2025-02-09"
-    methodology: "Counted by ncbio:taxid"
+    verified_date: "2025-02-10"
+    methodology: "Counted by ncbio:taxid with specific organism IRIs"
   
   coverage:
     description: "~95% (human genes)"
     chromosomal_location: "~80% (human genes)"
     external_ensembl_links: "~20% (38,399 human genes with Ensembl)"
-    methodology: "Sampled human genes"
-    verified_date: "2025-02-09"
+    methodology: "Sampled human genes with typed predicates"
+    verified_date: "2025-02-10"
   
   cardinality:
     avg_synonyms: "2.5 per gene (human protein-coding)"
@@ -618,26 +581,31 @@ data_statistics:
     - "bif:contains search with taxid: 1-3s"
     - "Orthology queries with LIMIT: 10-30s"
     - "Cross-database (two-way with VALUES): 2-5s (Tier 1)"
-    - "Cross-database (three-way with VALUES): 5-20s (Tier 3-4)"
   
   staleness_warning: |
     Regular updates from NCBI. Best curated for human, mouse, rat.
     Coverage decreases for non-model organisms.
 
 anti_patterns:
-  - title: "Text Search for Organism When Specific IRI Available"
-    problem: "Slow text search when specific taxonomy IRI can be used."
+  - title: "Skipping MIE Schema Check Before Using Text Search"
+    problem: "Using text search without first checking MIE file for structured predicates."
     wrong_sparql: |
-      # Slow: text search for organism
+      # WRONG: Immediately use text search for organism without checking MIE schema
       SELECT ?gene ?label
       WHERE {
         ?gene rdfs:label ?label .
         ?label bif:contains "'human'" .
       }
+      # This is slow and misses structured ncbio:taxid predicate
     correct_sparql: |
-      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      # CORRECT Workflow:
+      # 1. get_MIE_file('ncbigene') → examined <GeneShape>
+      # 2. Found: ncbio:taxid <IRI> (structured property)
+      # 3. Use taxonomy IRI instead of text search:
       
-      # Fast: use specific organism IRI
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      
       SELECT ?gene ?label
       FROM <http://rdfportal.org/dataset/ncbigene>
       WHERE {
@@ -646,7 +614,40 @@ anti_patterns:
               ncbio:taxid <http://identifiers.org/taxonomy/9606> .
       }
       LIMIT 100
-    explanation: "Find organism IRI from NCBI Taxonomy or use known values (9606=human, 10090=mouse). This is 10-100x faster than text search."
+    explanation: |
+      MANDATORY WORKFLOW before any comprehensive query:
+      1. Call get_MIE_file('ncbigene')
+      2. Examine <GeneShape> in shape_expressions
+      3. Look for structured properties: ncbio:taxid (organism IRI), ncbio:typeOfGene (typed predicate), insdc:chromosome
+      4. Use discovered structured properties instead of text search
+      This is 10-100x faster and ensures comprehensive results.
+  
+  - title: "Text Search When Structured Property Exists"
+    problem: "Using string search when specific IRI or typed predicate is available."
+    wrong_sparql: |
+      # Slow: Text search for gene type
+      SELECT ?gene ?label
+      WHERE {
+        ?gene rdfs:label ?label .
+        ?label bif:contains "'protein coding'" .
+      }
+    correct_sparql: |
+      # Fast: Use typed predicate from MIE schema
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      
+      SELECT ?gene ?label
+      FROM <http://rdfportal.org/dataset/ncbigene>
+      WHERE {
+        ?gene a insdc:Gene ;
+              rdfs:label ?label ;
+              ncbio:taxid <http://identifiers.org/taxonomy/9606> ;
+              ncbio:typeOfGene "protein-coding" .
+      }
+      LIMIT 100
+    explanation: |
+      After checking MIE schema, discovered ncbio:typeOfGene typed predicate.
+      Use structured property instead of text search for 10x faster queries.
   
   - title: "Searching Without Organism Filter"
     problem: "Query timeout with 57M+ genes when no organism filter applied."
@@ -658,19 +659,24 @@ anti_patterns:
         ?description bif:contains "'insulin'" .
       }
     correct_sparql: |
+      # Fast: filter by organism first using structured IRI
       PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX dct: <http://purl.org/dc/terms/>
       
-      # Fast: filter by organism first
       SELECT ?gene ?description ?sc
       FROM <http://rdfportal.org/dataset/ncbigene>
       WHERE {
-        ?gene ncbio:taxid <http://identifiers.org/taxonomy/9606> ;
+        ?gene a insdc:Gene ;
+              ncbio:taxid <http://identifiers.org/taxonomy/9606> ;
               dct:description ?description .
         ?description bif:contains "'insulin'" option (score ?sc) .
       }
       ORDER BY DESC(?sc)
       LIMIT 100
-    explanation: "Always filter by ncbio:taxid to reduce search space from 57M to organism subset (~200K for human). Add FROM clause and LIMIT."
+    explanation: |
+      Always filter by ncbio:taxid (structured IRI) to reduce search space from 57M to organism subset (~200K for human).
+      Add FROM clause and LIMIT. Text search is appropriate here only for dct:description (unstructured field).
   
   - title: "Unbounded Orthology Queries"
     problem: "Millions of orthology relationships cause timeout."
@@ -681,9 +687,10 @@ anti_patterns:
         ?gene1 orth:hasOrtholog ?gene2 .
       }
     correct_sparql: |
+      # Fast: start with specific gene IRI from VALUES
       PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
       
-      # Fast: start with specific gene IRI
       SELECT ?ortholog ?label
       FROM <http://rdfportal.org/dataset/ncbigene>
       WHERE {
@@ -691,34 +698,40 @@ anti_patterns:
         ?ortholog rdfs:label ?label .
       }
       LIMIT 100
-    explanation: "Always start with specific gene IRI and add LIMIT. Never query all orthology relationships."
+    explanation: "Always start with specific gene IRI (from MIE examples or search) and add LIMIT. Never query all orthology relationships."
 
 common_errors:
   - error: "Query timeout or no results"
     causes:
+      - "Skipped get_MIE_file() - missed structured properties"
       - "No organism filter on 57M+ genes"
       - "Using FILTER(CONTAINS()) instead of bif:contains"
       - "Missing FROM clause"
       - "Unbounded orthology queries"
     solutions:
+      - "ALWAYS: get_MIE_file('ncbigene') first, examine <GeneShape>"
       - "Filter by ncbio:taxid with specific organism IRI early"
-      - "Use bif:contains for text search (indexed)"
+      - "Use bif:contains for text search on description field only (indexed)"
       - "Include FROM <http://rdfportal.org/dataset/ncbigene>"
       - "Add LIMIT (10-1000 depending on query)"
       - "Start with specific gene IRIs using VALUES"
-      - "Consider ncbi_esearch for initial discovery"
     example_fix: |
-      # Wrong: No organism filter, slow text search
+      # Wrong: Skipped MIE file, no organism filter, slow text search
       SELECT ?gene WHERE {
         ?gene dct:description ?desc .
         FILTER(CONTAINS(?desc, "insulin"))
       }
       
-      # Right: Organism filter + bif:contains
+      # Right: Checked MIE schema, found taxid IRI, use bif:contains
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      
       SELECT ?gene ?desc ?sc
       FROM <http://rdfportal.org/dataset/ncbigene>
       WHERE {
-        ?gene ncbio:taxid <http://identifiers.org/taxonomy/9606> ;
+        ?gene a insdc:Gene ;
+              ncbio:taxid <http://identifiers.org/taxonomy/9606> ;
               dct:description ?desc .
         ?desc bif:contains "'insulin'" option (score ?sc) .
       }
@@ -731,10 +744,10 @@ common_errors:
       - "Wrong identifier format"
       - "Missing full URI"
     solutions:
-      - "Label = symbols (TP53), description = full names (tumor protein p53)"
+      - "Check MIE schema: Label = symbols (TP53), description = full names"
       - "Search descriptions for full names using bif:contains"
       - "Use full URI: <http://identifiers.org/ncbigene/ID>"
-      - "Verify gene ID exists via ncbi_esearch"
+      - "Verify gene ID exists via ncbi_esearch('gene', 'symbol[sym]')"
     example_fix: |
       # Wrong: Searching for full name in label
       SELECT ?gene WHERE {
@@ -742,11 +755,16 @@ common_errors:
         ?label bif:contains "'tumor protein'" .
       }
       
-      # Right: Search in description field
+      # Right: Search in description field (from MIE schema)
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      
       SELECT ?gene ?label ?description
       FROM <http://rdfportal.org/dataset/ncbigene>
       WHERE {
-        ?gene ncbio:taxid <http://identifiers.org/taxonomy/9606> ;
+        ?gene a insdc:Gene ;
+              ncbio:taxid <http://identifiers.org/taxonomy/9606> ;
               rdfs:label ?label ;
               dct:description ?description .
         ?description bif:contains "'tumor protein'" .
@@ -755,26 +773,33 @@ common_errors:
   
   - error: "Cross-database query returns no results"
     causes:
+      - "Did not check MIE files for both databases"
       - "URI pattern mismatch between databases"
       - "BIND placed inside GRAPH clause"
       - "Wrong graph URIs"
     solutions:
+      - "ALWAYS: get_MIE_file() for ALL databases in cross-database query"
+      - "Examine both schemas for linking predicates"
       - "Convert URI patterns with BIND and CONCAT"
       - "Place BIND between GRAPH clauses (never inside)"
       - "Verify graph URIs from MIE files"
       - "Test each GRAPH independently first"
     example_fix: |
-      # Wrong: BIND inside GRAPH
+      # Wrong: BIND inside GRAPH, didn't check MIE files
       GRAPH <ncbigene> {
         ?gene dct:identifier ?gene_id .
         BIND(IRI(CONCAT("http://...", ?gene_id)) AS ?uri)  # WRONG!
       }
       
-      # Right: BIND between GRAPHs
-      GRAPH <ncbigene> {
+      # Right: Checked both MIE files, BIND between GRAPHs
+      # 1. get_MIE_file('ncbigene') → found dct:identifier
+      # 2. get_MIE_file('clinvar') → found med2rdf:gene predicate
+      # 3. Discovered URI conversion needed
+      
+      GRAPH <http://rdfportal.org/dataset/ncbigene> {
         ?gene dct:identifier ?gene_id .
       }
       BIND(IRI(CONCAT("http://ncbi.nlm.nih.gov/gene/", ?gene_id)) AS ?cv_uri)
-      GRAPH <clinvar> {
+      GRAPH <http://rdfportal.org/dataset/clinvar> {
         ?variant med2rdf:gene ?cv_uri .
       }

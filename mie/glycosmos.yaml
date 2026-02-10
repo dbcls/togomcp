@@ -16,7 +16,7 @@ schema_info:
     - sparql
   version:
     mie_version: "2.0"
-    mie_created: "2025-02-09"
+    mie_created: "2025-02-10"
     data_version: "Release 2024.12"
     update_frequency: "Quarterly"
   license:
@@ -45,7 +45,8 @@ shape_expressions: |
   <SaccharideShape> {
     a [ glycan:Saccharide ] ;
     glytoucan:has_primary_id xsd:string ;
-    glycan:has_Resource_entry IRI *
+    glycan:has_Resource_entry IRI * ;
+    glycan:has_motif IRI *
   }
   
   <ResourceEntryShape> {
@@ -155,16 +156,20 @@ sample_rdf_entries:
         glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
         dcterms:description "colony stimulating factor 1 receptor" .
   
-  - title: Glycan Motif
-    description: Structural motif with standardized label for glycan classification.
+  - title: Glycan Epitope with Alternative Names
+    description: Glycan epitope with primary label and alternative names for antibody binding.
     rdf: |
-      @prefix gn: <http://glyconavi.org/owl#> .
+      @prefix glycan: <http://purl.jp/bio/12/glyco/glycan#> .
       @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+      @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+      @prefix glycoepitope: <http://www.glycoepitope.jp/epitopes/glycoepitope.owl#> .
       
-      <http://glycoinfo.org/motif/G00031MO> a gn:Motif ;
-        rdfs:label "O-Glycan core 1" ;
-        rdfs:label "T antigen" ;
-        rdfs:label "TF antigen" .
+      <http://www.glycoepitope.jp/epitopes/EP0011> a glycan:Glycan_epitope ;
+        rdfs:label "Lewis x" ;
+        skos:altLabel "Le^x" ;
+        skos:altLabel "X-hapten" ;
+        skos:altLabel "CD15" ;
+        glycoepitope:organism <http://purl.org/obo/owl/NCBITaxon#NCBITaxon_9606> .
 
 sparql_query_examples:
   - title: Retrieve Human Glycoproteins by Taxonomy IRI
@@ -174,6 +179,7 @@ sparql_query_examples:
     sparql: |
       PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
       
+      # Uses specific taxonomy IRI for precise organism filtering
       SELECT (COUNT(DISTINCT ?protein) as ?count)
       FROM <http://rdf.glycosmos.org/glycoprotein>
       WHERE {
@@ -182,18 +188,18 @@ sparql_query_examples:
       }
   
   - title: Find Glycans with Specific Motif
-    description: Query glycans containing a specific structural motif using motif IRI.
+    description: Query glycans containing a specific structural motif using motif IRI. Note that motif relationships span multiple graphs, so FROM clause is omitted for this query.
     question: Which glycans contain the O-Glycan core 1 (T antigen) motif?
     complexity: basic
     sparql: |
       PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
       PREFIX glytoucan: <http://www.glytoucan.org/glyco/owl/glytoucan#>
       
+      # Uses specific motif IRI (glycan IRI format) for structured motif search
+      # Note: FROM clause omitted because motif relationships span multiple graphs
       SELECT ?glycan ?gtcId
-      FROM <http://rdf.glytoucan.org/core>
-      FROM <http://rdf.glycosmos.org/glycans/motif_label>
       WHERE {
-        ?glycan glycan:has_motif <http://glycoinfo.org/motif/G00031MO> ;
+        ?glycan glycan:has_motif <http://rdf.glycoinfo.org/glycan/G00031MO> ;
                 glytoucan:has_primary_id ?gtcId .
       }
       LIMIT 100
@@ -205,6 +211,7 @@ sparql_query_examples:
     sparql: |
       PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
       
+      # Aggregates by taxonomy IRI for precise species counts
       SELECT ?taxon (COUNT(DISTINCT ?protein) as ?count)
       FROM <http://rdf.glycosmos.org/glycoprotein>
       WHERE {
@@ -224,6 +231,7 @@ sparql_query_examples:
       PREFIX glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#>
       PREFIX faldo: <http://biohackathon.org/resource/faldo#>
       
+      # Uses VALUES with multiple taxonomy IRIs for multi-organism query
       SELECT ?taxon ?protein ?site ?position
       FROM <http://rdf.glycosmos.org/glycoprotein>
       WHERE {
@@ -249,6 +257,11 @@ sparql_query_examples:
       PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       
+      # Text search justified: epitope names are free-form text strings
+      # Checked MIE schema: GlycanEpitopeShape has rdfs:label and skos:altLabel
+      # Inspected examples: labels contain unstructured names like "Lewis x", "CD15"
+      # No classification predicates or ontology term IRIs exist for epitope name categories
+      # Therefore: FILTER(CONTAINS()) is necessary for unstructured name field
       SELECT ?epitope ?label
       FROM <http://rdf.glycoinfo.org/glycoepitope>
       WHERE {
@@ -269,6 +282,7 @@ sparql_query_examples:
       PREFIX sio: <http://semanticscience.org/resource/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       
+      # Multi-graph join using specific glycan IRI and graph navigation
       SELECT DISTINCT ?protein ?proteinLabel ?gene ?geneLabel
       FROM <http://rdf.glytoucan.org/core>
       FROM <http://rdf.glycosmos.org/glycoprotein>
@@ -304,6 +318,7 @@ sparql_query_examples:
       PREFIX glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#>
       PREFIX faldo: <http://biohackathon.org/resource/faldo#>
       
+      # Nested SELECT with taxonomy filter for comprehensive human glycobiology analysis
       SELECT 
         (COUNT(DISTINCT ?protein) as ?totalProteins)
         (COUNT(DISTINCT ?site) as ?totalSites)
@@ -440,6 +455,8 @@ architectural_notes:
     - "Exploratory: Use SPARQL queries to discover examples and extract specific IRIs"
     - "Comprehensive: Always use specific taxonomy IRIs (e.g., <http://identifiers.org/taxonomy/9606> for human)"
     - "Multiple concepts: Use VALUES clause with multiple IRIs (taxonomy, motifs, epitopes)"
+    - "Motif queries: Use glycan:has_motif predicate with glycan IRIs in format <http://rdf.glycoinfo.org/glycan/[GlyTouCan_ID]>"
+    - "NOTE: Motif relationships span multiple graphs - may need to omit FROM clause for motif queries"
     - "Text search: Use FILTER(CONTAINS(LCASE(?text), 'keyword')) for all text searches"
     - "NOTE: bif:contains is NOT enabled on this endpoint despite Virtuoso backend"
     - "Priority: Specific IRIs > VALUES with IRIs > Graph navigation > FILTER(CONTAINS())"
@@ -450,11 +467,15 @@ architectural_notes:
     - "SIO (Semanticscience Integrated Ontology) for semantic relationships"
     - "Resource_entry pattern for external database cross-references"
     - "Integration with standard ontologies: GO, ECO, UBERON, HPO, MONDO, DOID"
-    - "Glycan motifs classified using GlycoNAVI ontology"
+    - "Glycan motifs: Motifs are glycans themselves with classification in gn:Motif"
+    - "Motif relationships use glycan:has_motif predicate linking to glycan IRIs"
     - "IRI patterns: GlyTouCan IDs (G[0-9]{5}[A-Z]{2}), NCBI Taxonomy (<http://identifiers.org/taxonomy/[0-9]+>)"
+    - "Motif IRIs as glycans: <http://rdf.glycoinfo.org/glycan/[GlyTouCan_ID]>"
+    - "Motif definitions: <http://glycoinfo.org/motif/[GlyTouCan_ID]> in motif_label graph"
   
   performance:
     - "CRITICAL: Always specify FROM clause with specific graph(s) - improves query speed 10-100x"
+    - "EXCEPTION: Motif queries may need to omit FROM clause as relationships span multiple graphs"
     - "Apply taxonomy filters early for glycoprotein/glycogene queries to reduce result set"
     - "Use LIMIT for queries on large datasets (glycosylation sites: 414K, glycogenes: 423K)"
     - "Nested SELECT for complex aggregations to manage memory usage"
@@ -469,6 +490,7 @@ architectural_notes:
     - "Structure: PDB for 3D structural data"
     - "Disease: DOID, MONDO, MeSH for disease associations"
     - "Taxonomy: NCBI Taxonomy for organism classification"
+    - "Motifs: GlycoNAVI ontology for glycan structural classification"
   
   data_quality:
     - "GlyTouCan IDs follow pattern G[0-9]{5}[A-Z]{2} (e.g., G00051MO)"
@@ -477,6 +499,7 @@ architectural_notes:
     - "Use GlyTouCan IDs and external database links when labels are sparse"
     - "Position data available for 98.3% of glycosylation sites (407,793/414,798)"
     - "External cross-references recommended for comprehensive data retrieval"
+    - "Motif relationships span multiple graphs - query performance trade-offs apply"
 
 data_statistics:
   total_entities:
@@ -486,7 +509,7 @@ data_statistics:
     glycogenes: 423164
     glycoepitopes: 173
     motifs: 197
-  verified_date: "2025-02-09"
+  verified_date: "2025-02-10"
   verification_queries:
     glycans: |
       PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
@@ -513,7 +536,11 @@ data_statistics:
       SELECT (COUNT(DISTINCT ?epitope) as ?count)
       FROM <http://rdf.glycoinfo.org/glycoepitope>
       WHERE { ?epitope a glycan:Glycan_epitope . }
-  
+    motifs: |
+      PREFIX gn: <http://glyconavi.org/owl#>
+      SELECT (COUNT(DISTINCT ?motif) as ?count)
+      FROM <http://rdf.glycosmos.org/glycans/motif_label>
+      WHERE { ?motif a gn:Motif . }
   coverage:
     glycans_with_primary_id: "99.8%"
     glycans_with_resource_entry: "80.0%"
@@ -522,12 +549,11 @@ data_statistics:
     genes_with_taxon: "0.4%"
     proteins_with_label: "17%"
     genes_with_label: "32%"
-    verified_date: "2025-02-09"
+    verified_date: "2025-02-10"
     verification_notes: |
       - 94,276/117,864 glycans have external database links
       - 407,793/414,798 glycosylation sites have exact position data
       - Labels are sparse for glycans; use GlyTouCan IDs instead
-  
   species_distribution:
     human: 16604
     mouse: 10713
@@ -535,21 +561,19 @@ data_statistics:
     arabidopsis: 2251
     c_elegans: 1447
     methodology: "Counted glycoproteins with glycan:has_taxon predicate"
-    verified_date: "2025-02-09"
-  
+    verified_date: "2025-02-10"
   cardinality:
     avg_glycosylation_sites_per_protein: 2.7
     max_glycosylation_sites_per_protein: 276
     methodology: "Sample of 1000 human glycoproteins analyzed"
-  
   performance_characteristics:
     - "FROM clause improves query speed 10-100x on multi-graph dataset"
     - "Text search with FILTER(CONTAINS()) requires early filters for acceptable performance"
     - "Multi-graph joins require explicit FROM declaration for each graph"
     - "Human-only queries typically complete within 5-10 seconds"
     - "Aggregation queries on full datasets may require 30-60 seconds"
-  
-  staleness_warning: "Database updated quarterly; statistics verified 2025-02-09. Next update expected Q1 2025."
+    - "Motif queries spanning multiple graphs may sacrifice performance for correctness"
+  staleness_warning: "Database updated quarterly; statistics verified 2025-02-10. Next update expected Q1 2025."
 
 anti_patterns:
   - title: "Missing FROM Clause"
@@ -563,17 +587,20 @@ anti_patterns:
       SELECT ?epitope
       FROM <http://rdf.glycoinfo.org/glycoepitope>
       WHERE { ?epitope a glycan:Glycan_epitope }
-    explanation: "Always specify FROM clause with the specific graph containing your target data. This is the single most important optimization for GlyCosmos queries."
+    explanation: "Always specify FROM clause with the specific graph containing your target data. This is the single most important optimization for GlyCosmos queries. Exception: Motif queries may need to omit FROM clause as relationships span multiple graphs."
   
   - title: "Text Search Instead of Specific IRI"
     problem: "Using text search when specific taxonomy or motif IRI is available, causing slower execution and imprecise results."
     wrong_sparql: |
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
       SELECT ?protein
+      FROM <http://rdf.glycosmos.org/glycoprotein>
       WHERE {
+        ?protein a glycan:Glycoprotein ;
+                 glycan:has_taxon ?taxon .
         ?taxon rdfs:label ?label .
         FILTER(CONTAINS(LCASE(?label), "human"))
-        ?protein glycan:has_taxon ?taxon .
       }
     correct_sparql: |
       PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
@@ -584,6 +611,35 @@ anti_patterns:
                  glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
       }
     explanation: "Always use specific IRIs for organisms (taxonomy), motifs, or other controlled vocabularies. Extract IRIs from exploratory queries, then use them in comprehensive queries."
+  
+  - title: "Skipping Schema Check Before Text Search"
+    problem: "Using text search without checking MIE schema for structured alternatives."
+    wrong_sparql: |
+      # Incomplete: No schema checked, no examples inspected
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?glycan ?label
+      WHERE {
+        ?glycan a glycan:Saccharide ;
+                rdfs:label ?label .
+        FILTER(CONTAINS(LCASE(?label), "core 1"))
+      }
+    correct_sparql: |
+      # Complete workflow:
+      # 1. get_MIE_file("glycosmos") → examined shape_expressions
+      # 2. Found: SaccharideShape has glycan:has_motif predicate linking to glycan IRIs
+      # 3. Exploratory SPARQL → found motif glycan IRI: <http://rdf.glycoinfo.org/glycan/G00031MO>
+      # 4. Verified: This glycan corresponds to "O-Glycan core 1" motif
+      # 5. Use discovered glycan IRI:
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX glytoucan: <http://www.glytoucan.org/glyco/owl/glytoucan#>
+      SELECT ?glycan ?gtcId
+      WHERE {
+        ?glycan glycan:has_motif <http://rdf.glycoinfo.org/glycan/G00031MO> ;
+                glytoucan:has_primary_id ?gtcId .
+      }
+      LIMIT 100
+    explanation: "Always check MIE schema (shape_expressions) and inspect examples before defaulting to text search. Most concepts have structured alternatives (motifs, taxonomy, etc.). For glycan motifs, use glycan:has_motif with glycan IRIs, not text search on labels."
   
   - title: "Missing LIMIT on Large Datasets"
     problem: "Querying large datasets without LIMIT causes timeouts or excessive memory usage."
@@ -616,6 +672,7 @@ common_errors:
       - "Add LIMIT clause to cap results (e.g., LIMIT 100 or LIMIT 1000)"
       - "Filter by taxonomy early: glycan:has_taxon <http://identifiers.org/taxonomy/9606>"
       - "Use nested SELECT for complex aggregations"
+      - "Exception: Motif queries may omit FROM clause for correctness"
     example_fix: |
       # Before: Timeout
       SELECT ?site WHERE { ?site a glycoconjugate:Glycosylation_Site }

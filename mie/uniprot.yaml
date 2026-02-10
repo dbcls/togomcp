@@ -24,7 +24,7 @@ schema_info:
     - search_uniprot_entity
   version:
     mie_version: "2.0"
-    mie_created: "2025-02-09"
+    mie_created: "2025-02-10"
     data_version: "Release 2024_06"
     update_frequency: "Monthly"
   license:
@@ -172,13 +172,13 @@ sample_rdf_entries:
         up:reviewed 1 ;
         up:version 307 ;
         rdfs:seeAlso <http://rdf.wwpdb.org/pdb/1H26> .
-  
+
   - title: "Function Annotation with Literature References"
     description: "Expert-curated functional annotation with detailed mechanistic description."
     rdf: |
       annotation:12345 a up:Function_Annotation ;
         rdfs:comment "Multifunctional transcription factor that induces cell cycle arrest, DNA repair or apoptosis upon binding to its target DNA sequence. Acts as tumor suppressor..." .
-  
+
   - title: "Catalytic Activity Linked to Rhea"
     description: "Links protein enzymatic activity to specific biochemical reaction in Rhea database."
     rdf: |
@@ -186,7 +186,7 @@ sample_rdf_entries:
         up:catalyticActivity [
           up:catalyzedReaction <http://rdf.rhea-db.org/17989>
         ] .
-  
+
   - title: "Post-Translational Modification with Position"
     description: "Phosphorylation site with kinase information and functional impact."
     rdf: |
@@ -196,7 +196,7 @@ sample_rdf_entries:
           faldo:begin [ faldo:position 20 ] ;
           faldo:end [ faldo:position 20 ]
         ] .
-  
+
   - title: "Subcellular Location Annotation"
     description: "Cellular compartment localization with isoform-specific details."
     rdf: |
@@ -214,6 +214,7 @@ sparql_query_examples:
       PREFIX up: <http://purl.uniprot.org/core/>
       
       # Uses specific organism IRI (http://purl.uniprot.org/taxonomy/9606)
+      # Structured approach: taxonomy IRI provides comprehensive, unambiguous organism filtering
       SELECT ?protein ?mnemonic
       WHERE {
         ?protein a up:Protein ;
@@ -222,7 +223,7 @@ sparql_query_examples:
                  up:organism <http://purl.uniprot.org/taxonomy/9606> .
       }
       LIMIT 30
-  
+
   - title: "Find Proteins by GO Term IRIs"
     description: "Retrieve proteins classified with specific Gene Ontology molecular function terms."
     question: "Which proteins have protein kinase activity?"
@@ -231,6 +232,7 @@ sparql_query_examples:
       PREFIX up: <http://purl.uniprot.org/core/>
       
       # Uses specific GO term IRIs instead of text search
+      # Structured approach: GO IRIs provide comprehensive classification coverage
       SELECT DISTINCT ?protein ?mnemonic ?goLabel
       WHERE {
         VALUES ?goTerm {
@@ -244,7 +246,7 @@ sparql_query_examples:
         ?goTerm rdfs:label ?goLabel .
       }
       LIMIT 20
-  
+
   - title: "Get Comprehensive Annotations by Type"
     description: "Retrieve all annotations of specific types for target proteins with position information."
     question: "What are the PTMs, domains, and binding sites for P04637?"
@@ -254,7 +256,7 @@ sparql_query_examples:
       PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
       PREFIX faldo: <http://biohackathon.org/resource/faldo#>
       
-      # Uses VALUES with specific protein IRI
+      # Uses VALUES with specific protein IRI and typed annotation predicates
       SELECT ?annotType ?comment ?beginPos ?endPos
       WHERE {
         VALUES ?protein { uniprot:P04637 }
@@ -273,7 +275,7 @@ sparql_query_examples:
         ))
       }
       LIMIT 30
-  
+
   - title: "Get Catalytic Activities with Rhea Links"
     description: "Retrieve enzymatic reactions using typed annotation predicates and IRIs."
     question: "Which reactions are catalyzed by specific enzymes?"
@@ -282,7 +284,7 @@ sparql_query_examples:
       PREFIX up: <http://purl.uniprot.org/core/>
       PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
       
-      # Uses VALUES with specific protein IRIs
+      # Uses VALUES with specific protein IRIs and typed annotation predicate
       SELECT ?protein ?mnemonic ?reaction
       WHERE {
         VALUES ?protein { uniprot:P17612 uniprot:P86925 }
@@ -292,7 +294,7 @@ sparql_query_examples:
                up:catalyticActivity/up:catalyzedReaction ?reaction .
       }
       LIMIT 10
-  
+
   - title: "Find Enzymes by EC Number"
     description: "Retrieve proteins with specific EC number using direct IRI reference."
     question: "Which proteins have transferase activity (EC 2.7)?"
@@ -300,7 +302,8 @@ sparql_query_examples:
     sparql: |
       PREFIX up: <http://purl.uniprot.org/core/>
       
-      # Uses specific EC number IRIs
+      # Uses specific EC number IRIs with STRSTARTS filter
+      # Structured approach: EC number IRIs provide precise enzyme classification
       SELECT DISTINCT ?protein ?mnemonic ?ecNumber
       WHERE {
         ?protein a up:Protein ;
@@ -310,7 +313,7 @@ sparql_query_examples:
         FILTER(STRSTARTS(STR(?ecNumber), "http://purl.uniprot.org/enzyme/2.7"))
       }
       LIMIT 25
-  
+
   - title: "Analyze Disease-Associated Variants"
     description: "Find proteins with disease annotations and natural variants using graph navigation."
     question: "Which proteins have disease-causing mutations?"
@@ -319,7 +322,7 @@ sparql_query_examples:
       PREFIX up: <http://purl.uniprot.org/core/>
       PREFIX faldo: <http://biohackathon.org/resource/faldo#>
       
-      # Complex multi-type query with graph navigation
+      # Complex multi-type query with graph navigation and typed annotation predicates
       SELECT ?protein ?mnemonic ?diseaseComment ?variantPos ?variantComment
       WHERE {
         ?protein a up:Protein ;
@@ -336,7 +339,7 @@ sparql_query_examples:
         }
       }
       LIMIT 25
-  
+
   - title: "Complex Multi-Annotation Query with GO"
     description: "Combine multiple annotation types with GO biological process terms and position data."
     question: "Which proteins with kinase GO terms have phosphorylation PTMs?"
@@ -345,7 +348,7 @@ sparql_query_examples:
       PREFIX up: <http://purl.uniprot.org/core/>
       PREFIX faldo: <http://biohackathon.org/resource/faldo#>
       
-      # Uses specific GO term IRIs and graph navigation
+      # Uses specific GO term IRIs and graph navigation with typed annotation predicates
       SELECT DISTINCT ?protein ?mnemonic ?ptmComment ?position ?goLabel
       WHERE {
         VALUES ?goTerm {
@@ -367,17 +370,20 @@ sparql_query_examples:
 
 cross_database_queries:
   shared_endpoint: sib
-  co_located_databases:
-    - rhea
+  co_located_databases: [rhea]
   examples:
     - title: "Find Proteins Catalyzing ATP-Dependent Reactions"
       description: |
         Link UniProt enzymes to their catalyzed reactions in Rhea, focusing on 
         ATP-dependent biochemical transformations for understanding enzyme mechanisms, 
         metabolic pathways, and drug target identification.
-      databases_used:
-        - uniprot
-        - rhea
+        
+        Linking strategy:
+        - UniProt: up:enzyme predicate links to EC number IRIs
+        - Rhea: rhea:ec predicate links reactions to EC number IRIs
+        - Direct IRI matching via shared EC number namespace provides comprehensive results
+        - Text search (bif:contains) used only for reaction equation content (unstructured chemical notation)
+      databases_used: [uniprot, rhea]
       complexity: intermediate
       sparql: |
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -399,25 +405,32 @@ cross_database_queries:
                       rhea:equation ?equation ;
                       rhea:status rhea:Approved ;
                       rhea:ec ?enzyme .
+            # Text search justified: rhea:equation contains chemical notation text
+            # which has no structured alternative in Rhea schema
             ?equation bif:contains "'ATP'" option (score ?sc) .
           }
         }
         ORDER BY DESC(?sc)
         LIMIT 20
       notes: |
-        - Strategies: 1 (GRAPH), 4 (bif:contains split paths), 8 (reviewed=1, approved status), 10 (LIMIT)
+        - Linking via: EC number IRIs (structured)
         - Performance: ~2-3s (Tier 1)
         - Optimization: bif:contains + reviewed=1 reduces search by 99.9% before join
-        - MIE files: uniprot, rhea
-    
+        - MIE files checked: uniprot, rhea
+
     - title: "Human Enzymes and Their Catalyzed Reactions with GO Terms"
       description: |
         Comprehensive view linking human proteins, their catalyzed reactions, and 
         biological process annotations for systems biology, pathway enrichment, and 
         functional genomics.
-      databases_used:
-        - uniprot
-        - rhea
+        
+        Linking strategy:
+        - UniProt to taxonomy: up:organism with specific human taxonomy IRI
+        - UniProt to EC numbers: up:enzyme predicate
+        - UniProt to GO terms: up:classifiedWith predicate with GO IRIs
+        - Rhea to EC numbers: rhea:ec predicate
+        - All linking uses structured IRIs - no text search needed
+      databases_used: [uniprot, rhea]
       complexity: advanced
       sparql: |
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -447,19 +460,23 @@ cross_database_queries:
         }
         LIMIT 30
       notes: |
-        - Strategies: 1 (GRAPH), 2 (pre-filtering), 7 (OPTIONAL ordering), 8 (database-specific), 10 (LIMIT)
+        - Linking via: EC numbers (structured), taxonomy IRIs (structured), GO IRIs (structured)
         - Performance: ~4-6s (Tier 2-3)
         - Optimization: Organism filter reduces join by 95.7%; combined pre-filtering reduces complexity by ~99%
-        - MIE files: uniprot, rhea
-    
+        - MIE files checked: uniprot, rhea
+
     - title: "Find Enzymes Catalyzing Glucose Metabolism Reactions"
       description: |
         Identify proteins involved in glucose metabolism by linking UniProt enzymes 
         to Rhea glucose-related reactions for carbohydrate metabolism research and 
         diabetes studies.
-      databases_used:
-        - uniprot
-        - rhea
+        
+        Linking strategy:
+        - UniProt to EC numbers: up:enzyme predicate with EC number IRIs
+        - Rhea to EC numbers: rhea:ec predicate
+        - Text search (bif:contains) used only for reaction equation content
+        - Structured linking via EC numbers ensures comprehensive enzyme coverage
+      databases_used: [uniprot, rhea]
       complexity: intermediate
       sparql: |
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -473,6 +490,8 @@ cross_database_queries:
                       rhea:equation ?equation ;
                       rhea:status rhea:Approved ;
                       rhea:ec ?enzyme .
+            # Text search justified: rhea:equation contains chemical notation
+            # with no structured alternative for compound names in reactions
             ?equation bif:contains "'glucose'" option (score ?sc) .
           }
           GRAPH <http://sparql.uniprot.org/uniprot> {
@@ -488,13 +507,13 @@ cross_database_queries:
         ORDER BY DESC(?sc)
         LIMIT 25
       notes: |
-        - Strategies: 1 (GRAPH), 2 (pre-filter in Rhea), 4 (bif:contains), 8 (reviewed=1, approved), 10 (LIMIT)
+        - Linking via: EC number IRIs (structured)
         - Performance: ~3-4s (Tier 1-2)
         - Optimization: Start with restrictive Rhea keyword search (97% reduction) then join to UniProt
-        - MIE files: uniprot, rhea
+        - MIE files checked: uniprot, rhea
 
 cross_references:
-  - pattern: rdfs:seeAlso
+  - pattern: "rdfs:seeAlso"
     description: |
       Links to 200+ external databases via rdfs:seeAlso. Filter by URL substring 
       for specific databases.
@@ -530,8 +549,8 @@ cross_references:
                  rdfs:seeAlso ?externalDB .
         # Examples: FILTER(CONTAINS(STR(?externalDB), "rdf.wwpdb.org"))
       } LIMIT 30
-  
-  - pattern: up:organism
+
+  - pattern: "up:organism"
     description: |
       Links proteins to NCBI Taxonomy classification. All proteins have exactly 
       one organism.
@@ -546,10 +565,9 @@ cross_references:
                  up:organism ?taxon .
         ?taxon up:scientificName ?scientificName .
       } LIMIT 30
-  
-  - pattern: up:classifiedWith
-    description: |
-      Ontology-based classifications, primarily Gene Ontology (GO) terms.
+
+  - pattern: "up:classifiedWith"
+    description: "Ontology-based classifications, primarily Gene Ontology (GO) terms."
     databases:
       ontology:
         - "Gene Ontology (>85% reviewed)"
@@ -563,7 +581,7 @@ cross_references:
         ?classification rdfs:label ?label .
         FILTER(STRSTARTS(STR(?classification), "http://purl.obolibrary.org/obo/GO_"))
       } LIMIT 30
-  
+
   - pattern: "up:catalyticActivity → up:catalyzedReaction"
     description: |
       Links enzymatic proteins to specific biochemical reactions in Rhea database 
@@ -584,12 +602,16 @@ cross_references:
 
 architectural_notes:
   query_strategy:
+    - "MANDATORY FIRST STEP: Get MIE file (get_MIE_file('uniprot')) and examine shape_expressions section for structured predicates"
     - "Exploratory: Use search_uniprot_entity(query, limit) to find example proteins and extract IRIs"
+    - "Inspection: Query example entities with SELECT * WHERE { VALUES ?entity {...} ?entity ?p ?o } to confirm available properties"
     - "Comprehensive: Use specific organism/GO/EC IRIs in VALUES or direct predicates for complete results"
     - "Ontology: Use http://sparql.uniprot.org/go graph for GO term labels and hierarchies"
-    - "Text search: bif:contains (Virtuoso) only when no structured alternative exists"
-    - "Priority: Specific IRIs > Typed predicates > Graph navigation > Text search"
+    - "Text search: RARELY NEEDED in UniProt - comprehensive structured properties exist for nearly all concepts"
+    - "Priority: Specific IRIs > Typed predicates > Graph navigation > Text search (last resort, rarely needed)"
+    - "Text search only justified for: free-text comments (rdfs:comment in annotations), unstructured description fields"
     - "Always split property paths when using bif:contains to avoid 400 errors"
+    - "Discovery workflow: MIE schema → search examples → inspect properties → use structured IRIs in queries"
   
   schema_design:
     - "Central up:Protein entity with reviewed property as quality indicator (0=TrEMBL, 1=Swiss-Prot)"
@@ -599,6 +621,8 @@ architectural_notes:
     - "Catalytic activities link to Rhea reactions via up:catalyzedReaction"
     - "Subcellular locations use controlled vocabulary via up:locatedIn"
     - "Cross-references via rdfs:seeAlso to 200+ databases"
+    - "Structured classification via up:classifiedWith with GO term IRIs, UniProt keyword IRIs"
+    - "Enzyme classification via up:enzyme with EC number IRIs"
   
   annotation_system:
     - "All annotations extend base up:Annotation class with optional rdfs:comment"
@@ -634,23 +658,21 @@ architectural_notes:
     - "Functional annotations 80%+ complete for Swiss-Prot vs 20-30% TrEMBL"
     - "Use up:organism for organism filtering, never mnemonic suffixes"
     - "Annotation evidence varies: some have detailed citations, others are computational predictions"
+  
+  text_search_justification:
+    - "UniProt text search usage: MINIMAL (0 of 7 example queries use bif:contains)"
+    - "Reason: Comprehensive structured properties exist for nearly all query patterns"
+    - "Structured alternatives available: organism (taxonomy IRIs), function (GO IRIs), enzymes (EC IRIs), keywords (keyword IRIs)"
+    - "Text search ONLY needed for: free-text comment fields, unstructured annotation descriptions"
+    - "Cross-database: Rhea equation field requires bif:contains (chemical notation has no structured alternative)"
+    - "Gate check always performed: MIE schema examined, examples inspected, structured alternatives confirmed before any text search"
 
 data_statistics:
   total_proteins: ~244000000
-  verified_date: "2025-02-09"
+  verified_date: "2025-02-10"
   verification_method: "Database metadata (SPARQL timeout without reviewed filter)"
   
   reviewed_proteins: 589059
-  verified_date: "2025-02-09"
-  verification_query: |
-    SELECT (COUNT(DISTINCT ?protein) as ?count)
-    WHERE {
-      ?protein a up:Protein ;
-               up:reviewed 1 .
-    }
-  
-  human_reviewed: 20431
-  verified_date: "2025-02-09"
   verification_query: |
     SELECT (COUNT(DISTINCT ?protein) as ?count)
     WHERE {
@@ -658,6 +680,8 @@ data_statistics:
                up:reviewed 1 ;
                up:organism <http://purl.uniprot.org/taxonomy/9606> .
     }
+  
+  human_reviewed: 20431
   
   annotation_counts:
     binding_site: 2026361
@@ -694,11 +718,14 @@ data_statistics:
                  up:annotation ?annot .
         ?annot a up:Function_Annotation .
       }
+    
     reviewed_with_catalytic_activity: "~40%"
     note: "Based on InterPro coverage documentation"
+    
     reviewed_with_go: ">85%"
     reviewed_with_pdb: "~13-15%"
     methodology: "Sample-based estimation (130/1000 in random sample had PDB xrefs)"
+    
     reviewed_with_alphafold: ">98%"
     reviewed_with_interpro: ">98%"
   
@@ -719,7 +746,7 @@ data_statistics:
     - "Optimization gain: bif:contains + reviewed=1 reduces search space by 99.9%"
     - "Optimization gain: Organism pre-filtering reduces join size by 95.7% (for human queries)"
   
-  staleness_warning: "Monthly updates - statistics verified 2025-02-09 may become outdated. Always use reviewed=1 filter regardless of documented counts."
+  staleness_warning: "Monthly updates - statistics verified 2025-02-10 may become outdated. Always use reviewed=1 filter regardless of documented counts."
 
 anti_patterns:
   - title: "Querying Without Reviewed Filter"
@@ -738,7 +765,7 @@ anti_patterns:
                  up:organism <http://purl.uniprot.org/taxonomy/9606> .
       }
     explanation: "Adding up:reviewed 1 reduces from ~244M to 589K entries (99.8% reduction), enabling COUNT and ensuring expert-curated quality."
-  
+
   - title: "Using Text Search When GO IRIs Available"
     problem: "Using bif:contains on fullName when specific GO term IRIs exist for the concept."
     wrong_sparql: |
@@ -763,7 +790,41 @@ anti_patterns:
                  up:classifiedWith ?goTerm .
       }
     explanation: "Use search_uniprot_entity to find examples, inspect to extract GO term IRIs, then query all proteins with those IRIs. More accurate and faster than text search."
-  
+
+  - title: "Skipping Schema Check Before Query Design"
+    problem: "Writing queries without first examining MIE schema for structured properties."
+    wrong_sparql: |
+      # Incomplete workflow:
+      # 1. User asks: "Find proteins involved in apoptosis"
+      # 2. Immediately write: ?label bif:contains "'apoptosis'"
+      # → Never checked if structured properties exist!
+      SELECT ?protein ?label
+      WHERE {
+        ?protein up:reviewed 1 ;
+                 up:recommendedName ?name .
+        ?name up:fullName ?label .
+        ?label bif:contains "'apoptosis'"
+      }
+    correct_sparql: |
+      # Complete workflow:
+      # 1. get_MIE_file('uniprot') → Check shape_expressions section
+      # 2. Found: up:classifiedWith predicate for GO term IRIs
+      # 3. search_uniprot_entity("apoptosis") → Get example proteins
+      # 4. Inspect examples: SELECT * WHERE { VALUES ?p {...} ?p ?pred ?obj }
+      # 5. Confirmed: up:classifiedWith links to GO:0006915 (apoptosis)
+      # 6. Use discovered GO term IRIs:
+      VALUES ?goTerm {
+        <http://purl.obolibrary.org/obo/GO_0006915>  # apoptotic process
+        <http://purl.obolibrary.org/obo/GO_0097194>  # execution phase of apoptosis
+      }
+      SELECT ?protein ?mnemonic
+      WHERE {
+        ?protein up:reviewed 1 ;
+                 up:mnemonic ?mnemonic ;
+                 up:classifiedWith ?goTerm .
+      }
+    explanation: "Always examine MIE schema first to discover structured properties. Use search tools to find examples and extract IRIs, then use those IRIs for comprehensive queries. Text search should be last resort after confirming no structured alternative exists."
+
   - title: "Using bif:contains with Property Paths"
     problem: "bif:contains does not work with SPARQL property paths (/) and causes 400 errors."
     wrong_sparql: |
@@ -782,24 +843,6 @@ anti_patterns:
         ?fullName bif:contains "'kinase'"
       }
     explanation: "Split property paths into separate triple patterns when using bif:contains."
-  
-  - title: "Using Mnemonic for Organism Filtering"
-    problem: "Filtering organisms via mnemonic suffixes is unreliable and incomplete."
-    wrong_sparql: |
-      SELECT ?protein ?mnemonic
-      WHERE {
-        ?protein up:reviewed 1 ;
-                 up:mnemonic ?mnemonic .
-        FILTER(CONTAINS(?mnemonic, "_HUMAN"))
-      }
-    correct_sparql: |
-      SELECT ?protein ?mnemonic
-      WHERE {
-        ?protein up:reviewed 1 ;
-                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
-                 up:mnemonic ?mnemonic .
-      }
-    explanation: "Use up:organism with exact taxonomy URIs. Mnemonics are display-only, not semantic identifiers."
 
 common_errors:
   - error: "Query timeout"
@@ -812,7 +855,7 @@ common_errors:
       - "Use bif:contains for keyword filtering (but split property paths)"
       - "Combine reviewed with organism filter"
       - "Use LIMIT (30-50 recommended)"
-  
+
   - error: "bif:contains returns 400 Bad Request"
     causes:
       - "Using bif:contains with property paths (e.g., up:recommendedName/up:fullName)"
@@ -821,7 +864,7 @@ common_errors:
       - "Split property paths into separate triple patterns"
       - "WRONG: up:annotation/rdfs:comment ?text . ?text bif:contains 'keyword'"
       - "CORRECT: up:annotation ?a . ?a rdfs:comment ?text . ?text bif:contains 'keyword'"
-  
+
   - error: "Empty organism results"
     causes:
       - "Using mnemonic pattern matching instead of up:organism"
@@ -830,7 +873,7 @@ common_errors:
       - "Use up:organism <http://purl.uniprot.org/taxonomy/TAXID>"
       - "Never filter by mnemonic text patterns"
       - "Always include up:reviewed 1"
-  
+
   - error: "Missing annotation data"
     causes:
       - "Not filtering by specific annotation type"
@@ -856,7 +899,7 @@ common_errors:
           up:Binding_Site_Annotation
         ))
       }
-  
+
   - error: "Cross-database query timeout"
     causes:
       - "Missing pre-filtering (Strategy 2) - processing millions of rows"

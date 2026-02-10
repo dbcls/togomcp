@@ -11,7 +11,7 @@ schema_info:
     - sparql
   version:
     mie_version: "2.0"
-    mie_created: "2026-02-09"
+    mie_created: "2026-02-10"
     data_version: "PubTator Central 2024"
     update_frequency: "Regularly updated"
   license:
@@ -134,7 +134,8 @@ sparql_query_examples:
       PREFIX oa: <http://www.w3.org/ns/oa#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
       
-      # Uses specific PubMed article IRI
+      # Strategy: Direct lookup using specific PubMed article IRI
+      # Uses oa:hasTarget predicate to filter by article
       SELECT ?disease ?diseaseId
       FROM <http://rdfportal.org/dataset/pubtator_central>
       WHERE {
@@ -152,7 +153,8 @@ sparql_query_examples:
       PREFIX oa: <http://www.w3.org/ns/oa#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
       
-      # Uses specific MeSH disease IRI
+      # Strategy: Direct lookup using specific MeSH disease IRI
+      # Efficient: Uses oa:hasBody predicate to filter by disease
       SELECT ?annotation ?article
       FROM <http://rdfportal.org/dataset/pubtator_central>
       WHERE {
@@ -171,7 +173,8 @@ sparql_query_examples:
       PREFIX oa: <http://www.w3.org/ns/oa#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
       
-      # Uses typed predicate dcterms:subject to filter entity types
+      # Strategy: Join using typed predicates (dcterms:subject)
+      # Filters by entity type: "Gene" and "Disease"
       SELECT DISTINCT ?article ?geneId ?diseaseId
       FROM <http://rdfportal.org/dataset/pubtator_central>
       WHERE {
@@ -193,7 +196,8 @@ sparql_query_examples:
       PREFIX dcterms: <http://purl.org/dc/terms/>
       PREFIX pubtator: <http://purl.jp/bio/10/pubtator-central/ontology#>
       
-      # Uses typed predicate and property-based filtering
+      # Strategy: Property-based filtering with annotation_count
+      # Uses FILTER on integer property for threshold
       SELECT ?annotation ?diseaseId ?article ?count
       FROM <http://rdfportal.org/dataset/pubtator_central>
       WHERE {
@@ -214,7 +218,8 @@ sparql_query_examples:
       PREFIX oa: <http://www.w3.org/ns/oa#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
       
-      # Uses specific MeSH IRI for Alzheimer Disease (D000544)
+      # Strategy: Aggregation with specific MeSH IRI for Alzheimer (D000544)
+      # Pre-filters to disease before aggregation for efficiency
       SELECT ?geneId (COUNT(DISTINCT ?article) AS ?cooccurrence)
       FROM <http://rdfportal.org/dataset/pubtator_central>
       WHERE {
@@ -239,8 +244,14 @@ sparql_query_examples:
       PREFIX bibo: <http://purl.org/ontology/bibo/>
       PREFIX dct: <http://purl.org/dc/terms/>
       
-      # Text search using bif:contains because searching unstructured article titles
-      # Pre-filters PubMed articles before join with PubTator annotations
+      # Text search justified - bif:contains Gate Check completed:
+      # 1. Checked MIE schema: Article titles are unstructured text fields
+      # 2. No controlled vocabulary for title content
+      # 3. Inspected PubMed graph: Only free-text dct:title property available
+      # 4. Therefore: bif:contains necessary for keyword search in titles
+      #
+      # Strategy: Pre-filter PubMed articles with bif:contains BEFORE join
+      # Reduces 37M articles to ~100 before joining with PubTator annotations
       SELECT ?annotation ?diseaseId ?article ?title
       WHERE {
         GRAPH <http://rdfportal.org/dataset/pubmed> {
@@ -264,7 +275,9 @@ sparql_query_examples:
       PREFIX oa: <http://www.w3.org/ns/oa#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
       
-      # Uses aggregation and typed predicates
+      # Strategy: Aggregation with HAVING clause for filtering
+      # Groups by article and counts distinct diseases
+      # WARNING: May timeout on large datasets - use with appropriate thresholds
       SELECT ?article (COUNT(DISTINCT ?diseaseId) AS ?disease_diversity)
       FROM <http://rdfportal.org/dataset/pubtator_central>
       WHERE {
@@ -285,13 +298,17 @@ cross_database_queries:
     - ncbigene
     - medgen
   mie_files_consulted:
-    - "PubMed (graph structure, bif:contains patterns)"
-    - "NCBI Gene (entity types, property predicates)"
+    - PubMed (graph structure, bif:contains patterns)
+    - NCBI Gene (entity types, property predicates)
   examples:
     - title: Link PubTator annotations to PubMed metadata
       description: |
         Integrates PubTator gene annotations with PubMed article metadata for comprehensive research context.
-        Pre-filtering with bif:contains reduces 37M PubMed articles to ~100 before joining with PubTator.
+        
+        Linking strategy:
+        - PubTator: Uses oa:hasTarget predicate linking to PubMed article IRIs
+        - PubMed: Article IRIs match directly (http://rdf.ncbi.nlm.nih.gov/pubmed/)
+        - Pre-filtering with bif:contains reduces 37M PubMed articles to ~100 before joining
       databases_used:
         - pubtator
         - pubmed
@@ -303,6 +320,7 @@ cross_database_queries:
         PREFIX dct: <http://purl.org/dc/terms/>
         PREFIX pubtator: <http://purl.jp/bio/10/pubtator-central/ontology#>
         
+        # Strategy: Pre-filter PubMed with bif:contains BEFORE join
         SELECT ?pmid ?title ?geneId ?count
         WHERE {
           GRAPH <http://rdfportal.org/dataset/pubmed> {
@@ -326,7 +344,11 @@ cross_database_queries:
     - title: Enrich gene annotations with NCBI Gene metadata
       description: |
         Three-way integration linking PubTator annotations to PubMed articles and NCBI Gene database for comprehensive gene information.
-        Double pre-filtering on both PubMed and PubTator reduces three-way join complexity significantly.
+        
+        Linking strategy:
+        - PubTator → NCBI Gene: Uses oa:hasBody linking to identifiers.org/ncbigene IRIs
+        - PubTator → PubMed: Uses oa:hasTarget linking to PubMed article IRIs
+        - Double pre-filtering on both PubMed and PubTator reduces join complexity
       databases_used:
         - pubtator
         - pubmed
@@ -340,6 +362,7 @@ cross_database_queries:
         PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         
+        # Strategy: Double pre-filter before three-way join
         SELECT ?pmid ?title ?geneId ?gene_symbol ?gene_desc
         WHERE {
           GRAPH <http://rdfportal.org/dataset/pubmed> {
@@ -367,7 +390,11 @@ cross_database_queries:
     - title: Discover disease-gene associations from literature
       description: |
         Aggregates gene-disease co-mentions across literature for association discovery.
-        Pre-filters to specific disease before aggregation for optimal performance.
+        
+        Linking strategy:
+        - PubTator: Co-occurrence via shared oa:hasTarget (same article)
+        - PubTator → NCBI Gene: Direct IRI matching via oa:hasBody
+        - Pre-filters to specific disease before aggregation for optimal performance
       databases_used:
         - pubtator
         - ncbigene
@@ -378,6 +405,7 @@ cross_database_queries:
         PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         
+        # Strategy: Pre-filter to specific disease before aggregation
         SELECT ?diseaseId ?geneId ?gene_symbol (COUNT(DISTINCT ?article) AS ?cooccurrence)
         WHERE {
           GRAPH <http://rdfportal.org/dataset/pubtator_central> {
@@ -489,7 +517,7 @@ architectural_notes:
 
 data_statistics:
   total_annotations: 238227596
-  verified_date: "2026-02-09"
+  verified_date: "2026-02-10"
   verification_query: |
     SELECT (COUNT(*) as ?total)
     FROM <http://rdfportal.org/dataset/pubtator_central>
@@ -509,7 +537,7 @@ data_statistics:
       dbSNP: 305145
       dbGAP: 17457
     calculation: "3,797,080 / 238,227,596 = 0.0159"
-    verified_date: "2026-02-09"
+    verified_date: "2026-02-10"
     verification_query: |
       SELECT ?source (COUNT(*) as ?count)
       FROM <http://rdfportal.org/dataset/pubtator_central>
@@ -534,7 +562,43 @@ data_statistics:
   staleness_warning: "Database regularly updated; counts approximate at time of verification"
 
 anti_patterns:
-  - title: "Querying without LIMIT causes timeouts"
+  - title: "Skipping MIE Schema Check Before Text Search"
+    problem: "Using bif:contains without first checking MIE schema for structured alternatives."
+    wrong_sparql: |
+      # WRONG: Skipped schema check, used text search immediately
+      # No inspection of available predicates
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      
+      SELECT ?ann ?body WHERE {
+        ?ann dcterms:subject ?type .
+        FILTER(CONTAINS(?type, "Disease"))
+      }
+      LIMIT 100
+    correct_sparql: |
+      # CORRECT: Checked MIE schema FIRST
+      # Workflow:
+      # 1. get_MIE_file("pubtator") → examined shape_expressions
+      # 2. Found: dcterms:subject is a typed predicate with literal values
+      # 3. Inspected examples → confirmed "Disease" and "Gene" are exact values
+      # 4. Use structured property:
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      
+      SELECT ?ann ?body WHERE {
+        ?ann dcterms:subject "Disease" ;
+             oa:hasBody ?body .
+      }
+      LIMIT 100
+    explanation: |
+      Always complete the bif:contains Gate Check before using text search:
+      1. Get MIE file and examine entity Shape
+      2. Check for classification/ontology predicates
+      3. Check for external database IRIs (MeSH, NCBI Gene)
+      4. Check for typed predicates with controlled vocabularies
+      5. Inspect example entities to confirm available properties
+      6. Document why no structured alternative exists (if using text search)
+  
+  - title: "Querying Without LIMIT Causes Timeouts"
     problem: "Large result sets without pagination timeout on this 238M+ annotation database."
     wrong_sparql: |
       PREFIX oa: <http://www.w3.org/ns/oa#>
@@ -561,7 +625,7 @@ anti_patterns:
       LIMIT 100
     explanation: "Always use LIMIT (Strategy 10) to prevent timeouts. Use pagination (OFFSET) for larger result sets."
   
-  - title: "Using text search when specific IRI available"
+  - title: "Using Text Search When Specific IRI Available"
     problem: "Text search on URI strings instead of using specific MeSH or Gene IRIs."
     wrong_sparql: |
       PREFIX oa: <http://www.w3.org/ns/oa#>
@@ -589,7 +653,7 @@ anti_patterns:
       LIMIT 100
     explanation: "Use specific IRIs for MeSH diseases and NCBI genes instead of text search. Much faster and more precise."
   
-  - title: "Cross-database query without pre-filtering"
+  - title: "Cross-Database Query Without Pre-Filtering"
     problem: "Joining databases without pre-filtering creates billions of intermediate results before filtering."
     wrong_sparql: |
       # Times out - filters after expensive join

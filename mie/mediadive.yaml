@@ -13,8 +13,8 @@ schema_info:
   kw_search_tools:
     - sparql
   version:
-    mie_version: "1.6"
-    mie_created: "2025-02-09"
+    mie_version: "2.0"
+    mie_created: "2025-02-10"
     data_version: "Current"
     update_frequency: "Regular"
   license:
@@ -324,13 +324,7 @@ sparql_query_examples:
 
 cross_database_queries:
   shared_endpoint: primary
-  co_located_databases:
-    - bacdive
-    - taxonomy
-    - mesh
-    - go
-    - mondo
-    - nando
+  co_located_databases: [bacdive, taxonomy, mesh, go, mondo, nando]
   mie_files_consulted:
     - bacdive (for graph URI, strain schema, BacDiveID linking, genus filters, oxygen phenotypes)
     - taxonomy (for verification of cross-reference patterns)
@@ -345,9 +339,7 @@ cross_database_queries:
         Query Strategy: Uses specific IRI pattern (Strategy 1: GRAPH clauses) and pre-filtering 
         (Strategy 2: genus filter) to reduce 97K BacDive strains to ~5K before cross-database join, 
         achieving 95% reduction and sub-3s query time.
-      databases_used:
-        - bacdive
-        - mediadive
+      databases_used: [bacdive, mediadive]
       complexity: intermediate
       sparql: |
         PREFIX schema: <https://purl.dsmz.de/schema/>
@@ -400,9 +392,7 @@ cross_database_queries:
         
         Query Strategy: Combines text search (unavoidable for species names) with typed predicates 
         (growthTemperature) and pre-filtering to achieve efficient cross-database integration.
-      databases_used:
-        - bacdive
-        - mediadive
+      databases_used: [bacdive, mediadive]
       complexity: intermediate
       sparql: |
         PREFIX schema: <https://purl.dsmz.de/schema/>
@@ -452,9 +442,7 @@ cross_database_queries:
         
         Query Strategy: Uses structured phenotype data from BacDive (OxygenTolerance class with 
         hasOxygenTolerance predicate) combined with MediaDive's hierarchical recipe structure.
-      databases_used:
-        - bacdive
-        - mediadive
+      databases_used: [bacdive, mediadive]
       complexity: advanced
       sparql: |
         PREFIX schema: <https://purl.dsmz.de/schema/>
@@ -611,7 +599,7 @@ architectural_notes:
 
 data_statistics:
   total_media: 3289
-  verified_date: "2025-02-09"
+  verified_date: "2025-02-10"
   verification_query: |
     SELECT (COUNT(DISTINCT ?medium) as ?count)
     FROM <http://rdfportal.org/dataset/mediadive>
@@ -639,7 +627,7 @@ data_statistics:
     strains_bacdive: "73%"
     calculation_bacdive: "33,226 strains with BacDiveID / 45,685 total"
     media_pdf_links: "99%"
-    verified_date: "2025-02-09"
+    verified_date: "2025-02-10"
     verification_query: |
       SELECT 
         (COUNT(DISTINCT ?ingredient) as ?total)
@@ -671,8 +659,8 @@ data_statistics:
       - "Microalgae: 1,289 strains"
 
 anti_patterns:
-  - title: "Text Search When Specific IRI Available"
-    problem: "Using text search on labels when specific ingredient/solution/strain IRIs exist."
+  - title: Text Search When Specific IRI Available
+    problem: Using text search on labels when specific ingredient/solution/strain IRIs exist.
     wrong_sparql: |
       # Slow and ambiguous: Text search for glucose
       SELECT ?medium ?label
@@ -696,8 +684,8 @@ anti_patterns:
       Use specific IRIs from VALUES or direct <IRI> references instead of text search on labels.
       Common IRIs: ingredient/16 (yeast extract), ingredient/5 (glucose), solution/2423 (SL-10).
   
-  - title: "FILTER(CONTAINS()) Instead of bif:contains"
-    problem: "Using unindexed FILTER(CONTAINS()) when indexed bif:contains is available on Virtuoso."
+  - title: FILTER(CONTAINS()) Instead of bif:contains
+    problem: Using unindexed FILTER(CONTAINS()) when indexed bif:contains is available on Virtuoso.
     wrong_sparql: |
       # Slow: Unindexed text search
       SELECT ?medium ?label
@@ -719,8 +707,8 @@ anti_patterns:
       Use bif:contains for 10-100x speedup over FILTER(CONTAINS()) on text fields.
       Only use text search when no specific IRI or typed predicate exists.
   
-  - title: "Text Search for Taxonomic Groups"
-    problem: "Using text search when taxonomic groups are controlled values with typed predicates."
+  - title: Text Search for Taxonomic Groups
+    problem: Using text search when taxonomic groups are controlled values with typed predicates.
     wrong_sparql: |
       # Inefficient: Text search on species
       SELECT ?strain ?species
@@ -739,8 +727,8 @@ anti_patterns:
       Taxonomic groups (Bacterium, Fungus, Yeast, Microalgae, Archaeon, etc.) are controlled
       values in schema:belongsTaxGroup. Use this typed predicate instead of text search.
   
-  - title: "Missing OPTIONAL for Partial Coverage Cross-References"
-    problem: "Requiring all cross-references filters out most ingredients due to partial coverage."
+  - title: Missing OPTIONAL for Partial Coverage Cross-References
+    problem: Requiring all cross-references filters out most ingredients due to partial coverage.
     wrong_sparql: |
       # Returns almost nothing (only ingredients with ALL identifiers)
       SELECT ?ingredient ?chebi ?kegg ?pubchem
@@ -765,8 +753,8 @@ anti_patterns:
       database property, then FILTER for at least one. Strategy 7: Place OPTIONAL blocks after 
       required patterns for efficiency.
   
-  - title: "Unbounded Composition Queries"
-    problem: "Querying 72K+ compositions without medium filter causes timeout."
+  - title: Unbounded Composition Queries
+    problem: Querying 72K+ compositions without medium filter causes timeout.
     wrong_sparql: |
       # Timeout: Processes all 72K+ compositions
       SELECT ?composition ?medium ?ingredient ?gPerL
@@ -794,56 +782,56 @@ anti_patterns:
       Strategy 10: Always LIMIT.
 
 common_errors:
-  - error: "Not using available IRIs"
+  - error: Not using available IRIs
     causes:
-      - "Defaulting to text search without checking for specific IRIs"
-      - "Not aware of common ingredient/solution/strain IRI patterns"
+      - Defaulting to text search without checking for specific IRIs
+      - Not aware of common ingredient/solution/strain IRI patterns
     solutions:
       - "Check for common ingredients: ingredient/16 (yeast extract), ingredient/5 (glucose), ingredient/43 (NaCl)"
       - "Check for solutions: solution/2423 (SL-10), solution/2439 (SL-7)"
       - "Check for strains: strain/1 (DSM 1), strain/9 (DSM 10 - B. subtilis)"
-      - "Use VALUES with multiple IRIs for nutrient combinations or media comparisons"
+      - Use VALUES with multiple IRIs for nutrient combinations or media comparisons
       - "Exploratory workflow: Find one example with text search → extract IRI → use IRI in comprehensive query"
   
-  - error: "Keyword search failures or slow performance"
+  - error: Keyword search failures or slow performance
     causes:
-      - "Using FILTER(CONTAINS()) instead of bif:contains"
-      - "Not wrapping keywords in single quotes for bif:contains"
-      - "Using text search when typed predicates exist (belongsTaxGroup, isComplex)"
+      - Using FILTER(CONTAINS()) instead of bif:contains
+      - Not wrapping keywords in single quotes for bif:contains
+      - Using text search when typed predicates exist (belongsTaxGroup, isComplex)
     solutions:
       - "Use bif:contains for full-text search on Virtuoso: ?label bif:contains \"'keyword'\""
       - "Boolean operators: ?label bif:contains \"'term1' OR 'term2'\""
       - "Check if typed predicate exists first: belongsTaxGroup, isComplex, hasOxygenRequirement"
       - "Check if specific IRI exists: ingredient, solution, strain IRIs"
-      - "Text search only for truly unstructured fields (rdfs:label, species names, phenotypes)"
+      - Text search only for truly unstructured fields (rdfs:label, species names, phenotypes)
   
-  - error: "Empty cross-reference results"
+  - error: Empty cross-reference results
     causes:
-      - "Requiring all database identifiers (AND logic) with partial coverage"
-      - "Not using OPTIONAL for properties with <100% coverage"
+      - Requiring all database identifiers (AND logic) with partial coverage
+      - Not using OPTIONAL for properties with <100% coverage
     solutions:
-      - "Use OPTIONAL for each cross-reference property"
+      - Use OPTIONAL for each cross-reference property
       - "Filter with OR logic: FILTER(BOUND(?chebi) || BOUND(?kegg))"
       - "Remember coverage: GMO 58%, CAS 59%, ChEBI 46%, PubChem 18%, KEGG 13%"
       - "Strategy 7: Place OPTIONAL blocks after required patterns"
   
-  - error: "Query timeout on composition or growth condition queries"
+  - error: Query timeout on composition or growth condition queries
     causes:
-      - "No medium filter with 72K+ compositions or 68K+ growth conditions"
-      - "Missing LIMIT clause"
-      - "Not using specific medium IRI(s) for filtering"
+      - No medium filter with 72K+ compositions or 68K+ growth conditions
+      - Missing LIMIT clause
+      - Not using specific medium IRI(s) for filtering
     solutions:
       - "Strategy 2: Filter by specific medium IRI(s) FIRST using VALUES or FILTER"
-      - "Use VALUES with 2-5 specific medium IRIs for multi-medium queries"
-      - "Always add LIMIT 30-50 for unbounded queries (Strategy 10)"
-      - "Pre-filtering reduces 72K compositions to ~22 per medium (avg 21.9)"
+      - Use VALUES with 2-5 specific medium IRIs for multi-medium queries
+      - Always add LIMIT 30-50 for unbounded queries (Strategy 10)
+      - Pre-filtering reduces 72K compositions to ~22 per medium (avg 21.9)
   
-  - error: "Cross-database query timeout (MediaDive + BacDive)"
+  - error: Cross-database query timeout (MediaDive + BacDive)
     causes:
-      - "Missing genus/species/phenotype pre-filtering in BacDive GRAPH (Strategy 2)"
-      - "Joining 97K BacDive strains to 33K MediaDive strains without filtering"
-      - "Missing explicit GRAPH clauses (Strategy 1)"
-      - "Missing LIMIT clause (Strategy 10)"
+      - Missing genus/species/phenotype pre-filtering in BacDive GRAPH (Strategy 2)
+      - Joining 97K BacDive strains to 33K MediaDive strains without filtering
+      - Missing explicit GRAPH clauses (Strategy 1)
+      - Missing LIMIT clause (Strategy 10)
     solutions:
       - "Strategy 1: Use explicit GRAPH <uri> clauses for each database"
       - "Strategy 2: Apply restrictive FILTER within BacDive GRAPH clause BEFORE join"
@@ -852,5 +840,5 @@ common_errors:
       - "  • Species keyword filter (CONTAINS on species): 99.8% reduction (97K → 200 strains)"
       - "  • Phenotype filter (oxygen tolerance): 64% reduction (97K → 35K strains)"
       - "Strategy 10: Add LIMIT to every cross-database query"
-      - "Test with 'Bacillus' genus (lower BacDiveIDs) instead of 'Escherichia' (high IDs >130K)"
+      - Test with 'Bacillus' genus (lower BacDiveIDs) instead of 'Escherichia' (high IDs >130K)
       - "Expected performance: Genus filter 2-3s (Tier 1), phenotype filter 5-8s (Tier 2)"
