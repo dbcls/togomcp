@@ -14,8 +14,8 @@ schema_info:
   kw_search_tools:
     - search_pdb_entity
   version:
-    mie_version: "3.0"
-    mie_created: "2025-02-09"
+    mie_version: "3.1"
+    mie_created: "2025-02-10"
     data_version: "Current"
     update_frequency: "Weekly"
   license:
@@ -283,7 +283,10 @@ sparql_query_examples:
         ?kw pdbx:struct_keywords.pdbx_keywords ?keywords .
         ?struct pdbx:struct.title ?title .
         
-        # Text search only because keywords are unstructured free text
+        # Text search justified: Checked MIE schema - struct_keywords.pdbx_keywords
+        # contains unstructured free-text with no controlled vocabulary.
+        # No classification predicates available for keyword content.
+        # Virtuoso backend: could use bif:contains, but FILTER works reliably.
         FILTER(CONTAINS(LCASE(?keywords), "kinase"))
       }
       LIMIT 20
@@ -350,6 +353,25 @@ sparql_query_examples:
       ORDER BY xsd:decimal(?resolution)
       LIMIT 20
 
+cross_database_queries:
+  shared_endpoint: none
+  co_located_databases: []
+  note: |
+    PDB operates on a standalone endpoint (https://rdfportal.org/pdb/sparql) and does not
+    share an endpoint with other databases in the RDF Portal ecosystem. Therefore, direct
+    cross-database SPARQL queries within a single query are not applicable.
+    
+    However, PDB data can be integrated with other databases using:
+    1. UniProt cross-references via pdbx:link_to_uniprot IRIs
+    2. Taxonomy links via pdbx:link_to_taxonomy_source IRIs  
+    3. Sequential queries: Query PDB for identifiers, then use togoid_convertId or
+       query target databases separately with the extracted IDs.
+    
+    Example workflow for cross-database integration:
+    - Query PDB for structures → extract UniProt accessions
+    - Use togoid_convertId("P12345,P67890", "uniprot,chembl_target")
+    - Query ChEMBL separately with converted IDs
+
 cross_references:
   - pattern: pdbx:struct_ref
     description: |
@@ -385,12 +407,12 @@ cross_references:
   - pattern: pdbx:link_to_taxonomy_source
     description: |
       Direct taxonomy IRIs linking to UniProt taxonomy database.
-      Use for organism-specific queries. Human (9606) is most common (~81K entries).
+      Use for organism-specific queries. Human (9606) is most common (~81K entity sources).
     databases:
       Taxonomy:
-        - "Human (9606): 81K entries"
-        - "Mouse (10090): 10K entries"
-        - "E. coli K-12 (83333): 5K entries"
+        - "Human (9606): 81K entity_src_gen records (58K unique entries)"
+        - "Mouse (10090): 10K entity_src_gen records"
+        - "E. coli K-12 (83333): 5K entity_src_gen records"
     sparql: |
       PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
       
@@ -435,6 +457,7 @@ cross_references:
 
 architectural_notes:
   query_strategy:
+    - "MANDATORY: Get MIE file FIRST before writing comprehensive queries"
     - "Exploratory: Use search_pdb_entity(db='pdb', query='keyword') to find examples"
     - "Comprehensive: Use specific experimental method strings (e.g., 'X-RAY DIFFRACTION')"
     - "Organism filtering: Use taxonomy IRIs (e.g., <http://purl.uniprot.org/taxonomy/9606> for human)"
@@ -442,6 +465,7 @@ architectural_notes:
     - "Software queries: Use controlled classification values ('refinement', 'data collection', etc.)"
     - "Text search: Use FILTER(CONTAINS(LCASE())) for keywords/titles (unstructured free text)"
     - "Numeric comparisons: Always use xsd:decimal() for resolution, R-factors, cell parameters"
+    - "Priority: Specific IRIs/values > VALUES > Controlled predicates > Text search (rare)"
   
   schema_design:
     - "PDBx/mmCIF ontology with Category-Item design pattern"
@@ -474,7 +498,8 @@ architectural_notes:
 
 data_statistics:
   total_entries: 245833
-  verified_date: "2025-02-09"
+  verified_date: "2025-02-10"
+  verification_method: "Direct count of pdbx:datablock instances"
   verification_query: |
     SELECT (COUNT(DISTINCT ?entry) as ?total)
     FROM <http://rdfportal.org/dataset/pdbj>
@@ -485,11 +510,12 @@ data_statistics:
     em: "6.1% (15,032 structures)"
     nmr: "5.7% (13,902 structures)"
     verification_query: |
-      SELECT ?method (COUNT(?exptl) as ?count)
+      SELECT ?method (COUNT(DISTINCT ?entry) as ?count)
       FROM <http://rdfportal.org/dataset/pdbj>
       WHERE {
-        ?exptl a pdbx:exptl ;
-               pdbx:exptl.method ?method .
+        ?entry a pdbx:datablock ;
+               pdbx:has_exptlCategory/pdbx:has_exptl ?exptl .
+        ?exptl pdbx:exptl.method ?method .
       }
       GROUP BY ?method
   
@@ -501,16 +527,26 @@ data_statistics:
   
   coverage:
     uniprot_references: "77.1% (189,677 entries have UNP references)"
-    taxonomy_links: "33.1% (81,392 entries have taxonomy IRIs)"
+    taxonomy_links: "33.1% (81,392 entity_src_gen records across 58,331 unique entries)"
     keywords: "83.1% (204,307 entries have keywords)"
     verification_methodology: |
       UNP refs: 352,114 struct_ref with db_name='UNP' across entries
-      Taxonomy: 81,392 entries with link_to_taxonomy_source (human is most common)
+      Taxonomy: 81,392 entity_src_gen records with link_to_taxonomy_source
+      (Note: Multiple entity_src_gen per entry possible, so count > unique entries)
   
   organism_distribution:
-    human_9606: "81,392 entries"
-    mouse_10090: "10,208 entries"
-    ecoli_562: "9,906 entries"
+    human_9606: "81,392 entity_src_gen records (58,331 unique entries)"
+    mouse_10090: "10,208 entity_src_gen records"
+    ecoli_562: "9,906 entity_src_gen records"
+    verification_query: |
+      # Count unique entries with human taxonomy
+      SELECT (COUNT(DISTINCT ?entry) as ?count)
+      FROM <http://rdfportal.org/dataset/pdbj>
+      WHERE {
+        ?entry a pdbx:datablock ;
+               pdbx:has_entity_src_genCategory/pdbx:has_entity_src_gen ?src .
+        ?src pdbx:link_to_taxonomy_source <http://purl.uniprot.org/taxonomy/9606> .
+      }
   
   performance_characteristics:
     - "Specific IRI/value queries: <1s"
@@ -519,9 +555,44 @@ data_statistics:
     - "Cross-category joins: 2-5s"
     - "Complex analytical queries: 5-15s"
   
-  staleness_warning: "Database updates weekly; statistics accurate as of 2025-02-09"
+  staleness_warning: "Database updates weekly; statistics accurate as of 2025-02-10"
 
 anti_patterns:
+  - title: "Skipping Schema Check Before Using Text Search"
+    problem: "Using FILTER(CONTAINS()) without first checking MIE schema for structured alternatives."
+    wrong_sparql: |
+      # Wrong: No schema checked, immediately uses text search
+      SELECT (COUNT(?entry) as ?count)
+      WHERE {
+        ?entry a pdbx:datablock ;
+               pdbx:has_exptlCategory/pdbx:has_exptl ?exptl .
+        ?exptl pdbx:exptl.method ?method .
+        FILTER(CONTAINS(?method, "X-RAY"))
+      }
+    correct_sparql: |
+      # Correct workflow:
+      # 1. get_MIE_file("pdb") → examined shape_expressions
+      # 2. Found: pdbx:exptl.method has controlled vocabulary
+      # 3. search_pdb_entity to verify values: "X-RAY DIFFRACTION"
+      # 4. Use exact controlled value:
+      SELECT (COUNT(DISTINCT ?entry) as ?count)
+      FROM <http://rdfportal.org/dataset/pdbj>
+      WHERE {
+        ?entry a pdbx:datablock ;
+               pdbx:has_exptlCategory/pdbx:has_exptl ?exptl .
+        ?exptl pdbx:exptl.method "X-RAY DIFFRACTION" .
+      }
+    explanation: |
+      MANDATORY workflow for comprehensive queries:
+      1. Get MIE file and examine entity Shape
+      2. Check for: controlled values, taxonomy IRIs, classification predicates
+      3. Use search tools to find example entities if needed
+      4. Inspect examples to confirm available structured properties
+      5. Only use text search if NO structured alternative exists
+      
+      In PDB: experimental methods, entity types, software classifications, organism taxonomy
+      are all structured - text search should be RARE (only for keywords/titles).
+  
   - title: "Text Search When Specific Value Exists"
     problem: "Using FILTER(CONTAINS()) for experimental method when controlled value available."
     wrong_sparql: |

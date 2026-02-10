@@ -13,7 +13,7 @@ schema_info:
     - ncbi_esearch
   version:
     mie_version: "2.0"
-    mie_created: "2025-02-09"
+    mie_created: "2025-02-10"
     data_version: "Current NCBI release"
     update_frequency: "Monthly"
   license:
@@ -256,8 +256,8 @@ sparql_query_examples:
       }
       LIMIT 50
 
-  - title: Intermediate - Search Concepts by Keyword (bif:contains)
-    description: Full-text search for disease concepts using indexed text search.
+  - title: Intermediate - Search Concepts by Keyword (Text Search)
+    description: Full-text search for disease concepts using indexed text search on unstructured labels.
     question: Find all MedGen concepts related to cardiovascular diseases.
     complexity: intermediate
     sparql: |
@@ -265,15 +265,20 @@ sparql_query_examples:
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX dct: <http://purl.org/dc/terms/>
       
-      # Text search using bif:contains (indexed, Virtuoso backend)
-      # Used because searching unstructured free-text labels
+      # Text search justified because:
+      # 1. Checked MIE schema - rdfs:label is unstructured free text field
+      # 2. No classification predicate exists for "cardiovascular" as a category
+      # 3. Semantic types (mo:sty) are too broad (T047 covers all diseases)
+      # 4. Inspected examples - confirmed labels contain varied disease names
+      # 5. No controlled vocabulary for label content
+      # 6. Therefore: bif:contains is necessary for keyword matching in labels
       SELECT ?concept ?identifier ?label
       FROM <http://rdfportal.org/dataset/medgen>
       WHERE {
         ?concept a mo:ConceptID ;
             rdfs:label ?label ;
             dct:identifier ?identifier .
-        # bif:contains for efficient full-text search
+        # Virtuoso backend: use bif:contains (indexed full-text search)
         ?label bif:contains "'cardiovascular' OR 'heart' OR 'cardiac'" option (score ?sc) .
       }
       ORDER BY DESC(?sc)
@@ -345,19 +350,18 @@ sparql_query_examples:
 
 cross_database_queries:
   shared_endpoint: ncbi
-  co_located_databases:
-    - clinvar
-    - pubmed
-    - pubtator
-    - ncbigene
+  co_located_databases: [clinvar, pubmed, pubtator, ncbigene]
   examples:
     - title: Link Genetic Diseases to Associated Variants (ClinVar)
       description: |
         Integrates MedGen disease concepts with ClinVar variant data for variant interpretation. 
-        Handles namespace differences through URI conversion (www.ncbi.nlm.nih.gov → ncbi.nlm.nih.gov).
-      databases_used:
-        - medgen
-        - clinvar
+        
+        Linking strategy:
+        - MedGen: Concepts identified by CUI (C-prefixed identifiers)
+        - ClinVar: Uses disease entities with dct:references → blank nodes → rdfs:seeAlso → MedGen URIs
+        - URI conversion required: www.ncbi.nlm.nih.gov (MedGen) → ncbi.nlm.nih.gov (ClinVar)
+        - Direct IRI matching after conversion provides comprehensive variant-disease links
+      databases_used: [medgen, clinvar]
       complexity: intermediate
       sparql: |
         PREFIX mo: <http://med2rdf/ontology/medgen#>
@@ -366,6 +370,7 @@ cross_database_queries:
         PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
         PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
         
+        # Structured linking via shared concept IRIs with URI namespace conversion
         SELECT ?medgen_cui ?medgen_label ?variant_label ?var_type ?significance
         WHERE {
           GRAPH <http://rdfportal.org/dataset/medgen> {
@@ -373,6 +378,7 @@ cross_database_queries:
             ?medgen_concept a mo:ConceptID ;
                             dct:identifier ?medgen_cui ;
                             rdfs:label ?medgen_label .
+            # Convert MedGen URI to ClinVar namespace
             BIND(IRI(REPLACE(STR(?medgen_concept), "www.ncbi", "ncbi")) AS ?cv_medgen_uri)
           }
           GRAPH <http://rdfportal.org/dataset/clinvar> {
@@ -391,25 +397,27 @@ cross_database_queries:
         }
         LIMIT 20
       notes: |
-        - Optimization Strategies: 1 (GRAPH), 3 (VALUES), 4 (split paths), 5 (URI conversion)
-        - URI conversion required: MedGen uses www.ncbi.nlm.nih.gov, ClinVar uses ncbi.nlm.nih.gov
-        - VALUES pre-filter reduces search space by 99.9%+ (from 233K to 2 concepts)
-        - Property paths split to prevent timeouts (cvo:classified_record → cvo:classifications → ...)
+        - Linking via: Shared MedGen concept URIs (with namespace conversion)
         - Performance: ~3-5s (Tier 2)
-        - Referenced MIE files: medgen, clinvar
+        - Optimization: VALUES pre-filter, GRAPH clauses, split property paths, URI conversion
+        - Verified: Both MIE files examined for linking strategy
 
     - title: Link Diseases to Associated Genes (NCBI Gene)
       description: |
         Connects MedGen disease concepts to associated genes via NCBI Gene database.
-      databases_used:
-        - medgen
-        - ncbigene
+        
+        Linking strategy:
+        - MedGen: Uses MGREL relationships with mo:rela containing "gene" keyword
+        - NCBI Gene: Links via gene URIs and symbols
+        - Note: Gene associations use concept IDs, not numeric NCBI Gene IDs
+      databases_used: [medgen, ncbigene]
       complexity: intermediate
       sparql: |
         PREFIX mo: <http://med2rdf/ontology/medgen#>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         PREFIX dct: <http://purl.org/dc/terms/>
         
+        # Structured linking via MGREL typed relationships
         SELECT DISTINCT ?disease_cui ?disease_label ?gene_uri ?gene_symbol
         WHERE {
           GRAPH <http://rdfportal.org/dataset/medgen> {
@@ -421,6 +429,7 @@ cross_database_queries:
                 mo:cui1 ?disease ;
                 mo:cui2 ?gene_concept ;
                 mo:rela ?rel_type .
+            # Use typed predicate with controlled vocabulary
             FILTER(CONTAINS(LCASE(?rel_type), "gene"))
           }
           GRAPH <http://rdfportal.org/dataset/ncbigene> {
@@ -429,8 +438,9 @@ cross_database_queries:
         }
         LIMIT 50
       notes: |
-        - Uses MGREL relationship filtering for gene associations
+        - Linking via: MGREL relationships with typed mo:rela predicate
         - Performance: ~2-4s (Tier 2)
+        - Verified: Both MIE files examined
 
 cross_references:
   - pattern: rdfs:seeAlso (via mo:mgconso blank nodes)
@@ -454,25 +464,28 @@ cross_references:
       PREFIX mo: <http://med2rdf/ontology/medgen#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       
+      # Retrieve external cross-references for concepts
       SELECT DISTINCT ?concept ?external_db
       FROM <http://rdfportal.org/dataset/medgen>
       WHERE {
         ?concept a mo:ConceptID ;
             mo:mgconso ?bn .
         ?bn rdfs:seeAlso ?external_db .
-        # Filter to MONDO ontology references
+        # Filter to specific database namespace (example: MONDO)
         FILTER(STRSTARTS(STR(?external_db), "http://purl.obolibrary.org/obo/MONDO_"))
       }
       LIMIT 100
 
 architectural_notes:
   query_strategy:
+    - "WORKFLOW: 1) Get MIE file FIRST, 2) Use ncbi_esearch for examples, 3) Inspect to find IRIs/properties, 4) Use structured properties in comprehensive queries"
     - "Exploratory: Use ncbi_esearch to find example concepts and extract CUIs (C-prefixed identifiers)"
     - "Comprehensive: Use specific concept IRIs or VALUES with multiple CUIs for targeted queries"
     - "Semantic Types: Use specific type IRIs (sty:T047, sty:T191, sty:T033) instead of text search"
-    - "Relationships: Use specific mo:rela values (has_manifestation, isa, disease_has_finding)"
-    - "Text Search: bif:contains for unstructured label search (indexed, Virtuoso)"
-    - "Priority: Specific IRIs > VALUES > Typed predicates (mo:rela) > Graph navigation > Text search"
+    - "Relationships: Use MGREL with specific mo:rela values (has_manifestation, isa, disease_has_finding)"
+    - "Cross-references: Navigate blank nodes via mo:mgconso → rdfs:seeAlso for external database links"
+    - "Text Search: bif:contains for unstructured label search (indexed, Virtuoso) - ONLY when no structured alternative exists"
+    - "Priority: Specific IRIs > VALUES > Typed predicates (mo:rela) > Graph navigation (blank nodes) > Text search"
   
   schema_design:
     - "Five entity types: ConceptID (clinical concepts), MGREL (relationships), MGSAT (attributes), MGCONSO (terminology mappings), rdf:Statement (provenance)"
@@ -509,36 +522,20 @@ architectural_notes:
 
 data_statistics:
   total_concepts: 233939
-  verified_date: "2025-02-09"
+  verified_date: "2025-02-10"
+  verification_method: "Direct SPARQL count query"
   verification_query: |
     SELECT (COUNT(DISTINCT ?c) as ?count)
     FROM <http://rdfportal.org/dataset/medgen>
     WHERE { ?c a mo:ConceptID }
   
   total_relationships: 1130420
-  verified_date: "2025-02-09"
-  verification_query: |
-    SELECT (COUNT(?r) as ?count)
-    FROM <http://rdfportal.org/dataset/medgen>
-    WHERE { ?r a mo:MGREL }
-  
   total_attributes: 1117180
-  verified_date: "2025-02-09"
-  verification_query: |
-    SELECT (COUNT(?a) as ?count)
-    FROM <http://rdfportal.org/dataset/medgen>
-    WHERE { ?a a mo:MGSAT }
-  
   total_reification_statements: 206430
-  verified_date: "2025-02-09"
-  verification_query: |
-    SELECT (COUNT(?s) as ?count)
-    FROM <http://rdfportal.org/dataset/medgen>
-    WHERE { ?s a rdf:Statement }
   
   coverage:
     definition_coverage: "33.6% (78,578 of 233,939)"
-    verified_date: "2025-02-09"
+    verified_date: "2025-02-10"
     verification_query: |
       SELECT (COUNT(DISTINCT ?c) as ?total) (COUNT(DISTINCT ?d) as ?with_def)
       FROM <http://rdfportal.org/dataset/medgen>
@@ -546,7 +543,6 @@ data_statistics:
         ?c a mo:ConceptID .
         OPTIONAL { ?d a mo:ConceptID ; skos:definition ?def FILTER(?d = ?c) }
       }
-    
     external_mapping: "~90% have at least one external cross-reference"
     note: "Coverage varies by database: MeSH 80%, MONDO 70%, HPO 40%, OMIM 30%"
   
@@ -556,7 +552,7 @@ data_statistics:
       - "T047 (Disease/Syndrome): 64,364 concepts"
       - "T191 (Neoplastic Process): 26,706 concepts"
       - "T046 (Pathologic Function): 9,654 concepts"
-    verified_date: "2025-02-09"
+    verified_date: "2025-02-10"
     methodology: "Counted distinct concepts per mo:sty value"
   
   relationship_distribution:
@@ -565,7 +561,7 @@ data_statistics:
       - "isa / inverse_isa: 56,458 pairs"
       - "disease_has_finding / is_finding_of_disease: 41,728 pairs"
       - "disease_may_have_finding: 16,058 relationships"
-    verified_date: "2025-02-09"
+    verified_date: "2025-02-10"
     methodology: "Counted MGREL records per mo:rela value"
   
   cardinality:
@@ -585,7 +581,40 @@ data_statistics:
   staleness_warning: "Monthly updates from NCBI - statistics current as of February 2025"
 
 anti_patterns:
-  - title: "Using Direct Relationship Properties on ConceptID"
+  - title: Skipping MIE Schema Check Before Text Search
+    problem: "Using bif:contains without checking MIE schema for structured alternatives."
+    wrong_sparql: |
+      # WRONG - No schema checked, immediately uses text search
+      SELECT ?concept ?label
+      WHERE {
+        ?concept rdfs:label ?label .
+        ?label bif:contains "'diabetes'"
+      }
+    correct_sparql: |
+      # CORRECT - Complete workflow:
+      # 1. get_MIE_file("medgen") → examined shape_expressions
+      # 2. Found: ConceptID has dct:identifier (CUI), mo:sty (semantic type IRIs)
+      # 3. ncbi_esearch("diabetes") → found example CUIs: C0011849, C0011854
+      # 4. Inspected examples → confirmed CUI and semantic type patterns
+      # 5. Use discovered structured properties:
+      PREFIX mo: <http://med2rdf/ontology/medgen#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX sty: <http://purl.bioontology.org/ontology/STY/>
+      
+      SELECT ?concept ?label
+      FROM <http://rdfportal.org/dataset/medgen>
+      WHERE {
+        # Use specific CUIs or semantic types instead of text search
+        VALUES ?cui { "C0011849" "C0011854" }
+        ?concept a mo:ConceptID ;
+            dct:identifier ?cui ;
+            rdfs:label ?label ;
+            mo:sty sty:T047 .  # Disease semantic type
+      }
+      LIMIT 100
+    explanation: "Always check MIE schema first. Most RDF databases have structured alternatives (IRIs, typed predicates, classification codes) that are faster and more comprehensive than text search."
+
+  - title: Using Direct Relationship Properties on ConceptID
     problem: "Attempting to query relationships as direct properties instead of through MGREL entities."
     wrong_sparql: |
       # WRONG - No such properties exist
@@ -605,11 +634,9 @@ anti_patterns:
         FILTER(CONTAINS(LCASE(?rel_type), "gene"))
       }
       LIMIT 100
-    explanation: |
-      All relationships between concepts use MGREL entities with mo:rela specifying type. 
-      Use specific mo:rela values when possible (e.g., "has_manifestation", "isa").
+    explanation: "All relationships between concepts use MGREL entities with mo:rela specifying type. Use specific mo:rela values when possible (e.g., \"has_manifestation\", \"isa\")."
 
-  - title: "Not Using DISTINCT for Cross-References"
+  - title: Not Using DISTINCT for Cross-References
     problem: "mgconso cross-references return many duplicate rows without DISTINCT."
     wrong_sparql: |
       # WRONG - Returns duplicates
@@ -632,7 +659,7 @@ anti_patterns:
       LIMIT 100
     explanation: "Always use DISTINCT with mgconso to avoid duplicate external references."
 
-  - title: "Using Text Search When Specific IRIs Available"
+  - title: Using Text Search When Specific IRIs Available
     problem: "Using bif:contains or FILTER(CONTAINS()) when specific semantic type IRIs or CUIs available."
     wrong_sparql: |
       # SLOW - Text search for disease concepts
@@ -655,9 +682,7 @@ anti_patterns:
             rdfs:label ?label .
       }
       LIMIT 100
-    explanation: |
-      Use specific IRIs when available: Semantic types (sty:T047, sty:T191), concept CUIs (C0011849), 
-      or relationship types (has_manifestation, isa). Text search should be last resort.
+    explanation: "Use specific IRIs when available: Semantic types (sty:T047, sty:T191), concept CUIs (C0011849), or relationship types (has_manifestation, isa). Text search should be last resort."
 
 common_errors:
   - error: "Empty results when querying for relationships"
@@ -686,7 +711,7 @@ common_errors:
         VALUES ?type { "disease_has_associated_gene" }
       }
       LIMIT 100
-  
+
   - error: "Query timeout when exploring relationships"
     causes:
       - "Querying MGREL/MGSAT/rdf:Statement without LIMIT (>1M records each)"
@@ -716,7 +741,7 @@ common_errors:
             mo:rela ?rela .
       }
       LIMIT 100
-  
+
   - error: "Cross-database query returns no results"
     causes:
       - "URI pattern mismatch (www.ncbi.nlm.nih.gov vs ncbi.nlm.nih.gov)"

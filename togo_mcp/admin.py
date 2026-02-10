@@ -121,7 +121,8 @@ def save_MIE_file(
     except (IOError, OSError) as e:
         return f"Error: Could not save MIE file for '{dbname}'. Reason: {e}"
 
-@mcp.tool(enabled=True, name="test_MIE_file", description="Testing a MIE file")
+# test_MIE_file is no longer used. MIE_prompt.md has been enhanced instead.
+@mcp.tool(enabled=False, name="test_MIE_file", description="Testing a MIE file")
 def test_MIE_file(
     dbname: Annotated[str,Field(description=DBNAME_DESCRIPTION)]
     ) -> str:
@@ -134,11 +135,13 @@ def test_MIE_file(
     return f"""
 1. Get the {dbname} MIE file using `get_MIE_file({dbname})`
 2. Study the instructions in `generate_MIE_file({dbname})`
-3. Test all the examples in the following sections, and fix them if necessary based on the instructions.
+3. Check if the generated MIE file is fully consistent with the TogoMCP Usage Guide using `togomcp_usage_guide()`. Fix if necessary.
+4. Test all the examples in the following sections, and fix them if necessary based on the instructions.
   - `rdf_example_entries`
   - `sparql_query_examples`
+  - `cross_database_queries`
   - `cross_references`
-4. Save the fixed MIE file using `save_MIE_file({dbname})`. Note the following.
+5. Save the fixed MIE file using `save_MIE_file({dbname})`. Note the following.
   - make sure to use the **Literal Style** (with |) for multiline strings, rather than double-quotes,
   - make it **as concise as possible** while strictly adhering to the instructions in `generate_MIE_file({dbname})`.
 """
