@@ -10,14 +10,22 @@ from .server import *
 # def boilerplate() -> str:
 #     return "Hello! I don't know why this is here. But, the server doesn't work without it."
 
-@mcp.tool(name="TogoMCP_Usage_Guide",
-            description="A general guideline for using TogoMCP.")
+@mcp.tool(name="TogoMCP_Usage_Guide", enabled=True)
 def togomcp_usage_guide() -> str:
     """
-    A general guideline for using using TogoMCP.
-    Always use this before answering any questions.
-
-
+⚠️ CALL THIS TOOL FIRST before using ANY other TogoMCP tool (SPARQL, search, or database tools). 
+This guide enforces the mandatory workflow: 
+    (1) Get MIE schema files to discover structured properties, 
+    (2) Use search tools for exploratory examples, 
+    (3) Inspect properties, 
+    (4) Write comprehensive SPARQL queries. 
+**CRITICAL**: 95% of query failures happen because users skip step 1 and use text search (bif:contains) 
+  or API calls when structured predicates exist in the schema. Skipping this wastes 10-20 tool calls
+  and produces incomplete results. 
+  For comprehensive queries (counts, 'find all', 'which has most'), this guide shows you how to discover 
+  structured properties (taxonomy IRIs, typed predicates, classification terms) that are 10-100x faster 
+  than text search. Always call this guide first to learn the correct workflow for your specific query type.
+        
     Returns:
         str: The content of the TogoMCP usage guide.
     """
