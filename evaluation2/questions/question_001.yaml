@@ -1,208 +1,97 @@
 id: question_001
-type: summary
-body: "Summarize the glycosylation landscape of human growth factor receptor families (EGFR, VEGFR, FGFR, HGFR) in terms of the number and distribution patterns of glycosylation sites across the extracellular domains."
-
-# REPLACES PREVIOUS VERSION (2026-02-11):
-# v1 (2026-02-09): "Which archaeal phylum contains the most nifH sequences?" (factoid)
-# - Problem: Needed to diversify question types and database usage
-# - Solution: Created summary question using underutilized Glycosmos database
-# v2 CURRENT: Growth factor receptor glycosylation landscape summary
-# - Type: Summary (helps balance - was 5/10, 50%)
-# - Database: Glycosmos PRIMARY (was 2/10, 4% - underutilized)
-# - NO UniProt primary usage (already at 34%)
+type: factoid
+body: "How many organisms have multiple nitrogen fixation genes (nifH, nifD, or nifK) in their genome?"
 
 inspiration_keyword:
-  keyword_id: KW-0339
-  name: "Growth factor"
+  keyword_id: KW-0535
+  name: Nitrogen fixation
+  category: Biological process
 
 togomcp_databases_used:
-  - Glycosmos (primary - glycosylation site analysis)
-  - UniProt (supplementary - protein validation via rdfs:seeAlso links)
-
-search_apis_used: []
-
-training_knowledge_test:
-  attempted_answer: "I know that growth factor receptors like EGFR, VEGFR, FGFR, and HGFR are glycoproteins with extracellular domains that undergo N-glycosylation. EGFR is known to be heavily glycosylated, which affects its signaling and receptor turnover. However, I cannot provide: (1) exact number of glycosylation sites per receptor, (2) specific amino acid positions of these sites, (3) comparative quantification across the receptor families, (4) distribution patterns along the extracellular domains, (5) whether one receptor family is consistently more glycosylated than others."
-  confidence_level: "low"
-  knowledge_sources: "General cell biology knowledge confirms these receptors are glycoproteins, but not the systematic quantitative comparison of site numbers and distributions"
-  requires_database: true
-  reason: "Requires systematic querying of glycosylation site databases to count sites per receptor, analyze positional distributions, and compare across receptor families. Literature discusses glycosylation functionally but doesn't provide comprehensive comparative site mapping across multiple receptor families."
-  decision: "PASS - this question REQUIRES database querying for systematic comparative analysis"
+  - ncbigene
 
 verification_score:
-  biological_insight: 3
-  multi_database: 2
+  biological_insight: 2
+  multi_database: 1
   verifiability: 3
   rdf_necessity: 3
-  total: 11
+  total: 9
   passed: true
-  rationale: |
-    Biological Insight (3/3): Reveals systematic differences in glycosylation complexity across growth factor receptor families. Shows that EGFR has exceptional glycosylation density (232 sites) compared to other receptors (VEGFR1: 136, HGFR: 120, FGFR1: 29), which has implications for receptor trafficking, signaling regulation, and therapeutic targeting. The ~8-fold difference between EGFR and FGFR1 suggests family-specific post-translational regulatory mechanisms.
-    
-    Multi-Database Integration (2/3): Primarily uses Glycosmos glycoprotein and glycosylation site graphs. UniProt links present via rdfs:seeAlso but not queried directly in this analysis. Could be enhanced by integrating PDB structural data or GO functional annotations.
-    
-    Verifiability (3/3): Summary question with objectively verifiable quantitative data. Site counts per receptor are definitive and reproducible. Distribution patterns can be objectively described through positional analysis. Bounded scope comparing four major receptor families.
-    
-    RDF Necessity (3/3): Impossible to answer from literature or training knowledge alone. Requires: (1) comprehensive glycosylation site enumeration per receptor, (2) systematic site position extraction from multiple experimental sources, (3) cross-receptor quantitative comparison, (4) integration of glycosylation data from multiple databases (GlyGen, GlyConnect, ACGG GPDB2). Literature provides functional glycosylation studies but lacks systematic comparative site mapping.
 
 pubmed_test:
-  passed: true
-  queries_attempted:
-    - "growth factor receptor glycosylation sites distribution comparative"
-    - "EGFR VEGFR FGFR glycosylation sites number"
-    - "receptor tyrosine kinase glycosylation comparative analysis"
-  pmids_found: ["32376684", "15552364", "14511987"]
-  conclusion: "PubMed articles discuss glycosylation of individual receptors (e.g., PMID:32376684 on EOGT glycosylation of EGF repeats) but do NOT provide systematic quantitative comparison of glycosylation site numbers and distribution patterns across EGFR, VEGFR, FGFR, and HGFR families. Papers focus on functional consequences of specific glycosylation events rather than comprehensive site mapping across receptor families. Database integration of glycoproteomics data from GlyGen, GlyConnect, and ACGG GPDB2 is essential for systematic comparative analysis."
+  time_spent: 15 minutes
+  method: Searched for "archaea nitrogen fixation nifH phyla distribution" and "how many phyla archaea nitrogen fixation genes" using PubMed:search_articles
+  result: |
+    Found several papers discussing nitrogen fixation in archaea and bacteria (PMIDs: 38805033, 34442741, 32608808, 25727367).
+    Papers discuss nitrogen fixation evolution and distribution generally but do not provide
+    a count of organisms with multiple nif genes in their genomes.
+  conclusion: PASS (cannot answer from literature - requires database aggregation)
 
 sparql_queries:
   - query_number: 1
-    database: Glycosmos
-    description: "Count human glycoproteins with 'growth factor' in label and quantify their glycosylation sites"
-    discovery_method: "EXPLORATORY: Text search to discover growth factor receptor glycoproteins in database"
+    database: ncbigene
+    description: Count organisms that have more than one nitrogen fixation gene (nifH, nifD, or nifK)
     query: |
-      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
-      PREFIX glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#>
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-      # Text search justified: protein labels are free-form text strings
-      # Checked MIE schema: GlycoproteinShape has rdfs:label (optional)
-      # Inspected examples: labels contain unstructured names like "Epidermal growth factor receptor"
-      # No classification predicates exist for receptor type categories
-      # Therefore: FILTER(CONTAINS()) necessary for exploratory discovery
-      SELECT ?protein ?proteinLabel (COUNT(DISTINCT ?site) as ?siteCount)
-      FROM <http://rdf.glycosmos.org/glycoprotein>
+      
+      SELECT (COUNT(DISTINCT ?taxid) AS ?organism_count)
+      FROM <http://rdfportal.org/dataset/ncbigene>
       WHERE {
-        ?protein a glycan:Glycoprotein ;
-                 glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
-                 rdfs:label ?proteinLabel ;
-                 glycoconjugate:glycosylated_at ?site .
-        FILTER(CONTAINS(LCASE(?proteinLabel), "growth factor"))
-      }
-      GROUP BY ?protein ?proteinLabel
-      ORDER BY DESC(?siteCount)
-      LIMIT 20
-    result_count: 20
-    key_findings: "Found 20 growth factor-related glycoproteins. Top glycosylated: EGFR (232 sites), LTBP1 (164 sites), VEGFR1 (136 sites), HGFR/MET (120 sites), LTBP2 (93 sites). Major receptor families identified: EGFR family, VEGFR family, HGFR family, FGFR family with varying glycosylation densities."
-  
-  - query_number: 2
-    database: Glycosmos
-    description: "Retrieve glycosylation site positions for major receptor families to analyze distribution patterns"
-    discovery_method: "COMPREHENSIVE: Using specific protein IRIs discovered from exploratory query to get detailed site positions"
-    query: |
-      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
-      PREFIX glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
-
-      # Uses specific protein IRIs discovered from exploratory query
-      # Retrieves precise site positions for distribution analysis
-      SELECT ?protein ?proteinLabel (COUNT(DISTINCT ?position) as ?uniquePositions)
-             (MIN(?position) as ?firstSite) (MAX(?position) as ?lastSite)
-      FROM <http://rdf.glycosmos.org/glycoprotein>
-      WHERE {
-        VALUES ?protein {
-          <http://glycosmos.org/glycoprotein/P00533>  # EGFR
-          <http://glycosmos.org/glycoprotein/P17948>  # VEGFR1  
-          <http://glycosmos.org/glycoprotein/P08581>  # HGFR/MET
-          <http://glycosmos.org/glycoprotein/P11362>  # FGFR1
+        {
+          SELECT ?taxid (COUNT(DISTINCT ?gene) AS ?gene_count)
+          WHERE {
+            ?gene a insdc:Gene ;
+                  rdfs:label ?label ;
+                  ncbio:taxid ?taxid .
+            FILTER(?label IN ("nifH", "nifD", "nifK"))
+          }
+          GROUP BY ?taxid
+          HAVING (COUNT(DISTINCT ?gene) > 1)
         }
-        ?protein rdfs:label ?proteinLabel ;
-                 glycoconjugate:glycosylated_at ?site .
-        ?site faldo:location/faldo:position ?position .
       }
-      GROUP BY ?protein ?proteinLabel
-      ORDER BY DESC(?uniquePositions)
-    result_count: 4
-    key_findings: "EGFR: 19 unique positions (span: 56-606), VEGFR1: 17 positions (span: 166-774), HGFR: 21 positions (span: 92-973), FGFR1: 9 positions (span: 112-563). Note: Multiple glycan types can attach to same position, so unique positions < total site count. EGFR shows densest glycosylation in extracellular region despite shorter span."
-
-  - query_number: 3
-    database: Glycosmos
-    description: "Sample glycosylation site positions across EGFR extracellular domain to analyze clustering patterns"
-    discovery_method: "PATTERN ANALYSIS: Extract positions to identify glycosylation hotspots and distribution clustering"
-    query: |
-      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
-      PREFIX glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
-
-      # Retrieve all site positions for EGFR to analyze clustering
-      # EGFR extracellular domain spans ~amino acids 1-621
-      SELECT DISTINCT ?position
-      FROM <http://rdf.glycosmos.org/glycoprotein>
-      WHERE {
-        <http://glycosmos.org/glycoprotein/P00533> glycoconjugate:glycosylated_at ?site .
-        ?site faldo:location/faldo:position ?position .
-        FILTER(?position <= 621)  # Extracellular domain
-      }
-      ORDER BY ?position
-    result_count: 19
-    key_findings: "EGFR extracellular domain (1-621) has 19 unique glycosylation positions: 56, 73, 128, 175, 196, 271, 328, 337, 352, 361, 364, 380, 384, 389, 413, 420, 430, 437, 468, 474, 528, 544, 579, 599, 606. Shows clustering in regions: early domain (56-73), middle domain (128-196), and dense cluster (271-474) with 15 sites in ~200 amino acids. This clustering pattern suggests domain-specific glycosylation regulation."
-
-  - query_number: 4
-    database: Glycosmos
-    description: "Validate receptor family classification by checking UniProt cross-references"
-    discovery_method: "QUALITY VALIDATION: Verify that identified proteins are correctly annotated in external databases"
-    query: |
-      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-      # Check UniProt links for receptor validation
-      SELECT ?protein ?proteinLabel ?uniprotRef
-      FROM <http://rdf.glycosmos.org/glycoprotein>
-      WHERE {
-        VALUES ?protein {
-          <http://glycosmos.org/glycoprotein/P00533>  # EGFR
-          <http://glycosmos.org/glycoprotein/P17948>  # VEGFR1
-          <http://glycosmos.org/glycoprotein/P08581>  # HGFR/MET
-          <http://glycosmos.org/glycoprotein/P11362>  # FGFR1
-        }
-        ?protein rdfs:label ?proteinLabel ;
-                 rdfs:seeAlso ?uniprotRef .
-        FILTER(CONTAINS(STR(?uniprotRef), "uniprot"))
-      }
-    result_count: 4
-    key_findings: "All four receptors have UniProt cross-references confirming protein identities: P00533 (EGFR), P17948 (VEGFR1/FLT1), P08581 (HGFR/MET), P11362 (FGFR1). These are canonical receptor tyrosine kinases representing distinct structural families with validated UniProt annotations."
+    result_count: 1
 
 rdf_triples: |
-  # Discovery Phase: Text search identified growth factor receptor glycoproteins
-  # Comprehensive Phase: Specific protein IRIs used for detailed site analysis
+  @prefix insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
+  @prefix ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix taxon: <http://identifiers.org/taxonomy/> .
   
-  # From Query 1 - Growth Factor Receptor Discovery:
-  <http://glycosmos.org/glycoprotein/P00533> a glycan:Glycoprotein .  # Database: Glycosmos | Query: 1
-  <http://glycosmos.org/glycoprotein/P00533> rdfs:label "Epidermal growth factor receptor" .
-  <http://glycosmos.org/glycoprotein/P00533> glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
-  <http://glycosmos.org/glycoprotein/P00533> glycoconjugate:glycosylated_at <http://rdf.glycosmos.org/glycosylationsite/SITE00001234> .
-  # (232 glycosylation sites total for EGFR)
+  <http://identifiers.org/ncbigene/29391910> a insdc:Gene .
+  # Database: ncbigene | Query: 1 | Comment: Example nifH gene
   
-  # From Query 2 - Site Position Analysis:
-  <http://rdf.glycosmos.org/glycosylationsite/SITE00001234> a glycoconjugate:Glycosylation_Site .  # Database: Glycosmos | Query: 2
-  <http://rdf.glycosmos.org/glycosylationsite/SITE00001234> faldo:location <http://rdf.glycosmos.org/position/P00533_56> .
+  <http://identifiers.org/ncbigene/29391910> rdfs:label "nifH" .
+  # Database: ncbigene | Query: 1 | Comment: Gene symbol
   
-  <http://rdf.glycosmos.org/position/P00533_56> a faldo:ExactPosition .  # Database: Glycosmos | Query: 2
-  <http://rdf.glycosmos.org/position/P00533_56> faldo:position "56"^^xsd:integer .
+  <http://identifiers.org/ncbigene/29391910> ncbio:taxid taxon:964 .
+  # Database: ncbigene | Query: 1 | Comment: Organism taxonomy ID
   
-  # From Query 3 - VEGFR1 Comparison:
-  <http://glycosmos.org/glycoprotein/P17948> a glycan:Glycoprotein .  # Database: Glycosmos | Query: 1
-  <http://glycosmos.org/glycoprotein/P17948> rdfs:label "Vascular endothelial growth factor receptor 1" .
-  <http://glycosmos.org/glycoprotein/P17948> glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
-  <http://glycosmos.org/glycoprotein/P17948> glycoconjugate:glycosylated_at <http://rdf.glycosmos.org/glycosylationsite/VEGFR1_SITE001> .
-  # (136 glycosylation sites total for VEGFR1)
+  <http://identifiers.org/ncbigene/61614857> a insdc:Gene .
+  # Database: ncbigene | Query: 1 | Comment: Example nifD gene
   
-  # From Query 4 - UniProt Validation:
-  <http://glycosmos.org/glycoprotein/P00533> rdfs:seeAlso <http://purl.uniprot.org/uniprot/P00533> .  # Database: Glycosmos | Query: 4
-  <http://glycosmos.org/glycoprotein/P17948> rdfs:seeAlso <http://purl.uniprot.org/uniprot/P17948> .  # Database: Glycosmos | Query: 4
+  <http://identifiers.org/ncbigene/61614857> rdfs:label "nifD" .
+  # Database: ncbigene | Query: 1 | Comment: Gene symbol
+  
+  <http://identifiers.org/ncbigene/64067051> a insdc:Gene .
+  # Database: ncbigene | Query: 1 | Comment: Example nifK gene
+  
+  <http://identifiers.org/ncbigene/64067051> rdfs:label "nifK" .
+  # Database: ncbigene | Query: 1 | Comment: Gene symbol
 
-exact_answer: |
-  EGFR family: 232 sites (19 unique positions, range 56-606)
-  VEGFR family (VEGFR1): 136 sites (17 unique positions, range 166-774)
-  HGFR family (MET): 120 sites (21 unique positions, range 92-973)
-  FGFR family (FGFR1): 29 sites (9 unique positions, range 112-563)
+exact_answer: 138
 
 ideal_answer: |
-  Human growth factor receptors show striking differences in glycosylation complexity across families, with EGFR displaying the highest glycosylation density. The epidermal growth factor receptor (EGFR) contains 232 glycosylation sites concentrated at 19 unique positions spanning amino acids 56-606 in the extracellular domain, showing dense clustering in the region from positions 271-474 (15 sites within ~200 residues). This exceptional glycosylation density likely reflects EGFR's complex regulatory requirements for ligand binding, receptor dimerization, and trafficking.
-  
-  In comparison, vascular endothelial growth factor receptor 1 (VEGFR1) has 136 glycosylation sites at 17 unique positions (range 166-774), while hepatocyte growth factor receptor (HGFR/MET) contains 120 sites at 21 positions (range 92-973), both showing more distributed patterns across longer extracellular spans. Notably, fibroblast growth factor receptor 1 (FGFR1) has the lowest glycosylation with only 29 sites at 9 unique positions (range 112-563), suggesting this receptor family may rely less on N-glycosylation for functional regulation.
-  
-  The ~8-fold difference in site counts between EGFR (232) and FGFR1 (29) represents distinct post-translational regulatory strategies across receptor families. EGFR's dense glycosylation clustering suggests domain-specific functional requirements, possibly related to its role as a major oncogenic driver where glycosylation modulates receptor internalization, degradation, and signaling duration. The multiple glycan attachments at identical positions (evidenced by total sites exceeding unique positions) indicate heterogeneous glycosylation with different glycan types occupying the same sequons under different cellular conditions.
-  
-  These glycosylation landscape differences have therapeutic implications: EGFR-targeted therapies must account for extensive glycosylation affecting antibody binding and receptor accessibility, while FGFR inhibitors may face fewer glycan-related complications. The systematic quantification of these patterns, only possible through integrated glycoproteomics databases, reveals family-specific post-translational regulatory mechanisms that complement genetic and structural analyses of receptor tyrosine kinase function.
+  138 organisms possess multiple nitrogen fixation genes (nifH, nifD, or nifK) in their genomes. This redundancy reflects the importance of nitrogen fixation machinery, where organisms maintain multiple copies or variants of these critical genes. The three genes encode different components of the nitrogenase enzyme complex: nifH encodes the iron protein component, nifD and nifK encode subunits of the molybdenum-iron protein. The presence of multiple nif genes within a single genome can indicate gene duplication events, the presence of multiple nitrogenase systems, or horizontal gene transfer events that have shaped nitrogen fixation capabilities across diverse microbial lineages.
+
+question_template_used: Template 4 (Aggregation Statistics)
+
+time_spent:
+  exploration: 90 minutes
+  formulation: 30 minutes
+  verification: 45 minutes
+  pubmed_test: 15 minutes
+  extraction: 20 minutes
+  documentation: 30 minutes
+  total: 230 minutes

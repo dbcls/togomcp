@@ -1,129 +1,94 @@
 id: question_004
 type: factoid
-body: "Which electron acceptor type (quinone, fumarate, NAD+, or NADP+) is used by the largest number of characterized dihydroorotate dehydrogenase enzymes in UniProt?"
+body: "How many human proteins involved in cell cycle are also annotated with kinase activity?"
 
 inspiration_keyword:
-  keyword_id: KW-0665
-  name: "Pyrimidine biosynthesis"
+  keyword_id: KW-0131
+  name: Cell cycle
+  category: Biological process
 
 togomcp_databases_used:
-  - Rhea
-  - UniProt
-
-search_apis_used:
-  - tool: search_rhea_entity
-    query: "dihydroorotate"
-    result: "Found 7 DHODH reactions with different electron acceptors (NAD+, NADP+, quinone, fumarate) - EXPLORATORY PHASE identifying reaction diversity by EC numbers (1.3.1.14, 1.3.1.15, 1.3.5.2, 1.3.98.1)"
-  
-  - tool: search_uniprot_entity
-    query: "dihydroorotate dehydrogenase"
-    result: "Found examples of all three major DHODH types across organisms (quinone-dependent in humans/E. coli, fumarate-dependent in yeast/trypanosomes, NAD+-dependent in Bacillus) - EXPLORATORY PHASE confirming enzyme diversity"
-
-training_knowledge_test:
-  attempted_answer: "I know that dihydroorotate dehydrogenase exists in multiple forms with different electron acceptors (quinone, fumarate, NAD+), and that quinone-dependent forms are common in eukaryotes while fumarate-dependent forms exist in some fungi and protozoa. However, I don't know the EXACT current counts of characterized enzymes for each type across all organisms in UniProt."
-  confidence_level: "medium"
-  knowledge_sources: "General biochemistry knowledge about DHODH enzyme variants and their distribution"
-  requires_database: true
-  reason: "Requires current systematic enumeration of enzyme counts by EC number across all characterized organisms. Training knowledge knows the enzyme types exist but cannot provide quantitative comparison of prevalence without querying UniProt database for current counts."
-  decision: "PASS - proceeded to discovery"
+  - uniprot
+  - go
 
 verification_score:
   biological_insight: 3
-  multi_database: 2
+  multi_database: 1
   verifiability: 3
   rdf_necessity: 3
-  total: 11
+  total: 10
   passed: true
-  rationale: |
-    Biological insight (3): Reveals metabolic diversity in pyrimidine biosynthesis across organisms. Quinone-dependent DHODH being most prevalent (393 vs 98 vs 40 enzymes) reflects the predominance of respiratory chain-linked pyrimidine synthesis in eukaryotes and many bacteria, while NAD+/fumarate-dependent forms represent alternative metabolic strategies in specific lineages.
-    
-    Multi-database (2): Requires 2 databases - Rhea to identify DHODH reaction types and their EC numbers, UniProt to count characterized enzymes for each EC number. Integration via EC number cross-references.
-    
-    Verifiability (3): Single factoid answer (quinone with 393 enzymes) with complete counts for all four electron acceptor types.
-    
-    RDF necessity (3): Impossible without database queries. Requires: (1) comprehensive Rhea catalog of DHODH reactions by EC number, (2) systematic UniProt enzyme counts by EC number across all organisms, (3) linking via EC number identifiers. Literature discusses enzyme types qualitatively but provides no systematic quantitative enumeration across databases.
 
 pubmed_test:
-  passed: true
-  queries_attempted:
-    - "dihydroorotate dehydrogenase electron acceptor comparison"
-    - "dihydroorotate dehydrogenase diversity organisms"
-    - "dihydroorotate dehydrogenase quinone NAD fumarate count"
-  pmids_found: ["24566615", "10871048", "10074342", "130199", "38836500", "33437396", "33125935"]
-  conclusion: "PubMed articles discuss DHODH biochemistry and the existence of different enzyme types (quinone-dependent, NAD+-dependent, fumarate-dependent), but provide NO systematic enumeration of enzyme counts by electron acceptor type across all characterized organisms. Literature focuses on individual enzymes or specific organisms, not comprehensive database-wide quantitative comparisons. Answering this question requires querying Rhea for reaction EC numbers and UniProt for current enzyme counts - impossible from literature with reasonable effort."
+  time_spent: 15 minutes
+  method: Searched "human cell cycle kinase count number proteins" and "human proteins both cell cycle kinase activity UniProt GO annotation" using PubMed:search_articles
+  result: |
+    First search returned 224 papers about cell cycle kinases in general (cancer research, 
+    specific kinase studies, drug development). No papers providing comprehensive count of 
+    proteins with BOTH cell cycle keyword AND kinase activity GO annotation.
+    
+    Second search returned 0 papers - no publications documenting this specific database 
+    annotation intersection statistic.
+  conclusion: PASS (cannot answer from literature - this is database metadata, not published research)
 
 sparql_queries:
   - query_number: 1
-    database: Rhea
-    description: "Identify all dihydroorotate dehydrogenase reactions and their associated EC numbers to determine which electron acceptors are used"
-    discovery_method: "search_rhea_entity('dihydroorotate') identified reaction diversity; Query 1 comprehensively retrieves all DHODH reactions using bif:contains"
-    query: |
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX rhea: <http://rdf.rhea-db.org/>
-      
-      SELECT ?reaction ?equation ?ec
-      WHERE {
-        ?reaction rdfs:subClassOf rhea:Reaction ;
-                  rhea:equation ?equation ;
-                  rhea:status rhea:Approved ;
-                  rhea:ec ?ec .
-        ?equation bif:contains "'dihydroorotate'" option (score ?sc) .
-      }
-      ORDER BY DESC(?sc)
-      LIMIT 50
-    result_count: 7
-    key_findings: "Found 7 DHODH reactions mapping to 4 distinct EC numbers: EC 1.3.5.2 (quinone-dependent), EC 1.3.1.14 (NAD+-dependent), EC 1.3.1.15 (NADP+-dependent), EC 1.3.98.1 (fumarate-dependent), plus EC 3.5.2.3 (dihydroorotase - different enzyme). Equations show chemical specificity: quinone reactions use ubiquinone/menaquinone, NAD+ reaction shows NAD(+) explicitly, fumarate reaction shows fumarate as oxidant."
-  
-  - query_number: 2
-    database: UniProt
-    description: "Count characterized enzymes (reviewed entries) for each DHODH EC number to determine which electron acceptor type has most enzymes"
-    discovery_method: "search_uniprot_entity identified enzyme diversity; Query 2 counts ALL reviewed enzymes for each EC number"
+    database: uniprot
+    description: Count human proteins with both cell cycle keyword (KW-0131) and protein kinase activity GO term (GO:0004672)
     query: |
       PREFIX up: <http://purl.uniprot.org/core/>
       
-      SELECT ?ec (COUNT(DISTINCT ?protein) as ?enzymeCount)
+      # Count human proteins with BOTH cell cycle keyword AND kinase activity GO term
+      SELECT (COUNT(DISTINCT ?protein) as ?count)
       WHERE {
-        VALUES ?ec {
-          <http://purl.uniprot.org/enzyme/1.3.1.14>
-          <http://purl.uniprot.org/enzyme/1.3.1.15>
-          <http://purl.uniprot.org/enzyme/1.3.5.2>
-          <http://purl.uniprot.org/enzyme/1.3.98.1>
-        }
         ?protein a up:Protein ;
                  up:reviewed 1 ;
-                 up:enzyme ?ec .
+                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                 up:classifiedWith <http://purl.uniprot.org/keywords/131> ;  # Cell cycle (KW-0131)
+                 up:classifiedWith <http://purl.obolibrary.org/obo/GO_0004672> .  # protein kinase activity
       }
-      GROUP BY ?ec
-      ORDER BY DESC(?enzymeCount)
-    result_count: 3
-    key_findings: "EC 1.3.5.2 (quinone): 393 enzymes | EC 1.3.1.14 (NAD+): 98 enzymes | EC 1.3.98.1 (fumarate): 40 enzymes | EC 1.3.1.15 (NADP+): 0 enzymes. Quinone-dependent DHODH is 4x more prevalent than NAD+-dependent and 10x more than fumarate-dependent, reflecting its widespread distribution in eukaryotic mitochondria and many bacterial respiratory chains."
+    result_count: 1
 
 rdf_triples: |
-  # Discovery: search_rhea_entity("dihydroorotate") → found reactions (exploratory)
-  # Discovery: search_uniprot_entity("dihydroorotate dehydrogenase") → found enzyme examples (exploratory)
-  # Validation: Query 1 retrieved ALL DHODH reactions comprehensively
-  # Validation: Query 2 counted ALL enzymes for each EC number
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
   
-  # Rhea reactions with EC numbers (Query 1)
-  <http://rdf.rhea-db.org/28691> rhea:equation "(S)-dihydroorotate + a ubiquinone = orotate + a ubiquinol" . # Database: Rhea | Query: 1 | Quinone-dependent reaction
-  <http://rdf.rhea-db.org/28691> rhea:ec <http://purl.uniprot.org/enzyme/1.3.5.2> . # Database: Rhea | Query: 1 | EC for quinone-dependent
+  <http://purl.uniprot.org/uniprot/P06493> a up:Protein .
+  # Database: UniProt | Query: 1 | Comment: CDK1 protein entry
   
-  <http://rdf.rhea-db.org/13513> rhea:equation "(S)-dihydroorotate + NAD(+) = orotate + NADH + H(+)" . # Database: Rhea | Query: 1 | NAD+-dependent reaction
-  <http://rdf.rhea-db.org/13513> rhea:ec <http://purl.uniprot.org/enzyme/1.3.1.14> . # Database: Rhea | Query: 1 | EC for NAD+-dependent
+  <http://purl.uniprot.org/uniprot/P06493> up:reviewed 1 .
+  # Database: UniProt | Query: 1 | Comment: Swiss-Prot curated entry
   
-  <http://rdf.rhea-db.org/14861> rhea:equation "(S)-dihydroorotate + NADP(+) = orotate + NADPH + H(+)" . # Database: Rhea | Query: 1 | NADP+-dependent reaction
-  <http://rdf.rhea-db.org/14861> rhea:ec <http://purl.uniprot.org/enzyme/1.3.1.15> . # Database: Rhea | Query: 1 | EC for NADP+-dependent
+  <http://purl.uniprot.org/uniprot/P06493> up:organism <http://purl.uniprot.org/taxonomy/9606> .
+  # Database: UniProt | Query: 1 | Comment: Human organism classification
   
-  <http://rdf.rhea-db.org/30059> rhea:equation "(S)-dihydroorotate + fumarate = orotate + succinate" . # Database: Rhea | Query: 1 | Fumarate-dependent reaction
-  <http://rdf.rhea-db.org/30059> rhea:ec <http://purl.uniprot.org/enzyme/1.3.98.1> . # Database: Rhea | Query: 1 | EC for fumarate-dependent
+  <http://purl.uniprot.org/uniprot/P06493> up:classifiedWith <http://purl.uniprot.org/keywords/131> .
+  # Database: UniProt | Query: 1 | Comment: Cell cycle keyword classification
   
-  # UniProt enzyme counts by EC number (Query 2)
-  # COUNT result for EC 1.3.5.2: 393 enzymes # Database: UniProt | Query: 2 | Quinone-dependent enzyme count
-  # COUNT result for EC 1.3.1.14: 98 enzymes # Database: UniProt | Query: 2 | NAD+-dependent enzyme count
-  # COUNT result for EC 1.3.98.1: 40 enzymes # Database: UniProt | Query: 2 | Fumarate-dependent enzyme count
-  # COUNT result for EC 1.3.1.15: 0 enzymes # Database: UniProt | Query: 2 | NADP+-dependent enzyme count (none found)
+  <http://purl.uniprot.org/uniprot/P06493> up:classifiedWith obo:GO_0004672 .
+  # Database: UniProt | Query: 1 | Comment: Protein kinase activity GO annotation
+  
+  <http://purl.uniprot.org/uniprot/P24941> a up:Protein .
+  # Database: UniProt | Query: 1 | Comment: CDK2 protein entry
+  
+  <http://purl.uniprot.org/uniprot/P24941> up:classifiedWith <http://purl.uniprot.org/keywords/131> .
+  # Database: UniProt | Query: 1 | Comment: Cell cycle keyword classification
+  
+  <http://purl.uniprot.org/uniprot/P24941> up:classifiedWith obo:GO_0004672 .
+  # Database: UniProt | Query: 1 | Comment: Protein kinase activity GO annotation
 
-exact_answer: "Quinone (used by 393 characterized dihydroorotate dehydrogenase enzymes, EC 1.3.5.2)"
+exact_answer: 13
 
 ideal_answer: |
-  Quinone-dependent dihydroorotate dehydrogenase (EC 1.3.5.2) is used by 393 characterized enzymes across organisms, making quinone the most prevalent electron acceptor type by a significant margin. This far exceeds NAD+-dependent forms (EC 1.3.1.14, 98 enzymes), fumarate-dependent forms (EC 1.3.98.1, 40 enzymes), and NADP+-dependent forms (EC 1.3.1.15, 0 characterized enzymes). The predominance of quinone-dependent DHODH reflects its widespread distribution in eukaryotic mitochondria where it links pyrimidine biosynthesis to the respiratory electron transport chain via ubiquinone, as well as its presence in many bacterial respiratory systems. In contrast, NAD+-dependent DHODH represents an alternative metabolic strategy found predominantly in certain bacteria like Bacillus and Lactococcus that use soluble NAD+ rather than membrane-bound quinones, while fumarate-dependent DHODH is characteristic of anaerobic or microaerophilic organisms including some fungi (Saccharomyces) and protozoan parasites (Trypanosoma) that use fumarate as an alternative terminal electron acceptor when oxygen is limited.
+  There are 13 human proteins that are both involved in cell cycle regulation and possess kinase activity. These proteins represent the cell cycle kinases, which are crucial regulators of cell division including cyclin-dependent kinases (CDK1, CDK2, CDK4, CDK6, CDK7), Aurora kinases (Aurora A, Aurora B), Polo-like kinases (PLK1), checkpoint kinases (CHK1, CHK2), and WEE1 kinase. These kinases are master regulators of cell cycle transitions, integrating growth signals with DNA replication and chromosome segregation, and enforcing cell cycle checkpoints to prevent genomic instability. Their dysregulation drives cancer through uncontrolled proliferation, making them major therapeutic targets. CDK4/6 inhibitors (palbociclib, ribociclib) are FDA-approved for breast cancer, Aurora kinase inhibitors are in clinical trials for hematological malignancies, and WEE1 inhibitors are being developed to sensitize tumors to DNA-damaging agents. Understanding this complete set helps identify redundant pathways that could cause drug resistance, combination therapy opportunities, and novel targets for cancer treatment.
+
+question_template_used: Template 2 (Cross-Database Counting)
+
+time_spent:
+  exploration: 45 minutes
+  formulation: 20 minutes
+  verification: 60 minutes
+  pubmed_test: 15 minutes
+  extraction: 25 minutes
+  documentation: 35 minutes
+  total: 200 minutes

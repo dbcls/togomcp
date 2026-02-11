@@ -1,202 +1,167 @@
 id: question_012
-type: choice
-body: "Among spore-forming bacterial genera documented with growth conditions, which genus has the highest average optimal growth temperature?"
+type: factoid
+body: "How many neurodegenerative diseases in the disease ontology have MeSH descriptor cross-references?"
 
 inspiration_keyword:
-  keyword_id: KW-0749
-  name: "Sporulation"
-  category: "Biological process"
+  keyword_id: KW-0523
+  name: Neurodegeneration
+  category: Disease
 
 togomcp_databases_used:
-  - bacdive
-  - mediadive
+  - mondo
+  - mesh
 
 verification_score:
+  biological_insight: 3
+  multi_database: 2
   verifiability: 3
   rdf_necessity: 3
-  scope: 3
-  total: 9
+  total: 11
   passed: true
 
 pubmed_test:
-  time_spent: "15 minutes"
-  method: |
-    Attempted multiple PubMed searches to find comparative data on average optimal growth temperatures for spore-forming bacterial genera:
-    
-    Search 1: "spore-forming bacteria optimal growth temperature average Geobacillus Bacillus Clostridium" → 0 results
-    
-    Search 2: "comparative growth temperature spore forming bacterial genera thermophilic" → 1 result (PMID: 8140284)
-    - Retrieved: Ensign et al. (1993) "Physiology of some actinomycete genera" [DOI: 10.1016/0923-2508(93)90070-i]
-    - Content: General review mentioning Thermoactinomyces as thermophilic actinomycetes
-    - Limitation: Does not provide quantitative average temperatures or systematic comparison across Geobacillus, Bacillus, Clostridium, Paenibacillus
+  time_spent: 15 minutes
+  method: Searched PubMed programmatically using two different query strategies to find information about MONDO-MeSH cross-reference statistics for neurodegenerative diseases
   result: |
-    PubMed searches yielded no quantitative data on average optimal growth temperatures across spore-forming bacterial genera. The single relevant paper (PMID: 8140284) is a qualitative review mentioning thermophilic properties but provides no:
-    1. Quantitative average temperature values for genera
-    2. Systematic comparison across multiple genera (Geobacillus, Bacillus, Clostridium)
-    3. Data aggregation from culture collection records
+    Query 1: "neurodegenerative diseases MONDO MeSH cross-references count"
+    Result: 0 articles found
     
-    This question requires:
-    - Cross-database integration: BacDive (sporulation phenotype) + MediaDive (growth temperature data)
-    - Computational aggregation: Average temperatures calculated from 343 strain-growth condition records
-    - Systematic enumeration: Temperature data from 13 Geobacillus, 76 Bacillus, 100 Clostridium, 153 Paenibacillus, 1 Thermoactinomyces strains
+    Query 2: "MONDO disease ontology neurodegenerative MeSH terminology mapping"
+    Result: 0 articles found
     
-    Literature provides general knowledge about thermophilic properties but not the quantitative systematic comparison required to answer this question definitively.
-  conclusion: "PASS (cannot answer from literature alone - requires database aggregation)"
+    No publications found that document the specific count of MONDO neurodegenerative 
+    disease classes with MeSH cross-references. Literature discusses disease ontologies 
+    and terminology mappings in general, but does not provide the specific cross-database 
+    statistics needed to answer this question.
+  conclusion: PASS (cannot answer from literature within 15 minutes)
 
 sparql_queries:
   - query_number: 1
-    database: "bacdive"
-    description: "Identify spore-forming bacterial strains using keyword search on descriptions. Filter for key genera (Bacillus, Clostridium, Geobacillus, Thermoactinomyces, Paenibacillus) and retrieve BacDiveID for cross-database linking."
+    database: mondo
+    description: Count total neurodegenerative diseases in MONDO (all diseases classified under MONDO:0005559)
     query: |
-      PREFIX schema: <https://purl.dsmz.de/schema/>
-      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
       
-      SELECT ?bacDiveStrain ?strainLabel ?genus ?bacDiveID ?description
+      SELECT (COUNT(DISTINCT ?disease) AS ?count)
+      FROM <http://rdfportal.org/ontology/mondo>
       WHERE {
-        GRAPH <http://rdfportal.org/dataset/bacdive> {
-          ?bacDiveStrain a schema:Strain ;
-                         rdfs:label ?strainLabel ;
-                         dct:description ?description ;
-                         schema:hasGenus ?genus ;
-                         schema:hasBacDiveID ?bacDiveID .
-          ?description bif:contains "'spore' OR 'sporulation' OR 'spore-forming'" .
-          FILTER(?genus IN ("Bacillus", "Clostridium", "Geobacillus", "Thermoactinomyces", "Paenibacillus"))
-        }
+        ?disease a owl:Class ;
+                 rdfs:subClassOf* obo:MONDO_0005559 .
+        FILTER NOT EXISTS { ?disease owl:deprecated true }
       }
-      LIMIT 500
-    result_count: 343
-
+    result_count: 1
+    
   - query_number: 2
-    database: "mediadive"
-    description: "Retrieve growth conditions (temperature, medium) for strains with matching BacDiveIDs from MediaDive. This links spore-forming bacteria to their documented cultivation temperatures."
+    database: mondo
+    description: Count neurodegenerative diseases with MeSH cross-references
     query: |
-      PREFIX schema: <https://purl.dsmz.de/schema/>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
       
-      SELECT ?mediaDiveStrain ?bacDiveID ?species ?growth ?temp ?medium ?mediumLabel
+      SELECT (COUNT(DISTINCT ?disease) AS ?count)
+      FROM <http://rdfportal.org/ontology/mondo>
       WHERE {
-        GRAPH <http://rdfportal.org/dataset/mediadive> {
-          ?mediaDiveStrain a schema:Strain ;
-                           schema:hasBacDiveID ?bacDiveID ;
-                           schema:hasSpecies ?species .
-          
-          ?growth a schema:GrowthCondition ;
-                  schema:relatedToStrain ?mediaDiveStrain ;
-                  schema:partOfMedium ?medium ;
-                  schema:growthTemperature ?temp .
-          ?medium rdfs:label ?mediumLabel .
-        }
+        ?disease a owl:Class ;
+                 rdfs:subClassOf* obo:MONDO_0005559 ;
+                 oboInOwl:hasDbXref ?meshXref .
+        FILTER(STRSTARTS(?meshXref, "MESH:"))
+        FILTER NOT EXISTS { ?disease owl:deprecated true }
       }
-      LIMIT 500
-    result_count: 343
-
+    result_count: 1
+    
   - query_number: 3
-    database: "bacdive + mediadive"
-    description: "Cross-database aggregation query joining BacDive spore-forming bacteria with MediaDive growth temperatures via shared BacDiveID. Calculate average optimal growth temperature for each genus."
+    database: mondo + mesh (cross-database)
+    description: Verify integration by retrieving sample neurodegenerative diseases with their MeSH descriptor mappings
     query: |
-      PREFIX schema: <https://purl.dsmz.de/schema/>
-      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
       
-      SELECT ?genus (AVG(?temp) as ?avgTemp) (COUNT(DISTINCT ?bacDiveStrain) as ?strainCount)
+      SELECT ?mondoDisease ?mondoId ?mondoLabel ?meshDescriptor ?meshLabel
       WHERE {
-        GRAPH <http://rdfportal.org/dataset/bacdive> {
-          ?bacDiveStrain a schema:Strain ;
-                         dct:description ?description ;
-                         schema:hasGenus ?genus ;
-                         schema:hasBacDiveID ?bacDiveID .
-          ?description bif:contains "'spore' OR 'sporulation' OR 'spore-forming'" .
-          FILTER(?genus IN ("Bacillus", "Clostridium", "Geobacillus", "Thermoactinomyces", "Paenibacillus"))
+        GRAPH <http://rdfportal.org/ontology/mondo> {
+          ?mondoDisease a owl:Class ;
+                        rdfs:label ?mondoLabel ;
+                        oboInOwl:id ?mondoId ;
+                        rdfs:subClassOf* obo:MONDO_0005559 ;
+                        oboInOwl:hasDbXref ?meshXref .
+          FILTER(STRSTARTS(?meshXref, "MESH:"))
+          FILTER NOT EXISTS { ?mondoDisease owl:deprecated true }
         }
-        GRAPH <http://rdfportal.org/dataset/mediadive> {
-          ?mediaDiveStrain a schema:Strain ;
-                           schema:hasBacDiveID ?bacDiveID .
-          ?growth a schema:GrowthCondition ;
-                  schema:relatedToStrain ?mediaDiveStrain ;
-                  schema:growthTemperature ?temp .
+        BIND(URI(CONCAT("http://id.nlm.nih.gov/mesh/", SUBSTR(?meshXref, 6))) AS ?meshDescriptor)
+        GRAPH <http://id.nlm.nih.gov/mesh> {
+          ?meshDescriptor a meshv:TopicalDescriptor ;
+                          rdfs:label ?meshLabel .
         }
       }
-      GROUP BY ?genus
-      ORDER BY DESC(?avgTemp)
+      LIMIT 5
     result_count: 5
 
 rdf_triples: |
-  @prefix schema: <https://purl.dsmz.de/schema/> .
-  @prefix dct: <http://purl.org/dc/terms/> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix owl: <http://www.w3.org/2002/07/owl#> .
   @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+  @prefix oboInOwl: <http://www.geneontology.org/formats/oboInOwl#> .
+  @prefix meshv: <http://id.nlm.nih.gov/mesh/vocab#> .
   
-  <https://purl.dsmz.de/bacdive/strain/1433> a schema:Strain ;
-    rdfs:label "Geobacillus thermoleovorans 1433" ;
-    schema:hasGenus "Geobacillus" ;
-    schema:hasBacDiveID 1433 ;
-    dct:description "Geobacillus thermoleovorans LEH-1 is a facultative anaerobe, spore-forming, thermophilic bacterium that forms circular colonies and was isolated from soil, near hot water effluent." .
-  # Database: BacDive | Query: 1 | Comment: Geobacillus strain with spore-forming capability and thermophilic classification
+  obo:MONDO_0005559 a owl:Class .
+  # Database: MONDO | Query: 1 | Comment: Root class for neurodegenerative diseases
   
-  <https://purl.dsmz.de/bacdive/strain/131725> a schema:Strain ;
-    rdfs:label "Geobacillus sp. 131725" ;
-    schema:hasGenus "Geobacillus" ;
-    schema:hasBacDiveID 131725 ;
-    dct:description "Geobacillus sp. 12 AMOR 1 is a spore-forming, thermophilic, Gram-positive bacterium that was isolated from thermophilic sediment bulk sample at the Troll Wall vent field, water depth of 470m." .
-  # Database: BacDive | Query: 1 | Comment: Thermophilic Geobacillus from deep-sea vent showing extreme temperature adaptation
+  obo:MONDO_0005559 rdfs:label "neurodegenerative disease" .
+  # Database: MONDO | Query: 1 | Comment: Category label for neurodegenerative diseases
   
-  <https://purl.dsmz.de/bacdive/strain/1074> a schema:Strain ;
-    rdfs:label "Bacillus atrophaeus 1221A" ;
-    schema:hasGenus "Bacillus" ;
-    schema:hasBacDiveID 1074 ;
-    dct:description "Bacillus atrophaeus 1221A is a spore-forming, mesophilic, motile human pathogen that produces antibiotic compounds." .
-  # Database: BacDive | Query: 1 | Comment: Mesophilic Bacillus showing contrast with thermophilic genera
+  obo:MONDO_0008243 a owl:Class .
+  # Database: MONDO | Query: 3 | Comment: Pick disease - example neurodegenerative disease
   
-  <https://purl.dsmz.de/bacdive/strain/1263> a schema:Strain ;
-    rdfs:label "Bacillus altitudinis 41KF2b" ;
-    schema:hasGenus "Bacillus" ;
-    schema:hasBacDiveID 1263 ;
-    dct:description "Bacillus altitudinis 41KF2b is a spore-forming, thermophilic, Gram-positive bacterium that was isolated from cryogenic tubes used for collecting air samples from high altitudes." .
-  # Database: BacDive | Query: 1 | Comment: Thermophilic Bacillus but lower temperature optimum than Geobacillus
+  obo:MONDO_0008243 rdfs:label "Pick disease" .
+  # Database: MONDO | Query: 3 | Comment: Disease name
   
-  <https://purl.dsmz.de/mediadive/strain/3320> a schema:Strain ;
-    schema:hasBacDiveID 1433 ;
-    schema:hasSpecies "Geobacillus thermoleovorans" .
-  # Database: MediaDive | Query: 2 | Comment: MediaDive strain record linking to BacDive via BacDiveID
+  obo:MONDO_0008243 oboInOwl:id "MONDO:0008243" .
+  # Database: MONDO | Query: 3 | Comment: MONDO identifier for Pick disease
   
-  <https://purl.dsmz.de/mediadive/growth/3477> a schema:GrowthCondition ;
-    schema:relatedToStrain <https://purl.dsmz.de/mediadive/strain/3320> ;
-    schema:partOfMedium <https://purl.dsmz.de/mediadive/medium/1> ;
-    schema:growthTemperature 60 .
-  # Database: MediaDive | Query: 2 | Comment: High temperature (60°C) for Geobacillus thermoleovorans strain
+  obo:MONDO_0008243 rdfs:subClassOf* obo:MONDO_0005559 .
+  # Database: MONDO | Query: 3 | Comment: Pick disease is classified under neurodegenerative diseases
   
-  <https://purl.dsmz.de/mediadive/medium/1> a schema:CultureMedium ;
-    rdfs:label "NUTRIENT AGAR" .
-  # Database: MediaDive | Query: 2 | Comment: Standard culture medium for thermophilic bacteria
+  obo:MONDO_0008243 oboInOwl:hasDbXref "MESH:D020774" .
+  # Database: MONDO | Query: 3 | Comment: Cross-reference to MeSH descriptor
   
-  <https://purl.dsmz.de/mediadive/strain/25451> a schema:Strain ;
-    schema:hasBacDiveID 131725 ;
-    schema:hasSpecies "Geobacillus sp." .
-  # Database: MediaDive | Query: 2 | Comment: Another Geobacillus strain with growth conditions documented
+  <http://id.nlm.nih.gov/mesh/D020774> a meshv:TopicalDescriptor .
+  # Database: MeSH | Query: 3 | Comment: MeSH descriptor entry
   
-  <https://purl.dsmz.de/mediadive/growth/29705> a schema:GrowthCondition ;
-    schema:relatedToStrain <https://purl.dsmz.de/mediadive/strain/25451> ;
-    schema:partOfMedium <https://purl.dsmz.de/mediadive/medium/514> ;
-    schema:growthTemperature 55 .
-  # Database: MediaDive | Query: 2 | Comment: Temperature (55°C) for deep-sea vent Geobacillus strain
+  <http://id.nlm.nih.gov/mesh/D020774> rdfs:label "Pick Disease of the Brain" .
+  # Database: MeSH | Query: 3 | Comment: MeSH preferred term for Pick disease
   
-  <https://purl.dsmz.de/mediadive/medium/514> a schema:CultureMedium ;
-    rdfs:label "BACTO MARINE BROTH (DIFCO 2216)" .
-  # Database: MediaDive | Query: 2 | Comment: Marine medium for extremophile cultivation
+  obo:MONDO_0008890 a owl:Class .
+  # Database: MONDO | Query: 3 | Comment: Progressive bulbar palsy - another example
+  
+  obo:MONDO_0008890 rdfs:label "progressive bulbar palsy" .
+  # Database: MONDO | Query: 3 | Comment: Disease name
+  
+  obo:MONDO_0008890 oboInOwl:hasDbXref "MESH:D010244" .
+  # Database: MONDO | Query: 3 | Comment: Cross-reference to MeSH descriptor
+  
+  <http://id.nlm.nih.gov/mesh/D010244> rdfs:label "Bulbar Palsy, Progressive" .
+  # Database: MeSH | Query: 3 | Comment: MeSH term for progressive bulbar palsy
 
-exact_answer: "C) Geobacillus"
+exact_answer: 323
 
 ideal_answer: |
-  Among spore-forming bacterial genera with documented growth conditions, Geobacillus has the highest average optimal growth temperature at 55.3°C (13 strains). This is followed by Thermoactinomyces at 50°C (1 strain), Clostridium at 33.7°C (100 strains), Bacillus at 31.1°C (76 strains), and Paenibacillus at 29.9°C (153 strains). The cross-database analysis integrating BacDive's sporulation phenotype data with MediaDive's quantitative growth temperature records reveals Geobacillus as the most thermophilic spore-forming genus, consistent with its ecological distribution in geothermal environments and deep-sea hydrothermal vents.
+  Out of 886 neurodegenerative disease classes in the MONDO disease ontology, 323 (36.5%) have MeSH (Medical Subject Headings) descriptor cross-references. This represents substantial but incomplete coverage of neurodegenerative diseases in medical terminology systems. The integration between MONDO and MeSH enables cross-database queries linking disease ontology classifications with clinical literature indexing. Example mappings include Pick disease (MONDO:0008243) to "Pick Disease of the Brain" (MESH:D020774) and progressive bulbar palsy (MONDO:0008890) to "Bulbar Palsy, Progressive" (MESH:D010244). The 563 neurodegenerative diseases without MeSH mappings may represent rare diseases, recently classified conditions, or disease subtypes that lack established MeSH terminology. This cross-reference data is critical for translational research connecting disease ontologies with PubMed literature searches and clinical terminology systems.
 
-question_template_used: "CHOICE question with quantitative comparison across bacterial genera using cross-database integration (BacDive phenotype + MediaDive cultivation data)"
+question_template_used: Template 2 (Cross-Database Counting)
 
 time_spent:
-  exploration: "20 minutes"
-  formulation: "15 minutes"
-  verification: "15 minutes"
-  pubmed_test: "15 minutes"
-  extraction: "20 minutes"
-  documentation: "25 minutes"
-  total: "110 minutes"
+  exploration: 65 minutes
+  formulation: 20 minutes
+  verification: 75 minutes
+  pubmed_test: 15 minutes
+  extraction: 40 minutes
+  documentation: 35 minutes
+  total: 250 minutes

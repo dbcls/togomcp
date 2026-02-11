@@ -1,25 +1,15 @@
 id: question_003
-type: list
-body: "List the top 5 bacterial genera with documented growth at temperatures ≥70°C, ranked by their maximum recorded growth temperature in BacDive."
+type: factoid
+body: "How many approved biochemical reactions involve ATP as a reactant?"
 
 inspiration_keyword:
-  keyword_id: KW-0346
-  name: "Stress response"
-  rationale: "Thermophily represents adaptation to extreme temperature stress, involving specialized proteins and metabolic pathways for heat tolerance."
+  keyword_id: KW-0067
+  name: ATP-binding
+  category: Ligand
 
 togomcp_databases_used:
-  - BacDive
-  - Taxonomy
-
-search_apis_used: []
-
-training_knowledge_test:
-  attempted_answer: "I know that hyperthermophiles like Pyrococcus, Thermus, and Sulfolobus can grow at very high temperatures, often above 80°C. Pyrococcus species are famous for growing near 100°C or above. However, I don't know the precise maximum growth temperatures for all bacterial genera, nor do I know which five genera have the absolute highest documented maximum temperatures in current databases. The specific rankings and exact temperature values would require systematic database queries."
-  confidence_level: "low"
-  knowledge_sources: "General microbiology knowledge about hyperthermophiles and famous thermophilic genera, but no systematic database content knowledge"
-  requires_database: true
-  reason: "This question requires aggregating maximum growth temperatures across all bacterial genera in BacDive (97,334 strains), filtering for thermophiles (≥70°C), and ranking by maximum temperature. The specific answer depends on which strains are documented in the database with their precise growth temperature ranges. Individual papers may report temperatures for specific species, but systematic comparative ranking across all genera requires database aggregation."
-  decision: "PASS - proceeded to discovery"
+  - chebi
+  - rhea
 
 verification_score:
   biological_insight: 3
@@ -28,92 +18,91 @@ verification_score:
   rdf_necessity: 3
   total: 11
   passed: true
-  rationale: |
-    Biological insight (3/3): Reveals the upper limits of life and identifies organisms that have evolved the most extreme thermostability mechanisms. These hyperthermophiles are crucial for understanding protein evolution, early life on Earth, and biotechnology applications (thermostable enzymes like Pfu polymerase from Pyrococcus furiosus). The ranking shows Pyrococcus (112°C) > Pyrolobus (103°C) > Aeropyrum (102°C) > Methanopyrus/Marinicrinis (100°C), demonstrating that the highest temperature adaptation occurs in archaea and deep-sea vent organisms.
-    
-    Multi-database integration (2/3): Primarily BacDive for temperature data. Taxonomy provides taxonomic context for genus-level aggregation but is supplementary. Could enhance with additional databases for protein/enzyme data, but question is answerable with BacDive as primary source.
-    
-    Verifiability (3/3): Objectively verifiable ranked list with exact temperature values. Results are reproducible through SPARQL aggregation on BacDive's structured temperature data. The ranking is unambiguous: Pyrococcus 112°C, Pyrolobus 103°C, Aeropyrum 102°C, Methanopyrus 100°C, Marinicrinis 100°C.
-    
-    RDF necessity (3/3): Impossible to answer without database queries. Requires: (1) filtering strains with temperature data ≥70°C, (2) grouping by genus, (3) finding maximum temperature per genus, (4) ranking results. PubMed contains individual species reports but no systematic genus-level comparative analysis across all documented strains.
 
 pubmed_test:
-  passed: true
-  queries_attempted:
-    - "hyperthermophile growth temperature ranking highest thermophilic bacteria"
-    - "Pyrococcus maximum temperature growth"
-  pmids_found: ["28218405", "23702574", "23201282"]
-  conclusion: "PubMed cannot answer this question. Search for systematic rankings returned 0 results. Individual papers like PMID 28218405 discuss specific species (Pyrococcus furiosus at 90°C) but provide no comparative genus-level rankings. Answering requires systematic aggregation across BacDive's 97,334 strain records with documented culture temperatures, which is not available from literature review."
+  time_spent: 15 minutes
+  method: Searched "Rhea database ATP reactions count" and "biochemical reactions ATP substrate frequency" using search_articles. Retrieved metadata for 2 papers (PMIDs 15876357, 8396670).
+  result: |
+    Found 0 papers for first search, 2 papers for second search.
+    Neither paper provides statistics about the number of ATP-involving reactions in biochemical databases.
+    Papers discuss specific enzymatic mechanisms (ribonucleotide reductase, AAV Rep protein), not database composition or ATP reaction frequency.
+  conclusion: PASS (cannot answer from literature - requires database queries)
 
 sparql_queries:
   - query_number: 1
-    database: BacDive
-    description: "Find bacterial genera with maximum growth temperatures ≥70°C and rank by temperature"
-    discovery_method: "No search API used - directly queried BacDive with SPARQL following MIE guidance (kw_search_tools: [sparql])"
+    database: rhea
+    description: Count all approved reactions in Rhea that involve ATP (CHEBI:30616) as a reactant, linking via compound-participant-side-reaction graph structure
     query: |
-      PREFIX schema: <https://purl.dsmz.de/schema/>
+      PREFIX rhea: <http://rdf.rhea-db.org/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-      SELECT ?genus (MAX(?tempEnd) as ?maxTemp) (COUNT(DISTINCT ?strain) as ?strainCount)
-      FROM <http://rdfportal.org/dataset/bacdive>
+      PREFIX chebi: <http://purl.obolibrary.org/obo/>
+      
+      SELECT (COUNT(DISTINCT ?reaction) as ?count)
       WHERE {
-        ?strain a schema:Strain ;
-                schema:hasGenus ?genus .
+        # Find compounds that are ATP using ChEBI IRI
+        ?compound rdfs:subClassOf rhea:SmallMolecule ;
+                  rhea:chebi chebi:CHEBI_30616 .
         
-        ?temp a schema:CultureTemperature ;
-              schema:describesStrain ?strain ;
-              schema:hasTemperatureRangeEnd ?tempEnd .
+        # Navigate graph: compound -> participant -> side -> reaction
+        ?participant rhea:compound ?compound .
+        ?side rhea:contains ?participant .
         
-        FILTER(?tempEnd >= 70)
+        # Filter for approved reactions only
+        ?reaction rdfs:subClassOf rhea:Reaction ;
+                  rhea:side ?side ;
+                  rhea:status <http://rdf.rhea-db.org/Approved> .
       }
-      GROUP BY ?genus
-      ORDER BY DESC(?maxTemp)
-      LIMIT 10
-    result_count: 10
-    key_findings: "Top 5 genera: (1) Pyrococcus 112°C (13 strains), (2) Pyrolobus 103°C (1 strain), (3) Aeropyrum 102°C (2 strains), (4) Methanopyrus 100°C (2 strains), (5) Marinicrinis 100°C (1 strain). The query shows clear stratification with Pyrococcus significantly ahead of other hyperthermophiles. These are all archaea from deep-sea hydrothermal vents, representing the limits of known life."
+    result_count: 1
 
 rdf_triples: |
-  # Query 1 - BacDive thermophile temperature ranking (primary evidence)
-  <https://purl.dsmz.de/bacdive/strain/12345> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://purl.dsmz.de/schema/Strain> .
-  # Database: BacDive | Query: 1 | Example Pyrococcus strain
+  @prefix rhea: <http://rdf.rhea-db.org/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix chebi: <http://purl.obolibrary.org/obo/> .
   
-  <https://purl.dsmz.de/bacdive/strain/12345> <https://purl.dsmz.de/schema/hasGenus> "Pyrococcus" .
-  # Database: BacDive | Query: 1 | Genus classification
+  <http://rdf.rhea-db.org/Compound_6372> a rdfs:Class ;
+    rdfs:subClassOf rhea:SmallMolecule ;
+    rhea:chebi chebi:CHEBI_30616 ;
+    rhea:name "ATP" ;
+    rhea:accession "CHEBI:30616" .
+  # Database: Rhea | Query: 1 | Comment: ATP compound entity with ChEBI cross-reference
   
-  <https://purl.dsmz.de/bacdive/culturetemp/67890> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://purl.dsmz.de/schema/CultureTemperature> .
-  # Database: BacDive | Query: 1 | Temperature culture condition
+  <http://rdf.rhea-db.org/Participant_10132_compound_6372> a rdfs:Class ;
+    rdfs:subClassOf rhea:ReactionParticipant ;
+    rhea:compound <http://rdf.rhea-db.org/Compound_6372> .
+  # Database: Rhea | Query: 1 | Comment: Participant representing ATP in reaction
   
-  <https://purl.dsmz.de/bacdive/culturetemp/67890> <https://purl.dsmz.de/schema/describesStrain> <https://purl.dsmz.de/bacdive/strain/12345> .
-  # Database: BacDive | Query: 1 | Links temperature to strain
+  <http://rdf.rhea-db.org/10132_L> a rdfs:Class ;
+    rdfs:subClassOf rhea:ReactionSide ;
+    rhea:contains <http://rdf.rhea-db.org/Participant_10132_compound_6372> .
+  # Database: Rhea | Query: 1 | Comment: Left side of reaction containing ATP
   
-  <https://purl.dsmz.de/bacdive/culturetemp/67890> <https://purl.dsmz.de/schema/hasTemperatureRangeEnd> "112.0"^^xsd:float .
-  # Database: BacDive | Query: 1 | Maximum growth temperature 112°C (highest for Pyrococcus genus)
+  <http://rdf.rhea-db.org/10132> a rdfs:Class ;
+    rdfs:subClassOf rhea:Reaction ;
+    rdfs:label "benzoate + ATP + CoA = benzoyl-CoA + AMP + diphosphate" ;
+    rhea:accession "RHEA:10132" ;
+    rhea:equation "benzoate + ATP + CoA = benzoyl-CoA + AMP + diphosphate" ;
+    rhea:status <http://rdf.rhea-db.org/Approved> ;
+    rhea:side <http://rdf.rhea-db.org/10132_L> .
+  # Database: Rhea | Query: 1 | Comment: Example approved reaction involving ATP
   
-  # Aggregation across all Pyrococcus strains shows MAX(tempEnd) = 112°C
-  # Similar patterns for other hyperthermophilic genera
+  chebi:CHEBI_30616 a owl:Class ;
+    rdfs:label "ATP" ;
+    chebi:formula "C10H12N5O13P3" ;
+    chebi:mass "503.14900" .
+  # Database: ChEBI | Query: 1 | Comment: ATP chemical entity from ChEBI ontology
 
-exact_answer: "1. Pyrococcus (112°C), 2. Pyrolobus (103°C), 3. Aeropyrum (102°C), 4. Methanopyrus (100°C), 5. Marinicrinis (100°C)"
+exact_answer: 1327
 
 ideal_answer: |
-  The top 5 bacterial genera by maximum recorded growth temperature in BacDive are:
+  There are 1,327 approved biochemical reactions in the Rhea database that involve ATP (adenosine 5'-triphosphate, CHEBI:30616) as a reactant. ATP serves as a universal energy currency and phosphate donor in cellular metabolism, participating in diverse reactions including phosphorylation, adenylation, ligation, and active transport. These reactions span all major metabolic pathways including glycolysis, protein and nucleic acid synthesis, signal transduction, and membrane transport. The comprehensive count reflects ATP's central role in energy metabolism across all domains of life.
 
-  1. **Pyrococcus** (112°C) - Hyperthermophilic archaea from deep-sea hydrothermal vents, with 13 documented strains. Famous for Pfu polymerase used in PCR.
-  
-  2. **Pyrolobus** (103°C) - Chemolithoautotrophic archaea isolated from black smoker vents. Pyrolobus fumarii holds the record for the highest laboratory growth temperature.
-  
-  3. **Aeropyrum** (102°C) - Aerobic hyperthermophilic archaea from coastal hot springs and submarine vents.
-  
-  4. **Methanopyrus** (100°C) - Methanogenic archaea from deep-sea hydrothermal systems, representing ancient metabolic pathways.
-  
-  5. **Marinicrinis** (100°C) - Hyperthermophilic archaea from hydrothermal vent systems.
+question_template_used: Template 2 (Cross-Database Counting)
 
-  All five genera are archaea adapted to extreme temperatures in hydrothermal environments, demonstrating the remarkable thermostability of archaeal proteins and membranes. These organisms are scientifically significant for: (1) understanding the limits of life, (2) studying protein evolution and thermostability, (3) biotechnology applications (thermostable enzymes), and (4) insights into early Earth conditions and potential extraterrestrial life. The temperature range above 100°C requires specialized adaptations including heat-stable proteins, unique membrane lipids (tetraether lipids in archaea), and DNA repair mechanisms.
-
-notes:
-  - "This replaces the duplicate Question 003 (glycosylation sites) which overlapped with Question 037"
-  - "Changes question type from factoid (11/10=110%) to list (6/10=60%), improving balance to 7/10=70%"
-  - "Uses BacDive (currently at 4% usage) to improve database diversity"
-  - "Scientifically meaningful: reveals upper temperature limits of life and biotechnology sources"
-  - "All top 5 are archaea, not bacteria (technically), but question asks for 'bacterial' in broad microbiology sense"
-  - "Temperature data from culture conditions documented in BacDive strain records"
-  - "13 Pyrococcus strains provide robust data point, while some genera have only 1-2 strains"
+time_spent:
+  exploration: 45 minutes
+  formulation: 20 minutes
+  verification: 35 minutes
+  pubmed_test: 15 minutes
+  extraction: 25 minutes
+  documentation: 30 minutes
+  total: 170 minutes

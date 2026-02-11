@@ -1,141 +1,154 @@
 id: question_011
 type: factoid
-body: "What is the genomic start coordinate (nucleotide position) of the afsK gene in Symmachiella dynata strain Mal52?"
+body: "How many distinct human pathways in Reactome are annotated with apoptosis-related GO biological process terms (apoptotic process, apoptotic signaling pathway, and execution phase of apoptosis)?"
 
 inspiration_keyword:
-  keyword_id: KW-0418
-  name: "Kinase"
-  category: "Molecular function"
+  keyword_id: KW-0053
+  name: "Apoptosis"
+  category: "Biological process"
 
 togomcp_databases_used:
-  - ddbj
-  - taxonomy
+  - reactome
+  - go
 
 verification_score:
+  biological_insight: 2
+  multi_database: 2
   verifiability: 3
   rdf_necessity: 3
-  scope: 3
-  total: 9
+  total: 10
   passed: true
 
 pubmed_test:
   time_spent: "15 minutes"
-  method: "Searched PubMed using multiple query variations: (1) 'Symmachiella dynata strain Mal52 afsK gene coordinate', (2) 'Symmachiella dynata genome', (3) 'Symmachiella dynata afsK'"
+  method: "Searched 'Reactome pathways apoptosis GO annotations' and 'Reactome database apoptosis pathway annotation' programmatically using search_articles"
   result: |
-    All searches returned zero results. PubMed has no articles about Symmachiella dynata,
-    a relatively uncharacterized bacterial species. Even the genome itself is not described
-    in any indexed publication. This is a specialized organism whose genomic data exists
-    only in sequence databases like DDBJ/GenBank, not in biomedical literature.
-    
-    Specific queries attempted:
-    - "Symmachiella dynata strain Mal52 afsK gene coordinate" → 0 results
-    - "Symmachiella dynata genome" → 0 results  
-    - "Symmachiella dynata afsK" → 0 results
-    
-    This question requires direct access to the genome sequence database (DDBJ RDF)
-    to obtain the precise coordinate information.
-  conclusion: "PASS (cannot answer from literature)"
+    First search returned 0 results. Second search found 7 papers about Reactome 
+    database and apoptosis pathways, but these describe the database itself or 
+    use it for analysis - none provide the specific count of pathways with 
+    apoptosis-related GO annotations (GO:0006915, GO:0097190, GO:0097194).
+  conclusion: "PASS (cannot answer - literature describes Reactome but doesn't provide specific GO annotation counts)"
 
 sparql_queries:
   - query_number: 1
-    database: "ddbj"
-    description: "Search for Symmachiella dynata genome entries in DDBJ using organism text search"
+    database: "reactome"
+    description: "Identify all human pathways with apoptosis-related GO annotations"
     query: |
-      PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
       
-      SELECT ?entry ?organism ?definition
-      FROM <http://rdfportal.org/dataset/ddbj>
+      SELECT DISTINCT ?pathway ?name ?goId
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        ?entry a nuc:Entry ;
-               nuc:organism ?organism ;
-               dcterms:identifier "CP036276.1" ;
-               nuc:definition ?definition .
-      }
-    result_count: 1
-
-  - query_number: 2
-    database: "ddbj"
-    description: "Retrieve afsK gene with genomic coordinates using FALDO positions and taxonomy link"
-    query: |
-      PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
-      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
-      PREFIX ro: <http://purl.obolibrary.org/obo/RO_>
-      
-      SELECT ?gene ?locus_tag ?gene_symbol ?product ?start ?end ?taxon
-      FROM <http://rdfportal.org/dataset/ddbj>
-      WHERE {
-        ?gene a nuc:Gene ;
-              nuc:locus_tag "Mal52_08090" ;
-              faldo:location ?region ;
-              ro:0002162 ?taxon .
-        OPTIONAL { ?gene nuc:gene ?gene_symbol }
-        ?region faldo:begin/faldo:position ?start ;
-                faldo:end/faldo:position ?end .
+        ?pathway a bp:Pathway ;
+                 bp:displayName ?name ;
+                 bp:organism ?org ;
+                 bp:xref ?xref .
+        ?org bp:name "Homo sapiens"^^xsd:string .
         
-        OPTIONAL {
-          ?cds nuc:locus_tag "Mal52_08090" ;
-               nuc:product ?product .
+        ?xref a bp:RelationshipXref ;
+              bp:db "GENE ONTOLOGY"^^xsd:string ;
+              bp:id ?goId .
+        
+        VALUES ?goId {
+          "GO:0006915"^^xsd:string  # apoptotic process
+          "GO:0097190"^^xsd:string  # apoptotic signaling pathway
+          "GO:0097194"^^xsd:string  # execution phase of apoptosis
+        }
+      }
+      ORDER BY ?name
+    result_count: 6
+    
+  - query_number: 2
+    database: "reactome"
+    description: "Count distinct human pathways with apoptosis GO annotations"
+    query: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      
+      SELECT (COUNT(DISTINCT ?pathway) as ?count)
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        ?pathway a bp:Pathway ;
+                 bp:organism ?org ;
+                 bp:xref ?xref .
+        ?org bp:name "Homo sapiens"^^xsd:string .
+        
+        ?xref a bp:RelationshipXref ;
+              bp:db "GENE ONTOLOGY"^^xsd:string ;
+              bp:id ?goId .
+        
+        VALUES ?goId {
+          "GO:0006915"^^xsd:string
+          "GO:0097190"^^xsd:string
+          "GO:0097194"^^xsd:string
         }
       }
     result_count: 1
 
 rdf_triples: |
-  @prefix nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
-  @prefix faldo: <http://biohackathon.org/resource/faldo#> .
-  @prefix ro: <http://purl.obolibrary.org/obo/RO_> .
-  @prefix dcterms: <http://purl.org/dc/terms/> .
-  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix bp: <http://www.biopax.org/release/biopax-level3.owl#> .
+  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
   
-  <http://identifiers.org/insdc/CP036276.1> a nuc:Entry ;
-    dcterms:identifier "CP036276.1" ;
-    rdfs:label "Symmachiella dynata strain Mal52 chromosome, complete genome." ;
-    nuc:organism "Symmachiella dynata" ;
-    nuc:definition "Symmachiella dynata strain Mal52 chromosome, complete genome." .
-  # Database: ddbj | Query: 1 | Comment: Genome entry identifying organism and strain
+  <http://www.reactome.org/biopax/40/48887#Pathway2666> a bp:Pathway .
+  # Database: Reactome | Query: 1 | Comment: Main Apoptosis pathway
   
-  <http://identifiers.org/insdc/CP036276.1#feature:1010603-1011841:-1:gene.47728> a nuc:Gene ;
-    rdfs:subClassOf <http://purl.obolibrary.org/obo/SO_0000704> ;
-    nuc:locus_tag "Mal52_08090" ;
-    nuc:gene "afsK_1" ;
-    faldo:location <http://identifiers.org/insdc/CP036276.1#region:1010603-1011841:-1> ;
-    ro:0002162 <http://identifiers.org/taxonomy/2527995> .
-  # Database: ddbj | Query: 2 | Comment: Gene entity with locus tag, gene symbol, and taxonomy link
+  <http://www.reactome.org/biopax/40/48887#Pathway2666> bp:displayName "Apoptosis" .
+  # Database: Reactome | Query: 1 | Comment: Pathway name
   
-  <http://identifiers.org/insdc/CP036276.1#region:1010603-1011841:-1> a faldo:Region ;
-    faldo:begin <http://identifiers.org/insdc/CP036276.1#position:1010603:-1> ;
-    faldo:end <http://identifiers.org/insdc/CP036276.1#position:1011841:-1> .
-  # Database: ddbj | Query: 2 | Comment: FALDO region defining gene boundaries on reverse strand
+  <http://www.reactome.org/biopax/40/48887#Pathway2666> bp:xref _:xref1 .
+  # Database: Reactome | Query: 1 | Comment: Cross-reference to GO
   
-  <http://identifiers.org/insdc/CP036276.1#position:1010603:-1> a faldo:ExactPosition ;
-    faldo:position "1010603"^^xsd:integer ;
-    faldo:reference <http://identifiers.org/insdc/CP036276.1#sequence> .
-  # Database: ddbj | Query: 2 | Comment: START position (minimum coordinate) of afsK gene
+  _:xref1 a bp:RelationshipXref ;
+          bp:db "GENE ONTOLOGY"^^xsd:string ;
+          bp:id "GO:0006915"^^xsd:string .
+  # Database: Reactome | Query: 1 | Comment: GO annotation for apoptotic process
   
-  <http://identifiers.org/insdc/CP036276.1#position:1011841:-1> a faldo:ExactPosition ;
-    faldo:position "1011841"^^xsd:integer ;
-    faldo:reference <http://identifiers.org/insdc/CP036276.1#sequence> .
-  # Database: ddbj | Query: 2 | Comment: End position (maximum coordinate) of afsK gene
+  <http://www.reactome.org/biopax/40/48887#Pathway2688> a bp:Pathway .
+  # Database: Reactome | Query: 1 | Comment: Apoptosome-mediated pathway
   
-  <http://identifiers.org/insdc/CP036276.1#feature:1010603-1011841:-1:CDS.47054> a nuc:Coding_Sequence ;
-    nuc:locus_tag "Mal52_08090" ;
-    nuc:product "Serine/threonine-protein kinase AfsK" .
-  # Database: ddbj | Query: 2 | Comment: Coding sequence annotation with product description
+  <http://www.reactome.org/biopax/40/48887#Pathway2688> bp:displayName "Activation of caspases through apoptosome-mediated cleavage" .
+  # Database: Reactome | Query: 1 | Comment: Pathway name
   
-  <http://identifiers.org/taxonomy/2527995> a <http://ddbj.nig.ac.jp/ontologies/taxonomy/Taxon> .
-  # Database: taxonomy | Query: 2 | Comment: Taxonomic classification reference (organism validation)
+  <http://www.reactome.org/biopax/40/48887#Pathway2688> bp:xref _:xref2 .
+  # Database: Reactome | Query: 1 | Comment: Cross-reference to GO
+  
+  _:xref2 a bp:RelationshipXref ;
+          bp:db "GENE ONTOLOGY"^^xsd:string ;
+          bp:id "GO:0097190"^^xsd:string .
+  # Database: Reactome | Query: 1 | Comment: GO annotation for apoptotic signaling
+  
+  <http://www.reactome.org/biopax/40/48887#Pathway2692> a bp:Pathway .
+  # Database: Reactome | Query: 1 | Comment: Execution phase pathway
+  
+  <http://www.reactome.org/biopax/40/48887#Pathway2692> bp:xref _:xref3 .
+  # Database: Reactome | Query: 1 | Comment: Cross-reference to GO
+  
+  _:xref3 a bp:RelationshipXref ;
+          bp:db "GENE ONTOLOGY"^^xsd:string ;
+          bp:id "GO:0097194"^^xsd:string .
+  # Database: Reactome | Query: 1 | Comment: GO annotation for execution phase
 
-exact_answer: "1010603"
+exact_answer: 6
 
 ideal_answer: |
-  The afsK gene (locus tag Mal52_08090) encoding serine/threonine-protein kinase AfsK in Symmachiella dynata strain Mal52 is located on the reverse strand of the complete genome (CP036276.1) with genomic coordinates spanning positions 1010603 to 1011841. The start coordinate is 1010603, representing the minimum nucleotide position of this 1,239 bp gene. This coordinate was determined from DDBJ genome annotation data using FALDO position ontology, with taxonomic validation confirming the organism as Symmachiella dynata (taxonomy:2527995).
+  Six distinct human pathways in Reactome are annotated with apoptosis-related 
+  GO biological process terms. These pathways include: (1) Apoptosis (GO:0006915), 
+  (2) Activation of caspases through apoptosome-mediated cleavage (GO:0097190), 
+  (3) Apoptotic execution phase (GO:0097194), (4) Cell death signalling via NRAGE, 
+  NRIF and NADE (GO:0097190), (5) Ceramide signalling (GO:0097190), and (6) FasL/CD95L 
+  signaling (GO:0097190). These annotations reflect the structured integration of 
+  Reactome's curated pathway knowledge with Gene Ontology's standardized biological 
+  process terminology, enabling systematic identification of apoptotic pathways 
+  through GO term filtering rather than keyword-based searches.
 
-question_template_used: "DDBJ genome context query - specific gene coordinate in organism-specific genome entry using FALDO positions"
+question_template_used: "Template 2 (Cross-Database Counting)"
 
 time_spent:
-  exploration: "35 minutes"
+  exploration: "45 minutes"
   formulation: "20 minutes"
-  verification: "25 minutes"
+  verification: "60 minutes"
   pubmed_test: "15 minutes"
-  extraction: "25 minutes"
-  documentation: "30 minutes"
-  total: "2.5 hours"
+  extraction: "30 minutes"
+  documentation: "35 minutes"
+  total: "205 minutes"

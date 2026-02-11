@@ -133,19 +133,28 @@ inspiration_keyword:
 **Type:** Array of Strings  
 **Required:** Yes  
 **Minimum:** 1 database  
-**Recommended:** 2-4 databases
+**Recommended:** 2-4 databases  
+**Dataset Composition Target:** 60-80% multi-database questions (30-40 out of 50 total)
 
 **Allowed Values:**
 `uniprot`, `rhea`, `pubchem`, `pdb`, `chembl`, `chebi`, `reactome`, `ensembl`, `amrportal`, `mesh`, `go`, `taxonomy`, `mondo`, `nando`, `bacdive`, `mediadive`, `clinvar`, `pubmed`, `pubtator`, `ncbigene`, `medgen`, `ddbj`, `glycosmos`
 
-**Description:** List of TogoMCP databases queried via SPARQL.
+**Description:** List of TogoMCP databases queried via SPARQL. Multi-database integration showcases TogoMCP's core strength and should be prioritized.
 
-**Example:**
+**Examples:**
+
+Multi-database (preferred):
 ```yaml
 togomcp_databases_used:
   - uniprot
   - pdb
   - go
+```
+
+Single-database (acceptable if high-scoring on other dimensions):
+```yaml
+togomcp_databases_used:
+  - ncbigene
 ```
 
 ---
@@ -158,28 +167,52 @@ togomcp_databases_used:
 **Structure:**
 ```yaml
 verification_score:
-  verifiability: integer    # 0-3 points
-  rdf_necessity: integer    # 0-3 points
-  scope: integer            # 0-3 points
-  total: integer            # Sum (0-9)
-  passed: boolean           # true if total ≥7 and no zeros
+  biological_insight: integer   # 0-3 points
+  multi_database: integer       # 0-3 points
+  verifiability: integer        # 0-3 points
+  rdf_necessity: integer        # 0-3 points
+  total: integer                # Sum (0-12)
+  passed: boolean               # true if total ≥7 and no zeros
 ```
 
 **Constraints:**
 - Each dimension: 0-3 points
-- Total: 0-9 points
-- Must pass: `total ≥ 7` AND no dimension has 0
+- Total: 0-12 points
+- Must pass: `total ≥ 9` AND no dimension has 0
 - `passed` must be `true` for accepted questions
+
+**Scoring Dimensions:**
+- **biological_insight**: Does the question provide meaningful biological or scientific insights?
+  - 0: Trivial or no insight
+  - 1: Minor insight
+  - 2: Moderate insight
+  - 3: Significant biological/scientific insight
+- **multi_database**: Does the question integrate multiple databases?
+  - 0: No integration
+  - 1: Single database with internal cross-references
+  - 2: Two databases integrated
+  - 3: Three or more databases integrated
+- **verifiability**: Can the answer be verified and reproduced?
+  - 0: Not verifiable
+  - 1: Partially verifiable
+  - 2: Mostly verifiable
+  - 3: Fully verifiable with exact, reproducible results
+- **rdf_necessity**: Does answering require RDF/SPARQL (not achievable via search tools or training knowledge)?
+  - 0: Can be answered without RDF
+  - 1: RDF helpful but not essential
+  - 2: RDF strongly preferred
+  - 3: RDF absolutely necessary
 
 **Description:** Mandatory verification scoring using the rubric.
 
 **Example:**
 ```yaml
 verification_score:
+  biological_insight: 3
+  multi_database: 2
   verifiability: 3
   rdf_necessity: 3
-  scope: 3
-  total: 9
+  total: 11
   passed: true
 ```
 
@@ -531,10 +564,11 @@ togomcp_databases_used:
   - go
 
 verification_score:
+  biological_insight: 3
+  multi_database: 2
   verifiability: 3
   rdf_necessity: 3
-  scope: 3
-  total: 9
+  total: 11
   passed: true
 
 pubmed_test:
@@ -626,9 +660,9 @@ time_spent:
 ### Content Validation
 - [ ] `id` matches filename
 - [ ] `type` is one of allowed values
-- [ ] `verification_score.total` equals sum of dimensions
+- [ ] `verification_score.total` equals sum of dimensions (biological_insight + multi_database + verifiability + rdf_necessity)
 - [ ] `verification_score.passed` is `true`
-- [ ] `verification_score.total` ≥ 7
+- [ ] `verification_score.total` ≥ 9
 - [ ] No dimension in `verification_score` has 0
 - [ ] `pubmed_test.conclusion` contains "PASS"
 - [ ] At least 1 SPARQL query present
@@ -657,3 +691,4 @@ time_spent:
 ## Version History
 
 - **v1.0** (2025-02-05): Initial specification based on BioASQ Benchmark Creation Guidelines - TogoMCP Edition (REVISED)
+- **v1.1** (2025-02-11): Added dataset composition target (60-80% multi-database questions)

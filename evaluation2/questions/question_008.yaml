@@ -1,157 +1,166 @@
 id: question_008
-type: yes_no
-body: "Do OXA-type carbapenemase resistance genes occur in Pseudomonas species according to AMRPortal genotypic surveillance data?"
+type: factoid
+body: "Among the five main MODY (Maturity-Onset Diabetes of the Young) genes—HNF4A, GCK, HNF1A, PDX1, and HNF1B—how many have pathogenic or likely pathogenic variants in ClinVar, and are they all protein-coding genes?"
 
 inspiration_keyword:
-  keyword_id: KW-0046
-  name: "Antibiotic resistance"
-  category: "Biological process"
+  keyword_id: KW-0219
+  name: "Diabetes mellitus"
+  category: "Disease"
 
 togomcp_databases_used:
-  - amrportal
-  - taxonomy
+  - clinvar
+  - ncbigene
 
 verification_score:
+  biological_insight: 3
+  multi_database: 3
   verifiability: 3
   rdf_necessity: 3
-  scope: 3
-  total: 9
+  total: 12
   passed: true
 
 pubmed_test:
   time_spent: "15 minutes"
-  method: "Searched PubMed for 'Pseudomonas OXA carbapenemase resistance genes' and retrieved 275 articles. Examined top 3 articles including PMIDs 41548498, 41543594, and 41493746."
-  result: |
-    PubMed articles provide qualitative evidence that OXA-type carbapenemases occur in Pseudomonas:
-    - PMID 41548498 discusses detection of blaOXA genes in carbapenemase screening
-    - PMID 41543594 compares immunoassays for carbapenemase detection in P. aeruginosa
-    - PMID 41493746 reports 16.7% of P. aeruginosa isolates carried blaOXA genes in Mexican surveillance
-    
-    However, PubMed results DO NOT provide:
-    1. Comprehensive global surveillance statistics from AMRPortal database
-    2. Systematic enumeration of specific OXA subtypes (OXA-488, OXA-2, OXA-494, etc.)
-    3. Quantitative distribution across all Pseudomonas isolates worldwide
-    4. Direct access to genotypic feature data linking genes to taxonomy
-    
-    The literature provides case reports and regional studies, but not the systematic,
-    database-wide surveillance data that AMRPortal RDF provides through comprehensive queries.
-  conclusion: "PASS (cannot answer comprehensively from literature alone - requires AMRPortal surveillance database)"
+  method: "Performed two PubMed searches: (1) 'MODY genes pathogenic variants ClinVar count' returned 0 results; (2) 'HNF4A GCK HNF1A pathogenic variants database' returned 4 articles (PMIDs: 37055265, 34763692, 32741144, 25555642). The articles discuss these genes and variants generally but do not provide the specific integrated counts of pathogenic variants per gene or verification of gene types from NCBI Gene database."
+  result: "Articles found discuss MODY genes and variants but do not answer the specific question about counts and gene types"
+  conclusion: "PASS (cannot answer the specific quantitative question)"
 
 sparql_queries:
   - query_number: 1
-    database: "amrportal"
-    description: "Comprehensive search for beta-lactam class resistance genes (including OXA-type carbapenemases) in Pseudomonas genus with taxonomy validation"
+    database: "ncbigene"
+    description: "Retrieve gene metadata for the 5 main MODY genes from NCBI Gene, including gene type and chromosomal location"
     query: |
-      PREFIX amr: <http://example.org/ebiamr#>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      PREFIX dct: <http://purl.org/dc/terms/>
       
-      SELECT DISTINCT ?geneSymbol ?amrElement (COUNT(*) as ?count)
-      FROM <http://rdfportal.org/dataset/amrportal>
+      SELECT ?gene ?gene_id ?symbol ?type ?chromosome ?description
+      FROM <http://rdfportal.org/dataset/ncbigene>
       WHERE {
-        ?s a amr:GenotypeFeature ;
-           amr:genus "Pseudomonas" ;
-           amr:amrClass ?class ;
-           amr:geneSymbol ?geneSymbol ;
-           amr:amrElementSymbol ?amrElement ;
-           obo:RO_0002162 ?taxon .
-        FILTER(CONTAINS(?class, "BETA-LACTAM"))
-        FILTER(REGEX(?amrElement, "OXA", "i"))
+        VALUES ?gene {
+          <http://identifiers.org/ncbigene/3172>  # HNF4A
+          <http://identifiers.org/ncbigene/2645>  # GCK
+          <http://identifiers.org/ncbigene/6927>  # HNF1A
+          <http://identifiers.org/ncbigene/3651>  # PDX1
+          <http://identifiers.org/ncbigene/6928>  # HNF1B
+        }
+        ?gene a insdc:Gene ;
+              dct:identifier ?gene_id ;
+              rdfs:label ?symbol ;
+              ncbio:typeOfGene ?type .
+        OPTIONAL { ?gene insdc:chromosome ?chromosome }
+        OPTIONAL { ?gene dct:description ?description }
       }
-      GROUP BY ?geneSymbol ?amrElement
-      ORDER BY DESC(?count)
-      LIMIT 20
-    result_count: 20
-
+    result_count: 5
+    
   - query_number: 2
-    database: "amrportal"
-    description: "Verify existence of any OXA genes in Pseudomonas using comprehensive bif:contains search"
+    database: "clinvar"
+    description: "Count pathogenic and likely pathogenic variants for each of the 5 MODY genes in ClinVar"
     query: |
-      PREFIX amr: <http://example.org/ebiamr#>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX sio: <http://semanticscience.org/resource/>
       
-      ASK
-      FROM <http://rdfportal.org/dataset/amrportal>
+      SELECT ?gene_uri (COUNT(DISTINCT ?variant) as ?pathogenic_count)
+      FROM <http://rdfportal.org/dataset/clinvar>
       WHERE {
-        ?s a amr:GenotypeFeature ;
-           amr:genus ?genus ;
-           amr:amrElementSymbol ?element ;
-           obo:RO_0002162 ?taxon .
-        ?genus bif:contains "'Pseudomonas'" option (score ?sc) .
-        FILTER(REGEX(?element, "OXA", "i"))
+        VALUES ?gene_uri {
+          <http://ncbi.nlm.nih.gov/gene/3172>  # HNF4A
+          <http://ncbi.nlm.nih.gov/gene/2645>  # GCK
+          <http://ncbi.nlm.nih.gov/gene/6927>  # HNF1A
+          <http://ncbi.nlm.nih.gov/gene/3651>  # PDX1
+          <http://ncbi.nlm.nih.gov/gene/6928>  # HNF1B
+        }
+        
+        ?gene_bn med2rdf:gene ?gene_uri .
+        ?classrec sio:SIO_000628 ?gene_bn .
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 cvo:classified_record ?classrec .
+        
+        ?classrec cvo:classifications ?classi .
+        ?classi cvo:germline_classification ?germ .
+        ?germ cvo:description ?significance .
+        FILTER(?significance = "Pathogenic" || ?significance = "Likely pathogenic")
       }
-    result_count: 1
-
-  - query_number: 3
-    database: "amrportal"
-    description: "Get specific OXA subtypes found in Pseudomonas"
-    query: |
-      PREFIX amr: <http://example.org/ebiamr#>
-      
-      SELECT DISTINCT ?amrElement (COUNT(*) as ?isolates)
-      FROM <http://rdfportal.org/dataset/amrportal>
-      WHERE {
-        ?s a amr:GenotypeFeature ;
-           amr:genus "Pseudomonas" ;
-           amr:amrElementSymbol ?amrElement .
-        FILTER(REGEX(?amrElement, "^blaOXA", "i"))
-      }
-      GROUP BY ?amrElement
-      ORDER BY DESC(?isolates)
-      LIMIT 10
-    result_count: 10
+      GROUP BY ?gene_uri
+      ORDER BY DESC(?pathogenic_count)
+    result_count: 5
 
 rdf_triples: |
-  @prefix amr: <http://example.org/ebiamr#> .
-  @prefix obo: <http://purl.obolibrary.org/obo/> .
-  @prefix taxon: <http://identifiers.org/taxonomy/> .
+  @prefix insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
+  @prefix ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#> .
+  @prefix dct: <http://purl.org/dc/terms/> .
+  @prefix cvo: <http://purl.jp/bio/10/clinvar/> .
+  @prefix med2rdf: <http://med2rdf.org/ontology/med2rdf#> .
+  @prefix sio: <http://semanticscience.org/resource/> .
   
-  [] a amr:GenotypeFeature ;
-     amr:genus "Pseudomonas" ;
-     amr:species "Pseudomonas aeruginosa" ;
-     amr:amrClass "BETA-LACTAM" ;
-     amr:amrElementSymbol "blaOXA-488" ;
-     amr:geneSymbol "ampC" ;
-     amr:bioSample <https://identifiers.org/biosample/SAMEA104147270> ;
-     obo:RO_0002162 taxon:287 .
-  # Database: amrportal | Query: 1 | Comment: Most common OXA variant in Pseudomonas (391 isolates)
+  # Database: ncbigene | Query: 1 | Gene metadata for MODY genes
+  <http://identifiers.org/ncbigene/2645> a insdc:Gene ;
+    rdfs:label "GCK" ;
+    ncbio:typeOfGene "protein-coding" ;
+    dct:description "glucokinase" ;
+    insdc:chromosome "7" .
   
-  [] a amr:GenotypeFeature ;
-     amr:genus "Pseudomonas" ;
-     amr:species "Pseudomonas aeruginosa" ;
-     amr:amrClass "BETA-LACTAM" ;
-     amr:amrElementSymbol "blaOXA-2" ;
-     amr:geneSymbol "ampC" ;
-     obo:RO_0002162 taxon:287 .
-  # Database: amrportal | Query: 1 | Comment: Second most common OXA variant (298 isolates)
+  <http://identifiers.org/ncbigene/6928> a insdc:Gene ;
+    rdfs:label "HNF1B" ;
+    ncbio:typeOfGene "protein-coding" ;
+    dct:description "HNF1 homeobox B" ;
+    insdc:chromosome "17" .
   
-  [] a amr:GenotypeFeature ;
-     amr:genus "Pseudomonas" ;
-     amr:amrClass "BETA-LACTAM" ;
-     amr:amrElementSymbol "blaOXA-494" ;
-     obo:RO_0002162 taxon:287 .
-  # Database: amrportal | Query: 3 | Comment: Third most common (272 isolates)
+  <http://identifiers.org/ncbigene/6927> a insdc:Gene ;
+    rdfs:label "HNF1A" ;
+    ncbio:typeOfGene "protein-coding" ;
+    dct:description "HNF1 homeobox A" ;
+    insdc:chromosome "12" .
   
-  [] a amr:GenotypeFeature ;
-     amr:genus "Pseudomonas" ;
-     amr:amrElementSymbol "blaOXA-914" ;
-     obo:RO_0002162 taxon:287 .
-  # Database: amrportal | Query: 3 | Comment: Fourth variant (269 isolates)
+  <http://identifiers.org/ncbigene/3172> a insdc:Gene ;
+    rdfs:label "HNF4A" ;
+    ncbio:typeOfGene "protein-coding" ;
+    dct:description "hepatocyte nuclear factor 4 alpha" ;
+    insdc:chromosome "20" .
   
-  taxon:287 a <http://purl.obolibrary.org/obo/NCBITaxon_287> .
-  # Database: taxonomy | Query: All | Comment: Pseudomonas aeruginosa taxonomic identifier
+  <http://identifiers.org/ncbigene/3651> a insdc:Gene ;
+    rdfs:label "PDX1" ;
+    ncbio:typeOfGene "protein-coding" ;
+    dct:description "pancreatic and duodenal homeobox 1" ;
+    insdc:chromosome "13" .
+  
+  # Database: clinvar | Query: 2 | Pathogenic variant counts linked to genes
+  _:gene_bn1 med2rdf:gene <http://ncbi.nlm.nih.gov/gene/2645> .
+  _:classrec1 sio:SIO_000628 _:gene_bn1 .
+  _:variant1 a cvo:VariationArchiveType ;
+    cvo:record_status "current" ;
+    cvo:classified_record _:classrec1 .
+  _:classrec1 cvo:classifications _:classi1 .
+  _:classi1 cvo:germline_classification _:germ1 .
+  _:germ1 cvo:description "Pathogenic" .
+  # Note: GCK has 548 pathogenic/likely pathogenic variants total
+  
+  _:gene_bn2 med2rdf:gene <http://ncbi.nlm.nih.gov/gene/6928> .
+  # Note: HNF1B has 355 pathogenic/likely pathogenic variants total
+  
+  _:gene_bn3 med2rdf:gene <http://ncbi.nlm.nih.gov/gene/6927> .
+  # Note: HNF1A has 352 pathogenic/likely pathogenic variants total
+  
+  _:gene_bn4 med2rdf:gene <http://ncbi.nlm.nih.gov/gene/3172> .
+  # Note: HNF4A has 150 pathogenic/likely pathogenic variants total
+  
+  _:gene_bn5 med2rdf:gene <http://ncbi.nlm.nih.gov/gene/3651> .
+  # Note: PDX1 has 41 pathogenic/likely pathogenic variants total
 
-exact_answer: "yes"
+exact_answer: "All 5 genes (100%) have pathogenic or likely pathogenic variants, and yes, all 5 are protein-coding genes."
 
 ideal_answer: |
-  Yes, OXA-type carbapenemase resistance genes are documented in Pseudomonas species in AMRPortal genotypic surveillance data. The database contains multiple OXA variants including blaOXA-488 (391 isolates), blaOXA-2 (298 isolates), blaOXA-494 (272 isolates), blaOXA-914 (269 isolates), and blaOXA-50 (249 isolates) among others, all classified under beta-lactam resistance mechanisms and linked to Pseudomonas taxonomy via NCBI Taxonomy identifiers.
+  All five main MODY genes—HNF4A, GCK, HNF1A, PDX1, and HNF1B—have pathogenic or likely pathogenic variants documented in ClinVar, and all five are classified as protein-coding genes in NCBI Gene. The variant counts range from 41 (PDX1) to 548 (GCK), with GCK having the highest number of pathogenic variants, followed by HNF1B (355) and HNF1A (352). These genes encode transcription factors and metabolic enzymes critical for pancreatic beta-cell function and glucose homeostasis, and pathogenic variants in these genes cause different subtypes of MODY, an inherited form of diabetes typically diagnosed before age 25.
 
-question_template_used: "Yes/No question using AMRPortal genotypic features with taxonomy validation via obo:RO_0002162 relationships"
+question_template_used: "Template 4 (Multi-database integration)"
 
 time_spent:
   exploration: "25 minutes"
-  formulation: "15 minutes"
-  verification: "20 minutes"
+  formulation: "20 minutes"
+  verification: "15 minutes"
   pubmed_test: "15 minutes"
-  extraction: "15 minutes"
-  documentation: "20 minutes"
-  total: "110 minutes"
+  extraction: "10 minutes"
+  documentation: "15 minutes"
+  total: "100 minutes"

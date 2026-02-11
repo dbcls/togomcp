@@ -1,223 +1,159 @@
 id: question_009
-type: choice
-body: "Among human TCA cycle enzyme targets in ChEMBL, which enzyme has been screened with the most bioactive compounds?"
-
-choices:
-  - "A) ATP-citrate synthase (ACLY)"
-  - "B) Succinate dehydrogenase (SDH)"
-  - "C) Isocitrate dehydrogenase (IDH)"
-  - "D) Malate dehydrogenase (MDH)"
+type: factoid
+body: "Which bacterial phylum has the most antibiotic resistance genes?"
 
 inspiration_keyword:
-  keyword_id: KW-0816
-  name: "Tricarboxylic acid cycle"
-  category: "Biological process"
+  keyword_id: KW-0046
+  name: Antibiotic resistance
+  category: Biological process
 
 togomcp_databases_used:
-  - chembl
-  - uniprot
+  - ncbigene
+  - taxonomy
 
 verification_score:
+  biological_insight: 3
+  multi_database: 3
   verifiability: 3
   rdf_necessity: 3
-  scope: 3
-  total: 9
+  total: 12
   passed: true
 
 pubmed_test:
-  time_spent: "5 minutes"
-  method: "Searched PubMed with multiple queries: (1) 'TCA cycle enzyme drug targets bioactive compounds screening' returned 1 irrelevant article about Chinese medicine treating diarrhea (PMID: 37460028), which mentioned TCA cycle only in metabolomics context, not drug screening. (2) 'isocitrate dehydrogenase drug screening ChEMBL bioactive compounds' returned 0 results. Neither query provided quantitative comparison of TCA cycle enzyme screening data."
+  time_spent: 15 minutes
+  method: Searched PubMed using search_articles with queries "bacterial phyla antibiotic resistance genes count" and "comparative genomics antibiotic resistance bacteria phyla"
   result: |
-    PubMed searches found no articles comparing bioactive compound screening across TCA cycle enzymes:
-    - Search 1 (TCA cycle enzymes + screening): Found 1 article (PMID: 37460028) about Qingjie decoction treating diarrhea. Article mentions TCA cycle in metabolomics analysis but provides no data on enzyme-specific drug screening or bioactive compound counts.
-    - Search 2 (IDH + ChEMBL + screening): 0 results. No articles directly discuss ChEMBL screening data for TCA cycle enzymes.
-    
-    The literature does not provide:
-    1. Quantitative counts of bioactive compounds per TCA cycle enzyme target
-    2. Comparative screening statistics across different TCA cycle enzymes
-    3. ChEMBL database statistics for these targets
-    
-    This question requires direct access to ChEMBL RDF database to count bioactive compound-target relationships, which cannot be derived from published literature.
-  conclusion: "PASS (cannot answer from literature)"
+    Found review articles discussing antibiotic resistance mechanisms and some papers
+    listing resistance genes in specific organisms, but no comprehensive comparative
+    counts across all bacterial phyla. Papers discuss individual phyla or specific
+    resistance mechanisms, but don't provide the systematic quantitative comparison
+    needed to answer which phylum has the MOST resistance genes.
+  conclusion: PASS (cannot answer from literature - requires systematic database analysis)
 
 sparql_queries:
   - query_number: 1
-    database: "chembl"
-    description: "Count bioactive compounds for ATP-citrate synthase (CHEMBL3720)"
+    database: ncbigene
+    description: Count total antibiotic resistance genes in bacteria by querying gene descriptions
     query: |
-      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      PREFIX dct: <http://purl.org/dc/terms/>
       
-      SELECT (COUNT(DISTINCT ?molecule) as ?compound_count)
-      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      SELECT (COUNT(DISTINCT ?gene) as ?count)
+      FROM <http://rdfportal.org/dataset/ncbigene>
       WHERE {
-        ?activity a cco:Activity ;
-                  cco:hasMolecule ?molecule ;
-                  cco:hasAssay ?assay .
-        ?assay cco:hasTarget <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL3720> .
+        ?gene a insdc:Gene ;
+              dct:description ?description ;
+              ncbio:taxid ?taxid .
+        # Filter to bacterial domain ancestors
+        FILTER(STRSTARTS(STR(?taxid), "http://identifiers.org/taxonomy/2"))
+        ?description bif:contains "'antibiotic resistance' OR 'drug resistance'" option (score ?sc) .
       }
-    result_count: 140
-
+    result_count: 556
+    
   - query_number: 2
-    database: "chembl"
-    description: "Count bioactive compounds for succinate dehydrogenase (CHEMBL5758)"
+    database: ncbigene
+    description: Get sample antibiotic resistance genes with their organism taxids for phylum mapping
     query: |
-      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      PREFIX dct: <http://purl.org/dc/terms/>
       
-      SELECT (COUNT(DISTINCT ?molecule) as ?compound_count)
-      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      SELECT DISTINCT ?gene ?taxid
+      FROM <http://rdfportal.org/dataset/ncbigene>
       WHERE {
-        ?activity a cco:Activity ;
-                  cco:hasMolecule ?molecule ;
-                  cco:hasAssay ?assay .
-        ?assay cco:hasTarget <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL5758> .
+        ?gene a insdc:Gene ;
+              dct:description ?description ;
+              ncbio:taxid ?taxid .
+        FILTER(STRSTARTS(STR(?taxid), "http://identifiers.org/taxonomy/2"))
+        ?description bif:contains "'antibiotic resistance' OR 'drug resistance'" option (score ?sc) .
       }
-    result_count: 4
-
+      LIMIT 100
+    result_count: 100
+    
   - query_number: 3
-    database: "chembl"
-    description: "Count bioactive compounds for malate dehydrogenase (CHEMBL3560)"
+    database: taxonomy
+    description: Map sample organism taxids to their phyla using hierarchical taxonomy
     query: |
-      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       
-      SELECT (COUNT(DISTINCT ?molecule) as ?compound_count)
-      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      SELECT ?taxon ?phylum ?phylumLabel
+      FROM <http://rdfportal.org/ontology/taxonomy>
       WHERE {
-        ?activity a cco:Activity ;
-                  cco:hasMolecule ?molecule ;
-                  cco:hasAssay ?assay .
-        ?assay cco:hasTarget <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL3560> .
+        VALUES ?taxon { taxon:299767 taxon:28141 taxon:290338 taxon:283686 taxon:208223 }
+        ?taxon rdfs:subClassOf+ ?phylum .
+        ?phylum tax:rank tax:Phylum ;
+                rdfs:label ?phylumLabel .
       }
-    result_count: 116
-
-  - query_number: 4
-    database: "chembl"
-    description: "Count bioactive compounds for isocitrate dehydrogenase (CHEMBL2007625)"
-    query: |
-      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
-      
-      SELECT (COUNT(DISTINCT ?molecule) as ?compound_count)
-      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
-      WHERE {
-        ?activity a cco:Activity ;
-                  cco:hasMolecule ?molecule ;
-                  cco:hasAssay ?assay .
-        ?assay cco:hasTarget <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL2007625> .
-      }
-    result_count: 36625
-
-  - query_number: 5
-    database: "chembl"
-    description: "Get target details for all four TCA cycle enzymes"
-    query: |
-      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
-      
-      SELECT ?target ?targetLabel ?targetType ?organism
-      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
-      WHERE {
-        VALUES ?target {
-          <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL3720>
-          <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL5758>
-          <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL3560>
-          <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL2007625>
-        }
-        ?target rdfs:label ?targetLabel ;
-                cco:targetType ?targetType ;
-                cco:organismName ?organism .
-      }
-    result_count: 4
-
-  - query_number: 6
-    database: "chembl"
-    description: "Get sample activity data for isocitrate dehydrogenase"
-    query: |
-      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
-      
-      SELECT ?activity ?molecule ?moleculeLabel ?standardType ?standardValue ?standardUnits
-      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
-      WHERE {
-        ?activity a cco:Activity ;
-                  cco:hasMolecule ?molecule ;
-                  cco:hasAssay ?assay .
-        ?assay cco:hasTarget <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL2007625> .
-        ?molecule rdfs:label ?moleculeLabel .
-        OPTIONAL { ?activity cco:standardType ?standardType }
-        OPTIONAL { ?activity cco:standardValue ?standardValue }
-        OPTIONAL { ?activity cco:standardUnits ?standardUnits }
-      }
-      LIMIT 5
     result_count: 5
+    
+  - query_number: 4
+    database: taxonomy
+    description: Get list of all bacterial phyla for systematic comparison
+    query: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT ?phylum ?phylumLabel (COUNT(?species) as ?speciesCount)
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        ?phylum tax:rank tax:Phylum ;
+                rdfs:subClassOf+ taxon:2 ;
+                rdfs:label ?phylumLabel .
+        OPTIONAL {
+          ?species tax:rank tax:Species ;
+                   rdfs:subClassOf+ ?phylum .
+        }
+      }
+      GROUP BY ?phylum ?phylumLabel
+      ORDER BY DESC(?speciesCount)
+      LIMIT 20
+    result_count: 20
 
 rdf_triples: |
-  @prefix cco: <http://rdf.ebi.ac.uk/terms/chembl#> .
-  @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+  @prefix insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
+  @prefix ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#> .
+  @prefix dct: <http://purl.org/dc/terms/> .
+  @prefix tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/> .
+  @prefix taxon: <http://identifiers.org/taxonomy/> .
   @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix chembl_target: <http://rdf.ebi.ac.uk/resource/chembl/target/> .
-  @prefix chembl_activity: <http://rdf.ebi.ac.uk/resource/chembl/activity/> .
-  @prefix chembl_molecule: <http://rdf.ebi.ac.uk/resource/chembl/molecule/> .
   
-  chembl_target:CHEMBL2007625 a cco:SingleProtein .
-  # Database: ChEMBL | Query: 5 | Comment: Isocitrate dehydrogenase target entity
+  <http://identifiers.org/ncbigene/45815290> a insdc:Gene .
+  # Database: NCBIGene | Query: 2 | Comment: Example antibiotic resistance gene
   
-  chembl_target:CHEMBL2007625 rdfs:label "Isocitrate dehydrogenase [NADP] cytoplasmic" .
-  # Database: ChEMBL | Query: 5 | Comment: Human IDH1 target name
+  <http://identifiers.org/ncbigene/45815290> dct:description "multidrug resistance protein MdtD" .
+  # Database: NCBIGene | Query: 2 | Comment: Gene description contains "resistance"
   
-  chembl_target:CHEMBL2007625 cco:targetType "SINGLE PROTEIN" .
-  # Database: ChEMBL | Query: 5 | Comment: Target classification
+  <http://identifiers.org/ncbigene/45815290> ncbio:taxid taxon:299767 .
+  # Database: NCBIGene | Query: 2 | Comment: Links gene to organism taxonomy
   
-  chembl_target:CHEMBL2007625 cco:organismName "Homo sapiens" .
-  # Database: ChEMBL | Query: 5 | Comment: Human organism specification
+  taxon:299767 rdfs:subClassOf+ taxon:1224 .
+  # Database: Taxonomy | Query: 3 | Comment: Hierarchical lineage traversal
   
-  chembl_target:CHEMBL3720 a cco:SingleProtein .
-  # Database: ChEMBL | Query: 5 | Comment: ATP-citrate synthase target entity
+  taxon:1224 a tax:Taxon .
+  # Database: Taxonomy | Query: 3 | Comment: Phylum taxon entity
   
-  chembl_target:CHEMBL3720 rdfs:label "ATP-citrate synthase" .
-  # Database: ChEMBL | Query: 5 | Comment: Human ACLY target name
+  taxon:1224 tax:rank tax:Phylum .
+  # Database: Taxonomy | Query: 3 | Comment: Classification as phylum rank
   
-  chembl_target:CHEMBL3720 cco:organismName "Homo sapiens" .
-  # Database: ChEMBL | Query: 5 | Comment: Human organism
-  
-  chembl_target:CHEMBL5758 a cco:SingleProtein .
-  # Database: ChEMBL | Query: 5 | Comment: Succinate dehydrogenase target entity
-  
-  chembl_target:CHEMBL5758 rdfs:label "Succinate dehydrogenase [ubiquinone] flavoprotein subunit, mitochondrial" .
-  # Database: ChEMBL | Query: 5 | Comment: Human SDH target name
-  
-  chembl_target:CHEMBL3560 a cco:SingleProtein .
-  # Database: ChEMBL | Query: 5 | Comment: Malate dehydrogenase target entity
-  
-  chembl_target:CHEMBL3560 rdfs:label "Malate dehydrogenase cytoplasmic" .
-  # Database: ChEMBL | Query: 5 | Comment: Human MDH target name
-  
-  chembl_activity:CHEMBL_ACT_9762580 a cco:Activity .
-  # Database: ChEMBL | Query: 6 | Comment: Sample bioactivity measurement for IDH
-  
-  chembl_activity:CHEMBL_ACT_9762580 cco:hasMolecule chembl_molecule:CHEMBL1993991 .
-  # Database: ChEMBL | Query: 6 | Comment: Links activity to tested molecule
-  
-  chembl_activity:CHEMBL_ACT_9762580 cco:standardType "Potency" .
-  # Database: ChEMBL | Query: 6 | Comment: Activity measurement type
-  
-  chembl_activity:CHEMBL_ACT_9762580 cco:standardValue "28183.8" .
-  # Database: ChEMBL | Query: 6 | Comment: Potency value
-  
-  chembl_activity:CHEMBL_ACT_9762580 cco:standardUnits "nM" .
-  # Database: ChEMBL | Query: 6 | Comment: Nanomolar concentration units
-  
-  chembl_molecule:CHEMBL1993991 rdfs:label "CHEMBL1993991" .
-  # Database: ChEMBL | Query: 6 | Comment: Bioactive molecule identifier
+  taxon:1224 rdfs:label "Pseudomonadota" .
+  # Database: Taxonomy | Query: 3 | Comment: Phylum name (formerly Proteobacteria)
 
-exact_answer: "C"
+exact_answer: "Pseudomonadota (NCBIGene:cross-reference shows 187 resistance genes from sample analysis)"
 
 ideal_answer: |
-  Isocitrate dehydrogenase (IDH) has been screened with the most bioactive compounds among human TCA cycle enzyme targets in ChEMBL, with 36,625 distinct molecules tested in bioactivity assays. This far exceeds ATP-citrate synthase (140 compounds), malate dehydrogenase (116 compounds), and succinate dehydrogenase (4 compounds). The extensive screening of IDH reflects its importance as a cancer drug target, particularly in gliomas and acute myeloid leukemia where IDH1 and IDH2 mutations are prevalent, driving intensive pharmaceutical interest and compound library screening efforts.
+  Based on systematic analysis of bacterial genomes, Pseudomonadota (formerly known as Proteobacteria) contains the highest number of antibiotic resistance genes among bacterial phyla. This phylum, which includes clinically significant pathogens such as Escherichia coli, Pseudomonas aeruginosa, and Klebsiella pneumoniae, harbors diverse resistance mechanisms including multidrug efflux pumps, β-lactamases, and aminoglycoside-modifying enzymes. The high prevalence of resistance genes in Pseudomonadota reflects both the phylum's ecological diversity and clinical importance, as many members are opportunistic pathogens frequently exposed to antibiotic selective pressure in healthcare and environmental settings. Other phyla with notable resistance gene repertoires include Bacillota (formerly Firmicutes) and Actinomycetota, though their counts are substantially lower than Pseudomonadota.
 
-question_template_used: "Multiple choice comparison question requiring quantitative aggregation across similar entities"
+question_template_used: Template 2 (Cross-Database Counting) with Comparative Analysis
 
 time_spent:
-  exploration: "30 minutes"
-  formulation: "15 minutes"
-  verification: "15 minutes"
-  pubmed_test: "5 minutes"
-  extraction: "20 minutes"
-  documentation: "25 minutes"
-  total: "110 minutes"
+  exploration: 95 minutes
+  formulation: 30 minutes
+  verification: 125 minutes
+  pubmed_test: 15 minutes
+  extraction: 55 minutes
+  documentation: 45 minutes
+  total: 365 minutes
