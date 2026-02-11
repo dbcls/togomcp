@@ -1,432 +1,475 @@
-# TogoMCP Usage Guide (Concise)
+# TogoMCP Usage Guide
 
-## Core Principle: Get MIE → Search → Inspect → Use Structured Properties
+## ⚡ QUICK START (Read This First)
 
-**Most errors come from using bif:contains before checking the MIE file for structured properties.**
-
-For comprehensive queries ("how many", "find all"), you MUST:
-1. **Get MIE file FIRST**: `get_MIE_file(dbname)` - examine schema for structured predicates
-2. Use search tools (or exploratory SPARQL) to find 10-20 example entities  
-3. Inspect examples to confirm which structured properties exist
-4. Write comprehensive SPARQL using discovered structured properties
-
-**Priority for comprehensive queries:**
 ```
-Structured Properties > Annotation Patterns > bif:contains (only if no structured alternative)
-     (BEST)                  (GOOD)              (LAST RESORT - rare)
-```
-
-**⚠️ bif:contains Gate Check:** Before using `bif:contains` in comprehensive queries, confirm you've:
-- ✓ Examined entity Shape in MIE schema
-- ✓ Checked for: classification predicates, external IRIs (taxonomy, MeSH, ontology terms), typed predicates, hierarchies
-- ✓ Inspected example entities to verify what properties exist
-- ✓ Can document: "No structured alternative exists because..."
-
-Only use `bif:contains` when NO structured alternative exists (rare in modern RDF databases).
-
----
-
-## Critical Concepts
-
-### ⚠️ Search vs. Comprehensive Queries
-
-**Search APIs (Exploratory)**
-- Purpose: Find patterns, examples, cross-references
-- Returns: 10-20 results typically
-- Use for: Understanding data, identifying entities
-- **NOT for**: Definitive answers to comprehensive questions
-
-**SPARQL (Comprehensive)**
-- Purpose: Validation, complete analysis, definitive answers
-- Returns: All matching entities
-- Use for: Aggregations, existence claims, phylogenetic distribution
-- **Required for**: Yes/no questions, "are there any...", "which organisms..."
-
-### Circular Reasoning Trap ⚠️
-
-**WRONG** - Using search results in SPARQL VALUES:
-```
-1. Search API finds 8 example proteins
-2. Hardcode those IDs: VALUES ?protein { uniprot:P1 uniprot:P2 ... }
-3. Query only those 8 proteins
-→ CIRCULAR: You only checked what you already found!
-```
-
-**CORRECT** - Check MIE schema, then comprehensive search:
-```
-1. Get MIE file → find structured properties in schema
-2. Search API finds examples (identify patterns/synonyms)
-3. Inspect examples to confirm properties
-4. SPARQL searches ALL entities using structured properties
-→ COMPREHENSIVE: Checked everything matching criteria
+┌─────────────────────────────────────────────────┐
+│ What's your question type?                      │
+├─────────────────────────────────────────────────┤
+│ "Which has MOST/LEAST/MORE?"                    │
+│ → Use COMPARATIVE WORKFLOW below                │
+│                                                  │
+│ "How many...", "Find all...", "List..."         │
+│ → Use STANDARD WORKFLOW below                   │
+│                                                  │
+│ "Find protein TP53", "Get details for..."       │
+│ → Use search tools (skip to Tools section)      │
+└─────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Complete Workflow
+## 🔌 ENDPOINT ARCHITECTURE (CRITICAL!)
 
-```
-1. ANALYZE QUERY
-   ├─ Extract keywords, IDs, entities
-   ├─ Identify domain (proteins/chemicals/diseases/etc.)
-   └─ Classify: Comprehensive (yes/no, counts) or Example-based (specific, top-N)?
+**Before any multi-database query, check if databases share an endpoint:**
 
-2. GET MIE FILE (⚠️ MANDATORY FIRST STEP FOR COMPREHENSIVE)
-   ├─ Run: get_MIE_file(dbname)
-   ├─ Examine schema_info and shape_expressions sections
-   ├─ Look for structured predicates in your entity Shape:
-   │  • Classification/Ontology: classification predicates, subClassOf, ontology links
-   │  • External IRIs: taxonomy, MeSH, ChEBI, UniProt, GO term links
-   │  • Typed Predicates: organism, type, status, phase (controlled values)
-   │  • Hierarchies: parent-child relationships, pathways, subclasses
-   └─ Check kw_search_tools section for available search functions
-
-3. EXPLORATORY SEARCH
-   ├─ If search tools listed → Use them (e.g., search_*_entity())
-   ├─ If NO search tools → Use exploratory SPARQL with bif:contains (LIMIT 10-50)
-   └─ COLLECT 10-20 example entity IDs/IRIs
-
-4. INSPECT PROPERTIES (⚠️ MANDATORY - Confirm MIE findings)
-   ├─ Query sample entities: SELECT * WHERE { VALUES ?entity {...} ?entity ?p ?o }
-   ├─ Verify which structured predicates from MIE actually exist in the data
-   └─ DOCUMENT: Which patterns match your query intent
-
-5. COMPREHENSIVE SPARQL (if needed)
-   ├─ 🚨 MANDATORY PRE-QUERY CHECKLIST 🚨
-   │  □ Got MIE file and examined entity Shape?
-   │  □ Checked for classification/ontology predicates in schema?
-   │  □ Checked for external database IRIs in schema?
-   │  □ Checked for typed predicates with controlled vocabularies?
-   │  □ Inspected example entities to confirm available properties?
-   │  □ If using bif:contains: Can document why no structured alternative exists?
-   │
-   ├─ Strategy based on Step 2 & 4:
-   │  • Found structured predicates → Use those (BEST)
-   │  • Found annotation patterns → Filter on annotation type + bif:contains (GOOD)
-   │  • Only text labels → Use bif:contains with ALL synonyms (LAST RESORT)
-   └─ ALWAYS include LIMIT
-
-6. ID CONVERSION & RETRIEVAL
-   └─ Use togoid_* and retrieval tools as needed
-```
-
----
-
-## 🚨 bif:contains GATE CHECK 🚨
-
-**BEFORE using bif:contains in comprehensive queries, answer ALL:**
-
-❓ Have I run `get_MIE_file(dbname)` and examined the entity Shape?  
-❓ Have I checked MIE schema for: Classification/ontology predicates?  
-❓ Have I checked MIE schema for: External database IRIs (taxonomy, MeSH, ChEBI, etc.)?  
-❓ Have I checked MIE schema for: Typed predicates with controlled vocabularies?  
-❓ Have I checked MIE schema for: Hierarchical relationships?  
-❓ Have I used search tools (from kw_search_tools) OR exploratory SPARQL?  
-❓ Have I inspected example entities with SELECT * WHERE { VALUES ... }?  
-❓ Can I document: "No structured alternative exists because..."?
-
-**If you answered NO to any → STOP and complete that step**
-
-**bif:contains is ONLY for truly unstructured text:**
-- Free-form comments (rdfs:comment)
-- Descriptions without controlled vocabulary
-- Abstract/summary fields without typed alternatives
-- **This is RARE in modern RDF databases - most have structured alternatives**
-
----
-
-## Decision Tree: Comprehensive Query Strategy
-
-```
-Need comprehensive results (count/find all)?
-│
-1. MIE ANALYSIS PHASE (DO THIS FIRST)
-   ├─ Get MIE file: get_MIE_file(dbname)
-   ├─ Examine entity Shape in schema_info for your entity type
-   ├─ Scan for classification predicates, external IRIs, typed predicates
-   └─ Check kw_search_tools section
-
-2. EXPLORATION PHASE
-   ├─ Use search tools from kw_search_tools (if listed)
-   ├─ OR use exploratory SPARQL if no search tools (LIMIT 10-50)
-   └─ Collect example entity IDs/IRIs
-
-3. INSPECTION PHASE (⚠️ MANDATORY - Confirm MIE findings)
-   ├─ Query: SELECT * WHERE { VALUES ?entity {...examples...} ?entity ?p ?o }
-   ├─ Verify which structured predicates from MIE actually exist
-   └─ Scan for these UNIVERSAL patterns:
-
-   ┌────────────────────┬─────────────────────────────────────────┐
-   │ Pattern Type       │ Examples Across Databases               │
-   ├────────────────────┼─────────────────────────────────────────┤
-   │ Classification/    │ ChEMBL: atcClassification               │
-   │ Ontology Terms     │ UniProt: classifiedWith (keywords)      │
-   │                    │ Any DB: GO terms, enzyme codes          │
-   ├────────────────────┼─────────────────────────────────────────┤
-   │ External Database  │ Taxonomy IRIs (organism)                │
-   │ IRIs               │ MeSH IRIs (diseases)                    │
-   │                    │ ChEBI, UniProt, GO IRIs                 │
-   ├────────────────────┼─────────────────────────────────────────┤
-   │ Typed Predicates   │ ChEMBL: assayType, mechanismActionType  │
-   │ (controlled values)│ PDB: entityType                         │
-   │                    │ UniProt: reviewed (boolean)             │
-   ├────────────────────┼─────────────────────────────────────────┤
-   │ Hierarchies        │ Reactome: pathwayComponent              │
-   │                    │ GO: subClassOf                          │
-   │                    │ ChEBI: has_role                         │
-   └────────────────────┴─────────────────────────────────────────┘
-
-4. COMPREHENSIVE QUERY STRATEGY (Use findings from Steps 1-3)
-   ├─ Found Classification/Ontology terms?
-   │  └─ ✓ Use: ?entity classification_predicate <term_iri>
-   │     Example: ?molecule cco:atcClassification ?atc . FILTER(STRSTARTS(?atc, "J01"))
-   │
-   ├─ Found External Database IRIs?
-   │  └─ ✓ Use: ?entity link_predicate <external_iri>
-   │     Example: ?target cco:taxonomy <http://identifiers.org/taxonomy/9606>
-   │
-   ├─ Found Typed Predicates?
-   │  └─ ✓ Use: ?entity typed_predicate ?value . FILTER(?value = "specific_value")
-   │     Example: ?assay cco:assayType "Binding"
-   │
-   ├─ Found Hierarchies?
-   │  └─ ✓ Use: ?entity parent_predicate+ ?ancestor
-   │     Example: ?term rdfs:subClassOf+ <parent_term>
-   │
-   └─ Only text labels found (after checking MIE + inspecting examples)?
-      └─ ✗ LAST RESORT: ?entity label_predicate ?label . 
-                        ?label bif:contains "'term1' OR 'synonym1' OR 'variant1'"
-         (⚠️ Must document: "No structured properties exist because...")
-         (This is RARE - most databases have structured alternatives)
-```
-
----
-
-## Common Patterns
-
-### Pattern 1: Comprehensive Query with Classification
 ```python
-# Question: "How many antibiotics in ChEMBL?"
+get_sparql_endpoints()
+# Returns: which databases are on which endpoints
+```
 
-# Step 1: Get MIE file FIRST - check schema
-get_MIE_file("chembl")
-# Examine <MoleculeShape> in schema → Found: cco:atcClassification predicate
-# Check kw_search_tools → Found: search_chembl_molecule
+### Can Query Together (Same Endpoint)
+✅ **ncbi endpoint:** ClinVar + PubMed + PubTator + NCBI Gene + MedGen  
+✅ **primary endpoint:** MeSH + GO + Taxonomy + MONDO + NANDO  
+✅ **ebi endpoint:** ChEMBL + ChEBI + Reactome + Ensembl  
+✅ **sib endpoint:** UniProt + Rhea  
 
-# Step 2: Exploratory search
-results = search_chembl_molecule("antibiotic", limit=20)
-# Get IDs: CHEMBL29, CHEMBL615, ...
+### CANNOT Query Together (Different Endpoints)
+❌ NCBI Gene (ncbi) + Taxonomy (primary)  
+❌ UniProt (sib) + ChEMBL (ebi)  
+❌ PubChem (pubchem) + any other database  
 
-# Step 3: Inspect examples to CONFIRM MIE findings
+### When Databases Are on Different Endpoints
+
+**You MUST use hybrid approach:**
+
+```python
+# Example: Count genes by phylum (ncbigene + taxonomy on different endpoints)
+
+# Step 1: Get ALL gene IDs (use API, not SPARQL)
+all_genes = []
+for offset in range(0, total_count, 100):
+    batch = ncbi_esearch("gene", query, max_results=100, start_index=offset)
+    all_genes.extend(batch)  # Don't stop at 100! Get ALL results
+
+# Step 2: Get organism taxids (batch process)
+phylum_counts = {}
+for gene_batch in batches(all_genes, 50):
+    summaries = ncbi_esummary("gene", gene_batch)
+    taxids = [s['organism']['taxid'] for s in summaries]
+    
+    # Step 3: Map taxids to phyla (now can use SPARQL on taxonomy)
+    for taxid in taxids:
+        phylum = run_sparql(dbname="taxonomy", query=f"""
+            SELECT ?phylum WHERE {{
+                taxon:{taxid} rdfs:subClassOf+ ?phylum .
+                ?phylum tax:rank tax:Phylum .
+            }}
+        """)
+        phylum_counts[phylum] = phylum_counts.get(phylum, 0) + 1
+
+# Step 4: Compare
+sorted(phylum_counts.items(), key=lambda x: x[1], reverse=True)
+```
+
+**⚠️ CRITICAL: Process ALL results, not just samples!**
+
+### Batch Processing Implementation
+
+```python
+# COMPLETE PATTERN: Process 1,000+ items efficiently
+all_gene_ids = []  # From ncbi_esearch (e.g., 1,367 IDs)
+phylum_counts = {}
+
+# Batch 1: ncbi_esummary (50-100 IDs per call)
+for i in range(0, len(all_gene_ids), 50):
+    batch_ids = all_gene_ids[i:i+50]
+    summaries = ncbi_esummary("gene", batch_ids)
+    taxids = [s['organism']['taxid'] for s in summaries]
+    
+    # Batch 2: SPARQL (10-15 taxids per query)
+    for j in range(0, len(taxids), 10):
+        taxid_batch = taxids[j:j+10]
+        query = f"""
+            VALUES ?taxid {{ {' '.join([f'taxon:{t}' for t in taxid_batch])} }}
+            ?taxid rdfs:subClassOf+ ?phylum .
+            ?phylum tax:rank tax:Phylum .
+        """
+        results = run_sparql(dbname="taxonomy", query=query)
+        for result in results:
+            phylum_counts[result['phylumLabel']] += 1
+
+# Total calls: ~(1367/50 + 1367/10) = ~27 + 137 = ~164 calls
+```
+
+**Performance Notes:**
+- **ncbi_esummary**: 50-100 IDs optimal, max ~200
+- **SPARQL VALUES**: 10-15 items optimal, fails >20
+- **Rate limits**: None on TogoMCP; 60s timeout per query
+- **Expected scale**: 50-200 calls for 1,000 items is normal
+
+**Error Recovery:**
+```python
+# Save progress for long-running queries
+import json
+for batch_num, batch in enumerate(batches(all_items, 50)):
+    # Process batch...
+    phylum_counts[phylum] += 1
+    
+    # Save after each batch (every ~50 items)
+    if batch_num % 10 == 0:  # Every 500 items
+        with open('/tmp/progress.json', 'w') as f:
+            json.dump(phylum_counts, f)
+```
+
+---
+
+## 🚨 COMPARATIVE WORKFLOW ("which has MOST/LEAST")
+
+**Use this for:** "Which phylum has most genes?", "Which organism has more proteins?"
+
+### Critical Rule: Don't Be Circular!
+
+**❌ WRONG (Circular Reasoning):**
+```python
+# 1. Search finds 100 examples from category A
+# 2. Count only category A: "A has the most!"
+# ❌ Problem: Never checked categories B, C, D!
+```
+
+**✅ RIGHT (Systematic):**
+```python
+# 1. Get MIE → find structured properties
+# 2. ENUMERATE ALL categories (A, B, C, D...)
+# 3. Use BROAD search: "(term1 OR term2 OR description)"
+# 4. Count in EACH category
+# 5. Compare systematically
+```
+
+### 6-Step Checklist
+
+☐ **0. Check endpoints** → `get_sparql_endpoints()` if multi-database  
+☐ **1. Get MIE file** → find structured properties  
+☐ **2. Enumerate ALL categories** → don't assume, list them!  
+☐ **3. Broad search query** → use OR: `"(nifH OR 'nitrogenase iron protein')"`  
+☐ **4. Count EACH category** → process ALL results, not samples!  
+☐ **5. Compare** → ORDER BY DESC(?count) to find winner  
+
+### When to Stop vs Continue Processing
+
+**❌ NEVER stop early (100% required):**
+- **Comparative**: "Which has MOST/LEAST?" → Must count ALL
+- **Exact counts**: "How many total..." → Must count ALL
+- **Rankings**: "Top 10...", "Rank by..." → Must count ALL
+- **Factoid answers**: Any definitive answer → Must be comprehensive
+
+**✅ OK to stop early (sampling acceptable):**
+- **Exploratory**: "Are there ANY X?" → Stop after finding examples
+- **Approximate**: "Roughly how many..." → Representative sample OK
+
+**Rule**: Questions with "most", "least", "all", "none", "exact", or requiring ranking → process 100%
+
+**Example 1: Same Endpoint (Single SPARQL)**
+```python
+# Q: "Which organism has more kinases - human or mouse?"
+# UniProt is all on 'sib' endpoint - can use single query
+
+get_MIE_file('uniprot')  # up:organism, up:classifiedWith
+get_sparql_endpoints()   # Confirm: uniprot on 'sib' endpoint
+
 query = """
-PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
-SELECT ?chemblId ?atc WHERE {
-  VALUES ?chemblId { "CHEMBL29" "CHEMBL615" "CHEMBL606111" }
-  ?molecule cco:chemblId ?chemblId .
-  OPTIONAL { ?molecule cco:atcClassification ?atc }
-} LIMIT 50
+SELECT ?organism (COUNT(?p) as ?count) WHERE {
+  ?p up:reviewed 1 ;
+     up:classifiedWith <http://purl.uniprot.org/keywords/418> ;
+     up:organism ?organism .
+  FILTER(?organism IN (
+    <http://purl.uniprot.org/taxonomy/9606>,
+    <http://purl.uniprot.org/taxonomy/10090>
+  ))
+}
+GROUP BY ?organism ORDER BY DESC(?count)
 """
-# Confirmed: cco:atcClassification exists! Values like "J01*" for antibacterials
+```
 
-# Step 4: Comprehensive query using structured property from MIE schema
+**Example 2: Different Endpoints (Hybrid Approach)**
+```python
+# Q: "Which archaeal phylum has most nifH genes?"
+# ncbigene (ncbi) + taxonomy (primary) = different endpoints!
+
+get_sparql_endpoints()  # Confirm: different endpoints
+get_MIE_file('taxonomy')  # Find: tax:rank, rdfs:subClassOf
+
+# Step 1: Enumerate all phyla (taxonomy DB)
+phyla = run_sparql(dbname="taxonomy", query="""
+  SELECT DISTINCT ?phylum WHERE {
+    ?phylum tax:rank tax:Phylum ;
+            rdfs:subClassOf+ taxon:2157 .
+  }
+""")  # Found: 12 phyla
+
+# Step 2: Get ALL genes (API - can't join in SPARQL)
+all_genes = []
+for offset in range(0, 1367, 100):  # Don't stop at 100!
+    batch = ncbi_esearch("gene", 
+                         "Archaea[Organism] AND (nifH[Gene Name] OR nitrogenase)",
+                         max_results=100, start_index=offset)
+    all_genes.extend(batch)
+
+# Step 3: Count each phylum (batch process ALL)
+phylum_counts = {}
+for gene_batch in batches(all_genes, 50):
+    summaries = ncbi_esummary("gene", gene_batch)
+    for gene in summaries:
+        taxid = gene['organism']['taxid']
+        # Map to phylum via taxonomy DB
+        result = run_sparql(dbname="taxonomy", query=f"""
+            SELECT ?phylum WHERE {{
+                taxon:{taxid} rdfs:subClassOf+ ?phylum .
+                ?phylum tax:rank tax:Phylum .
+            }}
+        """)
+        if result:
+            phylum_counts[result[0]] = phylum_counts.get(result[0], 0) + 1
+
+# Result: Methanobacteriota: 1,298, Thermoproteota: 18, ...
+```
+
+---
+
+## 📋 STANDARD WORKFLOW (comprehensive queries)
+
+**Use this for:** "How many...", "Find all...", "Are there any..."
+
+### 3-Step Process
+
+**1. GET MIE FILE FIRST (MANDATORY)**
+```python
+get_MIE_file('dbname')
+# Check: shape_expressions section
+# Find: classification predicates, external IRIs, typed predicates
+```
+
+**2. SEARCH FOR EXAMPLES**
+- Use search tools if listed in `kw_search_tools`
+- Or exploratory SPARQL (LIMIT 10)
+- **Use OR logic:** `"(term OR synonym OR description)"`
+
+**3. INSPECT & QUERY**
+```sparql
+# Inspect examples:
+SELECT * WHERE { VALUES ?entity {...} ?entity ?p ?o } LIMIT 100
+
+# Then comprehensive query using discovered properties
+SELECT (COUNT(?x) as ?count) WHERE {
+  ?x structured_property <value> .  # From MIE schema
+}
+```
+
+### Before SPARQL: Gate Check
+
+❓ Multi-database? Checked endpoints first?  
+❓ Got MIE file?  
+❓ Found structured property in schema?  
+❓ Inspected examples to confirm?  
+❓ Using structured predicates (not bif:contains)?  
+
+**NO to any? → STOP, complete that step**
+
+---
+
+## 🔑 KEY RULES
+
+### Rule 0: Check Endpoints for Multi-Database Queries
+**Call `get_sparql_endpoints()` before combining databases**
+
+- Same endpoint → single SPARQL with multiple GRAPHs
+- Different endpoints → hybrid approach (API + SPARQL)
+- **Never assume** databases can be joined
+
+### Rule 1: MIE File First
+**95% of failures = skipping `get_MIE_file()`**
+
+Check these in schema:
+- Classification predicates (atcClassification, classifiedWith)
+- External IRIs (taxonomy, MeSH, GO terms)
+- Typed predicates (assayType, status, phase)
+- Hierarchies (subClassOf, pathwayComponent)
+
+### Rule 2: Use OR Logic for Broad Searches
+**Wrong:** `"nifH"` → finds 286 genes (21%)  
+**Right:** `"(nifH OR 'nitrogenase iron protein')"` → finds 1,367 genes (100%)
+
+### Rule 3: Structured > Text Search
+```
+Priority: Structured Properties > bif:contains
+            (ALWAYS)              (RARE <5%)
+```
+
+**bif:contains ONLY if:** No structured alternative exists after checking MIE + inspecting examples
+
+### Rule 4: No Circular Reasoning
+**Never:**
+- Search → get examples → query ONLY those examples
+- That's circular - you only checked what you found!
+
+**Always:**
+- For comparisons: enumerate ALL categories first
+- Use structured predicates to search entire database
+
+---
+
+## 🛠️ TOOLS REFERENCE
+
+### Schema & Discovery
+- `get_MIE_file(dbname)` - **ALWAYS CALL FIRST for comprehensive queries**
+- `get_sparql_endpoints()` - **Check before multi-database queries**
+- `list_databases()` - List 22 RDF databases
+
+### Search (Exploratory)
+- `ncbi_esearch(database, query)` - NCBI databases
+- `search_uniprot_entity(query)` - Proteins
+- `search_chembl_molecule(query)` - Drugs
+- `search_chembl_target(query)` - Drug targets
+- `search_pdb_entity(db, query)` - Structures
+- `search_reactome_entity(query)` - Pathways
+- `search_rhea_entity(query)` - Reactions
+
+### SPARQL
+- `run_sparql(dbname, query)` - Execute query
+
+### ID Conversion
+- `togoid_convertId(ids, route)` - Convert between databases
+
+---
+
+## 📖 QUICK EXAMPLES
+
+### Example 1: Simple Count
+```python
+# Q: "How many human proteins?"
+get_MIE_file('uniprot')  # Found: up:organism predicate
+query = """
+SELECT (COUNT(?p) as ?count) WHERE {
+  ?p up:reviewed 1 ;
+     up:organism <http://purl.uniprot.org/taxonomy/9606> .
+}
+"""
+```
+
+### Example 2: Comparative
+```python
+# Q: "Which organism has more kinases - human or mouse?"
+get_MIE_file('uniprot')  # Found: up:classifiedWith, up:organism
+
+# Don't search and count only results!
+# Instead: query both systematically
+query = """
+SELECT ?organism (COUNT(?p) as ?count) WHERE {
+  ?p up:reviewed 1 ;
+     up:classifiedWith <http://purl.uniprot.org/keywords/418> ;
+     up:organism ?organism .
+  FILTER(?organism IN (
+    <http://purl.uniprot.org/taxonomy/9606>,
+    <http://purl.uniprot.org/taxonomy/10090>
+  ))
+}
+GROUP BY ?organism
+"""
+```
+
+### Example 3: With Classification
+```python
+# Q: "How many antibiotics in ChEMBL?"
+get_MIE_file('chembl')  # Found: cco:atcClassification
+
+# Don't search "antibiotic" in text!
+# Use classification:
 query = """
 PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
-SELECT (COUNT(DISTINCT ?molecule) as ?count)
+SELECT (COUNT(?m) as ?count) 
 FROM <http://rdf.ebi.ac.uk/dataset/chembl>
 WHERE {
-  ?molecule cco:atcClassification ?atc .
+  ?m cco:atcClassification ?atc .
   FILTER(STRSTARTS(?atc, "J01"))
 }
 """
-# Result: 216 antibiotics
 ```
 
-### Pattern 2: Comprehensive Query with Keywords
+---
+
+## 🚫 TOP 4 MISTAKES
+
+### 1. Assuming Cross-Database SPARQL Works
+**Impact:** Query fails, confusion about why  
+**Fix:** Call `get_sparql_endpoints()` first
+
+### 2. Skipping MIE File
+**Impact:** Wasted 1 hour → could be 1 minute
+
+### 3. Sampling Instead of Exhaustive Processing
+**Impact:** Wrong answer - counted 46/1,367 organisms (3% sample) and claimed "confident"  
+**Why wrong:** For "which has MOST", 91% sample confidence ≠ 100% accurate count  
+**Fix:** Process ALL results with pagination (~164 API calls for 1,367 items is normal)
+
+### 4. Using bif:contains Without Checking Schema
+**Impact:** 10-100x slower, incomplete results
+
+---
+
+## 🆘 TROUBLESHOOTING
+
+| Problem | Fix |
+|---------|-----|
+| Cross-DB query fails | Check `get_sparql_endpoints()` - use hybrid if different |
+| Empty results | Check MIE schema for property names |
+| Timeout | Add LIMIT, use structured predicates |
+| Incomplete results | Did you use OR logic? Process ALL results? |
+| "Which has most" is wrong | Did you enumerate ALL categories & process ALL results? |
+
+---
+
+---
+
+## 🚫 ERROR HANDLING
+
+### Common Batch Processing Errors
+
 ```python
-# Question: "How many proteins have function X?"
+# Pattern: Robust batch processing
+failed_items = []
+for batch in batches(all_items, batch_size):
+    try:
+        results = process_batch(batch)
+        for item, result in zip(batch, results):
+            if result:  # Valid result
+                counts[result] += 1
+            else:  # Missing/null result
+                failed_items.append(item)
+    except Exception as e:
+        print(f"Batch failed: {e}")
+        failed_items.extend(batch)
 
-# Step 1: Get MIE file - check schema
-get_MIE_file("uniprot")
-# Examine <ProteinShape> → Found: up:classifiedWith predicate for keywords
-# Check kw_search_tools → Found: search_uniprot_entity
-
-# Step 2: Exploratory
-results = search_uniprot_entity("function X", limit=20)
-# Get IDs: P12345, P67890, ...
-
-# Step 3: Inspect to confirm MIE findings
-# Run inspection query → Confirmed: up:classifiedWith exists with keywords:KW-0123
-
-# Step 4: Comprehensive
-query = """
-PREFIX up: <http://purl.uniprot.org/core/>
-PREFIX keywords: <http://purl.uniprot.org/keywords/>
-
-SELECT (COUNT(DISTINCT ?protein) as ?count)
-WHERE {
-  ?protein up:reviewed 1 ;
-           up:classifiedWith keywords:KW-0123 .
-}
-"""
+if failed_items:
+    print(f"Warning: {len(failed_items)} items failed processing")
 ```
 
-### Pattern 3: Database Without Search Tools
-```python
-# Question: "How many GO terms relate to apoptosis?"
-
-# Step 1: Get MIE file - check schema
-get_MIE_file("go")
-# Examine <ClassShape> → Found: rdfs:subClassOf hierarchy predicate
-# Check kw_search_tools → [] (empty - no search tools available)
-
-# Step 2: Exploratory SPARQL (no search tool exists)
-query = """
-SELECT ?term ?label WHERE {
-  ?term rdfs:label ?label .
-  ?label bif:contains "'apoptosis'"
-} LIMIT 20
-"""
-# Get IRIs: GO:0006915, GO:0097194, ...
-
-# Step 3: Inspect to confirm MIE findings
-# Run: SELECT * WHERE { VALUES ?term { <GO:...> } ?term ?p ?o }
-# Confirmed: rdfs:subClassOf hierarchy exists as indicated in MIE schema
-
-# Step 4: Comprehensive (use hierarchy)
-query = """
-SELECT (COUNT(?term) as ?count) WHERE {
-  ?term rdfs:subClassOf* <parent_apoptosis_term>
-}
-"""
-```
+**Common issues:**
+- **Missing data**: New organisms lacking phylum classification → skip and log
+- **Timeout**: SPARQL query too large → reduce batch size to 5-10
+- **Empty results**: Taxid not in database → normal, continue processing
 
 ---
 
-## Quick Reference: Tools by Purpose
+## 🎯 REMEMBER
 
-### Discovery
-- `list_databases()` - List 22 RDF databases
-- `get_sparql_endpoints()` - Get endpoint URLs and search tools
-- `togoid_getAllDataset()` - ID conversion routes
+**Check endpoints FIRST for multi-database queries**
 
-### Search (Exploratory)
-| Domain | Tool |
-|--------|------|
-| Proteins | `search_uniprot_entity(query, limit=20)` |
-| Drugs/Molecules | `search_chembl_molecule(query, limit=20)` |
-| Drug Targets | `search_chembl_target(query, limit=20)` |
-| 3D Structures | `search_pdb_entity(db, query, limit=20)` |
-| Pathways | `search_reactome_entity(query, rows=30)` |
-| Reactions | `search_rhea_entity(query, limit=100)` |
-| Medical Terms | `search_mesh_descriptor(query, limit=10)` |
-| Ontologies | `OLS4:search(query)` |
-| Chemicals | `get_pubchem_compound_id(name)` |
-| NCBI | `ncbi_esearch(database, query)` |
+**The MIE file is your map - read it before querying**
 
-### SPARQL (Comprehensive)
-- `get_MIE_file(dbname)` - **MANDATORY** before SPARQL: schema + examples
-- `run_sparql(dbname, query)` - Execute query
-- `get_graph_list(dbname)` - Named graphs
+**Process ALL results, not samples - pagination is your friend**
 
-### ID Conversion
-- `togoid_convertId(ids, route)` - Convert IDs
-- `togoid_getRelation(source, target)` - Check if route exists
+**Comparisons: Enumerate ALL → Count EACH → Compare**
 
----
+**Broad searches: Use OR logic for synonyms**
 
-## Database-Specific Rules
-
-| Database | Critical Requirements |
-|----------|---------------------|
-| **UniProt** | ALWAYS: `?protein up:reviewed 1` |
-| **ChEMBL** | ALWAYS: `FROM <http://rdf.ebi.ac.uk/dataset/chembl>` |
-| **All** | ALWAYS: `LIMIT` clause (start 20-1000) |
-
----
-
-## Common Anti-Patterns
-
-❌ **Skipping MIE File**
-```python
-# WRONG: Skip MIE file, immediately use bif:contains
-query = "SELECT ?mol WHERE { ?label bif:contains 'antibiotic' }"
-# Result: Only 2 molecules (very few have "antibiotic" in label)
-
-# CORRECT: Check MIE file FIRST
-get_MIE_file("chembl")  
-# Found in schema: cco:atcClassification (drug classification codes)
-# Use structured property: FILTER(STRSTARTS(?atc, "J01"))
-# Result: 216 antibiotics found
-```
-
-❌ **Skipping Inspection**
-```python
-# WRONG
-search_chembl_molecule("antibiotic")  # → 645 results
-# Immediately write: WHERE { ?label bif:contains "'antibiotic'" }
-
-# CORRECT
-get_MIE_file("chembl")  # Check schema first
-search_chembl_molecule("antibiotic")  # Get example IDs
-# Inspect IDs → confirm ATC codes exist
-# Use discovered properties → Find 216 antibiotics
-```
-
-❌ **Circular Reasoning**
-```python
-# WRONG
-search results → VALUES ?entity { <found_entities> }
-# You only queried what you already found!
-
-# CORRECT
-MIE schema → search results → inspect → discover property → query ALL entities
-```
-
----
-
-## Critical Rules Summary
-
-### ✅ ALWAYS
-1. **Get MIE file FIRST**: `get_MIE_file(dbname)` - examine schema before any query
-2. Check entity Shape in schema for structured predicates
-3. Check kw_search_tools section for available search tools
-4. Use search tools (or exploratory SPARQL if none exist) to find examples
-5. **INSPECT examples** to confirm which structured predicates actually exist
-6. Use structured predicates from MIE schema (not bif:contains) when they exist
-7. Include `LIMIT` in all queries
-8. UniProt: add `up:reviewed 1`
-
-### ❌ NEVER
-1. Skip getting MIE file before comprehensive queries
-2. Skip examining entity Shape in MIE schema for structured predicates
-3. Default to `bif:contains` without checking MIE schema + inspecting examples
-4. Use VALUES with search results for comprehensive questions (circular reasoning)
-5. Write comprehensive SPARQL without checking MIE file
-6. Omit `LIMIT` clause
-7. Forget `up:reviewed 1` in UniProt
-
----
-
-## Troubleshooting
-
-| Problem | Solution |
-|---------|----------|
-| **Don't know which database** | `list_databases()` |
-| **Search tool exists?** | `get_MIE_file(dbname)` → check `kw_search_tools` section |
-| **No structured properties found** | Verify you checked MIE schema + inspected examples, then document why |
-| **SPARQL timeout** | Reduce LIMIT, add type filters, use `up:reviewed 1` |
-| **Empty results** | Check prefixes, graph URIs, verify property exists in MIE schema |
-| **Incomplete comprehensive results** | Did you skip MIE file? Check if using right predicates |
-
----
-
-## Key ID Conversion Routes
-
-**Common conversions:**
-- `"uniprot,pdb"` - Protein to structure
-- `"uniprot,ncbigene"` - Protein to gene  
-- `"uniprot,chembl_target"` - Protein to drug target
-- `"ncbigene,ensembl_gene"` - NCBI to Ensembl
-- `"chebi,pubchem_compound"` - ChEBI to PubChem
-
-Check availability: `togoid_getRelation(source, target)`
+**1 minute planning > 1 hour debugging**
