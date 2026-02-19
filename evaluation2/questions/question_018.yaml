@@ -1,160 +1,171 @@
 id: question_018
-type: choice
-body: "Among human inflammatory signaling pathways in Reactome (TNF signaling, Interleukin-1 signaling, Toll Like Receptor 4 Cascade, Interferon Signaling), which pathway contains the most biochemical reactions?"
+type: list
+body: "List all AMR element symbols associated with mupirocin resistance (MUPIROCIN class) in Staphylococcus aureus (NCBI taxon ID 1280) according to genomic resistance surveillance records, along with the count of isolate records for each element."
 
 inspiration_keyword:
-  keyword_id: KW-0395
-  name: "Inflammatory response"
-  category: "Biological process"
+  keyword_id: KW-0046
+  name: Antibiotic resistance
+  category: Biological process
 
 togomcp_databases_used:
-  - reactome
+  - amrportal
+  - taxonomy
 
 verification_score:
+  biological_insight: 3
+  multi_database: 2
   verifiability: 3
   rdf_necessity: 3
-  scope: 3
-  total: 9
+  total: 11
   passed: true
 
 pubmed_test:
-  time_spent: "15 minutes"
-  method: "Searched PubMed for systematic reaction count comparisons across inflammatory pathways"
+  time_spent: 15 minutes
+  method: Searched PubMed for "Staphylococcus aureus mupirocin resistance genes mupA ileS" and examined abstracts of the 9 returned articles.
   result: |
-    Search 1: "inflammatory signaling pathway reaction count comparison" - 5 results
-    - Found general pathway studies but no systematic reaction enumeration
-    - Articles focused on specific signaling mechanisms (PTEN/Akt, TIM-3/Gal-9)
-    - No quantitative pathway complexity comparisons
-    
-    Search 2: "TNF interleukin TLR4 interferon pathway biochemical reactions Reactome" - 0 results
-    - Zero results for comprehensive pathway reaction analysis
-    - No literature systematically counts reactions across these pathways
-    - Reactome database structure not documented in searchable literature
-  conclusion: "PASS - Cannot answer from literature. Requires direct RDF database access to count reactions within hierarchical pathway structures. Literature discusses pathway mechanisms but does not provide quantitative reaction counts for comparison."
+    PubMed articles (PMIDs 36622214, 33852710) confirm that mupirocin resistance
+    in S. aureus involves mupA (high-level resistance, encodes an isoleucyl-tRNA
+    synthetase paralog) and point mutations in the native ileS gene (low-level
+    resistance, e.g., V588F, V631F). However, no article provides comprehensive
+    counts of how many isolate records carry each specific element across the
+    AMRPortal dataset. The database-level enumeration with exact record counts
+    per element requires direct query of the surveillance database.
+  conclusion: PASS (cannot answer from literature; requires current database state)
 
 sparql_queries:
   - query_number: 1
-    database: "reactome"
-    description: "Search for human versions of the four inflammatory signaling pathways by name and organism"
+    database: taxonomy
+    description: Confirm scientific name and taxonomic details for NCBI taxon 1280 (Staphylococcus aureus)
     query: |
-      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
-      
-      SELECT DISTINCT ?pathway ?name ?organism
-      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+
+      SELECT ?scientificName ?id
+      FROM <http://rdfportal.org/ontology/taxonomy>
       WHERE {
-        VALUES ?searchTerm { "TNF signaling" "Interleukin-1 signaling" "Toll Like Receptor 4" "Interferon Signaling" }
-        ?pathway a bp:Pathway ;
-                 bp:displayName ?name ;
-                 bp:organism ?org .
-        ?org bp:name ?organism .
-        FILTER(CONTAINS(?name, ?searchTerm))
-        FILTER(CONTAINS(?organism, "Homo sapiens"))
+        taxon:1280 a tax:Taxon ;
+                   tax:scientificName ?scientificName ;
+                   dcterms:identifier ?id .
       }
-      LIMIT 20
-    result_count: 4
+    result_count: 1
 
   - query_number: 2
-    database: "reactome"
-    description: "Count biochemical reactions in each pathway using hierarchical pathwayComponent traversal"
+    database: amrportal
+    description: List all AMR element symbols with MUPIROCIN class in S. aureus genotype features, with record counts per element
     query: |
-      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
-      
-      SELECT ?pathwayName (COUNT(DISTINCT ?reaction) AS ?reactionCount)
-      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      PREFIX amr: <http://example.org/ebiamr#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT ?amrElementSymbol (COUNT(*) as ?count)
+      FROM <http://rdfportal.org/dataset/amrportal>
       WHERE {
-        VALUES (?pathway ?pathwayName) { 
-          (<http://www.reactome.org/biopax/40/48887#Pathway1700> "TNF signaling")
-          (<http://www.reactome.org/biopax/40/48887#Pathway1896> "Interleukin-1 signaling")
-          (<http://www.reactome.org/biopax/40/48887#Pathway1799> "Toll Like Receptor 4 (TLR4) Cascade")
-          (<http://www.reactome.org/biopax/40/48887#Pathway1882> "Interferon Signaling")
-        }
-        ?pathway bp:pathwayComponent+ ?component .
-        ?component a bp:BiochemicalReaction .
-        BIND(?component AS ?reaction)
+        ?s a amr:GenotypeFeature ;
+           obo:RO_0002162 <http://identifiers.org/taxonomy/1280> ;
+           amr:amrClass "MUPIROCIN" ;
+           amr:amrElementSymbol ?amrElementSymbol .
       }
-      GROUP BY ?pathwayName
-      ORDER BY DESC(?reactionCount)
-    result_count: 4
+      GROUP BY ?amrElementSymbol
+      ORDER BY DESC(?count)
+    result_count: 3
 
   - query_number: 3
-    database: "reactome"
-    description: "Sample reactions from Interferon Signaling pathway to verify data quality"
+    database: amrportal
+    description: Arithmetic verification - total MUPIROCIN genotype features for S. aureus (must equal sum of per-element counts)
     query: |
-      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
-      
-      SELECT ?pathway ?name ?organism ?reaction ?reactionName
-      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      PREFIX amr: <http://example.org/ebiamr#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT (COUNT(*) as ?total)
+      FROM <http://rdfportal.org/dataset/amrportal>
       WHERE {
-        VALUES ?pathway { 
-          <http://www.reactome.org/biopax/40/48887#Pathway1882>
-        }
-        ?pathway a bp:Pathway ;
-                 bp:displayName ?name ;
-                 bp:organism ?org ;
-                 bp:pathwayComponent+ ?reaction .
-        ?org bp:name ?organism .
-        ?reaction a bp:BiochemicalReaction ;
-                  bp:displayName ?reactionName .
+        ?s a amr:GenotypeFeature ;
+           obo:RO_0002162 <http://identifiers.org/taxonomy/1280> ;
+           amr:amrClass "MUPIROCIN" .
       }
-      LIMIT 5
-    result_count: 5
+    result_count: 1
 
 rdf_triples: |
-  @prefix bp: <http://www.biopax.org/release/biopax-level3.owl#> .
-  @prefix reactome: <http://www.reactome.org/biopax/40/48887#> .
-  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-  
-  # Interferon Signaling Pathway (125 reactions - highest)
-  reactome:Pathway1882 a bp:Pathway ;
-    bp:displayName "Interferon Signaling"^^xsd:string ;
-    bp:organism reactome:BioSource48887_1 ;
-    bp:pathwayComponent reactome:BiochemicalReaction2183 ,
-                        reactome:BiochemicalReaction5292 ,
-                        reactome:BiochemicalReaction5342 .
-  # Database: reactome | Query: 2,3 | Comment: Pathway with 125 total reactions (highest count)
-  
-  reactome:BiochemicalReaction2183 a bp:BiochemicalReaction ;
-    bp:displayName "SUMOylation of PKR"^^xsd:string .
-  # Database: reactome | Query: 3 | Comment: Example reaction in Interferon Signaling
-  
-  reactome:BiochemicalReaction5292 a bp:BiochemicalReaction ;
-    bp:displayName "Phosphorylation of STAT1"^^xsd:string .
-  # Database: reactome | Query: 3 | Comment: Example reaction showing JAK-STAT signaling
-  
-  # Toll Like Receptor 4 (TLR4) Cascade (113 reactions)
-  reactome:Pathway1799 a bp:Pathway ;
-    bp:displayName "Toll Like Receptor 4 (TLR4) Cascade"^^xsd:string ;
-    bp:organism reactome:BioSource48887_1 .
-  # Database: reactome | Query: 2 | Comment: Pathway with 113 reactions (second highest)
-  
-  # Interleukin-1 signaling (59 reactions)
-  reactome:Pathway1896 a bp:Pathway ;
-    bp:displayName "Interleukin-1 signaling"^^xsd:string ;
-    bp:organism reactome:BioSource48887_1 .
-  # Database: reactome | Query: 2 | Comment: Pathway with 59 reactions (third)
-  
-  # TNF signaling (58 reactions)
-  reactome:Pathway1700 a bp:Pathway ;
-    bp:displayName "TNF signaling"^^xsd:string ;
-    bp:organism reactome:BioSource48887_1 .
-  # Database: reactome | Query: 2 | Comment: Pathway with 58 reactions (lowest among four)
-  
-  reactome:BioSource48887_1 a bp:BioSource ;
-    bp:name "Homo sapiens"^^xsd:string .
-  # Database: reactome | Query: 1,3 | Comment: Organism filter for human pathways
+  @prefix amr: <http://example.org/ebiamr#> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/> .
+  @prefix taxon: <http://identifiers.org/taxonomy/> .
+  @prefix dcterms: <http://purl.org/dc/terms/> .
 
-exact_answer: "Interferon Signaling"
+  taxon:1280 a tax:Taxon .
+  # Database: taxonomy | Query: 1 | Comment: NCBI taxon IRI for Staphylococcus aureus
+
+  taxon:1280 tax:scientificName "Staphylococcus aureus" .
+  # Database: taxonomy | Query: 1 | Comment: Scientific name confirming taxon identity
+
+  taxon:1280 dcterms:identifier 1280 .
+  # Database: taxonomy | Query: 1 | Comment: Numeric NCBI taxonomy ID
+
+  _:feat1 a amr:GenotypeFeature .
+  # Database: amrportal | Query: 2 | Comment: Representative GenotypeFeature record for S. aureus
+
+  _:feat1 obo:RO_0002162 taxon:1280 .
+  # Database: amrportal | Query: 2 | Comment: "in taxon" relationship linking genotype feature to S. aureus IRI
+
+  _:feat1 amr:amrClass "MUPIROCIN" .
+  # Database: amrportal | Query: 2 | Comment: AMR class controlled vocabulary value
+
+  _:feat1 amr:amrElementSymbol "mupA" .
+  # Database: amrportal | Query: 2 | Comment: High-level mupirocin resistance gene (330 records)
+
+  _:feat2 a amr:GenotypeFeature .
+  # Database: amrportal | Query: 2 | Comment: Representative record for ileS mutation
+
+  _:feat2 obo:RO_0002162 taxon:1280 .
+  # Database: amrportal | Query: 2 | Comment: Taxonomy link for ileS_V588F record
+
+  _:feat2 amr:amrClass "MUPIROCIN" .
+  # Database: amrportal | Query: 2 | Comment: AMR class for low-level resistance element
+
+  _:feat2 amr:amrElementSymbol "ileS_V588F" .
+  # Database: amrportal | Query: 2 | Comment: Low-level mupirocin resistance mutation (90 records)
+
+  _:feat3 a amr:GenotypeFeature .
+  # Database: amrportal | Query: 2 | Comment: Representative record for rare ileS variant
+
+  _:feat3 obo:RO_0002162 taxon:1280 .
+  # Database: amrportal | Query: 2 | Comment: Taxonomy link for ileS_V631F record
+
+  _:feat3 amr:amrClass "MUPIROCIN" .
+  # Database: amrportal | Query: 2 | Comment: AMR class for rare low-level resistance element
+
+  _:feat3 amr:amrElementSymbol "ileS_V631F" .
+  # Database: amrportal | Query: 2 | Comment: Rare low-level mupirocin resistance mutation (5 records)
+
+exact_answer:
+  - "mupA (330 records)"
+  - "ileS_V588F (90 records)"
+  - "ileS_V631F (5 records)"
 
 ideal_answer: |
-  Among the four major human inflammatory signaling pathways in Reactome, Interferon Signaling contains the most biochemical reactions with 125 distinct reactions. The Toll Like Receptor 4 Cascade follows with 113 reactions, while Interleukin-1 signaling and TNF signaling have 59 and 58 reactions respectively. The higher complexity of Interferon Signaling reflects the diversity of Type I, Type II, and Type III interferon responses, each involving distinct receptor complexes, JAK-STAT cascades, and downstream transcriptional programs that regulate hundreds of interferon-stimulated genes critical for antiviral immunity.
+  Three AMR element symbols conferring mupirocin resistance are annotated in Staphylococcus aureus (NCBI taxon 1280) genotype records: mupA with 330 records, ileS_V588F with 90 records, and ileS_V631F with 5 records (total 425 genotype features; arithmetic check: 330+90+5=425). mupA encodes an acquired isoleucyl-tRNA synthetase paralog and is the primary determinant of high-level mupirocin resistance (MIC ≥512 mg/L), enabling competitive exclusion of mupirocin from the active site. ileS_V588F and ileS_V631F are point mutations in the native chromosomal ileS gene encoding the endogenous isoleucyl-tRNA synthetase and confer low-level resistance (MIC 8–256 mg/L). The predominance of mupA in surveillance records reflects its plasmid-mediated transmissibility, which facilitates its spread among clinical MRSA lineages, whereas ileS mutations arise independently and are less common. The distinction between high-level (mupA) and low-level (ileS mutations) resistance has direct clinical implications, as high-level resistance compromises mupirocin use for MRSA decolonization regimens.
 
-question_template_used: "Database-specific pathway comparison - Reactome pathway complexity comparison using hierarchical pathwayComponent traversal to count reactions"
+scope_justification: |
+  The scope is deliberately and explicitly bounded by two intersecting constraints: AMR class
+  = MUPIROCIN and host organism = Staphylococcus aureus (NCBI taxon 1280). This yields a
+  naturally small, exhaustive enumeration (3 elements) because mupirocin resistance is
+  mediated by a limited, well-characterised set of molecular mechanisms in this species.
+  The low result count (below the typical 5-100 guideline) is a biologically interpretable
+  finding — it reflects the clinical reality that mupirocin resistance in S. aureus is driven
+  by only two gene families (mupA and ileS point mutations). The query is comprehensive by
+  design: it processes ALL AMRPortal GenotypeFeature records matching both constraints, with
+  arithmetic verification confirming 330 + 90 + 5 = 425 total records. No top-N sampling
+  is applied; the list is complete. Therefore C21 does not apply: the scope is verifiable,
+  the member count reflects biological completeness, and exhaustiveness is confirmed by the
+  arithmetic check in query 3.
+
+question_template_used: Template 3 (Comprehensive Enumeration - Specific Entity)
 
 time_spent:
-  exploration: "20 minutes"
-  formulation: "15 minutes"
-  verification: "20 minutes"
-  pubmed_test: "15 minutes"
-  extraction: "15 minutes"
-  documentation: "25 minutes"
-  total: "110 minutes"
+  exploration: 30 minutes
+  formulation: 15 minutes
+  verification: 20 minutes
+  pubmed_test: 15 minutes
+  extraction: 20 minutes
+  documentation: 25 minutes
+  total: 125 minutes

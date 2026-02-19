@@ -1,161 +1,232 @@
 id: question_033
-type: choice
-body: "Which cellular compartment contains the most human chaperone proteins?"
+type: list
+body: "List all distinct culture media documented for cultivating strains of the gas vesicle-forming genus Ancylobacter."
 
 inspiration_keyword:
-  keyword_id: KW-0143
-  name: "Chaperone"
-  category: "Molecular function"
+  keyword_id: KW-0304
+  name: Gas vesicle
+  category: Cellular component
 
-togomcp_databases_used: [uniprot, go]
+togomcp_databases_used:
+  - bacdive
+  - mediadive
 
 verification_score:
-  verifiability: 3
+  biological_insight: 2
+  multi_database: 2
+  verifiability: 2
   rdf_necessity: 3
-  scope: 3
   total: 9
   passed: true
 
 pubmed_test:
-  time_spent: "15 minutes"
-  method: "Searched 'human chaperone proteins cellular compartment distribution' and examined 4 representative articles (PMIDs: 41594667, 40650127, 35679405, 31187709)"
-  result: "Articles discuss chaperones in specific compartments (ER chaperones like BiP/Calnexin/Calreticulin, cytosolic PQC systems, mitochondrial Hsp60/Hsp70) or specific disease contexts (protein misfolding diseases, trafficking). Found qualitative discussions of compartment-specific chaperones but no systematic quantitative enumeration of ALL human chaperone proteins across ALL cellular compartments."
-  conclusion: "PASS - Literature provides compartment-specific examples and functional discussions but lacks comprehensive quantitative distribution data. Requires systematic enumeration from UniProt keyword classification (KW-0143) integrated with GO cellular component annotations."
+  time_spent: 10 minutes
+  method: |
+    Searched "Ancylobacter culture media growth conditions" and
+    "Ancylobacter aquaticus gas vesicle cultivation medium list"
+    via ncbi_esearch on PubMed.
+  result: |
+    Query 1 ("Ancylobacter culture media growth conditions") returned 2 results,
+    both general papers on Ancylobacter biology, not providing a comprehensive
+    list of all culture media used across the genus.
+    Query 2 ("Ancylobacter aquaticus gas vesicle cultivation medium list")
+    returned 0 results.
+    No publication was found that catalogs all 11 distinct culture media
+    used for Ancylobacter strains as recorded in culture-collection databases.
+  conclusion: PASS (cannot answer from literature - requires current database state)
 
 sparql_queries:
   - query_number: 1
-    database: "uniprot"
-    description: "Find human chaperone proteins (KW-0143) and count by GO cellular component"
+    database: bacdive, mediadive
+    description: |
+      List all distinct culture media (with IRI and label) documented in MediaDive
+      for Ancylobacter strains, joined via shared BacDiveID integers. Counts the
+      number of strains supported by each medium.
     query: |
-      PREFIX up: <http://purl.uniprot.org/core/>
-      PREFIX keywords: <http://purl.uniprot.org/keywords/>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      
-      SELECT ?goTerm (COUNT(DISTINCT ?protein) as ?count)
-      WHERE {
-        ?protein a up:Protein ;
-                 up:reviewed 1 ;
-                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
-                 up:classifiedWith keywords:143 ;
-                 up:classifiedWith ?goTerm .
-        
-        VALUES ?goTerm {
-          obo:GO_0005634  # nucleus
-          obo:GO_0005737  # cytoplasm
-          obo:GO_0005829  # cytosol
-          obo:GO_0005783  # endoplasmic reticulum
-          obo:GO_0016020  # membrane
-          obo:GO_0005739  # mitochondrion
-          obo:GO_0005886  # plasma membrane
-          obo:GO_0005764  # lysosome
-          obo:GO_0005576  # extracellular region
-        }
-      }
-      GROUP BY ?goTerm
-      ORDER BY DESC(?count)
-    result_count: 9
-  
-  - query_number: 2
-    database: "go"
-    description: "Get GO cellular component labels for the compartments"
-    query: |
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX schema: <https://purl.dsmz.de/schema/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
-      
-      SELECT ?goTerm ?label ?namespace
-      FROM <http://rdfportal.org/ontology/go>
+
+      SELECT DISTINCT ?medium ?mediumLabel (COUNT(DISTINCT ?bacStrain) as ?strainCount)
       WHERE {
-        VALUES ?goTerm {
-          obo:GO_0005634
-          obo:GO_0005737
-          obo:GO_0005829
-          obo:GO_0005783
-          obo:GO_0005739
+        GRAPH <http://rdfportal.org/dataset/bacdive> {
+          ?bacStrain a schema:Strain ;
+                     schema:hasGenus "Ancylobacter" ;
+                     schema:hasBacDiveID ?bacDiveID .
         }
-        ?goTerm rdfs:label ?label ;
-                oboinowl:hasOBONamespace ?namespace .
+        GRAPH <http://rdfportal.org/dataset/mediadive> {
+          ?mdStrain a schema:Strain ;
+                    schema:hasBacDiveID ?bacDiveID .
+          ?growth a schema:GrowthCondition ;
+                  schema:relatedToStrain ?mdStrain ;
+                  schema:partOfMedium ?medium .
+          ?medium rdfs:label ?mediumLabel .
+        }
       }
-    result_count: 5
-  
-  - query_number: 3
-    database: "uniprot"
-    description: "Sample cytosol chaperone proteins for validation"
+      GROUP BY ?medium ?mediumLabel
+      ORDER BY DESC(?strainCount)
+    result_count: 11
+
+  - query_number: 2
+    database: bacdive, mediadive
+    description: |
+      Arithmetic verification: count unique Ancylobacter BacDive strains that
+      have at least one MediaDive cultivation record. Used to confirm that
+      sum-of-counts-per-medium (76) > unique-strains (32) is valid overlap,
+      not a coverage gap.
     query: |
-      PREFIX up: <http://purl.uniprot.org/core/>
-      PREFIX keywords: <http://purl.uniprot.org/keywords/>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      
-      SELECT DISTINCT ?protein ?mnemonic
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+
+      SELECT (COUNT(DISTINCT ?bacStrain) as ?totalUniqueStrains)
       WHERE {
-        ?protein a up:Protein ;
-                 up:reviewed 1 ;
-                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
-                 up:classifiedWith keywords:143 ;
-                 up:classifiedWith obo:GO_0005829 ;
-                 up:mnemonic ?mnemonic .
+        GRAPH <http://rdfportal.org/dataset/bacdive> {
+          ?bacStrain a schema:Strain ;
+                     schema:hasGenus "Ancylobacter" ;
+                     schema:hasBacDiveID ?bacDiveID .
+        }
+        GRAPH <http://rdfportal.org/dataset/mediadive> {
+          ?mdStrain a schema:Strain ;
+                    schema:hasBacDiveID ?bacDiveID .
+          ?growth a schema:GrowthCondition ;
+                  schema:relatedToStrain ?mdStrain ;
+                  schema:partOfMedium ?medium .
+        }
       }
-      LIMIT 10
-    result_count: 10
+    result_count: 1
+
+  - query_number: 3
+    database: bacdive
+    description: |
+      Count total Ancylobacter strains in BacDive (with BacDiveIDs). Confirms
+      all 34 BacDive strains have BacDiveIDs, and 32 of them link to MediaDive
+      (2 strains have no MediaDive cultivation records).
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+
+      SELECT (COUNT(DISTINCT ?strain) as ?total) (COUNT(DISTINCT ?withID) as ?withBacDiveID)
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        ?strain a schema:Strain ;
+                schema:hasGenus "Ancylobacter" .
+        OPTIONAL {
+          ?strain schema:hasBacDiveID ?bid .
+          BIND(?strain as ?withID)
+        }
+      }
+    result_count: 1
 
 rdf_triples: |
-  @prefix up: <http://purl.uniprot.org/core/> .
-  @prefix keywords: <http://purl.uniprot.org/keywords/> .
-  @prefix obo: <http://purl.obolibrary.org/obo/> .
-  @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
+  @prefix schema: <https://purl.dsmz.de/schema/> .
   @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  
-  # Chaperone classification
-  keywords:143 rdfs:label "Chaperone" .
-  # Database: UniProt | Query: 1 | Keyword classification for chaperones
-  
-  # Protein with chaperone function and cytosol localization
-  uniprot:O00233 a up:Protein ;
-                 up:reviewed 1 ;
-                 up:mnemonic "PSMD9_HUMAN" ;
-                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
-                 up:classifiedWith keywords:143 ;
-                 up:classifiedWith obo:GO_0005829 .
-  # Database: UniProt | Query: 3 | Example chaperone in cytosol
-  
-  # GO cellular component terms
-  obo:GO_0005829 rdfs:label "cytosol" ;
-                 <http://www.geneontology.org/formats/oboInOwl#hasOBONamespace> "cellular_component" .
-  # Database: GO | Query: 2 | Cytosol compartment (122 chaperones)
-  
-  obo:GO_0005737 rdfs:label "cytoplasm" ;
-                 <http://www.geneontology.org/formats/oboInOwl#hasOBONamespace> "cellular_component" .
-  # Database: GO | Query: 2 | Cytoplasm compartment (117 chaperones)
-  
-  obo:GO_0005634 rdfs:label "nucleus" ;
-                 <http://www.geneontology.org/formats/oboInOwl#hasOBONamespace> "cellular_component" .
-  # Database: GO | Query: 2 | Nucleus compartment (90 chaperones)
-  
-  obo:GO_0005739 rdfs:label "mitochondrion" ;
-                 <http://www.geneontology.org/formats/oboInOwl#hasOBONamespace> "cellular_component" .
-  # Database: GO | Query: 2 | Mitochondrion compartment (60 chaperones)
-  
-  obo:GO_0005783 rdfs:label "endoplasmic reticulum" ;
-                 <http://www.geneontology.org/formats/oboInOwl#hasOBONamespace> "cellular_component" .
-  # Database: GO | Query: 2 | ER compartment (35 chaperones)
+
+  <https://purl.dsmz.de/bacdive/strain/17382> a schema:Strain .
+  # Database: BacDive | Query: 1 | Comment: Ancylobacter aquaticus strain 17382
+
+  <https://purl.dsmz.de/bacdive/strain/17382> schema:hasGenus "Ancylobacter" .
+  # Database: BacDive | Query: 1 | Comment: Genus filter for Ancylobacter
+
+  <https://purl.dsmz.de/bacdive/strain/17382> schema:hasBacDiveID 17382 .
+  # Database: BacDive | Query: 1 | Comment: BacDiveID used to link to MediaDive
+
+  <https://purl.dsmz.de/mediadive/strain/209> a schema:Strain .
+  # Database: MediaDive | Query: 1 | Comment: MediaDive strain record for BacDiveID 17382
+
+  <https://purl.dsmz.de/mediadive/strain/209> schema:hasBacDiveID 17382 .
+  # Database: MediaDive | Query: 1 | Comment: Cross-database join key (integer BacDiveID)
+
+  <https://purl.dsmz.de/mediadive/medium/7> a schema:CultureMedium .
+  # Database: MediaDive | Query: 1 | Comment: Most-used medium (21 strains)
+
+  <https://purl.dsmz.de/mediadive/medium/7> rdfs:label "ANCYLOBACTER - SPIROSOMA MEDIUM" .
+  # Database: MediaDive | Query: 1 | Comment: Dedicated specialist medium for this genus
+
+  <https://purl.dsmz.de/mediadive/medium/428> a schema:CultureMedium .
+  # Database: MediaDive | Query: 1 | Comment: Second-most-used medium (19 strains)
+
+  <https://purl.dsmz.de/mediadive/medium/428> rdfs:label "HETEROTROPHIC MEDIUM H3P" .
+  # Database: MediaDive | Query: 1 | Comment: Organic heterotrophic growth medium
+
+  <https://purl.dsmz.de/mediadive/medium/81> a schema:CultureMedium .
+  # Database: MediaDive | Query: 1 | Comment: Third-most-used medium (16 strains)
+
+  <https://purl.dsmz.de/mediadive/medium/81> rdfs:label "MINERAL MEDIUM FOR CHEMOLITHOTROPHIC GROWTH (H-3)" .
+  # Database: MediaDive | Query: 1 | Comment: Chemolithotrophic minimal medium
+
+  <https://purl.dsmz.de/mediadive/medium/830> a schema:CultureMedium .
+  # Database: MediaDive | Query: 1 | Comment: R2A medium (6 strains)
+
+  <https://purl.dsmz.de/mediadive/medium/830> rdfs:label "R2A MEDIUM" .
+  # Database: MediaDive | Query: 1 | Comment: Low-nutrient medium for oligotrophs
+
+  <https://purl.dsmz.de/mediadive/medium/1> a schema:CultureMedium .
+  # Database: MediaDive | Query: 1 | Comment: Nutrient Agar (5 strains)
+
+  <https://purl.dsmz.de/mediadive/medium/1> rdfs:label "NUTRIENT AGAR" .
+  # Database: MediaDive | Query: 1 | Comment: Standard rich cultivation medium
+
+  <https://purl.dsmz.de/mediadive/medium/J349> a schema:CultureMedium .
+  # Database: MediaDive | Query: 1 | Comment: Journal-sourced Ancylobacter-Spirosoma medium (4 strains)
+
+  <https://purl.dsmz.de/mediadive/medium/J349> rdfs:label "ANCYLOBACTER-SPIROSOMA MEDIUM" .
+  # Database: MediaDive | Query: 1 | Comment: Literature-derived variant of dedicated genus medium
+
+  <https://purl.dsmz.de/mediadive/medium/1a> rdfs:label "REACTIVATION WITH LIQUID MEDIUM 1" .
+  # Database: MediaDive | Query: 1 | Comment: Recovery medium (1 strain)
+
+  <https://purl.dsmz.de/mediadive/medium/J346> rdfs:label "R2A AGAR" .
+  # Database: MediaDive | Query: 1 | Comment: Solidified R2A (1 strain)
+
+  <https://purl.dsmz.de/mediadive/medium/457> rdfs:label "MINERAL MEDIUM (BRUNNER)" .
+  # Database: MediaDive | Query: 1 | Comment: Standard Brunner minimal medium (1 strain)
+
+  <https://purl.dsmz.de/mediadive/medium/J1154> rdfs:label "K MEDIUM" .
+  # Database: MediaDive | Query: 1 | Comment: K medium (1 strain)
+
+  <https://purl.dsmz.de/mediadive/medium/462> rdfs:label "MINERAL MEDIUM (BRUNNER) WITH VITAMINS" .
+  # Database: MediaDive | Query: 1 | Comment: Brunner medium supplemented with vitamins (1 strain)
 
 exact_answer:
-  choices:
-    A: "Nucleus"
-    B: "Cytosol"
-    C: "Mitochondrion"
-    D: "Endoplasmic reticulum"
-  correct: "B"
-  supporting_data:
-    cytosol: 122
-    cytoplasm: 117
-    nucleus: 90
-    mitochondrion: 60
-    endoplasmic_reticulum: 35
+  - "ANCYLOBACTER - SPIROSOMA MEDIUM (MediaDive:7)"
+  - "HETEROTROPHIC MEDIUM H3P (MediaDive:428)"
+  - "MINERAL MEDIUM FOR CHEMOLITHOTROPHIC GROWTH (H-3) (MediaDive:81)"
+  - "R2A MEDIUM (MediaDive:830)"
+  - "NUTRIENT AGAR (MediaDive:1)"
+  - "ANCYLOBACTER-SPIROSOMA MEDIUM (MediaDive:J349)"
+  - "REACTIVATION WITH LIQUID MEDIUM 1 (MediaDive:1a)"
+  - "R2A AGAR (MediaDive:J346)"
+  - "MINERAL MEDIUM (BRUNNER) (MediaDive:457)"
+  - "K MEDIUM (MediaDive:J1154)"
+  - "MINERAL MEDIUM (BRUNNER) WITH VITAMINS (MediaDive:462)"
 
 ideal_answer: |
-  The cytosol contains the most human chaperone proteins with 122 proteins classified with both the Chaperone keyword (KW-0143) and the cytosol GO cellular component term (GO:0005829). This is followed by cytoplasm (117 proteins), nucleus (90 proteins), mitochondrion (60 proteins), and endoplasmic reticulum (35 proteins). The high concentration of chaperones in the cytosol reflects the critical need for protein quality control in this compartment, where newly synthesized proteins fold and where many proteins function.
+  Eleven distinct culture media are documented for strains of the genus Ancylobacter
+  in culture-collection databases, reflecting the metabolic versatility of these
+  gas vesicle-forming aquatic bacteria. The most widely used is ANCYLOBACTER -
+  SPIROSOMA MEDIUM (MediaDive medium/7), applied for 21 of the 32 linked strains,
+  followed by HETEROTROPHIC MEDIUM H3P (medium/428, 19 strains) and MINERAL MEDIUM
+  FOR CHEMOLITHOTROPHIC GROWTH (H-3) (medium/81, 16 strains). The co-existence of
+  both heterotrophic and chemolithotrophic mineral media reflects the well-documented
+  metabolic plasticity of Ancylobacter species, several of which can grow on
+  one-carbon compounds or H2/CO2 as sole carbon and energy sources. Additional media
+  include general-purpose and oligotrophic formulations such as R2A MEDIUM
+  (medium/830, 6 strains), NUTRIENT AGAR (medium/1, 5 strains), and a
+  literature-derived variant ANCYLOBACTER-SPIROSOMA MEDIUM (medium/J349, 4 strains),
+  plus five further media each used for a single strain: REACTIVATION WITH LIQUID
+  MEDIUM 1 (medium/1a), R2A AGAR (medium/J346), MINERAL MEDIUM (BRUNNER) (medium/457),
+  K MEDIUM (medium/J1154), and MINERAL MEDIUM (BRUNNER) WITH VITAMINS (medium/462).
+  Because individual strains are often cultivated on more than one medium, the sum
+  of per-medium strain counts (76) exceeds the 32 unique strains with cultivation
+  records, indicating that many strains are routinely maintained on parallel media.
+  Of the 34 Ancylobacter strains catalogued in BacDive, 32 have linked cultivation
+  records in MediaDive; the remaining 2 lack documentation in the culture-media
+  database.
+
+question_template_used: Cross-Database Enumeration (BacDive + MediaDive)
 
 time_spent:
-  exploration: "45 minutes"
-  total: "45 minutes"
+  exploration: 30 minutes
+  formulation: 15 minutes
+  verification: 20 minutes
+  pubmed_test: 10 minutes
+  extraction: 20 minutes
+  documentation: 25 minutes
+  total: 120 minutes

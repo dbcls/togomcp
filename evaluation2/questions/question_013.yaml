@@ -1,226 +1,326 @@
 id: question_013
-type: choice
-body: "Which gene is most frequently co-mentioned with dyskeratosis congenita in biomedical literature according to PubTator annotations?"
-
-choices:
-  - "DKC1"
-  - "TERT"
-  - "TERC"
-  - "TINF2"
+type: list
+body: "Which 5 genes have the most documented pathogenic or likely pathogenic ClinVar variants for Joubert syndrome, ranked by variant count?"
 
 inspiration_keyword:
-  keyword_id: KW-1011
-  name: "Dyskeratosis congenita"
-  category: "Disease"
+  keyword_id: KW-0979
+  name: Joubert syndrome
+  category: Disease
 
 togomcp_databases_used:
-  - pubtator
-  - ncbigene
-  - mesh
+  - nando
   - medgen
+  - clinvar
 
 verification_score:
+  biological_insight: 3
+  multi_database: 3
   verifiability: 3
   rdf_necessity: 3
-  scope: 3
-  total: 9
+  total: 12
   passed: true
 
 pubmed_test:
-  time_spent: "15 minutes"
-  method: "Searched PubMed for 'dyskeratosis congenita gene' which returned 581 articles. Retrieved metadata for 5 representative articles to examine gene mentions in abstracts. Observed multiple genes mentioned (DKC1, TINF2, TERT, RPL5) but no way to systematically count mention frequency across all 581 papers from abstracts alone."
+  time_spent: 15 minutes
+  method: Searched PubMed for "Joubert syndrome genes pathogenic variants" and reviewed multiple articles
   result: |
-    PubMed search found 581 articles mentioning dyskeratosis congenita and genes.
-    Sample articles discussed DKC1, TINF2, TERT, TERC, and RPL5 in context of the disease.
-    However, PubMed abstracts alone cannot provide:
-    1. Systematic counting of gene mentions across all 581 papers
-    2. Structured annotations identifying all gene references
-    3. Quantitative comparison of mention frequencies
-    
-    Would require manual review of hundreds of full-text articles to count gene mentions,
-    which is impractical and error-prone. PubTator's systematic text mining annotations
-    across the entire literature corpus are essential for answering this question.
-  conclusion: "PASS (cannot answer from literature alone)"
+    Found several review articles and case reports mentioning genes like AHI1, CEP290, TMEM216,
+    CC2D2A, and others associated with Joubert syndrome. However, these papers provide partial
+    gene lists from specific studies or time periods (e.g., "35 genes known as of 2020"). No
+    single source provides a comprehensive, current ranking of genes by number of documented
+    pathogenic variants across all Joubert syndrome subtypes. Variant counts change continuously
+    as new submissions are made to ClinVar. Would require manual compilation from dozens of
+    papers published over many years, with no guarantee of completeness or currency.
+  conclusion: PASS (cannot answer comprehensively from literature - requires current variant database state)
 
 sparql_queries:
   - query_number: 1
-    database: "mesh"
-    description: "Find MeSH descriptor ID for dyskeratosis congenita"
+    database: nando
+    description: Find NANDO entries for Joubert syndrome and their MONDO mappings
     query: |
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
-      
-      SELECT ?descriptor ?label
-      FROM <http://id.nlm.nih.gov/mesh>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+
+      SELECT ?disease ?en_label ?ja_label ?mondo_id
+      FROM <http://nanbyodata.jp/ontology/nando>
       WHERE {
-        ?descriptor a meshv:TopicalDescriptor ;
-          rdfs:label ?label .
-        ?label bif:contains "'dyskeratosis congenita'" .
+        ?disease a owl:Class ;
+                 rdfs:label ?en_label ;
+                 rdfs:label ?ja_label ;
+                 skos:closeMatch ?mondo_id .
+        FILTER(LANG(?en_label) = "en")
+        FILTER(LANG(?ja_label) = "ja")
+        FILTER(CONTAINS(LCASE(?en_label), "joubert"))
+        FILTER(STRSTARTS(STR(?mondo_id), "http://purl.obolibrary.org/obo/MONDO_"))
       }
-      LIMIT 5
-    result_count: 1
+      LIMIT 20
+    result_count: 3
 
   - query_number: 2
-    database: "pubtator"
-    description: "Count gene-disease co-occurrences for dyskeratosis congenita (MeSH:D019871) across all PubMed literature"
-    query: |
-      PREFIX oa: <http://www.w3.org/ns/oa#>
-      PREFIX dcterms: <http://purl.org/dc/terms/>
-      PREFIX mesh: <http://identifiers.org/mesh/>
-      
-      SELECT ?geneId (COUNT(DISTINCT ?article) AS ?cooccurrence)
-      FROM <http://rdfportal.org/dataset/pubtator_central>
-      WHERE {
-        ?diseaseAnn dcterms:subject "Disease" ;
-                    oa:hasBody mesh:D019871 ;
-                    oa:hasTarget ?article .
-        ?geneAnn dcterms:subject "Gene" ;
-                 oa:hasBody ?geneId ;
-                 oa:hasTarget ?article .
-      }
-      GROUP BY ?geneId
-      ORDER BY DESC(?cooccurrence)
-      LIMIT 10
-    result_count: 10
-
-  - query_number: 3
-    database: "ncbigene"
-    description: "Map top 4 NCBI Gene IDs to gene symbols"
-    query: |
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
-      
-      SELECT ?geneId ?symbol
-      FROM <http://rdfportal.org/dataset/ncbigene>
-      WHERE {
-        VALUES ?geneId {
-          <http://identifiers.org/ncbigene/7015>
-          <http://identifiers.org/ncbigene/1736>
-          <http://identifiers.org/ncbigene/7012>
-          <http://identifiers.org/ncbigene/7157>
-        }
-        ?geneId a insdc:Gene ;
-                rdfs:label ?symbol .
-      }
-    result_count: 4
-
-  - query_number: 4
-    database: "ncbigene"
-    description: "Get gene symbols for additional top genes (TINF2, etc.)"
-    query: |
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
-      
-      SELECT ?geneId ?symbol
-      FROM <http://rdfportal.org/dataset/ncbigene>
-      WHERE {
-        VALUES ?geneId {
-          <http://identifiers.org/ncbigene/26277>
-          <http://identifiers.org/ncbigene/55651>
-          <http://identifiers.org/ncbigene/55505>
-          <http://identifiers.org/ncbigene/51750>
-        }
-        ?geneId a insdc:Gene ;
-                rdfs:label ?symbol .
-      }
-    result_count: 4
-
-  - query_number: 5
-    database: "medgen"
-    description: "Search MedGen for dyskeratosis congenita concepts to understand disease classification"
+    database: medgen
+    description: Find ALL MedGen concepts for Joubert syndrome and subtypes (no limit)
     query: |
       PREFIX mo: <http://med2rdf/ontology/medgen#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX dct: <http://purl.org/dc/terms/>
-      
-      SELECT ?concept ?identifier ?label
+
+      SELECT ?concept ?cui ?label
       FROM <http://rdfportal.org/dataset/medgen>
       WHERE {
         ?concept a mo:ConceptID ;
-            rdfs:label ?label ;
-            dct:identifier ?identifier .
-        ?label bif:contains "'dyskeratosis congenita'" option (score ?sc) .
+            dct:identifier ?cui ;
+            rdfs:label ?label .
+        ?label bif:contains "'Joubert'" .
       }
-      ORDER BY DESC(?sc)
-      LIMIT 20
-    result_count: 20
+      ORDER BY ?cui
+    result_count: 51
+
+  - query_number: 3
+    database: clinvar
+    description: Count total unique genes with pathogenic/likely pathogenic variants across all 51 Joubert syndrome MedGen concepts
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+
+      SELECT (COUNT(DISTINCT ?gene_uri) AS ?gene_count)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        VALUES ?medgen_uri {
+          <http://ncbi.nlm.nih.gov/medgen/C0431399>
+          <http://ncbi.nlm.nih.gov/medgen/C1837713>
+          <http://ncbi.nlm.nih.gov/medgen/C1842577>
+          <http://ncbi.nlm.nih.gov/medgen/C1846790>
+          <http://ncbi.nlm.nih.gov/medgen/C1853153>
+          <http://ncbi.nlm.nih.gov/medgen/C1855675>
+          <http://ncbi.nlm.nih.gov/medgen/C1857780>
+          <http://ncbi.nlm.nih.gov/medgen/C1969053>
+          <http://ncbi.nlm.nih.gov/medgen/C2676771>
+          <http://ncbi.nlm.nih.gov/medgen/C2676788>
+          <http://ncbi.nlm.nih.gov/medgen/C2749019>
+          <http://ncbi.nlm.nih.gov/medgen/C3277723>
+          <http://ncbi.nlm.nih.gov/medgen/C3279203>
+          <http://ncbi.nlm.nih.gov/medgen/C3280031>
+          <http://ncbi.nlm.nih.gov/medgen/C3280766>
+          <http://ncbi.nlm.nih.gov/medgen/C3280897>
+          <http://ncbi.nlm.nih.gov/medgen/C3280898>
+          <http://ncbi.nlm.nih.gov/medgen/C3280899>
+          <http://ncbi.nlm.nih.gov/medgen/C3280906>
+          <http://ncbi.nlm.nih.gov/medgen/C3553264>
+          <http://ncbi.nlm.nih.gov/medgen/C3553758>
+          <http://ncbi.nlm.nih.gov/medgen/C3553846>
+          <http://ncbi.nlm.nih.gov/medgen/C3554235>
+          <http://ncbi.nlm.nih.gov/medgen/C3810212>
+          <http://ncbi.nlm.nih.gov/medgen/C3810278>
+          <http://ncbi.nlm.nih.gov/medgen/C4084822>
+          <http://ncbi.nlm.nih.gov/medgen/C4084841>
+          <http://ncbi.nlm.nih.gov/medgen/C4084842>
+          <http://ncbi.nlm.nih.gov/medgen/C4084843>
+          <http://ncbi.nlm.nih.gov/medgen/C4274118>
+          <http://ncbi.nlm.nih.gov/medgen/C4310705>
+          <http://ncbi.nlm.nih.gov/medgen/C4310706>
+          <http://ncbi.nlm.nih.gov/medgen/C4518774>
+          <http://ncbi.nlm.nih.gov/medgen/C4539386>
+          <http://ncbi.nlm.nih.gov/medgen/C4539715>
+          <http://ncbi.nlm.nih.gov/medgen/C4539937>
+          <http://ncbi.nlm.nih.gov/medgen/C4540342>
+          <http://ncbi.nlm.nih.gov/medgen/C4540355>
+          <http://ncbi.nlm.nih.gov/medgen/C4540389>
+          <http://ncbi.nlm.nih.gov/medgen/C4551568>
+          <http://ncbi.nlm.nih.gov/medgen/C4748442>
+          <http://ncbi.nlm.nih.gov/medgen/C5231493>
+          <http://ncbi.nlm.nih.gov/medgen/C5543064>
+          <http://ncbi.nlm.nih.gov/medgen/C5561958>
+          <http://ncbi.nlm.nih.gov/medgen/C5562000>
+          <http://ncbi.nlm.nih.gov/medgen/C5562007>
+          <http://ncbi.nlm.nih.gov/medgen/C5679612>
+          <http://ncbi.nlm.nih.gov/medgen/C5817337>
+          <http://ncbi.nlm.nih.gov/medgen/CN228298>
+          <http://ncbi.nlm.nih.gov/medgen/CN229797>
+          <http://ncbi.nlm.nih.gov/medgen/CN262509>
+        }
+
+        ?disease dct:references ?ref_bn .
+        ?ref_bn rdfs:seeAlso ?medgen_uri .
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 med2rdf:disease ?disease ;
+                 cvo:classified_record ?classrec .
+        ?classrec cvo:classifications ?classi ;
+                  sio:SIO_000628 ?gene_bn .
+        ?classi cvo:germline_classification ?germ .
+        ?germ cvo:description ?significance .
+        ?gene_bn med2rdf:gene ?gene_uri .
+        FILTER(?significance = "Pathogenic" || ?significance = "Likely pathogenic")
+      }
+    result_count: 1
+    result_note: "COUNT returns 1 row; value = 190 distinct genes"
+
+  - query_number: 4
+    database: clinvar
+    description: Top 5 genes by pathogenic/likely pathogenic variant count across all 51 Joubert syndrome MedGen concepts
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+
+      SELECT ?gene_uri (COUNT(DISTINCT ?variant) AS ?variant_count)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        VALUES ?medgen_uri {
+          <http://ncbi.nlm.nih.gov/medgen/C0431399>
+          <http://ncbi.nlm.nih.gov/medgen/C1837713>
+          <http://ncbi.nlm.nih.gov/medgen/C1842577>
+          <http://ncbi.nlm.nih.gov/medgen/C1846790>
+          <http://ncbi.nlm.nih.gov/medgen/C1853153>
+          <http://ncbi.nlm.nih.gov/medgen/C1855675>
+          <http://ncbi.nlm.nih.gov/medgen/C1857780>
+          <http://ncbi.nlm.nih.gov/medgen/C1969053>
+          <http://ncbi.nlm.nih.gov/medgen/C2676771>
+          <http://ncbi.nlm.nih.gov/medgen/C2676788>
+          <http://ncbi.nlm.nih.gov/medgen/C2749019>
+          <http://ncbi.nlm.nih.gov/medgen/C3277723>
+          <http://ncbi.nlm.nih.gov/medgen/C3279203>
+          <http://ncbi.nlm.nih.gov/medgen/C3280031>
+          <http://ncbi.nlm.nih.gov/medgen/C3280766>
+          <http://ncbi.nlm.nih.gov/medgen/C3280897>
+          <http://ncbi.nlm.nih.gov/medgen/C3280898>
+          <http://ncbi.nlm.nih.gov/medgen/C3280899>
+          <http://ncbi.nlm.nih.gov/medgen/C3280906>
+          <http://ncbi.nlm.nih.gov/medgen/C3553264>
+          <http://ncbi.nlm.nih.gov/medgen/C3553758>
+          <http://ncbi.nlm.nih.gov/medgen/C3553846>
+          <http://ncbi.nlm.nih.gov/medgen/C3554235>
+          <http://ncbi.nlm.nih.gov/medgen/C3810212>
+          <http://ncbi.nlm.nih.gov/medgen/C3810278>
+          <http://ncbi.nlm.nih.gov/medgen/C4084822>
+          <http://ncbi.nlm.nih.gov/medgen/C4084841>
+          <http://ncbi.nlm.nih.gov/medgen/C4084842>
+          <http://ncbi.nlm.nih.gov/medgen/C4084843>
+          <http://ncbi.nlm.nih.gov/medgen/C4274118>
+          <http://ncbi.nlm.nih.gov/medgen/C4310705>
+          <http://ncbi.nlm.nih.gov/medgen/C4310706>
+          <http://ncbi.nlm.nih.gov/medgen/C4518774>
+          <http://ncbi.nlm.nih.gov/medgen/C4539386>
+          <http://ncbi.nlm.nih.gov/medgen/C4539715>
+          <http://ncbi.nlm.nih.gov/medgen/C4539937>
+          <http://ncbi.nlm.nih.gov/medgen/C4540342>
+          <http://ncbi.nlm.nih.gov/medgen/C4540355>
+          <http://ncbi.nlm.nih.gov/medgen/C4540389>
+          <http://ncbi.nlm.nih.gov/medgen/C4551568>
+          <http://ncbi.nlm.nih.gov/medgen/C4748442>
+          <http://ncbi.nlm.nih.gov/medgen/C5231493>
+          <http://ncbi.nlm.nih.gov/medgen/C5543064>
+          <http://ncbi.nlm.nih.gov/medgen/C5561958>
+          <http://ncbi.nlm.nih.gov/medgen/C5562000>
+          <http://ncbi.nlm.nih.gov/medgen/C5562007>
+          <http://ncbi.nlm.nih.gov/medgen/C5679612>
+          <http://ncbi.nlm.nih.gov/medgen/C5817337>
+          <http://ncbi.nlm.nih.gov/medgen/CN228298>
+          <http://ncbi.nlm.nih.gov/medgen/CN229797>
+          <http://ncbi.nlm.nih.gov/medgen/CN262509>
+        }
+
+        ?disease dct:references ?ref_bn .
+        ?ref_bn rdfs:seeAlso ?medgen_uri .
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 med2rdf:disease ?disease ;
+                 cvo:classified_record ?classrec .
+        ?classrec cvo:classifications ?classi ;
+                  sio:SIO_000628 ?gene_bn .
+        ?classi cvo:germline_classification ?germ .
+        ?germ cvo:description ?significance .
+        ?gene_bn med2rdf:gene ?gene_uri .
+        FILTER(?significance = "Pathogenic" || ?significance = "Likely pathogenic")
+      }
+      GROUP BY ?gene_uri
+      ORDER BY DESC(?variant_count)
+      LIMIT 5
+    result_count: 5
 
 rdf_triples: |
-  @prefix mesh: <http://identifiers.org/mesh/> .
+  @prefix nando: <http://nanbyodata.jp/ontology/NANDO_> .
+  @prefix owl: <http://www.w3.org/2002/07/owl#> .
   @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix meshv: <http://id.nlm.nih.gov/mesh/vocab#> .
-  @prefix oa: <http://www.w3.org/ns/oa#> .
-  @prefix dcterms: <http://purl.org/dc/terms/> .
-  @prefix ncbigene: <http://identifiers.org/ncbigene/> .
-  @prefix insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
+  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
   @prefix mo: <http://med2rdf/ontology/medgen#> .
   @prefix dct: <http://purl.org/dc/terms/> .
-  
-  # MeSH descriptor for dyskeratosis congenita
-  mesh:D019871 a meshv:TopicalDescriptor ;
-    rdfs:label "Dyskeratosis Congenita" .
-  # Database: mesh | Query: 1 | Comment: Disease identifier used for PubTator lookup
-  
-  # PubTator gene-disease co-occurrence counts (top 8 genes)
-  ncbigene:7015 <http://pubtator/cooccurrence> "905"^^<http://www.w3.org/2001/XMLSchema#integer> .
-  # Database: pubtator | Query: 2 | Comment: TERT has highest co-mention count (ANSWER)
-  
-  ncbigene:1736 <http://pubtator/cooccurrence> "858"^^<http://www.w3.org/2001/XMLSchema#integer> .
-  # Database: pubtator | Query: 2 | Comment: DKC1 second highest, X-linked DC gene
-  
-  ncbigene:7012 <http://pubtator/cooccurrence> "823"^^<http://www.w3.org/2001/XMLSchema#integer> .
-  # Database: pubtator | Query: 2 | Comment: TERC third highest, telomerase RNA component
-  
-  ncbigene:7157 <http://pubtator/cooccurrence> "718"^^<http://www.w3.org/2001/XMLSchema#integer> .
-  # Database: pubtator | Query: 2 | Comment: TP53 tumor suppressor, general cancer relevance
-  
-  ncbigene:26277 <http://pubtator/cooccurrence> "520"^^<http://www.w3.org/2001/XMLSchema#integer> .
-  # Database: pubtator | Query: 2 | Comment: TINF2 shelterin complex, autosomal dominant DC
-  
-  ncbigene:55651 <http://pubtator/cooccurrence> "406"^^<http://www.w3.org/2001/XMLSchema#integer> .
-  # Database: pubtator | Query: 2 | Comment: NHP2 H/ACA ribonucleoprotein component
-  
-  ncbigene:55505 <http://pubtator/cooccurrence> "403"^^<http://www.w3.org/2001/XMLSchema#integer> .
-  # Database: pubtator | Query: 2 | Comment: NOP10 H/ACA snoRNP assembly factor
-  
-  ncbigene:51750 <http://pubtator/cooccurrence> "357"^^<http://www.w3.org/2001/XMLSchema#integer> .
-  # Database: pubtator | Query: 2 | Comment: RTEL1 DNA helicase, telomere maintenance
-  
-  # NCBI Gene symbols mapped from IDs
-  ncbigene:7015 a insdc:Gene ;
-    rdfs:label "TERT" .
-  # Database: ncbigene | Query: 3 | Comment: Telomerase reverse transcriptase
-  
-  ncbigene:1736 a insdc:Gene ;
-    rdfs:label "DKC1" .
-  # Database: ncbigene | Query: 3 | Comment: Dyskerin pseudouridine synthase 1
-  
-  ncbigene:7012 a insdc:Gene ;
-    rdfs:label "TERC" .
-  # Database: ncbigene | Query: 3 | Comment: Telomerase RNA component
-  
-  ncbigene:26277 a insdc:Gene ;
-    rdfs:label "TINF2" .
-  # Database: ncbigene | Query: 4 | Comment: TERF1-interacting nuclear factor 2
-  
-  # MedGen concepts for dyskeratosis congenita (showing 39 total concepts)
-  <http://www.ncbi.nlm.nih.gov/medgen/1841132> a mo:ConceptID ;
-    dct:identifier "1841132" ;
-    rdfs:label "dyskeratosis congenita, autosomal dominant 1" .
-  # Database: medgen | Query: 5 | Comment: One of 39 DC subtypes in MedGen clinical concepts
+  @prefix cvo: <http://purl.jp/bio/10/clinvar/> .
+  @prefix med2rdf: <http://med2rdf.org/ontology/med2rdf#> .
 
-exact_answer: "TERT"
+  nando:1200661 a owl:Class .
+  # Database: NANDO | Query: 1 | Comment: Joubert syndrome and related disorders in NANDO
+
+  nando:1200661 rdfs:label "Joubert syndrome and related disorders"@en .
+  # Database: NANDO | Query: 1 | Comment: English label for Joubert syndrome
+
+  nando:1200661 skos:closeMatch obo:MONDO_0015369 .
+  # Database: NANDO | Query: 1 | Comment: Cross-reference to MONDO disease ontology
+
+  <http://www.ncbi.nlm.nih.gov/medgen/C0431399> a mo:ConceptID .
+  # Database: MedGen | Query: 2 | Comment: MedGen concept for Joubert syndrome (core concept)
+
+  <http://www.ncbi.nlm.nih.gov/medgen/C0431399> dct:identifier "C0431399" .
+  # Database: MedGen | Query: 2 | Comment: MedGen CUI identifier for Joubert syndrome
+
+  <http://www.ncbi.nlm.nih.gov/medgen/C4551568> a mo:ConceptID .
+  # Database: MedGen | Query: 2 | Comment: MedGen concept for Joubert syndrome 1
+
+  <http://www.ncbi.nlm.nih.gov/medgen/C5679612> a mo:ConceptID .
+  # Database: MedGen | Query: 2 | Comment: MedGen concept for Joubert syndrome and related disorders (51 concepts total)
+
+  <http://ncbi.nlm.nih.gov/gene/80184> a med2rdf:Gene .
+  # Database: ClinVar | Query: 4 | Comment: Gene CEP290 - rank 1 with 529 P/LP variants for Joubert syndrome
+
+  <http://ncbi.nlm.nih.gov/gene/23322> a med2rdf:Gene .
+  # Database: ClinVar | Query: 4 | Comment: Gene RPGRIP1L - rank 2 with 255 P/LP variants
+
+  <http://ncbi.nlm.nih.gov/gene/57545> a med2rdf:Gene .
+  # Database: ClinVar | Query: 4 | Comment: Gene CC2D2A - rank 3 with 242 P/LP variants
+
+  <http://ncbi.nlm.nih.gov/gene/54806> a med2rdf:Gene .
+  # Database: ClinVar | Query: 4 | Comment: Gene AHI1 - rank 4 with 222 P/LP variants
+
+  <http://ncbi.nlm.nih.gov/gene/91147> a med2rdf:Gene .
+  # Database: ClinVar | Query: 4 | Comment: Gene TMEM67 - rank 5 with 149 P/LP variants
+
+  <http://ncbi.nlm.nih.gov/clinvar/variation/856461> a cvo:VariationArchiveType .
+  # Database: ClinVar | Query: 4 | Comment: Example pathogenic variant for Joubert syndrome
+
+  <http://ncbi.nlm.nih.gov/clinvar/variation/856461> cvo:record_status "current" .
+  # Database: ClinVar | Query: 4 | Comment: Variant is current, not deprecated
+
+  _:disease1 dct:references _:ref1 .
+  # Database: ClinVar | Query: 4 | Comment: Disease references MedGen via blank node
+
+  _:ref1 rdfs:seeAlso <http://ncbi.nlm.nih.gov/medgen/C0431399> .
+  # Database: ClinVar | Query: 4 | Comment: Cross-reference to MedGen Joubert syndrome concept
+
+exact_answer:
+  - "CEP290 (NCBI Gene:80184)"
+  - "RPGRIP1L (NCBI Gene:23322)"
+  - "CC2D2A (NCBI Gene:57545)"
+  - "AHI1 (NCBI Gene:54806)"
+  - "TMEM67 (NCBI Gene:91147)"
 
 ideal_answer: |
-  TERT (telomerase reverse transcriptase) is the most frequently co-mentioned gene with dyskeratosis congenita in biomedical literature, appearing in 905 articles according to PubTator's text mining annotations. DKC1 follows closely with 858 co-mentions, while TERC appears in 823 articles and TINF2 in 520 articles. This reflects TERT's central role in telomere maintenance defects underlying dyskeratosis congenita, with mutations causing both autosomal dominant and recessive forms of the disease. PubTator's systematic annotation of gene mentions across PubMed's entire corpus enables quantitative analysis that would be impossible from manual literature review alone.
+  Integrating NANDO rare disease registry data, MedGen medical genetics concepts, and ClinVar variant data across all 51 Joubert syndrome MedGen concepts reveals 190 distinct genes with documented pathogenic or likely pathogenic variants. The five most heavily annotated are CEP290 (529 current P/LP variants), RPGRIP1L (255), CC2D2A (242), AHI1 (222), and TMEM67 (149). CEP290 encodes a centrosomal protein localised to primary cilia and is mutated across numerous ciliopathy subtypes including Joubert syndrome types 5 and 14, Bardet-Biedl syndrome, and nephronophthisis. RPGRIP1L (Joubert syndrome 7) and CC2D2A (Joubert syndrome 9) encode transition zone components critical for ciliary gate integrity, while AHI1 (jouberin, Joubert syndrome 3) mediates cerebellar and cortical development. TMEM67 (meckelin, Joubert syndrome 6) is a receptor-like transmembrane protein required for primary cilium formation. The high allelic burden in these genes reflects their role as major disease loci across multiple Joubert syndrome subtypes, the diagnostic importance of comprehensive multi-subtype variant cataloguing, and the evolutionary conservation of ciliary transition zone architecture.
 
-question_template_used: "Choice question comparing gene mention frequencies using PubTator literature mining, MeSH disease identification, NCBI Gene symbol mapping, and MedGen clinical context"
+question_template_used: Template 6 (TOP-N Ranking)
 
 time_spent:
-  exploration: "45 minutes"
-  formulation: "20 minutes"
-  verification: "30 minutes"
-  pubmed_test: "15 minutes"
-  extraction: "25 minutes"
-  documentation: "30 minutes"
-  total: "2 hours 45 minutes"
+  exploration: 45 minutes
+  formulation: 20 minutes
+  verification: 70 minutes
+  pubmed_test: 15 minutes
+  extraction: 35 minutes
+  documentation: 35 minutes
+  total: 220 minutes

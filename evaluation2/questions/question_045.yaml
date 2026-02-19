@@ -1,179 +1,236 @@
-# Question 045: ClinVar as PRIMARY - Congenital disorder of glycosylation gene variant frequency
-# Type: FACTOID
-# Database: ClinVar (single database)
-# Keyword: KW-0900 (Congenital disorder of glycosylation)
-# Created: 2025-02-08
+id: question_045
+type: summary
+body: "What are the structural characteristics of 3-demethylubiquinones as intermediates in ubiquinone biosynthesis, and how are they enzymatically converted to ubiquinones?"
 
-question_id: "question_045"
-question_type: "factoid"
-keywords:
-  - keyword_id: "KW-0900"
-    name: "Congenital disorder of glycosylation"
-    category: "Disease"
+inspiration_keyword:
+  keyword_id: KW-0831
+  name: Ubiquinone biosynthesis
+  category: Biological process
 
-question_text: "Which gene has the most pathogenic or likely pathogenic variants associated with congenital disorders of glycosylation in ClinVar?"
+togomcp_databases_used:
+  - chebi
+  - pubchem
+  - rhea
 
-databases_used:
-  primary:
-    - name: "ClinVar"
-      role: "PRIMARY - genetic variant frequency data"
-      justification: "ClinVar contains clinical variant classifications and gene associations. This question requires counting pathogenic variants per gene, which is unique to ClinVar's structured data."
-
-integration_level: "single_database"
-
-correct_answer:
-  answer_text: "PMM2"
-  explanation: "PMM2 (phosphomannomutase 2) has 201 pathogenic or likely pathogenic variants for congenital disorders of glycosylation in ClinVar, significantly more than other CDG-associated genes (MPI: 138, ALG6: 136, DPAGT1: 38)."
-  evidence_type: "comparative_count"
-
-verification:
-  verifiability: 3
-  reasoning: "The answer is objectively verifiable by counting ClinVar variants. Results are deterministic and reproducible."
-  
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 2
   rdf_necessity: 3
-  reasoning: "Requires structured clinical variant database. PubMed articles discuss CDG clinically but don't provide ClinVar-specific variant counts needed for precise gene-by-gene comparison."
-  
-  scope: 3
-  reasoning: "Question is bounded (pathogenic/likely pathogenic variants for CDG), specific (gene-level comparison), and has clear constraints (current ClinVar records)."
+  total: 11
+  passed: true
 
 pubmed_test:
-  duration_minutes: 15
-  queries_attempted:
-    - "congenital disorder of glycosylation PMM2 pathogenic variants count ClinVar"
-    - "congenital disorder glycosylation gene frequency variants"
-    - "PMM2 ALG6 MPI congenital disorder glycosylation prevalence variant comparison"
-    - "congenital disorder glycosylation most common gene"
-  
-  result: "not_answerable"
-  explanation: |
-    PubMed searches found general CDG literature and clinical descriptions. Some articles mention PMM2-CDG (CDG-Ia) is the most common type clinically, but none provide the specific ClinVar pathogenic variant counts needed to answer this question precisely. The question requires ClinVar's structured variant classification data to count pathogenic variants per gene accurately.
-  
-  representative_pmids:
-    - pmid: "37278968"
-      title: "D-galactose Supplementation for the Treatment of MOGHE"
-      reason: "Discusses SLC35A2 variants and CDG but doesn't provide comparative variant counts from ClinVar"
+  time_spent: 15 minutes
+  method: Searched "3-demethylubiquinone biosynthesis methylation SAM" and "ubiquinone biosynthetic intermediates structural properties" in PubMed
+  result: |
+    PubMed reviews on ubiquinone biosynthesis describe the general pathway and role of SAM-dependent methylation, 
+    but do not provide the exact molecular formulas of specific 3-demethylubiquinone variants (e.g., C53H80O4 
+    for the n=9 form), their precise molecular weights, their ontological classification as monohydroxy-1,4-benzoquinones 
+    within ChEBI, or the enumerated count of Rhea-approved methylation reactions covering specific chain-length variants 
+    (n=6 through n=10). These details require direct database queries.
+  conclusion: PASS (cannot answer from literature alone - requires current structured database state)
 
-discovery_process:
-  step1_check_mie:
-    tool: "togomcp_local:get_MIE_file"
-    database: "clinvar"
-    findings: "kw_search_tools: [ncbi_esearch]. ClinVar contains 3.5M+ variants with clinical classifications and gene associations."
-  
-  step2_keyword_search:
-    tool: "togomcp_local:ncbi_esearch"
-    parameters:
-      database: "clinvar"
-      query: "congenital disorder of glycosylation pathogenic"
-    results: "Found 2,648 total variants related to CDG"
-  
-  step3_gene_discovery:
-    tool: "togomcp_local:ncbi_esearch"
-    searches:
-      - gene: "PMM2"
-        query: "PMM2 congenital disorder glycosylation pathogenic"
-        results: "303 variants (includes all mentions)"
-      - gene: "MPI"
-        query: "MPI congenital disorder glycosylation pathogenic"
-        results: "148 variants"
-      - gene: "ALG6"
-        query: "ALG6 congenital disorder glycosylation pathogenic"
-        results: "170 variants"
-      - gene: "DPAGT1"
-        query: "DPAGT1 congenital disorder glycosylation pathogenic"
-        results: "56 variants"
-  
-  step4_sparql_verification:
-    tool: "togomcp_local:run_sparql"
-    approach: "Used VALUES clause with known CDG gene URIs to count pathogenic/likely pathogenic variants with current status"
-    refined_counts:
-      PMM2: 201
-      MPI: 138
-      ALG6: 136
-      DPAGT1: 38
-    note: "SPARQL counts are more accurate as they filter for confirmed pathogenic classifications in current records"
+sparql_queries:
+  - query_number: 1
+    database: chebi
+    description: Retrieve 3-demethylubiquinone entries from ChEBI with their parent classifications, molecular formulas, and masses
+    query: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX chebi: <http://purl.obolibrary.org/obo/chebi/>
 
-solution_sparql: |
-  PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
-  PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
-  PREFIX sio: <http://semanticscience.org/resource/>
-  
-  SELECT ?gene_id ?gene_symbol (COUNT(DISTINCT ?variant) as ?pathogenic_count)
-  FROM <http://rdfportal.org/dataset/clinvar>
-  WHERE {
-    VALUES (?gene_uri ?gene_id ?gene_symbol) { 
-      (<http://ncbi.nlm.nih.gov/gene/5373> "5373" "PMM2")
-      (<http://ncbi.nlm.nih.gov/gene/29929> "29929" "ALG6")
-      (<http://ncbi.nlm.nih.gov/gene/4351> "4351" "MPI")
-      (<http://ncbi.nlm.nih.gov/gene/1800> "1800" "DPAGT1")
-    }
-    
-    ?gene_bn med2rdf:gene ?gene_uri .
-    ?classrec sio:SIO_000628 ?gene_bn .
-    
-    ?variant a cvo:VariationArchiveType ;
-             cvo:record_status "current" ;
-             cvo:classified_record ?classrec .
-    
-    ?classrec cvo:classifications/cvo:germline_classification/cvo:description ?significance .
-    FILTER(?significance = "Pathogenic" || ?significance = "Likely pathogenic")
-  }
-  GROUP BY ?gene_id ?gene_symbol
-  ORDER BY DESC(?pathogenic_count)
+      SELECT ?class ?label ?formula ?mass
+      WHERE {
+        VALUES ?class {
+          obo:CHEBI_28753
+          obo:CHEBI_27688
+          obo:CHEBI_18238
+          obo:CHEBI_50771
+        }
+        ?class rdfs:label ?label .
+        OPTIONAL { ?class chebi:formula ?formula }
+        OPTIONAL { ?class chebi:mass ?mass }
+      }
+      ORDER BY ?label
+    result_count: 4
 
-rdf_triples_sample: |
-  # PMM2 Gene Entity
-  <http://ncbi.nlm.nih.gov/gene/5373> a cvo:Gene ;
-      cvo:gene_id 5373 ;
-      cvo:symbol "PMM2" ;
-      cvo:full_name "phosphomannomutase 2" .
-  
-  # Example Pathogenic Variant for PMM2
-  <http://ncbi.nlm.nih.gov/clinvar/variation/4533243> a cvo:VariationArchiveType ;
-      rdfs:label "NM_000303.3(PMM2):c.422G>A (p.Arg141His)" ;
-      cvo:accession "VCV004533243" ;
-      cvo:variation_type "single nucleotide variant" ;
-      cvo:record_status "current" ;
-      cvo:classified_record _:classrec1 .
-  
-  # Clinical Classification
-  _:classrec1 a cvo:ClassifiedRecord ;
-      sio:SIO_000628 _:gene_bn1 ;
-      cvo:classifications _:classi1 .
-  
-  _:gene_bn1 med2rdf:gene <http://ncbi.nlm.nih.gov/gene/5373> .
-  
-  _:classi1 cvo:germline_classification _:germ1 .
-  _:germ1 cvo:description "Pathogenic" .
+  - query_number: 2
+    database: chebi
+    description: Confirm ontological classification of 3-demethylubiquinone-9 (CHEBI:18238) as a subclass of ubiquinones (CHEBI:16389) and as a monohydroxy-1,4-benzoquinone (CHEBI:67273)
+    query: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-educational_value:
-  why_rdf_needed: |
-    This question showcases ClinVar's core capability: structured clinical variant classification. While PubMed articles discuss CDG epidemiology and mention PMM2-CDG is common, they don't provide the gene-by-gene variant count comparison from ClinVar that enables precise comparison. The question requires:
-    1. Accessing ClinVar's 3.5M+ variant records
-    2. Filtering by clinical significance (pathogenic/likely pathogenic)
-    3. Linking variants to genes via blank node relationships
-    4. Aggregating counts per gene for comparison
-  
-  biological_context: |
-    Congenital disorders of glycosylation (CDG) are a family of genetic disorders affecting protein and lipid glycosylation. PMM2-CDG (CDG-Ia) is the most common type, caused by mutations in phosphomannomutase 2. The high number of pathogenic variants in PMM2 reflects both its clinical prevalence and extensive clinical genetic testing. Other common CDG genes include ALG6 (CDG-Ic), MPI (CDG-Ib), and DPAGT1 (CDG-Ij). Each gene affects different steps in the glycosylation pathway.
-  
-  query_techniques_demonstrated:
-    - "VALUES clause for multi-gene comparison"
-    - "Blank node navigation (med2rdf:gene linkage)"
-    - "Nested property paths for classification data"
-    - "Filtering by clinical significance categories"
-    - "Aggregation with GROUP BY for counting"
-    - "ncbi_esearch for initial gene discovery"
+      SELECT ?parent ?parentLabel
+      WHERE {
+        obo:CHEBI_18238 rdfs:subClassOf ?parent .
+        ?parent rdfs:label ?parentLabel .
+      }
+    result_count: 2
 
-metadata:
-  difficulty: "intermediate"
-  estimated_solve_time_minutes: 15
-  requires_domain_knowledge: "basic genetics, understanding of pathogenic variants"
-  sparql_complexity: "intermediate - blank node joins, filtering, aggregation"
+  - query_number: 3
+    database: pubchem
+    description: Get molecular formula and weight of 3-demethylubiquinone-9 from PubChem (CID 135398691)
+    query: |
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX compound: <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/>
 
-tags:
-  - clinical_genetics
-  - variant_classification
-  - rare_disease
-  - glycosylation
-  - comparative_analysis
-  - gene_frequency
+      SELECT ?descriptor ?value
+      WHERE {
+        compound:CID135398691 sio:SIO_000008 ?descNode .
+        ?descNode rdf:type ?descriptor ;
+                  sio:SIO_000300 ?value .
+        FILTER(?descriptor IN (
+          sio:CHEMINF_000042,
+          sio:CHEMINF_000334
+        ))
+      }
+    result_count: 2
+
+  - query_number: 4
+    database: pubchem
+    description: Get molecular formula and weight of 3-demethylubiquinone-10 from PubChem (CID 135869618)
+    query: |
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX compound: <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/>
+
+      SELECT ?descriptor ?value
+      WHERE {
+        compound:CID135869618 sio:SIO_000008 ?descNode .
+        ?descNode rdf:type ?descriptor ;
+                  sio:SIO_000300 ?value .
+        FILTER(?descriptor IN (
+          sio:CHEMINF_000042,
+          sio:CHEMINF_000334
+        ))
+      }
+    result_count: 2
+
+  - query_number: 5
+    database: rhea
+    description: Retrieve all approved Rhea reactions that convert 3-demethylubiquinol or 3-demethylubiquinone species to ubiquinol/ubiquinone using S-adenosyl-L-methionine as methyl donor
+    query: |
+      PREFIX rh: <http://rdf.rhea-db.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?reaction ?label
+      WHERE {
+        VALUES ?reaction {
+          <http://rdf.rhea-db.org/81215>
+          <http://rdf.rhea-db.org/44380>
+          <http://rdf.rhea-db.org/17049>
+          <http://rdf.rhea-db.org/28679>
+          <http://rdf.rhea-db.org/44400>
+          <http://rdf.rhea-db.org/44404>
+          <http://rdf.rhea-db.org/44412>
+        }
+        ?reaction rdfs:label ?label .
+      }
+      ORDER BY ?reaction
+    result_count: 7
+
+rdf_triples: |
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix chebi: <http://purl.obolibrary.org/obo/chebi/> .
+  @prefix rh: <http://rdf.rhea-db.org/> .
+  @prefix sio: <http://semanticscience.org/resource/> .
+  @prefix compound: <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/> .
+  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+  # --- ChEBI ontological classification (Queries 1-2) ---
+
+  obo:CHEBI_18238 rdfs:label "3-demethylubiquinone-9" .
+  # Database: ChEBI | Query: 1 | Comment: 3-demethylubiquinone-9 label
+
+  obo:CHEBI_18238 chebi:formula "C53H80O4" .
+  # Database: ChEBI | Query: 1 | Comment: Molecular formula of 3-demethylubiquinone-9
+
+  obo:CHEBI_18238 chebi:mass "781.19990" .
+  # Database: ChEBI | Query: 1 | Comment: Molecular mass (Da) of 3-demethylubiquinone-9
+
+  obo:CHEBI_28753 rdfs:label "3-demethylubiquinone-6" .
+  # Database: ChEBI | Query: 1 | Comment: 3-demethylubiquinone-6 label
+
+  obo:CHEBI_27688 rdfs:label "3-demethylubiquinone-8" .
+  # Database: ChEBI | Query: 1 | Comment: 3-demethylubiquinone-8 label
+
+  obo:CHEBI_50771 rdfs:label "3-demethylubiquinone-10" .
+  # Database: ChEBI | Query: 1 | Comment: 3-demethylubiquinone-10 label
+
+  obo:CHEBI_18238 rdfs:subClassOf obo:CHEBI_16389 .
+  # Database: ChEBI | Query: 2 | Comment: 3-demethylubiquinone-9 is a subclass of ubiquinones (CHEBI:16389)
+
+  obo:CHEBI_18238 rdfs:subClassOf obo:CHEBI_67273 .
+  # Database: ChEBI | Query: 2 | Comment: 3-demethylubiquinone-9 classified as monohydroxy-1,4-benzoquinone
+
+  obo:CHEBI_67273 rdfs:label "monohydroxy-1,4-benzoquinones" .
+  # Database: ChEBI | Query: 2 | Comment: Parent class capturing the free -OH structural feature
+
+  # --- PubChem molecular properties (Queries 3-4) ---
+
+  compound:CID135398691 sio:SIO_000008 [
+    rdf:type sio:CHEMINF_000042 ;
+    sio:SIO_000300 "C53H80O4"^^xsd:string
+  ] .
+  # Database: PubChem | Query: 3 | Comment: Molecular formula of 3-demethylubiquinone-9 (CID 135398691)
+
+  compound:CID135398691 sio:SIO_000008 [
+    rdf:type sio:CHEMINF_000334 ;
+    sio:SIO_000300 "781.2"^^xsd:float
+  ] .
+  # Database: PubChem | Query: 3 | Comment: Molecular weight (Da) of 3-demethylubiquinone-9
+
+  compound:CID135869618 sio:SIO_000008 [
+    rdf:type sio:CHEMINF_000042 ;
+    sio:SIO_000300 "C58H88O4"^^xsd:string
+  ] .
+  # Database: PubChem | Query: 4 | Comment: Molecular formula of 3-demethylubiquinone-10 (CID 135869618)
+
+  compound:CID135869618 sio:SIO_000008 [
+    rdf:type sio:CHEMINF_000334 ;
+    sio:SIO_000300 "849.3"^^xsd:float
+  ] .
+  # Database: PubChem | Query: 4 | Comment: Molecular weight (Da) of 3-demethylubiquinone-10
+
+  # --- Rhea methylation reactions (Query 5) ---
+
+  <http://rdf.rhea-db.org/81215> rdfs:label "a 3-demethylubiquinone + S-adenosyl-L-methionine = a ubiquinone + S-adenosyl-L-homocysteine" .
+  # Database: Rhea | Query: 5 | Comment: Generic SAM-dependent O-methylation of 3-demethylubiquinone to ubiquinone
+
+  <http://rdf.rhea-db.org/44380> rdfs:label "a 3-demethylubiquinol + S-adenosyl-L-methionine = a ubiquinol + S-adenosyl-L-homocysteine + H(+)" .
+  # Database: Rhea | Query: 5 | Comment: Generic SAM-dependent O-methylation of 3-demethylubiquinol to ubiquinol
+
+  <http://rdf.rhea-db.org/17049> rdfs:label "3-demethylubiquinol-9 + S-adenosyl-L-methionine = ubiquinol-9 + S-adenosyl-L-homocysteine + H(+)" .
+  # Database: Rhea | Query: 5 | Comment: Specific methylation: n=9 chain-length variant
+
+  <http://rdf.rhea-db.org/28679> rdfs:label "3-demethylubiquinol-8 + S-adenosyl-L-methionine = ubiquinol-8 + S-adenosyl-L-homocysteine + H(+)" .
+  # Database: Rhea | Query: 5 | Comment: Specific methylation: n=8 chain-length variant
+
+  <http://rdf.rhea-db.org/44400> rdfs:label "3-demethylubiquinol-6 + S-adenosyl-L-methionine = ubiquinol-6 + S-adenosyl-L-homocysteine + H(+)" .
+  # Database: Rhea | Query: 5 | Comment: Specific methylation: n=6 chain-length variant
+
+  <http://rdf.rhea-db.org/44404> rdfs:label "3-demethylubiquinol-7 + S-adenosyl-L-methionine = ubiquinol-7 + S-adenosyl-L-homocysteine + H(+)" .
+  # Database: Rhea | Query: 5 | Comment: Specific methylation: n=7 chain-length variant
+
+  <http://rdf.rhea-db.org/44412> rdfs:label "3-demethylubiquinol-10 + S-adenosyl-L-methionine = ubiquinol-10 + S-adenosyl-L-homocysteine + H(+)" .
+  # Database: Rhea | Query: 5 | Comment: Specific methylation: n=10 chain-length variant
+
+exact_answer: ""
+
+ideal_answer: |
+  3-Demethylubiquinones are penultimate intermediates in the ubiquinone biosynthetic pathway that differ from their mature ubiquinone counterparts by a single structural feature: a free hydroxyl group (-OH) at ring position 3 instead of the methoxyl group (-OCH3) found in ubiquinones, classifying them ontologically as monohydroxy-1,4-benzoquinones within the broader ubiquinone family. This single substituent difference translates to a molecular mass difference of approximately 14 Da for each chain-length variant; for example, 3-demethylubiquinone-9 has the molecular formula C53H80O4 with a molecular weight of 781.2 Da (compared to 795.2 Da for ubiquinone-9), while 3-demethylubiquinone-10 has the formula C58H88O4 with a molecular weight of 849.3 Da (compared to 863.3 Da for coenzyme Q10). Their conversion to ubiquinones is catalyzed by SAM-dependent O-methyltransferases in a reaction where S-adenosyl-L-methionine donates a methyl group to the hydroxyl at position 3, yielding the corresponding ubiquinol (reduced) or ubiquinone (oxidized) product along with S-adenosyl-L-homocysteine. The Rhea database catalogues 7 approved reactions of this type, comprising 2 generic reactions covering the entire class of 3-demethylubiquinone and 3-demethylubiquinol species and 5 chain-length-specific reactions for the n=6, n=7, n=8, n=9, and n=10 polyprenyl variants that predominate across different organisms.
+
+question_template_used: Template 4 (Aggregation Statistics)
+
+time_spent:
+  exploration: 80 minutes
+  formulation: 20 minutes
+  verification: 30 minutes
+  pubmed_test: 15 minutes
+  extraction: 40 minutes
+  documentation: 35 minutes
+  total: 220 minutes

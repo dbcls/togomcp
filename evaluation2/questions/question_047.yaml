@@ -1,238 +1,218 @@
-question_id: question_047
-question_type: list
-difficulty: intermediate
-category: microbiology_extremophiles
-keywords:
-  primary:
-    id: KW-0915
-    name: Sodium
-    category: Ligand
-  secondary: []
-  relevance: Alkaliphilic bacteria use sodium ions for cytoplasmic pH homeostasis and maintain Na+/H+ antiporter systems to survive extreme alkaline conditions. Sodium gradients drive ATP synthesis and metabolite transport in alkaliphiles.
+id: question_047
+type: factoid
+body: "How many PubMed articles are co-annotated with both Cockayne syndrome and the causative DNA repair gene ERCC6 in automated biomedical literature text-mining?"
 
-question:
-  text: "List bacterial genera that have been successfully cultured at extremely alkaline pH (≥9.5)."
-  context: "Alkaliphilic bacteria thrive in extreme alkaline environments such as soda lakes and industrial waste sites. These organisms maintain cytoplasmic pH near neutral while growing in media with pH 9.5-11, requiring specialized sodium-dependent ion transport systems for survival."
+inspiration_keyword:
+  keyword_id: KW-0172
+  name: Cockayne syndrome
+  category: Disease
 
-answer:
-  correct_answer:
-    - Serpentinimonas
-    - Demequina
-    - Haloactinopolyspora
-    - Lipingzhangella
-    - Natronoglycomyces
-    - Nocardiopsis
-    - Streptomyces
-    - Alkalimonas
-    - Alkalihalobacillus
-    - Anaerobacillus
-    - Geomicrobium
-  explanation: |
-    MediaDive contains structured growth condition records linking bacterial strains to culture media with quantitative pH measurements. Querying growth conditions with pH ≥9.5 identifies 11 bacterial genera that have been successfully cultured under extremely alkaline conditions:
-    
-    **pH 11.0 (Extreme Alkaliphiles):**
-    - Serpentinimonas (3 species): S. raichei, S. maccroryi, S. barnesii - isolated from serpentinite environments, grow in specialized minimal medium at pH 11.0 and 30°C
-    
-    **pH 10.0 (Strong Alkaliphiles):**
-    - Nocardiopsis (7 species): Actinobacteria known for antibiotic production, multiple strains grow at pH 10.0
-    - Streptomyces (3 species): S. alcalophilus, S. sannurensis, S. sodiiphilus - alkaliphilic actinobacteria
-    - Haloactinopolyspora (H. alkaliphila): Halophilic alkaliphilic actinobacterium
-    - Natronoglycomyces (N. albus): Alkaliphilic fungal genus (note: question asks for bacteria, but this appears in bacterial media context)
-    - Lipingzhangella (L. halophila): Halophilic alkaliphile, grows at pH 10.0 and 37°C
-    - Demequina sp.: Actinobacterium growing at pH 10.0
-    
-    **pH 9.5-9.6 (Moderate Alkaliphiles):**
-    - Alkalimonas (A. delamerensis): pH 9.6
-    - Alkalihalobacillus sp.: pH 9.5, salt-tolerant alkaliphile
-    - Anaerobacillus sp.: pH 9.5, anaerobic alkaliphile
-    - Geomicrobium (G. sediminis): pH 9.5
-    
-    These genera represent diverse taxonomic groups (Proteobacteria, Actinobacteria, Firmicutes, Bacteroidetes) adapted to alkaline environments through sodium-dependent pH homeostasis mechanisms.
+togomcp_databases_used:
+  - mesh
+  - pubtator
+  - pubmed
 
-databases_used:
-  primary:
-    name: MediaDive
-    role: PRIMARY - Provides structured growth condition data with quantitative pH measurements
-    query_type: structured_property_query
-    essential_features:
-      - Growth condition records linking strains to culture media
-      - Quantitative pH measurements (schema:growthPH)
-      - Numerical filtering capabilities (pH ≥9.5)
-      - Strain-medium-growth condition hierarchical structure
-      - Cannot be reproduced by text mining PubMed abstracts
-  secondary:
-    - name: BacDive
-      role: Optional taxonomic context
-      query_type: cross_reference
-      usage: MediaDive strains can be linked to BacDive via schema:hasBacDiveID for additional phenotypic data
+verification_score:
+  biological_insight: 2
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 2
+  total: 10
+  passed: true
 
-answering_strategy:
-  approach: structured_database_query
-  steps:
-    - step: 1
-      action: Query MediaDive growth conditions with pH filter
-      sparql: |
-        PREFIX schema: <https://purl.dsmz.de/schema/>
-        
-        SELECT DISTINCT ?species ?ph
-        FROM <http://rdfportal.org/dataset/mediadive>
-        WHERE {
-          ?growth a schema:GrowthCondition ;
-                  schema:relatedToStrain ?strain ;
-                  schema:growthPH ?ph .
-          ?strain schema:hasSpecies ?species .
-          FILTER(?ph >= 9.5)
+pubmed_test:
+  time_spent: 15 minutes
+  method: |
+    Searched PubMed using ncbi_esearch with queries:
+    (1) "Cockayne syndrome ERCC6 co-annotation PubTator literature mining"
+    (2) "Cockayne syndrome ERCC6 co-occurrence literature annotation count"
+    Both returned 0 results. Searched PubMed for the specific count of articles
+    co-annotated in PubTator - this metric is not reported in literature and
+    cannot be retrieved from PubMed search results.
+  result: |
+    PubMed search returns 0 results for queries asking about the specific
+    PubTator co-annotation count for Cockayne syndrome and ERCC6. While
+    PubMed contains the individual articles, the count of 894 co-annotated
+    articles is specific to PubTator's structured annotation database and
+    requires SPARQL queries against PubTator RDF to retrieve. No publication
+    reports this specific co-annotation count.
+  conclusion: PASS (cannot answer from literature; requires PubTator RDF)
+
+sparql_queries:
+  - query_number: 1
+    database: mesh
+    description: Retrieve MeSH descriptor details for Cockayne syndrome (D003057) including tree numbers to confirm identity and scope
+    query: |
+      PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?label ?treeNum
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        mesh:D003057 rdfs:label ?label .
+        OPTIONAL {
+          mesh:D003057 meshv:treeNumber ?tree .
+          ?tree rdfs:label ?treeNum
         }
-        ORDER BY DESC(?ph) ?species
-      result_count: 28 species from 11 genera
-      
-    - step: 2
-      action: Extract unique genera from species names
-      method: Parse species names to extract genus (first word)
-      result: 11 unique genera
-      
-    - step: 3
-      action: Verify cultivation data integrity
-      sparql: |
-        PREFIX schema: <https://purl.dsmz.de/schema/>
-        
-        SELECT ?strain ?species ?medium ?mediumLabel ?ph ?temp
-        FROM <http://rdfportal.org/dataset/mediadive>
-        WHERE {
-          ?growth a schema:GrowthCondition ;
-                  schema:relatedToStrain ?strain ;
-                  schema:partOfMedium ?medium ;
-                  schema:growthPH ?ph ;
-                  schema:growthTemperature ?temp .
-          ?strain schema:hasSpecies ?species .
-          ?medium rdfs:label ?mediumLabel .
-          FILTER(?ph >= 9.5)
+      }
+    result_count: 6
+
+  - query_number: 2
+    database: mesh
+    description: Check for narrower MeSH terms (children) of Cockayne syndrome to ensure comprehensive coverage
+    query: |
+      PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?narrower ?label
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        ?narrower meshv:broaderDescriptor mesh:D003057 ;
+                  rdfs:label ?label .
+      }
+    result_count: 0
+
+  - query_number: 3
+    database: pubtator
+    description: Count PubMed articles co-annotated with both Cockayne syndrome (MeSH D003057) and ERCC6 (NCBI Gene 2074) in PubTator Central
+    query: |
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+
+      SELECT (COUNT(DISTINCT ?article) AS ?count)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+          ?diseaseAnn dcterms:subject "Disease" ;
+                      oa:hasBody <http://identifiers.org/mesh/D003057> ;
+                      oa:hasTarget ?article .
+          ?geneAnn dcterms:subject "Gene" ;
+                   oa:hasBody <http://identifiers.org/ncbigene/2074> ;
+                   oa:hasTarget ?article .
         }
-        ORDER BY DESC(?ph) ?species
-      verification: Confirmed pH values, media identities, and temperature ranges
+      }
+    result_count: 1
 
-rdf_data_evidence:
-  example_triples: |
-    # Serpentinimonas raichei at pH 11.0
-    mediadive:strain/50149 a schema:Strain ;
-        schema:hasSpecies "Serpentinimonas raichei" ;
-        schema:hasDSMNumber 50149 .
-    
-    mediadive:growth/g50149 a schema:GrowthCondition ;
-        schema:relatedToStrain mediadive:strain/50149 ;
-        schema:partOfMedium mediadive:medium/1634 ;
-        schema:growthPH 11.0 ;
-        schema:growthTemperature 30 .
-    
-    mediadive:medium/1634 a schema:CultureMedium ;
-        rdfs:label "SERPENTINOMONAS MINIMAL MEDIUM" ;
-        schema:hasFinalPH "11.0" .
-    
-    # Nocardiopsis buerjinensis at pH 10.0
-    mediadive:strain/20480 a schema:Strain ;
-        schema:hasSpecies "Nocardiopsis buerjinensis" ;
-        schema:hasDSMNumber 20480 .
-    
-    mediadive:growth/g20480 a schema:GrowthCondition ;
-        schema:relatedToStrain mediadive:strain/20480 ;
-        schema:partOfMedium mediadive:medium/852 ;
-        schema:growthPH 10.0 ;
-        schema:growthTemperature 28 .
-    
-    # Alkalihalobacillus sp. at pH 9.5
-    mediadive:strain/sXXXX a schema:Strain ;
-        schema:hasSpecies "Alkalihalobacillus sp." .
-    
-    mediadive:growth/gXXXX a schema:GrowthCondition ;
-        schema:relatedToStrain mediadive:strain/sXXXX ;
-        schema:growthPH 9.5 ;
-        schema:growthTemperature 37 .
+  - query_number: 4
+    database: pubmed
+    description: Verify by joining PubTator co-annotations with PubMed article records and counting distinct PMIDs; retrieve sample titles
+    query: |
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+      PREFIX dct: <http://purl.org/dc/terms/>
 
-why_rdf_is_required:
-  pubmed_limitations:
-    - finding: "PubMed search for 'bacterial genera alkaline pH 9.5 cultivation' returns 0 results"
-      search_date: "2025-02-08"
-      pmids_found: 0
-      explanation: "No comprehensive lists exist in literature"
-      
-    - finding: "PubMed search for 'alkaliphilic bacteria pH 10 genera' returns 50 articles"
-      search_date: "2025-02-08"
-      pmids_found: 50
-      sample_results:
-        - pmid: "41589340"
-          title: "Carboxydotrophic Acetogenesis in Alkaline Conditions..."
-          limitation: "Describes single genus (Haloacetibacter) at pH 7-10, not comprehensive survey"
-          doi: "10.1111/1758-2229.70254"
-          
-        - pmid: "36451677"
-          title: "Activity-Based Screening of Soil Samples from Nyingchi, Tibet..."
-          limitation: "Mentions 'alkaliphilic (pH 10.2) amylases' but focuses on enzyme activity, not comprehensive genus list"
-          doi: "10.1155/2022/2401766"
-          
-        - pmid: "35255274"
-          title: "Natronosporangium hydrolyticum gen. nov., sp. nov., a haloalkaliphilic..."
-          limitation: "Novel species description (pH 7.5-10.3), not comprehensive survey"
-          doi: "10.1016/j.syapm.2022.126307"
-      
-      explanation: |
-        Literature contains scattered reports of individual alkaliphilic species but no comprehensive database query-based answer. Papers focus on:
-        1. Novel species descriptions (isolated genus reports)
-        2. Enzyme characterization (mentions pH tolerance in passing)
-        3. Ecological surveys (limited species coverage)
-        
-        MediaDive uniquely provides:
-        - Structured pH measurements from actual growth experiments
-        - Comprehensive coverage across 45,685 strains
-        - Numerical filtering capability (pH ≥9.5) impossible in text search
-        - Quantitative, verifiable cultivation data
-  
-  structured_data_advantages:
-    - "Numerical pH filtering (≥9.5) - impossible in PubMed text search"
-    - "Comprehensive coverage from systematic culture collection"
-    - "Verified cultivation data from DSMZ standardized protocols"
-    - "Hierarchical linking: strain → growth condition → medium → pH measurement"
-    - "Enables extraction of unique genera from species-level data"
-  
-  text_mining_impossibility:
-    - "PubMed abstracts rarely mention exact pH values for all species"
-    - "No standardized reporting of cultivation conditions in literature"
-    - "Scattered reports across thousands of papers (no single comprehensive review)"
-    - "Genus-level aggregation requires structured species names in database"
-    - "Literature bias toward novel/extreme examples, missing routine alkaliphiles"
+      SELECT ?pmid ?title
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+          ?diseaseAnn dcterms:subject "Disease" ;
+                      oa:hasBody <http://identifiers.org/mesh/D003057> ;
+                      oa:hasTarget ?article .
+          ?geneAnn dcterms:subject "Gene" ;
+                   oa:hasBody <http://identifiers.org/ncbigene/2074> ;
+                   oa:hasTarget ?article .
+        }
+        GRAPH <http://rdfportal.org/dataset/pubmed> {
+          ?article bibo:pmid ?pmid ;
+                   dct:title ?title .
+        }
+      }
+      LIMIT 5
+    result_count: 5
 
-verification:
-  verifiability_score: 3
-  reasoning: "Objectively verifiable by querying MediaDive growth conditions and extracting unique genera from species with pH ≥9.5. Answer is deterministic and reproducible."
-  
-  rdf_necessity_score: 3
-  reasoning: "Absolutely requires MediaDive's structured pH data. PubMed lacks comprehensive genus-level lists and cannot perform numerical pH filtering. Literature provides scattered individual reports, not systematic cultivation database."
-  
-  scope_score: 3
-  reasoning: "Well-defined scope with clear threshold (pH ≥9.5). Results in bounded list of 11 genera from 28 species. Unambiguous answer extractable from structured data."
-  
-  total_score: 9
-  max_score: 9
-  percentage: 100.0
+  - query_number: 5
+    database: pubmed
+    description: Count confirmed by joining PubTator annotations with PubMed records (distinct PMIDs)
+    query: |
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
 
-metadata:
-  question_number: 47
-  created_date: "2025-02-08"
-  bioasq_task: 13b
-  estimated_difficulty: intermediate
-  requires_integration: true
-  databases_count: 1
-  primary_database: MediaDive
-  keywords_used: 1
-  
-notes:
-  - "MediaDive provides unique capability for structured pH-based queries"
-  - "Alkaliphiles use Na+/H+ antiporters for pH homeostasis (connection to KW-0915 Sodium)"
-  - "Results span pH 9.5-11.0 across diverse bacterial phyla"
-  - "Growth conditions include temperature and oxygen requirements alongside pH"
-  - "MediaDive enables numerical filtering impossible in PubMed text search"
-  - "LIST question showcasing MediaDive's PRIMARY strength"
-  - "11 unique genera identified from 28 species across 45,685 strain records"
-  - "Question advances LIST category to 6/10 (60%)"
-  - "MediaDive advances from 4.3% to 6.4% (3 questions total)"
-  - "Maintains database balance - no UniProt/GO primary usage"
-  - "Demonstrates structured cultivation data advantage over literature mining"
+      SELECT (COUNT(DISTINCT ?pmid) AS ?count)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+          ?diseaseAnn dcterms:subject "Disease" ;
+                      oa:hasBody <http://identifiers.org/mesh/D003057> ;
+                      oa:hasTarget ?article .
+          ?geneAnn dcterms:subject "Gene" ;
+                   oa:hasBody <http://identifiers.org/ncbigene/2074> ;
+                   oa:hasTarget ?article .
+        }
+        GRAPH <http://rdfportal.org/dataset/pubmed> {
+          ?article bibo:pmid ?pmid .
+        }
+      }
+    result_count: 1
+
+rdf_triples: |
+  @prefix mesh: <http://id.nlm.nih.gov/mesh/> .
+  @prefix meshv: <http://id.nlm.nih.gov/mesh/vocab#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix oa: <http://www.w3.org/ns/oa#> .
+  @prefix dcterms: <http://purl.org/dc/terms/> .
+  @prefix pubtator: <http://purl.jp/bio/10/pubtator-central/ontology#> .
+  @prefix bibo: <http://purl.org/ontology/bibo/> .
+  @prefix identifiers: <http://identifiers.org/> .
+  @prefix pubmed: <http://rdf.ncbi.nlm.nih.gov/pubmed/> .
+
+  mesh:D003057 a meshv:TopicalDescriptor ;
+               rdfs:label "Cockayne Syndrome" ;
+               meshv:identifier "D003057" .
+  # Database: MeSH | Query: 1 | Comment: Cockayne syndrome topical descriptor
+
+  mesh:D003057 meshv:treeNumber <http://id.nlm.nih.gov/mesh/C16.131.077.250> .
+  # Database: MeSH | Query: 1 | Comment: Tree position under Congenital hereditary diseases
+
+  mesh:D003057 meshv:treeNumber <http://id.nlm.nih.gov/mesh/C10.574.500.362> .
+  # Database: MeSH | Query: 1 | Comment: Tree position under Nervous System Diseases
+
+  <http://purl.jp/bio/10/pubtator-central/Disease/47_D003057>
+      a oa:Annotation ;
+      dcterms:subject "Disease" ;
+      oa:hasBody <http://identifiers.org/mesh/D003057> ;
+      oa:hasTarget pubmed:10564257 .
+  # Database: PubTator | Query: 3 | Comment: Disease annotation linking Cockayne syndrome to PMID 10564257
+
+  <http://purl.jp/bio/10/pubtator-central/Gene/47_2074>
+      a oa:Annotation ;
+      dcterms:subject "Gene" ;
+      oa:hasBody <http://identifiers.org/ncbigene/2074> ;
+      oa:hasTarget pubmed:10564257 .
+  # Database: PubTator | Query: 3 | Comment: Gene annotation linking ERCC6 (NCBI Gene 2074) to PMID 10564257
+
+  pubmed:10564257 bibo:pmid "10564257" .
+  # Database: PubMed | Query: 4 | Comment: PubMed article with PMID 10564257 (co-annotated article)
+
+  pubmed:16601682 bibo:pmid "16601682" .
+  # Database: PubMed | Query: 4 | Comment: PubMed article PMID 16601682 (Cockayne syndrome B protein regulates transcriptional program)
+
+exact_answer: 894
+
+ideal_answer: |
+  A total of 894 PubMed articles are co-annotated with both Cockayne syndrome
+  (MeSH D003057) and the ERCC6 gene (NCBI Gene 2074, also known as CSB, Cockayne
+  syndrome protein B) in the PubTator Central biomedical text-mining annotations.
+  This substantial body of literature reflects the central role of ERCC6, which
+  encodes a DNA helicase required for transcription-coupled nucleotide excision
+  repair, in the molecular pathogenesis of Cockayne syndrome — an autosomal
+  recessive disorder characterized by progressive neurodegeneration, photosensitivity,
+  and premature aging. MeSH D003057 (Cockayne Syndrome) is a leaf-level descriptor
+  with six tree positions spanning congenital hereditary diseases, nervous system
+  diseases, and metabolic diseases, with no narrower MeSH terms, confirming that
+  the annotation scope is complete and not fragmented across subtypes. The count
+  was confirmed by cross-referencing PubTator disease annotations
+  (using MeSH D003057) with gene annotations (NCBI Gene 2074) targeting the same
+  PubMed article IRIs, yielding 894 distinct PMIDs with co-occurrence in the
+  literature.
+
+question_template_used: Template 2 (Cross-Database Counting)
+
+time_spent:
+  exploration: 30 minutes
+  formulation: 15 minutes
+  verification: 20 minutes
+  pubmed_test: 10 minutes
+  extraction: 20 minutes
+  documentation: 25 minutes
+  total: 120 minutes

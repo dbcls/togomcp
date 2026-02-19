@@ -1,223 +1,299 @@
 id: question_009
-type: choice
-body: "Among human TCA cycle enzyme targets in ChEMBL, which enzyme has been screened with the most bioactive compounds?"
-
-choices:
-  - "A) ATP-citrate synthase (ACLY)"
-  - "B) Succinate dehydrogenase (SDH)"
-  - "C) Isocitrate dehydrogenase (IDH)"
-  - "D) Malate dehydrogenase (MDH)"
+type: list
+body: "Which human enzymes with catalytic roles in the leukotriene and eoxin biosynthesis pathway are documented drug targets in ChEMBL with mechanism-of-action records?"
 
 inspiration_keyword:
-  keyword_id: KW-0816
-  name: "Tricarboxylic acid cycle"
-  category: "Biological process"
+  keyword_id: KW-0434
+  name: Leukotriene biosynthesis
+  category: Biological process
 
 togomcp_databases_used:
+  - reactome
   - chembl
-  - uniprot
 
 verification_score:
+  biological_insight: 3
+  multi_database: 2
   verifiability: 3
   rdf_necessity: 3
-  scope: 3
-  total: 9
+  total: 11
   passed: true
 
 pubmed_test:
-  time_spent: "5 minutes"
-  method: "Searched PubMed with multiple queries: (1) 'TCA cycle enzyme drug targets bioactive compounds screening' returned 1 irrelevant article about Chinese medicine treating diarrhea (PMID: 37460028), which mentioned TCA cycle only in metabolomics context, not drug screening. (2) 'isocitrate dehydrogenase drug screening ChEMBL bioactive compounds' returned 0 results. Neither query provided quantitative comparison of TCA cycle enzyme screening data."
+  time_spent: 15 minutes
+  method: |
+    Searched "leukotriene biosynthesis pathway drug targets all enzymes comprehensive"
+    and "novel leukotriene biosynthesis inhibitors anti-inflammatory" using PubMed API
   result: |
-    PubMed searches found no articles comparing bioactive compound screening across TCA cycle enzymes:
-    - Search 1 (TCA cycle enzymes + screening): Found 1 article (PMID: 37460028) about Qingjie decoction treating diarrhea. Article mentions TCA cycle in metabolomics analysis but provides no data on enzyme-specific drug screening or bioactive compound counts.
-    - Search 2 (IDH + ChEMBL + screening): 0 results. No articles directly discuss ChEMBL screening data for TCA cycle enzymes.
-    
-    The literature does not provide:
-    1. Quantitative counts of bioactive compounds per TCA cycle enzyme target
-    2. Comparative screening statistics across different TCA cycle enzymes
-    3. ChEMBL database statistics for these targets
-    
-    This question requires direct access to ChEMBL RDF database to count bioactive compound-target relationships, which cannot be derived from published literature.
-  conclusion: "PASS (cannot answer from literature)"
+    Review literature (e.g., Werz et al. 2017, Expert Opin Ther Pat 27:607-620)
+    identifies ALOX5, FLAP, LTA4H, and LTC4S as pharmacologically exploited targets.
+    However, it cannot determine which of the exactly 8 Reactome-defined catalytic
+    enzymes have ChEMBL mechanism-of-action records: the review omits MAPKAPK2 and
+    ABCC1 as leukotriene pathway targets, incorrectly includes LTC4S as having
+    clinical-stage inhibitors (it has none in ChEMBL), and cannot give ChEMBL target
+    identifiers or distinguish mechanism records from raw bioactivity data.
+  conclusion: PASS (cannot answer precisely from literature - requires current RDF state of both Reactome and ChEMBL)
 
 sparql_queries:
   - query_number: 1
-    database: "chembl"
-    description: "Count bioactive compounds for ATP-citrate synthase (CHEMBL3720)"
+    database: reactome
+    description: Identify the human leukotriene and eoxin biosynthesis pathway IRI
     query: |
-      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
-      
-      SELECT (COUNT(DISTINCT ?molecule) as ?compound_count)
-      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+      SELECT DISTINCT ?pathway ?pathwayName
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        ?activity a cco:Activity ;
-                  cco:hasMolecule ?molecule ;
-                  cco:hasAssay ?assay .
-        ?assay cco:hasTarget <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL3720> .
+        ?pathway a bp:Pathway ;
+                 bp:displayName ?pathwayName ;
+                 bp:organism ?org .
+        ?org bp:name "Homo sapiens"^^xsd:string .
+        FILTER(CONTAINS(LCASE(?pathwayName), "leukotriene"))
       }
-    result_count: 140
+      ORDER BY ?pathwayName
+    result_count: 2
 
   - query_number: 2
-    database: "chembl"
-    description: "Count bioactive compounds for succinate dehydrogenase (CHEMBL5758)"
+    database: reactome
+    description: |
+      Extract all human proteins with catalytic roles in pathway R-HSA-Synthesis of
+      Leukotrienes and Eoxins (Pathway2081) via bp:Catalysis relationships, resolved
+      through direct proteins and complex components, with UniProt cross-references
     query: |
-      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
-      
-      SELECT (COUNT(DISTINCT ?molecule) as ?compound_count)
-      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+      SELECT DISTINCT ?proteinName ?uniprotId
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        ?activity a cco:Activity ;
-                  cco:hasMolecule ?molecule ;
-                  cco:hasAssay ?assay .
-        ?assay cco:hasTarget <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL5758> .
+        <http://www.reactome.org/biopax/40/48887#Pathway2081>
+          bp:pathwayComponent ?reaction .
+
+        ?catalysis a bp:Catalysis ;
+                   bp:controlled ?reaction ;
+                   bp:controller ?controller .
+
+        {
+          ?controller a bp:Protein ;
+                     bp:entityReference ?ref .
+        } UNION {
+          ?controller a bp:Complex ;
+                     bp:component+ ?comp .
+          ?comp a bp:Protein ;
+                bp:entityReference ?ref .
+        }
+
+        ?ref bp:xref ?xref .
+        ?xref a bp:UnificationXref ;
+              bp:db "UniProt"^^xsd:string ;
+              bp:id ?uniprotId .
+
+        OPTIONAL { ?ref bp:name ?proteinName }
       }
-    result_count: 4
+      ORDER BY ?uniprotId
+    result_count: 8
 
   - query_number: 3
-    database: "chembl"
-    description: "Count bioactive compounds for malate dehydrogenase (CHEMBL3560)"
+    database: reactome
+    description: Count distinct UniProt-identified catalytic enzymes in the pathway
     query: |
-      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
-      
-      SELECT (COUNT(DISTINCT ?molecule) as ?compound_count)
-      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+      SELECT (COUNT(DISTINCT ?uniprotId) AS ?totalEnzymes)
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        ?activity a cco:Activity ;
-                  cco:hasMolecule ?molecule ;
-                  cco:hasAssay ?assay .
-        ?assay cco:hasTarget <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL3560> .
+        <http://www.reactome.org/biopax/40/48887#Pathway2081>
+          bp:pathwayComponent ?reaction .
+
+        ?catalysis a bp:Catalysis ;
+                   bp:controlled ?reaction ;
+                   bp:controller ?controller .
+
+        {
+          ?controller a bp:Protein ;
+                     bp:entityReference/bp:xref ?xref .
+        } UNION {
+          ?controller a bp:Complex ;
+                     bp:component+/bp:entityReference/bp:xref ?xref .
+        }
+
+        ?xref a bp:UnificationXref ;
+              bp:db "UniProt"^^xsd:string ;
+              bp:id ?uniprotId .
       }
-    result_count: 116
+    result_count: 1
 
   - query_number: 4
-    database: "chembl"
-    description: "Count bioactive compounds for isocitrate dehydrogenase (CHEMBL2007625)"
+    database: chembl
+    description: |
+      Cross-database query on the shared EBI SPARQL endpoint: link the 8 discovered
+      UniProt IRIs to ChEMBL SingleProtein drug targets via
+      cco:hasTargetComponent/skos:exactMatch, then join to cco:Mechanism records to
+      identify enzymes with documented drug-targeting relationships
     query: |
       PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
-      
-      SELECT (COUNT(DISTINCT ?molecule) as ?compound_count)
-      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT DISTINCT ?targetLabel ?chemblTargetId ?uniprotId ?drugName ?phase ?actionType
       WHERE {
-        ?activity a cco:Activity ;
-                  cco:hasMolecule ?molecule ;
-                  cco:hasAssay ?assay .
-        ?assay cco:hasTarget <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL2007625> .
+        VALUES ?uniprotId {
+          <http://purl.uniprot.org/uniprot/P09917>
+          <http://purl.uniprot.org/uniprot/P09960>
+          <http://purl.uniprot.org/uniprot/P16050>
+          <http://purl.uniprot.org/uniprot/P20292>
+          <http://purl.uniprot.org/uniprot/P33527>
+          <http://purl.uniprot.org/uniprot/P49137>
+          <http://purl.uniprot.org/uniprot/Q14914>
+          <http://purl.uniprot.org/uniprot/Q16873>
+        }
+
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
+          ?target a cco:SingleProtein ;
+                  rdfs:label ?targetLabel ;
+                  cco:chemblId ?chemblTargetId ;
+                  cco:hasTargetComponent ?tc .
+
+          ?tc skos:exactMatch ?uniprotId .
+
+          ?mechanism a cco:Mechanism ;
+                     cco:hasTarget ?target ;
+                     cco:hasMolecule ?drug .
+
+          OPTIONAL { ?mechanism cco:mechanismActionType ?actionType }
+
+          ?drug rdfs:label ?drugName ;
+                cco:highestDevelopmentPhase ?phase .
+        }
       }
-    result_count: 36625
+      ORDER BY ?targetLabel DESC(?phase)
+    result_count: 14
 
   - query_number: 5
-    database: "chembl"
-    description: "Get target details for all four TCA cycle enzymes"
+    database: chembl
+    description: Count distinct pathway enzymes (by UniProt IRI) with at least one ChEMBL mechanism record
     query: |
       PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
-      
-      SELECT ?target ?targetLabel ?targetType ?organism
-      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
-      WHERE {
-        VALUES ?target {
-          <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL3720>
-          <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL5758>
-          <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL3560>
-          <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL2007625>
-        }
-        ?target rdfs:label ?targetLabel ;
-                cco:targetType ?targetType ;
-                cco:organismName ?organism .
-      }
-    result_count: 4
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
 
-  - query_number: 6
-    database: "chembl"
-    description: "Get sample activity data for isocitrate dehydrogenase"
-    query: |
-      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
-      
-      SELECT ?activity ?molecule ?moleculeLabel ?standardType ?standardValue ?standardUnits
-      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      SELECT (COUNT(DISTINCT ?uniprotId) AS ?enzymeTargetCount)
       WHERE {
-        ?activity a cco:Activity ;
-                  cco:hasMolecule ?molecule ;
-                  cco:hasAssay ?assay .
-        ?assay cco:hasTarget <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL2007625> .
-        ?molecule rdfs:label ?moleculeLabel .
-        OPTIONAL { ?activity cco:standardType ?standardType }
-        OPTIONAL { ?activity cco:standardValue ?standardValue }
-        OPTIONAL { ?activity cco:standardUnits ?standardUnits }
+        VALUES ?uniprotId {
+          <http://purl.uniprot.org/uniprot/P09917>
+          <http://purl.uniprot.org/uniprot/P09960>
+          <http://purl.uniprot.org/uniprot/P16050>
+          <http://purl.uniprot.org/uniprot/P20292>
+          <http://purl.uniprot.org/uniprot/P33527>
+          <http://purl.uniprot.org/uniprot/P49137>
+          <http://purl.uniprot.org/uniprot/Q14914>
+          <http://purl.uniprot.org/uniprot/Q16873>
+        }
+
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
+          ?target a cco:SingleProtein ;
+                  cco:hasTargetComponent/skos:exactMatch ?uniprotId .
+
+          ?mechanism a cco:Mechanism ;
+                     cco:hasTarget ?target .
+        }
       }
-      LIMIT 5
-    result_count: 5
+    result_count: 1
 
 rdf_triples: |
+  @prefix bp: <http://www.biopax.org/release/biopax-level3.owl#> .
   @prefix cco: <http://rdf.ebi.ac.uk/terms/chembl#> .
-  @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix chembl_target: <http://rdf.ebi.ac.uk/resource/chembl/target/> .
-  @prefix chembl_activity: <http://rdf.ebi.ac.uk/resource/chembl/activity/> .
-  @prefix chembl_molecule: <http://rdf.ebi.ac.uk/resource/chembl/molecule/> .
-  
-  chembl_target:CHEMBL2007625 a cco:SingleProtein .
-  # Database: ChEMBL | Query: 5 | Comment: Isocitrate dehydrogenase target entity
-  
-  chembl_target:CHEMBL2007625 rdfs:label "Isocitrate dehydrogenase [NADP] cytoplasmic" .
-  # Database: ChEMBL | Query: 5 | Comment: Human IDH1 target name
-  
-  chembl_target:CHEMBL2007625 cco:targetType "SINGLE PROTEIN" .
-  # Database: ChEMBL | Query: 5 | Comment: Target classification
-  
-  chembl_target:CHEMBL2007625 cco:organismName "Homo sapiens" .
-  # Database: ChEMBL | Query: 5 | Comment: Human organism specification
-  
-  chembl_target:CHEMBL3720 a cco:SingleProtein .
-  # Database: ChEMBL | Query: 5 | Comment: ATP-citrate synthase target entity
-  
-  chembl_target:CHEMBL3720 rdfs:label "ATP-citrate synthase" .
-  # Database: ChEMBL | Query: 5 | Comment: Human ACLY target name
-  
-  chembl_target:CHEMBL3720 cco:organismName "Homo sapiens" .
-  # Database: ChEMBL | Query: 5 | Comment: Human organism
-  
-  chembl_target:CHEMBL5758 a cco:SingleProtein .
-  # Database: ChEMBL | Query: 5 | Comment: Succinate dehydrogenase target entity
-  
-  chembl_target:CHEMBL5758 rdfs:label "Succinate dehydrogenase [ubiquinone] flavoprotein subunit, mitochondrial" .
-  # Database: ChEMBL | Query: 5 | Comment: Human SDH target name
-  
-  chembl_target:CHEMBL3560 a cco:SingleProtein .
-  # Database: ChEMBL | Query: 5 | Comment: Malate dehydrogenase target entity
-  
-  chembl_target:CHEMBL3560 rdfs:label "Malate dehydrogenase cytoplasmic" .
-  # Database: ChEMBL | Query: 5 | Comment: Human MDH target name
-  
-  chembl_activity:CHEMBL_ACT_9762580 a cco:Activity .
-  # Database: ChEMBL | Query: 6 | Comment: Sample bioactivity measurement for IDH
-  
-  chembl_activity:CHEMBL_ACT_9762580 cco:hasMolecule chembl_molecule:CHEMBL1993991 .
-  # Database: ChEMBL | Query: 6 | Comment: Links activity to tested molecule
-  
-  chembl_activity:CHEMBL_ACT_9762580 cco:standardType "Potency" .
-  # Database: ChEMBL | Query: 6 | Comment: Activity measurement type
-  
-  chembl_activity:CHEMBL_ACT_9762580 cco:standardValue "28183.8" .
-  # Database: ChEMBL | Query: 6 | Comment: Potency value
-  
-  chembl_activity:CHEMBL_ACT_9762580 cco:standardUnits "nM" .
-  # Database: ChEMBL | Query: 6 | Comment: Nanomolar concentration units
-  
-  chembl_molecule:CHEMBL1993991 rdfs:label "CHEMBL1993991" .
-  # Database: ChEMBL | Query: 6 | Comment: Bioactive molecule identifier
+  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
-exact_answer: "C"
+  <http://www.reactome.org/biopax/40/48887#Pathway2081> a bp:Pathway ;
+    bp:displayName "Synthesis of Leukotrienes (LT) and Eoxins (EX)" ;
+    bp:organism <http://www.reactome.org/biopax/40/48887#BioSource1> .
+  # Database: Reactome | Query: 1 | Comment: Human leukotriene/eoxin biosynthesis pathway
+
+  <http://www.reactome.org/biopax/40/48887#BioSource1> a bp:BioSource ;
+    bp:name "Homo sapiens"^^xsd:string .
+  # Database: Reactome | Query: 1 | Comment: Human organism annotation
+
+  <http://www.reactome.org/biopax/40/48887#Pathway2081>
+    bp:pathwayComponent <http://www.reactome.org/biopax/40/48887#BiochemicalReaction_ALOX5> .
+  # Database: Reactome | Query: 2 | Comment: Pathway contains 20 biochemical reactions
+
+  <http://www.reactome.org/biopax/40/48887#Catalysis_ALOX5> a bp:Catalysis ;
+    bp:controlled <http://www.reactome.org/biopax/40/48887#BiochemicalReaction_ALOX5> ;
+    bp:controller <http://www.reactome.org/biopax/40/48887#Protein_ALOX5> .
+  # Database: Reactome | Query: 2 | Comment: ALOX5 catalysis relationship
+
+  <http://www.reactome.org/biopax/40/48887#ProteinRef_ALOX5>
+    bp:xref <http://www.reactome.org/biopax/40/48887#UnificationXref_P09917> .
+  # Database: Reactome | Query: 2 | Comment: ALOX5 entity reference to UniProt
+
+  <http://www.reactome.org/biopax/40/48887#UnificationXref_P09917> a bp:UnificationXref ;
+    bp:db "UniProt"^^xsd:string ;
+    bp:id "P09917"^^xsd:string .
+  # Database: Reactome | Query: 2 | Comment: ALOX5 UniProt ID P09917
+
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL215> a cco:SingleProtein ;
+    rdfs:label "Arachidonate 5-lipoxygenase" ;
+    cco:chemblId "CHEMBL215" .
+  # Database: ChEMBL | Query: 4 | Comment: ALOX5 ChEMBL target entry
+
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL215>
+    cco:hasTargetComponent <http://rdf.ebi.ac.uk/resource/chembl/targetcomponent/CHEMBL_TC_ALOX5> .
+  # Database: ChEMBL | Query: 4 | Comment: Target component linkage
+
+  <http://rdf.ebi.ac.uk/resource/chembl/targetcomponent/CHEMBL_TC_ALOX5>
+    skos:exactMatch <http://purl.uniprot.org/uniprot/P09917> .
+  # Database: ChEMBL | Query: 4 | Comment: UniProt IRI bridges Reactome and ChEMBL
+
+  <http://rdf.ebi.ac.uk/resource/chembl/mechanism/CHEMBL_MEC_ZILEUTON> a cco:Mechanism ;
+    cco:hasTarget <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL215> ;
+    cco:hasMolecule <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL1515> ;
+    cco:mechanismActionType "INHIBITOR" .
+  # Database: ChEMBL | Query: 4 | Comment: Zileuton mechanism of action on ALOX5
+
+  <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL1515>
+    cco:highestDevelopmentPhase 4 ;
+    rdfs:label "ZILEUTON" .
+  # Database: ChEMBL | Query: 4 | Comment: Zileuton is FDA-approved (phase 4)
+
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL4550> a cco:SingleProtein ;
+    rdfs:label "5-lipoxygenase activating protein" ;
+    cco:chemblId "CHEMBL4550" .
+  # Database: ChEMBL | Query: 4 | Comment: ALOX5AP/FLAP ChEMBL target entry
+
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL4618> a cco:SingleProtein ;
+    rdfs:label "Leukotriene A4 hydrolase" ;
+    cco:chemblId "CHEMBL4618" .
+  # Database: ChEMBL | Query: 4 | Comment: LTA4H ChEMBL target entry
+
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL3004> a cco:SingleProtein ;
+    rdfs:label "Multidrug resistance-associated protein 1" ;
+    cco:chemblId "CHEMBL3004" .
+  # Database: ChEMBL | Query: 4 | Comment: ABCC1/MRP1 ChEMBL target entry
+
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL2208> a cco:SingleProtein ;
+    rdfs:label "MAP kinase-activated protein kinase 2" ;
+    cco:chemblId "CHEMBL2208" .
+  # Database: ChEMBL | Query: 4 | Comment: MAPKAPK2 ChEMBL target entry
+
+exact_answer:
+  - "ALOX5 (ChEMBL:CHEMBL215)"
+  - "ALOX5AP (ChEMBL:CHEMBL4550)"
+  - "LTA4H (ChEMBL:CHEMBL4618)"
+  - "ABCC1 (ChEMBL:CHEMBL3004)"
+  - "MAPKAPK2 (ChEMBL:CHEMBL2208)"
 
 ideal_answer: |
-  Isocitrate dehydrogenase (IDH) has been screened with the most bioactive compounds among human TCA cycle enzyme targets in ChEMBL, with 36,625 distinct molecules tested in bioactivity assays. This far exceeds ATP-citrate synthase (140 compounds), malate dehydrogenase (116 compounds), and succinate dehydrogenase (4 compounds). The extensive screening of IDH reflects its importance as a cancer drug target, particularly in gliomas and acute myeloid leukemia where IDH1 and IDH2 mutations are prevalent, driving intensive pharmaceutical interest and compound library screening efforts.
+  Five of the eight human enzymes with catalytic roles in the Reactome leukotriene and eoxin biosynthesis pathway have mechanism-of-action records in ChEMBL. Arachidonate 5-lipoxygenase (ALOX5, CHEMBL215) is targeted by zileuton, an FDA-approved (phase 4) antiasthmatic drug that irreversibly inhibits this rate-limiting step in leukotriene synthesis. The 5-lipoxygenase-activating protein (ALOX5AP/FLAP, CHEMBL4550) is the most clinically active target, with three distinct phase-3 clinical inhibitors — fiboflapon, fiboflapon sodium, and veliflapon — all documented as INHIBITOR mechanisms. Leukotriene A4 hydrolase (LTA4H, CHEMBL4618), which converts LTA4 to the potent chemoattractant LTB4, is targeted by acebilustat at phase 2. The multidrug resistance-associated protein ABCC1/MRP1 (CHEMBL3004), which exports LTC4 across the cell membrane as part of the pathway, is targeted by the phase-2 multidrug resistance modulator biricodar. MAP kinase-activated protein kinase 2 (MAPKAPK2, CHEMBL2208), which activates ALOX5 via phosphorylation, is targeted at phase 1 by AT-13148, a broad-spectrum kinase inhibitor. Three pathway enzymes — arachidonate 15-lipoxygenase (ALOX15), prostaglandin reductase 1 (PTGR1), and leukotriene C4 synthase (LTC4S) — lack ChEMBL mechanism records despite participating in the pathway, reflecting their lower prioritisation as drug targets in clinical development programmes.
 
-question_template_used: "Multiple choice comparison question requiring quantitative aggregation across similar entities"
+question_template_used: Template 5 (Cross-Database Drug Target List)
 
 time_spent:
-  exploration: "30 minutes"
-  formulation: "15 minutes"
-  verification: "15 minutes"
-  pubmed_test: "5 minutes"
-  extraction: "20 minutes"
-  documentation: "25 minutes"
-  total: "110 minutes"
+  exploration: 30 minutes
+  formulation: 15 minutes
+  verification: 25 minutes
+  pubmed_test: 15 minutes
+  extraction: 20 minutes
+  documentation: 30 minutes
+  total: 135 minutes

@@ -1,121 +1,136 @@
 id: question_036
-type: choice
-body: "Which gene has the most pathogenic variants associated with hypertrophic cardiomyopathy cataloged in ClinVar?"
+type: yes_no
+body: "Does the entry for metachromatic leukodystrophy in a major disease ontology cross-reference a clinical genetics concept in which Cholecystitis is documented as a clinical manifestation?"
 
 inspiration_keyword:
-  keyword_id: KW-0122
-  name: "Cardiomyopathy"
-  category: "Disease"
+  keyword_id: KW-0478
+  name: Metachromatic leukodystrophy
+  category: Disease
 
 togomcp_databases_used:
-  - clinvar
+  - mondo
+  - medgen
 
 verification_score:
+  biological_insight: 2
+  multi_database: 2
   verifiability: 3
   rdf_necessity: 3
-  scope: 3
-  total: 9
+  total: 10
   passed: true
 
 pubmed_test:
-  time_spent: "15 minutes"
-  method: "Searched PubMed for 'hypertrophic cardiomyopathy gene pathogenic variant count MYBPC3 MYH7' to see if current variant counts are available in literature"
-  result: "Only 1 result (PMID: 30685992). Literature articles may discuss genes associated with HCM but do not provide current systematic counts of all cataloged pathogenic variants per gene. Published reviews become outdated as new variants are continuously submitted to ClinVar."
-  conclusion: "PASS - Requires current ClinVar database state. Literature provides general associations but not up-to-date comprehensive variant counts."
+  time_spent: 10 minutes
+  method: |
+    Searched PubMed for "metachromatic leukodystrophy cholecystitis gallbladder manifestation"
+    and "metachromatic leukodystrophy gallbladder clinical features MedGen database"
+    using ncbi_esearch. Also examined PubMed query translations to ensure comprehensive coverage.
+  result: |
+    Both searches returned 0 results. No PubMed articles link metachromatic
+    leukodystrophy specifically to Cholecystitis as a documented clinical manifestation.
+    The connection exists in structured MGREL relationship data in MedGen but is not
+    recoverable from the literature.
+  conclusion: PASS (cannot answer from literature; requires querying current MGREL database state)
 
 sparql_queries:
   - query_number: 1
-    database: "clinvar"
-    description: "Count MYBPC3 pathogenic variants for hypertrophic cardiomyopathy using NCBI ClinVar API"
+    database: mondo
+    description: >
+      Retrieve all cross-references for metachromatic leukodystrophy (MONDO:0018868)
+      to identify the corresponding UMLS/MedGen concept identifier.
     query: |
-      # Used ncbi_esearch instead of SPARQL due to RDF endpoint query issues
-      # togomcp_local:ncbi_esearch(
-      #   database="clinvar",
-      #   query="hypertrophic cardiomyopathy AND pathogenic AND MYBPC3"
-      # )
-    result_count: 1544
-  
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+
+      SELECT ?xref
+      FROM <http://rdfportal.org/ontology/mondo>
+      WHERE {
+        obo:MONDO_0018868 oboInOwl:hasDbXref ?xref .
+      }
+      ORDER BY ?xref
+    result_count: 16
+
   - query_number: 2
-    database: "clinvar"
-    description: "Count MYH7 pathogenic variants for hypertrophic cardiomyopathy"
+    database: medgen
+    description: >
+      Retrieve all MGREL manifestation_of relationships for the MedGen concept
+      C0023522 (metachromatic leukodystrophy, identified via UMLS cross-reference
+      from MONDO:0018868) to verify whether Cholecystitis (C0008325) is listed.
     query: |
-      # togomcp_local:ncbi_esearch(
-      #   database="clinvar",
-      #   query="hypertrophic cardiomyopathy AND pathogenic AND MYH7"
-      # )
-    result_count: 1436
-  
+      PREFIX mo: <http://med2rdf/ontology/medgen#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?rela ?related_label ?related
+      FROM <http://rdfportal.org/dataset/medgen>
+      WHERE {
+        ?rel a mo:MGREL ;
+            mo:cui1 <http://www.ncbi.nlm.nih.gov/medgen/C0023522> ;
+            mo:cui2 ?related ;
+            mo:rela ?rela .
+        ?related rdfs:label ?related_label .
+      }
+      LIMIT 50
+    result_count: 30
+
   - query_number: 3
-    database: "clinvar"
-    description: "Count TNNT2 pathogenic variants for hypertrophic cardiomyopathy"
+    database: medgen
+    description: >
+      ASK query confirming that the manifestation_of relationship between
+      metachromatic leukodystrophy (C0023522) and Cholecystitis (C0008325)
+      exists in the MedGen MGREL database.
     query: |
-      # togomcp_local:ncbi_esearch(
-      #   database="clinvar",
-      #   query="hypertrophic cardiomyopathy AND pathogenic AND TNNT2"
-      # )
-    result_count: 266
-  
-  - query_number: 4
-    database: "clinvar"
-    description: "Count TNNI3 pathogenic variants for hypertrophic cardiomyopathy"
-    query: |
-      # togomcp_local:ncbi_esearch(
-      #   database="clinvar",
-      #   query="hypertrophic cardiomyopathy AND pathogenic AND TNNI3"
-      # )
-    result_count: 217
+      PREFIX mo: <http://med2rdf/ontology/medgen#>
+
+      ASK
+      FROM <http://rdfportal.org/dataset/medgen>
+      WHERE {
+        ?rel a mo:MGREL ;
+            mo:cui1 <http://www.ncbi.nlm.nih.gov/medgen/C0023522> ;
+            mo:cui2 <http://www.ncbi.nlm.nih.gov/medgen/C0008325> ;
+            mo:rela "manifestation_of" .
+      }
+    result_count: 1
 
 rdf_triples: |
-  # ClinVar RDF data structure (from MIE file and API):
-  # Note: SPARQL queries on RDF endpoint returned empty results,
-  # but NCBI esearch API (listed as kw_search_tool in MIE) provides reliable counts.
-  
-  @prefix cvo: <http://purl.jp/bio/10/clinvar/> .
-  @prefix sio: <http://semanticscience.org/resource/> .
-  @prefix med2rdf: <http://med2rdf.org/ontology/med2rdf#> .
-  @prefix dct: <http://purl.org/dc/terms/> .
-  
-  # Example MYBPC3 variant structure (from MIE sample)
-  <http://ncbi.nlm.nih.gov/clinvar/variation/4688013>
-    a cvo:VariationArchiveType ;
-    rdfs:label "NM_000256.3(MYBPC3):c.XXX" ;
-    cvo:accession "VCVXXXXXXX" ;
-    cvo:variation_type "single nucleotide variant" ;
-    cvo:record_status "current" ;
-    cvo:classified_record _:classrec1 ;
-    med2rdf:disease _:disease1 .
-  # Database: ClinVar | Query: 1 | Example variant with HCM association
-  
-  _:classrec1
-    a cvo:ClassifiedRecord ;
-    cvo:classifications/cvo:germline_classification/cvo:description "Pathogenic" ;
-    sio:SIO_000628 _:gene1 .
-  # Database: ClinVar | Query: 1 | Clinical classification and gene linkage
-  
-  _:gene1
-    a cvo:Gene ;
-    cvo:gene_id 4607 ;
-    cvo:symbol "MYBPC3" ;
-    cvo:full_name "cardiac myosin binding protein C" .
-  # Database: ClinVar | Query: 1 | MYBPC3 gene entity
-  
-  _:disease1
-    a cvo:ClinAsserTraitType, med2rdf:Disease ;
-    cvo:type "Disease" ;
-    dct:references <http://www.ncbi.nlm.nih.gov/medgen/C1877292> .
-  # Database: ClinVar | Query: 1 | Disease trait referencing MedGen HCM concept
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix oboInOwl: <http://www.geneontology.org/formats/oboInOwl#> .
+  @prefix mo: <http://med2rdf/ontology/medgen#> .
+  @prefix owl: <http://www.w3.org/2002/07/owl#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
-exact_answer:
-  choices:
-    - "MYBPC3"
-    - "MYH7"
-    - "TNNT2"
-    - "TNNI3"
-  correct: "MYBPC3"
+  obo:MONDO_0018868 a owl:Class .
+  # Database: MONDO | Query: 1 | Comment: Metachromatic leukodystrophy (MONDO:0018868) disease class
+
+  obo:MONDO_0018868 oboInOwl:hasDbXref "UMLS:C0023522" .
+  # Database: MONDO | Query: 1 | Comment: Cross-reference linking MONDO entry to UMLS/MedGen concept C0023522
+
+  obo:MONDO_0018868 oboInOwl:hasDbXref "MEDGEN:6071" .
+  # Database: MONDO | Query: 1 | Comment: Direct MEDGEN cross-reference (numeric ID 6071)
+
+  <http://www.ncbi.nlm.nih.gov/medgen/C0023522> a mo:ConceptID .
+  # Database: MedGen | Query: 2 | Comment: MedGen concept for metachromatic leukodystrophy (CUI C0023522)
+
+  [] a mo:MGREL ;
+    mo:cui1 <http://www.ncbi.nlm.nih.gov/medgen/C0023522> ;
+    mo:cui2 <http://www.ncbi.nlm.nih.gov/medgen/C0008325> ;
+    mo:rela "manifestation_of" .
+  # Database: MedGen | Query: 2,3 | Comment: MGREL record documenting Cholecystitis (C0008325) as manifestation_of MLD (C0023522)
+
+  <http://www.ncbi.nlm.nih.gov/medgen/C0008325> rdfs:label "Cholecystitis" .
+  # Database: MedGen | Query: 2 | Comment: Label for the Cholecystitis concept (C0008325)
+
+exact_answer: "yes"
 
 ideal_answer: |
-  MYBPC3 has the most pathogenic variants associated with hypertrophic cardiomyopathy in ClinVar, with 1,544 cataloged pathogenic variants. MYH7 follows with 1,436 variants, while TNNT2 and TNNI3 have 266 and 217 variants respectively. MYBPC3 and MYH7 together account for the majority of genetic causes of hypertrophic cardiomyopathy, with MYBPC3 being the most frequently mutated gene. This demonstrates ClinVar's role as a comprehensive repository for clinically significant genetic variants, enabling comparative analysis of variant burden across disease-associated genes.
+  Yes. Metachromatic leukodystrophy (MONDO:0018868), a rare lysosomal storage disorder caused by arylsulfatase A (ARSA) deficiency, is cross-referenced in MONDO to the MedGen concept C0023522 via the UMLS identifier. In MedGen's MGREL database, this concept has 30 documented "manifestation_of" relationships, one of which links it to Cholecystitis (MedGen:C0008325). While metachromatic leukodystrophy is primarily known for progressive neurological manifestations — including peripheral demyelination, cerebellar ataxia, and intellectual disability — gallbladder involvement, including Cholecystitis and gallbladder dysfunction, is documented in the structured clinical data. This reflects the systemic nature of sulfatide accumulation in MLD: ARSA normally degrades sulfatides in lysosomes throughout the body, and excess sulfatide deposits in gallbladder epithelial cells and bile ducts can lead to cholecystitis and gallbladder polyps. This association is catalogued in MedGen's clinical knowledge graph but is not prominent in the standard biomedical literature, making it non-trivially verifiable without querying current structured databases.
+
+question_template_used: Template 7 (Yes/No Existence)
 
 time_spent:
-  exploration: "45 minutes"
-  total: "45 minutes"
+  exploration: 20 minutes
+  formulation: 15 minutes
+  verification: 15 minutes
+  pubmed_test: 10 minutes
+  extraction: 15 minutes
+  documentation: 20 minutes
+  total: 95 minutes

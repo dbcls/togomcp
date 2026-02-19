@@ -1,181 +1,275 @@
-# Question 044: PDB Ultra-High Resolution Structure
-# Created: 2025-02-08
-# Keyword: KW-0002 (3D-structure)
-# Primary Database: PDB
-# Question Type: Factoid
+id: question_044
+type: list
+body: "Which Fanconi anemia complementation group genes with gene symbols starting with 'FANC' have documented pathogenic or likely pathogenic germline variants associated with Fanconi anemia?"
 
-metadata:
-  question_id: "044"
-  version: "1.0"
-  date_created: "2025-02-08"
-  keyword_id: "KW-0002"
-  keyword_name: "3D-structure"
-  keyword_category: "Technical term"
-  primary_database: "PDB"
-  secondary_databases: []
-  question_type: "factoid"
+inspiration_keyword:
+  keyword_id: KW-0923
+  name: Fanconi anemia
+  category: Disease
 
-question:
-  text: "What is the highest atomic resolution (smallest ls_d_res_high value in Ångströms) achieved for any macromolecular structure deposited in the Protein Data Bank?"
-  
-expected_answer:
-  answer: "0.48 Ångströms (Å)"
-  details: |
-    The highest atomic resolution achieved in PDB is 0.48 Å, which is shared by two structures:
-    - 5D8V: Ultra-high resolution structure of high-potential iron-sulfur protein
-    - 3NIR: Crystal structure of small protein crambin at 0.48 A resolution
-    
-    Both structures were determined using X-ray crystallography and represent exceptional 
-    examples of ultra-high resolution structural biology. At this resolution, individual 
-    atoms and their valence electron density can be directly observed.
+togomcp_databases_used:
+  - mesh
+  - clinvar
+  - ncbigene
 
-databases_required:
-  - name: "PDB"
-    role: "PRIMARY - resolution data source"
-    access_method: "togomcp_local:run_sparql"
-    justification: "PDB contains the ls_d_res_high (high-resolution limit) values for all deposited structures. This is the only comprehensive source for comparing resolution across all PDB entries."
-
-rdf_query_approach:
-  discovery_phase:
-    - step: 1
-      action: "Read PDB MIE file"
-      tool: "togomcp_local:get_MIE_file"
-      parameters:
-        dbname: "pdb"
-      rationale: "Understand PDB schema, identify resolution property, and confirm data structure"
-    
-  verification_phase:
-    - step: 2
-      action: "Query highest resolution structures"
-      tool: "togomcp_local:run_sparql"
-      parameters:
-        dbname: "pdb"
-        sparql_query: |
-          PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
-          PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-          
-          SELECT ?entry_id ?resolution ?title
-          FROM <http://rdfportal.org/dataset/pdbj>
-          WHERE {
-            ?entry a pdbx:datablock .
-            BIND(STRAFTER(str(?entry), "http://rdf.wwpdb.org/pdb/") AS ?entry_id)
-            ?entry pdbx:has_refineCategory/pdbx:has_refine ?refine ;
-                   pdbx:has_structCategory/pdbx:has_struct ?struct .
-            ?refine pdbx:refine.ls_d_res_high ?resolution .
-            ?struct pdbx:struct.title ?title .
-            FILTER(xsd:decimal(?resolution) > 0 && xsd:decimal(?resolution) < 1.0)
-          }
-          ORDER BY xsd:decimal(?resolution)
-          LIMIT 20
-      rationale: "Retrieve all sub-Ångström structures and sort by resolution to find the highest (lowest numeric value)"
-      result_summary: "Found two structures at 0.48 Å: 5D8V (HiPIP) and 3NIR (crambin)"
-
-alternative_approaches:
-  web_search:
-    feasible: false
-    explanation: |
-      Web search would not provide a definitive, verifiable answer because:
-      1. General articles may discuss ultra-high resolution but not comprehensively list all structures
-      2. Resolution records may be outdated in published literature
-      3. No systematic comparison across all PDB entries
-      4. Results would be anecdotal rather than database-verified
-
-  pubmed_search:
-    attempts:
-      - query: "highest resolution protein structure atomic resolution X-ray crystallography sub-angstrom"
-        results: 0
-      - query: "0.48 angstrom resolution protein crystal structure PDB"
-        results: 0
-    feasible: false
-    explanation: |
-      PubMed search yielded zero results because:
-      1. Publications rarely report on "highest resolution" as a research topic
-      2. Individual structure papers don't compare across the entire PDB
-      3. Resolution achievements are technical details, not primary research findings
-      4. Comprehensive resolution statistics require database queries, not literature review
-
-  claude_training:
-    feasible: false
-    explanation: |
-      This requires live database querying because:
-      1. PDB is continuously updated with new structures
-      2. Resolution records can be improved through re-refinement
-      3. Training data cutoff means current highest resolution is unknown
-      4. Specific numeric comparison across 245K+ entries needs database access
-
-rdf_triples:
-  example_answer: |
-    # Two structures share the highest resolution at 0.48 Å
-    pdb:5D8V/refine/5D8V,X-RAY_DIFFRACTION a pdbx:refine ;
-      pdbx:refine.ls_d_res_high "0.48"^^xsd:decimal ;
-      pdbx:of_datablock pdb:5D8V .
-    
-    pdb:5D8V a pdbx:datablock ;
-      pdbx:has_structCategory/pdbx:has_struct [
-        pdbx:struct.title "Ultra-high resolution structure of high-potential iron-sulfur protein"
-      ] .
-    
-    pdb:3NIR/refine/3NIR,X-RAY_DIFFRACTION a pdbx:refine ;
-      pdbx:refine.ls_d_res_high "0.48"^^xsd:decimal ;
-      pdbx:of_datablock pdb:3NIR .
-    
-    pdb:3NIR a pdbx:datablock ;
-      pdbx:has_structCategory/pdbx:has_struct [
-        pdbx:struct.title "Crystal structure of small protein crambin at 0.48 A resolution"
-      ] .
-
-verification:
-  objectively_verifiable: true
-  verification_method: "Direct SPARQL query against PDB RDF database comparing all ls_d_res_high values"
-  bounded_scope: true
-  scope_explanation: "Limited to structures deposited in PDB with reported resolution values"
-  requires_rdf: true
-  rdf_necessity_explanation: |
-    Absolutely requires RDF database access because:
-    1. Must query 245,833 structures systematically
-    2. Requires numeric comparison across entire dataset
-    3. Needs structured resolution data (pdbx:refine.ls_d_res_high)
-    4. Cannot be answered from literature or general knowledge
-    5. Requires sorting and filtering capabilities only available through SPARQL
-
-rubric_scores:
-  verifiability: 3
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 2
   rdf_necessity: 3
-  scope: 3
-  total_score: 9
+  total: 11
+  passed: true
 
-reasoning:
-  verifiability_justification: |
-    Score: 3/3 - Perfectly verifiable
-    - Resolution is a quantitative, objective measurement
-    - Stored as structured data in PDB (pdbx:refine.ls_d_res_high)
-    - Numeric comparison yields definitive answer
-    - Multiple independent observers would get identical results
-  
-  rdf_necessity_justification: |
-    Score: 3/3 - Absolutely requires RDF
-    - PubMed search: 0 results
-    - Requires querying 245K+ structures with numeric filtering
-    - Must access structured property data across entire database
-    - SPARQL sorting and filtering essential for finding minimum value
-    - No other method can comprehensively answer this question
-  
-  scope_justification: |
-    Score: 3/3 - Perfectly bounded
-    - Clear numeric comparison (find minimum ls_d_res_high)
-    - Limited to PDB entries only
-    - Single well-defined property
-    - No ambiguity in question interpretation
-    - Deterministic answer
+pubmed_test:
+  time_spent: 10 minutes
+  method: Searched "Fanconi anemia complementation group genes pathogenic variants ClinVar" in PubMed using ncbi_esearch. Examined abstracts of top results (PMIDs 39831988, 38098088).
+  result: |
+    Papers found discuss breast cancer gene panel testing and BRCA1/2/PALB2 
+    variants with incidental ClinVar references. No paper systematically lists 
+    all FANC* genes with current pathogenic variant status in ClinVar. 
+    The exact set of which FANC* complementation group genes have P/LP variants 
+    in the current ClinVar database state cannot be determined from literature.
+  conclusion: PASS (cannot answer from literature - requires current ClinVar RDF state)
 
-notes:
-  - "Question 044: Factoid question with PDB as PRIMARY database"
-  - "Uses KW-0002 (3D-structure) - unused keyword"
-  - "Showcases PDB's core strength: structural resolution data"
-  - "Non-UniProt question - maintains database balance"
-  - "Requires numeric comparison across entire PDB dataset"
-  - "Ultra-high resolution (0.48 Å) allows visualization of valence electron density"
-  - "Both structures solved using X-ray crystallography"
-  - "Factoid advances to 9/10 (90%) - only 1 more needed!"
-  - "PDB advances to 3/43 (7.0%) from 2/43 (4.7%)"
-  - "Perfect 9/9 verification score maintained"
+sparql_queries:
+  - query_number: 1
+    database: mesh
+    description: Confirm MeSH descriptor D005199 for Fanconi Anemia disease term
+    query: |
+      PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?label ?annotation ?treeNum
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        mesh:D005199 rdfs:label ?label .
+        OPTIONAL { mesh:D005199 meshv:annotation ?annotation }
+        OPTIONAL {
+          mesh:D005199 meshv:treeNumber ?tree .
+          ?tree rdfs:label ?treeNum
+        }
+      }
+    result_count: 4
+
+  - query_number: 2
+    database: clinvar
+    description: Find all distinct FANC* protein-coding genes with pathogenic or likely pathogenic variants annotated with Fanconi Anemia (MeSH D005199), cross-referenced to NCBI Gene for gene type
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+
+      SELECT DISTINCT ?gene_symbol ?gene_type ?gene_desc
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/clinvar> {
+          ?variant a cvo:VariationArchiveType ;
+                   cvo:record_status "current" ;
+                   med2rdf:disease ?disease ;
+                   cvo:classified_record ?classrec .
+          ?disease dct:references ?ref_bn .
+          ?ref_bn rdfs:seeAlso <http://meshb.nlm.nih.gov/record/ui?ui=D005199> .
+
+          ?classrec cvo:classifications/cvo:germline_classification/cvo:description ?sig .
+          FILTER(?sig = "Pathogenic" || ?sig = "Likely pathogenic")
+
+          ?classrec sio:SIO_000628 ?gene_bn .
+          ?gene_bn med2rdf:gene ?gene_uri .
+          ?gene_uri cvo:symbol ?gene_symbol ;
+                    cvo:hgnc_id ?hgnc_id ;
+                    cvo:gene_id ?gene_id_int .
+
+          FILTER(STRSTARTS(?gene_symbol, "FANC"))
+          BIND(STR(?gene_id_int) AS ?gene_id_str)
+        }
+        GRAPH <http://rdfportal.org/dataset/ncbigene> {
+          ?ncbi_gene a insdc:Gene ;
+                     dct:identifier ?gene_id_str ;
+                     ncbio:typeOfGene ?gene_type .
+          OPTIONAL { ?ncbi_gene dct:description ?gene_desc }
+        }
+      }
+      ORDER BY ?gene_symbol
+    result_count: 11
+
+  - query_number: 3
+    database: clinvar
+    description: Count pathogenic/likely pathogenic variants per FANC* gene for Fanconi Anemia (GROUP BY verification query)
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+
+      SELECT DISTINCT ?gene_symbol (COUNT(DISTINCT ?variant) AS ?variant_count)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 med2rdf:disease ?disease ;
+                 cvo:classified_record ?classrec .
+        ?disease dct:references ?ref_bn .
+        ?ref_bn rdfs:seeAlso <http://meshb.nlm.nih.gov/record/ui?ui=D005199> .
+
+        ?classrec cvo:classifications/cvo:germline_classification/cvo:description ?sig .
+        FILTER(?sig = "Pathogenic" || ?sig = "Likely pathogenic")
+
+        ?classrec sio:SIO_000628 ?gene_bn .
+        ?gene_bn med2rdf:gene ?gene_uri .
+        ?gene_uri cvo:symbol ?gene_symbol ;
+                  cvo:hgnc_id ?hgnc_id .
+
+        FILTER(STRSTARTS(?gene_symbol, "FANC"))
+      }
+      GROUP BY ?gene_symbol
+      ORDER BY ?gene_symbol
+    result_count: 11
+
+  - query_number: 4
+    database: clinvar
+    description: "Arithmetic verification: total distinct variants for all FANC* genes (to check GROUP BY sum vs total)"
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+
+      SELECT (COUNT(DISTINCT ?variant) AS ?total_variants)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 med2rdf:disease ?disease ;
+                 cvo:classified_record ?classrec .
+        ?disease dct:references ?ref_bn .
+        ?ref_bn rdfs:seeAlso <http://meshb.nlm.nih.gov/record/ui?ui=D005199> .
+
+        ?classrec cvo:classifications/cvo:germline_classification/cvo:description ?sig .
+        FILTER(?sig = "Pathogenic" || ?sig = "Likely pathogenic")
+
+        ?classrec sio:SIO_000628 ?gene_bn .
+        ?gene_bn med2rdf:gene ?gene_uri .
+        ?gene_uri cvo:symbol ?gene_symbol ;
+                  cvo:hgnc_id ?hgnc_id .
+
+        FILTER(STRSTARTS(?gene_symbol, "FANC"))
+      }
+    result_count: 1
+
+rdf_triples: |
+  @prefix mesh: <http://id.nlm.nih.gov/mesh/> .
+  @prefix meshv: <http://id.nlm.nih.gov/mesh/vocab#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix cvo: <http://purl.jp/bio/10/clinvar/> .
+  @prefix med2rdf: <http://med2rdf.org/ontology/med2rdf#> .
+  @prefix dct: <http://purl.org/dc/terms/> .
+  @prefix sio: <http://semanticscience.org/resource/> .
+
+  mesh:D005199 a meshv:TopicalDescriptor ;
+               rdfs:label "Fanconi Anemia" .
+  # Database: MeSH | Query: 1 | Comment: MeSH descriptor for Fanconi Anemia disease term
+
+  mesh:D005199 meshv:treeNumber <http://id.nlm.nih.gov/mesh/C16.320.077.280> .
+  # Database: MeSH | Query: 1 | Comment: Tree position in congenital/hereditary diseases
+
+  <http://ncbi.nlm.nih.gov/gene/2175> a cvo:Gene ;
+                                       cvo:symbol "FANCA" ;
+                                       cvo:gene_id 2175 .
+  # Database: ClinVar | Query: 2 | Comment: FANCA gene - complementation group A, 634 P/LP variants
+
+  <http://ncbi.nlm.nih.gov/gene/2187> a cvo:Gene ;
+                                       cvo:symbol "FANCB" ;
+                                       cvo:gene_id 2187 .
+  # Database: ClinVar | Query: 2 | Comment: FANCB gene - complementation group B, 7 P/LP variants
+
+  <http://ncbi.nlm.nih.gov/gene/2176> a cvo:Gene ;
+                                       cvo:symbol "FANCC" ;
+                                       cvo:gene_id 2176 .
+  # Database: ClinVar | Query: 2 | Comment: FANCC gene - complementation group C, 118 P/LP variants
+
+  <http://ncbi.nlm.nih.gov/gene/2177> a cvo:Gene ;
+                                       cvo:symbol "FANCD2" ;
+                                       cvo:gene_id 2177 .
+  # Database: ClinVar | Query: 2 | Comment: FANCD2 gene - complementation group D2, 159 P/LP variants
+
+  <http://ncbi.nlm.nih.gov/gene/115795> a cvo:Gene ;
+                                          cvo:symbol "FANCD2OS" ;
+                                          cvo:gene_id 115795 .
+  # Database: ClinVar | Query: 2 | Comment: FANCD2OS gene - opposite strand of FANCD2, 45 P/LP variants (overlap with FANCD2)
+
+  <http://ncbi.nlm.nih.gov/gene/2178> a cvo:Gene ;
+                                       cvo:symbol "FANCE" ;
+                                       cvo:gene_id 2178 .
+  # Database: ClinVar | Query: 2 | Comment: FANCE gene - complementation group E, 1 P/LP variant
+
+  <http://ncbi.nlm.nih.gov/gene/2188> a cvo:Gene ;
+                                       cvo:symbol "FANCF" ;
+                                       cvo:gene_id 2188 .
+  # Database: ClinVar | Query: 2 | Comment: FANCF gene - complementation group F, 25 P/LP variants
+
+  <http://ncbi.nlm.nih.gov/gene/2189> a cvo:Gene ;
+                                       cvo:symbol "FANCG" ;
+                                       cvo:gene_id 2189 .
+  # Database: ClinVar | Query: 2 | Comment: FANCG gene - complementation group G, 97 P/LP variants
+
+  <http://ncbi.nlm.nih.gov/gene/55215> a cvo:Gene ;
+                                         cvo:symbol "FANCI" ;
+                                         cvo:gene_id 55215 .
+  # Database: ClinVar | Query: 2 | Comment: FANCI gene - complementation group I, 139 P/LP variants
+
+  <http://ncbi.nlm.nih.gov/gene/55120> a cvo:Gene ;
+                                         cvo:symbol "FANCL" ;
+                                         cvo:gene_id 55120 .
+  # Database: ClinVar | Query: 2 | Comment: FANCL gene - complementation group L, 76 P/LP variants
+
+  <http://ncbi.nlm.nih.gov/gene/57697> a cvo:Gene ;
+                                         cvo:symbol "FANCM" ;
+                                         cvo:gene_id 57697 .
+  # Database: ClinVar | Query: 2 | Comment: FANCM gene - complementation group M, 136 P/LP variants
+
+  <http://ncbi.nlm.nih.gov/gene/2175> med2rdf:gene <http://ncbi.nlm.nih.gov/gene/2175> .
+  # Database: ClinVar | Query: 3 | Comment: Gene-variant linkage via blank node pattern
+
+arithmetic_verification:
+  query: "GROUP BY gene_symbol with COUNT(DISTINCT variant)"
+  sum_of_category_counts: 1437
+  total_distinct_entities: 1392
+  result: "Sum (1437) > Total (1392) - VALID OVERLAP"
+  interpretation: |
+    45 variants are annotated to both FANCD2 and FANCD2OS because FANCD2OS
+    (opposite strand gene) shares genomic coordinates with FANCD2. Variants in
+    the FANCD2 locus are co-annotated to the overlapping FANCD2OS gene model.
+    This is documented biological overlap, not a coverage gap.
+
+exact_answer:
+  - "FANCA (NCBIGene:2175)"
+  - "FANCB (NCBIGene:2187)"
+  - "FANCC (NCBIGene:2176)"
+  - "FANCD2 (NCBIGene:2177)"
+  - "FANCD2OS (NCBIGene:115795)"
+  - "FANCE (NCBIGene:2178)"
+  - "FANCF (NCBIGene:2188)"
+  - "FANCG (NCBIGene:2189)"
+  - "FANCI (NCBIGene:55215)"
+  - "FANCL (NCBIGene:55120)"
+  - "FANCM (NCBIGene:57697)"
+
+ideal_answer: |
+  Eleven genes with symbols starting 'FANC' have pathogenic or likely pathogenic germline variants associated with Fanconi anemia (MeSH D005199) in ClinVar: FANCA, FANCB, FANCC, FANCD2, FANCD2OS, FANCE, FANCF, FANCG, FANCI, FANCL, and FANCM. These represent the core Fanconi anemia complementation groups whose gene symbols follow the FANC* convention. The variant burden differs markedly across complementation groups: FANCA is the most frequently mutated (634 pathogenic/likely pathogenic variants), reflecting that complementation group A accounts for the majority of Fanconi anemia cases (~60-65%), followed by FANCD2 (159), FANCI (139), FANCM (136), FANCC (118), FANCG (97), FANCL (76), FANCF (25), FANCB (7), and FANCE (1). FANCD2OS, annotated as the opposite-strand gene at the FANCD2 locus, shares 45 variants with FANCD2 due to overlapping genomic coordinates; the total distinct pathogenic/LP variant count for the FANC* gene set is 1,392. Notably absent from this FANC*-symbol set are several canonical Fanconi anemia genes using alternative naming (BRCA2/FANCD1, BRIP1/FANCJ, PALB2/FANCN, SLX4/FANCP, RFWD3/FANCW), all of which also carry documented pathogenic variants in ClinVar but were identified by different gene symbols.
+
+question_template_used: Template 3 (Comprehensive List - Systematic Gene Family)
+
+time_spent:
+  exploration: 30 minutes
+  formulation: 15 minutes
+  verification: 40 minutes
+  pubmed_test: 10 minutes
+  extraction: 25 minutes
+  documentation: 30 minutes
+  total: 150 minutes

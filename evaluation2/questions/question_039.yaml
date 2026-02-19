@@ -1,246 +1,229 @@
-# Question 039: MedGen - Genetic Heterogeneity in Hearing Loss Syndromes
-# Created: 2025-02-08
-# Keyword: KW-0209 (Deafness)
-# Category: Disease
-# Type: Choice
-# Databases: MedGen (PRIMARY), PubMed
-# Integration: Multi-database
+id: question_039
+type: list
+body: "Which distinct human genes, co-annotated with Brugada syndrome in at least 500 PubMed articles in PubTator Central, also have a drug target entry in ChEMBL?"
 
-metadata:
-  question_id: "039"
-  question_type: "choice"
-  difficulty: "intermediate"
-  keywords:
-    primary: "KW-0209"
-    name: "Deafness"
-    category: "Disease"
-  databases:
-    primary: "MedGen"
-    secondary: ["PubMed"]
-  created_date: "2025-02-08"
+inspiration_keyword:
+  keyword_id: KW-0992
+  name: Brugada syndrome
+  category: Disease
 
-question:
-  body: |
-    Among genetic syndromes associated with hearing loss, which syndrome has the most genetic loci (distinct OMIM entries) cataloged in MedGen, reflecting its extensive genetic heterogeneity?
-  
-  choices:
-    A: "Jervell and Lange-Nielsen syndrome"
-    B: "Alport syndrome"
-    C: "Waardenburg syndrome"
-    D: "Usher syndrome"
-  
-  correct_answer: "D"
-  
-  explanation: |
-    Usher syndrome has the most genetic loci with 33 distinct OMIM entries cataloged in MedGen, demonstrating exceptional genetic heterogeneity. The breakdown is:
-    - Usher syndrome: 33 OMIM entries (subtypes 1A-1K, 2A-2D, 3A-3B, plus modifier loci)
-    - Waardenburg syndrome: 16 OMIM entries (types 1-4 with various subtypes)
-    - Alport syndrome: 9 OMIM entries (X-linked, autosomal dominant, autosomal recessive forms)
-    - Jervell and Lange-Nielsen syndrome: 4 OMIM entries
-    
-    This extensive genetic heterogeneity reflects Usher syndrome's classification into three clinical types (USH1, USH2, USH3) and multiple subtypes, each caused by mutations in different genes encoding proteins involved in inner ear and retinal photoreceptor function.
+togomcp_databases_used:
+  - pubtator
+  - ncbigene
+  - chembl
 
-answer_key:
-  answer: "Usher syndrome (33 distinct OMIM entries)"
-  
-  supporting_data:
-    medgen_omim_count:
-      usher_syndrome: 33
-      waardenburg_syndrome: 16
-      alport_syndrome: 9
-      jervell_lange_nielsen: 4
-      query_date: "2025-02-08"
-    
-    example_omim_entries_usher:
-      - "MIM:276900 (USH1B)"
-      - "MIM:276901 (USH2A)"
-      - "MIM:276902 (USH3A)"
-      - "MIM:605514 (USH1F)"
-      - "MIM:605516 (USH1D)"
-      - "MIM:608400 (USH2A gene)"
-      - "MIM:614869 (USH1J)"
-      - "MIM:614990 (USH1K)"
-      - "... (25 additional OMIM entries)"
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 12
+  passed: true
 
-solution:
-  step1:
-    action: "Identify MedGen concepts for hearing loss syndromes"
-    tool: "togomcp_local:ncbi_esearch"
-    parameters:
-      database: "medgen"
-      query: "Usher syndrome OR Waardenburg syndrome OR Alport syndrome OR Jervell"
-      max_results: 20
-    rationale: "Use MedGen's kw_search_tools (ncbi_esearch) for initial discovery"
-    result: "95 total concepts found"
-  
-  step2:
-    action: "Query MedGen RDF for OMIM cross-references"
-    tool: "togomcp_local:run_sparql"
-    database: "medgen"
+pubmed_test:
+  time_spent: 5 minutes
+  method: Searched "Brugada syndrome genes co-annotated PubTator Central drug targets ChEMBL" and "Brugada syndrome ion channel genes pharmacological targets literature mining" using ncbi_esearch (database=pubmed)
+  result: |
+    Both queries returned 0 results addressing the combined criterion (≥500-article
+    co-annotation threshold AND ChEMBL drug target entry). PubMed literature does
+    not report this intersection; answering it requires querying PubTator Central
+    RDF for co-occurrence counts and ChEMBL RDF for target entries independently,
+    then intersecting the results.
+  conclusion: PASS (cannot answer from literature)
+
+sparql_queries:
+  - query_number: 1
+    database: pubtator
+    description: Find distinct human genes co-annotated with Brugada syndrome (MeSH:D053840) in ≥500 PubMed articles, cross-referenced with NCBI Gene to confirm human taxonomy (taxon:9606). Returns 5 genes with their NCBI Gene IDs and co-occurrence counts.
     query: |
-      PREFIX mo: <http://med2rdf/ontology/medgen#>
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX dct: <http://purl.org/dc/terms/>
-      
-      SELECT ?syndrome (COUNT(DISTINCT ?omim_ref) as ?omim_count)
-      FROM <http://rdfportal.org/dataset/medgen>
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+
+      SELECT ?geneId ?gene_symbol (COUNT(DISTINCT ?article) AS ?cooccurrence)
       WHERE {
-        VALUES ?syndrome { "usher" "waardenburg" "alport" "jervell" }
-        ?concept a mo:ConceptID ;
-            rdfs:label ?label ;
-            mo:mgconso ?bn .
-        ?bn rdfs:seeAlso ?omim_ref .
-        FILTER(CONTAINS(LCASE(?label), ?syndrome))
-        FILTER(STRSTARTS(STR(?omim_ref), "http://identifiers.org/mim/"))
+        GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+          ?diseaseAnn dcterms:subject "Disease" ;
+                      oa:hasBody <http://identifiers.org/mesh/D053840> ;
+                      oa:hasTarget ?article .
+          ?geneAnn dcterms:subject "Gene" ;
+                   oa:hasBody ?geneId ;
+                   oa:hasTarget ?article .
+        }
+        GRAPH <http://rdfportal.org/dataset/ncbigene> {
+          ?geneId a insdc:Gene ;
+                  rdfs:label ?gene_symbol ;
+                  ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+        }
       }
-      GROUP BY ?syndrome
-      ORDER BY DESC(?omim_count)
-    rationale: "Count distinct OMIM entries for each syndrome across all subtypes"
-    result: |
-      usher: 33 OMIM entries
-      waardenburg: 16 OMIM entries
-      alport: 9 OMIM entries
-      jervell: 4 OMIM entries
-  
-  step3:
-    action: "Verify PubMed doesn't provide direct comparison"
-    tool: "PubMed:search_articles"
-    query: "genetic heterogeneity Usher syndrome Waardenburg Alport OMIM loci"
-    result: "No articles directly comparing OMIM loci counts across these syndromes"
-  
-  step4:
-    action: "Examine detailed Usher syndrome genetic heterogeneity"
-    tool: "togomcp_local:run_sparql"
-    database: "medgen"
+      GROUP BY ?geneId ?gene_symbol
+      HAVING (COUNT(DISTINCT ?article) >= 500)
+      ORDER BY DESC(?cooccurrence)
+    result_count: 5
+
+  - query_number: 2
+    database: chembl
+    description: |
+      Verify which of the 5 genes from Query 1 have a human single-protein drug target
+      entry in ChEMBL, joining via UniProt IRIs. UniProt IDs were obtained by converting
+      the NCBI Gene IDs from Query 1 via TogOID (ncbigene→uniprot):
+        SCN5A (6331)  → Q14524
+        KCNH2 (3757)  → Q12809
+        KCNQ1 (3784)  → P51787
+        CACNA1C (775) → Q13936
+        RYR2 (6262)   → Q92736
     query: |
-      PREFIX mo: <http://med2rdf/ontology/medgen#>
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      SELECT DISTINCT ?label ?identifier ?omim_ref
-      FROM <http://rdfportal.org/dataset/medgen>
+
+      SELECT ?target ?label ?chemblId
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
-        ?concept a mo:ConceptID ;
-            rdfs:label ?label ;
-            dct:identifier ?identifier ;
-            mo:mgconso ?bn .
-        ?bn rdfs:seeAlso ?omim_ref .
-        FILTER(CONTAINS(LCASE(?label), "usher"))
-        FILTER(STRSTARTS(STR(?omim_ref), "http://identifiers.org/mim/"))
+        VALUES ?uniprot {
+          <http://purl.uniprot.org/uniprot/Q14524>   # SCN5A
+          <http://purl.uniprot.org/uniprot/Q12809>   # KCNH2
+          <http://purl.uniprot.org/uniprot/P51787>   # KCNQ1
+          <http://purl.uniprot.org/uniprot/Q13936>   # CACNA1C
+          <http://purl.uniprot.org/uniprot/Q92736>   # RYR2
+        }
+        ?tc a cco:TargetComponent ;
+            skos:exactMatch ?uniprot .
+        ?target cco:hasTargetComponent ?tc ;
+                a cco:SingleProtein ;
+                rdfs:label ?label ;
+                cco:chemblId ?chemblId ;
+                cco:taxonomy <http://identifiers.org/taxonomy/9606> .
       }
       ORDER BY ?label
-      LIMIT 30
-    rationale: "Document the diversity of Usher syndrome subtypes"
-    result: "Subtypes 1A-1K (11 subtypes), 2A-2D (4 subtypes), 3A-3B (2 subtypes), plus modifier loci"
+    result_count: 5
 
-  conclusion: "Usher syndrome has 33 distinct OMIM entries in MedGen, the most among hearing loss syndromes, reflecting its exceptional genetic heterogeneity"
+  - query_number: 3
+    database: pubtator
+    description: Verification count — total distinct human genes meeting the ≥500 article threshold (confirms Query 1 is comprehensive).
+    query: |
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
 
-verification:
-  rdf_necessity:
-    score: 3
-    evidence:
-      - "Requires aggregating OMIM cross-references across all syndrome subtypes"
-      - "MedGen's mo:mgconso structure links concepts to external OMIM identifiers"
-      - "No single PubMed article provides this comparative count across syndromes"
-      - "MIE file specifies kw_search_tools: [ncbi_esearch] for concept discovery"
-    pubmed_test:
-      search_time: "15 minutes"
-      queries_tried:
-        - "genetic heterogeneity Usher syndrome Waardenburg Alport OMIM loci (0 results)"
-        - "syndromic hearing loss genetic heterogeneity comparison (4 results, not relevant)"
-        - "Usher syndrome number genetic loci subtypes (1 result from 2000, outdated)"
-      conclusion: "PubMed alone cannot answer this question - requires MedGen's comprehensive OMIM aggregation"
-  
-  verifiability:
-    score: 3
-    method: "Objective SPARQL query counting distinct OMIM references per syndrome"
-    reproducibility: "Query is deterministic and will return same counts"
-    bounded: "Clear numerical answer: Usher syndrome has most OMIM entries (33)"
-  
-  scope:
-    score: 3
-    assessment: "Well-bounded to 4 specific syndromes with clear counting methodology"
-    complexity: "Intermediate - requires understanding MedGen's cross-reference structure"
-  
-  total_score: 9
+      SELECT (COUNT(DISTINCT ?geneId) AS ?total)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+          ?diseaseAnn dcterms:subject "Disease" ;
+                      oa:hasBody <http://identifiers.org/mesh/D053840> ;
+                      oa:hasTarget ?article .
+          ?geneAnn dcterms:subject "Gene" ;
+                   oa:hasBody ?geneId ;
+                   oa:hasTarget ?article .
+        }
+        GRAPH <http://rdfportal.org/dataset/ncbigene> {
+          ?geneId a insdc:Gene ;
+                  ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+        }
+      }
+      GROUP BY ?geneId
+      HAVING (COUNT(DISTINCT ?article) >= 500)
+    result_count: 1
 
-rdf_triples:
-  - subject: "<http://www.ncbi.nlm.nih.gov/medgen/C0271097>"
-    predicate: "a"
-    object: "mo:ConceptID"
-    comment: "# Usher syndrome main concept"
-  
-  - subject: "<http://www.ncbi.nlm.nih.gov/medgen/C0271097>"
-    predicate: "dct:identifier"
-    object: '"C0271097"'
-    comment: "# MedGen CUI identifier"
-  
-  - subject: "<http://www.ncbi.nlm.nih.gov/medgen/C0271097>"
-    predicate: "rdfs:label"
-    object: '"Usher syndrome"@en'
-    comment: "# Primary label"
-  
-  - subject: "<http://www.ncbi.nlm.nih.gov/medgen/C0271097>"
-    predicate: "mo:mgconso"
-    object: "_:bn1"
-    comment: "# Terminology mapping blank node"
-  
-  - subject: "_:bn1"
-    predicate: "rdfs:seeAlso"
-    object: "<http://identifiers.org/mim/590085>"
-    comment: "# OMIM cross-reference"
-  
-  - subject: "<http://www.ncbi.nlm.nih.gov/medgen/C1848638>"
-    predicate: "a"
-    object: "mo:ConceptID"
-    comment: "# Usher syndrome type 1B subtype"
-  
-  - subject: "<http://www.ncbi.nlm.nih.gov/medgen/C1848638>"
-    predicate: "rdfs:label"
-    object: '"Usher Syndrome, Type Ib"@en'
-    comment: "# Subtype label"
-  
-  - subject: "<http://www.ncbi.nlm.nih.gov/medgen/C1848638>"
-    predicate: "mo:mgconso"
-    object: "_:bn2"
-    comment: "# Subtype OMIM mappings"
-  
-  - subject: "_:bn2"
-    predicate: "rdfs:seeAlso"
-    object: "<http://identifiers.org/mim/276900>"
-    comment: "# USH1B phenotype MIM"
-  
-  - subject: "_:bn2"
-    predicate: "rdfs:seeAlso"
-    object: "<http://identifiers.org/mim/276903>"
-    comment: "# USH1B gene MIM (MYO7A)"
+rdf_triples: |
+  @prefix oa: <http://www.w3.org/ns/oa#> .
+  @prefix dcterms: <http://purl.org/dc/terms/> .
+  @prefix insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
+  @prefix ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix cco: <http://rdf.ebi.ac.uk/terms/chembl#> .
+  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
 
-notes:
-  design_rationale: |
-    This question showcases MedGen's unique capability to aggregate genetic locus information from OMIM across disease subtypes. Unlike individual OMIM entries or literature searches, MedGen provides a comprehensive view of genetic heterogeneity by linking syndrome concepts to all their associated OMIM phenotype and gene entries.
-  
-  database_usage:
-    medgen_role: "PRIMARY - aggregates OMIM cross-references for comprehensive genetic heterogeneity assessment"
-    pubmed_role: "Verification that literature doesn't provide this comparative data"
-  
-  why_not_uniprot: "This is a clinical genetics question about disease classification, not protein structure/function"
-  
-  genetic_background: |
-    Usher syndrome's 33 OMIM entries reflect:
-    - Type 1 (USH1): Severe hearing loss + prepubertal vision loss (11 subtypes: USH1A-K)
-    - Type 2 (USH2): Moderate hearing loss + postpubertal vision loss (4 subtypes: USH2A-D)
-    - Type 3 (USH3): Progressive hearing loss + variable vision loss (2 subtypes: USH3A-B)
-    - Modifier loci affecting phenotype severity
-    
-    Each subtype involves different genes encoding proteins for inner ear hair cell stereocilia and retinal photoreceptor function.
-  
-  mie_compliance: |
-    Followed MIE file guidance:
-    1. Used kw_search_tools: [ncbi_esearch] for initial concept discovery
-    2. Queried mo:mgconso blank nodes for OMIM cross-references
-    3. Used FILTER(STRSTARTS()) for OMIM identifier pattern matching
-    4. Counted DISTINCT to avoid duplicate cross-references
-  
-  validation:
-    query_date: "2025-02-08"
-    data_version: "MedGen February 2025 release"
-    result_stability: "OMIM counts may increase with new genetic discoveries"
+  # Brugada syndrome disease annotation (MeSH:D053840)
+  [] a oa:Annotation ;
+     dcterms:subject "Disease" ;
+     oa:hasBody <http://identifiers.org/mesh/D053840> ;
+     oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/23414885> .
+  # Database: pubtator | Query: 1 | Comment: Disease annotation linking MeSH D053840 to a PubMed article
+
+  # SCN5A (NCBI Gene 6331) — co-annotated in 2768 articles
+  [] a oa:Annotation ;
+     dcterms:subject "Gene" ;
+     oa:hasBody <http://identifiers.org/ncbigene/6331> ;
+     oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/23414885> .
+  # Database: pubtator | Query: 1 | Comment: Gene annotation linking SCN5A to an article also annotated with Brugada syndrome
+
+  <http://identifiers.org/ncbigene/6331> a insdc:Gene ;
+     rdfs:label "SCN5A" ;
+     ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+  # Database: ncbigene | Query: 1 | Comment: SCN5A confirmed as human gene (taxon 9606), co-annotated in 2768 articles
+
+  <http://identifiers.org/ncbigene/3757> a insdc:Gene ;
+     rdfs:label "KCNH2" ;
+     ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+  # Database: ncbigene | Query: 1 | Comment: KCNH2 confirmed as human gene, co-annotated in 935 articles
+
+  <http://identifiers.org/ncbigene/3784> a insdc:Gene ;
+     rdfs:label "KCNQ1" ;
+     ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+  # Database: ncbigene | Query: 1 | Comment: KCNQ1 confirmed as human gene, co-annotated in 767 articles
+
+  <http://identifiers.org/ncbigene/775> a insdc:Gene ;
+     rdfs:label "CACNA1C" ;
+     ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+  # Database: ncbigene | Query: 1 | Comment: CACNA1C confirmed as human gene, co-annotated in 660 articles
+
+  <http://identifiers.org/ncbigene/6262> a insdc:Gene ;
+     rdfs:label "RYR2" ;
+     ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+  # Database: ncbigene | Query: 1 | Comment: RYR2 confirmed as human gene, co-annotated in 632 articles
+
+  # ChEMBL drug target entries (Query 2) — all 5 genes have human single-protein targets
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL1980> a cco:SingleProtein ;
+     rdfs:label "Sodium channel protein type V alpha subunit" ;
+     cco:taxonomy <http://identifiers.org/taxonomy/9606> ;
+     cco:hasTargetComponent/skos:exactMatch <http://purl.uniprot.org/uniprot/Q14524> .
+  # Database: chembl | Query: 2 | Comment: CHEMBL1980 (Nav1.5/SCN5A) — human drug target, UniProt Q14524
+
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL240> a cco:SingleProtein ;
+     rdfs:label "HERG" ;
+     cco:taxonomy <http://identifiers.org/taxonomy/9606> ;
+     cco:hasTargetComponent/skos:exactMatch <http://purl.uniprot.org/uniprot/Q12809> .
+  # Database: chembl | Query: 2 | Comment: CHEMBL240 (hERG/KCNH2) — human drug target, UniProt Q12809
+
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL1866> a cco:SingleProtein ;
+     rdfs:label "Voltage-gated potassium channel subunit Kv7.1" ;
+     cco:taxonomy <http://identifiers.org/taxonomy/9606> ;
+     cco:hasTargetComponent/skos:exactMatch <http://purl.uniprot.org/uniprot/P51787> .
+  # Database: chembl | Query: 2 | Comment: CHEMBL1866 (Kv7.1/KCNQ1) — human drug target, UniProt P51787
+
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL1940> a cco:SingleProtein ;
+     rdfs:label "Voltage-gated L-type calcium channel alpha-1C subunit" ;
+     cco:taxonomy <http://identifiers.org/taxonomy/9606> ;
+     cco:hasTargetComponent/skos:exactMatch <http://purl.uniprot.org/uniprot/Q13936> .
+  # Database: chembl | Query: 2 | Comment: CHEMBL1940 (Cav1.2/CACNA1C) — human drug target, UniProt Q13936
+
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL4403> a cco:SingleProtein ;
+     rdfs:label "Ryanodine receptor 2" ;
+     cco:taxonomy <http://identifiers.org/taxonomy/9606> ;
+     cco:hasTargetComponent/skos:exactMatch <http://purl.uniprot.org/uniprot/Q92736> .
+  # Database: chembl | Query: 2 | Comment: CHEMBL4403 (RyR2/RYR2) — human drug target, UniProt Q92736
+
+exact_answer:
+  - "SCN5A"
+  - "KCNH2"
+  - "KCNQ1"
+  - "CACNA1C"
+  - "RYR2"
+
+ideal_answer: |
+  All five human genes co-annotated with Brugada syndrome in at least 500 PubMed articles in PubTator Central also have drug target entries in ChEMBL. Ranked by co-annotation frequency, these genes and their ChEMBL targets are: SCN5A (2,768 articles; CHEMBL1980, Nav1.5), KCNH2 (935 articles; CHEMBL240, hERG), KCNQ1 (767 articles; CHEMBL1866, Kv7.1), CACNA1C (660 articles; CHEMBL1940, Cav1.2), and RYR2 (632 articles; CHEMBL4403, RyR2). SCN5A encodes the cardiac sodium channel Nav1.5 and is the primary causal gene for Brugada syndrome, responsible for 15–30% of cases through loss-of-function variants; its ChEMBL entry reflects its central role as a drug target for antiarrhythmic compounds and as a cardiac safety liability. The potassium channels KCNH2 (hERG) and KCNQ1 (Kv7.1) are prominent ChEMBL targets because inhibition of hERG is a major mechanism of drug-induced QT prolongation and ventricular arrhythmia. CACNA1C encodes the L-type calcium channel Cav1.2, a target for dihydropyridine and non-dihydropyridine calcium channel blockers. RYR2 (ryanodine receptor 2) is targeted by flecainide and other agents used in catecholaminergic polymorphic ventricular tachycardia, a related channelopathy with substantial overlap in the research literature. The complete overlap between the high-frequency co-annotation set and ChEMBL pharmacological targets reflects the ion-channel-centric pathophysiology of Brugada syndrome and the translational significance of these genes in cardiac drug development and safety pharmacology.
+
+question_template_used: Template 3 (Comprehensive List with Threshold Criterion + Cross-Database Pharmacological Filter)
+
+time_spent:
+  exploration: 20 minutes
+  formulation: 10 minutes
+  verification: 20 minutes
+  pubmed_test: 5 minutes
+  extraction: 15 minutes
+  documentation: 20 minutes
+  total: 90 minutes

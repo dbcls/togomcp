@@ -254,7 +254,7 @@ SELECT DISTINCT ?graph WHERE {
 @mcp.tool(
         enabled=True,
         name="get_MIE_file",
-        description="**Use this before constructing any SPARQL queries for the database.** Get the MIE (Metadata Interoperability Exchange) file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database."
+        description="**At the start of any task, identify ALL databases needed and call this tool for EACH of them before writing any SPARQL queries.** Do not query a database until its MIE file has been read. Get the MIE (Metadata Interoperability Exchange) file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database."
 )
 async def get_MIE_file(
     dbname: Annotated[str, Field(description=DBNAME_DESCRIPTION)]
@@ -296,14 +296,51 @@ async def get_MIE_file(
 
 @mcp.tool(
     enabled=True, 
-    name="list_databases",
-    description="List available databases and their descriptions."
+    name="list_databases"
 )
 def list_databases() -> List[Dict[str, Any]]:
     """
-    Reads all YAML files in a given directory and extracts the title and
-    description from the 'schema_info' section.
-
+    🔍 CRITICAL FIRST STEP: Database Discovery & Selection
+    
+    **ALWAYS CALL THIS FIRST when you need to:**
+    - Determine which database(s) contain relevant data for a query
+    - Discover available databases before starting research
+    - Verify database capabilities and coverage
+    - Identify cross-database integration opportunities
+    
+    **What it returns:**
+    A list of all 22 RDF databases with:
+    - Database name (for use in other tool calls)
+    - Title (human-readable name)
+    - Description (detailed content, entities, cross-references, use cases)
+    
+    **Why this matters:**
+    Database descriptions contain CRITICAL KEYWORDS that reveal content:
+    - "MANE" appears in Ensembl description → transcript quality flags
+    - "drug targets" appears in ChEMBL → pharmaceutical research
+    - "clinical variants" appears in ClinVar → disease associations
+    - "pathways" appears in Reactome → biological processes
+    
+    **Workflow:**
+    1. Call list_databases() BEFORE calling get_MIE_file() or run_sparql()
+    2. Read descriptions to identify 1-3 relevant databases
+    3. Proceed with get_MIE_file() on identified databases
+    4. Query comprehensively with discovered structured properties
+    
+    **Common mistake to avoid:**
+    ❌ Assuming a database based on name alone (e.g., "gene query → only NCBI Gene")
+    ✅ Discovering databases by reading descriptions (e.g., "gene query → both NCBI Gene AND Ensembl have complementary data")
+    
+    **Example pattern:**
+    Query: "MANE Select transcripts for drug targets"
+    → Call list_databases()
+    → See "MANE" in Ensembl description
+    → See "drug targets" in ChEMBL description  
+    → Query both databases on shared 'ebi' endpoint
+    
+    **This is reconnaissance, not optional.**
+    Skipping this step = guessing which database to use = missing 50-80% of relevant data.
+  
     Returns:
         A list of dictionaries, each containing schema info for a file.
     """

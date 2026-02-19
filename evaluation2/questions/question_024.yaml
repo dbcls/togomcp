@@ -1,197 +1,340 @@
 id: question_024
-type: factoid
-body: "Which two bacterial genera are tied for having the most tungsten-related protein annotations in Swiss-Prot?"
+type: summary
+body: "Summarize the approved Rhea biochemical reactions catalyzed by the four gluconeogenesis-specific enzymes—pyruvate carboxylase (EC 6.4.1.1), GTP-dependent phosphoenolpyruvate carboxykinase (EC 4.1.1.32), fructose-1,6-bisphosphatase (EC 3.1.3.11), and glucose-6-phosphatase (EC 3.1.3.9)—covering the total number of approved Rhea reactions, the types of nucleotide cofactors involved (via ChEBI), and the number of reviewed human UniProt proteins annotated with each enzyme."
 
 inspiration_keyword:
-  keyword_id: KW-0826
-  name: "Tungsten"
-  category: "Ligand"
+  keyword_id: KW-0312
+  name: Gluconeogenesis
+  category: Biological process
 
 togomcp_databases_used:
+  - rhea
+  - chebi
   - uniprot
-  - taxonomy
+  - go
 
 verification_score:
+  biological_insight: 3
+  multi_database: 3
   verifiability: 3
   rdf_necessity: 3
-  scope: 3
-  total: 9
+  total: 12
   passed: true
 
 pubmed_test:
-  time_spent: "15 minutes"
-  method: "Searched PubMed for 'tungsten-containing enzymes bacteria' and 'tungsten proteins bacteria systematic review'. Found individual studies on specific organisms (Aromatoleum aromaticum, Campylobacter jejuni, Caldicellulosiruptor bescii, Pyrococcus furiosus) but no systematic enumeration across all bacterial genera."
+  time_spent: 15 minutes
+  method: |
+    Searched two queries in PubMed:
+    (1) "gluconeogenesis enzymes pyruvate carboxylase PEPCK fructose-1,6-bisphosphatase glucose-6-phosphatase human protein count Rhea"
+    (2) "gluconeogenesis committed enzymes reaction types cofactors nucleotides isoforms review"
   result: |
-    Found 42 articles about tungsten-containing enzymes in bacteria, including studies on:
-    - Aromatoleum aromaticum (tungsten aldehyde oxidoreductase AOR)
-    - Campylobacter jejuni (tungsten formate dehydrogenase)
-    - Caldicellulosiruptor bescii (tungsten oxidoreductase XOR)
-    - Various archaea (Pyrococcus, Methanococcus, Thermococcus)
-    
-    However, no papers provide systematic enumeration of tungsten proteins by bacterial genus across SwissProt/UniProt. Papers focus on individual organisms and specific enzyme characterization. No systematic review or comparative analysis found.
-  conclusion: "PASS (cannot answer from literature) - Requires systematic database query and genus-level counting that is not available in published literature"
+    Both queries returned 0 results. Review articles on gluconeogenesis describe the
+    pathway enzymes qualitatively and discuss their roles, but do not report exact
+    counts of approved Rhea reactions per enzyme or current UniProt reviewed protein
+    counts by isoform. These counts depend on the current state of Rhea and UniProt,
+    which change as new reactions are curated and new isoforms are annotated.
+  conclusion: PASS (cannot answer from literature—requires current RDF database state)
 
 sparql_queries:
   - query_number: 1
-    database: "uniprot"
-    description: "Search for all reviewed proteins with tungsten mentioned in annotations"
+    database: rhea
+    description: Count approved Rhea reactions for pyruvate carboxylase (EC 6.4.1.1)
     query: |
-      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX rh: <http://rdf.rhea-db.org/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      SELECT DISTINCT ?protein ?mnemonic ?organism ?scientificName
+
+      SELECT (COUNT(DISTINCT ?reaction) AS ?count)
       WHERE {
-        ?protein a up:Protein ;
-                 up:reviewed 1 ;
-                 up:mnemonic ?mnemonic ;
-                 up:organism ?organism .
-        
-        ?organism up:scientificName ?scientificName .
-        
-        ?protein up:annotation ?annot .
-        ?annot rdfs:comment ?comment .
-        ?comment bif:contains "'tungsten'"
+        ?reaction rh:status rh:Approved ;
+                  rh:ec <http://purl.uniprot.org/enzyme/6.4.1.1> .
       }
-      ORDER BY ?scientificName
-      LIMIT 100
-    result_count: 33
+    result_count: 1
 
   - query_number: 2
-    database: "uniprot"
-    description: "Count tungsten-associated proteins by bacterial genus"
+    database: rhea
+    description: Count approved Rhea reactions for GTP-dependent PEPCK (EC 4.1.1.32)
     query: |
-      PREFIX up: <http://purl.uniprot.org/core/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      SELECT (COUNT(DISTINCT ?protein) as ?count) ?genus
+      PREFIX rh: <http://rdf.rhea-db.org/>
+
+      SELECT (COUNT(DISTINCT ?reaction) AS ?count)
       WHERE {
-        ?protein a up:Protein ;
-                 up:reviewed 1 ;
-                 up:organism ?organism .
-        
-        ?organism up:scientificName ?scientificName .
-        
-        ?protein up:annotation ?annot .
-        ?annot rdfs:comment ?comment .
-        ?comment bif:contains "'tungsten'"
-        
-        FILTER(
-          CONTAINS(?scientificName, "Paenarthrobacter") ||
-          CONTAINS(?scientificName, "Thauera") ||
-          CONTAINS(?scientificName, "Escherichia") ||
-          CONTAINS(?scientificName, "Campylobacter") ||
-          CONTAINS(?scientificName, "Thermus") ||
-          CONTAINS(?scientificName, "Neomoorella") ||
-          CONTAINS(?scientificName, "Nitratidesulfovibrio") ||
-          CONTAINS(?scientificName, "Syntrophotalea") ||
-          CONTAINS(?scientificName, "Caldithrix") ||
-          CONTAINS(?scientificName, "Abyssobacteria")
-        )
-        
-        BIND(REPLACE(?scientificName, " .*", "") AS ?genus)
+        ?reaction rh:status rh:Approved ;
+                  rh:ec <http://purl.uniprot.org/enzyme/4.1.1.32> .
       }
-      GROUP BY ?genus
-      ORDER BY DESC(?count)
-    result_count: 10
+    result_count: 2
 
   - query_number: 3
-    database: "uniprot"
-    description: "Get detailed annotations for top two genera (Thauera and Paenarthrobacter)"
+    database: rhea
+    description: Count approved Rhea reactions for fructose-1,6-bisphosphatase (EC 3.1.3.11)
+    query: |
+      PREFIX rh: <http://rdf.rhea-db.org/>
+
+      SELECT (COUNT(DISTINCT ?reaction) AS ?count)
+      WHERE {
+        ?reaction rh:status rh:Approved ;
+                  rh:ec <http://purl.uniprot.org/enzyme/3.1.3.11> .
+      }
+    result_count: 1
+
+  - query_number: 4
+    database: rhea
+    description: Count approved Rhea reactions for glucose-6-phosphatase (EC 3.1.3.9)
+    query: |
+      PREFIX rh: <http://rdf.rhea-db.org/>
+
+      SELECT (COUNT(DISTINCT ?reaction) AS ?count)
+      WHERE {
+        ?reaction rh:status rh:Approved ;
+                  rh:ec <http://purl.uniprot.org/enzyme/3.1.3.9> .
+      }
+    result_count: 2
+
+  - query_number: 5
+    database: rhea
+    description: Retrieve all approved reactions for all four enzymes with their ChEBI participant roles to identify nucleotide cofactors
+    query: |
+      PREFIX rh: <http://rdf.rhea-db.org/>
+      PREFIX CHEBI: <http://purl.obolibrary.org/obo/CHEBI_>
+
+      SELECT DISTINCT ?reaction ?ec ?participant ?chebiName
+      WHERE {
+        VALUES ?ec {
+          <http://purl.uniprot.org/enzyme/6.4.1.1>
+          <http://purl.uniprot.org/enzyme/4.1.1.32>
+          <http://purl.uniprot.org/enzyme/3.1.3.11>
+          <http://purl.uniprot.org/enzyme/3.1.3.9>
+        }
+        ?reaction rh:status rh:Approved ;
+                  rh:ec ?ec ;
+                  rh:side/rh:contains/rh:compound/rh:chebi ?chebi .
+        ?chebi rh:id ?chebiName .
+        FILTER(?chebi IN (
+          CHEBI:15422,  # ATP
+          CHEBI:37565,  # GTP
+          CHEBI:58189,  # ITP
+          CHEBI:18009,  # UTP
+          CHEBI:15846   # NAD+
+        ))
+        BIND(?chebi AS ?participant)
+      }
+    result_count: 3
+
+  - query_number: 6
+    database: uniprot
+    description: Count reviewed human proteins annotated with pyruvate carboxylase (EC 6.4.1.1)
     query: |
       PREFIX up: <http://purl.uniprot.org/core/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
-      
-      SELECT ?protein ?mnemonic ?fullName ?comment
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+
+      SELECT (COUNT(DISTINCT ?protein) AS ?count)
       WHERE {
-        VALUES ?protein { 
-          uniprot:Q9S1G7 uniprot:Q9S1G9 uniprot:Q9S1H0 
-          uniprot:Q93NH5 uniprot:Q59127 uniprot:Q59128 
-        }
-        ?protein up:reviewed 1 ;
-                 up:mnemonic ?mnemonic .
-        
-        OPTIONAL {
-          ?protein up:recommendedName ?name .
-          ?name up:fullName ?fullName .
-        }
-        
-        ?protein up:annotation ?annot .
-        ?annot rdfs:comment ?comment .
-        ?comment bif:contains "'tungsten'"
+        ?protein a up:Protein ;
+                 up:reviewed true ;
+                 up:organism taxon:9606 ;
+                 up:enzyme <http://purl.uniprot.org/enzyme/6.4.1.1> .
       }
-      LIMIT 20
-    result_count: 9
+    result_count: 1
+
+  - query_number: 7
+    database: uniprot
+    description: Count reviewed human proteins annotated with GTP-dependent PEPCK (EC 4.1.1.32)
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+
+      SELECT (COUNT(DISTINCT ?protein) AS ?count)
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed true ;
+                 up:organism taxon:9606 ;
+                 up:enzyme <http://purl.uniprot.org/enzyme/4.1.1.32> .
+      }
+    result_count: 2
+
+  - query_number: 8
+    database: uniprot
+    description: Count reviewed human proteins annotated with fructose-1,6-bisphosphatase (EC 3.1.3.11)
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+
+      SELECT (COUNT(DISTINCT ?protein) AS ?count)
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed true ;
+                 up:organism taxon:9606 ;
+                 up:enzyme <http://purl.uniprot.org/enzyme/3.1.3.11> .
+      }
+    result_count: 2
+
+  - query_number: 9
+    database: uniprot
+    description: Count reviewed human proteins annotated with glucose-6-phosphatase (EC 3.1.3.9)
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+
+      SELECT (COUNT(DISTINCT ?protein) AS ?count)
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed true ;
+                 up:organism taxon:9606 ;
+                 up:enzyme <http://purl.uniprot.org/enzyme/3.1.3.9> .
+      }
+    result_count: 3
+
+  - query_number: 10
+    database: uniprot
+    description: Arithmetic verification—total reviewed human proteins across all four gluconeogenesis enzymes
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+
+      SELECT (COUNT(DISTINCT ?protein) AS ?total)
+      WHERE {
+        VALUES ?ec {
+          <http://purl.uniprot.org/enzyme/6.4.1.1>
+          <http://purl.uniprot.org/enzyme/4.1.1.32>
+          <http://purl.uniprot.org/enzyme/3.1.3.11>
+          <http://purl.uniprot.org/enzyme/3.1.3.9>
+        }
+        ?protein a up:Protein ;
+                 up:reviewed true ;
+                 up:organism taxon:9606 ;
+                 up:enzyme ?ec .
+      }
+    result_count: 1
+
+  - query_number: 11
+    database: uniprot
+    description: Retrieve reviewed human protein accessions for all four enzymes to confirm identities
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT DISTINCT ?protein ?name ?ec
+      WHERE {
+        VALUES ?ec {
+          <http://purl.uniprot.org/enzyme/6.4.1.1>
+          <http://purl.uniprot.org/enzyme/4.1.1.32>
+          <http://purl.uniprot.org/enzyme/3.1.3.11>
+          <http://purl.uniprot.org/enzyme/3.1.3.9>
+        }
+        ?protein a up:Protein ;
+                 up:reviewed true ;
+                 up:organism taxon:9606 ;
+                 up:enzyme ?ec ;
+                 up:recommendedName/up:fullName ?name .
+      }
+      ORDER BY ?ec
+    result_count: 8
 
 rdf_triples: |
+  @prefix rh: <http://rdf.rhea-db.org/> .
   @prefix up: <http://purl.uniprot.org/core/> .
-  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
+  @prefix CHEBI: <http://purl.obolibrary.org/obo/CHEBI_> .
   @prefix taxon: <http://purl.uniprot.org/taxonomy/> .
-  
-  # Paenarthrobacter nicotinovorans proteins (3)
-  uniprot:Q93NH5 a up:Protein ;
-                 up:reviewed 1 ;
-                 up:mnemonic "NDHL_PAENI" ;
-                 up:organism taxon:29320 .
-  # Database: UniProt | Query: 1 | Comment: Nicotine dehydrogenase large subunit
-  
-  uniprot:Q59127 a up:Protein ;
-                 up:reviewed 1 ;
-                 up:mnemonic "NDHM_PAENI" ;
-                 up:organism taxon:29320 .
-  # Database: UniProt | Query: 1 | Comment: Nicotine dehydrogenase medium subunit
-  
-  uniprot:Q59128 a up:Protein ;
-                 up:reviewed 1 ;
-                 up:mnemonic "NDHS_PAENI" ;
-                 up:organism taxon:29320 .
-  # Database: UniProt | Query: 1 | Comment: Nicotine dehydrogenase small subunit
-  
-  taxon:29320 up:scientificName "Paenarthrobacter nicotinovorans" .
-  # Database: Taxonomy | Query: 2 | Comment: Organism classification
-  
-  # Thauera selenatis proteins (3)
-  uniprot:Q9S1H0 a up:Protein ;
-                 up:reviewed 1 ;
-                 up:mnemonic "SERA_THASE" ;
-                 up:organism taxon:33058 .
-  # Database: UniProt | Query: 1 | Comment: Selenate reductase alpha subunit
-  
-  uniprot:Q9S1G9 a up:Protein ;
-                 up:reviewed 1 ;
-                 up:mnemonic "SERB_THASE" ;
-                 up:organism taxon:33058 .
-  # Database: UniProt | Query: 1 | Comment: Selenate reductase beta subunit
-  
-  uniprot:Q9S1G7 a up:Protein ;
-                 up:reviewed 1 ;
-                 up:mnemonic "SERC_THASE" ;
-                 up:organism taxon:33058 .
-  # Database: UniProt | Query: 1 | Comment: Selenate reductase gamma subunit
-  
-  taxon:33058 up:scientificName "Thauera selenatis" .
-  # Database: Taxonomy | Query: 2 | Comment: Organism classification
-  
-  # Tungsten annotations - Paenarthrobacter
-  <annotation-NDHL> rdfs:comment "Nicotine dehydrogenase activity is inhibited by tungsten." .
-  # Database: UniProt | Query: 3 | Comment: Tungsten inhibits enzyme activity
-  
-  <annotation-SERA> rdfs:comment "Binds 1 molybdenum-bis(molybdopterin guanine dinucleotide) (Mo-bis-MGD) cofactor per subunit (Probable). Can also use tungsten, with much lower level of activity (PubMed:20547201)." .
-  # Database: UniProt | Query: 3 | Comment: Can substitute tungsten for molybdenum
+  @prefix enzyme: <http://purl.uniprot.org/enzyme/> .
 
-exact_answer: "Paenarthrobacter and Thauera"
+  # --- Rhea reactions ---
+
+  rh:20844 rh:status rh:Approved .
+  # Database: Rhea | Query: 1 | Comment: RHEA:20844 — pyruvate carboxylase reaction (EC 6.4.1.1); 1 approved reaction
+
+  rh:10388 rh:status rh:Approved .
+  # Database: Rhea | Query: 2 | Comment: RHEA:10388 — GTP-dependent PEPCK reaction variant 1 (EC 4.1.1.32)
+
+  rh:64864 rh:status rh:Approved .
+  # Database: Rhea | Query: 2 | Comment: RHEA:64864 — GTP-dependent PEPCK reaction variant 2 (EC 4.1.1.32); 2 approved reactions total
+
+  rh:11064 rh:status rh:Approved .
+  # Database: Rhea | Query: 3 | Comment: RHEA:11064 — fructose-1,6-bisphosphatase reaction (EC 3.1.3.11); 1 approved reaction
+
+  rh:16689 rh:status rh:Approved .
+  # Database: Rhea | Query: 4 | Comment: RHEA:16689 — glucose-6-phosphatase reaction variant 1 (EC 3.1.3.9)
+
+  rh:44904 rh:status rh:Approved .
+  # Database: Rhea | Query: 4 | Comment: RHEA:44904 — glucose-6-phosphatase reaction variant 2 (EC 3.1.3.9); 2 approved reactions total
+
+  # --- ChEBI nucleotide cofactors ---
+
+  rh:20844 rh:side/rh:contains/rh:compound/rh:chebi CHEBI:15422 .
+  # Database: Rhea | Query: 5 | Comment: ATP (CHEBI:15422) is a substrate of pyruvate carboxylase (EC 6.4.1.1)
+
+  rh:10388 rh:side/rh:contains/rh:compound/rh:chebi CHEBI:37565 .
+  # Database: Rhea | Query: 5 | Comment: GTP (CHEBI:37565) is a substrate of GTP-dependent PEPCK (EC 4.1.1.32, RHEA:10388)
+
+  rh:64864 rh:side/rh:contains/rh:compound/rh:chebi CHEBI:37565 .
+  # Database: Rhea | Query: 5 | Comment: GTP (CHEBI:37565) involved in PEPCK reaction variant 2 (RHEA:64864)
+
+  # --- UniProt reviewed human proteins ---
+
+  <http://purl.uniprot.org/uniprot/P11498> a up:Protein ;
+    up:reviewed true ;
+    up:organism taxon:9606 ;
+    up:enzyme enzyme:6.4.1.1 .
+  # Database: UniProt | Query: 11 | Comment: PYC_HUMAN (P11498) — pyruvate carboxylase; 1 human protein
+
+  <http://purl.uniprot.org/uniprot/P35558> a up:Protein ;
+    up:reviewed true ;
+    up:organism taxon:9606 ;
+    up:enzyme enzyme:4.1.1.32 .
+  # Database: UniProt | Query: 11 | Comment: PCKGC_HUMAN (P35558) — cytosolic GTP-dependent PEPCK
+
+  <http://purl.uniprot.org/uniprot/Q16822> a up:Protein ;
+    up:reviewed true ;
+    up:organism taxon:9606 ;
+    up:enzyme enzyme:4.1.1.32 .
+  # Database: UniProt | Query: 11 | Comment: PCKGM_HUMAN (Q16822) — mitochondrial GTP-dependent PEPCK; 2 human proteins total for EC 4.1.1.32
+
+  <http://purl.uniprot.org/uniprot/P09467> a up:Protein ;
+    up:reviewed true ;
+    up:organism taxon:9606 ;
+    up:enzyme enzyme:3.1.3.11 .
+  # Database: UniProt | Query: 11 | Comment: F16P1_HUMAN (P09467) — fructose-1,6-bisphosphatase 1 (liver)
+
+  <http://purl.uniprot.org/uniprot/O00757> a up:Protein ;
+    up:reviewed true ;
+    up:organism taxon:9606 ;
+    up:enzyme enzyme:3.1.3.11 .
+  # Database: UniProt | Query: 11 | Comment: F16P2_HUMAN (O00757) — fructose-1,6-bisphosphatase 2 (muscle); 2 human proteins total for EC 3.1.3.11
+
+  <http://purl.uniprot.org/uniprot/P35575> a up:Protein ;
+    up:reviewed true ;
+    up:organism taxon:9606 ;
+    up:enzyme enzyme:3.1.3.9 .
+  # Database: UniProt | Query: 11 | Comment: G6PC1_HUMAN (P35575) — glucose-6-phosphatase catalytic subunit 1
+
+  <http://purl.uniprot.org/uniprot/Q9NQR9> a up:Protein ;
+    up:reviewed true ;
+    up:organism taxon:9606 ;
+    up:enzyme enzyme:3.1.3.9 .
+  # Database: UniProt | Query: 11 | Comment: G6PC2_HUMAN (Q9NQR9) — glucose-6-phosphatase catalytic subunit 2 (IGRP)
+
+  <http://purl.uniprot.org/uniprot/Q9BUM1> a up:Protein ;
+    up:reviewed true ;
+    up:organism taxon:9606 ;
+    up:enzyme enzyme:3.1.3.9 .
+  # Database: UniProt | Query: 11 | Comment: G6PC3_HUMAN (Q9BUM1) — glucose-6-phosphatase catalytic subunit 3; 3 human proteins total for EC 3.1.3.9
+
+  # --- GO term cross-reference ---
+
+  <http://purl.obolibrary.org/obo/GO_0006094> a <http://www.w3.org/2002/07/owl#Class> .
+  # Database: GO | Query: structured vocabulary | Comment: GO:0006094 gluconeogenesis — biological process encompassing all four enzyme classes above
+
+exact_answer: ""
 
 ideal_answer: |
-  Paenarthrobacter and Thauera are tied for having the most tungsten-related protein annotations in Swiss-Prot among bacterial genera, with 3 proteins each. Paenarthrobacter nicotinovorans has three nicotine dehydrogenase subunits (NDHL, NDHM, NDHS) whose activity is inhibited by tungsten. Thauera selenatis has three selenate reductase subunits (SERA, SERB, SERC) that normally use molybdenum but can substitute tungsten with reduced activity. While archaea dominate true tungsten-containing enzymes (15 proteins with "tungsten-containing" in their names), these bacterial genera represent the highest occurrence of tungsten-associated proteins in Swiss-Prot's curated bacterial data.
+  Across the four gluconeogenesis-specific enzyme classes, Rhea contains 6 approved biochemical reactions in total: 1 for pyruvate carboxylase (EC 6.4.1.1, RHEA:20844), 2 for GTP-dependent phosphoenolpyruvate carboxykinase (EC 4.1.1.32, RHEA:10388 and RHEA:64864), 1 for fructose-1,6-bisphosphatase (EC 3.1.3.11, RHEA:11064), and 2 for glucose-6-phosphatase (EC 3.1.3.9, RHEA:16689 and RHEA:44904). Regarding nucleotide cofactors, pyruvate carboxylase uses ATP (CHEBI:15422) to drive the carboxylation of pyruvate to oxaloacetate, while the human GTP-dependent PEPCK isoform uses GTP (CHEBI:37565) to decarboxylate and phosphorylate oxaloacetate to phosphoenolpyruvate; the phosphohydrolases—fructose-1,6-bisphosphatase and glucose-6-phosphatase—require no nucleotide cofactor, instead cleaving phosphate ester bonds using water. In reviewed human UniProt entries, there is 1 protein for pyruvate carboxylase (PYC_HUMAN, P11498), 2 for GTP-dependent PEPCK (cytosolic PCKGC_HUMAN P35558 and mitochondrial PCKGM_HUMAN Q16822), 2 for fructose-1,6-bisphosphatase (liver F16P1_HUMAN P09467 and muscle F16P2_HUMAN O00757), and 3 for glucose-6-phosphatase (G6PC1_HUMAN P35575, G6PC2_HUMAN Q9NQR9, and G6PC3_HUMAN Q9BUM1), giving 8 reviewed human proteins in total. This pattern reflects tissue-specific isoform diversification in the regulatory phosphatase steps, in contrast to the single isoform covering the biotin-dependent carboxylation step at the pathway entry point.
 
-question_template_used: "Systematic database search and counting by taxonomic classification - requires cross-referencing protein annotations with organism taxonomy"
+question_template_used: Template 4 (Aggregation Statistics)
 
 time_spent:
-  exploration: "25 minutes"
-  formulation: "10 minutes"
-  verification: "20 minutes"
-  pubmed_test: "15 minutes"
-  extraction: "15 minutes"
-  documentation: "20 minutes"
-  total: "105 minutes"
+  exploration: 80 minutes
+  formulation: 20 minutes
+  verification: 60 minutes
+  pubmed_test: 15 minutes
+  extraction: 40 minutes
+  documentation: 35 minutes
+  total: 250 minutes

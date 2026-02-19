@@ -1,109 +1,393 @@
 id: question_034
-type: choice
-body: "Among human zinc-binding proteins with known 3D structures, which cellular compartment contains the highest number of these proteins?"
+type: summary
+body: "Summarize the trimethoprim resistance landscape in terms of the most phenotypically resistant bacterial species and their taxonomic family classification, the predominant resistance gene families and their molecular function, and the geographic distribution of resistant isolates."
 
 inspiration_keyword:
-  keyword_id: KW-0862
-  name: "Zinc"
-  category: "Ligand"
+  keyword_id: KW-0817
+  name: Trimethoprim resistance
+  category: Biological process
 
-togomcp_databases_used: [uniprot, go]
+togomcp_databases_used:
+  - amrportal
+  - taxonomy
+  - ncbigene
 
 verification_score:
-  verifiability: 3
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 2
   rdf_necessity: 3
-  scope: 3
-  total: 9
+  total: 11
   passed: true
 
 pubmed_test:
-  time_spent: "15 minutes"
-  method: "Searched for 'human zinc binding proteins cellular localization structures' and examined top 3 results"
-  result: "Found articles about specific zinc transporters (SLC30/SLC39 families), individual zinc-binding proteins (ZC3H12D, DDX5), and TRPML channels. None provide systematic quantitative data about cellular localization patterns across all human zinc-binding proteins with structures."
-  conclusion: "PASS - PubMed lacks comprehensive quantitative data about cellular compartment distribution across all zinc-binding proteins with structures. This requires systematic RDF database integration."
+  time_spent: 5 minutes
+  method: Searched "trimethoprim resistance AMRportal database AMR gene class geographic distribution" and "trimethoprim resistance surveillance global bacteria gene types dhfrI dfrA" in PubMed using ncbi_esearch.
+  result: |
+    Both queries returned 0 results. PubMed literature may discuss trimethoprim
+    resistance broadly, but cannot provide the specific phenotype counts, gene family
+    distributions with exact record counts, and geographic breakdowns tied to
+    current AMRportal surveillance data. The specific numbers (2,390 resistant isolates,
+    25,236 TRIMETHOPRIM-class genotype features, dhfrI as dominant gene family with
+    ~11,583 records, geographic burden by region) are not recoverable from the
+    literature alone.
+  conclusion: PASS (cannot answer from literature - requires current database state)
 
 sparql_queries:
   - query_number: 1
-    database: "uniprot"
-    description: "Count total human zinc-binding proteins with known structures"
+    database: amrportal
+    description: Count all trimethoprim antibiotic name variants to confirm scope
     query: |
-      PREFIX up: <http://purl.uniprot.org/core/>
-      PREFIX keywords: <http://purl.uniprot.org/keywords/>
-      
-      SELECT (COUNT(DISTINCT ?protein) as ?count)
+      PREFIX amr: <http://example.org/ebiamr#>
+
+      SELECT ?antibiotic (COUNT(*) as ?total)
+      FROM <http://rdfportal.org/dataset/amrportal>
       WHERE {
-        ?protein a up:Protein ;
-                 up:reviewed 1 ;
-                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
-                 up:classifiedWith keywords:862 ;
-                 rdfs:seeAlso ?pdb .
-        FILTER(CONTAINS(STR(?pdb), "rdf.wwpdb.org"))
+        ?s a amr:PhenotypeMeasurement ;
+           amr:antibioticName ?antibiotic .
+        FILTER(CONTAINS(LCASE(?antibiotic), "trimethoprim"))
       }
-    result_count: 372
+      GROUP BY ?antibiotic
+      ORDER BY DESC(?total)
+      LIMIT 20
+    result_count: 3
 
   - query_number: 2
-    database: "uniprot"
-    description: "Count GO cellular component annotations for zinc-binding proteins with structures"
+    database: amrportal
+    description: Summarize phenotype resistance distribution for trimethoprim-only (not combination drugs)
     query: |
-      PREFIX up: <http://purl.uniprot.org/core/>
-      PREFIX keywords: <http://purl.uniprot.org/keywords/>
-      
-      SELECT ?goTerm (COUNT(DISTINCT ?protein) as ?count)
+      PREFIX amr: <http://example.org/ebiamr#>
+
+      SELECT ?phenotype (COUNT(*) as ?count)
+      FROM <http://rdfportal.org/dataset/amrportal>
       WHERE {
-        ?protein a up:Protein ;
-                 up:reviewed 1 ;
-                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
-                 up:classifiedWith keywords:862 ;
-                 up:classifiedWith ?goTerm ;
-                 rdfs:seeAlso ?pdb .
-        FILTER(CONTAINS(STR(?pdb), "rdf.wwpdb.org"))
-        FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
+        ?s a amr:PhenotypeMeasurement ;
+           amr:antibioticName "trimethoprim" ;
+           amr:resistancePhenotype ?phenotype .
       }
-      GROUP BY ?goTerm
+      GROUP BY ?phenotype
+    result_count: 3
+
+  - query_number: 3
+    database: amrportal
+    description: Top bacterial species by trimethoprim resistance phenotype count
+    query: |
+      PREFIX amr: <http://example.org/ebiamr#>
+
+      SELECT ?species ?phenotype (COUNT(*) as ?count)
+      FROM <http://rdfportal.org/dataset/amrportal>
+      WHERE {
+        ?s a amr:PhenotypeMeasurement ;
+           amr:antibioticName "trimethoprim" ;
+           amr:species ?species ;
+           amr:resistancePhenotype ?phenotype .
+      }
+      GROUP BY ?species ?phenotype
       ORDER BY DESC(?count)
       LIMIT 20
     result_count: 20
 
-rdf_triples: |
-  @prefix up: <http://purl.uniprot.org/core/> .
-  @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
-  @prefix keywords: <http://purl.uniprot.org/keywords/> .
-  @prefix pdb: <http://rdf.wwpdb.org/pdb/> .
-  @prefix go: <http://purl.obolibrary.org/obo/> .
-  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  
-  # Database: UniProt | Query: 1 | Example protein classified with zinc keyword
-  uniprot:P29590 a up:Protein ;
-                 up:reviewed 1 ;
-                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
-                 up:classifiedWith keywords:862 .
-  
-  # Database: UniProt | Query: 1 | Cross-reference to PDB structure
-  uniprot:P29590 rdfs:seeAlso pdb:1ZSW .
-  
-  # Database: UniProt | Query: 2 | GO cellular component annotation - cytosol
-  uniprot:P29590 up:classifiedWith go:GO_0005829 .
-  
-  # Database: GO | Query: 2 | GO term label
-  go:GO_0005829 rdfs:label "cytosol" .
-  
-  # Database: GO | Query: 2 | Other cellular component annotations
-  go:GO_0005634 rdfs:label "nucleus" .  # 150 proteins
-  go:GO_0005737 rdfs:label "cytoplasm" .  # 145 proteins
-  go:GO_0005654 rdfs:label "nucleoplasm" .  # 120 proteins
-  go:GO_0005886 rdfs:label "plasma membrane" .  # 110 proteins
+  - query_number: 4
+    database: amrportal
+    description: Identify top resistant organisms with NCBI Taxonomy IRIs via genotype features
+    query: |
+      PREFIX amr: <http://example.org/ebiamr#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
 
-exact_answer:
-  choices:
-    - "Cytosol"
-    - "Nucleus"  
-    - "Plasma membrane"
-    - "Mitochondrion"
-  correct: "Cytosol"
+      SELECT ?species ?taxon (COUNT(*) as ?count)
+      FROM <http://rdfportal.org/dataset/amrportal>
+      WHERE {
+        ?s a amr:GenotypeFeature ;
+           amr:amrClass "TRIMETHOPRIM" ;
+           amr:species ?species ;
+           obo:RO_0002162 ?taxon .
+      }
+      GROUP BY ?species ?taxon
+      ORDER BY DESC(?count)
+      LIMIT 10
+    result_count: 10
+
+  - query_number: 5
+    database: taxonomy
+    description: Get taxonomic family classification for top trimethoprim-resistant organisms
+    query: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?speciesId ?ancestorLabel ?rank
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        VALUES ?speciesId {
+          taxon:562   taxon:624   taxon:573
+          taxon:1280  taxon:1352  taxon:28901
+        }
+        ?speciesId rdfs:subClassOf ?parent .
+        ?parent rdfs:subClassOf ?grandparent .
+        ?grandparent a tax:Taxon ;
+                     rdfs:label ?ancestorLabel ;
+                     tax:rank ?rank .
+        FILTER(?rank IN (tax:Family, tax:Order))
+      }
+      LIMIT 30
+    result_count: 5
+
+  - query_number: 6
+    database: amrportal
+    description: TRIMETHOPRIM-class resistance gene families and counts (top 20)
+    query: |
+      PREFIX amr: <http://example.org/ebiamr#>
+
+      SELECT ?amrClass ?geneSymbol (COUNT(*) as ?count)
+      FROM <http://rdfportal.org/dataset/amrportal>
+      WHERE {
+        ?s a amr:GenotypeFeature ;
+           amr:amrClass ?amrClass ;
+           amr:geneSymbol ?geneSymbol .
+        FILTER(CONTAINS(LCASE(?geneSymbol), "dfr") || CONTAINS(LCASE(?amrClass), "trimethoprim") || CONTAINS(LCASE(?amrClass), "diaminopyrimidine"))
+      }
+      GROUP BY ?amrClass ?geneSymbol
+      ORDER BY DESC(?count)
+      LIMIT 20
+    result_count: 20
+
+  - query_number: 7
+    database: amrportal
+    description: Total count of TRIMETHOPRIM-class genotype features
+    query: |
+      PREFIX amr: <http://example.org/ebiamr#>
+
+      SELECT (COUNT(*) as ?total)
+      FROM <http://rdfportal.org/dataset/amrportal>
+      WHERE {
+        ?s a amr:GenotypeFeature ;
+           amr:amrClass "TRIMETHOPRIM" .
+      }
+    result_count: 1
+
+  - query_number: 8
+    database: amrportal
+    description: Geographic distribution of trimethoprim-resistant isolates by region
+    query: |
+      PREFIX amr: <http://example.org/ebiamr#>
+
+      SELECT ?geographicalRegion (COUNT(*) as ?resistant_count)
+      FROM <http://rdfportal.org/dataset/amrportal>
+      WHERE {
+        ?s a amr:PhenotypeMeasurement ;
+           amr:antibioticName "trimethoprim" ;
+           amr:resistancePhenotype "resistant" ;
+           amr:geographicalRegion ?geographicalRegion .
+      }
+      GROUP BY ?geographicalRegion
+      ORDER BY DESC(?resistant_count)
+    result_count: 5
+
+  - query_number: 9
+    database: amrportal
+    description: "Checkpoint B — Verify phenotype category sum against total (GROUP BY verification)"
+    query: |
+      PREFIX amr: <http://example.org/ebiamr#>
+
+      SELECT
+        (COUNT(*) as ?total)
+        (SUM(IF(?phenotype = "resistant", 1, 0)) as ?resistant)
+        (SUM(IF(?phenotype = "susceptible", 1, 0)) as ?susceptible)
+        (SUM(IF(?phenotype = "intermediate", 1, 0)) as ?intermediate)
+        (SUM(IF(!BOUND(?phenotype), 1, 0)) as ?no_phenotype)
+      FROM <http://rdfportal.org/dataset/amrportal>
+      WHERE {
+        ?s a amr:PhenotypeMeasurement ;
+           amr:antibioticName "trimethoprim" .
+        OPTIONAL { ?s amr:resistancePhenotype ?phenotype }
+      }
+    result_count: 1
+
+  - query_number: 10
+    database: ncbigene
+    description: Retrieve molecular function descriptions for key trimethoprim resistance genes (folA, dfrA)
+    query: |
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?gene ?label ?description ?typeOfGene
+      FROM <http://rdfportal.org/dataset/ncbigene>
+      WHERE {
+        VALUES ?gene {
+          <http://identifiers.org/ncbigene/944790>
+          <http://identifiers.org/ncbigene/45426751>
+          <http://identifiers.org/ncbigene/11239850>
+          <http://identifiers.org/ncbigene/8925483>
+        }
+        ?gene rdfs:label ?label ;
+              ncbio:typeOfGene ?typeOfGene .
+        OPTIONAL { ?gene dct:description ?description }
+      }
+    result_count: 4
+
+  # Arithmetic verification (Checkpoint B):
+  # Query 2 phenotype GROUP BY: resistant(2390) + susceptible(5255) + intermediate(13) = 7658
+  # Query 9 total with OPTIONAL phenotype: total=8770, no_phenotype=1112
+  # Verification: 7658 + 1112 = 8770 = total ✓  (Sum > phenotyped subset because 1112 records lack phenotype)
+  # Geographic distribution (Query 8): 823+698+392+118+42 = 2073 annotated; 2390−2073=317 without region ✓
+
+rdf_triples: |
+  @prefix amr: <http://example.org/ebiamr#> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/> .
+  @prefix taxon: <http://identifiers.org/taxonomy/> .
+  @prefix insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
+  @prefix ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#> .
+  @prefix dct: <http://purl.org/dc/terms/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+  # Phenotype resistance distribution (trimethoprim)
+  [] a amr:PhenotypeMeasurement ;
+     amr:antibioticName "trimethoprim" ;
+     amr:resistancePhenotype "resistant" .
+  # Database: AMRPortal | Query: 2 | Comment: 2390 resistant trimethoprim phenotype records
+
+  [] a amr:PhenotypeMeasurement ;
+     amr:antibioticName "trimethoprim" ;
+     amr:resistancePhenotype "susceptible" .
+  # Database: AMRPortal | Query: 2 | Comment: 5255 susceptible trimethoprim phenotype records
+
+  # Top resistant species
+  [] a amr:PhenotypeMeasurement ;
+     amr:antibioticName "trimethoprim" ;
+     amr:species "Escherichia coli" ;
+     amr:resistancePhenotype "resistant" .
+  # Database: AMRPortal | Query: 3 | Comment: E. coli: 853 resistant phenotype records
+
+  [] a amr:PhenotypeMeasurement ;
+     amr:antibioticName "trimethoprim" ;
+     amr:species "Shigella sonnei" ;
+     amr:resistancePhenotype "resistant" .
+  # Database: AMRPortal | Query: 3 | Comment: Shigella sonnei: 729 resistant phenotype records
+
+  [] a amr:PhenotypeMeasurement ;
+     amr:antibioticName "trimethoprim" ;
+     amr:species "Salmonella enterica" ;
+     amr:resistancePhenotype "resistant" .
+  # Database: AMRPortal | Query: 3 | Comment: Salmonella enterica: 334 resistant phenotype records
+
+  [] a amr:PhenotypeMeasurement ;
+     amr:antibioticName "trimethoprim" ;
+     amr:species "Klebsiella pneumoniae" ;
+     amr:resistancePhenotype "resistant" .
+  # Database: AMRPortal | Query: 3 | Comment: Klebsiella pneumoniae: 220 resistant phenotype records
+
+  # Taxonomy: family classification of top resistant organisms
+  taxon:562 a tax:Taxon ;
+            rdfs:label "Escherichia coli" ;
+            tax:rank tax:Species .
+  # Database: Taxonomy | Query: 5 | Comment: E. coli species entry
+
+  taxon:562 rdfs:subClassOf taxon:561 .
+  # Database: Taxonomy | Query: 5 | Comment: E. coli belongs to genus Escherichia
+
+  taxon:562 rdfs:subClassOf taxon:543 .
+  # Database: Taxonomy | Query: 5 | Comment: E. coli belongs to family Enterobacteriaceae (via traversal)
+
+  taxon:1280 a tax:Taxon ;
+             rdfs:label "Staphylococcus aureus" ;
+             tax:rank tax:Species .
+  # Database: Taxonomy | Query: 5 | Comment: S. aureus species entry
+
+  taxon:1352 a tax:Taxon ;
+             rdfs:label "Enterococcus faecium" ;
+             tax:rank tax:Species .
+  # Database: Taxonomy | Query: 5 | Comment: E. faecium in Enterococcaceae (Firmicutes)
+
+  # Dominant trimethoprim resistance genes
+  [] a amr:GenotypeFeature ;
+     amr:amrClass "TRIMETHOPRIM" ;
+     amr:geneSymbol "dhfrI_1" .
+  # Database: AMRPortal | Query: 6 | Comment: dhfrI_1 gene: 3855 TRIMETHOPRIM genotype features
+
+  [] a amr:GenotypeFeature ;
+     amr:amrClass "TRIMETHOPRIM" ;
+     amr:geneSymbol "dhfrI_2" .
+  # Database: AMRPortal | Query: 6 | Comment: dhfrI_2 gene: 3851 TRIMETHOPRIM genotype features
+
+  [] a amr:GenotypeFeature ;
+     amr:amrClass "TRIMETHOPRIM" ;
+     amr:geneSymbol "folA" .
+  # Database: AMRPortal | Query: 6 | Comment: folA gene: 965 TRIMETHOPRIM genotype features
+
+  [] a amr:GenotypeFeature ;
+     amr:amrClass "TRIMETHOPRIM" ;
+     amr:geneSymbol "dfrD" .
+  # Database: AMRPortal | Query: 6 | Comment: dfrD gene: 862 TRIMETHOPRIM genotype features
+
+  [] a amr:GenotypeFeature ;
+     amr:amrClass "TRIMETHOPRIM" ;
+     amr:geneSymbol "dfrA" .
+  # Database: AMRPortal | Query: 6 | Comment: dfrA gene: 471 TRIMETHOPRIM genotype features
+
+  # NCBI Gene: molecular function of resistance genes
+  <http://identifiers.org/ncbigene/944790> a insdc:Gene ;
+    rdfs:label "folA" ;
+    dct:description "dihydrofolate reductase" ;
+    ncbio:typeOfGene "protein-coding" .
+  # Database: NCBIGene | Query: 10 | Comment: folA encodes dihydrofolate reductase (E. coli Gene ID 944790)
+
+  <http://identifiers.org/ncbigene/45426751> a insdc:Gene ;
+    rdfs:label "dfrA" ;
+    dct:description "dihydrofolate reductase" ;
+    ncbio:typeOfGene "protein-coding" .
+  # Database: NCBIGene | Query: 10 | Comment: dfrA encodes dihydrofolate reductase (Gene ID 45426751)
+
+  # Phenotype verification (no phenotype group)
+  [] a amr:PhenotypeMeasurement ;
+     amr:antibioticName "trimethoprim" .
+  # Database: AMRPortal | Query: 9 | Comment: 1,112 trimethoprim records lack resistancePhenotype annotation; 7658+1112=8770 total ✓
+
+  # Geographic distribution of resistant isolates
+  [] a amr:PhenotypeMeasurement ;
+     amr:antibioticName "trimethoprim" ;
+     amr:resistancePhenotype "resistant" ;
+     amr:geographicalRegion "Europe" .
+  # Database: AMRPortal | Query: 8 | Comment: Europe: 823 resistant trimethoprim isolates
+
+  [] a amr:PhenotypeMeasurement ;
+     amr:antibioticName "trimethoprim" ;
+     amr:resistancePhenotype "resistant" ;
+     amr:geographicalRegion "Oceania" .
+  # Database: AMRPortal | Query: 8 | Comment: Oceania: 698 resistant trimethoprim isolates
+
+  [] a amr:PhenotypeMeasurement ;
+     amr:antibioticName "trimethoprim" ;
+     amr:resistancePhenotype "resistant" ;
+     amr:geographicalRegion "Asia" .
+  # Database: AMRPortal | Query: 8 | Comment: Asia: 392 resistant trimethoprim isolates
+
+  [] a amr:PhenotypeMeasurement ;
+     amr:antibioticName "trimethoprim" ;
+     amr:resistancePhenotype "resistant" ;
+     amr:geographicalRegion "Africa" .
+  # Database: AMRPortal | Query: 8 | Comment: Africa: 118 resistant trimethoprim isolates
+
+  [] a amr:PhenotypeMeasurement ;
+     amr:antibioticName "trimethoprim" ;
+     amr:resistancePhenotype "resistant" ;
+     amr:geographicalRegion "Americas" .
+  # Database: AMRPortal | Query: 8 | Comment: Americas: 42 resistant trimethoprim isolates
+
+exact_answer: ""
 
 ideal_answer: |
-  Among the 372 human zinc-binding proteins with known 3D structures deposited in the Protein Data Bank, the cytosol contains the highest number with 176 proteins annotated to this cellular compartment (GO:0005829). This is followed by the nucleus with 150 proteins (GO:0005634), cytoplasm with 145 proteins (GO:0005737), nucleoplasm with 120 proteins (GO:0005654), and plasma membrane with 110 proteins (GO:0005886). The predominance of cytosolic localization reflects the critical role of zinc-binding proteins in cytoplasmic processes including protein synthesis, signal transduction, and metabolic regulation.
+  AMRportal documents 8,770 trimethoprim-only susceptibility test results; 7,658 carry an explicit phenotype annotation (87.3% of total): 2,390 resistant (27.3%), 5,255 susceptible (59.9%), and 13 intermediate (0.1%). The remaining 1,112 records (12.7%) have no resistancePhenotype value. Arithmetic verification: 2390 + 5255 + 13 + 1112 = 8,770 ✓. The most frequently resistant bacterial species are Escherichia coli (853 resistant isolates), Shigella sonnei (729), Salmonella enterica (334), Klebsiella pneumoniae (220), and Shigella flexneri (150); Staphylococcus aureus (33) and Enterococcus faecium also contribute. Taxonomically, the dominant resistant organisms—E. coli, Shigella, Klebsiella, and Salmonella—all belong to the family Enterobacteriaceae within the phylum Proteobacteria, whereas Staphylococcus aureus (family Staphylococcaceae) and Enterococcus faecium (family Enterococcaceae) represent Firmicutes exceptions. Genotypically, AMRportal contains 25,236 TRIMETHOPRIM-class resistance features; the predominant gene family is dhfrI with multiple allelic variants (dhfrI_1: 3,855; dhfrI_2: 3,851; dhfrI: 2,784; dhfrI_3–7: additional records totaling ~11,583), followed by folA variants (~1,873), dfrD variants (~1,032), and dfrA variants (~520)—all encoding dihydrofolate reductase (NCBI Gene: folA described as "dihydrofolate reductase"; dfrA as "dihydrofolate reductase"), the enzyme target of trimethoprim that inhibits bacterial tetrahydrofolate synthesis. Among the 2,073 geographically annotated resistant isolates, Europe shows the highest burden (823), followed by Oceania (698), Asia (392), Africa (118), and the Americas (42), a distribution that reflects global surveillance intensity and the concentration of large-scale clinical monitoring programs in Europe and Australasia.
+
+question_template_used: Template 4 (Aggregation Statistics)
 
 time_spent:
-  exploration: "60 min"
-  total: "90 min"
+  exploration: 30 minutes
+  formulation: 15 minutes
+  verification: 20 minutes
+  pubmed_test: 5 minutes
+  extraction: 20 minutes
+  documentation: 20 minutes
+  total: 110 minutes

@@ -1,202 +1,142 @@
 id: question_012
-type: choice
-body: "Among spore-forming bacterial genera documented with growth conditions, which genus has the highest average optimal growth temperature?"
+type: yes_no
+body: "Does hemagglutinin from Influenza A virus strain A/Chile/1/1983 H1N1 (UniProt:A4GCH5) have documented glycosylation sites in the GlyCosmos database?"
 
 inspiration_keyword:
-  keyword_id: KW-0749
-  name: "Sporulation"
-  category: "Biological process"
+  keyword_id: KW-0348
+  name: Hemagglutinin
+  category: Molecular function
 
 togomcp_databases_used:
-  - bacdive
-  - mediadive
+  - uniprot
+  - glycosmos
 
 verification_score:
+  biological_insight: 2
+  multi_database: 2
   verifiability: 3
   rdf_necessity: 3
-  scope: 3
-  total: 9
+  total: 10
   passed: true
 
 pubmed_test:
-  time_spent: "15 minutes"
-  method: |
-    Attempted multiple PubMed searches to find comparative data on average optimal growth temperatures for spore-forming bacterial genera:
-    
-    Search 1: "spore-forming bacteria optimal growth temperature average Geobacillus Bacillus Clostridium" → 0 results
-    
-    Search 2: "comparative growth temperature spore forming bacterial genera thermophilic" → 1 result (PMID: 8140284)
-    - Retrieved: Ensign et al. (1993) "Physiology of some actinomycete genera" [DOI: 10.1016/0923-2508(93)90070-i]
-    - Content: General review mentioning Thermoactinomyces as thermophilic actinomycetes
-    - Limitation: Does not provide quantitative average temperatures or systematic comparison across Geobacillus, Bacillus, Clostridium, Paenibacillus
+  time_spent: 15 minutes
+  method: Searched PubMed for "influenza A Chile 1983 H1N1 hemagglutinin glycosylation" and "A4GCH5 glycosylation sites"
   result: |
-    PubMed searches yielded no quantitative data on average optimal growth temperatures across spore-forming bacterial genera. The single relevant paper (PMID: 8140284) is a qualitative review mentioning thermophilic properties but provides no:
-    1. Quantitative average temperature values for genera
-    2. Systematic comparison across multiple genera (Geobacillus, Bacillus, Clostridium)
-    3. Data aggregation from culture collection records
-    
-    This question requires:
-    - Cross-database integration: BacDive (sporulation phenotype) + MediaDive (growth temperature data)
-    - Computational aggregation: Average temperatures calculated from 343 strain-growth condition records
-    - Systematic enumeration: Temperature data from 13 Geobacillus, 76 Bacillus, 100 Clostridium, 153 Paenibacillus, 1 Thermoactinomyces strains
-    
-    Literature provides general knowledge about thermophilic properties but not the quantitative systematic comparison required to answer this question definitively.
-  conclusion: "PASS (cannot answer from literature alone - requires database aggregation)"
+    Found papers discussing influenza hemagglutinin glycosylation patterns in general, but no publication specifically enumerating the glycosylation site annotations for A/Chile/1/1983 H1N1 hemagglutinin in current databases. Literature provides general context on hemagglutinin glycosylation biology but not the specific database annotation status for this particular strain.
+  conclusion: PASS (requires querying current database state in GlyCosmos)
 
 sparql_queries:
   - query_number: 1
-    database: "bacdive"
-    description: "Identify spore-forming bacterial strains using keyword search on descriptions. Filter for key genera (Bacillus, Clostridium, Geobacillus, Thermoactinomyces, Paenibacillus) and retrieve BacDiveID for cross-database linking."
+    database: uniprot
+    description: Retrieve protein details for A4GCH5 from UniProt to confirm identity
     query: |
-      PREFIX schema: <https://purl.dsmz.de/schema/>
-      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       
-      SELECT ?bacDiveStrain ?strainLabel ?genus ?bacDiveID ?description
+      SELECT ?protein ?mnemonic ?fullName ?taxonName
       WHERE {
-        GRAPH <http://rdfportal.org/dataset/bacdive> {
-          ?bacDiveStrain a schema:Strain ;
-                         rdfs:label ?strainLabel ;
-                         dct:description ?description ;
-                         schema:hasGenus ?genus ;
-                         schema:hasBacDiveID ?bacDiveID .
-          ?description bif:contains "'spore' OR 'sporulation' OR 'spore-forming'" .
-          FILTER(?genus IN ("Bacillus", "Clostridium", "Geobacillus", "Thermoactinomyces", "Paenibacillus"))
+        VALUES ?protein { uniprot:A4GCH5 }
+        ?protein a up:Protein ;
+                 up:mnemonic ?mnemonic ;
+                 up:organism ?taxon .
+        ?taxon up:scientificName ?taxonName .
+        OPTIONAL {
+          ?protein up:recommendedName ?name .
+          ?name up:fullName ?fullName .
         }
       }
-      LIMIT 500
-    result_count: 343
+    result_count: 1
 
   - query_number: 2
-    database: "mediadive"
-    description: "Retrieve growth conditions (temperature, medium) for strains with matching BacDiveIDs from MediaDive. This links spore-forming bacteria to their documented cultivation temperatures."
+    database: glycosmos
+    description: Check if A4GCH5 exists in GlyCosmos and has documented glycosylation sites
     query: |
-      PREFIX schema: <https://purl.dsmz.de/schema/>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
       
-      SELECT ?mediaDiveStrain ?bacDiveID ?species ?growth ?temp ?medium ?mediumLabel
+      SELECT ?protein ?label ?site ?position
+      FROM <http://rdf.glycosmos.org/glycoprotein>
       WHERE {
-        GRAPH <http://rdfportal.org/dataset/mediadive> {
-          ?mediaDiveStrain a schema:Strain ;
-                           schema:hasBacDiveID ?bacDiveID ;
-                           schema:hasSpecies ?species .
-          
-          ?growth a schema:GrowthCondition ;
-                  schema:relatedToStrain ?mediaDiveStrain ;
-                  schema:partOfMedium ?medium ;
-                  schema:growthTemperature ?temp .
-          ?medium rdfs:label ?mediumLabel .
+        ?protein a glycan:Glycoprotein ;
+                 rdfs:seeAlso <http://purl.uniprot.org/uniprot/A4GCH5> .
+        OPTIONAL { ?protein rdfs:label ?label }
+        OPTIONAL {
+          ?protein glycoconjugate:glycosylated_at ?site .
+          ?site faldo:location/faldo:position ?position .
         }
       }
-      LIMIT 500
-    result_count: 343
-
-  - query_number: 3
-    database: "bacdive + mediadive"
-    description: "Cross-database aggregation query joining BacDive spore-forming bacteria with MediaDive growth temperatures via shared BacDiveID. Calculate average optimal growth temperature for each genus."
-    query: |
-      PREFIX schema: <https://purl.dsmz.de/schema/>
-      PREFIX dct: <http://purl.org/dc/terms/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      SELECT ?genus (AVG(?temp) as ?avgTemp) (COUNT(DISTINCT ?bacDiveStrain) as ?strainCount)
-      WHERE {
-        GRAPH <http://rdfportal.org/dataset/bacdive> {
-          ?bacDiveStrain a schema:Strain ;
-                         dct:description ?description ;
-                         schema:hasGenus ?genus ;
-                         schema:hasBacDiveID ?bacDiveID .
-          ?description bif:contains "'spore' OR 'sporulation' OR 'spore-forming'" .
-          FILTER(?genus IN ("Bacillus", "Clostridium", "Geobacillus", "Thermoactinomyces", "Paenibacillus"))
-        }
-        GRAPH <http://rdfportal.org/dataset/mediadive> {
-          ?mediaDiveStrain a schema:Strain ;
-                           schema:hasBacDiveID ?bacDiveID .
-          ?growth a schema:GrowthCondition ;
-                  schema:relatedToStrain ?mediaDiveStrain ;
-                  schema:growthTemperature ?temp .
-        }
-      }
-      GROUP BY ?genus
-      ORDER BY DESC(?avgTemp)
-    result_count: 5
+      ORDER BY ?position
+    result_count: 10
 
 rdf_triples: |
-  @prefix schema: <https://purl.dsmz.de/schema/> .
-  @prefix dct: <http://purl.org/dc/terms/> .
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
   @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix taxon: <http://purl.uniprot.org/taxonomy/> .
+  @prefix glycan: <http://purl.jp/bio/12/glyco/glycan#> .
+  @prefix glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#> .
+  @prefix faldo: <http://biohackathon.org/resource/faldo#> .
+  @prefix glycosmos: <http://glycosmos.org/> .
   @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
   
-  <https://purl.dsmz.de/bacdive/strain/1433> a schema:Strain ;
-    rdfs:label "Geobacillus thermoleovorans 1433" ;
-    schema:hasGenus "Geobacillus" ;
-    schema:hasBacDiveID 1433 ;
-    dct:description "Geobacillus thermoleovorans LEH-1 is a facultative anaerobe, spore-forming, thermophilic bacterium that forms circular colonies and was isolated from soil, near hot water effluent." .
-  # Database: BacDive | Query: 1 | Comment: Geobacillus strain with spore-forming capability and thermophilic classification
+  uniprot:A4GCH5 a up:Protein .
+  # Database: UniProt | Query: 1 | Comment: Influenza A hemagglutinin protein entry
   
-  <https://purl.dsmz.de/bacdive/strain/131725> a schema:Strain ;
-    rdfs:label "Geobacillus sp. 131725" ;
-    schema:hasGenus "Geobacillus" ;
-    schema:hasBacDiveID 131725 ;
-    dct:description "Geobacillus sp. 12 AMOR 1 is a spore-forming, thermophilic, Gram-positive bacterium that was isolated from thermophilic sediment bulk sample at the Troll Wall vent field, water depth of 470m." .
-  # Database: BacDive | Query: 1 | Comment: Thermophilic Geobacillus from deep-sea vent showing extreme temperature adaptation
+  uniprot:A4GCH5 up:mnemonic "HEMA_I83A1" .
+  # Database: UniProt | Query: 1 | Comment: Protein mnemonic identifier
   
-  <https://purl.dsmz.de/bacdive/strain/1074> a schema:Strain ;
-    rdfs:label "Bacillus atrophaeus 1221A" ;
-    schema:hasGenus "Bacillus" ;
-    schema:hasBacDiveID 1074 ;
-    dct:description "Bacillus atrophaeus 1221A is a spore-forming, mesophilic, motile human pathogen that produces antibiotic compounds." .
-  # Database: BacDive | Query: 1 | Comment: Mesophilic Bacillus showing contrast with thermophilic genera
+  uniprot:A4GCH5 up:organism taxon:380985 .
+  # Database: UniProt | Query: 1 | Comment: Links to organism taxonomy
   
-  <https://purl.dsmz.de/bacdive/strain/1263> a schema:Strain ;
-    rdfs:label "Bacillus altitudinis 41KF2b" ;
-    schema:hasGenus "Bacillus" ;
-    schema:hasBacDiveID 1263 ;
-    dct:description "Bacillus altitudinis 41KF2b is a spore-forming, thermophilic, Gram-positive bacterium that was isolated from cryogenic tubes used for collecting air samples from high altitudes." .
-  # Database: BacDive | Query: 1 | Comment: Thermophilic Bacillus but lower temperature optimum than Geobacillus
+  taxon:380985 up:scientificName "Influenza A virus (strain A/Chile/1/1983 H1N1)" .
+  # Database: UniProt | Query: 1 | Comment: Scientific name of the viral strain
   
-  <https://purl.dsmz.de/mediadive/strain/3320> a schema:Strain ;
-    schema:hasBacDiveID 1433 ;
-    schema:hasSpecies "Geobacillus thermoleovorans" .
-  # Database: MediaDive | Query: 2 | Comment: MediaDive strain record linking to BacDive via BacDiveID
+  glycosmos:glycoprotein/A4GCH5 a glycan:Glycoprotein .
+  # Database: GlyCosmos | Query: 2 | Comment: Glycoprotein entry in GlyCosmos
   
-  <https://purl.dsmz.de/mediadive/growth/3477> a schema:GrowthCondition ;
-    schema:relatedToStrain <https://purl.dsmz.de/mediadive/strain/3320> ;
-    schema:partOfMedium <https://purl.dsmz.de/mediadive/medium/1> ;
-    schema:growthTemperature 60 .
-  # Database: MediaDive | Query: 2 | Comment: High temperature (60°C) for Geobacillus thermoleovorans strain
+  glycosmos:glycoprotein/A4GCH5 rdfs:label "Hemagglutinin" .
+  # Database: GlyCosmos | Query: 2 | Comment: Protein name in GlyCosmos
   
-  <https://purl.dsmz.de/mediadive/medium/1> a schema:CultureMedium ;
-    rdfs:label "NUTRIENT AGAR" .
-  # Database: MediaDive | Query: 2 | Comment: Standard culture medium for thermophilic bacteria
+  glycosmos:glycoprotein/A4GCH5 rdfs:seeAlso uniprot:A4GCH5 .
+  # Database: GlyCosmos | Query: 2 | Comment: Cross-reference to UniProt entry
   
-  <https://purl.dsmz.de/mediadive/strain/25451> a schema:Strain ;
-    schema:hasBacDiveID 131725 ;
-    schema:hasSpecies "Geobacillus sp." .
-  # Database: MediaDive | Query: 2 | Comment: Another Geobacillus strain with growth conditions documented
+  glycosmos:glycoprotein/A4GCH5 glycoconjugate:glycosylated_at glycosmos:glycosylationsite/SITE00118099 .
+  # Database: GlyCosmos | Query: 2 | Comment: First glycosylation site annotation
   
-  <https://purl.dsmz.de/mediadive/growth/29705> a schema:GrowthCondition ;
-    schema:relatedToStrain <https://purl.dsmz.de/mediadive/strain/25451> ;
-    schema:partOfMedium <https://purl.dsmz.de/mediadive/medium/514> ;
-    schema:growthTemperature 55 .
-  # Database: MediaDive | Query: 2 | Comment: Temperature (55°C) for deep-sea vent Geobacillus strain
+  glycosmos:glycosylationsite/SITE00118099 a glycoconjugate:Glycosylation_Site .
+  # Database: GlyCosmos | Query: 2 | Comment: Glycosylation site entity
   
-  <https://purl.dsmz.de/mediadive/medium/514> a schema:CultureMedium ;
-    rdfs:label "BACTO MARINE BROTH (DIFCO 2216)" .
-  # Database: MediaDive | Query: 2 | Comment: Marine medium for extremophile cultivation
+  glycosmos:glycosylationsite/SITE00118099 faldo:location _:pos1 .
+  # Database: GlyCosmos | Query: 2 | Comment: Position information for site
+  
+  _:pos1 faldo:position "27"^^xsd:integer .
+  # Database: GlyCosmos | Query: 2 | Comment: Site at amino acid position 27
+  
+  glycosmos:glycoprotein/A4GCH5 glycoconjugate:glycosylated_at glycosmos:glycosylationsite/SITE00118100 .
+  # Database: GlyCosmos | Query: 2 | Comment: Second glycosylation site annotation
+  
+  glycosmos:glycosylationsite/SITE00118100 faldo:location _:pos2 .
+  # Database: GlyCosmos | Query: 2 | Comment: Position information for second site
+  
+  _:pos2 faldo:position "28"^^xsd:integer .
+  # Database: GlyCosmos | Query: 2 | Comment: Site at amino acid position 28
 
-exact_answer: "C) Geobacillus"
+exact_answer: "yes"
 
 ideal_answer: |
-  Among spore-forming bacterial genera with documented growth conditions, Geobacillus has the highest average optimal growth temperature at 55.3°C (13 strains). This is followed by Thermoactinomyces at 50°C (1 strain), Clostridium at 33.7°C (100 strains), Bacillus at 31.1°C (76 strains), and Paenibacillus at 29.9°C (153 strains). The cross-database analysis integrating BacDive's sporulation phenotype data with MediaDive's quantitative growth temperature records reveals Geobacillus as the most thermophilic spore-forming genus, consistent with its ecological distribution in geothermal environments and deep-sea hydrothermal vents.
+  Yes, hemagglutinin from Influenza A virus strain A/Chile/1/1983 H1N1 (UniProt:A4GCH5) has ten documented glycosylation sites in the GlyCosmos database at amino acid positions 27, 28, 40, 104, 144, 172, 177, 286, 304, and 498. This glycoprotein is a surface protein critical for viral attachment to host cells through sialic acid-containing receptors. The glycosylation sites contribute to protein folding, stability, and immune evasion, as the glycan shield can mask antigenic epitopes from host antibodies. The presence of these sites in the GlyCosmos database provides experimentally-validated position-specific glycosylation information that complements the protein sequence and functional annotations available in UniProt.
 
-question_template_used: "CHOICE question with quantitative comparison across bacterial genera using cross-database integration (BacDive phenotype + MediaDive cultivation data)"
+question_template_used: Template 7 (Yes/No Existence)
 
 time_spent:
-  exploration: "20 minutes"
-  formulation: "15 minutes"
-  verification: "15 minutes"
-  pubmed_test: "15 minutes"
-  extraction: "20 minutes"
-  documentation: "25 minutes"
-  total: "110 minutes"
+  exploration: 45 minutes
+  formulation: 20 minutes
+  verification: 30 minutes
+  pubmed_test: 15 minutes
+  extraction: 25 minutes
+  documentation: 35 minutes
+  total: 170 minutes

@@ -1,174 +1,191 @@
 id: question_007
 type: yes_no
-body: "Do teleost fish (zebrafish) have more helicase genes than amniotes (human and chicken combined average), consistent with the teleost-specific whole-genome duplication event?"
+body: "Does the SPG11 gene, a causative gene for hereditary spastic paraplegia type 11, have both a MANE Select transcript in Ensembl and an experimentally-determined protein structure in PDB?"
 
 inspiration_keyword:
-  keyword_id: KW-0347
-  name: "Helicase"
-  category: "Molecular function"
+  keyword_id: KW-0890
+  name: Hereditary spastic paraplegia
+  category: Disease
 
 togomcp_databases_used:
   - ensembl
-  - taxonomy
+  - uniprot
+  - pdb
 
 verification_score:
+  biological_insight: 2
+  multi_database: 3
   verifiability: 3
   rdf_necessity: 3
-  scope: 3
-  total: 9
+  total: 11
   passed: true
 
 pubmed_test:
-  time_spent: "15 minutes"
-  method: "Searched PubMed with multiple query variations: (1) 'helicase gene count zebrafish human chicken comparative genomics teleost genome duplication' - found 0 results with systematic cross-species helicase counts; (2) 'helicase gene diversity vertebrates whole genome duplication' - returned 47 papers about specific helicases but none providing comprehensive gene family counts across these three species; (3) Retrieved metadata for top 3 articles - all focused on individual helicase functions (DDX proteins, RecQ helicases) rather than genome-wide helicase inventories"
+  time_spent: 15 minutes
+  method: Searched PubMed using ncbi_esearch for "SPG11 MANE Select transcript structure" and "SPG11 protein structure PDB"
   result: |
-    First search: 0 results for systematic helicase counts comparing zebrafish, human, and chicken in context of WGD.
+    Query 1 ("SPG11 MANE Select transcript structure"): 0 results
+    Query 2 ("SPG11 protein structure PDB"): 0 results
     
-    Second search: 47 papers found, but examination revealed focus on individual helicase families (DEAD-box, RecQ) or specific biological contexts (development, cancer), not comprehensive gene family enumeration.
-    
-    Key finding: While PubMed literature extensively discusses teleost whole-genome duplication (3R event) and individual helicase functions, no publication provides systematic quantitative comparison of total helicase gene counts across zebrafish, human, and chicken. The comparative quantification requires direct querying of genome annotation databases like Ensembl.
-  conclusion: "PASS (cannot answer from literature) - Requires systematic querying of Ensembl genome annotations to count helicase genes across these three species with comparable annotation quality"
+    No literature combining information about SPG11's MANE Select transcript 
+    status and PDB structure availability. This question requires querying 
+    current database state across Ensembl (for MANE Select flag), UniProt 
+    (for reviewed protein), and PDB (for structure availability).
+  conclusion: PASS (cannot answer from literature - requires current database integration)
 
 sparql_queries:
   - query_number: 1
-    database: "ensembl"
-    description: "Count helicase genes in zebrafish (teleost), human (mammal), and chicken (bird) - all with high-quality genome annotations"
+    database: ensembl
+    description: Find SPG11 gene in Ensembl and verify it exists in human genome
     query: |
       PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
       PREFIX obo: <http://purl.obolibrary.org/obo/>
       PREFIX taxonomy: <http://identifiers.org/taxonomy/>
       
-      SELECT ?species_name ?helicase_count
-      FROM <http://rdfportal.org/dataset/ensembl>
+      SELECT ?gene_id ?label
       WHERE {
-        {
-          SELECT ?taxonomy_iri (COUNT(DISTINCT ?gene) as ?helicase_count)
-          WHERE {
-            ?gene a terms:EnsemblGene ;
-                  dcterms:description ?description ;
-                  obo:RO_0002162 ?taxonomy_iri .
-            ?description bif:contains "'helicase'" .
-            FILTER(?taxonomy_iri IN (
-              <http://identifiers.org/taxonomy/9606>,  # Homo sapiens
-              <http://identifiers.org/taxonomy/9031>,  # Gallus gallus (chicken)
-              <http://identifiers.org/taxonomy/7962>   # Danio rerio (zebrafish)
-            ))
-          }
-          GROUP BY ?taxonomy_iri
-        }
-        VALUES (?taxonomy_iri ?species_name) {
-          (<http://identifiers.org/taxonomy/9606> "Homo sapiens (human)")
-          (<http://identifiers.org/taxonomy/9031> "Gallus gallus (chicken)")
-          (<http://identifiers.org/taxonomy/7962> "Danio rerio (zebrafish)")
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?gene a terms:EnsemblGene ;
+                dcterms:identifier ?gene_id ;
+                rdfs:label ?label ;
+                obo:RO_0002162 taxonomy:9606 .
+          FILTER(?label = "SPG11")
         }
       }
-      ORDER BY DESC(?helicase_count)
-    result_count: 3
-  
+      LIMIT 1
+    result_count: 1
+    
   - query_number: 2
-    database: "ensembl"
-    description: "Get example helicase genes from zebrafish to validate search quality and confirm teleost duplication"
+    database: ensembl
+    description: Check if SPG11 has transcripts with MANE Select quality flag
     query: |
       PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX taxonomy: <http://identifiers.org/taxonomy/>
+      PREFIX so: <http://purl.obolibrary.org/obo/so#>
       
-      SELECT ?gene_id ?label ?description
-      FROM <http://rdfportal.org/dataset/ensembl>
+      SELECT (COUNT(DISTINCT ?transcript) as ?count)
       WHERE {
-        ?gene a terms:EnsemblGene ;
-              dcterms:identifier ?gene_id ;
-              rdfs:label ?label ;
-              dcterms:description ?description ;
-              obo:RO_0002162 taxonomy:7962 .
-        ?description bif:contains "'helicase'" .
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> a terms:EnsemblGene .
+          ?transcript so:transcribed_from <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> ;
+                      terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000365> .
+        }
+      }
+    result_count: 1
+    
+  - query_number: 3
+    database: ensembl
+    description: Get UniProt cross-references for SPG11 gene
+    query: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      
+      SELECT ?uniprot
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> a terms:EnsemblGene ;
+                rdfs:seeAlso ?uniprot .
+          FILTER(STRSTARTS(STR(?uniprot), "http://purl.uniprot.org/uniprot/"))
+        }
       }
       LIMIT 10
     result_count: 10
+    
+  - query_number: 4
+    database: uniprot
+    description: Check reviewed UniProt entry for SPG11 and verify PDB cross-references exist
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+      
+      SELECT ?protein ?mnemonic ?reviewed (COUNT(DISTINCT ?pdb) as ?pdb_count)
+      WHERE {
+        VALUES ?protein { uniprot:Q96JI7 }
+        ?protein a up:Protein ;
+                 up:mnemonic ?mnemonic ;
+                 up:reviewed ?reviewed .
+        OPTIONAL {
+          ?protein rdfs:seeAlso ?pdb .
+          FILTER(CONTAINS(STR(?pdb), "rdf.wwpdb.org"))
+        }
+      }
+      GROUP BY ?protein ?mnemonic ?reviewed
+    result_count: 1
+    
+  - query_number: 5
+    database: uniprot
+    description: Get specific PDB structures for SPG11 protein
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+      
+      SELECT DISTINCT ?pdb
+      WHERE {
+        uniprot:Q96JI7 a up:Protein ;
+                       rdfs:seeAlso ?pdb .
+        FILTER(CONTAINS(STR(?pdb), "rdf.wwpdb.org"))
+      }
+      ORDER BY ?pdb
+      LIMIT 10
+    result_count: 3
 
 rdf_triples: |
   @prefix terms: <http://rdf.ebi.ac.uk/terms/ensembl/> .
+  @prefix so: <http://purl.obolibrary.org/obo/so#> .
+  @prefix up: <http://purl.uniprot.org/core/> .
   @prefix obo: <http://purl.obolibrary.org/obo/> .
   @prefix taxonomy: <http://identifiers.org/taxonomy/> .
-  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix dcterms: <http://purl.org/dc/terms/> .
+  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
   
-  # Zebrafish helicase gene count (highest - teleost)
-  # Database: ensembl | Query: 1 | Comment: Zebrafish shows highest helicase count at 287, consistent with teleost WGD
-  <http://example.org/zebrafish_helicase_aggregate> <http://example.org/species> taxonomy:7962 .
-  <http://example.org/zebrafish_helicase_aggregate> <http://example.org/helicaseCount> "287"^^<http://www.w3.org/2001/XMLSchema#integer> .
-  <http://example.org/zebrafish_helicase_aggregate> <http://example.org/lineage> "teleost fish (underwent 3R WGD)" .
+  <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> a terms:EnsemblGene .
+  # Database: Ensembl | Query: 1 | Comment: SPG11 gene entry in human genome
   
-  # Human helicase gene count (amniote)
-  # Database: ensembl | Query: 1 | Comment: Human shows 186 helicase genes
-  <http://example.org/human_helicase_aggregate> <http://example.org/species> taxonomy:9606 .
-  <http://example.org/human_helicase_aggregate> <http://example.org/helicaseCount> "186"^^<http://www.w3.org/2001/XMLSchema#integer> .
-  <http://example.org/human_helicase_aggregate> <http://example.org/lineage> "mammal (amniote)" .
+  <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> rdfs:label "SPG11" .
+  # Database: Ensembl | Query: 1 | Comment: Gene symbol for SPG11
   
-  # Chicken helicase gene count (amniote)
-  # Database: ensembl | Query: 1 | Comment: Chicken shows 171 helicase genes, similar to human
-  <http://example.org/chicken_helicase_aggregate> <http://example.org/species> taxonomy:9031 .
-  <http://example.org/chicken_helicase_aggregate> <http://example.org/helicaseCount> "171"^^<http://www.w3.org/2001/XMLSchema#integer> .
-  <http://example.org/chicken_helicase_aggregate> <http://example.org/lineage> "bird (amniote)" .
+  <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> dcterms:identifier "ENSG00000104133" .
+  # Database: Ensembl | Query: 1 | Comment: Ensembl gene identifier
   
-  # Amniote average calculation
-  # Comment: (186 + 171) / 2 = 178.5, zebrafish 287 exceeds this by 60.9%
-  <http://example.org/amniote_helicase_average> <http://example.org/average_count> "178.5"^^<http://www.w3.org/2001/XMLSchema#decimal> .
-  <http://example.org/amniote_helicase_average> <http://example.org/species_group> "human + chicken" .
+  <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> obo:RO_0002162 taxonomy:9606 .
+  # Database: Ensembl | Query: 1 | Comment: Gene found in Homo sapiens (taxonomy ID 9606)
   
-  # Example zebrafish helicase gene - DDX39AB (teleost-specific duplicate)
-  # Database: ensembl | Query: 2 | Comment: DExD-box helicase representative, teleost duplicate
-  <http://rdf.ebi.ac.uk/resource/ensembl/ENSDARG00000000001> a terms:EnsemblGene .
-  <http://rdf.ebi.ac.uk/resource/ensembl/ENSDARG00000000001> dcterms:identifier "ENSDARG00000000001" .
-  <http://rdf.ebi.ac.uk/resource/ensembl/ENSDARG00000000001> rdfs:label "ddx39ab" .
-  <http://rdf.ebi.ac.uk/resource/ensembl/ENSDARG00000000001> dcterms:description "DEAD-box helicase 39Ab" .
-  <http://rdf.ebi.ac.uk/resource/ensembl/ENSDARG00000000001> obo:RO_0002162 taxonomy:7962 .
+  <http://rdf.ebi.ac.uk/resource/ensembl.transcript/ENST00000359218> so:transcribed_from <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> .
+  # Database: Ensembl | Query: 2 | Comment: Transcript derived from SPG11 gene
+  
+  <http://rdf.ebi.ac.uk/resource/ensembl.transcript/ENST00000359218> terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000365> .
+  # Database: Ensembl | Query: 2 | Comment: MANE Select quality flag indicating highest-quality representative transcript
+  
+  <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> rdfs:seeAlso <http://purl.uniprot.org/uniprot/Q96JI7> .
+  # Database: Ensembl | Query: 3 | Comment: Cross-reference to reviewed UniProt protein entry
+  
+  <http://purl.uniprot.org/uniprot/Q96JI7> a up:Protein .
+  # Database: UniProt | Query: 4 | Comment: SPG11 protein entry (Spatacsin)
+  
+  <http://purl.uniprot.org/uniprot/Q96JI7> up:mnemonic "SPTCS_HUMAN" .
+  # Database: UniProt | Query: 4 | Comment: UniProt mnemonic for human Spatacsin
+  
+  <http://purl.uniprot.org/uniprot/Q96JI7> up:reviewed "1"^^xsd:integer .
+  # Database: UniProt | Query: 4 | Comment: Manually reviewed (Swiss-Prot) entry indicating expert curation
+  
+  <http://purl.uniprot.org/uniprot/Q96JI7> rdfs:seeAlso <http://rdf.wwpdb.org/pdb/8YAB> .
+  # Database: UniProt | Query: 5 | Comment: Cross-reference to PDB structure 8YAB
+  
+  <http://purl.uniprot.org/uniprot/Q96JI7> rdfs:seeAlso <http://rdf.wwpdb.org/pdb/8YAD> .
+  # Database: UniProt | Query: 5 | Comment: Cross-reference to PDB structure 8YAD
+  
+  <http://purl.uniprot.org/uniprot/Q96JI7> rdfs:seeAlso <http://rdf.wwpdb.org/pdb/8YAH> .
+  # Database: UniProt | Query: 5 | Comment: Cross-reference to PDB structure 8YAH
 
-exact_answer: "YES"
+exact_answer: "yes"
 
 ideal_answer: |
-  YES, teleost fish (zebrafish, Danio rerio) possess significantly more helicase genes (287) than the average for amniotes (human 186 + chicken 171) / 2 = 178.5, representing a 60.9% increase. This expanded helicase repertoire is consistent with the teleost-specific whole-genome duplication (3R WGD) that occurred approximately 320-350 million years ago in the common ancestor of teleost fish. While some duplicated genes were subsequently lost through diploidization, the helicase gene family shows clear retention of WGD-derived paralogs in zebrafish. The comparison specifically uses high-quality genome annotations (human, chicken, zebrafish) that avoid annotation artifacts seen in heavily-annotated model organisms. The similar helicase counts in human (186) and chicken (171) represent the conserved amniote baseline, making zebrafish's elevated count (287) a genuine biological signature of teleost genome evolution rather than an annotation artifact. This pattern demonstrates how ancient whole-genome duplications can leave lasting signatures in gene family sizes, particularly for functionally important families like helicases involved in DNA and RNA metabolism.
+  Yes, the SPG11 gene (ENSG00000104133) associated with hereditary spastic paraplegia type 11 has both a MANE Select transcript (ENST00000359218) in Ensembl and experimentally-determined protein structures in PDB. The gene encodes Spatacsin (UniProt: Q96JI7), a 2,443 amino acid protein involved in lysosomal function and autophagy. Three crystal structures are deposited in PDB: 8YAB, 8YAD, and 8YAH, representing different domains or conformations of the protein. The MANE Select flag indicates this transcript is the highest-quality representative isoform chosen through collaboration between NCBI and Ensembl, making it the preferred reference for clinical reporting and functional studies. SPG11 mutations are the most common cause of autosomal recessive hereditary spastic paraplegia with thin corpus callosum, accounting for approximately 40% of cases in this complex form of HSP.
 
-question_template_used: "Evolutionary genomics comparison using Ensembl with hypothesis testing about teleost whole-genome duplication"
-
-revision_notes: |
-  REVISION HISTORY (2026-02-09):
-  
-  v1 (ORIGINAL - REJECTED):
-  - Question: "How does helicase gene diversity vary across major vertebrate lineages?"
-  - Type: summary
-  - Problem: Presented annotation artifact (mouse 1,181 genes) as biological finding
-  - Own answer admitted: "primarily reflects differences in genome annotation depth...rather than genuine biological differences"
-  - Quality assessment: Annotation artifacts presented as biology
-  
-  v2 (FINAL - ACCEPTED):
-  - Question: "Do teleost fish (zebrafish) have more helicase genes than amniotes?"
-  - Type: yes_no (helps balance - currently 6/10)
-  - Strengths:
-    * EXCLUDES annotation artifacts (no mouse data)
-    * FOCUSES on real evolutionary biology (teleost WGD 3R event)
-    * Uses ONLY high-quality, comparable annotations (human, chicken, zebrafish)
-    * Tests specific hypothesis about genome duplication
-    * Answer is genuinely informative: 60.9% increase in zebrafish vs amniote average
-  - Scientific utility:
-    * Demonstrates lasting impact of ancient WGD on gene family sizes
-    * Shows selective retention of helicase duplicates after diploidization
-    * Validates genome annotation quality across well-studied species
-  
-  KEY IMPROVEMENTS:
-  1. Changed from summary to yes/no (improves question type balance)
-  2. Removed mouse (1,181) - annotation artifact, not biology
-  3. Added amniote average calculation (178.5) for fair comparison
-  4. Explicit connection to teleost WGD event (~320-350 Mya)
-  5. Focuses on biological signal, not annotation noise
-  6. 60.9% increase is scientifically meaningful, not just database trivia
+question_template_used: Yes/No Cross-Database Verification
 
 time_spent:
-  exploration: "30 minutes"
-  formulation: "15 minutes"
-  verification: "20 minutes"
-  pubmed_test: "15 minutes"
-  extraction: "10 minutes"
-  documentation: "15 minutes"
-  revision: "25 minutes"
-  total: "130 minutes"
+  exploration: 45 minutes
+  formulation: 15 minutes
+  verification: 35 minutes
+  pubmed_test: 15 minutes
+  extraction: 25 minutes
+  documentation: 25 minutes
+  total: 160 minutes

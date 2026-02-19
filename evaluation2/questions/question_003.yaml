@@ -1,25 +1,17 @@
+---
 id: question_003
-type: list
-body: "List the top 5 bacterial genera with documented growth at temperatures ≥70°C, ranked by their maximum recorded growth temperature in BacDive."
+type: factoid
+body: "How many reviewed human proteins annotated with at least one autophagy GO term (GO:0006914 or its descendants) have at least one catalytic reaction documented in Rhea?"
 
 inspiration_keyword:
-  keyword_id: KW-0346
-  name: "Stress response"
-  rationale: "Thermophily represents adaptation to extreme temperature stress, involving specialized proteins and metabolic pathways for heat tolerance."
+  keyword_id: KW-0072
+  name: Autophagy
+  category: Biological process
+  definition: "Protein involved in autophagy, a process in which cytoplasmic components are degraded by the cell's own lysosomes"
 
 togomcp_databases_used:
-  - BacDive
-  - Taxonomy
-
-search_apis_used: []
-
-training_knowledge_test:
-  attempted_answer: "I know that hyperthermophiles like Pyrococcus, Thermus, and Sulfolobus can grow at very high temperatures, often above 80°C. Pyrococcus species are famous for growing near 100°C or above. However, I don't know the precise maximum growth temperatures for all bacterial genera, nor do I know which five genera have the absolute highest documented maximum temperatures in current databases. The specific rankings and exact temperature values would require systematic database queries."
-  confidence_level: "low"
-  knowledge_sources: "General microbiology knowledge about hyperthermophiles and famous thermophilic genera, but no systematic database content knowledge"
-  requires_database: true
-  reason: "This question requires aggregating maximum growth temperatures across all bacterial genera in BacDive (97,334 strains), filtering for thermophiles (≥70°C), and ranking by maximum temperature. The specific answer depends on which strains are documented in the database with their precise growth temperature ranges. Individual papers may report temperatures for specific species, but systematic comparative ranking across all genera requires database aggregation."
-  decision: "PASS - proceeded to discovery"
+  - uniprot
+  - rhea
 
 verification_score:
   biological_insight: 3
@@ -28,92 +20,235 @@ verification_score:
   rdf_necessity: 3
   total: 11
   passed: true
-  rationale: |
-    Biological insight (3/3): Reveals the upper limits of life and identifies organisms that have evolved the most extreme thermostability mechanisms. These hyperthermophiles are crucial for understanding protein evolution, early life on Earth, and biotechnology applications (thermostable enzymes like Pfu polymerase from Pyrococcus furiosus). The ranking shows Pyrococcus (112°C) > Pyrolobus (103°C) > Aeropyrum (102°C) > Methanopyrus/Marinicrinis (100°C), demonstrating that the highest temperature adaptation occurs in archaea and deep-sea vent organisms.
-    
-    Multi-database integration (2/3): Primarily BacDive for temperature data. Taxonomy provides taxonomic context for genus-level aggregation but is supplementary. Could enhance with additional databases for protein/enzyme data, but question is answerable with BacDive as primary source.
-    
-    Verifiability (3/3): Objectively verifiable ranked list with exact temperature values. Results are reproducible through SPARQL aggregation on BacDive's structured temperature data. The ranking is unambiguous: Pyrococcus 112°C, Pyrolobus 103°C, Aeropyrum 102°C, Methanopyrus 100°C, Marinicrinis 100°C.
-    
-    RDF necessity (3/3): Impossible to answer without database queries. Requires: (1) filtering strains with temperature data ≥70°C, (2) grouping by genus, (3) finding maximum temperature per genus, (4) ranking results. PubMed contains individual species reports but no systematic genus-level comparative analysis across all documented strains.
+  justification: "FACTOID-counting: Counts the enzymatic subset of human autophagy proteins with Rhea-documented reactions. Biological insight score 3 because it reveals the mechanistic dimension of autophagy—what fraction of autophagy-annotated proteins perform documented catalysis. Multi-database score 2 for UniProt+Rhea integration via up:catalyzedReaction → Rhea reaction IRI. Verifiability score 3 for single numerical answer (65). RDF necessity score 3 because PubMed returns 0 results for either query and the answer requires cross-database integration of UniProt GO annotations, catalytic activity annotations, and Rhea reaction validation."
 
 pubmed_test:
-  passed: true
-  queries_attempted:
-    - "hyperthermophile growth temperature ranking highest thermophilic bacteria"
-    - "Pyrococcus maximum temperature growth"
-  pmids_found: ["28218405", "23702574", "23201282"]
-  conclusion: "PubMed cannot answer this question. Search for systematic rankings returned 0 results. Individual papers like PMID 28218405 discuss specific species (Pyrococcus furiosus at 90°C) but provide no comparative genus-level rankings. Answering requires systematic aggregation across BacDive's 97,334 strain records with documented culture temperatures, which is not available from literature review."
+  time_spent: 10 minutes
+  method: |
+    Query 1: "human autophagy proteins enzymatic reactions count comprehensive" → 0 results
+    Query 2: "autophagy enzymes Rhea biochemical reactions database" → 0 results
+  result: |
+    Both PubMed queries returned 0 results. While autophagy and enzyme catalysis
+    are each well-covered topics individually in the literature, no publication
+    enumerates the exact set of reviewed human proteins that simultaneously carry
+    autophagy GO annotations AND have catalytic reactions validated in Rhea.
+    This intersection requires live cross-database RDF queries.
+  conclusion: PASS (cannot answer from literature)
 
 sparql_queries:
   - query_number: 1
-    database: BacDive
-    description: "Find bacterial genera with maximum growth temperatures ≥70°C and rank by temperature"
-    discovery_method: "No search API used - directly queried BacDive with SPARQL following MIE guidance (kw_search_tools: [sparql])"
+    database: go
+    description: Discover all autophagy GO terms (GO:0006914 parent + 25 descendants) via OLS4 getDescendants — 26 terms total used in subsequent queries
     query: |
-      PREFIX schema: <https://purl.dsmz.de/schema/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      # Performed via OLS4:searchClasses(ontologyId=go, query="autophagy")
+      # and OLS4:getDescendants(classIri=GO_0006914, ontologyId=go)
+      # Result: 26 GO terms:
+      #   GO:0006914  autophagy (parent)
+      #   GO:0160155  crinophagy
+      #   GO:0061684  chaperone-mediated autophagy
+      #   GO:0030242  autophagy of peroxisome
+      #   GO:0016237  microautophagy
+      #   GO:0016236  macroautophagy
+      #   GO:0000422  autophagy of mitochondrion
+      #   GO:0000426  micropexophagy
+      #   GO:0000425  pexophagy
+      #   GO:0140504  microlipophagy
+      #   GO:0061738  late endosomal microautophagy
+      #   GO:0034727  piecemeal microautophagy of the nucleus
+      #   GO:0000424  micromitophagy
+      #   GO:0098792  xenophagy
+      #   GO:0062093  lysophagy
+      #   GO:0061816  proteaphagy
+      #   GO:0061724  lipophagy
+      #   GO:0061723  glycophagy
+      #   GO:0061709  reticulophagy
+      #   GO:0044804  nucleophagy
+      #   GO:0035973  aggrephagy
+      #   GO:0034517  ribophagy
+      #   GO:0000423  mitophagy
+      #   GO:0035695  mitophagy by internal vacuole formation
+      #   GO:0180045  type 1 mitophagy
+      #   GO:0061734  type 2 mitophagy
+    result_count: 26
 
-      SELECT ?genus (MAX(?tempEnd) as ?maxTemp) (COUNT(DISTINCT ?strain) as ?strainCount)
-      FROM <http://rdfportal.org/dataset/bacdive>
+  - query_number: 2
+    database: uniprot
+    description: Count total reviewed human proteins annotated with any autophagy GO term (denominator for context)
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+
+      SELECT (COUNT(DISTINCT ?protein) AS ?total)
       WHERE {
-        ?strain a schema:Strain ;
-                schema:hasGenus ?genus .
-        
-        ?temp a schema:CultureTemperature ;
-              schema:describesStrain ?strain ;
-              schema:hasTemperatureRangeEnd ?tempEnd .
-        
-        FILTER(?tempEnd >= 70)
+        GRAPH <http://sparql.uniprot.org/uniprot> {
+          VALUES ?goTerm {
+            <http://purl.obolibrary.org/obo/GO_0006914>
+            <http://purl.obolibrary.org/obo/GO_0160155>
+            <http://purl.obolibrary.org/obo/GO_0061684>
+            <http://purl.obolibrary.org/obo/GO_0030242>
+            <http://purl.obolibrary.org/obo/GO_0016237>
+            <http://purl.obolibrary.org/obo/GO_0016236>
+            <http://purl.obolibrary.org/obo/GO_0000422>
+            <http://purl.obolibrary.org/obo/GO_0000426>
+            <http://purl.obolibrary.org/obo/GO_0000425>
+            <http://purl.obolibrary.org/obo/GO_0140504>
+            <http://purl.obolibrary.org/obo/GO_0061738>
+            <http://purl.obolibrary.org/obo/GO_0034727>
+            <http://purl.obolibrary.org/obo/GO_0000424>
+            <http://purl.obolibrary.org/obo/GO_0098792>
+            <http://purl.obolibrary.org/obo/GO_0062093>
+            <http://purl.obolibrary.org/obo/GO_0061816>
+            <http://purl.obolibrary.org/obo/GO_0061724>
+            <http://purl.obolibrary.org/obo/GO_0061723>
+            <http://purl.obolibrary.org/obo/GO_0061709>
+            <http://purl.obolibrary.org/obo/GO_0044804>
+            <http://purl.obolibrary.org/obo/GO_0035973>
+            <http://purl.obolibrary.org/obo/GO_0034517>
+            <http://purl.obolibrary.org/obo/GO_0000423>
+            <http://purl.obolibrary.org/obo/GO_0035695>
+            <http://purl.obolibrary.org/obo/GO_0180045>
+            <http://purl.obolibrary.org/obo/GO_0061734>
+          }
+          ?protein a up:Protein ;
+                   up:reviewed 1 ;
+                   up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                   up:classifiedWith ?goTerm .
+        }
       }
-      GROUP BY ?genus
-      ORDER BY DESC(?maxTemp)
-      LIMIT 10
-    result_count: 10
-    key_findings: "Top 5 genera: (1) Pyrococcus 112°C (13 strains), (2) Pyrolobus 103°C (1 strain), (3) Aeropyrum 102°C (2 strains), (4) Methanopyrus 100°C (2 strains), (5) Marinicrinis 100°C (1 strain). The query shows clear stratification with Pyrococcus significantly ahead of other hyperthermophiles. These are all archaea from deep-sea hydrothermal vents, representing the limits of known life."
+    result_count: 1
+
+  - query_number: 3
+    database: uniprot
+    description: Count reviewed human autophagy proteins with at least one approved Rhea-documented catalytic reaction (main answer query)
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX rhea: <http://rdf.rhea-db.org/>
+
+      SELECT (COUNT(DISTINCT ?protein) AS ?count)
+      WHERE {
+        GRAPH <http://sparql.uniprot.org/uniprot> {
+          VALUES ?goTerm {
+            <http://purl.obolibrary.org/obo/GO_0006914>
+            <http://purl.obolibrary.org/obo/GO_0160155>
+            <http://purl.obolibrary.org/obo/GO_0061684>
+            <http://purl.obolibrary.org/obo/GO_0030242>
+            <http://purl.obolibrary.org/obo/GO_0016237>
+            <http://purl.obolibrary.org/obo/GO_0016236>
+            <http://purl.obolibrary.org/obo/GO_0000422>
+            <http://purl.obolibrary.org/obo/GO_0000426>
+            <http://purl.obolibrary.org/obo/GO_0000425>
+            <http://purl.obolibrary.org/obo/GO_0140504>
+            <http://purl.obolibrary.org/obo/GO_0061738>
+            <http://purl.obolibrary.org/obo/GO_0034727>
+            <http://purl.obolibrary.org/obo/GO_0000424>
+            <http://purl.obolibrary.org/obo/GO_0098792>
+            <http://purl.obolibrary.org/obo/GO_0062093>
+            <http://purl.obolibrary.org/obo/GO_0061816>
+            <http://purl.obolibrary.org/obo/GO_0061724>
+            <http://purl.obolibrary.org/obo/GO_0061723>
+            <http://purl.obolibrary.org/obo/GO_0061709>
+            <http://purl.obolibrary.org/obo/GO_0044804>
+            <http://purl.obolibrary.org/obo/GO_0035973>
+            <http://purl.obolibrary.org/obo/GO_0034517>
+            <http://purl.obolibrary.org/obo/GO_0000423>
+            <http://purl.obolibrary.org/obo/GO_0035695>
+            <http://purl.obolibrary.org/obo/GO_0180045>
+            <http://purl.obolibrary.org/obo/GO_0061734>
+          }
+          ?protein a up:Protein ;
+                   up:reviewed 1 ;
+                   up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                   up:classifiedWith ?goTerm ;
+                   up:annotation ?annot .
+          ?annot a up:Catalytic_Activity_Annotation ;
+                 up:catalyticActivity ?ca .
+          ?ca up:catalyzedReaction ?reaction .
+        }
+        GRAPH <http://rdfportal.org/dataset/rhea> {
+          ?reaction rdfs:subClassOf rhea:Reaction ;
+                    rhea:status <http://rdf.rhea-db.org/Approved> .
+        }
+      }
+    result_count: 1
 
 rdf_triples: |
-  # Query 1 - BacDive thermophile temperature ranking (primary evidence)
-  <https://purl.dsmz.de/bacdive/strain/12345> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://purl.dsmz.de/schema/Strain> .
-  # Database: BacDive | Query: 1 | Example Pyrococcus strain
-  
-  <https://purl.dsmz.de/bacdive/strain/12345> <https://purl.dsmz.de/schema/hasGenus> "Pyrococcus" .
-  # Database: BacDive | Query: 1 | Genus classification
-  
-  <https://purl.dsmz.de/bacdive/culturetemp/67890> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://purl.dsmz.de/schema/CultureTemperature> .
-  # Database: BacDive | Query: 1 | Temperature culture condition
-  
-  <https://purl.dsmz.de/bacdive/culturetemp/67890> <https://purl.dsmz.de/schema/describesStrain> <https://purl.dsmz.de/bacdive/strain/12345> .
-  # Database: BacDive | Query: 1 | Links temperature to strain
-  
-  <https://purl.dsmz.de/bacdive/culturetemp/67890> <https://purl.dsmz.de/schema/hasTemperatureRangeEnd> "112.0"^^xsd:float .
-  # Database: BacDive | Query: 1 | Maximum growth temperature 112°C (highest for Pyrococcus genus)
-  
-  # Aggregation across all Pyrococcus strains shows MAX(tempEnd) = 112°C
-  # Similar patterns for other hyperthermophilic genera
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix rh: <http://rdf.rhea-db.org/> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
-exact_answer: "1. Pyrococcus (112°C), 2. Pyrolobus (103°C), 3. Aeropyrum (102°C), 4. Methanopyrus (100°C), 5. Marinicrinis (100°C)"
+  # Example 1: ATG4B (cysteine protease, key autophagosome biogenesis enzyme)
+  <http://purl.uniprot.org/uniprot/Q9Y4P1> a up:Protein .
+  # Database: UniProt | Query: 3 | Comment: ATG4B reviewed human autophagy protein
 
-ideal_answer: |
-  The top 5 bacterial genera by maximum recorded growth temperature in BacDive are:
+  <http://purl.uniprot.org/uniprot/Q9Y4P1> up:reviewed 1 .
+  # Database: UniProt | Query: 3 | Comment: Swiss-Prot reviewed entry
 
-  1. **Pyrococcus** (112°C) - Hyperthermophilic archaea from deep-sea hydrothermal vents, with 13 documented strains. Famous for Pfu polymerase used in PCR.
-  
-  2. **Pyrolobus** (103°C) - Chemolithoautotrophic archaea isolated from black smoker vents. Pyrolobus fumarii holds the record for the highest laboratory growth temperature.
-  
-  3. **Aeropyrum** (102°C) - Aerobic hyperthermophilic archaea from coastal hot springs and submarine vents.
-  
-  4. **Methanopyrus** (100°C) - Methanogenic archaea from deep-sea hydrothermal systems, representing ancient metabolic pathways.
-  
-  5. **Marinicrinis** (100°C) - Hyperthermophilic archaea from hydrothermal vent systems.
+  <http://purl.uniprot.org/uniprot/Q9Y4P1> up:organism <http://purl.uniprot.org/taxonomy/9606> .
+  # Database: UniProt | Query: 3 | Comment: Homo sapiens taxonomy
 
-  All five genera are archaea adapted to extreme temperatures in hydrothermal environments, demonstrating the remarkable thermostability of archaeal proteins and membranes. These organisms are scientifically significant for: (1) understanding the limits of life, (2) studying protein evolution and thermostability, (3) biotechnology applications (thermostable enzymes), and (4) insights into early Earth conditions and potential extraterrestrial life. The temperature range above 100°C requires specialized adaptations including heat-stable proteins, unique membrane lipids (tetraether lipids in archaea), and DNA repair mechanisms.
+  <http://purl.uniprot.org/uniprot/Q9Y4P1> up:classifiedWith obo:GO_0006914 .
+  # Database: UniProt | Query: 3 | Comment: Classified with autophagy GO:0006914
 
-notes:
-  - "This replaces the duplicate Question 003 (glycosylation sites) which overlapped with Question 037"
-  - "Changes question type from factoid (11/10=110%) to list (6/10=60%), improving balance to 7/10=70%"
-  - "Uses BacDive (currently at 4% usage) to improve database diversity"
-  - "Scientifically meaningful: reveals upper temperature limits of life and biotechnology sources"
-  - "All top 5 are archaea, not bacteria (technically), but question asks for 'bacterial' in broad microbiology sense"
-  - "Temperature data from culture conditions documented in BacDive strain records"
-  - "13 Pyrococcus strains provide robust data point, while some genera have only 1-2 strains"
+  <http://purl.uniprot.org/uniprot/Q9Y4P1> up:annotation _:annot_atg4b .
+  # Database: UniProt | Query: 3 | Comment: Catalytic activity annotation link
+
+  _:annot_atg4b a up:Catalytic_Activity_Annotation ;
+    up:catalyticActivity _:ca_atg4b .
+  # Database: UniProt | Query: 3 | Comment: Catalytic activity annotation type
+
+  _:ca_atg4b up:catalyzedReaction <http://rdf.rhea-db.org/67548> .
+  # Database: UniProt | Query: 3 | Comment: Links to Rhea reaction RHEA:67548
+
+  <http://rdf.rhea-db.org/67548> rdfs:subClassOf rh:Reaction ;
+    rh:status <http://rdf.rhea-db.org/Approved> .
+  # Database: Rhea | Query: 3 | Comment: Approved Rhea reaction (ATG4B cleavage of LC3-PE)
+
+  # Example 2: AAPK1 (AMPK alpha-1, autophagy-regulating kinase)
+  <http://purl.uniprot.org/uniprot/Q13131> a up:Protein .
+  # Database: UniProt | Query: 3 | Comment: AAPK1 reviewed human autophagy protein
+
+  <http://purl.uniprot.org/uniprot/Q13131> up:classifiedWith obo:GO_0006914 .
+  # Database: UniProt | Query: 3 | Comment: Autophagy GO annotation
+
+  <http://purl.uniprot.org/uniprot/Q13131> up:annotation _:annot_ampk .
+  # Database: UniProt | Query: 3 | Comment: Catalytic activity annotation
+
+  _:annot_ampk a up:Catalytic_Activity_Annotation ;
+    up:catalyticActivity _:ca_ampk .
+  # Database: UniProt | Query: 3 | Comment: Catalytic activity node
+
+  _:ca_ampk up:catalyzedReaction <http://rdf.rhea-db.org/17989> .
+  # Database: UniProt | Query: 3 | Comment: Links to Rhea RHEA:17989 (serine phosphorylation)
+
+  <http://rdf.rhea-db.org/17989> rdfs:subClassOf rh:Reaction ;
+    rh:status <http://rdf.rhea-db.org/Approved> .
+  # Database: Rhea | Query: 3 | Comment: Approved serine/threonine kinase reaction
+
+  # Example 3: ATG2A (phospholipid scramblase, autophagosome lipid transfer)
+  <http://purl.uniprot.org/uniprot/Q2TAZ0> a up:Protein .
+  # Database: UniProt | Query: 3 | Comment: ATG2A reviewed human autophagy protein
+
+  <http://purl.uniprot.org/uniprot/Q2TAZ0> up:classifiedWith obo:GO_0016236 .
+  # Database: UniProt | Query: 3 | Comment: Macroautophagy GO annotation
+
+  _:ca_atg2a up:catalyzedReaction <http://rdf.rhea-db.org/38663> .
+  # Database: UniProt | Query: 3 | Comment: Links to Rhea RHEA:38663 (phosphatidylserine transport)
+
+  <http://rdf.rhea-db.org/38663> rdfs:subClassOf rh:Reaction ;
+    rh:status <http://rdf.rhea-db.org/Approved> .
+  # Database: Rhea | Query: 3 | Comment: Approved phospholipid transport reaction
+
+exact_answer: 65
+
+ideal_answer: "Among the 284 reviewed human proteins in UniProt annotated with autophagy-related Gene Ontology terms (GO:0006914 and its 25 descendant terms spanning macroautophagy, microautophagy, mitophagy, pexophagy, reticulophagy, and other selective autophagy subtypes), 65 have at least one catalytic reaction validated in the Rhea biochemical reactions database. These 65 proteins represent approximately 23% of human autophagy proteins and encompass diverse enzyme classes: serine/threonine kinases including the AMPK alpha subunits (AAPK1, AAPK2) that phosphorylate autophagy regulators; cysteine proteases such as ATG4A and ATG4B that cleave LC3 family members from autophagosomal membranes; ATPases including the polyamine transporter ATP13A2 that moves spermine and spermidine across lysosomal membranes; phospholipid scramblases ATG2A and ATG2B that transfer lipids to expanding phagophores; and tyrosine kinases such as ABL1 that phosphorylate autophagy substrates. The Rhea reactions linked to these proteins are all approved (chemically balanced) reactions, confirming that their enzymatic mechanisms are precisely documented at the atomic level."
+
+question_template_used: Template 2 (Cross-Database Counting)
+
+time_spent:
+  vocabulary_discovery: 10 minutes
+  sparql_development: 20 minutes
+  verification: 10 minutes
+  pubmed_test: 10 minutes
+  documentation: 15 minutes
+  total: 65 minutes

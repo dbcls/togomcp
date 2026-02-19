@@ -51,7 +51,7 @@ Change the file paths as appropriate.
                 "--directory",
                 "{path to togo-mcp}/togo-mcp",
                 "run",
-                "togo-mcp-server"
+                "togo-mcp-local"
             ]
         }
     }

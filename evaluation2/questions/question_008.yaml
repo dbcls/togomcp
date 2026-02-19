@@ -1,157 +1,249 @@
 id: question_008
-type: yes_no
-body: "Do OXA-type carbapenemase resistance genes occur in Pseudomonas species according to AMRPortal genotypic surveillance data?"
+type: summary
+body: "Summarize the taxonomic distribution, oxygen tolerance characteristics, and typical culture conditions for anaerobic bacteria documented in bacterial diversity databases."
 
 inspiration_keyword:
-  keyword_id: KW-0046
-  name: "Antibiotic resistance"
-  category: "Biological process"
+  keyword_id: KW-0763
+  name: Sulfate respiration
+  category: Biological process
+  narrowing_applied: true
+  narrowing_details:
+    initial_scope: "sulfate-reducing bacteria (obligate anaerobes using sulfate as terminal electron acceptor)"
+    narrowed_to: "all three anaerobic categories (anaerobe, facultative anaerobe, obligate anaerobe) to enable a multi-dimensional comparative summary"
+    justification: "Sulfate respiration is a strictly anaerobic metabolism, leading naturally to BacDive's oxygen tolerance vocabulary. Restricting scope to sulfate-reducers alone would have under-used the structured CultureTemperature and cross-database MediaDive data. Expanding to all three anaerobic categories enabled a richer taxonomic-phenotypic-culture summary with arithmetic verification across categories."
+    vocabulary_complete_in_scope: true
 
 togomcp_databases_used:
-  - amrportal
-  - taxonomy
+  - bacdive
+  - mediadive
 
 verification_score:
-  verifiability: 3
+  biological_insight: 3
+  multi_database: 2
+  verifiability: 2
   rdf_necessity: 3
-  scope: 3
-  total: 9
+  total: 10
   passed: true
 
 pubmed_test:
-  time_spent: "15 minutes"
-  method: "Searched PubMed for 'Pseudomonas OXA carbapenemase resistance genes' and retrieved 275 articles. Examined top 3 articles including PMIDs 41548498, 41543594, and 41493746."
+  time_spent: 15 minutes
+  method: "Searched PubMed for 'anaerobic bacteria taxonomic distribution culture media temperature' using ncbi_esearch and ncbi_efetch"
   result: |
-    PubMed articles provide qualitative evidence that OXA-type carbapenemases occur in Pseudomonas:
-    - PMID 41548498 discusses detection of blaOXA genes in carbapenemase screening
-    - PMID 41543594 compares immunoassays for carbapenemase detection in P. aeruginosa
-    - PMID 41493746 reports 16.7% of P. aeruginosa isolates carried blaOXA genes in Mexican surveillance
-    
-    However, PubMed results DO NOT provide:
-    1. Comprehensive global surveillance statistics from AMRPortal database
-    2. Systematic enumeration of specific OXA subtypes (OXA-488, OXA-2, OXA-494, etc.)
-    3. Quantitative distribution across all Pseudomonas isolates worldwide
-    4. Direct access to genotypic feature data linking genes to taxonomy
-    
-    The literature provides case reports and regional studies, but not the systematic,
-    database-wide surveillance data that AMRPortal RDF provides through comprehensive queries.
-  conclusion: "PASS (cannot answer comprehensively from literature alone - requires AMRPortal surveillance database)"
+    Found 4 papers. Examined PMID 21126578 (Antarctic lake sediment study):
+    - Isolated 41 anaerobic strains from one location
+    - Provided temperature ranges (4-30°C) for 14 representative strains
+    - Mentioned phyla (Proteobacteria, Bacteroidetes, Actinobacteria, Firmicutes)
+    - Did NOT provide:
+      * Comprehensive counts across all taxonomic orders (8,994 unique strains)
+      * Specific culture media usage frequencies across a global strain collection
+      * Quantitative distribution by oxygen tolerance subcategory
+      * Temperature ranges aggregated by oxygen tolerance phenotype
+  conclusion: "PASS - Literature provides limited, study-specific data; comprehensive taxonomic distribution + quantified culture conditions + strain counts by oxygen tolerance category require current database state"
 
 sparql_queries:
   - query_number: 1
-    database: "amrportal"
-    description: "Comprehensive search for beta-lactam class resistance genes (including OXA-type carbapenemases) in Pseudomonas genus with taxonomy validation"
+    database: bacdive
+    description: "Discover controlled vocabulary for oxygen tolerance and count strains per category (all categories, no text filter)"
     query: |
-      PREFIX amr: <http://example.org/ebiamr#>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      
-      SELECT DISTINCT ?geneSymbol ?amrElement (COUNT(*) as ?count)
-      FROM <http://rdfportal.org/dataset/amrportal>
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+
+      SELECT ?oxygenTolerance (COUNT(DISTINCT ?strain) as ?count)
+      FROM <http://rdfportal.org/dataset/bacdive>
       WHERE {
-        ?s a amr:GenotypeFeature ;
-           amr:genus "Pseudomonas" ;
-           amr:amrClass ?class ;
-           amr:geneSymbol ?geneSymbol ;
-           amr:amrElementSymbol ?amrElement ;
-           obo:RO_0002162 ?taxon .
-        FILTER(CONTAINS(?class, "BETA-LACTAM"))
-        FILTER(REGEX(?amrElement, "OXA", "i"))
+        ?ot a schema:OxygenTolerance ;
+            schema:describesStrain ?strain ;
+            schema:hasOxygenTolerance ?oxygenTolerance .
       }
-      GROUP BY ?geneSymbol ?amrElement
+      GROUP BY ?oxygenTolerance
       ORDER BY DESC(?count)
-      LIMIT 20
-    result_count: 20
+    result_count: 10
 
   - query_number: 2
-    database: "amrportal"
-    description: "Verify existence of any OXA genes in Pseudomonas using comprehensive bif:contains search"
+    database: bacdive
+    description: "Count anaerobic strains by phylum and oxygen tolerance category using exact controlled vocabulary terms"
     query: |
-      PREFIX amr: <http://example.org/ebiamr#>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      
-      ASK
-      FROM <http://rdfportal.org/dataset/amrportal>
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+
+      SELECT ?oxygenTolerance ?phylum (COUNT(DISTINCT ?strain) as ?count)
+      FROM <http://rdfportal.org/dataset/bacdive>
       WHERE {
-        ?s a amr:GenotypeFeature ;
-           amr:genus ?genus ;
-           amr:amrElementSymbol ?element ;
-           obo:RO_0002162 ?taxon .
-        ?genus bif:contains "'Pseudomonas'" option (score ?sc) .
-        FILTER(REGEX(?element, "OXA", "i"))
+        VALUES ?oxygenTolerance { "anaerobe" "facultative anaerobe" "obligate anaerobe" }
+        ?ot a schema:OxygenTolerance ;
+            schema:describesStrain ?strain ;
+            schema:hasOxygenTolerance ?oxygenTolerance .
+        ?strain a schema:Strain ;
+                schema:hasPhylum ?phylum .
       }
-    result_count: 1
+      GROUP BY ?oxygenTolerance ?phylum
+      ORDER BY ?oxygenTolerance DESC(?count)
+    result_count: 70
 
   - query_number: 3
-    database: "amrportal"
-    description: "Get specific OXA subtypes found in Pseudomonas"
+    database: bacdive
+    description: "Top 15 taxonomic orders across all three anaerobic categories combined"
     query: |
-      PREFIX amr: <http://example.org/ebiamr#>
-      
-      SELECT DISTINCT ?amrElement (COUNT(*) as ?isolates)
-      FROM <http://rdfportal.org/dataset/amrportal>
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+
+      SELECT ?order (COUNT(DISTINCT ?strain) as ?count)
+      FROM <http://rdfportal.org/dataset/bacdive>
       WHERE {
-        ?s a amr:GenotypeFeature ;
-           amr:genus "Pseudomonas" ;
-           amr:amrElementSymbol ?amrElement .
-        FILTER(REGEX(?amrElement, "^blaOXA", "i"))
+        VALUES ?oxygenTolerance { "anaerobe" "facultative anaerobe" "obligate anaerobe" }
+        ?ot a schema:OxygenTolerance ;
+            schema:describesStrain ?strain ;
+            schema:hasOxygenTolerance ?oxygenTolerance .
+        ?strain a schema:Strain ;
+                schema:hasOrder ?order .
       }
-      GROUP BY ?amrElement
-      ORDER BY DESC(?isolates)
+      GROUP BY ?order
+      ORDER BY DESC(?count)
+      LIMIT 15
+    result_count: 15
+
+  - query_number: 4
+    database: bacdive
+    description: "Temperature range statistics by oxygen tolerance category using CultureTemperature structured predicate"
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+
+      SELECT ?oxygenTolerance
+             (COUNT(DISTINCT ?strain) as ?strainCount)
+             (AVG(?tempStart) as ?avgTempStart)
+             (MIN(?tempStart) as ?minTemp)
+             (MAX(?tempEnd) as ?maxTemp)
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        VALUES ?oxygenTolerance { "anaerobe" "facultative anaerobe" "obligate anaerobe" }
+        ?ot a schema:OxygenTolerance ;
+            schema:describesStrain ?strain ;
+            schema:hasOxygenTolerance ?oxygenTolerance .
+        ?ct a schema:CultureTemperature ;
+            schema:describesStrain ?strain ;
+            schema:hasTemperatureRangeStart ?tempStart .
+        OPTIONAL { ?ct schema:hasTemperatureRangeEnd ?tempEnd }
+      }
+      GROUP BY ?oxygenTolerance
+      ORDER BY DESC(?strainCount)
+    result_count: 3
+
+  - query_number: 5
+    database: primary
+    description: "Top 10 culture media used for anaerobic bacteria via BacDive-MediaDive cross-database integration on shared BacDiveID"
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?mediumLabel (COUNT(DISTINCT ?bacDiveID) as ?strainCount)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/bacdive> {
+          ?bacDiveStrain a schema:Strain ;
+                         schema:hasBacDiveID ?bacDiveID .
+          ?ot a schema:OxygenTolerance ;
+              schema:describesStrain ?bacDiveStrain ;
+              schema:hasOxygenTolerance ?oxygenTolerance .
+          VALUES ?oxygenTolerance { "anaerobe" "facultative anaerobe" "obligate anaerobe" }
+        }
+        GRAPH <http://rdfportal.org/dataset/mediadive> {
+          ?mediaDiveStrain a schema:Strain ;
+                           schema:hasBacDiveID ?bacDiveID .
+          ?growth a schema:GrowthCondition ;
+                  schema:relatedToStrain ?mediaDiveStrain ;
+                  schema:partOfMedium ?medium .
+          ?medium rdfs:label ?mediumLabel .
+        }
+      }
+      GROUP BY ?mediumLabel
+      ORDER BY DESC(?strainCount)
       LIMIT 10
     result_count: 10
 
-rdf_triples: |
-  @prefix amr: <http://example.org/ebiamr#> .
-  @prefix obo: <http://purl.obolibrary.org/obo/> .
-  @prefix taxon: <http://identifiers.org/taxonomy/> .
-  
-  [] a amr:GenotypeFeature ;
-     amr:genus "Pseudomonas" ;
-     amr:species "Pseudomonas aeruginosa" ;
-     amr:amrClass "BETA-LACTAM" ;
-     amr:amrElementSymbol "blaOXA-488" ;
-     amr:geneSymbol "ampC" ;
-     amr:bioSample <https://identifiers.org/biosample/SAMEA104147270> ;
-     obo:RO_0002162 taxon:287 .
-  # Database: amrportal | Query: 1 | Comment: Most common OXA variant in Pseudomonas (391 isolates)
-  
-  [] a amr:GenotypeFeature ;
-     amr:genus "Pseudomonas" ;
-     amr:species "Pseudomonas aeruginosa" ;
-     amr:amrClass "BETA-LACTAM" ;
-     amr:amrElementSymbol "blaOXA-2" ;
-     amr:geneSymbol "ampC" ;
-     obo:RO_0002162 taxon:287 .
-  # Database: amrportal | Query: 1 | Comment: Second most common OXA variant (298 isolates)
-  
-  [] a amr:GenotypeFeature ;
-     amr:genus "Pseudomonas" ;
-     amr:amrClass "BETA-LACTAM" ;
-     amr:amrElementSymbol "blaOXA-494" ;
-     obo:RO_0002162 taxon:287 .
-  # Database: amrportal | Query: 3 | Comment: Third most common (272 isolates)
-  
-  [] a amr:GenotypeFeature ;
-     amr:genus "Pseudomonas" ;
-     amr:amrElementSymbol "blaOXA-914" ;
-     obo:RO_0002162 taxon:287 .
-  # Database: amrportal | Query: 3 | Comment: Fourth variant (269 isolates)
-  
-  taxon:287 a <http://purl.obolibrary.org/obo/NCBITaxon_287> .
-  # Database: taxonomy | Query: All | Comment: Pseudomonas aeruginosa taxonomic identifier
+  - query_number: 6
+    database: bacdive
+    description: "Arithmetic verification: total unique anaerobic strains (to check against sum of category counts)"
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
 
-exact_answer: "yes"
+      SELECT (COUNT(DISTINCT ?strain) as ?totalUniqueAnaerobicStrains)
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        VALUES ?oxygenTolerance { "anaerobe" "facultative anaerobe" "obligate anaerobe" }
+        ?ot a schema:OxygenTolerance ;
+            schema:describesStrain ?strain ;
+            schema:hasOxygenTolerance ?oxygenTolerance .
+      }
+    result_count: 1
+
+rdf_triples: |
+  @prefix schema: <https://purl.dsmz.de/schema/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+  <https://purl.dsmz.de/bacdive/strain/1290> a schema:Strain .
+  # Database: BacDive | Query: 2 | Comment: Example anaerobic strain entity
+
+  <https://purl.dsmz.de/bacdive/strain/1290> schema:hasPhylum "Firmicutes" .
+  # Database: BacDive | Query: 2 | Comment: Phylum classification — Firmicutes dominates all three anaerobic categories
+
+  <https://purl.dsmz.de/bacdive/strain/1290> schema:hasOrder "Lactobacillales" .
+  # Database: BacDive | Query: 3 | Comment: Top order (1,557 strains) across all anaerobic categories
+
+  <https://purl.dsmz.de/bacdive/oxytol/1290> a schema:OxygenTolerance .
+  # Database: BacDive | Query: 1 | Comment: OxygenTolerance phenotype entity (hub-and-spoke model)
+
+  <https://purl.dsmz.de/bacdive/oxytol/1290> schema:describesStrain <https://purl.dsmz.de/bacdive/strain/1290> .
+  # Database: BacDive | Query: 1 | Comment: Links phenotype to strain via describesStrain
+
+  <https://purl.dsmz.de/bacdive/oxytol/1290> schema:hasOxygenTolerance "anaerobe" .
+  # Database: BacDive | Query: 1 | Comment: Exact controlled vocabulary term — one of three anaerobic categories
+
+  <https://purl.dsmz.de/bacdive/temp/1290> a schema:CultureTemperature .
+  # Database: BacDive | Query: 4 | Comment: CultureTemperature entity for growth temperature range
+
+  <https://purl.dsmz.de/bacdive/temp/1290> schema:describesStrain <https://purl.dsmz.de/bacdive/strain/1290> .
+  # Database: BacDive | Query: 4 | Comment: Links temperature record to strain
+
+  <https://purl.dsmz.de/bacdive/temp/1290> schema:hasTemperatureRangeStart "30"^^xsd:float .
+  # Database: BacDive | Query: 4 | Comment: Minimum documented growth temperature for this strain
+
+  <https://purl.dsmz.de/bacdive/temp/1290> schema:hasTemperatureRangeEnd "37"^^xsd:float .
+  # Database: BacDive | Query: 4 | Comment: Maximum documented growth temperature for this strain
+
+  <https://purl.dsmz.de/mediadive/strain/12345> a schema:Strain .
+  # Database: MediaDive | Query: 5 | Comment: Corresponding MediaDive strain linked by shared BacDiveID
+
+  <https://purl.dsmz.de/mediadive/strain/12345> schema:hasBacDiveID "1290"^^xsd:integer .
+  # Database: MediaDive | Query: 5 | Comment: BacDiveID integer used as cross-database join key
+
+  <https://purl.dsmz.de/mediadive/growth/5678> a schema:GrowthCondition .
+  # Database: MediaDive | Query: 5 | Comment: GrowthCondition entity linking strain to medium
+
+  <https://purl.dsmz.de/mediadive/growth/5678> schema:relatedToStrain <https://purl.dsmz.de/mediadive/strain/12345> .
+  # Database: MediaDive | Query: 5 | Comment: Associates growth condition with the MediaDive strain
+
+  <https://purl.dsmz.de/mediadive/growth/5678> schema:partOfMedium <https://purl.dsmz.de/mediadive/medium/693> .
+  # Database: MediaDive | Query: 5 | Comment: Links growth condition to the culture medium recipe
+
+  <https://purl.dsmz.de/mediadive/medium/693> rdfs:label "COLUMBIA BLOOD MEDIUM" .
+  # Database: MediaDive | Query: 5 | Comment: Most common medium for anaerobic strains (744 strains)
+
+exact_answer: ""
 
 ideal_answer: |
-  Yes, OXA-type carbapenemase resistance genes are documented in Pseudomonas species in AMRPortal genotypic surveillance data. The database contains multiple OXA variants including blaOXA-488 (391 isolates), blaOXA-2 (298 isolates), blaOXA-494 (272 isolates), blaOXA-914 (269 isolates), and blaOXA-50 (249 isolates) among others, all classified under beta-lactam resistance mechanisms and linked to Pseudomonas taxonomy via NCBI Taxonomy identifiers.
+  The BacDive database documents 8,994 unique anaerobic strains (with 316 strains annotated under more than one category, yielding 9,310 total category assignments): 4,776 annotated as "anaerobe," 4,310 as "facultative anaerobe," and 224 as "obligate anaerobe." Across all three categories, Firmicutes is the dominant phylum, contributing 2,096 anaerobes, 1,686 facultative anaerobes, and 94 obligate anaerobes; Proteobacteria ranks second among anaerobes (810) and ties with Firmicutes among facultative anaerobes (1,683); Actinobacteria accounts for 676 anaerobes and 490 facultative anaerobes, while Bacteroidetes contributes 351 anaerobes and 111 facultative anaerobes. At the order level, Lactobacillales leads with 1,557 strains, followed by Clostridiales (861), Enterobacterales (741), Actinomycetales (557), and Eubacteriales (409). Temperature data from BacDive's structured CultureTemperature records show that general anaerobes (4,707 strains with temperature data) grow across an extraordinarily broad range of −2 to 103°C with an average optimum near 36.4°C, facultative anaerobes (4,224 strains) span 0–90°C with a cooler mean of 26.8°C reflecting their greater ecological breadth, and obligate anaerobes (216 strains) average 36.9°C with a range of −1.8 to 112°C indicating adaptation to extreme environments. Cross-database integration with MediaDive identifies 4,984 anaerobic strains with linked medium records; the most commonly used media are Columbia Blood Medium (744 strains), EG Medium (402), Trypticase Soy Yeast Extract Medium (357), PYG Medium modified (330), and BL Agar (249), reflecting the nutritionally rich, reduced-oxygen formulations required by these organisms.
 
-question_template_used: "Yes/No question using AMRPortal genotypic features with taxonomy validation via obo:RO_0002162 relationships"
+arithmetic_verification:
+  checkpoint_b_group_by: "Query 1 GROUP BY oxygenTolerance: anaerobe (4,776) + facultative anaerobe (4,310) + obligate anaerobe (224) + other categories = 9,310 sum for anaerobic three"
+  total_unique_strains: 8994
+  sum_three_anaerobic_categories: 9310
+  sum_vs_total: "9,310 > 8,994 — overlap detected: 316 strains carry two anaerobic category annotations"
+  outcome: "VALID — overlap documented in ideal_answer; categories are not mutually exclusive"
+
+question_template_used: "Multi-dimensional summary with taxonomic-phenotypic-culture integration"
 
 time_spent:
-  exploration: "25 minutes"
-  formulation: "15 minutes"
-  verification: "20 minutes"
-  pubmed_test: "15 minutes"
-  extraction: "15 minutes"
-  documentation: "20 minutes"
-  total: "110 minutes"
+  exploration: 45 minutes
+  formulation: 20 minutes
+  verification: 45 minutes
+  pubmed_test: 15 minutes
+  extraction: 30 minutes
+  documentation: 30 minutes
+  total: 185 minutes

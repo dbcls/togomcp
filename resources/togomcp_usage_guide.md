@@ -19,6 +19,48 @@
 
 ---
 
+## 🔍 STEP 0: DATABASE DISCOVERY (ALWAYS START HERE!)
+
+**Call `list_databases()` to discover which databases contain your data:**
+
+```python
+list_databases()  # Returns: 23 databases with descriptions
+
+# Match keywords in descriptions to your query:
+# "MANE" → Ensembl (not just NCBI Gene!)
+# "drug targets" + "approved" → ChEMBL
+# "clinical variants" → ClinVar
+# "pathways" → Reactome
+```
+
+### Quick Workflow
+
+```python
+# 1. Discover databases by keywords
+list_databases()  # Read descriptions
+
+# 2. Check if they share endpoints (for cross-DB queries)
+get_sparql_endpoints()
+
+# 3. Get schemas for identified databases
+get_MIE_file('ensembl')  # Found "MANE" in description
+get_MIE_file('chembl')   # Found "drug targets" in description
+
+# 4. Query using discovered structured properties
+```
+
+### Common Mistake
+
+❌ **Assuming:** "MANE is NCBI, so use ncbigene" → Empty results  
+✅ **Discovering:** `list_databases()` shows "MANE" in Ensembl → Success
+
+**When to use:** Starting new queries, uncertain about database, query has multiple concepts, or getting empty results  
+**When to skip:** Already know exact database from prior work in same session
+
+**Rule of thumb:** 5 seconds of discovery prevents hours of debugging
+
+---
+
 ## 🔌 ENDPOINT ARCHITECTURE (CRITICAL!)
 
 **Before any multi-database query, check if databases share an endpoint:**
@@ -279,14 +321,22 @@ SELECT (COUNT(?x) as ?count) WHERE {
 
 ## 🔑 KEY RULES
 
-### Rule 0: Check Endpoints for Multi-Database Queries
+### Rule 0: Database Discovery First
+**Call `list_databases()` to identify relevant databases**
+
+- Read database descriptions for keyword matches
+- Identify 1-3 databases before calling MIE files
+- **Never assume** a database contains data without checking
+- Prevents 50-80% of "empty results" errors
+
+### Rule 1: Check Endpoints for Multi-Database Queries
 **Call `get_sparql_endpoints()` before combining databases**
 
 - Same endpoint → single SPARQL with multiple GRAPHs
 - Different endpoints → hybrid approach (API + SPARQL)
 - **Never assume** databases can be joined
 
-### Rule 1: MIE File First
+### Rule 2: MIE File First
 **95% of failures = skipping `get_MIE_file()`**
 
 Check these in schema:
@@ -295,11 +345,11 @@ Check these in schema:
 - Typed predicates (assayType, status, phase)
 - Hierarchies (subClassOf, pathwayComponent)
 
-### Rule 2: Use OR Logic for Broad Searches
+### Rule 3: Use OR Logic for Broad Searches
 **Wrong:** `"nifH"` → finds 286 genes (21%)  
 **Right:** `"(nifH OR 'nitrogenase iron protein')"` → finds 1,367 genes (100%)
 
-### Rule 3: Structured > Text Search
+### Rule 4: Structured > Text Search
 ```
 Priority: Structured Properties > bif:contains
             (ALWAYS)              (RARE <5%)
@@ -307,7 +357,7 @@ Priority: Structured Properties > bif:contains
 
 **bif:contains ONLY if:** No structured alternative exists after checking MIE + inspecting examples
 
-### Rule 4: No Circular Reasoning
+### Rule 5: No Circular Reasoning
 **Never:**
 - Search → get examples → query ONLY those examples
 - That's circular - you only checked what you found!
@@ -321,9 +371,9 @@ Priority: Structured Properties > bif:contains
 ## 🛠️ TOOLS REFERENCE
 
 ### Schema & Discovery
-- `get_MIE_file(dbname)` - **ALWAYS CALL FIRST for comprehensive queries**
+- `list_databases()` - **🔍 CALL THIS FIRST to discover which databases to use**
+- `get_MIE_file(dbname)` - **Get schema for identified databases**
 - `get_sparql_endpoints()` - **Check before multi-database queries**
-- `list_databases()` - List 22 RDF databases
 
 ### Search (Exploratory)
 - `ncbi_esearch(database, query)` - NCBI databases
@@ -397,21 +447,26 @@ WHERE {
 
 ---
 
-## 🚫 TOP 4 MISTAKES
+## 🚫 TOP 5 MISTAKES
 
-### 1. Assuming Cross-Database SPARQL Works
+### 1. Skipping Database Discovery
+**Impact:** Query wrong database, miss 50-80% of relevant data  
+**Example:** Query "MANE Select" but only check NCBI Gene, miss Ensembl entirely  
+**Fix:** Call `list_databases()` first, read descriptions for keywords
+
+### 2. Assuming Cross-Database SPARQL Works
 **Impact:** Query fails, confusion about why  
 **Fix:** Call `get_sparql_endpoints()` first
 
-### 2. Skipping MIE File
+### 3. Skipping MIE File
 **Impact:** Wasted 1 hour → could be 1 minute
 
-### 3. Sampling Instead of Exhaustive Processing
+### 4. Sampling Instead of Exhaustive Processing
 **Impact:** Wrong answer - counted 46/1,367 organisms (3% sample) and claimed "confident"  
 **Why wrong:** For "which has MOST", 91% sample confidence ≠ 100% accurate count  
 **Fix:** Process ALL results with pagination (~164 API calls for 1,367 items is normal)
 
-### 4. Using bif:contains Without Checking Schema
+### 5. Using bif:contains Without Checking Schema
 **Impact:** 10-100x slower, incomplete results
 
 ---
@@ -461,6 +516,8 @@ if failed_items:
 ---
 
 ## 🎯 REMEMBER
+
+**Call list_databases() to discover relevant databases - this is reconnaissance, not optional**
 
 **Check endpoints FIRST for multi-database queries**
 

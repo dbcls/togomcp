@@ -20,13 +20,13 @@ async def convertId(
         offset: Pagination offset
     
     Returns:
-        Dictionary with ids, route, and result arrays
+        Dictionary with ids, route, and result (source->target ID pairs) arrays
     """
     toolcall_log("convertId")
     params = {
         "ids": ids,
         "route": route,
-        "report": "target",
+        "report": "pair",
         "format": "json",
         "limit": limit,
         "offset": offset,
