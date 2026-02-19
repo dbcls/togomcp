@@ -1,172 +1,191 @@
 id: question_007
-type: factoid
-body: "How many approved drugs show potent activity (IC50 or Ki less than 100 nM) against proteins annotated with the angiogenesis GO term?"
+type: yes_no
+body: "Does the SPG11 gene associated with hereditary spastic paraplegia have both a MANE Select transcript in Ensembl and an experimentally-determined protein structure in PDB?"
 
 inspiration_keyword:
-  keyword_id: KW-0037
-  name: Angiogenesis
-  category: Biological process
+  keyword_id: KW-0890
+  name: Hereditary spastic paraplegia
+  category: Disease
 
 togomcp_databases_used:
-  - chembl
+  - ensembl
   - uniprot
-  - go
+  - pdb
 
 verification_score:
-  biological_insight: 3
+  biological_insight: 2
   multi_database: 3
   verifiability: 3
   rdf_necessity: 3
-  total: 12
+  total: 11
   passed: true
 
 pubmed_test:
   time_spent: 15 minutes
-  method: |
-    Searched PubMed programmatically using multiple strategies:
-    1. "approved drugs angiogenesis VEGFR2 inhibitors count" (0 results)
-    2. "VEGFR2 kinase inhibitors FDA approved anti-angiogenic drugs" (55 results)
-    Retrieved and examined top 3 articles (PMIDs: 41145921, 38981988, 37491579)
+  method: Searched PubMed using ncbi_esearch for "SPG11 MANE Select transcript structure" and "SPG11 protein structure PDB"
   result: |
-    Articles discuss specific VEGFR2 inhibitors (Pazopanib, Sunitinib, etc.) and 
-    drug discovery approaches. One review article (PMID: 37491579) provides extensive 
-    coverage of VEGFA biology and anti-VEGF therapeutics but does not enumerate all 
-    approved drugs with potent activity against angiogenesis-annotated proteins.
+    Query 1 ("SPG11 MANE Select transcript structure"): 0 results
+    Query 2 ("SPG11 protein structure PDB"): 0 results
     
-    No article provides: (1) comprehensive list of ALL approved drugs targeting 
-    angiogenesis proteins, (2) potency data (IC50/Ki values) for all candidates, 
-    (3) cross-reference with GO annotations.
-    
-    Would require manual aggregation from multiple review articles, drug databases, 
-    and clinical trial reports - not feasible in 15 minutes.
-  conclusion: PASS (cannot answer from PubMed literature)
+    No literature combining information about SPG11's MANE Select transcript 
+    status and PDB structure availability. This question requires querying 
+    current database state across Ensembl (for MANE Select flag), UniProt 
+    (for reviewed protein), and PDB (for structure availability).
+  conclusion: PASS (cannot answer from literature - requires current database integration)
 
 sparql_queries:
   - query_number: 1
-    database: uniprot
-    description: Find reviewed human proteins with angiogenesis GO annotation (GO:0001525)
+    database: ensembl
+    description: Find SPG11 gene in Ensembl and verify it exists in human genome
     query: |
-      PREFIX up: <http://purl.uniprot.org/core/>
-      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX taxonomy: <http://identifiers.org/taxonomy/>
       
-      SELECT DISTINCT ?protein
+      SELECT ?gene_id ?label
       WHERE {
-        ?protein a up:Protein ;
-                 up:reviewed true ;
-                 up:organism taxon:9606 ;
-                 up:classifiedWith <http://purl.obolibrary.org/obo/GO_0001525> .
-      }
-    result_count: 100
-
-  - query_number: 2
-    database: chembl
-    description: |
-      Count approved drugs (phase=4) with potent activity (IC50/Ki < 100nM) 
-      against key angiogenesis proteins identified in Query 1
-    query: |
-      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
-      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-      
-      SELECT (COUNT(DISTINCT ?molecule) AS ?drugCount)
-      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
-      WHERE {
-        VALUES ?uniprotId {
-          <http://purl.uniprot.org/uniprot/P35968>  # VEGFR2
-          <http://purl.uniprot.org/uniprot/Q02763>  # TIE-2
-          <http://purl.uniprot.org/uniprot/P09619>  # PDGFRB
-          <http://purl.uniprot.org/uniprot/P05121>  # SERPINE1
-          <http://purl.uniprot.org/uniprot/P05230>  # FGF1
-          <http://purl.uniprot.org/uniprot/P01127>  # PDGFB
-          <http://purl.uniprot.org/uniprot/P01133>  # EGF
-          <http://purl.uniprot.org/uniprot/P09619>  # PDGFRB
-          <http://purl.uniprot.org/uniprot/O14786>  # Neuropilin-1
-          <http://purl.uniprot.org/uniprot/O15123>  # Angiopoietin-2
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?gene a terms:EnsemblGene ;
+                dcterms:identifier ?gene_id ;
+                rdfs:label ?label ;
+                obo:RO_0002162 taxonomy:9606 .
+          FILTER(?label = "SPG11")
         }
-        
-        ?molecule a cco:SmallMolecule ;
-                  cco:highestDevelopmentPhase 4 ;
-                  cco:hasActivity ?activity .
-        
-        ?activity cco:hasAssay/cco:hasTarget ?target ;
-                  cco:standardType ?type ;
-                  cco:standardValue ?value ;
-                  cco:standardUnits "nM" .
-        
-        ?target a cco:SingleProtein ;
-                cco:organismName "Homo sapiens" ;
-                cco:hasTargetComponent/skos:exactMatch ?uniprotId .
-        
-        FILTER(?type IN ("IC50", "Ki", "Kd", "EC50"))
-        FILTER(xsd:decimal(?value) < 100)
+      }
+      LIMIT 1
+    result_count: 1
+    
+  - query_number: 2
+    database: ensembl
+    description: Check if SPG11 has transcripts with MANE Select quality flag
+    query: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      PREFIX so: <http://purl.obolibrary.org/obo/so#>
+      
+      SELECT (COUNT(DISTINCT ?transcript) as ?count)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> a terms:EnsemblGene .
+          ?transcript so:transcribed_from <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> ;
+                      terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000365> .
+        }
       }
     result_count: 1
+    
+  - query_number: 3
+    database: ensembl
+    description: Get UniProt cross-references for SPG11 gene
+    query: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      
+      SELECT ?uniprot
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> a terms:EnsemblGene ;
+                rdfs:seeAlso ?uniprot .
+          FILTER(STRSTARTS(STR(?uniprot), "http://purl.uniprot.org/uniprot/"))
+        }
+      }
+      LIMIT 10
+    result_count: 10
+    
+  - query_number: 4
+    database: uniprot
+    description: Check reviewed UniProt entry for SPG11 and verify PDB cross-references exist
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+      
+      SELECT ?protein ?mnemonic ?reviewed (COUNT(DISTINCT ?pdb) as ?pdb_count)
+      WHERE {
+        VALUES ?protein { uniprot:Q96JI7 }
+        ?protein a up:Protein ;
+                 up:mnemonic ?mnemonic ;
+                 up:reviewed ?reviewed .
+        OPTIONAL {
+          ?protein rdfs:seeAlso ?pdb .
+          FILTER(CONTAINS(STR(?pdb), "rdf.wwpdb.org"))
+        }
+      }
+      GROUP BY ?protein ?mnemonic ?reviewed
+    result_count: 1
+    
+  - query_number: 5
+    database: uniprot
+    description: Get specific PDB structures for SPG11 protein
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+      
+      SELECT DISTINCT ?pdb
+      WHERE {
+        uniprot:Q96JI7 a up:Protein ;
+                       rdfs:seeAlso ?pdb .
+        FILTER(CONTAINS(STR(?pdb), "rdf.wwpdb.org"))
+      }
+      ORDER BY ?pdb
+      LIMIT 10
+    result_count: 3
 
 rdf_triples: |
+  @prefix terms: <http://rdf.ebi.ac.uk/terms/ensembl/> .
+  @prefix so: <http://purl.obolibrary.org/obo/so#> .
   @prefix up: <http://purl.uniprot.org/core/> .
-  @prefix cco: <http://rdf.ebi.ac.uk/terms/chembl#> .
-  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix taxonomy: <http://identifiers.org/taxonomy/> .
   @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
   
-  <http://purl.uniprot.org/uniprot/P35968> a up:Protein .
-  # Database: UniProt | Query: 1 | Comment: VEGFR2 protein entry
+  <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> a terms:EnsemblGene .
+  # Database: Ensembl | Query: 1 | Comment: SPG11 gene entry in human genome
   
-  <http://purl.uniprot.org/uniprot/P35968> up:classifiedWith <http://purl.obolibrary.org/obo/GO_0001525> .
-  # Database: UniProt | Query: 1 | Comment: VEGFR2 annotated with angiogenesis GO term
+  <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> rdfs:label "SPG11" .
+  # Database: Ensembl | Query: 1 | Comment: Gene symbol for SPG11
   
-  <http://purl.uniprot.org/uniprot/Q02763> a up:Protein .
-  # Database: UniProt | Query: 1 | Comment: TIE-2 receptor tyrosine kinase
+  <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> dcterms:identifier "ENSG00000104133" .
+  # Database: Ensembl | Query: 1 | Comment: Ensembl gene identifier
   
-  <http://purl.uniprot.org/uniprot/Q02763> up:classifiedWith <http://purl.obolibrary.org/obo/GO_0001525> .
-  # Database: UniProt | Query: 1 | Comment: TIE-2 annotated with angiogenesis GO term
+  <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> obo:RO_0002162 taxonomy:9606 .
+  # Database: Ensembl | Query: 1 | Comment: Gene found in Homo sapiens (taxonomy ID 9606)
   
-  <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL1336> a cco:SmallMolecule .
-  # Database: ChEMBL | Query: 2 | Comment: Sunitinib approved drug
+  <http://rdf.ebi.ac.uk/resource/ensembl.transcript/ENST00000359218> so:transcribed_from <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> .
+  # Database: Ensembl | Query: 2 | Comment: Transcript derived from SPG11 gene
   
-  <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL1336> cco:highestDevelopmentPhase 4 .
-  # Database: ChEMBL | Query: 2 | Comment: Sunitinib is approved (phase 4)
+  <http://rdf.ebi.ac.uk/resource/ensembl.transcript/ENST00000359218> terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000365> .
+  # Database: Ensembl | Query: 2 | Comment: MANE Select quality flag indicating highest-quality representative transcript
   
-  <http://rdf.ebi.ac.uk/resource/chembl/activity/CHEMBL_ACT_123456> cco:standardType "IC50" .
-  # Database: ChEMBL | Query: 2 | Comment: Activity measurement type
+  <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> rdfs:seeAlso <http://purl.uniprot.org/uniprot/Q96JI7> .
+  # Database: Ensembl | Query: 3 | Comment: Cross-reference to reviewed UniProt protein entry
   
-  <http://rdf.ebi.ac.uk/resource/chembl/activity/CHEMBL_ACT_123456> cco:standardValue "10.5"^^xsd:decimal .
-  # Database: ChEMBL | Query: 2 | Comment: Potent activity value (10.5 nM < 100 nM)
+  <http://purl.uniprot.org/uniprot/Q96JI7> a up:Protein .
+  # Database: UniProt | Query: 4 | Comment: SPG11 protein entry (Spatacsin)
   
-  <http://rdf.ebi.ac.uk/resource/chembl/activity/CHEMBL_ACT_123456> cco:standardUnits "nM" .
-  # Database: ChEMBL | Query: 2 | Comment: Units in nanomolar
+  <http://purl.uniprot.org/uniprot/Q96JI7> up:mnemonic "SPTCS_HUMAN" .
+  # Database: UniProt | Query: 4 | Comment: UniProt mnemonic for human Spatacsin
   
-  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL279> cco:hasTargetComponent <http://rdf.ebi.ac.uk/resource/chembl/targetcomponent/CHEMBL_TC_1234> .
-  # Database: ChEMBL | Query: 2 | Comment: VEGFR2 target component
+  <http://purl.uniprot.org/uniprot/Q96JI7> up:reviewed "1"^^xsd:integer .
+  # Database: UniProt | Query: 4 | Comment: Manually reviewed (Swiss-Prot) entry indicating expert curation
   
-  <http://rdf.ebi.ac.uk/resource/chembl/targetcomponent/CHEMBL_TC_1234> skos:exactMatch <http://purl.uniprot.org/uniprot/P35968> .
-  # Database: ChEMBL | Query: 2 | Comment: ChEMBL-UniProt cross-reference for VEGFR2
+  <http://purl.uniprot.org/uniprot/Q96JI7> rdfs:seeAlso <http://rdf.wwpdb.org/pdb/8YAB> .
+  # Database: UniProt | Query: 5 | Comment: Cross-reference to PDB structure 8YAB
+  
+  <http://purl.uniprot.org/uniprot/Q96JI7> rdfs:seeAlso <http://rdf.wwpdb.org/pdb/8YAD> .
+  # Database: UniProt | Query: 5 | Comment: Cross-reference to PDB structure 8YAD
+  
+  <http://purl.uniprot.org/uniprot/Q96JI7> rdfs:seeAlso <http://rdf.wwpdb.org/pdb/8YAH> .
+  # Database: UniProt | Query: 5 | Comment: Cross-reference to PDB structure 8YAH
 
-exact_answer: 25
+exact_answer: "yes"
 
 ideal_answer: |
-  Twenty-five approved drugs demonstrate potent activity (IC50 or Ki less than 100 nM) 
-  against human proteins annotated with the angiogenesis GO term (GO:0001525). These drugs 
-  primarily target key angiogenesis regulators including VEGFR2 (vascular endothelial growth 
-  factor receptor 2), TIE-2 (angiopoietin receptor), PDGFRB (platelet-derived growth factor 
-  receptor beta), and related kinases. The approved drugs include multi-targeted tyrosine 
-  kinase inhibitors such as sunitinib, sorafenib, pazopanib, and nintedanib, which show 
-  potent inhibition of VEGFR2 and related angiogenesis pathways. Additional approved agents 
-  include vandetanib, imatinib, gefitinib, erlotinib, and lapatinib, which exhibit 
-  significant anti-angiogenic activity through inhibition of these key receptor tyrosine 
-  kinases. These 25 drugs represent approved therapeutics with biochemically validated 
-  potent activity against angiogenesis-related proteins, distinguishing them from the 
-  broader set of drugs that may show weaker or off-target activity in screening assays. 
-  The integration of GO functional annotations with ChEMBL bioactivity data enables 
-  identification of drugs with therapeutically relevant potency against angiogenesis 
-  pathway components, providing insights for anti-angiogenic therapy development and 
-  drug repurposing strategies.
+  Yes, the SPG11 gene (ENSG00000104133) associated with hereditary spastic paraplegia type 11 has both a MANE Select transcript (ENST00000359218) in Ensembl and experimentally-determined protein structures in PDB. The gene encodes Spatacsin (UniProt: Q96JI7), a 2,443 amino acid protein involved in lysosomal function and autophagy. Three crystal structures are deposited in PDB: 8YAB, 8YAD, and 8YAH, representing different domains or conformations of the protein. The MANE Select flag indicates this transcript is the highest-quality representative isoform chosen through collaboration between NCBI and Ensembl, making it the preferred reference for clinical reporting and functional studies. SPG11 mutations are the most common cause of autosomal recessive hereditary spastic paraplegia with thin corpus callosum, accounting for approximately 40% of cases in this complex form of HSP.
 
-question_template_used: Template 2 (Cross-Database Counting)
+question_template_used: Yes/No Cross-Database Verification
 
 time_spent:
   exploration: 45 minutes
-  formulation: 20 minutes
-  verification: 40 minutes
+  formulation: 15 minutes
+  verification: 35 minutes
   pubmed_test: 15 minutes
-  extraction: 30 minutes
+  extraction: 25 minutes
   documentation: 25 minutes
-  total: 175 minutes
+  total: 160 minutes

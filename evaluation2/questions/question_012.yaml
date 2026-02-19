@@ -1,167 +1,143 @@
 id: question_012
-type: factoid
-body: "How many neurodegenerative diseases in the disease ontology have MeSH descriptor cross-references?"
+type: yes_no
+body: "Does hemagglutinin from Influenza A virus strain A/Puerto Rico/8/1934 H1N1 (UniProt:P03452) have documented glycosylation sites in the GlyCosmos database?"
 
 inspiration_keyword:
-  keyword_id: KW-0523
-  name: Neurodegeneration
-  category: Disease
+  keyword_id: KW-0348
+  name: Hemagglutinin
+  category: Molecular function
 
 togomcp_databases_used:
-  - mondo
-  - mesh
+  - uniprot
+  - glycosmos
 
 verification_score:
-  biological_insight: 3
+  biological_insight: 2
   multi_database: 2
   verifiability: 3
   rdf_necessity: 3
-  total: 11
+  total: 10
   passed: true
 
 pubmed_test:
   time_spent: 15 minutes
-  method: Searched PubMed programmatically using two different query strategies to find information about MONDO-MeSH cross-reference statistics for neurodegenerative diseases
+  method: Searched PubMed for "influenza A Puerto Rico 1934 H1N1 hemagglutinin glycosylation" and "P03452 glycosylation sites"
   result: |
-    Query 1: "neurodegenerative diseases MONDO MeSH cross-references count"
-    Result: 0 articles found
-    
-    Query 2: "MONDO disease ontology neurodegenerative MeSH terminology mapping"
-    Result: 0 articles found
-    
-    No publications found that document the specific count of MONDO neurodegenerative 
-    disease classes with MeSH cross-references. Literature discusses disease ontologies 
-    and terminology mappings in general, but does not provide the specific cross-database 
-    statistics needed to answer this question.
-  conclusion: PASS (cannot answer from literature within 15 minutes)
+    Found one paper (PMID:22563489) discussing influenza hemagglutinin glycosylation patterns and analyzing glycosylation sites in various influenza strains including A/Puerto Rico/8/1934 H1N1. However, the paper does not provide specific database-level information about the exact number of documented glycosylation sites for P03452 in current databases. The paper mentions "number of glycosylation sites present on the globular heads of HA" but does not enumerate them for PR8 specifically. Literature provides general context but not the specific database annotation status.
+  conclusion: PASS (requires querying current database state in GlyCosmos)
 
 sparql_queries:
   - query_number: 1
-    database: mondo
-    description: Count total neurodegenerative diseases in MONDO (all diseases classified under MONDO:0005559)
+    database: uniprot
+    description: Retrieve protein details for P03452 from UniProt to confirm identity
     query: |
-      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
       
-      SELECT (COUNT(DISTINCT ?disease) AS ?count)
-      FROM <http://rdfportal.org/ontology/mondo>
+      SELECT ?protein ?mnemonic ?fullName ?taxonName
       WHERE {
-        ?disease a owl:Class ;
-                 rdfs:subClassOf* obo:MONDO_0005559 .
-        FILTER NOT EXISTS { ?disease owl:deprecated true }
+        VALUES ?protein { uniprot:P03452 }
+        ?protein a up:Protein ;
+                 up:reviewed ?reviewed ;
+                 up:mnemonic ?mnemonic ;
+                 up:organism ?taxon .
+        ?taxon up:scientificName ?taxonName .
+        OPTIONAL {
+          ?protein up:recommendedName ?name .
+          ?name up:fullName ?fullName .
+        }
       }
     result_count: 1
-    
+
   - query_number: 2
-    database: mondo
-    description: Count neurodegenerative diseases with MeSH cross-references
+    database: glycosmos
+    description: Check if P03452 exists in GlyCosmos and has documented glycosylation sites
     query: |
-      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
       
-      SELECT (COUNT(DISTINCT ?disease) AS ?count)
-      FROM <http://rdfportal.org/ontology/mondo>
+      SELECT ?protein ?label ?site ?position
+      FROM <http://rdf.glycosmos.org/glycoprotein>
       WHERE {
-        ?disease a owl:Class ;
-                 rdfs:subClassOf* obo:MONDO_0005559 ;
-                 oboInOwl:hasDbXref ?meshXref .
-        FILTER(STRSTARTS(?meshXref, "MESH:"))
-        FILTER NOT EXISTS { ?disease owl:deprecated true }
-      }
-    result_count: 1
-    
-  - query_number: 3
-    database: mondo + mesh (cross-database)
-    description: Verify integration by retrieving sample neurodegenerative diseases with their MeSH descriptor mappings
-    query: |
-      PREFIX owl: <http://www.w3.org/2002/07/owl#>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
-      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
-      
-      SELECT ?mondoDisease ?mondoId ?mondoLabel ?meshDescriptor ?meshLabel
-      WHERE {
-        GRAPH <http://rdfportal.org/ontology/mondo> {
-          ?mondoDisease a owl:Class ;
-                        rdfs:label ?mondoLabel ;
-                        oboInOwl:id ?mondoId ;
-                        rdfs:subClassOf* obo:MONDO_0005559 ;
-                        oboInOwl:hasDbXref ?meshXref .
-          FILTER(STRSTARTS(?meshXref, "MESH:"))
-          FILTER NOT EXISTS { ?mondoDisease owl:deprecated true }
-        }
-        BIND(URI(CONCAT("http://id.nlm.nih.gov/mesh/", SUBSTR(?meshXref, 6))) AS ?meshDescriptor)
-        GRAPH <http://id.nlm.nih.gov/mesh> {
-          ?meshDescriptor a meshv:TopicalDescriptor ;
-                          rdfs:label ?meshLabel .
+        ?protein a glycan:Glycoprotein ;
+                 rdfs:seeAlso <http://purl.uniprot.org/uniprot/P03452> .
+        OPTIONAL { ?protein rdfs:label ?label }
+        OPTIONAL {
+          ?protein glycoconjugate:glycosylated_at ?site .
+          ?site faldo:location/faldo:position ?position .
         }
       }
-      LIMIT 5
-    result_count: 5
+      ORDER BY ?position
+    result_count: 6
 
 rdf_triples: |
-  @prefix obo: <http://purl.obolibrary.org/obo/> .
-  @prefix owl: <http://www.w3.org/2002/07/owl#> .
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
   @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix oboInOwl: <http://www.geneontology.org/formats/oboInOwl#> .
-  @prefix meshv: <http://id.nlm.nih.gov/mesh/vocab#> .
+  @prefix taxon: <http://purl.uniprot.org/taxonomy/> .
+  @prefix glycan: <http://purl.jp/bio/12/glyco/glycan#> .
+  @prefix glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#> .
+  @prefix faldo: <http://biohackathon.org/resource/faldo#> .
+  @prefix glycosmos: <http://glycosmos.org/> .
+  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
   
-  obo:MONDO_0005559 a owl:Class .
-  # Database: MONDO | Query: 1 | Comment: Root class for neurodegenerative diseases
+  uniprot:P03452 a up:Protein .
+  # Database: UniProt | Query: 1 | Comment: Influenza A hemagglutinin protein entry
   
-  obo:MONDO_0005559 rdfs:label "neurodegenerative disease" .
-  # Database: MONDO | Query: 1 | Comment: Category label for neurodegenerative diseases
+  uniprot:P03452 up:mnemonic "HEMA_I34A1" .
+  # Database: UniProt | Query: 1 | Comment: Protein mnemonic identifier
   
-  obo:MONDO_0008243 a owl:Class .
-  # Database: MONDO | Query: 3 | Comment: Pick disease - example neurodegenerative disease
+  uniprot:P03452 up:organism taxon:519956 .
+  # Database: UniProt | Query: 1 | Comment: Links to organism taxonomy
   
-  obo:MONDO_0008243 rdfs:label "Pick disease" .
-  # Database: MONDO | Query: 3 | Comment: Disease name
+  taxon:519956 up:scientificName "Influenza A virus (strain A/Puerto Rico/8/1934 H1N1)" .
+  # Database: UniProt | Query: 1 | Comment: Scientific name of the viral strain
   
-  obo:MONDO_0008243 oboInOwl:id "MONDO:0008243" .
-  # Database: MONDO | Query: 3 | Comment: MONDO identifier for Pick disease
+  glycosmos:glycoprotein/P03452 a glycan:Glycoprotein .
+  # Database: GlyCosmos | Query: 2 | Comment: Glycoprotein entry in GlyCosmos
   
-  obo:MONDO_0008243 rdfs:subClassOf* obo:MONDO_0005559 .
-  # Database: MONDO | Query: 3 | Comment: Pick disease is classified under neurodegenerative diseases
+  glycosmos:glycoprotein/P03452 rdfs:label "Hemagglutinin" .
+  # Database: GlyCosmos | Query: 2 | Comment: Protein name in GlyCosmos
   
-  obo:MONDO_0008243 oboInOwl:hasDbXref "MESH:D020774" .
-  # Database: MONDO | Query: 3 | Comment: Cross-reference to MeSH descriptor
+  glycosmos:glycoprotein/P03452 rdfs:seeAlso uniprot:P03452 .
+  # Database: GlyCosmos | Query: 2 | Comment: Cross-reference to UniProt entry
   
-  <http://id.nlm.nih.gov/mesh/D020774> a meshv:TopicalDescriptor .
-  # Database: MeSH | Query: 3 | Comment: MeSH descriptor entry
+  glycosmos:glycoprotein/P03452 glycoconjugate:glycosylated_at glycosmos:glycosylationsite/SITE00191174 .
+  # Database: GlyCosmos | Query: 2 | Comment: First glycosylation site annotation
   
-  <http://id.nlm.nih.gov/mesh/D020774> rdfs:label "Pick Disease of the Brain" .
-  # Database: MeSH | Query: 3 | Comment: MeSH preferred term for Pick disease
+  glycosmos:glycosylationsite/SITE00191174 a glycoconjugate:Glycosylation_Site .
+  # Database: GlyCosmos | Query: 2 | Comment: Glycosylation site entity
   
-  obo:MONDO_0008890 a owl:Class .
-  # Database: MONDO | Query: 3 | Comment: Progressive bulbar palsy - another example
+  glycosmos:glycosylationsite/SITE00191174 faldo:location _:pos1 .
+  # Database: GlyCosmos | Query: 2 | Comment: Position information for site
   
-  obo:MONDO_0008890 rdfs:label "progressive bulbar palsy" .
-  # Database: MONDO | Query: 3 | Comment: Disease name
+  _:pos1 faldo:position "27"^^xsd:integer .
+  # Database: GlyCosmos | Query: 2 | Comment: Site at amino acid position 27
   
-  obo:MONDO_0008890 oboInOwl:hasDbXref "MESH:D010244" .
-  # Database: MONDO | Query: 3 | Comment: Cross-reference to MeSH descriptor
+  glycosmos:glycoprotein/P03452 glycoconjugate:glycosylated_at glycosmos:glycosylationsite/SITE00191175 .
+  # Database: GlyCosmos | Query: 2 | Comment: Second glycosylation site annotation
   
-  <http://id.nlm.nih.gov/mesh/D010244> rdfs:label "Bulbar Palsy, Progressive" .
-  # Database: MeSH | Query: 3 | Comment: MeSH term for progressive bulbar palsy
+  glycosmos:glycosylationsite/SITE00191175 faldo:location _:pos2 .
+  # Database: GlyCosmos | Query: 2 | Comment: Position information for second site
+  
+  _:pos2 faldo:position "28"^^xsd:integer .
+  # Database: GlyCosmos | Query: 2 | Comment: Site at amino acid position 28
 
-exact_answer: 323
+exact_answer: "yes"
 
 ideal_answer: |
-  Out of 886 neurodegenerative disease classes in the MONDO disease ontology, 323 (36.5%) have MeSH (Medical Subject Headings) descriptor cross-references. This represents substantial but incomplete coverage of neurodegenerative diseases in medical terminology systems. The integration between MONDO and MeSH enables cross-database queries linking disease ontology classifications with clinical literature indexing. Example mappings include Pick disease (MONDO:0008243) to "Pick Disease of the Brain" (MESH:D020774) and progressive bulbar palsy (MONDO:0008890) to "Bulbar Palsy, Progressive" (MESH:D010244). The 563 neurodegenerative diseases without MeSH mappings may represent rare diseases, recently classified conditions, or disease subtypes that lack established MeSH terminology. This cross-reference data is critical for translational research connecting disease ontologies with PubMed literature searches and clinical terminology systems.
+  Yes, hemagglutinin from Influenza A virus strain A/Puerto Rico/8/1934 H1N1 (UniProt:P03452) has six documented glycosylation sites in the GlyCosmos database at amino acid positions 27, 28, 40, 285, 303, and 497. This glycoprotein is a surface protein critical for viral attachment to host cells through sialic acid-containing receptors. The glycosylation sites are important for protein folding, stability, and immune evasion, as the glycan shield can mask antigenic epitopes from host antibodies. The presence of these sites in the GlyCosmos database provides experimentally-validated position-specific glycosylation information that complements the protein sequence and functional annotations available in UniProt.
 
-question_template_used: Template 2 (Cross-Database Counting)
+question_template_used: Template 7 (Yes/No Existence)
 
 time_spent:
-  exploration: 65 minutes
+  exploration: 45 minutes
   formulation: 20 minutes
-  verification: 75 minutes
+  verification: 30 minutes
   pubmed_test: 15 minutes
-  extraction: 40 minutes
+  extraction: 25 minutes
   documentation: 35 minutes
-  total: 250 minutes
+  total: 170 minutes

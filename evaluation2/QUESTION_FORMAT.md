@@ -26,8 +26,9 @@ question_{sequential_number}.yaml
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | string | Unique question identifier (format: `question_XXX`) |
-| `type` | enum | Question type: `yes_no`, `factoid`, `list`, or `summary` |
+| `type` | enum | Question type: `yes_no`, `factoid`, `list`, `summary`, or `choice` |
 | `body` | string | The question text (stand-alone, no database names) |
+| `choices` | array | Choice options (required only for `choice` type) |
 | `inspiration_keyword` | object | Keyword that inspired the question |
 | `togomcp_databases_used` | array | List of TogoMCP databases queried |
 | `verification_score` | object | Verification scoring results |
@@ -70,12 +71,13 @@ id: question_001
 **Type:** Enum  
 **Required:** Yes  
 **Allowed Values:**
-- `yes_no` - Binary yes/no question
-- `factoid` - Single factual answer
-- `list` - Enumerated list of items (≤10 items)
-- `summary` - Narrative synthesis answer
+- `yes_no` - Binary yes/no question (⚠️ **CRITICAL**: Must use comprehensive SPARQL with bif:contains, NEVER VALUES from search results)
+- `factoid` - Single factual answer (count, name, value)
+- `list` - Enumerated list of items (≤10 items, with ranking/filtering)
+- `summary` - Narrative synthesis answer (**SINGLE PARAGRAPH**, no line breaks)
+- `choice` - Multiple choice question with predefined options
 
-**Description:** Question type determines the format of `exact_answer`.
+**Description:** Question type determines the format of `exact_answer` and SPARQL approach required.
 
 **Example:**
 ```yaml
@@ -99,6 +101,30 @@ type: factoid
 **Example:**
 ```yaml
 body: "How many human protein kinases annotated with 'protein kinase activity' have at least one experimentally determined crystal structure?"
+```
+
+---
+
+### `choices`
+
+**Type:** Array of Strings  
+**Required:** Only for `type: choice`  
+**Constraints:**
+- Minimum 2 choices
+- Maximum 10 choices (typically 4-5)
+- At least one correct answer must exist
+- Choices should be plausible distractors
+- Order may be randomized during presentation
+
+**Description:** Array of possible answer choices for multiple choice questions.
+
+**Example:**
+```yaml
+choices:
+  - "Proteobacteria"
+  - "Firmicutes"
+  - "Actinobacteria"
+  - "Bacteroidetes"
 ```
 
 ---
@@ -134,7 +160,12 @@ inspiration_keyword:
 **Required:** Yes  
 **Minimum:** 1 database  
 **Recommended:** 2-4 databases  
-**Dataset Composition Target:** 60-80% multi-database questions (30-40 out of 50 total)
+
+**Dataset Composition Targets (50 total questions):**
+- **Multi-database (2+):** ≥60% (minimum 30 questions)
+- **Multi-database (3+):** ≥20% (minimum 10 questions)
+- **Single-database:** ≤40% (maximum 20 questions)
+- **UniProt cap:** ≤70% (maximum 35 questions) - avoid over-reliance on UniProt
 
 **Allowed Values:**
 `uniprot`, `rhea`, `pubchem`, `pdb`, `chembl`, `chebi`, `reactome`, `ensembl`, `amrportal`, `mesh`, `go`, `taxonomy`, `mondo`, `nando`, `bacdive`, `mediadive`, `clinvar`, `pubmed`, `pubtator`, `ncbigene`, `medgen`, `ddbj`, `glycosmos`
@@ -172,36 +203,36 @@ verification_score:
   verifiability: integer        # 0-3 points
   rdf_necessity: integer        # 0-3 points
   total: integer                # Sum (0-12)
-  passed: boolean               # true if total ≥7 and no zeros
+  passed: boolean               # true if total ≥9 and no zeros
 ```
 
 **Constraints:**
 - Each dimension: 0-3 points
 - Total: 0-12 points
-- Must pass: `total ≥ 9` AND no dimension has 0
+- **Must pass:** `total ≥ 9` AND no dimension has 0
 - `passed` must be `true` for accepted questions
 
 **Scoring Dimensions:**
-- **biological_insight**: Does the question provide meaningful biological or scientific insights?
-  - 0: Trivial or no insight
-  - 1: Minor insight
-  - 2: Moderate insight
-  - 3: Significant biological/scientific insight
-- **multi_database**: Does the question integrate multiple databases?
-  - 0: No integration
-  - 1: Single database with internal cross-references
-  - 2: Two databases integrated
-  - 3: Three or more databases integrated
-- **verifiability**: Can the answer be verified and reproduced?
-  - 0: Not verifiable
-  - 1: Partially verifiable
-  - 2: Mostly verifiable
-  - 3: Fully verifiable with exact, reproducible results
-- **rdf_necessity**: Does answering require RDF/SPARQL (not achievable via search tools or training knowledge)?
-  - 0: Can be answered without RDF
+- **biological_insight**: Biological/scientific insight level
+  - 0: Database inventory/metadata (reject)
+  - 1: Basic biology, limited insight
+  - 2: Biological function or properties
+  - 3: Mechanisms, patterns, or evolutionary relationships
+- **multi_database**: Database integration level
+  - 0: Search-only, no RDF
+  - 1: Single database OR weak multi-database integration
+  - 2: Two databases with clear integration
+  - 3: Three or more databases with meaningful integration
+- **verifiability**: Answer verifiability
+  - 0: Unbounded or subjective
+  - 1: Loosely bounded (e.g., "major pathways")
+  - 2: 6-10 items or clear aggregate
+  - 3: Single answer or ≤5 items with exact criteria
+- **rdf_necessity**: Requires RDF graph traversal
+  - 0: Answerable from PubMed or training knowledge
   - 1: RDF helpful but not essential
-  - 2: RDF strongly preferred
-  - 3: RDF absolutely necessary
+  - 2: RDF significantly enhances answer
+  - 3: Impossible without RDF and current database state
 
 **Description:** Mandatory verification scoring using the rubric.
 
@@ -416,6 +447,12 @@ snippets:
 exact_answer: "yes"  # or "no"
 ```
 
+**⚠️ CRITICAL REQUIREMENT for yes/no questions:**
+- SPARQL must use **comprehensive** query with `bif:contains` and multiple synonyms
+- **NEVER** use VALUES clause with IDs from search API results (circular reasoning)
+- Use EXISTS/NOT EXISTS patterns for validation
+- See QA_CREATION_GUIDE.md "AVOID CIRCULAR REASONING" section
+
 #### For `factoid` questions:
 ```yaml
 exact_answer: "Entity Name (Database:ID)"
@@ -441,6 +478,27 @@ exact_answer:
   - "EGFR (UniProt:P00533)"
   - "BRAF (UniProt:P15056)"
 ```
+
+#### For `choice` questions:
+**Format:** Array of strings (subset of `choices` field)
+
+**Single correct answer:**
+```yaml
+exact_answer:
+  - "Actinobacteria"
+```
+
+**Multiple correct answers (if applicable):**
+```yaml
+exact_answer:
+  - "Parkinsonian disorder"
+  - "Hereditary neurological disease"
+```
+
+**Constraints:**
+- Must be an array (even for single answer)
+- All items must exist in the `choices` field
+- At least one item required
 
 #### For count/aggregation questions:
 ```yaml
@@ -470,9 +528,14 @@ exact_answer: ""  # Leave blank
 - Includes specific quantitative data
 - No mention of SPARQL or queries
 
+**Additional Constraints for `choice` Questions:**
+- Must explain why the correct answer(s) is/are correct
+- Should explain why the incorrect options are wrong
+- Should provide biological context for the comparison
+
 **Description:** Expert-level synthesized answer based on RDF evidence.
 
-**Example:**
+**Example (factoid):**
 ```yaml
 ideal_answer: |
   There are 127 human protein kinases annotated with 'protein kinase activity' 
@@ -484,6 +547,21 @@ ideal_answer: |
   54 structures, and Aurora kinase A with 47 structures. These structural data 
   provide insights into kinase conformational states, substrate binding, and 
   inhibitor interactions that are critical for drug development.
+```
+
+**Example (choice):**
+```yaml
+ideal_answer: |
+  Actinobacteria shows the highest number of spore-forming strains in BacDive 
+  with approximately 25,000 strains from spore-forming genera (primarily 
+  Streptomyces with ~24,500 strains, plus Micromonospora and others). This 
+  significantly exceeds Firmicutes (~4,400 spore-forming strains) despite 
+  Firmicutes being famous for endospore formation. While Firmicutes produce 
+  heat-resistant endospores through asymmetric cell division, Actinobacteria 
+  produce exospores via aerial hyphal differentiation. The dominance of 
+  Actinobacteria in culture collections reflects extensive Streptomyces 
+  isolation for antibiotic screening programs. Proteobacteria and Bacteroidetes 
+  are not known to contain significant numbers of spore-forming genera.
 ```
 
 ---
@@ -546,7 +624,9 @@ time_spent:
 
 ---
 
-## Complete Example
+## Complete Examples
+
+### Example 1: Factoid Question
 
 ```yaml
 id: question_001
@@ -647,6 +727,123 @@ time_spent:
   total: 330 minutes
 ```
 
+### Example 2: Choice Question
+
+```yaml
+id: question_029
+type: choice
+body: "Based on cultured bacterial diversity in the BacDive database, which phylum shows the highest number of strains from spore-forming genera?"
+
+choices:
+  - "Proteobacteria"
+  - "Firmicutes"
+  - "Actinobacteria"
+  - "Bacteroidetes"
+
+inspiration_keyword:
+  keyword_id: KW-0749
+  name: Sporulation
+  category: Biological process
+
+togomcp_databases_used:
+  - bacdive
+
+verification_score:
+  biological_insight: 2
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 2
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 15 minutes
+  method: Searched for bacterial sporulation literature and spore-forming genera
+  result: |
+    PubMed confirms that both Firmicutes (endospores) and Actinobacteria 
+    (exospores) are spore-forming phyla, but does not provide current strain 
+    counts from culture collections by phylum.
+  conclusion: PASS (cannot answer from literature - requires current database state)
+
+sparql_queries:
+  - query_number: 1
+    database: bacdive
+    description: Check phylum distribution
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      
+      SELECT ?phylum (COUNT(DISTINCT ?strain) as ?strainCount)
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        ?strain a schema:Strain ;
+                schema:hasPhylum ?phylum .
+      }
+      GROUP BY ?phylum
+      ORDER BY DESC(?strainCount)
+      LIMIT 10
+    result_count: 10
+
+  - query_number: 2
+    database: bacdive
+    description: Count total spore-forming strains by phylum
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      
+      SELECT ?phylum (COUNT(DISTINCT ?strain) as ?sporeFormingStrains)
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        VALUES ?genus { 
+          "Bacillus" "Clostridium" "Geobacillus" "Paenibacillus" 
+          "Streptomyces" "Micromonospora" "Actinoplanes"
+        }
+        
+        ?strain a schema:Strain ;
+                schema:hasGenus ?genus ;
+                schema:hasPhylum ?phylum .
+                
+        FILTER(?phylum IN ("Firmicutes", "Bacillota", "Actinobacteria", "Actinomycetota"))
+      }
+      GROUP BY ?phylum
+      ORDER BY DESC(?sporeFormingStrains)
+    result_count: 4
+
+rdf_triples: |
+  @prefix schema: <https://purl.dsmz.de/schema/> .
+  
+  <https://purl.dsmz.de/bacdive/strain/1> a schema:Strain .
+  # Database: BacDive | Query: 1 | Comment: Example strain entity
+  
+  <https://purl.dsmz.de/bacdive/strain/1> schema:hasGenus "Bacillus" .
+  # Database: BacDive | Query: 2 | Comment: Spore-forming genus
+  
+  <https://purl.dsmz.de/bacdive/strain/1> schema:hasPhylum "Firmicutes" .
+  # Database: BacDive | Query: 2 | Comment: Phylum classification
+
+exact_answer:
+  - "Actinobacteria"
+
+ideal_answer: |
+  Actinobacteria shows the highest number of spore-forming strains in BacDive 
+  with approximately 25,000 strains from spore-forming genera (primarily 
+  Streptomyces with ~24,500 strains). This significantly exceeds Firmicutes 
+  (~4,400 spore-forming strains) despite Firmicutes being famous for endospore 
+  formation. While Firmicutes produce heat-resistant endospores, Actinobacteria 
+  produce exospores via aerial hyphal differentiation. The dominance reflects 
+  extensive Streptomyces isolation for antibiotic screening. Proteobacteria and 
+  Bacteroidetes do not contain significant numbers of spore-forming genera.
+
+question_template_used: choice_comparative_quantitative
+
+time_spent:
+  exploration: 30 minutes
+  formulation: 10 minutes
+  verification: 25 minutes
+  pubmed_test: 15 minutes
+  extraction: 20 minutes
+  documentation: 20 minutes
+  total: 120 minutes
+```
+
 ---
 
 ## Validation Rules
@@ -660,13 +857,18 @@ time_spent:
 ### Content Validation
 - [ ] `id` matches filename
 - [ ] `type` is one of allowed values
-- [ ] `verification_score.total` equals sum of dimensions (biological_insight + multi_database + verifiability + rdf_necessity)
+- [ ] For `type: choice`: `choices` field is present with 2-10 items
+- [ ] For `type: yes_no`: SPARQL uses comprehensive query (bif:contains), NOT VALUES from search
+- [ ] For `type: summary`: `ideal_answer` is single paragraph (no line breaks)
+- [ ] `verification_score.total` equals sum of dimensions
 - [ ] `verification_score.passed` is `true`
-- [ ] `verification_score.total` ≥ 9
+- [ ] `verification_score.total` ≥ 9 (not ≥7)
 - [ ] No dimension in `verification_score` has 0
 - [ ] `pubmed_test.conclusion` contains "PASS"
 - [ ] At least 1 SPARQL query present
 - [ ] `exact_answer` format matches `type`
+- [ ] For `type: choice`: All items in `exact_answer` exist in `choices`
+- [ ] For `type: choice`: `exact_answer` is an array (even for single answer)
 - [ ] All databases in `togomcp_databases_used` appear in `sparql_queries`
 
 ### SPARQL Validation
@@ -683,12 +885,22 @@ time_spent:
 - [ ] Question body is stand-alone
 - [ ] No database names in question body
 - [ ] `ideal_answer` is one paragraph
+- [ ] For `type: choice`: `ideal_answer` explains why correct answer is correct and why others are wrong
 - [ ] No meta-references in `ideal_answer`
-- [ ] Time spent totals to reasonable range (3-6 hours)
+- [ ] Time spent totals to reasonable range (2-6 hours)
 
 ---
 
 ## Version History
 
-- **v1.0** (2025-02-05): Initial specification based on BioASQ Benchmark Creation Guidelines - TogoMCP Edition (REVISED)
-- **v1.1** (2025-02-11): Added dataset composition target (60-80% multi-database questions)
+- **v1.0** (2025-02-05): Initial specification
+- **v1.1** (2025-02-11): Added dataset composition target (60-80% multi-database)
+- **v1.2** (2025-02-14): Added `choice` question type
+- **v1.3** (2025-02-15): **CRITICAL FIXES** aligned with QA_CREATION_GUIDE v5.0:
+  - Fixed scoring threshold: ≥9 (was inconsistent ≥7/≥9)
+  - Added yes/no comprehensive SPARQL requirement (bif:contains, no VALUES from search)
+  - Added 3+ database target: ≥20% (minimum 10 questions)
+  - Added UniProt cap: ≤70% (maximum 35 questions)
+  - Enhanced scoring rubric with specific criteria
+  - Added circular reasoning warnings
+  - Added summary single-paragraph requirement

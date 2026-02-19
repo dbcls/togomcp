@@ -1,109 +1,213 @@
 id: question_010
-type: factoid
-body: "How many distinct ChEBI chemical entity classes are represented among FDA-approved drugs in PubChem?"
+type: choice
+body: "Which parent disease category of systemic lupus erythematosus has the most diseases with confirmed MeSH TopicalDescriptor mappings?"
+
+choices:
+  - "immune system disorder"
+  - "autoimmune disease"
+  - "connective tissue disorder"
+  - "rheumatic disorder"
 
 inspiration_keyword:
-  keyword_id: KW-0582
-  name: "Pharmaceutical"
-  category: "Technical term"
+  keyword_id: KW-0772
+  name: Systemic lupus erythematosus
+  category: Disease
 
 togomcp_databases_used:
-  - pubchem
+  - mondo
+  - mesh
 
 verification_score:
   biological_insight: 2
-  biological_insight_explanation: "Reveals the chemical diversity of FDA-approved drugs through ontological classification. While technically focused, it provides insight into the breadth of chemical space covered by approved therapeutics."
-  multi_database: 1
-  multi_database_explanation: "Single database (PubChem) question. Strategic choice to feature the most underrepresented database (0% usage). Maintains overall dataset at 60% multi-DB ratio (6/10)."
+  multi_database: 2
   verifiability: 3
-  verifiability_explanation: "Exact count of 4,784 distinct ChEBI classes. Highly reproducible through SPARQL query with controlled vocabularies (FDA approval status + ChEBI IRI namespace)."
   rdf_necessity: 3
-  rdf_necessity_explanation: "Absolutely requires RDF/SPARQL. Search/API tools cannot: (1) filter by FDA approval status (no API parameter), (2) extract ChEBI ontology class IRIs (structured RDF typing), (3) count distinct classes (requires aggregation with namespace filtering). Manually collecting this data would require inspecting thousands of compounds individually."
-  total: 9
+  total: 10
   passed: true
 
 pubmed_test:
-  time_spent: "15 minutes"
-  method: "Tested two PubMed queries: (1) 'FDA approved drugs ChEBI chemical classification count' and (2) 'PubChem FDA approved chemical ontology ChEBI diversity'. Both returned 0 results."
-  result: "No publications found addressing this specific computational question about ChEBI class diversity in FDA-approved PubChem compounds."
-  conclusion: "PASS (cannot answer) - This is a database-specific quantitative analysis question not addressed in biomedical literature."
+  time_spent: 15 minutes
+  method: Searched PubMed for comparative MeSH mapping counts across disease categories
+  result: |
+    No publications found that compare MeSH TopicalDescriptor mapping coverage across
+    these specific disease categories. Literature discusses MeSH vocabulary structure
+    and disease ontology integration generally, but does not provide counts of how many
+    diseases in each category have confirmed MeSH TopicalDescriptor mappings. These
+    counts require querying the current state of both MONDO and MeSH databases directly.
+  conclusion: PASS (cannot answer from literature - requires current database state)
 
 sparql_queries:
   - query_number: 1
-    database: "pubchem"
-    description: "Count distinct ChEBI chemical entity classes among FDA-approved drugs in PubChem"
+    database: mondo
+    description: Verify the four parent categories are all ancestors of systemic lupus erythematosus (MONDO_0007915)
     query: |
-      PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
       PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX chebi: <http://purl.obolibrary.org/obo/>
-      
-      # Count distinct ChEBI classes for FDA-approved drugs
-      SELECT (COUNT(DISTINCT ?chebiClass) as ?distinctClasses)
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+
+      SELECT ?parent ?parentLabel ?parentId
+      FROM <http://rdfportal.org/ontology/mondo>
       WHERE {
-        ?compound a vocab:Compound ;
-                  obo:RO_0000087 vocab:FDAApprovedDrugs ;
-                  a ?chebiClass .
-        FILTER(STRSTARTS(STR(?chebiClass), STR(chebi:CHEBI_)))
+        obo:MONDO_0007915 rdfs:subClassOf+ ?parent .
+        FILTER(isIRI(?parent))
+        ?parent a owl:Class ;
+                rdfs:label ?parentLabel ;
+                oboInOwl:id ?parentId .
+        FILTER NOT EXISTS { ?parent owl:deprecated true }
       }
-    result_count: 1
-    result_data: "4784 distinct ChEBI classes"
+      ORDER BY ?parentLabel
+    result_count: 7
 
   - query_number: 2
-    database: "pubchem"
-    description: "Verify with examples: Get sample ChEBI classes with their compound counts"
+    database: mondo mesh
+    description: >
+      Count confirmed MeSH TopicalDescriptor mappings and total diseases for each
+      of the four parent categories of SLE, by joining MONDO cross-references with
+      the MeSH RDF graph to validate each mapping as a meshv:TopicalDescriptor.
     query: |
-      PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
       PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX chebi: <http://purl.obolibrary.org/obo/>
-      
-      # Get example ChEBI classes with compound counts
-      SELECT ?chebiClass (COUNT(DISTINCT ?compound) as ?compoundCount)
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+
+      SELECT ?label
+             (COUNT(DISTINCT ?disease) as ?total_diseases_with_mesh)
+             (COUNT(DISTINCT ?meshDesc) as ?confirmed_mesh_descriptors)
       WHERE {
-        ?compound a vocab:Compound ;
-                  obo:RO_0000087 vocab:FDAApprovedDrugs ;
-                  a ?chebiClass .
-        FILTER(STRSTARTS(STR(?chebiClass), STR(chebi:CHEBI_)))
+        VALUES (?category ?label) {
+          (obo:MONDO_0005046 "immune system disorder")
+          (obo:MONDO_0007179 "autoimmune disease")
+          (obo:MONDO_0003900 "connective tissue disorder")
+          (obo:MONDO_0005554 "rheumatic disorder")
+        }
+        GRAPH <http://rdfportal.org/ontology/mondo> {
+          ?disease a owl:Class ;
+                   rdfs:subClassOf* ?category ;
+                   oboInOwl:hasDbXref ?meshXref .
+          FILTER NOT EXISTS { ?disease owl:deprecated true }
+          FILTER(STRSTARTS(STR(?meshXref), "MESH:"))
+        }
+        BIND(URI(CONCAT("http://id.nlm.nih.gov/mesh/", SUBSTR(STR(?meshXref), 6))) AS ?meshDesc)
+        GRAPH <http://id.nlm.nih.gov/mesh> {
+          ?meshDesc a meshv:TopicalDescriptor .
+        }
       }
-      GROUP BY ?chebiClass
-      ORDER BY DESC(?compoundCount)
-      LIMIT 20
-    result_count: 20
-    result_data: "Examples include CHEBI_94427, CHEBI_32635, CHEBI_46936 - each representing specific chemical structures"
+      GROUP BY ?category ?label
+      ORDER BY DESC(?confirmed_mesh_descriptors)
+    result_count: 4
+
+  - query_number: 3
+    database: mondo mesh
+    description: >
+      Arithmetic verification (Checkpoint B) — count unique diseases and descriptors
+      across all four categories combined to verify the overlap pattern (Sum > Total
+      is expected because immune system disorder contains the others as subcategories).
+    query: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+
+      SELECT (COUNT(DISTINCT ?disease) as ?total_unique_diseases)
+             (COUNT(DISTINCT ?meshDesc) as ?total_unique_descriptors)
+      WHERE {
+        VALUES ?category {
+          obo:MONDO_0005046
+          obo:MONDO_0007179
+          obo:MONDO_0003900
+          obo:MONDO_0005554
+        }
+        GRAPH <http://rdfportal.org/ontology/mondo> {
+          ?disease a owl:Class ;
+                   rdfs:subClassOf* ?category ;
+                   oboInOwl:hasDbXref ?meshXref .
+          FILTER NOT EXISTS { ?disease owl:deprecated true }
+          FILTER(STRSTARTS(STR(?meshXref), "MESH:"))
+        }
+        BIND(URI(CONCAT("http://id.nlm.nih.gov/mesh/", SUBSTR(STR(?meshXref), 6))) AS ?meshDesc)
+        GRAPH <http://id.nlm.nih.gov/mesh> {
+          ?meshDesc a meshv:TopicalDescriptor .
+        }
+      }
+    result_count: 1
+
+arithmetic_verification:
+  checkpoint_b:
+    group_by_query: query_2
+    category_counts:
+      immune_system_disorder: 248
+      connective_tissue_disorder: 134
+      autoimmune_disease: 61
+      rheumatic_disorder: 39
+    sum_of_categories: 482
+    total_unique_diseases: 346
+    total_unique_descriptors: 343
+    result: "Sum (482) > Total unique diseases (346) → Overlap detected"
+    interpretation: >
+      Valid overlap. The four categories are NOT mutually exclusive: immune system
+      disorder (MONDO_0005046) is the broadest category and contains autoimmune
+      disease, connective tissue disorder, and rheumatic disorder as subcategories.
+      Diseases in those three narrower categories are therefore counted again under
+      immune system disorder. This is expected by ontology design and is documented
+      in the ideal_answer.
+    status: PASS
 
 rdf_triples: |
-  @prefix compound: <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/> .
-  @prefix vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#> .
   @prefix obo: <http://purl.obolibrary.org/obo/> .
-  @prefix chebi: <http://purl.obolibrary.org/obo/> .
-  
-  # Database: pubchem | Query: 1 | Example: Aspirin (CID2244) with FDA approval and ChEBI class
-  compound:CID2244 a vocab:Compound ;
-                   a chebi:CHEBI_15365 ;
-                   obo:RO_0000087 vocab:FDAApprovedDrugs .
-  
-  # Database: pubchem | Query: 1 | Example: Ibuprofen (CID3672) with FDA approval and ChEBI class
-  compound:CID3672 a vocab:Compound ;
-                   a chebi:CHEBI_5855 ;
-                   obo:RO_0000087 vocab:FDAApprovedDrugs .
-  
-  # Database: pubchem | Query: 1 | Pattern showing ChEBI classification and FDA role
-  # Each FDA-approved drug has rdf:type relationships to both vocab:Compound
-  # and to specific ChEBI chemical entity classes (chebi:CHEBI_*), plus
-  # obo:RO_0000087 relationship to vocab:FDAApprovedDrugs indicating regulatory status
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix owl: <http://www.w3.org/2002/07/owl#> .
+  @prefix oboInOwl: <http://www.geneontology.org/formats/oboInOwl#> .
+  @prefix meshv: <http://id.nlm.nih.gov/mesh/vocab#> .
+
+  obo:MONDO_0007915 rdfs:label "systemic lupus erythematosus" .
+  # Database: MONDO | Query: 1 | Comment: Reference disease
+
+  obo:MONDO_0007915 rdfs:subClassOf+ obo:MONDO_0005046 .
+  # Database: MONDO | Query: 1 | Comment: SLE is a descendant of immune system disorder
+
+  obo:MONDO_0007915 rdfs:subClassOf+ obo:MONDO_0007179 .
+  # Database: MONDO | Query: 1 | Comment: SLE is a descendant of autoimmune disease
+
+  obo:MONDO_0007915 rdfs:subClassOf+ obo:MONDO_0003900 .
+  # Database: MONDO | Query: 1 | Comment: SLE is a descendant of connective tissue disorder
+
+  obo:MONDO_0007915 rdfs:subClassOf+ obo:MONDO_0005554 .
+  # Database: MONDO | Query: 1 | Comment: SLE is a descendant of rheumatic disorder
+
+  obo:MONDO_0005046 rdfs:label "immune system disorder" .
+  # Database: MONDO | Query: 2 | Comment: Category with most confirmed MeSH TopicalDescriptor mappings (248)
+
+  obo:MONDO_0003900 rdfs:label "connective tissue disorder" .
+  # Database: MONDO | Query: 2 | Comment: Second category (134 MeSH TopicalDescriptors)
+
+  obo:MONDO_0007179 rdfs:label "autoimmune disease" .
+  # Database: MONDO | Query: 2 | Comment: Third category (61 MeSH TopicalDescriptors)
+
+  obo:MONDO_0005554 rdfs:label "rheumatic disorder" .
+  # Database: MONDO | Query: 2 | Comment: Fourth category (39 MeSH TopicalDescriptors)
+
+  <http://id.nlm.nih.gov/mesh/D008163> a meshv:TopicalDescriptor .
+  # Database: MeSH | Query: 2 | Comment: Example confirmed MeSH TopicalDescriptor (Lupus Erythematosus, Systemic)
+
+  obo:MONDO_0007915 oboInOwl:hasDbXref "MESH:D008163" .
+  # Database: MONDO | Query: 2 | Comment: SLE cross-reference to confirmed MeSH TopicalDescriptor
 
 exact_answer:
-  - "4784"
+  - "immune system disorder"
 
 ideal_answer: |
-  Among FDA-approved drugs catalogued in PubChem, there are 4,784 distinct ChEBI (Chemical Entities of Biological Interest) chemical entity classes represented. This high diversity reflects the broad chemical space covered by approved therapeutics, where each ChEBI class represents a specific chemical structure or classification within the ontology's hierarchical framework. The one-to-one mapping between compounds and classes suggests that PubChem's ChEBI annotations are highly specific, with each approved drug receiving its own detailed chemical classification within the ChEBI ontology hierarchy. This granular classification enables precise chemical taxonomy for drug discovery and chemoinformatics applications.
+  Immune system disorder (MONDO:0005046) has the most diseases with confirmed MeSH TopicalDescriptor mappings among the four parent categories of systemic lupus erythematosus, with 248 confirmed MeSH TopicalDescriptors across its disease subclasses. This substantially exceeds connective tissue disorder (134 TopicalDescriptors), autoimmune disease (61 TopicalDescriptors), and rheumatic disorder (39 TopicalDescriptors). The counts reflect confirmed joins with the MeSH RDF graph restricted to meshv:TopicalDescriptor entries (i.e., canonical MeSH headings used for indexing); MONDO cross-references to MeSH supplementary concept records (MESH:C...) are excluded. The four categories are not mutually exclusive: immune system disorder is the broadest and contains the other three as subcategories, so their diseases are counted within it as well — the sum across categories (482) exceeds the 346 unique diseases with TopicalDescriptor mappings due to this intentional overlap in the ontology hierarchy. The higher absolute count for immune system disorder reflects its greater scope rather than a higher per-disease mapping rate, since autoimmune disease and rheumatic disorder actually have proportionally good coverage relative to their size.
 
-question_template_used: "Template 1 (Simple Count)"
+question_template_used: choice_comparative_quantitative
 
 time_spent:
-  exploration: "25 minutes"
-  formulation: "15 minutes"
-  verification: "15 minutes"
-  pubmed_test: "15 minutes"
-  extraction: "10 minutes"
-  documentation: "20 minutes"
-  total: "100 minutes"
+  exploration: 45 minutes
+  formulation: 15 minutes
+  verification: 30 minutes
+  pubmed_test: 15 minutes
+  extraction: 25 minutes
+  documentation: 35 minutes
+  total: 165 minutes

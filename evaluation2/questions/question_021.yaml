@@ -1,0 +1,305 @@
+id: question_021
+type: summary
+body: "Summarize the ClinVar variant landscape for retinitis pigmentosa as defined by MeSH descriptor D012174, characterizing the distribution of current variants across germline clinical significance categories, the number of distinct genes implicated, and the number of associated MedGen phenotype concepts."
+
+inspiration_keyword:
+  keyword_id: KW-0682
+  name: Retinitis pigmentosa
+  category: Disease
+
+togomcp_databases_used:
+  - mesh
+  - clinvar
+  - medgen
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 2
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: |
+    Searched ncbi_esearch with queries: (1) "retinitis pigmentosa ClinVar variant
+    clinical significance distribution", (2) "retinitis pigmentosa genes 213
+    causative pathogenic variants count". Both returned 0 results.
+  result: |
+    PubMed returns no results for queries seeking the exact current counts of
+    ClinVar variants by clinical significance category for RP, the precise number
+    of implicated genes (213), or the number of distinct MedGen phenotype concepts
+    (333). While review articles describe RP genetics in general, the specific
+    quantitative distribution across significance categories requires direct
+    database query of the current ClinVar release.
+  conclusion: PASS (cannot answer from literature — requires current ClinVar/MedGen database state)
+
+sparql_queries:
+  - query_number: 1
+    database: mesh
+    description: Retrieve label, tree numbers, and annotation for the Retinitis Pigmentosa MeSH descriptor D012174
+    query: |
+      PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?label ?annotation ?treeNum
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        mesh:D012174 rdfs:label ?label .
+        OPTIONAL { mesh:D012174 meshv:annotation ?annotation }
+        OPTIONAL {
+          mesh:D012174 meshv:treeNumber ?tree .
+          ?tree rdfs:label ?treeNum
+        }
+      }
+    result_count: 3
+
+  - query_number: 2
+    database: clinvar
+    description: Count total current ClinVar variants annotated with the RP MeSH disease reference (meshb.nlm.nih.gov/record/ui?ui=D012174)
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT (COUNT(DISTINCT ?variant) as ?count)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 med2rdf:disease ?disease .
+        ?disease dct:references ?ref_bn .
+        ?ref_bn rdfs:seeAlso <http://meshb.nlm.nih.gov/record/ui?ui=D012174> .
+      }
+    result_count: 1
+
+  - query_number: 3
+    database: clinvar
+    description: Distribution of RP-annotated variants by germline clinical significance category
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?significance (COUNT(DISTINCT ?variant) as ?count)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 med2rdf:disease ?disease ;
+                 cvo:classified_record ?classrec .
+        ?disease dct:references ?ref_bn .
+        ?ref_bn rdfs:seeAlso <http://meshb.nlm.nih.gov/record/ui?ui=D012174> .
+        ?classrec cvo:classifications ?classi .
+        ?classi cvo:germline_classification ?germ .
+        ?germ cvo:description ?significance .
+      }
+      GROUP BY ?significance
+      ORDER BY DESC(?count)
+    result_count: 10
+
+  - query_number: 4
+    database: clinvar
+    description: Count distinct genes implicated in RP-annotated variants
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT (COUNT(DISTINCT ?gene_uri) as ?gene_count) (COUNT(DISTINCT ?variant) as ?variant_count)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 med2rdf:disease ?disease ;
+                 cvo:classified_record ?classrec .
+        ?disease dct:references ?ref_bn .
+        ?ref_bn rdfs:seeAlso <http://meshb.nlm.nih.gov/record/ui?ui=D012174> .
+        ?classrec sio:SIO_000628 ?gene_bn .
+        ?gene_bn med2rdf:gene ?gene_uri .
+      }
+    result_count: 1
+
+  - query_number: 5
+    database: clinvar
+    description: Distribution of RP-annotated variants by mutation type (arithmetic verification for query 2)
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?var_type (COUNT(DISTINCT ?variant) as ?count)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 cvo:variation_type ?var_type ;
+                 med2rdf:disease ?disease .
+        ?disease dct:references ?ref_bn .
+        ?ref_bn rdfs:seeAlso <http://meshb.nlm.nih.gov/record/ui?ui=D012174> .
+      }
+      GROUP BY ?var_type
+      ORDER BY DESC(?count)
+    result_count: 8
+
+  - query_number: 6
+    database: clinvar
+    description: Top 10 genes by number of RP-annotated variants
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?gene_symbol (COUNT(DISTINCT ?variant) as ?count)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 med2rdf:disease ?disease ;
+                 cvo:classified_record ?classrec .
+        ?disease dct:references ?ref_bn .
+        ?ref_bn rdfs:seeAlso <http://meshb.nlm.nih.gov/record/ui?ui=D012174> .
+        ?classrec sio:SIO_000628 ?gene_bn .
+        ?gene_bn med2rdf:gene ?gene_uri .
+        ?gene_uri a cvo:Gene ;
+                  cvo:symbol ?gene_symbol .
+      }
+      GROUP BY ?gene_symbol
+      ORDER BY DESC(?count)
+      LIMIT 10
+    result_count: 10
+
+  - query_number: 7
+    database: medgen
+    description: Count distinct MedGen phenotype concepts associated with RP-annotated ClinVar variants (cross-database query on ncbi endpoint)
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT (COUNT(DISTINCT ?medgen_uri) as ?concept_count) (COUNT(DISTINCT ?variant) as ?var_count)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/clinvar> {
+          ?variant a cvo:VariationArchiveType ;
+                   cvo:record_status "current" ;
+                   med2rdf:disease ?disease .
+          ?disease dct:references ?ref_bn .
+          ?ref_bn rdfs:seeAlso <http://meshb.nlm.nih.gov/record/ui?ui=D012174> .
+          ?variant med2rdf:disease ?disease2 .
+          ?disease2 dct:references ?ref_bn2 .
+          ?ref_bn2 rdfs:seeAlso ?medgen_uri .
+          FILTER(CONTAINS(STR(?medgen_uri), "medgen"))
+        }
+      }
+    result_count: 1
+
+  - query_number: 8
+    database: clinvar
+    description: |
+      Arithmetic verification for query 3 — count distinct variants with ANY germline
+      classification and compare to the total (query 2). Confirms that the 10 significance
+      categories together account for all 5,493 current RP variants (sum = total → mutually
+      exclusive categories, each variant carries exactly one germline significance label).
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT (COUNT(DISTINCT ?variant) AS ?variants_with_classification)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 med2rdf:disease ?disease ;
+                 cvo:classified_record ?classrec .
+        ?disease dct:references ?ref_bn .
+        ?ref_bn rdfs:seeAlso <http://meshb.nlm.nih.gov/record/ui?ui=D012174> .
+        ?classrec cvo:classifications ?classi .
+        ?classi cvo:germline_classification ?germ .
+        ?germ cvo:description ?significance .
+      }
+    result_count: 1
+    # Arithmetic check: result = 5,493 = total from query 2.
+    # Sum of the 10 category counts from query 3 also equals 5,493 (the 8 named categories
+    # account for 5,491; the remaining 2 variants fall in two additional minor categories).
+    # 5,493 = 5,493 → PASS. Germline significance categories are mutually exclusive;
+    # no variant belongs to more than one category.
+
+rdf_triples: |
+  @prefix mesh: <http://id.nlm.nih.gov/mesh/> .
+  @prefix meshv: <http://id.nlm.nih.gov/mesh/vocab#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix cvo: <http://purl.jp/bio/10/clinvar/> .
+  @prefix med2rdf: <http://med2rdf.org/ontology/med2rdf#> .
+  @prefix dct: <http://purl.org/dc/terms/> .
+  @prefix sio: <http://semanticscience.org/resource/> .
+  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+  mesh:D012174 a meshv:TopicalDescriptor .
+  # Database: MeSH | Query: 1 | Comment: Retinitis Pigmentosa topical descriptor
+
+  mesh:D012174 rdfs:label "Retinitis Pigmentosa" .
+  # Database: MeSH | Query: 1 | Comment: Preferred label for RP descriptor
+
+  mesh:C11.768.585.658.500 a meshv:TreeNumber ;
+    rdfs:label "C11.768.585.658.500" .
+  # Database: MeSH | Query: 1 | Comment: RP tree position under Eye Diseases > Retinal Diseases
+
+  mesh:C16.320.290.684 a meshv:TreeNumber ;
+    rdfs:label "C16.320.290.684" .
+  # Database: MeSH | Query: 1 | Comment: RP tree position under Genetic Diseases > Hereditary Eye Diseases
+
+  mesh:D012174 meshv:treeNumber mesh:C11.768.585.658.500 .
+  # Database: MeSH | Query: 1 | Comment: RP classified under eye diseases hierarchy
+
+  mesh:D012174 meshv:treeNumber mesh:C16.320.290.684 .
+  # Database: MeSH | Query: 1 | Comment: RP classified under hereditary genetic diseases hierarchy
+
+  <http://meshb.nlm.nih.gov/record/ui?ui=D012174> rdfs:seeAlso mesh:D012174 .
+  # Database: ClinVar | Query: 2 | Comment: ClinVar uses meshb.nlm.nih.gov URI format for RP disease reference
+
+  <http://ncbi.nlm.nih.gov/clinvar/variation/example_rp>
+    a cvo:VariationArchiveType ;
+    cvo:record_status "current" ;
+    cvo:variation_type "single nucleotide variant" .
+  # Database: ClinVar | Query: 5 | Comment: Representative RP-associated SNV (dominant type at 90.7%)
+
+  <http://ncbi.nlm.nih.gov/gene/346007> a cvo:Gene ;
+    cvo:symbol "EYS" ;
+    cvo:cytogenetic_location "6q12" .
+  # Database: ClinVar | Query: 6 | Comment: EYS gene — most variant-rich RP gene with 418 variants
+
+  <http://ncbi.nlm.nih.gov/gene/7399> a cvo:Gene ;
+    cvo:symbol "USH2A" ;
+    cvo:cytogenetic_location "1q41" .
+  # Database: ClinVar | Query: 6 | Comment: USH2A — second most variant-rich RP gene with 328 variants
+
+  <http://www.ncbi.nlm.nih.gov/medgen/C0035334> a <http://med2rdf/ontology/medgen#ConceptID> .
+  # Database: MedGen | Query: 7 | Comment: Representative MedGen phenotype concept among 333 linked to RP variants
+
+exact_answer: ""
+
+ideal_answer: |
+  In ClinVar (2025 release), 5,493 current variants are annotated with the retinitis pigmentosa MeSH descriptor (D012174), a hereditary rod-cone dystrophy classified under both eye diseases and hereditary genetic diseases in the MeSH hierarchy (tree numbers C11.768.585.658.500, C16.320.290.684, C11.270.684). The germline clinical significance landscape is dominated by variants of uncertain significance (2,014 variants, 36.7%), followed by those with conflicting classifications of pathogenicity (1,313, 23.9%), while pathogenic-class variants (Pathogenic 521, Pathogenic/Likely pathogenic 414, and Likely pathogenic 285, totaling 1,220, 22.2%) and benign-class variants (Benign 489, Benign/Likely benign 316, Likely benign 139, totaling 944, 17.2%) constitute the remaining groups. Arithmetic verification (query 8) confirms that the 10 germline significance categories together cover all 5,493 variants (sum of category counts = 5,493 = total unique variants), confirming the categories are mutually exclusive — each variant carries exactly one germline significance label. Single nucleotide variants overwhelmingly dominate at 90.7% (4,980 of 5,493), followed by deletions (303, 5.5%) and duplications (106, 1.9%). These variants implicate 213 distinct genes, with the most variant-rich being EYS (418 variants), USH2A (328), CNGB1 (234), PCARE (227), and PDE6A (185). The disease associations span 333 distinct MedGen phenotype concepts, reflecting the broad clinical and genetic heterogeneity of the retinitis pigmentosa spectrum.
+
+question_template_used: Template 4 (Aggregation Statistics)
+
+time_spent:
+  exploration: 30 minutes
+  formulation: 15 minutes
+  verification: 25 minutes
+  pubmed_test: 10 minutes
+  extraction: 20 minutes
+  documentation: 25 minutes
+  total: 125 minutes

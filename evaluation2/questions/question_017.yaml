@@ -1,0 +1,205 @@
+id: question_017
+type: yes_no
+body: "Does Anabaena sp. DSM 101043 grow in nitrogen-free BG11- medium?"
+
+inspiration_keyword:
+  keyword_id: KW-0364
+  name: Heterocyst
+  category: Developmental stage
+
+togomcp_databases_used:
+  - bacdive
+  - mediadive
+
+verification_score:
+  biological_insight: 3
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 15 minutes
+  method: Searched PubMed for "Anabaena DSM 101043 BG11 nitrogen-free medium" and "Anabaena BG11- medium heterocyst cultivation"
+  result: |
+    First search returned 0 results. Second search returned 1 article (PMID 15715873) 
+    about Anabaena sp. PCC 7120 (a different strain) discussing heterocyst differentiation 
+    in BG11(0) medium. The article does not mention DSM 101043 or provide cultivation 
+    information for this specific strain. Literature discusses general Anabaena cultivation 
+    principles but not the specific strain DSM 101043's validated growth requirements.
+  conclusion: PASS (cannot answer from literature - requires strain-specific cultivation data from RDF databases)
+
+sparql_queries:
+  - query_number: 1
+    database: bacdive
+    description: Get strain information from BacDive for Anabaena sp. DSM 101043 (BacDive ID 131407)
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      
+      SELECT ?strain ?strainLabel ?bacDiveID ?genus ?species ?phylum ?description
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        ?strain a schema:Strain ;
+                rdfs:label ?strainLabel ;
+                schema:hasBacDiveID ?bacDiveID ;
+                schema:hasGenus ?genus ;
+                schema:hasSpecies ?species ;
+                schema:hasPhylum ?phylum .
+        
+        FILTER(?bacDiveID = 131407 && ?genus = "Anabaena")
+        
+        OPTIONAL { ?strain dct:description ?description }
+      }
+    result_count: 1
+  
+  - query_number: 2
+    database: mediadive
+    description: Check if strain with BacDive ID 131407 grows in BG11- medium in MediaDive
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT ?strain ?species ?medium ?mediumLabel
+      FROM <http://rdfportal.org/dataset/mediadive>
+      WHERE {
+        ?strain a schema:Strain ;
+                schema:hasBacDiveID 131407 ;
+                schema:hasSpecies ?species .
+        
+        ?growth schema:relatedToStrain ?strain ;
+                schema:partOfMedium ?medium .
+        
+        ?medium rdfs:label ?mediumLabel .
+        ?mediumLabel bif:contains "'BG11-'"
+      }
+    result_count: 1
+  
+  - query_number: 3
+    database: bacdive
+    description: Cross-database integration (BacDive + MediaDive) confirming strain identity and BG11- growth via shared BacDiveID
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT ?strainLabel ?bacDiveID ?mediumLabel
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/bacdive> {
+          ?bacDiveStrain a schema:Strain ;
+                         rdfs:label ?strainLabel ;
+                         schema:hasBacDiveID ?bacDiveID .
+          FILTER(?bacDiveID = 131407)
+        }
+        
+        GRAPH <http://rdfportal.org/dataset/mediadive> {
+          ?mediaDiveStrain a schema:Strain ;
+                           schema:hasBacDiveID ?bacDiveID .
+          
+          ?growth schema:relatedToStrain ?mediaDiveStrain ;
+                  schema:partOfMedium ?medium .
+          
+          ?medium rdfs:label ?mediumLabel .
+          ?mediumLabel bif:contains "'BG11-'"
+        }
+      }
+    result_count: 1
+  
+  - query_number: 4
+    database: mediadive
+    description: >
+      Verify BG11- is nitrogen-free by counting nitrogen-containing ingredients
+      (nitrate, nitrite, ammonium, urea) in "Cyanobacteria Medium BG11-".
+      Returns nitrogenIngredientCount = 0, confirming absence of fixed nitrogen sources.
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      
+      SELECT (COUNT(DISTINCT ?ingredient) as ?nitrogenIngredientCount)
+      FROM <http://rdfportal.org/dataset/mediadive>
+      WHERE {
+        ?medium a schema:CultureMedium ;
+                rdfs:label "Cyanobacteria Medium BG11-" .
+        
+        ?comp schema:partOfMedium ?medium ;
+              schema:containsIngredient ?ingredient .
+        
+        ?ingredient rdfs:label ?ingredientLabel .
+        
+        FILTER(CONTAINS(LCASE(?ingredientLabel), "nitrate") || 
+               CONTAINS(LCASE(?ingredientLabel), "nitrite") ||
+               CONTAINS(LCASE(?ingredientLabel), "ammon") ||
+               CONTAINS(LCASE(?ingredientLabel), "urea"))
+      }
+    result_count: 1
+    result_value: 0
+
+rdf_triples: |
+  @prefix schema: <https://purl.dsmz.de/schema/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix dct: <http://purl.org/dc/terms/> .
+  
+  <https://purl.dsmz.de/bacdive/strain/131407> a schema:Strain .
+  # Database: BacDive | Query: 1 | Comment: Anabaena sp. strain entity in BacDive
+  
+  <https://purl.dsmz.de/bacdive/strain/131407> rdfs:label "Anabaena sp. 131407" .
+  # Database: BacDive | Query: 1 | Comment: Strain label showing BacDive designation
+  
+  <https://purl.dsmz.de/bacdive/strain/131407> schema:hasBacDiveID 131407 .
+  # Database: BacDive | Query: 1 | Comment: BacDiveID linking BacDive and MediaDive records
+  
+  <https://purl.dsmz.de/bacdive/strain/131407> schema:hasGenus "Anabaena" .
+  # Database: BacDive | Query: 1 | Comment: Genus classification as Anabaena (nitrogen-fixing cyanobacterium)
+  
+  <https://purl.dsmz.de/bacdive/strain/131407> schema:hasSpecies "Anabaena sp." .
+  # Database: BacDive | Query: 1 | Comment: Species designation
+  
+  <https://purl.dsmz.de/bacdive/strain/131407> schema:hasPhylum "Cyanobacteria" .
+  # Database: BacDive | Query: 1 | Comment: Phylum classification confirms photosynthetic prokaryote
+  
+  <https://purl.dsmz.de/bacdive/strain/131407> dct:description "Anabaena sp. DSM 101043 is a psychrophilic bacterium that was isolated from sediment." .
+  # Database: BacDive | Query: 1 | Comment: Isolation source indicates environmental niche (cold-adapted sediment)
+  
+  <https://purl.dsmz.de/mediadive/strain/25829> a schema:Strain .
+  # Database: MediaDive | Query: 2 | Comment: Same strain in MediaDive culture database
+  
+  <https://purl.dsmz.de/mediadive/strain/25829> schema:hasBacDiveID 131407 .
+  # Database: MediaDive | Query: 2 | Comment: BacDiveID enables cross-database linkage
+  
+  <https://purl.dsmz.de/mediadive/strain/25829> schema:hasSpecies "Anabaena sp." .
+  # Database: MediaDive | Query: 2 | Comment: Species consistency across databases
+  
+  <https://purl.dsmz.de/mediadive/growth/25829> a schema:GrowthCondition .
+  # Database: MediaDive | Query: 2 | Comment: Documented growth condition entity
+  
+  <https://purl.dsmz.de/mediadive/growth/25829> schema:relatedToStrain <https://purl.dsmz.de/mediadive/strain/25829> .
+  # Database: MediaDive | Query: 2 | Comment: Links growth conditions to specific strain
+  
+  <https://purl.dsmz.de/mediadive/growth/25829> schema:partOfMedium <https://purl.dsmz.de/mediadive/medium/1592> .
+  # Database: MediaDive | Query: 2 | Comment: Associates strain with BG11- medium
+  
+  <https://purl.dsmz.de/mediadive/medium/1592> a schema:CultureMedium .
+  # Database: MediaDive | Query: 2 | Comment: BG11- medium entity
+  
+  <https://purl.dsmz.de/mediadive/medium/1592> rdfs:label "Cyanobacteria Medium BG11-" .
+  # Database: MediaDive | Query: 2 | Comment: Medium label; BG11- variant lacks fixed nitrogen (nitrate/ammonium)
+  
+  # MediaDive Query 4 result: nitrogenIngredientCount = 0
+  # Database: MediaDive | Query: 4 | Comment: Zero nitrogen-containing ingredients (nitrate/nitrite/ammonium/urea) found in BG11- medium, confirming it is nitrogen-free
+
+exact_answer: "yes"
+
+ideal_answer: |
+  Yes, Anabaena sp. DSM 101043 (BacDive ID 131407) is documented to grow in Cyanobacteria Medium BG11-, which is a nitrogen-free medium used to induce heterocyst formation in nitrogen-fixing cyanobacteria. A MediaDive query confirmed zero nitrogen-containing ingredients (no nitrate, nitrite, ammonium, or urea) in BG11-, establishing that the strain grows without any external fixed-nitrogen source. BG11- medium lacks fixed nitrogen sources, requiring nitrogen-fixing strains like Anabaena to form specialized heterocyst cells for atmospheric nitrogen fixation. This psychrophilic strain isolated from sediment can fix atmospheric nitrogen through the nitrogenase enzyme complex housed within heterocysts, specialized anaerobic cells that protect oxygen-sensitive nitrogenase from photosynthetic oxygen production. The cross-database integration between BacDive (strain characterization) and MediaDive (validated cultivation protocols) confirms this nitrogen-independent growth capability.
+
+question_template_used: Template 7 (Yes/No Existence)
+
+time_spent:
+  exploration: 45 minutes
+  formulation: 15 minutes
+  verification: 30 minutes
+  pubmed_test: 15 minutes
+  extraction: 25 minutes
+  documentation: 30 minutes
+  total: 160 minutes

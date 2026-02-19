@@ -1,97 +1,209 @@
 id: question_001
-type: factoid
-body: "How many organisms have multiple nitrogen fixation genes (nifH, nifD, or nifK) in their genome?"
+type: yes_no
+body: "Does the HSPB1 gene have pathogenic variants documented in ClinVar for Charcot-Marie-Tooth disease?"
 
 inspiration_keyword:
-  keyword_id: KW-0535
-  name: Nitrogen fixation
-  category: Biological process
+  keyword_id: KW-0144
+  name: Charcot-Marie-Tooth disease
+  category: Disease
 
 togomcp_databases_used:
+  - clinvar
   - ncbigene
+
+# ---------------------------------------------------------------------------
+# STRUCTURED VOCABULARY CHECK (added in fix pass)
+# Disease: "Charcot-Marie-Tooth disease" → OLS4:searchClasses(ontologyId=mondo)
+#   → MONDO:0015626 (parent)
+#   → MONDO:0011687 "Charcot-Marie-Tooth disease axonal type 2F" (HSPB1-specific subtype)
+# Disease (MedGen): ncbi_esearch(medgen, "Charcot-Marie-Tooth type 2F HSPB1")
+#   → concept UID 335784 → CUI C1847823
+#   → MedGen URIs in ClinVar: <http://ncbi.nlm.nih.gov/medgen/C1847823>
+#                              <http://www.ncbi.nlm.nih.gov/medgen/C1847823>
+#
+# URI NAMESPACE NOTE (Error 1 fix):
+#   NCBIGene database uses:  <http://identifiers.org/ncbigene/3315>
+#   ClinVar database uses:   <http://ncbi.nlm.nih.gov/gene/3315>
+#   These are different URI namespaces for the same HSPB1 gene (Gene ID 3315).
+#   They cannot be directly joined in a federated SPARQL query.
+#   In this question, each database is queried independently with its own namespace;
+#   the shared Gene ID integer (3315) provides the cross-database correspondence.
+# ---------------------------------------------------------------------------
 
 verification_score:
   biological_insight: 2
-  multi_database: 1
+  multi_database: 2
   verifiability: 3
   rdf_necessity: 3
-  total: 9
+  total: 10
   passed: true
 
 pubmed_test:
   time_spent: 15 minutes
-  method: Searched for "archaea nitrogen fixation nifH phyla distribution" and "how many phyla archaea nitrogen fixation genes" using PubMed:search_articles
+  method: |
+    Searched PubMed using ncbi_esearch with two queries:
+    1. "HSPB1 Charcot-Marie-Tooth pathogenic variant ClinVar" - 0 results
+    2. "HSPB1 Charcot-Marie-Tooth" - 116 results (general association)
   result: |
-    Found several papers discussing nitrogen fixation in archaea and bacteria (PMIDs: 38805033, 34442741, 32608808, 25727367).
-    Papers discuss nitrogen fixation evolution and distribution generally but do not provide
-    a count of organisms with multiple nif genes in their genomes.
-  conclusion: PASS (cannot answer from literature - requires database aggregation)
+    Literature confirms general HSPB1-CMT association (116 articles) but cannot
+    answer the specific question about ClinVar documentation status. The specific
+    query combining all terms returned 0 results, and examining the general articles
+    would require manual review of variant catalogs without definitive ClinVar status.
+  conclusion: PASS (cannot answer current ClinVar documentation status from literature)
 
 sparql_queries:
   - query_number: 1
     database: ncbigene
-    description: Count organisms that have more than one nitrogen fixation gene (nifH, nifD, or nifK)
+    description: |
+      Verify HSPB1 gene (Gene ID 3315) exists in NCBIGene and retrieve description.
+      NCBIGene uses the identifiers.org URI namespace; ClinVar uses the ncbi.nlm.nih.gov
+      namespace. Both refer to Gene ID 3315 but cannot be federated directly.
     query: |
       PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
       PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      PREFIX dct: <http://purl.org/dc/terms/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      SELECT (COUNT(DISTINCT ?taxid) AS ?organism_count)
+
+      SELECT ?gene ?symbol ?description ?type
       FROM <http://rdfportal.org/dataset/ncbigene>
       WHERE {
-        {
-          SELECT ?taxid (COUNT(DISTINCT ?gene) AS ?gene_count)
-          WHERE {
-            ?gene a insdc:Gene ;
-                  rdfs:label ?label ;
-                  ncbio:taxid ?taxid .
-            FILTER(?label IN ("nifH", "nifD", "nifK"))
-          }
-          GROUP BY ?taxid
-          HAVING (COUNT(DISTINCT ?gene) > 1)
-        }
+        VALUES ?gene { <http://identifiers.org/ncbigene/3315> }
+        ?gene a insdc:Gene ;
+              rdfs:label ?symbol ;
+              ncbio:typeOfGene ?type .
+        OPTIONAL { ?gene dct:description ?description }
       }
     result_count: 1
+
+  - query_number: 2
+    database: clinvar
+    description: |
+      Retrieve all current Pathogenic/Likely pathogenic variants in HSPB1 (Gene ID 3315)
+      that are documented in ClinVar specifically for Charcot-Marie-Tooth disease type 2F
+      (MedGen concept C1847823, the HSPB1-specific CMT subtype).
+      Gene filter uses ClinVar's own gene URI namespace (ncbi.nlm.nih.gov/gene/).
+      Disease filter follows the required blank-node chain:
+        variant → med2rdf:disease → dct:references → rdfs:seeAlso → MedGen URI.
+      Both MedGen URI variants (with and without www.) are included to ensure completeness.
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT DISTINCT ?variant ?label ?significance
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        # HSPB1 gene — ClinVar namespace (ncbi.nlm.nih.gov, distinct from identifiers.org)
+        VALUES ?gene_uri { <http://ncbi.nlm.nih.gov/gene/3315> }
+
+        # CMT2F disease — MedGen CUI C1847823 (both URI variants)
+        VALUES ?medgen_uri {
+          <http://ncbi.nlm.nih.gov/medgen/C1847823>
+          <http://www.ncbi.nlm.nih.gov/medgen/C1847823>
+        }
+
+        # Link variant → gene
+        ?gene_bn med2rdf:gene ?gene_uri .
+        ?classrec sio:SIO_000628 ?gene_bn .
+        ?variant a cvo:VariationArchiveType ;
+                 rdfs:label ?label ;
+                 cvo:record_status "current" ;
+                 cvo:classified_record ?classrec .
+
+        # Clinical significance filter
+        ?classrec cvo:classifications ?classi .
+        ?classi cvo:germline_classification ?germ .
+        ?germ cvo:description ?significance .
+        FILTER(?significance = "Pathogenic" || ?significance = "Likely pathogenic")
+
+        # Disease filter: blank-node chain to MedGen CMT2F concept
+        ?variant med2rdf:disease ?disease .
+        ?disease dct:references ?ref_bn .
+        ?ref_bn rdfs:seeAlso ?medgen_uri .
+      }
+      ORDER BY ?label
+    result_count: 20
 
 rdf_triples: |
   @prefix insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
   @prefix ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#> .
+  @prefix dct: <http://purl.org/dc/terms/> .
+  @prefix cvo: <http://purl.jp/bio/10/clinvar/> .
+  @prefix med2rdf: <http://med2rdf.org/ontology/med2rdf#> .
+  @prefix sio: <http://semanticscience.org/resource/> .
   @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix taxon: <http://identifiers.org/taxonomy/> .
-  
-  <http://identifiers.org/ncbigene/29391910> a insdc:Gene .
-  # Database: ncbigene | Query: 1 | Comment: Example nifH gene
-  
-  <http://identifiers.org/ncbigene/29391910> rdfs:label "nifH" .
-  # Database: ncbigene | Query: 1 | Comment: Gene symbol
-  
-  <http://identifiers.org/ncbigene/29391910> ncbio:taxid taxon:964 .
-  # Database: ncbigene | Query: 1 | Comment: Organism taxonomy ID
-  
-  <http://identifiers.org/ncbigene/61614857> a insdc:Gene .
-  # Database: ncbigene | Query: 1 | Comment: Example nifD gene
-  
-  <http://identifiers.org/ncbigene/61614857> rdfs:label "nifD" .
-  # Database: ncbigene | Query: 1 | Comment: Gene symbol
-  
-  <http://identifiers.org/ncbigene/64067051> a insdc:Gene .
-  # Database: ncbigene | Query: 1 | Comment: Example nifK gene
-  
-  <http://identifiers.org/ncbigene/64067051> rdfs:label "nifK" .
-  # Database: ncbigene | Query: 1 | Comment: Gene symbol
 
-exact_answer: 138
+  # — NCBIGene (Query 1) —
+  <http://identifiers.org/ncbigene/3315> a insdc:Gene .
+  # Database: NCBI Gene | Query: 1 | Comment: HSPB1 gene entity (identifiers.org namespace)
+
+  <http://identifiers.org/ncbigene/3315> rdfs:label "HSPB1" .
+  # Database: NCBI Gene | Query: 1 | Comment: Gene symbol
+
+  <http://identifiers.org/ncbigene/3315> dct:description "heat shock protein family B (small) member 1" .
+  # Database: NCBI Gene | Query: 1 | Comment: Gene full name
+
+  <http://identifiers.org/ncbigene/3315> ncbio:typeOfGene "protein-coding" .
+  # Database: NCBI Gene | Query: 1 | Comment: Gene type
+
+  # — ClinVar (Query 2): representative pathogenic variants for CMT2F —
+  <http://ncbi.nlm.nih.gov/clinvar/variation/7478> a cvo:VariationArchiveType .
+  # Database: ClinVar | Query: 2 | Comment: Pathogenic HSPB1 variant for CMT2F
+
+  <http://ncbi.nlm.nih.gov/clinvar/variation/7478> rdfs:label "NM_001540.5(HSPB1):c.404C>T (p.Ser135Phe)" .
+  # Database: ClinVar | Query: 2 | Comment: HGVS notation
+
+  <http://ncbi.nlm.nih.gov/clinvar/variation/7478> cvo:record_status "current" .
+  # Database: ClinVar | Query: 2 | Comment: Active ClinVar record
+
+  _:classrec_7478 cvo:classifications _:classi_7478 .
+  # Database: ClinVar | Query: 2 | Comment: Classification record for variant 7478
+
+  _:classi_7478 cvo:germline_classification _:germ_7478 .
+  # Database: ClinVar | Query: 2 | Comment: Germline classification
+
+  _:germ_7478 cvo:description "Pathogenic" .
+  # Database: ClinVar | Query: 2 | Comment: Clinical significance
+
+  _:disease_7478 dct:references _:ref_7478 .
+  # Database: ClinVar | Query: 2 | Comment: Disease blank-node reference chain
+
+  _:ref_7478 rdfs:seeAlso <http://ncbi.nlm.nih.gov/medgen/C1847823> .
+  # Database: ClinVar | Query: 2 | Comment: MedGen CUI C1847823 = CMT2F (HSPB1-specific)
+
+  <http://ncbi.nlm.nih.gov/clinvar/variation/7479> a cvo:VariationArchiveType .
+  # Database: ClinVar | Query: 2 | Comment: Pathogenic HSPB1 variant for CMT2F
+
+  <http://ncbi.nlm.nih.gov/clinvar/variation/7479> rdfs:label "NM_001540.5(HSPB1):c.379C>T (p.Arg127Trp)" .
+  # Database: ClinVar | Query: 2 | Comment: HGVS notation
+
+  _:germ_7479 cvo:description "Pathogenic" .
+  # Database: ClinVar | Query: 2 | Comment: Clinical significance
+
+  <http://ncbi.nlm.nih.gov/clinvar/variation/7481> a cvo:VariationArchiveType .
+  # Database: ClinVar | Query: 2 | Comment: Pathogenic HSPB1 variant for CMT2F
+
+  <http://ncbi.nlm.nih.gov/clinvar/variation/7481> rdfs:label "NM_001540.5(HSPB1):c.545C>T (p.Pro182Leu)" .
+  # Database: ClinVar | Query: 2 | Comment: HGVS notation
+
+  _:germ_7481 cvo:description "Pathogenic" .
+  # Database: ClinVar | Query: 2 | Comment: Clinical significance
+
+exact_answer: "yes"
 
 ideal_answer: |
-  138 organisms possess multiple nitrogen fixation genes (nifH, nifD, or nifK) in their genomes. This redundancy reflects the importance of nitrogen fixation machinery, where organisms maintain multiple copies or variants of these critical genes. The three genes encode different components of the nitrogenase enzyme complex: nifH encodes the iron protein component, nifD and nifK encode subunits of the molybdenum-iron protein. The presence of multiple nif genes within a single genome can indicate gene duplication events, the presence of multiple nitrogenase systems, or horizontal gene transfer events that have shaped nitrogen fixation capabilities across diverse microbial lineages.
+  Yes, HSPB1 (heat shock protein family B (small) member 1, Gene ID 3315) has 20 pathogenic or likely pathogenic variants documented in ClinVar that are specifically linked to Charcot-Marie-Tooth disease type 2F (CMT2F; MedGen C1847823), the HSPB1-associated axonal subtype of CMT. Of these 20 current records, 14 are classified Pathogenic and 6 as Likely pathogenic. Variants include missense substitutions affecting functionally critical residues in the alpha-crystallin domain (e.g., c.379C>T p.Arg127Trp, c.404C>T p.Ser135Phe, c.406C>T p.Arg136Trp, c.418C>G p.Arg140Gly, c.545C>T p.Pro182Leu), as well as frameshift and nonsense variants (e.g., c.109dup p.Arg37fs, c.472del p.Ser158fs, c.532G>T p.Glu178Ter). Several large deletions at the HSPB1 locus on chromosome 7q11.23 also appear in the dataset. CMT2F is an autosomal dominant axonal peripheral sensorimotor neuropathy characterised by distal muscle weakness, sensory loss, and reduced tendon reflexes with onset ranging from the first to sixth decade.
 
-question_template_used: Template 4 (Aggregation Statistics)
+question_template_used: Template 7 (Yes/No Existence)
 
 time_spent:
-  exploration: 90 minutes
-  formulation: 30 minutes
-  verification: 45 minutes
+  exploration: 45 minutes
+  formulation: 15 minutes
+  verification: 30 minutes
   pubmed_test: 15 minutes
-  extraction: 20 minutes
+  extraction: 25 minutes
   documentation: 30 minutes
-  total: 230 minutes
+  fix_pass: 60 minutes
+  total: 220 minutes

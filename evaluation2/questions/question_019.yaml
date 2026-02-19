@@ -1,0 +1,200 @@
+id: question_019
+type: choice
+body: "Among Mucopolysaccharidosis types I, II, III, IV, and VI, which type has the highest number of PubMed articles with co-annotated gene mentions documented in PubTator Central?"
+
+choices:
+  - "Mucopolysaccharidosis type I (Hurler syndrome)"
+  - "Mucopolysaccharidosis type II (Hunter syndrome)"
+  - "Mucopolysaccharidosis type III (Sanfilippo syndrome)"
+  - "Mucopolysaccharidosis type IV (Morquio syndrome)"
+  - "Mucopolysaccharidosis type VI (Maroteaux-Lamy syndrome)"
+
+inspiration_keyword:
+  keyword_id: KW-0510
+  name: Mucopolysaccharidosis
+  category: Disease
+
+togomcp_databases_used:
+  - pubtator
+  - pubmed
+  - ncbigene
+
+verification_score:
+  biological_insight: 2
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: Searched PubMed for literature comparing annotation volumes across MPS types and PubTator gene co-annotation counts per disease type.
+  result: |
+    No results found for "mucopolysaccharidosis literature annotation gene publications comparison"
+    or "PubTator mucopolysaccharidosis type comparison gene annotations count".
+    No publication provides a systematic comparison of gene annotation co-occurrence
+    counts across MPS subtypes in PubTator Central.
+  conclusion: PASS (cannot answer from literature)
+
+sparql_queries:
+  - query_number: 1
+    database: pubtator
+    description: Count PubMed articles with gene co-annotations for each MPS type using MeSH disease IRIs (two-database query without NCBIGene constraint)
+    query: |
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+
+      SELECT ?disease (COUNT(DISTINCT ?article) AS ?article_count)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+          VALUES ?disease {
+            <http://identifiers.org/mesh/D008059>
+            <http://identifiers.org/mesh/D016532>
+            <http://identifiers.org/mesh/D009084>
+            <http://identifiers.org/mesh/D009085>
+            <http://identifiers.org/mesh/D009087>
+          }
+          ?diseaseAnn dcterms:subject "Disease" ;
+                      oa:hasBody ?disease ;
+                      oa:hasTarget ?article .
+          ?geneAnn dcterms:subject "Gene" ;
+                   oa:hasTarget ?article .
+        }
+      }
+      GROUP BY ?disease
+      ORDER BY DESC(?article_count)
+    result_count: 5
+
+  - query_number: 2
+    database: pubtator
+    description: Three-database query integrating PubTator disease/gene annotations with NCBIGene (to confirm gene IDs are NCBI-registered genes) and PubMed (to confirm articles are indexed in PubMed). Counts articles per MPS type with co-annotated NCBI-verified genes.
+    query: |
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+
+      SELECT ?disease (COUNT(DISTINCT ?article) AS ?article_count)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+          VALUES ?disease {
+            <http://identifiers.org/mesh/D008059>
+            <http://identifiers.org/mesh/D016532>
+            <http://identifiers.org/mesh/D009084>
+            <http://identifiers.org/mesh/D009085>
+            <http://identifiers.org/mesh/D009087>
+          }
+          ?diseaseAnn dcterms:subject "Disease" ;
+                      oa:hasBody ?disease ;
+                      oa:hasTarget ?article .
+          ?geneAnn dcterms:subject "Gene" ;
+                   oa:hasBody ?geneId ;
+                   oa:hasTarget ?article .
+        }
+        GRAPH <http://rdfportal.org/dataset/ncbigene> {
+          ?geneId a insdc:Gene .
+        }
+        GRAPH <http://rdfportal.org/dataset/pubmed> {
+          ?article bibo:pmid ?pmid .
+        }
+      }
+      GROUP BY ?disease
+      ORDER BY DESC(?article_count)
+    result_count: 5
+
+  - query_number: 3
+    database: pubtator
+    description: Arithmetic verification - count total unique articles across all five MPS types to confirm sum exceeds total (articles may discuss multiple MPS types).
+    query: |
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+
+      SELECT (COUNT(DISTINCT ?article) AS ?total_unique_articles)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+          VALUES ?disease {
+            <http://identifiers.org/mesh/D008059>
+            <http://identifiers.org/mesh/D016532>
+            <http://identifiers.org/mesh/D009084>
+            <http://identifiers.org/mesh/D009085>
+            <http://identifiers.org/mesh/D009087>
+          }
+          ?diseaseAnn dcterms:subject "Disease" ;
+                      oa:hasBody ?disease ;
+                      oa:hasTarget ?article .
+          ?geneAnn dcterms:subject "Gene" ;
+                   oa:hasBody ?geneId ;
+                   oa:hasTarget ?article .
+        }
+        GRAPH <http://rdfportal.org/dataset/ncbigene> {
+          ?geneId a insdc:Gene .
+        }
+        GRAPH <http://rdfportal.org/dataset/pubmed> {
+          ?article bibo:pmid ?pmid .
+        }
+      }
+    result_count: 1
+
+rdf_triples: |
+  @prefix oa: <http://www.w3.org/ns/oa#> .
+  @prefix dcterms: <http://purl.org/dc/terms/> .
+  @prefix mesh: <http://identifiers.org/mesh/> .
+  @prefix bibo: <http://purl.org/ontology/bibo/> .
+  @prefix insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
+  @prefix pubtator: <http://purl.jp/bio/10/pubtator-central/> .
+  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+  mesh:D009084 a <http://www.w3.org/2002/07/owl#Class> .
+  # Database: PubTator | Query: 2 | Comment: MeSH ID for Mucopolysaccharidosis III (Sanfilippo syndrome)
+
+  mesh:D008059 a <http://www.w3.org/2002/07/owl#Class> .
+  # Database: PubTator | Query: 2 | Comment: MeSH ID for Mucopolysaccharidosis I (Hurler syndrome)
+
+  mesh:D016532 a <http://www.w3.org/2002/07/owl#Class> .
+  # Database: PubTator | Query: 2 | Comment: MeSH ID for Mucopolysaccharidosis II (Hunter syndrome)
+
+  mesh:D009085 a <http://www.w3.org/2002/07/owl#Class> .
+  # Database: PubTator | Query: 2 | Comment: MeSH ID for Mucopolysaccharidosis IV (Morquio syndrome)
+
+  mesh:D009087 a <http://www.w3.org/2002/07/owl#Class> .
+  # Database: PubTator | Query: 2 | Comment: MeSH ID for Mucopolysaccharidosis VI (Maroteaux-Lamy syndrome)
+
+  <http://purl.jp/bio/10/pubtator-central/Disease/MPS3_example>
+    a oa:Annotation ;
+    dcterms:subject "Disease" ;
+    oa:hasBody mesh:D009084 ;
+    oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/example_article> .
+  # Database: PubTator | Query: 2 | Comment: Representative disease annotation linking MPS III to a PubMed article
+
+  <http://purl.jp/bio/10/pubtator-central/Gene/MPS3_gene_example>
+    a oa:Annotation ;
+    dcterms:subject "Gene" ;
+    oa:hasBody <http://identifiers.org/ncbigene/6448> ;
+    oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/example_article> .
+  # Database: PubTator | Query: 2 | Comment: Gene annotation (SGSH, causal gene for MPS III A) co-occurring in same article
+
+  <http://identifiers.org/ncbigene/6448> a insdc:Gene .
+  # Database: NCBIGene | Query: 2 | Comment: Confirms NCBI Gene 6448 (SGSH) is a registered gene entity
+
+  <http://rdf.ncbi.nlm.nih.gov/pubmed/example_article> bibo:pmid "example"^^xsd:string .
+  # Database: PubMed | Query: 2 | Comment: Confirms article is indexed in PubMed
+
+exact_answer:
+  - "Mucopolysaccharidosis type III (Sanfilippo syndrome)"
+
+ideal_answer: |
+  Mucopolysaccharidosis type III (Sanfilippo syndrome, MeSH:D009084) has the highest number of PubMed articles with co-annotated gene mentions in PubTator Central, with 7,826 articles (requiring gene annotations to be verified as NCBI-registered genes). This is substantially more than MPS type I (Hurler syndrome, MeSH:D008059) with 3,505 articles, MPS type II (Hunter syndrome, MeSH:D016532) with 2,413 articles, MPS type IV (Morquio syndrome, MeSH:D009085) with 2,338 articles, and MPS type VI (Maroteaux-Lamy syndrome, MeSH:D009087) with 1,030 articles. The sum of per-type counts (17,112) exceeds the count of unique articles across all five types (13,644), indicating that approximately 3,468 articles discuss multiple MPS types simultaneously. The disproportionate annotation volume for MPS III likely reflects its four biochemically distinct subtypes (A–D, caused by SGSH, NAGLU, HGSNAT, and GNS respectively) and its complex neurological pathology—MPS III is the most prevalent lysosomal storage disorder affecting the central nervous system and has attracted substantial genetics, biomarker, and gene therapy research. In contrast, MPS VI has a narrower somatic phenotype without CNS involvement, correlating with fewer publications.
+
+question_template_used: Template 5 (Bounded Comparison)
+
+time_spent:
+  exploration: 20 minutes
+  formulation: 15 minutes
+  verification: 20 minutes
+  pubmed_test: 10 minutes
+  extraction: 15 minutes
+  documentation: 20 minutes
+  total: 100 minutes

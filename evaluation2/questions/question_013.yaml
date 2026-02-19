@@ -1,13 +1,17 @@
 id: question_013
-type: factoid
-body: How many human genes with MANE Select transcripts encode proteins that are targets of approved drugs?
+type: list
+body: "Which 5 genes have the most documented pathogenic or likely pathogenic ClinVar variants for Joubert syndrome, ranked by variant count?"
+
 inspiration_keyword:
-  keyword_id: KW-0418
-  name: Kinase
-  category: Molecular function
+  keyword_id: KW-0979
+  name: Joubert syndrome
+  category: Disease
+
 togomcp_databases_used:
-  - ensembl
-  - chembl
+  - nando
+  - medgen
+  - clinvar
+
 verification_score:
   biological_insight: 3
   multi_database: 3
@@ -15,152 +19,308 @@ verification_score:
   rdf_necessity: 3
   total: 12
   passed: true
+
 pubmed_test:
   time_spent: 15 minutes
-  method: "Searched PubMed with two queries: (1) 'MANE Select transcript approved drug targets' - no results, and (2) 'human genes drug targets approved medicines count' - found 16 general articles about drug targets but none specifically addressing MANE Select transcript filtering."
-  result: "Found articles discussing drug targets and approved medicines in general (e.g., PMIDs 41351070, 41330962) but none provided counts filtered by MANE Select transcript status."
-  conclusion: "PASS (cannot answer) - Literature discusses drug targets broadly but lacks the specific cross-database integration of MANE Select quality flags with ChEMBL drug approval data. Requires precise genomic annotation filtering not available in published summaries."
+  method: Searched PubMed for "Joubert syndrome genes pathogenic variants" and reviewed multiple articles
+  result: |
+    Found several review articles and case reports mentioning genes like AHI1, CEP290, TMEM216,
+    CC2D2A, and others associated with Joubert syndrome. However, these papers provide partial
+    gene lists from specific studies or time periods (e.g., "35 genes known as of 2020"). No
+    single source provides a comprehensive, current ranking of genes by number of documented
+    pathogenic variants across all Joubert syndrome subtypes. Variant counts change continuously
+    as new submissions are made to ClinVar. Would require manual compilation from dozens of
+    papers published over many years, with no guarantee of completeness or currency.
+  conclusion: PASS (cannot answer comprehensively from literature - requires current variant database state)
+
 sparql_queries:
   - query_number: 1
-    database: ensembl (ebi endpoint)
-    description: "Test query to verify MANE Select transcript filtering works in Ensembl and retrieve example genes with this quality flag."
+    database: nando
+    description: Find NANDO entries for Joubert syndrome and their MONDO mappings
     query: |
-      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX taxonomy: <http://identifiers.org/taxonomy/>
-      PREFIX so: <http://purl.obolibrary.org/obo/so#>
-
-      SELECT DISTINCT ?gene_id ?gene_label (COUNT(DISTINCT ?transcript) as ?mane_count)
-      WHERE {
-        GRAPH <http://rdfportal.org/dataset/ensembl> {
-          ?gene a terms:EnsemblGene ;
-                dcterms:identifier ?gene_id ;
-                rdfs:label ?gene_label ;
-                terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
-                obo:RO_0002162 taxonomy:9606 .
-          ?transcript so:transcribed_from ?gene ;
-                      terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000365> .
-        }
-      }
-      GROUP BY ?gene_id ?gene_label
-      LIMIT 20
-    result_count: 20
-  - query_number: 2
-    database: ebi endpoint (ensembl + chembl)
-    description: "Comprehensive cross-database query counting human genes with MANE Select transcripts that encode proteins targeted by approved ChEMBL drugs. Links Ensembl genes to ChEMBL targets via UniProt cross-references, filters by MANE Select quality flag (ENSGLOSSARY_0000365) and drug approval status (phase=4)."
-    query: |
-      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX taxonomy: <http://identifiers.org/taxonomy/>
-      PREFIX so: <http://purl.obolibrary.org/obo/so#>
-      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
 
-      SELECT (COUNT(DISTINCT ?gene) as ?gene_count)
+      SELECT ?disease ?en_label ?ja_label ?mondo_id
+      FROM <http://nanbyodata.jp/ontology/nando>
       WHERE {
-        GRAPH <http://rdfportal.org/dataset/ensembl> {
-          ?gene a terms:EnsemblGene ;
-                rdfs:seeAlso ?uniprot ;
-                obo:RO_0002162 taxonomy:9606 .
-          FILTER(STRSTARTS(STR(?uniprot), "http://purl.uniprot.org/uniprot/"))
-          
-          ?transcript so:transcribed_from ?gene ;
-                      terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000365> .
+        ?disease a owl:Class ;
+                 rdfs:label ?en_label ;
+                 rdfs:label ?ja_label ;
+                 skos:closeMatch ?mondo_id .
+        FILTER(LANG(?en_label) = "en")
+        FILTER(LANG(?ja_label) = "ja")
+        FILTER(CONTAINS(LCASE(?en_label), "joubert"))
+        FILTER(STRSTARTS(STR(?mondo_id), "http://purl.obolibrary.org/obo/MONDO_"))
+      }
+      LIMIT 20
+    result_count: 3
+
+  - query_number: 2
+    database: medgen
+    description: Find ALL MedGen concepts for Joubert syndrome and subtypes (no limit)
+    query: |
+      PREFIX mo: <http://med2rdf/ontology/medgen#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+
+      SELECT ?concept ?cui ?label
+      FROM <http://rdfportal.org/dataset/medgen>
+      WHERE {
+        ?concept a mo:ConceptID ;
+            dct:identifier ?cui ;
+            rdfs:label ?label .
+        ?label bif:contains "'Joubert'" .
+      }
+      ORDER BY ?cui
+    result_count: 51
+
+  - query_number: 3
+    database: clinvar
+    description: Count total unique genes with pathogenic/likely pathogenic variants across all 51 Joubert syndrome MedGen concepts
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+
+      SELECT (COUNT(DISTINCT ?gene_uri) AS ?gene_count)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        VALUES ?medgen_uri {
+          <http://ncbi.nlm.nih.gov/medgen/C0431399>
+          <http://ncbi.nlm.nih.gov/medgen/C1837713>
+          <http://ncbi.nlm.nih.gov/medgen/C1842577>
+          <http://ncbi.nlm.nih.gov/medgen/C1846790>
+          <http://ncbi.nlm.nih.gov/medgen/C1853153>
+          <http://ncbi.nlm.nih.gov/medgen/C1855675>
+          <http://ncbi.nlm.nih.gov/medgen/C1857780>
+          <http://ncbi.nlm.nih.gov/medgen/C1969053>
+          <http://ncbi.nlm.nih.gov/medgen/C2676771>
+          <http://ncbi.nlm.nih.gov/medgen/C2676788>
+          <http://ncbi.nlm.nih.gov/medgen/C2749019>
+          <http://ncbi.nlm.nih.gov/medgen/C3277723>
+          <http://ncbi.nlm.nih.gov/medgen/C3279203>
+          <http://ncbi.nlm.nih.gov/medgen/C3280031>
+          <http://ncbi.nlm.nih.gov/medgen/C3280766>
+          <http://ncbi.nlm.nih.gov/medgen/C3280897>
+          <http://ncbi.nlm.nih.gov/medgen/C3280898>
+          <http://ncbi.nlm.nih.gov/medgen/C3280899>
+          <http://ncbi.nlm.nih.gov/medgen/C3280906>
+          <http://ncbi.nlm.nih.gov/medgen/C3553264>
+          <http://ncbi.nlm.nih.gov/medgen/C3553758>
+          <http://ncbi.nlm.nih.gov/medgen/C3553846>
+          <http://ncbi.nlm.nih.gov/medgen/C3554235>
+          <http://ncbi.nlm.nih.gov/medgen/C3810212>
+          <http://ncbi.nlm.nih.gov/medgen/C3810278>
+          <http://ncbi.nlm.nih.gov/medgen/C4084822>
+          <http://ncbi.nlm.nih.gov/medgen/C4084841>
+          <http://ncbi.nlm.nih.gov/medgen/C4084842>
+          <http://ncbi.nlm.nih.gov/medgen/C4084843>
+          <http://ncbi.nlm.nih.gov/medgen/C4274118>
+          <http://ncbi.nlm.nih.gov/medgen/C4310705>
+          <http://ncbi.nlm.nih.gov/medgen/C4310706>
+          <http://ncbi.nlm.nih.gov/medgen/C4518774>
+          <http://ncbi.nlm.nih.gov/medgen/C4539386>
+          <http://ncbi.nlm.nih.gov/medgen/C4539715>
+          <http://ncbi.nlm.nih.gov/medgen/C4539937>
+          <http://ncbi.nlm.nih.gov/medgen/C4540342>
+          <http://ncbi.nlm.nih.gov/medgen/C4540355>
+          <http://ncbi.nlm.nih.gov/medgen/C4540389>
+          <http://ncbi.nlm.nih.gov/medgen/C4551568>
+          <http://ncbi.nlm.nih.gov/medgen/C4748442>
+          <http://ncbi.nlm.nih.gov/medgen/C5231493>
+          <http://ncbi.nlm.nih.gov/medgen/C5543064>
+          <http://ncbi.nlm.nih.gov/medgen/C5561958>
+          <http://ncbi.nlm.nih.gov/medgen/C5562000>
+          <http://ncbi.nlm.nih.gov/medgen/C5562007>
+          <http://ncbi.nlm.nih.gov/medgen/C5679612>
+          <http://ncbi.nlm.nih.gov/medgen/C5817337>
+          <http://ncbi.nlm.nih.gov/medgen/CN228298>
+          <http://ncbi.nlm.nih.gov/medgen/CN229797>
+          <http://ncbi.nlm.nih.gov/medgen/CN262509>
         }
-        GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
-          ?target a cco:SingleProtein ;
-                  cco:hasTargetComponent/skos:exactMatch ?uniprot .
-          ?mech a cco:Mechanism ;
-                cco:hasTarget ?target ;
-                cco:hasMolecule ?mol .
-          ?mol cco:highestDevelopmentPhase 4 .
-        }
+
+        ?disease dct:references ?ref_bn .
+        ?ref_bn rdfs:seeAlso ?medgen_uri .
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 med2rdf:disease ?disease ;
+                 cvo:classified_record ?classrec .
+        ?classrec cvo:classifications ?classi ;
+                  sio:SIO_000628 ?gene_bn .
+        ?classi cvo:germline_classification ?germ .
+        ?germ cvo:description ?significance .
+        ?gene_bn med2rdf:gene ?gene_uri .
+        FILTER(?significance = "Pathogenic" || ?significance = "Likely pathogenic")
       }
     result_count: 1
-  - query_number: 3
-    database: ebi endpoint (ensembl + chembl)
-    description: "Verification query retrieving example genes with their drug counts to validate the results. Returns genes like EGFR, ESR1, AR, INSR - all well-known drug targets."
-    query: |
-      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX taxonomy: <http://identifiers.org/taxonomy/>
-      PREFIX so: <http://purl.obolibrary.org/obo/so#>
-      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
-      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+    result_note: "COUNT returns 1 row; value = 190 distinct genes"
 
-      SELECT DISTINCT ?gene_id ?gene_label ?target_label (COUNT(DISTINCT ?mol) as ?drug_count)
+  - query_number: 4
+    database: clinvar
+    description: Top 5 genes by pathogenic/likely pathogenic variant count across all 51 Joubert syndrome MedGen concepts
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+
+      SELECT ?gene_uri (COUNT(DISTINCT ?variant) AS ?variant_count)
+      FROM <http://rdfportal.org/dataset/clinvar>
       WHERE {
-        GRAPH <http://rdfportal.org/dataset/ensembl> {
-          ?gene a terms:EnsemblGene ;
-                dcterms:identifier ?gene_id ;
-                rdfs:label ?gene_label ;
-                rdfs:seeAlso ?uniprot ;
-                obo:RO_0002162 taxonomy:9606 .
-          FILTER(STRSTARTS(STR(?uniprot), "http://purl.uniprot.org/uniprot/"))
-          
-          ?transcript so:transcribed_from ?gene ;
-                      terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000365> .
+        VALUES ?medgen_uri {
+          <http://ncbi.nlm.nih.gov/medgen/C0431399>
+          <http://ncbi.nlm.nih.gov/medgen/C1837713>
+          <http://ncbi.nlm.nih.gov/medgen/C1842577>
+          <http://ncbi.nlm.nih.gov/medgen/C1846790>
+          <http://ncbi.nlm.nih.gov/medgen/C1853153>
+          <http://ncbi.nlm.nih.gov/medgen/C1855675>
+          <http://ncbi.nlm.nih.gov/medgen/C1857780>
+          <http://ncbi.nlm.nih.gov/medgen/C1969053>
+          <http://ncbi.nlm.nih.gov/medgen/C2676771>
+          <http://ncbi.nlm.nih.gov/medgen/C2676788>
+          <http://ncbi.nlm.nih.gov/medgen/C2749019>
+          <http://ncbi.nlm.nih.gov/medgen/C3277723>
+          <http://ncbi.nlm.nih.gov/medgen/C3279203>
+          <http://ncbi.nlm.nih.gov/medgen/C3280031>
+          <http://ncbi.nlm.nih.gov/medgen/C3280766>
+          <http://ncbi.nlm.nih.gov/medgen/C3280897>
+          <http://ncbi.nlm.nih.gov/medgen/C3280898>
+          <http://ncbi.nlm.nih.gov/medgen/C3280899>
+          <http://ncbi.nlm.nih.gov/medgen/C3280906>
+          <http://ncbi.nlm.nih.gov/medgen/C3553264>
+          <http://ncbi.nlm.nih.gov/medgen/C3553758>
+          <http://ncbi.nlm.nih.gov/medgen/C3553846>
+          <http://ncbi.nlm.nih.gov/medgen/C3554235>
+          <http://ncbi.nlm.nih.gov/medgen/C3810212>
+          <http://ncbi.nlm.nih.gov/medgen/C3810278>
+          <http://ncbi.nlm.nih.gov/medgen/C4084822>
+          <http://ncbi.nlm.nih.gov/medgen/C4084841>
+          <http://ncbi.nlm.nih.gov/medgen/C4084842>
+          <http://ncbi.nlm.nih.gov/medgen/C4084843>
+          <http://ncbi.nlm.nih.gov/medgen/C4274118>
+          <http://ncbi.nlm.nih.gov/medgen/C4310705>
+          <http://ncbi.nlm.nih.gov/medgen/C4310706>
+          <http://ncbi.nlm.nih.gov/medgen/C4518774>
+          <http://ncbi.nlm.nih.gov/medgen/C4539386>
+          <http://ncbi.nlm.nih.gov/medgen/C4539715>
+          <http://ncbi.nlm.nih.gov/medgen/C4539937>
+          <http://ncbi.nlm.nih.gov/medgen/C4540342>
+          <http://ncbi.nlm.nih.gov/medgen/C4540355>
+          <http://ncbi.nlm.nih.gov/medgen/C4540389>
+          <http://ncbi.nlm.nih.gov/medgen/C4551568>
+          <http://ncbi.nlm.nih.gov/medgen/C4748442>
+          <http://ncbi.nlm.nih.gov/medgen/C5231493>
+          <http://ncbi.nlm.nih.gov/medgen/C5543064>
+          <http://ncbi.nlm.nih.gov/medgen/C5561958>
+          <http://ncbi.nlm.nih.gov/medgen/C5562000>
+          <http://ncbi.nlm.nih.gov/medgen/C5562007>
+          <http://ncbi.nlm.nih.gov/medgen/C5679612>
+          <http://ncbi.nlm.nih.gov/medgen/C5817337>
+          <http://ncbi.nlm.nih.gov/medgen/CN228298>
+          <http://ncbi.nlm.nih.gov/medgen/CN229797>
+          <http://ncbi.nlm.nih.gov/medgen/CN262509>
         }
-        GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
-          ?target a cco:SingleProtein ;
-                  rdfs:label ?target_label ;
-                  cco:hasTargetComponent/skos:exactMatch ?uniprot .
-          ?mech a cco:Mechanism ;
-                cco:hasTarget ?target ;
-                cco:hasMolecule ?mol .
-          ?mol cco:highestDevelopmentPhase 4 .
-        }
+
+        ?disease dct:references ?ref_bn .
+        ?ref_bn rdfs:seeAlso ?medgen_uri .
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 med2rdf:disease ?disease ;
+                 cvo:classified_record ?classrec .
+        ?classrec cvo:classifications ?classi ;
+                  sio:SIO_000628 ?gene_bn .
+        ?classi cvo:germline_classification ?germ .
+        ?germ cvo:description ?significance .
+        ?gene_bn med2rdf:gene ?gene_uri .
+        FILTER(?significance = "Pathogenic" || ?significance = "Likely pathogenic")
       }
-      GROUP BY ?gene_id ?gene_label ?target_label
-      ORDER BY DESC(?drug_count)
-      LIMIT 20
-    result_count: 20
+      GROUP BY ?gene_uri
+      ORDER BY DESC(?variant_count)
+      LIMIT 5
+    result_count: 5
+
 rdf_triples: |
-  @prefix ensg: <http://rdf.ebi.ac.uk/resource/ensembl/> .
-  @prefix terms: <http://rdf.ebi.ac.uk/terms/ensembl/> .
-  @prefix obo: <http://purl.obolibrary.org/obo/> .
-  @prefix taxonomy: <http://identifiers.org/taxonomy/> .
-  @prefix so: <http://purl.obolibrary.org/obo/so#> .
-  @prefix enst: <http://rdf.ebi.ac.uk/resource/ensembl.transcript/> .
-  @prefix cco: <http://rdf.ebi.ac.uk/terms/chembl#> .
+  @prefix nando: <http://nanbyodata.jp/ontology/NANDO_> .
+  @prefix owl: <http://www.w3.org/2002/07/owl#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
   @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
-  
-  # Example: EGFR gene with MANE Select transcript and drug targets
-  ensg:ENSG00000146648 a terms:EnsemblGene ;
-    dcterms:identifier "ENSG00000146648" ;
-    rdfs:label "EGFR" ;
-    obo:RO_0002162 taxonomy:9606 ;
-    rdfs:seeAlso <http://purl.uniprot.org/uniprot/P00533> .
-  # Database: Ensembl | Query: 2,3 | Gene with UniProt cross-reference
-  
-  enst:ENST00000275493 a terms:EnsemblTranscript ;
-    so:transcribed_from ensg:ENSG00000146648 ;
-    terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000365> .
-  # Database: Ensembl | Query: 2,3 | MANE Select quality flag
-  
-  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL203> a cco:SingleProtein ;
-    rdfs:label "Epidermal growth factor receptor erbB1" ;
-    cco:hasTargetComponent [
-      skos:exactMatch <http://purl.uniprot.org/uniprot/P00533>
-    ] .
-  # Database: ChEMBL | Query: 2,3 | Drug target linked via UniProt
-  
-  <http://rdf.ebi.ac.uk/resource/chembl/mechanism/MEX12345> a cco:Mechanism ;
-    cco:hasTarget <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL203> ;
-    cco:hasMolecule <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL1743067> .
-  # Database: ChEMBL | Query: 2,3 | Mechanism linking target to drug
-  
-  <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL1743067> cco:highestDevelopmentPhase 4 .
-  # Database: ChEMBL | Query: 2,3 | Approved drug (phase 4)
-exact_answer: 420
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix mo: <http://med2rdf/ontology/medgen#> .
+  @prefix dct: <http://purl.org/dc/terms/> .
+  @prefix cvo: <http://purl.jp/bio/10/clinvar/> .
+  @prefix med2rdf: <http://med2rdf.org/ontology/med2rdf#> .
+
+  nando:1200661 a owl:Class .
+  # Database: NANDO | Query: 1 | Comment: Joubert syndrome and related disorders in NANDO
+
+  nando:1200661 rdfs:label "Joubert syndrome and related disorders"@en .
+  # Database: NANDO | Query: 1 | Comment: English label for Joubert syndrome
+
+  nando:1200661 skos:closeMatch obo:MONDO_0015369 .
+  # Database: NANDO | Query: 1 | Comment: Cross-reference to MONDO disease ontology
+
+  <http://www.ncbi.nlm.nih.gov/medgen/C0431399> a mo:ConceptID .
+  # Database: MedGen | Query: 2 | Comment: MedGen concept for Joubert syndrome (core concept)
+
+  <http://www.ncbi.nlm.nih.gov/medgen/C0431399> dct:identifier "C0431399" .
+  # Database: MedGen | Query: 2 | Comment: MedGen CUI identifier for Joubert syndrome
+
+  <http://www.ncbi.nlm.nih.gov/medgen/C4551568> a mo:ConceptID .
+  # Database: MedGen | Query: 2 | Comment: MedGen concept for Joubert syndrome 1
+
+  <http://www.ncbi.nlm.nih.gov/medgen/C5679612> a mo:ConceptID .
+  # Database: MedGen | Query: 2 | Comment: MedGen concept for Joubert syndrome and related disorders (51 concepts total)
+
+  <http://ncbi.nlm.nih.gov/gene/80184> a med2rdf:Gene .
+  # Database: ClinVar | Query: 4 | Comment: Gene CEP290 - rank 1 with 529 P/LP variants for Joubert syndrome
+
+  <http://ncbi.nlm.nih.gov/gene/23322> a med2rdf:Gene .
+  # Database: ClinVar | Query: 4 | Comment: Gene RPGRIP1L - rank 2 with 255 P/LP variants
+
+  <http://ncbi.nlm.nih.gov/gene/57545> a med2rdf:Gene .
+  # Database: ClinVar | Query: 4 | Comment: Gene CC2D2A - rank 3 with 242 P/LP variants
+
+  <http://ncbi.nlm.nih.gov/gene/54806> a med2rdf:Gene .
+  # Database: ClinVar | Query: 4 | Comment: Gene AHI1 - rank 4 with 222 P/LP variants
+
+  <http://ncbi.nlm.nih.gov/gene/91147> a med2rdf:Gene .
+  # Database: ClinVar | Query: 4 | Comment: Gene TMEM67 - rank 5 with 149 P/LP variants
+
+  <http://ncbi.nlm.nih.gov/clinvar/variation/856461> a cvo:VariationArchiveType .
+  # Database: ClinVar | Query: 4 | Comment: Example pathogenic variant for Joubert syndrome
+
+  <http://ncbi.nlm.nih.gov/clinvar/variation/856461> cvo:record_status "current" .
+  # Database: ClinVar | Query: 4 | Comment: Variant is current, not deprecated
+
+  _:disease1 dct:references _:ref1 .
+  # Database: ClinVar | Query: 4 | Comment: Disease references MedGen via blank node
+
+  _:ref1 rdfs:seeAlso <http://ncbi.nlm.nih.gov/medgen/C0431399> .
+  # Database: ClinVar | Query: 4 | Comment: Cross-reference to MedGen Joubert syndrome concept
+
+exact_answer:
+  - "CEP290 (NCBI Gene:80184)"
+  - "RPGRIP1L (NCBI Gene:23322)"
+  - "CC2D2A (NCBI Gene:57545)"
+  - "AHI1 (NCBI Gene:54806)"
+  - "TMEM67 (NCBI Gene:91147)"
+
 ideal_answer: |
-  There are 420 human genes with MANE Select transcripts that encode proteins targeted by approved drugs in ChEMBL. MANE Select (Matched Annotation from NCBI and EMBL-EBI) represents the highest-quality reference transcript for each protein-coding gene, and this integration reveals the overlap between genomic annotation quality standards and therapeutic relevance. Examples include EGFR (epidermal growth factor receptor, 18 approved drugs), ESR1 (estrogen receptor alpha, 15 approved drugs), AR (androgen receptor, 25 approved drugs), and INSR (insulin receptor, 37 approved drugs). This cross-database analysis demonstrates that approximately 1.8% of human genes with MANE Select transcripts (420 out of ~19,300) are current therapeutic targets, highlighting the concentrated focus of drug development on a relatively small subset of the genome.
-question_template_used: "Template 7 (Cross-Database Integration with Quality Filtering)"
+  Integrating NANDO rare disease registry data, MedGen medical genetics concepts, and ClinVar variant data across all 51 Joubert syndrome MedGen concepts reveals 190 distinct genes with documented pathogenic or likely pathogenic variants. The five most heavily annotated are CEP290 (529 current P/LP variants), RPGRIP1L (255), CC2D2A (242), AHI1 (222), and TMEM67 (149). CEP290 encodes a centrosomal protein localised to primary cilia and is mutated across numerous ciliopathy subtypes including Joubert syndrome types 5 and 14, Bardet-Biedl syndrome, and nephronophthisis. RPGRIP1L (Joubert syndrome 7) and CC2D2A (Joubert syndrome 9) encode transition zone components critical for ciliary gate integrity, while AHI1 (jouberin, Joubert syndrome 3) mediates cerebellar and cortical development. TMEM67 (meckelin, Joubert syndrome 6) is a receptor-like transmembrane protein required for primary cilium formation. The high allelic burden in these genes reflects their role as major disease loci across multiple Joubert syndrome subtypes, the diagnostic importance of comprehensive multi-subtype variant cataloguing, and the evolutionary conservation of ciliary transition zone architecture.
+
+question_template_used: Template 6 (TOP-N Ranking)
+
 time_spent:
-  exploration: 25 minutes
+  exploration: 45 minutes
   formulation: 20 minutes
-  verification: 15 minutes
+  verification: 70 minutes
   pubmed_test: 15 minutes
-  extraction: 10 minutes
-  documentation: 25 minutes
-  total: 110 minutes
+  extraction: 35 minutes
+  documentation: 35 minutes
+  total: 220 minutes

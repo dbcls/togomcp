@@ -1,0 +1,265 @@
+id: question_015
+type: summary
+body: "Characterize and compare the variant landscapes of the two genes causally implicated in monogenic systemic lupus erythematosus—DNASE1L3 (responsible for SLE type 16) and TLR7 (responsible for SLE type 17)—including their chromosomal locations, molecular functions, total numbers of catalogued variants, distributions by variant type, and clinical significance profiles, and explain the biological significance of any contrasts observed between the two genes."
+
+inspiration_keyword:
+  keyword_id: KW-0772
+  name: Systemic lupus erythematosus
+  category: Disease
+
+togomcp_databases_used:
+  - mondo
+  - ncbigene
+  - clinvar
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 2
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: |
+    Searched PubMed for "DNASE1L3 TLR7 systemic lupus erythematosus variant ClinVar pathogenic"
+    and "DNASE1L3 TLR7 monogenic SLE variant distribution comparison" via PubMed:search_articles.
+  result: |
+    Both queries returned 0 results. No publication provides a systematic comparison
+    of variant type distributions and clinical significance profiles for DNASE1L3
+    versus TLR7 across the complete ClinVar catalog. The specific quantitative
+    contrasts (e.g., TLR7 having 161 copy number variants vs DNASE1L3 having 11,
+    or TLR7 having 165 pathogenic/likely pathogenic variants vs DNASE1L3 having 22)
+    are only obtainable from current database state.
+  conclusion: PASS (requires current database state; specific cross-gene variant
+    type and significance counts impossible to recover from literature)
+
+sparql_queries:
+  - query_number: 1
+    database: mondo
+    description: Retrieve monogenic SLE subtypes with gene-defined causes from MONDO
+    query: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+      SELECT DISTINCT ?mondoId ?label ?definition
+      FROM <http://rdfportal.org/ontology/mondo>
+      WHERE {
+        VALUES ?disease {
+          obo:MONDO_0013743
+          obo:MONDO_0859083
+        }
+        ?disease rdfs:label ?label ;
+                 oboInOwl:id ?mondoId .
+        OPTIONAL { ?disease obo:IAO_0000115 ?definition }
+      }
+      ORDER BY ?mondoId
+    result_count: 2
+
+  - query_number: 2
+    database: mondo
+    description: Retrieve OMIM cross-references for both monogenic SLE subtypes
+    query: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+
+      SELECT DISTINCT ?mondoId ?label ?xref
+      FROM <http://rdfportal.org/ontology/mondo>
+      WHERE {
+        VALUES ?disease {
+          obo:MONDO_0013743
+          obo:MONDO_0859083
+        }
+        ?disease rdfs:label ?label ;
+                 oboInOwl:id ?mondoId ;
+                 oboInOwl:hasDbXref ?xref .
+        FILTER(STRSTARTS(?xref, "OMIM:"))
+      }
+      ORDER BY ?mondoId
+    result_count: 2
+
+  - query_number: 3
+    database: clinvar
+    description: Count total current ClinVar variants for DNASE1L3 (Gene 1776) and TLR7 (Gene 51284)
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+
+      SELECT (COUNT(DISTINCT ?variant) AS ?total)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        VALUES ?gene_uri {
+          <http://ncbi.nlm.nih.gov/gene/1776>   # DNASE1L3
+          <http://ncbi.nlm.nih.gov/gene/51284>  # TLR7
+        }
+        ?gene_bn med2rdf:gene ?gene_uri .
+        ?classrec sio:SIO_000628 ?gene_bn .
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 cvo:classified_record ?classrec .
+      }
+    result_count: 1
+
+  - query_number: 4
+    database: clinvar
+    description: Variant type distribution for DNASE1L3 and TLR7 (comprehensive, all variants)
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+
+      SELECT ?gene_symbol ?variation_type (COUNT(DISTINCT ?variant) AS ?count)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        VALUES (?gene_uri ?gene_symbol) {
+          (<http://ncbi.nlm.nih.gov/gene/1776>  "DNASE1L3")
+          (<http://ncbi.nlm.nih.gov/gene/51284> "TLR7")
+        }
+        ?gene_bn med2rdf:gene ?gene_uri .
+        ?classrec sio:SIO_000628 ?gene_bn .
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 cvo:variation_type ?variation_type ;
+                 cvo:classified_record ?classrec .
+      }
+      GROUP BY ?gene_symbol ?variation_type
+      ORDER BY ?gene_symbol DESC(?count)
+    result_count: 13
+
+  - query_number: 5
+    database: clinvar
+    description: Clinical significance distribution for DNASE1L3 and TLR7 (comprehensive)
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+
+      SELECT ?gene_symbol ?clinical_significance (COUNT(DISTINCT ?variant) AS ?count)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        VALUES (?gene_uri ?gene_symbol) {
+          (<http://ncbi.nlm.nih.gov/gene/1776>  "DNASE1L3")
+          (<http://ncbi.nlm.nih.gov/gene/51284> "TLR7")
+        }
+        ?gene_bn med2rdf:gene ?gene_uri .
+        ?classrec sio:SIO_000628 ?gene_bn .
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 cvo:classified_record ?classrec .
+        ?classrec cvo:classifications ?classi .
+        ?classi cvo:germline_classification ?germ .
+        ?germ cvo:description ?clinical_significance .
+      }
+      GROUP BY ?gene_symbol ?clinical_significance
+      ORDER BY ?gene_symbol DESC(?count)
+    result_count: 15
+
+rdf_triples: |
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix oboInOwl: <http://www.geneontology.org/formats/oboInOwl#> .
+  @prefix cvo: <http://purl.jp/bio/10/clinvar/> .
+  @prefix med2rdf: <http://med2rdf.org/ontology/med2rdf#> .
+  @prefix sio: <http://semanticscience.org/resource/> .
+  @prefix insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
+  @prefix dct: <http://purl.org/dc/terms/> .
+
+  obo:MONDO_0013743 a <http://www.w3.org/2002/07/owl#Class> ;
+    rdfs:label "autosomal systemic lupus erythematosus type 16" ;
+    oboInOwl:id "MONDO:0013743" ;
+    <http://purl.obolibrary.org/obo/IAO_0000115> "An instance of systemic lupus erythematosus caused by mutations in DNASE1L3." ;
+    oboInOwl:hasDbXref "OMIM:614420" .
+  # Database: MONDO | Query: 1, 2 | Comment: Monogenic SLE type 16, caused by DNASE1L3 mutations
+
+  obo:MONDO_0859083 a <http://www.w3.org/2002/07/owl#Class> ;
+    rdfs:label "systemic lupus erythematosus 17" ;
+    oboInOwl:id "MONDO:0859083" ;
+    <http://purl.obolibrary.org/obo/IAO_0000115> "Any systemic lupus erythematosus in which the cause is a variation in the TLR7 gene." ;
+    oboInOwl:hasDbXref "OMIM:301080" .
+  # Database: MONDO | Query: 1, 2 | Comment: Monogenic SLE type 17, caused by TLR7 variation; X-linked (OMIM 301080)
+
+  <http://ncbi.nlm.nih.gov/gene/1776> a insdc:Gene ;
+    dct:identifier "1776" ;
+    rdfs:label "DNASE1L3" ;
+    dct:description "deoxyribonuclease 1L3" .
+  # Database: NCBI Gene | Query: 3, 4, 5 | Comment: DNASE1L3 gene ID; chr 3p14.3; DNase I family; mediates DNA clearance during apoptosis
+
+  <http://ncbi.nlm.nih.gov/gene/51284> a insdc:Gene ;
+    dct:identifier "51284" ;
+    rdfs:label "TLR7" ;
+    dct:description "toll like receptor 7" .
+  # Database: NCBI Gene | Query: 3, 4, 5 | Comment: TLR7 gene ID; chr Xp22.2; X-linked; innate immunity, ssRNA recognition
+
+  <http://ncbi.nlm.nih.gov/clinvar/variation/example1> a cvo:VariationArchiveType ;
+    cvo:variation_type "single nucleotide variant" ;
+    cvo:record_status "current" ;
+    cvo:classified_record _:cr1 .
+  # Database: ClinVar | Query: 4 | Comment: Representative SNV in DNASE1L3 (248/277 = 89.5% of DNASE1L3 variants are SNVs)
+
+  _:cr1 sio:SIO_000628 _:gb1 ;
+    cvo:classifications _:cl1 .
+  _:gb1 med2rdf:gene <http://ncbi.nlm.nih.gov/gene/1776> .
+  # Database: ClinVar | Query: 4, 5 | Comment: Blank node linking variant to DNASE1L3 gene URI
+
+  _:cl1 cvo:germline_classification _:germ1 .
+  _:germ1 cvo:description "Uncertain significance" .
+  # Database: ClinVar | Query: 5 | Comment: Most common DNASE1L3 significance (127/277 = 45.8%)
+
+  <http://ncbi.nlm.nih.gov/clinvar/variation/example2> a cvo:VariationArchiveType ;
+    cvo:variation_type "copy number loss" ;
+    cvo:record_status "current" ;
+    cvo:classified_record _:cr2 .
+  # Database: ClinVar | Query: 4 | Comment: Representative CNV-loss in TLR7 (99 such variants; X-linked dosage loss)
+
+  _:cr2 sio:SIO_000628 _:gb2 ;
+    cvo:classifications _:cl2 .
+  _:gb2 med2rdf:gene <http://ncbi.nlm.nih.gov/gene/51284> .
+  # Database: ClinVar | Query: 4, 5 | Comment: Blank node linking variant to TLR7 gene URI
+
+  _:cl2 cvo:germline_classification _:germ2 .
+  _:germ2 cvo:description "Pathogenic" .
+  # Database: ClinVar | Query: 5 | Comment: TLR7 has 162 Pathogenic variants (36.9%); much higher than DNASE1L3 (15, 5.4%)
+
+arithmetic_verification:
+  checkpoint_a_prefilter: not_applicable
+  checkpoint_b_post_aggregation:
+    query_4_variant_types:
+      dnase1l3_sum: 248+13+6+5+3+2
+      dnase1l3_total: 277
+      dnase1l3_check: PASS
+      tlr7_sum: 266+99+62+6+4+1+1
+      tlr7_total: 439
+      tlr7_check: PASS
+      combined_total: 716
+      query_3_total: 716
+      overall_check: PASS
+    query_5_significance:
+      dnase1l3_sig_sum: 127+105+15+12+7+4+4+3
+      dnase1l3_sig_total: 277
+      dnase1l3_check: PASS
+      tlr7_sig_sum: 162+150+105+16+3+2+1
+      tlr7_sig_total: 439
+      tlr7_check: PASS
+
+exact_answer: ""
+
+ideal_answer: |
+  The two monogenic forms of systemic lupus erythematosus (SLE) catalogued in MONDO—SLE type 16 (MONDO:0013743, OMIM:614420) caused by DNASE1L3 mutations and SLE type 17 (MONDO:0859083, OMIM:301080) caused by TLR7 variants—differ sharply in both their genomic contexts and variant landscapes. DNASE1L3 (Gene ID 1776) is an autosomal gene on chromosome 3p14.3 encoding a DNase I family endonuclease that mediates extracellular DNA clearance during apoptosis; loss-of-function mutations disrupt the removal of chromatin material released from dying cells, triggering anti-nuclear autoantibody production characteristic of SLE. TLR7 (Gene ID 51284) is X-linked (Xp22.2) and encodes toll-like receptor 7, an endosomal innate immune receptor for single-stranded RNA; gain-of-function coding variants or copy number gains lead to pathological type-I interferon activation, while hemizygous males bearing one gain-of-function allele are particularly susceptible. Among 716 current ClinVar variants across both genes (277 in DNASE1L3, 439 in TLR7), the variant type distributions diverge substantially: DNASE1L3 is dominated by single nucleotide variants (248/277, 89.5%) with only 11 copy number variants (4.0%), whereas TLR7 carries 161 copy number variants (CNV-loss: 99, CNV-gain: 62, totaling 36.7% of TLR7 entries) alongside 266 SNVs (60.6%); this pronounced TLR7 CNV enrichment reflects the sensitivity of X-linked TLR7 dosage—both losses and gains can perturb balanced innate immune signaling. The clinical significance profiles are equally contrasting: TLR7 has 165 pathogenic or likely pathogenic variants (162 Pathogenic + 3 Likely pathogenic, 37.6%), while DNASE1L3 has only 22 such variants (15 Pathogenic + 7 Likely pathogenic, 7.9%); conversely DNASE1L3 has a higher proportion of uncertain significance variants (127/277, 45.8%) versus TLR7 (150/439, 34.2%), suggesting TLR7 variants are more consistently interpretable, likely because the functional consequence of even modest allele copy change is more predictable for an X-linked gene with well-studied innate immune roles than for an autosomal DNase whose full mutational spectrum remains less characterized.
+
+question_template_used: SUMMARY (Multi-dimensional Cross-Gene Comparison)
+
+time_spent:
+  type_selection: 5 minutes
+  database_selection: 5 minutes
+  keyword_selection: 5 minutes
+  vocabulary_discovery: 10 minutes
+  query_development: 30 minutes
+  arithmetic_verification: 10 minutes
+  pubmed_test: 10 minutes
+  documentation: 25 minutes
+  total: 100 minutes

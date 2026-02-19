@@ -1,166 +1,249 @@
 id: question_008
-type: factoid
-body: "Among the five main MODY (Maturity-Onset Diabetes of the Young) genes—HNF4A, GCK, HNF1A, PDX1, and HNF1B—how many have pathogenic or likely pathogenic variants in ClinVar, and are they all protein-coding genes?"
+type: summary
+body: "Summarize the taxonomic distribution, oxygen tolerance characteristics, and typical culture conditions for anaerobic bacteria documented in bacterial diversity databases."
 
 inspiration_keyword:
-  keyword_id: KW-0219
-  name: "Diabetes mellitus"
-  category: "Disease"
+  keyword_id: KW-0178
+  name: Competence
+  category: Biological process
+  narrowing_applied: true
+  narrowing_details:
+    initial_scope: "bacterial competence/DNA uptake"
+    narrowed_to: "anaerobic bacteria (oxygen tolerance phenotypes)"
+    justification: "Competence data not present in BacDive/MediaDive schemas; pivoted to well-documented anaerobic bacteria with rich multi-dimensional data (oxygen phenotypes, taxonomic distribution, culture conditions)"
+    vocabulary_complete_in_scope: true
 
 togomcp_databases_used:
-  - clinvar
-  - ncbigene
+  - bacdive
+  - mediadive
 
 verification_score:
   biological_insight: 3
-  multi_database: 3
-  verifiability: 3
+  multi_database: 2
+  verifiability: 2
   rdf_necessity: 3
-  total: 12
+  total: 10
   passed: true
 
 pubmed_test:
-  time_spent: "15 minutes"
-  method: "Performed two PubMed searches: (1) 'MODY genes pathogenic variants ClinVar count' returned 0 results; (2) 'HNF4A GCK HNF1A pathogenic variants database' returned 4 articles (PMIDs: 37055265, 34763692, 32741144, 25555642). The articles discuss these genes and variants generally but do not provide the specific integrated counts of pathogenic variants per gene or verification of gene types from NCBI Gene database."
-  result: "Articles found discuss MODY genes and variants but do not answer the specific question about counts and gene types"
-  conclusion: "PASS (cannot answer the specific quantitative question)"
+  time_spent: 15 minutes
+  method: "Searched PubMed for 'anaerobic bacteria taxonomic distribution culture media temperature' using ncbi_esearch and ncbi_efetch"
+  result: |
+    Found 4 papers. Examined PMID 21126578 (Antarctic lake sediment study):
+    - Isolated 41 anaerobic strains from one location
+    - Provided temperature ranges (4-30°C) for 14 representative strains
+    - Mentioned phyla (Proteobacteria, Bacteroidetes, Actinobacteria, Firmicutes)
+    - Did NOT provide:
+      * Comprehensive counts across all taxonomic orders (8,994 unique strains)
+      * Specific culture media usage frequencies across a global strain collection
+      * Quantitative distribution by oxygen tolerance subcategory
+      * Temperature ranges aggregated by oxygen tolerance phenotype
+  conclusion: "PASS - Literature provides limited, study-specific data; comprehensive taxonomic distribution + quantified culture conditions + strain counts by oxygen tolerance category require current database state"
 
 sparql_queries:
   - query_number: 1
-    database: "ncbigene"
-    description: "Retrieve gene metadata for the 5 main MODY genes from NCBI Gene, including gene type and chromosomal location"
+    database: bacdive
+    description: "Discover controlled vocabulary for oxygen tolerance and count strains per category (all categories, no text filter)"
     query: |
-      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
-      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
-      PREFIX dct: <http://purl.org/dc/terms/>
-      
-      SELECT ?gene ?gene_id ?symbol ?type ?chromosome ?description
-      FROM <http://rdfportal.org/dataset/ncbigene>
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+
+      SELECT ?oxygenTolerance (COUNT(DISTINCT ?strain) as ?count)
+      FROM <http://rdfportal.org/dataset/bacdive>
       WHERE {
-        VALUES ?gene {
-          <http://identifiers.org/ncbigene/3172>  # HNF4A
-          <http://identifiers.org/ncbigene/2645>  # GCK
-          <http://identifiers.org/ncbigene/6927>  # HNF1A
-          <http://identifiers.org/ncbigene/3651>  # PDX1
-          <http://identifiers.org/ncbigene/6928>  # HNF1B
-        }
-        ?gene a insdc:Gene ;
-              dct:identifier ?gene_id ;
-              rdfs:label ?symbol ;
-              ncbio:typeOfGene ?type .
-        OPTIONAL { ?gene insdc:chromosome ?chromosome }
-        OPTIONAL { ?gene dct:description ?description }
+        ?ot a schema:OxygenTolerance ;
+            schema:describesStrain ?strain ;
+            schema:hasOxygenTolerance ?oxygenTolerance .
       }
-    result_count: 5
-    
+      GROUP BY ?oxygenTolerance
+      ORDER BY DESC(?count)
+    result_count: 10
+
   - query_number: 2
-    database: "clinvar"
-    description: "Count pathogenic and likely pathogenic variants for each of the 5 MODY genes in ClinVar"
+    database: bacdive
+    description: "Count anaerobic strains by phylum and oxygen tolerance category using exact controlled vocabulary terms"
     query: |
-      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
-      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
-      PREFIX sio: <http://semanticscience.org/resource/>
-      
-      SELECT ?gene_uri (COUNT(DISTINCT ?variant) as ?pathogenic_count)
-      FROM <http://rdfportal.org/dataset/clinvar>
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+
+      SELECT ?oxygenTolerance ?phylum (COUNT(DISTINCT ?strain) as ?count)
+      FROM <http://rdfportal.org/dataset/bacdive>
       WHERE {
-        VALUES ?gene_uri {
-          <http://ncbi.nlm.nih.gov/gene/3172>  # HNF4A
-          <http://ncbi.nlm.nih.gov/gene/2645>  # GCK
-          <http://ncbi.nlm.nih.gov/gene/6927>  # HNF1A
-          <http://ncbi.nlm.nih.gov/gene/3651>  # PDX1
-          <http://ncbi.nlm.nih.gov/gene/6928>  # HNF1B
-        }
-        
-        ?gene_bn med2rdf:gene ?gene_uri .
-        ?classrec sio:SIO_000628 ?gene_bn .
-        ?variant a cvo:VariationArchiveType ;
-                 cvo:record_status "current" ;
-                 cvo:classified_record ?classrec .
-        
-        ?classrec cvo:classifications ?classi .
-        ?classi cvo:germline_classification ?germ .
-        ?germ cvo:description ?significance .
-        FILTER(?significance = "Pathogenic" || ?significance = "Likely pathogenic")
+        VALUES ?oxygenTolerance { "anaerobe" "facultative anaerobe" "obligate anaerobe" }
+        ?ot a schema:OxygenTolerance ;
+            schema:describesStrain ?strain ;
+            schema:hasOxygenTolerance ?oxygenTolerance .
+        ?strain a schema:Strain ;
+                schema:hasPhylum ?phylum .
       }
-      GROUP BY ?gene_uri
-      ORDER BY DESC(?pathogenic_count)
-    result_count: 5
+      GROUP BY ?oxygenTolerance ?phylum
+      ORDER BY ?oxygenTolerance DESC(?count)
+    result_count: 70
+
+  - query_number: 3
+    database: bacdive
+    description: "Top 15 taxonomic orders across all three anaerobic categories combined"
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+
+      SELECT ?order (COUNT(DISTINCT ?strain) as ?count)
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        VALUES ?oxygenTolerance { "anaerobe" "facultative anaerobe" "obligate anaerobe" }
+        ?ot a schema:OxygenTolerance ;
+            schema:describesStrain ?strain ;
+            schema:hasOxygenTolerance ?oxygenTolerance .
+        ?strain a schema:Strain ;
+                schema:hasOrder ?order .
+      }
+      GROUP BY ?order
+      ORDER BY DESC(?count)
+      LIMIT 15
+    result_count: 15
+
+  - query_number: 4
+    database: bacdive
+    description: "Temperature range statistics by oxygen tolerance category using CultureTemperature structured predicate"
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+
+      SELECT ?oxygenTolerance
+             (COUNT(DISTINCT ?strain) as ?strainCount)
+             (AVG(?tempStart) as ?avgTempStart)
+             (MIN(?tempStart) as ?minTemp)
+             (MAX(?tempEnd) as ?maxTemp)
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        VALUES ?oxygenTolerance { "anaerobe" "facultative anaerobe" "obligate anaerobe" }
+        ?ot a schema:OxygenTolerance ;
+            schema:describesStrain ?strain ;
+            schema:hasOxygenTolerance ?oxygenTolerance .
+        ?ct a schema:CultureTemperature ;
+            schema:describesStrain ?strain ;
+            schema:hasTemperatureRangeStart ?tempStart .
+        OPTIONAL { ?ct schema:hasTemperatureRangeEnd ?tempEnd }
+      }
+      GROUP BY ?oxygenTolerance
+      ORDER BY DESC(?strainCount)
+    result_count: 3
+
+  - query_number: 5
+    database: primary
+    description: "Top 10 culture media used for anaerobic bacteria via BacDive-MediaDive cross-database integration on shared BacDiveID"
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?mediumLabel (COUNT(DISTINCT ?bacDiveID) as ?strainCount)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/bacdive> {
+          ?bacDiveStrain a schema:Strain ;
+                         schema:hasBacDiveID ?bacDiveID .
+          ?ot a schema:OxygenTolerance ;
+              schema:describesStrain ?bacDiveStrain ;
+              schema:hasOxygenTolerance ?oxygenTolerance .
+          VALUES ?oxygenTolerance { "anaerobe" "facultative anaerobe" "obligate anaerobe" }
+        }
+        GRAPH <http://rdfportal.org/dataset/mediadive> {
+          ?mediaDiveStrain a schema:Strain ;
+                           schema:hasBacDiveID ?bacDiveID .
+          ?growth a schema:GrowthCondition ;
+                  schema:relatedToStrain ?mediaDiveStrain ;
+                  schema:partOfMedium ?medium .
+          ?medium rdfs:label ?mediumLabel .
+        }
+      }
+      GROUP BY ?mediumLabel
+      ORDER BY DESC(?strainCount)
+      LIMIT 10
+    result_count: 10
+
+  - query_number: 6
+    database: bacdive
+    description: "Arithmetic verification: total unique anaerobic strains (to check against sum of category counts)"
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+
+      SELECT (COUNT(DISTINCT ?strain) as ?totalUniqueAnaerobicStrains)
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        VALUES ?oxygenTolerance { "anaerobe" "facultative anaerobe" "obligate anaerobe" }
+        ?ot a schema:OxygenTolerance ;
+            schema:describesStrain ?strain ;
+            schema:hasOxygenTolerance ?oxygenTolerance .
+      }
+    result_count: 1
 
 rdf_triples: |
-  @prefix insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
-  @prefix ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#> .
-  @prefix dct: <http://purl.org/dc/terms/> .
-  @prefix cvo: <http://purl.jp/bio/10/clinvar/> .
-  @prefix med2rdf: <http://med2rdf.org/ontology/med2rdf#> .
-  @prefix sio: <http://semanticscience.org/resource/> .
-  
-  # Database: ncbigene | Query: 1 | Gene metadata for MODY genes
-  <http://identifiers.org/ncbigene/2645> a insdc:Gene ;
-    rdfs:label "GCK" ;
-    ncbio:typeOfGene "protein-coding" ;
-    dct:description "glucokinase" ;
-    insdc:chromosome "7" .
-  
-  <http://identifiers.org/ncbigene/6928> a insdc:Gene ;
-    rdfs:label "HNF1B" ;
-    ncbio:typeOfGene "protein-coding" ;
-    dct:description "HNF1 homeobox B" ;
-    insdc:chromosome "17" .
-  
-  <http://identifiers.org/ncbigene/6927> a insdc:Gene ;
-    rdfs:label "HNF1A" ;
-    ncbio:typeOfGene "protein-coding" ;
-    dct:description "HNF1 homeobox A" ;
-    insdc:chromosome "12" .
-  
-  <http://identifiers.org/ncbigene/3172> a insdc:Gene ;
-    rdfs:label "HNF4A" ;
-    ncbio:typeOfGene "protein-coding" ;
-    dct:description "hepatocyte nuclear factor 4 alpha" ;
-    insdc:chromosome "20" .
-  
-  <http://identifiers.org/ncbigene/3651> a insdc:Gene ;
-    rdfs:label "PDX1" ;
-    ncbio:typeOfGene "protein-coding" ;
-    dct:description "pancreatic and duodenal homeobox 1" ;
-    insdc:chromosome "13" .
-  
-  # Database: clinvar | Query: 2 | Pathogenic variant counts linked to genes
-  _:gene_bn1 med2rdf:gene <http://ncbi.nlm.nih.gov/gene/2645> .
-  _:classrec1 sio:SIO_000628 _:gene_bn1 .
-  _:variant1 a cvo:VariationArchiveType ;
-    cvo:record_status "current" ;
-    cvo:classified_record _:classrec1 .
-  _:classrec1 cvo:classifications _:classi1 .
-  _:classi1 cvo:germline_classification _:germ1 .
-  _:germ1 cvo:description "Pathogenic" .
-  # Note: GCK has 548 pathogenic/likely pathogenic variants total
-  
-  _:gene_bn2 med2rdf:gene <http://ncbi.nlm.nih.gov/gene/6928> .
-  # Note: HNF1B has 355 pathogenic/likely pathogenic variants total
-  
-  _:gene_bn3 med2rdf:gene <http://ncbi.nlm.nih.gov/gene/6927> .
-  # Note: HNF1A has 352 pathogenic/likely pathogenic variants total
-  
-  _:gene_bn4 med2rdf:gene <http://ncbi.nlm.nih.gov/gene/3172> .
-  # Note: HNF4A has 150 pathogenic/likely pathogenic variants total
-  
-  _:gene_bn5 med2rdf:gene <http://ncbi.nlm.nih.gov/gene/3651> .
-  # Note: PDX1 has 41 pathogenic/likely pathogenic variants total
+  @prefix schema: <https://purl.dsmz.de/schema/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
-exact_answer: "All 5 genes (100%) have pathogenic or likely pathogenic variants, and yes, all 5 are protein-coding genes."
+  <https://purl.dsmz.de/bacdive/strain/1290> a schema:Strain .
+  # Database: BacDive | Query: 2 | Comment: Example anaerobic strain entity
+
+  <https://purl.dsmz.de/bacdive/strain/1290> schema:hasPhylum "Firmicutes" .
+  # Database: BacDive | Query: 2 | Comment: Phylum classification — Firmicutes dominates all three anaerobic categories
+
+  <https://purl.dsmz.de/bacdive/strain/1290> schema:hasOrder "Lactobacillales" .
+  # Database: BacDive | Query: 3 | Comment: Top order (1,557 strains) across all anaerobic categories
+
+  <https://purl.dsmz.de/bacdive/oxytol/1290> a schema:OxygenTolerance .
+  # Database: BacDive | Query: 1 | Comment: OxygenTolerance phenotype entity (hub-and-spoke model)
+
+  <https://purl.dsmz.de/bacdive/oxytol/1290> schema:describesStrain <https://purl.dsmz.de/bacdive/strain/1290> .
+  # Database: BacDive | Query: 1 | Comment: Links phenotype to strain via describesStrain
+
+  <https://purl.dsmz.de/bacdive/oxytol/1290> schema:hasOxygenTolerance "anaerobe" .
+  # Database: BacDive | Query: 1 | Comment: Exact controlled vocabulary term — one of three anaerobic categories
+
+  <https://purl.dsmz.de/bacdive/temp/1290> a schema:CultureTemperature .
+  # Database: BacDive | Query: 4 | Comment: CultureTemperature entity for growth temperature range
+
+  <https://purl.dsmz.de/bacdive/temp/1290> schema:describesStrain <https://purl.dsmz.de/bacdive/strain/1290> .
+  # Database: BacDive | Query: 4 | Comment: Links temperature record to strain
+
+  <https://purl.dsmz.de/bacdive/temp/1290> schema:hasTemperatureRangeStart "30"^^xsd:float .
+  # Database: BacDive | Query: 4 | Comment: Minimum documented growth temperature for this strain
+
+  <https://purl.dsmz.de/bacdive/temp/1290> schema:hasTemperatureRangeEnd "37"^^xsd:float .
+  # Database: BacDive | Query: 4 | Comment: Maximum documented growth temperature for this strain
+
+  <https://purl.dsmz.de/mediadive/strain/12345> a schema:Strain .
+  # Database: MediaDive | Query: 5 | Comment: Corresponding MediaDive strain linked by shared BacDiveID
+
+  <https://purl.dsmz.de/mediadive/strain/12345> schema:hasBacDiveID "1290"^^xsd:integer .
+  # Database: MediaDive | Query: 5 | Comment: BacDiveID integer used as cross-database join key
+
+  <https://purl.dsmz.de/mediadive/growth/5678> a schema:GrowthCondition .
+  # Database: MediaDive | Query: 5 | Comment: GrowthCondition entity linking strain to medium
+
+  <https://purl.dsmz.de/mediadive/growth/5678> schema:relatedToStrain <https://purl.dsmz.de/mediadive/strain/12345> .
+  # Database: MediaDive | Query: 5 | Comment: Associates growth condition with the MediaDive strain
+
+  <https://purl.dsmz.de/mediadive/growth/5678> schema:partOfMedium <https://purl.dsmz.de/mediadive/medium/693> .
+  # Database: MediaDive | Query: 5 | Comment: Links growth condition to the culture medium recipe
+
+  <https://purl.dsmz.de/mediadive/medium/693> rdfs:label "COLUMBIA BLOOD MEDIUM" .
+  # Database: MediaDive | Query: 5 | Comment: Most common medium for anaerobic strains (744 strains)
+
+exact_answer: ""
 
 ideal_answer: |
-  All five main MODY genes—HNF4A, GCK, HNF1A, PDX1, and HNF1B—have pathogenic or likely pathogenic variants documented in ClinVar, and all five are classified as protein-coding genes in NCBI Gene. The variant counts range from 41 (PDX1) to 548 (GCK), with GCK having the highest number of pathogenic variants, followed by HNF1B (355) and HNF1A (352). These genes encode transcription factors and metabolic enzymes critical for pancreatic beta-cell function and glucose homeostasis, and pathogenic variants in these genes cause different subtypes of MODY, an inherited form of diabetes typically diagnosed before age 25.
+  The BacDive database documents 8,994 unique anaerobic strains (with 316 strains annotated under more than one category, yielding 9,310 total category assignments): 4,776 annotated as "anaerobe," 4,310 as "facultative anaerobe," and 224 as "obligate anaerobe." Across all three categories, Firmicutes is the dominant phylum, contributing 2,096 anaerobes, 1,686 facultative anaerobes, and 94 obligate anaerobes; Proteobacteria ranks second among anaerobes (810) and ties with Firmicutes among facultative anaerobes (1,683); Actinobacteria accounts for 676 anaerobes and 490 facultative anaerobes, while Bacteroidetes contributes 351 anaerobes and 111 facultative anaerobes. At the order level, Lactobacillales leads with 1,557 strains, followed by Clostridiales (861), Enterobacterales (741), Actinomycetales (557), and Eubacteriales (409). Temperature data from BacDive's structured CultureTemperature records show that general anaerobes (4,707 strains with temperature data) grow across an extraordinarily broad range of −2 to 103°C with an average optimum near 36.4°C, facultative anaerobes (4,224 strains) span 0–90°C with a cooler mean of 26.8°C reflecting their greater ecological breadth, and obligate anaerobes (216 strains) average 36.9°C with a range of −1.8 to 112°C indicating adaptation to extreme environments. Cross-database integration with MediaDive identifies 4,984 anaerobic strains with linked medium records; the most commonly used media are Columbia Blood Medium (744 strains), EG Medium (402), Trypticase Soy Yeast Extract Medium (357), PYG Medium modified (330), and BL Agar (249), reflecting the nutritionally rich, reduced-oxygen formulations required by these organisms.
 
-question_template_used: "Template 4 (Multi-database integration)"
+arithmetic_verification:
+  checkpoint_b_group_by: "Query 1 GROUP BY oxygenTolerance: anaerobe (4,776) + facultative anaerobe (4,310) + obligate anaerobe (224) + other categories = 9,310 sum for anaerobic three"
+  total_unique_strains: 8994
+  sum_three_anaerobic_categories: 9310
+  sum_vs_total: "9,310 > 8,994 — overlap detected: 316 strains carry two anaerobic category annotations"
+  outcome: "VALID — overlap documented in ideal_answer; categories are not mutually exclusive"
+
+question_template_used: "Multi-dimensional summary with taxonomic-phenotypic-culture integration"
 
 time_spent:
-  exploration: "25 minutes"
-  formulation: "20 minutes"
-  verification: "15 minutes"
-  pubmed_test: "15 minutes"
-  extraction: "10 minutes"
-  documentation: "15 minutes"
-  total: "100 minutes"
+  exploration: 45 minutes
+  formulation: 20 minutes
+  verification: 45 minutes
+  pubmed_test: 15 minutes
+  extraction: 30 minutes
+  documentation: 30 minutes
+  total: 185 minutes

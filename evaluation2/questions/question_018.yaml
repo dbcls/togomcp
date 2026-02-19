@@ -1,0 +1,157 @@
+id: question_018
+type: list
+body: "List all AMR element symbols associated with mupirocin resistance (MUPIROCIN class) in Staphylococcus aureus (NCBI taxon ID 1280) according to genomic resistance surveillance records, along with the count of isolate records for each element."
+
+inspiration_keyword:
+  keyword_id: KW-0046
+  name: Antibiotic resistance
+  category: Biological process
+
+togomcp_databases_used:
+  - amrportal
+  - taxonomy
+
+verification_score:
+  biological_insight: 3
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 15 minutes
+  method: Searched PubMed for "Staphylococcus aureus mupirocin resistance genes mupA ileS" and examined abstracts of the 9 returned articles.
+  result: |
+    PubMed articles (PMIDs 36622214, 33852710) confirm that mupirocin resistance
+    in S. aureus involves mupA (high-level resistance, encodes an isoleucyl-tRNA
+    synthetase paralog) and point mutations in the native ileS gene (low-level
+    resistance, e.g., V588F, V631F). However, no article provides comprehensive
+    counts of how many isolate records carry each specific element across the
+    AMRPortal dataset. The database-level enumeration with exact record counts
+    per element requires direct query of the surveillance database.
+  conclusion: PASS (cannot answer from literature; requires current database state)
+
+sparql_queries:
+  - query_number: 1
+    database: taxonomy
+    description: Confirm scientific name and taxonomic details for NCBI taxon 1280 (Staphylococcus aureus)
+    query: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+
+      SELECT ?scientificName ?id
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        taxon:1280 a tax:Taxon ;
+                   tax:scientificName ?scientificName ;
+                   dcterms:identifier ?id .
+      }
+    result_count: 1
+
+  - query_number: 2
+    database: amrportal
+    description: List all AMR element symbols with MUPIROCIN class in S. aureus genotype features, with record counts per element
+    query: |
+      PREFIX amr: <http://example.org/ebiamr#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT ?amrElementSymbol (COUNT(*) as ?count)
+      FROM <http://rdfportal.org/dataset/amrportal>
+      WHERE {
+        ?s a amr:GenotypeFeature ;
+           obo:RO_0002162 <http://identifiers.org/taxonomy/1280> ;
+           amr:amrClass "MUPIROCIN" ;
+           amr:amrElementSymbol ?amrElementSymbol .
+      }
+      GROUP BY ?amrElementSymbol
+      ORDER BY DESC(?count)
+    result_count: 3
+
+  - query_number: 3
+    database: amrportal
+    description: Arithmetic verification - total MUPIROCIN genotype features for S. aureus (must equal sum of per-element counts)
+    query: |
+      PREFIX amr: <http://example.org/ebiamr#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT (COUNT(*) as ?total)
+      FROM <http://rdfportal.org/dataset/amrportal>
+      WHERE {
+        ?s a amr:GenotypeFeature ;
+           obo:RO_0002162 <http://identifiers.org/taxonomy/1280> ;
+           amr:amrClass "MUPIROCIN" .
+      }
+    result_count: 1
+
+rdf_triples: |
+  @prefix amr: <http://example.org/ebiamr#> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/> .
+  @prefix taxon: <http://identifiers.org/taxonomy/> .
+  @prefix dcterms: <http://purl.org/dc/terms/> .
+
+  taxon:1280 a tax:Taxon .
+  # Database: taxonomy | Query: 1 | Comment: NCBI taxon IRI for Staphylococcus aureus
+
+  taxon:1280 tax:scientificName "Staphylococcus aureus" .
+  # Database: taxonomy | Query: 1 | Comment: Scientific name confirming taxon identity
+
+  taxon:1280 dcterms:identifier 1280 .
+  # Database: taxonomy | Query: 1 | Comment: Numeric NCBI taxonomy ID
+
+  _:feat1 a amr:GenotypeFeature .
+  # Database: amrportal | Query: 2 | Comment: Representative GenotypeFeature record for S. aureus
+
+  _:feat1 obo:RO_0002162 taxon:1280 .
+  # Database: amrportal | Query: 2 | Comment: "in taxon" relationship linking genotype feature to S. aureus IRI
+
+  _:feat1 amr:amrClass "MUPIROCIN" .
+  # Database: amrportal | Query: 2 | Comment: AMR class controlled vocabulary value
+
+  _:feat1 amr:amrElementSymbol "mupA" .
+  # Database: amrportal | Query: 2 | Comment: High-level mupirocin resistance gene (330 records)
+
+  _:feat2 a amr:GenotypeFeature .
+  # Database: amrportal | Query: 2 | Comment: Representative record for ileS mutation
+
+  _:feat2 obo:RO_0002162 taxon:1280 .
+  # Database: amrportal | Query: 2 | Comment: Taxonomy link for ileS_V588F record
+
+  _:feat2 amr:amrClass "MUPIROCIN" .
+  # Database: amrportal | Query: 2 | Comment: AMR class for low-level resistance element
+
+  _:feat2 amr:amrElementSymbol "ileS_V588F" .
+  # Database: amrportal | Query: 2 | Comment: Low-level mupirocin resistance mutation (90 records)
+
+  _:feat3 a amr:GenotypeFeature .
+  # Database: amrportal | Query: 2 | Comment: Representative record for rare ileS variant
+
+  _:feat3 obo:RO_0002162 taxon:1280 .
+  # Database: amrportal | Query: 2 | Comment: Taxonomy link for ileS_V631F record
+
+  _:feat3 amr:amrClass "MUPIROCIN" .
+  # Database: amrportal | Query: 2 | Comment: AMR class for rare low-level resistance element
+
+  _:feat3 amr:amrElementSymbol "ileS_V631F" .
+  # Database: amrportal | Query: 2 | Comment: Rare low-level mupirocin resistance mutation (5 records)
+
+exact_answer:
+  - "mupA (330 records)"
+  - "ileS_V588F (90 records)"
+  - "ileS_V631F (5 records)"
+
+ideal_answer: |
+  Three AMR element symbols conferring mupirocin resistance are annotated in Staphylococcus aureus (NCBI taxon 1280) genotype records: mupA with 330 records, ileS_V588F with 90 records, and ileS_V631F with 5 records (total 425 genotype features; arithmetic check: 330+90+5=425). mupA encodes an acquired isoleucyl-tRNA synthetase paralog and is the primary determinant of high-level mupirocin resistance (MIC ≥512 mg/L), enabling competitive exclusion of mupirocin from the active site. ileS_V588F and ileS_V631F are point mutations in the native chromosomal ileS gene encoding the endogenous isoleucyl-tRNA synthetase and confer low-level resistance (MIC 8–256 mg/L). The predominance of mupA in surveillance records reflects its plasmid-mediated transmissibility, which facilitates its spread among clinical MRSA lineages, whereas ileS mutations arise independently and are less common. The distinction between high-level (mupA) and low-level (ileS mutations) resistance has direct clinical implications, as high-level resistance compromises mupirocin use for MRSA decolonization regimens.
+
+question_template_used: Template 3 (Comprehensive Enumeration - Specific Entity)
+
+time_spent:
+  exploration: 30 minutes
+  formulation: 15 minutes
+  verification: 20 minutes
+  pubmed_test: 15 minutes
+  extraction: 20 minutes
+  documentation: 25 minutes
+  total: 125 minutes

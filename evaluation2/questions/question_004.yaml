@@ -1,94 +1,266 @@
+---
 id: question_004
-type: factoid
-body: "How many human proteins involved in cell cycle are also annotated with kinase activity?"
+type: summary
+body: "Summarize the distribution of melatonin biosynthesis enzymes across species and characterize their molecular functions and the chemical intermediates involved."
 
 inspiration_keyword:
-  keyword_id: KW-0131
-  name: Cell cycle
+  keyword_id: KW-0471
+  name: Melatonin biosynthesis
   category: Biological process
 
 togomcp_databases_used:
   - uniprot
   - go
+  - chebi
 
 verification_score:
   biological_insight: 3
-  multi_database: 1
+  multi_database: 3
   verifiability: 3
   rdf_necessity: 3
-  total: 10
+  total: 12
   passed: true
 
 pubmed_test:
   time_spent: 15 minutes
-  method: Searched "human cell cycle kinase count number proteins" and "human proteins both cell cycle kinase activity UniProt GO annotation" using PubMed:search_articles
+  method: Searched "melatonin biosynthesis enzymes chemical intermediates database" and "melatonin biosynthesis pathway enzymes organisms" using ncbi_esearch
   result: |
-    First search returned 224 papers about cell cycle kinases in general (cancer research, 
-    specific kinase studies, drug development). No papers providing comprehensive count of 
-    proteins with BOTH cell cycle keyword AND kinase activity GO annotation.
-    
-    Second search returned 0 papers - no publications documenting this specific database 
-    annotation intersection statistic.
-  conclusion: PASS (cannot answer from literature - this is database metadata, not published research)
+    Query 1: "melatonin biosynthesis enzymes chemical intermediates database"
+    returned 0 results. Query 2: "melatonin biosynthesis pathway enzymes organisms"
+    returned 198 results, primarily general reviews of melatonin biosynthesis.
+    While literature discusses the pathway in various organisms, it cannot provide
+    structured multi-dimensional aggregation across enzyme types, organism taxonomy,
+    molecular functions, and chemical intermediates in a comprehensive manner.
+    Would require manual compilation from multiple sources and cannot capture
+    current database state.
+  conclusion: PASS (cannot answer from literature - requires RDF multi-database integration)
+
+# ARITHMETIC VERIFICATION (Mandatory - documented here)
+# Query 3 GROUP BY verification (Checkpoint B):
+#   Sum of organism counts: Oryza sativa subsp. japonica(7) + Arabidopsis thaliana(4) +
+#     Gallus gallus(2) + Drosophila melanogaster(2) + Macaca mulatta(2) +
+#     Rattus norvegicus(2) + Bos taurus(2) + Homo sapiens(2) + Mus musculus(2) +
+#     Zea mays(2) + Mesocricetus auratus(1) + Ovis aries(1) +
+#     Mus musculus molossinus(1) + Pan troglodytes(1) +
+#     Oryza sativa subsp. indica(1) + Saccharomyces cerevisiae(1) = 33
+#   Total unique proteins (Query 1): 33
+#   33 = 33 PASS (mutually exclusive categories)
+# Query 2 GROUP BY verification (Checkpoint B):
+#   GO:0004059 (aralkylamine N-acetyltransferase): 17 proteins
+#   GO:0017096 (acetylserotonin O-methyltransferase): 16 proteins
+#   Sum: 17 + 16 = 33 = total unique proteins PASS (no protein has both functions)
 
 sparql_queries:
   - query_number: 1
     database: uniprot
-    description: Count human proteins with both cell cycle keyword (KW-0131) and protein kinase activity GO term (GO:0004672)
+    description: Get all reviewed proteins annotated with GO:0030187 (melatonin biosynthetic process) and their organisms
     query: |
       PREFIX up: <http://purl.uniprot.org/core/>
-      
-      # Count human proteins with BOTH cell cycle keyword AND kinase activity GO term
-      SELECT (COUNT(DISTINCT ?protein) as ?count)
+
+      SELECT DISTINCT ?protein ?mnemonic ?organism ?orgName
       WHERE {
         ?protein a up:Protein ;
                  up:reviewed 1 ;
-                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
-                 up:classifiedWith <http://purl.uniprot.org/keywords/131> ;  # Cell cycle (KW-0131)
-                 up:classifiedWith <http://purl.obolibrary.org/obo/GO_0004672> .  # protein kinase activity
+                 up:mnemonic ?mnemonic ;
+                 up:organism ?organism ;
+                 up:classifiedWith <http://purl.obolibrary.org/obo/GO_0030187> .
+        ?organism up:scientificName ?orgName .
       }
-    result_count: 1
+      ORDER BY ?orgName
+    result_count: 33
+
+  - query_number: 2
+    database: uniprot
+    description: Get molecular function annotations for melatonin biosynthesis enzymes using specific GO IRIs (GO:0004059 aralkylamine N-acetyltransferase, GO:0017096 acetylserotonin O-methyltransferase)
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+
+      SELECT DISTINCT ?protein ?mnemonic ?function
+      WHERE {
+        VALUES ?function {
+          <http://purl.obolibrary.org/obo/GO_0004059>
+          <http://purl.obolibrary.org/obo/GO_0017096>
+        }
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:mnemonic ?mnemonic ;
+                 up:classifiedWith <http://purl.obolibrary.org/obo/GO_0030187> ;
+                 up:classifiedWith ?function .
+      }
+      ORDER BY ?mnemonic ?function
+    result_count: 33
+
+  - query_number: 3
+    database: uniprot
+    description: Count melatonin biosynthesis proteins by organism
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+
+      SELECT ?orgName (COUNT(DISTINCT ?protein) as ?count)
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism ?organism ;
+                 up:classifiedWith <http://purl.obolibrary.org/obo/GO_0030187> .
+        ?organism up:scientificName ?orgName .
+      }
+      GROUP BY ?orgName
+      ORDER BY DESC(?count)
+    result_count: 16
+
+  - query_number: 4
+    database: chebi
+    description: Retrieve molecular properties of the four key chemical intermediates in the melatonin biosynthesis pathway (tryptophan, serotonin, N-acetylserotonin, melatonin)
+    query: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX chebi: <http://purl.obolibrary.org/obo/chebi/>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+      SELECT ?entity ?label ?formula ?mass
+      FROM <http://rdf.ebi.ac.uk/dataset/chebi>
+      WHERE {
+        VALUES ?entity {
+          obo:CHEBI_27897
+          obo:CHEBI_28790
+          obo:CHEBI_17697
+          obo:CHEBI_16796
+        }
+        ?entity a owl:Class ;
+                rdfs:label ?label .
+        OPTIONAL { ?entity chebi:formula ?formula }
+        OPTIONAL { ?entity chebi:mass ?mass }
+      }
+    result_count: 4
+
+  - query_number: 5
+    database: go
+    description: Retrieve labels and immediate parent terms for the two key melatonin biosynthesis molecular functions (GO:0004059, GO:0017096)
+    query: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT ?term ?label ?parentLabel
+      WHERE {
+        VALUES ?term {
+          obo:GO_0004059
+          obo:GO_0017096
+        }
+        ?term rdfs:label ?label .
+        ?term rdfs:subClassOf ?parent .
+        ?parent rdfs:label ?parentLabel .
+        FILTER(STRSTARTS(STR(?parent), "http://purl.obolibrary.org/obo/GO_"))
+      }
+    result_count: 4
 
 rdf_triples: |
   @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix taxon: <http://purl.uniprot.org/taxonomy/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
   @prefix obo: <http://purl.obolibrary.org/obo/> .
-  
-  <http://purl.uniprot.org/uniprot/P06493> a up:Protein .
-  # Database: UniProt | Query: 1 | Comment: CDK1 protein entry
-  
-  <http://purl.uniprot.org/uniprot/P06493> up:reviewed 1 .
-  # Database: UniProt | Query: 1 | Comment: Swiss-Prot curated entry
-  
-  <http://purl.uniprot.org/uniprot/P06493> up:organism <http://purl.uniprot.org/taxonomy/9606> .
-  # Database: UniProt | Query: 1 | Comment: Human organism classification
-  
-  <http://purl.uniprot.org/uniprot/P06493> up:classifiedWith <http://purl.uniprot.org/keywords/131> .
-  # Database: UniProt | Query: 1 | Comment: Cell cycle keyword classification
-  
-  <http://purl.uniprot.org/uniprot/P06493> up:classifiedWith obo:GO_0004672 .
-  # Database: UniProt | Query: 1 | Comment: Protein kinase activity GO annotation
-  
-  <http://purl.uniprot.org/uniprot/P24941> a up:Protein .
-  # Database: UniProt | Query: 1 | Comment: CDK2 protein entry
-  
-  <http://purl.uniprot.org/uniprot/P24941> up:classifiedWith <http://purl.uniprot.org/keywords/131> .
-  # Database: UniProt | Query: 1 | Comment: Cell cycle keyword classification
-  
-  <http://purl.uniprot.org/uniprot/P24941> up:classifiedWith obo:GO_0004672 .
-  # Database: UniProt | Query: 1 | Comment: Protein kinase activity GO annotation
+  @prefix chebi: <http://purl.obolibrary.org/obo/chebi/> .
+  @prefix owl: <http://www.w3.org/2002/07/owl#> .
 
-exact_answer: 13
+  <http://purl.uniprot.org/uniprot/Q16613> a up:Protein .
+  # Database: UniProt | Query: 1 | Comment: Human SNAT (AANAT) protein (aralkylamine N-acetyltransferase)
+
+  <http://purl.uniprot.org/uniprot/Q16613> up:mnemonic "SNAT_HUMAN" .
+  # Database: UniProt | Query: 1 | Comment: Protein mnemonic identifier
+
+  <http://purl.uniprot.org/uniprot/Q16613> up:organism taxon:9606 .
+  # Database: UniProt | Query: 1 | Comment: Human organism (Homo sapiens)
+
+  <http://purl.uniprot.org/uniprot/Q16613> up:classifiedWith obo:GO_0030187 .
+  # Database: UniProt | Query: 1 | Comment: Melatonin biosynthetic process annotation
+
+  <http://purl.uniprot.org/uniprot/Q16613> up:classifiedWith obo:GO_0004059 .
+  # Database: UniProt | Query: 2 | Comment: Aralkylamine N-acetyltransferase activity (catalytic step 1)
+
+  taxon:9606 up:scientificName "Homo sapiens" .
+  # Database: UniProt | Query: 1 | Comment: Scientific name of human organism
+
+  <http://purl.uniprot.org/uniprot/P46597> a up:Protein .
+  # Database: UniProt | Query: 1 | Comment: Human ASMT protein (acetylserotonin O-methyltransferase)
+
+  <http://purl.uniprot.org/uniprot/P46597> up:mnemonic "ASMT_HUMAN" .
+  # Database: UniProt | Query: 1 | Comment: Protein mnemonic identifier
+
+  <http://purl.uniprot.org/uniprot/P46597> up:classifiedWith obo:GO_0017096 .
+  # Database: UniProt | Query: 2 | Comment: Acetylserotonin O-methyltransferase activity (catalytic step 2)
+
+  <http://purl.uniprot.org/uniprot/P46597> up:organism taxon:9606 .
+  # Database: UniProt | Query: 1 | Comment: Human organism
+
+  <http://purl.uniprot.org/uniprot/Q5KQI6> a up:Protein .
+  # Database: UniProt | Query: 1 | Comment: Rice SNAT1 protein (Oryza sativa subsp. japonica)
+
+  <http://purl.uniprot.org/uniprot/Q5KQI6> up:organism taxon:39947 .
+  # Database: UniProt | Query: 1 | Comment: Oryza sativa subsp. japonica organism
+
+  <http://purl.uniprot.org/uniprot/Q9C666> a up:Protein .
+  # Database: UniProt | Query: 1 | Comment: Arabidopsis GNAT1 protein (SNAT homolog)
+
+  <http://purl.uniprot.org/uniprot/Q9C666> up:organism taxon:3702 .
+  # Database: UniProt | Query: 1 | Comment: Arabidopsis organism (Arabidopsis thaliana)
+
+  taxon:3702 up:scientificName "Arabidopsis thaliana" .
+  # Database: UniProt | Query: 1 | Comment: Scientific name of Arabidopsis
+
+  obo:GO_0030187 rdfs:label "melatonin biosynthetic process" .
+  # Database: GO | Query: 5 | Comment: GO biological process term for melatonin biosynthesis
+
+  obo:GO_0004059 rdfs:label "aralkylamine N-acetyltransferase activity" .
+  # Database: GO | Query: 5 | Comment: GO molecular function for AANAT enzyme (step 1)
+
+  obo:GO_0017096 rdfs:label "acetylserotonin O-methyltransferase activity" .
+  # Database: GO | Query: 5 | Comment: GO molecular function for ASMT enzyme (step 2)
+
+  obo:CHEBI_28790 a owl:Class .
+  # Database: ChEBI | Query: 4 | Comment: Serotonin - substrate for step 1
+
+  obo:CHEBI_28790 rdfs:label "serotonin" .
+  # Database: ChEBI | Query: 4 | Comment: Serotonin label
+
+  obo:CHEBI_28790 chebi:formula "C10H12N2O" .
+  # Database: ChEBI | Query: 4 | Comment: Molecular formula of serotonin
+
+  obo:CHEBI_17697 a owl:Class .
+  # Database: ChEBI | Query: 4 | Comment: N-acetylserotonin - product of step 1 / substrate for step 2
+
+  obo:CHEBI_17697 rdfs:label "N-acetylserotonin" .
+  # Database: ChEBI | Query: 4 | Comment: N-acetylserotonin label
+
+  obo:CHEBI_17697 chebi:formula "C12H14N2O2" .
+  # Database: ChEBI | Query: 4 | Comment: Molecular formula of N-acetylserotonin
+
+  obo:CHEBI_16796 a owl:Class .
+  # Database: ChEBI | Query: 4 | Comment: Melatonin - final product of the pathway
+
+  obo:CHEBI_16796 rdfs:label "melatonin" .
+  # Database: ChEBI | Query: 4 | Comment: Melatonin label
+
+  obo:CHEBI_16796 chebi:formula "C13H16N2O2" .
+  # Database: ChEBI | Query: 4 | Comment: Molecular formula of melatonin
+
+  obo:CHEBI_27897 a owl:Class .
+  # Database: ChEBI | Query: 4 | Comment: Tryptophan - upstream precursor to the pathway
+
+  obo:CHEBI_27897 rdfs:label "tryptophan" .
+  # Database: ChEBI | Query: 4 | Comment: Tryptophan label
+
+  obo:CHEBI_27897 chebi:formula "C11H12N2O2" .
+  # Database: ChEBI | Query: 4 | Comment: Molecular formula of tryptophan
+
+exact_answer: ""
 
 ideal_answer: |
-  There are 13 human proteins that are both involved in cell cycle regulation and possess kinase activity. These proteins represent the cell cycle kinases, which are crucial regulators of cell division including cyclin-dependent kinases (CDK1, CDK2, CDK4, CDK6, CDK7), Aurora kinases (Aurora A, Aurora B), Polo-like kinases (PLK1), checkpoint kinases (CHK1, CHK2), and WEE1 kinase. These kinases are master regulators of cell cycle transitions, integrating growth signals with DNA replication and chromosome segregation, and enforcing cell cycle checkpoints to prevent genomic instability. Their dysregulation drives cancer through uncontrolled proliferation, making them major therapeutic targets. CDK4/6 inhibitors (palbociclib, ribociclib) are FDA-approved for breast cancer, Aurora kinase inhibitors are in clinical trials for hematological malignancies, and WEE1 inhibitors are being developed to sensitize tumors to DNA-damaging agents. Understanding this complete set helps identify redundant pathways that could cause drug resistance, combination therapy opportunities, and novel targets for cancer treatment.
+  Melatonin biosynthesis enzymes are distributed across 16 species spanning five kingdoms, with 33 reviewed proteins in total. Mammals account for 14 proteins across 9 taxa, including two human paralogs (AANAT and ASMT), with coverage extending to mouse, rat, cattle, sheep, macaque, hamster, chimpanzee, and Mus musculus molossinus. Plants contribute 14 proteins from 4 taxa: Arabidopsis thaliana (4 proteins), Oryza sativa subsp. japonica (7 proteins, the most of any single organism), Oryza sativa subsp. indica (1 protein), and Zea mays (2 proteins). Additional representatives include two bird proteins in Gallus gallus, two insect proteins in Drosophila melanogaster, and one fungal protein in Saccharomyces cerevisiae. The pathway proceeds through two enzymatic steps acting on distinct chemical intermediates: first, aralkylamine N-acetyltransferase (AANAT, GO:0004059, a subclass of N-acetyltransferase activity) converts serotonin (CHEBI:28790, C10H12N2O) to N-acetylserotonin (CHEBI:17697, C12H14N2O2); then acetylserotonin O-methyltransferase (ASMT, GO:0017096, a subclass of S-adenosylmethionine-dependent methyltransferase activity) converts N-acetylserotonin to melatonin (CHEBI:16796, C13H16N2O2). Exactly 17 proteins are annotated with AANAT activity and 16 with ASMT activity, with no overlap. This enzymatic conservation across evolutionarily distant taxa — from yeast to plants to mammals — indicates an ancient origin of the two-step melatonin biosynthesis mechanism, with the pathway starting from tryptophan (CHEBI:27897, C11H12N2O2) via serotonin as the upstream precursor.
 
-question_template_used: Template 2 (Cross-Database Counting)
+question_template_used: summary_multi_dimensional_aggregation
 
 time_spent:
   exploration: 45 minutes
   formulation: 20 minutes
-  verification: 60 minutes
+  verification: 45 minutes
   pubmed_test: 15 minutes
-  extraction: 25 minutes
-  documentation: 35 minutes
-  total: 200 minutes
+  extraction: 30 minutes
+  documentation: 30 minutes
+  total: 185 minutes
