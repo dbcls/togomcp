@@ -1,0 +1,166 @@
+id: question_026
+type: yes_no
+body: "Is 6,7-dimethyl-8-(1-D-ribityl)lumazine classified in PubChem as a pteridine (CHEBI:17601) and documented as a substrate in an approved Rhea reaction catalyzed by riboflavin synthase (EC 2.5.1.9)?"
+
+inspiration_keyword:
+  keyword_id: KW-0686
+  name: Riboflavin biosynthesis
+  category: Biological process
+
+togomcp_databases_used:
+  - rhea
+  - pubchem
+
+verification_score:
+  biological_insight: 2
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 10
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: |
+    Searched PubMed for "6,7-dimethyl-8-ribityllumazine PubChem classification pteridine" and
+    "riboflavin synthase substrate lumazine Rhea reaction classification".
+  result: |
+    PubMed literature confirms riboflavin synthase uses 6,7-dimethyl-8-ribityllumazine
+    as substrate (EC 2.5.1.9), but does not state whether current PubChem classifies
+    this compound under CHEBI:17601 (pteridine), nor whether it is registered in the
+    approved Rhea reaction set with that specific cross-reference. The compound's
+    ontology class assignment in current databases cannot be determined from abstracts.
+  conclusion: PASS (cannot answer from literature — requires current database state for classification and reaction membership)
+
+sparql_queries:
+  - query_number: 1
+    database: rhea
+    description: Verify that 6,7-dimethyl-8-(1-D-ribityl)lumazine (CHEBI:58201, the pH-7.3 major microspecies) is a compound in an approved Rhea riboflavin synthase (EC 2.5.1.9) reaction and retrieve the reaction equation
+    query: |
+      PREFIX rhea: <http://rdf.rhea-db.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX chebi: <http://purl.obolibrary.org/obo/>
+
+      SELECT ?reaction ?accession ?equation ?status ?ec
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/rhea> {
+          ?compound rhea:chebi chebi:CHEBI_58201 .       # 6,7-dimethyl-8-(1-D-ribityl)lumazine (major microspecies at pH 7.3)
+          ?participant rhea:compound ?compound .
+          ?side rhea:contains ?participant .
+          ?reaction rdfs:subClassOf rhea:Reaction ;
+                    rhea:accession ?accession ;
+                    rhea:equation ?equation ;
+                    rhea:status ?status ;
+                    rhea:side ?side ;
+                    rhea:ec ?ec .
+          FILTER(?status = <http://rdf.rhea-db.org/Approved>)
+          FILTER(?ec = <http://purl.uniprot.org/enzyme/2.5.1.9>)
+        }
+      }
+      LIMIT 5
+    result_count: 1
+
+  - query_number: 2
+    database: rhea
+    description: Retrieve all participants of RHEA:20772 with their ChEBI IRIs to confirm compound identity and reaction products
+    query: |
+      PREFIX rhea: <http://rdf.rhea-db.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?status ?compoundName ?chebiIRI
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/rhea> {
+          <http://rdf.rhea-db.org/20772> rhea:status ?status ;
+                                          rhea:side ?side .
+          ?side rhea:contains ?participant .
+          ?participant rhea:compound ?compound .
+          ?compound rhea:name ?compoundName ;
+                    rhea:chebi ?chebiIRI .
+        }
+      }
+      LIMIT 20
+    result_count: 4
+
+  - query_number: 3
+    database: pubchem
+    description: Verify that PubChem compound CID:168989 (6,7-dimethyl-8-ribityllumazine) is classified as CHEBI:17601 (pteridine class) via rdf:type ChEBI annotation
+    query: |
+      PREFIX compound: <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/>
+      PREFIX chebi: <http://purl.obolibrary.org/obo/>
+
+      SELECT ?chebiClass
+      WHERE {
+        compound:CID168989 a ?chebiClass .
+        FILTER(STRSTARTS(STR(?chebiClass), "http://purl.obolibrary.org/obo/CHEBI_"))
+      }
+      LIMIT 20
+    result_count: 1
+
+  - query_number: 4
+    database: pubchem
+    description: Verify CID:46931117 (CHEBI:58201 form in PubChem) also has pteridine-related ChEBI classification, confirming the two microspecies represent the same parent compound
+    query: |
+      PREFIX compound: <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/>
+      PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
+      PREFIX chebi: <http://purl.obolibrary.org/obo/>
+
+      SELECT ?compound ?chebiClass
+      WHERE {
+        ?compound a vocab:Compound ;
+                  a chebi:CHEBI_58201 ;
+                  a ?chebiClass .
+        FILTER(STRSTARTS(STR(?chebiClass), "http://purl.obolibrary.org/obo/CHEBI_"))
+      }
+      LIMIT 10
+    result_count: 1
+
+rdf_triples: |
+  @prefix rhea: <http://rdf.rhea-db.org/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix chebi: <http://purl.obolibrary.org/obo/> .
+  @prefix compound: <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/> .
+  @prefix vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#> .
+  @prefix enzyme: <http://purl.uniprot.org/enzyme/> .
+
+  <http://rdf.rhea-db.org/20772> rdfs:subClassOf rhea:Reaction .
+  # Database: Rhea | Query: 1 | Comment: RHEA:20772 is a Reaction entity
+
+  <http://rdf.rhea-db.org/20772> rhea:accession "RHEA:20772" .
+  # Database: Rhea | Query: 1 | Comment: Accession identifier for riboflavin synthase reaction
+
+  <http://rdf.rhea-db.org/20772> rhea:equation "2 6,7-dimethyl-8-(1-D-ribityl)lumazine + H(+) = 5-amino-6-(D-ribitylamino)uracil + riboflavin" .
+  # Database: Rhea | Query: 1 | Comment: Balanced chemical equation
+
+  <http://rdf.rhea-db.org/20772> rhea:status <http://rdf.rhea-db.org/Approved> .
+  # Database: Rhea | Query: 2 | Comment: Reaction is Approved (expert-curated, chemically balanced)
+
+  <http://rdf.rhea-db.org/20772> rhea:ec enzyme:2.5.1.9 .
+  # Database: Rhea | Query: 1 | Comment: EC 2.5.1.9 = riboflavin synthase
+
+  <http://rdf.rhea-db.org/Compound_CHEBI_58201> rhea:chebi chebi:CHEBI_58201 .
+  # Database: Rhea | Query: 2 | Comment: 6,7-dimethyl-8-(1-D-ribityl)lumazine compound linked to CHEBI:58201
+
+  compound:CID168989 a vocab:Compound .
+  # Database: PubChem | Query: 3 | Comment: PubChem CID:168989 is the neutral form (CHEBI:17601) of 6,7-dimethyl-8-ribityllumazine
+
+  compound:CID168989 a chebi:CHEBI_17601 .
+  # Database: PubChem | Query: 3 | Comment: PubChem classifies CID:168989 as CHEBI:17601 (6,7-dimethyl-8-(1-D-ribityl)lumazine, a pteridine)
+
+  compound:CID46931117 a chebi:CHEBI_58201 .
+  # Database: PubChem | Query: 4 | Comment: PubChem CID:46931117 is the pH-7.3 charged microspecies (CHEBI:58201), identical compound
+
+exact_answer: "yes"
+
+ideal_answer: |
+  Yes. 6,7-dimethyl-8-(1-D-ribityl)lumazine is classified in PubChem as the pteridine CHEBI:17601 (CID:168989), and its pH-7.3 microspecies (CHEBI:58201, CID:46931117) is documented as the direct substrate of the approved Rhea reaction RHEA:20772 catalyzed by riboflavin synthase (EC 2.5.1.9). In this reaction, two molecules of the lumazine intermediate undergo a dismutation: one is oxidized to release the four-carbon fragment that becomes the dimethylbenzene ring of riboflavin, while the other is reduced back to 5-amino-6-(D-ribitylamino)uracil, an earlier precursor in the riboflavin pathway. The reaction is chemically balanced, Approved in Rhea, and annotated with GO:0004746 (riboflavin synthase activity). The pteridine scaffold of the lumazine substrate is thus the direct biosynthetic precursor to the isoalloxazine ring system of riboflavin (vitamin B2).
+
+question_template_used: Template 7 (Yes/No Existence)
+
+time_spent:
+  exploration: 30 minutes
+  formulation: 15 minutes
+  verification: 20 minutes
+  pubmed_test: 10 minutes
+  extraction: 20 minutes
+  documentation: 25 minutes
+  total: 120 minutes

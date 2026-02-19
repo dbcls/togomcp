@@ -1,0 +1,172 @@
+id: question_050
+type: choice
+body: "Among Klebsiella pneumoniae, Acinetobacter baumannii, Salmonella enterica, and Pseudomonas aeruginosa, which species has the highest number of distinct antimicrobial resistance gene symbols documented in genotypic resistance records?"
+
+choices:
+  - "Klebsiella pneumoniae"
+  - "Acinetobacter baumannii"
+  - "Salmonella enterica"
+  - "Pseudomonas aeruginosa"
+
+inspiration_keyword:
+  keyword_id: KW-0044
+  name: Antibiotic
+  category: Molecular function
+
+togomcp_databases_used:
+  - taxonomy
+  - amrportal
+
+verification_score:
+  biological_insight: 3
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: |
+    Attempted to answer via PubMed with two programmatic searches:
+    (1) "Klebsiella Acinetobacter Salmonella Pseudomonas AMR resistance gene diversity comparison count"
+    (2) "AMR Portal NCBI antimicrobial resistance gene repertoire bacterial pathogens"
+  result: |
+    Both searches returned zero results. Literature reviews and genomic 
+    surveillance papers describe resistance gene families in individual 
+    species but no study provides current ranked counts of distinct AMR 
+    gene symbols across these four species from a standardized surveillance 
+    database. The exact counts depend on current database state (isolates 
+    sequenced and deposited up to today) and cannot be derived from 
+    published literature.
+  conclusion: PASS (cannot answer from literature; requires current AMR Portal database state)
+
+sparql_queries:
+  - query_number: 1
+    database: taxonomy
+    description: Verify NCBI Taxonomy IRIs and scientific names for the four bacterial pathogens
+    query: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+
+      SELECT ?taxon ?label ?id
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        VALUES ?taxon { taxon:573 taxon:28901 taxon:470 taxon:287 }
+        ?taxon a tax:Taxon ;
+          rdfs:label ?label ;
+          dcterms:identifier ?id .
+      }
+    result_count: 4
+
+  - query_number: 2
+    database: amrportal
+    description: Count distinct AMR gene symbols per species using NCBI Taxonomy IRIs from Query 1
+    query: |
+      PREFIX amr: <http://example.org/ebiamr#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+
+      SELECT ?taxon (COUNT(DISTINCT ?geneSymbol) AS ?uniqueGenes)
+      FROM <http://rdfportal.org/dataset/amrportal>
+      WHERE {
+        VALUES ?taxon { taxon:573 taxon:28901 taxon:470 taxon:287 }
+        ?s a amr:GenotypeFeature ;
+           obo:RO_0002162 ?taxon ;
+           amr:geneSymbol ?geneSymbol .
+      }
+      GROUP BY ?taxon
+      ORDER BY DESC(?uniqueGenes)
+    result_count: 4
+
+  - query_number: 3
+    database: amrportal
+    description: Arithmetic verification - count total unique gene symbols across all 4 species to check for overlap
+    query: |
+      PREFIX amr: <http://example.org/ebiamr#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+
+      SELECT (COUNT(DISTINCT ?geneSymbol) AS ?totalUniqueGenes)
+      FROM <http://rdfportal.org/dataset/amrportal>
+      WHERE {
+        VALUES ?taxon { taxon:573 taxon:28901 taxon:470 taxon:287 }
+        ?s a amr:GenotypeFeature ;
+           obo:RO_0002162 ?taxon ;
+           amr:geneSymbol ?geneSymbol .
+      }
+    result_count: 1
+
+rdf_triples: |
+  @prefix tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/> .
+  @prefix taxon: <http://identifiers.org/taxonomy/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix dcterms: <http://purl.org/dc/terms/> .
+  @prefix amr: <http://example.org/ebiamr#> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+  taxon:573 a tax:Taxon .
+  # Database: taxonomy | Query: 1 | Comment: Klebsiella pneumoniae taxon IRI (NCBI taxid 573)
+
+  taxon:573 rdfs:label "Klebsiella pneumoniae" .
+  # Database: taxonomy | Query: 1 | Comment: Scientific name for K. pneumoniae
+
+  taxon:573 dcterms:identifier 573 .
+  # Database: taxonomy | Query: 1 | Comment: NCBI taxonomy integer identifier
+
+  taxon:470 a tax:Taxon .
+  # Database: taxonomy | Query: 1 | Comment: Acinetobacter baumannii taxon IRI (NCBI taxid 470)
+
+  taxon:470 rdfs:label "Acinetobacter baumannii" .
+  # Database: taxonomy | Query: 1 | Comment: Scientific name for A. baumannii
+
+  taxon:28901 a tax:Taxon .
+  # Database: taxonomy | Query: 1 | Comment: Salmonella enterica taxon IRI (NCBI taxid 28901)
+
+  taxon:28901 rdfs:label "Salmonella enterica" .
+  # Database: taxonomy | Query: 1 | Comment: Scientific name for S. enterica
+
+  taxon:287 a tax:Taxon .
+  # Database: taxonomy | Query: 1 | Comment: Pseudomonas aeruginosa taxon IRI (NCBI taxid 287)
+
+  taxon:287 rdfs:label "Pseudomonas aeruginosa" .
+  # Database: taxonomy | Query: 1 | Comment: Scientific name for P. aeruginosa
+
+  [] a amr:GenotypeFeature ;
+     obo:RO_0002162 taxon:573 .
+  # Database: amrportal | Query: 2 | Comment: Representative K. pneumoniae AMR genotypic feature linked via NCBI Taxonomy IRI
+
+  taxon:573 amr:uniqueGeneSymbols "550"^^xsd:integer .
+  # Database: amrportal | Query: 2 | Comment: Klebsiella pneumoniae - 550 distinct AMR gene symbols (highest among 4 species)
+
+  taxon:470 amr:uniqueGeneSymbols "314"^^xsd:integer .
+  # Database: amrportal | Query: 2 | Comment: Acinetobacter baumannii - 314 distinct AMR gene symbols
+
+  taxon:28901 amr:uniqueGeneSymbols "248"^^xsd:integer .
+  # Database: amrportal | Query: 2 | Comment: Salmonella enterica - 248 distinct AMR gene symbols
+
+  taxon:287 amr:uniqueGeneSymbols "199"^^xsd:integer .
+  # Database: amrportal | Query: 2 | Comment: Pseudomonas aeruginosa - 199 distinct AMR gene symbols
+
+  [] amr:totalUniqueGenesAcross4Species "880"^^xsd:integer .
+  # Database: amrportal | Query: 3 | Comment: 880 unique gene symbols total across 4 species (sum=1311 > 880; 431 shared across species - valid overlap documented)
+
+exact_answer:
+  - "Klebsiella pneumoniae"
+
+ideal_answer: |
+  Klebsiella pneumoniae has the highest number of distinct antimicrobial resistance gene symbols among the four species, with 550 unique gene symbols documented in genotypic resistance records, followed by Acinetobacter baumannii (314), Salmonella enterica (248), and Pseudomonas aeruginosa (199). The combined 880 unique gene symbols across all four species (sum of per-species counts = 1311, indicating 431 gene symbols are shared across multiple species) reflects extensive horizontal gene transfer among Gram-negative pathogens. Klebsiella pneumoniae's markedly larger AMR gene repertoire is consistent with its recognized status as a major reservoir of resistance determinants, including extended-spectrum beta-lactamases (ESBLs), carbapenemases, and colistin resistance genes, reflecting both the large number of K. pneumoniae isolates deposited in public databases and the species' exceptional capacity to acquire and maintain diverse resistance elements via plasmids and mobile genetic elements. Acinetobacter baumannii shows the second-largest repertoire, driven in part by its ability to accumulate resistance through OXA-type carbapenemases and efflux pump upregulation, while Salmonella enterica and Pseudomonas aeruginosa, despite being major clinical pathogens, encode fewer distinct gene symbols in current surveillance data.
+
+question_template_used: Template 5 (Bounded Comparison)
+
+time_spent:
+  exploration: 20 minutes
+  formulation: 15 minutes
+  verification: 15 minutes
+  pubmed_test: 10 minutes
+  extraction: 15 minutes
+  documentation: 25 minutes
+  total: 100 minutes

@@ -1,0 +1,208 @@
+id: question_040
+type: list
+body: "Which of the 13 established human neuronal ceroid lipofuscinosis (NCL) disease genes—PPT1, TPP1, CLN3, DNAJC5, CLN5, CLN6, MFSD8, CLN8, CTSD, GRN, ATP13A2, CTSF, and KCTD7—appear as PubTator gene annotations in at least 3 PubMed articles that are indexed under MeSH descriptor D009472 (Neuronal Ceroid-Lipofuscinoses)?"
+
+inspiration_keyword:
+  keyword_id: KW-0525
+  name: Neuronal ceroid lipofuscinosis
+  category: Disease
+
+togomcp_databases_used:
+  - pubmed
+  - pubtator
+  - ncbigene
+
+verification_score:
+  biological_insight: 2
+  multi_database: 3
+  verifiability: 2
+  rdf_necessity: 3
+  total: 10
+  passed: true
+
+pubmed_test:
+  time_spent: 15 minutes
+  method: >
+    Searched PubMed for "neuronal ceroid lipofuscinosis" combined with each of the
+    13 NCL gene symbols to estimate article counts with MeSH D009472 indexing.
+    Attempted to identify which genes are co-mentioned in NCL-indexed literature.
+  result: >
+    PubMed search finds articles individually for many NCL genes, but determining
+    which articles are specifically indexed under D009472 while also having
+    PubTator-confirmed gene text-mining annotations requires database integration.
+    It is not possible to systematically count PubTator gene annotations per article
+    subset using PubMed alone within 15 minutes.
+  conclusion: PASS (cannot answer from literature without cross-database RDF traversal)
+
+sparql_queries:
+  - query_number: 1
+    database: pubmed + pubtator + ncbigene
+    description: >
+      Three-database cross-query: (1) find PubMed articles indexed under MeSH
+      D009472 using fabio predicates, (2) find PubTator gene annotations targeting
+      those articles, (3) filter to the 13 known human NCL disease genes using
+      their NCBI Gene IRIs, and count articles per gene.
+    query: |
+      PREFIX fabio: <http://purl.org/spar/fabio/>
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?gene_symbol (COUNT(DISTINCT ?article) AS ?article_count)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/pubmed> {
+          { ?article fabio:hasSubjectTerm <http://id.nlm.nih.gov/mesh/D009472> }
+          UNION
+          { ?article fabio:hasPrimarySubjectTerm <http://id.nlm.nih.gov/mesh/D009472> }
+        }
+        GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+          ?ann dct:subject "Gene" ;
+               oa:hasBody ?geneId ;
+               oa:hasTarget ?article .
+        }
+        GRAPH <http://rdfportal.org/dataset/ncbigene> {
+          VALUES ?geneId {
+            <http://identifiers.org/ncbigene/5538>
+            <http://identifiers.org/ncbigene/1200>
+            <http://identifiers.org/ncbigene/1201>
+            <http://identifiers.org/ncbigene/80331>
+            <http://identifiers.org/ncbigene/1203>
+            <http://identifiers.org/ncbigene/54982>
+            <http://identifiers.org/ncbigene/256471>
+            <http://identifiers.org/ncbigene/2055>
+            <http://identifiers.org/ncbigene/1509>
+            <http://identifiers.org/ncbigene/2896>
+            <http://identifiers.org/ncbigene/23400>
+            <http://identifiers.org/ncbigene/8722>
+            <http://identifiers.org/ncbigene/154881>
+          }
+          ?geneId rdfs:label ?gene_symbol .
+        }
+      }
+      GROUP BY ?gene_symbol
+      ORDER BY DESC(?article_count)
+    result_count: 13
+    result_summary: |
+      gene_symbol, article_count
+      CLN3, 9
+      TPP1, 6
+      CLN5, 4
+      CLN6, 4
+      MFSD8, 3
+      DNAJC5, 3
+      PPT1, 3
+      CTSD, 3
+      GRN, 2
+      CLN8, 1
+      KCTD7, 1
+      ATP13A2, 1
+      CTSF, 1
+
+rdf_triples: |
+  @prefix fabio: <http://purl.org/spar/fabio/> .
+  @prefix oa: <http://www.w3.org/ns/oa#> .
+  @prefix dct: <http://purl.org/dc/terms/> .
+  @prefix insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix mesh: <http://id.nlm.nih.gov/mesh/> .
+  @prefix gene: <http://identifiers.org/ncbigene/> .
+  @prefix pubart: <http://rdf.ncbi.nlm.nih.gov/pubmed/> .
+  @prefix puc: <http://purl.jp/bio/10/pubtator-central/> .
+
+  # PubMed MeSH indexing (fabio predicates)
+  pubart:35627432 fabio:hasSubjectTerm mesh:D009472 .
+  # Database: PubMed | Query: 1 | Comment: Article indexed under NCL MeSH term D009472 (CLN3-containing title)
+
+  pubart:35233790 fabio:hasPrimarySubjectTerm mesh:D009472 .
+  # Database: PubMed | Query: 1 | Comment: Article with D009472 as primary subject term
+
+  pubart:28556060 fabio:hasSubjectTerm mesh:D009472 .
+  # Database: PubMed | Query: 1 | Comment: Article about CLN5 disease indexed under D009472
+
+  # PubTator gene annotations → article links
+  puc:Gene/CLN3_35627432 a oa:Annotation ;
+    dct:subject "Gene" ;
+    oa:hasBody gene:1201 ;
+    oa:hasTarget pubart:35627432 .
+  # Database: PubTator | Query: 1 | Comment: CLN3 gene annotation in NCL article
+
+  puc:Gene/TPP1_35045884 a oa:Annotation ;
+    dct:subject "Gene" ;
+    oa:hasBody gene:1200 ;
+    oa:hasTarget pubart:35045884 .
+  # Database: PubTator | Query: 1 | Comment: TPP1 (CLN2) gene annotation in NCL article
+
+  puc:Gene/CLN5_28556060 a oa:Annotation ;
+    dct:subject "Gene" ;
+    oa:hasBody gene:1203 ;
+    oa:hasTarget pubart:28556060 .
+  # Database: PubTator | Query: 1 | Comment: CLN5 gene annotation in NCL article
+
+  # NCBI Gene entries for NCL disease genes
+  gene:1201 a insdc:Gene ;
+    rdfs:label "CLN3" .
+  # Database: NCBI Gene | Query: 1 | Comment: CLN3 lysosomal/endosomal transmembrane protein (NCL gene, 9 co-annotated articles)
+
+  gene:1200 a insdc:Gene ;
+    rdfs:label "TPP1" .
+  # Database: NCBI Gene | Query: 1 | Comment: Tripeptidyl peptidase 1 (CLN2 gene, 6 co-annotated articles)
+
+  gene:1203 a insdc:Gene ;
+    rdfs:label "CLN5" .
+  # Database: NCBI Gene | Query: 1 | Comment: CLN5 intracellular trafficking protein (4 co-annotated articles)
+
+  gene:54982 a insdc:Gene ;
+    rdfs:label "CLN6" .
+  # Database: NCBI Gene | Query: 1 | Comment: CLN6 transmembrane ER protein (4 co-annotated articles)
+
+  gene:256471 a insdc:Gene ;
+    rdfs:label "MFSD8" .
+  # Database: NCBI Gene | Query: 1 | Comment: Major facilitator superfamily domain containing 8 (CLN7, 3 co-annotated articles)
+
+  gene:80331 a insdc:Gene ;
+    rdfs:label "DNAJC5" .
+  # Database: NCBI Gene | Query: 1 | Comment: DnaJ heat shock protein family member C5 (CLN4, 3 co-annotated articles)
+
+  gene:5538 a insdc:Gene ;
+    rdfs:label "PPT1" .
+  # Database: NCBI Gene | Query: 1 | Comment: Palmitoyl-protein thioesterase 1 (CLN1, 3 co-annotated articles)
+
+  gene:1509 a insdc:Gene ;
+    rdfs:label "CTSD" .
+  # Database: NCBI Gene | Query: 1 | Comment: Cathepsin D (CLN10, 3 co-annotated articles)
+
+exact_answer:
+  - "CLN3 (NCBI Gene:1201)"
+  - "TPP1 (NCBI Gene:1200)"
+  - "CLN5 (NCBI Gene:1203)"
+  - "CLN6 (NCBI Gene:54982)"
+  - "MFSD8 (NCBI Gene:256471)"
+  - "DNAJC5 (NCBI Gene:80331)"
+  - "PPT1 (NCBI Gene:5538)"
+  - "CTSD (NCBI Gene:1509)"
+
+ideal_answer: |
+  Among the 13 established human NCL disease genes, eight appear in at least 3 PubMed articles
+  indexed under MeSH descriptor D009472 (Neuronal Ceroid-Lipofuscinoses) based on PubTator
+  gene annotations. These are CLN3 (9 articles), TPP1/CLN2 (6 articles), CLN5 (4 articles),
+  CLN6 (4 articles), PPT1/CLN1 (3 articles), DNAJC5/CLN4 (3 articles), MFSD8/CLN7 (3 articles),
+  and CTSD/CLN10 (3 articles). The remaining five genes—GRN/CLN11 (2 articles), CLN8 (1),
+  KCTD7/CLN14 (1), ATP13A2/CLN12 (1), and CTSF/CLN13 (1)—have fewer than 3 co-indexed
+  articles. CLN3 is the most extensively represented gene in NCL MeSH-indexed literature,
+  consistent with juvenile Batten disease (CLN3 disease) being the most common form of NCL.
+  TPP1 and CLN5/CLN6 follow, reflecting active research on late-infantile NCL subtypes.
+  The lower representation of GRN, ATP13A2, CTSF, and KCTD7 reflects their more recent
+  identification as NCL disease genes (CLN11-CLN14) and their comparatively rarer clinical
+  presentations.
+
+question_template_used: Template 5 (Bounded Comparison)
+
+time_spent:
+  exploration: 60 minutes
+  formulation: 20 minutes
+  verification: 45 minutes
+  pubmed_test: 15 minutes
+  extraction: 30 minutes
+  documentation: 25 minutes
+  total: 195 minutes

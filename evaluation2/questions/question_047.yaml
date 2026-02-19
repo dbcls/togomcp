@@ -1,0 +1,218 @@
+id: question_047
+type: factoid
+body: "How many PubMed articles are co-annotated with both Cockayne syndrome and the causative DNA repair gene ERCC6 in automated biomedical literature text-mining?"
+
+inspiration_keyword:
+  keyword_id: KW-0172
+  name: Cockayne syndrome
+  category: Disease
+
+togomcp_databases_used:
+  - mesh
+  - pubtator
+  - pubmed
+
+verification_score:
+  biological_insight: 2
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 2
+  total: 10
+  passed: true
+
+pubmed_test:
+  time_spent: 15 minutes
+  method: |
+    Searched PubMed using ncbi_esearch with queries:
+    (1) "Cockayne syndrome ERCC6 co-annotation PubTator literature mining"
+    (2) "Cockayne syndrome ERCC6 co-occurrence literature annotation count"
+    Both returned 0 results. Searched PubMed for the specific count of articles
+    co-annotated in PubTator - this metric is not reported in literature and
+    cannot be retrieved from PubMed search results.
+  result: |
+    PubMed search returns 0 results for queries asking about the specific
+    PubTator co-annotation count for Cockayne syndrome and ERCC6. While
+    PubMed contains the individual articles, the count of 894 co-annotated
+    articles is specific to PubTator's structured annotation database and
+    requires SPARQL queries against PubTator RDF to retrieve. No publication
+    reports this specific co-annotation count.
+  conclusion: PASS (cannot answer from literature; requires PubTator RDF)
+
+sparql_queries:
+  - query_number: 1
+    database: mesh
+    description: Retrieve MeSH descriptor details for Cockayne syndrome (D003057) including tree numbers to confirm identity and scope
+    query: |
+      PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?label ?treeNum
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        mesh:D003057 rdfs:label ?label .
+        OPTIONAL {
+          mesh:D003057 meshv:treeNumber ?tree .
+          ?tree rdfs:label ?treeNum
+        }
+      }
+    result_count: 6
+
+  - query_number: 2
+    database: mesh
+    description: Check for narrower MeSH terms (children) of Cockayne syndrome to ensure comprehensive coverage
+    query: |
+      PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?narrower ?label
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        ?narrower meshv:broaderDescriptor mesh:D003057 ;
+                  rdfs:label ?label .
+      }
+    result_count: 0
+
+  - query_number: 3
+    database: pubtator
+    description: Count PubMed articles co-annotated with both Cockayne syndrome (MeSH D003057) and ERCC6 (NCBI Gene 2074) in PubTator Central
+    query: |
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+
+      SELECT (COUNT(DISTINCT ?article) AS ?count)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+          ?diseaseAnn dcterms:subject "Disease" ;
+                      oa:hasBody <http://identifiers.org/mesh/D003057> ;
+                      oa:hasTarget ?article .
+          ?geneAnn dcterms:subject "Gene" ;
+                   oa:hasBody <http://identifiers.org/ncbigene/2074> ;
+                   oa:hasTarget ?article .
+        }
+      }
+    result_count: 1
+
+  - query_number: 4
+    database: pubmed
+    description: Verify by joining PubTator co-annotations with PubMed article records and counting distinct PMIDs; retrieve sample titles
+    query: |
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+
+      SELECT ?pmid ?title
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+          ?diseaseAnn dcterms:subject "Disease" ;
+                      oa:hasBody <http://identifiers.org/mesh/D003057> ;
+                      oa:hasTarget ?article .
+          ?geneAnn dcterms:subject "Gene" ;
+                   oa:hasBody <http://identifiers.org/ncbigene/2074> ;
+                   oa:hasTarget ?article .
+        }
+        GRAPH <http://rdfportal.org/dataset/pubmed> {
+          ?article bibo:pmid ?pmid ;
+                   dct:title ?title .
+        }
+      }
+      LIMIT 5
+    result_count: 5
+
+  - query_number: 5
+    database: pubmed
+    description: Count confirmed by joining PubTator annotations with PubMed records (distinct PMIDs)
+    query: |
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+
+      SELECT (COUNT(DISTINCT ?pmid) AS ?count)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+          ?diseaseAnn dcterms:subject "Disease" ;
+                      oa:hasBody <http://identifiers.org/mesh/D003057> ;
+                      oa:hasTarget ?article .
+          ?geneAnn dcterms:subject "Gene" ;
+                   oa:hasBody <http://identifiers.org/ncbigene/2074> ;
+                   oa:hasTarget ?article .
+        }
+        GRAPH <http://rdfportal.org/dataset/pubmed> {
+          ?article bibo:pmid ?pmid .
+        }
+      }
+    result_count: 1
+
+rdf_triples: |
+  @prefix mesh: <http://id.nlm.nih.gov/mesh/> .
+  @prefix meshv: <http://id.nlm.nih.gov/mesh/vocab#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix oa: <http://www.w3.org/ns/oa#> .
+  @prefix dcterms: <http://purl.org/dc/terms/> .
+  @prefix pubtator: <http://purl.jp/bio/10/pubtator-central/ontology#> .
+  @prefix bibo: <http://purl.org/ontology/bibo/> .
+  @prefix identifiers: <http://identifiers.org/> .
+  @prefix pubmed: <http://rdf.ncbi.nlm.nih.gov/pubmed/> .
+
+  mesh:D003057 a meshv:TopicalDescriptor ;
+               rdfs:label "Cockayne Syndrome" ;
+               meshv:identifier "D003057" .
+  # Database: MeSH | Query: 1 | Comment: Cockayne syndrome topical descriptor
+
+  mesh:D003057 meshv:treeNumber <http://id.nlm.nih.gov/mesh/C16.131.077.250> .
+  # Database: MeSH | Query: 1 | Comment: Tree position under Congenital hereditary diseases
+
+  mesh:D003057 meshv:treeNumber <http://id.nlm.nih.gov/mesh/C10.574.500.362> .
+  # Database: MeSH | Query: 1 | Comment: Tree position under Nervous System Diseases
+
+  <http://purl.jp/bio/10/pubtator-central/Disease/47_D003057>
+      a oa:Annotation ;
+      dcterms:subject "Disease" ;
+      oa:hasBody <http://identifiers.org/mesh/D003057> ;
+      oa:hasTarget pubmed:10564257 .
+  # Database: PubTator | Query: 3 | Comment: Disease annotation linking Cockayne syndrome to PMID 10564257
+
+  <http://purl.jp/bio/10/pubtator-central/Gene/47_2074>
+      a oa:Annotation ;
+      dcterms:subject "Gene" ;
+      oa:hasBody <http://identifiers.org/ncbigene/2074> ;
+      oa:hasTarget pubmed:10564257 .
+  # Database: PubTator | Query: 3 | Comment: Gene annotation linking ERCC6 (NCBI Gene 2074) to PMID 10564257
+
+  pubmed:10564257 bibo:pmid "10564257" .
+  # Database: PubMed | Query: 4 | Comment: PubMed article with PMID 10564257 (co-annotated article)
+
+  pubmed:16601682 bibo:pmid "16601682" .
+  # Database: PubMed | Query: 4 | Comment: PubMed article PMID 16601682 (Cockayne syndrome B protein regulates transcriptional program)
+
+exact_answer: 894
+
+ideal_answer: |
+  A total of 894 PubMed articles are co-annotated with both Cockayne syndrome
+  (MeSH D003057) and the ERCC6 gene (NCBI Gene 2074, also known as CSB, Cockayne
+  syndrome protein B) in the PubTator Central biomedical text-mining annotations.
+  This substantial body of literature reflects the central role of ERCC6, which
+  encodes a DNA helicase required for transcription-coupled nucleotide excision
+  repair, in the molecular pathogenesis of Cockayne syndrome — an autosomal
+  recessive disorder characterized by progressive neurodegeneration, photosensitivity,
+  and premature aging. MeSH D003057 (Cockayne Syndrome) is a leaf-level descriptor
+  with six tree positions spanning congenital hereditary diseases, nervous system
+  diseases, and metabolic diseases, with no narrower MeSH terms, confirming that
+  the annotation scope is complete and not fragmented across subtypes. The count
+  was confirmed by cross-referencing PubTator disease annotations
+  (using MeSH D003057) with gene annotations (NCBI Gene 2074) targeting the same
+  PubMed article IRIs, yielding 894 distinct PMIDs with co-occurrence in the
+  literature.
+
+question_template_used: Template 2 (Cross-Database Counting)
+
+time_spent:
+  exploration: 30 minutes
+  formulation: 15 minutes
+  verification: 20 minutes
+  pubmed_test: 10 minutes
+  extraction: 20 minutes
+  documentation: 25 minutes
+  total: 120 minutes

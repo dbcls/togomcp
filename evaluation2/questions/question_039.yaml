@@ -1,0 +1,229 @@
+id: question_039
+type: list
+body: "Which distinct human genes, co-annotated with Brugada syndrome in at least 500 PubMed articles in PubTator Central, also have a drug target entry in ChEMBL?"
+
+inspiration_keyword:
+  keyword_id: KW-0992
+  name: Brugada syndrome
+  category: Disease
+
+togomcp_databases_used:
+  - pubtator
+  - ncbigene
+  - chembl
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 12
+  passed: true
+
+pubmed_test:
+  time_spent: 5 minutes
+  method: Searched "Brugada syndrome genes co-annotated PubTator Central drug targets ChEMBL" and "Brugada syndrome ion channel genes pharmacological targets literature mining" using ncbi_esearch (database=pubmed)
+  result: |
+    Both queries returned 0 results addressing the combined criterion (≥500-article
+    co-annotation threshold AND ChEMBL drug target entry). PubMed literature does
+    not report this intersection; answering it requires querying PubTator Central
+    RDF for co-occurrence counts and ChEMBL RDF for target entries independently,
+    then intersecting the results.
+  conclusion: PASS (cannot answer from literature)
+
+sparql_queries:
+  - query_number: 1
+    database: pubtator
+    description: Find distinct human genes co-annotated with Brugada syndrome (MeSH:D053840) in ≥500 PubMed articles, cross-referenced with NCBI Gene to confirm human taxonomy (taxon:9606). Returns 5 genes with their NCBI Gene IDs and co-occurrence counts.
+    query: |
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+
+      SELECT ?geneId ?gene_symbol (COUNT(DISTINCT ?article) AS ?cooccurrence)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+          ?diseaseAnn dcterms:subject "Disease" ;
+                      oa:hasBody <http://identifiers.org/mesh/D053840> ;
+                      oa:hasTarget ?article .
+          ?geneAnn dcterms:subject "Gene" ;
+                   oa:hasBody ?geneId ;
+                   oa:hasTarget ?article .
+        }
+        GRAPH <http://rdfportal.org/dataset/ncbigene> {
+          ?geneId a insdc:Gene ;
+                  rdfs:label ?gene_symbol ;
+                  ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+        }
+      }
+      GROUP BY ?geneId ?gene_symbol
+      HAVING (COUNT(DISTINCT ?article) >= 500)
+      ORDER BY DESC(?cooccurrence)
+    result_count: 5
+
+  - query_number: 2
+    database: chembl
+    description: |
+      Verify which of the 5 genes from Query 1 have a human single-protein drug target
+      entry in ChEMBL, joining via UniProt IRIs. UniProt IDs were obtained by converting
+      the NCBI Gene IDs from Query 1 via TogOID (ncbigene→uniprot):
+        SCN5A (6331)  → Q14524
+        KCNH2 (3757)  → Q12809
+        KCNQ1 (3784)  → P51787
+        CACNA1C (775) → Q13936
+        RYR2 (6262)   → Q92736
+    query: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?target ?label ?chemblId
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        VALUES ?uniprot {
+          <http://purl.uniprot.org/uniprot/Q14524>   # SCN5A
+          <http://purl.uniprot.org/uniprot/Q12809>   # KCNH2
+          <http://purl.uniprot.org/uniprot/P51787>   # KCNQ1
+          <http://purl.uniprot.org/uniprot/Q13936>   # CACNA1C
+          <http://purl.uniprot.org/uniprot/Q92736>   # RYR2
+        }
+        ?tc a cco:TargetComponent ;
+            skos:exactMatch ?uniprot .
+        ?target cco:hasTargetComponent ?tc ;
+                a cco:SingleProtein ;
+                rdfs:label ?label ;
+                cco:chemblId ?chemblId ;
+                cco:taxonomy <http://identifiers.org/taxonomy/9606> .
+      }
+      ORDER BY ?label
+    result_count: 5
+
+  - query_number: 3
+    database: pubtator
+    description: Verification count — total distinct human genes meeting the ≥500 article threshold (confirms Query 1 is comprehensive).
+    query: |
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+
+      SELECT (COUNT(DISTINCT ?geneId) AS ?total)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+          ?diseaseAnn dcterms:subject "Disease" ;
+                      oa:hasBody <http://identifiers.org/mesh/D053840> ;
+                      oa:hasTarget ?article .
+          ?geneAnn dcterms:subject "Gene" ;
+                   oa:hasBody ?geneId ;
+                   oa:hasTarget ?article .
+        }
+        GRAPH <http://rdfportal.org/dataset/ncbigene> {
+          ?geneId a insdc:Gene ;
+                  ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+        }
+      }
+      GROUP BY ?geneId
+      HAVING (COUNT(DISTINCT ?article) >= 500)
+    result_count: 1
+
+rdf_triples: |
+  @prefix oa: <http://www.w3.org/ns/oa#> .
+  @prefix dcterms: <http://purl.org/dc/terms/> .
+  @prefix insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
+  @prefix ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix cco: <http://rdf.ebi.ac.uk/terms/chembl#> .
+  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+
+  # Brugada syndrome disease annotation (MeSH:D053840)
+  [] a oa:Annotation ;
+     dcterms:subject "Disease" ;
+     oa:hasBody <http://identifiers.org/mesh/D053840> ;
+     oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/23414885> .
+  # Database: pubtator | Query: 1 | Comment: Disease annotation linking MeSH D053840 to a PubMed article
+
+  # SCN5A (NCBI Gene 6331) — co-annotated in 2768 articles
+  [] a oa:Annotation ;
+     dcterms:subject "Gene" ;
+     oa:hasBody <http://identifiers.org/ncbigene/6331> ;
+     oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/23414885> .
+  # Database: pubtator | Query: 1 | Comment: Gene annotation linking SCN5A to an article also annotated with Brugada syndrome
+
+  <http://identifiers.org/ncbigene/6331> a insdc:Gene ;
+     rdfs:label "SCN5A" ;
+     ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+  # Database: ncbigene | Query: 1 | Comment: SCN5A confirmed as human gene (taxon 9606), co-annotated in 2768 articles
+
+  <http://identifiers.org/ncbigene/3757> a insdc:Gene ;
+     rdfs:label "KCNH2" ;
+     ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+  # Database: ncbigene | Query: 1 | Comment: KCNH2 confirmed as human gene, co-annotated in 935 articles
+
+  <http://identifiers.org/ncbigene/3784> a insdc:Gene ;
+     rdfs:label "KCNQ1" ;
+     ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+  # Database: ncbigene | Query: 1 | Comment: KCNQ1 confirmed as human gene, co-annotated in 767 articles
+
+  <http://identifiers.org/ncbigene/775> a insdc:Gene ;
+     rdfs:label "CACNA1C" ;
+     ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+  # Database: ncbigene | Query: 1 | Comment: CACNA1C confirmed as human gene, co-annotated in 660 articles
+
+  <http://identifiers.org/ncbigene/6262> a insdc:Gene ;
+     rdfs:label "RYR2" ;
+     ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+  # Database: ncbigene | Query: 1 | Comment: RYR2 confirmed as human gene, co-annotated in 632 articles
+
+  # ChEMBL drug target entries (Query 2) — all 5 genes have human single-protein targets
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL1980> a cco:SingleProtein ;
+     rdfs:label "Sodium channel protein type V alpha subunit" ;
+     cco:taxonomy <http://identifiers.org/taxonomy/9606> ;
+     cco:hasTargetComponent/skos:exactMatch <http://purl.uniprot.org/uniprot/Q14524> .
+  # Database: chembl | Query: 2 | Comment: CHEMBL1980 (Nav1.5/SCN5A) — human drug target, UniProt Q14524
+
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL240> a cco:SingleProtein ;
+     rdfs:label "HERG" ;
+     cco:taxonomy <http://identifiers.org/taxonomy/9606> ;
+     cco:hasTargetComponent/skos:exactMatch <http://purl.uniprot.org/uniprot/Q12809> .
+  # Database: chembl | Query: 2 | Comment: CHEMBL240 (hERG/KCNH2) — human drug target, UniProt Q12809
+
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL1866> a cco:SingleProtein ;
+     rdfs:label "Voltage-gated potassium channel subunit Kv7.1" ;
+     cco:taxonomy <http://identifiers.org/taxonomy/9606> ;
+     cco:hasTargetComponent/skos:exactMatch <http://purl.uniprot.org/uniprot/P51787> .
+  # Database: chembl | Query: 2 | Comment: CHEMBL1866 (Kv7.1/KCNQ1) — human drug target, UniProt P51787
+
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL1940> a cco:SingleProtein ;
+     rdfs:label "Voltage-gated L-type calcium channel alpha-1C subunit" ;
+     cco:taxonomy <http://identifiers.org/taxonomy/9606> ;
+     cco:hasTargetComponent/skos:exactMatch <http://purl.uniprot.org/uniprot/Q13936> .
+  # Database: chembl | Query: 2 | Comment: CHEMBL1940 (Cav1.2/CACNA1C) — human drug target, UniProt Q13936
+
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL4403> a cco:SingleProtein ;
+     rdfs:label "Ryanodine receptor 2" ;
+     cco:taxonomy <http://identifiers.org/taxonomy/9606> ;
+     cco:hasTargetComponent/skos:exactMatch <http://purl.uniprot.org/uniprot/Q92736> .
+  # Database: chembl | Query: 2 | Comment: CHEMBL4403 (RyR2/RYR2) — human drug target, UniProt Q92736
+
+exact_answer:
+  - "SCN5A"
+  - "KCNH2"
+  - "KCNQ1"
+  - "CACNA1C"
+  - "RYR2"
+
+ideal_answer: |
+  All five human genes co-annotated with Brugada syndrome in at least 500 PubMed articles in PubTator Central also have drug target entries in ChEMBL. Ranked by co-annotation frequency, these genes and their ChEMBL targets are: SCN5A (2,768 articles; CHEMBL1980, Nav1.5), KCNH2 (935 articles; CHEMBL240, hERG), KCNQ1 (767 articles; CHEMBL1866, Kv7.1), CACNA1C (660 articles; CHEMBL1940, Cav1.2), and RYR2 (632 articles; CHEMBL4403, RyR2). SCN5A encodes the cardiac sodium channel Nav1.5 and is the primary causal gene for Brugada syndrome, responsible for 15–30% of cases through loss-of-function variants; its ChEMBL entry reflects its central role as a drug target for antiarrhythmic compounds and as a cardiac safety liability. The potassium channels KCNH2 (hERG) and KCNQ1 (Kv7.1) are prominent ChEMBL targets because inhibition of hERG is a major mechanism of drug-induced QT prolongation and ventricular arrhythmia. CACNA1C encodes the L-type calcium channel Cav1.2, a target for dihydropyridine and non-dihydropyridine calcium channel blockers. RYR2 (ryanodine receptor 2) is targeted by flecainide and other agents used in catecholaminergic polymorphic ventricular tachycardia, a related channelopathy with substantial overlap in the research literature. The complete overlap between the high-frequency co-annotation set and ChEMBL pharmacological targets reflects the ion-channel-centric pathophysiology of Brugada syndrome and the translational significance of these genes in cardiac drug development and safety pharmacology.
+
+question_template_used: Template 3 (Comprehensive List with Threshold Criterion + Cross-Database Pharmacological Filter)
+
+time_spent:
+  exploration: 20 minutes
+  formulation: 10 minutes
+  verification: 20 minutes
+  pubmed_test: 5 minutes
+  extraction: 15 minutes
+  documentation: 20 minutes
+  total: 90 minutes

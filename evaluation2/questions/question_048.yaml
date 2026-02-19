@@ -1,0 +1,148 @@
+id: question_048
+type: list
+body: "Which distinct culture media are recorded in BacDive for strains belonging to all genera of the green sulfur bacteria family Chlorobiaceae (Chlorobium, Chlorobaculum, Prosthecochloris, Pelodictyon, and Chloroherpeton), and what are those media called in the MediaDive database?"
+
+inspiration_keyword:
+  keyword_id: KW-0077
+  name: Bacteriochlorophyll biosynthesis
+  category: Biological process
+
+togomcp_databases_used:
+  - bacdive
+  - mediadive
+
+verification_score:
+  biological_insight: 2
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 10
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: |
+    Searched PubMed with two queries:
+    (1) "Pfennig medium green sulfur bacteria ingredients composition"
+    (2) "DSMZ medium 29 Chlorobium culture recipe"
+  result: |
+    Both searches returned 0 results. PubMed literature does not list the
+    specific culture media linked to Chlorobiaceae genera in BacDive or
+    their MediaDive counterparts with DSMZ medium numbers.
+  conclusion: PASS (cannot answer from literature; requires current BacDive and MediaDive RDF state)
+
+sparql_queries:
+  - query_number: 1
+    database: bacdive
+    description: |
+      Find all strains of Chlorobiaceae genera (Chlorobium, Chlorobaculum,
+      Prosthecochloris, Pelodictyon, Chloroherpeton) in BacDive and retrieve
+      their culture medium labels and MediaDive links.
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+
+      SELECT DISTINCT ?genus ?strainLabel ?bacDiveID ?mediumLabel ?mediaLink
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        VALUES ?genus {
+          "Chlorobium"
+          "Chlorobaculum"
+          "Prosthecochloris"
+          "Pelodictyon"
+          "Chloroherpeton"
+        }
+        ?strain a schema:Strain ;
+                schema:hasGenus ?genus ;
+                schema:hasBacDiveID ?bacDiveID ;
+                rdfs:label ?strainLabel .
+        ?medium a schema:CultureMedium ;
+                schema:describesStrain ?strain ;
+                rdfs:label ?mediumLabel ;
+                schema:hasMediaLink ?mediaLink .
+        FILTER(CONTAINS(STR(?mediaLink), "mediadive"))
+      }
+      ORDER BY ?genus ?strainLabel
+    result_count: 18
+
+  - query_number: 2
+    database: mediadive
+    description: |
+      Retrieve full labels, pH values, and complexity status for the two
+      MediaDive media identified in Query 1 (DSMZ Medium 29 and Medium 40).
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+
+      SELECT ?medium ?label ?finalPH ?minPH ?maxPH ?isComplex
+      FROM <http://rdfportal.org/dataset/mediadive>
+      WHERE {
+        VALUES ?medium {
+          <https://purl.dsmz.de/mediadive/medium/29>
+          <https://purl.dsmz.de/mediadive/medium/40>
+        }
+        ?medium a schema:CultureMedium ;
+                rdfs:label ?label .
+        OPTIONAL { ?medium schema:hasFinalPH ?finalPH }
+        OPTIONAL { ?medium schema:hasMinPH ?minPH }
+        OPTIONAL { ?medium schema:hasMaxPH ?maxPH }
+        OPTIONAL { ?medium schema:isComplex ?isComplex }
+      }
+    result_count: 2
+
+rdf_triples: |
+  @prefix schema: <https://purl.dsmz.de/schema/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+  <https://purl.dsmz.de/bacdive/strain/2403> a schema:Strain .
+  # Database: BacDive | Query: 1 | Comment: Chlorobium limicola strain 2403 (Chlorobiaceae)
+
+  <https://purl.dsmz.de/bacdive/strain/2403> schema:hasGenus "Chlorobium" .
+  # Database: BacDive | Query: 1 | Comment: Genus classification of the strain
+
+  <https://purl.dsmz.de/bacdive/strain/2403> schema:hasFamily "Chlorobiaceae" .
+  # Database: BacDive | Query: 1 | Comment: Family classification (green sulfur bacteria)
+
+  <https://purl.dsmz.de/bacdive/strain/2395> a schema:Strain .
+  # Database: BacDive | Query: 1 | Comment: Chlorobaculum tepidum strain 2395 (Chlorobiaceae)
+
+  <https://purl.dsmz.de/bacdive/strain/2395> schema:hasGenus "Chlorobaculum" .
+  # Database: BacDive | Query: 1 | Comment: Genus classification of the strain
+
+  <https://purl.dsmz.de/bacdive/medium/29ref> a schema:CultureMedium ;
+    rdfs:label "PFENNIG'S MEDIUM II (modified 1988, for green sulfur bacteria) (DSMZ Medium 29)" .
+  # Database: BacDive | Query: 1 | Comment: CultureMedium entity for DSMZ Medium 29 linked to Chlorobium/Chlorobaculum strains
+
+  <https://purl.dsmz.de/bacdive/medium/40ref> a schema:CultureMedium ;
+    rdfs:label "PFENNIG'S MEDIUM II WITH SALT (DSMZ Medium 40)" .
+  # Database: BacDive | Query: 1 | Comment: CultureMedium entity for DSMZ Medium 40 linked to halophilic Chlorobiaceae strains
+
+  <https://purl.dsmz.de/mediadive/medium/29> a schema:CultureMedium ;
+    rdfs:label "PFENNIG'S MEDIUM II" ;
+    schema:hasFinalPH "6.8-7.1" ;
+    schema:hasMinPH "6.8"^^xsd:float ;
+    schema:hasMaxPH "7.1"^^xsd:float ;
+    schema:isComplex "true"^^xsd:boolean .
+  # Database: MediaDive | Query: 2 | Comment: MediaDive record for DSMZ Medium 29 with pH and complexity
+
+  <https://purl.dsmz.de/mediadive/medium/40> a schema:CultureMedium ;
+    rdfs:label "PFENNIG'S MEDIUM II WITH SALT" ;
+    schema:isComplex "true"^^xsd:boolean .
+  # Database: MediaDive | Query: 2 | Comment: MediaDive record for DSMZ Medium 40 (no pH recorded)
+
+exact_answer:
+  - "PFENNIG'S MEDIUM II (MediaDive:medium/29)"
+  - "PFENNIG'S MEDIUM II WITH SALT (MediaDive:medium/40)"
+
+ideal_answer: |
+  Among the 25 BacDive strains belonging to the five genera of the green sulfur bacteria family Chlorobiaceae (Chlorobium, Chlorobaculum, Prosthecochloris, Pelodictyon, Chloroherpeton), 18 strains have culture medium records linked to MediaDive, and these link to exactly two distinct media: PFENNIG'S MEDIUM II (DSMZ Medium 29, MediaDive medium/29, pH 6.8–7.1) and PFENNIG'S MEDIUM II WITH SALT (DSMZ Medium 40, MediaDive medium/40). Both are complex (undefined) anaerobic media developed by Norbert Pfennig for anoxygenic phototrophic bacteria that synthesize bacteriochlorophylls. Medium 29 (freshwater formulation) is used predominantly for freshwater species such as Chlorobium limicola, Chlorobaculum tepidum, and Chlorobaculum thiosulfatiphilum, while Medium 40 (saline formulation) accommodates marine or halophilic species including Chlorobium luteolum, Chlorobium phaeovibrioides, and Prosthecochloris vibrioformis. Seven Chlorobiaceae strains in BacDive—including all Pelodictyon and Chloroherpeton strains—lack a MediaDive-linked culture medium record.
+
+question_template_used: Template 5 (Bounded Comparison)
+
+time_spent:
+  exploration: 30 minutes
+  formulation: 15 minutes
+  verification: 10 minutes
+  pubmed_test: 10 minutes
+  extraction: 15 minutes
+  documentation: 20 minutes
+  total: 100 minutes

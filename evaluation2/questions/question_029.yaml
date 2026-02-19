@@ -1,0 +1,280 @@
+id: question_029
+type: summary
+body: "Summarize the genomic and clinical variant landscape of the eight human Bardet-Biedl syndrome genes (BBS1, BBS2, BBS4, BBS5, BBS7, BBS9, BBS10, and BBS12) by their chromosomal distribution, total variant burden per gene in ClinVar, and the breakdown of clinical significance categories across all eight genes."
+
+inspiration_keyword:
+  keyword_id: KW-0083
+  name: Bardet-Biedl syndrome
+  category: Disease
+
+togomcp_databases_used:
+  - mesh
+  - ncbigene
+  - clinvar
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 2
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: |
+    Searched PubMed with two queries:
+    (1) "Bardet-Biedl syndrome BBS genes ClinVar variant clinical significance distribution"
+    (2) "Bardet-Biedl syndrome pathogenic variants count BBS1 BBS2 chromosomal distribution"
+    using ncbi_esearch(database=pubmed).
+  result: |
+    Both queries returned 0 results. No literature provides current per-gene
+    variant counts with clinical significance breakdowns across BBS1/2/4/5/7/9/10/12.
+    ClinVar counts change continuously with new submissions and are not
+    captured in static publications.
+  conclusion: PASS (cannot answer from literature - requires current database state)
+
+sparql_queries:
+  - query_number: 1
+    database: mesh
+    description: Get MeSH descriptor, tree numbers, and hierarchical classification for Bardet-Biedl Syndrome (D020788)
+    query: |
+      PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?label ?annotation ?treeNum ?broaderLabel
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        mesh:D020788 rdfs:label ?label .
+        OPTIONAL { mesh:D020788 meshv:annotation ?annotation }
+        OPTIONAL { 
+          mesh:D020788 meshv:treeNumber ?tree .
+          ?tree rdfs:label ?treeNum
+        }
+        OPTIONAL {
+          mesh:D020788 meshv:broaderDescriptor ?broader .
+          ?broader rdfs:label ?broaderLabel
+        }
+      }
+    result_count: 12
+
+  - query_number: 2
+    database: ncbigene
+    description: Find the 8 canonical BBS genes in NCBI Gene with their chromosomal locations (genes with "Bardet-Biedl" in description)
+    query: |
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+
+      SELECT DISTINCT ?gene ?label ?chromosome ?description
+      FROM <http://rdfportal.org/dataset/ncbigene>
+      WHERE {
+        ?gene a insdc:Gene ;
+              rdfs:label ?label ;
+              ncbio:taxid <http://identifiers.org/taxonomy/9606> ;
+              ncbio:typeOfGene "protein-coding" ;
+              dct:description ?description .
+        ?description bif:contains "'Bardet-Biedl'" .
+        OPTIONAL { ?gene insdc:chromosome ?chromosome }
+      }
+      ORDER BY ?label
+    result_count: 8
+
+  - query_number: 3
+    database: clinvar
+    description: Count ClinVar variants per BBS gene grouped by clinical significance (germline)
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+
+      SELECT ?gene_uri ?significance (COUNT(DISTINCT ?variant) AS ?count)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/clinvar> {
+          VALUES ?gene_uri {
+            <http://ncbi.nlm.nih.gov/gene/582>    # BBS1
+            <http://ncbi.nlm.nih.gov/gene/583>    # BBS2
+            <http://ncbi.nlm.nih.gov/gene/585>    # BBS4
+            <http://ncbi.nlm.nih.gov/gene/129880> # BBS5
+            <http://ncbi.nlm.nih.gov/gene/55212>  # BBS7
+            <http://ncbi.nlm.nih.gov/gene/27241>  # BBS9
+            <http://ncbi.nlm.nih.gov/gene/79738>  # BBS10
+            <http://ncbi.nlm.nih.gov/gene/166379> # BBS12
+          }
+          ?gene_bn med2rdf:gene ?gene_uri .
+          ?classrec sio:SIO_000628 ?gene_bn .
+          ?variant a cvo:VariationArchiveType ;
+                   cvo:record_status "current" ;
+                   cvo:classified_record ?classrec .
+          ?classrec cvo:classifications/cvo:germline_classification/cvo:description ?significance .
+        }
+      }
+      GROUP BY ?gene_uri ?significance
+      ORDER BY ?gene_uri ?significance
+    result_count: 62
+
+  - query_number: 4
+    database: clinvar
+    description: Count total distinct ClinVar variants per BBS gene (for arithmetic verification of per-gene sums)
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+
+      SELECT ?gene_uri (COUNT(DISTINCT ?variant) AS ?total_variants)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/clinvar> {
+          VALUES ?gene_uri {
+            <http://ncbi.nlm.nih.gov/gene/582>    
+            <http://ncbi.nlm.nih.gov/gene/583>    
+            <http://ncbi.nlm.nih.gov/gene/585>    
+            <http://ncbi.nlm.nih.gov/gene/129880> 
+            <http://ncbi.nlm.nih.gov/gene/55212>  
+            <http://ncbi.nlm.nih.gov/gene/27241>  
+            <http://ncbi.nlm.nih.gov/gene/79738>  
+            <http://ncbi.nlm.nih.gov/gene/166379> 
+          }
+          ?gene_bn med2rdf:gene ?gene_uri .
+          ?classrec sio:SIO_000628 ?gene_bn .
+          ?variant a cvo:VariationArchiveType ;
+                   cvo:record_status "current" ;
+                   cvo:classified_record ?classrec .
+        }
+      }
+      GROUP BY ?gene_uri
+      ORDER BY ?gene_uri
+    result_count: 8
+
+  - query_number: 5
+    database: clinvar
+    description: Count ClinVar variants by variation type across all 8 BBS genes (structural variant type distribution)
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+
+      SELECT ?var_type (COUNT(DISTINCT ?variant) AS ?count)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/clinvar> {
+          VALUES ?gene_uri {
+            <http://ncbi.nlm.nih.gov/gene/582>    
+            <http://ncbi.nlm.nih.gov/gene/583>    
+            <http://ncbi.nlm.nih.gov/gene/585>    
+            <http://ncbi.nlm.nih.gov/gene/129880> 
+            <http://ncbi.nlm.nih.gov/gene/55212>  
+            <http://ncbi.nlm.nih.gov/gene/27241>  
+            <http://ncbi.nlm.nih.gov/gene/79738>  
+            <http://ncbi.nlm.nih.gov/gene/166379> 
+          }
+          ?gene_bn med2rdf:gene ?gene_uri .
+          ?classrec sio:SIO_000628 ?gene_bn .
+          ?variant a cvo:VariationArchiveType ;
+                   cvo:record_status "current" ;
+                   cvo:variation_type ?var_type ;
+                   cvo:classified_record ?classrec .
+        }
+      }
+      GROUP BY ?var_type
+      ORDER BY DESC(?count)
+    result_count: 11
+
+rdf_triples: |
+  @prefix mesh: <http://id.nlm.nih.gov/mesh/> .
+  @prefix meshv: <http://id.nlm.nih.gov/mesh/vocab#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
+  @prefix ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#> .
+  @prefix dct: <http://purl.org/dc/terms/> .
+  @prefix cvo: <http://purl.jp/bio/10/clinvar/> .
+  @prefix med2rdf: <http://med2rdf.org/ontology/med2rdf#> .
+  @prefix sio: <http://semanticscience.org/resource/> .
+  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+  mesh:D020788 a meshv:TopicalDescriptor .
+  # Database: MeSH | Query: 1 | Comment: Bardet-Biedl Syndrome MeSH descriptor
+
+  mesh:D020788 rdfs:label "Bardet-Biedl Syndrome" .
+  # Database: MeSH | Query: 1 | Comment: Disease label
+
+  mesh:D020788 meshv:treeNumber mesh:C16.131.077.245.125 .
+  # Database: MeSH | Query: 1 | Comment: Tree number - Congenital Hereditary Ciliopathies
+
+  mesh:D020788 meshv:treeNumber mesh:C11.270.684.624 .
+  # Database: MeSH | Query: 1 | Comment: Tree number - Eye Diseases / Retinal Dystrophies
+
+  mesh:D020788 meshv:annotation "note entry term: do not confuse with LAURENCE-MOON SYNDROME" .
+  # Database: MeSH | Query: 1 | Comment: Scope annotation
+
+  <http://identifiers.org/ncbigene/582> a insdc:Gene .
+  # Database: NCBI Gene | Query: 2 | Comment: BBS1 gene entry
+
+  <http://identifiers.org/ncbigene/582> rdfs:label "BBS1" .
+  # Database: NCBI Gene | Query: 2 | Comment: Gene symbol
+
+  <http://identifiers.org/ncbigene/582> insdc:chromosome "11" .
+  # Database: NCBI Gene | Query: 2 | Comment: Chromosomal location of BBS1
+
+  <http://identifiers.org/ncbigene/583> insdc:chromosome "16" .
+  # Database: NCBI Gene | Query: 2 | Comment: Chromosomal location of BBS2
+
+  <http://identifiers.org/ncbigene/585> insdc:chromosome "15" .
+  # Database: NCBI Gene | Query: 2 | Comment: Chromosomal location of BBS4
+
+  <http://identifiers.org/ncbigene/129880> insdc:chromosome "2" .
+  # Database: NCBI Gene | Query: 2 | Comment: Chromosomal location of BBS5
+
+  <http://identifiers.org/ncbigene/55212> insdc:chromosome "4" .
+  # Database: NCBI Gene | Query: 2 | Comment: Chromosomal location of BBS7 (chr4)
+
+  <http://identifiers.org/ncbigene/27241> insdc:chromosome "7" .
+  # Database: NCBI Gene | Query: 2 | Comment: Chromosomal location of BBS9
+
+  <http://identifiers.org/ncbigene/79738> insdc:chromosome "12" .
+  # Database: NCBI Gene | Query: 2 | Comment: Chromosomal location of BBS10
+
+  <http://identifiers.org/ncbigene/166379> insdc:chromosome "4" .
+  # Database: NCBI Gene | Query: 2 | Comment: Chromosomal location of BBS12 (chr4, same as BBS7)
+
+  <http://ncbi.nlm.nih.gov/gene/582> a cvo:Gene .
+  # Database: ClinVar | Query: 3 | Comment: BBS1 gene in ClinVar (gene ID 582)
+
+  <http://ncbi.nlm.nih.gov/gene/582> cvo:symbol "BBS1" .
+  # Database: ClinVar | Query: 3 | Comment: BBS1 symbol, 1193 total ClinVar variants
+
+  <http://ncbi.nlm.nih.gov/gene/583> cvo:symbol "BBS2" .
+  # Database: ClinVar | Query: 3 | Comment: BBS2 symbol, 1258 total ClinVar variants (highest)
+
+  <http://ncbi.nlm.nih.gov/gene/27241> cvo:symbol "BBS9" .
+  # Database: ClinVar | Query: 3 | Comment: BBS9 symbol, 1283 total ClinVar variants (highest)
+
+exact_answer: ""
+
+ideal_answer: |
+  The eight canonical human Bardet-Biedl syndrome genes—BBS1, BBS2, BBS4, BBS5, BBS7, BBS9, BBS10, and BBS12—are distributed across seven distinct autosomes: chromosome 2 (BBS5), chromosome 4 (BBS7 and BBS12), chromosome 7 (BBS9), chromosome 11 (BBS1), chromosome 12 (BBS10), chromosome 15 (BBS4), and chromosome 16 (BBS2), making chromosome 4 the only chromosome harboring two of these genes. In the MeSH hierarchy, Bardet-Biedl syndrome (D020788) is classified simultaneously under congenital and hereditary ciliopathies (tree C16.131.077.245.125 and C16.320.184.125), retinal dystrophies within eye diseases (C11.270.684.624), and hypothalamic diseases (C10.228.140.617.200), reflecting the multi-system pathology of this ciliopathy. Together the eight genes harbor 7,800 distinct current ClinVar variants; BBS9 (1,283 variants) and BBS2 (1,258) carry the heaviest burdens, followed by BBS1 (1,193), BBS10 (1,007), BBS4 (900), BBS12 (868), BBS7 (849), and BBS5 (465, the lightest burden). By variant type, single nucleotide variants overwhelmingly dominate at 6,468 (83%), followed by deletions (666; 8.5%) and duplications (274; 3.5%). For clinical significance across all eight genes, the largest category is likely benign (2,808 variants), followed by variants of uncertain significance at 2,759, while pathogenic, likely pathogenic, and combined pathogenic/likely pathogenic entries total 1,638; 23 variants are counted in two BBS genes simultaneously, reflecting structural variants on chromosome 4 that overlap both BBS7 and BBS12.
+
+arithmetic_verification:
+  method: Post-aggregation verification (Checkpoint B)
+  per_gene_sums_verified:
+    BBS1_gene_582: "sum_by_significance=1193, total_distinct=1193 PASS"
+    BBS2_gene_583: "sum_by_significance=1258, total_distinct=1258 PASS"
+    BBS4_gene_585: "sum_by_significance=900, total_distinct=900 PASS"
+    BBS5_gene_129880: "sum_by_significance=465, total_distinct=465 PASS"
+    BBS7_gene_55212: "sum_by_significance=849, total_distinct=849 PASS"
+    BBS9_gene_27241: "sum_by_significance=1283, total_distinct=1283 PASS"
+    BBS10_gene_79738: "sum_by_significance=1007, total_distinct=1007 PASS"
+    BBS12_gene_166379: "sum_by_significance=868, total_distinct=868 PASS"
+  variant_type_sum: "sum_by_type=7800, total_distinct_variants=7800 PASS"
+  per_gene_total_sum: "7823 (sum across 8 genes) vs 7800 (unique variants)"
+  overlap_explanation: "23 variants are shared between BBS7 and BBS12 (both on chr4); structural variants spanning both loci. Sum > Total is VALID and documented."
+
+question_template_used: Template 4 (Aggregation Statistics)
+
+time_spent:
+  exploration: 30 minutes
+  formulation: 15 minutes
+  verification: 20 minutes
+  pubmed_test: 10 minutes
+  extraction: 25 minutes
+  documentation: 20 minutes
+  total: 120 minutes

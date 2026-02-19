@@ -254,7 +254,7 @@ SELECT DISTINCT ?graph WHERE {
 @mcp.tool(
         enabled=True,
         name="get_MIE_file",
-        description="**Use this before constructing any SPARQL queries for the database.** Get the MIE (Metadata Interoperability Exchange) file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database."
+        description="**At the start of any task, identify ALL databases needed and call this tool for EACH of them before writing any SPARQL queries.** Do not query a database until its MIE file has been read. Get the MIE (Metadata Interoperability Exchange) file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database."
 )
 async def get_MIE_file(
     dbname: Annotated[str, Field(description=DBNAME_DESCRIPTION)]

@@ -1,0 +1,250 @@
+id: question_049
+type: summary
+body: "Summarize the human coenzyme A (CoA) biosynthesis pathway by: the number and enzyme commission classes of its biochemical reactions as curated in Reactome, the number of distinct reviewed human UniProt protein entries annotated with GO biological process 'coenzyme A biosynthetic process' (GO:0015937), the subcellular localizations documented for those proteins, and which of those proteins are registered as ChEMBL drug targets."
+
+inspiration_keyword:
+  keyword_id: KW-0147
+  name: Coenzyme A biosynthesis
+  category: Biological process
+
+togomcp_databases_used:
+  - reactome
+  - uniprot
+  - go
+  - chembl
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 2
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 5 minutes
+  method: Searched "coenzyme A biosynthesis human UniProt proteins subcellular localization enzyme commission" and "CoA biosynthesis enzymes reactions EC class human PANK" using PubMed:search_articles
+  result: |
+    Both searches returned 0 results directly answering the question. The specific
+    combination of CoA pathway reaction count by EC class (as curated in Reactome),
+    distinct protein count (from reviewed UniProt annotated with GO:0015937), subcellular
+    localizations, and ChEMBL drug-target registration status is not retrievable from
+    PubMed literature. Requires current database state.
+  conclusion: PASS (cannot answer from literature - requires current RDF database state)
+
+sparql_queries:
+  - query_number: 1
+    database: reactome
+    description: Get all biochemical reactions and EC numbers in the human CoA biosynthesis pathway (R-HSA-196783, IRI Pathway2251 in biopax/40/48887)
+    query: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+      SELECT ?reaction ?reactionName ?ec
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        <http://www.reactome.org/biopax/40/48887#Pathway2251> bp:pathwayComponent ?reaction .
+        ?reaction a bp:BiochemicalReaction ;
+                  bp:displayName ?reactionName .
+        OPTIONAL { ?reaction bp:eCNumber ?ec }
+      }
+      ORDER BY ?reactionName
+    result_count: 7
+
+  - query_number: 2
+    database: uniprot
+    description: Get all distinct reviewed human protein entries annotated with GO:0015937 (coenzyme A biosynthetic process)
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+
+      SELECT DISTINCT ?mnemonic
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                 up:mnemonic ?mnemonic ;
+                 up:classifiedWith <http://purl.obolibrary.org/obo/GO_0015937> .
+      }
+      ORDER BY ?mnemonic
+    result_count: 10
+
+  - query_number: 3
+    database: uniprot
+    description: Get subcellular localization preferred labels for all 10 CoA biosynthesis proteins
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT DISTINCT ?mnemonic ?locLabel
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                 up:mnemonic ?mnemonic ;
+                 up:classifiedWith <http://purl.obolibrary.org/obo/GO_0015937> ;
+                 up:annotation ?locAnnot .
+        ?locAnnot a up:Subcellular_Location_Annotation ;
+                  up:locatedIn ?locBN .
+        ?locBN up:cellularComponent ?locIri .
+        GRAPH <http://sparql.uniprot.org/locations> {
+          ?locIri skos:prefLabel ?locLabel .
+        }
+      }
+      ORDER BY ?mnemonic
+    result_count: 17
+
+  - query_number: 4
+    database: chembl
+    description: Identify which of the 10 CoA biosynthesis proteins are ChEMBL drug targets, with mechanism of action if available; links via TargetComponent skos:exactMatch to UniProt IRIs
+    query: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT DISTINCT ?target ?targetLabel ?uniprotId ?phase ?drugLabel ?mechanismType
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        VALUES ?uniprotIri {
+          <http://purl.uniprot.org/uniprot/O00154>
+          <http://purl.uniprot.org/uniprot/Q96CD2>
+          <http://purl.uniprot.org/uniprot/Q13057>
+          <http://purl.uniprot.org/uniprot/Q8WVC6>
+          <http://purl.uniprot.org/uniprot/Q8TE04>
+          <http://purl.uniprot.org/uniprot/Q9BZ23>
+          <http://purl.uniprot.org/uniprot/Q9H999>
+          <http://purl.uniprot.org/uniprot/Q9NVE7>
+          <http://purl.uniprot.org/uniprot/Q9HAB8>
+          <http://purl.uniprot.org/uniprot/P24752>
+        }
+        ?targetComp skos:exactMatch ?uniprotIri .
+        ?target cco:hasTargetComponent ?targetComp ;
+                rdfs:label ?targetLabel .
+        BIND(STRAFTER(STR(?uniprotIri), "http://purl.uniprot.org/uniprot/") AS ?uniprotId)
+        OPTIONAL {
+          ?mech a cco:Mechanism ;
+                cco:hasTarget ?target ;
+                cco:mechanismActionType ?mechanismType ;
+                cco:hasMolecule ?drug .
+          ?drug cco:highestDevelopmentPhase ?phase ;
+                rdfs:label ?drugLabel .
+        }
+      }
+      ORDER BY ?uniprotId ?phase
+    result_count: 5
+
+rdf_triples: |
+  @prefix bp: <http://www.biopax.org/release/biopax-level3.owl#> .
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix locations: <http://purl.uniprot.org/locations/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+  @prefix cco: <http://rdf.ebi.ac.uk/terms/chembl#> .
+  @prefix chembl_target: <http://rdf.ebi.ac.uk/resource/chembl/target/> .
+
+  <http://www.reactome.org/biopax/40/48887#Pathway2251> a bp:Pathway ;
+      bp:displayName "Coenzyme A biosynthesis" .
+  # Database: Reactome | Query: 1 | Comment: Human CoA biosynthesis pathway (R-HSA-196783)
+
+  <http://www.reactome.org/biopax/40/48887#BiochemicalReaction12081> a bp:BiochemicalReaction ;
+      bp:displayName "PANK1/3 phosphorylate PanK" ;
+      bp:eCNumber "2.7.1.33"^^xsd:string .
+  # Database: Reactome | Query: 1 | Comment: EC 2 (Transferase) reaction - pantothenate kinase step
+
+  <http://www.reactome.org/biopax/40/48887#BiochemicalReaction12080> a bp:BiochemicalReaction ;
+      bp:displayName "PANK2 phosphorylates PanK" ;
+      bp:eCNumber "2.7.1.33"^^xsd:string .
+  # Database: Reactome | Query: 1 | Comment: EC 2 (Transferase) reaction - PANK2 isoform
+
+  <http://www.reactome.org/biopax/40/48887#BiochemicalReaction12082> a bp:BiochemicalReaction ;
+      bp:displayName "2xPPCS ligates PPanK with Cys" ;
+      bp:eCNumber "6.3.2.5"^^xsd:string .
+  # Database: Reactome | Query: 1 | Comment: EC 6 (Ligase) reaction - phosphopantothenoylcysteine synthetase
+
+  <http://www.reactome.org/biopax/40/48887#BiochemicalReaction12083> a bp:BiochemicalReaction ;
+      bp:displayName "3xPPCDC:3FMN decarboxylates PPC" ;
+      bp:eCNumber "4.1.1.36"^^xsd:string .
+  # Database: Reactome | Query: 1 | Comment: EC 4 (Lyase) reaction - decarboxylase step
+
+  <http://www.reactome.org/biopax/40/48887#BiochemicalReaction12084> a bp:BiochemicalReaction ;
+      bp:displayName "Adenylation of phosphopantetheine" ;
+      bp:eCNumber "2.7.7.3"^^xsd:string .
+  # Database: Reactome | Query: 1 | Comment: EC 2 (Transferase) reaction - phosphopantetheine adenylyltransferase
+
+  <http://www.reactome.org/biopax/40/48887#BiochemicalReaction12085> a bp:BiochemicalReaction ;
+      bp:displayName "COASY phosphorylates DP-CoA" ;
+      bp:eCNumber "2.7.1.24"^^xsd:string .
+  # Database: Reactome | Query: 1 | Comment: EC 2 (Transferase) reaction - dephospho-CoA kinase, COASY isoform
+
+  <http://www.reactome.org/biopax/40/48887#BiochemicalReaction12086> a bp:BiochemicalReaction ;
+      bp:displayName "DCAKD phosphorylates DP-CoA" ;
+      bp:eCNumber "2.7.1.24"^^xsd:string .
+  # Database: Reactome | Query: 1 | Comment: EC 2 (Transferase) reaction - dephospho-CoA kinase, DCAKD isoform
+
+  obo:GO_0015937 a <http://www.w3.org/2002/07/owl#Class> ;
+      rdfs:label "coenzyme A biosynthetic process" .
+  # Database: GO | Query: 2 | Comment: GO biological process term for CoA biosynthesis
+
+  uniprot:Q9BZ23 a up:Protein ;
+      up:mnemonic "PANK2_HUMAN" ;
+      up:reviewed 1 ;
+      up:classifiedWith obo:GO_0015937 .
+  # Database: UniProt | Query: 2 | Comment: PANK2, mitochondrial pantothenate kinase; mutations cause PKAN neurodegeneration
+
+  uniprot:Q13057 a up:Protein ;
+      up:mnemonic "COASY_HUMAN" ;
+      up:reviewed 1 ;
+      up:classifiedWith obo:GO_0015937 .
+  # Database: UniProt | Query: 2 | Comment: COASY, bifunctional CoA synthase (adenylation + phosphorylation)
+
+  uniprot:Q9BZ23 up:annotation [
+      a up:Subcellular_Location_Annotation ;
+      up:locatedIn [ up:cellularComponent <http://purl.uniprot.org/locations/SL-0179> ] ] .
+  # Database: UniProt | Query: 3 | Comment: PANK2 in mitochondrion intermembrane space
+
+  uniprot:Q13057 up:annotation [
+      a up:Subcellular_Location_Annotation ;
+      up:locatedIn [ up:cellularComponent <http://purl.uniprot.org/locations/SL-0173> ] ] .
+  # Database: UniProt | Query: 3 | Comment: COASY in mitochondrion matrix (isoform-specific)
+
+  chembl_target:CHEMBL3407327 a cco:SingleProtein ;
+      rdfs:label "Pantothenate kinase 2, mitochondrial" ;
+      cco:hasTargetComponent [ skos:exactMatch <http://purl.uniprot.org/uniprot/Q9BZ23> ] .
+  # Database: ChEMBL | Query: 4 | Comment: PANK2 registered as ChEMBL drug target (PKAN disease relevance)
+
+  chembl_target:CHEMBL4105867 a cco:SingleProtein ;
+      rdfs:label "Bifunctional coenzyme A synthase" ;
+      cco:hasTargetComponent [ skos:exactMatch <http://purl.uniprot.org/uniprot/Q13057> ] .
+  # Database: ChEMBL | Query: 4 | Comment: COASY registered as ChEMBL drug target
+
+  chembl_target:CHEMBL3407326 a cco:SingleProtein ;
+      rdfs:label "Pantothenate kinase 1" ;
+      cco:hasTargetComponent [ skos:exactMatch <http://purl.uniprot.org/uniprot/Q8TE04> ] .
+  # Database: ChEMBL | Query: 4 | Comment: PANK1 registered as ChEMBL drug target
+
+  chembl_target:CHEMBL3407328 a cco:SingleProtein ;
+      rdfs:label "Pantothenate kinase 3" ;
+      cco:hasTargetComponent [ skos:exactMatch <http://purl.uniprot.org/uniprot/Q9H999> ] .
+  # Database: ChEMBL | Query: 4 | Comment: PANK3 registered as ChEMBL drug target
+
+  chembl_target:CHEMBL2616 a cco:SingleProtein ;
+      rdfs:label "Acetyl-CoA acetyltransferase, mitochondrial" ;
+      cco:hasTargetComponent [ skos:exactMatch <http://purl.uniprot.org/uniprot/P24752> ] .
+  # Database: ChEMBL | Query: 4 | Comment: THIL registered as ChEMBL drug target - no curated mechanism
+
+exact_answer: ""
+
+ideal_answer: "The human coenzyme A (CoA) biosynthesis pathway, as curated in Reactome (R-HSA-196783), contains 7 biochemical reactions spanning 3 enzyme commission classes: 5 transferase reactions (EC 2, including two pantothenate kinase reactions at EC 2.7.1.33, the phosphopantetheine adenylyltransferase reaction at EC 2.7.7.3, and two dephospho-CoA kinase reactions at EC 2.7.1.24 catalysed by COASY and DCAKD isoforms), 1 lyase reaction (EC 4, the phosphopantothenoylcysteine decarboxylase step at EC 4.1.1.36), and 1 ligase reaction (EC 6, the phosphopantothenoylcysteine synthetase step at EC 6.3.2.5). Querying reviewed human UniProt proteins annotated with GO:0015937 ('coenzyme A biosynthetic process') returns 10 distinct entries: BACH_HUMAN (O00154), COAC_HUMAN (Q96CD2), COASY_HUMAN (Q13057), DCAKD_HUMAN (Q8WVC6), PANK1_HUMAN (Q8TE04), PANK2_HUMAN (Q9BZ23), PANK3_HUMAN (Q9H999), PANK4_HUMAN (Q9NVE7), PPCS_HUMAN (Q9HAB8), and THIL_HUMAN (P24752). Among these 10 proteins, 7 have curated subcellular localization annotations in UniProt: the predominant location is the cytoplasm or cytosol (present for BACH, COASY, PANK1, PANK2, PANK3, PANK4), while a secondary mitochondrial distribution is documented for BACH, COASY, PANK2, and THIL; PANK1 and PANK2 are additionally found in the nucleus; and PANK1 has a further vesicular localization (recycling endosomes, clathrin-coated vesicles) consistent with membrane-associated isoforms. Three proteins (COAC, DCAKD, PPCS) lack curated localization records in UniProt. Regarding drug target status, 5 of the 10 proteins are registered in ChEMBL: THIL (CHEMBL2616), COASY (CHEMBL4105867), PANK1 (CHEMBL3407326), PANK2 (CHEMBL3407327), and PANK3 (CHEMBL3407328); none of these currently have curated drug mechanisms of action with approved or late-stage compounds in ChEMBL, reflecting that although PANK2 mutations cause the neurodegenerative disease PKAN (pantothenate kinase-associated neurodegeneration) and pantothenate kinases are explored as anti-cancer targets, no drug has yet reached clinical approval with a ChEMBL-curated mechanism for this pathway."
+
+question_template_used: Template 4 (Aggregation Statistics)
+
+time_spent:
+  exploration: 35 minutes
+  formulation: 15 minutes
+  verification: 25 minutes
+  pubmed_test: 5 minutes
+  extraction: 25 minutes
+  documentation: 20 minutes
+  total: 125 minutes

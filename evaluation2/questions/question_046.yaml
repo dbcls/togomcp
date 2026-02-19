@@ -1,0 +1,184 @@
+id: question_046
+type: yes_no
+body: "Does RNASEH2C, the causal gene for Aicardi-Goutieres syndrome type 3, have at least one pathogenic or likely pathogenic variant classified in genomic variant records?"
+
+inspiration_keyword:
+  keyword_id: KW-0948
+  name: Aicardi-Goutieres syndrome
+  category: Disease
+
+togomcp_databases_used:
+  - mondo
+  - ncbigene
+  - clinvar
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 12
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: |
+    Searched "RNASEH2C pathogenic variants Aicardi-Goutieres syndrome ClinVar" and
+    "RNASEH2C Aicardi-Goutieres syndrome pathogenic variant count" in PubMed.
+  result: |
+    Both PubMed searches returned 0 results. Although RNASEH2C and
+    Aicardi-Goutieres syndrome are described in literature, no publication provides
+    a current enumerated list of pathogenic or likely pathogenic variant
+    classifications for RNASEH2C as recorded in the public genomic variant
+    repository. The exact classification status of specific variants requires
+    direct query of the current database state.
+  conclusion: PASS (cannot answer from literature alone; requires querying current database records)
+
+sparql_queries:
+  - query_number: 1
+    database: mondo
+    description: Retrieve Aicardi-Goutieres syndrome type 3 details and external cross-references to confirm RNASEH2C causal role
+    query: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+
+      SELECT ?label ?mondoId ?definition ?xref
+      FROM <http://rdfportal.org/ontology/mondo>
+      WHERE {
+        obo:MONDO_0012471 rdfs:label ?label ;
+                          oboInOwl:id ?mondoId .
+        OPTIONAL { obo:MONDO_0012471 obo:IAO_0000115 ?definition }
+        OPTIONAL { obo:MONDO_0012471 oboInOwl:hasDbXref ?xref }
+      }
+    result_count: 7
+
+  - query_number: 2
+    database: ncbigene
+    description: Retrieve RNASEH2C gene metadata including chromosomal location and gene type
+    query: |
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+
+      SELECT ?gene ?label ?description ?chromosome ?geneType ?fullName
+      FROM <http://rdfportal.org/dataset/ncbigene>
+      WHERE {
+        VALUES ?gene { <http://identifiers.org/ncbigene/84153> }
+        ?gene rdfs:label ?label ;
+              ncbio:typeOfGene ?geneType .
+        OPTIONAL { ?gene dct:description ?description }
+        OPTIONAL { ?gene insdc:chromosome ?chromosome }
+        OPTIONAL { ?gene ncbio:fullName ?fullName }
+      }
+    result_count: 1
+
+  - query_number: 3
+    database: clinvar
+    description: Count pathogenic or likely pathogenic variants currently recorded for RNASEH2C (NCBI Gene ID 84153)
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+
+      SELECT (COUNT(DISTINCT ?variant) as ?count)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        VALUES ?gene_uri { <http://ncbi.nlm.nih.gov/gene/84153> }
+        ?gene_bn med2rdf:gene ?gene_uri .
+        ?classrec sio:SIO_000628 ?gene_bn ;
+                  cvo:classifications ?classi .
+        ?classi cvo:germline_classification ?germ .
+        ?germ cvo:description ?sig .
+        FILTER(?sig = "Pathogenic" || ?sig = "Likely pathogenic")
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 cvo:classified_record ?classrec .
+      }
+    result_count: 1
+
+  - query_number: 4
+    database: clinvar
+    description: List RNASEH2C-specific P/LP variants linked to Aicardi-Goutieres syndrome via MedGen (C1835916 = AGS type 3)
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+
+      SELECT ?variant ?label ?sig ?medgen_uri
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        VALUES ?gene_uri { <http://ncbi.nlm.nih.gov/gene/84153> }
+        ?gene_bn med2rdf:gene ?gene_uri .
+        ?classrec sio:SIO_000628 ?gene_bn ;
+                  cvo:classifications ?classi .
+        ?classi cvo:germline_classification ?germ .
+        ?germ cvo:description ?sig .
+        FILTER(?sig = "Pathogenic" || ?sig = "Likely pathogenic")
+        ?variant a cvo:VariationArchiveType ;
+                 rdfs:label ?label ;
+                 cvo:record_status "current" ;
+                 cvo:classified_record ?classrec .
+        ?variant med2rdf:disease ?disease .
+        ?disease dct:references ?ref_bn .
+        ?ref_bn rdfs:seeAlso ?medgen_uri .
+        FILTER(CONTAINS(STR(?medgen_uri), "medgen/C1835916"))
+      }
+    result_count: 2
+
+rdf_triples: |
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix oboInOwl: <http://www.geneontology.org/formats/oboInOwl#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix owl: <http://www.w3.org/2002/07/owl#> .
+  @prefix insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
+  @prefix ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#> .
+  @prefix dct: <http://purl.org/dc/terms/> .
+  @prefix cvo: <http://purl.jp/bio/10/clinvar/> .
+  @prefix med2rdf: <http://med2rdf.org/ontology/med2rdf#> .
+  @prefix sio: <http://semanticscience.org/resource/> .
+
+  obo:MONDO_0012471 a owl:Class ;
+    rdfs:label "Aicardi-Goutieres syndrome 3" ;
+    oboInOwl:id "MONDO:0012471" .
+  # Database: MONDO | Query: 1 | Comment: Disease class for AGS type 3, caused by RNASEH2C mutations
+
+  obo:MONDO_0012471 oboInOwl:hasDbXref "OMIM:610329" .
+  # Database: MONDO | Query: 1 | Comment: OMIM cross-reference for AGS type 3
+
+  obo:MONDO_0012471 oboInOwl:hasDbXref "UMLS:C1835916" .
+  # Database: MONDO | Query: 1 | Comment: UMLS/MedGen concept C1835916 for AGS type 3
+
+  <http://identifiers.org/ncbigene/84153> a insdc:Gene ;
+    rdfs:label "RNASEH2C" ;
+    dct:description "ribonuclease H2 subunit C" ;
+    ncbio:typeOfGene "protein-coding" ;
+    insdc:chromosome "11" .
+  # Database: NCBI Gene | Query: 2 | Comment: RNASEH2C gene entry on chromosome 11, protein-coding
+
+  <http://ncbi.nlm.nih.gov/clinvar/variation/1299509> a cvo:VariationArchiveType ;
+    rdfs:label "NM_032193.4(RNASEH2C):c.412C>T (p.Pro138Ser)" ;
+    cvo:record_status "current" .
+  # Database: ClinVar | Query: 4 | Comment: Likely pathogenic RNASEH2C missense variant linked to AGS type 3 (MedGen C1835916)
+
+  <http://ncbi.nlm.nih.gov/clinvar/variation/983437> a cvo:VariationArchiveType ;
+    rdfs:label "NM_032193.4(RNASEH2C):c.450G>T (p.Trp150Cys)" ;
+    cvo:record_status "current" .
+  # Database: ClinVar | Query: 4 | Comment: Likely pathogenic RNASEH2C nonsense variant linked to AGS type 3 (MedGen C1835916)
+
+exact_answer: "yes"
+
+ideal_answer: |
+  RNASEH2C (NCBI Gene ID 84153), located on chromosome 11 and encoding ribonuclease H2 subunit C, is the causal gene for Aicardi-Goutieres syndrome type 3 (MONDO:0012471, OMIM:610329), a severe inherited type I interferonopathy characterized by basal ganglia calcification, leukodystrophy, and cerebrospinal fluid lymphocytosis. ClinVar records 15 current pathogenic or likely pathogenic variant classifications for RNASEH2C, confirming its well-established disease-causative role. At least two RNASEH2C point mutations are specifically linked to Aicardi-Goutieres syndrome type 3 via MedGen concept C1835916: the missense substitution c.412C>T (p.Pro138Ser) and the missense c.450G>T (p.Trp150Cys), both classified as likely pathogenic. Additional pathogenic entries encompass large chromosomal deletions in the 11q13 region that encompass the RNASEH2C locus. These pathogenic variants impair the RNase H2 trimeric complex, which normally degrades RNA within RNA:DNA hybrids; loss of RNASEH2C function leads to accumulation of immunostimulatory ribonucleotides and nucleic acid substrates, triggering the constitutive type I interferon response that underlies the neuroinflammatory pathology of AGS type 3.
+
+question_template_used: Template 7 (Yes/No Existence)
+
+time_spent:
+  exploration: 30 minutes
+  formulation: 15 minutes
+  verification: 20 minutes
+  pubmed_test: 10 minutes
+  extraction: 20 minutes
+  documentation: 25 minutes
+  total: 120 minutes

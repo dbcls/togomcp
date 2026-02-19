@@ -1,0 +1,129 @@
+id: question_042
+type: yes_no
+body: "Is Leigh syndrome classified as a designated intractable disease with an official notification number in the Japanese national rare disease classification system, and does it have an associated OMIM entry in medical genetics databases?"
+
+inspiration_keyword:
+  keyword_id: KW-0431
+  name: Leigh syndrome
+  category: Disease
+
+togomcp_databases_used:
+  - nando
+  - medgen
+
+verification_score:
+  biological_insight: 2
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 10
+  passed: true
+
+pubmed_test:
+  time_spent: 5 minutes
+  method: |
+    Searched PubMed for "Leigh syndrome NANDO Japan intractable disease notification number"
+    and "Leigh syndrome Japan designated intractable disease classification 256000".
+  result: |
+    Both queries returned 0 results. PubMed literature confirms Leigh syndrome as a rare 
+    mitochondrial disease, but provides no information about Japanese government notification 
+    numbers (specific NANDO classification) or direct OMIM cross-references from medical 
+    genetics RDF databases. The Japanese intractable disease designation (notification number) 
+    is registry-specific information not accessible through PubMed searches.
+  conclusion: PASS (cannot answer from literature; NANDO designation and MedGen OMIM cross-reference require database-specific RDF queries)
+
+sparql_queries:
+  - query_number: 1
+    database: nando
+    description: Search for Leigh syndrome in NANDO by label and check if it has an official notification number (designated intractable disease status)
+    query: |
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+      PREFIX dct: <http://purl.org/dc/terms/>
+
+      SELECT ?disease ?identifier ?en_label ?notif_num
+      FROM <http://nanbyodata.jp/ontology/nando>
+      WHERE {
+        ?disease a owl:Class ;
+                 rdfs:label ?en_label ;
+                 dct:identifier ?identifier .
+        OPTIONAL { ?disease nando:hasNotificationNumber ?notif_num }
+        FILTER(LANG(?en_label) = "en")
+        ?en_label bif:contains "'Leigh' AND 'syndrome'" option (score ?sc)
+      }
+      ORDER BY DESC(?sc)
+      LIMIT 5
+    result_count: 1
+
+  - query_number: 2
+    database: medgen
+    description: Search for Leigh syndrome in MedGen by label and retrieve OMIM cross-references from mgconso blank nodes
+    query: |
+      PREFIX mo: <http://med2rdf/ontology/medgen#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+
+      SELECT DISTINCT ?identifier ?label ?external_ref
+      FROM <http://rdfportal.org/dataset/medgen>
+      WHERE {
+        ?concept a mo:ConceptID ;
+                 rdfs:label ?label ;
+                 dct:identifier ?identifier ;
+                 mo:mgconso ?bn .
+        ?bn rdfs:seeAlso ?external_ref .
+        FILTER(STRSTARTS(STR(?external_ref), "http://identifiers.org/mim/"))
+        ?label bif:contains "'Leigh syndrome'" option (score ?sc)
+      }
+      ORDER BY DESC(?sc)
+      LIMIT 5
+    result_count: 5
+
+rdf_triples: |
+  @prefix nando: <http://nanbyodata.jp/ontology/NANDO_> .
+  @prefix owl: <http://www.w3.org/2002/07/owl#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix dct: <http://purl.org/dc/terms/> .
+  @prefix mo: <http://med2rdf/ontology/medgen#> .
+  @prefix mim: <http://identifiers.org/mim/> .
+
+  nando:2200527 a owl:Class .
+  # Database: NANDO | Query: 1 | Comment: Leigh syndrome disease class in NANDO ontology
+
+  nando:2200527 dct:identifier "NANDO:2200527" .
+  # Database: NANDO | Query: 1 | Comment: Unique NANDO identifier for Leigh syndrome
+
+  nando:2200527 rdfs:label "Leigh syndrome"@en .
+  # Database: NANDO | Query: 1 | Comment: English label confirming disease identity
+
+  nando:2200527 nando:hasNotificationNumber "92" .
+  # Database: NANDO | Query: 1 | Comment: Official Japanese government notification number 92, designating Leigh syndrome as a notifiable intractable disease
+
+  <http://www.ncbi.nlm.nih.gov/medgen/C2931891> a mo:ConceptID .
+  # Database: MedGen | Query: 2 | Comment: Leigh syndrome concept in MedGen (CUI C2931891)
+
+  <http://www.ncbi.nlm.nih.gov/medgen/C2931891> dct:identifier "C2931891" .
+  # Database: MedGen | Query: 2 | Comment: MedGen CUI for canonical Leigh syndrome
+
+  <http://www.ncbi.nlm.nih.gov/medgen/C2931891> rdfs:label "Leigh syndrome" .
+  # Database: MedGen | Query: 2 | Comment: Label of the canonical Leigh syndrome concept
+
+  <http://www.ncbi.nlm.nih.gov/medgen/C2931891> mo:mgconso _:bn1 .
+  _:bn1 rdfs:seeAlso mim:256000 .
+  # Database: MedGen | Query: 2 | Comment: OMIM cross-reference to OMIM:256000 via mgconso blank node
+
+exact_answer: "yes"
+
+ideal_answer: |
+  Leigh syndrome is both classified as a designated intractable disease in the Japanese national rare disease classification system (NANDO: Nanbyodata Disease Ontology) with official notification number 92, and it has an OMIM cross-reference (OMIM:256000) documented in MedGen (CUI C2931891). Leigh syndrome is a rare, progressive mitochondrial encephalomyopathy characterized by subacute necrotizing lesions in the brainstem and basal ganglia, caused by defects in mitochondrial oxidative phosphorylation. Japan's Ministry of Health, Labour and Welfare designates it as a notifiable intractable disease eligible for government support programs, reflecting its severity and lack of curative treatment. The NANDO entry (NANDO:2200527) links to MONDO:0009723 for international harmonization, while the MedGen concept links to OMIM:256000, which catalogues the genetic heterogeneity of Leigh syndrome across multiple causal genes. These dual designations in national and international registries illustrate how rare mitochondrial diseases are tracked across regulatory and scientific classification systems.
+
+question_template_used: Template 7 (Yes/No Existence)
+
+time_spent:
+  exploration: 20 minutes
+  formulation: 10 minutes
+  verification: 15 minutes
+  pubmed_test: 5 minutes
+  extraction: 10 minutes
+  documentation: 15 minutes
+  total: 75 minutes

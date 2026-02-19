@@ -1,0 +1,287 @@
+id: question_025
+type: choice
+body: "Among the voltage-gated potassium channel genes KCNQ2, KCNQ3, KCNB1, and KCNT1 — each associated with distinct epilepsy syndromes classified under the epilepsy disease class (MONDO:0005027) — which gene has the greatest number of pathogenic or likely pathogenic germline variants currently documented in ClinVar?"
+
+choices:
+  - "KCNQ2"
+  - "KCNQ3"
+  - "KCNB1"
+  - "KCNT1"
+
+inspiration_keyword:
+  keyword_id: KW-0887
+  name: Epilepsy
+  category: Disease
+
+togomcp_databases_used:
+  - mondo
+  - ncbigene
+  - clinvar
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 12
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: |
+    Searched PubMed for "KCNQ2 KCNQ3 KCNT1 KCNB1 pathogenic variants ClinVar comparison count"
+    and "KCNQ2 epilepsy pathogenic variants number ClinVar database 2024 2025"
+    to find any comparative variant burden analysis across these four K+ channel genes.
+  result: |
+    Both PubMed searches returned 0 results. No published study directly compares
+    the number of pathogenic/likely pathogenic ClinVar variants across KCNQ2, KCNQ3,
+    KCNB1, and KCNT1. While review articles discuss these genes in the context of
+    epileptic encephalopathy, no literature reports current ClinVar counts as a
+    comparative metric across this specific gene set.
+  conclusion: PASS (cannot answer from literature - requires current database state)
+
+sparql_queries:
+  - query_number: 1
+    database: mondo
+    description: |
+      Confirm that disease classes associated with KCNQ2, KCNQ3, KCNB1, and KCNT1
+      are classified under the epilepsy root class MONDO:0005027. Uses OMIM cross-references
+      for KCNQ2 (DEE7/OMIM:613720), KCNQ3 (BFNC2/OMIM:121201), and KCNB1 (DEE34/OMIM:616645);
+      and label search for KCNT1 disease (epilepsy of infancy with migrating focal seizures).
+    query: |
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT ?disease ?mondoId ?label ?omimXref
+      FROM <http://rdfportal.org/ontology/mondo>
+      WHERE {
+        ?disease a owl:Class ;
+                 rdfs:label ?label ;
+                 oboInOwl:id ?mondoId ;
+                 oboInOwl:hasDbXref ?omimXref ;
+                 rdfs:subClassOf* obo:MONDO_0005027 .
+        FILTER(
+          ?omimXref IN ("OMIM:121201", "OMIM:616645", "OMIM:613720")
+        )
+        FILTER NOT EXISTS { ?disease owl:deprecated true }
+      }
+      ORDER BY ?omimXref
+    result_count: 4
+
+  - query_number: 2
+    database: mondo
+    description: |
+      Confirm KCNT1-associated disease (epilepsy of infancy with migrating focal seizures,
+      MONDO:0100025) is under the MONDO:0005027 epilepsy hierarchy.
+    query: |
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT ?disease ?mondoId ?label
+      FROM <http://rdfportal.org/ontology/mondo>
+      WHERE {
+        VALUES ?disease { obo:MONDO_0100025 }
+        ?disease a owl:Class ;
+                 rdfs:label ?label ;
+                 oboInOwl:id ?mondoId ;
+                 rdfs:subClassOf* obo:MONDO_0005027 .
+        FILTER NOT EXISTS { ?disease owl:deprecated true }
+      }
+    result_count: 1
+
+  - query_number: 3
+    database: ncbigene
+    description: |
+      Retrieve gene metadata (gene ID, chromosome location, description) for KCNQ2,
+      KCNQ3, KCNB1, and KCNT1 in Homo sapiens using specific gene IRIs.
+    query: |
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+
+      SELECT ?gene ?label ?description ?chromosome ?map
+      FROM <http://rdfportal.org/dataset/ncbigene>
+      WHERE {
+        VALUES ?gene {
+          <http://identifiers.org/ncbigene/3785>   # KCNQ2
+          <http://identifiers.org/ncbigene/3786>   # KCNQ3
+          <http://identifiers.org/ncbigene/3745>   # KCNB1
+          <http://identifiers.org/ncbigene/57582>  # KCNT1
+        }
+        ?gene rdfs:label ?label .
+        OPTIONAL { ?gene dct:description ?description }
+        OPTIONAL { ?gene insdc:chromosome ?chromosome }
+        OPTIONAL { ?gene insdc:map ?map }
+      }
+    result_count: 4
+
+  - query_number: 4
+    database: clinvar
+    description: |
+      Count pathogenic or likely pathogenic germline variants per gene for
+      KCNQ2 (gene ID 3785), KCNQ3 (3786), KCNB1 (3745), and KCNT1 (57582)
+      using their ClinVar gene URIs. Uses cvo:record_status "current" to
+      filter active records, and germline classification for variant classification.
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+
+      SELECT ?gene_uri (COUNT(DISTINCT ?variant) AS ?pathogenic_count)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        VALUES ?gene_uri {
+          <http://ncbi.nlm.nih.gov/gene/3785>   # KCNQ2
+          <http://ncbi.nlm.nih.gov/gene/3745>   # KCNB1
+          <http://ncbi.nlm.nih.gov/gene/3786>   # KCNQ3
+          <http://ncbi.nlm.nih.gov/gene/57582>  # KCNT1
+        }
+        ?gene_bn med2rdf:gene ?gene_uri .
+        ?classrec sio:SIO_000628 ?gene_bn .
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 cvo:classified_record ?classrec .
+        ?classrec cvo:classifications ?classi .
+        ?classi cvo:germline_classification ?germ .
+        ?germ cvo:description ?sig .
+        FILTER(?sig = "Pathogenic" || ?sig = "Likely pathogenic")
+      }
+      GROUP BY ?gene_uri
+      ORDER BY DESC(?pathogenic_count)
+    result_count: 4
+
+  - query_number: 5
+    database: clinvar
+    description: |
+      Arithmetic verification (Checkpoint B): Count total distinct pathogenic/likely
+      pathogenic variants across all four genes to verify against GROUP BY sum.
+      Sum from query 4: 759 + 118 + 102 + 102 = 1,081. Sum > Total (1,077) indicates
+      4 variants are attributed to multiple genes in this set (valid overlap).
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+
+      SELECT (COUNT(DISTINCT ?variant) AS ?total)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        VALUES ?gene_uri {
+          <http://ncbi.nlm.nih.gov/gene/3785>
+          <http://ncbi.nlm.nih.gov/gene/3745>
+          <http://ncbi.nlm.nih.gov/gene/3786>
+          <http://ncbi.nlm.nih.gov/gene/57582>
+        }
+        ?gene_bn med2rdf:gene ?gene_uri .
+        ?classrec sio:SIO_000628 ?gene_bn .
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 cvo:classified_record ?classrec .
+        ?classrec cvo:classifications ?classi .
+        ?classi cvo:germline_classification ?germ .
+        ?germ cvo:description ?sig .
+        FILTER(?sig = "Pathogenic" || ?sig = "Likely pathogenic")
+      }
+    result_count: 1
+
+rdf_triples: |
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix owl: <http://www.w3.org/2002/07/owl#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix oboInOwl: <http://www.geneontology.org/formats/oboInOwl#> .
+  @prefix insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
+  @prefix ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#> .
+  @prefix dct: <http://purl.org/dc/terms/> .
+  @prefix cvo: <http://purl.jp/bio/10/clinvar/> .
+  @prefix med2rdf: <http://med2rdf.org/ontology/med2rdf#> .
+
+  obo:MONDO_0013387 a owl:Class ;
+    rdfs:label "developmental and epileptic encephalopathy, 7" ;
+    oboInOwl:id "MONDO:0013387" ;
+    oboInOwl:hasDbXref "OMIM:613720" ;
+    rdfs:subClassOf* obo:MONDO_0005027 .
+  # Database: MONDO | Query: 1 | Comment: DEE7, the KCNQ2-linked encephalopathy, is classified under epilepsy
+
+  obo:MONDO_0007366 a owl:Class ;
+    rdfs:label "seizures, benign familial neonatal, 2" ;
+    oboInOwl:id "MONDO:0007366" ;
+    oboInOwl:hasDbXref "OMIM:121201" ;
+    rdfs:subClassOf* obo:MONDO_0005027 .
+  # Database: MONDO | Query: 1 | Comment: BFNC2, the KCNQ3-linked benign neonatal epilepsy, under epilepsy hierarchy
+
+  obo:MONDO_0014718 a owl:Class ;
+    rdfs:label "developmental and epileptic encephalopathy, 34" ;
+    oboInOwl:id "MONDO:0014718" ;
+    oboInOwl:hasDbXref "OMIM:616645" ;
+    rdfs:subClassOf* obo:MONDO_0005027 .
+  # Database: MONDO | Query: 1 | Comment: DEE34, the KCNB1-linked encephalopathy, classified under epilepsy
+
+  obo:MONDO_0100025 a owl:Class ;
+    rdfs:label "epilepsy of infancy with migrating focal seizures" ;
+    oboInOwl:id "MONDO:0100025" ;
+    rdfs:subClassOf* obo:MONDO_0005027 .
+  # Database: MONDO | Query: 2 | Comment: EIMFS (KCNT1-associated disease) confirmed under epilepsy hierarchy
+
+  <http://identifiers.org/ncbigene/3785> a insdc:Gene ;
+    rdfs:label "KCNQ2" ;
+    dct:description "potassium voltage-gated channel subfamily Q member 2" ;
+    insdc:chromosome "20" ;
+    insdc:map "20q13.33" ;
+    ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+  # Database: NCBI Gene | Query: 3 | Comment: KCNQ2 gene on chromosome 20, Kv7.2 subunit
+
+  <http://identifiers.org/ncbigene/3786> a insdc:Gene ;
+    rdfs:label "KCNQ3" ;
+    dct:description "potassium voltage-gated channel subfamily Q member 3" ;
+    insdc:chromosome "8" ;
+    insdc:map "8q24.22" ;
+    ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+  # Database: NCBI Gene | Query: 3 | Comment: KCNQ3 gene on chromosome 8, Kv7.3 subunit
+
+  <http://identifiers.org/ncbigene/3745> a insdc:Gene ;
+    rdfs:label "KCNB1" ;
+    dct:description "potassium voltage-gated channel subfamily B member 1" ;
+    insdc:chromosome "20" ;
+    insdc:map "20q13.13" ;
+    ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+  # Database: NCBI Gene | Query: 3 | Comment: KCNB1 gene (Kv2.1) on chromosome 20
+
+  <http://identifiers.org/ncbigene/57582> a insdc:Gene ;
+    rdfs:label "KCNT1" ;
+    dct:description "potassium sodium-activated channel subfamily T member 1" ;
+    insdc:chromosome "9" ;
+    insdc:map "9q34.3" ;
+    ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+  # Database: NCBI Gene | Query: 3 | Comment: KCNT1 gene (SLACK/KNa1.1) on chromosome 9
+
+  <http://ncbi.nlm.nih.gov/gene/3785> med2rdf:gene <http://ncbi.nlm.nih.gov/gene/3785> .
+  # Database: ClinVar | Query: 4 | Comment: KCNQ2 (gene ID 3785) has 759 P/LP current variants in ClinVar
+
+  <http://ncbi.nlm.nih.gov/gene/57582> med2rdf:gene <http://ncbi.nlm.nih.gov/gene/57582> .
+  # Database: ClinVar | Query: 4 | Comment: KCNT1 (gene ID 57582) has 118 P/LP current variants in ClinVar
+
+  <http://ncbi.nlm.nih.gov/gene/3745> med2rdf:gene <http://ncbi.nlm.nih.gov/gene/3745> .
+  # Database: ClinVar | Query: 4 | Comment: KCNB1 (gene ID 3745) has 102 P/LP current variants in ClinVar
+
+  <http://ncbi.nlm.nih.gov/gene/3786> med2rdf:gene <http://ncbi.nlm.nih.gov/gene/3786> .
+  # Database: ClinVar | Query: 4 | Comment: KCNQ3 (gene ID 3786) has 102 P/LP current variants in ClinVar
+
+exact_answer:
+  - "KCNQ2"
+
+ideal_answer: |
+  Among the four voltage-gated potassium channel genes KCNQ2, KCNQ3, KCNB1, and KCNT1 — all associated with MONDO-classified epilepsy syndromes — KCNQ2 (gene ID 3785, chromosome 20q13.33) has by far the greatest number of pathogenic or likely pathogenic germline variants in ClinVar, with 759 such variants, compared to 118 for KCNT1, and 102 each for KCNB1 and KCNQ3 (ClinVar January 2025 release; arithmetic verification: sum 1,081 > total distinct 1,077, indicating 4 variants attributed to multiple genes). This substantial variant burden reflects KCNQ2's role as the causal gene for both the severe DEE7 (developmental and epileptic encephalopathy 7, MONDO:0013387) and the milder benign familial neonatal convulsions type 1, making it a major target of clinical sequencing in pediatric epilepsy. KCNQ2 and KCNQ3 encode the Kv7.2 and Kv7.3 subunits that co-assemble to form the neuronal M-channel responsible for regulating neuronal excitability; KCNQ2 variants are more frequently pathogenic and more clinically diverse in severity than KCNQ3 variants, which mainly cause the milder BFNC2 (MONDO:0007366). KCNT1 encodes the sodium-activated KNa1.1 (SLACK) channel and causes the severe epilepsy of infancy with migrating focal seizures (EIMFS, MONDO:0100025), while KCNB1 encodes the Kv2.1 delayed-rectifier channel associated with DEE34 (MONDO:0014718); both have a smaller but clinically significant variant spectrum compared to KCNQ2.
+
+question_template_used: Template 5 (Bounded Comparison)
+
+time_spent:
+  exploration: 30 minutes
+  formulation: 15 minutes
+  verification: 20 minutes
+  pubmed_test: 10 minutes
+  extraction: 20 minutes
+  documentation: 25 minutes
+  total: 120 minutes

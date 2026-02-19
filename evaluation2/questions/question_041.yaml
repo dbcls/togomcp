@@ -1,0 +1,216 @@
+id: question_041
+type: choice
+body: "Among Cyclooxygenase-1, Cyclooxygenase-2, Prostaglandin E synthase, and Hematopoietic
+  prostaglandin D synthase — four enzymes that catalyse sequential steps in the prostaglandin
+  biosynthesis pathway — which has the greatest number of documented bioactivity records?"
+
+choices:
+  - "Cyclooxygenase-1"
+  - "Cyclooxygenase-2"
+  - "Prostaglandin E synthase"
+  - "Hematopoietic prostaglandin D synthase"
+
+inspiration_keyword:
+  keyword_id: KW-0643
+  name: Prostaglandin biosynthesis
+  category: Biological process
+
+togomcp_databases_used:
+  - rhea
+  - chembl
+
+verification_score:
+  biological_insight: 3
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 5 minutes
+  method: >
+    Searched PubMed for 'cyclooxygenase COX-1 COX-2 prostaglandin E synthase
+    bioactivity records comparison ChEMBL' and 'PTGS2 PTGS1 PTGES drug target
+    bioactivity database pharmacology count'. Both searches returned 0 results.
+    Literature discusses COX selectivity and NSAIDs extensively but never
+    enumerates and compares the ChEMBL bioactivity record counts for these
+    four specific enzyme targets.
+  result: |
+    0 results for either search. The precise counts of ChEMBL bioactivity records
+    per target (COX-2: 14,150; COX-1: 9,299; PTGES: 3,085; HPGDS: 658) and their
+    comparison cannot be found in the biomedical literature. Such counts depend
+    entirely on the current database state.
+  conclusion: PASS (cannot answer from literature - requires current ChEMBL database state)
+
+sparql_queries:
+  - query_number: 1
+    database: rhea
+    description: >
+      Verify that all four enzymes are represented in the prostaglandin
+      biosynthesis pathway via their approved Rhea reactions, using EC number
+      IRIs: 1.14.99.1 (cyclooxygenase, COX-1/COX-2), 5.3.99.3
+      (prostaglandin-E synthase), and 5.3.99.2 (hematopoietic
+      prostaglandin-D synthase).
+    query: |
+      PREFIX rhea: <http://rdf.rhea-db.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?reaction ?equation ?ec
+      WHERE {
+        VALUES ?ec {
+          <http://purl.uniprot.org/enzyme/1.14.99.1>
+          <http://purl.uniprot.org/enzyme/5.3.99.3>
+          <http://purl.uniprot.org/enzyme/5.3.99.2>
+        }
+        ?reaction rdfs:subClassOf rhea:Reaction ;
+                  rhea:equation ?equation ;
+                  rhea:status <http://rdf.rhea-db.org/Approved> ;
+                  rhea:ec ?ec .
+      }
+      ORDER BY ?ec
+    result_count: 3
+
+  - query_number: 2
+    database: chembl
+    description: >
+      Identify the ChEMBL target IRIs for the four enzymes via UniProt
+      cross-references (PTGS1 P23219, PTGS2 P35354, PTGES O14684,
+      HPGDS O60760), confirming CHEMBL221 (COX-1), CHEMBL230 (COX-2),
+      CHEMBL5658 (Prostaglandin E synthase), and CHEMBL5879 (HPGDS).
+    query: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT ?target ?label ?chemblId
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        ?target a cco:SingleProtein ;
+                rdfs:label ?label ;
+                cco:chemblId ?chemblId ;
+                cco:hasTargetComponent ?tc .
+        ?tc skos:exactMatch ?uniprot .
+        FILTER(?uniprot IN (
+          <http://purl.uniprot.org/uniprot/P23219>,
+          <http://purl.uniprot.org/uniprot/P35354>,
+          <http://purl.uniprot.org/uniprot/O14684>,
+          <http://purl.uniprot.org/uniprot/O60760>
+        ))
+      }
+    result_count: 4
+
+  - query_number: 3
+    database: chembl
+    description: >
+      Count the number of distinct bioactivity records for each of the four
+      enzyme targets using their specific ChEMBL IRIs.
+    query: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?label ?chemblId (COUNT(DISTINCT ?activity) AS ?activityCount)
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        VALUES ?target {
+          <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL221>
+          <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL230>
+          <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL5658>
+          <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL5879>
+        }
+        ?target rdfs:label ?label ;
+                cco:chemblId ?chemblId .
+        ?activity a cco:Activity ;
+                  cco:hasAssay/cco:hasTarget ?target .
+      }
+      GROUP BY ?label ?chemblId
+      ORDER BY DESC(?activityCount)
+    result_count: 4
+
+rdf_triples: |
+  @prefix rhea: <http://rdf.rhea-db.org/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix cco: <http://rdf.ebi.ac.uk/terms/chembl#> .
+  @prefix chembl_target: <http://rdf.ebi.ac.uk/resource/chembl/target/> .
+  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+  @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
+
+  <http://rdf.rhea-db.org/23728> rdfs:subClassOf rhea:Reaction .
+  # Database: Rhea | Query: 1 | Comment: RHEA:23728 - arachidonate + AH2 + 2 O2 = prostaglandin H2 + A + H2O
+
+  <http://rdf.rhea-db.org/23728> <http://rdf.rhea-db.org/ec> <http://purl.uniprot.org/enzyme/1.14.99.1> .
+  # Database: Rhea | Query: 1 | Comment: EC 1.14.99.1 - prostaglandin-endoperoxide synthase (COX-1 and COX-2)
+
+  <http://rdf.rhea-db.org/12893> rdfs:subClassOf rhea:Reaction .
+  # Database: Rhea | Query: 1 | Comment: RHEA:12893 - prostaglandin H2 = prostaglandin E2
+
+  <http://rdf.rhea-db.org/12893> <http://rdf.rhea-db.org/ec> <http://purl.uniprot.org/enzyme/5.3.99.3> .
+  # Database: Rhea | Query: 1 | Comment: EC 5.3.99.3 - prostaglandin-E synthase (PTGES/mPGES-1)
+
+  <http://rdf.rhea-db.org/10600> rdfs:subClassOf rhea:Reaction .
+  # Database: Rhea | Query: 1 | Comment: RHEA:10600 - prostaglandin H2 = prostaglandin D2
+
+  <http://rdf.rhea-db.org/10600> <http://rdf.rhea-db.org/ec> <http://purl.uniprot.org/enzyme/5.3.99.2> .
+  # Database: Rhea | Query: 1 | Comment: EC 5.3.99.2 - hematopoietic prostaglandin-D synthase (HPGDS)
+
+  chembl_target:CHEMBL230 a cco:SingleProtein .
+  # Database: ChEMBL | Query: 2 | Comment: Cyclooxygenase-2 (human PTGS2, UniProt P35354)
+
+  chembl_target:CHEMBL230 skos:exactMatch uniprot:P35354 .
+  # Database: ChEMBL | Query: 2 | Comment: UniProt cross-reference for COX-2 target component
+
+  chembl_target:CHEMBL221 a cco:SingleProtein .
+  # Database: ChEMBL | Query: 2 | Comment: Cyclooxygenase-1 (human PTGS1, UniProt P23219)
+
+  chembl_target:CHEMBL221 skos:exactMatch uniprot:P23219 .
+  # Database: ChEMBL | Query: 2 | Comment: UniProt cross-reference for COX-1 target component
+
+  chembl_target:CHEMBL5658 a cco:SingleProtein .
+  # Database: ChEMBL | Query: 2 | Comment: Prostaglandin E synthase (human PTGES, UniProt O14684)
+
+  chembl_target:CHEMBL5879 a cco:SingleProtein .
+  # Database: ChEMBL | Query: 2 | Comment: Hematopoietic prostaglandin D synthase (human HPGDS, UniProt O60760)
+
+  chembl_target:CHEMBL230 <http://rdf.ebi.ac.uk/terms/chembl#activityCount> "14150" .
+  # Database: ChEMBL | Query: 3 | Comment: COX-2 bioactivity record count - highest among the four
+
+  chembl_target:CHEMBL221 <http://rdf.ebi.ac.uk/terms/chembl#activityCount> "9299" .
+  # Database: ChEMBL | Query: 3 | Comment: COX-1 bioactivity record count
+
+  chembl_target:CHEMBL5658 <http://rdf.ebi.ac.uk/terms/chembl#activityCount> "3085" .
+  # Database: ChEMBL | Query: 3 | Comment: Prostaglandin E synthase bioactivity record count
+
+  chembl_target:CHEMBL5879 <http://rdf.ebi.ac.uk/terms/chembl#activityCount> "658" .
+  # Database: ChEMBL | Query: 3 | Comment: Hematopoietic prostaglandin D synthase bioactivity record count
+
+exact_answer:
+  - "Cyclooxygenase-2"
+
+ideal_answer: |
+  Cyclooxygenase-2 (COX-2, PTGS2, CHEMBL230) has the greatest number of bioactivity records
+  with 14,150, followed by Cyclooxygenase-1 (COX-1, PTGS1, CHEMBL221) with 9,299, Prostaglandin
+  E synthase (mPGES-1, PTGES, CHEMBL5658) with 3,085, and Hematopoietic prostaglandin D
+  synthase (HPGDS, CHEMBL5879) with only 658. The four enzymes catalyse sequential steps
+  confirmed in Rhea: COX-1 and COX-2 share EC 1.14.99.1 and convert arachidonate to
+  prostaglandin H2 (RHEA:23728); HPGDS (EC 5.3.99.2) and PTGES (EC 5.3.99.3) branch
+  PGH2 toward PGD2 (RHEA:10600) and PGE2 (RHEA:12893) respectively. The dominance of
+  COX-2 in ChEMBL reflects its status as the primary NSAID selectivity target: the
+  observation that selective COX-2 inhibitors (celecoxib, rofecoxib, etoricoxib) spare
+  gastric COX-1 drove two decades of drug discovery that generated the largest body of
+  structure-activity data for any single prostaglandin biosynthesis enzyme. COX-1 ranks
+  second because most non-selective NSAIDs (ibuprofen, naproxen, indomethacin) were
+  characterised against both isoforms. mPGES-1 has attracted strong research interest as
+  a downstream target with fewer GI liabilities, but the field is younger, while HPGDS
+  — primarily implicated in prostaglandin D2-driven allergic inflammation — has a much
+  narrower inhibitor program reflected in its smaller ChEMBL footprint.
+
+question_template_used: Template 5 (Bounded Comparison)
+
+time_spent:
+  exploration: 20 minutes
+  formulation: 10 minutes
+  verification: 15 minutes
+  pubmed_test: 5 minutes
+  extraction: 15 minutes
+  documentation: 20 minutes
+  total: 85 minutes
