@@ -57,69 +57,7 @@ async def get_sparql_endpoints() -> Dict[str, Any]:
         }
     }
 
-@mcp.tool(enabled=False)
-async def get_void(
-    graph_uri: Annotated[str,Field(description="Graph URI to explore. Use `get_graph_list` to get appropriate graph URI.")]
-) -> list:
-    """ Get VoID data for the given graph URI.
-    Args:
-        graph_uri (str): Graph URI to explore. Use `get_graph_list` to get appropriate graph URI.
-    Returns:
-        str: A JSON-formatted string containing the VoID data.
-    """
-    toolcall_log("get_void")
-    query=f"""
-PREFIX void: <http://rdfs.org/ns/void#>
-PREFIX sd: <http://www.w3.org/ns/sparql-service-description#>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-SELECT DISTINCT ?total_count ?class_count ?property_count ?class_name ?class_triple_count ?property_name ?property_triple_count
-WHERE {{
-  VALUES ?gname {{ <{graph_uri}> }}
-  [
-    a sd:Service ;
-    sd:defaultDataset [
-       a sd:Dataset ;
-       sd:namedGraph [
-         sd:name ?gname ;
-         a sd:NamedGraph ;
-         sd:endpoint ?ep_url ;
-         sd:graph [
-           a void:Dataset ;
-           void:triples ?total_count ;
-           void:classes ?class_count ;
-           void:properties ?property_count ;
-           void:distinctObjects ?uniq_object_count ;
-           void:distinctSubjects ?uniq_subject_count ;
-           void:classPartition [
-             void:class ?class_name ;
-             void:entities ?class_triple_count
-           ] ;
-           void:propertyPartition [
-             void:property ?property_name ;
-             void:triples ?property_triple_count
-           ]
-         ]
-       ]
-     ]
-  ] .
-}}
-"""
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "https://plod.dbcls.jp/repositories/RDFPortal_VoID2",
-            data={"query": query},
-            headers={"Accept": "application/sparql-results+json"}
-        )
-    response.raise_for_status()
-    bindings = response.json()["results"]["bindings"]
-    if not bindings:
-        return []
-    results = [{key: binding[key]["value"] for key in binding} for binding in bindings]
-    return results
-
 @mcp.tool(
-        enabled=True,
         name="run_sparql",
         description="Run a SPARQL query on an RDF database. Specify dbname for single-database queries, or endpoint_name/endpoint_url for cross-database queries on shared endpoints."
 )
@@ -158,75 +96,8 @@ async def run_sparql(
     return await execute_sparql(sparql_query, dbname, endpoint_name, endpoint_url)
 
 # --- Tools for exploring RDF databases ---
-@mcp.tool(
-        enabled=False,
-        name="get_class_list",
-        description="Get a list of classes in the RDF database that match the given URI."
-)
-async def get_class_list(
-    dbname: Annotated[str, Field(description=DBNAME_DESCRIPTION)],
-    uri: Annotated[str, Field(description="The URI to match classes. `http://...`")]
-) -> str:
-    f"""
-    Get a list of classes in the RDF database that match the given URI.
-
-    Args:
-        dbname (str): The name of the database to query. Supported values are {', '.join(SPARQL_ENDPOINT.keys())}.
-        uri (str): The URI to match classes.
-
-    Returns:
-        list: The list of classes.
-    """
-    toolcall_log("get_class_list")
-    sparql_query = f"""
-PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX owl: <http://www.w3.org/2002/07/owl#>
-
-    SELECT DISTINCT ?class
-    WHERE {{
-        ?class a owl:Class .
-        FILTER STRSTARTS(STR(?class), "{uri}")
-    }} LIMIT 100
-    """
-    return await execute_sparql(sparql_query, dbname)
 
 @mcp.tool(
-        enabled=False,
-        name="get_property_list",
-        description="Get a list of properties in the RDF database that match the given URI."
-)
-async def get_property_list(
-    dbname: Annotated[str, Field(description=DBNAME_DESCRIPTION)],
-    uri: Annotated[str, Field(description="The URI to match properties. `http://...`")]
-) -> str:
-    f"""
-    Get a list of properties in the RDF database that match the given URI.
-
-    Args:
-        dbname (str): The name of the database to query. Supported values are {', '.join(SPARQL_ENDPOINT.keys())}.
-        uri (str): The URI to match properties.
-
-    Returns:
-        list: The list of properties.
-    """
-    toolcall_log("get_property_list")
-    sparql_query = f"""
-PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX owl: <http://www.w3.org/2002/07/owl#>
-
-    SELECT DISTINCT ?property 
-    WHERE {{
-        ?property a ?proptype .
-        ?proptype rdfs:subClassOf rdf:Property .
-        FILTER STRSTARTS(STR(?property), "{uri}")
-    }} LIMIT 100
-    """
-    return await execute_sparql(sparql_query, dbname)
-
-@mcp.tool(
-        enabled=True,
         name="get_graph_list",
         description="Get a list of named graphs in a specific RDF database."
 )
@@ -252,7 +123,6 @@ SELECT DISTINCT ?graph WHERE {
     return await execute_sparql(sparql_query, dbname)
 
 @mcp.tool(
-        enabled=True,
         name="get_MIE_file",
         description="**At the start of any task, identify ALL databases needed and call this tool for EACH of them before writing any SPARQL queries.** Do not query a database until its MIE file has been read. Get the MIE (Metadata Interoperability Exchange) file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database."
 )
@@ -295,7 +165,6 @@ async def get_MIE_file(
         return f"Error reading MIE file for '{dbname}': {e}"
 
 @mcp.tool(
-    enabled=True, 
     name="list_databases"
 )
 def list_databases() -> List[Dict[str, Any]]:

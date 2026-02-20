@@ -10,7 +10,7 @@ from .server import *
 #####　Database-specific tools ########
 ######################################
 # DB: UniProt
-@mcp.tool(enabled=True)
+@mcp.tool()
 async def search_uniprot_entity(query: str, limit: int = 20) -> str:
     """
     Search for a UniProt entity ID by query.
@@ -220,7 +220,7 @@ async def search_chembl_molecule(query: str, limit: int = 20) -> dict:
 
     return {"total_count": total_count, "results": parsed_results}
 
-@mcp.tool(enabled=False)
+# @mcp.tool()
 async def get_chembl_entity_by_id(service: str, chembl_id: str) -> str:
     """
     Get ChEMBL entity by ID.
@@ -348,7 +348,7 @@ async def search_pdb_entity(db: str, query: str, limit: int = 20) -> str:
         raise
 
 # DB: MeSH
-@mcp.tool(enabled=True)
+@mcp.tool()
 async def search_mesh_descriptor(query: str, limit: int = 10) -> str:
     """
     Search for MeSH ID by query.
