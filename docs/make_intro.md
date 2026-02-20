@@ -13,6 +13,9 @@ Create an HTML page for researchers in biology and medicine who are not necessar
 - List of available tools
 - Other MCP Servers
 - Related Resources
+- Source code
+
+## Summary
 
 ## Style
 - Use https://togomcp.rdfportal.org/ as a template.
@@ -81,6 +84,10 @@ List the following resources with summaries. Search the Web if necessary.
 - [RDF Portal](https://rdfportal.org)
 - [TogoID](https://togoid.dbcls.jp)
 - [DBCLS](https://dbcls.rois.jp)
+
+## Source code
+The link to the GitHub repository should be included.
+- https://github.com/dbcls/togomcp
 
 ## Footer
 The footer should include the following
