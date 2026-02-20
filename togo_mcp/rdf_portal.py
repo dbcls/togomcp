@@ -10,7 +10,7 @@ from .server import *
 # def boilerplate() -> str:
 #     return "Hello! I don't know why this is here. But, the server doesn't work without it."
 
-@mcp.tool(name="TogoMCP_Usage_Guide", enabled=True)
+@mcp.tool(name="TogoMCP_Usage_Guide")
 def togomcp_usage_guide() -> str:
     """
 ⚠️ CALL THIS TOOL FIRST before using ANY other TogoMCP tool (SPARQL, search, or database tools). 
