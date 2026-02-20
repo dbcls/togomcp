@@ -222,7 +222,7 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
         print(f"✓ Loaded {len(all_questions)} total questions from {len(question_files)} files")
         return all_questions
     
-    def _make_baseline_call(self, question_text: str) -> Dict:
+    def _make_baseline_call(self, question_text: str, answer_instruction: str = "") -> Dict:
         """
         Make baseline API call (no tools).
         
@@ -233,9 +233,12 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
             - elapsed_time: float
         """
         start_time = time.time()
-        
-        # Add final answer instruction to the question
-        full_prompt = question_text + self.FINAL_ANSWER_INSTRUCTION
+
+        if not answer_instruction:
+            answer_instruction = self.FINAL_ANSWER_INSTRUCTION
+
+        # Add answer instruction to the question
+        full_prompt = question_text + answer_instruction
         
         try:
             response = self.baseline_client.messages.create(
@@ -285,6 +288,7 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
     async def _make_togomcp_call_with_retry(
         self,
         question_text: str,
+        answer_instruction: str = "",
         attempt: int = 1
     ) -> Dict:
         """Make TogoMCP call with retry logic."""
@@ -294,7 +298,7 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
         
         for current_attempt in range(attempt, max_attempts + 1):
             try:
-                result = await self._make_togomcp_call(question_text)
+                result = await self._make_togomcp_call(question_text, answer_instruction)
                 return result
                 
             except asyncio.TimeoutError:
@@ -335,7 +339,7 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
             "elapsed_time": 0
         }
     
-    async def _make_togomcp_call(self, question_text: str) -> Dict:
+    async def _make_togomcp_call(self, question_text: str, answer_instruction: str = "") -> Dict:
         """
         Make TogoMCP API call with database access.
         
@@ -347,9 +351,12 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
             - elapsed_time: float
         """
         start_time = time.time()
-        
-        # Add final answer instruction to the question
-        full_prompt = question_text + self.FINAL_ANSWER_INSTRUCTION
+
+        if not answer_instruction:
+            answer_instruction = self.FINAL_ANSWER_INSTRUCTION
+
+        # Add answer instruction to the question
+        full_prompt = question_text + answer_instruction
         
         try:
             # Create fresh options for this question
@@ -423,13 +430,27 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
         q_body = question.get("body", "")
         q_type = question.get("type", "unknown")
         ideal_answer = question.get("ideal_answer", "")
-        
+        choices = question.get("choices", [])
+
+        # For choice questions, append the options to the prompt so the agent
+        # can select among them, and use a shorter answer instruction.
+        if q_type == "choice" and choices:
+            choices_text = "\n".join(f"  - {c}" for c in choices)
+            q_body = f"{q_body}\n\nChoose one of the following options:\n{choices_text}"
+
+        if q_type == "choice":
+            answer_instruction = (
+                "\n\nState which option or options are correct and briefly explain why in one paragraph."
+            )
+        else:
+            answer_instruction = self.FINAL_ANSWER_INSTRUCTION
+
         print(f"\n[{index + 1}/{total}] Testing {q_id} ({q_type})")
         print(f"  Question: {q_body[:80]}{'...' if len(q_body) > 80 else ''}")
         
         # === Baseline Test (No Tools) ===
         print("  ⏳ Running baseline test (no tools)...")
-        baseline_result = self._make_baseline_call(q_body)
+        baseline_result = self._make_baseline_call(q_body, answer_instruction)
         
         if baseline_result["success"]:
             print(f"  ✓ Baseline completed in {baseline_result['elapsed_time']:.2f}s")
@@ -440,7 +461,7 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
         
         # === TogoMCP Test (With Tools) ===
         print("  ⏳ Running TogoMCP test (with database access)...")
-        togomcp_result = await self._make_togomcp_call_with_retry(q_body)
+        togomcp_result = await self._make_togomcp_call_with_retry(q_body, answer_instruction)
         
         if togomcp_result["success"]:
             print(f"  ✓ TogoMCP completed in {togomcp_result['elapsed_time']:.2f}s")
@@ -456,11 +477,14 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
         # === Compile Results ===
         result = {
             "question_id": q_id,
+            "question_type": q_type,
             "question": q_body,
             "ideal_answer": ideal_answer,
             "baseline_success": baseline_result["success"],
+            "baseline_time": round(baseline_result.get("elapsed_time", 0.0), 2),
             "baseline_answer": baseline_answer,
             "togomcp_success": togomcp_result["success"],
+            "togomcp_time": round(togomcp_result.get("elapsed_time", 0.0), 2),
             "togomcp_answer": togomcp_answer,
             "tools_used": ", ".join(tools_used) if tools_used else ""
         }
@@ -536,11 +560,14 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
         
         fieldnames = [
             "question_id",
+            "question_type",
             "question",
             "ideal_answer",
             "baseline_success",
+            "baseline_time",
             "baseline_answer",
             "togomcp_success",
+            "togomcp_time",
             "togomcp_answer",
             "tools_used"
         ]

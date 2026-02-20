@@ -1,247 +1,301 @@
 #!/usr/bin/env python3
 """
-Enhanced Results Analyzer - Uses Correctness Columns
+TogoMCP Results Analyzer
 
-This analyzer uses the new correctness columns added by the enhanced test runner:
-- baseline_actually_answered
-- baseline_has_expected
-- togomcp_has_expected
-- value_add
+Analyzes the CSV produced by automated_test_runner.py +
+add_llm_evaluation.py and prints a structured report.
+
+Expected CSV columns (from the pipeline):
+    question_id, question_type, question, ideal_answer,
+    baseline_success, baseline_answer,
+    togomcp_success, togomcp_answer, tools_used,
+    baseline_recall, baseline_precision, baseline_repetition,
+    baseline_readability, baseline_total_score, baseline_evaluation_explanation,
+    togomcp_recall, togomcp_precision, togomcp_repetition,
+    togomcp_readability, togomcp_total_score, togomcp_evaluation_explanation
 
 Usage:
-    python results_analyzer_enhanced.py evaluation_results.csv
+    python results_analyzer.py evaluation_results.csv
 """
 
 import csv
 import sys
 from pathlib import Path
-from collections import Counter, defaultdict
+from collections import defaultdict
 
 
-class EnhancedAnalyzer:
-    """Analyzes TogoMCP evaluation results with correctness metrics."""
-    
+SCORE_COLS = ["recall", "precision", "repetition", "readability", "total_score"]
+QUESTION_TYPES = ["yes_no", "factoid", "list", "summary", "choice"]
+
+
+class ResultsAnalyzer:
+    """Analyzes TogoMCP evaluation results."""
+
     def __init__(self, csv_path: str):
         self.csv_path = Path(csv_path)
         self.results = []
-        self.load_results()
-    
-    def load_results(self):
-        """Load results from CSV file."""
+        self._load()
+
+    def _load(self):
         if not self.csv_path.exists():
             raise FileNotFoundError(f"Results file not found: {self.csv_path}")
-        
-        with open(self.csv_path, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            self.results = list(reader)
-        
-        print(f"✓ Loaded {len(self.results)} evaluation results\n")
-    
-    def _parse_bool(self, value: str) -> bool:
-        """Parse string boolean values."""
-        return value.strip().lower() in ('true', '1', 'yes')
-    
-    def _parse_float(self, value: str, default: float = 0.0) -> float:
-        """Parse float values safely."""
+        with open(self.csv_path, "r", encoding="utf-8") as f:
+            self.results = list(csv.DictReader(f))
+        print(f"✓ Loaded {len(self.results)} rows from {self.csv_path.name}\n")
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _bool(self, value: str) -> bool:
+        return str(value).strip().lower() in ("true", "1", "yes")
+
+    def _float(self, value: str, default: float = 0.0) -> float:
         try:
             return float(value) if value else default
         except (ValueError, TypeError):
             return default
-    
-    def get_overall_stats(self):
-        """Calculate overall statistics."""
+
+    def _score(self, row: dict, agent: str, col: str) -> float:
+        """Return agent score for a dimension ('baseline' or 'togomcp')."""
+        return self._float(row.get(f"{agent}_{col}", "0"))
+
+    def _evaluated_rows(self):
+        """Rows where both agents produced a non-zero total score."""
+        return [
+            r for r in self.results
+            if self._score(r, "baseline", "total_score") > 0
+            and self._score(r, "togomcp", "total_score") > 0
+        ]
+
+    # ------------------------------------------------------------------
+    # Sections
+    # ------------------------------------------------------------------
+
+    def overall_stats(self):
         total = len(self.results)
         if total == 0:
             return
-        
-        # Technical success
-        baseline_success = sum(1 for r in self.results if self._parse_bool(r.get('baseline_success', 'False')))
-        togomcp_success = sum(1 for r in self.results if self._parse_bool(r.get('togomcp_success', 'False')))
-        
-        # Actual correctness
-        baseline_answered = sum(1 for r in self.results if self._parse_bool(r.get('baseline_actually_answered', 'False')))
-        baseline_correct = sum(1 for r in self.results if self._parse_bool(r.get('baseline_has_expected', 'False')))
-        togomcp_correct = sum(1 for r in self.results if self._parse_bool(r.get('togomcp_has_expected', 'False')))
-        
-        # Value-add distribution
-        value_counts = Counter(r.get('value_add', 'MARGINAL') for r in self.results)
-        
-        tools_used_count = sum(1 for r in self.results if r.get('tools_used', '').strip())
-        
-        print("="*70)
-        print("EVALUATION RESULTS ANALYSIS (WITH CORRECTNESS)")
-        print("="*70)
-        print(f"\nTotal Questions: {total}\n")
-        
-        print("BASELINE PERFORMANCE:")
-        print(f"  Technical Success:          {baseline_success}/{total} ({baseline_success/total*100:.1f}%)")
-        print(f"  Actually Answered:          {baseline_answered}/{total} ({baseline_answered/total*100:.1f}%)")
-        print(f"  Has Expected Answer:        {baseline_correct}/{total} ({baseline_correct/total*100:.1f}%)")
+
+        b_success = sum(1 for r in self.results if self._bool(r.get("baseline_success")))
+        t_success = sum(1 for r in self.results if self._bool(r.get("togomcp_success")))
+        tools_used = sum(1 for r in self.results if r.get("tools_used", "").strip())
+
+        evaluated = self._evaluated_rows()
+        n_eval = len(evaluated)
+
+        def avg(agent, col):
+            if not evaluated:
+                return 0.0
+            return sum(self._score(r, agent, col) for r in evaluated) / n_eval
+
+        print("=" * 70)
+        print("OVERALL RESULTS")
+        print("=" * 70)
+        print(f"\nTotal questions : {total}")
+        print(f"Evaluated pairs : {n_eval}  "
+              f"(both agents scored > 0)")
         print()
-        
-        print("TOGOMCP PERFORMANCE:")
-        print(f"  Technical Success:          {togomcp_success}/{total} ({togomcp_success/total*100:.1f}%)")
-        print(f"  Has Expected Answer:        {togomcp_correct}/{total} ({togomcp_correct/total*100:.1f}%)")
-        print(f"  Used Tools:                 {tools_used_count}/{total} ({tools_used_count/total*100:.1f}%)")
+
+        print("EXECUTION SUCCESS:")
+        print(f"  Baseline  : {b_success}/{total} ({b_success/total*100:.1f}%)")
+        print(f"  TogoMCP   : {t_success}/{total} ({t_success/total*100:.1f}%)")
+        print(f"  Used tools: {tools_used}/{total} ({tools_used/total*100:.1f}%)")
         print()
-        
-        print("VALUE-ADD DISTRIBUTION:")
-        for level in ["CRITICAL", "VALUABLE", "MARGINAL", "REDUNDANT", "FAILED"]:
-            count = value_counts[level]
-            pct = count/total*100 if total > 0 else 0
-            emoji = {
-                "CRITICAL": "⭐⭐⭐",
-                "VALUABLE": "⭐⭐",
-                "MARGINAL": "⚠️",
-                "REDUNDANT": "❌",
-                "FAILED": "🔴"
-            }[level]
-            print(f"  {emoji} {level:12}         {count}/{total} ({pct:.1f}%)")
+
+        if n_eval == 0:
+            print("No evaluated pairs found — skipping score summary.\n")
+            return
+
+        print(f"AVERAGE SCORES (n={n_eval}, max per dimension = 5, total max = 20):")
+        header = f"  {'Dimension':15}  {'Baseline':>9}  {'TogoMCP':>9}  {'Δ (T−B)':>9}"
+        print(header)
+        print("  " + "-" * (len(header) - 2))
+        for col in SCORE_COLS:
+            b_avg = avg("baseline", col)
+            t_avg = avg("togomcp", col)
+            max_val = 20 if col == "total_score" else 5
+            label = col.replace("_", " ").title()
+            print(f"  {label:15}  {b_avg:>9.2f}  {t_avg:>9.2f}  {t_avg - b_avg:>+9.2f}")
         print()
-    
-    def get_category_breakdown(self):
-        """Breakdown by category."""
-        categories = defaultdict(list)
-        for result in self.results:
-            category = result.get('category', 'Unknown')
-            categories[category].append(result)
-        
-        print("BREAKDOWN BY CATEGORY:")
-        print("-"*70)
-        
-        for category in sorted(categories.keys()):
-            results = categories[category]
-            total = len(results)
-            
-            answered = sum(1 for r in results if self._parse_bool(r.get('baseline_actually_answered', 'False')))
-            value_add = Counter(r.get('value_add', 'MARGINAL') for r in results)
-            critical = value_add['CRITICAL']
-            
-            print(f"\n{category} ({total} questions):")
-            print(f"  Baseline Answered:    {answered}/{total}")
-            print(f"  CRITICAL Questions:   {critical}/{total}")
-            print(f"  Value Distribution:   {dict(value_add)}")
-    
-    def list_questions_by_value(self):
-        """List questions grouped by value-add."""
-        by_value = defaultdict(list)
+
+        # Win/loss/tie on total score
+        wins = sum(
+            1 for r in evaluated
+            if self._score(r, "togomcp", "total_score")
+            > self._score(r, "baseline", "total_score")
+        )
+        losses = sum(
+            1 for r in evaluated
+            if self._score(r, "togomcp", "total_score")
+            < self._score(r, "baseline", "total_score")
+        )
+        ties = n_eval - wins - losses
+        print("TOGOMCP vs BASELINE (by total score):")
+        print(f"  TogoMCP better  : {wins}/{n_eval} ({wins/n_eval*100:.1f}%)")
+        print(f"  Baseline better : {losses}/{n_eval} ({losses/n_eval*100:.1f}%)")
+        print(f"  Tied            : {ties}/{n_eval} ({ties/n_eval*100:.1f}%)")
+        print()
+
+    def type_breakdown(self):
+        """Per question-type score comparison — the primary analysis goal."""
+        by_type = defaultdict(list)
+        for r in self._evaluated_rows():
+            qtype = r.get("question_type", "unknown").strip() or "unknown"
+            by_type[qtype].append(r)
+
+        print("=" * 70)
+        print("BREAKDOWN BY QUESTION TYPE")
+        print("=" * 70)
+
+        # Determine ordering: known types first, then any others
+        order = [t for t in QUESTION_TYPES if t in by_type]
+        order += sorted(k for k in by_type if k not in QUESTION_TYPES)
+
+        for qtype in order:
+            rows = by_type[qtype]
+            n = len(rows)
+            print(f"\n  {qtype.upper()}  (n={n})")
+            print(f"  {'Dimension':15}  {'Baseline':>9}  {'TogoMCP':>9}  {'Δ (T−B)':>9}")
+            print("  " + "-" * 48)
+            for col in SCORE_COLS:
+                b_avg = sum(self._score(r, "baseline", col) for r in rows) / n
+                t_avg = sum(self._score(r, "togomcp", col) for r in rows) / n
+                label = col.replace("_", " ").title()
+                print(f"  {label:15}  {b_avg:>9.2f}  {t_avg:>9.2f}  {t_avg - b_avg:>+9.2f}")
+            wins = sum(
+                1 for r in rows
+                if self._score(r, "togomcp", "total_score")
+                > self._score(r, "baseline", "total_score")
+            )
+            print(f"  TogoMCP wins    : {wins}/{n} ({wins/n*100:.1f}%)")
+
+        print()
+
+    def per_question_scores(self):
+        """Table of individual question scores."""
+        print("=" * 70)
+        print("PER-QUESTION SCORES")
+        print("=" * 70)
+
+        header = (
+            f"  {'ID':14}  {'Type':10}  "
+            f"{'B-Total':>7}  {'T-Total':>7}  {'Δ':>6}  "
+            f"{'Tools used':>12}"
+        )
+        print(header)
+        print("  " + "-" * (len(header) - 2))
+
         for r in self.results:
-            value = r.get('value_add', 'MARGINAL')
-            by_value[value].append(r)
-        
-        print("\nQUESTIONS BY VALUE-ADD:")
-        print("-"*70)
-        
-        for level in ["CRITICAL", "VALUABLE", "MARGINAL", "REDUNDANT", "FAILED"]:
-            questions = by_value[level]
-            if not questions:
-                continue
-            
-            emoji = {
-                "CRITICAL": "⭐⭐⭐",
-                "VALUABLE": "⭐⭐",
-                "MARGINAL": "⚠️",
-                "REDUNDANT": "❌",
-                "FAILED": "🔴"
-            }[level]
-            
-            print(f"\n{emoji} {level} ({len(questions)} questions):")
-            for q in questions:
-                q_id = q.get('question_id', '?')
-                cat = q.get('category', '?')
-                text = q.get('question_text', '')[:60]
-                print(f"  Q{q_id} [{cat:15}] {text}...")
-    
-    def identify_issues(self):
-        """Identify problematic questions."""
-        issues = []
-        
-        for r in self.results:
-            value = r.get('value_add', '')
-            
-            # REDUNDANT questions should be replaced
-            if value == 'REDUNDANT':
-                issues.append({
-                    'id': r.get('question_id'),
-                    'type': 'REDUNDANT',
-                    'message': 'Baseline answered, TogoMCP didn\'t use tools - should be replaced'
-                })
-            
-            # MARGINAL questions need improvement
-            elif value == 'MARGINAL':
-                issues.append({
-                    'id': r.get('question_id'),
-                    'type': 'MARGINAL',
-                    'message': 'Low value-add - consider replacing with harder question'
-                })
-            
-            # FAILED questions need investigation
-            elif value == 'FAILED':
-                issues.append({
-                    'id': r.get('question_id'),
-                    'type': 'FAILED',
-                    'message': 'TogoMCP failed - check error logs'
-                })
-        
-        if issues:
-            print("\n⚠️ ISSUES FOUND:")
-            print("-"*70)
-            for issue in issues:
-                print(f"Q{issue['id']}: [{issue['type']}] {issue['message']}")
-        else:
-            print("\n✓ No major issues found")
-        
+            qid = r.get("question_id", "?")
+            qtype = r.get("question_type", "?")
+            b = self._score(r, "baseline", "total_score")
+            t = self._score(r, "togomcp", "total_score")
+            tools = r.get("tools_used", "").strip()
+            tool_count = len(tools.split(",")) if tools else 0
+            note = f"{tool_count} tool(s)" if tool_count else "none"
+            print(
+                f"  {qid:14}  {qtype:10}  "
+                f"{b:>7.1f}  {t:>7.1f}  {t - b:>+6.1f}  "
+                f"{note:>12}"
+            )
         print()
-    
-    def print_recommendations(self):
-        """Print recommendations."""
-        total = len(self.results)
-        value_counts = Counter(r.get('value_add', 'MARGINAL') for r in self.results)
-        
-        critical_pct = value_counts['CRITICAL'] / total * 100
-        valuable_pct = value_counts['VALUABLE'] / total * 100
-        marginal_pct = value_counts['MARGINAL'] / total * 100
-        redundant_pct = value_counts['REDUNDANT'] / total * 100
-        
-        print("💡 RECOMMENDATIONS:")
-        print("-"*70)
-        
-        if critical_pct + valuable_pct >= 70:
-            print("✅ EXCELLENT: 70%+ questions show significant TogoMCP value.")
-        elif critical_pct + valuable_pct >= 50:
-            print("✓ GOOD: 50-70% questions show TogoMCP value, but could be improved.")
-        else:
-            print("⚠️ NEEDS IMPROVEMENT: Less than 50% show significant value-add.")
-        
-        if redundant_pct > 0:
-            print(f"\n❌ {value_counts['REDUNDANT']} REDUNDANT questions found.")
-            print("   These should be replaced - baseline answered without tools.")
-        
-        if marginal_pct > 30:
-            print(f"\n⚠️ {value_counts['MARGINAL']} MARGINAL questions ({marginal_pct:.0f}%).")
-            print("   Consider replacing with less well-known entities.")
-        
-        if critical_pct < 40:
-            print(f"\n📈 Only {critical_pct:.0f}% CRITICAL questions.")
-            print("   Target 50-70% for best evaluation.")
-            print("   Add more questions requiring database access.")
-        
-        print("\n✓ Use value-add metrics to improve question quality iteratively.")
-        print("="*70 + "\n")
+
+    def timing_stats(self):
+        """Response time summary overall and per question type."""
+        b_times = [self._float(r.get("baseline_time", "0")) for r in self.results
+                   if self._float(r.get("baseline_time", "0")) > 0]
+        t_times = [self._float(r.get("togomcp_time", "0")) for r in self.results
+                   if self._float(r.get("togomcp_time", "0")) > 0]
+
+        print("=" * 70)
+        print("RESPONSE TIMES (seconds)")
+        print("=" * 70)
+
+        if not b_times and not t_times:
+            print("  No timing data found (baseline_time / togomcp_time columns missing or empty).\n")
+            return
+
+        def stats(times):
+            if not times:
+                return "n/a"
+            avg = sum(times) / len(times)
+            mn, mx = min(times), max(times)
+            return f"avg={avg:.1f}s  min={mn:.1f}s  max={mx:.1f}s  (n={len(times)})"
+
+        print(f"  Baseline  : {stats(b_times)}")
+        print(f"  TogoMCP   : {stats(t_times)}")
+        print()
+
+        # Per-type breakdown
+        by_type_b: dict = defaultdict(list)
+        by_type_t: dict = defaultdict(list)
+        for r in self.results:
+            qtype = r.get("question_type", "unknown").strip() or "unknown"
+            bt = self._float(r.get("baseline_time", "0"))
+            tt = self._float(r.get("togomcp_time", "0"))
+            if bt > 0:
+                by_type_b[qtype].append(bt)
+            if tt > 0:
+                by_type_t[qtype].append(tt)
+
+        all_types = [t for t in QUESTION_TYPES if t in by_type_b or t in by_type_t]
+        all_types += sorted(k for k in (set(by_type_b) | set(by_type_t)) if k not in QUESTION_TYPES)
+
+        if all_types:
+            print(f"  {'Type':12}  {'Baseline avg':>13}  {'TogoMCP avg':>12}  {'Δ (T−B)':>10}")
+            print("  " + "-" * 52)
+            for qtype in all_types:
+                b_avg = sum(by_type_b[qtype]) / len(by_type_b[qtype]) if by_type_b[qtype] else 0
+                t_avg = sum(by_type_t[qtype]) / len(by_type_t[qtype]) if by_type_t[qtype] else 0
+                print(f"  {qtype:12}  {b_avg:>12.1f}s  {t_avg:>11.1f}s  {t_avg - b_avg:>+9.1f}s")
+        print()
+
+    def low_scoring_questions(self, threshold: float = 10.0):
+        """Flag questions where either agent scored below threshold."""
+        print("=" * 70)
+        print(f"LOW-SCORING QUESTIONS (total score < {threshold:.0f} for either agent)")
+        print("=" * 70)
+
+        flagged = [
+            r for r in self._evaluated_rows()
+            if self._score(r, "baseline", "total_score") < threshold
+            or self._score(r, "togomcp", "total_score") < threshold
+        ]
+
+        if not flagged:
+            print(f"\n  ✓ All evaluated questions scored ≥ {threshold:.0f} for both agents.\n")
+            return
+
+        for r in flagged:
+            qid = r.get("question_id", "?")
+            qtype = r.get("question_type", "?")
+            b = self._score(r, "baseline", "total_score")
+            t = self._score(r, "togomcp", "total_score")
+            q_text = r.get("question", "")[:70]
+            print(f"\n  {qid} [{qtype}]  Baseline={b:.1f}  TogoMCP={t:.1f}")
+            print(f"    {q_text}{'…' if len(r.get('question','')) > 70 else ''}")
+            if b < threshold:
+                expl = r.get("baseline_evaluation_explanation", "")[:120]
+                print(f"    Baseline note: {expl}")
+            if t < threshold:
+                expl = r.get("togomcp_evaluation_explanation", "")[:120]
+                print(f"    TogoMCP note : {expl}")
+        print()
 
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python results_analyzer_enhanced.py <results.csv>")
+        print("Usage: python results_analyzer.py <evaluated_results.csv>")
         sys.exit(1)
-    
+
     try:
-        analyzer = EnhancedAnalyzer(sys.argv[1])
-        analyzer.get_overall_stats()
-        analyzer.get_category_breakdown()
-        analyzer.list_questions_by_value()
-        analyzer.identify_issues()
-        analyzer.print_recommendations()
+        analyzer = ResultsAnalyzer(sys.argv[1])
+        analyzer.overall_stats()
+        analyzer.type_breakdown()
+        analyzer.timing_stats()
+        analyzer.per_question_scores()
+        analyzer.low_scoring_questions()
     except Exception as e:
         print(f"Error: {e}")
         import traceback
