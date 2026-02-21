@@ -18,7 +18,7 @@ def run_local():
     mcp.run()
 
 def run_admin():
-    from .admin import generate_MIE_file, get_shex, save_MIE_file, test_MIE_file
+    from .admin import generate_MIE_file, get_shex, save_MIE_file
     asyncio.run(setup())
     mcp.run()
 
