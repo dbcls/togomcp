@@ -150,6 +150,56 @@ sparql_queries:
       LIMIT 15
     result_count: 15
 
+  - query_number: 4
+    database: uniprot
+    description: "Arithmetic verification: sum of per-organism counts must equal total from Query 2"
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT (SUM(?orgCount) AS ?totalSum) (COUNT(DISTINCT ?taxon) AS ?numOrganisms)
+      WHERE {
+        {
+          SELECT ?taxon (COUNT(DISTINCT ?protein) AS ?orgCount)
+          WHERE {
+            VALUES ?goTerm {
+              obo:GO_0005179  # hormone activity (parent)
+              obo:GO_0070186  # growth hormone activity
+              obo:GO_0046659  # digestive hormone activity
+              obo:GO_0030354  # melanin-concentrating hormone activity
+              obo:GO_0017045  # corticotropin-releasing hormone activity
+              obo:GO_0017044  # melanocyte-stimulating hormone activity
+              obo:GO_0016913  # follicle-stimulating hormone activity
+              obo:GO_0016608  # growth hormone-releasing hormone activity
+              obo:GO_0016085  # myoinhibitory hormone activity
+              obo:GO_0016084  # myostimulatory hormone activity
+              obo:GO_0016521  # pituitary adenylate cyclase activating polypeptide activity
+              obo:GO_0008613  # diuretic hormone activity
+              obo:GO_0008437  # thyrotropin-releasing hormone activity
+              obo:GO_0005184  # neuropeptide hormone activity
+              obo:GO_0005183  # gonadotropin hormone-releasing hormone activity
+              obo:GO_0018445  # prothoracicotrophic hormone activity
+              obo:GO_0016087  # ecdysiostatic hormone activity
+              obo:GO_0008255  # ecdysis-triggering hormone activity
+              obo:GO_0008031  # eclosion hormone activity
+              obo:GO_0005185  # neurohypophyseal hormone activity
+            }
+            ?protein a up:Protein ;
+                     up:reviewed 1 ;
+                     up:classifiedWith ?goTerm ;
+                     up:organism ?taxon .
+          }
+          GROUP BY ?taxon
+        }
+      }
+    result_count: 1
+    notes: |
+      Verification result: totalSum=2453, numOrganisms=561
+      ARITHMETIC CHECK PASSED: SUM (2453) = TOTAL from Query 2 (2453)
+      Interpretation: Each reviewed protein belongs to exactly one organism (mutually exclusive categories).
+      The 2,453 hormone-activity proteins are distributed across 561 distinct organisms;
+      Query 3 (top 15 organisms by count) represents a ranked subset of this distribution.
+
 rdf_triples: |
   @prefix up: <http://purl.uniprot.org/core/> .
   @prefix obo: <http://purl.obolibrary.org/obo/> .

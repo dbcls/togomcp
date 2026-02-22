@@ -1,6 +1,6 @@
 id: question_027
 type: factoid
-body: "How many of the reviewed human enzymatic catalysts in the nicotinate metabolism pathway are registered as drug targets in ChEMBL?"
+body: "How many distinct approved biochemical reactions in the Rhea database are collectively annotated for the reviewed human enzymatic catalysts of the nicotinate metabolism pathway?"
 
 inspiration_keyword:
   keyword_id: KW-0662
@@ -10,7 +10,7 @@ inspiration_keyword:
 togomcp_databases_used:
   - reactome
   - uniprot
-  - chembl
+  - rhea
 
 verification_score:
   biological_insight: 3
@@ -23,21 +23,24 @@ verification_score:
 pubmed_test:
   time_spent: 10 minutes
   method: |
-    Searched PubMed with queries: (1) "nicotinate metabolism Reactome enzymes ChEMBL drug
-    targets count" and (2) "NAMPT NAPRT CD38 nicotinamide pathway drug targets number".
-    Both returned 0 results.
+    Searched PubMed with queries: (1) "nicotinate metabolism Reactome enzymes Rhea
+    reactions count" and (2) "NAD biosynthesis enzymes catalytic repertoire Rhea
+    biochemical reactions number".  Both returned 0 directly relevant results.
   result: |
-    No PubMed article reports how many of the enzymes specifically catalogued in the
-    Reactome nicotinate metabolism pathway (as opposed to the field broadly) are
-    simultaneously registered as ChEMBL drug targets. Determining this requires
-    querying current database state across Reactome, UniProt (reviewed status), and
-    ChEMBL (target registration) and cannot be derived from the literature.
+    No PubMed article reports how many Rhea-approved reactions are collectively
+    annotated for the 22 enzymes specifically catalogued in the Reactome human
+    nicotinate metabolism pathway.  Determining this requires querying the current
+    state of three databases: Reactome (pathway membership), UniProt Swiss-Prot
+    (catalytic-activity annotations linking proteins to Rhea IRIs), and Rhea
+    (approved-status filter).  The answer cannot be derived from literature reviews
+    of NAD+ metabolism, which discuss individual enzyme activities but never enumerate
+    their full Rhea-linked reaction repertoire as a collective.
   conclusion: PASS (cannot answer from literature; requires current cross-database RDF state)
 
 sparql_queries:
   - query_number: 1
     database: reactome
-    description: Find the nicotinate metabolism pathway IRI for Homo sapiens
+    description: Find the human nicotinate metabolism pathway IRI in Reactome
     query: |
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
@@ -94,13 +97,13 @@ sparql_queries:
   - query_number: 3
     database: uniprot
     description: |
-      Verify that all 22 UniProt IDs discovered in Query 2 are reviewed human
-      proteins in UniProt (Swiss-Prot), confirming the pool before ChEMBL lookup.
+      Verify that all 22 UniProt IDs are reviewed human proteins in UniProt
+      Swiss-Prot before joining to Rhea.
     query: |
       PREFIX up: <http://purl.uniprot.org/core/>
       PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
 
-      SELECT (COUNT(DISTINCT ?protein) as ?count)
+      SELECT (COUNT(DISTINCT ?protein) AS ?count)
       WHERE {
         VALUES ?protein {
           uniprot:P43490 uniprot:Q8N695 uniprot:Q15274 uniprot:Q9Y226 uniprot:Q9NWW6
@@ -116,35 +119,71 @@ sparql_queries:
     result_count: 22
 
   - query_number: 4
-    database: chembl
+    database: rhea
     description: |
-      Count how many of the 22 reviewed human pathway enzymes are registered as
-      single-protein drug targets in ChEMBL, via the
-      cco:hasTargetComponent / skos:exactMatch → UniProt IRI linkage.
+      Cross-database query on the shared SIB endpoint: for each of the 22 reviewed
+      human pathway enzymes, navigate UniProt Catalytic_Activity_Annotation →
+      up:catalyzedReaction to retrieve the Rhea reaction IRI, then filter to
+      rhea:Approved reactions.  Count distinct reactions across all 22 enzymes.
     query: |
-      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
-      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-      PREFIX up: <http://purl.uniprot.org/uniprot/>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+      PREFIX rhea: <http://rdf.rhea-db.org/>
 
-      SELECT DISTINCT ?uniprotId ?targetLabel ?chemblId
-      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      SELECT (COUNT(DISTINCT ?reaction) AS ?totalRhea)
       WHERE {
-        VALUES ?uniprot {
-          up:P43490 up:Q8N695 up:Q15274 up:Q9Y226 up:Q9NWW6
-          up:Q9NPI5 up:P28907 up:Q9H1U9 up:P40261 up:Q8IW45
-          up:Q9BQG2 up:Q4G0N4 up:P21589 up:Q10588 up:Q6XQN6
-          up:Q9BZQ4 up:Q6IA69 up:O95544 up:Q9HAN9 up:Q96T66
-          up:Q8NCW5 up:Q5VYX0
+        VALUES ?protein {
+          uniprot:P43490 uniprot:Q8N695 uniprot:Q15274 uniprot:Q9Y226 uniprot:Q9NWW6
+          uniprot:Q9NPI5 uniprot:P28907 uniprot:Q9H1U9 uniprot:P40261 uniprot:Q8IW45
+          uniprot:Q9BQG2 uniprot:Q4G0N4 uniprot:P21589 uniprot:Q10588 uniprot:Q6XQN6
+          uniprot:Q9BZQ4 uniprot:Q6IA69 uniprot:O95544 uniprot:Q9HAN9 uniprot:Q96T66
+          uniprot:Q8NCW5 uniprot:Q5VYX0
         }
-        ?target a cco:SingleProtein ;
-                rdfs:label ?targetLabel ;
-                cco:chemblId ?chemblId ;
-                cco:hasTargetComponent ?tc .
-        ?tc skos:exactMatch ?uniprot .
-        BIND(STRAFTER(STR(?uniprot), "http://purl.uniprot.org/uniprot/") AS ?uniprotId)
+        GRAPH <http://sparql.uniprot.org/uniprot> {
+          ?protein up:annotation ?annot .
+          ?annot a up:Catalytic_Activity_Annotation ;
+                 up:catalyticActivity ?ca .
+          ?ca up:catalyzedReaction ?reaction .
+        }
+        GRAPH <http://rdfportal.org/dataset/rhea> {
+          ?reaction rhea:status rhea:Approved .
+        }
       }
-      ORDER BY ?uniprotId
-    result_count: 8
+    result_count: 1
+
+  - query_number: 5
+    database: rhea
+    description: |
+      Per-protein breakdown showing how many approved Rhea reactions each of the
+      22 pathway enzymes contributes, to verify overlap and arithmetic
+      (sum of per-protein counts > distinct total indicates shared reactions).
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+      PREFIX rhea: <http://rdf.rhea-db.org/>
+
+      SELECT ?protein (COUNT(DISTINCT ?reaction) AS ?rxnCount)
+      WHERE {
+        VALUES ?protein {
+          uniprot:P43490 uniprot:Q8N695 uniprot:Q15274 uniprot:Q9Y226 uniprot:Q9NWW6
+          uniprot:Q9NPI5 uniprot:P28907 uniprot:Q9H1U9 uniprot:P40261 uniprot:Q8IW45
+          uniprot:Q9BQG2 uniprot:Q4G0N4 uniprot:P21589 uniprot:Q10588 uniprot:Q6XQN6
+          uniprot:Q9BZQ4 uniprot:Q6IA69 uniprot:O95544 uniprot:Q9HAN9 uniprot:Q96T66
+          uniprot:Q8NCW5 uniprot:Q5VYX0
+        }
+        GRAPH <http://sparql.uniprot.org/uniprot> {
+          ?protein up:annotation ?annot .
+          ?annot a up:Catalytic_Activity_Annotation ;
+                 up:catalyticActivity ?ca .
+          ?ca up:catalyzedReaction ?reaction .
+        }
+        GRAPH <http://rdfportal.org/dataset/rhea> {
+          ?reaction rhea:status rhea:Approved .
+        }
+      }
+      GROUP BY ?protein
+      ORDER BY DESC(?rxnCount)
+    result_count: 22
 
 rdf_triples: |
   @prefix bp: <http://www.biopax.org/release/biopax-level3.owl#> .
@@ -152,10 +191,7 @@ rdf_triples: |
   @prefix up: <http://purl.uniprot.org/core/> .
   @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
   @prefix taxon: <http://purl.uniprot.org/taxonomy/> .
-  @prefix cco: <http://rdf.ebi.ac.uk/terms/chembl#> .
-  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
-  @prefix chembl_target: <http://rdf.ebi.ac.uk/resource/chembl/target/> .
-  @prefix chembl_tc: <http://rdf.ebi.ac.uk/resource/chembl/targetcomponent/> .
+  @prefix rhea: <http://rdf.rhea-db.org/> .
 
   <http://www.reactome.org/biopax/40/48887#Pathway2258> a bp:Pathway ;
     bp:displayName "Nicotinate metabolism"^^xsd:string .
@@ -170,66 +206,50 @@ rdf_triples: |
     up:organism taxon:9606 .
   # Database: UniProt | Query: 3 | Comment: NAMPT_HUMAN (Nicotinamide phosphoribosyltransferase) – reviewed human enzyme
 
-  uniprot:O95544 a up:Protein ;
+  uniprot:Q8N695 a up:Protein ;
     up:reviewed 1 ;
     up:organism taxon:9606 .
-  # Database: UniProt | Query: 3 | Comment: NADK_HUMAN (NAD kinase) – reviewed human enzyme
+  # Database: UniProt | Query: 3 | Comment: SLC5A8 / SMCT1 – highest per-enzyme Rhea count (14 reactions), sodium-coupled monocarboxylate transporter
 
-  chembl_target:CHEMBL1744525 a cco:SingleProtein ;
-    rdfs:label "Nicotinamide phosphoribosyltransferase" ;
-    cco:chemblId "CHEMBL1744525" .
-  # Database: ChEMBL | Query: 4 | Comment: NAMPT registered as ChEMBL drug target
+  uniprot:P21589 a up:Protein ;
+    up:reviewed 1 ;
+    up:organism taxon:9606 .
+  # Database: UniProt | Query: 3 | Comment: NT5E/CD73 – second-highest per-enzyme Rhea count (10 reactions), 5'-nucleotidase
 
-  chembl_tc:CHEMBL_TC_NAMPT skos:exactMatch uniprot:P43490 .
-  # Database: ChEMBL | Query: 4 | Comment: TargetComponent links CHEMBL1744525 to UniProt P43490
+  <http://rdf.rhea-db.org/21360> rhea:status rhea:Approved ;
+    rhea:equation "beta-nicotinamide D-ribonucleotide + ATP + H(+) = diphosphate + NAD(+)" .
+  # Database: Rhea | Query: 4 | Comment: Core NAD+ biosynthesis reaction catalysed by NMNAT1 (Q9HAN9)
 
-  chembl_target:CHEMBL4660 a cco:SingleProtein ;
-    rdfs:label "Lymphocyte differentiation antigen CD38" ;
-    cco:chemblId "CHEMBL4660" .
-  # Database: ChEMBL | Query: 4 | Comment: CD38 (P28907) registered as ChEMBL drug target
+  <http://rdf.rhea-db.org/23884> rhea:status rhea:Approved ;
+    rhea:equation "nicotinamide + S-adenosyl-L-methionine = 1-methylnicotinamide + S-adenosyl-L-homocysteine" .
+  # Database: Rhea | Query: 4 | Comment: Nicotinamide methylation reaction catalysed by NNMT (P40261)
 
-  chembl_target:CHEMBL5957 a cco:SingleProtein ;
-    rdfs:label "5'-nucleotidase" ;
-    cco:chemblId "CHEMBL5957" .
-  # Database: ChEMBL | Query: 4 | Comment: NT5E/CD73 (P21589) registered as ChEMBL drug target
+  <http://rdf.rhea-db.org/16301> rhea:status rhea:Approved ;
+    rhea:equation "NAD(+) + H2O = ADP-D-ribose + nicotinamide + H(+)" .
+  # Database: Rhea | Query: 4 | Comment: NAD+ glycohydrolase reaction shared by CD38 (P28907) and BST1 (Q10588)
 
-  chembl_target:CHEMBL6177 a cco:SingleProtein ;
-    rdfs:label "NAD kinase" ;
-    cco:chemblId "CHEMBL6177" .
-  # Database: ChEMBL | Query: 4 | Comment: NADK (O95544) registered as ChEMBL drug target
+  <http://rdf.rhea-db.org/18629> rhea:status rhea:Approved ;
+    rhea:equation "NAD(+) + ATP = ADP + NADP(+) + H(+)" .
+  # Database: Rhea | Query: 4 | Comment: NAD kinase reaction catalysed by NADK (O95544)
 
-  chembl_target:CHEMBL2346486 a cco:SingleProtein ;
-    rdfs:label "Nicotinamide N-methyltransferase" ;
-    cco:chemblId "CHEMBL2346486" .
-  # Database: ChEMBL | Query: 4 | Comment: NNMT (P40261) registered as ChEMBL drug target
+  uniprot:P43490 up:annotation [
+    a up:Catalytic_Activity_Annotation ;
+    up:catalyticActivity [ up:catalyzedReaction <http://rdf.rhea-db.org/16149> ]
+  ] .
+  # Database: UniProt | Query: 4 | Comment: NAMPT UniProt catalytic-activity annotation linking to Rhea reaction 16149 (NMN phosphorylase)
 
-  chembl_target:CHEMBL4523354 a cco:SingleProtein ;
-    rdfs:label "Nicotinate phosphoribosyltransferase" ;
-    cco:chemblId "CHEMBL4523354" .
-  # Database: ChEMBL | Query: 4 | Comment: NAPRT/NAPRT1 (Q6XQN6) registered as ChEMBL drug target
-
-  chembl_target:CHEMBL4802016 a cco:SingleProtein ;
-    rdfs:label "Nicotinamide/nicotinic acid mononucleotide adenylyltransferase 1" ;
-    cco:chemblId "CHEMBL4802016" .
-  # Database: ChEMBL | Query: 4 | Comment: NMNAT1 (Q9HAN9) registered as ChEMBL drug target
-
-  chembl_target:CHEMBL5169147 a cco:SingleProtein ;
-    rdfs:label "ADP-ribosyl cyclase/cyclic ADP-ribose hydrolase 2" ;
-    cco:chemblId "CHEMBL5169147" .
-  # Database: ChEMBL | Query: 4 | Comment: BST1/CD157 (Q10588) registered as ChEMBL drug target
-
-exact_answer: 8
+exact_answer: 58
 
 ideal_answer: |
-  Of the 22 reviewed human enzymatic catalysts in the Reactome nicotinate metabolism pathway, exactly 8 are registered as single-protein drug targets in ChEMBL. The most therapeutically prominent is NAMPT (P43490, CHEMBL1744525), the rate-limiting enzyme of the NAD+ salvage route and the target of FK866/daporinad and related clinical-stage oncology candidates. CD38 (P28907, CHEMBL4660) is an NAD+ glycohydrolase targeted by daratumumab-class antibodies approved in multiple myeloma. NT5E/CD73 (P21589, CHEMBL5957) converts AMP to adenosine and is under active clinical investigation as an immuno-oncology checkpoint. NAPRT (Q6XQN6, CHEMBL4523354), the Preiss-Handler pathway enzyme that converts nicotinate to NaMN, has attracted interest because tumours with high NAPRT expression can rescue the lethal effects of NAMPT inhibitors by re-routing flux through the de novo arm. NMNAT1 (Q9HAN9, CHEMBL4802016) is a nuclear NMN adenylyltransferase linked to axonal degeneration and explored for neuroprotective indications. NNMT (P40261, CHEMBL2346486) methylates nicotinamide and is studied as a metabolic target in obesity and cancer. BST1/CD157 (Q10588, CHEMBL5169147) is a second ADP-ribosyl cyclase paralogous to CD38 and also registered as a target. Finally, NADK (O95544, CHEMBL6177) phosphorylates NAD+ to NADP+ and has been implicated in redox-stress tolerance of cancer cells. The remaining 14 pathway enzymes (including NMNAT2/3, NRK1/2, NADSYN1, QPRT and others) are not yet registered as ChEMBL single-protein drug targets.
+  The 22 reviewed human enzymatic catalysts of the Reactome nicotinate metabolism pathway are collectively annotated with 58 distinct approved reactions in the Rhea database. This repertoire encompasses the full biochemical breadth of these enzymes beyond their nicotinate-specific roles: the pathway itself covers the Preiss-Handler route (nicotinate → NaMN → deamido-NAD+ → NAD+ via NAPRT, NMNAT1-3, and NADSYN1), the NAD+ salvage route (nicotinamide → NMN → NAD+ via NAMPT and NMNATs), and NAD+ consumption and recycling steps (CD38/BST1 glycohydrolases, NNMT methyltransferase, NT5E nucleotidase). The per-enzyme Rhea contribution varies widely: the sodium-coupled monocarboxylate transporter SLC5A8 (Q8N695) links to 14 approved reactions reflecting its broad substrate range for short-chain carboxylates including nicotinate, while NT5E/CD73 (P21589) contributes 10 reactions covering all its nucleoside monophosphate substrates. CD38 (P28907) accounts for 6 reactions including NAD+ glycohydrolase, ADP-ribosyl cyclase, and cyclic ADP-ribose hydrolase activities. The 58-reaction total from 22 enzymes (68 protein-reaction pairs) reflects 10 shared reactions catalysed by multiple enzyme paralogues — for instance, the core NAD+ glycohydrolase reaction (Rhea:16301) is shared by both CD38 and BST1/CD157. In contrast, NAMPT, NADK, NAPRT, QPRT, NNMT, and NMNAT1 each contribute a single Rhea reaction, reflecting their substrate-specific roles in the NAD+ metabolic network.
 
 question_template_used: Template 2 (Cross-Database Counting)
 
 time_spent:
   exploration: 30 minutes
-  formulation: 15 minutes
+  formulation: 20 minutes
   verification: 25 minutes
   pubmed_test: 10 minutes
   extraction: 15 minutes
-  documentation: 25 minutes
-  total: 120 minutes
+  documentation: 30 minutes
+  total: 130 minutes

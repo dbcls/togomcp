@@ -198,7 +198,7 @@ Mark: `P` = pass · `W` = minor issues · `F` = major errors
 | 008 | P      | —      |
 | 009 | P      | —      |
 | 010 | P      | —      |
-| 011 | P      | —        |
+| 011 | P      | —      |
 | 012 | P      | —      |
 | 013 | P      | —      |
 | 014 | P      | —      |
@@ -210,17 +210,17 @@ Mark: `P` = pass · `W` = minor issues · `F` = major errors
 | 020 | P      | —      |
 | 021 | P      | —      |
 | 022 | P      | —      |
-| 023 | P      | —        |
+| 023 | P      | —      |
 | 024 | P      | —      |
 | 025 | P      | —      |
 | 026 | P      | —      |
 | 027 | P      | —      |
-| 028 | P      | —        |
+| 028 | P      | —      |
 | 029 | P      | —      |
-| 030 | P      | —        |
+| 030 | P      | —      |
 | 031 | P      | —      |
-| 032 | P      | —        |
-| 033 | P      | —        |
+| 032 | P      | —      |
+| 033 | P      | —      |
 | 034 | P      | —      |
 | 035 | P      | —      |
 | 036 | P      | —      |
@@ -231,7 +231,7 @@ Mark: `P` = pass · `W` = minor issues · `F` = major errors
 | 041 | P      | —      |
 | 042 | P      | —      |
 | 043 | P      | —      |
-| 044 | W      | C18    |
+| 044 | P      | —      |
 | 045 | P      | —      |
 | 046 | P      | —      |
 | 047 | P      | —      |
@@ -239,4 +239,4 @@ Mark: `P` = pass · `W` = minor issues · `F` = major errors
 | 049 | P      | —      |
 | 050 | P      | —      |
 
-**Summary:** `P` = 49 &nbsp;·&nbsp; `W` = 1 &nbsp;·&nbsp; `F` = 0 &nbsp;·&nbsp; Reviewed: 50 / 50
+**Summary:** `P` = 50 &nbsp;·&nbsp; `W` = 0 &nbsp;·&nbsp; `F` = 0 &nbsp;·&nbsp; Reviewed: 50 / 50

@@ -1,275 +1,248 @@
 id: question_044
 type: list
-body: "Which Fanconi anemia complementation group genes with gene symbols starting with 'FANC' have documented pathogenic or likely pathogenic germline variants associated with Fanconi anemia?"
+body: "Which human sialic acid-binding Ig-like lectin (siglec) proteins have experimentally characterized N-glycan structures curated at specific glycosylation sites in glycoproteomic databases?"
 
 inspiration_keyword:
-  keyword_id: KW-0923
-  name: Fanconi anemia
-  category: Disease
+  keyword_id: KW-0430
+  name: Lectin
+  category: Molecular function
 
 togomcp_databases_used:
-  - mesh
-  - clinvar
-  - ncbigene
+  - glycosmos
+  - uniprot
 
 verification_score:
   biological_insight: 3
-  multi_database: 3
-  verifiability: 2
+  multi_database: 2
+  verifiability: 3
   rdf_necessity: 3
   total: 11
   passed: true
 
 pubmed_test:
   time_spent: 10 minutes
-  method: Searched "Fanconi anemia complementation group genes pathogenic variants ClinVar" in PubMed using ncbi_esearch. Examined abstracts of top results (PMIDs 39831988, 38098088).
+  method: >
+    Searched "siglec glycosylation GlyConnect experimental characterization" and
+    "siglec N-glycosylation site mapping experimental" via PubMed:search_articles.
+    Both queries returned zero results.
   result: |
-    Papers found discuss breast cancer gene panel testing and BRCA1/2/PALB2 
-    variants with incidental ClinVar references. No paper systematically lists 
-    all FANC* genes with current pathogenic variant status in ClinVar. 
-    The exact set of which FANC* complementation group genes have P/LP variants 
-    in the current ClinVar database state cannot be determined from literature.
-  conclusion: PASS (cannot answer from literature - requires current ClinVar RDF state)
+    No PubMed papers enumerate which specific siglec family members have curated
+    site-specific N-glycan composition data in the GlyConnect knowledgebase. Papers
+    on siglec biology discuss glycan ligand recognition (trans-interactions) but do
+    not systematically document which siglecs have been glycoproteomic-MS-characterized
+    per site. The four-protein answer reflects current GlyConnect curation state, which
+    changes as new mass spectrometry data are processed.
+  conclusion: PASS (cannot answer from literature - requires current GlycoSMOS/GlyConnect state)
 
 sparql_queries:
   - query_number: 1
-    database: mesh
-    description: Confirm MeSH descriptor D005199 for Fanconi Anemia disease term
+    database: glycosmos
+    description: >
+      Enumerate all human sialic acid-binding Ig-like lectin (siglec) glycoproteins
+      in GlycoSMOS to establish the total family population (11 proteins).
     query: |
-      PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
-      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-      SELECT ?label ?annotation ?treeNum
-      FROM <http://id.nlm.nih.gov/mesh>
+      SELECT DISTINCT ?protein ?label
+      FROM <http://rdf.glycosmos.org/glycoprotein>
       WHERE {
-        mesh:D005199 rdfs:label ?label .
-        OPTIONAL { mesh:D005199 meshv:annotation ?annotation }
+        ?protein a glycan:Glycoprotein ;
+                 glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
+                 rdfs:label ?label .
+        FILTER(CONTAINS(LCASE(?label), "sialic acid-binding ig"))
+      }
+      ORDER BY ?label
+    result_count: 11
+
+  - query_number: 2
+    database: glycosmos
+    description: >
+      Identify siglecs with GlyConnect-curated site-specific glycosylation data:
+      filter glycosylation sites cross-referenced to GlyConnect (https://purl.org/glyconnect/)
+      and count distinct glycosylation sites and glycan structures per protein.
+    query: |
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+
+      SELECT DISTINCT ?protein ?label ?uniprot_ref ?glyconnect_ref
+             (COUNT(DISTINCT ?site) AS ?site_count)
+             (COUNT(DISTINCT ?glycan) AS ?glycan_count)
+      FROM <http://rdf.glycosmos.org/glycoprotein>
+      WHERE {
+        ?protein a glycan:Glycoprotein ;
+                 glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
+                 rdfs:label ?label ;
+                 glycoconjugate:glycosylated_at ?site .
+        FILTER(CONTAINS(LCASE(?label), "sialic acid-binding ig"))
+
+        ?site sio:SIO_000772 ?glyconnect_ref .
+        FILTER(CONTAINS(STR(?glyconnect_ref), "glyconnect"))
+
         OPTIONAL {
-          mesh:D005199 meshv:treeNumber ?tree .
-          ?tree rdfs:label ?treeNum
+          ?protein rdfs:seeAlso ?uniprot_ref .
+          FILTER(CONTAINS(STR(?uniprot_ref), "uniprot.org"))
         }
+        OPTIONAL { ?site glycoconjugate:has_saccharide ?glycan }
+      }
+      GROUP BY ?protein ?label ?uniprot_ref ?glyconnect_ref
+      ORDER BY ?label
+    result_count: 4
+
+  - query_number: 3
+    database: uniprot
+    description: >
+      Retrieve gene names and confirm SwissProt-reviewed status for the four
+      siglecs with GlyConnect data (O15389/SIGLEC5, Q9Y286/SIGLEC7,
+      Q9NYZ4/SIGLEC8, Q08ET2/SIGLEC14).
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT DISTINCT ?protein ?name ?gene ?mnemonic
+      WHERE {
+        VALUES ?protein {
+          <http://purl.uniprot.org/uniprot/O15389>
+          <http://purl.uniprot.org/uniprot/Q9Y286>
+          <http://purl.uniprot.org/uniprot/Q9NYZ4>
+          <http://purl.uniprot.org/uniprot/Q08ET2>
+        }
+        ?protein a up:Protein ;
+                 up:mnemonic ?mnemonic ;
+                 up:reviewed true ;
+                 up:recommendedName/up:fullName ?name .
+        OPTIONAL { ?protein up:encodedBy/skos:prefLabel ?gene }
       }
     result_count: 4
 
-  - query_number: 2
-    database: clinvar
-    description: Find all distinct FANC* protein-coding genes with pathogenic or likely pathogenic variants annotated with Fanconi Anemia (MeSH D005199), cross-referenced to NCBI Gene for gene type
-    query: |
-      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
-      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
-      PREFIX dct: <http://purl.org/dc/terms/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX sio: <http://semanticscience.org/resource/>
-      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
-      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
-
-      SELECT DISTINCT ?gene_symbol ?gene_type ?gene_desc
-      WHERE {
-        GRAPH <http://rdfportal.org/dataset/clinvar> {
-          ?variant a cvo:VariationArchiveType ;
-                   cvo:record_status "current" ;
-                   med2rdf:disease ?disease ;
-                   cvo:classified_record ?classrec .
-          ?disease dct:references ?ref_bn .
-          ?ref_bn rdfs:seeAlso <http://meshb.nlm.nih.gov/record/ui?ui=D005199> .
-
-          ?classrec cvo:classifications/cvo:germline_classification/cvo:description ?sig .
-          FILTER(?sig = "Pathogenic" || ?sig = "Likely pathogenic")
-
-          ?classrec sio:SIO_000628 ?gene_bn .
-          ?gene_bn med2rdf:gene ?gene_uri .
-          ?gene_uri cvo:symbol ?gene_symbol ;
-                    cvo:hgnc_id ?hgnc_id ;
-                    cvo:gene_id ?gene_id_int .
-
-          FILTER(STRSTARTS(?gene_symbol, "FANC"))
-          BIND(STR(?gene_id_int) AS ?gene_id_str)
-        }
-        GRAPH <http://rdfportal.org/dataset/ncbigene> {
-          ?ncbi_gene a insdc:Gene ;
-                     dct:identifier ?gene_id_str ;
-                     ncbio:typeOfGene ?gene_type .
-          OPTIONAL { ?ncbi_gene dct:description ?gene_desc }
-        }
-      }
-      ORDER BY ?gene_symbol
-    result_count: 11
-
-  - query_number: 3
-    database: clinvar
-    description: Count pathogenic/likely pathogenic variants per FANC* gene for Fanconi Anemia (GROUP BY verification query)
-    query: |
-      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
-      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
-      PREFIX dct: <http://purl.org/dc/terms/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX sio: <http://semanticscience.org/resource/>
-
-      SELECT DISTINCT ?gene_symbol (COUNT(DISTINCT ?variant) AS ?variant_count)
-      FROM <http://rdfportal.org/dataset/clinvar>
-      WHERE {
-        ?variant a cvo:VariationArchiveType ;
-                 cvo:record_status "current" ;
-                 med2rdf:disease ?disease ;
-                 cvo:classified_record ?classrec .
-        ?disease dct:references ?ref_bn .
-        ?ref_bn rdfs:seeAlso <http://meshb.nlm.nih.gov/record/ui?ui=D005199> .
-
-        ?classrec cvo:classifications/cvo:germline_classification/cvo:description ?sig .
-        FILTER(?sig = "Pathogenic" || ?sig = "Likely pathogenic")
-
-        ?classrec sio:SIO_000628 ?gene_bn .
-        ?gene_bn med2rdf:gene ?gene_uri .
-        ?gene_uri cvo:symbol ?gene_symbol ;
-                  cvo:hgnc_id ?hgnc_id .
-
-        FILTER(STRSTARTS(?gene_symbol, "FANC"))
-      }
-      GROUP BY ?gene_symbol
-      ORDER BY ?gene_symbol
-    result_count: 11
-
   - query_number: 4
-    database: clinvar
-    description: "Arithmetic verification: total distinct variants for all FANC* genes (to check GROUP BY sum vs total)"
+    database: glycosmos
+    description: >
+      Arithmetic verification: count human siglecs in GlycoSMOS that lack
+      any GlyConnect cross-reference (expected 7; with 4 from Query 2 must sum to 11).
     query: |
-      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
-      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
-      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX sio: <http://semanticscience.org/resource/>
 
-      SELECT (COUNT(DISTINCT ?variant) AS ?total_variants)
-      FROM <http://rdfportal.org/dataset/clinvar>
+      SELECT (COUNT(DISTINCT ?protein) AS ?without_glyconnect)
+      FROM <http://rdf.glycosmos.org/glycoprotein>
       WHERE {
-        ?variant a cvo:VariationArchiveType ;
-                 cvo:record_status "current" ;
-                 med2rdf:disease ?disease ;
-                 cvo:classified_record ?classrec .
-        ?disease dct:references ?ref_bn .
-        ?ref_bn rdfs:seeAlso <http://meshb.nlm.nih.gov/record/ui?ui=D005199> .
+        ?protein a glycan:Glycoprotein ;
+                 glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
+                 rdfs:label ?label ;
+                 glycoconjugate:glycosylated_at ?site .
+        FILTER(CONTAINS(LCASE(?label), "sialic acid-binding ig"))
 
-        ?classrec cvo:classifications/cvo:germline_classification/cvo:description ?sig .
-        FILTER(?sig = "Pathogenic" || ?sig = "Likely pathogenic")
+        ?site sio:SIO_000772 ?ref .
+        FILTER(!CONTAINS(STR(?ref), "glyconnect"))
 
-        ?classrec sio:SIO_000628 ?gene_bn .
-        ?gene_bn med2rdf:gene ?gene_uri .
-        ?gene_uri cvo:symbol ?gene_symbol ;
-                  cvo:hgnc_id ?hgnc_id .
-
-        FILTER(STRSTARTS(?gene_symbol, "FANC"))
+        FILTER NOT EXISTS {
+          ?protein glycoconjugate:glycosylated_at ?site2 .
+          ?site2 sio:SIO_000772 ?ref2 .
+          FILTER(CONTAINS(STR(?ref2), "glyconnect"))
+        }
       }
-    result_count: 1
-
-rdf_triples: |
-  @prefix mesh: <http://id.nlm.nih.gov/mesh/> .
-  @prefix meshv: <http://id.nlm.nih.gov/mesh/vocab#> .
-  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix cvo: <http://purl.jp/bio/10/clinvar/> .
-  @prefix med2rdf: <http://med2rdf.org/ontology/med2rdf#> .
-  @prefix dct: <http://purl.org/dc/terms/> .
-  @prefix sio: <http://semanticscience.org/resource/> .
-
-  mesh:D005199 a meshv:TopicalDescriptor ;
-               rdfs:label "Fanconi Anemia" .
-  # Database: MeSH | Query: 1 | Comment: MeSH descriptor for Fanconi Anemia disease term
-
-  mesh:D005199 meshv:treeNumber <http://id.nlm.nih.gov/mesh/C16.320.077.280> .
-  # Database: MeSH | Query: 1 | Comment: Tree position in congenital/hereditary diseases
-
-  <http://ncbi.nlm.nih.gov/gene/2175> a cvo:Gene ;
-                                       cvo:symbol "FANCA" ;
-                                       cvo:gene_id 2175 .
-  # Database: ClinVar | Query: 2 | Comment: FANCA gene - complementation group A, 634 P/LP variants
-
-  <http://ncbi.nlm.nih.gov/gene/2187> a cvo:Gene ;
-                                       cvo:symbol "FANCB" ;
-                                       cvo:gene_id 2187 .
-  # Database: ClinVar | Query: 2 | Comment: FANCB gene - complementation group B, 7 P/LP variants
-
-  <http://ncbi.nlm.nih.gov/gene/2176> a cvo:Gene ;
-                                       cvo:symbol "FANCC" ;
-                                       cvo:gene_id 2176 .
-  # Database: ClinVar | Query: 2 | Comment: FANCC gene - complementation group C, 118 P/LP variants
-
-  <http://ncbi.nlm.nih.gov/gene/2177> a cvo:Gene ;
-                                       cvo:symbol "FANCD2" ;
-                                       cvo:gene_id 2177 .
-  # Database: ClinVar | Query: 2 | Comment: FANCD2 gene - complementation group D2, 159 P/LP variants
-
-  <http://ncbi.nlm.nih.gov/gene/115795> a cvo:Gene ;
-                                          cvo:symbol "FANCD2OS" ;
-                                          cvo:gene_id 115795 .
-  # Database: ClinVar | Query: 2 | Comment: FANCD2OS gene - opposite strand of FANCD2, 45 P/LP variants (overlap with FANCD2)
-
-  <http://ncbi.nlm.nih.gov/gene/2178> a cvo:Gene ;
-                                       cvo:symbol "FANCE" ;
-                                       cvo:gene_id 2178 .
-  # Database: ClinVar | Query: 2 | Comment: FANCE gene - complementation group E, 1 P/LP variant
-
-  <http://ncbi.nlm.nih.gov/gene/2188> a cvo:Gene ;
-                                       cvo:symbol "FANCF" ;
-                                       cvo:gene_id 2188 .
-  # Database: ClinVar | Query: 2 | Comment: FANCF gene - complementation group F, 25 P/LP variants
-
-  <http://ncbi.nlm.nih.gov/gene/2189> a cvo:Gene ;
-                                       cvo:symbol "FANCG" ;
-                                       cvo:gene_id 2189 .
-  # Database: ClinVar | Query: 2 | Comment: FANCG gene - complementation group G, 97 P/LP variants
-
-  <http://ncbi.nlm.nih.gov/gene/55215> a cvo:Gene ;
-                                         cvo:symbol "FANCI" ;
-                                         cvo:gene_id 55215 .
-  # Database: ClinVar | Query: 2 | Comment: FANCI gene - complementation group I, 139 P/LP variants
-
-  <http://ncbi.nlm.nih.gov/gene/55120> a cvo:Gene ;
-                                         cvo:symbol "FANCL" ;
-                                         cvo:gene_id 55120 .
-  # Database: ClinVar | Query: 2 | Comment: FANCL gene - complementation group L, 76 P/LP variants
-
-  <http://ncbi.nlm.nih.gov/gene/57697> a cvo:Gene ;
-                                         cvo:symbol "FANCM" ;
-                                         cvo:gene_id 57697 .
-  # Database: ClinVar | Query: 2 | Comment: FANCM gene - complementation group M, 136 P/LP variants
-
-  <http://ncbi.nlm.nih.gov/gene/2175> med2rdf:gene <http://ncbi.nlm.nih.gov/gene/2175> .
-  # Database: ClinVar | Query: 3 | Comment: Gene-variant linkage via blank node pattern
+    result_count: 7
 
 arithmetic_verification:
-  query: "GROUP BY gene_symbol with COUNT(DISTINCT variant)"
-  sum_of_category_counts: 1437
-  total_distinct_entities: 1392
-  result: "Sum (1437) > Total (1392) - VALID OVERLAP"
+  query: "GlycoSMOS: siglecs with GlyConnect data (Q2) vs. without (Q4)"
+  sum_of_category_counts: 11
+  total_distinct_entities: 11
+  result: "Sum (4 + 7 = 11) = Total (11) — VALID, mutually exclusive categories"
   interpretation: |
-    45 variants are annotated to both FANCD2 and FANCD2OS because FANCD2OS
-    (opposite strand gene) shares genomic coordinates with FANCD2. Variants in
-    the FANCD2 locus are co-annotated to the overlapping FANCD2OS gene model.
-    This is documented biological overlap, not a coverage gap.
+    11 human siglec glycoproteins exist in GlycoSMOS. Exactly 4 have at least one
+    glycosylation site cross-referenced to GlyConnect (SIGLEC5, 7, 8, 14). The
+    remaining 7 (SIGLEC6, 9, 10, 11, 12, 15, 16) have glycosylation site records
+    sourced only from GlyGen and/or the O-GlcNAc database, without GlyConnect
+    curated site-specific glycan compositions. Categories are mutually exclusive.
+
+rdf_triples: |
+  @prefix glycan: <http://purl.jp/bio/12/glyco/glycan#> .
+  @prefix glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix sio: <http://semanticscience.org/resource/> .
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+
+  <http://glycosmos.org/glycoprotein/O15389> a glycan:Glycoprotein .
+  # Database: GlyCosmos | Query: 1 | Comment: SIGLEC5 glycoprotein entry (human)
+
+  <http://glycosmos.org/glycoprotein/O15389> glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
+  # Database: GlyCosmos | Query: 1 | Comment: Taxon = Homo sapiens (NCBI:9606)
+
+  <http://glycosmos.org/glycoprotein/O15389> rdfs:label "Sialic acid-binding Ig-like lectin 5" .
+  # Database: GlyCosmos | Query: 1 | Comment: Protein label matching siglec family filter
+
+  <http://glycosmos.org/glycoprotein/O15389> rdfs:seeAlso <http://purl.uniprot.org/uniprot/O15389> .
+  # Database: GlyCosmos | Query: 2 | Comment: Cross-reference to UniProt entry O15389
+
+  <http://glycosmos.org/glycoprotein/O15389> glycoconjugate:glycosylated_at <http://glycosmos.org/glycosylationsite/SITE_O15389_example> .
+  # Database: GlyCosmos | Query: 2 | Comment: Protein links to glycosylation site (34 sites total)
+
+  <http://glycosmos.org/glycosylationsite/SITE_O15389_example> sio:SIO_000772 <https://purl.org/glyconnect/protein/568> .
+  # Database: GlyCosmos | Query: 2 | Comment: Site cross-referenced to GlyConnect entry 568 for SIGLEC5
+
+  <http://glycosmos.org/glycoprotein/Q9Y286> a glycan:Glycoprotein ;
+      rdfs:label "Sialic acid-binding Ig-like lectin 7" ;
+      rdfs:seeAlso <http://purl.uniprot.org/uniprot/Q9Y286> .
+  # Database: GlyCosmos | Query: 2 | Comment: SIGLEC7 — 32 sites, 31 glycan compositions, GlyConnect 569
+
+  <http://glycosmos.org/glycoprotein/Q9NYZ4> a glycan:Glycoprotein ;
+      rdfs:label "Sialic acid-binding Ig-like lectin 8" ;
+      rdfs:seeAlso <http://purl.uniprot.org/uniprot/Q9NYZ4> .
+  # Database: GlyCosmos | Query: 2 | Comment: SIGLEC8 — 28 sites, 27 glycan compositions, GlyConnect 570
+
+  <http://glycosmos.org/glycoprotein/Q08ET2> a glycan:Glycoprotein ;
+      rdfs:label "Sialic acid-binding Ig-like lectin 14" ;
+      rdfs:seeAlso <http://purl.uniprot.org/uniprot/Q08ET2> .
+  # Database: GlyCosmos | Query: 2 | Comment: SIGLEC14 — 14 sites, 9 glycan compositions, GlyConnect 1978
+
+  <http://purl.uniprot.org/uniprot/O15389> a up:Protein ;
+      up:mnemonic "SIGL5_HUMAN" ;
+      up:reviewed true .
+  # Database: UniProt | Query: 3 | Comment: SIGLEC5 — reviewed Swiss-Prot entry
+
+  <http://purl.uniprot.org/uniprot/O15389> up:encodedBy/skos:prefLabel "SIGLEC5" .
+  # Database: UniProt | Query: 3 | Comment: Official HGNC gene symbol SIGLEC5
+
+  <http://purl.uniprot.org/uniprot/Q9Y286> a up:Protein ;
+      up:mnemonic "SIGL7_HUMAN" ;
+      up:reviewed true ;
+      up:encodedBy/skos:prefLabel "SIGLEC7" .
+  # Database: UniProt | Query: 3 | Comment: SIGLEC7 — reviewed Swiss-Prot entry
+
+  <http://purl.uniprot.org/uniprot/Q9NYZ4> a up:Protein ;
+      up:mnemonic "SIGL8_HUMAN" ;
+      up:reviewed true ;
+      up:encodedBy/skos:prefLabel "SIGLEC8" .
+  # Database: UniProt | Query: 3 | Comment: SIGLEC8 — reviewed Swiss-Prot entry
+
+  <http://purl.uniprot.org/uniprot/Q08ET2> a up:Protein ;
+      up:mnemonic "SIG14_HUMAN" ;
+      up:reviewed true ;
+      up:encodedBy/skos:prefLabel "SIGLEC14" .
+  # Database: UniProt | Query: 3 | Comment: SIGLEC14 — reviewed Swiss-Prot entry
 
 exact_answer:
-  - "FANCA (NCBIGene:2175)"
-  - "FANCB (NCBIGene:2187)"
-  - "FANCC (NCBIGene:2176)"
-  - "FANCD2 (NCBIGene:2177)"
-  - "FANCD2OS (NCBIGene:115795)"
-  - "FANCE (NCBIGene:2178)"
-  - "FANCF (NCBIGene:2188)"
-  - "FANCG (NCBIGene:2189)"
-  - "FANCI (NCBIGene:55215)"
-  - "FANCL (NCBIGene:55120)"
-  - "FANCM (NCBIGene:57697)"
+  - "SIGLEC5 (UniProt:O15389)"
+  - "SIGLEC7 (UniProt:Q9Y286)"
+  - "SIGLEC8 (UniProt:Q9NYZ4)"
+  - "SIGLEC14 (UniProt:Q08ET2)"
 
 ideal_answer: |
-  Eleven genes with symbols starting 'FANC' have pathogenic or likely pathogenic germline variants associated with Fanconi anemia (MeSH D005199) in ClinVar: FANCA, FANCB, FANCC, FANCD2, FANCD2OS, FANCE, FANCF, FANCG, FANCI, FANCL, and FANCM. These represent the core Fanconi anemia complementation groups whose gene symbols follow the FANC* convention. The variant burden differs markedly across complementation groups: FANCA is the most frequently mutated (634 pathogenic/likely pathogenic variants), reflecting that complementation group A accounts for the majority of Fanconi anemia cases (~60-65%), followed by FANCD2 (159), FANCI (139), FANCM (136), FANCC (118), FANCG (97), FANCL (76), FANCF (25), FANCB (7), and FANCE (1). FANCD2OS, annotated as the opposite-strand gene at the FANCD2 locus, shares 45 variants with FANCD2 due to overlapping genomic coordinates; the total distinct pathogenic/LP variant count for the FANC* gene set is 1,392. Notably absent from this FANC*-symbol set are several canonical Fanconi anemia genes using alternative naming (BRCA2/FANCD1, BRIP1/FANCJ, PALB2/FANCN, SLX4/FANCP, RFWD3/FANCW), all of which also carry documented pathogenic variants in ClinVar but were identified by different gene symbols.
+  Four human sialic acid-binding Ig-like lectin proteins — SIGLEC5 (UniProt O15389), SIGLEC7 (Q9Y286), SIGLEC8 (Q9NYZ4), and SIGLEC14 (Q08ET2) — have experimentally characterized N-glycan structures curated at specific glycosylation sites in GlyConnect, the experimental glycoprotein knowledgebase integrated within GlyCosmos. Of the eleven human siglec-family glycoproteins represented in GlyCosmos (SIGLEC5, 6, 7, 8, 9, 10, 11, 12, 14, 15, and 16), these four are the only members for which site-resolved glycoproteomic mass spectrometry data have been curated: SIGLEC5 has 34 annotated glycosylation sites with 33 associated glycan structures (GlyConnect entry 568), SIGLEC7 has 32 sites with 31 glycan compositions (GlyConnect 569), SIGLEC8 has 28 sites with 27 glycan compositions (GlyConnect 570), and SIGLEC14 has 14 sites with 9 glycan compositions (GlyConnect 1978). The remaining seven siglecs (SIGLEC6, 9, 10, 11, 12, 15, 16) are recorded in GlyCosmos with glycosylation site predictions from GlyGen but lack curated per-site glycan composition data. Three of the four characterized siglecs (SIGLEC5, 7, 8) are CD33-related inhibitory receptors carrying cytoplasmic ITIMs, while SIGLEC14 is an activating receptor paired with DAP12; all four are expressed primarily on myeloid or NK cells and play roles in immune tolerance, allergy regulation, and innate immune modulation. Dense N-glycosylation of siglec ectodomains is biologically significant because the glycan shield can occlude the V-set sialic acid-binding domain, favoring cis-ligand masking on the cell surface over trans-ligand engagement, and modulating receptor clustering and signaling thresholds.
 
-question_template_used: Template 3 (Comprehensive List - Systematic Gene Family)
+question_template_used: Template 1 (Ontology Counting — cross-database existence filter)
 
 time_spent:
-  exploration: 30 minutes
+  exploration: 25 minutes
   formulation: 15 minutes
-  verification: 40 minutes
+  verification: 30 minutes
   pubmed_test: 10 minutes
-  extraction: 25 minutes
-  documentation: 30 minutes
-  total: 150 minutes
+  extraction: 20 minutes
+  documentation: 25 minutes
+  total: 125 minutes

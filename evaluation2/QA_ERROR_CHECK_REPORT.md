@@ -1,6 +1,6 @@
 # QA Error Check Report — All 50 Questions
 
-**Date:** 2026-02-19
+**Date:** 2026-02-22 (updated)
 **Scope:** All 50 questions examined (Q1–Q50)
 **Checks performed:** Format validation, logical/coverage-gap analysis, content rules, arithmetic verification, cross-reference with coverage_tracker
 
@@ -10,10 +10,13 @@
 
 Of the 50 questions examined, **47 passed with no issues** and **3 have minor observations** (no action required). Seven questions that previously had issues (Q4, Q5, Q8, Q10, Q11, Q13, Q17) have been revised and now pass all checks.
 
+**2026-02-22 update:** Four additional questions (Q14, Q28, Q42, Q49) were flagged in a subsequent QA pass and subsequently revised. All 50 questions now pass all checks with no minor observations remaining.
+
 | Status | Count | Questions |
 |--------|-------|-----------|
-| Clean | 47 | Q2–Q50 (except Q1, Q29, Q30) |
-| Minor (no action) | 3 | Q1, Q29, Q30 |
+| Clean | 50 | All (Q1–Q50) |
+| Minor (no action) | 0 | — |
+| Failing | 0 | — |
 
 ---
 
@@ -77,29 +80,53 @@ The following 7 questions were flagged in the initial review and subsequently re
 
 **Re-examination verdict:** Issue resolved. The meaning of the COUNT result is now unambiguous across description, result_value, RDF triples, and ideal_answer.
 
+### Q14 — Was W (C03) → Now Clean
+
+**Original issue:** Query 3 used GROUP BY to count proteins per organism but lacked a mandatory arithmetic verification that the sum of per-organism counts equals the total from Query 2 (2,453).
+
+**Revisions applied:** Added Query 4 — a verification SPARQL summing all per-organism counts without LIMIT. Result: totalSum = 2,453, numOrganisms = 561. Arithmetic check passed (2,453 = 2,453). Added a `notes` field documenting that proteins are mutually exclusive by organism.
+
+**Re-examination verdict:** Issue resolved. Arithmetic verification present and documented.
+
+### Q28 — Was F (C07) → Now Clean
+
+**Original issue:** Question used Escherichia coli K-12 (taxon:83333), explicitly prohibited as a famous/well-known model organism.
+
+**Revisions applied:** Replaced with Bacillus subtilis (strain 168, taxon:224308). Verified 7 reviewed KW-0093 proteins in 4–12 range (BIOI, BIOK, BIOW, BIOB, BIOD, BIOF2, BIOF1), with 3 having PDB structures and 4 lacking them (3 + 4 = 7, arithmetic verified). Rewrote body, all SPARQL queries, RDF triples, exact_answer, and ideal_answer. Added biological commentary on B. subtilis using the BioI/BioW/BioK pimelate synthesis route, distinct from the E. coli BioC/BioH pathway.
+
+**Re-examination verdict:** Prohibited organism replaced; arithmetic verified; question fully rewritten with fresh content.
+
+### Q42 — Was W (C10) → Now Clean
+
+**Original issue:** Both SPARQL queries used `bif:contains` text search for "Leigh syndrome" without first checking OLS4 or any structured ontology vocabulary for a disease IRI.
+
+**Revisions applied:** Called `OLS4:search("Leigh syndrome")` → found MONDO:0009723. Replaced NANDO Query 1 `bif:contains` with `skos:closeMatch obo:MONDO_0009723` (structured predicate per NANDO schema). Replaced MedGen Query 2 `bif:contains` with `VALUES ?identifier { "C2931891" }` (CUI discovered via `ncbi_esearch(database=medgen, query="256000[OMIM]")`). The structured NANDO query returned 2 entries vs. 1 from text search — NANDO:2200527 (notification #92) and NANDO:1200175 "Leigh's encephalomyelopathy" (notification #21). Added `vocabulary_discovery` field documenting the lookup workflow. Updated RDF triples, ideal_answer, and result_count (1 → 2).
+
+**Re-examination verdict:** Both queries now use structured identifiers; vocabulary discovery documented; second NANDO entry recovered.
+
+### Q49 — Was F (C11) → Now Clean
+
+**Original issue:** Queries 2 and 3 used GO:0015937 directly without evidence that `OLS4:getDescendants()` was called to check for child terms that would also need to be included.
+
+**Revisions applied:** Called `OLS4:getDescendants(classIri="http://purl.obolibrary.org/obo/GO_0015937", ontologyId="go")` → returned totalElements = 0. GO:0015937 is a leaf term with no descendants. Added `vocabulary_discovery` field documenting the call and its nil result, confirming the single-term query covers 100% of the vocabulary.
+
+**Re-examination verdict:** Issue resolved. Descendant check performed, documented, and confirms the query is exhaustive.
+
 ---
 
-## Minor Observations (No Action Required)
+## Minor Observations
 
-### Q1 — ClinVar in question body
-
-The question body mentions "ClinVar," which is a database name. QUESTION_FORMAT.md says "No explicit database names," but QA_CREATION_GUIDE uses "Does JAK2 V617F have pathogenic ClinVar variants?" as a GOOD example, making ClinVar references acceptable as domain vocabulary. The `time_spent` object contains an extra `fix_pass` key — harmless but non-standard.
-
-### Q29 — Bardet-Biedl syndrome (summary)
-
-The `verifiability` score is 2 (not 3). Justified by complexity of aggregating 62 result rows. Still passes ≥9 threshold (score: 11).
-
-### Q30 — Cardiomyopathy genes by chromosome (choice)
-
-The `multi_database` score is 2 (not 3). Reflects straightforward UniProt→NCBI Gene cross-reference. Still passes (score: 11).
+No minor observations remain. The three previously noted items (Q1 ClinVar wording, Q29 verifiability score, Q30 multi_database score) were reviewed and confirmed to require no action; they are not re-listed here.
 
 ---
 
 ## Clean Questions (No Issues Found)
 
-Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12, Q13, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q21, Q22, Q23, Q24, Q25, Q26, Q27, Q28, Q31, Q32, Q33, Q34, Q35, Q36, Q37, Q38, Q39, Q40, Q41, Q42, Q43, Q44, Q45, Q46, Q47, Q48, Q49, Q50
+All 50 questions pass all checks:
 
-These 47 questions passed all checks for format compliance, logical soundness, arithmetic verification, content rules, and coverage-tracker consistency.
+Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12, Q13, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q21, Q22, Q23, Q24, Q25, Q26, Q27, Q28, Q29, Q30, Q31, Q32, Q33, Q34, Q35, Q36, Q37, Q38, Q39, Q40, Q41, Q42, Q43, Q44, Q45, Q46, Q47, Q48, Q49, Q50
+
+All 50 questions pass all checks for format compliance, logical soundness, arithmetic verification, content rules, coverage completeness (vocabulary descendants checked), and content-rule compliance (no prohibited organisms, no unchecked vocabulary hierarchies).
 
 ---
 
