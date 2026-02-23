@@ -90,7 +90,7 @@ sparql_queries:
 
   - query_number: 3
     database: uniprot
-    description: Verify arithmetic - count total unique proteasome proteins annotated to at least one of the 8 GO subcomplexes (to confirm overlap with sum of 126)
+    description: Verify arithmetic - count total unique proteasome proteins annotated to at least one of the 8 GO subcomplexes (actual result is 52, not 49; 3 of the 4 proteins lacking GO:0000502 still carry other subcomplex annotations; only PSME4/Q14997 has none of the 8 terms)
     query: |
       PREFIX up: <http://purl.uniprot.org/core/>
       PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
@@ -144,26 +144,71 @@ sparql_queries:
 
   - query_number: 5
     database: chembl
-    description: Count reviewed human proteasome proteins that are registered as ChEMBL single-protein targets, using UniProt cross-references from query 1 result set
+    description: Count reviewed human proteasome proteins that are registered as ChEMBL single-protein targets. ChEMBL (EBI endpoint) and UniProt (SIB endpoint) reside on different SPARQL endpoints and cannot be federated in a single query. The correct approach is to supply the 53 UniProt IRIs obtained from query 1 as a VALUES clause in a ChEMBL-only query.
     query: |
       PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
       PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-      PREFIX up: <http://purl.uniprot.org/core/>
-      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
-      PREFIX keywords: <http://purl.uniprot.org/keywords/>
 
-      SELECT (COUNT(DISTINCT ?protein) AS ?chemblTargetCount)
+      SELECT (COUNT(DISTINCT ?uniprotIri) AS ?chemblTargetCount)
       FROM <http://rdf.ebi.ac.uk/dataset/chembl>
-      FROM <http://sparql.uniprot.org/uniprot>
-      FROM <http://sparql.uniprot.org/keywords>
       WHERE {
-        ?protein a up:Protein ;
-                 up:reviewed 1 ;
-                 up:organism taxon:9606 ;
-                 up:classifiedWith keywords:647 .
-
+        VALUES ?uniprotIri {
+          <http://purl.uniprot.org/uniprot/O00231>
+          <http://purl.uniprot.org/uniprot/O00487>
+          <http://purl.uniprot.org/uniprot/O14818>
+          <http://purl.uniprot.org/uniprot/O43242>
+          <http://purl.uniprot.org/uniprot/O43396>
+          <http://purl.uniprot.org/uniprot/P25786>
+          <http://purl.uniprot.org/uniprot/P25787>
+          <http://purl.uniprot.org/uniprot/P25788>
+          <http://purl.uniprot.org/uniprot/P28066>
+          <http://purl.uniprot.org/uniprot/P28072>
+          <http://purl.uniprot.org/uniprot/P28074>
+          <http://purl.uniprot.org/uniprot/P48556>
+          <http://purl.uniprot.org/uniprot/P49721>
+          <http://purl.uniprot.org/uniprot/P51665>
+          <http://purl.uniprot.org/uniprot/P54578>
+          <http://purl.uniprot.org/uniprot/P54727>
+          <http://purl.uniprot.org/uniprot/P60896>
+          <http://purl.uniprot.org/uniprot/P60900>
+          <http://purl.uniprot.org/uniprot/P61289>
+          <http://purl.uniprot.org/uniprot/P62191>
+          <http://purl.uniprot.org/uniprot/P62195>
+          <http://purl.uniprot.org/uniprot/P62333>
+          <http://purl.uniprot.org/uniprot/Q05086>
+          <http://purl.uniprot.org/uniprot/Q16186>
+          <http://purl.uniprot.org/uniprot/Q5VYK3>
+          <http://purl.uniprot.org/uniprot/Q92530>
+          <http://purl.uniprot.org/uniprot/Q99436>
+          <http://purl.uniprot.org/uniprot/Q9UMX0>
+          <http://purl.uniprot.org/uniprot/Q9Y5K5>
+          <http://purl.uniprot.org/uniprot/P20618>
+          <http://purl.uniprot.org/uniprot/P25789>
+          <http://purl.uniprot.org/uniprot/Q14997>
+          <http://purl.uniprot.org/uniprot/Q15386>
+          <http://purl.uniprot.org/uniprot/Q06323>
+          <http://purl.uniprot.org/uniprot/Q9UL46>
+          <http://purl.uniprot.org/uniprot/A5LHX3>
+          <http://purl.uniprot.org/uniprot/O00232>
+          <http://purl.uniprot.org/uniprot/P17980>
+          <http://purl.uniprot.org/uniprot/P28062>
+          <http://purl.uniprot.org/uniprot/P28065>
+          <http://purl.uniprot.org/uniprot/P28070>
+          <http://purl.uniprot.org/uniprot/P35998>
+          <http://purl.uniprot.org/uniprot/P40306>
+          <http://purl.uniprot.org/uniprot/P43686>
+          <http://purl.uniprot.org/uniprot/P49720>
+          <http://purl.uniprot.org/uniprot/P54725>
+          <http://purl.uniprot.org/uniprot/P55036>
+          <http://purl.uniprot.org/uniprot/Q13200>
+          <http://purl.uniprot.org/uniprot/Q15008>
+          <http://purl.uniprot.org/uniprot/Q8TAA3>
+          <http://purl.uniprot.org/uniprot/Q99460>
+          <http://purl.uniprot.org/uniprot/Q9BRP4>
+          <http://purl.uniprot.org/uniprot/Q9UNM6>
+        }
         ?target a cco:SingleProtein ;
-                cco:hasTargetComponent/skos:exactMatch ?protein ;
+                cco:hasTargetComponent/skos:exactMatch ?uniprotIri ;
                 cco:organismName "Homo sapiens" .
       }
     result_count: 1
@@ -193,7 +238,9 @@ rdf_triples: |
   <http://purl.uniprot.org/uniprot/P28074> up:classifiedWith obo:GO_0019774 .
   # Database: UniProt | Query: 2 | Comment: PSMB5 annotated to core beta-subunit complex (GO:0019774); 11 proteins in this category; illustrates multi-annotation overlap
 
-  # GO subcomplex distribution (sum 126 annotations for 49 annotated proteins; arithmetic verification: 126 > 49 = valid overlap)
+  # GO subcomplex distribution (sum 126 annotations for 52 annotated proteins; arithmetic verification: 126 > 52 = valid overlap)
+  # Note: 49 proteins carry GO:0000502; 3 others lack GO:0000502 but have a subcomplex annotation (Q92530/GO:0005839, A5LHX3/GO:0019774, Q8TAA3/GO:0019773)
+  # Note: Q14997 (PSME4/PA200) has none of the 8 GO terms and is absent from both counts
   obo:GO_0000502 a obo:GO_0000502 .
   # Database: GO | Query: 2 | Comment: proteasome complex (general) - 49 proteins
   obo:GO_0005839 a obo:GO_0005839 .
@@ -238,7 +285,7 @@ rdf_triples: |
 exact_answer: ""
 
 ideal_answer: |
-  There are 53 reviewed human proteins classified under UniProt keyword KW-0647 (Proteasome), forming a structurally and functionally diverse complex system. When distributed across eight GO cellular component subcategories using structured ontology IRIs, 49 of these proteins are annotated to the general proteasome complex (GO:0000502), while the 20S core complex (GO:0005839) accounts for 18 proteins, the accessory complex (GO:0022624) for 16, the core beta-subunit complex (GO:0019774) for 11, the regulatory particle base subcomplex (GO:0008540) for 9, the lid subcomplex (GO:0008541) for 8, the alpha-subunit complex (GO:0019773) for 8, and the 19S regulatory particle (GO:0005838) for 7. The sum of these category counts reaches 126 annotations for 49 annotated proteins (arithmetic verification: 126 > 49), reflecting extensive multi-subcomplex co-annotation — for example, a beta subunit is simultaneously annotated to the general proteasome complex, the 20S core, and the beta-subunit complex. Four proteins lack the general GO:0000502 annotation entirely: PSMF1 (PI31 inhibitor), PSME4 (PA200 activator), PSB11 (inducible beta-11), and PSMA8 (testis-specific alpha-8), reflecting specialized regulatory or tissue-specific roles outside the constitutive complex. Cross-referencing with ChEMBL reveals that 22 of the 53 proteins (41.5%) are registered as human single-protein drug targets, with all eight canonical beta subunits included — consistent with the clinical use of proteasome inhibitors such as bortezomib and carfilzomib that target the beta5 catalytic subunit (PSMB5).
+  There are 53 reviewed human proteins classified under UniProt keyword KW-0647 (Proteasome), forming a structurally and functionally diverse complex system. When distributed across eight GO cellular component subcategories using structured ontology IRIs, 49 of these proteins are annotated to the general proteasome complex (GO:0000502), while the 20S core complex (GO:0005839) accounts for 18 proteins, the accessory complex (GO:0022624) for 16, the core beta-subunit complex (GO:0019774) for 11, the regulatory particle base subcomplex (GO:0008540) for 9, the lid subcomplex (GO:0008541) for 8, the alpha-subunit complex (GO:0019773) for 8, and the 19S regulatory particle (GO:0005838) for 7. The sum of these category counts reaches 126 annotations for 52 uniquely annotated proteins (arithmetic verification: 126 > 52 = valid overlap), reflecting extensive multi-subcomplex co-annotation — for example, a beta subunit is simultaneously annotated to the general proteasome complex, the 20S core, and the beta-subunit complex. Four proteins lack the general GO:0000502 annotation entirely: PSMF1 (PI31 inhibitor), PSME4 (PA200 activator), PSB11 (inducible beta-11), and PSMA8 (testis-specific alpha-8). Three of them (PSMF1, PSB11, PSMA8) still appear in subcomplex categories (GO:0005839, GO:0019774, GO:0019773 respectively), while PSME4 carries none of the eight GO subcomplex annotations, consistent with its role as an externally docking activator rather than a structural subunit. Cross-referencing with ChEMBL reveals that 22 of the 53 proteins (41.5%) are registered as human single-protein drug targets, with all eight canonical beta subunits included — consistent with the clinical use of proteasome inhibitors such as bortezomib and carfilzomib that target the beta5 catalytic subunit (PSMB5).
 
 question_template_used: Template 4 (Aggregation Statistics)
 

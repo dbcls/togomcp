@@ -44,13 +44,15 @@ sparql_queries:
     database: uniprot
     description: |
       Retrieve all reviewed human serine protease UniProt protein IRIs (KW-0720,
-      organism taxon:9606, up:reviewed true) to use as cross-reference anchors.
+      organism taxon:9606, up:reviewed 1) to use as cross-reference anchors.
+      Note: SELECT without DISTINCT returns 278 rows due to multiple keyword bindings,
+      but COUNT(DISTINCT ?protein) = 141 unique proteins.
     query: |
       PREFIX up: <http://purl.uniprot.org/core/>
       SELECT ?protein
       WHERE {
         ?protein a up:Protein ;
-                 up:reviewed true ;
+                 up:reviewed 1 ;
                  up:organism <http://purl.uniprot.org/taxonomy/9606> ;
                  up:classifiedWith <http://purl.uniprot.org/keywords/720> .
       }
@@ -61,11 +63,13 @@ sparql_queries:
     database: pdb
     description: |
       For all 141 reviewed human serine protease UniProt IRIs, count distinct PDB
-      datablock entries by experimental method via pdbx:link_to_uniprot cross-reference.
-      Arithmetic verification: sum of method counts (1,781) vs total unique entries (1,780)
-      — difference of 1 indicates one entry deposited under two methods (valid overlap).
+      datablock entries by experimental method via pdbo:link_to_uniprot cross-reference.
+      Uses the current pdbo: namespace (pdbx-with-vrptx-v50.owl#).
+      Arithmetic verification: sum of method counts (1,880+137+37+1+1=2,056) vs
+      total unique entries (2,055) — difference of 1 indicates one entry deposited
+      under two methods (valid overlap).
     query: |
-      PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
+      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
       SELECT ?method (COUNT(DISTINCT ?entry) as ?count)
       FROM <http://rdfportal.org/dataset/pdbj>
       WHERE {
@@ -212,11 +216,12 @@ sparql_queries:
           <http://purl.uniprot.org/uniprot/Q9Y5Y6>
           <http://purl.uniprot.org/uniprot/Q9Y6M0>
         }
-        ?entry a pdbx:datablock ;
-               pdbx:has_struct_refCategory/pdbx:has_struct_ref ?ref ;
-               pdbx:has_exptlCategory/pdbx:has_exptl ?exptl .
-        ?ref pdbx:link_to_uniprot ?uniprot_iri .
-        ?exptl pdbx:exptl.method ?method .
+        ?entry a pdbo:datablock .
+        FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
+        ?entry pdbo:has_struct_refCategory/pdbo:has_struct_ref ?ref .
+        ?ref pdbo:link_to_uniprot ?uniprot_iri .
+        ?entry pdbo:has_exptlCategory/pdbo:has_exptl ?exptl .
+        ?exptl pdbo:exptl.method ?method .
       }
       GROUP BY ?method
       ORDER BY DESC(?count)
@@ -227,10 +232,12 @@ sparql_queries:
     description: |
       Arithmetic verification (Checkpoint B): count total distinct PDB entries
       for the same 141 UniProt IRIs without GROUP BY.
-      Expected: sum of method counts (1,701+43+35+1+1=1,781) ≈ total (1,780).
+      Sum of method counts: 1,880 (X-RAY DIFFRACTION) + 137 (ELECTRON MICROSCOPY)
+      + 37 (SOLUTION NMR) + 1 (NEUTRON DIFFRACTION) + 1 (ELECTRON CRYSTALLOGRAPHY)
+      = 2,056. Total unique entries: 2,055.
       Difference of 1 = one entry registered under two experimental methods (valid overlap).
     query: |
-      PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
+      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
       SELECT (COUNT(DISTINCT ?entry) as ?total)
       FROM <http://rdfportal.org/dataset/pdbj>
       WHERE {
@@ -377,25 +384,26 @@ sparql_queries:
           <http://purl.uniprot.org/uniprot/Q9Y5Y6>
           <http://purl.uniprot.org/uniprot/Q9Y6M0>
         }
-        ?entry a pdbx:datablock ;
-               pdbx:has_struct_refCategory/pdbx:has_struct_ref ?ref ;
-               pdbx:has_exptlCategory/pdbx:has_exptl ?exptl .
-        ?ref pdbx:link_to_uniprot ?uniprot_iri .
-        ?exptl pdbx:exptl.method ?method .
+        ?entry a pdbo:datablock .
+        FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
+        ?entry pdbo:has_struct_refCategory/pdbo:has_struct_ref ?ref .
+        ?ref pdbo:link_to_uniprot ?uniprot_iri .
+        ?entry pdbo:has_exptlCategory/pdbo:has_exptl ?exptl .
+        ?exptl pdbo:exptl.method ?method .
       }
-    result_count: 1
+    result_count: 2055
 
 rdf_triples: |
   @prefix up: <http://purl.uniprot.org/core/> .
-  @prefix pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#> .
+  @prefix pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#> .
   @prefix pdb: <http://rdf.wwpdb.org/pdb/> .
   @prefix kw: <http://purl.uniprot.org/keywords/> .
 
   <http://purl.uniprot.org/uniprot/P00750> a up:Protein .
   # Database: UniProt | Query: 1 | Comment: Tissue-type plasminogen activator (tPA), reviewed human serine protease
 
-  <http://purl.uniprot.org/uniprot/P00750> up:reviewed true .
-  # Database: UniProt | Query: 1 | Comment: Swiss-Prot reviewed entry
+  <http://purl.uniprot.org/uniprot/P00750> up:reviewed 1 .
+  # Database: UniProt | Query: 1 | Comment: Swiss-Prot reviewed entry (integer 1, not boolean)
 
   <http://purl.uniprot.org/uniprot/P00750> up:organism <http://purl.uniprot.org/taxonomy/9606> .
   # Database: UniProt | Query: 1 | Comment: Human organism
@@ -409,23 +417,23 @@ rdf_triples: |
   <http://purl.uniprot.org/uniprot/P07477> up:classifiedWith <http://purl.uniprot.org/keywords/720> .
   # Database: UniProt | Query: 1 | Comment: KW-0720 serine protease keyword annotation
 
-  pdb:3I7Q/struct_ref/1 a pdbx:struct_ref .
+  pdb:3I7Q/struct_ref/1 a pdbo:struct_ref .
   # Database: PDB | Query: 2 | Comment: struct_ref linking a PDB entry to a UniProt serine protease
 
-  pdb:3I7Q/struct_ref/1 pdbx:link_to_uniprot <http://purl.uniprot.org/uniprot/P00750> .
+  pdb:3I7Q/struct_ref/1 pdbo:link_to_uniprot <http://purl.uniprot.org/uniprot/P00750> .
   # Database: PDB | Query: 2 | Comment: Cross-reference from PDB entry 3I7Q to tPA UniProt
 
-  pdb:3I7Q/exptl/1 a pdbx:exptl .
+  pdb:3I7Q/exptl/1 a pdbo:exptl .
   # Database: PDB | Query: 2 | Comment: Experimental record for PDB entry 3I7Q
 
-  pdb:3I7Q/exptl/1 pdbx:exptl.method "X-RAY DIFFRACTION" .
+  pdb:3I7Q/exptl/1 pdbo:exptl.method "X-RAY DIFFRACTION" .
   # Database: PDB | Query: 2 | Comment: Structural method = X-RAY DIFFRACTION (most prevalent for serine proteases)
 
 exact_answer:
   - "X-RAY DIFFRACTION"
 
 ideal_answer: |
-  X-RAY DIFFRACTION accounts for the greatest number of distinct structural entries for reviewed human serine proteases, with 1,701 PDB entries, vastly outnumbering ELECTRON MICROSCOPY (43 entries) and SOLUTION NMR (35 entries). This distribution was determined by cross-referencing the 141 reviewed human serine protease sequences from UniProt Swiss-Prot (keyword KW-0720, Homo sapiens) against all PDB entries via the UniProt accession links in the structure database. The total of 1,780 unique PDB entries spans five experimental techniques; two minor methods — ELECTRON CRYSTALLOGRAPHY (1 entry) and NEUTRON DIFFRACTION (1 entry) — also appear. The overwhelming dominance of X-ray crystallography (95.6% of entries) reflects the historical tractability of serine proteases for crystal formation: their well-defined active-site geometry, availability of high-affinity inhibitor co-crystals, and pharmaceutical relevance as drug targets have driven decades of intensive crystallographic campaigns. Electron microscopy is still underrepresented for this family because most clinically relevant serine proteases are monomeric enzymes with molecular weights below ~100 kDa, at the lower end of optimal cryo-EM resolution, whereas solution NMR captures only the smaller members of the family. The 1,781 method-level annotations for 1,780 unique entries indicate that one entry was deposited under two experimental methods.
+  X-RAY DIFFRACTION accounts for the greatest number of distinct structural entries for reviewed human serine proteases, with 1,880 PDB entries, vastly outnumbering ELECTRON MICROSCOPY (137 entries) and SOLUTION NMR (37 entries). This distribution was determined by cross-referencing the 141 reviewed human serine protease sequences from UniProt Swiss-Prot (keyword KW-0720, Homo sapiens) against all PDB entries via the UniProt accession links in the structure database. The total of 2,055 unique PDB entries spans five experimental techniques; two minor methods — ELECTRON CRYSTALLOGRAPHY (1 entry) and NEUTRON DIFFRACTION (1 entry) — also appear. The 2,056 method-level annotations for 2,055 unique entries indicate that one entry was deposited under two experimental methods (valid overlap). The overwhelming dominance of X-ray crystallography (91.5% of entries) reflects the historical tractability of serine proteases for crystal formation: their well-defined active-site geometry, availability of high-affinity inhibitor co-crystals, and pharmaceutical relevance as drug targets have driven decades of intensive crystallographic campaigns. Electron microscopy is still underrepresented for this family because most clinically relevant serine proteases are monomeric enzymes with molecular weights below ~100 kDa, at the lower end of optimal cryo-EM resolution, whereas solution NMR captures only the smaller members of the family.
 
 question_template_used: Template 5 (Bounded Comparison)
 

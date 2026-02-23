@@ -48,25 +48,31 @@ sparql_queries:
       Retrieve the top-level kinase group IRIs for AGC, CAMK, CMGC, and TK
       from the ChEMBL protein classification hierarchy. These four groups sit
       at the root of the kinase branch under the broader "Enzyme" → "Kinase"
-      classification tree.
+      classification tree. In the ChEMBL RDF schema, this level is identified
+      by cco:classLevel "L4" and rdfs:label values of the form
+      "<GROUP> protein kinase group".
     query: |
       PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
       SELECT ?classIRI ?className
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
         ?classIRI a cco:ProteinClassification ;
-                  cco:classLevel "group" ;
+                  cco:classLevel "L4" ;
                   rdfs:label ?className .
-        FILTER(?className IN ("AGC", "CAMK", "CMGC", "TK"))
+        FILTER(?className IN ("AGC protein kinase group",
+                              "CAMK protein kinase group",
+                              "CMGC protein kinase group",
+                              "TK protein kinase group"))
       }
       ORDER BY ?className
     result_count: 4
     result_note: |
-      AGC   → http://rdf.ebi.ac.uk/resource/chembl/protclass/CHEMBL_PC_1289
-      CAMK  → http://rdf.ebi.ac.uk/resource/chembl/protclass/CHEMBL_PC_1339
-      CMGC  → http://rdf.ebi.ac.uk/resource/chembl/protclass/CHEMBL_PC_148
-      TK    → http://rdf.ebi.ac.uk/resource/chembl/protclass/CHEMBL_PC_1285
+      AGC protein kinase group  → http://rdf.ebi.ac.uk/resource/chembl/protclass/CHEMBL_PC_1289
+      CAMK protein kinase group → http://rdf.ebi.ac.uk/resource/chembl/protclass/CHEMBL_PC_1339
+      CMGC protein kinase group → http://rdf.ebi.ac.uk/resource/chembl/protclass/CHEMBL_PC_148
+      TK protein kinase group   → http://rdf.ebi.ac.uk/resource/chembl/protclass/CHEMBL_PC_1285
 
   - query_number: 2
     database: chembl
@@ -108,7 +114,9 @@ sparql_queries:
     description: >
       Extract all UniProt accession numbers for human single-protein targets
       in each kinase group, to use as a bridge to PDB. ChEMBL links targets to
-      UniProt via cco:hasTargetComponent/skos:exactMatch.
+      UniProt via cco:hasTargetComponent/skos:exactMatch, yielding IRIs with
+      the http://purl.uniprot.org/uniprot/ prefix, which is also the form used
+      by pdbo:link_to_uniprot in PDB.
     query: |
       PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -133,70 +141,78 @@ sparql_queries:
       ORDER BY ?groupLabel ?uniprotIRI
     result_count: 262
     result_note: |
-      Returns 262 (group, UniProt IRI) pairs. UniProt IRIs use the
-      http://purl.uniprot.org/uniprot/ prefix in ChEMBL, which must be
-      converted to http://identifiers.org/uniprot/ for PDB queries.
+      Returns 262 (group, UniProt IRI) pairs: AGC 59, CAMK 65, CMGC 58, TK 80.
+      UniProt IRIs use the http://purl.uniprot.org/uniprot/ prefix in ChEMBL.
+      PDB's pdbo:link_to_uniprot predicate also uses this same prefix, so no
+      URI conversion is needed when passing these IRIs into the PDB VALUES clause.
       Example: EGFR = http://purl.uniprot.org/uniprot/P00533
-                    → http://identifiers.org/uniprot/P00533 in PDB.
 
   - query_number: 4
     database: pdb
     description: >
-      Validation query: count X-ray crystal structures for EGFR (P00533)
-      to confirm the cross-database URI format and pdbx namespace.
-      Critical discovery: PDB uses namespace pdbx-with-vrptx-v50.owl# (not
-      pdbx-v50.owl# as stated in the MIE file), and UniProt links use
-      http://identifiers.org/uniprot/ (not http://purl.uniprot.org/uniprot/).
+      Validation query: count X-ray crystal structures for EGFR (P00533) to
+      confirm the correct PDB namespace, graph clause, UniProt link predicate,
+      and property paths before running the full group comparison.
+      Key patterns confirmed: namespace http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#;
+      graph FROM <http://rdfportal.org/dataset/pdbj>; pdb:// entry FILTER;
+      UniProt via pdbo:has_struct_refCategory/pdbo:has_struct_ref/pdbo:link_to_uniprot
+      with http://purl.uniprot.org/uniprot/ IRIs; exptl method via
+      pdbo:has_exptlCategory/pdbo:has_exptl.
     query: |
-      PREFIX pdbo: <https://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
 
       SELECT (COUNT(DISTINCT ?entry) AS ?structureCount)
+      FROM <http://rdfportal.org/dataset/pdbj>
       WHERE {
-        ?entry a pdbo:datablock ;
-               rdfs:seeAlso <http://identifiers.org/uniprot/P00533> ;
-               pdbo:has_exptlCategory ?exptl .
+        ?entry a pdbo:datablock .
+        FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
+        ?entry pdbo:has_struct_refCategory/pdbo:has_struct_ref ?ref .
+        ?ref pdbo:link_to_uniprot <http://purl.uniprot.org/uniprot/P00533> .
+        ?entry pdbo:has_exptlCategory/pdbo:has_exptl ?exptl .
         ?exptl pdbo:exptl.method "X-RAY DIFFRACTION" .
       }
     result_count: 1
     result_note: |
       EGFR (P00533): 350 X-ray structures. Validates correct namespace
-      (pdbx-with-vrptx-v50.owl#) and URI format (identifiers.org/uniprot/).
+      (http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#), FROM graph clause,
+      pdb:// entry filter, link_to_uniprot predicate, and exptl property path.
 
   - query_number: 5
     database: pdb
     description: >
       Count distinct PDB X-ray crystal structure entries for each kinase group,
       using the UniProt accessions from Query 3. The VALUES clause is populated
-      with the full list of identifiers.org/uniprot/ URIs. Shown here in
-      abbreviated form with representative members of each group.
+      with the full list of http://purl.uniprot.org/uniprot/ IRIs matched via
+      pdbo:link_to_uniprot. Shown here in abbreviated form with representative
+      members of each group.
     query: |
-      PREFIX pdbo: <https://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
 
       SELECT ?group (COUNT(DISTINCT ?entry) AS ?structureCount)
+      FROM <http://rdfportal.org/dataset/pdbj>
       WHERE {
-        VALUES (?group ?uniprotIRI) {
+        VALUES (?group ?uniprot) {
           # AGC group (59 targets, representative subset shown)
-          ("AGC" <http://identifiers.org/uniprot/P31749>)   # AKT1
-          ("AGC" <http://identifiers.org/uniprot/P31751>)   # AKT2
-          ("AGC" <http://identifiers.org/uniprot/Q9Y243>)   # AKT3
-          ("AGC" <http://identifiers.org/uniprot/P17252>)   # PRKCA
+          ("AGC" <http://purl.uniprot.org/uniprot/P31749>)   # AKT1
+          ("AGC" <http://purl.uniprot.org/uniprot/P31751>)   # AKT2
+          ("AGC" <http://purl.uniprot.org/uniprot/Q9Y243>)   # AKT3
+          ("AGC" <http://purl.uniprot.org/uniprot/P17252>)   # PRKCA
           # ... (full list: 59 AGC, 65 CAMK, 58 CMGC, 80 TK UniProt IRIs)
           # CAMK group (representative)
-          ("CAMK" <http://identifiers.org/uniprot/Q9UQM7>)  # CAMK2A
-          ("CAMK" <http://identifiers.org/uniprot/P15291>)  # B4GALT1 (dual class)
+          ("CAMK" <http://purl.uniprot.org/uniprot/Q9UQM7>)  # CAMK2A
+          ("CAMK" <http://purl.uniprot.org/uniprot/O75582>)  # DCLK1 (dual AGC+CAMK)
           # CMGC group (representative)
-          ("CMGC" <http://identifiers.org/uniprot/P28482>)  # MAPK1 / ERK2
-          ("CMGC" <http://identifiers.org/uniprot/P49336>)  # CDK8
+          ("CMGC" <http://purl.uniprot.org/uniprot/P28482>)  # MAPK1 / ERK2
+          ("CMGC" <http://purl.uniprot.org/uniprot/P49336>)  # CDK8
           # TK group (representative)
-          ("TK"   <http://identifiers.org/uniprot/P00533>)  # EGFR
-          ("TK"   <http://identifiers.org/uniprot/P04637>)  # ... no, TP53 is not a kinase; ABL1
-          ("TK"   <http://identifiers.org/uniprot/P00519>)  # ABL1
+          ("TK"   <http://purl.uniprot.org/uniprot/P00533>)  # EGFR
+          ("TK"   <http://purl.uniprot.org/uniprot/P00519>)  # ABL1
         }
-        ?entry a pdbo:datablock ;
-               rdfs:seeAlso ?uniprotIRI ;
-               pdbo:has_exptlCategory ?exptl .
+        ?entry a pdbo:datablock .
+        FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
+        ?entry pdbo:has_struct_refCategory/pdbo:has_struct_ref ?ref .
+        ?ref pdbo:link_to_uniprot ?uniprot .
+        ?entry pdbo:has_exptlCategory/pdbo:has_exptl ?exptl .
         ?exptl pdbo:exptl.method "X-RAY DIFFRACTION" .
       }
       GROUP BY ?group
@@ -215,18 +231,20 @@ sparql_queries:
       Arithmetic verification: count all distinct PDB X-ray structures across
       all four groups combined (without GROUP BY) to check for cross-group overlap.
     query: |
-      PREFIX pdbo: <https://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
 
       SELECT (COUNT(DISTINCT ?entry) AS ?totalStructures)
+      FROM <http://rdfportal.org/dataset/pdbj>
       WHERE {
-        VALUES ?uniprotIRI {
-          # Full list of 262 UniProt IRIs from all four groups
-          # (AGC: 59, CAMK: 65, CMGC: 58, TK: 80)
+        VALUES ?uniprot {
+          # Full list of 256 unique UniProt IRIs from all four groups
+          # (AGC: 59, CAMK: 65, CMGC: 58, TK: 80; 6 proteins dual-classified AGC+CAMK)
         }
-        ?entry a pdbo:datablock ;
-               rdfs:seeAlso ?uniprotIRI ;
-               pdbo:has_exptlCategory ?exptl .
+        ?entry a pdbo:datablock .
+        FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
+        ?entry pdbo:has_struct_refCategory/pdbo:has_struct_ref ?ref .
+        ?ref pdbo:link_to_uniprot ?uniprot .
+        ?entry pdbo:has_exptlCategory/pdbo:has_exptl ?exptl .
         ?exptl pdbo:exptl.method "X-RAY DIFFRACTION" .
       }
     result_count: 1
@@ -252,25 +270,26 @@ rdf_triples: |
   @prefix cco: <http://rdf.ebi.ac.uk/terms/chembl#> .
   @prefix chemblpc: <http://rdf.ebi.ac.uk/resource/chembl/protclass/> .
   @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix pdbo: <https://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#> .
-  @prefix up: <http://identifiers.org/uniprot/> .
+  @prefix pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#> .
+  @prefix pdb: <http://rdf.wwpdb.org/pdb/> .
+  @prefix up: <http://purl.uniprot.org/uniprot/> .
   @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
 
   # ChEMBL kinase group classification IRIs
-  chemblpc:CHEMBL_PC_1285 rdfs:label "TK" ;
-    cco:classLevel "group" .
+  chemblpc:CHEMBL_PC_1285 rdfs:label "TK protein kinase group" ;
+    cco:classLevel "L4" .
   # Database: ChEMBL | Query: 1 | Comment: Tyrosine kinase group root IRI
 
-  chemblpc:CHEMBL_PC_148 rdfs:label "CMGC" ;
-    cco:classLevel "group" .
+  chemblpc:CHEMBL_PC_148 rdfs:label "CMGC protein kinase group" ;
+    cco:classLevel "L4" .
   # Database: ChEMBL | Query: 1 | Comment: CMGC group (CDKs, MAPKs, GSKs, CLKs)
 
-  chemblpc:CHEMBL_PC_1339 rdfs:label "CAMK" ;
-    cco:classLevel "group" .
+  chemblpc:CHEMBL_PC_1339 rdfs:label "CAMK protein kinase group" ;
+    cco:classLevel "L4" .
   # Database: ChEMBL | Query: 1 | Comment: Calcium/calmodulin-dependent kinase group
 
-  chemblpc:CHEMBL_PC_1289 rdfs:label "AGC" ;
-    cco:classLevel "group" .
+  chemblpc:CHEMBL_PC_1289 rdfs:label "AGC protein kinase group" ;
+    cco:classLevel "L4" .
   # Database: ChEMBL | Query: 1 | Comment: AGC group (PKA, PKC, PKG, AKT, RSK, S6K, DMPK)
 
   # Subfamily subClassOf hierarchy (representative)
@@ -290,15 +309,17 @@ rdf_triples: |
   ?component skos:exactMatch <http://purl.uniprot.org/uniprot/P00533> .
   # Database: ChEMBL | Query: 3 | Comment: EGFR UniProt accession link
 
-  # PDB entry linked to EGFR (identifiers.org URI format in PDB)
-  <https://rdf.wwpdb.org/pdb/1IVO>
-    a pdbo:datablock ;
-    rdfs:seeAlso up:P00533 .
-  # Database: PDB | Query: 4,5 | Comment: PDB entry 1IVO contains EGFR (P00533)
+  # PDB entry linked to EGFR via struct_ref (purl.uniprot.org IRI form)
+  pdb:1IVO/struct_ref/1 a pdbo:struct_ref ;
+    pdbo:struct_ref.db_name "UNP" ;
+    pdbo:struct_ref.pdbx_db_accession "P00533" ;
+    pdbo:link_to_uniprot up:P00533 ;
+    pdbo:of_datablock pdb:1IVO .
+  # Database: PDB | Query: 4,5 | Comment: struct_ref node linking PDB entry 1IVO to EGFR (P00533)
 
-  <https://rdf.wwpdb.org/pdb/1IVO>
-    pdbo:has_exptlCategory ?exptl1 .
-  ?exptl1 pdbo:exptl.method "X-RAY DIFFRACTION" .
+  pdb:1IVO/exptl/1 a pdbo:exptl ;
+    pdbo:exptl.method "X-RAY DIFFRACTION" ;
+    pdbo:of_datablock pdb:1IVO .
   # Database: PDB | Query: 4,5 | Comment: Experimental method is X-ray diffraction
 
 exact_answer:
