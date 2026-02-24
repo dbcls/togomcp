@@ -102,30 +102,33 @@ sparql_queries:
 
   - query_number: 3
     database: pubtator
-    description: Verification count — total distinct human genes meeting the ≥500 article threshold (confirms Query 1 is comprehensive).
+    description: Verification count — returns a single integer (5) confirming that exactly 5 distinct human genes meet the ≥500 article co-annotation threshold, confirming Query 1 is comprehensive. Uses a subquery to aggregate after GROUP BY / HAVING.
     query: |
       PREFIX oa: <http://www.w3.org/ns/oa#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
       PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
       PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
 
-      SELECT (COUNT(DISTINCT ?geneId) AS ?total)
+      SELECT (COUNT(*) AS ?total)
       WHERE {
-        GRAPH <http://rdfportal.org/dataset/pubtator_central> {
-          ?diseaseAnn dcterms:subject "Disease" ;
-                      oa:hasBody <http://identifiers.org/mesh/D053840> ;
-                      oa:hasTarget ?article .
-          ?geneAnn dcterms:subject "Gene" ;
-                   oa:hasBody ?geneId ;
-                   oa:hasTarget ?article .
+        SELECT ?geneId
+        WHERE {
+          GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+            ?diseaseAnn dcterms:subject "Disease" ;
+                        oa:hasBody <http://identifiers.org/mesh/D053840> ;
+                        oa:hasTarget ?article .
+            ?geneAnn dcterms:subject "Gene" ;
+                     oa:hasBody ?geneId ;
+                     oa:hasTarget ?article .
+          }
+          GRAPH <http://rdfportal.org/dataset/ncbigene> {
+            ?geneId a insdc:Gene ;
+                    ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+          }
         }
-        GRAPH <http://rdfportal.org/dataset/ncbigene> {
-          ?geneId a insdc:Gene ;
-                  ncbio:taxid <http://identifiers.org/taxonomy/9606> .
-        }
+        GROUP BY ?geneId
+        HAVING (COUNT(DISTINCT ?article) >= 500)
       }
-      GROUP BY ?geneId
-      HAVING (COUNT(DISTINCT ?article) >= 500)
     result_count: 1
 
 rdf_triples: |
