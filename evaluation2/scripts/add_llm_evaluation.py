@@ -39,11 +39,12 @@ except ImportError:
     print("Error: ollama not installed. Install with: pip install ollama")
     sys.exit(1)
 
+DEFAULT_MODEL = "llama3.2"
 
 class AnswerEvaluator:
     """Evaluates answer quality using LLM with four criteria."""
     
-    def __init__(self, model: str = "qwen2.5:7b-instruct"):
+    def __init__(self, model: str = DEFAULT_MODEL):
         """
         Initialize answer evaluator.
         
@@ -459,8 +460,8 @@ Examples:
     )
     parser.add_argument(
         "--llm-model",
-        default='qwen2.5:7b-instruct',
-        help="Ollama model for evaluation (default: qwen2.5:7b-instruct)"
+        default=DEFAULT_MODEL,
+        help=f"Ollama model for evaluation (default: {DEFAULT_MODEL})"
     )
     parser.add_argument(
         "-q", "--quiet",
