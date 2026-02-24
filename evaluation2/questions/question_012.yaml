@@ -1,11 +1,11 @@
 id: question_012
 type: yes_no
-body: "Does hemagglutinin from Influenza A virus strain A/Chile/1/1983 H1N1 (UniProt:A4GCH5) have documented glycosylation sites in the GlyCosmos database?"
+body: "Does human decorin (UniProt:P07585) have documented glycosylation sites in the GlyCosmos database?"
 
 inspiration_keyword:
-  keyword_id: KW-0348
-  name: Hemagglutinin
-  category: Molecular function
+  keyword_id: KW-0654
+  name: Proteoglycan
+  category: PTM
 
 togomcp_databases_used:
   - uniprot
@@ -21,23 +21,27 @@ verification_score:
 
 pubmed_test:
   time_spent: 15 minutes
-  method: Searched PubMed for "influenza A Chile 1983 H1N1 hemagglutinin glycosylation" and "A4GCH5 glycosylation sites"
+  method: Searched PubMed for "decorin P07585 glycosylation sites GlyCosmos database" and "decorin glycosylation N-glycan chondroitin sulfate site positions"
   result: |
-    Found papers discussing influenza hemagglutinin glycosylation patterns in general, but no publication specifically enumerating the glycosylation site annotations for A/Chile/1/1983 H1N1 hemagglutinin in current databases. Literature provides general context on hemagglutinin glycosylation biology but not the specific database annotation status for this particular strain.
+    Found no publications specifically documenting decorin's glycosylation site
+    annotations in the GlyCosmos database. Literature discusses decorin's
+    glycosaminoglycan attachment and N-glycosylation in general terms but
+    does not enumerate the specific site annotations currently curated
+    in GlyCosmos for this UniProt entry.
   conclusion: PASS (requires querying current database state in GlyCosmos)
 
 sparql_queries:
   - query_number: 1
     database: uniprot
-    description: Retrieve protein details for A4GCH5 from UniProt to confirm identity
+    description: Retrieve protein details for P07585 from UniProt to confirm identity and organism
     query: |
       PREFIX up: <http://purl.uniprot.org/core/>
       PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
+
       SELECT ?protein ?mnemonic ?fullName ?taxonName
       WHERE {
-        VALUES ?protein { uniprot:A4GCH5 }
+        VALUES ?protein { uniprot:P07585 }
         ?protein a up:Protein ;
                  up:mnemonic ?mnemonic ;
                  up:organism ?taxon .
@@ -47,30 +51,44 @@ sparql_queries:
           ?name up:fullName ?fullName .
         }
       }
-    result_count: 1
+    result_count: 6
 
   - query_number: 2
     database: glycosmos
-    description: Check if A4GCH5 exists in GlyCosmos and has documented glycosylation sites
+    description: Check if P07585 exists in GlyCosmos as a glycoprotein via rdfs:seeAlso cross-reference
+    query: |
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?protein ?label
+      FROM <http://rdf.glycosmos.org/glycoprotein>
+      WHERE {
+        ?protein a glycan:Glycoprotein ;
+                 rdfs:seeAlso <http://purl.uniprot.org/uniprot/P07585> .
+        OPTIONAL { ?protein rdfs:label ?label }
+      }
+    result_count: 1
+
+  - query_number: 3
+    database: glycosmos
+    description: Retrieve glycosylation sites for P07585 and count entries per position
     query: |
       PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
       PREFIX glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX faldo: <http://biohackathon.org/resource/faldo#>
-      
-      SELECT ?protein ?label ?site ?position
+
+      SELECT ?position (COUNT(?site) AS ?siteCount)
       FROM <http://rdf.glycosmos.org/glycoprotein>
       WHERE {
         ?protein a glycan:Glycoprotein ;
-                 rdfs:seeAlso <http://purl.uniprot.org/uniprot/A4GCH5> .
-        OPTIONAL { ?protein rdfs:label ?label }
-        OPTIONAL {
-          ?protein glycoconjugate:glycosylated_at ?site .
-          ?site faldo:location/faldo:position ?position .
-        }
+                 rdfs:seeAlso <http://purl.uniprot.org/uniprot/P07585> ;
+                 glycoconjugate:glycosylated_at ?site .
+        OPTIONAL { ?site faldo:location/faldo:position ?position }
       }
+      GROUP BY ?position
       ORDER BY ?position
-    result_count: 10
+    result_count: 6
 
 rdf_triples: |
   @prefix up: <http://purl.uniprot.org/core/> .
@@ -82,61 +100,94 @@ rdf_triples: |
   @prefix faldo: <http://biohackathon.org/resource/faldo#> .
   @prefix glycosmos: <http://glycosmos.org/> .
   @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-  
-  uniprot:A4GCH5 a up:Protein .
-  # Database: UniProt | Query: 1 | Comment: Influenza A hemagglutinin protein entry
-  
-  uniprot:A4GCH5 up:mnemonic "HEMA_I83A1" .
+
+  uniprot:P07585 a up:Protein .
+  # Database: UniProt | Query: 1 | Comment: Human decorin protein entry
+
+  uniprot:P07585 up:mnemonic "PGS2_HUMAN" .
   # Database: UniProt | Query: 1 | Comment: Protein mnemonic identifier
-  
-  uniprot:A4GCH5 up:organism taxon:380985 .
-  # Database: UniProt | Query: 1 | Comment: Links to organism taxonomy
-  
-  taxon:380985 up:scientificName "Influenza A virus (strain A/Chile/1/1983 H1N1)" .
-  # Database: UniProt | Query: 1 | Comment: Scientific name of the viral strain
-  
-  glycosmos:glycoprotein/A4GCH5 a glycan:Glycoprotein .
-  # Database: GlyCosmos | Query: 2 | Comment: Glycoprotein entry in GlyCosmos
-  
-  glycosmos:glycoprotein/A4GCH5 rdfs:label "Hemagglutinin" .
-  # Database: GlyCosmos | Query: 2 | Comment: Protein name in GlyCosmos
-  
-  glycosmos:glycoprotein/A4GCH5 rdfs:seeAlso uniprot:A4GCH5 .
-  # Database: GlyCosmos | Query: 2 | Comment: Cross-reference to UniProt entry
-  
-  glycosmos:glycoprotein/A4GCH5 glycoconjugate:glycosylated_at glycosmos:glycosylationsite/SITE00118099 .
-  # Database: GlyCosmos | Query: 2 | Comment: First glycosylation site annotation
-  
-  glycosmos:glycosylationsite/SITE00118099 a glycoconjugate:Glycosylation_Site .
-  # Database: GlyCosmos | Query: 2 | Comment: Glycosylation site entity
-  
-  glycosmos:glycosylationsite/SITE00118099 faldo:location _:pos1 .
-  # Database: GlyCosmos | Query: 2 | Comment: Position information for site
-  
-  _:pos1 faldo:position "27"^^xsd:integer .
-  # Database: GlyCosmos | Query: 2 | Comment: Site at amino acid position 27
-  
-  glycosmos:glycoprotein/A4GCH5 glycoconjugate:glycosylated_at glycosmos:glycosylationsite/SITE00118100 .
-  # Database: GlyCosmos | Query: 2 | Comment: Second glycosylation site annotation
-  
-  glycosmos:glycosylationsite/SITE00118100 faldo:location _:pos2 .
-  # Database: GlyCosmos | Query: 2 | Comment: Position information for second site
-  
-  _:pos2 faldo:position "28"^^xsd:integer .
-  # Database: GlyCosmos | Query: 2 | Comment: Site at amino acid position 28
+
+  uniprot:P07585 up:organism taxon:9606 .
+  # Database: UniProt | Query: 1 | Comment: Homo sapiens organism link
+
+  taxon:9606 up:scientificName "Homo sapiens" .
+  # Database: UniProt | Query: 1 | Comment: Human scientific name
+
+  glycosmos:glycoprotein/P07585 a glycan:Glycoprotein .
+  # Database: GlyCosmos | Query: 2 | Comment: Decorin glycoprotein entry in GlyCosmos
+
+  glycosmos:glycoprotein/P07585 rdfs:label "Decorin" .
+  # Database: GlyCosmos | Query: 2 | Comment: Protein label in GlyCosmos
+
+  glycosmos:glycoprotein/P07585 rdfs:seeAlso uniprot:P07585 .
+  # Database: GlyCosmos | Query: 2 | Comment: Cross-reference link to UniProt entry
+
+  glycosmos:glycoprotein/P07585 glycoconjugate:glycosylated_at glycosmos:glycosylationsite/SITE00200617 .
+  # Database: GlyCosmos | Query: 3 | Comment: Glycosylation site at position 34
+
+  glycosmos:glycosylationsite/SITE00200617 faldo:location _:pos34 .
+  # Database: GlyCosmos | Query: 3 | Comment: Position reference for site at 34
+
+  _:pos34 faldo:position "34"^^xsd:integer .
+  # Database: GlyCosmos | Query: 3 | Comment: Amino acid position 34 (glycosaminoglycan attachment)
+
+  glycosmos:glycoprotein/P07585 glycoconjugate:glycosylated_at glycosmos:glycosylationsite/SITE00200618 .
+  # Database: GlyCosmos | Query: 3 | Comment: Glycosylation site at position 115
+
+  glycosmos:glycosylationsite/SITE00200618 faldo:location _:pos115 .
+  # Database: GlyCosmos | Query: 3 | Comment: Position reference for site at 115
+
+  _:pos115 faldo:position "115"^^xsd:integer .
+  # Database: GlyCosmos | Query: 3 | Comment: Amino acid position 115
+
+  glycosmos:glycoprotein/P07585 glycoconjugate:glycosylated_at glycosmos:glycosylationsite/SITE00200619 .
+  # Database: GlyCosmos | Query: 3 | Comment: Representative site at position 211 (132 total entries)
+
+  glycosmos:glycosylationsite/SITE00200619 faldo:location _:pos211 .
+  # Database: GlyCosmos | Query: 3 | Comment: Position reference for site at 211
+
+  _:pos211 faldo:position "211"^^xsd:integer .
+  # Database: GlyCosmos | Query: 3 | Comment: Amino acid position 211 (N-glycosylation, 132 glycoform entries)
+
+  glycosmos:glycoprotein/P07585 glycoconjugate:glycosylated_at glycosmos:glycosylationsite/SITE00200751 .
+  # Database: GlyCosmos | Query: 3 | Comment: Glycosylation site at position 255
+
+  glycosmos:glycosylationsite/SITE00200751 faldo:location _:pos255 .
+  # Database: GlyCosmos | Query: 3 | Comment: Position reference for site at 255
+
+  _:pos255 faldo:position "255"^^xsd:integer .
+  # Database: GlyCosmos | Query: 3 | Comment: Amino acid position 255
+
+  glycosmos:glycoprotein/P07585 glycoconjugate:glycosylated_at glycosmos:glycosylationsite/SITE00200752 .
+  # Database: GlyCosmos | Query: 3 | Comment: Representative site at position 262 (121 total entries)
+
+  glycosmos:glycosylationsite/SITE00200752 faldo:location _:pos262 .
+  # Database: GlyCosmos | Query: 3 | Comment: Position reference for site at 262
+
+  _:pos262 faldo:position "262"^^xsd:integer .
+  # Database: GlyCosmos | Query: 3 | Comment: Amino acid position 262 (N-glycosylation, 121 glycoform entries)
+
+  glycosmos:glycoprotein/P07585 glycoconjugate:glycosylated_at glycosmos:glycosylationsite/SITE00200873 .
+  # Database: GlyCosmos | Query: 3 | Comment: Representative site at position 303 (30 total entries)
+
+  glycosmos:glycosylationsite/SITE00200873 faldo:location _:pos303 .
+  # Database: GlyCosmos | Query: 3 | Comment: Position reference for site at 303
+
+  _:pos303 faldo:position "303"^^xsd:integer .
+  # Database: GlyCosmos | Query: 3 | Comment: Amino acid position 303 (glycosylation, 30 glycoform entries)
 
 exact_answer: "yes"
 
 ideal_answer: |
-  Yes, hemagglutinin from Influenza A virus strain A/Chile/1/1983 H1N1 (UniProt:A4GCH5) has ten documented glycosylation sites in the GlyCosmos database at amino acid positions 27, 28, 40, 104, 144, 172, 177, 286, 304, and 498. This glycoprotein is a surface protein critical for viral attachment to host cells through sialic acid-containing receptors. The glycosylation sites contribute to protein folding, stability, and immune evasion, as the glycan shield can mask antigenic epitopes from host antibodies. The presence of these sites in the GlyCosmos database provides experimentally-validated position-specific glycosylation information that complements the protein sequence and functional annotations available in UniProt.
+  Yes, human decorin (UniProt:P07585) has documented glycosylation sites in the GlyCosmos database. Decorin is a small leucine-rich proteoglycan bearing glycosylation at six distinct amino acid positions: 34, 115, 211, 255, 262, and 303. The database records 286 total glycosylation site entries for decorin, reflecting the multiple glycan structures (glycoforms) annotated at individual positions — position 211 alone carries 132 distinct glycoform entries and position 262 carries 121, indicating extensive N-glycan microheterogeneity at these asparagine residues. The site at position 34 corresponds to the canonical glycosaminoglycan (chondroitin/dermatan sulfate) attachment serine characteristic of the proteoglycan core protein. This rich glycosylation complexity is consistent with decorin's biological roles in extracellular matrix organization, collagen fibrillogenesis, and TGF-β sequestration, where the glycan chains modulate protein–protein interactions and tissue hydration.
 
 question_template_used: Template 7 (Yes/No Existence)
 
 time_spent:
-  exploration: 45 minutes
-  formulation: 20 minutes
-  verification: 30 minutes
+  exploration: 30 minutes
+  formulation: 15 minutes
+  verification: 20 minutes
   pubmed_test: 15 minutes
-  extraction: 25 minutes
-  documentation: 35 minutes
-  total: 170 minutes
+  extraction: 20 minutes
+  documentation: 25 minutes
+  total: 125 minutes
