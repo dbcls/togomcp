@@ -54,7 +54,7 @@ Read the following webpages carefully and write a concise, accurate setup guide 
 - [Claude Desktop](https://support.claude.com/en/articles/11175166-getting-started-with-custom-connectors-using-remote-mcp#h_3d1a65aded)
   * Method 1 (for paid plans). Settings -> Connectors -> "Add custom connectors"
   * Method 2. (alternative). Settings -> Developer -> Edit Config (JSON config file)
-- [ChatGPT](https://help.openai.com/ja-jp/articles/12584461-developer-mode-apps-and-full-mcp-connectors-in-chatgpt-beta) (Paid plans only)
+- [ChatGPT](https://help.openai.com/ja-jp/articles/12584461-developer-mode-apps-and-full-mcp-connectors-in-chatgpt-beta) (requires Plus/Pro/Business/Enterprise accounts)
 - [Gemini CLI](https://geminicli.com/docs/tools/mcp-server/#how-to-set-up-your-mcp-server) Note that TogoMCP is provided via **Streamable-HTTP, not SSE**.
 For Gemini CLI, the settings.json should be 
 ```
