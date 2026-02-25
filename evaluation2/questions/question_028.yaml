@@ -1,256 +1,243 @@
 id: question_028
 type: list
-body: "Which human proteins annotated as causative for Usher syndrome—a condition classified as an intractable disease in Japan—are encoded by genes with more than 400 germline pathogenic or likely pathogenic variants documented in ClinVar?"
+body: "Which reviewed UniProt Bacillus subtilis (strain 168) proteins annotated with the biotin biosynthesis keyword have at least one deposited structure in the Protein Data Bank?"
 
 inspiration_keyword:
-  keyword_id: KW-0836
-  name: Usher syndrome
-  category: Disease
+  keyword_id: KW-0093
+  name: Biotin biosynthesis
+  category: Biological process
+  definition: "Protein involved in biotin (vitamin H) biosynthesis"
 
 togomcp_databases_used:
   - uniprot
-  - nando
-  - clinvar
+  - pdb
 
 verification_score:
-  biological_insight: 2
-  multi_database: 3
+  biological_insight: 3
+  multi_database: 2
   verifiability: 3
   rdf_necessity: 3
   total: 11
   passed: true
+  justification: "LIST (comprehensive): Identifies which of the 7 KW-0093-annotated Bacillus subtilis (strain 168) biotin biosynthesis enzymes are structurally characterized in PDB via UniProt cross-references. Biological insight 3: B. subtilis uses a distinct pimelate thioester synthesis route (BioI/BioW/BioK) rather than the E. coli BioC/BioH route; the three enzymes with PDB entries (BioI, BioK, BioW) include the two most pathway-distinctive steps, while the radical SAM enzyme BioB — the committed biotin synthase — paradoxically lacks a crystal structure despite extensive mechanistic study. Multi-database 2: UniProt (KW-0093, organism filter) linked to PDB via rdfs:seeAlso. Verifiability 3: exactly 3 proteins with ≤5 items, precisely enumerated with accessions and PDB IDs. RDF necessity 3: the current cross-reference state (which proteins have rdfs:seeAlso to rdf.wwpdb.org) cannot be recovered from literature."
 
 pubmed_test:
-  time_spent: 15 minutes
-  method: >
-    Searched PubMed for "Usher syndrome pathogenic variants ClinVar" and
-    "Usher syndrome gene mutation spectrum" to find papers reporting variant counts.
+  time_spent: 10 minutes
+  method: |
+    Query 1: "Bacillus subtilis biotin biosynthesis enzymes crystal structures PDB comprehensive" → searched PubMed; top results describe individual enzyme structures but do not enumerate which of the seven KW-0093 proteins currently have PDB depositions.
+    Query 2: "Bacillus subtilis bioW bioI bioK bioB structural uncharacterized PDB" → no results providing a comprehensive current list of PDB coverage for all 7 KW-0093 proteins in strain 168.
   result: |
-    Review papers on Usher syndrome genetics (e.g., Géléoc & Bhatt 2018, Mathur & Yang 2019)
-    describe the molecular heterogeneity of the disease and identify the major causative genes,
-    but do not provide current ClinVar-specific counts of pathogenic or likely pathogenic variants
-    per gene. Variant counts in ClinVar are dynamic and cannot be determined from static literature.
-  conclusion: PASS (cannot answer from literature - requires current database state)
+    Literature on B. subtilis biotin biosynthesis describes pathway enzymes individually (e.g.,
+    BioI cytochrome P450 structures, BioW ligase structures) but does not enumerate which
+    subset of the seven KW-0093 proteins have PDB depositions at any given time. Review papers
+    focus on pathway biochemistry, not cross-reference database state. The current PDB coverage
+    status requires live RDF database access.
+  conclusion: PASS (cannot answer from literature)
 
 sparql_queries:
   - query_number: 1
-    database: nando
-    description: Verify Usher syndrome is classified as a NANDO designated intractable disease and retrieve its identifier
-    query: |
-      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-
-      SELECT ?nando_id ?label ?mondo
-      FROM <http://rdfportal.org/dataset/nando>
-      WHERE {
-        ?nando_id a nando:IntractableDisease ;
-                  rdfs:label ?label ;
-                  skos:exactMatch ?mondo .
-        FILTER(lang(?label) = "en")
-        FILTER(contains(lcase(?label), "usher"))
-      }
-    result_count: 1
-
-  - query_number: 2
     database: uniprot
-    description: Retrieve all reviewed human proteins associated with Usher syndrome (KW-0836) with their gene names and UniProt accessions
+    description: Retrieve all 7 reviewed Bacillus subtilis (strain 168, taxon:224308) proteins annotated with KW-0093 (Biotin biosynthesis) — establishes the complete set for coverage verification
     query: |
       PREFIX up: <http://purl.uniprot.org/core/>
       PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
       PREFIX keywords: <http://purl.uniprot.org/keywords/>
       PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
 
-      SELECT DISTINCT ?protein ?gene_name
+      SELECT DISTINCT ?protein ?acc ?geneName ?fullName
       FROM <http://sparql.uniprot.org/uniprot>
       WHERE {
         ?protein a up:Protein ;
-                 up:reviewed true ;
-                 up:organism taxon:9606 ;
-                 up:classifiedWith keywords:836 ;
+                 up:reviewed 1 ;
+                 up:organism taxon:224308 ;
+                 up:classifiedWith keywords:93 ;
+                 up:mnemonic ?acc ;
+                 up:recommendedName ?rn ;
                  up:encodedBy ?gene .
-        ?gene skos:prefLabel ?gene_name .
+        ?rn up:fullName ?fullName .
+        ?gene skos:prefLabel ?geneName .
       }
-      ORDER BY ?gene_name
-    result_count: 14
+      ORDER BY ?geneName
+    result_count: 7
+
+  - query_number: 2
+    database: uniprot
+    description: Retrieve all KW-0093 Bacillus subtilis (strain 168) proteins with at least one PDB cross-reference (rdfs:seeAlso to rdf.wwpdb.org) — main answer query
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT DISTINCT ?protein ?acc ?geneName ?fullName ?pdbEntry
+      FROM <http://sparql.uniprot.org/uniprot>
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism taxon:224308 ;
+                 up:classifiedWith keywords:93 ;
+                 up:mnemonic ?acc ;
+                 up:recommendedName ?rn ;
+                 up:encodedBy ?gene ;
+                 rdfs:seeAlso ?pdbEntry .
+        ?rn up:fullName ?fullName .
+        ?gene skos:prefLabel ?geneName .
+        FILTER(CONTAINS(STR(?pdbEntry), "rdf.wwpdb.org"))
+      }
+      ORDER BY ?geneName
+    result_count: 11
 
   - query_number: 3
-    database: clinvar
-    description: Count pathogenic/likely pathogenic germline variants for all 14 Usher syndrome genes in a single comprehensive query
+    database: uniprot
+    description: Count distinct proteins with PDB entries (arithmetic verification — must equal 3)
     query: |
-      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
-      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
-      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
 
-      SELECT ?gene_uri (COUNT(DISTINCT ?variant) AS ?pathogenic_count)
-      FROM <http://rdfportal.org/dataset/clinvar>
+      SELECT (COUNT(DISTINCT ?protein) AS ?withPDB)
+      FROM <http://sparql.uniprot.org/uniprot>
       WHERE {
-        VALUES ?gene_uri {
-          <http://ncbi.nlm.nih.gov/gene/7399>    # USH2A
-          <http://ncbi.nlm.nih.gov/gene/4647>    # MYO7A
-          <http://ncbi.nlm.nih.gov/gene/84059>   # ADGRV1
-          <http://ncbi.nlm.nih.gov/gene/64072>   # CDH23
-          <http://ncbi.nlm.nih.gov/gene/65217>   # PCDH15
-          <http://ncbi.nlm.nih.gov/gene/10083>   # USH1C
-          <http://ncbi.nlm.nih.gov/gene/79955>   # PDZD7
-          <http://ncbi.nlm.nih.gov/gene/7401>    # CLRN1
-          <http://ncbi.nlm.nih.gov/gene/25861>   # WHRN
-          <http://ncbi.nlm.nih.gov/gene/83715>   # ESPN
-          <http://ncbi.nlm.nih.gov/gene/124590>  # USH1G
-          <http://ncbi.nlm.nih.gov/gene/22901>   # ARSG
-          <http://ncbi.nlm.nih.gov/gene/10518>   # CIB2
-          <http://ncbi.nlm.nih.gov/gene/3035>    # HARS1
-        }
-        ?gene_bn med2rdf:gene ?gene_uri .
-        ?classrec sio:SIO_000628 ?gene_bn .
-        ?classrec cvo:classifications ?classi .
-        ?classi cvo:germline_classification ?germ .
-        ?germ cvo:description ?sig .
-        FILTER(?sig = "Pathogenic" || ?sig = "Likely pathogenic")
-        ?variant a cvo:VariationArchiveType ;
-                 cvo:record_status "current" ;
-                 cvo:classified_record ?classrec .
-      }
-      GROUP BY ?gene_uri
-      ORDER BY DESC(?pathogenic_count)
-    result_count: 14
-
-  - query_number: 4
-    database: clinvar
-    description: "Arithmetic verification — count total unique pathogenic/likely pathogenic variants across all 14 Usher syndrome genes (should equal 4,924; sum of per-gene counts from Query 3 is 4,953, confirming 29 variants annotated to more than one gene)"
-    query: |
-      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
-      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
-      PREFIX sio: <http://semanticscience.org/resource/>
-
-      SELECT (COUNT(DISTINCT ?variant) AS ?total_pathogenic_count)
-      FROM <http://rdfportal.org/dataset/clinvar>
-      WHERE {
-        VALUES ?gene_uri {
-          <http://ncbi.nlm.nih.gov/gene/7399>
-          <http://ncbi.nlm.nih.gov/gene/4647>
-          <http://ncbi.nlm.nih.gov/gene/84059>
-          <http://ncbi.nlm.nih.gov/gene/64072>
-          <http://ncbi.nlm.nih.gov/gene/65217>
-          <http://ncbi.nlm.nih.gov/gene/10083>
-          <http://ncbi.nlm.nih.gov/gene/79955>
-          <http://ncbi.nlm.nih.gov/gene/7401>
-          <http://ncbi.nlm.nih.gov/gene/25861>
-          <http://ncbi.nlm.nih.gov/gene/83715>
-          <http://ncbi.nlm.nih.gov/gene/124590>
-          <http://ncbi.nlm.nih.gov/gene/22901>
-          <http://ncbi.nlm.nih.gov/gene/10518>
-          <http://ncbi.nlm.nih.gov/gene/3035>
-        }
-        ?gene_bn med2rdf:gene ?gene_uri .
-        ?classrec sio:SIO_000628 ?gene_bn .
-        ?classrec cvo:classifications ?classi .
-        ?classi cvo:germline_classification ?germ .
-        ?germ cvo:description ?sig .
-        FILTER(?sig = "Pathogenic" || ?sig = "Likely pathogenic")
-        ?variant a cvo:VariationArchiveType ;
-                 cvo:record_status "current" ;
-                 cvo:classified_record ?classrec .
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism taxon:224308 ;
+                 up:classifiedWith keywords:93 ;
+                 rdfs:seeAlso ?pdbEntry .
+        FILTER(CONTAINS(STR(?pdbEntry), "rdf.wwpdb.org"))
       }
     result_count: 1
 
+  - query_number: 4
+    database: uniprot
+    description: Identify which KW-0093 proteins LACK PDB entries (verification of the 4 absent proteins)
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT DISTINCT ?acc ?geneName ?fullName
+      FROM <http://sparql.uniprot.org/uniprot>
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism taxon:224308 ;
+                 up:classifiedWith keywords:93 ;
+                 up:mnemonic ?acc ;
+                 up:recommendedName ?rn ;
+                 up:encodedBy ?gene .
+        ?rn up:fullName ?fullName .
+        ?gene skos:prefLabel ?geneName .
+        FILTER NOT EXISTS {
+          ?protein rdfs:seeAlso ?pdb .
+          FILTER(CONTAINS(STR(?pdb), "rdf.wwpdb.org"))
+        }
+      }
+      ORDER BY ?geneName
+    result_count: 4
+
 rdf_triples: |
-  @prefix nando: <http://nanbyodata.jp/ontology/NANDO_> .
   @prefix up: <http://purl.uniprot.org/core/> .
-  @prefix keywords: <http://purl.uniprot.org/keywords/> .
   @prefix taxon: <http://purl.uniprot.org/taxonomy/> .
-  @prefix ncbigene: <http://ncbi.nlm.nih.gov/gene/> .
-  @prefix cvo: <http://purl.jp/bio/10/clinvar/> .
+  @prefix keywords: <http://purl.uniprot.org/keywords/> .
   @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
-  @prefix mondo: <http://purl.obolibrary.org/obo/MONDO_> .
 
-  <http://nanbyodata.jp/ontology/NANDO_1200941> a nando:IntractableDisease .
-  # Database: NANDO | Query: 1 | Comment: Usher syndrome is a Japanese designated intractable disease (#303)
+  # --- Three proteins WITH PDB structures ---
 
-  <http://nanbyodata.jp/ontology/NANDO_1200941> rdfs:label "Usher syndrome"@en .
-  # Database: NANDO | Query: 1 | Comment: English label of the designated intractable disease
+  <http://purl.uniprot.org/uniprot/P53554> a up:Protein ;
+      up:reviewed 1 ;
+      up:organism taxon:224308 ;
+      up:classifiedWith keywords:93 ;
+      up:mnemonic "BIOI_BACSU" .
+  # Database: UniProt | Query: 1 | Comment: BIOI_BACSU (bioI) — biotin biosynthesis cytochrome P450; B. subtilis-specific pimelate synthesis enzyme
 
-  <http://nanbyodata.jp/ontology/NANDO_1200941> skos:exactMatch mondo:0019501 .
-  # Database: NANDO | Query: 1 | Comment: Cross-reference to MONDO:0019501 (Usher syndrome)
+  <http://purl.uniprot.org/uniprot/P53554> rdfs:seeAlso <http://rdf.wwpdb.org/pdb/3EJB> .
+  # Database: UniProt | Query: 2 | Comment: Representative PDB entry for BioI (3EJB; one of 3 deposited structures)
 
-  <http://purl.uniprot.org/uniprot/O75445> a up:Protein ;
-      up:reviewed true ;
-      up:organism taxon:9606 ;
-      up:classifiedWith <http://purl.uniprot.org/keywords/836> .
-  # Database: UniProt | Query: 2 | Comment: USH2A (usherin) - reviewed human Usher syndrome protein
+  <http://purl.uniprot.org/uniprot/P53555> a up:Protein ;
+      up:reviewed 1 ;
+      up:organism taxon:224308 ;
+      up:classifiedWith keywords:93 ;
+      up:mnemonic "BIOK_BACSU" .
+  # Database: UniProt | Query: 1 | Comment: BIOK_BACSU (bioK) — L-Lysine--8-amino-7-oxononanoate transaminase; B. subtilis-specific step
 
-  <http://purl.uniprot.org/uniprot/Q13402> a up:Protein ;
-      up:reviewed true ;
-      up:organism taxon:9606 ;
-      up:classifiedWith <http://purl.uniprot.org/keywords/836> .
-  # Database: UniProt | Query: 2 | Comment: MYO7A (myosin-VIIa) - reviewed human Usher syndrome protein
+  <http://purl.uniprot.org/uniprot/P53555> rdfs:seeAlso <http://rdf.wwpdb.org/pdb/3DOD> .
+  # Database: UniProt | Query: 2 | Comment: Representative PDB entry for BioK (3DOD; one of 4 deposited structures)
 
-  <http://purl.uniprot.org/uniprot/Q8WXG9> a up:Protein ;
-      up:reviewed true ;
-      up:organism taxon:9606 ;
-      up:classifiedWith <http://purl.uniprot.org/keywords/836> .
-  # Database: UniProt | Query: 2 | Comment: ADGRV1 (adhesion G-protein coupled receptor V1) - reviewed human Usher syndrome protein
+  <http://purl.uniprot.org/uniprot/P53559> a up:Protein ;
+      up:reviewed 1 ;
+      up:organism taxon:224308 ;
+      up:classifiedWith keywords:93 ;
+      up:mnemonic "BIOW_BACSU" .
+  # Database: UniProt | Query: 1 | Comment: BIOW_BACSU (bioW) — 6-carboxyhexanoate--CoA ligase (pimelate-CoA ligase); entry point of B. subtilis BioW route
 
-  <http://purl.uniprot.org/uniprot/Q9H251> a up:Protein ;
-      up:reviewed true ;
-      up:organism taxon:9606 ;
-      up:classifiedWith <http://purl.uniprot.org/keywords/836> .
-  # Database: UniProt | Query: 2 | Comment: CDH23 (cadherin-23) - reviewed human Usher syndrome protein
+  <http://purl.uniprot.org/uniprot/P53559> rdfs:seeAlso <http://rdf.wwpdb.org/pdb/5G1F> .
+  # Database: UniProt | Query: 2 | Comment: Representative PDB entry for BioW (5G1F; one of 4 deposited structures)
 
-  <http://purl.uniprot.org/uniprot/Q96QU1> a up:Protein ;
-      up:reviewed true ;
-      up:organism taxon:9606 ;
-      up:classifiedWith <http://purl.uniprot.org/keywords/836> .
-  # Database: UniProt | Query: 2 | Comment: PCDH15 (protocadherin-15) - reviewed human Usher syndrome protein
+  # --- Four proteins WITHOUT PDB structures (verification query 4) ---
 
-  ncbigene:7399 a cvo:Gene .
-  # Database: ClinVar | Queries: 3-6 | Comment: USH2A gene (NCBI Gene ID 7399), 1801 pathogenic/likely pathogenic variants
+  <http://purl.uniprot.org/uniprot/P53557> a up:Protein ;
+      up:reviewed 1 ;
+      up:organism taxon:224308 ;
+      up:classifiedWith keywords:93 ;
+      up:mnemonic "BIOB_BACSU" .
+  # Database: UniProt | Query: 4 | Comment: BIOB_BACSU (bioB) — biotin synthase (radical SAM enzyme); no PDB entry despite being the committed pathway step
 
-  ncbigene:4647 a cvo:Gene .
-  # Database: ClinVar | Queries: 3-6 | Comment: MYO7A gene (NCBI Gene ID 4647), 723 pathogenic/likely pathogenic variants
+  <http://purl.uniprot.org/uniprot/P53558> a up:Protein ;
+      up:reviewed 1 ;
+      up:organism taxon:224308 ;
+      up:classifiedWith keywords:93 ;
+      up:mnemonic "BIOD_BACSU" .
+  # Database: UniProt | Query: 4 | Comment: BIOD_BACSU (bioD) — ATP-dependent dethiobiotin synthetase; no PDB entry
 
-  ncbigene:84059 a cvo:Gene .
-  # Database: ClinVar | Queries: 3-6 | Comment: ADGRV1 gene (NCBI Gene ID 84059), 645 pathogenic/likely pathogenic variants
+  <http://purl.uniprot.org/uniprot/P53556> a up:Protein ;
+      up:reviewed 1 ;
+      up:organism taxon:224308 ;
+      up:classifiedWith keywords:93 ;
+      up:mnemonic "BIOF2_BACSU" .
+  # Database: UniProt | Query: 4 | Comment: BIOF2_BACSU (bioF) — 8-amino-7-oxononanoate synthase 2; no PDB entry
 
-  ncbigene:64072 a cvo:Gene .
-  # Database: ClinVar | Queries: 3-6 | Comment: CDH23 gene (NCBI Gene ID 64072), 633 pathogenic/likely pathogenic variants
+  <http://purl.uniprot.org/uniprot/O31777> a up:Protein ;
+      up:reviewed 1 ;
+      up:organism taxon:224308 ;
+      up:classifiedWith keywords:93 ;
+      up:mnemonic "BIOF1_BACSU" .
+  # Database: UniProt | Query: 4 | Comment: BIOF1_BACSU (kbl) — 8-amino-7-oxononanoate synthase 1 (kbl gene); no PDB entry
 
-  ncbigene:65217 a cvo:Gene .
-  # Database: ClinVar | Queries: 3-6 | Comment: PCDH15 gene (NCBI Gene ID 65217), 463 pathogenic/likely pathogenic variants
+arithmetic_verification:
+  total_kw0093_proteins: 7
+  proteins_with_pdb: 3
+  proteins_without_pdb: 4
+  sum_check: "3 (with PDB) + 4 (without PDB) = 7 (total) ✓ PASS"
+  pdb_entries_per_protein:
+    BIOI_BACSU: 3
+    BIOK_BACSU: 4
+    BIOW_BACSU: 4
+  absent_proteins:
+    - "BIOB_BACSU (P53557) — no PDB cross-reference in UniProt"
+    - "BIOD_BACSU (P53558) — no PDB cross-reference in UniProt"
+    - "BIOF2_BACSU (P53556) — no PDB cross-reference in UniProt"
+    - "BIOF1_BACSU (O31777) — no PDB cross-reference in UniProt"
+  interpretation: |
+    3 of 7 KW-0093 proteins (43%) are structurally characterized in PDB. Query 2 returns
+    11 rows (protein × PDB entry pairs, deduplicated by DISTINCT on protein+pdbEntry), but
+    Query 3 confirms only 3 distinct proteins. Query 4 confirms 4 proteins lack PDB entries.
+    Arithmetic: 3 + 4 = 7 = total from Query 1. VALID.
 
 exact_answer:
-  - "USH2A (UniProt:O75445)"
-  - "MYO7A (UniProt:Q13402)"
-  - "ADGRV1 (UniProt:Q8WXG9)"
-  - "CDH23 (UniProt:Q9H251)"
-  - "PCDH15 (UniProt:Q96QU1)"
+  - "BIOI_BACSU (UniProt:P53554, bioI, PDB:3EJB and 2 others)"
+  - "BIOK_BACSU (UniProt:P53555, bioK, PDB:3DOD and 3 others)"
+  - "BIOW_BACSU (UniProt:P53559, bioW, PDB:5G1F and 3 others)"
 
-ideal_answer: |
-  Among the 14 UniProt-reviewed human proteins annotated as causative for Usher syndrome
-  (NANDO:1200941, Japanese designated intractable disease #303), five are encoded by genes
-  with more than 400 pathogenic or likely pathogenic germline variants currently documented in
-  ClinVar. USH2A (usherin; UniProt:O75445) has by far the highest variant burden with 1,801
-  variants, consistent with its role as the most frequently mutated gene in Usher syndrome type II.
-  MYO7A (myosin-VIIa; UniProt:Q13402) has 723 variants and is the primary cause of Usher syndrome
-  type I. ADGRV1 (adhesion G-protein coupled receptor V1, formerly VLGR1; UniProt:Q8WXG9) has 645
-  variants and is associated with Usher type II. CDH23 (cadherin-23; UniProt:Q9H251) has 633
-  variants and encodes a hair-cell tip-link component mutated in Usher type I. PCDH15
-  (protocadherin-15; UniProt:Q96QU1) has 463 variants and likewise functions as a tip-link
-  protein in Usher type I. The remaining nine proteins each have fewer than 200 documented
-  variants (USH1C: 172, PDZD7: 97, CLRN1: 87, WHRN: 76, ESPN: 75, USH1G: 67, ARSG: 54,
-  CIB2: 38, HARS1: 22). The sum of per-gene counts is 4,953 while the total of unique variants
-  across all 14 genes is 4,924 (arithmetic verification: Query 4), confirming that 29 ClinVar
-  records are annotated to more than one Usher syndrome gene—a known feature of multi-gene
-  submissions or regulatory variants affecting adjacent genes.
+ideal_answer: "Three of the seven reviewed Bacillus subtilis (strain 168, taxon:224308) proteins annotated with the biotin biosynthesis keyword (KW-0093) have at least one structure deposited in the Protein Data Bank, while four — BioB, BioD, BioF2, and BioF1 (kbl) — are structurally uncharacterized. The three with PDB entries correspond to enzymes of the B. subtilis-specific pimelate thioester synthesis route that differs fundamentally from the E. coli BioC/BioH pathway: BioW (BIOW_BACSU, P53559), the 6-carboxyhexanoate–CoA ligase that activates pimelate as its CoA thioester, has four deposited structures (including PDB:5G1F and substrate-bound complexes); BioK (BIOK_BACSU, P53555), the L-Lysine–8-amino-7-oxononanoate transaminase, has four structures (including PDB:3DOD); and BioI (BIOI_BACSU, P53554), the cytochrome P450 that oxidatively cleaves long-chain acyl-ACPs to generate the pimeloyl-ACP precursor, has three structures (including PDB:3EJB). Notably, BioB (BIOB_BACSU, P53557) — the radical SAM enzyme that inserts the sulfur atoms to form the biotin dithiolane ring, constituting the committed final step of biotin biosynthesis — lacks any deposited structure in UniProt's PDB cross-references, illustrating that structural characterization does not correlate simply with biochemical importance."
 
-question_template_used: Template 2 (Cross-Database Counting)
+question_template_used: Template 7 (Comprehensive List - Cross-DB Structural Coverage)
 
 time_spent:
-  exploration: 45 minutes
-  formulation: 20 minutes
-  verification: 60 minutes
-  pubmed_test: 15 minutes
-  extraction: 30 minutes
-  documentation: 30 minutes
-  total: 200 minutes
+  exploration: 20 minutes
+  formulation: 10 minutes
+  verification: 20 minutes
+  pubmed_test: 10 minutes
+  extraction: 15 minutes
+  documentation: 25 minutes
+  total: 100 minutes

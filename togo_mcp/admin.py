@@ -3,7 +3,7 @@ from typing import Annotated
 from pydantic import Field
 from .server import *
 
-@mcp.prompt(enabled=True, name="Generate_MIE_file", description="Instructions for generating an MIE (Metadata Interoperability Exchange) file")
+@mcp.prompt(name="Generate_MIE_file", description="Instructions for generating an MIE (Metadata Interoperability Exchange) file")
 def generate_MIE_file(
     dbname: Annotated[str, Field(description=DBNAME_DESCRIPTION)]
 ) -> str:
@@ -21,7 +21,7 @@ def generate_MIE_file(
 
     return mie_prompt.replace("__DBNAME__", dbname)
 
-@mcp.tool(enabled=True)
+@mcp.tool(name="get_shex", description="Get the ShEx schema for a specific RDF database.")
 async def get_shex(
     dbname: Annotated[str, Field(description=DBNAME_DESCRIPTION)]
 ) -> str:
@@ -45,7 +45,6 @@ async def get_shex(
         return f"Error reading shex file for '{dbname}': {e}"
 
 @mcp.tool(
-        enabled=True,
         description="Get an example SPARQL query for a specific RDF database.",
         name="get_sparql_example"
 )
@@ -71,35 +70,7 @@ def get_sparql_example(
     except Exception as e:
         return f"Error reading SPARQL example file for '{dbname}': {e}"
 
-@mcp.prompt(enabled=False, name="Generate RDF-Config file")
-def generate_rdf_config(
-        dbname: Annotated[str, Field(description=DBNAME_DESCRIPTION)]
-) -> str:
-    f"""
-    Generate the RDF-Config file for a specific RDF database.
-
-    Args:
-        dbname (str): The name of the database for which to generate examples. Supported values are {', '.join(SPARQL_ENDPOINT.keys())}.
-
-    Returns:
-        str: The generated examples in YAML format.
-    """
-    with open(RDF_CONFIG_TEMPLATE, "r", encoding="utf-8") as file:
-        template = file.read()
-    return (
-    f"Study the RDF Schema of {dbname} by exploring the database."
-    "Try to make biologically relevant SPARQL queries to explore the database structure."
-    "The results should be saved in YAML format."
-    "The YAML file should be based on the following template:"
-    "\n\n"
-   f"{template}"
-    "\n\n"
-    "Use `get_sparql_endpoints` to find available SPARQL endpoints."
-    "Then, use `get_graph_list` to explore relevant named graphs, classes, and properties in the database."
- 
-    )
-
-@mcp.tool(enabled=True, name="save_MIE_file", description="Save the provided MIE content to a file named after the database.")
+@mcp.tool(name="save_MIE_file", description="Save the provided MIE content to a file named after the database.")
 def save_MIE_file(
     dbname: Annotated[str,Field(description=DBNAME_DESCRIPTION)],
     mie_content: Annotated[str,Field(description="The content of the MIE file to save.", default="#empty MIE file")]
@@ -120,28 +91,3 @@ def save_MIE_file(
         return f"Successfully saved MIE file to {file_path}."
     except (IOError, OSError) as e:
         return f"Error: Could not save MIE file for '{dbname}'. Reason: {e}"
-
-# test_MIE_file is no longer used. MIE_prompt.md has been enhanced instead.
-@mcp.tool(enabled=False, name="test_MIE_file", description="Testing a MIE file")
-def test_MIE_file(
-    dbname: Annotated[str,Field(description=DBNAME_DESCRIPTION)]
-    ) -> str:
-    """ 
-    Istructions for testing a MIE file.
-
-    Returns:
-        str: a prompt
-    """
-    return f"""
-1. Get the {dbname} MIE file using `get_MIE_file({dbname})`
-2. Study the instructions in `generate_MIE_file({dbname})`
-3. Check if the generated MIE file is fully consistent with the TogoMCP Usage Guide using `togomcp_usage_guide()`. Fix if necessary.
-4. Test all the examples in the following sections, and fix them if necessary based on the instructions.
-  - `rdf_example_entries`
-  - `sparql_query_examples`
-  - `cross_database_queries`
-  - `cross_references`
-5. Save the fixed MIE file using `save_MIE_file({dbname})`. Note the following.
-  - make sure to use the **Literal Style** (with |) for multiline strings, rather than double-quotes,
-  - make it **as concise as possible** while strictly adhering to the instructions in `generate_MIE_file({dbname})`.
-"""

@@ -1,305 +1,299 @@
 id: question_021
 type: summary
-body: "Summarize the ClinVar variant landscape for retinitis pigmentosa as defined by MeSH descriptor D012174, characterizing the distribution of current variants across germline clinical significance categories, the number of distinct genes implicated, and the number of associated MedGen phenotype concepts."
+body: "Summarize the human proteasome protein landscape as defined by the UniProt keyword KW-0647 (Proteasome), characterizing the distribution across GO cellular component subcomplexes (20S core, 19S regulatory, accessory), the overlap in multi-subcomplex annotations, and the fraction represented as ChEMBL drug targets."
 
 inspiration_keyword:
-  keyword_id: KW-0682
-  name: Retinitis pigmentosa
-  category: Disease
+  keyword_id: KW-0647
+  name: Proteasome
+  category: Cellular component
 
 togomcp_databases_used:
-  - mesh
-  - clinvar
-  - medgen
+  - uniprot
+  - go
+  - chembl
 
 verification_score:
   biological_insight: 3
   multi_database: 3
-  verifiability: 2
+  verifiability: 3
   rdf_necessity: 3
-  total: 11
+  total: 12
   passed: true
 
 pubmed_test:
-  time_spent: 10 minutes
-  method: |
-    Searched ncbi_esearch with queries: (1) "retinitis pigmentosa ClinVar variant
-    clinical significance distribution", (2) "retinitis pigmentosa genes 213
-    causative pathogenic variants count". Both returned 0 results.
+  time_spent: 15 minutes
+  method: Searched PubMed for "human proteasome subunit count GO component distribution ChEMBL drug targets" and "proteasome 53 proteins cellular component annotation overlap"
   result: |
-    PubMed returns no results for queries seeking the exact current counts of
-    ClinVar variants by clinical significance category for RP, the precise number
-    of implicated genes (213), or the number of distinct MedGen phenotype concepts
-    (333). While review articles describe RP genetics in general, the specific
-    quantitative distribution across significance categories requires direct
-    database query of the current ClinVar release.
-  conclusion: PASS (cannot answer from literature — requires current ClinVar/MedGen database state)
+    PubMed literature reviews describe proteasome biology and subunit composition in
+    general terms (e.g., 14 alpha/beta subunits in 20S core), but do not provide
+    current database-state counts of reviewed human proteins under KW-0647, the
+    distribution across 8 GO cellular component subcategories, the number of
+    proteins with multiple subcomplex annotations, or the fraction currently
+    registered as ChEMBL targets. These are current RDF database state facts that
+    change as annotations are curated and would require integrating UniProt,
+    GO ontology, and ChEMBL simultaneously.
+  conclusion: PASS (cannot answer from literature - requires current multi-database RDF state)
 
 sparql_queries:
   - query_number: 1
-    database: mesh
-    description: Retrieve label, tree numbers, and annotation for the Retinitis Pigmentosa MeSH descriptor D012174
+    database: uniprot
+    description: Count reviewed human proteins classified with UniProt keyword KW-0647 (Proteasome)
     query: |
-      PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
-      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
 
-      SELECT ?label ?annotation ?treeNum
-      FROM <http://id.nlm.nih.gov/mesh>
+      SELECT (COUNT(DISTINCT ?protein) AS ?total)
+      FROM <http://sparql.uniprot.org/uniprot>
+      FROM <http://sparql.uniprot.org/keywords>
       WHERE {
-        mesh:D012174 rdfs:label ?label .
-        OPTIONAL { mesh:D012174 meshv:annotation ?annotation }
-        OPTIONAL {
-          mesh:D012174 meshv:treeNumber ?tree .
-          ?tree rdfs:label ?treeNum
-        }
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism taxon:9606 ;
+                 up:classifiedWith keywords:647 .
       }
-    result_count: 3
+    result_count: 1
 
   - query_number: 2
-    database: clinvar
-    description: Count total current ClinVar variants annotated with the RP MeSH disease reference (meshb.nlm.nih.gov/record/ui?ui=D012174)
+    database: uniprot
+    description: Count reviewed human proteasome proteins annotated to each of 8 GO cellular component subcomplexes using structured GO IRIs (no text search)
     query: |
-      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
-      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
-      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-      SELECT (COUNT(DISTINCT ?variant) as ?count)
-      FROM <http://rdfportal.org/dataset/clinvar>
+      SELECT ?goLabel (COUNT(DISTINCT ?protein) AS ?count)
+      FROM <http://sparql.uniprot.org/uniprot>
+      FROM <http://sparql.uniprot.org/keywords>
+      FROM <http://purl.obolibrary.org/obo/go.owl>
       WHERE {
-        ?variant a cvo:VariationArchiveType ;
-                 cvo:record_status "current" ;
-                 med2rdf:disease ?disease .
-        ?disease dct:references ?ref_bn .
-        ?ref_bn rdfs:seeAlso <http://meshb.nlm.nih.gov/record/ui?ui=D012174> .
+        VALUES (?go ?goLabel) {
+          (<http://purl.obolibrary.org/obo/GO_0000502> "proteasome complex")
+          (<http://purl.obolibrary.org/obo/GO_0005839> "proteasome core complex (20S)")
+          (<http://purl.obolibrary.org/obo/GO_0022624> "proteasome accessory complex")
+          (<http://purl.obolibrary.org/obo/GO_0019774> "proteasome core beta-subunit complex")
+          (<http://purl.obolibrary.org/obo/GO_0008540> "proteasome regulatory particle base subcomplex")
+          (<http://purl.obolibrary.org/obo/GO_0008541> "proteasome regulatory particle lid subcomplex")
+          (<http://purl.obolibrary.org/obo/GO_0019773> "proteasome core alpha-subunit complex")
+          (<http://purl.obolibrary.org/obo/GO_0005838> "proteasome regulatory particle (19S)")
+        }
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism taxon:9606 ;
+                 up:classifiedWith keywords:647 ;
+                 up:classifiedWith ?go .
       }
-    result_count: 1
-
-  - query_number: 3
-    database: clinvar
-    description: Distribution of RP-annotated variants by germline clinical significance category
-    query: |
-      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
-      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
-      PREFIX dct: <http://purl.org/dc/terms/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-      SELECT ?significance (COUNT(DISTINCT ?variant) as ?count)
-      FROM <http://rdfportal.org/dataset/clinvar>
-      WHERE {
-        ?variant a cvo:VariationArchiveType ;
-                 cvo:record_status "current" ;
-                 med2rdf:disease ?disease ;
-                 cvo:classified_record ?classrec .
-        ?disease dct:references ?ref_bn .
-        ?ref_bn rdfs:seeAlso <http://meshb.nlm.nih.gov/record/ui?ui=D012174> .
-        ?classrec cvo:classifications ?classi .
-        ?classi cvo:germline_classification ?germ .
-        ?germ cvo:description ?significance .
-      }
-      GROUP BY ?significance
-      ORDER BY DESC(?count)
-    result_count: 10
-
-  - query_number: 4
-    database: clinvar
-    description: Count distinct genes implicated in RP-annotated variants
-    query: |
-      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
-      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
-      PREFIX dct: <http://purl.org/dc/terms/>
-      PREFIX sio: <http://semanticscience.org/resource/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-      SELECT (COUNT(DISTINCT ?gene_uri) as ?gene_count) (COUNT(DISTINCT ?variant) as ?variant_count)
-      FROM <http://rdfportal.org/dataset/clinvar>
-      WHERE {
-        ?variant a cvo:VariationArchiveType ;
-                 cvo:record_status "current" ;
-                 med2rdf:disease ?disease ;
-                 cvo:classified_record ?classrec .
-        ?disease dct:references ?ref_bn .
-        ?ref_bn rdfs:seeAlso <http://meshb.nlm.nih.gov/record/ui?ui=D012174> .
-        ?classrec sio:SIO_000628 ?gene_bn .
-        ?gene_bn med2rdf:gene ?gene_uri .
-      }
-    result_count: 1
-
-  - query_number: 5
-    database: clinvar
-    description: Distribution of RP-annotated variants by mutation type (arithmetic verification for query 2)
-    query: |
-      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
-      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
-      PREFIX dct: <http://purl.org/dc/terms/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-      SELECT ?var_type (COUNT(DISTINCT ?variant) as ?count)
-      FROM <http://rdfportal.org/dataset/clinvar>
-      WHERE {
-        ?variant a cvo:VariationArchiveType ;
-                 cvo:record_status "current" ;
-                 cvo:variation_type ?var_type ;
-                 med2rdf:disease ?disease .
-        ?disease dct:references ?ref_bn .
-        ?ref_bn rdfs:seeAlso <http://meshb.nlm.nih.gov/record/ui?ui=D012174> .
-      }
-      GROUP BY ?var_type
+      GROUP BY ?goLabel
       ORDER BY DESC(?count)
     result_count: 8
 
-  - query_number: 6
-    database: clinvar
-    description: Top 10 genes by number of RP-annotated variants
+  - query_number: 3
+    database: uniprot
+    description: Verify arithmetic - count total unique proteasome proteins annotated to at least one of the 8 GO subcomplexes (actual result is 52, not 49; 3 of the 4 proteins lacking GO:0000502 still carry other subcomplex annotations; only PSME4/Q14997 has none of the 8 terms)
     query: |
-      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
-      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
-      PREFIX dct: <http://purl.org/dc/terms/>
-      PREFIX sio: <http://semanticscience.org/resource/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
 
-      SELECT ?gene_symbol (COUNT(DISTINCT ?variant) as ?count)
-      FROM <http://rdfportal.org/dataset/clinvar>
+      SELECT (COUNT(DISTINCT ?protein) AS ?uniqueWithGoAnnotation)
+      FROM <http://sparql.uniprot.org/uniprot>
+      FROM <http://sparql.uniprot.org/keywords>
       WHERE {
-        ?variant a cvo:VariationArchiveType ;
-                 cvo:record_status "current" ;
-                 med2rdf:disease ?disease ;
-                 cvo:classified_record ?classrec .
-        ?disease dct:references ?ref_bn .
-        ?ref_bn rdfs:seeAlso <http://meshb.nlm.nih.gov/record/ui?ui=D012174> .
-        ?classrec sio:SIO_000628 ?gene_bn .
-        ?gene_bn med2rdf:gene ?gene_uri .
-        ?gene_uri a cvo:Gene ;
-                  cvo:symbol ?gene_symbol .
+        VALUES ?go {
+          <http://purl.obolibrary.org/obo/GO_0000502>
+          <http://purl.obolibrary.org/obo/GO_0005839>
+          <http://purl.obolibrary.org/obo/GO_0022624>
+          <http://purl.obolibrary.org/obo/GO_0019774>
+          <http://purl.obolibrary.org/obo/GO_0008540>
+          <http://purl.obolibrary.org/obo/GO_0008541>
+          <http://purl.obolibrary.org/obo/GO_0019773>
+          <http://purl.obolibrary.org/obo/GO_0005838>
+        }
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism taxon:9606 ;
+                 up:classifiedWith keywords:647 ;
+                 up:classifiedWith ?go .
       }
-      GROUP BY ?gene_symbol
-      ORDER BY DESC(?count)
-      LIMIT 10
-    result_count: 10
+    result_count: 1
 
-  - query_number: 7
-    database: medgen
-    description: Count distinct MedGen phenotype concepts associated with RP-annotated ClinVar variants (cross-database query on ncbi endpoint)
+  - query_number: 4
+    database: uniprot
+    description: Identify the 4 reviewed human proteasome proteins (KW-0647) NOT annotated to general GO:0000502 (specialized regulatory/tissue-specific subunits)
     query: |
-      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
-      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
-      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-      SELECT (COUNT(DISTINCT ?medgen_uri) as ?concept_count) (COUNT(DISTINCT ?variant) as ?var_count)
+      SELECT DISTINCT ?protein ?name
+      FROM <http://sparql.uniprot.org/uniprot>
+      FROM <http://sparql.uniprot.org/keywords>
       WHERE {
-        GRAPH <http://rdfportal.org/dataset/clinvar> {
-          ?variant a cvo:VariationArchiveType ;
-                   cvo:record_status "current" ;
-                   med2rdf:disease ?disease .
-          ?disease dct:references ?ref_bn .
-          ?ref_bn rdfs:seeAlso <http://meshb.nlm.nih.gov/record/ui?ui=D012174> .
-          ?variant med2rdf:disease ?disease2 .
-          ?disease2 dct:references ?ref_bn2 .
-          ?ref_bn2 rdfs:seeAlso ?medgen_uri .
-          FILTER(CONTAINS(STR(?medgen_uri), "medgen"))
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism taxon:9606 ;
+                 up:classifiedWith keywords:647 ;
+                 up:recommendedName/up:fullName ?name .
+        FILTER NOT EXISTS {
+          ?protein up:classifiedWith <http://purl.obolibrary.org/obo/GO_0000502> .
         }
       }
-    result_count: 1
+    result_count: 4
 
-  - query_number: 8
-    database: clinvar
-    description: |
-      Arithmetic verification for query 3 — count distinct variants with ANY germline
-      classification and compare to the total (query 2). Confirms that the 10 significance
-      categories together account for all 5,493 current RP variants (sum = total → mutually
-      exclusive categories, each variant carries exactly one germline significance label).
+  - query_number: 5
+    database: chembl
+    description: Count reviewed human proteasome proteins that are registered as ChEMBL single-protein targets. ChEMBL (EBI endpoint) and UniProt (SIB endpoint) reside on different SPARQL endpoints and cannot be federated in a single query. The correct approach is to supply the 53 UniProt IRIs obtained from query 1 as a VALUES clause in a ChEMBL-only query.
     query: |
-      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
-      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
-      PREFIX dct: <http://purl.org/dc/terms/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
 
-      SELECT (COUNT(DISTINCT ?variant) AS ?variants_with_classification)
-      FROM <http://rdfportal.org/dataset/clinvar>
+      SELECT (COUNT(DISTINCT ?uniprotIri) AS ?chemblTargetCount)
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
-        ?variant a cvo:VariationArchiveType ;
-                 cvo:record_status "current" ;
-                 med2rdf:disease ?disease ;
-                 cvo:classified_record ?classrec .
-        ?disease dct:references ?ref_bn .
-        ?ref_bn rdfs:seeAlso <http://meshb.nlm.nih.gov/record/ui?ui=D012174> .
-        ?classrec cvo:classifications ?classi .
-        ?classi cvo:germline_classification ?germ .
-        ?germ cvo:description ?significance .
+        VALUES ?uniprotIri {
+          <http://purl.uniprot.org/uniprot/O00231>
+          <http://purl.uniprot.org/uniprot/O00487>
+          <http://purl.uniprot.org/uniprot/O14818>
+          <http://purl.uniprot.org/uniprot/O43242>
+          <http://purl.uniprot.org/uniprot/O43396>
+          <http://purl.uniprot.org/uniprot/P25786>
+          <http://purl.uniprot.org/uniprot/P25787>
+          <http://purl.uniprot.org/uniprot/P25788>
+          <http://purl.uniprot.org/uniprot/P28066>
+          <http://purl.uniprot.org/uniprot/P28072>
+          <http://purl.uniprot.org/uniprot/P28074>
+          <http://purl.uniprot.org/uniprot/P48556>
+          <http://purl.uniprot.org/uniprot/P49721>
+          <http://purl.uniprot.org/uniprot/P51665>
+          <http://purl.uniprot.org/uniprot/P54578>
+          <http://purl.uniprot.org/uniprot/P54727>
+          <http://purl.uniprot.org/uniprot/P60896>
+          <http://purl.uniprot.org/uniprot/P60900>
+          <http://purl.uniprot.org/uniprot/P61289>
+          <http://purl.uniprot.org/uniprot/P62191>
+          <http://purl.uniprot.org/uniprot/P62195>
+          <http://purl.uniprot.org/uniprot/P62333>
+          <http://purl.uniprot.org/uniprot/Q05086>
+          <http://purl.uniprot.org/uniprot/Q16186>
+          <http://purl.uniprot.org/uniprot/Q5VYK3>
+          <http://purl.uniprot.org/uniprot/Q92530>
+          <http://purl.uniprot.org/uniprot/Q99436>
+          <http://purl.uniprot.org/uniprot/Q9UMX0>
+          <http://purl.uniprot.org/uniprot/Q9Y5K5>
+          <http://purl.uniprot.org/uniprot/P20618>
+          <http://purl.uniprot.org/uniprot/P25789>
+          <http://purl.uniprot.org/uniprot/Q14997>
+          <http://purl.uniprot.org/uniprot/Q15386>
+          <http://purl.uniprot.org/uniprot/Q06323>
+          <http://purl.uniprot.org/uniprot/Q9UL46>
+          <http://purl.uniprot.org/uniprot/A5LHX3>
+          <http://purl.uniprot.org/uniprot/O00232>
+          <http://purl.uniprot.org/uniprot/P17980>
+          <http://purl.uniprot.org/uniprot/P28062>
+          <http://purl.uniprot.org/uniprot/P28065>
+          <http://purl.uniprot.org/uniprot/P28070>
+          <http://purl.uniprot.org/uniprot/P35998>
+          <http://purl.uniprot.org/uniprot/P40306>
+          <http://purl.uniprot.org/uniprot/P43686>
+          <http://purl.uniprot.org/uniprot/P49720>
+          <http://purl.uniprot.org/uniprot/P54725>
+          <http://purl.uniprot.org/uniprot/P55036>
+          <http://purl.uniprot.org/uniprot/Q13200>
+          <http://purl.uniprot.org/uniprot/Q15008>
+          <http://purl.uniprot.org/uniprot/Q8TAA3>
+          <http://purl.uniprot.org/uniprot/Q99460>
+          <http://purl.uniprot.org/uniprot/Q9BRP4>
+          <http://purl.uniprot.org/uniprot/Q9UNM6>
+        }
+        ?target a cco:SingleProtein ;
+                cco:hasTargetComponent/skos:exactMatch ?uniprotIri ;
+                cco:organismName "Homo sapiens" .
       }
     result_count: 1
-    # Arithmetic check: result = 5,493 = total from query 2.
-    # Sum of the 10 category counts from query 3 also equals 5,493 (the 8 named categories
-    # account for 5,491; the remaining 2 variants fall in two additional minor categories).
-    # 5,493 = 5,493 → PASS. Germline significance categories are mutually exclusive;
-    # no variant belongs to more than one category.
 
 rdf_triples: |
-  @prefix mesh: <http://id.nlm.nih.gov/mesh/> .
-  @prefix meshv: <http://id.nlm.nih.gov/mesh/vocab#> .
-  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix cvo: <http://purl.jp/bio/10/clinvar/> .
-  @prefix med2rdf: <http://med2rdf.org/ontology/med2rdf#> .
-  @prefix dct: <http://purl.org/dc/terms/> .
-  @prefix sio: <http://semanticscience.org/resource/> .
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix keywords: <http://purl.uniprot.org/keywords/> .
+  @prefix taxon: <http://purl.uniprot.org/taxonomy/> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix cco: <http://rdf.ebi.ac.uk/terms/chembl#> .
+  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
   @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
-  mesh:D012174 a meshv:TopicalDescriptor .
-  # Database: MeSH | Query: 1 | Comment: Retinitis Pigmentosa topical descriptor
+  # Total reviewed human proteins with KW-0647 = 53
+  <http://purl.uniprot.org/uniprot/P28074> a up:Protein ;
+      up:reviewed 1 ;
+      up:organism taxon:9606 ;
+      up:classifiedWith keywords:647 .
+  # Database: UniProt | Query: 1 | Comment: PSMB5 (beta5 subunit), representative KW-0647 protein (53 total)
 
-  mesh:D012174 rdfs:label "Retinitis Pigmentosa" .
-  # Database: MeSH | Query: 1 | Comment: Preferred label for RP descriptor
+  <http://purl.uniprot.org/uniprot/P28074> up:classifiedWith obo:GO_0000502 .
+  # Database: UniProt | Query: 2 | Comment: PSMB5 annotated to proteasome complex (GO:0000502); 49 of 53 proteins carry this annotation
 
-  mesh:C11.768.585.658.500 a meshv:TreeNumber ;
-    rdfs:label "C11.768.585.658.500" .
-  # Database: MeSH | Query: 1 | Comment: RP tree position under Eye Diseases > Retinal Diseases
+  <http://purl.uniprot.org/uniprot/P28074> up:classifiedWith obo:GO_0005839 .
+  # Database: UniProt | Query: 2 | Comment: PSMB5 annotated to proteasome core complex 20S (GO:0005839); 18 proteins in this category
 
-  mesh:C16.320.290.684 a meshv:TreeNumber ;
-    rdfs:label "C16.320.290.684" .
-  # Database: MeSH | Query: 1 | Comment: RP tree position under Genetic Diseases > Hereditary Eye Diseases
+  <http://purl.uniprot.org/uniprot/P28074> up:classifiedWith obo:GO_0019774 .
+  # Database: UniProt | Query: 2 | Comment: PSMB5 annotated to core beta-subunit complex (GO:0019774); 11 proteins in this category; illustrates multi-annotation overlap
 
-  mesh:D012174 meshv:treeNumber mesh:C11.768.585.658.500 .
-  # Database: MeSH | Query: 1 | Comment: RP classified under eye diseases hierarchy
+  # GO subcomplex distribution (sum 126 annotations for 52 annotated proteins; arithmetic verification: 126 > 52 = valid overlap)
+  # Note: 49 proteins carry GO:0000502; 3 others lack GO:0000502 but have a subcomplex annotation (Q92530/GO:0005839, A5LHX3/GO:0019774, Q8TAA3/GO:0019773)
+  # Note: Q14997 (PSME4/PA200) has none of the 8 GO terms and is absent from both counts
+  obo:GO_0000502 a obo:GO_0000502 .
+  # Database: GO | Query: 2 | Comment: proteasome complex (general) - 49 proteins
+  obo:GO_0005839 a obo:GO_0005839 .
+  # Database: GO | Query: 2 | Comment: proteasome core complex (20S) - 18 proteins
+  obo:GO_0022624 a obo:GO_0022624 .
+  # Database: GO | Query: 2 | Comment: proteasome accessory complex - 16 proteins
+  obo:GO_0019774 a obo:GO_0019774 .
+  # Database: GO | Query: 2 | Comment: proteasome core beta-subunit complex - 11 proteins
+  obo:GO_0008540 a obo:GO_0008540 .
+  # Database: GO | Query: 2 | Comment: proteasome regulatory particle base subcomplex - 9 proteins
+  obo:GO_0008541 a obo:GO_0008541 .
+  # Database: GO | Query: 2 | Comment: proteasome regulatory particle lid subcomplex - 8 proteins
+  obo:GO_0019773 a obo:GO_0019773 .
+  # Database: GO | Query: 2 | Comment: proteasome core alpha-subunit complex - 8 proteins
+  obo:GO_0005838 a obo:GO_0005838 .
+  # Database: GO | Query: 2 | Comment: proteasome regulatory particle (19S) - 7 proteins
 
-  mesh:D012174 meshv:treeNumber mesh:C16.320.290.684 .
-  # Database: MeSH | Query: 1 | Comment: RP classified under hereditary genetic diseases hierarchy
+  # Four proteins without GO:0000502 (specialized subunits)
+  <http://purl.uniprot.org/uniprot/Q92530> a up:Protein ;
+      up:classifiedWith keywords:647 .
+  # Database: UniProt | Query: 4 | Comment: PSMF1 (PI31 proteasome inhibitor) - lacks general GO:0000502 annotation
 
-  <http://meshb.nlm.nih.gov/record/ui?ui=D012174> rdfs:seeAlso mesh:D012174 .
-  # Database: ClinVar | Query: 2 | Comment: ClinVar uses meshb.nlm.nih.gov URI format for RP disease reference
+  <http://purl.uniprot.org/uniprot/Q14997> a up:Protein ;
+      up:classifiedWith keywords:647 .
+  # Database: UniProt | Query: 4 | Comment: PSME4 (PA200 proteasome activator) - specialized activator without core complex annotation
 
-  <http://ncbi.nlm.nih.gov/clinvar/variation/example_rp>
-    a cvo:VariationArchiveType ;
-    cvo:record_status "current" ;
-    cvo:variation_type "single nucleotide variant" .
-  # Database: ClinVar | Query: 5 | Comment: Representative RP-associated SNV (dominant type at 90.7%)
+  <http://purl.uniprot.org/uniprot/A5LHX3> a up:Protein ;
+      up:classifiedWith keywords:647 .
+  # Database: UniProt | Query: 4 | Comment: PSB11 (beta-11 inducible subunit) - tissue-induced variant
 
-  <http://ncbi.nlm.nih.gov/gene/346007> a cvo:Gene ;
-    cvo:symbol "EYS" ;
-    cvo:cytogenetic_location "6q12" .
-  # Database: ClinVar | Query: 6 | Comment: EYS gene — most variant-rich RP gene with 418 variants
+  <http://purl.uniprot.org/uniprot/Q8TAA3> a up:Protein ;
+      up:classifiedWith keywords:647 .
+  # Database: UniProt | Query: 4 | Comment: PSMA8 (alpha-type 8, testis-specific) - tissue-specific variant
 
-  <http://ncbi.nlm.nih.gov/gene/7399> a cvo:Gene ;
-    cvo:symbol "USH2A" ;
-    cvo:cytogenetic_location "1q41" .
-  # Database: ClinVar | Query: 6 | Comment: USH2A — second most variant-rich RP gene with 328 variants
+  # ChEMBL drug-target representation
+  <http://purl.uniprot.org/uniprot/P28074> skos:exactMatch <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL3797> .
+  # Database: ChEMBL | Query: 5 | Comment: PSMB5 (beta5) is a ChEMBL target; primary target of bortezomib and carfilzomib
 
-  <http://www.ncbi.nlm.nih.gov/medgen/C0035334> a <http://med2rdf/ontology/medgen#ConceptID> .
-  # Database: MedGen | Query: 7 | Comment: Representative MedGen phenotype concept among 333 linked to RP variants
+  <http://purl.uniprot.org/uniprot/P28062> skos:exactMatch <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL3798> .
+  # Database: ChEMBL | Query: 5 | Comment: PSMB8 (beta1i inducible) is a ChEMBL target; 22 of 53 proteasome proteins are ChEMBL targets (41.5%)
 
 exact_answer: ""
 
 ideal_answer: |
-  In ClinVar (2025 release), 5,493 current variants are annotated with the retinitis pigmentosa MeSH descriptor (D012174), a hereditary rod-cone dystrophy classified under both eye diseases and hereditary genetic diseases in the MeSH hierarchy (tree numbers C11.768.585.658.500, C16.320.290.684, C11.270.684). The germline clinical significance landscape is dominated by variants of uncertain significance (2,014 variants, 36.7%), followed by those with conflicting classifications of pathogenicity (1,313, 23.9%), while pathogenic-class variants (Pathogenic 521, Pathogenic/Likely pathogenic 414, and Likely pathogenic 285, totaling 1,220, 22.2%) and benign-class variants (Benign 489, Benign/Likely benign 316, Likely benign 139, totaling 944, 17.2%) constitute the remaining groups. Arithmetic verification (query 8) confirms that the 10 germline significance categories together cover all 5,493 variants (sum of category counts = 5,493 = total unique variants), confirming the categories are mutually exclusive — each variant carries exactly one germline significance label. Single nucleotide variants overwhelmingly dominate at 90.7% (4,980 of 5,493), followed by deletions (303, 5.5%) and duplications (106, 1.9%). These variants implicate 213 distinct genes, with the most variant-rich being EYS (418 variants), USH2A (328), CNGB1 (234), PCARE (227), and PDE6A (185). The disease associations span 333 distinct MedGen phenotype concepts, reflecting the broad clinical and genetic heterogeneity of the retinitis pigmentosa spectrum.
+  There are 53 reviewed human proteins classified under UniProt keyword KW-0647 (Proteasome), forming a structurally and functionally diverse complex system. When distributed across eight GO cellular component subcategories using structured ontology IRIs, 49 of these proteins are annotated to the general proteasome complex (GO:0000502), while the 20S core complex (GO:0005839) accounts for 18 proteins, the accessory complex (GO:0022624) for 16, the core beta-subunit complex (GO:0019774) for 11, the regulatory particle base subcomplex (GO:0008540) for 9, the lid subcomplex (GO:0008541) for 8, the alpha-subunit complex (GO:0019773) for 8, and the 19S regulatory particle (GO:0005838) for 7. The sum of these category counts reaches 126 annotations for 52 uniquely annotated proteins (arithmetic verification: 126 > 52 = valid overlap), reflecting extensive multi-subcomplex co-annotation — for example, a beta subunit is simultaneously annotated to the general proteasome complex, the 20S core, and the beta-subunit complex. Four proteins lack the general GO:0000502 annotation entirely: PSMF1 (PI31 inhibitor), PSME4 (PA200 activator), PSB11 (inducible beta-11), and PSMA8 (testis-specific alpha-8). Three of them (PSMF1, PSB11, PSMA8) still appear in subcomplex categories (GO:0005839, GO:0019774, GO:0019773 respectively), while PSME4 carries none of the eight GO subcomplex annotations, consistent with its role as an externally docking activator rather than a structural subunit. Cross-referencing with ChEMBL reveals that 22 of the 53 proteins (41.5%) are registered as human single-protein drug targets, with all eight canonical beta subunits included — consistent with the clinical use of proteasome inhibitors such as bortezomib and carfilzomib that target the beta5 catalytic subunit (PSMB5).
 
 question_template_used: Template 4 (Aggregation Statistics)
 
 time_spent:
-  exploration: 30 minutes
-  formulation: 15 minutes
-  verification: 25 minutes
-  pubmed_test: 10 minutes
-  extraction: 20 minutes
+  exploration: 60 minutes
+  formulation: 20 minutes
+  verification: 40 minutes
+  pubmed_test: 15 minutes
+  extraction: 30 minutes
   documentation: 25 minutes
-  total: 125 minutes
+  total: 190 minutes

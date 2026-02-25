@@ -1,232 +1,224 @@
 id: question_033
 type: list
-body: "List all distinct culture media documented for cultivating strains of the gas vesicle-forming genus Ancylobacter."
+body: "Among bacterial and archaeal genera that have reviewed UniProt proteins annotated with the S-layer keyword, which ones have all BacDive-registered strains with oxygen tolerance records documented exclusively as anaerobic?"
 
 inspiration_keyword:
-  keyword_id: KW-0304
-  name: Gas vesicle
+  keyword_id: KW-0701
+  name: S-layer
   category: Cellular component
 
 togomcp_databases_used:
+  - uniprot
   - bacdive
-  - mediadive
 
 verification_score:
-  biological_insight: 2
+  biological_insight: 3
   multi_database: 2
   verifiability: 2
   rdf_necessity: 3
-  total: 9
+  total: 10
   passed: true
 
 pubmed_test:
   time_spent: 10 minutes
   method: |
-    Searched "Ancylobacter culture media growth conditions" and
-    "Ancylobacter aquaticus gas vesicle cultivation medium list"
-    via ncbi_esearch on PubMed.
+    Searched PubMed with two targeted queries:
+    (1) "S-layer proteins anaerobic bacteria genera BacDive culture collection oxygen tolerance"
+    (2) "S-layer distribution anaerobic archaea genera Methanosarcina Thermoanaerobacter Acetivibrio UniProt"
   result: |
-    Query 1 ("Ancylobacter culture media growth conditions") returned 2 results,
-    both general papers on Ancylobacter biology, not providing a comprehensive
-    list of all culture media used across the genus.
-    Query 2 ("Ancylobacter aquaticus gas vesicle cultivation medium list")
-    returned 0 results.
-    No publication was found that catalogs all 11 distinct culture media
-    used for Ancylobacter strains as recorded in culture-collection databases.
+    Both queries returned 0 results. No literature provides a
+    compiled list of bacterial and archaeal genera that carry both UniProt-annotated
+    S-layer proteins (KW-0701) and BacDive-registered strains with exclusively
+    anaerobic oxygen tolerance. Answering the question requires joining the current
+    state of two live databases and cannot be recovered from published reviews.
   conclusion: PASS (cannot answer from literature - requires current database state)
 
 sparql_queries:
   - query_number: 1
-    database: bacdive, mediadive
+    database: uniprot
     description: |
-      List all distinct culture media (with IRI and label) documented in MediaDive
-      for Ancylobacter strains, joined via shared BacDiveID integers. Counts the
-      number of strains supported by each medium.
+      Retrieve all distinct genera of reviewed UniProt proteins annotated
+      with keyword KW-0701 (S-layer) by parsing the first token of
+      each organism's scientific name.
     query: |
-      PREFIX schema: <https://purl.dsmz.de/schema/>
+      PREFIX up: <http://purl.uniprot.org/core/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-      SELECT DISTINCT ?medium ?mediumLabel (COUNT(DISTINCT ?bacStrain) as ?strainCount)
+      SELECT DISTINCT ?genus (COUNT(DISTINCT ?protein) AS ?proteinCount)
       WHERE {
-        GRAPH <http://rdfportal.org/dataset/bacdive> {
-          ?bacStrain a schema:Strain ;
-                     schema:hasGenus "Ancylobacter" ;
-                     schema:hasBacDiveID ?bacDiveID .
-        }
-        GRAPH <http://rdfportal.org/dataset/mediadive> {
-          ?mdStrain a schema:Strain ;
-                    schema:hasBacDiveID ?bacDiveID .
-          ?growth a schema:GrowthCondition ;
-                  schema:relatedToStrain ?mdStrain ;
-                  schema:partOfMedium ?medium .
-          ?medium rdfs:label ?mediumLabel .
-        }
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:classifiedWith <http://purl.uniprot.org/keywords/701> ;
+                 up:organism ?organism .
+        ?organism up:scientificName ?scientificName .
+        BIND(STRBEFORE(?scientificName, " ") AS ?genus)
+        FILTER(?genus != "")
       }
-      GROUP BY ?medium ?mediumLabel
-      ORDER BY DESC(?strainCount)
-    result_count: 11
+      GROUP BY ?genus
+      ORDER BY ?genus
+    result_count: 26
 
   - query_number: 2
-    database: bacdive, mediadive
+    database: bacdive
     description: |
-      Arithmetic verification: count unique Ancylobacter BacDive strains that
-      have at least one MediaDive cultivation record. Used to confirm that
-      sum-of-counts-per-medium (76) > unique-strains (32) is valid overlap,
-      not a coverage gap.
+      For each of the 26 genera identified in Query 1, retrieve all
+      documented oxygen tolerance categories and per-category strain
+      counts from BacDive OxygenTolerance records. Identifies which
+      genera contain strains with any anaerobic physiology.
     query: |
       PREFIX schema: <https://purl.dsmz.de/schema/>
 
-      SELECT (COUNT(DISTINCT ?bacStrain) as ?totalUniqueStrains)
+      SELECT ?genus ?oxygenTolerance (COUNT(DISTINCT ?strain) AS ?strainCount)
+      FROM <http://rdfportal.org/dataset/bacdive>
       WHERE {
-        GRAPH <http://rdfportal.org/dataset/bacdive> {
-          ?bacStrain a schema:Strain ;
-                     schema:hasGenus "Ancylobacter" ;
-                     schema:hasBacDiveID ?bacDiveID .
+        VALUES ?genus {
+          "Acetivibrio" "Acidianus" "Aeromonas" "Bacillus" "Brevibacillus"
+          "Campylobacter" "Caulobacter" "Deinococcus" "Geobacillus" "Haloarcula"
+          "Halobacterium" "Haloferax" "Lactobacillus" "Levilactobacillus" "Lysinibacillus"
+          "Metallosphaera" "Methanocaldococcus" "Methanococcus" "Methanosarcina"
+          "Methanothermococcus" "Methanothermus" "Niallia" "Saccharolobus" "Sulfolobus"
+          "Synechocystis" "Thermoanaerobacter"
         }
-        GRAPH <http://rdfportal.org/dataset/mediadive> {
-          ?mdStrain a schema:Strain ;
-                    schema:hasBacDiveID ?bacDiveID .
-          ?growth a schema:GrowthCondition ;
-                  schema:relatedToStrain ?mdStrain ;
-                  schema:partOfMedium ?medium .
-        }
+        ?strain a schema:Strain ;
+                schema:hasGenus ?genus .
+        ?ot a schema:OxygenTolerance ;
+            schema:describesStrain ?strain ;
+            schema:hasOxygenTolerance ?oxygenTolerance .
       }
-    result_count: 1
+      GROUP BY ?genus ?oxygenTolerance
+      ORDER BY ?genus ?oxygenTolerance
+    result_count: 61
 
   - query_number: 3
     database: bacdive
     description: |
-      Count total Ancylobacter strains in BacDive (with BacDiveIDs). Confirms
-      all 34 BacDive strains have BacDiveIDs, and 32 of them link to MediaDive
-      (2 strains have no MediaDive cultivation records).
+      Arithmetic verification A: check which candidate genera have any
+      non-anaerobic oxygen tolerance records (aerobe, facultative anaerobe,
+      microaerophile, obligate aerobe, etc.). Genera NOT appearing in this
+      result have exclusively anaerobic records.
     query: |
       PREFIX schema: <https://purl.dsmz.de/schema/>
 
-      SELECT (COUNT(DISTINCT ?strain) as ?total) (COUNT(DISTINCT ?withID) as ?withBacDiveID)
+      SELECT ?genus (COUNT(DISTINCT ?otherVal) AS ?nonAnaerobicCategories)
       FROM <http://rdfportal.org/dataset/bacdive>
       WHERE {
-        ?strain a schema:Strain ;
-                schema:hasGenus "Ancylobacter" .
-        OPTIONAL {
-          ?strain schema:hasBacDiveID ?bid .
-          BIND(?strain as ?withID)
+        VALUES ?genus {
+          "Acetivibrio" "Methanocaldococcus" "Methanococcus" "Methanosarcina"
+          "Methanothermococcus" "Methanothermus" "Thermoanaerobacter"
+          "Niallia" "Lactobacillus" "Levilactobacillus"
         }
+        ?strain a schema:Strain ; schema:hasGenus ?genus .
+        ?ot a schema:OxygenTolerance ;
+            schema:describesStrain ?strain ;
+            schema:hasOxygenTolerance ?otherVal .
+        FILTER(?otherVal NOT IN ("anaerobe", "obligate anaerobe") && ?otherVal != "")
+      }
+      GROUP BY ?genus
+      ORDER BY ?genus
+    result_count: 3
+
+  - query_number: 4
+    database: bacdive
+    description: |
+      Arithmetic verification B: confirm that the 7 exclusively anaerobic
+      genera each have at least one anaerobic strain record (positive
+      confirmation that anaerobic OT data exist for all 7 candidates).
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+
+      SELECT (COUNT(DISTINCT ?genus) AS ?exclusivelyAnaerobicGeneraCount)
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        VALUES ?genus {
+          "Acetivibrio" "Methanocaldococcus" "Methanococcus" "Methanosarcina"
+          "Methanothermococcus" "Methanothermus" "Thermoanaerobacter"
+        }
+        ?strain a schema:Strain ;
+                schema:hasGenus ?genus .
+        ?ot a schema:OxygenTolerance ;
+            schema:describesStrain ?strain ;
+            schema:hasOxygenTolerance ?anaerobicVal .
+        FILTER(?anaerobicVal IN ("anaerobe", "obligate anaerobe"))
       }
     result_count: 1
 
 rdf_triples: |
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix kw: <http://purl.uniprot.org/keywords/> .
+  @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
   @prefix schema: <https://purl.dsmz.de/schema/> .
   @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
-  <https://purl.dsmz.de/bacdive/strain/17382> a schema:Strain .
-  # Database: BacDive | Query: 1 | Comment: Ancylobacter aquaticus strain 17382
+  <http://purl.uniprot.org/keywords/701> rdfs:label "S-layer" .
+  # Database: UniProt | Query: 1 | Comment: KW-0701 S-layer keyword IRI
 
-  <https://purl.dsmz.de/bacdive/strain/17382> schema:hasGenus "Ancylobacter" .
-  # Database: BacDive | Query: 1 | Comment: Genus filter for Ancylobacter
+  uniprot:Q8PVI7 a up:Protein ;
+    up:reviewed 1 ;
+    up:classifiedWith <http://purl.uniprot.org/keywords/701> ;
+    up:organism <http://purl.uniprot.org/taxonomy/192952> .
+  # Database: UniProt | Query: 1 | Comment: Major S-layer protein (CSG_METMA) from Methanosarcina mazei (strain Goe1 / DSM 3647) (archaeon)
 
-  <https://purl.dsmz.de/bacdive/strain/17382> schema:hasBacDiveID 17382 .
-  # Database: BacDive | Query: 1 | Comment: BacDiveID used to link to MediaDive
+  uniprot:P22258 a up:Protein ;
+    up:reviewed 1 ;
+    up:classifiedWith <http://purl.uniprot.org/keywords/701> ;
+    up:organism <http://purl.uniprot.org/taxonomy/2325> .
+  # Database: UniProt | Query: 1 | Comment: Cell surface S-layer protein (SLAP_THEKI) from Thermoanaerobacter kivui (anaerobic thermophile)
 
-  <https://purl.dsmz.de/mediadive/strain/209> a schema:Strain .
-  # Database: MediaDive | Query: 1 | Comment: MediaDive strain record for BacDiveID 17382
+  uniprot:Q58232 a up:Protein ;
+    up:reviewed 1 ;
+    up:classifiedWith <http://purl.uniprot.org/keywords/701> ;
+    up:organism <http://purl.uniprot.org/taxonomy/243232> .
+  # Database: UniProt | Query: 1 | Comment: S-layer protein (CSG_METJA) from Methanocaldococcus jannaschii (strain ATCC 43067 / DSM 2661) (hyperthermophilic methanogen)
 
-  <https://purl.dsmz.de/mediadive/strain/209> schema:hasBacDiveID 17382 .
-  # Database: MediaDive | Query: 1 | Comment: Cross-database join key (integer BacDiveID)
+  <https://purl.dsmz.de/bacdive/strain/7096> a schema:Strain ;
+    schema:hasGenus "Methanosarcina" ;
+    schema:hasPhylum "Euryarchaeota" .
+  # Database: BacDive | Query: 2 | Comment: Methanosarcina mazei type strain (BacDive 7096; acetoclastic methanogen)
 
-  <https://purl.dsmz.de/mediadive/medium/7> a schema:CultureMedium .
-  # Database: MediaDive | Query: 1 | Comment: Most-used medium (21 strains)
+  <https://purl.dsmz.de/bacdive/oxygen_tolerance/2365> a schema:OxygenTolerance ;
+    schema:describesStrain <https://purl.dsmz.de/bacdive/strain/7096> ;
+    schema:hasOxygenTolerance "anaerobe" .
+  # Database: BacDive | Query: 2 | Comment: Methanosarcina is strictly anaerobic (54 anaerobe + 1 obligate anaerobe strains across the genus)
 
-  <https://purl.dsmz.de/mediadive/medium/7> rdfs:label "ANCYLOBACTER - SPIROSOMA MEDIUM" .
-  # Database: MediaDive | Query: 1 | Comment: Dedicated specialist medium for this genus
+  <https://purl.dsmz.de/bacdive/strain/16823> a schema:Strain ;
+    schema:hasGenus "Thermoanaerobacter" ;
+    schema:hasPhylum "Firmicutes" .
+  # Database: BacDive | Query: 2 | Comment: Thermoanaerobacter kivui type strain (BacDive 16823; anaerobic thermophile matching UniProt P22258)
 
-  <https://purl.dsmz.de/mediadive/medium/428> a schema:CultureMedium .
-  # Database: MediaDive | Query: 1 | Comment: Second-most-used medium (19 strains)
+  <https://purl.dsmz.de/bacdive/oxygen_tolerance/3443> a schema:OxygenTolerance ;
+    schema:describesStrain <https://purl.dsmz.de/bacdive/strain/16823> ;
+    schema:hasOxygenTolerance "anaerobe" .
+  # Database: BacDive | Query: 2 | Comment: Thermoanaerobacter is exclusively anaerobic (36 anaerobe strains, 0 non-anaerobic)
 
-  <https://purl.dsmz.de/mediadive/medium/428> rdfs:label "HETEROTROPHIC MEDIUM H3P" .
-  # Database: MediaDive | Query: 1 | Comment: Organic heterotrophic growth medium
+  <https://purl.dsmz.de/bacdive/strain/2729> a schema:Strain ;
+    schema:hasGenus "Acetivibrio" ;
+    schema:hasPhylum "Firmicutes" .
+  # Database: BacDive | Query: 2 | Comment: Acetivibrio thermocellus type strain (BacDive 2729; cellulose-degrading anaerobe matching UniProt Q06848)
 
-  <https://purl.dsmz.de/mediadive/medium/81> a schema:CultureMedium .
-  # Database: MediaDive | Query: 1 | Comment: Third-most-used medium (16 strains)
-
-  <https://purl.dsmz.de/mediadive/medium/81> rdfs:label "MINERAL MEDIUM FOR CHEMOLITHOTROPHIC GROWTH (H-3)" .
-  # Database: MediaDive | Query: 1 | Comment: Chemolithotrophic minimal medium
-
-  <https://purl.dsmz.de/mediadive/medium/830> a schema:CultureMedium .
-  # Database: MediaDive | Query: 1 | Comment: R2A medium (6 strains)
-
-  <https://purl.dsmz.de/mediadive/medium/830> rdfs:label "R2A MEDIUM" .
-  # Database: MediaDive | Query: 1 | Comment: Low-nutrient medium for oligotrophs
-
-  <https://purl.dsmz.de/mediadive/medium/1> a schema:CultureMedium .
-  # Database: MediaDive | Query: 1 | Comment: Nutrient Agar (5 strains)
-
-  <https://purl.dsmz.de/mediadive/medium/1> rdfs:label "NUTRIENT AGAR" .
-  # Database: MediaDive | Query: 1 | Comment: Standard rich cultivation medium
-
-  <https://purl.dsmz.de/mediadive/medium/J349> a schema:CultureMedium .
-  # Database: MediaDive | Query: 1 | Comment: Journal-sourced Ancylobacter-Spirosoma medium (4 strains)
-
-  <https://purl.dsmz.de/mediadive/medium/J349> rdfs:label "ANCYLOBACTER-SPIROSOMA MEDIUM" .
-  # Database: MediaDive | Query: 1 | Comment: Literature-derived variant of dedicated genus medium
-
-  <https://purl.dsmz.de/mediadive/medium/1a> rdfs:label "REACTIVATION WITH LIQUID MEDIUM 1" .
-  # Database: MediaDive | Query: 1 | Comment: Recovery medium (1 strain)
-
-  <https://purl.dsmz.de/mediadive/medium/J346> rdfs:label "R2A AGAR" .
-  # Database: MediaDive | Query: 1 | Comment: Solidified R2A (1 strain)
-
-  <https://purl.dsmz.de/mediadive/medium/457> rdfs:label "MINERAL MEDIUM (BRUNNER)" .
-  # Database: MediaDive | Query: 1 | Comment: Standard Brunner minimal medium (1 strain)
-
-  <https://purl.dsmz.de/mediadive/medium/J1154> rdfs:label "K MEDIUM" .
-  # Database: MediaDive | Query: 1 | Comment: K medium (1 strain)
-
-  <https://purl.dsmz.de/mediadive/medium/462> rdfs:label "MINERAL MEDIUM (BRUNNER) WITH VITAMINS" .
-  # Database: MediaDive | Query: 1 | Comment: Brunner medium supplemented with vitamins (1 strain)
+  <https://purl.dsmz.de/bacdive/oxygen_tolerance/802> a schema:OxygenTolerance ;
+    schema:describesStrain <https://purl.dsmz.de/bacdive/strain/2729> ;
+    schema:hasOxygenTolerance "anaerobe" .
+  # Database: BacDive | Query: 2 | Comment: Acetivibrio is exclusively anaerobic (14 anaerobe strains, 0 non-anaerobic)
 
 exact_answer:
-  - "ANCYLOBACTER - SPIROSOMA MEDIUM (MediaDive:7)"
-  - "HETEROTROPHIC MEDIUM H3P (MediaDive:428)"
-  - "MINERAL MEDIUM FOR CHEMOLITHOTROPHIC GROWTH (H-3) (MediaDive:81)"
-  - "R2A MEDIUM (MediaDive:830)"
-  - "NUTRIENT AGAR (MediaDive:1)"
-  - "ANCYLOBACTER-SPIROSOMA MEDIUM (MediaDive:J349)"
-  - "REACTIVATION WITH LIQUID MEDIUM 1 (MediaDive:1a)"
-  - "R2A AGAR (MediaDive:J346)"
-  - "MINERAL MEDIUM (BRUNNER) (MediaDive:457)"
-  - "K MEDIUM (MediaDive:J1154)"
-  - "MINERAL MEDIUM (BRUNNER) WITH VITAMINS (MediaDive:462)"
+  - "Acetivibrio (14 anaerobic strains in BacDive; cellulose-degrading anaerobic bacterium, Firmicutes)"
+  - "Methanocaldococcus (7 anaerobic strains in BacDive; hyperthermophilic methanogen, Euryarchaeota)"
+  - "Methanococcus (13 anaerobic strains in BacDive; mesophilic methanogen, Euryarchaeota)"
+  - "Methanosarcina (55 anaerobic strains in BacDive; acetoclastic/hydrogenotrophic methanogen, Euryarchaeota)"
+  - "Methanothermococcus (2 anaerobic strains in BacDive; thermophilic methanogen, Euryarchaeota)"
+  - "Methanothermus (4 anaerobic strains in BacDive; hyperthermophilic methanogen, Euryarchaeota)"
+  - "Thermoanaerobacter (36 anaerobic strains in BacDive; anaerobic thermophile, Firmicutes)"
 
 ideal_answer: |
-  Eleven distinct culture media are documented for strains of the genus Ancylobacter
-  in culture-collection databases, reflecting the metabolic versatility of these
-  gas vesicle-forming aquatic bacteria. The most widely used is ANCYLOBACTER -
-  SPIROSOMA MEDIUM (MediaDive medium/7), applied for 21 of the 32 linked strains,
-  followed by HETEROTROPHIC MEDIUM H3P (medium/428, 19 strains) and MINERAL MEDIUM
-  FOR CHEMOLITHOTROPHIC GROWTH (H-3) (medium/81, 16 strains). The co-existence of
-  both heterotrophic and chemolithotrophic mineral media reflects the well-documented
-  metabolic plasticity of Ancylobacter species, several of which can grow on
-  one-carbon compounds or H2/CO2 as sole carbon and energy sources. Additional media
-  include general-purpose and oligotrophic formulations such as R2A MEDIUM
-  (medium/830, 6 strains), NUTRIENT AGAR (medium/1, 5 strains), and a
-  literature-derived variant ANCYLOBACTER-SPIROSOMA MEDIUM (medium/J349, 4 strains),
-  plus five further media each used for a single strain: REACTIVATION WITH LIQUID
-  MEDIUM 1 (medium/1a), R2A AGAR (medium/J346), MINERAL MEDIUM (BRUNNER) (medium/457),
-  K MEDIUM (medium/J1154), and MINERAL MEDIUM (BRUNNER) WITH VITAMINS (medium/462).
-  Because individual strains are often cultivated on more than one medium, the sum
-  of per-medium strain counts (76) exceeds the 32 unique strains with cultivation
-  records, indicating that many strains are routinely maintained on parallel media.
-  Of the 34 Ancylobacter strains catalogued in BacDive, 32 have linked cultivation
-  records in MediaDive; the remaining 2 lack documentation in the culture-media
-  database.
+  Of the 26 bacterial and archaeal genera that include at least one reviewed UniProt protein annotated with the S-layer keyword (KW-0701), exactly seven have all BacDive-registered strains with oxygen tolerance records documented exclusively as anaerobic: Acetivibrio (14 anaerobic strains), Methanosarcina (55 anaerobic strains: 54 recorded as "anaerobe" and 1 as "obligate anaerobe"), Thermoanaerobacter (36 anaerobic strains), Methanococcus (13 anaerobic strains), Methanocaldococcus (7 anaerobic strains), Methanothermus (4 anaerobic strains), and Methanothermococcus (2 anaerobic strains). The remaining 19 genera either lack BacDive oxygen tolerance records entirely (Metallosphaera, Saccharolobus, Sulfolobus, and Synechocystis have no OT records; these are all aerobic or oxygenic photosynthetic organisms) or have mixed oxygen tolerance records that include at least one non-anaerobic strain (Acidianus has both aerobe and anaerobe strains reflecting its capacity for either aerobic sulfur oxidation or anaerobic sulfur reduction; Bacillus, Brevibacillus, Geobacillus, Lysinibacillus, Caulobacter, Deinococcus, and Niallia are predominantly aerobic or facultative with only a minority of anaerobic isolates; Aeromonas, Campylobacter, Lactobacillus, and Levilactobacillus span multiple oxygen tolerance categories; Haloarcula, Halobacterium, and Haloferax are aerobic halophilic archaea). The seven exclusively anaerobic genera span two phyla: five are methanogenic archaea from Euryarchaeota (Methanosarcina, Methanococcus, Methanocaldococcus, Methanothermus, Methanothermococcus) that use S-layers as their sole cell-wall component in place of peptidoglycan, and two are anaerobic thermophilic bacteria from Firmicutes (Acetivibrio, a cellulose-degrading clostridial relative; Thermoanaerobacter, a fermentative thermophile exploiting reduced sugar substrates at 50–78 °C). Across both lineages, the crystalline S-layer provides mechanical rigidity and selective permeability under the reductive, often high-temperature conditions of their ecological niches — anoxic sediments, rumen contents, hydrothermal vents, and deep-sea anaerobic environments — where peptidoglycan-based or outer-membrane-based cell walls would be thermodynamically or structurally disadvantaged.
 
-question_template_used: Cross-Database Enumeration (BacDive + MediaDive)
+question_template_used: Template 2 (Cross-Database Filtering with Phenotypic Annotation)
 
 time_spent:
-  exploration: 30 minutes
+  exploration: 25 minutes
   formulation: 15 minutes
-  verification: 20 minutes
+  verification: 15 minutes
   pubmed_test: 10 minutes
-  extraction: 20 minutes
+  extraction: 15 minutes
   documentation: 25 minutes
-  total: 120 minutes
+  total: 105 minutes

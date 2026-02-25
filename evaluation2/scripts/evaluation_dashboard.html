@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+  <meta charset='UTF-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <title>TogoMCP Evaluation Dashboard</title>
+  <script src='https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js'></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+           padding: 20px; min-height: 100vh; }
+    .container { max-width: 1400px; margin: 0 auto; }
+    .card { background: white; padding: 25px; border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12); margin-bottom: 20px; }
+    h1 { color: #1f2937; font-size: 2em; margin-bottom: 8px; }
+    h2 { color: #374151; font-size: 1.2em; margin-bottom: 18px; font-weight: 600; }
+    .subtitle { color: #6b7280; font-size: 0.95em; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr));
+                  gap: 16px; margin-bottom: 20px; }
+    .stat-card { background: white; padding: 20px; border-radius: 12px;
+                 box-shadow: 0 4px 12px rgba(0,0,0,0.12); border-left: 4px solid #667eea; }
+    .stat-label { color: #6b7280; font-size: 0.8em; text-transform: uppercase;
+                  letter-spacing: 0.5px; margin-bottom: 6px; }
+    .stat-value { color: #1f2937; font-size: 2.2em; font-weight: 700; }
+    .stat-sub   { color: #9ca3af; font-size: 0.85em; margin-top: 4px; }
+    .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px,1fr));
+                   gap: 20px; }
+    .chart-container { position: relative; height: 300px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88em; }
+    th { background: #f3f4f6; color: #374151; padding: 10px 12px; text-align: left;
+         font-weight: 600; border-bottom: 2px solid #e5e7eb; }
+    td { padding: 9px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+    tr:hover td { background: #fafafa; }
+    .type-badge { display: inline-block; padding: 2px 8px; border-radius: 9999px;
+                  font-size: 0.78em; font-weight: 600; background: #ede9fe; color: #6d28d9; }
+    .question-cell { max-width: 280px; color: #4b5563; font-size: 0.85em; }
+    .mono { font-family: monospace; font-size: 0.9em; color: #374151; }
+    .footer { text-align: center; color: #e5e7eb; margin-top: 10px; font-size: 0.85em; }
+    @media (max-width:800px) { .charts-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<div class='container'>
+  <div class='card'>
+    <h1>&#128202; TogoMCP Evaluation Dashboard</h1>
+    <p class='subtitle'>50 questions &middot; 50 evaluated pairs &middot; evaluation_standalone.csv</p>
+  </div>
+  <div class='stats-grid'>
+    <div class='stat-card'>
+      <div class='stat-label'>Total Questions</div>
+     <div class='stat-value'>50</div>
+     <div class='stat-sub'>50 with LLM scores</div>
+    </div>
+    <div class='stat-card' style='border-left-color:#f59e0b'>
+      <div class='stat-label'>Avg Baseline Score</div>
+     <div class='stat-value'>13.7</div>
+      <div class='stat-sub'>out of 20</div>
+    </div>
+    <div class='stat-card' style='border-left-color:#3b82f6'>
+      <div class='stat-label'>Avg TogoMCP Score</div>
+     <div class='stat-value'>16.6</div>
+     <div class='stat-sub'>out of 20 (&Delta; +2.9)</div>
+    </div>
+    <div class='stat-card' style='border-left-color:#f97316'>
+      <div class='stat-label'>Avg Baseline Time</div>
+     <div class='stat-value'>8.6s</div>
+      <div class='stat-sub'>per question</div>
+    </div>
+    <div class='stat-card' style='border-left-color:#06b6d4'>
+      <div class='stat-label'>Avg TogoMCP Time</div>
+     <div class='stat-value'>105.8s</div>
+      <div class='stat-sub'>per question</div>
+    </div>
+    <div class='stat-card' style='border-left-color:#10b981'>
+      <div class='stat-label'>Used Tools</div>
+     <div class='stat-value'>50</div>
+     <div class='stat-sub'>of 50 questions (100%)</div>
+    </div>
+    <div class='stat-card' style='border-left-color:#8b5cf6'>
+      <div class='stat-label'>Unique Tools</div>
+     <div class='stat-value'>28</div>
+     <div class='stat-sub'>691 total calls</div>
+    </div>
+  </div>
+  <div class='charts-grid'>
+    <div class='card'>
+      <h2>Score Dimensions &mdash; Baseline vs TogoMCP</h2>
+      <div class='chart-container'><canvas id='dimChart'></canvas></div>
+    </div>
+    <div class='card'>
+      <h2>Win / Loss / Tie (by total score)</h2>
+      <div class='chart-container'><canvas id='winLossChart'></canvas></div>
+    </div>
+    <div class='card'>
+      <h2>Average Total Score by Question Type</h2>
+      <div class='chart-container'><canvas id='typeChart'></canvas></div>
+    </div>
+    <div class='card'>
+      <h2>Total Score Distribution</h2>
+      <div class='chart-container'><canvas id='distChart'></canvas></div>
+    </div>
+    <div class='card'>
+      <h2>Response Time by Question Type (seconds)</h2>
+      <div class='chart-container'><canvas id='timeTypeChart'></canvas></div>
+    </div>
+    <div class='card'>
+      <h2>Top Tools Used by TogoMCP</h2>
+      <div class='chart-container'><canvas id='toolChart'></canvas></div>
+    </div>
+  </div>
+  <div class='card'>
+    <h2>Per-Question Detail</h2>
+    <table>
+      <thead><tr>
+        <th>ID</th><th>Type</th><th>Question (truncated)</th>
+        <th>Baseline /20</th><th>TogoMCP /20</th><th>&Delta; (T&minus;B)</th>
+        <th>B-Time</th><th>T-Time</th><th>Tools #</th>
+      </tr></thead>
+     <tbody>
+<tr><td>question_001</td><td><span class='type-badge'>yes_no</span></td><td class='question-cell' title='Does the HSPB1 gene have pathogenic variants documented in ClinVar for Charcot-M'>Does the HSPB1 gene have pathogenic variants documented in ClinVar for Charcot-M…</td><td>18.0</td><td>19.0</td><td style='color:#10b981;font-weight:600'>+1.0</td><td>7.6s</td><td>54.6s</td><td>7</td></tr>
+<tr><td>question_002</td><td><span class='type-badge'>factoid</span></td><td class='question-cell' title='How many reviewed human proteins are annotated with chemotaxis-related GO biolog'>How many reviewed human proteins are annotated with chemotaxis-related GO biolog…</td><td>11.0</td><td>18.0</td><td style='color:#10b981;font-weight:600'>+7.0</td><td>6.8s</td><td>70.2s</td><td>7</td></tr>
+<tr><td>question_003</td><td><span class='type-badge'>factoid</span></td><td class='question-cell' title='How many reviewed human proteins annotated with at least one autophagy biologica'>How many reviewed human proteins annotated with at least one autophagy biologica…</td><td>11.0</td><td>15.0</td><td style='color:#10b981;font-weight:600'>+4.0</td><td>8.3s</td><td>150.2s</td><td>15</td></tr>
+<tr><td>question_004</td><td><span class='type-badge'>summary</span></td><td class='question-cell' title='Summarize the distribution of melatonin biosynthesis enzymes across species and '>Summarize the distribution of melatonin biosynthesis enzymes across species and …</td><td>17.0</td><td>14.0</td><td style='color:#ef4444;font-weight:600'>-3.0</td><td>9.5s</td><td>108.4s</td><td>17</td></tr>
+<tr><td>question_005</td><td><span class='type-badge'>choice</span></td><td class='question-cell' title='Among the following kinase groups — AGC, CAMK, CMGC, and TK — which has the grea'>Among the following kinase groups — AGC, CAMK, CMGC, and TK — which has the grea…</td><td>17.0</td><td>14.0</td><td style='color:#ef4444;font-weight:600'>-3.0</td><td>7.8s</td><td>102.1s</td><td>21</td></tr>
+<tr><td>question_006</td><td><span class='type-badge'>factoid</span></td><td class='question-cell' title='How many human metalloprotease drug targets with experimental 3D structures are '>How many human metalloprotease drug targets with experimental 3D structures are …</td><td>11.0</td><td>14.0</td><td style='color:#10b981;font-weight:600'>+3.0</td><td>7.9s</td><td>67.8s</td><td>9</td></tr>
+<tr><td>question_007</td><td><span class='type-badge'>yes_no</span></td><td class='question-cell' title='Does the SPG11 gene, a causative gene for hereditary spastic paraplegia type 11,'>Does the SPG11 gene, a causative gene for hereditary spastic paraplegia type 11,…</td><td>16.0</td><td>20.0</td><td style='color:#10b981;font-weight:600'>+4.0</td><td>6.3s</td><td>100.8s</td><td>17</td></tr>
+<tr><td>question_008</td><td><span class='type-badge'>summary</span></td><td class='question-cell' title='Summarize the taxonomic distribution, oxygen tolerance characteristics, and typi'>Summarize the taxonomic distribution, oxygen tolerance characteristics, and typi…</td><td>16.0</td><td>18.0</td><td style='color:#10b981;font-weight:600'>+2.0</td><td>10.8s</td><td>87.1s</td><td>12</td></tr>
+<tr><td>question_009</td><td><span class='type-badge'>list</span></td><td class='question-cell' title='Which human enzymes with catalytic roles in the leukotriene and eoxin biosynthes'>Which human enzymes with catalytic roles in the leukotriene and eoxin biosynthes…</td><td>15.0</td><td>10.0</td><td style='color:#ef4444;font-weight:600'>-5.0</td><td>10.5s</td><td>252.2s</td><td>27</td></tr>
+<tr><td>question_010</td><td><span class='type-badge'>choice</span></td><td class='question-cell' title='Which parent disease category of systemic lupus erythematosus has the most disea'>Which parent disease category of systemic lupus erythematosus has the most disea…</td><td>13.0</td><td>20.0</td><td style='color:#10b981;font-weight:600'>+7.0</td><td>7.2s</td><td>69.7s</td><td>11</td></tr>
+<tr><td>question_011</td><td><span class='type-badge'>factoid</span></td><td class='question-cell' title='How many distinct PubChem compounds participate in chlorophyll and bacteriochlor'>How many distinct PubChem compounds participate in chlorophyll and bacteriochlor…</td><td>11.0</td><td>14.0</td><td style='color:#10b981;font-weight:600'>+3.0</td><td>6.6s</td><td>120.5s</td><td>13</td></tr>
+<tr><td>question_012</td><td><span class='type-badge'>yes_no</span></td><td class='question-cell' title='Does human decorin (UniProt:P07585) have documented glycosylation sites in the G'>Does human decorin (UniProt:P07585) have documented glycosylation sites in the G…</td><td>14.0</td><td>19.0</td><td style='color:#10b981;font-weight:600'>+5.0</td><td>7.0s</td><td>46.8s</td><td>5</td></tr>
+<tr><td>question_013</td><td><span class='type-badge'>list</span></td><td class='question-cell' title='Which 5 genes have the most documented pathogenic or likely pathogenic ClinVar v'>Which 5 genes have the most documented pathogenic or likely pathogenic ClinVar v…</td><td>13.0</td><td>16.0</td><td style='color:#10b981;font-weight:600'>+3.0</td><td>7.3s</td><td>149.8s</td><td>15</td></tr>
+<tr><td>question_014</td><td><span class='type-badge'>factoid</span></td><td class='question-cell' title='How many reviewed UniProt proteins are annotated with the GO molecular function '>How many reviewed UniProt proteins are annotated with the GO molecular function …</td><td>11.0</td><td>15.0</td><td style='color:#10b981;font-weight:600'>+4.0</td><td>26.5s</td><td>53.8s</td><td>8</td></tr>
+<tr><td>question_015</td><td><span class='type-badge'>summary</span></td><td class='question-cell' title='Characterize the reviewed late proteins of Enterobacteria phage T4 across three '>Characterize the reviewed late proteins of Enterobacteria phage T4 across three …</td><td>17.0</td><td>14.0</td><td style='color:#ef4444;font-weight:600'>-3.0</td><td>12.2s</td><td>209.0s</td><td>22</td></tr>
+<tr><td>question_016</td><td><span class='type-badge'>choice</span></td><td class='question-cell' title='Among the bacterial orders Hyphomicrobiales, Burkholderiales, Eubacteriales, and'>Among the bacterial orders Hyphomicrobiales, Burkholderiales, Eubacteriales, and…</td><td>13.0</td><td>19.0</td><td style='color:#10b981;font-weight:600'>+6.0</td><td>8.5s</td><td>33.0s</td><td>6</td></tr>
+<tr><td>question_017</td><td><span class='type-badge'>yes_no</span></td><td class='question-cell' title='Does Anabaena sp. DSM 101043 grow in nitrogen-free BG11- medium?'>Does Anabaena sp. DSM 101043 grow in nitrogen-free BG11- medium?…</td><td>14.0</td><td>18.0</td><td style='color:#10b981;font-weight:600'>+4.0</td><td>6.4s</td><td>100.5s</td><td>15</td></tr>
+<tr><td>question_018</td><td><span class='type-badge'>list</span></td><td class='question-cell' title='List all AMR element symbols associated with mupirocin resistance (MUPIROCIN cla'>List all AMR element symbols associated with mupirocin resistance (MUPIROCIN cla…</td><td>12.0</td><td>20.0</td><td style='color:#10b981;font-weight:600'>+8.0</td><td>8.2s</td><td>34.4s</td><td>4</td></tr>
+<tr><td>question_019</td><td><span class='type-badge'>choice</span></td><td class='question-cell' title='Among Mucopolysaccharidosis types I, II, III, IV, and VI, which type has the hig'>Among Mucopolysaccharidosis types I, II, III, IV, and VI, which type has the hig…</td><td>11.0</td><td>17.0</td><td style='color:#10b981;font-weight:600'>+6.0</td><td>5.0s</td><td>53.1s</td><td>10</td></tr>
+<tr><td>question_020</td><td><span class='type-badge'>yes_no</span></td><td class='question-cell' title='Does the bacterial genome assembly CP036276.1 of Symmachiella dynata strain Mal5'>Does the bacterial genome assembly CP036276.1 of Symmachiella dynata strain Mal5…</td><td>11.0</td><td>17.0</td><td style='color:#10b981;font-weight:600'>+6.0</td><td>5.5s</td><td>57.6s</td><td>7</td></tr>
+<tr><td>question_021</td><td><span class='type-badge'>summary</span></td><td class='question-cell' title='Summarize the human proteasome protein landscape as defined by the UniProt keywo'>Summarize the human proteasome protein landscape as defined by the UniProt keywo…</td><td>15.0</td><td>18.0</td><td style='color:#10b981;font-weight:600'>+3.0</td><td>11.9s</td><td>100.1s</td><td>15</td></tr>
+<tr><td>question_022</td><td><span class='type-badge'>factoid</span></td><td class='question-cell' title='How many distinct human glycogenes in the GlyCosmos glycobiology database are an'>How many distinct human glycogenes in the GlyCosmos glycobiology database are an…</td><td>11.0</td><td>15.0</td><td style='color:#10b981;font-weight:600'>+4.0</td><td>6.9s</td><td>215.6s</td><td>16</td></tr>
+<tr><td>question_023</td><td><span class='type-badge'>list</span></td><td class='question-cell' title='Which manually reviewed human proteins annotated with the spinocerebellar ataxia'>Which manually reviewed human proteins annotated with the spinocerebellar ataxia…</td><td>11.0</td><td>12.0</td><td style='color:#10b981;font-weight:600'>+1.0</td><td>7.3s</td><td>140.6s</td><td>20</td></tr>
+<tr><td>question_024</td><td><span class='type-badge'>summary</span></td><td class='question-cell' title='Summarize the approved Rhea biochemical reactions catalyzed by the four gluconeo'>Summarize the approved Rhea biochemical reactions catalyzed by the four gluconeo…</td><td>17.0</td><td>17.0</td><td style='color:#6b7280;font-weight:600'>0.0</td><td>10.4s</td><td>93.2s</td><td>12</td></tr>
+<tr><td>question_025</td><td><span class='type-badge'>choice</span></td><td class='question-cell' title='Among the voltage-gated potassium channel genes KCNQ2, KCNQ3, KCNB1, and KCNT1 —'>Among the voltage-gated potassium channel genes KCNQ2, KCNQ3, KCNB1, and KCNT1 —…</td><td>17.0</td><td>20.0</td><td style='color:#10b981;font-weight:600'>+3.0</td><td>7.5s</td><td>37.7s</td><td>6</td></tr>
+<tr><td>question_026</td><td><span class='type-badge'>yes_no</span></td><td class='question-cell' title='Is 6,7-dimethyl-8-(1-D-ribityl)lumazine classified in PubChem as a pteridine (CH'>Is 6,7-dimethyl-8-(1-D-ribityl)lumazine classified in PubChem as a pteridine (CH…</td><td>18.0</td><td>18.0</td><td style='color:#6b7280;font-weight:600'>0.0</td><td>7.1s</td><td>144.8s</td><td>23</td></tr>
+<tr><td>question_027</td><td><span class='type-badge'>factoid</span></td><td class='question-cell' title='How many distinct approved biochemical reactions in the Rhea database are collec'>How many distinct approved biochemical reactions in the Rhea database are collec…</td><td>11.0</td><td>13.0</td><td style='color:#10b981;font-weight:600'>+2.0</td><td>8.0s</td><td>248.7s</td><td>26</td></tr>
+<tr><td>question_028</td><td><span class='type-badge'>list</span></td><td class='question-cell' title='Which reviewed UniProt Bacillus subtilis (strain 168) proteins annotated with th'>Which reviewed UniProt Bacillus subtilis (strain 168) proteins annotated with th…</td><td>11.0</td><td>14.0</td><td style='color:#10b981;font-weight:600'>+3.0</td><td>6.0s</td><td>95.0s</td><td>15</td></tr>
+<tr><td>question_029</td><td><span class='type-badge'>summary</span></td><td class='question-cell' title='Summarize the genomic and clinical variant landscape of the eight human Bardet-B'>Summarize the genomic and clinical variant landscape of the eight human Bardet-B…</td><td>16.0</td><td>19.0</td><td style='color:#10b981;font-weight:600'>+3.0</td><td>10.5s</td><td>74.8s</td><td>16</td></tr>
+<tr><td>question_030</td><td><span class='type-badge'>choice</span></td><td class='question-cell' title='Among human chromosomes, which one contains the greatest number of distinct prot'>Among human chromosomes, which one contains the greatest number of distinct prot…</td><td>15.0</td><td>14.0</td><td style='color:#ef4444;font-weight:600'>-1.0</td><td>6.9s</td><td>106.1s</td><td>13</td></tr>
+<tr><td>question_031</td><td><span class='type-badge'>factoid</span></td><td class='question-cell' title='How many distinct approved Rhea biochemical reactions are catalyzed by reviewed '>How many distinct approved Rhea biochemical reactions are catalyzed by reviewed …</td><td>11.0</td><td>19.0</td><td style='color:#10b981;font-weight:600'>+8.0</td><td>10.3s</td><td>44.6s</td><td>7</td></tr>
+<tr><td>question_032</td><td><span class='type-badge'>yes_no</span></td><td class='question-cell' title='Is a complete genome sequence for Magnetospirillum gryphiswaldense MSR-1, classi'>Is a complete genome sequence for Magnetospirillum gryphiswaldense MSR-1, classi…</td><td>15.0</td><td>19.0</td><td style='color:#10b981;font-weight:600'>+4.0</td><td>5.3s</td><td>88.3s</td><td>15</td></tr>
+<tr><td>question_033</td><td><span class='type-badge'>list</span></td><td class='question-cell' title='Among bacterial and archaeal genera that have reviewed UniProt proteins annotate'>Among bacterial and archaeal genera that have reviewed UniProt proteins annotate…</td><td>11.0</td><td>14.0</td><td style='color:#10b981;font-weight:600'>+3.0</td><td>7.1s</td><td>244.5s</td><td>27</td></tr>
+<tr><td>question_034</td><td><span class='type-badge'>summary</span></td><td class='question-cell' title='Summarize the trimethoprim resistance landscape in terms of the most phenotypica'>Summarize the trimethoprim resistance landscape in terms of the most phenotypica…</td><td>16.0</td><td>13.0</td><td style='color:#ef4444;font-weight:600'>-3.0</td><td>11.4s</td><td>87.4s</td><td>17</td></tr>
+<tr><td>question_035</td><td><span class='type-badge'>choice</span></td><td class='question-cell' title='Among X-RAY DIFFRACTION, SOLUTION NMR, and ELECTRON MICROSCOPY, which experiment'>Among X-RAY DIFFRACTION, SOLUTION NMR, and ELECTRON MICROSCOPY, which experiment…</td><td>17.0</td><td>20.0</td><td style='color:#10b981;font-weight:600'>+3.0</td><td>7.8s</td><td>121.9s</td><td>11</td></tr>
+<tr><td>question_036</td><td><span class='type-badge'>yes_no</span></td><td class='question-cell' title='Does the entry for metachromatic leukodystrophy in a major disease ontology cros'>Does the entry for metachromatic leukodystrophy in a major disease ontology cros…</td><td>11.0</td><td>18.0</td><td style='color:#10b981;font-weight:600'>+7.0</td><td>8.3s</td><td>93.1s</td><td>13</td></tr>
+<tr><td>question_037</td><td><span class='type-badge'>summary</span></td><td class='question-cell' title='Summarize the curated human proteins annotated with the Notch signaling pathway '>Summarize the curated human proteins annotated with the Notch signaling pathway …</td><td>15.0</td><td>12.0</td><td style='color:#ef4444;font-weight:600'>-3.0</td><td>10.9s</td><td>255.5s</td><td>22</td></tr>
+<tr><td>question_038</td><td><span class='type-badge'>choice</span></td><td class='question-cell' title='Among the five Mus musculus limb-girdle muscular dystrophy gene orthologs Capn3,'>Among the five Mus musculus limb-girdle muscular dystrophy gene orthologs Capn3,…</td><td>18.0</td><td>20.0</td><td style='color:#10b981;font-weight:600'>+2.0</td><td>7.6s</td><td>75.2s</td><td>13</td></tr>
+<tr><td>question_039</td><td><span class='type-badge'>list</span></td><td class='question-cell' title='Which distinct human genes, co-annotated with Brugada syndrome in at least 500 P'>Which distinct human genes, co-annotated with Brugada syndrome in at least 500 P…</td><td>11.0</td><td>17.0</td><td style='color:#10b981;font-weight:600'>+6.0</td><td>8.2s</td><td>79.6s</td><td>12</td></tr>
+<tr><td>question_040</td><td><span class='type-badge'>list</span></td><td class='question-cell' title='Among the 13 established human neuronal ceroid lipofuscinosis (NCL) disease gene'>Among the 13 established human neuronal ceroid lipofuscinosis (NCL) disease gene…</td><td>12.0</td><td>14.0</td><td style='color:#10b981;font-weight:600'>+2.0</td><td>8.8s</td><td>81.3s</td><td>23</td></tr>
+<tr><td>question_041</td><td><span class='type-badge'>choice</span></td><td class='question-cell' title='Among Cyclooxygenase-1, Cyclooxygenase-2, Prostaglandin E synthase, and Hematopo'>Among Cyclooxygenase-1, Cyclooxygenase-2, Prostaglandin E synthase, and Hematopo…</td><td>17.0</td><td>20.0</td><td style='color:#10b981;font-weight:600'>+3.0</td><td>6.8s</td><td>128.5s</td><td>16</td></tr>
+<tr><td>question_042</td><td><span class='type-badge'>yes_no</span></td><td class='question-cell' title='Is Leigh syndrome classified as a designated intractable disease with an officia'>Is Leigh syndrome classified as a designated intractable disease with an officia…</td><td>13.0</td><td>17.0</td><td style='color:#10b981;font-weight:600'>+4.0</td><td>7.5s</td><td>72.9s</td><td>11</td></tr>
+<tr><td>question_043</td><td><span class='type-badge'>factoid</span></td><td class='question-cell' title='How many approved biochemical reactions are annotated with 1,4-dihydroxy-2-napht'>How many approved biochemical reactions are annotated with 1,4-dihydroxy-2-napht…</td><td>11.0</td><td>20.0</td><td style='color:#10b981;font-weight:600'>+9.0</td><td>6.5s</td><td>71.3s</td><td>9</td></tr>
+<tr><td>question_044</td><td><span class='type-badge'>list</span></td><td class='question-cell' title='Which human sialic acid-binding Ig-like lectin (siglec) proteins have experiment'>Which human sialic acid-binding Ig-like lectin (siglec) proteins have experiment…</td><td>12.0</td><td>12.0</td><td style='color:#6b7280;font-weight:600'>0.0</td><td>11.9s</td><td>141.7s</td><td>14</td></tr>
+<tr><td>question_045</td><td><span class='type-badge'>summary</span></td><td class='question-cell' title='What are the structural characteristics of 3-demethylubiquinones as intermediate'>What are the structural characteristics of 3-demethylubiquinones as intermediate…</td><td>18.0</td><td>16.0</td><td style='color:#ef4444;font-weight:600'>-2.0</td><td>9.0s</td><td>114.2s</td><td>16</td></tr>
+<tr><td>question_046</td><td><span class='type-badge'>yes_no</span></td><td class='question-cell' title='Does AXIN1, the scaffold protein that nucleates the beta-catenin destruction com'>Does AXIN1, the scaffold protein that nucleates the beta-catenin destruction com…</td><td>14.0</td><td>20.0</td><td style='color:#10b981;font-weight:600'>+6.0</td><td>9.2s</td><td>105.9s</td><td>14</td></tr>
+<tr><td>question_047</td><td><span class='type-badge'>factoid</span></td><td class='question-cell' title='How many PubMed articles are co-annotated with both Cockayne syndrome and the ca'>How many PubMed articles are co-annotated with both Cockayne syndrome and the ca…</td><td>11.0</td><td>20.0</td><td style='color:#10b981;font-weight:600'>+9.0</td><td>6.9s</td><td>42.2s</td><td>8</td></tr>
+<tr><td>question_048</td><td><span class='type-badge'>list</span></td><td class='question-cell' title='For each of the five genera of the green sulfur bacteria family Chlorobiaceae (C'>For each of the five genera of the green sulfur bacteria family Chlorobiaceae (C…</td><td>11.0</td><td>16.0</td><td style='color:#10b981;font-weight:600'>+5.0</td><td>10.5s</td><td>53.0s</td><td>7</td></tr>
+<tr><td>question_049</td><td><span class='type-badge'>summary</span></td><td class='question-cell' title='Summarize the human coenzyme A (CoA) biosynthesis pathway by: the number and enz'>Summarize the human coenzyme A (CoA) biosynthesis pathway by: the number and enz…</td><td>15.0</td><td>13.0</td><td style='color:#ef4444;font-weight:600'>-2.0</td><td>8.8s</td><td>180.8s</td><td>22</td></tr>
+<tr><td>question_050</td><td><span class='type-badge'>choice</span></td><td class='question-cell' title='Among Klebsiella pneumoniae, Acinetobacter baumannii, Salmonella enterica, and P'>Among Klebsiella pneumoniae, Acinetobacter baumannii, Salmonella enterica, and P…</td><td>13.0</td><td>20.0</td><td style='color:#10b981;font-weight:600'>+7.0</td><td>7.9s</td><td>29.5s</td><td>4</td></tr>
+     </tbody>
+    </table>
+  </div>
+  <div class='footer'>Generated by TogoMCP Dashboard Generator</div>
+</div>
+<script>
+new Chart(document.getElementById('dimChart'), {
+  type: 'bar',
+  data: { labels: ["Recall", "Precision", "Repetition", "Readability", "Total Score"],
+    datasets: [
+      { label: 'Baseline', data: [2.24, 3.7, 3.5, 4.28, 13.72], backgroundColor: '#f59e0b' },
+      { label: 'TogoMCP', data: [4.24, 4.44, 4.02, 3.92, 16.62], backgroundColor: '#3b82f6' }
+    ]
+  },
+  options: { responsive:true, maintainAspectRatio:false,
+    scales: { y: { beginAtZero:true, max:20 } },
+    plugins: { legend: { position:'top' } }
+  }
+});
+
+new Chart(document.getElementById('winLossChart'), {
+  type: 'doughnut',
+  data: { labels: ["TogoMCP better", "Baseline better", "Tied"],
+    datasets: [{ data: [38, 9, 3], backgroundColor: ["#3b82f6", "#f59e0b", "#9ca3af"] }]
+  },
+  options: { responsive:true, maintainAspectRatio:false,
+    plugins: { legend: { position:'right' } }
+  }
+});
+
+new Chart(document.getElementById('typeChart'), {
+  type: 'bar',
+  data: { labels: ["yes_no", "factoid", "list", "summary", "choice"],
+    datasets: [
+      { label: 'Baseline', data: [14.4, 11.0, 11.9, 16.2, 15.1], backgroundColor: '#f59e0b' },
+      { label: 'TogoMCP', data: [18.5, 16.3, 14.5, 15.4, 18.4], backgroundColor: '#3b82f6' }
+    ]
+  },
+  options: { responsive:true, maintainAspectRatio:false,
+    scales: { y: { beginAtZero:true, max:20, title:{ display:true, text:'Avg Total Score' } } },
+    plugins: { legend: { position:'top' },
+      tooltip: { callbacks: { afterLabel: function(ctx) {
+        const counts = [10, 10, 10, 10, 10];
+        return 'n = ' + counts[ctx.dataIndex]; } } }
+    }
+  }
+});
+
+new Chart(document.getElementById('distChart'), {
+  type: 'bar',
+  data: { labels: ["0\u20132", "2\u20134", "4\u20136", "6\u20138", "8\u201310", "10\u201312", "12\u201314", "14\u201316", "16\u201318", "18\u201320"],
+    datasets: [
+      { label: 'Baseline', data: [0, 0, 0, 0, 0, 18, 8, 9, 11, 4], backgroundColor: 'rgba(245,158,11,0.7)' },
+      { label: 'TogoMCP', data: [0, 0, 0, 0, 0, 1, 6, 12, 8, 12], backgroundColor: 'rgba(59,130,246,0.7)' }
+    ]
+  },
+  options: { responsive:true, maintainAspectRatio:false,
+    scales: {
+      x: { title: { display:true, text:'Total Score Range' } },
+      y: { beginAtZero:true, title:{ display:true, text:'Number of Questions' }, ticks:{ stepSize:1 } }
+    },
+    plugins: { legend: { position:'top' } }
+  }
+});
+
+new Chart(document.getElementById('timeTypeChart'), {
+  type: 'bar',
+  data: { labels: ["yes_no", "factoid", "list", "summary", "choice"],
+    datasets: [
+      { label: 'Baseline (s)', data: [7.0, 9.4, 8.6, 10.5, 7.3], backgroundColor: '#f97316' },
+      { label: 'TogoMCP (s)', data: [86.5, 108.5, 127.2, 131.0, 75.7], backgroundColor: '#06b6d4' }
+    ]
+  },
+  options: { responsive:true, maintainAspectRatio:false,
+    scales: { y: { beginAtZero:true, title:{ display:true, text:'Avg seconds' } } },
+    plugins: { legend: { position:'top' } }
+  }
+});
+
+new Chart(document.getElementById('toolChart'), {
+  type: 'bar',
+  data: { labels: ["mcp__togomcp__run_sparql", "mcp__togomcp__get_MIE_file", "mcp__togomcp__ncbi_esearch", "mcp__togomcp__TogoMCP_Usage_Guide", "mcp__togomcp__list_databases", "mcp__togomcp__get_sparql_endpoints", "mcp__togomcp__search_uniprot_entity", "mcp__togomcp__search_chembl_target", "mcp__togomcp__ncbi_esummary", "mcp__togomcp__togoid_convertId"],
+    datasets: [{ label: 'Times Used', data: [309, 85, 53, 50, 50, 26, 18, 15, 12, 10], backgroundColor: '#8b5cf6' }]
+  },
+  options: { responsive:true, maintainAspectRatio:false, indexAxis:'y',
+    scales: { x: { beginAtZero:true } },
+    plugins: { legend: { display:false } }
+  }
+});
+</script>
+</body>
+</html>

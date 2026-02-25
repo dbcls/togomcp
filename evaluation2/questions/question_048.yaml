@@ -1,6 +1,6 @@
 id: question_048
 type: list
-body: "Which distinct culture media are recorded in BacDive for strains belonging to all genera of the green sulfur bacteria family Chlorobiaceae (Chlorobium, Chlorobaculum, Prosthecochloris, Pelodictyon, and Chloroherpeton), and what are those media called in the MediaDive database?"
+body: "For each of the five genera of the green sulfur bacteria family Chlorobiaceae (Chlorobium, Chlorobaculum, Prosthecochloris, Pelodictyon, and Chloroherpeton), how many deposited strains have documented growth-condition records, and how many formally recognized species exist per genus?"
 
 inspiration_keyword:
   keyword_id: KW-0077
@@ -10,38 +10,116 @@ inspiration_keyword:
 togomcp_databases_used:
   - bacdive
   - mediadive
+  - taxonomy
 
 verification_score:
   biological_insight: 2
-  multi_database: 2
+  multi_database: 3
   verifiability: 3
   rdf_necessity: 3
-  total: 10
+  total: 11
   passed: true
 
 pubmed_test:
   time_spent: 10 minutes
   method: |
-    Searched PubMed with two queries:
-    (1) "Pfennig medium green sulfur bacteria ingredients composition"
-    (2) "DSMZ medium 29 Chlorobium culture recipe"
+    Searched PubMed with two targeted queries:
+    (1) "Chlorobiaceae genera BacDive MediaDive culture medium species count taxonomy"
+    (2) "Chlorobiaceae green sulfur bacteria culture collection strains diversity NCBI taxonomy species"
   result: |
-    Both searches returned 0 results. PubMed literature does not list the
-    specific culture media linked to Chlorobiaceae genera in BacDive or
-    their MediaDive counterparts with DSMZ medium numbers.
-  conclusion: PASS (cannot answer from literature; requires current BacDive and MediaDive RDF state)
+    Both queries returned 0 results. Published literature covers Chlorobiaceae
+    ecology and physiology but does not provide current per-genus counts of
+    strains with documented growth conditions in BacDive/MediaDive, nor does
+    it cross-reference these with current NCBI Taxonomy species tallies for all
+    five genera. The answer requires joining three live databases and cannot
+    be recovered from published literature.
+  conclusion: PASS (cannot answer from literature - requires current database state)
 
 sparql_queries:
   - query_number: 1
-    database: bacdive
+    database: bacdive, mediadive
     description: |
-      Find all strains of Chlorobiaceae genera (Chlorobium, Chlorobaculum,
-      Prosthecochloris, Pelodictyon, Chloroherpeton) in BacDive and retrieve
-      their culture medium labels and MediaDive links.
+      Count total BacDive strains and strains with MediaDive growth-condition
+      records per Chlorobiaceae genus, joining via shared BacDiveID integers.
+      Returns both totals and media-linked counts for all five genera.
     query: |
       PREFIX schema: <https://purl.dsmz.de/schema/>
 
-      SELECT DISTINCT ?genus ?strainLabel ?bacDiveID ?mediumLabel ?mediaLink
+      SELECT ?genus
+             (COUNT(DISTINCT ?strain) AS ?totalStrains)
+             (COUNT(DISTINCT ?strainWithMedia) AS ?strainsWithMedia)
+      WHERE {
+        VALUES ?genus {
+          "Chlorobium"
+          "Chlorobaculum"
+          "Prosthecochloris"
+          "Pelodictyon"
+          "Chloroherpeton"
+        }
+
+        GRAPH <http://rdfportal.org/dataset/bacdive> {
+          ?strain a schema:Strain ;
+                  schema:hasGenus ?genus .
+        }
+
+        OPTIONAL {
+          GRAPH <http://rdfportal.org/dataset/bacdive> {
+            ?strainWithMedia a schema:Strain ;
+                             schema:hasGenus ?genus ;
+                             schema:hasBacDiveID ?bacDiveID .
+          }
+          GRAPH <http://rdfportal.org/dataset/mediadive> {
+            ?mdStrain a schema:Strain ;
+                      schema:hasBacDiveID ?bacDiveID .
+            ?growth a schema:GrowthCondition ;
+                    schema:relatedToStrain ?mdStrain ;
+                    schema:partOfMedium ?medium .
+          }
+        }
+      }
+      GROUP BY ?genus
+      ORDER BY DESC(?totalStrains)
+    result_count: 5
+
+  - query_number: 2
+    database: taxonomy
+    description: |
+      Count NCBI-recognized species for each of the five Chlorobiaceae genera
+      using their genus-level TaxIDs and rdfs:subClassOf traversal.
+      TaxIDs: Chlorobium=1091, Chlorobaculum=256319, Prosthecochloris=28100,
+      Pelodictyon=1099, Chloroherpeton=100715.
+    query: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?genusLabel (COUNT(DISTINCT ?species) AS ?ncbiSpeciesCount)
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        VALUES (?genus ?genusLabel) {
+          (taxon:1091   "Chlorobium")
+          (taxon:256319 "Chlorobaculum")
+          (taxon:28100  "Prosthecochloris")
+          (taxon:1099   "Pelodictyon")
+          (taxon:100715 "Chloroherpeton")
+        }
+        ?species rdfs:subClassOf ?genus ;
+                 tax:rank tax:Species .
+      }
+      GROUP BY ?genus ?genusLabel
+      ORDER BY DESC(?ncbiSpeciesCount)
+    result_count: 5
+
+  - query_number: 3
+    database: bacdive
+    description: |
+      Arithmetic verification A: Count total Chlorobiaceae strains across all
+      five genera without GROUP BY to confirm per-genus sums (13+6+3+2+1=25)
+      equal the overall total. Expected: 25.
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+
+      SELECT (COUNT(DISTINCT ?strain) AS ?totalChlorobiaceaeStrains)
       FROM <http://rdfportal.org/dataset/bacdive>
       WHERE {
         VALUES ?genus {
@@ -52,97 +130,122 @@ sparql_queries:
           "Chloroherpeton"
         }
         ?strain a schema:Strain ;
-                schema:hasGenus ?genus ;
-                schema:hasBacDiveID ?bacDiveID ;
-                rdfs:label ?strainLabel .
-        ?medium a schema:CultureMedium ;
-                schema:describesStrain ?strain ;
-                rdfs:label ?mediumLabel ;
-                schema:hasMediaLink ?mediaLink .
-        FILTER(CONTAINS(STR(?mediaLink), "mediadive"))
+                schema:hasGenus ?genus .
       }
-      ORDER BY ?genus ?strainLabel
-    result_count: 18
+    result_count: 1
 
-  - query_number: 2
-    database: mediadive
+  - query_number: 4
+    database: bacdive, mediadive
     description: |
-      Retrieve full labels, pH values, and complexity status for the two
-      MediaDive media identified in Query 1 (DSMZ Medium 29 and Medium 40).
+      Arithmetic verification B: Count all Chlorobiaceae strains with MediaDive
+      growth-condition records (without GROUP BY) to confirm per-genus sums
+      (10+6+2+1+0=19) equal the overall total. Expected: 19.
+      25 total - 19 linked = 6 strains without MediaDive records.
     query: |
       PREFIX schema: <https://purl.dsmz.de/schema/>
 
-      SELECT ?medium ?label ?finalPH ?minPH ?maxPH ?isComplex
-      FROM <http://rdfportal.org/dataset/mediadive>
+      SELECT (COUNT(DISTINCT ?strain) AS ?strainsWithMediaDive)
       WHERE {
-        VALUES ?medium {
-          <https://purl.dsmz.de/mediadive/medium/29>
-          <https://purl.dsmz.de/mediadive/medium/40>
+        VALUES ?genus {
+          "Chlorobium"
+          "Chlorobaculum"
+          "Prosthecochloris"
+          "Pelodictyon"
+          "Chloroherpeton"
         }
-        ?medium a schema:CultureMedium ;
-                rdfs:label ?label .
-        OPTIONAL { ?medium schema:hasFinalPH ?finalPH }
-        OPTIONAL { ?medium schema:hasMinPH ?minPH }
-        OPTIONAL { ?medium schema:hasMaxPH ?maxPH }
-        OPTIONAL { ?medium schema:isComplex ?isComplex }
+
+        GRAPH <http://rdfportal.org/dataset/bacdive> {
+          ?strain a schema:Strain ;
+                  schema:hasGenus ?genus ;
+                  schema:hasBacDiveID ?bacDiveID .
+        }
+        GRAPH <http://rdfportal.org/dataset/mediadive> {
+          ?mdStrain a schema:Strain ;
+                    schema:hasBacDiveID ?bacDiveID .
+          ?growth a schema:GrowthCondition ;
+                  schema:relatedToStrain ?mdStrain ;
+                  schema:partOfMedium ?medium .
+        }
       }
-    result_count: 2
+    result_count: 1
 
 rdf_triples: |
   @prefix schema: <https://purl.dsmz.de/schema/> .
   @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+  @prefix tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/> .
+  @prefix taxon: <http://identifiers.org/taxonomy/> .
 
-  <https://purl.dsmz.de/bacdive/strain/2403> a schema:Strain .
-  # Database: BacDive | Query: 1 | Comment: Chlorobium limicola strain 2403 (Chlorobiaceae)
+  <https://purl.dsmz.de/bacdive/strain/2403> a schema:Strain ;
+    schema:hasGenus "Chlorobium" ;
+    schema:hasBacDiveID 2403 .
+  # Database: BacDive | Query: 1 | Comment: Representative Chlorobium strain; genus has 13 total strains, 10 with MediaDive
 
-  <https://purl.dsmz.de/bacdive/strain/2403> schema:hasGenus "Chlorobium" .
-  # Database: BacDive | Query: 1 | Comment: Genus classification of the strain
+  <https://purl.dsmz.de/bacdive/strain/2395> a schema:Strain ;
+    schema:hasGenus "Chlorobaculum" ;
+    schema:hasBacDiveID 2395 .
+  # Database: BacDive | Query: 1 | Comment: Representative Chlorobaculum strain; all 6 BacDive strains have MediaDive records
 
-  <https://purl.dsmz.de/bacdive/strain/2403> schema:hasFamily "Chlorobiaceae" .
-  # Database: BacDive | Query: 1 | Comment: Family classification (green sulfur bacteria)
+  <https://purl.dsmz.de/bacdive/strain/8609> a schema:Strain ;
+    schema:hasGenus "Prosthecochloris" ;
+    schema:hasBacDiveID 8609 .
+  # Database: BacDive | Query: 1 | Comment: Representative Prosthecochloris strain; 2 of 3 strains have MediaDive records
 
-  <https://purl.dsmz.de/bacdive/strain/2395> a schema:Strain .
-  # Database: BacDive | Query: 1 | Comment: Chlorobaculum tepidum strain 2395 (Chlorobiaceae)
+  <https://purl.dsmz.de/bacdive/strain/2426> a schema:Strain ;
+    schema:hasGenus "Pelodictyon" ;
+    schema:hasBacDiveID 2426 .
+  # Database: BacDive | Query: 1 | Comment: Representative Pelodictyon strain; 1 of 2 strains has MediaDive record
 
-  <https://purl.dsmz.de/bacdive/strain/2395> schema:hasGenus "Chlorobaculum" .
-  # Database: BacDive | Query: 1 | Comment: Genus classification of the strain
+  <https://purl.dsmz.de/bacdive/strain/3083> a schema:Strain ;
+    schema:hasGenus "Chloroherpeton" ;
+    schema:hasBacDiveID 3083 .
+  # Database: BacDive | Query: 1 | Comment: Sole Chloroherpeton strain in BacDive; no MediaDive record
 
-  <https://purl.dsmz.de/bacdive/medium/29ref> a schema:CultureMedium ;
-    rdfs:label "PFENNIG'S MEDIUM II (modified 1988, for green sulfur bacteria) (DSMZ Medium 29)" .
-  # Database: BacDive | Query: 1 | Comment: CultureMedium entity for DSMZ Medium 29 linked to Chlorobium/Chlorobaculum strains
+  <https://purl.dsmz.de/mediadive/strain/2395> a schema:Strain ;
+    schema:hasBacDiveID 2395 .
+  # Database: MediaDive | Query: 1 | Comment: MediaDive record linked to Chlorobaculum strain via BacDiveID
 
-  <https://purl.dsmz.de/bacdive/medium/40ref> a schema:CultureMedium ;
-    rdfs:label "PFENNIG'S MEDIUM II WITH SALT (DSMZ Medium 40)" .
-  # Database: BacDive | Query: 1 | Comment: CultureMedium entity for DSMZ Medium 40 linked to halophilic Chlorobiaceae strains
+  taxon:1091 a tax:Taxon ;
+    rdfs:label "Chlorobium" ;
+    tax:rank tax:Genus .
+  # Database: Taxonomy | Query: 2 | Comment: NCBI Taxonomy genus; 8 recognized species
 
-  <https://purl.dsmz.de/mediadive/medium/29> a schema:CultureMedium ;
-    rdfs:label "PFENNIG'S MEDIUM II" ;
-    schema:hasFinalPH "6.8-7.1" ;
-    schema:hasMinPH "6.8"^^xsd:float ;
-    schema:hasMaxPH "7.1"^^xsd:float ;
-    schema:isComplex "true"^^xsd:boolean .
-  # Database: MediaDive | Query: 2 | Comment: MediaDive record for DSMZ Medium 29 with pH and complexity
+  taxon:256319 a tax:Taxon ;
+    rdfs:label "Chlorobaculum" ;
+    tax:rank tax:Genus .
+  # Database: Taxonomy | Query: 2 | Comment: NCBI Taxonomy genus; 6 recognized species
 
-  <https://purl.dsmz.de/mediadive/medium/40> a schema:CultureMedium ;
-    rdfs:label "PFENNIG'S MEDIUM II WITH SALT" ;
-    schema:isComplex "true"^^xsd:boolean .
-  # Database: MediaDive | Query: 2 | Comment: MediaDive record for DSMZ Medium 40 (no pH recorded)
+  taxon:28100 a tax:Taxon ;
+    rdfs:label "Prosthecochloris" ;
+    tax:rank tax:Genus .
+  # Database: Taxonomy | Query: 2 | Comment: NCBI Taxonomy genus; 19 recognized species (richest in family)
+
+  taxon:1099 a tax:Taxon ;
+    rdfs:label "Pelodictyon" ;
+    tax:rank tax:Genus .
+  # Database: Taxonomy | Query: 2 | Comment: NCBI Taxonomy genus; 4 recognized species
+
+  taxon:100715 a tax:Taxon ;
+    rdfs:label "Chloroherpeton" ;
+    tax:rank tax:Genus .
+  # Database: Taxonomy | Query: 2 | Comment: NCBI Taxonomy genus; 1 recognized species (monotypic)
 
 exact_answer:
-  - "PFENNIG'S MEDIUM II (MediaDive:medium/29)"
-  - "PFENNIG'S MEDIUM II WITH SALT (MediaDive:medium/40)"
+  - "Chlorobium: 10 of 13 strains with growth-condition records; 8 NCBI species"
+  - "Chlorobaculum: 6 of 6 strains with growth-condition records; 6 NCBI species"
+  - "Prosthecochloris: 2 of 3 strains with growth-condition records; 19 NCBI species"
+  - "Pelodictyon: 1 of 2 strains with growth-condition records; 4 NCBI species"
+  - "Chloroherpeton: 0 of 1 strains with growth-condition records; 1 NCBI species"
 
 ideal_answer: |
-  Among the 25 BacDive strains belonging to the five genera of the green sulfur bacteria family Chlorobiaceae (Chlorobium, Chlorobaculum, Prosthecochloris, Pelodictyon, Chloroherpeton), 18 strains have culture medium records linked to MediaDive, and these link to exactly two distinct media: PFENNIG'S MEDIUM II (DSMZ Medium 29, MediaDive medium/29, pH 6.8–7.1) and PFENNIG'S MEDIUM II WITH SALT (DSMZ Medium 40, MediaDive medium/40). Both are complex (undefined) anaerobic media developed by Norbert Pfennig for anoxygenic phototrophic bacteria that synthesize bacteriochlorophylls. Medium 29 (freshwater formulation) is used predominantly for freshwater species such as Chlorobium limicola, Chlorobaculum tepidum, and Chlorobaculum thiosulfatiphilum, while Medium 40 (saline formulation) accommodates marine or halophilic species including Chlorobium luteolum, Chlorobium phaeovibrioides, and Prosthecochloris vibrioformis. Seven Chlorobiaceae strains in BacDive—including all Pelodictyon and Chloroherpeton strains—lack a MediaDive-linked culture medium record.
+  Among the 25 BacDive strains registered across the five genera of the green sulfur bacteria family Chlorobiaceae, 19 are linked to growth-condition records in MediaDive (joined via shared BacDiveID integers). Per-genus breakdowns reveal a pronounced dissociation between culture-collection representation and taxonomic diversity: Chlorobium has the most BacDive strains (13 total, 10 with growth conditions) yet is recognized for only 8 NCBI species, whereas Prosthecochloris is the most species-rich genus in the family (19 NCBI-recognized species, largely owing to genome-based species proposals) but contributes only 3 BacDive strains of which 2 have growth-condition records. Chlorobaculum shows the highest cultivation success rate—all 6 of its BacDive strains are linked to MediaDive growth conditions—which reflects the early isolation and intensive characterization of its model organism Chlorobaculum tepidum alongside 5 additional species. Pelodictyon contributes 2 BacDive strains (1 with growth conditions) and 4 NCBI species, while Chloroherpeton is the most sparsely represented genus: a single BacDive strain with no MediaDive growth-condition record and only 1 NCBI species (monotypic). The per-genus sums are mutually exclusive and verified against family-wide totals: 13+6+3+2+1 = 25 total strains, 10+6+2+1+0 = 19 with growth conditions, and 8+6+19+4+1 = 38 NCBI-recognized species across all five genera.
 
-question_template_used: Template 5 (Bounded Comparison)
+question_template_used: Template 2 (Cross-Database Counting with Taxonomy Enrichment)
 
 time_spent:
-  exploration: 30 minutes
-  formulation: 15 minutes
-  verification: 10 minutes
+  exploration: 20 minutes
+  formulation: 10 minutes
+  verification: 15 minutes
   pubmed_test: 10 minutes
   extraction: 15 minutes
-  documentation: 20 minutes
-  total: 100 minutes
+  documentation: 25 minutes
+  total: 95 minutes

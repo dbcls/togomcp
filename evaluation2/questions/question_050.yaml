@@ -1,6 +1,6 @@
 id: question_050
 type: choice
-body: "Among Klebsiella pneumoniae, Acinetobacter baumannii, Salmonella enterica, and Pseudomonas aeruginosa, which species has the highest number of distinct antimicrobial resistance gene symbols documented in genotypic resistance records?"
+body: "Among Klebsiella pneumoniae, Acinetobacter baumannii, Salmonella enterica, and Pseudomonas aeruginosa, which species has the greatest number of distinct antibiotic drug classes represented in genotypic resistance surveillance records?"
 
 choices:
   - "Klebsiella pneumoniae"
@@ -28,17 +28,18 @@ verification_score:
 pubmed_test:
   time_spent: 10 minutes
   method: |
-    Attempted to answer via PubMed with two programmatic searches:
-    (1) "Klebsiella Acinetobacter Salmonella Pseudomonas AMR resistance gene diversity comparison count"
-    (2) "AMR Portal NCBI antimicrobial resistance gene repertoire bacterial pathogens"
+    Searched PubMed with two programmatic queries:
+    (1) "Klebsiella Acinetobacter Salmonella Pseudomonas AMR drug class diversity breadth comparison"
+    (2) "ESKAPE pathogens antibiotic resistance class repertoire surveillance database"
   result: |
-    Both searches returned zero results. Literature reviews and genomic 
-    surveillance papers describe resistance gene families in individual 
-    species but no study provides current ranked counts of distinct AMR 
-    gene symbols across these four species from a standardized surveillance 
-    database. The exact counts depend on current database state (isolates 
-    sequenced and deposited up to today) and cannot be derived from 
-    published literature.
+    Both searches returned review articles and genomic surveillance papers describing
+    resistance in individual species, but no study provides ranked counts of distinct
+    antibiotic drug classes per species from a standardised surveillance database.
+    PubMed reviews note Salmonella's broad host range and correspondingly diverse
+    resistance profile, and that K. pneumoniae is a major resistance gene reservoir,
+    but exact class-level counts from AMRPortal depend on current database state
+    (number of sequenced isolates and genotype annotations) and cannot be derived
+    from published literature.
   conclusion: PASS (cannot answer from literature; requires current AMR Portal database state)
 
 sparql_queries:
@@ -63,41 +64,59 @@ sparql_queries:
 
   - query_number: 2
     database: amrportal
-    description: Count distinct AMR gene symbols per species using NCBI Taxonomy IRIs from Query 1
+    description: Count distinct AMR drug classes (amr:amrClass) per species using NCBI Taxonomy IRIs from Query 1
     query: |
       PREFIX amr: <http://example.org/ebiamr#>
       PREFIX obo: <http://purl.obolibrary.org/obo/>
       PREFIX taxon: <http://identifiers.org/taxonomy/>
 
-      SELECT ?taxon (COUNT(DISTINCT ?geneSymbol) AS ?uniqueGenes)
+      SELECT ?taxon (COUNT(DISTINCT ?amrClass) AS ?distinctClasses)
       FROM <http://rdfportal.org/dataset/amrportal>
       WHERE {
         VALUES ?taxon { taxon:573 taxon:28901 taxon:470 taxon:287 }
         ?s a amr:GenotypeFeature ;
            obo:RO_0002162 ?taxon ;
-           amr:geneSymbol ?geneSymbol .
+           amr:amrClass ?amrClass .
       }
       GROUP BY ?taxon
-      ORDER BY DESC(?uniqueGenes)
+      ORDER BY DESC(?distinctClasses)
     result_count: 4
 
   - query_number: 3
     database: amrportal
-    description: Arithmetic verification - count total unique gene symbols across all 4 species to check for overlap
+    description: Arithmetic verification - count total unique AMR classes across all 4 species to characterise shared vs. species-specific classes
     query: |
       PREFIX amr: <http://example.org/ebiamr#>
       PREFIX obo: <http://purl.obolibrary.org/obo/>
       PREFIX taxon: <http://identifiers.org/taxonomy/>
 
-      SELECT (COUNT(DISTINCT ?geneSymbol) AS ?totalUniqueGenes)
+      SELECT (COUNT(DISTINCT ?amrClass) AS ?totalDistinctClasses)
       FROM <http://rdfportal.org/dataset/amrportal>
       WHERE {
         VALUES ?taxon { taxon:573 taxon:28901 taxon:470 taxon:287 }
         ?s a amr:GenotypeFeature ;
            obo:RO_0002162 ?taxon ;
-           amr:geneSymbol ?geneSymbol .
+           amr:amrClass ?amrClass .
       }
     result_count: 1
+
+  - query_number: 4
+    database: amrportal
+    description: List the 23 distinct AMR classes found in Salmonella enterica (taxon:28901) to characterise the breadth of its resistance profile
+    query: |
+      PREFIX amr: <http://example.org/ebiamr#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+
+      SELECT DISTINCT ?amrClass
+      FROM <http://rdfportal.org/dataset/amrportal>
+      WHERE {
+        ?s a amr:GenotypeFeature ;
+           obo:RO_0002162 taxon:28901 ;
+           amr:amrClass ?amrClass .
+      }
+      ORDER BY ?amrClass
+    result_count: 23
 
 rdf_triples: |
   @prefix tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/> .
@@ -108,26 +127,26 @@ rdf_triples: |
   @prefix obo: <http://purl.obolibrary.org/obo/> .
   @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
+  taxon:28901 a tax:Taxon .
+  # Database: taxonomy | Query: 1 | Comment: Salmonella enterica taxon IRI (NCBI taxid 28901)
+
+  taxon:28901 rdfs:label "Salmonella enterica" .
+  # Database: taxonomy | Query: 1 | Comment: Scientific name for S. enterica
+
+  taxon:28901 dcterms:identifier 28901 .
+  # Database: taxonomy | Query: 1 | Comment: NCBI taxonomy integer identifier
+
   taxon:573 a tax:Taxon .
   # Database: taxonomy | Query: 1 | Comment: Klebsiella pneumoniae taxon IRI (NCBI taxid 573)
 
   taxon:573 rdfs:label "Klebsiella pneumoniae" .
   # Database: taxonomy | Query: 1 | Comment: Scientific name for K. pneumoniae
 
-  taxon:573 dcterms:identifier 573 .
-  # Database: taxonomy | Query: 1 | Comment: NCBI taxonomy integer identifier
-
   taxon:470 a tax:Taxon .
   # Database: taxonomy | Query: 1 | Comment: Acinetobacter baumannii taxon IRI (NCBI taxid 470)
 
   taxon:470 rdfs:label "Acinetobacter baumannii" .
   # Database: taxonomy | Query: 1 | Comment: Scientific name for A. baumannii
-
-  taxon:28901 a tax:Taxon .
-  # Database: taxonomy | Query: 1 | Comment: Salmonella enterica taxon IRI (NCBI taxid 28901)
-
-  taxon:28901 rdfs:label "Salmonella enterica" .
-  # Database: taxonomy | Query: 1 | Comment: Scientific name for S. enterica
 
   taxon:287 a tax:Taxon .
   # Database: taxonomy | Query: 1 | Comment: Pseudomonas aeruginosa taxon IRI (NCBI taxid 287)
@@ -136,29 +155,32 @@ rdf_triples: |
   # Database: taxonomy | Query: 1 | Comment: Scientific name for P. aeruginosa
 
   [] a amr:GenotypeFeature ;
-     obo:RO_0002162 taxon:573 .
-  # Database: amrportal | Query: 2 | Comment: Representative K. pneumoniae AMR genotypic feature linked via NCBI Taxonomy IRI
+     obo:RO_0002162 taxon:28901 .
+  # Database: amrportal | Query: 2 | Comment: Representative S. enterica AMR genotypic feature linked via NCBI Taxonomy IRI
 
-  taxon:573 amr:uniqueGeneSymbols "550"^^xsd:integer .
-  # Database: amrportal | Query: 2 | Comment: Klebsiella pneumoniae - 550 distinct AMR gene symbols (highest among 4 species)
+  taxon:28901 amr:distinctAmrClasses "23"^^xsd:integer .
+  # Database: amrportal | Query: 2 | Comment: Salmonella enterica - 23 distinct AMR drug classes (highest among 4 species)
 
-  taxon:470 amr:uniqueGeneSymbols "314"^^xsd:integer .
-  # Database: amrportal | Query: 2 | Comment: Acinetobacter baumannii - 314 distinct AMR gene symbols
+  taxon:573 amr:distinctAmrClasses "22"^^xsd:integer .
+  # Database: amrportal | Query: 2 | Comment: Klebsiella pneumoniae - 22 distinct AMR drug classes
 
-  taxon:28901 amr:uniqueGeneSymbols "248"^^xsd:integer .
-  # Database: amrportal | Query: 2 | Comment: Salmonella enterica - 248 distinct AMR gene symbols
+  taxon:287 amr:distinctAmrClasses "16"^^xsd:integer .
+  # Database: amrportal | Query: 2 | Comment: Pseudomonas aeruginosa - 16 distinct AMR drug classes
 
-  taxon:287 amr:uniqueGeneSymbols "199"^^xsd:integer .
-  # Database: amrportal | Query: 2 | Comment: Pseudomonas aeruginosa - 199 distinct AMR gene symbols
+  taxon:470 amr:distinctAmrClasses "14"^^xsd:integer .
+  # Database: amrportal | Query: 2 | Comment: Acinetobacter baumannii - 14 distinct AMR drug classes
 
-  [] amr:totalUniqueGenesAcross4Species "880"^^xsd:integer .
-  # Database: amrportal | Query: 3 | Comment: 880 unique gene symbols total across 4 species (sum=1311 > 880; 431 shared across species - valid overlap documented)
+  [] amr:totalDistinctClassesAcross4Species "28"^^xsd:integer .
+  # Database: amrportal | Query: 3 | Comment: 28 unique classes across 4 species; sum=75 > 28 so 47 class-instances are shared, indicating widespread horizontal transfer of core resistance classes (e.g. BETA-LACTAM, AMINOGLYCOSIDE, QUINOLONE) across all species
+
+  taxon:28901 amr:salmonellaAmrClasses "AMINOGLYCOSIDE BETA-LACTAM BLEOMYCIN COLISTIN EFFLUX FOSFOMYCIN GLYCOPEPTIDE LINCOSAMIDE LINCOSAMIDE/MACROLIDE LINCOSAMIDE/MACROLIDE/STREPTOGRAMIN MACROLIDE MACROLIDE/STREPTOGRAMIN MULTIDRUG PHENICOL PHENICOL/QUINOLONE QUINOLONE QUINOLONE/TRICLOSAN RIFAMYCIN STREPTOGRAMIN STREPTOTHRICIN SULFONAMIDE TETRACYCLINE TRIMETHOPRIM" .
+  # Database: amrportal | Query: 4 | Comment: All 23 distinct AMR classes annotated for S. enterica genotype features; unique classes include BLEOMYCIN, STREPTOTHRICIN, RIFAMYCIN, FOSFOMYCIN, and GLYCOPEPTIDE not present in all other species
 
 exact_answer:
-  - "Klebsiella pneumoniae"
+  - "Salmonella enterica"
 
 ideal_answer: |
-  Klebsiella pneumoniae has the highest number of distinct antimicrobial resistance gene symbols among the four species, with 550 unique gene symbols documented in genotypic resistance records, followed by Acinetobacter baumannii (314), Salmonella enterica (248), and Pseudomonas aeruginosa (199). The combined 880 unique gene symbols across all four species (sum of per-species counts = 1311, indicating 431 gene symbols are shared across multiple species) reflects extensive horizontal gene transfer among Gram-negative pathogens. Klebsiella pneumoniae's markedly larger AMR gene repertoire is consistent with its recognized status as a major reservoir of resistance determinants, including extended-spectrum beta-lactamases (ESBLs), carbapenemases, and colistin resistance genes, reflecting both the large number of K. pneumoniae isolates deposited in public databases and the species' exceptional capacity to acquire and maintain diverse resistance elements via plasmids and mobile genetic elements. Acinetobacter baumannii shows the second-largest repertoire, driven in part by its ability to accumulate resistance through OXA-type carbapenemases and efflux pump upregulation, while Salmonella enterica and Pseudomonas aeruginosa, despite being major clinical pathogens, encode fewer distinct gene symbols in current surveillance data.
+  Salmonella enterica has the greatest number of distinct antibiotic drug classes represented in genotypic resistance surveillance records, with 23 distinct classes, followed by Klebsiella pneumoniae (22), Pseudomonas aeruginosa (16), and Acinetobacter baumannii (14). The 28 total unique classes across all four species (sum of per-species counts = 75; 75 > 28, indicating 47 class-instances are shared, with core classes such as BETA-LACTAM, AMINOGLYCOSIDE, QUINOLONE, TETRACYCLINE, and SULFONAMIDE present in all four species) reflects extensive horizontal gene transfer of resistance determinants among Gram-negative pathogens. Salmonella enterica's broader drug-class repertoire is consistent with its diverse ecological niches spanning human clinical, livestock, and environmental reservoirs, which expose bacterial populations to a wide range of selective antibiotic pressures and facilitate acquisition of resistance genes from taxonomically distant organisms; distinctive Salmonella classes include BLEOMYCIN, STREPTOTHRICIN, RIFAMYCIN, FOSFOMYCIN, and GLYCOPEPTIDE. Notably, this class-breadth ranking diverges from gene-symbol diversity: K. pneumoniae has substantially more distinct gene symbols in AMRPortal but a narrower class range than Salmonella by just one class, reflecting K. pneumoniae's depth in a few resistance mechanisms (especially BETA-LACTAM diversity via ESBLs and carbapenemases) rather than breadth across classes. Acinetobacter baumannii, despite its clinical reputation as extensively drug-resistant, shows the fewest distinct drug classes (14) among the four ESKAPE pathogens in current surveillance records, as its resistance phenotype is largely driven by a concentrated set of OXA-type carbapenemases and efflux pump mechanisms rather than broad class diversification.
 
 question_template_used: Template 5 (Bounded Comparison)
 

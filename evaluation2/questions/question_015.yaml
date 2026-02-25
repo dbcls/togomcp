@@ -1,16 +1,16 @@
 id: question_015
 type: summary
-body: "Characterize and compare the variant landscapes of the two genes causally implicated in monogenic systemic lupus erythematosus—DNASE1L3 (responsible for SLE type 16) and TLR7 (responsible for SLE type 17)—including their chromosomal locations, molecular functions, total numbers of catalogued variants, distributions by variant type, and clinical significance profiles, and explain the biological significance of any contrasts observed between the two genes."
+body: "Characterize the reviewed late proteins of Enterobacteria phage T4 across three dimensions: their GO-annotated functional module assignments (capsid, baseplate, and tail components); any enzymatic activities encoded among these otherwise structural late proteins; and their experimental structural coverage, including the relative proportions of cryo-electron microscopy versus X-ray crystallography depositions."
 
 inspiration_keyword:
-  keyword_id: KW-0772
-  name: Systemic lupus erythematosus
-  category: Disease
+  keyword_id: KW-0426
+  name: Late protein
+  category: Biological process
 
 togomcp_databases_used:
-  - mondo
-  - ncbigene
-  - clinvar
+  - uniprot
+  - go
+  - pdb
 
 verification_score:
   biological_insight: 3
@@ -23,243 +23,278 @@ verification_score:
 pubmed_test:
   time_spent: 10 minutes
   method: |
-    Searched PubMed for "DNASE1L3 TLR7 systemic lupus erythematosus variant ClinVar pathogenic"
-    and "DNASE1L3 TLR7 monogenic SLE variant distribution comparison" via PubMed:search_articles.
+    Searched PubMed for "Enterobacteria phage T4 late proteins PDB structures cryo-EM X-ray distribution"
+    and "bacteriophage T4 late proteins GO annotation functional modules structural characterization 2020 2025"
+    via PubMed:search_articles.
   result: |
-    Both queries returned 0 results. No publication provides a systematic comparison
-    of variant type distributions and clinical significance profiles for DNASE1L3
-    versus TLR7 across the complete ClinVar catalog. The specific quantitative
-    contrasts (e.g., TLR7 having 161 copy number variants vs DNASE1L3 having 11,
-    or TLR7 having 165 pathogenic/likely pathogenic variants vs DNASE1L3 having 22)
-    are only obtainable from current database state.
-  conclusion: PASS (requires current database state; specific cross-gene variant
-    type and significance counts impossible to recover from literature)
+    Both queries returned 0 results. No publication provides a systematic
+    enumeration of all 25 reviewed T4 late proteins, their GO module assignments,
+    enzymatic activities, and current PDB structural coverage broken down by
+    experimental method (149 entries: 103 cryo-EM, 44 X-ray, 2 NMR). These
+    precise current counts require querying live database state.
+  conclusion: PASS (requires current database state; specific structural coverage
+    and method-distribution numbers impossible to recover from literature)
 
 sparql_queries:
   - query_number: 1
-    database: mondo
-    description: Retrieve monogenic SLE subtypes with gene-defined causes from MONDO
+    database: uniprot
+    description: Count all reviewed T4 late proteins (KW-0426 for Enterobacteria phage T4, taxon 10665)
     query: |
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
-      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX up: <http://purl.uniprot.org/core/>
 
-      SELECT DISTINCT ?mondoId ?label ?definition
-      FROM <http://rdfportal.org/ontology/mondo>
+      SELECT (COUNT(DISTINCT ?protein) AS ?total)
+      FROM <http://sparql.uniprot.org/uniprot>
       WHERE {
-        VALUES ?disease {
-          obo:MONDO_0013743
-          obo:MONDO_0859083
-        }
-        ?disease rdfs:label ?label ;
-                 oboInOwl:id ?mondoId .
-        OPTIONAL { ?disease obo:IAO_0000115 ?definition }
-      }
-      ORDER BY ?mondoId
-    result_count: 2
-
-  - query_number: 2
-    database: mondo
-    description: Retrieve OMIM cross-references for both monogenic SLE subtypes
-    query: |
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
-
-      SELECT DISTINCT ?mondoId ?label ?xref
-      FROM <http://rdfportal.org/ontology/mondo>
-      WHERE {
-        VALUES ?disease {
-          obo:MONDO_0013743
-          obo:MONDO_0859083
-        }
-        ?disease rdfs:label ?label ;
-                 oboInOwl:id ?mondoId ;
-                 oboInOwl:hasDbXref ?xref .
-        FILTER(STRSTARTS(?xref, "OMIM:"))
-      }
-      ORDER BY ?mondoId
-    result_count: 2
-
-  - query_number: 3
-    database: clinvar
-    description: Count total current ClinVar variants for DNASE1L3 (Gene 1776) and TLR7 (Gene 51284)
-    query: |
-      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
-      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
-      PREFIX sio: <http://semanticscience.org/resource/>
-
-      SELECT (COUNT(DISTINCT ?variant) AS ?total)
-      FROM <http://rdfportal.org/dataset/clinvar>
-      WHERE {
-        VALUES ?gene_uri {
-          <http://ncbi.nlm.nih.gov/gene/1776>   # DNASE1L3
-          <http://ncbi.nlm.nih.gov/gene/51284>  # TLR7
-        }
-        ?gene_bn med2rdf:gene ?gene_uri .
-        ?classrec sio:SIO_000628 ?gene_bn .
-        ?variant a cvo:VariationArchiveType ;
-                 cvo:record_status "current" ;
-                 cvo:classified_record ?classrec .
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:classifiedWith <http://purl.uniprot.org/keywords/426> ;
+                 up:organism <http://purl.uniprot.org/taxonomy/10665> .
       }
     result_count: 1
 
-  - query_number: 4
-    database: clinvar
-    description: Variant type distribution for DNASE1L3 and TLR7 (comprehensive, all variants)
+  - query_number: 2
+    database: uniprot
+    description: Retrieve all 25 T4 late proteins with their UniProt IRIs and mnemonics
     query: |
-      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
-      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
-      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX up: <http://purl.uniprot.org/core/>
 
-      SELECT ?gene_symbol ?variation_type (COUNT(DISTINCT ?variant) AS ?count)
-      FROM <http://rdfportal.org/dataset/clinvar>
+      SELECT ?protein ?mnemonic
       WHERE {
-        VALUES (?gene_uri ?gene_symbol) {
-          (<http://ncbi.nlm.nih.gov/gene/1776>  "DNASE1L3")
-          (<http://ncbi.nlm.nih.gov/gene/51284> "TLR7")
-        }
-        ?gene_bn med2rdf:gene ?gene_uri .
-        ?classrec sio:SIO_000628 ?gene_bn .
-        ?variant a cvo:VariationArchiveType ;
-                 cvo:record_status "current" ;
-                 cvo:variation_type ?variation_type ;
-                 cvo:classified_record ?classrec .
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:classifiedWith <http://purl.uniprot.org/keywords/426> ;
+                 up:organism <http://purl.uniprot.org/taxonomy/10665> ;
+                 up:mnemonic ?mnemonic .
       }
-      GROUP BY ?gene_symbol ?variation_type
-      ORDER BY ?gene_symbol DESC(?count)
-    result_count: 13
+      ORDER BY ?mnemonic
+    result_count: 25
+
+  - query_number: 3
+    database: uniprot
+    description: GO functional annotations for all T4 late proteins (via OBO IRI namespace)
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?mnemonic ?goLabel
+      FROM <http://sparql.uniprot.org/uniprot>
+      FROM <http://sparql.uniprot.org/go>
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism <http://purl.uniprot.org/taxonomy/10665> ;
+                 up:classifiedWith <http://purl.uniprot.org/keywords/426> ;
+                 up:mnemonic ?mnemonic ;
+                 up:classifiedWith ?goTerm .
+        ?goTerm rdfs:label ?goLabel .
+        FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
+      }
+      ORDER BY ?mnemonic ?goLabel
+    result_count: 65
+
+  - query_number: 4
+    database: pdb
+    description: PDB structures linked to all 25 T4 late proteins via pdbo:link_to_uniprot, by experimental method
+    query: |
+      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
+
+      SELECT ?method (COUNT(DISTINCT ?entry) AS ?count)
+      FROM <http://rdfportal.org/dataset/pdbj>
+      WHERE {
+        VALUES ?uniprotIRI {
+          <http://purl.uniprot.org/uniprot/P19061>
+          <http://purl.uniprot.org/uniprot/P10928>
+          <http://purl.uniprot.org/uniprot/P09425>
+          <http://purl.uniprot.org/uniprot/P17172>
+          <http://purl.uniprot.org/uniprot/P13339>
+          <http://purl.uniprot.org/uniprot/P16011>
+          <http://purl.uniprot.org/uniprot/P13341>
+          <http://purl.uniprot.org/uniprot/P04535>
+          <http://purl.uniprot.org/uniprot/P19896>
+          <http://purl.uniprot.org/uniprot/P11112>
+          <http://purl.uniprot.org/uniprot/P10930>
+          <http://purl.uniprot.org/uniprot/P03742>
+          <http://purl.uniprot.org/uniprot/P03743>
+          <http://purl.uniprot.org/uniprot/P03744>
+          <http://purl.uniprot.org/uniprot/P18771>
+          <http://purl.uniprot.org/uniprot/P13335>
+          <http://purl.uniprot.org/uniprot/P13336>
+          <http://purl.uniprot.org/uniprot/P16009>
+          <http://purl.uniprot.org/uniprot/P17173>
+          <http://purl.uniprot.org/uniprot/P13337>
+          <http://purl.uniprot.org/uniprot/P13331>
+          <http://purl.uniprot.org/uniprot/P13333>
+          <http://purl.uniprot.org/uniprot/P0DXF2>
+          <http://purl.uniprot.org/uniprot/P0DXF1>
+          <http://purl.uniprot.org/uniprot/P10104>
+        }
+        ?entry a pdbo:datablock .
+        FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
+        ?entry pdbo:has_struct_refCategory/pdbo:has_struct_ref ?ref .
+        ?ref pdbo:link_to_uniprot ?uniprotIRI .
+        ?entry pdbo:has_exptlCategory/pdbo:has_exptl ?exptl .
+        ?exptl pdbo:exptl.method ?method .
+      }
+      GROUP BY ?method
+      ORDER BY DESC(?count)
+    result_count: 3
 
   - query_number: 5
-    database: clinvar
-    description: Clinical significance distribution for DNASE1L3 and TLR7 (comprehensive)
+    database: pdb
+    description: Per-protein PDB entry counts for all 25 T4 late proteins (arithmetic verification)
     query: |
-      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
-      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
-      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
 
-      SELECT ?gene_symbol ?clinical_significance (COUNT(DISTINCT ?variant) AS ?count)
-      FROM <http://rdfportal.org/dataset/clinvar>
+      SELECT ?uniprotIRI (COUNT(DISTINCT ?entry) AS ?pdbCount)
+      FROM <http://rdfportal.org/dataset/pdbj>
       WHERE {
-        VALUES (?gene_uri ?gene_symbol) {
-          (<http://ncbi.nlm.nih.gov/gene/1776>  "DNASE1L3")
-          (<http://ncbi.nlm.nih.gov/gene/51284> "TLR7")
+        VALUES ?uniprotIRI {
+          <http://purl.uniprot.org/uniprot/P19061>
+          <http://purl.uniprot.org/uniprot/P10928>
+          <http://purl.uniprot.org/uniprot/P09425>
+          <http://purl.uniprot.org/uniprot/P17172>
+          <http://purl.uniprot.org/uniprot/P13339>
+          <http://purl.uniprot.org/uniprot/P16011>
+          <http://purl.uniprot.org/uniprot/P13341>
+          <http://purl.uniprot.org/uniprot/P04535>
+          <http://purl.uniprot.org/uniprot/P19896>
+          <http://purl.uniprot.org/uniprot/P11112>
+          <http://purl.uniprot.org/uniprot/P10930>
+          <http://purl.uniprot.org/uniprot/P03742>
+          <http://purl.uniprot.org/uniprot/P03743>
+          <http://purl.uniprot.org/uniprot/P03744>
+          <http://purl.uniprot.org/uniprot/P18771>
+          <http://purl.uniprot.org/uniprot/P13335>
+          <http://purl.uniprot.org/uniprot/P13336>
+          <http://purl.uniprot.org/uniprot/P16009>
+          <http://purl.uniprot.org/uniprot/P17173>
+          <http://purl.uniprot.org/uniprot/P13337>
+          <http://purl.uniprot.org/uniprot/P13331>
+          <http://purl.uniprot.org/uniprot/P13333>
+          <http://purl.uniprot.org/uniprot/P0DXF2>
+          <http://purl.uniprot.org/uniprot/P0DXF1>
+          <http://purl.uniprot.org/uniprot/P10104>
         }
-        ?gene_bn med2rdf:gene ?gene_uri .
-        ?classrec sio:SIO_000628 ?gene_bn .
-        ?variant a cvo:VariationArchiveType ;
-                 cvo:record_status "current" ;
-                 cvo:classified_record ?classrec .
-        ?classrec cvo:classifications ?classi .
-        ?classi cvo:germline_classification ?germ .
-        ?germ cvo:description ?clinical_significance .
+        ?entry a pdbo:datablock .
+        FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
+        ?entry pdbo:has_struct_refCategory/pdbo:has_struct_ref ?ref .
+        ?ref pdbo:link_to_uniprot ?uniprotIRI .
       }
-      GROUP BY ?gene_symbol ?clinical_significance
-      ORDER BY ?gene_symbol DESC(?count)
-    result_count: 15
+      GROUP BY ?uniprotIRI
+      ORDER BY DESC(?pdbCount)
+    result_count: 17
 
 rdf_triples: |
+  @prefix up: <http://purl.uniprot.org/core/> .
   @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix kw: <http://purl.uniprot.org/keywords/> .
+  @prefix taxon: <http://purl.uniprot.org/taxonomy/> .
+  @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
+  @prefix pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#> .
+  @prefix pdb: <http://rdf.wwpdb.org/pdb/> .
   @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix oboInOwl: <http://www.geneontology.org/formats/oboInOwl#> .
-  @prefix cvo: <http://purl.jp/bio/10/clinvar/> .
-  @prefix med2rdf: <http://med2rdf.org/ontology/med2rdf#> .
-  @prefix sio: <http://semanticscience.org/resource/> .
-  @prefix insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
-  @prefix dct: <http://purl.org/dc/terms/> .
 
-  obo:MONDO_0013743 a <http://www.w3.org/2002/07/owl#Class> ;
-    rdfs:label "autosomal systemic lupus erythematosus type 16" ;
-    oboInOwl:id "MONDO:0013743" ;
-    <http://purl.obolibrary.org/obo/IAO_0000115> "An instance of systemic lupus erythematosus caused by mutations in DNASE1L3." ;
-    oboInOwl:hasDbXref "OMIM:614420" .
-  # Database: MONDO | Query: 1, 2 | Comment: Monogenic SLE type 16, caused by DNASE1L3 mutations
+  uniprot:P10104 a up:Protein ;
+    up:reviewed 1 ;
+    up:mnemonic "WAC_BPT4" ;
+    up:organism taxon:10665 ;
+    up:classifiedWith kw:426 ;
+    up:classifiedWith obo:GO_0044423 .
+  # Database: UniProt | Query: 2, 3 | Comment: Fibritin (collar/whisker protein); GO:0044423 = virion component; 104 PDB entries - most-structured T4 late protein
 
-  obo:MONDO_0859083 a <http://www.w3.org/2002/07/owl#Class> ;
-    rdfs:label "systemic lupus erythematosus 17" ;
-    oboInOwl:id "MONDO:0859083" ;
-    <http://purl.obolibrary.org/obo/IAO_0000115> "Any systemic lupus erythematosus in which the cause is a variation in the TLR7 gene." ;
-    oboInOwl:hasDbXref "OMIM:301080" .
-  # Database: MONDO | Query: 1, 2 | Comment: Monogenic SLE type 17, caused by TLR7 variation; X-linked (OMIM 301080)
+  uniprot:P16009 a up:Protein ;
+    up:reviewed 1 ;
+    up:mnemonic "NEEDL_BPT4" ;
+    up:organism taxon:10665 ;
+    up:classifiedWith kw:426 ;
+    up:classifiedWith obo:GO_0003796 ;
+    up:classifiedWith obo:GO_0098994 .
+  # Database: UniProt | Query: 2, 3 | Comment: Pre-baseplate central spike gp5; GO:0003796 = lysozyme activity; GO:0098994 = symbiont entry into host cell via disruption of host cell envelope; 18 PDB entries; unique dual role (structural + enzymatic)
 
-  <http://ncbi.nlm.nih.gov/gene/1776> a insdc:Gene ;
-    dct:identifier "1776" ;
-    rdfs:label "DNASE1L3" ;
-    dct:description "deoxyribonuclease 1L3" .
-  # Database: NCBI Gene | Query: 3, 4, 5 | Comment: DNASE1L3 gene ID; chr 3p14.3; DNase I family; mediates DNA clearance during apoptosis
+  uniprot:P04535 a up:Protein ;
+    up:reviewed 1 ;
+    up:mnemonic "CAPSH_BPT4" ;
+    up:organism taxon:10665 ;
+    up:classifiedWith kw:426 ;
+    up:classifiedWith obo:GO_0039621 .
+  # Database: UniProt | Query: 2, 3 | Comment: Major capsid protein; GO:0039621 = T=13 icosahedral viral capsid; 9 PDB entries
 
-  <http://ncbi.nlm.nih.gov/gene/51284> a insdc:Gene ;
-    dct:identifier "51284" ;
-    rdfs:label "TLR7" ;
-    dct:description "toll like receptor 7" .
-  # Database: NCBI Gene | Query: 3, 4, 5 | Comment: TLR7 gene ID; chr Xp22.2; X-linked; innate immunity, ssRNA recognition
+  uniprot:P0DXF1 a up:Protein ;
+    up:reviewed 1 ;
+    up:mnemonic "UVSW_BPT4" ;
+    up:organism taxon:10665 ;
+    up:classifiedWith kw:426 ;
+    up:classifiedWith obo:GO_0043138 ;
+    up:classifiedWith obo:GO_0005524 .
+  # Database: UniProt | Query: 2, 3 | Comment: 3'-5' DNA helicase uvsW; GO:0043138 = 3'-5' DNA helicase activity; GO:0005524 = ATP binding; no PDB structure; recombination during late infection
 
-  <http://ncbi.nlm.nih.gov/clinvar/variation/example1> a cvo:VariationArchiveType ;
-    cvo:variation_type "single nucleotide variant" ;
-    cvo:record_status "current" ;
-    cvo:classified_record _:cr1 .
-  # Database: ClinVar | Query: 4 | Comment: Representative SNV in DNASE1L3 (248/277 = 89.5% of DNASE1L3 variants are SNVs)
+  uniprot:P10930 a up:Protein ;
+    up:reviewed 1 ;
+    up:mnemonic "FIB12_BPT4" ;
+    up:organism taxon:10665 ;
+    up:classifiedWith kw:426 ;
+    up:classifiedWith obo:GO_0098670 ;
+    up:classifiedWith obo:GO_0046872 .
+  # Database: UniProt | Query: 2, 3 | Comment: Short tail fiber gp12; GO:0098670 = entry receptor-mediated virion attachment to host cell; GO:0046872 = metal ion binding; 4 PDB entries
 
-  _:cr1 sio:SIO_000628 _:gb1 ;
-    cvo:classifications _:cl1 .
-  _:gb1 med2rdf:gene <http://ncbi.nlm.nih.gov/gene/1776> .
-  # Database: ClinVar | Query: 4, 5 | Comment: Blank node linking variant to DNASE1L3 gene URI
+  pdb:5TJT a pdbo:datablock .
+  # Database: PDB | Query: 4, 5 | Comment: Representative cryo-EM T4 late protein structure; linked to fibritin/WAC (P10104) by pdbo:has_struct_ref/pdbo:link_to_uniprot
 
-  _:cl1 cvo:germline_classification _:germ1 .
-  _:germ1 cvo:description "Uncertain significance" .
-  # Database: ClinVar | Query: 5 | Comment: Most common DNASE1L3 significance (127/277 = 45.8%)
+  pdb:5TJT pdbo:has_exptlCategory/pdbo:has_exptl ?em .
+  ?em pdbo:exptl.method "ELECTRON MICROSCOPY" .
+  # Database: PDB | Query: 4 | Comment: Method = ELECTRON MICROSCOPY; 103 of 149 T4 late-protein PDB entries solved by cryo-EM (69%)
 
-  <http://ncbi.nlm.nih.gov/clinvar/variation/example2> a cvo:VariationArchiveType ;
-    cvo:variation_type "copy number loss" ;
-    cvo:record_status "current" ;
-    cvo:classified_record _:cr2 .
-  # Database: ClinVar | Query: 4 | Comment: Representative CNV-loss in TLR7 (99 such variants; X-linked dosage loss)
-
-  _:cr2 sio:SIO_000628 _:gb2 ;
-    cvo:classifications _:cl2 .
-  _:gb2 med2rdf:gene <http://ncbi.nlm.nih.gov/gene/51284> .
-  # Database: ClinVar | Query: 4, 5 | Comment: Blank node linking variant to TLR7 gene URI
-
-  _:cl2 cvo:germline_classification _:germ2 .
-  _:germ2 cvo:description "Pathogenic" .
-  # Database: ClinVar | Query: 5 | Comment: TLR7 has 162 Pathogenic variants (36.9%); much higher than DNASE1L3 (15, 5.4%)
+  pdb:1CDW a pdbo:datablock .
+  # Database: PDB | Query: 4, 5 | Comment: Representative X-ray structure; linked to NEEDL_BPT4 (P16009, gp5 spike) by pdbo:link_to_uniprot; 44 of 149 T4 late-protein PDB entries solved by X-ray (30%)
 
 arithmetic_verification:
-  checkpoint_a_prefilter: not_applicable
+  checkpoint_a_prefilter: not_applicable  # No filtering from a larger set; working with the specific T4 organism
   checkpoint_b_post_aggregation:
-    query_4_variant_types:
-      dnase1l3_sum: 248+13+6+5+3+2
-      dnase1l3_total: 277
-      dnase1l3_check: PASS
-      tlr7_sum: 266+99+62+6+4+1+1
-      tlr7_total: 439
-      tlr7_check: PASS
-      combined_total: 716
-      query_3_total: 716
-      overall_check: PASS
-    query_5_significance:
-      dnase1l3_sig_sum: 127+105+15+12+7+4+4+3
-      dnase1l3_sig_total: 277
-      dnase1l3_check: PASS
-      tlr7_sig_sum: 162+150+105+16+3+2+1
-      tlr7_sig_total: 439
-      tlr7_check: PASS
+    query_4_method_distribution:
+      em_count: 103
+      xray_count: 44
+      nmr_count: 2
+      total_distinct_pdb_entries: 149
+      check: 103 + 44 + 2 = 149
+      status: PASS
+    query_5_per_protein_counts:
+      sum_per_protein: 182
+      # WAC:104 + NEEDL:18 + CAPSH:9 + BP10:8 + CAPSP:5 + BP07:5 + FIBP:5 + BP27:5 +
+      # FIB12:4 + COMPL:4 + BP53:3 + BP54:3 + BP25:3 + TMP:2 + TUBE:2 + FIB37:1 + BP48:1
+      total_distinct_pdb_entries: 149
+      result: 182 > 149
+      interpretation: OVERLAP - T4 large assemblies (baseplate, capsid) co-crystallize
+        multiple late proteins in a single PDB entry; 33 extra attribution counts from
+        multi-protein structures. VALID - documented in ideal_answer.
+    protein_coverage:
+      total_t4_late_proteins: 25
+      proteins_with_pdb: 17
+      proteins_without_pdb: 8
+      sum_check: "17 + 8 = 25 PASS"
+      proteins_without_structures:
+        - "FIB35 (P03742) - long tail fiber gp35"
+        - "FIB36 (P03743) - long tail fiber gp36"
+        - "GP26 (P13335) - baseplate hub assembly gp26"
+        - "GP28 (P13336) - baseplate hub assembly gp28"
+        - "TAP51 (P17173) - baseplate hub assembly gp51"
+        - "TTTP (P13331) - tail tube terminator"
+        - "UVSW (P0DXF1) - DNA helicase uvsW"
+        - "UVSW1 (P0DXF2) - DNA helicase uvsW isoform"
 
 exact_answer: ""
 
 ideal_answer: |
-  The two monogenic forms of systemic lupus erythematosus (SLE) catalogued in MONDO—SLE type 16 (MONDO:0013743, OMIM:614420) caused by DNASE1L3 mutations and SLE type 17 (MONDO:0859083, OMIM:301080) caused by TLR7 variants—differ sharply in both their genomic contexts and variant landscapes. DNASE1L3 (Gene ID 1776) is an autosomal gene on chromosome 3p14.3 encoding a DNase I family endonuclease that mediates extracellular DNA clearance during apoptosis; loss-of-function mutations disrupt the removal of chromatin material released from dying cells, triggering anti-nuclear autoantibody production characteristic of SLE. TLR7 (Gene ID 51284) is X-linked (Xp22.2) and encodes toll-like receptor 7, an endosomal innate immune receptor for single-stranded RNA; gain-of-function coding variants or copy number gains lead to pathological type-I interferon activation, while hemizygous males bearing one gain-of-function allele are particularly susceptible. Among 716 current ClinVar variants across both genes (277 in DNASE1L3, 439 in TLR7), the variant type distributions diverge substantially: DNASE1L3 is dominated by single nucleotide variants (248/277, 89.5%) with only 11 copy number variants (4.0%), whereas TLR7 carries 161 copy number variants (CNV-loss: 99, CNV-gain: 62, totaling 36.7% of TLR7 entries) alongside 266 SNVs (60.6%); this pronounced TLR7 CNV enrichment reflects the sensitivity of X-linked TLR7 dosage—both losses and gains can perturb balanced innate immune signaling. The clinical significance profiles are equally contrasting: TLR7 has 165 pathogenic or likely pathogenic variants (162 Pathogenic + 3 Likely pathogenic, 37.6%), while DNASE1L3 has only 22 such variants (15 Pathogenic + 7 Likely pathogenic, 7.9%); conversely DNASE1L3 has a higher proportion of uncertain significance variants (127/277, 45.8%) versus TLR7 (150/439, 34.2%), suggesting TLR7 variants are more consistently interpretable, likely because the functional consequence of even modest allele copy change is more predictable for an X-linked gene with well-studied innate immune roles than for an autosomal DNase whose full mutational spectrum remains less characterized.
+  The 25 reviewed late proteins of Enterobacteria phage T4, all annotated with KW-0426, collectively encode the phage's iconic contractile tail-injection nanomachine and partition into four major GO-defined structural modules: the capsid (2 proteins: CAPSH/major capsid protein, CAPSP/capsid vertex), the baseplate (11 proteins: the ten wedge and hub assembly proteins gp7, gp10, gp25, gp27, gp48, gp53, gp54, gp26, gp28, gp51, plus the pre-baseplate central spike gp5), the tail tube and completion system (4 proteins: gp19 tube, tail tube terminator, tape-measure protein, gp15 tail completion protein), and the tail fibers (5 proteins: short fiber gp12, three long-fiber subunits gp35/gp36/gp37, and the long-fiber proximal subunit), with the structural collar protein fibritin (WAC) and two DNA helicase isoforms (uvsW and uvsW1) completing the set. Enzymatically, two late proteins break the "purely structural" expectation: gp5 (NEEDL_BPT4) bears lysozyme activity (GO:0003796) that hydrolyzes peptidoglycan in the bacterial cell wall to puncture the host envelope during injection, while the uvsW DNA helicases (GO:0043138, 3'-5' DNA helicase activity) drive late-phase recombination and repair, a function unusual for proteins expressed after DNA replication has begun. Of the 25 proteins, 17 (68%) are structurally characterized in PDB via at least one entry, yielding 149 distinct structures (103 by cryo-electron microscopy, 44 by X-ray crystallography, 2 by solution NMR); because T4 assemblies are large multi-subunit complexes—the baseplate alone contains 11 late proteins—the same PDB entry frequently references multiple T4 proteins, producing 182 total protein-to-entry attributions for 149 distinct structures (33 attribution counts arise from co-occurrence in assemblies). The striking dominance of cryo-EM (69% of entries) reflects the field's shift toward studying intact viral assemblies: fibritin alone accounts for 104 of these entries due to its adoption as an engineering scaffold, while the gp5 spike (18 entries) and major capsid protein (9 entries) follow; the eight structurally uncharacterized proteins—most notably the three baseplate hub proteins gp26, gp28, and gp51, the two long tail-fiber subunits gp35 and gp36, and the two uvsW helicase isoforms—represent current frontiers in T4 structural biology.
 
-question_template_used: SUMMARY (Multi-dimensional Cross-Gene Comparison)
+question_template_used: SUMMARY (Multi-dimensional Functional and Structural Characterization)
 
 time_spent:
   type_selection: 5 minutes
   database_selection: 5 minutes
   keyword_selection: 5 minutes
   vocabulary_discovery: 10 minutes
-  query_development: 30 minutes
+  query_development: 40 minutes
   arithmetic_verification: 10 minutes
   pubmed_test: 10 minutes
   documentation: 25 minutes
-  total: 100 minutes
+  total: 110 minutes
