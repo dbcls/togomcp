@@ -16,11 +16,85 @@ async def search_uniprot_entity(query: str, limit: int = 20) -> str:
     Search for a UniProt entity ID by query.
 
     Args:
-        query (str): The query to search for. The query should be unambiguous enough to uniquely identify the entity.
+        query (str): The Solr-style query string for the UniProtKB /search endpoint.
+
+            QUERY SYNTAX:
+            - Simple keyword: "rubisco"
+            - Field-specific: "field:value"  (e.g., "gene:BRCA1", "protein_name:rubisco")
+            - Boolean operators: AND, OR, NOT  (e.g., "gene:TP53 AND organism_id:9606")
+            - Grouping with parentheses: "((gene:CTNNB1) AND (taxonomy_id:9606))"
+            - Wildcards (* suffix): "gene:PRO*" matches any gene starting with PRO
+            - Ranges: "length:[1000 TO 2000]" or open-ended "length:[5000 TO *]"
+
+            KEY QUERY FIELDS:
+            Identity / Name:
+              accession          UniProt primary accession (e.g., "accession:P04637")
+              id                 UniProt entry name / mnemonic (e.g., "id:P53_HUMAN")
+              protein_name       Protein name, including synonyms (e.g., "protein_name:rubisco")
+              gene               Gene name with wildcard support (e.g., "gene:BRCA*")
+              gene_exact         Exact gene name match (e.g., "gene_exact:TP53")
+              ec                 Enzyme Commission number (e.g., "ec:1.1.1.1")
+
+            Taxonomy:
+              organism_id        NCBI taxonomy ID (e.g., "organism_id:9606" for human,
+                                 "organism_id:10090" for mouse)
+              organism_name      Organism scientific or common name
+              taxonomy_id        Taxon ID including all descendants
+              lineage            Taxonomic lineage keyword
+
+            Annotation status:
+              reviewed           true = Swiss-Prot (manually reviewed),
+                                 false = TrEMBL (automatically annotated)
+                                 ALWAYS add "reviewed:true" when seeking high-quality entries.
+
+            Sequence properties:
+              length             Sequence length as a range (e.g., "length:[100 TO 500]")
+              mass               Molecular mass in Daltons (range supported)
+              existence          Protein existence level: 1 (protein), 2 (transcript),
+                                 3 (homology), 4 (predicted), 5 (uncertain)
+
+            Functional annotation:
+              keyword            UniProt keyword name (e.g., "keyword:Kinase")
+              keyword_id         UniProt keyword ID (e.g., "keyword_id:KW-0418")
+              function           Function free-text annotation
+              family             Protein family (e.g., "family:globin")
+              organelle          Subcellular organelle (e.g., "organelle:chloroplast")
+              cc_subcellular_location  Subcellular location comment
+
+            Cross-references:
+              database           Database cross-reference (e.g., "database:PDB")
+              xref               Cross-reference ID (e.g., "xref:pdb-1A2B")
+              chebi              ChEBI ID (e.g., "chebi:15422")
+              interactor         UniProt accession of interacting protein
+
+            Literature:
+              lit_author         Author surname (e.g., "lit_author:Smith")
+              lit_pubmed         PubMed ID
+              lit_doi            DOI
+
+            EXAMPLES (structured queries):
+              # Reviewed human TP53 protein
+              "gene_exact:TP53 AND organism_id:9606 AND reviewed:true"
+
+              # All human kinases manually reviewed
+              "keyword:Kinase AND organism_id:9606 AND reviewed:true"
+
+              # EGFR in human or mouse
+              "gene_exact:EGFR AND (organism_id:9606 OR organism_id:10090) AND reviewed:true"
+
+              # Long chloroplast proteins (>= 5000 aa) in any organism
+              "organelle:chloroplast AND length:[5000 TO *]"
+
+              # Proteins with PDB structures involved in apoptosis
+              "database:PDB AND keyword:Apoptosis AND organism_id:9606 AND reviewed:true"
+
+              # Proteins encoded by gene names starting with "PIK3"
+              "gene:PIK3* AND organism_id:9606 AND reviewed:true"
+
         limit (int): The maximum number of results to return. Default is 20.
 
     Returns:
-        str: The UniProt protein entity ID corresponding to the given query."
+        str: TSV-formatted results with columns: accession, protein_name, organism_name.
     """
     toolcall_log("search_uniprot_entity")
     url = "https://rest.uniprot.org/uniprotkb/search"
