@@ -1,27 +1,35 @@
 schema_info:
   title: Ensembl RDF
-  description: 'Ensembl provides genome annotations for vertebrates and non-vertebrate
-    divisions (bacteria, fungi, metazoa, plants, protists). Contains genes with biotype
+  description: |
+    Ensembl provides genome annotations for vertebrates and non-vertebrate divisions
+    (bacteria, fungi, metazoa, plants, protists). Contains genes with biotype
     classifications (protein-coding, lncRNA, miRNA, pseudogenes), transcripts with
     quality flags (MANE Select, APPRIS, TSL, canonical), proteins, and exons with
     FALDO genomic coordinates. Cross-referenced to UniProt, HGNC, Reactome, OMIM,
-    NCBI Gene, and PDB.'
+    NCBI Gene, and PDB.
   endpoint: https://rdfportal.org/ebi/sparql
   base_uri: http://rdf.ebi.ac.uk/resource/ensembl/
   graphs:
-  - http://rdfportal.org/dataset/ensembl
-  - http://rdfportal.org/dataset/ensembl_grch37
-  - http://rdfportal.org/dataset/ensembl_bacteria
-  - http://rdfportal.org/dataset/ensembl_fungi
-  - http://rdfportal.org/dataset/ensembl_metazoa
-  - http://rdfportal.org/dataset/ensembl_plants
-  - http://rdfportal.org/dataset/ensembl_protists
+    - http://rdfportal.org/dataset/ensembl
+    - http://rdfportal.org/dataset/ensembl_grch37
+    - http://rdfportal.org/dataset/ensembl_bacteria
+    - http://rdfportal.org/dataset/ensembl_fungi
+    - http://rdfportal.org/dataset/ensembl_metazoa
+    - http://rdfportal.org/dataset/ensembl_plants
+    - http://rdfportal.org/dataset/ensembl_protists
   kw_search_tools: []
   version:
-    mie_version: '2.2'
-    mie_created: '2026-02-28'
+    mie_version: "2.4"
+    mie_created: "2026-02-28"
+    mie_updated: "2026-02-28"
     data_version: Release 115
     update_frequency: Quarterly
+    query_test_status: |
+      All 7 SPARQL queries, 2 cross-database queries, and 1 cross-reference query
+      verified passing 2026-02-28. Cross-reference xref query confirmed UniProt,
+      HGNC, Reactome links for BRCA1 (ENSG00000012048). Cross-DB query 1 confirmed
+      Ensembl->ChEMBL link via UniProt. Cross-DB query 2 confirmed top result
+      SLC6A4 with 28 approved drugs.
   license:
     data_license: Creative Commons Attribution 4.0 International
     license_url: https://www.ensembl.org/info/about/legal/index.html
@@ -29,573 +37,748 @@ schema_info:
     rate_limiting: Reasonable use policy
     max_query_timeout: 60 seconds
     backend: Virtuoso
-shape_expressions: "PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>\nPREFIX faldo:\
-  \ <http://biohackathon.org/resource/faldo#>\nPREFIX so: <http://purl.obolibrary.org/obo/so#>\n\
-  PREFIX obo: <http://purl.obolibrary.org/obo/>\nPREFIX sio: <http://semanticscience.org/resource/>\n\
-  PREFIX skos: <http://www.w3.org/2004/02/skos/core#>\n\n# CRITICAL: Species IRI\
-  \ pattern varies by division (graph):\n# Vertebrates (ensembl):       <http://ensembl.org/{Species_name}>\n\
-  # Bacteria (ensembl_bacteria): <http://bacteria.ensembl.org/{Species_strain_assembly}>\n\
-  # Fungi (ensembl_fungi):       <http://fungi.ensembl.org/{Species_name_or_strain}>\n\
-  # Metazoa (ensembl_metazoa):   <http://metazoa.ensembl.org/{Species_name_or_strain}>\n\
-  # Plants (ensembl_plants):     <http://plants.ensembl.org/{Species_name}>\n# Protists\
-  \ (ensembl_protists): <http://protists.ensembl.org/{Species_name_or_strain}>\n#\
-  \ GRCh37 (ensembl_grch37):     <http://ensembl.org/Homo_sapiens>\n#\n# Model species\
-  \ use simple names (e.g. Drosophila_melanogaster, Saccharomyces_cerevisiae,\n# Arabidopsis_thaliana);\
-  \ others may include strain/assembly suffixes (e.g. _gca_000002515).\n\n<EnsemblGeneShape>\
-  \ {\n  a [ terms:EnsemblGene ] ;\n  a [ <http://ensembl.org/glossary/ENSGLOSSARY_*>\
-  \ ] ;   # biotype also as rdf:type\n  rdfs:label xsd:string ;\n  dcterms:identifier\
-  \ xsd:string ;                        # e.g. \"ENSG00000012048\"\n  dcterms:description\
-  \ xsd:string ;\n  terms:has_biotype IRI ;                                # e.g.\
-  \ ENSGLOSSARY_0000026\n  obo:RO_0002162 IRI ;                                 \
-  \  # species IRI (pattern varies by division)\n  so:part_of IRI + ;            \
-  \                         # chromosome\n  faldo:location BNode ;\n  skos:altLabel\
-  \ xsd:string * ;                           # gene synonyms\n  rdfs:seeAlso IRI\
-  \ *                                      # UniProt, HGNC, Reactome, OMIM, NCBI\
-  \ Gene\n}\n\n<EnsemblTranscriptShape> {\n  a [ terms:EnsemblTranscript ] ;\n  rdfs:label\
-  \ xsd:string ;\n  dcterms:identifier xsd:string ;\n  terms:has_biotype IRI ;\n\
-  \  so:transcribed_from @<EnsemblGeneShape> ;\n  so:translates_to @<EnsemblProteinShape>\
-  \ ? ;\n  terms:has_transcript_flag IRI * ;                      # MANE, canonical,\
-  \ TSL, APPRIS flags\n  terms:has_versioned_transcript IRI ? ;\n  so:has_part @<EnsemblExonShape>\
-  \ * ;                    # direct exon links (unordered)\n  faldo:location BNode\
-  \ ? ;\n  sio:SIO_000974 @<EnsemblOrderedExonShape> + ;\n  rdfs:seeAlso IRI *  \
-  \                                   # GO terms, RefSeq IDs\n}\n\n<EnsemblProteinShape>\
-  \ {\n  a [ terms:EnsemblProtein ] ;\n  dcterms:identifier xsd:string ;\n  so:translation_of\
-  \ @<EnsemblTranscriptShape> ;\n  rdfs:seeAlso IRI *                            \
-  \         # UniProt, PDB, Reactome\n}\n\n<EnsemblExonShape> {\n  a [ terms:EnsemblExon\
-  \ ] ;\n  a [ obo:SO_0000147 ] ;\n  dcterms:identifier xsd:string ;\n  faldo:location\
-  \ BNode\n}\n\n<EnsemblOrderedExonShape> {\n  a [ terms:EnsemblOrderedExon ] ;\n\
-  \  a [ sio:SIO_001261 ] ;\n  sio:SIO_000628 @<EnsemblExonShape> ;              \
-  \     # refers to exon\n  sio:SIO_000300 xsd:integer                           \
-  \  # rank/position\n}\n"
+
+shape_expressions: |
+  PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+  PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+  PREFIX so: <http://purl.obolibrary.org/obo/so#>
+  PREFIX obo: <http://purl.obolibrary.org/obo/>
+  PREFIX sio: <http://semanticscience.org/resource/>
+  PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+  # CRITICAL: Species IRI pattern varies by division (graph):
+  # Vertebrates (ensembl):       <http://ensembl.org/{Species_name}>
+  # Bacteria (ensembl_bacteria): <http://bacteria.ensembl.org/{Species_strain_assembly}>
+  # Fungi (ensembl_fungi):       <http://fungi.ensembl.org/{Species_name_or_strain}>
+  # Metazoa (ensembl_metazoa):   <http://metazoa.ensembl.org/{Species_name_or_strain}>
+  # Plants (ensembl_plants):     <http://plants.ensembl.org/{Species_name}>
+  # Protists (ensembl_protists): <http://protists.ensembl.org/{Species_name_or_strain}>
+  # GRCh37 (ensembl_grch37):     <http://ensembl.org/Homo_sapiens>
+  #
+  # Model species use simple names (e.g. Drosophila_melanogaster, Saccharomyces_cerevisiae,
+  # Arabidopsis_thaliana); others may include strain/assembly suffixes (e.g. _gca_000002515).
+
+  <EnsemblGeneShape> {
+    a [ terms:EnsemblGene ] ;
+    a [ <http://ensembl.org/glossary/ENSGLOSSARY_*> ] ;   # biotype also as rdf:type
+    rdfs:label xsd:string ;
+    dcterms:identifier xsd:string ;                        # e.g. "ENSG00000012048"
+    dcterms:description xsd:string ;
+    terms:has_biotype IRI ;                                # e.g. ENSGLOSSARY_0000026 or SO_ IRI
+    obo:RO_0002162 IRI ;                                   # species IRI (pattern varies by division)
+    so:part_of IRI + ;                                     # chromosome
+    faldo:location BNode ;
+    skos:altLabel xsd:string * ;                           # gene synonyms
+    rdfs:seeAlso IRI *                                     # UniProt, HGNC, Reactome, OMIM, NCBI Gene
+  }
+
+  <EnsemblTranscriptShape> {
+    a [ terms:EnsemblTranscript ] ;
+    rdfs:label xsd:string ;
+    dcterms:identifier xsd:string ;
+    terms:has_biotype IRI ;
+    so:transcribed_from @<EnsemblGeneShape> ;
+    so:translates_to @<EnsemblProteinShape> ? ;
+    terms:has_transcript_flag IRI * ;                      # MANE, canonical, TSL, APPRIS flags
+    terms:has_versioned_transcript IRI ? ;
+    so:has_part @<EnsemblExonShape> * ;                    # direct exon links (unordered)
+    faldo:location BNode ? ;
+    sio:SIO_000974 @<EnsemblOrderedExonShape> + ;
+    rdfs:seeAlso IRI *                                     # GO terms, RefSeq IDs
+  }
+
+  <EnsemblProteinShape> {
+    a [ terms:EnsemblProtein ] ;
+    dcterms:identifier xsd:string ;
+    so:translation_of @<EnsemblTranscriptShape> ;
+    rdfs:seeAlso IRI *                                     # UniProt, PDB, Reactome
+  }
+
+  <EnsemblExonShape> {
+    a [ terms:EnsemblExon ] ;
+    a [ obo:SO_0000147 ] ;
+    dcterms:identifier xsd:string ;
+    faldo:location BNode
+  }
+
+  <EnsemblOrderedExonShape> {
+    a [ terms:EnsemblOrderedExon ] ;
+    a [ sio:SIO_001261 ] ;
+    sio:SIO_000628 @<EnsemblExonShape> ;                   # refers to exon
+    sio:SIO_000300 xsd:integer                             # rank/position
+  }
+
 sample_rdf_entries:
-- title: Human Protein-Coding Gene (BRCA1)
-  description: Gene with biotype, species, genomic location, and cross-references.
-  rdf: "@prefix ensg: <http://rdf.ebi.ac.uk/resource/ensembl/> .\n@prefix terms: <http://rdf.ebi.ac.uk/terms/ensembl/>\
-    \ .\n@prefix faldo: <http://biohackathon.org/resource/faldo#> .\n@prefix so: <http://purl.obolibrary.org/obo/so#>\
-    \ .\n\nensg:ENSG00000012048 a terms:EnsemblGene ,\n                        <http://ensembl.org/glossary/ENSGLOSSARY_0000026>\
-    \ ;\n  rdfs:label \"BRCA1\" ;\n  dcterms:identifier \"ENSG00000012048\" ;\n  dcterms:description\
-    \ \"BRCA1 DNA repair associated [Source:HGNC Symbol;Acc:HGNC:1100]\" ;\n  terms:has_biotype\
-    \ <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;\n  <http://purl.obolibrary.org/obo/RO_0002162>\
-    \ <http://ensembl.org/Homo_sapiens> ;\n  so:part_of <http://rdf.ebi.ac.uk/resource/ensembl/115/homo_sapiens/GRCh38/17>\
-    \ ,\n             <http://identifiers.org/hco/17/GRCh38> ;\n  skos:altLabel \"\
-    RNF53\" , \"BRCC1\" , \"FANCS\" , \"PPP1R53\" ;\n  faldo:location [\n    faldo:begin\
-    \ [ faldo:position 43044292 ; a faldo:ReverseStrandPosition , faldo:ExactPosition\
-    \ ] ;\n    faldo:end [ faldo:position 43170245 ; a faldo:ReverseStrandPosition\
-    \ , faldo:ExactPosition ]\n  ] ;\n  rdfs:seeAlso <http://purl.uniprot.org/uniprot/P38398>\
-    \ ,\n               <http://identifiers.org/hgnc/HGNC:1100> ,\n              \
-    \ <http://identifiers.org/reactome/R-HSA-5689901> .\n"
-- title: Transcript with MANE Select Flag (BRCA1 canonical)
-  description: High-quality transcript with MANE Select, canonical, APPRIS flags and
-    versioned ID.
-  rdf: "@prefix enst: <http://rdf.ebi.ac.uk/resource/ensembl.transcript/> .\n@prefix\
-    \ terms: <http://rdf.ebi.ac.uk/terms/ensembl/> .\n@prefix so: <http://purl.obolibrary.org/obo/so#>\
-    \ .\n\nenst:ENST00000357654 a terms:EnsemblTranscript ,\n                    \
-    \    <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;\n  rdfs:label \"BRCA1-203\"\
-    \ ;\n  dcterms:identifier \"ENST00000357654\" ;\n  terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026>\
-    \ ;\n  so:transcribed_from <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000012048>\
-    \ ;\n  so:translates_to <http://rdf.ebi.ac.uk/resource/ensembl.protein/ENSP00000350283>\
-    \ ;\n  terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000365>\
-    \ ,\n                            <http://ensembl.org/glossary/ENSGLOSSARY_0000023>\
-    \ ,\n                            <http://ensembl.org/glossary/ENSGLOSSARY_0000016>\
-    \ ,\n                            <http://ensembl.org/glossary/ENSGLOSSARY_0000006>\
-    \ ,\n                            <http://ensembl.org/glossary/ENSGLOSSARY_0000020>\
-    \ ;\n  terms:has_versioned_transcript <http://rdf.ebi.ac.uk/resource/ensembl.transcript/ENST00000357654.9>\
-    \ ;\n  so:has_part <http://rdf.ebi.ac.uk/resource/ensembl.exon/ENSE00001852567>\
-    \ ;\n  rdfs:seeAlso <http://purl.obolibrary.org/obo/GO_0006281> ,\n          \
-    \     <http://purl.obolibrary.org/obo/GO_0005634> .\n"
-- title: Protein with UniProt and PDB Cross-References
-  description: Translated protein linked to UniProt, PDB, and Reactome.
-  rdf: "@prefix ensp: <http://rdf.ebi.ac.uk/resource/ensembl.protein/> .\n@prefix\
-    \ terms: <http://rdf.ebi.ac.uk/terms/ensembl/> .\n@prefix so: <http://purl.obolibrary.org/obo/so#>\
-    \ .\n\nensp:ENSP00000350283 a terms:EnsemblProtein ;\n  dcterms:identifier \"\
-    ENSP00000350283\" ;\n  so:translation_of <http://rdf.ebi.ac.uk/resource/ensembl.transcript/ENST00000357654>\
-    \ ;\n  rdfs:seeAlso <http://purl.uniprot.org/uniprot/P38398> ,\n             \
-    \  <http://identifiers.org/pdb/3COJ> ,\n               <http://identifiers.org/reactome/R-HSA-5689901>\
-    \ .\n"
-- title: Metazoa Gene (Drosophila melanogaster)
-  description: Non-vertebrate gene from the ensembl_metazoa graph, showing the division-specific
-    species IRI.
-  rdf: "@prefix ensg: <http://rdf.ebi.ac.uk/resource/ensembl/> .\n@prefix terms:\
-    \ <http://rdf.ebi.ac.uk/terms/ensembl/> .\n\n# From GRAPH <http://rdfportal.org/dataset/ensembl_metazoa>\n\
-    ensg:FBgn0000166 a terms:EnsemblGene ,\n                    <http://ensembl.org/glossary/ENSGLOSSARY_0000026>\
-    \ ;\n  rdfs:label \"bcd\" ;\n  dcterms:identifier \"FBgn0000166\" ;\n  terms:has_biotype\
-    \ <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;\n  <http://purl.obolibrary.org/obo/RO_0002162>\
-    \ <http://metazoa.ensembl.org/Drosophila_melanogaster> .\n"
-- title: Plant Gene (Arabidopsis thaliana)
-  description: Plant gene from the ensembl_plants graph with description.
-  rdf: "@prefix ensg: <http://rdf.ebi.ac.uk/resource/ensembl/> .\n@prefix terms:\
-    \ <http://rdf.ebi.ac.uk/terms/ensembl/> .\n\n# From GRAPH <http://rdfportal.org/dataset/ensembl_plants>\n\
-    ensg:AT1G01650 a terms:EnsemblGene ,\n                  <http://ensembl.org/glossary/ENSGLOSSARY_0000026>\
-    \ ;\n  rdfs:label \"SPPL4\" ;\n  dcterms:identifier \"AT1G01650\" ;\n  dcterms:description\
-    \ \"SIGNAL PEPTIDE PEPTIDASE-LIKE 4 [Source:NCBI gene (formerly Entrezgene);Acc:839499]\"\
-    \ ;\n  terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;\n\
-    \  <http://purl.obolibrary.org/obo/RO_0002162> <http://plants.ensembl.org/Arabidopsis_thaliana>\
-    \ .\n"
+  - title: Human Protein-Coding Gene (BRCA1)
+    description: Gene with biotype, species, genomic location, and cross-references.
+    rdf: |
+      @prefix ensg: <http://rdf.ebi.ac.uk/resource/ensembl/> .
+      @prefix terms: <http://rdf.ebi.ac.uk/terms/ensembl/> .
+      @prefix faldo: <http://biohackathon.org/resource/faldo#> .
+      @prefix so: <http://purl.obolibrary.org/obo/so#> .
+
+      ensg:ENSG00000012048 a terms:EnsemblGene ,
+                              <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+        rdfs:label "BRCA1" ;
+        dcterms:identifier "ENSG00000012048" ;
+        dcterms:description "BRCA1 DNA repair associated [Source:HGNC Symbol;Acc:HGNC:1100]" ;
+        terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+        <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> ;
+        so:part_of <http://rdf.ebi.ac.uk/resource/ensembl/115/homo_sapiens/GRCh38/17> ,
+                   <http://identifiers.org/hco/17/GRCh38> ;
+        skos:altLabel "RNF53" , "BRCC1" , "FANCS" , "PPP1R53" ;
+        faldo:location [
+          faldo:begin [ faldo:position 43044292 ; a faldo:ReverseStrandPosition , faldo:ExactPosition ] ;
+          faldo:end [ faldo:position 43170245 ; a faldo:ReverseStrandPosition , faldo:ExactPosition ]
+        ] ;
+        rdfs:seeAlso <http://purl.uniprot.org/uniprot/P38398> ,
+                     <http://identifiers.org/hgnc/HGNC:1100> ,
+                     <http://identifiers.org/reactome/R-HSA-5689901> .
+
+  - title: Transcript with MANE Select Flag (BRCA1 canonical)
+    description: High-quality transcript with MANE Select, canonical, APPRIS flags and versioned ID.
+    rdf: |
+      @prefix enst: <http://rdf.ebi.ac.uk/resource/ensembl.transcript/> .
+      @prefix terms: <http://rdf.ebi.ac.uk/terms/ensembl/> .
+      @prefix so: <http://purl.obolibrary.org/obo/so#> .
+
+      enst:ENST00000357654 a terms:EnsemblTranscript ,
+                              <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+        rdfs:label "BRCA1-203" ;
+        dcterms:identifier "ENST00000357654" ;
+        terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+        so:transcribed_from <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000012048> ;
+        so:translates_to <http://rdf.ebi.ac.uk/resource/ensembl.protein/ENSP00000350283> ;
+        terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000365> ,
+                                  <http://ensembl.org/glossary/ENSGLOSSARY_0000023> ,
+                                  <http://ensembl.org/glossary/ENSGLOSSARY_0000016> ,
+                                  <http://ensembl.org/glossary/ENSGLOSSARY_0000006> ,
+                                  <http://ensembl.org/glossary/ENSGLOSSARY_0000020> ;
+        terms:has_versioned_transcript <http://rdf.ebi.ac.uk/resource/ensembl.transcript/ENST00000357654.9> ;
+        so:has_part <http://rdf.ebi.ac.uk/resource/ensembl.exon/ENSE00001852567> ;
+        rdfs:seeAlso <http://purl.obolibrary.org/obo/GO_0006281> ,
+                     <http://purl.obolibrary.org/obo/GO_0005634> .
+
+  - title: Protein with UniProt and PDB Cross-References
+    description: Translated protein linked to UniProt, PDB, and Reactome.
+    rdf: |
+      @prefix ensp: <http://rdf.ebi.ac.uk/resource/ensembl.protein/> .
+      @prefix terms: <http://rdf.ebi.ac.uk/terms/ensembl/> .
+      @prefix so: <http://purl.obolibrary.org/obo/so#> .
+
+      ensp:ENSP00000350283 a terms:EnsemblProtein ;
+        dcterms:identifier "ENSP00000350283" ;
+        so:translation_of <http://rdf.ebi.ac.uk/resource/ensembl.transcript/ENST00000357654> ;
+        rdfs:seeAlso <http://purl.uniprot.org/uniprot/P38398> ,
+                     <http://identifiers.org/pdb/3COJ> ,
+                     <http://identifiers.org/reactome/R-HSA-5689901> .
+
+  - title: Metazoa Gene (Drosophila melanogaster)
+    description: Non-vertebrate gene from the ensembl_metazoa graph, showing the division-specific species IRI.
+    rdf: |
+      @prefix ensg: <http://rdf.ebi.ac.uk/resource/ensembl/> .
+      @prefix terms: <http://rdf.ebi.ac.uk/terms/ensembl/> .
+
+      # From GRAPH <http://rdfportal.org/dataset/ensembl_metazoa>
+      ensg:FBgn0000166 a terms:EnsemblGene ,
+                          <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+        rdfs:label "bcd" ;
+        dcterms:identifier "FBgn0000166" ;
+        terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+        <http://purl.obolibrary.org/obo/RO_0002162> <http://metazoa.ensembl.org/Drosophila_melanogaster> .
+
+  - title: Plant Gene (Arabidopsis thaliana)
+    description: Plant gene from the ensembl_plants graph with description.
+    rdf: |
+      @prefix ensg: <http://rdf.ebi.ac.uk/resource/ensembl/> .
+      @prefix terms: <http://rdf.ebi.ac.uk/terms/ensembl/> .
+
+      # From GRAPH <http://rdfportal.org/dataset/ensembl_plants>
+      ensg:AT1G01650 a terms:EnsemblGene ,
+                        <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+        rdfs:label "SPPL4" ;
+        dcterms:identifier "AT1G01650" ;
+        dcterms:description "SIGNAL PEPTIDE PEPTIDASE-LIKE 4 [Source:NCBI gene (formerly Entrezgene);Acc:839499]" ;
+        terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+        <http://purl.obolibrary.org/obo/RO_0002162> <http://plants.ensembl.org/Arabidopsis_thaliana> .
+
 sparql_query_examples:
-- title: Get Gene by Specific ID
-  description: Direct lookup using gene identifier with species IRI filter.
-  question: What are the details of human gene ENSG00000012048?
-  complexity: basic
-  sparql: "PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>\n\nSELECT ?gene_id\
-    \ ?label ?description ?biotype\nWHERE {\n  GRAPH <http://rdfportal.org/dataset/ensembl>\
-    \ {\n    ?gene a terms:EnsemblGene ;\n          dcterms:identifier ?gene_id ;\n\
-    \          rdfs:label ?label ;\n          dcterms:description ?description ;\n\
-    \          terms:has_biotype ?biotype ;\n          <http://purl.obolibrary.org/obo/RO_0002162>\
-    \ <http://ensembl.org/Homo_sapiens> .\n    FILTER(?gene_id = \"ENSG00000012048\"\
-    )\n  }\n}\nLIMIT 10\n"
-- title: Find Genes by Specific Biotype IRI
-  description: Query protein-coding genes using specific biotype IRI (preferred over
-    text search).
-  question: What are some human protein-coding genes?
-  complexity: basic
-  sparql: "PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>\n\n# Uses specific\
-    \ biotype IRI: ENSGLOSSARY_0000026 = protein_coding\nSELECT ?gene_id ?label ?description\n\
-    WHERE {\n  GRAPH <http://rdfportal.org/dataset/ensembl> {\n    ?gene a terms:EnsemblGene\
-    \ ;\n          dcterms:identifier ?gene_id ;\n          rdfs:label ?label ;\n\
-    \          dcterms:description ?description ;\n          terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026>\
-    \ ;\n          <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens>\
-    \ .\n  }\n}\nLIMIT 20\n"
-- title: Get MANE Select Transcripts on Chromosome 17
-  description: Combine biotype, quality flag, and chromosome IRIs for precise filtering.
-  question: What are MANE Select transcripts on human chromosome 17?
-  complexity: intermediate
-  sparql: "PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>\nPREFIX so: <http://purl.obolibrary.org/obo/so#>\n\
-    \n# Uses specific IRIs: biotype, transcript flag, chromosome, species\nSELECT\
-    \ ?gene_id ?gene_label ?transcript_id\nWHERE {\n  GRAPH <http://rdfportal.org/dataset/ensembl>\
-    \ {\n    ?gene a terms:EnsemblGene ;\n          dcterms:identifier ?gene_id ;\n\
-    \          rdfs:label ?gene_label ;\n          <http://purl.obolibrary.org/obo/RO_0002162>\
-    \ <http://ensembl.org/Homo_sapiens> ;\n          terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026>\
-    \ ;\n          so:part_of <http://rdf.ebi.ac.uk/resource/ensembl/115/homo_sapiens/GRCh38/17>\
-    \ .\n    ?transcript so:transcribed_from ?gene ;\n                dcterms:identifier\
-    \ ?transcript_id ;\n                terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000365>\
-    \ .\n  }\n}\nLIMIT 20\n"
-- title: Get Gene-Transcript-Protein Hierarchy with UniProt
-  description: Navigate structured relationships with UniProt cross-references.
-  question: What proteins are encoded by BRCA1?
-  complexity: intermediate
-  sparql: "PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>\nPREFIX so: <http://purl.obolibrary.org/obo/so#>\n\
-    \nSELECT ?gene_id ?transcript_id ?protein_id ?uniprot\nWHERE {\n  GRAPH <http://rdfportal.org/dataset/ensembl>\
-    \ {\n    ?gene a terms:EnsemblGene ;\n          dcterms:identifier ?gene_id ;\n\
-    \          rdfs:label \"BRCA1\" ;\n          <http://purl.obolibrary.org/obo/RO_0002162>\
-    \ <http://ensembl.org/Homo_sapiens> .\n    ?transcript so:transcribed_from ?gene\
-    \ ;\n                dcterms:identifier ?transcript_id ;\n                so:translates_to\
-    \ ?protein .\n    ?protein dcterms:identifier ?protein_id ;\n             rdfs:seeAlso\
-    \ ?uniprot .\n    FILTER(STRSTARTS(STR(?uniprot), \"http://purl.uniprot.org/uniprot/\"\
-    ))\n  }\n}\nLIMIT 20\n"
-- title: Query Non-Vertebrate Divisions (Metazoa, Plants, Fungi, etc.)
-  description: Same schema across all divisions; only graph and species IRI pattern
-    differ.
-  question: Find protein-coding genes in Drosophila melanogaster from the metazoa
-    division.
-  complexity: intermediate
-  sparql: "PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>\n\n# Non-vertebrate\
-    \ divisions use division-specific species IRIs:\n# metazoa.ensembl.org, plants.ensembl.org,\
-    \ fungi.ensembl.org, etc.\nSELECT ?gene_id ?label\nWHERE {\n  GRAPH <http://rdfportal.org/dataset/ensembl_metazoa>\
-    \ {\n    ?gene a terms:EnsemblGene ;\n          dcterms:identifier ?gene_id ;\n\
-    \          rdfs:label ?label ;\n          terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026>\
-    \ ;\n          <http://purl.obolibrary.org/obo/RO_0002162> <http://metazoa.ensembl.org/Drosophila_melanogaster>\
-    \ .\n  }\n}\nLIMIT 20\n"
-- title: Extract Genomic Coordinates with FALDO
-  description: Retrieve chromosome, start, end, and strand using FALDO ontology.
-  question: What are the genomic coordinates of BRCA1?
-  complexity: advanced
-  sparql: "PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>\nPREFIX faldo: <http://biohackathon.org/resource/faldo#>\n\
-    PREFIX so: <http://purl.obolibrary.org/obo/so#>\n\nSELECT DISTINCT ?gene_id ?label\
-    \ ?chr ?start ?end ?strand\nWHERE {\n  GRAPH <http://rdfportal.org/dataset/ensembl>\
-    \ {\n    ?gene a terms:EnsemblGene ;\n          dcterms:identifier ?gene_id ;\n\
-    \          rdfs:label ?label ;\n          so:part_of ?chr ;\n          faldo:location\
-    \ ?loc .\n    ?loc faldo:begin ?begin_node .\n    ?begin_node faldo:position ?start\
-    \ .\n    ?loc faldo:end ?end_node .\n    ?end_node faldo:position ?end .\n   \
-    \ ?begin_node rdf:type ?strand_type .\n    FILTER(?strand_type IN (faldo:ForwardStrandPosition,\
-    \ faldo:ReverseStrandPosition))\n    BIND(IF(?strand_type = faldo:ForwardStrandPosition,\
-    \ \"+\", \"-\") AS ?strand)\n    FILTER(?label = \"BRCA1\")\n    FILTER(STRSTARTS(STR(?chr),\
-    \ \"http://rdf.ebi.ac.uk/resource/ensembl/\"))\n  }\n}\nLIMIT 10\n"
-- title: Count Genes by Biotype Distribution
-  description: Aggregate statistics showing gene type distribution in human.
-  question: How many genes of each biotype are in human?
-  complexity: advanced
-  sparql: "PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>\n\nSELECT ?biotype\
-    \ (COUNT(DISTINCT ?gene) as ?count)\nWHERE {\n  GRAPH <http://rdfportal.org/dataset/ensembl>\
-    \ {\n    ?gene a terms:EnsemblGene ;\n          terms:has_biotype ?biotype ;\n\
-    \          <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens>\
-    \ .\n  }\n}\nGROUP BY ?biotype\nORDER BY DESC(?count)\nLIMIT 20\n"
+  - title: Get Gene by Specific ID
+    description: Direct lookup using gene identifier with species IRI filter.
+    question: What are the details of human gene ENSG00000012048?
+    complexity: basic
+    sparql: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+
+      SELECT ?gene_id ?label ?description ?biotype
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?gene a terms:EnsemblGene ;
+                dcterms:identifier ?gene_id ;
+                rdfs:label ?label ;
+                dcterms:description ?description ;
+                terms:has_biotype ?biotype ;
+                <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> .
+          FILTER(?gene_id = "ENSG00000012048")
+        }
+      }
+      LIMIT 10
+
+  - title: Find Genes by Specific Biotype IRI
+    description: Query protein-coding genes using specific biotype IRI (preferred over text search).
+    question: What are some human protein-coding genes?
+    complexity: basic
+    sparql: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+
+      # Uses specific biotype IRI: ENSGLOSSARY_0000026 = protein_coding
+      SELECT ?gene_id ?label ?description
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?gene a terms:EnsemblGene ;
+                dcterms:identifier ?gene_id ;
+                rdfs:label ?label ;
+                dcterms:description ?description ;
+                terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+                <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> .
+        }
+      }
+      LIMIT 20
+
+  - title: Get MANE Select Transcripts on Chromosome 17
+    description: Combine biotype, quality flag, and chromosome IRIs for precise filtering.
+    question: What are MANE Select transcripts on human chromosome 17?
+    complexity: intermediate
+    sparql: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      PREFIX so: <http://purl.obolibrary.org/obo/so#>
+
+      # Uses specific IRIs: biotype, transcript flag, chromosome, species
+      SELECT ?gene_id ?gene_label ?transcript_id
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?gene a terms:EnsemblGene ;
+                dcterms:identifier ?gene_id ;
+                rdfs:label ?gene_label ;
+                <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> ;
+                terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+                so:part_of <http://rdf.ebi.ac.uk/resource/ensembl/115/homo_sapiens/GRCh38/17> .
+          ?transcript so:transcribed_from ?gene ;
+                      dcterms:identifier ?transcript_id ;
+                      terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000365> .
+        }
+      }
+      LIMIT 20
+
+  - title: Get Gene-Transcript-Protein Hierarchy with UniProt
+    description: Navigate structured relationships with UniProt cross-references.
+    question: What proteins are encoded by BRCA1?
+    complexity: intermediate
+    sparql: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      PREFIX so: <http://purl.obolibrary.org/obo/so#>
+
+      SELECT ?gene_id ?transcript_id ?protein_id ?uniprot
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?gene a terms:EnsemblGene ;
+                dcterms:identifier ?gene_id ;
+                rdfs:label "BRCA1" ;
+                <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> .
+          ?transcript so:transcribed_from ?gene ;
+                      dcterms:identifier ?transcript_id ;
+                      so:translates_to ?protein .
+          ?protein dcterms:identifier ?protein_id ;
+                   rdfs:seeAlso ?uniprot .
+          FILTER(STRSTARTS(STR(?uniprot), "http://purl.uniprot.org/uniprot/"))
+        }
+      }
+      LIMIT 20
+
+  - title: Query Non-Vertebrate Divisions (Metazoa, Plants, Fungi, etc.)
+    description: Same schema across all divisions; only graph and species IRI pattern differ.
+    question: Find protein-coding genes in Drosophila melanogaster from the metazoa division.
+    complexity: intermediate
+    sparql: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+
+      # Non-vertebrate divisions use division-specific species IRIs:
+      # metazoa.ensembl.org, plants.ensembl.org, fungi.ensembl.org, etc.
+      SELECT ?gene_id ?label
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl_metazoa> {
+          ?gene a terms:EnsemblGene ;
+                dcterms:identifier ?gene_id ;
+                rdfs:label ?label ;
+                terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+                <http://purl.obolibrary.org/obo/RO_0002162> <http://metazoa.ensembl.org/Drosophila_melanogaster> .
+        }
+      }
+      LIMIT 20
+
+  - title: Extract Genomic Coordinates with FALDO
+    description: |
+      Retrieve chromosome, start, end, and strand using FALDO ontology.
+      NOTE: Filtering by gene label without species constraint returns orthologs from
+      all vertebrates. Add a species IRI filter to restrict to one organism.
+    question: What are the genomic coordinates of BRCA1 across vertebrates?
+    complexity: advanced
+    sparql: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX so: <http://purl.obolibrary.org/obo/so#>
+
+      # Tip: add ?gene <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens>
+      # to restrict to human only
+      SELECT DISTINCT ?gene_id ?label ?chr ?start ?end ?strand
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?gene a terms:EnsemblGene ;
+                dcterms:identifier ?gene_id ;
+                rdfs:label ?label ;
+                so:part_of ?chr ;
+                faldo:location ?loc .
+          ?loc faldo:begin ?begin_node .
+          ?begin_node faldo:position ?start .
+          ?loc faldo:end ?end_node .
+          ?end_node faldo:position ?end .
+          ?begin_node rdf:type ?strand_type .
+          FILTER(?strand_type IN (faldo:ForwardStrandPosition, faldo:ReverseStrandPosition))
+          BIND(IF(?strand_type = faldo:ForwardStrandPosition, "+", "-") AS ?strand)
+          FILTER(?label = "BRCA1")
+          FILTER(STRSTARTS(STR(?chr), "http://rdf.ebi.ac.uk/resource/ensembl/"))
+        }
+      }
+      LIMIT 10
+
+  - title: Count Genes by Biotype Distribution
+    description: |
+      Aggregate statistics showing gene type distribution in human. Biotypes use
+      ENSGLOSSARY_ IRIs and some SO_ ontology IRIs; LRG_Gene is a special type for
+      Locus Reference Genomic genes.
+    question: How many genes of each biotype are in human?
+    complexity: advanced
+    sparql: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+
+      SELECT ?biotype (COUNT(DISTINCT ?gene) as ?count)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?gene a terms:EnsemblGene ;
+                terms:has_biotype ?biotype ;
+                <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> .
+        }
+      }
+      GROUP BY ?biotype
+      ORDER BY DESC(?count)
+      LIMIT 20
+
 cross_database_queries:
   shared_endpoint: ebi
   co_located_databases:
-  - chembl
-  - chebi
-  - reactome
-  - amrportal
+    - chembl
+    - chebi
+    - reactome
+    - amrportal
   examples:
-  - title: Link Genes to Drug Targets via UniProt
-    description: 'Integrate Ensembl genes with ChEMBL drug targets through UniProt
-      identifiers.
+    - title: Link Genes to Drug Targets via UniProt
+      description: |
+        Integrate Ensembl genes with ChEMBL drug targets through UniProt identifiers.
 
+        Linking strategy:
+        - Ensembl: uses rdfs:seeAlso linking to UniProt protein IRIs
+        - ChEMBL: uses cco:hasTargetComponent/skos:exactMatch linking to same UniProt IRIs
+        - Direct IRI matching provides precise gene-target relationships
+      databases_used:
+        - ensembl
+        - chembl
+      complexity: intermediate
+      sparql: |
+        PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+        PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+        PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
 
-      Linking strategy:
+        SELECT DISTINCT ?gene_id ?gene_label ?target_id ?target_label
+        WHERE {
+          GRAPH <http://rdfportal.org/dataset/ensembl> {
+            ?gene a terms:EnsemblGene ;
+                  dcterms:identifier ?gene_id ;
+                  rdfs:label ?gene_label ;
+                  rdfs:seeAlso ?uniprot ;
+                  <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> .
+            FILTER(STRSTARTS(STR(?uniprot), "http://purl.uniprot.org/uniprot/"))
+          }
+          GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
+            ?target a cco:SingleProtein ;
+                    rdfs:label ?target_label ;
+                    cco:chemblId ?target_id ;
+                    cco:hasTargetComponent/skos:exactMatch ?uniprot .
+          }
+        }
+        LIMIT 100
+      notes: |
+        - Linking via: UniProt protein identifiers
+        - Performance: ~1s (Tier 1) - simple IRI matching join
+        - Pre-filtering: species filter reduces genes by ~99%, STRSTARTS reduces to ~28% with UniProt xrefs
+        - Verified 2026-02-28: returns 100+ gene-target pairs (e.g. FUCA2/CHEMBL2271, GABRA1/CHEMBL1962, CASP8/CHEMBL3776)
 
-      - Ensembl: uses rdfs:seeAlso linking to UniProt protein IRIs
+    - title: Find Genes with Approved Drug Targets on Chromosome 17
+      description: |
+        Chromosome-specific query linking genes to marketed drugs.
 
-      - ChEMBL: uses cco:hasTargetComponent/skos:exactMatch linking to same UniProt
-      IRIs
+        Linking strategy:
+        - Ensembl: genes filtered by chromosome IRI (so:part_of) and UniProt xrefs (rdfs:seeAlso)
+        - ChEMBL: targets linked via UniProt, molecules filtered by phase=4 (approved drugs)
+      databases_used:
+        - ensembl
+        - chembl
+      complexity: advanced
+      sparql: |
+        PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+        PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+        PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+        PREFIX so: <http://purl.obolibrary.org/obo/so#>
 
-      - Direct IRI matching provides precise gene-target relationships
+        SELECT DISTINCT ?gene_id ?gene_label ?target_label (COUNT(DISTINCT ?mol) as ?drug_count)
+        WHERE {
+          GRAPH <http://rdfportal.org/dataset/ensembl> {
+            ?gene a terms:EnsemblGene ;
+                  dcterms:identifier ?gene_id ;
+                  rdfs:label ?gene_label ;
+                  rdfs:seeAlso ?uniprot ;
+                  so:part_of <http://rdf.ebi.ac.uk/resource/ensembl/115/homo_sapiens/GRCh38/17> ;
+                  <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> .
+            FILTER(STRSTARTS(STR(?uniprot), "http://purl.uniprot.org/uniprot/"))
+          }
+          GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
+            ?target a cco:SingleProtein ;
+                    rdfs:label ?target_label ;
+                    cco:hasTargetComponent/skos:exactMatch ?uniprot .
+            ?mech a cco:Mechanism ;
+                  cco:hasTarget ?target ;
+                  cco:hasMolecule ?mol .
+            ?mol cco:highestDevelopmentPhase 4 .
+          }
+        }
+        GROUP BY ?gene_id ?gene_label ?target_label
+        ORDER BY DESC(?drug_count)
+        LIMIT 20
+      notes: |
+        - Linking via: UniProt protein identifiers + chromosome IRIs
+        - Performance: ~2-3s (Tier 2) - aggregation adds overhead
+        - Pre-filtering: chr17 reduces to ~1.2K genes + UniProt xref (~28%) + phase=4
+        - Verified 2026-02-28: top result SLC6A4 (serotonin transporter) with 28 approved drugs;
+          ACE and ERBB2 with 14 each; TOP2A with 8
 
-      '
-    databases_used:
-    - ensembl
-    - chembl
-    complexity: intermediate
-    sparql: "PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>\nPREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>\n\
-      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>\n\nSELECT DISTINCT ?gene_id\
-      \ ?gene_label ?target_id ?target_label\nWHERE {\n  GRAPH <http://rdfportal.org/dataset/ensembl>\
-      \ {\n    ?gene a terms:EnsemblGene ;\n          dcterms:identifier ?gene_id\
-      \ ;\n          rdfs:label ?gene_label ;\n          rdfs:seeAlso ?uniprot ;\n\
-      \          <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens>\
-      \ .\n    FILTER(STRSTARTS(STR(?uniprot), \"http://purl.uniprot.org/uniprot/\"\
-      ))\n  }\n  GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {\n    ?target a cco:SingleProtein\
-      \ ;\n            rdfs:label ?target_label ;\n            cco:chemblId ?target_id\
-      \ ;\n            cco:hasTargetComponent/skos:exactMatch ?uniprot .\n  }\n}\n\
-      LIMIT 100\n"
-    notes: '- Linking via: UniProt protein identifiers
-
-      - Performance: ~1s (Tier 1) - simple IRI matching join
-
-      - Pre-filtering: species filter reduces genes by ~99%, STRSTARTS reduces to
-      ~28% with UniProt xrefs
-
-      - Verified: Both databases use http://purl.uniprot.org/uniprot/ namespace
-
-      '
-  - title: Find Genes with Approved Drug Targets on Chromosome 17
-    description: 'Chromosome-specific query linking genes to marketed drugs.
-
-
-      Linking strategy:
-
-      - Ensembl: genes filtered by chromosome IRI (so:part_of) and UniProt xrefs (rdfs:seeAlso)
-
-      - ChEMBL: targets linked via UniProt, molecules filtered by phase=4 (approved
-      drugs)
-
-      '
-    databases_used:
-    - ensembl
-    - chembl
-    complexity: advanced
-    sparql: "PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>\nPREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>\n\
-      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>\nPREFIX so: <http://purl.obolibrary.org/obo/so#>\n\
-      \nSELECT DISTINCT ?gene_id ?gene_label ?target_label (COUNT(DISTINCT ?mol) as\
-      \ ?drug_count)\nWHERE {\n  GRAPH <http://rdfportal.org/dataset/ensembl> {\n\
-      \    ?gene a terms:EnsemblGene ;\n          dcterms:identifier ?gene_id ;\n\
-      \          rdfs:label ?gene_label ;\n          rdfs:seeAlso ?uniprot ;\n   \
-      \       so:part_of <http://rdf.ebi.ac.uk/resource/ensembl/115/homo_sapiens/GRCh38/17>\
-      \ ;\n          <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens>\
-      \ .\n    FILTER(STRSTARTS(STR(?uniprot), \"http://purl.uniprot.org/uniprot/\"\
-      ))\n  }\n  GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {\n    ?target a cco:SingleProtein\
-      \ ;\n            rdfs:label ?target_label ;\n            cco:hasTargetComponent/skos:exactMatch\
-      \ ?uniprot .\n    ?mech a cco:Mechanism ;\n          cco:hasTarget ?target ;\n\
-      \          cco:hasMolecule ?mol .\n    ?mol cco:highestDevelopmentPhase 4 .\n\
-      \  }\n}\nGROUP BY ?gene_id ?gene_label ?target_label\nORDER BY DESC(?drug_count)\n\
-      LIMIT 20\n"
-    notes: '- Linking via: UniProt protein identifiers + chromosome IRIs
-
-      - Performance: ~2-3s (Tier 2) - aggregation adds overhead
-
-      - Pre-filtering: chr17 reduces to ~1.2K genes + UniProt xref (~28%) + phase=4
-
-      '
 cross_references:
-- pattern: rdfs:seeAlso
-  description: 'External database cross-references on genes, transcripts, and proteins.
+  - pattern: rdfs:seeAlso
+    description: |
+      External database cross-references on genes, transcripts, and proteins.
+      Genes link to UniProt, HGNC, NCBI Gene, Reactome, OMIM, GeneCards, WikiGenes.
+      Transcripts link to GO terms and RefSeq.
+      Proteins link to UniProt, PDB, Reactome.
+      Verified 2026-02-28: BRCA1 (ENSG00000012048) xrefs confirmed include UniProt
+      (multiple isoforms: P38398, C6YB45, etc.), HGNC:1100, and 20+ Reactome pathways.
+    databases:
+      gene_level:
+        - "UniProt: ~27.8% of human genes (24,347 / 87,693) - confirmed via rdfs:seeAlso to http://purl.uniprot.org/uniprot/"
+        - "HGNC: Human gene nomenclature - confirmed via http://identifiers.org/hgnc/"
+        - "Reactome: Pathway database - confirmed via http://identifiers.org/reactome/"
+        - "NCBI Gene: Gene-centered info - via http://identifiers.org/ncbigene/"
+        - "OMIM: Mendelian inheritance - via http://identifiers.org/omim/"
+        - GeneCards, WikiGenes
+      transcript_level:
+        - "GO terms: Gene Ontology annotations - via http://purl.obolibrary.org/obo/GO_"
+        - "RefSeq: NCBI reference sequences"
+      protein_level:
+        - "UniProt: Protein sequences - confirmed via rdfs:seeAlso"
+        - "PDB: 3D structures - confirmed in sample RDF (http://identifiers.org/pdb/)"
+        - "Reactome: Pathways"
+    sparql: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
 
-    Genes link to UniProt, HGNC, NCBI Gene, Reactome, OMIM, GeneCards, WikiGenes.
+      SELECT ?xref
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?gene a terms:EnsemblGene ;
+                dcterms:identifier "ENSG00000012048" ;
+                rdfs:seeAlso ?xref .
+        }
+      }
+      LIMIT 50
+    verified_date: "2026-02-28"
+    verified_result_sample: "BRCA1 returned 50 xrefs (LIMIT 50): UniProt accessions (P38398 + 9 isoforms), HGNC:1100, and 30+ Reactome pathway IDs"
 
-    Transcripts link to GO terms and RefSeq.
-
-    Proteins link to UniProt, PDB, Reactome.
-
-    '
-  databases:
-    gene_level:
-    - 'UniProt: ~27.8% of human genes (24,347 / 87,693)'
-    - 'HGNC: Human gene nomenclature'
-    - 'NCBI Gene: Gene-centered info'
-    - 'Reactome: Pathway database'
-    - 'OMIM: Mendelian inheritance'
-    - GeneCards, WikiGenes
-    transcript_level:
-    - 'GO terms: Gene Ontology annotations'
-    - 'RefSeq: NCBI reference sequences'
-    protein_level:
-    - 'UniProt: Protein sequences'
-    - 'PDB: 3D structures'
-    - 'Reactome: Pathways'
-  sparql: "PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>\n\nSELECT ?xref\nWHERE\
-    \ {\n  GRAPH <http://rdfportal.org/dataset/ensembl> {\n    ?gene a terms:EnsemblGene\
-    \ ;\n          dcterms:identifier \"ENSG00000012048\" ;\n          rdfs:seeAlso\
-    \ ?xref .\n  }\n}\nLIMIT 50\n"
 architectural_notes:
   query_strategy:
-  - 'Exploratory: Use direct SPARQL with LIMIT (no dedicated keyword search API for
-    Ensembl)'
-  - 'Comprehensive: Use specific biotype IRIs (ENSGLOSSARY_*) for gene classification'
-  - 'Species filtering: CRITICAL - use division-specific species IRIs (see critical_iris
-    section)'
-  - 'Chromosome filtering: Use exact chromosome IRIs via so:part_of (faster than string
-    matching)'
-  - 'Text search: Use bif:contains for gene symbols (Virtuoso backend, indexed)'
-  - 'Priority: Specific IRIs (biotypes, species, flags) > Property paths > Text search'
+    - "Exploratory: Use direct SPARQL with LIMIT (no dedicated keyword search API for Ensembl)"
+    - "Comprehensive: Use specific biotype IRIs (ENSGLOSSARY_* or SO_* - see biotypes section) for gene classification"
+    - "Species filtering: CRITICAL - use division-specific species IRIs (see critical_iris section)"
+    - "Chromosome filtering: Use exact chromosome IRIs via so:part_of (faster than string matching)"
+    - "Text search: Use bif:contains for gene symbols (Virtuoso backend, indexed)"
+    - "Priority: Specific IRIs (biotypes, species, flags) > Property paths > Text search"
   schema_design:
-  - 'Hierarchical: Gene -> Transcript -> Protein -> Exons (central dogma)'
-  - 'FALDO ontology: Genomic coordinates with strand-aware positions (ExactPosition
-    + StrandPosition)'
-  - 'SO (Sequence Ontology): Feature relationships (transcribed_from, translates_to,
-    part_of, has_part)'
-  - 'Biotype IRIs: ENSGLOSSARY_0000026 (protein-coding), ENSGLOSSARY_0000028 (lncRNA),
-    ENSGLOSSARY_0000038 (miRNA)'
-  - 'Quality flags: ENSGLOSSARY_0000365 (MANE Select), ENSGLOSSARY_0000023 (canonical),
-    ENSGLOSSARY_0000016 (APPRIS)'
-  - 'Ordered exons: sio:SIO_000974 -> ordered exon node -> sio:SIO_000628 (exon ref)
-    + sio:SIO_000300 (rank)'
-  - 'Versioned transcripts: terms:has_versioned_transcript links to version-suffixed
-    IRI (e.g. ENST*.9)'
-  - 'Consistent schema: All 7 graphs use the same predicates and entity types'
+    - "Hierarchical: Gene -> Transcript -> Protein -> Exons (central dogma)"
+    - "FALDO ontology: Genomic coordinates with strand-aware positions (ExactPosition + StrandPosition)"
+    - "SO (Sequence Ontology): Feature relationships (transcribed_from, translates_to, part_of, has_part)"
+    - "Biotype IRIs: Mix of ENSGLOSSARY_ IRIs (most types) and SO_ ontology IRIs (some types like vault_RNA, ribozyme, scaRNA)"
+    - "LRG_Gene: Special type <http://rdf.ebi.ac.uk/terms/ensembl/LRG_Gene> for Locus Reference Genomic genes (1,324 in human)"
+    - "Quality flags: ENSGLOSSARY_0000365 (MANE Select), ENSGLOSSARY_0000023 (canonical), ENSGLOSSARY_0000016 (APPRIS)"
+    - "Ordered exons: sio:SIO_000974 -> ordered exon node -> sio:SIO_000628 (exon ref) + sio:SIO_000300 (rank)"
+    - "Versioned transcripts: terms:has_versioned_transcript links to version-suffixed IRI (e.g. ENST*.9)"
+    - "Consistent schema: All 7 graphs use the same predicates and entity types"
   performance:
-  - Always filter by species early - reduces dataset by ~99%
-  - Use specific biotype IRIs instead of text search on labels
-  - 'Use exact chromosome IRIs for fastest filtering (version-dependent: currently
-    115/)'
-  - 'FALDO queries: Use DISTINCT and filter strand type to avoid duplicates from dual-typed
-    positions'
-  - 'Cross-database: Pre-filter in each GRAPH before joins'
-  - 'Text search: bif:contains with wildcards (*) and relevance scoring'
-  - 'Non-vertebrate graphs: Very large (especially bacteria); always filter by species
-    IRI to avoid timeouts'
+    - "Always filter by species early - reduces dataset by ~99%"
+    - "Use specific biotype IRIs instead of text search on labels"
+    - "Use exact chromosome IRIs for fastest filtering (version-dependent: currently 115/)"
+    - "FALDO queries: Use DISTINCT and filter strand type to avoid duplicates from dual-typed positions"
+    - "Cross-database: Pre-filter in each GRAPH before joins"
+    - "Text search: bif:contains with wildcards (*) and relevance scoring"
+    - "Non-vertebrate graphs: Very large (especially bacteria); always filter by species IRI to avoid timeouts"
+    - "FALDO label filter returns all vertebrate orthologs unless species IRI also added"
+    - "Broad aggregation queries (e.g. xref namespace counts across all human genes) will timeout; use gene-specific or LIMIT-constrained queries instead"
   critical_iris:
     graphs:
-    - 'Vertebrates (GRCh38): <http://rdfportal.org/dataset/ensembl>'
-    - 'Human legacy (GRCh37): <http://rdfportal.org/dataset/ensembl_grch37>'
-    - 'Bacteria: <http://rdfportal.org/dataset/ensembl_bacteria>'
-    - 'Fungi: <http://rdfportal.org/dataset/ensembl_fungi>'
-    - 'Metazoa: <http://rdfportal.org/dataset/ensembl_metazoa>'
-    - 'Plants: <http://rdfportal.org/dataset/ensembl_plants>'
-    - 'Protists: <http://rdfportal.org/dataset/ensembl_protists>'
+      - "Vertebrates (GRCh38): <http://rdfportal.org/dataset/ensembl>"
+      - "Human legacy (GRCh37): <http://rdfportal.org/dataset/ensembl_grch37>"
+      - "Bacteria: <http://rdfportal.org/dataset/ensembl_bacteria>"
+      - "Fungi: <http://rdfportal.org/dataset/ensembl_fungi>"
+      - "Metazoa: <http://rdfportal.org/dataset/ensembl_metazoa>"
+      - "Plants: <http://rdfportal.org/dataset/ensembl_plants>"
+      - "Protists: <http://rdfportal.org/dataset/ensembl_protists>"
     species_iri_patterns:
-    - 'Vertebrates: <http://ensembl.org/{Species_name}> (e.g. Homo_sapiens, Mus_musculus)'
-    - 'Bacteria: <http://bacteria.ensembl.org/{Species_strain_assembly}> (e.g. Proteus_mirabilis_hi4320_gca_000069965)'
-    - 'Fungi: <http://fungi.ensembl.org/{Species}> (e.g. Saccharomyces_cerevisiae,
-      Kluyveromyces_lactis_gca_000002515)'
-    - 'Metazoa: <http://metazoa.ensembl.org/{Species}> (e.g. Drosophila_melanogaster,
-      Caenorhabditis_elegans)'
-    - 'Plants: <http://plants.ensembl.org/{Species}> (e.g. Arabidopsis_thaliana)'
-    - 'Protists: <http://protists.ensembl.org/{Species}> (e.g. Trypanosoma_brucei_equiperdum_gca_003543875)'
+      - "Vertebrates: <http://ensembl.org/{Species_name}> (e.g. Homo_sapiens, Mus_musculus)"
+      - "Bacteria: <http://bacteria.ensembl.org/{Species_strain_assembly}> (e.g. Proteus_mirabilis_hi4320_gca_000069965)"
+      - "Fungi: <http://fungi.ensembl.org/{Species}> (e.g. Saccharomyces_cerevisiae, Kluyveromyces_lactis_gca_000002515)"
+      - "Metazoa: <http://metazoa.ensembl.org/{Species}> (e.g. Drosophila_melanogaster, Caenorhabditis_elegans)"
+      - "Plants: <http://plants.ensembl.org/{Species}> (e.g. Arabidopsis_thaliana)"
+      - "Protists: <http://protists.ensembl.org/{Species}> (e.g. Trypanosoma_brucei_equiperdum_gca_003543875)"
     species_examples:
-    - 'Human: <http://ensembl.org/Homo_sapiens>'
-    - 'Mouse: <http://ensembl.org/Mus_musculus>'
-    - 'Rat: <http://ensembl.org/Rattus_norvegicus>'
-    - 'Fruit fly: <http://metazoa.ensembl.org/Drosophila_melanogaster>'
-    - 'Nematode: <http://metazoa.ensembl.org/Caenorhabditis_elegans>'
-    - 'Thale cress: <http://plants.ensembl.org/Arabidopsis_thaliana>'
-    - 'Yeast: <http://fungi.ensembl.org/Saccharomyces_cerevisiae>'
+      - "Human: <http://ensembl.org/Homo_sapiens>"
+      - "Mouse: <http://ensembl.org/Mus_musculus>"
+      - "Rat: <http://ensembl.org/Rattus_norvegicus>"
+      - "Fruit fly: <http://metazoa.ensembl.org/Drosophila_melanogaster>"
+      - "Nematode: <http://metazoa.ensembl.org/Caenorhabditis_elegans>"
+      - "Thale cress: <http://plants.ensembl.org/Arabidopsis_thaliana>"
+      - "Yeast: <http://fungi.ensembl.org/Saccharomyces_cerevisiae>"
     biotypes:
-    - 'protein_coding: <http://ensembl.org/glossary/ENSGLOSSARY_0000026>'
-    - 'lncRNA: <http://ensembl.org/glossary/ENSGLOSSARY_0000028>'
-    - 'processed_pseudogene: <http://ensembl.org/glossary/ENSGLOSSARY_0000048>'
-    - 'unprocessed_pseudogene: <http://ensembl.org/glossary/ENSGLOSSARY_0000049>'
-    - 'miRNA: <http://ensembl.org/glossary/ENSGLOSSARY_0000038>'
+      ensglossary_iris:
+        - "lncRNA: <http://ensembl.org/glossary/ENSGLOSSARY_0000028> (36,490 human genes)"
+        - "protein_coding: <http://ensembl.org/glossary/ENSGLOSSARY_0000026> (23,262 human genes)"
+        - "processed_pseudogene: <http://ensembl.org/glossary/ENSGLOSSARY_0000048> (10,234)"
+        - "unprocessed_pseudogene: <http://ensembl.org/glossary/ENSGLOSSARY_0000049> (2,802)"
+        - "misc_RNA: <http://ensembl.org/glossary/ENSGLOSSARY_0000046> (2,418)"
+        - "snRNA: <http://ensembl.org/glossary/ENSGLOSSARY_0000042> (2,094)"
+        - "miRNA: <http://ensembl.org/glossary/ENSGLOSSARY_0000038> (1,945)"
+        - "ENSGLOSSARY_0000057: 1,084 genes"
+        - "ENSGLOSSARY_0000043: 1,020 genes"
+        - "ENSGLOSSARY_0000059: 229 genes"
+        - "ENSGLOSSARY_0000063: 160 genes"
+        - "ENSGLOSSARY_0000053: 97 genes"
+        - "ENSGLOSSARY_0000065: 93 genes"
+        - "ENSGLOSSARY_0000040: 71 genes"
+      so_iris:
+        - "SO_0002107: 1,801 human genes (vault_RNA or similar)"
+        - "SO_0002109: 1,219 human genes"
+        - "SO_0000777: 516 human genes"
+        - "SO_0002102: 300 human genes"
+        - "SO_0002108: 206 human genes"
+      special_types:
+        - "LRG_Gene: <http://rdf.ebi.ac.uk/terms/ensembl/LRG_Gene> (1,324 human genes - Locus Reference Genomic)"
     transcript_flags:
-    - 'MANE Select: <http://ensembl.org/glossary/ENSGLOSSARY_0000365>'
-    - 'canonical: <http://ensembl.org/glossary/ENSGLOSSARY_0000023>'
-    - 'APPRIS P1: <http://ensembl.org/glossary/ENSGLOSSARY_0000016>'
-    - 'TSL 1: <http://ensembl.org/glossary/ENSGLOSSARY_0000006>'
-    chromosome_pattern: <http://rdf.ebi.ac.uk/resource/ensembl/115/homo_sapiens/GRCh38/{chr}>
+      - "MANE Select: <http://ensembl.org/glossary/ENSGLOSSARY_0000365>"
+      - "canonical: <http://ensembl.org/glossary/ENSGLOSSARY_0000023>"
+      - "APPRIS P1: <http://ensembl.org/glossary/ENSGLOSSARY_0000016>"
+      - "TSL 1: <http://ensembl.org/glossary/ENSGLOSSARY_0000006>"
+    chromosome_pattern: "<http://rdf.ebi.ac.uk/resource/ensembl/115/homo_sapiens/GRCh38/{chr}>"
+    xref_iri_prefixes:
+      - "UniProt (gene/protein): http://purl.uniprot.org/uniprot/"
+      - "HGNC: http://identifiers.org/hgnc/"
+      - "Reactome: http://identifiers.org/reactome/"
+      - "NCBI Gene: http://identifiers.org/ncbigene/"
+      - "OMIM: http://identifiers.org/omim/"
+      - "PDB: http://identifiers.org/pdb/"
+      - "GO (transcript): http://purl.obolibrary.org/obo/GO_"
   data_integration:
-  - 'Genome assemblies: GRCh38 (current) and GRCh37 (legacy) in separate graphs'
-  - 'Divisions: 7 graphs covering vertebrates, bacteria, fungi, metazoa, plants, protists'
-  - 'Species IRIs: Division-specific subdomains ({division}.ensembl.org); model species
-    use simple names, others include strain/assembly suffixes'
-  - 'Cross-database: UniProt bridge via rdfs:seeAlso -> skos:exactMatch (ChEMBL)'
-  - 'Coverage: ~27.8% of human genes have UniProt cross-references'
-  - 'Chromosome: version-dependent IRI pattern (currently 115/); also has identifiers.org/hco/
-    alternative'
+    - "Genome assemblies: GRCh38 (current) and GRCh37 (legacy) in separate graphs"
+    - "Divisions: 7 graphs covering vertebrates, bacteria, fungi, metazoa, plants, protists"
+    - "Species IRIs: Division-specific subdomains ({division}.ensembl.org); model species use simple names, others include strain/assembly suffixes"
+    - "Cross-database: UniProt bridge via rdfs:seeAlso -> skos:exactMatch (ChEMBL)"
+    - "Coverage: ~27.8% of human genes have UniProt cross-references"
+    - "Chromosome: version-dependent IRI pattern (currently 115/); also has identifiers.org/hco/ alternative"
   data_quality:
-  - 'Not all transcripts encode proteins (~46% do for human: 247,155 / 535,380)'
-  - 'Quality flags: MANE Select (19,338), canonical (87,693, one per gene) - vertebrate
-    graph only'
-  - FALDO positions have dual types (ExactPosition + StrandPosition) - filter to avoid
-    cartesian products
-  - UniProt xref limitation affects ChEMBL integration coverage (~28% of human genes)
-  - Chromosome IRIs change with each Ensembl release version (currently 115/)
-  - 'Non-vertebrate graphs can be very large (especially bacteria); unfiltered queries
-    will timeout'
+    - "Not all transcripts encode proteins (~46% do for human: 247,155 / 535,380)"
+    - "Quality flags: MANE Select (19,338), canonical (87,693, one per gene) - vertebrate graph only"
+    - "FALDO positions have dual types (ExactPosition + StrandPosition) - filter to avoid cartesian products"
+    - "UniProt xref limitation affects ChEMBL integration coverage (~28% of human genes)"
+    - "Chromosome IRIs change with each Ensembl release version (currently 115/)"
+    - "Non-vertebrate graphs can be very large (especially bacteria); unfiltered queries will timeout"
+    - "Biotype IRI mix: Most biotypes use ENSGLOSSARY_ IRIs but some use SO_ ontology IRIs; use the biotype distribution query to discover all IRIs empirically"
+
 data_statistics:
   total_human_genes: 87693
   total_human_transcripts: 535380
   total_human_proteins: 247155
-  verified_date: '2026-02-27'
+  verified_date: "2026-02-28"
   verification_queries:
-    human_genes: "PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>\nSELECT (COUNT(DISTINCT\
-      \ ?gene) as ?count)\nWHERE {\n  GRAPH <http://rdfportal.org/dataset/ensembl>\
-      \ {\n    ?gene a terms:EnsemblGene ;\n          <http://purl.obolibrary.org/obo/RO_0002162>\
-      \ <http://ensembl.org/Homo_sapiens> .\n  }\n}\n"
-    protein_coding_genes: "PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>\nSELECT\
-      \ (COUNT(DISTINCT ?gene) as ?count)\nWHERE {\n  GRAPH <http://rdfportal.org/dataset/ensembl>\
-      \ {\n    ?gene a terms:EnsemblGene ;\n          terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026>\
-      \ ;\n          <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens>\
-      \ .\n  }\n}\n"
-    mane_select_transcripts: "PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>\n\
-      SELECT (COUNT(DISTINCT ?transcript) as ?count)\nWHERE {\n  GRAPH <http://rdfportal.org/dataset/ensembl>\
-      \ {\n    ?transcript a terms:EnsemblTranscript ;\n                terms:has_transcript_flag\
-      \ <http://ensembl.org/glossary/ENSGLOSSARY_0000365> .\n  }\n}\n"
+    human_genes: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      SELECT (COUNT(DISTINCT ?gene) as ?count)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?gene a terms:EnsemblGene ;
+                <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> .
+        }
+      }
+    protein_coding_genes: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      SELECT (COUNT(DISTINCT ?gene) as ?count)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?gene a terms:EnsemblGene ;
+                terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+                <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> .
+        }
+      }
+    mane_select_transcripts: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      SELECT (COUNT(DISTINCT ?transcript) as ?count)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?transcript a terms:EnsemblTranscript ;
+                      terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000365> .
+        }
+      }
   major_species:
     human: 87693
     mouse: 78334
     rat: 43360
-  human_biotype_distribution:
-    lncRNA: 36490
-    protein_coding: 23262
-    processed_pseudogene: 10234
-    unprocessed_pseudogene: 2802
-    misc_RNA: 2418
-    snRNA: 2094
-    miRNA: 1945
+  human_biotype_distribution_verified_2026_02_28:
+    lncRNA_ENSGLOSSARY_0000028: 36490
+    protein_coding_ENSGLOSSARY_0000026: 23262
+    processed_pseudogene_ENSGLOSSARY_0000048: 10234
+    unprocessed_pseudogene_ENSGLOSSARY_0000049: 2802
+    misc_RNA_ENSGLOSSARY_0000046: 2418
+    snRNA_ENSGLOSSARY_0000042: 2094
+    miRNA_ENSGLOSSARY_0000038: 1945
+    SO_0002107: 1801
+    LRG_Gene: 1324
+    SO_0002109: 1219
+    ENSGLOSSARY_0000057: 1084
+    ENSGLOSSARY_0000043: 1020
+    SO_0000777: 516
+    SO_0002102: 300
+    ENSGLOSSARY_0000059: 229
+    SO_0002108: 206
+    ENSGLOSSARY_0000063: 160
+    ENSGLOSSARY_0000053: 97
+    ENSGLOSSARY_0000065: 93
+    ENSGLOSSARY_0000040: 71
   human_quality_metrics:
     canonical_transcripts: 87693
     mane_select: 19338
     genes_with_uniprot: 24347
   non_vertebrate_divisions:
-    note: 'Gene counts for non-vertebrate divisions are not feasible to compute via
-      SPARQL due to the massive size of these graphs. Counts timeout consistently.'
+    note: Gene counts for non-vertebrate divisions are not feasible to compute via SPARQL due to the massive size of these graphs. Counts timeout consistently.
     confirmed_species_examples:
       bacteria: Proteus_mirabilis_hi4320_gca_000069965
-      fungi: Saccharomyces_cerevisiae, Kluyveromyces_lactis_gca_000002515
-      metazoa: Drosophila_melanogaster, Caenorhabditis_elegans, Aedes_aegypti_lvpagwg
+      fungi: "Saccharomyces_cerevisiae, Kluyveromyces_lactis_gca_000002515"
+      metazoa: "Drosophila_melanogaster, Caenorhabditis_elegans, Aedes_aegypti_lvpagwg"
       plants: Arabidopsis_thaliana
       protists: Trypanosoma_brucei_equiperdum_gca_003543875
   coverage:
     genes_with_description: 100%
-    transcripts_with_proteins: 46.2% (247,155 / 535,380 human transcripts)
-    genes_with_uniprot_xrefs: 27.8% (24,347 / 87,693 human genes)
-    verification_date: '2026-02-27'
+    transcripts_with_proteins: "46.2% (247,155 / 535,380 human transcripts)"
+    genes_with_uniprot_xrefs: "27.8% (24,347 / 87,693 human genes)"
+    verification_date: "2026-02-28"
+
 anti_patterns:
-- title: Using taxonomy:XXXX for Species Filter (CRITICAL)
-  problem: Using NCBI Taxonomy IRIs instead of Ensembl-specific species IRIs.
-  wrong_sparql: '# BROKEN: NCBI Taxonomy IRI does not exist in Ensembl RDF
+  - title: Using taxonomy:XXXX for Species Filter (CRITICAL)
+    problem: Using NCBI Taxonomy IRIs instead of Ensembl-specific species IRIs.
+    wrong_sparql: |
+      # BROKEN: NCBI Taxonomy IRI does not exist in Ensembl RDF
+      ?gene obo:RO_0002162 <http://identifiers.org/taxonomy/9606> .
+    correct_sparql: |
+      # CORRECT: Ensembl uses its own species IRIs
+      ?gene <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> .
+    explanation: Ensembl RDF uses division-specific species IRIs, NOT NCBI Taxonomy URIs. All queries with taxonomy:9606 will return zero results.
 
-    ?gene obo:RO_0002162 <http://identifiers.org/taxonomy/9606> .
+  - title: Using Wrong Species IRI Pattern for Non-Vertebrate Divisions
+    problem: Using vertebrate species IRI pattern for non-vertebrate organisms.
+    wrong_sparql: |
+      # BROKEN: Vertebrate pattern used for Drosophila
+      GRAPH <http://rdfportal.org/dataset/ensembl_metazoa> {
+        ?gene obo:RO_0002162 <http://ensembl.org/Drosophila_melanogaster> .
+      }
+    correct_sparql: |
+      # CORRECT: Use division-specific subdomain
+      GRAPH <http://rdfportal.org/dataset/ensembl_metazoa> {
+        ?gene <http://purl.obolibrary.org/obo/RO_0002162> <http://metazoa.ensembl.org/Drosophila_melanogaster> .
+      }
+    explanation: "Each division has its own species IRI subdomain: bacteria.ensembl.org, fungi.ensembl.org, metazoa.ensembl.org, plants.ensembl.org, protists.ensembl.org. Only vertebrates use ensembl.org directly."
 
-    '
-  correct_sparql: '# CORRECT: Ensembl uses its own species IRIs
+  - title: Text Search When Specific Biotype IRI Exists
+    problem: Using text search on biotype labels when specific IRIs are available.
+    wrong_sparql: |
+      # Slow: Text search for biotype
+      ?gene terms:has_biotype ?biotype .
+      ?biotype rdfs:label ?label .
+      FILTER(CONTAINS(?label, "protein"))
+    correct_sparql: |
+      # Fast: Use specific biotype IRI
+      ?gene terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> .
+    explanation: "Use specific biotype IRIs directly. Common: ENSGLOSSARY_0000026 (protein-coding), ENSGLOSSARY_0000028 (lncRNA), ENSGLOSSARY_0000038 (miRNA). Run the biotype distribution query to discover all available IRIs."
 
-    ?gene <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens>
-    .
+  - title: Querying Non-Vertebrate Graph Without Species Filter
+    problem: Querying large non-vertebrate graphs without species filter causes timeouts.
+    wrong_sparql: |
+      # TIMEOUT: Bacteria graph is massive; no species filter
+      GRAPH <http://rdfportal.org/dataset/ensembl_bacteria> {
+        ?gene a terms:EnsemblGene ;
+              rdfs:label ?label .
+      }
+    correct_sparql: |
+      # CORRECT: Always filter by species IRI in non-vertebrate graphs
+      GRAPH <http://rdfportal.org/dataset/ensembl_bacteria> {
+        ?gene a terms:EnsemblGene ;
+              rdfs:label ?label ;
+              <http://purl.obolibrary.org/obo/RO_0002162> <http://bacteria.ensembl.org/Proteus_mirabilis_hi4320_gca_000069965> .
+      }
+    explanation: Non-vertebrate graphs (especially bacteria) contain data for thousands of species. Always include a species IRI filter to avoid timeouts. Even the vertebrate graph benefits from species filtering.
 
-    '
-  explanation: Ensembl RDF uses division-specific species IRIs, NOT NCBI Taxonomy
-    URIs. All queries with taxonomy:9606 will return zero results.
-- title: Using Wrong Species IRI Pattern for Non-Vertebrate Divisions
-  problem: Using vertebrate species IRI pattern for non-vertebrate organisms.
-  wrong_sparql: '# BROKEN: Vertebrate pattern used for Drosophila
-
-    GRAPH <http://rdfportal.org/dataset/ensembl_metazoa> {
-
-    ?gene obo:RO_0002162 <http://ensembl.org/Drosophila_melanogaster> .
-
-    }
-
-    '
-  correct_sparql: '# CORRECT: Use division-specific subdomain
-
-    GRAPH <http://rdfportal.org/dataset/ensembl_metazoa> {
-
-    ?gene <http://purl.obolibrary.org/obo/RO_0002162> <http://metazoa.ensembl.org/Drosophila_melanogaster>
-    .
-
-    }
-
-    '
-  explanation: 'Each division has its own species IRI subdomain: bacteria.ensembl.org,
-    fungi.ensembl.org, metazoa.ensembl.org, plants.ensembl.org, protists.ensembl.org.
-    Only vertebrates use ensembl.org directly.'
-- title: Text Search When Specific Biotype IRI Exists
-  problem: Using text search on biotype labels when specific IRIs are available.
-  wrong_sparql: '# Slow: Text search for biotype
-
-    ?gene terms:has_biotype ?biotype .
-
-    ?biotype rdfs:label ?label .
-
-    FILTER(CONTAINS(?label, "protein"))
-
-    '
-  correct_sparql: '# Fast: Use specific biotype IRI
-
-    ?gene terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> .
-
-    '
-  explanation: 'Use specific biotype IRIs directly. Common: ENSGLOSSARY_0000026 (protein-coding),
-    ENSGLOSSARY_0000028 (lncRNA), ENSGLOSSARY_0000038 (miRNA).'
-- title: Querying Non-Vertebrate Graph Without Species Filter
-  problem: Querying large non-vertebrate graphs without species filter causes timeouts.
-  wrong_sparql: '# TIMEOUT: Bacteria graph is massive; no species filter
-
-    GRAPH <http://rdfportal.org/dataset/ensembl_bacteria> {
-
-    ?gene a terms:EnsemblGene ;
-
-    rdfs:label ?label .
-
-    }
-
-    '
-  correct_sparql: '# CORRECT: Always filter by species IRI in non-vertebrate graphs
-
-    GRAPH <http://rdfportal.org/dataset/ensembl_bacteria> {
-
-    ?gene a terms:EnsemblGene ;
-
-    rdfs:label ?label ;
-
-    <http://purl.obolibrary.org/obo/RO_0002162> <http://bacteria.ensembl.org/Proteus_mirabilis_hi4320_gca_000069965>
-    .
-
-    }
-
-    '
-  explanation: Non-vertebrate graphs (especially bacteria) contain data for thousands
-    of species. Always include a species IRI filter to avoid timeouts. Even the vertebrate
-    graph benefits from species filtering.
 common_errors:
-- error: Zero results for species-filtered queries
-  causes:
-  - Using <http://identifiers.org/taxonomy/9606> instead of <http://ensembl.org/Homo_sapiens>
-  - Using vertebrate species IRI pattern (ensembl.org/) in non-vertebrate graph
-  - Mismatched graph and species IRI division (e.g. fungi species in metazoa graph)
-  solutions:
-  - 'Vertebrates: Use <http://ensembl.org/{Species_name}>'
-  - 'Non-vertebrates: Use <http://{division}.ensembl.org/{Species}>'
-  - Check critical_iris section for correct patterns per division
-  - 'Model species use simple names; others may have strain/assembly suffixes (e.g.
-    _gca_000002515)'
-- error: Query timeout on broad searches
-  causes:
-  - Querying non-vertebrate graphs without species filter (especially bacteria)
-  - Scanning FALDO locations without gene constraints
-  - Using FILTER(CONTAINS()) instead of bif:contains
-  solutions:
-  - Always include species filter in every query
-  - Use specific biotype IRIs when filtering by gene type
-  - Use bif:contains for text searches (Virtuoso backend)
-  - Start with specific gene ID or chromosome constraints
-  - Add LIMIT to control result size
-- error: Cross-database integration fails or times out
-  causes:
-  - Missing UniProt cross-references (only 27.8% of human genes)
-  - Missing pre-filtering in GRAPH clauses
-  - Incorrect ChEMBL linking pattern
-  solutions:
-  - Pre-filter by species in Ensembl GRAPH
-  - 'Pre-filter for UniProt xrefs: FILTER(STRSTARTS(STR(?uniprot), ''http://purl.uniprot.org/uniprot/''))'
-  - 'Use pattern: cco:hasTargetComponent/skos:exactMatch ?uniprot'
-  - Filter by development phase in ChEMBL GRAPH before join
+  - error: Zero results for species-filtered queries
+    causes:
+      - "Using <http://identifiers.org/taxonomy/9606> instead of <http://ensembl.org/Homo_sapiens>"
+      - "Using vertebrate species IRI pattern (ensembl.org/) in non-vertebrate graph"
+      - "Mismatched graph and species IRI division (e.g. fungi species in metazoa graph)"
+    solutions:
+      - "Vertebrates: Use <http://ensembl.org/{Species_name}>"
+      - "Non-vertebrates: Use <http://{division}.ensembl.org/{Species}>"
+      - "Check critical_iris section for correct patterns per division"
+      - "Model species use simple names; others may have strain/assembly suffixes (e.g. _gca_000002515)"
+
+  - error: Query timeout on broad searches
+    causes:
+      - "Querying non-vertebrate graphs without species filter (especially bacteria)"
+      - "Scanning FALDO locations without gene constraints"
+      - "Using FILTER(CONTAINS()) instead of bif:contains"
+      - "Running aggregation queries over all human gene xrefs without LIMIT constraints"
+    solutions:
+      - "Always include species filter in every query"
+      - "Use specific biotype IRIs when filtering by gene type"
+      - "Use bif:contains for text searches (Virtuoso backend)"
+      - "Start with specific gene ID or chromosome constraints"
+      - "Add LIMIT to control result size"
+      - "For xref namespace analysis, query gene-by-gene or use LIMIT-constrained sampling"
+
+  - error: Cross-database integration fails or times out
+    causes:
+      - "Missing UniProt cross-references (only 27.8% of human genes)"
+      - "Missing pre-filtering in GRAPH clauses"
+      - "Incorrect ChEMBL linking pattern"
+    solutions:
+      - "Pre-filter by species in Ensembl GRAPH"
+      - "Pre-filter for UniProt xrefs: FILTER(STRSTARTS(STR(?uniprot), 'http://purl.uniprot.org/uniprot/'))"
+      - "Use pattern: cco:hasTargetComponent/skos:exactMatch ?uniprot"
+      - "Filter by development phase in ChEMBL GRAPH before join"
