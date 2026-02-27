@@ -40,7 +40,6 @@ sparql_queries:
     query: |
       PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
       PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX taxonomy: <http://identifiers.org/taxonomy/>
       
       SELECT ?gene_id ?label
       WHERE {
@@ -48,7 +47,7 @@ sparql_queries:
           ?gene a terms:EnsemblGene ;
                 dcterms:identifier ?gene_id ;
                 rdfs:label ?label ;
-                obo:RO_0002162 taxonomy:9606 .
+                obo:RO_0002162 <http://ensembl.org/Homo_sapiens> .
           FILTER(?label = "SPG11")
         }
       }
@@ -127,12 +126,31 @@ sparql_queries:
       LIMIT 10
     result_count: 3
 
+  - query_number: 6
+    database: pdb
+    description: Verify experimental method for SPG11-containing PDB structures
+    query: |
+      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
+      PREFIX dc: <http://purl.org/dc/elements/1.1/>
+      
+      SELECT (STRAFTER(STR(?entry), "http://rdf.wwpdb.org/pdb/") AS ?entry_id) ?method ?title
+      FROM <http://rdfportal.org/dataset/pdbj>
+      WHERE {
+        VALUES ?entry { <http://rdf.wwpdb.org/pdb/8YAB> <http://rdf.wwpdb.org/pdb/8YAD> <http://rdf.wwpdb.org/pdb/8YAH> }
+        ?entry pdbo:has_exptlCategory ?ec .
+        ?ec pdbo:has_exptl ?exptl .
+        ?exptl pdbo:exptl.method ?method .
+        ?entry dc:title ?title .
+      }
+    result_count: 3
+
 rdf_triples: |
   @prefix terms: <http://rdf.ebi.ac.uk/terms/ensembl/> .
   @prefix so: <http://purl.obolibrary.org/obo/so#> .
   @prefix up: <http://purl.uniprot.org/core/> .
   @prefix obo: <http://purl.obolibrary.org/obo/> .
-  @prefix taxonomy: <http://identifiers.org/taxonomy/> .
+  @prefix pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#> .
+  @prefix dc: <http://purl.org/dc/elements/1.1/> .
   @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
   
   <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> a terms:EnsemblGene .
@@ -144,8 +162,8 @@ rdf_triples: |
   <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> dcterms:identifier "ENSG00000104133" .
   # Database: Ensembl | Query: 1 | Comment: Ensembl gene identifier
   
-  <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> obo:RO_0002162 taxonomy:9606 .
-  # Database: Ensembl | Query: 1 | Comment: Gene found in Homo sapiens (taxonomy ID 9606)
+  <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> obo:RO_0002162 <http://ensembl.org/Homo_sapiens> .
+  # Database: Ensembl | Query: 1 | Comment: Gene found in Homo sapiens (Ensembl species IRI)
   
   <http://rdf.ebi.ac.uk/resource/ensembl.transcript/ENST00000261866> so:transcribed_from <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000104133> .
   # Database: Ensembl | Query: 2 | Comment: Transcript derived from SPG11 gene
@@ -173,11 +191,29 @@ rdf_triples: |
   
   <http://purl.uniprot.org/uniprot/Q96JI7> rdfs:seeAlso <http://rdf.wwpdb.org/pdb/8YAH> .
   # Database: UniProt | Query: 5 | Comment: Cross-reference to PDB structure 8YAH
+  
+  <http://rdf.wwpdb.org/pdb/8YAB> pdbo:has_exptlCategory [ pdbo:has_exptl [ pdbo:exptl.method "ELECTRON MICROSCOPY" ] ] .
+  # Database: PDB | Query: 6 | Comment: 8YAB determined by cryo-EM (single particle reconstruction)
+  
+  <http://rdf.wwpdb.org/pdb/8YAB> dc:title "AP5 complex bound to SPG11-SPG15" .
+  # Database: PDB | Query: 6 | Comment: Structure of AP5 adaptor complex bound to the SPG11-SPG15 complex
+  
+  <http://rdf.wwpdb.org/pdb/8YAD> pdbo:has_exptlCategory [ pdbo:has_exptl [ pdbo:exptl.method "ELECTRON MICROSCOPY" ] ] .
+  # Database: PDB | Query: 6 | Comment: 8YAD determined by cryo-EM (single particle reconstruction)
+  
+  <http://rdf.wwpdb.org/pdb/8YAD> dc:title "structure of SPG11-SPG15 complex" .
+  # Database: PDB | Query: 6 | Comment: Structure of SPG11-SPG15 complex without AP5
+  
+  <http://rdf.wwpdb.org/pdb/8YAH> pdbo:has_exptlCategory [ pdbo:has_exptl [ pdbo:exptl.method "ELECTRON MICROSCOPY" ] ] .
+  # Database: PDB | Query: 6 | Comment: 8YAH determined by cryo-EM (single particle reconstruction)
+  
+  <http://rdf.wwpdb.org/pdb/8YAH> dc:title "full length AP5 complex bound to SPG11-SPG15" .
+  # Database: PDB | Query: 6 | Comment: Full-length AP5 complex bound to SPG11-SPG15
 
 exact_answer: "yes"
 
 ideal_answer: |
-  Yes, the SPG11 gene (ENSG00000104133) associated with hereditary spastic paraplegia type 11 has both a MANE Select transcript (ENST00000261866) in Ensembl and experimentally-determined protein structures in PDB. The gene encodes Spatacsin (UniProt: Q96JI7), a 2,443 amino acid protein involved in lysosomal function and autophagy. Three crystal structures are deposited in PDB: 8YAB, 8YAD, and 8YAH, representing different domains or conformations of the protein. The MANE Select flag indicates this transcript is the highest-quality representative isoform chosen through collaboration between NCBI and Ensembl, making it the preferred reference for clinical reporting and functional studies. SPG11 mutations are the most common cause of autosomal recessive hereditary spastic paraplegia with thin corpus callosum, accounting for approximately 40% of cases in this complex form of HSP.
+  Yes, the SPG11 gene (ENSG00000104133) associated with hereditary spastic paraplegia type 11 has both a MANE Select transcript (ENST00000261866) in Ensembl and experimentally-determined protein structures in PDB. The gene encodes Spatacsin (UniProt: Q96JI7, mnemonic SPTCS_HUMAN), a reviewed Swiss-Prot entry. Three cryo-EM structures are deposited in PDB: 8YAD (SPG11-SPG15 complex), 8YAB (AP5 complex bound to SPG11-SPG15), and 8YAH (full-length AP5 complex bound to SPG11-SPG15), all determined by electron microscopy using single-particle reconstruction. The MANE Select flag indicates this transcript is the highest-quality representative isoform chosen through collaboration between NCBI and Ensembl, making it the preferred reference for clinical reporting and functional studies.
 
 question_template_used: Yes/No Cross-Database Verification
 
