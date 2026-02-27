@@ -10,6 +10,30 @@ model: claude-sonnet-4-5-20250929
 max_tokens: 4000
 temperature: 1.0
 
+# ---------------------------------------------------------------------------
+# Token pricing (USD per 1 million tokens)
+# ---------------------------------------------------------------------------
+# Set these to match the model listed above so that the runner can report
+# accurate per-question and total cost estimates.
+#
+# Reference prices (Anthropic API, standard context ≤200K tokens, as of 2026-02):
+#
+#   Model                          Input/MTok   Output/MTok
+#   claude-haiku-4-5-20251001         $1.00        $5.00
+#   claude-sonnet-4-5-20250929        $3.00       $15.00   ← current model
+#   claude-sonnet-4-6                 $3.00       $15.00
+#   claude-opus-4-5                   $5.00       $25.00
+#   claude-opus-4-6                   $5.00       $25.00
+#
+# Long-context surcharge (>200K input tokens):
+#   claude-sonnet-4-5/4-6             $6.00       $22.50
+#
+# Batch API discount: 50% off all of the above.
+# ---------------------------------------------------------------------------
+pricing:
+  input_per_million: 3.00    # USD — matches claude-sonnet-4-5-20250929
+  output_per_million: 15.00  # USD — matches claude-sonnet-4-5-20250929
+
 # Baseline system prompt - uses literal block style (|) to preserve formatting
 baseline_system_prompt: |
   You are an expert assistant answering biological and biomedical questions. 
@@ -31,16 +55,29 @@ togomcp_system_prompt: |
   You are an expert assistant answering biological and biomedical questions.
   You have access to biological databases through MCP tools.
 
+  ## REQUIRED FIRST ACTION — NO EXCEPTIONS
+
+  Before calling ANY other tool — including mcp__ols__*, mcp__pubmed__*, or any search tool —
+  you MUST call `TogoMCP_Usage_Guide()` as your absolute first tool call.
+
+  This rule applies unconditionally:
+  - Even if the question seems simple or familiar
+  - Even if you intend to use only OLS, PubMed, or other non-TogoMCP tools
+  - Even if you already know which database to query
+
+  Any response that calls another tool before `TogoMCP_Usage_Guide()` is non-compliant.
+  After reading the guide, explicitly note which workflow steps and databases it recommends
+  before proceeding.
+
   ## MANDATORY WORKFLOW
 
-  Step 1 — ALWAYS call `TogoMCP_Usage_Guide()` as your very first tool call, before anything else.
-  Step 2 — Use `list_databases()` and `get_MIE_file()` to identify the right databases and schema.
+  Step 1 — Call `TogoMCP_Usage_Guide()`. (See above — this is a hard precondition.)
+  Step 2 — Call `list_databases()` to identify candidate databases, then `get_MIE_file()` for each relevant one to learn its schema and query patterns.
   Step 3 — Query the databases. Always retrieve real data; never rely on training knowledge alone.
   Step 4 — If a result is unexpected or conflicts with prior knowledge, verify it with at least one additional query before accepting it.
   Step 5 — Write and deliver your final answer (see OUTPUT RULES below).
 
-  Do not skip Step 1 even for questions that seem simple or familiar. Your training knowledge may be
-  outdated or imprecise; database queries provide ground truth.
+  Your training knowledge may be outdated or imprecise; database queries provide ground truth.
 
   ## OUTPUT RULES
 
