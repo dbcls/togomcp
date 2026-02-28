@@ -1,6 +1,6 @@
 id: question_007
 type: yes_no
-body: "Does the SPG11 gene, a causative gene for hereditary spastic paraplegia type 11, have both a MANE Select transcript in Ensembl and an experimentally-determined protein structure in PDB?"
+body: "Does the SPG11 gene, a causative gene for hereditary spastic paraplegia type 11, satisfy all three of the following conditions: (1) a MANE Select transcript in Ensembl, (2) an experimentally-determined protein structure in PDB, and (3) a drug target entry in ChEMBL?"
 
 inspiration_keyword:
   keyword_id: KW-0890
@@ -11,6 +11,7 @@ togomcp_databases_used:
   - ensembl
   - uniprot
   - pdb
+  - chembl
 
 verification_score:
   biological_insight: 2
@@ -22,15 +23,17 @@ verification_score:
 
 pubmed_test:
   time_spent: 15 minutes
-  method: Searched PubMed using ncbi_esearch for "SPG11 MANE Select transcript structure" and "SPG11 protein structure PDB"
+  method: Searched PubMed using ncbi_esearch for "SPG11 MANE Select transcript structure", "SPG11 protein structure PDB", and "SPG11 spatacsin ChEMBL drug target"
   result: |
     Query 1 ("SPG11 MANE Select transcript structure"): 0 results
     Query 2 ("SPG11 protein structure PDB"): 0 results
-    
-    No literature combining information about SPG11's MANE Select transcript 
-    status and PDB structure availability. This question requires querying 
-    current database state across Ensembl (for MANE Select flag), UniProt 
-    (for reviewed protein), and PDB (for structure availability).
+    Query 3 ("SPG11 spatacsin ChEMBL drug target"): 0 results
+
+    No literature combining information about SPG11's MANE Select transcript
+    status, PDB structure availability, and ChEMBL target registration. This
+    question requires querying current database state across Ensembl (for MANE
+    Select flag), UniProt (for reviewed protein), PDB (for structure availability),
+    and ChEMBL (for drug target entry).
   conclusion: PASS (cannot answer from literature - requires current database integration)
 
 sparql_queries:
@@ -86,7 +89,7 @@ sparql_queries:
         }
       }
       LIMIT 10
-    result_count: 10
+    result_count: 10  # LIMIT 10 applied; 20 UniProt xrefs exist in total for this gene
     
   - query_number: 4
     database: uniprot
@@ -144,6 +147,31 @@ sparql_queries:
       }
     result_count: 3
 
+  - query_number: 7
+    database: chembl
+    description: |
+      Check whether Spatacsin (UniProt Q96JI7, the protein encoded by SPG11) has a
+      drug target entry in ChEMBL. Linking goes via TargetComponent/skos:exactMatch
+      to the UniProt IRI. Also retrieve any assays registered against the target.
+    query: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT ?target ?label ?targetType ?assay ?assayType
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        ?targetComponent skos:exactMatch <http://purl.uniprot.org/uniprot/Q96JI7> .
+        ?target cco:hasTargetComponent ?targetComponent ;
+                rdfs:label ?label ;
+                cco:targetType ?targetType .
+        OPTIONAL {
+          ?assay cco:hasTarget ?target ;
+                 cco:assayType ?assayType .
+        }
+      }
+      LIMIT 20
+    result_count: 1  # 1 target (CHEMBL6067204 "Spatacsin"), 1 binding assay (CHEMBL5652514)
+
 rdf_triples: |
   @prefix terms: <http://rdf.ebi.ac.uk/terms/ensembl/> .
   @prefix so: <http://purl.obolibrary.org/obo/so#> .
@@ -180,8 +208,8 @@ rdf_triples: |
   <http://purl.uniprot.org/uniprot/Q96JI7> up:mnemonic "SPTCS_HUMAN" .
   # Database: UniProt | Query: 4 | Comment: UniProt mnemonic for human Spatacsin
   
-  <http://purl.uniprot.org/uniprot/Q96JI7> up:reviewed "1"^^xsd:integer .
-  # Database: UniProt | Query: 4 | Comment: Manually reviewed (Swiss-Prot) entry indicating expert curation
+  <http://purl.uniprot.org/uniprot/Q96JI7> up:reviewed true .
+  # Database: UniProt | Query: 4 | Comment: Manually reviewed (Swiss-Prot) entry; up:reviewed is xsd:boolean (true = reviewed)
   
   <http://purl.uniprot.org/uniprot/Q96JI7> rdfs:seeAlso <http://rdf.wwpdb.org/pdb/8YAB> .
   # Database: UniProt | Query: 5 | Comment: Cross-reference to PDB structure 8YAB
@@ -210,12 +238,34 @@ rdf_triples: |
   <http://rdf.wwpdb.org/pdb/8YAH> dc:title "full length AP5 complex bound to SPG11-SPG15" .
   # Database: PDB | Query: 6 | Comment: Full-length AP5 complex bound to SPG11-SPG15
 
+  # — ChEMBL (Query 7) —
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL6067204> a cco:SingleProtein .
+  # Database: ChEMBL | Query: 7 | Comment: Spatacsin drug target entry
+
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL6067204> rdfs:label "Spatacsin" .
+  # Database: ChEMBL | Query: 7 | Comment: Target label matching UniProt protein name
+
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL6067204> cco:targetType "SINGLE PROTEIN" .
+  # Database: ChEMBL | Query: 7 | Comment: Classified as a single protein target
+
+  _:targetComponent_Q96JI7 skos:exactMatch <http://purl.uniprot.org/uniprot/Q96JI7> .
+  # Database: ChEMBL | Query: 7 | Comment: TargetComponent links ChEMBL target to UniProt Q96JI7 (Spatacsin)
+
+  <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL6067204> cco:hasTargetComponent _:targetComponent_Q96JI7 .
+  # Database: ChEMBL | Query: 7 | Comment: ChEMBL target → TargetComponent → UniProt cross-reference chain
+
+  <http://rdf.ebi.ac.uk/resource/chembl/assay/CHEMBL5652514> cco:hasTarget <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL6067204> .
+  # Database: ChEMBL | Query: 7 | Comment: Binding assay registered against the Spatacsin target
+
+  <http://rdf.ebi.ac.uk/resource/chembl/assay/CHEMBL5652514> cco:assayType "Binding" .
+  # Database: ChEMBL | Query: 7 | Comment: Assay type is binding
+
 exact_answer: "yes"
 
 ideal_answer: |
-  Yes, the SPG11 gene (ENSG00000104133) associated with hereditary spastic paraplegia type 11 has both a MANE Select transcript (ENST00000261866) in Ensembl and experimentally-determined protein structures in PDB. The gene encodes Spatacsin (UniProt: Q96JI7, mnemonic SPTCS_HUMAN), a reviewed Swiss-Prot entry. Three cryo-EM structures are deposited in PDB: 8YAD (SPG11-SPG15 complex), 8YAB (AP5 complex bound to SPG11-SPG15), and 8YAH (full-length AP5 complex bound to SPG11-SPG15), all determined by electron microscopy using single-particle reconstruction. The MANE Select flag indicates this transcript is the highest-quality representative isoform chosen through collaboration between NCBI and Ensembl, making it the preferred reference for clinical reporting and functional studies.
+  Yes, the SPG11 gene (ENSG00000104133) associated with hereditary spastic paraplegia type 11 satisfies all three conditions. (1) MANE Select transcript: ENST00000261866 in Ensembl carries the MANE Select quality flag (ENSGLOSSARY_0000365), indicating it is the highest-quality representative isoform chosen through collaboration between NCBI and Ensembl. (2) PDB structures: the encoded protein Spatacsin (UniProt: Q96JI7, mnemonic SPTCS_HUMAN, Swiss-Prot reviewed) has three cryo-EM structures deposited: 8YAD (SPG11-SPG15 complex), 8YAB (AP5 complex bound to SPG11-SPG15), and 8YAH (full-length AP5 complex bound to SPG11-SPG15), all determined by electron microscopy single-particle reconstruction. (3) ChEMBL drug target: Spatacsin is registered as a SINGLE PROTEIN target in ChEMBL (CHEMBL6067204), linked to Q96JI7 via a TargetComponent/skos:exactMatch cross-reference, with at least one binding assay (CHEMBL5652514) on record.
 
-question_template_used: Yes/No Cross-Database Verification
+question_template_used: Yes/No Cross-Database Verification (3-condition)
 
 time_spent:
   exploration: 45 minutes
