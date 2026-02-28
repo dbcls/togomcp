@@ -6,8 +6,8 @@ from .ncbi_tools import ncbi_mcp
 import asyncio
 
 async def setup():
-    await mcp.import_server(togoid_mcp, prefix="togoid")
-    await mcp.import_server(ncbi_mcp)
+    mcp.mount(togoid_mcp, "togoid")
+    mcp.mount(ncbi_mcp, "ncbi")
 
 def run():
     asyncio.run(setup())
