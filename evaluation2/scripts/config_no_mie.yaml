@@ -1,0 +1,143 @@
+# TogoMCP Test Runner Configuration (YAML format)
+# 
+# YAML format allows multiline strings using:
+# - | (pipe): Preserves newlines and trailing spaces (literal style)
+# - > (greater than): Folds newlines into spaces (folded style)
+# - |- (pipe dash): Like |, but strips final newlines
+# - >- (greater dash): Like >, but strips final newlines
+
+model: claude-sonnet-4-5-20250929
+max_tokens: 4000
+temperature: 1.0
+
+# ---------------------------------------------------------------------------
+# Token pricing (USD per 1 million tokens)
+# ---------------------------------------------------------------------------
+# Set these to match the model listed above so that the runner can report
+# accurate per-question and total cost estimates.
+#
+# Reference prices (Anthropic API, standard context ≤200K tokens, as of 2026-02):
+#
+#   Model                          Input/MTok   Output/MTok
+#   claude-haiku-4-5-20251001         $1.00        $5.00
+#   claude-sonnet-4-5-20250929        $3.00       $15.00   ← current model
+#   claude-sonnet-4-6                 $3.00       $15.00
+#   claude-opus-4-5                   $5.00       $25.00
+#   claude-opus-4-6                   $5.00       $25.00
+#
+# Long-context surcharge (>200K input tokens):
+#   claude-sonnet-4-5/4-6             $6.00       $22.50
+#
+# Batch API discount: 50% off all of the above.
+# ---------------------------------------------------------------------------
+pricing:
+  input_per_million: 3.00    # USD — matches claude-sonnet-4-5-20250929
+  output_per_million: 15.00  # USD — matches claude-sonnet-4-5-20250929
+
+# Baseline system prompt - uses literal block style (|) to preserve formatting
+baseline_system_prompt: |
+  You are an expert assistant answering biological and biomedical questions. 
+  Answer using only your training knowledge. 
+  Do not use any database tools or external resources.
+  
+  Write answers that are:
+  - COMPLETE: Include all necessary information
+  - PRECISE: Include only relevant information
+  - NON-REDUNDANT: Avoid repeating the same information
+  - READABLE: Use clear, fluent scientific prose
+  - DIRECT: State facts without meta-references (no 'research shows', 'according to', etc.)
+
+  Simply state what you found as factual information, as you would write an encyclopedia entry, in one paragraph.
+  If you don't know something with certainty, state this clearly and concisely.
+
+# TogoMCP system prompt - uses literal block style (|) to preserve formatting
+togomcp_system_prompt: |
+  You are an expert assistant answering biological and biomedical questions.
+  You have access to biological databases through MCP tools.
+
+  ## REQUIRED FIRST ACTION — NO EXCEPTIONS
+
+  Before calling ANY other tool — including mcp__ols__*, mcp__pubmed__*, or any search tool —
+  you MUST call `TogoMCP_Usage_Guide()` as your absolute first tool call.
+
+  This rule applies unconditionally:
+  - Even if the question seems simple or familiar
+  - Even if you intend to use only OLS, PubMed, or other non-TogoMCP tools
+  - Even if you already know which database to query
+
+  Any response that calls another tool before `TogoMCP_Usage_Guide()` is non-compliant.
+  After reading the guide, explicitly note which workflow steps and databases it recommends
+  before proceeding.
+
+  ## MANDATORY WORKFLOW
+
+  Step 1 — Call `TogoMCP_Usage_Guide()`. (See above — this is a hard precondition.)
+  Step 2 — Call `list_databases()` to identify candidate databases. Then use available search tools (e.g., `search_uniprot_entity`, `search_chembl_target`, `ncbi_ncbi_esearch`, `search_pdb_entity`, etc.) and `get_sparql_example()` to explore relevant databases. Do NOT call `get_MIE_file()` — it is not available in this configuration.
+  Step 3 — Query the databases. Always retrieve real data; never rely on training knowledge alone.
+  Step 4 — If a result is unexpected or conflicts with prior knowledge, verify it with at least one additional query before accepting it.
+  Step 5 — Write and deliver your final answer (see OUTPUT RULES below).
+
+  Your training knowledge may be outdated or imprecise; database queries provide ground truth.
+
+  ## OUTPUT RULES
+
+  Deliver ONLY the final answer. Do not include:
+  - Tool call reasoning, intermediate findings, or confirmations ("Perfect!", "Great!", "The results show...")
+  - Process commentary ("I queried...", "Next I will...", "Based on the database...")
+  - Contradictory intermediate conclusions that were later revised
+
+  Your answer must be:
+  - COMPLETE: Include all key facts the question asks for (names, numbers, categories)
+  - PRECISE: Include only information that directly answers the question; omit tangential detail
+  - NON-REDUNDANT: State each fact once; synthesize rather than list and then re-summarize
+  - READABLE: Clear, fluent scientific prose with logical flow
+  - DIRECT: State findings as facts, without meta-references (no 'according to the database', 'the results indicate', etc.)
+
+  ## FORMAT BY QUESTION TYPE
+
+  - yes/no: Lead with "Yes." or "No.", then one or two supporting sentences with the key evidence.
+  - factoid: One concise sentence or short paragraph with the specific value(s) requested.
+  - list: A short introductory sentence, then a clean list. Each item on its own line; no repetition between intro and list items.
+  - choice: State the chosen option on the first line (bold or explicit), then a brief justification (2–5 sentences) with the retrieved numbers or evidence.
+  - summary: One coherent paragraph synthesizing the retrieved data. Aim for 5–10 sentences; cover breadth without padding.
+
+# Timeout and retry settings
+timeout: 120
+retry_attempts: 3
+retry_delay: 2
+max_retry_delay: 30
+
+# MCP server configurations
+mcp_servers:
+  togomcp:
+    type: http
+    url: https://test-togomcp.rdfportal.org/mcp
+  
+  pubmed:
+    type: http
+    url: https://pubmed.mcp.claude.com/mcp
+  
+  pubdictionaries:
+    type: http
+    url: https://pubdictionaries.org/mcp
+  
+  ols:
+    type: http
+    url: https://www.ebi.ac.uk/ols4/api/mcp
+
+# Tool access control
+allowed_tools:
+  - "mcp__*"
+
+disallowed_tools:
+  - WebSearch
+  - WebFetch
+  - web_search
+  - web_fetch
+  - mcp__togomcp__get_MIE_file
+
+# Notes:
+# - System prompts follow BioASQ ideal answer principles
+# - Four quality criteria: completeness, precision, non-redundancy, readability
+# - Direct factual style without meta-references
+# - Answers should read like encyclopedia entries
