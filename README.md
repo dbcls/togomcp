@@ -74,7 +74,7 @@ Edit your Claude Desktop config file:
 
 #### Admin Mode
 
-Replace `togo-mcp-local` with `togo-mcp-admin` to also enable tools for generating new MIE (Machine-Interpretable Entity) files — useful for contributors adding new database support.
+Replace `togo-mcp-local` with `togo-mcp-admin` to also enable tools for generating new MIE (Metadata-Interoperability-Exchange) files — useful for contributors adding new database support.
 
 ---
 
@@ -127,7 +127,7 @@ togo-mcp/
 │   ├── ncbi_tools.py       # NCBI E-utilities tools
 │   ├── rdf_portal.py       # RDF Portal / SPARQL tools
 │   └── togoid.py           # TogoID identifier conversion tools
-├── mie/                    # Machine-Interpretable Entity (MIE) files (YAML)
+├── mie/                    # Metadata-Interoperability-Exchange (MIE) files (YAML)
 │   ├── uniprot.yaml        # (one per supported database)
 │   └── ...
 ├── sparql-examples/        # Example SPARQL queries per database
