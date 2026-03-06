@@ -132,7 +132,6 @@ togo-mcp/
 │   └── ...
 ├── sparql-examples/        # Example SPARQL queries per database
 ├── shex/                   # ShEx schemas for RDF validation
-├── rdf-config/             # RDF Portal configuration files
 ├── docs/                   # Developer documentation
 │   ├── MIE_file_specs.md   # Spec for writing MIE files
 │   └── ...
