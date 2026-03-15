@@ -29,8 +29,8 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 ### 2. Clone and install
 ```bash
-git clone https://github.com/dbcls/togo-mcp.git
-cd togo-mcp
+git clone https://github.com/dbcls/togomcp.git
+cd togomcp
 uv sync
 ```
 
@@ -58,7 +58,7 @@ Edit your Claude Desktop config file:
             "command": "/path/to/uv",
             "args": [
                 "--directory",
-                "/path/to/togo-mcp",
+                "/path/to/togomcp",
                 "run",
                 "togo-mcp-local"
             ],
@@ -118,7 +118,7 @@ Once connected, you can ask your AI assistant things like:
 ## Directory Structure
 
 ```
-togo-mcp/
+togomcp/
 ├── togo_mcp/               # Main Python package
 │   ├── server.py           # MCP server entry point
 │   ├── main.py             # Core logic and tool registration
@@ -138,6 +138,7 @@ togo-mcp/
 ├── benchmark/              # Benchmarking scripts and results
 ├── scripts/                # Utility/maintenance scripts
 ├── resources/              # Static resources
+├── workflows/              # Example workflow prompts
 ├── Dockerfile              # Docker build configuration
 ├── pyproject.toml          # Python project metadata and entry points
 └── uv.lock                 # Locked dependency versions (uv)

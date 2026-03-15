@@ -6,4 +6,5 @@ echo "NCBI_API_KEY: ${NCBI_API_KEY}"
 
 docker container run --rm -d -p ${PORT}:8000 \
     -e NCBI_API_KEY=${NCBI_API_KEY} \
+    --restart always \
     ${IMAGE} 
