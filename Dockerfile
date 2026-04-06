@@ -5,7 +5,9 @@ FROM docker.io/astral/uv:python3.12-bookworm-slim
 # Set the working directory inside the container
 WORKDIR /app
 
-ENV TOGOMCP_DIR=/app
+# Data files are bundled inside the togo_mcp package at togo_mcp/data/.
+# Set TOGOMCP_DIR only if you need to override with external data.
+# ENV TOGOMCP_DIR=/app/togo_mcp/data
 
 # Copy the entire project into the container
 COPY . .
