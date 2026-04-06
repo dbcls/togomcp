@@ -1,14 +1,13 @@
+import csv
+import logging
+import os
+from pathlib import Path
+
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_request
-import csv
-from pathlib import Path
-from typing import Dict
-import os
 import httpx
-import logging
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse, HTMLResponse
-
+from starlette.responses import HTMLResponse, PlainTextResponse
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -16,11 +15,10 @@ logger = logging.getLogger(__name__)
 
 
 def toolcall_log(funname: str) -> None:
-    """
-    toolcall_log
+    """Log a tool call with the caller's IP address.
 
-    :param funname: The name of the tool being called.
-    :type funname: str
+    Args:
+        funname: The name of the tool being called.
     """
     try:
         request: Request = get_http_request()
@@ -44,8 +42,11 @@ ENDPOINTS_CSV = str(CWD.joinpath("resources", "endpoints.csv"))
 INDEX_HTML = str(CWD.joinpath("docs", "togomcp-intro.html"))
 KW_SEARCH_INSTRUCTIONS = str(CWD.joinpath("kw_search"))
 
+# Shared httpx client for SPARQL queries
+_sparql_client = httpx.AsyncClient(timeout=60.0)
 
-def load_sparql_endpoints(path: str) -> Dict[str, Dict[str, str]]:
+
+def load_sparql_endpoints(path: str) -> dict[str, dict[str, str]]:
     """Load SPARQL endpoints from a CSV file.
 
     Returns a dictionary keyed by database name with values containing:
@@ -54,7 +55,7 @@ def load_sparql_endpoints(path: str) -> Dict[str, Dict[str, str]]:
     - keyword_search: The keyword search API to use
     """
     endpoints = {}
-    with open(path, mode="r", encoding="utf-8") as csvfile:
+    with open(path, encoding="utf-8") as csvfile:
         reader = csv.reader(csvfile)
         next(reader)  # Skip header
         for row in reader:
@@ -73,8 +74,8 @@ SPARQL_ENDPOINT = load_sparql_endpoints(ENDPOINTS_CSV)
 DBNAME_DESCRIPTION = f"Database name: One of {','.join(SPARQL_ENDPOINT.keys())}"
 
 # Build reverse lookups for endpoint_name -> url and list of databases per endpoint
-ENDPOINT_NAME_TO_URL: Dict[str, str] = {}
-ENDPOINT_NAME_TO_DATABASES: Dict[str, list] = {}
+ENDPOINT_NAME_TO_URL: dict[str, str] = {}
+ENDPOINT_NAME_TO_DATABASES: dict[str, list] = {}
 for dbname, info in SPARQL_ENDPOINT.items():
     ep_name = info["endpoint_name"]
     ENDPOINT_NAME_TO_URL[ep_name] = info["url"]
@@ -142,10 +143,9 @@ async def execute_sparql(
     """
     url = resolve_endpoint_url(dbname, endpoint_name, endpoint_url)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            url, data={"query": sparql_query}, headers={"Accept": "text/csv"}
-        )
+    response = await _sparql_client.post(
+        url, data={"query": sparql_query}, headers={"Accept": "text/csv"}
+    )
     response.raise_for_status()
     return response.text
 
@@ -161,6 +161,6 @@ async def health_check(request: Request) -> PlainTextResponse:
 
 @mcp.custom_route("/", methods=["GET"])
 async def index(request: Request) -> HTMLResponse:
-    with open(INDEX_HTML, "r") as f:
+    with open(INDEX_HTML) as f:
         html_content = f.read()
     return HTMLResponse(html_content)
