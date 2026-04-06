@@ -14,8 +14,8 @@ schema_info:
     - http://rdfportal.org/dataset/supercon
   kw_search_tools: []
   version:
-    mie_version: '2.0'
-    mie_created: '2026-03-12'
+    mie_version: "2.0"
+    mie_created: "2026-03-23"
     data_version: NIMS SuperCon RDF (snapshot as of 2026)
     update_frequency: Irregular
   license:
@@ -27,9 +27,14 @@ schema_info:
     backend: Virtuoso
   ontology_warnings: |
     Two typos exist in the original ontology and MUST be used verbatim:
-      - dcterms:referecens  (NOT "references")
+      - dct:referecens  (NOT "references")
       - Schema#IntermalStructure  (NOT "InternalStructure")
     Using the corrected spellings will return zero results.
+
+    Note on instance IRIs vs class names: Although the class is typed
+    Schema:IntermalStructure (typo), the instance IRIs for structure nodes use the
+    correctly-spelled form, e.g. str:msc_om0000949_InternalStructure. Do not confuse
+    the two — the class name has the typo, but the instance IRI does not.
 
 shape_expressions: |
   PREFIX smp: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/smp#>
@@ -85,12 +90,13 @@ shape_expressions: |
     # Datum IRI: REPLACE(smp# -> prop#) + "_t2MeasurementDatum"
   }
 
-  # Crystal structure container (NOTE: "Intermal" is a known ontology typo)
+  # Crystal structure container (NOTE: "Intermal" is a known ontology typo for the CLASS;
+  # instance IRIs use correctly-spelled "InternalStructure")
   <IntermalStructureShape> {
     a [ Schema:IntermalStructure ] ;
     obo:BFO_0000051 IRI * ;   # structure type IRI (Schema#str1_01 .. str1_07)
     obo:RO_0000058 IRI *      # lattice parameter nodes (lata, latb, latc)
-    # Lattice datum IRIs: str# prefix + sample_id + "_lata/latb/latcDatum"
+    # Lattice datum IRIs: append "Datum" to the lattice node IRI
     # e.g. str:msc_om0000949_lataDatum -> sio:SIO_000300 -> 3.831 (Angstrom)
   }
 
@@ -270,7 +276,7 @@ sparql_query_examples:
   - title: Find all samples from a specific publication
     description: |
       Retrieves all superconductor samples linked to a specific literature reference using the
-      dcterms:referecens predicate (note: intentional typo in the ontology). Uses the reference
+      dct:referecens predicate (note: intentional typo in the ontology). Uses the reference
       IRI directly — the structured approach for literature-based queries. No text search needed:
       publication lookup uses the specific ref# IRI.
     question: What samples are documented in the Physical Review B paper PRB0404517?
@@ -284,7 +290,7 @@ sparql_query_examples:
       SELECT ?sample ?name ?formula ?tcVal
       FROM <http://rdfportal.org/dataset/supercon>
       WHERE {
-        # Query via specific reference IRI (dcterms:referecens — typo is intentional)
+        # Query via specific reference IRI (dct:referecens — typo is intentional)
         ?sample a Schema:OxideAndMetallic ;
                 dct:referecens ref:PRB0404517 ;
                 sio:SIO_000008 ?nameProp ;
@@ -366,7 +372,7 @@ sparql_query_examples:
 
   - title: Sample composition, Tc, and source article metadata
     description: |
-      Joins sample data with the linked bibo:Article reference using dcterms:referecens
+      Joins sample data with the linked bibo:Article reference using dct:referecens
       (intentional typo) to retrieve title, authors, and year alongside Tc and formula.
       Structured approach: typed predicates Schema:tc, Schema:name, Schema:element + specific
       reference node navigation via dct:referecens IRI.
@@ -438,9 +444,11 @@ sparql_query_examples:
     description: |
       Structural-property correlation query. Retrieves lattice parameter a (lata) alongside Tc
       for crystal structure type str1_03. Uses RO_0000058 (is concretized as) to navigate to
-      lattice parameter nodes, then constructs the datum IRI using the str# namespace.
-      Note the different IRI construction pattern for structure datums (str# prefix, no
-      "Measurement" in name) versus Tc datums (prop# prefix, _tcMeasurementDatum suffix).
+      lattice parameter nodes, then constructs the datum IRI by appending "Datum" to the
+      lattice node IRI.
+      Note: lattice datum IRIs are simply the lattice node IRI with "Datum" appended
+      (e.g. str:msc_om0000949_lata -> str:msc_om0000949_lataDatum). This differs from the
+      Tc datum pattern which requires replacing smp# with prop#.
       Structured approach: specific structure type IRI Schema:str1_03 + typed predicates
       Schema:IntermalStructure, Schema:lata, Schema:tc.
     question: What is the a-axis lattice parameter vs Tc for structure type str1_03 samples?
@@ -465,8 +473,8 @@ sparql_query_examples:
                  obo:BFO_0000051 Schema:str1_03 ;
                  obo:RO_0000058  ?lataNode .
         ?lataNode a Schema:lata .
-        # Lattice datum IRI: str# namespace + Datum suffix (different from prop# datums)
-        BIND(IRI(CONCAT(REPLACE(STR(?lataNode), "Schema#lata", "str#"), "Datum")) AS ?lataDatum)
+        # Lattice datum IRI: simply append "Datum" to the lattice node IRI
+        BIND(IRI(CONCAT(STR(?lataNode), "Datum")) AS ?lataDatum)
         ?lataDatum sio:SIO_000300 ?lataVal .
         ?tcProp a Schema:tc .
         BIND(IRI(CONCAT(REPLACE(STR(?sample), "smp#", "prop#"), "_tcMeasurementDatum")) AS ?tcDatum)
@@ -491,9 +499,9 @@ cross_database_queries:
       - Use togoid_convertId() if a conversion route to another database exists.
 
 cross_references:
-  - pattern: "dcterms:referecens (-> bibo:Article)"
+  - pattern: dct:referecens (-> bibo:Article)
     description: |
-      Each sample links to one or more internal journal article nodes via dcterms:referecens
+      Each sample links to one or more internal journal article nodes via dct:referecens
       (typo intentional). Reference IRIs use journal-specific codes: "PRB" = Physical Review B,
       "NAT" = Nature, "PHC" = Physica C, etc. No external DOI/PMID links are embedded.
     databases:
@@ -518,16 +526,17 @@ architectural_notes:
     - "No keyword search API exists; use exploratory SPARQL with LIMIT 10 to discover IRIs and values"
     - "Comprehensive queries: use Schema:tc, Schema:element, Schema:name typed predicates — never text search for property selection"
     - "Tc value access: BIND(IRI(CONCAT(REPLACE(STR(?sample),'smp#','prop#'),'_tcMeasurementDatum')) AS ?tcDatum)"
-    - "Lattice datum access uses str# namespace: BIND(IRI(CONCAT(REPLACE(STR(?lataNode),'Schema#lata','str#'),'Datum')) AS ?lataDatum)"
+    - "Lattice datum access: simply append 'Datum' to the lattice node IRI — BIND(IRI(CONCAT(STR(?lataNode),'Datum')) AS ?lataDatum)"
     - "Structure type filtering: use specific IRI VALUES { Schema:str1_01 ... Schema:str1_07 } or STRSTARTS filter"
     - "Text search (bif:contains) is legitimate ONLY for SamplePreparation.rdfs:comment — the only unstructured free-text field"
     - "Always include LIMIT in every query, including GROUP BY aggregations"
   schema_design:
     - "Central entity: Schema:OxideAndMetallic (165,969 instances); all properties hang off sio:SIO_000008 (has attribute)"
     - "Numeric values always via sio:SIO_000300 (has value) on IAO_0000109 MeasurementDatum nodes"
-    - "Datum IRI convention: replace smp# with prop# in sample IRI + _{propname}MeasurementDatum"
-    - "Lattice datum convention: str# namespace + sample_id + _{lata/latb/latc}Datum (no 'Measurement' in name)"
-    - "Two critical typos: dcterms:referecens (not 'references'), Schema:IntermalStructure (not 'InternalStructure')"
+    - "Tc datum IRI convention: replace smp# with prop# in sample IRI + _{propname}MeasurementDatum"
+    - "Lattice datum IRI convention: lattice node IRI + 'Datum' suffix (e.g. str:..._lata -> str:..._lataDatum)"
+    - "Two critical typos: dct:referecens (not 'references'), Schema:IntermalStructure (not 'InternalStructure')"
+    - "Instance IRIs for structure nodes use correctly-spelled 'InternalStructure' (e.g. str:msc_om0000949_InternalStructure) even though the class is Schema:IntermalStructure"
     - "Crystal structure types use 7 IRIs: Schema:str1_01 through Schema:str1_07 (no rdfs:labels in dataset)"
     - "SamplePreparation entities (22,165) carry free-text synthesis descriptions in rdfs:comment"
   performance:
@@ -538,7 +547,7 @@ architectural_notes:
     - "LIMIT 50 or fewer for exploratory queries; LIMIT 20 for GROUP BY aggregations"
   data_integration:
     - "No external URI links; literature references are internal bibo:Article nodes only"
-    - "Bibliographic citation strings in dcterms:bibliographicCitation can be parsed for journal/year/page"
+    - "Bibliographic citation strings in dct:bibliographicCitation can be parsed for journal/year/page"
     - "Element formula strings (Schema:element -> SIO_000300) use stoichiometric notation for chemical parsing"
     - "To bridge to external DBs: use formula strings with get_pubchem_compound_id() or togoid_convertId()"
   data_quality:
@@ -557,7 +566,7 @@ data_statistics:
     tc_property_nodes: 26358
     IntermalStructure_nodes: 26449
     Article_references: 7249
-  verified_date: '2026-03-12'
+  verified_date: "2026-03-12"
   verification_method: Direct COUNT queries on each class
   verification_queries:
     samples: |
@@ -573,11 +582,11 @@ data_statistics:
         ?d <http://semanticscience.org/resource/SIO_000300> ?v .
       }
   coverage:
-    samples_with_Tc: 15.9% of OxideAndMetallic samples have tc property nodes (26,358 / 165,969)
-    samples_Tc_above_77K: 4,707 samples with Tc > 77 K (liquid nitrogen threshold)
-    Tc_range: 0 K to 323 K (some high values are under-pressure or disputed measurements)
-    publications: 7,249 unique journal articles from journals including Phys.Rev.B, Nature, Physica C
-    verified_date: '2026-03-12'
+    samples_with_Tc: "15.9% of OxideAndMetallic samples have tc property nodes (26,358 / 165,969)"
+    samples_Tc_above_77K: "4,707 samples with Tc > 77 K (liquid nitrogen threshold)"
+    Tc_range: "0 K to 323 K (some high values are under-pressure or disputed measurements)"
+    publications: "7,249 unique journal articles from journals including Phys.Rev.B, Nature, Physica C"
+    verified_date: "2026-03-12"
 
 anti_patterns:
   - title: Using text search for property types when typed predicates exist
@@ -623,7 +632,7 @@ anti_patterns:
   - title: Using corrected ontology spellings (will return zero results)
     problem: |
       Using the grammatically correct spelling "references" or "InternalStructure" — these do
-      not exist in the dataset. The typos in the original ontology must be used verbatim.
+      not exist in the dataset as class names. The typos in the original ontology must be used verbatim.
     wrong_sparql: |
       # Wrong: corrected spelling returns nothing
       ?sample dcterms:references ?ref .
@@ -636,9 +645,11 @@ anti_patterns:
       ?strNode a Schema:IntermalStructure .  # note: "Intermal" not "Internal"
     explanation: |
       Both typos (referecens, IntermalStructure) are fixed in the ontology namespace and cannot
-      be worked around. They must be spelled exactly as shown.
+      be worked around. They must be spelled exactly as shown. Note however that instance IRIs
+      for structure nodes use the correctly-spelled "InternalStructure" (e.g.
+      str:msc_om0000949_InternalStructure) — only the class name carries the typo.
 
-  - title: Circular reasoning — using sample search results for comprehensive Tc counts
+  - title: "Circular reasoning — using sample search results for comprehensive Tc counts"
     problem: |
       Constructing a VALUES clause with a manually gathered list of sample IRIs to count Tc
       values, instead of querying all instances via the typed predicate.
@@ -663,27 +674,29 @@ anti_patterns:
 common_errors:
   - error: Empty results when accessing Tc values
     causes:
-      - Using sio:SIO_000221 instead of sio:SIO_000300 for the numeric value (221 is unit, 300 is value)
-      - Wrong IRI construction — forgetting to REPLACE smp# with prop# before appending _tcMeasurementDatum
-      - Trying IAO_0000221 (is about) to navigate from datum to property instead of using BIND
+      - "Using sio:SIO_000221 instead of sio:SIO_000300 for the numeric value (221 is unit, 300 is value)"
+      - "Wrong IRI construction — forgetting to REPLACE smp# with prop# before appending _tcMeasurementDatum"
+      - "Trying IAO_0000221 (is about) to navigate from datum to property instead of using BIND"
     solutions:
       - "Numeric values: sio:SIO_000300 on the Datum node"
       - "Units (often empty): sio:SIO_000221 on the Datum node"
       - "Tc datum IRI: BIND(IRI(CONCAT(REPLACE(STR(?sample),'smp#','prop#'),'_tcMeasurementDatum')) AS ?tcDatum)"
+
   - error: Zero results for structure or reference queries
     causes:
-      - Using dcterms:references instead of dcterms:referecens (typo required)
-      - Using Schema:InternalStructure instead of Schema:IntermalStructure (typo required)
-      - Querying lata Datum with prop# prefix instead of str# prefix
+      - "Using dct:references instead of dct:referecens (typo required)"
+      - "Using Schema:InternalStructure instead of Schema:IntermalStructure (typo required)"
+      - "Constructing lattice datum IRI with wrong pattern instead of simply appending 'Datum'"
     solutions:
       - "Reference: dct:referecens (with 'cens' not 'nces')"
-      - "Structure: Schema:IntermalStructure (with 'Intermal' not 'Internal')"
-      - "Lattice datums: str:msc_om{id}_{lata/latb/latc}Datum (str# namespace, no 'Measurement')"
+      - "Structure class: Schema:IntermalStructure (with 'Intermal' not 'Internal')"
+      - "Lattice datums: append 'Datum' to the lattice node IRI (e.g. str:..._lata -> str:..._lataDatum)"
+
   - error: Query timeout on broad scans
     causes:
-      - Scanning all 165,969 OxideAndMetallic nodes without property type filters
-      - Not including the graph clause FROM <http://rdfportal.org/dataset/supercon>
-      - Joining IAO_0000109 nodes (124,976) without the BIND pattern
+      - "Scanning all 165,969 OxideAndMetallic nodes without property type filters"
+      - "Not including the graph clause FROM <http://rdfportal.org/dataset/supercon>"
+      - "Joining IAO_0000109 nodes (124,976) without the BIND pattern"
     solutions:
       - "Always include `a Schema:OxideAndMetallic` and the specific property type (e.g., `?tcProp a Schema:tc`)"
       - "Always include FROM <http://rdfportal.org/dataset/supercon>"

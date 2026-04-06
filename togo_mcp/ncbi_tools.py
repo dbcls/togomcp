@@ -6,6 +6,7 @@ Provides keyword search functionality for NCBI databases using the esearch API:
 - NCBI Taxonomy (taxonomy)
 - ClinVar (clinvar)
 - MedGen (medgen)
+- MeSH (mesh)
 - PubMed (pubmed)
 - PubChem Compound (pccompound)
 - PubChem Substance (pcsubstance)
@@ -74,6 +75,15 @@ NCBI_DATABASES = {
         "description": "Search for medical genetics concepts and conditions",
         "example_query": "breast cancer[All Fields]",
         "supported_fields": ["[All Fields]", "[Disease/Phenotype]"],
+        "field_tags_critical": False,
+    },
+    "mesh": {
+        "label": "MeSH",
+        "id_label": "MeSH Unique IDs",
+        "url_template": "https://www.ncbi.nlm.nih.gov/mesh/{id}",
+        "description": "Search for Medical Subject Headings (MeSH) terms and descriptors",
+        "example_query": "asthma[MeSH Terms]",
+        "supported_fields": ["[MeSH Terms]", "[MeSH Subheading]", "[All Fields]"],
         "field_tags_critical": False,
     },
     "pubmed": {
@@ -315,6 +325,7 @@ async def ncbi_esearch(
             - "taxonomy": NCBI Taxonomy (organism information)
             - "clinvar": ClinVar (genetic variants) ⚠️ FIELD TAGS CRITICAL
             - "medgen": MedGen (medical genetics concepts)
+            - "mesh": MeSH (Medical Subject Headings)
             - "pubmed": PubMed (biomedical literature)
             - "pccompound": PubChem Compound
             - "pcsubstance": PubChem Substance
@@ -346,6 +357,7 @@ async def ncbi_esearch(
            query="human AND TP53"
     
     Examples - OTHER DATABASES:
+        MeSH: database="mesh", query="asthma[MeSH Terms]"
         PubMed: database="pubmed", query="CRISPR[Title/Abstract] AND gene editing"
         Taxonomy: database="taxonomy", query="Escherichia coli[Scientific Name]"
         ClinVar: database="clinvar", query="BRCA1[Gene Name] AND pathogenic[Clinical Significance]"
