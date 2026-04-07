@@ -126,18 +126,15 @@ togomcp/
 │   ├── api_tools.py        # REST API integrations (ChEMBL, PDB, Reactome, etc.)
 │   ├── ncbi_tools.py       # NCBI E-utilities tools
 │   ├── rdf_portal.py       # RDF Portal / SPARQL tools
-│   └── togoid.py           # TogoID identifier conversion tools
-├── mie/                    # Metadata-Interoperability-Exchange (MIE) files (YAML)
-│   ├── uniprot.yaml        # (one per supported database)
-│   └── ...
-├── sparql-examples/        # Example SPARQL queries per database
+│   ├── togoid.py           # TogoID identifier conversion tools
+│   └── data/               # Bundled data files (included in wheel)
+│       ├── mie/            # MIE files (YAML, one per database)
+│       ├── docs/           # Developer documentation
+│       ├── resources/      # Static resources (endpoints.csv, prompts, etc.)
+│       └── sparql-examples/# Example SPARQL queries per database
 ├── shex/                   # ShEx schemas for RDF validation
-├── docs/                   # Developer documentation
-│   ├── MIE_file_specs.md   # Spec for writing MIE files
-│   └── ...
 ├── benchmark/              # Benchmarking scripts and results
 ├── scripts/                # Utility/maintenance scripts
-├── resources/              # Static resources
 ├── workflows/              # Example workflow prompts
 ├── Dockerfile              # Docker build configuration
 ├── pyproject.toml          # Python project metadata and entry points
@@ -148,7 +145,7 @@ togomcp/
 
 ## Contributing
 
-Contributions are welcome! To add support for a new database, see the `mie/` directory and the admin-mode tools for generating MIE files. Please open an issue or pull request on GitHub.
+Contributions are welcome! To add support for a new database, see the `togo_mcp/data/mie/` directory and the admin-mode tools for generating MIE files. Please open an issue or pull request on GitHub.
 
 ## License
 
