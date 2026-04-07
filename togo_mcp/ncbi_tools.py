@@ -16,6 +16,7 @@ Requires NCBI_API_KEY environment variable for optimal rate limits (10 req/sec v
 """
 
 import asyncio
+import logging
 import os
 import re
 from typing import Any
@@ -28,9 +29,12 @@ from .server import toolcall_log
 
 # Get API key from environment
 NCBI_API_KEY = os.environ.get("NCBI_API_KEY")
-NCBI_EMAIL = os.environ.get(
-    "NCBI_EMAIL", "your-email@example.com"
-)  # NCBI recommends providing email
+NCBI_EMAIL = os.environ.get("NCBI_EMAIL")
+if not NCBI_EMAIL:
+    NCBI_EMAIL = "togomcp@dbcls.jp"
+    logging.getLogger(__name__).warning(
+        "NCBI_EMAIL not set. Using default: %s", NCBI_EMAIL
+    )
 
 # Rate limiting
 RATE_LIMIT_DELAY = 0.1 if NCBI_API_KEY else 0.34  # 10/sec with key, 3/sec without
@@ -173,7 +177,9 @@ def _validate_query_field_tags(query: str, database: str) -> dict[str, Any]:
     # General warning if no field tags at all
     if not has_field_tags and is_critical:
         issues.append("No NCBI field tags found in query")
-        suggestions.append(f"Add field tags from: {', '.join(db_info.get('supported_fields', []))}")
+        suggestions.append(
+            f"Add field tags from: {', '.join(db_info.get('supported_fields', []))}"
+        )
 
     return {
         "has_issues": len(issues) > 0,
@@ -287,7 +293,9 @@ Returned: {len(ids)} (showing {retstart}-{int(retstart) + len(ids)})
 
         if validation.get("is_critical"):
             result += "⚠️  CRITICAL: For comprehensive results, use NCBI field tags!\n"
-            result += "   Without field tags, you may miss 70-80% of relevant results.\n\n"
+            result += (
+                "   Without field tags, you may miss 70-80% of relevant results.\n\n"
+            )
 
         for issue in validation.get("issues", []):
             result += f"• {issue}\n"
@@ -297,7 +305,9 @@ Returned: {len(ids)} (showing {retstart}-{int(retstart) + len(ids)})
             for suggestion in validation.get("suggestions", []):
                 result += f"  → {suggestion}\n"
 
-        result += f"\nSupported field tags: {', '.join(db_info.get('supported_fields', []))}"
+        result += (
+            f"\nSupported field tags: {', '.join(db_info.get('supported_fields', []))}"
+        )
         result += f"\nExample: {db_info.get('example_query', 'N/A')}\n"
         result += "\nSee: https://www.ncbi.nlm.nih.gov/books/NBK3837/\n"
 
@@ -416,7 +426,9 @@ async def ncbi_esearch(
         return [TextContent(type="text", text=result)]
 
     except NCBISearchError as e:
-        return [TextContent(type="text", text=f"Error searching NCBI {database}: {str(e)}")]
+        return [
+            TextContent(type="text", text=f"Error searching NCBI {database}: {str(e)}")
+        ]
     except Exception as e:
         return [TextContent(type="text", text=f"Unexpected error: {str(e)}")]
 
@@ -434,7 +446,9 @@ async def ncbi_list_databases() -> list[TextContent]:
     result = "Supported NCBI Databases\n" + "=" * 50 + "\n\n"
 
     for db_name, db_info in NCBI_DATABASES.items():
-        critical_marker = " ⚠️ FIELD TAGS CRITICAL" if db_info.get("field_tags_critical") else ""
+        critical_marker = (
+            " ⚠️ FIELD TAGS CRITICAL" if db_info.get("field_tags_critical") else ""
+        )
         result += f'{db_info["label"]} (database="{db_name}"){critical_marker}\n'
         result += f"  Description: {db_info['description']}\n"
         result += f"  ID Type: {db_info['id_label']}\n"
@@ -500,7 +514,9 @@ async def ncbi_esummary(database: str, ids: list[str]) -> list[TextContent]:
                 return [TextContent(type="text", text=formatted_json)]
 
         except Exception as e:
-            return [TextContent(type="text", text=f"Error fetching summaries: {str(e)}")]
+            return [
+                TextContent(type="text", text=f"Error fetching summaries: {str(e)}")
+            ]
 
 
 @ncbi_mcp.tool()
