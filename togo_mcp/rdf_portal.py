@@ -7,10 +7,6 @@ import yaml
 
 from .server import *
 
-# @mcp.resource("resource://boilerplate")
-# def boilerplate() -> str:
-#     return "Hello! I don't know why this is here. But, the server doesn't work without it."
-
 
 @mcp.tool(name="TogoMCP_Usage_Guide")
 def togomcp_usage_guide() -> str:
@@ -53,7 +49,10 @@ async def get_sparql_endpoints() -> dict[str, Any]:
     return {
         "databases": SPARQL_ENDPOINT,
         "endpoints": {
-            name: {"url": ENDPOINT_NAME_TO_URL[name], "databases": ENDPOINT_NAME_TO_DATABASES[name]}
+            name: {
+                "url": ENDPOINT_NAME_TO_URL[name],
+                "databases": ENDPOINT_NAME_TO_DATABASES[name],
+            }
             for name in ENDPOINT_NAMES
         },
     }
@@ -108,9 +107,12 @@ async def run_sparql(
 
 
 @mcp.tool(
-    name="get_graph_list", description="Get a list of named graphs in a specific RDF database."
+    name="get_graph_list",
+    description="Get a list of named graphs in a specific RDF database.",
 )
-async def get_graph_list(dbname: Annotated[str, Field(description=DBNAME_DESCRIPTION)]) -> str:
+async def get_graph_list(
+    dbname: Annotated[str, Field(description=DBNAME_DESCRIPTION)],
+) -> str:
     f"""
     Get a list of named graphs in a specific RDF database.
 
@@ -134,7 +136,9 @@ SELECT DISTINCT ?graph WHERE {
     name="get_MIE_file",
     description="**At the start of any task, identify ALL databases needed and call this tool for EACH of them before writing any SPARQL queries.** Do not query a database until its MIE file has been read. Get the MIE (Metadata Interoperability Exchange) file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database.",
 )
-async def get_MIE_file(dbname: Annotated[str, Field(description=DBNAME_DESCRIPTION)]) -> str:
+async def get_MIE_file(
+    dbname: Annotated[str, Field(description=DBNAME_DESCRIPTION)],
+) -> str:
     f"""
     Get the MIE file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database in YAML format, which can be used as a hint to build SPARQL queries.
 
@@ -146,18 +150,11 @@ async def get_MIE_file(dbname: Annotated[str, Field(description=DBNAME_DESCRIPTI
     """
     toolcall_log("get_MIE_file")
     mie_file = Path(MIE_DIR).joinpath(f"{dbname}.yaml")
-    drop_keys = []
-    #    drop_keys += ["data_statistics", "architectural_notes"]
-    #    drop_keys += ["validation_notes"]
     if not mie_file.exists():
-        return f"Error: The MIE file for '{dbname}' was not found."
-    try:
-        with open(mie_file, encoding="utf-8") as file:
-            content = file.read()
-        response_text = f"Content-type: application/yaml; charset=utf-8\n{content}"
-        return response_text
-    except Exception as e:
-        return f"Error reading MIE file for '{dbname}': {e}"
+        raise FileNotFoundError(f"MIE file not found for database: '{dbname}'")
+    with open(mie_file, encoding="utf-8") as file:
+        content = file.read()
+    return f"Content-type: application/yaml; charset=utf-8\n{content}"
 
 
 # Module-level cache for list_databases results
@@ -235,7 +232,9 @@ def list_databases() -> list[dict[str, Any]]:
 
             schema_info = data.get("schema_info")
             if not isinstance(schema_info, dict):
-                raise yaml.YAMLError("'schema_info' section not found or not a dictionary.")
+                raise yaml.YAMLError(
+                    "'schema_info' section not found or not a dictionary."
+                )
 
             title = schema_info.get("title")
             description = schema_info.get("description")
