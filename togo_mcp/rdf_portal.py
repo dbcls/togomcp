@@ -150,9 +150,6 @@ async def get_MIE_file(
     """
     toolcall_log("get_MIE_file")
     mie_file = Path(MIE_DIR).joinpath(f"{dbname}.yaml")
-    drop_keys = []
-    #    drop_keys += ["data_statistics", "architectural_notes"]
-    #    drop_keys += ["validation_notes"]
     if not mie_file.exists():
         raise FileNotFoundError(f"MIE file not found for database: '{dbname}'")
     with open(mie_file, encoding="utf-8") as file:
