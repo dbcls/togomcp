@@ -147,6 +147,10 @@ togomcp/
 
 Contributions are welcome! To add support for a new database, see the `togo_mcp/data/mie/` directory and the admin-mode tools for generating MIE files. Please open an issue or pull request on GitHub.
 
+## Reference
+
+Kinjo, A. R., Yamamoto, Y., Bustamante-Larriet, S., Labra-Gayo, J.-E., & Fujisawa, T. (2026). TogoMCP: Natural Language Querying of Life-Science Knowledge Graphs via Schema-Guided LLMs and the Model Context Protocol. *bioRxiv*. https://doi.org/10.64898/2026.03.19.713030
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
