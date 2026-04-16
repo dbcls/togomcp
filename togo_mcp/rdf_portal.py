@@ -270,12 +270,20 @@ def list_databases() -> list[dict[str, Any]]:
                     "description": f"Error processing YAML file: {e}",
                 }
             )
+        except FileNotFoundError:
+            all_schemas_info.append(
+                {
+                    "database": db_name,
+                    "title": "No title found.",
+                    "description": f"MIE file not found: {filename}",
+                }
+            )
         except OSError as e:
             all_schemas_info.append(
                 {
                     "database": db_name,
                     "title": "No title found.",
-                    "description": f"Error reading file: {e}",
+                    "description": f"Error reading {filename}: {e.strerror or 'unknown error'}",
                 }
             )
 
