@@ -790,7 +790,7 @@ togoid_convertId("MONDO:0005178", "mondo,doid")    → 8398
 togoid_convertId("MONDO:0005178", "mondo,hp_phenotype") → HP:0002758
 
 ## Step 2: SPARQL - Find Disease Proteins
-run_sparql(dbname="uniprot", sparql_query="""
+run_sparql(database="uniprot", sparql_query="""
 PREFIX up: <http://purl.uniprot.org/core/>
 SELECT DISTINCT ?protein ?mnemonic ?fullName ?diseaseComment
 WHERE {
@@ -820,7 +820,7 @@ togoid_convertId("P45452,O75173,Q9UNA0", "uniprot,chembl_target")
 → [CHEMBL2318, CHEMBL280, CHEMBL2285]
 
 ## Step 4: SPARQL - Pathway Analysis
-run_sparql(dbname="reactome", sparql_query="""
+run_sparql(database="reactome", sparql_query="""
 PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
 SELECT DISTINCT ?pathway ?name
 FROM <http://rdf.ebi.ac.uk/dataset/reactome>

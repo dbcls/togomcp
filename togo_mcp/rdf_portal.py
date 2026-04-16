@@ -42,7 +42,7 @@ async def get_sparql_endpoints() -> dict[str, Any]:
 
     Returns:
         Dict with two keys:
-        - databases: Dict mapping dbname -> {url, endpoint_name, keyword_search}
+        - databases: Dict mapping database -> {url, endpoint_name, keyword_search}
         - endpoints: Dict mapping endpoint_name -> {url, databases}
     """
     toolcall_log("get_sparql_endpoints")
@@ -60,11 +60,20 @@ async def get_sparql_endpoints() -> dict[str, Any]:
 
 @mcp.tool(
     name="run_sparql",
-    description="Run a SPARQL query on an RDF database. Specify dbname for single-database queries, or endpoint_name/endpoint_url for cross-database queries on shared endpoints.",
+    description=(
+        "Run a SPARQL query on an RDF database. "
+        f"Specify database (valid values: {', '.join(SPARQL_ENDPOINT_KEYS)}) "
+        "for single-database queries, or endpoint_name (valid values: "
+        f"{', '.join(ENDPOINT_NAMES)}) / endpoint_url for cross-database "
+        "queries on shared endpoints. Invalid database/endpoint_name values "
+        "fail immediately with a deterministic error — do not retry."
+    ),
 )
 async def run_sparql(
     sparql_query: Annotated[str, Field(description="The SPARQL query to execute")],
-    dbname: Annotated[str, Field(description=DBNAME_DESCRIPTION, default="")] = "",
+    database: Annotated[
+        str, Field(description=DATABASE_DESCRIPTION, default="")
+    ] = "",
     endpoint_name: Annotated[
         str,
         Field(
@@ -80,6 +89,8 @@ async def run_sparql(
             default="",
         ),
     ] = "",
+    dbname: str = "",
+    db: str = "",
 ) -> str:
     """
     Run a SPARQL query on an RDF database.
@@ -88,19 +99,23 @@ async def run_sparql(
 
     Args:
         sparql_query (str): The SPARQL query to execute.
-        dbname (str, optional): Database name for single-database queries.
+        database (str, optional): Database name for single-database queries.
+            Accepts aliases `dbname` and `db`.
         endpoint_name (str, optional): Endpoint name for cross-database queries (e.g., 'ebi' for ChEMBL+ChEBI).
         endpoint_url (str, optional): Direct SPARQL endpoint URL.
+        dbname (str, optional): Alias for `database`.
+        db (str, optional): Alias for `database`.
 
     Note:
-        Provide at least one of: dbname, endpoint_name, or endpoint_url.
-        Priority: endpoint_url > endpoint_name > dbname
+        Provide at least one of: database (or dbname/db), endpoint_name, or endpoint_url.
+        Priority: endpoint_url > endpoint_name > database.
 
     Returns:
         str: CSV-formatted results of the SPARQL query.
     """
     toolcall_log("run_sparql")
-    return await execute_sparql(sparql_query, dbname, endpoint_name, endpoint_url)
+    database = database or dbname or db
+    return await execute_sparql(sparql_query, database, endpoint_name, endpoint_url)
 
 
 # --- Tools for exploring RDF databases ---
@@ -111,13 +126,13 @@ async def run_sparql(
     description="Get a list of named graphs in a specific RDF database.",
 )
 async def get_graph_list(
-    dbname: Annotated[str, Field(description=DBNAME_DESCRIPTION)],
+    database: Annotated[str, Field(description=DATABASE_DESCRIPTION)],
 ) -> str:
     f"""
     Get a list of named graphs in a specific RDF database.
 
     Args:
-        dbname (str): The name of the database for which to retrieve the named graphs. Supported values are {", ".join(SPARQL_ENDPOINT.keys())}.
+        database (str): The name of the database for which to retrieve the named graphs. Supported values are {", ".join(SPARQL_ENDPOINT.keys())}.
 
     Returns:
         str: CSV-formatted list of named graphs.
@@ -129,7 +144,7 @@ SELECT DISTINCT ?graph WHERE {
     ?s ?p ?o .
   }
 }"""
-    return await execute_sparql(sparql_query, dbname)
+    return await execute_sparql(sparql_query, database)
 
 
 @mcp.tool(
@@ -137,21 +152,21 @@ SELECT DISTINCT ?graph WHERE {
     description="**At the start of any task, identify ALL databases needed and call this tool for EACH of them before writing any SPARQL queries.** Do not query a database until its MIE file has been read. Get the MIE (Metadata Interoperability Exchange) file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database.",
 )
 async def get_MIE_file(
-    dbname: Annotated[str, Field(description=DBNAME_DESCRIPTION)],
+    database: Annotated[str, Field(description=DATABASE_DESCRIPTION)],
 ) -> str:
     f"""
     Get the MIE file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database in YAML format, which can be used as a hint to build SPARQL queries.
 
     Args:
-        dbname (str): The name of the database for which to retrieve the shape expression. Supported values are {", ".join(SPARQL_ENDPOINT.keys())}."
+        database (str): The name of the database for which to retrieve the shape expression. Supported values are {", ".join(SPARQL_ENDPOINT.keys())}."
 
     Returns:
         str: The MIE file containing the RDF schema information in YAML format.
     """
     toolcall_log("get_MIE_file")
-    mie_file = Path(MIE_DIR).joinpath(f"{dbname}.yaml")
+    mie_file = Path(MIE_DIR).joinpath(f"{database}.yaml")
     if not mie_file.exists():
-        raise FileNotFoundError(f"MIE file not found for database: '{dbname}'")
+        raise FileNotFoundError(f"MIE file not found for database: '{database}'")
     with open(mie_file, encoding="utf-8") as file:
         content = file.read()
     return f"Content-type: application/yaml; charset=utf-8\n{content}"

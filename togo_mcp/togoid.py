@@ -1,8 +1,18 @@
 import atexit
+import re
 
 import httpx
 
 from .server import *
+
+
+def _ids_to_csv(ids: str | list[str]) -> str:
+    """Normalize an `ids` argument (list or separated string) to a CSV string."""
+    if isinstance(ids, str):
+        tokens = [s.strip() for s in re.split(r"[,\s]+", ids) if s.strip()]
+    else:
+        tokens = [str(i).strip() for i in ids if str(i).strip()]
+    return ",".join(tokens)
 
 _client = httpx.AsyncClient(base_url="https://api.togoid.dbcls.jp")
 
@@ -174,7 +184,7 @@ async def getDescription() -> dict:
 
 @togoid_mcp.tool()
 async def convertId(
-    ids: str,
+    ids: str | list[str],
     route: str,
     limit: int = 10000,
     offset: int = 0,
@@ -191,7 +201,9 @@ async def convertId(
         3. Then call convertId() with your IDs
 
     Args:
-        ids: Comma-separated list of source IDs.
+        ids: Source IDs. Accepts either a list of strings
+            (e.g., ["672", "675", "7157"]) or a comma-separated string
+            ("672,675,7157").
             Examples: "672,675,7157" (NCBI Gene IDs), "P38398,P04637" (UniProt)
         route: Comma-separated pair of dataset keys: 'source,target'.
             Examples:
@@ -218,7 +230,7 @@ async def convertId(
     """
     toolcall_log("convertId")
     params = {
-        "ids": ids,
+        "ids": _ids_to_csv(ids),
         "route": route,
         "report": "pair",
         "format": "json",
@@ -233,7 +245,7 @@ async def convertId(
 
 
 @togoid_mcp.tool()
-async def countId(source: str, target: str, ids: str) -> dict:
+async def countId(source: str, target: str, ids: str | list[str]) -> dict:
     """Check how many of your IDs can be converted before doing bulk conversion.
 
     A lightweight pre-check: tells you how many source IDs have mappings in the
@@ -245,7 +257,8 @@ async def countId(source: str, target: str, ids: str) -> dict:
     Args:
         source: Source database key (e.g., 'ncbigene', 'uniprot')
         target: Target database key (e.g., 'uniprot', 'pdb')
-        ids: Comma-separated list of source IDs to check
+        ids: Source IDs to check. Accepts either a list of strings or a
+            comma-separated string (e.g., ["672", "675"] or "672,675").
 
     Returns:
         Dictionary with:
@@ -258,6 +271,8 @@ async def countId(source: str, target: str, ids: str) -> dict:
         # (3 genes map to 5 UniProt entries — some genes have multiple proteins)
     """
     toolcall_log("countId")
-    response = await _client.get(f"/count/{source}-{target}", params={"ids": ids})
+    response = await _client.get(
+        f"/count/{source}-{target}", params={"ids": _ids_to_csv(ids)}
+    )
     response.raise_for_status()
     return response.json()

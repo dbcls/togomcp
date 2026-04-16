@@ -110,45 +110,56 @@ class TestResolveEndpointUrl:
     def test_endpoint_url_has_highest_priority(self) -> None:
         """When endpoint_url is provided, it is returned regardless of other args."""
         url = resolve_endpoint_url(
-            dbname="chembl",
+            database="chembl",
             endpoint_name="ebi",
             endpoint_url="https://custom.example.com/sparql",
         )
         assert url == "https://custom.example.com/sparql"
 
-    def test_endpoint_name_over_dbname(self) -> None:
-        """endpoint_name takes priority over dbname when endpoint_url is empty."""
+    def test_endpoint_name_over_database(self) -> None:
+        """endpoint_name takes priority over database when endpoint_url is empty."""
         from togo_mcp.server import ENDPOINT_NAME_TO_URL, ENDPOINT_NAMES
 
         if not ENDPOINT_NAMES:
             pytest.skip("No endpoint names configured")
         ep_name = ENDPOINT_NAMES[0]
         expected_url = ENDPOINT_NAME_TO_URL[ep_name]
-        url = resolve_endpoint_url(dbname="", endpoint_name=ep_name, endpoint_url="")
+        url = resolve_endpoint_url(database="", endpoint_name=ep_name, endpoint_url="")
         assert url == expected_url
 
-    def test_dbname_fallback(self) -> None:
-        """dbname is used when both endpoint_url and endpoint_name are empty."""
+    def test_database_fallback(self) -> None:
+        """database is used when both endpoint_url and endpoint_name are empty."""
         from togo_mcp.server import SPARQL_ENDPOINT, SPARQL_ENDPOINT_KEYS
 
         if not SPARQL_ENDPOINT_KEYS:
             pytest.skip("No databases configured")
         db = SPARQL_ENDPOINT_KEYS[0]
         expected_url = SPARQL_ENDPOINT[db]["url"]
-        url = resolve_endpoint_url(dbname=db, endpoint_name="", endpoint_url="")
+        url = resolve_endpoint_url(database=db, endpoint_name="", endpoint_url="")
         assert url == expected_url
 
-    def test_invalid_dbname_raises(self) -> None:
-        """An unknown dbname raises ValueError."""
+    def test_invalid_database_raises(self) -> None:
+        """An unknown database raises ValueError."""
         with pytest.raises(ValueError, match="Unknown database"):
-            resolve_endpoint_url(dbname="nonexistent_db_xyz", endpoint_name="", endpoint_url="")
+            resolve_endpoint_url(database="nonexistent_db_xyz", endpoint_name="", endpoint_url="")
+
+    def test_endpoint_name_as_database_gives_hint(self) -> None:
+        """Passing an endpoint_name as database raises with a specific hint."""
+        from togo_mcp.server import ENDPOINT_NAMES
+
+        if not ENDPOINT_NAMES:
+            pytest.skip("No endpoint names configured")
+        with pytest.raises(ValueError, match="is an endpoint_name"):
+            resolve_endpoint_url(
+                database=ENDPOINT_NAMES[0], endpoint_name="", endpoint_url=""
+            )
 
     def test_invalid_endpoint_name_raises(self) -> None:
         """An unknown endpoint_name raises ValueError."""
-        with pytest.raises(ValueError, match="Unknown endpoint name"):
-            resolve_endpoint_url(dbname="", endpoint_name="nonexistent_ep_xyz", endpoint_url="")
+        with pytest.raises(ValueError, match="Unknown endpoint_name"):
+            resolve_endpoint_url(database="", endpoint_name="nonexistent_ep_xyz", endpoint_url="")
 
     def test_none_provided_raises(self) -> None:
         """Passing all empty strings raises ValueError."""
-        with pytest.raises(ValueError, match="At least one of"):
-            resolve_endpoint_url(dbname="", endpoint_name="", endpoint_url="")
+        with pytest.raises(ValueError, match="Missing required argument"):
+            resolve_endpoint_url(database="", endpoint_name="", endpoint_url="")

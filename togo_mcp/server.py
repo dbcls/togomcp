@@ -71,29 +71,34 @@ def load_sparql_endpoints(path: str) -> dict[str, dict[str, str]]:
 
 # The SPARQL endpoints for various RDF databases, loaded from a CSV file.
 SPARQL_ENDPOINT = load_sparql_endpoints(ENDPOINTS_CSV)
-DBNAME_DESCRIPTION = f"Database name: One of {','.join(SPARQL_ENDPOINT.keys())}"
+DATABASE_DESCRIPTION = (
+    "Name of a single RDF database. Must be exactly one of: "
+    f"{', '.join(SPARQL_ENDPOINT.keys())}. "
+    "Do NOT pass an endpoint group name here (e.g. 'ebi', 'sib') — those go "
+    "in endpoint_name instead."
+)
 
 # Build reverse lookups for endpoint_name -> url and list of databases per endpoint
 ENDPOINT_NAME_TO_URL: dict[str, str] = {}
 ENDPOINT_NAME_TO_DATABASES: dict[str, list] = {}
-for dbname, info in SPARQL_ENDPOINT.items():
+for db_name, info in SPARQL_ENDPOINT.items():
     ep_name = info["endpoint_name"]
     ENDPOINT_NAME_TO_URL[ep_name] = info["url"]
     if ep_name not in ENDPOINT_NAME_TO_DATABASES:
         ENDPOINT_NAME_TO_DATABASES[ep_name] = []
-    ENDPOINT_NAME_TO_DATABASES[ep_name].append(dbname)
+    ENDPOINT_NAME_TO_DATABASES[ep_name].append(db_name)
 
 ENDPOINT_NAMES = list(ENDPOINT_NAME_TO_URL.keys())
 SPARQL_ENDPOINT_KEYS = list(SPARQL_ENDPOINT.keys())
 
 
-def resolve_endpoint_url(dbname: str, endpoint_name: str, endpoint_url: str) -> str:
+def resolve_endpoint_url(database: str, endpoint_name: str, endpoint_url: str) -> str:
     """Resolve the SPARQL endpoint URL from various input options.
 
-    Priority: endpoint_url > endpoint_name > dbname
+    Priority: endpoint_url > endpoint_name > database
 
     Args:
-        dbname: Database name (e.g., 'chembl', 'uniprot')
+        database: Database name (e.g., 'chembl', 'uniprot')
         endpoint_name: Short endpoint name (e.g., 'ebi', 'sib')
         endpoint_url: Direct endpoint URL
 
@@ -101,36 +106,56 @@ def resolve_endpoint_url(dbname: str, endpoint_name: str, endpoint_url: str) -> 
         The resolved SPARQL endpoint URL
 
     Raises:
-        ValueError: If no valid input is provided or input is invalid
+        ValueError: If no valid input is provided or input is invalid.
+            The error is raised immediately — callers should not retry on the
+            same inputs, since the result is deterministic.
     """
     if endpoint_url:
         return endpoint_url
     if endpoint_name:
         if endpoint_name not in ENDPOINT_NAME_TO_URL:
             raise ValueError(
-                f"Unknown endpoint name: {endpoint_name}. "
-                f"Valid names are: {', '.join(ENDPOINT_NAMES)}"
+                f"Unknown endpoint_name: '{endpoint_name}'. "
+                f"Valid endpoint names are: {', '.join(ENDPOINT_NAMES)}. "
+                f"Do not retry with the same value."
             )
         return ENDPOINT_NAME_TO_URL[endpoint_name]
-    if dbname:
-        if dbname not in SPARQL_ENDPOINT:
+    if database:
+        if database not in SPARQL_ENDPOINT:
+            # Common mistake: passing an endpoint_name (e.g. 'ebi') as database.
+            if database in ENDPOINT_NAME_TO_URL:
+                members = ", ".join(ENDPOINT_NAME_TO_DATABASES.get(database, []))
+                raise ValueError(
+                    f"'{database}' is an endpoint_name, not a database. "
+                    f"Pass it as endpoint_name= for cross-database queries, "
+                    f"or choose one of its member databases: {members}. "
+                    f"Do not retry with the same value."
+                )
             raise ValueError(
-                f"Unknown database: {dbname}. "
-                f"Valid databases are: {', '.join(SPARQL_ENDPOINT_KEYS)}"
+                f"Unknown database: '{database}'. "
+                f"Valid databases are: {', '.join(SPARQL_ENDPOINT_KEYS)}. "
+                f"Do not retry with the same value."
             )
-        return SPARQL_ENDPOINT[dbname]["url"]
-    raise ValueError("At least one of dbname, endpoint_name, or endpoint_url must be provided")
+        return SPARQL_ENDPOINT[database]["url"]
+    raise ValueError(
+        "Missing required argument. Provide one of: database (e.g. 'chembl', "
+        "'uniprot'), endpoint_name (e.g. 'ebi', 'sib'), or endpoint_url. "
+        f"Valid databases: {', '.join(SPARQL_ENDPOINT_KEYS)}."
+    )
 
 
 # Making this a @mcp.tool() becomes an error, so we keep it as a function.
 async def execute_sparql(
-    sparql_query: str, dbname: str = "", endpoint_name: str = "", endpoint_url: str = ""
+    sparql_query: str,
+    database: str = "",
+    endpoint_name: str = "",
+    endpoint_url: str = "",
 ) -> str:
     """Execute a SPARQL query on RDF Portal.
 
     Args:
         sparql_query: The SPARQL query to execute.
-        dbname: The name of the database to query (e.g., 'chembl', 'uniprot').
+        database: The name of the database to query (e.g., 'chembl', 'uniprot').
         endpoint_name: Short endpoint name (e.g., 'ebi', 'sib') for cross-database queries.
         endpoint_url: Direct SPARQL endpoint URL.
 
@@ -138,10 +163,10 @@ async def execute_sparql(
         The results of the SPARQL query in CSV format.
 
     Note:
-        Priority: endpoint_url > endpoint_name > dbname
+        Priority: endpoint_url > endpoint_name > database
         For cross-database queries on shared endpoints, use endpoint_name or endpoint_url.
     """
-    url = resolve_endpoint_url(dbname, endpoint_name, endpoint_url)
+    url = resolve_endpoint_url(database, endpoint_name, endpoint_url)
 
     response = await _sparql_client.post(
         url, data={"query": sparql_query}, headers={"Accept": "text/csv"}
