@@ -17,14 +17,48 @@ _reactome_client = httpx.AsyncClient(base_url="https://reactome.org", timeout=30
 _rhea_client = httpx.AsyncClient(base_url="https://www.rhea-db.org", timeout=30.0)
 
 
+# Aliases LLMs commonly use in place of `query` when calling search tools.
+# Every `search_*` tool accepts these as keyword aliases and folds them into
+# `query` via _resolve_query_alias().
+def _resolve_query_alias(
+    query: str = "",
+    *,
+    search: str = "",
+    term: str = "",
+    keyword: str = "",
+    keywords: str = "",
+    search_term: str = "",
+    name: str = "",
+) -> str:
+    """Return the first non-empty value among `query` and its accepted aliases."""
+    return query or search or term or keyword or keywords or search_term or name
+
+
 ######################################
 #####　Database-specific tools ########
 ######################################
 # DB: UniProt
 @mcp.tool()
-async def search_uniprot_entity(query: str, limit: int = 20) -> str:
+async def search_uniprot_entity(
+    query: str = "",
+    limit: int = 20,
+    search: str = "",
+    term: str = "",
+    keyword: str = "",
+    keywords: str = "",
+    search_term: str = "",
+    name: str = "",
+) -> str:
     """
     Search for a UniProt entity ID by query.
+
+    ⚠️ Only the search string and `limit` are accepted. Do NOT pass `taxon`,
+       `organism`, `reviewed`, `species`, etc. as separate parameters — they
+       will raise a validation error. Express such filters inside the Solr
+       query string (e.g., `organism_id:9606 AND reviewed:true`).
+
+    The search string can be passed as any of: `query` (canonical),
+    `search`, `term`, `keyword`, `keywords`, `search_term`, or `name`.
 
     Args:
         query (str): The Solr-style query string for the UniProtKB /search endpoint.
@@ -108,6 +142,20 @@ async def search_uniprot_entity(query: str, limit: int = 20) -> str:
         str: TSV-formatted results with columns: accession, protein_name, organism_name.
     """
     toolcall_log("search_uniprot_entity")
+    query = _resolve_query_alias(
+        query,
+        search=search,
+        term=term,
+        keyword=keyword,
+        keywords=keywords,
+        search_term=search_term,
+        name=name,
+    )
+    if not query:
+        raise ValueError(
+            "Missing search string. Pass it as `query` (canonical) or any of: "
+            "search, term, keyword, keywords, search_term, name."
+        )
     params = {
         "query": query,
         "fields": "accession,protein_name,organism_name",
@@ -151,18 +199,43 @@ async def search_chembl_generic(entity_type: str, query: str, limit: int = 20) -
 
 @mcp.tool()
 async def search_chembl_id_lookup(
-    query: Annotated[str, Field(description="The query string to search for.")],
+    query: Annotated[
+        str, Field(description="The query string to search for.", default="")
+    ] = "",
     limit: Annotated[
         int, Field(description="The maximum number of results to return.")
     ] = 20,
+    search: str = "",
+    term: str = "",
+    keyword: str = "",
+    keywords: str = "",
+    search_term: str = "",
+    name: str = "",
 ) -> dict:
     """
     Search for ChEMBL ID by query.
+
+    The search string can be passed as any of: `query` (canonical),
+    `search`, `term`, `keyword`, `keywords`, `search_term`, or `name`.
 
     Returns:
         str: A JSON-formatted string containing the search results.
     """
     toolcall_log("search_chembl_id_lookup")
+    query = _resolve_query_alias(
+        query,
+        search=search,
+        term=term,
+        keyword=keyword,
+        keywords=keywords,
+        search_term=search_term,
+        name=name,
+    )
+    if not query:
+        raise ValueError(
+            "Missing search string. Pass it as `query` (canonical) or any of: "
+            "search, term, keyword, keywords, search_term, name."
+        )
     bulk = await search_chembl_generic("chembl_id_lookup", query, limit)
     total_count = bulk.get("page_meta", {}).get("total_count", 0)
     parsed_results = []
@@ -179,21 +252,37 @@ async def search_chembl_id_lookup(
 
 
 @mcp.tool()
-async def search_chembl_target(query: str, limit: int = 20) -> dict:
+async def search_chembl_target(
+    query: str = "",
+    limit: int = 20,
+    search: str = "",
+    term: str = "",
+    keyword: str = "",
+    keywords: str = "",
+    search_term: str = "",
+    name: str = "",
+) -> dict:
     """
-    Search for ChEMBL target by query.
+    Search for a biological TARGET (protein/receptor/enzyme) in ChEMBL.
 
-    Targets in ChEMBL represent biological entities (proteins, protein complexes,
-    nucleic acids, organisms, tissues, cell lines) that are the focus of drug
-    discovery and bioactivity studies.
+    ⚠️ DO NOT use this tool to look up drugs, compounds, or molecules by name.
+       For drug/compound/molecule names (e.g., "sorafenib", "imatinib", "aspirin"),
+       use `search_chembl_molecule` instead.
+
+    This tool searches for biological entities that drugs act upon — proteins,
+    protein complexes, nucleic acids, organisms, tissues, and cell lines.
+    "Target" here means *drug target*, NOT "the thing I am looking up".
+
+    Only the search string and `limit` are supported. The search string can be
+    passed as any of: `query` (canonical), `search`, `term`, `keyword`,
+    `keywords`, `search_term`, or `name`.
 
     Args:
-        query (str): Search query string. Can be:
+        query (str): Search query string referring to a biological target. Examples:
             - Target name (e.g., "Thrombin", "EGFR", "Dopamine receptor")
             - Gene name (e.g., "BRCA1", "TP53")
             - UniProt accession (e.g., "P00734")
             - Organism name (e.g., "Homo sapiens")
-            - Any keywords related to target properties
         limit (int, optional): Maximum number of results to return. Defaults to 20.
 
     Returns:
@@ -229,6 +318,20 @@ async def search_chembl_target(query: str, limit: int = 20) -> dict:
         httpx.HTTPError: If the API request fails
     """
     toolcall_log("search_chembl_target")
+    query = _resolve_query_alias(
+        query,
+        search=search,
+        term=term,
+        keyword=keyword,
+        keywords=keywords,
+        search_term=search_term,
+        name=name,
+    )
+    if not query:
+        raise ValueError(
+            "Missing search string. Pass it as `query` (canonical) or any of: "
+            "search, term, keyword, keywords, search_term, name."
+        )
     bulk = await search_chembl_generic("target", query, limit)
     total_count = bulk.get("page_meta", {}).get("total_count", 0)
 
@@ -248,22 +351,39 @@ async def search_chembl_target(query: str, limit: int = 20) -> dict:
 
 
 @mcp.tool()
-async def search_chembl_molecule(query: str, limit: int = 20) -> dict:
+async def search_chembl_molecule(
+    query: str = "",
+    limit: int = 20,
+    search: str = "",
+    term: str = "",
+    keyword: str = "",
+    keywords: str = "",
+    search_term: str = "",
+    name: str = "",
+) -> dict:
     """
-    Search for ChEMBL molecule by query.
+    Search for a DRUG / COMPOUND / MOLECULE by name or structure in ChEMBL.
 
-    Molecules in ChEMBL represent small molecule drugs, drug candidates, and
-    bioactive compounds with reported bioactivity data. This includes approved
-    drugs, clinical candidates, and research compounds.
+    ✅ Use this tool for drug, compound, or molecule names
+       (e.g., "sorafenib", "imatinib", "aspirin", "Gleevec").
+    ⚠️ For biological targets (proteins, receptors, enzymes, genes such as
+       EGFR, BRCA1, TP53), use `search_chembl_target` instead.
+
+    Molecules in ChEMBL are small-molecule drugs, drug candidates, and
+    bioactive compounds — including approved drugs, clinical candidates,
+    and research compounds.
+
+    Only the search string and `limit` are supported. The search string can be
+    passed as any of: `query` (canonical), `search`, `term`, `keyword`,
+    `keywords`, `search_term`, or `name`.
 
     Args:
-        query (str): Search query string. Can be:
-            - Molecule name (e.g., "Aspirin", "Imatinib", "Caffeine")
-            - Drug name (brand or generic, e.g., "Gleevec", "Paracetamol")
+        query (str): Search query string referring to a drug or compound. Examples:
+            - Generic or brand drug name (e.g., "Aspirin", "Gleevec", "Paracetamol")
+            - Research compound name
             - Synonyms or alternative names
             - SMILES notation (chemical structure string)
             - InChI or InChI Key
-            - Any keywords related to molecule properties
         limit (int, optional): Maximum number of results to return. Defaults to 20.
 
     Returns:
@@ -300,6 +420,20 @@ async def search_chembl_molecule(query: str, limit: int = 20) -> dict:
         httpx.HTTPError: If the API request fails
     """
     toolcall_log("search_chembl_molecule")
+    query = _resolve_query_alias(
+        query,
+        search=search,
+        term=term,
+        keyword=keyword,
+        keywords=keywords,
+        search_term=search_term,
+        name=name,
+    )
+    if not query:
+        raise ValueError(
+            "Missing search string. Pass it as `query` (canonical) or any of: "
+            "search, term, keyword, keywords, search_term, name."
+        )
     bulk = await search_chembl_generic("molecule", query, limit)
     total_count = bulk.get("page_meta", {}).get("total_count", 0)
     parsed_results = []
@@ -364,7 +498,15 @@ async def get_compound_attributes_from_pubchem(pubchem_compound_id: str) -> str:
 # DB: PDB
 @mcp.tool()
 async def search_pdb_entity(
-    db: Literal["pdb", "cc", "prd"], query: str, limit: int = 20
+    db: Literal["pdb", "cc", "prd"],
+    query: str = "",
+    limit: int = 20,
+    search: str = "",
+    term: str = "",
+    keyword: str = "",
+    keywords: str = "",
+    search_term: str = "",
+    name: str = "",
 ) -> str:
     """
     Search for PDBj entry information by keywords.
@@ -375,12 +517,28 @@ async def search_pdb_entity(
             - "cc" (Chemical Component Dictionary, chemical components or small molecules in PDB)
             - "prd" (BIRD, Biologically Interesting Reference Molecule Dictionary, mostly peptides).
         query (str): Query string, any keywords that can be used to search for PDB entries.
+            Accepts aliases: `search`, `term`, `keyword`, `keywords`,
+            `search_term`, `name`.
         limit (int): The maximum number of results to return. Default is 20.
 
     Returns:
         str: A JSON-formatted string containing the search results.
     """
     toolcall_log("search_pdb_entity")
+    query = _resolve_query_alias(
+        query,
+        search=search,
+        term=term,
+        keyword=keyword,
+        keywords=keywords,
+        search_term=search_term,
+        name=name,
+    )
+    if not query:
+        raise ValueError(
+            "Missing search string. Pass it as `query` (canonical) or any of: "
+            "search, term, keyword, keywords, search_term, name."
+        )
     try:
         response = await _pdbj_client.get(
             f"/rest/newweb/search/{db}", params={"query": query}
@@ -400,18 +558,42 @@ async def search_pdb_entity(
 
 # DB: MeSH
 @mcp.tool()
-async def search_mesh_descriptor(query: str, limit: int = 10) -> str:
+async def search_mesh_descriptor(
+    query: str = "",
+    limit: int = 10,
+    search: str = "",
+    term: str = "",
+    keyword: str = "",
+    keywords: str = "",
+    search_term: str = "",
+    name: str = "",
+) -> str:
     """
     Search for MeSH ID by query.
 
     Args:
-        query (str): The query string to search for.
+        query (str): The query string to search for. Accepts aliases:
+            `search`, `term`, `keyword`, `keywords`, `search_term`, `name`.
         limit (int): The maximum number of results to return. Default is 10.
 
     Returns:
         str: A JSON-formatted string containing the search results.
     """
     toolcall_log("search_mesh_descriptor")
+    query = _resolve_query_alias(
+        query,
+        search=search,
+        term=term,
+        keyword=keyword,
+        keywords=keywords,
+        search_term=search_term,
+        name=name,
+    )
+    if not query:
+        raise ValueError(
+            "Missing search string. Pass it as `query` (canonical) or any of: "
+            "search, term, keyword, keywords, search_term, name."
+        )
     params = {"label": query, "match": "contains", "limit": limit}
     try:
         response = await _mesh_client.get("/mesh/lookup/descriptor", params=params)
@@ -425,15 +607,23 @@ async def search_mesh_descriptor(query: str, limit: int = 10) -> str:
 # DB: Reactome
 @mcp.tool()
 async def search_reactome_entity(
-    query: str,
+    query: str = "",
     species: list[str] | None = None,
     types: list[str] | None = None,
     rows: int = 30,
+    search: str = "",
+    term: str = "",
+    keyword: str = "",
+    keywords: str = "",
+    search_term: str = "",
+    name: str = "",
 ) -> list[dict[str, str]]:
     """Search the Reactome knowledgebase using keyword search.
 
     Args:
         query: The search query string (e.g., "apoptosis", "TP53", "cell cycle").
+            Accepts aliases: `search`, `term`, `keyword`, `keywords`,
+            `search_term`, `name`.
         species: Filter by species (e.g., ["Homo sapiens"], ["9606"]).
         types: Filter by entity types (e.g., ["Pathway", "Reaction", "Complex"]).
         rows: Number of results to return. Defaults to 30.
@@ -457,6 +647,20 @@ async def search_reactome_entity(
         httpx.HTTPError: If the API request fails.
     """
     toolcall_log("search_reactome_entity")
+    query = _resolve_query_alias(
+        query,
+        search=search,
+        term=term,
+        keyword=keyword,
+        keywords=keywords,
+        search_term=search_term,
+        name=name,
+    )
+    if not query:
+        raise ValueError(
+            "Missing search string. Pass it as `query` (canonical) or any of: "
+            "search, term, keyword, keywords, search_term, name."
+        )
     # Build API request
     params = {"query": query, "cluster": "true", "start": 0, "rows": rows}
 
@@ -501,7 +705,14 @@ async def search_reactome_entity(
 # DB: RhEA
 @mcp.tool()
 async def search_rhea_entity(
-    query: str, limit: int | None = 100
+    query: str = "",
+    limit: int | None = 100,
+    search: str = "",
+    term: str = "",
+    keyword: str = "",
+    keywords: str = "",
+    search_term: str = "",
+    name: str = "",
 ) -> list[dict[str, str]]:
     """
     Search Rhea database for biochemical reactions using keyword search.
@@ -512,6 +723,8 @@ async def search_rhea_entity(
                     - "glucose" - find reactions with glucose
                     - "uniprot:*" - reactions with UniProt annotations
                     - "" - retrieve all reactions
+                    Accepts aliases: `search`, `term`, `keyword`, `keywords`,
+                    `search_term`, `name`.
         limit (int, optional): Maximum number of results. Defaults to 100.
 
     Returns:
@@ -525,6 +738,17 @@ async def search_rhea_entity(
         ...     print(f"{reaction['rhea_id']}: {reaction['equation']}")
     """
     toolcall_log("search_rhea_entity")
+    # Unlike other search tools, Rhea permits an empty query (returns all
+    # reactions). Only coalesce when an alias was provided.
+    query = _resolve_query_alias(
+        query,
+        search=search,
+        term=term,
+        keyword=keyword,
+        keywords=keywords,
+        search_term=search_term,
+        name=name,
+    )
 
     params = {
         "query": query,

@@ -102,7 +102,7 @@ for gene_batch in batches(all_genes, 50):
     
     # Step 3: Map taxids to phyla (now can use SPARQL on taxonomy)
     for taxid in taxids:
-        phylum = run_sparql(dbname="taxonomy", query=f"""
+        phylum = run_sparql(database="taxonomy", query=f"""
             SELECT ?phylum WHERE {{
                 taxon:{taxid} rdfs:subClassOf+ ?phylum .
                 ?phylum tax:rank tax:Phylum .
@@ -137,7 +137,7 @@ for i in range(0, len(all_gene_ids), 50):
             ?taxid rdfs:subClassOf+ ?phylum .
             ?phylum tax:rank tax:Phylum .
         """
-        results = run_sparql(dbname="taxonomy", query=query)
+        results = run_sparql(database="taxonomy", query=query)
         for result in results:
             phylum_counts[result['phylumLabel']] += 1
 
@@ -242,7 +242,7 @@ get_sparql_endpoints()  # Confirm: different endpoints
 get_MIE_file('taxonomy')  # Find: tax:rank, rdfs:subClassOf
 
 # Step 1: Enumerate all phyla (taxonomy DB)
-phyla = run_sparql(dbname="taxonomy", query="""
+phyla = run_sparql(database="taxonomy", query="""
   SELECT DISTINCT ?phylum WHERE {
     ?phylum tax:rank tax:Phylum ;
             rdfs:subClassOf+ taxon:2157 .
@@ -264,7 +264,7 @@ for gene_batch in batches(all_genes, 50):
     for gene in summaries:
         taxid = gene['organism']['taxid']
         # Map to phylum via taxonomy DB
-        result = run_sparql(dbname="taxonomy", query=f"""
+        result = run_sparql(database="taxonomy", query=f"""
             SELECT ?phylum WHERE {{
                 taxon:{taxid} rdfs:subClassOf+ ?phylum .
                 ?phylum tax:rank tax:Phylum .
@@ -286,7 +286,7 @@ for gene_batch in batches(all_genes, 50):
 
 **1. GET MIE FILE FIRST (MANDATORY)**
 ```python
-get_MIE_file('dbname')
+get_MIE_file('database')
 # Check: shape_expressions section
 # Find: classification predicates, external IRIs, typed predicates
 ```
@@ -372,7 +372,7 @@ Priority: Structured Properties > bif:contains
 
 ### Schema & Discovery
 - `list_databases()` - **🔍 CALL THIS FIRST to discover which databases to use**
-- `get_MIE_file(dbname)` - **Get schema for identified databases**
+- `get_MIE_file(database)` - **Get schema for identified databases**
 - `get_sparql_endpoints()` - **Check before multi-database queries**
 
 ### Search (Exploratory)
@@ -385,7 +385,7 @@ Priority: Structured Properties > bif:contains
 - `search_rhea_entity(query)` - Reactions
 
 ### SPARQL
-- `run_sparql(dbname, query)` - Execute query
+- `run_sparql(database, query)` - Execute query
 
 ### ID Conversion
 - `togoid_convertId(ids, route)` - Convert between databases

@@ -319,14 +319,23 @@ Returned: {len(ids)} (showing {retstart}-{int(retstart) + len(ids)})
     return result
 
 
+def _normalize_ids(ids: str | list[str]) -> list[str]:
+    """Accept either a comma/whitespace-separated string or a list of IDs."""
+    if isinstance(ids, str):
+        return [s.strip() for s in re.split(r"[,\s]+", ids) if s.strip()]
+    return [str(i).strip() for i in ids if str(i).strip()]
+
+
 @ncbi_mcp.tool()
 async def ncbi_esearch(
-    database: str,
-    query: str,
+    database: str = "",
+    query: str = "",
     max_results: int = 20,
     start_index: int = 0,
     sort_by: str | None = None,
     search_field: str | None = None,
+    db: str = "",
+    term: str = "",
 ) -> list[TextContent]:
     """
     Search NCBI databases using E-utilities esearch API.
@@ -346,7 +355,7 @@ async def ncbi_esearch(
     • Performance loss: Missing field tags = 70-80% data loss!
 
     Args:
-        database: NCBI database name. Supported values:
+        database: NCBI database name (alias: `db`). Supported values:
             - "gene" or "ncbigene": NCBI Gene database ⚠️ FIELD TAGS CRITICAL
             - "taxonomy": NCBI Taxonomy (organism information)
             - "clinvar": ClinVar (genetic variants) ⚠️ FIELD TAGS CRITICAL
@@ -356,11 +365,13 @@ async def ncbi_esearch(
             - "pccompound": PubChem Compound
             - "pcsubstance": PubChem Substance
             - "pcassay": PubChem BioAssay
-        query: Search query with NCBI field tags and boolean operators
+        query: Search query with NCBI field tags and boolean operators (alias: `term`)
         max_results: Maximum number of results to return (default: 20)
         start_index: Starting index for pagination (default: 0)
         sort_by: Optional sort order (e.g., "relevance", "pub_date" for PubMed)
         search_field: Optional specific field to search in
+        db: Alias for `database`.
+        term: Alias for `query`.
 
     Returns:
         Formatted search results with database-specific IDs
@@ -392,6 +403,28 @@ async def ncbi_esearch(
     Learn more: https://www.ncbi.nlm.nih.gov/books/NBK3837/
     """
     toolcall_log("ncbi_esearch")
+
+    # Accept `db` as alias for `database`, and `term` as alias for `query`.
+    database = database or db
+    query = query or term
+    if not database:
+        return [
+            TextContent(
+                type="text",
+                text=(
+                    "Error: Missing required argument `database` "
+                    f"(or alias `db`). Supported databases: "
+                    f"{', '.join(NCBI_DATABASES.keys())}."
+                ),
+            )
+        ]
+    if not query:
+        return [
+            TextContent(
+                type="text",
+                text="Error: Missing required argument `query` (or alias `term`).",
+            )
+        ]
 
     # Normalize database name (handle aliases)
     db_aliases = {
@@ -467,19 +500,37 @@ async def ncbi_list_databases() -> list[TextContent]:
 
 # Additional utility functions for future use
 @ncbi_mcp.tool()
-async def ncbi_esummary(database: str, ids: list[str]) -> list[TextContent]:
+async def ncbi_esummary(
+    database: str = "",
+    ids: str | list[str] = "",
+    db: str = "",
+) -> list[TextContent]:
     """
     Fetch summary information for given IDs using esummary.
     Useful for getting detailed info after esearch.
 
     Args:
-        database: NCBI database name
-        ids: List of IDs to fetch summaries for
+        database: NCBI database name (alias: `db`)
+        ids: IDs to fetch summaries for. Accepts either a list of strings
+            (e.g., ["123", "456"]) or a comma-separated string ("123,456").
+        db: Alias for `database`.
 
     Returns:
         Parsed JSON response with summary data
     """
     toolcall_log("ncbi_esummary")
+
+    database = database or db
+    id_list = _normalize_ids(ids)
+    if not database:
+        return [
+            TextContent(
+                type="text",
+                text="Error: Missing required argument `database` (or alias `db`).",
+            )
+        ]
+    if not id_list:
+        return [TextContent(type="text", text="Error: `ids` must not be empty.")]
 
     # Normalize database name
     db_aliases = {"ncbigene": "gene"}
@@ -489,7 +540,7 @@ async def ncbi_esummary(database: str, ids: list[str]) -> list[TextContent]:
 
     params = {
         "db": normalized_db,
-        "id": ",".join(ids),
+        "id": ",".join(id_list),
         "retmode": "json",
         "tool": "TogoMCP",
         "email": NCBI_EMAIL,
@@ -521,22 +572,40 @@ async def ncbi_esummary(database: str, ids: list[str]) -> list[TextContent]:
 
 @ncbi_mcp.tool()
 async def ncbi_efetch(
-    database: str, ids: list[str], rettype: str = "xml", retmode: str = "text"
+    database: str = "",
+    ids: str | list[str] = "",
+    rettype: str = "xml",
+    retmode: str = "text",
+    db: str = "",
 ) -> list[TextContent]:
     """
     Fetch full records using efetch.
     Returns actual data (sequences, records, etc.)
 
     Args:
-        database: NCBI database name
-        ids: List of IDs to fetch
+        database: NCBI database name (alias: `db`)
+        ids: IDs to fetch. Accepts either a list of strings
+            (e.g., ["123", "456"]) or a comma-separated string ("123,456").
         rettype: Return type (xml, fasta, gb, etc.)
         retmode: Return mode (text, xml, json where applicable)
+        db: Alias for `database`.
 
     Returns:
         Response text in requested format
     """
     toolcall_log("ncbi_efetch")
+
+    database = database or db
+    id_list = _normalize_ids(ids)
+    if not database:
+        return [
+            TextContent(
+                type="text",
+                text="Error: Missing required argument `database` (or alias `db`).",
+            )
+        ]
+    if not id_list:
+        return [TextContent(type="text", text="Error: `ids` must not be empty.")]
 
     # Normalize database name
     db_aliases = {"ncbigene": "gene"}
@@ -546,7 +615,7 @@ async def ncbi_efetch(
 
     params = {
         "db": normalized_db,
-        "id": ",".join(ids),
+        "id": ",".join(id_list),
         "rettype": rettype,
         "retmode": retmode,
         "tool": "TogoMCP",

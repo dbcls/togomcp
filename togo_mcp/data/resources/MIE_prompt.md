@@ -122,7 +122,7 @@ results = search_entity("keyword", limit=20)
 # Extract example entity IDs/IRIs
 
 # Step 2: Inspect entities to find structured properties
-run_sparql(dbname, """
+run_sparql(database, """
   SELECT ?p ?o
   WHERE {
     <example_entity_iri> ?p ?o .
@@ -132,7 +132,7 @@ run_sparql(dbname, """
 # typed predicates, controlled vocabulary values
 
 # Step 3: Use discovered IRIs/predicates in comprehensive query
-run_sparql(dbname, """
+run_sparql(database, """
   VALUES ?classification { <discovered_iri_1> <discovered_iri_2> }
   SELECT (COUNT(DISTINCT ?entity) as ?count)
   WHERE {
@@ -202,10 +202,10 @@ WHERE {
 **Step 1: Existing Documentation (2 min)**
 ```python
 get_sparql_endpoints()  # Endpoint + keyword search APIs
-get_graph_list(dbname)  # Named graphs (look for ontology graphs)
-get_MIE_file(dbname)    # Existing MIE (check compliance)
-get_shex(dbname)        # Shape expressions
-get_sparql_example(dbname)
+get_graph_list(database)  # Named graphs (look for ontology graphs)
+get_MIE_file(database)    # Existing MIE (check compliance)
+get_shex(database)        # Shape expressions
+get_sparql_example(database)
 ```
 
 **Step 2: Schema Discovery (5 min)**
@@ -234,7 +234,7 @@ WHERE {
 examples = search_entity("keyword", limit=10)
 
 # Inspect example entities to find structured properties
-run_sparql(dbname, """
+run_sparql(database, """
   SELECT ?p ?o
   WHERE {
     <example_entity_iri> ?p ?o .
@@ -357,8 +357,8 @@ In the query description, document:
 
 **After saving:**
 ```python
-save_MIE_file(dbname, content)
-result = get_MIE_file(dbname)
+save_MIE_file(database, content)
+result = get_MIE_file(database)
 if "error" in result.lower():
     print("✗ Fix YAML errors")
 ```
@@ -373,7 +373,7 @@ if "error" in result.lower():
 
 Before using `bif:contains` or `FILTER(CONTAINS())` in a query, answer ALL questions:
 
-- [ ] **Schema Check**: Did I run `get_MIE_file(dbname)` and read the entire file?
+- [ ] **Schema Check**: Did I run `get_MIE_file(database)` and read the entire file?
 - [ ] **Entity Shape**: Did I examine the `shape_expressions` section for relevant entity types?
 - [ ] **Structured Properties Check**: Did I look for:
   - [ ] Specific IRIs (ontology terms, classification codes, taxonomy)?
@@ -677,7 +677,7 @@ anti_patterns:
       ?text bif:contains "'keyword'"
     correct_sparql: |
       # Complete workflow:
-      # 1. get_MIE_file(dbname) → checked shape_expressions
+      # 1. get_MIE_file(database) → checked shape_expressions
       # 2. Found: entity has classificationPredicate to ontology terms
       # 3. search_entity("keyword") → found example entities
       # 4. Inspected examples → extracted term IRIs: term:123, term:456
@@ -788,8 +788,8 @@ common_errors:
 - `get_sparql_endpoints()`, `get_graph_list()`, `get_MIE_file()`, `get_shex()`, `get_sparql_example()`
 
 **Execution:**
-- `run_sparql(dbname, query)` or `run_sparql(endpoint_name=X, query)`
-- `save_MIE_file(dbname, content)`
+- `run_sparql(database, query)` or `run_sparql(endpoint_name=X, query)`
+- `save_MIE_file(database, content)`
 
 **Keyword Search (database-specific - check availability):**
 - UniProt: `search_uniprot_entity()`
@@ -861,7 +861,7 @@ Check each requirement in the Quality Checklist above. **Do not skip any checkbo
 
 ```python
 # Load the saved file and check for errors
-result = get_MIE_file(dbname)
+result = get_MIE_file(database)
 # If result contains "error", "invalid", or YAML parsing issues → FIX THEM
 ```
 

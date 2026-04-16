@@ -12,7 +12,7 @@ Metadata Interoperability Exchange (MIE) files provide compact, comprehensive do
 - **File Format**: YAML
 - **Encoding**: UTF-8
 - **Extension**: `.yaml`
-- **Naming Convention**: `mie/[dbname].yaml`
+- **Naming Convention**: `mie/[database].yaml`
 
 ### 1.4 Key Updates in v1.1
 - **New Section**: `cross_database_queries` for databases on shared endpoints
@@ -809,13 +809,13 @@ An MIE file is considered complete and compliant when:
 
 ### 12.2 Tools
 - `get_sparql_endpoints()` - Get available SPARQL endpoints and keyword search APIs
-- `get_graph_list(dbname)` - List named graphs
-- `get_sparql_example(dbname)` - Get example query
-- `run_sparql(dbname, query)` - Execute SPARQL (single database)
+- `get_graph_list(database)` - List named graphs
+- `get_sparql_example(database)` - Get example query
+- `run_sparql(database, query)` - Execute SPARQL (single database)
 - `run_sparql(endpoint_name=endpoint, query)` - Execute SPARQL (cross-database)
-- `get_shex(dbname)` - Retrieve ShEx schema
-- `get_MIE_file(dbname)` - Retrieve existing MIE (CRITICAL for cross-database queries)
-- `save_MIE_file(dbname, content)` - Save MIE file
+- `get_shex(database)` - Retrieve ShEx schema
+- `get_MIE_file(database)` - Retrieve existing MIE (CRITICAL for cross-database queries)
+- `save_MIE_file(database, content)` - Save MIE file
 
 ### 12.3 Keyword Search APIs
 **Dedicated Tools:**

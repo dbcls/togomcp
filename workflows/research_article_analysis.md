@@ -103,7 +103,7 @@ TIER 3: [list]
 
 ## PHASE 2B: STUDY MIE FILES ⚠️ MANDATORY FOR ALL TIER 1 DATABASES
 
-**For EACH selected Tier 1 database, run `get_MIE_file(dbname)` and read:**
+**For EACH selected Tier 1 database, run `get_MIE_file(database)` and read:**
 
 ### Critical MIE Insights to Extract:
 

@@ -385,7 +385,7 @@ These question types have consistently scored below 14/20 across all three evalu
 
 ### Schema & Discovery (always at start)
 - `list_databases()` — **ALWAYS the first tool call.**
-- `get_MIE_file(dbname)` — **ALWAYS before SPARQL.**
+- `get_MIE_file(database)` — **ALWAYS before SPARQL.**
 - `get_sparql_endpoints()` — Before multi-database queries where endpoint planning is genuinely needed.
 
 ---
