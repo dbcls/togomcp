@@ -126,18 +126,28 @@ async def run_sparql(
     description="Get a list of named graphs in a specific RDF database.",
 )
 async def get_graph_list(
-    database: Annotated[str, Field(description=DATABASE_DESCRIPTION)],
+    database: Annotated[
+        str, Field(description=DATABASE_DESCRIPTION, default="")
+    ] = "",
+    dbname: str = "",
+    db: str = "",
 ) -> str:
     f"""
     Get a list of named graphs in a specific RDF database.
 
     Args:
-        database (str): The name of the database for which to retrieve the named graphs. Supported values are {", ".join(SPARQL_ENDPOINT.keys())}.
+        database (str): The name of the database for which to retrieve the named graphs.
+            Accepts aliases `dbname` and `db`. Supported values are {", ".join(SPARQL_ENDPOINT.keys())}.
+        dbname (str, optional): Alias for `database`.
+        db (str, optional): Alias for `database`.
 
     Returns:
         str: CSV-formatted list of named graphs.
     """
     toolcall_log("get_graph_list")
+    database = database or dbname or db
+    if not database:
+        return "Error: Missing required argument `database` (aliases: `dbname`, `db`)."
     sparql_query = """
 SELECT DISTINCT ?graph WHERE {
   GRAPH ?graph {
@@ -152,18 +162,28 @@ SELECT DISTINCT ?graph WHERE {
     description="**At the start of any task, identify ALL databases needed and call this tool for EACH of them before writing any SPARQL queries.** Do not query a database until its MIE file has been read. Get the MIE (Metadata Interoperability Exchange) file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database.",
 )
 async def get_MIE_file(
-    database: Annotated[str, Field(description=DATABASE_DESCRIPTION)],
+    database: Annotated[
+        str, Field(description=DATABASE_DESCRIPTION, default="")
+    ] = "",
+    dbname: str = "",
+    db: str = "",
 ) -> str:
     f"""
     Get the MIE file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database in YAML format, which can be used as a hint to build SPARQL queries.
 
     Args:
-        database (str): The name of the database for which to retrieve the shape expression. Supported values are {", ".join(SPARQL_ENDPOINT.keys())}."
+        database (str): The name of the database for which to retrieve the shape expression.
+            Accepts aliases `dbname` and `db`. Supported values are {", ".join(SPARQL_ENDPOINT.keys())}.
+        dbname (str, optional): Alias for `database`.
+        db (str, optional): Alias for `database`.
 
     Returns:
         str: The MIE file containing the RDF schema information in YAML format.
     """
     toolcall_log("get_MIE_file")
+    database = database or dbname or db
+    if not database:
+        return "Error: Missing required argument `database` (aliases: `dbname`, `db`)."
     mie_file = Path(MIE_DIR).joinpath(f"{database}.yaml")
     if not mie_file.exists():
         raise FileNotFoundError(f"MIE file not found for database: '{database}'")
