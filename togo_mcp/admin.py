@@ -27,16 +27,28 @@ def generate_MIE_file(database: Annotated[str, Field(description=DATABASE_DESCRI
 
 
 @mcp.tool(name="get_shex", description="Get the ShEx schema for a specific RDF database.")
-async def get_shex(database: Annotated[str, Field(description=DATABASE_DESCRIPTION)]) -> str:
+async def get_shex(
+    database: Annotated[
+        str, Field(description=DATABASE_DESCRIPTION, default="")
+    ] = "",
+    dbname: str = "",
+    db: str = "",
+) -> str:
     """
     Get the ShEx schema for a specific RDF database.
 
     Args:
-        database(str): The name of the database for which to retrieve the ShEx schema. Supported values are {', '.join(SPARQL_ENDPOINT.keys())}.
+        database(str): The name of the database for which to retrieve the ShEx schema.
+            Accepts aliases `dbname` and `db`. Supported values are {', '.join(SPARQL_ENDPOINT.keys())}.
+        dbname (str, optional): Alias for `database`.
+        db (str, optional): Alias for `database`.
 
     Returns:
         str: The ShEx schema in ShEx format.
     """
+    database = database or dbname or db
+    if not database:
+        return "Error: Missing required argument `database` (aliases: `dbname`, `db`)."
     shex_file = Path("shex").joinpath(f"{database}.shex")
     if not shex_file.exists():
         return f"Error: The shex file for '{database}' was not found."
@@ -92,17 +104,30 @@ def get_sparql_example(
     description="Save the provided MIE content to a file named after the database.",
 )
 def save_MIE_file(
-    database: Annotated[str, Field(description=DATABASE_DESCRIPTION)],
+    database: Annotated[
+        str, Field(description=DATABASE_DESCRIPTION, default="")
+    ] = "",
     mie_content: Annotated[
         str, Field(description="The content of the MIE file to save.", default="#empty MIE file")
-    ],
+    ] = "#empty MIE file",
+    dbname: str = "",
+    db: str = "",
 ) -> str:
     """
     Saves the provided MIE content to a file named after the database.
 
+    Args:
+        database (str): The database name. Accepts aliases `dbname` and `db`.
+        mie_content (str): The content of the MIE file to save.
+        dbname (str, optional): Alias for `database`.
+        db (str, optional): Alias for `database`.
+
     Returns:
         str: A confirmation message indicating the result of the save operation.
     """
+    database = database or dbname or db
+    if not database:
+        return "Error: Missing required argument `database` (aliases: `dbname`, `db`)."
     try:
         # Ensure the MIE directory exists
         mie_dir = Path(MIE_DIR)
