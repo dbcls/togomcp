@@ -2,44 +2,52 @@ schema_info:
   title: Reactome Pathway Database
   description: |
     Curated knowledgebase of biological pathways and processes in BioPAX Level 3 format.
-    Contains 23K pathways, 93K biochemical reactions, 233K proteins with modifications, 109K complexes, 51K small molecules across 30+ species.
-    Hierarchical pathway organization with extensive cross-references to UniProt, ChEBI, PubMed, GO (primarily via RelationshipXref), ChEMBL.
+    Contains 23K+ pathways, 94K+ biochemical reactions, 232K+ proteins, 109K complexes, and 51K
+    small molecules across 30+ species. Hierarchical pathway organization with cross-references
+    to UniProt, ChEBI, PubMed, GO (primarily via RelationshipXref), ChEMBL, and MOD ontology.
   endpoint: https://rdfportal.org/ebi/sparql
-  base_uri: http://www.reactome.org/biopax/
+  base_uri: http://www.biopax.org/release/biopax-level3.owl#
   graphs:
     - http://rdf.ebi.ac.uk/dataset/reactome
-    - http://rdfportal.org/ontology/go
   kw_search_tools:
     - search_reactome_entity
   version:
-    mie_version: "5.0"
-    mie_created: "2025-02-15"
-    data_version: "Release 88"
+    mie_version: "6.0"
+    mie_created: "2026-04-22"
+    data_version: "Release 95"
     update_frequency: "Quarterly"
-  license:
-    data_license: "CC BY 4.0"
-    license_url: "https://creativecommons.org/licenses/by/4.0/"
   access:
-    rate_limiting: "No strict limits"
-    max_query_timeout: "60 seconds"
     backend: "Virtuoso"
+
+critical_warnings: |
+  - MANDATORY ^^xsd:string FOR EXACT MATCHING: bp:db, bp:id, bp:name, bp:eCNumber, and
+    bp:controlType literals require ^^xsd:string in triple patterns, VALUES, and FILTER =.
+    Omitting silently returns 0 results. NOT needed for CONTAINS(), STRSTARTS(), REGEX(),
+    bif:contains, or when simply retrieving values into variables.
+  - GO TERMS PRIMARILY IN RelationshipXref (NOT UnificationXref): ~68K GO annotations are
+    stored as RelationshipXref; UnificationXref holds only ~1.5K. Querying only
+    UnificationXref silently misses 98% of all GO pathway annotations.
+  - ALWAYS include FROM <http://rdf.ebi.ac.uk/dataset/reactome> in single-database queries
+    on the shared ebi endpoint; omitting causes cross-contamination with ChEMBL, ChEBI,
+    and Ensembl graphs.
 
 shape_expressions: |
   PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
   PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-  
+
+  # ~23,277 total pathways; ~2,848 human (bp:name "Homo sapiens"^^xsd:string)
   <PathwayShape> {
     a [ bp:Pathway ] ;
-    bp:displayName xsd:string ;
+    bp:displayName xsd:string ;              # free-text; no controlled vocabulary
     bp:organism @<BioSourceShape> ? ;
     bp:comment xsd:string * ;
     bp:pathwayComponent @<PathwayShape> * ;
     bp:pathwayComponent @<BiochemicalReactionShape> * ;
     bp:pathwayOrder @<PathwayStepShape> * ;
-    bp:xref @<XrefShape> * ;
-    bp:dataSource @<ProvenanceShape> ?
+    bp:xref @<XrefShape> *
   }
-  
+
+  # ~93,950 instances; bp:eCNumber uses ^^xsd:string (e.g. "2.7.10.1"^^xsd:string)
   <BiochemicalReactionShape> {
     a [ bp:BiochemicalReaction ] ;
     bp:displayName xsd:string ? ;
@@ -47,10 +55,10 @@ shape_expressions: |
     bp:right @<PhysicalEntityShape> * ;
     bp:eCNumber xsd:string * ;
     bp:spontaneous xsd:boolean ? ;
-    bp:xref @<XrefShape> * ;
-    bp:dataSource @<ProvenanceShape> ?
+    bp:xref @<XrefShape> *
   }
-  
+
+  # Proteins: ~232,467 | Complexes: ~109,261 | SmallMolecules: ~51,214 | DNA/RNA: ~2,691
   <PhysicalEntityShape> {
     a [ bp:Protein bp:Complex bp:SmallMolecule bp:Dna bp:Rna ] ;
     bp:displayName xsd:string ? ;
@@ -58,222 +66,143 @@ shape_expressions: |
     bp:entityReference @<EntityReferenceShape> ? ;
     bp:cellularLocation @<CellularLocationVocabularyShape> ? ;
     bp:feature @<ModificationFeatureShape> * ;
-    bp:feature @<FragmentFeatureShape> * ;
     bp:xref @<XrefShape> *
   }
-  
+
+  # ProteinReference: ~91K with bp:db "UniProt"^^xsd:string (UnificationXref)
+  # SmallMoleculeReference: ~21.5K with bp:db "ChEBI"^^xsd:string
   <EntityReferenceShape> {
     a [ bp:ProteinReference bp:SmallMoleculeReference bp:DnaReference bp:RnaReference ] ;
     bp:name xsd:string * ;
     bp:xref @<UnificationXrefShape> * ;
     bp:organism @<BioSourceShape> ?
   }
-  
-  <ComplexShape> {
-    a [ bp:Complex ] ;
-    bp:displayName xsd:string ? ;
-    bp:component @<PhysicalEntityShape> + ;
-    bp:componentStoichiometry @<StoichiometryShape> * ;
-    bp:cellularLocation @<CellularLocationVocabularyShape> ?
-  }
-  
-  <StoichiometryShape> {
-    a [ bp:Stoichiometry ] ;
-    bp:physicalEntity @<PhysicalEntityShape> ;
-    bp:stoichiometricCoefficient xsd:float
-  }
-  
+
+  # ~50,692 Catalysis; ~10,729 Control
+  # controlType values: exactly "ACTIVATION" or "INHIBITION" (^^xsd:string required)
   <CatalysisShape> {
     a [ bp:Catalysis ] ;
     bp:controller @<PhysicalEntityShape> ;
     bp:controlled @<BiochemicalReactionShape> ;
-    bp:controlType [ "ACTIVATION" "INHIBITION" ] ? ;
-    bp:xref @<XrefShape> *
+    bp:controlType [ "ACTIVATION" "INHIBITION" ] ?
   }
-  
-  <ControlShape> {
-    a [ bp:Control ] ;
-    bp:controller @<PhysicalEntityShape> * ;
-    bp:controlled . * ;
-    bp:controlType xsd:string ?
-  }
-  
+
+  # ~49,574 ModificationFeature instances
+  # MOD ontology IDs in UnificationXref on SequenceModificationVocabulary:
+  #   "MOD:00046" = O-phospho-L-serine
+  #   "MOD:00047" = O-phospho-L-threonine
+  #   "MOD:00048" = O4'-phospho-L-tyrosine
+  #   "MOD:00696" = phosphorylated residue (generic)
+  # Use MOD IDs in VALUES to query modifications without text search.
   <ModificationFeatureShape> {
     a [ bp:ModificationFeature ] ;
     bp:modificationType @<SequenceModificationVocabularyShape> ? ;
     bp:featureLocation @<SequenceSiteShape> ?
   }
-  
+
   <SequenceModificationVocabularyShape> {
     a [ bp:SequenceModificationVocabulary ] ;
     bp:term xsd:string ;
-    bp:xref @<XrefShape> *
+    bp:xref @<UnificationXrefShape> *    # MOD ontology IDs available here
   }
-  
-  <SequenceSiteShape> {
-    a [ bp:SequenceSite ] ;
-    bp:sequencePosition xsd:integer ? ;
-    bp:positionStatus xsd:string ?
-  }
-  
-  <FragmentFeatureShape> {
-    a [ bp:FragmentFeature ] ;
-    bp:featureLocation @<SequenceIntervalShape> ?
-  }
-  
-  <SequenceIntervalShape> {
-    a [ bp:SequenceInterval ] ;
-    bp:sequenceIntervalBegin @<SequenceSiteShape> ? ;
-    bp:sequenceIntervalEnd @<SequenceSiteShape> ?
-  }
-  
+
+  # ~1,525 distinct terms; use exact term strings (e.g. "plasma membrane"^^xsd:string)
+  # Linked to GO cellular component via UnificationXref ("plasma membrane" = GO:0005886)
   <CellularLocationVocabularyShape> {
     a [ bp:CellularLocationVocabulary ] ;
     bp:term xsd:string ;
     bp:xref @<XrefShape> *
   }
-  
+
+  # CRITICAL: three xref types serve distinct purposes
+  # UnificationXref: primary identifiers (UniProt, ChEBI, MOD, GO 1.5K)
+  # RelationshipXref: ontology annotations (GO ~68K — PRIMARY GO PATTERN)
+  # PublicationXref: PubMed citations (~291K)
+  # bp:db and bp:id require ^^xsd:string for exact matching
   <XrefShape> {
     a [ bp:UnificationXref bp:PublicationXref bp:RelationshipXref ] ;
     bp:db xsd:string ? ;
     bp:id xsd:string ? ;
-    bp:idVersion xsd:string ? ;
     bp:relationshipType @<RelationshipTypeVocabularyShape> ?
   }
-  
-  <RelationshipTypeVocabularyShape> {
-    a [ bp:RelationshipTypeVocabulary ] ;
-    bp:term xsd:string
-  }
-  
+
   <BioSourceShape> {
     a [ bp:BioSource ] ;
-    bp:name xsd:string * ;
-    bp:xref @<XrefShape> *
-  }
-  
-  <ProvenanceShape> {
-    a [ bp:Provenance ] ;
-    bp:name xsd:string *
-  }
-  
-  <PathwayStepShape> {
-    a [ bp:PathwayStep ] ;
-    bp:stepProcess . ? ;
-    bp:nextStep @<PathwayStepShape> *
+    bp:name xsd:string *    # use "Homo sapiens"^^xsd:string for exact matching
   }
 
 sample_rdf_entries:
-  - title: Pathway with GO RelationshipXref
-    description: Human pathway with GO biological process annotation via bp:RelationshipXref (primary pattern for GO terms).
-    rdf: |
-      @prefix bp: <http://www.biopax.org/release/biopax-level3.owl#> .
-      @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-      
-      <http://www.reactome.org/biopax/57/49646#Pathway299>
-        a bp:Pathway ;
-        bp:displayName "Signaling by Rho GTPases"^^xsd:string ;
-        bp:organism <http://www.reactome.org/biopax/57/49646#BioSource1> ;
-        bp:xref <http://www.reactome.org/biopax/57/49646#RelationshipXref3252> .
-      
-      <http://www.reactome.org/biopax/57/49646#RelationshipXref3252>
-        a bp:RelationshipXref ;
-        bp:db "GENE ONTOLOGY"^^xsd:string ;
-        bp:id "GO:0007264"^^xsd:string ;
-        bp:relationshipType <http://www.reactome.org/biopax/57/49646#RelationshipTypeVocabulary4> .
-      
-      <http://www.reactome.org/biopax/57/49646#BioSource1>
-        a bp:BioSource ;
-        bp:name "Homo sapiens"^^xsd:string .
-  
-  - title: Protein with Phosphorylation ModificationFeature
-    description: Protein with post-translational modification (phosphorylation at specific position).
-    rdf: |
-      @prefix bp: <http://www.biopax.org/release/biopax-level3.owl#> .
-      @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-      
-      <http://www.reactome.org/biopax/57/49646#Protein728>
-        a bp:Protein ;
-        bp:displayName "phospho-ERBB4"^^xsd:string ;
-        bp:entityReference <http://www.reactome.org/biopax/57/49646#ProteinReference396> ;
-        bp:feature <http://www.reactome.org/biopax/57/49646#ModificationFeature331> ;
-        bp:cellularLocation <http://www.reactome.org/biopax/57/49646#CellularLocationVocabulary2> .
-      
-      <http://www.reactome.org/biopax/57/49646#ModificationFeature331>
-        a bp:ModificationFeature ;
-        bp:modificationType <http://www.reactome.org/biopax/57/49646#SequenceModificationVocabulary1> ;
-        bp:featureLocation <http://www.reactome.org/biopax/57/49646#SequenceSite1503> .
-      
-      <http://www.reactome.org/biopax/57/49646#SequenceModificationVocabulary1>
-        a bp:SequenceModificationVocabulary ;
-        bp:term "O4'-phospho-L-tyrosine"^^xsd:string .
-      
-      <http://www.reactome.org/biopax/57/49646#SequenceSite1503>
-        a bp:SequenceSite ;
-        bp:sequencePosition 1188 ;
-        bp:positionStatus "EQUAL"^^xsd:string .
-      
-      <http://www.reactome.org/biopax/57/49646#CellularLocationVocabulary2>
-        a bp:CellularLocationVocabulary ;
-        bp:term "plasma membrane"^^xsd:string .
-  
-  - title: Catalysis with ControlType
-    description: Catalysis relationship showing enzyme activation of biochemical reaction.
-    rdf: |
-      @prefix bp: <http://www.biopax.org/release/biopax-level3.owl#> .
-      @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-      
-      <http://www.reactome.org/biopax/57/49646#Catalysis391>
-        a bp:Catalysis ;
-        bp:controller <http://www.reactome.org/biopax/57/49646#Complex1408> ;
-        bp:controlled <http://www.reactome.org/biopax/57/49646#BiochemicalReaction1056> ;
-        bp:controlType "ACTIVATION"^^xsd:string .
-  
-  - title: BiochemicalReaction with EC Number
-    description: Protein kinase reaction with specific EC classification and substrates.
-    rdf: |
-      @prefix bp: <http://www.biopax.org/release/biopax-level3.owl#> .
-      @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-      
-      <http://www.reactome.org/biopax/57/49646#BiochemicalReaction1154>
-        a bp:BiochemicalReaction ;
-        bp:displayName "Autophosphorylation of PDGFRA"^^xsd:string ;
-        bp:eCNumber "2.7.10.1"^^xsd:string ;
-        bp:left <http://www.reactome.org/biopax/57/49646#Complex630> ;
-        bp:right <http://www.reactome.org/biopax/57/49646#Complex1445> .
-  
-  - title: Complex with Stoichiometry and Cellular Location
-    description: Multi-component protein complex with stoichiometric coefficients.
-    rdf: |
-      @prefix bp: <http://www.biopax.org/release/biopax-level3.owl#> .
-      @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-      
-      <http://www.reactome.org/biopax/57/49646#Complex630>
-        a bp:Complex ;
-        bp:displayName "PDGF-PDGFRA dimer"^^xsd:string ;
-        bp:component <http://www.reactome.org/biopax/57/49646#Protein728> ;
-        bp:componentStoichiometry [
-          a bp:Stoichiometry ;
-          bp:physicalEntity <http://www.reactome.org/biopax/57/49646#Protein728> ;
-          bp:stoichiometricCoefficient 2
-        ] ;
-        bp:cellularLocation [
-          a bp:CellularLocationVocabulary ;
-          bp:term "plasma membrane"^^xsd:string
-        ] .
+  rdf_prefixes: |
+    @prefix bp: <http://www.biopax.org/release/biopax-level3.owl#> .
+    @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+    @prefix react: <http://www.reactome.org/biopax/95/48898#> .
+  entries:
+    - title: Pathway with GO RelationshipXref (primary GO annotation pattern)
+      description: Human pathway annotated via RelationshipXref — the primary pattern covering 98% of all GO annotations in Reactome.
+      rdf: |
+        react:Pathway299 a bp:Pathway ;
+          bp:displayName "Signaling by Rho GTPases"^^xsd:string ;
+          bp:organism react:BioSource1 ;
+          bp:xref react:RelationshipXref3252 .
+
+        react:RelationshipXref3252 a bp:RelationshipXref ;
+          bp:db "GENE ONTOLOGY"^^xsd:string ;
+          bp:id "GO:0007264"^^xsd:string .
+
+        react:BioSource1 a bp:BioSource ;
+          bp:name "Homo sapiens"^^xsd:string .
+
+    - title: Protein with MOD-Annotated Phosphorylation ModificationFeature
+      description: Protein with a post-translational modification where the SequenceModificationVocabulary carries a MOD ontology xref, enabling structured queries without text search.
+      rdf: |
+        react:Protein728 a bp:Protein ;
+          bp:displayName "phospho-ERBB4"^^xsd:string ;
+          bp:entityReference react:ProteinReference396 ;
+          bp:feature react:ModificationFeature331 ;
+          bp:cellularLocation react:CellularLocationVocabulary2 .
+
+        react:ModificationFeature331 a bp:ModificationFeature ;
+          bp:modificationType react:SequenceModificationVocabulary5 ;
+          bp:featureLocation react:SequenceSite1503 .
+
+        react:SequenceModificationVocabulary5 a bp:SequenceModificationVocabulary ;
+          bp:term "O4'-phospho-L-tyrosine"^^xsd:string ;
+          bp:xref react:Xref_MOD48 .
+
+        react:Xref_MOD48 a bp:UnificationXref ;
+          bp:db "MOD"^^xsd:string ;
+          bp:id "MOD:00048"^^xsd:string .
+
+        react:SequenceSite1503 a bp:SequenceSite ;
+          bp:sequencePosition 1188 ;
+          bp:positionStatus "EQUAL"^^xsd:string .
+
+        react:CellularLocationVocabulary2 a bp:CellularLocationVocabulary ;
+          bp:term "plasma membrane"^^xsd:string .
+
+    - title: BiochemicalReaction with EC Number and Catalysis
+      description: Protein kinase reaction with EC classification linked to an activating enzyme catalyst, illustrating the Catalysis → BiochemicalReaction access pattern.
+      rdf: |
+        react:BiochemicalReaction1154 a bp:BiochemicalReaction ;
+          bp:displayName "Autophosphorylation of PDGFRA"^^xsd:string ;
+          bp:eCNumber "2.7.10.1"^^xsd:string ;
+          bp:left react:Complex630 ;
+          bp:right react:Complex1445 .
+
+        react:Catalysis391 a bp:Catalysis ;
+          bp:controller react:Complex630 ;
+          bp:controlled react:BiochemicalReaction1154 ;
+          bp:controlType "ACTIVATION"^^xsd:string .
 
 sparql_query_examples:
-  - title: Count Human Pathways Using Organism Name
-    description: |
-      Retrieve count of human pathways using organism name with exact match.
-      Demonstrates ^^xsd:string requirement for exact value matching.
-    question: How many pathways are there for humans?
+  - title: Count Human Pathways by Organism Name
+    description: Count all human pathways using exact organism name matching with ^^xsd:string.
+    question: How many pathways exist for Homo sapiens?
     complexity: basic
     sparql: |
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-      
-      # Uses specific organism name with ^^xsd:string for exact matching
+
       SELECT (COUNT(DISTINCT ?pathway) as ?count)
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
@@ -281,227 +210,201 @@ sparql_query_examples:
                  bp:organism ?org .
         ?org bp:name "Homo sapiens"^^xsd:string .
       }
-  
-  - title: Find Reactions by Specific EC Numbers Using VALUES
-    description: |
-      Retrieve reactions with specific enzyme commission numbers using VALUES.
-      Demonstrates structured EC number property with multiple specific values.
-    question: What protein kinase and serine/threonine kinase reactions exist?
+
+  - title: Find Reactions by EC Numbers Using VALUES
+    description: Retrieve biochemical reactions with specific EC numbers using VALUES and exact ^^xsd:string matching.
+    question: What protein-tyrosine kinase and serine/threonine kinase reactions are annotated?
     complexity: basic
     sparql: |
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-      
-      # Uses VALUES with specific EC numbers, ^^xsd:string required
+
       SELECT ?reaction ?name ?ec
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        VALUES ?ec { 
-          "2.7.10.1"^^xsd:string   # Protein-tyrosine kinase
-          "2.7.11.1"^^xsd:string   # Serine/threonine-protein kinase
+        VALUES ?ec {
+          "2.7.10.1"^^xsd:string    # protein-tyrosine kinase
+          "2.7.11.1"^^xsd:string    # serine/threonine-protein kinase
         }
         ?reaction a bp:BiochemicalReaction ;
                   bp:displayName ?name ;
                   bp:eCNumber ?ec .
       }
       LIMIT 50
-  
+
   - title: Find Pathways by GO Terms via RelationshipXref
     description: |
-      Query pathways annotated with specific Gene Ontology terms using RelationshipXref.
-      CRITICAL: GO terms are primarily stored as RelationshipXref (68K) not UnificationXref (1.5K).
-      This is the correct pattern for comprehensive GO term queries.
-    question: Which pathways are involved in MAPK cascade and small GTPase signaling?
+      Query pathways by GO biological process ID. CRITICAL: Use RelationshipXref (68K GO terms),
+      NOT UnificationXref (1.5K) — the wrong xref type silently misses 98% of GO annotations.
+    question: Which pathways involve the MAPK cascade or small GTPase signaling?
     complexity: intermediate
     sparql: |
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-      
-      # CRITICAL: Use RelationshipXref for GO terms (68K instances)
-      # UnificationXref only has 1.5K GO terms - would miss most results!
+
       SELECT DISTINCT ?pathway ?name ?goTerm
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        VALUES ?goTerm { 
+        VALUES ?goTerm {
           "GO:0000165"^^xsd:string    # MAPKKK cascade
-          "GO:0051897"^^xsd:string    # MAPK cascade regulation
-          "GO:0007264"^^xsd:string    # Small GTPase mediated signal transduction
+          "GO:0007264"^^xsd:string    # small GTPase mediated signal transduction
         }
         ?pathway a bp:Pathway ;
                  bp:displayName ?name ;
                  bp:xref ?xref .
+        # CRITICAL: RelationshipXref holds 98% of GO annotations in Reactome
         ?xref a bp:RelationshipXref ;
               bp:db "GENE ONTOLOGY"^^xsd:string ;
               bp:id ?goTerm .
       }
       LIMIT 50
-  
-  - title: Find Proteins with Specific Modifications at Position
+
+  - title: Find Proteins with Phosphorylation Using MOD Ontology IDs
     description: |
-      Query proteins with phosphorylation modifications at specific sequence positions.
-      Demonstrates navigating ModificationFeature, SequenceModificationVocabulary, and SequenceSite.
-    question: Which proteins have tyrosine phosphorylation sites?
+      Retrieve proteins with specific phosphorylation types using MOD IDs from UnificationXref
+      on SequenceModificationVocabulary — structured alternative to text search.
+    question: Which proteins have phosphoserine or phosphothreonine modifications?
     complexity: intermediate
     sparql: |
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-      
-      # Navigate protein modification structure
-      SELECT DISTINCT ?protein ?proteinName ?modType ?position
+
+      SELECT DISTINCT ?protein ?name ?modTerm ?position
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
+        VALUES ?modId {
+          "MOD:00046"^^xsd:string    # O-phospho-L-serine
+          "MOD:00047"^^xsd:string    # O-phospho-L-threonine
+        }
         ?protein a bp:Protein ;
-                 bp:displayName ?proteinName ;
+                 bp:displayName ?name ;
                  bp:feature ?modFeature .
-        
         ?modFeature a bp:ModificationFeature ;
-                    bp:modificationType ?modVocab ;
-                    bp:featureLocation ?site .
-        
-        ?modVocab bp:term ?modType .
-        FILTER(CONTAINS(?modType, "phospho") && CONTAINS(?modType, "tyrosine"))
-        
-        ?site bp:sequencePosition ?position .
+                    bp:modificationType ?modVocab .
+        ?modVocab bp:term ?modTerm ;
+                  bp:xref ?modXref .
+        ?modXref a bp:UnificationXref ;
+                 bp:db "MOD"^^xsd:string ;
+                 bp:id ?modId .
+        OPTIONAL {
+          ?modFeature bp:featureLocation/bp:sequencePosition ?position .
+        }
       }
-      ORDER BY ?proteinName
+      ORDER BY ?name
       LIMIT 100
-  
-  - title: Analyze Catalysis Relationships with Control Types
-    description: |
-      Comprehensive query integrating catalysis, control types, and reaction details.
-      Demonstrates aggregation and filtering on controlType values.
-    question: What is the distribution of activation vs inhibition in catalyzed reactions?
+
+  - title: Catalysis Distribution by Control Type
+    description: Aggregate count of activation vs inhibition catalysis for reactions with known EC numbers.
+    question: What is the ratio of activating to inhibiting catalysis in enzymatic reactions?
     complexity: intermediate
     sparql: |
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-      
-      # Aggregate by controlType to see activation vs inhibition distribution
-      SELECT ?controlType (COUNT(DISTINCT ?reaction) as ?reactionCount) (COUNT(DISTINCT ?catalyst) as ?catalystCount)
+
+      SELECT ?controlType
+             (COUNT(DISTINCT ?reaction) as ?reactions)
+             (COUNT(DISTINCT ?catalyst) as ?catalysts)
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
         ?catalysis a bp:Catalysis ;
                    bp:controlled ?reaction ;
                    bp:controller ?catalyst ;
                    bp:controlType ?controlType .
-        
         ?reaction a bp:BiochemicalReaction ;
                   bp:eCNumber ?ec .
       }
       GROUP BY ?controlType
-      ORDER BY DESC(?reactionCount)
-  
-  - title: Find Proteins by Cellular Location and Cross-References
+      ORDER BY DESC(?reactions)
+
+  - title: Plasma Membrane Proteins with UniProt Cross-References
     description: |
-      Query proteins in specific cellular compartments with UniProt annotations.
-      Demonstrates filtering on CellularLocationVocabulary term and UnificationXref pattern.
-    question: Which plasma membrane proteins have UniProt annotations?
+      Retrieve plasma membrane proteins with UniProt IDs using exact CellularLocationVocabulary
+      term matching — controlled vocabulary term, no text search needed.
+    question: Which plasma membrane proteins have UniProt accession annotations?
     complexity: advanced
     sparql: |
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-      
-      # Filter by cellular location term and cross-reference database
-      SELECT DISTINCT ?protein ?name ?uniprotId ?location
+
+      SELECT DISTINCT ?protein ?name ?uniprotId
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
         ?protein a bp:Protein ;
                  bp:displayName ?name ;
                  bp:cellularLocation ?cellLoc ;
                  bp:entityReference ?ref .
-        
-        ?cellLoc a bp:CellularLocationVocabulary ;
-                 bp:term ?location .
-        FILTER(CONTAINS(LCASE(?location), "plasma membrane"))
-        
+        # Exact controlled vocabulary term — "plasma membrane" is a stable string (GO:0005886)
+        ?cellLoc bp:term "plasma membrane"^^xsd:string .
         ?ref bp:xref ?xref .
         ?xref a bp:UnificationXref ;
               bp:db "UniProt"^^xsd:string ;
               bp:id ?uniprotId .
       }
       LIMIT 100
-  
-  - title: Complex Multi-Property Integration Query
+
+  - title: Discover Signaling Pathway Reactions with Protein Modifications
     description: |
-      Advanced query integrating pathways, reactions, complexes, modifications, and cellular locations.
-      Demonstrates comprehensive multi-type integration for human signaling pathways.
-    question: What are the detailed components of human signaling pathway reactions?
+      Multi-type integration across pathways, reactions, and modified proteins. Uses bif:contains
+      for pathway name discovery — justified: bp:displayName is free-text narrative with no
+      controlled vocabulary or IRI equivalent; Virtuoso backend enables indexed search.
+    question: What reactions and protein modifications occur in human signaling pathways?
     complexity: advanced
     sparql: |
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-      
-      # Complex integration across multiple entity types
-      SELECT DISTINCT ?pathwayName ?reactionName ?ec ?complexName ?location ?modType
+
+      SELECT DISTINCT ?pathwayName ?reactionName ?ec ?modTerm ?location
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        # Start with human pathways containing "signaling"
+        # bif:contains justified: bp:displayName is free text with no IRI-based vocabulary
         ?pathway a bp:Pathway ;
                  bp:displayName ?pathwayName ;
                  bp:organism ?org ;
                  bp:pathwayComponent+ ?reaction .
+        ?pathwayName bif:contains "'signaling'" .
         ?org bp:name "Homo sapiens"^^xsd:string .
-        FILTER(CONTAINS(LCASE(?pathwayName), "signaling"))
-        
-        # Get reaction details
+
         ?reaction a bp:BiochemicalReaction ;
                   bp:displayName ?reactionName ;
                   bp:eCNumber ?ec ;
-                  bp:left|bp:right ?complex .
-        
-        # Get complex details with location
-        ?complex a bp:Complex ;
-                 bp:displayName ?complexName ;
-                 bp:cellularLocation ?cellLoc ;
-                 bp:component ?protein .
-        ?cellLoc bp:term ?location .
-        
-        # Get protein modifications
-        OPTIONAL {
-          ?protein bp:feature ?modFeature .
-          ?modFeature a bp:ModificationFeature ;
-                      bp:modificationType/bp:term ?modType .
-        }
+                  bp:left|bp:right ?protein .
+
+        ?protein a bp:Protein ;
+                 bp:cellularLocation/bp:term ?location ;
+                 bp:feature/bp:modificationType/bp:term ?modTerm .
       }
-      LIMIT 100
+      LIMIT 50
 
 cross_database_queries:
   shared_endpoint: ebi
-  co_located_databases:
-    - chembl
-    - chebi
-    - ensembl
+  co_located_databases: [chembl, chebi, ensembl]
   examples:
-    - title: Link Reactome Small Molecules to ChEBI Chemical Ontology
+    - title: Link Reactome Small Molecules to ChEBI Chemical Properties
       description: |
-        Connect Reactome small molecules to ChEBI chemical ontology for enriched chemical properties.
-        
+        Connect Reactome small molecules in human metabolism pathways to ChEBI ontology.
+
         Linking strategy:
-        - Reactome: Uses bp:xref with bp:db="ChEBI"^^xsd:string for molecule references
-        - ChEBI: Chemical ontology with formulas, mass, InChI keys
-        - URI conversion: BIND(IRI(CONCAT(...))) transforms "CHEBI:15422" to ChEBI ontology IRI
-        - Pre-filtering: Human pathways + "metabolism" keyword reduces result set before property path
-      databases_used:
-        - reactome
-        - chebi
+        - Reactome: bp:xref with bp:db "ChEBI"^^xsd:string; bp:id "CHEBI:NNNNN"
+        - ChEBI: IRI http://purl.obolibrary.org/obo/CHEBI_NNNNN
+        - Bridge: BIND(IRI(CONCAT("...CHEBI_", SUBSTR(?id, 7)))) strips "CHEBI:" prefix
+        - Pre-filter: human organism + "metabolism" in pathway name reduces join size
+      databases_used: [reactome, chebi]
       complexity: intermediate
       sparql: |
         PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
         PREFIX owl: <http://www.w3.org/2002/07/owl#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         PREFIX chebi: <http://purl.obolibrary.org/obo/chebi/>
         PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-        
+
         SELECT DISTINCT ?reactomeName ?chebiLabel ?formula ?mass
         WHERE {
           GRAPH <http://rdf.ebi.ac.uk/dataset/reactome> {
-            # Pre-filter: human metabolism pathways
             ?pathway a bp:Pathway ;
                      bp:displayName ?pathwayName ;
-                     bp:organism ?org ;
+                     bp:organism/bp:name "Homo sapiens"^^xsd:string ;
                      bp:pathwayComponent+/bp:left|bp:right ?molecule .
-            ?org bp:name "Homo sapiens"^^xsd:string .
             FILTER(CONTAINS(?pathwayName, "metabolism"))
-            
             ?molecule a bp:SmallMolecule ;
                       bp:displayName ?reactomeName ;
                       bp:entityReference/bp:xref ?xref .
@@ -511,10 +414,7 @@ cross_database_queries:
             FILTER(STRSTARTS(?fullChebiId, "CHEBI:"))
             BIND(SUBSTR(?fullChebiId, 7) AS ?chebiNum)
           }
-          
-          # URI conversion: "CHEBI:15422" -> "http://purl.obolibrary.org/obo/CHEBI_15422"
           BIND(IRI(CONCAT("http://purl.obolibrary.org/obo/CHEBI_", ?chebiNum)) AS ?chebiUri)
-          
           GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
             ?chebiUri a owl:Class ;
                       rdfs:label ?chebiLabel .
@@ -524,41 +424,36 @@ cross_database_queries:
         }
         LIMIT 50
       notes: |
-        - Performance: ~3-5s (Tier 2) with pre-filtering
-        - Pre-filtering: human + "metabolism" reduces pathways before property path traversal
-        - URI conversion: BIND(IRI(CONCAT(...))) for cross-database IRI matching
-        - ^^xsd:string required for exact matches (bp:db, bp:name)
-    
-    - title: Integrate Reactome Pathways with ChEMBL Drug Targets
+        - Linking via: ChEBI IDs (bp:id "CHEBI:NNNNN") → URI conversion to obo/CHEBI_NNNNN
+        - Performance: ~3-5s with organism + "metabolism" pre-filters
+        - MIE files checked: reactome, chebi
+
+    - title: Link Reactome Cancer Pathway Proteins to Late-Stage ChEMBL Drugs
       description: |
-        Link pathways to ChEMBL drugs targeting pathway proteins for drug target validation.
-        
+        Bridge Reactome proteins in cancer pathways to ChEMBL drug targets via UniProt IDs.
+
         Linking strategy:
-        - Reactome: Proteins with UniProt xrefs in human cancer pathways
-        - ChEMBL: Drug targets with UniProt links, late-stage drugs (phase ≥3)
-        - Integration: UniProt IRI conversion for joining databases
-        - Pre-filtering: Organism + cancer keyword + development phase
-      databases_used:
-        - reactome
-        - chembl
+        - Reactome: Protein → EntityReference → UnificationXref bp:db "UniProt"^^xsd:string
+        - ChEMBL: cco:SingleProtein → cco:hasTargetComponent → skos:exactMatch UniProt IRI
+        - Bridge: BIND(IRI(CONCAT("http://purl.uniprot.org/uniprot/", ?uniprotIdStr)))
+        - Pre-filter: human organism + bif:contains 'cancer' + clinical phase >= 3
+      databases_used: [reactome, chembl]
       complexity: advanced
       sparql: |
         PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
         PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
         PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-        
+
         SELECT DISTINCT ?pathwayName ?proteinName ?drugName ?phase
         WHERE {
           GRAPH <http://rdf.ebi.ac.uk/dataset/reactome> {
-            # Pre-filter: human cancer pathways
             ?pathway a bp:Pathway ;
                      bp:displayName ?pathwayName ;
-                     bp:organism ?org ;
+                     bp:organism/bp:name "Homo sapiens"^^xsd:string ;
                      bp:pathwayComponent*/bp:left|bp:right ?protein .
-            ?org bp:name "Homo sapiens"^^xsd:string .
-            ?pathwayName bif:contains "'cancer'" option (score ?sc)
-            
+            ?pathwayName bif:contains "'cancer'" .
             ?protein a bp:Protein ;
                      bp:entityReference/bp:name ?proteinName ;
                      bp:entityReference/bp:xref ?protXref .
@@ -566,414 +461,230 @@ cross_database_queries:
                       bp:db "UniProt"^^xsd:string ;
                       bp:id ?uniprotIdStr .
           }
-          
-          # URI conversion: UniProt string to full IRI
-          BIND(IRI(CONCAT("http://purl.uniprot.org/uniprot/", ?uniprotIdStr)) AS ?uniprotId)
-          
+          BIND(IRI(CONCAT("http://purl.uniprot.org/uniprot/", ?uniprotIdStr)) AS ?uniprotIRI)
           GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
-            # Pre-filter: human targets, late-stage drugs
             ?target a cco:SingleProtein ;
                     cco:organismName "Homo sapiens" ;
-                    cco:hasTargetComponent/skos:exactMatch ?uniprotId ;
+                    cco:hasTargetComponent/skos:exactMatch ?uniprotIRI ;
                     cco:hasAssay/cco:hasActivity/cco:hasMolecule ?molecule .
-            
             ?molecule a cco:SmallMolecule ;
                       rdfs:label ?drugName ;
                       cco:highestDevelopmentPhase ?phase .
             FILTER(?phase >= 3)
           }
         }
-        ORDER BY DESC(?sc) DESC(?phase)
+        ORDER BY DESC(?phase)
         LIMIT 20
       notes: |
-        - Performance: ~4-6s (Tier 2) with aggressive pre-filtering
-        - Triple pre-filtering: organism + cancer keyword + phase ≥3
-        - URI conversion: UniProt string to IRI for ChEMBL join
-        - bif:contains for pathway discovery, ^^xsd:string for exact matches
+        - Linking via: UniProt accession string → IRI (http://purl.uniprot.org/uniprot/P12345)
+        - Performance: ~4-6s with organism + keyword + phase pre-filters
+        - MIE files checked: reactome, chembl
 
 cross_references:
   - pattern: bp:xref with bp:db and bp:id
     description: |
-      Unified cross-reference pattern using bp:xref with database name and identifier.
-      CRITICAL: bp:db and bp:id require ^^xsd:string for exact value matching.
-      Three xref types: UnificationXref (primary IDs), RelationshipXref (ontology terms - especially GO), PublicationXref (literature).
+      Unified cross-reference pattern. bp:db (database name) and bp:id (identifier) both require
+      ^^xsd:string for exact matching. Three subtypes: UnificationXref (primary IDs for UniProt,
+      ChEBI, MOD, GO 1.5K), RelationshipXref (GO ontology annotations ~68K — CRITICAL primary
+      GO pattern), PublicationXref (PubMed citations ~291K).
     databases:
       proteins:
-        - "UniProt: 89K protein references (UnificationXref)"
-        - "ENSEMBL: 2K gene mappings"
-      pathways:
-        - "GENE ONTOLOGY: 1.5K UnificationXref + 68.3K RelationshipXref (CRITICAL: Most GO terms are RelationshipXref!)"
-        - "KEGG Pathway: pathway mappings"
+        - "UniProt: ~91K protein references (UnificationXref)"
+        - "ENSEMBL: ~2K gene mappings (UnificationXref)"
+      pathways_and_processes:
+        - "GENE ONTOLOGY RelationshipXref: ~68K — PRIMARY pattern for comprehensive GO queries"
+        - "GENE ONTOLOGY UnificationXref: ~1.5K — secondary only"
       chemicals:
-        - "ChEBI: 21.6K small molecule references"
-        - "PubChem Compound: 568 compound identifiers"
-      publications:
-        - "PubMed: 291K evidence citations (PublicationXref)"
-      drugs:
-        - "Guide to Pharmacology: 8.4K drug-target interactions"
+        - "ChEBI: ~21.5K small molecule references (UnificationXref)"
+        - "Guide to Pharmacology: ~8.6K drug-target interactions (UnificationXref)"
+        - "PubChem Compound: ~583 compound IDs (UnificationXref)"
       modifications:
-        - "MOD: 1.4K protein modification ontology terms"
+        - "MOD: ~1.4K protein modification ontology IDs (UnificationXref on SequenceModificationVocabulary)"
+      publications:
+        - "PubMed: ~291K evidence citations (PublicationXref)"
     sparql: |
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-      
-      # Example: Find GO term RelationshipXrefs (primary pattern)
-      SELECT ?entity ?goId
+
+      SELECT ?xrefType (COUNT(?xref) as ?count)
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        ?entity bp:xref ?xref .
-        ?xref a bp:RelationshipXref ;
-              bp:db "GENE ONTOLOGY"^^xsd:string ;
-              bp:id ?goId .
+        ?xref a ?xrefType .
+        VALUES ?xrefType {
+          bp:UnificationXref bp:RelationshipXref bp:PublicationXref
+        }
       }
-      LIMIT 50
+      GROUP BY ?xrefType
+      LIMIT 10
 
 architectural_notes:
   query_strategy:
-    - "CRITICAL RULE: ^^xsd:string required for exact value matching (direct patterns, VALUES, FILTER with =)"
-    - "NO ^^xsd:string for: CONTAINS(), STRSTARTS(), REGEX(), bif:contains, retrieving values"
-    - "Exploratory: Use search_reactome_entity() to find examples (~30 results)"
-    - "Extract values: Organism names, GO term IDs, EC numbers from examples"
-    - "Comprehensive: Use extracted values with ^^xsd:string for exact matching"
-    - "Organism filtering: bp:name 'Homo sapiens'^^xsd:string"
-    - "GO terms: CRITICAL - Primarily in RelationshipXref (68.3K) not UnificationXref (1.5K)!"
-    - "EC numbers: bp:eCNumber with ^^xsd:string for exact matches"
-    - "Pathway hierarchy: Start from specific pathway IRI, use bp:pathwayComponent+ with LIMIT"
-    - "Modifications: Navigate bp:feature → ModificationFeature → modificationType/term"
-    - "Cellular location: bp:cellularLocation → CellularLocationVocabulary → term"
-    - "Control types: bp:controlType with values 'ACTIVATION' or 'INHIBITION'"
-    - "Text search: bif:contains for discovery (no ^^xsd:string needed)"
-    - "Priority: Specific IRIs/VALUES > Typed predicates > Graph navigation > Text search"
-  
+    - "ALWAYS read get_MIE_file('reactome') and scan critical_warnings before writing queries"
+    - "Exploratory: use search_reactome_entity() to find example entities and extract typed values"
+    - "Exact matching: always use ^^xsd:string for bp:db, bp:id, bp:name, bp:eCNumber, bp:controlType"
+    - "GO terms: query RelationshipXref (68K) — NOT UnificationXref (1.5K misses 98% of GO data)"
+    - "Modifications: use VALUES with MOD IDs to avoid text search (MOD:00046/47/48/00696 for phospho)"
+    - "Cellular locations: use exact term strings ('plasma membrane'^^xsd:string) — no text search"
+    - "Pathway hierarchy: anchor to specific IRI via search_reactome_entity(); use bp:pathwayComponent+"
+    - "Text search: bif:contains for bp:displayName pathway discovery only (Virtuoso indexed)"
+    - "Priority: Specific IRIs/VALUES > Typed predicates > Graph navigation > bif:contains"
+
   schema_design:
-    - "BioPAX Level 3 ontology provides standardized biological pathway representation"
-    - "Hierarchical pathways via bp:pathwayComponent enable multi-level organization"
-    - "Reactions link to proteins, complexes, small molecules via bp:left/bp:right"
-    - "Entity references separate instances from canonical definitions"
-    - "Three xref types: UnificationXref (identifiers), RelationshipXref (ontology terms), PublicationXref (literature)"
-    - "ModificationFeature system: 49.6K instances with sequence positions and modification types"
-    - "CellularLocationVocabulary: 1,525 distinct locations with controlled vocabulary"
-    - "SequenceModificationVocabulary: 1,430 modification types (phosphorylation, acetylation, etc.)"
-    - "Stoichiometry: 279K instances for precise complex composition"
-    - "String properties stored as xsd:string - exact matching requires type restriction"
-  
+    - "BioPAX Level 3 ontology; physical entities participate in reactions via bp:left/bp:right"
+    - "Physical entity hierarchy: Protein / Complex / SmallMolecule / Dna / Rna"
+    - "EntityReference separates canonical definitions (UniProt/ChEBI xrefs) from pathway instances"
+    - "Three xref types differ in purpose — UnificationXref for IDs, RelationshipXref for ontologies"
+    - "ModificationFeature → SequenceModificationVocabulary carries MOD IRI (structured access)"
+    - "CellularLocationVocabulary.term is exact string linked to GO cellular component via UnificationXref"
+    - "Catalysis.controlType is exactly 'ACTIVATION' or 'INHIBITION'"
+    - "Stoichiometry: ~279K instances for precise complex composition (bp:stoichiometricCoefficient)"
+
   performance:
-    - "Use ^^xsd:string for exact matching (fast with proper indexing)"
-    - "Use specific GO/EC values instead of text search (more precise)"
-    - "bif:contains for keyword searches (indexed text search)"
-    - "Always specify FROM graph for multi-graph endpoints"
-    - "Property path bp:pathwayComponent* requires LIMIT to prevent timeouts"
-    - "Start from specific pathway IRIs when navigating hierarchy"
-    - "ModificationFeature queries benefit from filtering on modification type first"
-    - "Cross-database: GRAPH clauses + pre-filtering + URI conversion"
-  
+    - "MANDATORY: FROM <http://rdf.ebi.ac.uk/dataset/reactome> on all single-database queries (shared ebi endpoint)"
+    - "Exact ^^xsd:string matching is fast; omitting returns 0 results silently"
+    - "bif:contains on bp:displayName: bind variable first, then apply bif:contains (not on property path)"
+    - "bp:pathwayComponent* without starting IRI causes full-graph traversal — always anchor; use + not *"
+    - "Cross-database joins: apply organism + keyword pre-filters within each GRAPH block before joining"
+    - "Add LIMIT to every query"
+
   data_integration:
-    - "UniProt provides protein sequences and functional annotations (89K references)"
-    - "ChEBI offers small molecule structures via URI conversion (21.6K references)"
-    - "PubMed links to primary literature and evidence (291K citations)"
-    - "GO terms map pathways to biological processes (68.3K RelationshipXref primary, 1.5K UnificationXref)"
-    - "ChEMBL integration for drug-target relationships (shared EBI endpoint)"
-    - "Guide to Pharmacology for drug classifications (8.4K references)"
-    - "MOD ontology for protein modifications (1.4K terms)"
-    - "Expected performance: Tier 1 (1-3s) for ChEBI, Tier 2 (3-8s) for ChEMBL"
-  
+    - "UniProt: IRI conversion CONCAT('http://purl.uniprot.org/uniprot/', ?id)"
+    - "ChEBI: SUBSTR to strip 'CHEBI:' prefix then CONCAT to obo IRI"
+    - "MOD ontology enables structured modification queries without text search"
+    - "PubMed: 291K citations for evidence-based filtering via PublicationXref"
+
   data_quality:
-    - "All pathways manually curated with expert review"
-    - "Evidence tracking via PublicationXref to PubMed"
-    - "Quarterly updates ensure current biological knowledge"
-    - "GO terms: Check RelationshipXref (68.3K) primarily, UnificationXref (1.5K) for completeness"
-    - "Protein modifications extensively annotated with sequence positions"
-    - "Stoichiometry provides quantitative complex composition"
+    - "All pathways manually curated and expert-reviewed; quarterly release cycle"
+    - "Evidence tracked via PublicationXref to PubMed"
+    - "Verify release version for time-sensitive analyses"
+
+  text_search_justification:
+    - "Number of the 7 example queries using text search: 1 (query 7 only)"
+    - "Field: bp:displayName (pathway names) — free-text narrative, no controlled vocabulary or IRI equivalent"
+    - "All other fields use structured alternatives: MOD IDs for modifications, exact terms for cellular locations, VALUES with GO IDs for ontology annotations, ^^xsd:string for EC/organism/xref"
+    - "bif:contains preferred over FILTER(CONTAINS()) — Virtuoso backend, indexed text search"
 
 data_statistics:
-  total_pathways: 23145
-  verified_date: "2025-02-15"
-  verification_method: "Direct COUNT query on bp:Pathway"
-  verification_query: |
-    PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
-    SELECT (COUNT(DISTINCT ?p) as ?count)
-    FROM <http://rdf.ebi.ac.uk/dataset/reactome>
-    WHERE { ?p a bp:Pathway }
-  
-  human_pathways: 2825
-  human_pathways_verified_date: "2025-02-15"
-  human_pathways_verification_query: |
-    PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
-    PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-    SELECT (COUNT(DISTINCT ?p) as ?count)
-    FROM <http://rdf.ebi.ac.uk/dataset/reactome>
-    WHERE {
-      ?p a bp:Pathway ;
-         bp:organism ?org .
-      ?org bp:name "Homo sapiens"^^xsd:string .
-    }
-  
-  total_reactions: 92977
-  total_proteins: 233200
+  verified_date: "2026-04-22"
+  verification_method: "Direct COUNT queries on the EBI SPARQL endpoint (Release 95)"
+  total_pathways: 23277
+  human_pathways: 2848
+  total_reactions: 93950
+  total_proteins: 232467
   total_complexes: 109261
   total_small_molecules: 51214
-  total_catalysis: 50267
-  total_control: 10729
-  total_dna: 1871
-  total_rna: 820
+  total_catalysis: 50692
   total_species: 30
-  
   modification_features: 49574
-  modification_features_note: "Proteins with post-translational modifications annotated with sequence positions"
-  
   cellular_locations: 1525
-  cellular_locations_note: "Distinct cellular compartments using controlled vocabulary"
-  
   sequence_modification_types: 1430
-  sequence_modification_types_note: "Types of post-translational modifications (phosphorylation, acetylation, etc.)"
-  
   stoichiometry_instances: 279491
-  stoichiometry_instances_note: "Quantitative complex component specifications"
-  
   control_type_activation: 56722
   control_type_inhibition: 4320
-  control_types_note: "Only two control types: ACTIVATION and INHIBITION"
-  
   go_relationship_xrefs: 68305
-  go_unification_xrefs: 1525
-  go_notes: "CRITICAL: GO terms primarily stored as RelationshipXref (68.3K instances). Always query RelationshipXref for comprehensive GO coverage. UnificationXref only has 1.5K GO terms."
-  go_verification_query: |
-    PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
-    PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-    SELECT ?xrefType (COUNT(?xref) as ?count)
-    FROM <http://rdf.ebi.ac.uk/dataset/reactome>
-    WHERE {
-      ?entity bp:xref ?xref .
-      ?xref a ?xrefType ;
-            bp:db "GENE ONTOLOGY"^^xsd:string .
-    }
-    GROUP BY ?xrefType
-  
+  go_unification_xrefs: 1529
+  uniprot_xrefs: 91627
+  chebi_xrefs: 21570
+  mod_xrefs: 1402
+  guide_to_pharmacology_xrefs: 8578
+
   coverage:
-    pathways_with_organisms: ">95%"
+    pathways_with_organism: ">95%"
     reactions_with_ec_numbers: "~60%"
     proteins_with_uniprot: "~90%"
     proteins_with_modifications: "~21%"
     proteins_with_cellular_location: "~40%"
-    pathways_with_go_relationship_xrefs: "~85%"
-    pathways_with_pubmed: "~85%"
+    pathways_with_go_relationship_xref: "~85%"
     complexes_with_stoichiometry: "~95%"
-  
-  performance_characteristics:
-    - "Exact value matching with ^^xsd:string: <1s"
-    - "EC number filtering with ^^xsd:string: <2s"
-    - "GO term RelationshipXref queries: <3s"
-    - "ModificationFeature queries with type filter: <3s"
-    - "Pathway hierarchy from specific IRI: <2s"
-    - "Cross-database (ChEBI): 3-5s with pre-filtering"
-    - "Cross-database (ChEMBL): 4-6s with organism + phase filter"
-  
-  staleness_warning: "Quarterly updates - verify current release for latest data"
 
 anti_patterns:
-  - title: "Skipping MIE Schema Check Before Querying GO Terms"
-    problem: "Querying UnificationXref for GO terms instead of checking MIE schema which shows RelationshipXref is primary."
+  - title: "Querying UnificationXref for GO Terms (Misses 98% of Annotations)"
+    problem: "Using UnificationXref for GO terms instead of RelationshipXref silently returns only 2% of GO pathway annotations."
     wrong_sparql: |
-      # ✗ WRONG: Only checks UnificationXref, misses 68.3K GO terms!
-      # Returns only 1.5K GO terms (2% of total)
-      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      # Returns only ~1.5K GO terms — misses 68K in RelationshipXref
+      ?xref a bp:UnificationXref ;
+            bp:db "GENE ONTOLOGY"^^xsd:string ;
+            bp:id ?goId .
+    correct_sparql: |
+      # Use RelationshipXref — primary GO pattern with 68K instances
+      ?xref a bp:RelationshipXref ;
+            bp:db "GENE ONTOLOGY"^^xsd:string ;
+            bp:id ?goId .
+    explanation: "Check critical_warnings before any GO query. RelationshipXref holds 98% of all GO annotations in Reactome. Skipping the MIE schema check leads to this silent data loss."
+
+  - title: "Missing ^^xsd:string for Exact Literal Matching"
+    problem: "Exact matching in triple patterns, VALUES, or FILTER = requires ^^xsd:string; omitting silently returns 0 results."
+    wrong_sparql: |
+      ?org bp:name "Homo sapiens" .
+      ?xref bp:db "UniProt" ; bp:id "P12345" .
+      ?reaction bp:eCNumber "2.7.10.1" .
+    correct_sparql: |
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-      
-      SELECT ?pathway ?goId
-      WHERE {
-        ?pathway a bp:Pathway ;
-                 bp:xref ?xref .
-        ?xref a bp:UnificationXref ;
-              bp:db "GENE ONTOLOGY"^^xsd:string ;
-              bp:id ?goId .
+      ?org bp:name "Homo sapiens"^^xsd:string .
+      ?xref bp:db "UniProt"^^xsd:string ;
+            bp:id "P12345"^^xsd:string .
+      ?reaction bp:eCNumber "2.7.10.1"^^xsd:string .
+    explanation: "All string literals in Reactome are stored as xsd:string. Exact matching requires ^^xsd:string. CONTAINS(), bif:contains, and variable binding do not need it."
+
+  - title: "Text Search for Modifications When MOD Ontology IDs Exist"
+    problem: "Using FILTER(CONTAINS(?term, 'phospho')) when structured MOD IDs are available in UnificationXref."
+    wrong_sparql: |
+      # Unindexed text scan over controlled vocabulary terms
+      ?modVocab bp:term ?term .
+      FILTER(CONTAINS(LCASE(?term), "phospho"))
+    correct_sparql: |
+      # Use MOD IDs — structured, precise, no text scan needed
+      VALUES ?modId { "MOD:00046"^^xsd:string "MOD:00047"^^xsd:string "MOD:00048"^^xsd:string }
+      ?modVocab bp:xref ?modXref .
+      ?modXref a bp:UnificationXref ;
+               bp:db "MOD"^^xsd:string ;
+               bp:id ?modId .
+    explanation: "MOD ontology IDs (MOD:00046/47/48/00696) are available in UnificationXref on SequenceModificationVocabulary. Always check MIE shape_expressions for structured alternatives before text search."
+
+  - title: "Unbounded Pathway Hierarchy Traversal Without Anchor"
+    problem: "Using bp:pathwayComponent* without a specific starting pathway IRI causes full-graph traversal and timeout."
+    wrong_sparql: |
+      # Explores entire dataset — times out
+      SELECT ?subPathway WHERE {
+        ?pathway bp:pathwayComponent* ?subPathway .
       }
     correct_sparql: |
-      # ✓ CORRECT: Checked MIE schema first
-      # 1. get_MIE_file("reactome") → examined shape_expressions
-      # 2. Found: RelationshipXref has 68.3K GO terms (primary pattern!)
-      # 3. Use RelationshipXref for comprehensive GO queries:
-      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
-      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-      
-      SELECT ?pathway ?goId
-      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
-      WHERE {
-        ?pathway a bp:Pathway ;
-                 bp:xref ?xref .
-        ?xref a bp:RelationshipXref ;
-              bp:db "GENE ONTOLOGY"^^xsd:string ;
-              bp:id ?goId .
-      }
-      LIMIT 100
-    explanation: "Always check MIE schema first! GO terms in Reactome are 98% RelationshipXref, only 2% UnificationXref. Skipping schema check causes 98% data loss."
-  
-  - title: "Missing ^^xsd:string for Exact Value Matching"
-    problem: "Exact matching in triple patterns, VALUES, or FILTER with = requires ^^xsd:string."
-    wrong_sparql: |
-      # ✗ WRONG: Returns nothing - missing ^^xsd:string
-      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
-      
-      SELECT ?pathway
-      WHERE {
-        ?pathway bp:organism ?org .
-        ?org bp:name "Homo sapiens" .
-        ?pathway bp:xref ?xref .
-        ?xref bp:db "GENE ONTOLOGY" ;
-              bp:id "GO:0006915" .
-      }
-    correct_sparql: |
-      # ✓ CORRECT: Exact matching requires ^^xsd:string
-      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
-      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-      
-      SELECT ?pathway
-      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
-      WHERE {
-        ?pathway bp:organism ?org .
-        ?org bp:name "Homo sapiens"^^xsd:string .
-        ?pathway bp:xref ?xref .
-        ?xref bp:db "GENE ONTOLOGY"^^xsd:string ;
-              bp:id "GO:0006915"^^xsd:string .
-      }
-      LIMIT 100
-    explanation: "Reactome stores literals as xsd:string. Exact matching (direct patterns, VALUES, FILTER =) requires ^^xsd:string. String functions (CONTAINS, STRSTARTS) don't need it."
-  
-  - title: "Circular Reasoning with Search Results"
-    problem: "Using search results in VALUES for comprehensive questions instead of extracting concept IRIs."
-    wrong_sparql: |
-      # ✗ WRONG: Circular reasoning
-      # 1. search_reactome_entity("apoptosis") → returns 10 pathway IDs
-      # 2. Query only those 10:
-      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
-      
-      VALUES ?pathway { 
-        <http://www.reactome.org/biopax/57/49646#Pathway1> 
-        <http://www.reactome.org/biopax/57/49646#Pathway2>
-        # ... 10 pathways from search
-      }
-      SELECT (COUNT(?pathway) as ?count) WHERE { 
-        ?pathway a bp:Pathway 
-      }
-      # → Only counted what you already found!
-    correct_sparql: |
-      # ✓ CORRECT: Extract concept IRIs, query complete dataset
-      # 1. search_reactome_entity("apoptosis") → found example pathways
-      # 2. Inspected examples → extracted GO term IRIs from RelationshipXrefs
-      # 3. Use discovered GO terms to query ALL matching pathways:
-      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
-      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-      
-      VALUES ?goTerm { 
-        "GO:0006915"^^xsd:string  # apoptotic process
-        "GO:0097194"^^xsd:string  # execution phase of apoptosis
-      }
-      SELECT (COUNT(DISTINCT ?pathway) as ?count)
-      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
-      WHERE {
-        ?pathway a bp:Pathway ;
-                 bp:xref ?xref .
-        ?xref a bp:RelationshipXref ;
-              bp:id ?goTerm .
-      }
-    explanation: "Search finds examples to discover IRIs/values. Use those IRIs (GO terms, EC numbers) to query the entire dataset comprehensively."
-  
-  - title: "Unbounded Property Path Without Starting Point"
-    problem: "Using bp:pathwayComponent* without specific starting pathway causes timeout."
-    wrong_sparql: |
-      # ✗ Times out: No starting point, explores entire pathway hierarchy
-      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
-      
-      SELECT ?pathway ?subPathway
-      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
-      WHERE {
-        ?pathway bp:pathwayComponent* ?subPathway
-      }
-    correct_sparql: |
-      # ✓ Fast: Start from specific pathway IRI (from search_reactome_entity)
-      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
-      
+      # Anchor to a specific pathway IRI (from search_reactome_entity())
       SELECT ?subPathway ?name
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        <http://www.reactome.org/biopax/57/49646#Pathway299> 
+        <http://www.reactome.org/biopax/95/48898#Pathway299>
           bp:pathwayComponent+ ?subPathway .
-        ?subPathway a bp:Pathway ;
-                    bp:displayName ?name .
+        ?subPathway a bp:Pathway ; bp:displayName ?name .
       }
       LIMIT 100
-    explanation: "Start from specific pathway URI (from search_reactome_entity), use + instead of *, add type filters, include LIMIT."
+    explanation: "Use search_reactome_entity() to get the starting IRI. Use + (not *) and always add LIMIT."
 
 common_errors:
-  - error: "Query returns empty results for GO term exact matching"
+  - error: "Empty results for GO term queries"
     causes:
-      - "Missing ^^xsd:string for exact value matching"
-      - "Querying UnificationXref when GO term is in RelationshipXref (98% of GO terms!)"
-      - "Incorrect predicate or xref type"
+      - "Querying UnificationXref instead of RelationshipXref (misses 98% of GO annotations)"
+      - "Missing ^^xsd:string on bp:db or bp:id"
     solutions:
-      - "Add ^^xsd:string to bp:db and bp:id predicates"
-      - "Use RelationshipXref instead of UnificationXref for GO terms (68.3K vs 1.5K)"
-      - "Verify predicates match MIE schema shape_expressions"
-      - "Check data_statistics section for GO term distribution"
-    example_fix: |
-      # ✗ Before (returns nothing or only 2% of results):
-      ?xref a bp:UnificationXref ;
-            bp:db "GENE ONTOLOGY" ;
-            bp:id "GO:0006915" .
-      
-      # ✓ After (comprehensive results):
-      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-      ?xref a bp:RelationshipXref ;   # Changed to RelationshipXref (98% of GO terms)
-            bp:db "GENE ONTOLOGY"^^xsd:string ;
-            bp:id "GO:0006915"^^xsd:string .
-  
-  - error: "Incomplete comprehensive results for modifications or locations"
+      - "Switch to RelationshipXref (see critical_warnings and anti-pattern 1)"
+      - "Add ^^xsd:string to all exact literal matches (see anti-pattern 2)"
+      - "Verify GO term ID format: must be 'GO:NNNNNNN'^^xsd:string"
+
+  - error: "Empty results for organism, EC number, or xref filters"
     causes:
-      - "Not navigating ModificationFeature → modificationType → term properly"
-      - "Missing OPTIONAL for optional properties"
-      - "Filtering on wrong vocabulary term"
+      - "Missing ^^xsd:string on string literals in triple patterns or VALUES"
+      - "Missing FROM <http://rdf.ebi.ac.uk/dataset/reactome> clause on shared ebi endpoint"
     solutions:
-      - "Follow property path: bp:feature → ModificationFeature → bp:modificationType → bp:term"
-      - "Use OPTIONAL for properties that may not exist on all entities"
-      - "Use CONTAINS(LCASE(?term), 'pattern') for vocabulary term matching"
-      - "Check shape_expressions for correct navigation patterns"
-    example_fix: |
-      # ✗ Wrong approach:
-      ?protein bp:feature ?modification .
-      FILTER(?modification = "phosphorylation")
-      
-      # ✓ Correct approach:
-      ?protein bp:feature ?modFeature .
-      ?modFeature a bp:ModificationFeature ;
-                  bp:modificationType ?modVocab .
-      ?modVocab bp:term ?modType .
-      FILTER(CONTAINS(LCASE(?modType), "phospho"))
-  
-  - error: "Cross-database query timeout or empty results"
+      - "Add ^^xsd:string to all exact matches (see anti-pattern 2)"
+      - "Add explicit FROM clause to every single-database query"
+
+  - error: "Slow query or timeout on pathway hierarchy or cross-database joins"
     causes:
-      - "Missing ^^xsd:string in Reactome GRAPH filters"
-      - "No pre-filtering before joining databases"
-      - "Missing GRAPH clauses"
-      - "Incorrect URI conversion for cross-references"
+      - "Unbounded bp:pathwayComponent* without start IRI"
+      - "Missing pre-filters before cross-database JOIN"
+      - "FILTER(CONTAINS()) instead of exact matching or bif:contains"
     solutions:
-      - "Add ^^xsd:string for exact matches in Reactome GRAPH"
-      - "Apply organism + keyword filters within source GRAPH before joining"
-      - "Use BIND(IRI(CONCAT(...))) for URI conversion (ChEBI, UniProt)"
+      - "Anchor property path to specific IRI from search_reactome_entity(); use + not *"
+      - "Apply organism + keyword filters within each GRAPH block before joining"
+      - "Use exact ^^xsd:string matching for known values; bif:contains (Virtuoso) for free-text"
       - "Add LIMIT to every query level"
-      - "Pre-filter on both sides before JOIN"
-    example_fix: |
-      # ✗ Before:
-      GRAPH <http://rdf.ebi.ac.uk/dataset/reactome> {
-        ?pathway bp:organism ?org .
-        ?org bp:name "Homo sapiens" .  # Missing ^^xsd:string
-        # No pre-filtering
-      }
-      
-      # ✓ After:
-      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-      GRAPH <http://rdf.ebi.ac.uk/dataset/reactome> {
-        ?pathway bp:organism ?org ;
-                 bp:displayName ?pathwayName .
-        ?org bp:name "Homo sapiens"^^xsd:string .
-        FILTER(CONTAINS(?pathwayName, "signaling"))  # Pre-filter keyword
-        # Additional filters reduce result set before JOIN
-      }

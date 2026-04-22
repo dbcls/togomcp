@@ -13,7 +13,7 @@ schema_info:
     - ncbi_esearch
   version:
     mie_version: "2.0"
-    mie_created: "2025-02-10"
+    mie_created: "2025-04-22"
     data_version: "2024"
     update_frequency: "Monthly"
   license:
@@ -24,6 +24,24 @@ schema_info:
     max_query_timeout: "60 seconds"
     backend: "Virtuoso"
 
+# Critical warnings: IRI traps and schema pathologies that cause silent failures.
+critical_warnings: |
+  - SILENT FAILURE — tax:Superkingdom IRI DOES NOT EXIST: Domain-level nodes
+    (Bacteria taxon:2, Eukaryota taxon:2759, Archaea taxon:2157) use the bare
+    namespace IRI <http://ddbj.nig.ac.jp/ontologies/taxonomy/> as their rank,
+    NOT tax:Superkingdom. Querying for tax:rank tax:Superkingdom returns 0 rows
+    with no error. Similarly "cellular organisms" (taxon:131567) uses the same
+    bare namespace rank IRI. Use BIND or FILTER(STR(?rank) = "http://ddbj.nig.ac.jp/ontologies/taxonomy/")
+    to select these nodes.
+  - PERFORMANCE: With 2.7M+ taxa, all exploratory queries MUST have a LIMIT
+    clause. Unbounded rdfs:subClassOf* traversal without a specific starting
+    taxon IRI will time out. Always start transitive lineage queries from a
+    known taxon IRI (e.g., taxon:9606).
+  - IRI NAMESPACE: Taxon IRIs use http://identifiers.org/taxonomy/{id}, NOT
+    http://purl.obolibrary.org/obo/NCBITaxon_{id}. The OBO namespace appears
+    only in owl:sameAs cross-references. Using OBO IRIs in subject position
+    returns 0 results.
+
 shape_expressions: |
   PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -31,148 +49,117 @@ shape_expressions: |
   PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
   PREFIX dcterms: <http://purl.org/dc/terms/>
   PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
-  
+
+  # Taxon: 2,698,386 total instances (verified 2025-04-22)
   <Taxon> {
     a [ tax:Taxon ] ;
-    rdfs:label xsd:string ;
-    dcterms:identifier xsd:integer ;
-    tax:rank @<Rank> ;
-    rdfs:subClassOf @<Taxon> ? ;
-    owl:sameAs IRI {5} ;
-    rdfs:seeAlso IRI {1} ;
-    tax:scientificName xsd:string ;
-    tax:authority xsd:string * ;
-    tax:commonName xsd:string * ;
-    tax:genbankCommonName xsd:string ? ;
-    tax:synonym xsd:string * ;
-    tax:equivalentName xsd:string * ;
-    tax:geneticCode @<GeneticCode> ? ;
-    tax:geneticCodeMt @<GeneticCode> ? ;
-    tax:typeMaterial xsd:string * ;
-    tax:uniqueName xsd:string * ;
-    tax:includes xsd:string * ;
-    tax:merged IRI *
+    rdfs:label xsd:string ;                  # scientific name (99%+ coverage)
+    dcterms:identifier xsd:integer ;         # NCBI numeric taxon ID
+    tax:rank @<Rank> ;                       # rank IRI (see Rank shape below)
+    rdfs:subClassOf @<Taxon> ? ;             # parent taxon; absent for root (taxon:1)
+    owl:sameAs IRI {5} ;                     # 5 cross-refs per taxon (100% coverage)
+    rdfs:seeAlso IRI {1} ;                   # 1 UniProt link per taxon (100% coverage)
+    tax:scientificName xsd:string ;          # canonical scientific name
+    tax:authority xsd:string * ;             # taxonomic authority string(s)
+    tax:commonName xsd:string * ;            # ~11% coverage overall
+    tax:genbankCommonName xsd:string ? ;     # preferred common name for GenBank
+    tax:synonym xsd:string * ;               # alternative scientific names
+    tax:equivalentName xsd:string * ;        # equivalent names (e.g. Escherichia/Shigella)
+    tax:geneticCode @<GeneticCode> ? ;       # nuclear genetic code (~100% where applicable)
+    tax:geneticCodeMt @<GeneticCode> ? ;     # mitochondrial genetic code
+    tax:typeMaterial xsd:string * ;          # strain type material references
+    tax:uniqueName xsd:string * ;            # disambiguation names
+    tax:includes xsd:string * ;             # included taxa descriptions
+    tax:merged IRI *                         # merged/historical taxon IDs
   }
-  
+
+  # Rank: controlled vocabulary of taxonomic ranks
+  # Major ranks: Species (2,214,294), NoRank (253,143), Genus (113,635),
+  #   Strain (46,887), Subspecies (30,646), Family (10,809), Varietas (10,287)
+  # NOTE: Domain-level taxa (Bacteria, Eukaryota, Archaea) use the bare
+  #   namespace IRI <http://ddbj.nig.ac.jp/ontologies/taxonomy/> as rank —
+  #   this is NOT equivalent to tax:Superkingdom (which does not exist).
   <Rank> {
     a [ tax:Rank ] ;
     rdfs:label xsd:string
   }
-  
+
   <GeneticCode> {
     rdfs:label xsd:string
   }
 
 sample_rdf_entries:
-  - title: Human Species
-    description: Complete human taxon entry with hierarchy, cross-references, and genetic codes.
-    rdf: |
-      @prefix taxon: <http://identifiers.org/taxonomy/> .
-      @prefix tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/> .
-      @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-      @prefix dcterms: <http://purl.org/dc/terms/> .
-      @prefix owl: <http://www.w3.org/2002/07/owl#> .
-      
-      taxon:9606 a tax:Taxon ;
-        rdfs:label "Homo sapiens" ;
-        rdfs:subClassOf taxon:9605 ;
-        dcterms:identifier 9606 ;
-        tax:rank tax:Species ;
-        tax:scientificName "Homo sapiens" ;
-        tax:authority "Homo sapiens Linnaeus, 1758" ;
-        tax:genbankCommonName "human" ;
-        tax:geneticCode tax:GeneticCode1 ;
-        tax:geneticCodeMt tax:GeneticCode2 ;
-        owl:sameAs <http://purl.obolibrary.org/obo/NCBITaxon_9606>,
-                   <http://ddbj.nig.ac.jp/ontologies/taxonomy/9606>,
-                   <http://www.ncbi.nlm.nih.gov/taxonomy/9606>,
-                   <http://purl.org/obo/owl/NCBITaxon#9606>,
-                   <http://www.berkeleybop.org/ontologies/owl/NCBITaxon#9606> ;
-        rdfs:seeAlso <http://purl.uniprot.org/taxonomy/9606> .
+  rdf_prefixes: |
+    @prefix taxon: <http://identifiers.org/taxonomy/> .
+    @prefix tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/> .
+    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+    @prefix dcterms: <http://purl.org/dc/terms/> .
+    @prefix owl: <http://www.w3.org/2002/07/owl#> .
+  entries:
+    - title: Human Species — Complete annotations
+      description: Shows full set of properties for a well-annotated vertebrate species including rank, cross-refs, genetic codes, and UniProt link.
+      rdf: |
+        taxon:9606 a tax:Taxon ;
+          rdfs:label "Homo sapiens" ;
+          rdfs:subClassOf taxon:9605 ;
+          dcterms:identifier 9606 ;
+          tax:rank tax:Species ;
+          tax:scientificName "Homo sapiens" ;
+          tax:authority "Homo sapiens Linnaeus, 1758" ;
+          tax:genbankCommonName "human" ;
+          tax:geneticCode tax:GeneticCode1 ;
+          tax:geneticCodeMt tax:GeneticCode2 ;
+          owl:sameAs <http://purl.obolibrary.org/obo/NCBITaxon_9606>,
+                     <http://ddbj.nig.ac.jp/ontologies/taxonomy/9606>,
+                     <http://www.ncbi.nlm.nih.gov/taxonomy/9606>,
+                     <http://purl.org/obo/owl/NCBITaxon#9606>,
+                     <http://www.berkeleybop.org/ontologies/owl/NCBITaxon#9606> ;
+          rdfs:seeAlso <http://purl.uniprot.org/taxonomy/9606> .
 
-  - title: Bacterial Species  
-    description: Escherichia coli with synonyms, type material, and merged IDs.
-    rdf: |
-      @prefix taxon: <http://identifiers.org/taxonomy/> .
-      @prefix tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/> .
-      
-      taxon:562 a tax:Taxon ;
-        rdfs:label "Escherichia coli" ;
-        rdfs:subClassOf taxon:561 ;
-        dcterms:identifier 562 ;
-        tax:rank tax:Species ;
-        tax:scientificName "Escherichia coli" ;
-        tax:authority "Escherichia coli (Migula 1895) Castellani and Chalmers 1919 (Approved Lists 1980)" ;
-        tax:commonName "E. coli" ;
-        tax:equivalentName "Escherichia/Shigella coli" ;
-        tax:synonym "Bacillus coli", "Bacterium coli", "Enterococcus coli" ;
-        tax:geneticCode tax:GeneticCode11 ;
-        tax:typeMaterial "ATCC 11775", "DSM 30083", "JCM 1649" ;
-        tax:merged taxon:469598, taxon:662101, taxon:1637691 ;
-        owl:sameAs <http://purl.obolibrary.org/obo/NCBITaxon_562> ;
-        rdfs:seeAlso <http://purl.uniprot.org/taxonomy/562> .
+    - title: Bacterial Species — Synonyms, merged IDs, type material
+      description: Illustrates non-obvious properties common in bacteria — multiple historical synonyms, merged taxon IDs for reorganized taxa, and type material strain references.
+      rdf: |
+        taxon:562 a tax:Taxon ;
+          rdfs:label "Escherichia coli" ;
+          rdfs:subClassOf taxon:561 ;
+          dcterms:identifier 562 ;
+          tax:rank tax:Species ;
+          tax:scientificName "Escherichia coli" ;
+          tax:authority "Escherichia coli (Migula 1895) Castellani and Chalmers 1919 (Approved Lists 1980)" ;
+          tax:commonName "E. coli" ;
+          tax:equivalentName "Escherichia/Shigella coli" ;
+          tax:synonym "Bacillus coli", "Bacterium coli", "Enterococcus coli" ;
+          tax:geneticCode tax:GeneticCode11 ;
+          tax:typeMaterial "ATCC 11775", "DSM 30083", "JCM 1649" ;
+          tax:merged taxon:469598, taxon:662101, taxon:1637691 ;
+          owl:sameAs <http://purl.obolibrary.org/obo/NCBITaxon_562> ;
+          rdfs:seeAlso <http://purl.uniprot.org/taxonomy/562> .
 
-  - title: Genus Level
-    description: Genus classification showing intermediate rank.
-    rdf: |
-      @prefix taxon: <http://identifiers.org/taxonomy/> .
-      @prefix tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/> .
-      
-      taxon:561 a tax:Taxon ;
-        rdfs:label "Escherichia" ;
-        rdfs:subClassOf taxon:543 ;
-        dcterms:identifier 561 ;
-        tax:rank tax:Genus ;
-        tax:scientificName "Escherichia" ;
-        tax:authority "Escherichia Castellani and Chalmers 1919" ;
-        tax:geneticCode tax:GeneticCode11 ;
-        owl:sameAs <http://purl.obolibrary.org/obo/NCBITaxon_561> ;
-        rdfs:seeAlso <http://purl.uniprot.org/taxonomy/561> .
-
-  - title: Kingdom Level
-    description: High-level classification (Metazoa/Animals).
-    rdf: |
-      @prefix taxon: <http://identifiers.org/taxonomy/> .
-      @prefix tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/> .
-      
-      taxon:33208 a tax:Taxon ;
-        rdfs:label "Metazoa" ;
-        rdfs:subClassOf taxon:2759 ;
-        dcterms:identifier 33208 ;
-        tax:rank tax:Kingdom ;
-        tax:scientificName "Metazoa" ;
-        tax:commonName "animals" ;
-        owl:sameAs <http://purl.obolibrary.org/obo/NCBITaxon_33208> ;
-        rdfs:seeAlso <http://purl.uniprot.org/taxonomy/33208> .
-
-  - title: Taxonomy Root
-    description: Top-level root node of entire taxonomy tree.
-    rdf: |
-      @prefix taxon: <http://identifiers.org/taxonomy/> .
-      @prefix tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/> .
-      
-      taxon:1 a tax:Taxon ;
-        rdfs:label "root" ;
-        dcterms:identifier 1 ;
-        tax:rank tax:NoRank ;
-        owl:sameAs <http://purl.obolibrary.org/obo/NCBITaxon_1> ;
-        rdfs:seeAlso <http://purl.uniprot.org/taxonomy/1> .
+    - title: Domain-Level Node — Bare namespace rank IRI trap
+      description: Shows the rank IRI anomaly for domain-level nodes; Eukaryota uses the bare taxonomy namespace IRI as rank, not tax:Superkingdom.
+      rdf: |
+        taxon:2759 a tax:Taxon ;
+          rdfs:label "Eukaryota" ;
+          rdfs:subClassOf taxon:131567 ;
+          dcterms:identifier 2759 ;
+          tax:rank <http://ddbj.nig.ac.jp/ontologies/taxonomy/> ;
+          tax:scientificName "Eukaryota" ;
+          tax:commonName "eucaryotes" ;
+          owl:sameAs <http://purl.obolibrary.org/obo/NCBITaxon_2759> ;
+          rdfs:seeAlso <http://purl.uniprot.org/taxonomy/2759> .
 
 sparql_query_examples:
-  - title: Get Taxon Details by Specific IRI
-    description: |
-      Retrieve complete biological annotations using specific taxon IRI.
-      Workflow: Use ncbi_esearch to find taxon ID, then use IRI for lookup.
-    question: What are the biological annotations for Homo sapiens and Mus musculus?
+  - title: Get Taxon Details by Specific IRIs
+    description: Retrieve complete annotations for known taxa using specific taxon IRIs. Use ncbi_esearch("taxonomy", "organism") to find IDs.
+    question: What are the full annotations for Homo sapiens and Mus musculus?
     complexity: basic
     sparql: |
       PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
       PREFIX taxon: <http://identifiers.org/taxonomy/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
-      
-      # Uses specific taxon IRIs (9606 = human, 10090 = mouse)
-      # To find IRIs: ncbi_esearch("taxonomy", "organism name")
+
+      # Uses specific taxon IRIs (9606=human, 10090=mouse)
       SELECT ?taxon ?label ?id ?rank ?scientificName ?commonName ?geneticCode
       FROM <http://rdfportal.org/ontology/taxonomy>
       WHERE {
@@ -186,20 +173,17 @@ sparql_query_examples:
         OPTIONAL { ?taxon tax:geneticCode ?geneticCode }
       }
 
-  - title: Find Species in Genus Using Rank Filtering
-    description: |
-      Retrieve all species within a genus using specific genus IRI and rank IRI.
-      Combines hierarchical navigation with rank-based filtering.
-    question: What species are in the Escherichia genus?
+  - title: Find Species in a Genus by Rank IRI
+    description: Retrieve all species within a genus using specific genus IRI and rank IRI. Combine rdfs:subClassOf with tax:rank for efficient filtering.
+    question: What species belong to the Escherichia genus?
     complexity: basic
     sparql: |
       PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
       PREFIX taxon: <http://identifiers.org/taxonomy/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
-      
-      # Uses specific genus IRI (taxon:561 = Escherichia) and rank IRI (tax:Species)
-      # To find genus IRI: ncbi_esearch("taxonomy", "Escherichia")
+
+      # Uses specific genus IRI (taxon:561=Escherichia) and rank IRI (tax:Species)
       SELECT ?species ?label ?id
       FROM <http://rdfportal.org/ontology/taxonomy>
       WHERE {
@@ -211,19 +195,17 @@ sparql_query_examples:
       }
       LIMIT 20
 
-  - title: Explore Hierarchical Lineage via rdfs:subClassOf
-    description: |
-      Traverse complete taxonomic lineage from species to root.
-      Uses transitive rdfs:subClassOf* property for ancestry.
-    question: What is the complete lineage of humans (9606)?
+  - title: Traverse Hierarchical Lineage via rdfs:subClassOf
+    description: Walk the complete taxonomic lineage from a species up to root using transitive subClassOf. Always start from a specific IRI to avoid timeout.
+    question: What is the complete lineage of humans (taxon:9606)?
     complexity: intermediate
     sparql: |
       PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
       PREFIX taxon: <http://identifiers.org/taxonomy/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
-      
-      # Uses specific starting taxon IRI and hierarchical navigation
+
+      # Hierarchical navigation starting from specific IRI — always required
       SELECT ?ancestor ?rank ?label ?id
       FROM <http://rdfportal.org/ontology/taxonomy>
       WHERE {
@@ -236,47 +218,44 @@ sparql_query_examples:
       ORDER BY DESC(?id)
       LIMIT 50
 
-  - title: Filter Taxa by Multiple Specific Ranks
-    description: |
-      Count organisms at major taxonomic ranks using rank IRIs.
-      Demonstrates efficient filtering with VALUES and rank IRIs.
-    question: How many organisms exist at major taxonomic ranks?
+  - title: Count Taxa by Rank Using Rank IRIs
+    description: Aggregate taxon counts at major ranks using VALUES with rank IRIs. Efficient multi-rank summary without text search.
+    question: How many organisms exist at the major taxonomic ranks?
     complexity: intermediate
     sparql: |
       PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      # Uses specific rank IRIs in VALUES for efficient filtering
+
+      # Uses specific rank IRIs in VALUES — no text search required
       SELECT ?rank ?rankLabel (COUNT(?taxon) as ?count)
       FROM <http://rdfportal.org/ontology/taxonomy>
       WHERE {
-        VALUES ?rank { 
-          tax:Species tax:Genus tax:Family 
-          tax:Order tax:Class tax:Phylum tax:Kingdom 
+        VALUES ?rank {
+          tax:Species tax:Genus tax:Family
+          tax:Order tax:Class tax:Phylum tax:Kingdom
         }
-        ?taxon a tax:Taxon ;
-          tax:rank ?rank .
+        ?taxon a tax:Taxon ; tax:rank ?rank .
         ?rank rdfs:label ?rankLabel .
       }
       GROUP BY ?rank ?rankLabel
       ORDER BY DESC(?count)
 
-  - title: Find Taxa by Name with bif:contains
+  - title: Exploratory Name Search with bif:contains
     description: |
-      Full-text search when specific IRI unknown. Use for exploratory queries.
-      Text search justified: Finding taxa by common/scientific name patterns
-      where exact IRI is unknown. After finding examples, extract IRIs for
-      comprehensive queries.
-    question: Which taxa have "mouse" in their names (common or scientific)?
+      Full-text search for taxa when specific IRI is unknown. Use to discover
+      taxon IRIs, then switch to IRI-based queries for comprehensive work.
+      Text search justified: finding taxa by name pattern where exact IRI is
+      unknown; no structured alternative for free-text name matching.
+      Virtuoso backend — bif:contains (indexed).
+    question: Which taxa contain "mouse" in their label?
     complexity: intermediate
     sparql: |
       PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
-      
-      # Text search justified: Exploratory search for taxa by name pattern
-      # Use to discover taxon IRIs, then use those IRIs for comprehensive queries
-      # Virtuoso backend: use bif:contains (indexed, fast)
+
+      # Text search justified: exploratory label search with no structured
+      # alternative; bif:contains indexed on Virtuoso (faster than FILTER CONTAINS)
       SELECT ?taxon ?id ?label ?rank
       FROM <http://rdfportal.org/ontology/taxonomy>
       WHERE {
@@ -289,17 +268,15 @@ sparql_query_examples:
       ORDER BY DESC(?sc)
       LIMIT 20
 
-  - title: Analyze Biodiversity by Genus
-    description: |
-      Count species per genus using aggregation and hierarchical structure.
-      Combines rank filtering with GROUP BY for biodiversity analysis.
-    question: Which genera have the most species?
+  - title: Biodiversity Analysis — Species per Genus
+    description: Count species per genus using aggregation on rank IRIs. Identifies genera with highest biodiversity.
+    question: Which genera have the most species in the database?
     complexity: advanced
     sparql: |
       PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      # Uses rank IRIs for efficient filtering before aggregation
+
+      # Uses rank IRIs for filtering before aggregation — no text search
       SELECT ?genus ?genusLabel (COUNT(?species) AS ?speciesCount)
       FROM <http://rdfportal.org/ontology/taxonomy>
       WHERE {
@@ -313,47 +290,41 @@ sparql_query_examples:
       ORDER BY DESC(?speciesCount)
       LIMIT 20
 
-  - title: Calculate Lineage Depth for Major Ranks
-    description: |
-      Count taxonomic hierarchy levels from species to root.
-      Uses transitive navigation and rank filtering for analysis.
-    question: What is the hierarchy depth for humans through major ranks?
+  - title: Lineage Depth Through Named Ranks
+    description: Count how many named taxonomic ranks appear in a species' ancestry. Uses specific starting IRI and VALUES-filtered rank traversal.
+    question: How many named major ranks appear in the human lineage?
     complexity: advanced
     sparql: |
       PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX taxon: <http://identifiers.org/taxonomy/>
-      
-      # Uses specific starting IRI and rank IRIs in VALUES for filtering
+
+      # Specific starting IRI + VALUES rank filter for efficient traversal
       SELECT (COUNT(?ancestor) as ?depth)
       FROM <http://rdfportal.org/ontology/taxonomy>
       WHERE {
         taxon:9606 rdfs:subClassOf+ ?ancestor .
         ?ancestor tax:rank ?rank .
         VALUES ?rank {
-          tax:Genus tax:Family tax:Order 
-          tax:Class tax:Phylum tax:Kingdom tax:Superkingdom
+          tax:Genus tax:Family tax:Order
+          tax:Class tax:Phylum tax:Kingdom
         }
       }
 
 cross_database_queries:
   shared_endpoint: primary
   co_located_databases: [mesh, go, taxonomy, mondo, nando, bacdive, mediadive]
-  mie_files_consulted:
-    - "go: shape_expressions (owl:Class, oboinowl:hasOBONamespace), graph URI, bif:contains patterns"
-    - "mondo: shape_expressions (owl:Class, oboInOwl:hasDbXref), graph URI, STRSTARTS filters"
-    - "mesh: shape_expressions (meshv:TopicalDescriptor, meshv:treeNumber), graph URI, bif:contains patterns"
   examples:
     - title: Link Taxonomic Classification to GO Biological Functions
       description: |
         Integrate organism taxonomy with Gene Ontology to explore species-specific
         biological processes using keyword-based matching.
-        
-        Text search justification:
-        - Checked both MIE files: no shared classification IRIs between databases
-        - Taxonomy has hierarchical taxa; GO has ontology terms (no direct links)
-        - Keyword-based integration is the only option for discovery
-        - Used bif:contains (Virtuoso) for indexed text search
+
+        Linking strategy:
+        - Checked both MIE files; no shared classification IRIs between Taxonomy and GO
+        - Taxonomy uses organism IRIs; GO uses ontology term IRIs — independent namespaces
+        - Keyword-based integration via bif:contains is the only available approach
+        - Pre-filtering within each GRAPH reduces 2.7M × 48K to ~50 × 100 before join
       databases_used: [taxonomy, go]
       complexity: intermediate
       sparql: |
@@ -361,25 +332,22 @@ cross_database_queries:
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         PREFIX owl: <http://www.w3.org/2002/07/owl#>
         PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
-        
-        # Text search justified: Keyword-based integration between taxonomy and GO
-        # No shared IRIs exist; using bif:contains for efficient text matching
+
+        # Text search justified: no shared IRIs between Taxonomy and GO
         SELECT DISTINCT ?taxLabel ?taxRank ?goLabel ?goNamespace
         WHERE {
           GRAPH <http://rdfportal.org/ontology/taxonomy> {
             ?taxon a tax:Taxon ;
               rdfs:label ?taxLabel ;
               tax:rank ?taxRank .
-            # Pre-filter taxonomy to reduce search space (2.7M → ~50 taxa)
             ?taxLabel bif:contains "'Escherichia'" option (score ?sc)
             FILTER(?taxRank IN (tax:Species, tax:Genus))
           }
-          
+
           GRAPH <http://rdfportal.org/ontology/go> {
             ?goTerm a owl:Class ;
               rdfs:label ?goLabel ;
               oboinowl:hasOBONamespace ?goNamespace .
-            # Pre-filter GO to reduce search space (48K → ~100 terms)
             ?goLabel bif:contains "'metabolism'" option (score ?sc2)
             FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
             FILTER(STR(?goNamespace) = "biological_process")
@@ -388,45 +356,41 @@ cross_database_queries:
         ORDER BY DESC(?sc)
         LIMIT 15
       notes: |
-        - Pre-filtering reduces search space by 99.999% (2.7M×48K → 50×100)
-        - bif:contains provides 10-100x speedup over FILTER(CONTAINS())
-        - Performance: 2-3s (Tier 1)
-        - Strategies used: GRAPH isolation, pre-filtering, bif:contains, LIMIT
+        - Pre-filtering reduces search space by 99.999% before join
+        - Performance: ~2-3s (Tier 1)
+        - MIE files checked: taxonomy, go
 
-    - title: Correlate Organisms with Disease Context via MONDO
+    - title: Correlate Organisms with Disease Terms via MONDO
       description: |
         Connect taxonomic classifications with disease ontology to identify
-        pathogen-disease relationships.
-        
-        Text search justification:
-        - Checked both MIE files: no direct links between taxa and disease terms
-        - Taxonomy focuses on organisms; MONDO on diseases (separate domains)
-        - Keyword matching enables discovery of organism-disease associations
-        - Used bif:contains (Virtuoso) for performance
+        pathogen-disease associations.
+
+        Linking strategy:
+        - Checked both MIE files: no direct structured links between taxa and disease terms
+        - Taxonomy describes organisms; MONDO describes diseases — separate semantic domains
+        - Keyword-based discovery with bif:contains; STRSTARTS validates MONDO IRI namespace
+        - Pre-filtering within each GRAPH to reduce data before cross-graph join
       databases_used: [taxonomy, mondo]
       complexity: intermediate
       sparql: |
         PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        
-        # Text search justified: Keyword-based pathogen-disease discovery
-        # No structured links exist between taxonomy and MONDO
+
+        # Text search justified: no structured pathogen-disease links exist
         SELECT DISTINCT ?taxLabel ?taxRank ?diseaseLabel
         WHERE {
           GRAPH <http://rdfportal.org/ontology/taxonomy> {
             ?taxon a tax:Taxon ;
               rdfs:label ?taxLabel ;
               tax:rank ?taxRank .
-            # Pre-filter to pathogen species only
             ?taxLabel bif:contains "'Mycobacterium'" option (score ?sc)
             FILTER(?taxRank = tax:Species)
           }
-          
+
           GRAPH <http://rdfportal.org/ontology/mondo> {
             ?disease a owl:Class ;
               rdfs:label ?diseaseLabel .
-            # Pre-filter to relevant diseases
             ?diseaseLabel bif:contains "'tuberculosis'" option (score ?sc2)
             FILTER(STRSTARTS(STR(?disease), "http://purl.obolibrary.org/obo/MONDO_"))
           }
@@ -435,145 +399,78 @@ cross_database_queries:
         LIMIT 15
       notes: |
         - Pre-filtering reduces both databases by >99% before join
-        - Performance: 2-4s (Tier 1)
-        - Strategies: GRAPH isolation, rank filtering, bif:contains, STRSTARTS
-
-    - title: Discover Organism-Specific Medical Terminology via MeSH
-      description: |
-        Bridge biological taxonomy with medical subject headings for clinical
-        literature indexing.
-        
-        Text search justification:
-        - Checked MIE files: MeSH TopicalDescriptors and Taxonomy Taxons are
-          independent classification systems
-        - No shared IRI namespace or linking predicates exist
-        - Keyword-based discovery is the appropriate strategy
-      databases_used: [taxonomy, mesh]
-      complexity: advanced
-      sparql: |
-        PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX dcterms: <http://purl.org/dc/terms/>
-        PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
-        
-        # Text search justified: Independent classification systems
-        # MeSH and Taxonomy use different IRI namespaces with no links
-        SELECT DISTINCT ?taxLabel ?taxId ?taxRank ?meshLabel ?meshTreeNumber
-        WHERE {
-          GRAPH <http://rdfportal.org/ontology/taxonomy> {
-            ?taxon a tax:Taxon ;
-              rdfs:label ?taxLabel ;
-              dcterms:identifier ?taxId ;
-              tax:rank ?taxRank .
-            # Pre-filter to specific organism
-            ?taxLabel bif:contains "'Staphylococcus aureus'" option (score ?sc)
-          }
-          
-          GRAPH <http://id.nlm.nih.gov/mesh> {
-            ?meshTerm a meshv:TopicalDescriptor ;
-              rdfs:label ?meshLabel .
-            OPTIONAL { ?meshTerm meshv:treeNumber ?meshTreeNumber }
-            # Pre-filter to matching MeSH terms
-            ?meshLabel bif:contains "'Staphylococcus aureus'" option (score ?sc2)
-          }
-        }
-        ORDER BY DESC(?sc)
-        LIMIT 10
-      notes: |
-        - Pre-filtering reduces search space by 99.99%
-        - Performance: 2-4s (Tier 1)
-        - Strategies: GRAPH isolation, bif:contains, OPTIONAL for metadata
+        - Performance: ~2-4s (Tier 1)
+        - MIE files checked: taxonomy, mondo
 
 cross_references:
   - pattern: owl:sameAs
     description: |
-      Taxonomic identifier equivalences across ontology and database systems.
-      Every taxon has exactly 5 cross-references to:
-      - OBO NCBITaxon (ontology)
-      - DDBJ Taxonomy (database)
-      - NCBI Web (web resource)
-      - OBO OWL (legacy ontology)
-      - Berkeley BOP (legacy ontology)
+      Taxonomic identifier equivalences across five ontology and database systems.
+      Every taxon has exactly 5 cross-references to OBO NCBITaxon (ontology),
+      DDBJ Taxonomy (database), NCBI Web (web resource), OBO OWL (legacy ontology),
+      and Berkeley BOP (legacy ontology). 100% coverage.
     databases:
-      ontologies: "OBO NCBITaxon (100%), OBO OWL (100%), Berkeley BOP (100%)"
-      databases: "DDBJ (100%), NCBI Web (100%)"
-    sparql: |
-      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
-      PREFIX owl: <http://www.w3.org/2002/07/owl#>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      SELECT ?taxon ?label ?sameAs
-      FROM <http://rdfportal.org/ontology/taxonomy>
-      WHERE {
-        ?taxon a tax:Taxon ;
-          rdfs:label ?label ;
-          owl:sameAs ?sameAs .
-      }
-      LIMIT 20
+      ontologies:
+        - "OBO NCBITaxon (http://purl.obolibrary.org/obo/NCBITaxon_*): 100%"
+        - "OBO OWL (http://purl.org/obo/owl/NCBITaxon#*): 100%"
+        - "Berkeley BOP (http://www.berkeleybop.org/ontologies/owl/NCBITaxon#*): 100%"
+      databases:
+        - "DDBJ (http://ddbj.nig.ac.jp/ontologies/taxonomy/*): 100%"
+        - "NCBI Web (http://www.ncbi.nlm.nih.gov/taxonomy/*): 100%"
 
   - pattern: rdfs:seeAlso
     description: |
-      Links to UniProt Taxonomy database for protein-related information.
-      Every taxon has exactly 1 UniProt link at purl.uniprot.org/taxonomy/.
-      Use for integrating with UniProt protein data.
+      Links to UniProt Taxonomy database for protein-related data. Every taxon
+      has exactly 1 UniProt link at purl.uniprot.org/taxonomy/. 100% coverage.
+      Use for integrating taxonomy queries with UniProt protein data.
     databases:
-      protein: "UniProt Taxonomy (100%, purl.uniprot.org/taxonomy/)"
-    sparql: |
-      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      SELECT ?taxon ?label ?uniprotLink
-      FROM <http://rdfportal.org/ontology/taxonomy>
-      WHERE {
-        ?taxon a tax:Taxon ;
-          rdfs:label ?label ;
-          rdfs:seeAlso ?uniprotLink .
-        FILTER(CONTAINS(STR(?uniprotLink), "purl.uniprot.org"))
-      }
-      LIMIT 20
+      protein:
+        - "UniProt Taxonomy (http://purl.uniprot.org/taxonomy/*): 100%"
 
 architectural_notes:
   query_strategy:
-    - "Exploratory: Use ncbi_esearch('taxonomy', 'organism') to find taxon IRIs"
-    - "Comprehensive: Use specific taxon IRIs in VALUES for lookups"
-    - "Rank filtering: Use rank IRIs (tax:Species, tax:Genus) for better performance"
-    - "Hierarchical: Use rdfs:subClassOf/rdfs:subClassOf+ for lineage queries"
-    - "Text search: bif:contains (Virtuoso) for label searches - only when IRI unknown"
-    - "Priority: Specific IRIs > Rank IRIs > Hierarchical navigation > bif:contains"
-  
+    - "MANDATORY FIRST STEP: read get_MIE_file('taxonomy') and examine critical_warnings and shape_expressions"
+    - "Exploratory: use ncbi_esearch('taxonomy', 'organism name') to find taxon IRIs"
+    - "Comprehensive: use specific taxon IRIs in VALUES or rdfs:subClassOf for complete results"
+    - "Rank filtering: use rank IRIs (tax:Species, tax:Genus, etc.) not text search on labels"
+    - "Text search: bif:contains (Virtuoso) only when taxon IRI is unknown; switch to IRI after discovery"
+    - "Priority: Specific taxon IRIs > Rank IRIs > Hierarchical navigation (rdfs:subClassOf+) > bif:contains"
+
   schema_design:
-    - "Hierarchical classification via rdfs:subClassOf for parent-child relationships"
-    - "45 taxonomic ranks from Species (2.2M) to Superkingdom and special ranks"
-    - "owl:sameAs provides cross-database equivalences (exactly 5 per taxon)"
-    - "rdfs:seeAlso links to UniProt Taxonomy (exactly 1 per taxon)"
-    - "Multiple naming systems: scientific, common, genbank, synonym, equivalent"
-    - "Genetic code properties for nuclear (geneticCode) and mitochondrial (geneticCodeMt)"
-    - "Type material references for bacterial/fungal strains"
-    - "Merged IDs track historical taxonomy reorganizations"
-  
+    - "Hierarchical classification via rdfs:subClassOf; 2.7M+ taxa from species to root"
+    - "45 taxonomic ranks as IRIs; domain-level taxa use bare namespace IRI (see critical_warnings)"
+    - "owl:sameAs provides 5 cross-database equivalences per taxon (100% coverage)"
+    - "rdfs:seeAlso links to UniProt Taxonomy (exactly 1 per taxon, 100% coverage)"
+    - "Multiple naming systems: scientificName, commonName, genbankCommonName, synonym, equivalentName"
+    - "Genetic codes: tax:geneticCode (nuclear) and tax:geneticCodeMt (mitochondrial)"
+    - "tax:merged tracks historical taxon reorganizations (varies by taxon, higher in bacteria)"
+    - "tax:typeMaterial references strain collections (bacteria/fungi)"
+
   performance:
-    - "Use bif:contains for label searches (full-text index + relevance scoring)"
-    - "2.7M+ taxa require LIMIT clauses for all exploratory queries"
-    - "Hierarchical queries with rdfs:subClassOf* expensive on deep lineages"
-    - "Always start transitive queries from specific taxa, never from all taxa"
-    - "Filtering by tax:rank (using rank IRIs) significantly improves performance"
-    - "Cross-database: Pre-filtering within GRAPH reduces data by 99.999% before joins"
-    - "Cross-database performance: Tier 1 (1-4s) for keyword-based integration"
-  
+    - "CRITICAL: Always add LIMIT to every query — 2.7M+ taxa will time out without it"
+    - "CRITICAL: Start rdfs:subClassOf* traversal from a specific taxon IRI — never from all taxa"
+    - "Filtering by tax:rank IRI before aggregation significantly improves performance"
+    - "bif:contains for label searches (full-text index + relevance scoring on Virtuoso)"
+    - "Split property paths before bif:contains: avoid ?entity tax:path/tax:label ?text"
+    - "Cross-database: apply bif:contains + rank filter WITHIN GRAPH before join"
+
   data_integration:
-    - "OBO NCBITaxon for ontology interoperability (owl:sameAs)"
-    - "UniProt Taxonomy integration via rdfs:seeAlso (100% coverage)"
-    - "TogoID relations in separate graphs for cross-database links"
-    - "Use owl:sameAs for identifier conversion across systems"
-    - "Cross-database with GO, MONDO, MeSH uses keyword-based integration"
-  
+    - "OBO NCBITaxon IRIs (via owl:sameAs) for ontology interoperability"
+    - "UniProt Taxonomy integration via rdfs:seeAlso — 100% coverage"
+    - "Use owl:sameAs for identifier conversion across ontology systems"
+    - "Cross-database with GO, MONDO, MeSH on 'primary' endpoint uses keyword-based integration"
+
   data_quality:
-    - "All taxa have complete cross-references (owl:sameAs=5, rdfs:seeAlso=1)"
-    - "Scientific names present in 99%+ of taxa"
-    - "Common names ~11% coverage (higher for vertebrates, lower for microbes)"
-    - "Genetic codes ~100% coverage where applicable"
-    - "UniProt links 100% coverage"
-    - "Type material references for bacterial/fungal strains"
+    - "All taxa have complete owl:sameAs (5) and rdfs:seeAlso (1) cross-references"
+    - "Scientific names present in 99%+ of taxa; commonName ~11% (higher for vertebrates)"
+    - "Genetic codes ~100% where applicable; absent for taxa with no sequenced genomes"
+    - "type material and merged IDs are bacteria/fungi-specific — absent from most eukaryotes"
+
+  text_search_justification:
+    - "Number of the 7 example queries using text search: 1 (query 5)"
+    - "Fields where text search is legitimate: rdfs:label for exploratory name-pattern discovery"
+    - "Why no structured alternative: taxon label search is genuinely exploratory; after IRI discovery, all comprehensive queries switch to specific IRI patterns"
+    - "All other queries use specific IRIs, rank IRIs, or hierarchical navigation"
 
 data_statistics:
   total_taxa: 2698386
@@ -583,218 +480,123 @@ data_statistics:
     genus: 113635
     strain: 46887
     subspecies: 30646
-  verified_date: "2025-02-10"
-  verification_method: "Direct SPARQL COUNT query"
-  verification_query: |
-    PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
-    SELECT (COUNT(DISTINCT ?taxon) as ?count)
-    FROM <http://rdfportal.org/ontology/taxonomy>
-    WHERE { ?taxon a tax:Taxon }
-  
+    family: 10809
+    varietas: 10287
+  verified_date: "2025-04-22"
+  verification_method: "Direct COUNT SPARQL query against taxonomy graph"
+
   coverage:
-    taxa_with_owl_sameAs: "100% (5 per taxon)"
-    taxa_with_rdfs_seeAlso: "100% (1 per taxon - UniProt)"
+    taxa_with_owl_sameAs: "100% (exactly 5 per taxon)"
+    taxa_with_rdfs_seeAlso: "100% (exactly 1 UniProt link per taxon)"
     taxa_with_scientific_names: "99%+"
-    taxa_with_common_names: "~11%"
-    taxa_with_genetic_codes: "~100% (where applicable)"
-    verified_date: "2025-02-10"
+    taxa_with_common_names: "~11% (higher for vertebrates, lower for microbes)"
+    taxa_with_genetic_codes: "~100% where applicable"
+    verified_date: "2025-04-22"
     verification_method: "Random sampling of 1000 taxa across all ranks"
-  
-  cardinality:
-    avg_owl_sameAs_per_taxon: 5.0
-    avg_rdfs_seeAlso_per_taxon: 1.0
-    avg_common_names_per_taxon: "1-3 (when present)"
-    avg_synonyms_per_taxon: "0-4 (higher for bacteria)"
-    avg_authorities_per_taxon: "1-4 (bacteria have multiple historical authorities)"
-    methodology: "Sampled 1000 taxa across database"
-  
-  staleness_warning: "Database updated monthly; current counts reflect 2024 data"
+
+  staleness_warning: "Database updated monthly; counts reflect 2024 data load"
 
 anti_patterns:
-  - title: "Text Search When Specific Taxon IRI Available"
-    problem: "Using bif:contains for genus/species when IRI can be found via ncbi_esearch."
+  - title: "Text Search When Specific Taxon IRI Is Available"
+    problem: "Using bif:contains for genus/species name when the IRI can be found via ncbi_esearch."
     wrong_sparql: |
-      # Inefficient: Text search for genus on every query
+      # Slow: text search on every execution
       SELECT ?species WHERE {
         ?species rdfs:subClassOf ?genus .
-        ?genus rdfs:label ?genusLabel ;
-               tax:rank tax:Genus .
+        ?genus rdfs:label ?genusLabel ; tax:rank tax:Genus .
         ?genusLabel bif:contains "'Escherichia'"
-      }
-      LIMIT 20
+      } LIMIT 20
     correct_sparql: |
-      # Efficient: Two-step workflow
-      # Step 1: Exploratory - ncbi_esearch("taxonomy", "Escherichia") → taxon:561
-      # Step 2: Comprehensive - Use genus IRI directly
+      # Correct two-step workflow:
+      # Step 1 (once): ncbi_esearch("taxonomy","Escherichia") → finds taxon:561
+      # Step 2 (comprehensive): use IRI directly
       SELECT ?species ?label WHERE {
         ?species rdfs:subClassOf taxon:561 ;
                  tax:rank tax:Species ;
                  rdfs:label ?label .
-      }
-      LIMIT 20
-    explanation: |
-      Workflow: (1) Exploratory - ncbi_esearch("taxonomy", "Escherichia") → get taxon:561
-      (2) Comprehensive - Use taxon:561 IRI for better performance and precision
+      } LIMIT 20
+    explanation: "ncbi_esearch finds the IRI once; all subsequent queries use that IRI for speed and precision."
 
   - title: "Skipping Schema Check Before Text Search"
-    problem: "Using bif:contains without checking MIE for structured alternatives."
+    problem: "Using bif:contains without reading MIE critical_warnings and shape_expressions for structured alternatives."
     wrong_sparql: |
-      # Incomplete: No schema checked, directly using text search
+      # No schema checked — jumps straight to text search on rank label
       SELECT ?taxon WHERE {
         ?taxon rdfs:label ?label .
-        ?label bif:contains "'Species'"
+        ?label bif:contains "'species'"
       }
     correct_sparql: |
-      # Complete workflow:
-      # 1. get_MIE_file("taxonomy") → found tax:rank predicate with rank IRIs
-      # 2. ncbi_esearch("taxonomy", "query") → find examples
-      # 3. Inspect examples → confirmed tax:Species IRI exists
-      # 4. Use discovered rank IRI:
+      # Correct workflow:
+      # 1. get_MIE_file("taxonomy") → shape_expressions reveals tax:rank predicate with rank IRIs
+      # 2. Use discovered rank IRI:
       SELECT ?taxon ?label WHERE {
         ?taxon a tax:Taxon ;
                tax:rank tax:Species ;
                rdfs:label ?label .
-      }
-      LIMIT 20
-    explanation: |
-      Always check MIE schema before defaulting to text search. The schema
-      documents rank IRIs which are much faster than text search on labels.
+      } LIMIT 20
+    explanation: "The MIE documents rank IRIs that are 10-100x faster than text search on labels."
 
-  - title: "Unbounded Lineage Traversal Without Constraints"
-    problem: "Using rdfs:subClassOf* on all taxa causes timeout with 2.7M+ records."
+  - title: "Using tax:Superkingdom for Domain-Level Taxa"
+    problem: "Querying for tax:rank tax:Superkingdom returns 0 results silently. Domain nodes use the bare namespace IRI as rank."
     wrong_sparql: |
-      # Timeout: Unbounded transitive query
+      # Returns 0 rows — tax:Superkingdom does not exist in this dataset
+      SELECT ?taxon ?label WHERE {
+        ?taxon a tax:Taxon ; tax:rank tax:Superkingdom ; rdfs:label ?label .
+      }
+    correct_sparql: |
+      # Correct: filter by bare namespace IRI for domain-level taxa
+      SELECT ?taxon ?label WHERE {
+        ?taxon a tax:Taxon ;
+               tax:rank <http://ddbj.nig.ac.jp/ontologies/taxonomy/> ;
+               rdfs:label ?label .
+      } LIMIT 10
+    explanation: "Eukaryota (taxon:2759), Bacteria (taxon:2), and Archaea (taxon:2157) use the bare namespace IRI as rank. This is documented in critical_warnings."
+
+  - title: "Unbounded Transitive Lineage Queries"
+    problem: "Using rdfs:subClassOf* without a specific starting IRI causes timeout on 2.7M+ records."
+    wrong_sparql: |
+      # Timeout: no starting IRI, traverses entire tree
       SELECT ?ancestor WHERE {
         ?taxon rdfs:subClassOf* ?ancestor
       }
     correct_sparql: |
-      # Fast: Start from specific taxon with LIMIT
-      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      # Fast: start from specific IRI with LIMIT
       SELECT ?ancestor ?label ?rank
       FROM <http://rdfportal.org/ontology/taxonomy>
       WHERE {
         taxon:9606 rdfs:subClassOf* ?ancestor .
-        ?ancestor a tax:Taxon ;
-                  tax:rank ?rank ;
-                  rdfs:label ?label .
-      }
-      LIMIT 50
-    explanation: |
-      Always start transitive queries from specific taxon IRI. Add rank filtering
-      and LIMIT to prevent timeouts on deep hierarchies.
-
-  - title: "Cross-Database Query Without Pre-Filtering"
-    problem: "Joining before filtering processes billions of intermediate results."
-    wrong_sparql: |
-      # Timeout: 2.7M × 48K = 130 billion combinations before filtering
-      WHERE {
-        GRAPH <http://rdfportal.org/ontology/taxonomy> {
-          ?taxon a tax:Taxon ; rdfs:label ?taxLabel .
-        }
-        GRAPH <http://rdfportal.org/ontology/go> {
-          ?goTerm a owl:Class ; rdfs:label ?goLabel .
-        }
-        FILTER(CONTAINS(?taxLabel, "Escherichia"))
-        FILTER(CONTAINS(?goLabel, "metabolism"))
-      }
-    correct_sparql: |
-      # Fast: Pre-filter within GRAPH to 50 × 100 = 5K combinations
-      WHERE {
-        GRAPH <http://rdfportal.org/ontology/taxonomy> {
-          ?taxon a tax:Taxon ; rdfs:label ?taxLabel .
-          ?taxLabel bif:contains "'Escherichia'" option (score ?sc)
-        }
-        GRAPH <http://rdfportal.org/ontology/go> {
-          ?goTerm a owl:Class ; rdfs:label ?goLabel .
-          ?goLabel bif:contains "'metabolism'" option (score ?sc2)
-        }
-      }
-      ORDER BY DESC(?sc)
-      LIMIT 15
-    explanation: |
-      Apply restrictive filters (bif:contains, rank filters) WITHIN source
-      GRAPH clauses to reduce data by 99.999% before joining.
+        ?ancestor a tax:Taxon ; tax:rank ?rank ; rdfs:label ?label .
+      } LIMIT 50
+    explanation: "Always start transitive queries from a known taxon IRI. Add rank filtering and LIMIT to bound traversal."
 
 common_errors:
-  - error: "Query timeout on lineage queries"
+  - error: "Query timeout on lineage or aggregation queries"
     causes:
-      - "Unbounded rdfs:subClassOf* traversal without starting point"
-      - "Missing specific starting taxon IRI"
-      - "No LIMIT clause on transitive queries"
+      - "Unbounded rdfs:subClassOf* without a specific starting taxon IRI"
+      - "Missing LIMIT clause on queries over 2.7M+ records"
+      - "Missing rank filter before aggregation"
     solutions:
-      - "Start from specific taxon ID (e.g., taxon:9606)"
-      - "Add LIMIT 50-100 for exploratory lineage queries"
-      - "Use rdfs:subClassOf+ (one or more) instead of * when appropriate"
-      - "Add rank filtering to reduce traversal scope"
-    example_fix: |
-      # Before (timeout):
-      ?taxon rdfs:subClassOf* ?ancestor
-      
-      # After (fast):
-      PREFIX taxon: <http://identifiers.org/taxonomy/>
-      taxon:9606 rdfs:subClassOf* ?ancestor .
-      ?ancestor tax:rank ?rank .
-      FILTER(?rank IN (tax:Genus, tax:Family, tax:Order))
-      LIMIT 50
+      - "Start rdfs:subClassOf* from a specific taxon IRI (e.g., taxon:9606)"
+      - "Add LIMIT to every exploratory query"
+      - "Add rank filter (VALUES ?rank { tax:Species tax:Genus ... }) before GROUP BY"
 
-  - error: "Inefficient genus/species queries"
+  - error: "Zero results on rank or taxon IRI queries"
     causes:
-      - "Using bif:contains for genus name repeatedly"
-      - "Not using specific taxon IRIs from ncbi_esearch"
+      - "Used tax:Superkingdom IRI (does not exist — silent failure)"
+      - "Used OBO namespace http://purl.obolibrary.org/obo/NCBITaxon_* as subject (owl:sameAs only)"
+      - "Wrong IRI namespace for taxon subject position"
     solutions:
-      - "Exploratory: ncbi_esearch('taxonomy', 'genus_name') to find genus IRI"
-      - "Comprehensive: Use genus IRI (e.g., taxon:561) in rdfs:subClassOf"
-      - "Cache genus IRIs for repeated queries"
-    example_fix: |
-      # Exploratory workflow:
-      # 1. ncbi_esearch("taxonomy", "Escherichia") → taxon:561
-      # 2. Use IRI in comprehensive queries:
-      
-      PREFIX taxon: <http://identifiers.org/taxonomy/>
-      SELECT ?species ?label WHERE {
-        ?species rdfs:subClassOf taxon:561 ;
-                 tax:rank tax:Species ;
-                 rdfs:label ?label .
-      }
-      LIMIT 20
+      - "Read critical_warnings for known IRI traps"
+      - "Use <http://ddbj.nig.ac.jp/ontologies/taxonomy/> for domain-level rank filter"
+      - "Use http://identifiers.org/taxonomy/{id} for subject IRIs"
+      - "Inspect example entities to confirm IRI patterns"
 
   - error: "Cross-database query timeout"
     causes:
-      - "Missing pre-filtering (processing billions of rows)"
-      - "Missing GRAPH clauses (cross-contamination)"
-      - "Using FILTER(CONTAINS()) instead of bif:contains"
-      - "Missing LIMIT clause"
+      - "Missing pre-filtering within GRAPH (processing billions of row combinations)"
+      - "Missing GRAPH clauses causing cross-contamination"
+      - "Using FILTER(CONTAINS()) instead of bif:contains (Virtuoso)"
     solutions:
-      - "Apply bif:contains within source GRAPH before join"
-      - "Use explicit GRAPH clauses for database isolation"
-      - "Use bif:contains (Virtuoso indexed) not FILTER(CONTAINS())"
-      - "Add LIMIT to every query level"
-      - "Use rank filtering for Taxonomy (tax:Species, tax:Genus)"
-    example_fix: |
-      # Before (timeout - 2.7M×48K = 130B combinations):
-      WHERE {
-        GRAPH <http://rdfportal.org/ontology/taxonomy> { 
-          ?t rdfs:label ?tLabel 
-        }
-        GRAPH <http://rdfportal.org/ontology/go> { 
-          ?g rdfs:label ?gLabel 
-        }
-        FILTER(CONTAINS(?tLabel, "mouse"))
-      }
-      
-      # After (2s - 50×100 = 5K combinations):
-      WHERE {
-        GRAPH <http://rdfportal.org/ontology/taxonomy> {
-          ?t a tax:Taxon ;
-             rdfs:label ?tLabel ;
-             tax:rank tax:Species .
-          ?tLabel bif:contains "'mouse'" option (score ?sc)
-        }
-        GRAPH <http://rdfportal.org/ontology/go> {
-          ?g a owl:Class ;
-             rdfs:label ?gLabel .
-          ?gLabel bif:contains "'metabolism'" option (score ?sc2)
-        }
-      }
-      ORDER BY DESC(?sc)
-      LIMIT 15
+      - "Apply bif:contains + rank filter WITHIN source GRAPH before cross-graph join"
+      - "Use explicit GRAPH clauses for each database"
+      - "Add LIMIT at every query level"

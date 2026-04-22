@@ -1,11 +1,11 @@
 schema_info:
   title: Rhea - Annotated Reactions Database
   description: |
-    Expert-curated database of 18,071 biochemical reactions with atom-balanced chemistry, 
-    extensive cross-references, and enzyme classifications. All reactions have directional 
-    (L→R, R→L) and bidirectional representations. Covers 12,496 small molecules and 261 
-    polymers with ChEBI links. Transport reactions (1,522) include cellular location 
-    annotations. Primary reaction resource for UniProtKB enzyme annotation.
+    Expert-curated database of 18,071 biochemical reactions with atom-balanced chemistry,
+    extensive cross-references, and enzyme classifications. All reactions have directional
+    (L→R, R→L) and bidirectional representations, covering 12,496 small molecules and 261
+    polymers with ChEBI links. Primary reaction resource for UniProtKB enzyme annotation;
+    transport reactions (1,522) include cellular location annotations.
   endpoint: https://rdfportal.org/sib/sparql
   base_uri: http://rdf.rhea-db.org/
   graphs:
@@ -13,212 +13,228 @@ schema_info:
   kw_search_tools:
     - search_rhea_entity
   version:
-    mie_version: "2.3"
-    mie_created: "2025-02-10"
+    mie_version: "2.4"
+    mie_created: "2025-04-22"
     data_version: "Release 2024"
     update_frequency: "Quarterly"
-  license:
-    data_license: "CC BY 4.0"
-    license_url: "https://www.rhea-db.org/help/license"
   access:
-    rate_limiting: "No explicit rate limit"
-    max_query_timeout: "60 seconds"
     backend: "Virtuoso"
+
+# Critical warnings: schema pathologies, IRI traps, mandatory filters.
+# Read BEFORE writing any query.
+critical_warnings: |
+  - REACTION QUARTET STRUCTURE: Every biochemical transformation exists as four linked IRIs —
+    master reaction (base), two directional reactions (L→R, R→L), and one bidirectional form.
+    IDs form consecutive blocks: RHEA:13065 (master), 13066 (L→R), 13067 (R→L), 13068 (bidirec).
+    Querying rdfs:subClassOf rhea:Reaction returns only master reactions (correct for most queries).
+    Querying rhea:DirectionalReaction or rhea:BidirectionalReaction reaches the other forms.
+  - COMPOUND IRI PATH: To link a reaction to a compound you MUST traverse the full path:
+    reaction → rhea:side → rhea:contains → rhea:compound → rhea:chebi.
+    Shortcutting any step returns empty results silently.
+  - STATUS IRI NAMESPACE: Status values are full IRIs, not literals.
+    Use <http://rdf.rhea-db.org/Approved>, not "Approved" or rhea:Approved.
+    Using string literals silently returns 0 results.
+  - STOICHIOMETRY ENCODING: Stoichiometry is embedded in property names (rhea:contains1,
+    rhea:contains2, rhea:contains3, rhea:containsN), not as a literal coefficient.
+    rhea:contains is the union property covering all stoichiometries.
+  - TRANSPORT LOCATION IRIs: Cellular locations are rhea:In and rhea:Out (full IRIs
+    http://rdf.rhea-db.org/In and http://rdf.rhea-db.org/Out). Only ~8% of reactions
+    (transport reactions) carry rhea:location on participants.
 
 shape_expressions: |
   PREFIX rhea: <http://rdf.rhea-db.org/>
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-  PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-  
+  PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+
+  # ~18,071 total reactions (17,635 Approved, 148 Preliminary, 288 Obsolete)
   <ReactionShape> {
     a [ rdfs:Class ] ;
     rdfs:subClassOf [ rhea:Reaction ] ;
-    rdfs:label xsd:string ;
-    rhea:accession xsd:string ;
-    rhea:id xsd:integer ;
-    rhea:equation xsd:string ;
+    rdfs:label      xsd:string ;
+    rhea:accession  xsd:string ;              # "RHEA:NNNNN"
+    rhea:id         xsd:integer ;
+    rhea:equation   xsd:string ;              # unstructured text — use ChEBI/EC IRIs instead
     rhea:htmlEquation xsd:string ;
-    rhea:status IRI ;                      # Structured: rhea:Approved, rhea:Preliminary, rhea:Obsolete
+    rhea:status     IRI ;                     # ALWAYS USE IRI: rhea:Approved / rhea:Preliminary / rhea:Obsolete
     rhea:isChemicallyBalanced xsd:boolean ;
-    rhea:isTransport xsd:boolean ;         # Typed predicate: 0 or 1
-    rhea:side IRI + ;
+    rhea:isTransport xsd:boolean ;            # 1 = transport (1,522 reactions); 0 = non-transport
+    rhea:side       IRI + ;
     rhea:directionalReaction IRI + ;
     rhea:bidirectionalReaction IRI ? ;
-    rhea:ec IRI * ;                        # EC number IRIs: http://purl.uniprot.org/enzyme/X.X.X.X
-    rdfs:seeAlso IRI * ;                   # GO terms, Reactome pathways, BioCyc pathways
-    rdfs:comment xsd:string ?
+    rhea:ec         IRI * ;                   # EC number IRIs: http://purl.uniprot.org/enzyme/X.X.X.X (~42% coverage)
+    rdfs:seeAlso    IRI * ;                   # GO terms, Reactome, BioCyc (~24%, ~4%, ~2% coverage)
+    rdfs:comment    xsd:string ?
   }
-  
+
+  # One ReactionSide per side of each master reaction (left / right)
   <ReactionSideShape> {
     a [ rdfs:Class ] ;
     rdfs:subClassOf [ rhea:ReactionSide ] ;
-    rhea:contains IRI + ;
-    rhea:contains1 IRI * ;                 # Stoichiometry: 1 molecule
-    rhea:contains2 IRI * ;                 # Stoichiometry: 2 molecules
-    rhea:contains3 IRI * ;                 # Stoichiometry: 3 molecules
-    rhea:containsN IRI * ;                 # Stoichiometry: N molecules
+    rhea:contains   IRI + ;                   # union of all stoichiometry properties below
+    rhea:contains1  IRI * ;
+    rhea:contains2  IRI * ;
+    rhea:contains3  IRI * ;
+    rhea:containsN  IRI * ;                   # polymer / variable stoichiometry
     rhea:curatedOrder xsd:integer ;
-    rhea:transformableTo IRI ?
+    rhea:transformableTo IRI ?                # links left side to right side
   }
-  
+
+  # One ReactionParticipant per compound occurrence in a reaction side
   <ParticipantShape> {
     a [ rdfs:Class ] ;
     rdfs:subClassOf [ rhea:ReactionParticipant ] ;
     rdfs:subClassOf IRI + ;
-    rhea:compound IRI ;
-    rhea:location IRI ?                    # Location IRIs: rhea:In, rhea:Out (for transport)
+    rhea:compound   IRI ;                     # → SmallMolecule or Polymer
+    rhea:location   IRI ?                     # rhea:In or rhea:Out (transport reactions only)
   }
-  
+
+  # 12,496 small molecules — all have rhea:chebi (100% coverage)
   <SmallMoleculeShape> {
     a [ rdfs:Class ] ;
     rdfs:subClassOf [ rhea:SmallMolecule ] ;
     rdfs:subClassOf IRI * ;
-    rhea:id xsd:integer ;
-    rhea:accession xsd:string ;
-    rhea:name xsd:string ;
-    rhea:htmlName xsd:string ;
-    rhea:formula xsd:string ;
-    rhea:charge xsd:integer ;
-    rhea:chebi IRI                         # ChEBI IRI: http://purl.obolibrary.org/obo/CHEBI_XXXXX
+    rhea:id         xsd:integer ;
+    rhea:accession  xsd:string ;
+    rhea:name       xsd:string ;
+    rhea:htmlName   xsd:string ;
+    rhea:formula    xsd:string ;
+    rhea:charge     xsd:integer ;
+    rhea:chebi      IRI                       # http://purl.obolibrary.org/obo/CHEBI_XXXXX — ALWAYS use for compound queries
   }
-  
+
+  # 261 polymers — may have rhea:underlyingChebi; formula/charge use n-notation
   <PolymerShape> {
     a [ rdfs:Class ] ;
     rdfs:subClassOf [ rhea:Polymer ] ;
-    rhea:id xsd:integer ;
-    rhea:accession xsd:string ;
-    rhea:name xsd:string ;
-    rhea:htmlName xsd:string ;
-    rhea:formula xsd:string ;
-    rhea:charge xsd:string ;
+    rhea:id         xsd:integer ;
+    rhea:accession  xsd:string ;
+    rhea:name       xsd:string ;
+    rhea:htmlName   xsd:string ;
+    rhea:formula    xsd:string ;
+    rhea:charge     xsd:string ;              # string (e.g. "(n+1)-") not integer
     rhea:polymerizationIndex xsd:string ;
     rhea:underlyingChebi IRI ?
   }
 
 sample_rdf_entries:
-  - title: Master Reaction with EC and GO Annotations
-    description: ATP hydrolysis reaction with multiple EC classifications and GO molecular function term.
-    rdf: |
-      <http://rdf.rhea-db.org/13065> a rdfs:Class ;
-        rdfs:subClassOf rhea:Reaction ;
-        rdfs:label "ATP + H2O = ADP + phosphate + H(+)" ;
-        rdfs:seeAlso <http://purl.obolibrary.org/obo/GO_0016887> ;
-        rhea:accession "RHEA:13065" ;
-        rhea:equation "ATP + H2O = ADP + phosphate + H(+)" ;
-        rhea:status <http://rdf.rhea-db.org/Approved> ;
-        rhea:isChemicallyBalanced 1 ;
-        rhea:isTransport 0 ;
-        rhea:ec <http://purl.uniprot.org/enzyme/3.6.4.10> ;
-        rhea:ec <http://purl.uniprot.org/enzyme/3.6.4.12> ;
-        rhea:directionalReaction <http://rdf.rhea-db.org/13066> .
-  
-  - title: Transport Reaction with Cellular Locations
-    description: Sulfate transport showing compartment annotations for participants.
-    rdf: |
-      <http://rdf.rhea-db.org/10192> a rdfs:Class ;
-        rdfs:subClassOf rhea:Reaction ;
-        rdfs:label "sulfate(out) + ATP + H2O = sulfate(in) + ADP + phosphate + H(+)" ;
-        rhea:accession "RHEA:10192" ;
-        rhea:equation "sulfate(out) + ATP + H2O = sulfate(in) + ADP + phosphate + H(+)" ;
-        rhea:status <http://rdf.rhea-db.org/Approved> ;
-        rhea:isTransport 1 ;
-        rhea:side <http://rdf.rhea-db.org/10192_L> .
-  
-  - title: Reaction Side with Stoichiometry
-    description: Reaction side showing participant organization and stoichiometry encoding.
-    rdf: |
-      <http://rdf.rhea-db.org/13065_L> a rdfs:Class ;
-        rdfs:subClassOf rhea:ReactionSide ;
-        rhea:contains <http://rdf.rhea-db.org/Participant_13065_compound_6372> ;
-        rhea:contains1 <http://rdf.rhea-db.org/Participant_13065_compound_6372> ;
-        rhea:curatedOrder 1 ;
-        rhea:transformableTo <http://rdf.rhea-db.org/13065_R> .
-  
-  - title: Small Molecule with ChEBI Cross-Reference
-    description: ATP molecule with chemical properties and ChEBI IRI linkage.
-    rdf: |
-      <http://rdf.rhea-db.org/Compound_6372> a rdfs:Class ;
-        rdfs:subClassOf rhea:SmallMolecule ;
-        rdfs:subClassOf <http://purl.obolibrary.org/obo/CHEBI_30616> ;
-        rhea:accession "CHEBI:30616" ;
-        rhea:name "ATP" ;
-        rhea:formula "C10H12N5O13P3" ;
-        rhea:charge -4 ;
-        rhea:chebi <http://purl.obolibrary.org/obo/CHEBI_30616> .
-  
-  - title: Transport Participant with Location
-    description: Participant in transport reaction with cellular location annotation.
-    rdf: |
-      <http://rdf.rhea-db.org/Participant_10192_compound_sulfate_in> a rdfs:Class ;
-        rdfs:subClassOf rhea:ReactionParticipant ;
-        rdfs:subClassOf <http://rdf.rhea-db.org/Compound_sulfate> ;
-        rhea:compound <http://rdf.rhea-db.org/Compound_sulfate> ;
-        rhea:location <http://rdf.rhea-db.org/In> .
+  rdf_prefixes: |
+    @prefix rhea: <http://rdf.rhea-db.org/> .
+    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+    @prefix chebi: <http://purl.obolibrary.org/obo/> .
+    @prefix go:   <http://purl.obolibrary.org/obo/> .
+    @prefix enz:  <http://purl.uniprot.org/enzyme/> .
+  entries:
+    - title: Approved Reaction with EC and GO Annotations
+      description: ATP hydrolysis showing status IRI, multiple EC number IRIs, and GO cross-reference.
+      rdf: |
+        <http://rdf.rhea-db.org/13065> a rdfs:Class ;
+          rdfs:subClassOf rhea:Reaction ;
+          rdfs:label "ATP + H2O = ADP + phosphate + H(+)" ;
+          rhea:accession "RHEA:13065" ;
+          rhea:equation  "ATP + H2O = ADP + phosphate + H(+)" ;
+          rhea:status    <http://rdf.rhea-db.org/Approved> ;
+          rhea:isChemicallyBalanced 1 ;
+          rhea:isTransport 0 ;
+          rhea:ec        enz:3.6.4.10 ;
+          rhea:ec        enz:3.6.4.12 ;
+          rdfs:seeAlso   go:GO_0016887 ;
+          rhea:directionalReaction <http://rdf.rhea-db.org/13066> .
+
+    - title: Transport Reaction with Cellular Location on Participant
+      description: Illustrates rhea:isTransport flag, reaction side traversal, and rhea:location annotation.
+      rdf: |
+        <http://rdf.rhea-db.org/10192> a rdfs:Class ;
+          rdfs:subClassOf rhea:Reaction ;
+          rhea:accession "RHEA:10192" ;
+          rhea:isTransport 1 ;
+          rhea:side <http://rdf.rhea-db.org/10192_L> .
+
+        <http://rdf.rhea-db.org/10192_L> a rdfs:Class ;
+          rdfs:subClassOf rhea:ReactionSide ;
+          rhea:contains <http://rdf.rhea-db.org/Participant_10192_sulfate_out> .
+
+        <http://rdf.rhea-db.org/Participant_10192_sulfate_out> a rdfs:Class ;
+          rdfs:subClassOf rhea:ReactionParticipant ;
+          rhea:compound <http://rdf.rhea-db.org/Compound_sulfate> ;
+          rhea:location <http://rdf.rhea-db.org/Out> .
+
+    - title: Small Molecule with ChEBI Cross-Reference
+      description: ATP compound entry showing rhea:chebi IRI linkage and chemical properties — the required anchor for compound-based queries.
+      rdf: |
+        <http://rdf.rhea-db.org/Compound_6372> a rdfs:Class ;
+          rdfs:subClassOf rhea:SmallMolecule ;
+          rdfs:subClassOf chebi:CHEBI_30616 ;
+          rhea:accession "CHEBI:30616" ;
+          rhea:name   "ATP" ;
+          rhea:formula "C10H12N5O13P3" ;
+          rhea:charge -4 ;
+          rhea:chebi  chebi:CHEBI_30616 .
 
 sparql_query_examples:
-  - title: Retrieve Reaction by Accession
-    description: Direct lookup using specific Rhea accession identifier.
+  - title: Look Up Reaction by Accession
+    description: Direct IRI lookup using a known Rhea accession; returns all properties.
     question: What are the details of reaction RHEA:13065?
     complexity: basic
     sparql: |
       PREFIX rhea: <http://rdf.rhea-db.org/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
+
       SELECT ?property ?value
       WHERE {
         ?reaction rhea:accession "RHEA:13065" ;
                   ?property ?value .
       }
       LIMIT 50
-  
-  - title: Find Approved Reactions
-    description: Filter reactions using specific status IRI for approved chemistry.
+
+  - title: List Approved Reactions with Status IRI
+    description: Uses the specific status IRI — the primary quality filter for all reaction queries.
     question: What are some approved biochemical reactions?
     complexity: basic
     sparql: |
       PREFIX rhea: <http://rdf.rhea-db.org/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      # Use specific status IRI (structured approach)
+
+      # Structured approach: use specific status IRI (never string literals)
       SELECT ?reaction ?accession ?equation
       WHERE {
         ?reaction rdfs:subClassOf rhea:Reaction ;
                   rhea:accession ?accession ;
+                  rhea:equation  ?equation ;
+                  rhea:status    <http://rdf.rhea-db.org/Approved> .
+      }
+      LIMIT 20
+
+  - title: Find Reactions Containing a Specific Compound (ChEBI IRI)
+    description: Traverses reaction→side→participant→compound→chebi path using a specific ChEBI IRI; 100% coverage for small molecules.
+    question: Which approved reactions involve ATP (CHEBI:30616)?
+    complexity: intermediate
+    sparql: |
+      PREFIX rhea:  <http://rdf.rhea-db.org/>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX chebi: <http://purl.obolibrary.org/obo/>
+
+      # Structured: ChEBI IRI via rhea:chebi (100% small-molecule coverage)
+      SELECT DISTINCT ?reaction ?equation
+      WHERE {
+        ?compound rdfs:subClassOf rhea:SmallMolecule ;
+                  rhea:chebi chebi:CHEBI_30616 .      # ATP
+        ?participant rhea:compound ?compound .
+        ?side rhea:contains ?participant .
+        ?reaction rdfs:subClassOf rhea:Reaction ;
+                  rhea:side ?side ;
                   rhea:equation ?equation ;
                   rhea:status <http://rdf.rhea-db.org/Approved> .
       }
-      LIMIT 20
-  
-  - title: Find Transport Reactions with Cellular Locations
-    description: Use typed predicate rhea:isTransport to identify membrane transport reactions.
-    question: Which reactions involve transport across cellular membranes?
-    complexity: intermediate
-    sparql: |
-      PREFIX rhea: <http://rdf.rhea-db.org/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      # Use typed predicate rhea:isTransport (structured approach)
-      SELECT DISTINCT ?reaction ?equation ?compound ?location
-      WHERE {
-        ?reaction rdfs:subClassOf rhea:Reaction ;
-                  rhea:equation ?equation ;
-                  rhea:isTransport 1 ;
-                  rhea:side ?side .
-        ?side rhea:contains ?participant .
-        ?participant rhea:compound ?compound ;
-                     rhea:location ?location .
-      }
       LIMIT 30
-  
-  - title: Find Reactions by EC Number Classification
-    description: Use specific EC number IRIs in VALUES clause for enzyme-catalyzed reaction filtering.
-    question: What reactions are catalyzed by ATPases (EC 3.6.4.x)?
+
+  - title: Find Reactions by EC Number Class (VALUES with IRIs)
+    description: Uses specific EC number IRIs in VALUES for enzyme-class filtering; links to UniProt on shared endpoint.
+    question: Which reactions are catalysed by ATPases (EC 3.6.4.x)?
     complexity: intermediate
     sparql: |
       PREFIX rhea: <http://rdf.rhea-db.org/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      # Use specific EC number IRIs (structured approach - preferred)
+
+      # Structured: EC number IRIs — NEVER text-search on equation for enzyme class
       SELECT ?reaction ?equation ?ec
       WHERE {
         VALUES ?ec {
@@ -234,81 +250,64 @@ sparql_query_examples:
                   rhea:ec ?ec .
       }
       LIMIT 30
-  
-  - title: Find Reactions by Compound ChEBI IRI
-    description: Use specific ChEBI IRIs via rhea:chebi property for precise chemical compound filtering.
-    question: What reactions involve ATP, ADP, or glucose?
+
+  - title: Transport Reactions with Cellular Compartment
+    description: Uses typed boolean predicate rhea:isTransport then navigates to location IRIs.
+    question: Which reactions transport compounds across membranes and between which compartments?
     complexity: intermediate
     sparql: |
       PREFIX rhea: <http://rdf.rhea-db.org/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX chebi: <http://purl.obolibrary.org/obo/>
-      
-      # Use specific ChEBI IRIs (structured approach - preferred over text search)
-      SELECT DISTINCT ?reaction ?equation ?compoundName
+
+      # Structured: typed predicate rhea:isTransport then location IRIs
+      SELECT DISTINCT ?reaction ?equation ?compound ?location
       WHERE {
-        VALUES ?chebiIRI {
-          chebi:CHEBI_30616   # ATP
-          chebi:CHEBI_456216  # ADP
-          chebi:CHEBI_17234   # D-glucose
-        }
-        ?compound rdfs:subClassOf rhea:SmallMolecule ;
-                  rhea:chebi ?chebiIRI ;
-                  rhea:name ?compoundName .
-        ?participant rhea:compound ?compound .
-        ?side rhea:contains ?participant .
         ?reaction rdfs:subClassOf rhea:Reaction ;
-                  rhea:side ?side ;
                   rhea:equation ?equation ;
-                  rhea:status <http://rdf.rhea-db.org/Approved> .
+                  rhea:isTransport 1 ;
+                  rhea:side ?side .
+        ?side rhea:contains ?participant .
+        ?participant rhea:compound ?compound ;
+                     rhea:location ?location .
       }
       LIMIT 30
-  
-  - title: Navigate Directional Reaction Variants
-    description: Use graph navigation properties to retrieve all directional forms of a master reaction.
-    question: What are all the directional forms of a master reaction?
+
+  - title: Navigate Reaction Quartet (Master → Directional Forms)
+    description: Graph navigation from master reaction through rhea:directionalReaction to retrieve all directional variants.
+    question: What are the directional and bidirectional forms of RHEA:13065?
     complexity: advanced
     sparql: |
       PREFIX rhea: <http://rdf.rhea-db.org/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      # Graph navigation through reaction relationships
-      SELECT ?masterReaction ?accession ?directional ?dirLabel ?bidirectional
+
+      SELECT ?accession ?directional ?dirLabel ?bidirectional
       WHERE {
-        ?masterReaction rhea:accession "RHEA:13065" ;
-                        rhea:accession ?accession .
-        
+        ?master rhea:accession "RHEA:13065" ;
+                rhea:accession ?accession .
         OPTIONAL {
-          ?masterReaction rhea:directionalReaction ?directional .
-          ?directional rdfs:subClassOf rhea:DirectionalReaction ;
-                       rdfs:label ?dirLabel .
+          ?master rhea:directionalReaction ?directional .
+          ?directional rdfs:label ?dirLabel .
         }
-        
-        OPTIONAL {
-          ?masterReaction rhea:bidirectionalReaction ?bidirectional .
-        }
+        OPTIONAL { ?master rhea:bidirectionalReaction ?bidirectional . }
       }
-  
-  - title: Search Reactions by Equation Text
-    description: Full-text search on unstructured equation field when compound identities are ambiguous.
-    question: What reactions involve both glucose and phosphate compounds?
+      LIMIT 10
+
+  - title: Exploratory Text Search on Equation Field
+    description: bif:contains on rhea:equation for compound discovery when ChEBI IRIs are unknown. Once IRIs are found, switch to query 3.
+    question: Which reactions involve both a glucose and a phosphate compound? (exploratory — ChEBI IRIs unknown)
     complexity: advanced
     sparql: |
       PREFIX rhea: <http://rdf.rhea-db.org/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      # Text search justified because:
-      # 1. Checked MIE schema - rhea:equation is unstructured text field
-      # 2. User query has ambiguous compound names ("glucose", "phosphate")
-      # 3. Would require mapping to specific ChEBI IRIs first
-      # 4. Use case: exploratory search when ChEBI IRIs are unknown
-      # For known compounds, use query #5 with ChEBI IRIs instead
+
+      # Text search justified: rhea:equation is unstructured free text; this is an exploratory
+      # query to discover ChEBI IRIs. Once found, use query #3 with specific IRIs instead.
+      # Virtuoso backend: bif:contains (indexed, faster than FILTER(CONTAINS())).
       SELECT ?reaction ?equation
       WHERE {
         ?reaction rdfs:subClassOf rhea:Reaction ;
                   rhea:equation ?equation ;
                   rhea:status <http://rdf.rhea-db.org/Approved> .
-        # Virtuoso backend: use bif:contains (indexed text search)
         ?equation bif:contains "'glucose' AND 'phosphate'" option (score ?sc) .
       }
       ORDER BY DESC(?sc)
@@ -319,69 +318,21 @@ cross_database_queries:
   co_located_databases:
     - uniprot
   examples:
-    - title: Find Enzymes Catalyzing Specific Reactions
+    - title: Human Enzymes and Their Catalysed Reactions
       description: |
-        Link biochemical reactions to catalyzing enzymes using shared SIB endpoint.
-        
+        Link human SwissProt proteins to the biochemical reactions they catalyse.
+
         Structured linking strategy:
-        - Rhea: Reactions have rhea:ec property with EC number IRIs
-        - UniProt: Proteins have up:enzyme property with same EC number IRIs
-        - Direct IRI matching via shared EC number namespace provides comprehensive results
-        
-        Use case: Drug target discovery, metabolic pathway analysis
-      databases_used: [rhea, uniprot]
-      complexity: intermediate
-      sparql: |
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX rhea: <http://rdf.rhea-db.org/>
-        PREFIX up: <http://purl.uniprot.org/core/>
-        
-        # Link via shared EC number IRIs (structured approach)
-        SELECT ?reaction ?equation ?enzyme ?protein ?mnemonic ?fullName
-        WHERE {
-          GRAPH <http://rdfportal.org/dataset/rhea> {
-            ?reaction rdfs:subClassOf rhea:Reaction ;
-                      rhea:equation ?equation ;
-                      rhea:status <http://rdf.rhea-db.org/Approved> ;
-                      rhea:ec ?enzyme .
-            # Pre-filter: use text search only for narrowing Rhea graph
-            ?equation bif:contains "'ATP'" option (score ?sc) .
-          }
-          GRAPH <http://sparql.uniprot.org/uniprot> {
-            ?protein a up:Protein ;
-                     up:reviewed 1 ;
-                     up:mnemonic ?mnemonic ;
-                     up:enzyme ?enzyme ;
-                     up:recommendedName ?name .
-            ?name up:fullName ?fullName .
-          }
-        }
-        ORDER BY DESC(?sc)
-        LIMIT 20
-      notes: |
-        - Linking via: EC number IRIs (http://purl.uniprot.org/enzyme/X.X.X.X)
-        - Performance: ~2-3s (Tier 1) with bif:contains pre-filtering
-        - Optimization: reviewed=1 reduces UniProt by 99%, Approved reduces Rhea by 2%
-        - MIE files referenced: rhea, uniprot
-    
-    - title: Human Enzymes and Their Catalyzed Reactions
-      description: |
-        Identify human proteins and their catalyzed biochemical reactions with chemistry details.
-        
-        Structured linking strategy:
-        - UniProt: Use specific organism IRI (taxonomy:9606) for human proteins
-        - Rhea: Use specific status IRI (rhea:Approved) for validated reactions
-        - Link via shared EC number IRIs
-        
-        Use case: Human metabolism studies, systems biology
+        - UniProt: up:organism <http://purl.uniprot.org/taxonomy/9606> (human IRI) + up:reviewed 1
+        - Rhea:    rhea:status <http://rdf.rhea-db.org/Approved>
+        - Join:    shared EC number IRIs (up:enzyme ↔ rhea:ec) — no text search required
       databases_used: [uniprot, rhea]
       complexity: intermediate
       sparql: |
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         PREFIX rhea: <http://rdf.rhea-db.org/>
-        PREFIX up: <http://purl.uniprot.org/core/>
-        
-        # Link via specific organism IRI and EC number IRIs
+        PREFIX up:   <http://purl.uniprot.org/core/>
+
         SELECT ?protein ?mnemonic ?fullName ?reaction ?equation
         WHERE {
           GRAPH <http://sparql.uniprot.org/uniprot> {
@@ -390,8 +341,7 @@ cross_database_queries:
                      up:organism <http://purl.uniprot.org/taxonomy/9606> ;
                      up:mnemonic ?mnemonic ;
                      up:enzyme ?enzyme ;
-                     up:recommendedName ?name .
-            ?name up:fullName ?fullName .
+                     up:recommendedName/up:fullName ?fullName .
           }
           GRAPH <http://rdfportal.org/dataset/rhea> {
             ?reaction rdfs:subClassOf rhea:Reaction ;
@@ -402,30 +352,27 @@ cross_database_queries:
         }
         LIMIT 20
       notes: |
-        - Linking via: EC number IRIs + organism IRI filtering
-        - Performance: ~3-4s (Tier 1-2)
-        - Optimization: organism filter reduces UniProt by 95.7% before join
-        - MIE files referenced: uniprot, rhea
-    
-    - title: Reactions with Protein GO Annotations
+        - Linking via: EC number IRIs (http://purl.uniprot.org/enzyme/X.X.X.X)
+        - Performance: ~3-4s with organism + reviewed pre-filters
+        - Optimization: up:reviewed 1 reduces UniProt by 99%; organism IRI reduces by 95.7%
+        - MIE files checked: rhea, uniprot
+
+    - title: Reactions with UniProt GO Biological Process Annotations
       description: |
-        Three-way integration: reactions, enzymes, and biological process annotations.
-        
+        Three-way join: approved reactions → catalysing reviewed human proteins → GO terms.
+
         Structured linking strategy:
-        - Rhea → UniProt: Via shared EC number IRIs
-        - UniProt → GO: Via up:classifiedWith with GO term IRIs
-        - All linkage uses specific IRIs, no text search required
-        
-        Use case: Pathway enrichment, systems biology, functional annotation
+        - Rhea → UniProt: shared EC number IRIs (rhea:ec ↔ up:enzyme)
+        - UniProt → GO:   up:classifiedWith with OBO GO IRIs
+        - All joins use specific IRIs; no text search required
       databases_used: [rhea, uniprot]
       complexity: advanced
       sparql: |
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         PREFIX rhea: <http://rdf.rhea-db.org/>
-        PREFIX up: <http://purl.uniprot.org/core/>
-        
-        # Three-way link via EC number IRIs and GO term IRIs
-        SELECT DISTINCT ?reaction ?equation ?protein ?mnemonic ?goLabel
+        PREFIX up:   <http://purl.uniprot.org/core/>
+
+        SELECT DISTINCT ?reaction ?equation ?mnemonic ?goTerm
         WHERE {
           GRAPH <http://rdfportal.org/dataset/rhea> {
             ?reaction rdfs:subClassOf rhea:Reaction ;
@@ -439,9 +386,6 @@ cross_database_queries:
                      up:mnemonic ?mnemonic ;
                      up:enzyme ?enzyme ;
                      up:classifiedWith ?goTerm .
-          }
-          GRAPH <http://sparql.uniprot.org/go> {
-            ?goTerm rdfs:label ?goLabel .
             FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
           }
         }
@@ -449,530 +393,190 @@ cross_database_queries:
       notes: |
         - Linking via: EC number IRIs + GO term IRIs (all structured)
         - Performance: ~4-6s (Tier 2-3) for three-way join
-        - Optimization: Pre-filtering in each GRAPH reduces join complexity
-        - MIE files referenced: rhea, uniprot
+        - MIE files checked: rhea, uniprot
 
 cross_references:
-  - pattern: rdfs:seeAlso (GO Terms)
+  - pattern: rhea:chebi
     description: |
-      Reactions link to Gene Ontology molecular function terms via rdfs:seeAlso.
-      Use specific GO term IRIs (http://purl.obolibrary.org/obo/GO_XXXXXXX) for precise 
-      functional classification rather than text search on function descriptions.
-    databases:
-      Gene_Ontology:
-        - "GO Molecular Function: ~24% reactions (4,385) have GO annotations"
-        - "GO terms describe enzymatic activities (kinase, ATPase, hydrolase, etc.)"
-    sparql: |
-      PREFIX rhea: <http://rdf.rhea-db.org/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX go: <http://purl.obolibrary.org/obo/>
-      
-      # Use specific GO term IRIs (structured approach)
-      SELECT DISTINCT ?reaction ?equation ?goTerm
-      WHERE {
-        VALUES ?goTerm {
-          go:GO_0016301  # kinase activity
-          go:GO_0016887  # ATPase activity
-          go:GO_0004672  # protein kinase activity
-        }
-        ?reaction rdfs:subClassOf rhea:Reaction ;
-                  rhea:equation ?equation ;
-                  rhea:status <http://rdf.rhea-db.org/Approved> ;
-                  rdfs:seeAlso ?goTerm .
-      }
-      LIMIT 30
-  
-  - pattern: rdfs:seeAlso (Reactome Pathways)
-    description: |
-      Reactions link to Reactome pathway events via rdfs:seeAlso using identifiers.org URIs.
-      Use specific Reactome event IRIs for pathway-based filtering and biological context.
-    databases:
-      Metabolic_Pathways:
-        - "Reactome: ~4% reactions (758) have Reactome pathway links"
-        - "Links point to specific reaction events within pathways"
-    sparql: |
-      PREFIX rhea: <http://rdf.rhea-db.org/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      # Use specific Reactome pathway IRIs (structured approach)
-      SELECT DISTINCT ?reaction ?equation ?pathway
-      WHERE {
-        VALUES ?pathway {
-          <http://identifiers.org/reactome/R-HSA-426240.2>
-          <http://identifiers.org/reactome/R-HSA-936802.2>
-        }
-        ?reaction rdfs:subClassOf rhea:Reaction ;
-                  rhea:equation ?equation ;
-                  rhea:status <http://rdf.rhea-db.org/Approved> ;
-                  rdfs:seeAlso ?pathway .
-      }
-      LIMIT 30
-  
-  - pattern: rdfs:seeAlso (BioCyc Pathways)
-    description: |
-      Reactions link to BioCyc/MetaCyc metabolic pathways via rdfs:seeAlso.
-      Use specific BioCyc reaction IRIs for metabolic pathway-based filtering.
-    databases:
-      Metabolic_Pathways:
-        - "BioCyc/MetaCyc: ~2% reactions (396) have BioCyc pathway links"
-        - "Provides detailed metabolic pathway context"
-    sparql: |
-      PREFIX rhea: <http://rdf.rhea-db.org/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      # Use specific BioCyc pathway IRIs (structured approach)
-      SELECT DISTINCT ?reaction ?equation ?biocycPathway
-      WHERE {
-        VALUES ?biocycPathway {
-          <http://identifiers.org/biocyc/METACYC:THIOCYANATE-ISOMERASE-RXN>
-          <http://identifiers.org/biocyc/METACYC:D-TRYPTOPHAN-N-ACETYLTRANSFERASE-RXN>
-        }
-        ?reaction rdfs:subClassOf rhea:Reaction ;
-                  rhea:equation ?equation ;
-                  rhea:status <http://rdf.rhea-db.org/Approved> ;
-                  rdfs:seeAlso ?biocycPathway .
-      }
-      LIMIT 30
-  
-  - pattern: rhea:chebi (Chemical Compounds)
-    description: |
-      All small molecules link to ChEBI chemical structures via rhea:chebi property (100% coverage).
-      This is the PREFERRED method for finding reactions by compound - always use ChEBI IRIs 
-      rather than text search on compound names for comprehensive and precise results.
+      All small molecules carry rhea:chebi pointing to a ChEBI OBO IRI
+      (http://purl.obolibrary.org/obo/CHEBI_XXXXX). This is the PREFERRED entry point for
+      compound-based reaction queries — always use ChEBI IRIs rather than text search on names.
     databases:
       Chemical_Structures:
         - "ChEBI: 100% coverage for small molecules (12,496 compounds)"
-        - "Direct IRI linkage enables precise chemical matching"
-    sparql: |
-      PREFIX rhea: <http://rdf.rhea-db.org/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX chebi: <http://purl.obolibrary.org/obo/>
-      
-      # Use specific ChEBI IRIs (structured approach - ALWAYS prefer over text search)
-      SELECT DISTINCT ?reaction ?equation ?compoundName
-      WHERE {
-        ?compound rdfs:subClassOf rhea:SmallMolecule ;
-                  rhea:chebi chebi:CHEBI_30616 ;  # ATP
-                  rhea:name ?compoundName .
-        ?participant rhea:compound ?compound .
-        ?side rhea:contains ?participant .
-        ?reaction rdfs:subClassOf rhea:Reaction ;
-                  rhea:side ?side ;
-                  rhea:equation ?equation ;
-                  rhea:status <http://rdf.rhea-db.org/Approved> .
-      }
-      LIMIT 50
-  
-  - pattern: rhea:ec (Enzyme Classification)
+
+  - pattern: rhea:ec
     description: |
-      Reactions link to enzyme classifications via EC number IRIs (http://purl.uniprot.org/enzyme/).
-      Enables protein-reaction integration through shared SIB endpoint with UniProt.
-      Use specific EC number IRIs in VALUES clauses for enzyme class filtering.
+      Reactions link to enzyme classifications via EC number IRIs
+      (http://purl.uniprot.org/enzyme/X.X.X.X). Shared namespace with UniProt
+      (up:enzyme) enables direct cross-database joins on the SIB endpoint.
     databases:
       Enzyme_Classification:
-        - "EC Numbers: ~45% reactions (8,100+) have EC annotations"
-        - "Shared namespace with UniProt enables cross-database queries"
-    sparql: |
-      PREFIX rhea: <http://rdf.rhea-db.org/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      # Use specific EC number IRIs (structured approach)
-      SELECT ?reaction ?equation ?ec
-      WHERE {
-        ?reaction rdfs:subClassOf rhea:Reaction ;
-                  rhea:equation ?equation ;
-                  rhea:ec ?ec .
-      }
-      LIMIT 50
+        - "EC Numbers: ~42% reactions (7,569 of 18,071)"
+
+  - pattern: rdfs:seeAlso (GO / Reactome / BioCyc)
+    description: |
+      Functional and pathway cross-references via rdfs:seeAlso. Use FILTER on IRI prefix
+      to target a specific database. Always use specific GO term IRIs for functional queries
+      rather than text search.
+    databases:
+      Gene_Ontology:
+        - "GO Molecular Function: ~24% reactions (4,385)"
+      Metabolic_Pathways:
+        - "Reactome: ~4% (758 reactions); BioCyc/MetaCyc: ~2% (396 reactions)"
 
 architectural_notes:
   query_strategy:
-    - "MANDATORY FIRST STEP: Get MIE file (get_MIE_file('rhea')) and examine shape_expressions"
-    - "Exploratory: Use search_rhea_entity(query, limit) to find examples and extract IRIs"
-    - "Comprehensive: Use specific IRIs discovered from exploratory phase"
-    - "Priority hierarchy (ALWAYS follow): Specific IRIs > Typed predicates > Graph navigation > Text search"
-    - ""
-    - "TIER 1 - STRUCTURED PROPERTIES (ALWAYS PREFER):"
-    - "  - Status IRIs: <http://rdf.rhea-db.org/Approved>, <http://rdf.rhea-db.org/Preliminary>, <http://rdf.rhea-db.org/Obsolete>"
-    - "  - ChEBI IRIs via rhea:chebi: <http://purl.obolibrary.org/obo/CHEBI_XXXXX> (100% coverage for small molecules)"
-    - "  - EC number IRIs: <http://purl.uniprot.org/enzyme/X.X.X.X> (~45% coverage)"
-    - "  - Typed predicates: rhea:isTransport (boolean), rhea:location (rhea:In, rhea:Out)"
-    - ""
-    - "TIER 2 - ANNOTATION IRIs (USE WHEN AVAILABLE):"
-    - "  - GO term IRIs via rdfs:seeAlso: <http://purl.obolibrary.org/obo/GO_XXXXXXX> (~24% coverage)"
-    - "  - Reactome pathway IRIs: <http://identifiers.org/reactome/R-HSA-XXXXXX> (~4% coverage)"
-    - "  - BioCyc pathway IRIs: <http://identifiers.org/biocyc/METACYC:XXXXX> (~2% coverage)"
-    - ""
-    - "TIER 3 - TEXT SEARCH (LAST RESORT):"
-    - "  - bif:contains (Virtuoso) for unstructured rhea:equation field ONLY"
-    - "  - Use only when: (a) compound ChEBI IRIs are unknown, (b) exploratory search"
-    - "  - NEVER use for: known compounds, enzyme classes, organisms, ontology terms"
-    - "  - Always document why no structured alternative exists"
-  
-  iri_filtering_hierarchy:
-    - "Tier 1 - Universal coverage (100%): Status IRIs, ChEBI IRIs (for small molecules)"
-    - "Tier 2 - High coverage (~45%): EC number IRIs"
-    - "Tier 3 - Moderate coverage (~24%): GO term IRIs"
-    - "Tier 4 - Sparse coverage (2-4%): Reactome IRIs, BioCyc IRIs"
-    - "Tier 5 - Transport reactions only (8%): Location IRIs"
-  
+    - "MANDATORY FIRST STEP: get_MIE_file('rhea') — read critical_warnings and shape_expressions"
+    - "Exploratory: search_rhea_entity(keyword) to find examples and extract ChEBI / EC / GO IRIs"
+    - "Comprehensive: use discovered IRIs in specific predicates or VALUES — never raw text search"
+    - "Priority: Specific IRIs > Typed predicates > Graph navigation > bif:contains (last resort)"
+    - "bif:contains is legitimate ONLY on rhea:equation for truly ambiguous exploratory searches"
+
   schema_design:
-    - "Reaction representations: Three forms exist for each reaction"
-    - "  - Master reaction: Base chemical transformation"
-    - "  - Directional reactions: L→R and R→L variants"
-    - "  - Bidirectional reaction: Equilibrium form"
-    - "Reaction IDs form quartets: 13065 (master), 13066 (L→R), 13067 (R→L), 13068 (bidirectional)"
-    - "Stoichiometry encoding: Property names indicate coefficient (contains1, contains2, contains3, containsN)"
-    - "Transport reactions: Participants have rhea:location (rhea:In, rhea:Out)"
-    - "Compound types: SmallMolecule (with ChEBI) or Polymer (with polymerization indices)"
-    - "Status values: Three IRIs (Approved, Preliminary, Obsolete)"
-    - "All small molecules have rhea:chebi property - ALWAYS use this for compound filtering"
-  
+    - "Reaction quartet: every transformation has 4 linked IRIs (master, L→R, R→L, bidirectional)"
+    - "Compound path: reaction → rhea:side → rhea:contains → rhea:compound → rhea:chebi"
+    - "Stoichiometry encoded in property name: rhea:contains1/2/3/N (rhea:contains = union)"
+    - "Three status IRIs: rhea:Approved, rhea:Preliminary, rhea:Obsolete — always use IRI form"
+    - "Transport reactions: participants carry rhea:location (rhea:In / rhea:Out)"
+    - "Compound types: SmallMolecule (100% ChEBI) vs Polymer (formula/charge use n-notation)"
+
   performance:
-    - "CRITICAL: Always use specific IRIs (status, ChEBI, EC, GO) early in queries"
-    - "ChEBI IRI filtering via rhea:chebi: <1s for typical queries - PREFER over text search"
-    - "EC number IRI filtering: <1s with VALUES clause"
-    - "Status IRI filtering (rhea:Approved): Reduces dataset by ~2%, essential for quality"
-    - "Boolean filters (rhea:isTransport): Efficient when combined with status"
-    - "bif:contains on rhea:equation: Use ONLY when ChEBI IRIs unknown, not for known compounds"
-    - "  - Pattern: ?equation bif:contains \"'term1' AND 'term2'\" option (score ?sc)"
-    - "  - Always ORDER BY DESC(?sc) for relevance ranking"
-    - "Start from reactions, then traverse to compounds for better performance"
-    - "Always use LIMIT for relationship traversals (typical: 20-50)"
-    - ""
-    - "Cross-database optimization:"
-    - "  - Use explicit GRAPH clauses to prevent cross-contamination"
-    - "  - Pre-filter within GRAPH blocks before joins"
-    - "  - Rhea: Use rhea:status <http://rdf.rhea-db.org/Approved>"
-    - "  - UniProt: Use up:reviewed 1 (reduces by 99%)"
-    - "  - Apply organism filters early when relevant"
-  
+    - "CRITICAL: Apply rhea:status <rhea:Approved> early in every reaction query"
+    - "ChEBI IRI filtering via rhea:chebi: <1s — always prefer over equation text search"
+    - "EC IRI filtering with VALUES: <1s"
+    - "bif:contains on rhea:equation: use indexed property path — split property paths first"
+    - "  Pattern: ?reaction rhea:equation ?eq . ?eq bif:contains \"'term'\" option (score ?sc)"
+    - "Always add LIMIT; typical traversal queries (reaction→compound): 30–100 rows"
+    - "Cross-DB: pre-filter in each GRAPH block before joining; up:reviewed 1 is critical"
+
   data_integration:
-    - "ChEBI integration: 100% of small molecules have rhea:chebi property"
-    - "  - Use this for ALL compound-based queries (not text search)"
-    - "  - Also linked via rdfs:subClassOf for ontology traversal"
-    - "EC numbers: Shared namespace with UniProt (http://purl.uniprot.org/enzyme/)"
-    - "  - Enables efficient cross-database protein-reaction queries"
-    - "GO terms: Functional classification via rdfs:seeAlso (~24% coverage)"
-    - "  - Use specific GO term IRIs for functional filtering"
-    - "Reactome: Human pathway context via identifiers.org URIs (~4% coverage)"
-    - "BioCyc: Metabolic pathway integration via identifiers.org URIs (~2% coverage)"
-    - ""
-    - "Cross-database with UniProt:"
-    - "  - Shared SIB endpoint: https://rdfportal.org/sib/sparql"
-    - "  - Link via EC number IRIs (rhea:ec ↔ up:enzyme)"
-    - "  - Performance: Tier 1 (1-3s) with proper pre-filtering"
-  
+    - "ChEBI: 100% small-molecule coverage via rhea:chebi and rdfs:subClassOf ChEBI IRI"
+    - "EC numbers: shared IRI namespace with UniProt enables direct SIB endpoint joins"
+    - "GO terms: functional classification via rdfs:seeAlso (~24%); use OBO IRIs"
+    - "Reactome: human pathway context via identifiers.org URIs (~4%)"
+    - "BioCyc/MetaCyc: metabolic pathway integration via identifiers.org URIs (~2%)"
+
   data_quality:
     - "All approved reactions are chemically balanced (rhea:isChemicallyBalanced = 1)"
-    - "Preliminary reactions (148): Indicate ongoing curation"
-    - "Obsolete reactions (288): Retained for historical reference"
-    - "100% of small molecules have ChEBI cross-references (rhea:chebi)"
-    - "GO term annotations: Expert-curated functional context (~24%)"
-    - "Pathway annotations: Enable systems biology analysis (2-4%)"
-    - "Polymers: Use specialized notation (n, n-1) in formulas and charges"
+    - "Preliminary reactions (148): ongoing curation; Obsolete (288): retained for history"
+    - "Polymers: formula and charge fields use n-notation strings, not integers"
+
+  text_search_justification:
+    - "Number of the 7 example queries using text search: 1 (query 7)"
+    - "Field where text search IS legitimate: rhea:equation (free-text, no controlled vocabulary)"
+    - "Justification: query 7 is explicitly exploratory — user does not know ChEBI IRIs yet"
+    - "All other fields (compound, enzyme, function, status) have structured IRI alternatives"
 
 data_statistics:
   total_reactions: 18071
-  verified_date: "2025-02-10"
-  verification_method: "COUNT query on Reaction class"
-  verification_query: |
-    SELECT (COUNT(DISTINCT ?reaction) as ?count)
-    WHERE { ?reaction rdfs:subClassOf rhea:Reaction }
-  
+  verified_date: "2025-04-22"
+  verification_method: "Direct COUNT query on rdfs:subClassOf rhea:Reaction"
+
   reaction_status:
     approved: 17635
     preliminary: 148
     obsolete: 288
-    verified_date: "2025-02-10"
-    verification_query: |
-      SELECT ?status (COUNT(?r) as ?count)
-      WHERE { ?r rhea:status ?status }
-      GROUP BY ?status
-  
+    verified_date: "2025-04-22"
+
   transport_reactions: 1522
   small_molecules: 12496
   polymers: 261
-  
+
   coverage:
-    reactions_with_ec: "~45% (8,100+ reactions)"
-    reactions_with_go: "~24% (4,385 reactions)"
-    reactions_with_reactome: "~4% (758 reactions)"
-    reactions_with_biocyc: "~2% (396 reactions)"
     compounds_with_chebi: "100% (12,496 small molecules)"
-    note: "Use rhea:chebi for compound filtering - complete coverage ensures comprehensive results"
-  
-  performance_characteristics:
-    - "Simple ID lookups: <1s"
-    - "ChEBI IRI filtering (structured): <1s for 30 results"
-    - "EC number IRI filtering (structured): <1s for 30 results"
-    - "GO term IRI filtering (structured): <1s for 30 results"
-    - "Status IRI filtering (structured): <1s for 20 results"
-    - "Transport boolean filtering: <1s with status filter"
-    - "bif:contains text search: <1s for 20 results (use sparingly)"
-    - "Complex joins (reactions→participants→compounds): 2-5s with LIMIT 50"
-    - "Cross-DB with UniProt (structured linking): Tier 1 (1-3s) with proper optimization"
-    - "Cross-DB three-way joins: Tier 2-3 (3-8s)"
-  
+    reactions_with_ec: "41.9% (7,569 of 18,071)"
+    reactions_with_go: "24.3% (4,385 of 18,071)"
+    reactions_with_reactome: "~4% (~758 reactions)"
+    reactions_with_biocyc: "~2% (~396 reactions)"
+    verified_date: "2025-04-22"
+
   staleness_warning: |
-    Quarterly updates - verify current statistics at www.rhea-db.org for latest data.
+    Quarterly updates — verify current statistics at www.rhea-db.org for the latest release.
 
 anti_patterns:
-  - title: "Skipping MIE Schema Check Before Using Text Search"
-    problem: "Using bif:contains without first checking MIE file for structured properties (ChEBI IRIs, EC IRIs, GO IRIs, status IRIs)."
+  - title: "Text Search When Structured Property Exists"
+    problem: "Using bif:contains on equation text when a ChEBI IRI, EC IRI, or GO IRI is available."
     wrong_sparql: |
-      # WRONG: Immediately using text search without checking MIE schema
-      PREFIX rhea: <http://rdf.rhea-db.org/>
-      
-      SELECT ?reaction ?equation
-      WHERE {
-        ?reaction rhea:equation ?equation .
-        ?equation bif:contains "'ATP' AND 'kinase'"
-      }
-      LIMIT 20
+      # Inefficient: text search for a known compound
+      ?reaction rhea:equation ?eq .
+      ?eq bif:contains "'ATP'"
     correct_sparql: |
-      # CORRECT workflow:
-      # Step 1: get_MIE_file('rhea') → examined shape_expressions
-      # Step 2: Found: rhea:ec property links to EC number IRIs
-      # Step 3: Found: rdfs:seeAlso links to GO term IRIs
-      # Step 4: search_rhea_entity("kinase") → found examples
-      # Step 5: Inspected examples → extracted GO IRIs and EC IRIs
-      # Step 6: Use discovered structured properties:
-      
-      PREFIX rhea: <http://rdf.rhea-db.org/>
-      PREFIX go: <http://purl.obolibrary.org/obo/>
-      
-      # Use specific GO term IRIs (structured approach)
-      SELECT ?reaction ?equation
-      WHERE {
-        VALUES ?goTerm {
-          go:GO_0016301  # kinase activity
-          go:GO_0004672  # protein kinase activity
-        }
-        ?reaction rdfs:subClassOf rhea:Reaction ;
-                  rhea:equation ?equation ;
-                  rhea:status <http://rdf.rhea-db.org/Approved> ;
-                  rdfs:seeAlso ?goTerm .
-      }
-      LIMIT 30
+      # Correct: use ChEBI IRI via rhea:chebi (100% coverage)
+      ?compound rdfs:subClassOf rhea:SmallMolecule ;
+                rhea:chebi <http://purl.obolibrary.org/obo/CHEBI_30616> .
+      ?participant rhea:compound ?compound .
+      ?side rhea:contains ?participant .
+      ?reaction rhea:side ?side .
     explanation: |
-      ALWAYS check MIE schema BEFORE using text search. The MIE file documents all 
-      structured properties available. In this case, GO term IRIs provide precise 
-      functional classification. Text search on "kinase" in equations misses reactions 
-      with kinase function but different naming (e.g., "phosphotransferase"). 
-      Structured GO term IRIs ensure comprehensive, functional results.
-  
-  - title: "Using Text Search When ChEBI IRI Available"
-    problem: "Using text search for compounds when specific ChEBI IRIs provide precise, comprehensive matching."
+      Text search on "ATP" matches variants and misses others. ChEBI IRIs provide exact
+      chemical identity with 100% coverage. Use search_rhea_entity() to find the IRI first.
+
+  - title: "Skipping MIE Schema Check Before Text Search"
+    problem: "Using text search without first reading shape_expressions for structured alternatives."
     wrong_sparql: |
-      # WRONG: Text search for compound names
-      PREFIX rhea: <http://rdf.rhea-db.org/>
-      
-      SELECT ?reaction ?equation
-      WHERE {
-        ?reaction rhea:equation ?equation .
-        ?equation bif:contains "'ATP'"
-      }
-      LIMIT 20
+      # No MIE check — jumps directly to text search
+      ?eq bif:contains "'kinase'"
     correct_sparql: |
-      # CORRECT: Use ChEBI IRI via rhea:chebi (100% coverage)
-      PREFIX rhea: <http://rdf.rhea-db.org/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX chebi: <http://purl.obolibrary.org/obo/>
-      
-      SELECT DISTINCT ?reaction ?equation
-      WHERE {
-        ?compound rdfs:subClassOf rhea:SmallMolecule ;
-                  rhea:chebi chebi:CHEBI_30616 .  # ATP
-        ?participant rhea:compound ?compound .
-        ?side rhea:contains ?participant .
-        ?reaction rdfs:subClassOf rhea:Reaction ;
-                  rhea:side ?side ;
-                  rhea:equation ?equation ;
-                  rhea:status <http://rdf.rhea-db.org/Approved> .
-      }
-      LIMIT 20
-    explanation: |
-      Text search on "ATP" in equation text misses variants (e.g., "dATP", "ATP(4-)") 
-      and matches false positives (e.g., "ATPase"). ChEBI IRIs provide exact chemical 
-      structure matching with 100% coverage. ALWAYS use rhea:chebi for known compounds.
-  
-  - title: "Using Text Search for Enzyme Classification"
-    problem: "Using text search on equation text when specific EC number IRIs are available."
+      # Correct workflow:
+      # 1. get_MIE_file('rhea') → read shape_expressions and critical_warnings
+      # 2. search_rhea_entity("kinase") → inspect examples → extract GO / EC IRIs
+      # 3. Use discovered IRIs:
+      VALUES ?goTerm { <http://purl.obolibrary.org/obo/GO_0016301> }  # kinase activity
+      ?reaction rdfs:seeAlso ?goTerm .
+    explanation: "Always check MIE first. Rhea has GO IRIs, EC IRIs, and ChEBI IRIs for virtually all functional queries."
+
+  - title: "Circular Reasoning with Search API Results"
+    problem: "Putting search_rhea_entity() result IRIs in VALUES to answer comprehensive COUNT queries."
     wrong_sparql: |
-      # WRONG: Text search for enzyme activity
-      PREFIX rhea: <http://rdf.rhea-db.org/>
-      
-      SELECT ?reaction ?equation
-      WHERE {
-        ?reaction rhea:equation ?equation .
-        ?equation bif:contains "'ATPase'"
-      }
-      LIMIT 20
+      VALUES ?reaction { <rhea:1> <rhea:2> ... <rhea:20> }   # only the 20 search hits
+      SELECT (COUNT(?reaction) as ?n) WHERE { ... }
     correct_sparql: |
-      # CORRECT: Use specific EC number IRIs
-      PREFIX rhea: <http://rdf.rhea-db.org/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      SELECT ?reaction ?equation ?ec
-      WHERE {
-        VALUES ?ec {
-          <http://purl.uniprot.org/enzyme/3.6.4.10>
-          <http://purl.uniprot.org/enzyme/3.6.4.12>
-          <http://purl.uniprot.org/enzyme/3.6.4.13>
-        }
-        ?reaction rdfs:subClassOf rhea:Reaction ;
-                  rhea:equation ?equation ;
-                  rhea:status <http://rdf.rhea-db.org/Approved> ;
-                  rhea:ec ?ec .
-      }
-      LIMIT 30
-    explanation: |
-      Text search on "ATPase" is ambiguous and misses functionally related reactions 
-      with different naming conventions. EC number IRIs provide precise enzyme 
-      classification (EC 3.6.4.x = ATPases). Use specific EC IRIs for comprehensive results.
-  
-  - title: "Missing LIMIT on Relationship Traversals"
-    problem: "Queries without LIMIT timeout on large result sets when traversing graph relationships."
+      # Extract concept IRI from one example, then query the full dataset:
+      VALUES ?chebi { <http://purl.obolibrary.org/obo/CHEBI_30616> }
+      SELECT (COUNT(DISTINCT ?reaction) as ?n)
+      WHERE { ?compound rhea:chebi ?chebi .
+              ?participant rhea:compound ?compound .
+              ?side rhea:contains ?participant .
+              ?reaction rhea:side ?side . }
+    explanation: "Search results discover example IRIs. Use those concept IRIs to query the complete dataset."
+
+  - title: "Using String Literals for Status Filter"
+    problem: "Passing a string value for rhea:status instead of the required IRI."
     wrong_sparql: |
-      # WRONG: No LIMIT clause
-      PREFIX rhea: <http://rdf.rhea-db.org/>
-      
-      SELECT ?reaction ?participant ?compound
-      WHERE {
-        ?reaction rhea:side ?side .
-        ?side rhea:contains ?participant .
-        ?participant rhea:compound ?compound .
-      }
+      ?reaction rhea:status "Approved" .     # silently returns 0 results
     correct_sparql: |
-      # CORRECT: Always include LIMIT
-      PREFIX rhea: <http://rdf.rhea-db.org/>
-      
-      SELECT ?reaction ?participant ?compound
-      WHERE {
-        ?reaction rhea:side ?side .
-        ?side rhea:contains ?participant .
-        ?participant rhea:compound ?compound .
-      }
-      LIMIT 100
-    explanation: |
-      Relationship traversals (reaction→side→participant→compound) generate large 
-      result sets (100,000+ rows). Always use LIMIT to prevent timeouts. Typical 
-      limits: 20-50 for exploration, 100-500 for comprehensive analysis.
+      ?reaction rhea:status <http://rdf.rhea-db.org/Approved> .   # correct IRI form
+    explanation: "Status values are IRIs, not literals. Using a string silently returns empty results with no error."
 
 common_errors:
-  - error: "Query timeout when counting or aggregating reactions"
+  - error: "Empty results when querying compounds"
     causes:
-      - "Not using LIMIT even on COUNT queries"
-      - "Attempting full reaction-participant-compound graph traversal without filters"
-      - "Not using status filters early (rhea:Approved)"
+      - "Shortcutting the compound path (skipping rhea:side → rhea:contains → rhea:compound)"
+      - "Using text search on compound names instead of rhea:chebi IRI"
+      - "Using rdfs:subClassOf ChEBI IRI directly on the reaction instead of following the path"
     solutions:
-      - "Add LIMIT even to aggregation queries"
-      - "Use status IRI filter (rhea:Approved) to reduce dataset by 2%"
-      - "Break complex queries into focused subqueries"
-      - "Apply ChEBI IRI or EC IRI filters early when compound/enzyme-specific"
-    example_fix: |
-      # Count with optimization
-      PREFIX rhea: <http://rdf.rhea-db.org/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      SELECT (COUNT(?reaction) as ?count)
-      WHERE {
-        ?reaction rdfs:subClassOf rhea:Reaction ;
-                  rhea:status <http://rdf.rhea-db.org/Approved> .
-      }
-      LIMIT 1
-  
-  - error: "Empty or incomplete results when searching for compounds"
+      - "Always traverse the full path: reaction → rhea:side → rhea:contains → rhea:compound → rhea:chebi"
+      - "Use search_rhea_entity() to find a sample reaction, then inspect its full property set"
+      - "Use ChEBI IRIs via rhea:chebi for all known compounds"
+
+  - error: "Slow query or timeout on reaction traversals"
     causes:
-      - "Using text search instead of ChEBI IRIs (misses variants)"
-      - "Searching participant entities instead of compound entities"
-      - "Not following reaction→side→participant→compound path"
-      - "Not using rhea:chebi property (100% coverage for small molecules)"
+      - "Missing rhea:status <rhea:Approved> filter — queries all 18,071 reactions"
+      - "Using FILTER(CONTAINS()) instead of bif:contains (unindexed on Virtuoso)"
+      - "No LIMIT on relationship traversals"
+      - "Property path before bif:contains (e.g., rhea:side/rhea:contains/rhea:compound)"
     solutions:
-      - "ALWAYS use ChEBI IRIs via rhea:chebi for known compounds"
-      - "Use search_rhea_entity() first to find examples and extract ChEBI IRIs"
-      - "Follow complete path: reaction→rhea:side→rhea:contains→rhea:compound"
-      - "Use text search ONLY when compound identity is ambiguous or ChEBI IRI unknown"
-    example_fix: |
-      # PREFERRED: Use ChEBI IRI
-      PREFIX rhea: <http://rdf.rhea-db.org/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX chebi: <http://purl.obolibrary.org/obo/>
-      
-      SELECT DISTINCT ?reaction ?equation
-      WHERE {
-        ?compound rhea:chebi chebi:CHEBI_17234 .  # D-glucose
-        ?participant rhea:compound ?compound .
-        ?side rhea:contains ?participant .
-        ?reaction rdfs:subClassOf rhea:Reaction ;
-                  rhea:side ?side ;
-                  rhea:equation ?equation ;
-                  rhea:status <http://rdf.rhea-db.org/Approved> .
-      }
-      LIMIT 20
-  
-  - error: "Missing functional or pathway annotations"
+      - "Always add rhea:status <http://rdf.rhea-db.org/Approved> early in the WHERE clause"
+      - "Use bif:contains on a split property path (bind ?eq first, then bif:contains on ?eq)"
+      - "Add LIMIT 20–100 to every query"
+
+  - error: "Cross-database query timeout or empty results"
     causes:
-      - "Not using OPTIONAL for sparse annotations"
-      - "Expecting all reactions to have GO terms or pathway links"
-      - "Using wrong IRI pattern for pathway databases"
-      - "Not checking coverage statistics (GO ~24%, Reactome ~4%, BioCyc ~2%)"
+      - "Missing GRAPH clauses — data from both databases mixes silently"
+      - "Not pre-filtering within each GRAPH block before the join"
+      - "Missing up:reviewed 1 in UniProt (queries 244M unreviewed entries)"
     solutions:
-      - "Wrap GO term and pathway queries in OPTIONAL if not required"
-      - "Check MIE coverage statistics before querying"
-      - "Use correct IRI patterns: purl.obolibrary.org for GO, identifiers.org for pathways"
-      - "Use FILTER to verify IRI namespace when using OPTIONAL"
-    example_fix: |
-      PREFIX rhea: <http://rdf.rhea-db.org/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      SELECT ?reaction ?equation ?goTerm ?pathway
-      WHERE {
-        ?reaction rdfs:subClassOf rhea:Reaction ;
-                  rhea:equation ?equation ;
-                  rhea:status <http://rdf.rhea-db.org/Approved> .
-        OPTIONAL {
-          ?reaction rdfs:seeAlso ?goTerm .
-          FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
-        }
-        OPTIONAL {
-          ?reaction rdfs:seeAlso ?pathway .
-          FILTER(CONTAINS(STR(?pathway), "reactome"))
-        }
-      }
-      LIMIT 50
-  
-  - error: "Cross-database query timeout or errors"
-    causes:
-      - "Missing GRAPH clauses - cross-contamination between databases"
-      - "Not pre-filtering within GRAPH blocks before joins"
-      - "Not using database-specific optimization filters"
-      - "Not checking both MIE files for linking strategy"
-    solutions:
-      - "MANDATORY: Get MIE files for ALL databases (get_MIE_file('rhea'), get_MIE_file('uniprot'))"
-      - "Use explicit GRAPH clauses for each database"
-      - "Apply restrictive filters within GRAPH blocks BEFORE joins"
-      - "Rhea: Use rhea:status <http://rdf.rhea-db.org/Approved> (reduces by 2%)"
-      - "UniProt: Use up:reviewed 1 (reduces by 99%)"
-      - "Add LIMIT to all cross-database queries"
-    example_fix: |
-      PREFIX rhea: <http://rdf.rhea-db.org/>
-      PREFIX up: <http://purl.uniprot.org/core/>
-      
-      SELECT ?reaction ?equation ?protein ?mnemonic
-      WHERE {
-        GRAPH <http://rdfportal.org/dataset/rhea> {
-          # Pre-filter in Rhea graph
-          ?reaction rhea:status <http://rdf.rhea-db.org/Approved> ;
-                    rhea:ec ?enzyme ;
-                    rhea:equation ?equation .
-        }
-        GRAPH <http://sparql.uniprot.org/uniprot> {
-          # Pre-filter in UniProt graph
-          ?protein up:reviewed 1 ;
-                   up:enzyme ?enzyme ;
-                   up:mnemonic ?mnemonic .
-        }
-      }
-      LIMIT 50
+      - "Read MIE files for ALL databases before writing the query"
+      - "Use explicit GRAPH clauses; apply restrictive filters inside each block"
+      - "UniProt: always include up:reviewed 1; Rhea: always include rhea:status rhea:Approved"

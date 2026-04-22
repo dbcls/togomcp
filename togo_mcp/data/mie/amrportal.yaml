@@ -1,9 +1,13 @@
 schema_info:
   title: AMR Portal
   description: |
-    Antimicrobial resistance surveillance data from NCBI Pathogen Detection, PATRIC, and CABBAGE. Contains 1.7M phenotypic test results (susceptibility testing) and 1.1M genotypic AMR features (resistance genes/mutations) from bacterial isolates worldwide.
-    Entity types: PhenotypeMeasurement (resistance tests with MIC/disk diffusion data), GenotypeFeature (AMR genes and mutations with genomic coordinates).
-    Applications: resistance pattern analysis, genotype-phenotype correlation, geographic surveillance, temporal trends, multi-drug resistance profiling.
+    Antimicrobial resistance surveillance data from NCBI Pathogen Detection, PATRIC, and CABBAGE.
+    Contains 1.7M phenotypic test results (susceptibility testing) and 1.1M genotypic AMR features
+    (resistance genes/mutations) from bacterial isolates worldwide.
+    Entity types: PhenotypeMeasurement (resistance tests with MIC/disk diffusion data),
+    GenotypeFeature (AMR genes and mutations with genomic coordinates).
+    Applications: resistance pattern analysis, genotype-phenotype correlation, geographic
+    surveillance, temporal trends, multi-drug resistance profiling.
   endpoint: https://rdfportal.org/ebi/sparql
   base_uri: http://example.org/ebiamr#
   graphs:
@@ -11,184 +15,203 @@ schema_info:
   kw_search_tools: []
   version:
     mie_version: "2.0"
-    mie_created: "2025-02-10"
+    mie_created: "2025-04-21"
     data_version: "Current as of 2025"
     update_frequency: "Irregular updates"
   license:
     data_license: "Public domain (NCBI/EBI)"
     license_url: "https://www.ebi.ac.uk/about/terms-of-use"
   access:
-    rate_limiting: "Standard SPARQL limits"
-    max_query_timeout: "60 seconds"
     backend: "Virtuoso"
+
+critical_warnings: |
+  - FROM CLAUSE MANDATORY: Always include FROM <http://rdfportal.org/dataset/amrportal>.
+    Omitting it causes aggregation queries to scan all endpoint graphs and time out.
+  - ALL ENTITIES ARE BLANK NODES: PhenotypeMeasurement and GenotypeFeature have no named URIs.
+    amr:bioSample IRI is the ONLY join key between phenotype and genotype records.
+  - GEOGRAPHIC REGION VALUES: amr:geographicalRegion uses 5 broad continents —
+    "Americas","Europe","Asia","Oceania","Africa" — NOT WHO region names.
+    For finer resolution use amr:geographicalSubregion (e.g. "South-eastern Asia", note lowercase 'e').
+    Querying WHO names like "South-Eastern Asia" silently returns 0 rows.
+  - FUSIDIC ACID CLASS DUPLICATION: Two distinct strings exist for the same drug class —
+    "FUSIDIC ACID" (space, 528 records) and "FUSIDIC_ACID" (underscore, 191 records).
+    Querying either string alone silently misses records. Always use:
+    VALUES ?amrClass { "FUSIDIC ACID" "FUSIDIC_ACID" }
+  - RESISTANCE PHENOTYPE VOCABULARY: Five values exist, not three. Beyond "resistant",
+    "susceptible", "intermediate", two rare values are present: "non-susceptible" (828 records)
+    and "susceptible-dose dependent" (213 records). Additionally, 19.5% of records have no value.
+  - antibioticOntologyId IS AN IRI IN PHENOTYPES, A STRING IN SOME GENOTYPES: In
+    PhenotypeMeasurement, stored as full IRI (http://purl.obolibrary.org/obo/ARO_NNNNNNN).
+    In some GenotypeFeature records it may be a plain string ("ARO_NNNNNNN"). Use
+    amr:antibioticName as a reliable fallback when filtering genotypes by antibiotic.
 
 shape_expressions: |
   PREFIX amr: <http://example.org/ebiamr#>
   PREFIX dct: <http://purl.org/dc/terms/>
   PREFIX obo: <http://purl.obolibrary.org/obo/>
-  
+
+  # PhenotypeMeasurement: 1,714,486 instances — all blank nodes
   <PhenotypeShape> {
     a [ amr:PhenotypeMeasurement ] ;
-    amr:organism xsd:string ;
+    amr:organism xsd:string ;            # Full species name e.g. "Escherichia coli"
     amr:species xsd:string ;
     amr:genus xsd:string ;
     amr:antibioticName xsd:string ;
-    amr:antibioticOntologyId IRI ? ;  # ARO IRI, 92.7% coverage
-    amr:resistancePhenotype xsd:string ;  # Controlled: "resistant", "susceptible", "intermediate"
-    amr:bioSample IRI ;  # Primary linkage key
+    amr:antibioticOntology IRI ? ;       # ARO parent class IRI
+    amr:antibioticOntologyId IRI ? ;     # Specific ARO IRI — FULL IRI format; 92.7% coverage
+                                         # Namespace: http://purl.obolibrary.org/obo/ARO_NNNNNNN
+    amr:resistancePhenotype xsd:string ? ;
+    # 5 controlled values: "resistant"|"susceptible"|"intermediate"|
+    # "non-susceptible"|"susceptible-dose dependent"; 80.5% of records have this field
+    amr:bioSample IRI ;                  # PRIMARY JOIN KEY for phenotype-genotype linkage
     amr:assemblyId IRI ? ;
     amr:sraAccession IRI ? ;
-    amr:country xsd:string ? ;
-    amr:geographicalRegion xsd:string ? ;  # Controlled regions
+    amr:country xsd:string ? ;           # Full country name; 83.9% coverage
+    amr:geographicalRegion xsd:string ? ;
+    # 5 controlled values: "Americas"|"Europe"|"Asia"|"Oceania"|"Africa"
+    # NOT WHO region names — see critical_warnings
+    amr:geographicalSubregion xsd:string ? ;
+    # e.g. "Northern America","Eastern Asia","South-eastern Asia" (lowercase 'e')
     amr:isoCountryCode xsd:string ? ;
-    amr:collectionYear xsd:integer ? ;
+    amr:collectionYear xsd:integer ? ;   # 78.4% coverage; range 1911-2025
     amr:isolateId xsd:string ? ;
     amr:isolationSource xsd:string ? ;
+    amr:isolationCategory xsd:string ? ;
+    amr:isolationLatitude xsd:decimal ? ;  # 24.2% coverage
+    amr:isolationLongitude xsd:decimal ? ;
     amr:host xsd:string ? ;
-    amr:laboratoryTypingMethod xsd:string ? ;
-    amr:astStandard xsd:string ? ;
+    amr:hostAge xsd:string ? ;           # 3.5% coverage
+    amr:hostSex xsd:string ? ;
+    amr:laboratoryTypingMethod xsd:string ? ;  # "broth dilution","disk diffusion","agar"
+    amr:astStandard xsd:string ? ;       # "CLSI","EUCAST"
     amr:measurementValue xsd:string ? ;
     amr:measurementSign xsd:string ? ;
-    amr:measurementUnits xsd:string ? ;
-    dct:references IRI *
+    amr:measurementUnits xsd:string ? ;  # "mg/L" for MIC
+    amr:updatedPhenotypeCLSI xsd:string ? ;   # Reinterpreted phenotype per CLSI; 55.4% coverage
+    amr:updatedPhenotypeEUCAST xsd:string ? ; # Reinterpreted phenotype per EUCAST; 55.6% coverage
+    amr:usedECOFF xsd:boolean ? ;
+    amr:platform xsd:string ? ;
+    amr:database xsd:string ? ;          # Source: "ncbi","patric","cabbage"
+    dct:references IRI *                 # PubMed citation IRIs
   }
-  
+
+  # GenotypeFeature: 1,164,007 instances — all blank nodes
   <GenotypeShape> {
     a [ amr:GenotypeFeature ] ;
     amr:organism xsd:string ;
     amr:species xsd:string ;
     amr:genus xsd:string ;
-    amr:amrClass xsd:string ;  # Controlled vocabulary (56 classes)
+    amr:amrClass xsd:string ;
+    # Controlled vocabulary, 47 distinct values. Top: BETA-LACTAM, AMINOGLYCOSIDE, EFFLUX,
+    # TETRACYCLINE, QUINOLONE. WARNING: "FUSIDIC ACID" and "FUSIDIC_ACID" both exist.
     amr:amrSubclass xsd:string ? ;
+    amr:amrSplitSubclass xsd:string ? ;
     amr:amrElementSymbol xsd:string ;
-    amr:geneSymbol xsd:string ;
-    amr:bioSample IRI ;  # Primary linkage key
+    amr:geneSymbol xsd:string ? ;        # May be absent; use amrElementSymbol as fallback
+    amr:bioSample IRI ;                  # PRIMARY JOIN KEY
     amr:assemblyId IRI ;
-    amr:elementType xsd:string ;
+    amr:elementType xsd:string ;         # "AMR","VIRULENCE","STRESS"
+    amr:elementSubtype xsd:string ? ;
+    amr:featureId xsd:string ? ;
+    amr:bin xsd:string ? ;
     amr:region xsd:string ;
     amr:regionStart xsd:integer ;
     amr:regionEnd xsd:integer ;
-    amr:strand xsd:string ;
-    amr:evidenceType xsd:string ? ;
+    amr:strand xsd:string ;              # "+"/"-"
+    amr:evidenceType xsd:string ? ;      # "HMM","EXACTX","ALLELEX"
     amr:evidenceAccession xsd:string ? ;
-    amr:antibioticName xsd:string ? ;  # 78.5% coverage
-    obo:RO_0002162 IRI  # NCBI Taxonomy IRI, 100% coverage
+    amr:evidenceDescription xsd:string ? ;
+    amr:evidenceLink IRI ? ;
+    amr:antibioticName xsd:string ? ;    # 78.5% coverage; preferred over antibioticOntologyId here
+    amr:antibioticOntology IRI ? ;
+    amr:antibioticOntologyId xsd:string ? ;  # WARNING: plain string in genotypes ("ARO_NNNNNNN")
+    amr:isolateId xsd:string ? ;
+    obo:RO_0002162 IRI                   # NCBI Taxonomy IRI "in taxon"; 100% coverage
+                                         # Format: http://identifiers.org/taxonomy/{taxid}
   }
 
 sample_rdf_entries:
-  - title: Phenotypic Measurement with ARO Ontology
-    description: Susceptibility test with ARO ontology IRI for standardized antibiotic classification.
-    rdf: |
-      @prefix amr: <http://example.org/ebiamr#> .
-      
-      [] a amr:PhenotypeMeasurement ;
-        amr:organism "Streptococcus pneumoniae" ;
-        amr:species "Streptococcus pneumoniae" ;
-        amr:genus "Streptococcus" ;
-        amr:antibioticName "trimethoprim-sulfamethoxazole" ;
-        amr:antibioticOntologyId <http://purl.obolibrary.org/obo/ARO_3004024> ;
-        amr:resistancePhenotype "susceptible" ;
-        amr:bioSample <https://identifiers.org/biosample/SAMEA1028830> ;
-        amr:country "Thailand" ;
-        amr:geographicalRegion "South-Eastern Asia" ;
-        amr:collectionYear 2010 ;
-        amr:laboratoryTypingMethod "disk diffusion" ;
-        amr:astStandard "CLSI" .
+  rdf_prefixes: |
+    @prefix amr: <http://example.org/ebiamr#> .
+    @prefix obo: <http://purl.obolibrary.org/obo/> .
+    @prefix dct: <http://purl.org/dc/terms/> .
+  entries:
+    - title: Phenotypic MIC Measurement with ARO IRI and Updated Interpretations
+      description: MIC-based meropenem resistance showing full IRI for antibioticOntologyId and CLSI/EUCAST reinterpretation fields.
+      rdf: |
+        [] a amr:PhenotypeMeasurement ;
+          amr:organism "Klebsiella pneumoniae" ;
+          amr:species "Klebsiella pneumoniae" ;
+          amr:genus "Klebsiella" ;
+          amr:antibioticName "meropenem" ;
+          amr:antibioticOntologyId <http://purl.obolibrary.org/obo/ARO_0000073> ;
+          amr:resistancePhenotype "resistant" ;
+          amr:bioSample <https://identifiers.org/biosample/SAMEA3136729> ;
+          amr:country "Germany" ;
+          amr:geographicalRegion "Europe" ;
+          amr:geographicalSubregion "Western Europe" ;
+          amr:collectionYear 2019 ;
+          amr:laboratoryTypingMethod "broth dilution" ;
+          amr:astStandard "EUCAST" ;
+          amr:measurementValue "16" ;
+          amr:measurementSign ">=" ;
+          amr:measurementUnits "mg/L" ;
+          amr:updatedPhenotypeEUCAST "resistant" ;
+          amr:database "ncbi" ;
+          dct:references <https://identifiers.org/pubmed/12345678> .
 
-  - title: Genotypic AMR Feature with Taxonomy
-    description: Efflux pump gene with NCBI Taxonomy IRI and genomic coordinates.
-    rdf: |
-      @prefix amr: <http://example.org/ebiamr#> .
-      @prefix obo: <http://purl.obolibrary.org/obo/> .
-      
-      [] a amr:GenotypeFeature ;
-        amr:organism "Neisseria gonorrhoeae" ;
-        amr:species "Neisseria gonorrhoeae" ;
-        amr:genus "Neisseria" ;
-        amr:amrClass "EFFLUX" ;
-        amr:amrElementSymbol "norM" ;
-        amr:geneSymbol "mdtK" ;
-        amr:bioSample <https://identifiers.org/biosample/SAMEA104147270> ;
-        amr:assemblyId <https://identifiers.org/insdc.gca/ERZ25089697> ;
-        amr:region "ERZ25089697.1" ;
-        amr:regionStart 136650 ;
-        amr:regionEnd 138029 ;
-        amr:strand "-" ;
-        amr:elementType "AMR" ;
-        amr:evidenceType "HMM" ;
-        obo:RO_0002162 <http://identifiers.org/taxonomy/485> .
+    - title: Genotypic AMR Feature with Taxonomy IRI and Evidence
+      description: Beta-lactamase gene illustrating NCBI Taxonomy IRI (100% coverage), genomic coordinates, and evidence fields.
+      rdf: |
+        [] a amr:GenotypeFeature ;
+          amr:organism "Klebsiella pneumoniae" ;
+          amr:species "Klebsiella pneumoniae" ;
+          amr:genus "Klebsiella" ;
+          amr:amrClass "BETA-LACTAM" ;
+          amr:amrElementSymbol "blaCTX-M-15" ;
+          amr:geneSymbol "blaCTX-M-15" ;
+          amr:bioSample <https://identifiers.org/biosample/SAMEA3136729> ;
+          amr:assemblyId <https://identifiers.org/insdc.gca/GCA_001234567> ;
+          amr:elementType "AMR" ;
+          amr:featureId "GCA_001234567_00421" ;
+          amr:region "contig1" ;
+          amr:regionStart 45210 ;
+          amr:regionEnd 46073 ;
+          amr:strand "+" ;
+          amr:evidenceType "EXACTX" ;
+          amr:evidenceAccession "NG_049104.1" ;
+          amr:evidenceDescription "CTX-M-15 family extended-spectrum beta-lactamase" ;
+          obo:RO_0002162 <http://identifiers.org/taxonomy/573> .
 
-  - title: Quantitative MIC Measurement
-    description: Meropenem MIC test showing resistance with quantitative measurement details.
-    rdf: |
-      @prefix amr: <http://example.org/ebiamr#> .
-      
-      [] a amr:PhenotypeMeasurement ;
-        amr:organism "Klebsiella pneumoniae" ;
-        amr:species "Klebsiella pneumoniae" ;
-        amr:genus "Klebsiella" ;
-        amr:antibioticName "meropenem" ;
-        amr:antibioticOntologyId <http://purl.obolibrary.org/obo/ARO_0000073> ;
-        amr:resistancePhenotype "resistant" ;
-        amr:bioSample <https://identifiers.org/biosample/SAMEA3136729> ;
-        amr:laboratoryTypingMethod "broth dilution" ;
-        amr:measurementValue "16" ;
-        amr:measurementSign ">=" ;
-        amr:measurementUnits "mg/L" .
+    - title: Phenotype-Genotype Linkage via Shared BioSample IRI
+      description: The amr:bioSample IRI is the sole join key; both entity types are blank nodes with no named URI.
+      rdf: |
+        [] a amr:PhenotypeMeasurement ;
+          amr:antibioticName "amikacin" ;
+          amr:antibioticOntologyId <http://purl.obolibrary.org/obo/ARO_3000019> ;
+          amr:resistancePhenotype "resistant" ;
+          amr:bioSample <https://identifiers.org/biosample/SAMEA1569508> ;
+          amr:organism "Acinetobacter baumannii" ;
+          amr:country "Viet Nam" ;
+          amr:geographicalRegion "Asia" ;
+          amr:geographicalSubregion "South-eastern Asia" .
 
-  - title: Geographic Metadata Hierarchy
-    description: Complete geographic hierarchy for regional surveillance analysis.
-    rdf: |
-      @prefix amr: <http://example.org/ebiamr#> .
-      
-      [] a amr:PhenotypeMeasurement ;
-        amr:organism "Escherichia coli" ;
-        amr:species "Escherichia coli" ;
-        amr:genus "Escherichia" ;
-        amr:antibioticName "ciprofloxacin" ;
-        amr:antibioticOntologyId <http://purl.obolibrary.org/obo/ARO_0000036> ;
-        amr:resistancePhenotype "resistant" ;
-        amr:bioSample <https://identifiers.org/biosample/SAMEA9876543> ;
-        amr:country "United States of America" ;
-        amr:geographicalRegion "Americas" ;
-        amr:isoCountryCode "USA" ;
-        amr:collectionYear 2020 ;
-        amr:isolationSource "urine" ;
-        amr:host "Homo sapiens" .
-
-  - title: Linked Phenotype-Genotype
-    description: Isolate with both resistance phenotype and AMR gene via shared bioSample IRI.
-    rdf: |
-      @prefix amr: <http://example.org/ebiamr#> .
-      @prefix obo: <http://purl.obolibrary.org/obo/> .
-      
-      [] a amr:PhenotypeMeasurement ;
-        amr:organism "Acinetobacter baumannii" ;
-        amr:antibioticName "amikacin" ;
-        amr:antibioticOntologyId <http://purl.obolibrary.org/obo/ARO_3000019> ;
-        amr:resistancePhenotype "resistant" ;
-        amr:bioSample <https://identifiers.org/biosample/SAMEA1569508> ;
-        amr:country "Viet Nam" ;
-        amr:geographicalRegion "South-Eastern Asia" .
-      
-      [] a amr:GenotypeFeature ;
-        amr:organism "Acinetobacter baumannii" ;
-        amr:amrClass "AMINOGLYCOSIDE" ;
-        amr:amrElementSymbol "aac(6')-Ib" ;
-        amr:geneSymbol "aac(6')-Ib" ;
-        amr:bioSample <https://identifiers.org/biosample/SAMEA1569508> ;
-        amr:assemblyId <https://identifiers.org/insdc.gca/GCA_001234567> ;
-        obo:RO_0002162 <http://identifiers.org/taxonomy/470> .
+        [] a amr:GenotypeFeature ;
+          amr:amrClass "AMINOGLYCOSIDE" ;
+          amr:amrElementSymbol "aac(6')-Ib" ;
+          amr:geneSymbol "aac(6')-Ib" ;
+          amr:bioSample <https://identifiers.org/biosample/SAMEA1569508> ;
+          amr:assemblyId <https://identifiers.org/insdc.gca/GCA_001234567> ;
+          obo:RO_0002162 <http://identifiers.org/taxonomy/470> .
 
 sparql_query_examples:
-  - title: Query by ARO Antibiotic IRI
-    description: Use specific ARO ontology IRI for ciprofloxacin (ARO_0000036).
-    question: What resistance data exists for ciprofloxacin?
+  - title: Query Resistance Data by ARO Antibiotic IRI
+    description: Use specific ARO IRI for ciprofloxacin (ARO:0000036) — comprehensive and precise.
+    question: What resistance phenotypes are recorded for ciprofloxacin?
     complexity: basic
     sparql: |
       PREFIX amr: <http://example.org/ebiamr#>
-      
-      # GOOD: Use specific ARO IRI for comprehensive results
+
       SELECT ?organism ?phenotype ?country
       FROM <http://rdfportal.org/dataset/amrportal>
       WHERE {
@@ -198,58 +221,35 @@ sparql_query_examples:
            amr:resistancePhenotype ?phenotype .
         OPTIONAL { ?s amr:country ?country }
       }
-      LIMIT 100
+      LIMIT 50
 
-  - title: Query Genotypes by Taxonomy IRI
-    description: Use NCBI Taxonomy IRI for E. coli (taxid 562) to find all AMR genes.
-    question: What AMR genes are found in Escherichia coli?
+  - title: AMR Gene Classes in E. coli by Taxonomy IRI
+    description: NCBI Taxonomy IRI for E. coli (taxid 562) — 100% coverage on GenotypeFeature.
+    question: What AMR gene classes are found in Escherichia coli?
     complexity: basic
     sparql: |
       PREFIX amr: <http://example.org/ebiamr#>
       PREFIX obo: <http://purl.obolibrary.org/obo/>
-      
-      # GOOD: Use specific NCBI Taxonomy IRI (100% coverage in genotypes)
-      SELECT ?amrClass ?geneSymbol (COUNT(*) as ?count)
+
+      SELECT ?amrClass (COUNT(*) as ?count)
       FROM <http://rdfportal.org/dataset/amrportal>
       WHERE {
         ?s a amr:GenotypeFeature ;
            obo:RO_0002162 <http://identifiers.org/taxonomy/562> ;
-           amr:amrClass ?amrClass ;
-           amr:geneSymbol ?geneSymbol .
+           amr:amrClass ?amrClass .
       }
-      GROUP BY ?amrClass ?geneSymbol
+      GROUP BY ?amrClass
       ORDER BY DESC(?count)
       LIMIT 20
 
-  - title: Filter by Typed Predicate
-    description: Use exact string matching with typed predicate for resistance phenotype.
-    question: Which antibiotics show resistance in Salmonella enterica?
-    complexity: basic
-    sparql: |
-      PREFIX amr: <http://example.org/ebiamr#>
-      
-      # GOOD: Use exact matching with typed predicates
-      SELECT ?antibiotic (COUNT(*) as ?count)
-      FROM <http://rdfportal.org/dataset/amrportal>
-      WHERE {
-        ?s a amr:PhenotypeMeasurement ;
-           amr:organism "Salmonella enterica" ;
-           amr:antibioticName ?antibiotic ;
-           amr:resistancePhenotype "resistant" .
-      }
-      GROUP BY ?antibiotic
-      ORDER BY DESC(?count)
-      LIMIT 20
-
-  - title: Multiple ARO IRIs with VALUES
-    description: Query multiple carbapenem antibiotics using ARO IRIs for comprehensive results.
-    question: What is the resistance rate for carbapenem antibiotics?
+  - title: Carbapenem Resistance with VALUES over Multiple ARO IRIs
+    description: Query meropenem, imipenem, ertapenem simultaneously; aggregate by organism and region.
+    question: Which organisms show carbapenem resistance, and in which regions?
     complexity: intermediate
     sparql: |
       PREFIX amr: <http://example.org/ebiamr#>
-      
-      # GOOD: Use VALUES with multiple specific ARO IRIs
-      SELECT ?aro ?organism ?phenotype (COUNT(*) as ?total)
+
+      SELECT ?organism ?region (COUNT(*) as ?count)
       FROM <http://rdfportal.org/dataset/amrportal>
       WHERE {
         VALUES ?aro {
@@ -260,117 +260,104 @@ sparql_query_examples:
         ?s a amr:PhenotypeMeasurement ;
            amr:antibioticOntologyId ?aro ;
            amr:organism ?organism ;
-           amr:resistancePhenotype ?phenotype .
+           amr:resistancePhenotype "resistant" .
+        OPTIONAL { ?s amr:geographicalRegion ?region }
       }
-      GROUP BY ?aro ?organism ?phenotype
-      ORDER BY DESC(?total)
+      GROUP BY ?organism ?region
+      ORDER BY DESC(?count)
       LIMIT 30
 
-  - title: Geographic Distribution Analysis
-    description: Analyze ciprofloxacin resistance using geographic typed predicates.
-    question: Which regions have the highest ciprofloxacin resistance?
+  - title: Geographic Distribution by Controlled Region and Subregion Predicates
+    description: |
+      Use controlled geographicalRegion (5 values) and geographicalSubregion for finer resolution.
+      NOTE: region values are continents, NOT WHO names — see critical_warnings.
+    question: Which countries in South-eastern Asia have the most ciprofloxacin resistance?
     complexity: intermediate
     sparql: |
       PREFIX amr: <http://example.org/ebiamr#>
-      
-      # GOOD: Use typed predicates for geographic filtering
-      SELECT ?region ?country (COUNT(*) as ?resistant_count)
+
+      # Use geographicalSubregion for finer resolution than geographicalRegion
+      # "South-eastern Asia" — note lowercase 'e' (see critical_warnings)
+      SELECT ?country (COUNT(*) as ?count)
       FROM <http://rdfportal.org/dataset/amrportal>
       WHERE {
         ?s a amr:PhenotypeMeasurement ;
            amr:antibioticName "ciprofloxacin" ;
            amr:resistancePhenotype "resistant" ;
-           amr:geographicalRegion ?region ;
+           amr:geographicalSubregion "South-eastern Asia" ;
            amr:country ?country .
       }
-      GROUP BY ?region ?country
-      ORDER BY DESC(?resistant_count)
-      LIMIT 20
-
-  - title: AMR Gene Class Distribution
-    description: Query specific AMR classes using controlled vocabulary with VALUES.
-    question: What are the most common AMR gene classes across different bacteria?
-    complexity: intermediate
-    sparql: |
-      PREFIX amr: <http://example.org/ebiamr#>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      
-      # GOOD: Use VALUES for controlled vocabulary AMR classes
-      SELECT ?amrClass ?species (COUNT(*) as ?count)
-      FROM <http://rdfportal.org/dataset/amrportal>
-      WHERE {
-        VALUES ?amrClass {
-          "BETA-LACTAM"
-          "AMINOGLYCOSIDE"
-          "QUINOLONE"
-          "TETRACYCLINE"
-        }
-        ?s a amr:GenotypeFeature ;
-           amr:amrClass ?amrClass ;
-           amr:species ?species ;
-           obo:RO_0002162 ?taxon .
-      }
-      GROUP BY ?amrClass ?species
+      GROUP BY ?country
       ORDER BY DESC(?count)
       LIMIT 20
 
-  - title: Genotype-Phenotype Linkage
-    description: Find beta-lactam genes in carbapenem-resistant isolates using exact class matching.
-    question: Which beta-lactam genes are associated with carbapenem resistance?
+  - title: Fusidic Acid Genes Using Dual Class VALUES
+    description: Both "FUSIDIC ACID" and "FUSIDIC_ACID" exist — VALUES covers both (see critical_warnings).
+    question: What genes confer fusidic acid resistance?
+    complexity: intermediate
+    sparql: |
+      PREFIX amr: <http://example.org/ebiamr#>
+
+      # CRITICAL: must include both class strings — see critical_warnings
+      SELECT ?amrElementSymbol ?amrClass (COUNT(*) as ?count)
+      FROM <http://rdfportal.org/dataset/amrportal>
+      WHERE {
+        VALUES ?amrClass { "FUSIDIC ACID" "FUSIDIC_ACID" }
+        ?s a amr:GenotypeFeature ;
+           amr:amrClass ?amrClass ;
+           amr:amrElementSymbol ?amrElementSymbol .
+      }
+      GROUP BY ?amrElementSymbol ?amrClass
+      ORDER BY DESC(?count)
+      LIMIT 20
+
+  - title: Beta-Lactamase Genes in Carbapenem-Resistant Isolates
+    description: Phenotype-genotype linkage via bioSample IRI with ARO IRI and exact amrClass matching.
+    question: Which beta-lactamase genes are present in meropenem-resistant isolates?
     complexity: advanced
     sparql: |
       PREFIX amr: <http://example.org/ebiamr#>
-      
-      # GOOD: Use exact AMR class matching (not FILTER(CONTAINS))
-      SELECT DISTINCT ?geneSymbol ?amrClass ?bioSample ?country
+
+      SELECT ?geneSymbol ?country (COUNT(DISTINCT ?bioSample) as ?isolates)
       FROM <http://rdfportal.org/dataset/amrportal>
       WHERE {
-        # Phenotype: carbapenem-resistant isolates
         ?pheno a amr:PhenotypeMeasurement ;
-               amr:bioSample ?bioSample ;
-               amr:antibioticName "meropenem" ;
-               amr:resistancePhenotype "resistant" .
+               amr:antibioticOntologyId <http://purl.obolibrary.org/obo/ARO_0000073> ;
+               amr:resistancePhenotype "resistant" ;
+               amr:bioSample ?bioSample .
         OPTIONAL { ?pheno amr:country ?country }
-        
-        # Genotype: beta-lactam genes from same isolate
         ?geno a amr:GenotypeFeature ;
               amr:bioSample ?bioSample ;
-              amr:geneSymbol ?geneSymbol ;
-              amr:amrClass ?amrClass .
-        FILTER(?amrClass = "BETA-LACTAM")
+              amr:amrClass "BETA-LACTAM" ;
+              amr:amrElementSymbol ?geneSymbol .
       }
-      LIMIT 50
+      GROUP BY ?geneSymbol ?country
+      ORDER BY DESC(?isolates)
+      LIMIT 30
 
-  - title: Multi-Drug Resistance Profiling
-    description: Find isolates resistant to 3+ antibiotics with taxonomy linkage via genotypes.
-    question: Which isolates show multi-drug resistance patterns?
+  - title: Multi-Drug Resistance Profiling with Temporal Filter
+    description: Count distinct resistant antibiotics per isolate; year filter reduces result set before aggregation.
+    question: Which isolates collected since 2015 show multi-drug resistance (3+ drugs)?
     complexity: advanced
     sparql: |
       PREFIX amr: <http://example.org/ebiamr#>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      
-      # Complex aggregation with optional taxonomy linkage
-      SELECT ?bioSample ?organism ?taxon
-             (COUNT(DISTINCT ?ab) as ?resistantDrugs)
-             (SAMPLE(?country) as ?location)
+
+      SELECT ?organism ?bioSample
+             (COUNT(DISTINCT ?antibiotic) as ?resistantDrugs)
+             (SAMPLE(?country) as ?country)
       FROM <http://rdfportal.org/dataset/amrportal>
       WHERE {
-        ?pheno a amr:PhenotypeMeasurement ;
-               amr:bioSample ?bioSample ;
-               amr:organism ?organism ;
-               amr:antibioticName ?ab ;
-               amr:resistancePhenotype "resistant" .
-        OPTIONAL { ?pheno amr:country ?country }
-        
-        # Link to genotype for taxonomy if available
-        OPTIONAL {
-          ?geno a amr:GenotypeFeature ;
-                amr:bioSample ?bioSample ;
-                obo:RO_0002162 ?taxon .
-        }
+        ?s a amr:PhenotypeMeasurement ;
+           amr:bioSample ?bioSample ;
+           amr:organism ?organism ;
+           amr:antibioticName ?antibiotic ;
+           amr:resistancePhenotype "resistant" ;
+           amr:collectionYear ?year .
+        FILTER(?year >= 2015)
+        OPTIONAL { ?s amr:country ?country }
       }
-      GROUP BY ?bioSample ?organism ?taxon
-      HAVING (COUNT(DISTINCT ?ab) >= 3)
+      GROUP BY ?organism ?bioSample
+      HAVING (COUNT(DISTINCT ?antibiotic) >= 3)
       ORDER BY DESC(?resistantDrugs)
       LIMIT 20
 
@@ -378,68 +365,20 @@ cross_database_queries:
   shared_endpoint: ebi
   co_located_databases: [chembl, chebi, reactome, ensembl]
   examples:
-    - title: Link AMR Data to ChEMBL Compounds
+    - title: Resistance Counts Linked to ChEMBL Compounds (Two-Stage Aggregation)
       description: |
-        Integrate resistance data with ChEMBL compound properties using reverse join strategy.
-        
+        Aggregate AMR resistance within its own GRAPH first, then join to ChEMBL.
+        Aggregating across GRAPHs in a single query causes guaranteed timeout on 1.7M rows.
+
         Linking strategy:
-        - ChEMBL: use rdfs:label for compound names (small dataset - 3 compounds)
-        - AMR Portal: aggregate resistance by antibiotic name (1.7M → ~200 rows)
-        - Join on lowercase name matching
-        - Reverse join (small→large) ensures fast execution
-        
-        MIE files referenced: chembl (for compound properties), amrportal (for resistance data)
+        - Stage 1: COUNT resistant records per antibioticName within amrportal GRAPH (5-7s)
+        - Stage 2: join aggregated summary to ChEMBL rdfs:label via LCASE matching (<1s)
+        - No structured IRI bridge between AMR and ChEMBL — name matching is the only link
+        - MIE files checked: amrportal, chembl
       databases_used: [amrportal, chembl]
       complexity: intermediate
       sparql: |
-        PREFIX amr: <http://example.org/ebiamr#>
-        PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        
-        # Start with small ChEMBL set, then join aggregated AMR results
-        SELECT ?chemblLabel ?antibioticName ?resistanceCount
-        WHERE {
-          # Stage 1: Select specific ChEMBL compounds (3 rows)
-          GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
-            VALUES ?chemblLabel { "CIPROFLOXACIN" "AMPICILLIN" "GENTAMICIN" }
-            ?mol a cco:SmallMolecule ;
-                 rdfs:label ?chemblLabel .
-          }
-          BIND(LCASE(?chemblLabel) AS ?antibioticName)
-          
-          # Stage 2: Aggregate AMR data within its own GRAPH
-          GRAPH <http://rdfportal.org/dataset/amrportal> {
-            SELECT ?antibioticName (COUNT(*) as ?resistanceCount)
-            WHERE {
-              ?m a amr:PhenotypeMeasurement ;
-                 amr:antibioticName ?antibioticName ;
-                 amr:resistancePhenotype "resistant" .
-            }
-            GROUP BY ?antibioticName
-          }
-        }
-        LIMIT 10
-      notes: |
-        - Strategies: 1 (GRAPH), 2 (reverse join), 10 (LIMIT), two-stage aggregation
-        - Performance: ~2-3s (Tier 1)
-        - Start ChEMBL (3 molecules) → aggregate AMR → join results
-        - Use LCASE for case-insensitive name matching
-        - CRITICAL: Aggregate within GRAPH before join
-
-    - title: Two-Stage Aggregation Pattern
-      description: |
-        Optimal pattern for cross-database analytics: aggregate first, then join.
-        
-        Linking strategy:
-        - Stage 1: Aggregate AMR data independently (1.7M → 2 rows)
-        - Stage 2: Join aggregated results to ChEMBL using antibiotic name
-        - This avoids cross-GRAPH aggregation which causes timeouts
-        
-        MIE files referenced: amrportal, chembl
-      databases_used: [amrportal, chembl]
-      complexity: advanced
-      sparql: |
-        # STAGE 1: Aggregate in AMR (5-7s)
+        # STAGE 1 — run independently first (5-7s)
         PREFIX amr: <http://example.org/ebiamr#>
         SELECT ?antibiotic (COUNT(*) as ?resistant)
         FROM <http://rdfportal.org/dataset/amrportal>
@@ -447,19 +386,19 @@ cross_database_queries:
           ?s a amr:PhenotypeMeasurement ;
              amr:antibioticName ?antibiotic ;
              amr:resistancePhenotype "resistant" .
-          FILTER(?antibiotic IN ("ciprofloxacin", "ampicillin"))
+          FILTER(?antibiotic IN ("ciprofloxacin", "ampicillin", "gentamicin"))
         }
         GROUP BY ?antibiotic
-        
-        # STAGE 2: Join to ChEMBL (<1s)
+
+        # STAGE 2 — substitute Stage 1 results into VALUES, then run (<1s)
         PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        SELECT ?antibiotic ?resistant ?chemblLabel ?developmentPhase
+        SELECT ?antibiotic ?resistant ?developmentPhase
         WHERE {
-          # Use results from Stage 1
           VALUES (?antibiotic ?resistant) {
-            ("ampicillin" 21660)
             ("ciprofloxacin" 21368)
+            ("ampicillin" 21660)
+            ("gentamicin" 15000)
           }
           GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
             ?mol a cco:SmallMolecule ;
@@ -469,451 +408,267 @@ cross_database_queries:
           }
         }
       notes: |
-        - NEVER aggregate across GRAPHs
-        - Total time: ~6-8s (5-7s + <1s) vs timeout
-        - Reduces 1.7M → 2 rows before join
-        - Run as two separate queries, use first results in second
+        - Run as two separate queries; paste Stage 1 counts into Stage 2 VALUES.
+        - NEVER combine COUNT and cross-GRAPH join in one query — guaranteed timeout.
+        - MIE files checked: amrportal, chembl.
 
-    - title: Geographic Patterns with ChEBI Chemical Data
+    - title: AMR Resistance Enriched with ChEBI Chemical Properties
       description: |
-        Analyze regional ciprofloxacin resistance enriched with ChEBI chemical ontology data.
-        
+        Join pre-filtered AMR counts to ChEBI compound data using a specific IRI.
+
         Linking strategy:
-        - ChEBI MIE file examined: Found OLS4:searchClasses available
-        - Used OLS4:searchClasses("ciprofloxacin") to discover specific IRI: CHEBI:100241
-        - AMR Portal: pre-filter by region and antibiotic (reduces from 1.7M to ~100 rows)
-        - ChEBI: use specific ciprofloxacin IRI for precise structured linkage
-        - Structured approach ensures comprehensive and accurate chemical data enrichment
-        
-        MIE files referenced: amrportal (resistance data), chebi (chemical properties)
+        - Discover ChEBI IRI using OLS4:searchClasses("ciprofloxacin") → CHEBI:100241
+        - Pre-filter AMR by antibioticName + geographicalRegion (1.7M → ~100 rows) before join
+        - Use obo:CHEBI_100241 directly — no text search required
+        - MIE files checked: amrportal, chebi (via OLS4)
       databases_used: [amrportal, chebi]
       complexity: intermediate
       sparql: |
         PREFIX amr: <http://example.org/ebiamr#>
         PREFIX obo: <http://purl.obolibrary.org/obo/>
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
         PREFIX chebi: <http://purl.obolibrary.org/obo/chebi/>
-        
-        SELECT ?region ?antibiotic ?chebiLabel ?formula ?mass
-               (COUNT(*) as ?resistant_count)
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+        SELECT ?region ?chebiLabel ?formula (COUNT(*) as ?resistant)
         WHERE {
-          # Pre-filter AMR data aggressively (1.7M → ~100 rows)
           GRAPH <http://rdfportal.org/dataset/amrportal> {
             ?m a amr:PhenotypeMeasurement ;
-               amr:antibioticName ?antibiotic ;
-               amr:geographicalRegion ?region ;
-               amr:resistancePhenotype "resistant" .
-            FILTER(?region = "Americas" && ?antibiotic = "ciprofloxacin")
+               amr:antibioticName "ciprofloxacin" ;
+               amr:resistancePhenotype "resistant" ;
+               amr:geographicalRegion ?region .
           }
-          
-          # Use specific ChEBI IRI discovered via OLS4:searchClasses
           GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
-            obo:CHEBI_100241 a owl:Class ;
-                             rdfs:label ?chebiLabel .
+            obo:CHEBI_100241 rdfs:label ?chebiLabel .
             OPTIONAL { obo:CHEBI_100241 chebi:formula ?formula }
-            OPTIONAL { obo:CHEBI_100241 chebi:mass ?mass }
           }
         }
-        GROUP BY ?region ?antibiotic ?chebiLabel ?formula ?mass
+        GROUP BY ?region ?chebiLabel ?formula
         LIMIT 20
       notes: |
-        - Strategies: 1 (GRAPH), 2 (pre-filter), 3 (specific IRI), 7 (OPTIONAL), 10 (LIMIT)
-        - MIE workflow: Examined chebi MIE → found OLS4:searchClasses → used to find CHEBI:100241
-        - Pre-filtering reduces from 1.7M to ~100 rows before join (>99.9% reduction)
-        - Performance: ~1-2s (Tier 1) with structured IRI approach
-        - Geographic + antibiotic filter is critical for performance
-        - Using specific ChEBI IRI ensures accurate and complete chemical data
+        - Geographic pre-filter within GRAPH reduces >99% of rows before join.
+        - ChEBI IRI CHEBI:100241 = ciprofloxacin; discovered via OLS4:searchClasses.
+        - MIE files checked: amrportal, chebi.
 
 cross_references:
   - pattern: amr:bioSample
     description: |
-      Links to NCBI BioSample for metadata. Primary key for phenotype-genotype linking.
-      Every measurement and feature links to a bioSample IRI.
+      Primary join key between PhenotypeMeasurement and GenotypeFeature; also links to
+      NCBI BioSample for sample metadata. Every entity has exactly one bioSample IRI.
     databases:
       sequence_archives:
         - "BioSample: 170,958 unique samples"
-    sparql: |
-      SELECT DISTINCT ?bioSample
-      FROM <http://rdfportal.org/dataset/amrportal>
-      WHERE { ?s amr:bioSample ?bioSample }
-      LIMIT 100
-
-  - pattern: amr:sraAccession / amr:assemblyId
-    description: |
-      Links to SRA and INSDC genome assemblies for sequence data access.
-    databases:
-      sequence_archives:
-        - "SRA: ~870K accessions"
-        - "INSDC: ~890K assemblies"
-    sparql: |
-      SELECT DISTINCT ?sra ?assembly
-      FROM <http://rdfportal.org/dataset/amrportal>
-      WHERE {
-        OPTIONAL { ?s amr:sraAccession ?sra }
-        OPTIONAL { ?s amr:assemblyId ?assembly }
-        FILTER(BOUND(?sra) || BOUND(?assembly))
-      }
-      LIMIT 100
-
-  - pattern: dct:references
-    description: |
-      Citations to PubMed literature for methods and data sources.
-    databases:
-      literature:
-        - "PubMed: Multiple publications"
-    sparql: |
-      SELECT DISTINCT ?pubmed
-      FROM <http://rdfportal.org/dataset/amrportal>
-      WHERE { ?s dct:references ?pubmed }
-      LIMIT 100
 
   - pattern: amr:antibioticOntologyId
     description: |
-      Links to ARO (Antibiotic Resistance Ontology) for standardized antibiotic terms.
-      92.7% of phenotypes have ARO IRIs enabling precise antibiotic queries.
+      Links to ARO (Antibiotic Resistance Ontology / CARD). In PhenotypeMeasurement, stored
+      as full IRI (http://purl.obolibrary.org/obo/ARO_NNNNNNN). 92.7% of phenotypes; use
+      amr:antibioticName as fallback. WARNING: may be plain string in GenotypeFeature records.
     databases:
       ontologies:
-        - "ARO: CARD antibiotic classifications (92.7% coverage)"
-    sparql: |
-      SELECT DISTINCT ?aro ?antibiotic
-      FROM <http://rdfportal.org/dataset/amrportal>
-      WHERE {
-        ?s amr:antibioticName ?antibiotic ;
-           amr:antibioticOntologyId ?aro .
-      }
-      LIMIT 100
+        - "ARO/CARD: 92.7% of phenotypes (1,588,533 records)"
 
   - pattern: obo:RO_0002162
     description: |
-      Links genotypes to NCBI Taxonomy using 'in taxon' relationship.
-      100% of genotype features have taxonomy IRIs.
+      NCBI Taxonomy IRI via OBO "in taxon" relation. 100% coverage on GenotypeFeature.
+      IRI format: http://identifiers.org/taxonomy/{taxid} — NOT the UniProt namespace.
     databases:
       taxonomy:
-        - "NCBI Taxonomy: All genotype features (100% coverage)"
-    sparql: |
-      SELECT DISTINCT ?taxon ?organism
-      FROM <http://rdfportal.org/dataset/amrportal>
-      WHERE {
-        ?s a amr:GenotypeFeature ;
-           amr:organism ?organism ;
-           obo:RO_0002162 ?taxon .
-      }
-      LIMIT 100
+        - "NCBI Taxonomy: 100% of genotype features"
+
+  - pattern: amr:assemblyId / amr:sraAccession
+    description: |
+      Links to INSDC genome assemblies and NCBI SRA for sequence data retrieval.
+    databases:
+      sequence_archives:
+        - "INSDC/GenBank: ~890K assemblies"
+        - "SRA: ~870K accessions"
+
+  - pattern: dct:references
+    description: |
+      PubMed literature IRIs for data provenance and methodology references.
+    databases:
+      literature:
+        - "PubMed: multiple publications"
 
 architectural_notes:
   query_strategy:
-    - "Discovery: No keyword search API available - use exploratory SPARQL with LIMIT"
-    - "Comprehensive - Antibiotic queries: Use specific ARO IRIs (92.7% coverage) or exact antibiotic names"
-    - "Comprehensive - Genotype organism queries: Use NCBI Taxonomy IRIs via obo:RO_0002162 (100% coverage)"
-    - "Comprehensive - AMR classes: Use exact matching or VALUES with controlled vocabulary strings (56 distinct classes)"
-    - "Comprehensive - Resistance phenotypes: Use exact matching with controlled values: 'resistant', 'susceptible', 'intermediate'"
-    - "Geographic queries: Use typed predicates (geographicalRegion, country, isoCountryCode)"
-    - "Cross-database: Use search tools from co-located databases to find specific IRIs before joining"
-    - "Priority: ARO IRIs > Taxonomy IRIs > Exact matching > (text search not needed for structured fields)"
-    - "Text search: NOT needed - all key fields use controlled vocabularies or specific IRIs"
-  
+    - "FIRST: read get_MIE_file('amrportal') and critical_warnings before writing any query"
+    - "Antibiotic queries: use specific ARO IRI (obo:ARO_NNNNNNN) — 92.7% phenotype coverage"
+    - "Organism queries on genotypes: use obo:RO_0002162 with taxonomy IRI — 100% coverage"
+    - "AMR class queries: exact string match or VALUES — 47 controlled vocabulary values"
+    - "Phenotype queries: exact match on 5 controlled strings — check critical_warnings for rare values"
+    - "Geographic: use geographicalRegion for continents; geographicalSubregion for finer resolution"
+    - "Text search: NOT needed — all core fields use controlled vocabularies or ontology IRIs"
+    - "Priority: Specific IRIs (ARO/taxonomy) > exact predicate matching > VALUES > text search"
+
   schema_design:
-    - "Two primary entity types: PhenotypeMeasurement (1.7M), GenotypeFeature (1.1M)"
-    - "All entities are blank nodes (no named URIs)"
-    - "BioSample IRI is the primary linkage key between phenotypes and genotypes"
-    - "ARO IRIs provide standardized antibiotic classification (92.7% coverage)"
-    - "NCBI Taxonomy IRIs provide species identification in genotypes (100% coverage)"
-    - "Geographic hierarchy: geographicalRegion → country → isoCountryCode"
-    - "Temporal coverage: 92 collection years (1911-2025)"
-    - "56 distinct AMR classes in controlled vocabulary"
-    - "Resistance phenotypes use controlled vocabulary (resistant/susceptible/intermediate)"
-  
+    - "Two entity types: PhenotypeMeasurement (1,714,486) and GenotypeFeature (1,164,007) — all blank nodes"
+    - "amr:bioSample IRI is the ONLY join key between phenotype and genotype records"
+    - "ARO namespace: http://purl.obolibrary.org/obo/ARO_NNNNNNN (7 digits, full IRI in phenotypes)"
+    - "Taxonomy namespace: http://identifiers.org/taxonomy/{taxid} — NOT http://purl.uniprot.org/taxonomy/"
+    - "Geographic: geographicalRegion (5 continent values) > geographicalSubregion > country > isoCountryCode"
+    - "47 distinct AMR classes — 'FUSIDIC ACID' and 'FUSIDIC_ACID' are separate strings for same drug"
+    - "amr:geneSymbol may be absent; use amrElementSymbol as fallback"
+    - "Temporal coverage: 1911-2025; 78.4% of phenotypes have collectionYear"
+
   performance:
-    - "Large dataset (2.8M total entities) requires careful query design"
-    - "CRITICAL: Always use FROM clause to specify graph"
-    - "CRITICAL: Use LIMIT for exploratory queries"
-    - "CRITICAL: Use exact matching for controlled vocabularies (never FILTER(CONTAINS) for AMR classes or phenotypes)"
-    - "For ARO queries: Specific IRIs give comprehensive results without text search"
-    - "For taxonomy queries: Use obo:RO_0002162 predicate with taxonomy IRIs"
-    - "Geographic/temporal filters significantly reduce result sets"
-    - "Single antibiotic filter recommended before aggregation"
-    - "Use SAMPLE() for representative geographic/temporal data"
-    - "Cross-DB queries: Use reverse join (small→large) or two-stage aggregation"
-    - "NEVER aggregate across GRAPHs - aggregate within single GRAPH first"
-  
+    - "CRITICAL: Always include FROM <http://rdfportal.org/dataset/amrportal> on every query"
+    - "CRITICAL: Add LIMIT to all exploratory queries"
+    - "CRITICAL: Use exact matching for controlled vocabularies — never FILTER(CONTAINS())"
+    - "Add antibiotic + region/year filters before large aggregations to reduce result sets"
+    - "Cross-DB: NEVER aggregate across GRAPHs — always use two-stage aggregation pattern"
+    - "Cross-DB: start from smallest dataset (e.g. 3 ChEMBL rows), join to pre-aggregated AMR"
+    - "bif:contains: no legitimate use case in this database — all fields are structured"
+
   data_integration:
-    - "External links: BioSample, SRA, INSDC, PubMed, ARO, NCBI Taxonomy"
-    - "Phenotype-genotype linkage via bioSample IRI enables comprehensive correlation studies"
-    - "Co-located databases on EBI endpoint: ChEMBL, ChEBI, Reactome, Ensembl"
-    - "ChEMBL integration via antibiotic name matching (use LCASE for case-insensitive)"
-    - "ChEBI integration via specific IRIs discovered through OLS4:searchClasses"
-    - "Two-stage aggregation pattern required for cross-database analytics"
-    - "ARO ontology enables linkage to CARD database and other AMR resources"
-  
+    - "Co-located on EBI endpoint: ChEMBL, ChEBI, Reactome, Ensembl"
+    - "Phenotype-genotype linkage via amr:bioSample: ~65% of phenotype bioSamples have linked genotype"
+    - "ChEMBL linkage: name-based via LCASE matching — no structured IRI bridge available"
+    - "ChEBI linkage: use OLS4:searchClasses to find specific compound IRI before querying"
+    - "ARO/CARD: enables linkage to CARD AMR gene catalog via obo:ARO_NNNNNNN IRIs"
+    - "Source provenance: amr:database field identifies ncbi / patric / cabbage origin"
+
   data_quality:
-    - "Controlled vocabularies ensure data quality for key fields"
-    - "ARO coverage: 92.7% of phenotypes have standardized antibiotic IRIs"
-    - "Taxonomy coverage: 100% of genotypes have NCBI taxonomy IRIs"
-    - "Geographic coverage: 83.9% have country, 78.4% have collection year"
-    - "Resistance phenotype: 80.5% have explicit phenotype value"
-    - "Some inconsistency in isolation source capitalization"
-    - "Laboratory methods: 56% broth dilution, 8% agar, 7% disk diffusion"
+    - "FUSIDIC ACID / FUSIDIC_ACID: two class strings for same drug — 719 total records affected"
+    - "Resistance phenotype: 19.5% of records missing; 5 distinct values including two rare ones"
+    - "ARO IRI format inconsistency: full IRI in phenotypes, possible plain string in genotypes"
+    - "geneSymbol absent on some GenotypeFeature records; amrElementSymbol more reliable"
+    - "Geographic coordinates (isolationLatitude/Longitude): only 24.2% of phenotype records"
+    - "Isolation source capitalization: inconsistent across source databases"
+
+  text_search_justification:
+    - "Number of 7 example queries using text search: 0"
+    - "All key fields use controlled vocabularies or ontology IRIs — text search never required"
+    - "amr:amrClass, amr:resistancePhenotype, amr:geographicalRegion: controlled strings"
+    - "amr:antibioticOntologyId: full IRI in phenotypes — query directly"
+    - "obo:RO_0002162: NCBI taxonomy IRI — query directly"
 
 data_statistics:
   total_phenotypes: 1714486
   total_genotypes: 1164007
-  unique_biosamples: 170958
-  verified_date: "2025-02-10"
-  verification_method: "COUNT DISTINCT query on bioSample IRIs"
-  verification_query: |
-    PREFIX amr: <http://example.org/ebiamr#>
-    SELECT (COUNT(DISTINCT ?b) as ?count)
-    FROM <http://rdfportal.org/dataset/amrportal>
-    WHERE { ?s amr:bioSample ?b }
-  
+  total_unique_biosamples: 170958
+  verified_date: "2025-04-21"
+  verification_method: "Direct COUNT queries on amrportal graph"
+
   coverage:
-    phenotypes_with_aro: "92.7%"
+    phenotype_with_aro_iri: "92.7%"
     calculation: "1,588,533 / 1,714,486"
-    verified_date: "2025-02-10"
-    verification_query: |
-      PREFIX amr: <http://example.org/ebiamr#>
-      SELECT (COUNT(*) as ?total) (COUNT(?aro) as ?withARO)
-      FROM <http://rdfportal.org/dataset/amrportal>
-      WHERE {
-        ?s a amr:PhenotypeMeasurement .
-        OPTIONAL { ?s amr:antibioticOntologyId ?aro }
-      }
-    
     phenotype_with_country: "83.9%"
-    phenotype_with_year: "78.4%"
-    genotype_with_taxonomy: "100%"
-    genotype_with_antibiotic: "78.5%"
-  
+    phenotype_with_collection_year: "78.4%"
+    phenotype_with_resistance_phenotype: "80.5%"
+    phenotype_with_geo_coordinates: "24.2%"
+    phenotype_with_clsi_interpretation: "55.4%"
+    phenotype_with_eucast_interpretation: "55.6%"
+    genotype_with_taxonomy_iri: "100%"
+    genotype_with_antibiotic_name: "78.5%"
+    verified_date: "2025-04-21"
+
   resistance_distribution:
-    susceptible: "60.7%"
-    resistant: "17.7%"
-    intermediate: "2.1%"
-    missing: "19.5%"
-  
-  cardinality:
-    avg_phenotypes_per_biosample: 10.0
-    avg_genotypes_per_biosample: 6.8
-    countries: 153
-    unique_amr_classes: 56
-  
-  performance_benchmarks:
-    single_antibiotic_aro_query: "<5s"
-    aggregation_with_filters: "5-10s"
-    cross_db_reverse_join: "1-2s"
-    two_stage_aggregation: "~6-8s"
-    cross_db_with_specific_iri: "~1-2s"
-  
-  staleness_warning: "Irregular updates; statistics verified 2025-02-10"
+    susceptible: "60.7% (1,040,897)"
+    resistant: "17.7% (302,729)"
+    intermediate: "2.1% (35,332)"
+    non_susceptible: "<0.1% (828)"
+    susceptible_dose_dependent: "<0.1% (213)"
+    missing: "19.5% (334,487)"
+
+  amr_classes:
+    distinct_count: 47
+    note: "'FUSIDIC ACID' and 'FUSIDIC_ACID' are two distinct strings — use VALUES with both"
+    top_4: "BETA-LACTAM (243,389) | AMINOGLYCOSIDE (187,430) | EFFLUX (180,406) | TETRACYCLINE (89,420)"
+
+  staleness_warning: "Irregular update schedule; re-verify counts before publication"
 
 anti_patterns:
-  - title: Skipping Schema Check Before Query Design
-    problem: "Designing queries without checking MIE schema for structured properties."
+  - title: "Skipping Schema Check Before Writing Queries"
+    problem: "Using text search or FILTER(CONTAINS()) for fields that have controlled vocabularies."
     wrong_sparql: |
-      # BAD: Jumping to text search without checking schema
+      # BAD: CONTAINS() for a controlled vocabulary field
       PREFIX amr: <http://example.org/ebiamr#>
       SELECT ?gene WHERE {
-        ?s amr:geneSymbol ?gene .
-        ?gene bif:contains "'lactam'"
+        ?s a amr:GenotypeFeature ;
+           amr:amrElementSymbol ?gene ;
+           amr:amrClass ?c .
+        FILTER(CONTAINS(LCASE(?c), "lactam"))
       }
     correct_sparql: |
-      # CORRECT: Checked MIE schema first
-      # 1. Read shape_expressions → found amr:amrClass with controlled vocabulary
-      # 2. Found 56 AMR classes including "BETA-LACTAM"
-      # 3. Use exact matching with controlled vocabulary:
+      # CORRECT: read shape_expressions first, then use exact match
       PREFIX amr: <http://example.org/ebiamr#>
-      SELECT ?gene ?amrClass WHERE {
-        ?s a amr:GenotypeFeature ;
-           amr:geneSymbol ?gene ;
-           amr:amrClass ?amrClass .
-        FILTER(?amrClass = "BETA-LACTAM")
-      }
-    explanation: |
-      ALWAYS check MIE schema_expressions before writing queries. In this case, the schema shows amr:amrClass uses controlled vocabulary, eliminating the need for text search.
-
-  - title: Using Text Search for Controlled Vocabulary
-    problem: "Using FILTER(CONTAINS()) or bif:contains when exact matching with controlled vocabulary is available."
-    wrong_sparql: |
-      # BAD: Unindexed string matching for controlled vocabulary
-      PREFIX amr: <http://example.org/ebiamr#>
-      SELECT ?geneSymbol ?amrClass
+      SELECT ?gene (COUNT(*) as ?n)
+      FROM <http://rdfportal.org/dataset/amrportal>
       WHERE {
         ?s a amr:GenotypeFeature ;
-           amr:geneSymbol ?geneSymbol ;
-           amr:amrClass ?amrClass .
-        FILTER(CONTAINS(?amrClass, "BETA-LACTAM"))
+           amr:amrClass "BETA-LACTAM" ;
+           amr:amrElementSymbol ?gene .
       }
+      GROUP BY ?gene ORDER BY DESC(?n) LIMIT 20
+    explanation: "shape_expressions lists all 47 amr:amrClass values. Read it first — CONTAINS() is never needed."
+
+  - title: "Single Fusidic Acid Class String"
+    problem: "Querying only 'FUSIDIC ACID' or only 'FUSIDIC_ACID' silently misses records."
+    wrong_sparql: |
+      FILTER(?amrClass = "FUSIDIC ACID")   # misses 191 records with underscore variant
     correct_sparql: |
-      # CORRECT: Use exact matching or VALUES for controlled vocabulary
-      PREFIX amr: <http://example.org/ebiamr#>
-      SELECT ?geneSymbol ?amrClass
-      WHERE {
-        VALUES ?amrClass {
-          "BETA-LACTAM"
-          "BETA-LACTAM/MACROLIDE/TETRACYCLINE"
-          "BETA-LACTAM/QUINOLONE/TETRACYCLINE"
-        }
-        ?s a amr:GenotypeFeature ;
-           amr:geneSymbol ?geneSymbol ;
-           amr:amrClass ?amrClass .
-      }
-    explanation: |
-      AMR classes are controlled vocabulary (56 distinct values). Use exact matching with VALUES or FILTER(= "value"), never FILTER(CONTAINS()). This is faster and more precise.
+      VALUES ?amrClass { "FUSIDIC ACID" "FUSIDIC_ACID" }
+    explanation: "Data quality artifact in critical_warnings. Always query both strings."
 
-  - title: Cross-GRAPH Aggregation
-    problem: "Aggregating across multiple GRAPHs creates massive intermediate results causing timeouts."
+  - title: "Cross-GRAPH Aggregation"
+    problem: "Aggregating across multiple GRAPHs in one query creates massive intermediates and timeouts."
     wrong_sparql: |
-      # BAD: Aggregates across GRAPHs
-      PREFIX amr: <http://example.org/ebiamr#>
-      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
-      SELECT ?ab (COUNT(?m) as ?count)
-      WHERE {
+      # BAD: join + aggregate spanning two GRAPHs
+      SELECT ?ab (COUNT(?m) as ?c) WHERE {
         GRAPH <http://rdfportal.org/dataset/amrportal> {
-          ?m a amr:PhenotypeMeasurement ;
-             amr:antibioticName ?ab ;
-             amr:resistancePhenotype "resistant" .
+          ?m a amr:PhenotypeMeasurement ; amr:antibioticName ?ab .
         }
-        GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
-          ?mol rdfs:label ?label .
-          FILTER(LCASE(?label) = ?ab)
-        }
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> { ?mol rdfs:label ?lb . }
       }
       GROUP BY ?ab
     correct_sparql: |
-      # CORRECT: Two-stage aggregation
-      # Stage 1: Aggregate within AMR GRAPH (5-7s)
-      PREFIX amr: <http://example.org/ebiamr#>
-      SELECT ?ab (COUNT(*) as ?count)
-      FROM <http://rdfportal.org/dataset/amrportal>
-      WHERE {
-        ?m a amr:PhenotypeMeasurement ;
-           amr:antibioticName ?ab ;
-           amr:resistancePhenotype "resistant" .
-      }
-      GROUP BY ?ab
-      LIMIT 10
-      
-      # Stage 2: Join aggregated results to ChEMBL (<1s)
-      # Use results from Stage 1 as VALUES
-      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
-      SELECT ?ab ?count ?mol
-      WHERE {
-        VALUES (?ab ?count) {
-          ("ciprofloxacin" 21368)
-          ("ampicillin" 21660)
-        }
-        GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
-          ?mol rdfs:label ?label .
-          FILTER(LCASE(?label) = ?ab)
-        }
-      }
-    explanation: |
-      NEVER aggregate across GRAPHs. Aggregate within single database first (1.7M → few rows), then join results. Total time: ~6-8s instead of timeout.
+      # CORRECT: two-stage — aggregate first (Stage 1), then join summary (Stage 2)
+      # Stage 1: SELECT ?ab (COUNT(*) as ?c) FROM <amrportal> WHERE { ... } GROUP BY ?ab
+      # Stage 2: VALUES (?ab ?c) { ... } — paste Stage 1 results, then join to ChEMBL
+    explanation: "Aggregate within a single GRAPH first (1.7M → few rows), then join the summary."
 
-  - title: Text Search in Cross-Database When Specific IRI Available
-    problem: "Using bif:contains in cross-database queries without checking co-located database MIE files for structured properties."
+  - title: "Missing FROM Clause"
+    problem: "Omitting FROM scans all EBI endpoint graphs, turning fast queries into timeouts."
     wrong_sparql: |
-      # BAD: Text search without checking ChEBI MIE file
-      GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
-        ?chebiId rdfs:label ?label .
-        ?label bif:contains "'ciprofloxacin'"
-      }
-    correct_sparql: |
-      # CORRECT: Checked ChEBI MIE file first
-      # 1. get_MIE_file("chebi") → found OLS4:searchClasses available
-      # 2. OLS4:searchClasses("ciprofloxacin") → found CHEBI:100241
-      # 3. Use specific IRI for precise linkage:
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
-        obo:CHEBI_100241 rdfs:label ?label .
-        OPTIONAL { obo:CHEBI_100241 chebi:formula ?formula }
-      }
-    explanation: |
-      For cross-database queries, ALWAYS check MIE files for ALL databases involved. ChEBI has OLS4:searchClasses to find specific IRIs. Using specific IRI ensures fast, accurate, comprehensive results.
-
-  - title: Missing LIMIT or Graph Specification
-    problem: "Broad aggregations without LIMIT or FROM clause timeout on large datasets."
-    wrong_sparql: |
-      # BAD: No LIMIT, no FROM clause
       PREFIX amr: <http://example.org/ebiamr#>
-      SELECT ?ab (COUNT(*) as ?c)
-      WHERE { ?s a amr:PhenotypeMeasurement ; amr:antibioticName ?ab }
+      SELECT ?ab (COUNT(*) as ?c) WHERE { ?s a amr:PhenotypeMeasurement ; amr:antibioticName ?ab }
       GROUP BY ?ab
     correct_sparql: |
-      # CORRECT: Use FROM clause and LIMIT
       PREFIX amr: <http://example.org/ebiamr#>
       SELECT ?ab (COUNT(*) as ?c)
       FROM <http://rdfportal.org/dataset/amrportal>
       WHERE { ?s a amr:PhenotypeMeasurement ; amr:antibioticName ?ab }
-      GROUP BY ?ab
-      ORDER BY DESC(?c)
-      LIMIT 50
-    explanation: |
-      Always use FROM clause to specify the graph explicitly. Add LIMIT for broad aggregations. Consider adding geographic or temporal filters for better performance.
+      GROUP BY ?ab ORDER BY DESC(?c) LIMIT 50
+    explanation: "Always specify FROM <http://rdfportal.org/dataset/amrportal> on every query."
 
 common_errors:
   - error: "Query timeout on aggregations"
     causes:
-      - "No LIMIT on exploratory queries"
-      - "Organism + phenotype filter without additional constraints"
-      - "Multiple phenotype-genotype JOINs without pre-filtering"
-      - "Cross-GRAPH aggregation instead of two-stage pattern"
+      - "Missing FROM clause — query scans all EBI endpoint graphs"
+      - "No LIMIT on exploratory aggregations over 1.7M rows"
+      - "Cross-GRAPH aggregation in cross-database queries"
     solutions:
-      - "Add LIMIT 100 initially for exploration"
-      - "Use two-stage aggregation pattern for cross-database queries"
-      - "Add single antibiotic filter to reduce result set"
-      - "Add geographic/temporal filters for broad queries"
-      - "Cross-DB: use reverse join (small→large) strategy"
-      - "Use SAMPLE() for representative data instead of full aggregation"
-    example_fix: |
-      # Timeout: organism + phenotype without constraints
-      WHERE { ?s amr:organism ?o ; amr:resistancePhenotype "resistant" }
-      
-      # Works: add geographic filter and LIMIT
-      WHERE {
-        ?s amr:organism ?o ;
-           amr:geographicalRegion "Asia" ;
-           amr:resistancePhenotype "resistant" .
-      }
-      LIMIT 50
+      - "Add FROM <http://rdfportal.org/dataset/amrportal> to every query"
+      - "Add LIMIT 50; use antibiotic + region/year filters before aggregating"
+      - "Use two-stage aggregation pattern for cross-database queries (see cross_database_queries)"
 
-  - error: "Empty results when using ARO IDs"
+  - error: "Zero results from ontology IRI or geographic queries"
     causes:
-      - "Using wrong ARO IRI format or namespace"
-      - "7.3% of phenotypes lack ARO IDs"
-      - "Typo in ARO IRI"
+      - "Wrong ARO namespace — must be http://purl.obolibrary.org/obo/ARO_NNNNNNN (7 digits)"
+      - "Using UniProt taxonomy namespace — must be http://identifiers.org/taxonomy/"
+      - "Using WHO region names for geographicalRegion (e.g. 'South-Eastern Asia') — see critical_warnings"
     solutions:
-      - "Verify ARO IRI format: http://purl.obolibrary.org/obo/ARO_NNNNNNN"
-      - "Use OPTIONAL for ARO IDs when coverage is important"
-      - "Test with known antibiotics first (ciprofloxacin: ARO_0000036)"
-      - "Use antibiotic name as fallback when ARO not available"
-    example_fix: |
-      # May fail if ARO missing or wrong format
-      WHERE { ?s amr:antibioticOntologyId <http://purl.obolibrary.org/obo/ARO_0000036> }
-      
-      # Better: combine with name for completeness
-      WHERE {
-        ?s amr:antibioticName "ciprofloxacin" .
-        OPTIONAL { ?s amr:antibioticOntologyId ?aro }
-      }
+      - "ARO IRI: http://purl.obolibrary.org/obo/ARO_0000036 — 7 digit zero-padded"
+      - "Taxonomy IRI: http://identifiers.org/taxonomy/{taxid} — test E. coli = taxonomy/562"
+      - "Region values are continents: 'Americas','Europe','Asia','Oceania','Africa'"
+      - "For subregional analysis use amr:geographicalSubregion e.g. 'South-eastern Asia' (lowercase 'e')"
 
-  - error: "Incomplete genotype-phenotype linkage"
+  - error: "Incomplete phenotype-genotype linkage results"
     causes:
-      - "Not all biosamples have both phenotypes and genotypes"
-      - "Only 65% of phenotype biosamples have corresponding genotypes"
-      - "Only 78.5% of genotypes have antibiotic annotations"
+      - "Only ~65% of phenotype bioSamples have corresponding genotype records"
+      - "amr:geneSymbol absent on some GenotypeFeature records"
     solutions:
-      - "Check coverage statistics before designing complex linkage queries"
-      - "Use specific bioSample filters for known linked samples"
-      - "Verify linkage with COUNT queries before detailed analysis"
-      - "Use LIMIT for initial testing of linkage patterns"
-      - "Consider using OPTIONAL for genotype linkage"
-    example_fix: |
-      # Verify linkage coverage first
-      PREFIX amr: <http://example.org/ebiamr#>
-      SELECT ?b (COUNT(?p) as ?phenoCount) (COUNT(?g) as ?genoCount)
-      WHERE {
-        ?p a amr:PhenotypeMeasurement ; amr:bioSample ?b .
-        ?g a amr:GenotypeFeature ; amr:bioSample ?b .
-      }
-      GROUP BY ?b
-      LIMIT 10
+      - "Use OPTIONAL for genotype join; verify linkage with COUNT before full analysis"
+      - "Use amr:amrElementSymbol as fallback when amr:geneSymbol is absent"
+      - "Test linkage with a small organism + antibiotic filter first, then scale up"

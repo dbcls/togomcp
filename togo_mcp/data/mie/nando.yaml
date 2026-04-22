@@ -1,856 +1,617 @@
 schema_info:
   title: NANDO (Nanbyodata Disease Ontology)
-  description: 'Japanese ontology for intractable (rare) diseases with 2,777 disease
-    classes in hierarchical taxonomy. Covers designated intractable diseases eligible
-    for Japanese government support programs. Features multilingual labels (English,
-    Japanese kanji, hiragana), notification numbers for designated diseases, cross-references
-    to MONDO for international harmonization, and extensive links to KEGG, government
-    documents, and patient resources. Maintained by DBCLS (Database Center for Life
-    Science) for rare disease research and clinical applications in Japan.
-
-    '
+  description: |
+    Japanese ontology for intractable (rare) diseases with 2,777 disease classes in a hierarchical
+    taxonomy. Covers designated intractable diseases eligible for Japanese government support programs.
+    Features trilingual labels (English, Japanese kanji, hiragana phonetic), notification numbers for
+    designated diseases, cross-references to MONDO for international harmonization, and links to KEGG,
+    government documents, and patient resources. Maintained by DBCLS (Database Center for Life Science).
   endpoint: https://rdfportal.org/primary/sparql
   base_uri: http://nanbyodata.jp/ontology/
   graphs:
-  - http://nanbyodata.jp/ontology/nando
+    - http://nanbyodata.jp/ontology/nando
   kw_search_tools:
-  - OLS4:searchClasses
+    - OLS4:searchClasses
   version:
-    mie_version: '2.0'
-    mie_created: '2025-02-09'
+    mie_version: "2.0"
+    mie_created: "2025-04-21"
     data_version: Current release
     update_frequency: Quarterly
   license:
     data_license: CC BY 4.0
     license_url: https://creativecommons.org/licenses/by/4.0/
   access:
-    rate_limiting: 100 queries/min
-    max_query_timeout: 60 seconds
-    backend: Virtuoso
+    backend: "Virtuoso"
+
+# Critical warnings: schema pathologies, IRI traps, mandatory performance filters.
+critical_warnings: |
+  - LANGUAGE TAG TRAP: Every disease has 3 rdfs:label values (@en, @ja, @ja-hira). Omitting
+    FILTER(LANG(?label) = "en") triples result rows silently (one per language variant). Always
+    filter language unless you intentionally want all three.
+  - DEPRECATED CLASS SUBTREE: NANDO:0000002 is the root of 8 deprecated/obsolete disease classes.
+    They are valid owl:Class instances and will appear in unfiltered counts. To exclude:
+    FILTER NOT EXISTS { ?disease rdfs:subClassOf nando:0000002 }
+  - ACTIVE DISEASE COUNT: Total owl:Class = 2,777; active (non-deprecated) = 2,769. Most queries
+    should use the active set. Pre-filter with STRSTARTS(STR(?disease), "http://nanbyodata.jp/ontology/NANDO_")
+    to exclude blank nodes and OWL scaffolding classes.
+  - skos:closeMatch COVERS MULTIPLE TARGETS: The 2,341 closeMatch triples include both MONDO
+    (2,150) and a small number of other targets. Always add
+    FILTER(STRSTARTS(STR(?match), "http://purl.obolibrary.org/obo/MONDO_")) when targeting MONDO.
+
 shape_expressions: |
-  PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-  PREFIX owl: <http://www.w3.org/2002/07/owl#>
-  PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-  PREFIX dct: <http://purl.org/dc/terms/>
-  PREFIX obo: <http://purl.obolibrary.org/obo/>
-  PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+  PREFIX rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+  PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+  PREFIX owl:   <http://www.w3.org/2002/07/owl#>
+  PREFIX xsd:   <http://www.w3.org/2001/XMLSchema#>
+  PREFIX dct:   <http://purl.org/dc/terms/>
+  PREFIX skos:  <http://www.w3.org/2004/02/skos/core#>
   PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
-  
+
+  # Total: 2,777 disease classes  Active (non-deprecated): 2,769
+  # IRI pattern: http://nanbyodata.jp/ontology/NANDO_NNNNNNN
+  #
+  # HIERARCHY:
+  #   owl:Thing
+  #     nando:0000001  "Intractable disease" (root)
+  #       nando:1000001  (parent for all 15 disease categories)
+  #         nando:1100001  Neuromuscular disease (258 descendants)
+  #         nando:1100002  Metabolic disease (270 descendants)
+  #         nando:1100003  Skin and connective tissue disease (70)
+  #         nando:1100004  Immune system disease (77)
+  #         nando:1100005  Cardiovascular disease (36)
+  #         nando:1100006  Blood disease (84)
+  #         nando:1100007  Renal and urological disease (46)
+  #         nando:1100008  Bone and joint disease (17)
+  #         nando:1100009  Endocrine disease (51)
+  #         nando:1100010  Respiratory disease (35)
+  #         nando:1100011  Eye and visual system disease (26)
+  #         nando:1100012  Hearing and balance disorder (1)
+  #         nando:1100013  Gastrointestinal disease (49)
+  #         nando:1100014  Chromosome abnormality (55)
+  #         nando:1100015  Otorhinolaryngological disease (7)
+  #     nando:0000002  (deprecated disease root — 8 obsolete classes)
+
   <DiseaseShape> {
-    a [ owl:Class ] ;
-    rdfs:label xsd:string + ;
-    dct:identifier xsd:string ;
-    skos:prefLabel xsd:string ;
-    nando:hasNotificationNumber xsd:string ? ;
-    dct:source IRI ? ;
-    rdfs:seeAlso IRI * ;
-    skos:closeMatch IRI * ;
-    skos:altLabel xsd:string * ;
-    dct:description xsd:string ? ;
-    rdfs:subClassOf IRI * ;
-    owl:deprecated xsd:integer ?
+    a [ owl:Class ] ;                          # all diseases
+    dct:identifier xsd:string ;                # "NANDO:NNNNNNN" — 2,777/2,777
+    rdfs:label xsd:string + ;                  # 3 per disease: @en, @ja, @ja-hira
+    skos:prefLabel xsd:string ;                # Japanese kanji label — 2,777/2,777
+    skos:altLabel xsd:string * ;               # synonyms (2,935 total triples)
+    rdfs:subClassOf IRI + ;                    # at least one parent — 2,784 triples
+    nando:hasNotificationNumber xsd:string ? ; # present for 2,454 designated diseases (88%)
+    skos:closeMatch IRI * ;                    # MONDO and other cross-refs — 2,341 triples
+    rdfs:seeAlso IRI * ;                       # KEGG (519), govt docs, patient portals — 6,120 triples
+    dct:source IRI ? ;                         # govt PDFs/docs — 2,397 diseases (86%)
+    dct:description xsd:string ? ;             # Japanese clinical description — 1,211 diseases (44%)
+    owl:deprecated xsd:integer ?               # present on 9 obsolete entries
   }
 
 sample_rdf_entries:
-- title: Root Ontology Class
-  description: Top-level intractable disease class at the root of NANDO taxonomy.
-  rdf: |
+  rdf_prefixes: |
     @prefix nando: <http://nanbyodata.jp/ontology/NANDO_> .
-    @prefix owl: <http://www.w3.org/2002/07/owl#> .
-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-    @prefix dct: <http://purl.org/dc/terms/> .
-    
-    nando:0000001 a owl:Class ;
-      dct:identifier "NANDO:0000001" ;
-      rdfs:label "Intractable disease"@en ;
-      rdfs:label "難病"@ja ;
-      rdfs:label "なんびょう"@ja-hira ;
-      rdfs:subClassOf owl:Thing .
+    @prefix owl:   <http://www.w3.org/2002/07/owl#> .
+    @prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+    @prefix dct:   <http://purl.org/dc/terms/> .
+    @prefix skos:  <http://www.w3.org/2004/02/skos/core#> .
+  entries:
+    - title: Designated Disease with Full Metadata (Parkinson's disease)
+      description: Shows all key predicates — notification number, trilingual labels, MONDO mapping, KEGG link, and source document.
+      rdf: |
+        nando:1200010 a owl:Class ;
+          dct:identifier "NANDO:1200010" ;
+          nando:hasNotificationNumber "6" ;
+          rdfs:label "Parkinson's disease"@en ;
+          rdfs:label "パーキンソン病"@ja ;
+          rdfs:label "ぱーきんそんびょう"@ja-hira ;
+          skos:prefLabel "パーキンソン病"@ja ;
+          skos:altLabel "PD"@en, "Parkinson disease"@en ;
+          dct:description "パーキンソン病は、黒質のドパミン神経細胞の変性を主体とする進行性変成疾患である。"@ja ;
+          rdfs:subClassOf nando:1100001 ;
+          skos:closeMatch <http://purl.obolibrary.org/obo/MONDO_0005180> ;
+          rdfs:seeAlso <https://www.kegg.jp/dbget-bin/www_bget?ds_ja:H00057> ;
+          dct:source <https://www.nanbyou.or.jp/wp-content/uploads/upload_files/File/006-201804-kojin.pdf> .
 
-- title: Disease Category with Multilingual Labels
-  description: Neuromuscular disease category showing trilingual labeling system.
-  rdf: |
-    @prefix nando: <http://nanbyodata.jp/ontology/NANDO_> .
-    @prefix owl: <http://www.w3.org/2002/07/owl#> .
-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-    @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
-    
-    nando:1100001 a owl:Class ;
-      rdfs:label "Neuromuscular disease"@en ;
-      rdfs:label "神経・筋疾患"@ja ;
-      rdfs:label "しんけいきんしっかん"@ja-hira ;
-      skos:prefLabel "神経・筋疾患"@ja ;
-      rdfs:subClassOf nando:1000001 ;
-      skos:closeMatch <http://purl.obolibrary.org/obo/MONDO_0019056> .
+    - title: Disease Category Node (Neuromuscular disease)
+      description: Illustrates how category IRIs work — these are the structured anchors used in rdfs:subClassOf+ traversals; they have MONDO mappings but no notification numbers.
+      rdf: |
+        nando:1100001 a owl:Class ;
+          dct:identifier "NANDO:1100001" ;
+          rdfs:label "Neuromuscular disease"@en ;
+          rdfs:label "神経・筋疾患"@ja ;
+          rdfs:label "しんけいきんしっかん"@ja-hira ;
+          skos:prefLabel "神経・筋疾患"@ja ;
+          rdfs:subClassOf nando:1000001 ;
+          skos:closeMatch <http://purl.obolibrary.org/obo/MONDO_0019056> .
 
-- title: Designated Disease with Full Metadata
-  description: Parkinson's disease showing complete annotation including notification
-    number, descriptions, and external references.
-  rdf: |
-    @prefix nando: <http://nanbyodata.jp/ontology/NANDO_> .
-    @prefix owl: <http://www.w3.org/2002/07/owl#> .
-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-    @prefix dct: <http://purl.org/dc/terms/> .
-    @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
-    
-    nando:1200010 a owl:Class ;
-      dct:identifier "NANDO:1200010" ;
-      nando:hasNotificationNumber "6" ;
-      rdfs:label "Parkinson's disease"@en ;
-      rdfs:label "パーキンソン病"@ja ;
-      rdfs:label "ぱーきんそんびょう"@ja-hira ;
-      skos:prefLabel "パーキンソン病"@ja ;
-      skos:altLabel "PD"@en, "Parkinson disease"@en ;
-      dct:description "パーキンソン病は、黒質のドパミン神経細胞の変性を主体とする進行性変成疾患である。"@ja ;
-      rdfs:subClassOf nando:1100001 ;
-      skos:closeMatch <http://purl.obolibrary.org/obo/MONDO_0005180> ;
-      rdfs:seeAlso <https://www.kegg.jp/dbget-bin/www_bget?ds_ja:H00057> ;
-      dct:source <https://www.nanbyou.or.jp/wp-content/uploads/upload_files/File/006-201804-kojin.pdf> .
-
-- title: Metabolic Disease with KEGG Link
-  description: Wilson disease showing metabolic disease classification and molecular
-    database linkage.
-  rdf: |
-    @prefix nando: <http://nanbyodata.jp/ontology/NANDO_> .
-    @prefix owl: <http://www.w3.org/2002/07/owl#> .
-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-    @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
-    
-    nando:1200655 a owl:Class ;
-      nando:hasNotificationNumber "171" ;
-      rdfs:label "Wilson disease"@en ;
-      rdfs:label "ウィルソン病"@ja ;
-      skos:prefLabel "ウィルソン病"@ja ;
-      skos:altLabel "Hepatolenticular degeneration"@en ;
-      rdfs:subClassOf nando:1100002 ;
-      skos:closeMatch <http://purl.obolibrary.org/obo/MONDO_0010200> ;
-      rdfs:seeAlso <https://www.kegg.jp/dbget-bin/www_bget?ds_ja:H00844> .
-
-- title: Disease Without Notification Number
-  description: Non-designated disease showing diseases ineligible for government support
-    but included in taxonomy.
-  rdf: |
-    @prefix nando: <http://nanbyodata.jp/ontology/NANDO_> .
-    @prefix owl: <http://www.w3.org/2002/07/owl#> .
-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-    @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
-    
-    nando:2200001 a owl:Class ;
-      rdfs:label "Rare neurological disease"@en ;
-      rdfs:label "稀少神経疾患"@ja ;
-      skos:prefLabel "稀少神経疾患"@ja ;
-      rdfs:subClassOf nando:1100001 ;
-      skos:closeMatch <http://purl.obolibrary.org/obo/MONDO_0019056> .
+    - title: Root Ontology Class (Intractable disease)
+      description: Top-level anchor of the NANDO taxonomy; all active diseases are descendants of nando:0000001 via nando:1000001 and the 15 category nodes.
+      rdf: |
+        nando:0000001 a owl:Class ;
+          dct:identifier "NANDO:0000001" ;
+          rdfs:label "Intractable disease"@en ;
+          rdfs:label "難病"@ja ;
+          rdfs:label "なんびょう"@ja-hira ;
+          rdfs:subClassOf owl:Thing .
 
 sparql_query_examples:
-- title: Retrieve Disease by Specific IRI
-  description: Direct lookup using disease-specific IRI for Parkinson's disease.
-  question: What are the details for Parkinson's disease?
-  complexity: basic
-  sparql: |
-    PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX dct: <http://purl.org/dc/terms/>
-    PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-    
-    SELECT ?property ?value
-    FROM <http://nanbyodata.jp/ontology/nando>
-    WHERE {
-      # Use specific disease IRI
-      nando:1200010 ?property ?value .
-    }
-    LIMIT 50
+  - title: Retrieve All Properties for a Specific Disease by IRI
+    description: Direct property lookup for a known disease using its specific IRI.
+    question: What are all recorded properties for Parkinson's disease (NANDO:1200010)?
+    complexity: basic
+    sparql: |
+      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
 
-- title: List Disease Categories
-  description: Retrieve all top-level categories using specific parent IRI with multilingual
-    labels.
-  question: What are the main disease categories in NANDO?
-  complexity: basic
-  sparql: |
-    PREFIX owl: <http://www.w3.org/2002/07/owl#>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
-    
-    SELECT ?category ?en_label ?ja_label ?ja_hira
-    FROM <http://nanbyodata.jp/ontology/nando>
-    WHERE {
-      # Use specific parent IRI for all categories
-      ?category a owl:Class ;
-                rdfs:subClassOf nando:1000001 ;
-                rdfs:label ?en_label ;
-                rdfs:label ?ja_label ;
-                rdfs:label ?ja_hira .
-      FILTER(LANG(?en_label) = "en")
-      FILTER(LANG(?ja_label) = "ja")
-      FILTER(LANG(?ja_hira) = "ja-hira")
-    }
-    ORDER BY ?en_label
+      SELECT ?property ?value
+      FROM <http://nanbyodata.jp/ontology/nando>
+      WHERE {
+        nando:1200010 ?property ?value .
+      }
+      LIMIT 50
 
-- title: Find Designated Diseases with Notification Numbers
-  description: Query using typed predicate to find diseases eligible for government
-    support.
-  question: Which diseases are officially designated with notification numbers?
-  complexity: intermediate
-  sparql: |
-    PREFIX owl: <http://www.w3.org/2002/07/owl#>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
-    PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-    
-    SELECT ?disease ?notif_num ?en_label ?ja_label
-    FROM <http://nanbyodata.jp/ontology/nando>
-    WHERE {
-      # Use typed predicate for notification numbers
-      ?disease a owl:Class ;
-               nando:hasNotificationNumber ?notif_num ;
-               rdfs:label ?en_label ;
-               rdfs:label ?ja_label .
-      FILTER(LANG(?en_label) = "en")
-      FILTER(LANG(?ja_label) = "ja")
-    }
-    ORDER BY xsd:integer(?notif_num)
-    LIMIT 50
+  - title: List All Disease Categories with Disease Counts
+    description: Uses specific parent IRI (nando:1000001) to retrieve all 15 top-level categories, avoiding text search.
+    question: What are the main disease categories and how many diseases does each contain?
+    complexity: basic
+    sparql: |
+      PREFIX owl:   <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
 
-- title: Navigate Disease Hierarchy
-  description: Use graph navigation to show parent-child relationships within neuromuscular
-    diseases.
-  question: What diseases are classified under neuromuscular disease?
-  complexity: intermediate
-  sparql: |
-    PREFIX owl: <http://www.w3.org/2002/07/owl#>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
-    
-    SELECT ?disease ?en_label ?notif_num
-    FROM <http://nanbyodata.jp/ontology/nando>
-    WHERE {
-      # Use specific category IRI
-      ?disease a owl:Class ;
-               rdfs:subClassOf+ nando:1100001 ;
-               rdfs:label ?en_label .
-      OPTIONAL { ?disease nando:hasNotificationNumber ?notif_num }
-      FILTER(LANG(?en_label) = "en")
-    }
-    ORDER BY ?en_label
-    LIMIT 50
+      SELECT ?category ?label (COUNT(DISTINCT ?disease) AS ?count)
+      FROM <http://nanbyodata.jp/ontology/nando>
+      WHERE {
+        ?category a owl:Class ;
+                  rdfs:subClassOf nando:1000001 ;
+                  rdfs:label ?label .
+        ?disease  a owl:Class ;
+                  rdfs:subClassOf+ ?category .
+        FILTER(LANG(?label) = "en")
+      }
+      GROUP BY ?category ?label
+      ORDER BY DESC(?count)
 
-- title: Find Diseases with MONDO Cross-References
-  description: Query diseases mapped to MONDO Disease Ontology using structured predicate
-    and IRI pattern.
-  question: Which NANDO diseases have MONDO mappings for international harmonization?
-  complexity: intermediate
-  sparql: |
-    PREFIX owl: <http://www.w3.org/2002/07/owl#>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-    
-    SELECT ?disease ?en_label ?mondo_id
-    FROM <http://nanbyodata.jp/ontology/nando>
-    WHERE {
-      ?disease a owl:Class ;
-               rdfs:label ?en_label ;
-               skos:closeMatch ?mondo_id .
-      FILTER(STRSTARTS(STR(?mondo_id), "http://purl.obolibrary.org/obo/MONDO_"))
-      FILTER(LANG(?en_label) = "en")
-    }
-    LIMIT 50
+  - title: Find Designated Diseases with Notification Numbers
+    description: Uses the typed predicate nando:hasNotificationNumber to retrieve only government-designated diseases eligible for support programs.
+    question: Which diseases have official designation numbers, and what are they?
+    complexity: intermediate
+    sparql: |
+      PREFIX owl:   <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
 
-- title: Complex Category Analysis with Aggregation
-  description: Advanced query combining specific category IRIs, graph navigation,
-    and statistical aggregation.
-  question: How many diseases are in each major category with subcategory breakdown?
-  complexity: advanced
-  sparql: |
-    PREFIX owl: <http://www.w3.org/2002/07/owl#>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
-    
-    SELECT ?category ?category_label 
-           (COUNT(DISTINCT ?disease) as ?total_diseases)
-           (SUM(IF(BOUND(?notif), 1, 0)) as ?designated_count)
-    FROM <http://nanbyodata.jp/ontology/nando>
-    WHERE {
-      # Use specific parent IRI
-      ?category a owl:Class ;
-                rdfs:subClassOf nando:1000001 ;
-                rdfs:label ?category_label .
-      ?disease rdfs:subClassOf+ ?category ;
-               a owl:Class .
-      OPTIONAL { ?disease nando:hasNotificationNumber ?notif }
-      FILTER(LANG(?category_label) = "en")
-    }
-    GROUP BY ?category ?category_label
-    ORDER BY DESC(?total_diseases)
+      SELECT ?disease ?notif_num ?en_label ?ja_label
+      FROM <http://nanbyodata.jp/ontology/nando>
+      WHERE {
+        ?disease a owl:Class ;
+                 nando:hasNotificationNumber ?notif_num ;
+                 rdfs:label ?en_label ;
+                 rdfs:label ?ja_label .
+        FILTER(LANG(?en_label) = "en")
+        FILTER(LANG(?ja_label) = "ja")
+      }
+      ORDER BY xsd:integer(?notif_num)
+      LIMIT 50
 
-- title: Keyword Search for Disease Discovery
-  description: Full-text search using bif:contains when exploring unfamiliar disease
-    terms.
-  question: Find diseases related to muscular dystrophy with relevance ranking.
-  complexity: advanced
-  sparql: |
-    PREFIX owl: <http://www.w3.org/2002/07/owl#>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX dct: <http://purl.org/dc/terms/>
-    PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
-    
-    SELECT ?disease ?identifier ?en_label ?notif_num ?sc
-    FROM <http://nanbyodata.jp/ontology/nando>
-    WHERE {
-      ?disease a owl:Class ;
-               rdfs:label ?en_label ;
-               dct:identifier ?identifier .
-      OPTIONAL { ?disease nando:hasNotificationNumber ?notif_num }
-      FILTER(LANG(?en_label) = "en")
-      # Text search only because exploring free-text English labels
-      # Uses bif:contains for indexed search on Virtuoso backend
-      ?en_label bif:contains "'muscular' AND 'dystrophy'" option (score ?sc)
-    }
-    ORDER BY DESC(?sc)
-    LIMIT 20
+  - title: Navigate Disease Hierarchy by Category
+    description: Transitive hierarchy traversal using a specific category IRI (neuromuscular); OPTIONAL surfaces notification numbers for designated diseases.
+    question: What diseases fall under the Neuromuscular disease category?
+    complexity: intermediate
+    sparql: |
+      PREFIX owl:   <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+
+      SELECT ?disease ?en_label ?notif_num
+      FROM <http://nanbyodata.jp/ontology/nando>
+      WHERE {
+        ?disease a owl:Class ;
+                 rdfs:subClassOf+ nando:1100001 ;
+                 rdfs:label ?en_label .
+        OPTIONAL { ?disease nando:hasNotificationNumber ?notif_num }
+        FILTER(LANG(?en_label) = "en")
+      }
+      ORDER BY ?en_label
+      LIMIT 50
+
+  - title: Find Diseases with MONDO Cross-References
+    description: Uses STRSTARTS to filter skos:closeMatch to MONDO-only targets; avoids returning non-MONDO closeMatch values.
+    question: Which NANDO diseases have MONDO mappings for international harmonization?
+    complexity: intermediate
+    sparql: |
+      PREFIX owl:   <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX skos:  <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT ?disease ?en_label ?mondo_id
+      FROM <http://nanbyodata.jp/ontology/nando>
+      WHERE {
+        ?disease a owl:Class ;
+                 rdfs:label ?en_label ;
+                 skos:closeMatch ?mondo_id .
+        FILTER(STRSTARTS(STR(?mondo_id), "http://purl.obolibrary.org/obo/MONDO_"))
+        FILTER(LANG(?en_label) = "en")
+      }
+      LIMIT 50
+
+  - title: Per-Category Designated vs. Total Disease Breakdown
+    description: Advanced aggregation combining specific category IRI, transitive subClassOf, and conditional counting over notification numbers.
+    question: For each major category, how many diseases are designated vs. total?
+    complexity: advanced
+    sparql: |
+      PREFIX owl:   <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+
+      SELECT ?cat_label
+             (COUNT(DISTINCT ?disease) AS ?total)
+             (COUNT(DISTINCT IF(BOUND(?notif), ?disease, ?undef)) AS ?designated)
+      FROM <http://nanbyodata.jp/ontology/nando>
+      WHERE {
+        ?category a owl:Class ;
+                  rdfs:subClassOf nando:1000001 ;
+                  rdfs:label ?cat_label .
+        ?disease  a owl:Class ;
+                  rdfs:subClassOf+ ?category .
+        OPTIONAL { ?disease nando:hasNotificationNumber ?notif }
+        FILTER(LANG(?cat_label) = "en")
+      }
+      GROUP BY ?cat_label
+      ORDER BY DESC(?total)
+
+  - title: Keyword Search Across Disease Labels (Exploratory)
+    description: Free-text search across English rdfs:label using bif:contains for disease discovery when no IRI is yet known. Use results to extract IRIs for follow-up structured queries.
+    question: Find diseases related to "muscular dystrophy" to identify relevant IRIs.
+    complexity: advanced
+    sparql: |
+      PREFIX owl:   <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct:   <http://purl.org/dc/terms/>
+      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+
+      SELECT ?disease ?identifier ?en_label ?notif_num ?sc
+      FROM <http://nanbyodata.jp/ontology/nando>
+      WHERE {
+        ?disease a owl:Class ;
+                 dct:identifier ?identifier ;
+                 rdfs:label ?en_label .
+        OPTIONAL { ?disease nando:hasNotificationNumber ?notif_num }
+        FILTER(LANG(?en_label) = "en")
+        # Text search justified: rdfs:label is free-text; no controlled vocabulary for disease names.
+        # Virtuoso backend: bif:contains (indexed). Use results to extract IRIs for structured follow-up.
+        ?en_label bif:contains "'muscular' AND 'dystrophy'" option (score ?sc)
+      }
+      ORDER BY DESC(?sc)
+      LIMIT 20
 
 cross_database_queries:
   shared_endpoint: primary
   co_located_databases:
-  - mesh
-  - go
-  - taxonomy
-  - mondo
-  - bacdive
-  - mediadive
-  mie_files_consulted:
-  - mondo (graph URI, cross-reference patterns, owl:deprecated filter, OLS4:searchClasses)
-  - mesh (meshv:TopicalDescriptor, graph URI, bif:contains usage)
-  - go (oboinowl:hasOBONamespace, STR() requirement, graph URI)
-  examples:
-  - title: Link NANDO to MONDO Disease Ontology
-    description: |
-      Connect Japanese rare diseases to international disease classification using structured skos:closeMatch.
-      Enables Japanese researchers to access international disease resources and standardized nomenclature.
-      Uses specific disease category IRI to pre-filter before joining databases.
-    databases_used:
-    - nando
-    - mondo
-    complexity: intermediate
-    sparql: |
-      PREFIX owl: <http://www.w3.org/2002/07/owl#>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
-      
-      SELECT ?nandoDisease ?nandoEn ?nandoJa ?mondoId ?mondoLabel
-      WHERE {
-        GRAPH <http://nanbyodata.jp/ontology/nando> {
-          # Use specific category IRI to pre-filter
-          ?nandoDisease a owl:Class ;
-                        rdfs:subClassOf+ nando:1100002 ;
-                        rdfs:label ?nandoEn ;
-                        rdfs:label ?nandoJa ;
-                        skos:closeMatch ?mondoDisease .
-          FILTER(STRSTARTS(STR(?mondoDisease), "http://purl.obolibrary.org/obo/MONDO_"))
-          FILTER(LANG(?nandoEn) = "en")
-          FILTER(LANG(?nandoJa) = "ja")
-        }
-        GRAPH <http://rdfportal.org/ontology/mondo> {
-          ?mondoDisease a owl:Class ;
-                        rdfs:label ?mondoLabel ;
-                        oboInOwl:id ?mondoId .
-          FILTER NOT EXISTS { ?mondoDisease owl:deprecated true }
-        }
-      }
-      LIMIT 20
-    notes: |
-      - Strategies: 1 (GRAPH), 2 (pre-filter with category IRI), 10 (LIMIT)
-      - Performance: ~2-3s (Tier 1)
-      - Pre-filtering: NANDO 2,777 → ~270 metabolic diseases → ~200 with MONDO (90% reduction)
-      - Uses specific metabolic disease IRI (nando:1100002) instead of text search
-      - Coverage: 77% of NANDO diseases have MONDO mappings (2,150/2,777)
-
-  - title: Connect NANDO to MeSH Medical Terminology
-    description: |
-      Integrate Japanese rare diseases with clinical terminology for literature connection.
-      Enables linking designated intractable diseases to PubMed-indexed research.
-      Uses bif:contains for keyword-based discovery when no direct semantic links exist.
-    databases_used:
-    - nando
     - mesh
-    complexity: intermediate
-    sparql: |
-      PREFIX owl: <http://www.w3.org/2002/07/owl#>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
-      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
-      
-      SELECT ?nandoDisease ?nandoLabel ?meshTerm ?meshLabel
-      WHERE {
-        GRAPH <http://nanbyodata.jp/ontology/nando> {
-          # Use specific disease IRI to pre-filter
-          ?nandoDisease a owl:Class ;
-                        rdfs:subClassOf+ nando:1100001 ;
-                        rdfs:label ?nandoLabel ;
-                        nando:hasNotificationNumber ?notif .
-          FILTER(LANG(?nandoLabel) = "en")
-          ?nandoLabel bif:contains "'dystrophy'" option (score ?sc1)
-        }
-        GRAPH <http://id.nlm.nih.gov/mesh> {
-          ?meshTerm a meshv:TopicalDescriptor ;
-                    rdfs:label ?meshLabel .
-          ?meshLabel bif:contains "'dystrophy'" option (score ?sc2)
-        }
-      }
-      ORDER BY DESC(?sc1)
-      LIMIT 10
-    notes: |
-      - Strategies: 1 (GRAPH), 2 (pre-filter with category), 4 (bif:contains), 10 (LIMIT)
-      - Pre-filtering: NANDO 2,777 → ~258 neuromuscular → ~50 designated → ~10 with keyword (99.6% reduction)
-      - Performance: ~1-2s (Tier 1)
-      - No direct semantic links between NANDO and MeSH, so keyword-based integration
-      - bif:contains provides indexed search on both databases
-
-  - title: Find NANDO Diseases Associated with GO Terms
-    description: |
-      Link Japanese rare diseases to Gene Ontology biological processes through MONDO.
-      Given a specific GO term (e.g., apoptosis, metabolic process), finds NANDO diseases
-      related to that biological process.
-      
-      STRUCTURED LINKING WORKFLOW (NO TEXT SEARCH):
-      1. Start with specific GO term IRI (e.g., GO:0008152 for metabolic process)
-      2. Extract GO label to use as search keyword
-      3. Use OLS4:searchClasses(ontologyId="mondo", query="metabolic") to find relevant MONDO diseases
-      4. Extract MONDO disease IRIs from search results
-      5. Use extracted MONDO IRIs in SPARQL query with VALUES clause
-      6. Link MONDO to NANDO via structured skos:closeMatch predicate
-      
-      This approach uses structured search APIs instead of bif:contains text matching,
-      providing more reliable and comprehensive results.
-      
-      Implementation note:
-      The VALUES clause below should be populated with MONDO IRIs obtained from:
-      OLS4:searchClasses(ontologyId="mondo", query=<keyword_from_GO_label>)
-    databases_used:
     - go
+    - taxonomy
     - mondo
-    - nando
-    complexity: advanced
-    sparql: |
-      PREFIX owl: <http://www.w3.org/2002/07/owl#>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
-      
-      SELECT ?nandoDisease ?nandoEn ?nandoJa ?mondoLabel ?goTerm ?goLabel
-      WHERE {
-        # Step 1: Get GO term label
-        GRAPH <http://rdfportal.org/ontology/go> {
-          # PARAMETER: Specify GO term IRI
-          BIND(obo:GO_0008152 AS ?goTerm)  # metabolic process
-          # Other examples:
-          # BIND(obo:GO_0006915 AS ?goTerm)  # apoptotic process
-          # BIND(obo:GO_0006954 AS ?goTerm)  # inflammatory response
-          # BIND(obo:GO_0008283 AS ?goTerm)  # cell proliferation
-          
-          ?goTerm rdfs:label ?goLabel .
-          FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
-        }
-        
-        # Step 2: Use MONDO IRIs from OLS4:searchClasses results
-        # WORKFLOW: OLS4:searchClasses(ontologyId="mondo", query="metabolic")
-        #           → Extract IRIs from results → Use in VALUES below
-        GRAPH <http://rdfportal.org/ontology/mondo> {
-          VALUES ?mondoDisease {
-            # Populate with IRIs from OLS4:searchClasses results
-            # For metabolic process (GO:0008152), use "metabolic" search:
-            obo:MONDO_0005066  # metabolic disease
-            obo:MONDO_0020123  # metabolic myopathy
-            obo:MONDO_0000440  # metabolic acidosis
-            # Add more MONDO IRIs from search results as needed
+    - bacdive
+    - mediadive
+  examples:
+    - title: Link NANDO Diseases to MONDO for International Harmonization
+      description: |
+        Connects Japanese rare diseases to MONDO Disease Ontology using structured skos:closeMatch,
+        enabling access to international disease resources and standardized nomenclature.
+
+        Linking strategy:
+        - NANDO: skos:closeMatch → MONDO IRI (structured predicate, no text search)
+        - MONDO: oboInOwl:id for human-readable ID; owl:deprecated filter for active terms only
+        - Pre-filter: specific category IRI (nando:1100002 for metabolic) reduces join size ~90%
+      databases_used:
+        - nando
+        - mondo
+      complexity: intermediate
+      sparql: |
+        PREFIX owl:        <http://www.w3.org/2002/07/owl#>
+        PREFIX rdfs:       <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX skos:       <http://www.w3.org/2004/02/skos/core#>
+        PREFIX nando:      <http://nanbyodata.jp/ontology/NANDO_>
+        PREFIX obo:        <http://purl.obolibrary.org/obo/>
+        PREFIX oboInOwl:   <http://www.geneontology.org/formats/oboInOwl#>
+
+        SELECT ?nandoDisease ?nandoEn ?nandoJa ?mondoId ?mondoLabel
+        WHERE {
+          GRAPH <http://nanbyodata.jp/ontology/nando> {
+            ?nandoDisease a owl:Class ;
+                          rdfs:subClassOf+ nando:1100002 ;
+                          rdfs:label ?nandoEn ;
+                          rdfs:label ?nandoJa ;
+                          skos:closeMatch ?mondoDisease .
+            FILTER(STRSTARTS(STR(?mondoDisease), "http://purl.obolibrary.org/obo/MONDO_"))
+            FILTER(LANG(?nandoEn) = "en")
+            FILTER(LANG(?nandoJa) = "ja")
           }
-          
-          ?mondoDisease a owl:Class ;
-                        rdfs:label ?mondoLabel .
-          FILTER NOT EXISTS { ?mondoDisease owl:deprecated true }
+          GRAPH <http://rdfportal.org/ontology/mondo> {
+            ?mondoDisease a owl:Class ;
+                          rdfs:label ?mondoLabel ;
+                          oboInOwl:id ?mondoId .
+            FILTER NOT EXISTS { ?mondoDisease owl:deprecated true }
+          }
         }
-        
-        # Step 3: Link MONDO to NANDO via structured predicate
-        GRAPH <http://nanbyodata.jp/ontology/nando> {
-          ?nandoDisease a owl:Class ;
-                        skos:closeMatch ?mondoDisease ;
-                        rdfs:label ?nandoEn ;
-                        rdfs:label ?nandoJa .
-          FILTER(LANG(?nandoEn) = "en")
-          FILTER(LANG(?nandoJa) = "ja")
+        LIMIT 20
+      notes: |
+        - Linking via: skos:closeMatch (structured predicate, 77% NANDO-MONDO coverage)
+        - Performance: ~2–3s (Tier 1)
+        - MIE files checked: nando, mondo
+        - Pre-filter: nando:1100002 (metabolic, 270 diseases) → ~90% size reduction before join
+
+    - title: Discover NANDO Diseases via MONDO Semantic Search (OLS4 Workflow)
+      description: |
+        Uses OLS4:searchClasses to find MONDO IRIs by keyword, then links to NANDO via
+        skos:closeMatch — a fully structured workflow with no bif:contains text search.
+
+        Linking strategy:
+        - Step 1 (API): OLS4:searchClasses(ontologyId="mondo", query="<keyword>") → MONDO IRIs
+        - Step 2 (SPARQL): VALUES clause with discovered MONDO IRIs
+        - Step 3 (SPARQL): skos:closeMatch bridges MONDO → NANDO (structured predicate)
+
+        Example workflow for "metabolic process":
+          OLS4:searchClasses(ontologyId="mondo", query="metabolic")
+          → MONDO_0005066, MONDO_0020123, MONDO_0000440, …
+          → Use in VALUES clause below
+      databases_used:
+        - nando
+        - mondo
+      complexity: advanced
+      sparql: |
+        PREFIX owl:   <http://www.w3.org/2002/07/owl#>
+        PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX skos:  <http://www.w3.org/2004/02/skos/core#>
+        PREFIX obo:   <http://purl.obolibrary.org/obo/>
+
+        SELECT ?nandoDisease ?nandoEn ?nandoJa ?mondoLabel
+        WHERE {
+          GRAPH <http://rdfportal.org/ontology/mondo> {
+            VALUES ?mondoDisease {
+              # Populate with IRIs from OLS4:searchClasses results
+              obo:MONDO_0005066   # metabolic disease
+              obo:MONDO_0020123   # metabolic myopathy
+              obo:MONDO_0000440   # metabolic acidosis
+            }
+            ?mondoDisease a owl:Class ;
+                          rdfs:label ?mondoLabel .
+            FILTER NOT EXISTS { ?mondoDisease owl:deprecated true }
+          }
+          GRAPH <http://nanbyodata.jp/ontology/nando> {
+            ?nandoDisease a owl:Class ;
+                          skos:closeMatch ?mondoDisease ;
+                          rdfs:label ?nandoEn ;
+                          rdfs:label ?nandoJa .
+            FILTER(LANG(?nandoEn) = "en")
+            FILTER(LANG(?nandoJa) = "ja")
+          }
         }
-      }
-      LIMIT 20
-    notes: |
-      - Linking: GO term → GO label → OLS4:searchClasses(mondo) → MONDO IRIs → VALUES → NANDO diseases
-      - Performance: ~2-3s (Tier 1)
-      - FULLY STRUCTURED: No bif:contains text search used anywhere
-      - OLS4:searchClasses provides semantic search with relevance ranking
-      - Structured linking: skos:closeMatch provides reliable MONDO-NANDO connection (77% coverage)
-      - Customization: Change GO term IRI + run OLS4:searchClasses with GO concept keyword
-      - Example workflow for GO:0008152 (metabolic process):
-        1. Extract "metabolic" from GO label
-        2. OLS4:searchClasses(ontologyId="mondo", query="metabolic")
-        3. Extract MONDO IRIs: MONDO:0005066, MONDO:0020123, MONDO:0000440, etc.
-        4. Use IRIs in VALUES clause of query above
-        5. Query finds NANDO diseases via skos:closeMatch
+        LIMIT 20
+      notes: |
+        - Linking via: OLS4 search → MONDO IRIs → skos:closeMatch → NANDO (fully structured, no text search)
+        - Performance: ~2s (Tier 1)
+        - MIE files checked: nando, mondo
+        - Customization: replace query keyword and re-run OLS4:searchClasses to update VALUES
 
 cross_references:
-- pattern: skos:closeMatch
-  description: |
-    Semantic mapping to MONDO Disease Ontology for international harmonization.
-    77% coverage enables Japanese researchers to access international disease resources.
-    One-to-one mappings with occasional one-to-many for complex disease classifications.
-  databases:
-    disease_ontologies:
-    - 'MONDO: 2,150 mappings (77% coverage) for global disease alignment'
-  sparql: |
-    PREFIX owl: <http://www.w3.org/2002/07/owl#>
-    PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    
-    SELECT ?disease ?label ?mondo_id
-    FROM <http://nanbyodata.jp/ontology/nando>
-    WHERE {
-      ?disease a owl:Class ;
-               rdfs:label ?label ;
-               skos:closeMatch ?mondo_id .
-      FILTER(STRSTARTS(STR(?mondo_id), "http://purl.obolibrary.org/obo/MONDO_"))
-      FILTER(LANG(?label) = "en")
-    }
-    LIMIT 100
+  - pattern: skos:closeMatch
+    description: |
+      Semantic mapping to MONDO Disease Ontology for international harmonization.
+      77% coverage enables Japanese researchers to access international disease resources.
+      2,341 total triples; 2,150 are MONDO targets; remaining are other ontologies.
+      Always add FILTER(STRSTARTS(STR(?match), "http://purl.obolibrary.org/obo/MONDO_")) for MONDO-only.
+    databases:
+      disease_ontologies:
+        - "MONDO: 2,150 mappings (77% of 2,777 diseases)"
+    sparql: |
+      PREFIX owl:  <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
 
-- pattern: rdfs:seeAlso
-  description: |
-    External documentation links to molecular databases, government resources, and patient portals.
-    Provides access to KEGG pathways (19% coverage), official designation documents, and patient support information.
-  databases:
-    molecular_databases:
-    - 'KEGG Disease: 522 links (19%) for pathway/gene associations'
-    government_resources:
-    - 'MHLW (Ministry of Health): Official designation documents (.docx, .pdf)'
-    patient_resources:
-    - 'Nanbyou.or.jp: Patient information and support resources'
-  sparql: |
-    PREFIX owl: <http://www.w3.org/2002/07/owl#>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    
-    SELECT ?disease ?label ?external_ref
-    FROM <http://nanbyodata.jp/ontology/nando>
-    WHERE {
-      ?disease a owl:Class ;
-               rdfs:label ?label ;
-               rdfs:seeAlso ?external_ref .
-      FILTER(LANG(?label) = "en")
-      FILTER(
-        CONTAINS(STR(?external_ref), "kegg.jp") ||
-        CONTAINS(STR(?external_ref), "mhlw.go.jp") ||
-        CONTAINS(STR(?external_ref), "nanbyou.or.jp")
-      )
-    }
-    LIMIT 100
+      SELECT ?disease ?label ?mondo_id
+      FROM <http://nanbyodata.jp/ontology/nando>
+      WHERE {
+        ?disease a owl:Class ;
+                 rdfs:label ?label ;
+                 skos:closeMatch ?mondo_id .
+        FILTER(STRSTARTS(STR(?mondo_id), "http://purl.obolibrary.org/obo/MONDO_"))
+        FILTER(LANG(?label) = "en")
+      }
+      LIMIT 20
 
-- pattern: dct:source
-  description: |
-    Source documentation linking to official clinical guidelines and diagnostic criteria.
-    Government-published PDFs contain detailed medical information for designated diseases.
-    40% coverage focused on diseases with official support programs.
-  databases:
-    documentation:
-    - 'Nanbyou.or.jp: 1,110 source PDFs (40%) with clinical guidelines'
-  sparql: |
-    PREFIX owl: <http://www.w3.org/2002/07/owl#>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX dct: <http://purl.org/dc/terms/>
-    
-    SELECT ?disease ?label ?source_doc
-    FROM <http://nanbyodata.jp/ontology/nando>
-    WHERE {
-      ?disease a owl:Class ;
-               rdfs:label ?label ;
-               dct:source ?source_doc .
-      FILTER(LANG(?label) = "en")
-    }
-    LIMIT 100
+  - pattern: rdfs:seeAlso
+    description: |
+      External documentation links to molecular databases, government resources, and patient portals.
+      6,120 triples total across 2,777 diseases (~2.2 per disease on average).
+      Use CONTAINS(STR(?ref), "kegg.jp") to filter KEGG links specifically.
+    databases:
+      molecular_databases:
+        - "KEGG Disease: 519 links (19%) for pathway and gene associations"
+      government_resources:
+        - "MHLW (Ministry of Health): Official designation documents"
+      patient_resources:
+        - "Nanbyou.or.jp: Patient information and support resources"
+
+  - pattern: dct:source
+    description: |
+      Links to official clinical guideline PDFs on nanbyou.or.jp.
+      Present for 2,397 diseases (86%), predominantly designated intractable diseases.
+    databases:
+      documentation:
+        - "Nanbyou.or.jp: 2,397 source documents (86% coverage)"
 
 architectural_notes:
   query_strategy:
-  - 'Exploratory: Use OLS4:searchClasses to find examples and extract specific disease/category IRIs'
-  - 'Comprehensive: Use specific IRIs in VALUES or direct predicates (nando:1200010, nando:1100001, etc.)'
-  - 'Hierarchy: Use specific parent IRI (nando:1000001 for categories, nando:1100001 for neuromuscular, etc.)'
-  - 'Cross-database: Use OLS4:searchClasses for structured semantic search across ontologies'
-  - 'Text search: bif:contains only for unstructured free-text labels when no IRI exists'
-  - 'Priority: Specific IRIs > OLS4 search APIs > Typed predicates > Graph navigation > Text search'
-  - 'Cross-database workflow: OLS4 search → extract IRIs → use in VALUES/WHERE clauses'
+    - "MANDATORY FIRST STEP: read get_MIE_file('nando') and examine shape_expressions and critical_warnings"
+    - "Exploratory: use OLS4:searchClasses(ontologyId='nando', query='keyword') or bif:contains to find example diseases and extract their IRIs"
+    - "Comprehensive: use specific category IRIs (nando:1100001, nando:1100002, …) with rdfs:subClassOf+ for complete subcategory results"
+    - "Cross-database: run OLS4:searchClasses on mondo first, extract IRIs, then use in VALUES + skos:closeMatch SPARQL"
+    - "Text search: bif:contains (Virtuoso, indexed) only for unstructured rdfs:label exploration — switch to IRI-based queries for production"
+    - "Priority: Specific IRIs > OLS4 search API > Typed predicates (nando:hasNotificationNumber) > Graph navigation > bif:contains"
+
   schema_design:
-  - 'Hierarchical: owl:Thing → NANDO:0000001 (Intractable disease) → Categories (11xxxxx) → Specific diseases (12xxxxx)'
-  - 'Trilingual labels: @en (English), @ja (Japanese kanji), @ja-hira (hiragana phonetic)'
-  - 'Root class: NANDO:0000001 serves as top-level concept'
-  - 15 major disease categories under NANDO:1000001
-  - 'IRI pattern: http://nanbyodata.jp/ontology/NANDO_NNNNNNN'
-  key_disease_iris:
-  - nando:0000001 (Intractable disease - root class)
-  - nando:1000001 (parent for all 15 disease categories)
-  - nando:1100001 (Neuromuscular disease - 258 descendants)
-  - nando:1100002 (Metabolic disease - 270 descendants)
-  - nando:1100004 (Immune system disease - 77 descendants)
-  - 'nando:1200010 (Parkinson''s disease - notification #6)'
-  - 'nando:1200655 (Wilson disease - notification #171)'
+    - "Five-level hierarchy: owl:Thing → NANDO:0000001 (root) → NANDO:1000001 (intermediate) → 15 category nodes → leaf diseases"
+    - "Trilingual labels: @en (English), @ja (Japanese kanji), @ja-hira (hiragana phonetic) — 3 rdfs:label values per disease"
+    - "Designation marker: nando:hasNotificationNumber is present IFF a disease is government-designated (88% of diseases)"
+    - "IRI pattern: http://nanbyodata.jp/ontology/NANDO_NNNNNNN (seven digits)"
+    - "Deprecated subtree: nando:0000002 root contains 8 obsolete classes; exclude with FILTER NOT EXISTS { ?d rdfs:subClassOf nando:0000002 }"
+    - "Key category IRIs: nando:1100001 Neuromuscular (258), nando:1100002 Metabolic (270), nando:1100006 Blood (84), nando:1100004 Immune (77)"
+
   performance:
-  - Use bif:contains for indexed keyword search on Virtuoso backend
-  - Language filtering with FILTER(LANG(?label) = 'en') is efficient
-  - STRSTARTS() efficient for cross-reference prefix filtering
-  - rdfs:subClassOf+ for transitive queries (descendants only, excludes self)
-  - 'OLS4:searchClasses: Fast semantic search with relevance ranking'
-  - 'Cross-DB timing: 2-3s (two-way with OLS4 + VALUES), 2-3s (three-way with GO)'
-  - Pre-filtering provides 99%+ reduction before joins
+    - "CRITICAL: Always include FROM <http://nanbyodata.jp/ontology/nando> or GRAPH clause — omitting it hits all graphs"
+    - "Language filter FILTER(LANG(?label) = 'en') is efficient; apply early to avoid triple-row inflation"
+    - "STRSTARTS(STR(?closeMatch), 'MONDO_prefix') is efficient — apply immediately after skos:closeMatch"
+    - "rdfs:subClassOf+ is fast with specific category IRI; avoid open-ended ?x rdfs:subClassOf+ ?y patterns"
+    - "bif:contains requires splitting property paths: separate ?disease rdfs:label ?label and then ?label bif:contains '...'"
+    - "Pre-filtering with category IRIs provides 90–99% size reduction before any cross-database join"
+
   data_integration:
-  - Shares 'primary' endpoint with mesh, go, taxonomy, mondo, bacdive, mediadive
-  - 'Structured linking: skos:closeMatch for MONDO (2,150 mappings, 77%)'
-  - 'KEGG integration: 522 diseases (19%) with molecular pathway links'
-  - 'OLS4 search available for: NANDO, MONDO (structured semantic search preferred over text)'
-  - MONDO provides bridge to 39+ international disease databases and to GO terms
+    - "Shares 'primary' endpoint with mesh, go, taxonomy, mondo, bacdive, mediadive"
+    - "MONDO bridge (skos:closeMatch, 2,150 mappings) enables reach to 39+ international disease databases"
+    - "KEGG integration (rdfs:seeAlso, 519 diseases, 19%) provides molecular pathway and gene data"
+    - "No direct semantic predicates to MeSH — keyword-based bridging only"
+
   data_quality:
-  - All 2,777 diseases have identifier, rdfs:label (all languages), skos:prefLabel
-  - 88% (2,454) have notification numbers (designated diseases)
-  - 77% (2,150) have MONDO mappings for international harmonization
-  - 40% (1,110) have Japanese descriptions
-  - Quarterly updates reflect changes in government designation programs
-  - 8 obsolete classes under NANDO:0000002 (retained for historical reference)
+    - "All 2,777 diseases have dct:identifier, rdfs:label (all 3 languages), skos:prefLabel — 100% coverage"
+    - "88% (2,454) are designated diseases with nando:hasNotificationNumber"
+    - "86% (2,397) have dct:source links to clinical guideline documents"
+    - "77% (2,150) have MONDO mappings"
+    - "44% (1,211) have Japanese clinical descriptions in dct:description"
+    - "8 deprecated classes under nando:0000002 — retain for historical reference only"
+    - "Quarterly updates reflect changes to government designation programs"
+
+  text_search_justification:
+    - "Number of the 7 example queries that use text search: 1 (query 7)"
+    - "Fields where text search IS legitimate: rdfs:label (free-text disease names with no controlled vocabulary IRI)"
+    - "Reason structured alternatives absent: disease names are natural-language strings; no classification code or IRI equivalent"
+    - "All other fields (notification numbers, hierarchy, MONDO mapping) have structured predicates — text search not needed"
 
 data_statistics:
   total_diseases: 2777
-  verified_date: '2025-02-09'
-  verification_query: |
-    PREFIX owl: <http://www.w3.org/2002/07/owl#>
-    SELECT (COUNT(DISTINCT ?disease) as ?total)
-    FROM <http://nanbyodata.jp/ontology/nando>
-    WHERE {
-      ?disease a owl:Class .
-      FILTER(STRSTARTS(STR(?disease), "http://nanbyodata.jp/ontology/NANDO_"))
-    }
   active_diseases: 2769
-  active_verification: |
-    PREFIX owl: <http://www.w3.org/2002/07/owl#>
-    PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
-    SELECT (COUNT(?d) as ?active)
-    FROM <http://nanbyodata.jp/ontology/nando>
-    WHERE {
-      ?d a owl:Class .
-      FILTER NOT EXISTS { ?d rdfs:subClassOf nando:0000002 }
-    }
+  verified_date: "2025-04-21"
+  verification_method: "Direct COUNT queries on live endpoint"
+
+  coverage:
+    designated_diseases: "88.4% (2,454 / 2,777)"
+    mondo_mappings: "77.4% (2,150 / 2,777)"
+    source_documents: "86.3% (2,397 / 2,777)"
+    clinical_descriptions: "43.6% (1,211 / 2,777)"
+    kegg_links: "18.7% (519 / 2,777)"
+    verified_date: "2025-04-21"
+
   major_categories:
     metabolic_disease: 270
     neuromuscular_disease: 258
     blood_disease: 84
     immune_system_disease: 77
-    skin_connective_tissue: 70
-    verification: |
-      PREFIX owl: <http://www.w3.org/2002/07/owl#>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
-      SELECT ?category (COUNT(?disease) as ?count)
-      FROM <http://nanbyodata.jp/ontology/nando>
-      WHERE {
-        VALUES ?category {
-          nando:1100002 nando:1100001 nando:1100006
-          nando:1100004 nando:1100003
-        }
-        ?disease rdfs:subClassOf+ ?category .
-      }
-      GROUP BY ?category
-  coverage:
-    designated_diseases: 88.4% (2,454/2,777)
-    mondo_mappings: 77.4% (2,150/2,777)
-    kegg_links: 18.8% (522/2,777)
-    descriptions: 40.0% (1,110/2,777)
-    verification_queries: |
-      # Designated diseases
-      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
-      SELECT (COUNT(?d) as ?count)
-      FROM <http://nanbyodata.jp/ontology/nando>
-      WHERE { ?d nando:hasNotificationNumber ?n }
-      
-      # MONDO mappings
-      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-      SELECT (COUNT(DISTINCT ?d) as ?count)
-      FROM <http://nanbyodata.jp/ontology/nando>
-      WHERE {
-        ?d skos:closeMatch ?m .
-        FILTER(STRSTARTS(STR(?m), "http://purl.obolibrary.org/obo/MONDO_"))
-      }
-  cardinality:
-    avg_labels_per_disease: 3.0 (English, kanji, hiragana)
-    avg_external_refs_per_disease: 2.2 (KEGG, government, patient portals)
-    methodology: Sampled 100 diseases and calculated averages
-  performance_characteristics:
-  - 'Basic queries (specific IRI lookups): <1s'
-  - 'Category queries (specific category IRI): 1-2s'
-  - 'Hierarchical queries (rdfs:subClassOf+): 1-3s'
-  - 'bif:contains searches: <500ms'
-  - 'OLS4:searchClasses: <1s'
-  - 'Cross-DB (2-way): 2-3s (Tier 1)'
-  - 'Cross-DB (3-way with GO via OLS4): 2-3s (Tier 1)'
-  - 'Pre-filtering gain: 99%+ reduction in join size'
+    skin_connective_tissue_disease: 70
+    chromosome_abnormality: 55
+    endocrine_disease: 51
+    gastrointestinal_disease: 49
+    renal_urological_disease: 46
+    cardiovascular_disease: 36
+    respiratory_disease: 35
+    eye_visual_disease: 26
+    otorhinolaryngological: 7
+    bone_joint_disease: 17
+    hearing_balance_disorder: 1
 
 anti_patterns:
-- title: Using Text Search When OLS4 Search API Available
-  problem: Slow, incomplete text search instead of structured semantic search.
-  wrong_sparql: |
-    # Slow and incomplete: text search across MONDO
-    SELECT ?disease ?label WHERE {
-      GRAPH <http://rdfportal.org/ontology/mondo> {
+  - title: "Skipping Schema Check Before Text Search"
+    problem: "Using bif:contains without checking shape_expressions for structured predicates or category IRIs."
+    wrong_sparql: |
+      # No schema checked — jumps straight to text search for a broad category
+      SELECT ?disease ?label WHERE {
         ?disease rdfs:label ?label .
         ?label bif:contains "'metabolic'"
       }
-    }
-  correct_approach: |
-    # Fast and comprehensive: Use OLS4 search API
-    # Step 1: OLS4:searchClasses(ontologyId="mondo", query="metabolic")
-    #         Returns: MONDO:0005066, MONDO:0020123, MONDO:0000440, etc.
-    
-    # Step 2: Use discovered IRIs in query
-    PREFIX obo: <http://purl.obolibrary.org/obo/>
-    SELECT ?disease ?label WHERE {
-      GRAPH <http://rdfportal.org/ontology/mondo> {
-        VALUES ?disease {
-          obo:MONDO_0005066  # metabolic disease
-          obo:MONDO_0020123  # metabolic myopathy
-          obo:MONDO_0000440  # metabolic acidosis
-        }
-        ?disease rdfs:label ?label .
+    correct_sparql: |
+      # Correct workflow:
+      # 1. get_MIE_file('nando') → read shape_expressions → find nando:1100002 (Metabolic disease)
+      # 2. Use specific category IRI directly:
+      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+      SELECT ?disease ?label WHERE {
+        ?disease rdfs:subClassOf+ nando:1100002 ;
+                 rdfs:label ?label .
+        FILTER(LANG(?label) = "en")
       }
-    }
-  explanation: |
-    OLS4:searchClasses provides semantic search with relevance ranking.
-    Finds related terms even without exact text match.
-    Results are more comprehensive and properly ranked.
+    explanation: "Disease categories have specific IRIs. Always check MIE shape_expressions and key_disease_iris before using text search."
 
-- title: Using Text Search When Category IRI Available
-  problem: Slow text search instead of fast category-based filtering.
-  wrong_sparql: |
-    # Slow: Text search for metabolic diseases
-    SELECT ?disease ?label WHERE {
-      ?disease rdfs:label ?label .
-      ?label bif:contains "'metabolic'"
-    }
-  correct_sparql: |
-    # Fast: Use specific category IRI
-    PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
-    SELECT ?disease ?label WHERE {
-      ?disease rdfs:subClassOf+ nando:1100002 ;
-               rdfs:label ?label .
-      FILTER(LANG(?label) = "en")
-    }
-  explanation: |
-    Find category IRIs via exploratory search (OLS4:searchClasses → nando:1100002 for metabolic diseases),
-    then query all diseases under that category using rdfs:subClassOf+.
+  - title: "Missing Language Filter Causing Result Triplication"
+    problem: "Omitting FILTER(LANG(?label) = ...) returns 3 rows per disease (one per language tag)."
+    wrong_sparql: |
+      # Returns 3× expected rows — one per @en, @ja, @ja-hira
+      SELECT ?disease ?label WHERE {
+        ?disease a owl:Class ;
+                 rdfs:label ?label .
+      }
+    correct_sparql: |
+      SELECT ?disease ?en_label ?ja_label WHERE {
+        ?disease a owl:Class ;
+                 rdfs:label ?en_label ;
+                 rdfs:label ?ja_label .
+        FILTER(LANG(?en_label) = "en")
+        FILTER(LANG(?ja_label) = "ja")
+      }
+    explanation: "Always use FILTER(LANG(?label) = 'en'/'ja'/'ja-hira') to select exactly one language variant."
 
-- title: Not Filtering Language Tags
-  problem: Returns duplicate results with all three language variants (English, kanji, hiragana).
-  wrong_sparql: |
-    # Returns 3 rows per disease (one for each language)
-    SELECT ?disease ?label WHERE {
-      ?disease a owl:Class ;
-               rdfs:label ?label .
-    }
-  correct_sparql: |
-    # Returns 1 row per disease with specified language
-    SELECT ?disease ?en_label ?ja_label WHERE {
-      ?disease a owl:Class ;
-               rdfs:label ?en_label ;
-               rdfs:label ?ja_label .
-      FILTER(LANG(?en_label) = "en")
-      FILTER(LANG(?ja_label) = "ja")
-    }
-  explanation: |
-    Always use FILTER(LANG(?label) = 'lang_code') to select specific language.
-    Use @ja for kanji, @ja-hira for hiragana, @en for English.
+  - title: "Unfiltered skos:closeMatch Including Non-MONDO Targets"
+    problem: "Querying skos:closeMatch without IRI prefix filter returns 2,341 triples instead of the 2,150 MONDO-specific ones."
+    wrong_sparql: |
+      # Returns 191 extra non-MONDO triples silently
+      SELECT ?disease ?match WHERE {
+        ?disease skos:closeMatch ?match .
+      }
+    correct_sparql: |
+      SELECT ?disease ?match WHERE {
+        ?disease skos:closeMatch ?match .
+        FILTER(STRSTARTS(STR(?match), "http://purl.obolibrary.org/obo/MONDO_"))
+      }
+    explanation: "skos:closeMatch covers MONDO and other targets. Apply STRSTARTS filter immediately when targeting MONDO specifically."
+
+  - title: "Circular Reasoning: Using Search Results in VALUES for Comprehensive Counts"
+    problem: "Putting search API results in VALUES counts only the retrieved sample, not the full database."
+    wrong_sparql: |
+      # Only counts the 20 diseases returned by a keyword search — not all metabolic diseases
+      VALUES ?disease { nando:1200010 nando:1200655 ... }  # 20 hand-picked results
+      SELECT (COUNT(?disease) as ?count) WHERE { ... }
+    correct_sparql: |
+      # Use the discovered category IRI to count the entire subcategory:
+      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+      SELECT (COUNT(DISTINCT ?disease) AS ?count)
+      FROM <http://nanbyodata.jp/ontology/nando>
+      WHERE {
+        ?disease rdfs:subClassOf+ nando:1100002 .
+      }
+    explanation: "Search APIs find examples to discover category IRIs. Use those IRIs with rdfs:subClassOf+ to query the complete dataset."
 
 common_errors:
-- error: Empty result set
-  causes:
-  - Missing FROM clause with graph URI
-  - Wrong language tag filter
-  - Incorrect IRI prefix (NANDO_ vs MONDO_)
-  solutions:
-  - Always include FROM <http://nanbyodata.jp/ontology/nando>
-  - Use FILTER(LANG(?label) = 'en') for English, 'ja' for kanji, 'ja-hira' for hiragana
-  - 'Verify IRI pattern: http://nanbyodata.jp/ontology/NANDO_NNNNNNN'
-  example_fix: |
-    # WRONG (missing graph, wrong filter):
-    SELECT ?disease ?label
-    WHERE { ?disease rdfs:label ?label }
-    
-    # CORRECT (with graph and proper filter):
-    SELECT ?disease ?label
-    FROM <http://nanbyodata.jp/ontology/nando>
-    WHERE {
-      ?disease a owl:Class ;
-               rdfs:label ?label .
-      FILTER(LANG(?label) = "en")
-    }
+  - error: "Empty or zero results"
+    causes:
+      - "Missing FROM <http://nanbyodata.jp/ontology/nando> clause"
+      - "Wrong or missing LANG() filter (returns 0 when lang tag mismatches)"
+      - "Wrong IRI prefix — using MONDO_ prefix for NANDO entities or vice versa"
+      - "skos:closeMatch query without MONDO-prefix filter returning partial match set"
+    solutions:
+      - "Always include FROM <http://nanbyodata.jp/ontology/nando> or GRAPH clause"
+      - "Use FILTER(LANG(?label) = 'en') for English, 'ja' for kanji, 'ja-hira' for hiragana"
+      - "Verify IRI pattern: http://nanbyodata.jp/ontology/NANDO_NNNNNNN"
+      - "Add FILTER(STRSTARTS(STR(?match), 'http://purl.obolibrary.org/obo/MONDO_')) for MONDO cross-refs"
 
-- error: Query timeout on MONDO cross-references
-  causes:
-  - Not using STRSTARTS filter early in query
-  - Missing LIMIT clause
-  - No pre-filtering before join
-  solutions:
-  - Apply STRSTARTS filter immediately after skos:closeMatch
-  - Always add LIMIT for exploratory queries
-  - Use specific category IRI to pre-filter NANDO diseases
-  example_fix: |
-    # SLOW (filters after join):
-    WHERE {
-      ?disease skos:closeMatch ?mondo ;
-               rdfs:label ?label .
-      FILTER(STRSTARTS(STR(?mondo), "http://purl.obolibrary.org/obo/MONDO_"))
-    }
-    
-    # FAST (filters before join):
-    PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
-    WHERE {
-      ?disease a owl:Class ;
-               rdfs:subClassOf+ nando:1100001 ;
-               rdfs:label ?label ;
-               skos:closeMatch ?mondo .
-      FILTER(STRSTARTS(STR(?mondo), "http://purl.obolibrary.org/obo/MONDO_"))
-      FILTER(LANG(?label) = "en")
-    }
-    LIMIT 50
+  - error: "Query returns 3× expected row count"
+    causes:
+      - "No LANG() filter on rdfs:label — all three language variants are returned"
+    solutions:
+      - "Add FILTER(LANG(?label) = 'en') for English-only results, or join all three languages explicitly with separate variable bindings"
 
-- error: Cross-database integration without using OLS4
-  causes:
-  - Using bif:contains text search when OLS4 semantic search available
-  - Missing structured workflow for cross-ontology queries
-  solutions:
-  - Use OLS4:searchClasses(ontologyId="mondo", query=<keyword>) for semantic search
-  - Extract IRIs from results and use in VALUES clause
-  - Combine with structured linking predicates (skos:closeMatch)
-  example_fix: |
-    # WRONG: Text search in SPARQL
-    WHERE {
-      GRAPH <http://rdfportal.org/ontology/mondo> {
-        ?disease rdfs:label ?label .
-        ?label bif:contains "'metabolic'"
-      }
-    }
-    
-    # CORRECT: OLS4 search + VALUES
-    # Step 1: OLS4:searchClasses(ontologyId="mondo", query="metabolic")
-    # Step 2: Use results in query
-    WHERE {
-      GRAPH <http://rdfportal.org/ontology/mondo> {
-        VALUES ?disease {
-          obo:MONDO_0005066
-          obo:MONDO_0020123
-          obo:MONDO_0000440
-        }
-        ?disease rdfs:label ?label .
-      }
-    }
+  - error: "Cross-database join timeout or empty results"
+    causes:
+      - "Missing GRAPH clause — query hits all graphs on the primary endpoint"
+      - "No pre-filter on NANDO side before joining MONDO"
+      - "Did not read MONDO MIE file; missing owl:deprecated filter on MONDO side"
+    solutions:
+      - "Use explicit GRAPH <http://nanbyodata.jp/ontology/nando> and GRAPH <http://rdfportal.org/ontology/mondo> clauses"
+      - "Pre-filter NANDO with specific category IRI (e.g. rdfs:subClassOf+ nando:1100001) before the join"
+      - "Add FILTER NOT EXISTS { ?mondoDisease owl:deprecated true } on the MONDO side"
+      - "Add LIMIT at every query level during development"

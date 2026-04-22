@@ -1,7 +1,12 @@
 schema_info:
   title: Gene Ontology (GO)
   description: |
-    Comprehensive ontology for annotating genes and gene products across all organisms. Provides standardized controlled vocabulary organized into three independent domains: biological_process (30,804 terms), molecular_function (12,793 terms), and cellular_component (4,568 terms). GO enables consistent functional annotation with hierarchical relationships, definitions, synonyms, and extensive cross-references to external databases.
+    Comprehensive ontology for annotating genes and gene products across all organisms.
+    Provides standardized controlled vocabulary organized into three independent domains:
+    biological_process (30,840 terms), molecular_function (12,825 terms), and
+    cellular_component (4,586 terms). GO enables consistent functional annotation with
+    hierarchical relationships, definitions, synonyms, slim subsets, and extensive
+    cross-references to external databases including Reactome, EC, RHEA, and MetaCyc.
   endpoint: https://rdfportal.org/primary/sparql
   base_uri: http://purl.obolibrary.org/obo/
   graphs:
@@ -11,15 +16,26 @@ schema_info:
   version:
     mie_version: "2.0"
     mie_created: "2025-02-10"
+    mie_updated: "2026-04-21"
     data_version: "Latest GO Release"
     update_frequency: "Monthly"
-  license:
-    data_license: "Creative Commons Attribution 4.0 International (CC BY 4.0)"
-    license_url: "https://creativecommons.org/licenses/by/4.0/"
   access:
-    rate_limiting: "100 queries/min"
-    max_query_timeout: "60 seconds"
     backend: "Virtuoso"
+
+# Critical warnings: schema pathologies that cause silent failures.
+critical_warnings: |
+  - MANDATORY FROM CLAUSE: Every query on the shared 'primary' endpoint MUST include
+    FROM <http://rdfportal.org/ontology/go>. Omitting it queries all co-located ontologies
+    (MeSH, MONDO, taxonomy, etc.), causes timeouts, and returns incorrect results.
+  - MANDATORY STRSTARTS FILTER: Always add FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
+    to exclude non-GO classes (BFO, RO, OBI, etc.) that share the same graph. Without it,
+    counts are inflated and queries are slow.
+  - NAMESPACE STRING COMPARISON: Virtuoso requires STR() for typed literal comparison.
+    FILTER(?ns = "biological_process") silently returns 0 rows.
+    Correct form: FILTER(STR(?ns) = "biological_process")
+  - DEPRECATED TERMS: ~19.7% of terms (9,512 / 48,251) carry owl:deprecated true.
+    Queries that omit a deprecation filter include obsolete terms in results and counts.
+    Add: FILTER NOT EXISTS { ?go owl:deprecated ?dep . FILTER(?dep = true) } for active-only.
 
 shape_expressions: |
   PREFIX obo: <http://purl.obolibrary.org/obo/>
@@ -27,185 +43,127 @@ shape_expressions: |
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
   PREFIX owl: <http://www.w3.org/2002/07/owl#>
   PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-  
+
+  # ~48,251 total GO terms (48,251 with hasOBONamespace, verified 2026-04-21)
+  # ~9,512 are deprecated; ~38,739 active
   <GOTermShape> {
-    a [ owl:Class ] ;
-    oboinowl:id xsd:string ;
-    rdfs:label xsd:string ;
-    obo:IAO_0000115 xsd:string ;
-    oboinowl:hasOBONamespace [ "biological_process" "molecular_function" "cellular_component" "external" ] ;
-    rdfs:subClassOf IRI * ;
+    a [ owl:Class ] ;                                  # required; IRI: obo:GO_NNNNNNN (7 digits)
+    oboinowl:id xsd:string ;                           # e.g. "GO:0006915"; always present
+    rdfs:label xsd:string ;                            # human-readable name; always present
+    obo:IAO_0000115 xsd:string ;                       # textual definition; ~100% coverage (active terms)
+    oboinowl:hasOBONamespace xsd:string ;              # CONTROLLED: "biological_process" | "molecular_function" | "cellular_component"
+                                                       # NOTE: use STR() for string comparison in Virtuoso
+    rdfs:subClassOf IRI * ;                            # parent terms + OWL restriction axioms; use FILTER to isolate GO parents
     oboinowl:hasExactSynonym xsd:string * ;
     oboinowl:hasRelatedSynonym xsd:string * ;
     oboinowl:hasNarrowSynonym xsd:string * ;
     oboinowl:hasBroadSynonym xsd:string * ;
-    oboinowl:hasDbXref xsd:string * ;
-    oboinowl:inSubset IRI * ;
-    owl:deprecated xsd:boolean ? ;
-    oboinowl:hasAlternativeId xsd:string * ;
+    oboinowl:hasDbXref xsd:string * ;                  # string-typed, not IRI; e.g. "Reactome:R-HSA-109581", "EC:2.7.11.1"
+    oboinowl:inSubset IRI * ;                          # e.g. obo:go#goslim_generic — IRI, not string
+    owl:deprecated xsd:boolean ? ;                     # present = true for obsolete terms; omit filter for all, add for active-only
+    oboinowl:hasAlternativeId xsd:string * ;           # tracks merged/split term IDs
     rdfs:comment xsd:string ? ;
-    obo:BFO_0000051 IRI *
+    obo:BFO_0000051 IRI *                             # has_part compositional relations
   }
 
+# Exactly 3 illustrative entries. Shared prefix block below; NOT repeated per entry.
 sample_rdf_entries:
-  - title: Biological Process - Apoptotic Process
-    description: Shows hierarchical relationships, synonyms, and cross-references for a biological process term.
-    rdf: |
-      @prefix obo: <http://purl.obolibrary.org/obo/> .
-      @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-      @prefix oboinowl: <http://www.geneontology.org/formats/oboInOwl#> .
-      @prefix owl: <http://www.w3.org/2002/07/owl#> .
-      
-      obo:GO_0006915 a owl:Class ;
-        oboinowl:id "GO:0006915" ;
-        rdfs:label "apoptotic process" ;
-        obo:IAO_0000115 "A programmed cell death process which begins when a cell receives an internal (e.g. DNA damage) or external signal (e.g. an extracellular death ligand), and proceeds through a series of biochemical events (signaling pathway phase) which trigger an execution phase." ;
-        oboinowl:hasOBONamespace "biological_process" ;
-        rdfs:subClassOf obo:GO_0012501 ;
-        oboinowl:hasExactSynonym "apoptotic cell death" ;
-        oboinowl:hasExactSynonym "programmed cell death by apoptosis" ;
-        oboinowl:hasNarrowSynonym "apoptosis" ;
-        oboinowl:hasDbXref "Reactome:R-HSA-109581" ;
-        oboinowl:hasDbXref "Wikipedia:Apoptosis" ;
-        oboinowl:hasAlternativeId "GO:0006917" ;
-        obo:BFO_0000051 obo:GO_0097190 ;
-        obo:BFO_0000051 obo:GO_0097194 .
-  
-  - title: Molecular Function - Protein Kinase Activity
-    description: Demonstrates a molecular function term with enzymatic activity definition.
-    rdf: |
-      @prefix obo: <http://purl.obolibrary.org/obo/> .
-      @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-      @prefix oboinowl: <http://www.geneontology.org/formats/oboInOwl#> .
-      @prefix owl: <http://www.w3.org/2002/07/owl#> .
-      
-      obo:GO_0004672 a owl:Class ;
-        oboinowl:id "GO:0004672" ;
-        rdfs:label "protein kinase activity" ;
-        obo:IAO_0000115 "Catalysis of the phosphorylation of an amino acid residue in a protein, usually according to the reaction: a protein + ATP = a phosphoprotein + ADP." ;
-        oboinowl:hasOBONamespace "molecular_function" ;
-        rdfs:subClassOf obo:GO_0016301 ;
-        oboinowl:hasNarrowSynonym "ATP-dependent kinase activity" ;
-        oboinowl:hasExactSynonym "protein kinase" .
-  
-  - title: Cellular Component - Nucleus
-    description: Shows a cellular component with GO slim subset membership.
-    rdf: |
-      @prefix obo: <http://purl.obolibrary.org/obo/> .
-      @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-      @prefix oboinowl: <http://www.geneontology.org/formats/oboInOwl#> .
-      @prefix owl: <http://www.w3.org/2002/07/owl#> .
-      
-      obo:GO_0005634 a owl:Class ;
-        oboinowl:id "GO:0005634" ;
-        rdfs:label "nucleus" ;
-        obo:IAO_0000115 "A membrane-bounded organelle of eukaryotic cells in which chromosomes are housed and replicated. In most cells, the nucleus contains all of the cell's chromosomes except the organellar chromosomes, and is the site of RNA synthesis and processing." ;
-        oboinowl:hasOBONamespace "cellular_component" ;
-        rdfs:subClassOf obo:GO_0043231 ;
-        oboinowl:hasExactSynonym "cell nucleus" ;
-        oboinowl:hasDbXref "Wikipedia:Cell_nucleus" ;
-        oboinowl:inSubset obo:go#goslim_generic .
-  
-  - title: Term with Multiple Cross-References
-    description: Illustrates extensive external database linking.
-    rdf: |
-      @prefix obo: <http://purl.obolibrary.org/obo/> .
-      @prefix oboinowl: <http://www.geneontology.org/formats/oboInOwl#> .
-      @prefix owl: <http://www.w3.org/2002/07/owl#> .
-      
-      obo:GO_0006954 a owl:Class ;
-        oboinowl:id "GO:0006954" ;
-        rdfs:label "inflammatory response" ;
-        oboinowl:hasDbXref "Wikipedia:Inflammation" ;
-        oboinowl:hasDbXref "Reactome:R-HSA-168249" .
-  
-  - title: Obsolete Term
-    description: Demonstrates deprecation marking with owl:deprecated flag.
-    rdf: |
-      @prefix obo: <http://purl.obolibrary.org/obo/> .
-      @prefix owl: <http://www.w3.org/2002/07/owl#> .
-      @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-      @prefix oboinowl: <http://www.geneontology.org/formats/oboInOwl#> .
-      
-      obo:GO_0008189 a owl:Class ;
-        rdfs:label "obsolete apoptosis inhibitor activity" ;
-        owl:deprecated true ;
-        obo:IAO_0000115 "OBSOLETE. The function held by products which directly block any step in the process of apoptosis." ;
-        rdfs:comment "This term was made obsolete because it represents involvement in a biological process." .
+  rdf_prefixes: |
+    @prefix obo: <http://purl.obolibrary.org/obo/> .
+    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+    @prefix oboinowl: <http://www.geneontology.org/formats/oboInOwl#> .
+    @prefix owl: <http://www.w3.org/2002/07/owl#> .
+  entries:
+    - title: Biological Process — Apoptotic Process
+      description: Most representative entity type; shows label, namespace, synonyms, subclass, and DbXref cross-references.
+      rdf: |
+        obo:GO_0006915 a owl:Class ;
+          oboinowl:id "GO:0006915" ;
+          rdfs:label "apoptotic process" ;
+          obo:IAO_0000115 "A programmed cell death process which begins when a cell receives an internal or external signal and proceeds through a series of biochemical events." ;
+          oboinowl:hasOBONamespace "biological_process" ;
+          rdfs:subClassOf obo:GO_0012501 ;
+          oboinowl:hasExactSynonym "apoptotic cell death" ;
+          oboinowl:hasNarrowSynonym "apoptosis" ;
+          oboinowl:hasDbXref "Reactome:R-HSA-109581" ;
+          oboinowl:hasDbXref "Wikipedia:Apoptosis" ;
+          oboinowl:hasAlternativeId "GO:0006917" ;
+          obo:BFO_0000051 obo:GO_0097190 .
+
+    - title: Molecular Function with GO Slim Subset and inSubset IRI
+      description: Illustrates the non-obvious inSubset pattern (IRI-typed, not string) and how slim subsets are modelled.
+      rdf: |
+        obo:GO_0004672 a owl:Class ;
+          oboinowl:id "GO:0004672" ;
+          rdfs:label "protein kinase activity" ;
+          obo:IAO_0000115 "Catalysis of the phosphorylation of an amino acid residue in a protein." ;
+          oboinowl:hasOBONamespace "molecular_function" ;
+          rdfs:subClassOf obo:GO_0016301 ;
+          oboinowl:hasExactSynonym "protein kinase" ;
+          oboinowl:hasDbXref "EC:2.7.11.1" ;
+          oboinowl:inSubset obo:go#goslim_chembl .
+
+    - title: Obsolete Term — Deprecation Pattern
+      description: Shows the owl:deprecated flag and rdfs:comment convention; queries for active terms must filter these out.
+      rdf: |
+        obo:GO_0008189 a owl:Class ;
+          oboinowl:id "GO:0008189" ;
+          rdfs:label "obsolete apoptosis inhibitor activity" ;
+          owl:deprecated true ;
+          obo:IAO_0000115 "OBSOLETE. The function held by products which directly block any step in apoptosis." ;
+          rdfs:comment "This term was made obsolete because it represents involvement in a biological process." .
 
 sparql_query_examples:
-  - title: Retrieve GO term by specific IRI
-    description: Direct lookup using a known GO term IRI - the fastest and most reliable approach. Use this pattern when you have the exact GO term ID.
-    question: Get all information about the apoptotic process term (GO:0006915)
+  - title: Retrieve a GO term by specific IRI
+    description: Direct lookup using a known GO IRI — fastest and most reliable. Use after OLS4:searchClasses to extract the exact ID.
+    question: Get all properties of the apoptotic process term (GO:0006915).
     complexity: basic
     sparql: |
       PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
-      
-      # Direct IRI lookup - fastest approach
-      # Use when you know the exact GO term ID from OLS4:searchClasses
+
+      # Direct IRI lookup — use after OLS4:searchClasses to find the GO ID
       SELECT ?property ?value
       FROM <http://rdfportal.org/ontology/go>
       WHERE {
         obo:GO_0006915 ?property ?value .
       }
       LIMIT 50
-  
+
   - title: Filter terms by namespace using typed predicate
-    description: Retrieve molecular function terms using the structured hasOBONamespace predicate rather than text search. Always use this typed predicate for namespace filtering.
-    question: What are some molecular function terms?
+    description: Retrieves terms from a specific domain using hasOBONamespace — structured alternative to text search on labels.
+    question: List molecular function terms with their definitions.
     complexity: basic
     sparql: |
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
-      
-      # Use typed predicate for namespace filtering - structured approach
-      # Avoids text search by using controlled vocabulary predicate
-      SELECT DISTINCT ?go ?label ?namespace
-      FROM <http://rdfportal.org/ontology/go>
-      WHERE {
-        ?go a <http://www.w3.org/2002/07/owl#Class> ;
-            rdfs:label ?label ;
-            oboinowl:hasOBONamespace ?namespace .
-        FILTER(STR(?namespace) = "molecular_function")
-        FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
-      }
-      LIMIT 10
-  
-  - title: Navigate GO hierarchy using specific IRI
-    description: Query parent-child relationships for a known term using rdfs:subClassOf. Use this to explore hierarchical structure starting from a specific term.
-    question: What are the parent terms of the apoptotic process (GO:0006915)?
-    complexity: intermediate
-    sparql: |
       PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      # Hierarchical navigation using specific IRI
-      # More efficient than text search for known terms
-      SELECT ?child ?childLabel ?parent ?parentLabel
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+      # Use typed predicate for namespace — NOT text search
+      # STR() required for Virtuoso typed literal comparison
+      SELECT ?go ?label ?definition
       FROM <http://rdfportal.org/ontology/go>
       WHERE {
-        ?child rdfs:subClassOf ?parent .
-        ?child rdfs:label ?childLabel .
-        ?parent rdfs:label ?parentLabel .
-        # Use specific IRI for the term of interest
-        FILTER(?child = obo:GO_0006915)
-        FILTER(STRSTARTS(STR(?parent), "http://purl.obolibrary.org/obo/GO_"))
+        ?go a owl:Class ;
+            rdfs:label ?label ;
+            oboinowl:hasOBONamespace ?ns ;
+            obo:IAO_0000115 ?definition .
+        FILTER(STR(?ns) = "molecular_function")
+        FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
+        FILTER NOT EXISTS { ?go owl:deprecated ?dep . FILTER(?dep = true) }
       }
-      LIMIT 10
-  
-  - title: Query multiple GO terms using VALUES
-    description: Efficient retrieval of information for multiple known GO term IRIs. Use VALUES when you need details for several specific terms identified through OLS4 search.
-    question: Get details for several kinase-related GO terms
+      LIMIT 20
+
+  - title: Batch lookup with VALUES using specific IRIs
+    description: Efficiently retrieves details for multiple known GO terms. Workflow — OLS4:searchClasses → extract IRIs → use in VALUES.
+    question: Get namespace and definition for several kinase-related GO terms.
     complexity: intermediate
     sparql: |
       PREFIX obo: <http://purl.obolibrary.org/obo/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
-      
-      # VALUES with specific IRIs - efficient for known terms
-      # Workflow: OLS4:searchClasses("kinase") → extract IRIs → use in VALUES
+
+      # VALUES with specific IRIs — efficient for known terms
       SELECT ?goTerm ?label ?namespace ?definition
       FROM <http://rdfportal.org/ontology/go>
       WHERE {
@@ -219,59 +177,56 @@ sparql_query_examples:
                 oboinowl:hasOBONamespace ?namespace ;
                 obo:IAO_0000115 ?definition .
       }
-  
-  - title: Count terms by namespace with aggregation
-    description: Calculate statistics across GO domains using namespace predicate. Demonstrates how to use structured properties for comprehensive queries.
-    question: How many terms are in each GO domain?
+
+  - title: Navigate GO hierarchy via rdfs:subClassOf
+    description: Retrieves all direct parents of a known term. Use rdfs:subClassOf+ for transitive closure over the full hierarchy.
+    question: What are the direct parent terms of apoptotic process (GO:0006915)?
+    complexity: intermediate
+    sparql: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      # Hierarchical navigation from specific IRI
+      SELECT ?parent ?parentLabel
+      FROM <http://rdfportal.org/ontology/go>
+      WHERE {
+        obo:GO_0006915 rdfs:subClassOf ?parent .
+        ?parent rdfs:label ?parentLabel .
+        FILTER(STRSTARTS(STR(?parent), "http://purl.obolibrary.org/obo/GO_"))
+      }
+      LIMIT 20
+
+  - title: Count active terms per namespace
+    description: Aggregation using typed namespace predicate; excludes deprecated terms to report active-term counts.
+    question: How many active (non-deprecated) terms are in each GO domain?
     complexity: intermediate
     sparql: |
       PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
-      
-      # Aggregation using structured namespace predicate
-      # Uses typed predicate (hasOBONamespace) not text search
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+      # Aggregation using structured namespace predicate + deprecation filter
       SELECT ?namespace (COUNT(DISTINCT ?go) as ?count)
       FROM <http://rdfportal.org/ontology/go>
       WHERE {
         ?go oboinowl:hasOBONamespace ?namespace .
         FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
+        FILTER NOT EXISTS { ?go owl:deprecated ?dep . FILTER(?dep = true) }
       }
       GROUP BY ?namespace
       ORDER BY DESC(?count)
-  
-  - title: Full-text search in labels when necessary
-    description: Uses bif:contains for searching labels when exact IRI is unknown. Text search justified because we're finding terms across the entire ontology by keyword pattern where specific IRIs cannot be determined in advance.
-    question: Find all GO terms related to apoptosis
-    complexity: advanced
-    sparql: |
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
-      
-      # Text search justified: searching unstructured label text for keyword
-      # Use case: Discovery queries where exact GO IRI is unknown
-      # bif:contains uses Virtuoso full-text index for performance
-      SELECT DISTINCT ?go ?label ?namespace
-      FROM <http://rdfportal.org/ontology/go>
-      WHERE {
-        ?go rdfs:label ?label ;
-            oboinowl:hasOBONamespace ?namespace .
-        # bif:contains appropriate here: label is free text, no controlled vocabulary
-        # for label content (though namespace IS controlled)
-        ?label bif:contains "'apoptosis'" .
-        FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
-      }
-      LIMIT 20
-  
-  - title: Complex hierarchical query with transitivity
-    description: Navigate GO hierarchy to find all descendants of a specific term using property paths. Demonstrates efficient hierarchical traversal with specific IRI as starting point.
-    question: Find all terms that are descendants of kinase activity (GO:0016301)
+
+  - title: All descendants of a term via transitive hierarchy
+    description: Finds all sub-terms of a parent using property path rdfs:subClassOf+. Corrects circular-reasoning trap — use a parent IRI to reach the complete dataset, not individual search results.
+    question: Find all descendants of kinase activity (GO:0016301).
     complexity: advanced
     sparql: |
       PREFIX obo: <http://purl.obolibrary.org/obo/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
-      
-      # Hierarchical navigation with specific IRI and property paths
-      # Use + operator for transitive closure (all descendants, any depth)
+
+      # Transitive closure from specific parent IRI — comprehensive, not circular
+      # Workflow: OLS4:searchClasses → find parent "kinase activity" = GO:0016301
+      #           → query all descendants rather than enumerating search hits
       SELECT DISTINCT ?descendant ?label ?namespace
       FROM <http://rdfportal.org/ontology/go>
       WHERE {
@@ -280,7 +235,32 @@ sparql_query_examples:
                     oboinowl:hasOBONamespace ?namespace .
         FILTER(STRSTARTS(STR(?descendant), "http://purl.obolibrary.org/obo/GO_"))
       }
-      LIMIT 50
+      LIMIT 100
+
+  - title: Full-text discovery search across term labels
+    description: Searches all GO labels for a keyword when the exact IRI is unknown. Text search justified — label content is unstructured free text with no controlled-vocabulary alternative; bif:contains uses Virtuoso indexed full-text search.
+    question: Find all GO terms whose label mentions apoptosis.
+    complexity: advanced
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+      # Text search gate check complete:
+      # - namespace IS a controlled vocabulary → use hasOBONamespace predicate (not searched here)
+      # - label content IS free text → no structured alternative → bif:contains justified
+      # - Virtuoso backend → bif:contains (indexed) preferred over FILTER(CONTAINS())
+      # Split property path before bif:contains (Virtuoso requirement)
+      SELECT DISTINCT ?go ?label ?namespace
+      FROM <http://rdfportal.org/ontology/go>
+      WHERE {
+        ?go a owl:Class ;
+            oboinowl:hasOBONamespace ?namespace ;
+            rdfs:label ?label .
+        ?label bif:contains "'apoptosis'" .
+        FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
+      }
+      LIMIT 20
 
 cross_database_queries:
   shared_endpoint: primary
@@ -291,21 +271,17 @@ cross_database_queries:
     - nando
     - bacdive
     - mediadive
-  mie_files_consulted:
-    - mesh
-    - mondo
-    - taxonomy
   examples:
-    - title: Link GO terms to genes via TogoID mappings
+    - title: Link GO terms to NCBI Gene IDs via TogoID
       description: |
-        Connects GO terms to NCBI Gene IDs using pre-computed TogoID relation graphs.
-        
+        Connects GO terms to gene IDs using pre-computed TogoID relation graphs.
+
         Structured linking strategy:
-        - GO graph: Uses specific GO term IRIs (not text search)
-        - TogoID graph: Pre-computed ncbigene-go mappings link gene IDs to GO IRIs
-        - Direct IRI matching provides comprehensive, efficient integration
-        
-        Use case: Gene annotation, pathway enrichment analysis, functional genomics
+        - GO graph: specific GO term IRIs used directly (no text search)
+        - TogoID graph: togoid:TIO_000004 predicate links gene IRIs to GO term IRIs
+        - Direct IRI matching; fully structured cross-database join
+
+        Use case: gene annotation, pathway enrichment, functional genomics.
       databases_used:
         - go
         - togoid
@@ -314,42 +290,38 @@ cross_database_queries:
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         PREFIX obo: <http://purl.obolibrary.org/obo/>
         PREFIX togoid: <http://togoid.dbcls.jp/ontology#>
-        
-        # Structured linking via specific GO term IRIs in TogoID relations
+
         SELECT DISTINCT ?goTerm ?goLabel ?geneId
         WHERE {
           GRAPH <http://rdfportal.org/dataset/togoid/relation/ncbigene-go> {
             ?geneId togoid:TIO_000004 ?goTerm .
           }
-          
           GRAPH <http://rdfportal.org/ontology/go> {
-            # Use specific GO term IRIs from VALUES - no text search
             VALUES ?goTerm {
               obo:GO_0006915  # apoptotic process
-              obo:GO_0097190  # apoptotic signaling
+              obo:GO_0097190  # apoptotic signaling pathway
             }
             ?goTerm rdfs:label ?goLabel .
-            FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
           }
         }
         LIMIT 20
       notes: |
-        - Linking via: Shared GO term IRIs (structured approach)
+        - Linking via: GO term IRIs (structured, no text search)
         - Performance: ~1s (Tier 1)
-        - TogoID provides pre-computed mappings for efficiency
-        - No text search - uses specific IRIs for comprehensive results
-    
-    - title: Integrate GO with disease ontology (MONDO)
+        - MIE files checked: go
+
+    - title: Integrate GO cellular components with MONDO diseases by keyword
       description: |
-        Correlates cellular component terms with disease contexts using keyword-based integration.
-        
+        Correlates GO cellular component terms with disease concepts across ontologies.
+
         Text search justification:
-        1. Examined both GO and MONDO MIE files - no direct semantic links exist
-        2. No shared classification predicates between ontologies
-        3. Integration requires keyword matching across ontology labels
-        4. Therefore: bif:contains necessary for cross-ontology discovery
-        
-        Use case: Disease-relevant cellular locations, mechanism research
+        1. Read GO and MONDO MIE files — no shared classification predicates exist
+        2. No common IRI namespace links these ontologies
+        3. Keyword matching is the only available integration strategy
+        4. bif:contains (indexed) used on Virtuoso backend
+        5. xsd:string cast required for namespace literal filter (Virtuoso)
+
+        Use case: disease-relevant cellular locations, mechanism research.
       databases_used:
         - go
         - mondo
@@ -359,440 +331,188 @@ cross_database_queries:
         PREFIX owl: <http://www.w3.org/2002/07/owl#>
         PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
         PREFIX obo: <http://purl.obolibrary.org/obo/>
-        
-        # Text search justified: no direct GO-MONDO semantic links exist
-        # Keyword integration required for cross-ontology correlation
+
+        # Text search justified: no direct GO-MONDO semantic links (MIE files verified)
+        # ^^xsd:string cast required for namespace filter on Virtuoso
         SELECT DISTINCT ?goTerm ?goLabel ?disease ?diseaseLabel
         WHERE {
           GRAPH <http://rdfportal.org/ontology/go> {
             ?goTerm a owl:Class ;
                     rdfs:label ?goLabel ;
                     oboinowl:hasOBONamespace "cellular_component"^^xsd:string .
-            # Text search appropriate: finding mitochondria-related terms
-            ?goLabel bif:contains "'mitochondri*'" option (score ?sc) .
+            ?goLabel bif:contains "'mitochondri*'" .
             FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
           }
-          
           GRAPH <http://rdfportal.org/ontology/mondo> {
             ?disease a owl:Class ;
                      rdfs:label ?diseaseLabel .
-            ?diseaseLabel bif:contains "'mitochondrial'" option (score ?sc2) .
+            ?diseaseLabel bif:contains "'mitochondrial'" .
             FILTER(STRSTARTS(STR(?disease), "http://purl.obolibrary.org/obo/MONDO_"))
           }
         }
-        ORDER BY DESC(?sc)
-        LIMIT 10
+        LIMIT 20
       notes: |
-        - Text search used because no direct GO-MONDO links exist
-        - ^^xsd:string required for namespace filter (Virtuoso requirement)
-        - bif:contains uses Virtuoso's full-text index
+        - Text search used because no direct GO-MONDO structured links exist
         - Performance: ~3s (Tier 2)
-    
-    - title: Cross-reference GO with MeSH medical terminology
-      description: |
-        Bridges molecular biology and clinical medicine by finding related inflammatory processes.
-        
-        Text search justification:
-        1. GO and MeSH use different conceptual frameworks (molecular vs clinical)
-        2. No shared classification IRIs or linking predicates
-        3. Keyword matching required for terminology mapping
-        4. Use case requires discovering related concepts across vocabularies
-        
-        Use case: Terminology mapping, literature curation, clinical translation
-      databases_used:
-        - go
-        - mesh
-      complexity: intermediate
-      sparql: |
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
-        
-        # Keyword-based integration - no direct semantic links available
-        SELECT DISTINCT ?goTerm ?goLabel ?meshTerm ?meshLabel
-        WHERE {
-          GRAPH <http://rdfportal.org/ontology/go> {
-            ?goTerm a owl:Class ;
-                    rdfs:label ?goLabel ;
-                    oboinowl:hasOBONamespace ?ns .
-            FILTER(STR(?ns) = "biological_process")
-            ?goLabel bif:contains "'inflammatory'" option (score ?sc) .
-            FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
-          }
-          
-          GRAPH <http://id.nlm.nih.gov/mesh> {
-            ?meshTerm a meshv:TopicalDescriptor ;
-                      rdfs:label ?meshLabel .
-            ?meshLabel bif:contains "'inflammation'" option (score ?sc2) .
-          }
-        }
-        ORDER BY DESC(?sc)
-        LIMIT 10
-      notes: |
-        - Uses keyword matching for cross-ontology integration
-        - Performance: ~2s (Tier 2)
-        - No structured alternative exists between GO and MeSH
+        - MIE files checked: go, mondo
 
 cross_references:
   - pattern: oboinowl:hasDbXref
     description: |
-      Cross-references link GO terms to external databases including pathway databases,
-      enzyme classification, sequence databases, and general knowledge resources.
-      Enables integrated analysis across biological knowledge domains.
-      
-      Coverage: ~17.7% of GO terms have external cross-references.
+      String-typed cross-references (not IRIs) linking GO terms to external databases.
+      Pattern: "PREFIX:identifier" e.g. "Reactome:R-HSA-109581", "EC:2.7.11.1".
+      Coverage: ~17.9% of all GO terms (8,618 / 48,251). Filter using REGEX or STRSTARTS on
+      the string value to target a specific database.
     databases:
-      pathways:
-        - "Reactome: biochemical pathways (extensive)"
-        - "KEGG_REACTION: metabolic reactions"
-        - "RHEA: enzyme reactions"
-        - "MetaCyc: metabolic pathways"
-        - "UM-BBD: microbial biocatalytic reactions"
+      pathway:
+        - "MetaCyc: ~5,049 terms"
+        - "RHEA: ~4,698 terms"
+        - "Reactome: ~2,316 terms"
+        - "KEGG_REACTION: ~1,739 terms"
+        - "UM-BBD_reactionID: ~269 terms"
       classification:
-        - "EC: enzyme classification (extensive)"
-        - "NIF_Subcellular: subcellular structures"
+        - "EC: ~4,639 terms (enzyme classification)"
+        - "NIF_Subcellular: ~221 terms"
       general:
-        - "Wikipedia: extensive coverage"
+        - "Wikipedia: ~770 terms"
     sparql: |
       PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
+
       SELECT DISTINCT ?go ?label ?xref
       FROM <http://rdfportal.org/ontology/go>
       WHERE {
         ?go rdfs:label ?label ;
             oboinowl:hasDbXref ?xref .
         FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
-        FILTER(REGEX(?xref, "^Reactome:"))
+        FILTER(STRSTARTS(STR(?xref), "Reactome:"))
       }
       LIMIT 20
 
 architectural_notes:
   query_strategy:
-    - "MANDATORY FIRST STEP: Examine this MIE file's shape_expressions section before any comprehensive query"
-    - "Exploratory: Use OLS4:searchClasses to find GO term examples and extract specific IRIs"
-    - "Comprehensive: Use specific GO term IRIs in queries (e.g., obo:GO_0006915)"
-    - "Multiple terms: Use VALUES with IRIs for efficient batch queries"
-    - "Hierarchy: Use rdfs:subClassOf with specific IRIs for parent/child relationships"
-    - "Namespace filtering: Use oboinowl:hasOBONamespace typed predicate (NOT text search)"
-    - "Text search: Use bif:contains ONLY when searching across all terms for keywords"
-    - "Priority: Specific IRIs > VALUES with IRIs > Namespace predicates > Hierarchical navigation > Text search"
-  
+    - "MANDATORY FIRST STEP: Read this MIE file; check critical_warnings before writing any query"
+    - "Exploratory: OLS4:searchClasses('keyword') → inspect results → extract specific GO IRIs"
+    - "Comprehensive: use specific IRIs (direct) or VALUES (batch); never enumerate search results in VALUES for counts"
+    - "Hierarchy: use rdfs:subClassOf+ with a specific parent IRI to reach the full descendant set"
+    - "Namespace filtering: use oboinowl:hasOBONamespace typed predicate — NOT text search"
+    - "Text search: bif:contains (Virtuoso indexed) as last resort for unstructured label/comment fields only"
+    - "Priority: Specific IRIs > VALUES with IRIs > Typed predicates > Hierarchical navigation > bif:contains > FILTER(CONTAINS())"
+
   schema_design:
     - "Three independent namespaces: biological_process, molecular_function, cellular_component"
-    - "Key structured predicates: oboinowl:hasOBONamespace (typed), rdfs:subClassOf (hierarchy)"
-    - "Hierarchical DAG structure via rdfs:subClassOf (not a tree - terms can have multiple parents)"
-    - "GO IDs format: GO:NNNNNNN (7 digits)"
-    - "IRI pattern: http://purl.obolibrary.org/obo/GO_NNNNNNN"
-    - "Four synonym types: exact, related, narrow, broad (all accessible via predicates)"
-    - "Alternative IDs track merged/obsoleted terms"
-    - "GO slim subsets (oboinowl:inSubset) provide focused term collections"
-  
+    - "IRI pattern: http://purl.obolibrary.org/obo/GO_NNNNNNN (7-digit zero-padded)"
+    - "Hierarchical DAG via rdfs:subClassOf (NOT a tree — terms can have multiple parents)"
+    - "oboinowl:hasDbXref is STRING-typed (not IRI); use STRSTARTS(STR(?xref), 'EC:') to filter by db"
+    - "oboinowl:inSubset is IRI-typed (not string); e.g. obo:go#goslim_generic"
+    - "OWL restriction nodes appear in rdfs:subClassOf objects — filter with STRSTARTS to get only GO parents"
+    - "Four synonym predicates: hasExactSynonym, hasRelatedSynonym, hasNarrowSynonym, hasBroadSynonym"
+    - "obo:BFO_0000051 (has_part) encodes compositional relationships between terms"
+
   performance:
-    - "CRITICAL: Always use FROM <http://rdfportal.org/ontology/go> clause"
-    - "STRSTARTS filter prevents processing non-GO ontologies in the shared graph"
-    - "Use specific GO term IRIs when known (fastest approach)"
-    - "bif:contains leverages Virtuoso full-text index (much faster than REGEX)"
-    - "STR() function required for namespace string comparisons in Virtuoso"
-    - "Filter by namespace early to reduce dataset size"
-    - "DISTINCT recommended due to potential duplicate rows from OWL axioms"
-    - "Property path queries (rdfs:subClassOf+) can be slow - use with LIMIT"
-  
+    - "CRITICAL: Always include FROM <http://rdfportal.org/ontology/go> — omitting it queries all ontologies and times out"
+    - "CRITICAL: Always add STRSTARTS(STR(?go), 'http://purl.obolibrary.org/obo/GO_') to exclude non-GO classes"
+    - "Use DISTINCT — OWL axioms generate duplicate rows"
+    - "bif:contains: split property paths before usage (Virtuoso requirement) — ?go rdfs:label ?lbl . ?lbl bif:contains 'kw'"
+    - "Property path (rdfs:subClassOf+) is slower — always pair with LIMIT"
+    - "Add namespace filter early (reduces scope from 48K to ~30K / 13K / 5K)"
+    - "Test with LIMIT 10 before running full aggregation queries"
+
   data_integration:
-    - "oboinowl:hasDbXref: Links to Reactome, EC, RHEA, Wikipedia, KEGG, MetaCyc, NIF"
-    - "TogoID: ncbigene-go, ensembl_transcript-go mappings (use specific IRIs)"
-    - "Shares 'primary' endpoint with: mesh, taxonomy, mondo, nando, bacdive, mediadive"
-    - "Cross-database: Use specific GO IRIs in TogoID relations when possible"
-    - "Keyword integration with MONDO/MeSH when no direct links exist (documented)"
-  
+    - "oboinowl:hasDbXref: STRING-typed links to MetaCyc, RHEA, EC, Reactome, KEGG, Wikipedia (see cross_references)"
+    - "TogoID on 'primary' endpoint: ncbigene-go and ensembl_transcript-go relation graphs (structured, IRI-based)"
+    - "Co-located ontologies on 'primary': mesh, taxonomy, mondo, nando, bacdive, mediadive"
+    - "Cross-ontology (GO ↔ MONDO, GO ↔ MeSH): no direct structured links; keyword integration only"
+
   data_quality:
-    - "Duplicate rows common due to OWL axioms - always use DISTINCT"
-    - "owl:deprecated marks obsolete terms (~25% of total)"
-    - "hasAlternativeId tracks merged terms and ID updates"
-    - "IAO_0000115 (definitions) present for all active terms (100% coverage)"
-    - "BFO_0000051 (has_part) relations represent compositional structure"
-    - "Monthly updates may change term relationships and definitions"
+    - "~9,512 terms are deprecated (owl:deprecated true, ~19.7%); add FILTER NOT EXISTS block for active-only queries"
+    - "Duplicate rows common due to OWL axioms — use DISTINCT in all SELECT queries"
+    - "oboinowl:hasAlternativeId tracks merged/split terms and historical ID changes"
+    - "IAO_0000115 definitions present for virtually all active terms"
+    - "Monthly releases may change term hierarchy, labels, and definition text"
+
+  text_search_justification:
+    - "Queries in sparql_query_examples using text search: 1 (query 7)"
+    - "Fields where bif:contains is legitimate: rdfs:label, rdfs:comment, obo:IAO_0000115 (free text)"
+    - "Structured alternatives confirmed absent for label-based keyword discovery"
+    - "hasOBONamespace IS a controlled vocabulary — always use typed predicate, never text search"
+    - "Cross-database GO↔MONDO query uses text search — documented; no shared structured link exists"
 
 data_statistics:
-  total_terms: 48165
-  verified_date: "2025-02-10"
-  verification_method: "COUNT query on hasOBONamespace predicate"
-  verification_query: |
-    PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
-    
-    SELECT (COUNT(DISTINCT ?go) as ?count)
-    FROM <http://rdfportal.org/ontology/go>
-    WHERE {
-      ?go oboinowl:hasOBONamespace ?ns .
-      FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
-    }
-  
+  total_terms: 48251
+  verified_date: "2026-04-21"
+  verification_method: "COUNT DISTINCT on hasOBONamespace predicate with STRSTARTS filter"
+
   by_namespace:
-    biological_process: 30804
-    molecular_function: 12793
-    cellular_component: 4568
-    verified_date: "2025-02-10"
-    calculation: "GROUP BY namespace using hasOBONamespace predicate"
-    verification_query: |
-      PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
-      
-      SELECT ?namespace (COUNT(DISTINCT ?go) as ?count)
-      FROM <http://rdfportal.org/ontology/go>
-      WHERE {
-        ?go oboinowl:hasOBONamespace ?namespace .
-        FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
-      }
-      GROUP BY ?namespace
-  
+    biological_process: 30840
+    molecular_function: 12825
+    cellular_component: 4586
+    verified_date: "2026-04-21"
+    calculation: "GROUP BY hasOBONamespace"
+
+  deprecated:
+    count: 9512
+    percentage: "19.7%"
+    active_terms: 38739
+    verified_date: "2026-04-21"
+    calculation: "COUNT DISTINCT owl:deprecated = true"
+
   coverage:
-    with_definitions: "100% (48,165/48,165)"
-    with_synonyms: "66.3% (31,914/48,165)"
-    with_xrefs: "17.7% (8,515/48,165)"
-    verified_date: "2025-02-10"
-    calculation: "OPTIONAL patterns with FILTER to count terms having each property"
-    verification_query: |
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
-      
-      SELECT 
-        (COUNT(DISTINCT ?go) as ?total)
-        (COUNT(DISTINCT ?goWithDef) as ?with_def)
-        (COUNT(DISTINCT ?goWithSyn) as ?with_syn)
-        (COUNT(DISTINCT ?goWithXref) as ?with_xref)
-      FROM <http://rdfportal.org/ontology/go>
-      WHERE {
-        ?go oboinowl:hasOBONamespace ?ns .
-        FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
-        
-        OPTIONAL { 
-          ?goWithDef obo:IAO_0000115 ?def .
-          FILTER(?goWithDef = ?go)
-        }
-        OPTIONAL { 
-          ?goWithSyn oboinowl:hasExactSynonym|oboinowl:hasRelatedSynonym|oboinowl:hasNarrowSynonym|oboinowl:hasBroadSynonym ?syn .
-          FILTER(?goWithSyn = ?go)
-        }
-        OPTIONAL { 
-          ?goWithXref oboinowl:hasDbXref ?xref .
-          FILTER(?goWithXref = ?go)
-        }
-      }
-  
-  performance_tiers:
-    tier_1_under_1s:
-      - "Direct IRI lookup (obo:GO_NNNNNNN)"
-      - "VALUES with specific IRIs"
-      - "Namespace filtering with small result sets"
-      - "TogoID cross-database queries with specific IRIs"
-    tier_2_1_to_3s:
-      - "bif:contains text search in labels"
-      - "Simple aggregations with namespace filter"
-      - "Cross-database keyword integration"
-    tier_3_3_to_10s:
-      - "Complex hierarchical queries with property paths"
-      - "Large aggregations without filters"
-      - "Multiple cross-database joins"
-  
-  staleness_warning: "GO updated monthly; term counts and relationships may change. Statistics current as of verification date."
+    with_definitions: "~100% (active terms)"
+    with_synonyms: "~66.3% (31,914 / 48,165; prior release)"
+    with_xrefs: "17.9% (8,618 / 48,251)"
+    verified_date: "2026-04-21"
+    calculation: "COUNT DISTINCT on respective optional predicates"
+
+  staleness_warning: "GO updated monthly; term counts and relationships may change. Re-verify statistics after each release."
 
 anti_patterns:
-  - title: "Skipping Schema Check Before Text Search"
-    problem: "Using text search without examining MIE file shape_expressions for structured predicates. This is the most common error leading to incomplete results."
+  - title: "Text Search When Structured Predicate Exists (Namespace)"
+    problem: "Using bif:contains to search for a namespace value when hasOBONamespace typed predicate is available."
     wrong_sparql: |
-      # WRONG: Immediately using text search without checking MIE schema
-      # This misses terms that could be found via structured predicates
+      # WRONG: text search for a controlled vocabulary value
       SELECT ?go ?label
       FROM <http://rdfportal.org/ontology/go>
       WHERE {
         ?go rdfs:label ?label .
         ?label bif:contains "'molecular function'"
       }
-      LIMIT 20
     correct_sparql: |
       PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      # CORRECT workflow:
-      # 1. Examined shape_expressions in this MIE file
-      # 2. Found: oboinowl:hasOBONamespace predicate with controlled values
-      # 3. Use structured predicate instead of text search:
-      
-      SELECT ?go ?label ?namespace
-      FROM <http://rdfportal.org/ontology/go>
-      WHERE {
-        ?go a <http://www.w3.org/2002/07/owl#Class> ;
-            rdfs:label ?label ;
-            oboinowl:hasOBONamespace ?namespace .
-        # Use typed predicate with controlled value
-        FILTER(STR(?namespace) = "molecular_function")
-        FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
-      }
-      LIMIT 20
-    explanation: |
-      ALWAYS examine this MIE file's shape_expressions section FIRST.
-      GO has a typed predicate (hasOBONamespace) for namespace filtering.
-      Using structured predicates provides comprehensive, accurate results.
-      Text search would miss terms or return false positives.
-  
-  - title: "Text Search When Specific IRI Available"
-    problem: "Using bif:contains to search for known GO terms is 10-100x slower than direct IRI lookup."
-    wrong_sparql: |
-      # Slow: searching for known term via label
-      SELECT ?go ?label
-      FROM <http://rdfportal.org/ontology/go>
-      WHERE {
-        ?go rdfs:label ?label .
-        ?label bif:contains "'apoptotic process'" .
-      }
-    correct_sparql: |
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      # Fast: direct IRI lookup after using OLS4:searchClasses
-      # Workflow: OLS4:searchClasses("apoptotic process") → extract GO:0006915 → use IRI
-      SELECT ?property ?value
-      FROM <http://rdfportal.org/ontology/go>
-      WHERE {
-        obo:GO_0006915 ?property ?value .
-      }
-    explanation: |
-      Use OLS4:searchClasses to find the GO IRI first, then query by specific IRI.
-      Direct IRI lookup is orders of magnitude faster than text search.
-      Appropriate workflow: Search tool → Extract IRI → Query with IRI.
-  
-  - title: "Circular Reasoning with Search Results"
-    problem: "Using search results in VALUES for comprehensive questions gives circular, incomplete results."
-    wrong_sparql: |
-      # WRONG: After OLS4:searchClasses("kinase") returns 10 results,
-      # using those 10 IDs in VALUES for a COUNT query:
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      
-      SELECT (COUNT(?go) as ?count)
-      FROM <http://rdfportal.org/ontology/go>
-      WHERE {
-        # Only counts the 10 terms you already found!
-        VALUES ?go { obo:GO_0004672 obo:GO_0016301 ... }
-        ?go a <http://www.w3.org/2002/07/owl#Class> .
-      }
-      # Result: 10 (circular - only counted what you already found!)
-    correct_sparql: |
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
-      
-      # CORRECT: Use search to discover parent term, then query all descendants
-      # Workflow: OLS4:searchClasses → found "kinase activity" = GO:0016301
-      # Now find ALL descendants via hierarchy:
-      
-      SELECT (COUNT(DISTINCT ?go) as ?count)
-      FROM <http://rdfportal.org/ontology/go>
-      WHERE {
-        # Find all descendants of the parent term
-        ?go rdfs:subClassOf+ obo:GO_0016301 .
-        FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
-      }
-      # Result: ~380+ kinase-related terms (comprehensive!)
-    explanation: |
-      Search tools find examples to discover patterns (like parent terms).
-      Use discovered IRIs to query the COMPLETE dataset, not just the examples.
-      For hierarchical queries, use parent term IRI with rdfs:subClassOf+.
-  
-  - title: "Missing FROM Clause"
-    problem: "Queries timeout or return incorrect results without explicit graph specification on shared endpoint."
-    wrong_sparql: |
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      # This will timeout or fail on shared endpoint
-      SELECT ?go ?label
-      WHERE { 
-        ?go rdfs:label ?label .
-      }
-    correct_sparql: |
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      # Always specify the graph on shared endpoints
-      SELECT ?go ?label
-      FROM <http://rdfportal.org/ontology/go>
-      WHERE { 
-        ?go rdfs:label ?label .
-        FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
-      }
-      LIMIT 10
-    explanation: |
-      FROM clause is mandatory for GO queries on the shared 'primary' endpoint.
-      STRSTARTS filter prevents processing other ontologies (MeSH, MONDO, etc.).
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
 
-common_errors:
-  - error: "Query timeout or no results"
-    causes:
-      - "Missing FROM <http://rdfportal.org/ontology/go> clause"
-      - "Aggregating 48K+ terms without filters"
-      - "Complex COUNT/GROUP BY without LIMIT"
-      - "Property path queries without constraints"
-    solutions:
-      - "Always add FROM clause at the beginning"
-      - "Add namespace filter (hasOBONamespace) to reduce dataset size"
-      - "Use LIMIT appropriately for exploration"
-      - "Add STRSTARTS filter to exclude non-GO ontologies"
-      - "Test queries with LIMIT 10 first, then expand"
-    example_fix: |
-      PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
-      
-      # Always include FROM and filters
-      SELECT ?namespace (COUNT(?go) as ?count)
-      FROM <http://rdfportal.org/ontology/go>
-      WHERE {
-        ?go oboinowl:hasOBONamespace ?namespace .
-        FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
-      }
-      GROUP BY ?namespace
-  
-  - error: "Empty results with namespace filter"
-    causes:
-      - "Datatype mismatch (comparing typed literal with string)"
-      - "Invalid namespace value"
-      - "Missing FROM clause"
-      - "Typo in namespace name"
-    solutions:
-      - "Use STR() function: FILTER(STR(?ns) = 'molecular_function')"
-      - "Valid values: biological_process, molecular_function, cellular_component"
-      - "Test filter independently before combining with other conditions"
-      - "Check spelling: cellular_component (not cell_component)"
-    example_fix: |
-      PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
-      
-      # Correct namespace filtering with STR()
+      # Correct: use typed predicate with controlled value
       SELECT ?go ?label
       FROM <http://rdfportal.org/ontology/go>
       WHERE {
-        ?go rdfs:label ?label ;
+        ?go a owl:Class ;
+            rdfs:label ?label ;
             oboinowl:hasOBONamespace ?ns .
-        # Use STR() for comparison
         FILTER(STR(?ns) = "molecular_function")
         FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
       }
-      LIMIT 10
-  
-  - error: "Incomplete comprehensive results from text search"
-    causes:
-      - "Skipped examining MIE schema for structured predicates"
-      - "Used text search when structured properties available"
-      - "Missing synonyms or related terms in text search"
-    solutions:
-      - "ALWAYS examine this MIE file's shape_expressions FIRST"
-      - "Use OLS4:searchClasses to find examples, extract IRIs, use in queries"
-      - "For hierarchies: use parent term IRI with rdfs:subClassOf+"
-      - "For namespaces: use hasOBONamespace typed predicate"
-      - "Text search only when NO structured alternative exists"
-    example_fix: |
-      # Instead of text search for "all kinase terms":
-      # 1. OLS4:searchClasses("kinase") → find parent "kinase activity" = GO:0016301
-      # 2. Query all descendants:
-      
+      LIMIT 20
+    explanation: "Always check shape_expressions first. hasOBONamespace is a structured predicate with three known controlled values."
+
+  - title: "Skipping Schema Check Before Text Search"
+    problem: "Jumping to text search without examining MIE shape_expressions and architectural_notes for structured alternatives."
+    wrong_sparql: |
+      # WRONG: no schema checked — immediate text search
+      SELECT ?go ?label
+      FROM <http://rdfportal.org/ontology/go>
+      WHERE {
+        ?go rdfs:label ?label .
+        ?label bif:contains "'kinase'"
+      }
+    correct_sparql: |
       PREFIX obo: <http://purl.obolibrary.org/obo/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
+
+      # Correct workflow:
+      # 1. get_MIE_file('go') → read shape_expressions
+      # 2. OLS4:searchClasses('kinase') → find parent term GO:0016301
+      # 3. Use parent IRI for transitive hierarchy query:
       SELECT DISTINCT ?go ?label
       FROM <http://rdfportal.org/ontology/go>
       WHERE {
@@ -800,4 +520,83 @@ common_errors:
             rdfs:label ?label .
         FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
       }
-      LIMIT 100
+      LIMIT 50
+    explanation: "Schema check reveals structured alternatives. Here, hierarchical traversal from a parent IRI is faster and more complete than label-based text search."
+
+  - title: "Circular Reasoning — Enumerating Search Results in VALUES for Counts"
+    problem: "Putting individual search hits into VALUES and then counting produces a circular result bounded by the search limit."
+    wrong_sparql: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      # WRONG: counts only the 10 results you already found
+      SELECT (COUNT(?go) as ?count)
+      FROM <http://rdfportal.org/ontology/go>
+      WHERE {
+        VALUES ?go { obo:GO_0004672 obo:GO_0016301 ... }  # only 10 search hits
+        ?go a <http://www.w3.org/2002/07/owl#Class> .
+      }
+    correct_sparql: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      # Correct: use discovered parent IRI to query the complete dataset
+      SELECT (COUNT(DISTINCT ?go) as ?count)
+      FROM <http://rdfportal.org/ontology/go>
+      WHERE {
+        ?go rdfs:subClassOf+ obo:GO_0016301 .
+        FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
+      }
+    explanation: "Search tools find examples to discover concept IRIs (e.g., parent terms). Use those IRIs to query the full dataset, not to enumerate individual results."
+
+  - title: "Missing FROM Clause or STRSTARTS Filter"
+    problem: "Omitting the FROM clause or the STRSTARTS namespace filter on the shared endpoint causes timeouts and incorrect results."
+    wrong_sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      # WRONG: queries ALL ontologies on the shared endpoint
+      SELECT ?go ?label WHERE {
+        ?go rdfs:label ?label .
+      }
+    correct_sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      # Both FROM clause and STRSTARTS filter are required
+      SELECT ?go ?label
+      FROM <http://rdfportal.org/ontology/go>
+      WHERE {
+        ?go rdfs:label ?label .
+        FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
+      }
+      LIMIT 20
+    explanation: "FROM scopes the query to GO; STRSTARTS excludes BFO, RO, and other OWL classes sharing the graph."
+
+common_errors:
+  - error: "Query timeout or empty results"
+    causes:
+      - "Missing FROM <http://rdfportal.org/ontology/go> clause"
+      - "Missing STRSTARTS filter — processes non-GO classes in the shared graph"
+      - "Large aggregation without namespace or deprecation filter"
+      - "Property path query (rdfs:subClassOf+) without LIMIT"
+    solutions:
+      - "Add FROM clause; add STRSTARTS(STR(?go), 'http://purl.obolibrary.org/obo/GO_')"
+      - "Add namespace filter (hasOBONamespace) to reduce scope early"
+      - "Add LIMIT to every exploratory query"
+      - "Test aggregations on a single namespace before running over all three"
+
+  - error: "Namespace filter returns 0 rows"
+    causes:
+      - "Typed literal comparison without STR(): FILTER(?ns = 'biological_process') silently fails"
+      - "Typo in namespace value (e.g., 'cellular_components' vs 'cellular_component')"
+      - "Missing FROM clause"
+    solutions:
+      - "Always wrap: FILTER(STR(?ns) = 'biological_process')"
+      - "Valid values: biological_process | molecular_function | cellular_component"
+      - "Diagnose by running: SELECT DISTINCT ?ns FROM <...> WHERE { ?go oboinowl:hasOBONamespace ?ns } LIMIT 5"
+
+  - error: "Results include deprecated / obsolete terms"
+    causes:
+      - "No deprecation filter — ~19.7% of terms carry owl:deprecated true"
+      - "Hierarchy queries (rdfs:subClassOf+) traverse into deprecated branches"
+    solutions:
+      - "Add: FILTER NOT EXISTS { ?go owl:deprecated ?dep . FILTER(?dep = true) }"
+      - "Check hasAlternativeId for merged terms if a known GO ID returns nothing"

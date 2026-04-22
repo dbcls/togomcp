@@ -3,9 +3,9 @@ schema_info:
   description: |
     The PDB RDF database contains 3D structural data for biological macromolecules
     (proteins, nucleic acids, complexes) derived from X-ray crystallography, NMR,
-    and cryo-EM. Contains 248K+ entries with experimental methods, structural
+    and cryo-EM. Contains 248,874 entries with experimental methods, structural
     coordinates, resolution data, sequences, biological assemblies, and cross-references
-    to UniProt, EMDB, GenBank, and publications.
+    to UniProt, taxonomy, EMDB, and publications. Updated weekly.
   endpoint: https://rdfportal.org/pdb/sparql
   base_uri: http://rdf.wwpdb.org/pdb/
   graphs:
@@ -14,17 +14,31 @@ schema_info:
   kw_search_tools:
     - search_pdb_entity
   version:
-    mie_version: "4.0"
-    mie_created: "2025-02-21"
-    data_version: Current
+    mie_version: "5.0"
+    mie_created: "2025-07-06"
+    data_version: Current (weekly updates)
     update_frequency: Weekly
-  license:
-    data_license: Public Domain (CC0)
-    license_url: https://www.wwpdb.org/policy
   access:
-    rate_limiting: Reasonable use
-    max_query_timeout: 60 seconds
-    backend: Virtuoso
+    backend: "Virtuoso"
+
+# Critical warnings — read FIRST; these cause silent failures.
+critical_warnings: |
+  - MANDATORY NAMESPACE: Use pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
+    The old pdbx-v50.owl# namespace is inactive and silently returns 0 results.
+
+  - MANDATORY FILTER (entry counts): Add
+      FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
+    Omitting it inflates counts to ~548K by including chemical component (cc:/) datablocks.
+    PDB structural entries = ~248,874; all datablocks = ~548,180.
+
+  - MANDATORY GRAPH CLAUSE: Always include
+      FROM <http://rdfportal.org/dataset/pdbj>
+    Omitting it causes timeout or empty results.
+
+  - ORGANISM FILTER: Use pdbo:link_to_taxonomy_source with UniProt taxonomy IRIs
+    (e.g. <http://purl.uniprot.org/taxonomy/9606> for human).
+    Text search on pdbo:entity_src_gen.pdbx_gene_src_scientific_name is slow and
+    incomplete; only ~87.9% of entries have taxonomy source annotations.
 
 shape_expressions: |
   PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
@@ -33,19 +47,16 @@ shape_expressions: |
   PREFIX dct:  <http://purl.org/dc/terms/>
   PREFIX dc:   <http://purl.org/dc/elements/1.1/>
 
-  # ⚠️ CRITICAL NAMESPACE NOTE:
-  # The ontology prefix changed from the old pdbx-v50.owl# to:
-  #   pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
-  # All predicates and class names use this new IRI base.
-
+  # ~248,874 structural entries (pdb:XXXX datablocks)
+  # ~299,306 chemical component entries (cc:XXX datablocks) — exclude with STRSTARTS filter
   <Datablock> {
     a [ pdbo:datablock ] ;
-    dct:identifier xsd:string ;               # e.g. "1ATP"
-    dc:title xsd:string ;
+    dct:identifier xsd:string ;               # e.g. "1ATP" — 4-char PDB ID
+    dc:title xsd:string ;                     # free text, unstructured
     pdbo:datablockName xsd:string ;
     pdbo:link_to_pdbml IRI ;
-    pdbo:link_to_vrpt IRI ;                   # VRPT validation report
-    rdfs:seeAlso IRI ;                        # PDBj, PDBe, RCSB links
+    pdbo:link_to_vrpt IRI ;                   # VRPT validation report link
+    rdfs:seeAlso IRI ;                        # PDBj, PDBe, RCSB mirror links
     owl:sameAs IRI ;                          # lowercase variant IRI
     pdbo:has_entityCategory @<EntityCategory> * ;
     pdbo:has_exptlCategory @<ExptlCategory> + ;
@@ -72,11 +83,12 @@ shape_expressions: |
   <EntityPoly> {
     a [ pdbo:entity_poly ] ;
     pdbo:entity_poly.type xsd:string ;
-    pdbo:entity_poly.pdbx_seq_one_letter_code xsd:string ? ;
+    pdbo:entity_poly.pdbx_seq_one_letter_code xsd:string ? ;  # one-letter sequence
     pdbo:reference_to_entity IRI ;
     pdbo:of_datablock IRI
   }
 
+  # ~218,842 entries have at least one entity_src_gen with taxonomy annotation (87.9%)
   <EntitySrcGen> {
     a [ pdbo:entity_src_gen ] ;
     pdbo:link_to_taxonomy_source IRI ? ;      # <http://purl.uniprot.org/taxonomy/NCBI_TAXON_ID>
@@ -86,13 +98,17 @@ shape_expressions: |
     pdbo:of_datablock IRI
   }
 
+  # Controlled method values: "X-RAY DIFFRACTION", "ELECTRON MICROSCOPY",
+  # "SOLUTION NMR", "NEUTRON DIFFRACTION", "SOLID-STATE NMR", "ELECTRON CRYSTALLOGRAPHY",
+  # "SOLUTION SCATTERING", "FIBER DIFFRACTION", "POWDER DIFFRACTION", "EPR", etc.
   <Exptl> {
     a [ pdbo:exptl ] ;
-    pdbo:exptl.method xsd:string ;            # controlled: "X-RAY DIFFRACTION", "ELECTRON MICROSCOPY", "SOLUTION NMR", etc.
+    pdbo:exptl.method xsd:string ;
     pdbo:reference_to_entry IRI ;
     pdbo:of_datablock IRI
   }
 
+  # Only X-ray and some cryo-EM have resolution/R-factors; use OPTIONAL for all numeric fields
   <Refine> {
     a [ pdbo:refine ] ;
     pdbo:refine.ls_d_res_high xsd:decimal ? ;
@@ -102,9 +118,10 @@ shape_expressions: |
     pdbo:of_datablock IRI
   }
 
+  # ~477,265 struct_ref nodes with pdbo:link_to_uniprot (~230,286 unique entries = 92.5%)
   <StructRef> {
     a [ pdbo:struct_ref ] ;
-    pdbo:struct_ref.db_name xsd:string ;      # "UNP", "GB", "EMBL", etc.
+    pdbo:struct_ref.db_name xsd:string ;      # controlled: "UNP", "GB", "EMBL", "EMDB", etc.
     pdbo:struct_ref.pdbx_db_accession xsd:string ? ;
     pdbo:link_to_uniprot IRI ? ;              # <http://purl.uniprot.org/uniprot/ACCESSION>
     rdfs:seeAlso IRI ? ;                      # <http://identifiers.org/uniprot/ACCESSION>
@@ -121,82 +138,63 @@ shape_expressions: |
     pdbo:chem_comp.formula_weight xsd:decimal ?
   }
 
-  <Software> {
-    a [ pdbo:software ] ;
-    pdbo:software.name xsd:string ;
-    pdbo:software.classification xsd:string ; # controlled: "refinement", "data collection", "data reduction", etc.
+  # struct_keywords.pdbx_keywords is unstructured free text — text search is legitimate here
+  <StructKeywords> {
+    a [ pdbo:struct_keywords ] ;
+    pdbo:struct_keywords.pdbx_keywords xsd:string ? ;   # e.g. "TRANSFERASE, KINASE"
+    pdbo:struct_keywords.text xsd:string ? ;
+    pdbo:of_datablock IRI
+  }
+
+  # database_2.database_id values: "PDB", "WWPDB", "EMDB" (cryo-EM), "BMRB" (NMR)
+  <Database2> {
+    a [ pdbo:database_2 ] ;
+    pdbo:database_2.database_id xsd:string ;
+    pdbo:database_2.database_code xsd:string ;
     pdbo:of_datablock IRI
   }
 
 sample_rdf_entries:
-  - title: PDB Entry Root (datablock)
-    description: Root datablock for 1ATP with metadata and external links.
-    rdf: |
-      @prefix pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#> .
-      @prefix pdb:  <http://rdf.wwpdb.org/pdb/> .
-      @prefix dct:  <http://purl.org/dc/terms/> .
-      @prefix dc:   <http://purl.org/dc/elements/1.1/> .
-      @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  rdf_prefixes: |
+    @prefix pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#> .
+    @prefix pdb:  <http://rdf.wwpdb.org/pdb/> .
+    @prefix dct:  <http://purl.org/dc/terms/> .
+    @prefix dc:   <http://purl.org/dc/elements/1.1/> .
+    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+    @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+  entries:
+    - title: PDB Entry Root (datablock)
+      description: Root datablock with identifier, title, and external mirror links.
+      rdf: |
+        pdb:1ATP a pdbo:datablock ;
+          dct:identifier "1ATP" ;
+          dc:title "2.2 angstrom refined crystal structure of the catalytic subunit of cAMP-dependent protein kinase" ;
+          rdfs:seeAlso <http://www.rcsb.org/pdb/structure/1ATP> ;
+          pdbo:link_to_vrpt <http://rdf.wwpdb.org/vrpt/1ATP> .
 
-      pdb:1ATP a pdbo:datablock ;
-        dct:identifier "1ATP" ;
-        dc:title "2.2 angstrom refined crystal structure of the catalytic subunit of cAMP-dependent protein kinase" ;
-        rdfs:seeAlso <http://www.rcsb.org/pdb/structure/1ATP> ;
-        pdbo:link_to_vrpt <http://rdf.wwpdb.org/vrpt/1ATP> .
+    - title: Organism Source with Taxonomy IRI (entity_src_gen)
+      description: Illustrates the structured taxonomy IRI predicate used for organism filtering — not text search.
+      rdf: |
+        pdb:1ATP/entity_src_gen/1,1 a pdbo:entity_src_gen ;
+          pdbo:link_to_taxonomy_source <http://purl.uniprot.org/taxonomy/10090> ;
+          pdbo:entity_src_gen.pdbx_gene_src_scientific_name "Mus musculus" ;
+          pdbo:entity_src_gen.pdbx_gene_src_ncbi_taxonomy_id "10090" ;
+          pdbo:of_datablock pdb:1ATP .
 
-  - title: Experimental Method (exptl)
-    description: Controlled method value for a cryo-EM structure.
-    rdf: |
-      @prefix pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#> .
-      @prefix pdb:  <http://rdf.wwpdb.org/pdb/> .
-
-      pdb:10FM/exptl/1 a pdbo:exptl ;
-        pdbo:exptl.method "ELECTRON MICROSCOPY" ;
-        pdbo:of_datablock pdb:10FM .
-
-  - title: Organism Source (entity_src_gen)
-    description: Source organism linked to UniProt taxonomy IRI.
-    rdf: |
-      @prefix pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#> .
-      @prefix pdb:  <http://rdf.wwpdb.org/pdb/> .
-      @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-      pdb:1ATP/entity_src_gen/1,1 a pdbo:entity_src_gen ;
-        pdbo:link_to_taxonomy_source <http://purl.uniprot.org/taxonomy/10090> ;
-        pdbo:entity_src_gen.pdbx_gene_src_scientific_name "Mus musculus" ;
-        pdbo:entity_src_gen.pdbx_gene_src_ncbi_taxonomy_id "10090" ;
-        pdbo:of_datablock pdb:1ATP .
-
-  - title: UniProt Cross-Reference (struct_ref)
-    description: Sequence cross-reference to UniProt with direct link IRI.
-    rdf: |
-      @prefix pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#> .
-      @prefix pdb:  <http://rdf.wwpdb.org/pdb/> .
-      @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-      pdb:1ATP/struct_ref/1 a pdbo:struct_ref ;
-        pdbo:struct_ref.db_name "UNP" ;
-        pdbo:struct_ref.pdbx_db_accession "P05132" ;
-        pdbo:link_to_uniprot <http://purl.uniprot.org/uniprot/P05132> ;
-        rdfs:seeAlso <http://identifiers.org/uniprot/P05132> ;
-        pdbo:of_datablock pdb:1ATP .
-
-  - title: Refinement Statistics (refine)
-    description: X-ray refinement quality data with resolution and R-factor.
-    rdf: |
-      @prefix pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#> .
-      @prefix pdb:  <http://rdf.wwpdb.org/pdb/> .
-      @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
-
-      pdb:1ATP/refine/1 a pdbo:refine ;
-        pdbo:refine.ls_d_res_high 2.2 ;
-        pdbo:refine.ls_R_factor_R_work 0.177 ;
-        pdbo:of_datablock pdb:1ATP .
+    - title: UniProt Cross-Reference (struct_ref)
+      description: Sequence cross-reference to UniProt with both purl.uniprot.org and identifiers.org IRI forms.
+      rdf: |
+        pdb:1ATP/struct_ref/1 a pdbo:struct_ref ;
+          pdbo:struct_ref.db_name "UNP" ;
+          pdbo:struct_ref.pdbx_db_accession "P05132" ;
+          pdbo:link_to_uniprot <http://purl.uniprot.org/uniprot/P05132> ;
+          rdfs:seeAlso <http://identifiers.org/uniprot/P05132> ;
+          pdbo:of_datablock pdb:1ATP .
 
 sparql_query_examples:
-  - title: Count Total PDB Structures
-    description: Count all PDB structural entries (excluding chemical component datablocks).
-    question: How many structures are currently in PDB?
+  - title: Count Total PDB Structural Entries
+    description: Count all structural entries, excluding chemical component datablocks.
+    question: How many structures are in PDB?
     complexity: basic
     sparql: |
       PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
@@ -209,14 +207,13 @@ sparql_query_examples:
       }
 
   - title: Find Structures by Organism Using Taxonomy IRI
-    description: Use specific taxonomy IRI for organism filtering — never text search on scientific name.
+    description: Use taxonomy IRI for organism filtering — fast and unambiguous vs. text search on name.
     question: How many human protein structures are in PDB?
     complexity: basic
     sparql: |
       PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
 
-      # Use specific taxonomy IRI for human (9606)
-      # pdbo:link_to_taxonomy_source points to <http://purl.uniprot.org/taxonomy/NCBI_TAXON_ID>
+      # Use specific taxonomy IRI: <http://purl.uniprot.org/taxonomy/9606> for human
       SELECT (COUNT(DISTINCT ?entry) as ?count)
       FROM <http://rdfportal.org/dataset/pdbj>
       WHERE {
@@ -227,20 +224,18 @@ sparql_query_examples:
       }
 
   - title: Query by Experimental Method (Controlled Vocabulary)
-    description: Use exact controlled method strings — no text search needed for method filtering.
-    question: Find cryo-EM structures with their EMDB links.
+    description: Use exact controlled method strings for filtering — no text search needed.
+    question: Find cryo-EM structures with their EMDB accession codes.
     complexity: intermediate
     sparql: |
       PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
-      PREFIX dct:  <http://purl.org/dc/terms/>
 
-      # Controlled method values: "X-RAY DIFFRACTION", "ELECTRON MICROSCOPY",
+      # Controlled exptl.method values: "X-RAY DIFFRACTION", "ELECTRON MICROSCOPY",
       # "SOLUTION NMR", "NEUTRON DIFFRACTION", "SOLID-STATE NMR", etc.
       SELECT ?entry_id ?emdb_code
       FROM <http://rdfportal.org/dataset/pdbj>
       WHERE {
         ?entry a pdbo:datablock .
-        dct:identifier ?entry_id .
         BIND(STRAFTER(STR(?entry), "http://rdf.wwpdb.org/pdb/") AS ?entry_id)
         ?entry pdbo:has_exptlCategory/pdbo:has_exptl/pdbo:exptl.method "ELECTRON MICROSCOPY" ;
                pdbo:has_database_2Category/pdbo:has_database_2 ?db .
@@ -256,7 +251,6 @@ sparql_query_examples:
     sparql: |
       PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
 
-      # VALUES with specific taxonomy IRIs — comprehensive and fast
       SELECT ?organism_name (COUNT(DISTINCT ?entry) as ?structure_count)
       FROM <http://rdfportal.org/dataset/pdbj>
       WHERE {
@@ -274,12 +268,11 @@ sparql_query_examples:
       ORDER BY DESC(?structure_count)
 
   - title: Method Distribution with Resolution Statistics
-    description: Use VALUES with controlled method strings for aggregate analytics.
-    question: What is the resolution distribution across X-ray, NMR, and cryo-EM?
+    description: Aggregate analysis across methods using controlled string values in VALUES.
+    question: What are the entry counts and average resolution for X-ray, cryo-EM, and NMR?
     complexity: intermediate
     sparql: |
       PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
-      PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
 
       SELECT ?method
              (COUNT(DISTINCT ?entry) as ?total_structures)
@@ -303,16 +296,15 @@ sparql_query_examples:
       GROUP BY ?method
       ORDER BY ?method
 
-  - title: UniProt Cross-Reference Lookup
-    description: Find PDB structures linked to a specific UniProt protein via structured link predicate.
-    question: Which PDB structures are linked to UniProt protein P05132?
+  - title: UniProt Cross-Reference Lookup with Method and Resolution
+    description: Retrieve all PDB structures for a UniProt protein via the structured link predicate.
+    question: Which PDB structures are linked to UniProt P05132 (cAMP-dependent protein kinase)?
     complexity: advanced
     sparql: |
       PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
-      PREFIX dct:  <http://purl.org/dc/terms/>
 
-      # Use pdbo:link_to_uniprot with the purl.uniprot.org IRI — not text search
-      SELECT ?entry_id ?resolution ?method
+      # Use pdbo:link_to_uniprot with the purl.uniprot.org IRI — not text search on accession
+      SELECT ?entry_id ?method ?resolution
       FROM <http://rdfportal.org/dataset/pdbj>
       WHERE {
         ?entry a pdbo:datablock .
@@ -324,13 +316,14 @@ sparql_query_examples:
         }
         OPTIONAL {
           ?entry pdbo:has_refineCategory/pdbo:has_refine/pdbo:refine.ls_d_res_high ?resolution .
+          FILTER(?resolution > 0 && ?resolution < 10)
         }
       }
       LIMIT 20
 
-  - title: Keyword Search in Free-Text Fields
-    description: Text search for keyword-based discovery — justified because struct_keywords.pdbx_keywords is unstructured free text with no controlled vocabulary.
-    question: Find kinase structures using keyword search.
+  - title: Keyword Search in Unstructured Free-Text Fields
+    description: Text search for concept discovery using struct_keywords — justified because this is unstructured free text with no classification IRI or controlled vocabulary.
+    question: Find PDB entries with keyword "kinase" in the keywords field.
     complexity: advanced
     sparql: |
       PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
@@ -346,8 +339,8 @@ sparql_query_examples:
         ?kw pdbo:struct_keywords.pdbx_keywords ?keywords .
         ?entry dc:title ?title .
         # Text search justified: struct_keywords.pdbx_keywords is unstructured free text.
-        # No classification IRI or controlled vocabulary exists for keyword content.
-        # Virtuoso backend — bif:contains preferred but FILTER works reliably here.
+        # No IRI-based classification or controlled vocabulary exists for keyword content.
+        # FILTER(CONTAINS()) used here because bif:contains on property paths can timeout.
         FILTER(CONTAINS(LCASE(?keywords), "kinase"))
       }
       LIMIT 20
@@ -355,16 +348,17 @@ sparql_query_examples:
 cross_database_queries:
   shared_endpoint: none
   co_located_databases: []
-  note: |
-    PDB operates on a standalone endpoint (https://rdfportal.org/pdb/sparql) and does
-    not share an endpoint with any other database in the RDF Portal ecosystem.
-    Direct cross-database SPARQL joins are therefore not possible.
+  examples: []
+  notes: |
+    PDB operates on a standalone endpoint (https://rdfportal.org/pdb/sparql) with no
+    co-located databases. Direct cross-database SPARQL joins are not possible.
 
     Cross-database integration workflows:
-    1. UniProt: Query PDB for struct_ref with pdbo:link_to_uniprot IRIs, then query
+    1. UniProt bridge: Query PDB for pdbo:link_to_uniprot IRIs, then query
        https://rdfportal.org/sib/sparql with those UniProt accessions.
-    2. Taxonomy: pdbo:link_to_taxonomy_source links to <http://purl.uniprot.org/taxonomy/TAXON_ID>;
-       use togoid_convertId("pdb,uniprot") to bridge IDs across endpoints.
+    2. Taxonomy bridge: pdbo:link_to_taxonomy_source links to
+       <http://purl.uniprot.org/taxonomy/TAXON_ID>; use togoid_convertId("pdb", "uniprot")
+       to generate accession lists for the SIB endpoint.
     3. Sequential: Query PDB → extract identifiers → togoid_convertId → query target DB.
 
 cross_references:
@@ -372,14 +366,14 @@ cross_references:
     description: |
       Direct UniProt protein IRI link from struct_ref nodes.
       Points to <http://purl.uniprot.org/uniprot/ACCESSION>.
-      rdfs:seeAlso also present with <http://identifiers.org/uniprot/ACCESSION> form.
+      rdfs:seeAlso also present as <http://identifiers.org/uniprot/ACCESSION>.
     databases:
       Protein:
-        - "UNP (UniProt): ~77% of entries (struct_ref.db_name = 'UNP')"
+        - "UNP (UniProt): ~92.5% of entries (230,286 entries; 477,265 struct_ref nodes)"
     sparql: |
       PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
 
-      SELECT ?entry_id ?uniprot_iri ?accession
+      SELECT ?entry_id ?accession ?uniprot_iri
       FROM <http://rdfportal.org/dataset/pdbj>
       WHERE {
         ?entry a pdbo:datablock .
@@ -396,138 +390,94 @@ cross_references:
       Taxonomy IRI link from entity_src_gen nodes.
       Points to <http://purl.uniprot.org/taxonomy/NCBI_TAXON_ID>.
       rdfs:seeAlso also provides <http://identifiers.org/taxonomy/NCBI_TAXON_ID>.
+      ~87.9% of entries have at least one entity_src_gen with taxonomy annotation.
     databases:
       Taxonomy:
-        - "Human (9606): ~73,850 unique entries"
+        - "Human (9606): 73,850 unique entries"
         - "Mouse (10090): ~10,000 entries"
         - "E. coli (562/83333): ~5,000 entries"
-    sparql: |
-      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
 
-      SELECT ?entry_id ?taxonomy_iri ?organism_name
-      FROM <http://rdfportal.org/dataset/pdbj>
-      WHERE {
-        ?entry a pdbo:datablock .
-        BIND(STRAFTER(STR(?entry), "http://rdf.wwpdb.org/pdb/") AS ?entry_id)
-        ?entry pdbo:has_entity_src_genCategory/pdbo:has_entity_src_gen ?src .
-        ?src pdbo:link_to_taxonomy_source ?taxonomy_iri ;
-             pdbo:entity_src_gen.pdbx_gene_src_scientific_name ?organism_name .
-      }
-      LIMIT 30
-
-  - pattern: pdbo:database_2
+  - pattern: pdbo:database_2 (database_id/database_code)
     description: |
-      External database links via database_2.database_id and database_2.database_code.
-      All entries have PDB/WWPDB codes. EMDB codes for cryo-EM. BMRB for NMR.
+      External database links via typed predicates database_2.database_id and
+      database_2.database_code. Used for EMDB (cryo-EM) and BMRB (NMR) links.
     databases:
       External:
-        - "EMDB: ~13% of entries (cryo-EM structures)"
+        - "EMDB: ~12.8% of entries (cryo-EM structures)"
         - "BMRB: ~3% of entries (NMR structures)"
-    sparql: |
-      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
-
-      SELECT ?entry_id ?db_id ?db_code
-      FROM <http://rdfportal.org/dataset/pdbj>
-      WHERE {
-        ?entry a pdbo:datablock .
-        BIND(STRAFTER(STR(?entry), "http://rdf.wwpdb.org/pdb/") AS ?entry_id)
-        ?entry pdbo:has_database_2Category/pdbo:has_database_2 ?db .
-        ?db pdbo:database_2.database_id ?db_id ;
-            pdbo:database_2.database_code ?db_code .
-        FILTER(?db_id IN ("EMDB", "BMRB"))
-      }
-      LIMIT 30
 
 architectural_notes:
   query_strategy:
-    - "MANDATORY: Call get_MIE_file('pdb') before writing any SPARQL query"
-    - "NAMESPACE: Use pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#> — the old pdbx-v50.owl# prefix returns 0 results"
-    - "PDB ENTRIES ONLY: Add FILTER(STRSTARTS(STR(?entry), 'http://rdf.wwpdb.org/pdb/')) to exclude chemical component (cc/) datablocks"
-    - "Organism: Use pdbo:link_to_taxonomy_source <http://purl.uniprot.org/taxonomy/TAXON_ID> — not text search on scientific name"
-    - "UniProt: Use pdbo:link_to_uniprot <http://purl.uniprot.org/uniprot/ACCESSION> for direct cross-reference"
-    - "Method: Use controlled string values e.g. 'X-RAY DIFFRACTION', 'ELECTRON MICROSCOPY', 'SOLUTION NMR'"
-    - "Numerics: Always cast with xsd:decimal() and add range FILTER for resolution, R-factors"
-    - "Text search: Only for struct_keywords.pdbx_keywords or dc:title — both are unstructured free text"
+    - "MANDATORY FIRST STEP: call get_MIE_file('pdb') and read critical_warnings + shape_expressions"
+    - "Exploratory: use search_pdb_entity to find examples and inspect their structured properties"
+    - "Organism: taxonomy IRI <http://purl.uniprot.org/taxonomy/TAXON_ID> — never text search on scientific name"
+    - "UniProt: pdbo:link_to_uniprot <http://purl.uniprot.org/uniprot/ACCESSION> for precise cross-reference"
+    - "Method: use controlled string values directly ('X-RAY DIFFRACTION', 'ELECTRON MICROSCOPY', etc.)"
+    - "Text search: only for struct_keywords.pdbx_keywords or dc:title — both are unstructured free text"
     - "Priority: Taxonomy IRIs > UniProt IRIs > Controlled values > VALUES block > Text search"
 
   schema_design:
-    - "PDBx/mmCIF ontology with Category-Item design: datablock → has_*Category → has_* → items"
-    - "New namespace pdbx-with-vrptx-v50.owl# replaces old pdbx-v50.owl# — all predicates changed"
+    - "PDBx/mmCIF category–item design: datablock → has_*Category → has_* → typed items"
+    - "Active namespace: pdbx-with-vrptx-v50.owl# (old pdbx-v50.owl# returns 0 results)"
     - "Two datablock populations: PDB entries (pdb:XXXX) and chemical components (cc:XXX)"
-    - "Cross-references use both pdbo:link_to_* IRIs and rdfs:seeAlso identifiers.org IRIs"
+    - "Cross-references: pdbo:link_to_* IRIs and rdfs:seeAlso identifiers.org IRIs coexist"
     - "VRPT validation reports accessible via pdbo:link_to_vrpt"
 
   performance:
-    - "Always include FROM <http://rdfportal.org/dataset/pdbj> graph clause"
-    - "Filter ?entry by pdb:// prefix to restrict to structural entries only"
-    - "Use specific values in WHERE (method strings, taxonomy IRIs) before optional joins"
-    - "Numeric range FILTER(>0 && <10) prevents xsd:decimal conversion errors"
-    - "Add LIMIT 20–100 for exploratory queries; omit for verified aggregate queries"
+    - "CRITICAL: Always include FROM <http://rdfportal.org/dataset/pdbj> graph clause"
+    - "CRITICAL: Add FILTER(STRSTARTS(STR(?entry), 'http://rdf.wwpdb.org/pdb/')) for structural entries"
+    - "Apply method/taxonomy/UniProt filters early in WHERE clause before optional joins"
+    - "Numeric range FILTER(?val > 0 && ?val < 10) prevents xsd:decimal conversion errors"
+    - "bif:contains can time out on property path chains — use FILTER(CONTAINS()) for struct_keywords"
+    - "Use OPTIONAL for resolution/R-factors; NMR entries have no refine nodes"
+    - "Add LIMIT 20–100 for exploratory queries"
 
   data_integration:
-    - "UniProt: ~77% of entries via struct_ref.db_name='UNP' + pdbo:link_to_uniprot"
-    - "Taxonomy: ~50% of entries via entity_src_gen + pdbo:link_to_taxonomy_source"
-    - "EMDB: ~13% via database_2.database_id='EMDB' (cryo-EM structures)"
-    - "TogoID route pdb→uniprot available for cross-endpoint integration"
+    - "UniProt: 92.5% of entries (230,286) via struct_ref.db_name='UNP' + pdbo:link_to_uniprot"
+    - "Taxonomy: 87.9% of entries (218,842) via entity_src_gen + pdbo:link_to_taxonomy_source"
+    - "EMDB: ~12.8% of entries via database_2.database_id='EMDB' (cryo-EM structures)"
+    - "BMRB: ~3% of entries via database_2.database_id='BMRB' (NMR structures)"
+    - "TogoID conversion route pdb→uniprot available for cross-endpoint workflows"
 
   data_quality:
-    - "Resolution/R-factors present only for X-ray and some cryo-EM; use OPTIONAL for NMR"
-    - "Chemical component datablocks (cc:/) must be excluded for structural statistics"
-    - "Multiple entity_src_gen per entry possible; COUNT(DISTINCT ?entry) to avoid overcounting"
+    - "Multiple entity_src_gen per entry is common; always use COUNT(DISTINCT ?entry) to avoid overcounting"
+    - "Resolution/R-factors only present for X-ray and some cryo-EM; always use OPTIONAL"
+    - "~12% of entries lack taxonomy annotations (no entity_src_gen or link_to_taxonomy_source)"
+    - "Chemical component datablocks (cc:/) must always be excluded for structural statistics"
+
+  text_search_justification:
+    - "Number of 7 example queries using text search: 1 (query 7, complexity: advanced)"
+    - "Fields where text search is legitimate: struct_keywords.pdbx_keywords, dc:title"
+    - "Reason: both fields are unstructured free text entered by depositors with no IRI-based classification or controlled vocabulary in the schema"
+    - "bif:contains NOT used here despite Virtuoso backend because it times out on property path chains; FILTER(CONTAINS()) is more reliable for this pattern"
 
 data_statistics:
   total_entries: 248874
-  verified_date: "2025-02-21"
-  verification_method: "Count of pdbx:datablock with pdb:// IRI prefix"
-  verification_query: |
-    PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
-    SELECT (COUNT(DISTINCT ?entry) as ?total)
-    FROM <http://rdfportal.org/dataset/pdbj>
-    WHERE {
-      ?entry a pdbo:datablock .
-      FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
-    }
-  staleness_warning: Database updates weekly; run verification query for current count.
+  verified_date: "2025-07-06"
+  verification_method: "COUNT(DISTINCT ?entry) with pdb:// IRI prefix filter"
 
   experimental_methods:
-    xray: "201,879 structures (81.1%)"
-    em: "31,766 structures (12.8%)"
-    solution_nmr: "14,594 structures (5.9%)"
-    other: "electron crystallography 275, neutron diffraction 259, solid-state NMR 195"
-    verification_query: |
-      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
-      SELECT ?method (COUNT(DISTINCT ?entry) as ?cnt)
-      FROM <http://rdfportal.org/dataset/pdbj>
-      WHERE {
-        ?entry a pdbo:datablock .
-        FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
-        ?entry pdbo:has_exptlCategory/pdbo:has_exptl ?exptl .
-        ?exptl pdbo:exptl.method ?method .
-      }
-      GROUP BY ?method ORDER BY DESC(?cnt)
+    xray: "201,879 entries (81.1%)"
+    electron_microscopy: "31,766 entries (12.8%)"
+    solution_nmr: "14,594 entries (5.9%)"
+    other: "electron crystallography 275, neutron diffraction 259, solid-state NMR 195, solution scattering 88"
+    verified_date: "2025-07-06"
 
   organism_distribution:
-    human_9606: "73,850 unique PDB entries"
-    mouse_10090: "~10,000 entries"
-    ecoli_562: "~5,000 entries"
-    verification_query: |
-      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
-      SELECT (COUNT(DISTINCT ?entry) as ?count)
-      FROM <http://rdfportal.org/dataset/pdbj>
-      WHERE {
-        ?entry a pdbo:datablock .
-        FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
-        ?entry pdbo:has_entity_src_genCategory/pdbo:has_entity_src_gen ?src .
-        ?src pdbo:link_to_taxonomy_source <http://purl.uniprot.org/taxonomy/9606> .
-      }
+    human_9606: "73,850 unique entries"
+    entries_with_any_taxonomy: "218,842 entries (87.9%)"
+    verified_date: "2025-07-06"
 
   cross_references:
-    uniprot_link_to_uniprot: "1,197,753 struct_ref nodes with pdbo:link_to_uniprot"
-    taxonomy_link_to_taxonomy_source: "531,746 entity_src_gen nodes with pdbo:link_to_taxonomy_source"
+    uniprot_entries: "230,286 entries with pdbo:link_to_uniprot (92.5%)"
+    uniprot_struct_ref_nodes: "477,265 struct_ref nodes with pdbo:link_to_uniprot"
+    taxonomy_entries: "218,842 entries with pdbo:link_to_taxonomy_source (87.9%)"
+    taxonomy_src_gen_nodes: "315,929 entity_src_gen nodes with pdbo:link_to_taxonomy_source"
+    verified_date: "2025-07-06"
 
 anti_patterns:
   - title: "Using the OLD pdbx-v50.owl# Namespace"
-    problem: "The old pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#> namespace returns 0 results."
+    problem: "The old pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#> namespace returns 0 results — silent failure."
     wrong_sparql: |
       PREFIX pdbx: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
       SELECT (COUNT(?entry) as ?n)
@@ -538,13 +488,15 @@ anti_patterns:
       PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
       SELECT (COUNT(DISTINCT ?entry) as ?n)
       FROM <http://rdfportal.org/dataset/pdbj>
-      WHERE { ?entry a pdbo:datablock .
-              FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/")) }
+      WHERE {
+        ?entry a pdbo:datablock .
+        FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
+      }
       # Returns ~248,874
-    explanation: "The ontology namespace changed from pdbx-v50.owl# to pdbx-with-vrptx-v50.owl#. Always use the new pdbo: prefix."
+    explanation: "The ontology namespace changed to pdbx-with-vrptx-v50.owl#. Always use the pdbo: prefix declared above."
 
   - title: "Not Filtering Chemical Component Datablocks"
-    problem: "Total datablock count (~548K) includes chemical components (cc:/) in addition to structural entries (~248K)."
+    problem: "Omitting the IRI prefix filter inflates structural entry counts to ~548K by including chemical component (cc:/) datablocks."
     wrong_sparql: |
       PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
       SELECT (COUNT(?entry) as ?n)
@@ -555,60 +507,58 @@ anti_patterns:
       PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
       SELECT (COUNT(DISTINCT ?entry) as ?n)
       FROM <http://rdfportal.org/dataset/pdbj>
-      WHERE { ?entry a pdbo:datablock .
-              FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/")) }
-    explanation: "Always add FILTER(STRSTARTS(STR(?entry), 'http://rdf.wwpdb.org/pdb/')) when counting or querying structural entries."
-
-  - title: "Text Search for Organism When Taxonomy IRI Available"
-    problem: "Using FILTER(CONTAINS()) on scientific name text instead of the direct taxonomy IRI predicate."
-    wrong_sparql: |
-      # Slow and incomplete: text search on organism name
-      ?src pdbo:entity_src_gen.pdbx_gene_src_scientific_name ?name .
-      FILTER(CONTAINS(?name, "Homo sapiens"))
-    correct_sparql: |
-      # Fast and precise: specific taxonomy IRI
-      ?src pdbo:link_to_taxonomy_source <http://purl.uniprot.org/taxonomy/9606> .
-    explanation: "pdbo:link_to_taxonomy_source with UniProt taxonomy IRIs is the structured property for organism filtering."
-
-  - title: "Circular Reasoning with Search API Results"
-    problem: "Using search_pdb_entity result IDs in VALUES for aggregate counts — only counts what was found, not the full dataset."
-    wrong_sparql: |
-      # Wrong: VALUES populated from search results
-      VALUES ?entry { pdb:8QCD pdb:8Q77 ... }  # Only 20 from search_pdb_entity
-      SELECT (COUNT(?entry) as ?count) WHERE { ... }
-    correct_sparql: |
-      # Correct: use the keyword FILTER on the full dataset
-      # (After checking MIE schema: struct_keywords is unstructured free text
-      #  with no classification IRI, so text search is justified here)
-      SELECT (COUNT(DISTINCT ?entry) as ?count)
-      FROM <http://rdfportal.org/dataset/pdbj>
       WHERE {
         ?entry a pdbo:datablock .
         FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
-        ?entry pdbo:has_struct_keywordsCategory/pdbo:has_struct_keywords ?kw .
-        ?kw pdbo:struct_keywords.pdbx_keywords ?kw_text .
-        FILTER(CONTAINS(LCASE(?kw_text), "kinase"))
       }
-    explanation: "Use search_pdb_entity to find patterns and inspect schema; use SPARQL on the full dataset for comprehensive counts."
+    explanation: "Always add FILTER(STRSTARTS(STR(?entry), 'http://rdf.wwpdb.org/pdb/')) when querying or counting structural entries."
+
+  - title: "Text Search for Organism When Taxonomy IRI Available"
+    problem: "Using FILTER(CONTAINS()) on scientific name text instead of the structured taxonomy IRI predicate."
+    wrong_sparql: |
+      # Slow and incomplete: text search on organism name field
+      ?src pdbo:entity_src_gen.pdbx_gene_src_scientific_name ?name .
+      FILTER(CONTAINS(?name, "Homo sapiens"))
+    correct_sparql: |
+      # Fast and comprehensive: specific taxonomy IRI
+      ?src pdbo:link_to_taxonomy_source <http://purl.uniprot.org/taxonomy/9606> .
+    explanation: "pdbo:link_to_taxonomy_source with UniProt taxonomy IRIs is the structured property for organism filtering. Find the NCBI taxonomy ID first if unknown."
+
+  - title: "Skipping Schema Check Before Text Search"
+    problem: "Jumping to bif:contains or FILTER(CONTAINS()) without reading the MIE to confirm no structured alternative exists."
+    wrong_sparql: |
+      # No schema checked — jumps straight to text search on method
+      ?text bif:contains "'X-ray'"
+    correct_sparql: |
+      # Correct workflow:
+      # 1. get_MIE_file('pdb') → read shape_expressions and critical_warnings
+      # 2. Find the controlled vocabulary in <Exptl> shape: exptl.method is typed string
+      # 3. Use the controlled value directly:
+      ?exptl pdbo:exptl.method "X-RAY DIFFRACTION" .
+    explanation: "Read MIE shape_expressions first. For PDB, method, organism, and UniProt all have structured predicates — text search is only justified for struct_keywords and dc:title."
 
 common_errors:
   - error: "Zero results for all queries"
     causes:
-      - "Using old pdbx-v50.owl# namespace (most common root cause)"
+      - "Using old pdbx-v50.owl# namespace — most common root cause"
       - "Missing FROM <http://rdfportal.org/dataset/pdbj> graph clause"
+      - "Wrong IRI form for UniProt (identifiers.org vs purl.uniprot.org) — both present; use purl.uniprot.org for pdbo:link_to_uniprot"
     solutions:
       - "Switch to pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>"
       - "Always include FROM <http://rdfportal.org/dataset/pdbj>"
+      - "Check critical_warnings for known namespace traps; inspect a known entry with SELECT ?p ?o WHERE { pdb:1ATP ?p ?o } LIMIT 50"
 
   - error: "Inflated entry counts (~548K instead of ~248K)"
     causes:
       - "Not filtering out chemical component datablocks (cc:/ IRIs)"
     solutions:
       - "Add FILTER(STRSTARTS(STR(?entry), 'http://rdf.wwpdb.org/pdb/')) to restrict to structural entries"
+      - "Use COUNT(DISTINCT ?entry) to avoid double-counting entries with multiple categories"
 
-  - error: "Type conversion errors for resolution or R-factor comparisons"
+  - error: "Type conversion errors or empty results for resolution comparisons"
     causes:
-      - "Numeric fields stored as xsd:decimal but compared without casting"
+      - "Comparing xsd:decimal fields without range filter; NMR entries have no refine nodes"
+      - "Missing OPTIONAL for method-specific numeric fields"
     solutions:
-      - "Always use range FILTER: FILTER(?res_val > 0 && ?res_val < 10)"
-      - "Use OPTIONAL for method-specific numeric fields (NMR lacks resolution)"
+      - "Always use OPTIONAL { ... ?refine pdbo:refine.ls_d_res_high ?res . FILTER(?res > 0 && ?res < 10) }"
+      - "Do not compare resolution values for SOLUTION NMR entries"
