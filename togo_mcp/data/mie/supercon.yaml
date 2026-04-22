@@ -1,23 +1,25 @@
 schema_info:
   title: SuperCon
   description: |
-    SuperCon is a curated database of superconducting materials compiled by NIMS
-    (National Institute for Materials Science, Japan). It contains experimental records
-    of oxide and metallic superconductors extracted from the literature, covering chemical
-    composition, critical temperature (Tc), crystal structure, lattice parameters, magnetic
-    properties, and sample preparation conditions. Primary use cases include materials
-    informatics, machine learning for superconductor discovery, and comparative studies of
-    Tc across compound families.
+    SuperCon is a curated database of superconducting materials compiled by NIMS (National
+    Institute for Materials Science, Japan). It contains experimental records extracted from
+    ~7,249 journal articles (primarily pre-2020; treat as archival), covering oxide and
+    metallic superconductors. Documented properties include critical temperature (Tc and
+    multiple variants), crystal structure, lattice parameters, critical magnetic fields,
+    thermal properties (Debye temperature, gamma coefficient), energy gap, resistivity,
+    coherence and penetration lengths, and sample preparation conditions. Primary use
+    cases: materials informatics, ML model training for superconductor discovery,
+    and comparative Tc studies across compound families.
   endpoint: https://rdfportal.org/nims/sparql
   base_uri: http://dice.nims.go.jp/ontology/SuperCon-ont/
   graphs:
     - http://rdfportal.org/dataset/supercon
   kw_search_tools: []
   version:
-    mie_version: "2.0"
-    mie_created: "2026-03-23"
-    data_version: NIMS SuperCon RDF (snapshot as of 2026)
-    update_frequency: Irregular
+    mie_version: "3.2"
+    mie_created: "2026-04-22"
+    data_version: "NIMS SuperCon RDF 2026 snapshot (archival; last substantive entries 2019-2020)"
+    update_frequency: "Effectively frozen: 4 papers added 2021, 2 in 2022, 1 in 2023"
   license:
     data_license: NIMS Terms of Use
     license_url: https://dice.nims.go.jp/services/SuperCon/
@@ -25,413 +27,401 @@ schema_info:
     rate_limiting: Standard RDFPortal limits
     max_query_timeout: 60 seconds
     backend: Virtuoso
-  ontology_warnings: |
-    Two typos exist in the original ontology and MUST be used verbatim:
-      - dct:referecens  (NOT "references")
-      - Schema#IntermalStructure  (NOT "InternalStructure")
-    Using the corrected spellings will return zero results.
 
-    Note on instance IRIs vs class names: Although the class is typed
-    Schema:IntermalStructure (typo), the instance IRIs for structure nodes use the
-    correctly-spelled form, e.g. str:msc_om0000949_InternalStructure. Do not confuse
-    the two — the class name has the typo, but the instance IRI does not.
+critical_warnings: |
+  - SCAFFOLD BUG (CRITICAL -- v3.1 queries ALL return 0 rows):
+    IAO_0000221 is on the DATUM node, NOT the Measurement node.
+    WRONG (v3.1):  ?meas obo:IAO_0000221 ?propNode ; obo:OBI_0000299 ?datum .
+    CORRECT (v3.2): ?meas obo:OBI_0000299 ?datum .
+                    ?datum obo:IAO_0000221 ?propNode ; sio:SIO_000300 ?value .
+    SHORTCUT:       ?datum obo:IAO_0000221 ?propNode ; sio:SIO_000300 ?value .
+    Any query omitting this correction returns 0 rows with no error message.
+
+  - TYPO (required verbatim): dct:referecens (NOT dct:references).
+    Using the corrected spelling returns zero results for all reference lookups.
+
+  - TYPO (required verbatim): Schema:IntermalStructure (NOT Schema:InternalStructure).
+    Instance IRIs use correctly-spelled "InternalStructure"; typo applies to class name only.
+
+  - RETRACTED PAPERS (no flags in database):
+    C-S-H at ~287.7 K: ref NAT586000373 -- retracted September 2022.
+    LuH at ~294 K: ref NAT0615000244 -- retracted November 2023.
+    Use FILTER(?tcVal < 250) for conservative ML training sets.
 
 shape_expressions: |
-  PREFIX smp: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/smp#>
-  PREFIX prop: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/prop#>
-  PREFIX str: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/str#>
-  PREFIX elm: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/elm#>
-  PREFIX ref: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/ref#>
+  PREFIX smp:    <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/smp#>
+  PREFIX prop:   <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/prop#>
+  PREFIX str:    <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/str#>
+  PREFIX elm:    <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/elm#>
+  PREFIX ref:    <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/ref#>
   PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
-  PREFIX sio: <http://semanticscience.org/resource/>
-  PREFIX obo: <http://purl.obolibrary.org/obo/>
-  PREFIX dct: <http://purl.org/dc/terms/>
-  PREFIX bibo: <http://purl.org/ontology/bibo/>
-  PREFIX prism: <http://prismstandard.org/namespaces/basic/2.0/>
+  PREFIX sio:    <http://semanticscience.org/resource/>
+  PREFIX obo:    <http://purl.obolibrary.org/obo/>
+  PREFIX dct:    <http://purl.org/dc/terms/>
+  PREFIX bibo:   <http://purl.org/ontology/bibo/>
+  PREFIX prism:  <http://prismstandard.org/namespaces/basic/2.0/>
 
-  # Central entity: superconducting material sample
+  # -- CENTRAL ENTITY: 165,969 instances ---------------------------------------
+  # 80.8% (134,039) are skeleton nodes with no name/formula/Tc data.
   <OxideAndMetallicShape> {
     a [ Schema:OxideAndMetallic ] ;
-    rdfs:label xsd:string ;                      # e.g. "msc_om0000949"
-    rdfs:comment xsd:string ? ;                  # optional measurement notes
-    dct:identifier xsd:string ;                  # same as label
-    dct:referecens IRI * ;                       # NOTE: typo is intentional
-    sio:SIO_000008 @<NameShape> ;                # material name node
-    sio:SIO_000008 @<ElementShape> ;             # chemical formula node
-    sio:SIO_000008 @<TcPropertyShape> ? ;        # critical temperature node
-    sio:SIO_000008 @<T2PropertyShape> ? ;        # upper critical temp node
-    sio:SIO_000008 @<IntermalStructureShape> ? ; # NOTE: typo is intentional
-    obo:BFO_0000051 IRI *                        # blank node parts
+    rdfs:label      xsd:string ? ;
+    dct:identifier  xsd:string ? ;
+    dct:referecens  IRI *        ;  # links to bibo:Article (typo required)
+    sio:SIO_000008  IRI *        ;  # all property/structure/composition nodes
+    sio:SIO_000228  IRI *        ;  # cmp# composition nodes (154,792 triples)
+    obo:BFO_0000051 IRI *
   }
 
-  # Material name (simplified, e.g. "YBa2Cu3Oz")
-  <NameShape> {
-    a [ Schema:name ] ;
-    sio:SIO_000300 xsd:string
+  # -- IDENTIFICATION ----------------------------------------------------------
+  <NameShape>    { a [ Schema:name ]    ; sio:SIO_000300 xsd:string }
+  <ElementShape> { a [ Schema:element ] ; sio:SIO_000300 xsd:string }
+
+  # -- TEMPERATURE PROPERTIES (all attach to sample via sio:SIO_000008) --------
+  # Schema:tc      26,358  primary critical temperature; use this for Tc queries
+  # Schema:t2      17,117  EMPIRICALLY IDENTICAL to tc in ALL records -- data duplicate
+  #                        (0 records with t2 != tc; verified); omit from ML feature matrices
+  # Schema:t1       4,051  variant (semantics undocumented)
+  # Schema:t3       4,606  variant (semantics undocumented)
+  # Schema:tcn      4,641  Tc variant (semantics undocumented)
+  # Schema:tcsus    5,624  Tc from magnetic susceptibility
+  # Schema:curiet   1,198  Curie temperature
+  # Schema:curiec     214  Curie constant (semantics undocumented)
+  # Schema:neelt    1,490  Neel temperature
+  <TemperaturePropertyShape> {
+    a [ Schema:tc Schema:t2 Schema:t1 Schema:t3 Schema:tcn Schema:tcsus
+        Schema:curiet Schema:curiec Schema:neelt ]
+    # Values accessed via Measurement scaffold (see below)
   }
 
-  # Full chemical formula (stoichiometric, e.g. "Y1Ba2Cu3O6.96")
-  <ElementShape> {
-    a [ Schema:element ] ;
-    sio:SIO_000300 xsd:string
+  # -- CRITICAL FIELD PROPERTIES -----------------------------------------------
+  # Schema:hc1zero  lower critical field at 0 K
+  # Schema:hc2zero  upper critical field at 0 K (1,759 property nodes)
+  # Schema:mhc1 / Schema:mhc2  measured lower/upper critical field
+  # Schema:dhc2dt   dHc2/dT slope near Tc
+  # Schema:hc       thermodynamic critical field
+  <CriticalFieldPropertyShape> {
+    a [ Schema:hc1zero Schema:hc2zero Schema:mhc1 Schema:mhc2 Schema:dhc2dt Schema:hc ]
+    # Values accessed via Measurement scaffold (see below)
   }
 
-  # Critical temperature property node (links to MeasurementDatum via IRI convention)
-  # Datum IRI: REPLACE(smp# -> prop#) + "_tcMeasurementDatum"
-  <TcPropertyShape> {
-    a [ Schema:tc ]
-    # Value: BIND(IRI(CONCAT(REPLACE(STR(?sample),"smp#","prop#"),"_tcMeasurementDatum")) AS ?tcDatum)
-    # ?tcDatum sio:SIO_000300 ?tcVal  (value in Kelvin, unit field typically empty)
+  # -- THERMAL PROPERTIES ------------------------------------------------------
+  # Schema:debyet  1,473  Debye temperature theta_D (K)
+  # Schema:mdebye          measured Debye temperature
+  # Schema:gamma   2,497  electronic specific heat coefficient gamma (mJ/mol/K^2)
+  # Schema:spheat  1,748  specific heat value
+  <ThermalPropertyShape> {
+    a [ Schema:debyet Schema:mdebye Schema:gamma Schema:spheat ]
   }
 
-  # Upper critical temperature (T2) property node
-  <T2PropertyShape> {
-    a [ Schema:t2 ]
-    # Datum IRI: REPLACE(smp# -> prop#) + "_t2MeasurementDatum"
+  # -- CRYSTALLOGRAPHY ---------------------------------------------------------
+  # Schema:lata / latb / latc  lattice parameters a, b, c
+  # UNIT WARNING (sio:SIO_000221 on datum):
+  #   lata: "A"=9,115  ""=3,946  "nm"=65   (nm = 10x Angstrom -- scale error if mixed!)
+  #   latb: "A"=1,788  ""=1,731  "nm"=7
+  #   latc: "A"=7,686  ""=4,001  "nm"=83
+  #   Always inspect or filter the unit field before comparing lattice values.
+  # Schema:spaceg  ~9,000  space group string
+  # Schema:str3            structure type string
+  # Schema:oz              oxygen stoichiometry z
+  # Schema:dens            density
+  <CrystallographyPropertyShape> {
+    a [ Schema:lata Schema:latb Schema:latc Schema:spaceg Schema:str3 Schema:oz Schema:dens ]
   }
 
-  # Crystal structure container (NOTE: "Intermal" is a known ontology typo for the CLASS;
-  # instance IRIs use correctly-spelled "InternalStructure")
+  # -- CRYSTAL STRUCTURE NODE --------------------------------------------------
+  # Class typo: Schema:IntermalStructure (required verbatim; see critical_warnings)
+  # Instance IRIs use correctly-spelled "InternalStructure"
+  # Structure type vocabulary:
+  #   Named IRIs: Schema:str1_01..07 -- 6,813 records (19.1% of 35,752 structure nodes)
+  #   Blank nodes: nodeID://b...      -- 28,939 records (80.9%)
+  # Any IRI-based filter silently discards 80.9% of structure data.
   <IntermalStructureShape> {
     a [ Schema:IntermalStructure ] ;
-    obo:BFO_0000051 IRI * ;   # structure type IRI (Schema#str1_01 .. str1_07)
-    obo:RO_0000058 IRI *      # lattice parameter nodes (lata, latb, latc)
-    # Lattice datum IRIs: append "Datum" to the lattice node IRI
-    # e.g. str:msc_om0000949_lataDatum -> sio:SIO_000300 -> 3.831 (Angstrom)
+    obo:BFO_0000051 IRI ?  ;  # named IRI (19.1%) or blank node (80.9%)
+    obo:RO_0000058  IRI *    # links to lattice parameter property nodes
   }
 
-  # Crystal structure type IRI vocabulary (7 known types, no rdfs:labels in dataset)
-  # Schema:str1_01, str1_02, str1_03, str1_04, str1_05, str1_06, str1_07
+  # -- MEASUREMENT SCAFFOLD (96,167 Schema:Measurement nodes) ------------------
+  # CRITICAL CORRECTION (v3.1 had IAO_0000221 on wrong node):
+  #   IAO_0000221 is on the DATUM, not the Measurement node.
+  #
+  # PREFERRED navigation:
+  #   ?sample sio:SIO_000008 ?propNode .
+  #   ?propNode a Schema:tc .             <- typed predicate selects property
+  #   ?meas obo:OBI_0000299 ?datum .      <- Measurement "has specified output"
+  #   ?datum obo:IAO_0000221 ?propNode ;  <- Datum "is about" the property node
+  #          sio:SIO_000300 ?value ;      <- numeric value
+  #          sio:SIO_000221 ?unit .       <- unit string ("K","A","nm","T","")
+  #
+  # SHORTCUT (skip Measurement node; works for all property types):
+  #   ?datum obo:IAO_0000221 ?propNode ;
+  #          sio:SIO_000300 ?value .
+  #
+  # Tc unit distribution: "K"=20,010 (75.9%), ""=6,347 (24.1%), "k"=1 (<0.01%).
+  # All values are in Kelvin; empty unit means K by source convention.
+  <MeasurementShape> {
+    a [ Schema:Measurement ] ;
+    obo:OBI_0000299 IRI     # "has specified output" -- datum node
+    # NOTE: IAO_0000221 is NOT on this node; it is on the datum node below
+  }
 
-  # Measurement datum holding a numeric value with optional unit
   <MeasurementDatumShape> {
     a [ obo:IAO_0000109 ] ;
-    sio:SIO_000300 xsd:decimal ;   # numeric measured value
-    sio:SIO_000221 xsd:string ?    # unit string (e.g. "K", "emu/g", "")
+    obo:IAO_0000221  IRI ;        # "is about" -- property node (Schema:tc, hc2zero, etc.)
+    sio:SIO_000300   xsd:decimal ; # numeric measured value
+    sio:SIO_000221   xsd:string ?  # unit string (often empty)
   }
 
-  # Sample preparation (free-text synthesis description)
+  # -- SAMPLE PREPARATION ------------------------------------------------------
+  # prc# namespace: 22,165 Schema:SamplePreparation nodes.
+  # rdfs:comment is the ONLY legitimate bif:contains target in this database.
   <SamplePreparationShape> {
     a [ Schema:SamplePreparation ] ;
     rdfs:comment xsd:string
   }
 
-  # Literature reference
+  # -- LITERATURE REFERENCE ----------------------------------------------------
   <ArticleShape> {
     a [ bibo:Article ] ;
-    dct:identifier xsd:string ;
-    dct:bibliographicCitation xsd:string ;
-    dct:creator xsd:string ;
-    dct:title xsd:string ;
-    prism:publicationDate xsd:string ;
-    sio:SIO_000147 xsd:string ?    # keywords
+    dct:identifier              xsd:string ;
+    dct:bibliographicCitation   xsd:string ;
+    dct:creator                 xsd:string ;
+    dct:title                   xsd:string ;
+    prism:publicationDate       xsd:string ?   # 4-digit year; 32 records have empty string
   }
 
 sample_rdf_entries:
-  - title: YBa2Cu3Oz sample with Tc = 88.5 K
-    description: A classic YBCO high-temperature superconductor sample with near-optimal oxygen content.
-    rdf: |
-      @prefix smp: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/smp#> .
-      @prefix prop: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/prop#> .
-      @prefix elm: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/elm#> .
-      @prefix ref: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/ref#> .
-      @prefix Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#> .
-      @prefix sio: <http://semanticscience.org/resource/> .
-      @prefix obo: <http://purl.obolibrary.org/obo/> .
-      @prefix dct: <http://purl.org/dc/terms/> .
-      @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  rdf_prefixes: |
+    @prefix smp:    <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/smp#> .
+    @prefix prop:   <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/prop#> .
+    @prefix str:    <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/str#> .
+    @prefix elm:    <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/elm#> .
+    @prefix ref:    <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/ref#> .
+    @prefix Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#> .
+    @prefix sio:    <http://semanticscience.org/resource/> .
+    @prefix obo:    <http://purl.obolibrary.org/obo/> .
+    @prefix dct:    <http://purl.org/dc/terms/> .
+    @prefix bibo:   <http://purl.org/ontology/bibo/> .
+    @prefix prism:  <http://prismstandard.org/namespaces/basic/2.0/> .
+  entries:
+    - title: YBa2Cu3Oz -- corrected Tc measurement scaffold
+      description: YBCO sample showing the v3.2-corrected scaffold where IAO_0000221 is on the datum node, not the Measurement node.
+      rdf: |
+        smp:msc_om0000949 a Schema:OxideAndMetallic ;
+          dct:identifier "msc_om0000949" ;
+          dct:referecens ref:PRB0404517 ;
+          sio:SIO_000008 elm:msc_om0000949_name ;
+          sio:SIO_000008 elm:msc_om0000949_element ;
+          sio:SIO_000008 prop:msc_om0000949_tc .
 
-      smp:msc_om0000949 a Schema:OxideAndMetallic ;
-        rdfs:label "msc_om0000949" ;
-        dct:identifier "msc_om0000949" ;
-        dct:referecens ref:PRB0404517 ;
-        sio:SIO_000008 elm:msc_om0000949_name ;
-        sio:SIO_000008 elm:msc_om0000949_element ;
-        sio:SIO_000008 prop:msc_om0000949_tc .
+        elm:msc_om0000949_name    a Schema:name    ; sio:SIO_000300 "YBa2Cu3Oz" .
+        elm:msc_om0000949_element a Schema:element ; sio:SIO_000300 "Y1Ba2Cu3O6.96" .
+        prop:msc_om0000949_tc a Schema:tc .
 
-      elm:msc_om0000949_name a Schema:name ;
-        sio:SIO_000300 "YBa2Cu3Oz" .
+        prop:msc_om0000949_tcMeasurement a Schema:Measurement ;
+          obo:OBI_0000299 prop:msc_om0000949_tcMeasurementDatum .
 
-      elm:msc_om0000949_element a Schema:element ;
-        sio:SIO_000300 "Y1Ba2Cu3O6.96" .
+        # IAO_0000221 is on the DATUM node (not the Measurement node)
+        prop:msc_om0000949_tcMeasurementDatum a obo:IAO_0000109 ;
+          obo:IAO_0000221 prop:msc_om0000949_tc ;
+          sio:SIO_000300 88.5 ;
+          sio:SIO_000221 "" .
 
-      prop:msc_om0000949_tc a Schema:tc .
-      prop:msc_om0000949_tcMeasurementDatum a obo:IAO_0000109 ;
-        sio:SIO_000300 88.5 ;
-        sio:SIO_000221 "" .
+    - title: Crystal structure -- blank node (80.9%) vs named IRI (19.1%)
+      description: Demonstrates why any IRI-based structure type filter silently discards 80.9% of structure data.
+      rdf: |
+        # Pattern A: named IRI type (19.1% -- matchable by IRI filters)
+        smp:msc_om0000949 sio:SIO_000008 str:msc_om0000949_InternalStructure .
+        str:msc_om0000949_InternalStructure a Schema:IntermalStructure ;
+          obo:BFO_0000051 Schema:str1_03 ;
+          obo:RO_0000058  str:msc_om0000949_lata .
 
-  - title: La1.85Sr0.15CuO4 sample (LSCO cuprate)
-    description: La-Sr-Cu-O series sample, a prototypical cuprate superconductor family.
-    rdf: |
-      @prefix smp: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/smp#> .
-      @prefix elm: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/elm#> .
-      @prefix Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#> .
-      @prefix sio: <http://semanticscience.org/resource/> .
+        # Pattern B: blank node type (80.9% -- invisible to IRI filters)
+        smp:msc_om0040650 sio:SIO_000008 str:msc_om0040650_InternalStructure .
+        str:msc_om0040650_InternalStructure a Schema:IntermalStructure ;
+          obo:BFO_0000051 [] ;
+          obo:RO_0000058  str:msc_om0040650_lata .
 
-      smp:msc_om0040650 a Schema:OxideAndMetallic ;
-        sio:SIO_000008 elm:msc_om0040650_name ;
-        sio:SIO_000008 elm:msc_om0040650_element .
-
-      elm:msc_om0040650_name a Schema:name ;
-        sio:SIO_000300 "(La,Sr)2CuO4" .
-
-      elm:msc_om0040650_element a Schema:element ;
-        sio:SIO_000300 "La1.85Sr0.15Cu1O4" .
-
-  - title: Lattice parameters for YBa2Cu3Oz
-    description: Crystal structure data with a-axis and c-axis lattice parameters in Angstroms.
-    rdf: |
-      @prefix str: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/str#> .
-      @prefix smp: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/smp#> .
-      @prefix Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#> .
-      @prefix sio: <http://semanticscience.org/resource/> .
-      @prefix obo: <http://purl.obolibrary.org/obo/> .
-
-      smp:msc_om0000949 sio:SIO_000008 str:msc_om0000949_InternalStructure .
-
-      str:msc_om0000949_InternalStructure a Schema:IntermalStructure ;
-        obo:BFO_0000051 Schema:str1_03 ;
-        obo:RO_0000058 str:msc_om0000949_lata ;
-        obo:RO_0000058 str:msc_om0000949_latc .
-
-      str:msc_om0000949_lata a Schema:lata .
-      str:msc_om0000949_lataDatum a obo:IAO_0000109 ;
-        sio:SIO_000300 3.831 .
-
-  - title: High-pressure H2S superconductor (Tc = 203 K)
-    description: Record-setting high-pressure sulfur hydride entry linked to a Nature publication.
-    rdf: |
-      @prefix smp: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/smp#> .
-      @prefix prop: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/prop#> .
-      @prefix elm: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/elm#> .
-      @prefix ref: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/ref#> .
-      @prefix Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#> .
-      @prefix sio: <http://semanticscience.org/resource/> .
-      @prefix obo: <http://purl.obolibrary.org/obo/> .
-      @prefix dct: <http://purl.org/dc/terms/> .
-
-      smp:msc_om0157510 a Schema:OxideAndMetallic ;
-        dct:referecens ref:NAT5250073 ;
-        sio:SIO_000008 elm:msc_om0157510_name ;
-        sio:SIO_000008 elm:msc_om0157510_element ;
-        sio:SIO_000008 prop:msc_om0157510_tc .
-
-      elm:msc_om0157510_name a Schema:name ; sio:SIO_000300 "H2S" .
-      elm:msc_om0157510_element a Schema:element ; sio:SIO_000300 "H2S1" .
-      prop:msc_om0157510_tc a Schema:tc .
-      prop:msc_om0157510_tcMeasurementDatum a obo:IAO_0000109 ;
-        sio:SIO_000300 203 .
-
-  - title: Literature reference article record
-    description: A journal article record (Physical Review B) linked from sample entries.
-    rdf: |
-      @prefix ref: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/ref#> .
-      @prefix bibo: <http://purl.org/ontology/bibo/> .
-      @prefix dct: <http://purl.org/dc/terms/> .
-      @prefix sio: <http://semanticscience.org/resource/> .
-      @prefix prism: <http://prismstandard.org/namespaces/basic/2.0/> .
-
-      ref:PRB0404517 a bibo:Article ;
-        dct:identifier "PRB0404517" ;
-        dct:bibliographicCitation "PHYS.REV.B,40(1989)4517" ;
-        dct:creator "H.B.RADOUSKY,J.L.PENG,L.BERNARDEZ,P.A.HAHN,P.KLAVINS,R.N.SHELTON" ;
-        dct:title "UPPER CRITICAL FIELD AND NORMAL-STATE PROPERTIES OF SINGLE-PHASE Y1-XPRXBA2CU3O7Z COMPOUNDS" ;
-        prism:publicationDate "1989" ;
-        sio:SIO_000147 "SINGLE-PHASE,ANNEALING CONDITIONS,MAGNETIZATION,CRITICAL FIELDS" .
+    - title: Literature reference article
+      description: A bibo:Article node linked from sample entries via dct:referecens (typo required).
+      rdf: |
+        ref:PRB0404517 a bibo:Article ;
+          dct:identifier "PRB0404517" ;
+          dct:bibliographicCitation "PHYS.REV.B,40(1989)4517" ;
+          dct:creator "H.B.RADOUSKY,J.L.PENG,L.BERNARDEZ,P.A.HAHN,P.KLAVINS,R.N.SHELTON" ;
+          dct:title "UPPER CRITICAL FIELD AND NORMAL-STATE PROPERTIES OF Y1-XPRXBA2CU3O7Z" ;
+          prism:publicationDate "1989" .
 
 sparql_query_examples:
-  - title: Retrieve sample name, formula, and Tc for a known sample IRI
+  - title: Direct lookup of sample name, formula, and Tc
     description: |
-      Direct lookup of a specific SuperCon sample using its IRI, returning the material name,
-      stoichiometric formula, and critical temperature (in K). Uses typed predicate Schema:tc
-      to identify the Tc property node, then constructs the datum IRI.
-      Structured approach: specific sample IRI via VALUES; typed predicates Schema:name,
-      Schema:element, Schema:tc for property selection.
-    question: What is the chemical formula and Tc of sample msc_om0000949?
+      Retrieves name, stoichiometric formula, and Tc for a known sample IRI.
+      Uses the corrected scaffold: IAO_0000221 is on the datum node, not Measurement.
+    question: What is the formula and Tc of sample msc_om0000949?
     complexity: basic
     sparql: |
-      PREFIX smp: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/smp#>
-      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX smp:    <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/smp#>
+      PREFIX sio:    <http://semanticscience.org/resource/>
       PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
+      PREFIX obo:    <http://purl.obolibrary.org/obo/>
 
-      SELECT ?name ?formula ?tcVal
+      SELECT ?name ?formula ?tcVal ?tcUnit
       FROM <http://rdfportal.org/dataset/supercon>
       WHERE {
-        # Specific sample IRI via VALUES (structured approach)
         VALUES ?sample { smp:msc_om0000949 }
-        ?sample sio:SIO_000008 ?nameProp .
-        ?nameProp a Schema:name ;
-                  sio:SIO_000300 ?name .
-        ?sample sio:SIO_000008 ?elmProp .
-        ?elmProp a Schema:element ;
-                 sio:SIO_000300 ?formula .
-        ?sample sio:SIO_000008 ?tcProp .
+        ?sample sio:SIO_000008 ?nameProp, ?elmProp, ?tcProp .
+        ?nameProp a Schema:name    ; sio:SIO_000300 ?name .
+        ?elmProp  a Schema:element ; sio:SIO_000300 ?formula .
         ?tcProp a Schema:tc .
-        # Tc datum IRI: replace smp# with prop# and append _tcMeasurementDatum
-        BIND(IRI(CONCAT(REPLACE(STR(?sample), "smp#", "prop#"), "_tcMeasurementDatum")) AS ?tcDatum)
-        ?tcDatum sio:SIO_000300 ?tcVal .
+        # Corrected: IAO_0000221 is on datum, not Measurement node
+        ?tcDatum obo:IAO_0000221 ?tcProp ;
+                 sio:SIO_000300 ?tcVal .
+        OPTIONAL { ?tcDatum sio:SIO_000221 ?tcUnit . }
       }
       LIMIT 10
 
   - title: Find all samples from a specific publication
     description: |
-      Retrieves all superconductor samples linked to a specific literature reference using the
-      dct:referecens predicate (note: intentional typo in the ontology). Uses the reference
-      IRI directly — the structured approach for literature-based queries. No text search needed:
-      publication lookup uses the specific ref# IRI.
-    question: What samples are documented in the Physical Review B paper PRB0404517?
+      Retrieves samples linked to a known reference via dct:referecens (typo required)
+      and the ref# IRI. Tc is OPTIONAL because 80.8% of samples are skeleton nodes.
+    question: Which samples are documented in Physical Review B paper PRB0404517?
     complexity: basic
     sparql: |
-      PREFIX ref: <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/ref#>
-      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX ref:    <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/ref#>
+      PREFIX sio:    <http://semanticscience.org/resource/>
       PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
-      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX dct:    <http://purl.org/dc/terms/>
+      PREFIX obo:    <http://purl.obolibrary.org/obo/>
 
       SELECT ?sample ?name ?formula ?tcVal
       FROM <http://rdfportal.org/dataset/supercon>
       WHERE {
-        # Query via specific reference IRI (dct:referecens — typo is intentional)
         ?sample a Schema:OxideAndMetallic ;
                 dct:referecens ref:PRB0404517 ;
-                sio:SIO_000008 ?nameProp ;
-                sio:SIO_000008 ?elmProp .
+                sio:SIO_000008 ?nameProp, ?elmProp .
         ?nameProp a Schema:name    ; sio:SIO_000300 ?name .
         ?elmProp  a Schema:element ; sio:SIO_000300 ?formula .
         OPTIONAL {
           ?sample sio:SIO_000008 ?tcProp .
           ?tcProp a Schema:tc .
-          BIND(IRI(CONCAT(REPLACE(STR(?sample), "smp#", "prop#"), "_tcMeasurementDatum")) AS ?tcDatum)
-          ?tcDatum sio:SIO_000300 ?tcVal .
+          ?tcDatum obo:IAO_0000221 ?tcProp ;
+                   sio:SIO_000300 ?tcVal .
         }
       }
       LIMIT 50
 
-  - title: List samples with Tc above liquid-nitrogen temperature (77 K)
+  - title: Superconductors with Tc above liquid-nitrogen temperature (77 K)
     description: |
-      Finds all superconductors with Tc above 77 K — the boiling point of liquid nitrogen and
-      threshold for practical low-cost cooling. Uses the Schema:tc typed predicate to navigate
-      to Tc values, then filters numerically.
-      Structured approach: typed predicate Schema:tc + BIND datum IRI + numeric FILTER.
+      All samples with Tc > 77 K using the corrected scaffold. Tc unit note:
+      75.9% carry unit "K", 24.1% have empty string -- both represent Kelvin by convention.
     question: Which superconductors have critical temperatures above 77 K?
     complexity: intermediate
     sparql: |
-      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX sio:    <http://semanticscience.org/resource/>
       PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
+      PREFIX obo:    <http://purl.obolibrary.org/obo/>
 
-      SELECT ?sample ?name ?formula ?tcVal
+      SELECT ?name ?formula ?tcVal ?tcUnit
       FROM <http://rdfportal.org/dataset/supercon>
       WHERE {
         ?sample a Schema:OxideAndMetallic ;
-                sio:SIO_000008 ?nameProp ;
-                sio:SIO_000008 ?elmProp ;
-                sio:SIO_000008 ?tcProp .
+                sio:SIO_000008 ?nameProp, ?elmProp, ?tcProp .
         ?nameProp a Schema:name    ; sio:SIO_000300 ?name .
         ?elmProp  a Schema:element ; sio:SIO_000300 ?formula .
-        # Typed predicate Schema:tc selects only temperature property nodes
-        ?tcProp   a Schema:tc .
-        # Construct Tc MeasurementDatum IRI using naming convention
-        BIND(IRI(CONCAT(REPLACE(STR(?sample), "smp#", "prop#"), "_tcMeasurementDatum")) AS ?tcDatum)
-        ?tcDatum sio:SIO_000300 ?tcVal .
+        ?tcProp a Schema:tc .
+        ?tcDatum obo:IAO_0000221 ?tcProp ;
+                 sio:SIO_000300 ?tcVal .
+        OPTIONAL { ?tcDatum sio:SIO_000221 ?tcUnit . }
         FILTER(?tcVal > 77)
       }
       ORDER BY DESC(?tcVal)
       LIMIT 50
 
-  - title: Tc distribution statistics grouped by crystal structure type
+  - title: Samples with both Tc and upper critical field (hc2zero)
     description: |
-      Groups samples by crystal structure type (Schema:str1_01 through str1_07) using the typed
-      predicate Schema:IntermalStructure and BFO:has_part (BFO_0000051) to the structure type IRI.
-      Returns average and maximum Tc per structure type.
-      Structured approach: typed predicate Schema:IntermalStructure + specific structure type IRIs
-      via STRSTARTS filter. NOTE: "IntermalStructure" is a known ontology typo — use verbatim.
-    question: What is the average and maximum Tc for each crystal structure type?
+      The corrected scaffold generalises to all property types -- only the Schema: type
+      assertion changes. Useful for Ginzburg-Landau parameter analysis.
+      Note: hc2zero has 1,759 property nodes.
+    question: Which samples have both Tc and upper-critical-field-at-0K measurements?
     complexity: intermediate
     sparql: |
-      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX sio:    <http://semanticscience.org/resource/>
       PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX obo:    <http://purl.obolibrary.org/obo/>
 
-      SELECT ?strType (AVG(?tcVal) AS ?avgTc) (MAX(?tcVal) AS ?maxTc) (COUNT(?sample) AS ?count)
+      SELECT ?name ?formula ?tcVal ?hc2Val
       FROM <http://rdfportal.org/dataset/supercon>
       WHERE {
         ?sample a Schema:OxideAndMetallic ;
-                sio:SIO_000008 ?strNode ;
-                sio:SIO_000008 ?tcProp .
-        # Typed predicate to select structure nodes (IntermalStructure — typo intentional)
-        ?strNode a Schema:IntermalStructure ;
-                 obo:BFO_0000051 ?strType .
-        # Filter to the 7 known structure type IRIs in the Schema namespace
-        FILTER(STRSTARTS(STR(?strType), "http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#str1_"))
+                sio:SIO_000008 ?nameProp, ?elmProp, ?tcProp, ?hc2Prop .
+        ?nameProp a Schema:name    ; sio:SIO_000300 ?name .
+        ?elmProp  a Schema:element ; sio:SIO_000300 ?formula .
         ?tcProp a Schema:tc .
-        BIND(IRI(CONCAT(REPLACE(STR(?sample), "smp#", "prop#"), "_tcMeasurementDatum")) AS ?tcDatum)
-        ?tcDatum sio:SIO_000300 ?tcVal .
+        ?tcDatum obo:IAO_0000221 ?tcProp ;
+                 sio:SIO_000300 ?tcVal .
+        ?hc2Prop a Schema:hc2zero .
+        ?hc2Datum obo:IAO_0000221 ?hc2Prop ;
+                  sio:SIO_000300 ?hc2Val .
+        FILTER(?tcVal > 10)
       }
-      GROUP BY ?strType
-      ORDER BY DESC(?avgTc)
-      LIMIT 20
+      ORDER BY DESC(?tcVal)
+      LIMIT 30
 
-  - title: Sample composition, Tc, and source article metadata
+  - title: High-Tc samples with source publication metadata
     description: |
-      Joins sample data with the linked bibo:Article reference using dct:referecens
-      (intentional typo) to retrieve title, authors, and year alongside Tc and formula.
-      Structured approach: typed predicates Schema:tc, Schema:name, Schema:element + specific
-      reference node navigation via dct:referecens IRI.
-    question: For samples with Tc > 100 K, what are the source publications?
+      Joins Tc data with bibo:Article title and year via dct:referecens (typo required).
+    question: For samples with Tc > 100 K, what are the source publication titles and years?
     complexity: intermediate
     sparql: |
-      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX sio:    <http://semanticscience.org/resource/>
       PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
-      PREFIX dct: <http://purl.org/dc/terms/>
-      PREFIX prism: <http://prismstandard.org/namespaces/basic/2.0/>
+      PREFIX dct:    <http://purl.org/dc/terms/>
+      PREFIX prism:  <http://prismstandard.org/namespaces/basic/2.0/>
+      PREFIX obo:    <http://purl.obolibrary.org/obo/>
 
-      SELECT ?name ?formula ?tcVal ?title ?authors ?year
+      SELECT ?name ?formula ?tcVal ?title ?year
       FROM <http://rdfportal.org/dataset/supercon>
       WHERE {
         ?sample a Schema:OxideAndMetallic ;
-                sio:SIO_000008 ?nameProp ;
-                sio:SIO_000008 ?elmProp ;
-                sio:SIO_000008 ?tcProp ;
+                sio:SIO_000008 ?nameProp, ?elmProp, ?tcProp ;
                 dct:referecens ?refIRI .
         ?nameProp a Schema:name    ; sio:SIO_000300 ?name .
         ?elmProp  a Schema:element ; sio:SIO_000300 ?formula .
-        ?tcProp   a Schema:tc .
-        BIND(IRI(CONCAT(REPLACE(STR(?sample), "smp#", "prop#"), "_tcMeasurementDatum")) AS ?tcDatum)
-        ?tcDatum sio:SIO_000300 ?tcVal .
+        ?tcProp a Schema:tc .
+        ?tcDatum obo:IAO_0000221 ?tcProp ;
+                 sio:SIO_000300 ?tcVal .
         FILTER(?tcVal > 100)
         ?refIRI dct:title ?title ;
-                dct:creator ?authors ;
                 prism:publicationDate ?year .
       }
       ORDER BY DESC(?tcVal)
       LIMIT 30
 
-  - title: Top-10 highest-Tc superconductors with full context
+  - title: Top-10 highest reported Tc values with provenance
     description: |
-      Returns the 10 highest recorded Tc values with formula, material name, and reference
-      identifier. Sorted by Tc descending. The unit field in MeasurementDatum is often empty
-      even for Tc; values are in Kelvin by convention. Some high entries (>200 K) are
-      under-pressure or disputed measurements.
-      Structured approach: typed predicates Schema:tc, Schema:name, Schema:element + BIND
-      datum IRI + OPTIONAL reference extraction.
-    question: What are the ten superconducting materials with the highest reported Tc in the database?
+      RETRACTION WARNING: entries above ~250 K include records from retracted papers.
+      C-S-H at ~287.7 K (Snider/Dias, Nature 586, 2020 -- retracted Sep 2022).
+      LuH at ~294 K (Dasenbrock-Gammon/Dias, Nature 615, 2023 -- retracted Nov 2023).
+      These remain without retraction flags. Cross-check all Tc > 250 K before use in ML.
+    question: What are the ten highest Tc values recorded in this database?
     complexity: advanced
     sparql: |
-      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX sio:    <http://semanticscience.org/resource/>
       PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
-      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX dct:    <http://purl.org/dc/terms/>
+      PREFIX obo:    <http://purl.obolibrary.org/obo/>
 
       SELECT ?name ?formula ?tcVal ?refCode
       FROM <http://rdfportal.org/dataset/supercon>
       WHERE {
         ?sample a Schema:OxideAndMetallic ;
-                sio:SIO_000008 ?nameProp ;
-                sio:SIO_000008 ?elmProp ;
-                sio:SIO_000008 ?tcProp .
+                sio:SIO_000008 ?nameProp, ?elmProp, ?tcProp .
         ?nameProp a Schema:name    ; sio:SIO_000300 ?name .
         ?elmProp  a Schema:element ; sio:SIO_000300 ?formula .
-        ?tcProp   a Schema:tc .
-        BIND(IRI(CONCAT(REPLACE(STR(?sample), "smp#", "prop#"), "_tcMeasurementDatum")) AS ?tcDatum)
-        ?tcDatum sio:SIO_000300 ?tcVal .
+        ?tcProp a Schema:tc .
+        ?tcDatum obo:IAO_0000221 ?tcProp ;
+                 sio:SIO_000300 ?tcVal .
         OPTIONAL {
           ?sample dct:referecens ?refIRI .
           BIND(STRAFTER(STR(?refIRI), "ref#") AS ?refCode)
@@ -440,48 +430,36 @@ sparql_query_examples:
       ORDER BY DESC(?tcVal)
       LIMIT 10
 
-  - title: Tc versus a-axis lattice parameter for structure type str1_03
+  - title: Average and maximum Tc grouped by named crystal structure type
     description: |
-      Structural-property correlation query. Retrieves lattice parameter a (lata) alongside Tc
-      for crystal structure type str1_03. Uses RO_0000058 (is concretized as) to navigate to
-      lattice parameter nodes, then constructs the datum IRI by appending "Datum" to the
-      lattice node IRI.
-      Note: lattice datum IRIs are simply the lattice node IRI with "Datum" appended
-      (e.g. str:msc_om0000949_lata -> str:msc_om0000949_lataDatum). This differs from the
-      Tc datum pattern which requires replacing smp# with prop#.
-      Structured approach: specific structure type IRI Schema:str1_03 + typed predicates
-      Schema:IntermalStructure, Schema:lata, Schema:tc.
-    question: What is the a-axis lattice parameter vs Tc for structure type str1_03 samples?
+      Groups samples by the 7 named structure IRIs (Schema:str1_01..07).
+      SCOPE LIMITATION: named IRIs cover only 19.1% of structure data (6,813 of 35,752).
+      The remaining 80.9% (28,939 records) use blank nodes and are excluded by design.
+    question: What is the average and maximum Tc for each named crystal structure type?
     complexity: advanced
     sparql: |
-      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX sio:    <http://semanticscience.org/resource/>
       PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX obo:    <http://purl.obolibrary.org/obo/>
 
-      SELECT ?name ?formula ?tcVal ?lataVal
+      SELECT ?strType (AVG(?tcVal) AS ?avgTc) (MAX(?tcVal) AS ?maxTc) (COUNT(?sample) AS ?count)
       FROM <http://rdfportal.org/dataset/supercon>
       WHERE {
         ?sample a Schema:OxideAndMetallic ;
-                sio:SIO_000008 ?nameProp ;
-                sio:SIO_000008 ?elmProp ;
-                sio:SIO_000008 ?strNode ;
-                sio:SIO_000008 ?tcProp .
-        ?nameProp a Schema:name    ; sio:SIO_000300 ?name .
-        ?elmProp  a Schema:element ; sio:SIO_000300 ?formula .
-        # Use specific structure type IRI (str1_03) for filtering
+                sio:SIO_000008 ?strNode, ?tcProp .
         ?strNode a Schema:IntermalStructure ;
-                 obo:BFO_0000051 Schema:str1_03 ;
-                 obo:RO_0000058  ?lataNode .
-        ?lataNode a Schema:lata .
-        # Lattice datum IRI: simply append "Datum" to the lattice node IRI
-        BIND(IRI(CONCAT(STR(?lataNode), "Datum")) AS ?lataDatum)
-        ?lataDatum sio:SIO_000300 ?lataVal .
+                 obo:BFO_0000051 ?strType .
+        VALUES ?strType {
+          Schema:str1_01 Schema:str1_02 Schema:str1_03
+          Schema:str1_04 Schema:str1_05 Schema:str1_06 Schema:str1_07
+        }
         ?tcProp a Schema:tc .
-        BIND(IRI(CONCAT(REPLACE(STR(?sample), "smp#", "prop#"), "_tcMeasurementDatum")) AS ?tcDatum)
-        ?tcDatum sio:SIO_000300 ?tcVal .
+        ?tcDatum obo:IAO_0000221 ?tcProp ;
+                 sio:SIO_000300 ?tcVal .
       }
-      ORDER BY DESC(?tcVal)
-      LIMIT 30
+      GROUP BY ?strType
+      ORDER BY DESC(?avgTc)
+      LIMIT 20
 
 cross_database_queries:
   shared_endpoint: nims
@@ -490,25 +468,26 @@ cross_database_queries:
   examples: []
   notes: |
     SuperCon is the only database on the nims endpoint (https://rdfportal.org/nims/sparql).
-    Cross-database SPARQL with other RDFPortal databases (UniProt, ChEMBL, PubChem, etc.)
-    is not possible via a single SPARQL query. To link SuperCon entries to external databases:
-      - Use dcterms:bibliographicCitation strings (e.g., "PHYS.REV.B,...") to look up DOIs
+    Cross-database SPARQL with other RDFPortal databases is not possible in a single query.
+    To link SuperCon entries to external databases:
+      - Parse dct:bibliographicCitation strings (e.g. "PHYS.REV.B,...") to look up DOIs
         via PubMed or CrossRef externally.
-      - Use element formula strings (Schema:element -> SIO_000300) with get_pubchem_compound_id()
-        to bridge to PubChem.
+      - Use element formula strings (Schema:element -> sio:SIO_000300) with
+        get_pubchem_compound_id() to bridge to PubChem.
       - Use togoid_convertId() if a conversion route to another database exists.
 
 cross_references:
   - pattern: dct:referecens (-> bibo:Article)
     description: |
       Each sample links to one or more internal journal article nodes via dct:referecens
-      (typo intentional). Reference IRIs use journal-specific codes: "PRB" = Physical Review B,
-      "NAT" = Nature, "PHC" = Physica C, etc. No external DOI/PMID links are embedded.
+      (typo intentional; see critical_warnings). Reference IRIs use journal-specific codes:
+      "PRB" = Physical Review B, "NAT" = Nature, "PHC" = Physica C, etc.
+      No external DOI/PMID links are embedded in the data.
     databases:
       internal_literature:
-        - "bibo:Article nodes: 7,249 unique publications"
+        - "bibo:Article nodes: 7,249 unique publications (distribution heavily pre-2020)"
     sparql: |
-      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX dct:    <http://purl.org/dc/terms/>
       PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
       SELECT ?sample ?refCode ?citation
       FROM <http://rdfportal.org/dataset/supercon>
@@ -517,188 +496,182 @@ cross_references:
                 dct:referecens ?refIRI .
         ?refIRI dct:bibliographicCitation ?citation .
         BIND(STRAFTER(STR(?refIRI), "ref#") AS ?refCode)
-      } LIMIT 20
+      }
+      LIMIT 20
 
 architectural_notes:
   query_strategy:
-    - "Priority: Specific IRIs > Typed predicates > Graph navigation > bif:contains (Virtuoso) > FILTER(CONTAINS())"
-    - "Get MIE file FIRST before any SPARQL — 95% of failures come from skipping this step"
-    - "No keyword search API exists; use exploratory SPARQL with LIMIT 10 to discover IRIs and values"
-    - "Comprehensive queries: use Schema:tc, Schema:element, Schema:name typed predicates — never text search for property selection"
-    - "Tc value access: BIND(IRI(CONCAT(REPLACE(STR(?sample),'smp#','prop#'),'_tcMeasurementDatum')) AS ?tcDatum)"
-    - "Lattice datum access: simply append 'Datum' to the lattice node IRI — BIND(IRI(CONCAT(STR(?lataNode),'Datum')) AS ?lataDatum)"
-    - "Structure type filtering: use specific IRI VALUES { Schema:str1_01 ... Schema:str1_07 } or STRSTARTS filter"
-    - "Text search (bif:contains) is legitimate ONLY for SamplePreparation.rdfs:comment — the only unstructured free-text field"
-    - "Always include LIMIT in every query, including GROUP BY aggregations"
+    - "MANDATORY FIRST STEP: read critical_warnings -- the scaffold bug (IAO_0000221 on wrong node) causes silent 0-row failures"
+    - "CORRECTED scaffold (v3.2): ?datum obo:IAO_0000221 ?propNode ; sio:SIO_000300 ?value"
+    - "Exploratory: use SPARQL with LIMIT 10 (no keyword search API) to discover IRIs and values"
+    - "Property type selection: use typed predicates (a Schema:tc, a Schema:hc2zero, etc.) -- no text search needed"
+    - "Text search: bif:contains (Virtuoso, indexed) ONLY for Schema:SamplePreparation rdfs:comment -- the sole unstructured field"
+    - "Priority: Specific IRIs > Typed predicates > Graph navigation > bif:contains (only SamplePrep)"
+
   schema_design:
-    - "Central entity: Schema:OxideAndMetallic (165,969 instances); all properties hang off sio:SIO_000008 (has attribute)"
-    - "Numeric values always via sio:SIO_000300 (has value) on IAO_0000109 MeasurementDatum nodes"
-    - "Tc datum IRI convention: replace smp# with prop# in sample IRI + _{propname}MeasurementDatum"
-    - "Lattice datum IRI convention: lattice node IRI + 'Datum' suffix (e.g. str:..._lata -> str:..._lataDatum)"
-    - "Two critical typos: dct:referecens (not 'references'), Schema:IntermalStructure (not 'InternalStructure')"
-    - "Instance IRIs for structure nodes use correctly-spelled 'InternalStructure' (e.g. str:msc_om0000949_InternalStructure) even though the class is Schema:IntermalStructure"
-    - "Crystal structure types use 7 IRIs: Schema:str1_01 through Schema:str1_07 (no rdfs:labels in dataset)"
-    - "SamplePreparation entities (22,165) carry free-text synthesis descriptions in rdfs:comment"
+    - "Central entity: Schema:OxideAndMetallic (165,969 instances); 80.8% skeleton nodes without measurement data"
+    - "All properties and structures attach to samples via sio:SIO_000008"
+    - "Measurement scaffold: Measurement -[OBI_0000299]-> Datum -[IAO_0000221]-> PropertyNode; Datum -[SIO_000300]-> value"
+    - "Two critical namespace pairs: smp#/prop# (samples/property nodes sharing same base ID)"
+    - "Two undocumented-but-large namespaces: cmp# (154,792 composition triples) and prc# (22,165 SamplePrep nodes)"
+    - "Crystal structure types: str1_01..07 (19.1% named IRIs) + blank nodes (80.9%)"
+    - "150+ Schema: property classes; this MIE covers all major physical categories"
+
   performance:
-    - "Always include `a Schema:OxideAndMetallic` to restrict scans to 165,969 samples"
-    - "Include property type filter (e.g., `?tcProp a Schema:tc`) before BIND to narrow candidates"
-    - "Avoid joining across all IAO_0000109 nodes (124,976); prefer BIND-constructed datum IRIs"
-    - "FILTER on numeric value (?tcVal) after BIND pattern is efficient on Virtuoso"
-    - "LIMIT 50 or fewer for exploratory queries; LIMIT 20 for GROUP BY aggregations"
+    - "Always include a Schema:OxideAndMetallic type filter and FROM <http://rdfportal.org/dataset/supercon>"
+    - "Use typed property predicates as entry points; avoid full scans of IAO_0000109 (124,976 nodes)"
+    - "TIMEOUT RISK: full OxideAndMetallic join queries over large property classes (hc2zero, gamma) near 60s limit"
+    - "Safe alternative: COUNT(?p) WHERE { ?p a Schema:hc2zero } for quick property node counts"
+    - "LIMIT 50 for exploratory; LIMIT 20-30 for GROUP BY aggregations"
+
   data_integration:
     - "No external URI links; literature references are internal bibo:Article nodes only"
-    - "Bibliographic citation strings in dct:bibliographicCitation can be parsed for journal/year/page"
-    - "Element formula strings (Schema:element -> SIO_000300) use stoichiometric notation for chemical parsing"
-    - "To bridge to external DBs: use formula strings with get_pubchem_compound_id() or togoid_convertId()"
+    - "dct:bibliographicCitation strings (journal/year/page) can be parsed to look up external DOIs"
+    - "Formula strings (Schema:element) use stoichiometric notation suitable for chemical parsing"
+    - "External bridging: get_pubchem_compound_id() with formula strings, or togoid_convertId()"
+
   data_quality:
-    - "Tc unit field (SIO_000221 on tcMeasurementDatum) is typically empty; all Tc values are in Kelvin by convention"
-    - "Some high Tc entries (>200 K) are under-pressure or disputed (LuH at 294 K, C-S-H at 287 K)"
-    - "Lattice parameter unit field (SIO_000221) is similarly often empty; values are in Angstrom"
-    - "ma1/ma2 through me1/me2 entity types encode atomic site occupancy in blank nodes (limited queryability)"
+    - "Schema:t2 is empirically identical to Schema:tc in all 17,117 co-occurring records; omit from ML features"
+    - "Tc unit: 'K'=75.9%, ''=24.1% (K by convention), 'k'=1 record (<0.01%)"
+    - "Lattice unit: majority 'A', 155 records use 'nm' (10x Angstrom); ALWAYS filter sio:SIO_000221"
+    - "Retracted papers at ~287.7 K and ~294 K have no flags; filter FILTER(?tcVal < 250) for ML"
+    - "32 bibo:Article nodes have empty string for prism:publicationDate instead of 4-digit year"
+    - "Archival dataset: last substantive additions were 2019-2020; treat as frozen"
+
+  text_search_justification:
+    - "Number of the 7 example queries that use text search: 0"
+    - "Legitimate bif:contains target: Schema:SamplePreparation rdfs:comment (free-text synthesis description)"
+    - "All other fields have typed Schema: predicates or exact-value alternatives -- text search not needed"
 
 data_statistics:
   total_entities:
     OxideAndMetallic_samples: 165969
+    skeleton_nodes_no_name: 134039
+    skeleton_fraction: "80.8% (exact; verified 2026-04-20)"
     MeasurementDatum_nodes: 124976
-    Measurement_containers: 96167
-    element_formula_nodes: 33458
-    name_nodes: 31930
-    tc_property_nodes: 26358
+    Measurement_scaffold_nodes: 96167
     IntermalStructure_nodes: 26449
+    tc_property_nodes: 26358
+    t2_property_nodes: 17117
+    hc2zero_property_nodes: 1759
+    gamma_property_nodes: 2497
+    SamplePreparation_nodes: 22165
     Article_references: 7249
-  verified_date: "2026-03-12"
-  verification_method: Direct COUNT queries on each class
-  verification_queries:
-    samples: |
-      SELECT (COUNT(DISTINCT ?s) as ?count)
-      FROM <http://rdfportal.org/dataset/supercon>
-      WHERE { ?s a <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#OxideAndMetallic> }
-    tc_datums: |
-      SELECT (COUNT(?d) as ?count) (MAX(?v) as ?maxTc) (MIN(?v) as ?minTc)
-      FROM <http://rdfportal.org/dataset/supercon>
-      WHERE {
-        ?d a <http://purl.obolibrary.org/obo/IAO_0000109> .
-        FILTER(CONTAINS(STR(?d), "_tcMeasurementDatum"))
-        ?d <http://semanticscience.org/resource/SIO_000300> ?v .
-      }
+    structure_named_IRI_type: "6,813 (19.1% of 35,752 structure records)"
+    structure_blank_node_type: "28,939 (80.9% of 35,752 structure records)"
+    cmp_composition_links: 154792
+  verified_date: "2026-04-20"
+  verification_method: "Direct COUNT queries on each class against the supercon named graph"
   coverage:
-    samples_with_Tc: "15.9% of OxideAndMetallic samples have tc property nodes (26,358 / 165,969)"
-    samples_Tc_above_77K: "4,707 samples with Tc > 77 K (liquid nitrogen threshold)"
-    Tc_range: "0 K to 323 K (some high values are under-pressure or disputed measurements)"
-    publications: "7,249 unique journal articles from journals including Phys.Rev.B, Nature, Physica C"
-    verified_date: "2026-03-12"
+    samples_with_Tc: "15.9% of OxideAndMetallic samples (26,358 / 165,969)"
+    samples_Tc_above_77K: "4,707 samples (verified 2026-04-22)"
+    Tc_range: "0 K to 323 K (entries above 250 K include records from retracted papers)"
+    samples_with_hc2zero: "1,759 property nodes (verified 2026-04-20)"
+    samples_with_gamma: "2,497 property nodes (verified 2026-04-20)"
+    publications: "7,249 journal articles; distribution heavily pre-2020; effectively archival"
+    verified_date: "2026-04-22"
 
 anti_patterns:
-  - title: Using text search for property types when typed predicates exist
+  - title: Using the v3.1 (wrong) measurement scaffold
     problem: |
-      Using bif:contains or FILTER(CONTAINS()) to search for "tc" or "lata" in property node
-      IRIs, when Schema:tc and Schema:lata type IRIs are available for direct filtering.
+      Placing IAO_0000221 on the Measurement node instead of the datum node.
+      This pattern returns 0 rows without an error -- a silent failure.
     wrong_sparql: |
-      # Inefficient: text search on IRI strings to find tc property
-      ?sample ?prop ?propNode .
+      # WRONG: IAO_0000221 is not a predicate of the Measurement node
+      ?meas obo:IAO_0000221 ?propNode ;
+            obo:OBI_0000299 ?datum .
+      ?datum sio:SIO_000300 ?value .
+    correct_sparql: |
+      # CORRECT: IAO_0000221 is on the datum node
+      ?meas obo:OBI_0000299 ?datum .
+      ?datum obo:IAO_0000221 ?propNode ;
+             sio:SIO_000300 ?value .
+      # SHORTCUT (no Measurement hop needed):
+      # ?datum obo:IAO_0000221 ?propNode ; sio:SIO_000300 ?value .
+    explanation: "Always verify the scaffold from critical_warnings before writing queries. The v3.1 description had the predicate on the wrong node."
+
+  - title: Text search for fields with typed predicates
+    problem: |
+      Applying bif:contains or FILTER(CONTAINS()) to material names, formulas, or property
+      types in SuperCon. Every such field has a typed Schema: predicate that is faster and
+      exact. The ONLY legitimate text search target is rdfs:comment on Schema:SamplePreparation.
+    wrong_sparql: |
+      # Wrong: text-searching names -- Schema:name carries SIO_000300 string values
+      ?nameProp bif:contains "'YBCO'"
+      # Wrong: text-searching to find Tc property nodes
       FILTER(CONTAINS(STR(?prop), "tc"))
     correct_sparql: |
-      # Efficient: use typed predicate Schema:tc directly
-      ?sample sio:SIO_000008 ?tcProp .
-      ?tcProp a Schema:tc .
-      BIND(IRI(CONCAT(REPLACE(STR(?sample), "smp#", "prop#"), "_tcMeasurementDatum")) AS ?tcDatum)
-      ?tcDatum sio:SIO_000300 ?tcVal .
-    explanation: |
-      Schema:tc, Schema:element, Schema:name, Schema:lata, Schema:IntermalStructure are all typed
-      predicates in the ontology. Use them — they are indexed and precise. Always read the MIE
-      file first to discover which typed predicates exist before reaching for text search.
+      # Correct: exact string match (structured alternative exists)
+      ?nameProp a Schema:name ; sio:SIO_000300 "YBa2Cu3Oz" .
+      # Correct: typed predicate (no text search needed)
+      ?prop a Schema:tc .
+      # Only legitimate bif:contains in SuperCon:
+      ?prep a Schema:SamplePreparation ; rdfs:comment ?text .
+      ?text bif:contains "'sintering'"
+    explanation: "Read shape_expressions before writing any query. Every physical quantity has a typed predicate; bif:contains is reserved for SamplePreparation synthesis descriptions."
 
-  - title: Skipping schema check before any text search
+  - title: Structure type filter silently discards 80.9% of data
     problem: |
-      Using bif:contains on arbitrary nodes without checking whether a structured predicate exists.
-      The only legitimate text search target in SuperCon is rdfs:comment on Schema:SamplePreparation.
+      Using FILTER(STRSTARTS(STR(?t), "...Schema#str1_")) or VALUES on str1_01..07
+      to query ALL crystal structure data. Only 19.1% of records have named IRI types;
+      80.9% use blank nodes that are invisible to IRI-based filters.
     wrong_sparql: |
-      # Wrong: text searching material name nodes
-      ?nameProp bif:contains "'YBCO'"
+      ?strNode a Schema:IntermalStructure ;
+               obo:BFO_0000051 ?strType .
+      FILTER(STRSTARTS(STR(?strType), "...Schema#str1_"))
+      # Silently excludes 28,939 of 35,752 structure records
     correct_sparql: |
-      # Correct: SamplePreparation free-text search (only justified text search target)
-      # Text search justified: rdfs:comment on SamplePreparation is unstructured synthesis
-      # description with no controlled vocabulary or typed predicate alternative.
-      ?sample a Schema:OxideAndMetallic .
-      ?sample sio:SIO_000008 ?prepNode .
-      ?prepNode a <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#SamplePreparation> .
-      ?prepNode rdfs:comment ?prepText .
-      ?prepText bif:contains "'sintering'"
-    explanation: |
-      Material names have SIO_000300 string values on Schema:name nodes — query those directly
-      with FILTER(STR(?name) = "YBCO") or exact string match. bif:contains is reserved for
-      the unstructured SamplePreparation.rdfs:comment field only.
+      # For named types only -- document the 19.1% scope explicitly:
+      VALUES ?strType { Schema:str1_01 Schema:str1_02 Schema:str1_03
+                        Schema:str1_04 Schema:str1_05 Schema:str1_06 Schema:str1_07 }
+      ?strNode a Schema:IntermalStructure ; obo:BFO_0000051 ?strType .
+      # For ALL structure data, omit the type filter:
+      # ?strNode a Schema:IntermalStructure . OPTIONAL { ?strNode obo:BFO_0000051 ?strType . }
+    explanation: "Named structure IRIs cover only 19.1% of the data. Always document this scope limitation in query results."
 
-  - title: Using corrected ontology spellings (will return zero results)
+  - title: Mixing lattice parameter units without inspection
     problem: |
-      Using the grammatically correct spelling "references" or "InternalStructure" — these do
-      not exist in the dataset as class names. The typos in the original ontology must be used verbatim.
+      Comparing or aggregating lata/latb/latc values without filtering sio:SIO_000221.
+      155 records use "nm" (nanometres = 10x Angstrom); silently mixing units
+      introduces a 10x scale error in any lattice-based analysis.
     wrong_sparql: |
-      # Wrong: corrected spelling returns nothing
-      ?sample dcterms:references ?ref .
-      ?sample sio:SIO_000008 ?strNode .
-      ?strNode a Schema:InternalStructure .
+      # Wrong: no unit check -- mixes A and nm values
+      ?lataDatum sio:SIO_000300 ?lataVal .
     correct_sparql: |
-      # Correct: use the ontology's actual (typo) predicates
-      ?sample dct:referecens ?ref .          # note: "referecens" not "references"
-      ?sample sio:SIO_000008 ?strNode .
-      ?strNode a Schema:IntermalStructure .  # note: "Intermal" not "Internal"
-    explanation: |
-      Both typos (referecens, IntermalStructure) are fixed in the ontology namespace and cannot
-      be worked around. They must be spelled exactly as shown. Note however that instance IRIs
-      for structure nodes use the correctly-spelled "InternalStructure" (e.g.
-      str:msc_om0000949_InternalStructure) — only the class name carries the typo.
-
-  - title: "Circular reasoning — using sample search results for comprehensive Tc counts"
-    problem: |
-      Constructing a VALUES clause with a manually gathered list of sample IRIs to count Tc
-      values, instead of querying all instances via the typed predicate.
-    wrong_sparql: |
-      # Only counts the samples you already found — not the full 26,358
-      VALUES ?sample { smp:msc_om0000949 smp:msc_om0000950 ... }
-      BIND(IRI(CONCAT(REPLACE(STR(?sample), "smp#", "prop#"), "_tcMeasurementDatum")) AS ?tcDatum)
-      SELECT (COUNT(?tcDatum) as ?n) WHERE { ?tcDatum sio:SIO_000300 ?v . }
-    correct_sparql: |
-      # Queries all samples with tc property (comprehensive):
-      SELECT (COUNT(?tcDatum) as ?n)
-      FROM <http://rdfportal.org/dataset/supercon>
-      WHERE {
-        ?tcDatum a <http://purl.obolibrary.org/obo/IAO_0000109> .
-        FILTER(CONTAINS(STR(?tcDatum), "_tcMeasurementDatum"))
-        ?tcDatum <http://semanticscience.org/resource/SIO_000300> ?v .
-      }
-    explanation: |
-      Use the _tcMeasurementDatum IRI pattern as a filter over all IAO_0000109 nodes for
-      comprehensive counts, not a pre-enumerated VALUES list.
+      # Correct: filter to Angstrom (or convert nm explicitly)
+      ?lataDatum sio:SIO_000300 ?lataVal ;
+                 sio:SIO_000221 ?lataUnit .
+      FILTER(?lataUnit = "A" || ?lataUnit = "")
+      # To include nm: BIND(IF(?lataUnit = "nm", ?lataVal * 10, ?lataVal) AS ?lataA)
+    explanation: "Unit distribution for lata: A=9,115, empty=3,946 (assume A), nm=65. Always inspect sio:SIO_000221 on lattice datum nodes."
 
 common_errors:
-  - error: Empty results when accessing Tc values
+  - error: All measurement queries return 0 rows
     causes:
-      - "Using sio:SIO_000221 instead of sio:SIO_000300 for the numeric value (221 is unit, 300 is value)"
-      - "Wrong IRI construction — forgetting to REPLACE smp# with prop# before appending _tcMeasurementDatum"
-      - "Trying IAO_0000221 (is about) to navigate from datum to property instead of using BIND"
+      - "Using the v3.1 scaffold with IAO_0000221 on the Measurement node (silent failure)"
+      - "Using dct:references instead of dct:referecens (corrected spelling silently matches nothing)"
+      - "Using Schema:InternalStructure instead of Schema:IntermalStructure for class assertions"
     solutions:
-      - "Numeric values: sio:SIO_000300 on the Datum node"
-      - "Units (often empty): sio:SIO_000221 on the Datum node"
-      - "Tc datum IRI: BIND(IRI(CONCAT(REPLACE(STR(?sample),'smp#','prop#'),'_tcMeasurementDatum')) AS ?tcDatum)"
+      - "Scaffold: ?datum obo:IAO_0000221 ?propNode ; sio:SIO_000300 ?value (IAO_0000221 on DATUM)"
+      - "Reference predicate: dct:referecens (four-letter suffix 'cens', not 'nces')"
+      - "Structure class: Schema:IntermalStructure ('Intermal', not 'Internal')"
+      - "Instance IRIs (str:..._InternalStructure) are correctly spelled; typo is class name only"
 
-  - error: Zero results for structure or reference queries
+  - error: High-Tc outliers from retracted papers included in analysis
     causes:
-      - "Using dct:references instead of dct:referecens (typo required)"
-      - "Using Schema:InternalStructure instead of Schema:IntermalStructure (typo required)"
-      - "Constructing lattice datum IRI with wrong pattern instead of simply appending 'Datum'"
+      - "The database contains no retraction flags; affected records appear alongside valid data"
     solutions:
-      - "Reference: dct:referecens (with 'cens' not 'nces')"
-      - "Structure class: Schema:IntermalStructure (with 'Intermal' not 'Internal')"
-      - "Lattice datums: append 'Datum' to the lattice node IRI (e.g. str:..._lata -> str:..._lataDatum)"
+      - "C-S-H at ~287.7 K: ref NAT586000373 (Snider/Dias, Nature 586, 2020 -- retracted Sep 2022)"
+      - "LuH at ~294 K: ref NAT0615000244 (Dasenbrock-Gammon/Dias, Nature 615, 2023 -- retracted Nov 2023)"
+      - "Cross-check all Tc > 250 K against Retraction Watch before use in ML training"
+      - "Conservative filter: FILTER(?tcVal < 250)"
 
-  - error: Query timeout on broad scans
+  - error: Incomplete Tc results despite samples existing
     causes:
-      - "Scanning all 165,969 OxideAndMetallic nodes without property type filters"
-      - "Not including the graph clause FROM <http://rdfportal.org/dataset/supercon>"
-      - "Joining IAO_0000109 nodes (124,976) without the BIND pattern"
+      - "Querying tc property nodes without including samples that only have t1/t3/tcsus/tcn variants"
+      - "Treating Schema:t2 as an independent feature (it is identical to tc in all co-occurring records)"
+      - "Structure type query covers only 19.1% of data (str1_ named IRIs) when full coverage was intended"
     solutions:
-      - "Always include `a Schema:OxideAndMetallic` and the specific property type (e.g., `?tcProp a Schema:tc`)"
-      - "Always include FROM <http://rdfportal.org/dataset/supercon>"
-      - "Use BIND-constructed datum IRIs rather than scanning all IAO_0000109 nodes for Tc lookups"
-      - "Add LIMIT 50 for exploratory queries; LIMIT 20 for GROUP BY aggregations"
+      - "To capture all Tc variants use VALUES with multiple Schema:tc/t1/t3/tcn/tcsus types"
+      - "Exclude Schema:t2 from ML feature matrices -- it is a data duplicate of tc"
+      - "For full structure coverage, omit the BFO_0000051 type filter and use OPTIONAL"

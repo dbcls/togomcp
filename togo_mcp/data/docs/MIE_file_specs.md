@@ -1,839 +1,886 @@
-# MIE File Specification v1.1
+# MIE File Specification v2.0
 
 ## 1. Overview
 
 ### 1.1 Purpose
-Metadata Interoperability Exchange (MIE) files provide compact, comprehensive documentation for RDF databases, enabling researchers to effectively query databases without exhaustive documentation bloat.
+Metadata Interoperability Exchange (MIE) files are compact YAML documents that describe an RDF database well enough for an LLM to write correct, efficient SPARQL against it on the first try. A good MIE file is the difference between "the assistant writes a working query" and "the assistant times out the endpoint with `FILTER(CONTAINS())` over 244M triples".
 
 ### 1.2 Design Philosophy
-**Essential over Exhaustive**: Documentation must be compact, clear, and complete—sufficient for effective querying without unnecessary content.
+
+**Essential over exhaustive.** Documentation is compact, clear, and complete — sufficient for effective querying without unnecessary content. Target 400–600 lines typical, 700–900 for genuinely complex databases.
+
+**Structured lookups over text search.** Every non-trivial field in an RDF database is backed by a controlled vocabulary or IRI. MIE files train the reader to prefer specific IRIs, typed predicates, and graph navigation, and to reach for text search (`bif:contains`, `FILTER(CONTAINS())`) only when no structured alternative exists.
+
+**Nothing is invented.** Every RDF triple in `sample_rdf_entries` must be retrievable from the endpoint. Every SPARQL query in `sparql_query_examples` and `cross_database_queries` must execute successfully against the real endpoint before the file is written. Fake examples are worse than missing examples because they train the downstream assistant to write queries that look right but fail silently.
 
 ### 1.3 Format
 - **File Format**: YAML
 - **Encoding**: UTF-8
 - **Extension**: `.yaml`
-- **Naming Convention**: `mie/[database].yaml`
+- **Location**: `togo_mcp/data/mie/[database].yaml`
 
-### 1.4 Key Updates in v1.1
-- **New Section**: `cross_database_queries` for databases on shared endpoints
-- **Enhanced Discovery**: Guidance on using `get_MIE_file()` to reference co-located databases
-- **Schema Info**: Added `kw_search_tools` field for keyword search APIs
-- **Formatting**: Mandatory use of YAML pipe (|) syntax for multiline strings
-- **Backend Support**: Explicit guidance on `bif:contains` for Virtuoso
+### 1.4 Key Updates in v2.0
+
+- **New section**: `critical_warnings` — schema pathologies, silent-failure traps, mandatory performance filters. Placed early so a reader scans it first.
+- **Sample RDF entries**: reduced from 5 to 3 entries, with a single shared `rdf_prefixes` block instead of repeated `@prefix` declarations per entry.
+- **Query strategy hierarchy**: explicit priority order (specific IRIs → typed predicates → graph navigation → text search) and a Gate Check before using any form of text search.
+- **Circular reasoning guidance**: don't populate `VALUES` with search-API results and then `COUNT` them.
+- **Filesystem-based workflow**: MIE files, ShEx schemas, and curated SPARQL examples are read and written as files, not through dedicated MCP tools.
+- **Validation requirements strengthened**: every example RDF triple must be retrievable from the endpoint; every example query must execute successfully.
+- **`data_statistics` simplified**: removed `verification_queries`, `cardinality`, and `performance_characteristics` sub-sections as auditing clutter.
+- **`anti_patterns` expanded**: 3–4 entries (was 2–3), at least one addressing "schema check before text search".
 
 ## 2. File Structure
 
 ### 2.1 Required Sections
-MIE files MUST contain the following sections in order:
 
-1. `schema_info` - Database metadata including keyword search tools
-2. `shape_expressions` - ShEx schemas
-3. `sample_rdf_entries` - Example RDF data
-4. `sparql_query_examples` - Tested queries
-5. `cross_database_queries` - Cross-database integration examples (conditional)
-6. `cross_references` - External database links
-7. `architectural_notes` - Design patterns
-8. `data_statistics` - Quantitative metrics
-9. `anti_patterns` - Common mistakes
-10. `common_errors` - Error scenarios
+MIE files contain the following sections in order:
+
+1. `schema_info` — database metadata, endpoint, graphs, backend
+2. `critical_warnings` — silent-failure traps, mandatory performance filters, IRI namespace traps, required typos
+3. `shape_expressions` — ShEx schemas for all entity types
+4. `sample_rdf_entries` — 3 validated RDF examples with shared prefix block
+5. `sparql_query_examples` — 7 tested queries (2 basic / 3 intermediate / 2 advanced)
+6. `cross_database_queries` — cross-database integration (empty with notes if isolated endpoint)
+7. `cross_references` — external database links organised by RDF pattern
+8. `architectural_notes` — design patterns, query strategy, performance
+9. `data_statistics` — verified counts and coverage
+10. `anti_patterns` — 3–4 common mistakes with corrections
+11. `common_errors` — 2–3 error scenarios with causes and solutions
 
 ### 2.2 Section Dependencies
-- Sections 1-4 and 6-10 are REQUIRED for all databases
-- Section 5 (`cross_database_queries`) is REQUIRED ONLY if:
-  - Database shares a SPARQL endpoint with 2+ other databases
-  - Clear linking properties exist between databases
-  - Practical use cases benefit from integration
-- Sections MUST appear in the specified order
-- No additional top-level sections permitted
+
+- All 11 sections are required and appear in the specified order.
+- `critical_warnings` may be `[]` only if the author has genuinely verified that no silent-failure traps exist (rare — most real databases have at least one).
+- `cross_database_queries.examples` may be `[]` if the database is on an isolated endpoint, but the section itself is still present with an explanatory `notes` block.
+- No additional top-level sections are permitted.
 
 ## 3. Section Specifications
 
 ### 3.1 schema_info
 
 #### 3.1.1 Purpose
-Provides essential metadata about the RDF database, including access methods and keyword search capabilities.
+Provides essential metadata about the RDF database, including access methods, keyword search capabilities, and triple-store backend.
 
 #### 3.1.2 Required Fields
 
 ```yaml
 schema_info:
-  title: string                    # REQUIRED: Database name
-  description: string              # REQUIRED: 3-5 sentences covering:
-                                   # - What it contains
-                                   # - ALL main entity types
-                                   # - Use cases
-                                   # - Key features
+  title: string                    # REQUIRED: canonical database name
+  description: |                   # REQUIRED: 2-3 sentences covering:
+                                   # - what the database contains
+                                   # - main entity types
+                                   # - primary use cases
+    ...
   endpoint: uri                    # REQUIRED: SPARQL endpoint URL
-  base_uri: uri                    # REQUIRED: Base namespace URI
-  graphs: array<uri>               # REQUIRED: List of named graph URIs
-  kw_search_tools: array<string>   # REQUIRED: Keyword search tools/APIs
-                                   # Options: dedicated tools (e.g., search_uniprot_entity),
-                                   # OLS4:searchClasses, ncbi_esearch, or "sparql"
-  version:                         # REQUIRED: Version metadata
-    mie_version: string            # REQUIRED: MIE spec version (e.g., "1.1")
+  base_uri: uri                    # REQUIRED: base namespace URI
+  graphs: array<uri>               # REQUIRED: named graph URIs
+  kw_search_tools: array<string>   # REQUIRED: keyword search tools (may be [])
+  version:                         # REQUIRED: version metadata
+    mie_version: string            # REQUIRED: MIE spec version (e.g., "2.0")
     mie_created: date              # REQUIRED: ISO 8601 format (YYYY-MM-DD)
-    data_version: string           # REQUIRED: Database version/release
-    update_frequency: string       # REQUIRED: Update schedule
-  license:                         # REQUIRED: Licensing information
-    data_license: string           # REQUIRED: License name
-    license_url: uri               # REQUIRED: License URL
-  access:                          # REQUIRED: Access constraints
-    rate_limiting: string          # REQUIRED: Query rate limits
-    max_query_timeout: string      # REQUIRED: Timeout duration
-    backend: string                # REQUIRED: Triple store type (e.g., "Virtuoso")
+    data_version: string           # REQUIRED: database version/release
+    update_frequency: string       # REQUIRED: update schedule
+  access:                          # REQUIRED: access metadata
+    backend: string                # REQUIRED: triple store (determines bif:contains support)
 ```
 
 #### 3.1.3 Keyword Search Tools Field
-The `kw_search_tools` field specifies available keyword search methods:
 
-**Dedicated Search Tools:**
-- `search_uniprot_entity` - UniProt protein search
-- `search_pdb_entity` - PDB structure search (requires db parameter)
-- `search_chembl_molecule`, `search_chembl_target` - ChEMBL compound/target search
-- `search_reactome_entity` - Reactome pathway search
-- `search_rhea_entity` - Rhea reaction search
-- `search_mesh_entity` - MeSH descriptor search
+The `kw_search_tools` field enumerates keyword-search methods available for this database. Use `[]` if none are available.
+
+**Dedicated search tools:**
+- `search_uniprot_entity`, `search_pdb_entity`, `search_chembl_molecule`, `search_chembl_target`, `search_reactome_entity`, `search_rhea_entity`, `search_mesh_descriptor`
 
 **OLS4 (Ontology Lookup Service):**
-- `OLS4:searchClasses` - For ChEBI, GO, Mondo, NANDO ontologies
+- `OLS4:searchClasses` — for ChEBI, GO, Mondo, NANDO, etc.
 
 **NCBI E-utilities:**
-- `ncbi_esearch` - For PubChem, Taxonomy, ClinVar, PubMed, NCBIGene, MedGen
+- `ncbi_esearch` — for PubChem, Taxonomy, ClinVar, PubMed, NCBIGene, MedGen
 
-**SPARQL-Only:**
-- `"sparql"` - Use `run_sparql()` with `bif:contains` pattern for keyword search
+**SPARQL-only:**
+- `"sparql"` — use `run_sparql()` with `bif:contains` (Virtuoso) or `FILTER(CONTAINS())`
 
 #### 3.1.4 Constraints
-- `description` MUST be 3-5 sentences
-- `description` MUST document ALL major entity types
-- All URIs MUST be valid and accessible
-- `mie_created` MUST use ISO 8601 date format
-- `backend` field is REQUIRED (important for determining `bif:contains` support)
-- `kw_search_tools` MUST contain at least one entry
 
-### 3.2 shape_expressions
+- `description` is 2–3 sentences and documents the major entity types.
+- All URIs are valid and accessible.
+- `mie_created` uses ISO 8601 (`YYYY-MM-DD`).
+- `access.backend` is required; it determines whether `bif:contains` is available and therefore drives query-strategy decisions downstream.
+
+### 3.2 critical_warnings
 
 #### 3.2.1 Purpose
-Defines ShEx (Shape Expressions) schemas for all entity types in the database.
 
-#### 3.2.2 Format
+Schema pathologies, IRI traps, mandatory performance filters, and typos that must be preserved verbatim. A reader scans this section first — anything that causes queries to return 0 rows without erroring, or to time out silently, belongs here.
+
+#### 3.2.2 Structure
+
+```yaml
+critical_warnings: |
+  - [warning text]
+  - [warning text]
+```
+
+Use a YAML pipe (`|`) block with bullet-style paragraphs. Use `[]` only if genuinely confirmed no traps exist.
+
+#### 3.2.3 What to include
+
+**Mandatory performance filters.** A status flag or filter that, if omitted, inflates the result set by orders of magnitude and causes COUNT queries to time out.
+
+*Example:* `Always add ?entry up:reviewed 1 — omitting it queries 244M instead of 589K entries.`
+
+**IRI namespace traps.** When the same concept has multiple IRI representations and only one is used as the object of a particular predicate. These fail silently (return 0 rows, no error).
+
+*Example:* `GO terms in up:classifiedWith use OBO IRIs (http://purl.obolibrary.org/obo/GO_XXXXXXX), NOT http://purl.uniprot.org/go/.`
+
+**Typos required verbatim.** Some databases preserve misspelled predicates for backwards compatibility. Using the "correct" spelling returns zero rows.
+
+*Example:* `dct:referecens (not dct:references). Using the corrected spelling returns zero results.`
+
+**Graph-specific patterns.** When a predicate only resolves in a specific named graph, or when the union graph behaves differently from what an SPO query against named graphs would suggest.
+
+#### 3.2.4 Constraints
+
+- Each warning is concise but specific enough to be actionable.
+- Prefer concrete failure modes ("returns 0 rows") over abstract advice ("be careful with namespaces").
+- Place this section immediately after `schema_info` so readers encounter it before writing any queries.
+
+### 3.3 shape_expressions
+
+#### 3.3.1 Purpose
+
+ShEx schemas for every major entity type. Start from the corresponding file under `./shex/` if present; otherwise build from DESCRIBE queries.
+
+#### 3.3.2 Format
+
 ```yaml
 shape_expressions: |
   PREFIX declarations
-  
-  <EntityShape1> {
+
+  <EntityShape> {
     property declarations
   }
-  
-  <EntityShape2> {
-    property declarations
-  }
-```
-
-#### 3.2.3 Requirements
-- MUST cover ALL major entity types discovered in the database
-- Comments MUST be minimal (only for non-obvious properties)
-- MUST use standard ShEx syntax
-- MUST include relevant PREFIX declarations
-- MUST use YAML pipe (|) syntax for multiline content
-
-#### 3.2.4 Constraints
-- No excessive commenting (comment only non-obvious properties)
-- Shape names MUST be descriptive (e.g., `<ProteinShape>`, `<CompoundShape>`)
-- MUST represent actual data patterns from the database
-
-### 3.3 sample_rdf_entries
-
-#### 3.3.1 Purpose
-Provides representative RDF examples demonstrating data patterns.
-
-#### 3.3.2 Structure
-```yaml
-sample_rdf_entries:
-  - title: string                  # REQUIRED: Descriptive title
-    description: string            # REQUIRED: 1-2 sentences
-    rdf: |                         # REQUIRED: Use pipe syntax
-      Actual RDF from database
 ```
 
 #### 3.3.3 Requirements
-- MUST contain EXACTLY 5 examples
-- Examples MUST cover diverse categories:
-  1. Core entity type
-  2. Related entity type
-  3. Sequence/molecular data
-  4. Cross-reference example
-  5. Geographic/temporal data (if applicable)
-- Each `description` MUST be 1-2 sentences
-- RDF MUST be actual data from the database (not fabricated)
-- MUST use YAML pipe (|) syntax for RDF content
+
+- Covers all major entity types discovered during schema exploration.
+- Inline comments document: instance counts, non-obvious predicate semantics, IRI patterns and namespace gotchas, measurement scaffolds and indirect value-access patterns (blank nodes, reified statements).
+- Uses standard ShEx syntax with relevant `PREFIX` declarations.
+- Uses YAML pipe (`|`) syntax.
 
 #### 3.3.4 Constraints
-- Total count: EXACTLY 5 examples
-- Description length: 1-2 sentences (not more)
-- RDF syntax MUST be valid Turtle or N-Triples
 
-### 3.4 sparql_query_examples
+- Comments are minimal but load-bearing — a comment that doesn't change how the reader writes queries is noise.
+- Shape names are descriptive (`<ProteinShape>`, `<CompoundShape>`).
+- All shapes reflect actual data patterns, not aspirational schemas.
+
+### 3.4 sample_rdf_entries
 
 #### 3.4.1 Purpose
-Provides tested, working SPARQL queries demonstrating database usage.
+
+Three representative RDF examples demonstrating data patterns. Every triple is retrievable from the endpoint.
 
 #### 3.4.2 Structure
+
 ```yaml
-sparql_query_examples:
-  - title: string                  # REQUIRED: What the query does
-    description: string            # REQUIRED: Context and purpose (use pipe syntax)
-    question: string               # REQUIRED: Natural language question
-    complexity: enum               # REQUIRED: basic | intermediate | advanced
-    sparql: |                      # REQUIRED: Tested SPARQL query (use pipe syntax)
-      SELECT queries here
+sample_rdf_entries:
+  rdf_prefixes: |
+    @prefix ex: <http://example.org/> .
+    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  entries:
+    - title: string
+      description: string          # 1 sentence
+      rdf: |
+        Actual RDF from database
 ```
 
 #### 3.4.3 Requirements
-- MUST contain EXACTLY 7 queries with the following distribution:
+
+- **Exactly 3 entries.**
+- **Single shared `rdf_prefixes` block** at the top of the section. `@prefix` declarations are NOT repeated in each entry.
+- The 3 entries collectively:
+  1. Cover the most important entity type in the database
+  2. Demonstrate at least one non-obvious access pattern (measurement scaffold, blank-node reification, cross-reference scaffold, etc.)
+  3. Connect to external resources via cross-references where applicable
+- Each entry has a 1-sentence `description` stating what it illustrates.
+- RDF content uses YAML pipe (`|`) syntax.
+
+#### 3.4.4 Validation (non-negotiable)
+
+**Every triple in every entry must be retrievable from the endpoint.** Before finalising the file, validate each entry by running a SELECT or ASK query that retrieves the exact triples shown:
+
+```sparql
+ASK WHERE {
+  ex:entity1 a ex:Type ;
+             ex:required "value" .
+}
+```
+
+If `ASK` returns false, the triple as written does not exist. Fix the entry (likely the IRI or predicate is wrong) or replace it with a triple that can be retrieved. **No fabricated RDF ever reaches the final file.**
+
+#### 3.4.5 Constraints
+
+- Count: exactly 3 entries.
+- Description: 1 sentence.
+- RDF: valid Turtle consistent with the shared prefix block.
+
+### 3.5 sparql_query_examples
+
+#### 3.5.1 Purpose
+
+Seven tested, working SPARQL queries that teach the schema to a downstream reader. Each query should generalise — a reader should be able to swap in a different IRI and get a different-but-sensible result.
+
+#### 3.5.2 Structure
+
+```yaml
+sparql_query_examples:
+  - title: string
+    description: string            # 1-2 sentences
+    question: string               # natural language
+    complexity: basic|intermediate|advanced
+    sparql: |
+      Tested query with LIMIT
+```
+
+#### 3.5.3 Requirements
+
+- **Exactly 7 queries**, distribution:
   - 2 queries with `complexity: basic`
   - 3 queries with `complexity: intermediate`
   - 2 queries with `complexity: advanced`
-- MUST include at least one query with keyword filtering
-- MUST include at least one query with biological annotations (if applicable)
-- MUST NOT include cross-database queries (those belong in `cross_database_queries`)
-- ALL queries MUST be tested and confirmed working
-- MUST use YAML pipe (|) syntax for SPARQL content
+- Across the set:
+  - At least 2 queries use specific IRIs or `VALUES` with IRIs.
+  - At least 2 queries use typed predicates or graph navigation (`rdfs:subClassOf+`, `skos:broader+`).
+  - At most 1 query uses text search, and only if the Gate Check (section 3.5.5) passes.
+- All 7 queries include a `LIMIT` clause.
+- None are cross-database queries (those belong in `cross_database_queries`).
+- All use YAML pipe (`|`) syntax.
 
-#### 3.4.4 Constraints
-- Total count: EXACTLY 7 queries
-- Complexity distribution: 2/3/2 (basic/intermediate/advanced)
-- All queries MUST execute without errors
-- Queries MUST use appropriate LIMIT clauses
+#### 3.5.4 Validation (non-negotiable)
 
-#### 3.4.5 Complexity Guidelines
-- **Basic**: Simple SELECT, single entity type, basic filters
-- **Intermediate**: Multiple entity types, OPTIONAL patterns, aggregations
-- **Advanced**: Complex joins, nested queries, sophisticated filtering
+**Every query must be executed successfully against the endpoint before the file is written.** This is not a sample — test all 7.
 
-#### 3.4.6 Using bif:contains for Virtuoso
-If `backend: "Virtuoso"` in schema_info, keyword search queries SHOULD use `bif:contains`:
+Acceptable outcomes:
+- Query runs and returns meaningful results.
+- Query runs and returns an empty result set that is documented as intentional.
+
+Not acceptable:
+- Query times out → fix or replace.
+- Query errors → fix or replace.
+- Query returns 0 rows when it should return many → investigate (usually a namespace trap) and document the fix in `critical_warnings`.
+
+#### 3.5.5 Query Design Hierarchy and Gate Check
+
+Prefer earlier approaches over later ones:
+
+| Rank | Approach             | When to use                              |
+|------|----------------------|------------------------------------------|
+| 1    | Specific IRIs        | Always when available                    |
+| 2    | `VALUES` with IRIs   | Multiple known concepts                  |
+| 3    | Typed predicates     | Controlled-vocabulary literals           |
+| 4    | Graph navigation     | Hierarchical queries                     |
+| 5    | `bif:contains`       | Unstructured text, Virtuoso backend      |
+| 6    | `FILTER(CONTAINS())` | Last resort                              |
+
+**Gate Check — before using `bif:contains` or `FILTER(CONTAINS())`:**
+
+- Read the full `shape_expressions` section.
+- Check for specific IRIs (ontology, taxonomy, classification codes).
+- Check for typed predicates with controlled vocabularies.
+- Check for hierarchical relationships.
+- Use any available search API to find and DESCRIBE example entities.
+- State in one sentence why no structured alternative exists.
+
+If the sentence cannot be written, the structured alternative exists. Keep looking.
+
+**Never use text search for:** organisms (use taxonomy IRIs), ontology terms (GO/MeSH/ChEBI IRIs), EC numbers, drug classifications (ATC IRIs), or any field with a controlled vocabulary.
+
+**Legitimate text-search targets:** `rdfs:comment` on genes/proteins, abstract text, synthesis notes, experimental remarks — fields that are paragraph prose with no codes.
+
+#### 3.5.6 Complexity Guidelines
+
+- **basic**: single entity type, direct IRI lookup or typed predicate, minimal filtering.
+- **intermediate**: multiple entity types or joins, `OPTIONAL` patterns, aggregation, graph navigation, indirect value access (measurement scaffolds).
+- **advanced**: multi-type queries with nested patterns, complex filtering, analytical aggregations, cross-graph joins within a single endpoint.
+
+#### 3.5.7 Using `bif:contains` on Virtuoso
+
+If `access.backend: "Virtuoso"`, prefer `bif:contains` over `FILTER(CONTAINS())`:
 
 ```sparql
-SELECT ?label ?sc
-WHERE {
-  ?s rdfs:label ?label .
-  ?label bif:contains "('amyloid' AND NOT 'precursor') OR 'alzheimer'" 
-         option (score ?sc)
-}
-ORDER BY DESC(?sc)
-LIMIT 50
+?text bif:contains "'term1' OR 'term2'"
 ```
 
-**Important Notes:**
-- **CRITICAL**: Do NOT use `?score` as the variable name - this will cause an error
-- Use `?sc` or another variable name for the score
-- `bif:contains` supports boolean operators: AND, OR, NOT
-- Sort results by the score variable (e.g., `?sc`)
-- Use appropriate LIMIT to prevent timeouts
+**Split property paths before `bif:contains`.** The variable must be bound to a plain string literal at the point `bif:contains` sees it:
 
-### 3.5 cross_database_queries
+```sparql
+# WRONG — property path breaks indexing
+?entity ex:path/ex:label ?text .
+?text bif:contains "'keyword'"
 
-#### 3.5.1 Applicability
-This section is REQUIRED ONLY if:
-- Database shares SPARQL endpoint with 2+ other databases
-- Clear linking properties exist (e.g., `skos:exactMatch`, `rdfs:seeAlso`)
-- Practical use cases benefit from cross-database integration
+# CORRECT — bind intermediate explicitly
+?entity ex:path ?intermediate .
+?intermediate ex:label ?text .
+?text bif:contains "'keyword'"
+```
 
-This section MUST be OMITTED if database is on standalone endpoint.
+`bif:contains` syntax uses single quotes for inner terms inside a double-quoted SPARQL literal. Supports `AND`, `OR`, `NOT`, prefix matching with `*`.
 
-#### 3.5.2 Purpose
-Documents tested cross-database integration queries that leverage shared SPARQL endpoints to combine data from multiple databases in a single query.
+**Do not use `?score` as a variable name** in `option (score ?var)` — it collides with Virtuoso internals. Use `?sc` or similar.
 
-#### 3.5.3 Structure
+### 3.6 cross_database_queries
+
+#### 3.6.1 Applicability
+
+Present in all MIE files. If the database is on an isolated endpoint (no co-located databases), use `examples: []` with an explanatory `notes` block rather than omitting the section.
+
+#### 3.6.2 Purpose
+
+Documents cross-database integration queries that leverage shared SPARQL endpoints.
+
+#### 3.6.3 Structure
+
 ```yaml
 cross_database_queries:
-  shared_endpoint: string          # REQUIRED: Endpoint name (ebi, sib, primary, ncbi, etc.)
-  co_located_databases:            # REQUIRED: List of databases on same endpoint
+  shared_endpoint: string          # e.g., ebi, sib, primary, ncbi
+  co_located_databases:
     - database1
     - database2
-  examples:                        # REQUIRED: 2-3 tested examples
-    - title: string                # REQUIRED: What integration achieves
-      description: |               # REQUIRED: Why useful (2-3 sentences, use pipe)
-        Explanation of practical value
-      databases_used:              # REQUIRED: Databases involved
+  examples:                        # 1-2 examples (not 3) OR []
+    - title: string
+      description: |
+        Linking strategy with specific mechanism
+      databases_used:
         - database1
         - database2
-      complexity: enum             # REQUIRED: intermediate | advanced
-      sparql: |                    # REQUIRED: Tested query (use pipe syntax)
-        PREFIX declarations
-        
-        SELECT query with GRAPH clauses
-      notes: |                     # REQUIRED: Performance and usage notes (use pipe)
-        - Graph URIs from referenced MIE files
-        - Entity types verified against co-database schemas
-        - Performance: timing or considerations
-        - Use case: practical application
+      complexity: intermediate     # or advanced
+      sparql: |
+        Tested query with GRAPH clauses
+      notes: |
+        - Linking via: [IRI type]
+        - MIE files checked: [list]
+        - Performance: [timing]
 ```
 
-#### 3.5.4 Requirements - CRITICAL: Reference Co-Located Database MIE Files
+#### 3.6.4 Requirements — Reference Co-Located MIE Files
 
-**Before creating cross-database query examples:**
-1. **Retrieve MIE files** for all co-located databases using `get_MIE_file(co_db_name)`
-2. **Extract key information** from retrieved MIE files:
-   - Graph URIs from `schema_info.graphs`
-   - PREFIX definitions from `shape_expressions`
-   - Entity type URIs from `shape_expressions`
-   - Property patterns from `sample_rdf_entries`
-   - Linking properties from `cross_references`
-   - Anti-patterns to avoid from `anti_patterns`
-3. **Use this information** to create accurate, well-formed cross-database queries
-4. **Document which MIE files were consulted** in the `notes` field
+Before writing any cross-database query, **read the MIE files of every other database involved** (from `togo_mcp/data/mie/<db>.yaml`). Extract from each:
 
-**Why this matters:**
-- Ensures correct graph URIs (prevents query failures)
-- Uses proper entity types and properties (prevents empty results)
-- Follows established naming conventions (ensures consistency)
-- Avoids known anti-patterns (improves performance)
-- Creates queries aligned with existing documentation
+- Graph URIs from `schema_info.graphs`
+- `PREFIX` definitions from `shape_expressions`
+- Entity type URIs from `shape_expressions`
+- Linking properties from `cross_references`
+- Anti-patterns from `anti_patterns`
 
-#### 3.5.5 Best Practices
-1. **Use explicit GRAPH clauses** for each database
-2. **Start with smaller LIMITs** (cross-database queries are slower)
-3. **Filter early** - apply constraints within each GRAPH clause
-4. **Document performance** - note if queries are slow
-5. **Show practical value** - examples should solve real research questions
-6. **Reference MIE files** - use correct URIs, types, and patterns
+Document which MIE files were consulted in the `notes` field.
 
-#### 3.5.6 Example Pattern
+**Why this matters:** cross-database queries silently fail when graph URIs are wrong, entity types are misspelled, or linking predicates assume the wrong namespace. Reading the MIE files eliminates this class of failure.
+
+#### 3.6.5 Best Practices
+
+1. Use explicit `GRAPH` clauses for each database.
+2. Start with small `LIMIT` values — cross-database queries are slower.
+3. Filter within each `GRAPH` block before joining, not after.
+4. Prefer structured linking predicates (shared IRI namespaces: EC numbers, taxonomy, ChEBI, UniProt, GO) over text-based matching.
+5. Validate that the linking predicate actually populates the IRIs you expect — not every `rdfs:seeAlso` points where you'd assume.
+
+#### 3.6.6 Isolated-Endpoint Form
+
 ```yaml
-examples:
-  - title: Link ChEMBL molecules to ChEBI chemical entities
-    description: |
-      Retrieves ChEMBL molecules with their corresponding ChEBI entities, 
-      providing additional chemical classification and ontology information 
-      not available in ChEMBL alone.
-    databases_used:
-      - chembl
-      - chebi
-    complexity: intermediate
-    sparql: |
-      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
-      PREFIX owl: <http://www.w3.org/2002/07/owl#>
-      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-      
-      SELECT ?molecule ?moleculeLabel ?chebiLabel ?formula
-      WHERE {
-        GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
-          ?molecule a cco:SmallMolecule ;
-                    rdfs:label ?moleculeLabel ;
-                    skos:exactMatch ?chebiId .
-          FILTER(?moleculeLabel = "ASPIRIN")
-        }
-        GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
-          ?chebiId a owl:Class ;
-                   rdfs:label ?chebiLabel ;
-                   chebi:formula ?formula .
-        }
-      }
-      LIMIT 10
-    notes: |
-      - Graph URIs from chembl.yaml and chebi.yaml MIE files
-      - Uses skos:exactMatch linking property documented in chembl cross_references
-      - Entity types (cco:SmallMolecule, owl:Class) from respective shape expressions
-      - Performance: ~2-3 seconds for 10 results
-      - Use case: Enriching compound data with chemical ontology classifications
+cross_database_queries:
+  shared_endpoint: null
+  co_located_databases: []
+  examples: []
+  notes: |
+    [DATABASE] is the only database on this endpoint. Cross-database SPARQL
+    is not possible. To link externally: [describe manual bridging strategies,
+    e.g. using shared identifiers with federated queries or client-side joins].
 ```
 
-#### 3.5.7 Common Link Patterns by Endpoint
+#### 3.6.7 Common Link Patterns by Endpoint
 
-**EBI Endpoint** (chembl, chebi, reactome, ensembl, amrportal):
+**EBI endpoint** (chembl, chebi, reactome, ensembl, amrportal):
 - ChEMBL ↔ ChEBI: `skos:exactMatch`
-- ChEMBL targets ↔ Ensembl: via UniProt IDs
-- Reactome ↔ Ensembl: gene identifiers
+- ChEMBL target ↔ UniProt: shared UniProt accessions
+- Reactome ↔ UniProt/Ensembl: shared gene/protein identifiers
 
-**SIB Endpoint** (uniprot, rhea):
-- UniProt ↔ Rhea: enzyme-catalyzed reactions
+**SIB endpoint** (uniprot, rhea):
+- UniProt ↔ Rhea: enzyme-catalysed reactions via EC numbers and Rhea IRIs
 
-**Primary Endpoint** (mesh, go, taxonomy, mondo, nando, bacdive, mediadive):
-- MONDO ↔ MeSH: disease concept IDs
-- BacDive ↔ MediaDive: bacterial strain to culture media
-- GO ↔ Taxonomy: gene ontology across species
+**Primary endpoint** (mesh, go, taxonomy, mondo, nando, bacdive, mediadive):
+- MONDO ↔ MeSH: disease concept cross-references
+- BacDive ↔ MediaDive: strain-to-medium relationships
+- GO terms ↔ Taxonomy: annotation distribution
 
-**NCBI Endpoint** (clinvar, pubmed, pubtator, ncbigene, medgen):
-- ClinVar ↔ NCBI Gene: variant-to-gene mappings
+**NCBI endpoint** (clinvar, pubmed, pubtator, ncbigene, medgen):
+- ClinVar ↔ NCBI Gene: variant-to-gene
 - PubMed ↔ PubTator: article-to-entity annotations
 
-### 3.6 cross_references
-
-#### 3.6.1 Purpose
-Documents external database linkages organized by RDF pattern.
-
-#### 3.6.2 Structure
-```yaml
-cross_references:
-  - pattern: string                # REQUIRED: RDF property pattern
-    description: |                 # REQUIRED: How links work (use pipe syntax)
-      Explanation
-    databases:                     # REQUIRED: Organized by category
-      category_name:
-        - database_name: coverage  # Format: "Database (~XX%)" or similar
-    sparql: |                      # REQUIRED: Representative query (use pipe)
-      SELECT query
-```
-
-#### 3.6.3 Requirements
-- Group by RDF pattern (e.g., `rdfs:seeAlso`, `owl:sameAs`, `skos:exactMatch`)
-- List ALL external databases found
-- Include coverage estimates where possible
-- Provide working SPARQL query for each pattern
-- Use YAML pipe (|) syntax for multiline strings
-
-#### 3.6.4 Constraints
-- Do NOT create separate entries for each individual database
-- Organize by pattern, then categorize databases
-- Include coverage percentages when available
-- All SPARQL queries MUST be tested
-
-### 3.7 architectural_notes
+### 3.7 cross_references
 
 #### 3.7.1 Purpose
-Documents design patterns, performance characteristics, and data quality issues.
+
+Documents external database linkages, organised by RDF pattern rather than by database.
 
 #### 3.7.2 Structure
+
 ```yaml
-architectural_notes:
-  schema_design:
-    - bullet point                 # REQUIRED: Design patterns
-  performance:
-    - bullet point                 # REQUIRED: Optimization tips
-  data_integration:
-    - bullet point                 # REQUIRED: Cross-reference patterns
-    - bullet point                 # Include cross-database if applicable
-  data_quality:
-    - bullet point                 # REQUIRED: Data quirks and issues
+cross_references:
+  - pattern: string                # e.g., rdfs:seeAlso, skos:exactMatch
+    description: |
+      How links work
+    databases:
+      category_name:
+        - "Database name: coverage percentage"
+    sparql: |                      # optional
+      Representative query
 ```
 
 #### 3.7.3 Requirements
-- MUST use YAML bullet format (not prose paragraphs)
-- MUST include all four subsections
-- Each subsection MUST have at least one bullet point
-- Content MUST be actionable and relevant to query writing
-- If `cross_database_queries` section exists, include cross-database opportunities in `data_integration`
 
-#### 3.7.4 Constraints
-- No prose paragraphs
-- Bullets MUST be concise (1-2 sentences each)
-- Focus on information that helps with querying
+- Groups by RDF pattern, not by database.
+- Lists all external databases found in the data.
+- Includes coverage estimates where measurable.
+- `sparql` is optional — include only for non-trivial patterns where the naive query doesn't work.
 
-### 3.8 data_statistics
+### 3.8 architectural_notes
 
-#### 3.8.1 Purpose
-Provides quantitative metrics about database contents and performance.
+#### 3.8.1 Structure
 
-#### 3.8.2 Structure
 ```yaml
-data_statistics:
-  total_[entity_type]: integer     # REQUIRED: Entity counts
-  coverage:                        # REQUIRED: Property completeness
-    property_name: string          # Format: "~XX%" or ">XX%"
-  cardinality:                     # REQUIRED: Relationship metrics
-    avg_[relationship]: number     # Average cardinality
-  performance_characteristics:     # REQUIRED: Query performance
-    - observation                  # Tested observations
-    - cross_database_performance   # Include if cross_database_queries section exists
-  data_quality_notes:              # OPTIONAL: Data issues
-    - note                         # Quality concerns
+architectural_notes:
+  query_strategy:
+    - bullet                       # priority order for new queries
+  schema_design:
+    - bullet                       # central entity types, controlled vocabularies
+  performance:
+    - bullet                       # mandatory filters, bif:contains tips
+  data_integration:
+    - bullet                       # cross-reference patterns, linking predicates
+  data_quality:
+    - bullet                       # anomalies, duplicates, entry artefacts
+  text_search_justification:
+    - bullet                       # count of text-search queries, fields where legitimate
 ```
 
-#### 3.8.3 Requirements
-- MUST include entity counts for all major types
-- MUST include coverage statistics for important properties
-- MUST include cardinality metrics for key relationships
-- MUST include performance observations from actual testing
-- If `cross_database_queries` section exists, include cross-database query performance notes
-- MAY include data quality notes if relevant
+#### 3.8.2 Requirements
 
-#### 3.8.4 Constraints
-- All statistics MUST be based on actual queries
-- Coverage percentages should be approximate ranges
-- Performance characteristics MUST be reproducible
+- All six subsections are present, each with at least one bullet.
+- Bullets are concise (1–2 sentences).
+- `text_search_justification` states how many of the 7 example queries use text search, which fields it's applied to, and why no structured alternative exists for each. If none of the 7 use text search, state that explicitly.
 
-### 3.9 anti_patterns
+### 3.9 data_statistics
 
 #### 3.9.1 Purpose
-Documents common mistakes with corrected versions.
+
+Verified counts and coverage percentages. Every number has a verification date and method.
 
 #### 3.9.2 Structure
+
 ```yaml
-anti_patterns:
-  - title: string                  # REQUIRED: Mistake description
-    problem: string                # REQUIRED: Why it's wrong
-    wrong_sparql: |                # REQUIRED: Incorrect query (use pipe)
-      Bad query
-    correct_sparql: |              # REQUIRED: Fixed query (use pipe)
-      Good query
-    explanation: |                 # REQUIRED: What changed (use pipe)
-      Explanation
+data_statistics:
+  total_entities: integer
+  verified_date: date              # ISO 8601
+  verification_method: string      # "Direct COUNT query" or "sampling with N=..."
+  coverage:
+    property_name: "XX%"
+    calculation: "[numerator / denominator]"
+    verified_date: date
 ```
 
-#### 3.9.3 Requirements
-- MUST contain 2-3 examples
-- Each MUST show both wrong and correct versions
-- Both queries SHOULD be tested (wrong should fail/timeout, correct should work)
-- Focus on mistakes that researchers actually make
-- Use YAML pipe (|) syntax for all SPARQL queries and explanations
+Additional `total_*` fields for major entity types are encouraged.
+
+#### 3.9.3 Explicitly Omitted
+
+These sub-sections are auditing clutter and are NOT included:
+
+- `verification_queries` — not useful at query time.
+- `cardinality` (avg-X-per-entity) — rarely informative for query authors.
+- `performance_characteristics` — belongs in `architectural_notes.performance` instead.
 
 #### 3.9.4 Constraints
-- Count: 2-3 examples (not more, not less)
-- Both `wrong_sparql` and `correct_sparql` MUST be provided
-- Explanation MUST be clear and educational
 
-### 3.10 common_errors
+- All statistics are based on actual queries run against the endpoint.
+- Omit rather than guess — if a number can't be verified, leave it out.
+
+### 3.10 anti_patterns
 
 #### 3.10.1 Purpose
-Documents error scenarios with causes and solutions.
+
+Documents common mistakes with corrected versions. Trains the reader to avoid traps before they fall into them.
 
 #### 3.10.2 Structure
+
 ```yaml
-common_errors:
-  - error: string                  # REQUIRED: Error type/message
-    causes:                        # REQUIRED: List of causes
-      - cause                      # At least one cause
-    solutions:                     # REQUIRED: List of solutions
-      - solution                   # At least one solution
-    example_fix: |                 # OPTIONAL: Before/after code (use pipe)
-      Code examples
+anti_patterns:
+  - title: string
+    problem: string                # 1 sentence
+    wrong_sparql: |
+      Bad query
+    correct_sparql: |
+      Fixed query
+    explanation: |
+      Why wrong version fails, why correct version works
 ```
 
 #### 3.10.3 Requirements
-- MUST contain 2-3 error scenarios
-- Each MUST have at least one cause and one solution
-- Focus on errors researchers actually encounter
-- MAY include example fixes if helpful
-- Use YAML pipe (|) syntax for example_fix if provided
 
-#### 3.10.4 Constraints
-- Count: 2-3 scenarios
-- Each MUST have actionable solutions
-- Causes MUST be specific and accurate
+- **Exactly 3–4 entries.**
+- **At least one entry addresses "schema check before text search"** — this is the single most common failure mode.
+- Other entries cover database-specific traps discovered during schema exploration, or universal SPARQL anti-patterns (circular reasoning with `VALUES`, unindexed text search, etc.).
+- Both `wrong_sparql` and `correct_sparql` are minimal working examples.
 
-## 4. Discovery Requirements
+#### 3.10.4 Mandatory Anti-pattern Topics
 
-### 4.1 Systematic Discovery Process
-Before creating an MIE file, creators MUST:
+At least one of the 3–4 entries must cover each topic area:
 
-1. Use `get_sparql_endpoints()` to identify:
-   - Available SPARQL endpoints
-   - Keyword search APIs for the database
-   - Databases sharing the same endpoint (for cross-database opportunities)
-2. Check for existing documentation (`get_MIE_file()`, `get_shex()`)
-3. For shared endpoints: Retrieve MIE files of co-located databases using `get_MIE_file(co_db_name)`
-4. Query ontology graphs for ALL entity types
-5. Explore multiple URI patterns
-6. Sample instances for each discovered entity type
-7. Verify findings across different query patterns
-8. If on shared endpoint: Identify linking properties to co-located databases
+1. **Text search when a structured property exists** — using `bif:contains` for a field that has a controlled-vocabulary predicate.
+2. **Skipping the schema check** — using text search without first reading `shape_expressions`.
+3. **Circular reasoning with search results** — using `VALUES { search_results }` and then `COUNT`ing them.
+4. **Unindexed text search when indexed is available** — `FILTER(CONTAINS())` when `bif:contains` works (Virtuoso backend).
 
-### 4.2 Cross-Database Discovery (For Shared Endpoints)
-When database shares endpoint with others:
+Topics 1 and 2 overlap enough that a single entry can cover both.
 
-1. **Retrieve co-located database MIE files**: Use `get_MIE_file()` for each co-database
-2. **Extract reference information**:
-   - Graph URIs from `schema_info.graphs`
-   - Prefixes from `shape_expressions`
-   - Entity type definitions from `shape_expressions`
-   - Property patterns from `sample_rdf_entries`
-   - Linking properties from `cross_references`
-3. **Identify linking properties**: Find properties that reference co-database entities
-4. **Verify cross-database queries**: Test queries using graph URIs and patterns from MIE files
-5. **Document performance**: Note execution times for cross-database queries
+### 3.11 common_errors
 
-### 4.3 Avoiding Bias
-- MUST NOT rely solely on first 50 results
-- MUST query ontology graphs before sampling data
-- MUST NOT assume timeouts mean "data doesn't exist"
-- MUST explore multiple query strategies
-- For Virtuoso backends: SHOULD use `bif:contains` for keyword searches
+#### 3.11.1 Structure
 
-### 4.4 Verification
-All SPARQL queries in the MIE file MUST be:
-- Actually executed against the database
-- Confirmed to return valid results
-- Tested with appropriate LIMIT values
-- For cross-database queries: Verified against referenced MIE file information
+```yaml
+common_errors:
+  - error: string                  # symptom or error message
+    causes:
+      - cause
+    solutions:
+      - solution
+```
+
+#### 3.11.2 Requirements
+
+- **Exactly 2–3 scenarios.**
+- Each has at least one cause and one solution.
+- Focus on errors actually encountered during MIE creation and testing.
+- Good picks: timeout / slow query, empty or incomplete results, cross-database query failure.
+
+## 4. Discovery Workflow
+
+### 4.1 File-based Resources
+
+MIE authoring in this project is filesystem-based. The relevant directories are:
+
+| Resource                   | Path                                     | Access                |
+|----------------------------|------------------------------------------|-----------------------|
+| Existing MIE files         | `./togo_mcp/data/mie/<db>.yaml`          | Read / Write / Edit   |
+| ShEx schemas               | `./shex/<db>.shex` (or similar)          | Read                  |
+| Curated SPARQL examples    | `./togo_mcp/data/sparql-examples/<db>/`  | Read                  |
+
+The MCP tools `get_MIE_file`, `save_MIE_file`, `get_shex`, and `get_sparql_example` (documented in earlier versions of this spec) are **not** used when authoring MIE files in this repository — these files are read and written directly. The remaining TogoMCP tools (`run_sparql`, `list_databases`, `get_sparql_endpoints`, `get_graph_list`, the search APIs) hit live endpoints and are still used as before.
+
+### 4.2 Phase 1 — Orient (2–3 minutes)
+
+Before touching the endpoint:
+
+1. Read `./togo_mcp/data/mie/<db>.yaml` — is there an existing MIE? If yes, this is an update, not a fresh build. Note which sections need improvement.
+2. Read `./shex/<db>.shex` (or the equivalent) — the ShEx schema is the starting point for `shape_expressions`.
+3. List `./togo_mcp/data/sparql-examples/<db>/` and read any files present — these are human-curated, endpoint-tested queries and reveal which patterns actually work.
+4. Call `get_sparql_endpoints()` and `get_graph_list(<db>)` — confirm endpoint URL, named graphs, which graphs hold data vs ontology.
+
+### 4.3 Phase 2 — Discover (10–20 minutes)
+
+The goal is to extract the specific IRIs, typed predicates, and namespace patterns needed so that `sparql_query_examples` can prefer structured lookups.
+
+**Standard discovery queries:**
+
+```sparql
+# Classes and instance counts
+SELECT DISTINCT ?class (COUNT(?instance) AS ?count)
+WHERE { ?instance a ?class }
+GROUP BY ?class ORDER BY DESC(?count) LIMIT 50
+
+# Predicate usage
+SELECT DISTINCT ?p (COUNT(*) AS ?n)
+WHERE { ?s ?p ?o }
+GROUP BY ?p ORDER BY DESC(?n) LIMIT 50
+```
+
+**Representative-entity inspection:**
+
+```sparql
+DESCRIBE <iri-of-example-entity>
+# or, when DESCRIBE is unhelpful:
+SELECT ?p ?o WHERE { <iri-of-example-entity> ?p ?o } LIMIT 200
+```
+
+**When the ShEx file is missing or empty** (common for newer or custom databases), live DESCRIBE is the fallback. Pick 3–5 entities that span the database's taxonomy (e.g. a reviewed protein AND an unreviewed one; a drug molecule AND a target AND an assay) and DESCRIBE each. Also DESCRIBE any entity referenced in the curated SPARQL examples — those are known-good starting points.
+
+Biological intuition matters: if exploring a drug database, look for measurement scaffolds (blank-node activity records); if it's a sequence database, look for feature annotations and organism links; if it's an ontology, look for `rdfs:subClassOf`, `owl:equivalentClass`, and `skos:broader`.
+
+**When search tools exist** (`search_uniprot_entity`, `search_chembl_molecule`, etc.), use them to turn keywords into example IRIs that can then be DESCRIBED.
+
+### 4.4 Phase 3 — Design the query set
+
+Design the 7 example queries following the hierarchy in section 3.5.5. Before writing any query that uses text search, complete the Gate Check. If you find yourself reaching for `bif:contains` more than once across the 7, stop and re-read `shape_expressions` — almost every field that looks "free text" in an RDF database is backed by a controlled vocabulary somewhere.
+
+### 4.5 Phase 4 — Write the file
+
+Use section 13 (Appendix A) as the scaffold. Fill every `[bracketed]` placeholder. Remove scaffolding comments before finalising.
+
+### 4.6 Phase 5 — Validate (non-negotiable)
+
+**This phase is where most MIE files go wrong.** Do not skip it.
+
+**5a. Validate every RDF example.** For each of the 3 entries in `sample_rdf_entries`, run a SELECT or ASK that retrieves those exact triples from the endpoint. Fix any that fail; replace any that can't be fixed. No fabricated RDF reaches the final file.
+
+**5b. Test every SPARQL query — all of them.** Run all 7 of `sparql_query_examples`, every example in `cross_database_queries`, and any SPARQL embedded in `cross_references`. "Most of them" is not sufficient.
+
+Queries that time out, error, or return 0 rows when they shouldn't, must be fixed or replaced before the file is written.
+
+**5c. Verify statistics.** Every count or coverage percentage in `data_statistics` comes from a real query with a `verified_date`. Omit rather than guess.
+
+**5d. Validate the YAML.** Load with PyYAML to confirm it parses:
+
+```bash
+python3 -c "import yaml; yaml.safe_load(open('./togo_mcp/data/mie/<db>.yaml'))"
+```
+
+### 4.7 Anti-bias rules
+
+- Do not rely solely on the first 50 results of any query — sample patterns across the database.
+- Do not treat timeouts as "data doesn't exist" — reformulate and try a smaller slice.
+- Do not skip ontology graph exploration.
+- Do not assume older curated examples are still valid — test them against the current endpoint.
 
 ## 5. YAML Formatting Rules
 
 ### 5.1 Mandatory Pipe Syntax
-**CRITICAL: Use "|" (pipe) syntax for ALL multiline strings**
 
-For readability and consistency, ALL multiline string values MUST use the pipe (|) syntax:
+All multiline string values use the pipe (`|`) syntax:
 
 ```yaml
-# ✅ CORRECT - Use pipe for multiline strings
+# CORRECT
 description: |
-  First line of description.
-  Second line of description.
-  
+  First line.
+  Second line.
+
 sparql: |
   SELECT ?s ?p ?o
-  WHERE {
-    ?s ?p ?o .
-  }
+  WHERE { ?s ?p ?o . }
   LIMIT 10
 
-# ❌ WRONG - Don't use quoted strings for multiline content
+# WRONG — don't use quoted strings for multiline content
 description: "First line.\nSecond line."
-sparql: "SELECT ?s ?p ?o WHERE { ?s ?p ?o . } LIMIT 10"
 ```
 
-### 5.2 When to Use Pipe Syntax
-- `description` fields in all sections
-- `sparql` queries
-- `rdf` examples in sample_rdf_entries
-- `shape_expressions` content
-- `explanation` fields in anti_patterns
-- `example_fix` fields in common_errors
-- `notes` fields in cross_database_queries
-- Any string value that spans multiple lines
+### 5.2 Where to Use
+
+`description`, `sparql`, `rdf`, `shape_expressions`, `explanation` in anti-patterns, `notes` in cross_database_queries, `critical_warnings`, any value that spans multiple lines.
 
 ### 5.3 Benefits
-- Better readability
-- Preserves formatting and indentation
-- Easier to edit SPARQL queries
-- Consistent style throughout the file
+
+Better readability; preserves formatting and indentation; easier to edit SPARQL; consistent style across the corpus.
 
 ## 6. Compliance Checking
 
 ### 6.1 Existing MIE File Evaluation
-When an existing MIE file is found, evaluate against:
+
+When updating an existing MIE, evaluate against the following checklist and pick a strategy.
 
 #### Structure & Format
-- [ ] Valid YAML syntax
-- [ ] All required sections present (9 or 10 depending on shared endpoint)
-- [ ] Sections in correct order
-- [ ] Version/license/access metadata in schema_info
-- [ ] kw_search_tools field present in schema_info
-- [ ] Multiline strings use pipe (|) syntax
+- [ ] Valid YAML
+- [ ] All 11 required sections present in order
+- [ ] `schema_info` includes `backend` and `kw_search_tools`
+- [ ] Multiline strings use pipe syntax
 
-#### Sample RDF Entries
-- [ ] Exactly 5 examples
-- [ ] Covers diverse categories
-- [ ] Each has 1-2 sentence description
-- [ ] Uses pipe syntax for RDF content
+#### Content Counts
+- [ ] `sample_rdf_entries`: exactly 3 entries with shared `rdf_prefixes` block
+- [ ] `sparql_query_examples`: exactly 7 queries (2/3/2)
+- [ ] `anti_patterns`: 3–4 entries
+- [ ] `common_errors`: 2–3 entries
 
-#### SPARQL Query Examples
-- [ ] Exactly 7 queries
-- [ ] Correct complexity distribution (2/3/2)
-- [ ] Includes keyword filtering query
-- [ ] Includes biological annotations query (if applicable)
-- [ ] No cross-database queries
-- [ ] All tested and working
-- [ ] Uses pipe syntax for SPARQL content
+#### Query Strategy
+- [ ] At least 2 queries use specific IRIs / `VALUES` with IRIs
+- [ ] At least 2 queries use typed predicates or graph navigation
+- [ ] At most 1 query uses text search, with justification
+- [ ] All 7 queries include `LIMIT`
 
-#### Cross-Database Queries (if applicable)
-- [ ] Section present if database shares endpoint with others
-- [ ] 2-3 tested examples
-- [ ] Uses proper GRAPH clauses from referenced MIE files
-- [ ] Documents which MIE files were consulted
-- [ ] Includes performance notes
-- [ ] Uses pipe syntax for SPARQL and notes
+#### Validation
+- [ ] All 3 RDF example entries validated against endpoint
+- [ ] All 7 SPARQL queries tested against endpoint
+- [ ] All cross-database queries tested (if present)
+- [ ] All statistics have `verified_date`
 
-#### Shape Expressions
-- [ ] Minimal comments (only non-obvious)
-- [ ] Covers ALL major entity types
-- [ ] Uses pipe syntax
+#### Critical Warnings
+- [ ] Present with at least one entry (or verified `[]`)
+- [ ] Documents mandatory performance filters, IRI traps, required typos
 
-#### Other Sections
-- [ ] Cross-references organized by pattern
-- [ ] All external databases listed
-- [ ] Architectural notes in YAML bullets
-- [ ] Data_integration includes cross-database notes (if applicable)
-- [ ] Statistics include counts, coverage, cardinality
-- [ ] Performance characteristics include cross-database notes (if applicable)
-- [ ] 2-3 anti-patterns with both versions
-- [ ] 2-3 common errors with solutions
-- [ ] Pipe syntax used consistently
-
-#### Compliance Threshold
-- **≥90% pass**: Update existing file
-- **<90% pass**: Create new file from scratch
+#### Threshold
+- **≥ 90% pass**: update existing file.
+- **< 90% pass**: rewrite from scratch.
 
 ## 7. Quality Assurance
 
-### 7.1 Pre-Finalization Checklist
+### 7.1 Pre-finalisation Checklist
 
 #### Discovery
-- [ ] Used `get_sparql_endpoints()` to identify endpoint and keyword search APIs
-- [ ] Queried ontology graphs for all entity types
-- [ ] Explored multiple URI patterns
-- [ ] Documented ALL major entity types
-- [ ] Identified co-located databases on shared endpoint (if applicable)
-- [ ] Retrieved MIE files for co-located databases (if applicable)
+- [ ] Read existing `togo_mcp/data/mie/<db>.yaml` (if present)
+- [ ] Read `shex/<db>.shex` (if present); used DESCRIBE fallback if not
+- [ ] Read `togo_mcp/data/sparql-examples/<db>/` (if present)
+- [ ] Identified co-located databases on shared endpoint
+- [ ] Read MIE files for all co-located databases (if cross-database queries planned)
 
 #### Structure
-- [ ] Valid YAML with all required sections (9 or 10)
-- [ ] Sections in correct order
-- [ ] Schema_info includes version/license/access/kw_search_tools/backend
-- [ ] ShEx has minimal comments, covers all types
-- [ ] Exactly 5 diverse RDF examples
-- [ ] Exactly 7 SPARQL queries (2/3/2 distribution)
-- [ ] Includes keyword filtering query
-- [ ] Includes biological annotations query (if applicable)
-- [ ] Cross-database queries section if shared endpoint (2-3 examples)
-- [ ] Cross-references organized by pattern
-- [ ] Architectural notes in YAML bullets
+- [ ] Valid YAML, 11 sections in order
+- [ ] `schema_info` complete with backend and kw_search_tools
+- [ ] `critical_warnings` documents silent-failure traps (or verified `[]`)
+- [ ] ShEx covers all major entity types with inline counts
+- [ ] Exactly 3 RDF entries, shared prefix block
+- [ ] Exactly 7 SPARQL queries (2/3/2)
+- [ ] Cross-database queries present (or `examples: []` with notes)
+- [ ] Cross-references organised by pattern
+- [ ] `architectural_notes` includes `text_search_justification`
 - [ ] All multiline strings use pipe syntax
 
-#### Quality
-- [ ] All SPARQL queries tested and work
-- [ ] Cross-database queries tested (if included)
-- [ ] Cross-database queries reference co-database MIE files (if included)
-- [ ] 2-3 anti-patterns with wrong/correct versions
-- [ ] 2-3 common errors with solutions
-- [ ] Statistics: counts, coverage, cardinality, performance
-- [ ] Cross-database performance documented (if applicable)
-- [ ] Everything concise - no unnecessary content
-- [ ] No sampling bias in documentation
-- [ ] No premature conclusions
-
-#### Cross-Database (if applicable)
-- [ ] Identified all databases on same endpoint
-- [ ] Retrieved MIE files for all co-located databases using `get_MIE_file()`
-- [ ] Extracted graph URIs, entity types, properties from co-database MIE files
-- [ ] Found at least 1 linking property to co-located databases
-- [ ] 2-3 cross-database query examples tested and working
-- [ ] Uses proper GRAPH clauses from co-database MIE files
-- [ ] Uses correct entity types from co-database shape expressions
-- [ ] Avoided anti-patterns from co-database MIE files
-- [ ] Performance notes documented
-- [ ] Documents which MIE files were referenced
+#### Validation
+- [ ] Every RDF triple in `sample_rdf_entries` validated against endpoint
+- [ ] Every SPARQL query in `sparql_query_examples` tested and working
+- [ ] Every cross-database query tested
+- [ ] Every statistic has `verified_date`
+- [ ] YAML parses cleanly
 
 ### 7.2 Content Standards
-- Descriptions are actionable and query-focused
-- No redundant or excessive information
-- All statistics based on actual measurements
-- All examples use real data from the database
-- Documentation enables effective querying
-- Cross-database queries show practical value (if applicable)
+
+- Descriptions are actionable and query-focused.
+- No redundant information.
+- All examples use real data from the database.
+- Documentation enables effective querying by a downstream LLM.
+- Cross-database queries show practical value, not forced integration.
 
 ## 8. Best Practices
 
 ### 8.1 Writing Style
-- **Concise**: If it doesn't help query writing, omit it
-- **Clear**: Use simple, direct language
-- **Complete**: Cover all entity types and patterns
-- **Correct**: All queries tested and verified
-- **Consistent**: Use pipe syntax for all multiline strings
+
+- **Concise**: if it doesn't help write a better query, omit it.
+- **Clear**: direct language; no throat-clearing.
+- **Complete**: cover all entity types and access patterns.
+- **Correct**: every triple and every query validated.
+- **Consistent**: pipe syntax throughout.
 
 ### 8.2 SPARQL Queries
-- Always use appropriate LIMIT clauses
-- Test with different LIMIT values if queries timeout
-- Include comments for complex patterns
-- Use meaningful variable names
-- For Virtuoso: Use `bif:contains` for keyword search
-- For cross-database: Use explicit GRAPH clauses
+
+- Always include `LIMIT`.
+- Prefer structured lookups (IRIs, typed predicates) over text search.
+- Comment non-obvious choices (why this predicate, why this filter).
+- For Virtuoso, use `bif:contains`; split property paths before it.
+- For cross-database, use explicit `GRAPH` clauses and filter before joining.
 
 ### 8.3 Coverage
-- Document ALL entity types, not just common ones
-- Include rare but important patterns
-- Note data quality issues that affect querying
-- Provide workarounds for known limitations
-- Document cross-database opportunities (if applicable)
 
-### 8.4 Cross-Database Queries
-- Reference co-located database MIE files before creating queries
-- Use graph URIs exactly as documented in MIE files
-- Follow entity type conventions from co-database schemas
-- Apply anti-pattern lessons from co-database documentation
-- Document practical use cases, not forced integrations
+- Document all entity types, not just the obvious ones.
+- Include rare but important patterns (measurement scaffolds, reified statements).
+- Document IRI namespace traps and required-typo predicates in `critical_warnings`.
+- Note cross-database opportunities where the endpoint is shared.
 
 ## 9. Common Pitfalls
 
 ### 9.1 Discovery Phase
-- ❌ Sampling bias: First 50 results don't represent entire database
-- ❌ Premature conclusions: Timeout ≠ "data doesn't exist"
-- ❌ Incomplete coverage: Only documenting obvious entity types
-- ❌ Missing error guidance: Not testing what fails
-- ❌ Ignoring cross-database opportunities: Not exploring shared endpoints
-- ❌ Not retrieving co-database MIE files: Creating queries without reference information
+
+- ❌ Sampling bias: first 50 results don't represent the whole database.
+- ❌ Premature conclusions: timeout ≠ "data doesn't exist".
+- ❌ Incomplete coverage: only documenting obvious entity types.
+- ❌ Ignoring curated `sparql-examples/` files.
+- ❌ Treating a missing ShEx as a blocker rather than a signal to DESCRIBE.
 
 ### 9.2 Documentation Phase
-- ❌ Excessive comments in ShEx
-- ❌ Wrong number of examples (must be exactly 5 and 7)
-- ❌ Untested SPARQL queries
-- ❌ Cross-database queries in regular SPARQL examples section
-- ❌ Prose paragraphs in architectural_notes
-- ❌ Fabricated RDF examples
-- ❌ Not using pipe syntax for multiline strings
-- ❌ Missing kw_search_tools or backend fields
-- ❌ Incorrect graph URIs in cross-database queries
 
-### 9.3 Quality Phase
-- ❌ Not verifying all queries work
-- ❌ Missing anti-patterns or common errors
-- ❌ Incomplete statistics
-- ❌ Invalid YAML syntax
-- ❌ Cross-database queries not tested
-- ❌ Missing cross-database section when endpoint is shared
-- ❌ Not documenting MIE file references for cross-database queries
+- ❌ Fabricated RDF examples (the single worst failure mode).
+- ❌ Untested SPARQL queries ("it looks right" is not a test).
+- ❌ Cross-database queries in the regular `sparql_query_examples` section.
+- ❌ Text search when a structured predicate exists.
+- ❌ Prose paragraphs in `architectural_notes`.
+- ❌ Missing `kw_search_tools`, `backend`, or `critical_warnings`.
+- ❌ Wrong `rdf_prefixes` layout (repeating prefixes in every entry).
+
+### 9.3 Query Design Phase
+
+- ❌ `VALUES { search-API results }` followed by `COUNT` (circular reasoning).
+- ❌ `FILTER(CONTAINS())` on Virtuoso when `bif:contains` is available.
+- ❌ Property path immediately before `bif:contains`.
+- ❌ Skipping the Gate Check before using text search.
+- ❌ Using `?score` as a variable name with Virtuoso `option (score ?var)`.
+
+### 9.4 Validation Phase
+
+- ❌ Testing 3 of 7 queries and calling it done.
+- ❌ Assuming sample RDF is correct because it was copied from an example file.
+- ❌ Documenting an anti-pattern whose "wrong" version actually works.
+- ❌ Cross-database queries untested because the author read the co-database MIE instead of running the query.
 
 ## 10. Success Criteria
 
-An MIE file is considered complete and compliant when:
+An MIE file is complete and compliant when:
 
-1. **Valid YAML** with all required sections in correct order (9 or 10 depending on shared endpoint)
-2. **Complete discovery**: All entity types documented
-3. **Tested queries**: All 7 SPARQL queries work correctly
-4. **Cross-database queries**: 2-3 examples if shared endpoint, properly tested and documented
-5. **Correct counts**: Exactly 5 RDF examples, exactly 7 queries, 2-3 anti-patterns, 2-3 errors
-6. **Comprehensive shapes**: ShEx covers ALL major entity types
-7. **Proper organization**: Cross-references by pattern, notes in bullets
-8. **Quality metrics**: Counts, coverage, cardinality, performance (including cross-database if applicable)
-9. **Error prevention**: Anti-patterns and common errors documented
-10. **Metadata complete**: Version, license, access, keyword search tools, backend information
-11. **Actionable content**: Everything helps with query writing
-12. **Consistent formatting**: All multiline strings use pipe (|) syntax
-13. **MIE file references**: Cross-database queries document which MIE files were consulted
+1. Valid YAML with all 11 required sections in correct order.
+2. `critical_warnings` documents silent-failure traps (or is verified `[]`).
+3. ShEx covers all major entity types, with inline counts and caveats.
+4. Exactly 3 `sample_rdf_entries` with shared `rdf_prefixes` block — **all 3 retrievable from the endpoint**.
+5. Exactly 7 SPARQL queries (2/3/2), prioritising structured lookups — **all 7 executed successfully**.
+6. `cross_database_queries` present (examples or `[]` with notes).
+7. `data_statistics` contains only verified counts/coverage, no auditing subsections.
+8. 3–4 anti-patterns including "schema check before text search".
+9. 2–3 common errors with causes and solutions.
+10. All multiline strings use pipe syntax.
+11. Line count 400–600 typical, ≤ 900 for complex databases.
 
 ## 11. Version History
 
-| Version | Date | Changes |
-|---------|------|---------|
-| 1.0 | 2024 | Initial specification |
-| 1.1 | 2025-01-17 | Added cross_database_queries section, kw_search_tools field, pipe syntax requirement, backend field, MIE file reference guidance |
+| Version | Date       | Changes                                                                                                                                                                                                                                                                                                             |
+|---------|------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1.0     | 2024       | Initial specification.                                                                                                                                                                                                                                                                                              |
+| 1.1     | 2025-01-17 | Added `cross_database_queries` section, `kw_search_tools` field, pipe syntax requirement, `backend` field, MIE file reference guidance.                                                                                                                                                                              |
+| 2.0     | 2026-04-22 | New `critical_warnings` section; sample RDF reduced from 5 to 3 with shared prefix block; query-strategy hierarchy and Gate Check formalised; filesystem-based workflow (MIE files, ShEx, SPARQL examples as files); stronger validation — all example triples retrievable, all example queries tested; `data_statistics` simplified; anti-patterns expanded to 3–4 entries with mandatory "schema check before text search" topic. |
 
 ## 12. References
 
 ### 12.1 Related Standards
+
 - **ShEx**: Shape Expressions Language (https://shex.io/)
 - **SPARQL**: SPARQL 1.1 Query Language (W3C Recommendation)
 - **YAML**: YAML Ain't Markup Language (https://yaml.org/)
 - **RDF**: Resource Description Framework (W3C Recommendation)
 
 ### 12.2 Tools
-- `get_sparql_endpoints()` - Get available SPARQL endpoints and keyword search APIs
-- `get_graph_list(database)` - List named graphs
-- `get_sparql_example(database)` - Get example query
-- `run_sparql(database, query)` - Execute SPARQL (single database)
-- `run_sparql(endpoint_name=endpoint, query)` - Execute SPARQL (cross-database)
-- `get_shex(database)` - Retrieve ShEx schema
-- `get_MIE_file(database)` - Retrieve existing MIE (CRITICAL for cross-database queries)
-- `save_MIE_file(database, content)` - Save MIE file
+
+**Endpoint access** (TogoMCP tools, still in use):
+- `get_sparql_endpoints()` — list SPARQL endpoints and keyword-search APIs
+- `get_graph_list(database)` — list named graphs
+- `run_sparql(database, query)` — execute SPARQL (single database)
+- `run_sparql(endpoint_name=endpoint, query)` — execute SPARQL (cross-database)
+- `list_databases()` — list supported databases
+
+**Filesystem access** (standard tools; replaces former `get_MIE_file`/`save_MIE_file`/`get_shex`/`get_sparql_example`):
+- Read / Write / Edit for `togo_mcp/data/mie/<db>.yaml`
+- Read for `shex/<db>.shex`
+- Read for `togo_mcp/data/sparql-examples/<db>/`
 
 ### 12.3 Keyword Search APIs
-**Dedicated Tools:**
+
+**Dedicated tools:**
 - `search_uniprot_entity(query, limit=20)`
-- `search_pdb_entity(db, query, limit=20)` - db="pdb"|"cc"|"prd"
+- `search_pdb_entity(db, query, limit=20)` — `db ∈ {pdb, cc, prd}`
 - `search_chembl_molecule(query, limit=20)`, `search_chembl_target(query, limit=20)`
 - `search_reactome_entity(query, species=None, types=None, rows=30)`
 - `search_rhea_entity(query, limit=100)`
-- `search_mesh_entity(query, limit=10)`
+- `search_mesh_descriptor(query, limit=10)`
 
 **OLS4:**
-- `OLS4:searchClasses(query, ontologyId=None, pageSize, pageNum)` - For ChEBI, GO, Mondo, NANDO
+- `OLS4:searchClasses(query, ontologyId=None, pageSize, pageNum)` — ChEBI, GO, Mondo, NANDO
 
 **NCBI:**
-- `ncbi_esearch(database, query, max_results=20)` - For PubChem, Taxonomy, ClinVar, PubMed, NCBIGene, MedGen
+- `ncbi_esearch(database, query, max_results=20)` — PubChem, Taxonomy, ClinVar, PubMed, NCBIGene, MedGen
 
-**SPARQL-Only:**
-- Use `run_sparql()` with `bif:contains` pattern for keyword search (Virtuoso backend)
+**SPARQL-only:**
+- `run_sparql()` with `bif:contains` (Virtuoso) or `FILTER(CONTAINS())`
 
 ## 13. Appendix A: Complete Template
 
@@ -841,271 +888,336 @@ An MIE file is considered complete and compliant when:
 schema_info:
   title: [DATABASE_NAME]
   description: |
-    [3-5 sentences covering: contents, ALL entity types, use cases, features]
+    [2-3 sentences: contents, main entity types, primary use cases]
   endpoint: https://rdfportal.org/example/sparql
   base_uri: http://example.org/
   graphs:
     - http://example.org/dataset
     - http://example.org/ontology
   kw_search_tools:
-    - [search_tool_name]  # e.g., search_uniprot_entity, OLS4:searchClasses, ncbi_esearch, or "sparql"
+    - [api_name]                   # or []
   version:
-    mie_version: "1.1"
+    mie_version: "2.0"
     mie_created: "YYYY-MM-DD"
     data_version: "Release YYYY.MM"
     update_frequency: "Monthly"
-  license:
-    data_license: "License name"
-    license_url: "https://..."
   access:
-    rate_limiting: "100 queries/min"
-    max_query_timeout: "60 seconds"
-    backend: "Virtuoso"  # or other triple store
+    backend: "Virtuoso"            # or "Blazegraph", etc.
+
+critical_warnings: |
+  - [Silent-failure trap, IRI namespace trap, or mandatory performance filter]
+  - [Required-typo predicate, if any]
 
 shape_expressions: |
-  PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-  
+  PREFIX ex: <http://example.org/>
+
   <EntityShape> {
-    a [ schema:Type ] ;
-    schema:property xsd:string ;
-    schema:optional xsd:string ?
+    a [ ex:Type ] ;                # ~N instances
+    ex:required xsd:string ;
+    ex:optional xsd:string ?       # ~X% coverage
   }
 
 sample_rdf_entries:
-  - title: [Descriptive title]
-    description: [1-2 sentences]
-    rdf: |
-      [Real RDF from database]
-  - title: [Descriptive title]
-    description: [1-2 sentences]
-    rdf: |
-      [Real RDF from database]
-  - title: [Descriptive title]
-    description: [1-2 sentences]
-    rdf: |
-      [Real RDF from database]
-  - title: [Descriptive title]
-    description: [1-2 sentences]
-    rdf: |
-      [Real RDF from database]
-  - title: [Descriptive title]
-    description: [1-2 sentences]
-    rdf: |
-      [Real RDF from database]
+  rdf_prefixes: |
+    @prefix ex: <http://example.org/> .
+    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  entries:
+    - title: "[Representative entity]"
+      description: One-sentence purpose.
+      rdf: |
+        ex:entity1 a ex:Type ;
+                   ex:required "value" .
+    - title: "[Non-obvious pattern]"
+      description: One sentence.
+      rdf: |
+        ex:entity2 a ex:Type ;
+                   ex:optional "value" .
+    - title: "[Cross-reference or measurement scaffold]"
+      description: One sentence.
+      rdf: |
+        ex:entity3 a ex:Type ;
+                   rdfs:seeAlso <http://external.org/123> .
 
 sparql_query_examples:
-  - title: [What it does]
+  - title: "[Basic — specific IRI]"
     description: |
-      [Context]
-    question: [Natural language]
+      Context.
+    question: "Question?"
     complexity: basic
     sparql: |
-      [Tested query]
-  - title: [What it does]
-    description: |
-      [Context]
-    question: [Natural language]
-    complexity: basic
-    sparql: |
-      [Tested query]
-  - title: [What it does]
-    description: |
-      [Context]
-    question: [Natural language]
-    complexity: intermediate
-    sparql: |
-      [Tested query]
-  - title: [What it does]
-    description: |
-      [Context]
-    question: [Natural language]
-    complexity: intermediate
-    sparql: |
-      [Tested query]
-  - title: [What it does]
-    description: |
-      [Context]
-    question: [Natural language]
-    complexity: intermediate
-    sparql: |
-      [Tested query]
-  - title: [What it does]
-    description: |
-      [Context]
-    question: [Natural language]
-    complexity: advanced
-    sparql: |
-      [Tested query]
-  - title: [What it does]
-    description: |
-      [Context]
-    question: [Natural language]
-    complexity: advanced
-    sparql: |
-      [Tested query]
+      ...
+      LIMIT 20
 
-# ONLY include this section if database shares endpoint with 2+ others
+  - title: "[Basic — typed predicate]"
+    description: |
+      Context.
+    question: "Question?"
+    complexity: basic
+    sparql: |
+      ...
+      LIMIT 20
+
+  - title: "[Intermediate #1]"
+    description: |
+      Context.
+    question: "Question?"
+    complexity: intermediate
+    sparql: |
+      ...
+      LIMIT 20
+
+  - title: "[Intermediate #2]"
+    description: |
+      Context.
+    question: "Question?"
+    complexity: intermediate
+    sparql: |
+      ...
+      LIMIT 20
+
+  - title: "[Intermediate #3]"
+    description: |
+      Context.
+    question: "Question?"
+    complexity: intermediate
+    sparql: |
+      ...
+      LIMIT 20
+
+  - title: "[Advanced #1]"
+    description: |
+      Context.
+    question: "Question?"
+    complexity: advanced
+    sparql: |
+      ...
+      LIMIT 20
+
+  - title: "[Advanced #2]"
+    description: |
+      Context.
+    question: "Question?"
+    complexity: advanced
+    sparql: |
+      ...
+      LIMIT 20
+
 cross_database_queries:
-  shared_endpoint: [endpoint_name]  # e.g., ebi, sib, primary, ncbi
+  shared_endpoint: [endpoint_name]         # or null
   co_located_databases:
     - [database1]
     - [database2]
-  examples:
-    - title: [Integration goal]
+  examples:                                # 1-2 examples, or []
+    - title: "[Structured cross-database link]"
       description: |
-        [Why useful - 2-3 sentences]
+        Linking strategy:
+        - db1: predicate X links to shared IRI namespace
+        - db2: predicate Y links to same IRI namespace
+        - Direct IRI matching; no text search required
       databases_used:
         - [database1]
         - [database2]
-      complexity: intermediate  # or advanced
+      complexity: intermediate
       sparql: |
-        # Prefixes from database MIE files
-        PREFIX db1: <http://example1.org/>
-        PREFIX db2: <http://example2.org/>
-        
-        SELECT ?entity1 ?entity2
+        PREFIX db1: <http://db1.org/>
+        PREFIX db2: <http://db2.org/>
+
+        SELECT ?entity1 ?entity2 ?sharedIRI
         WHERE {
-          # Graph URI from database1 MIE file
-          GRAPH <http://example1.org/dataset> {
-            ?entity1 a db1:Type ;
-                     db1:links ?entity2 .
-          }
-          # Graph URI from database2 MIE file
-          GRAPH <http://example2.org/dataset> {
-            ?entity2 a db2:Type .
-          }
+          GRAPH <db1_graph> { ?entity1 db1:hasIdentifier ?sharedIRI . }
+          GRAPH <db2_graph> { ?entity2 db2:linkedTo ?sharedIRI . }
         }
-        LIMIT 10
+        LIMIT 20
       notes: |
-        - Referenced MIE files: database1.yaml, database2.yaml
-        - Graph URIs from respective schema_info.graphs
-        - Entity types from respective shape_expressions
+        - Linking via: [IRI type, e.g. EC numbers]
+        - MIE files checked: [database1, database2]
         - Performance: [timing]
-        - Use case: [application]
+
+# Isolated-endpoint form:
+# cross_database_queries:
+#   shared_endpoint: null
+#   co_located_databases: []
+#   examples: []
+#   notes: |
+#     [DATABASE] is the only database on this endpoint. Cross-database SPARQL
+#     is not possible. To link externally: [manual bridging strategies].
 
 cross_references:
   - pattern: rdfs:seeAlso
     description: |
-      [How external links work]
+      [How this cross-reference pattern links to external resources]
     databases:
-      category_name:
-        - Database1 (~XX%)
-        - Database2 (~YY%)
-    sparql: |
-      [Representative query]
+      category:
+        - "Database name: coverage percentage"
 
 architectural_notes:
+  query_strategy:
+    - "Read the MIE file first; examine shape_expressions and critical_warnings"
+    - "Use specific IRIs and typed predicates before text search"
+    - "On Virtuoso: bif:contains > FILTER(CONTAINS()); split property paths"
+    - "Priority: Specific IRIs > Typed predicates > Graph navigation > Text search"
   schema_design:
-    - [Entity relationships]
-    - [Design patterns]
+    - "[Central entity types and relationships]"
+    - "[Key controlled vocabularies and their predicates]"
+    - "[IRI patterns and namespace gotchas]"
   performance:
-    - [Optimization tips]
-    - [Query hints]
+    - "[Mandatory filters]"
+    - "[Key optimisations]"
+    - "[bif:contains pitfalls on Virtuoso]"
   data_integration:
-    - [Cross-reference patterns]
-    - [Cross-database opportunities if applicable]
-    - [External links]
+    - "[Cross-reference patterns and coverage]"
+    - "[Linking predicates to external databases]"
   data_quality:
-    - [Data quirks]
-    - [Known issues]
+    - "[Known anomalies or data entry artefacts]"
+  text_search_justification:
+    - "Number of example queries using text search: N"
+    - "Fields where text search is legitimate: [list]"
+    - "Reason structured alternatives confirmed absent: [per field]"
 
 data_statistics:
-  total_entity_type1: count
-  total_entity_type2: count
+  total_entities: [count]
+  verified_date: "YYYY-MM-DD"
+  verification_method: "Direct COUNT query"
   coverage:
-    property1_coverage: "~XX%"
-    property2_coverage: ">YY%"
-  cardinality:
-    avg_relationship1: X.X
-    avg_relationship2: Y.Y
-  performance_characteristics:
-    - "Query type A: <1s for N results"
-    - "Query type B: timeout at LIMIT 10000"
-    - "Cross-database query performance (if applicable)"
-  data_quality_notes:
-    - "Issue description"
+    key_property: "XX%"
+    calculation: "[numerator / denominator]"
+    verified_date: "YYYY-MM-DD"
 
 anti_patterns:
-  - title: "Common mistake 1"
-    problem: "Why it's wrong"
+  - title: "Text search when a structured property exists"
+    problem: "Using string matching when a specific IRI or typed predicate is available."
     wrong_sparql: |
-      # Bad query
+      ?description bif:contains "'antibacterial'"
     correct_sparql: |
-      # Fixed query
+      ?molecule cco:atcClassification <http://www.whocc.no/atc/J01> .
     explanation: |
-      What changed and why
-  - title: "Common mistake 2"
-    problem: "Why it's wrong"
+      Controlled vocabularies exist so you don't have to guess spellings.
+      The IRI is canonical; the text is not.
+
+  - title: "Skipping schema check before text search"
+    problem: "Reaching for bif:contains without reading shape_expressions."
     wrong_sparql: |
-      # Bad query
+      ?text bif:contains "'kinase'"
     correct_sparql: |
-      # Fixed query
+      # 1. Read shape_expressions → look for structured predicate
+      # 2. search_chembl_target('kinase') → extract concept IRIs
+      # 3. Use the IRIs:
+      VALUES ?term {
+        <http://purl.obolibrary.org/obo/GO_0016301>
+        <http://purl.obolibrary.org/obo/GO_0004672>
+      }
+      ?entity cco:hasGoTerm ?term .
     explanation: |
-      What changed and why
+      RDF databases are curated. If you think you need free-text search,
+      you're almost always missing a predicate.
+
+  - title: "Circular reasoning with search results"
+    problem: "Using search API results in VALUES and then counting them."
+    wrong_sparql: |
+      VALUES ?entity { ex:1 ex:2 ... ex:20 }   # 20 results from search
+      SELECT (COUNT(?entity) AS ?count) WHERE { ... }
+    correct_sparql: |
+      VALUES ?classification { <term:A> <term:B> }
+      SELECT (COUNT(DISTINCT ?entity) AS ?count)
+      WHERE { ?entity hasClassification ?classification . }
+    explanation: |
+      Search APIs help you discover concept IRIs. Use those IRIs to query
+      the full dataset — don't count the filtered search results.
+
+  - title: "Unindexed text search when indexed is available"
+    problem: "FILTER(CONTAINS()) on a Virtuoso backend where bif:contains works."
+    wrong_sparql: |
+      FILTER(CONTAINS(LCASE(?text), "keyword"))
+    correct_sparql: |
+      ?text bif:contains "'keyword'"
+    explanation: |
+      bif:contains uses Virtuoso's inverted index. FILTER(CONTAINS()) does
+      a full scan and times out on large graphs.
 
 common_errors:
-  - error: "Error type 1"
+  - error: "Slow query / timeout"
     causes:
-      - "Cause 1"
-      - "Cause 2"
+      - "Text search used where structured IRIs or predicates are available"
+      - "Missing critical filters (reviewed status, graph clause)"
+      - "FILTER(CONTAINS()) used when bif:contains is available"
+      - "Property path used just before bif:contains"
     solutions:
-      - "Solution 1"
-      - "Solution 2"
-    example_fix: |
-      # Before/after (optional)
-  - error: "Error type 2"
+      - "Check critical_warnings and shape_expressions for mandatory filters"
+      - "Replace text search with structured lookups"
+      - "Use bif:contains on Virtuoso; split property paths before it"
+      - "Add LIMIT to every query"
+
+  - error: "Empty or incomplete results"
     causes:
-      - "Cause 1"
+      - "Used VALUES with search results instead of concept IRIs (circular reasoning)"
+      - "Wrong IRI namespace (silent failure — returns 0 rows, no error)"
+      - "Missing hierarchical navigation"
     solutions:
-      - "Solution 1"
+      - "Read critical_warnings for known namespace traps"
+      - "DESCRIBE an example entity to confirm IRI patterns"
+      - "Use rdfs:subClassOf+ / skos:broader+ for hierarchical coverage"
+
+  - error: "Cross-database query timeout or empty results"
+    causes:
+      - "Did not read MIE files for all databases in the query"
+      - "Missing GRAPH clauses"
+      - "Joining before filtering"
+    solutions:
+      - "Read MIE files for all databases; confirm linking predicates"
+      - "Use explicit GRAPH clauses for each database"
+      - "Apply restrictive filters within each GRAPH block before joining"
 ```
 
 ## 14. Appendix B: Validation Rules
 
-### Structural Validation
-1. File MUST be valid YAML
-2. All required sections MUST be present (9 or 10 depending on shared endpoint)
-3. Sections MUST be in specified order
-4. All required fields MUST be populated
-5. All multiline strings MUST use pipe (|) syntax
+### 14.1 Structural
 
-### Content Validation
-1. `sample_rdf_entries` count = 5
-2. `sparql_query_examples` count = 7
-3. SPARQL complexity distribution = 2 basic, 3 intermediate, 2 advanced
-4. `cross_database_queries` present if shared endpoint (2-3 examples)
-5. `anti_patterns` count = 2 or 3
-6. `common_errors` count = 2 or 3
-7. All dates in ISO 8601 format
-8. All URIs are valid
-9. `kw_search_tools` field present
-10. `backend` field present
+1. File is valid YAML.
+2. All 11 required sections present, in specified order.
+3. All required fields populated.
+4. All multiline strings use pipe (`|`) syntax.
 
-### Query Validation
-1. All SPARQL queries execute without syntax errors
-2. All SPARQL queries return results (or documented as intentionally empty)
-3. All queries have appropriate LIMIT clauses
-4. No queries timeout (or timeout is documented)
-5. Cross-database queries use correct graph URIs from referenced MIE files
-6. Cross-database queries use correct entity types from co-database schemas
+### 14.2 Content Counts
 
-### Coverage Validation
-1. All major entity types have ShEx shapes
-2. Cross-references document all external databases found
-3. Statistics include all major entity types
-4. Anti-patterns address common real mistakes
-5. Cross-database opportunities documented (if applicable)
+1. `sample_rdf_entries.entries`: exactly 3.
+2. `sparql_query_examples`: exactly 7.
+3. SPARQL complexity distribution: 2 basic / 3 intermediate / 2 advanced.
+4. `cross_database_queries.examples`: 1–2 if shared endpoint, `[]` with notes if isolated.
+5. `anti_patterns`: 3–4 entries including "schema check before text search".
+6. `common_errors`: 2–3 entries.
 
-### Reference Validation (for cross-database queries)
-1. Co-located database MIE files were retrieved
-2. Graph URIs match those in referenced MIE files
-3. Entity types match those in referenced shape expressions
-4. Notes document which MIE files were consulted
+### 14.3 Query Strategy
+
+1. ≥ 2 queries use specific IRIs or `VALUES` with IRIs.
+2. ≥ 2 queries use typed predicates or graph navigation.
+3. ≤ 1 query uses text search, with inline justification.
+4. All queries include `LIMIT`.
+
+### 14.4 Validation Evidence
+
+1. Every RDF triple in `sample_rdf_entries` retrievable from endpoint (ASK or SELECT).
+2. Every SPARQL query in `sparql_query_examples` executes successfully against endpoint.
+3. Every query in `cross_database_queries.examples` executes successfully.
+4. Every statistic in `data_statistics` has a `verified_date` from an actual query.
+
+### 14.5 Format
+
+1. All dates in ISO 8601 (`YYYY-MM-DD`).
+2. All URIs valid.
+3. `kw_search_tools` present (may be `[]`).
+4. `access.backend` present.
+5. `critical_warnings` present (may be `[]` if verified).
+
+### 14.6 Reference Validation (cross-database queries)
+
+1. Co-located database MIE files read before writing query.
+2. Graph URIs match those in referenced MIE files.
+3. Entity types match those in referenced `shape_expressions`.
+4. `notes` field documents which MIE files were consulted.
 
 ---
 
-**Document Status**: Specification v1.1  
-**Compliance**: REQUIRED for all MIE files  
-**Principle**: Compact, Complete, Clear, Correct, Actionable  
-**Key Addition**: Cross-database integration support for shared endpoints
+**Document Status**: Specification v2.0
+**Compliance**: required for all MIE files in `togo_mcp/data/mie/`
+**Principle**: Compact · Complete · Correct · Actionable · Validated
+**Core shift from v1.1**: Filesystem-based workflow; structured lookups over text search; every example validated against the live endpoint.

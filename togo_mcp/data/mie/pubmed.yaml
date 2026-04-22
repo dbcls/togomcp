@@ -2,7 +2,7 @@ schema_info:
   title: PubMed
   description: |
     Biomedical literature database with 37+ million citations from MEDLINE, life science journals, and online books.
-    Primary entity types: research articles, reviews, authors, journals. Rich MeSH term annotations enable precise 
+    Primary entity types: research articles, reviews, authors, journals. Rich MeSH term annotations enable precise
     topic-based queries using controlled vocabulary IRIs. Updated daily with new publications.
   endpoint: https://rdfportal.org/ncbi/sparql
   base_uri: http://rdf.ncbi.nlm.nih.gov/pubmed/
@@ -15,6 +15,7 @@ schema_info:
   version:
     mie_version: "2.0"
     mie_created: "2026-02-10"
+    mie_updated: "2026-04-22"
     data_version: "Updated continuously"
     update_frequency: "Daily"
   license:
@@ -24,6 +25,34 @@ schema_info:
     rate_limiting: "100 queries/min"
     max_query_timeout: "60 seconds"
     backend: "Virtuoso"
+
+critical_warnings: |
+  - MESH IRI NAMESPACE TRAP (rdfs:seeAlso vs fabio:hasSubjectTerm):
+    rdfs:seeAlso contains plain MeSH descriptor IRIs — including publication types
+    (e.g. mesh:D016428 = "Journal Article", mesh:D016454 = "Review") AND some topic
+    descriptors WITHOUT qualifiers (e.g. mesh:D003165 = Complement C3).
+    HOWEVER: For many disease/topic descriptors such as Alzheimer Disease (D000544),
+    rdfs:seeAlso mesh:D000544 attaches to blank nodes (mesh graph), NOT to PubMed
+    article IRIs with bibo:pmid — returning 0 article results silently.
+    CORRECT APPROACH for disease topics: use fabio:hasPrimarySubjectTerm or
+    fabio:hasSubjectTerm with FILTER(STRSTARTS(STR(?term), "http://id.nlm.nih.gov/mesh/D000544"))
+    since MeSH annotations include qualifier suffixes (e.g. D000544Q000378).
+    Verified: rdfs:seeAlso works for D016428, D003165, D003180;
+    fabio:hasPrimarySubjectTerm+STRSTARTS works for D000544 (Alzheimer Disease).
+
+  - COUNT QUERY TIMEOUT: Full-scan COUNT queries over 37M+ articles without filters
+    will time out. Always add LIMIT to every query. Use sampling (FILTER(?pmid < "100000"))
+    to estimate counts rather than counting the full dataset.
+
+  - PUBLICATION TYPE IRI PERFORMANCE: mesh:D016428 (Journal Article) matches the vast
+    majority of PubMed. Combining rdfs:seeAlso mesh:D016428 with an unindexed
+    FILTER(CONTAINS(?journal, ...)) or ORDER BY will time out. Always add a date
+    FILTER(STRSTARTS(STR(?issued), "YYYY")) or bif:contains filter BEFORE any journal
+    name filter, and always add LIMIT.
+
+  - PRISM NAMESPACE TYPO: The PRISM prefix used in data is the non-standard
+    http://prismstandard.org/namespeces/1.2/basic/ (note: "namespeces" not "namespaces").
+    Using the corrected spelling returns zero results.
 
 shape_expressions: |
   PREFIX bibo: <http://purl.org/ontology/bibo/>
@@ -35,130 +64,140 @@ shape_expressions: |
   PREFIX org: <http://www.w3.org/ns/org#>
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
   PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-  
+
   <PubMedArticleShape> {
-    bibo:pmid xsd:string ;
+    # ~37M articles; IRI pattern: http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid}
+    bibo:pmid xsd:string ;                      # PubMed identifier (string, not integer)
     dct:title xsd:string ;
-    dct:issued xsd:date ;
+    dct:issued xsd:date|xsd:gYearMonth|xsd:string ;  # multiple date precision formats
     dct:created xsd:string + ;
-    dct:creator BNode ;
-    bibo:abstract xsd:string ? ;
+    dct:creator BNode ;                          # points to AuthorListShape (OLO)
+    dct:identifier xsd:string ? ;
+    dct:language xsd:string ? ;
+    dct:source xsd:string ? ;
+    bibo:abstract xsd:string ? ;                 # ~85% coverage; absent for older articles
     bibo:volume xsd:string ? ;
     bibo:issue xsd:string ? ;
-    prism:publicationName xsd:string ;
-    prism:doi xsd:string ? ;
+    prism:publicationName xsd:string ;           # journal full name
+    prism:doi xsd:string ? ;                     # ~70% coverage; absent pre-2000
     prism:ISSN xsd:string ? ;
     prism:eISSN xsd:string ? ;
     prism:startingPage xsd:string ? ;
     prism:endingPage xsd:string ? ;
-    fabio:hasPrimarySubjectTerm IRI * ;
-    fabio:hasSubjectTerm IRI * ;
-    rdfs:seeAlso IRI *
+    fabio:hasPrimarySubjectTerm IRI * ;          # MeSH descriptor+qualifier IRIs (major topics)
+    fabio:hasSubjectTerm IRI * ;                 # MeSH descriptor+qualifier IRIs (supporting)
+    fabio:hasNLMJournalTitleAbbreviation xsd:string ? ;
+    fabio:hasNationalLibraryOfMedicineJournalId xsd:string ? ;
+    fabio:hasIssnL xsd:string ? ;
+    fabio:hasPlaceOfPublication xsd:string ? ;
+    fabio:dateLastUpdated xsd:string ? ;
+    rdfs:seeAlso IRI *                           # plain MeSH descriptor IRIs (no qualifier suffix)
+                                                 # NOTE: includes publication types (D016428=Journal Article)
+                                                 # and some topic descriptors — NOT all topic descriptors.
+                                                 # For disease topics, use fabio:hasSubjectTerm+STRSTARTS.
+                                                 # WARNING: D016428 matches ~37M articles — always add date/LIMIT filter.
   }
-  
+
   <AuthorListShape> {
+    # Blank node; reached via dct:creator from article
     olo:slot @<AuthorSlotShape> +
   }
-  
+
   <AuthorSlotShape> {
-    olo:index xsd:integer ;
+    olo:index xsd:integer ;                      # 1-based author position
     olo:item @<AuthorShape>
   }
-  
+
   <AuthorShape> {
     a [ foaf:Person ] ;
-    foaf:name xsd:string ;
-    org:memberOf xsd:string ?
+    foaf:name xsd:string ;                       # format: "LastName FI" (e.g. "Smith AB")
+    org:memberOf xsd:string ?                    # affiliation; may be concatenated string
   }
 
 sample_rdf_entries:
-  - title: Article with Complete Metadata
-    description: Publication with title, abstract, DOI, journal, volume, pages, and MeSH annotations.
-    rdf: |
-      @prefix pubmed: <http://rdf.ncbi.nlm.nih.gov/pubmed/> .
-      @prefix dct: <http://purl.org/dc/terms/> .
-      @prefix bibo: <http://purl.org/ontology/bibo/> .
-      @prefix prism: <http://prismstandard.org/namespeces/1.2/basic/> .
-      @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-      @prefix mesh: <http://id.nlm.nih.gov/mesh/> .
-      
-      pubmed:88474
-        bibo:pmid "88474" ;
-        dct:title "Complement receptor binding of C3b-coated cells..." ;
-        dct:issued "1979-08"^^xsd:gYearMonth ;
-        dct:created "1979-8-1" ;
-        bibo:abstract "Treatment of 125I-C3b bound to EAC1423b..." ;
-        bibo:volume "123" ;
-        bibo:issue "2" ;
-        prism:publicationName "Journal of immunology" ;
-        prism:ISSN "0022-1767" ;
-        prism:startingPage "523" ;
-        prism:endingPage "8" ;
-        rdfs:seeAlso mesh:D016428, mesh:D001609, mesh:D003165 .
-  
-  - title: Author List with Affiliations
-    description: Ordered author list using OLO ontology for position, with institutional affiliations.
-    rdf: |
-      @prefix olo: <http://purl.org/ontology/olo/core#> .
-      @prefix foaf: <http://xmlns.com/foaf/0.1/> .
-      @prefix org: <http://www.w3.org/ns/org#> .
-      
-      _:authorList olo:slot _:slot1 .
-      _:slot1
-        olo:index 1 ;
-        olo:item _:author1 .
-      _:author1
-        a foaf:Person ;
-        foaf:name "Smith AB" ;
-        org:memberOf "Department of Medicine, University of..." .
-  
-  - title: MeSH Primary Subject Terms
-    description: Primary MeSH descriptor-qualifier combinations indicating major article topics.
-    rdf: |
-      @prefix pubmed: <http://rdf.ncbi.nlm.nih.gov/pubmed/> .
-      @prefix fabio: <http://purl.org/spar/fabio/> .
-      @prefix mesh: <http://id.nlm.nih.gov/mesh/> .
-      
-      pubmed:88474
-        fabio:hasPrimarySubjectTerm mesh:D001609Q000494 ;
-        fabio:hasPrimarySubjectTerm mesh:D003180Q000494 .
-  
-  - title: MeSH Secondary Subject Terms
-    description: Additional MeSH descriptors providing broader topic coverage beyond primary focus.
-    rdf: |
-      @prefix pubmed: <http://rdf.ncbi.nlm.nih.gov/pubmed/> .
-      @prefix fabio: <http://purl.org/spar/fabio/> .
-      @prefix mesh: <http://id.nlm.nih.gov/mesh/> .
-      
-      pubmed:88474
-        fabio:hasSubjectTerm mesh:D006384 ;
-        fabio:hasSubjectTerm mesh:D000818 ;
-        fabio:hasSubjectTerm mesh:D001665 .
-  
-  - title: Journal Information
-    description: Publication venue metadata with NLM identifiers and ISSNs.
-    rdf: |
-      @prefix pubmed: <http://rdf.ncbi.nlm.nih.gov/pubmed/> .
-      @prefix fabio: <http://purl.org/spar/fabio/> .
-      @prefix prism: <http://prismstandard.org/namespeces/1.2/basic/> .
-      
-      pubmed:88474
-        fabio:hasNLMJournalTitleAbbreviation "J Immunol" ;
-        fabio:hasNationalLibraryOfMedicineJournalId "2985117R" ;
-        fabio:hasIssnL "0022-1767" ;
-        fabio:hasPlaceOfPublication "United States" .
+  rdf_prefixes: |
+    @prefix pubmed: <http://rdf.ncbi.nlm.nih.gov/pubmed/> .
+    @prefix bibo: <http://purl.org/ontology/bibo/> .
+    @prefix dct: <http://purl.org/dc/terms/> .
+    @prefix prism: <http://prismstandard.org/namespeces/1.2/basic/> .
+    @prefix fabio: <http://purl.org/spar/fabio/> .
+    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+    @prefix olo: <http://purl.org/ontology/olo/core#> .
+    @prefix foaf: <http://xmlns.com/foaf/0.1/> .
+    @prefix mesh: <http://id.nlm.nih.gov/mesh/> .
+  entries:
+    - title: Article with Complete Metadata (PMID 88474)
+      description: Representative article showing all core bibliographic fields including abstract, journal, pages, and MeSH annotations.
+      rdf: |
+        pubmed:88474
+          bibo:pmid "88474" ;
+          dct:title "Complement receptor binding of C3b-coated cells treated with C3b inactivator, beta 1H globulin and trypsin." ;
+          dct:issued "1979-08" ;
+          dct:created "1979-8-1" ;
+          bibo:abstract "Treatment of 125I-C3b bound to EAC1423b..." ;
+          bibo:volume "123" ;
+          bibo:issue "2" ;
+          prism:publicationName "Journal of immunology (Baltimore, Md. : 1950)" ;
+          prism:ISSN "0022-1767" ;
+          prism:startingPage "523" ;
+          prism:endingPage "8" ;
+          fabio:hasNLMJournalTitleAbbreviation "J Immunol" ;
+          fabio:hasPlaceOfPublication "United States" ;
+          rdfs:seeAlso mesh:D003165, mesh:D003180, mesh:D016428 .
+
+    - title: MeSH Subject Term Annotation Patterns (PMID 88474)
+      description: Illustrates the two MeSH annotation predicates — rdfs:seeAlso (plain descriptor, no qualifier) vs fabio:hasPrimarySubjectTerm/hasSubjectTerm (descriptor+qualifier combinations). Critical distinction for topic queries.
+      rdf: |
+        pubmed:88474
+          # rdfs:seeAlso: plain descriptor IRI only (works for some topics + publication types)
+          rdfs:seeAlso mesh:D003165 ;         # Complement C3 (no qualifier)
+          rdfs:seeAlso mesh:D016428 ;         # Journal Article (publication type)
+
+          # fabio:hasPrimarySubjectTerm: descriptor+qualifier IRI (major topic)
+          fabio:hasPrimarySubjectTerm mesh:D003180Q000494 ;  # Complement C3b/immunology
+          fabio:hasPrimarySubjectTerm mesh:D001609Q000494 ;  # Blood Proteins/immunology
+
+          # fabio:hasSubjectTerm: descriptor+qualifier IRI (supporting topic)
+          fabio:hasSubjectTerm mesh:D006801 ;   # Humans
+          fabio:hasSubjectTerm mesh:D001665 .   # Binding Sites
+
+    - title: Ordered Author List via OLO (PMID 88474)
+      description: Non-obvious OLO ordered-list navigation required to retrieve authors with positional index — cannot be accessed by a simple triple pattern.
+      rdf: |
+        pubmed:88474
+          dct:creator _:authorList .
+
+        _:authorList
+          olo:slot _:slot1 ;
+          olo:slot _:slot2 .
+
+        _:slot1
+          olo:index 1 ;
+          olo:item _:author1 .
+
+        _:slot2
+          olo:index 2 ;
+          olo:item _:author2 .
+
+        _:author1
+          a foaf:Person ;
+          foaf:name "Carlo JR" .
+
+        _:author2
+          a foaf:Person ;
+          foaf:name "Ruddy S" .
 
 sparql_query_examples:
   - title: Retrieve Article by PMID
-    description: Get complete metadata for a specific article using its PubMed identifier.
+    description: Get complete metadata for a specific article using its PubMed identifier string.
     question: What are the details of article 88474?
     complexity: basic
     sparql: |
       PREFIX bibo: <http://purl.org/ontology/bibo/>
       PREFIX dct: <http://purl.org/dc/terms/>
       PREFIX prism: <http://prismstandard.org/namespeces/1.2/basic/>
-      
-      # Using specific article identifier pattern
+
+      # Direct lookup by specific article identifier
       SELECT ?title ?abstract ?journal ?issued ?doi
       WHERE {
         ?article bibo:pmid "88474" ;
@@ -169,30 +208,58 @@ sparql_query_examples:
         OPTIONAL { ?article prism:doi ?doi }
       }
       LIMIT 1
-  
-  - title: Find Articles by Specific MeSH Descriptor IRI
-    description: Retrieve articles annotated with a specific MeSH term using its IRI (Alzheimer Disease).
-    question: What articles are indexed with Alzheimer Disease (MeSH D016428)?
+
+  - title: Find Articles by MeSH Publication Type and Date
+    description: |
+      Filter articles by MeSH publication-type IRI (rdfs:seeAlso) combined with a date range.
+      D016428 = "Journal Article" (matches most of PubMed) — always pair with a date or topic
+      filter to avoid timeout. D016454 = "Review". See critical_warnings on performance.
+    question: Find Journal Article publications from 1979?
     complexity: basic
     sparql: |
       PREFIX bibo: <http://purl.org/ontology/bibo/>
       PREFIX dct: <http://purl.org/dc/terms/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
-      
-      # Using specific MeSH IRI from controlled vocabulary
+
+      # Using specific MeSH publication-type IRI via rdfs:seeAlso
+      # CRITICAL: D016428 matches ~37M articles; MUST add date filter before any secondary filter
       SELECT ?pmid ?title ?issued
       WHERE {
         ?article bibo:pmid ?pmid ;
                  dct:title ?title ;
                  dct:issued ?issued ;
-                 rdfs:seeAlso mesh:D016428 .  # Alzheimer Disease
+                 rdfs:seeAlso mesh:D016428 .
+        FILTER(STRSTARTS(STR(?issued), "1979"))
       }
-      ORDER BY DESC(?issued)
       LIMIT 20
-  
-  - title: Filter by Multiple Related MeSH Descriptors
-    description: Find articles annotated with any of several related MeSH terms using VALUES with specific IRIs.
+
+  - title: Find Articles by Disease Topic via MeSH (Alzheimer Disease)
+    description: |
+      Find articles whose major topic is Alzheimer Disease using fabio:hasPrimarySubjectTerm.
+      Because disease descriptors like D000544 appear with qualifier suffixes
+      (e.g. D000544Q000378 = "Alzheimer Disease/metabolism"), use STRSTARTS for IRI prefix matching.
+      CRITICAL: rdfs:seeAlso mesh:D000544 attaches to blank nodes, not article IRIs — see critical_warnings.
+    question: What articles have Alzheimer Disease as a primary MeSH subject term?
+    complexity: intermediate
+    sparql: |
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX fabio: <http://purl.org/spar/fabio/>
+
+      # IRI prefix match on descriptor+qualifier pattern (D000544Qxxxxxx)
+      # rdfs:seeAlso mesh:D000544 does NOT retrieve article IRIs — see critical_warnings
+      SELECT ?pmid ?title
+      WHERE {
+        ?article bibo:pmid ?pmid ;
+                 dct:title ?title ;
+                 fabio:hasPrimarySubjectTerm ?term .
+        FILTER(STRSTARTS(STR(?term), "http://id.nlm.nih.gov/mesh/D000544"))
+      }
+      LIMIT 20
+
+  - title: Filter by Multiple Related MeSH Descriptors with VALUES
+    description: Find articles annotated with any of several structurally related MeSH terms using VALUES with specific IRIs verified to work via rdfs:seeAlso.
     question: Find articles about complement system components?
     complexity: intermediate
     sparql: |
@@ -200,11 +267,11 @@ sparql_query_examples:
       PREFIX dct: <http://purl.org/dc/terms/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
-      
-      # Using VALUES with multiple specific MeSH IRIs
+
+      # VALUES with multiple specific MeSH IRIs (all verified working via rdfs:seeAlso)
       SELECT ?pmid ?title ?mesh_term
       WHERE {
-        VALUES ?mesh_term { 
+        VALUES ?mesh_term {
           mesh:D003165  # Complement C3
           mesh:D003180  # Complement C3b
           mesh:D003176  # Complement C3a
@@ -214,9 +281,9 @@ sparql_query_examples:
                  rdfs:seeAlso ?mesh_term .
       }
       LIMIT 50
-  
+
   - title: Extract Authors with Graph Navigation
-    description: Get ordered author list with affiliations by navigating OLO ordered list structure.
+    description: Get ordered author list with affiliations by navigating OLO ordered list structure via dct:creator.
     question: Who are the authors of article 88474 and their affiliations?
     complexity: intermediate
     sparql: |
@@ -225,8 +292,8 @@ sparql_query_examples:
       PREFIX olo: <http://purl.org/ontology/olo/core#>
       PREFIX foaf: <http://xmlns.com/foaf/0.1/>
       PREFIX org: <http://www.w3.org/ns/org#>
-      
-      # Graph navigation through OLO ordered list structure
+
+      # Graph navigation: article → dct:creator → olo:slot → olo:item → foaf:Person
       SELECT ?index ?author_name ?affiliation
       WHERE {
         ?article bibo:pmid "88474" ;
@@ -239,56 +306,32 @@ sparql_query_examples:
       }
       ORDER BY ?index
       LIMIT 20
-  
-  - title: Search Titles by Keywords and Date Range
-    description: Combine keyword search with temporal filtering for recent publications.
+
+  - title: Keyword Search in Titles with Date Range
+    description: Combine indexed full-text search on unstructured title field with temporal filtering for recent publications.
     question: Find articles about cancer published in 2024-2025?
-    complexity: intermediate
+    complexity: advanced
     sparql: |
       PREFIX bibo: <http://purl.org/ontology/bibo/>
       PREFIX dct: <http://purl.org/dc/terms/>
-      
-      # Text search justified: dct:title is unstructured free-text field
-      # No controlled vocabulary for title content - only for topics (MeSH)
-      # Virtuoso backend: use bif:contains for indexed search
+
+      # Text search justified: dct:title is unstructured free text.
+      # No controlled vocabulary for title content (MeSH covers topics, not title words).
+      # Virtuoso backend: bif:contains preferred over FILTER(CONTAINS()).
+      # Single triple before bif:contains — no property path to split.
       SELECT ?pmid ?title ?issued
       WHERE {
         ?article bibo:pmid ?pmid ;
                  dct:title ?title ;
                  dct:issued ?issued .
-        ?title bif:contains "'cancer'" .
+        ?title bif:contains "'cancer'"
         FILTER(STRSTARTS(STR(?issued), "2024") || STRSTARTS(STR(?issued), "2025"))
       }
       ORDER BY DESC(?issued)
       LIMIT 100
-  
-  - title: Complex Multi-Filter with MeSH and Journal
-    description: Combine specific MeSH IRIs, journal name filtering, and temporal constraints.
-    question: What complement-related articles were published in Journal of Immunology in 1979?
-    complexity: advanced
-    sparql: |
-      PREFIX bibo: <http://purl.org/ontology/bibo/>
-      PREFIX dct: <http://purl.org/dc/terms/>
-      PREFIX prism: <http://prismstandard.org/namespeces/1.2/basic/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
-      
-      # Using specific MeSH IRIs + typed predicate filtering
-      SELECT ?pmid ?title ?journal ?mesh_term
-      WHERE {
-        VALUES ?mesh_term { mesh:D003165 mesh:D003180 mesh:D003176 }
-        ?article bibo:pmid ?pmid ;
-                 dct:title ?title ;
-                 prism:publicationName ?journal ;
-                 dct:issued ?issued ;
-                 rdfs:seeAlso ?mesh_term .
-        FILTER(CONTAINS(STR(?journal), "Immunology"))
-        FILTER(STRSTARTS(STR(?issued), "1979"))
-      }
-      LIMIT 50
-  
+
   - title: Author Co-Publication Network Analysis
-    description: Identify articles sharing common authors for collaboration network analysis.
+    description: Identify articles sharing common authors with a reference article for collaboration network analysis.
     question: Find articles that share authors with article 88474?
     complexity: advanced
     sparql: |
@@ -296,8 +339,8 @@ sparql_query_examples:
       PREFIX dct: <http://purl.org/dc/terms/>
       PREFIX olo: <http://purl.org/ontology/olo/core#>
       PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-      
-      # Complex graph navigation across author lists
+
+      # Complex graph navigation across two OLO author lists
       SELECT ?related_pmid ?related_title ?shared_author
       WHERE {
         # Reference article authors
@@ -305,14 +348,14 @@ sparql_query_examples:
                      dct:creator ?ref_creator .
         ?ref_creator olo:slot/olo:item ?ref_author .
         ?ref_author foaf:name ?shared_author .
-        
+
         # Related articles with same author
         ?related_article bibo:pmid ?related_pmid ;
-                        dct:title ?related_title ;
-                        dct:creator ?related_creator .
+                         dct:title ?related_title ;
+                         dct:creator ?related_creator .
         ?related_creator olo:slot/olo:item ?related_author .
         ?related_author foaf:name ?shared_author .
-        
+
         FILTER(?related_pmid != "88474")
       }
       LIMIT 50
@@ -323,26 +366,27 @@ cross_database_queries:
   examples:
     - title: Link Articles to Gene Annotations via Shared Article IRIs
       description: |
-        Integrates PubMed literature with PubTator gene annotations to discover genes discussed in articles.
-        
-        Structured linking approach:
-        - PubMed: Articles have URIs like http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid}
-        - PubTator: Annotations link to same article URIs via oa:hasTarget
-        - Direct IRI matching provides precise linking
-        - Pre-filtering with MeSH IRI or bif:contains reduces PubMed from 37M to <1K before join
-        
+        Integrates PubMed literature with PubTator gene annotations to discover genes discussed
+        in MeSH-indexed articles.
+
+        Linking strategy:
+        - PubMed: Articles have IRIs http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid}
+        - PubTator: Annotations link to same article IRIs via oa:hasTarget
+        - Pre-filtering with MeSH IRI (rdfs:seeAlso) reduces PubMed from 37M to <20K before join
+        - Direct IRI matching; no text search required
+
         MIE files consulted: pubmed, pubtator
       databases_used: [pubmed, pubtator]
       complexity: intermediate
       sparql: |
         PREFIX bibo: <http://purl.org/ontology/bibo/>
         PREFIX dct: <http://purl.org/dc/terms/>
-        PREFIX oa: <http://www.w3.org/ns/oa#>
-        PREFIX dcterms: <http://purl.org/dc/terms/>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
-        
-        # Pre-filter with specific MeSH IRI before cross-database join
+        PREFIX oa: <http://www.w3.org/ns/oa#>
+        PREFIX dcterms: <http://purl.org/dc/terms/>
+
+        # MANDATORY: Pre-filter with MeSH IRI before cross-database join (99.95% reduction)
         SELECT ?pmid ?title ?geneId
         WHERE {
           GRAPH <http://rdfportal.org/dataset/pubmed> {
@@ -360,18 +404,19 @@ cross_database_queries:
       notes: |
         - Linking via: Shared article IRIs (http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid})
         - Performance: ~2s (Tier 1) with MeSH pre-filtering
-        - Pre-filter gain: 99.95% reduction (37M→20K)
-        - PubTator MIE consulted for entity types (dcterms:subject) and linking predicates (oa:hasTarget)
-    
+        - Pre-filter gain: 99.95% reduction (37M → ~20K)
+        - PubTator MIE consulted for entity types (dcterms:subject) and linking predicate (oa:hasTarget)
+
     - title: MeSH and Disease Annotation Integration
       description: |
-        Combines PubMed's curated MeSH indexing with PubTator's text-mined disease annotations.
-        
-        Structured linking approach:
-        - PubMed: Uses specific MeSH descriptor IRI (mesh:D000544 = Alzheimer Disease)
-        - PubTator: Links to same article IRIs, filters by entity type "Disease"
-        - Pre-filtering with MeSH IRI before join
-        
+        Combines PubMed curated MeSH indexing with PubTator text-mined disease annotations
+        for the same articles — comparing curated vs text-mined coverage.
+
+        Linking strategy:
+        - PubMed: rdfs:seeAlso mesh:D003165 pre-filters to complement-related articles
+        - PubTator: oa:hasTarget links to same article IRIs; dcterms:subject "Disease" filters type
+        - Pre-filtering within each GRAPH block before the join
+
         MIE files consulted: pubmed, pubtator
       databases_used: [pubmed, pubtator]
       complexity: intermediate
@@ -382,13 +427,13 @@ cross_database_queries:
         PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
         PREFIX oa: <http://www.w3.org/ns/oa#>
         PREFIX dcterms: <http://purl.org/dc/terms/>
-        
+
         SELECT ?pmid ?title ?diseaseId
         WHERE {
           GRAPH <http://rdfportal.org/dataset/pubmed> {
             ?article bibo:pmid ?pmid ;
                      dct:title ?title ;
-                     rdfs:seeAlso mesh:D000544 .  # Alzheimer Disease
+                     rdfs:seeAlso mesh:D003165 .  # Complement C3 (verified working IRI)
           }
           GRAPH <http://rdfportal.org/dataset/pubtator_central> {
             ?ann dcterms:subject "Disease" ;
@@ -398,275 +443,191 @@ cross_database_queries:
         }
         LIMIT 50
       notes: |
-        - Linking via: Shared article IRIs + MeSH IRI pre-filtering
+        - Linking via: Shared article IRIs + rdfs:seeAlso MeSH IRI pre-filtering
         - Performance: ~3s (Tier 1)
-        - Pre-filter gain: 99.96% reduction (37M→15K)
-        - Combines curated (MeSH) with text mining (PubTator) annotations
-    
-    - title: Gene-Literature-Disease Triple Integration
-      description: |
-        Three-way join across PubMed, PubTator, and NCBI Gene databases.
-        
-        Structured linking approach:
-        - PubMed→PubTator: Shared article IRIs
-        - PubTator→NCBI Gene: Gene IRIs via oa:hasBody
-        - Double pre-filtering: MeSH IRI (37M→20K) then entity type filters in PubTator
-        
-        MIE files consulted: pubmed, pubtator, ncbigene
-      databases_used: [pubmed, pubtator, ncbigene]
-      complexity: advanced
-      sparql: |
-        PREFIX bibo: <http://purl.org/ontology/bibo/>
-        PREFIX dct: <http://purl.org/dc/terms/>
-        PREFIX oa: <http://www.w3.org/ns/oa#>
-        PREFIX dcterms: <http://purl.org/dc/terms/>
-        PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
-        
-        SELECT ?pmid ?title ?geneId ?gene_symbol ?diseaseId
-        WHERE {
-          GRAPH <http://rdfportal.org/dataset/pubmed> {
-            ?article bibo:pmid ?pmid ;
-                     dct:title ?title ;
-                     rdfs:seeAlso mesh:D009369 .  # Neoplasms
-          }
-          GRAPH <http://rdfportal.org/dataset/pubtator_central> {
-            ?gene_ann dcterms:subject "Gene" ;
-                      oa:hasBody ?geneId ;
-                      oa:hasTarget ?article .
-            ?disease_ann dcterms:subject "Disease" ;
-                         oa:hasBody ?diseaseId ;
-                         oa:hasTarget ?article .
-          }
-          GRAPH <http://rdfportal.org/dataset/ncbigene> {
-            ?geneId a insdc:Gene ;
-                    rdfs:label ?gene_symbol .
-          }
-        }
-        LIMIT 50
-      notes: |
-        - Linking via: Shared article IRIs (PubMed↔PubTator) + gene IRIs (PubTator↔NCBI Gene)
-        - Performance: ~5-8s (Tier 2)
-        - Pre-filter gain: 99.9995% reduction (37M→2K)
-        - All three co-located MIE files consulted for schema details
+        - mesh:D003165 (Complement C3) confirmed working via rdfs:seeAlso
+        - Combines curated (MeSH) with text-mined (PubTator) disease annotations
 
 cross_references:
   - pattern: rdfs:seeAlso
     description: |
-      Links to MeSH vocabulary terms for subject indexing. Includes MeSH descriptors (D-prefixed),
-      supplementary concepts (C-prefixed), and publication types. Primary mechanism for topical annotation.
-      These are specific IRIs from controlled vocabulary, ideal for comprehensive queries.
+      Links to plain MeSH descriptor IRIs (no qualifier suffix). Includes publication types
+      (D016428 = Journal Article, D016454 = Review) and subject-area descriptors.
+      NOTE: Not all topic descriptors are present here — disease topics like D000544
+      (Alzheimer Disease) may only appear via fabio:hasSubjectTerm with qualifier suffixes.
+      Use ncbi_esearch to find example PMIDs, then inspect their rdfs:seeAlso values
+      to confirm which descriptor IRIs are present before building comprehensive queries.
     databases:
       Medical_Subject_Headings:
-        - "MeSH Descriptors (D): ~30K controlled vocabulary terms"
-        - "MeSH Supplementary (C): ~300K chemical/disease names"
+        - "MeSH Descriptors (D-prefix): ~30K controlled vocabulary terms"
+        - "MeSH Supplementary (C-prefix): ~300K chemical/disease names"
     sparql: |
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX bibo: <http://purl.org/ontology/bibo/>
-      
+
       SELECT ?pmid ?mesh_term
       WHERE {
         ?article bibo:pmid ?pmid ;
                  rdfs:seeAlso ?mesh_term .
         FILTER(STRSTARTS(STR(?mesh_term), "http://id.nlm.nih.gov/mesh/"))
       }
-      LIMIT 100
-  
+      LIMIT 20
+
   - pattern: fabio:hasSubjectTerm / fabio:hasPrimarySubjectTerm
     description: |
-      MeSH descriptor-qualifier combinations for precise topic specification using specific IRIs.
-      Format: {descriptor}Q{qualifier} (e.g., D001609Q000494 = "Blood Proteins/pharmacology").
-      Primary terms indicate major topics; secondary terms provide additional context.
+      MeSH descriptor-qualifier combination IRIs. Format: {D_id}Q{qualifier_id}
+      (e.g. D000544Q000378 = "Alzheimer Disease/metabolism").
+      Primary terms indicate major article focus; secondary terms provide supporting context.
+      Use FILTER(STRSTARTS(STR(?term), "http://id.nlm.nih.gov/mesh/D{id}")) to match
+      all qualifier variants of a given descriptor.
     databases:
       MeSH_Descriptor_Qualifier_Pairs:
-        - "Primary: Major article focus"
-        - "Secondary: Supporting concepts"
-    sparql: |
-      PREFIX fabio: <http://purl.org/spar/fabio/>
-      PREFIX bibo: <http://purl.org/ontology/bibo/>
-      
-      SELECT ?pmid ?primary_term ?secondary_term
-      WHERE {
-        ?article bibo:pmid ?pmid .
-        OPTIONAL { ?article fabio:hasPrimarySubjectTerm ?primary_term }
-        OPTIONAL { ?article fabio:hasSubjectTerm ?secondary_term }
-      }
-      LIMIT 100
+        - "Primary (hasPrimarySubjectTerm): major article focus ~95% coverage"
+        - "Secondary (hasSubjectTerm): supporting concepts ~95% coverage"
 
 architectural_notes:
   query_strategy:
-    - "MANDATORY: Get MIE file FIRST before any comprehensive query"
-    - "Exploratory: Use ncbi_esearch(database='pubmed', query='...') to find example PMIDs (~20 results)"
-    - "Inspection: Query sample PMIDs with SELECT * WHERE { VALUES ... } to discover properties"
-    - "Comprehensive: Use specific MeSH IRIs (rdfs:seeAlso) for topic queries"
-    - "Author queries: Navigate OLO ordered lists (olo:slot/olo:item structure)"
-    - "Text search: bif:contains ONLY for unstructured title/abstract fields (no controlled vocabulary exists)"
+    - "MANDATORY: Get MIE file FIRST and read critical_warnings before writing any query"
+    - "Exploratory: Use ncbi_esearch(database='pubmed', query='...') to find example PMIDs"
+    - "Inspection: Query sample PMIDs with SELECT * WHERE { ?article bibo:pmid 'X' ; ?p ?o . } to discover properties"
+    - "Topic queries: Try rdfs:seeAlso first; if 0 results, use fabio:hasSubjectTerm+STRSTARTS"
+    - "Author queries: Navigate OLO ordered list (dct:creator → olo:slot → olo:item → foaf:Person)"
+    - "Text search: bif:contains ONLY for unstructured title/abstract (no controlled vocabulary exists)"
     - "Cross-database: MANDATORY pre-filtering with MeSH IRIs before joins (99%+ reduction)"
-    - "Priority: MeSH IRIs > Temporal filters (dct:issued) > bif:contains > FILTER(CONTAINS())"
-  
+    - "Priority: Specific MeSH IRIs > Typed predicates > STRSTARTS on qualifier IRIs > bif:contains"
+
   schema_design:
-    - "Articles: http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid}"
-    - "MeSH annotations: Two granularities - descriptors (rdfs:seeAlso) and descriptor-qualifier pairs (fabio:hasSubjectTerm)"
-    - "Authors: OLO ordered lists with foaf:Person nodes and org:memberOf for affiliations"
-    - "Dates: Multiple formats (xsd:date, xsd:gYearMonth, string YYYY-MM-DD)"
-    - "Vocabularies: BIBO (bibliographic), PRISM (publishing), FaBIO (publishing), OLO (ordered lists), FOAF (people)"
-    - "MeSH IRI pattern: http://id.nlm.nih.gov/mesh/{term_id}"
-  
+    - "Articles: IRI http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid} with bibo:pmid xsd:string"
+    - "MeSH annotations: two granularities — plain descriptor (rdfs:seeAlso) and descriptor+qualifier (fabio:hasSubjectTerm)"
+    - "Authors: OLO ordered lists — dct:creator → blank node → olo:slot → olo:index/olo:item → foaf:Person"
+    - "Date precision varies: xsd:date, xsd:gYearMonth, or plain string YYYY-MM-DD"
+    - "PRISM namespace typo: 'namespeces' not 'namespaces' — see critical_warnings"
+    - "Vocabularies: BIBO (bibliographic), PRISM (publishing), FaBIO (publishing types), OLO (ordered lists), FOAF (people)"
+    - "MeSH IRI pattern: http://id.nlm.nih.gov/mesh/{D_id} or http://id.nlm.nih.gov/mesh/{D_id}Q{qualifier}"
+
   performance:
-    - "PMID lookups: <1s (specific IRI pattern)"
-    - "MeSH IRI queries: 1-3s for 20 results (indexed)"
-    - "Keyword searches (bif:contains): 2-5s for 100 results"
-    - "Author extraction: 1-3s when filtered by PMID"
-    - "Cross-database (2-way): 1-3s with MeSH pre-filtering (Tier 1)"
-    - "Cross-database (3-way): 5-8s with double pre-filtering (Tier 2)"
-    - "Full count queries: TIMEOUT (use sampling or rely on documented statistics)"
-    - "Critical: Pre-filter PubMed before any cross-database join (37M→<1K)"
-  
+    - "PMID lookup: <1s (specific IRI pattern)"
+    - "MeSH IRI queries (rdfs:seeAlso, selective descriptor): 1-3s for 20 results"
+    - "rdfs:seeAlso mesh:D016428 (Journal Article) + date FILTER: ~2s; adding FILTER(CONTAINS(?journal)) causes timeout"
+    - "fabio:hasPrimarySubjectTerm + STRSTARTS: 2-5s for 20 results"
+    - "bif:contains on title: 2-5s for 100 results"
+    - "Author extraction filtered by PMID: 1-3s"
+    - "Cross-database (2-way) with MeSH pre-filter: 2-3s (Tier 1)"
+    - "Full COUNT queries: TIMEOUT — use sampling or accept documented 37M+ figure"
+    - "CRITICAL: Pre-filter PubMed before any cross-database join to avoid timeout"
+
   data_integration:
-    - "MeSH vocabulary links: http://id.nlm.nih.gov/mesh/{term_id}"
-    - "Journal catalog graph: http://rdfportal.org/dataset/nlm_catalog"
+    - "MeSH vocabulary graph: http://id.nlm.nih.gov/mesh/2025"
+    - "NLM Journal catalog graph: http://rdfportal.org/dataset/nlm_catalog"
     - "Shared NCBI endpoint enables joins with: clinvar, pubtator, ncbigene, medgen"
-    - "Article URIs enable direct PubMed↔PubTator joins via shared IRI pattern"
-    - "PubTator↔NCBI Gene linkage via identifiers.org/ncbigene IRIs"
-  
+    - "Article IRI matching (pubmed:PMID) enables direct PubMed ↔ PubTator joins"
+
   data_quality:
     - "Abstract coverage: ~85% (older articles may lack abstracts)"
     - "DOI coverage: ~70% (pre-2000 articles often lack DOIs)"
-    - "MeSH annotation: ~95% (nearly universal for biomedical literature)"
-    - "Author affiliations: May be concatenated strings rather than structured"
-    - "Publication dates: Varying precision (year, year-month, full date)"
-    - "Ahead-of-print articles: May have future publication dates"
+    - "MeSH annotation coverage: ~95% for MEDLINE-indexed articles"
+    - "Author affiliations: may be concatenated strings rather than structured institutions"
+    - "Publication dates: varying precision; ahead-of-print articles may have future dates"
+    - "rdfs:seeAlso vs fabio:hasSubjectTerm coverage per descriptor varies — always verify with example inspection"
+
+  text_search_justification:
+    - "Number of the 7 example queries that use bif:contains: 1 (Query 6)"
+    - "Field where text search is legitimate: dct:title (unstructured free text — no controlled vocabulary)"
+    - "bibo:abstract also qualifies for text search when searching within abstract content"
+    - "All other fields (MeSH, publication type, journal, date, author) have structured predicates or IRIs"
 
 data_statistics:
   total_articles: "37+ million citations"
   verified_date: "2026-02-10"
-  verification_method: "Database metadata and sampling (full count query times out)"
-  verification_query: |
-    # Full count query times out on 37M articles
-    # Use sampling for estimates:
-    SELECT (COUNT(DISTINCT ?article) as ?count)
-    WHERE {
-      ?article bibo:pmid ?pmid .
-      FILTER(?pmid < "100000")  # Sample first 100K PMIDs
-    }
-  
+  verification_method: "Database metadata and ncbi_esearch total results (full COUNT query times out)"
+
   coverage:
     abstracts: "~85%"
-    calculation: "Articles with bibo:abstract / total articles"
+    calculation: "Articles with bibo:abstract / total articles (sample-based)"
     verified_date: "2026-02-10"
-    verification_query: |
-      # Sample-based verification
-      SELECT (COUNT(?article) as ?with_abstract)
-      WHERE {
-        ?article bibo:pmid ?pmid ;
-                 bibo:abstract ?abstract .
-        FILTER(?pmid < "100000")
-      }
-    
+
     doi: "~70%"
-    calculation: "Articles with prism:doi / total articles"
+    calculation: "Articles with prism:doi / total articles (pre-2000 articles often lack DOIs)"
     verified_date: "2026-02-10"
-    
+
     mesh_annotations: "~95%"
-    calculation: "Articles with rdfs:seeAlso / total articles"
+    calculation: "MEDLINE-indexed articles with fabio:hasSubjectTerm / total MEDLINE articles"
     verified_date: "2026-02-10"
-  
-  cardinality:
-    avg_authors_per_article: "5.2"
-    avg_mesh_terms_per_article: "12.8"
-    methodology: "Sampled from 10,000 random articles across date range"
-  
-  performance_characteristics:
-    - "PMID lookups: <1s"
-    - "MeSH IRI queries: 1-3s (20 results)"
-    - "Keyword searches: 2-5s with bif:contains (100 results)"
-    - "Author queries: 1-3s with PMID filter"
-    - "Cross-database (2-way): Tier 1 (1-3s) with MeSH pre-filtering"
-    - "Cross-database (3-way): Tier 2 (5-8s) with double pre-filtering"
-  
+
   staleness_warning: "Database updated daily; statistics are approximate"
 
 anti_patterns:
-  - title: Using Text Search When MeSH IRI Available
-    problem: Slow keyword search when specific MeSH descriptor IRI exists in controlled vocabulary.
+  - title: Using rdfs:seeAlso for Disease Topics Without Verification
+    problem: |
+      Assuming rdfs:seeAlso works for all MeSH descriptor IRIs. For disease topics like
+      Alzheimer Disease (D000544), rdfs:seeAlso attaches to blank nodes in the MeSH graph,
+      not to PubMed article IRIs — returning 0 results silently.
     wrong_sparql: |
-      # Inefficient: Text search for topic with controlled vocabulary
-      PREFIX bibo: <http://purl.org/ontology/bibo/>
-      PREFIX dct: <http://purl.org/dc/terms/>
-      
-      SELECT ?pmid ?title
-      WHERE {
-        ?article bibo:pmid ?pmid ;
-                 dct:title ?title .
-        ?title bif:contains "'Alzheimer'" .
-      }
-      # Result: ~50K articles, 5-10s query time
-    correct_sparql: |
-      # Efficient: Use specific MeSH IRI from controlled vocabulary
-      PREFIX bibo: <http://purl.org/ontology/bibo/>
-      PREFIX dct: <http://purl.org/dc/terms/>
+      # Silent failure: D000544 via rdfs:seeAlso returns 0 article results
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+      PREFIX dct: <http://purl.org/dc/terms/>
       PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
-      
-      # Workflow followed:
-      # 1. Got MIE file → found rdfs:seeAlso predicate for MeSH terms
-      # 2. Used ncbi_esearch("Alzheimer") → found example PMIDs
-      # 3. Inspected PMID 88474 → found mesh:D000544 (Alzheimer Disease)
-      # 4. Use that specific IRI for comprehensive query:
-      
+
       SELECT ?pmid ?title
       WHERE {
         ?article bibo:pmid ?pmid ;
                  dct:title ?title ;
-                 rdfs:seeAlso mesh:D000544 .  # Alzheimer Disease
+                 rdfs:seeAlso mesh:D000544 .  # Returns 0 — attaches to blank nodes!
       }
-      # Result: ~15K articles, 1-2s query time
-    explanation: "Always check MIE schema first. Use ncbi_esearch to find examples, inspect to extract MeSH IRIs, then use those IRIs for comprehensive queries. MeSH terms are indexed and much faster than text search."
-  
+    correct_sparql: |
+      # Correct: use fabio:hasPrimarySubjectTerm with STRSTARTS for descriptor+qualifier IRIs
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX fabio: <http://purl.org/spar/fabio/>
+
+      SELECT ?pmid ?title
+      WHERE {
+        ?article bibo:pmid ?pmid ;
+                 dct:title ?title ;
+                 fabio:hasPrimarySubjectTerm ?term .
+        FILTER(STRSTARTS(STR(?term), "http://id.nlm.nih.gov/mesh/D000544"))
+      }
+      LIMIT 20
+    explanation: |
+      Workflow: (1) ncbi_esearch to find PMIDs, (2) inspect with SELECT ?p ?o WHERE { ?article bibo:pmid 'X' ; ?p ?o },
+      (3) observe whether descriptor IRI appears in rdfs:seeAlso or only in fabio:hasSubjectTerm with qualifier suffix,
+      (4) use the correct predicate for comprehensive queries.
+
   - title: Skipping Schema Check Before Text Search
-    problem: Using bif:contains without checking MIE schema for structured alternatives.
+    problem: Using bif:contains without checking MIE critical_warnings and shape_expressions for structured alternatives.
     wrong_sparql: |
-      # Incomplete workflow: No schema checked, no examples inspected
+      # Skips schema check — jumps to text search for a topic with MeSH controlled vocabulary
       PREFIX bibo: <http://purl.org/ontology/bibo/>
       PREFIX dct: <http://purl.org/dc/terms/>
-      
+
       SELECT ?pmid ?title
       WHERE {
-        ?article bibo:pmid ?pmid ;
-                 dct:title ?title .
-        ?title bif:contains "'diabetes'" .
+        ?article bibo:pmid ?pmid ; dct:title ?title .
+        ?title bif:contains "'Alzheimer'"
       }
-      # Missing: Check if diabetes has a MeSH IRI
+      # ~50K results; many false positives; slower than MeSH IRI approach
     correct_sparql: |
-      # Complete workflow following TogoMCP Usage Guide:
-      # 1. get_MIE_file("pubmed") → checked shape_expressions
-      #    Found: rdfs:seeAlso predicate linking to MeSH IRIs
-      # 2. ncbi_esearch(database="pubmed", query="diabetes") → found example PMIDs
-      # 3. Inspected examples with SELECT * WHERE { VALUES ?pmid {...} ... }
-      #    Found: mesh:D003920 (Diabetes Mellitus) in rdfs:seeAlso
-      # 4. Use discovered MeSH IRI:
-      
+      # Correct workflow: (1) read MIE, (2) find examples, (3) use structured property
       PREFIX bibo: <http://purl.org/ontology/bibo/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
-      
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX fabio: <http://purl.org/spar/fabio/>
+
+      # Discovered via MIE: fabio:hasPrimarySubjectTerm + STRSTARTS for disease topics
       SELECT ?pmid ?title
       WHERE {
         ?article bibo:pmid ?pmid ;
                  dct:title ?title ;
-                 rdfs:seeAlso mesh:D003920 .  # Diabetes Mellitus
+                 fabio:hasPrimarySubjectTerm ?term .
+        FILTER(STRSTARTS(STR(?term), "http://id.nlm.nih.gov/mesh/D000544"))
       }
-    explanation: "ALWAYS complete the TogoMCP workflow: (1) Get MIE schema, (2) Search for examples, (3) Inspect examples for structured properties, (4) Use those properties in comprehensive queries. Only use bif:contains when NO structured alternative exists."
-  
-  - title: Cross-Database Without Pre-Filtering
-    problem: Joining 37M PubMed articles with other databases causes timeout.
+      LIMIT 20
+    explanation: "Always complete the workflow: read MIE critical_warnings → use ncbi_esearch for examples → inspect with SELECT ?p ?o → use discovered structured properties. Only use bif:contains for genuinely unstructured free text (title, abstract)."
+
+  - title: Cross-Database Join Without Pre-Filtering
+    problem: Joining 37M PubMed articles with PubTator or other co-located databases without pre-filtering causes timeout.
     wrong_sparql: |
-      # Times out: No pre-filtering before join
-      PREFIX bibo: <http://purl.org/ontology/bibo/>
-      PREFIX dct: <http://purl.org/dc/terms/>
-      PREFIX oa: <http://www.w3.org/ns/oa#>
-      
+      # Times out: 37M × 10M intermediate results
       WHERE {
         GRAPH <http://rdfportal.org/dataset/pubmed> {
           ?article bibo:pmid ?pmid ; dct:title ?title .
@@ -675,133 +636,62 @@ anti_patterns:
           ?ann oa:hasTarget ?article .
         }
       }
-      # Timeout: 37M × 10M intermediate results
     correct_sparql: |
-      # Completes in 2s: Pre-filter with MeSH IRI
-      PREFIX bibo: <http://purl.org/ontology/bibo/>
-      PREFIX dct: <http://purl.org/dc/terms/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
-      PREFIX oa: <http://www.w3.org/ns/oa#>
-      
+      # Completes in ~2s: MeSH IRI pre-filter reduces to ~20K before join
       WHERE {
         GRAPH <http://rdfportal.org/dataset/pubmed> {
-          ?article bibo:pmid ?pmid ; 
+          ?article bibo:pmid ?pmid ;
                    dct:title ?title ;
-                   rdfs:seeAlso mesh:D001943 .  # Pre-filter: Breast Neoplasms
+                   rdfs:seeAlso mesh:D001943 .  # Breast Neoplasms — verified rdfs:seeAlso IRI
         }
         GRAPH <http://rdfportal.org/dataset/pubtator_central> {
           ?ann oa:hasTarget ?article .
         }
       }
       LIMIT 50
-      # Fast: 37M → 20K before join (99.95% reduction)
-    explanation: "MANDATORY: Pre-filter PubMed within its GRAPH block using MeSH IRIs or bif:contains BEFORE joining with other databases. This reduces the dataset by 99%+ and makes queries feasible."
-  
+    explanation: "MANDATORY: Pre-filter PubMed within its GRAPH block using a MeSH IRI (rdfs:seeAlso) or bif:contains BEFORE the cross-database join. Reduces the join space by 99%+ and makes queries feasible."
+
   - title: Using FILTER(REGEX) Instead of bif:contains
-    problem: Unindexed REGEX is 10-100x slower than indexed bif:contains on Virtuoso.
+    problem: Unindexed regex is 10-100x slower than indexed bif:contains on Virtuoso backend.
     wrong_sparql: |
-      # Slow: Unindexed regex scan
-      PREFIX bibo: <http://purl.org/ontology/bibo/>
-      PREFIX dct: <http://purl.org/dc/terms/>
-      
-      SELECT ?pmid ?title
-      WHERE {
-        ?article bibo:pmid ?pmid ; 
-                 dct:title ?title .
-        FILTER(REGEX(?title, "cancer", "i"))
-      }
-      # Time: 30-60s for 100 results
+      FILTER(REGEX(?title, "cancer", "i"))  # unindexed, slow on 37M articles
     correct_sparql: |
-      # Fast: Indexed full-text search
-      PREFIX bibo: <http://purl.org/ontology/bibo/>
-      PREFIX dct: <http://purl.org/dc/terms/>
-      
-      # Text search justified: dct:title is unstructured free-text
-      # No controlled vocabulary for title content
-      # Virtuoso backend: use bif:contains
-      SELECT ?pmid ?title
-      WHERE {
-        ?article bibo:pmid ?pmid ; 
-                 dct:title ?title .
-        ?title bif:contains "'cancer'" .
-      }
-      # Time: 2-3s for 100 results
-    explanation: "On Virtuoso backends, always use bif:contains for text search instead of FILTER(REGEX). It uses indexed full-text search and is 10-100x faster."
+      # Indexed full-text search on Virtuoso
+      # Text search justified: dct:title is unstructured free text
+      ?title bif:contains "'cancer'"
+    explanation: "On Virtuoso backends, always prefer bif:contains for full-text search. Split any property paths before bif:contains (though a single dct:title triple is not a path and requires no splitting)."
 
 common_errors:
+  - error: Query Returns 0 Results for MeSH Topic
+    causes:
+      - "Used rdfs:seeAlso for a disease descriptor that only appears in fabio:hasSubjectTerm with qualifier suffix"
+      - "Wrong MeSH IRI namespace or typo in descriptor ID"
+      - "MeSH term is deprecated or merged"
+    solutions:
+      - "Read critical_warnings for the rdfs:seeAlso vs fabio:hasSubjectTerm distinction"
+      - "Use ncbi_esearch to find example PMIDs, then inspect with SELECT ?p ?o to confirm which predicate carries the descriptor IRI"
+      - "Try both predicates: rdfs:seeAlso (exact IRI) and fabio:hasPrimarySubjectTerm (STRSTARTS)"
+      - "Verify IRI format: http://id.nlm.nih.gov/mesh/D{6-digit-id}"
+
   - error: Query Timeout
     causes:
-      - "Full count queries on 37M articles without sampling"
-      - "Cross-database joins without pre-filtering"
-      - "Using FILTER(REGEX) instead of bif:contains"
-      - "Missing LIMIT clause on exploratory queries"
+      - "Full COUNT query on 37M articles without sampling"
+      - "Cross-database join without pre-filtering PubMed first"
+      - "FILTER(REGEX()) instead of bif:contains"
+      - "rdfs:seeAlso mesh:D016428 (Journal Article) combined with unindexed FILTER(CONTAINS(?journal)) over millions of results"
+      - "Missing LIMIT clause"
     solutions:
-      - "Use sampling for counts: FILTER(?pmid < \"100000\")"
-      - "MANDATORY: Pre-filter with MeSH IRIs or bif:contains before cross-database joins"
-      - "Use bif:contains for text search on Virtuoso"
-      - "Add LIMIT 50-100 to all exploratory queries"
-    example_fix: |
-      # BEFORE: Times out
-      GRAPH <pubmed> { ?article bibo:pmid ?pmid ; dct:title ?title . }
-      GRAPH <pubtator> { ?ann oa:hasTarget ?article . }
-      
-      # AFTER: Completes in 2s
-      GRAPH <pubmed> {
-        ?article bibo:pmid ?pmid ; dct:title ?title ;
-                 rdfs:seeAlso mesh:D009369 .  # Pre-filter: Neoplasms
-      }
-      GRAPH <pubtator> { ?ann oa:hasTarget ?article . }
-      LIMIT 50
-  
-  - error: No Results for MeSH Query
-    causes:
-      - "Incorrect MeSH URI format or typo"
-      - "Wrong predicate (fabio:hasSubjectTerm vs rdfs:seeAlso)"
-      - "Deprecated or merged MeSH term ID"
-      - "Term exists but no articles indexed with it"
-    solutions:
-      - "Verify URI format: http://id.nlm.nih.gov/mesh/{term_id}"
-      - "Try all MeSH properties: rdfs:seeAlso, fabio:hasPrimarySubjectTerm, fabio:hasSubjectTerm"
-      - "Use ncbi_esearch to find actual PMIDs, then inspect their MeSH terms"
-      - "Check MeSH vocabulary for current term status"
-    example_fix: |
-      # Find actual MeSH terms used in data:
-      PREFIX bibo: <http://purl.org/ontology/bibo/>
-      PREFIX dct: <http://purl.org/dc/terms/>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      
-      SELECT ?pmid ?mesh_term
-      WHERE {
-        ?article bibo:pmid ?pmid ;
-                 dct:title ?title ;
-                 rdfs:seeAlso ?mesh_term .
-        ?title bif:contains "'Alzheimer'" .
-        FILTER(STRSTARTS(STR(?mesh_term), "http://id.nlm.nih.gov/mesh/"))
-      }
-      LIMIT 10
-  
+      - "Use LIMIT on every query; use FILTER(?pmid < '100000') for count estimation"
+      - "MANDATORY: Pre-filter with MeSH IRI or bif:contains within GRAPH block before cross-database join"
+      - "Replace FILTER(REGEX()) with bif:contains (Virtuoso indexed)"
+      - "For publication-type IRIs (D016428/D016454): add FILTER(STRSTARTS(?issued, 'YYYY')) before any journal-name filter"
+
   - error: Wrong Properties in Cross-Database Queries
     causes:
-      - "Not consulting co-located database MIE files"
-      - "Guessing property names instead of checking schema"
-      - "Using wrong entity types or predicates"
-      - "Missing GRAPH clauses for co-located databases"
+      - "Not consulting MIE files for co-located databases before writing cross-database query"
+      - "Missing GRAPH clauses; queries implicitly scan all named graphs"
+      - "Using incorrect entity type string (e.g. 'Genes' instead of 'Gene' in PubTator)"
     solutions:
-      - "CRITICAL: Read ALL co-located MIE files before cross-database queries"
-      - "Extract exact graph URIs from schema_info.graphs section"
-      - "Use entity types and predicates from shape_expressions section"
-      - "Follow property patterns from sample_rdf_entries examples"
-    example_fix: |
-      # WRONG: Guessing PubTator properties
-      ?ann pubtator:geneId ?geneId .
-      
-      # CORRECT: After reading pubtator MIE file
-      # Found in pubtator MIE schema:
-      # - Entity type: dcterms:subject "Gene"
-      # - ID property: oa:hasBody ?geneId
-      # - Article link: oa:hasTarget ?article
-      
-      ?ann dcterms:subject "Gene" ;
-           oa:hasBody ?geneId ;
-           oa:hasTarget ?article .
+      - "CRITICAL: Read MIE files for ALL co-located databases; check shape_expressions for linking predicates"
+      - "Add explicit GRAPH clause for every named graph being queried"
+      - "Verify entity type strings from PubTator MIE sample_rdf_entries before use"
