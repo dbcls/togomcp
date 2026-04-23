@@ -80,7 +80,32 @@ Replace `togo-mcp-local` with `togo-mcp-admin` to also enable tools for generati
 
 ## Docker
 
-A `Dockerfile` is provided for containerized deployment:
+A `Dockerfile` is provided for containerized deployment.
+
+### Recommended: `docker compose`
+
+`compose.yaml` defines two services — `togomcp-main` (port 8000) and `togomcp-test` (port 8001) — so you can run production and staging endpoints side by side from the same image.
+
+```bash
+cp .env.example .env                                # then fill in NCBI_API_KEY
+docker build -t localhost/togo-mcp:latest .         # build main image (tag in .env)
+docker compose up -d togomcp-main                   # start main endpoint
+```
+
+Common operations:
+
+```bash
+docker compose logs -f togomcp-main                 # tail logs
+docker compose down                                 # stop and remove all services
+docker compose down togomcp-test                    # stop and remove just one
+docker compose up -d togomcp-test                   # after rebuilding, recreates with new image
+```
+
+Override image tags and host ports via `.env` — see `.env.example` for the full list. Use `docker compose up -d --force-recreate <svc>` if compose doesn't pick up a rebuilt image, and `docker image prune -f` to clean up dangling layers.
+
+### Simple: `docker run`
+
+For a single container without compose:
 
 ```bash
 docker build -t togo-mcp .
