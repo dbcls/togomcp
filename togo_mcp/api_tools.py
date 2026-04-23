@@ -624,8 +624,10 @@ async def search_reactome_entity(
         query: The search query string (e.g., "apoptosis", "TP53", "cell cycle").
             Accepts aliases: `search`, `term`, `keyword`, `keywords`,
             `search_term`, `name`.
-        species: Filter by species. Accepts a single string (e.g.,
-            "Homo sapiens", "9606") or a list (e.g., ["Homo sapiens"]).
+        species: Filter by species. Must be the scientific name
+            (e.g., "Homo sapiens", "Mus musculus") — numeric taxon IDs
+            like "9606" are silently ignored by the Reactome API.
+            Accepts a single string or a list of strings.
         types: Filter by entity types. Accepts a single string (e.g.,
             "Pathway") or a list (e.g., ["Pathway", "Reaction", "Complex"]).
         rows: Number of results to return. Defaults to 30.
