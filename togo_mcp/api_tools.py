@@ -625,12 +625,17 @@ async def search_reactome_entity(
             Accepts aliases: `search`, `term`, `keyword`, `keywords`,
             `search_term`, `name`.
         species: Filter by species. Must be the scientific name
-            (e.g., "Homo sapiens", "Mus musculus") — numeric taxon IDs
-            like "9606" are silently ignored by the Reactome API.
-            Accepts a single string or a list of strings.
+            (e.g., "Homo sapiens", "Mus musculus"). Numeric NCBI taxon
+            IDs like "9606" are rejected here (this tool raises ValueError)
+            because the Reactome API silently ignores them AND can
+            degrade co-occurring filters (e.g. `types`). Accepts a
+            single string or a list of strings.
         types: Filter by entity types. Accepts a single string (e.g.,
             "Pathway") or a list (e.g., ["Pathway", "Reaction", "Complex"]).
-        rows: Number of results to return. Defaults to 30.
+        rows: Per-category result cap. Reactome clusters results by
+            entity type (`cluster=true`), so `rows=30` returns up to 30
+            hits *per type*, not 30 hits total. To bound the total,
+            constrain `types` to a single value.
 
     Returns:
         List of results with 'id', 'name', and 'type' fields.
@@ -669,7 +674,15 @@ async def search_reactome_entity(
     params = {"query": query, "cluster": "true", "start": 0, "rows": rows}
 
     if species:
-        params["species"] = species if isinstance(species, str) else ",".join(species)
+        species_list = [species] if isinstance(species, str) else list(species)
+        bad = [s for s in species_list if s.strip().isdigit()]
+        if bad:
+            raise ValueError(
+                f"species must be a scientific name (e.g. 'Homo sapiens'); "
+                f"got numeric taxon ID(s): {bad}. The Reactome search API "
+                "silently ignores numeric IDs and can also drop other filters."
+            )
+        params["species"] = ",".join(species_list)
     if types:
         params["types"] = types if isinstance(types, str) else ",".join(types)
 
