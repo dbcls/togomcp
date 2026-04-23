@@ -179,6 +179,51 @@ async def execute_sparql(
 mcp = FastMCP("TogoMCP: RDF Portal MCP Server")
 
 
+from fastmcp.server.middleware import Middleware as _Middleware
+import inspect as _inspect
+
+
+class _IgnoreUnknownSearchKwargs(_Middleware):
+    """Strip unknown kwargs from `search_*` tool calls before validation.
+
+    LLMs often pass made-up filters (taxon, organism, reviewed, …) to our
+    search_* tools. Pydantic's TypeAdapter rejects these with a validation
+    error, which is unhelpful. This middleware looks up the target tool's
+    function signature and drops any arguments that aren't declared on it.
+    """
+
+    _valid_kwargs_cache: dict[str, set[str]] = {}
+
+    async def _valid_kwargs(self, ctx, tool_name: str) -> set[str] | None:
+        if not tool_name.startswith("search_"):
+            return None
+        cached = self._valid_kwargs_cache.get(tool_name)
+        if cached is not None:
+            return cached
+        server = ctx.fastmcp_context.fastmcp if ctx.fastmcp_context else None
+        if server is None:
+            return None
+        try:
+            tool = await server.get_tool(tool_name)
+        except Exception:
+            return None
+        valid = set(_inspect.signature(tool.fn).parameters)
+        self._valid_kwargs_cache[tool_name] = valid
+        return valid
+
+    async def on_call_tool(self, context, call_next):
+        name = context.message.name
+        valid = await self._valid_kwargs(context, name)
+        if valid is not None and context.message.arguments:
+            filtered = {k: v for k, v in context.message.arguments.items() if k in valid}
+            if filtered.keys() != context.message.arguments.keys():
+                context.message.arguments = filtered
+        return await call_next(context)
+
+
+mcp.add_middleware(_IgnoreUnknownSearchKwargs())
+
+
 @mcp.custom_route("/health", methods=["GET"])
 async def health_check(request: Request) -> PlainTextResponse:
     return PlainTextResponse("OK")
