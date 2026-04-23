@@ -52,10 +52,10 @@ async def search_uniprot_entity(
     """
     Search for a UniProt entity ID by query.
 
-    ⚠️ Only the search string and `limit` are accepted. Do NOT pass `taxon`,
-       `organism`, `reviewed`, `species`, etc. as separate parameters — they
-       will raise a validation error. Express such filters inside the Solr
-       query string (e.g., `organism_id:9606 AND reviewed:true`).
+    ⚠️ Only the search string and `limit` are accepted. Extra parameters
+       like `taxon`, `organism`, `reviewed`, `species`, etc. are silently
+       dropped and have no effect — express such filters inside the Solr
+       query string instead (e.g., `organism_id:9606 AND reviewed:true`).
 
     The search string can be passed as any of: `query` (canonical),
     `search`, `term`, `keyword`, `keywords`, `search_term`, or `name`.
