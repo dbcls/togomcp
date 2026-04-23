@@ -70,7 +70,9 @@ async def get_sparql_endpoints() -> dict[str, Any]:
     ),
 )
 async def run_sparql(
-    sparql_query: Annotated[str, Field(description="The SPARQL query to execute")],
+    sparql_query: Annotated[
+        str, Field(description="The SPARQL query to execute. Alias: `query`.", default="")
+    ] = "",
     database: Annotated[
         str, Field(description=DATABASE_DESCRIPTION, default="")
     ] = "",
@@ -91,6 +93,7 @@ async def run_sparql(
     ] = "",
     dbname: str = "",
     db: str = "",
+    query: str = "",
 ) -> str:
     """
     Run a SPARQL query on an RDF database.
@@ -98,13 +101,14 @@ async def run_sparql(
     Use `get_MIE_file()` to understand the RDF graph structure of each database.
 
     Args:
-        sparql_query (str): The SPARQL query to execute.
+        sparql_query (str): The SPARQL query to execute. Accepts alias `query`.
         database (str, optional): Database name for single-database queries.
             Accepts aliases `dbname` and `db`.
         endpoint_name (str, optional): Endpoint name for cross-database queries (e.g., 'ebi' for ChEMBL+ChEBI).
         endpoint_url (str, optional): Direct SPARQL endpoint URL.
         dbname (str, optional): Alias for `database`.
         db (str, optional): Alias for `database`.
+        query (str, optional): Alias for `sparql_query`.
 
     Note:
         Provide at least one of: database (or dbname/db), endpoint_name, or endpoint_url.
@@ -115,6 +119,11 @@ async def run_sparql(
     """
     toolcall_log("run_sparql")
     database = database or dbname or db
+    sparql_query = sparql_query or query
+    if not sparql_query:
+        raise ValueError(
+            "Missing SPARQL query. Pass it as `sparql_query` (canonical) or `query`."
+        )
     return await execute_sparql(sparql_query, database, endpoint_name, endpoint_url)
 
 
