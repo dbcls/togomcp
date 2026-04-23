@@ -10,12 +10,13 @@ schema_info:
   base_uri: http://rdf.wwpdb.org/pdb/
   graphs:
     - http://rdfportal.org/dataset/pdbj
-    - http://rdf.wwpdb.org/schema/pdbx-v50.owl
+    # Note: http://rdf.wwpdb.org/schema/pdbx-v50.owl is a deprecated schema graph (139,851 triples)
+    # that contains the old pdbx: namespace ontology. Do not use it in FROM clauses — see critical_warnings.
   kw_search_tools:
     - search_pdb_entity
   version:
-    mie_version: "5.0"
-    mie_created: "2025-07-06"
+    mie_version: "5.1"
+    mie_created: "2026-04-24"
     data_version: Current (weekly updates)
     update_frequency: Weekly
   access:
@@ -31,9 +32,12 @@ critical_warnings: |
     Omitting it inflates counts to ~548K by including chemical component (cc:/) datablocks.
     PDB structural entries = ~248,874; all datablocks = ~548,180.
 
-  - MANDATORY GRAPH CLAUSE: Always include
+  - RECOMMENDED GRAPH CLAUSE: Include
       FROM <http://rdfportal.org/dataset/pdbj>
-    Omitting it causes timeout or empty results.
+    in queries for best performance. Omitting it works correctly (Virtuoso queries all graphs
+    by default and returns the right results), but specifying the graph avoids scanning
+    unrelated graphs and is safer when new graphs are added to the endpoint. Always include
+    it in production queries and when combining multiple predicates.
 
   - ORGANISM FILTER: Use pdbo:link_to_taxonomy_source with UniProt taxonomy IRIs
     (e.g. <http://purl.uniprot.org/taxonomy/9606> for human).
@@ -168,7 +172,7 @@ sample_rdf_entries:
       rdf: |
         pdb:1ATP a pdbo:datablock ;
           dct:identifier "1ATP" ;
-          dc:title "2.2 angstrom refined crystal structure of the catalytic subunit of cAMP-dependent protein kinase" ;
+          dc:title "2.2 angstrom refined crystal structure of the catalytic subunit of cAMP-dependent protein kinase complexed with MNATP and a peptide inhibitor" ;
           rdfs:seeAlso <http://www.rcsb.org/pdb/structure/1ATP> ;
           pdbo:link_to_vrpt <http://rdf.wwpdb.org/vrpt/1ATP> .
 
@@ -424,7 +428,7 @@ architectural_notes:
     - "VRPT validation reports accessible via pdbo:link_to_vrpt"
 
   performance:
-    - "CRITICAL: Always include FROM <http://rdfportal.org/dataset/pdbj> graph clause"
+    - "RECOMMENDED: Include FROM <http://rdfportal.org/dataset/pdbj> graph clause for performance and future-proofing (Virtuoso works without it but scans all graphs)"
     - "CRITICAL: Add FILTER(STRSTARTS(STR(?entry), 'http://rdf.wwpdb.org/pdb/')) for structural entries"
     - "Apply method/taxonomy/UniProt filters early in WHERE clause before optional joins"
     - "Numeric range FILTER(?val > 0 && ?val < 10) prevents xsd:decimal conversion errors"
@@ -461,7 +465,12 @@ data_statistics:
     electron_microscopy: "31,766 entries (12.8%)"
     solution_nmr: "14,594 entries (5.9%)"
     other: "electron crystallography 275, neutron diffraction 259, solid-state NMR 195, solution scattering 88"
-    verified_date: "2025-07-06"
+    note: |
+      The per-method counts sum to ~249,136, which exceeds total_entries (248,874) by ~262.
+      This is expected: approximately 262 entries use more than one experimental method
+      (e.g. combined X-ray + neutron diffraction). Always use COUNT(DISTINCT ?entry) when
+      aggregating across methods to avoid double-counting these multi-method entries.
+    verified_date: "2026-04-24"
 
   organism_distribution:
     human_9606: "73,850 unique entries"
@@ -541,11 +550,11 @@ common_errors:
   - error: "Zero results for all queries"
     causes:
       - "Using old pdbx-v50.owl# namespace — most common root cause"
-      - "Missing FROM <http://rdfportal.org/dataset/pdbj> graph clause"
+      - "Missing FROM <http://rdfportal.org/dataset/pdbj> — not required for correctness but omitting it scans all graphs"
       - "Wrong IRI form for UniProt (identifiers.org vs purl.uniprot.org) — both present; use purl.uniprot.org for pdbo:link_to_uniprot"
     solutions:
       - "Switch to pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>"
-      - "Always include FROM <http://rdfportal.org/dataset/pdbj>"
+      - "Include FROM <http://rdfportal.org/dataset/pdbj> for performance (not required for correctness)"
       - "Check critical_warnings for known namespace traps; inspect a known entry with SELECT ?p ?o WHERE { pdb:1ATP ?p ?o } LIMIT 50"
 
   - error: "Inflated entry counts (~548K instead of ~248K)"
