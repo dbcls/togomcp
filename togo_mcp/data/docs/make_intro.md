@@ -7,6 +7,7 @@ It is developed by DBCLS.
 ## Goal
 Create an HTML page for researchers in biology and medicine who are not necessarily familiar with bioinformatics, explaining what TogoMCP is and how it can help their research. It should contain the following.
 - Summary of TogoMCP
+- Preprint
 - Usage examples
 - Setup guide
 - List of available databases
@@ -16,6 +17,13 @@ Create an HTML page for researchers in biology and medicine who are not necessar
 - Source code
 
 ## Summary
+
+## Preprint
+Cite the preprint using the reference from the top-level `README.md`:
+
+> Kinjo, A. R., Yamamoto, Y., Bustamante-Larriet, S., Labra-Gayo, J.-E., & Fujisawa, T. (2026). TogoMCP: Natural Language Querying of Life-Science Knowledge Graphs via Schema-Guided LLMs and the Model Context Protocol. *bioRxiv*. https://doi.org/10.64898/2026.03.19.713030
+
+Link the DOI. Include the authors, year, and journal as shown.
 
 ## Style
 - Use https://togomcp.rdfportal.org/ as a template.
@@ -68,7 +76,7 @@ For Gemini CLI, the settings.json should be
 ```
 
 ## List available databases
-Create a list of available databases with a summary of each.
+Create a list of available databases with a summary of each. Exclude SuperCon from the list.
 
 ## List available tools.
 Create a list of available tools, each with a brief description of its functionality.
@@ -111,6 +119,7 @@ The footer should include the following
 - The menu tab should be sticky so the user can always see it when scrolling.
 - The menu tab should include the pointers to all the sections.
   * Summary
+  * Preprint
   * Examples
   * Setup
   * Databases
