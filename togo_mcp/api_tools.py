@@ -500,7 +500,7 @@ async def get_compound_attributes_from_pubchem(pubchem_compound_id: str) -> str:
 async def search_pdb_entity(
     db: Literal["pdb", "cc", "prd"],
     query: str = "",
-    limit: int = 20,
+    limit: Annotated[int, Field(ge=0, le=500)] = 20,
     search: str = "",
     term: str = "",
     keyword: str = "",
@@ -520,6 +520,14 @@ async def search_pdb_entity(
             Accepts aliases: `search`, `term`, `keyword`, `keywords`,
             `search_term`, `name`.
         limit (int): The maximum number of results to return. Default is 20.
+            Must be in [0, 500].
+
+    Note:
+        The PDBj search hits multiple fields (title, authors, keywords,
+        citation metadata), not just the title. An entry can appear
+        even if its title does not contain the query. Always verify
+        relevance against the returned name/title before relying on
+        a hit.
 
     Returns:
         str: A JSON-formatted string containing the search results.
@@ -539,15 +547,20 @@ async def search_pdb_entity(
             "Missing search string. Pass it as `query` (canonical) or any of: "
             "search, term, keyword, keywords, search_term, name."
         )
+    # PDBj returns result rows as ordered arrays; the "name" column
+    # lives at a different index per DB. For PRD, index 1 is always
+    # empty — the human-readable name is at index 4.
+    name_idx = {"pdb": 1, "cc": 1, "prd": 4}[db]
     try:
         response = await _pdbj_client.get(
             f"/rest/newweb/search/{db}", params={"query": query}
         )
         response.raise_for_status()
-        # Parse the response as JSON
-        total_results = response.json().get("total", 0)
+        payload = response.json()
+        total_results = payload.get("total", 0)
         result_list = [
-            {entry[0]: entry[1]} for entry in response.json().get("results", [])[:limit]
+            {entry[0]: entry[name_idx] if len(entry) > name_idx else ""}
+            for entry in payload.get("results", [])[:limit]
         ]
         response_dict = {"total": total_results, "results": result_list}
         return json.dumps(response_dict)
