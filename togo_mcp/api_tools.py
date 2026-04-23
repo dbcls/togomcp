@@ -608,8 +608,8 @@ async def search_mesh_descriptor(
 @mcp.tool()
 async def search_reactome_entity(
     query: str = "",
-    species: list[str] | None = None,
-    types: list[str] | None = None,
+    species: str | list[str] | None = None,
+    types: str | list[str] | None = None,
     rows: int = 30,
     search: str = "",
     term: str = "",
@@ -624,8 +624,10 @@ async def search_reactome_entity(
         query: The search query string (e.g., "apoptosis", "TP53", "cell cycle").
             Accepts aliases: `search`, `term`, `keyword`, `keywords`,
             `search_term`, `name`.
-        species: Filter by species (e.g., ["Homo sapiens"], ["9606"]).
-        types: Filter by entity types (e.g., ["Pathway", "Reaction", "Complex"]).
+        species: Filter by species. Accepts a single string (e.g.,
+            "Homo sapiens", "9606") or a list (e.g., ["Homo sapiens"]).
+        types: Filter by entity types. Accepts a single string (e.g.,
+            "Pathway") or a list (e.g., ["Pathway", "Reaction", "Complex"]).
         rows: Number of results to return. Defaults to 30.
 
     Returns:
@@ -665,9 +667,9 @@ async def search_reactome_entity(
     params = {"query": query, "cluster": "true", "start": 0, "rows": rows}
 
     if species:
-        params["species"] = ",".join(species)
+        params["species"] = species if isinstance(species, str) else ",".join(species)
     if types:
-        params["types"] = ",".join(types)
+        params["types"] = types if isinstance(types, str) else ",".join(types)
 
     # Make API call
     try:
