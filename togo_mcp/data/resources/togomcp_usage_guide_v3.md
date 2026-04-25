@@ -145,7 +145,23 @@ Skip TogoID when: both DBs share an endpoint, or `ncbi_esearch` already cross-re
 > **Repetition warning:** synthesis answers degrade most on repetition (3.78 → 3.46/5 across runs). Each fact once.
 
 ### EXPLORATION ("Tell me more", "深掘りして") — open-ended deep dives
-Call **`Deep_Dive_Explorer_Guide()`**. Returns a four-phase workflow (seed definition → anchor IDs → targeted SPARQL → synthesis with prioritized Next Steps) that respects the budgets above. Use *instead of* (not in addition to) the bounded workflows when the user's intent is exploratory rather than answering a specific question.
+Use this when the seed is broad ("tell me about X") rather than a specific bounded question. All rules above still apply. Add three exploration-specific habits:
+
+**Before any tool call — Seed Definition** (write it down):
+1. The seed in one sentence (entity, finding, or open question).
+2. 3–5 facts already known — prevents re-discovering them.
+3. 3–5 specific unknowns — these drive every tool choice.
+4. Entity → primary DB → supporting DB map.
+5. If unknowns span endpoints, plan the bridge (`togoid_convertId` route) now.
+
+**After each tool call — concierge check** (one line, recorded):
+> "What did this confirm? What new question does it raise? Pursue now, or save for Next Steps?"
+
+**Cross-database chain:** attempt at least one chain (e.g. UniProt → `togoid_convertId uniprot→pdb` → PDB → ChEMBL). Even a 2-DB connection that wasn't established before is valuable. "No results" from a database is a finding — report it as a gap, not a failure.
+
+**End — prioritized Next Steps (3–5):** each item names a specific tool + query string + the unknown it addresses. "Look into this more" is not a Next Step.
+
+Budget: 6–15 tool calls (Standard); 1–4 SPARQL total. If wanting a 5th SPARQL, synthesize from what you have — almost always the better answer.
 
 ---
 
