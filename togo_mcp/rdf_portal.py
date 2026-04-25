@@ -33,6 +33,28 @@ def togomcp_usage_guide() -> str:
     return prompt
 
 
+@mcp.tool(name="Deep_Dive_Explorer_Guide")
+def deep_dive_explorer_guide() -> str:
+    """
+    Cross-database investigation workflow for TogoMCP. Call this when the user asks to explore,
+    deepen, or follow up on a biological/chemical entity, mechanism, pathway, disease, compound,
+    or partial finding (phrases like "tell me more about X", "what's the mechanism behind Y",
+    "go deeper on this finding", "what other databases have info on this", "深掘りして",
+    "もっと詳しく調べて").
+
+    Returns a four-phase workflow — seed definition, anchor-ID acquisition, targeted SPARQL,
+    synthesis with explicit gaps and Next Steps — that respects the v3 Usage Guide's tool budget
+    and SPARQL discipline. Call `TogoMCP_Usage_Guide` first if you haven't already in this session.
+
+    Returns:
+        str: The content of the deep-dive exploration guide.
+    """
+    toolcall_log("deep_dive_explorer_guide")
+    with open(DEEP_DIVE_EXPLORER_GUIDE, encoding="utf-8") as file:
+        prompt = file.read()
+    return prompt
+
+
 # --- Tools for RDF Portal --- #
 
 
