@@ -234,7 +234,7 @@ schema_info:
     - [keyword2]
   # 1-3 entries from the controlled taxonomy: protein, gene, variant, compound,
   # drug_target, pathway, reaction, ontology, structure, literature, taxonomy,
-  # microbe, glycan, antimicrobial, sequence, disease.
+  # microbe, glycan, antimicrobial, sequence, disease, materials, physics.
   # Tag only categories that genuinely characterize the database.
   categories:
     - [category1]

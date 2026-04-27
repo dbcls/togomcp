@@ -43,6 +43,8 @@ CATEGORY_RULES: dict[str, list[str]] = {
     "antimicrobial": ["amr", "antibiotic resistance", "antimicrobial"],
     "sequence": ["ddbj", "sequence database", "nucleotide"],
     "disease": ["disease", "phenotype", "clinical"],
+    "materials": ["materials science", "crystal structure", "lattice parameter", "alloy", "oxide", "superconductor", "supercon"],
+    "physics": ["superconductor", "supercon", "critical temperature", " tc ", "magnetic field", "conductivity", "physical property"],
 }
 
 STOPWORDS = {
@@ -94,9 +96,11 @@ def main() -> int:
         except yaml.YAMLError as e:
             print(f"Skipping {db_name}: {e}", file=sys.stderr)
             continue
-        si = (data or {}).get("schema_info", {}) or {}
-        title = (si.get("title") or "").strip()
-        desc = (si.get("description") or "").strip()
+        si = data.get("schema_info") if isinstance(data, dict) else None
+        if not isinstance(si, dict):
+            si = {}
+        title = str(si.get("title") or "").strip()
+        desc = str(si.get("description") or "").strip()
         suggestions[db_name] = {
             "title": title,
             "description_excerpt": (desc[:240] + "...") if len(desc) > 240 else desc,

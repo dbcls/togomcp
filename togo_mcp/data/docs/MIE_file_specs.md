@@ -147,6 +147,8 @@ Both fields drive the `find_databases()` discovery tool — a token-efficient al
 | `antimicrobial` | AMR, antibiotic resistance |
 | `sequence` | Nucleotide sequence repositories |
 | `disease` | Disease, phenotype, clinical associations |
+| `materials` | Materials science — crystal structure, lattice parameters, alloys, oxides, polymers |
+| `physics` | Physical properties and measurements — Tc, magnetic fields, conductivity, thermal coefficients |
 
 When adding a new category, update both this taxonomy and the `find_databases` tool documentation.
 
