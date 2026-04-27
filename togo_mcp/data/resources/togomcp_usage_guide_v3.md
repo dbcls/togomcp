@@ -49,7 +49,7 @@ Answer four questions before any tool call:
 
 ```
 STEP -1: Analyze (no tools)
-STEP  0: list_databases()                  ← ALWAYS first tool call
+STEP  0: find_databases(keywords=[...])    ← ALWAYS first; falls back to list_databases() if too vague
 STEP  1: Specialized search OR ncbi_esearch
 STEP  2: get_MIE_file(database)            ← ALWAYS before run_sparql
 STEP  3: run_sparql() — LIMIT 10 first; max 2 consecutive
@@ -78,9 +78,15 @@ From 150 evaluated questions. Treat numbers as directional; the patterns are rob
 
 ---
 
-## 🔍 STEP 0: `list_databases()` — ALWAYS FIRST
+## 🔍 STEP 0: DATABASE DISCOVERY — ALWAYS FIRST
 
-Match query keywords to database descriptions: "MANE" → Ensembl, "drug targets" → ChEMBL, "clinical variants" → ClinVar, "pathways" → Reactome, "culture media" → BacDive/MediaDive, "glycobiology" → GlyCosmos (specialist; see Known-Hard Queries).
+Three tools, pick by intent:
+
+- **`find_databases(keywords=[...])`** — default. Token-efficient: returns only DBs whose title, description, or curated keywords match (case-insensitive substring). Use when you have specific search terms (gene, pathway, drug target, variant, superconductor, etc.). Synonyms work — each MIE's keywords field includes terms users type instead of canonical ("mutation" alongside "variant", "drug" alongside "compound"). Pass `match="all"` to require every keyword.
+- **`find_databases(category=...)`** — when you want everything in a topic area. Categories: `protein`, `gene`, `variant`, `compound`, `drug_target`, `pathway`, `reaction`, `ontology`, `structure`, `literature`, `taxonomy`, `microbe`, `glycan`, `antimicrobial`, `sequence`, `disease`, `materials`, `physics`. Call `list_categories()` first if unsure.
+- **`list_databases()`** — full catalog browse. Use only when the question is too vague to keyword-match. Higher token cost, scales linearly with corpus.
+
+Quick keyword hints: "MANE" → Ensembl, "drug targets" → ChEMBL, "clinical variants" → ClinVar, "pathways" → Reactome, "culture media" → BacDive/MediaDive, "superconductor" → SuperCon, "glycobiology" → GlyCosmos (specialist; see Known-Hard Queries).
 
 ---
 
@@ -130,18 +136,18 @@ Skip TogoID when: both DBs share an endpoint, or `ncbi_esearch` already cross-re
 ## 📋 WORKFLOWS
 
 ### VERIFICATION ("Does X exist?") — 5–8 tools, 1–2 SPARQL
-`-1` analyze → `0` list_databases → `1` search/esearch (often answers it) → `2` MIE if needed → `3` run_sparql LIMIT 10 if needed → `4` answer.
+`-1` analyze → `0` find_databases → `1` search/esearch (often answers it) → `2` MIE if needed → `3` run_sparql LIMIT 10 if needed → `4` answer.
 
 ### ENUMERATION ("How many?", "List all") — 8–12 tools, 2–3 SPARQL
-**Single DB:** `-1` analyze → `0` list_databases → `1` search → `2` MIE → `3` exploratory SPARQL (LIMIT 10) → `4` comprehensive COUNT/list → answer.
+**Single DB:** `-1` analyze → `0` find_databases → `1` search → `2` MIE → `3` exploratory SPARQL (LIMIT 10) → `4` comprehensive COUNT/list → answer.
 **Cross DB:** + `togoid_getAllRelation()` early → `togoid_convertId` → MIE for target → SPARQL on target.
 
 ### COMPARATIVE ("Which has most?") — 10–15 tools, 3–4 SPARQL
 **Critical:** enumerate ALL categories, count EACH, `ORDER BY DESC(?count)`. Don't search one category and declare it the winner.
-`-1` identify all categories → `0` list_databases → `1` search/esearch confirms data exists → `2` MIE → `3` single SPARQL with `GROUP BY` across all categories → verify counts make sense → answer. **Prefer one broad GROUP BY over many narrow queries.**
+`-1` identify all categories → `0` find_databases → `1` search/esearch confirms data exists → `2` MIE → `3` single SPARQL with `GROUP BY` across all categories → verify counts make sense → answer. **Prefer one broad GROUP BY over many narrow queries.**
 
 ### SYNTHESIS ("Summarize", "Describe") — 8–15 tools, 2–3 SPARQL
-`-1` analyze → `0` list_databases → `1` entity searches → `2` MIE (1–2 DBs) → `3` SPARQL (2–3 calls) → `4` togoid_convertId if cross-DB → `5` ncbi_esummary/PubMed for detail → `6` concise paragraph.
+`-1` analyze → `0` find_databases → `1` entity searches → `2` MIE (1–2 DBs) → `3` SPARQL (2–3 calls) → `4` togoid_convertId if cross-DB → `5` ncbi_esummary/PubMed for detail → `6` concise paragraph.
 > **Repetition warning:** synthesis answers degrade most on repetition (3.78 → 3.46/5 across runs). Each fact once.
 
 ### EXPLORATION ("Tell me more", "深掘りして") — open-ended deep dives
