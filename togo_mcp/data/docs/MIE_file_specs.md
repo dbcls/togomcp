@@ -72,6 +72,8 @@ schema_info:
                                    # - main entity types
                                    # - primary use cases
     ...
+  keywords: array<string>          # REQUIRED: 8-15 lowercase discovery terms (see §3.1.5)
+  categories: array<string>        # REQUIRED: 1-3 entries from controlled taxonomy (see §3.1.5)
   endpoint: uri                    # REQUIRED: SPARQL endpoint URL
   base_uri: uri                    # REQUIRED: base namespace URI
   graphs: array<uri>               # REQUIRED: named graph URIs
@@ -107,6 +109,46 @@ The `kw_search_tools` field enumerates keyword-search methods available for this
 - All URIs are valid and accessible.
 - `mie_created` uses ISO 8601 (`YYYY-MM-DD`).
 - `access.backend` is required; it determines whether `bif:contains` is available and therefore drives query-strategy decisions downstream.
+- `keywords` are lowercase, single tokens or short phrases; 8–15 entries.
+- `categories` come from the controlled taxonomy in §3.1.5; 1–3 entries per database.
+
+#### 3.1.5 Keywords and Categories
+
+Both fields drive the `find_databases()` discovery tool — a token-efficient alternative to `list_databases()` that lets a downstream LLM filter the catalog by topic instead of reading every description.
+
+**`keywords`** — 8–15 lowercase terms. Curate to maximize recall:
+
+- Include the canonical entity types and concepts that characterize the database.
+- Include common synonyms a user might type instead of the canonical term:
+  - variant ↔ mutation ↔ polymorphism
+  - drug ↔ compound ↔ chemical
+  - transcript ↔ mRNA
+  - protein ↔ amino acid sequence
+- Skip stopwords and generic filler ("data", "database", "contains", "available").
+- Skip terms that appear only incidentally in the description.
+
+**`categories`** — pick 1–3 from the controlled taxonomy below. Tag only categories that genuinely characterize the database, not every category whose vocabulary appears once.
+
+| Category | Use for |
+|---|---|
+| `protein` | Protein sequence, function, domains, isoforms |
+| `gene` | Gene records, transcripts, gene-level annotations |
+| `variant` | SNPs, mutations, polymorphisms, clinical variants |
+| `compound` | Small molecules, ligands, chemical entities |
+| `drug_target` | Drug–target bioactivity, IC50, binding affinity |
+| `pathway` | Biological pathways, signaling cascades |
+| `reaction` | Enzyme reactions, biochemical reactions |
+| `ontology` | Controlled vocabularies, ontologies (GO, MeSH, MONDO, etc.) |
+| `structure` | 3D structures, crystallography, cryo-EM |
+| `literature` | Publications, citations, full-text articles |
+| `taxonomy` | Organism / species / taxon hierarchies |
+| `microbe` | Bacterial / archaeal strains, growth conditions, culture media |
+| `glycan` | Glycans, glycosylation, glycomics |
+| `antimicrobial` | AMR, antibiotic resistance |
+| `sequence` | Nucleotide sequence repositories |
+| `disease` | Disease, phenotype, clinical associations |
+
+When adding a new category, update both this taxonomy and the `find_databases` tool documentation.
 
 ### 3.2 critical_warnings
 
@@ -689,7 +731,7 @@ When updating an existing MIE, evaluate against the following checklist and pick
 #### Structure & Format
 - [ ] Valid YAML
 - [ ] All 11 required sections present in order
-- [ ] `schema_info` includes `backend` and `kw_search_tools`
+- [ ] `schema_info` includes `backend`, `kw_search_tools`, `keywords`, `categories`
 - [ ] Multiline strings use pipe syntax
 
 #### Content Counts
@@ -731,7 +773,7 @@ When updating an existing MIE, evaluate against the following checklist and pick
 
 #### Structure
 - [ ] Valid YAML, 11 sections in order
-- [ ] `schema_info` complete with backend and kw_search_tools
+- [ ] `schema_info` complete with backend, kw_search_tools, keywords (8-15), categories (1-3)
 - [ ] `critical_warnings` documents silent-failure traps (or verified `[]`)
 - [ ] ShEx covers all major entity types with inline counts
 - [ ] Exactly 3 RDF entries, shared prefix block
@@ -889,6 +931,11 @@ schema_info:
   title: [DATABASE_NAME]
   description: |
     [2-3 sentences: contents, main entity types, primary use cases]
+  keywords:                        # 8-15 lowercase, include synonyms (see §3.1.5)
+    - [keyword1]
+    - [keyword2]
+  categories:                      # 1-3 from controlled taxonomy (see §3.1.5)
+    - [category1]
   endpoint: https://rdfportal.org/example/sparql
   base_uri: http://example.org/
   graphs:

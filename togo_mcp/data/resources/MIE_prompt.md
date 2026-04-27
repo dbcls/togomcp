@@ -193,7 +193,7 @@ if "error" in result.lower():
 
 ### Required Sections (in order)
 
-1. **schema_info** — Endpoint, graphs, search tools, backend, versioning
+1. **schema_info** — Endpoint, graphs, search tools, backend, versioning, plus `keywords` (8–15 lowercase discovery terms incl. synonyms) and `categories` (1–3 from controlled taxonomy) for `find_databases()` discovery
 2. **critical_warnings** — Schema pathologies that cause silent failures (typos in IRIs, non-obvious namespace traps, critical performance filters). Use `[]` if none.
 3. **shape_expressions** — ShEx for ALL entity types with inline counts and caveats
 4. **sample_rdf_entries** — Exactly 3 diverse, illustrative examples (shared prefix block)
@@ -226,6 +226,18 @@ schema_info:
   title: [DATABASE_NAME]
   description: |
     [2–3 sentences: contents, entity types, primary use cases]
+  # 8-15 lowercase keywords for find_databases() discovery. Include synonyms a user
+  # might type instead of the canonical term (variant ↔ mutation ↔ polymorphism;
+  # drug ↔ compound ↔ chemical). Skip stopwords and incidental vocabulary.
+  keywords:
+    - [keyword1]
+    - [keyword2]
+  # 1-3 entries from the controlled taxonomy: protein, gene, variant, compound,
+  # drug_target, pathway, reaction, ontology, structure, literature, taxonomy,
+  # microbe, glycan, antimicrobial, sequence, disease.
+  # Tag only categories that genuinely characterize the database.
+  categories:
+    - [category1]
   endpoint: https://rdfportal.org/example/sparql
   base_uri: http://example.org/
   graphs:
@@ -552,7 +564,8 @@ common_errors:
 
 **Structure:**
 - ☐ Valid YAML (load with `get_MIE_file` and check for errors)
-- ☐ All 10 required sections present in order
+- ☐ All 11 required sections present in order
+- ☐ `schema_info` includes `keywords` (8–15) and `categories` (1–3 from taxonomy)
 - ☐ 3–4 anti-patterns (including "schema check before text search")
 - ☐ 2–3 common errors
 
