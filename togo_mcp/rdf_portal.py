@@ -1,6 +1,6 @@
 from pathlib import Path
 import sys
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import Field
 import yaml
@@ -201,73 +201,35 @@ async def get_MIE_file(
     return f"Content-type: application/yaml; charset=utf-8\n{content}"
 
 
-# Module-level cache for list_databases results
-_cached_databases: list[dict[str, Any]] | None = None
+# Module-level cache for database records loaded from MIE schema_info sections.
+# Each record: {database, title, description, keywords, categories}.
+_databases_cache: list[dict[str, Any]] | None = None
 
 
-@mcp.tool(name="list_databases")
-def list_databases() -> list[dict[str, Any]]:
-    """
-    CRITICAL FIRST STEP: Database Discovery & Selection
-
-    **ALWAYS CALL THIS FIRST when you need to:**
-    - Determine which database(s) contain relevant data for a query
-    - Discover available databases before starting research
-    - Verify database capabilities and coverage
-    - Identify cross-database integration opportunities
-
-    **What it returns:**
-    A list of all 22 RDF databases with:
-    - Database name (for use in other tool calls)
-    - Title (human-readable name)
-    - Description (detailed content, entities, cross-references, use cases)
-
-    **Why this matters:**
-    Database descriptions contain CRITICAL KEYWORDS that reveal content:
-    - "MANE" appears in Ensembl description -> transcript quality flags
-    - "drug targets" appears in ChEMBL -> pharmaceutical research
-    - "clinical variants" appears in ClinVar -> disease associations
-    - "pathways" appears in Reactome -> biological processes
-
-    **Workflow:**
-    1. Call list_databases() BEFORE calling get_MIE_file() or run_sparql()
-    2. Read descriptions to identify 1-3 relevant databases
-    3. Proceed with get_MIE_file() on identified databases
-    4. Query comprehensively with discovered structured properties
-
-    **Common mistake to avoid:**
-    Do not assume a database based on name alone (e.g., "gene query -> only NCBI Gene").
-    Discover databases by reading descriptions (e.g., "gene query -> both NCBI Gene AND
-    Ensembl have complementary data").
-
-    **Example pattern:**
-    Query: "MANE Select transcripts for drug targets"
-    -> Call list_databases()
-    -> See "MANE" in Ensembl description
-    -> See "drug targets" in ChEMBL description
-    -> Query both databases on shared 'ebi' endpoint
-
-    **This is reconnaissance, not optional.**
-    Skipping this step = guessing which database to use = missing 50-80% of relevant data.
-
-    Returns:
-        A list of dictionaries, each containing schema info for a file.
-    """
-    toolcall_log("list_databases")
-
-    global _cached_databases
-    if _cached_databases is not None:
-        return _cached_databases
+def _load_databases_cache() -> list[dict[str, Any]]:
+    """Load and cache schema_info from every MIE file. Returns full records including
+    optional `keywords` and `categories` fields when present."""
+    global _databases_cache
+    if _databases_cache is not None:
+        return _databases_cache
 
     resources_dir = Path(MIE_DIR)
     if not resources_dir.is_dir():
         print(f"Error: Directory '{resources_dir}' not found.", file=sys.stderr)
-        return []
+        _databases_cache = []
+        return _databases_cache
 
-    all_schemas_info = []
+    records: list[dict[str, Any]] = []
     for db_name in sorted(SPARQL_ENDPOINT.keys()):
         filename = db_name + ".yaml"
         file_path = resources_dir.joinpath(filename)
+        record: dict[str, Any] = {
+            "database": db_name,
+            "title": "No title found.",
+            "description": "No description found.",
+            "keywords": [],
+            "categories": [],
+        }
         try:
             with open(file_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
@@ -280,41 +242,191 @@ def list_databases() -> list[dict[str, Any]]:
                     "'schema_info' section not found or not a dictionary."
                 )
 
-            title = schema_info.get("title")
-            description = schema_info.get("description")
-
-            all_schemas_info.append(
-                {
-                    "database": db_name,
-                    "title": title or "No title found.",
-                    "description": description or "No description found.",
-                }
-            )
-
+            record["title"] = schema_info.get("title") or "No title found."
+            record["description"] = schema_info.get("description") or "No description found."
+            kws = schema_info.get("keywords") or []
+            cats = schema_info.get("categories") or []
+            if isinstance(kws, list):
+                record["keywords"] = [str(k).lower() for k in kws if str(k).strip()]
+            if isinstance(cats, list):
+                record["categories"] = [str(c).lower() for c in cats if str(c).strip()]
         except yaml.YAMLError as e:
-            all_schemas_info.append(
-                {
-                    "database": db_name,
-                    "title": "No title found.",
-                    "description": f"Error processing YAML file: {e}",
-                }
-            )
+            record["description"] = f"Error processing YAML file: {e}"
         except FileNotFoundError:
-            all_schemas_info.append(
-                {
-                    "database": db_name,
-                    "title": "No title found.",
-                    "description": f"MIE file not found: {filename}",
-                }
-            )
+            record["description"] = f"MIE file not found: {filename}"
         except OSError as e:
-            all_schemas_info.append(
-                {
-                    "database": db_name,
-                    "title": "No title found.",
-                    "description": f"Error reading {filename}: {e.strerror or 'unknown error'}",
-                }
-            )
+            record["description"] = f"Error reading {filename}: {e.strerror or 'unknown error'}"
 
-    _cached_databases = all_schemas_info
-    return _cached_databases
+        records.append(record)
+
+    _databases_cache = records
+    return _databases_cache
+
+
+@mcp.tool(name="list_databases")
+def list_databases() -> list[dict[str, Any]]:
+    """
+    Database Discovery & Selection — full catalog browse.
+
+    Returns every available RDF database with `{database, title, description}`. Use this
+    when you want to see the entire catalog. For token-efficient lookup when you already
+    have search terms in mind, prefer `find_databases(keywords=...)`.
+
+    Common keywords-in-descriptions to watch for: "MANE" (Ensembl), "drug targets" (ChEMBL),
+    "clinical variants" (ClinVar), "pathways" (Reactome).
+
+    Workflow:
+    1. (Optional) call list_databases() or find_databases() to identify 1–3 relevant DBs.
+    2. get_MIE_file(database) for each.
+    3. run_sparql() with discovered structured properties.
+
+    Returns:
+        A list of dicts with keys `database`, `title`, `description`.
+    """
+    toolcall_log("list_databases")
+    return [
+        {"database": r["database"], "title": r["title"], "description": r["description"]}
+        for r in _load_databases_cache()
+    ]
+
+
+def _normalize_terms(value: str | list[str] | None) -> list[str]:
+    """Lowercase, strip, drop empties. Accepts str | list[str] | None."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        v = value.strip().lower()
+        return [v] if v else []
+    return [s.strip().lower() for s in value if isinstance(s, str) and s.strip()]
+
+
+def _make_snippet(text: str, keyword: str, context: int = 80) -> str:
+    """Return ~context chars surrounding the first occurrence of keyword (case-insensitive).
+    Falls back to the leading slice when no match is found."""
+    if not text:
+        return ""
+    if not keyword:
+        return text[: context * 2].strip().replace("\n", " ") + ("..." if len(text) > context * 2 else "")
+    idx = text.lower().find(keyword.lower())
+    if idx < 0:
+        return _make_snippet(text, "", context)
+    start = max(0, idx - context // 2)
+    end = min(len(text), idx + len(keyword) + context // 2)
+    snippet = text[start:end].strip().replace("\n", " ")
+    return f"{'...' if start > 0 else ''}{snippet}{'...' if end < len(text) else ''}"
+
+
+@mcp.tool(name="find_databases")
+def find_databases(
+    keywords: Annotated[
+        str | list[str] | None,
+        Field(
+            description=(
+                "Keyword or list of keywords (case-insensitive substring match against "
+                "title, description, and the database's curated keywords field)."
+            )
+        ),
+    ] = None,
+    category: Annotated[
+        str | list[str] | None,
+        Field(
+            description=(
+                "Category filter (substring, case-insensitive). Call list_categories() "
+                "to see the available set."
+            )
+        ),
+    ] = None,
+    match: Annotated[
+        Literal["any", "all"],
+        Field(
+            description=(
+                "'any' returns DBs matching at least one keyword (OR); 'all' requires "
+                "every keyword to match (AND)."
+            )
+        ),
+    ] = "any",
+    verbose: Annotated[
+        bool,
+        Field(
+            description=(
+                "If True, return the full description; if False (default), return a "
+                "short snippet around the first match."
+            )
+        ),
+    ] = False,
+) -> list[dict[str, Any]]:
+    """
+    Token-efficient database discovery — alternative to list_databases().
+
+    Filters the RDF database catalog by keywords and/or category, returning only matching
+    entries. Use this when you already have specific search terms (gene, pathway, drug
+    target, variant, etc.) and want a focused candidate list before calling get_MIE_file().
+
+    Use list_databases() instead when you want to browse the full catalog.
+
+    Returns:
+        List of dicts: `{database, title, matched_keywords, categories, snippet}` (or
+        `description` when `verbose=True`). Sorted by number of matched keywords
+        descending, then alphabetically by database name.
+    """
+    toolcall_log("find_databases")
+    kw_list = _normalize_terms(keywords)
+    cat_list = _normalize_terms(category)
+
+    if not kw_list and not cat_list:
+        return []
+
+    results: list[dict[str, Any]] = []
+    for r in _load_databases_cache():
+        if cat_list:
+            db_cats = " ".join(r["categories"])
+            if not any(c in db_cats for c in cat_list):
+                continue
+
+        haystack = " ".join([
+            r["title"].lower(),
+            r["description"].lower(),
+            " ".join(r["keywords"]),
+        ])
+        matched = [k for k in kw_list if k in haystack]
+
+        if kw_list:
+            if match == "all" and len(matched) < len(kw_list):
+                continue
+            if match == "any" and not matched:
+                continue
+
+        anchor = matched[0] if matched else (cat_list[0] if cat_list else "")
+        body_key = "description" if verbose else "snippet"
+        body_val = r["description"] if verbose else _make_snippet(r["description"], anchor)
+
+        results.append({
+            "database": r["database"],
+            "title": r["title"],
+            "matched_keywords": matched,
+            "categories": r["categories"],
+            body_key: body_val,
+        })
+
+    results.sort(key=lambda x: (-len(x["matched_keywords"]), x["database"]))
+    return results
+
+
+@mcp.tool(name="list_categories")
+def list_categories() -> dict[str, list[str]]:
+    """
+    Coarse-grained index of database categories with member database names.
+
+    Use this when you don't yet have specific keywords — drill down with
+    `find_databases(category=...)` once you've identified relevant categories.
+
+    Returns:
+        Dict mapping category name -> sorted list of database names. Returns an empty
+        dict if no databases have been annotated with categories yet.
+    """
+    toolcall_log("list_categories")
+    cats: dict[str, list[str]] = {}
+    for r in _load_databases_cache():
+        for c in r["categories"]:
+            cats.setdefault(c, []).append(r["database"])
+    return {k: sorted(v) for k, v in sorted(cats.items())}
