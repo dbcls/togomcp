@@ -11,21 +11,29 @@ from .server import *
 @mcp.tool(name="TogoMCP_Usage_Guide")
 def togomcp_usage_guide() -> str:
     """
-    ⚠️ CALL THIS TOOL FIRST before using ANY other TogoMCP tool (SPARQL, search, or database tools).
-    This guide enforces the mandatory workflow:
-        (1) Get MIE schema files to discover structured properties,
-        (2) Use search tools for exploratory examples,
-        (3) Inspect properties,
-        (4) Write comprehensive SPARQL queries.
-    **CRITICAL**: 95% of query failures happen because users skip step 1 and use text search (bif:contains)
-      or API calls when structured predicates exist in the schema. Skipping this wastes 10-20 tool calls
-      and produces incomplete results.
-      For comprehensive queries (counts, 'find all', 'which has most'), this guide shows you how to discover
-      structured properties (taxonomy IRIs, typed predicates, classification terms) that are 10-100x faster
-      than text search. Always call this guide first to learn the correct workflow for your specific query type.
+    ⚠️ CALL THIS TOOL FIRST every turn, before any other TogoMCP tool.
 
-        Returns:
-            str: The content of the TogoMCP usage guide.
+    Returns the v4 Usage Guide, which enforces the empirically-validated workflow:
+
+        GATE 0: classify the question (bounded → STEP −1 | open-ended → EXPLORATION).
+        STEP −1: analyze entities, databases, endpoints (no tools).
+        STEP  0: find_databases(keywords=[...]) — token-efficient discovery.
+        STEP  1: specialized search or ncbi_esearch — ground in real IRIs.
+        STEP  2: get_MIE_file(database) — required before any run_sparql.
+        STEP  3: run_sparql() — LIMIT 10 first; max 2 consecutive calls, then pivot.
+        STEP  4: synthesize — each fact once, no meta-commentary.
+
+    Why this matters (measured): questions with ≥3 consecutive run_sparql calls
+    score 1.26 points lower than compliant ones; jumping to text search before
+    reading the MIE schema accounts for ~95% of silent SPARQL failures. The
+    guide also documents the controlled category taxonomy used by
+    find_databases() and the EXPLORATION habits (Seed Definition, concierge
+    check, prioritized Next Steps) for open-ended deep dives.
+
+    Re-run GATE 0 every turn — prior workflow does not carry forward.
+
+    Returns:
+        str: The content of the TogoMCP v4 usage guide.
     """
     toolcall_log("togomcp_usage_guide")
     with open(TOGOMCP_USAGE_GUIDE, encoding="utf-8") as file:
