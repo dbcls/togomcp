@@ -2,26 +2,32 @@ schema_info:
   title: BRENDA (Braunschweig Enzyme Database)
   description: |
     BRENDA is the world's most comprehensive manually curated enzyme database, covering
-    functional, kinetic, and taxonomic data for enzymes classified by EC number. Each
-    enzyme entry represents a specific protein in a specific organism, classified under
-    one or more EC numbers. The database contains enzyme instances, EC number definitions,
-    inhibitors, activators, cofactors, substrates, products, reactions, tissue expression
-    data, chemical compounds with InChI/InChIKey, and supporting literature references.
+    functional and taxonomic data for enzymes classified by EC number. Each enzyme entry
+    represents a specific protein in a specific organism, classified under one or more EC
+    numbers. The database contains enzyme instances, EC number definitions, inhibitors,
+    activators, cofactors, substrates, products, reactions, tissue expression data,
+    subcellular localization data, chemical compounds with InChI/InChIKey, and supporting
+    literature references.
+    NOTE: Ki, Km, Vmax, and kcat kinetic parameters are NOT present in the RDF export
+    despite BRENDA's web interface listing extensive kinetic data. No kinetic measurement
+    predicates exist in the SPARQL graph. Use the BRENDA REST API or web interface
+    (https://www.brenda-enzymes.org/) for kinetic values.
   keywords:
     - enzyme
     - ec number
     - brenda
     - enzymatic reaction
     - substrate
+    - product
     - inhibitor
     - activator
     - cofactor
-    - kinetics
     - biochemistry
     - catalysis
     - inchi
     - inchikey
     - tissue expression
+    - subcellular localization
     - organism enzyme
   categories:
     - reaction
@@ -61,9 +67,13 @@ critical_warnings: |
     `d3o:catalyzedByClass` linking to the ECNumber.
   - TAXON ID TYPE: `d3o:hasTaxID` is an xsd:integer (e.g. `d3o:hasTaxID 9606`), not a
     string. Use `FILTER(?taxid = 9606)` or the integer literal directly in triple patterns.
-  - TISSUE AND LOCALIZATION USE `d3o:expresses`: Tissue nodes link to enzymes via
-    `d3o:expresses` (not `d3o:foundIn`). The predicate direction is: tissue → enzyme,
-    not enzyme → tissue.
+  - KINETIC VALUES NOT IN RDF: BRENDA's web interface contains Km, Vmax, Ki, and kcat
+    measurements but these are NOT exported to the RDF graph. Predicates hasKm, hasKi,
+    hasVmax, and hasKcat do not exist. Any SPARQL query for kinetic constants will return
+    zero results. Use the BRENDA REST API or web interface for kinetic values.
+  - TISSUE AND LOCALIZATION USE `d3o:expresses`: Tissue and Localization nodes link to
+    enzymes via `d3o:expresses` (not `d3o:foundIn`). The predicate direction is:
+    tissue/localization → enzyme, not enzyme → tissue/localization.
 
 shape_expressions: |
   PREFIX d3o:  <https://purl.dsmz.de/schema/>
@@ -178,6 +188,34 @@ shape_expressions: |
     a [ d3o:Pathway ] ;
     rdfs:label xsd:string ;
     d3o:hasReaction @<ReactionShape> +
+  }
+
+  # IRI pattern: https://purl.dsmz.de/brenda/substrate/{N}
+  # ~61,225 substrate role instances (one per compound × reaction participation)
+  # NOTE: like Inhibitor/Activator, a Substrate node is a ROLE, not the compound itself
+  <SubstrateShape> {
+    a [ d3o:Substrate d3o:ChemicalRole d3o:ConceptualEntity ] ;
+    d3o:partOf @<ReactionShape> + ;        # reaction(s) this compound acts as substrate of
+    d3o:refersToCompound @<CompoundShape>  # the actual chemical compound (carries label/InChI)
+  }
+
+  # IRI pattern: https://purl.dsmz.de/brenda/product/{N}
+  # ~49,738 product role instances; same structure as SubstrateShape
+  <ProductShape> {
+    a [ d3o:Product d3o:ChemicalRole d3o:ConceptualEntity ] ;
+    d3o:partOf @<ReactionShape> + ;
+    d3o:refersToCompound @<CompoundShape>
+  }
+
+  # IRI pattern: https://purl.dsmz.de/brenda/localization/{N}
+  # ~276 subcellular localization entries (e.g. "Golgi membrane", "centromere")
+  # Same expresses pattern as TissueShape; all 276 nodes carry rdfs:label
+  <LocalizationShape> {
+    a [ d3o:Localization ] ;
+    rdfs:label xsd:string ;            # compartment name, e.g. "Golgi membrane"
+    d3o:expresses @<EnzymeShape> * ;   # enzyme localized to this compartment
+    d3o:partOf @<OrganismShape> * ;    # organism context
+    d3o:hasReference @<ReferenceShape> *
   }
 
   # IRI pattern: https://purl.dsmz.de/brenda/reference/{N}
@@ -305,21 +343,31 @@ sparql_query_examples:
       }
       LIMIT 20
 
-  - title: "Get reactions catalyzed by an EC class"
-    description: Retrieve all reaction equations (both IUBMB and substrate-specific) for a given EC.
-    question: "What are the reactions catalyzed by ornithine decarboxylase (EC 4.1.1.17)?"
+  - title: "Find substrates and products for an EC class reaction"
+    description: Retrieve reaction role nodes (Substrate/Product) for an EC class, navigating
+      via d3o:partOf from role to reaction and d3o:refersToCompound from role to compound.
+      Substrate and Product nodes are role nodes — like Inhibitor/Activator — with compound
+      data on the compound node reached via refersToCompound.
+    question: "What are the substrates and products of reactions catalyzed by ornithine
+      decarboxylase (EC 4.1.1.17)?"
     complexity: intermediate
     sparql: |
       PREFIX d3o:  <https://purl.dsmz.de/schema/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-      SELECT ?reaction ?equation
+      SELECT DISTINCT ?reactionLabel ?roleType ?compLabel
       FROM <http://rdfportal.org/dataset/brenda>
       WHERE {
         ?reaction a d3o:Reaction ;
-                  # d3o:catalyzedByClass links reaction to EC class (not enzyme instance)
                   d3o:catalyzedByClass <https://purl.dsmz.de/brenda/ec/4.1.1.17> ;
-                  rdfs:label ?equation .
+                  rdfs:label ?reactionLabel .
+        # Both Substrate and Product are role nodes — navigate via refersToCompound
+        { ?role a d3o:Substrate } UNION { ?role a d3o:Product }
+        ?role a ?roleType ;
+              d3o:partOf ?reaction ;
+              d3o:refersToCompound ?compound .
+        ?compound rdfs:label ?compLabel .
+        FILTER(?roleType IN (d3o:Substrate, d3o:Product))
       }
       LIMIT 20
 
@@ -546,6 +594,18 @@ data_statistics:
       value: "6,479 activator role nodes"
       calculation: "COUNT of d3o:Activator class"
       verified_date: "2026-04-28"
+    substrates:
+      value: "61,225 substrate role nodes"
+      calculation: "COUNT of d3o:Substrate class"
+      verified_date: "2026-04-28"
+    products:
+      value: "49,738 product role nodes"
+      calculation: "COUNT of d3o:Product class"
+      verified_date: "2026-04-28"
+    localizations:
+      value: "276 subcellular localization entries"
+      calculation: "COUNT of d3o:Localization class"
+      verified_date: "2026-04-28"
     pathways:
       value: "194 pathway entries"
       calculation: "COUNT of d3o:Pathway class"
@@ -586,6 +646,26 @@ anti_patterns:
               d3o:partOf ?organism .
       ?enzyme d3o:isClassifiedAs ?ec .
     explanation: "The d3o:expresses predicate is on tissue nodes pointing to enzyme nodes, not the reverse. Check shape_expressions for the correct predicate direction."
+
+  - title: "Querying for Kinetic Values That Are Not in the RDF Export"
+    problem: "Expecting Km, Ki, Vmax, or kcat to be queryable via SPARQL — these fields
+      are not in the BRENDA RDF graph."
+    wrong_sparql: |
+      # Wrong — none of these predicates exist in the BRENDA RDF export
+      ?enzyme d3o:hasKm ?km .
+      ?inhibitor d3o:hasKi ?ki .
+      ?enzyme d3o:hasVmax ?vmax .
+    correct_sparql: |
+      # Kinetic values (Km, Vmax, Ki, kcat) are absent from the BRENDA RDF export.
+      # The SPARQL graph covers: EC classes, enzyme instances, reactions, substrates,
+      # products, inhibitors, activators, cofactors, tissues, localizations, compounds
+      # (with InChI/InChIKey), and references.
+      # For kinetic data, use the BRENDA REST API or web interface:
+      # https://www.brenda-enzymes.org/
+    explanation: "BRENDA's website is well-known for kinetic constants, but these are not
+      part of the RDF export at rdfportal.org. The full predicate scan (April 2026) confirmed
+      that no kinetic measurement predicates exist. ASK queries for hasKm, hasKi, and hasVmax
+      all returned false."
 
   - title: "Skipping Schema Check Before Text Search"
     problem: "Using bif:contains to find enzymes by name when the EC IRI can be used directly."
