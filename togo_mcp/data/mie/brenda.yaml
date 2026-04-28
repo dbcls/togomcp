@@ -1,0 +1,628 @@
+schema_info:
+  title: BRENDA (Braunschweig Enzyme Database)
+  description: |
+    BRENDA is the world's most comprehensive manually curated enzyme database, covering
+    functional, kinetic, and taxonomic data for enzymes classified by EC number. Each
+    enzyme entry represents a specific protein in a specific organism, classified under
+    one or more EC numbers. The database contains enzyme instances, EC number definitions,
+    inhibitors, activators, cofactors, substrates, products, reactions, tissue expression
+    data, chemical compounds with InChI/InChIKey, and supporting literature references.
+  keywords:
+    - enzyme
+    - ec number
+    - brenda
+    - enzymatic reaction
+    - substrate
+    - inhibitor
+    - activator
+    - cofactor
+    - kinetics
+    - biochemistry
+    - catalysis
+    - inchi
+    - inchikey
+    - tissue expression
+    - organism enzyme
+  categories:
+    - reaction
+    - protein
+    - enzymology
+  endpoint: https://rdfportal.org/primary/sparql
+  base_uri: https://purl.dsmz.de/brenda/
+  graphs:
+    - http://rdfportal.org/dataset/brenda
+  kw_search_tools: []
+  version:
+    mie_version: "2.0"
+    mie_created: "2026-04-28"
+    data_version: "Release 2026"
+    update_frequency: "Irregular"
+  access:
+    backend: "Virtuoso"
+
+critical_warnings: |
+  - QUERY SCOPE: Always include FROM <http://rdfportal.org/dataset/brenda> or a GRAPH
+    clause. Without it, queries span all primary-endpoint datasets and will time out or
+    return mixed results.
+  - ENZYME IDs ARE INTERNAL, NOT EC NUMBERS: Enzyme IRIs use internal BRENDA numeric IDs
+    (e.g. https://purl.dsmz.de/brenda/enzyme/2485), NOT EC numbers. Multiple enzyme
+    instances exist per EC class (one per organism). Always navigate from EC number to
+    enzyme via `d3o:isClassifiedAs`, not by IRI guessing.
+  - EC NUMBER IRI PATTERN: EC number IRIs encode the dotted EC number directly:
+    `https://purl.dsmz.de/brenda/ec/4.1.1.17`. Use these IRIs directly in queries
+    (e.g. `d3o:isClassifiedAs <https://purl.dsmz.de/brenda/ec/4.1.1.17>`).
+  - EFFECTOR ROLES ARE CONTEXT-SPECIFIC: Inhibitor and Activator IRIs represent the
+    *role* of a compound in context, not the compound itself. Each inhibitor/activator
+    node has `d3o:refersToCompound` → the actual ChemicalCompound node (which holds
+    the label, InChI, and InChIKey). Do not expect structural data on the inhibitor IRI.
+  - REACTION IRI PREFIXES: Reactions have two subtypes in their IRI: `reaction/I_N`
+    (IUBMB reactions, canonical) and `reaction/S_N` (substrate-specific variants).
+    The predicate `d3o:isIubmbReaction` is present on IUBMB reactions. Both types have
+    `d3o:catalyzedByClass` linking to the ECNumber.
+  - TAXON ID TYPE: `d3o:hasTaxID` is an xsd:integer (e.g. `d3o:hasTaxID 9606`), not a
+    string. Use `FILTER(?taxid = 9606)` or the integer literal directly in triple patterns.
+  - TISSUE AND LOCALIZATION USE `d3o:expresses`: Tissue nodes link to enzymes via
+    `d3o:expresses` (not `d3o:foundIn`). The predicate direction is: tissue → enzyme,
+    not enzyme → tissue.
+
+shape_expressions: |
+  PREFIX d3o:  <https://purl.dsmz.de/schema/>
+  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+  PREFIX dct:  <http://purl.org/dc/terms/>
+
+  # IRI pattern: https://purl.dsmz.de/brenda/enzyme/{N}  (internal BRENDA ID, not EC number)
+  # ~54,720 instances; multiple per EC class (one per organism)
+  <EnzymeShape> {
+    a [ d3o:Enzyme d3o:Protein d3o:GeneProduct ] ;  # all three types always present
+    d3o:isClassifiedAs @<ECNumberShape> + ;           # EC class(es) this enzyme belongs to
+    d3o:foundIn @<OrganismShape> ;                    # the organism containing this enzyme
+    d3o:hasReference @<ReferenceShape> *              # supporting literature
+    # NOTE: enzyme IRIs are internal — do NOT use them as EC numbers
+  }
+
+  # IRI pattern: https://purl.dsmz.de/brenda/ec/{X.X.X.X}  e.g. ec/4.1.1.17
+  # ~7,453 EC class entries
+  <ECNumberShape> {
+    a [ d3o:ECNumber d3o:EnzymeIdentifier d3o:MoleculeIdentifier d3o:Identifier ] ;
+    rdfs:label xsd:string ;          # enzyme common name, e.g. "ornithine decarboxylase"
+    dct:description xsd:string ;     # IUBMB description, e.g. "A pyridoxal-phosphate protein."
+    d3o:hasSynonyms xsd:string + ;   # gene names, isoform names, synonyms
+    d3o:hasSystematicName xsd:string # IUBMB systematic name
+  }
+
+  # IRI pattern: https://purl.dsmz.de/brenda/organism/{N}
+  # ~30,338 organism instances; each is a distinct organism+strain combination
+  <OrganismShape> {
+    a [ d3o:BiologicalMaterial ] ;
+    rdfs:label xsd:string ;          # organism name/strain
+    d3o:hasSynonym xsd:string * ;    # synonyms including taxonomic lineage strings
+    d3o:hasTaxID xsd:integer ? ;     # NCBI Taxonomy ID as integer; ~50% coverage
+    d3o:hasIdentifier IRI ?          # link to external taxonomy resource
+  }
+
+  # IRI pattern: https://purl.dsmz.de/brenda/inhibitor/{N}
+  # ~110,187 inhibitor role instances (context-specific: one per enzyme+compound+organism)
+  # IMPORTANT: inhibitor represents the ROLE, not the compound — use d3o:refersToCompound
+  <InhibitorShape> {
+    a [ d3o:Inhibitor d3o:Effector d3o:ChemicalRole d3o:ConceptualEntity ] ;
+    d3o:inhibits @<EnzymeShape> + ;           # specific enzyme instances inhibited
+    d3o:affectsClass @<ECNumberShape> + ;     # EC class(es) affected
+    d3o:foundIn @<OrganismShape> + ;          # organism context
+    d3o:refersToCompound @<CompoundShape> ;   # the chemical compound with structure
+    d3o:hasReference @<ReferenceShape> +
+  }
+
+  # IRI pattern: https://purl.dsmz.de/brenda/activator/{N}
+  # ~6,479 activator instances
+  <ActivatorShape> {
+    a [ d3o:Activator d3o:Effector d3o:ChemicalRole d3o:ConceptualEntity ] ;
+    d3o:activates @<EnzymeShape> + ;
+    d3o:affectsClass @<ECNumberShape> + ;
+    d3o:foundIn @<OrganismShape> + ;
+    d3o:refersToCompound @<CompoundShape> ;
+    d3o:hasReference @<ReferenceShape> +
+  }
+
+  # IRI pattern: https://purl.dsmz.de/brenda/cofactor/{N}
+  # ~549 cofactor instances
+  <CofactorShape> {
+    a [ d3o:Cofactor d3o:ChemicalRole d3o:ConceptualEntity ] ;
+    d3o:isCofactorOf @<EnzymeShape> + ;
+    d3o:refersToCompound @<CompoundShape> ;
+    d3o:hasReference @<ReferenceShape> +
+  }
+
+  # IRI pattern: https://purl.dsmz.de/brenda/compound/{N}
+  # ~214,688 chemical compound instances; shared across inhibitor/activator/cofactor/substrate/product roles
+  <CompoundShape> {
+    a [ d3o:ChemicalCompound d3o:ChemicalMaterial ] ;
+    rdfs:label xsd:string ;          # compound name, e.g. "spermidine"
+    d3o:hasIdentifier xsd:integer ;  # internal BRENDA compound ID integer
+    d3o:hasSynonym xsd:string * ;    # alternative names
+    d3o:hasStructure @<StructureShape> +  # one or more molecular structure entries
+  }
+
+  # IRI pattern: https://purl.dsmz.de/brenda/structure/{N}
+  # ~171,721 structure entries
+  <StructureShape> {
+    a [ d3o:MolecularStructure ] ;
+    d3o:hasInChI xsd:string ;        # InChI string for structure lookup
+    d3o:hasInChIKey xsd:string       # InChIKey for exact-match searches
+  }
+
+  # IRI pattern: https://purl.dsmz.de/brenda/reaction/{I_N or S_N}
+  # ~139,860 reactions; I_N = IUBMB, S_N = substrate-specific variant
+  <ReactionShape> {
+    a [ d3o:Reaction ] ;
+    rdfs:label xsd:string ;              # reaction equation string, e.g. "L-ornithine = putrescine + CO2"
+    d3o:catalyzedBy @<EnzymeShape> * ;   # specific enzyme instances
+    d3o:catalyzedByClass @<ECNumberShape> + ;  # EC class(es) that catalyze this
+    d3o:isIubmbReaction xsd:boolean ? ; # present on IUBMB canonical reactions (I_ prefix)
+    d3o:partOf @<PathwayShape> * ;
+    d3o:hasReference @<ReferenceShape> *
+  }
+
+  # IRI pattern: https://purl.dsmz.de/brenda/tissue/{N}
+  # ~4,815 tissue types; expression links go FROM tissue TO enzyme
+  <TissueShape> {
+    a [ d3o:Tissue d3o:AnatomicStructure ] ;
+    rdfs:label xsd:string ;
+    d3o:expresses @<EnzymeShape> * ;   # tissue EXPRESSES the enzyme (not enzyme→tissue)
+    d3o:partOf @<OrganismShape> * ;
+    d3o:hasReference @<ReferenceShape> *
+  }
+
+  # IRI pattern: https://purl.dsmz.de/brenda/pathway/{N}
+  # ~194 pathway entries
+  <PathwayShape> {
+    a [ d3o:Pathway ] ;
+    rdfs:label xsd:string ;
+    d3o:hasReaction @<ReactionShape> +
+  }
+
+  # IRI pattern: https://purl.dsmz.de/brenda/reference/{N}
+  # ~173,164 reference entries
+  <ReferenceShape> {
+    a [ d3o:Reference ] ;
+    dct:title xsd:string ;
+    dct:creator xsd:string ;
+    d3o:hasPubMedID xsd:string ;         # PubMed ID as string
+    d3o:hasPMCID xsd:string ? ;          # PMC ID (~30% coverage)
+    dct:issued xsd:string ;
+    d3o:hasJournalAbbreviation xsd:string ;
+    d3o:hasVolume xsd:string ;
+    d3o:hasPageRange xsd:string ;
+    d3o:hasBibliographicInformation xsd:string
+  }
+
+sample_rdf_entries:
+  rdf_prefixes: |
+    @prefix d3o:  <https://purl.dsmz.de/schema/> .
+    @prefix ec:   <https://purl.dsmz.de/brenda/ec/> .
+    @prefix enz:  <https://purl.dsmz.de/brenda/enzyme/> .
+    @prefix org:  <https://purl.dsmz.de/brenda/organism/> .
+    @prefix inh:  <https://purl.dsmz.de/brenda/inhibitor/> .
+    @prefix cmpd: <https://purl.dsmz.de/brenda/compound/> .
+    @prefix str:  <https://purl.dsmz.de/brenda/structure/> .
+    @prefix ref:  <https://purl.dsmz.de/brenda/reference/> .
+    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+    @prefix dct:  <http://purl.org/dc/terms/> .
+  entries:
+    - title: "EC 4.1.1.17 — ornithine decarboxylase EC class entry"
+      description: EC number node with enzyme name, IUBMB description, systematic name, and gene name synonyms.
+      rdf: |
+        ec:4.1.1.17 a d3o:ECNumber, d3o:EnzymeIdentifier, d3o:MoleculeIdentifier, d3o:Identifier ;
+                    rdfs:label "ornithine decarboxylase" ;
+                    dct:description "A pyridoxal-phosphate protein." ;
+                    d3o:hasSystematicName "L-ornithine carboxy-lyase (putrescine-forming)" ;
+                    d3o:hasSynonyms "ODC1" , "ODC" , "SpeC" , "SpeA" , "AZIN2" .
+
+    - title: "Enzyme instance — ornithine decarboxylase in Pelophylax nigromaculatus"
+      description: Enzyme node linking to its EC class, host organism, and supporting reference.
+      rdf: |
+        enz:2485 a d3o:Enzyme, d3o:Protein, d3o:GeneProduct ;
+                 d3o:isClassifiedAs ec:4.1.1.17 ;
+                 d3o:foundIn org:19526 ;
+                 d3o:hasReference ref:4043 .
+
+        org:19526 a d3o:BiologicalMaterial ;
+                  rdfs:label "Pelophylax nigromaculatus" .
+
+    - title: "Inhibitor role node — spermidine inhibiting EC 4.1.1.17, with compound structure"
+      description: Inhibitor node (context-specific role) linking to the actual compound with InChIKey.
+      rdf: |
+        inh:139 a d3o:Inhibitor, d3o:Effector, d3o:ChemicalRole, d3o:ConceptualEntity ;
+                d3o:affectsClass ec:4.1.1.17 ;
+                d3o:refersToCompound cmpd:139 .
+
+        cmpd:139 a d3o:ChemicalCompound, d3o:ChemicalMaterial ;
+                 rdfs:label "spermidine" ;
+                 d3o:hasIdentifier 139 ;
+                 d3o:hasStructure str:148 .
+
+        str:148 a d3o:MolecularStructure ;
+                d3o:hasInChI "InChI=1S/C7H19N3/c8-4-1-2-6-10-7-3-5-9/h10H,1-9H2" ;
+                d3o:hasInChIKey "InChIKey=ATHGHQPFGPMSJY-UHFFFAOYSA-N" .
+
+sparql_query_examples:
+  - title: "Get all enzyme instances for a specific EC class"
+    description: Retrieve every enzyme instance of a given EC class with their host organisms.
+    question: "Which organisms have ornithine decarboxylase (EC 4.1.1.17) in BRENDA?"
+    complexity: basic
+    sparql: |
+      PREFIX d3o:  <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?enzyme ?orgLabel
+      FROM <http://rdfportal.org/dataset/brenda>
+      WHERE {
+        ?enzyme a d3o:Enzyme ;
+                # EC IRI encodes the number directly — use it as a filter
+                d3o:isClassifiedAs <https://purl.dsmz.de/brenda/ec/4.1.1.17> ;
+                d3o:foundIn ?organism .
+        ?organism rdfs:label ?orgLabel .
+      }
+      LIMIT 20
+
+  - title: "Get EC number details — name, description, systematic name, synonyms"
+    description: Retrieve the IUBMB definition and gene-name synonyms for a specific EC class.
+    question: "What is the IUBMB name, description, and systematic name for EC 4.1.1.17?"
+    complexity: basic
+    sparql: |
+      PREFIX d3o:  <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct:  <http://purl.org/dc/terms/>
+
+      SELECT ?ecLabel ?description ?systematicName ?synonym
+      FROM <http://rdfportal.org/dataset/brenda>
+      WHERE {
+        <https://purl.dsmz.de/brenda/ec/4.1.1.17> rdfs:label ?ecLabel ;
+            dct:description ?description .
+        OPTIONAL { <https://purl.dsmz.de/brenda/ec/4.1.1.17> d3o:hasSystematicName ?systematicName }
+        OPTIONAL { <https://purl.dsmz.de/brenda/ec/4.1.1.17> d3o:hasSynonyms ?synonym }
+      }
+      LIMIT 20
+
+  - title: "Find inhibitors of an EC class with compound structures"
+    description: Retrieve inhibitors affecting a specific enzyme class, navigating through the role
+      node to the actual compound and its InChIKey for structure lookup.
+    question: "What compounds inhibit ornithine decarboxylase (EC 4.1.1.17), and what are their InChIKeys?"
+    complexity: intermediate
+    sparql: |
+      PREFIX d3o:  <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?inhibitor ?compLabel ?inchiKey
+      FROM <http://rdfportal.org/dataset/brenda>
+      WHERE {
+        ?inhibitor a d3o:Inhibitor ;
+                   d3o:affectsClass <https://purl.dsmz.de/brenda/ec/4.1.1.17> ;
+                   # Navigate from role node to compound — structural data is on the compound
+                   d3o:refersToCompound ?compound .
+        ?compound rdfs:label ?compLabel ;
+                  d3o:hasStructure ?structure .
+        ?structure d3o:hasInChIKey ?inchiKey .
+      }
+      LIMIT 20
+
+  - title: "Get reactions catalyzed by an EC class"
+    description: Retrieve all reaction equations (both IUBMB and substrate-specific) for a given EC.
+    question: "What are the reactions catalyzed by ornithine decarboxylase (EC 4.1.1.17)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX d3o:  <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?reaction ?equation
+      FROM <http://rdfportal.org/dataset/brenda>
+      WHERE {
+        ?reaction a d3o:Reaction ;
+                  # d3o:catalyzedByClass links reaction to EC class (not enzyme instance)
+                  d3o:catalyzedByClass <https://purl.dsmz.de/brenda/ec/4.1.1.17> ;
+                  rdfs:label ?equation .
+      }
+      LIMIT 20
+
+  - title: "Find enzyme classes expressed in a specific organism by NCBI Taxonomy ID"
+    description: Use d3o:hasTaxID (integer) to look up organism nodes, then navigate to their
+      enzymes and EC classes.
+    question: "Which enzyme classes does BRENDA have data for in Homo sapiens (NCBI Taxonomy 9606)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX d3o:  <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT DISTINCT ?ec ?ecLabel
+      FROM <http://rdfportal.org/dataset/brenda>
+      WHERE {
+        # d3o:hasTaxID is an integer — use integer literal, not string
+        ?organism a d3o:BiologicalMaterial ;
+                  d3o:hasTaxID 9606 .
+        ?enzyme a d3o:Enzyme ;
+                d3o:foundIn ?organism ;
+                d3o:isClassifiedAs ?ec .
+        ?ec rdfs:label ?ecLabel .
+      }
+      LIMIT 20
+
+  - title: "Compare enzyme breadth across multiple EC classes"
+    description: Count enzyme instances and organism coverage for a set of EC classes in one query.
+    question: "How many enzyme instances and organisms does BRENDA have for alcohol dehydrogenase,
+      receptor tyrosine kinase, and caspase-1?"
+    complexity: advanced
+    sparql: |
+      PREFIX d3o:  <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?ec ?ecLabel (COUNT(DISTINCT ?enzyme) AS ?enzymeCount) (COUNT(DISTINCT ?organism) AS ?orgCount)
+      FROM <http://rdfportal.org/dataset/brenda>
+      WHERE {
+        VALUES ?ec {
+          <https://purl.dsmz.de/brenda/ec/1.1.1.1>    # alcohol dehydrogenase
+          <https://purl.dsmz.de/brenda/ec/2.7.10.1>   # receptor protein-tyrosine kinase
+          <https://purl.dsmz.de/brenda/ec/3.4.22.36>  # caspase-1
+        }
+        ?ec rdfs:label ?ecLabel .
+        ?enzyme d3o:isClassifiedAs ?ec ;
+                d3o:foundIn ?organism .
+      }
+      GROUP BY ?ec ?ecLabel
+
+  - title: "Tissue-specific enzyme expression across organisms"
+    description: Find tissues that express a specific enzyme class and the organisms they belong to.
+      Demonstrates the tissue→enzyme direction (d3o:expresses).
+    question: "In which tissues and organisms is ornithine decarboxylase expressed according to BRENDA?"
+    complexity: advanced
+    sparql: |
+      PREFIX d3o:  <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT DISTINCT ?tissueLabel ?orgLabel
+      FROM <http://rdfportal.org/dataset/brenda>
+      WHERE {
+        # Tissue EXPRESSES enzyme (direction: tissue → enzyme, not enzyme → tissue)
+        ?tissue a d3o:Tissue ;
+                rdfs:label ?tissueLabel ;
+                d3o:expresses ?enzyme ;
+                d3o:partOf ?organism .
+        ?organism rdfs:label ?orgLabel .
+        # Navigate from enzyme to its EC class to filter by class
+        ?enzyme d3o:isClassifiedAs <https://purl.dsmz.de/brenda/ec/4.1.1.17> .
+      }
+      LIMIT 20
+
+cross_database_queries:
+  shared_endpoint: primary
+  co_located_databases: [hgnc, bacdive, nando, mondo, mesh, go, taxonomy, mediadive]
+  examples:
+    - title: "Link BRENDA EC classes to HGNC enzyme-coding genes"
+      description: |
+        Linking strategy:
+        - BRENDA: ECNumber IRI encodes the EC number in its path
+          (https://purl.dsmz.de/brenda/ec/4.1.1.17 → "4.1.1.17")
+        - HGNC: genes have rdfs:seeAlso → idt:ec-code nodes with dct:identifier "4.1.1.17"
+        - Join via BIND + FILTER(STR=STR) to normalise the typed-string vs plain-string mismatch
+        - No text search required
+      databases_used: [brenda, hgnc]
+      complexity: intermediate
+      sparql: |
+        PREFIX d3o:  <https://purl.dsmz.de/schema/>
+        PREFIX m2r:  <http://med2rdf.org/ontology/med2rdf#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX dct:  <http://purl.org/dc/terms/>
+        PREFIX idt:  <http://identifiers.org/>
+
+        SELECT ?geneSymbol ?ecNum ?ecLabel
+        WHERE {
+          GRAPH <http://rdfportal.org/dataset/hgnc> {
+            ?gene a m2r:Gene ;
+                  rdfs:label ?geneSymbol ;
+                  rdfs:seeAlso ?ecCode .
+            ?ecCode a idt:ec-code ;
+                    dct:identifier ?ecNum .
+          }
+          GRAPH <http://rdfportal.org/dataset/brenda> {
+            ?ec a d3o:ECNumber ;
+                rdfs:label ?ecLabel .
+            # Extract EC number from IRI and compare with HGNC identifier string
+            BIND(STRAFTER(STR(?ec), "https://purl.dsmz.de/brenda/ec/") AS ?ecNum2)
+            FILTER(STR(?ecNum2) = STR(?ecNum))
+          }
+        }
+        LIMIT 20
+      notes: |
+        - Linking via: EC number string (BRENDA IRI path vs HGNC dct:identifier)
+        - MIE files checked: brenda, hgnc
+        - BRENDA EC IRI namespace: https://purl.dsmz.de/brenda/ec/ (NOT the same as idt:ec-code)
+        - FILTER(STRAFTER(STR(?ec), prefix) = ?ecNum) alone may fail in Virtuoso due to
+          xsd:string type mismatch — always use BIND + FILTER(STR()=STR()) pattern
+
+cross_references:
+  - pattern: d3o:isClassifiedAs
+    description: |
+      Links enzyme instances to their EC number class nodes. Multiple enzymes can share
+      one EC class (one per organism). The EC IRI encodes the number directly.
+    databases:
+      internal:
+        - "EC Number: 100% of enzyme instances"
+  - pattern: d3o:refersToCompound
+    description: |
+      Links inhibitor, activator, cofactor, substrate, and product role nodes to the
+      actual ChemicalCompound node, which carries rdfs:label, d3o:hasIdentifier, and
+      d3o:hasStructure → InChI/InChIKey.
+    databases:
+      internal:
+        - "ChemicalCompound: 100% of effector/role nodes"
+  - pattern: d3o:hasPubMedID
+    description: |
+      String PubMed ID on Reference nodes. Use this to bridge to the pubmed database on
+      the ncbi endpoint (separate endpoint — cannot join directly in SPARQL).
+    databases:
+      literature:
+        - "PubMed: ~100% of Reference nodes have hasPubMedID"
+
+architectural_notes:
+  query_strategy:
+    - "FIRST: read the MIE file; examine shape_expressions for entity hierarchy"
+    - "EC lookup: use the EC IRI directly (https://purl.dsmz.de/brenda/ec/{X.X.X.X})"
+    - "Enzyme instances: query via d3o:isClassifiedAs from the EC IRI"
+    - "Compound structure: navigate inhibitor/activator → d3o:refersToCompound → d3o:hasStructure"
+    - "Organism filter: use d3o:hasTaxID integer for NCBI Taxonomy ID lookups"
+    - "Tissue expression: query FROM tissue (tissue d3o:expresses enzyme), not from enzyme"
+    - "Priority: EC IRI > Taxonomy ID > Compound name (rdfs:label) > Text search"
+
+  schema_design:
+    - "Central entities: EC number (class) and Enzyme (instance = class × organism)"
+    - "Inhibitor/Activator/Cofactor are ROLE nodes, not compound nodes — bridge via refersToCompound"
+    - "Reactions link to EC classes (catalyzedByClass) and enzyme instances (catalyzedBy)"
+    - "Tissue expression flows FROM tissue TO enzyme (d3o:expresses)"
+    - "Organism nodes are strain-level; d3o:hasTaxID (integer) links to NCBI Taxonomy"
+    - "Compound nodes are shared across all role types; structure is via hasStructure → InChI"
+
+  performance:
+    - "Always include FROM <http://rdfportal.org/dataset/brenda> or GRAPH clause"
+    - "EC-class-filtered queries (d3o:isClassifiedAs <ec/X.X.X.X>) are fast — indexed predicate"
+    - "Organism-by-taxID (d3o:hasTaxID 9606): use integer literal, not string"
+    - "Inhibitor queries can be large (110K nodes) — always add d3o:affectsClass filter"
+    - "Split property paths before bif:contains on Virtuoso — avoid /d3o:hasSynonyms chained"
+
+  data_integration:
+    - "Bridge to HGNC: BRENDA ec/{X.X.X.X} IRI → STR extraction → HGNC idt:ec-code dct:identifier"
+    - "Bridge to PubMed: Reference d3o:hasPubMedID → PMID string (ncbi endpoint, separate)"
+    - "Bridge to InChI databases: compound d3o:hasStructure → d3o:hasInChIKey"
+
+  data_quality:
+    - "Organism nodes are strain-specific (e.g. 'Saccharomyces cerevisiae X 2180') — multiple per species"
+    - "hasTaxID is present on ~50% of organism nodes; absent entries need label-based lookup"
+    - "Compounds have multiple structure nodes (different stereoisomers, salts, isotopes)"
+    - "Inhibitor/139 (spermidine) affects 100+ EC classes — very broad inhibitor nodes exist"
+
+  text_search_justification:
+    - "Number of the 7 example queries that use text search: 0"
+    - "EC numbers are IRIs — use directly"
+    - "Organism lookup uses d3o:hasTaxID integer or exact rdfs:label match"
+    - "Compound names (rdfs:label) are controllable — use exact match for known compounds"
+    - "Free text only justified for dct:description (IUBMB annotation text) or reference titles"
+
+data_statistics:
+  total_entities: 54720
+  verified_date: "2026-04-28"
+  verification_method: "Direct COUNT on d3o:Enzyme instances from earlier class-count query"
+
+  coverage:
+    enzyme_instances:
+      value: "54,720 enzyme instances"
+      calculation: "COUNT of d3o:Enzyme class"
+      verified_date: "2026-04-28"
+    ec_numbers:
+      value: "7,453 EC classes"
+      calculation: "COUNT of d3o:ECNumber class"
+      verified_date: "2026-04-28"
+    compounds:
+      value: "214,688 chemical compounds"
+      calculation: "COUNT of d3o:ChemicalCompound class"
+      verified_date: "2026-04-28"
+    reactions:
+      value: "139,860 reactions"
+      calculation: "COUNT of d3o:Reaction class"
+      verified_date: "2026-04-28"
+    inhibitors:
+      value: "110,187 inhibitor role nodes"
+      calculation: "COUNT of d3o:Inhibitor class"
+      verified_date: "2026-04-28"
+    organisms:
+      value: "30,338 organism entries"
+      calculation: "COUNT of d3o:BiologicalMaterial class"
+      verified_date: "2026-04-28"
+    references:
+      value: "173,164 literature references"
+      calculation: "COUNT of d3o:Reference class"
+      verified_date: "2026-04-28"
+    tissues:
+      value: "4,815 tissue types"
+      calculation: "COUNT of d3o:Tissue class"
+      verified_date: "2026-04-28"
+    activators:
+      value: "6,479 activator role nodes"
+      calculation: "COUNT of d3o:Activator class"
+      verified_date: "2026-04-28"
+    pathways:
+      value: "194 pathway entries"
+      calculation: "COUNT of d3o:Pathway class"
+      verified_date: "2026-04-28"
+
+anti_patterns:
+  - title: "Confusing Enzyme IRI with EC Number IRI"
+    problem: "Using enzyme internal IDs where EC number IRIs are needed, or vice versa."
+    wrong_sparql: |
+      # Wrong — enzyme/2485 is an enzyme instance, not an EC number
+      ?inhibitor d3o:affectsClass <https://purl.dsmz.de/brenda/enzyme/2485> .
+    correct_sparql: |
+      # EC number IRI uses the dotted number directly
+      ?inhibitor d3o:affectsClass <https://purl.dsmz.de/brenda/ec/4.1.1.17> .
+    explanation: "Enzyme IRIs are internal BRENDA instance IDs. EC number IRIs encode the class number in the path. They are completely different namespaces."
+
+  - title: "Querying Structural Data from Inhibitor/Activator Nodes"
+    problem: "Expecting rdfs:label or InChI on an inhibitor node — structure data is on the compound."
+    wrong_sparql: |
+      ?inhibitor a d3o:Inhibitor ;
+                 rdfs:label ?label ;           # wrong — inhibitor has no label
+                 d3o:hasInChIKey ?inchiKey .   # wrong — InChIKey is on the compound/structure
+    correct_sparql: |
+      ?inhibitor a d3o:Inhibitor ;
+                 d3o:refersToCompound ?compound .
+      ?compound rdfs:label ?label ;
+                d3o:hasStructure ?structure .
+      ?structure d3o:hasInChIKey ?inchiKey .
+    explanation: "Inhibitor/Activator nodes represent context-specific roles, not chemical entities. Navigate via d3o:refersToCompound to reach the compound and its structure."
+
+  - title: "Wrong Direction for Tissue Expression"
+    problem: "Looking for d3o:expresses on enzyme nodes — the predicate goes FROM tissue TO enzyme."
+    wrong_sparql: |
+      ?enzyme d3o:expresses ?tissue .   # wrong direction
+    correct_sparql: |
+      ?tissue a d3o:Tissue ;
+              d3o:expresses ?enzyme ;   # tissue expresses enzyme
+              d3o:partOf ?organism .
+      ?enzyme d3o:isClassifiedAs ?ec .
+    explanation: "The d3o:expresses predicate is on tissue nodes pointing to enzyme nodes, not the reverse. Check shape_expressions for the correct predicate direction."
+
+  - title: "Skipping Schema Check Before Text Search"
+    problem: "Using bif:contains to find enzymes by name when the EC IRI can be used directly."
+    wrong_sparql: |
+      ?ec rdfs:label ?label .
+      ?label bif:contains "'ornithine decarboxylase'"
+    correct_sparql: |
+      # Workflow: Look up the EC number in the IUBMB classification, then use the IRI
+      # EC 4.1.1.17 = ornithine decarboxylase
+      ?enzyme d3o:isClassifiedAs <https://purl.dsmz.de/brenda/ec/4.1.1.17> .
+      # If EC number is unknown, use exact label match (controlled vocabulary):
+      ?ec rdfs:label "ornithine decarboxylase" .
+    explanation: "EC number names are controlled vocabulary. Use exact rdfs:label match or the EC IRI directly. bif:contains is only warranted for free-text fields like dct:description."
+
+common_errors:
+  - error: "Empty results when querying inhibitors or activators"
+    causes:
+      - "Missing d3o:affectsClass filter — querying all 110K inhibitors without EC class restriction"
+      - "Expected rdfs:label on inhibitor node — labels are on the compound, not the role node"
+      - "Confused inhibitor IRI with compound IRI — they share the same internal number but different namespaces (brenda:inhibitor/ vs brenda:compound/)"
+    solutions:
+      - "Always filter inhibitors by d3o:affectsClass <ec/X.X.X.X>"
+      - "Navigate to compound via d3o:refersToCompound for name and structure"
+      - "Use a idt:Inhibitor type check to confirm the node type"
+
+  - error: "Organism lookup returns no results with d3o:hasTaxID"
+    causes:
+      - "Used string literal '9606' instead of integer 9606 for the taxon ID"
+      - "hasTaxID is absent on ~50% of organism nodes — organism has no NCBI taxon link"
+    solutions:
+      - "Use integer literal: d3o:hasTaxID 9606 (not '9606' or \"9606\"^^xsd:string)"
+      - "If taxID query returns nothing, fall back to rdfs:label exact match for organism name"
+
+  - error: "Cross-database SPARQL to HGNC returns empty results"
+    causes:
+      - "Used FROM + GRAPH mix instead of pure GRAPH clauses"
+      - "FILTER(STRAFTER(STR(?ec), prefix) = ?ecNum) fails due to xsd:string vs plain-string mismatch"
+    solutions:
+      - "Use only GRAPH clauses (no FROM) for cross-dataset queries at the primary endpoint"
+      - "Use BIND(STRAFTER(STR(?ec), prefix) AS ?ecNum2) then FILTER(STR(?ecNum2) = STR(?ecNum))"

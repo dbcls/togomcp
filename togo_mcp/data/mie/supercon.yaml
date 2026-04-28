@@ -7,9 +7,15 @@ schema_info:
     metallic superconductors. Documented properties include critical temperature (Tc and
     multiple variants), crystal structure, lattice parameters, critical magnetic fields,
     thermal properties (Debye temperature, gamma coefficient), energy gap, resistivity,
-    coherence and penetration lengths, and sample preparation conditions. Primary use
-    cases: materials informatics, ML model training for superconductor discovery,
-    and comparative Tc studies across compound families.
+    coherence and penetration lengths, and sample preparation conditions.
+    The SuperCon-ont OWL ontology (244 owl:Class entries with rdfs:label and rdfs:comment)
+    is co-loaded into the same data graph and defines the property class hierarchy
+    (SuperConductingProperty → tc, t1, t2, t3, tcsus, hc2zero, …; MagneticProperty;
+    MechanicalProperty; ThermalProperty; NormalStateProperty), enabling rdfs:subClassOf*
+    navigation to gather all transition-temperature variants or all magnetic-field
+    properties for a sample without enumerating each subclass IRI manually.
+    Primary use cases: materials informatics, ML model training for superconductor
+    discovery, and comparative Tc studies across compound families.
   keywords:
     - superconductor
     - superconducting material
@@ -32,8 +38,8 @@ schema_info:
     - http://rdfportal.org/dataset/supercon
   kw_search_tools: []
   version:
-    mie_version: "3.2"
-    mie_created: "2026-04-22"
+    mie_version: "4.0"
+    mie_created: "2026-04-28"
     data_version: "NIMS SuperCon RDF 2026 snapshot (archival; last substantive entries 2019-2020)"
     update_frequency: "Effectively frozen: 4 papers added 2021, 2 in 2022, 1 in 2023"
   license:
@@ -45,19 +51,57 @@ schema_info:
     backend: Virtuoso
 
 critical_warnings: |
-  - SCAFFOLD BUG (CRITICAL -- v3.1 queries ALL return 0 rows):
+  - SCAFFOLD BUG (CRITICAL -- queries that put IAO_0000221 on the Measurement node return 0 rows):
     IAO_0000221 is on the DATUM node, NOT the Measurement node.
-    WRONG (v3.1):  ?meas obo:IAO_0000221 ?propNode ; obo:OBI_0000299 ?datum .
-    CORRECT (v3.2): ?meas obo:OBI_0000299 ?datum .
-                    ?datum obo:IAO_0000221 ?propNode ; sio:SIO_000300 ?value .
-    SHORTCUT:       ?datum obo:IAO_0000221 ?propNode ; sio:SIO_000300 ?value .
+    WRONG:    ?meas obo:IAO_0000221 ?propNode ; obo:OBI_0000299 ?datum .
+    CORRECT:  ?meas obo:OBI_0000299 ?datum .
+              ?datum obo:IAO_0000221 ?propNode ; sio:SIO_000300 ?value .
+    SHORTCUT: ?datum obo:IAO_0000221 ?propNode ; sio:SIO_000300 ?value .
     Any query omitting this correction returns 0 rows with no error message.
 
-  - TYPO (required verbatim): dct:referecens (NOT dct:references).
+  - TYPO (required verbatim) -- INSTANCE DATA: dct:referecens (NOT dct:references).
     Using the corrected spelling returns zero results for all reference lookups.
 
-  - TYPO (required verbatim): Schema:IntermalStructure (NOT Schema:InternalStructure).
-    Instance IRIs use correctly-spelled "InternalStructure"; typo applies to class name only.
+  - TYPO ASYMMETRY (instance data vs ontology):
+    INSTANCE TYPE:  Schema:IntermalStructure (typo) -- 35,752 records.
+    ONTOLOGY CLASS: Schema:InternalStructure (correct) -- defined in the loaded ontology
+                    with rdfs:label "InternalStructure" and rdfs:comment.
+    Filter on Schema:IntermalStructure for instance queries; query Schema:InternalStructure
+    only for ontology metadata lookups (rdfs:label, rdfs:subClassOf). Mixing them
+    silently returns 0 rows.
+
+  - ONTOLOGY IS CO-LOADED INTO THE DATA GRAPH (since v4):
+    The SuperCon-ont OWL ontology lives in the SAME graph as the data
+    (<http://rdfportal.org/dataset/supercon>), not a separate ontology graph.
+    rdfs:label and rdfs:comment patterns work without any GRAPH switch.
+    244 owl:Class entries, organised under property categories:
+    SuperConductingProperty (37 subclasses), NormalStateProperty (18),
+    MechanicalProperty (12), MagneticProperty (5), ThermalProperty (9),
+    StructuralProperty (7), MaterialStructureDescriptor (5).
+
+  - VIRTUOSO PROPERTY-PATH JOIN BUG: rdfs:subClassOf* (and +) returns 0 rows when
+    the path's start variable is bound from another join (e.g. ?propNode a ?propClass
+    chained with ?propClass rdfs:subClassOf* :Class).
+    WORKS:    ?cls rdfs:subClassOf* :SCP                    (open-ended)
+    WORKS:    VALUES ?cls { :tc :t1 } . ?cls rdfs:subClassOf* :SCP   (bound by VALUES)
+    WORKS:    Schema:tc rdfs:subClassOf* :SCP               (bound by IRI)
+    BROKEN:   ?node a ?cls . ?cls rdfs:subClassOf* :SCP     (bound by triple-pattern join)
+    Workarounds: (a) use single-step rdfs:subClassOf if the hierarchy is shallow
+    (most SuperCon property categories are 1 level deep -- this works for SuperConductingProperty,
+    MagneticProperty, etc.); (b) materialise the subclass list via a separate query
+    and inline as VALUES.
+
+  - t1 / t2 / t3 / tcn SEMANTICS (now defined by ontology):
+    Schema:t1   = transition temperature (R = 0)             -- zero-resistance Tc
+    Schema:t2   = transition temperature (mid-point of R(T)) -- midpoint Tc
+    Schema:t3   = transition temperature (R = 100% normal)   -- onset Tc
+    Schema:tc   = recommended Tc                             -- the canonical value to use
+    Schema:tcn  = lowest temperature measured (NOT superconducting)
+                  -- a lower bound for Tc when nothing was observed
+    Schema:tcsus = Tc from magnetic susceptibility measurement
+    Empirical note: in the current snapshot t2 == tc for ALL records (0 mismatches)
+    despite ontologically distinct semantics; treat t2 as a derived duplicate of tc
+    for ML and omit it from feature matrices.
 
   - RETRACTED PAPERS (no flags in database):
     C-S-H at ~287.7 K: ref NAT586000373 -- retracted September 2022.
@@ -76,6 +120,8 @@ shape_expressions: |
   PREFIX dct:    <http://purl.org/dc/terms/>
   PREFIX bibo:   <http://purl.org/ontology/bibo/>
   PREFIX prism:  <http://prismstandard.org/namespaces/basic/2.0/>
+  PREFIX owl:    <http://www.w3.org/2002/07/owl#>
+  PREFIX rdfs:   <http://www.w3.org/2000/01/rdf-schema#>
 
   # -- CENTRAL ENTITY: 165,969 instances ---------------------------------------
   # 80.8% (134,039) are skeleton nodes with no name/formula/Tc data.
@@ -94,20 +140,28 @@ shape_expressions: |
   <ElementShape> { a [ Schema:element ] ; sio:SIO_000300 xsd:string }
 
   # -- TEMPERATURE PROPERTIES (all attach to sample via sio:SIO_000008) --------
-  # Schema:tc      26,358  primary critical temperature; use this for Tc queries
-  # Schema:t2      17,117  EMPIRICALLY IDENTICAL to tc in ALL records -- data duplicate
-  #                        (0 records with t2 != tc; verified); omit from ML feature matrices
-  # Schema:t1       4,051  variant (semantics undocumented)
-  # Schema:t3       4,606  variant (semantics undocumented)
-  # Schema:tcn      4,641  Tc variant (semantics undocumented)
-  # Schema:tcsus    5,624  Tc from magnetic susceptibility
+  # Ontology defines all semantics; classes are subclasses of SuperConductingProperty
+  # (tc, t1, t2, t3, tcn, tcsus) or MagneticProperty (curiet, curiec, neelt).
+  # Schema:tc      26,358  recommended Tc (the canonical value for analysis)
+  # Schema:t2      17,117  Tc at midpoint of R(T) transition;
+  #                        EMPIRICALLY IDENTICAL to tc in this snapshot (0 mismatches);
+  #                        treat as derived duplicate; omit from ML feature matrices.
+  # Schema:t1       4,051  Tc at zero resistance (R = 0)
+  # Schema:t3       4,606  Tc at onset (R = 100% normal-state value)
+  # Schema:tcn      4,641  lowest temperature measured WITHOUT observing superconductivity
+  #                        (lower bound -- not a positive Tc detection)
+  # Schema:tcsus    5,624  Tc from magnetic susceptibility measurement
   # Schema:curiet   1,198  Curie temperature
-  # Schema:curiec     214  Curie constant (semantics undocumented)
+  # Schema:curiec     214  Curie constant
   # Schema:neelt    1,490  Neel temperature
   <TemperaturePropertyShape> {
     a [ Schema:tc Schema:t2 Schema:t1 Schema:t3 Schema:tcn Schema:tcsus
         Schema:curiet Schema:curiec Schema:neelt ]
-    # Values accessed via Measurement scaffold (see below)
+    # Values accessed via Measurement scaffold (see below).
+    # To gather ALL SuperConductingProperty subclasses for a sample, use SINGLE-STEP
+    # rdfs:subClassOf (not subClassOf*); see critical_warnings for the Virtuoso quirk:
+    #   ?propNode a ?propClass .
+    #   ?propClass rdfs:subClassOf Schema:SuperConductingProperty ; rdfs:label ?lbl .
   }
 
   # -- CRITICAL FIELD PROPERTIES -----------------------------------------------
@@ -131,31 +185,32 @@ shape_expressions: |
   }
 
   # -- CRYSTALLOGRAPHY ---------------------------------------------------------
-  # Schema:lata / latb / latc  lattice parameters a, b, c
+  # Schema:lata / latb / latc  lattice parameters a, b, c (subclasses of LatticeConstant)
   # UNIT WARNING (sio:SIO_000221 on datum):
   #   lata: "A"=9,115  ""=3,946  "nm"=65   (nm = 10x Angstrom -- scale error if mixed!)
   #   latb: "A"=1,788  ""=1,731  "nm"=7
   #   latc: "A"=7,686  ""=4,001  "nm"=83
   #   Always inspect or filter the unit field before comparing lattice values.
   # Schema:spaceg  ~9,000  space group string
-  # Schema:str3            structure type string
-  # Schema:oz              oxygen stoichiometry z
-  # Schema:dens            density
+  # Schema:str3            common name of structure (subclass of CrystalState)
+  # Schema:oz              oxygen stoichiometry z (subclass of MaterialProperty)
+  # Schema:dens            density (g/cm^3; subclass of MechanicalProperty)
   <CrystallographyPropertyShape> {
     a [ Schema:lata Schema:latb Schema:latc Schema:spaceg Schema:str3 Schema:oz Schema:dens ]
   }
 
   # -- CRYSTAL STRUCTURE NODE --------------------------------------------------
-  # Class typo: Schema:IntermalStructure (required verbatim; see critical_warnings)
-  # Instance IRIs use correctly-spelled "InternalStructure"
+  # Class IRI ASYMMETRY (see critical_warnings):
+  #   INSTANCE TYPE:  Schema:IntermalStructure (typo) -- USE FOR DATA QUERIES
+  #   ONTOLOGY CLASS: Schema:InternalStructure (correct spelling) -- only for ontology lookups
   # Structure type vocabulary:
   #   Named IRIs: Schema:str1_01..07 -- 6,813 records (19.1% of 35,752 structure nodes)
   #   Blank nodes: nodeID://b...      -- 28,939 records (80.9%)
   # Any IRI-based filter silently discards 80.9% of structure data.
   <IntermalStructureShape> {
-    a [ Schema:IntermalStructure ] ;
-    obo:BFO_0000051 IRI ?  ;  # named IRI (19.1%) or blank node (80.9%)
-    obo:RO_0000058  IRI *    # links to lattice parameter property nodes
+    a [ Schema:IntermalStructure ] ;          # typo'd class (instance type)
+    obo:BFO_0000051 IRI ?  ;                  # named IRI (19.1%) or blank node (80.9%)
+    obo:RO_0000058  IRI *                     # links to lattice parameter property nodes
   }
 
   # -- MEASUREMENT SCAFFOLD (96,167 Schema:Measurement nodes) ------------------
@@ -205,6 +260,21 @@ shape_expressions: |
     dct:creator                 xsd:string ;
     dct:title                   xsd:string ;
     prism:publicationDate       xsd:string ?   # 4-digit year; 32 records have empty string
+  }
+
+  # -- ONTOLOGY NODE (244 owl:Class entries co-loaded into the data graph) -----
+  # Use to translate a property class IRI into human-readable semantics, or to
+  # gather siblings of a class via rdfs:subClassOf*.
+  # Top-level property categories (with subclass counts):
+  #   SuperConductingProperty  37    NormalStateProperty  18
+  #   MechanicalProperty       12    MagneticProperty      5
+  #   ThermalProperty           9    StructuralProperty    7
+  #   MaterialStructureDescriptor 5  Component            11
+  <OntologyClassShape> {
+    a [ owl:Class ] ;
+    rdfs:label    xsd:string ;
+    rdfs:comment  xsd:string ?  ;
+    rdfs:subClassOf IRI *
   }
 
 sample_rdf_entries:
@@ -446,36 +516,42 @@ sparql_query_examples:
       ORDER BY DESC(?tcVal)
       LIMIT 10
 
-  - title: Average and maximum Tc grouped by named crystal structure type
+  - title: All superconducting properties for a sample with ontology-defined semantics
     description: |
-      Groups samples by the 7 named structure IRIs (Schema:str1_01..07).
-      SCOPE LIMITATION: named IRIs cover only 19.1% of structure data (6,813 of 35,752).
-      The remaining 80.9% (28,939 records) use blank nodes and are excluded by design.
-    question: What is the average and maximum Tc for each named crystal structure type?
+      Demonstrates the new capability enabled by the co-loaded SuperCon-ont ontology:
+      collect every direct subclass of Schema:SuperConductingProperty (tc, t1, t2, t3,
+      tcn, tcsus, tcwidth, hc1zero, hc2zero, gap, penet, cohere, dhc2dt, …) in one
+      shot, with each value annotated by the ontology's rdfs:label and rdfs:comment.
+      Replaces the v3 "average Tc by named structure" query, which was limited to
+      the 19.1% of structure data with named IRIs.
+
+      VIRTUOSO QUIRK: a single-step rdfs:subClassOf is used (not rdfs:subClassOf*).
+      Property paths combined with a join-bound ?propClass return 0 rows on this
+      endpoint -- see common_errors. SuperCon's hierarchy is shallow (one level from
+      property category to leaf), so single-step is sufficient.
+    question: What are all superconducting properties for sample msc_om0000949 and what does each one mean?
     complexity: advanced
     sparql: |
+      PREFIX smp:    <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/smp#>
       PREFIX sio:    <http://semanticscience.org/resource/>
       PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
       PREFIX obo:    <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs:   <http://www.w3.org/2000/01/rdf-schema#>
 
-      SELECT ?strType (AVG(?tcVal) AS ?avgTc) (MAX(?tcVal) AS ?maxTc) (COUNT(?sample) AS ?count)
+      SELECT ?propLabel ?propComment ?value ?unit
       FROM <http://rdfportal.org/dataset/supercon>
       WHERE {
-        ?sample a Schema:OxideAndMetallic ;
-                sio:SIO_000008 ?strNode, ?tcProp .
-        ?strNode a Schema:IntermalStructure ;
-                 obo:BFO_0000051 ?strType .
-        VALUES ?strType {
-          Schema:str1_01 Schema:str1_02 Schema:str1_03
-          Schema:str1_04 Schema:str1_05 Schema:str1_06 Schema:str1_07
-        }
-        ?tcProp a Schema:tc .
-        ?tcDatum obo:IAO_0000221 ?tcProp ;
-                 sio:SIO_000300 ?tcVal .
+        smp:msc_om0000949 sio:SIO_000008 ?propNode .
+        ?propNode a ?propClass .
+        ?propClass rdfs:subClassOf Schema:SuperConductingProperty ;
+                   rdfs:label ?propLabel .
+        OPTIONAL { ?propClass rdfs:comment ?propComment . }
+        ?datum obo:IAO_0000221 ?propNode ;
+               sio:SIO_000300 ?value .
+        OPTIONAL { ?datum sio:SIO_000221 ?unit . }
       }
-      GROUP BY ?strType
-      ORDER BY DESC(?avgTc)
-      LIMIT 20
+      ORDER BY ?propLabel
+      LIMIT 30
 
 cross_database_queries:
   shared_endpoint: nims
@@ -518,11 +594,13 @@ cross_references:
 architectural_notes:
   query_strategy:
     - "MANDATORY FIRST STEP: read critical_warnings -- the scaffold bug (IAO_0000221 on wrong node) causes silent 0-row failures"
-    - "CORRECTED scaffold (v3.2): ?datum obo:IAO_0000221 ?propNode ; sio:SIO_000300 ?value"
+    - "CORRECTED scaffold: ?datum obo:IAO_0000221 ?propNode ; sio:SIO_000300 ?value"
+    - "ONTOLOGY-DRIVEN DISCOVERY (new in v4): the SuperCon-ont OWL ontology is co-loaded into the data graph. Use SINGLE-STEP rdfs:subClassOf to gather siblings of a property class (all SuperConductingProperty subclasses, all MagneticProperty subclasses, etc.) instead of enumerating Schema:tcN class IRIs by hand. Property paths (subClassOf*/+) combined with a join-bound class variable are broken on Virtuoso -- see critical_warnings."
+    - "ONTOLOGY METADATA: every Schema: property class carries rdfs:label and rdfs:comment with human-readable semantics (e.g. tc = 'Tc (recommended)'; t1 = 'transition temperature (R = 0)'). Project these alongside values for self-documenting result sets."
     - "Exploratory: use SPARQL with LIMIT 10 (no keyword search API) to discover IRIs and values"
     - "Property type selection: use typed predicates (a Schema:tc, a Schema:hc2zero, etc.) -- no text search needed"
     - "Text search: bif:contains (Virtuoso, indexed) ONLY for Schema:SamplePreparation rdfs:comment -- the sole unstructured field"
-    - "Priority: Specific IRIs > Typed predicates > Graph navigation > bif:contains (only SamplePrep)"
+    - "Priority: Specific IRIs > Typed predicates > single-step rdfs:subClassOf hierarchy navigation > bif:contains (only SamplePrep)"
 
   schema_design:
     - "Central entity: Schema:OxideAndMetallic (165,969 instances); 80.8% skeleton nodes without measurement data"
@@ -532,6 +610,7 @@ architectural_notes:
     - "Two undocumented-but-large namespaces: cmp# (154,792 composition triples) and prc# (22,165 SamplePrep nodes)"
     - "Crystal structure types: str1_01..07 (19.1% named IRIs) + blank nodes (80.9%)"
     - "150+ Schema: property classes; this MIE covers all major physical categories"
+    - "Ontology layer (v4): 244 owl:Class entries with rdfs:label/comment; top-level categories SuperConductingProperty (37), NormalStateProperty (18), MechanicalProperty (12), ThermalProperty (9), StructuralProperty (7), MagneticProperty (5), MaterialStructureDescriptor (5), Component (11), ElementComposition (11)"
 
   performance:
     - "Always include a Schema:OxideAndMetallic type filter and FROM <http://rdfportal.org/dataset/supercon>"
@@ -576,7 +655,9 @@ data_statistics:
     structure_named_IRI_type: "6,813 (19.1% of 35,752 structure records)"
     structure_blank_node_type: "28,939 (80.9% of 35,752 structure records)"
     cmp_composition_links: 154792
-  verified_date: "2026-04-20"
+    ontology_owl_classes: 244
+    ontology_top_level_property_categories: 8
+  verified_date: "2026-04-28"
   verification_method: "Direct COUNT queries on each class against the supercon named graph"
   coverage:
     samples_with_Tc: "15.9% of OxideAndMetallic samples (26,358 / 165,969)"
@@ -588,7 +669,7 @@ data_statistics:
     verified_date: "2026-04-22"
 
 anti_patterns:
-  - title: Using the v3.1 (wrong) measurement scaffold
+  - title: Putting IAO_0000221 on the Measurement node instead of the Datum node
     problem: |
       Placing IAO_0000221 on the Measurement node instead of the datum node.
       This pattern returns 0 rows without an error -- a silent failure.
@@ -604,7 +685,7 @@ anti_patterns:
              sio:SIO_000300 ?value .
       # SHORTCUT (no Measurement hop needed):
       # ?datum obo:IAO_0000221 ?propNode ; sio:SIO_000300 ?value .
-    explanation: "Always verify the scaffold from critical_warnings before writing queries. The v3.1 description had the predicate on the wrong node."
+    explanation: "Always verify the scaffold from critical_warnings before writing queries. IAO_0000221 ('is about') belongs on the Datum, pointing to the property class node."
 
   - title: Text search for fields with typed predicates
     problem: |
@@ -662,16 +743,17 @@ anti_patterns:
     explanation: "Unit distribution for lata: A=9,115, empty=3,946 (assume A), nm=65. Always inspect sio:SIO_000221 on lattice datum nodes."
 
 common_errors:
-  - error: All measurement queries return 0 rows
+  - error: Query returns 0 rows with no error message
     causes:
-      - "Using the v3.1 scaffold with IAO_0000221 on the Measurement node (silent failure)"
+      - "IAO_0000221 placed on the Measurement node instead of the Datum node (scaffold bug)"
       - "Using dct:references instead of dct:referecens (corrected spelling silently matches nothing)"
-      - "Using Schema:InternalStructure instead of Schema:IntermalStructure for class assertions"
+      - "Using Schema:InternalStructure (correct spelling) for instance type assertion -- instance data uses the typo'd Schema:IntermalStructure"
+      - "rdfs:subClassOf* / + property path with a class variable bound from another join (Virtuoso optimizer bug)"
     solutions:
       - "Scaffold: ?datum obo:IAO_0000221 ?propNode ; sio:SIO_000300 ?value (IAO_0000221 on DATUM)"
       - "Reference predicate: dct:referecens (four-letter suffix 'cens', not 'nces')"
-      - "Structure class: Schema:IntermalStructure ('Intermal', not 'Internal')"
-      - "Instance IRIs (str:..._InternalStructure) are correctly spelled; typo is class name only"
+      - "Instance type: Schema:IntermalStructure (typo); ontology lookups use Schema:InternalStructure"
+      - "For class hierarchy navigation, use single-step rdfs:subClassOf (works for SuperCon's shallow hierarchy), or pre-materialise the subclass list and inline as VALUES"
 
   - error: High-Tc outliers from retracted papers included in analysis
     causes:

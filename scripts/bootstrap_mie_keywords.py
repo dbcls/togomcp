@@ -45,6 +45,8 @@ CATEGORY_RULES: dict[str, list[str]] = {
     "disease": ["disease", "phenotype", "clinical"],
     "materials": ["materials science", "crystal structure", "lattice parameter", "alloy", "oxide", "superconductor", "supercon"],
     "physics": ["superconductor", "supercon", "critical temperature", " tc ", "magnetic field", "conductivity", "physical property"],
+    "enzymology": ["enzyme", "ec number", "kinetic", "brenda", "kcat", "km value", "turnover", "substrate"],
+    "genomics": ["genome", "genomic", "hgnc", "gene nomenclature", "official symbol", "ensembl"],
 }
 
 STOPWORDS = {

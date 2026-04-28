@@ -149,6 +149,8 @@ Both fields drive the `find_databases()` discovery tool — a token-efficient al
 | `disease` | Disease, phenotype, clinical associations |
 | `materials` | Materials science — crystal structure, lattice parameters, alloys, oxides, polymers |
 | `physics` | Physical properties and measurements — Tc, magnetic fields, conductivity, thermal coefficients |
+| `enzymology` | Enzyme function, kinetics, EC numbers, substrates / inhibitors / activators |
+| `genomics` | Genome-scale resources, gene nomenclature, cross-genome catalogs |
 
 When adding a new category, update both this taxonomy and the `find_databases` tool documentation.
 

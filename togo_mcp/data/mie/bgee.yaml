@@ -1,0 +1,653 @@
+schema_info:
+  title: Bgee
+  description: |
+    Bgee is a curated database of gene expression patterns across animal species,
+    integrating RNA-Seq, Affymetrix, EST, and in situ hybridization data into uniform
+    expression "calls" (present / absent) tagged with anatomy (UBERON / CL / WBbt
+    etc.), developmental stage, sex, and strain. Core entity types: Gene (orth:Gene
+    via OMA gene IRIs), Expression / AbsenceExpression (gene-condition calls),
+    ExpressionCondition (anatomy + dev stage + sex + strain bundles), AnatomicalEntity,
+    DevelopmentalStage, Taxon. Primary use cases: cross-species expression comparison,
+    finding tissues where a gene is/isn't expressed, anatomy-restricted gene sets.
+  keywords:
+    - gene expression
+    - bgee
+    - anatomical entity
+    - tissue
+    - developmental stage
+    - rna-seq
+    - in situ hybridization
+    - cross-species
+    - uberon
+    - genex
+    - homology
+    - tpm
+    - expression call
+  categories:
+    - gene
+    - taxonomy
+  endpoint: https://rdfportal.org/sib/sparql
+  base_uri: http://bgee.org/#
+  graphs:
+    - http://bgee.org
+  kw_search_tools: []
+  version:
+    mie_version: "2.0"
+    mie_created: "2026-04-28"
+    data_version: "Bgee 15.2"
+    update_frequency: "Annual"
+  access:
+    backend: "Virtuoso (supports bif:contains)"
+
+# Critical traps documented from live discovery on 2026-04-28. Each item below
+# causes silent failures (zero rows, wrong counts, or timeouts).
+critical_warnings: |
+  - DUAL TAXON IRI NAMESPACES: Bgee uses two parallel taxonomy IRI schemes for the
+    same NCBI taxon ID. orth:Gene → orth:organism points to <https://bgee.org/species/NNN>
+    (typed orth:Organism). genex:ExpressionCondition → obo:RO_0002162 points to
+    <http://purl.uniprot.org/taxonomy/NNN> (typed up:Taxon). Bridge:
+    <https://bgee.org/species/NNN> obo:RO_0002162 <http://purl.uniprot.org/taxonomy/NNN>.
+    Picking the wrong namespace silently returns 0 rows.
+  - GENE IRI USES OMA NAMESPACE: Genes are minted as
+    <http://omabrowser.org/ontology/oma#GENE_<EXTERNAL_ID>> where EXTERNAL_ID is the
+    upstream species-specific accession (Ensembl ENSG.../ENSDARG..., WBGene..., FB...,
+    MGI:..., etc.), NOT a UniProt or NCBI Gene ID. To find a gene from UniProt,
+    bridge through lscr:xrefUniprot. From Ensembl, use lscr:xrefEnsemblGene or
+    construct the IRI directly.
+  - genex:isExpressedIn IS DENORMALIZED AND POLYMORPHIC: Values include BOTH
+    anatomy IRIs (UBERON_*, CL_*, WBbt_*, GO_0005575) AND ExpressionCondition IRIs
+    (<http://bgee.org/#EXPRESSION_CONDITION_*>). Filter the object explicitly if you
+    only want one kind. For "where is this gene expressed", joining via Expression →
+    hasExpressionCondition → hasAnatomicalEntity is more controlled.
+  - EXPRESSION TABLE IS HUGE: genex:Expression has 709M instances; genex:AbsenceExpression
+    adds 4.6M. Never run an unfiltered COUNT or LIMIT-less query against it.
+    Always filter by gene, anatomy, or species first; add LIMIT during exploration.
+  - GENES HAVE MULTIPLE rdf:type ENTRIES: orth:Gene, orth:GeneTreeNode,
+    orth:SequenceUnit, obo:SO_0000704, obo:CDAO_0000140, obo:BFO_0000001/2.
+    Filter on orth:Gene as the canonical class.
+  - ABSENCE CALLS ARE A SEPARATE CLASS: Genes that are NOT expressed in a condition
+    are typed genex:AbsenceExpression, not genex:Expression. To get "all calls",
+    union both classes; to get "expressed", filter to genex:Expression only.
+  - NO DEDICATED SEARCH API: kw_search_tools is empty. Find anchor IRIs via SPARQL
+    (rdfs:label match on a gene symbol restricted to a species) before doing
+    comprehensive queries.
+  - CONFIDENCE LEVEL IS A CIO IRI, NOT A NUMBER: genex:hasConfidenceLevel takes
+    obo:CIO_0000029 (high confidence; 617M calls) or obo:CIO_0000030 (medium
+    confidence; 97M calls). Filter by IRI, not by string.
+
+shape_expressions: |
+  PREFIX genex: <http://purl.org/genex#>
+  PREFIX orth: <http://purl.org/net/orth#>
+  PREFIX lscr: <http://purl.org/lscr#>
+  PREFIX dcterms: <http://purl.org/dc/terms/>
+  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+  PREFIX obo: <http://purl.obolibrary.org/obo/>
+  PREFIX up: <http://purl.uniprot.org/core/>
+  PREFIX taxonomy: <http://purl.uniprot.org/taxonomy/>
+  PREFIX bgee: <http://bgee.org/#>
+  PREFIX bgeespecies: <https://bgee.org/species/>
+  PREFIX oma: <http://omabrowser.org/ontology/oma#>
+  PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+  # ~709M expressed-call instances + 4.6M absence calls.
+  # ALWAYS filter by gene, condition, or species before counting.
+  <ExpressionShape> {
+    a [ genex:Expression genex:AbsenceExpression ] ;       # AbsenceExpression = gene NOT expressed
+    genex:hasSequenceUnit @<GeneShape> ;                   # → oma:GENE_<ID>
+    genex:hasExpressionCondition @<ExpressionConditionShape> ;
+    genex:hasConfidenceLevel [ obo:CIO_0000029 obo:CIO_0000030 ] ;  # high | medium
+    genex:hasFDRpvalue xsd:float ;
+    genex:hasExpressionLevel xsd:float                     # rank score (lower = higher confidence)
+  }
+
+  # ~1.56M genes across 52 species.
+  # rdfs:label = gene symbol (e.g. "TP53"); dcterms:identifier = species-native ID.
+  <GeneShape> {
+    a [ orth:Gene ] ;                                       # also typed orth:GeneTreeNode, orth:SequenceUnit
+    rdfs:label xsd:string ;                                 # gene symbol
+    dcterms:identifier xsd:string ;                         # native ID (Ensembl, WBGene, MGI, FB, …)
+    dcterms:description xsd:string ? ;                      # incl. UniProt cross-ref note
+    orth:organism @<OrganismShape> ;                        # → bgeespecies:NNN (NOT UniProt taxonomy)
+    lscr:xrefUniprot IRI * ;                                # → up:<accession> AND up:<MNEMONIC>
+    lscr:xrefEnsemblGene IRI * ;                            # → http://rdf.ebi.ac.uk/resource/ensembl/<id>
+    lscr:xrefNCBIGene IRI * ;                               # → https://www.ncbi.nlm.nih.gov/gene/<id> (sparse)
+    genex:isExpressedIn IRI *                               # DENORMALIZED: anatomy IRIs AND condition IRIs
+  }
+
+  # ~123K distinct condition bundles (anatomy × stage × sex × strain × species).
+  <ExpressionConditionShape> {
+    a [ genex:ExpressionCondition ] ;
+    genex:hasAnatomicalEntity @<AnatomicalEntityShape> + ;  # UBERON / CL / WBbt / GO_0005575
+    genex:hasDevelopmentalStage @<DevelopmentalStageShape> ;
+    genex:hasSex xsd:string ;                               # "any" | "male" | "female" | "hermaphrodite"
+    genex:hasStrain @<StrainShape> ? ;
+    obo:RO_0002162 @<TaxonShape>                            # in taxon → taxonomy:NNN (UniProt namespace)
+  }
+
+  # ~40K anatomical entities — UBERON, CL, WBbt, GO_0005575 (cellular_component fallback).
+  <AnatomicalEntityShape> {
+    a [ genex:AnatomicalEntity ] ;
+    rdfs:label xsd:string ;
+    dcterms:description xsd:string ?
+  }
+
+  # ~1.2K developmental stages — typed efo:EFO_0000399.
+  <DevelopmentalStageShape> {
+    a [ <http://www.ebi.ac.uk/efo/EFO_0000399> ] ;
+    rdfs:label xsd:string ;
+    dcterms:description xsd:string ?
+  }
+
+  # Strain instances (~38K typed obo:OBI_0000181); EFO_0005135 is the population class itself (1 instance).
+  <StrainShape> {
+    a [ obo:OBI_0000181 ] ;                                 # also <http://www.ebi.ac.uk/efo/EFO_0005135>
+    rdfs:label xsd:string                                   # often "wild-type"
+  }
+
+  # 52 species; UniProt-namespaced taxon entities.
+  <TaxonShape> {
+    a [ up:Taxon ] ;
+    dcterms:identifier xsd:integer ;                        # NCBI taxon ID, e.g. 9606
+    up:scientificName xsd:string ;                          # "Homo sapiens"
+    up:commonName xsd:string ? ;                            # "human"
+    up:rank IRI                                              # → up:Species, up:Genus, …
+  }
+
+  # 52 organism instances; bgee species namespace; bridge to UniProt taxonomy.
+  <OrganismShape> {
+    a [ orth:Organism ] ;                                   # also obo:NCIT_C14250
+    obo:RO_0002162 @<TaxonShape>                            # bgeespecies:NNN obo:RO_0002162 taxonomy:NNN
+  }
+
+# Three diverse, validated entries. Shared prefix block; do not repeat @prefix per entry.
+sample_rdf_entries:
+  rdf_prefixes: |
+    @prefix genex: <http://purl.org/genex#> .
+    @prefix orth: <http://purl.org/net/orth#> .
+    @prefix lscr: <http://purl.org/lscr#> .
+    @prefix dcterms: <http://purl.org/dc/terms/> .
+    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+    @prefix obo: <http://purl.obolibrary.org/obo/> .
+    @prefix up: <http://purl.uniprot.org/core/> .
+    @prefix taxonomy: <http://purl.uniprot.org/taxonomy/> .
+    @prefix bgee: <http://bgee.org/#> .
+    @prefix bgeespecies: <https://bgee.org/species/> .
+    @prefix oma: <http://omabrowser.org/ontology/oma#> .
+  entries:
+    - title: "Gene: human TP53 (orth:Gene with multi-namespace cross-refs)"
+      description: |
+        Illustrates the OMA gene-IRI minting (uses Ensembl ID), the gene-symbol-as-label
+        convention, and the multi-valued lscr:xrefUniprot pattern (canonical accession
+        AND MNEMONIC_ORGCODE form coexist). orth:organism uses the Bgee-species namespace,
+        not UniProt taxonomy.
+      rdf: |
+        oma:GENE_ENSG00000141510 a orth:Gene ;
+            rdfs:label "TP53" ;
+            dcterms:identifier "ENSG00000141510" ;
+            dcterms:description "tumor protein p53 [Source:HGNC Symbol;Acc:HGNC:11998]" ;
+            orth:organism bgeespecies:9606 ;
+            lscr:xrefUniprot <http://purl.uniprot.org/uniprot/A0A087WT22> ,
+                             <http://purl.uniprot.org/uniprot/A0A087WT22_HUMAN> .
+
+    - title: "ExpressionCondition: C. elegans wild-type fully-formed-stage condition"
+      description: |
+        Illustrates the four-axis condition (anatomy + dev stage + sex + strain) and the
+        in-taxon link via obo:RO_0002162 to a UniProt-namespace taxon IRI. Multiple
+        hasAnatomicalEntity values are common (specific tissue + cellular component fallback).
+      rdf: |
+        bgee:EXPRESSION_CONDITION_91484 a genex:ExpressionCondition ;
+            genex:hasSex "any" ;
+            obo:RO_0002162 taxonomy:6239 ;
+            genex:hasStrain bgee:STRAIN_3d4eba69908860b0d838be983fd7f9c8 ;
+            genex:hasAnatomicalEntity obo:CL_0000000 , obo:GO_0005575 ;
+            genex:hasDevelopmentalStage obo:UBERON_0000066 .
+
+    - title: "Expression call: WBGene00006961 (xnp-1) in C. elegans"
+      description: |
+        Shows a complete expression call with all six predicates including the CIO
+        confidence IRI (CIO_0000029 = high confidence) and the rank-score expression
+        level. Links a gene to an ExpressionCondition with an FDR p-value.
+      rdf: |
+        bgee:EXPRESSION_533853243 a genex:Expression ;
+            genex:hasSequenceUnit oma:GENE_WBGene00006961 ;
+            genex:hasExpressionCondition bgee:EXPRESSION_CONDITION_91484 ;
+            genex:hasConfidenceLevel obo:CIO_0000029 ;
+            genex:hasFDRpvalue 0.00278813 ;
+            genex:hasExpressionLevel 76.8077 .
+
+# Exactly 7 queries: 2 basic / 3 intermediate / 2 advanced.
+# All tested against https://rdfportal.org/sib/sparql on 2026-04-28.
+sparql_query_examples:
+  - title: "Find a gene by symbol and species"
+    description: |
+      Anchor lookup. Resolves a gene symbol to an OMA gene IRI for use in subsequent
+      expression queries. Always restrict by species; gene symbols are not unique
+      across species.
+    question: "What is the Bgee gene IRI for human TP53?"
+    complexity: basic
+    sparql: |
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?gene ?ensembl_id WHERE {
+        GRAPH <http://bgee.org> {
+          ?gene a orth:Gene ;
+                rdfs:label "TP53" ;
+                orth:organism <https://bgee.org/species/9606> ;
+                <http://purl.org/dc/terms/identifier> ?ensembl_id .
+        }
+      }
+      LIMIT 5
+
+  - title: "Get one expression call with all attributes"
+    description: |
+      Inspects an Expression entity end-to-end. Useful as a template for the call shape.
+    question: "Show one expression call with its gene, condition, confidence, and level."
+    complexity: basic
+    sparql: |
+      PREFIX genex: <http://purl.org/genex#>
+
+      SELECT ?call ?gene ?condition ?confidence ?fdr ?level WHERE {
+        GRAPH <http://bgee.org> {
+          ?call a genex:Expression ;
+                genex:hasSequenceUnit ?gene ;
+                genex:hasExpressionCondition ?condition ;
+                genex:hasConfidenceLevel ?confidence ;
+                genex:hasFDRpvalue ?fdr ;
+                genex:hasExpressionLevel ?level .
+        }
+      }
+      LIMIT 1
+
+  - title: "Anatomical entities where a UniProt protein's gene is expressed"
+    description: |
+      Bridges from a UniProt accession into Bgee via lscr:xrefUniprot, then walks
+      Expression → ExpressionCondition → hasAnatomicalEntity. Uses structured IRIs
+      throughout — no text search.
+    question: "In which anatomical entities is human TP53 (UniProt P04637) expressed?"
+    complexity: intermediate
+    sparql: |
+      PREFIX genex: <http://purl.org/genex#>
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX lscr: <http://purl.org/lscr#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT DISTINCT ?anatomy ?label WHERE {
+        GRAPH <http://bgee.org> {
+          ?gene a orth:Gene ;
+                lscr:xrefUniprot <http://purl.uniprot.org/uniprot/P04637> .
+          ?call a genex:Expression ;
+                genex:hasSequenceUnit ?gene ;
+                genex:hasExpressionCondition ?cond .
+          ?cond genex:hasAnatomicalEntity ?anatomy .
+          ?anatomy rdfs:label ?label .
+        }
+      }
+      LIMIT 20
+
+  - title: "Count distinct genes expressed in a specific anatomy across species"
+    description: |
+      Uses GROUP BY on the species axis. Demonstrates the bgeespecies:NNN ↔ taxonomy:NNN
+      bridge via obo:RO_0002162 — needed because Gene→organism uses the Bgee namespace
+      while we want the human-readable scientificName from the UniProt-namespace taxon.
+    question: "How many distinct genes are reported as expressed in 'brain' (UBERON_0000955) per species?"
+    complexity: intermediate
+    sparql: |
+      PREFIX genex: <http://purl.org/genex#>
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT ?species_name (COUNT(DISTINCT ?gene) AS ?n_genes) WHERE {
+        GRAPH <http://bgee.org> {
+          ?call a genex:Expression ;
+                genex:hasSequenceUnit ?gene ;
+                genex:hasExpressionCondition ?cond .
+          ?cond genex:hasAnatomicalEntity obo:UBERON_0000955 ;
+                obo:RO_0002162 ?taxon .
+          ?taxon up:scientificName ?species_name .
+          ?gene a orth:Gene .
+        }
+      }
+      GROUP BY ?species_name
+      ORDER BY DESC(?n_genes)
+      LIMIT 20
+
+  - title: "List high-confidence expression sites for a gene"
+    description: |
+      Combines confidence filter (CIO_0000029) with anatomy/dev-stage projection.
+      Demonstrates filtering by IRI on hasConfidenceLevel and joining the condition
+      bundle to anatomy and stage labels in one shot.
+    question: "Where (anatomy + dev stage) is mouse Sox2 expressed at high confidence?"
+    complexity: intermediate
+    sparql: |
+      PREFIX genex: <http://purl.org/genex#>
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT DISTINCT ?anatomy_label ?stage_label WHERE {
+        GRAPH <http://bgee.org> {
+          ?gene a orth:Gene ;
+                rdfs:label "Sox2" ;
+                orth:organism <https://bgee.org/species/10090> .
+          ?call a genex:Expression ;
+                genex:hasSequenceUnit ?gene ;
+                genex:hasConfidenceLevel obo:CIO_0000029 ;
+                genex:hasExpressionCondition ?cond .
+          ?cond genex:hasAnatomicalEntity ?anatomy ;
+                genex:hasDevelopmentalStage ?stage .
+          ?anatomy rdfs:label ?anatomy_label .
+          ?stage rdfs:label ?stage_label .
+        }
+      }
+      LIMIT 50
+
+  - title: "Top anatomies by call count for a specific gene"
+    description: |
+      Comparative aggregation anchored to a single gene. Demonstrates the canonical
+      pattern (GROUP BY + ORDER BY DESC + confidence-IRI filter + GO_0005575 exclusion
+      to drop the cellular_component fallback). Anchoring to a gene first keeps the
+      working set tractable; an unanchored "all human anatomies" variant times out on
+      the public endpoint.
+    question: "Which 10 human anatomies have the most high-confidence expression calls for TP53?"
+    complexity: advanced
+    sparql: |
+      PREFIX genex: <http://purl.org/genex#>
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT ?anatomy_label (COUNT(*) AS ?n_calls) WHERE {
+        GRAPH <http://bgee.org> {
+          ?gene a orth:Gene ;
+                rdfs:label "TP53" ;
+                orth:organism <https://bgee.org/species/9606> .
+          ?call a genex:Expression ;
+                genex:hasSequenceUnit ?gene ;
+                genex:hasConfidenceLevel obo:CIO_0000029 ;
+                genex:hasExpressionCondition ?cond .
+          ?cond genex:hasAnatomicalEntity ?anatomy .
+          ?anatomy rdfs:label ?anatomy_label .
+          FILTER(?anatomy != obo:GO_0005575)
+        }
+      }
+      GROUP BY ?anatomy_label
+      ORDER BY DESC(?n_calls)
+      LIMIT 10
+
+  - title: "Cross-graph: Bgee genes ↔ UniProt reviewed proteins (same SIB endpoint)"
+    description: |
+      The SIB endpoint hosts both Bgee and UniProt. lscr:xrefUniprot crosses the graph
+      boundary to UniProt's <http://sparql.uniprot.org/uniprot> graph. Filter by
+      up:reviewed 1 (Swiss-Prot) on the UniProt side — the Critical Warnings of the
+      uniprot MIE apply.
+    question: "For human SOX2, which reviewed UniProt entries does its Bgee gene cross-reference?"
+    complexity: advanced
+    sparql: |
+      PREFIX genex: <http://purl.org/genex#>
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX lscr: <http://purl.org/lscr#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX up: <http://purl.uniprot.org/core/>
+
+      SELECT DISTINCT ?protein ?recName WHERE {
+        GRAPH <http://bgee.org> {
+          ?gene a orth:Gene ;
+                rdfs:label "SOX2" ;
+                orth:organism <https://bgee.org/species/9606> ;
+                lscr:xrefUniprot ?protein .
+        }
+        GRAPH <http://sparql.uniprot.org/uniprot> {
+          ?protein a up:Protein ;
+                   up:reviewed 1 ;
+                   up:recommendedName/up:fullName ?recName .
+        }
+      }
+      LIMIT 10
+
+# Bgee on SIB shares the endpoint with UniProt and Rhea — cross-graph queries are possible.
+cross_database_queries:
+  shared_endpoint: sib
+  co_located_databases: [uniprot, rhea, bgee]
+  examples:
+    - title: "Bgee + UniProt: tissue expression sites for all reviewed Swiss-Prot proteins of a species"
+      description: |
+        Use case: starting from UniProt's curated proteome, where is each protein's
+        gene reported as expressed in Bgee? Bridges via lscr:xrefUniprot. The taxon
+        identity is enforced on both sides — bgeespecies on the Bgee gene, UniProt
+        taxonomy IRI on the protein — to avoid orphan matches.
+
+        Linking strategy:
+        - Both graphs on the same SIB endpoint → single SPARQL with two GRAPH blocks
+        - Bridge IRI: UniProt accession (lscr:xrefUniprot equates to up:Protein)
+        - Filter by species on both sides for symmetry
+      databases_used: [bgee, uniprot]
+      complexity: advanced
+      sparql: |
+        PREFIX genex: <http://purl.org/genex#>
+        PREFIX orth: <http://purl.org/net/orth#>
+        PREFIX lscr: <http://purl.org/lscr#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX up: <http://purl.uniprot.org/core/>
+        PREFIX taxonomy: <http://purl.uniprot.org/taxonomy/>
+
+        SELECT ?protein ?gene_label ?anatomy_label WHERE {
+          GRAPH <http://sparql.uniprot.org/uniprot> {
+            ?protein a up:Protein ;
+                     up:reviewed 1 ;
+                     up:organism taxonomy:9606 .
+          }
+          GRAPH <http://bgee.org> {
+            ?gene a orth:Gene ;
+                  rdfs:label ?gene_label ;
+                  orth:organism <https://bgee.org/species/9606> ;
+                  lscr:xrefUniprot ?protein .
+            ?call a genex:Expression ;
+                  genex:hasSequenceUnit ?gene ;
+                  genex:hasExpressionCondition ?cond .
+            ?cond genex:hasAnatomicalEntity ?anatomy .
+            ?anatomy rdfs:label ?anatomy_label .
+          }
+        }
+        LIMIT 25
+      notes: |
+        - Linking via: UniProt accession IRI (lscr:xrefUniprot ↔ up:Protein subject)
+        - Performance: fast for narrow gene queries; a comprehensive scan over reviewed
+          human proteome (~20K) without LIMIT will time out — always anchor to a gene,
+          anatomy, or LIMIT.
+        - MIE files checked: bgee (this file), uniprot
+
+cross_references:
+  - pattern: lscr:xrefUniprot
+    description: |
+      Gene → UniProt protein. Multi-valued; both bare accession (up:<accession>) and
+      MNEMONIC form (up:<NAME_ORGCODE>) are present for every linked protein. Use
+      either; UniProt's owl:sameAs unifies them.
+    databases:
+      protein:
+        - "UniProt: ~95% coverage for vertebrate genes; sparser for invertebrate species"
+
+  - pattern: lscr:xrefEnsemblGene
+    description: |
+      Gene → Ensembl gene IRI (http://rdf.ebi.ac.uk/resource/ensembl/<id>). Primary
+      for vertebrate species; for invertebrates Ensembl Genomes IDs may not appear.
+    databases:
+      gene:
+        - "Ensembl: high coverage for vertebrates"
+
+  - pattern: lscr:xrefNCBIGene
+    description: |
+      Gene → NCBI Gene (https://www.ncbi.nlm.nih.gov/gene/<id>). Sparse — many
+      species-specific IDs (WBGene, FB) have no NCBI Gene mapping.
+    databases:
+      gene:
+        - "NCBI Gene: partial coverage; relies on cross-DB"
+
+  - pattern: orth:organism / obo:RO_0002162
+    description: |
+      Gene → bgeespecies:NNN organism → obo:RO_0002162 → taxonomy:NNN (UniProt taxon).
+      Two-hop bridge required because Gene's organism IRI is in the Bgee namespace,
+      not UniProt's. Only 52 distinct species are present.
+    databases:
+      taxonomy:
+        - "UniProt taxonomy: 52/52 species linked via RO_0002162"
+
+architectural_notes:
+  query_strategy:
+    - "MANDATORY FIRST STEP: filter by gene, anatomy, or species before COUNT or non-LIMIT queries — the Expression class has 709M instances."
+    - "Anchor first via gene symbol (rdfs:label + orth:organism) or external xref (lscr:xrefUniprot, lscr:xrefEnsemblGene). Never start with bif:contains."
+    - "Comprehensive: prefer GRAPH <http://bgee.org> wrapping the entire pattern — Virtuoso optimises better with explicit graph clauses on SIB."
+    - "Cross-graph (Bgee + UniProt): both live on SIB; use one SELECT with two GRAPH blocks. Filter inside each GRAPH before joining."
+    - "Priority: rdfs:label gene-symbol lookup > lscr:xref* bridge > genex:isExpressedIn (denormalized; less precise)."
+
+  schema_design:
+    - "Central pattern: Gene ↔ Expression ↔ ExpressionCondition. Joining is always through Expression as the hub."
+    - "Conditions bundle 4 axes: anatomy (multi-valued), dev stage, sex, strain. Most analyses pivot on anatomy + species."
+    - "Two parallel taxonomy IRI namespaces: bgeespecies:NNN (orth:Organism, used by Gene) vs taxonomy:NNN (up:Taxon, used by ExpressionCondition). Bridge via obo:RO_0002162."
+    - "Anatomy IRIs are heterogeneous: UBERON_*, CL_*, GO_0005575, WBbt_* (worm), FBbt_* (fly). All carry rdfs:label and dcterms:description in this graph."
+    - "Confidence is a CIO IRI (CIO_0000029 high, CIO_0000030 medium). No third level; absence of a level means absence call."
+
+  performance:
+    - "ALWAYS wrap query patterns in GRAPH <http://bgee.org>. Without it, queries scan the entire SIB store including UniProt's 244M triples."
+    - "LIMIT every exploratory query. The expression table is 709M rows."
+    - "For comparative anatomy/species ranks, restrict to confidence level CIO_0000029 to drop ~14% lower-quality calls and shrink the working set."
+
+  data_integration:
+    - "lscr:xref* predicates: Gene → UniProt | Ensembl | NCBI Gene. UniProt coverage is densest."
+    - "obo:RO_0002162 (in taxon): bridges Bgee organism namespace ↔ UniProt taxonomy namespace."
+    - "Cross-graph SPARQL works for Bgee + UniProt + Rhea (all on SIB). Cross-endpoint (e.g., Bgee → ChEMBL) requires TogoID."
+
+  data_quality:
+    - "AbsenceExpression covers only ~0.65% of calls (4.6M of 714M total) — most calls are positive. Negative findings are sparser than positive."
+    - "Strain field is mostly the wild-type archetype (one canonical instance, hash-based IRIs link to it). Strain-stratified analyses are limited."
+    - "Sex distribution skews toward 'any' (pooled analyses)."
+    - "Gene cross-references: vertebrates well-served; invertebrates may have only Ensembl Genomes / WBGene / FB IDs without NCBI Gene mapping."
+
+  text_search_justification:
+    - "Number of the 7 example queries that use text search: 0"
+    - "All anchor lookups go through rdfs:label gene-symbol matches (effectively an indexed string equality, not a substring scan) or specific IRIs."
+    - "bif:contains was considered for description fields but was rejected — every relevant entity carries either an IRI (anatomy, taxon, dev stage, confidence) or a structured label (gene symbol, sex, strain name)."
+
+data_statistics:
+  total_expression_calls: 709482280
+  total_absence_calls: 4642933
+  total_genes: 1559014
+  total_expression_conditions: 123467
+  total_anatomical_entities: 40646
+  total_developmental_stages: 1239
+  total_species: 52
+  verified_date: "2026-04-28"
+  verification_method: "Direct COUNT queries against http://bgee.org graph on SIB endpoint"
+
+  confidence_distribution:
+    high_confidence_CIO_0000029: 617437101
+    medium_confidence_CIO_0000030: 96688112
+    verified_date: "2026-04-28"
+
+  top_species_by_gene_count:
+    human_9606: 67139
+    mouse_10090: 56305
+    salmon_8030: 55819
+    c_elegans_6239: 46904
+    zebrafish_7955: 37241
+    verified_date: "2026-04-28"
+
+anti_patterns:
+  - title: "Schema check before text search"
+    problem: |
+      Using bif:contains or FILTER(CONTAINS()) to find a gene, anatomy, or species
+      when structured predicates exist.
+    wrong_sparql: |
+      # No schema checked — text search over rdfs:label
+      ?gene rdfs:label ?label .
+      FILTER(CONTAINS(LCASE(?label), "tp53"))
+    correct_sparql: |
+      # 1. shape_expressions documents rdfs:label as gene symbol (exact string).
+      # 2. Use exact match anchored to species:
+      ?gene a orth:Gene ;
+            rdfs:label "TP53" ;
+            orth:organism <https://bgee.org/species/9606> .
+    explanation: "Bgee's rdfs:label on Gene is the canonical gene symbol — already controlled and case-correct. Text search would also match transcripts with TP53 in the description and is 100× slower."
+
+  - title: "Wrong taxonomy IRI namespace"
+    problem: |
+      Querying gene→organism with a UniProt taxonomy IRI, or condition→in-taxon with
+      a Bgee species IRI. Both silently return zero rows.
+    wrong_sparql: |
+      ?gene orth:organism <http://purl.uniprot.org/taxonomy/9606> .
+      # ↑ 0 rows — Gene's organism uses bgeespecies: namespace
+    correct_sparql: |
+      ?gene orth:organism <https://bgee.org/species/9606> .
+      # On ExpressionCondition use the OTHER namespace:
+      ?cond <http://purl.obolibrary.org/obo/RO_0002162> <http://purl.uniprot.org/taxonomy/9606> .
+    explanation: "Bgee uses two parallel taxon IRI namespaces. Gene → bgeespecies:NNN; ExpressionCondition → taxonomy:NNN (UniProt). Bridge with obo:RO_0002162."
+
+  - title: "Unfiltered scan of the Expression class"
+    problem: |
+      Counting or listing genex:Expression without anchoring to a gene, anatomy, or
+      species. The class has 709M instances; queries time out.
+    wrong_sparql: |
+      SELECT (COUNT(*) AS ?n) WHERE {
+        GRAPH <http://bgee.org> { ?c a genex:Expression }
+      }
+      # Times out at the endpoint
+    correct_sparql: |
+      # Anchor first, then COUNT:
+      SELECT (COUNT(*) AS ?n) WHERE {
+        GRAPH <http://bgee.org> {
+          ?c a genex:Expression ;
+             genex:hasSequenceUnit ?gene ;
+             genex:hasExpressionCondition ?cond .
+          ?cond <http://purl.obolibrary.org/obo/RO_0002162> taxonomy:9606 .
+        }
+      }
+    explanation: "The expression call table is the largest in the SIB store. Filter by species, gene, or anatomy via the condition before any aggregation."
+
+  - title: "Treating genex:isExpressedIn as a clean anatomy link"
+    problem: |
+      Assuming genex:isExpressedIn always returns anatomy IRIs. It is denormalized —
+      values include both anatomy IRIs (UBERON, CL) AND ExpressionCondition IRIs.
+    wrong_sparql: |
+      ?gene genex:isExpressedIn ?anatomy .
+      ?anatomy rdfs:label ?label .
+      # Some ?anatomy bindings are EXPRESSION_CONDITION_* IRIs without rdfs:label
+    correct_sparql: |
+      # Go through the call/condition path explicitly:
+      ?call a genex:Expression ;
+            genex:hasSequenceUnit ?gene ;
+            genex:hasExpressionCondition ?cond .
+      ?cond genex:hasAnatomicalEntity ?anatomy .
+      ?anatomy a genex:AnatomicalEntity ;
+               rdfs:label ?label .
+    explanation: "Expression → ExpressionCondition → hasAnatomicalEntity is the precise path. genex:isExpressedIn is a convenience shortcut and mixes anatomy with condition IRIs."
+
+common_errors:
+  - error: "Empty result for gene-symbol query"
+    causes:
+      - "Wrong taxonomy IRI namespace (used UniProt taxonomy where bgeespecies is required)"
+      - "Case mismatch on rdfs:label (gene symbols are case-sensitive in Bgee — TP53 not tp53)"
+      - "Missing GRAPH <http://bgee.org> wrapper — query hit a different graph"
+    solutions:
+      - "Confirm orth:organism uses bgeespecies:NNN (not taxonomy:NNN)"
+      - "Use exact case as it appears in upstream species nomenclature (HGNC for human, MGI for mouse)"
+      - "Always wrap patterns in GRAPH <http://bgee.org>"
+
+  - error: "SPARQL timeout on Expression aggregation"
+    causes:
+      - "Unfiltered COUNT or scan over genex:Expression (709M rows)"
+      - "Missing LIMIT during exploration"
+    solutions:
+      - "Anchor by gene, anatomy, or species (via condition's RO_0002162) before aggregating"
+      - "Add LIMIT 100 during query development; remove only after schema/filter is confirmed"
+      - "For comparative work, restrict to genex:hasConfidenceLevel obo:CIO_0000029 to drop ~14% of calls"
+
+  - error: "Cross-graph query (Bgee + UniProt) returns no rows"
+    causes:
+      - "lscr:xrefUniprot binding is the IRI of the up:Protein subject (no further bridge needed)"
+      - "Forgot up:reviewed 1 on the UniProt side; matched a TrEMBL entry that exists but is unreviewed"
+      - "Used GRAPH <http://sparql.uniprot.org/core> — that is the ontology graph; data is in <http://sparql.uniprot.org/uniprot>"
+    solutions:
+      - "Use lscr:xrefUniprot ?protein with ?protein appearing as subject in the UniProt graph block"
+      - "Add up:reviewed 1 inside the UniProt GRAPH if you only want Swiss-Prot"
+      - "Use the data graph http://sparql.uniprot.org/uniprot for protein records"
