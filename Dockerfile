@@ -1,6 +1,11 @@
 # Use a lightweight Python base image
 FROM docker.io/astral/uv:python3.12-bookworm-slim
 
+# Install tzdata so the TZ env var (set in compose.yaml) resolves correctly
+# instead of silently falling back to UTC.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tzdata \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory inside the container
 WORKDIR /app
