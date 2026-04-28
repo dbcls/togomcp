@@ -17,15 +17,36 @@ This skill lives in a Claude Code environment with filesystem access and SPARQL 
 
 ## File locations in this environment
 
-| Asset                      | Path                                   | Tool to use            |
-|----------------------------|----------------------------------------|------------------------|
-| Existing MIE files         | `./togo_mcp/data/mie/<db>.yaml`        | Read / Write / Edit    |
-| ShEx schemas               | `./shex/<db>.shex` (or similar)        | Read                   |
-| Prewritten SPARQL examples | `./togo_mcp/data/sparql-examples/<db>/`| Read                   |
+| Asset                      | Path                                       | Tool to use            |
+|----------------------------|--------------------------------------------|------------------------|
+| Existing MIE files         | `./togo_mcp/data/mie/<db>.yaml`            | Read / Write / Edit    |
+| Endpoint registry          | `./togo_mcp/data/resources/endpoints.csv`  | Read / Edit            |
+| ShEx schemas               | `./shex/<db>.shex` (or similar)            | Read                   |
+| Prewritten SPARQL examples | `./togo_mcp/data/sparql-examples/<db>/`    | Read                   |
 
-The MCP tools `get_MIE_file`, `save_MIE_file`, `get_shex`, and `get_sparql_example` are **not** used in this environment — read and write these files directly. The remaining TogoMCP tools (`run_sparql`, `list_databases`, `get_sparql_endpoints`, `get_graph_list`, the search APIs) ARE used; they hit live endpoints and cannot be replaced by filesystem access.
+The MCP tools `get_MIE_file`, `save_MIE_file`, `get_shex`, and `get_sparql_example` are **not** used in this environment — read and write these files directly. The remaining TogoMCP tools (`run_sparql`, `find_databases`, `list_databases`, `get_sparql_endpoints`, `get_graph_list`, the search APIs) ARE used; they hit live endpoints and cannot be replaced by filesystem access. `WebFetch` is used in Phase 0 to look up unregistered endpoints on rdfportal.org.
 
 ## Workflow
+
+### Phase 0 — Register the endpoint (skip if already in `endpoints.csv`)
+
+Before discovery, the target database must exist as a row in `./togo_mcp/data/resources/endpoints.csv`. The columns are `database,endpoint_url,endpoint_name,keyword_search_api`. If the user supplies only a dataset name, derive the rest from rdfportal.org.
+
+1. **Check the registry first.** Read `./togo_mcp/data/resources/endpoints.csv`. If `<db>` is already a row, skip Phase 0 entirely — registration is done.
+
+2. **Look up the dataset on rdfportal.org.** Call `WebFetch` on `https://rdfportal.org/access_methods/sparql_endpoints/` with a prompt asking which endpoint provider lists `<db>` and what its canonical slug is. The page is nested bullet lists grouped by provider; canonical dataset slugs match the names already used in the CSV (e.g. `uniprot`, `chembl`, `pdb`).
+
+3. **Derive the row:**
+   - `database` — canonical slug from the page (lowercase; strip spaces, dots, dashes).
+   - `endpoint_url` — the parent provider's SPARQL URL (e.g. anything under "EBI" gets `https://rdfportal.org/ebi/sparql`).
+   - `endpoint_name` — the URL path component (e.g. `https://rdfportal.org/ebi/sparql` → `ebi`).
+   - `keyword_search_api` — **default to `sparql`**. Other valid values: a dedicated tool like `search_uniprot_entity`, an OLS4 path like `OLS4:searchClasses`, or `ncbi_esearch`. This requires human knowledge of which client tool fits — *tell the user the default and offer to override*. If unsure, leave as `sparql`; the user can edit later.
+
+4. **Append** the row to `endpoints.csv` with `Edit` (preserve trailing newline; do not reorder existing rows).
+
+5. **If the dataset isn't on the rdfportal.org page**, do **not** invent values. Tell the user, ask them for the SPARQL endpoint URL directly, then return to step 3 with their input.
+
+After registration, proceed to Phase 1.
 
 ### Phase 1 — Orient (2–3 minutes)
 
