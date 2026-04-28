@@ -236,6 +236,10 @@ schema_info:
   # drug_target, pathway, reaction, ontology, structure, literature, taxonomy,
   # microbe, glycan, antimicrobial, sequence, disease, materials, physics,
   # enzymology, genomics.
+  # USE THE TOKEN VERBATIM: lowercase, underscores for multi-word (e.g.
+  # drug_target). Do not Title Case, pluralize, space-separate, or invent
+  # variants — list_categories() is case-sensitive and unknown tokens fragment
+  # the index into single-DB buckets.
   # Tag only categories that genuinely characterize the database.
   categories:
     - [category1]

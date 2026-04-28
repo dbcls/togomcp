@@ -9,7 +9,7 @@ Descriptive header. Required fields:
 - `title`: canonical database name
 - `description`: 2–3 sentences — what the database contains, its main entity types, primary use cases
 - `keywords`: 8–15 lowercase terms for `find_databases()` discovery. Include synonyms a user might type instead of the canonical term (e.g. `mutation`, `polymorphism` alongside `variant`). See spec §3.1.5.
-- `categories`: 1–3 entries drawn from the controlled taxonomy in spec §3.1.5. Pick categories that genuinely characterize the database — don't tag every category whose vocabulary appears once in the description.
+- `categories`: 1–3 entries drawn from the controlled taxonomy in spec §3.1.5. **Copy each token verbatim — lowercase, underscores for multi-word (e.g. `drug_target`). Do not Title Case (`Genomics`), pluralize (`proteins`), space-separate (`comparative genomics`), or invent variants.** `list_categories()` is case-sensitive; off-spec tokens fragment the index into single-DB buckets. Pick categories that genuinely characterize the database — don't tag every category whose vocabulary appears once in the description.
 - `endpoint`: SPARQL endpoint URL
 - `base_uri`: root URI namespace
 - `graphs`: list of named graphs in the endpoint
