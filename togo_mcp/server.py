@@ -168,11 +168,42 @@ async def execute_sparql(
     """
     url = resolve_endpoint_url(database, endpoint_name, endpoint_url)
 
-    response = await _sparql_client.post(
-        url, data={"query": sparql_query}, headers={"Accept": "text/csv"}
+    try:
+        response = await _sparql_client.post(
+            url, data={"query": sparql_query}, headers={"Accept": "text/csv"}
+        )
+    except httpx.TimeoutException as exc:
+        raise ValueError(
+            f"SPARQL endpoint at {url} timed out after {_sparql_client.timeout.read}s. "
+            "The query is likely too heavy. Add LIMIT, narrow with specific IRIs or GRAPH "
+            "clauses, or split into smaller queries. Do not retry the same query without "
+            f"changes. ({exc.__class__.__name__})"
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise ValueError(
+            f"SPARQL endpoint at {url} could not be reached: "
+            f"{exc.__class__.__name__}: {exc}"
+        ) from exc
+
+    if response.is_success:
+        return response.text
+
+    body = response.text.strip()
+    snippet = body[:1500] + ("\n…[truncated]" if len(body) > 1500 else "")
+    if 400 <= response.status_code < 500:
+        raise ValueError(
+            f"SPARQL endpoint at {url} returned HTTP {response.status_code} (bad query). "
+            f"Endpoint diagnostic:\n{snippet}\n\n"
+            "The endpoint message above usually names the exact line/column. Common causes: "
+            "syntax error (missing brace/comma), undefined namespace prefix, unsupported "
+            "function. Fix the query — do not retry the same text."
+        )
+    raise ValueError(
+        f"SPARQL endpoint at {url} returned HTTP {response.status_code} (server error). "
+        f"Endpoint message:\n{snippet}\n\n"
+        "This may be transient or indicate the query is too heavy. Consider adding LIMIT, "
+        "stronger filters (specific IRIs, GRAPH clauses), or splitting the query."
     )
-    response.raise_for_status()
-    return response.text
 
 
 # The Primary MCP server
