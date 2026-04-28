@@ -25,7 +25,7 @@ from fastmcp import FastMCP
 import httpx
 from mcp.types import TextContent
 
-from .server import toolcall_log
+from .server import raise_for_status_with_body, toolcall_log
 
 # Get API key from environment
 NCBI_API_KEY = os.environ.get("NCBI_API_KEY")
@@ -239,7 +239,15 @@ async def _ncbi_esearch_api(
         async with httpx.AsyncClient(timeout=30.0) as client:
             try:
                 response = await client.get(base_url, params=params)
-                response.raise_for_status()
+                raise_for_status_with_body(
+                    response,
+                    context="NCBI esearch",
+                    client_error_hint=(
+                        "Verify db (e.g. gene, pubmed, clinvar) and term syntax. "
+                        "Use field tags like nifH[Gene Name] AND Archaea[Organism] "
+                        "for precision."
+                    ),
+                )
                 data = response.json()
 
                 # Check for errors in NCBI response
@@ -327,7 +335,7 @@ def _normalize_ids(ids: str | list[str]) -> list[str]:
 
 
 @ncbi_mcp.tool()
-async def ncbi_esearch(
+async def esearch(
     database: str = "",
     query: str = "",
     max_results: int = 20,
@@ -467,7 +475,7 @@ async def ncbi_esearch(
 
 
 @ncbi_mcp.tool()
-async def ncbi_list_databases() -> list[TextContent]:
+async def list_databases() -> list[TextContent]:
     """
     List all supported NCBI databases with descriptions and example queries.
 
@@ -500,7 +508,7 @@ async def ncbi_list_databases() -> list[TextContent]:
 
 # Additional utility functions for future use
 @ncbi_mcp.tool()
-async def ncbi_esummary(
+async def esummary(
     database: str = "",
     ids: str | list[str] = "",
     db: str = "",
@@ -555,7 +563,14 @@ async def ncbi_esummary(
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(base_url, params=params)
-                response.raise_for_status()
+                raise_for_status_with_body(
+                    response,
+                    context="NCBI esummary",
+                    client_error_hint=(
+                        "Verify db and ids. ids must be a comma-separated list of "
+                        "valid identifiers for the chosen db."
+                    ),
+                )
                 data = response.json()
 
                 # Format the response nicely
@@ -571,7 +586,7 @@ async def ncbi_esummary(
 
 
 @ncbi_mcp.tool()
-async def ncbi_efetch(
+async def efetch(
     database: str = "",
     ids: str | list[str] = "",
     rettype: str = "xml",
@@ -631,7 +646,14 @@ async def ncbi_efetch(
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(base_url, params=params)
-                response.raise_for_status()
+                raise_for_status_with_body(
+                    response,
+                    context="NCBI efetch",
+                    client_error_hint=(
+                        "Verify db, ids, rettype, and retmode. Different db's accept "
+                        "different rettype/retmode combinations."
+                    ),
+                )
                 return [TextContent(type="text", text=response.text)]
 
         except Exception as e:

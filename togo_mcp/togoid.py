@@ -74,7 +74,7 @@ async def getAllRelation() -> dict:
     """
     toolcall_log("getAllRelation")
     response = await _client.get("/config/relation")
-    response.raise_for_status()
+    raise_for_status_with_body(response, context="TogoID getAllRelation")
     return response.json()
 
 
@@ -105,7 +105,14 @@ async def getRelation(source: str, target: str) -> list:
     """
     toolcall_log("getRelation")
     response = await _client.get(f"/config/relation/{source}-{target}")
-    response.raise_for_status()
+    raise_for_status_with_body(
+        response,
+        context="TogoID getRelation",
+        client_error_hint=(
+            "Verify both source and target dataset names. Use getAllRelation() "
+            "to list valid routes."
+        ),
+    )
     return response.json()
 
 
@@ -131,7 +138,7 @@ async def getAllDataset() -> dict:
     """
     toolcall_log("getAllDataset")
     response = await _client.get("/config/dataset")
-    response.raise_for_status()
+    raise_for_status_with_body(response, context="TogoID getAllDataset")
     return response.json()
 
 
@@ -156,7 +163,13 @@ async def getDataset(dataset: str) -> dict:
     """
     toolcall_log("getDataset")
     response = await _client.get(f"/config/dataset/{dataset}")
-    response.raise_for_status()
+    raise_for_status_with_body(
+        response,
+        context="TogoID getDataset",
+        client_error_hint=(
+            "Verify the dataset name. Use getAllDataset() to list valid datasets."
+        ),
+    )
     return response.json()
 
 
@@ -173,7 +186,7 @@ async def getDescription() -> dict:
     """
     toolcall_log("getDescription")
     response = await _client.get("/config/descriptions")
-    response.raise_for_status()
+    raise_for_status_with_body(response, context="TogoID getDescription")
     return response.json()
 
 
@@ -240,7 +253,16 @@ async def convertId(
     }
 
     response = await _client.get("/convert", params=params)
-    response.raise_for_status()
+    raise_for_status_with_body(
+        response,
+        context="TogoID convertId",
+        client_error_hint=(
+            "Verify the route exists (getAllRelation lists valid routes) and that "
+            "the IDs match the source dataset's expected format (getDataset shows "
+            "the format pattern). Common cause: wrong source/target ordering, or "
+            "no direct route between the two datasets."
+        ),
+    )
     return response.json().get("results")
 
 
@@ -274,5 +296,12 @@ async def countId(source: str, target: str, ids: str | list[str]) -> dict:
     response = await _client.get(
         f"/count/{source}-{target}", params={"ids": _ids_to_csv(ids)}
     )
-    response.raise_for_status()
+    raise_for_status_with_body(
+        response,
+        context="TogoID countId",
+        client_error_hint=(
+            "Verify the route exists (getAllRelation) and IDs match the source "
+            "dataset's format (getDataset)."
+        ),
+    )
     return response.json()

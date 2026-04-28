@@ -164,7 +164,7 @@ async def search_uniprot_entity(
     }
     try:
         response = await _uniprot_client.get("/uniprotkb/search", params=params)
-        response.raise_for_status()
+        raise_for_status_with_body(response, context="UniProt search")
         data = response.text
         return data
     except httpx.HTTPError as e:
@@ -190,7 +190,7 @@ async def search_chembl_generic(entity_type: str, query: str, limit: int = 20) -
         response = await _chembl_client.get(
             f"/chembl/api/data/{entity_type}/search.json", params=params
         )
-        response.raise_for_status()
+        raise_for_status_with_body(response, context="ChEMBL search")
         return response.json()
     except httpx.HTTPError as e:
         print(f"Error querying ChEMBL {entity_type}: {e}")
@@ -464,7 +464,7 @@ async def get_pubchem_compound_id(compound_name: str) -> str:
     url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{compound_name}/cids/JSON"
     try:
         response = await _pubchem_client.get(url)
-        response.raise_for_status()
+        raise_for_status_with_body(response, context="PubChem CID lookup")
         return response.text
     except httpx.HTTPError as e:
         print(f"Error fetching PubChem compound ID for {compound_name}: {e}")
@@ -486,7 +486,7 @@ async def get_compound_attributes_from_pubchem(pubchem_compound_id: str) -> str:
     params = {"id": pubchem_compound_id}
     try:
         response = await _pubchem_client.get(url, params=params)
-        response.raise_for_status()
+        raise_for_status_with_body(response, context="PubChem compound attributes")
         return response.text
     except httpx.HTTPError as e:
         print(
@@ -555,7 +555,7 @@ async def search_pdb_entity(
         response = await _pdbj_client.get(
             f"/rest/newweb/search/{db}", params={"query": query}
         )
-        response.raise_for_status()
+        raise_for_status_with_body(response, context="PDBj search")
         payload = response.json()
         total_results = payload.get("total", 0)
         result_list = [
@@ -610,7 +610,7 @@ async def search_mesh_descriptor(
     params = {"label": query, "match": "contains", "limit": limit}
     try:
         response = await _mesh_client.get("/mesh/lookup/descriptor", params=params)
-        response.raise_for_status()
+        raise_for_status_with_body(response, context="MeSH descriptor lookup")
         return response.text
     except httpx.HTTPError as e:
         print(f"Error searching MeSH for {query}: {e}")
@@ -706,7 +706,7 @@ async def search_reactome_entity(
             params=params,
             headers={"Accept": "application/json"},
         )
-        response.raise_for_status()
+        raise_for_status_with_body(response, context="Reactome search")
         data = response.json()
     except httpx.HTTPError as e:
         print(f"Error querying Reactome: {e}")
@@ -789,7 +789,7 @@ async def search_rhea_entity(
 
     try:
         response = await _rhea_client.get("/rhea", params=params)
-        response.raise_for_status()
+        raise_for_status_with_body(response, context="Rhea search")
 
         # Parse TSV response
         lines = response.text.strip().split("\n")

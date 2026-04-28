@@ -144,6 +144,54 @@ def resolve_endpoint_url(database: str, endpoint_name: str, endpoint_url: str) -
     )
 
 
+def raise_for_status_with_body(
+    response: httpx.Response,
+    *,
+    context: str = "",
+    client_error_hint: str | None = None,
+    server_error_hint: str | None = None,
+    body_max: int = 1500,
+) -> None:
+    """Drop-in replacement for ``response.raise_for_status()``.
+
+    Surfaces the upstream response body in the raised ``ValueError`` so that
+    when an external API replies with a useful diagnostic
+    (e.g. Virtuoso's ``SPARQL compiler, line 1: Undefined namespace prefix``,
+    or TogoID's ``{"message": "no route: pubchem <> chebi"}``), the calling
+    agent sees that diagnostic instead of httpx's generic
+    ``Client error '4xx' for url ...``.
+
+    Args:
+        response: The httpx response to check.
+        context: Short label identifying the operation (e.g. "TogoID convertId").
+        client_error_hint: Appended on 4xx responses; if None, a generic hint is used.
+        server_error_hint: Appended on 5xx responses; if None, a generic hint is used.
+        body_max: Truncate the body at this character count.
+
+    Raises:
+        ValueError: If the response is non-2xx.
+    """
+    if response.is_success:
+        return
+    body = response.text.strip()
+    snippet = body[:body_max] + ("\n…[truncated]" if len(body) > body_max else "")
+    label = f"{context} " if context else ""
+    if 400 <= response.status_code < 500:
+        hint = client_error_hint or (
+            "The response body above usually states the exact problem. "
+            "Verify input parameters and fix the request — do not retry the same input."
+        )
+    else:
+        hint = server_error_hint or (
+            "This may be transient or indicate the request is too heavy. "
+            "Consider narrowing scope or adding limits before retrying."
+        )
+    raise ValueError(
+        f"{label}HTTP {response.status_code} from {response.url}.\n"
+        f"Response body:\n{snippet}\n\n{hint}"
+    )
+
+
 # Making this a @mcp.tool() becomes an error, so we keep it as a function.
 async def execute_sparql(
     sparql_query: str,
@@ -185,25 +233,21 @@ async def execute_sparql(
             f"{exc.__class__.__name__}: {exc}"
         ) from exc
 
-    if response.is_success:
-        return response.text
-
-    body = response.text.strip()
-    snippet = body[:1500] + ("\n…[truncated]" if len(body) > 1500 else "")
-    if 400 <= response.status_code < 500:
-        raise ValueError(
-            f"SPARQL endpoint at {url} returned HTTP {response.status_code} (bad query). "
-            f"Endpoint diagnostic:\n{snippet}\n\n"
-            "The endpoint message above usually names the exact line/column. Common causes: "
-            "syntax error (missing brace/comma), undefined namespace prefix, unsupported "
-            "function. Fix the query — do not retry the same text."
-        )
-    raise ValueError(
-        f"SPARQL endpoint at {url} returned HTTP {response.status_code} (server error). "
-        f"Endpoint message:\n{snippet}\n\n"
-        "This may be transient or indicate the query is too heavy. Consider adding LIMIT, "
-        "stronger filters (specific IRIs, GRAPH clauses), or splitting the query."
+    raise_for_status_with_body(
+        response,
+        context="SPARQL endpoint",
+        client_error_hint=(
+            "The endpoint diagnostic above usually names the exact line/column. "
+            "Common causes: syntax error (missing brace/comma), undefined namespace "
+            "prefix, unsupported function. Fix the query — do not retry the same text."
+        ),
+        server_error_hint=(
+            "This may be transient or indicate the query is too heavy. Consider "
+            "adding LIMIT, stronger filters (specific IRIs, GRAPH clauses), or "
+            "splitting the query."
+        ),
     )
+    return response.text
 
 
 # The Primary MCP server
