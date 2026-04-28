@@ -335,7 +335,7 @@ def _normalize_ids(ids: str | list[str]) -> list[str]:
 
 
 @ncbi_mcp.tool()
-async def ncbi_esearch(
+async def esearch(
     database: str = "",
     query: str = "",
     max_results: int = 20,
@@ -475,7 +475,7 @@ async def ncbi_esearch(
 
 
 @ncbi_mcp.tool()
-async def ncbi_list_databases() -> list[TextContent]:
+async def list_databases() -> list[TextContent]:
     """
     List all supported NCBI databases with descriptions and example queries.
 
@@ -508,7 +508,7 @@ async def ncbi_list_databases() -> list[TextContent]:
 
 # Additional utility functions for future use
 @ncbi_mcp.tool()
-async def ncbi_esummary(
+async def esummary(
     database: str = "",
     ids: str | list[str] = "",
     db: str = "",
@@ -586,7 +586,7 @@ async def ncbi_esummary(
 
 
 @ncbi_mcp.tool()
-async def ncbi_efetch(
+async def efetch(
     database: str = "",
     ids: str | list[str] = "",
     rettype: str = "xml",
