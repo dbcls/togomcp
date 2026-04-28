@@ -1,6 +1,6 @@
 # Generate SPARQL query examples using RDF-config.
 # Run this under the rdf-config directory
-OUTDIR=~/work/GitHub/togomcp/togo_mcp/sparql-examples/
+OUTDIR=~/work/GitHub/togomcp/togo_mcp/data/sparql-examples/
 for i in config/*/sparql.yaml
 do 
     dir=`dirname $i`
