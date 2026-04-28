@@ -110,7 +110,7 @@ The `kw_search_tools` field enumerates keyword-search methods available for this
 - `mie_created` uses ISO 8601 (`YYYY-MM-DD`).
 - `access.backend` is required; it determines whether `bif:contains` is available and therefore drives query-strategy decisions downstream.
 - `keywords` are lowercase, single tokens or short phrases; 8–15 entries.
-- `categories` come from the controlled taxonomy in §3.1.5; 1–3 entries per database.
+- `categories` come from the controlled taxonomy in §3.1.5; 1–3 entries per database. **Use the exact token verbatim — lowercase, underscores for multi-word slugs (e.g. `drug_target`). Do not Title Case (`Genomics`), pluralize (`proteins`), space-separate (`comparative genomics`), or invent variants (`proteomics`, `gene_annotation`). The token must match an entry in the §3.1.5 table character-for-character.**
 
 #### 3.1.5 Keywords and Categories
 
@@ -127,7 +127,7 @@ Both fields drive the `find_databases()` discovery tool — a token-efficient al
 - Skip stopwords and generic filler ("data", "database", "contains", "available").
 - Skip terms that appear only incidentally in the description.
 
-**`categories`** — pick 1–3 from the controlled taxonomy below. Tag only categories that genuinely characterize the database, not every category whose vocabulary appears once.
+**`categories`** — pick 1–3 from the controlled taxonomy below. **Copy the token from the table verbatim** (lowercase, underscores for multi-word slugs). Title-cased, pluralized, space-separated, or invented variants will fragment `list_categories()` into single-DB buckets. Tag only categories that genuinely characterize the database, not every category whose vocabulary appears once.
 
 | Category | Use for |
 |---|---|

@@ -1,0 +1,738 @@
+schema_info:
+  title: OMA (Orthologous MAtrix)
+  description: |
+    OMA is a large-scale, phylogenomics-based resource for inferring orthologs and paralogs
+    across the tree of life. It contains 17.4 million proteins from 2,927 species, organized
+    into Hierarchical Orthologous Groups (HOGs), pairwise OMA ortholog clusters, and paralog
+    clusters at every node of the species tree. Primary use cases include comparative genomics,
+    evolutionary gene family analysis, and cross-species functional annotation transfer via
+    UniProt/Ensembl/NCBI cross-references.
+  keywords:
+    - ortholog
+    - paralog
+    - homolog
+    - gene family
+    - comparative genomics
+    - hierarchical orthologous groups
+    - HOG
+    - OMA group
+    - orthology
+    - species tree
+    - phylogenomics
+    - gene tree
+    - cross-species
+    - evolution
+  categories:
+    - genomics
+    - protein
+  endpoint: https://rdfportal.org/sib/sparql
+  base_uri: https://omabrowser.org/oma/
+  graphs:
+    - http://rdfportal.org/dataset/oma
+  kw_search_tools: []
+  version:
+    mie_version: "2.0"
+    mie_created: "2026-04-28"
+    data_version: "OMA Release 2024"
+    update_frequency: "Annual"
+  access:
+    backend: "Virtuoso"
+
+# MANDATORY GRAPH CLAUSE: always specify GRAPH <http://rdfportal.org/dataset/oma> —
+# the SIB endpoint also hosts UniProt, Rhea, and Bgee. Without GRAPH, queries silently
+# join all datasets and time out.
+#
+# IDENTIFIER AMBIGUITY: each orth:Protein carries multiple dct:identifier values
+# (OMA five-letter code, Ensembl gene/transcript/protein IDs, UniProt accessions,
+# NCBI GI numbers, HGNC IDs, etc.). Use FILTER(STRSTARTS(?id, "SPECIESCODE")) — e.g.,
+# STRSTARTS(?id, "HUMAN"), STRSTARTS(?id, "MOUSE"), STRSTARTS(?id, "YEAST") — to
+# isolate the OMA-native five-letter-prefix identifier. Without this filter a single
+# protein returns 10–20 identifier rows.
+#
+# ORGANISM LOOKUP: do NOT filter by species name string. Use the UniProt taxonomy IRI
+# via obo:RO_0002162 on orth:Organism. Example: obo:RO_0002162 <http://purl.uniprot.org/taxonomy/9606>.
+#
+# PROPERTY PATH TIMEOUT: orth:hasHomologousMember+ (property path) over 33 M clusters
+# times out. Navigate the hierarchy manually level by level (see architectural_notes).
+critical_warnings: |
+  - MANDATORY GRAPH CLAUSE: always add GRAPH <http://rdfportal.org/dataset/oma> { ... }.
+    Omitting it queries UniProt (17 M entries), Rhea, and Bgee simultaneously — instant timeout.
+  - IDENTIFIER AMBIGUITY: each protein has 5–20 dct:identifier values. Always add
+    FILTER(STRSTARTS(?id, "SPECIESCODE")) — e.g., STRSTARTS(?id, "HUMAN") — to get the
+    OMA-native identifier (e.g., "HUMAN01315"). Omitting it explodes result rows by 10–20x.
+  - ORGANISM BY IRI ONLY: orth:Organism has no rdfs:label or name string. Use
+    obo:RO_0002162 <http://purl.uniprot.org/taxonomy/NCBI_TAXON> to filter by species.
+    Common taxa: 9606 (human), 10090 (mouse), 10116 (rat), 7227 (Drosophila), 6239 (C. elegans).
+  - PROPERTY PATH TIMEOUT: orth:hasHomologousMember+ across 33 M clusters times out.
+    Navigate hierarchy one step at a time: find species-level cluster → find parent cluster
+    → get sibling clusters → get proteins. See sparql_query_examples #3.
+  - NO TEXT SEARCH for organisms or gene names: no rdfs:label on Organism; use taxonomy IRI.
+    rdfs:comment on orth:Protein is free text (Ensembl source annotation) — the one field
+    where bif:contains is legitimate if needed.
+  - TWO CLUSTER TYPES: OrthologsCluster with the "#OG_SPECIES_N" IRI fragment are
+    species-level OMA groups (single-species). OrthologsCluster without a fragment (e.g.,
+    HOG:..._7742) are hierarchical groups spanning a clade. Do not confuse them.
+
+shape_expressions: |
+  PREFIX orth: <http://purl.org/net/orth#>
+  PREFIX dct:  <http://purl.org/dc/terms/>
+  PREFIX obo:  <http://purl.obolibrary.org/obo/>
+  PREFIX lscr: <http://purl.org/lscr#>
+  PREFIX sio:  <http://semanticscience.org/resource/>
+  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+  PREFIX up:   <http://purl.uniprot.org/core/>
+  PREFIX pav:  <http://purl.org/pav/>
+
+  # ── Protein ──────────────────────────────────────────────────────────────
+  # ~17.4 M instances (orth:Protein); IRI pattern: https://omabrowser.org/oma/info/{SPECIESCODE}{N}
+  # Species code is 5 letters (e.g., HUMAN, MOUSE, YEAST, ECOLI, DROME).
+  # Multiple dct:identifier values per protein — use FILTER(STRSTARTS(?id,"SPECIESCODE"))
+  # to isolate the OMA-native 5-letter-prefix form.
+  <ProteinShape> {
+    a [ orth:Protein ] ;
+    dct:identifier xsd:string + ;           # OMA ID + Ensembl + UniProt acc + NCBI IDs, etc.
+    rdfs:comment  xsd:string ?             # free-text Ensembl source annotation (~94% coverage)
+    rdfs:label    xsd:string ?             # gene name (~20% coverage)
+    rdfs:seeAlso  IRI ;                    # link to OMA browser: http://omabrowser.org/cgi-bin/gateway.pl?...
+    orth:organism @<OrganismShape> ;
+    obo:RO_0001018 IRI ;                   # located in genome (links to SIO_000750 genome dataset IRI)
+    sio:SIO_010079 IRI ?                   # encoded by gene (links to orth:Gene IRI; ~46% coverage)
+    lscr:xrefUniprot       IRI *          # UniProt protein IRI; http://purl.uniprot.org/uniprot/{ACC}
+    lscr:xrefNCBIRefSeq    IRI *          # NCBI RefSeq protein; https://www.ncbi.nlm.nih.gov/protein/{ACC}
+    lscr:xrefNCBIGene      IRI *          # NCBI Gene; https://www.ncbi.nlm.nih.gov/gene/{ID}
+    lscr:xrefNCBIProtein   IRI *          # NCBI Protein
+    lscr:xrefEnsemblGene   IRI *          # Ensembl gene; http://rdf.ebi.ac.uk/resource/ensembl/{ENS}
+    lscr:xrefEnsemblProtein IRI *         # Ensembl protein
+    lscr:xrefEnsemblTranscript IRI *      # Ensembl transcript
+    lscr:xrefSwissProt     IRI *          # SwissProt IRI (~3% coverage; swissprot-only entries)
+  }
+
+  # ── Gene ─────────────────────────────────────────────────────────────────
+  # ~8.5 M instances; IRI pattern: http://omabrowser.org/ontology/oma#GENE_{ENSEMBL_ID}
+  # Also typed as obo:SO_0000704. Sparse predicates — mainly organism and Ensembl xref.
+  <GeneShape> {
+    a [ orth:Gene ] ;
+    a [ obo:SO_0000704 ] ;                 # Sequence Ontology: gene
+    orth:organism @<OrganismShape> ;
+    lscr:xrefEnsemblGene IRI ?            # http://rdf.ebi.ac.uk/resource/ensembl/{ENS}
+  }
+
+  # ── OrthologsCluster (hierarchical HOG node) ─────────────────────────────
+  # ~33.5 M instances. IRI pattern: https://omabrowser.org/oma/hog/resolve/{HOG_ID}_{TAXON}
+  # hasTaxonomicRange uses UniProt taxonomy IRIs (e.g., tax:9606, tax:7742).
+  # hasHomologousMember at multi-species nodes points to sub-clusters (other OrthologsClusters),
+  # NOT directly to proteins. At species-level leaf nodes it points directly to orth:Protein.
+  # inDataset present on ~48% of clusters (those with OMA dataset attribution).
+  <OrthologsClusterShape> {
+    a [ orth:OrthologsCluster ] ;
+    dct:identifier xsd:string ?           # HOG identifier string, e.g., "HOG:E0752142_7776"
+    orth:hasTaxonomicRange IRI ;          # UniProt taxonomy IRI for the clade of this node
+    orth:hasHomologousMember IRI + ;      # sub-clusters (OrthologsCluster) or proteins (Protein)
+    orth:inDataset IRI ?                  # https://omabrowser.org/oma/current/#DATASET_OMA
+  }
+
+  # ── ParalogsCluster ───────────────────────────────────────────────────────
+  # ~1.6 M instances. IRI pattern: https://omabrowser.org/oma/hog/resolve/{HOG_ID}_{TAXON}#PG_{N}
+  # hasHomologousMember points to species-level OrthologsClusters, NOT directly to proteins.
+  # To get proteins: cluster → hasHomologousMember → sub-cluster → hasHomologousMember → protein.
+  <ParalogsClusterShape> {
+    a [ orth:ParalogsCluster ] ;
+    orth:hasHomologousMember IRI + ;      # species-level OrthologsClusters containing paralogs
+    orth:inDataset IRI ?
+  }
+
+  # ── HierarchicalGeneTree ─────────────────────────────────────────────────
+  # ~1.04 M instances. IRI pattern: https://omabrowser.org/oma/hog/resolve/{HOG_ID}#ROOT_HOG
+  # Root entry point for each HOG gene family. Links to the root OrthologsCluster via CDAO.
+  <HierarchicalGeneTreeShape> {
+    a [ orth:HierarchicalGeneTree ] ;
+    dct:identifier xsd:string ;           # e.g., "HOG:E0751946_7776"
+    obo:CDAO_0000148 IRI ?               # has child → root OrthologsCluster (no #ROOT_HOG fragment)
+  }
+
+  # ── Organism ──────────────────────────────────────────────────────────────
+  # 2,927 instances (species covered by OMA). IRI: https://omabrowser.org/oma/genome/{NCBI_TAXON}
+  # No rdfs:label or scientific name string — identify species via obo:RO_0002162 (in taxon).
+  <OrganismShape> {
+    a [ orth:Organism ] ;
+    obo:RO_0002162 IRI ;                  # UniProt taxonomy IRI: http://purl.uniprot.org/taxonomy/{NCBI_TAXON}
+  }
+
+  # ── Genome Dataset (SIO_000750) ───────────────────────────────────────────
+  # ~2,808 instances. IRI: http://omabrowser.org/ontology/oma#{SpeciesNameFromSource}
+  # Describes the genome source (e.g., Ensembl version used). Linked from protein via obo:RO_0001018.
+  <GenomeDatasetShape> {
+    a [ sio:SIO_000750 ] ;
+    pav:version xsd:string ?
+  }
+
+sample_rdf_entries:
+  rdf_prefixes: |
+    @prefix orth:    <http://purl.org/net/orth#> .
+    @prefix dct:     <http://purl.org/dc/terms/> .
+    @prefix obo:     <http://purl.obolibrary.org/obo/> .
+    @prefix lscr:    <http://purl.org/lscr#> .
+    @prefix sio:     <http://semanticscience.org/resource/> .
+    @prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+    @prefix tax:     <http://purl.uniprot.org/taxonomy/> .
+    @prefix oma:     <https://omabrowser.org/oma/> .
+    @prefix omaont:  <http://omabrowser.org/ontology/oma#> .
+    @prefix ensemblp: <http://rdf.ebi.ac.uk/resource/ensembl.protein/> .
+    @prefix ensemblt: <http://rdf.ebi.ac.uk/resource/ensembl.transcript/> .
+  entries:
+    - title: "OMA Protein entry (Anas platyrhynchos ANAPL05859)"
+      description: >
+        A representative orth:Protein showing the multiple dct:identifier values, the
+        organism link, genome dataset link, and Ensembl cross-references.
+      rdf: |
+        oma:info/ANAPL05859 a orth:Protein ;
+          dct:identifier "ANAPL05859" ;
+          dct:identifier "ENSAPLG00000004460" ;
+          dct:identifier "ENSAPLP00000003981" ;
+          dct:identifier "ENSAPLT00000004588" ;
+          rdfs:comment "chromosome 1 open reading frame 35 [Source:HGNC Symbol;Acc:19032]" ;
+          orth:organism oma:genome/8839 ;
+          obo:RO_0001018 omaont:AnasplatyrhynchosfromENSEMBLv73 ;
+          rdfs:seeAlso <http://omabrowser.org/cgi-bin/gateway.pl?f=DisplayEntry&p1=ANAPL05859> ;
+          lscr:xrefEnsemblProtein   ensemblp:ENSAPLP00000003981 ;
+          lscr:xrefEnsemblTranscript ensemblt:ENSAPLT00000004588 ;
+          sio:SIO_010079 omaont:GENE_ENSAPLG00000004460 .
+
+    - title: "HOG OrthologsCluster spanning Gnathostomata (taxon 7776)"
+      description: >
+        A multi-species HOG cluster at the Gnathostomata level. Its hasHomologousMember
+        predicates point to sub-clusters (at finer taxonomic levels), not directly to proteins.
+      rdf: |
+        oma:hog/resolve/HOG:E0752142_7776 a orth:OrthologsCluster ;
+          dct:identifier "HOG:E0752142_7776" ;
+          orth:hasTaxonomicRange tax:7776 ;
+          orth:hasHomologousMember oma:hog/resolve/HOG:E0752142_117571 ;
+          orth:hasHomologousMember oma:hog/resolve/HOG:E0752142_7777 ;
+          orth:inDataset <https://omabrowser.org/oma/current/#DATASET_OMA> .
+
+    - title: "ParalogsCluster: in-species paralogs within Bilateria (taxon 33213)"
+      description: >
+        A ParalogsCluster containing four human paralog sub-clusters. Its members are
+        species-level OrthologsClusters — a second hop is needed to reach the proteins.
+      rdf: |
+        oma:hog/resolve/HOG:E0761713_33213#PG_9 a orth:ParalogsCluster ;
+          orth:hasHomologousMember oma:hog/resolve/HOG:E0761713.1b.1b.3a.1a.3a_9606 ;
+          orth:hasHomologousMember oma:hog/resolve/HOG:E0761713.1b.1b.3a.1a.3b_9606 ;
+          orth:hasHomologousMember oma:hog/resolve/HOG:E0761713.1b.1b.3a.1a.3c_9606 ;
+          orth:hasHomologousMember oma:hog/resolve/HOG:E0761713.1b.1b.3a.1a.3d_9606 ;
+          orth:inDataset <https://omabrowser.org/oma/current/#DATASET_OMA> .
+
+sparql_query_examples:
+  - title: "List OMA proteins from a specific organism"
+    description: >
+      Retrieve proteins from Homo sapiens using the UniProt taxonomy IRI (9606).
+      Use FILTER(STRSTARTS(?id, "HUMAN")) to get the OMA-native 5-letter-prefix identifier
+      and avoid the 10–20 rows per protein from other identifier types.
+    question: "What OMA proteins are annotated for Homo sapiens?"
+    complexity: basic
+    sparql: |
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX obo:  <http://purl.obolibrary.org/obo/>
+      PREFIX dct:  <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT DISTINCT ?protein ?omaId ?comment
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          # Organism lookup by NCBI taxonomy IRI — no string label available
+          ?organism a orth:Organism ;
+                    obo:RO_0002162 <http://purl.uniprot.org/taxonomy/9606> .  # Homo sapiens
+          ?protein a orth:Protein ;
+                   orth:organism ?organism ;
+                   dct:identifier ?omaId .
+          FILTER(STRSTARTS(?omaId, "HUMAN"))  # isolate OMA-native ID; omit → 10-20x rows
+          OPTIONAL { ?protein rdfs:comment ?comment }
+        }
+      }
+      LIMIT 20
+
+  - title: "Get all members of a specific HOG ortholog cluster"
+    description: >
+      Retrieve proteins from all sub-clusters of an HOG cluster at the Hominidae level
+      (taxon 207598 = great apes + humans). Members at this level are species-level
+      sub-clusters; proteins are one hop further via hasHomologousMember.
+    question: "Which proteins are in HOG cluster HOG:E0756069.1b.7b_207598 (Hominidae)?"
+    complexity: basic
+    sparql: |
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX dct:  <http://purl.org/dc/terms/>
+      PREFIX obo:  <http://purl.obolibrary.org/obo/>
+
+      SELECT DISTINCT ?taxon ?protein ?proteinId
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          # Look up the cluster by its string identifier
+          ?cluster a orth:OrthologsCluster ;
+                   dct:identifier "HOG:E0756069.1b.7b_207598" ;
+                   orth:hasHomologousMember ?subCluster .
+          # Each subCluster is a species-level OrthologsCluster
+          ?subCluster a orth:OrthologsCluster ;
+                      orth:hasTaxonomicRange ?taxon ;
+                      orth:hasHomologousMember ?protein .
+          ?protein a orth:Protein ;
+                   dct:identifier ?proteinId .
+          # Keep only OMA-native identifiers (5-letter species prefix)
+          FILTER(STRSTARTS(?proteinId, "HUMAN") ||
+                 STRSTARTS(?proteinId, "GORGO") ||
+                 STRSTARTS(?proteinId, "PANTR"))
+        }
+      }
+      LIMIT 20
+
+  - title: "Find cross-species orthologs of a human protein"
+    description: >
+      Navigate the HOG hierarchy upward one level from the human species-level cluster
+      to find the parent multi-species cluster, then retrieve proteins from sibling
+      species-level clusters (gorilla, chimpanzee). Avoids property paths (which time out).
+    question: "What are the primate orthologs of human protein HUMAN01315 (JMJD1C)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX dct:  <http://purl.org/dc/terms/>
+      PREFIX obo:  <http://purl.obolibrary.org/obo/>
+
+      SELECT DISTINCT ?taxon ?ortholog ?orthologId
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          # Step 1: find the cluster containing the query protein at species level (9606 = human)
+          ?myCluster a orth:OrthologsCluster ;
+                     orth:hasHomologousMember <https://omabrowser.org/oma/info/HUMAN01315> ;
+                     orth:hasTaxonomicRange <http://purl.uniprot.org/taxonomy/9606> .
+
+          # Step 2: go up one level to the parent cluster (e.g., Hominidae taxon 207598)
+          ?parentCluster orth:hasHomologousMember ?myCluster ;
+                         orth:hasHomologousMember ?siblingCluster .
+          FILTER(?siblingCluster != ?myCluster)
+
+          # Step 3: get proteins from sibling clusters (great apes)
+          ?siblingCluster a orth:OrthologsCluster ;
+                          orth:hasTaxonomicRange ?taxon ;
+                          orth:hasHomologousMember ?ortholog .
+          ?ortholog a orth:Protein ;
+                    dct:identifier ?orthologId .
+          # Filter to OMA-native IDs for gorilla and chimpanzee
+          FILTER(STRSTARTS(?orthologId, "GORGO") ||
+                 STRSTARTS(?orthologId, "PANTR") ||
+                 STRSTARTS(?orthologId, "PANPA"))
+        }
+      }
+      LIMIT 20
+
+  - title: "Find in-species paralogs of a human protein"
+    description: >
+      Retrieve the human paralogs of HUMAN38362 via a ParalogsCluster. The cluster contains
+      species-level sub-clusters; the actual proteins are one hop further. The query filters
+      both to the query species (taxon 9606) and to the OMA-native identifier prefix.
+    question: "What human proteins are paralogs of HUMAN38362 within the same species?"
+    complexity: intermediate
+    sparql: |
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX dct:  <http://purl.org/dc/terms/>
+
+      SELECT DISTINCT ?paralogCluster ?paralog ?paralogId
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          # Find ParalogsCluster whose sub-cluster contains the query protein
+          ?paralogCluster a orth:ParalogsCluster ;
+                          orth:hasHomologousMember ?mySubCluster .
+          ?mySubCluster orth:hasHomologousMember <https://omabrowser.org/oma/info/HUMAN38362> .
+
+          # Get other sub-clusters at the human species level (taxon 9606)
+          ?paralogCluster orth:hasHomologousMember ?otherSub .
+          ?otherSub a orth:OrthologsCluster ;
+                    orth:hasTaxonomicRange <http://purl.uniprot.org/taxonomy/9606> ;
+                    orth:hasHomologousMember ?paralog .
+          ?paralog a orth:Protein ;
+                   dct:identifier ?paralogId .
+          FILTER(STRSTARTS(?paralogId, "HUMAN"))
+          FILTER(?paralog != <https://omabrowser.org/oma/info/HUMAN38362>)
+        }
+      }
+      LIMIT 20
+
+  - title: "Get proteins with cross-database identifiers for an organism"
+    description: >
+      Retrieve OMA proteins for mouse (taxon 10090) along with their UniProt and NCBI
+      RefSeq cross-references. These xref predicates use structured IRI values — no
+      text search required.
+    question: "What are the UniProt and NCBI RefSeq identifiers for OMA mouse proteins?"
+    complexity: intermediate
+    sparql: |
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX lscr: <http://purl.org/lscr#>
+      PREFIX dct:  <http://purl.org/dc/terms/>
+      PREFIX obo:  <http://purl.obolibrary.org/obo/>
+
+      SELECT DISTINCT ?protein ?omaId ?uniprotRef ?ncbiRefSeq
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          ?organism a orth:Organism ;
+                    obo:RO_0002162 <http://purl.uniprot.org/taxonomy/10090> .  # Mus musculus
+          ?protein a orth:Protein ;
+                   orth:organism ?organism ;
+                   dct:identifier ?omaId .
+          FILTER(STRSTARTS(?omaId, "MOUSE"))
+          OPTIONAL { ?protein lscr:xrefUniprot    ?uniprotRef }
+          OPTIONAL { ?protein lscr:xrefNCBIRefSeq ?ncbiRefSeq }
+        }
+      }
+      LIMIT 20
+
+  - title: "Count HOG clusters at a specific taxonomic level"
+    description: >
+      Count all OrthologsCluster entities defined at the Vertebrata level (NCBI taxon 7742).
+      The hasTaxonomicRange predicate uses UniProt taxonomy IRIs — no text search needed.
+      This pattern works for any taxonomic level in the NCBI tree.
+    question: "How many HOG ortholog clusters span exactly the Vertebrata clade?"
+    complexity: advanced
+    sparql: |
+      PREFIX orth: <http://purl.org/net/orth#>
+
+      SELECT (COUNT(DISTINCT ?cluster) AS ?clusterCount)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          # hasTaxonomicRange uses UniProt taxonomy IRIs (same namespace as orth:organism lookup)
+          ?cluster a orth:OrthologsCluster ;
+                   orth:hasTaxonomicRange <http://purl.uniprot.org/taxonomy/7742> .  # Vertebrata
+        }
+      }
+
+  - title: "Cross-database: annotate OMA protein with UniProt function"
+    description: >
+      Join an OMA protein to its UniProt entry via lscr:xrefUniprot, then retrieve the
+      recommended protein name and functional annotation from the UniProt graph on the
+      same SIB endpoint. The linking IRI is the UniProt protein accession (e.g., Q15652).
+    question: "What is the UniProt functional annotation for human protein HUMAN01315 (JMJD1C)?"
+    complexity: advanced
+    sparql: |
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX lscr: <http://purl.org/lscr#>
+      PREFIX dct:  <http://purl.org/dc/terms/>
+      PREFIX up:   <http://purl.uniprot.org/core/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?omaId ?uniprotEntry ?proteinName ?function
+      WHERE {
+        # OMA graph: retrieve the UniProt xref IRI
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          <https://omabrowser.org/oma/info/HUMAN01315>
+              dct:identifier ?omaId ;
+              lscr:xrefUniprot ?uniprotEntry .
+          FILTER(STRSTARTS(?omaId, "HUMAN"))
+        }
+        # UniProt graph on the same SIB endpoint: join using the xref IRI directly
+        GRAPH <http://sparql.uniprot.org/uniprot> {
+          ?uniprotEntry a up:Protein ;
+                        up:reviewed 1 ;             # Swiss-Prot only (reviewed entries)
+                        up:recommendedName ?nameNode .
+          ?nameNode up:fullName ?proteinName .
+          OPTIONAL {
+            ?uniprotEntry up:annotation ?ann .
+            ?ann a up:Function_Annotation ;
+                 rdfs:comment ?function .
+          }
+        }
+      }
+      LIMIT 5
+
+cross_database_queries:
+  shared_endpoint: sib
+  co_located_databases: [uniprot, rhea, bgee]
+  examples:
+    - title: "OMA ortholog → UniProt reviewed protein with functional annotation"
+      description: |
+        Linking strategy:
+        - OMA: lscr:xrefUniprot on orth:Protein links to UniProt protein IRI
+          (http://purl.uniprot.org/uniprot/{ACC})
+        - UniProt: same IRI used as subject in GRAPH <http://sparql.uniprot.org/uniprot>
+        - Direct IRI matching; no text search or ID conversion required
+        - Filter up:reviewed 1 to restrict to Swiss-Prot (avoids TrEMBL noise)
+      databases_used: [oma, uniprot]
+      complexity: intermediate
+      sparql: |
+        PREFIX orth: <http://purl.org/net/orth#>
+        PREFIX lscr: <http://purl.org/lscr#>
+        PREFIX dct:  <http://purl.org/dc/terms/>
+        PREFIX up:   <http://purl.uniprot.org/core/>
+        PREFIX obo:  <http://purl.obolibrary.org/obo/>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+        SELECT ?protein ?omaId ?uniprotEntry ?proteinName ?function
+        WHERE {
+          GRAPH <http://rdfportal.org/dataset/oma> {
+            ?organism a orth:Organism ;
+                      obo:RO_0002162 <http://purl.uniprot.org/taxonomy/9606> .
+            ?protein a orth:Protein ;
+                     orth:organism ?organism ;
+                     dct:identifier ?omaId ;
+                     lscr:xrefUniprot ?uniprotEntry .
+            FILTER(STRSTARTS(?omaId, "HUMAN"))
+          }
+          GRAPH <http://sparql.uniprot.org/uniprot> {
+            ?uniprotEntry a up:Protein ;
+                          up:reviewed 1 ;
+                          up:recommendedName/up:fullName ?proteinName .
+            OPTIONAL {
+              ?uniprotEntry up:annotation ?ann .
+              ?ann a up:Function_Annotation ;
+                   rdfs:comment ?function .
+            }
+          }
+        }
+        LIMIT 10
+      notes: |
+        - Linking via: UniProt protein IRI (http://purl.uniprot.org/uniprot/{ACC})
+        - MIE files checked: oma, uniprot
+        - UniProt graph: http://sparql.uniprot.org/uniprot (NOT http://rdfportal.org/dataset/uniprot)
+        - Add LIMIT within each GRAPH block if query is slow; the OMA side alone has 13 M xrefUniprot triples
+
+cross_references:
+  - pattern: lscr:xrefUniprot
+    description: |
+      Links orth:Protein to a UniProt protein IRI (http://purl.uniprot.org/uniprot/{ACC}).
+      Coverage is ~78% of OMA proteins. Multiple values per protein (both Swiss-Prot
+      accession and UniProt-format mnemonic IRI). Directly joinable with the UniProt
+      GRAPH on the SIB endpoint using the IRI as a shared key.
+    databases:
+      protein:
+        - "UniProt (Swiss-Prot + TrEMBL): ~78% of orth:Protein"
+
+  - pattern: lscr:xrefNCBIRefSeq
+    description: |
+      Links to NCBI RefSeq protein IRIs (https://www.ncbi.nlm.nih.gov/protein/{ACC}).
+      ~115% triple coverage (multiple RefSeq accessions per protein).
+    databases:
+      protein:
+        - "NCBI RefSeq: ~115% of orth:Protein (multiple accessions)"
+
+  - pattern: lscr:xrefEnsemblGene / lscr:xrefEnsemblProtein / lscr:xrefEnsemblTranscript
+    description: |
+      Links to Ensembl gene, protein, and transcript IRIs at EBI
+      (http://rdf.ebi.ac.uk/resource/ensembl{,.protein,.transcript}/{ENS_ID}).
+      Joinable with the Ensembl GRAPH on the EBI endpoint.
+    databases:
+      genomics:
+        - "Ensembl Gene: ~17% of orth:Protein"
+        - "Ensembl Protein: ~30% of orth:Protein"
+        - "Ensembl Transcript: ~36% of orth:Protein"
+
+  - pattern: lscr:xrefNCBIGene
+    description: |
+      Links to NCBI Gene IRIs (https://www.ncbi.nlm.nih.gov/gene/{ID}). ~43% coverage.
+    databases:
+      genomics:
+        - "NCBI Gene: ~43% of orth:Protein"
+
+  - pattern: obo:RO_0002162
+    description: |
+      On orth:Organism: links to UniProt taxonomy IRI (http://purl.uniprot.org/taxonomy/{NCBI_TAXON}).
+      This is the only way to identify a species — Organism has no label or name string.
+    databases:
+      taxonomy:
+        - "UniProt Taxonomy: 2,927 organisms (100%)"
+
+architectural_notes:
+  query_strategy:
+    - "FIRST: read the MIE file (get_MIE_file('oma') or this file); check shape_expressions and critical_warnings"
+    - "Species lookup: use obo:RO_0002162 <http://purl.uniprot.org/taxonomy/{NCBI_TAXON}> on orth:Organism"
+    - "Protein lookup: find protein by OMA ID — FILTER(STRSTARTS(?id, 'SPECIESCODE'))"
+    - "Ortholog lookup: find species-level cluster → navigate up to parent → get sibling clusters → proteins"
+    - "Paralog lookup: find ParalogsCluster containing query protein → get sibling sub-clusters → proteins"
+    - "Cross-DB join: lscr:xrefUniprot IRI is directly joinable with UniProt GRAPH on same endpoint"
+    - "Priority: Specific IRIs > typed predicates (hasTaxonomicRange, xrefUniprot) > text search on rdfs:comment"
+
+  schema_design:
+    - "Central entities: orth:Protein (17.4M), orth:OrthologsCluster (33.5M), orth:ParalogsCluster (1.6M)"
+    - "HOG hierarchy: HierarchicalGeneTree (ROOT_HOG) → CDAO_0000148 → root OrthologsCluster → hasHomologousMember → sub-clusters → ... → leaf OrthologsCluster → proteins"
+    - "Leaf OrthologsCluster: IRI fragment #OG_{SPECIES_CODE}_{N}; points directly to orth:Protein; one species per cluster"
+    - "Intermediate OrthologsCluster: IRI {HOG_ID}_{NCBI_TAXON}; points to sub-clusters; hasTaxonomicRange = clade IRI"
+    - "ParalogsCluster: IRI fragment #PG_{N}; points to species-level OrthologsClusters; navigate two hops to proteins"
+    - "Organism IRI: https://omabrowser.org/oma/genome/{NCBI_TAXON}; identified only via obo:RO_0002162 → tax IRI"
+    - "Genome dataset: http://omabrowser.org/ontology/oma#{SpeciesName}; linked via obo:RO_0001018 on protein"
+
+  performance:
+    - "ALWAYS add GRAPH <http://rdfportal.org/dataset/oma> { } — SIB endpoint has UniProt (17M entries) and others"
+    - "ALWAYS add FILTER(STRSTARTS(?id, 'SPECIESCODE')) after dct:identifier — avoids 10-20x row explosion"
+    - "AVOID orth:hasHomologousMember+ property path — 33M cluster traversal times out consistently"
+    - "Navigate hierarchy one level at a time: up to parent with one triple, down to siblings with another"
+    - "bif:contains is valid for rdfs:comment (free text); split property paths before it on Virtuoso"
+    - "For large organism-level queries, anchor on a specific protein IRI rather than scanning all proteins"
+
+  data_integration:
+    - "UniProt: lscr:xrefUniprot → http://purl.uniprot.org/uniprot/{ACC}; joinable with GRAPH <http://sparql.uniprot.org/uniprot>"
+    - "Ensembl: lscr:xrefEnsemblGene/Protein/Transcript → http://rdf.ebi.ac.uk/resource/ensembl{,.protein,.transcript}/{ENS_ID}"
+    - "NCBI RefSeq: lscr:xrefNCBIRefSeq → https://www.ncbi.nlm.nih.gov/protein/{ACC}"
+    - "NCBI Gene: lscr:xrefNCBIGene → https://www.ncbi.nlm.nih.gov/gene/{ID}"
+    - "UniProt Taxonomy: orth:Organism obo:RO_0002162 → http://purl.uniprot.org/taxonomy/{NCBI_TAXON}"
+
+  data_quality:
+    - "Some Organism IRIs have negative integer taxon IDs (e.g., /oma/genome/-1637988980) — these are OMA-internal synthetic IDs for genomes without an NCBI taxon assignment"
+    - "dct:identifier is many-valued; a single protein can carry 10–20 identifiers from different sources"
+    - "rdfs:comment contains Ensembl source annotation text (e.g., '[Source:HGNC Symbol;Acc:HGNC:12313]') — not a clean gene description"
+    - "orth:Protein and up:Protein classes both appear in the OMA graph; up:Protein entries are UniProt proteins referenced by OMA, while orth:Protein are the OMA-canonical entries"
+
+  text_search_justification:
+    - "Number of the 7 example queries using text search: 0"
+    - "Fields where text search IS legitimate: rdfs:comment (free Ensembl annotation text)"
+    - "All filtering is done by: taxonomy IRI (obo:RO_0002162), HOG identifier string (dct:identifier), species mnemonic prefix (STRSTARTS on dct:identifier), and protein IRI"
+
+data_statistics:
+  total_entities: 17383786
+  verified_date: "2026-04-28"
+  verification_method: "Direct COUNT(*) on rdf:type = orth:Protein in GRAPH <http://rdfportal.org/dataset/oma>"
+
+  coverage:
+    ortholog_clusters:
+      value: 33451292
+      description: "Total orth:OrthologsCluster instances (HOG sub-groups at all taxonomic levels)"
+      verified_date: "2026-04-28"
+    paralog_clusters:
+      value: 1587082
+      description: "Total orth:ParalogsCluster instances"
+      verified_date: "2026-04-28"
+    hierarchical_gene_trees:
+      value: 1040435
+      description: "Total orth:HierarchicalGeneTree instances (root HOG entries)"
+      verified_date: "2026-04-28"
+    organisms_species:
+      value: 2927
+      description: "Total orth:Organism instances (species covered by OMA)"
+      verified_date: "2026-04-28"
+    vertebrata_hog_clusters:
+      value: 65299
+      description: "OrthologsCluster entries with hasTaxonomicRange = taxonomy:7742 (Vertebrata)"
+      verified_date: "2026-04-28"
+    uniprot_xref_coverage:
+      value: "~78% of orth:Protein"
+      description: "Proteins with at least one lscr:xrefUniprot triple (13.6M xrefUniprot triples total)"
+      verified_date: "2026-04-28"
+    ncbi_refseq_xref_coverage:
+      value: "~115% triple rate (multiple RefSeq accessions per protein)"
+      description: "19.9M lscr:xrefNCBIRefSeq triples for 17.4M proteins"
+      verified_date: "2026-04-28"
+
+anti_patterns:
+  - title: "Missing GRAPH Clause"
+    problem: >
+      Querying without GRAPH <http://rdfportal.org/dataset/oma> joins UniProt (17M proteins),
+      Rhea, Bgee, and OMA simultaneously — queries time out or return nonsensical mixed results.
+    wrong_sparql: |
+      SELECT ?protein WHERE { ?protein a orth:Protein } LIMIT 10
+    correct_sparql: |
+      SELECT ?protein WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          ?protein a orth:Protein
+        }
+      } LIMIT 10
+    explanation: >
+      The SIB endpoint hosts multiple large datasets. Without the GRAPH clause the query
+      engine scans all of them. Always specify the OMA graph explicitly.
+
+  - title: "Missing Identifier Filter (Row Explosion)"
+    problem: >
+      Selecting dct:identifier without a STRSTARTS filter returns 10–20 rows per protein
+      (OMA ID, Ensembl gene/transcript/protein IDs, UniProt accessions, NCBI IDs, etc.).
+      Aggregation or DISTINCT over all these inflates counts and obscures results.
+    wrong_sparql: |
+      SELECT ?protein ?id WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          ?protein a orth:Protein ; dct:identifier ?id
+        }
+      } LIMIT 10
+    correct_sparql: |
+      SELECT ?protein ?id WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          ?protein a orth:Protein ; dct:identifier ?id .
+          FILTER(STRSTARTS(?id, "HUMAN"))  # or MOUSE, YEAST, ECOLI, etc.
+        }
+      } LIMIT 10
+    explanation: >
+      Each protein aggregates identifiers from Ensembl, UniProt, NCBI, and OMA-native sources.
+      The STRSTARTS filter isolates the OMA five-letter-prefix ID (e.g., "HUMAN01315").
+
+  - title: "Property Path Traversal on hasHomologousMember"
+    problem: >
+      Using orth:hasHomologousMember+ to traverse the HOG hierarchy across 33M clusters times out.
+    wrong_sparql: |
+      SELECT ?protein WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          <https://omabrowser.org/oma/hog/resolve/HOG:E0756069.1b.7b_207598>
+              orth:hasHomologousMember+ ?protein .
+          ?protein a orth:Protein
+        }
+      } LIMIT 20
+    correct_sparql: |
+      # Navigate two hops manually: parent → sub-cluster → protein
+      SELECT ?subCluster ?protein WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          <https://omabrowser.org/oma/hog/resolve/HOG:E0756069.1b.7b_207598>
+              orth:hasHomologousMember ?subCluster .
+          ?subCluster orth:hasHomologousMember ?protein .
+          ?protein a orth:Protein
+        }
+      } LIMIT 20
+    explanation: >
+      The HOG hierarchy has many levels. Property paths over 33M triples consistently time out.
+      Navigate level by level using explicit triple patterns.
+
+  - title: "Species Lookup by String Instead of Taxonomy IRI"
+    problem: >
+      orth:Organism has no rdfs:label or scientific name string. Text search on organism name
+      returns zero results.
+    wrong_sparql: |
+      SELECT ?org WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          ?org a orth:Organism .
+          ?name bif:contains "'Homo sapiens'"
+        }
+      }
+    correct_sparql: |
+      SELECT ?org WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          ?org a orth:Organism ;
+               obo:RO_0002162 <http://purl.uniprot.org/taxonomy/9606> .
+        }
+      }
+    explanation: >
+      The only way to identify an OMA organism is via obo:RO_0002162 (in taxon) linking to a
+      UniProt taxonomy IRI. Use NCBI taxon IDs: 9606=human, 10090=mouse, 7227=Drosophila, etc.
+
+common_errors:
+  - error: "Query timeout or 502 Bad Gateway"
+    causes:
+      - "Missing GRAPH clause — joining all SIB datasets simultaneously"
+      - "orth:hasHomologousMember+ property path over 33M cluster triples"
+      - "Broad dct:identifier scan without STRSTARTS filter"
+      - "Missing LIMIT on exploratory queries over millions of proteins"
+    solutions:
+      - "Add GRAPH <http://rdfportal.org/dataset/oma> { } around all OMA triple patterns"
+      - "Replace property path (+) with one or two explicit hasHomologousMember hops"
+      - "Add FILTER(STRSTARTS(?id, 'SPECIESCODE')) to identifier queries"
+      - "Always include LIMIT; use DISTINCT to deduplicate before counting"
+
+  - error: "Empty results when querying by species or protein name"
+    causes:
+      - "Used string filter for organism name — orth:Organism has no label predicate"
+      - "Wrong taxonomy IRI namespace (e.g., NCBI Gene IRIs instead of UniProt taxonomy)"
+      - "Looking for #OG_* clusters that span multiple species — they are species-specific"
+      - "Querying without the OMA GRAPH clause — species concept doesn't exist in other graphs"
+    solutions:
+      - "Use obo:RO_0002162 <http://purl.uniprot.org/taxonomy/{NCBI_TAXON}> for organism lookup"
+      - "Taxonomy IRIs must be http://purl.uniprot.org/taxonomy/{NCBI_TAXON}, not other formats"
+      - "For multi-species groups, use HOG clusters without the #OG_ fragment (e.g., HOG:..._7742)"
+      - "Always specify GRAPH <http://rdfportal.org/dataset/oma>"
+
+  - error: "Cross-database join with UniProt returns no results"
+    causes:
+      - "Used wrong UniProt graph name (http://rdfportal.org/dataset/uniprot does not exist)"
+      - "Protein lacks lscr:xrefUniprot (only ~78% coverage)"
+      - "Did not filter up:reviewed 1 but expected Swiss-Prot quality results"
+    solutions:
+      - "Use GRAPH <http://sparql.uniprot.org/uniprot> for UniProt data (not rdfportal.org/dataset/uniprot)"
+      - "Check OPTIONAL { ?protein lscr:xrefUniprot ?uniprotEntry } to handle missing xrefs"
+      - "Read the UniProt MIE file before writing cross-database queries: get_MIE_file('uniprot')"
