@@ -52,24 +52,26 @@ After registration, proceed to Phase 1.
 
 Before touching the endpoint:
 
-1. `Read ./togo_mcp/data/mie/<db>.yaml` — is there an existing MIE? If yes, this is an update, not a fresh build. Note which sections are weak; preserve verified content; refresh statistics.
+1. `Read ./togo_mcp/data/mie/<db>.yaml` — is there an existing MIE? If yes, this is an update, not a fresh build. Note which sections are weak. **Treat every claim in the existing file as a hint to verify, not a source of truth — including `schema_info.graphs`. Graphs get added upstream all the time, and a previously-correct graph list can be incomplete by the next snapshot.** Phase 2a is mandatory whether you're authoring or revising.
 2. Call `get_sparql_endpoints()` — confirm the endpoint URL is what you expect (it should already be in `endpoints.csv` after Phase 0).
 
-That's it. Phase 2 is where the real work happens. Local prior art (legacy `./shex/<db>.shex`, `./togo_mcp/data/sparql-examples/<db>/`) is optional context; **do not let it shape the MIE without re-verification against the live endpoint**.
+That's it. Phase 2 is where the real work happens. Local prior art — legacy `./shex/<db>.shex`, `./togo_mcp/data/sparql-examples/<db>/`, **and the existing MIE under revision** — is optional context; **do not let it shape the MIE without re-verification against the live endpoint**.
 
 ### Phase 2 — Discover (10–20 minutes)
 
 Goal: extract the named graph(s), classes, typed predicates, IRI patterns, and representative entities you'll need so that `sparql_query_examples` can prefer structured lookups over text search. This is the canonical source of truth — every fact in the MIE comes from queries you ran here.
 
-#### 2a. Identify the data graph(s)
+#### 2a. Identify the data graph(s) — mandatory, including for revisions
 
 Endpoints often host multiple databases (SIB hosts UniProt + Rhea + Bgee + OMA; the primary endpoint hosts ~30 ontologies and datasets). Picking the right graph(s) is step zero.
+
+**This step is mandatory whether you're authoring a new MIE or revising an existing one.** The most common revision failure is trusting the existing `schema_info.graphs` as authoritative — graphs get added upstream between snapshots, and a stale list silently caps every downstream query. A real instance: an Ensembl revision missed `ensembl-glossary`, `ensembl_ontology`, and `ensembl_taxonomy` because the existing graphs list was treated as ground truth. If `get_graph_list` wasn't called this turn, you don't know what graphs exist.
 
 ```python
 get_graph_list("<db>")
 ```
 
-`get_graph_list` filters out Virtuoso/OpenLink internal graphs and **ranks graphs whose URI contains the database slug at the top** — so `get_graph_list("bgee")` puts `<http://bgee.org>` first; `get_graph_list("supercon")` puts `<http://rdfportal.org/dataset/supercon>` first. Common URI conventions in RDF Portal: `http://<db>.org` (Bgee, Rhea, JCM), `http://rdfportal.org/dataset/<db>` (OMA, BRENDA, ChEBI, Reactome), `http://sparql.<db>.org/<db>` (UniProt). Browse the ranked list, pick the graph(s).
+`get_graph_list` filters out Virtuoso/OpenLink internal graphs and **ranks graphs whose URI contains the database slug at the top** — so `get_graph_list("bgee")` puts `<http://bgee.org>` first; `get_graph_list("supercon")` puts `<http://rdfportal.org/dataset/supercon>` first. Common URI conventions in RDF Portal: `http://<db>.org` (Bgee, Rhea, JCM), `http://rdfportal.org/dataset/<db>` (OMA, BRENDA, ChEBI, Reactome), `http://sparql.<db>.org/<db>` (UniProt). Browse the ranked list, pick the graph(s). For a revision, diff what you find against `schema_info.graphs` in the existing file — additions and removals both matter.
 
 **Multi-graph databases** (UniProt, Bgee with subgraphs, etc.): if several graphs share the same prefix (e.g. `sparql.uniprot.org/{core,taxonomy,go,keywords,…}`), the database spans all of them — list them all in `schema_info.graphs` and document the role of each in `architectural_notes.schema_design`.
 
