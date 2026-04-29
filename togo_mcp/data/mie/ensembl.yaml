@@ -36,18 +36,23 @@ schema_info:
     - http://rdfportal.org/dataset/ensembl_metazoa
     - http://rdfportal.org/dataset/ensembl_plants
     - http://rdfportal.org/dataset/ensembl_protists
+    - http://rdfportal.org/dataset/ensembl-glossary
+    - http://rdfportal.org/dataset/ensembl_ontology
+    - http://rdfportal.org/dataset/ensembl_taxonomy
   kw_search_tools: []
   version:
     mie_version: "2.5"
     mie_created: "2026-02-28"
-    mie_updated: "2026-04-21"
+    mie_updated: "2026-04-29"
     data_version: Release 115
     update_frequency: Quarterly
     query_test_status: |
       All 7 SPARQL queries, 2 cross-database queries, and 1 cross-reference query
-      verified passing 2026-02-28. Gene count re-verified 2026-04-21 (87,693 unchanged).
-      Chromosome IRI version confirmed 115. Cross-DB query 1 confirmed Ensembl->ChEMBL
-      link via UniProt. Cross-DB query 2 confirmed top result SLC6A4 with 28 approved drugs.
+      verified passing 2026-04-29. Gene/transcript/protein counts re-confirmed unchanged
+      (87,693 / 535,380 / 247,155). Chromosome IRI version confirmed 115. Three new graphs
+      added: ensembl-glossary, ensembl_ontology, ensembl_taxonomy. Transcript sample RDF
+      corrected to show all 5 flags including ENSGLOSSARY_0000020 (GENCODE Basic). LRG IRI
+      trap added to critical_warnings.
   license:
     data_license: Creative Commons Attribution 4.0 International
     license_url: https://www.ensembl.org/info/about/legal/index.html
@@ -77,6 +82,13 @@ critical_warnings: |
   - FALDO CARTESIAN PRODUCT: FALDO positions carry dual rdf:type (ExactPosition + StrandPosition).
     Omitting FILTER(?strand_type IN (faldo:ForwardStrandPosition, faldo:ReverseStrandPosition))
     doubles every result row silently.
+  - LRG IRI TRAP: FALDO coordinate queries return LRG (Locus Reference Genomic) entries
+    alongside canonical GRCh38 entries. E.g. searching BRCA1 returns both the GRCh38/17
+    chromosome entry AND an LRG_292 entry with different coordinates. Add
+    FILTER(CONTAINS(STR(?chr), "/GRCh38/")) to restrict to canonical assembly only.
+  - ENSGLOSSARY LABELS LIVE IN A SEPARATE GRAPH: ENSGLOSSARY_ IRIs have rdfs:label only in
+    <http://rdfportal.org/dataset/ensembl-glossary>. Querying labels in the main data graph
+    returns empty. Use the ensembl-glossary graph or refer to the IRI table in shape_expressions.
 
 shape_expressions: |
   PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
@@ -154,10 +166,12 @@ shape_expressions: |
   #   (some biotypes use SO_ IRIs; run biotype distribution query to discover all)
   #
   # Transcript flags (terms:has_transcript_flag):
-  #   MANE Select:  <http://ensembl.org/glossary/ENSGLOSSARY_0000365>  (19,338 human)
-  #   canonical:    <http://ensembl.org/glossary/ENSGLOSSARY_0000023>  (87,693 human — 1 per gene)
-  #   APPRIS P1:    <http://ensembl.org/glossary/ENSGLOSSARY_0000016>
-  #   TSL 1:        <http://ensembl.org/glossary/ENSGLOSSARY_0000006>
+  #   MANE Select:    <http://ensembl.org/glossary/ENSGLOSSARY_0000365>  (19,338 human)
+  #   canonical:      <http://ensembl.org/glossary/ENSGLOSSARY_0000023>  (87,693 human — 1 per gene)
+  #   APPRIS P1:      <http://ensembl.org/glossary/ENSGLOSSARY_0000016>
+  #   TSL 1:          <http://ensembl.org/glossary/ENSGLOSSARY_0000006>
+  #   GENCODE Basic:  <http://ensembl.org/glossary/ENSGLOSSARY_0000020>
+  #   (Flag labels are stored in <http://rdfportal.org/dataset/ensembl-glossary>, not the data graph)
 
 sample_rdf_entries:
   rdf_prefixes: |
@@ -196,8 +210,13 @@ sample_rdf_entries:
     - title: Transcript with MANE Select and Quality Flags
       description: High-quality transcript illustrating flag IRIs, versioned ID, ordered-exon scaffold, and GO cross-references.
       rdf: |
-        # MANE Select flag: ENSGLOSSARY_0000365; canonical: ENSGLOSSARY_0000023
-        # Ordered exons use sio:SIO_000974 -> rank (sio:SIO_000300) + exon ref (sio:SIO_000628)
+        # All 5 flags on this transcript (verified 2026-04-29):
+        #   ENSGLOSSARY_0000365 = MANE Select
+        #   ENSGLOSSARY_0000023 = canonical (1 per gene)
+        #   ENSGLOSSARY_0000016 = APPRIS P1
+        #   ENSGLOSSARY_0000006 = TSL 1
+        #   ENSGLOSSARY_0000020 = GENCODE Basic
+        # Flag labels live in <http://rdfportal.org/dataset/ensembl-glossary>, not the data graph.
         enst:ENST00000357654 a terms:EnsemblTranscript ,
                                 <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
           rdfs:label "BRCA1-203" ;
@@ -207,7 +226,9 @@ sample_rdf_entries:
           so:translates_to ensp:ENSP00000350283 ;
           terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000365> ,
                                     <http://ensembl.org/glossary/ENSGLOSSARY_0000023> ,
-                                    <http://ensembl.org/glossary/ENSGLOSSARY_0000016> ;
+                                    <http://ensembl.org/glossary/ENSGLOSSARY_0000016> ,
+                                    <http://ensembl.org/glossary/ENSGLOSSARY_0000006> ,
+                                    <http://ensembl.org/glossary/ENSGLOSSARY_0000020> ;
           terms:has_versioned_transcript enst:ENST00000357654.9 ;
           rdfs:seeAlso <http://purl.obolibrary.org/obo/GO_0006281> ,
                        <http://purl.obolibrary.org/obo/GO_0005634> .
@@ -553,6 +574,9 @@ architectural_notes:
     - "Species IRIs: Division-specific subdomains; strain/assembly suffixes for non-model organisms"
     - "ChEMBL bridge: Ensembl rdfs:seeAlso UniProt ← skos:exactMatch ChEMBL hasTargetComponent"
     - "xref prefixes: UniProt (uniprot.org), HGNC/Reactome/NCBI (identifiers.org), GO/PDB"
+    - "ensembl-glossary graph: 377 OWL classes with rdfs:label + IAO_0000115 definitions for all ENSGLOSSARY_ terms (biotypes and flags)"
+    - "ensembl_taxonomy graph: Maps Ensembl species IRIs to NCBI Taxonomy via skos:relatedMatch (1268 entries). Use to bridge Ensembl species to taxonomy:9606 et al."
+    - "ensembl_ontology graph: Ensembl feature ontology (19 OWL classes); rarely needed for data queries"
 
   data_quality:
     - "~46% of human transcripts encode proteins (247,155 / 535,380)"
@@ -570,8 +594,8 @@ data_statistics:
   total_human_genes: 87693
   total_human_transcripts: 535380
   total_human_proteins: 247155
-  verified_date: "2026-04-21"
-  verification_method: "Direct COUNT queries (human gene count re-confirmed 2026-04-21; others from 2026-02-28)"
+  verified_date: "2026-04-29"
+  verification_method: "Direct COUNT queries (all three counts re-confirmed 2026-04-29)"
   major_species:
     human: 87693
     mouse: 78334
@@ -597,6 +621,16 @@ data_statistics:
     ENSGLOSSARY_0000053: 97
     ENSGLOSSARY_0000065: 93
     ENSGLOSSARY_0000040: 71
+    ENSGLOSSARY_0000060: 64
+    SO_0002339: 51
+    SO_0002103: 46
+    ENSGLOSSARY_0000061: 24
+    ENSGLOSSARY_0000062: 23
+    SO_0000088: 22
+    ENSGLOSSARY_0000047: 20
+    Artifact: 19
+    SO_0002100: 11
+    SO_0002181: 9
   human_quality_metrics:
     canonical_transcripts: 87693
     mane_select: 19338
@@ -608,13 +642,26 @@ data_statistics:
   non_vertebrate_note: "Gene counts for non-vertebrate divisions not feasible via SPARQL due to graph size (consistent timeouts)."
 
 anti_patterns:
+  - title: Skipping Schema Check Before Text Search
+    problem: "Using text search without checking critical_warnings and shape_expressions for structured IRIs first."
+    wrong_sparql: |
+      # No MIE check — jumps to text search
+      ?desc bif:contains "'BRCA'"
+    correct_sparql: |
+      # Correct workflow:
+      # 1. get_MIE_file('ensembl') → read critical_warnings + shape_expressions
+      # 2. Inspect example entities to extract IRIs (gene IDs, biotype IRIs)
+      # 3. Use specific IRIs:
+      ?gene dcterms:identifier "ENSG00000012048" .
+    explanation: "Always check MIE critical_warnings and inspect examples before defaulting to text search. Ensembl has structured IRIs for all major filtering dimensions."
+
   - title: Using NCBI Taxonomy IRI for Species Filter
     problem: "Using taxonomy:9606 instead of Ensembl's own species IRIs (returns 0 silently)."
     wrong_sparql: |
       ?gene obo:RO_0002162 <http://identifiers.org/taxonomy/9606> .
     correct_sparql: |
       ?gene <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> .
-    explanation: Ensembl uses division-specific species IRIs, NOT NCBI Taxonomy URIs. See critical_warnings for full table.
+    explanation: "Ensembl uses division-specific species IRIs, NOT NCBI Taxonomy URIs. To bridge Ensembl species IRIs to NCBI Taxonomy, query <http://rdfportal.org/dataset/ensembl_taxonomy> using skos:relatedMatch. See critical_warnings for full division table."
 
   - title: Using Wrong Species IRI Pattern for Non-Vertebrate Division
     problem: "Using the vertebrate subdomain (ensembl.org/) for metazoa/plants/fungi/bacteria organisms."
@@ -637,20 +684,7 @@ anti_patterns:
     correct_sparql: |
       # ENSGLOSSARY_0000026 = protein_coding
       ?gene terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> .
-    explanation: "Run biotype distribution query first to discover all biotype IRIs. Common: ENSGLOSSARY_0000026 (protein-coding), _0000028 (lncRNA), _0000038 (miRNA)."
-
-  - title: Skipping Schema Check Before Text Search
-    problem: "Using text search without checking critical_warnings and shape_expressions for structured IRIs first."
-    wrong_sparql: |
-      # No MIE check — jumps to text search
-      ?desc bif:contains "'BRCA'"
-    correct_sparql: |
-      # Correct workflow:
-      # 1. get_MIE_file('ensembl') → read critical_warnings + shape_expressions
-      # 2. Inspect example entities to extract IRIs (gene IDs, biotype IRIs)
-      # 3. Use specific IRIs:
-      ?gene dcterms:identifier "ENSG00000012048" .
-    explanation: "Always check MIE critical_warnings and inspect examples before defaulting to text search. Ensembl has structured IRIs for all major filtering dimensions."
+    explanation: "Run biotype distribution query first to discover all biotype IRIs. Common: ENSGLOSSARY_0000026 (protein-coding), _0000028 (lncRNA), _0000038 (miRNA). Labels are in the ensembl-glossary graph."
 
 common_errors:
   - error: Zero results for species-filtered queries
