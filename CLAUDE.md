@@ -23,10 +23,7 @@ Bundled under [togo_mcp/data/](togo_mcp/data/) and shipped in the wheel via `pac
 - `mie/*.yaml` — one MIE (Metadata-Interoperability-Exchange) file per supported RDF database
 - `resources/endpoints.csv` — SPARQL endpoint registry consumed by `load_sparql_endpoints`
 - `resources/MIE_prompt.md`, `togomcp_usage_guide*.md` — prompts and static guidance served as resources
-- `sparql-examples/` — per-database example queries
 - `docs/` — developer docs (MIE spec, examples)
-
-`shex/` (top-level) holds ShEx schemas used during MIE generation.
 
 ## Parameter conventions
 

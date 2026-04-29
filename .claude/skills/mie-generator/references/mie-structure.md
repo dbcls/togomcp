@@ -32,7 +32,7 @@ Use `[]` only if you have genuinely confirmed there are no traps. In practice mo
 
 ## 3. `shape_expressions`
 
-ShEx-style schema for every major entity type, as a YAML `|` string. Build from the live discovery in Phase 2 (class enumeration + DESCRIBE-style inspection of representative entities). A legacy `./shex/<db>.shex` file may exist for some databases; treat it as one possible hint, not authoritative — verify every shape against the endpoint.
+ShEx-style schema for every major entity type, as a YAML `|` string. Build from the live discovery in Phase 2 (class enumeration + DESCRIBE-style inspection of representative entities) — verify every shape against the endpoint.
 
 Inline comments should document:
 

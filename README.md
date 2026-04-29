@@ -155,9 +155,7 @@ togomcp/
 │   └── data/               # Bundled data files (included in wheel)
 │       ├── mie/            # MIE files (YAML, one per database)
 │       ├── docs/           # Developer documentation
-│       ├── resources/      # Static resources (endpoints.csv, prompts, etc.)
-│       └── sparql-examples/# Example SPARQL queries per database
-├── shex/                   # ShEx schemas for RDF validation
+│       └── resources/      # Static resources (endpoints.csv, prompts, etc.)
 ├── benchmark/              # Benchmarking scripts and results
 ├── scripts/                # Utility/maintenance scripts
 ├── workflows/              # Example workflow prompts
