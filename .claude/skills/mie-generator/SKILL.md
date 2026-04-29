@@ -21,8 +21,8 @@ This skill lives in a Claude Code environment with filesystem access and SPARQL 
 |----------------------------|--------------------------------------------|------------------------|
 | Existing MIE files         | `./togo_mcp/data/mie/<db>.yaml`            | Read / Write / Edit    |
 | Endpoint registry          | `./togo_mcp/data/resources/endpoints.csv`  | Read / Edit            |
-| ShEx schemas               | `./shex/<db>.shex` (or similar)            | Read                   |
-| Prewritten SPARQL examples | `./togo_mcp/data/sparql-examples/<db>/`    | Read                   |
+
+`./shex/<db>.shex` and `./togo_mcp/data/sparql-examples/<db>/` may exist as legacy prior art for some databases, but they are **optional**, not required, and may be stale. Phase 2 (live discovery) is the canonical source of truth — never let a local file override what the endpoint actually exposes.
 
 The MCP tools `get_MIE_file`, `save_MIE_file`, `get_shex`, and `get_sparql_example` are **not** used in this environment — read and write these files directly. The remaining TogoMCP tools (`run_sparql`, `find_databases`, `list_databases`, `get_sparql_endpoints`, `get_graph_list`, the search APIs) ARE used; they hit live endpoints and cannot be replaced by filesystem access. `WebFetch` is used in Phase 0 to look up unregistered endpoints on rdfportal.org.
 
@@ -48,46 +48,68 @@ Before discovery, the target database must exist as a row in `./togo_mcp/data/re
 
 After registration, proceed to Phase 1.
 
-### Phase 1 — Orient (2–3 minutes)
+### Phase 1 — Orient (1–2 minutes)
 
-Before touching the endpoint, gather what already exists locally:
+Before touching the endpoint:
 
-1. `Read ./togo_mcp/data/mie/<db>.yaml` — is there an existing MIE? If yes, this is an update, not a fresh build. Note which sections are weak.
-2. `Read ./shex/<db>.shex` (or equivalent) — the ShEx schema is your starting point for `shape_expressions`.
-3. `ls ./togo_mcp/data/sparql-examples/<db>/` and read any files present — these are human-curated queries and are gold. They reveal which patterns actually work on this endpoint.
-4. Call `get_sparql_endpoints()` and `get_graph_list(<db>)` — confirm endpoint URL, named graphs, and which graphs hold data vs ontology.
+1. `Read ./togo_mcp/data/mie/<db>.yaml` — is there an existing MIE? If yes, this is an update, not a fresh build. Note which sections are weak; preserve verified content; refresh statistics.
+2. Call `get_sparql_endpoints()` — confirm the endpoint URL is what you expect (it should already be in `endpoints.csv` after Phase 0).
 
-**If the ShEx file is missing or empty**, fall back to live exploration (see Phase 2 detail below). This is common for newer or custom databases.
+That's it. Phase 2 is where the real work happens. Local prior art (legacy `./shex/<db>.shex`, `./togo_mcp/data/sparql-examples/<db>/`) is optional context; **do not let it shape the MIE without re-verification against the live endpoint**.
 
 ### Phase 2 — Discover (10–20 minutes)
 
-Goal: extract the specific IRIs, typed predicates, and namespace patterns you'll need so that `sparql_query_examples` can prefer structured lookups over text search.
+Goal: extract the named graph(s), classes, typed predicates, IRI patterns, and representative entities you'll need so that `sparql_query_examples` can prefer structured lookups over text search. This is the canonical source of truth — every fact in the MIE comes from queries you ran here.
 
-Standard discovery queries (adjust graph clauses as needed):
+#### 2a. Identify the data graph(s)
+
+Endpoints often host multiple databases (SIB hosts UniProt + Rhea + Bgee + OMA; the primary endpoint hosts ~30 ontologies and datasets). Picking the right graph(s) is step zero.
+
+```python
+get_graph_list("<db>")
+```
+
+`get_graph_list` filters out Virtuoso/OpenLink internal graphs and **ranks graphs whose URI contains the database slug at the top** — so `get_graph_list("bgee")` puts `<http://bgee.org>` first; `get_graph_list("supercon")` puts `<http://rdfportal.org/dataset/supercon>` first. Common URI conventions in RDF Portal: `http://<db>.org` (Bgee, Rhea, JCM), `http://rdfportal.org/dataset/<db>` (OMA, BRENDA, ChEBI, Reactome), `http://sparql.<db>.org/<db>` (UniProt). Browse the ranked list, pick the graph(s).
+
+**Multi-graph databases** (UniProt, Bgee with subgraphs, etc.): if several graphs share the same prefix (e.g. `sparql.uniprot.org/{core,taxonomy,go,keywords,…}`), the database spans all of them — list them all in `schema_info.graphs` and document the role of each in `architectural_notes.schema_design`.
+
+**No name match**: if no graph URI contains the slug, the data graph URI is unconventional. Fall back to running quick `COUNT(*)` queries on candidate graphs to find the largest data-bearing one, or inspect the dataset's documentation. This is rare on RDF Portal.
+
+#### 2b. Enumerate classes and predicates
+
+Once you know the graph(s), scope every discovery query with `GRAPH <…>`:
 
 ```sparql
 # Classes and instance counts
-SELECT DISTINCT ?class (COUNT(?instance) AS ?count)
-WHERE { ?instance a ?class }
-GROUP BY ?class ORDER BY DESC(?count) LIMIT 50
+SELECT ?class (COUNT(?s) AS ?n)
+WHERE { GRAPH <http://example.org/dataset> { ?s a ?class } }
+GROUP BY ?class ORDER BY DESC(?n) LIMIT 50
 
-# Predicate usage
-SELECT DISTINCT ?p (COUNT(*) AS ?n)
-WHERE { ?s ?p ?o }
+# Predicate usage (anchor on a major class to keep cardinality bounded)
+SELECT ?p (COUNT(*) AS ?n)
+WHERE { GRAPH <http://example.org/dataset> { ?s a <MajorClass> ; ?p ?o } }
 GROUP BY ?p ORDER BY DESC(?n) LIMIT 50
 ```
 
-Then pick a handful of representative entities and inspect them:
+Counts give you a feel for which classes are central (top 5 typically carry 90%+ of the data) and which predicates form the backbone of the schema. Skip BFO / CDAO / framework upper-types when documenting in `shape_expressions` — pick the canonical class.
+
+#### 2c. DESCRIBE 3–5 representative entities
+
+Pick entities that span the taxonomy of the database — a "central" entity (most-frequent class), a "linker" entity (something that joins multiple classes), and a "leaf" entity (terminal annotation):
 
 ```sparql
-DESCRIBE <iri-of-example-entity>
-# or, if DESCRIBE is unhelpful:
-SELECT ?p ?o WHERE { <iri-of-example-entity> ?p ?o } LIMIT 200
+SELECT ?p ?o WHERE { GRAPH <…> { <iri-of-entity> ?p ?o } } LIMIT 200
 ```
 
-**When ShEx is absent, DESCRIBE is your friend.** Pick 3–5 entities that span the taxonomy of the database (e.g. a reviewed protein AND an unreviewed one; a drug molecule AND a target AND an assay) and DESCRIBE each. Also run DESCRIBE against any entity referenced in the prewritten SPARQL examples — those are known-good starting points. Biological intuition matters here: if you're exploring a drug database, deliberately look for measurement scaffolds (bnode activity records); if it's a sequence database, look for feature annotations and organism links; if it's an ontology, look for `rdfs:subClassOf`, `owl:equivalentClass`, and `skos:broader`.
+(Plain `DESCRIBE` works on most endpoints but truncates unpredictably; the SELECT form above is more reliable.)
 
-If search tools exist for this database (see the deferred-tool list — `search_uniprot_entity`, `search_chembl_molecule`, `search_pdb_entity`, `search_reactome_entity`, `search_rhea_entity`, `search_mesh_descriptor`, etc.), use them to turn keywords into example IRIs that you can then DESCRIBE.
+Use these inspections to nail down: IRI patterns (`http://<base>/<class>/<id>`), denormalized predicates (one predicate that serves multiple roles — e.g. Bgee's `genex:isExpressedIn` mixing anatomy IRIs and condition IRIs), measurement scaffolds (bnode chains for typed-value triples), and parallel namespace traps (the same NCBI taxon ID minted under two different IRI schemes — Bgee, see its critical_warnings).
+
+#### 2d. Anchor IRIs via search tools
+
+If the database has a dedicated search tool (`search_uniprot_entity`, `search_chembl_molecule`, `search_chembl_target`, `search_pdb_entity`, `search_reactome_entity`, `search_rhea_entity`, `search_mesh_descriptor`, `OLS4:searchClasses`, `ncbi_esearch`), use it to turn human-readable terms ("TP53", "tumor protein p53", "kinase activity") into specific IRIs. Then DESCRIBE those IRIs to learn the canonical predicate names. This is the fastest path from "I know what concept I'm looking for" to "I have a structured-IRI query that works."
+
+If no search tool exists (BRENDA, BacDive, MediaDive, SuperCon, Glycosmos, NIMS): generate a short `bif:contains` (Virtuoso) probe to find one example, DESCRIBE it, and pivot to typed-predicate queries from there. Document this as the only legitimate text-search use, and note in `architectural_notes.text_search_justification` why no structured alternative existed.
 
 ### Phase 3 — Design the query set
 

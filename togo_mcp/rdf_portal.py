@@ -1,3 +1,5 @@
+import csv as _csv
+import io as _io
 from pathlib import Path
 import sys
 from typing import Annotated, Any, Literal
@@ -6,6 +8,23 @@ from pydantic import Field
 import yaml
 
 from .server import *
+
+
+# Virtuoso / OpenLink internal graphs that ship on every endpoint and are
+# never useful for actual queries. Filtered out of get_graph_list() by default.
+_SYSTEM_GRAPH_PATTERNS = (
+    "openlinksw.com/schemas/virtrdf",
+    "w3.org/ns/ldp",
+    "activitystreams-owl",
+    "urn:core:services",
+    "localhost:8890/dav",
+)
+
+
+def _is_system_graph(graph: str) -> bool:
+    """True if the graph URI is a known Virtuoso/OpenLink internal graph."""
+    g = graph.lower()
+    return any(pat in g for pat in _SYSTEM_GRAPH_PATTERNS)
 
 
 @mcp.tool(name="TogoMCP_Usage_Guide")
@@ -140,26 +159,49 @@ async def run_sparql(
 
 @mcp.tool(
     name="get_graph_list",
-    description="Get a list of named graphs in a specific RDF database.",
+    description=(
+        "Get a list of named graphs on the SPARQL endpoint hosting the given database. "
+        "Virtuoso/OpenLink internal graphs are filtered out. Graph URIs containing the "
+        "database name (case-insensitive substring) are ranked first, so the relevant "
+        "data graph(s) appear at the top — useful when the endpoint hosts multiple "
+        "databases (e.g. SIB hosts UniProt + Rhea + Bgee + OMA)."
+    ),
 )
 async def get_graph_list(
     database: Annotated[
         str, Field(description=DATABASE_DESCRIPTION, default="")
     ] = "",
+    include_system: Annotated[
+        bool,
+        Field(
+            description=(
+                "If True, include Virtuoso/OpenLink internal graphs (virtrdf, ldp, "
+                "activitystreams, etc.). Default False — these are never useful for queries."
+            ),
+            default=False,
+        ),
+    ] = False,
     dbname: str = "",
     db: str = "",
 ) -> str:
     f"""
-    Get a list of named graphs in a specific RDF database.
+    Get a list of named graphs on the endpoint hosting the given database.
+
+    The endpoint typically hosts multiple databases. This tool ranks graphs whose URI
+    contains the requested `database` name (case-insensitive substring) at the top, so
+    callers can quickly identify the data graph(s) for that database. Virtuoso/OpenLink
+    internal graphs are filtered out unless `include_system=True`.
 
     Args:
         database (str): The name of the database for which to retrieve the named graphs.
             Accepts aliases `dbname` and `db`. Supported values are {", ".join(SPARQL_ENDPOINT.keys())}.
+        include_system (bool, optional): If True, include Virtuoso/OpenLink internal graphs.
+            Default False.
         dbname (str, optional): Alias for `database`.
         db (str, optional): Alias for `database`.
 
     Returns:
-        str: CSV-formatted list of named graphs.
+        str: CSV-formatted list of named graphs, with database-name matches first.
     """
     toolcall_log("get_graph_list")
     database = database or dbname or db
@@ -171,7 +213,30 @@ SELECT DISTINCT ?graph WHERE {
     ?s ?p ?o .
   }
 }"""
-    return await execute_sparql(sparql_query, database)
+    raw_csv = await execute_sparql(sparql_query, database)
+
+    reader = _csv.reader(_io.StringIO(raw_csv))
+    rows = list(reader)
+    if not rows:
+        return raw_csv
+    header, body = rows[0], rows[1:]
+
+    if not include_system:
+        body = [row for row in body if row and not _is_system_graph(row[0])]
+
+    db_lower = database.lower()
+
+    def _rank_key(row: list[str]) -> tuple[int, str]:
+        graph = row[0] if row else ""
+        return (0 if db_lower in graph.lower() else 1, graph)
+
+    body.sort(key=_rank_key)
+
+    out = _io.StringIO()
+    writer = _csv.writer(out)
+    writer.writerow(header)
+    writer.writerows(body)
+    return out.getvalue()
 
 
 @mcp.tool(
