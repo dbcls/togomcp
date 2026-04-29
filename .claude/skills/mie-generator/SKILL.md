@@ -22,9 +22,9 @@ This skill lives in a Claude Code environment with filesystem access and SPARQL 
 | Existing MIE files         | `./togo_mcp/data/mie/<db>.yaml`            | Read / Write / Edit    |
 | Endpoint registry          | `./togo_mcp/data/resources/endpoints.csv`  | Read / Edit            |
 
-`./shex/<db>.shex` and `./togo_mcp/data/sparql-examples/<db>/` may exist as legacy prior art for some databases, but they are **optional**, not required, and may be stale. Phase 2 (live discovery) is the canonical source of truth — never let a local file override what the endpoint actually exposes.
+Phase 2 (live discovery) is the canonical source of truth for the schema and example queries — never let prior assumptions override what the endpoint actually exposes.
 
-The MCP tools `get_MIE_file`, `save_MIE_file`, `get_shex`, and `get_sparql_example` are **not** used in this environment — read and write these files directly. The remaining TogoMCP tools (`run_sparql`, `find_databases`, `list_databases`, `get_sparql_endpoints`, `get_graph_list`, the search APIs) ARE used; they hit live endpoints and cannot be replaced by filesystem access. `WebFetch` is used in Phase 0 to look up unregistered endpoints on rdfportal.org.
+The MCP tools `get_MIE_file` and `save_MIE_file` are **not** used in this environment — read and write MIE files directly. The remaining TogoMCP tools (`run_sparql`, `find_databases`, `list_databases`, `get_sparql_endpoints`, `get_graph_list`, the search APIs) ARE used; they hit live endpoints and cannot be replaced by filesystem access. `WebFetch` is used in Phase 0 to look up unregistered endpoints on rdfportal.org.
 
 ## Workflow
 
@@ -55,7 +55,7 @@ Before touching the endpoint:
 1. `Read ./togo_mcp/data/mie/<db>.yaml` — is there an existing MIE? If yes, this is an update, not a fresh build. Note which sections are weak. **Treat every claim in the existing file as a hint to verify, not a source of truth — including `schema_info.graphs`. Graphs get added upstream all the time, and a previously-correct graph list can be incomplete by the next snapshot.** Phase 2a is mandatory whether you're authoring or revising.
 2. Call `get_sparql_endpoints()` — confirm the endpoint URL is what you expect (it should already be in `endpoints.csv` after Phase 0).
 
-That's it. Phase 2 is where the real work happens. Local prior art — legacy `./shex/<db>.shex`, `./togo_mcp/data/sparql-examples/<db>/`, **and the existing MIE under revision** — is optional context; **do not let it shape the MIE without re-verification against the live endpoint**.
+That's it. Phase 2 is where the real work happens. Local prior art — **the existing MIE under revision** — is optional context; **do not let it shape the MIE without re-verification against the live endpoint**.
 
 ### Phase 2 — Discover (10–20 minutes)
 

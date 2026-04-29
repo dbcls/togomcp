@@ -25,7 +25,7 @@ Metadata Interoperability Exchange (MIE) files are compact YAML documents that d
 - **Sample RDF entries**: reduced from 5 to 3 entries, with a single shared `rdf_prefixes` block instead of repeated `@prefix` declarations per entry.
 - **Query strategy hierarchy**: explicit priority order (specific IRIs → typed predicates → graph navigation → text search) and a Gate Check before using any form of text search.
 - **Circular reasoning guidance**: don't populate `VALUES` with search-API results and then `COUNT` them.
-- **Filesystem-based workflow**: MIE files, ShEx schemas, and curated SPARQL examples are read and written as files, not through dedicated MCP tools.
+- **Filesystem-based workflow**: MIE files are read and written directly, not through dedicated MCP tools.
 - **Validation requirements strengthened**: every example RDF triple must be retrievable from the endpoint; every example query must execute successfully.
 - **`data_statistics` simplified**: removed `verification_queries`, `cardinality`, and `performance_characteristics` sub-sections as auditing clutter.
 - **`anti_patterns` expanded**: 3–4 entries (was 2–3), at least one addressing "schema check before text search".
@@ -196,7 +196,7 @@ Use a YAML pipe (`|`) block with bullet-style paragraphs. Use `[]` only if genui
 
 #### 3.3.1 Purpose
 
-ShEx schemas for every major entity type. Start from the corresponding file under `./shex/` if present; otherwise build from DESCRIBE queries.
+ShEx schemas for every major entity type. Build from DESCRIBE queries against representative entities.
 
 #### 3.3.2 Format
 
@@ -618,19 +618,15 @@ MIE authoring in this project is filesystem-based. The relevant directories are:
 | Resource                   | Path                                     | Access                |
 |----------------------------|------------------------------------------|-----------------------|
 | Existing MIE files         | `./togo_mcp/data/mie/<db>.yaml`          | Read / Write / Edit   |
-| ShEx schemas               | `./shex/<db>.shex` (or similar)          | Read                  |
-| Curated SPARQL examples    | `./togo_mcp/data/sparql-examples/<db>/`  | Read                  |
 
-The MCP tools `get_MIE_file`, `save_MIE_file`, `get_shex`, and `get_sparql_example` (documented in earlier versions of this spec) are **not** used when authoring MIE files in this repository — these files are read and written directly. The remaining TogoMCP tools (`run_sparql`, `list_databases`, `get_sparql_endpoints`, `get_graph_list`, the search APIs) hit live endpoints and are still used as before.
+The MCP tools `get_MIE_file` and `save_MIE_file` (documented in earlier versions of this spec) are **not** used when authoring MIE files in this repository — these files are read and written directly. The remaining TogoMCP tools (`run_sparql`, `list_databases`, `get_sparql_endpoints`, `get_graph_list`, the search APIs) hit live endpoints and are still used as before.
 
 ### 4.2 Phase 1 — Orient (2–3 minutes)
 
 Before touching the endpoint:
 
 1. Read `./togo_mcp/data/mie/<db>.yaml` — is there an existing MIE? If yes, this is an update, not a fresh build. Note which sections need improvement.
-2. Read `./shex/<db>.shex` (or the equivalent) — the ShEx schema is the starting point for `shape_expressions`.
-3. List `./togo_mcp/data/sparql-examples/<db>/` and read any files present — these are human-curated, endpoint-tested queries and reveal which patterns actually work.
-4. Call `get_sparql_endpoints()` and `get_graph_list(<db>)` — confirm endpoint URL, named graphs, which graphs hold data vs ontology.
+2. Call `get_sparql_endpoints()` and `get_graph_list(<db>)` — confirm endpoint URL, named graphs, which graphs hold data vs ontology.
 
 ### 4.3 Phase 2 — Discover (10–20 minutes)
 
@@ -658,7 +654,7 @@ DESCRIBE <iri-of-example-entity>
 SELECT ?p ?o WHERE { <iri-of-example-entity> ?p ?o } LIMIT 200
 ```
 
-**When the ShEx file is missing or empty** (common for newer or custom databases), live DESCRIBE is the fallback. Pick 3–5 entities that span the database's taxonomy (e.g. a reviewed protein AND an unreviewed one; a drug molecule AND a target AND an assay) and DESCRIBE each. Also DESCRIBE any entity referenced in the curated SPARQL examples — those are known-good starting points.
+**Live DESCRIBE is the canonical source for shapes.** Pick 3–5 entities that span the database's taxonomy (e.g. a reviewed protein AND an unreviewed one; a drug molecule AND a target AND an assay) and DESCRIBE each.
 
 Biological intuition matters: if exploring a drug database, look for measurement scaffolds (blank-node activity records); if it's a sequence database, look for feature annotations and organism links; if it's an ontology, look for `rdfs:subClassOf`, `owl:equivalentClass`, and `skos:broader`.
 
@@ -770,8 +766,7 @@ When updating an existing MIE, evaluate against the following checklist and pick
 
 #### Discovery
 - [ ] Read existing `togo_mcp/data/mie/<db>.yaml` (if present)
-- [ ] Read `shex/<db>.shex` (if present); used DESCRIBE fallback if not
-- [ ] Read `togo_mcp/data/sparql-examples/<db>/` (if present)
+- [ ] Ran DESCRIBE on representative entities to derive shapes
 - [ ] Identified co-located databases on shared endpoint
 - [ ] Read MIE files for all co-located databases (if cross-database queries planned)
 
@@ -834,8 +829,6 @@ When updating an existing MIE, evaluate against the following checklist and pick
 - ❌ Sampling bias: first 50 results don't represent the whole database.
 - ❌ Premature conclusions: timeout ≠ "data doesn't exist".
 - ❌ Incomplete coverage: only documenting obvious entity types.
-- ❌ Ignoring curated `sparql-examples/` files.
-- ❌ Treating a missing ShEx as a blocker rather than a signal to DESCRIBE.
 
 ### 9.2 Documentation Phase
 
@@ -904,10 +897,8 @@ An MIE file is complete and compliant when:
 - `run_sparql(endpoint_name=endpoint, query)` — execute SPARQL (cross-database)
 - `list_databases()` — list supported databases
 
-**Filesystem access** (standard tools; replaces former `get_MIE_file`/`save_MIE_file`/`get_shex`/`get_sparql_example`):
+**Filesystem access** (standard tools; replaces former `get_MIE_file`/`save_MIE_file`):
 - Read / Write / Edit for `togo_mcp/data/mie/<db>.yaml`
-- Read for `shex/<db>.shex`
-- Read for `togo_mcp/data/sparql-examples/<db>/`
 
 ### 12.3 Keyword Search APIs
 

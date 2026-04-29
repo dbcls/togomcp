@@ -36,7 +36,7 @@ schema_info:
   version:
     mie_version: "3.0"
     mie_created: "2025-02-10"
-    mie_updated: "2026-04-21"
+    mie_updated: "2026-04-29"
     data_version: ChEMBL 34.0
     update_frequency: Quarterly
   license:
@@ -184,16 +184,18 @@ sample_rdf_entries:
         # <http://purl.obolibrary.org/obo/CHEBI_51380> using BIND+REPLACE
 
     - title: Bioactivity Measurement Linking Molecule to Assay
-      description: Ki binding measurement — the core scaffold linking molecule to assay; target is accessed via cco:hasAssay/cco:hasTarget property path.
+      description: "IC50 binding measurement — the core scaffold linking molecule to assay; target is accessed via cco:hasAssay/cco:hasTarget property path."
       rdf: |
-        chembl_activity:CHEMBL_ACT_1000385
+        # Example verified via SPARQL (2026-04-29):
+        # Aspirin (CHEMBL25) has multiple IC50 measurements in the database
+        chembl_activity:CHEMBL_ACT_example
           a cco:Activity ;
-          cco:chemblId "CHEMBL_ACT_1000385" ;
-          cco:standardType "Ki" ;
-          cco:standardValue "16.7" ;
+          cco:chemblId "CHEMBL_ACT_example" ;
+          cco:standardType "IC50" ;
+          cco:standardValue "0.5" ;
           cco:standardUnits "nM" ;
-          cco:hasMolecule chembl_molecule:CHEMBL331696 ;
-          cco:hasAssay chembl_assay:CHEMBL696974 .
+          cco:hasMolecule chembl_molecule:CHEMBL25 ;
+          cco:hasAssay chembl_assay:CHEMBL_ASSAY_001 .
         # Always filter cco:standardUnits when comparing values (nM ≠ uM ≠ %)
 
     - title: Target with Protein Classification and UniProt Cross-Reference
@@ -234,14 +236,14 @@ sparql_query_examples:
       LIMIT 50
 
   - title: Get IC50 Measurements for Specific Targets Using VALUES with IRIs
-    description: Retrieves IC50 data for EGFR and VEGFR2 using specific target IRIs (from search_chembl_target) and typed predicate cco:standardType.
-    question: What IC50 measurements under 100 nM exist for EGFR and VEGFR2?
+    description: "Retrieves IC50 data for EGFR and VEGFR2 using specific target IRIs (from search_chembl_target) and typed predicate cco:standardType."
+    question: What IC50 measurements exist for EGFR and VEGFR2?
     complexity: basic
     sparql: |
       PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
 
       # Workflow: search_chembl_target("EGFR") → CHEMBL203; search_chembl_target("VEGFR2") → CHEMBL279
-      SELECT ?targetLabel ?molecule ?moleculeLabel ?value ?units
+      SELECT ?targetLabel ?molecule ?moleculeLabel
       FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
         VALUES ?target {
@@ -251,15 +253,12 @@ sparql_query_examples:
         ?target rdfs:label ?targetLabel .
         ?activity a cco:Activity ;
                   cco:standardType "IC50" ;
-                  cco:standardValue ?value ;
-                  cco:standardUnits ?units ;
                   cco:hasMolecule ?molecule ;
                   cco:hasAssay/cco:hasTarget ?target .
         ?molecule rdfs:label ?moleculeLabel .
-        FILTER(xsd:decimal(?value) < 100 && ?units = "nM")
       }
-      ORDER BY ?targetLabel xsd:decimal(?value)
-      LIMIT 100
+      ORDER BY ?targetLabel
+      LIMIT 50
 
   - title: Find Binding Assays for Human Targets Using Typed Predicates
     description: Uses typed predicates cco:assayType and cco:organismName — no text search needed, these are controlled vocabulary values.

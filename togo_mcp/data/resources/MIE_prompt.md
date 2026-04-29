@@ -121,8 +121,6 @@ WHERE { ?entity hasClassification ?classificationTerm . }
 get_sparql_endpoints()
 get_graph_list(database)
 get_MIE_file(database)   # check for existing MIE and compliance
-get_shex(database)
-get_sparql_example(database)
 ```
 
 **Step 2: Schema Discovery (5 min)**
@@ -610,7 +608,7 @@ Run at least 3 of the 7 SPARQL queries to verify execution.
 ## Available Tools
 
 **Discovery:**
-`get_sparql_endpoints()`, `get_graph_list()`, `get_MIE_file()`, `get_shex()`, `get_sparql_example()`
+`get_sparql_endpoints()`, `get_graph_list()`, `get_MIE_file()`
 
 **Execution:**
 `run_sparql(database, query)` or `run_sparql(endpoint_name=X, query)`
