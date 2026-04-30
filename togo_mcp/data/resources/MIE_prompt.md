@@ -584,7 +584,7 @@ common_errors:
       - "Check MIE critical_warnings and schema for mandatory filters"
       - "Check shape_expressions for structured properties"
       - "Use bif:contains on Virtuoso; split property paths before bif:contains"
-      - "Add LIMIT to every query"
+      - "Add LIMIT (or use an aggregate / ASK / specific-IRI anchor) to every query"
 
   - error: "Empty or incomplete results"
     causes:
@@ -605,7 +605,7 @@ common_errors:
       - "Read MIE files for ALL databases; check shape_expressions for linking predicates"
       - "Use explicit GRAPH clauses for each database"
       - "Apply restrictive filters within each GRAPH block before the cross-database join"
-      - "Add LIMIT at every query level"
+      - "Add LIMIT at every query level (unless bounded by aggregate / ASK / specific-IRI subject)"
 ```
 
 ---
@@ -642,7 +642,7 @@ common_errors:
 - ☐ All text-search queries include justification comments
 - ☐ `bif:contains` preferred over `FILTER(CONTAINS())` on Virtuoso
 - ☐ No circular reasoning (no VALUES with search results for comprehensive queries)
-- ☐ All 7 queries have a LIMIT clause
+- ☐ Every query has a bounded result set — `LIMIT` required unless the query is an aggregate (`COUNT`, `SUM`, `AVG`, `MIN`, `MAX`), an `ASK`, or anchored on a specific-IRI subject whose cardinality is bounded by the schema
 
 **`sample_rdf_entries`:**
 - ☐ Exactly 3 entries
