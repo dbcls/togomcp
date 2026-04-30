@@ -267,6 +267,7 @@ sparql_query_examples:
           sio:CHEMINF_000334   # Molecular Weight
         }
       }
+      LIMIT 10
 
   - title: Find FDA-Approved Drugs by Molecular Weight Range
     description: Uses specific role IRI (vocab:FDAApprovedDrugs) and descriptor type IRI (CHEMINF_000334) — no text search required.
@@ -534,26 +535,29 @@ anti_patterns:
       LIMIT 20
     explanation: "PDB link predicate uses pdbx-v50.owl# schema. The v40 prefix is a documented silent-failure trap."
 
-  - title: "Missing FROM Clause for Separate Named Graphs"
-    problem: "Querying bioassays, proteins, or pathways without FROM returns empty results with no error."
+  - title: "Circular Reasoning with Search Results"
+    problem: "Using compound IRIs sampled from a text-search result as the scope of a comprehensive property-based count — counts only the sample."
     wrong_sparql: |
-      PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
-      PREFIX dcterms: <http://purl.org/dc/terms/>
-      SELECT ?bioassay ?title
-      WHERE {
-        ?bioassay a vocab:BioAssay ; dcterms:title ?title .
+      # WRONG: pasted sampled CID IRIs — counts only those compounds, not all antifungals
+      VALUES ?compound {
+        <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID5280343>
+        <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID5765>
       }
-      LIMIT 20
+      SELECT (COUNT(?compound) AS ?count) WHERE { }
+      LIMIT 1
     correct_sparql: |
-      PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
-      PREFIX dcterms: <http://purl.org/dc/terms/>
-      SELECT ?bioassay ?title
-      FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/bioassay>
+      # CORRECT: use the ChEBI role IRI discovered during exploration
+      PREFIX cheminf: <http://semanticscience.org/resource/>
+      SELECT (COUNT(DISTINCT ?compound) AS ?count)
+      FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/compound>
       WHERE {
-        ?bioassay a vocab:BioAssay ; dcterms:title ?title .
+        ?compound cheminf:SIO_000008 ?descriptor .
+        ?descriptor a cheminf:CHEMINF_000140 ;
+                    cheminf:SIO_000300 ?smiles .
+        FILTER(CONTAINS(?smiles, "N"))
       }
-      LIMIT 20
-    explanation: "Bioassay, protein, and pathway entities each live in separate named graphs. FROM is mandatory."
+      LIMIT 1
+    explanation: "Use structured descriptor predicates or ChEBI classification IRIs for comprehensive compound queries. Pasting sampled compound IRIs only counts that exploratory sample."
 
   - title: "Broad ChEBI Namespace Scan for Aggregation Across All Compounds"
     problem: "STRSTARTS scan over all 119M compounds for ChEBI class aggregation times out."

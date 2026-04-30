@@ -209,6 +209,7 @@ sparql_query_examples:
         ?protein a glycan:Glycoprotein ;
                  glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
       }
+      LIMIT 1
 
   - title: Find Glycans by Motif IRI
     description: Retrieve glycans containing the O-Glycan core 1 (T antigen) motif using its glycan IRI. FROM clause omitted because motif relationships span multiple graphs.
@@ -339,6 +340,7 @@ sparql_query_examples:
                  glycoconjugate:glycosylated_at ?site .
         OPTIONAL { ?site faldo:location/faldo:position ?pos . }
       }
+      LIMIT 1
 
 cross_database_queries:
   shared_endpoint: glycosmos
@@ -459,17 +461,25 @@ data_statistics:
     verified_date: "2025-04-21"
 
 anti_patterns:
-  - title: "Missing FROM Clause"
-    problem: "Omitting FROM searches 140+ graphs — 10-100x slower, frequent timeout."
+  - title: "Circular Reasoning with Search Results"
+    problem: "Using glycan IRIs sampled from a text-search result as the scope of a comprehensive count — counts only the sample."
     wrong_sparql: |
-      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
-      SELECT ?epitope WHERE { ?epitope a glycan:Glycan_epitope . }
+      # WRONG: pasted sampled glycan IRIs from a bif:contains result
+      VALUES ?glycan {
+        <http://rdf.glycoinfo.org/glycan/G00031MO>
+        <http://rdf.glycoinfo.org/glycan/G00033MO>
+      }
+      SELECT (COUNT(?glycan) AS ?count) WHERE { }
+      LIMIT 1
     correct_sparql: |
-      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
-      SELECT ?epitope
-      FROM <http://rdf.glycoinfo.org/glycoepitope>
-      WHERE { ?epitope a glycan:Glycan_epitope . }
-    explanation: "Always specify the target graph. Exception: glycan:has_motif spans multiple graphs — omit FROM only for motif queries."
+      # CORRECT: use the motif IRI discovered during exploration to count all core-1 glycans
+      SELECT (COUNT(DISTINCT ?glycan) AS ?count)
+      FROM <http://rdf.glycoinfo.org/glycan>
+      WHERE {
+        ?glycan glycan:has_motif <http://rdf.glycoinfo.org/glycan/G00031MO> .
+      }
+      LIMIT 1
+    explanation: "Use exploratory queries to discover motif, organism, or epitope IRIs. Use those as structured filter values in comprehensive queries — not the sampled glycan IRIs themselves."
 
   - title: "Using bif:contains (Disabled on This Endpoint)"
     problem: "bif:contains is not enabled on ts.glycosmos.org/sparql despite Virtuoso backend; returns a SPARQL error."
@@ -512,7 +522,6 @@ anti_patterns:
     correct_sparql: |
       ?protein glycan:has_taxon <http://identifiers.org/taxonomy/9606> .  # fast, exact
     explanation: "Use specific taxonomy IRIs: human=9606, mouse=10090, rat=10116, Arabidopsis=3702, C.elegans=6239, S.cerevisiae=559292."
-
 common_errors:
   - error: "Query timeout after 120 seconds"
     causes:

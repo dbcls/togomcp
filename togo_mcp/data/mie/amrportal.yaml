@@ -631,22 +631,26 @@ anti_patterns:
       VALUES ?amrClass { "FUSIDIC ACID" "FUSIDIC_ACID" }
     explanation: "Data quality artifact in critical_warnings. Always query both strings."
 
-  - title: "Cross-GRAPH Aggregation"
-    problem: "Aggregating across multiple GRAPHs in one query creates massive intermediates and timeouts."
+  - title: "Circular Reasoning with Search Results"
+    problem: "Using sampled entity IRIs from an exploratory query as the scope of a comprehensive count or aggregate."
     wrong_sparql: |
-      # BAD: join + aggregate spanning two GRAPHs
-      SELECT ?ab (COUNT(?m) as ?c) WHERE {
-        GRAPH <http://rdfportal.org/dataset/amrportal> {
-          ?m a amr:PhenotypeMeasurement ; amr:antibioticName ?ab .
-        }
-        GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> { ?mol rdfs:label ?lb . }
-      }
-      GROUP BY ?ab
+      # WRONG: pastes sampled IRIs into VALUES — counts only those organisms, not the full dataset
+      VALUES ?isolate { <http://rdfportal.org/dataset/amrportal/isolate/12345>
+                        <http://rdfportal.org/dataset/amrportal/isolate/67890> }
+      SELECT (COUNT(?m) AS ?count)
+      FROM <http://rdfportal.org/dataset/amrportal>
+      WHERE { ?m a amr:PhenotypeMeasurement ; amr:isolate ?isolate . }
+      LIMIT 1
     correct_sparql: |
-      # CORRECT: two-stage — aggregate first (Stage 1), then join summary (Stage 2)
-      # Stage 1: SELECT ?ab (COUNT(*) as ?c) FROM <amrportal> WHERE { ... } GROUP BY ?ab
-      # Stage 2: VALUES (?ab ?c) { ... } — paste Stage 1 results, then join to ChEMBL
-    explanation: "Aggregate within a single GRAPH first (1.7M → few rows), then join the summary."
+      # CORRECT: use controlled vocabulary values discovered during exploration
+      VALUES ?amrClass { "BETA-LACTAM" "AMINOGLYCOSIDE" }
+      SELECT (COUNT(DISTINCT ?m) AS ?count)
+      FROM <http://rdfportal.org/dataset/amrportal>
+      WHERE {
+        ?m a amr:PhenotypeMeasurement ; amr:amrClass ?amrClass .
+      }
+      LIMIT 1
+    explanation: "Use exploratory queries to discover controlled vocabulary values (amrClass, antibioticName, phenotype). Use those as filter criteria in comprehensive queries — not the sampled isolate IRIs themselves."
 
   - title: "Missing FROM Clause"
     problem: "Omitting FROM scans all EBI endpoint graphs, turning fast queries into timeouts."

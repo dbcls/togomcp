@@ -662,17 +662,27 @@ anti_patterns:
       ?gene <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> .
     explanation: "Ensembl uses division-specific species IRIs, NOT NCBI Taxonomy URIs. To bridge Ensembl species IRIs to NCBI Taxonomy, query <http://rdfportal.org/dataset/ensembl_taxonomy> using skos:relatedMatch. See critical_warnings for full division table."
 
-  - title: Using Wrong Species IRI Pattern for Non-Vertebrate Division
-    problem: "Using the vertebrate subdomain (ensembl.org/) for metazoa/plants/fungi/bacteria organisms."
+  - title: Circular Reasoning with Search Results
+    problem: Using gene IRIs sampled from an exploratory result as the scope of a comprehensive species-wide count.
     wrong_sparql: |
-      GRAPH <http://rdfportal.org/dataset/ensembl_metazoa> {
-        ?gene <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Drosophila_melanogaster> .
+      # WRONG: pasted sampled Ensembl gene IRIs — counts only those genes, not all kinases
+      VALUES ?gene {
+        <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000012048>
+        <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000141510>
       }
+      SELECT (COUNT(?gene) AS ?count) WHERE { }
+      LIMIT 1
     correct_sparql: |
-      GRAPH <http://rdfportal.org/dataset/ensembl_metazoa> {
-        ?gene <http://purl.obolibrary.org/obo/RO_0002162> <http://metazoa.ensembl.org/Drosophila_melanogaster> .
+      # CORRECT: use the biotype IRI discovered during exploration for a comprehensive count
+      SELECT (COUNT(DISTINCT ?gene) AS ?count)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?gene <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> ;
+                terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> .
+        }
       }
-    explanation: Each division has its own subdomain (metazoa.ensembl.org, plants.ensembl.org, etc.). See critical_warnings.
+      LIMIT 1
+    explanation: "Use exploratory queries to discover species and biotype IRIs. Use those as structured filter criteria in comprehensive queries — not the sampled gene IRIs themselves."
 
   - title: Text Search When Specific Biotype IRI Exists
     problem: "Filtering by biotype label text instead of using the available ENSGLOSSARY_ IRI."

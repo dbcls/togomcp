@@ -401,6 +401,7 @@ sparql_query_examples:
                    orth:hasTaxonomicRange <http://purl.uniprot.org/taxonomy/7742> .  # Vertebrata
         }
       }
+      LIMIT 1
 
   - title: "Cross-database: annotate OMA protein with UniProt function"
     description: >
@@ -617,21 +618,32 @@ data_statistics:
       verified_date: "2026-04-28"
 
 anti_patterns:
-  - title: "Missing GRAPH Clause"
-    problem: >
-      Querying without GRAPH <http://rdfportal.org/dataset/oma> joins UniProt (17M proteins),
-      Rhea, Bgee, and OMA simultaneously — queries time out or return nonsensical mixed results.
+  - title: "Circular Reasoning with Search Results"
+    problem: "Using protein pair IRIs sampled from a species-lookup as the scope of a comprehensive orthology count — counts only the sample."
     wrong_sparql: |
-      SELECT ?protein WHERE { ?protein a orth:Protein } LIMIT 10
+      # WRONG: pasted sampled OrthoXML cluster IRIs — counts only those clusters
+      VALUES ?pair {
+        <https://omabrowser.org/oma/hogs/HOG:D0617028.1a.1b>
+        <https://omabrowser.org/oma/hogs/HOG:D0617028.1a.1c>
+      }
+      SELECT (COUNT(?pair) AS ?count) WHERE { }
+      LIMIT 1
     correct_sparql: |
-      SELECT ?protein WHERE {
+      # CORRECT: use the taxonomy IRI to count all human-mouse orthologs comprehensively
+      PREFIX oma: <https://omabrowser.org/ontology/oma#>
+      PREFIX orth: <http://purl.org/net/orth#>
+      SELECT (COUNT(DISTINCT ?pair) AS ?count)
+      WHERE {
         GRAPH <http://rdfportal.org/dataset/oma> {
-          ?protein a orth:Protein
+          ?pair a orth:OrthologousCluster ;
+                orth:hasHomologousMember ?prot1 ;
+                orth:hasHomologousMember ?prot2 .
+          ?prot1 oma:organism <http://purl.uniprot.org/taxonomy/9606> .
+          ?prot2 oma:organism <http://purl.uniprot.org/taxonomy/10090> .
         }
-      } LIMIT 10
-    explanation: >
-      The SIB endpoint hosts multiple large datasets. Without the GRAPH clause the query
-      engine scans all of them. Always specify the OMA graph explicitly.
+      }
+      LIMIT 1
+    explanation: "Use taxonomy IRIs to scope comprehensive orthology counts. Pasting sampled cluster IRIs from a species lookup only counts those specific orthologs."
 
   - title: "Missing Identifier Filter (Row Explosion)"
     problem: >
@@ -680,7 +692,7 @@ anti_patterns:
       The HOG hierarchy has many levels. Property paths over 33M triples consistently time out.
       Navigate level by level using explicit triple patterns.
 
-  - title: "Species Lookup by String Instead of Taxonomy IRI"
+  - title: "Skipping Schema Check — Species Lookup by String Instead of Taxonomy IRI"
     problem: >
       orth:Organism has no rdfs:label or scientific name string. Text search on organism name
       returns zero results.

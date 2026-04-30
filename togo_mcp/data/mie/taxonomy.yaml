@@ -191,6 +191,7 @@ sparql_query_examples:
         OPTIONAL { ?taxon tax:commonName ?commonName }
         OPTIONAL { ?taxon tax:geneticCode ?geneticCode }
       }
+      LIMIT 10
 
   - title: Find Species in a Genus by Rank IRI
     description: Retrieve all species within a genus using specific genus IRI and rank IRI. Combine rdfs:subClassOf with tax:rank for efficient filtering.
@@ -258,6 +259,7 @@ sparql_query_examples:
       }
       GROUP BY ?rank ?rankLabel
       ORDER BY DESC(?count)
+      LIMIT 10
 
   - title: Exploratory Name Search with bif:contains
     description: |
@@ -329,6 +331,7 @@ sparql_query_examples:
           tax:Class tax:Phylum tax:Kingdom
         }
       }
+      LIMIT 1
 
 cross_database_queries:
   shared_endpoint: primary
@@ -516,25 +519,23 @@ data_statistics:
   staleness_warning: "Database updated monthly; counts reflect 2024 data load"
 
 anti_patterns:
-  - title: "Text Search When Specific Taxon IRI Is Available"
-    problem: "Using bif:contains for genus/species name when the IRI can be found via ncbi_esearch."
+  - title: "Circular Reasoning with Search Results"
+    problem: "Using species IRIs sampled from an exploratory label search as the scope of a comprehensive genus-level count."
     wrong_sparql: |
-      # Slow: text search on every execution
-      SELECT ?species WHERE {
-        ?species rdfs:subClassOf ?genus .
-        ?genus rdfs:label ?genusLabel ; tax:rank tax:Genus .
-        ?genusLabel bif:contains "'Escherichia'"
-      } LIMIT 20
+      # WRONG: pasted sampled species IRIs — counts only those species, not all Escherichia members
+      VALUES ?species { taxon:562 taxon:1530 taxon:83333 }
+      SELECT (COUNT(?species) AS ?count) WHERE { }
+      LIMIT 1
     correct_sparql: |
-      # Correct two-step workflow:
-      # Step 1 (once): ncbi_esearch("taxonomy","Escherichia") → finds taxon:561
-      # Step 2 (comprehensive): use IRI directly
-      SELECT ?species ?label WHERE {
+      # CORRECT: use the genus IRI (taxon:561 = Escherichia) discovered via ncbi_esearch
+      SELECT (COUNT(DISTINCT ?species) AS ?count)
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
         ?species rdfs:subClassOf taxon:561 ;
-                 tax:rank tax:Species ;
-                 rdfs:label ?label .
-      } LIMIT 20
-    explanation: "ncbi_esearch finds the IRI once; all subsequent queries use that IRI for speed and precision."
+                 tax:rank tax:Species .
+      }
+      LIMIT 1
+    explanation: "Use rdfs:subClassOf with the genus IRI for a complete species count. Pasting sampled species IRIs from a label search only tallies the sample, not the full genus."
 
   - title: "Skipping Schema Check Before Text Search"
     problem: "Using bif:contains without reading MIE critical_warnings and shape_expressions for structured alternatives."
@@ -587,7 +588,6 @@ anti_patterns:
         ?ancestor a tax:Taxon ; tax:rank ?rank ; rdfs:label ?label .
       } LIMIT 50
     explanation: "Always start transitive queries from a known taxon IRI. Add rank filtering and LIMIT to bound traversal."
-
 common_errors:
   - error: "Query timeout on lineage or aggregation queries"
     causes:

@@ -548,17 +548,29 @@ data_statistics:
     verified_date: "2025-07-15"
 
 anti_patterns:
-  - title: Text Search When Specific IRI Available
-    problem: Using CONTAINS on ingredient labels when stable ingredient IRIs exist.
+  - title: Circular Reasoning with Search Results
+    problem: Using medium IRIs sampled from an exploratory text search as the scope of a comprehensive ingredient-coverage count.
     wrong_sparql: |
-      ?ing rdfs:label ?l .
-      FILTER(CONTAINS(LCASE(?l), "glucose"))
+      # WRONG: pasted sampled medium IRIs — counts only those media, not all glucose-containing media
+      VALUES ?medium {
+        <https://purl.dsmz.de/mediadive/medium/1>
+        <https://purl.dsmz.de/mediadive/medium/5>
+      }
+      SELECT (COUNT(?medium) AS ?count)
+      FROM <http://rdfportal.org/dataset/mediadive>
+      WHERE { ?comp schema:partOfMedium ?medium . }
+      LIMIT 1
     correct_sparql: |
-      # ingredient/5 = Glucose (verified IRI)
-      ?comp schema:containsIngredient <https://purl.dsmz.de/mediadive/ingredient/5> .
-    explanation: |
-      All 1,489 ingredients have stable IRIs. Use VALUES with ingredient IRIs instead of label
-      text search. Exploratory workflow: one text-search query to find the IRI, then switch to IRI.
+      # CORRECT: use ingredient IRI discovered during exploration for a comprehensive count
+      SELECT (COUNT(DISTINCT ?medium) AS ?count)
+      FROM <http://rdfportal.org/dataset/mediadive>
+      WHERE {
+        ?comp a schema:MediumComposition ;
+              schema:containsIngredient <https://purl.dsmz.de/mediadive/ingredient/5> ;
+              schema:partOfMedium ?medium .
+      }
+      LIMIT 1
+    explanation: "Use the ingredient IRI discovered from one text-search query for all subsequent comprehensive queries. Pasting sampled medium IRIs only counts those specific media."
 
   - title: Boolean Literals for schema:isComplex (INTEGER TRAP)
     problem: Using true/false for schema:isComplex which stores integers 0/1.
@@ -598,7 +610,6 @@ anti_patterns:
     explanation: |
       Always read critical_warnings and shape_expressions first. Taxonomic groups, pH,
       temperature, complexity, and all cross-reference IDs have structured predicates.
-
 common_errors:
   - error: "Empty results from composition or cross-reference queries"
     causes:

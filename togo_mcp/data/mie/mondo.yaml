@@ -163,6 +163,7 @@ sparql_query_examples:
                   oboInOwl:id ?ancestorId .
         FILTER(isIRI(?ancestor))   # exclude OWL restriction blank nodes
       }
+      LIMIT 50
 
   - title: Enumerate All Subtypes of a Disease Category
     description: Uses a specific category IRI with rdfs:subClassOf* for complete descendant enumeration.
@@ -209,6 +210,7 @@ sparql_query_examples:
       }
       GROUP BY ?categoryLabel
       ORDER BY DESC(?count)
+      LIMIT 10
 
   - title: Filter Diseases by Cross-Reference Database Prefix
     description: Uses typed string predicate with STRSTARTS to filter cross-references by source DB.
@@ -470,22 +472,24 @@ data_statistics:
     diseases_with_mesh_xref: "30.5% (8,125/26,660)"
 
 anti_patterns:
-  - title: "Text Search When Specific Category IRI Exists"
-    problem: "Using bif:contains on rdfs:label to find diseases in a named category when a hierarchy IRI is available."
+  - title: "Circular Reasoning with Search Results"
+    problem: "Using disease class IRIs sampled from a text-search result as the scope of a comprehensive subclass count."
     wrong_sparql: |
-      # Finds only ~500 diseases with "hereditary" literally in the label
-      SELECT ?disease ?label WHERE {
-        ?disease rdfs:label ?label .
-        ?label bif:contains "'hereditary' OR 'genetic'"
-      } LIMIT 20
+      # WRONG: pasted sampled IRIs from bif:contains — counts only those diseases
+      VALUES ?disease { obo:MONDO_0007254 obo:MONDO_0003939 }
+      SELECT (COUNT(?disease) AS ?count) WHERE { }
+      LIMIT 1
     correct_sparql: |
-      # Finds all 11,751 hereditary diseases via hierarchy
-      SELECT ?disease ?label WHERE {
-        ?disease rdfs:subClassOf* obo:MONDO_0003847 ;
-                 rdfs:label ?label .
+      # CORRECT: use the category IRI discovered from OLS4 searchClasses
+      SELECT (COUNT(DISTINCT ?disease) AS ?count)
+      FROM <http://rdfportal.org/ontology/mondo>
+      WHERE {
+        ?disease a owl:Class ;
+                 rdfs:subClassOf* obo:MONDO_0003847 .  # hereditary disease
         FILTER NOT EXISTS { ?disease owl:deprecated true }
-      } LIMIT 100
-    explanation: "Use OLS4:searchClasses to find the category IRI, then traverse rdfs:subClassOf*. Text search on labels misses diseases without the keyword in their name."
+      }
+      LIMIT 1
+    explanation: "Use rdfs:subClassOf* on the category IRI for complete enumeration. Text-search results are incomplete samples — never paste them into VALUES for comprehensive counting."
 
   - title: "Skipping Schema Check Before Text Search"
     problem: "Jumping to text search without examining MIE shape_expressions for structured predicates."
@@ -548,7 +552,6 @@ anti_patterns:
         GRAPH <http://id.nlm.nih.gov/mesh> { ?m rdfs:label ?ml }
       } LIMIT 20
     explanation: "Apply the most restrictive filter (specific disease IRI) inside the source GRAPH before the join. This reduces 30K rows to ~10–50 (>99% reduction) and keeps cross-DB queries under 3 s."
-
 common_errors:
   - error: "Empty results from cross-reference query"
     causes:

@@ -365,6 +365,7 @@ sparql_query_examples:
              ro:0002162 ?taxon ;
              rdfs:seeAlso ?fasta_link .
       }
+      LIMIT 10
 
   - title: Search Entries by Organism Name Using bif:contains
     description: |
@@ -621,19 +622,29 @@ anti_patterns:
       DDBJ has 21 division IRIs and ro:0002162 taxonomy IRIs covering most
       categorical filtering needs. Always check schema before text search.
 
-  - title: "Unscoped Feature Joins (Cartesian Product)"
-    problem: >
-      Joining Gene, CDS, or RNA features without entry accession filter creates
-      Cartesian products across 280M entries and times out immediately.
+  - title: "Circular Reasoning with Search Results"
+    problem: "Using entry accession IRIs sampled from an exploratory query as the scope for a count — counts only the sample."
     wrong_sparql: |
-      ?gene a nuc:Gene .
-      ?cds bfo:0000050 ?gene .         # joins ALL genes × ALL CDS → timeout
+      # WRONG: pastes sampled entry IRIs into VALUES — total is just the sample size
+      VALUES ?entry {
+        <http://ddbj.nig.ac.jp/ontologies/nucleotide/CP036276.1>
+        <http://ddbj.nig.ac.jp/ontologies/nucleotide/CP036277.1>
+      }
+      SELECT (COUNT(?gene) AS ?geneCount)
+      FROM <http://rdfportal.org/dataset/ddbj>
+      WHERE { ?gene a nuc:Gene ; bfo:0000050 ?entry . }
+      LIMIT 1
     correct_sparql: |
-      ?gene a nuc:Gene .
-      ?cds bfo:0000050 ?gene .
-      FILTER(CONTAINS(STR(?gene), "CP036276.1"))   # entry scope FIRST
-      LIMIT 20
-    explanation: "Always add entry accession scope before any multi-feature join."
+      # CORRECT: use division IRI discovered during exploration for full-division aggregate
+      SELECT (COUNT(DISTINCT ?gene) AS ?geneCount)
+      FROM <http://rdfportal.org/dataset/ddbj>
+      WHERE {
+        ?entry a nuc:Entry ;
+               nuc:division <http://ddbj.nig.ac.jp/ontologies/nucleotide/Division#PHG> .
+        ?gene a nuc:Gene ; bfo:0000050 ?entry .
+      }
+      LIMIT 1
+    explanation: "Use division IRIs to scope comprehensive aggregations across the full dataset. Pasting sampled entry IRIs into VALUES only counts those specific entries."
 
   - title: "Aggregation Without Division or Entry Scope"
     problem: "COUNT(*) on nuc:Entry or features without a filter scans all 280M entries and times out."

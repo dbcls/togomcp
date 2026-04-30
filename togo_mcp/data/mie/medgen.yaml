@@ -205,9 +205,9 @@ sample_rdf_entries:
             mo:mgconso [ rdfs:seeAlso <http://purl.bioontology.org/ontology/SNOMEDCT/91861009> ] .
 
 sparql_query_examples:
-  - title: Lookup Concept by CUI
-    description: Retrieve core properties of a MedGen concept by its CUI identifier.
-    question: What is the label, semantic type, and definition for MedGen concept C0023467?
+  - title: Lookup Concepts by IRI
+    description: Retrieve core properties of MedGen concepts using their IRIs directly.
+    question: What are the labels, semantic types, and definitions for C0023467 and C4748684?
     complexity: basic
     sparql: |
       PREFIX mo:   <http://med2rdf/ontology/medgen#>
@@ -218,9 +218,11 @@ sparql_query_examples:
       SELECT ?concept ?label ?sty ?definition
       FROM <http://rdfportal.org/dataset/medgen>
       WHERE {
-        VALUES ?cui { "C0023467" }
+        VALUES ?concept {
+          <http://www.ncbi.nlm.nih.gov/medgen/C0023467>
+          <http://www.ncbi.nlm.nih.gov/medgen/C4748684>
+        }
         ?concept a mo:ConceptID ;
-            dct:identifier ?cui ;
             rdfs:label ?label ;
             mo:sty ?sty .
         OPTIONAL { ?concept skos:definition ?definition }
@@ -249,6 +251,7 @@ sparql_query_examples:
       }
       GROUP BY ?sty
       ORDER BY DESC(?count)
+      LIMIT 10
 
   - title: Disease-Gene Association via Direct Property
     description: Retrieve gene concept IRIs associated with a disease using the direct
@@ -627,28 +630,27 @@ anti_patterns:
       LIMIT 30
     explanation: "MGSAT uses rdf:value (value) and rdfs:label (attribute name). mo:atn/mo:atv are a schema error documented in critical_warnings."
 
-  - title: Missing DISTINCT on MGCONSO Cross-References
-    problem: "Querying mgconso without DISTINCT returns massively duplicated rdfs:seeAlso rows."
+  - title: Circular Reasoning with Search Results
+    problem: Using concept IRIs sampled from a bif:contains search as the scope of a comprehensive semantic-type count — counts only the sample.
     wrong_sparql: |
-      SELECT ?concept ?xref
-      FROM <http://rdfportal.org/dataset/medgen>
-      WHERE {
-        ?concept mo:mgconso ?bn .
-        ?bn rdfs:seeAlso ?xref .
+      # WRONG: pasted sampled concept IRIs — counts only those concepts, not all T047 diseases
+      VALUES ?concept {
+        <http://www.ncbi.nlm.nih.gov/medgen/C0023467>
+        <http://www.ncbi.nlm.nih.gov/medgen/C0011847>
       }
+      SELECT (COUNT(?concept) AS ?count) WHERE { }
+      LIMIT 1
     correct_sparql: |
-      PREFIX mo:   <http://med2rdf/ontology/medgen#>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-      SELECT DISTINCT ?concept ?xref
+      # CORRECT: use the semantic type IRI (sty:T047 = Disease or Syndrome) for a complete count
+      PREFIX mo:  <http://med2rdf/ontology/medgen#>
+      PREFIX sty: <http://purl.bioontology.org/ontology/STY/>
+      SELECT (COUNT(DISTINCT ?concept) AS ?count)
       FROM <http://rdfportal.org/dataset/medgen>
       WHERE {
-        ?concept a mo:ConceptID ;
-            mo:mgconso ?bn .
-        ?bn rdfs:seeAlso ?xref .
+        ?concept a mo:ConceptID ; mo:sty sty:T047 .
       }
-      LIMIT 100
-    explanation: "mgconso blank nodes produce many duplicate rdfs:seeAlso triples. DISTINCT is always required."
+      LIMIT 1
+    explanation: "Use semantic type IRIs (sty:T047 etc.) for comprehensive conceptcounts. Pasting sampled concept IRIs from a text search gives only the size of your exploratory sample."
 
 common_errors:
   - error: "Empty results when querying MGSAT attributes"

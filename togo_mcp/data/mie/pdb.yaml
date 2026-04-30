@@ -319,6 +319,7 @@ sparql_query_examples:
         ?entry a pdbo:datablock .
         FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
       }
+      LIMIT 1
 
   - title: Find Structures by Organism Using Taxonomy IRI
     description: Use taxonomy IRI for organism filtering — fast and unambiguous vs. text search on name.
@@ -336,6 +337,7 @@ sparql_query_examples:
         ?entry pdbo:has_entity_src_genCategory/pdbo:has_entity_src_gen ?src .
         ?src pdbo:link_to_taxonomy_source <http://purl.uniprot.org/taxonomy/9606> .
       }
+      LIMIT 1
 
   - title: Query by Experimental Method (Controlled Vocabulary)
     description: Use exact controlled method strings for filtering — no text search needed.
@@ -380,6 +382,7 @@ sparql_query_examples:
       }
       GROUP BY ?organism_name
       ORDER BY DESC(?structure_count)
+      LIMIT 10
 
   - title: Method Distribution with Resolution Statistics
     description: Aggregate analysis across methods using controlled string values in VALUES.
@@ -409,6 +412,7 @@ sparql_query_examples:
       }
       GROUP BY ?method
       ORDER BY ?method
+      LIMIT 10
 
   - title: UniProt Cross-Reference Lookup with Method and Resolution
     description: Retrieve all PDB structures for a UniProt protein via the structured link predicate.
@@ -632,16 +636,28 @@ anti_patterns:
       }
     explanation: "Always add FILTER(STRSTARTS(STR(?entry), 'http://rdf.wwpdb.org/pdb/')) when querying or counting structural entries."
 
-  - title: "Text Search for Organism When Taxonomy IRI Available"
-    problem: "Using FILTER(CONTAINS()) on scientific name text instead of the structured taxonomy IRI predicate."
+  - title: "Circular Reasoning with Search Results"
+    problem: "Using structure IRIs sampled from a keyword search as the scope of a comprehensive method-based count — counts only the sample."
     wrong_sparql: |
-      # Slow and incomplete: text search on organism name field
-      ?src pdbo:entity_src_gen.pdbx_gene_src_scientific_name ?name .
-      FILTER(CONTAINS(?name, "Homo sapiens"))
+      # WRONG: pasted sampled PDB IDs — counts only those structures, not all X-ray kinase structures
+      VALUES ?entry {
+        <https://rdf.wwpdb.org/pdb/1ATP>
+        <https://rdf.wwpdb.org/pdb/2CPK>
+      }
+      SELECT (COUNT(?entry) AS ?count) WHERE { }
+      LIMIT 1
     correct_sparql: |
-      # Fast and comprehensive: specific taxonomy IRI
-      ?src pdbo:link_to_taxonomy_source <http://purl.uniprot.org/taxonomy/9606> .
-    explanation: "pdbo:link_to_taxonomy_source with UniProt taxonomy IRIs is the structured property for organism filtering. Find the NCBI taxonomy ID first if unknown."
+      # CORRECT: use the experimental method IRI and taxonomy IRI discovered during exploration
+      PREFIX pdbo: <https://rdf.wwpdb.org/schema/pdbx-v50.owl#>
+      SELECT (COUNT(DISTINCT ?entry) AS ?count)
+      FROM <http://rdfportal.org/dataset/pdb>
+      WHERE {
+        ?entry pdbo:exptl.method "X-RAY DIFFRACTION"^^xsd:string ;
+               pdbo:entity_src_gen.pdbx_gene_src_ncbi_taxonomy_id ?taxon .
+        ?taxon owl:sameAs <http://identifiers.org/taxonomy/9606> .
+      }
+      LIMIT 1
+    explanation: "Use method, taxonomy, and resolution predicates (not sampled entry IRIs) for comprehensive structural queries. Pasting sampled PDB IRIs only counts that exploratory sample."
 
   - title: "Skipping Schema Check Before Text Search"
     problem: "Jumping to bif:contains or FILTER(CONTAINS()) without reading the MIE to confirm no structured alternative exists."

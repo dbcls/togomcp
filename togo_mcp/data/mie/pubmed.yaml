@@ -640,32 +640,25 @@ anti_patterns:
       LIMIT 20
     explanation: "Always complete the workflow: read MIE critical_warnings → use ncbi_esearch for examples → inspect with SELECT ?p ?o → use discovered structured properties. Only use bif:contains for genuinely unstructured free text (title, abstract)."
 
-  - title: Cross-Database Join Without Pre-Filtering
-    problem: Joining 37M PubMed articles with PubTator or other co-located databases without pre-filtering causes timeout.
+  - title: Circular Reasoning with Search Results
+    problem: Using article PMIDs sampled from a title text-search as the scope of a comprehensive disease-topic count.
     wrong_sparql: |
-      # Times out: 37M × 10M intermediate results
-      WHERE {
-        GRAPH <http://rdfportal.org/dataset/pubmed> {
-          ?article bibo:pmid ?pmid ; dct:title ?title .
-        }
-        GRAPH <http://rdfportal.org/dataset/pubtator_central> {
-          ?ann oa:hasTarget ?article .
-        }
-      }
+      # WRONG: pasted sampled PMIDs into VALUES — counts only those articles, not all Alzheimer papers
+      VALUES ?pmid { "38000001" "38000002" "38000003" }
+      SELECT (COUNT(?article) AS ?count)
+      FROM <http://rdfportal.org/dataset/pubmed>
+      WHERE { ?article bibo:pmid ?pmid . }
+      LIMIT 1
     correct_sparql: |
-      # Completes in ~2s: MeSH IRI pre-filter reduces to ~20K before join
+      # CORRECT: use the MeSH IRI discovered during exploration via fabio:hasPrimarySubjectTerm
+      SELECT (COUNT(DISTINCT ?article) AS ?count)
+      FROM <http://rdfportal.org/dataset/pubmed>
       WHERE {
-        GRAPH <http://rdfportal.org/dataset/pubmed> {
-          ?article bibo:pmid ?pmid ;
-                   dct:title ?title ;
-                   rdfs:seeAlso mesh:D001943 .  # Breast Neoplasms — verified rdfs:seeAlso IRI
-        }
-        GRAPH <http://rdfportal.org/dataset/pubtator_central> {
-          ?ann oa:hasTarget ?article .
-        }
+        ?article fabio:hasPrimarySubjectTerm ?term .
+        FILTER(STRSTARTS(STR(?term), "http://id.nlm.nih.gov/mesh/D000544"))
       }
-      LIMIT 50
-    explanation: "MANDATORY: Pre-filter PubMed within its GRAPH block using a MeSH IRI (rdfs:seeAlso) or bif:contains BEFORE the cross-database join. Reduces the join space by 99%+ and makes queries feasible."
+      LIMIT 1
+    explanation: "Use the MeSH IRI discovered from one exploratory inspection for all comprehensive queries. Pasting sampled PMIDs gives only the size of your sample, not the true topic count."
 
   - title: Using FILTER(REGEX) Instead of bif:contains
     problem: Unindexed regex is 10-100x slower than indexed bif:contains on Virtuoso backend.

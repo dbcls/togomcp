@@ -28,7 +28,6 @@ schema_info:
     - shotgun proteomics
   categories:
     - protein
-    - experiment
   endpoint: https://rdfportal.org/primary/sparql
   base_uri: http://rdf.jpostdb.org/
   graphs:
@@ -359,6 +358,7 @@ sparql_query_examples:
           FILTER(STRSTARTS(STR(?pxRef), "http://proteomecentral.proteomexchange.org/"))
         }
       }
+      LIMIT 10
 
   - title: "Count datasets per project (top 10)"
     description: |
@@ -739,17 +739,29 @@ data_statistics:
     verified_date: "2026-04-30"
 
 anti_patterns:
-  - title: "Querying without GRAPH clause"
-    problem: "Using bare triple patterns instead of wrapping in GRAPH <http://jpost.org/graph/database>."
+  - title: "Circular Reasoning with Search Results"
+    problem: "Using protein IRIs sampled from a UniProt-based lookup as the scope of a comprehensive jPOST count."
     wrong_sparql: |
-      ?project a jpost:Project ; dct:title ?title .
-    correct_sparql: |
-      GRAPH <http://jpost.org/graph/database> {
-        ?project a jpost:Project ; dct:title ?title .
+      # WRONG: pasted sampled protein IRIs — counts only those proteins, not all matching UniProt hits
+      VALUES ?prot {
+        <http://jpost.org/rdf/PRT0000000001_P01116>
+        <http://jpost.org/rdf/PRT0000000002_P01116>
       }
-    explanation: "On the multi-database primary endpoint the default graph is empty for
-      jPOST data. Bare patterns silently return zero rows — there's no error to debug.
-      Wrap every triple block in the explicit GRAPH clause."
+      SELECT (COUNT(?pept) AS ?count)
+      FROM <http://jpost.org/graph/database>
+      WHERE { ?pept a jpost:Peptide ; jpost:isDetectedIn ?prot . }
+      LIMIT 1
+    correct_sparql: |
+      # CORRECT: use the UniProt IRI (structured predicate) discovered during exploration
+      SELECT (COUNT(DISTINCT ?pept) AS ?count)
+      FROM <http://jpost.org/graph/database>
+      WHERE {
+        ?prot a jpost:Protein ;
+              jpost:hasDatabaseSequence <http://purl.uniprot.org/uniprot/P01116> .
+        ?pept a jpost:Peptide ; jpost:isDetectedIn ?prot .
+      }
+      LIMIT 1
+    explanation: "Use the jpost:hasDatabaseSequence IRI predicate to scope comprehensive counts. Pasting sampled PRT IRIs only counts those specific project-dataset combinations."
 
   - title: "Querying peptide sequence as a direct property"
     problem: "Treating the AA sequence as a literal directly on the Peptide."
@@ -786,7 +798,6 @@ anti_patterns:
     explanation: "jPOST samples are annotated with DOID IRIs, which round-trip cleanly to
       MONDO via `oboInOwl:hasDbXref`. Read shape_expressions before reaching for text
       search — sample, modification, and protein metadata are all pre-typed."
-
 common_errors:
   - error: "Slow query / timeout"
     causes:

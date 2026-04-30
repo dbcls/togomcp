@@ -221,6 +221,7 @@ sparql_query_examples:
         OPTIONAL { obo:CHEBI_15422 chemrof:smiles_string ?smiles }
         OPTIONAL { obo:CHEBI_15422 chemrof:inchi_key_string ?inchikey }
       }
+      LIMIT 5
 
   - title: "VALUES Batch Lookup — Multiple Metabolites"
     description: >
@@ -246,6 +247,7 @@ sparql_query_examples:
         OPTIONAL { ?entity chemrof:generalized_empirical_formula ?formula }
         OPTIONAL { ?entity chemrof:mass ?mass }
       }
+      LIMIT 10
 
   - title: "Hierarchy Navigation — Count Amino Acid Subclasses"
     description: >
@@ -264,6 +266,7 @@ sparql_query_examples:
                 rdfs:subClassOf+ obo:CHEBI_33709 .   # amino acid IRI
         FILTER(STRSTARTS(STR(?entity), "http://purl.obolibrary.org/obo/CHEBI_"))
       }
+      LIMIT 1
 
   - title: "Biological Role Query via OWL Restriction"
     description: >
@@ -620,23 +623,25 @@ anti_patterns:
       ChEBI has structured IRIs for biological roles, ontology classes, and relationships.
       Always check MIE and inspect examples before defaulting to text search.
 
-  - title: "Asserting Chemical Relationships Directly"
-    problem: >
-      Querying chemical relationships (roles, conjugate pairs, tautomers) as direct
-      predicates on the entity. These predicates are NEVER asserted directly in ChEBI.
+  - title: "Circular Reasoning with Search Results"
+    problem: "Using entity IRIs sampled from a text-search result to count members of a chemical role — counts only the sample."
     wrong_sparql: |
-      # WRONG — direct predicate assertions do not exist
-      ?entity obo:RO_0000087 obo:CHEBI_33281 .
-      ?entity obo:RO_0018034 ?base .
+      # WRONG: pasted sampled ChEBI IRIs from bif:contains — counts only those entities
+      VALUES ?entity { obo:CHEBI_27732 obo:CHEBI_15422 }
+      SELECT (COUNT(?entity) AS ?count) WHERE { }
+      LIMIT 1
     correct_sparql: |
-      # CORRECT — always via OWL restriction blank node
-      ?entity rdfs:subClassOf ?restriction .
-      ?restriction a owl:Restriction ;
-                   owl:onProperty obo:RO_0000087 ;
-                   owl:someValuesFrom obo:CHEBI_33281 .
-    explanation: >
-      All chemical roles and relationships in ChEBI are encoded as OWL restrictions.
-      The three-triple pattern (subClassOf → Restriction → onProperty/someValuesFrom) is mandatory.
+      # CORRECT: use the role restriction IRI discovered during exploration (CHEBI:33281 = antimicrobial agent)
+      SELECT (COUNT(DISTINCT ?entity) AS ?count)
+      FROM <http://rdfportal.org/dataset/chebi>
+      WHERE {
+        ?entity rdfs:subClassOf ?r .
+        ?r a owl:Restriction ;
+           owl:onProperty obo:RO_0000087 ;
+           owl:someValuesFrom obo:CHEBI_33281 .
+      }
+      LIMIT 1
+    explanation: "Use OWL restriction traversal with the discovered role IRI for comprehensive counts. Pasting sampled entity IRIs from a text search gives only the size of your exploratory sample."
 
   - title: "Using Old Uppercase Cross-Reference Prefixes"
     problem: >
