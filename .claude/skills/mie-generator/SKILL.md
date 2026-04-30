@@ -95,6 +95,8 @@ GROUP BY ?p ORDER BY DESC(?n) LIMIT 50
 
 Counts give you a feel for which classes are central (top 5 typically carry 90%+ of the data) and which predicates form the backbone of the schema. Skip BFO / CDAO / framework upper-types when documenting in `shape_expressions` — pick the canonical class.
 
+**Run a dedicated predicate survey for every class you plan to document in `shape_expressions`** — not only the top-level anchor class. Annotation classes, measurement classes, and cross-reference classes are just as likely to have missing or misnamed predicates as the central entity class. The rule is simple: if a class will appear in `shape_expressions`, its predicate survey must have been run before you write that shape. A predicate absent from the survey has no business in the shape; a predicate present in the survey with COUNT > 0 must be either documented or explicitly excluded with a note.
+
 #### 2c. DESCRIBE 3–5 representative entities
 
 Pick entities that span the taxonomy of the database — a "central" entity (most-frequent class), a "linker" entity (something that joins multiple classes), and a "leaf" entity (terminal annotation):
@@ -107,11 +109,51 @@ SELECT ?p ?o WHERE { GRAPH <…> { <iri-of-entity> ?p ?o } } LIMIT 200
 
 Use these inspections to nail down: IRI patterns (`http://<base>/<class>/<id>`), denormalized predicates (one predicate that serves multiple roles — e.g. Bgee's `genex:isExpressedIn` mixing anatomy IRIs and condition IRIs), measurement scaffolds (bnode chains for typed-value triples), and parallel namespace traps (the same NCBI taxon ID minted under two different IRI schemes — Bgee, see its critical_warnings).
 
+**Trace every blank node chain.** For each predicate in your DESCRIBE output whose object is a blank node, retrieve the bnode's full predicate set by walking from the parent entity in a single query:
+
+```sparql
+SELECT DISTINCT ?bPred ?bObj WHERE {
+  GRAPH <…> {
+    ?parent a <ParentClass> ; <bnodePredicate> ?bnode .
+    ?bnode ?bPred ?bObj .
+  }
+} LIMIT 50
+```
+
+Do this for every distinct bnode-valued predicate you encounter — typed-value scaffolds, position nodes, sequence nodes, evidence nodes, and any other bnode-valued property. An undiscovered bnode schema means an incomplete shape and a missing shape definition for the referenced `@<ShapeName>`.
+
+Note also that bnode shapes reached via different parent classes may differ in structure even when they share the same predicate name — the same property can resolve to an `ExactPosition` bnode (carrying an integer + a back-reference IRI) on one parent class and to a `Region` bnode (carrying `begin` and `end` sub-bnodes) on another. Never assume two bnode chains with the same predicate name have the same internal structure; verify each one independently via a parent-anchored query.
+
 #### 2d. Anchor IRIs via search tools
 
 If the database has a dedicated search tool (`search_uniprot_entity`, `search_chembl_molecule`, `search_chembl_target`, `search_pdb_entity`, `search_reactome_entity`, `search_rhea_entity`, `search_mesh_descriptor`, `OLS4:searchClasses`, `ncbi_esearch`), use it to turn human-readable terms ("TP53", "tumor protein p53", "kinase activity") into specific IRIs. Then DESCRIBE those IRIs to learn the canonical predicate names. This is the fastest path from "I know what concept I'm looking for" to "I have a structured-IRI query that works."
 
 If no search tool exists (BRENDA, BacDive, MediaDive, SuperCon, Glycosmos, NIMS): generate a short `bif:contains` (Virtuoso) probe to find one example, DESCRIBE it, and pivot to typed-predicate queries from there. Document this as the only legitimate text-search use, and note in `architectural_notes.text_search_justification` why no structured alternative existed.
+
+#### 2e. Verify predicate cardinality for every shape
+
+For each class–predicate pair you intend to document in `shape_expressions`, determine the actual multiplicity with a cardinality distribution query:
+
+```sparql
+SELECT ?nValues (COUNT(?s) AS ?nSubjects) WHERE {
+  GRAPH <…> {
+    { SELECT ?s (COUNT(?o) AS ?nValues) WHERE {
+        ?s a <TargetClass> ; <TargetPredicate> ?o .
+      } GROUP BY ?s }
+  }
+}
+GROUP BY ?nValues ORDER BY ?nValues
+```
+
+Map the result to the correct ShEx cardinality modifier:
+
+| Observed pattern | ShEx notation |
+|---|---|
+| All subjects, exactly 1 value | `IRI` (no modifier — required) |
+| Some subjects have 0, none have > 1 | `IRI ?` |
+| Some subjects have > 1 | `IRI *` (if 0 is possible) or `IRI +` |
+
+**Never assign `?`, `+`, or `*` based on intuition.** Every modifier must be justified by a cardinality query result. This step is cheap (one query per predicate) and catches a large class of silent errors in the finished MIE.
 
 ### Phase 3 — Design the query set
 
@@ -140,6 +182,24 @@ Use `references/template.yaml` as your scaffold. Copy it to the target path, the
 9. `data_statistics`
 10. `anti_patterns` — 3–4, must include "schema check before text search"
 11. `common_errors` — 2–3
+
+**Before finalising `shape_expressions`:**
+
+- **Every `@<ShapeRef>` must have a corresponding defined block.** Search the `shape_expressions` string for every `@<…>` reference and confirm each one resolves to a `<…Shape> { … }` definition in the same section. A referenced-but-undefined shape is a structural error — the downstream LLM will generate property-path queries that silently return nothing.
+
+- **Mark optional co-types explicitly.** When a class is sometimes (but not always) additionally typed with a second class, write each sub-type as a separate optional constraint rather than grouping them in a single `a [ T1 T2 T3 ] +` block. The grouped form is correct ShEx but visually implies all types are always co-present:
+
+  ```shex
+  # Avoid — looks like all three are always expected:
+  a [ ex:MainType ex:SubTypeA ex:SubTypeB ] + ;
+
+  # Prefer — cardinality is explicit and verifiable:
+  a [ ex:MainType ] ;
+  a [ ex:SubTypeA ] ?   # ~80% of instances — confirmed by COUNT
+  a [ ex:SubTypeB ] ?   # ~80% of instances — confirmed by COUNT
+  ```
+
+  Annotate the percentage in an inline comment so the figure is traceable to Phase 2e.
 
 Line budget: 400–600 lines typical, up to 700–900 for genuinely complex databases. If you're over 900, you are probably duplicating between `shape_expressions` and `architectural_notes` — consolidate.
 
@@ -174,6 +234,14 @@ python3 -c "import yaml; yaml.safe_load(open('./togo_mcp/data/mie/<db>.yaml'))"
 
 If this fails, fix the YAML before calling the work done.
 
+**5e. Audit `shape_expressions` for completeness.** For each shape block:
+
+1. Re-run the Phase 2b predicate survey and compare against the documented predicates. Any predicate with COUNT > 0 that is absent from the shape must be either added or explicitly noted as intentionally excluded.
+2. Confirm every `@<ShapeRef>` has a defined `<…Shape>` block.
+3. For every predicate marked `?` (optional), confirm with a cardinality query that at least one subject has 0 values for it. For every predicate with no modifier (required), confirm its COUNT equals the class instance count.
+
+This step is not optional. `shape_expressions` is the section a downstream LLM relies on most heavily for query construction. An unaudited shape is equivalent to an untested SPARQL example.
+
 ### Phase 6 — Final declaration
 
 Only after Phases 1–5 are complete, report to the user:
@@ -184,6 +252,8 @@ Only after Phases 1–5 are complete, report to the user:
   - SPARQL queries tested: N/N executed successfully (N = 7 + cross-DB + cross-ref)
   - Statistics verified: [date]
   - YAML parses cleanly
+  - shape_expressions audited: all shapes verified against live predicate surveys,
+    all @<ShapeRef>s resolved, all cardinality modifiers confirmed
   - Lines: [count]
 ```
 

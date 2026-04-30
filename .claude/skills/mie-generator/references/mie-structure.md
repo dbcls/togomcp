@@ -51,6 +51,14 @@ PREFIX ex: <http://example.org/>
 }
 ```
 
+**Verification requirements for `shape_expressions`** (mirrors Phase 5e):
+
+- Every shape class must have a completed predicate survey from Phase 2b.
+- Every bnode-valued predicate must have been traced via the parent-anchored query from Phase 2c.
+- Every cardinality modifier (`?`, `+`, `*`, or absent) must be backed by a Phase 2e cardinality distribution query.
+- Every `@<ShapeRef>` must resolve to a defined block in the same section.
+- Optional co-types must be written as separate `a [ T ] ?` lines, not grouped in a single `a [ T1 T2 … ] +` block.
+
 ## 4. `sample_rdf_entries`
 
 **Exactly 3 entries.** Single shared `rdf_prefixes` block at the top — do not repeat `@prefix` declarations in every entry.
