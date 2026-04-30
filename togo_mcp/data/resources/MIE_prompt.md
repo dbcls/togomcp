@@ -123,18 +123,48 @@ get_graph_list(database)
 get_MIE_file(database)   # check for existing MIE and compliance
 ```
 
-**Step 2: Schema Discovery (5 min)**
+**Step 2: Schema Discovery (5–10 min)**
+
+First enumerate classes:
 ```sparql
 # Classes and instance counts
 SELECT DISTINCT ?class (COUNT(?instance) as ?count)
-WHERE { ?instance a ?class }
+WHERE { GRAPH <…> { ?instance a ?class } }
 GROUP BY ?class ORDER BY DESC(?count) LIMIT 50
-
-# Properties and usage
-SELECT DISTINCT ?property (COUNT(?usage) as ?count)
-WHERE { ?s ?property ?o }
-GROUP BY ?property ORDER BY DESC(?count) LIMIT 50
 ```
+
+Then **run a dedicated predicate survey for every class you plan to document in `shape_expressions`** — not only the top-level anchor class. Annotation classes, measurement classes, and cross-reference classes are just as likely to have missing or misnamed predicates:
+
+```sparql
+# Per-class predicate survey (run for every class in shape_expressions)
+SELECT ?p (COUNT(*) AS ?n)
+WHERE { GRAPH <…> { ?s a <TargetClass> ; ?p ?o } }
+GROUP BY ?p ORDER BY DESC(?n) LIMIT 50
+```
+
+A predicate absent from the survey has no business in the shape; a predicate present with COUNT > 0 must be either documented or explicitly excluded with a note.
+
+While running predicate surveys, note any predicate whose COUNT distribution is surprising as a `critical_warnings` candidate:
+
+- COUNT equals class instance count but the predicate name looks like it might have an alias or alternate namespace form — confirm only one form is queryable.
+- COUNT is much lower than the class instance count for a predicate that looks mandatory — document as a caveat on cardinality, or as a trap if omitting it causes a silent wrong result rather than just an empty one.
+- COUNT is greater than the class instance count for a predicate that looks singular — document the multi-valued behaviour.
+- Two predicates return overlapping results for what appears to be the same concept — document which form is the correct join key.
+
+Write these candidates down immediately. `critical_warnings` is assembled in the Template stage from this list — not reconstructed from memory.
+
+**Trace every blank node chain.** For each predicate whose object is a blank node, retrieve the bnode's full predicate set anchored on the parent class — the same predicate name can resolve to differently-shaped bnodes on different parent classes (e.g. `faldo:location` → `ExactPosition` on one class, `Region` on another):
+
+```sparql
+SELECT DISTINCT ?bPred ?bObj WHERE {
+  GRAPH <…> {
+    ?parent a <ParentClass> ; <bnodePredicate> ?bnode .
+    ?bnode ?bPred ?bObj .
+  }
+} LIMIT 50
+```
+
+An undiscovered bnode schema means an incomplete shape and a missing `@<ShapeName>` definition.
 
 **Step 3: Find Specific IRIs for Key Concepts (10 min)**
 ```python
@@ -145,9 +175,41 @@ run_sparql(database, """
 """)
 ```
 
+**Step 4: Cardinality Verification (one query per predicate)**
+
+For every class–predicate pair you intend to document in `shape_expressions`, determine the actual multiplicity with a cardinality distribution query. **Never assign `?`, `+`, or `*` based on intuition.**
+
+```sparql
+SELECT ?nValues (COUNT(?s) AS ?nSubjects) WHERE {
+  GRAPH <…> {
+    { SELECT ?s (COUNT(?o) AS ?nValues) WHERE {
+        ?s a <TargetClass> ; <TargetPredicate> ?o .
+      } GROUP BY ?s }
+  }
+}
+GROUP BY ?nValues ORDER BY ?nValues
+```
+
+Map the result to the correct ShEx cardinality modifier:
+
+| Observed pattern                       | ShEx notation                       |
+|----------------------------------------|-------------------------------------|
+| All subjects, exactly 1 value          | `IRI` (no modifier — required)      |
+| Some subjects have 0, none have > 1    | `IRI ?`                             |
+| Some subjects have > 1                 | `IRI *` (if 0 is possible) or `IRI +` |
+
+This step is cheap (one query per predicate) and catches a large class of silent errors in the finished MIE.
+
 ### 2. Statistics Verification
 
 Every statistic requires a verified count (query or methodology) and a verified date. Mark frequently-updated databases with an update warning.
+
+After verifying individual counts, **cross-check arithmetic consistency**:
+
+- Does `total_entities` equal (or plausibly approximate) the sum of the major `by_class` counts?
+- Does each coverage percentage equal `(subset count) / (class count)` to within rounding? E.g. if 673,263 entities carry a property and there are 1,021,677 in the class, the percentage must be documented as ~65.9%, not loosely as "~66%" or "~70%".
+
+Flag and correct any discrepancy before publishing.
 
 ### 3. Cross-Database Queries (Shared Endpoint Only)
 
@@ -191,7 +253,7 @@ if "error" in result.lower():
 
 ### Required Sections (in order)
 
-1. **schema_info** — Endpoint, graphs, search tools, backend, versioning, plus `keywords` (8–15 lowercase discovery terms incl. synonyms) and `categories` (1–3 from controlled taxonomy) for `find_databases()` discovery
+1. **schema_info** — Endpoint, graphs, search tools, backend, versioning, plus `keywords` (8–15 lowercase discovery terms incl. synonyms) and `categories` (1–3 from controlled taxonomy) for `find_databases()` discovery. **After filling in `categories`, call `list_categories()` and verify each token is an exact match (same case, same underscores) against the returned list.** Off-spec tokens silently exclude the database from `find_databases(category=…)` results.
 2. **critical_warnings** — Schema pathologies that cause silent failures (typos in IRIs, non-obvious namespace traps, critical performance filters). Use `[]` if none.
 3. **shape_expressions** — ShEx for ALL entity types with inline counts and caveats
 4. **sample_rdf_entries** — Exactly 3 diverse, illustrative examples (shared prefix block)
@@ -202,6 +264,26 @@ if "error" in result.lower():
 9. **data_statistics** — Verified counts and coverage percentages
 10. **anti_patterns** — 3–4 examples (must include the "schema check before text search" pattern)
 11. **common_errors** — 2–3 scenarios
+
+### Shape Expressions Discipline
+
+Two structural rules `shape_expressions` must obey:
+
+- **Every `@<ShapeRef>` must have a corresponding defined block.** Search the `shape_expressions` string for every `@<…>` reference and confirm each resolves to a `<…Shape> { … }` definition in the same section. A referenced-but-undefined shape is a structural error — the downstream LLM will generate property-path queries that silently return nothing.
+
+- **Mark optional co-types explicitly.** When a class is sometimes (but not always) additionally typed with a second class, write each sub-type as a separate optional constraint rather than grouping them in a single `a [ T1 T2 T3 ] +` block. The grouped form is correct ShEx but visually implies all types are always co-present:
+
+  ```shex
+  # Avoid — looks like all three are always expected:
+  a [ ex:MainType ex:SubTypeA ex:SubTypeB ] + ;
+
+  # Prefer — cardinality is explicit and verifiable:
+  a [ ex:MainType ] ;
+  a [ ex:SubTypeA ] ?   # ~80% of instances — confirmed by COUNT
+  a [ ex:SubTypeB ] ?   # ~80% of instances — confirmed by COUNT
+  ```
+
+  Annotate the percentage in an inline comment so the figure is traceable to Step 4 (Cardinality Verification).
 
 ### SPARQL Query Requirements (7 queries: 2 / 3 / 2)
 
@@ -502,7 +584,7 @@ common_errors:
       - "Check MIE critical_warnings and schema for mandatory filters"
       - "Check shape_expressions for structured properties"
       - "Use bif:contains on Virtuoso; split property paths before bif:contains"
-      - "Add LIMIT to every query"
+      - "Add LIMIT (or use an aggregate / ASK / specific-IRI anchor) to every query"
 
   - error: "Empty or incomplete results"
     causes:
@@ -523,7 +605,7 @@ common_errors:
       - "Read MIE files for ALL databases; check shape_expressions for linking predicates"
       - "Use explicit GRAPH clauses for each database"
       - "Apply restrictive filters within each GRAPH block before the cross-database join"
-      - "Add LIMIT at every query level"
+      - "Add LIMIT at every query level (unless bounded by aggregate / ASK / specific-IRI subject)"
 ```
 
 ---
@@ -537,9 +619,21 @@ common_errors:
 - ☐ **For cross-DB queries: read ALL co-located MIE files**
 - ☐ **Verified no structured alternatives before using text search**
 
+**`schema_info`:**
+- ☐ `categories` tokens exact-matched against `list_categories()` (same case, same underscores)
+
 **`critical_warnings`:**
 - ☐ Documented any IRI traps, typos, or mandatory performance filters
 - ☐ Placed before `shape_expressions` for fast scanning
+- ☐ Every cited predicate name and IRI verified against the endpoint with a SELECT
+- ☐ Trap candidates flagged from surprising COUNT distributions during the per-class predicate survey, not reconstructed from memory
+
+**`shape_expressions`:**
+- ☐ Per-class predicate survey run for every class that appears in the shape
+- ☐ Every blank-node-valued predicate traced via the parent-anchored bnode query
+- ☐ Every cardinality modifier (`?`, `+`, `*`, or absent) backed by a cardinality distribution query
+- ☐ Every `@<ShapeRef>` resolves to a defined `<…Shape>` block in the same section
+- ☐ Optional co-types written as separate `a [ T ] ?` lines, not grouped in a single `a [ T1 T2 … ] +` block
 
 **Query Design:**
 - ☐ ≥ 2 queries use specific IRIs or VALUES with IRIs
@@ -548,7 +642,7 @@ common_errors:
 - ☐ All text-search queries include justification comments
 - ☐ `bif:contains` preferred over `FILTER(CONTAINS())` on Virtuoso
 - ☐ No circular reasoning (no VALUES with search results for comprehensive queries)
-- ☐ All 7 queries have a LIMIT clause
+- ☐ Every query has a bounded result set — `LIMIT` required unless the query is an aggregate (`COUNT`, `SUM`, `AVG`, `MIN`, `MAX`), an `ASK`, or anchored on a specific-IRI subject whose cardinality is bounded by the schema
 
 **`sample_rdf_entries`:**
 - ☐ Exactly 3 entries
@@ -558,12 +652,27 @@ common_errors:
 **`cross_database_queries`:**
 - ☐ 1–2 examples maximum (not 3)
 - ☐ Isolated endpoints: `examples: []` with explanatory `notes`
+- ☐ Each query's join validity spot-checked (one result IRI confirmed in the second database)
+
+**`cross_references`:**
+- ☐ Each pattern's IRI form confirmed by DESCRIBE (not inferred from documentation)
+- ☐ Each coverage percentage from a COUNT query (not estimated)
+- ☐ When two IRI forms exist, both documented with the correct join key flagged
 
 **`data_statistics`:**
 - ☐ Counts and coverage percentages present with verified dates
+- ☐ `total_entities` arithmetically consistent with sum of `by_class` counts
+- ☐ Each coverage % equals `(subset / class)` to within rounding (no loose "~66%" when the figure is 65.9%)
 - ☐ No `verification_queries` sub-fields (auditing artefact — omit)
 - ☐ No `cardinality` sub-section (avg-per-entity values — omit)
 - ☐ No `performance_characteristics` sub-section (belongs in `architectural_notes`)
+
+**Prefix declarations:**
+- ☐ Every non-standard prefix base URI confirmed with a SELECT against a known class
+- ☐ Standard W3C prefixes (`rdf:`, `rdfs:`, `owl:`, `xsd:`) do not need checking
+
+**`anti_patterns`:**
+- ☐ Every `correct_sparql` block executed successfully against the endpoint
 
 **Structure:**
 - ☐ Valid YAML (load with `get_MIE_file` and check for errors)
@@ -591,16 +700,72 @@ result = get_MIE_file(database)
 ```
 
 ### Step 3: Test Queries
-Run at least 3 of the 7 SPARQL queries to verify execution.
+Run all 7 of `sparql_query_examples`, every example in `cross_database_queries`, **every `correct_sparql` block in `anti_patterns`**, and any SPARQL embedded in `cross_references`. Every single one. Untested `correct_sparql` actively teaches bad practice — downstream LLMs copy it as readily as the example queries.
 
-### Step 4: Final Declaration
+For each cross-database query that returns results, additionally **spot-check join validity**: take one join value from the result set and run a quick `ASK` or `SELECT` against the second database to confirm it resolves to a real entity there. A query returning 3 rows when thousands are expected is a join failure, not a passing test — the IRI form used for linking likely differs between the two databases.
 
-**ONLY after Steps 1–3:**
+### Step 4: Audit `shape_expressions`
+For each shape block:
+
+1. Re-run the per-class predicate survey from Step 2 and compare against the documented predicates. Any predicate with COUNT > 0 that is absent from the shape must be either added or explicitly noted as intentionally excluded.
+2. Confirm every `@<ShapeRef>` has a defined `<…Shape>` block.
+3. For every predicate marked `?` (optional), confirm with a cardinality query that at least one subject has 0 values for it. For every predicate with no modifier (required), confirm its COUNT equals the class instance count.
+
+This step is not optional. `shape_expressions` is the section a downstream LLM relies on most heavily for query construction. An unaudited shape is equivalent to an untested SPARQL example.
+
+### Step 5: Verify `critical_warnings` content
+For every predicate name and IRI string cited in `critical_warnings`, run a minimal query confirming it exists in the endpoint:
+
+```sparql
+SELECT ?s WHERE {
+  GRAPH <…> { ?s <cited-predicate> ?o }
+} LIMIT 1
+```
+
+If the query returns no rows, the cited predicate or IRI is wrong — fix it before publishing. A warning about a non-existent predicate is worse than no warning. Also confirm each warning is still accurate against the current data snapshot: a trap documented in a previous MIE version may have been corrected upstream.
+
+### Step 6: Verify `cross_references`
+For each cross-reference predicate documented:
+
+1. **Confirm the IRI form** by DESCRIBEing a real entity and reading the actual object value. Do not trust the database's documentation — mint the IRI from what the endpoint actually returns. If two IRI forms are present (e.g. both an `identifiers.org` form and a canonical purl), document both and specify which is the correct join key for federation.
+
+2. **Verify the coverage percentage** with a COUNT query:
+
+   ```sparql
+   SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
+     GRAPH <…> { ?s a <EntityClass> ; <crossRefPredicate> ?o }
+   }
+   ```
+
+   Divide by the class instance count from `data_statistics`. Document the result as the coverage figure — do not estimate.
+
+### Step 7: Verify prefix declarations
+For each non-standard prefix defined in `shape_expressions` or `sample_rdf_entries`, confirm the base URI is correct by running a minimal SELECT using that prefix:
+
+```sparql
+PREFIX ex: <http://suspected-base-uri/>
+SELECT ?s WHERE {
+  GRAPH <…> { ?s a ex:KnownClass }
+} LIMIT 1
+```
+
+If the query returns no rows despite the class being known to exist, the prefix base URI is wrong. Standard W3C prefixes (`rdf:`, `rdfs:`, `owl:`, `xsd:`) do not need checking. Database-specific and ontology-specific prefixes (e.g. a Unimod prefix, a PSI-MS prefix, an internal ontology prefix) must all be confirmed.
+
+### Step 8: Final Declaration
+
+**ONLY after Steps 1–7:**
 
 "✓ MIE file validation complete. All requirements satisfied:
 - Quality Checklist: [X/X] items checked
 - YAML valid: Yes
 - Queries tested: [N] queries executed successfully
+- shape_expressions audited: all shapes verified against live predicate surveys, all @<ShapeRef>s resolved, all cardinality modifiers confirmed
+- critical_warnings verified: all cited predicate names and IRIs confirmed against endpoint
+- cross_references verified: IRI forms confirmed by DESCRIBE, coverage % from COUNT queries
+- schema_info.categories checked: all tokens exact-matched against list_categories()
+- prefix declarations verified: all non-standard prefixes confirmed with SELECT
+- data_statistics cross-checked: total_entities and coverage % arithmetically consistent
+- anti_patterns.correct_sparql tested: all correct_sparql blocks executed successfully
 - Ready for production use."
 
 ---

@@ -583,26 +583,30 @@ anti_patterns:
       ?cond <http://purl.obolibrary.org/obo/RO_0002162> <http://purl.uniprot.org/taxonomy/9606> .
     explanation: "Bgee uses two parallel taxon IRI namespaces. Gene → bgeespecies:NNN; ExpressionCondition → taxonomy:NNN (UniProt). Bridge with obo:RO_0002162."
 
-  - title: "Unfiltered scan of the Expression class"
-    problem: |
-      Counting or listing genex:Expression without anchoring to a gene, anatomy, or
-      species. The class has 709M instances; queries time out.
+  - title: "Circular Reasoning with Search Results"
+    problem: "Using gene or condition IRIs sampled from an exploratory query as the scope of a comprehensive expression count — counts only the sample."
     wrong_sparql: |
-      SELECT (COUNT(*) AS ?n) WHERE {
-        GRAPH <http://bgee.org> { ?c a genex:Expression }
+      # WRONG: pasted sampled gene IRIs — counts only those genes' expression, not all brain-expressed genes
+      VALUES ?gene {
+        <http://www.ensembl.org/id/ENSG00000141510>
+        <http://www.ensembl.org/id/ENSG00000012048>
       }
-      # Times out at the endpoint
+      SELECT (COUNT(DISTINCT ?cond) AS ?count)
+      FROM <http://rdfportal.org/dataset/bgee>
+      WHERE { ?expr genex:hasExpressionCondition ?cond ; oba:RO_0002206 ?gene . }
+      LIMIT 1
     correct_sparql: |
-      # Anchor first, then COUNT:
-      SELECT (COUNT(*) AS ?n) WHERE {
-        GRAPH <http://bgee.org> {
-          ?c a genex:Expression ;
-             genex:hasSequenceUnit ?gene ;
-             genex:hasExpressionCondition ?cond .
-          ?cond <http://purl.obolibrary.org/obo/RO_0002162> taxonomy:9606 .
-        }
+      # CORRECT: use the anatomy IRI and developmental stage discovered during exploration
+      SELECT (COUNT(DISTINCT ?gene) AS ?count)
+      FROM <http://rdfportal.org/dataset/bgee>
+      WHERE {
+        ?expr a genex:Expression ;
+              oba:RO_0002206 ?gene ;
+              genex:hasExpressionCondition ?cond .
+        ?cond genex:hasAnatomicalEntity <http://purl.obolibrary.org/obo/UBERON_0000955> .
       }
-    explanation: "The expression call table is the largest in the SIB store. Filter by species, gene, or anatomy via the condition before any aggregation."
+      LIMIT 1
+    explanation: "Use anatomical entity IRIs (not sampled gene IRIs) for comprehensive expression queries. Pasting sampled gene IRIs from exploratory queries counts only those genes."
 
   - title: "Treating genex:isExpressedIn as a clean anatomy link"
     problem: |

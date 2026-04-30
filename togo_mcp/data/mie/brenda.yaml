@@ -28,7 +28,6 @@ schema_info:
     - inchikey
     - tissue expression
     - subcellular localization
-    - organism enzyme
   categories:
     - reaction
     - protein
@@ -416,6 +415,7 @@ sparql_query_examples:
                 d3o:foundIn ?organism .
       }
       GROUP BY ?ec ?ecLabel
+      LIMIT 10
 
   - title: "Tissue-specific enzyme expression across organisms"
     description: Find tissues that express a specific enzyme class and the organisms they belong to.
@@ -623,30 +623,25 @@ anti_patterns:
       ?inhibitor d3o:affectsClass <https://purl.dsmz.de/brenda/ec/4.1.1.17> .
     explanation: "Enzyme IRIs are internal BRENDA instance IDs. EC number IRIs encode the class number in the path. They are completely different namespaces."
 
-  - title: "Querying Structural Data from Inhibitor/Activator Nodes"
-    problem: "Expecting rdfs:label or InChI on an inhibitor node — structure data is on the compound."
+  - title: "Circular Reasoning with Search Results"
+    problem: "Using enzyme IRIs sampled from an exploratory query as the scope of a comprehensive reaction count — counts only those instances."
     wrong_sparql: |
-      ?inhibitor a d3o:Inhibitor ;
-                 rdfs:label ?label ;           # wrong — inhibitor has no label
-                 d3o:hasInChIKey ?inchiKey .   # wrong — InChIKey is on the compound/structure
+      # WRONG: pasted sampled enzyme IRIs — counts only those enzyme instances, not all EC 4.1.1.x members
+      VALUES ?enzyme {
+        <https://purl.dsmz.de/brenda/enzyme/2485>
+        <https://purl.dsmz.de/brenda/enzyme/2486>
+      }
+      SELECT (COUNT(?enzyme) AS ?count) WHERE { }
+      LIMIT 1
     correct_sparql: |
-      ?inhibitor a d3o:Inhibitor ;
-                 d3o:refersToCompound ?compound .
-      ?compound rdfs:label ?label ;
-                d3o:hasStructure ?structure .
-      ?structure d3o:hasInChIKey ?inchiKey .
-    explanation: "Inhibitor/Activator nodes represent context-specific roles, not chemical entities. Navigate via d3o:refersToCompound to reach the compound and its structure."
-
-  - title: "Wrong Direction for Tissue Expression"
-    problem: "Looking for d3o:expresses on enzyme nodes — the predicate goes FROM tissue TO enzyme."
-    wrong_sparql: |
-      ?enzyme d3o:expresses ?tissue .   # wrong direction
-    correct_sparql: |
-      ?tissue a d3o:Tissue ;
-              d3o:expresses ?enzyme ;   # tissue expresses enzyme
-              d3o:partOf ?organism .
-      ?enzyme d3o:isClassifiedAs ?ec .
-    explanation: "The d3o:expresses predicate is on tissue nodes pointing to enzyme nodes, not the reverse. Check shape_expressions for the correct predicate direction."
+      # CORRECT: use the EC class IRI discovered during exploration
+      SELECT (COUNT(DISTINCT ?enzyme) AS ?count)
+      FROM <http://rdfportal.org/dataset/brenda>
+      WHERE {
+        ?enzyme d3o:isClassifiedAs <https://purl.dsmz.de/brenda/ec/4.1.1.17> .
+      }
+      LIMIT 1
+    explanation: "Use the EC class IRI (structured predicate) for comprehensive counts across all enzyme instances of that class. Pasting sampled enzyme IRIs only counts those specific instances."
 
   - title: "Querying for Kinetic Values That Are Not in the RDF Export"
     problem: "Expecting Km, Ki, Vmax, or kcat to be queryable via SPARQL — these fields

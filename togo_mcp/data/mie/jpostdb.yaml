@@ -28,7 +28,6 @@ schema_info:
     - shotgun proteomics
   categories:
     - protein
-    - experiment
   endpoint: https://rdfportal.org/primary/sparql
   base_uri: http://rdf.jpostdb.org/
   graphs:
@@ -138,9 +137,9 @@ shape_expressions: |
   <ProfileShape> {
     a [ jpost:Profile ] ;
     jpost:hasSample @<SampleShape> ;
-    jpost:hasFractionation IRI ? ;
-    jpost:hasEnzymeAndModification IRI ? ;          # cleavage enzyme + fixed/var mods
-    jpost:hasMsMode IRI ? ;                         # DDA / DIA / etc.
+    jpost:hasEnzymeAndModification IRI ;            # mandatory; present on all 853 Profiles
+    jpost:hasMsMode IRI ;                           # mandatory; present on all 853 Profiles (DDA / DIA / etc.)
+    jpost:hasFractionation IRI * ;                  # 0–3 values; ~55% of Profiles have ≥2
     jpost:hasRawData @<RawDataShape> *
   }
 
@@ -150,11 +149,23 @@ shape_expressions: |
   # ---------------------------------------------------------------
   <SampleShape> {
     a [ jpost:Sample ] ;
+    jpost:species IRI ;                             # mandatory; identifiers.org/taxonomy/* on all 853 Samples
+    jpost:sampleType IRI + ;                        # NCIt/CLO/BTO category IRI; present on 844/853 (98.9%)
     jpost:cellLine IRI * ;                          # BTO:* / CL:* / CLO:*
     jpost:disease IRI * ;                           # DOID:*
     jpost:diseaseClass IRI * ;                      # DOID:* + jpost:JPO_*
-    jpost:organ IRI * ;                             # NCIt (Thesaurus.owl#C…) + BTO:*
-    jpost:organism IRI ?                            # NCBI taxon (when present)
+    jpost:organ IRI *                               # NCIt (Thesaurus.owl#C…) + BTO:*
+  }
+
+  # ---------------------------------------------------------------
+  # A raw mass-spec data file referenced by a Profile.
+  # Sparsely populated: 1,962 instances against 853 Profiles — older
+  # reanalyses often have no RawData.
+  # ---------------------------------------------------------------
+  <RawDataShape> {
+    a [ jpost:RawData ] ;
+    rdfs:label xsd:string ;                         # original filename, e.g. "120129ry_604A1-46_3_4.wiff"
+    foaf:page IRI ?                                 # jPOSTrepo entry page URL (when known)
   }
 
   # ---------------------------------------------------------------
@@ -165,7 +176,9 @@ shape_expressions: |
   # 82% are also jpost:UniquePeptide; 82% jpost:UniquePeptideAtMsLevel.
   # ---------------------------------------------------------------
   <PeptideShape> {
-    a [ jpost:Peptide jpost:UniquePeptide jpost:UniquePeptideAtMsLevel ] + ;
+    a [ jpost:Peptide ] ;                           # mandatory base type
+    a [ jpost:UniquePeptide ] ? ;                   # ~82% of Peptides
+    a [ jpost:UniquePeptideAtMsLevel ] ? ;          # ~82% of Peptides
     dct:identifier xsd:string ;
     jpost:hasSequence @<PeptideSequenceBNode> ;     # AA string here
     jpost:hasPsm @<PsmShape> + ;                    # 1+ supporting PSMs
@@ -192,13 +205,26 @@ shape_expressions: |
   }
 
   # ---------------------------------------------------------------
-  # A single PTM occurrence on a PSM. Multi-typed against Unimod.
-  # IRI is a blank node; total Modification instances: 12,518,574.
+  # A single PTM occurrence on a PSM. IRI is a blank node;
+  # total Modification instances: 12,518,574. The Unimod typing AND
+  # the position predicates (modificationSite + faldo:location) are
+  # absent on PTMs whose Unimod term is unknown (see data_quality).
   # ---------------------------------------------------------------
   <ModificationShape> {
     a [ jpost:Modification ] ;
-    a IRI + ;                                       # one or more unimod:UNIMOD_*
-    rdfs:label xsd:string ?                         # "Acetyl (N-term)", "Oxidation (M)" …
+    a IRI * ;                                       # zero or more unimod:UNIMOD_*; absent on unannotated mods
+    rdfs:label xsd:string ? ;                       # "Acetyl (N-term)", "Oxidation (M)" — empty on ~5.2M
+    jpost:modificationSite xsd:string ? ;           # single-letter AA code, e.g. "C"; present iff Unimod-typed
+    faldo:location @<ModificationPositionBNode> ?   # exact position within the parent peptide
+  }
+
+  # The Modification-side faldo bnode: a single ExactPosition pointing
+  # back at the parent Peptide. Distinct from PeptideEvidenceBNode's
+  # faldo:Region (begin / end pair).
+  <ModificationPositionBNode> {
+    a [ faldo:ExactPosition ] ;
+    faldo:position xsd:integer ;                    # 1-based position within the peptide
+    faldo:reference IRI                             # IRI of the parent jpost:Peptide
   }
 
   # ---------------------------------------------------------------
@@ -217,17 +243,26 @@ shape_expressions: |
     rdfs:seeAlso IRI + ;                            # both id.org/uniprot AND purl.uniprot
     jpost:hasDatabaseSequence IRI ;                 # canonical UniProt purl (typed)
     jpost:inProteinGroup IRI ;                      # -> ProteinGroup (jpost:bid/PG…)
+    jpost:hasLeadingProtein IRI * ;                 # leading protein in same group; ~34% of Proteins
     jpost:hasIsoform IRI * ;                        # other isoforms in same group
     jpost:hasPeptideEvidence @<PeptideEvidenceBNode> + ;
     sio:SIO_000216 BNode +                          # peptide count, PSM count scaffolds
   }
 
   # PeptideEvidence is a blank node tying a Protein to one Peptide hit
-  # at a specific position on the protein sequence.
+  # at a specific position on the protein sequence. NB the location is a
+  # faldo:Region (begin/end pair), distinct from the ExactPosition used
+  # in <ModificationPositionBNode>.
   <PeptideEvidenceBNode> {
     a [ jpost:PeptideEvidence ] ;
-    faldo:location BNode ;                          # faldo:Region with begin / end
+    faldo:location @<PeptideEvidenceRegionBNode> ;
     jpost:hasPeptide @<PeptideShape>                # the supporting peptide
+  }
+
+  <PeptideEvidenceRegionBNode> {
+    a [ faldo:Region ] ;
+    faldo:begin BNode ;                             # ExactPosition with faldo:position xsd:integer
+    faldo:end BNode                                 # ExactPosition with faldo:position xsd:integer
   }
 
   # ---------------------------------------------------------------
@@ -323,6 +358,7 @@ sparql_query_examples:
           FILTER(STRSTARTS(STR(?pxRef), "http://proteomecentral.proteomexchange.org/"))
         }
       }
+      LIMIT 10
 
   - title: "Count datasets per project (top 10)"
     description: |
@@ -537,13 +573,26 @@ cross_references:
         - "UniProt (identifiers.org form): 100%"
         - "UniProt (purl.uniprot.org form): 100%"
 
-  - pattern: jpost:disease / jpost:diseaseClass / jpost:organ / jpost:cellLine
+  - pattern: jpost:species / jpost:sampleType / jpost:disease / jpost:diseaseClass / jpost:organ / jpost:cellLine
     description: |
-      Sample-level ontology IRIs. Disease uses DOID; organ uses NCIt
-      (`http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#C…`) plus occasional BTO; cell
-      line uses BTO / CL / CLO. `diseaseClass` mixes DOID with jpost-internal `JPO_*`
-      coarse buckets. Always structured IRIs, never free text.
+      Sample-level ontology IRIs (always structured IRIs, never free text):
+        * `jpost:species` — `http://identifiers.org/taxonomy/<taxid>`. Mandatory on every
+          Sample. To get the NCBI Taxonomy class on the same primary endpoint, swap the
+          identifiers.org form for `http://purl.bioontology.org/ontology/NCBITAXON/<taxid>`.
+        * `jpost:sampleType` — broad NCIt / CLO / BTO category (tissue, cell line, body
+          fluid, …); on 98.9% of Samples and is the most consistently populated annotation.
+        * `jpost:disease` — DOID. Cross-walks to MONDO via `oboInOwl:hasDbXref`
+          (see cross_database_queries).
+        * `jpost:diseaseClass` — mixes DOID with jpost-internal `JPO_*` coarse buckets.
+        * `jpost:organ` — NCIt (`Thesaurus.owl#C…`) plus occasional BTO.
+        * `jpost:cellLine` — BTO / CL / CLO.
     databases:
+      taxonomy:
+        - "NCBI Taxonomy via identifiers.org/taxonomy/* (100%)"
+      sample_category:
+        - "NCI Thesaurus (Cxxxxx)"
+        - "Cell Line Ontology (CLO:xxxxxxx)"
+        - "BRENDA Tissue Ontology (BTO:xxxxxxx)"
       disease:
         - "Disease Ontology (DOID)"
         - "MONDO via DOID xref"
@@ -638,16 +687,20 @@ architectural_notes:
       both DOID and MONDO-equivalent class) — DISTINCT is essential when aggregating."
     - "Empty-string `rdfs:label` literals exist on a small number of Modification
       bnodes (no human-readable Unimod name in the source)."
+    - "Position predicates (`jpost:modificationSite` and `faldo:location` →
+      `faldo:ExactPosition`) are present iff the Modification has a Unimod typing IRI.
+      N-terminal label-only mods (e.g. `rdfs:label \"TMTpro (N-term)\"` with no Unimod
+      type) carry no position triple, by design — the position is N-terminus."
 
   text_search_justification:
     - "Number of the 7 example queries that use text search: 0."
     - "Project title and description are the only fields where bif:contains would be
       legitimate; the example set demonstrates structured access for every realistic
       lookup, so text search did not earn a slot."
-    - "Sample-level annotations (disease, organ, cell line, organism) are pre-typed
-      ontology IRIs; modifications are typed against Unimod; protein cross-references
-      to UniProt are typed via `jpost:hasDatabaseSequence`. Text search is never the
-      first-choice strategy for any of these."
+    - "Sample-level annotations (species, sampleType, disease, organ, cell line) are
+      pre-typed ontology IRIs; modifications are typed against Unimod; protein
+      cross-references to UniProt are typed via `jpost:hasDatabaseSequence`. Text
+      search is never the first-choice strategy for any of these."
 
 data_statistics:
   total_entities: 49918562
@@ -676,20 +729,39 @@ data_statistics:
     project_proteomexchange_link: ">95% (rdfs:seeAlso to RPXD, present on most projects)"
     representative_isoform: "~66% of Proteins (673,263 / 1,021,677)"
     unique_peptide: "~82% of Peptides (3,050,659 / 3,706,694)"
+    sample_species: "100% (853 / 853 — jpost:species, identifiers.org/taxonomy/*)"
+    sample_type: "98.9% (844 / 853 — jpost:sampleType, NCIt/CLO/BTO)"
+    sample_cell_line: "67.6% (577 / 853)"
+    sample_disease_class: "12.5% (107 / 853)"
+    sample_disease: "10.1% (86 / 853)"
+    sample_organ: "6.2% (53 / 853)"
+    protein_has_leading_protein: "~34% (345,787 / 1,021,677 — group-member proteins; absent on representatives)"
     verified_date: "2026-04-30"
 
 anti_patterns:
-  - title: "Querying without GRAPH clause"
-    problem: "Using bare triple patterns instead of wrapping in GRAPH <http://jpost.org/graph/database>."
+  - title: "Circular Reasoning with Search Results"
+    problem: "Using protein IRIs sampled from a UniProt-based lookup as the scope of a comprehensive jPOST count."
     wrong_sparql: |
-      ?project a jpost:Project ; dct:title ?title .
-    correct_sparql: |
-      GRAPH <http://jpost.org/graph/database> {
-        ?project a jpost:Project ; dct:title ?title .
+      # WRONG: pasted sampled protein IRIs — counts only those proteins, not all matching UniProt hits
+      VALUES ?prot {
+        <http://jpost.org/rdf/PRT0000000001_P01116>
+        <http://jpost.org/rdf/PRT0000000002_P01116>
       }
-    explanation: "On the multi-database primary endpoint the default graph is empty for
-      jPOST data. Bare patterns silently return zero rows — there's no error to debug.
-      Wrap every triple block in the explicit GRAPH clause."
+      SELECT (COUNT(?pept) AS ?count)
+      FROM <http://jpost.org/graph/database>
+      WHERE { ?pept a jpost:Peptide ; jpost:isDetectedIn ?prot . }
+      LIMIT 1
+    correct_sparql: |
+      # CORRECT: use the UniProt IRI (structured predicate) discovered during exploration
+      SELECT (COUNT(DISTINCT ?pept) AS ?count)
+      FROM <http://jpost.org/graph/database>
+      WHERE {
+        ?prot a jpost:Protein ;
+              jpost:hasDatabaseSequence <http://purl.uniprot.org/uniprot/P01116> .
+        ?pept a jpost:Peptide ; jpost:isDetectedIn ?prot .
+      }
+      LIMIT 1
+    explanation: "Use the jpost:hasDatabaseSequence IRI predicate to scope comprehensive counts. Pasting sampled PRT IRIs only counts those specific project-dataset combinations."
 
   - title: "Querying peptide sequence as a direct property"
     problem: "Treating the AA sequence as a literal directly on the Peptide."
@@ -726,7 +798,6 @@ anti_patterns:
     explanation: "jPOST samples are annotated with DOID IRIs, which round-trip cleanly to
       MONDO via `oboInOwl:hasDbXref`. Read shape_expressions before reaching for text
       search — sample, modification, and protein metadata are all pre-typed."
-
 common_errors:
   - error: "Slow query / timeout"
     causes:

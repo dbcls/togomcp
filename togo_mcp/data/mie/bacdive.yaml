@@ -355,26 +355,30 @@ sample_rdf_entries:
           schema:hasReference <https://purl.dsmz.de/bacdive/reference/7001> .
 
 sparql_query_examples:
-  - title: Type Strains by Phylum Using VALUES
-    description: Retrieve type strains from multiple phyla using isTypeStrain integer flag and VALUES.
-    question: Which are the type strains of Proteobacteria and Firmicutes?
+  - title: Lookup Specific Strains by IRI
+    description: Retrieve full metadata for known BacDive strains using their IRIs in a VALUES block.
+    question: What are the taxonomy, designation, and type-strain status for BacDive strains 1 and 550?
     complexity: basic
     sparql: |
       PREFIX schema: <https://purl.dsmz.de/schema/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-      SELECT ?strainLabel ?genus ?species ?phylum
+      SELECT ?strain ?strainLabel ?genus ?species ?phylum ?isType ?designation
       FROM <http://rdfportal.org/dataset/bacdive>
       WHERE {
-        VALUES ?phylum { "Proteobacteria" "Firmicutes" }
+        VALUES ?strain {
+          <https://purl.dsmz.de/bacdive/strain/1>
+          <https://purl.dsmz.de/bacdive/strain/550>
+        }
         ?strain a schema:Strain ;
                 rdfs:label ?strainLabel ;
                 schema:hasGenus ?genus ;
                 schema:hasSpecies ?species ;
                 schema:hasPhylum ?phylum ;
-                schema:isTypeStrain 1 .     # integer 1, not true
+                schema:isTypeStrain ?isType .   # integer: 1 = type strain, 0 = not
+        OPTIONAL { ?strain schema:hasDesignation ?designation }
       }
-      LIMIT 50
+      LIMIT 10
 
   - title: Strains by Oxygen Tolerance Using Typed Predicate
     description: Use controlled vocabulary values with OxygenTolerance typed predicate.
@@ -457,28 +461,27 @@ sparql_query_examples:
       }
       LIMIT 100
 
-  - title: Strains with Specific Enzyme by EC Number
-    description: Use EC number typed predicate for functional enzyme classification.
-    question: Which strains have catalase activity (EC 1.11.1.6)?
+  - title: Enzyme Activities for a Known Strain by IRI
+    description: Retrieve all enzyme annotations for a specific strain identified by its BacDive IRI.
+    question: What enzymes and EC numbers are recorded for BacDive strain 1290?
     complexity: intermediate
     sparql: |
       PREFIX schema: <https://purl.dsmz.de/schema/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-      SELECT ?strainLabel ?genus ?species ?enzymeLabel
+      SELECT ?strainLabel ?enzymeLabel ?ecNumber ?activity
       FROM <http://rdfportal.org/dataset/bacdive>
       WHERE {
+        VALUES ?strain { <https://purl.dsmz.de/bacdive/strain/1290> }
         ?strain a schema:Strain ;
-                rdfs:label ?strainLabel ;
-                schema:hasGenus ?genus ;
-                schema:hasSpecies ?species .
+                rdfs:label ?strainLabel .
         ?enzyme a schema:Enzyme ;
                 rdfs:label ?enzymeLabel ;
                 schema:describesStrain ?strain ;
-                schema:hasECNumber "1.11.1.6" ;
-                schema:hasActivity "+" .
+                schema:hasECNumber ?ecNumber ;
+                schema:hasActivity ?activity .
       }
-      LIMIT 100
+      LIMIT 50
 
   - title: Halophile Strains with High NaCl Tolerance
     description: Query SaltTolerance metabolic phenotype using quantitative range predicates and controlled test-type vocabulary.

@@ -605,9 +605,10 @@ architectural_notes:
     - "MeSH: 100% coverage; EFO: ~99.7% — use MeSH as primary disease filter"
 
   text_search_justification:
-    - "Number of the 7 example queries using text search: 0"
-    - "All entity classes have structured predicates: organism (cco:organismName), disease (cco:hasMesh IRI), protein family (cco:hasProteinClassification IRI), activity type (cco:standardType), assay type (cco:assayType)"
-    - "bif:contains appropriate only for cco:description / rdfs:comment free-text fields (not used in 7 examples)"
+    - "Number of the 7 example queries using text search: 1 (Query 6)"
+    - "Query 6 uses FILTER(CONTAINS(?mechanismType, \"INHIBITOR\")) on cco:mechanismActionType — a controlled-vocabulary string literal. A VALUES block would require listing all inhibitor subtypes (COMPETITIVE INHIBITOR, IRREVERSIBLE INHIBITOR, etc.); CONTAINS is the pragmatic alternative. All other mechanism/activity lookups use exact typed predicates."
+    - "All other entity classes have structured predicates: organism (cco:organismName), disease (cco:hasMesh IRI), protein family (cco:hasProteinClassification IRI), activity type (cco:standardType), assay type (cco:assayType)"
+    - "bif:contains appropriate only for cco:description / rdfs:comment free-text fields (not needed in any of the 7 examples beyond Q6)"
 
 data_statistics:
   total_molecules: 1920603
@@ -630,7 +631,7 @@ data_statistics:
 
 anti_patterns:
   - title: Text Search When Protein Classification IRI Exists
-    problem: Using bif:contains on target labels for 'kinase' when specific classification IRIs exist and are faster and more precise.
+    problem: Skipping MIE schema check — using bif:contains on target labels for 'kinase' when specific classification IRIs exist and are faster and more precise.
     wrong_sparql: |
       # Skipped MIE schema check — jumps to text search on labels
       SELECT ?target ?label
@@ -653,26 +654,30 @@ anti_patterns:
       }
     explanation: MIE schema shows cco:hasProteinClassification. Inspect examples to extract the IRI. Use it for comprehensive, precise, fast results.
 
-  - title: Using skos:exactMatch for Molecule-to-ChEBI Cross-DB Join
-    problem: skos:exactMatch is ONLY on TargetComponent (UniProt links), NOT on SmallMolecule. Returns empty results silently.
+  - title: Circular Reasoning with Search Results
+    problem: Using molecule or target IRIs sampled from an exploratory query as the scope of a comprehensive count or activity aggregate.
     wrong_sparql: |
-      GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
-        ?molecule a cco:SmallMolecule ;
-                  skos:exactMatch ?chebiId .  # WRONG — no such triple
+      # WRONG: pasted sampled molecule IRIs — counts only those molecules, not all kinase inhibitors
+      VALUES ?molecule {
+        <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL25>
+        <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL192>
       }
+      SELECT (COUNT(?activity) AS ?count)
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE { ?activity cco:hasMolecule ?molecule . }
+      LIMIT 1
     correct_sparql: |
-      # Use cco:moleculeXref + BIND+REPLACE for IRI conversion
-      GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
-        ?molecule a cco:SmallMolecule ;
-                  cco:moleculeXref ?xref .
-        FILTER(CONTAINS(STR(?xref), "chebi/searchId"))
-        BIND(IRI(CONCAT("http://purl.obolibrary.org/obo/CHEBI_",
-                 REPLACE(STR(?xref), ".*CHEBI%3A", ""))) AS ?chebiId)
+      # CORRECT: use the protein classification IRI discovered during exploration
+      SELECT (COUNT(DISTINCT ?molecule) AS ?count)
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        ?assay cco:hasTarget ?target .
+        ?target cco:hasProteinClassification
+                <http://rdf.ebi.ac.uk/resource/chembl/protclass/CHEMBL_PC_1100> .
+        ?activity cco:hasAssay ?assay ; cco:hasMolecule ?molecule .
       }
-      GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
-        ?chebiId a owl:Class .
-      }
-    explanation: Verified by inspecting CHEMBL1004 — cco:moleculeXref points to EBI URL format, not a purl.obolibrary.org IRI. BIND+REPLACE conversion is mandatory.
+      LIMIT 1
+    explanation: "Use exploratory queries to discover classification IRIs or MeSH IRIs. Use those in comprehensive queries — not the sampled molecule or target IRIs themselves."
 
   - title: Text Search When MeSH Descriptor IRI Exists
     problem: Filtering on cco:hasMeshHeading text when specific MeSH IRIs provide 100% coverage and are indexed.

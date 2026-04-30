@@ -148,6 +148,43 @@ shape_expressions: |
     bp:name xsd:string *    # use "Homo sapiens"^^xsd:string for exact matching
   }
 
+  # ~115,224 PathwayStep instances encoding ordered process sequences within pathways.
+  # bp:stepProcess links to processes of varied types; bp:nextStep links to succeeding steps.
+  # stepProcess type distribution: BiochemicalReaction ~92K, Catalysis ~50K, Pathway ~23K,
+  # Control ~11K, Degradation ~169, TemplateReaction ~36.
+  <PathwayStepShape> {
+    a [ bp:PathwayStep ] ;
+    bp:stepProcess IRI * ;            # BiochemicalReaction, Catalysis, Pathway, Control, etc.
+    bp:nextStep @<PathwayStepShape> *
+  }
+
+  # ~60 distinct RelationshipTypeVocabulary terms; used by RelationshipXref to type GO annotations
+  # and ontology relationships (e.g. "is-a", "part-of", "member-of").
+  <RelationshipTypeVocabularyShape> {
+    a [ bp:RelationshipTypeVocabulary ] ;
+    bp:term xsd:string ;              # required; controlled values (e.g. "is-a"^^xsd:string)
+    bp:xref @<XrefShape> *            # ~45/60 instances have xref
+  }
+
+  # ~441,425 SequenceSite instances representing single residue positions.
+  # bp:positionStatus is always "EQUAL"^^xsd:string in Reactome (exact position, not a range).
+  <SequenceSiteShape> {
+    a [ bp:SequenceSite ] ;
+    bp:sequencePosition xsd:integer ;  # 1-based residue position; always present
+    bp:positionStatus xsd:string        # always "EQUAL"^^xsd:string in Reactome
+  }
+
+  # ~1,207,533 UnificationXref instances. bp:db and bp:id are always present.
+  # Key db values: "UniProt", "ChEBI", "MOD", "GO", "Ensembl", "NCBI Gene", etc.
+  # Distinct from XrefShape (which covers all three xref types with optional predicates).
+  <UnificationXrefShape> {
+    a [ bp:UnificationXref ] ;
+    bp:db xsd:string ;                 # e.g. "UniProt"^^xsd:string, "ChEBI"^^xsd:string
+    bp:id xsd:string ;                 # e.g. "P00519"^^xsd:string, "CHEBI:15422"^^xsd:string
+    bp:comment xsd:string * ;          # present in ~89% of instances
+    bp:idVersion xsd:string *          # present in ~44% of instances
+  }
+
 sample_rdf_entries:
   rdf_prefixes: |
     @prefix bp: <http://www.biopax.org/release/biopax-level3.owl#> .
@@ -217,6 +254,7 @@ sparql_query_examples:
                  bp:organism ?org .
         ?org bp:name "Homo sapiens"^^xsd:string .
       }
+      LIMIT 1
 
   - title: Find Reactions by EC Numbers Using VALUES
     description: Retrieve biochemical reactions with specific EC numbers using VALUES and exact ^^xsd:string matching.
@@ -322,6 +360,7 @@ sparql_query_examples:
       }
       GROUP BY ?controlType
       ORDER BY DESC(?reactions)
+      LIMIT 10
 
   - title: Plasma Membrane Proteins with UniProt Cross-References
     description: |
@@ -609,7 +648,7 @@ data_statistics:
 
 anti_patterns:
   - title: "Querying UnificationXref for GO Terms (Misses 98% of Annotations)"
-    problem: "Using UnificationXref for GO terms instead of RelationshipXref silently returns only 2% of GO pathway annotations."
+    problem: "Skipping MIE schema check: using UnificationXref for GO terms instead of RelationshipXref silently returns only 2% of GO pathway annotations."
     wrong_sparql: |
       # Returns only ~1.5K GO terms — misses 68K in RelationshipXref
       ?xref a bp:UnificationXref ;
@@ -622,19 +661,31 @@ anti_patterns:
             bp:id ?goId .
     explanation: "Check critical_warnings before any GO query. RelationshipXref holds 98% of all GO annotations in Reactome. Skipping the MIE schema check leads to this silent data loss."
 
-  - title: "Missing ^^xsd:string for Exact Literal Matching"
-    problem: "Exact matching in triple patterns, VALUES, or FILTER = requires ^^xsd:string; omitting silently returns 0 results."
+  - title: "Circular Reasoning with Search Results"
+    problem: "Using pathway IRIs sampled from a search result as the scope of a comprehensive reaction count — counts only those pathways."
     wrong_sparql: |
-      ?org bp:name "Homo sapiens" .
-      ?xref bp:db "UniProt" ; bp:id "P12345" .
-      ?reaction bp:eCNumber "2.7.10.1" .
+      # WRONG: pasted sampled pathway IRIs — counts only those pathways' reactions
+      VALUES ?pathway {
+        <http://www.reactome.org/biopax/95/48898#Pathway299>
+        <http://www.reactome.org/biopax/95/48898#Pathway300>
+      }
+      SELECT (COUNT(?reaction) AS ?count)
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE { ?pathway bp:pathwayComponent ?reaction . ?reaction a bp:BiochemicalReaction . }
+      LIMIT 1
     correct_sparql: |
-      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-      ?org bp:name "Homo sapiens"^^xsd:string .
-      ?xref bp:db "UniProt"^^xsd:string ;
-            bp:id "P12345"^^xsd:string .
-      ?reaction bp:eCNumber "2.7.10.1"^^xsd:string .
-    explanation: "All string literals in Reactome are stored as xsd:string. Exact matching requires ^^xsd:string. CONTAINS(), bif:contains, and variable binding do not need it."
+      # CORRECT: scope by organism, which was discovered during exploration
+      SELECT (COUNT(DISTINCT ?reaction) AS ?count)
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        ?pathway a bp:Pathway ;
+                 bp:organism ?org .
+        ?org bp:name "Homo sapiens"^^xsd:string .
+        ?pathway bp:pathwayComponent ?reaction .
+        ?reaction a bp:BiochemicalReaction .
+      }
+      LIMIT 1
+    explanation: "Use organism or process-type structured predicates for comprehensive counting. Pasting sampled pathway IRIs from a search result only counts those specific pathways."
 
   - title: "Text Search for Modifications When MOD Ontology IDs Exist"
     problem: "Using FILTER(CONTAINS(?term, 'phospho')) when structured MOD IDs are available in UnificationXref."

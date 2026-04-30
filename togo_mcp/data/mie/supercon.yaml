@@ -707,24 +707,29 @@ anti_patterns:
       ?text bif:contains "'sintering'"
     explanation: "Read shape_expressions before writing any query. Every physical quantity has a typed predicate; bif:contains is reserved for SamplePreparation synthesis descriptions."
 
-  - title: Structure type filter silently discards 80.9% of data
-    problem: |
-      Using FILTER(STRSTARTS(STR(?t), "...Schema#str1_")) or VALUES on str1_01..07
-      to query ALL crystal structure data. Only 19.1% of records have named IRI types;
-      80.9% use blank nodes that are invisible to IRI-based filters.
+  - title: Circular Reasoning with Search Results
+    problem: Using sample IRIs from a top-Tc exploratory query as the scope of a comprehensive material-type count — counts only the sample.
     wrong_sparql: |
-      ?strNode a Schema:IntermalStructure ;
-               obo:BFO_0000051 ?strType .
-      FILTER(STRSTARTS(STR(?strType), "...Schema#str1_"))
-      # Silently excludes 28,939 of 35,752 structure records
+      # WRONG: pasted sampled sample IRIs — total is just the sample size
+      VALUES ?sample {
+        <http://purl.org/supercon/data/sample/10001>
+        <http://purl.org/supercon/data/sample/10002>
+      }
+      SELECT (COUNT(?sample) AS ?count) WHERE { }
+      LIMIT 1
     correct_sparql: |
-      # For named types only -- document the 19.1% scope explicitly:
-      VALUES ?strType { Schema:str1_01 Schema:str1_02 Schema:str1_03
-                        Schema:str1_04 Schema:str1_05 Schema:str1_06 Schema:str1_07 }
-      ?strNode a Schema:IntermalStructure ; obo:BFO_0000051 ?strType .
-      # For ALL structure data, omit the type filter:
-      # ?strNode a Schema:IntermalStructure . OPTIONAL { ?strNode obo:BFO_0000051 ?strType . }
-    explanation: "Named structure IRIs cover only 19.1% of the data. Always document this scope limitation in query results."
+      # CORRECT: use the typed predicate (structure type) discovered during exploration
+      PREFIX Schema: <http://purl.org/supercon/schema#>
+      SELECT (COUNT(DISTINCT ?sample) AS ?count)
+      FROM <http://rdfportal.org/dataset/supercon>
+      WHERE {
+        ?sample a Schema:Sample .
+        ?meas obo:OBI_0000299 ?tcDatum .
+        ?tcDatum obo:IAO_0000221 Schema:tc ; sio:SIO_000300 ?tc .
+        FILTER(?tc > 77)
+      }
+      LIMIT 1
+    explanation: "Use structured predicates (property type, unit filter) discovered during exploration for comprehensive queries. Pasting sampled sample IRIs from a top-N result only counts those N samples."
 
   - title: Mixing lattice parameter units without inspection
     problem: |

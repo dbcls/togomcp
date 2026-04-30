@@ -584,17 +584,28 @@ anti_patterns:
       up:reviewed 1 reduces scope from ~244M to 589K (99.8% reduction). Mandatory
       for all quality queries. The value is an integer, not a boolean or string.
 
-  - title: Wrong GO IRI Namespace (Silent Zero-Result Failure)
-    problem: Using http://purl.uniprot.org/go/XXXXXXX returns 0 results silently; OBO IRI is correct.
+  - title: Circular Reasoning with Search Results
+    problem: Using protein IRIs sampled from a bif:contains text search as the scope of a comprehensive functional count.
     wrong_sparql: |
-      VALUES ?goTerm { <http://purl.uniprot.org/go/0015977> }
-      ?protein up:classifiedWith ?goTerm .
+      # WRONG: pasted sampled protein IRIs — counts only those proteins, not all human kinases
+      VALUES ?protein {
+        <http://purl.uniprot.org/uniprot/P31749>
+        <http://purl.uniprot.org/uniprot/P31751>
+      }
+      SELECT (COUNT(?protein) AS ?count) WHERE { }
+      LIMIT 1
     correct_sparql: |
-      VALUES ?goTerm { <http://purl.obolibrary.org/obo/GO_0015977> }
-      ?protein up:classifiedWith ?goTerm .
-    explanation: |
-      GO terms in UniProt always use the OBO namespace.
-      http://purl.uniprot.org/go/ is a dead namespace — it causes silent failures.
+      # CORRECT: use the GO IRI (GO:0004672 = protein kinase activity) discovered during exploration
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT (COUNT(DISTINCT ?protein) AS ?count)
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                 up:classifiedWith obo:GO_0004672 .
+      }
+      LIMIT 1
+    explanation: "Use GO IRIs (not sampled protein IRIs) for comprehensive functional counts. Always include up:reviewed 1 and an organism filter to avoid scanning 244M TrEMBL entries."
 
   - title: Transitive Taxonomy Closure Causing Timeout
     problem: rdfs:subClassOf* triggers transitive closure reasoning and times out.

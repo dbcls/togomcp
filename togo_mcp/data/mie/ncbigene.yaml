@@ -185,6 +185,7 @@ sparql_query_examples:
         OPTIONAL { ?gene dct:description ?description }
         OPTIONAL { ?gene insdc:chromosome ?chromosome }
       }
+      LIMIT 10
 
   - title: List Officially Named Human Genes with Full Names
     description: Filter by controlled vocabulary value for nomenclature status.
@@ -280,6 +281,7 @@ sparql_query_examples:
       }
       GROUP BY ?taxid ?type
       ORDER BY ?taxid DESC(?count)
+      LIMIT 20
 
   - title: Explore Cross-Species Orthology for a Specific Gene
     description: |
@@ -549,35 +551,32 @@ data_statistics:
     Coverage decreases for non-model organisms. Re-verify counts after major releases.
 
 anti_patterns:
-  - title: "Skipping MIE Schema Check Before Using Text Search"
-    problem: "Using bif:contains or FILTER(CONTAINS()) without first checking MIE for structured properties."
+  - title: "Circular Reasoning with Search Results"
+    problem: "Using gene IRIs sampled from a bif:contains result as the scope of a comprehensive organism-wide count."
     wrong_sparql: |
-      # WRONG: text search for organism without reading MIE schema
-      SELECT ?gene ?label WHERE {
-        ?gene rdfs:label ?label .
-        ?label bif:contains "'human'" .
+      # WRONG: pasted sampled gene IRIs — counts only those matching the text snippet
+      VALUES ?gene {
+        <http://identifiers.org/ncbigene/3630>
+        <http://identifiers.org/ncbigene/3632>
       }
-      # Misses ncbio:taxid structured property; slow; incorrect
+      SELECT (COUNT(?gene) AS ?count) WHERE { }
+      LIMIT 1
     correct_sparql: |
-      # CORRECT Workflow:
-      # 1. get_MIE_file('ncbigene') → found ncbio:taxid in <GeneShape>
-      # 2. ncbio:taxid is a structured IRI predicate — use it directly
+      # CORRECT: use ncbio:taxid and ncbio:typeOfGene discovered during exploration
       PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
       PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
-
-      SELECT ?gene ?label
+      SELECT (COUNT(DISTINCT ?gene) AS ?count)
       FROM <http://rdfportal.org/dataset/ncbigene>
       WHERE {
         ?gene a insdc:Gene ;
-              rdfs:label ?label ;
-              ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+              ncbio:taxid <http://identifiers.org/taxonomy/9606> ;
+              ncbio:typeOfGene "protein-coding" .
       }
-      LIMIT 100
-    explanation: "Always call get_MIE_file() first. ncbio:taxid, ncbio:typeOfGene, and insdc:chromosome
-      are structured typed predicates — never use text search for these fields."
+      LIMIT 1
+    explanation: "Use structured predicates (ncbio:taxid, ncbio:typeOfGene) for comprehensive counts. Pasting sampled gene IRIs from a text search only tallies that sample."
 
   - title: "Text Search When Structured Typed Predicate Exists"
-    problem: "Using string search for a field that has a controlled vocabulary predicate."
+    problem: "Skipping MIE schema check — using string search for fields that have controlled vocabulary predicates (ncbio:typeOfGene, ncbio:taxid)."
     wrong_sparql: |
       # WRONG: text search for gene type
       SELECT ?gene WHERE { ?label bif:contains "'protein coding'" . }
