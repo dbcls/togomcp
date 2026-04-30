@@ -97,6 +97,15 @@ Counts give you a feel for which classes are central (top 5 typically carry 90%+
 
 **Run a dedicated predicate survey for every class you plan to document in `shape_expressions`** — not only the top-level anchor class. Annotation classes, measurement classes, and cross-reference classes are just as likely to have missing or misnamed predicates as the central entity class. The rule is simple: if a class will appear in `shape_expressions`, its predicate survey must have been run before you write that shape. A predicate absent from the survey has no business in the shape; a predicate present in the survey with COUNT > 0 must be either documented or explicitly excluded with a note.
 
+While running predicate surveys, note any predicate whose COUNT distribution is surprising as a `critical_warnings` candidate:
+
+- COUNT equals class instance count but the predicate name looks like it might have an alias or alternate namespace form — confirm only one form is queryable.
+- COUNT is much lower than the class instance count for a predicate that looks mandatory — document as a caveat on cardinality, or as a trap if omitting it causes a silent wrong result rather than just an empty one.
+- COUNT is greater than the class instance count for a predicate that looks singular — document the multi-valued behaviour.
+- Two predicates return overlapping results for what appears to be the same concept — document which form is the correct join key.
+
+Write these candidates down immediately. `critical_warnings` is assembled in Phase 4 from this list — not reconstructed from memory.
+
 #### 2c. DESCRIBE 3–5 representative entities
 
 Pick entities that span the taxonomy of the database — a "central" entity (most-frequent class), a "linker" entity (something that joins multiple classes), and a "leaf" entity (terminal annotation):
@@ -172,6 +181,7 @@ Read `references/query-strategy.md` now if you haven't — it contains the decis
 Use `references/template.yaml` as your scaffold. Copy it to the target path, then fill it in. Required sections, in order:
 
 1. `schema_info`
+   - **After filling in `schema_info.categories`, call `list_categories()` and verify each token you wrote is an exact match — same case, same underscores — against the returned list. Do not proceed to the next section if any token is off-spec; fix it first.** An off-spec token silently excludes the database from `find_databases(category=…)` results.
 2. `critical_warnings` (use `[]` only if there are genuinely none — most real databases have at least one silent-failure trap)
 3. `shape_expressions`
 4. `sample_rdf_entries` — exactly 3, shared prefix block
@@ -222,9 +232,18 @@ ASK WHERE {
 
 If `ASK` returns false, the triple as written does not exist in the endpoint. Do not include it.
 
-**5b. Test every SPARQL query.** Run all 7 of `sparql_query_examples`, every example in `cross_database_queries`, and any SPARQL embedded in `cross_references`. Every single one. If a query times out or errors, fix it or replace it — do not ship queries that don't run. If a query runs but returns zero rows when it shouldn't, that's also a failure (usually a namespace trap — investigate and document in `critical_warnings`).
+**5b. Test every SPARQL query.** Run all 7 of `sparql_query_examples`, every example in `cross_database_queries`, every `correct_sparql` block in `anti_patterns`, and any SPARQL embedded in `cross_references`. Every single one. If a query times out or errors, fix it or replace it — do not ship queries that don't run. If a query runs but returns zero rows when it shouldn't, that's also a failure (usually a namespace trap — investigate and document in `critical_warnings`).
+
+For each cross-database query that returns results, additionally spot-check join validity: take one join value from the result set and run a quick `ASK` or `SELECT` against the second database to confirm it resolves to a real entity there. A query returning 3 rows when thousands are expected is a join failure, not a passing test — the IRI form used for linking likely differs between the two databases.
 
 **5c. Verify statistics.** Every count or coverage percentage in `data_statistics` must come from a real query you ran, and must have a `verified_date`. If you can't verify a number, omit it rather than guessing.
+
+After verifying individual counts, cross-check arithmetic consistency:
+
+- Does `total_entities` equal (or plausibly approximate) the sum of the major `by_class` counts?
+- Does each coverage percentage equal `(subset count) / (class count)` to within rounding? E.g. if 673,263 entities carry a property and there are 1,021,677 in the class, the percentage must be documented as ~65.9%, not loosely as "~66%" or "~70%".
+
+Flag and correct any discrepancy before publishing.
 
 **5d. Validate the YAML.** Load the file with PyYAML to confirm it parses:
 
@@ -242,6 +261,43 @@ If this fails, fix the YAML before calling the work done.
 
 This step is not optional. `shape_expressions` is the section a downstream LLM relies on most heavily for query construction. An unaudited shape is equivalent to an untested SPARQL example.
 
+**5f. Verify `critical_warnings` content.** For every predicate name and IRI string cited in `critical_warnings`, run a minimal query confirming it exists in the endpoint:
+
+```sparql
+SELECT ?s WHERE {
+  GRAPH <…> { ?s <cited-predicate> ?o }
+} LIMIT 1
+```
+
+If the query returns no rows, the cited predicate or IRI is wrong — fix it before publishing. A warning about a non-existent predicate is worse than no warning.
+
+Also confirm each warning is still accurate against the current data snapshot: a trap documented in a previous MIE version may have been corrected upstream.
+
+**5g. Verify `cross_references`.** For each cross-reference predicate documented:
+
+1. **Confirm the IRI form** by DESCRIBEing a real entity and reading the actual object value. Do not trust the database's documentation — mint the IRI from what the endpoint actually returns. If two IRI forms are present (e.g. both an `identifiers.org` form and a canonical purl), document both and specify which is the correct join key for federation.
+
+2. **Verify the coverage percentage** with a COUNT query:
+
+   ```sparql
+   SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
+     GRAPH <…> { ?s a <EntityClass> ; <crossRefPredicate> ?o }
+   }
+   ```
+
+   Divide by the class instance count from `data_statistics`. Document the result as the coverage figure — do not estimate.
+
+**5h. Verify prefix declarations.** For each non-standard prefix defined in `shape_expressions` or `sample_rdf_entries`, confirm the base URI is correct by running a minimal SELECT using that prefix:
+
+```sparql
+PREFIX ex: <http://suspected-base-uri/>
+SELECT ?s WHERE {
+  GRAPH <…> { ?s a ex:KnownClass }
+} LIMIT 1
+```
+
+If the query returns no rows despite the class being known to exist, the prefix base URI is wrong. Standard W3C prefixes (`rdf:`, `rdfs:`, `owl:`, `xsd:`) do not need checking. Database-specific and ontology-specific prefixes (e.g. a Unimod prefix, a PSI-MS prefix, an internal ontology prefix) must all be confirmed.
+
 ### Phase 6 — Final declaration
 
 Only after Phases 1–5 are complete, report to the user:
@@ -254,6 +310,12 @@ Only after Phases 1–5 are complete, report to the user:
   - YAML parses cleanly
   - shape_expressions audited: all shapes verified against live predicate surveys,
     all @<ShapeRef>s resolved, all cardinality modifiers confirmed
+  - critical_warnings verified: all cited predicate names and IRIs confirmed against endpoint
+  - cross_references verified: IRI forms confirmed by DESCRIBE, coverage % from COUNT queries
+  - schema_info.categories checked: all tokens exact-matched against list_categories()
+  - prefix declarations verified: all non-standard prefixes confirmed with SELECT
+  - data_statistics cross-checked: total_entities and coverage % arithmetically consistent
+  - anti_patterns.correct_sparql tested: all correct_sparql blocks executed successfully
   - Lines: [count]
 ```
 

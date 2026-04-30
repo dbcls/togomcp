@@ -30,6 +30,8 @@ Categories to look for:
 
 Use `[]` only if you have genuinely confirmed there are no traps. In practice most real databases have at least one.
 
+**Verification requirement:** Every predicate name and IRI string cited in `critical_warnings` must be confirmed against the live endpoint in Phase 5f. Traps to document should be identified systematically during Phase 2b by flagging surprising COUNT distributions — not reconstructed from memory in Phase 4.
+
 ## 3. `shape_expressions`
 
 ShEx-style schema for every major entity type, as a YAML `|` string. Build from the live discovery in Phase 2 (class enumeration + DESCRIBE-style inspection of representative entities) — verify every shape against the endpoint.
@@ -142,6 +144,12 @@ Pattern descriptions for each cross-reference predicate (`rdfs:seeAlso`, `skos:e
 - `description`: what it links to
 - `databases`: coverage by category (e.g. "UniProt: 78%", "ChEMBL: 45%")
 - `sparql`: optional — include only if the pattern is non-trivial
+
+**Verification requirements:**
+
+- The IRI form documented for each pattern must be confirmed by DESCRIBEing a real entity (Phase 5g), not inferred from documentation.
+- Every coverage percentage must come from a COUNT query (Phase 5g), not an estimate.
+- If two IRI forms exist for the same concept, document both and specify which is the correct join key for cross-database federation.
 
 ## 8. `architectural_notes`
 
