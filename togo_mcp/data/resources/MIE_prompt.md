@@ -123,18 +123,39 @@ get_graph_list(database)
 get_MIE_file(database)   # check for existing MIE and compliance
 ```
 
-**Step 2: Schema Discovery (5 min)**
+**Step 2: Schema Discovery (5–10 min)**
+
+First enumerate classes:
 ```sparql
 # Classes and instance counts
 SELECT DISTINCT ?class (COUNT(?instance) as ?count)
-WHERE { ?instance a ?class }
+WHERE { GRAPH <…> { ?instance a ?class } }
 GROUP BY ?class ORDER BY DESC(?count) LIMIT 50
-
-# Properties and usage
-SELECT DISTINCT ?property (COUNT(?usage) as ?count)
-WHERE { ?s ?property ?o }
-GROUP BY ?property ORDER BY DESC(?count) LIMIT 50
 ```
+
+Then **run a dedicated predicate survey for every class you plan to document in `shape_expressions`** — not only the top-level anchor class. Annotation classes, measurement classes, and cross-reference classes are just as likely to have missing or misnamed predicates:
+
+```sparql
+# Per-class predicate survey (run for every class in shape_expressions)
+SELECT ?p (COUNT(*) AS ?n)
+WHERE { GRAPH <…> { ?s a <TargetClass> ; ?p ?o } }
+GROUP BY ?p ORDER BY DESC(?n) LIMIT 50
+```
+
+A predicate absent from the survey has no business in the shape; a predicate present with COUNT > 0 must be either documented or explicitly excluded with a note.
+
+**Trace every blank node chain.** For each predicate whose object is a blank node, retrieve the bnode's full predicate set anchored on the parent class — the same predicate name can resolve to differently-shaped bnodes on different parent classes (e.g. `faldo:location` → `ExactPosition` on one class, `Region` on another):
+
+```sparql
+SELECT DISTINCT ?bPred ?bObj WHERE {
+  GRAPH <…> {
+    ?parent a <ParentClass> ; <bnodePredicate> ?bnode .
+    ?bnode ?bPred ?bObj .
+  }
+} LIMIT 50
+```
+
+An undiscovered bnode schema means an incomplete shape and a missing `@<ShapeName>` definition.
 
 **Step 3: Find Specific IRIs for Key Concepts (10 min)**
 ```python
@@ -144,6 +165,31 @@ run_sparql(database, """
   SELECT ?p ?o WHERE { <example_entity_iri> ?p ?o . } LIMIT 100
 """)
 ```
+
+**Step 4: Cardinality Verification (one query per predicate)**
+
+For every class–predicate pair you intend to document in `shape_expressions`, determine the actual multiplicity with a cardinality distribution query. **Never assign `?`, `+`, or `*` based on intuition.**
+
+```sparql
+SELECT ?nValues (COUNT(?s) AS ?nSubjects) WHERE {
+  GRAPH <…> {
+    { SELECT ?s (COUNT(?o) AS ?nValues) WHERE {
+        ?s a <TargetClass> ; <TargetPredicate> ?o .
+      } GROUP BY ?s }
+  }
+}
+GROUP BY ?nValues ORDER BY ?nValues
+```
+
+Map the result to the correct ShEx cardinality modifier:
+
+| Observed pattern                       | ShEx notation                       |
+|----------------------------------------|-------------------------------------|
+| All subjects, exactly 1 value          | `IRI` (no modifier — required)      |
+| Some subjects have 0, none have > 1    | `IRI ?`                             |
+| Some subjects have > 1                 | `IRI *` (if 0 is possible) or `IRI +` |
+
+This step is cheap (one query per predicate) and catches a large class of silent errors in the finished MIE.
 
 ### 2. Statistics Verification
 
@@ -202,6 +248,26 @@ if "error" in result.lower():
 9. **data_statistics** — Verified counts and coverage percentages
 10. **anti_patterns** — 3–4 examples (must include the "schema check before text search" pattern)
 11. **common_errors** — 2–3 scenarios
+
+### Shape Expressions Discipline
+
+Two structural rules `shape_expressions` must obey:
+
+- **Every `@<ShapeRef>` must have a corresponding defined block.** Search the `shape_expressions` string for every `@<…>` reference and confirm each resolves to a `<…Shape> { … }` definition in the same section. A referenced-but-undefined shape is a structural error — the downstream LLM will generate property-path queries that silently return nothing.
+
+- **Mark optional co-types explicitly.** When a class is sometimes (but not always) additionally typed with a second class, write each sub-type as a separate optional constraint rather than grouping them in a single `a [ T1 T2 T3 ] +` block. The grouped form is correct ShEx but visually implies all types are always co-present:
+
+  ```shex
+  # Avoid — looks like all three are always expected:
+  a [ ex:MainType ex:SubTypeA ex:SubTypeB ] + ;
+
+  # Prefer — cardinality is explicit and verifiable:
+  a [ ex:MainType ] ;
+  a [ ex:SubTypeA ] ?   # ~80% of instances — confirmed by COUNT
+  a [ ex:SubTypeB ] ?   # ~80% of instances — confirmed by COUNT
+  ```
+
+  Annotate the percentage in an inline comment so the figure is traceable to Step 4 (Cardinality Verification).
 
 ### SPARQL Query Requirements (7 queries: 2 / 3 / 2)
 
@@ -541,6 +607,13 @@ common_errors:
 - ☐ Documented any IRI traps, typos, or mandatory performance filters
 - ☐ Placed before `shape_expressions` for fast scanning
 
+**`shape_expressions`:**
+- ☐ Per-class predicate survey run for every class that appears in the shape
+- ☐ Every blank-node-valued predicate traced via the parent-anchored bnode query
+- ☐ Every cardinality modifier (`?`, `+`, `*`, or absent) backed by a cardinality distribution query
+- ☐ Every `@<ShapeRef>` resolves to a defined `<…Shape>` block in the same section
+- ☐ Optional co-types written as separate `a [ T ] ?` lines, not grouped in a single `a [ T1 T2 … ] +` block
+
 **Query Design:**
 - ☐ ≥ 2 queries use specific IRIs or VALUES with IRIs
 - ☐ ≥ 2 queries use typed predicates or graph navigation
@@ -593,14 +666,24 @@ result = get_MIE_file(database)
 ### Step 3: Test Queries
 Run at least 3 of the 7 SPARQL queries to verify execution.
 
-### Step 4: Final Declaration
+### Step 4: Audit `shape_expressions`
+For each shape block:
 
-**ONLY after Steps 1–3:**
+1. Re-run the per-class predicate survey from Step 2 and compare against the documented predicates. Any predicate with COUNT > 0 that is absent from the shape must be either added or explicitly noted as intentionally excluded.
+2. Confirm every `@<ShapeRef>` has a defined `<…Shape>` block.
+3. For every predicate marked `?` (optional), confirm with a cardinality query that at least one subject has 0 values for it. For every predicate with no modifier (required), confirm its COUNT equals the class instance count.
+
+This step is not optional. `shape_expressions` is the section a downstream LLM relies on most heavily for query construction. An unaudited shape is equivalent to an untested SPARQL example.
+
+### Step 5: Final Declaration
+
+**ONLY after Steps 1–4:**
 
 "✓ MIE file validation complete. All requirements satisfied:
 - Quality Checklist: [X/X] items checked
 - YAML valid: Yes
 - Queries tested: [N] queries executed successfully
+- shape_expressions audited: all shapes verified against live predicate surveys, all @<ShapeRef>s resolved, all cardinality modifiers confirmed
 - Ready for production use."
 
 ---
