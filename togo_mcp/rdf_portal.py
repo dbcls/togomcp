@@ -160,16 +160,47 @@ async def run_sparql(
 @mcp.tool(
     name="get_graph_list",
     description=(
-        "Get a list of named graphs on the SPARQL endpoint hosting the given database. "
-        "Virtuoso/OpenLink internal graphs are filtered out. Graph URIs containing the "
-        "database name (case-insensitive substring) are ranked first, so the relevant "
-        "data graph(s) appear at the top — useful when the endpoint hosts multiple "
-        "databases (e.g. SIB hosts UniProt + Rhea + Bgee + OMA)."
+        "Get a list of named graphs on a SPARQL endpoint. Virtuoso/OpenLink internal "
+        "graphs are filtered out. If `database` is given, graph URIs containing that "
+        "substring (case-insensitive) are ranked first — useful when the endpoint hosts "
+        "multiple databases (e.g. SIB hosts UniProt + Rhea + Bgee + OMA). For a database "
+        "not yet in the registry, pass `endpoint_url` (or `endpoint_name` if its parent "
+        "endpoint is registered) to bypass database validation; `database` can still be "
+        "supplied alongside as a ranking hint."
     ),
 )
 async def get_graph_list(
     database: Annotated[
-        str, Field(description=DATABASE_DESCRIPTION, default="")
+        str,
+        Field(
+            description=(
+                "RDF database name (e.g. 'uniprot', 'chembl'). When the name is in the "
+                "registry it resolves the endpoint URL; in any case the value is used as "
+                "a case-insensitive substring to rank matching graph URIs first. Optional "
+                "if `endpoint_url` or `endpoint_name` is provided."
+            ),
+            default="",
+        ),
+    ] = "",
+    endpoint_name: Annotated[
+        str,
+        Field(
+            description=(
+                "Short endpoint name (e.g. 'primary', 'sib', 'ebi'). Use when the "
+                "database is not yet registered but its parent endpoint is."
+            ),
+            default="",
+        ),
+    ] = "",
+    endpoint_url: Annotated[
+        str,
+        Field(
+            description=(
+                "Direct SPARQL endpoint URL. Use when neither the database nor its "
+                "parent endpoint name is in the registry."
+            ),
+            default="",
+        ),
     ] = "",
     include_system: Annotated[
         bool,
@@ -184,19 +215,23 @@ async def get_graph_list(
     dbname: str = "",
     db: str = "",
 ) -> str:
-    f"""
-    Get a list of named graphs on the endpoint hosting the given database.
+    """
+    Get a list of named graphs on a SPARQL endpoint.
 
-    The endpoint typically hosts multiple databases. This tool ranks graphs whose URI
-    contains the requested `database` name (case-insensitive substring) at the top, so
-    callers can quickly identify the data graph(s) for that database. Virtuoso/OpenLink
+    The endpoint URL is resolved with the same priority used by `run_sparql`:
+    `endpoint_url` > `endpoint_name` > `database`. If only `database` is given it must
+    be in the registry; otherwise pass `endpoint_url` (or `endpoint_name`) to bypass
+    that check. `database` is also used (when present, registered or not) as a
+    case-insensitive substring to rank matching graph URIs first. Virtuoso/OpenLink
     internal graphs are filtered out unless `include_system=True`.
 
     Args:
-        database (str): The name of the database for which to retrieve the named graphs.
-            Accepts aliases `dbname` and `db`. Supported values are {", ".join(SPARQL_ENDPOINT.keys())}.
-        include_system (bool, optional): If True, include Virtuoso/OpenLink internal graphs.
-            Default False.
+        database (str, optional): Database name. Accepts aliases `dbname` and `db`.
+            Doubles as a substring ranking hint.
+        endpoint_name (str, optional): Short endpoint name (e.g. 'primary', 'sib').
+        endpoint_url (str, optional): Direct SPARQL endpoint URL.
+        include_system (bool, optional): If True, include Virtuoso/OpenLink internal
+            graphs. Default False.
         dbname (str, optional): Alias for `database`.
         db (str, optional): Alias for `database`.
 
@@ -205,15 +240,25 @@ async def get_graph_list(
     """
     toolcall_log("get_graph_list")
     database = database or dbname or db
-    if not database:
-        return "Error: Missing required argument `database` (aliases: `dbname`, `db`)."
+    if not database and not endpoint_name and not endpoint_url:
+        return (
+            "Error: provide one of `database`, `endpoint_name`, or `endpoint_url`. "
+            "For an unregistered database, pass `endpoint_url` (or `endpoint_name` if "
+            "its parent endpoint is registered); `database` can be supplied alongside "
+            "as a ranking hint."
+        )
     sparql_query = """
 SELECT DISTINCT ?graph WHERE {
   GRAPH ?graph {
     ?s ?p ?o .
   }
 }"""
-    raw_csv = await execute_sparql(sparql_query, database)
+    raw_csv = await execute_sparql(
+        sparql_query,
+        database=database,
+        endpoint_name=endpoint_name,
+        endpoint_url=endpoint_url,
+    )
 
     reader = _csv.reader(_io.StringIO(raw_csv))
     rows = list(reader)
