@@ -1,113 +1,72 @@
-# Prompt
-Determine the distribution of human enzymes by their EC number classes.
+# Human Enzyme Distribution by EC Class
 
-# Response
-Charted enzyme classification strategy and database query approach.
+**Date:** 2026-05-01  
+---
 
+## Databases & Tools Used
 
+### RDF Databases
+| Database | Role |
+|---|---|
+| **UniProt** (Swiss-Prot) | Source of human enzyme annotations via `up:enzyme` predicate |
 
+### MCP Tools
+| Tool | Purpose |
+|---|---|
+| `TogoMCP:get_MIE_file` | Retrieved the UniProt MIE (Metadata Interoperability Exchange) schema file to understand predicates, IRI patterns, and query best practices |
+| `TogoMCP:run_sparql` | Executed SPARQL query against the UniProt RDF endpoint (`https://rdfportal.org/sib/sparql`) |
 
-I'll help you determine the distribution of human enzymes by their EC number classes. Let me query the relevant databases to get this information.
+### SPARQL Endpoint
+- **SIB endpoint:** `https://rdfportal.org/sib/sparql`
 
+---
 
-2ステップ
-T
+## Query
 
+```sparql
+PREFIX up: <http://purl.uniprot.org/core/>
 
+SELECT ?ecClass (COUNT(DISTINCT ?protein) AS ?count)
+WHERE {
+  ?protein a up:Protein ;
+           up:reviewed 1 ;
+           up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+           up:enzyme ?ecIRI .
+  BIND(STRBEFORE(STRAFTER(STR(?ecIRI), "http://purl.uniprot.org/enzyme/"), ".") AS ?ecClass)
+}
+GROUP BY ?ecClass
+ORDER BY ?ecClass
+```
 
-Get MIE file
+**Filters applied:**
+- `up:reviewed 1` — Swiss-Prot (manually curated) entries only, excludes ~244M TrEMBL entries
+- `up:organism <http://purl.uniprot.org/taxonomy/9606>` — Homo sapiens only
+- EC class extracted by stripping the IRI prefix and taking the first digit before `.`
 
+---
 
+## Results
 
-Architected SPARQL query to categorize human enzymes by classification.
+| EC Class | Name | # Proteins | Share |
+|---|---|---:|---:|
+| EC 1 | Oxidoreductases | 546 | 11.7% |
+| EC 2 | Transferases | 1,832 | 39.4% |
+| EC 3 | Hydrolases | 1,732 | 37.2% |
+| EC 4 | Lyases | 155 | 3.3% |
+| EC 5 | Isomerases | 160 | 3.4% |
+| EC 6 | Ligases | 124 | 2.7% |
+| EC 7 | Translocases | 103 | 2.2% |
+| **Total** | | **4,652** | **100%** |
 
+> **Note:** A single protein may carry more than one EC number (e.g. bifunctional enzymes), so counts reflect unique protein–EC-class associations, not unique proteins.
 
+---
 
+## Key Observations
 
-Now let me query UniProt to get human enzymes with their EC numbers:
-
-T
-
-
-
-Run sparql
-
-
-
-Deciphered enzyme classification structure and devised aggregation strategy.
-
-Good! Now let me query to get the count of enzymes by EC class:
-
-T
-
-
-
-Run sparql
-
-
-
-Refined parsing strategy to accurately extract enzyme classification data.
-
-
-Let me refine the query to properly extract EC classes:
-
-T
-
-
-
-Run sparql
-
-
-
-Catalogued enzyme classes and computed distributional percentages comprehensively.
-
-
-
-Perfect! Let me also get the total count and some specific examples for each class:
-
-
-2ステップ
-T
-
-
-
-Run sparql
-
-
-
-Synthesized enzyme data to visualize EC class distribution comprehensively.
-
-
-Now let me create a comprehensive analysis and visualization of the distribution:
-
-
-6ステップ
-
-Presented 2 files
-
-Synthesized enzyme classification data for distribution analysis.
-
-I've completed a comprehensive analysis of human enzyme distribution by EC number classes using data from UniProt's Swiss-Prot database. Here are the key findings:
-
-Summary
-Analyzing 4,442 unique human enzymes, the distribution is:
-
-EC 2 - Transferases: 1,823 proteins (41.0%) - Most abundant
-EC 3 - Hydrolases: 1,655 proteins (37.3%) - Second most abundant
-EC 1 - Oxidoreductases: 545 proteins (12.3%)
-EC 4 - Lyases: 151 proteins (3.4%)
-EC 5 - Isomerases: 148 proteins (3.3%)
-EC 6 - Ligases: 124 proteins (2.8%)
-EC 7 - Translocases: 103 proteins (2.3%)
-Key Insights
-Transferases and hydrolases dominate (78.3% combined), reflecting the importance of cellular signaling (kinases, phosphatases) and regulatory processes (proteases, lipases)
-The abundance of transferases highlights sophisticated signaling networks essential for cell communication and regulation
-The high number of hydrolases indicates complex systems for protein turnover, signal termination, and metabolic regulation
-Smaller classes (EC 4-7) represent specialized but critical metabolic functions
-I've provided a detailed report and visualization showing both the absolute counts and proportional distribution across all seven EC classes.
-
-Enzyme analysis report
-ドキュメント · MD 
-Human enzyme distribution
-画像 · PNG 
-
+- **Transferases (EC 2, 39.4%)** are the dominant class, driven by the large diversity of human kinases, methyltransferases, glycosyltransferases, and acetyltransferases — central to signalling, epigenetics, and metabolism.
+- **Hydrolases (EC 3, 37.2%)** come in a close second, reflecting the breadth of proteases, phosphatases, lipases, and nucleases in the human proteome.
+- Together, EC 2 and EC 3 account for **~77%** of all human enzyme annotations.
+- **Oxidoreductases (EC 1, 11.7%)** form a substantial third tier, covering cytochrome P450s, dehydrogenases, and peroxidases.
+- **Lyases (EC 4), Isomerases (EC 5), Ligases (EC 6), and Translocases (EC 7)** together make up only ~12%, reflecting their more specialised metabolic roles.
+- The strong EC 2/EC 3 dominance is a well-known feature of eukaryotic (especially metazoan) proteomes, where reversible phosphorylation and proteolytic processing underpin virtually every signalling and regulatory pathway.

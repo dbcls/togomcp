@@ -120,12 +120,16 @@ TogoMCP exposes tools for querying the following (via SPARQL or REST APIs):
 
 | Category | Resources |
 |---|---|
-| Genomics / Sequences | UniProt, NCBI (Gene, PubMed, Taxonomy) |
-| Chemistry | ChEMBL, PubChem, Rhea |
-| Structure | PDB |
+| Proteins / Proteomics | UniProt, PDB, jPOST |
+| Genes / Genomics | NCBI Gene, Ensembl, HGNC, OMA, Bgee, DDBJ |
+| Chemistry | ChEMBL, PubChem, ChEBI, Rhea, BRENDA |
 | Pathways | Reactome |
-| Ontologies | MeSH, GO, ChEBI |
-| General RDF | RDF Portal databases via SPARQL |
+| Disease / Clinical | ClinVar, MedGen, MONDO, NANDO |
+| Literature | PubMed, PubTator |
+| Microbiology | BacDive, MediaDive, AMR Portal |
+| Glycomics | GlyCosmos |
+| Ontologies / Vocabulary | MeSH, GO |
+| Taxonomy | NCBI Taxonomy |
 
 ---
 
