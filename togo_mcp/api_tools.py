@@ -167,9 +167,14 @@ async def search_uniprot_entity(
         raise_for_status_with_body(response, context="UniProt search")
         data = response.text
         return data
-    except httpx.HTTPError as e:
-        print(f"Error querying UniProt: {e}")
-        raise
+    except (httpx.HTTPError, ValueError) as e:
+        logger.warning(f"UniProt search failed: {type(e).__name__}: {e}")
+        return (
+            f"Error: UniProt REST API request failed ({type(e).__name__}: {e}). "
+            "Usually transient — retry once after a brief delay. If it keeps "
+            "failing, fall back to SPARQL: "
+            "run_sparql(database='uniprot', sparql_query=...)."
+        )
 
 
 # DB: ChEMBL
@@ -192,9 +197,16 @@ async def search_chembl_generic(entity_type: str, query: str, limit: int = 20) -
         )
         raise_for_status_with_body(response, context="ChEMBL search")
         return response.json()
-    except httpx.HTTPError as e:
-        print(f"Error querying ChEMBL {entity_type}: {e}")
-        raise
+    except (httpx.HTTPError, ValueError) as e:
+        logger.warning(f"ChEMBL {entity_type} search failed: {type(e).__name__}: {e}")
+        return {
+            "error": (
+                f"ChEMBL REST API request failed ({type(e).__name__}: {e}). "
+                "Usually transient — retry once after a brief delay. If it "
+                "keeps failing, fall back to SPARQL: "
+                "run_sparql(database='chembl', sparql_query=...)."
+            )
+        }
 
 
 @mcp.tool()
@@ -466,9 +478,17 @@ async def get_pubchem_compound_id(compound_name: str) -> str:
         response = await _pubchem_client.get(url)
         raise_for_status_with_body(response, context="PubChem CID lookup")
         return response.text
-    except httpx.HTTPError as e:
-        print(f"Error fetching PubChem compound ID for {compound_name}: {e}")
-        raise
+    except (httpx.HTTPError, ValueError) as e:
+        logger.warning(
+            f"PubChem CID lookup failed for {compound_name!r}: "
+            f"{type(e).__name__}: {e}"
+        )
+        return (
+            f"Error: PubChem CID lookup failed for {compound_name!r} "
+            f"({type(e).__name__}: {e}). Usually transient — retry once after "
+            "a brief delay. If it keeps failing, fall back to SPARQL: "
+            "run_sparql(database='pubchem', sparql_query=...)."
+        )
 
 
 @mcp.tool()
@@ -488,11 +508,18 @@ async def get_compound_attributes_from_pubchem(pubchem_compound_id: str) -> str:
         response = await _pubchem_client.get(url, params=params)
         raise_for_status_with_body(response, context="PubChem compound attributes")
         return response.text
-    except httpx.HTTPError as e:
-        print(
-            f"Error fetching PubChem compound attributes for {pubchem_compound_id}: {e}"
+    except (httpx.HTTPError, ValueError) as e:
+        logger.warning(
+            f"PubChem compound-attributes fetch failed for "
+            f"{pubchem_compound_id!r}: {type(e).__name__}: {e}"
         )
-        raise
+        return (
+            f"Error: PubChem compound-attributes fetch failed for "
+            f"{pubchem_compound_id!r} ({type(e).__name__}: {e}). Usually "
+            "transient — retry once after a brief delay. If it keeps failing, "
+            "fall back to SPARQL: run_sparql(database='pubchem', "
+            "sparql_query=...)."
+        )
 
 
 # DB: PDB
@@ -564,9 +591,19 @@ async def search_pdb_entity(
         ]
         response_dict = {"total": total_results, "results": result_list}
         return json.dumps(response_dict)
-    except httpx.HTTPError as e:
-        print(f"Error searching PDB {db} for {query}: {e}")
-        raise
+    except (httpx.HTTPError, ValueError) as e:
+        logger.warning(
+            f"PDBj search failed for db={db!r} query={query!r}: "
+            f"{type(e).__name__}: {e}"
+        )
+        return json.dumps({
+            "error": (
+                f"PDBj REST API request failed ({type(e).__name__}: {e}). "
+                "Usually transient — retry once after a brief delay. If it "
+                "keeps failing, fall back to SPARQL: "
+                "run_sparql(database='pdb', sparql_query=...)."
+            )
+        })
 
 
 # DB: MeSH
@@ -612,9 +649,17 @@ async def search_mesh_descriptor(
         response = await _mesh_client.get("/mesh/lookup/descriptor", params=params)
         raise_for_status_with_body(response, context="MeSH descriptor lookup")
         return response.text
-    except httpx.HTTPError as e:
-        print(f"Error searching MeSH for {query}: {e}")
-        raise
+    except (httpx.HTTPError, ValueError) as e:
+        logger.warning(
+            f"MeSH descriptor lookup failed for {query!r}: "
+            f"{type(e).__name__}: {e}"
+        )
+        return (
+            f"Error: MeSH descriptor lookup failed ({type(e).__name__}: {e}). "
+            "Usually transient — retry once after a brief delay. If it keeps "
+            "failing, fall back to SPARQL: "
+            "run_sparql(database='mesh', sparql_query=...)."
+        )
 
 
 # DB: Reactome
@@ -708,9 +753,15 @@ async def search_reactome_entity(
         )
         raise_for_status_with_body(response, context="Reactome search")
         data = response.json()
-    except httpx.HTTPError as e:
-        print(f"Error querying Reactome: {e}")
-        raise
+    except (httpx.HTTPError, ValueError) as e:
+        logger.warning(f"Reactome search failed: {type(e).__name__}: {e}")
+        return (
+            f"Error: Reactome REST API request failed ({type(e).__name__}: "
+            f"{e}). Reactome's search endpoint can be slow or briefly "
+            "unavailable. Retry once after a brief delay. If it keeps "
+            "failing, fall back to SPARQL: "
+            "run_sparql(database='reactome', sparql_query=...)."
+        )
 
     # Extract and return results
     results = []
@@ -807,6 +858,11 @@ async def search_rhea_entity(
 
         return results
 
-    except httpx.HTTPError as e:
-        print(f"Error fetching data from Rhea API: {e}")
-        raise
+    except (httpx.HTTPError, ValueError) as e:
+        logger.warning(f"Rhea search failed: {type(e).__name__}: {e}")
+        return (
+            f"Error: Rhea REST API request failed ({type(e).__name__}: {e}). "
+            "Usually transient — retry once after a brief delay. If it keeps "
+            "failing, fall back to SPARQL: "
+            "run_sparql(database='rhea', sparql_query=...)."
+        )
