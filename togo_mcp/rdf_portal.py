@@ -313,7 +313,23 @@ async def get_MIE_file(
         return "Error: Missing required argument `database` (aliases: `dbname`, `db`)."
     mie_file = Path(MIE_DIR).joinpath(f"{database}.yaml")
     if not mie_file.exists():
-        raise FileNotFoundError(f"MIE file not found for database: '{database}'")
+        # Return a structured error string rather than raising, so the
+        # downstream LLM can read the diagnostic and recover (e.g. retry
+        # with a real database name) instead of seeing an opaque tool
+        # exception that may break the MCP session.
+        valid = ", ".join(sorted(SPARQL_ENDPOINT.keys()))
+        hint = ""
+        if database in ("togoid", "ncbi"):
+            hint = (
+                f" Note: '{database}' is a tool-prefix for a sub-server "
+                "(e.g. togoid_convertId, ncbi_esearch), NOT a SPARQL "
+                "database — it has no MIE file. Use the prefixed tools "
+                "directly."
+            )
+        return (
+            f"Error: No MIE file for '{database}'. Valid database names: "
+            f"{valid}.{hint} Do not retry with the same value."
+        )
     with open(mie_file, encoding="utf-8") as file:
         content = file.read()
     return f"Content-type: application/yaml; charset=utf-8\n{content}"
