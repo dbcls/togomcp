@@ -400,19 +400,15 @@ def _load_databases_cache() -> list[dict[str, Any]]:
 @mcp.tool(name="list_databases")
 def list_databases() -> list[dict[str, Any]]:
     """
-    Database Discovery & Selection — full catalog browse.
+    Supplementary: full catalog dump (browse only, no filtering).
 
-    Returns every available RDF database with `{database, title, description}`. Use this
-    when you want to see the entire catalog. For token-efficient lookup when you already
-    have search terms in mind, prefer `find_databases(keywords=...)`.
+    Returns every available RDF database with `{database, title, description}`. Use
+    this only when you need the entire catalog with no filter — for example, to
+    enumerate all databases or to discover what kinds of data exist before you
+    have specific search terms.
 
-    Common keywords-in-descriptions to watch for: "MANE" (Ensembl), "drug targets" (ChEMBL),
-    "clinical variants" (ClinVar), "pathways" (Reactome).
-
-    Workflow:
-    1. (Optional) call list_databases() or find_databases() to identify 1–3 relevant DBs.
-    2. get_MIE_file(database) for each.
-    3. run_sparql() with discovered structured properties.
+    For every normal workflow, call `find_databases(keywords=[...])` first — that
+    is the canonical entry point. This tool is a supplementary fallback.
 
     Returns:
         A list of dicts with keys `database`, `title`, `description`.
@@ -490,13 +486,24 @@ def find_databases(
     ] = False,
 ) -> list[dict[str, Any]]:
     """
-    Token-efficient database discovery — alternative to list_databases().
+    Database discovery — REQUIRED first step for any TogoMCP workflow.
 
-    Filters the RDF database catalog by keywords and/or category, returning only matching
-    entries. Use this when you already have specific search terms (gene, pathway, drug
-    target, variant, etc.) and want a focused candidate list before calling get_MIE_file().
+    Always call this BEFORE `get_MIE_file()` or `run_sparql()`. Pass any search
+    terms you have (gene, pathway, drug target, variant, organism, disease,
+    enzyme class, etc.) as `keywords`. Returns 1–3 candidate databases scoped
+    to your terms — much more efficient than browsing the full catalog.
 
-    Use list_databases() instead when you want to browse the full catalog.
+    Workflow:
+    1. find_databases(keywords=[...]) — identify 1–3 relevant databases.
+    2. get_MIE_file(database) — learn each candidate's schema and SPARQL idioms.
+    3. run_sparql() — query with the discovered structured properties.
+
+    Common keywords to try: "MANE" (Ensembl), "drug targets" (ChEMBL),
+    "clinical variants" (ClinVar), "pathways" (Reactome), "variants" (gnomAD),
+    "ortholog" (OMA), "expression" (Bgee).
+
+    If you have no search terms and want to browse the full catalog instead, see
+    `list_databases()` — that tool is supplementary, not a substitute for this one.
 
     Returns:
         List of dicts: `{database, title, matched_keywords, categories, snippet}` (or
