@@ -28,22 +28,24 @@ benchmark/
 │   ├── results_analyzer.py       # Statistical analysis of evaluation results
 │   ├── generate_dashboard.py     # Generates HTML evaluation dashboard
 │   ├── verify_questions.py       # Validates question YAML files
+│   ├── run_all_conditions.sh     # Runs all four conditions sequentially for a date
 │   ├── config.yaml               # Config for "With Guide" condition
 │   ├── config_no_guide1.yaml     # Config for NG1 condition
 │   ├── config_no_guide2.yaml     # Config for NG2 condition
+│   ├── config_no_guide2_no_test_server.yaml  # NG2 variant pinned to production MCP endpoint
 │   ├── config_no_mie.yaml        # Config for "No MIE" condition
 │   ├── CONFIG_FORMAT.md          # Configuration file format documentation
 │   └── evaluation_dashboard.html # Pre-generated results dashboard
 ├── results/
-│   ├── with_guide-2026-02-28.csv           # Raw answers, With Guide condition
-│   ├── ng1-2026-03-01.csv                  # Raw answers, NG1 condition
-│   ├── ng2-2026-03-01.csv                  # Raw answers, NG2 condition
-│   ├── no_mie-2026-02-28.csv               # Raw answers, No MIE condition
-│   ├── with_guide-2026-02-28-Opus4.6-v{1..5}.csv  # Re-evaluated with Claude Opus 4.6
-│   ├── ng1-2026-03-01-Opus4.6-v{1..5}.csv
-│   ├── ng2-2026-03-01-Opus4.6-v{1..5}.csv
-│   ├── no_mie-2026-02-28-Opus4.6-v{1..5}.csv
-│   └── *.md                                # Analysis reports
+│   ├── with_guide-2026-05-04.csv               # Raw answers, With Guide (current)
+│   ├── ng1-2026-05-04.csv                      # Raw answers, NG1
+│   ├── ng2-2026-05-04.csv                      # Raw answers, NG2
+│   ├── no_mie-2026-05-04.csv                   # Raw answers, No MIE
+│   ├── *-2026-05-04-Opus4.7-v{1..5}.csv        # Re-evaluated with Claude Opus 4.7 (× 5)
+│   ├── togomcp_analysis_v3.md                  # Current analysis (2026-05-04 batch)
+│   ├── togomcp_*_analysis.md                   # Per-comparison reports (current batch)
+│   ├── reevaluation.md                         # Re-evaluation design notes
+│   └── rev0/                                   # Prior batch (Feb–Mar 2026, Opus 4.6 judge)
 └── examples/                     # Example dialogue logs
 ```
 
@@ -105,13 +107,15 @@ After creation, every question was reviewed against the checklist in `togomcp_qa
 
 ### Step 3 — Answer Collection
 
-Answers were collected using `scripts/automated_test_runner.py`:
+Answers were collected using `scripts/automated_test_runner.py`. To run all four conditions sequentially for a given date, use `scripts/run_all_conditions.sh`:
 
 ```bash
 cd scripts
+./run_all_conditions.sh 2026-05-04        # all four conditions
+# — or per-condition —
 python automated_test_runner.py ../questions/question_*.yaml \
     -c config.yaml \
-    -o ../results/with_guide-2026-02-28.csv
+    -o ../results/with_guide-2026-05-04.csv
 ```
 
 The script runs each question in an isolated session (no conversation history) and collects answers from both the baseline agent and the TogoMCP agent. It outputs a CSV with columns for both agents' answers, token counts, and USD cost. The four conditions were run separately using their respective config files.
@@ -121,7 +125,7 @@ The script runs each question in an isolated session (no conversation history) a
 Initial scoring was done with `scripts/add_llm_evaluation.py` using `llama3.2` as the judge:
 
 ```bash
-python add_llm_evaluation.py ../results/with_guide-2026-02-28.csv \
+python add_llm_evaluation.py ../results/with_guide-2026-05-04.csv \
     --llm-model llama3.2
 ```
 
@@ -131,18 +135,31 @@ Each answer is scored on four criteria (1–5 each, total 4–20):
 - **Non-redundancy** (repetition) — avoidance of repeated content
 - **Readability** — clarity and fluency
 
-These initial scores (`with_guide-2026-02-28.csv`, `ng1-2026-03-01.csv`, `ng2-2026-03-01.csv`, `no_mie-2026-02-28.csv`) were found to be unreliable and are not used in the paper.
+These initial scores (`with_guide-2026-05-04.csv`, `ng1-2026-05-04.csv`, `ng2-2026-05-04.csv`, `no_mie-2026-05-04.csv`) were found to be insufficiently reliable for the paper and were superseded by the Claude-judged re-evaluation in Step 5.
 
-### Step 5 — Re-evaluation with Claude Opus 4.6
+### Step 5 — Re-evaluation with Claude Opus
 
-Because the llama3.2 scores were insufficiently reliable, all four conditions were re-evaluated five times each using **Claude Opus 4.6** as the judge (250 question–run pairs per condition). These are the results reported in the paper:
+Because the llama3.2 scores were insufficiently reliable, all four conditions were re-evaluated five times each using **Claude Opus** as the judge (250 question–run pairs per condition). The current canonical re-evaluation is the 2026-05-04 batch judged by **Opus 4.7**; the earlier 2026-02–03 batch (judged by Opus 4.6) is preserved under `results/rev0/`.
+
+**Current batch — 2026-05-04, judge: Opus 4.7** (results reported in the paper)
 
 | Condition | Result files |
 |-----------|-------------|
-| With Guide | `with_guide-2026-02-28-Opus4.6-v1.csv` … `v5.csv` |
-| NG1 | `ng1-2026-03-01-Opus4.6-v1.csv` … `v5.csv` |
-| NG2 | `ng2-2026-03-01-Opus4.6-v1.csv` … `v5.csv` |
-| No MIE | `no_mie-2026-02-28-Opus4.6-v1.csv` … `v5.csv` |
+| With Guide | `with_guide-2026-05-04-Opus4.7-v1.csv` … `v5.csv` |
+| NG1 | `ng1-2026-05-04-Opus4.7-v1.csv` … `v5.csv` |
+| NG2 | `ng2-2026-05-04-Opus4.7-v1.csv` … `v5.csv` |
+| No MIE | `no_mie-2026-05-04-Opus4.7-v1.csv` … `v5.csv` |
+
+**Prior batch — 2026-02/03, judge: Opus 4.6** (archived under `results/rev0/`)
+
+| Condition | Result files |
+|-----------|-------------|
+| With Guide | `rev0/with_guide-2026-02-28-Opus4.6-v1.csv` … `v5.csv` |
+| NG1 | `rev0/ng1-2026-03-01-Opus4.6-v1.csv` … `v5.csv` |
+| NG2 | `rev0/ng2-2026-03-01-Opus4.6-v1.csv` … `v5.csv` |
+| No MIE | `rev0/no_mie-2026-02-28-Opus4.6-v1.csv` … `v5.csv` |
+
+Design notes for the re-evaluation methodology are in `results/reevaluation.md`.
 
 ---
 
@@ -168,6 +185,7 @@ See `scripts/CONFIG_FORMAT.md` for the full specification and YAML formatting gu
 | `togomcp_qa_prompt.md` | QA review prompt (25 error categories) and per-question review status tracker |
 | `questions/coverage_tracker.yaml` | Running tally of question type and database usage during creation |
 | `scripts/automated_test_runner.py` | Answer collection script using `claude-agent-sdk` |
+| `scripts/run_all_conditions.sh` | Sequential orchestrator that runs all four conditions for a given date and skips existing outputs |
 | `scripts/add_llm_evaluation.py` | LLM-based scoring using Ollama (initial pass) |
 
 ---
