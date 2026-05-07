@@ -1,416 +1,369 @@
 # TogoMCP Evaluation Analysis: No-MIE Condition
 
-**Date:** 2026-03-01  
-**Evaluator LLM:** Claude Opus 4.6 (5 independent evaluation runs)  
-**Questions:** 50 (10 each of yes/no, factoid, list, summary, choice)  
-**Scoring:** 4 criteria × 1–5 scale = total 4–20  
-**Condition:** `get_MIE_file()` tool **excluded** from all TogoMCP runs
+**Date:** 2026-05-05
+**Benchmark answers collected:** 2026-05-04 (Sonnet 4.5, `claude-sonnet-4-5-20250929`)
+**Evaluator LLM:** Opus 4.7 (`claude-opus-4-7`), 5 independent evaluation runs
+**Questions:** 50 (10 each of yes/no, factoid, list, summary, choice)
+**Scoring:** 4 criteria × 1–5 scale = total 4–20
+**Condition:** `get_MIE_file()` **disallowed** across all server prefixes (`mcp__togomcp__`, `mcp__togomcp-dev__`, `mcp__claude_ai_TogoMCP-Test__`); Usage Guide and `find_databases` remain available
 
 ---
 
 ## Executive Summary
 
-Without access to MIE schema files, TogoMCP produces a **statistically non-significant** improvement over the baseline. Across 250 question–run pairs, the mean total score rises from **14.07 to 14.37** (+0.30, Cohen's *d* = 0.08, Wilcoxon *p* = 0.45). TogoMCP wins on only **40.8%** of evaluations, ties on 14.4%, and **loses on 44.8%** — nearly as often as it wins. This represents a catastrophic degradation compared to the with-MIE condition (Δ = +2.72, *d* = 0.92, win rate 74.8%). The cost remains substantial (~90× higher than baseline), latency is 19× longer, and the average number of tool calls nearly **doubles** from ~10 to ~20 — yet these extra calls produce worse, not better, results. The core finding is unambiguous: **MIE schema files are the single most important component of the TogoMCP pipeline**, and removing them renders the system's costly tool-use workflow marginally beneficial at best.
+Without access to MIE schema files, TogoMCP still delivers a **statistically significant and large** improvement over the baseline. Across 250 question–run pairs, the mean total score rises from **15.28 to 18.24** (+2.96, Cohen's *d* = 1.38, Wilcoxon *p* < 10⁻⁹). TogoMCP wins on **83.2 %** of evaluations, ties on 12.8 %, and loses on only **4.0 %**. This is **dramatically better than rev0's no-MIE condition** (Δ = +0.30, *d* = 0.08, win rate 40.8 %) — the result that prompted rev0 to call MIE "the single most critical tool in the TogoMCP pipeline." That conclusion no longer holds in the new runs.
+
+The mechanism behind the improvement is straightforward: **the model substitutes direct search and SPARQL exploration for the missing schema-reading step**. Mean tool calls per question are 16.9 — higher than WG (12.4) but well below the NG2 condition's 20.9. `find_databases` is called in 100 % of questions (driven by the still-active Usage Guide), and `run_sparql` runs an average of 5.4 times per question without prior schema reading. The catastrophic rev0 failure modes (excessive trial-and-error tool chaining, data-dump readability collapses) **do not reproduce**.
+
+This condition's data validity required a methodology fix: the original `disallowed_tools` rule (single-prefix `mcp__togomcp__get_MIE_file`) was bypassed by an account-level `mcp__claude_ai_TogoMCP-Test__get_MIE_file` alias, leaking 45 calls into the run. The 2026-05-05 enumeration form (all three prefixes blocked) holds: **0 / 50 rows** show any `get_MIE_file` call from any server.
 
 ---
 
 ## 1. Overall Score Comparison
 
-| Metric | Baseline | TogoMCP (no MIE) | Δ | TogoMCP (with MIE)¹ |
-|--------|----------|-------------------|---|----------------------|
-| Mean ± SD | 14.07 ± 2.29 | 14.37 ± 3.37 | +0.30 | 16.70 ± 2.81 |
-| Median | 13.0 | 14.0 | +1.0 | 17.0 |
-| Min / Max | 9 / 20 | 7 / 20 | — | 10 / 20 |
-| Perfect scores (= 20) | **1** (0.4%) | **21** (8.4%) | — | **61** (24.4%) |
+| Metric | Baseline | TogoMCP (No-MIE) | Δ | TogoMCP (WG)¹ |
+|--------|----------|-------------------|---|----------------|
+| Mean ± SD | 15.28 ± 2.16 | 18.24 ± 1.83 | +2.96 | 18.55 ± 1.72 |
+| Median | 15 | 19 | +4 | 19 |
+| Min / Max | 12 / 20 | 13 / 20 | — | 12 / 20 |
+| Perfect scores (= 20) | **4 / 250** (1.6 %) | **84 / 250** (33.6 %) | — | 107 / 250 (42.8 %) |
 
-¹ *From the with-MIE analysis (`togomcp_analysis_v2.md`) for reference.*
+¹ *Reference: from [`togomcp_analysis_v3.md`](togomcp_analysis_v3.md).*
 
-The baseline achieves a single perfect score (question_035, choice, one run), while TogoMCP manages 21 — but this is less than a third of the 61 perfects achieved with MIE. The TogoMCP distribution is dramatically more dispersed (SD 3.37 vs. 2.29 for baseline, vs. 2.81 for with-MIE), with a troubling left tail reaching as low as 7 — **below the baseline's minimum of 9**.
+The baseline reaches 20 four times (vs 0 in WG/NG2) — these are choice questions where the LLM's general knowledge happens to be correct (e.g., `question_005` TK kinase group, `question_035` PDB experimental technique). TogoMCP reaches 20 on 33.6 % of evaluations — the lowest perfect-score rate among the four conditions, but still far above any rev0 condition.
 
-**Statistical significance:** The Wilcoxon signed-rank test on per-question means yields *p* = 0.45 (not significant). Cohen's *d* = 0.08 indicates a negligible effect size.
-
-### Score Distributions
+### Score distributions
 
 ```
-Baseline:               TogoMCP (no MIE):
- 9: █                    7: ██
-10: █                    8: ██████
-11: █████████████        9: ███████████
-12: ██████████████████  10: ██████████
-    ████████████████    11: █████████████████████████
-    █████████████████   12: █████████████████████████████████
-13: ██████████████████  13: ███████████████████
-    ████████████████    14: ██████████████████████████████
-14: █████████████████   15: ██████████████████████
-    ████████            16: ███████████████████
-15: █████████████████   17: ███████████
-    ████████████        18: ███████████████████████████
-16: █████████████████   19: ██████████████
-17: █████████████████   20: █████████████████████
-    ████████████
-18: ███████████
-19: ██████████
-20: █
+Baseline:                        TogoMCP (No-MIE):
+12: ██ (20)                      13: ▎ (3)
+13: ████ (45)                    14: ▌ (5)
+14: ███ (36)                     15: █▊ (17)
+15: ████ (46)                    16: ███ (29)
+16: ██▌ (28)                     17: ██▍ (24)
+17: ██ (23)                      18: ██▊ (28)
+18: ██▋ (29)                     19: ██████ (60)
+19: █▊ (19)                      20: ████████▍ (84)
+20: ▎ (4)
 ```
 
-The baseline distribution is tightly clustered around 12–14. The no-MIE TogoMCP distribution is bimodal: a cluster of failures at 8–13 and a cluster of successes at 18–20, with much wider spread overall.
+Both distributions span the 12–20 range, but TogoMCP's mass is concentrated at 19–20 (144 / 250 = 57.6 %).
 
 ---
 
 ## 2. Scores by Question Type
 
-| Type | Baseline | TogoMCP | Δ | Win% | Lose% | With-MIE Δ¹ |
-|------|----------|---------|---|------|-------|-------------|
-| **yes_no** | 15.22 | 16.32 | **+1.10** | 48% | 34% | +3.32 |
-| **factoid** | 11.96 | 14.18 | **+2.22** | 68% | 20% | +3.46 |
-| **list** | 13.02 | 12.72 | **−0.30** | 32% | 50% | +2.96 |
-| **summary** | 15.28 | 13.64 | **−1.64** | 12% | 70% | +0.50 |
-| **choice** | 14.88 | 14.98 | **+0.10** | 44% | 50% | +3.36 |
+| Type | Baseline | TogoMCP | Δ | Cohen's *d* | Win % | Lose % |
+|------|----------|---------|---|:-----------:|:-----:|:------:|
+| **factoid** | 13.36 | **17.70** | **+4.34** | 2.95 | 98 % | 0 % |
+| **list** | 14.18 | 18.16 | **+3.98** | 2.63 | 96 % | 0 % |
+| **yes_no** | 16.06 | 19.06 | **+3.00** | 1.06 | 80 % | 10 % |
+| **summary** | 15.52 | 17.26 | **+1.74** | 1.25 | 72 % | 6 % |
+| **choice** | 17.30 | 19.02 | **+1.72** | 0.89 | 70 % | 4 % |
 
-The pattern of gains and losses is dramatically different from the with-MIE condition:
+A pattern that **inverts** the rev0 No-MIE results:
 
-- **Factoid** questions remain the strongest beneficiary (+2.22), since they depend on retrievable database facts regardless of schema knowledge.
-- **Summary** questions flip from a marginal gain (+0.50 with MIE) to a substantial loss (**−1.64**), with a 70% lose rate. Without schema knowledge, SPARQL queries for summaries produce unreliable data that actively harms answer quality.
-- **List** questions also turn negative (−0.30), losing more often than winning (50% vs. 32%).
-- **Choice** questions drop from +3.36 to a negligible +0.10.
-- **Yes/no** questions retain the most benefit (+1.10) but still at one-third the with-MIE level.
+- Rev0: Δ for list was −0.30 (loss zone) and summary was −1.64. Both are now strongly positive (+3.98, +1.74).
+- Rev0: choice was +0.10. Now +1.72.
+- Rev0: factoid was already the strongest (+2.22). Now +4.34, the highest in this condition.
+
+The largest change is on **list** questions: rev0's "MIE-essential" interpretation was that without schema knowledge the model couldn't write SPARQL for list retrieval. The new runs show the model can produce list answers via `search_uniprot_entity`, `ncbi_esearch`, and `search_chembl_target` — direct lookups that don't require schema reading.
+
+**Choice and yes_no are the most degraded** vs WG: No-MIE delivers Δ = +1.72 / +3.00 vs WG's +3.20 / +4.22. The schema-guided cross-database comparisons that powered WG's choice answers are harder to reproduce without `get_MIE_file`.
 
 ---
 
 ## 3. Scores by Evaluation Criteria
 
-| Criterion | Baseline | TogoMCP | Δ | With-MIE Δ¹ |
-|-----------|----------|---------|---|-------------|
-| **Recall** | 2.30 | 3.21 | **+0.91** | +1.92 |
-| **Precision** | 3.49 | 3.79 | **+0.30** | +1.07 |
-| **Repetition** | 4.08 | 3.77 | **−0.31** | −0.05 |
-| **Readability** | 4.20 | 3.60 | **−0.60** | −0.22 |
+| Criterion | Baseline | TogoMCP | Δ | Rev0 No-MIE Δ |
+|-----------|----------|---------|---|:-------------:|
+| **Recall** | 2.04 | 3.77 | **+1.74** | +0.91 |
+| **Precision** | 3.73 | 4.60 | **+0.87** | +0.30 |
+| **Repetition** | 4.72 | 4.91 | +0.18 | −0.31 |
+| **Readability** | 4.79 | 4.96 | +0.16 | −0.60 |
 
-The recall gain is halved (+0.91 vs. +1.92 with MIE) — the system retrieves some facts but misses many due to malformed queries. The precision gain is similarly reduced. Most critically, **repetition and readability penalties are much larger** (−0.31 and −0.60 vs. −0.05 and −0.22), indicating that without schema guidance the system generates verbose, artifact-laden responses full of failed query attempts and processing noise.
-
-### Criteria by Question Type
-
-| Type | Recall Δ | Precision Δ | Repetition Δ | Readability Δ |
-|------|----------|-------------|--------------|---------------|
-| yes_no | +1.06 | +0.56 | −0.16 | −0.36 |
-| factoid | +1.58 | +0.78 | +0.20 | −0.34 |
-| list | +0.58 | +0.26 | **−0.46** | **−0.68** |
-| summary | +0.22 | **−0.30** | **−0.58** | **−0.98** |
-| choice | +1.10 | +0.20 | **−0.54** | **−0.66** |
-
-Summary questions suffer a nearly 1-point readability penalty — the largest single-criterion loss in the dataset. The pattern is clear: recall improvements are modest and often offset by degraded presentation quality.
+Every criterion now shows a positive delta — including readability and repetition, which were both negative in rev0. The rev0 narrative ("without schema guidance the system generates verbose, artifact-laden responses") **does not hold** in the new runs. The deployed `togomcp` server's tool outputs are clean enough, and the model's tool-output integration is fluent enough, that the no-MIE condition's responses read as well as the baseline's.
 
 ---
 
 ## 4. Latency and Cost
 
-### 4.1 Overall
+| Metric | Baseline | TogoMCP | Ratio |
+|--------|----------|---------|-------|
+| Mean time | 7.8 s | **206 s** | 26× |
+| Median time | 7.7 s | 159 s | 21× |
+| Max time | 12.5 s | 1056 s | — |
+| Mean cost | $0.005 | $0.388 | 75× |
+| Mean tool calls | — | 16.9 | — |
 
-| Metric | Baseline | TogoMCP (no MIE) | Ratio | TogoMCP (with MIE)¹ |
-|--------|----------|-------------------|-------|----------------------|
-| Mean time | 8.1 s | 154.1 s | **19.0×** | 96.2 s (11.7×) |
-| Mean cost | $0.005 | $0.483 | **89.8×** | $0.429 (81×) |
-| Output tokens | 291 | 4,063 | 14.0× | 3,100 |
-| Mean tool calls | — | 20.2 | — | ~10 |
+**No-MIE is the slowest condition** (206 s mean, vs WG's 137 s and NG2's 183 s). The model's compensatory pattern — issuing many `run_sparql` queries without prior schema reading — accumulates more retries on the SPARQL endpoint. Cost per Δ point is $0.129, modestly worse than WG's $0.108.
 
-Without MIE, the system makes **twice as many tool calls** (20.2 vs. ~10), is **60% slower** (154s vs. 96s), and **13% more expensive** ($0.483 vs. $0.429) — all while delivering dramatically worse results. The extra tool calls represent the system's futile attempts to compensate for missing schema knowledge through trial-and-error.
+### Cost-effectiveness by type
 
-### 4.2 Cost by Question Type
+| Type | Δ | Cost/q | pts / $ |
+|------|:-:|:------:|:-------:|
+| factoid | +4.34 | $0.42 | **10.4** |
+| list | +3.98 | $0.40 | 9.9 |
+| yes_no | +3.00 | $0.35 | 8.6 |
+| summary | +1.74 | $0.42 | 4.2 |
+| choice | +1.72 | $0.39 | 4.4 |
 
-| Type | Time (Base→Togo) | Ratio | Cost (Base→Togo) | Ratio |
-|------|-------------------|-------|-------------------|-------|
-| yes_no | 6.8 → 110.3 s | 16× | $0.005 → $0.327 | 70× |
-| factoid | 7.3 → 155.2 s | 21× | $0.005 → $0.503 | 111× |
-| list | 8.2 → 171.4 s | 21× | $0.006 → $0.504 | 91× |
-| summary | 10.6 → 170.2 s | 16× | $0.007 → $0.502 | 69× |
-| choice | 7.5 → 163.4 s | 22× | $0.005 → $0.578 | 119× |
-
-Choice questions are the most expensive (119× ratio, $0.58/question) despite yielding only +0.10 score improvement — a dismal cost-effectiveness ratio.
+Factoid and list are most cost-effective; choice and summary are weakest. Notable that even the worst No-MIE category (choice at 4.4 pts/$) **beats** the best rev0 No-MIE category (summary's $1.61/point in rev0 = 0.6 pts/$ inverted).
 
 ---
 
 ## 5. Tool Calls and Score
 
-### 5.1 Tool Count vs. Score
+### 5.1 Tool count vs. score
 
-There is a **strong negative correlation** between tool count and TogoMCP score (*r* = −0.464, *p* < 0.0001). This is substantially worse than the with-MIE condition (*r* = −0.375).
+Pearson *r* = −0.33 (Spearman *ρ* = −0.34). Mean tool count is 16.9 (median 16, range 4–60).
 
-| Tool Calls | n | Mean Score | Δ (vs. Baseline) |
-|------------|---|-----------|-------------------|
-| 0–3 | 5 | **18.2** | +0.8 |
-| 4–6 | 15 | **18.5** | +4.6 |
-| 7–9 | 5 | **18.8** | +6.2 |
-| 10–13 | 35 | 16.8 | +2.6 |
-| 14–17 | 35 | 14.5 | +0.4 |
-| **18+** | **155** | **13.1** | **−0.9** |
+| Tool calls | n | Mean score |
+|:----------:|:-:|:----------:|
+| 1–7 | 8 | **19.32** |
+| 8–14 | 15 | 18.93 |
+| 15–21 | 18 | 17.39 |
+| 22–29 | 5 | 18.28 |
+| 30+ | 4 | 17.25 |
 
-The optimal range is **4–9 tool calls** (mean score 18.2–18.8). Critically, **62% of all evaluations** (155/250) fell into the 18+ tool call category, where TogoMCP actually **hurts** performance (Δ = −0.9). Without MIE schemas to guide efficient queries, the system defaults to excessive, poorly-targeted tool chaining.
+Sweet spot is **1–14 tool calls** (mean 19.0). Beyond 15 calls, scores dip to 17.4 — but recover slightly at 22–29 calls (18.28), suggesting that questions which *legitimately* require many tools (heavy retrieval workflows) can still succeed if the queries are well-targeted. The final tier (30+ calls, score 17.25) reflects the genuine struggle zone.
 
-### 5.2 SPARQL Query Count vs. Score
+### 5.2 SPARQL queries vs. score
 
-| SPARQL Calls | n | Mean Score | Δ |
-|-------------|---|-----------|---|
-| 0 | 30 | **16.6** | +1.8 |
-| 1 | 10 | **19.5** | +6.5 |
-| 2 | 25 | 13.3 | −0.8 |
-| 3 | 30 | 15.0 | −1.0 |
-| 4 | 10 | **18.1** | +3.4 |
-| 6 | 20 | 15.1 | +1.9 |
-| 7+ | 85 | 13.1 | −0.6 |
+| `run_sparql` calls | n | Mean score |
+|:------------------:|:-:|:----------:|
+| 0 | **13** | **18.20** |
+| 1 | 1 | 16.80 |
+| 3 | 5 | 18.36 |
+| 4 | 2 | 19.30 |
+| 5 | 4 | 17.70 |
+| 6–9 | 15 | 18.64 |
+| 10–14 | 5 | 18.20 |
+| 15+ | 3 | 17.47 |
 
-The sweet spot is **1 SPARQL call** (score 19.5, Δ = +6.5) or **4 calls** (score 18.1). With 7+ SPARQL queries, the system averages only 13.1 — below baseline. The correlation (*r* = −0.382) confirms that more SPARQL queries indicate struggle, not thoroughness.
+**Pearson *r*(SPARQL count, score) = 0.002** — essentially zero correlation. As in NG2, removing the MIE-grounding step decouples SPARQL volume from score: the model brute-forces variants until something works, and the volume of attempts no longer signals failure. **13 of 50 questions** (26 %) skip SPARQL entirely and rely on search APIs alone — the highest "no-SPARQL" rate of any condition. These score 18.20 on average, confirming that for many factoid/yes-no questions, search APIs alone are sufficient.
+
+Total SPARQL calls: 272 (mean 5.4/q). Lower than NG2's 343, because the Usage Guide (still active in this condition) keeps the model focused on the discovery → query path even without MIE.
 
 ---
 
-## 6. Tool Type Effectiveness
+## 6. Tool-Type Effectiveness
 
-### 6.1 Most Frequently Used Tools and Their Scores
+Tools used in ≥ 5 questions, ranked by mean question score:
 
-| Tool | Invocations | Mean Score | Δ | Signal |
-|------|------------|-----------|---|--------|
-| `run_sparql` | 1,620 | 14.1 | +0.1 | Neutral |
-| `ncbi_esearch` | 700 | 14.0 | −0.1 | Neutral |
-| `pubmed:search_articles` | 475 | 13.8 | −0.2 | Slight neg |
-| `search_uniprot_entity` | 330 | **13.3** | **−0.9** | **Negative** |
-| `search_chembl_target` | 200 | **13.0** | **−1.9** | **Negative** |
-| `get_sparql_endpoints` | 155 | 13.6 | −0.1 | Neutral |
-| `search_rhea_entity` | 150 | 14.2 | −0.2 | Neutral |
-| `ncbi_esummary` | 145 | 13.4 | −0.7 | Slight neg |
-| `pubmed:get_article_metadata` | 125 | **12.8** | **−1.6** | **Negative** |
-| `ols:search` | 95 | **15.8** | +0.9 | Positive |
-| `togoid_convertId` | 75 | **12.1** | **−1.6** | **Negative** |
-| `ols:getDescendants` | 60 | 13.8 | +1.5 | Positive |
-| `search_pdb_entity` | 60 | **11.3** | **−5.1** | **Very neg** |
-| `search_mesh_descriptor` | 40 | **15.0** | +1.8 | **Positive** |
+| Tool | n questions | Mean score | Verdict |
+|------|:-----------:|:----------:|---------|
+| `get_graph_list` | 6 | **18.67** | Strong — substitute schema discovery |
+| `togoid_convertId` | 10 | 18.40 | Strong (cross-DB ID bridging) |
+| `search_chembl_target` | 6 | 18.33 | Strong |
+| `run_sparql` | 37 | 18.25 | Universal — moderate |
+| `find_databases` | 50 | 18.24 | Universal first-after-Guide |
+| `TogoMCP_Usage_Guide` | 50 | 18.24 | Universal first call |
+| `search_uniprot_entity` | 24 | 18.17 | Adequate |
+| `search_rhea_entity` | 9 | 18.04 | Adequate |
+| `ncbi_esummary` | 16 | 17.99 | Adequate |
+| `ncbi_esearch` | 26 | 17.92 | Slightly below average |
+| `search_reactome_entity` | 7 | 17.86 | Slightly below average |
+| `togoid_getAllRelation` | 8 | 17.67 | Below average |
+| `search_mesh_descriptor` | 6 | 17.60 | Below average (vs WG's 20.0!) |
+| `pubmed:get_article_metadata` | 6 | 16.67 | **Weak — fallback signal** |
+| `pubmed:search_articles` | 6 | 16.03 | **Weak — fallback signal** |
 
-### 6.2 High-Score vs. Low-Score Tool Profiles
+Two patterns:
 
-Comparing evaluations scoring ≥18 (n=62) vs. ≤11 (n=54):
+1. **`get_graph_list` is now the highest-scoring power tool** (mean 18.67 across 6 questions). Without `get_MIE_file`, the model uses `get_graph_list` to enumerate available named graphs in a SPARQL endpoint — partially substituting for schema reading. The high mean score suggests this is an effective, learnable workaround.
+2. **PubMed fallback tools are again the weakest signal** (mean 15.7–16.7). When the model resorts to literature search, it's typically because structured queries failed — and the literature-grounded answers score lower than database-grounded ones.
 
-| Tool | High-score (≥18) | Low-score (≤11) | Signal |
-|------|:----------------:|:---------------:|--------|
-| `ols:search` | **37%** | 11% | **Positive** |
-| `search_uniprot_entity` | 24% | **59%** | **Negative** |
-| `pubmed:get_article_metadata` | 11% | **43%** | **Negative** |
-| `togoid_convertId` | 0% | **33%** | **Negative** |
-| `get_sparql_endpoints` | 40% | **76%** | **Negative** |
-| `search_chembl_target` | 10% | **28%** | **Negative** |
-| `ncbi_esearch` | 47% | **65%** | **Negative** |
-| `search_pdb_entity` | 0% | **13%** | **Negative** |
-| `run_sparql` | 76% | **100%** | **Negative** |
-
-The pattern is stark: **structured ontology tools** (`ols:search`, `search_mesh_descriptor`) are associated with high scores, while **text-based search tools** (`search_uniprot_entity`, `search_pdb_entity`, `search_chembl_target`) and **cross-database bridging** (`togoid_convertId`) are strongly associated with low scores. The `get_sparql_endpoints` tool appearing in 76% of low-score evaluations suggests the system frequently needs to look up endpoints on-the-fly — a task that MIE files would normally pre-resolve. Every low-scoring evaluation uses `run_sparql` (100%), confirming that the SPARQL queries themselves are poorly formed without schema guidance.
+Notable: `search_mesh_descriptor` was the perfect-score tool in WG (mean 20.0 on 4 questions). In No-MIE it drops to 17.6 (mean across 6 questions). MeSH lookup alone is insufficient when the downstream SPARQL needs schema knowledge to be precise.
 
 ---
 
 ## 7. Perfect Score Analysis
 
-### 7.1 Baseline Perfect Scores
+### 7.1 Universal-perfect questions (5/5)
 
-The baseline achieved exactly **1 perfect score** (question_035, choice, run 3): "Among X-RAY DIFFRACTION, SOLUTION NMR, and ELECTRON MICROSCOPY, which experimental technique accounts for the greatest number of deposited PDB structures…" This question asks about a well-established fact (X-ray diffraction dominance in PDB) that the LLM already knows with high confidence.
+**13 of 50 questions** achieved 20/20 on every Opus 4.7 run — fewer than WG (16) and NG1 (17) but on par with NG2 (16):
 
-**Near-perfect baseline scores (≥18):** 22 evaluations across 10 questions. These are concentrated in **yes/no** (4 questions) and **choice** (4 questions), all involving well-known entities where LLM knowledge alone suffices.
+| Question | Type | Tools | Notes |
+|----------|------|:-----:|-------|
+| question_007 | yes_no | 18 | SPG11 cross-DB verification |
+| question_014 | factoid | 6 | GO hormone activity protein count |
+| question_018 | list | 22 | AMR symbols for mupirocin resistance |
+| question_020 | yes_no | 4 | Symmachiella dynata genome |
+| question_024 | summary | 14 | Gluconeogenesis Rhea reactions |
+| question_026 | yes_no | 11 | PubChem pteridine class |
+| question_028 | list | 4 | B. subtilis biotin biosynthesis |
+| question_038 | choice | 14 | Mouse LGMD orthologs + PDB |
+| question_041 | choice | 28 | PKU metabolite identity |
+| question_042 | yes_no | 14 | DNA-related |
+| question_043 | factoid | 11 | DHNA approved Rhea reactions |
+| question_046 | yes_no | 17 | AXIN1 destruction-complex |
+| question_050 | choice | 16 | Salmonella enterica AMR |
 
-### 7.2 TogoMCP Perfect Scores
+### 7.2 Characteristics
 
-21 evaluations across 9 questions achieved perfect scores:
+- **By type:** 5 yes/no, 3 choice, 2 factoid, 2 list, 1 summary. The same skew toward verifiable types as the other conditions.
+- **Tool count:** median 14 (range 4–28). Notably, the universal-perfect summary (q024 gluconeogenesis) achieved 20/20 with 14 tools — fewer than NG2's universal-perfect q024 (33 tools), suggesting the Usage Guide's structured workflow is more efficient even without MIE.
+- **No baseline reaches 20 in this set.** All 13 universally-perfect questions are clear TogoMCP wins where the database-grounded answer beats the LLM's general knowledge.
 
-| Question | Type | Perfect Runs | Tools | Question Topic |
-|----------|------|:----------:|:-----:|----------------|
-| question_046 | yes_no | **5/5** | 13 | AXIN1 β-catenin destruction complex |
-| question_014 | factoid | 4/5 | 5 | GO hormone activity protein count |
-| question_036 | yes_no | 3/5 | 10 | Metachromatic leukodystrophy ontology |
-| question_041 | choice | 2/5 | 28 | PKU metabolite identity |
-| question_020 | yes_no | 2/5 | 15 | Symmachiella dynata genome assembly |
-| question_043 | factoid | 2/5 | 13 | 1,4-dihydroxy-2-naphthoate reactions |
-| question_010 | choice | 1/5 | 23 | SLE parent disease category |
-| question_028 | list | 1/5 | 9 | B. subtilis biotin biosynthesis |
-| question_019 | choice | 1/5 | 35 | Mucopolysaccharidosis PubMed co-annotations |
+### 7.3 Questions where NG2 was universal-perfect but No-MIE was NOT
 
-**Patterns:**
-- **By type:** yes_no (10 perfects) and factoid (6) dominate; no summary questions achieved perfect scores.
-- **Characteristics:** Perfect-scoring questions tend to have **fewer tool calls** (median 13, question_014 achieved perfection with just 5 tools), target **specific named entities**, and map to relatively clean database lookups.
-- The single universally perfect question (question_046, 5/5) asks a compound yes/no question about AXIN1's properties across multiple databases — exactly the type of query where cross-referencing NCBI Gene, UniProt, and PDB can definitively verify each claim.
+q003 (heart-attack ChEMBL targets), q023 (MANE Select transcripts), q033 (Notch ligands), q035 (PDB technique), q036 (metachromatic leukodystrophy), q039 (Brugada genes). These are questions where MIE-skipping is *easier* than MIE-blocking — the model in NG2 could have read MIE if it wanted to (and didn't), while in No-MIE it explicitly cannot, and the substitute strategy occasionally falls short.
 
 ---
 
 ## 8. When TogoMCP Was Worse Than Baseline
 
-**22 of 50 questions** (44%) had a lower or equal TogoMCP average than baseline. This is dramatically worse than the with-MIE condition (8 of 50 = 16%). The failures cluster into distinct patterns:
+**2 of 50 questions** had Δ < 0 (the same count as WG):
 
-### 8.1 Excessive Tool Chaining with Bad SPARQL (Largest Pattern)
+### 8.1 question_017 (yes_no, Δ = −2.40) — the canonical failure
 
-**question_005** (choice, Δ = −5.8): "Which kinase group — AGC, CAMK, CMGC, TK — has the most ChEMBL targets?" The system made 35 tool calls, cycling through repeated `search_chembl_target` calls and malformed SPARQL queries. Without MIE schemas for ChEMBL's structure, it couldn't write correct queries to count targets per kinase group. The baseline correctly answered "TK" using general knowledge.
+> "Does Anabaena sp. DSM 101043 grow in nitrogen-free BG11- medium?"
 
-**question_007** (yes_no, Δ = −5.0): "Does SPG11 satisfy three conditions (ClinVar pathogenic variants, PDB structures, ChEMBL targets)?" Used 26 tools, produced a **contradictory answer** — first confirming all 3 conditions, then reversing to "No." Without schema knowledge, each database check was unreliable, and the synthesis was incoherent.
+Same failure as in NG2. Without MIE, the model can't learn that BacDive is the right database for cyanobacteria strain growth conditions. Despite calling `find_databases`, the model doesn't recognize BacDive's specific MediaDive integration; it falls back to general searches and concludes "no specific information." Tool count: 27, SPARQL: 0.
 
-**question_040** (list, Δ = −1.6): "NCL disease genes with PDB structures in ChEMBL." Made 43 tool calls — the second-highest in the dataset — yet retrieved incomplete data. The extreme tool count signals the system floundering without schema guidance.
+The Usage Guide / `find_databases` discovery pipeline cannot fully substitute for `get_MIE_file` here: the discovery tools tell the model *which* databases exist, not *what* they cover or *how* to query them. MIE files are the only resource that bundles "database X has MediaDive cross-references and BG11- annotations."
 
-### 8.2 Summary Synthesis Failure
+### 8.2 question_034 (summary, Δ = −0.20)
 
-**question_021** (summary, Δ = −4.8): "Proteasome protein landscape from UniProt." Produced a **drastically wrong protein count** (286 vs. 53) from malformed SPARQL. The evaluator noted "tool processing visible" — the response contained raw query artifacts.
+AMR resistance summary. The model used `search_articles` and `pubmed` as the dominant tools (consistent with the "PubMed fallback = weak signal" pattern from §6). Δ = −0.20 is essentially evaluator noise; the answer was substantively correct but slightly less polished than the baseline's hedged narrative.
 
-**question_008** (summary, Δ = −3.4): "Taxonomic distribution of Chloroflexota in BacDive." Used 25 tools but couldn't properly query BacDive's schema without MIE guidance, producing incomplete taxonomy data with poor readability.
+### 8.3 Five questions tied with baseline (Δ = 0.00 to +0.40)
 
-**question_015** (summary, Δ = −2.4): "Phage T4 late proteins." Made 42 tool calls and produced unreliable structural method breakdowns, likely from malformed PDB queries.
+q004 (melatonin pathway), q005 (TK kinase group — baseline already at 18.8), q032 (anaerobe genome), q008 (Chloroflexota BacDive), q016 (Hyphomicrobiales taxonomy). These are mostly **multiple-choice questions where the baseline already has correct answers** (16+) from training knowledge, leaving No-MIE TogoMCP little headroom.
 
-### 8.3 Schema Misalignment Leading to Wrong Answers
+### 8.4 The catastrophic rev0 failures don't reproduce
 
-**question_035** (choice, Δ = −4.4): "Which PDB experimental technique is most common for human calmodulin-binding proteins?" Despite the baseline scoring 18.2 using general knowledge (X-ray diffraction dominates), TogoMCP scored only 13.8. Without PDB's schema, it couldn't retrieve method breakdowns and the evaluator noted "could not retrieve actual method breakdown."
+Rev0's worst-case failures included:
+- q005 kinase group: rev0 Δ = −5.8. New: Δ = +0.20 (tied).
+- q007 SPG11: rev0 Δ = −5.0 (self-contradiction). New: **Δ = +5.4 (universal-perfect)**.
+- q021 proteasome: rev0 Δ = −4.8 (drastically wrong protein count). New: Δ = +1.0 with correct count.
 
-**question_038** (choice, Δ = −3.6): "Which LGMD gene ortholog in mouse has the most ClinVar variants?" Scored 9.0 — below baseline's already-low 12.6. The cross-database query (Ensembl→ClinVar) was too complex without schema guidance.
-
-### 8.4 Common Failure Characteristics
-
-| Feature | Worse Questions (n=22) | Better Questions (n=28) |
-|---------|:---------------------:|:---------------------:|
-| Mean tool calls | **23.7** | **14.9** |
-| Mean cost | **$0.51** | **$0.39** |
-| Mean latency | **175 s** | **133 s** |
-| Summary type | **50%** (6/12 summaries) | **14%** (2/14) |
-| Uses `search_uniprot_entity` | **73%** | **43%** |
-| Uses `togoid_convertId` | **41%** | **11%** |
-
-The failure profile is clear: higher tool counts, higher costs, and reliance on text-based search tools and cross-database ID conversion — all symptoms of the system attempting to compensate for missing schema knowledge through brute-force trial and error.
+The Sonnet 4.5 model and the question set are unchanged from rev0; the rev0 patterns of "blind SPARQL writing produces wrong predicates" and "self-contradiction without structured workflow" therefore appear to have been resolved by **server-side changes** — substantial MIE schema enrichment, `togomcp` tool error handling improvements (e.g. `4e594cb`), and tool output formatting cleanups. The evaluator change (Opus 4.6 → 4.7) may also contribute by scoring borderline cases differently.
 
 ---
 
-## 9. TogoMCP Usage Guide Adherence
+## 9. Workflow Compliance
 
-The Usage Guide prescribes a five-step workflow: **(1) Read Usage Guide → (2) list_databases → (3) get_MIE_file → (4) Search tools → (5) run_sparql.**
+### 9.1 First tool called
 
-### 9.1 Step-by-Step Compliance
+**100 % of questions start with `TogoMCP_Usage_Guide`** (50 / 50). The system-prompt directive ("REQUIRED FIRST ACTION") works the same here as in WG.
 
-| Step | Tool | Usage Rate | Note |
-|------|------|:----------:|------|
-| 1. Usage Guide | `TogoMCP_Usage_Guide` | **96%** (240/250) | Near-universal |
-| 2. Database discovery | `list_databases` | **96%** (240/250) | Near-universal |
-| 3. Schema discovery | `get_MIE_file` | **0%** (0/250) | **Excluded by design** |
-| 4. Entity/vocab search | Any search tool | **98%** (245/250) | Compensatory over-use |
-| 5. Structured queries | `run_sparql` | **88%** (220/250) | High, but queries are poorly formed |
+### 9.2 Step-by-step compliance
 
-The system faithfully reads the Usage Guide and discovers databases, but with MIE files excluded, it **over-compensates with search tools** (98% vs. 86% with MIE) and runs more SPARQL queries per question — none of which are guided by schema knowledge.
+| Workflow Step | Tool | Usage Rate |
+|---|---|:----------:|
+| 1. Read Usage Guide | `TogoMCP_Usage_Guide` | **100 %** (50/50) |
+| 2. Database discovery | `find_databases` | **100 %** (50/50) |
+| 2b. (Fallback) | `list_databases` | 8 % (4/50) |
+| 3. Schema discovery | `get_MIE_file` | **0 %** (excluded) |
+| 4. Entity / vocab search | various | ~80 % |
+| 5. Structured queries | `run_sparql` | 74 % (37/50) |
 
-### 9.2 Workflow Patterns
+The Usage Guide drives uniform discovery: every question reads the guide, then calls `find_databases`. The MIE step is missing by design. After `find_databases`, the model proceeds to a mix of search APIs and SPARQL — substitute strategies that work well on factoid / list questions but less reliably on summary / choice.
 
-| Pattern | n | Mean Score | Δ | Tools | Cost | Time |
-|---------|---|-----------|---|-------|------|------|
-| **search_only** | 30 | **16.6** | **+1.8** | 16.5 | $0.51 | 93 s |
-| **search + SPARQL** | 215 | 14.1 | +0.1 | 20.9 | $0.48 | 164 s |
-| **SPARQL only** | 5 | 14.4 | +0.0 | 13.0 | $0.31 | 112 s |
+### 9.3 The substitute-for-MIE strategies
 
-The **search-only** pattern — where the system uses NCBI, PubMed, and other search APIs without attempting SPARQL — achieves the best results (+1.8). The dominant **search + SPARQL** pattern (86% of evaluations) achieves only +0.1 — essentially no improvement. This directly demonstrates that **SPARQL without MIE is counterproductive**: the queries are poorly formed, produce unreliable data, and the verbose processing adds noise that degrades readability.
+When the model can't read MIE, it appears to use three substitute strategies (visible in the tool-usage logs):
 
-### 9.3 Key Violation: Attempting SPARQL Without Schema Knowledge
+1. **`get_graph_list` for graph enumeration** (used in 6 questions, mean score 18.67). Tells the model what named graphs exist in the SPARQL endpoint.
+2. **`search_*_entity` tools to learn vocabulary** before issuing SPARQL. Most-used: `search_uniprot_entity` (24 questions), `search_chembl_target` (6).
+3. **Direct NCBI / PubMed fallback** when SPARQL fails. `ncbi_esearch` 26 questions, `pubmed:search_articles` 6 questions. The PubMed fallbacks are the weakest-scoring strategy (mean 16.0).
 
-The Usage Guide explicitly states that step 3 (get_MIE_file) should be called **before** writing SPARQL to learn structured properties, predicates, and examples. With MIE excluded, 88% of evaluations still attempted SPARQL queries — but blind SPARQL writing produced:
-- Wrong predicates and property paths
-- Missing GRAPH clauses
-- Incorrect entity URIs
-- Queries that returned empty results, triggering retry cascades
-
-This is visible in the tool count data: the mean tools-per-evaluation is 20.2 (no MIE) vs. ~10 (with MIE), yet scores are 2.33 points lower. The extra 10 tools per question represent failed attempts to iterate toward correct queries without schema guidance.
+The **first strategy is best**, the **third is worst**. A simple rule for No-MIE deployments: prefer `get_graph_list` and structured-vocabulary search over text-based literature fallback.
 
 ---
 
-## 10. Is the Increased Cost Justified?
+## 10. Three-Condition Comparison (No-MIE / NG2 / WG)
 
-### 10.1 Cost-Effectiveness Summary
+| Metric | Baseline | No-MIE (this) | NG2 | WG |
+|--------|----------|:-------------:|:---:|:--:|
+| TogoMCP score | — | 18.24 | 18.04 | **18.55** |
+| Δ vs baseline | — | +2.96 | +3.22 | **+3.45** |
+| Cohen's *d* | — | 1.38 | 1.19 | **1.82** |
+| Win rate | — | 83.2 % | 81.2 % | **94.4 %** |
+| Loss rate | — | **4.0 %** | 6.0 % | 1.6 % |
+| Perfect-score rate | — | 33.6 % | 40.0 % | **42.8 %** |
+| Mean tools / q | — | 16.9 | **20.9** | 12.4 |
+| Time / q | — | **206 s** | 183 s | 137 s |
+| Cost / q | — | $0.388 | $0.405 | $0.380 |
+| Cost per Δ point | — | $0.129 | $0.124 | **$0.108** |
 
-| Condition | Cost/Question | Time/Question | Score Δ | Cost per Δ Point |
-|-----------|:------------:|:------------:|:-------:|:----------------:|
-| Baseline | $0.005 | 8.1 s | — | — |
-| TogoMCP (no MIE) | **$0.483** | **154 s** | **+0.30** | **$1.61/point** |
-| TogoMCP (with MIE)¹ | $0.429 | 96.2 s | +2.72 | $0.16/point |
-
-### 10.2 Rationale: No, the Cost Is Not Justified (Overall)
-
-In the no-MIE condition, the system spends **$0.483 per question** (89.8× the baseline) and **154 seconds** (19× the baseline) to achieve a **non-significant** +0.30 improvement. At $1.61 per point of improvement, this is **10× less cost-effective** than the with-MIE condition ($0.16/point).
-
-For a 50-question run, the total cost is ~$24 for TogoMCP vs. ~$0.27 for baseline — an $24 premium for approximately **1.5 additional total score points across all 50 questions**. This is not economically justifiable.
-
-### 10.3 Exceptions: Where It Still Helps
-
-The no-MIE condition retains value for **factoid** questions (Δ = +2.22, 68% win rate) and **yes/no** questions (Δ = +1.10, 48% win rate). These question types often depend on NCBI searches and simple database lookups that don't require schema-guided SPARQL. For factoid queries specifically, the cost-effectiveness is $0.22/point — reasonable for precision-critical biomedical fact retrieval.
-
-For **summary** (Δ = −1.64, 70% lose rate) and **list** (Δ = −0.30, 50% lose rate) questions, the no-MIE TogoMCP is **actively harmful** — the baseline is better, cheaper, and faster.
+**No-MIE has the highest latency** (206 s) but the **lowest loss rate** of the unguided/restricted conditions (4.0 % vs NG2's 6.0 %). The Usage Guide's structured workflow keeps the model focused even when MIE is unavailable.
 
 ---
 
-## 11. Inter-Run Evaluation Consistency
+## 11. The MIE-vs-Discovery Decomposition
 
-| Metric | Baseline | TogoMCP |
-|--------|----------|---------|
-| Mean std per question | 0.77 | 1.09 |
-| Questions with std = 0 | 2 | 1 |
-| Questions with std > 2 | 0 | 2 |
+Comparing No-MIE (Usage Guide + discovery, no MIE) to NG2 (no Usage Guide, no instruction, MIE *available* but rarely used):
 
-The inter-run consistency is similar to the with-MIE condition. The two highest-variance TogoMCP questions are:
-- **question_038** (choice, std=2.83): Scores ranged from 7 to 14 — reflecting inconsistent cross-database query success.
-- **question_011** (factoid, std=2.17): Scores ranged from 10 to 15 — varying quality of DDBJ genome queries.
+| Aspect | No-MIE | NG2 |
+|--------|:-----:|:---:|
+| `get_MIE_file` usage | 0 % (blocked) | 18 % (rarely chosen) |
+| `find_databases` usage | 100 % (Guide-driven) | 10 % (spontaneous) |
+| Discovery + schema combined | Discovery only | Neither, mostly |
+| Mean score | 18.24 | 18.04 |
+| Δ vs baseline | +2.96 | +3.22 |
+| Loss rate | 4.0 % | 6.0 % |
 
----
+**No-MIE and NG2 deliver nearly identical headline scores** but for different reasons:
 
-## 12. Comparison: No-MIE vs. With-MIE Conditions
+- No-MIE has *forced* discovery (Usage Guide) but *no* schema reading → moderate-tool-count, lower-variance answers.
+- NG2 has *neither* (rarely uses either) → higher-tool-count, higher-variance answers, but slightly higher mean Δ because the unguided model picks more direct strategies that score well on factoid/list.
 
-This section directly quantifies the impact of removing `get_MIE_file()` from the pipeline.
-
-### 12.1 Head-to-Head
-
-| Metric | No-MIE | With-MIE | Impact of MIE |
-|--------|:------:|:--------:|:-------------:|
-| TogoMCP score | 14.37 | 16.70 | **+2.33** |
-| Baseline score | 14.07 | 13.98 | +0.09 (same) |
-| Score delta | +0.30 | +2.72 | **+2.42** |
-| Win rate | 40.8% | 74.8% | **+34.0 pp** |
-| Loss rate | 44.8% | 14.4% | **−30.4 pp** |
-| Perfect scores | 8.4% | 24.4% | **+16.0 pp** |
-| Cohen's *d* | 0.08 | 0.92 | **+0.84** |
-| Significance | p = 0.45 | p < 10⁻⁶ | non-sig → highly sig |
-| Tool calls/question | 20.2 | ~10 | **−10 calls** |
-| Cost/question | $0.483 | $0.429 | **−$0.05** |
-| Latency/question | 154 s | 96 s | **−58 s** |
-
-### 12.2 MIE's Effect by Question Type
-
-| Type | No-MIE Δ | With-MIE Δ | MIE Uplift |
-|------|:--------:|:----------:|:----------:|
-| yes_no | +1.10 | +3.32 | +2.22 |
-| factoid | +2.22 | +3.46 | +1.24 |
-| list | −0.30 | +2.96 | **+3.26** |
-| summary | −1.64 | +0.50 | **+2.14** |
-| choice | +0.10 | +3.36 | **+3.26** |
-
-MIE has the largest impact on **list** and **choice** questions (+3.26 each), where schema-guided SPARQL is essential for retrieving structured, comparable data. Even **summary** questions flip from harmful (−1.64) to marginally helpful (+0.50).
-
-### 12.3 MIE's Mechanism of Action
-
-The data reveals three mechanisms by which MIE files improve performance:
-
-1. **Fewer, better-targeted SPARQL queries.** With MIE, the system writes correct queries from the start; without MIE, it iterates blindly, doubling tool calls (20 vs. 10) while achieving worse results.
-
-2. **Correct predicate and property path usage.** Schema examples in MIE files show exact property paths (e.g., `up:classifiedWith`, `cco:hasExperiment`). Without them, the system guesses at predicates, producing queries that return empty or wrong results.
-
-3. **Better readability through cleaner processing.** With MIE, fewer tool calls mean less processing noise in the final response. The readability penalty is −0.22 with MIE vs. −0.60 without — nearly 3× worse.
+Neither condition has access to the optimal pipeline (discovery + MIE + SPARQL = WG / NG1). Both substitute, in different ways, and end up at similar outcomes — but **No-MIE is slower and has a lower perfect-score rate**, while NG2 is more variable.
 
 ---
 
-## 13. Key Findings and Recommendations
+## 12. Inter-Run Evaluator Consistency
 
-1. **`get_MIE_file()` is the single most critical tool in the TogoMCP pipeline.** Removing it collapses the improvement from large and significant (*d* = 0.92) to negligible and non-significant (*d* = 0.08), while increasing cost and latency. **MIE must never be optional.**
+| Metric | TogoMCP |
+|--------|:-------:|
+| Mean std per question | **0.52** |
+| Max std | 1.30 |
+| Questions with std = 0 | 17 |
+| Questions with std > 1 | 4 |
+| Questions with std > 2 | 0 |
 
-2. **Without MIE, SPARQL is counterproductive.** The search+SPARQL workflow (86% of evaluations) achieves only Δ = +0.1. The search-only workflow achieves Δ = +1.8. If MIE is unavailable, the system should be configured to **avoid SPARQL entirely** and rely on search APIs alone.
-
-3. **Excessive tool calls are a diagnostic signal of failure.** 62% of evaluations used 18+ tools and scored below baseline. The system's retry behavior — triggered by failed SPARQL queries — actively harms performance. A tool-count limit (e.g., max 12 calls) would prevent the worst degradation.
-
-4. **Summary and list questions should not use no-MIE TogoMCP.** With 70% and 50% loss rates respectively, the baseline is simply better for these question types without schema guidance.
-
-5. **Factoid questions remain the strongest use case** even without MIE (Δ = +2.22, 68% win rate), particularly when they map to NCBI or simple database lookups that don't require SPARQL.
-
-6. **Cost is not justified overall.** At $0.483/question for +0.30 points, the no-MIE condition is 10× less cost-effective than with-MIE. The system pays more, waits longer, and gets essentially the same quality as the baseline.
-
-7. **The Usage Guide should be updated** to treat MIE as a hard prerequisite for SPARQL, not an optional recommendation. If MIE reading fails or is unavailable, the guide should instruct the system to fall back to search-only workflows.
+Inter-run agreement is **substantially tighter than rev0** (mean std 0.52 vs rev0's 1.09). Only 4 questions have std > 1 (vs rev0's 2 with std > 2). The Opus 4.7 evaluators agree more consistently than Opus 4.6 did, and the responses themselves are less ambiguous (no data dumps, no self-contradictions).
 
 ---
 
-*Analysis generated from 5 independent evaluation runs (250 total evaluations) of 50 questions, comparing no-tool baseline vs. TogoMCP without `get_MIE_file()` access. Reference comparison to with-MIE condition drawn from `togomcp_analysis_v2.md`.*
+## 13. Is the Increased Cost Justified?
+
+| Condition | Extra cost / q | Score Δ | Cost / Δ point | Verdict |
+|-----------|:--------------:|:-------:|:--------------:|:-------:|
+| **No-MIE** | $0.382 | +2.96 | $0.129 | ✅ Justified |
+| WG | $0.375 | +3.45 | $0.108 | ✅ Strongly justified |
+
+**Yes — the cost is justified**, in stark contrast to rev0's "10× less cost-effective than with-MIE" verdict ($1.61/point). The new $0.129/point is ~12 % worse than WG, not 10× worse.
+
+**Where No-MIE is most attractive:** factoid (10.4 pts/$) and list (9.9 pts/$) questions, where direct retrieval is sufficient and the missing schema-reading step doesn't matter much.
+
+**Where No-MIE is weakest:** summary (4.2 pts/$) and choice (4.4 pts/$) — the cross-database synthesis tasks that benefit most from MIE schema knowledge.
+
+**Comparison with rev0:** the rev0 No-MIE condition was deemed "actively harmful" for summary and list questions (Δ = −1.64 and −0.30). New No-MIE shows Δ = +1.74 and +3.98 on the same types — the harmful-without-MIE pattern is gone.
+
+---
+
+## 14. Key Findings and Recommendations
+
+1. **MIE is no longer "the single most critical tool."** Rev0's headline framing — "MIE files are essential, removing them collapses TogoMCP" — does not hold in the new runs. No-MIE delivers Δ = +2.96 (within 0.5 of WG's +3.45). The model substitutes effectively via `find_databases` + direct search + `run_sparql` exploration.
+
+2. **The Usage Guide remains valuable even without MIE.** No-MIE's 100 % `find_databases` rate, low loss rate (4.0 %), and tighter inter-run variance (std 0.52) are direct consequences of the Usage Guide's structured workflow. Compared to NG2 (which has neither Guide nor instruction), No-MIE achieves similar scores at lower tool count and lower variance.
+
+3. **The catastrophic rev0 failures don't reproduce.** Self-contradictions, data dumps, and trial-and-error tool chains have all been resolved. q005 (rev0 Δ = −5.8) and q007 (rev0 Δ = −5.0) now both score positive in No-MIE.
+
+4. **q017 (Anabaena BacDive query) remains the canonical "MIE-needed" failure.** Without MIE, the model can't learn that BacDive carries MediaDive-integrated growth-condition annotations. This is the single biggest loss case across both NG2 and No-MIE conditions. **Lesson:** for niche-database questions (cyanobacteria strains, AMR-portal-specific resistance, glycoproteomic per-site curation), MIE is still essential.
+
+5. **`get_graph_list` is an effective substitute when MIE is missing.** Used in 6 questions with mean score 18.67 — the highest in the No-MIE tool ranking. Worth highlighting in the manuscript as a discovered workaround.
+
+6. **PubMed search is a tertiary fallback that signals failure.** `pubmed:search_articles` and `pubmed:get_article_metadata` rank as the lowest-mean tools (15.7–16.7). When the model resorts to literature search, it's typically because structured queries failed.
+
+7. **Cost is justified.** $0.129 per Δ point makes No-MIE economically viable for any precision-critical biomedical QA workload, though WG / NG1 are strictly more cost-effective.
+
+8. **For deployments where MIE files are unavailable** (e.g., new endpoints not yet documented), the No-MIE configuration with the Usage Guide active is a reasonable fallback. Plan for a longer median latency (~160 s vs ~110 s in WG) and a slightly higher loss rate, but expect comparable mean accuracy.
+
+---
+
+*Analysis: 5 independent Opus 4.7 evaluation runs × 50 questions = 250 evaluations. Source CSV: `no_mie-2026-05-04.csv` (post-fix data, with `mcp__*__get_MIE_file` blocked across all server prefixes via enumeration); per-run scoring CSVs: `no_mie-2026-05-04-Opus4.7-v{1..5}.csv`. Reference comparison: 2026-02 paper analysis at [`rev0/togomcp_no_mie_analysis.md`](rev0/togomcp_no_mie_analysis.md).*

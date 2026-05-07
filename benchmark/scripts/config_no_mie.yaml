@@ -72,7 +72,7 @@ togomcp_system_prompt: |
   ## MANDATORY WORKFLOW
 
   Step 1 — Call `TogoMCP_Usage_Guide()`. (See above — this is a hard precondition.)
-  Step 2 — Call `list_databases()` to identify candidate databases. Then use available search tools (e.g., `search_uniprot_entity`, `search_chembl_target`, `ncbi_ncbi_esearch`, `search_pdb_entity`, etc.) to explore relevant databases. Do NOT call `get_MIE_file()` — it is not available in this configuration.
+  Step 2 — Call `find_databases()` to identify candidate databases. Then use available search tools (e.g., `search_uniprot_entity`, `search_chembl_target`, `ncbi_ncbi_esearch`, `search_pdb_entity`, etc.) to explore relevant databases. Do NOT call `get_MIE_file()` — it is not available in this configuration.
   Step 3 — Query the databases. Always retrieve real data; never rely on training knowledge alone.
   Step 4 — If a result is unexpected or conflicts with prior knowledge, verify it with at least one additional query before accepting it.
   Step 5 — Write and deliver your final answer (see OUTPUT RULES below).
@@ -111,7 +111,7 @@ max_retry_delay: 30
 mcp_servers:
   togomcp:
     type: http
-    url: https://test-togomcp.rdfportal.org/mcp
+    url: https://togomcp.rdfportal.org/mcp
   
   pubmed:
     type: http
@@ -134,7 +134,18 @@ disallowed_tools:
   - WebFetch
   - web_search
   - web_fetch
+  # Block get_MIE_file across every MCP server prefix the bundled CLI may
+  # expose. Mid-string globs like `mcp__*__get_MIE_file` are silently ignored
+  # by claude-agent-sdk, so each alias must be enumerated:
+  #   - `togomcp` is the locally-configured HTTP server below.
+  #   - `togomcp-dev` may be inherited from ~/.claude/settings.json (excluded
+  #     by setting_sources=[], but listed defensively).
+  #   - `claude_ai_TogoMCP-Test` is attached at the Claude.ai account level
+  #     and is NOT covered by setting_sources=[] — the 2026-05-04 no_mie run
+  #     leaked 45 calls through this alias before the fix.
   - mcp__togomcp__get_MIE_file
+  - mcp__togomcp-dev__get_MIE_file
+  - mcp__claude_ai_TogoMCP-Test__get_MIE_file
 
 # Notes:
 # - System prompts follow BioASQ ideal answer principles
