@@ -175,7 +175,18 @@ See `scripts/CONFIG_FORMAT.md` for the full specification and YAML formatting gu
 ## Requirements
 
 ```bash
-pip install anthropic claude-agent-sdk pyyaml pandas ollama
+pip install anthropic 'claude-agent-sdk>=0.1.70' pyyaml pandas ollama
 ```
 
-An `ANTHROPIC_API_KEY` environment variable must be set. The `automated_test_runner.py` script requires access to the TogoMCP MCP server at `https://togomcp.rdfportal.org/mcp`.
+An `ANTHROPIC_API_KEY` environment variable must be set. The `automated_test_runner.py` script requires access to the TogoMCP MCP server at `https://togomcp.rdfportal.org/mcp` (or the staging endpoint at `https://test-togomcp.rdfportal.org/mcp`).
+
+> **Pin `claude-agent-sdk>=0.1.70`.** Older versions ship a stale bundled `claude` CLI that silently returns empty responses against the current Anthropic API — the test runner records these as failures with the marker `"Empty response from claude-agent-sdk (no ResultMessage text)"`. If you see that error pattern at high frequency, upgrade with `pip install -U claude-agent-sdk` and verify with `echo "What is 2+2?" | <site-packages>/claude_agent_sdk/_bundled/claude --print`.
+
+### Operational notes
+
+The runner has a few knobs in each `config*.yaml` worth knowing about for long sweeps:
+
+- `retry_attempts` / `retry_delay` / `max_retry_delay` — exponential-backoff retry for transient MCP failures (default 3 attempts, 2-30s backoff). The runner now retries on three conditions: timeouts, exceptions, **and** empty responses from the agent SDK.
+- `inter_question_delay` — seconds to sleep between questions (default 0). Set to 30-90s if you hit clustered failures suggesting throttling at the togomcp MCP server or its upstream SPARQL endpoint.
+- `togomcp_time` records only the latency of the call that produced the recorded answer (excludes time spent on preceding failed retry attempts and inter-attempt sleeps), so it stays comparable to `baseline_time`.
+- `tools_used` records only `mcp__*` tools — built-in agent tools (Read, Bash, ToolSearch, etc.) are filtered out so per-question tool-use counts are apples-to-apples with prior runs.

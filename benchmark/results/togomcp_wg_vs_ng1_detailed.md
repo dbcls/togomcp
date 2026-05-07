@@ -1,281 +1,269 @@
 # With Guide vs NG1: Detailed Comparison
 
-**Conditions compared:**
-- **With Guide (WG):** Full Usage Guide tool + MIE files available
-- **NG1:** No Usage Guide, but explicit instruction to call `list_databases()` and `get_MIE_file()` before SPARQL queries
+**Date:** 2026-05-05
+**Benchmark answers collected:** 2026-05-04 (Sonnet 4.5, `claude-sonnet-4-5-20250929`)
+**Evaluator LLM:** Opus 4.7 (`claude-opus-4-7`), 5 independent evaluation runs per condition
+**Questions:** 50 (10 each of yes/no, factoid, list, summary, choice)
 
-Both are independent experiment runs (different dates, different stochastic outcomes), so per-question differences reflect both instruction effects and run-to-run variability.
+**Conditions compared:**
+
+- **With Guide (WG):** Full Usage Guide tool + MIE files + system-prompt directive to call the guide first.
+- **NG1:** No Usage Guide tool; system-prompt instruction to call `find_databases()` then `get_MIE_file()` before SPARQL.
+
+Both are independent experiment runs (different baseline and TogoMCP answers), so per-question score differences fold in both treatment effects and run-to-run stochasticity. Aggregate statistics across 250 evaluations per condition are robust.
 
 ---
 
-## 1. The Headline: Statistically Indistinguishable
+## 1. The Headline: Statistically Indistinguishable on Total Score
 
-| Metric | With Guide | NG1 | Difference |
-|--------|:----------:|:---:|:----------:|
-| TogoMCP score | 16.70 | 16.62 | +0.08 |
-| Δ vs baseline | +2.72 | +2.73 | −0.01 |
-| Cohen's *d* | 0.91 | 0.93 | −0.02 |
-| Win rate | 74.8% | 74.8% | 0.0 pp |
-| Loss rate | 14.4% | 19.2% | −4.8 pp |
-| Perfect scores | 24.4% | 22.4% | +2.0 pp |
+| Metric | WG | NG1 | Difference |
+|--------|:--:|:---:|:----------:|
+| Mean TogoMCP score | 18.55 | 18.61 | **−0.06** |
+| Δ vs baseline | +3.45 | +3.46 | −0.004 |
+| Cohen's *d* | 1.82 | 1.56 | +0.26 |
+| Win rate | 94.4 % | 92.8 % | +1.6 pp |
+| Loss rate | 1.6 % | 4.8 % | −3.2 pp |
+| Perfect-score rate (=20) | 42.8 % | 48.4 % | −5.6 pp |
 
-**Statistical tests for WG vs NG1:**
+**Statistical tests for WG vs NG1 on per-question mean TogoMCP scores:**
 
 | Test | Statistic | *p*-value | Interpretation |
 |------|:---------:|:---------:|:---------------|
-| Wilcoxon (TogoMCP scores) | — | **0.827** | No difference |
-| *t*-test (TogoMCP scores) | *t* = 0.27 | **0.788** | No difference |
-| Wilcoxon (Δ comparison) | — | **0.537** | No difference |
-| Bootstrap 95% CI for Δ diff | — | [−0.64, +0.68] | **Contains zero** |
+| Wilcoxon signed-rank | — | **0.887** | No difference |
+| Paired *t*-test | *t* = −0.40 | **0.691** | No difference |
+| Bootstrap 95 % CI for Δ_WG − Δ_NG1 | — | **[−0.40, +0.42]** | Contains zero |
+| Mean diff in Δ | — | **−0.004 points** | Essentially zero |
 
-The difference between WG and NG1 is **not statistically significant** by any test. The 95% bootstrap confidence interval for the Δ difference spans [−0.64, +0.68], centered essentially at zero. Whatever additional value the Usage Guide provides beyond the MIE instruction is indistinguishable from noise with 50 questions and 5 evaluation runs.
+The headline rev0 finding **holds**: the difference between WG's full Usage Guide and NG1's bare MIE instruction is indistinguishable from noise on the total-score axis. With 50 questions × 5 evaluators = 250 paired observations, the data still cannot distinguish them.
 
 ---
 
 ## 2. Where They Do Differ: Criteria-Level Analysis
 
-While total scores are identical, **one criterion shows a significant difference**:
+While total scores are washed out, **three of the four sub-criteria show statistically significant differences** — more than rev0's single significant criterion (readability):
 
-| Criterion | WG Δ | NG1 Δ | Diff (WG−NG1) | *p*-value |
-|-----------|:-----:|:-----:|:-------------:|:---------:|
-| Recall | +1.92 | +1.91 | +0.01 | 0.552 |
-| Precision | +1.07 | +0.97 | +0.10 | 0.433 |
-| Repetition | −0.05 | −0.19 | +0.14 | 0.072 |
-| **Readability** | **−0.22** | **+0.04** | **−0.26** | **0.004** |
+| Criterion | WG Δ | NG1 Δ | Diff (WG−NG1) | *p*-value | Direction |
+|-----------|:----:|:-----:|:-------------:|:---------:|:---------:|
+| **Recall** | +2.23 | +1.97 | **+0.26** | **0.010** | **WG better** |
+| Precision | +1.04 | +1.01 | +0.03 | 0.645 | NS |
+| **Repetition** | +0.11 | +0.21 | −0.10 | **0.024** | **NG1 better** |
+| **Readability** | +0.07 | +0.26 | **−0.19** | **0.004** | **NG1 better** |
 
-**NG1 has significantly better readability** (*p* = 0.004). WG responses degrade readability (Δ = −0.22), while NG1 responses maintain or slightly improve it (Δ = +0.04). WG has marginally better repetition control (*p* = 0.072), but the effect is not significant at α = 0.05.
+**The result is a clean trade-off**: WG retrieves more facts but with slightly more verbose / repetitive presentation; NG1 produces cleaner prose with marginally less recall. The two effects roughly cancel on total score.
 
-### Readability by Question Type
+This is a **stronger pattern than rev0**, where only readability differed (also favoring NG1). The new runs surface the recall advantage of WG too — likely because the Usage Guide's structured ordering ("read MIE before SPARQL") leads to more comprehensive retrieval, while NG1's bare instruction leaves the model freer to skip steps.
 
-| Type | WG Readability Δ | NG1 Readability Δ | Diff |
-|------|:-----------------:|:-----------------:|:----:|
-| **summary** | −0.66 | −0.28 | −0.38 |
-| **choice** | −0.12 | +0.38 | −0.50 |
-| **factoid** | −0.28 | +0.02 | −0.30 |
-| yes_no | −0.02 | +0.10 | −0.12 |
-| list | −0.02 | −0.00 | −0.02 |
+### Readability and repetition by question type
 
-The readability penalty is most acute for **summary** and **choice** questions under WG. One possible explanation: the Usage Guide's workflow encouragement may prompt WG to include more intermediate reasoning or verbose SPARQL result narration, whereas NG1's simpler instruction leads to more direct answers.
+| Type | WG Read Δ | NG1 Read Δ | Diff | WG Rep Δ | NG1 Rep Δ | Diff |
+|------|:---------:|:----------:|:----:|:--------:|:---------:|:----:|
+| **summary** | +0.02 | +0.46 | −0.44 | +0.10 | +0.32 | −0.22 |
+| **factoid** | +0.12 | +0.30 | −0.18 | +0.10 | +0.10 | 0.00 |
+| **list** | +0.08 | +0.22 | −0.14 | +0.16 | +0.16 | 0.00 |
+| choice | +0.22 | +0.10 | +0.12 | +0.40 | +0.18 | +0.22 |
+| yes_no | +0.18 | +0.30 | −0.12 | +0.30 | +0.32 | −0.02 |
 
-### Repetition by Question Type
+NG1's readability advantage is most pronounced on **summary** questions (+0.44 over WG). On choice questions the direction reverses — WG outdoes NG1 on both readability (+0.12) and repetition (+0.22).
 
-| Type | WG Repetition Δ | NG1 Repetition Δ | Diff |
-|------|:----------------:|:-----------------:|:----:|
-| **list** | +0.14 | −0.16 | +0.30 |
-| **choice** | +0.00 | −0.24 | +0.24 |
-| yes_no | +0.16 | −0.00 | +0.16 |
-| factoid | −0.12 | −0.26 | +0.14 |
-| summary | −0.42 | −0.30 | −0.12 |
+### Recall by question type
 
-WG has slightly better repetition for list and choice questions, possibly because the Usage Guide's structured workflow prevents redundant tool calls that produce repeated content.
+| Type | WG Rec Δ | NG1 Rec Δ | Diff |
+|------|:--------:|:---------:|:----:|
+| **yes_no** | +2.42 | +2.42 | 0.00 |
+| **factoid** | +2.74 | +2.42 | **+0.32** |
+| **list** | +2.30 | +2.16 | +0.14 |
+| **choice** | +1.66 | +1.16 | **+0.50** |
+| **summary** | +1.46 | +1.62 | −0.16 |
+
+WG's recall advantage is largest on **choice** (+0.50) and **factoid** (+0.32), where the Usage Guide's structured workflow helps the model retrieve all relevant evidence. On summary, NG1's recall actually edges out WG.
 
 ---
 
 ## 3. Tool Usage: Same Outcome, Different Strategies
 
-### 3.1 Workflow Compliance
+### 3.1 Workflow compliance
 
-| Tool | WG | NG1 |
-|------|:--:|:---:|
-| Usage Guide | **100%** (50/50) | 0% (excluded) |
-| `list_databases` | **100%** (50/50) | 92% (46/50) |
-| `get_MIE_file` | 92% (46/50) | 92% (46/50) |
-| `run_sparql` | 92% (46/50) | 90% (45/50) |
+| Tool | WG (rows) | NG1 (rows) | WG (calls) | NG1 (calls) |
+|------|:---------:|:----------:|:----------:|:-----------:|
+| `TogoMCP_Usage_Guide` | **100 %** (50/50) | 0 % (excluded) | 50 | — |
+| `find_databases` | 96 % (48/50) | 92 % (46/50) | 58 | 50 |
+| `get_MIE_file` | 94 % (47/50) | 96 % (48/50) | 88 | 98 |
+| `run_sparql` | 94 % (47/50) | 96 % (48/50) | 241 | **317** |
+| `search_uniprot_entity` | 32 % (16/50) | 24 % (12/50) | 42 | 26 |
+| `ncbi_esearch` | 26 % (13/50) | 18 % (9/50) | 63 | 36 |
 
-Despite lacking the Usage Guide, NG1 achieves near-identical compliance on the key tools. The 8% gap in `list_databases` (92% vs 100%) is the most visible difference.
+The most striking difference: **NG1 makes 32 % more `run_sparql` calls** (317 vs 241). Without the Usage Guide's structured workflow, the model substitutes a higher SPARQL volume — issuing more variant queries against the same questions.
 
-### 3.2 First Tool Called
+### 3.2 First tool called
 
-| First tool | WG | NG1 |
-|------------|:--:|:---:|
-| Usage Guide | **50** | — |
-| `list_databases` | 0 (always 2nd) | **34** (68%) |
-| `ncbi_esearch` | 0 | 5 (10%) |
-| `search_uniprot_entity` | 0 | 5 (10%) |
-| Other search tools | 0 | 6 (12%) |
+| First MCP tool | WG | NG1 |
+|----------------|:--:|:---:|
+| `TogoMCP_Usage_Guide` | **50** | — |
+| `find_databases` | 0 (always second) | **45** |
+| `ncbi_esearch` | 0 | 2 |
+| `ncbi_efetch` | 0 | 1 |
+| `search_uniprot_entity` | 0 | 1 |
+| `search_chembl_target` | 0 | 1 |
 
-WG has a perfectly uniform start: every question begins with Usage Guide → `list_databases`. NG1 starts with `list_databases` 68% of the time, but 32% of questions begin with a search tool, bypassing the discovery phase entirely. These questions still often succeed because the model finds MIE files later, but this occasional shortcut explains part of the higher variance.
+WG has perfectly uniform start-up: every question begins with `TogoMCP_Usage_Guide → find_databases`. NG1 starts with `find_databases` 90 % of the time, but **5 questions (10 %) skip it** and jump straight to a search tool. These are typically questions where the model recognizes the entity from training knowledge (e.g., a specific ChEMBL target) and goes directly to the relevant search API.
 
-### 3.3 Tool Diversity and Volume
-
-| Metric | WG | NG1 |
-|--------|:--:|:---:|
-| Unique tools used (total) | **31** | 24 |
-| Mean unique tools/question | **6.1** | 4.6 |
-| Mean total tools/question | 11.7 | 12.6 |
-| Median tools/question | 10 | 12 |
-| Tool range | 4–34 | 1–29 |
-
-WG uses **more diverse** tools (31 vs 24 unique across all questions) and more unique tools per question (6.1 vs 4.6). WG-exclusive tools include `togoid_getAllRelation`, `search_pdb_entity`, `getAncestors`, `ncbi_list_databases`, and `Bash` — tools the Usage Guide presumably steers toward in specific scenarios.
-
-NG1 uses slightly more tools per question on average (12.6 vs 11.7), suggesting it compensates for less strategic tool selection with more SPARQL attempts.
-
-### 3.4 SPARQL Patterns
+### 3.3 SPARQL patterns
 
 | Metric | WG | NG1 |
 |--------|:--:|:---:|
-| Total SPARQL calls | 198 | **279** |
-| Mean SPARQL/question | 4.0 | **5.6** |
-| Questions with >10 SPARQL | 2 | **6** |
-| Heavy SPARQL mean score | 16.0 | 15.6 |
+| Total SPARQL calls | 241 | **317** |
+| Mean SPARQL / question | 4.8 | **6.3** |
+| Questions with > 10 SPARQL | 5 | **9** |
+| Pearson *r* (SPARQL count, score) | −0.49 | −0.36 |
 
-NG1 makes **41% more SPARQL calls** overall. It is more aggressive with SPARQL, sometimes attempting 14–24 calls on a single question (vs WG's max of 17). These "heavy SPARQL" attempts (>10 calls) don't necessarily hurt — they average 15.6 in NG1 — but they don't help much either, and they inflate cost and latency.
+NG1 makes **31 % more SPARQL** queries on average. The negative correlation between SPARQL count and score is *less negative* in NG1 (−0.36 vs WG's −0.49) — NG1 absorbs more SPARQL volume without proportional score loss, but the cost is the higher overall query count.
 
-The pattern suggests that the Usage Guide helps WG use SPARQL more *efficiently* (fewer calls, same results), while NG1 sometimes brute-forces its way through SPARQL trial and error.
-
----
-
-## 4. Directional Agreement: Where Do They Diverge?
-
-Of 50 questions, WG and NG1 agree on the direction of improvement in **70%** of cases:
-
-| Outcome | Count | Percentage |
-|---------|:-----:|:----------:|
-| Both improve over baseline | 33 | 66% |
-| Both worse than baseline | 2 | 4% |
-| WG improves, NG1 doesn't | 8 | 16% |
-| NG1 improves, WG doesn't | 6 | 12% |
-
-The 14 questions where they disagree on direction are the most informative:
-
-### 4.1 WG Wins, NG1 Loses (8 questions)
-
-| Question | Type | WG Δ | NG1 Δ | Root cause |
-|----------|------|:----:|:-----:|:-----------|
-| question_027 | factoid | +5.2 | −1.2 | WG found 58 reactions; NG1 only found 13 (incomplete pathway coverage, 16 SPARQL calls) |
-| question_034 | summary | +3.4 | −1.2 | WG correctly used AMRportal for resistance data; NG1 pulled incorrect species (S. pneumoniae not in ideal) |
-| question_032 | yes_no | +2.2 | −2.4 | WG found genome data; NG1 failed on genome completeness query |
-| question_023 | list | +2.6 | −1.2 | WG found correct MANE transcripts; NG1 had errors |
-| question_030 | choice | +1.8 | −2.4 | WG found 10 genes (ideal 15); NG1 found only 5 with formatting artifacts |
-| question_005 | choice | +1.0 | −1.0 | WG correct answer; NG1 count discrepancies |
-| question_044 | list | +0.8 | −1.4 | WG incomplete but positive; NG1 more incomplete |
-| question_021 | summary | +0.2 | −0.8 | WG marginal; NG1 imprecise aggregation |
-
-**Pattern:** These tend to be complex multi-database questions (factoid, choice) where WG's broader tool diversity or Usage Guide workflow helped select the right databases. For example, question_027 required comprehensive Rhea + UniProt coverage; question_034 required AMRportal-specific queries.
-
-### 4.2 NG1 Wins, WG Loses (6 questions)
-
-| Question | Type | WG Δ | NG1 Δ | Root cause |
-|----------|------|:----:|:-----:|:-----------|
-| question_006 | factoid | −1.0 | +2.4 | NG1 found 69 targets (correct); WG only found 11 (subset) |
-| question_009 | list | −1.8 | +0.8 | NG1 retrieved more enzymes than WG |
-| question_017 | yes_no | −0.4 | +2.2 | NG1 found organism data; WG failed |
-| question_045 | summary | −1.6 | +0.6 | NG1 more accurate summary |
-| question_049 | summary | −0.6 | +1.2 | NG1 better coverage |
-| question_035 | choice | −0.2 | +1.0 | Marginal; both near-correct |
-
-**Pattern:** These are cases where NG1's more aggressive SPARQL approach paid off (question_006: 14 SPARQL calls to systematically enumerate metalloproteases, while WG's fewer calls missed most). Run-to-run stochasticity also plays a role.
+The pattern: **WG uses SPARQL more efficiently** (fewer calls per question, same retrieval), while NG1 brute-forces with more variant queries. Both arrive at similar answers.
 
 ---
 
-## 5. Answer Quality: Qualitative Observations
+## 4. Directional Agreement
 
-Examining the actual answer text reveals some stylistic differences:
+| Outcome | Count | % |
+|---------|:-----:|:-:|
+| Both improve over baseline | **45** | 90 % |
+| Both worse than baseline | **0** | 0 % |
+| WG improves, NG1 doesn't | 3 | 6 % |
+| NG1 improves, WG doesn't | 2 | 4 % |
 
-**WG answers** tend to:
-- Include more intermediate reasoning visible in the output (e.g., "Excellent! The data looks good. The count of 58...")
-- Occasionally expose process artifacts ("Now I need to count the unique ChEMBL IDs that have PDB mappings")
-- Use slightly more structured formatting
+**WG and NG1 agree on direction in 90 % of cases** — substantially higher agreement than rev0's 70 %. **Zero questions** have *both* TogoMCP arms below the baseline, a cleaner result than rev0 (which had 2). The five disagreement cases are the most informative.
 
-**NG1 answers** tend to:
-- Also include intermediate reasoning (e.g., "Perfect! Now I have all the information I need")
-- Produce slightly more direct final answers when successful
-- Sometimes provide incorrect answers with confident framing (question_007: correctly found all evidence then answered "No")
+### 4.1 WG wins, NG1 loses (3 questions)
 
-The question_007 case is particularly instructive: NG1 found the same evidence as WG (MANE Select transcript, PDB structures, ChEMBL entry) but then incorrectly concluded "No" by arguing the ChEMBL entry lacked functional drug target data. WG answered "Yes" correctly. This type of reasoning error is rare but not caused by missing schema knowledge — it's a reasoning/interpretation failure that occurs stochastically.
+| Question | Type | WG Δ | NG1 Δ | Diff | Likely cause |
+|----------|------|:----:|:-----:|:----:|:-------------|
+| question_013 | list | +1.0 | −1.2 | **+2.2** | Joubert top-5 — WG found correct genes; NG1 picked the wrong MedGen concept |
+| question_030 | choice | +0.0 | −1.0 | **+1.0** | chr-1 cardiomyopathy genes — WG count closer to ideal |
+| question_005 | choice | +1.0 | +0.0 | +1.0 | Kinase TK group — WG cleaner |
+
+These are mostly **complex multi-database list / choice** questions where WG's structured workflow ensures comprehensive coverage.
+
+### 4.2 NG1 wins, WG loses (2 questions)
+
+| Question | Type | WG Δ | NG1 Δ | Diff | Likely cause |
+|----------|------|:----:|:-----:|:----:|:-------------|
+| question_044 | list | +0.0 | +3.0 | **−3.0** | Siglec glycoproteomic curation — NG1 found GlyConnect; WG queried GlyCosmos and over-listed |
+| question_021 | summary | −0.2 | +2.2 | **−2.4** | Proteasome KW-0647 — NG1's cleaner answer scored higher |
+
+NG1 wins on questions where **the Usage Guide's exploratory rigor backfires** — by reading more MIE files and searching more databases, WG sometimes pulls in over-broad data (e.g., all 10 siglecs from GlyCosmos instead of the 4 specifically curated in GlyConnect).
 
 ---
 
-## 6. Evaluator Variance
+## 5. Largest Per-Question Gaps
+
+### 5.1 WG significantly higher than NG1
+
+| Question | Type | WG | NG1 | Diff | Note |
+|----------|------|:--:|:---:|:----:|:-----|
+| question_013 | list | 18.6 | 15.4 | **+3.20** | Joubert top-5 — direction-changing |
+| question_030 | choice | 18.2 | 16.2 | +2.00 | chr-1 cardiomyopathy |
+| question_001 | yes_no | 20.0 | 18.6 | +1.40 | HSPB1 / Charcot-Marie-Tooth |
+| question_005 | choice | 20.0 | 18.6 | +1.40 | Kinase TK group |
+| question_006 | factoid | 16.8 | 15.6 | +1.20 | Metalloprotease ChEMBL count |
+
+These are mostly questions where **the Usage Guide's structured ordering helps the model produce comprehensive retrieval**. The recall-axis advantage shows up at the question level here.
+
+### 5.2 NG1 significantly higher than WG
+
+| Question | Type | WG | NG1 | Diff | Note |
+|----------|------|:--:|:---:|:----:|:-----|
+| question_044 | list | 12.8 | 15.8 | **−3.00** | Siglec glycoproteomic curation |
+| question_003 | factoid | 16.8 | 19.4 | **−2.60** | Heart-attack ChEMBL targets |
+| question_021 | summary | 14.8 | 17.2 | **−2.40** | Proteasome KW-0647 summary |
+| question_031 | factoid | 16.0 | 18.4 | −2.40 | Glycosyltransferase Rhea reactions |
+| question_025 | choice | 19.0 | 20.0 | −1.00 | Universal-perfect in NG1 only |
+
+These are **questions where the bare instruction is enough**, and the Usage Guide's full procedural rigor adds verbosity / wrong-database overhead without proportionate accuracy gains.
+
+---
+
+## 6. Universal-Perfect Questions
+
+| Set | Count | Question IDs |
+|-----|:-----:|:-------------|
+| Both 5/5 perfect | **12** | q010, q019, q020, q026, q028, q036, q038, q039, q043, q046, q047, q050 |
+| WG only 5/5 | 4 | **q001** (HSPB1), **q005** (Kinase TK), **q029** (Notch1 summary), **q032** (anaerobe genome) |
+| NG1 only 5/5 | 5 | q007 (SPG11), q012 (TMEM67 Joubert), q017 (Anabaena BG11-), q025 (kinetochore), q042 (Brugada syndrome) |
+
+NG1 has a slight edge on universal-perfect count (17 vs WG's 16), but the more interesting observation is **which questions are universally perfect in only one condition**:
+
+- WG's exclusive perfects include **the only universal-perfect summary** (q029 Notch1) — structured workflow helps synthesis.
+- NG1's exclusive perfects include the **q017 Anabaena BG11-** question, which is the canonical *failure* in NG2 and No-MIE. NG1 got it 5/5 perfect here. Reading the Usage Guide didn't matter; the explicit MIE instruction was sufficient for the model to find BacDive's MediaDive-integrated growth-condition annotations.
+
+---
+
+## 7. Cost and Latency
 
 | Metric | WG | NG1 |
 |--------|:--:|:---:|
-| Mean baseline eval std | 0.76 | 0.63 |
-| Mean TogoMCP eval std | **1.08** | 0.76 |
-| Max TogoMCP eval std | **2.24** | 1.64 |
+| Mean time / q | 137 s | **126 s** |
+| Mean cost / q | $0.380 | $0.370 |
+| Mean tool calls / q | 12.4 | **12.1** |
+| Cost per Δ point | $0.108 | **$0.106** |
 
-WG responses have **higher evaluator variance** (std 1.08 vs 0.76). This means the 5 evaluator LLMs disagree more about WG answer quality. This could be because:
-
-1. WG's intermediate reasoning artifacts create ambiguity about answer quality
-2. WG's more verbose responses are harder to score consistently
-3. Random variation between experiments
-
-The lower NG1 variance suggests its answers are more consistently scoreable, even if the overall quality is identical.
+NG1 is slightly **faster** (saves ~11 s per question, ~9 minutes over a full 50-q evaluation) and slightly **cheaper** ($0.01/q, $0.50 over 50 q). The savings come from skipping the `TogoMCP_Usage_Guide` tool call. With near-identical quality outcomes, NG1 is the marginally more cost-effective configuration — though the difference is small.
 
 ---
 
-## 7. Score Distributions
-
-| Score range | WG TogoMCP | NG1 TogoMCP |
-|-------------|:----------:|:-----------:|
-| 4–8 | 0 (0%) | 0 (0%) |
-| 9–12 | 18 (7%) | 30 (12%) |
-| 13–16 | 96 (38%) | 89 (36%) |
-| 17–19 | 75 (30%) | 75 (30%) |
-| 20 | 61 (24%) | 56 (22%) |
-
-WG has slightly fewer low scores (7% in 9–12 range vs 12%) and slightly more perfect scores (24% vs 22%). NG1 has a slightly wider spread, consistent with its higher SPARQL attempt variance.
-
----
-
-## 8. Cost and Efficiency
+## 8. Inter-Run Evaluator Agreement
 
 | Metric | WG | NG1 |
 |--------|:--:|:---:|
-| Mean time/question | **96.2 s** | 89.5 s |
-| Mean cost/question | $0.429 | $0.432 |
-| Input tokens | 29 | 35 |
-| Output tokens | 3,100 | 3,443 |
-| Cost per Δ point | $0.16 | $0.16 |
-| Total cost (50 q) | $21.47 | $21.57 |
+| Mean std per question | **0.46** | 0.58 |
+| Max std | 1.30 | 1.30 |
 
-Costs and efficiency are virtually identical. WG is slightly *slower* (96.2 s vs 89.5 s) because the Usage Guide tool call adds overhead at the start of every question. NG1 produces slightly more output tokens (3,443 vs 3,100), likely from its more verbose SPARQL reasoning chains.
+WG has **tighter inter-run agreement** (mean std 0.46 vs 0.58). This is a reversal of rev0's pattern, where NG1 had tighter variance (std 0.76 vs WG's 1.08). Both are now substantially tighter than either rev0 condition (the Opus 4.7 evaluators agree more than Opus 4.6 did), but within the new runs WG's responses are slightly more consistently scoreable.
 
 ---
 
-## 9. Perfect Score Analysis
+## 9. Conclusions
 
-| Questions with 5/5 perfect | WG | NG1 | Both |
-|-----------------------------|:--:|:---:|:----:|
-| question_047 (factoid) | ✅ | ✅ | ✅ |
-| question_043 (factoid) | 4/5 | ✅ | ~shared |
-| question_026 (yes_no) | 4/5 | ✅ | ~shared |
-| question_038 (choice) | 4/5 | ✅ | ~shared |
-| question_019 (choice) | 3/5 | ✅ | NG1 only |
-| question_046 (yes_no) | 0/5 | ✅ | NG1 only |
+### 9.1 The Usage Guide's Value Beyond the MIE Instruction
 
-Interestingly, NG1 has **6 questions with universal 5/5 perfect scores** vs WG's **1 question** (question_047). However, WG has **13 questions with ≥4/5 perfects** vs NG1's **8**. This suggests WG is more consistently near-perfect, while NG1 is more "all or nothing."
+The data overwhelmingly support the rev0 finding that **WG and NG1 deliver indistinguishable total scores** (Wilcoxon *p* = 0.887, bootstrap 95 % CI for the delta-of-deltas = [−0.40, +0.42], contains zero). The simple instruction "before any SPARQL, call `find_databases()` then `get_MIE_file()`" recovers essentially all of the Usage Guide's headline benefit.
+
+But the new runs surface a subtler story than rev0: **the two configurations differ on three of the four sub-criteria**, just in opposite directions on different criteria.
+
+| Criterion | Winner | Magnitude | Interpretation |
+|-----------|:------:|:---------:|----------------|
+| Recall | **WG** | +0.26 (*p* = 0.010) | Structured workflow → more comprehensive retrieval |
+| Precision | tie | +0.03 (*p* = 0.65) | Both equally on-topic |
+| Repetition | **NG1** | +0.10 (*p* = 0.024) | Bare instruction → tighter responses |
+| Readability | **NG1** | +0.19 (*p* = 0.004) | Bare instruction → cleaner prose |
+
+The WG-vs-NG1 trade-off is therefore **comprehensiveness vs polish**. WG fetches slightly more relevant facts; NG1 expresses them more cleanly. The total-score wash reflects these effects roughly cancelling.
+
+### 9.2 The Choice Depends on Use Case
+
+- **Synthesis-heavy summary workloads** → favour NG1 (readability advantage especially pronounced on summary questions: +0.44 over WG).
+- **Comprehensive choice / factoid retrieval** → favour WG (recall advantage on choice +0.50, factoid +0.32).
+- **Speed and cost-sensitive deployments** → favour NG1 (saves ~11 s and $0.01 per question, no quality penalty).
+- **Production reliability** → favour WG (lower loss rate 1.6 % vs 4.8 %, lower inter-run variance).
+
+### 9.3 Tool-Usage Strategy Difference
+
+WG and NG1 reach the same destination via different routes:
+
+- WG: 12.4 tools/q, 4.8 SPARQL/q, 32 % `search_uniprot_entity` use
+- NG1: 12.1 tools/q, 6.3 SPARQL/q, 24 % `search_uniprot_entity` use
+
+NG1 substitutes ~30 % more SPARQL volume for ~25 % less search-tool exploration. Without the Usage Guide's "search-before-SPARQL" framing, NG1 jumps to direct SPARQL queries earlier and iterates more. The result is the same answer quality.
+
+### 9.4 Practical Recommendation
+
+For deployments, **the MIE instruction alone is sufficient** for the headline performance level. The full Usage Guide tool adds ~7 seconds of latency per question, occupies one slot in the model's tool inventory, and trades a small recall advantage for a small readability disadvantage. If the deployment is primarily synthesis-focused, NG1's bare instruction is the cleaner choice. If it is primarily fact-retrieval-focused (factoid / choice), WG's recall advantage is worth the latency.
+
+The simple system-prompt directive
+
+> "Before writing any SPARQL query, always call `find_databases()` to identify candidate databases, then call `get_MIE_file()` for each relevant database to learn its schema."
+
+captures the entire operational benefit at minimal cost.
 
 ---
 
-## 10. Conclusions
-
-### 10.1 The Usage Guide's Value is Almost Entirely the MIE Instruction
-
-The data overwhelmingly supports the conclusion that the Usage Guide's additional content (workflow ordering, search-before-SPARQL guidance, interleaving warnings, tool recommendations) provides **no measurable benefit** beyond what the simple instruction "call `list_databases()` and `get_MIE_file()` before SPARQL" already provides. The 95% CI for the effect of the guide's additional content is [−0.64, +0.68], centered at −0.01.
-
-### 10.2 The Guide Slightly Changes *How* Results Are Achieved, Not *What*
-
-| Aspect | WG advantage | NG1 advantage |
-|--------|:------------:|:-------------:|
-| Tool diversity | ✅ (31 vs 24 unique tools) | |
-| SPARQL efficiency | ✅ (198 vs 279 calls) | |
-| Repetition control | ✅ (marginal, *p* = 0.07) | |
-| **Readability** | | ✅ (**significant**, *p* = 0.004) |
-| Evaluator agreement | | ✅ (std 0.76 vs 1.08) |
-| Starting consistency | ✅ (100% uniform start) | |
-| Latency | | ✅ (89.5 s vs 96.2 s) |
-
-WG uses tools more diversely and SPARQL more efficiently. NG1 produces more readable, consistently-scored answers and is slightly faster. These differences cancel out perfectly on total score.
-
-### 10.3 The Self-Contradiction Risk Is Stochastic, Not Systematic
-
-The question_007 case (NG1 answered "No" despite finding correct "Yes" evidence) appeared to suggest NG1 was prone to self-contradiction without the Guide's structure. However, the comprehensive data shows this is stochastic — NG1 has other questions where it reasons better than WG from the same evidence. The Guide does not reliably prevent reasoning errors.
-
-### 10.4 Practical Recommendation
-
-For deployments, the **MIE instruction alone is sufficient**. The full Usage Guide adds ~7 seconds of latency per question (for the guide tool call), uses a tool call slot, and provides no measurable quality improvement. The instruction `"Before writing any SPARQL query, always call list_databases() to discover available databases, then call get_MIE_file() for each relevant database to learn its schema"` captures the entire operational benefit.
-
----
-
-*Analysis based on 50 questions × 5 evaluation runs × 2 conditions = 500 evaluations. Statistical tests performed with Wilcoxon signed-rank, paired t-test, and bootstrap (10,000 resamples).*
+*Analysis: 50 questions × 5 evaluation runs × 2 conditions = 500 evaluations. Statistical tests: Wilcoxon signed-rank, paired t-test, bootstrap (10,000 resamples, seed=42). Source CSVs: `with_guide-2026-05-04.csv`, `ng1-2026-05-04.csv`; per-run scoring CSVs: `{condition}-2026-05-04-Opus4.7-v{1..5}.csv`. Reference comparison: 2026-02 paper analysis at [`rev0/togomcp_wg_vs_ng1_detailed.md`](rev0/togomcp_wg_vs_ng1_detailed.md).*

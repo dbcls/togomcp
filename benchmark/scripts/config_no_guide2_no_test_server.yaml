@@ -1,45 +1,28 @@
 # TogoMCP Test Runner Configuration (YAML format)
-# 
-# YAML format allows multiline strings using:
-# - | (pipe): Preserves newlines and trailing spaces (literal style)
-# - > (greater than): Folds newlines into spaces (folded style)
-# - |- (pipe dash): Like |, but strips final newlines
-# - >- (greater dash): Like >, but strips final newlines
+#
+# Variant of config_no_guide2.yaml used to test the "dual-MCP-server tool-discovery
+# confusion" hypothesis: when both `mcp__togomcp__*` and `mcp__claude_ai_TogoMCP-Test__*`
+# are exposed (and possibly `mcp__togomcp-dev__*`), does the model spontaneously
+# call `get_MIE_file` less often than it would with only one server visible?
+#
+# This config blocks every shadow-prefix tool by exact name, leaving only the
+# locally-configured `mcp__togomcp__*` server visible. Compare MIE usage rate
+# against the matched ng2 run on the same questions.
 
 model: claude-sonnet-4-5-20250929
 max_tokens: 4000
 temperature: 1.0
 
-# ---------------------------------------------------------------------------
-# Token pricing (USD per 1 million tokens)
-# ---------------------------------------------------------------------------
-# Set these to match the model listed above so that the runner can report
-# accurate per-question and total cost estimates.
-#
-# Reference prices (Anthropic API, standard context ≤200K tokens, as of 2026-02):
-#
-#   Model                          Input/MTok   Output/MTok
-#   claude-haiku-4-5-20251001         $1.00        $5.00
-#   claude-sonnet-4-5-20250929        $3.00       $15.00   ← current model
-#   claude-sonnet-4-6                 $3.00       $15.00
-#   claude-opus-4-5                   $5.00       $25.00
-#   claude-opus-4-6                   $5.00       $25.00
-#
-# Long-context surcharge (>200K input tokens):
-#   claude-sonnet-4-5/4-6             $6.00       $22.50
-#
-# Batch API discount: 50% off all of the above.
-# ---------------------------------------------------------------------------
 pricing:
-  input_per_million: 3.00    # USD — matches claude-sonnet-4-5-20250929
-  output_per_million: 15.00  # USD — matches claude-sonnet-4-5-20250929
+  input_per_million: 3.00
+  output_per_million: 15.00
 
 # Baseline system prompt - uses literal block style (|) to preserve formatting
 baseline_system_prompt: |
-  You are an expert assistant answering biological and biomedical questions. 
-  Answer using only your training knowledge. 
+  You are an expert assistant answering biological and biomedical questions.
+  Answer using only your training knowledge.
   Do not use any database tools or external resources.
-  
+
   Write answers that are:
   - COMPLETE: Include all necessary information
   - PRECISE: Include only relevant information
@@ -50,7 +33,7 @@ baseline_system_prompt: |
   Simply state what you found as factual information, as you would write an encyclopedia entry, in one paragraph.
   If you don't know something with certainty, state this clearly and concisely.
 
-# TogoMCP system prompt - uses literal block style (|) to preserve formatting
+# TogoMCP system prompt - identical to config_no_guide2.yaml (No-Instr condition)
 togomcp_system_prompt: |
   You are an expert assistant answering biological and biomedical questions.
   You have access to biological databases through MCP tools.
@@ -96,15 +79,15 @@ mcp_servers:
   togomcp:
     type: http
     url: https://togomcp.rdfportal.org/mcp
-  
+
   pubmed:
     type: http
     url: https://pubmed.mcp.claude.com/mcp
-  
+
   pubdictionaries:
     type: http
     url: https://pubdictionaries.org/mcp
-  
+
   ols:
     type: http
     url: https://www.ebi.ac.uk/ols4/api/mcp
@@ -118,15 +101,48 @@ disallowed_tools:
   - WebFetch
   - web_search
   - web_fetch
-  # Block TogoMCP_Usage_Guide across every MCP server prefix. Mid-string globs
-  # like `mcp__*__TogoMCP_Usage_Guide` are silently ignored by claude-agent-sdk,
-  # so each alias must be enumerated. See note in config_no_mie.yaml.
+
+  # ng2 baseline: block Usage_Guide across all known TogoMCP server prefixes.
   - mcp__togomcp__TogoMCP_Usage_Guide
   - mcp__togomcp-dev__TogoMCP_Usage_Guide
   - mcp__claude_ai_TogoMCP-Test__TogoMCP_Usage_Guide
 
-# Notes:
-# - System prompts follow BioASQ ideal answer principles
-# - Four quality criteria: completeness, precision, non-redundancy, readability
-# - Direct factual style without meta-references
-# - Answers should read like encyclopedia entries
+  # Experimental: block every tool exposed by the cloud `claude_ai_TogoMCP-Test`
+  # server (account-level integration that bypasses setting_sources=[]). Goal:
+  # leave only the locally-configured `mcp__togomcp__*` server visible to the
+  # model so we can measure whether dual-server exposure suppresses spontaneous
+  # `get_MIE_file` calls.
+  - mcp__claude_ai_TogoMCP-Test__find_databases
+  - mcp__claude_ai_TogoMCP-Test__get_MIE_file
+  - mcp__claude_ai_TogoMCP-Test__get_compound_attributes_from_pubchem
+  - mcp__claude_ai_TogoMCP-Test__get_graph_list
+  - mcp__claude_ai_TogoMCP-Test__get_pubchem_compound_id
+  - mcp__claude_ai_TogoMCP-Test__get_sparql_endpoints
+  - mcp__claude_ai_TogoMCP-Test__list_categories
+  - mcp__claude_ai_TogoMCP-Test__list_databases
+  - mcp__claude_ai_TogoMCP-Test__ncbi_efetch
+  - mcp__claude_ai_TogoMCP-Test__ncbi_esearch
+  - mcp__claude_ai_TogoMCP-Test__ncbi_esummary
+  - mcp__claude_ai_TogoMCP-Test__ncbi_list_databases
+  - mcp__claude_ai_TogoMCP-Test__run_sparql
+  - mcp__claude_ai_TogoMCP-Test__search_chembl_id_lookup
+  - mcp__claude_ai_TogoMCP-Test__search_chembl_molecule
+  - mcp__claude_ai_TogoMCP-Test__search_chembl_target
+  - mcp__claude_ai_TogoMCP-Test__search_mesh_descriptor
+  - mcp__claude_ai_TogoMCP-Test__search_pdb_entity
+  - mcp__claude_ai_TogoMCP-Test__search_reactome_entity
+  - mcp__claude_ai_TogoMCP-Test__search_rhea_entity
+  - mcp__claude_ai_TogoMCP-Test__search_uniprot_entity
+  - mcp__claude_ai_TogoMCP-Test__togoid_convertId
+  - mcp__claude_ai_TogoMCP-Test__togoid_countId
+  - mcp__claude_ai_TogoMCP-Test__togoid_getAllDataset
+  - mcp__claude_ai_TogoMCP-Test__togoid_getAllRelation
+  - mcp__claude_ai_TogoMCP-Test__togoid_getDataset
+  - mcp__claude_ai_TogoMCP-Test__togoid_getDescription
+  - mcp__claude_ai_TogoMCP-Test__togoid_getRelation
+
+  # `mcp__togomcp-dev__*` is registered in ~/.claude/settings.json but excluded
+  # by setting_sources=[] (see subprocess_cli.py:328-329 — passed through to the
+  # bundled CLI as `--setting-sources=`). Empirically confirmed: 0 togomcp-dev
+  # calls across 200 question-runs (50 × 4 conditions) on 2026-05-04. No
+  # additional disallow entries needed beyond the Usage_Guide block above.

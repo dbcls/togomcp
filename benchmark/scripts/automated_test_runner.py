@@ -222,6 +222,11 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
             "retry_attempts": 3,
             "retry_delay": 2,
             "max_retry_delay": 30,
+            # Seconds to sleep between consecutive questions. 0 = back-to-back
+            # (default). Set to 30-90s if you suspect throttling at the
+            # togomcp MCP server or its upstream SPARQL endpoint, to give
+            # them time to recover between sessions.
+            "inter_question_delay": 0,
             "mcp_servers": {
                 "togomcp": {
                     "type": "http",
@@ -377,9 +382,25 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
         input_data: dict,
         context: ToolPermissionContext
     ) -> PermissionResultAllow | PermissionResultDeny:
-        """Auto-approve MCP tools, deny web tools."""
+        """Auto-approve MCP tools; deny everything else.
+
+        `allowed_tools=["mcp__*"]` only filters the tool definitions advertised
+        to the model — it does NOT prevent the model from attempting built-in
+        agent tools (Read, Write, Bash, Edit, …) that the SDK still exposes.
+        Without this gate, those calls succeed silently. We caught it during
+        the 2026-05-04 ng2 run when the model wrote five Python helpers and a
+        markdown report into benchmark/scripts/ while answering the Joubert
+        and ClinVar questions. Block anything that isn't an MCP tool.
+        """
         if tool_name in ["WebSearch", "WebFetch", "web_search", "web_fetch"]:
             return PermissionResultDeny(message="Web tools not allowed in evaluation")
+        if not tool_name.startswith("mcp__"):
+            return PermissionResultDeny(
+                message=(
+                    f"Non-MCP tool {tool_name!r} blocked: this benchmark only allows "
+                    "MCP tool calls. Use the registered MCP servers to retrieve data."
+                )
+            )
         return PermissionResultAllow()
 
     async def _make_togomcp_call_with_retry(
@@ -388,62 +409,117 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
         answer_instruction: str = "",
         attempt: int = 1
     ) -> Dict:
-        """Make TogoMCP call with retry logic."""
+        """Make TogoMCP call with retry logic.
+
+        Retries on:
+          - asyncio.TimeoutError (subprocess hung)
+          - any other exception
+          - returned dict with success=False (e.g. empty response from the SDK
+            subprocess — almost always a transient upstream issue worth retrying)
+        """
         max_attempts = self.config["retry_attempts"]
         base_delay   = self.config["retry_delay"]
         max_delay    = self.config.get("max_retry_delay", 30)
 
+        last_result: Optional[Dict] = None
+        total_elapsed = 0.0
+
         for current_attempt in range(attempt, max_attempts + 1):
+            attempt_failed = False
+            error_for_log = ""
+
             try:
                 result = await self._make_togomcp_call(question_text, answer_instruction)
-                return result
+                total_elapsed += result.get("elapsed_time", 0.0)
+
+                if result.get("success"):
+                    # Return the successful attempt's own elapsed_time —
+                    # we deliberately do NOT roll up the time spent on
+                    # preceding failed attempts or retry sleeps. The CSV's
+                    # togomcp_time column reflects only the call that
+                    # produced the answer.
+                    return result
+
+                # Application-level failure: treat like a retryable exception.
+                last_result = result
+                error_for_log = result.get("error", "success=False (no detail)")
+                attempt_failed = True
 
             except asyncio.TimeoutError:
-                error_msg = f"Request timed out after {self.config['timeout']}s"
-                logger.warning(f"Attempt {current_attempt}/{max_attempts}: {error_msg}")
-
-                if current_attempt < max_attempts:
-                    delay = min(base_delay * (2 ** (current_attempt - 1)), max_delay)
-                    logger.info(f"Retrying in {delay}s...")
-                    await asyncio.sleep(delay)
-                    continue
-                else:
-                    return {
-                        "success": False,
-                        "error": error_msg,
-                        "elapsed_time": self.config["timeout"] * current_attempt,
-                        "input_tokens": 0,
-                        "output_tokens": 0,
-                        "cost_usd": 0.0,
-                    }
+                total_elapsed += self.config["timeout"]
+                error_for_log = f"Request timed out after {self.config['timeout']}s"
+                last_result = {
+                    "success": False,
+                    "error": error_for_log,
+                    "tool_uses": [],
+                    "elapsed_time": self.config["timeout"],
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "cost_usd": 0.0,
+                }
+                attempt_failed = True
 
             except Exception as e:
-                error_str = str(e)
-                logger.error(f"Attempt {current_attempt}/{max_attempts} failed: {error_str}")
-
-                if current_attempt < max_attempts:
-                    delay = min(base_delay * (2 ** (current_attempt - 1)), max_delay)
-                    logger.info(f"Retrying in {delay}s...")
-                    await asyncio.sleep(delay)
-                    continue
-
-                return {
+                error_for_log = str(e)
+                last_result = {
                     "success": False,
-                    "error": error_str,
+                    "error": error_for_log,
+                    "tool_uses": [],
                     "elapsed_time": 0,
                     "input_tokens": 0,
                     "output_tokens": 0,
                     "cost_usd": 0.0,
                 }
+                attempt_failed = True
 
-        return {
-            "success": False,
-            "error": "Max retry attempts exceeded",
-            "elapsed_time": 0,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "cost_usd": 0.0,
-        }
+            if attempt_failed:
+                logger.warning(
+                    f"Attempt {current_attempt}/{max_attempts}: {error_for_log}"
+                )
+                if current_attempt < max_attempts:
+                    delay = min(base_delay * (2 ** (current_attempt - 1)), max_delay)
+                    logger.info(f"Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+
+        # All retries exhausted. Augment the error with a rate-limit / quota
+        # hint when the failure pattern is consistent with throttling
+        # (each attempt completed quickly, which is the signature we see
+        # when the bundled claude CLI returns an empty response without
+        # raising — usually rate limit or session quota, not a code bug).
+        if last_result is None:
+            last_result = {
+                "success": False,
+                "error": "No attempts made (max_attempts <= 0)",
+                "tool_uses": [],
+                "elapsed_time": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cost_usd": 0.0,
+            }
+
+        avg_per_attempt = total_elapsed / max(1, max_attempts)
+        rate_limit_hint = ""
+        if avg_per_attempt < 10.0:
+            rate_limit_hint = (
+                " Each attempt finished in <10s and the SDK raised no error. "
+                "Most likely throttling at the togomcp MCP server (per-IP "
+                "request cap, connection-pool exhaustion) or its upstream "
+                "SPARQL endpoint — NOT the Anthropic API. Check the togomcp "
+                "container logs (docker/podman logs togomcp-main) for 429s, "
+                "503s, or upstream timeouts around the failure window. If "
+                "it correlates with token-heavy preceding questions, "
+                "consider raising `inter_question_delay` in config.yaml."
+            )
+
+        last_result = dict(last_result)
+        last_result["error"] = (
+            f"All {max_attempts} attempts failed (total {total_elapsed:.1f}s "
+            f"across attempts, avg {avg_per_attempt:.1f}s/attempt). "
+            f"Last error: {last_result.get('error', 'unknown')}.{rate_limit_hint}"
+        )
+        # elapsed_time stays as the last attempt's own time — we don't roll
+        # cumulative attempt time or retry sleeps into the recorded latency.
+        return last_result
 
     async def _make_togomcp_call(self, question_text: str, answer_instruction: str = "") -> Dict:
         """
@@ -473,7 +549,15 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                 model=self.config["model"],
                 allowed_tools=self.config["allowed_tools"],
                 disallowed_tools=self.config["disallowed_tools"],
-                can_use_tool=self._auto_approve_mcp_tools
+                can_use_tool=self._auto_approve_mcp_tools,
+                # Hermeticity: disable inheriting MCP servers / settings from
+                # the user's ~/.claude/settings.json or any project-level
+                # .claude/settings.json. Without this, the SDK pulls in every
+                # MCP server the user has registered with Claude Code (e.g.
+                # togomcp-dev for local dev work), contaminating the benchmark
+                # — verified empirically with 56 unintended mcp__togomcp-dev__*
+                # tool calls across 7 questions in with_guide-2026-05-03.csv.
+                setting_sources=[],
             )
 
             final_text   = None
@@ -490,7 +574,20 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                     timeout=self.config["timeout"]
                 )
 
-                async for message in client.receive_response():
+                # Wrap each message receive in wait_for so the loop can't hang
+                # silently when the subprocess / MCP session dies mid-stream.
+                # Without this, the SDK can return an empty `receive_response`
+                # iterator without raising, producing a "success" with no text.
+                gen = aiter(client.receive_response())
+                while True:
+                    try:
+                        message = await asyncio.wait_for(
+                            anext(gen),
+                            timeout=self.config["timeout"]
+                        )
+                    except StopAsyncIteration:
+                        break
+
                     # ---- Accumulate token usage from every message ----
                     usage = _extract_usage_from_obj(message)
                     if usage:
@@ -504,7 +601,18 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                             for block in message.content:
                                 block_type = getattr(block, 'type', type(block).__name__)
                                 if block_type == "tool_use" or "ToolUse" in type(block).__name__:
-                                    tool_uses.append(getattr(block, 'name', 'unknown'))
+                                    name = getattr(block, 'name', 'unknown')
+                                    # Record EVERY tool the model attempts, not
+                                    # just `mcp__*`. The earlier filter hid
+                                    # built-in agent tools (Read, Write, Bash,
+                                    # Edit, …) the model occasionally tried
+                                    # mid-question — silent leakage that wrote
+                                    # files into benchmark/scripts/ during the
+                                    # 2026-05-04 ng2 run. Recording all names
+                                    # makes such attempts visible in the CSV;
+                                    # they will also be denied by
+                                    # _auto_approve_mcp_tools.
+                                    tool_uses.append(name)
 
                                 # Some SDKs embed usage inside content blocks too
                                 inner_usage = _extract_usage_from_obj(block)
@@ -536,9 +644,29 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
             if not use_cli_cost:
                 cost_usd = _calc_cost(total_input, total_output, self.config["pricing"])
 
+            # Reject empty-result responses as failures so the retry loop sees
+            # them. An empty `final_text` (no ResultMessage with text) usually
+            # means the claude-agent-sdk subprocess died or the MCP session
+            # closed mid-stream; the SDK doesn't always raise in that case,
+            # so without this guard the result is silently misclassified as a
+            # success with placeholder text.
+            if not final_text or not final_text.strip():
+                return {
+                    "success": False,
+                    "error": (
+                        "Empty response from claude-agent-sdk (no ResultMessage text). "
+                        "Likely subprocess/MCP failure — check test_runner.log."
+                    ),
+                    "tool_uses": tool_uses,
+                    "elapsed_time": elapsed_time,
+                    "input_tokens": total_input,
+                    "output_tokens": total_output,
+                    "cost_usd": cost_usd,
+                }
+
             return {
                 "success": True,
-                "text": final_text if final_text else "[No text content extracted]",
+                "text": final_text,
                 "tool_uses": tool_uses,
                 "elapsed_time": elapsed_time,
                 "input_tokens": total_input,
@@ -683,6 +811,9 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
         print(f"{'='*70}")
 
         results = []
+        inter_delay = float(self.config.get("inter_question_delay", 0))
+        if inter_delay > 0:
+            print(f"Inter-question delay: {inter_delay:.1f}s")
 
         for i, question in enumerate(questions):
             try:
@@ -691,6 +822,12 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
 
                 if (i + 1) % 5 == 0:
                     self._save_intermediate_results(results, i + 1)
+
+                # Cooldown before the next question, if configured. Skip on the
+                # last question — no point sleeping after the run is done.
+                if inter_delay > 0 and (i + 1) < total:
+                    print(f"  ⏸  Sleeping {inter_delay:.1f}s before next question...")
+                    await asyncio.sleep(inter_delay)
 
             except KeyboardInterrupt:
                 print("\n\n⚠ Test run interrupted by user")

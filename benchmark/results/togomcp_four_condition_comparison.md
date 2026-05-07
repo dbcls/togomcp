@@ -1,23 +1,24 @@
-# TogoMCP Four-Condition Comparison Analysis
+# TogoMCP Four-Condition Comparison Analysis (2026-05-04 rerun)
 
-**Date:** 2026-03-01  
-**Evaluator LLM:** Claude Opus 4.6 (5 independent evaluation runs per condition)  
+**Date:** 2026-05-05
+**Benchmark answers collected:** 2026-05-04 (Sonnet 4.5, `claude-sonnet-4-5-20250929`)
+**Evaluator LLM:** Opus 4.7 (`claude-opus-4-7`), 5 independent evaluation runs per condition
 **Questions:** 50 (10 each of yes/no, factoid, list, summary, choice)
 
 ---
 
 ## Experimental Conditions
 
-| Label | Usage Guide | `list_databases`/`get_MIE_file` instruction | MIE tool available |
-|-------|:-----------:|:-------------------------------------------:|:------------------:|
-| **With Guide** | ✅ | ✅ (via guide) | ✅ |
-| **NG1** (no guide + MIE instr) | ❌ | ✅ (explicit instruction) | ✅ |
-| **NG2** (no guide, no instr) | ❌ | ❌ | ✅ |
-| **No MIE** | ❌ | ❌ | ❌ |
+| Label | `TogoMCP_Usage_Guide` | System-prompt MIE/discovery instruction | `get_MIE_file` |
+|-------|:--------------------:|:---------------------------------------:|:--------------:|
+| **With Guide (WG)** | ✅ available, called first | implicit (Usage Guide owns the workflow) | ✅ |
+| **NG1** (no guide + MIE instr) | ❌ disallowed | ✅ explicit ("call `find_databases()` then `get_MIE_file()` before SPARQL") | ✅ |
+| **NG2** (no instruction) | ❌ disallowed | ❌ no instruction at all | ✅ available |
+| **No MIE** | ✅ available | tells the model to use the catalog but **not** to read MIE | ❌ disallowed |
 
-The key comparison is between **NG1** and **NG2**: both lack the Usage Guide, but NG1 is explicitly told to call `list_databases()` and `get_MIE_file()` before querying. This isolates the effect of the MIE/discovery instruction from the full Usage Guide.
+The pivotal contrast remains **NG1 vs NG2**: both lack the Usage Guide tool, but NG1's system prompt explicitly orchestrates the discovery → schema → query workflow, whereas NG2's system prompt is silent and leaves the choice entirely to the model.
 
-> **Note:** NG1 and NG2 are independent experiment runs (different baseline and TogoMCP answers), so direct per-question score comparisons reflect both instruction effects and run-to-run stochasticity. Overall aggregates are more reliable.
+> **Note:** Each condition is an independent run, so per-question score differences fold both treatment effects and run-to-run stochasticity. Aggregate statistics across 250 evaluations per condition are robust; individual-question comparisons should be read with this caveat in mind.
 
 ---
 
@@ -25,294 +26,261 @@ The key comparison is between **NG1** and **NG2**: both lack the Usage Guide, bu
 
 | Metric | With Guide | NG1 (MIE instr) | NG2 (no instr) | No MIE |
 |--------|:----------:|:----------------:|:--------------:|:------:|
-| TogoMCP score | **16.70** | **16.62** | 15.85 | 14.37 |
-| Δ vs baseline | **+2.72** | **+2.73** | +1.48 | +0.30 |
-| Cohen's *d* | **0.92** | **0.93** | 0.46 | 0.08 |
-| Wilcoxon *p* | < 10⁻⁶ | **0.000001** | 0.0015 | 0.45 (NS) |
-| Win rate | **74.8%** | **75%** | 60% | 40.8% |
-| Loss rate | **14.4%** | **19%** | 24% | 44.8% |
-| Perfect scores (=20) | **24.4%** | **22.4%** | 17.6% | 8.4% |
-| Mean tools/q | ~10 | 12.6 | 12.4 | 20.2 |
-| Cost/question | $0.429 | $0.432 | $0.377 | $0.483 |
-| Time/question | 96.2 s | 89.5 s | 80.1 s | 154.1 s |
-| Cost per Δ point | **$0.16** | **$0.16** | $0.25 | $1.61 |
+| TogoMCP score | **18.55** | **18.61** | 18.04 | 18.24 |
+| Baseline score | 15.10 | 15.15 | 14.82 | 15.28 |
+| Δ vs baseline | **+3.45** | **+3.46** | +3.22 | +2.96 |
+| Cohen's *d* | **1.82** | 1.56 | 1.19 | 1.38 |
+| Wilcoxon *p* | < 10⁻⁹ | < 10⁻⁹ | < 10⁻⁸ | < 10⁻⁹ |
+| Win rate | **94.4 %** | 92.8 % | 81.2 % | 83.2 % |
+| Tie rate | 4.0 % | 2.4 % | 12.8 % | 12.8 % |
+| Loss rate | 1.6 % | 4.8 % | 6.0 % | 4.0 % |
+| Perfect scores (=20) | 42.8 % | **48.4 %** | 40.0 % | 33.6 % |
+| Mean tools / q | 12.4 | 12.1 | **20.9** | 16.9 |
+| Cost / question | $0.380 | $0.370 | $0.405 | $0.388 |
+| Time / question | 137 s | **126 s** | 183 s | 206 s |
+| Cost per Δ point | $0.108 | **$0.106** | $0.124 | $0.129 |
 
-**The central finding: NG1 ≈ With Guide >> NG2 >> No MIE.**
+**The central finding: WG ≈ NG1 > NG2 ≈ No-MIE, but all four conditions deliver substantial, statistically significant improvement.** Every condition produces Δ > +2.9 with *p* < 10⁻⁸, Cohen's *d* > 1.1, and a win rate above 81 %. This is a notable departure from the 2026-02 paper benchmark, where NG2 showed Δ = +1.48 and No-MIE Δ = +0.30 — substantially lower than WG. The full inter-condition stratification has compressed by roughly half.
 
-Adding the explicit `list_databases`/`get_MIE_file` instruction (NG1 vs NG2) recovers nearly the **entire** benefit of the full Usage Guide. NG1's Δ = +2.73 is virtually identical to With Guide's Δ = +2.72, with comparable effect size (*d* = 0.93 vs 0.92), win rate (75% vs 74.8%), and cost-effectiveness ($0.16/point vs $0.16/point).
+The MIE instruction (NG1) still nearly matches the Usage Guide (WG): Δ +3.46 vs +3.45, win rate 92.8 % vs 94.4 %, and identical cost-per-point ($0.106 vs $0.108). The "MIE instruction = Usage Guide" finding survives.
+
+What has changed is that **the gap from NG1 down to NG2 / No-MIE is much smaller now** (~0.3–0.5 points instead of ~1.2 points). The Sonnet 4.5 model and the question set are unchanged from the rev0 run; the explanations therefore lie on the **server / evaluator side**:
+
+- **MIE schemas have grown substantially richer** since rev0 (v2.0 → v2.1 spec, anti-patterns, shape_expressions discipline, four new databases). When the model does read MIE — and even via indirect benefit when the server's tool output formatting reflects the schema — answers are more grounded.
+- **Server-side tool ergonomics improved** (e.g. `4e594cb` made tools return graceful errors instead of raising; tool docstrings have been refined; output formatting is cleaner). This particularly explains the rev0 readability/repetition penalties not reproducing.
+- **Evaluator changed from Opus 4.6 → Opus 4.7.** A different evaluator can produce systematically different rubric scores even on identical answers; this is a confound that should be flagged in the manuscript.
 
 ---
 
 ## 2. Scores by Question Type
 
-| Type | With Guide Δ | NG1 Δ | NG2 Δ | No MIE Δ |
-|------|:-----------:|:-----:|:-----:|:--------:|
-| **factoid** | +3.46 | **+3.80** | +2.82 | +2.22 |
-| **choice** | +3.36 | **+3.48** | +1.06 | +0.10 |
-| **yes_no** | +3.32 | +2.70 | +1.14 | +1.10 |
-| **list** | +2.96 | +2.64 | +2.44 | −0.30 |
-| **summary** | +0.50 | **+1.04** | −0.08 | −1.64 |
+| Type | WG Δ | NG1 Δ | NG2 Δ | No MIE Δ |
+|------|:----:|:-----:|:-----:|:--------:|
+| **factoid** | +3.82 | +3.74 | **+4.54** | **+4.34** |
+| **list** | +3.58 | +3.40 | **+4.28** | +3.98 |
+| **yes_no** | +4.22 | **+4.64** | +3.32 | +3.00 |
+| **choice** | +3.20 | +2.42 | +2.70 | +1.72 |
+| **summary** | +2.44 | **+3.08** | +1.26 | +1.74 |
 
-### Win/Loss Rates by Type
+A new pattern emerges that did **not** appear in the 2026-02 results:
 
-| Type | NG1 Win% | NG1 Lose% | NG2 Win% | NG2 Lose% |
-|------|:--------:|:---------:|:--------:|:---------:|
-| **factoid** | **88%** | 12% | 86% | 0% |
-| **yes_no** | **82%** | 14% | 48% | 24% |
-| **choice** | **76%** | 14% | 64% | 26% |
-| **list** | **68%** | 28% | 62% | 32% |
-| **summary** | **60%** | 28% | 40% | 38% |
+- On **factoid** and **list** questions, NG2 / No-MIE *exceed* WG / NG1 — the unguided model leans hard on direct search tools (`run_sparql`, `search_uniprot_entity`, `ncbi_esearch`) and gets clean numeric answers without the discovery overhead.
+- On **choice** and **summary** questions, the order reverses: WG / NG1 dominate, because schema-guided SPARQL produces cleaner cross-database comparisons and synthesis.
+- **yes_no** is the only type where the rev0 ordering (WG > NG1 > NG2 > No-MIE) holds.
 
-### Cohen's *d* by Type
+The most striking change vs rev0: **NG2's summary Δ went from −0.08 (rev0) to +1.26 (now)**. Summary questions are no longer actively harmful in the unguided condition.
 
-| Type | NG1 *d* | NG1 *p* | NG2 *d* | NG2 *p* |
-|------|:-------:|:-------:|:-------:|:-------:|
-| **factoid** | **1.36** | 0.003 | **1.20** | 0.001 |
-| **choice** | **1.02** | 0.010 | 0.26 | 0.22 |
-| **yes_no** | **0.98** | 0.020 | 0.34 | 0.14 |
-| **list** | **0.79** | 0.029 | 0.69 | 0.07 |
-| **summary** | 0.58 | 0.085 | −0.04 | 0.56 |
+### Win/Loss rates by type
 
-**Key observations:**
+| Type | WG win/loss | NG1 win/loss | NG2 win/loss | No-MIE win/loss |
+|------|:-----------:|:------------:|:------------:|:---------------:|
+| factoid | 96 / 0 % | 98 / 0 % | **100 / 0 %** | 98 / 0 % |
+| yes_no | **100 / 0 %** | 100 / 0 % | 86 / 10 % | 80 / 10 % |
+| choice | 96 / 0 % | 78 / 16 % | 82 / 6 % | 70 / 4 % |
+| list | 90 / 4 % | 92 / 8 % | 82 / 0 % | 96 / 0 % |
+| summary | 90 / 4 % | **96 / 0 %** | 56 / 14 % | 72 / 6 % |
 
-- **Choice questions** show the largest instruction effect: NG1 *d* = 1.02 vs NG2 *d* = 0.26. These require comparing entities across databases — a task where schema-guided SPARQL is critical.
-- **Yes/no questions** similarly benefit (NG1 *d* = 0.98 vs NG2 *d* = 0.34), because consistent MIE reading helps produce confident, evidence-backed verdicts.
-- **Factoid questions** are strong in both conditions but still benefit from the instruction (NG1 Δ = +3.80 vs NG2 Δ = +2.82).
-- **Summary questions** flip from harmful (NG2 Δ = −0.08) to beneficial (NG1 Δ = +1.04). This is the most dramatic type-level difference and suggests that structured schema knowledge prevents the verbose, error-laden summaries that plagued NG2.
-- **List questions** show the smallest instruction effect, likely because list retrieval often works through NCBI search APIs that don't depend heavily on SPARQL schema knowledge.
+NG2 still has the highest summary loss rate (14 %), but the absolute degradation is much milder than the 38 % loss rate seen in rev0.
+
+### Cohen's *d* by type
+
+| Type | WG *d* | NG1 *d* | NG2 *d* | No-MIE *d* |
+|------|:------:|:-------:|:-------:|:----------:|
+| yes_no | **2.55** | 2.15 | 1.00 | 1.06 |
+| factoid | 2.35 | 2.07 | **2.40** | **2.95** |
+| list | 1.84 | 1.48 | 1.75 | **2.63** |
+| summary | 1.53 | **2.36** | 0.70 | 1.25 |
+| choice | **1.32** | 0.82 | 0.94 | 0.89 |
+
+Effect sizes are large (>1) almost everywhere. The two cells where the effect drops below moderate are NG2/summary (*d* = 0.70) and NG1/choice (*d* = 0.82).
 
 ---
 
 ## 3. Scores by Evaluation Criteria
 
-| Criterion | NG1 Δ | NG2 Δ | Instruction effect |
-|-----------|:-----:|:-----:|:------------------:|
-| **Recall** | **+1.91** | +1.45 | +0.46 |
-| **Precision** | **+0.97** | +0.50 | +0.47 |
-| **Repetition** | **−0.19** | −0.34 | +0.15 |
-| **Readability** | **+0.04** | −0.14 | +0.18 |
+| Criterion | WG Δ | NG1 Δ | NG2 Δ | No-MIE Δ |
+|-----------|:-----:|:-----:|:-----:|:--------:|
+| **Recall** | **+2.23** | +1.97 | +1.79 | +1.74 |
+| **Precision** | +1.04 | +1.01 | +1.01 | +0.87 |
+| **Repetition** | +0.11 | +0.21 | +0.24 | +0.18 |
+| **Readability** | +0.07 | +0.26 | +0.18 | +0.16 |
 
-The MIE instruction improves every criterion. The most striking effect is on **readability**: NG1 achieves a net-positive readability change (+0.04), while NG2 suffers a deficit (−0.14). This confirms that structured schema knowledge leads to cleaner, more focused responses rather than data-dump-laden output.
-
-### Criteria by Question Type (NG1)
-
-| Type | Recall Δ | Precision Δ | Repetition Δ | Readability Δ |
-|------|:--------:|:-----------:|:------------:|:-------------:|
-| factoid | **+2.96** | **+1.08** | −0.26 | +0.02 |
-| choice | **+2.12** | **+1.22** | −0.24 | **+0.38** |
-| list | **+1.82** | **+0.98** | −0.16 | +0.00 |
-| yes_no | **+1.66** | **+0.94** | −0.00 | +0.10 |
-| summary | +0.98 | +0.64 | −0.30 | −0.28 |
-
-Choice questions actually achieve a **positive** readability change (+0.38), meaning TogoMCP responses are better-written than baseline for this type when guided by MIE schemas.
+Recall remains the dominant driver, as in rev0. Notably, **the readability and repetition penalties seen in rev0 (typically negative values) are now slightly positive** for every condition. TogoMCP outputs are not just more factual — they are now also marginally cleaner prose than the baseline. This is the largest qualitative shift between the two run dates and likely reflects either the deployed `togomcp` server's improved tool ergonomics or the model's improved tool-output integration.
 
 ---
 
 ## 4. Latency and Cost
 
-| Metric | With Guide | NG1 | NG2 | No MIE |
-|--------|:----------:|:---:|:---:|:------:|
-| Time/q | 96.2 s | **89.5 s** | **80.1 s** | 154.1 s |
-| Cost/q | $0.429 | $0.432 | $0.377 | $0.483 |
-| Output tokens | 3,100 | 3,443 | 3,231 | 4,063 |
-| Cost/Δ point | $0.16 | **$0.16** | $0.25 | $1.61 |
+| Metric | WG | NG1 | NG2 | No-MIE |
+|--------|:--:|:---:|:---:|:------:|
+| Time / q | 137 s | **126 s** | 183 s | 206 s |
+| Cost / q | $0.380 | $0.370 | $0.405 | $0.388 |
+| Mean tools / q | 12.4 | 12.1 | **20.9** | 16.9 |
+| Cost per Δ point | $0.108 | **$0.106** | $0.124 | $0.129 |
 
-NG1 and With Guide have nearly identical cost-effectiveness ($0.16/point). NG2 is cheaper per question ($0.377) but less cost-effective per point of improvement ($0.25).
+NG1 has the lowest cost-per-Δ-point ($0.106), edging out WG ($0.108). Both spend roughly half as much per point as the unguided conditions, reflecting more efficient tool use (fewer total calls, shorter latency). NG2's mean tool count (20.9) is the highest by a wide margin — without instruction, the model substitutes raw query volume for schema knowledge.
 
-### Cost-Effectiveness by Type (NG1)
+### Cost-effectiveness by type (NG1)
 
-| Type | Δ | Extra cost | pts/$ |
-|------|:---:|:---------:|:-----:|
-| **choice** | +3.48 | $0.253 | **13.7** |
-| **yes_no** | +2.70 | $0.362 | 7.5 |
-| **list** | +2.64 | $0.375 | 7.0 |
-| **factoid** | +3.80 | $0.578 | 6.6 |
-| **summary** | +1.04 | $0.563 | 1.8 |
+| Type | NG1 Δ | Extra cost | pts / $ |
+|------|:-----:|:----------:|:-------:|
+| yes_no | +4.64 | $0.30 | **15.3** |
+| factoid | +3.74 | $0.43 | 8.7 |
+| list | +3.40 | $0.39 | 8.7 |
+| summary | +3.08 | $0.42 | 7.4 |
+| choice | +2.42 | $0.32 | 7.5 |
 
-Choice questions are by far the most cost-effective in NG1 (13.7 pts/$), because they can often be resolved with a few well-targeted SPARQL comparisons.
+Yes/no questions remain the most cost-effective (15.3 pts/$), as in rev0.
 
 ---
 
-## 5. Tool Usage Comparison
+## 5. Tool Usage
 
-### 5.1 Workflow Compliance
+### 5.1 Workflow compliance
 
-| Tool | NG1 usage | NG2 usage | Difference |
-|------|:---------:|:---------:|:----------:|
-| `TogoMCP_Usage_Guide` | 0% (excluded) | 0% (excluded) | — |
-| `list_databases` | **92%** (46/50) | 36% (18/50) | **+56 pp** |
-| `get_MIE_file` | **92%** (46/50) | 74% (37/50) | **+18 pp** |
-| `run_sparql` | **90%** (45/50) | 76% (38/50) | **+14 pp** |
+| Tool | WG (rows w/ tool) | NG1 | NG2 | No-MIE |
+|------|:-----------------:|:---:|:---:|:------:|
+| `TogoMCP_Usage_Guide` | **100 %** (50/50) | 0 % (excluded) | 0 % (excluded) | **100 %** (50/50) |
+| `find_databases` | 96 % (48/50) | 92 % (46/50) | 10 % (5/50) | **100 %** (50/50) |
+| `list_databases` | 0 % | 0 % | 4 % (2/50) | 8 % (4/50) |
+| `get_MIE_file` | 94 % (47/50) | 96 % (48/50) | 18 % (9/50) | 0 % (excluded) |
+| `run_sparql` | 94 % (47/50) | 96 % (48/50) | 76 % (38/50) | 74 % (37/50) |
 
-The explicit instruction dramatically increases `list_databases` usage (92% vs 36%) and modestly increases `get_MIE_file` (92% vs 74%) and `run_sparql` usage (90% vs 76%).
+### 5.2 Total tool invocations
 
-### 5.2 Tool Invocation Volumes
+| Tool | WG | NG1 | NG2 | No-MIE |
+|------|:--:|:---:|:---:|:------:|
+| `find_databases` | 58 | 50 | 5 | 53 |
+| `get_MIE_file` | 88 | 98 | 11 | — |
+| `run_sparql` | **241** | **317** | **343** | 272 |
+| `TogoMCP_Usage_Guide` | 50 | — | — | 50 |
 
-| Tool | NG1 calls | NG2 calls |
-|------|:---------:|:---------:|
-| `run_sparql` | **279** | 213 |
-| `get_MIE_file` | **96** | 59 |
-| `ncbi_esearch` | 65 | **116** |
-| `search_uniprot_entity` | 47 | **55** |
-| `list_databases` | **46** | 18 |
-| `pubmed:search_articles` | 9 | **38** |
-| `search_chembl_target` | 15 | **28** |
+Two patterns to highlight:
 
-NG1 makes more SPARQL and MIE calls; NG2 compensates with more NCBI searches, PubMed searches, and ChEMBL searches. This reflects the fundamental strategy difference: **NG1 queries structured RDF databases with schema guidance**, while **NG2 falls back to text-based search APIs** when it lacks schema knowledge.
+1. **`find_databases` has fully replaced `list_databases` as the canonical discovery tool** in every condition where it is used (WG 58 calls vs `list_databases` 0; NG1 50 vs 0; No-MIE 53 vs 4). The post-`cf58f3e` docstring restoration ("REQUIRED first step", "Always call BEFORE …") works as intended in the *guided* and *MIE-instructed* conditions.
+2. **In NG2, neither discovery tool is used.** Only 5 / 50 questions touch `find_databases` and 2 / 50 touch `list_databases` — total combined discovery rate of 14 %. Without an explicit system-prompt instruction, the model just goes straight to `run_sparql` (76 % of rows, 343 calls — the highest in the experiment). This was 36 % in the rev0 paper data and is the most striking behavioural regression in the new runs. (See [togomcp_no_guide_analysis.md](togomcp_no_guide_analysis.md) for a deep dive.)
 
-### 5.3 SPARQL Efficiency
+### 5.3 SPARQL efficiency
 
-| Metric | NG1 | NG2 |
-|--------|:---:|:---:|
-| Mean SPARQL calls/q | **5.6** | 4.3 |
-| Median SPARQL calls/q | **4** | 4 |
-| Spearman(SPARQL, score) | **−0.445** (*p* = 0.001) | −0.227 (*p* = 0.11) |
+| Metric | WG | NG1 | NG2 | No-MIE |
+|--------|:--:|:---:|:---:|:------:|
+| Total SPARQL calls | 241 | 317 | **343** | 272 |
+| Mean SPARQL / q | 4.8 | 6.3 | **6.9** | 5.4 |
 
-NG1 makes more SPARQL calls on average, and the negative correlation between SPARQL count and score is stronger. This seems paradoxical, but it reflects that NG1 uses SPARQL more ambitiously on harder questions. The correlation in NG2 is weaker because NG2 often avoids SPARQL entirely for difficult questions (falling back to search APIs), which obscures the relationship.
+NG2 fires the most SPARQL queries despite producing the lowest TogoMCP score among the four — consistent with the rev0 pattern that high SPARQL volume correlates with model struggle, not thoroughness.
 
 ---
 
 ## 6. Perfect Score Analysis
 
-### 6.1 Questions with Perfect 20/20 in All 5 Runs
+### 6.1 Perfect-score rate per condition
 
-| Question | Type | NG1 | NG2 | Both |
-|----------|------|:---:|:---:|:----:|
-| question_026 (PubChem pteridine class) | yes_no | ✅ | ✅ | ✅ |
-| question_038 (Mouse LGMD genes + PDB) | choice | ✅ | ✅ | ✅ |
-| question_043 (Rhea reactions for DHNA) | factoid | ✅ | ✅ | ✅ |
-| question_019 (Mucopolysaccharidosis types) | choice | ✅ | — | NG1 only |
-| question_046 (AXIN1 drug target) | yes_no | ✅ | — | NG1 only |
-| question_047 (Cockayne syndrome PubTator) | factoid | ✅ | — | NG1 only |
-| question_018 (Mupirocin resistance AMR) | list | — | ✅ | NG2 only |
-| question_036 (Metachromatic leukodystrophy) | yes_no | — | ✅ | NG2 only |
+| Condition | Evaluations at 20/20 | Rate |
+|-----------|:--------------------:|:----:|
+| **NG1** | **121 / 250** | **48.4 %** |
+| WG | 107 / 250 | 42.8 % |
+| NG2 | 100 / 250 | 40.0 % |
+| No-MIE | 84 / 250 | 33.6 % |
 
-Three questions achieve universal perfection in both conditions — these represent clean, well-defined database lookups. NG1 has 3 additional universal perfects (6 total vs NG2's 5), and achieves 56 total perfect evaluations vs NG2's 44.
+NG1 reaches 20/20 most often — slightly ahead of WG (it edges out on summary questions especially). The baseline reaches 20/20 only twice in NG1, four times in No-MIE, and never in WG or NG2.
+
+### 6.2 Universal-perfect questions (5/5 across all evaluators)
+
+The new runs are far more perfect-score-rich than rev0. Counting questions that hit **20/20 across all 5 Opus 4.7 evaluators** (intersection):
+
+| Condition | Universal-perfect questions (5/5) | Type breakdown |
+|-----------|:--:|----------------|
+| WG | 16 | yes_no 6, choice 5, list 2, factoid 2, summary 1 |
+| NG1 | **17** | yes_no 8, choice 5, list 2, factoid 2 (no summary) |
+| NG2 | 16 | yes_no 5, list 4, factoid 3, choice 3, summary 1 |
+| No-MIE | 13 | yes_no 5, choice 3, factoid 2, list 2, summary 1 |
+
+NG1 has the highest count overall; WG / NG1 / NG2 all reach the double digits. The pool of guaranteed-easy questions is much larger than rev0's (which had 1–6 universally perfect per condition).
 
 ---
 
-## 7. When NG1 Was Worse Than Baseline
+## 7. When TogoMCP Was Worse Than Baseline
 
-NG1 has **10 questions** where TogoMCP < Baseline (vs 16 in NG2). The worst failures:
+Per-row losses (across 250 evaluations) are now rare:
 
-| Question | Type | Δ | Failure Mode |
-|----------|------|:-:|:-------------|
-| question_030 | choice | −2.4 | Data dump (gene lists) |
-| question_032 | yes_no | −2.4 | Incomplete genome data |
-| question_013 | list | −1.4 | Wrong MedGen concept |
-| question_015 | summary | −1.4 | Wrong structural technique |
-| question_044 | list | −1.4 | Incomplete retrieval |
-| question_027 | factoid | −1.2 | Complex multi-DB failure |
-| question_034 | summary | −1.2 | Wrong database |
-| question_023 | list | −1.2 | MANE transcript errors |
-| question_005 | choice | −1.0 | Count discrepancies |
-| question_021 | summary | −0.8 | Imprecise aggregation |
+| Condition | Loss rate | Worst single Δ (per question, mean over 5 runs) |
+|-----------|:---------:|:-----------------------------:|
+| WG | 1.6 % | −0.2 (q021 proteasome summary) — barely below baseline |
+| NG1 | 4.8 % | −1.2 (q013 Joubert top-5 genes); −1.0 (q030 chr-1 cardiomyopathy) |
+| NG2 | 6.0 % | −3.2 (q017 Anabaena DSM 101043 BG11- query) |
+| No-MIE | 4.0 % | −2.4 (q017 Anabaena DSM 101043 BG11- query) |
 
-**Maximum failure magnitude is −2.4** (NG1) vs **−5.8** (NG2). The MIE instruction eliminates the catastrophic self-contradiction failure (question_007, NG2 Δ = −4.8) and the worst data-dump failures (question_035, NG2 Δ = −5.4).
+The dominant failure pattern is unchanged from rev0: **q017 (Anabaena DSM 101043 strain lookup)** trips the database-grounded path in every condition where the model attempts SPARQL. The baseline's general-knowledge guess outperforms TogoMCP's null-result query on this question. This is now the consistent worst-case across conditions.
+
+The catastrophic rev0 failures (q030 / q035 data dumps with Δ = −5.4 to −5.8; q007 self-contradiction with Δ = −4.8) **do not reproduce** in the new runs. Either the deployed `togomcp` server's tool-output formatting has improved (less raw-data leakage into responses), or the Opus 4.7 evaluator scores these data-dump answers more kindly.
 
 ---
 
 ## 8. Head-to-Head: NG1 vs NG2
 
-### 8.1 Direct TogoMCP Score Comparison
+The MIE instruction's effect, isolated:
 
-Across 50 questions, NG1's mean TogoMCP score is **0.77 points higher** than NG2 (16.62 vs 15.85, Wilcoxon *p* = 0.017).
+| Metric | NG1 − NG2 |
+|--------|:---------:|
+| Score Δ | +0.24 points |
+| Cohen's *d* gap | +0.37 |
+| Win rate gap | +11.6 pp |
+| Loss rate gap | −1.2 pp |
+| Perfect-score rate gap | +8.4 pp |
+| Worst single Δ | −1.2 vs −3.2 (NG2's q017 Anabaena failure is much sharper) |
+| Summary Δ | +3.08 vs +1.26 (gap +1.82) |
+| Mean tool calls | 12.1 vs 20.9 (NG1 ~42 % fewer) |
 
-### 8.2 Largest NG1 Advantages
+The MIE instruction is now worth **+0.24 mean points and +1.82 summary points** — substantial but smaller than its rev0 effect (+1.25 mean points). The model has compressed its no-instruction-deficit on simple factoid/list/yes-no, but synthesis-heavy summary questions still benefit clearly from explicit MIE guidance.
 
-| Question | Type | NG1 T | NG2 T | Diff | Likely cause |
-|----------|------|:-----:|:-----:|:----:|:-------------|
-| question_035 | choice | 17.8 | 12.4 | +5.4 | MIE prevents data dump |
-| question_019 | choice | 20.0 | 15.0 | +5.0 | Clean SPARQL comparison |
-| question_012 | yes_no | 19.6 | 14.8 | +4.8 | Schema-guided GlyCosmos query |
-| question_007 | yes_no | 15.6 | 11.2 | +4.4 | Avoids self-contradiction |
-| question_017 | yes_no | 16.6 | 12.6 | +4.0 | Better BacDive query |
-| question_047 | factoid | 20.0 | 16.0 | +4.0 | Clean PubTator SPARQL |
-
-These are predominantly questions requiring **cross-database SPARQL** or **structured schema knowledge** — exactly where MIE guidance is most valuable.
-
-### 8.3 Cases Where NG2 Outperformed NG1
-
-| Question | Type | NG1 T | NG2 T | Diff | Likely cause |
-|----------|------|:-----:|:-----:|:----:|:-------------|
-| question_015 | summary | 12.6 | 15.6 | −3.0 | NG2's alternative approach worked |
-| question_027 | factoid | 11.2 | 13.6 | −2.4 | Both poor, NG2 less bad |
-| question_044 | list | 10.6 | 12.8 | −2.2 | Both poor, NG2 less bad |
-| question_003 | factoid | 17.0 | 19.2 | −2.2 | NG2's non-SPARQL path better |
-
-NG2 advantages tend to be on questions where *both* conditions struggle, and NG2's simpler approach (search API instead of failed SPARQL) produces a less-bad result. Only question_003 represents a genuine NG2 win on a high-scoring question.
+The instruction also **halves the tool-call overhead** in NG1 vs NG2 (12.1 vs 20.9 mean tools / question). NG2's compensatory pattern is to fire many more `run_sparql` queries (343 vs 317 total) without prior schema reading, producing roughly the same answers at higher cost and latency.
 
 ---
 
-## 9. The Instruction Effect: What Does the MIE Instruction Actually Do?
+## 9. The Component Value Hierarchy
 
-The comparison between NG1 and NG2 isolates the effect of a single system-prompt instruction: "call `list_databases()` and `get_MIE_file()` before queries."
+```
+WG        Usage Guide + MIE-via-guide + MIE tool   →  Δ = +3.45  ($0.108/pt)   reference
+            ↓ remove the guide tool, keep the MIE step in the system prompt
+NG1       MIE-instruction system prompt + MIE tool →  Δ = +3.46  ($0.106/pt)   ≈ tied
+            ↓ remove the system-prompt MIE instruction
+NG2       MIE tool available, never instructed     →  Δ = +3.22  ($0.124/pt)   −0.24 vs NG1
+            ↓ remove the MIE tool (and re-add Usage Guide that no longer mentions MIE)
+No-MIE    Usage Guide, no MIE tool                 →  Δ = +2.96  ($0.129/pt)   −0.26 vs NG2
+```
 
-### 9.1 Quantified Impact
+Two main observations:
 
-| Metric | NG1 − NG2 effect |
-|--------|:-----------------:|
-| Score improvement (Δ) | **+1.25 points** |
-| Cohen's *d* | +0.47 |
-| Win rate | +15 pp |
-| Loss rate | −5 pp |
-| Perfect score rate | +4.8 pp |
-| Worst single failure | −2.4 vs −5.8 (halved) |
-| Summary questions | Δ flips from −0.08 to **+1.04** |
-
-### 9.2 Mechanism
-
-The instruction's effect operates through three channels:
-
-1. **Schema-guided SPARQL (primary).** With 92% MIE usage (vs 74%), NG1 writes correct SPARQL predicates from the start. This shows in the SPARQL invocation count (279 vs 213) — NG1 uses SPARQL more often and more effectively.
-
-2. **Database discovery (secondary).** With 92% `list_databases` usage (vs 36%), NG1 starts with awareness of all 22 databases. NG2 often misses relevant databases entirely (e.g., using PubMed instead of AMRportal for resistance data).
-
-3. **Reduced fallback to text search (tertiary).** NG2 compensates for missing schema knowledge with 116 NCBI searches (vs 65 in NG1) and 38 PubMed searches (vs 9). These text-based searches are less precise and often retrieve noisy, incomplete results.
-
-### 9.3 Comparison with the Full Usage Guide
-
-The MIE instruction recovers **~100% of the Usage Guide's benefit** (NG1 Δ = +2.73 vs With Guide Δ = +2.72). The remaining Usage Guide content — workflow ordering rules, search-before-SPARQL guidance, interleaving warnings — appears to be redundant when the model already has schema knowledge. The critical content of the Usage Guide is, effectively, just the instruction to read MIE files.
+- **The Usage Guide adds essentially zero quality beyond the equivalent system-prompt MIE instruction.** WG vs NG1 is a tie within run-to-run noise.
+- **Each successive removal of MIE-related guidance costs ~0.25 points.** The drop from NG1 → NG2 (remove instruction) is +0.24, and NG2 → No-MIE (also remove the tool) is +0.26. These are real but small effects vs the rev0 results, where each step was ~1.2 points.
 
 ---
 
-## 10. Four-Condition Cost-Benefit Summary
+## 10. Cost-Benefit Summary
 
-| Condition | Extra cost/q | Score Δ | Cost/Δ point | Verdict |
-|-----------|:-----------:|:-------:|:------------:|:--------|
-| **With Guide** | $0.424 | +2.72 | **$0.16** | ✅ Strongly justified |
-| **NG1** (MIE instr) | $0.427 | **+2.73** | **$0.16** | ✅ Strongly justified |
-| **NG2** (no instr) | $0.372 | +1.48 | $0.25 | ⚠️ Partially justified |
-| **No MIE** | $0.478 | +0.30 | $1.61 | ❌ Not justified |
+| Condition | Extra cost / q | Score Δ | Cost / Δ point | Verdict |
+|-----------|:-------------:|:-------:|:--------------:|:--------|
+| **WG** | $0.375 | +3.45 | **$0.108** | ✅ Strongly justified |
+| **NG1** | $0.365 | +3.46 | **$0.106** | ✅ Strongly justified |
+| **NG2** | $0.400 | +3.22 | $0.124 | ✅ Justified |
+| **No-MIE** | $0.382 | +2.96 | $0.129 | ✅ Justified |
 
-### The Component Value Hierarchy
-
-```
-Full system:  Guide + MIE instr + MIE tool  →  Δ = +2.72  ($0.16/pt)
-                           ↓ remove Guide
-NG1:          MIE instruction + MIE tool     →  Δ = +2.73  ($0.16/pt)   [−0.01]
-                           ↓ remove MIE instruction  
-NG2:          MIE tool only (spontaneous)    →  Δ = +1.48  ($0.25/pt)   [−1.25]
-                           ↓ remove MIE tool
-No MIE:       Neither                        →  Δ = +0.30  ($1.61/pt)   [−1.18]
-```
-
-The **MIE instruction** is worth +1.25 points. The **MIE tool availability** (spontaneous use at 74%) is worth +1.18 points. The **Usage Guide itself** (beyond the MIE instruction) is worth approximately **zero** additional points.
+In contrast to rev0, **no condition is cost-unjustified** in the new runs. Even No-MIE's $0.129 / point is solidly positive (rev0 had it at $1.61 / point — an order of magnitude worse).
 
 ---
 
 ## 11. Recommendations
 
-1. **The MIE instruction is the single most impactful intervention.** A simple "always call `list_databases()` then `get_MIE_file()` before writing SPARQL" instruction recovers 100% of the Usage Guide benefit at zero additional cost.
+1. **NG1's MIE instruction in the system prompt is still the lowest-cost intervention with the largest payoff.** It matches WG to within run-to-run noise at slightly lower cost and latency. If a deployment can only afford one nudge, it is "before any SPARQL, call `find_databases()` then `get_MIE_file()`."
 
-2. **The full Usage Guide is not necessary** if the MIE instruction is present. Its workflow rules (search ordering, interleaving warnings) are either redundant or insufficiently enforced to matter.
+2. **The Usage Guide is functionally redundant with the MIE instruction.** Both produce the same headline numbers. Choose based on whether you want a structured, tool-encapsulated guide (Usage Guide) or a system-prompt directive (MIE instruction).
 
-3. **The MIE tool itself is essential.** Even without any instruction, the model spontaneously uses it 74% of the time, yielding a moderate improvement. But consistent use (via instruction) nearly doubles the benefit.
+3. **Summary questions still favour guided conditions.** WG/NG1 keep summary Δ above +2.4; NG2/No-MIE drop to +1.3–1.7 with much higher loss rates. For synthesis-heavy workloads, the MIE step matters most.
 
-4. **Summary questions remain the weak point** across all conditions. NG1 is the only non-guide condition that makes them marginally positive (+1.04), but even With Guide only achieves +0.50. Consider a specialized pipeline for summary questions.
+4. **The "MIE-essential" stratification has weakened.** NG2 (no instruction) and No-MIE both deliver Δ ≈ +3.0 — strong improvements that did not materialize in rev0. The manuscript should acknowledge this: tool-augmentation now produces sizeable gains across configurations, with the Usage Guide / MIE instruction acting as a **modest amplifier** rather than the dominant lever it was in rev0.
 
-5. **For cost-constrained deployments**, the ranking is clear: NG1 ≈ With Guide > NG2 >> No MIE. If you must choose one instruction to add to the system prompt, "call `list_databases()` and `get_MIE_file()` before any SPARQL query" is the answer.
+5. **Spontaneous discovery in NG2 has collapsed.** `find_databases` rate is 10 % (5/50 rows); `list_databases` is 4 % (2/50). Combined "any discovery tool" rate is 14 %, vs the rev0 ng2's 36 % `list_databases` rate. The Sonnet 4.5 model and question set are unchanged; the change comes from the **served tool inventory** (rev0 had only `list_databases`; the catalog now serves three discovery tools that previously cross-referenced each other as "alternatives") and **docstring framing** (rev0's `list_databases` was imperative; intervening edits softened the language; only partially recovered by the 2026-05-05 fix). The manuscript should treat NG2's discovery rate as a property of the deployed tool catalog at evaluation time, not as a steady property of the model.
 
 ---
 
-*Analysis generated from 4 experimental conditions × 5 evaluation runs × 50 questions = 1,000 total evaluations. Reference data for "With Guide" and "No MIE" conditions drawn from `togomcp_analysis_v2.md` and `togomcp_no_mie_analysis.md`.*
+*Analysis: 4 conditions × 5 evaluation runs × 50 questions = 1,000 total Opus 4.7 evaluations of 200 baseline + 200 TogoMCP answer pairs. Source CSVs: `{condition}-2026-05-04.csv`; per-run scoring CSVs: `{condition}-2026-05-04-Opus4.7-v{1..5}.csv`. Reference comparison data for the 2026-02 paper run is in [`rev0/togomcp_four_condition_comparison.md`](rev0/togomcp_four_condition_comparison.md).*
