@@ -114,6 +114,52 @@ docker run -e NCBI_API_KEY="your-key-here" -p 8000:8000 togo-mcp
 
 ---
 
+## Tool-Call Logging (Optional)
+
+TogoMCP can record every MCP tool call as one JSON line per call (timestamp,
+tool name, arguments, status, elapsed_ms, session/request/client IDs, transport,
+client IP). SPARQL calls are enriched with endpoint URL, HTTP code, row/byte
+counts, and a SHA-256 of the query. Useful for benchmarking, MIE iteration,
+and reconstructing multi-tool sequences.
+
+**On/off is a single env var**: `TOGOMCP_QUERY_LOG`. Unset/empty = disabled
+(zero-overhead default). Set to a writable file path to enable.
+Output uses `RotatingFileHandler` (50 MB × 10, ~500 MB cap).
+
+### Docker
+
+`compose.yaml` bind-mounts `./logs` (and `./logs-test`) on the host to
+`/var/log/togomcp` inside each container and passes through `TOGOMCP_QUERY_LOG`
+/ `TOGOMCP_QUERY_LOG_TEST` from `.env`. Opt in:
+
+```bash
+echo 'TOGOMCP_QUERY_LOG=/var/log/togomcp/togomcp.jsonl' >> .env
+mkdir -p logs
+docker compose up -d togomcp-main
+tail -f logs/togomcp.jsonl
+```
+
+The path in the env var is the **container-side** path; the bind mount makes
+the same file visible at `./logs/togomcp.jsonl` on your host. Leaving the var
+unset keeps logging off — no compose changes needed.
+
+### Claude Desktop (local stdio)
+
+Add `TOGOMCP_QUERY_LOG` to the `env` block alongside `NCBI_API_KEY`. Use an
+absolute path (the spawned process's cwd is unpredictable) and ensure the
+parent directory exists:
+
+```json
+"env": {
+    "NCBI_API_KEY": "your-key-here",
+    "TOGOMCP_QUERY_LOG": "/Users/you/togomcp-logs/togomcp.jsonl"
+}
+```
+
+Then `mkdir -p ~/togomcp-logs` once and fully restart Claude Desktop.
+
+---
+
 ## Available Databases & Tools
 
 TogoMCP exposes tools for querying the following (via SPARQL or REST APIs):
