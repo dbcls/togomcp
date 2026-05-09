@@ -1,7 +1,14 @@
 import csv
+import hashlib
+import json
 import logging
 import os
+import time
+from contextvars import ContextVar
+from datetime import datetime, timezone
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from typing import Any
 
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_request
@@ -13,21 +20,12 @@ from starlette.responses import HTMLResponse, PlainTextResponse
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-
-def toolcall_log(funname: str) -> None:
-    """Log a tool call with the caller's IP address.
-
-    Args:
-        funname: The name of the tool being called.
-    """
-    try:
-        request: Request = get_http_request()
-        user_ip = request.headers.get("X-Forwarded-For", None)
-        logger.info(f"TogoMCP_tool: {funname}, IP: {user_ip}")
-    except RuntimeError:
-        # No HTTP request context (e.g., called via MCP)
-        logger.info(f"TogoMCP_tool: {funname}, IP: MCP-call")
-    return None
+# Per-call SPARQL extras: execute_sparql writes a dict here; the middleware reads
+# it in its finally block and merges it into the JSONL line. Set to None when no
+# SPARQL call is in flight.
+_sparql_extra_var: ContextVar[dict[str, Any] | None] = ContextVar(
+    "togomcp_sparql_extra", default=None
+)
 
 
 # The MIE files are used to define the shape expressions for SPARQL queries.
@@ -35,7 +33,7 @@ _PACKAGE_DATA_DIR = Path(__file__).parent.joinpath("data")
 CWD = Path(os.getenv("TOGOMCP_DIR", str(_PACKAGE_DATA_DIR)))
 MIE_DIR = str(CWD.joinpath("mie"))
 MIE_PROMPT = str(CWD.joinpath("resources", "MIE_prompt.md"))
-TOGOMCP_USAGE_GUIDE = str(CWD.joinpath("resources", "togomcp_usage_guide_v4.md"))
+TOGOMCP_USAGE_GUIDE = str(CWD.joinpath("resources", "togomcp_usage_guide_v5.md"))
 RDF_CONFIG_TEMPLATE = str(CWD.joinpath("rdf-config", "template.yaml"))
 ENDPOINTS_CSV = str(CWD.joinpath("resources", "endpoints.csv"))
 INDEX_HTML = str(CWD.joinpath("docs", "togomcp-intro.html"))
@@ -215,11 +213,18 @@ async def execute_sparql(
     """
     url = resolve_endpoint_url(database, endpoint_name, endpoint_url)
 
+    extra: dict[str, Any] = {
+        "endpoint_url": url,
+        "query_sha256": hashlib.sha256(sparql_query.strip().encode("utf-8")).hexdigest(),
+    }
+    _sparql_extra_var.set(extra)
+
     try:
         response = await _sparql_client.post(
             url, data={"query": sparql_query}, headers={"Accept": "text/csv"}
         )
     except httpx.TimeoutException as exc:
+        extra["sparql_status"] = "timeout"
         raise ValueError(
             f"SPARQL endpoint at {url} timed out after {_sparql_client.timeout.read}s. "
             "The query is likely too heavy. Add LIMIT, narrow with specific IRIs or GRAPH "
@@ -227,10 +232,21 @@ async def execute_sparql(
             f"changes. ({exc.__class__.__name__})"
         ) from exc
     except httpx.HTTPError as exc:
+        extra["sparql_status"] = "network_error"
         raise ValueError(
             f"SPARQL endpoint at {url} could not be reached: "
             f"{exc.__class__.__name__}: {exc}"
         ) from exc
+
+    extra["http_code"] = response.status_code
+    extra["n_bytes"] = len(response.content)
+    if response.is_success:
+        extra["sparql_status"] = "ok"
+        extra["n_rows"] = max(response.text.count("\n") - 1, 0)
+    elif 400 <= response.status_code < 500:
+        extra["sparql_status"] = "http_4xx"
+    else:
+        extra["sparql_status"] = "http_5xx"
 
     raise_for_status_with_body(
         response,
@@ -296,6 +312,91 @@ class _IgnoreUnknownSearchKwargs(_Middleware):
 
 
 mcp.add_middleware(_IgnoreUnknownSearchKwargs())
+
+
+class _ToolCallLogger(_Middleware):
+    """Emit one JSONL record per MCP tool call.
+
+    Enabled by setting TOGOMCP_QUERY_LOG to a filesystem path. Unset/empty =
+    disabled (the default), in which case on_call_tool short-circuits and adds
+    no measurable overhead. SPARQL calls enrich their record via
+    _sparql_extra_var (set inside execute_sparql).
+    """
+
+    def __init__(self) -> None:
+        log_path = os.getenv("TOGOMCP_QUERY_LOG", "").strip()
+        self._enabled = bool(log_path)
+        self._log: logging.Logger | None = None
+        if self._enabled:
+            handler = RotatingFileHandler(
+                log_path, maxBytes=50_000_000, backupCount=10, encoding="utf-8"
+            )
+            handler.setFormatter(logging.Formatter("%(message)s"))
+            log = logging.getLogger("togomcp.toolcalls")
+            log.setLevel(logging.INFO)
+            log.propagate = False
+            log.handlers = [handler]
+            self._log = log
+
+    @staticmethod
+    def _client_ip() -> str | None:
+        try:
+            req: Request = get_http_request()
+        except RuntimeError:
+            return None
+        return req.headers.get("X-Forwarded-For") or (
+            req.client.host if req.client else None
+        )
+
+    async def on_call_tool(self, context, call_next):
+        if not self._enabled:
+            return await call_next(context)
+
+        token = _sparql_extra_var.set(None)
+        start = time.perf_counter()
+        status = "ok"
+        error_class: str | None = None
+        error_message: str | None = None
+        try:
+            return await call_next(context)
+        except BaseException as exc:
+            status = "error"
+            error_class = exc.__class__.__name__
+            error_message = str(exc)[:500]
+            raise
+        finally:
+            elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+            extra = _sparql_extra_var.get()
+            _sparql_extra_var.reset(token)
+            fctx = context.fastmcp_context
+            record: dict[str, Any] = {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "tool": context.message.name,
+                "args": context.message.arguments or {},
+                "status": status,
+                "elapsed_ms": elapsed_ms,
+                "session_id": getattr(fctx, "session_id", None) if fctx else None,
+                "request_id": getattr(fctx, "request_id", None) if fctx else None,
+                "origin_request_id": (
+                    getattr(fctx, "origin_request_id", None) if fctx else None
+                ),
+                "client_id": getattr(fctx, "client_id", None) if fctx else None,
+                "transport": getattr(fctx, "transport", None) if fctx else None,
+                "ip": self._client_ip(),
+            }
+            if error_class is not None:
+                record["error_class"] = error_class
+                record["error_message"] = error_message
+            if extra:
+                record["extra"] = extra
+            try:
+                self._log.info(json.dumps(record, default=str))  # type: ignore[union-attr]
+            except Exception:
+                # Logging must never break a tool call.
+                pass
+
+
+mcp.add_middleware(_ToolCallLogger())
 
 
 @mcp.custom_route("/health", methods=["GET"])

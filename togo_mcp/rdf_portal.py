@@ -54,7 +54,6 @@ def togomcp_usage_guide() -> str:
     Returns:
         str: The content of the TogoMCP v4 usage guide.
     """
-    toolcall_log("togomcp_usage_guide")
     with open(TOGOMCP_USAGE_GUIDE, encoding="utf-8") as file:
         prompt = file.read()
     return prompt
@@ -72,7 +71,6 @@ async def get_sparql_endpoints() -> dict[str, Any]:
         - databases: Dict mapping database -> {url, endpoint_name, keyword_search}
         - endpoints: Dict mapping endpoint_name -> {url, databases}
     """
-    toolcall_log("get_sparql_endpoints")
     return {
         "databases": SPARQL_ENDPOINT,
         "endpoints": {
@@ -144,7 +142,6 @@ async def run_sparql(
     Returns:
         str: CSV-formatted results of the SPARQL query.
     """
-    toolcall_log("run_sparql")
     database = database or dbname or db
     sparql_query = sparql_query or query
     if not sparql_query:
@@ -238,7 +235,6 @@ async def get_graph_list(
     Returns:
         str: CSV-formatted list of named graphs, with database-name matches first.
     """
-    toolcall_log("get_graph_list")
     database = database or dbname or db
     if not database and not endpoint_name and not endpoint_url:
         return (
@@ -307,7 +303,6 @@ async def get_MIE_file(
     Returns:
         str: The MIE file containing the RDF schema information in YAML format.
     """
-    toolcall_log("get_MIE_file")
     database = database or dbname or db
     if not database:
         return "Error: Missing required argument `database` (aliases: `dbname`, `db`)."
@@ -413,7 +408,6 @@ def list_databases() -> list[dict[str, Any]]:
     Returns:
         A list of dicts with keys `database`, `title`, `description`.
     """
-    toolcall_log("list_databases")
     return [
         {"database": r["database"], "title": r["title"], "description": r["description"]}
         for r in _load_databases_cache()
@@ -510,7 +504,6 @@ def find_databases(
         `description` when `verbose=True`). Sorted by number of matched keywords
         descending, then alphabetically by database name.
     """
-    toolcall_log("find_databases")
     kw_list = _normalize_terms(keywords)
     cat_list = _normalize_terms(category)
 
@@ -565,7 +558,6 @@ def list_categories() -> dict[str, list[str]]:
         Dict mapping category name -> sorted list of database names. Returns an empty
         dict if no databases have been annotated with categories yet.
     """
-    toolcall_log("list_categories")
     cats: dict[str, list[str]] = {}
     for r in _load_databases_cache():
         for c in r["categories"]:

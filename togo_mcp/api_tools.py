@@ -141,7 +141,6 @@ async def search_uniprot_entity(
     Returns:
         str: TSV-formatted results with columns: accession, protein_name, organism_name.
     """
-    toolcall_log("search_uniprot_entity")
     query = _resolve_query_alias(
         query,
         search=search,
@@ -233,7 +232,6 @@ async def search_chembl_id_lookup(
     Returns:
         str: A JSON-formatted string containing the search results.
     """
-    toolcall_log("search_chembl_id_lookup")
     query = _resolve_query_alias(
         query,
         search=search,
@@ -329,7 +327,6 @@ async def search_chembl_target(
     Raises:
         httpx.HTTPError: If the API request fails
     """
-    toolcall_log("search_chembl_target")
     query = _resolve_query_alias(
         query,
         search=search,
@@ -431,7 +428,6 @@ async def search_chembl_molecule(
     Raises:
         httpx.HTTPError: If the API request fails
     """
-    toolcall_log("search_chembl_molecule")
     query = _resolve_query_alias(
         query,
         search=search,
@@ -472,7 +468,6 @@ async def get_pubchem_compound_id(compound_name: str) -> str:
 
     Returns: PubChem Compound ID in the JSON format
     """
-    toolcall_log("get_pubchem_compound_id")
     url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{compound_name}/cids/JSON"
     try:
         response = await _pubchem_client.get(url)
@@ -501,7 +496,6 @@ async def get_compound_attributes_from_pubchem(pubchem_compound_id: str) -> str:
 
     Returns: Compound attributes in the JSON format
     """
-    toolcall_log("get_compound_attributes_from_pubchem")
     url = "https://togodx.dbcls.jp/human/sparqlist/api/metastanza_pubchem_compound"
     params = {"id": pubchem_compound_id}
     try:
@@ -559,7 +553,6 @@ async def search_pdb_entity(
     Returns:
         str: A JSON-formatted string containing the search results.
     """
-    toolcall_log("search_pdb_entity")
     query = _resolve_query_alias(
         query,
         search=search,
@@ -629,7 +622,6 @@ async def search_mesh_descriptor(
     Returns:
         str: A JSON-formatted string containing the search results.
     """
-    toolcall_log("search_mesh_descriptor")
     query = _resolve_query_alias(
         query,
         search=search,
@@ -713,7 +705,6 @@ async def search_reactome_entity(
     Raises:
         httpx.HTTPError: If the API request fails.
     """
-    toolcall_log("search_reactome_entity")
     query = _resolve_query_alias(
         query,
         search=search,
@@ -818,7 +809,6 @@ async def search_rhea_entity(
         >>> for reaction in results:
         ...     print(f"{reaction['rhea_id']}: {reaction['equation']}")
     """
-    toolcall_log("search_rhea_entity")
     # Unlike other search tools, Rhea permits an empty query (returns all
     # reactions). Only coalesce when an alias was provided.
     query = _resolve_query_alias(
