@@ -72,7 +72,6 @@ async def getAllRelation() -> dict:
         Dictionary mapping database pairs to their relationship metadata.
         Each entry shows source, target, and the nature of the link.
     """
-    toolcall_log("getAllRelation")
     response = await _client.get("/config/relation")
     raise_for_status_with_body(response, context="TogoID getAllRelation")
     return response.json()
@@ -103,7 +102,6 @@ async def getRelation(source: str, target: str) -> list:
         >>> getRelation('uniprot', 'pdb')
         # Shows: uniprot → pdb via "has structure" relationship
     """
-    toolcall_log("getRelation")
     response = await _client.get(f"/config/relation/{source}-{target}")
     raise_for_status_with_body(
         response,
@@ -136,7 +134,6 @@ async def getAllDataset() -> dict:
         Dictionary mapping dataset keys (e.g., 'uniprot', 'ncbigene', 'pdb')
         to their configuration objects.
     """
-    toolcall_log("getAllDataset")
     response = await _client.get("/config/dataset")
     raise_for_status_with_body(response, context="TogoID getAllDataset")
     return response.json()
@@ -161,7 +158,6 @@ async def getDataset(dataset: str) -> dict:
         - examples: Sample IDs (use with countId to test before bulk conversion)
         - annotations: Available annotation types for this dataset
     """
-    toolcall_log("getDataset")
     response = await _client.get(f"/config/dataset/{dataset}")
     raise_for_status_with_body(
         response,
@@ -184,7 +180,6 @@ async def getDescription() -> dict:
     Returns:
         Dictionary keyed by dataset name with description metadata.
     """
-    toolcall_log("getDescription")
     response = await _client.get("/config/descriptions")
     raise_for_status_with_body(response, context="TogoID getDescription")
     return response.json()
@@ -241,7 +236,6 @@ async def convertId(
         - Finding PDB structures for a set of proteins
         - Identifying ChEMBL drug targets for a list of genes
     """
-    toolcall_log("convertId")
     params = {
         "ids": _ids_to_csv(ids),
         "route": route,
@@ -292,7 +286,6 @@ async def countId(source: str, target: str, ids: str | list[str]) -> dict:
         # Returns: {"source": 3, "target": 5}
         # (3 genes map to 5 UniProt entries — some genes have multiple proteins)
     """
-    toolcall_log("countId")
     response = await _client.get(
         f"/count/{source}-{target}", params={"ids": _ids_to_csv(ids)}
     )

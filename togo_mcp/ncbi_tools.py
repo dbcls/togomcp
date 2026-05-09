@@ -25,7 +25,7 @@ from fastmcp import FastMCP
 import httpx
 from mcp.types import TextContent
 
-from .server import raise_for_status_with_body, toolcall_log
+from .server import raise_for_status_with_body
 
 # Get API key from environment
 NCBI_API_KEY = os.environ.get("NCBI_API_KEY")
@@ -410,8 +410,6 @@ async def esearch(
 
     Learn more: https://www.ncbi.nlm.nih.gov/books/NBK3837/
     """
-    toolcall_log("ncbi_esearch")
-
     # Accept `db` as alias for `database`, and `term` as alias for `query`.
     database = database or db
     query = query or term
@@ -482,8 +480,6 @@ async def list_databases() -> list[TextContent]:
     Returns:
         Formatted list of available databases
     """
-    toolcall_log("ncbi_list_databases")
-
     result = "Supported NCBI Databases\n" + "=" * 50 + "\n\n"
 
     for db_name, db_info in NCBI_DATABASES.items():
@@ -526,8 +522,6 @@ async def esummary(
     Returns:
         Parsed JSON response with summary data
     """
-    toolcall_log("ncbi_esummary")
-
     database = database or db
     id_list = _normalize_ids(ids)
     if not database:
@@ -608,8 +602,6 @@ async def efetch(
     Returns:
         Response text in requested format
     """
-    toolcall_log("ncbi_efetch")
-
     database = database or db
     id_list = _normalize_ids(ids)
     if not database:

@@ -1,7 +1,11 @@
 """Tests for togo_mcp.server module."""
 
+import asyncio
 import csv
+import importlib
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -163,3 +167,108 @@ class TestResolveEndpointUrl:
         """Passing all empty strings raises ValueError."""
         with pytest.raises(ValueError, match="Missing required argument"):
             resolve_endpoint_url(database="", endpoint_name="", endpoint_url="")
+
+
+# ---------------------------------------------------------------------------
+# _ToolCallLogger middleware
+# ---------------------------------------------------------------------------
+
+
+def _build_ctx(tool: str, args: dict | None = None) -> SimpleNamespace:
+    """Minimal MiddlewareContext stand-in covering the attrs the logger reads."""
+    return SimpleNamespace(
+        message=SimpleNamespace(name=tool, arguments=args or {}),
+        fastmcp_context=SimpleNamespace(
+            session_id="sess-1",
+            request_id="req-1",
+            origin_request_id=None,
+            client_id="client-1",
+            transport="stdio",
+        ),
+    )
+
+
+def _read_jsonl(path: Path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def _make_logger(monkeypatch, tmp_path: Path, enabled: bool):
+    """Re-import server with TOGOMCP_QUERY_LOG set/unset, return (_ToolCallLogger, log_path)."""
+    log_path = tmp_path / "calls.jsonl"
+    if enabled:
+        monkeypatch.setenv("TOGOMCP_QUERY_LOG", str(log_path))
+    else:
+        monkeypatch.delenv("TOGOMCP_QUERY_LOG", raising=False)
+    import togo_mcp.server as srv
+    importlib.reload(srv)
+    return srv._ToolCallLogger(), srv, log_path
+
+
+class TestToolCallLogger:
+    def test_disabled_short_circuits(self, monkeypatch, tmp_path: Path) -> None:
+        mw, _srv, log_path = _make_logger(monkeypatch, tmp_path, enabled=False)
+        assert mw._enabled is False
+
+        async def call_next(_ctx):
+            return "result"
+
+        out = asyncio.run(mw.on_call_tool(_build_ctx("any_tool"), call_next))
+        assert out == "result"
+        assert not log_path.exists()
+
+    def test_logs_success(self, monkeypatch, tmp_path: Path) -> None:
+        mw, _srv, log_path = _make_logger(monkeypatch, tmp_path, enabled=True)
+        assert mw._enabled is True
+
+        async def call_next(_ctx):
+            return "ok"
+
+        out = asyncio.run(mw.on_call_tool(_build_ctx("find_databases", {"keywords": ["x"]}), call_next))
+        assert out == "ok"
+
+        for h in mw._log.handlers:  # type: ignore[union-attr]
+            h.flush()
+        records = _read_jsonl(log_path)
+        assert len(records) == 1
+        rec = records[0]
+        assert rec["tool"] == "find_databases"
+        assert rec["args"] == {"keywords": ["x"]}
+        assert rec["status"] == "ok"
+        assert rec["session_id"] == "sess-1"
+        assert rec["transport"] == "stdio"
+        assert isinstance(rec["elapsed_ms"], (int, float))
+        assert "extra" not in rec  # non-SPARQL call
+
+    def test_logs_error(self, monkeypatch, tmp_path: Path) -> None:
+        mw, _srv, log_path = _make_logger(monkeypatch, tmp_path, enabled=True)
+
+        async def call_next(_ctx):
+            raise ValueError("boom")
+
+        with pytest.raises(ValueError):
+            asyncio.run(mw.on_call_tool(_build_ctx("run_sparql"), call_next))
+
+        for h in mw._log.handlers:  # type: ignore[union-attr]
+            h.flush()
+        rec = _read_jsonl(log_path)[0]
+        assert rec["status"] == "error"
+        assert rec["error_class"] == "ValueError"
+        assert "boom" in rec["error_message"]
+
+    def test_sparql_extra_merged(self, monkeypatch, tmp_path: Path) -> None:
+        mw, srv, log_path = _make_logger(monkeypatch, tmp_path, enabled=True)
+
+        async def call_next(_ctx):
+            srv._sparql_extra_var.set(
+                {"endpoint_url": "https://x/sparql", "sparql_status": "ok", "n_rows": 3}
+            )
+            return "csv body"
+
+        asyncio.run(mw.on_call_tool(_build_ctx("run_sparql"), call_next))
+
+        for h in mw._log.handlers:  # type: ignore[union-attr]
+            h.flush()
+        rec = _read_jsonl(log_path)[0]
+        assert rec["extra"]["endpoint_url"] == "https://x/sparql"
+        assert rec["extra"]["sparql_status"] == "ok"
+        assert rec["extra"]["n_rows"] == 3
