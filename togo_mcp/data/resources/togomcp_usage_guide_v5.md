@@ -1,4 +1,4 @@
-# TogoMCP Usage Guide (v4)
+# TogoMCP Usage Guide (v5)
 
 ---
 
@@ -177,12 +177,22 @@ cross-DB → `ncbi_esummary` for detail → one concise paragraph. Each fact onc
    - Entity → DB map; bridge plan if cross-endpoint.
 
 2. **Concierge check** after each tool call (one line):
-   *"What did this confirm? What new question does it raise? Pursue now or save?"*
+   *"What did this confirm? What new question does it raise? Pursue now or save?
+   Have I called this DB 3+ times in a row?"*
 
-3. **Cross-database chain** — attempt at least one (e.g. UniProt → PDB → ChEMBL).
-   "No results" is a finding; report it as a gap.
+3. **Breadth — execute the entity→DB map.** Each entity class in your map must
+   produce at least one direct call to the DB you mapped it to. Reading UniProt
+   text annotations does **not** substitute for hitting Rhea / Taxonomy / ChEMBL /
+   PubChem / MeSH directly — even when UniProt text mentions an EC number, a
+   taxon, or a ligand, you still owe the mapped DB a call.
+   **Max 3 consecutive calls against the same database/tool family.** Counter
+   resets on any cross-DB call. Before a 4th, pivot to an unexplored DB from
+   your map.
 
-4. **Prioritized Next Steps** (3–5 items at the end):
+4. **Cross-database chain** — attempt at least one cross-endpoint chain
+   (e.g. UniProt → PDB → ChEMBL). "No results" is a finding; report it as a gap.
+
+5. **Prioritized Next Steps** (3–5 items at the end):
    each = specific tool + query string + unknown it addresses.
    "Look into this more" is not a Next Step.
 
@@ -225,6 +235,7 @@ cross-DB → `ncbi_esummary` for detail → one concise paragraph. Each fact onc
 | Problem | Fix |
 |---------|-----|
 | Missed EXPLORATION trigger | Return to GATE 0. Re-classify. If NO, write Seed Definition now. |
+| Stuck on one DB (≥4 calls in EXPLORATION) | Pivot to the next unexplored DB from your entity→DB map. UniProt annotations don't substitute for direct Rhea/Taxonomy/ChEMBL/PubChem calls. |
 | 3rd consecutive SPARQL | Stop. Pivot to search / NCBI / TogoID / partial synthesis. |
 | Cross-DB SPARQL fails | Check endpoints; use TogoID or NCBI bridge. |
 | Empty SPARQL results | Use structured predicates from MIE; extract IRIs via search first. |
