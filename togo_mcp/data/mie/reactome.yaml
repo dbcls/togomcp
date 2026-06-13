@@ -29,8 +29,9 @@ schema_info:
   kw_search_tools:
     - search_reactome_entity
   version:
-    mie_version: "6.0"
+    mie_version: "6.1"
     mie_created: "2026-04-29"
+    mie_updated: "2026-06-13"
     data_version: "Release 95"
     update_frequency: "Quarterly"
   access:
@@ -38,9 +39,20 @@ schema_info:
 
 critical_warnings: |
   - MANDATORY ^^xsd:string FOR EXACT MATCHING: bp:db, bp:id, bp:name, bp:eCNumber, and
-    bp:controlType literals require ^^xsd:string in triple patterns, VALUES, and FILTER =.
-    Omitting silently returns 0 results. NOT needed for CONTAINS(), STRSTARTS(), REGEX(),
-    bif:contains, or when simply retrieving values into variables.
+    bp:controlType literals require ^^xsd:string. Omitting silently returns 0 results.
+    Required in THREE places — sweep every literal in your query against each:
+      (a) VALUES blocks — HIGHEST-MISS spot, because plain "P02649" looks visually identical
+          to the typed form but joins to nothing:
+              WRONG: VALUES ?id { "P02649" "P04035" }
+              RIGHT: VALUES ?id { "P02649"^^xsd:string "P04035"^^xsd:string }
+      (b) Triple-pattern objects:
+              WRONG: ?xref bp:db "UniProt" .
+              RIGHT: ?xref bp:db "UniProt"^^xsd:string .
+      (c) FILTER = comparisons:
+              WRONG: FILTER(?id = "GO:0000165")
+              RIGHT: FILTER(?id = "GO:0000165"^^xsd:string)
+    NOT needed for CONTAINS(), STRSTARTS(), REGEX(), bif:contains, or when simply binding
+    values into variables.
   - GO TERMS PRIMARILY IN RelationshipXref (NOT UnificationXref): ~68K GO annotations are
     stored as RelationshipXref; UnificationXref holds only ~1.5K. Querying only
     UnificationXref silently misses 98% of all GO pathway annotations.
@@ -304,6 +316,44 @@ sparql_query_examples:
       }
       LIMIT 50
 
+  - title: Find Human Pathways for a List of UniProt Accessions
+    description: |
+      Retrieve human pathways whose reactions involve any of a given set of UniProt-identified
+      proteins. Standard "find pathways for these proteins" pattern. Uses VALUES with mandatory
+      ^^xsd:string typing to match bp:id, and bp:component* on the participant so the protein is
+      found whether it participates directly or as a member of a complex.
+    question: Which human pathways involve any of these UniProt-identified proteins?
+    complexity: intermediate
+    sparql: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+      SELECT DISTINCT ?uniprotIdStr ?pathwayName
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        # MANDATORY ^^xsd:string on every VALUES literal — plain "P02649" silently joins to nothing
+        VALUES ?uniprotIdStr {
+          "P02649"^^xsd:string    # APOE
+          "O95477"^^xsd:string    # ABCA1
+          "P11597"^^xsd:string    # CETP
+          "P06858"^^xsd:string    # LPL
+        }
+        ?protein a bp:Protein ;
+                 bp:entityReference/bp:xref ?protXref .
+        ?protXref a bp:UnificationXref ;
+                  bp:db "UniProt"^^xsd:string ;
+                  bp:id ?uniprotIdStr .
+        ?pathway a bp:Pathway ;
+                 bp:displayName ?pathwayName ;
+                 bp:organism/bp:name "Homo sapiens"^^xsd:string ;
+                 bp:pathwayComponent+ ?reaction .
+        ?reaction (bp:left|bp:right) ?participant .
+        # bp:component* matches both direct participation and complex-mediated participation
+        ?participant bp:component* ?protein .
+      }
+      ORDER BY ?pathwayName ?uniprotIdStr
+      LIMIT 200
+
   - title: Find Proteins with Phosphorylation Using MOD Ontology IDs
     description: |
       Retrieve proteins with specific phosphorylation types using MOD IDs from UnificationXref
@@ -566,6 +616,7 @@ cross_references:
 architectural_notes:
   query_strategy:
     - "ALWAYS read get_MIE_file('reactome') and scan critical_warnings before writing queries"
+    - "PRE-FLIGHT LITERAL SWEEP (do this before submitting EVERY query): scan every quoted literal in VALUES, FILTER =, and triple-pattern objects. If it binds to bp:db / bp:id / bp:name / bp:eCNumber / bp:controlType, it MUST carry ^^xsd:string — plain strings silently return 0 rows. VALUES is the highest-miss spot because the typing requirement isn't visually cued there."
     - "Exploratory: use search_reactome_entity() to find example entities and extract typed values"
     - "Exact matching: always use ^^xsd:string for bp:db, bp:id, bp:name, bp:eCNumber, bp:controlType"
     - "GO terms: query RelationshipXref (68K) — NOT UnificationXref (1.5K misses 98% of GO data)"
@@ -647,6 +698,34 @@ data_statistics:
     complexes_with_stoichiometry: "~95%"
 
 anti_patterns:
+  - title: "Plain-String VALUES Against Typed bp:id (Silent Zero Rows)"
+    problem: |
+      VALUES block lists plain string literals to match against typed bp:id (or bp:db / bp:name /
+      bp:eCNumber / bp:controlType) values. The query parses and executes without error but
+      joins to nothing — the most common silent-failure mode in Reactome queries.
+    wrong_sparql: |
+      # Plain "P02649" — visually identical to the typed form but joins to nothing
+      VALUES ?uniprotIdStr { "P02649" "P04035" "O95477" }
+      ?xref a bp:UnificationXref ;
+            bp:db "UniProt"^^xsd:string ;
+            bp:id ?uniprotIdStr .
+    correct_sparql: |
+      # Each literal carries ^^xsd:string — joins to bp:id correctly
+      VALUES ?uniprotIdStr {
+        "P02649"^^xsd:string
+        "P04035"^^xsd:string
+        "O95477"^^xsd:string
+      }
+      ?xref a bp:UnificationXref ;
+            bp:db "UniProt"^^xsd:string ;
+            bp:id ?uniprotIdStr .
+    explanation: |
+      bp:db, bp:id, bp:name, bp:eCNumber, and bp:controlType are stored as ^^xsd:string in
+      Reactome. A plain string literal is a different RDF term and never joins. VALUES is the
+      highest-miss location because the typing requirement isn't visually cued the way it is
+      in a triple-pattern object or a FILTER =. Pre-flight check: scan every quoted literal in
+      the query; if it binds to one of the predicates above, it MUST be typed.
+
   - title: "Querying UnificationXref for GO Terms (Misses 98% of Annotations)"
     problem: "Skipping MIE schema check: using UnificationXref for GO terms instead of RelationshipXref silently returns only 2% of GO pathway annotations."
     wrong_sparql: |
@@ -722,21 +801,28 @@ anti_patterns:
     explanation: "Use search_reactome_entity() to get the starting IRI. Use + (not *) and always add LIMIT."
 
 common_errors:
+  - error: "Empty results when matching IDs via VALUES (UniProt, ChEBI, GO, MOD, EC numbers, etc.)"
+    causes:
+      - "VALUES literals written as plain strings (e.g. \"P02649\") instead of typed \"P02649\"^^xsd:string — the #1 silent-failure mode in Reactome queries"
+    solutions:
+      - "Add ^^xsd:string to every literal in the VALUES block (see anti-pattern: Plain-String VALUES Against Typed bp:id)"
+      - "Pre-flight check: scan every quoted literal; if it binds to bp:id / bp:db / bp:name / bp:eCNumber / bp:controlType, it must be typed"
+
   - error: "Empty results for GO term queries"
     causes:
       - "Querying UnificationXref instead of RelationshipXref (misses 98% of GO annotations)"
       - "Missing ^^xsd:string on bp:db or bp:id"
     solutions:
-      - "Switch to RelationshipXref (see critical_warnings and anti-pattern 1)"
-      - "Add ^^xsd:string to all exact literal matches (see anti-pattern 2)"
+      - "Switch to RelationshipXref (see critical_warnings and anti-pattern: Querying UnificationXref for GO Terms)"
+      - "Add ^^xsd:string to all exact literal matches (see anti-pattern: Plain-String VALUES Against Typed bp:id)"
       - "Verify GO term ID format: must be 'GO:NNNNNNN'^^xsd:string"
 
-  - error: "Empty results for organism, EC number, or xref filters"
+  - error: "Empty results for organism, EC number, or xref filters in triple patterns or FILTER ="
     causes:
-      - "Missing ^^xsd:string on string literals in triple patterns or VALUES"
+      - "Missing ^^xsd:string on string literals in triple-pattern objects or FILTER ="
       - "Missing FROM <http://rdf.ebi.ac.uk/dataset/reactome> clause on shared ebi endpoint"
     solutions:
-      - "Add ^^xsd:string to all exact matches (see anti-pattern 2)"
+      - "Add ^^xsd:string to all exact matches"
       - "Add explicit FROM clause to every single-database query"
 
   - error: "Slow query or timeout on pathway hierarchy or cross-database joins"
