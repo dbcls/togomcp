@@ -59,6 +59,18 @@ critical_warnings: |
   - ALWAYS include FROM <http://rdf.ebi.ac.uk/dataset/reactome> in single-database queries
     on the shared ebi endpoint; omitting causes cross-contamination with ChEMBL, ChEBI,
     and Ensembl graphs.
+  - UNIPROT XREFS HAVE TWO FORMS — filtering on only "UniProt" silently drops isoform-only
+    proteins. ~91,627 instances use bp:db "UniProt"^^xsd:string with bp:id = bare accession
+    (e.g. "P02649"); ~374 instances use bp:db "UniProt Isoform"^^xsd:string with bp:id =
+    accession + isoform suffix (e.g. "Q9UHC9-2" for NPC1L1). Some proteins (NPC1L1 is a
+    documented case) exist ONLY in the isoform form — a "UniProt only" query misses them
+    entirely. For an accession-list query, accept BOTH bp:db values AND match bp:id by
+    either exact equality or "<accession>-N" prefix:
+        WRONG: ?xref bp:db "UniProt"^^xsd:string ; bp:id "Q9UHC9"^^xsd:string .   # 0 rows
+        RIGHT: VALUES ?xrefDb { "UniProt"^^xsd:string "UniProt Isoform"^^xsd:string }
+               ?xref bp:db ?xrefDb ; bp:id ?xrefId .
+               FILTER(?xrefId = "Q9UHC9"^^xsd:string
+                   || STRSTARTS(STR(?xrefId), "Q9UHC9-"))
 
 shape_expressions: |
   PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
@@ -98,7 +110,8 @@ shape_expressions: |
     bp:xref @<XrefShape> *
   }
 
-  # ProteinReference: ~91K with bp:db "UniProt"^^xsd:string (UnificationXref)
+  # ProteinReference: ~91,627 with bp:db "UniProt"^^xsd:string (canonical, bare accession)
+  #                + ~374    with bp:db "UniProt Isoform"^^xsd:string (bp:id = "ACC-N", e.g. "Q9UHC9-2")
   # SmallMoleculeReference: ~21.5K with bp:db "ChEBI"^^xsd:string
   <EntityReferenceShape> {
     a [ bp:ProteinReference bp:SmallMoleculeReference bp:DnaReference bp:RnaReference ] ;
@@ -187,7 +200,9 @@ shape_expressions: |
   }
 
   # ~1,207,533 UnificationXref instances. bp:db and bp:id are always present.
-  # Key db values: "UniProt", "ChEBI", "MOD", "GO", "Ensembl", "NCBI Gene", etc.
+  # Key db values: "UniProt" (~91,627), "UniProt Isoform" (~374 — accession + "-N" suffix in bp:id),
+  #                "ChEBI" (~21,570), "MOD" (~1,402), "GO" (~1,529), "Ensembl", "NCBI Gene", etc.
+  # NOTE: "UniProt" and "UniProt Isoform" are DISTINCT db values — see critical_warnings.
   # Distinct from XrefShape (which covers all three xref types with optional predicates).
   <UnificationXrefShape> {
     a [ bp:UnificationXref ] ;
@@ -316,42 +331,52 @@ sparql_query_examples:
       }
       LIMIT 50
 
-  - title: Find Human Pathways for a List of UniProt Accessions
+  - title: Find Human Pathways for a List of UniProt Accessions (isoform-aware)
     description: |
       Retrieve human pathways whose reactions involve any of a given set of UniProt-identified
-      proteins. Standard "find pathways for these proteins" pattern. Uses VALUES with mandatory
-      ^^xsd:string typing to match bp:id, and bp:component* on the participant so the protein is
-      found whether it participates directly or as a member of a complex.
-    question: Which human pathways involve any of these UniProt-identified proteins?
+      proteins. Standard "find pathways for these proteins" pattern. Three traps handled:
+      (1) MANDATORY ^^xsd:string on every VALUES literal — plain strings silently join to nothing.
+      (2) UniProt xrefs come in TWO bp:db flavors — "UniProt" (bare accession in bp:id) AND
+          "UniProt Isoform" (accession + isoform suffix in bp:id, e.g. "Q9UHC9-2"). Some proteins
+          (NPC1L1 / Q9UHC9, retinal ABCA / HMGCR isoform-specific annotations) are reachable ONLY
+          via the isoform form — filtering on just "UniProt" silently drops them.
+      (3) bp:component* on the participant matches both direct and complex-mediated participation.
+    question: Which human pathways involve any of these UniProt-identified proteins, including via isoforms?
     complexity: intermediate
     sparql: |
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-      SELECT DISTINCT ?uniprotIdStr ?pathwayName
+      SELECT DISTINCT ?targetAcc ?xrefDb ?xrefId ?pathwayName
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        # MANDATORY ^^xsd:string on every VALUES literal — plain "P02649" silently joins to nothing
-        VALUES ?uniprotIdStr {
-          "P02649"^^xsd:string    # APOE
-          "O95477"^^xsd:string    # ABCA1
-          "P11597"^^xsd:string    # CETP
-          "P06858"^^xsd:string    # LPL
+        # Target UniProt accessions — every literal MUST carry ^^xsd:string
+        VALUES ?targetAcc {
+          "P02649"^^xsd:string    # APOE   (canonical)
+          "O95477"^^xsd:string    # ABCA1  (canonical)
+          "Q9UHC9"^^xsd:string    # NPC1L1 (isoform-only in Reactome — caught via "UniProt Isoform")
+          "P04035"^^xsd:string    # HMGCR  (has both canonical and isoform xrefs)
         }
         ?protein a bp:Protein ;
                  bp:entityReference/bp:xref ?protXref .
         ?protXref a bp:UnificationXref ;
-                  bp:db "UniProt"^^xsd:string ;
-                  bp:id ?uniprotIdStr .
+                  bp:db ?xrefDb ;
+                  bp:id ?xrefId .
+        # Accept BOTH UniProt flavors — see critical_warnings
+        VALUES ?xrefDb { "UniProt"^^xsd:string  "UniProt Isoform"^^xsd:string }
+        # Match canonical (bp:id = bare accession) OR isoform (bp:id = "accession-N")
+        FILTER(?xrefId = ?targetAcc
+            || STRSTARTS(STR(?xrefId), CONCAT(STR(?targetAcc), "-")))
+
         ?pathway a bp:Pathway ;
                  bp:displayName ?pathwayName ;
                  bp:organism/bp:name "Homo sapiens"^^xsd:string ;
                  bp:pathwayComponent+ ?reaction .
         ?reaction (bp:left|bp:right) ?participant .
-        # bp:component* matches both direct participation and complex-mediated participation
+        # bp:component* matches both direct and complex-mediated participation
         ?participant bp:component* ?protein .
       }
-      ORDER BY ?pathwayName ?uniprotIdStr
+      ORDER BY ?pathwayName ?targetAcc
       LIMIT 200
 
   - title: Find Proteins with Phosphorylation Using MOD Ontology IDs
@@ -585,7 +610,8 @@ cross_references:
       GO pattern), PublicationXref (PubMed citations ~291K).
     databases:
       proteins:
-        - "UniProt: ~91K protein references (UnificationXref) within ~1.2M total UnificationXref instances"
+        - "UniProt canonical: ~91,627 with bp:db \"UniProt\"^^xsd:string; bp:id is the bare accession (e.g. \"P02649\")"
+        - "UniProt Isoform: ~374 with bp:db \"UniProt Isoform\"^^xsd:string; bp:id is accession + \"-N\" suffix (e.g. \"Q9UHC9-2\"). Some proteins (NPC1L1) exist ONLY in this form — silently missed if filtering on \"UniProt\" only. See critical_warnings."
         - "ENSEMBL: ~2K gene mappings (UnificationXref)"
       pathways_and_processes:
         - "GENE ONTOLOGY RelationshipXref: ~68K within ~84K total RelationshipXref instances — PRIMARY pattern for comprehensive GO queries"
@@ -656,7 +682,7 @@ architectural_notes:
     - "Verify release version for time-sensitive analyses"
 
   text_search_justification:
-    - "Number of the 7 example queries using text search: 1 (query 7 only)"
+    - "Number of the 8 example queries using text search: 1 (query 8 only)"
     - "Field: bp:displayName (pathway names) — free-text narrative, no controlled vocabulary or IRI equivalent"
     - "All other fields use structured alternatives: MOD IDs for modifications, exact terms for cellular locations, VALUES with GO IDs for ontology annotations, ^^xsd:string for EC/organism/xref"
     - "bif:contains preferred over FILTER(CONTAINS()) — Virtuoso backend, indexed text search"
@@ -680,7 +706,8 @@ data_statistics:
   control_type_inhibition: 4320
   go_relationship_xrefs: 68305
   go_unification_xrefs: 1529
-  uniprot_xrefs: 91627
+  uniprot_xrefs: 91627            # bp:db "UniProt"^^xsd:string — bare accession in bp:id
+  uniprot_isoform_xrefs: 374      # bp:db "UniProt Isoform"^^xsd:string — accession + "-N" in bp:id
   chebi_xrefs: 21570
   mod_xrefs: 1402
   guide_to_pharmacology_xrefs: 8578
@@ -754,6 +781,9 @@ anti_patterns:
       LIMIT 1
     correct_sparql: |
       # CORRECT: scope by organism, which was discovered during exploration
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
       SELECT (COUNT(DISTINCT ?reaction) AS ?count)
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
@@ -790,10 +820,12 @@ anti_patterns:
       }
     correct_sparql: |
       # Anchor to a specific pathway IRI (from search_reactome_entity())
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+
       SELECT ?subPathway ?name
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        <http://www.reactome.org/biopax/95/48898#Pathway299>
+        <http://www.reactome.org/biopax/95/48887#Pathway1129>      # "RHO GTPase cycle" — 19 direct sub-pathways
           bp:pathwayComponent+ ?subPathway .
         ?subPathway a bp:Pathway ; bp:displayName ?name .
       }
@@ -801,29 +833,21 @@ anti_patterns:
     explanation: "Use search_reactome_entity() to get the starting IRI. Use + (not *) and always add LIMIT."
 
 common_errors:
-  - error: "Empty results when matching IDs via VALUES (UniProt, ChEBI, GO, MOD, EC numbers, etc.)"
+  - error: "Empty results when matching string-typed literals (UniProt, ChEBI, GO, MOD, EC numbers, organisms, controlType)"
     causes:
-      - "VALUES literals written as plain strings (e.g. \"P02649\") instead of typed \"P02649\"^^xsd:string — the #1 silent-failure mode in Reactome queries"
+      - "Missing ^^xsd:string on a literal that binds to bp:db / bp:id / bp:name / bp:eCNumber / bp:controlType — the #1 silent-failure mode in Reactome queries. Required in all three places: VALUES blocks (highest-miss), triple-pattern objects, and FILTER = comparisons. See critical_warnings (a)/(b)/(c) for wrong/right snippets."
+      - "Missing FROM <http://rdf.ebi.ac.uk/dataset/reactome> clause on the shared ebi endpoint"
     solutions:
-      - "Add ^^xsd:string to every literal in the VALUES block (see anti-pattern: Plain-String VALUES Against Typed bp:id)"
-      - "Pre-flight check: scan every quoted literal; if it binds to bp:id / bp:db / bp:name / bp:eCNumber / bp:controlType, it must be typed"
+      - "Pre-flight literal sweep: scan every quoted literal in VALUES, FILTER =, and triple-pattern objects; if it binds to one of the typed predicates above, add ^^xsd:string"
+      - "See anti-pattern: Plain-String VALUES Against Typed bp:id — wrong/right SPARQL"
+      - "Add explicit FROM clause to every single-database query"
 
   - error: "Empty results for GO term queries"
     causes:
       - "Querying UnificationXref instead of RelationshipXref (misses 98% of GO annotations)"
-      - "Missing ^^xsd:string on bp:db or bp:id"
     solutions:
       - "Switch to RelationshipXref (see critical_warnings and anti-pattern: Querying UnificationXref for GO Terms)"
-      - "Add ^^xsd:string to all exact literal matches (see anti-pattern: Plain-String VALUES Against Typed bp:id)"
-      - "Verify GO term ID format: must be 'GO:NNNNNNN'^^xsd:string"
-
-  - error: "Empty results for organism, EC number, or xref filters in triple patterns or FILTER ="
-    causes:
-      - "Missing ^^xsd:string on string literals in triple-pattern objects or FILTER ="
-      - "Missing FROM <http://rdf.ebi.ac.uk/dataset/reactome> clause on shared ebi endpoint"
-    solutions:
-      - "Add ^^xsd:string to all exact matches"
-      - "Add explicit FROM clause to every single-database query"
+      - "Verify GO term ID format: must be 'GO:NNNNNNN'^^xsd:string (see common_errors entry above for the typing rule)"
 
   - error: "Slow query or timeout on pathway hierarchy or cross-database joins"
     causes:
