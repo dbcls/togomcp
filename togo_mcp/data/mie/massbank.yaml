@@ -1,0 +1,534 @@
+schema_info:
+  title: MassBank
+  description: |
+    MassBank is an open repository of reference mass spectra for small molecules
+    (metabolites, environmental chemicals, drugs, natural products). Each record is a
+    MassSpectrum linking a measured peak list and its analytical conditions to a chemical
+    substance (InChI, SMILES, molecular formula, exact mass) plus literature provenance.
+    Primary uses: compound identification from MS/MS spectra, fragment annotation, and
+    method/instrument metadata mining for metabolomics and exposomics.
+  keywords:
+    - mass spectrometry
+    - mass spectra
+    - ms/ms
+    - tandem ms
+    - metabolomics
+    - metabolite
+    - spectral library
+    - fragmentation
+    - peak
+    - molecular formula
+    - inchikey
+    - small molecule
+    - compound identification
+    - splash
+  categories:
+    - compound
+  endpoint: https://rdfportal.org/primary/sparql
+  base_uri: https://identifiers.org/massbank/
+  graphs:
+    - http://rdfportal.org/dataset/massbank
+  kw_search_tools: []
+  version:
+    mie_version: "2.0"
+    mie_created: "2026-06-20"
+    data_version: "RDF Portal snapshot"
+    update_frequency: "Periodic"
+  access:
+    backend: "Virtuoso"
+
+critical_warnings: |
+  - MANDATORY GRAPH CLAUSE: the `primary` endpoint co-hosts ~39 datasets in one Virtuoso
+    instance. Always scope to `GRAPH <http://rdfportal.org/dataset/massbank>`. Omitting it
+    mixes MassBank triples with MeSH/GO/BacDive/TogoID/etc. and produces wrong or huge results.
+  - ONTOLOGY MISSPELLING (required verbatim): the metadata class and predicate are spelled
+    `MassSpectramMetaData` and `mass_spectram_meta_data` ("Spectram", not "Spectrum"). The
+    spectrum class itself is correctly spelled `MassSpectrum`. Using the corrected spelling
+    `MassSpectrumMetaData` / `mass_spectrum_meta_data` silently returns 0 rows.
+  - COMPOUND CLASS IRI IS LOWERCASE: chemical substances are typed `<https://schema.org/chemicalsubstance>`
+    (all lowercase), NOT the canonical `schema:ChemicalSubstance`. Wrong case returns 0 rows.
+  - INCHIKEY IS AN IRI, NOT A LITERAL: `schema:inChIKey` objects are IRIs of the form
+    `<http://identifiers.org/inchikey/RYYVLZVUVIJVGH-UHFFFAOYSA-N>` (note: http, not https).
+    Matching it against a plain string literal returns 0 rows.
+  - COMPOUNDS AND ARTICLES ARE NOT DEDUPLICATED: every spectrum owns a fresh blank-node
+    `chemicalsubstance` and (when present) a fresh `bibo:Article`. COUNT of chemicalsubstance
+    equals the spectrum count (117,295), NOT the number of distinct molecules (17,921 distinct
+    InChIKeys). Use COUNT(DISTINCT ?inchikey) to count unique compounds.
+  - NUMERIC VALUES ARE BNODE-INDIRECT: m/z, intensity, exact mass, precursor m/z, and ppm error
+    live on blank nodes reached via `mb:has_peak`, `mb:compound`, `mb:mass_spectram_meta_data`,
+    or `mb:has_peak_annotations`/`mb:error`. They are never attached directly to the spectrum IRI.
+  - NUMERIC LITERALS ARE xsd:double: mb:mz, mb:intensity, mb:ch_exact_mass, mb:precursor_mz_value,
+    mb:base_peak and the error rdf:value are typed xsd:double (e.g. intensity "5.30815e7"^^xsd:double).
+    Equality against a plain decimal — `?p mb:mz 135.08` or `FILTER(?mz = 135.08)` — silently returns
+    0 rows. Use a range filter (`FILTER(?mz > 135.07 && ?mz < 135.09)`) or a typed literal
+    ("135.08"^^xsd:double). Only mb:relative_intensity, mb:peak_sequential_number and mb:pk_num_peak
+    are xsd:integer.
+
+shape_expressions: |
+  PREFIX mb:      <http://www.massbank.jp/ontology/>
+  PREFIX schema:  <https://schema.org/>
+  PREFIX dcterms: <http://purl.org/dc/terms/>
+  PREFIX skos:    <http://www.w3.org/2004/02/skos/core#>
+  PREFIX bibo:    <http://purl.org/ontology/bibo/>
+  PREFIX sio:     <http://semanticscience.org/resource/>
+  PREFIX rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+  PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+
+  # ~117,295 spectra. Subject IRI: https://identifiers.org/massbank/MSBNK-<contributor>-<accession>
+  <MassSpectrumShape> {
+    a [ mb:MassSpectrum ] ;
+    dcterms:identifier  xsd:string ;                 # accession, e.g. "MSBNK-HBM4EU-HB000204"
+    skos:definition     xsd:string ;                 # record title, e.g. "Nylidrin; LC-ESI-ITFT; MS2; ..."
+    mb:pk_splash        xsd:string ;                  # SPLASH hashed spectral identifier
+    mb:pk_num_peak      xsd:integer ;                 # number of peaks
+    dcterms:creator     xsd:string ;
+    dcterms:date        xsd:date ;
+    dcterms:rights      xsd:string ;
+    mb:compound         @<CompoundShape> ;            # 1, bnode
+    mb:analytical_methods_and_conditions @<AnalyticalMethodsShape> ;  # 1, bnode
+    mb:mass_spectram_meta_data @<MetaDataShape> ;     # 1, bnode  (NOTE the "Spectram" misspelling)
+    dcterms:license     xsd:string ? ;                # ~83.1%
+    rdfs:comment        xsd:string ? ;                # ~79.6%
+    dcterms:references  @<ArticleShape> ? ;           # ~24.9%, bnode
+    mb:data_processing_deprofile xsd:string ? ;       # ~7.5%
+    mb:has_peak         @<PeakShape> + ;              # >=1 per spectrum (~34 avg), bnode
+    mb:has_peak_annotations @<PeakAnnotationShape> *  # only annotated records, bnode
+  }
+
+  # Chemical substance, blank node, one per spectrum (not deduplicated)
+  <CompoundShape> {
+    a [ schema:chemicalsubstance ] ;                  # lowercase IRI — see critical_warnings
+    rdfs:label          xsd:string + ;                # trivial name(s) + IUPAC name (~1.8 per compound)
+    schema:name         xsd:string + ;
+    schema:molecularFormula xsd:string ;              # e.g. "C19H25NO2"
+    schema:inChI        xsd:string ;
+    schema:smiles       xsd:string ;
+    mb:ch_exact_mass    xsd:double ;
+    schema:inChIKey     IRI ? ;                        # ~98.8%, IRI http://identifiers.org/inchikey/<KEY>
+    mb:ch_compound_class xsd:string ? ;               # ~97.5%
+    rdfs:seeAlso        IRI *                          # ~79.5% have >=1; CAS / ChemSpider / PubChem CID IRIs
+  }
+
+  # Analytical method & conditions, blank node
+  <AnalyticalMethodsShape> {
+    a [ mb:AnalyticalMethods ] ;
+    mb:ac_instrument    xsd:string ;                  # instrument model
+    mb:instrument_type  xsd:string ;                  # 49 controlled values, e.g. "LC-ESI-QTOF", "EI-B"
+    mb:ion_mode         xsd:string ;                  # "POSITIVE" / "NEGATIVE"
+    mb:ms_type          xsd:string ;                  # "MS", "MS2", ...
+    mb:solvent          xsd:string * ;                # 0..n (LC mobile phases; GC records lack it)
+    mb:collision_energy xsd:string ? ;                # ~81.6%
+    mb:column_name      xsd:string ? ;                # ~71.5%
+    mb:retention_time   xsd:string ? ;                # ~71.0%
+    mb:flow_rate        xsd:string ? ;                # ~68.7%
+    mb:flow_gradient    xsd:string ? ;                # ~68.3%
+    mb:fragmentation_mode xsd:string ? ;              # ~55.2%
+    mb:resolution       xsd:string ? ;                # ~34.2%
+    mb:ionization_voltage xsd:string ? ;              # ~0.8%
+    mb:ionization       xsd:string ?                  # ~0.8%
+  }
+
+  # Spectrum-level metadata, blank node (NOTE: class name misspelled "Spectram")
+  <MetaDataShape> {
+    a [ mb:MassSpectramMetaData ] ;
+    mb:precursor_mz_value   xsd:double ? ;            # ~80.8%
+    mb:precursor_type_value xsd:string ? ;            # ~78.9%, e.g. "[M+H]+"
+    mb:base_peak            xsd:double ?              # ~37.4%
+  }
+
+  # Peak, blank node (untyped). One per measured peak.
+  <PeakShape> {
+    mb:mz                    xsd:double ;
+    mb:intensity             xsd:double ;
+    mb:relative_intensity    xsd:integer ;            # 0..999 (base peak = 999)
+    mb:peak_sequential_number xsd:integer
+  }
+
+  # Annotated peak, blank node (untyped). Present only on records with formula annotations.
+  <PeakAnnotationShape> {
+    mb:mz               xsd:double ;
+    mb:tentative_formula xsd:string ? ;               # e.g. "C9H11O+"
+    mb:error            @<ErrorShape> ?               # mass error scaffold
+  }
+
+  # Mass-error typed-value scaffold, blank node (SIO/UO pattern)
+  <ErrorShape> {
+    rdf:value           xsd:double ;                  # signed error
+    sio:SIO_000221      [ <http://purl.obolibrary.org/obo/UO_0000169> ]  # unit = parts per million
+  }
+
+  # Literature reference, blank node
+  <ArticleShape> {
+    a [ bibo:Article ] ;
+    rdfs:label          xsd:string                    # full citation string
+  }
+
+sample_rdf_entries:
+  rdf_prefixes: |
+    @prefix mb:      <http://www.massbank.jp/ontology/> .
+    @prefix schema:  <https://schema.org/> .
+    @prefix dcterms: <http://purl.org/dc/terms/> .
+    @prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+    @prefix bibo:    <http://purl.org/ontology/bibo/> .
+    @prefix sio:     <http://semanticscience.org/resource/> .
+    @prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+    @prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+    @prefix mbr:     <https://identifiers.org/massbank/> .
+  entries:
+    - title: "MassSpectrum record MSBNK-HBM4EU-HB000204 (Nylidrin, LC-ESI-ITFT MS2)"
+      description: A reference spectrum linking accession, SPLASH, peak count, and the three required substructures.
+      rdf: |
+        mbr:MSBNK-HBM4EU-HB000204 a mb:MassSpectrum ;
+            dcterms:identifier "MSBNK-HBM4EU-HB000204" ;
+            skos:definition "Nylidrin; LC-ESI-ITFT; MS2; CE: 35%; R=15000; [M+H]+" ;
+            mb:pk_splash "splash10-001i-0094000000-51be2dec2d7da231b1f4" ;
+            mb:pk_num_peak 6 ;
+            mb:compound          [ ] ;                        # -> CompoundShape (entry 2)
+            mb:analytical_methods_and_conditions [
+                a mb:AnalyticalMethods ;
+                mb:instrument_type "LC-ESI-ITFT" ;
+                mb:ion_mode "POSITIVE" ;
+                mb:ms_type "MS2" ] ;
+            mb:mass_spectram_meta_data [
+                a mb:MassSpectramMetaData ;
+                mb:precursor_mz_value 300.196 ;
+                mb:precursor_type_value "[M+H]+" ] .
+    - title: "Compound substructure (chemicalsubstance) with structure and cross-references"
+      description: Blank-node chemical substance carrying InChI/SMILES/formula and IRI cross-references; note lowercase class IRI and IRI-valued InChIKey.
+      rdf: |
+        mbr:MSBNK-HBM4EU-HB000204 mb:compound [
+            a schema:chemicalsubstance ;
+            rdfs:label "Nylidrin" ;
+            schema:name "Nylidrin" ;
+            schema:molecularFormula "C19H25NO2" ;
+            schema:inChI "InChI=1S/C19H25NO2/c1-14(8-9-16-6-4-3-5-7-16)20-15(2)19(22)17-10-12-18(21)13-11-17/h3-7,10-15,19-22H,8-9H2,1-2H3" ;
+            schema:smiles "CC(CCC1=CC=CC=C1)NC(C)C(C2=CC=C(C=C2)O)O" ;
+            mb:ch_exact_mass 299.188 ;
+            schema:inChIKey <http://identifiers.org/inchikey/PTGXAUBQBSGPKF-UHFFFAOYSA-N> ;
+            rdfs:seeAlso <http://identifiers.org/cas/447-41-6> ,
+                         <http://identifiers.org/chemspider/4407> ,
+                         <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID4567> ] .
+    - title: "Peak and annotated peak with ppm mass-error scaffold"
+      description: A measured peak (m/z, intensity, relative intensity) and an annotated peak whose error is a SIO/UO typed value in parts-per-million.
+      rdf: |
+        mbr:MSBNK-HBM4EU-HB000204
+            mb:has_peak [
+                mb:mz 282.185 ;
+                mb:intensity 5.30815e7 ;
+                mb:relative_intensity 999 ;
+                mb:peak_sequential_number 5 ] ;
+            mb:has_peak_annotations [
+                mb:mz 135.08 ;
+                mb:tentative_formula "C9H11O+" ;
+                mb:error [
+                    rdf:value -0.27 ;
+                    sio:SIO_000221 <http://purl.obolibrary.org/obo/UO_0000169> ] ] .
+
+sparql_query_examples:
+  - title: "Look up a spectrum by its MassBank accession"
+    description: Resolve a known accession string to its title, SPLASH, and peak count.
+    question: "What is the record title, SPLASH and peak count for accession MSBNK-HBM4EU-HB000204?"
+    complexity: basic
+    sparql: |
+      PREFIX mb: <http://www.massbank.jp/ontology/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT ?spectrum ?definition ?splash ?npeaks
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/massbank> {
+          ?spectrum a mb:MassSpectrum ;
+                    dcterms:identifier "MSBNK-HBM4EU-HB000204" ;
+                    skos:definition ?definition ;
+                    mb:pk_splash ?splash ;
+                    mb:pk_num_peak ?npeaks .
+        }
+      }
+      LIMIT 20
+
+  - title: "Get the chemical structure for a spectrum (specific IRI)"
+    description: Read formula, exact mass, InChIKey, and SMILES off a spectrum's compound blank node.
+    question: "What compound did spectrum MSBNK-HBM4EU-HB000204 measure, and what is its structure?"
+    complexity: basic
+    sparql: |
+      PREFIX mb: <http://www.massbank.jp/ontology/>
+      PREFIX schema: <https://schema.org/>
+
+      SELECT ?name ?formula ?mass ?inchikey ?smiles
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/massbank> {
+          <https://identifiers.org/massbank/MSBNK-HBM4EU-HB000204> mb:compound ?c .
+          ?c schema:name ?name ;
+             schema:molecularFormula ?formula ;
+             mb:ch_exact_mass ?mass ;
+             schema:smiles ?smiles .
+          OPTIONAL { ?c schema:inChIKey ?inchikey }   # IRI-valued
+        }
+      }
+      LIMIT 20
+
+  - title: "Filter spectra by instrument type and ion mode (typed predicates)"
+    description: Controlled string vocabularies on the AnalyticalMethods blank node; 49 distinct instrument_type values exist.
+    question: "Which compounds have LC-ESI-QTOF spectra acquired in positive ion mode?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mb: <http://www.massbank.jp/ontology/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?spectrum ?name
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/massbank> {
+          ?spectrum a mb:MassSpectrum ;
+                    mb:analytical_methods_and_conditions ?ac ;
+                    mb:compound ?c .
+          ?ac mb:instrument_type "LC-ESI-QTOF" ;
+              mb:ion_mode "POSITIVE" .
+          ?c rdfs:label ?name .
+        }
+      }
+      LIMIT 20
+
+  - title: "All spectra for one molecule via its InChIKey IRI"
+    description: The InChIKey is an IRI, so match it directly — no text search. This is the canonical way to gather every spectrum of a given structure.
+    question: "What spectra exist for the molecule with InChIKey VEQOALNAAJBPNY-UHFFFAOYSA-N (Phenazone/Antipyrine)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mb: <http://www.massbank.jp/ontology/>
+      PREFIX schema: <https://schema.org/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT ?spectrum ?definition
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/massbank> {
+          ?c schema:inChIKey <http://identifiers.org/inchikey/VEQOALNAAJBPNY-UHFFFAOYSA-N> .
+          ?spectrum mb:compound ?c ;
+                    skos:definition ?definition .
+        }
+      }
+      LIMIT 20
+
+  - title: "Count MS2 spectra per molecular formula (aggregation)"
+    description: Group MS/MS spectra by compound formula to see which formulae are most represented.
+    question: "Which molecular formulae have the most MS2 reference spectra?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mb: <http://www.massbank.jp/ontology/>
+      PREFIX schema: <https://schema.org/>
+
+      SELECT ?formula (COUNT(DISTINCT ?s) AS ?nSpectra)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/massbank> {
+          ?s a mb:MassSpectrum ;
+             mb:analytical_methods_and_conditions ?ac ;
+             mb:compound ?c .
+          ?ac mb:ms_type "MS2" .
+          ?c schema:molecularFormula ?formula .
+        }
+      }
+      GROUP BY ?formula
+      ORDER BY DESC(?nSpectra)
+      LIMIT 15
+
+  - title: "Retrieve the peak list of a spectrum (blank-node navigation)"
+    description: Peaks are blank nodes carrying m/z, absolute intensity, and relative intensity (0–999).
+    question: "What are the peaks of spectrum MSBNK-HBM4EU-HB000204, strongest first?"
+    complexity: advanced
+    sparql: |
+      PREFIX mb: <http://www.massbank.jp/ontology/>
+
+      SELECT ?mz ?intensity ?rel
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/massbank> {
+          <https://identifiers.org/massbank/MSBNK-HBM4EU-HB000204> mb:has_peak ?peak .
+          ?peak mb:mz ?mz ;
+                mb:intensity ?intensity ;
+                mb:relative_intensity ?rel .
+        }
+      }
+      ORDER BY DESC(?rel)
+      LIMIT 20
+
+  - title: "Annotated fragments with tentative formula and ppm mass error"
+    description: Walk the annotation scaffold and its nested SIO/UO error blank node to read the signed mass error in parts-per-million.
+    question: "For spectrum MSBNK-HBM4EU-HB000204, what formula and ppm error is assigned to each annotated fragment?"
+    complexity: advanced
+    sparql: |
+      PREFIX mb: <http://www.massbank.jp/ontology/>
+      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+
+      SELECT ?mz ?formula ?errVal ?unit
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/massbank> {
+          <https://identifiers.org/massbank/MSBNK-HBM4EU-HB000204> mb:has_peak_annotations ?ann .
+          ?ann mb:mz ?mz ;
+               mb:tentative_formula ?formula ;
+               mb:error ?err .
+          ?err rdf:value ?errVal ;
+               sio:SIO_000221 ?unit .          # unit IRI = obo:UO_0000169 (ppm)
+        }
+      }
+      ORDER BY ?mz
+      LIMIT 20
+
+cross_database_queries:
+  shared_endpoint: primary
+  co_located_databases: [mesh, go, taxonomy, mondo, nando, bacdive, mediadive, brenda, hgnc, jpostdb]
+  examples: []
+  notes: |
+    MassBank shares the `primary` endpoint with ~39 datasets, but none of the registered
+    co-located databases (MeSH, GO, Taxonomy, MONDO, NANDO, BacDive, MediaDive, BRENDA, HGNC,
+    jPOSTdb) is a small-molecule structure database that MassBank compounds reference, so there
+    is no useful single-endpoint join.
+    Bridge to chemical databases via the compound cross-reference IRIs instead:
+      - PubChem CID: <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID...>  (PubChem endpoint)
+      - InChIKey:    <http://identifiers.org/inchikey/...>  -> ChEBI/ChEMBL/PubChem (EBI/PubChem endpoints)
+      - CAS / ChemSpider: identifiers.org IRIs (external resolvers)
+    Because those targets live on different RDF Portal endpoints, link them with two separate
+    queries (extract the InChIKey or CID from MassBank, then query the target endpoint), or use
+    TogoID to convert InChIKey -> ChEBI / ChEMBL / PubChem compound IDs.
+
+cross_references:
+  - pattern: schema:inChIKey
+    description: |
+      IRI-valued standard InChIKey on the compound blank node. The strongest structure-based
+      join key to PubChem, ChEBI, ChEMBL and LIPID MAPS. Form: http://identifiers.org/inchikey/<KEY>.
+    databases:
+      compound:
+        - "MassBank spectra with an InChIKey: ~98.8% (115,901 / 117,295)"
+        - "Distinct InChIKeys (unique structures): 17,921"
+  - pattern: rdfs:seeAlso
+    description: |
+      IRI cross-references on the compound blank node to external small-molecule resources.
+      Coverage measured as fraction of spectra whose compound carries each IRI type.
+    databases:
+      compound:
+        - "PubChem CID (rdf.ncbi.nlm.nih.gov/pubchem/compound/CID...): ~55.3% (64,892)"
+        - "CAS (identifiers.org/cas/...): ~69.6% (81,668)"
+        - "ChemSpider (identifiers.org/chemspider/...): ~38.4% (45,023)"
+
+architectural_notes:
+  query_strategy:
+    - "FIRST: read this MIE / get_MIE_file('massbank'); study shape_expressions and the bnode layout."
+    - "Always wrap patterns in GRAPH <http://rdfportal.org/dataset/massbank>."
+    - "Known accession? Match dcterms:identifier (string) or use the IRI https://identifiers.org/massbank/<accession>."
+    - "Known structure? Match schema:inChIKey as an IRI to gather all spectra for that molecule."
+    - "Faceting by method? Use typed string predicates instrument_type / ion_mode / ms_type."
+    - "Priority: Specific IRIs (accession, InChIKey) > Typed predicates (instrument_type, ms_type) > bnode navigation > text search."
+  schema_design:
+    - "Central entity: MassSpectrum (~117,295). Each owns exactly one compound, one AnalyticalMethods, and one MassSpectramMetaData blank node."
+    - "Peaks (mb:has_peak, +) and annotated peaks (mb:has_peak_annotations, *) are untyped blank nodes; numeric values live only on them."
+    - "Mass error uses a SIO/UO typed-value scaffold: mb:error -> [ rdf:value ; sio:SIO_000221 <obo:UO_0000169> ] (ppm)."
+    - "Compound vocabulary: schema:* (lowercase chemicalsubstance class), structure as InChI/SMILES/formula, IRI InChIKey, IRI seeAlso xrefs."
+  performance:
+    - "GRAPH clause is the single most important filter — it confines queries to MassBank within a 39-dataset Virtuoso store."
+    - "Constrain peak/annotation queries to a specific spectrum IRI; mb:has_peak spans ~3.97M blank nodes globally."
+    - "Avoid REPLACE/string-building over large result sets (Virtuoso SR319 'max row length' errors); aggregate on IRIs/short literals."
+  data_integration:
+    - "InChIKey IRI is the primary federation key; PubChem CID is a direct IRI to the PubChem endpoint."
+    - "Targets (PubChem/ChEBI/ChEMBL) are on other endpoints — bridge with two-step queries or TogoID, not a single federated join."
+  data_quality:
+    - "Compounds and articles are duplicated per spectrum (fresh blank node each) — deduplicate on InChIKey / citation when counting."
+    - "Ontology class/predicate 'MassSpectramMetaData' / 'mass_spectram_meta_data' are misspelled but canonical in the data."
+    - "Method fields like collision_energy, retention_time, resolution are free-text strings with mixed units (e.g. '35% (nominal)', '6.894 min') — not numerically typed."
+  text_search_justification:
+    - "Number of the 7 example queries that use text search: 0"
+    - "Structured alternatives cover all common access paths: accession (dcterms:identifier), structure (schema:inChIKey IRI), and method facets (typed string predicates)."
+    - "Free-text fields exist (dcterms:creator, rdfs:comment, citation labels) but are not needed for the representative queries; if used, prefer bif:contains on this Virtuoso backend."
+
+data_statistics:
+  total_entities: 117295
+  verified_date: "2026-06-20"
+  verification_method: "Direct COUNT(DISTINCT) queries on GRAPH <http://rdfportal.org/dataset/massbank>"
+  entity_counts:
+    mass_spectra: 117295
+    bibo_articles: 29151
+    distinct_inchikeys: 17921
+  coverage:
+    inchikey:
+      value: "98.8%"
+      calculation: "115901 / 117295 spectra"
+      verified_date: "2026-06-20"
+    pubchem_cid:
+      value: "55.3%"
+      calculation: "64892 / 117295 spectra"
+      verified_date: "2026-06-20"
+    cas:
+      value: "69.6%"
+      calculation: "81668 / 117295 spectra"
+      verified_date: "2026-06-20"
+    has_peak_annotations:
+      value: "MS records vary; ~905,744 annotation nodes total"
+      calculation: "COUNT of mb:has_peak_annotations triples"
+      verified_date: "2026-06-20"
+
+anti_patterns:
+  - title: "Skipping Schema Check Before Text Search"
+    problem: "Searching free text for a compound instead of matching its InChIKey IRI or formula."
+    wrong_sparql: |
+      ?name bif:contains "'phenazone'"
+    correct_sparql: |
+      # InChIKey is an IRI — gather every spectrum of the molecule directly:
+      ?c schema:inChIKey <http://identifiers.org/inchikey/VEQOALNAAJBPNY-UHFFFAOYSA-N> .
+      ?spectrum <http://www.massbank.jp/ontology/compound> ?c .
+    explanation: "Structures are identified by IRIs (InChIKey) and typed predicates (formula). Resolve the name to an InChIKey once, then query by IRI for complete, fast results."
+  - title: "Omitting the GRAPH clause on a multi-dataset endpoint"
+    problem: "Querying MassBank classes without scoping to its graph on the shared `primary` endpoint."
+    wrong_sparql: |
+      SELECT ?s WHERE { ?s a <http://www.massbank.jp/ontology/MassSpectrum> } LIMIT 10
+    correct_sparql: |
+      SELECT ?s WHERE {
+        GRAPH <http://rdfportal.org/dataset/massbank> {
+          ?s a <http://www.massbank.jp/ontology/MassSpectrum>
+        }
+      } LIMIT 10
+    explanation: "The primary endpoint hosts ~39 datasets; without the GRAPH clause Virtuoso scans unrelated data, giving slow or mixed results."
+  - title: "Using the corrected spelling of the metadata class/predicate"
+    problem: "Assuming the ontology uses 'MassSpectrum...' spelling for the metadata node."
+    wrong_sparql: |
+      ?s <http://www.massbank.jp/ontology/mass_spectrum_meta_data> ?m .   # returns 0 rows
+    correct_sparql: |
+      ?s <http://www.massbank.jp/ontology/mass_spectram_meta_data> ?m .   # 'Spectram' is canonical
+    explanation: "The metadata class/predicate are misspelled 'MassSpectramMetaData' / 'mass_spectram_meta_data' in the source ontology and must be used verbatim."
+  - title: "Counting chemicalsubstance nodes as distinct compounds"
+    problem: "Treating COUNT of compound blank nodes as the number of unique molecules."
+    wrong_sparql: |
+      SELECT (COUNT(?c) AS ?compounds) WHERE {
+        GRAPH <http://rdfportal.org/dataset/massbank> { ?c a <https://schema.org/chemicalsubstance> }
+      }   # = 117,295 (one per spectrum)
+    correct_sparql: |
+      SELECT (COUNT(DISTINCT ?k) AS ?compounds) WHERE {
+        GRAPH <http://rdfportal.org/dataset/massbank> {
+          ?c a <https://schema.org/chemicalsubstance> ; <https://schema.org/inChIKey> ?k
+        }
+      }   # = 17,921 distinct structures
+    explanation: "Compounds are not deduplicated; each spectrum owns its own compound node. Count distinct InChIKeys to get unique molecules."
+
+common_errors:
+  - error: "Query returns 0 rows for a valid-looking pattern"
+    causes:
+      - "Used schema:ChemicalSubstance (TitleCase) instead of the lowercase https://schema.org/chemicalsubstance"
+      - "Used corrected spelling mass_spectrum_meta_data / MassSpectrumMetaData instead of the 'Spectram' form"
+      - "Matched InChIKey as a string literal instead of the http://identifiers.org/inchikey/<KEY> IRI"
+      - "Equality on a numeric value (?p mb:mz 135.08) — values are xsd:double, so plain decimals never match"
+      - "Forgot the GRAPH clause, or queried numeric values directly on the spectrum IRI"
+    solutions:
+      - "Copy class/predicate IRIs verbatim from shape_expressions (mind the misspelling and lowercase)"
+      - "Match InChIKey as an IRI; reach m/z, intensity, exact mass, error via the blank nodes"
+      - "Always scope to GRAPH <http://rdfportal.org/dataset/massbank>"
+  - error: "Slow query or timeout / Virtuoso SR319 'max row length'"
+    causes:
+      - "Peak/annotation query not constrained to a specific spectrum (mb:has_peak spans ~3.97M nodes)"
+      - "REPLACE/CONCAT string-building over a large GROUP BY"
+      - "Text search where an InChIKey IRI or typed predicate would do"
+    solutions:
+      - "Anchor peak queries on a spectrum IRI or a tight method/compound filter"
+      - "Aggregate on IRIs or short literals; avoid building long strings in projections"
+      - "Replace text search with InChIKey IRI / instrument_type / ms_type filters and add LIMIT"
+  - error: "Inflated or duplicated counts"
+    causes:
+      - "Counting per-spectrum compound or article blank nodes as if they were unique"
+      - "rdfs:label / schema:name are multi-valued (trivial + IUPAC name), multiplying rows"
+    solutions:
+      - "COUNT(DISTINCT ?inchikey) for unique compounds; deduplicate citations by label"
+      - "Pick a single name predicate or use SAMPLE()/DISTINCT when one label per compound is wanted"
