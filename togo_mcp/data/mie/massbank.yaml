@@ -63,6 +63,20 @@ critical_warnings: |
     0 rows. Use a range filter (`FILTER(?mz > 135.07 && ?mz < 135.09)`) or a typed literal
     ("135.08"^^xsd:double). Only mb:relative_intensity, mb:peak_sequential_number and mb:pk_num_peak
     are xsd:integer.
+  - mb:tentative_formula IS NOT A CLEAN ELEMENTAL FORMULA: across the ~906K annotated peaks it mixes
+    at least five vocabularies — Hill formulae (`C7H7+`), lipid shorthand (`[fa(16:0)-H]-`,
+    `[lyso_PE(lyso,-)]-`), TG/DG brace notation (`[{18:1-18:1}-OH]+`), adduct/derivatization codes
+    (`[M+NH4]+`, `[M+3TMS-CH3]+`), bare m/z numbers (`"255.212"`), neutral-loss notation
+    (`[C3H10N-2H]+`), and literal placeholders (`"precursor"`, `"0"`, `"1"`). Never parse it as a
+    molecular formula without first filtering to formula-shaped strings (see anti_patterns). For
+    curated composition use the compound-level `schema:molecularFormula` instead.
+  - mb:error HAS A LARGE ARTIFACTUAL TAIL: the ppm error is populated even when the "formula" is a
+    placeholder or a nominal mass, so ~5.6% of values exceed ±10 ppm and reach ±1414 ppm (verified:
+    50,824 / 905,744 > ±10 ppm; min −1414, max +1237). Do not treat large |error| as a real mass
+    measurement, and do not QC records on the stored error alone.
+  - ~1% OF FORMULA ANNOTATIONS ARE VALENCE-IMPOSSIBLE AT SMALL ppm ERROR: an error threshold will not
+    remove them (the dopamine example below sits at 23 ppm). If formula correctness matters, apply an
+    RDBE/Senior valence check rather than trusting `mb:tentative_formula` + `mb:error`.
 
 shape_expressions: |
   PREFIX mb:      <http://www.massbank.jp/ontology/>
@@ -431,6 +445,11 @@ architectural_notes:
     - "Compounds and articles are duplicated per spectrum (fresh blank node each) — deduplicate on InChIKey / citation when counting."
     - "Ontology class/predicate 'MassSpectramMetaData' / 'mass_spectram_meta_data' are misspelled but canonical in the data."
     - "Method fields like collision_energy, retention_time, resolution are free-text strings with mixed units (e.g. '35% (nominal)', '6.894 min') — not numerically typed."
+    - "ppm-error distribution (n=905,744 annotation nodes): median ~0, mean signed -2.33, mean |error| 6.58 (inflated by the tail). Coverage: +/-1 ppm 53.5%, +/-2 ppm 72.2%, +/-5 ppm 87.9%, +/-10 ppm 94.4%. |error|>100 = 11,279; >500 = 2,277; min -1414, max +1237. Verified 2026-06-20."
+    - "The extreme tail (>100 ppm, 11,279 peaks) is ~63% lipid-shorthand fatty-acid/lyso fragments whose m/z is stored at nominal resolution ~0.23 Da below the true monoisotopic mass, manufacturing -700 to -1414 ppm — not genuine errors."
+    - "Valence-impossible formulae: 4,534 distinct / 8,568 annotations (~1% of 864,885 testable), charge-neutralized RDBE down to -6.5, plus 586 borderline at RDBE -0.5. Fingerprint = over-hydrogenated CHNOPSCl subformulae (H13O3P+, C2H18O7P+, H22N6O7+). An automatic (RMassBank-style) subformula-enumeration artifact, concentrated in high-res LC-ESI exposomics contributors (Athens_Univ 37.5%, Antwerp_Univ 28%, Eawag ~16%, LCSB 8%, UFZ 3.9%; instruments LC-ESI-QTOF 65%, QFT 24%, ITFT 10%). Census via charge-neutralized RDBE on the 59,157 distinct formula-shaped strings (re-run the parse to refresh; not reproducible in pure SPARQL)."
+    - "Mass accuracy is not a proxy for formula validity: Antwerp_Univ METOX averages 7.7 ppm |error| (max 25) vs Eawag 0.93 ppm (max 9.4), yet Eawag still emits ~1,400 impossible formulae."
+    - "Canonical example: MSBNK-Antwerp_Univ-METOX_P100502_EF88 (Dopamine HCl, LC-ESI-QTOF MS2), peak m/z 94.0884 annotated C3H12NO2+ at 23.03 ppm — RDBE -1.5, impossible (protonated precursor C8H12NO2+ minus C5, keeping all 12 H). Verified 2026-06-20."
   text_search_justification:
     - "Number of the 7 example queries that use text search: 0"
     - "Structured alternatives cover all common access paths: accession (dcterms:identifier), structure (schema:inChIKey IRI), and method facets (typed string predicates)."
@@ -461,6 +480,22 @@ data_statistics:
       value: "MS records vary; ~905,744 annotation nodes total"
       calculation: "COUNT of mb:has_peak_annotations triples"
       verified_date: "2026-06-20"
+  annotation_quality:
+    verified_date: "2026-06-20"
+    annotation_error_nodes: 905744
+    ppm_error:
+      mean_abs: 6.58
+      within_5ppm: "87.9%"
+      within_10ppm: "94.4%"
+      abs_over_100ppm: 11279
+    tentative_formula:
+      distinct_formula_shaped: 59157
+      lipid_shorthand_records: 7869
+    valence_impossible:
+      distinct: 4534
+      annotations: 8568
+      share_of_tested: "~1%"
+      method: "Charge-neutralized RDBE census over formula-shaped strings; not reproducible in pure SPARQL — re-run the parse to refresh."
 
 anti_patterns:
   - title: "Skipping Schema Check Before Text Search"
@@ -503,6 +538,17 @@ anti_patterns:
         }
       }   # = 17,921 distinct structures
     explanation: "Compounds are not deduplicated; each spectrum owns its own compound node. Count distinct InChIKeys to get unique molecules."
+  - title: "Trusting mb:tentative_formula as a valid molecular formula"
+    problem: "The field mixes Hill formulae with lipid shorthand, adduct/derivatization codes, bare m/z numbers, and placeholders; ~1% of the genuine formulae are valence-impossible and carry small ppm errors, so an error filter won't catch them."
+    wrong_sparql: |
+      # treating every tentative_formula as an elemental formula
+      ?ann mb:tentative_formula ?f .   # ?f may be "precursor", "255.212", "[M+NH4]+", or C3H12NO2+
+    correct_sparql: |
+      # keep formula-shaped strings, then RDBE-filter downstream
+      ?ann mb:tentative_formula ?f .
+      FILTER(!CONTAINS(?f,"(") && !CONTAINS(?f,"{") && !CONTAINS(?f,"[M")
+             && !REGEX(?f,"^[0-9]") && REGEX(?f,"[A-Z]"))
+    explanation: "For curated composition, prefer the compound-level schema:molecularFormula on the chemicalsubstance node, which is clean; mb:tentative_formula is fragment-level and pipeline-generated. The string filter keeps ~59,157 distinct formula-shaped values; valence still needs an RDBE/Senior check downstream."
 
 common_errors:
   - error: "Query returns 0 rows for a valid-looking pattern"
@@ -532,3 +578,11 @@ common_errors:
     solutions:
       - "COUNT(DISTINCT ?inchikey) for unique compounds; deduplicate citations by label"
       - "Pick a single name predicate or use SAMPLE()/DISTINCT when one label per compound is wanted"
+  - error: "Fragment-formula counts or mass-accuracy stats are contaminated"
+    causes:
+      - "~7,900 tentative_formula values are lipid/adduct shorthand or placeholders, not formulae"
+      - "mb:error has a 5.6% artifactual tail (to +/-1400 ppm) from nominal-mass and placeholder records"
+      - "~1% of genuine formulae are valence-impossible, at low ppm error"
+    solutions:
+      - "Restrict to formula-shaped strings (see anti-pattern); treat |error|>~20 ppm as suspect"
+      - "Apply an RDBE/Senior check; or use compound-level schema:molecularFormula instead"
