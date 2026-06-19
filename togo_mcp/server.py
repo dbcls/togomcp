@@ -14,7 +14,7 @@ from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_request
 import httpx
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, PlainTextResponse
+from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -409,3 +409,85 @@ async def index(request: Request) -> HTMLResponse:
     with open(INDEX_HTML) as f:
         html_content = f.read()
     return HTMLResponse(html_content)
+
+
+# --------------------------------------------------------------------------- #
+# Usage-stats dashboard (/stats, /stats.json) — HTTP Basic protected.
+#
+# Reads the JSONL written by _ToolCallLogger and serves monthly aggregates.
+# Disabled unless BOTH TOGOMCP_STATS_USER and TOGOMCP_STATS_PASSWORD are set —
+# the route then refuses (503) so stats are never exposed unauthenticated.
+# Results are cached for _STATS_TTL seconds to bound recompute cost; computing
+# is read-only and cannot affect tool calls.
+# --------------------------------------------------------------------------- #
+import base64 as _base64
+import hmac as _hmac
+
+_STATS_TTL = 60.0
+_stats_cache: dict[str, Any] = {"ts": 0.0, "data": None}
+
+
+def _stats_configured() -> tuple[str, str] | None:
+    user = os.getenv("TOGOMCP_STATS_USER", "")
+    pw = os.getenv("TOGOMCP_STATS_PASSWORD", "")
+    return (user, pw) if user and pw else None
+
+
+def _check_basic_auth(request: Request, creds: tuple[str, str]) -> bool:
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Basic "):
+        return False
+    try:
+        decoded = _base64.b64decode(header[6:]).decode("utf-8")
+        user, _, pw = decoded.partition(":")
+    except (ValueError, UnicodeDecodeError):
+        return False
+    # Constant-time compare to avoid leaking credential length/content via timing.
+    return _hmac.compare_digest(user, creds[0]) and _hmac.compare_digest(pw, creds[1])
+
+
+def _get_stats() -> dict[str, Any]:
+    now = time.monotonic()
+    if _stats_cache["data"] is not None and (now - _stats_cache["ts"]) < _STATS_TTL:
+        return _stats_cache["data"]
+    from togo_mcp import stats as _stats_mod
+
+    data = _stats_mod.compute_stats(endpoints_csv=ENDPOINTS_CSV)
+    _stats_cache["data"] = data
+    _stats_cache["ts"] = now
+    return data
+
+
+_AUTH_HEADERS = {"WWW-Authenticate": 'Basic realm="TogoMCP stats"'}
+
+
+@mcp.custom_route("/stats", methods=["GET"])
+async def stats_dashboard(request: Request) -> HTMLResponse:
+    creds = _stats_configured()
+    if creds is None:
+        return HTMLResponse(
+            "<h1>503</h1><p>Stats dashboard not configured.</p>", status_code=503
+        )
+    if not _check_basic_auth(request, creds):
+        return HTMLResponse("Authentication required", status_code=401, headers=_AUTH_HEADERS)
+    from togo_mcp import stats as _stats_mod
+
+    try:
+        return HTMLResponse(_stats_mod.render_html(_get_stats()))
+    except Exception as exc:  # never 500 with a stack trace; logging stays read-only
+        logger.warning("stats render failed: %s", exc)
+        return HTMLResponse("<h1>500</h1><p>Could not compute stats.</p>", status_code=500)
+
+
+@mcp.custom_route("/stats.json", methods=["GET"])
+async def stats_json(request: Request) -> JSONResponse:
+    creds = _stats_configured()
+    if creds is None:
+        return JSONResponse({"error": "not configured"}, status_code=503)
+    if not _check_basic_auth(request, creds):
+        return JSONResponse({"error": "auth required"}, status_code=401, headers=_AUTH_HEADERS)
+    try:
+        return JSONResponse(_get_stats())
+    except Exception as exc:
+        logger.warning("stats compute failed: %s", exc)
+        return JSONResponse({"error": "compute failed"}, status_code=500)
