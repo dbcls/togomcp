@@ -33,8 +33,9 @@ schema_info:
   kw_search_tools:
     - OLS4:searchClasses
   version:
-    mie_version: "2.1"
+    mie_version: "2.2"
     mie_created: "2026-04-29"
+    mie_updated: "2026-06-19"
     data_version: "Release 2025"
     update_frequency: "Monthly"
   access:
@@ -55,17 +56,20 @@ critical_warnings: |
 
   - RELATIONSHIP NAMESPACE MIGRATION (CRITICAL): Chemical relationship properties migrated
     from chebi# namespace to OBO RO_ IRIs. Old predicates return 0 results silently.
+    Counts below are owl:Restriction triples (= relationship assertions), NOT distinct
+    entities — relationships are multi-valued, so one entity may carry several. E.g.
+    has_role spans 45,268 restrictions across only 25,508 distinct entities (verified 2026-06-19).
     CORRECT mappings:
-      chebi#:has_role              → obo:RO_0000087  (45,268 entities)
-      chebi#:is_conjugate_acid_of  → obo:RO_0018034  (8,660 entities)
-      chebi#:is_conjugate_base_of  → obo:RO_0018033  (8,713 entities)
-      chebi#:is_tautomer_of        → obo:RO_0018036  (1,949 entities)
-      chebi#:is_enantiomer_of      → obo:RO_0018039  (2,783 entities)
+      chebi#:has_role              → obo:RO_0000087  (45,268 restrictions)
+      chebi#:is_conjugate_acid_of  → obo:RO_0018034  (8,660 restrictions / 8,541 entities)
+      chebi#:is_conjugate_base_of  → obo:RO_0018033  (8,713 restrictions)
+      chebi#:is_tautomer_of        → obo:RO_0018036  (1,949 restrictions)
+      chebi#:is_enantiomer_of      → obo:RO_0018039  (2,783 restrictions)
     New relationships (no old equivalent):
-      obo:RO_0018038 has_functional_parent (20,167 entities)
-      obo:BFO_0000051 has_part            (4,107 entities)
-      obo:RO_0018040 has_parent_hydride   (1,823 entities)
-      obo:RO_0018037 is_substituent_group_from (1,302 entities)
+      obo:RO_0018038 has_functional_parent (20,167 restrictions)
+      obo:BFO_0000051 has_part            (4,107 restrictions)
+      obo:RO_0018040 has_parent_hydride   (1,823 restrictions)
+      obo:RO_0018037 is_substituent_group_from (1,302 restrictions)
 
   - XREF PREFIX FORMAT CHANGE (CRITICAL): Cross-reference literal prefixes are now lowercase
     and use dot notation. Old STRSTARTS filters silently return 0 results.
@@ -85,7 +89,7 @@ shape_expressions: |
   PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
   PREFIX obo: <http://purl.obolibrary.org/obo/>
 
-  # Total owl:Class entities with CHEBI_ IRI: 224,523 (verified 2025-04-21)
+  # Total owl:Class entities with CHEBI_ IRI: 224,523 (verified 2026-06-19)
   # Abstract classes (e.g. "amino acid", "lipid") lack chemrof: properties — use OPTIONAL
   <ChemicalEntityShape> {
     a [ owl:Class ] ;
@@ -109,19 +113,21 @@ shape_expressions: |
   }
 
   # OWL Restriction pattern — ONLY way to access chemical relationships and roles
-  # Never asserted directly; always via rdfs:subClassOf blank node
+  # Never asserted directly; always via rdfs:subClassOf blank node.
+  # Counts are restriction triples (relationship assertions), not distinct entities
+  # (multi-valued: has_role = 45,268 restrictions across 25,508 entities). Verified 2026-06-19.
   <ChemicalRelationshipShape> {
     a [ owl:Restriction ] ;
     owl:onProperty [
-      obo:RO_0000087 |   # has role            — 45,268 entities
-      obo:RO_0018034 |   # is conjugate acid of —  8,660 entities
-      obo:RO_0018033 |   # is conjugate base of —  8,713 entities
-      obo:RO_0018036 |   # is tautomer of       —  1,949 entities
-      obo:RO_0018039 |   # is enantiomer of     —  2,783 entities
-      obo:RO_0018038 |   # has functional parent — 20,167 entities
-      obo:BFO_0000051 |  # has part             —  4,107 entities
-      obo:RO_0018040 |   # has parent hydride   —  1,823 entities
-      obo:RO_0018037     # is substituent group from — 1,302 entities
+      obo:RO_0000087 |   # has role            — 45,268 restrictions
+      obo:RO_0018034 |   # is conjugate acid of —  8,660 restrictions
+      obo:RO_0018033 |   # is conjugate base of —  8,713 restrictions
+      obo:RO_0018036 |   # is tautomer of       —  1,949 restrictions
+      obo:RO_0018039 |   # is enantiomer of     —  2,783 restrictions
+      obo:RO_0018038 |   # has functional parent — 20,167 restrictions
+      obo:BFO_0000051 |  # has part             —  4,107 restrictions
+      obo:RO_0018040 |   # has parent hydride   —  1,823 restrictions
+      obo:RO_0018037     # is substituent group from — 1,302 restrictions
     ] ;
     owl:someValuesFrom IRI
   }
@@ -381,59 +387,67 @@ cross_database_queries:
     - ensembl
     - amrportal
   examples:
-    - title: "ChEBI–ChEMBL Integration via skos:exactMatch"
+    - title: "ChEBI–ChEMBL Integration via InChIKey (structure match)"
       description: |
         Link ChEBI chemical entities to ChEMBL drug molecules to enrich compounds
-        with bioactivity data and development phases. ChEMBL references ChEBI via
-        skos:exactMatch for seamless integration.
+        with development phase / bioactivity context. ChEMBL SmallMolecules do NOT
+        carry skos:exactMatch to ChEBI IRIs (verified 2026-06-19 — that join returns
+        0 rows); the reliable cross-link is the standard InChIKey.
 
-        Linking strategy:
-        - ChEMBL: skos:exactMatch links SmallMolecule to CHEBI_ IRI directly
-        - ChEBI: IRI matched as owl:Class; chemrof: properties queried
-        - Direct IRI matching; no text search or URI conversion required
+        Linking strategy (anchor on specific ChEMBL molecule IRIs to stay bounded):
+        - ChEMBL: ?molecule sio:SIO_000008 ?node . ?node a sio:CHEMINF_000059 ;
+          sio:SIO_000300 ?inchikey  (CHEMINF_000059 = "standard InChIKey" descriptor)
+        - ChEBI:  ?chebi chemrof:inchi_key_string ?inchikey  (join on the literal)
+        - InChIKey is the canonical structure key shared across both databases
       databases_used:
         - chembl
         - chebi
       complexity: intermediate
       sparql: |
         PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+        PREFIX sio: <http://semanticscience.org/resource/>
         PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
         PREFIX chemrof: <https://w3id.org/chemrof/>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-        SELECT DISTINCT ?drugName ?chebiLabel ?formula ?mass ?developmentPhase
+        SELECT DISTINCT ?molecule ?drugName ?inchikey ?chebi ?chebiLabel ?formula
         WHERE {
           GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
-            ?molecule a cco:SmallMolecule ;
-                      rdfs:label ?drugName ;
-                      skos:exactMatch ?chebiId ;
-                      cco:highestDevelopmentPhase ?developmentPhase .
-            FILTER(?developmentPhase >= 3)
+            VALUES ?molecule {
+              <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL25>    # aspirin
+              <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL192>   # sildenafil
+              <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL521>   # ibuprofen
+            }
+            ?molecule rdfs:label ?drugName ;
+                      sio:SIO_000008 ?ikNode .
+            ?ikNode a sio:CHEMINF_000059 ;
+                    sio:SIO_000300 ?inchikey .
           }
           GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
-            ?chebiId a owl:Class ;
-                     rdfs:label ?chebiLabel .
-            OPTIONAL { ?chebiId chemrof:generalized_empirical_formula ?formula }
-            OPTIONAL { ?chebiId chemrof:mass ?mass }
+            ?chebi a owl:Class ;
+                   chemrof:inchi_key_string ?inchikey ;
+                   rdfs:label ?chebiLabel .
+            OPTIONAL { ?chebi chemrof:generalized_empirical_formula ?formula }
           }
         }
-        ORDER BY DESC(?developmentPhase)
         LIMIT 50
       notes: |
-        - Linking via: skos:exactMatch → direct CHEBI_ IRI match
-        - Pre-filter FILTER(?developmentPhase >= 3) reduces 2.4M → ~10k before join
-        - Performance: ~1-2s (Tier 1)
+        - Linking via: standard InChIKey (ChEMBL CHEMINF_000059/SIO_000300 ↔ ChEBI chemrof:inchi_key_string)
+        - skos:exactMatch does NOT link ChEMBL molecules to ChEBI — verified 0 rows (do not use)
+        - Anchor on specific molecule IRIs (VALUES); a full unanchored InChIKey scan of ChEMBL is heavy
+        - Verified 2026-06-19: aspirin→CHEBI_15365, sildenafil→CHEBI_9139, ibuprofen→CHEBI_5855
         - MIE files checked: chebi, chembl
 
-    - title: "ChEBI–Reactome Pathway Integration"
+    - title: "ChEBI–Reactome Cross-Reference (small-molecule identity)"
       description: |
-        Connect ChEBI molecules to Reactome pathways. Reactome uses bp:UnificationXref
-        with bp:db="ChEBI" and bp:id in "CHEBI:NNNNN" format, requiring URI conversion.
+        Resolve Reactome small-molecule participants to their ChEBI identity (label +
+        formula). Reactome links to ChEBI via bp:UnificationXref with
+        bp:db "ChEBI"^^xsd:string and bp:id "CHEBI:NNNNN"^^xsd:string.
 
-        Linking strategy:
-        - Reactome: bp:xref → bp:UnificationXref with bp:db "ChEBI"^^xsd:string
-        - URI conversion: "CHEBI:15422" → CHEBI_15422 IRI via SUBSTR + IRI(CONCAT(...))
-        - ^^xsd:string CRITICAL for bp:db filter — omitting it returns 0 results
+        Linking strategy (anchor on the ChEBI ids of interest to stay bounded):
+        - Provide target ids as ^^xsd:string-typed VALUES (see TWO traps in notes)
+        - Reactome: ?xref bp:db "ChEBI"^^xsd:string ; bp:id ?fullChebiId
+        - Convert "CHEBI:NNNNN" → CHEBI_NNNNN IRI to join the ChEBI graph for properties
       databases_used:
         - reactome
         - chebi
@@ -444,20 +458,21 @@ cross_database_queries:
         PREFIX chemrof: <https://w3id.org/chemrof/>
         PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-        SELECT DISTINCT ?reactomeName ?chebiLabel ?formula ?pathwayName
+        SELECT DISTINCT ?reactomeName ?fullChebiId ?chebiLabel ?formula
         WHERE {
           GRAPH <http://rdf.ebi.ac.uk/dataset/reactome> {
-            ?molecule a bp:SmallMolecule ;
-                      bp:displayName ?reactomeName ;
-                      bp:entityReference/bp:xref ?xref .
+            VALUES ?fullChebiId {
+              "CHEBI:16469"^^xsd:string    # 17beta-estradiol
+              "CHEBI:16480"^^xsd:string    # nitric oxide
+            }
             ?xref a bp:UnificationXref ;
                   bp:db "ChEBI"^^xsd:string ;
                   bp:id ?fullChebiId .
-            FILTER(STRSTARTS(?fullChebiId, "CHEBI:"))
-            BIND(SUBSTR(?fullChebiId, 7) AS ?chebiNum)
-            ?pathway a bp:Pathway ;
-                     bp:displayName ?pathwayName .
-            FILTER(CONTAINS(LCASE(?pathwayName), "metabolism"))
+            ?ref bp:xref ?xref .
+            ?molecule a bp:SmallMolecule ;
+                      bp:entityReference ?ref ;
+                      bp:displayName ?reactomeName .
+            BIND(SUBSTR(STR(?fullChebiId), 7) AS ?chebiNum)
           }
           BIND(IRI(CONCAT("http://purl.obolibrary.org/obo/CHEBI_", ?chebiNum)) AS ?chebiUri)
           GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
@@ -466,11 +481,16 @@ cross_database_queries:
             OPTIONAL { ?chebiUri chemrof:generalized_empirical_formula ?formula }
           }
         }
-        LIMIT 50
+        LIMIT 30
       notes: |
-        - Linking via: URI conversion "CHEBI:15422" → "http://purl.obolibrary.org/obo/CHEBI_15422"
-        - ^^xsd:string on bp:db is MANDATORY — bare string literal returns 0 results
-        - Performance: ~3-5s (Tier 2) due to property paths in Reactome
+        - TWO ^^xsd:string traps in Reactome: BOTH bp:db AND bp:id are xsd:string-typed.
+          A bare/untyped literal — including one produced by CONCAT — matches 0 rows.
+          Hence anchoring via ^^xsd:string-typed VALUES on ?fullChebiId, not via an
+          untyped CONCAT'd id (that direction silently returns nothing).
+        - To link molecule → PATHWAY (not just identity) you must traverse
+          bp:pathwayComponent recursively: reactions nest under sub-pathways, so a
+          direct ?pathway bp:pathwayComponent ?reaction misses most participants.
+        - Verified 2026-06-19: EST17b→17beta-estradiol (C18H24O2), NO→nitric oxide
         - MIE files checked: chebi, reactome
 
 cross_references:
@@ -479,14 +499,23 @@ cross_references:
       Cross-references to external databases as literal strings with lowercase "prefix:id"
       format (migrated from old uppercase format). 73% of ChEBI entities (164,779) have
       at least one cross-reference. Parse with STRBEFORE(?xref, ":") to extract prefix.
+      Top prefixes by entity coverage (verified 2026-06-19): chemspider 53,225,
+      lincs.smallmolecule 41,390, pubmed 33,274, cas 29,826, hmdb 19,790, reaxys 17,597,
+      kegg.compound 17,362, lipidmaps 12,638, glytoucan 10,578, glygen 9,871,
+      metacyc.compound 7,132, wikipedia.en 6,753, beilstein 5,572, pdb-ccd 4,956,
+      knapsack 4,920, kegg.drug 4,484, drugcentral 3,832, drugbank 3,602, gmelin 3,354,
+      patent 2,613, ppdb 1,141.
     databases:
       chemical:
+        - "chemspider: ChemSpider (largest single xref source — 53,225 entities)"
         - "cas: Chemical Abstracts Service registry numbers"
         - "reaxys: Reaxys chemical database"
+        - "beilstein: Beilstein registry numbers"
         - "gmelin: Gmelin database"
         - "ppdb: Pesticide Properties DataBase"
         - "knapsack: KNApSAcK metabolite database"
       biological:
+        - "lincs.smallmolecule: LINCS small molecules (41,390 entities)"
         - "kegg.compound: KEGG Compound"
         - "kegg.drug: KEGG Drug"
         - "hmdb: Human Metabolome Database"
@@ -494,6 +523,9 @@ cross_references:
         - "drugcentral: Drug Central"
         - "metacyc.compound: MetaCyc metabolic pathways"
         - "lipidmaps: LIPID MAPS"
+      glycan:
+        - "glytoucan: GlyTouCan glycan accessions (10,578 entities)"
+        - "glygen: GlyGen (9,871 entities)"
       structure:
         - "pdb-ccd: PDB Chemical Component Dictionary"
       literature:
@@ -565,19 +597,20 @@ architectural_notes:
 
 data_statistics:
   total_entities: 224523
-  verified_date: "2025-04-21"
+  verified_date: "2026-06-19"
   verification_method: "COUNT DISTINCT owl:Class with CHEBI_ IRI filter"
 
   coverage:
-    with_formula: "87%"
-    with_smiles: "86%"
-    with_inchi_inchikey: "81%"
-    with_dbxrefs: "73%"
+    with_formula: "87%"          # 195,316 / 224,523
+    with_smiles: "86%"           # 194,123 / 224,523
+    with_inchi_inchikey: "81%"   # 182,605 / 224,523
+    with_dbxrefs: "73%"          # 164,779 / 224,523
     amino_acid_subclasses: 1577
     antimicrobial_agents: 425
-    conjugate_acid_pairs: 8660
-    has_role_entities: 45268
-    verified_date: "2025-04-21"
+    conjugate_acid_restrictions: 8660   # owl:Restriction triples (8,541 distinct entities)
+    has_role_restrictions: 45268        # owl:Restriction triples
+    has_role_entities: 25508            # distinct entities carrying >=1 has_role restriction
+    verified_date: "2026-06-19"
     calculation: "COUNT DISTINCT with property present / total 224,523"
 
   staleness_warning: "Monthly updates — re-verify counts after each release"
@@ -633,7 +666,7 @@ anti_patterns:
     correct_sparql: |
       # CORRECT: use the role restriction IRI discovered during exploration (CHEBI:33281 = antimicrobial agent)
       SELECT (COUNT(DISTINCT ?entity) AS ?count)
-      FROM <http://rdfportal.org/dataset/chebi>
+      FROM <http://rdf.ebi.ac.uk/dataset/chebi>
       WHERE {
         ?entity rdfs:subClassOf ?r .
         ?r a owl:Restriction ;
