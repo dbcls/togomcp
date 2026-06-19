@@ -3,6 +3,8 @@ import hashlib
 import json
 import logging
 import os
+import re
+import secrets
 import time
 from contextvars import ContextVar
 from datetime import datetime, timezone
@@ -217,6 +219,16 @@ async def execute_sparql(
         "endpoint_url": url,
         "query_sha256": hashlib.sha256(sparql_query.strip().encode("utf-8")).hexdigest(),
     }
+    # Privacy-safe structural fingerprint (literals stripped). Full text only
+    # when explicitly opted in via TOGOMCP_LOG_QUERY_TEXT (off by default).
+    try:
+        from togo_mcp import stats as _stats_mod
+
+        extra["query_shape"] = _stats_mod.sparql_shape(sparql_query)
+    except Exception:
+        pass
+    if os.getenv("TOGOMCP_LOG_QUERY_TEXT", "").strip().lower() in ("1", "true", "yes"):
+        extra["query_text"] = sparql_query
     _sparql_extra_var.set(extra)
 
     try:
@@ -314,6 +326,105 @@ class _IgnoreUnknownSearchKwargs(_Middleware):
 mcp.add_middleware(_IgnoreUnknownSearchKwargs())
 
 
+# --- Session/static metadata for log records --------------------------------
+# Computed once at import: what the server was running. Client (LLM) info is
+# read per-call from the MCP context. None values are tolerated downstream.
+def _detect_server_version() -> str | None:
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+
+        try:
+            return version("togo-mcp")
+        except PackageNotFoundError:
+            return None
+    except Exception:
+        return None
+
+
+def _detect_usage_guide_version() -> str | None:
+    m = re.search(r"_v(\d+)", os.path.basename(TOGOMCP_USAGE_GUIDE))
+    return f"v{m.group(1)}" if m else None
+
+
+def _detect_mie_bundle_version() -> str | None:
+    """sha256[:12] over sorted '<file>=<mie_version>' lines — changes whenever
+    any MIE file's mie_version changes. Regex-parsed, no YAML dependency."""
+    items: list[str] = []
+    try:
+        paths = sorted(Path(MIE_DIR).glob("*.yaml"))
+    except OSError:
+        return None
+    for path in paths:
+        ver = None
+        try:
+            with open(path, encoding="utf-8") as fh:
+                for line in fh:
+                    m = re.search(r'mie_version:\s*"?([^"\n]+)"?', line)
+                    if m:
+                        ver = m.group(1).strip()
+                        break
+        except OSError:
+            continue
+        items.append(f"{path.name}={ver}")
+    if not items:
+        return None
+    return hashlib.sha256("\n".join(items).encode("utf-8")).hexdigest()[:12]
+
+
+_STATIC_META: dict[str, Any] = {
+    "server_version": _detect_server_version(),
+    "usage_guide_version": _detect_usage_guide_version(),
+    "mie_bundle_version": _detect_mie_bundle_version(),
+}
+
+# Salt for hashing client IPs (PII). A stable salt (set TOGOMCP_LOG_HASH_SALT)
+# hashes the same IP identically across restarts within a retention window; an
+# unset salt is randomized per process, so hashes are not linkable across
+# restarts — strictly more private. Raw IPs are never written to the log.
+_IP_SALT = os.getenv("TOGOMCP_LOG_HASH_SALT", "").strip() or secrets.token_hex(16)
+
+
+def _hash_ip(ip: str | None) -> str | None:
+    if not ip:
+        return None
+    return hashlib.sha256(f"{_IP_SALT}:{ip}".encode("utf-8")).hexdigest()[:16]
+
+
+def _client_info(fctx: Any) -> dict[str, str | None] | None:
+    """LLM client (name/version) from the MCP initialize handshake, if present."""
+    try:
+        params = fctx.session.client_params if fctx else None
+        info = getattr(params, "clientInfo", None) if params else None
+        if info is None:
+            return None
+        return {
+            "name": getattr(info, "name", None),
+            "version": getattr(info, "version", None),
+        }
+    except Exception:
+        return None
+
+
+def _result_size(result: Any) -> int | None:
+    """Best-effort serialized byte size of a tool result (output-size stats)."""
+    if result is None:
+        return None
+    try:
+        content = getattr(result, "content", None)
+        if content is not None:
+            total = 0
+            for block in content:
+                text = getattr(block, "text", None)
+                total += len((text if text is not None else str(block)).encode("utf-8"))
+            return total
+        sc = getattr(result, "structured_content", None)
+        if sc is not None:
+            return len(json.dumps(sc, default=str).encode("utf-8"))
+        return len(str(result).encode("utf-8"))
+    except Exception:
+        return None
+
+
 class _ToolCallLogger(_Middleware):
     """Emit one JSONL record per MCP tool call.
 
@@ -357,8 +468,10 @@ class _ToolCallLogger(_Middleware):
         status = "ok"
         error_class: str | None = None
         error_message: str | None = None
+        result = None
         try:
-            return await call_next(context)
+            result = await call_next(context)
+            return result
         except BaseException as exc:
             status = "error"
             error_class = exc.__class__.__name__
@@ -375,6 +488,7 @@ class _ToolCallLogger(_Middleware):
                 "args": context.message.arguments or {},
                 "status": status,
                 "elapsed_ms": elapsed_ms,
+                "output_bytes": _result_size(result),
                 "session_id": getattr(fctx, "session_id", None) if fctx else None,
                 "request_id": getattr(fctx, "request_id", None) if fctx else None,
                 "origin_request_id": (
@@ -382,7 +496,8 @@ class _ToolCallLogger(_Middleware):
                 ),
                 "client_id": getattr(fctx, "client_id", None) if fctx else None,
                 "transport": getattr(fctx, "transport", None) if fctx else None,
-                "ip": self._client_ip(),
+                "ip_hash": _hash_ip(self._client_ip()),
+                "meta": {**_STATIC_META, "client": _client_info(fctx)},
             }
             if error_class is not None:
                 record["error_class"] = error_class

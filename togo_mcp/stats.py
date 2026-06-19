@@ -24,6 +24,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -57,6 +58,59 @@ _SEARCH_TOOL_DB = {
     "search_chembl_molecule": "chembl",
     "search_chembl_target": "chembl",
 }
+
+
+# --------------------------------------------------------------------------- #
+# SPARQL query shape (privacy-safe structural fingerprint)
+# --------------------------------------------------------------------------- #
+# Matches string literals (triple-quoted, double, single) so their CONTENTS can
+# be stripped before any feature extraction — user literals never leak into the
+# shape. IRIs live in <...> and are handled separately (only FROM graphs kept).
+_LITERAL_RE = re.compile(
+    r'"""(?:.|\n)*?"""|\'\'\'(?:.|\n)*?\'\'\'|"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\''
+)
+# prefix:local — schema terms (predicates/classes), e.g. up:reviewed, bp:db,
+# xsd:string, bif:contains. The local part requirement (`:[A-Za-z_]`) means bare
+# "up:" in a PREFIX decl and "http://" inside an IRI do NOT match.
+_QNAME_RE = re.compile(r"\b[A-Za-z][\w.-]*:[A-Za-z_]\w*")
+_FROM_RE = re.compile(r"\bfrom\s+(?:named\s+)?<([^>]+)>", re.IGNORECASE)
+_FLAG_WORDS = (
+    "filter", "optional", "union", "values", "service",
+    "limit", "offset", "order", "group", "minus", "having",
+)
+
+
+def sparql_shape(query: str) -> dict[str, Any]:
+    """Privacy-safe structural fingerprint of a SPARQL query.
+
+    String-literal CONTENTS are stripped first, so no user-supplied text can
+    leak. What remains is schema-level: query form, FROM graphs, the set of
+    qname predicates/classes used, structural flags, and length. This is the
+    signal MIE-improvement analysis needs ("reactome queries using bp:db but
+    not xsd:string return 0 rows") without storing the raw query.
+    """
+    q = query or ""
+    stripped = _LITERAL_RE.sub('""', q)
+    low = stripped.lower()
+
+    form = "other"
+    for f in ("select", "ask", "construct", "describe"):
+        if re.search(rf"\b{f}\b", low):
+            form = f
+            break
+
+    qnames = sorted(set(_QNAME_RE.findall(stripped)))
+    flags = {w: bool(re.search(rf"\b{w}\b", low)) for w in _FLAG_WORDS}
+    flags["bif_contains"] = "bif:contains" in low
+
+    return {
+        "form": form,
+        "from": sorted(set(_FROM_RE.findall(stripped)))[:20],
+        "predicates": qnames[:60],
+        "n_predicates": len(qnames),
+        "flags": {k: v for k, v in flags.items() if v},  # only present flags
+        "len": len(q),
+    }
 
 
 # --------------------------------------------------------------------------- #

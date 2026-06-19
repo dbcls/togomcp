@@ -133,6 +133,28 @@ def test_render_html_is_wellformed():
     assert "reactome" in html
 
 
+def test_sparql_shape_strips_literals():
+    q = ('SELECT ?x FROM <http://ex/g> WHERE { ?x rdfs:comment ?c . '
+         '?c bif:contains "secret-123" FILTER(?x = "pii-456") } LIMIT 5')
+    s = stats.sparql_shape(q)
+    blob = json.dumps(s)
+    assert "secret-123" not in blob and "pii-456" not in blob  # no literal leakage
+    assert s["form"] == "select"
+    assert s["from"] == ["http://ex/g"]
+    assert "rdfs:comment" in s["predicates"] and "bif:contains" in s["predicates"]
+    assert s["flags"].get("filter") and s["flags"].get("limit") and s["flags"].get("bif_contains")
+
+
+def test_sparql_shape_form_and_no_false_qnames():
+    s = stats.sparql_shape("ASK WHERE { ?s a bp:Pathway }")
+    assert s["form"] == "ask"
+    assert "bp:Pathway" in s["predicates"]
+    # IRIs and bare PREFIX colons must not produce qnames
+    s2 = stats.sparql_shape("PREFIX up: <http://purl.uniprot.org/core/> SELECT ?s WHERE { ?s a up:Protein }")
+    assert "up:Protein" in s2["predicates"]
+    assert not any(p.startswith("http") for p in s2["predicates"])
+
+
 def test_aggregate_empty():
     agg = stats.aggregate([])
     assert agg["months"] == []
