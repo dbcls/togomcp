@@ -106,6 +106,44 @@ While running predicate surveys, note any predicate whose COUNT distribution is 
 
 Write these candidates down immediately. `critical_warnings` is assembled in Phase 4 from this list — not reconstructed from memory.
 
+**Check object polymorphism for every linking predicate.** For each predicate whose object is an IRI (not a literal or bnode), GROUP BY the object's type or namespace. A predicate whose object spans **more than one class/namespace is a denormalized, polymorphic link** — and that is simultaneously a design signal and a silent-failure trap, because any downstream query that assumes a single object type will quietly drop the other kinds.
+
+```sparql
+# Object-type spread of a linking predicate (by namespace prefix; cheap and endpoint-agnostic)
+SELECT ?ns (COUNT(*) AS ?n) WHERE {
+  GRAPH <…> {
+    ?s <predicate> ?o .
+    BIND(REPLACE(STR(?o), "^(.*/)[^/]+$", "$1") AS ?ns)
+  }
+} GROUP BY ?ns ORDER BY DESC(?n)
+# (or GROUP BY the object's rdf:type via  ?o a ?ns  when objects are typed)
+```
+
+Run this on every predicate you plan to traverse in `sparql_query_examples`. If the object set is heterogeneous: enumerate **all** object kinds with their counts in the shape comment and `critical_warnings`, and show the disambiguating filter (e.g. `FILTER(CONTAINS(STR(?o), "/protein/"))`) in the example query. Real case: PubChem's `obo:RO_0000057` (MeasureGroup → target) resolves to protein **and** taxonomy, gene, cell, and anatomy IRIs — five object kinds under one predicate; a query filtering to only one silently loses the rest, and the first revision documented only three of the five until this GROUP BY was run.
+
+**Probe the literal datatype and language tag for every literal you'll match exactly.** Whenever a predicate's object is a literal that a downstream query will match in a `VALUES` block, a `FILTER(?x = …)`, or a triple-pattern object, the *stored* lexical form must match the *query* term exactly — including datatype and language tag. Guessing is a silent-failure trap: a query term of the wrong datatype returns 0 rows with no error. Never assume; probe how the literal is actually stored:
+
+```sparql
+SELECT ?dt ?lang (COUNT(*) AS ?n) WHERE {
+  GRAPH <…> {
+    ?s <predicate> ?o .
+    BIND(DATATYPE(?o) AS ?dt)
+    BIND(LANG(?o) AS ?lang)
+  }
+} GROUP BY ?dt ?lang ORDER BY DESC(?n)
+```
+
+Map the result to the exact-match rule, and record it in `critical_warnings` whenever a query would break by getting it wrong:
+
+| Observed storage | Exact-match query term must be |
+|---|---|
+| `xsd:string` (typed) | `"value"^^xsd:string` — a plain `"value"` joins to nothing |
+| plain literal (`?dt` is blank, no lang) | `"value"` — adding `^^xsd:string` joins to nothing |
+| language-tagged (`?lang` = `en`, …) | `"value"@en`, or compare via `STR(?o) = "value"` / `langMatches()` |
+| `xsd:integer` / `xsd:decimal` / `xsd:double` | the matching numeric type — `"2"^^xsd:integer` ≠ `"2"^^xsd:decimal` ≠ `2.0` |
+
+The nastiest variant is **inconsistent typing within one predicate** (some values `xsd:string`, some plain, or mixed numeric types): the GROUP BY shows two or more rows for the same predicate. Then no single exact-match form catches everything — document it and use `STR()`-based comparison (or a `VALUES` block listing both forms) in the example query. Real case: Reactome stores `bp:db` / `bp:id` / `bp:name` / `bp:eCNumber` / `bp:controlType` as `xsd:string`, so every `VALUES`/`FILTER =`/object literal needs `^^xsd:string` — its single most common silent-failure mode, now the file's lead `critical_warning`. `VALUES` is the highest-miss spot because the typing requirement isn't visually cued there the way it is in a triple object.
+
 #### 2c. DESCRIBE 3–5 representative entities
 
 Pick entities that span the taxonomy of the database — a "central" entity (most-frequent class), a "linker" entity (something that joins multiple classes), and a "leaf" entity (terminal annotation):
@@ -163,6 +201,22 @@ Map the result to the correct ShEx cardinality modifier:
 | Some subjects have > 1 | `IRI *` (if 0 is possible) or `IRI +` |
 
 **Never assign `?`, `+`, or `*` based on intuition.** Every modifier must be justified by a cardinality query result. This step is cheap (one query per predicate) and catches a large class of silent errors in the finished MIE.
+
+#### 2f. Probe design boundaries with a ground-truth asymmetry test
+
+Counts and DESCRIBEs tell you what the schema *contains*; this step tells you where the schema's worldview *diverges from yours* — which is exactly what `critical_warnings` exists to capture. A query that simply succeeds teaches you nothing about the design (you can't see why it worked). The strongest signal is a **controlled asymmetry**: two facts you are confident are biologically true and structurally equivalent, where the obvious query answers one and silently misses the other.
+
+The method:
+
+1. **Anchor on ground truth.** Pick 2–3 facts you *know* are true from domain knowledge — "ROCK2 participates in RHO signaling", "aspirin inhibits COX", "this drug hits this target". Don't pick obscure cases; pick textbook ones, so a zero/partial result can only mean *your query model is wrong*, never *the fact is absent*.
+2. **Write the obvious query** — the one a competent but schema-naïve user would write — and run it for all anchors at once.
+3. **Read the divergence, not the success.** If every anchor returns, you've confirmed the happy path but learned little. If some return and some don't (the productive case), the difference is localized to the few variables that differ between them — follow that difference down (`SELECT ?p ?o WHERE { <missing-entity> ?p ?o }`, reverse lookups `?s ?p <entity>`, type checks) until you find the predicate/entity-type/grouping the design uses that your query didn't.
+
+Why asymmetry beats a bare zero-result: a single empty result has too many possible causes (typo, wrong graph, nonexistent entity, wrong predicate). A *differential* — "ROCK1 is found, ROCK2 is not, via an identical query" — pins the cause to whatever differs between the two, turning an open-ended debug into a one-variable diff.
+
+Real case (Reactome): the obvious query `?reaction (bp:left|bp:right) ?protein` returned ROCK1 but **not** ROCK2, despite both being textbook RHO effectors. Chasing only that asymmetry surfaced the EntitySet / `bp:memberPhysicalEntity` grouping pattern — a silent trap affecting 45,785 groups that no amount of happy-path querying would have revealed. The discovery became the file's central `critical_warning`.
+
+Distinguish design from accident as you go: some divergences are principled modeling (Reactome EntitySets express "any family member fills this role"); others are export artifacts or curation drift (a predicate sometimes attached directly, sometimes via an intermediate; `UniProt` vs `UniProt Isoform` db split; a misspelled predicate). For the MIE it does not matter which it is — **document the observable behavior and its operational consequence either way.** Understanding the *why* improves your ability to predict sibling traps (if `EntitySet` exists, look for `CandidateSet`/`DefinedSet`); the warning itself records the *what*.
 
 ### Phase 3 — Design the query set
 
