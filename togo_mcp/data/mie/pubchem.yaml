@@ -59,8 +59,10 @@ critical_warnings: |
     NOT on BioAssay entities. A FROM clause on the bioassay graph alone CANNOT reach a target.
     Four graphs are required: substance, endpoint, measuregroup, protein. The correct route is
     BioAssay -(bao:BAO_0000209)-> MeasureGroup -(obo:RO_0000057)-> Protein. Note RO_0000057 is
-    HETEROGENEOUS: its object may be a Protein, a Cell line, or a Taxonomy IRI — filter to
-    "/protein/" when you want protein targets. Verified Gilteritinib (CID49803313) -> FLT3
+    HETEROGENEOUS: its object may be a Protein (/protein/), Taxonomy (/taxonomy/), Gene (/gene/),
+    Cell (/cell/), or Anatomy (/anatomy/) IRI — filter to "/protein/" when you want protein
+    targets. Verified target-type distribution (2026-06-22): protein 743,283; taxonomy 520,875;
+    gene 497,551; cell 348,133; anatomy 201,737. Verified Gilteritinib (CID49803313) -> FLT3
     (protein/ACCP36888) via this path (2026-06-22).
   - ENDPOINT GRAPH IS EXTREMELY LARGE: the endpoint graph holds one measurement record per
     Substance x Assay. Scanning it without first pinning a Substance IRI (SID) will time out.
@@ -180,10 +182,11 @@ shape_expressions: |
     dcterms:title xsd:string ? ;         # assay description, free text (bif:contains usable)
     dcterms:source IRI ? ;               # depositor IRI, e.g. pubchem/source/ChEMBL
     obo:OBI_0000299 @<EndpointShape>* ;  # has_specified_output -> measurement Endpoint(s)
-    obo:RO_0000057 IRI*                  # has_participant -> Protein OR Cell OR Taxonomy IRI
+    obo:RO_0000057 IRI*                  # has_participant -> Protein/Taxonomy/Gene/Cell/Anatomy IRI
     # CRITICAL: the target (vocab:Protein) link is RO_0000057 here, not on BioAssay.
-    # RO_0000057 is heterogeneous: protein/ACC[N], cell/CELLID[N], or taxonomy/TAXID[N].
-    # Filter STR(?o) CONTAINS "/protein/" to isolate protein targets.
+    # RO_0000057 is heterogeneous (counts verified 2026-06-22): protein/ACC[N] (743,283),
+    # taxonomy/TAXID[N] (520,875), gene/GID[N] (497,551), cell/CELLID[N] (348,133),
+    # anatomy/ANATOMYID[N] (201,737). Filter STR(?o) CONTAINS "/protein/" for protein targets.
   }
 
   <EndpointShape> {
@@ -567,7 +570,7 @@ architectural_notes:
     - "Pathway participants: obo:RO_0000057; organism: up:organism with taxonomy:TAXID[N] IRI"
     - "Activity path (4 graphs): Compound -[sio:CHEMINF_000477]- Substance -[obo:IAO_0000136]- Endpoint(outcome) <-[obo:OBI_0000299]- MeasureGroup -[obo:RO_0000057]-> Protein. BioAssay -[bao:BAO_0000209]-> MeasureGroup links assay metadata to the activity path."
     - "MeasureGroup IRI pattern: measuregroup/AID[N]_PMID[N] or measuregroup/AID[N] (no PMID). Endpoint IRI pattern: endpoint/SID[N]_AID[N]_PMID[N]_VALUE[N]"
-    - "MeasureGroup obo:RO_0000057 is heterogeneous: object may be protein/ACC[N], cell/CELLID[N], or taxonomy/TAXID[N] — filter by IRI substring for the target class you want"
+    - "MeasureGroup obo:RO_0000057 is heterogeneous: object may be protein/ACC[N], taxonomy/TAXID[N], gene/GID[N], cell/CELLID[N], or anatomy/ANATOMYID[N] — filter by IRI substring for the target class you want (verified counts 2026-06-22: protein 743k, taxonomy 521k, gene 498k, cell 348k, anatomy 202k)"
     - "Endpoint quantitative detail: sio:SIO_000300 (numeric value), sio:SIO_000221 (unit -> obo:UO_[N]), rdfs:label (e.g. IC50), vocab:hasQualifier (=, >, <)"
     - "PDB links on Protein: pdbo:link_to_pdb with pdbx-v50.owl# prefix (NOT v40 — silent failure)"
 
