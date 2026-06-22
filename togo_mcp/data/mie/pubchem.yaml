@@ -553,10 +553,13 @@ cross_references:
 architectural_notes:
   query_strategy:
     - "MANDATORY FIRST STEP: get_MIE_file('pubchem') — read critical_warnings and shape_expressions"
-    - "Exploratory: get_pubchem_compound_id() or ncbi_esearch() to find CIDs; inspect with SELECT ?p ?o WHERE { <CID_IRI> ?p ?o } LIMIT 50"
+    - "Exploratory: inspect a known compound with SELECT ?p ?o WHERE { <CID_IRI> ?p ?o } LIMIT 50"
+    - "Name -> CID: prefer get_pubchem_compound_id('aspirin') — it returns the single CANONICAL parent CID (e.g. 2244) via PUG-REST. ncbi_esearch(db=pccompound, ...) ALSO finds CIDs but returns a relevance-ranked SET of records (salts, mixtures, isotope-labeled, deposited variants) that often omits the canonical parent — use it for candidate-set / boolean / field-tag searches, NOT for pinning the one CID of a named drug."
     - "Comprehensive: use specific CID IRIs or CHEMINF descriptor type IRIs — never reuse search API result lists as VALUES for count queries (circular reasoning)"
     - "Drug roles: use specific IRI obo:RO_0000087 vocab:FDAApprovedDrugs — typed predicate, no text search"
     - "Compound-target-activity: use the 4-graph path (substance -> endpoint -> measuregroup -> protein), NOT bioassay title search. Pin the CID, get the SID via sio:CHEMINF_000477, then read endpoint outcome + measuregroup RO_0000057 target. The target link is on MeasureGroup, never on BioAssay."
+    - "Pin the protein IRI BEFORE entering the 4-graph path (same as pinning the CID first). Fastest route: if you know the UniProt accession, build the IRI directly as protein/ACC<accession> (e.g. EGFR P00533 -> protein/ACCP00533, FLT3 P36888 -> protein/ACCP36888). Otherwise resolve by name with bif:contains on skos:prefLabel over the protein graph using the FULL official name ('Epidermal growth factor receptor', not the abbreviation 'EGFR'); the same prefLabel may be shared by species/source variants, so disambiguate by the embedded accession."
+    - "Gene/protein abbreviation -> full name (the prefLabel uses the full name, not the symbol): chain ncbi_esearch(db=gene, 'EGFR[Gene Name] AND Homo sapiens[Organism]') -> Gene ID, then ncbi_esummary(db=gene, <id>) -> nomenclaturename = 'epidermal growth factor receptor' (plus otheraliases for fallback strings). bif:contains is case-insensitive, so feed that name straight into the prefLabel lookup above."
     - "Filter activity by the controlled vocab:PubChemAssayOutcome IRI: vocab:active / vocab:inactive / vocab:inconclusive / vocab:probe / vocab:unspecified"
     - "Bioassay topics: bif:contains on dcterms:title is the ONLY justified text search case"
     - "Separate graphs: always add FROM for bioassay, protein, and pathway queries"
