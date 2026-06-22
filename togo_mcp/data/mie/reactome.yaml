@@ -29,9 +29,9 @@ schema_info:
   kw_search_tools:
     - search_reactome_entity
   version:
-    mie_version: "6.1"
+    mie_version: "6.2"
     mie_created: "2026-04-29"
-    mie_updated: "2026-06-13"
+    mie_updated: "2026-06-22"
     data_version: "Release 95"
     update_frequency: "Quarterly"
   access:
@@ -71,6 +71,33 @@ critical_warnings: |
                ?xref bp:db ?xrefDb ; bp:id ?xrefId .
                FILTER(?xrefId = "Q9UHC9"^^xsd:string
                    || STRSTARTS(STR(?xrefId), "Q9UHC9-"))
+  - ENTITYSET / memberPhysicalEntity TRAP — PROTEINS IN FUNCTIONAL GROUPS ARE INVISIBLE TO
+    bp:left|bp:right DIRECT SEARCH: Reactome models "any member of this family can fill this
+    role" as an EntitySet, exported to BioPAX as a grouping entity with bp:memberPhysicalEntity
+    links to the individual members (221,164 member triples across 45,785 groups, verified
+    2026-06-22). A reaction's bp:left/bp:right points to the GROUP, not the individual members,
+    so ?reaction (bp:left|bp:right) ?protein silently returns 0 rows for any protein that
+    participates only through an EntitySet.
+    DETECTION IS BY COMMENT, NOT rdf:type: every EntitySet group carries
+    bp:comment "Converted from EntitySet in Reactome"^^xsd:string. Do NOT detect by type —
+    groups are typed by their member class: bp:Protein (26,604), bp:PhysicalEntity (8,342),
+    bp:Complex (6,138), bp:SmallMolecule (4,553), bp:Rna (78), bp:Dna (70). A "ROCK1,ROCK2"
+    EntitySet is itself a bp:Protein, so filtering on bp:PhysicalEntity-only would miss most groups.
+    REQUIRED QUERY PATTERN — UNION direct participation with memberPhysicalEntity+ traversal:
+        { ?reaction (bp:left|bp:right) ?protein . }                        # direct
+        UNION
+        { ?reaction (bp:left|bp:right) ?group .
+          ?group bp:memberPhysicalEntity+ ?protein . }                     # EntitySet member
+    Use + (transitive): EntitySets nest (a group can be a member of another group).
+    The Catalysis controller path has the same issue (10,579 catalyses have an EntitySet
+    controller) — apply the same UNION to bp:controller.
+    VERIFIED CASE (2026-06-22): ROCK2 (O75116) has ZERO direct bp:left|bp:right participations;
+    it is reachable only via EntitySets such as PhysicalEntity1127 "RHOA plasma membrane
+    effectors" (DB_ID 9013003) and Protein14273 "ROCK1,ROCK2". ROCK1 (Q13464) reaches RHO
+    pathways the same way BUT also participates directly in "Caspase-mediated cleavage of Rock-1"
+    (apoptosis) — which is why ROCK1 looks "easier to find". This is faithful biology
+    (ROCK1/ROCK2 are interchangeable in RHO signaling), not a Reactome bug — do not conclude
+    ROCK2 is under-annotated.
 
 shape_expressions: |
   PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
@@ -100,13 +127,21 @@ shape_expressions: |
   }
 
   # Proteins: ~232,467 | Complexes: ~109,261 | SmallMolecules: ~51,214 | DNA/RNA: ~2,691
+  # ENTITYSET NOTE: 45,785 instances are EntitySet "functional groups" carrying
+  #   bp:comment "Converted from EntitySet in Reactome"^^xsd:string and bp:memberPhysicalEntity
+  #   links to individual members (221,164 member triples). Reactions point to the GROUP via
+  #   bp:left/bp:right, NOT to the members — see critical_warnings. Detect EntitySets by the
+  #   COMMENT, not by rdf:type: groups are typed by member class (bp:Protein 26,604,
+  #   bp:PhysicalEntity 8,342, bp:Complex 6,138, bp:SmallMolecule 4,553, bp:Rna/Dna ~148).
   <PhysicalEntityShape> {
-    a [ bp:Protein bp:Complex bp:SmallMolecule bp:Dna bp:Rna ] ;
+    a [ bp:Protein bp:Complex bp:SmallMolecule bp:Dna bp:Rna bp:PhysicalEntity ] ;
     bp:displayName xsd:string ? ;
     bp:name xsd:string * ;
     bp:entityReference @<EntityReferenceShape> ? ;
     bp:cellularLocation @<CellularLocationVocabularyShape> ? ;
     bp:feature @<ModificationFeatureShape> * ;
+    bp:memberPhysicalEntity @<PhysicalEntityShape> * ;  # EntitySet members; nests (use + to traverse)
+    bp:comment xsd:string * ;                            # "Converted from EntitySet in Reactome" marks a group
     bp:xref @<XrefShape> *
   }
 
@@ -216,17 +251,20 @@ sample_rdf_entries:
   rdf_prefixes: |
     @prefix bp: <http://www.biopax.org/release/biopax-level3.owl#> .
     @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-    @prefix react: <http://www.reactome.org/biopax/95/48898#> .
+    # NOTE: Reactome mints a distinct IRI namespace (biopax/95/<N>#) per top-level pathway
+    # export, so entities from different pathways carry different <N>. These samples span two:
+    @prefix react: <http://www.reactome.org/biopax/95/48887#> .     # human RHO-signalling export (#1, #3)
+    @prefix reactCe: <http://www.reactome.org/biopax/95/68320#> .   # C. elegans export (#2)
   entries:
     - title: Pathway with GO RelationshipXref (primary GO annotation pattern)
       description: Human pathway annotated via RelationshipXref — the primary pattern covering 98% of all GO annotations in Reactome.
       rdf: |
-        react:Pathway299 a bp:Pathway ;
+        react:Pathway1128 a bp:Pathway ;
           bp:displayName "Signaling by Rho GTPases"^^xsd:string ;
           bp:organism react:BioSource1 ;
-          bp:xref react:RelationshipXref3252 .
+          bp:xref react:RelationshipXref5739 .
 
-        react:RelationshipXref3252 a bp:RelationshipXref ;
+        react:RelationshipXref5739 a bp:RelationshipXref ;
           bp:db "GENE ONTOLOGY"^^xsd:string ;
           bp:id "GO:0007264"^^xsd:string .
 
@@ -236,34 +274,55 @@ sample_rdf_entries:
     - title: Protein with MOD-Annotated Phosphorylation ModificationFeature
       description: "Protein with a post-translational modification where the SequenceModificationVocabulary carries a MOD ontology xref, enabling structured queries without text search."
       rdf: |
-        react:Protein122 a bp:Protein ;
+        reactCe:Protein122 a bp:Protein ;
           bp:displayName "Q18846"^^xsd:string ;
-          bp:feature react:ModificationFeature331 .
+          bp:feature reactCe:ModificationFeature39 .
 
-        react:ModificationFeature331 a bp:ModificationFeature ;
-          bp:modificationType react:SequenceModificationVocabulary5 .
+        reactCe:ModificationFeature39 a bp:ModificationFeature ;
+          bp:modificationType reactCe:SequenceModificationVocabulary1 .
 
-        react:SequenceModificationVocabulary5 a bp:SequenceModificationVocabulary ;
+        reactCe:SequenceModificationVocabulary1 a bp:SequenceModificationVocabulary ;
           bp:term "O-phospho-L-serine"^^xsd:string ;
-          bp:xref react:Xref_MOD46 .
+          bp:xref reactCe:UnificationXref53 .
 
-        react:Xref_MOD46 a bp:UnificationXref ;
+        reactCe:UnificationXref53 a bp:UnificationXref ;
           bp:db "MOD"^^xsd:string ;
           bp:id "MOD:00046"^^xsd:string .
 
-    - title: BiochemicalReaction with EC Number and Catalysis
-      description: Protein kinase reaction with EC classification (verified RET tyrosine phosphorylation with EC 2.7.10.1).
+    - title: EntitySet (functional group) with memberPhysicalEntity — the silent-miss pattern
+      description: >
+        An EntitySet groups functionally interchangeable members and is marked by
+        bp:comment "Converted from EntitySet in Reactome". Reactions point to the GROUP via
+        bp:left/bp:right, NOT to individual members — so a member's UniProt ID is unreachable
+        without traversing bp:memberPhysicalEntity. Verified: ROCK2 (O75116, Protein14275) and
+        ROCK1 (Q13464, Protein14274) are both members of PhysicalEntity1127 "RHOA plasma
+        membrane effectors" (DB_ID 9013003), which is bp:left of BiochemicalReaction7906. ROCK2
+        has ZERO direct reaction participations; it is reachable ONLY through such groups. Note
+        the group here is a bare bp:PhysicalEntity, but most EntitySets are typed bp:Protein —
+        detect by the comment, not the type.
       rdf: |
-        react:BiochemicalReaction2657 a bp:BiochemicalReaction ;
-          bp:displayName "RET tyrosine phosphorylation"^^xsd:string ;
-          bp:eCNumber "2.7.10.1"^^xsd:string ;
-          bp:left react:Protein_substrate ;
-          bp:right react:Protein_phosphorylated .
+        react:PhysicalEntity1127 a bp:PhysicalEntity ;
+          bp:displayName "RHOA plasma membrane effectors"^^xsd:string ;
+          bp:comment "Converted from EntitySet in Reactome"^^xsd:string ;
+          bp:comment "Reactome DB_ID: 9013003"^^xsd:string ;
+          bp:memberPhysicalEntity react:Protein14274 ;   # ROCK1 (Q13464)
+          bp:memberPhysicalEntity react:Protein14275 ;   # ROCK2 (O75116)
+          bp:memberPhysicalEntity react:Complex6224 .    # complexes also present in the set
 
-        react:Catalysis_RET a bp:Catalysis ;
-          bp:controller react:RET_kinase ;
-          bp:controlled react:BiochemicalReaction2657 ;
-          bp:controlType "ACTIVATION"^^xsd:string .
+        react:Protein14275 a bp:Protein ;
+          bp:displayName "ROCK2"^^xsd:string ;
+          bp:entityReference react:ProteinReference6830 .
+
+        react:ProteinReference6830 a bp:ProteinReference ;
+          bp:xref react:UnificationXref77365 .
+        react:UnificationXref77365 a bp:UnificationXref ;
+          bp:db "UniProt"^^xsd:string ;
+          bp:id "O75116"^^xsd:string .
+
+        # The reaction references the EntitySet group, not ROCK2 directly
+        react:BiochemicalReaction7906 a bp:BiochemicalReaction ;
+          bp:displayName "RHOA binds effectors at the plasma membrane"^^xsd:string ;
+          bp:left react:PhysicalEntity1127 .
 
 sparql_query_examples:
   - title: Count Human Pathways by Organism Name
@@ -331,40 +390,44 @@ sparql_query_examples:
       }
       LIMIT 50
 
-  - title: Find Human Pathways for a List of UniProt Accessions (isoform-aware)
+  - title: Find Human Pathways for a List of UniProt Accessions (isoform- and EntitySet-aware)
     description: |
       Retrieve human pathways whose reactions involve any of a given set of UniProt-identified
-      proteins. Standard "find pathways for these proteins" pattern. Three traps handled:
+      proteins. Four traps handled:
       (1) MANDATORY ^^xsd:string on every VALUES literal — plain strings silently join to nothing.
       (2) UniProt xrefs come in TWO bp:db flavors — "UniProt" (bare accession in bp:id) AND
-          "UniProt Isoform" (accession + isoform suffix in bp:id, e.g. "Q9UHC9-2"). Some proteins
-          (NPC1L1 / Q9UHC9, retinal ABCA / HMGCR isoform-specific annotations) are reachable ONLY
-          via the isoform form — filtering on just "UniProt" silently drops them.
-      (3) bp:component* on the participant matches both direct and complex-mediated participation.
-    question: Which human pathways involve any of these UniProt-identified proteins, including via isoforms?
+          "UniProt Isoform" (accession + suffix, e.g. "Q9UHC9-2"). Filtering on just "UniProt"
+          silently drops isoform-only proteins (NPC1L1 / Q9UHC9 is a documented case).
+      (3) bp:component+ for complex-mediated participation.
+      (4) bp:memberPhysicalEntity+ for EntitySet participation — proteins that participate in a
+          reaction ONLY as a member of a functional group (bp:comment "Converted from EntitySet
+          in Reactome") are INVISIBLE to bp:left|bp:right direct search. The Catalysis controller
+          can likewise be an EntitySet. The UNION branches cover all four routes.
+          Verified: ROCK2 (O75116) is reachable ONLY via branch (4) — 31 RHO-signalling pathways
+          that direct search misses entirely; ROCK1 (Q13464) needs branch (4) for RHO pathways
+          AND branch (1) for Apoptosis (direct caspase-cleavage participation).
+    question: Which human pathways involve any of these UniProt-identified proteins, including via isoforms, complexes, and EntitySet membership?
     complexity: intermediate
     sparql: |
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-      SELECT DISTINCT ?targetAcc ?xrefDb ?xrefId ?pathwayName
+      SELECT DISTINCT ?targetAcc ?pathwayName
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
         # Target UniProt accessions — every literal MUST carry ^^xsd:string
         VALUES ?targetAcc {
-          "P02649"^^xsd:string    # APOE   (canonical)
-          "O95477"^^xsd:string    # ABCA1  (canonical)
-          "Q9UHC9"^^xsd:string    # NPC1L1 (isoform-only in Reactome — caught via "UniProt Isoform")
-          "P04035"^^xsd:string    # HMGCR  (has both canonical and isoform xrefs)
+          "Q13464"^^xsd:string    # ROCK1 (direct in Apoptosis; EntitySet in RHO pathways)
+          "O75116"^^xsd:string    # ROCK2 (EntitySet only — invisible to direct search)
         }
-        ?protein a bp:Protein ;
-                 bp:entityReference/bp:xref ?protXref .
+        VALUES ?xrefDb { "UniProt"^^xsd:string  "UniProt Isoform"^^xsd:string }
+        # Resolve accession to Protein IRI (xref on the EntityReference, or directly on the Protein)
+        { ?protein a bp:Protein ; bp:entityReference/bp:xref ?protXref . }
+        UNION
+        { ?protein a bp:Protein ; bp:xref ?protXref . }
         ?protXref a bp:UnificationXref ;
                   bp:db ?xrefDb ;
                   bp:id ?xrefId .
-        # Accept BOTH UniProt flavors — see critical_warnings
-        VALUES ?xrefDb { "UniProt"^^xsd:string  "UniProt Isoform"^^xsd:string }
-        # Match canonical (bp:id = bare accession) OR isoform (bp:id = "accession-N")
         FILTER(?xrefId = ?targetAcc
             || STRSTARTS(STR(?xrefId), CONCAT(STR(?targetAcc), "-")))
 
@@ -372,11 +435,24 @@ sparql_query_examples:
                  bp:displayName ?pathwayName ;
                  bp:organism/bp:name "Homo sapiens"^^xsd:string ;
                  bp:pathwayComponent+ ?reaction .
-        ?reaction (bp:left|bp:right) ?participant .
-        # bp:component* matches both direct and complex-mediated participation
-        ?participant bp:component* ?protein .
+
+        # Four participation routes — direct, complex, EntitySet, catalysis (direct or EntitySet)
+        {
+          ?reaction (bp:left|bp:right) ?protein .
+        } UNION {
+          ?reaction (bp:left|bp:right) ?cx .
+          ?cx bp:component+ ?protein .
+        } UNION {
+          ?reaction (bp:left|bp:right) ?group .
+          ?group bp:memberPhysicalEntity+ ?protein .
+        } UNION {
+          ?catalysis a bp:Catalysis ;
+                     bp:controlled ?reaction ;
+                     bp:controller ?ctrl .
+          { ?ctrl bp:memberPhysicalEntity* ?protein . }
+        }
       }
-      ORDER BY ?pathwayName ?targetAcc
+      ORDER BY ?targetAcc ?pathwayName
       LIMIT 200
 
   - title: Find Proteins with Phosphorylation Using MOD Ontology IDs
@@ -413,29 +489,36 @@ sparql_query_examples:
       ORDER BY ?name
       LIMIT 100
 
-  - title: Catalysis Distribution by Control Type
-    description: Aggregate count of activation vs inhibition catalysis for reactions with known EC numbers.
-    question: What is the ratio of activating to inhibiting catalysis in enzymatic reactions?
+  - title: Detect EntitySet Membership for a Protein (diagnostic)
+    description: |
+      Diagnostic: check whether a UniProt-identified protein participates in reactions through an
+      EntitySet (bp:memberPhysicalEntity). Run this BEFORE a pathway query to decide whether the
+      memberPhysicalEntity+ UNION branch is needed. If it returns rows, a plain bp:left|bp:right
+      direct search will SILENTLY miss those associations (see critical_warnings / anti_patterns).
+      Verified: ROCK2 (O75116) returns groups "ROCK1,ROCK2" and "RHOA plasma membrane effectors".
+    question: Does ROCK2 (O75116) participate in any reactions only through an EntitySet?
     complexity: intermediate
     sparql: |
-      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX bp:  <http://www.biopax.org/release/biopax-level3.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-      SELECT ?controlType
-             (COUNT(DISTINCT ?reaction) as ?reactions)
-             (COUNT(DISTINCT ?catalyst) as ?catalysts)
+      SELECT DISTINCT ?group ?groupName ?reaction ?reactionName
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        ?catalysis a bp:Catalysis ;
-                   bp:controlled ?reaction ;
-                   bp:controller ?catalyst ;
-                   bp:controlType ?controlType .
-        ?reaction a bp:BiochemicalReaction ;
-                  bp:eCNumber ?ec .
+        VALUES ?targetAcc { "O75116"^^xsd:string }
+        VALUES ?xrefDb { "UniProt"^^xsd:string "UniProt Isoform"^^xsd:string }
+        { ?protein a bp:Protein ; bp:entityReference/bp:xref ?x . }
+        UNION
+        { ?protein a bp:Protein ; bp:xref ?x . }
+        ?x a bp:UnificationXref ; bp:db ?xrefDb ; bp:id ?xrefId .
+        FILTER(?xrefId = ?targetAcc || STRSTARTS(STR(?xrefId), CONCAT(STR(?targetAcc), "-")))
+        # EntitySet group(s) that contain this protein, and the reactions that use the group
+        ?group bp:memberPhysicalEntity+ ?protein ;
+               bp:displayName ?groupName .
+        ?reaction (bp:left|bp:right) ?group ;
+                  bp:displayName ?reactionName .
       }
-      GROUP BY ?controlType
-      ORDER BY DESC(?reactions)
-      LIMIT 10
+      LIMIT 20
 
   - title: Plasma Membrane Proteins with UniProt Cross-References
     description: |
@@ -649,6 +732,7 @@ architectural_notes:
     - "Modifications: use VALUES with MOD IDs to avoid text search (MOD:00046/47/48/00696 for phospho)"
     - "Cellular locations: use exact term strings ('plasma membrane'^^xsd:string) — no text search"
     - "Pathway hierarchy: anchor to specific IRI via search_reactome_entity(); use bp:pathwayComponent+"
+    - "ENTITYSET MEMBERS: a protein participating in a reaction only as a member of a functional group (EntitySet; bp:comment 'Converted from EntitySet in Reactome') is INVISIBLE to bp:left|bp:right direct search (45,785 groups, 221,164 member links). Always UNION three branches: (1) direct reaction participant, (2) complex component (bp:component+), (3) EntitySet member (bp:memberPhysicalEntity+, transitive — sets nest). Catalysis controllers have the same issue (10,579 cases) — UNION bp:controller too. Detect groups by the COMMENT, not rdf:type (most are typed bp:Protein). Run the 'Detect EntitySet Membership' diagnostic first. Verified: ROCK2 (O75116) reachable only via branch (3); ROCK1 (Q13464) needs (3) for RHO pathways and (1) for Apoptosis."
     - "Text search: bif:contains for bp:displayName pathway discovery only (Virtuoso indexed)"
     - "Priority: Specific IRIs/VALUES > Typed predicates > Graph navigation > bif:contains"
 
@@ -656,6 +740,7 @@ architectural_notes:
     - "BioPAX Level 3 ontology; physical entities participate in reactions via bp:left/bp:right"
     - "Physical entity hierarchy: Protein / Complex / SmallMolecule / Dna / Rna"
     - "EntityReference separates canonical definitions (UniProt/ChEBI xrefs) from pathway instances"
+    - "EntitySet: a grouping PhysicalEntity (bp:comment 'Converted from EntitySet in Reactome') with bp:memberPhysicalEntity links to interchangeable members; reactions reference the group, not members; groups nest and are typed by member class (mostly bp:Protein)"
     - "Three xref types differ in purpose — UnificationXref for IDs, RelationshipXref for ontologies"
     - "ModificationFeature → SequenceModificationVocabulary carries MOD IRI (structured access)"
     - "CellularLocationVocabulary.term is exact string linked to GO cellular component via UnificationXref"
@@ -714,6 +799,9 @@ data_statistics:
   total_unification_xrefs: 1207533
   total_relationship_xrefs: 84097
   total_publication_xrefs: 295299
+  entityset_groups: 45785                    # PhysicalEntities with bp:memberPhysicalEntity (verified 2026-06-22)
+  entityset_member_links: 221164             # total bp:memberPhysicalEntity triples (verified 2026-06-22)
+  catalysis_with_entityset_controller: 10579 # Catalysis whose bp:controller is an EntitySet (verified 2026-06-22)
 
   coverage:
     pathways_with_organism: ">95%"
@@ -772,8 +860,8 @@ anti_patterns:
     wrong_sparql: |
       # WRONG: pasted sampled pathway IRIs — counts only those pathways' reactions
       VALUES ?pathway {
-        <http://www.reactome.org/biopax/95/48898#Pathway299>
-        <http://www.reactome.org/biopax/95/48898#Pathway300>
+        <http://www.reactome.org/biopax/95/48887#Pathway1128>
+        <http://www.reactome.org/biopax/95/48887#Pathway1129>
       }
       SELECT (COUNT(?reaction) AS ?count)
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
@@ -811,26 +899,55 @@ anti_patterns:
                bp:id ?modId .
     explanation: "MOD ontology IDs (MOD:00046/47/48/00696) are available in UnificationXref on SequenceModificationVocabulary. Always check MIE shape_expressions for structured alternatives before text search."
 
-  - title: "Unbounded Pathway Hierarchy Traversal Without Anchor"
-    problem: "Using bp:pathwayComponent* without a specific starting pathway IRI causes full-graph traversal and timeout."
+  - title: "Direct bp:left|bp:right Search Missing EntitySet-Mediated Participation"
+    problem: |
+      Querying ?reaction (bp:left|bp:right) ?protein after resolving a UniProt ID to a Protein IRI,
+      without traversing bp:memberPhysicalEntity. Proteins that participate in reactions only as
+      members of an EntitySet (functional group) are silently invisible — indistinguishable from
+      "protein not in this pathway": 0 rows, no error. Verified: ROCK2 (O75116) has zero direct
+      reaction participations and is missed entirely in all RHO-signalling pathways.
     wrong_sparql: |
-      # Explores entire dataset — times out
-      SELECT ?subPathway WHERE {
-        ?pathway bp:pathwayComponent* ?subPathway .
-      }
+      # WRONG — misses ROCK2 in every RHO GTPase pathway
+      ?protein a bp:Protein ; bp:entityReference/bp:xref ?x .
+      ?x a bp:UnificationXref ; bp:db "UniProt"^^xsd:string ; bp:id "O75116"^^xsd:string .
+      ?pathway a bp:Pathway ;
+               bp:organism/bp:name "Homo sapiens"^^xsd:string ;
+               bp:pathwayComponent+ ?reaction .
+      ?reaction (bp:left|bp:right) ?protein .   # silent miss
     correct_sparql: |
-      # Anchor to a specific pathway IRI (from search_reactome_entity())
-      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      # RIGHT — UNION of direct, complex, and EntitySet participation
+      PREFIX bp:  <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-      SELECT ?subPathway ?name
+      SELECT DISTINCT ?pathwayName
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        <http://www.reactome.org/biopax/95/48887#Pathway1129>      # "RHO GTPase cycle" — 19 direct sub-pathways
-          bp:pathwayComponent+ ?subPathway .
-        ?subPathway a bp:Pathway ; bp:displayName ?name .
+        VALUES ?xrefDb { "UniProt"^^xsd:string "UniProt Isoform"^^xsd:string }
+        { ?protein a bp:Protein ; bp:entityReference/bp:xref ?x . }
+        UNION
+        { ?protein a bp:Protein ; bp:xref ?x . }
+        ?x a bp:UnificationXref ; bp:db ?xrefDb ; bp:id "O75116"^^xsd:string .
+
+        ?pathway a bp:Pathway ;
+                 bp:displayName ?pathwayName ;
+                 bp:organism/bp:name "Homo sapiens"^^xsd:string ;
+                 bp:pathwayComponent+ ?reaction .
+        {
+          ?reaction (bp:left|bp:right) ?protein .
+        } UNION {
+          ?reaction (bp:left|bp:right) ?cx . ?cx bp:component+ ?protein .
+        } UNION {
+          ?reaction (bp:left|bp:right) ?group . ?group bp:memberPhysicalEntity+ ?protein .
+        }
       }
       LIMIT 100
-    explanation: "Use search_reactome_entity() to get the starting IRI. Use + (not *) and always add LIMIT."
+    explanation: |
+      Reactome EntitySets model "any one of these proteins can fill this role" (paralogues /
+      functionally redundant proteins). In BioPAX they are grouping entities carrying
+      bp:comment "Converted from EntitySet in Reactome" with bp:memberPhysicalEntity links; the
+      reaction's bp:left/bp:right points to the group, not the members. Detect groups by the
+      comment (not rdf:type — most are typed bp:Protein). Run the "Detect EntitySet Membership"
+      diagnostic first to decide whether the memberPhysicalEntity+ branch is needed.
 
 common_errors:
   - error: "Empty results when matching string-typed literals (UniProt, ChEBI, GO, MOD, EC numbers, organisms, controlType)"
