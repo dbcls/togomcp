@@ -1,4 +1,5 @@
 import atexit
+import json
 import re
 
 import httpx
@@ -78,7 +79,7 @@ async def getAllRelation() -> dict:
 
 
 @togoid_mcp.tool()
-async def getRelation(source: str, target: str) -> list:
+async def getRelation(source: str, target: str) -> str:
     """Check if a specific ID conversion route exists and get its details.
 
     Use this to verify that a particular source→target conversion is available
@@ -90,7 +91,7 @@ async def getRelation(source: str, target: str) -> list:
         target: Target database key (e.g., 'pdb', 'ensembl_gene', 'hgnc')
 
     Returns:
-        List of relationship objects with:
+        JSON string: a bare array of relationship objects with:
         - forward: relationship label from source to target
         - reverse: relationship label from target to source
         - description: explanation of the link
@@ -111,7 +112,7 @@ async def getRelation(source: str, target: str) -> list:
             "to list valid routes."
         ),
     )
-    return response.json()
+    return json.dumps(response.json())
 
 
 @togoid_mcp.tool()
@@ -196,7 +197,7 @@ async def convertId(
     route: str,
     limit: int = 10000,
     offset: int = 0,
-) -> list:
+) -> str:
     """Convert identifiers from one database to another.
 
     Maps IDs between biological databases — e.g., NCBI Gene IDs to UniProt
@@ -227,8 +228,8 @@ async def convertId(
         offset: Pagination offset for large result sets
 
     Returns:
-        List of [source_id, target_id] pairs.
-        Example: [["672", "P38398"], ["675", "O15129"], ...]
+        JSON string: a bare array of [source_id, target_id] pairs.
+        Example: '[["672", "P38398"], ["675", "O15129"]]'
 
     Common use cases:
         - Bridging databases on different SPARQL endpoints
@@ -257,7 +258,9 @@ async def convertId(
             "no direct route between the two datasets."
         ),
     )
-    return response.json().get("results")
+    # `results` is absent (not []) when nothing converts — coalesce so the
+    # return stays a bare array, never null.
+    return json.dumps(response.json().get("results") or [])
 
 
 @togoid_mcp.tool()

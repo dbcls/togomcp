@@ -1,5 +1,6 @@
 import csv as _csv
 import io as _io
+import json
 from pathlib import Path
 import sys
 from typing import Annotated, Any, Literal
@@ -393,7 +394,7 @@ def _load_databases_cache() -> list[dict[str, Any]]:
 
 
 @mcp.tool(name="list_databases")
-def list_databases() -> list[dict[str, Any]]:
+def list_databases() -> str:
     """
     Supplementary: full catalog dump (browse only, no filtering).
 
@@ -406,12 +407,13 @@ def list_databases() -> list[dict[str, Any]]:
     is the canonical entry point. This tool is a supplementary fallback.
 
     Returns:
-        A list of dicts with keys `database`, `title`, `description`.
+        JSON string: a bare array of dicts with keys `database`, `title`,
+        `description`.
     """
-    return [
+    return json.dumps([
         {"database": r["database"], "title": r["title"], "description": r["description"]}
         for r in _load_databases_cache()
-    ]
+    ])
 
 
 def _normalize_terms(value: str | list[str] | None) -> list[str]:
@@ -478,7 +480,7 @@ def find_databases(
             )
         ),
     ] = False,
-) -> list[dict[str, Any]]:
+) -> str:
     """
     Database discovery — REQUIRED first step for any TogoMCP workflow.
 
@@ -500,7 +502,8 @@ def find_databases(
     `list_databases()` — that tool is supplementary, not a substitute for this one.
 
     Returns:
-        List of dicts: `{database, title, matched_keywords, categories, snippet}` (or
+        JSON string: a bare array of dicts
+        `{database, title, matched_keywords, categories, snippet}` (or
         `description` when `verbose=True`). Sorted by number of matched keywords
         descending, then alphabetically by database name.
     """
@@ -508,7 +511,7 @@ def find_databases(
     cat_list = _normalize_terms(category)
 
     if not kw_list and not cat_list:
-        return []
+        return json.dumps([])
 
     results: list[dict[str, Any]] = []
     for r in _load_databases_cache():
@@ -543,7 +546,7 @@ def find_databases(
         })
 
     results.sort(key=lambda x: (-len(x["matched_keywords"]), x["database"]))
-    return results
+    return json.dumps(results)
 
 
 @mcp.tool(name="list_categories")
