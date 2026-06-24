@@ -707,7 +707,16 @@ async def search_pdb_entity(
     params: dict = {"query": query, "limit": limit, "offset": offset}
     if db == "pdb":
         if method:
-            params["method"] = _PDB_METHOD_CODES[method]
+            # `method` is enum-constrained at the schema layer, but guard the
+            # lookup so a Literal/dict drift (or a direct call) gives a clear
+            # error instead of a bare KeyError.
+            code = _PDB_METHOD_CODES.get(method)
+            if code is None:
+                raise ValueError(
+                    f"Unknown method {method!r}. Valid values: "
+                    f"{sorted(_PDB_METHOD_CODES)}."
+                )
+            params["method"] = code
         if res_min is not None:
             params["res_min"] = res_min
         if res_max is not None:

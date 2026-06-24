@@ -33,6 +33,15 @@ These conventions were deliberately normalized across tools; preserve them when 
 - **`ids` accepts `str | list[str]`** across NCBI and TogoID tools. Normalize with `_normalize_ids` (ncbi_tools.py) or `_ids_to_csv` (togoid.py).
 - **Search-tool query aliases**: all non-NCBI `search_*` tools accept `query`/`search`/`term`/`keyword`/`keywords`/`search_term`/`name`. Resolve via `_resolve_query_alias` in [api_tools.py](togo_mcp/api_tools.py). NCBI `esearch` uses `db`/`term` aliases specifically.
 
+## Return-shape and error conventions
+
+Two intentional, *different* error conventions coexist — preserve each module's:
+
+- **REST-wrapper tools** in [api_tools.py](togo_mcp/api_tools.py) (`search_uniprot/pdb/mesh/reactome/rhea_entity`, ChEMBL, PubChem) and the catalog tools in [rdf_portal.py](togo_mcp/rdf_portal.py) (`list_databases`, `find_databases`): **raise `ValueError` for bad parameters** (caught early, tells the caller not to retry) but **degrade gracefully on upstream/HTTP failure** by returning a payload carrying an `error` key plus a "fall back to SPARQL" hint. Never raise on a transient HTTP error here.
+- **TogoID tools** in [togoid.py](togo_mcp/togoid.py): **raise on HTTP error** via `raise_for_status_with_body` (with a `client_error_hint`). This is the module's consistent convention; FastMCP surfaces the message to the caller. Don't convert only some togoid tools to the return-JSON style — keep the module uniform.
+
+List-style result tools return a **JSON string of a bare array** (not a Python `list`): empty and non-empty then share one wire shape. Returning a bare `list` makes FastMCP double-represent it (text array + wrapped `{"result": ...}`), so empty vs non-empty diverge for clients. `dict` returns (ChEMBL, `get_sparql_endpoints`) and NCBI `list[TextContent]` returns are exempt — they aren't wrapped.
+
 ## Testing
 
 ```bash

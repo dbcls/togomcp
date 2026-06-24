@@ -239,6 +239,13 @@ class TestSearchPdbEntity:
         with pytest.raises(ValueError):
             await search_pdb_entity("pdb", "")
 
+    @pytest.mark.asyncio
+    async def test_unknown_method_raises_valueerror(self) -> None:
+        """An out-of-enum method gives a clear ValueError, not a bare KeyError
+        (the schema enum normally blocks this; guard is for drift/direct calls)."""
+        with pytest.raises(ValueError, match="Unknown method"):
+            await search_pdb_entity("pdb", "x", method="cryoem")
+
 
 # ---------------------------------------------------------------------------
 # Reactome
