@@ -57,7 +57,7 @@ To add the card:
 
 Find the `@mcp.tool` decorator in `togo_mcp/*.py`. Tools are registered on three servers:
 
-- Root `mcp` (in `rdf_portal.py`, `api_tools.py`, `admin.py`) — exposed as `<tool_name>`
+- Root `mcp` (in `rdf_portal.py`, `api_tools.py`) — exposed as `<tool_name>`
 - `togoid_mcp` (in `togoid.py`) — exposed as `togoid_<tool_name>`
 - `ncbi_mcp` (in `ncbi_tools.py`) — exposed as `ncbi_<tool_name>`
 

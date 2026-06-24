@@ -72,10 +72,6 @@ Edit your Claude Desktop config file:
 
 > **Tip**: Run `which uv` (macOS/Linux) or `where uv` (Windows) to find the full path to `uv`.
 
-#### Admin Mode
-
-Replace `togo-mcp-local` with `togo-mcp-admin` to also enable tools for generating new MIE (Metadata-Interoperability-Exchange) files — useful for contributors adding new database support.
-
 ---
 
 ## Docker
@@ -198,7 +194,6 @@ togomcp/
 ├── togo_mcp/               # Main Python package
 │   ├── server.py           # MCP server entry point
 │   ├── main.py             # Core logic and tool registration
-│   ├── admin.py            # Admin-mode tools (MIE generation)
 │   ├── api_tools.py        # REST API integrations (ChEMBL, PDB, Reactome, etc.)
 │   ├── ncbi_tools.py       # NCBI E-utilities tools
 │   ├── rdf_portal.py       # RDF Portal / SPARQL tools
@@ -219,7 +214,7 @@ togomcp/
 
 ## Contributing
 
-Contributions are welcome! To add support for a new database, see the `togo_mcp/data/mie/` directory and the admin-mode tools for generating MIE files. Please open an issue or pull request on GitHub.
+Contributions are welcome! To add support for a new database, add an MIE file under `togo_mcp/data/mie/` and a corresponding row in `togo_mcp/data/resources/endpoints.csv` (see the MIE spec in `togo_mcp/data/docs/`). Please open an issue or pull request on GitHub.
 
 ## Reference
 
