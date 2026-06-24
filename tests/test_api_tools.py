@@ -248,18 +248,53 @@ class TestSearchPdbEntity:
 class TestSearchReactomeEntity:
     """Tests for search_reactome_entity with mocked HTTP."""
 
+    _REACTOME_URL = "https://reactome.org/ContentService/search/query"
+
     @pytest.mark.asyncio
-    async def test_http_error_returns_error_list(self) -> None:
-        """HTTP errors return a one-element error list, staying type-consistent
-        with the declared `list[dict[str, str]]` return type."""
+    async def test_http_error_returns_error_array(self) -> None:
+        """HTTP errors return a JSON string holding a one-element error array."""
         with respx.mock(using="httpx") as router:
-            router.get(
-                "https://reactome.org/ContentService/search/query"
-            ).mock(return_value=httpx.Response(500, text="Server Error"))
-            result = await search_reactome_entity("apoptosis")
+            router.get(self._REACTOME_URL).mock(
+                return_value=httpx.Response(500, text="Server Error")
+            )
+            result = json.loads(await search_reactome_entity("apoptosis"))
         assert isinstance(result, list)
-        assert len(result) == 1
         assert "Reactome REST API request failed" in result[0]["error"]
+
+    @pytest.mark.asyncio
+    async def test_empty_results_same_shape(self) -> None:
+        """Empty results are a bare JSON array, identical in shape to non-empty
+        (Bug 3 regression)."""
+        with respx.mock(using="httpx") as router:
+            router.get(self._REACTOME_URL).mock(
+                return_value=httpx.Response(200, json={"results": []})
+            )
+            result = json.loads(await search_reactome_entity("apoptosis"))
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_invalid_type_raises(self) -> None:
+        """An unknown / mis-cased `types` value raises rather than silently
+        returning unfiltered results (Bug 2)."""
+        with pytest.raises(ValueError, match="Unknown Reactome type"):
+            await search_reactome_entity("apoptosis", types="NotARealType")
+
+    @pytest.mark.asyncio
+    async def test_type_case_normalized(self) -> None:
+        """A mis-cased but valid type is normalized to canonical case and sent
+        to the API (Bug 2)."""
+        with respx.mock(using="httpx") as router:
+            route = router.get(self._REACTOME_URL).mock(
+                return_value=httpx.Response(200, json={"results": []})
+            )
+            await search_reactome_entity("apoptosis", types="pathway")
+        assert route.calls.last.request.url.params["types"] == "Pathway"
+
+    @pytest.mark.asyncio
+    async def test_whitespace_query_raises(self) -> None:
+        """A whitespace-only query is treated as empty (Bug 4)."""
+        with pytest.raises(ValueError, match="Missing search string"):
+            await search_reactome_entity("   ")
 
 
 # ---------------------------------------------------------------------------
@@ -282,34 +317,39 @@ class TestSearchRheaEntity:
             router.get("https://www.rhea-db.org/rhea").mock(
                 return_value=httpx.Response(200, text=tsv_body)
             )
-            result = await search_rhea_entity("ATP", limit=5)
+            result = json.loads(await search_rhea_entity("ATP", limit=5))
         assert len(result) == 2
         assert result[0]["rhea_id"] == "RHEA:10000"
         assert "ATP" in result[0]["equation"]
 
     @pytest.mark.asyncio
-    async def test_empty_response(self) -> None:
-        """An empty TSV response (header only) returns an empty list."""
+    async def test_empty_response_same_shape(self) -> None:
+        """An empty TSV response returns a bare JSON array `[]`, identical in
+        shape to the non-empty case (Bug 3 regression)."""
         tsv_body = "Rhea ID\tEquation\n"
         with respx.mock(using="httpx") as router:
             router.get("https://www.rhea-db.org/rhea").mock(
                 return_value=httpx.Response(200, text=tsv_body)
             )
-            result = await search_rhea_entity("nonexistent_compound", limit=5)
+            result = json.loads(
+                await search_rhea_entity("nonexistent_compound", limit=5)
+            )
         assert result == []
 
     @pytest.mark.asyncio
-    async def test_http_error_returns_error_list(self) -> None:
-        """HTTP errors return a one-element error list, not an exception.
+    async def test_negative_limit_raises(self) -> None:
+        """A negative limit is rejected, not forwarded (Bug 1) — otherwise Rhea
+        dumps the entire database."""
+        with pytest.raises(ValueError, match="limit must be >= 0"):
+            await search_rhea_entity("ATP", limit=-1)
 
-        The error path stays type-consistent with the declared
-        `list[dict[str, str]]` return type by wrapping the message in a dict.
-        """
+    @pytest.mark.asyncio
+    async def test_http_error_returns_error_array(self) -> None:
+        """HTTP errors return a JSON string holding a one-element error array."""
         with respx.mock(using="httpx") as router:
             router.get("https://www.rhea-db.org/rhea").mock(
                 return_value=httpx.Response(500, text="Server Error")
             )
-            result = await search_rhea_entity("ATP")
+            result = json.loads(await search_rhea_entity("ATP"))
         assert isinstance(result, list)
-        assert len(result) == 1
         assert "Rhea REST API request failed" in result[0]["error"]

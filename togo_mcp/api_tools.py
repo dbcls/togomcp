@@ -827,6 +827,21 @@ async def search_mesh_descriptor(
 
 
 # DB: Reactome
+#
+# Canonical Reactome search `types` facet values (the API is case-sensitive and
+# silently ignores unknown/mis-cased values, returning UNFILTERED results).
+# Verified against /ContentService/search/facet on 2026-06-24. Keyed by
+# lowercase for case-insensitive validation -> canonical form.
+_REACTOME_TYPES = {
+    t.lower(): t
+    for t in (
+        "Complex", "Protein", "Reaction", "Set", "Pathway",
+        "Genes and Transcripts", "Chemical Compound", "DNA Sequence",
+        "Polymer", "Drug", "RNA Sequence", "OtherEntity", "Cell",
+    )
+}
+
+
 @mcp.tool()
 async def search_reactome_entity(
     query: str = "",
@@ -839,43 +854,41 @@ async def search_reactome_entity(
     keywords: str = "",
     search_term: str = "",
     name: str = "",
-) -> list[dict[str, str]]:
+) -> str:
     """Search the Reactome knowledgebase using keyword search.
 
     Args:
         query: The search query string (e.g., "apoptosis", "TP53", "cell cycle").
             Accepts aliases: `search`, `term`, `keyword`, `keywords`,
-            `search_term`, `name`.
+            `search_term`, `name`. If both `query` and an alias are given with
+            different values, `query` wins silently.
         species: Filter by species. Must be the scientific name
             (e.g., "Homo sapiens", "Mus musculus"). Numeric NCBI taxon
             IDs like "9606" are rejected here (this tool raises ValueError)
             because the Reactome API silently ignores them AND can
             degrade co-occurring filters (e.g. `types`). Accepts a
             single string or a list of strings.
-        types: Filter by entity types. Accepts a single string (e.g.,
+        types: Filter by entity type(s). Accepts a single string (e.g.,
             "Pathway") or a list (e.g., ["Pathway", "Reaction", "Complex"]).
+            Validated case-insensitively against the Reactome type enum;
+            unknown values raise ValueError (the API would otherwise silently
+            ignore them and return unfiltered results). Valid values:
+            Complex, Protein, Reaction, Set, Pathway, Genes and Transcripts,
+            Chemical Compound, DNA Sequence, Polymer, Drug, RNA Sequence,
+            OtherEntity, Cell.
         rows: Per-category result cap. Reactome clusters results by
             entity type (`cluster=true`), so `rows=30` returns up to 30
             hits *per type*, not 30 hits total. To bound the total,
             constrain `types` to a single value.
 
     Returns:
-        List of results with 'id', 'name', and 'type' fields.
-        Example: [
-            {'id': 'R-HSA-109581', 'name': 'Apoptosis', 'type': 'Pathway'},
-            {'id': 'R-HSA-204981', 'name': '14-3-3epsilon...', 'type': 'Reaction'}
-        ]
-
-    Example:
-        >>> results = search_reactome("apoptosis", rows=5)
-        >>> for entry in results:
-        ...     print(f"{entry['type']:10} {entry['id']}: {entry['name']}")
-
-        >>> # Filter by type
-        >>> pathways = [r for r in results if r['type'] == 'Pathway']
+        JSON string: a bare array of results, each with 'id', 'name', and
+        'type' fields. Empty and non-empty results share the same shape.
+        Example: '[{"id": "R-HSA-109581", "name": "Apoptosis",
+        "type": "Pathway"}]'
 
     Raises:
-        httpx.HTTPError: If the API request fails.
+        ValueError: If `query` is blank or `types`/`species` are invalid.
     """
     query = _resolve_query_alias(
         query,
@@ -885,7 +898,7 @@ async def search_reactome_entity(
         keywords=keywords,
         search_term=search_term,
         name=name,
-    )
+    ).strip()
     if not query:
         raise ValueError(
             "Missing search string. Pass it as `query` (canonical) or any of: "
@@ -905,7 +918,19 @@ async def search_reactome_entity(
             )
         params["species"] = ",".join(species_list)
     if types:
-        params["types"] = types if isinstance(types, str) else ",".join(types)
+        types_list = [types] if isinstance(types, str) else list(types)
+        normalized, unknown = [], []
+        for t in types_list:
+            canon = _REACTOME_TYPES.get(t.strip().lower())
+            (normalized if canon else unknown).append(canon or t)
+        if unknown:
+            raise ValueError(
+                f"Unknown Reactome type(s): {unknown}. The search API silently "
+                "ignores invalid/mis-cased types and returns UNFILTERED "
+                f"results. Valid values (case-insensitive): "
+                f"{sorted(set(_REACTOME_TYPES.values()))}."
+            )
+        params["types"] = ",".join(normalized)
 
     # Make API call
     try:
@@ -918,7 +943,7 @@ async def search_reactome_entity(
         data = response.json()
     except (httpx.HTTPError, ValueError) as e:
         logger.warning(f"Reactome search failed: {type(e).__name__}: {e}")
-        return [{
+        return json.dumps([{
             "error": (
                 f"Reactome REST API request failed ({type(e).__name__}: "
                 f"{e}). Reactome's search endpoint can be slow or briefly "
@@ -926,7 +951,7 @@ async def search_reactome_entity(
                 "failing, fall back to SPARQL: "
                 "run_sparql(database='reactome', sparql_query=...)."
             )
-        }]
+        }])
 
     # Extract and return results
     results = []
@@ -945,7 +970,7 @@ async def search_reactome_entity(
                 }
             )
 
-    return results
+    return json.dumps(results)
 
 
 # DB: RhEA
@@ -959,7 +984,7 @@ async def search_rhea_entity(
     keywords: str = "",
     search_term: str = "",
     name: str = "",
-) -> list[dict[str, str]]:
+) -> str:
     """
     Search Rhea database for biochemical reactions using keyword search.
 
@@ -970,18 +995,19 @@ async def search_rhea_entity(
                     - "uniprot:*" - reactions with UniProt annotations
                     - "" - retrieve all reactions
                     Accepts aliases: `search`, `term`, `keyword`, `keywords`,
-                    `search_term`, `name`.
+                    `search_term`, `name`. If both `query` and an alias are
+                    given with different values, `query` wins silently.
         limit (int, optional): Maximum number of results. Defaults to 100.
+            Must be >= 0; a negative limit is rejected (it would make Rhea
+            return the entire database).
 
     Returns:
-        List[Dict[str, str]]: List of reactions, each containing:
-            - 'rhea_id': Reaction identifier (e.g., "RHEA:10000")
-            - 'equation': Reaction equation text
+        JSON string: a bare array of reactions, each with 'rhea_id' and
+        'equation'. Empty and non-empty results share the same shape.
+        Example: '[{"rhea_id": "RHEA:10000", "equation": "ATP + H2O = ..."}]'
 
-    Example:
-        >>> results = search_rhea_entity("ATP", limit=5)
-        >>> for reaction in results:
-        ...     print(f"{reaction['rhea_id']}: {reaction['equation']}")
+    Raises:
+        ValueError: If `limit` is negative.
     """
     # Unlike other search tools, Rhea permits an empty query (returns all
     # reactions). Only coalesce when an alias was provided.
@@ -993,7 +1019,13 @@ async def search_rhea_entity(
         keywords=keywords,
         search_term=search_term,
         name=name,
-    )
+    ).strip()
+
+    if limit is not None and limit < 0:
+        raise ValueError(
+            f"limit must be >= 0 (got {limit}). A negative limit makes Rhea "
+            "return the entire result set (thousands of reactions)."
+        )
 
     params = {
         "query": query,
@@ -1010,7 +1042,7 @@ async def search_rhea_entity(
         lines = response.text.strip().split("\n")
 
         if len(lines) < 2:
-            return []
+            return json.dumps([])
 
         # First line is header, skip it
         results = []
@@ -1020,15 +1052,15 @@ async def search_rhea_entity(
                 if len(parts) >= 2:
                     results.append({"rhea_id": parts[0], "equation": parts[1]})
 
-        return results
+        return json.dumps(results)
 
     except (httpx.HTTPError, ValueError) as e:
         logger.warning(f"Rhea search failed: {type(e).__name__}: {e}")
-        return [{
+        return json.dumps([{
             "error": (
                 f"Rhea REST API request failed ({type(e).__name__}: {e}). "
                 "Usually transient — retry once after a brief delay. If it "
                 "keeps failing, fall back to SPARQL: "
                 "run_sparql(database='rhea', sparql_query=...)."
             )
-        }]
+        }])
