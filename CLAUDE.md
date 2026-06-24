@@ -9,12 +9,11 @@ The server is assembled in [main.py](togo_mcp/main.py): a root `FastMCP` instanc
 - `togoid_mcp` from [togoid.py](togo_mcp/togoid.py) — mounted as `togoid`
 - `ncbi_mcp` from [ncbi_tools.py](togo_mcp/ncbi_tools.py) — mounted as `ncbi`
 
-Tools registered directly on the root `mcp` live in [rdf_portal.py](togo_mcp/rdf_portal.py) (SPARQL, MIE files, endpoint resolution) and [api_tools.py](togo_mcp/api_tools.py) (REST search wrappers). [admin.py](togo_mcp/admin.py) is only loaded by `run_admin` and exposes MIE-generation tools for contributors.
+Tools registered directly on the root `mcp` live in [rdf_portal.py](togo_mcp/rdf_portal.py) (SPARQL, MIE files, endpoint resolution) and [api_tools.py](togo_mcp/api_tools.py) (REST search wrappers).
 
 Entry points (from [pyproject.toml](pyproject.toml)):
 - `togo-mcp-server` — HTTP transport on `0.0.0.0:8000`
 - `togo-mcp-local` — stdio transport (Claude Desktop)
-- `togo-mcp-admin` — stdio + MIE authoring tools
 
 ## Data layout
 
@@ -22,14 +21,14 @@ Bundled under [togo_mcp/data/](togo_mcp/data/) and shipped in the wheel via `pac
 
 - `mie/*.yaml` — one MIE (Metadata-Interoperability-Exchange) file per supported RDF database
 - `resources/endpoints.csv` — SPARQL endpoint registry consumed by `load_sparql_endpoints`
-- `resources/MIE_prompt.md`, `togomcp_usage_guide*.md` — prompts and static guidance served as resources
+- `resources/togomcp_usage_guide*.md` — static guidance served as a resource
 - `docs/` — developer docs (MIE spec, examples)
 
 ## Parameter conventions
 
 These conventions were deliberately normalized across tools; preserve them when adding new tools:
 
-- **`database`** is the canonical parameter name for RDF-database selection. `dbname` is deprecated — do not reintroduce it. The only remaining `dbname` token in the codebase is the `__DBNAME__` template placeholder.
+- **`database`** is the canonical parameter name for RDF-database selection. `dbname` is deprecated — do not add it to new tools. Some existing `rdf_portal.py` tools still accept `dbname`/`db` as legacy aliases for backward compatibility.
 - **`database` vs `endpoint_name`**: `database` takes a single RDF database key (e.g. `uniprot`, `chembl`); `endpoint_name` takes an endpoint group (e.g. `ebi`, `sib`). Mixing them returns a deterministic error telling the caller not to retry — do not add fallback behavior.
 - **`ids` accepts `str | list[str]`** across NCBI and TogoID tools. Normalize with `_normalize_ids` (ncbi_tools.py) or `_ids_to_csv` (togoid.py).
 - **Search-tool query aliases**: all non-NCBI `search_*` tools accept `query`/`search`/`term`/`keyword`/`keywords`/`search_term`/`name`. Resolve via `_resolve_query_alias` in [api_tools.py](togo_mcp/api_tools.py). NCBI `esearch` uses `db`/`term` aliases specifically.
@@ -50,7 +49,6 @@ export NCBI_API_KEY="..."   # required for NCBI tools (has a default fallback bu
 uv sync
 uv run togo-mcp-local        # stdio
 uv run togo-mcp-server       # HTTP :8000
-uv run togo-mcp-admin        # stdio + MIE tools
 ```
 
 ## Editing MIE files

@@ -17,11 +17,6 @@ def run_local():
     asyncio.run(setup())
     mcp.run()
 
-def run_admin():
-    from .admin import generate_MIE_file, save_MIE_file
-    asyncio.run(setup())
-    mcp.run()
-
 if __name__ == "__main__":
     run()
 
