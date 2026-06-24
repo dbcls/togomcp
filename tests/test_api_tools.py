@@ -155,8 +155,8 @@ class TestSearchPdbEntity:
         assert result["results"][1]["ligands"] is None      # empty -> None
 
     @pytest.mark.asyncio
-    async def test_cc_projection_smiles_list(self) -> None:
-        """CC rows expose formula/SMILES (split on ';')/InChI."""
+    async def test_cc_projection_string_shape(self) -> None:
+        """Free-text query: PDBj returns SMILES/InChI as ';'-separated str."""
         body = {
             "total": "1",
             "results": [[
@@ -174,7 +174,51 @@ class TestSearchPdbEntity:
         assert row["id"] == "CFF"
         assert row["formula"] == "C8 H10 N4 O2"
         assert row["smiles"] == ["Cn1cnc2c1...", "O=C2N..."]
+        assert row["inchi"] == "InChI=1S/C8H10N4O2/..."
         assert row["iupac_name"] == "1,3,7-trimethyl..."
+
+    @pytest.mark.asyncio
+    async def test_cc_projection_list_shape(self) -> None:
+        """Structured-filter searches make PDBj return SMILES/InChI columns as
+        JSON lists (not ';'-strings). Projecting them must not crash and must
+        yield the same normalized shape. Regression for the formula/smiles
+        'list object has no attribute split' bug."""
+        body = {
+            "total": -1,  # PDBj returns -1 (uncounted) for filter searches
+            "results": [[
+                "CFF", "CAFFEINE", "C8 H10 N4 O2",
+                ["O=C2N(...)C", "Cn1cnc2N(...)c12"],          # smiles as list
+                ["InChI=1S/C8H10N4O2/c1-10-..."],             # inchi as list
+                ["3,7-DIHYDRO-..."],                          # syn as list
+                "2000-05-16", "2020-06-17", "1,3,7-trimethyl...", None,
+            ]],
+        }
+        with respx.mock(using="httpx") as router:
+            router.get("https://pdbj.org/rest/newweb/search/cc").mock(
+                return_value=httpx.Response(200, json=body)
+            )
+            result = json.loads(
+                await search_pdb_entity("cc", "", formula="C8 H10 N4 O2")
+            )
+        assert result["total"] == -1
+        row = result["results"][0]
+        assert row["id"] == "CFF"
+        assert row["smiles"] == ["O=C2N(...)C", "Cn1cnc2N(...)c12"]
+        assert row["inchi"] == "InChI=1S/C8H10N4O2/c1-10-..."  # first of list
+
+    @pytest.mark.asyncio
+    async def test_cc_filter_forwarded(self) -> None:
+        """formula/smiles filters reach PDBj; inchi is no longer accepted."""
+        body = {"total": -1, "results": []}
+        with respx.mock(using="httpx") as router:
+            route = router.get("https://pdbj.org/rest/newweb/search/cc").mock(
+                return_value=httpx.Response(200, json=body)
+            )
+            await search_pdb_entity("cc", "", formula="C8 H10 N4 O2")
+        request = route.calls.last.request
+        assert request.url.params["formula"] == "C8 H10 N4 O2"
+        with pytest.raises(TypeError):  # inchi removed from the signature
+            await search_pdb_entity("cc", "", inchi="InChI=1S/C8H10N4O2")
 
     @pytest.mark.asyncio
     async def test_filter_only_search_allowed(self) -> None:
