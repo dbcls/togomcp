@@ -200,7 +200,7 @@ class TestSearchPdbEntity:
             result = json.loads(
                 await search_pdb_entity("cc", "", formula="C8 H10 N4 O2")
             )
-        assert result["total"] == -1
+        assert result["total"] is None  # PDBj -1 ("uncounted") -> null
         row = result["results"][0]
         assert row["id"] == "CFF"
         assert row["smiles"] == ["O=C2N(...)C", "Cn1cnc2N(...)c12"]

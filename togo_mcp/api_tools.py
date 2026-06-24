@@ -689,10 +689,10 @@ async def search_pdb_entity(
         are ignored.
 
     Returns:
-        str: JSON string `{"total": int, "results": [ {…named fields…} ]}`.
-            For structured-filter searches PDBj does not compute a count and
-            returns `total: -1` even when `results` is non-empty — rely on
-            `results`, not `total`, in that case.
+        str: JSON string `{"total": int | null, "results": [ {…fields…} ]}`.
+            `total` is `null` when PDBj does not provide a count (typical for
+            structured-filter searches) — it is *not* zero and does not mean
+            "no results"; consult `results` directly in that case.
     """
     query = _resolve_query_alias(
         query,
@@ -745,6 +745,11 @@ async def search_pdb_entity(
             total_results = int(raw_total)
         except (TypeError, ValueError):
             total_results = 0
+        # PDBj returns -1 ("not computed") for structured-filter searches, even
+        # alongside real rows. Surface that as null rather than a nonsensical
+        # negative count.
+        if total_results < 0:
+            total_results = None
         # `limit`/`offset` are honored server-side; the slice is a safety belt.
         result_list = [
             project(entry) for entry in payload.get("results", [])[:limit]
