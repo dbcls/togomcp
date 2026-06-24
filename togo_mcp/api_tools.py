@@ -525,8 +525,10 @@ async def get_compound_attributes_from_pubchem(pubchem_compound_id: str) -> str:
 #   pdb: 0 id · 1 title · 2 authors · 3 citation · 4 journal · 5 year ·
 #        6 volume · 7 pmid · 8 doi · 9 release · 10 deposit · 11 modify ·
 #        12 method · 13 resolution · 14 ligands
-#   cc:  0 code · 1 name · 2 formula · 3 smiles(;-sep) · 4 inchi ·
+#   cc:  0 code · 1 name · 2 formula · 3 smiles · 4 inchi ·
 #        5 systematic_name · 6 release · 7 modified · 8 iupac_name · 9 synonym
+#        (cols 3/4/5 are ';'-strings for free-text query, JSON lists for
+#        structured-filter searches — normalized in _project_cc_row)
 #   prd: 0 id · 1 (empty) · 2 release · 3 modified · 4 name · 5 formula ·
 #        6 description
 
@@ -563,15 +565,35 @@ def _project_pdb_row(row: list) -> dict:
     }
 
 
+def _cc_smiles_list(val) -> list:
+    """Normalize PDBj's polymorphic cc SMILES column to list[str].
+
+    Free-text `query` searches return it as a ';'-separated string; structured
+    filter searches (formula/smiles) return it as a JSON list. Handle both.
+    """
+    if val is None:
+        return []
+    if isinstance(val, list):
+        return [s for s in val if s]
+    return [s for s in str(val).split(";") if s]
+
+
+def _cc_first(val):
+    """Return a single scalar from a cc column that PDBj may deliver as a
+    scalar string (free-text query) or a one-element list (filter query)."""
+    if isinstance(val, list):
+        return val[0] if val else None
+    return val or None
+
+
 def _project_cc_row(row: list) -> dict:
     g = lambda i: row[i] if len(row) > i else None
-    smiles = g(3) or ""
     return {
         "id": g(0),
         "name": g(1),
         "formula": g(2),
-        "smiles": [s for s in smiles.split(";") if s],
-        "inchi": g(4) or None,
+        "smiles": _cc_smiles_list(g(3)),
+        "inchi": _cc_first(g(4)),
         "iupac_name": g(8) or None,
     }
 
@@ -615,7 +637,6 @@ async def search_pdb_entity(
     ligand: str = "",
     formula: str = "",
     smiles: str = "",
-    inchi: str = "",
     search: str = "",
     term: str = "",
     keyword: str = "",
@@ -638,7 +659,8 @@ async def search_pdb_entity(
               Dictionary, mostly peptides).
         query (str): Free-text keywords. May be empty when at least one
             structured filter is supplied. Accepts aliases: `search`, `term`,
-            `keyword`, `keywords`, `search_term`, `name`.
+            `keyword`, `keywords`, `search_term`, `name`. If both `query` and
+            an alias are given with different values, `query` wins silently.
         limit (int): Max results to return, in [0, 500]. Default 20.
         offset (int): Number of leading results to skip (server-side
             pagination). Default 0.
@@ -649,12 +671,15 @@ async def search_pdb_entity(
                 "solid-state-nmr".
             res_min / res_max (float): Resolution bounds in Å.
             source (str): Source organism (e.g. "Homo sapiens").
-            ligand (str): Restrict to entries containing this ligand.
+            ligand (str): Keep entries whose ligand list contains this string.
+                Matching is a substring, not an exact CCD code — `ATP` also
+                matches `dATP`. Pass the exact ligand name for precision.
 
         Structured filters for db="cc" (chemical search):
-            formula (str): Molecular formula (e.g. "C8 H10 N4 O2").
-            smiles (str): SMILES substructure/exact query.
-            inchi (str): InChI query.
+            formula (str): Molecular formula in the canonical spaced,
+                element-counted form (e.g. "C8 H10 N4 O2"). The unspaced form
+                ("C8H10N4O2") is not matched by PDBj.
+            smiles (str): SMILES substructure query.
 
     Note:
         PDBj search hits multiple fields (title, authors, keywords,
@@ -665,7 +690,9 @@ async def search_pdb_entity(
 
     Returns:
         str: JSON string `{"total": int, "results": [ {…named fields…} ]}`.
-            A `total` of -1 means PDBj rejected the filter combination.
+            For structured-filter searches PDBj does not compute a count and
+            returns `total: -1` even when `results` is non-empty — rely on
+            `results`, not `total`, in that case.
     """
     query = _resolve_query_alias(
         query,
@@ -694,8 +721,6 @@ async def search_pdb_entity(
             params["formula"] = formula
         if smiles:
             params["smiles"] = smiles
-        if inchi:
-            params["inchi"] = inchi
 
     # A search needs either free text or at least one structured filter.
     has_filter = any(
@@ -705,7 +730,7 @@ async def search_pdb_entity(
         raise ValueError(
             "Missing search criteria. Pass `query` (or an alias: search, term, "
             "keyword, keywords, search_term, name) and/or a structured filter "
-            "(pdb: method/res_min/res_max/source/ligand; cc: formula/smiles/inchi)."
+            "(pdb: method/res_min/res_max/source/ligand; cc: formula/smiles)."
         )
 
     project = _PDB_ROW_PROJECTORS[db]
