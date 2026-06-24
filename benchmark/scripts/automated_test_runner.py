@@ -66,13 +66,6 @@ except ImportError:
     print("Install with: pip install claude-agent-sdk")
     sys.exit(1)
 
-try:
-    import anthropic
-except ImportError:
-    print("Error: anthropic package not installed (for baseline tests).")
-    print("Install with: pip install anthropic")
-    sys.exit(1)
-
 import logging
 
 # Configure logging
@@ -162,23 +155,29 @@ Provide your answer as a single, well-formed paragraph that directly answers the
 Simply provide the factual answer as you would write an encyclopedia entry."""
 
     def __init__(self, config_path: Optional[str] = None):
-        """Initialize runner with configuration."""
+        """Initialize runner with configuration.
+
+        Both baseline and TogoMCP calls now run through the claude-agent-sdk
+        (Claude Code CLI), so authentication comes from the CLI itself: an
+        ANTHROPIC_API_KEY environment variable if set, otherwise the CLI's
+        stored login (OAuth / keychain). We therefore no longer require
+        ANTHROPIC_API_KEY up front; if no usable credential exists at all,
+        the SDK call fails and is reported per-question.
+        """
         self.config = self._load_config(config_path)
-        self.api_key = os.environ.get("ANTHROPIC_API_KEY")
-
-        if not self.api_key:
-            raise ValueError(
-                "ANTHROPIC_API_KEY environment variable not set. "
-                "Please set it with your API key."
-            )
-
-        self.baseline_client = anthropic.Anthropic(api_key=self.api_key)
         self.results = []
 
     def _load_config(self, config_path: Optional[str]) -> Dict:
         """Load configuration from YAML or JSON file, or use defaults."""
         default_config = {
             "model": "claude-sonnet-4-5-20250929",
+            # NOTE: max_tokens / temperature are retained for reference only.
+            # Both baseline and TogoMCP now run through the claude-agent-sdk
+            # (Claude Code CLI), which does NOT expose these sampling params,
+            # so they are no longer applied to either call. This is exactly
+            # what makes the two conditions comparable: identical (CLI-fixed)
+            # sampling, differing only in tool availability. Kept here so
+            # pre-existing config files that set them still load cleanly.
             "max_tokens": 4000,
             "temperature": 1.0,
             # ------------------------------------------------------------------
@@ -307,12 +306,38 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
         return all_questions
 
     # ------------------------------------------------------------------
-    # Baseline call (Anthropic SDK – usage always available)
+    # Baseline call (claude-agent-sdk, no tools)
     # ------------------------------------------------------------------
 
-    def _make_baseline_call(self, question_text: str, answer_instruction: str = "") -> Dict:
+    async def _deny_all_tools(
+        self,
+        tool_name: str,
+        input_data: dict,
+        context: ToolPermissionContext
+    ) -> PermissionResultDeny:
+        """Deny every tool call: the baseline condition runs with no tools.
+
+        `allowed_tools=[]` only hides tool *definitions* from the model; the
+        SDK still exposes built-in agent tools (Read, Write, Bash, …) that the
+        model could attempt. This gate guarantees the baseline answer is built
+        purely from training knowledge, mirroring the safeguard the TogoMCP
+        path uses in `_auto_approve_mcp_tools`.
         """
-        Make baseline API call (no tools).
+        return PermissionResultDeny(
+            message="Baseline condition: no tools are available; answer from knowledge."
+        )
+
+    async def _make_baseline_call(self, question_text: str, answer_instruction: str = "") -> Dict:
+        """
+        Make baseline call (no tools) via the claude-agent-sdk / Claude Code CLI.
+
+        Routed through the SAME SDK and CLI as the TogoMCP call so both
+        conditions share identical sampling settings (the CLI's fixed
+        temperature/max_tokens, which are not externally configurable),
+        authentication, and cost accounting. The ONLY difference from the
+        TogoMCP call is tool availability: baseline registers no MCP servers,
+        advertises no tools, denies every tool attempt, and is capped at a
+        single turn.
 
         Returns dict with:
             - success: bool
@@ -331,38 +356,97 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
         full_prompt = question_text + answer_instruction
 
         try:
-            response = self.baseline_client.messages.create(
+            options = ClaudeAgentOptions(
+                system_prompt=self.config["baseline_system_prompt"],
                 model=self.config["model"],
-                max_tokens=self.config["max_tokens"],
-                temperature=self.config["temperature"],
-                system=self.config["baseline_system_prompt"],
-                messages=[{"role": "user", "content": full_prompt}]
+                mcp_servers={},          # no database access
+                allowed_tools=[],        # advertise no tools to the model
+                disallowed_tools=self.config["disallowed_tools"],
+                can_use_tool=self._deny_all_tools,
+                max_turns=1,             # single-shot answer, no tool loop
+                # Same hermeticity guard as the TogoMCP path: do not inherit
+                # MCP servers / settings from ~/.claude or project .claude.
+                setting_sources=[],
             )
+
+            final_text   = None
+            total_input  = 0
+            total_output = 0
+            usage_found  = False
+            cost_usd     = 0.0
+            use_cli_cost = False
+
+            async with ClaudeSDKClient(options=options) as client:
+                await asyncio.wait_for(
+                    client.query(full_prompt),
+                    timeout=self.config["timeout"]
+                )
+
+                gen = aiter(client.receive_response())
+                while True:
+                    try:
+                        message = await asyncio.wait_for(
+                            anext(gen),
+                            timeout=self.config["timeout"]
+                        )
+                    except StopAsyncIteration:
+                        break
+
+                    usage = _extract_usage_from_obj(message)
+                    if usage:
+                        total_input  += usage["input_tokens"]
+                        total_output += usage["output_tokens"]
+                        usage_found   = True
+
+                    if isinstance(message, ResultMessage):
+                        if hasattr(message, 'result') and isinstance(message.result, str):
+                            final_text = message.result
+                        cli_cost = getattr(message, 'total_cost_usd', None)
+                        if cli_cost is not None:
+                            cost_usd = float(cli_cost)
+                            use_cli_cost = True
 
             elapsed_time = time.time() - start_time
 
-            text_content = [
-                block.text
-                for block in response.content
-                if block.type == "text"
-            ]
+            if not usage_found:
+                logger.warning(
+                    "Baseline: token usage not found in SDK response messages. "
+                    "Token counts will be 0."
+                )
 
-            input_tokens  = response.usage.input_tokens
-            output_tokens = response.usage.output_tokens
-            cost_usd = _calc_cost(input_tokens, output_tokens, self.config["pricing"])
+            if not use_cli_cost:
+                cost_usd = _calc_cost(total_input, total_output, self.config["pricing"])
+
+            # Treat an empty answer as a failure, same as the TogoMCP path: an
+            # empty ResultMessage usually means the subprocess died mid-stream
+            # and the SDK didn't raise.
+            if not final_text or not final_text.strip():
+                return {
+                    "success": False,
+                    "error": (
+                        "Empty response from claude-agent-sdk (baseline, no "
+                        "ResultMessage text). Likely subprocess failure — "
+                        "check test_runner.log."
+                    ),
+                    "elapsed_time": elapsed_time,
+                    "input_tokens": total_input,
+                    "output_tokens": total_output,
+                    "cost_usd": cost_usd,
+                }
 
             return {
                 "success": True,
-                "text": "\n".join(text_content),
+                "text": final_text,
                 "elapsed_time": elapsed_time,
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
+                "input_tokens": total_input,
+                "output_tokens": total_output,
                 "cost_usd": cost_usd,
             }
 
         except Exception as e:
             elapsed_time = time.time() - start_time
-            logger.error(f"Baseline call failed: {e}")
+            import traceback
+            logger.error(f"Baseline call failed: {str(e)}\n{traceback.format_exc()}")
             return {
                 "success": False,
                 "error": str(e),
@@ -726,7 +810,7 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
 
         # === Baseline Test (No Tools) ===
         print("  ⏳ Running baseline test (no tools)...")
-        baseline_result = self._make_baseline_call(q_body, answer_instruction)
+        baseline_result = await self._make_baseline_call(q_body, answer_instruction)
 
         if baseline_result["success"]:
             print(

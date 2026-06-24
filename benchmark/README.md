@@ -193,10 +193,12 @@ See `scripts/CONFIG_FORMAT.md` for the full specification and YAML formatting gu
 ## Requirements
 
 ```bash
-pip install anthropic 'claude-agent-sdk>=0.1.70' pyyaml pandas ollama
+pip install 'claude-agent-sdk>=0.1.70' pyyaml pandas ollama
 ```
 
-An `ANTHROPIC_API_KEY` environment variable must be set. The `automated_test_runner.py` script requires access to the TogoMCP MCP server at `https://togomcp.rdfportal.org/mcp` (or the staging endpoint at `https://test-togomcp.rdfportal.org/mcp`).
+Both the baseline and TogoMCP conditions now run through the `claude-agent-sdk` (Claude Code CLI), so authentication comes from the CLI: an `ANTHROPIC_API_KEY` environment variable if set, otherwise the CLI's stored login (`claude login` — OAuth/keychain). Setting `ANTHROPIC_API_KEY` is therefore optional but recommended for reproducible, uniformly-billed runs (it forces both conditions onto the same API-billed credential). The `automated_test_runner.py` script requires access to the TogoMCP MCP server at `https://togomcp.rdfportal.org/mcp` (or the staging endpoint at `https://test-togomcp.rdfportal.org/mcp`).
+
+> The baseline previously used the standalone `anthropic` SDK with an explicit `temperature`/`max_tokens`; it now uses the agent SDK like the TogoMCP path so both conditions share identical (CLI-fixed) sampling and differ only in tool availability. The `anthropic` package is no longer required.
 
 > **Pin `claude-agent-sdk>=0.1.70`.** Older versions ship a stale bundled `claude` CLI that silently returns empty responses against the current Anthropic API — the test runner records these as failures with the marker `"Empty response from claude-agent-sdk (no ResultMessage text)"`. If you see that error pattern at high frequency, upgrade with `pip install -U claude-agent-sdk` and verify with `echo "What is 2+2?" | <site-packages>/claude_agent_sdk/_bundled/claude --print`.
 
