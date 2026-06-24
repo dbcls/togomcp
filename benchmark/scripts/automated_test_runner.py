@@ -171,15 +171,10 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
         """Load configuration from YAML or JSON file, or use defaults."""
         default_config = {
             "model": "claude-sonnet-4-5-20250929",
-            # NOTE: max_tokens / temperature are retained for reference only.
-            # Both baseline and TogoMCP now run through the claude-agent-sdk
-            # (Claude Code CLI), which does NOT expose these sampling params,
-            # so they are no longer applied to either call. This is exactly
-            # what makes the two conditions comparable: identical (CLI-fixed)
-            # sampling, differing only in tool availability. Kept here so
-            # pre-existing config files that set them still load cleanly.
-            "max_tokens": 4000,
-            "temperature": 1.0,
+            # NOTE: sampling params (max_tokens / temperature) are intentionally
+            # absent. Both baseline and TogoMCP run through the claude-agent-sdk
+            # (Claude Code CLI), which does not expose them, so the two conditions
+            # share identical CLI-fixed sampling and differ only in tool access.
             # ------------------------------------------------------------------
             # Pricing (USD per 1 million tokens).
             # Defaults match Claude Sonnet 4.5 list prices; override in config.yaml
