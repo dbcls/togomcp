@@ -517,11 +517,105 @@ async def get_compound_attributes_from_pubchem(pubchem_compound_id: str) -> str:
 
 
 # DB: PDB
+#
+# PDBj /rest/newweb/search/{db} returns each hit as a positional array whose
+# column meaning is fixed per database (verified live 2026-06). Rather than
+# returning only {id: name}, we project the useful columns into named fields.
+#
+#   pdb: 0 id · 1 title · 2 authors · 3 citation · 4 journal · 5 year ·
+#        6 volume · 7 pmid · 8 doi · 9 release · 10 deposit · 11 modify ·
+#        12 method · 13 resolution · 14 ligands
+#   cc:  0 code · 1 name · 2 formula · 3 smiles(;-sep) · 4 inchi ·
+#        5 systematic_name · 6 release · 7 modified · 8 iupac_name · 9 synonym
+#   prd: 0 id · 1 (empty) · 2 release · 3 modified · 4 name · 5 formula ·
+#        6 description
+
+# Friendly aliases for PDBj's numeric experimental-method codes (1–15).
+_PDB_METHOD_CODES = {
+    "xray": 1,
+    "neutron": 2,
+    "fiber": 3,
+    "electron-crystallography": 4,
+    "em": 5,  # cryo-EM / electron microscopy
+    "nmr": 6,  # solution NMR
+    "solid-state-nmr": 7,
+}
+
+# PDBj uses a large float sentinel in the resolution column for entries that
+# have no resolution (e.g. NMR). Real resolutions are well under 1000 Å.
+_PDB_RES_SENTINEL_FLOOR = 1000
+
+
+def _project_pdb_row(row: list) -> dict:
+    g = lambda i: row[i] if len(row) > i else None
+    res = g(13)
+    if isinstance(res, (int, float)) and res >= _PDB_RES_SENTINEL_FLOOR:
+        res = None
+    return {
+        "id": g(0),
+        "title": g(1),
+        "method": g(12),
+        "resolution": res,
+        "ligands": g(14) or None,
+        "year": g(5) or None,
+        "pmid": g(7) or None,
+        "doi": g(8) or None,
+    }
+
+
+def _project_cc_row(row: list) -> dict:
+    g = lambda i: row[i] if len(row) > i else None
+    smiles = g(3) or ""
+    return {
+        "id": g(0),
+        "name": g(1),
+        "formula": g(2),
+        "smiles": [s for s in smiles.split(";") if s],
+        "inchi": g(4) or None,
+        "iupac_name": g(8) or None,
+    }
+
+
+def _project_prd_row(row: list) -> dict:
+    g = lambda i: row[i] if len(row) > i else None
+    return {
+        "id": g(0),
+        "name": g(4),
+        "formula": g(5) or None,
+        "description": g(6) or None,
+    }
+
+
+_PDB_ROW_PROJECTORS = {
+    "pdb": _project_pdb_row,
+    "cc": _project_cc_row,
+    "prd": _project_prd_row,
+}
+
+
 @mcp.tool()
 async def search_pdb_entity(
     db: Literal["pdb", "cc", "prd"],
     query: str = "",
     limit: Annotated[int, Field(ge=0, le=500)] = 20,
+    offset: Annotated[int, Field(ge=0)] = 0,
+    method: Literal[
+        "",
+        "xray",
+        "nmr",
+        "em",
+        "neutron",
+        "fiber",
+        "electron-crystallography",
+        "solid-state-nmr",
+    ] = "",
+    res_min: Annotated[float, Field(ge=0)] | None = None,
+    res_max: Annotated[float, Field(ge=0)] | None = None,
+    source: str = "",
+    ligand: str = "",
+    formula: str = "",
+    smiles: str = "",
+    inchi: str = "",
     search: str = "",
     term: str = "",
     keyword: str = "",
@@ -530,28 +624,48 @@ async def search_pdb_entity(
     name: str = "",
 ) -> str:
     """
-    Search for PDBj entry information by keywords.
+    Search PDBj for structures, chemical components, or BIRD molecules.
+
+    Returns rich, named fields per hit (not just the title) — for `pdb`,
+    each result carries the experimental method, resolution, bound ligands,
+    and citation; for `cc`, the formula, SMILES, and InChI.
 
     Args:
         db (str): The database to search in. Allowed values are:
-            - "pdb" (Protein Data Bank, protein structures)
-            - "cc" (Chemical Component Dictionary, chemical components or small molecules in PDB)
-            - "prd" (BIRD, Biologically Interesting Reference Molecule Dictionary, mostly peptides).
-        query (str): Query string, any keywords that can be used to search for PDB entries.
-            Accepts aliases: `search`, `term`, `keyword`, `keywords`,
-            `search_term`, `name`.
-        limit (int): The maximum number of results to return. Default is 20.
-            Must be in [0, 500].
+            - "pdb" (Protein Data Bank, macromolecular structures)
+            - "cc" (Chemical Component Dictionary, ligands / small molecules)
+            - "prd" (BIRD, Biologically Interesting Reference Molecule
+              Dictionary, mostly peptides).
+        query (str): Free-text keywords. May be empty when at least one
+            structured filter is supplied. Accepts aliases: `search`, `term`,
+            `keyword`, `keywords`, `search_term`, `name`.
+        limit (int): Max results to return, in [0, 500]. Default 20.
+        offset (int): Number of leading results to skip (server-side
+            pagination). Default 0.
+
+        Structured filters for db="pdb" (combine freely with `query`):
+            method (str): Experimental method — one of "xray", "nmr", "em"
+                (cryo-EM), "neutron", "fiber", "electron-crystallography",
+                "solid-state-nmr".
+            res_min / res_max (float): Resolution bounds in Å.
+            source (str): Source organism (e.g. "Homo sapiens").
+            ligand (str): Restrict to entries containing this ligand.
+
+        Structured filters for db="cc" (chemical search):
+            formula (str): Molecular formula (e.g. "C8 H10 N4 O2").
+            smiles (str): SMILES substructure/exact query.
+            inchi (str): InChI query.
 
     Note:
-        The PDBj search hits multiple fields (title, authors, keywords,
-        citation metadata), not just the title. An entry can appear
-        even if its title does not contain the query. Always verify
-        relevance against the returned name/title before relying on
-        a hit.
+        PDBj search hits multiple fields (title, authors, keywords,
+        citation metadata), not just the title — an entry can match even
+        when its title does not contain the query. Verify relevance against
+        the returned fields. Filters that don't apply to the chosen `db`
+        are ignored.
 
     Returns:
-        str: A JSON-formatted string containing the search results.
+        str: JSON string `{"total": int, "results": [ {…named fields…} ]}`.
+            A `total` of -1 means PDBj rejected the filter combination.
     """
     query = _resolve_query_alias(
         query,
@@ -562,25 +676,53 @@ async def search_pdb_entity(
         search_term=search_term,
         name=name,
     )
-    if not query:
+
+    params: dict = {"query": query, "limit": limit, "offset": offset}
+    if db == "pdb":
+        if method:
+            params["method"] = _PDB_METHOD_CODES[method]
+        if res_min is not None:
+            params["res_min"] = res_min
+        if res_max is not None:
+            params["res_max"] = res_max
+        if source:
+            params["source"] = source
+        if ligand:
+            params["ligand"] = ligand
+    elif db == "cc":
+        if formula:
+            params["formula"] = formula
+        if smiles:
+            params["smiles"] = smiles
+        if inchi:
+            params["inchi"] = inchi
+
+    # A search needs either free text or at least one structured filter.
+    has_filter = any(
+        k not in ("query", "limit", "offset") for k in params
+    )
+    if not query and not has_filter:
         raise ValueError(
-            "Missing search string. Pass it as `query` (canonical) or any of: "
-            "search, term, keyword, keywords, search_term, name."
+            "Missing search criteria. Pass `query` (or an alias: search, term, "
+            "keyword, keywords, search_term, name) and/or a structured filter "
+            "(pdb: method/res_min/res_max/source/ligand; cc: formula/smiles/inchi)."
         )
-    # PDBj returns result rows as ordered arrays; the "name" column
-    # lives at a different index per DB. For PRD, index 1 is always
-    # empty — the human-readable name is at index 4.
-    name_idx = {"pdb": 1, "cc": 1, "prd": 4}[db]
+
+    project = _PDB_ROW_PROJECTORS[db]
     try:
         response = await _pdbj_client.get(
-            f"/rest/newweb/search/{db}", params={"query": query}
+            f"/rest/newweb/search/{db}", params=params
         )
         raise_for_status_with_body(response, context="PDBj search")
         payload = response.json()
-        total_results = payload.get("total", 0)
+        raw_total = payload.get("total", 0)
+        try:
+            total_results = int(raw_total)
+        except (TypeError, ValueError):
+            total_results = 0
+        # `limit`/`offset` are honored server-side; the slice is a safety belt.
         result_list = [
-            {entry[0]: entry[name_idx] if len(entry) > name_idx else ""}
-            for entry in payload.get("results", [])[:limit]
+            project(entry) for entry in payload.get("results", [])[:limit]
         ]
         response_dict = {"total": total_results, "results": result_list}
         return json.dumps(response_dict)
@@ -746,13 +888,15 @@ async def search_reactome_entity(
         data = response.json()
     except (httpx.HTTPError, ValueError) as e:
         logger.warning(f"Reactome search failed: {type(e).__name__}: {e}")
-        return (
-            f"Error: Reactome REST API request failed ({type(e).__name__}: "
-            f"{e}). Reactome's search endpoint can be slow or briefly "
-            "unavailable. Retry once after a brief delay. If it keeps "
-            "failing, fall back to SPARQL: "
-            "run_sparql(database='reactome', sparql_query=...)."
-        )
+        return [{
+            "error": (
+                f"Reactome REST API request failed ({type(e).__name__}: "
+                f"{e}). Reactome's search endpoint can be slow or briefly "
+                "unavailable. Retry once after a brief delay. If it keeps "
+                "failing, fall back to SPARQL: "
+                "run_sparql(database='reactome', sparql_query=...)."
+            )
+        }]
 
     # Extract and return results
     results = []
@@ -850,9 +994,11 @@ async def search_rhea_entity(
 
     except (httpx.HTTPError, ValueError) as e:
         logger.warning(f"Rhea search failed: {type(e).__name__}: {e}")
-        return (
-            f"Error: Rhea REST API request failed ({type(e).__name__}: {e}). "
-            "Usually transient — retry once after a brief delay. If it keeps "
-            "failing, fall back to SPARQL: "
-            "run_sparql(database='rhea', sparql_query=...)."
-        )
+        return [{
+            "error": (
+                f"Rhea REST API request failed ({type(e).__name__}: {e}). "
+                "Usually transient — retry once after a brief delay. If it "
+                "keeps failing, fall back to SPARQL: "
+                "run_sparql(database='rhea', sparql_query=...)."
+            )
+        }]

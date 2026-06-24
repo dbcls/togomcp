@@ -9,6 +9,7 @@ import respx
 from togo_mcp.api_tools import (
     search_chembl_target,
     search_pdb_entity,
+    search_reactome_entity,
     search_rhea_entity,
     search_uniprot_entity,
 )
@@ -34,14 +35,20 @@ class TestSearchUniprotEntity:
         assert "Homo sapiens" in result
 
     @pytest.mark.asyncio
-    async def test_http_error_raises(self) -> None:
-        """HTTP errors are propagated."""
+    async def test_http_error_returns_message(self) -> None:
+        """HTTP errors degrade to a guidance string (not an exception).
+
+        UniProt search is declared `-> str`, so the error path returns a
+        message that steers the caller toward retry / SPARQL fallback,
+        matching the convention used by the other search tools.
+        """
         with respx.mock(using="httpx") as router:
             router.get("https://rest.uniprot.org/uniprotkb/search").mock(
                 return_value=httpx.Response(500, text="Internal Server Error")
             )
-            with pytest.raises(httpx.HTTPStatusError):
-                await search_uniprot_entity("TP53")
+            result = await search_uniprot_entity("TP53")
+        assert isinstance(result, str)
+        assert "UniProt REST API request failed" in result
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +121,102 @@ class TestSearchPdbEntity:
         result = json.loads(result_text)
         assert len(result["results"]) == 3
 
+    @pytest.mark.asyncio
+    async def test_pdb_rich_projection(self) -> None:
+        """PDB rows project named fields; NMR resolution sentinel -> None."""
+        body = {
+            "total": "2",
+            "results": [
+                [
+                    "1abc", "Kinase X", "Doe, J.", "A great paper", "Nature",
+                    2020, "1", "12345678", "10.1/x",
+                    1, 2, 3, "X-RAY DIFFRACTION", 1.8, "ATP, MG",
+                ],
+                [
+                    "2def", "Kinase Y NMR", "Roe, R.", "Another", "Cell",
+                    2019, "2", "", "",
+                    1, 2, 3, "SOLUTION NMR", 999999995904, "",
+                ],
+            ],
+        }
+        with respx.mock(using="httpx") as router:
+            router.get("https://pdbj.org/rest/newweb/search/pdb").mock(
+                return_value=httpx.Response(200, json=body)
+            )
+            result = json.loads(await search_pdb_entity("pdb", "kinase"))
+        assert result["total"] == 2
+        first = result["results"][0]
+        assert first == {
+            "id": "1abc", "title": "Kinase X", "method": "X-RAY DIFFRACTION",
+            "resolution": 1.8, "ligands": "ATP, MG", "year": 2020,
+            "pmid": "12345678", "doi": "10.1/x",
+        }
+        assert result["results"][1]["resolution"] is None  # NMR sentinel
+        assert result["results"][1]["ligands"] is None      # empty -> None
+
+    @pytest.mark.asyncio
+    async def test_cc_projection_smiles_list(self) -> None:
+        """CC rows expose formula/SMILES (split on ';')/InChI."""
+        body = {
+            "total": "1",
+            "results": [[
+                "CFF", "CAFFEINE", "C8 H10 N4 O2", "Cn1cnc2c1...;O=C2N...",
+                "InChI=1S/C8H10N4O2/...", "SYSTEMATIC", "2000-05-16",
+                "2020-06-17", "1,3,7-trimethyl...", "",
+            ]],
+        }
+        with respx.mock(using="httpx") as router:
+            router.get("https://pdbj.org/rest/newweb/search/cc").mock(
+                return_value=httpx.Response(200, json=body)
+            )
+            result = json.loads(await search_pdb_entity("cc", "caffeine"))
+        row = result["results"][0]
+        assert row["id"] == "CFF"
+        assert row["formula"] == "C8 H10 N4 O2"
+        assert row["smiles"] == ["Cn1cnc2c1...", "O=C2N..."]
+        assert row["iupac_name"] == "1,3,7-trimethyl..."
+
+    @pytest.mark.asyncio
+    async def test_filter_only_search_allowed(self) -> None:
+        """An empty query is valid when a structured filter is supplied."""
+        body = {"total": "0", "results": []}
+        with respx.mock(using="httpx") as router:
+            route = router.get("https://pdbj.org/rest/newweb/search/pdb").mock(
+                return_value=httpx.Response(200, json=body)
+            )
+            await search_pdb_entity("pdb", "", method="em", res_max=3.0)
+        request = route.calls.last.request
+        assert request.url.params["method"] == "5"  # em -> code 5
+        assert request.url.params["res_max"] == "3.0"
+
+    @pytest.mark.asyncio
+    async def test_no_criteria_raises(self) -> None:
+        """No query and no filter is an error."""
+        with pytest.raises(ValueError):
+            await search_pdb_entity("pdb", "")
+
+
+# ---------------------------------------------------------------------------
+# Reactome
+# ---------------------------------------------------------------------------
+
+
+class TestSearchReactomeEntity:
+    """Tests for search_reactome_entity with mocked HTTP."""
+
+    @pytest.mark.asyncio
+    async def test_http_error_returns_error_list(self) -> None:
+        """HTTP errors return a one-element error list, staying type-consistent
+        with the declared `list[dict[str, str]]` return type."""
+        with respx.mock(using="httpx") as router:
+            router.get(
+                "https://reactome.org/ContentService/search/query"
+            ).mock(return_value=httpx.Response(500, text="Server Error"))
+            result = await search_reactome_entity("apoptosis")
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert "Reactome REST API request failed" in result[0]["error"]
+
 
 # ---------------------------------------------------------------------------
 # Rhea
@@ -152,11 +255,17 @@ class TestSearchRheaEntity:
         assert result == []
 
     @pytest.mark.asyncio
-    async def test_http_error_returns_empty(self) -> None:
-        """HTTP errors in Rhea search return an empty list (not an exception)."""
+    async def test_http_error_returns_error_list(self) -> None:
+        """HTTP errors return a one-element error list, not an exception.
+
+        The error path stays type-consistent with the declared
+        `list[dict[str, str]]` return type by wrapping the message in a dict.
+        """
         with respx.mock(using="httpx") as router:
             router.get("https://www.rhea-db.org/rhea").mock(
                 return_value=httpx.Response(500, text="Server Error")
             )
             result = await search_rhea_entity("ATP")
-        assert result == []
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert "Rhea REST API request failed" in result[0]["error"]
