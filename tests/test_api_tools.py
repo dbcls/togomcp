@@ -7,12 +7,39 @@ import pytest
 import respx
 
 from togo_mcp.api_tools import (
+    _resolve_query_alias,
     search_chembl_target,
     search_pdb_entity,
     search_reactome_entity,
     search_rhea_entity,
     search_uniprot_entity,
 )
+
+
+class TestResolveQueryAlias:
+    """Alias precedence is centralized; a conflict raises (surfacing the likely
+    caller mistake) rather than silently dropping a value (Bug 5)."""
+
+    def test_single_value_resolves(self) -> None:
+        assert _resolve_query_alias("ATP") == "ATP"
+
+    def test_duplicate_same_value_ok(self) -> None:
+        # Same value via two aliases is not a conflict.
+        assert _resolve_query_alias("ATP", search="ATP") == "ATP"
+
+    def test_conflict_raises(self) -> None:
+        with pytest.raises(ValueError, match="Multiple distinct search terms"):
+            _resolve_query_alias("ATP", keyword="glucose")
+
+    @pytest.mark.asyncio
+    async def test_conflict_raises_via_tool(self) -> None:
+        """The conflict surfaces through the tool layer, not just the helper."""
+        with pytest.raises(ValueError, match="Multiple distinct search terms"):
+            await search_reactome_entity(query="ATP", keyword="glucose")
+
+    def test_alias_only_resolves(self) -> None:
+        assert _resolve_query_alias("", term="x") == "x"
+        assert _resolve_query_alias("") == ""
 
 # ---------------------------------------------------------------------------
 # UniProt

@@ -30,8 +30,27 @@ def _resolve_query_alias(
     search_term: str = "",
     name: str = "",
 ) -> str:
-    """Return the first non-empty value among `query` and its accepted aliases."""
-    return query or search or term or keyword or keywords or search_term or name
+    """Return the first non-empty value among `query` and its accepted aliases.
+
+    These are all aliases for the single `query` parameter. Supplying two or
+    more with *different* values is treated as a caller error and raises
+    ValueError. A warning would only land in the server log, never reaching
+    the (often LLM-driven) caller — where this conflict is a likely mistake
+    (e.g. the model fills `query` while a wrapper fills `keyword`); raising
+    surfaces it through the tool result so the caller can retry with one term.
+    Duplicates with the same value, or a single value, resolve normally.
+    """
+    candidates = {
+        "query": query, "search": search, "term": term, "keyword": keyword,
+        "keywords": keywords, "search_term": search_term, "name": name,
+    }
+    provided = {k: v for k, v in candidates.items() if v}
+    if len({*provided.values()}) > 1:
+        raise ValueError(
+            f"Multiple distinct search terms supplied: {provided}; pass only "
+            "one — these are all aliases for the same `query` parameter."
+        )
+    return next(iter(provided.values()), "")
 
 
 ######################################
@@ -660,7 +679,7 @@ async def search_pdb_entity(
         query (str): Free-text keywords. May be empty when at least one
             structured filter is supplied. Accepts aliases: `search`, `term`,
             `keyword`, `keywords`, `search_term`, `name`. If both `query` and
-            an alias are given with different values, `query` wins silently.
+            an alias are given with different values, this raises ValueError (pass only one).
         limit (int): Max results to return, in [0, 500]. Default 20.
         offset (int): Number of leading results to skip (server-side
             pagination). Default 0.
@@ -870,7 +889,7 @@ async def search_reactome_entity(
         query: The search query string (e.g., "apoptosis", "TP53", "cell cycle").
             Accepts aliases: `search`, `term`, `keyword`, `keywords`,
             `search_term`, `name`. If both `query` and an alias are given with
-            different values, `query` wins silently.
+            different values, this raises ValueError (pass only one).
         species: Filter by species. Must be the scientific name
             (e.g., "Homo sapiens", "Mus musculus"). Numeric NCBI taxon
             IDs like "9606" are rejected here (this tool raises ValueError)
@@ -1005,7 +1024,7 @@ async def search_rhea_entity(
                     - "" - retrieve all reactions
                     Accepts aliases: `search`, `term`, `keyword`, `keywords`,
                     `search_term`, `name`. If both `query` and an alias are
-                    given with different values, `query` wins silently.
+                    given with different values, this raises ValueError (pass only one).
         limit (int, optional): Maximum number of results. Defaults to 100.
             Must be >= 0; a negative limit is rejected (it would make Rhea
             return the entire database).
