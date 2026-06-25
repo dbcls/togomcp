@@ -501,6 +501,37 @@ def verify_coverage_tracker(actual_counts: dict,
 # Main
 # ---------------------------------------------------------------------------
 
+def print_next_guidance(total: int, type_counts, db_counts: dict, uniprot_count: int):
+    """Forward-looking nudge for extending the set: which type and which
+    databases to add next to keep the distribution balanced. Informational
+    only — prints, never records issues/warnings."""
+    n_types = len(VALID_TYPES)
+    # Next balanced milestone = next size at which all types can be equal.
+    milestone = ((total // n_types) + 1) * n_types
+    per_type_target = milestone // n_types
+
+    print(f"\n--- Next-Question Guidance (for extending the set) ---")
+    print(f"Next balanced milestone: {milestone} questions "
+          f"({per_type_target} per type)")
+    print(f"Per-type shortfall to milestone (add the largest gaps first):")
+    rows = [(per_type_target - type_counts.get(qt, 0), qt, type_counts.get(qt, 0))
+            for qt in VALID_TYPES]
+    for short, qt, cnt in sorted(rows, key=lambda r: (-r[0], r[1])):
+        flag = "" if short > 0 else ("  (at target)" if short == 0 else "  (over target)")
+        print(f"    {qt:12s} {cnt:3d}  need +{max(short, 0)}{flag}")
+
+    ranked = sorted(VALID_DATABASES, key=lambda d: (db_counts.get(d, 0), d))
+    print(f"Most under-used databases (prefer these next):")
+    print("    " + "  ".join(f"{d}({db_counts.get(d, 0)})" for d in ranked[:8]))
+
+    cap_at_milestone = int(milestone * 0.70)
+    remaining = cap_at_milestone - uniprot_count
+    pct = uniprot_count / total * 100 if total else 0
+    print(f"UniProt headroom: {uniprot_count}/{total} ({pct:.1f}%); "
+          f"70% cap at {milestone} questions = {cap_at_milestone} "
+          f"→ {remaining} more UniProt question(s) allowed")
+
+
 def _print_issue_summary(all_issues: list, all_warnings: list):
     """Print the WARNINGS / ERRORS blocks shared by full and single-file runs."""
     if all_warnings:
@@ -775,6 +806,8 @@ def verify_questions(targets=None):
     print(f"\n--- Coverage Tracker Verification ---")
     verify_coverage_tracker(type_counts, db_counts, total_questions,
                             all_issues, all_warnings, base_dir)
+
+    print_next_guidance(total_questions, type_counts, db_counts, uniprot_count)
 
     _print_issue_summary(all_issues, all_warnings)
     return len(all_issues) == 0

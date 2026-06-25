@@ -24,6 +24,8 @@ Generate **one** question through all phases, then **stop and present it for the
 ### Phase 0 — Pick the type (type-first; non-negotiable)
 Read `benchmark/questions/coverage_tracker.yaml`. Choose the **most under-represented** `type` (target ≈ total/5 per type; the five types are `yes_no`, `factoid`, `list`, `summary`, `choice`). If the user named a type/topic/database, honor it but still record the coverage rationale. Type is chosen **before** databases and keywords — not fitted to a keyword afterward.
 
+> **Shortcut:** `python benchmark/scripts/verify_questions.py` (full run, no args) prints a **Next-Question Guidance** block that does Phase 0–1's bookkeeping for you — the per-type shortfall to the next balanced milestone, the most under-used databases to prefer, and how much UniProt headroom remains under the 70% cap. Use it to make the type/database picks unambiguous rather than eyeballing the tracker.
+
 ### Phase 1 — Pick databases (type-compatible, under-used)
 From the tracker's `databases` counts, prefer under-used databases. Call `list_databases()`; pick **2–3** with complementary domains and a real cross-reference path (e.g. UniProt→PDB, ChEMBL→ChEBI), compatible with the type (`summary` needs ≥3). Call `get_MIE_file()` for each chosen database before writing any SPARQL. Avoid pushing UniProt past 70% of the set.
 
