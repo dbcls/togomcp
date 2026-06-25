@@ -12,8 +12,12 @@
 # isolation when comparing tool-use behaviour.
 #
 # Usage:
-#   ./run_all_conditions.sh               # use today's date
-#   ./run_all_conditions.sh 2026-05-04    # use specific date
+#   ./run_all_conditions.sh                       # today's date, default model
+#   ./run_all_conditions.sh 2026-05-04            # specific date
+#   MODEL=claude-opus-4-8 ./run_all_conditions.sh # override the model for the whole sweep
+#
+# The model is set in ONE place (the MODEL variable below) and passed to every
+# condition via --model, so you never edit it in each config*.yaml.
 #
 # An existing CSV for a (condition, date) pair is skipped, so the script is
 # safely re-runnable after a partial run — delete the file to force a re-run.
@@ -21,6 +25,9 @@
 set -euo pipefail
 
 DATE="${1:-$(date +%Y-%m-%d)}"
+# One source of truth for the benchmark model. Override per-sweep with the
+# MODEL env var; the configs themselves no longer carry a 'model' key.
+MODEL="${MODEL:-claude-sonnet-4-5-20250929}"
 
 # cd into the directory holding this script so relative paths work regardless
 # of where the user invokes it from.
@@ -47,6 +54,7 @@ for entry in "${CONDITIONS[@]}"; do
     echo "=========================================================="
     echo "Condition: ${prefix}"
     echo "Config:    ${config}"
+    echo "Model:     ${MODEL}"
     echo "Output:    ${output}"
     echo "Log:       ${log}"
     echo "Started:   $(date '+%Y-%m-%d %H:%M:%S')"
@@ -64,6 +72,7 @@ for entry in "${CONDITIONS[@]}"; do
     python3 automated_test_runner.py \
         ../questions/question_*.yaml \
         -c "$config" \
+        --model "$MODEL" \
         -o "$output" 2>&1 | tee "$log"
 
     echo "✓ Completed ${prefix} at $(date '+%Y-%m-%d %H:%M:%S')"
