@@ -24,7 +24,7 @@ benchmark/
 │   └── ... (question_001–question_050.yaml)
 ├── scripts/
 │   ├── automated_test_runner.py  # Collects answers from baseline and TogoMCP agents
-│   ├── add_llm_evaluation.py     # Scores collected answers using an LLM judge
+│   ├── add_llm_evaluation.py     # Scores collected answers using Claude Opus as judge
 │   ├── results_analyzer.py       # Statistical analysis of evaluation results
 │   ├── generate_dashboard.py     # Generates HTML evaluation dashboard
 │   ├── verify_questions.py       # Validates question YAML files
@@ -122,14 +122,9 @@ The script runs each question in an isolated session (no conversation history) a
 
 ### Step 4 — LLM Evaluation (initial, llama3.2)
 
-Initial scoring was done with `scripts/add_llm_evaluation.py` using `llama3.2` as the judge:
+> **Note (provenance vs. current tooling):** for the paper, initial scoring used `scripts/add_llm_evaluation.py` with a local `llama3.2` model (Ollama), and those scores were then superseded by a manual Claude Opus re-evaluation on the platform (Step 5). The script has **since been rewritten** to call Claude Opus directly via the Claude API, which collapses Steps 4–5 into one command — see Step 5 for current usage. The `llama3.2` / Ollama path described here is historical.
 
-```bash
-python add_llm_evaluation.py ../results/with_guide-2026-05-04.csv \
-    --llm-model llama3.2
-```
-
-Each answer is scored on four criteria (1–5 each, total 4–20):
+Initial scoring was originally done with a local `llama3.2` judge, scoring each answer on four criteria (1–5 each, total 4–20):
 - **Recall** — completeness relative to the `ideal_answer`
 - **Precision** — relevance of provided information
 - **Non-redundancy** (repetition) — avoidance of repeated content
@@ -140,6 +135,17 @@ These initial scores (`with_guide-2026-05-04.csv`, `ng1-2026-05-04.csv`, `ng2-20
 ### Step 5 — Re-evaluation with Claude Opus
 
 Because the llama3.2 scores were insufficiently reliable, all four conditions were re-evaluated five times each using **Claude Opus** as the judge (250 question–run pairs per condition). The current canonical re-evaluation is the 2026-05-04 batch judged by **Opus 4.7**; the earlier 2026-02–03 batch (judged by Opus 4.6) is preserved under `results/rev0/`.
+
+The paper's Opus re-evaluation was performed manually on the platform (see `results/reevaluation.md`). That process is now automated — `add_llm_evaluation.py` calls Claude Opus through the Claude API with the same four-criteria rubric and forced tool use, producing the same 12 score columns. To reproduce the five-run batch for one condition:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...          # required by the anthropic SDK
+python add_llm_evaluation.py ../results/with_guide-2026-05-04.csv \
+    -o ../results/with_guide-2026-05-04-Opus.csv \
+    --model claude-opus-4-8 --runs 5         # writes ...-Opus-v1.csv … -v5.csv
+```
+
+Use `--model claude-opus-4-7` to match the model used for the paper's canonical batch.
 
 **Current batch — 2026-05-04, judge: Opus 4.7** (results reported in the paper)
 
@@ -186,17 +192,19 @@ See `scripts/CONFIG_FORMAT.md` for the full specification and YAML formatting gu
 | `questions/coverage_tracker.yaml` | Running tally of question type and database usage during creation |
 | `scripts/automated_test_runner.py` | Answer collection script using `claude-agent-sdk` |
 | `scripts/run_all_conditions.sh` | Sequential orchestrator that runs all four conditions for a given date and skips existing outputs |
-| `scripts/add_llm_evaluation.py` | LLM-based scoring using Ollama (initial pass) |
+| `scripts/add_llm_evaluation.py` | Answer scoring with Claude Opus as judge, via the Claude API (forced tool use) |
 
 ---
 
 ## Requirements
 
 ```bash
-pip install 'claude-agent-sdk>=0.1.70' pyyaml pandas ollama
+pip install 'claude-agent-sdk>=0.1.70' anthropic pyyaml pandas
 ```
 
-Both the baseline and TogoMCP conditions now run through the `claude-agent-sdk` (Claude Code CLI), so authentication comes from the CLI: an `ANTHROPIC_API_KEY` environment variable if set, otherwise the CLI's stored login (`claude login` — OAuth/keychain). Setting `ANTHROPIC_API_KEY` is therefore optional but recommended for reproducible, uniformly-billed runs (it forces both conditions onto the same API-billed credential). The `automated_test_runner.py` script requires access to the TogoMCP MCP server at `https://togomcp.rdfportal.org/mcp` (or the staging endpoint at `https://test-togomcp.rdfportal.org/mcp`).
+Both the baseline and TogoMCP conditions now run through the `claude-agent-sdk` (Claude Code CLI), so authentication for `automated_test_runner.py` comes from the CLI: an `ANTHROPIC_API_KEY` environment variable if set, otherwise the CLI's stored login (`claude login` — OAuth/keychain). Setting `ANTHROPIC_API_KEY` is therefore optional but recommended for reproducible, uniformly-billed runs (it forces both conditions onto the same API-billed credential). The `automated_test_runner.py` script requires access to the TogoMCP MCP server at `https://togomcp.rdfportal.org/mcp` (or the staging endpoint at `https://test-togomcp.rdfportal.org/mcp`).
+
+`add_llm_evaluation.py` (the Opus judge) uses the plain `anthropic` SDK instead, which **requires** `ANTHROPIC_API_KEY` (or `ANTHROPIC_AUTH_TOKEN` / an `ant auth login` profile) — it does not read the `claude login` keychain. `ollama` is no longer required: the judge now calls the Claude API directly.
 
 > The baseline previously used the standalone `anthropic` SDK with an explicit `temperature`/`max_tokens`; it now uses the agent SDK like the TogoMCP path so both conditions share identical (CLI-fixed) sampling and differ only in tool availability. The `anthropic` package is no longer required.
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Add LLM-Based Evaluation to Test Results
+Add Opus-Based Evaluation to Test Results
 
-This script reads the CSV output from automated_test_runner.py and evaluates
-both baseline and TogoMCP answers against the ideal answer using four criteria:
+Reads the CSV output from automated_test_runner.py and scores both the baseline
+and TogoMCP answers against the ideal answer using four criteria:
     1. Information recall (1-5): Does the answer contain all necessary information?
     2. Information precision (1-5): Does the answer contain only relevant information?
     3. Information repetition (1-5): Does the answer avoid repeating the same information?
@@ -12,20 +12,34 @@ both baseline and TogoMCP answers against the ideal answer using four criteria:
 Each criterion uses a 1-5 scale (1 = very poor, 5 = excellent).
 The total score is the sum of all four criteria (4-20).
 
+This is the automated form of the evaluation previously done by hand on the
+platform (see results/reevaluation.md). It calls the Claude Messages API with
+Claude Opus as the judge and forces a single tool call, so scores come back as
+a validated JSON object — no free-text parsing, no Ollama, no local model.
+
 Usage:
     python add_llm_evaluation.py test_results.csv
     python add_llm_evaluation.py test_results.csv -o evaluated_results.csv
-    python add_llm_evaluation.py test_results.csv --llm-model llama3.2
+    python add_llm_evaluation.py test_results.csv --model claude-opus-4-7
+    # Five independent runs (-> results-v1.csv ... results-v5.csv):
+    python add_llm_evaluation.py test_results.csv -o results.csv --runs 5
+
+Auth: this uses the `anthropic` Python SDK, which requires an ANTHROPIC_API_KEY
+(or ANTHROPIC_AUTH_TOKEN, or an `ant auth login` profile). Note this differs
+from automated_test_runner.py, whose bundled Claude Code CLI can also use the
+`claude login` keychain — the plain SDK does NOT read that keychain, so an API
+key is required here.
 
 Requirements:
-    pip install ollama pandas
+    pip install anthropic pandas
 """
 
 import argparse
+import os
 import sys
+import time
 from pathlib import Path
-from typing import Dict, Optional, Any
-import re
+from typing import Any, Dict, List
 
 try:
     import pandas as pd
@@ -34,88 +48,36 @@ except ImportError:
     sys.exit(1)
 
 try:
-    import ollama
+    import anthropic
+    from pydantic import BaseModel
 except ImportError:
-    print("Error: ollama not installed. Install with: pip install ollama")
+    print("Error: anthropic not installed. Install with: pip install anthropic")
     sys.exit(1)
 
-DEFAULT_MODEL = "llama3.2"
+# Default judge model. claude-opus-4-8 is the current Opus; override with
+# --model (e.g. claude-opus-4-7) to reproduce an earlier evaluation batch.
+DEFAULT_MODEL = "claude-opus-4-8"
 
-class AnswerEvaluator:
-    """Evaluates answer quality using LLM with four criteria."""
-    
-    def __init__(self, model: str = DEFAULT_MODEL):
-        """
-        Initialize answer evaluator.
-        
-        Args:
-            model: Ollama model name for evaluation
-        """
-        self.model = model
-        print(f"Initializing LLM evaluator with model: {model}")
-    
-    def evaluate_answer(
-        self, 
-        answer: str, 
-        ideal_answer: str,
-        question: str = ""
-    ) -> Dict[str, Any]:
-        """
-        Evaluate an answer against the ideal answer using four criteria.
-        
-        Args:
-            answer: The answer to evaluate
-            ideal_answer: The ideal/reference answer
-            question: The original question (for context)
-            
-        Returns:
-            Dict with:
-                - recall_score: int (1-5)
-                - precision_score: int (1-5)
-                - repetition_score: int (1-5)
-                - readability_score: int (1-5)
-                - total_score: int (4-20)
-                - explanation: str (brief explanation)
-                - error: Optional[str]
-        """
-        result = {
-            "recall_score": 1,
-            "precision_score": 1,
-            "repetition_score": 1,
-            "readability_score": 1,
-            "total_score": 4,
-            "explanation": "",
-            "error": None
-        }
-        
-        # Handle empty or error answers
-        if not answer or not ideal_answer:
-            result["error"] = "Empty answer or ideal answer"
-            result["explanation"] = "Cannot evaluate empty text"
-            return result
-        
-        if answer.startswith("[ERROR:") or answer.startswith("[SYSTEM ERROR:"):
-            result["error"] = "Answer contains error"
-            result["explanation"] = "Answer execution failed"
-            return result
-        
-        # Build evaluation prompt
-        prompt = f"""You are an expert evaluator of scientific and biomedical answers. Your task is to evaluate the quality of a given answer by comparing it to an ideal reference answer.
+# ---------------------------------------------------------------------------
+# Rubric — the judge's system prompt. This is the same rubric used for the
+# manual Opus re-evaluation (results/reevaluation.md); structured outputs make
+# the "OUTPUT FORMAT" section from the old prompt unnecessary.
+# ---------------------------------------------------------------------------
+RUBRIC = """You are an expert evaluator of scientific and biomedical answers. \
+Evaluate the quality of a given answer by comparing it to an ideal reference answer.
 
-# EVALUATION CRITERIA
-
-Evaluate the answer on four criteria using a 1-5 scale:
+Score the answer on four criteria, each on a 1-5 scale:
 
 ## 1. INFORMATION RECALL (1-5)
 Does the answer contain all the necessary information from the ideal answer?
-- 5 (Excellent): Contains all key information from ideal answer
+- 5 (Excellent): Contains all key information from the ideal answer
 - 4 (Good): Contains most key information, minor omissions
 - 3 (Adequate): Contains essential information but misses some important details
 - 2 (Poor): Missing significant information
 - 1 (Very Poor): Missing most or all key information
 
 ## 2. INFORMATION PRECISION (1-5)
-Does the answer contain only relevant information, without unnecessary or irrelevant content?
+Does the answer contain only relevant information, without unnecessary content?
 - 5 (Excellent): All information is relevant and on-topic
 - 4 (Good): Mostly relevant with minimal unnecessary content
 - 3 (Adequate): Some irrelevant or tangential information
@@ -138,148 +100,198 @@ Is the answer easily readable, fluent, and well-structured?
 - 2 (Poor): Difficult to read, poor grammar or structure
 - 1 (Very Poor): Nearly unreadable, very poor language quality
 
-# OUTPUT FORMAT
+Be objective and consistent. Judge the answer's content and presentation against \
+the ideal answer, and give a brief (1-2 sentence) explanation for your scores."""
 
-You must respond using this exact format:
 
-RECALL: [score 1-5]
-PRECISION: [score 1-5]
-REPETITION: [score 1-5]
-READABILITY: [score 1-5]
-TOTAL: [sum of all four scores, 4-20]
-EXPLANATION: [Brief 1-2 sentence summary of the evaluation]
+class Evaluation(BaseModel):
+    """Validated judge output. Scores are also clamped to 1-5 after parsing as
+    a belt-and-suspenders guard."""
 
-# INPUT DATA
+    recall: int
+    precision: int
+    repetition: int
+    readability: int
+    explanation: str
 
-## Question (for context)
-{question if question else "Not provided"}
 
-## Ideal Answer (Reference)
-{ideal_answer}
+# Forced-tool-use schema. The judge is required to call this tool (and only
+# this tool), so the response is always a structured object — portable across
+# anthropic SDK versions that predate messages.parse / output_config.
+_SCORE_PROP = {"type": "integer", "enum": [1, 2, 3, 4, 5], "description": "Score from 1 (very poor) to 5 (excellent)"}
+EVAL_TOOL = {
+    "name": "record_evaluation",
+    "description": "Record the four 1-5 criterion scores and a brief explanation for the evaluated answer.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "recall": _SCORE_PROP,
+            "precision": _SCORE_PROP,
+            "repetition": _SCORE_PROP,
+            "readability": _SCORE_PROP,
+            "explanation": {"type": "string", "description": "1-2 sentence justification for the scores"},
+        },
+        "required": ["recall", "precision", "repetition", "readability", "explanation"],
+    },
+}
 
-## Answer to Evaluate
-{answer}
 
-# EVALUATION INSTRUCTIONS
+def _failed_eval(reason: str, explanation: str) -> Dict[str, Any]:
+    """Zero-score result used for un-evaluable or failed rows. A total_score of
+    0 is the sentinel the summary and downstream analyzers use to exclude a
+    row from score statistics."""
+    return {
+        "recall_score": 0,
+        "precision_score": 0,
+        "repetition_score": 0,
+        "readability_score": 0,
+        "total_score": 0,
+        "explanation": explanation,
+        "error": reason,
+    }
 
-1. Read the ideal answer carefully to understand what information should be present
-2. Compare the answer to evaluate against the ideal answer
-3. Assign scores for each of the four criteria
-4. Calculate the total score (sum of all four)
-5. Provide a brief explanation
 
-Be objective and consistent in your scoring. Focus on the quality of the answer content and presentation.
-"""
+class AnswerEvaluator:
+    """Scores answer quality with Claude Opus using four criteria."""
+
+    def __init__(self, model: str = DEFAULT_MODEL):
+        self.model = model
+        self.client = anthropic.Anthropic()
+        # Fail fast with a clear message instead of scoring every row 0 when no
+        # credential is available. The anthropic SDK resolves a key lazily (at
+        # call time), so check up front. `ant auth login` users have a key the
+        # SDK reads — set ANTHROPIC_API_KEY if you don't.
+        has_credential = bool(
+            os.environ.get("ANTHROPIC_API_KEY")
+            or os.environ.get("ANTHROPIC_AUTH_TOKEN")
+            or getattr(self.client, "api_key", None)
+            or getattr(self.client, "auth_token", None)
+        )
+        if not has_credential:
+            raise RuntimeError(
+                "No Anthropic credential found. Set ANTHROPIC_API_KEY (or "
+                "ANTHROPIC_AUTH_TOKEN, or run `ant auth login`). The plain "
+                "anthropic SDK does not read the `claude login` keychain."
+            )
+        self.total_input_tokens = 0
+        self.total_output_tokens = 0
+        print(f"Initializing Opus evaluator with model: {model}")
+
+    def evaluate_answer(
+        self,
+        answer: str,
+        ideal_answer: str,
+        question: str = "",
+    ) -> Dict[str, Any]:
+        """Evaluate one answer against the ideal answer.
+
+        Returns a dict with recall_score / precision_score / repetition_score /
+        readability_score / total_score / explanation / error (error is None on
+        success). Scores are 1-5; total_score is their sum (4-20).
+        """
+        if not answer or not ideal_answer:
+            return _failed_eval("Empty answer or ideal answer", "Cannot evaluate empty text")
+        if answer.startswith("[ERROR:") or answer.startswith("[SYSTEM ERROR:"):
+            return _failed_eval("Answer contains error", "Answer execution failed")
+
+        user_content = (
+            "Evaluate the following answer against the ideal reference answer.\n\n"
+            f"## Question\n{question or 'Not provided'}\n\n"
+            f"## Ideal Answer (reference)\n{ideal_answer}\n\n"
+            f"## Answer to Evaluate\n{answer}"
+        )
 
         try:
-            response = ollama.chat(
+            response = self.client.messages.create(
                 model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                options={"temperature": 0.1}  # Low temperature for consistent evaluation
+                max_tokens=1024,
+                system=[
+                    {
+                        "type": "text",
+                        "text": RUBRIC,
+                        # The rubric is identical across every call; cache it so
+                        # large batches pay for it once. Silently no-ops if the
+                        # rubric is below the model's minimum cacheable prefix.
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
+                messages=[{"role": "user", "content": user_content}],
+                tools=[EVAL_TOOL],
+                tool_choice={"type": "tool", "name": "record_evaluation"},
             )
-            
-            # Parse response
-            llm_output = response.get('message', {}).get('content', '')
-            
-            # Extract scores using regex
-            recall_match = re.search(r'RECALL:\s*(\d+)', llm_output, re.IGNORECASE)
-            precision_match = re.search(r'PRECISION:\s*(\d+)', llm_output, re.IGNORECASE)
-            repetition_match = re.search(r'REPETITION:\s*(\d+)', llm_output, re.IGNORECASE)
-            readability_match = re.search(r'READABILITY:\s*(\d+)', llm_output, re.IGNORECASE)
-            total_match = re.search(r'TOTAL:\s*(\d+)', llm_output, re.IGNORECASE)
-            explanation_match = re.search(r'EXPLANATION:\s*(.+?)(?:\n|$)', llm_output, re.IGNORECASE | re.DOTALL)
-            
-            if recall_match:
-                result["recall_score"] = min(5, max(1, int(recall_match.group(1))))
-            if precision_match:
-                result["precision_score"] = min(5, max(1, int(precision_match.group(1))))
-            if repetition_match:
-                result["repetition_score"] = min(5, max(1, int(repetition_match.group(1))))
-            if readability_match:
-                result["readability_score"] = min(5, max(1, int(readability_match.group(1))))
-            
-            # Calculate total (verify against LLM's calculation)
-            calculated_total = (
-                result["recall_score"] + 
-                result["precision_score"] + 
-                result["repetition_score"] + 
-                result["readability_score"]
+
+            usage = getattr(response, "usage", None)
+            if usage is not None:
+                self.total_input_tokens += getattr(usage, "input_tokens", 0) or 0
+                self.total_output_tokens += getattr(usage, "output_tokens", 0) or 0
+
+            tool_block = next(
+                (b for b in response.content if getattr(b, "type", None) == "tool_use"),
+                None,
             )
-            
-            if total_match:
-                llm_total = int(total_match.group(1))
-                # Use calculated total if LLM's total doesn't match
-                result["total_score"] = calculated_total
-            else:
-                result["total_score"] = calculated_total
-            
-            if explanation_match:
-                result["explanation"] = explanation_match.group(1).strip()  # Limit length
-                
+            if tool_block is None:
+                return _failed_eval(
+                    "No tool call in response (possible refusal)",
+                    "Judge returned no parseable evaluation",
+                )
+
+            parsed = Evaluation(**tool_block.input)
+            clamp = lambda v: min(5, max(1, int(v)))
+            recall = clamp(parsed.recall)
+            precision = clamp(parsed.precision)
+            repetition = clamp(parsed.repetition)
+            readability = clamp(parsed.readability)
+
+            return {
+                "recall_score": recall,
+                "precision_score": precision,
+                "repetition_score": repetition,
+                "readability_score": readability,
+                "total_score": recall + precision + repetition + readability,
+                "explanation": parsed.explanation.strip(),
+                "error": None,
+            }
+        except (
+            anthropic.AuthenticationError,
+            anthropic.PermissionDeniedError,
+            anthropic.NotFoundError,
+        ):
+            # Bad key / no access / wrong --model would fail identically on
+            # every row — abort the whole run instead of zeroing all rows.
+            raise
         except Exception as e:
-            result["error"] = str(e)
-            result["explanation"] = f"Evaluation failed: {str(e)}"
-        
-        return result
+            return _failed_eval(str(e), f"Evaluation failed: {e}")
 
 
 def evaluate_row(
-    row: Dict, 
+    row: Dict,
     evaluator: AnswerEvaluator,
-    verbose: bool = False
-) -> Dict[str, Any]:   
-    """
-    Evaluate a single row from the results CSV.
-    
-    Args:
-        row: Dictionary containing CSV row data
-        evaluator: AnswerEvaluator instance
-        verbose: Print detailed progress
-        
-    Returns:
-        Dict with new columns to add for both baseline and TogoMCP
-    """
-    question = str(row.get('question', ''))
-    ideal_answer = str(row.get('ideal_answer', ''))
-    baseline_answer = str(row.get('baseline_answer', ''))
-    togomcp_answer = str(row.get('togomcp_answer', ''))
-    
-    baseline_success = str(row.get('baseline_success', 'True')).lower() == 'true'
-    togomcp_success = str(row.get('togomcp_success', 'True')).lower() == 'true'
-    
-    # Evaluate baseline answer
-    if baseline_success and baseline_answer and not baseline_answer.startswith('[ERROR'):
+    verbose: bool = False,
+) -> Dict[str, Any]:
+    """Evaluate the baseline and TogoMCP answers from one CSV row."""
+    question = str(row.get("question", ""))
+    ideal_answer = str(row.get("ideal_answer", ""))
+    baseline_answer = str(row.get("baseline_answer", ""))
+    togomcp_answer = str(row.get("togomcp_answer", ""))
+
+    baseline_success = str(row.get("baseline_success", "True")).lower() == "true"
+    togomcp_success = str(row.get("togomcp_success", "True")).lower() == "true"
+
+    if baseline_success and baseline_answer and not baseline_answer.startswith("[ERROR"):
         if verbose:
             print("    Evaluating baseline answer...")
         baseline_eval = evaluator.evaluate_answer(baseline_answer, ideal_answer, question)
     else:
-        baseline_eval = {
-            "recall_score": 0,
-            "precision_score": 0,
-            "repetition_score": 0,
-            "readability_score": 0,
-            "total_score": 0,
-            "explanation": "Answer failed or contains error",
-            "error": "Execution failed"
-        }
-    
-    # Evaluate TogoMCP answer
-    if togomcp_success and togomcp_answer and not togomcp_answer.startswith('[ERROR'):
+        baseline_eval = _failed_eval("Execution failed", "Answer failed or contains error")
+
+    if togomcp_success and togomcp_answer and not togomcp_answer.startswith("[ERROR"):
         if verbose:
             print("    Evaluating TogoMCP answer...")
         togomcp_eval = evaluator.evaluate_answer(togomcp_answer, ideal_answer, question)
     else:
-        togomcp_eval = {
-            "recall_score": 0,
-            "precision_score": 0,
-            "repetition_score": 0,
-            "readability_score": 0,
-            "total_score": 0,
-            "explanation": "Answer failed or contains error",
-            "error": "Execution failed"
-        }
-    
-    result = {
+        togomcp_eval = _failed_eval("Execution failed", "Answer failed or contains error")
+
+    return {
         # Baseline scores
         "baseline_recall": baseline_eval["recall_score"],
         "baseline_precision": baseline_eval["precision_score"],
@@ -287,7 +299,6 @@ def evaluate_row(
         "baseline_readability": baseline_eval["readability_score"],
         "baseline_total_score": baseline_eval["total_score"],
         "baseline_evaluation_explanation": baseline_eval["explanation"],
-        
         # TogoMCP scores
         "togomcp_recall": togomcp_eval["recall_score"],
         "togomcp_precision": togomcp_eval["precision_score"],
@@ -296,44 +307,27 @@ def evaluate_row(
         "togomcp_total_score": togomcp_eval["total_score"],
         "togomcp_evaluation_explanation": togomcp_eval["explanation"],
     }
-    
-    return result
 
 
 def process_csv(
-    input_path: Path, 
-    output_path: Optional[Path], 
+    input_path: Path,
+    output_path: Path,
     evaluator: AnswerEvaluator,
-    verbose: bool = True
+    verbose: bool = True,
 ) -> pd.DataFrame:
-    """
-    Process a CSV file and add evaluation columns.
-    
-    Args:
-        input_path: Path to input CSV file
-        output_path: Path to output CSV file (None = modify in place)
-        evaluator: AnswerEvaluator instance
-        verbose: Print progress
-        
-    Returns:
-        DataFrame with added evaluation columns
-    """
+    """Read a results CSV, add the 12 evaluation columns, and write it out."""
     if verbose:
-        print(f"\nProcessing: {input_path}")
-    
-    # Read CSV
+        print(f"\nProcessing: {input_path} -> {output_path}")
+
     df = pd.read_csv(input_path)
-    
+
     if verbose:
         print(f"  Found {len(df)} rows")
-        
-        # Check for existing evaluation columns
-        eval_columns = [col for col in df.columns if 'recall' in col or 'precision' in col or 'total_score' in col]
+        eval_columns = [c for c in df.columns if "recall" in c or "precision" in c or "total_score" in c]
         if eval_columns:
-            print(f"  Warning: Found existing evaluation columns - they will be overwritten")
-    
-    # New columns to add
-    new_columns = {
+            print("  Warning: existing evaluation columns will be overwritten")
+
+    new_columns: Dict[str, list] = {
         "baseline_recall": [],
         "baseline_precision": [],
         "baseline_repetition": [],
@@ -347,35 +341,27 @@ def process_csv(
         "togomcp_total_score": [],
         "togomcp_evaluation_explanation": [],
     }
-    
-    # Process each row
+
     for idx, row in df.iterrows():
         if verbose:
-            question_id = row.get('question_id', idx)
-            print(f"  Evaluating {question_id}...", end=" ")
-        
+            print(f"  Evaluating {row.get('question_id', idx)}...", end=" ")
+
         result = evaluate_row(row.to_dict(), evaluator, verbose=False)
-        
         for col, value in result.items():
-            if col in new_columns:
-                new_columns[col].append(value)
-        
+            new_columns[col].append(value)
+
         if verbose:
-            baseline_total = result.get("baseline_total_score", 0)
-            togomcp_total = result.get("togomcp_total_score", 0)
-            print(f"Baseline: {baseline_total}/20, TogoMCP: {togomcp_total}/20")
-    
-    # Add new columns to DataFrame
+            print(
+                f"Baseline: {result['baseline_total_score']}/20, "
+                f"TogoMCP: {result['togomcp_total_score']}/20"
+            )
+
     for col, values in new_columns.items():
         df[col] = values
-    
-    # Save to output
-    save_path = output_path or input_path
-    df.to_csv(save_path, index=False)
-    
+
+    df.to_csv(output_path, index=False)
     if verbose:
-        print(f"\n  ✓ Saved to: {save_path}")
-    
+        print(f"  Saved to: {output_path}")
     return df
 
 
@@ -384,138 +370,124 @@ def print_summary(df: pd.DataFrame, filename: str):
     print(f"\n{'='*70}")
     print(f"Evaluation Summary: {filename}")
     print(f"{'='*70}")
-    
+
     total = len(df)
-    
-    # Success statistics
-    if 'baseline_success' in df.columns:
-        baseline_success = (df['baseline_success'] == True).sum()
-        togomcp_success = (df['togomcp_success'] == True).sum()
-        print(f"\nExecution Success:")
+
+    if "baseline_success" in df.columns:
+        baseline_success = (df["baseline_success"] == True).sum()
+        togomcp_success = (df["togomcp_success"] == True).sum()
+        print("\nExecution Success:")
         print(f"  Baseline:  {baseline_success:3d}/{total} ({100*baseline_success/total:.1f}%)")
         print(f"  TogoMCP:   {togomcp_success:3d}/{total} ({100*togomcp_success/total:.1f}%)")
-    
-    # Score statistics (only for successful executions with score > 0)
-    baseline_evaluated = df[df['baseline_total_score'] > 0]
-    togomcp_evaluated = df[df['togomcp_total_score'] > 0]
-    
+
+    baseline_evaluated = df[df["baseline_total_score"] > 0]
+    togomcp_evaluated = df[df["togomcp_total_score"] > 0]
+
     if len(baseline_evaluated) > 0:
         print(f"\nBaseline Scores (n={len(baseline_evaluated)}):")
-        print(f"  Recall:      {baseline_evaluated['baseline_recall'].mean():.2f} ± {baseline_evaluated['baseline_recall'].std():.2f}")
-        print(f"  Precision:   {baseline_evaluated['baseline_precision'].mean():.2f} ± {baseline_evaluated['baseline_precision'].std():.2f}")
-        print(f"  Repetition:  {baseline_evaluated['baseline_repetition'].mean():.2f} ± {baseline_evaluated['baseline_repetition'].std():.2f}")
-        print(f"  Readability: {baseline_evaluated['baseline_readability'].mean():.2f} ± {baseline_evaluated['baseline_readability'].std():.2f}")
-        print(f"  Total:       {baseline_evaluated['baseline_total_score'].mean():.2f} ± {baseline_evaluated['baseline_total_score'].std():.2f} (out of 20)")
-    
+        for dim in ("recall", "precision", "repetition", "readability"):
+            col = f"baseline_{dim}"
+            print(f"  {dim.capitalize():12s} {baseline_evaluated[col].mean():.2f} ± {baseline_evaluated[col].std():.2f}")
+        print(f"  {'Total':12s} {baseline_evaluated['baseline_total_score'].mean():.2f} ± {baseline_evaluated['baseline_total_score'].std():.2f} (out of 20)")
+
     if len(togomcp_evaluated) > 0:
         print(f"\nTogoMCP Scores (n={len(togomcp_evaluated)}):")
-        print(f"  Recall:      {togomcp_evaluated['togomcp_recall'].mean():.2f} ± {togomcp_evaluated['togomcp_recall'].std():.2f}")
-        print(f"  Precision:   {togomcp_evaluated['togomcp_precision'].mean():.2f} ± {togomcp_evaluated['togomcp_precision'].std():.2f}")
-        print(f"  Repetition:  {togomcp_evaluated['togomcp_repetition'].mean():.2f} ± {togomcp_evaluated['togomcp_repetition'].std():.2f}")
-        print(f"  Readability: {togomcp_evaluated['togomcp_readability'].mean():.2f} ± {togomcp_evaluated['togomcp_readability'].std():.2f}")
-        print(f"  Total:       {togomcp_evaluated['togomcp_total_score'].mean():.2f} ± {togomcp_evaluated['togomcp_total_score'].std():.2f} (out of 20)")
-    
-    # Comparison (for successfully evaluated pairs)
-    both_evaluated = df[(df['baseline_total_score'] > 0) & (df['togomcp_total_score'] > 0)]
-    if len(both_evaluated) > 0:
-        print(f"\nComparative Analysis (n={len(both_evaluated)} pairs):")
-        score_diff = both_evaluated['togomcp_total_score'] - both_evaluated['baseline_total_score']
-        togomcp_better = (score_diff > 0).sum()
-        baseline_better = (score_diff < 0).sum()
-        tied = (score_diff == 0).sum()
-        
-        print(f"  TogoMCP better:  {togomcp_better:3d} ({100*togomcp_better/len(both_evaluated):.1f}%)")
-        print(f"  Baseline better: {baseline_better:3d} ({100*baseline_better/len(both_evaluated):.1f}%)")
-        print(f"  Tied:            {tied:3d} ({100*tied/len(both_evaluated):.1f}%)")
-        print(f"  Mean difference: {score_diff.mean():+.2f} (TogoMCP - Baseline)")
-    
+        for dim in ("recall", "precision", "repetition", "readability"):
+            col = f"togomcp_{dim}"
+            print(f"  {dim.capitalize():12s} {togomcp_evaluated[col].mean():.2f} ± {togomcp_evaluated[col].std():.2f}")
+        print(f"  {'Total':12s} {togomcp_evaluated['togomcp_total_score'].mean():.2f} ± {togomcp_evaluated['togomcp_total_score'].std():.2f} (out of 20)")
+
+    both = df[(df["baseline_total_score"] > 0) & (df["togomcp_total_score"] > 0)]
+    if len(both) > 0:
+        diff = both["togomcp_total_score"] - both["baseline_total_score"]
+        print(f"\nComparative Analysis (n={len(both)} pairs):")
+        print(f"  TogoMCP better:  {(diff > 0).sum():3d} ({100*(diff > 0).sum()/len(both):.1f}%)")
+        print(f"  Baseline better: {(diff < 0).sum():3d} ({100*(diff < 0).sum()/len(both):.1f}%)")
+        print(f"  Tied:            {(diff == 0).sum():3d} ({100*(diff == 0).sum()/len(both):.1f}%)")
+        print(f"  Mean difference: {diff.mean():+.2f} (TogoMCP - Baseline)")
+
     print(f"{'='*70}\n")
+
+
+def _versioned_paths(base: Path, runs: int) -> List[Path]:
+    """For runs>1, derive `<stem>-v1<suffix>` ... `<stem>-vN<suffix>` so the
+    output matches the v1..v5 naming used in results/reevaluation.md."""
+    if runs <= 1:
+        return [base]
+    return [base.with_name(f"{base.stem}-v{i}{base.suffix}") for i in range(1, runs + 1)]
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Add LLM-based evaluation scores to test results CSV",
+        description="Add Opus-based evaluation scores to a test-results CSV",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Evaluation Criteria:
-  1. Information Recall (1-5): Completeness of necessary information
-  2. Information Precision (1-5): Relevance of provided information
-  3. Information Repetition (1-5): Avoidance of redundancy
-  4. Readability (1-5): Clarity and fluency
-  Total Score: Sum of all four criteria (4-20)
+Evaluation Criteria (each 1-5; total 4-20):
+  1. Information Recall      - completeness of necessary information
+  2. Information Precision   - relevance of provided information
+  3. Information Repetition  - avoidance of redundancy
+  4. Readability             - clarity and fluency
 
 Examples:
   python add_llm_evaluation.py test_results.csv
   python add_llm_evaluation.py test_results.csv -o evaluated.csv
-  python add_llm_evaluation.py test_results.csv --llm-model llama3.2
-        """
+  python add_llm_evaluation.py test_results.csv --model claude-opus-4-7
+  python add_llm_evaluation.py test_results.csv -o results.csv --runs 5
+        """,
     )
+    parser.add_argument("input_file", help="Input CSV file from automated_test_runner.py")
+    parser.add_argument("-o", "--output", help="Output CSV file (default: overwrite input file)")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Claude judge model (default: {DEFAULT_MODEL})")
     parser.add_argument(
-        "input_file",
-        help="Input CSV file from automated_test_runner.py"
+        "--runs",
+        type=int,
+        default=1,
+        help="Number of independent evaluation passes. >1 writes <output>-v1..-vN.csv",
     )
-    parser.add_argument(
-        "-o", "--output",
-        help="Output CSV file (default: overwrite input file)"
-    )
-    parser.add_argument(
-        "--llm-model",
-        default=DEFAULT_MODEL,
-        help=f"Ollama model for evaluation (default: {DEFAULT_MODEL})"
-    )
-    parser.add_argument(
-        "-q", "--quiet",
-        action="store_true",
-        help="Suppress progress output"
-    )
-    parser.add_argument(
-        "--no-summary",
-        action="store_true",
-        help="Don't print summary statistics"
-    )
-    
+    parser.add_argument("-q", "--quiet", action="store_true", help="Suppress progress output")
+    parser.add_argument("--no-summary", action="store_true", help="Don't print summary statistics")
+
     args = parser.parse_args()
-    
-    # Validate input file
+
     input_path = Path(args.input_file)
     if not input_path.exists():
         print(f"Error: File not found: {input_path}")
         sys.exit(1)
-    
-    # Initialize evaluator
+    if args.runs < 1:
+        print("Error: --runs must be >= 1")
+        sys.exit(1)
+
     try:
-        evaluator = AnswerEvaluator(model=args.llm_model)
+        evaluator = AnswerEvaluator(model=args.model)
     except Exception as e:
         print(f"Error initializing evaluator: {e}")
-        print("Make sure Ollama is running and the model is available.")
-        print(f"Try: ollama pull {args.llm_model}")
+        print("Set ANTHROPIC_API_KEY (or ANTHROPIC_AUTH_TOKEN / `ant auth login`).")
         sys.exit(1)
-    
-    # Process file
-    output_path = Path(args.output) if args.output else None
-    
-    try:
-        df = process_csv(
-            input_path, 
-            output_path, 
-            evaluator,
-            verbose=not args.quiet
-        )
-    except Exception as e:
-        print(f"Error processing CSV: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-    
-    # Print summary
-    if not args.no_summary:
-        print_summary(df, input_path.name)
-    
-    print(f"✓ Evaluation complete!")
-    if output_path:
-        print(f"  Results saved to: {output_path}")
-    else:
-        print(f"  Results saved to: {input_path}")
+
+    base_output = Path(args.output) if args.output else input_path
+    output_paths = _versioned_paths(base_output, args.runs)
+
+    start = time.time()
+    for run_idx, out_path in enumerate(output_paths, start=1):
+        if args.runs > 1 and not args.quiet:
+            print(f"\n=== Evaluation run {run_idx}/{args.runs} ===")
+        try:
+            df = process_csv(input_path, out_path, evaluator, verbose=not args.quiet)
+        except Exception as e:
+            print(f"Error processing CSV: {e}")
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
+        if not args.no_summary:
+            print_summary(df, out_path.name)
+
+    elapsed = time.time() - start
+    print("✓ Evaluation complete!")
+    print(f"  Runs: {args.runs} | Output: {', '.join(p.name for p in output_paths)}")
+    print(
+        f"  Judge tokens: {evaluator.total_input_tokens:,} in / "
+        f"{evaluator.total_output_tokens:,} out | Wall time: {elapsed:.1f}s"
+    )
 
 
 if __name__ == "__main__":
