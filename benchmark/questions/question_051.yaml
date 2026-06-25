@@ -1,0 +1,231 @@
+id: question_051
+type: choice
+body: >-
+  Cobalamin (vitamin B12) and its derivatives — including cob(I)alamin,
+  cob(II)alamin, adenosylcobalamin, and methylcobalamin — appear as explicit
+  participants in some approved, enzyme-catalysed biochemical reactions. Among
+  approved reactions that carry an Enzyme Commission (EC) number and include a
+  cobalamin species as a reaction participant, which EC top-level enzyme class
+  accounts for the greatest number of distinct reactions?
+
+choices:
+  - "Oxidoreductases (EC 1)"
+  - "Transferases (EC 2)"
+  - "Hydrolases (EC 3)"
+  - "Lyases (EC 4)"
+  - "Isomerases (EC 5)"
+  - "Ligases (EC 6)"
+  - "Translocases (EC 7)"
+
+inspiration_keyword:
+  keyword_id: KW-0846
+  name: Cobalamin
+  category: Ligand
+
+togomcp_databases_used:
+  - chebi
+  - rhea
+
+verification_score:
+  biological_insight: 3
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 15 minutes
+  method: >-
+    Searched "cobalamin vitamin B12 enzyme EC class distribution reactions"
+    (0 results) and "cobalamin-dependent enzymes reactions review" (12 review
+    articles, e.g. PMIDs 35726326, 30079906, 28167430) to try to determine which
+    EC class accounts for the most cobalamin-participant reactions.
+  result: |
+    The review literature characterises the catalytic uses of vitamin B12 —
+    methylcobalamin-dependent methionine synthase and the adenosylcobalamin-
+    dependent isomerases/mutases (EC 5.4.99.-, e.g. methylmalonyl-CoA mutase).
+    None enumerate, across a reaction database, the EC-class distribution of
+    reactions in which a cobalamin species is an explicit reaction participant.
+    The literature emphasis on mutases would in fact mislead a reader toward
+    isomerases (EC 5), which is the opposite of the database result, because
+    enzyme-bound cobalamin cofactors are regenerated within the catalytic cycle
+    and therefore omitted from those reaction equations.
+  conclusion: PASS (cannot answer from literature - requires RDF reaction-participant modeling)
+
+# STRUCTURED VOCABULARY DISCOVERY — DESCENDANTS CHECKED (OLS4:searchClasses + ChEBI rdfs:subClassOf*)
+# Concept "cobalamin (vitamin B12) cofactor" resolved to the ChEBI class
+# "cobalamins" (CHEBI:23334). Its full subClassOf* closure (Query 1) yields 15
+# distinct entities, ALL of which are used in the Rhea VALUES clause (no sampling):
+#   CHEBI:23334 cobalamins, 30411 cobalamin, 23333 cob(III)alamins,
+#   15982 cob(I)alamin, 16304 cob(II)alamin, 28911 cob(III)alamin,
+#   18408 cobamamide (adenosylcobalamin), 28115 methylcobalamin,
+#   27786 hydroxocobalamin, 15852 aquacob(III)alamin, 17439 cyanocob(III)alamin,
+#   30529 nitritocobalamin, 24339 glutathionylcobalamin, 140785 R-cob(III)alamin,
+#   60493 adenosylcobalamin 5'-phosphate(2-)
+
+# ARITHMETIC VERIFICATION (Checkpoint B — GROUP BY reconciliation)
+#   Query 2 GROUP BY EC top-level class (COUNT DISTINCT reaction):
+#     EC 2 (transferases) = 7; EC 1 = 1; EC 3 = 1; EC 7 = 1; EC 4/5/6 = 0
+#     Sum = 7 + 1 + 1 + 1 = 10
+#   Query 3 independent total: COUNT(DISTINCT ?reaction) = 10
+#   10 = 10 -> mutually exclusive (each reaction carries exactly one EC, all in
+#   distinct classes; no reaction double-counted across classes)
+
+sparql_queries:
+  - query_number: 1
+    database: chebi
+    description: >-
+      Enumerate the full ChEBI "cobalamins" family (CHEBI:23334 and all
+      subclasses) used to define the cobalamin cofactor set.
+    query: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT DISTINCT ?entity ?label
+      FROM <http://rdf.ebi.ac.uk/dataset/chebi>
+      WHERE {
+        ?entity rdfs:subClassOf* obo:CHEBI_23334 ;
+                rdfs:label ?label .
+        FILTER(STRSTARTS(STR(?entity), "http://purl.obolibrary.org/obo/CHEBI_"))
+      }
+      ORDER BY ?label
+    result_count: 15
+
+  - query_number: 2
+    database: rhea
+    description: >-
+      Count distinct approved reactions that carry an EC number and contain a
+      cobalamin species as a participant, grouped by EC top-level class.
+    query: |
+      PREFIX rhea: <http://rdf.rhea-db.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT ?ecClass (COUNT(DISTINCT ?reaction) AS ?n)
+      WHERE {
+        VALUES ?chebi {
+          obo:CHEBI_140785 obo:CHEBI_60493 obo:CHEBI_15852 obo:CHEBI_15982
+          obo:CHEBI_16304 obo:CHEBI_28911 obo:CHEBI_23333 obo:CHEBI_30411
+          obo:CHEBI_23334 obo:CHEBI_18408 obo:CHEBI_17439 obo:CHEBI_24339
+          obo:CHEBI_27786 obo:CHEBI_28115 obo:CHEBI_30529
+        }
+        ?reaction rdfs:subClassOf rhea:Reaction ;
+                  rhea:status <http://rdf.rhea-db.org/Approved> ;
+                  rhea:ec ?ec ;
+                  rhea:side ?side .
+        ?side rhea:contains ?participant .
+        ?participant rhea:compound ?compound .
+        ?compound rdfs:subClassOf rhea:SmallMolecule ;
+                  rhea:chebi ?chebi .
+        BIND(STRBEFORE(STRAFTER(STR(?ec), "enzyme/"), ".") AS ?ecClass)
+      }
+      GROUP BY ?ecClass
+      ORDER BY DESC(?n)
+    result_count: 4
+
+  - query_number: 3
+    database: rhea
+    description: >-
+      Arithmetic verification (Checkpoint B): total distinct approved
+      EC-annotated reactions containing a cobalamin participant, computed
+      independently of the GROUP BY.
+    query: |
+      PREFIX rhea: <http://rdf.rhea-db.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT (COUNT(DISTINCT ?reaction) AS ?total)
+      WHERE {
+        VALUES ?chebi {
+          obo:CHEBI_140785 obo:CHEBI_60493 obo:CHEBI_15852 obo:CHEBI_15982
+          obo:CHEBI_16304 obo:CHEBI_28911 obo:CHEBI_23333 obo:CHEBI_30411
+          obo:CHEBI_23334 obo:CHEBI_18408 obo:CHEBI_17439 obo:CHEBI_24339
+          obo:CHEBI_27786 obo:CHEBI_28115 obo:CHEBI_30529
+        }
+        ?reaction rdfs:subClassOf rhea:Reaction ;
+                  rhea:status <http://rdf.rhea-db.org/Approved> ;
+                  rhea:ec ?ec ;
+                  rhea:side ?side .
+        ?side rhea:contains ?participant .
+        ?participant rhea:compound ?compound .
+        ?compound rhea:chebi ?chebi .
+      }
+    result_count: 1
+
+rdf_triples: |
+  @prefix rhea: <http://rdf.rhea-db.org/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix enz: <http://purl.uniprot.org/enzyme/> .
+
+  obo:CHEBI_30411 rdfs:subClassOf obo:CHEBI_23334 .
+  # Database: ChEBI | Query: 1 | Comment: cobalamin is a subclass of the cobalamins family (the cofactor set root)
+
+  obo:CHEBI_18408 rdfs:label "cobamamide" .
+  # Database: ChEBI | Query: 1 | Comment: cobamamide = adenosylcobalamin (CHEBI:18408), a catalytically active B12 form
+
+  obo:CHEBI_28115 rdfs:label "methylcobalamin" .
+  # Database: ChEBI | Query: 1 | Comment: methylcobalamin (CHEBI:28115), the methyl-transfer-active B12 form
+
+  rhea:28671 rdfs:subClassOf rhea:Reaction .
+  # Database: Rhea | Query: 2 | Comment: an approved master (undirected) reaction, counted once
+
+  rhea:28671 rhea:status <http://rdf.rhea-db.org/Approved> .
+  # Database: Rhea | Query: 2 | Comment: only Approved reactions are counted
+
+  rhea:28671 rhea:ec enz:2.5.1.17 .
+  # Database: Rhea | Query: 2 | Comment: EC 2.5.1.17 (cob(II)alamin adenosyltransferase) -> EC class 2 (transferases)
+
+  rhea:28671 rhea:side _:side_28671 .
+  # Database: Rhea | Query: 2 | Comment: reaction->side->contains->compound->chebi is the mandatory participant path
+
+  obo:CHEBI_16304 rdfs:label "cob(II)alamin" .
+  # Database: ChEBI | Query: 1 | Comment: cob(II)alamin (CHEBI:16304) is the cobalamin participant of RHEA:28671
+
+  rhea:16049 rhea:ec enz:2.7.8.26 .
+  # Database: Rhea | Query: 2 | Comment: cobalamin synthase (EC 2.7.8.26, transferase) builds adenosylcobalamin - cofactor biosynthesis
+
+  rhea:16113 rhea:ec enz:1.16.1.6 .
+  # Database: Rhea | Query: 2 | Comment: cyanocobalamin reductase (EC 1.16.1.6) - the single oxidoreductase (EC 1) reaction
+
+  rhea:30367 rhea:ec enz:3.1.3.73 .
+  # Database: Rhea | Query: 2 | Comment: adenosylcobalamin 5'-phosphatase (EC 3.1.3.73) - the single hydrolase (EC 3) reaction
+
+  rhea:17873 rhea:ec enz:7.6.2.8 .
+  # Database: Rhea | Query: 2 | Comment: cobalamin ABC transporter (EC 7.6.2.8) - the single translocase (EC 7) reaction
+
+exact_answer:
+  - "Transferases (EC 2)"
+
+ideal_answer: |
+  Transferases (EC 2) account for the most distinct approved, EC-annotated
+  reactions in which a cobalamin species is an explicit participant: 7 of the 10
+  such reactions, compared with one each for oxidoreductases (EC 1), hydrolases
+  (EC 3), and translocases (EC 7), and none for lyases (EC 4), isomerases
+  (EC 5), or ligases (EC 6). The seven transferase reactions concern the
+  biosynthesis and processing of the cofactor rather than its catalytic use:
+  cob(II)alamin adenosyltransferases (EC 2.5.1.17 and EC 2.5.1.154) that form
+  adenosylcobalamin, adenosylcobinamide-GDP:alpha-ribazole cobalamin synthase
+  (EC 2.7.8.26), and glutathione-dependent alkylcobalamin reductase
+  (EC 2.5.1.151). The most informative result is the complete absence of
+  isomerases: the textbook adenosylcobalamin-dependent mutases (EC 5.4.99.-,
+  such as methylmalonyl-CoA mutase) and the methylcobalamin-dependent methionine
+  synthase do not list a cobalamin as a reaction participant, because the
+  enzyme-bound cofactor shuttles a radical or methyl group and is regenerated
+  within the catalytic cycle rather than consumed. Cobalamin therefore appears in
+  the reaction record chiefly where the cofactor itself is synthesised, reduced
+  (EC 1.16.1.6), dephosphorylated (EC 3.1.3.73), or transported (EC 7.6.2.8), so
+  the enzyme class with the most cobalamin-participant reactions reflects the
+  metabolism of the cofactor, not its catalytic deployment.
+
+question_template_used: Cross-database categorical comparison (which EC class has the most reactions)
+
+time_spent:
+  exploration: 40 minutes
+  formulation: 20 minutes
+  verification: 30 minutes
+  pubmed_test: 15 minutes
+  extraction: 20 minutes
+  documentation: 20 minutes
+  total: 145 minutes
