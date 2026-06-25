@@ -20,7 +20,9 @@ except ImportError:
 # Constants
 # ---------------------------------------------------------------------------
 
-BASE_PATH = Path("/Users/arkinjo/work/GitHub/togo-mcp/evaluation2/questions")
+# Resolve relative to this script so it works regardless of checkout location:
+# benchmark/scripts/verify_questions.py -> benchmark/questions
+BASE_PATH = Path(__file__).resolve().parents[1] / "questions"
 
 VALID_TYPES = {"yes_no", "factoid", "list", "summary", "choice"}
 
@@ -447,9 +449,10 @@ def verify_coverage_tracker(actual_counts: dict,
                              actual_db_counts: dict,
                              total: int,
                              issues_out: list,
-                             warnings_out: list):
+                             warnings_out: list,
+                             base_dir: Path = BASE_PATH):
     """Validate coverage_tracker.yaml against observed question data."""
-    tracker_path = BASE_PATH / "coverage_tracker.yaml"
+    tracker_path = base_dir / "coverage_tracker.yaml"
     if not tracker_path.exists():
         print(f"\n  ⚠  coverage_tracker.yaml not found")
         warnings_out.append("coverage_tracker.yaml not found")
@@ -498,8 +501,49 @@ def verify_coverage_tracker(actual_counts: dict,
 # Main
 # ---------------------------------------------------------------------------
 
-def verify_questions():
-    question_files = sorted(BASE_PATH.glob("question_*.yaml"))
+def _print_issue_summary(all_issues: list, all_warnings: list):
+    """Print the WARNINGS / ERRORS blocks shared by full and single-file runs."""
+    if all_warnings:
+        print(f"\n{'=' * 70}")
+        print(f"WARNINGS ({len(all_warnings)}):")
+        for w in all_warnings:
+            print(f"  ⚠  {w}")
+    if all_issues:
+        print(f"\n{'=' * 70}")
+        print(f"ERRORS ({len(all_issues)}):")
+        for err in all_issues:
+            print(f"  ❌ {err}")
+    else:
+        print(f"\n✓ No errors found!")
+    print(f"\n{'=' * 70}")
+    print(f"VERIFICATION COMPLETE  —  "
+          f"{len(all_issues)} error(s), {len(all_warnings)} warning(s)")
+    print(f"{'=' * 70}\n")
+
+
+def verify_questions(targets=None):
+    """Validate questions.
+
+    targets:
+      None / []         -> full run on the repo questions dir (per-question +
+                           aggregate distribution/coverage + tracker reconcile).
+      a single directory -> full run on that directory.
+      one or more files  -> single-file mode: per-question structural checks
+                           only. Aggregate and coverage-tracker checks are
+                           skipped (they need the whole set). This is what the
+                           qa-generator checkpoint uses on a candidate file
+                           before it is written into questions/.
+    """
+    single_file_mode = False
+    base_dir = BASE_PATH
+    if not targets:
+        question_files = sorted(BASE_PATH.glob("question_*.yaml"))
+    elif len(targets) == 1 and Path(targets[0]).is_dir():
+        base_dir = Path(targets[0])
+        question_files = sorted(base_dir.glob("question_*.yaml"))
+    else:
+        question_files = [Path(t) for t in targets]
+        single_file_mode = True
 
     total_questions  = 0
     all_types        = []
@@ -515,7 +559,11 @@ def verify_questions():
     print("=" * 70)
     print("TOGOMCP BENCHMARK QUESTIONS VERIFICATION")
     print("=" * 70)
-    print(f"\nScanning {BASE_PATH} ...")
+    if single_file_mode:
+        print(f"\nSingle-file mode: {len(question_files)} file(s) "
+              f"(aggregate & coverage-tracker checks skipped)")
+    else:
+        print(f"\nScanning {base_dir} ...")
 
     # -- Per-question checks -----------------------------------------------
     print("\n--- Per-Question Checks ---")
@@ -557,6 +605,11 @@ def verify_questions():
         all_issues.extend(q_issues)
         all_warnings.extend(q_warnings)
 
+    # Single-file (checkpoint) mode: per-question checks only.
+    if single_file_mode:
+        _print_issue_summary(all_issues, all_warnings)
+        return len(all_issues) == 0
+
     # -- Summary -----------------------------------------------------------
     type_counts = Counter(all_types)
     db_counts   = {db: len(qs) for db, qs in db_question_map.items()}
@@ -572,23 +625,38 @@ def verify_questions():
         pct = total_questions / 50 * 100
         print(f"  ⚠  PROGRESS: {total_questions}/50 ({pct:.0f}%)")
 
-    # -- Type distribution -------------------------------------------------
-    print(f"\nQuestion Type Distribution (target: 10 each, cap: 8-12):")
+    # -- Type distribution (scales with set size; balanced band ±2) --------
+    # Target is total/5 (5 types), not a hard-coded 10, so the check stays
+    # valid as the set grows past 50. A type is OVER if it exceeds target+2;
+    # UNDER (below target-2) is only an error at a balanced checkpoint (total
+    # a multiple of 5) — mid-extension it's a warning, since you add
+    # under-represented types first.
+    n_types = len(VALID_TYPES)
+    ideal = total_questions / n_types
+    cap_hi, cap_lo = ideal + 2, ideal - 2
+    balanced_checkpoint = (total_questions % n_types == 0)
+    print(f"\nQuestion Type Distribution "
+          f"(target ~{ideal:.0f} each, balanced band ±2):")
     for qtype in sorted(VALID_TYPES):
         cnt = type_counts.get(qtype, 0)
-        if cnt == 10:
-            sym = "✓"
-        elif 8 <= cnt <= 12:
-            sym = "~"
-        else:
-            sym = "❌"
         note = ""
-        if cnt > 12:
-            note = " ← OVER CAP!"
-            all_issues.append(f"Type '{qtype}' has {cnt} uses (hard cap is 12)")
-        elif cnt < 8 and total_questions >= 50:
-            note = " ← UNDER MINIMUM!"
-            all_issues.append(f"Type '{qtype}' has {cnt} uses (minimum is 8)")
+        if cnt > cap_hi:
+            sym = "❌"; note = f" ← OVER (> {cap_hi:.0f})"
+            all_issues.append(
+                f"Type '{qtype}' has {cnt} uses (> {cap_hi:.0f}; set size {total_questions})")
+        elif cnt < cap_lo:
+            if balanced_checkpoint:
+                sym = "❌"; note = f" ← UNDER (< {cap_lo:.0f})"
+                all_issues.append(
+                    f"Type '{qtype}' has {cnt} uses (< {cap_lo:.0f}; set size {total_questions})")
+            else:
+                sym = "⚠"; note = " ← under (set still growing)"
+                all_warnings.append(
+                    f"Type '{qtype}' has {cnt} uses (below balanced band; set still growing)")
+        elif abs(cnt - ideal) <= 0.5:
+            sym = "✓"
+        else:
+            sym = "~"
         print(f"  {sym} {qtype:12s}: {cnt:3d}{note}")
 
     # -- Duplicate IDs -----------------------------------------------------
@@ -642,32 +710,15 @@ def verify_questions():
     # -- Coverage tracker --------------------------------------------------
     print(f"\n--- Coverage Tracker Verification ---")
     verify_coverage_tracker(type_counts, db_counts, total_questions,
-                            all_issues, all_warnings)
+                            all_issues, all_warnings, base_dir)
 
-    # -- Warnings summary --------------------------------------------------
-    if all_warnings:
-        print(f"\n{'=' * 70}")
-        print(f"WARNINGS ({len(all_warnings)}):")
-        for w in all_warnings:
-            print(f"  ⚠  {w}")
-
-    # -- Issues summary ----------------------------------------------------
-    if all_issues:
-        print(f"\n{'=' * 70}")
-        print(f"ERRORS ({len(all_issues)}):")
-        for err in all_issues:
-            print(f"  ❌ {err}")
-    else:
-        print(f"\n✓ No errors found!")
-
-    print(f"\n{'=' * 70}")
-    print(f"VERIFICATION COMPLETE  —  "
-          f"{len(all_issues)} error(s), {len(all_warnings)} warning(s)")
-    print(f"{'=' * 70}\n")
-
+    _print_issue_summary(all_issues, all_warnings)
     return len(all_issues) == 0
 
 
 if __name__ == "__main__":
-    success = verify_questions()
+    # Optional args: a directory (full run on it) or one/more question files
+    # (single-file structural checks for the qa-generator checkpoint).
+    targets = sys.argv[1:]
+    success = verify_questions(targets or None)
     sys.exit(0 if success else 1)
