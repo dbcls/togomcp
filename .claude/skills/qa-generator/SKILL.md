@@ -7,7 +7,7 @@ description: Generate new benchmark questions for the TogoMCP evaluation set (be
 
 This skill produces new, fully-validated benchmark questions one at a time, enforcing the type-first creation protocol and the 25-category QA review that the existing 50 questions passed. A question is only useful if it **requires live RDF access to answer** and is **arithmetically self-consistent**; this skill exists to guarantee both, not just to emit plausible-looking YAML.
 
-It runs in a Claude Code environment with the **TogoMCP MCP server** (SPARQL + REST wrappers + TogoID), **OLS4** (ontology lookup), and **PubMed/NCBI** tools connected, plus filesystem access. Use those tools freely — that is the normal mode here. Prefer the local `togomcp-dev` server if both it and the remote `togomcp` are present (its registry is fresher).
+It runs in a Claude Code environment with the **TogoMCP MCP server** (SPARQL + REST wrappers + TogoID), **OLS4** (ontology lookup), and **PubMed/NCBI** tools connected, plus filesystem access. Use those tools freely — that is the normal mode here. **Either TogoMCP server works** — they expose the identical tool surface, differing only in the tool prefix (`mcp__togomcp-dev__*` vs `mcp__togomcp__*`). Prefer the local `togomcp-dev` when present because its registry is fresher (it picks up new `endpoints.csv` rows immediately); the remote `togomcp` is a fine fallback for the established databases, with the one caveat that its registry can lag, so a *recently added* database may not be available there yet. OLS4 and PubMed are separate servers, unaffected by which TogoMCP you use.
 
 ## The Three Hard Rules
 
