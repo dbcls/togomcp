@@ -1113,6 +1113,15 @@ Pricing config (add to config.yaml to override defaults):
         help="Output path for results CSV",
         default="test_results.csv"
     )
+    parser.add_argument(
+        "--model",
+        help=(
+            "Model ID for both baseline and TogoMCP calls. Overrides any "
+            "'model' in the config file, which overrides the built-in default. "
+            "Lets you set the model once (e.g. for run_all_conditions.sh) "
+            "instead of editing every config*.yaml."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -1128,6 +1137,11 @@ Pricing config (add to config.yaml to override defaults):
     except Exception as e:
         print(f"✗ Error initializing runner: {e}")
         sys.exit(1)
+
+    # Precedence: --model > config 'model' > built-in default_config.
+    if args.model:
+        runner.config["model"] = args.model
+        logger.info(f"Model set from --model: {args.model}")
 
     try:
         questions = runner.load_questions(args.question_files)
