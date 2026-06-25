@@ -27,6 +27,7 @@ Run this as Phase 8 on every candidate, in the voice of a strict reviewer trying
 - **C16 SPARQL fields** — A `sparql_queries` entry missing `query_number`/`database`/`description`/`query`/`result_count`.
 - **C19 Inventory question** — Asks about database structure/metadata ("how many entries does UniProt have…") rather than biology.
 - **C21 Unbounded scope** — `list`/`summary` not 5–100 members and no stated top-N justification.
+- **C26 Structural near-duplicate** — Does this question share its *structure* with an existing one, even under a different keyword? Before presenting, scan the existing questions that share this candidate's `type` and database set, and compare the **query pattern / predicate path / `question_template_used`**, not just the topic. The recurring real failure is "proteins annotated with X → their Rhea reactions" or "pathway enzymes that are ChEMBL drug targets" reused with a new keyword. If a structural twin exists, either change the query shape (different predicate path, different aggregation axis, different databases) or state explicitly in the file how this question differs. The full `verify_questions.py` run flags identical `(type, databases, template)` signatures and duplicate keywords mechanically — this check catches the same-shape/different-words cases a signature can't.
 
 ## 🟡 MINOR — fix or note
 

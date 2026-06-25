@@ -19,7 +19,7 @@ It runs in a Claude Code environment with the **TogoMCP MCP server** (SPARQL + R
 
 ## Workflow — one question, then checkpoint
 
-Generate **one** question through all phases, then **stop and present it for the user's approval** (the YAML + the `verify_questions.py` result + your C01–C25 self-review). Only after approval do you write the file and update the tracker. For a "generate N" request, loop this — pause on each. Never batch-write.
+Generate **one** question through all phases, then **stop and present it for the user's approval** (the YAML + the `verify_questions.py` result + your C01–C26 self-review). Only after approval do you write the file and update the tracker. For a "generate N" request, loop this — pause on each. Never batch-write.
 
 ### Phase 0 — Pick the type (type-first; non-negotiable)
 Read `benchmark/questions/coverage_tracker.yaml`. Choose the **most under-represented** `type` (target ≈ total/5 per type; the five types are `yes_no`, `factoid`, `list`, `summary`, `choice`). If the user named a type/topic/database, honor it but still record the coverage rationale. Type is chosen **before** databases and keywords — not fitted to a keyword afterward.
@@ -46,25 +46,25 @@ For every `GROUP BY`, run the verification query (Rule 3) and record the check.
 ### Phase 7 — Assemble the YAML
 Fill every required field per [references/question-schema.md](references/question-schema.md) and [references/template.yaml](references/template.yaml): correct `exact_answer` format for the type; `rdf_triples` with a `# Database: X | Query: N | Comment: ...` line after **every** triple; a `verification_score` that honestly totals ≥9 with no zero dimension; a synthesized `ideal_answer` (single paragraph for `summary`; no meta-references like "according to UniProt"). The question `body` must be self-contained and must **not** name a database.
 
-### Phase 8 — Self-review against C01–C25
-Walk the full checklist in [references/qa-checklist.md](references/qa-checklist.md). Any CRITICAL (C01–C06, C22, C23) or MAJOR finding means fix it before presenting — do not present a question you know is flawed. Produce a short verdict (PASS / MINOR / MAJOR) with the triggered codes.
+### Phase 8 — Self-review against C01–C26
+Walk the full checklist in [references/qa-checklist.md](references/qa-checklist.md). Any CRITICAL (C01–C06, C22, C23) or MAJOR finding means fix it before presenting — do not present a question you know is flawed. **For C26 (structural near-duplicate), actively scan the existing questions that share this candidate's `type` and database set** — read their `body` and `sparql_queries` and confirm the candidate uses a genuinely different query pattern/predicate path, not the same shape with a new keyword. This is the one check the machine validator can't fully make at the checkpoint (single-file mode sees only this file), so it's on you here. Produce a short verdict (PASS / MINOR / MAJOR) with the triggered codes.
 
 ### Phase 9 — Machine validation
 Write the candidate to a scratch path and run:
 ```bash
 python benchmark/scripts/verify_questions.py /path/to/candidate.yaml   # single-file mode
 ```
-Fix every ❌ error. (Single-file mode checks structure/format only; the aggregate balance is already guaranteed by Phase 0–1.)
+Fix every ❌ error. (Single-file mode checks structure/format only — it does **not** see the rest of the set, so the aggregate gates and the structural near-duplicate guard run later, in the full Phase-11 validation. Phase 0–1 *biases* toward balance; the full run is what *enforces* the coverage caps and surfaces signature/keyword collisions.)
 
 ### Phase 10 — CHECKPOINT: present for approval
-Show the user: the rendered YAML, the verify result, and the C01–C25 verdict. **Wait.** Do not write into `benchmark/questions/` or touch the tracker until they approve.
+Show the user: the rendered YAML, the verify result, and the C01–C26 verdict. **Wait.** Do not write into `benchmark/questions/` or touch the tracker until they approve.
 
 ### Phase 11 — Commit the question (after approval only)
 - Assign the next id: `question_0NN.yaml` where NN = (current highest + 1), `id` field matching the filename.
 - Write it into `benchmark/questions/`.
 - Update `benchmark/questions/coverage_tracker.yaml`: `total_questions`; the chosen type's `count`/`questions`; each database's `count`/`questions`; `multi_database_metrics` (2+/3+ counts and percentages); append the keyword to `keywords_used`.
 - Append a row to the progress tracker in `benchmark/togomcp_qa_prompt.md` (`| 0NN | P | — |`) and bump its summary line.
-- Run the **full** `python benchmark/scripts/verify_questions.py` (no args) to confirm the whole set, including the new question, still passes with 0 errors.
+- Run the **full** `python benchmark/scripts/verify_questions.py` (no args) to confirm the whole set, including the new question, still passes with 0 errors. **Read the "Structural Near-Duplicate Guard" section** — those are warnings (a reused keyword, an identical `(type, databases, template)` signature, or a 3+ cluster sharing a `(type, database-pair)`); they don't block, but any hit means you should re-examine C26 before considering the question final.
 
 ## Scope boundary
 This skill stops at **approved, validated questions + updated tracker**. It does **not** run `automated_test_runner.py` or `add_llm_evaluation.py` — collecting answers and scoring the new questions is a separate, explicitly-triggered step (it incurs billed API runs).
@@ -73,7 +73,7 @@ This skill stops at **approved, validated questions + updated tracker**. It does
 The canonical, full protocol lives in the repo and overrides anything distilled here if they ever disagree:
 - `benchmark/QA_CREATION_GUIDE.md` — the v5.5.0 protocol
 - `benchmark/QUESTION_FORMAT.md` — the YAML schema
-- `benchmark/togomcp_qa_prompt.md` — the QA review prompt (C01–C25) + progress tracker
+- `benchmark/togomcp_qa_prompt.md` — the QA review prompt (C01–C26) + progress tracker
 
 The `references/` files here are the distilled, in-loop actionable versions; read the canonical doc when a detail is ambiguous.
 

@@ -552,6 +552,7 @@ def verify_questions(targets=None):
     multi_db_2plus   = 0
     multi_db_3plus   = 0
     uniprot_count    = 0
+    sig_records      = []   # (num, type, sorted(dbs) tuple, template, keyword_id)
 
     all_issues   = []
     all_warnings = []
@@ -599,6 +600,18 @@ def verify_questions(targets=None):
             num = filepath.stem.replace("question_", "")
             for db in dbs:
                 db_question_map[db].append(num)
+
+        # Structural signature, for the near-duplicate guard below.
+        tmpl = str(data.get("question_template_used", "") or "").strip().lower()
+        kw = data.get("inspiration_keyword", {})
+        kw_id = kw.get("keyword_id", "") if isinstance(kw, dict) else ""
+        sig_records.append((
+            filepath.stem.replace("question_", ""),
+            q_type,
+            tuple(sorted(dbs)) if isinstance(dbs, list) else (),
+            tmpl,
+            kw_id,
+        ))
 
         total_questions += 1
 
@@ -706,6 +719,57 @@ def verify_questions(targets=None):
           f"questions ({pct_up:.1f}%, cap ≤70%)")
     if pct_up > 70:
         all_issues.append(f"UniProt usage {pct_up:.1f}% exceeds 70% cap")
+
+    # -- Structural near-duplicate guard (warnings; judgment is the skill's) -
+    # Cheap mechanical signals that two questions may share a structure. These
+    # are warnings, not errors — structural similarity is a judgment call made
+    # by the qa-generator's C26 self-review and the human checkpoint. The
+    # validator's job is to make collisions impossible to miss.
+    print(f"\nStructural Near-Duplicate Guard:")
+
+    # (a) Reused inspiration keyword — the tracker is supposed to keep these
+    #     unique, but nothing enforced it before.
+    kw_counter = Counter(r[4] for r in sig_records if r[4])
+    dup_kw = {k: c for k, c in kw_counter.items() if c > 1}
+    if dup_kw:
+        for k in sorted(dup_kw):
+            qs = [r[0] for r in sig_records if r[4] == k]
+            print(f"  ⚠  keyword {k} reused by questions {qs}")
+            all_warnings.append(f"keyword {k} reused by questions {qs}")
+    else:
+        print(f"  ✓ all inspiration keywords unique")
+
+    # (b) Identical (type, database-set, template) signature — a near-certain
+    #     clone.
+    sig_map = defaultdict(list)
+    for num, qtype, dbset, tmpl, _kw in sig_records:
+        sig_map[(qtype, dbset, tmpl)].append(num)
+    collisions = {k: v for k, v in sig_map.items() if len(v) > 1}
+    if collisions:
+        for (qtype, dbset, _tmpl), qs in sorted(collisions.items(), key=lambda x: x[1]):
+            print(f"  ⚠  same (type={qtype}, dbs={list(dbset)}, template) in {qs}")
+            all_warnings.append(
+                f"structural collision (type={qtype}, dbs={list(dbset)}, same template) "
+                f"in questions {qs}")
+    else:
+        print(f"  ✓ no (type, databases, template) signature collisions")
+
+    # (c) Same (type, database-pair) used by 3+ questions — informational; flags
+    #     clusters to eyeball for query-structure overlap (this is exactly what
+    #     the manual "differentiate Qxxx from Qyyy" revisions were fixing).
+    pair_map = defaultdict(list)
+    for num, qtype, dbset, _tmpl, _kw in sig_records:
+        pair_map[(qtype, dbset)].append(num)
+    heavy = {k: v for k, v in pair_map.items() if len(v) >= 3}
+    if heavy:
+        for (qtype, dbset), qs in sorted(heavy.items(), key=lambda x: -len(x[1])):
+            print(f"  ⚠  (type={qtype}, dbs={list(dbset)}) shared by {len(qs)} "
+                  f"questions {qs} — verify distinct query structure")
+            all_warnings.append(
+                f"(type={qtype}, dbs={list(dbset)}) shared by {len(qs)} questions {qs} "
+                f"— verify distinct query structure")
+    else:
+        print(f"  ✓ no (type, database-pair) cluster of 3+")
 
     # -- Coverage tracker --------------------------------------------------
     print(f"\n--- Coverage Tracker Verification ---")
