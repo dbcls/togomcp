@@ -2,16 +2,18 @@ schema_info:
   title: GlyCosmos RDF Database
   description: |
     Comprehensive glycoscience portal integrating glycan structures (GlyTouCan),
-    glycoproteins, glycosylation sites, glycogenes, glycoepitopes, lectin-glycan
-    interactions (SugarBind/UniLectin), and glycolipids. Primary uses include
-    glycobiology research, biomarker discovery, and drug target identification.
+    glycoproteins, glycosylation sites, glycogenes, glycoepitopes, lectins, and
+    glycolipids. Glycans carry multi-format sequences (WURCS, IUPAC, GlycoCT) and
+    structural motifs; glycoproteins carry residue-level glycosylation sites with
+    FALDO positions. Primary uses: glycobiology research, biomarker discovery,
+    drug-target identification.
   keywords:
     - glycan
     - glycosylation
     - glycoprotein
     - saccharide
     - wurcs
-    - glycotoucan
+    - glytoucan
     - sugar
     - n-glycan
     - o-glycan
@@ -21,46 +23,78 @@ schema_info:
     - glycomics
     - monosaccharide
     - glycosylation site
+    - glycan motif
   categories:
     - glycan
   endpoint: https://ts.glycosmos.org/sparql
   base_uri: http://rdf.glycoinfo.org/
   graphs:
+    # Glycan core (GlyTouCan): type, has_primary_id, has_Resource_entry (self-reference)
     - http://rdf.glytoucan.org/core
-    - http://rdf.glycosmos.org/glycoprotein
-    - http://rdf.glycosmos.org/glycogenes
-    - http://rdf.glycoinfo.org/glycoepitope
+    # Glycan sequences (WURCS/IUPAC/GlycoCT) AND has_motif links
+    - http://rdf.glycosmos.org/glycans/glycosequence
+    # Motif definitions (gn:Motif) and labels — motif/ IRI form
     - http://rdf.glycosmos.org/glycans/motif_label
-    - http://rdf.glycosmos.org/disease
-    - http://rdf.glycosmos.org/pathway
+    # External cross-reference Resource_entry nodes (PubChem, ChEBI, GlyConnect…) + has_resource_entry links
+    - http://rdf.glycosmos.org/glycans
+    # Glycoproteins, glycosylation sites, FALDO location nodes
+    - http://rdf.glycosmos.org/glycoprotein
+    # Glycogenes
+    - http://rdf.glycosmos.org/glycogenes
+    # Glycoepitopes
+    - http://rdf.glycoinfo.org/glycoepitope
+    # Partner cross-reference graphs (additional external Resource_entry nodes)
+    - http://rdf.glytoucan.org/partner/glycome-db
+    - http://rdf.glytoucan.org/partner/jcggdb_aist
+    - http://rdf.glytoucan.org/partner/bcsdb
+    - http://rdf.glycosmos.org/glycans/glycobase
     - http://rdf.glycosmos.org/sugarbind
     - http://rdf.glycosmos.org/lectin
-    - http://rdf.glycosmos.org/glycolipid
-    - http://rdf.glycosmos.org/glycans
-    - http://rdf.glycosmos.org/glycans/glycosequence
-    - http://rdf.glycosmos.org/carbogrove
   kw_search_tools:
     - sparql
   version:
-    mie_version: "2.1"
-    mie_created: "2026-04-29"
-    data_version: "Release 2025.04"
+    mie_version: "3.0"
+    mie_created: "2026-06-27"
+    data_version: "2025.04 snapshot (counts and schema re-verified 2026-06-27)"
     update_frequency: "Quarterly"
   access:
-    backend: "Virtuoso (bif:contains NOT enabled — use FILTER(CONTAINS()) instead)"
+    backend: "Virtuoso (bif:contains IS enabled — verified 2026-06-27)"
 
 critical_warnings: |
-  - BIF:CONTAINS NOT ENABLED: Despite running on Virtuoso, bif:contains is disabled
-    on this endpoint. All text search MUST use FILTER(CONTAINS(LCASE(?text), "kw")).
-    Using bif:contains will return a SPARQL error.
-  - MANDATORY FROM CLAUSE: Always specify FROM <graph_iri> in every query.
-    Omitting it searches all 140+ graphs and causes 10-100x slowdown or timeouts.
-    EXCEPTION: glycan:has_motif relationships span multiple graphs — omit FROM for motif queries.
-  - LABEL SPARSITY: glycan rdfs:label coverage <1%; protein labels 17%; gene labels 32%.
-    Use glytoucan:has_primary_id for glycans, rdfs:seeAlso for protein/gene cross-refs.
-  - MOTIF IRI PATTERN: Motif IRIs are glycan IRIs in format
-    <http://rdf.glycoinfo.org/glycan/[GlyTouCan_ID]> (NOT a separate motif namespace).
-    Use glycan:has_motif predicate linking to these glycan IRIs.
+  - TWO RESOURCE-ENTRY PREDICATES (CASE-SENSITIVE, DIFFERENT MEANING — #1 silent-fail trap):
+    * glycan:has_Resource_entry (CAPITAL R) — in <http://rdf.glytoucan.org/core>, links each
+      glycan to a SELF-reference Resource_entry whose dcterms:identifier is the GlyTouCan ID
+      itself (NOT an external ID) and whose in_glycan_database is glytoucan:database_glytoucan.
+      It carries NO external DB identifier and NO rdfs:label. 86.2% of glycans (101,600/117,864).
+    * glycan:has_resource_entry (lowercase r) — links to EXTERNAL DB Resource_entry nodes
+      (PubChem, ChEBI, GlyConnect, HMDB, GlycoShape, GlycomeDB, Carbbank, JCGGDB…) carrying
+      rdfs:label = DB name and dcterms:identifier = the external ID. 44.1% of glycans (51,947).
+    Using has_Resource_entry (capital) expecting PubChem/ChEBI IDs silently returns only the
+    GlyTouCan self-reference. External cross-references REQUIRE the lowercase predicate.
+  - MOTIF DUAL-IRI SYSTEM: A motif has TWO distinct IRIs sharing the same GlyTouCan ID suffix.
+    * has_motif LINK object: <http://rdf.glycoinfo.org/glycan/[GlyTouCan_ID]> (glycan namespace).
+    * Motif DEFINITION/LABEL (a gn:Motif, in motif_label graph):
+      <http://glycoinfo.org/motif/[GlyTouCan_ID]> (note: glycoinfo.org, /motif/ — NOT rdf.glycoinfo.org/glycan/).
+    These two IRIs do NOT join directly. To get a motif's name, take the GlyTouCan ID from the
+    has_motif object and look up <http://glycoinfo.org/motif/[ID]> rdfs:label. There are 133 motifs.
+  - MOTIF & SEQUENCE GRAPH: glycan:has_motif and glycan:has_glycosequence triples both live in
+    <http://rdf.glycosmos.org/glycans/glycosequence>. Scope motif/sequence queries with
+    FROM <http://rdf.glycosmos.org/glycans/glycosequence>. (has_primary_id is in the CORE graph,
+    so queries returning both a motif AND a GlyTouCan ID need both graphs in the FROM set.)
+  - ENTITY IRI BASE ≠ GRAPH IRI BASE: Glycoprotein, glycosylation-site, location, and glycogene
+    ENTITIES use base http://glycosmos.org/ (e.g. http://glycosmos.org/glycoprotein/P13224), while
+    the GRAPHS that hold them use base http://rdf.glycosmos.org/ (e.g. <http://rdf.glycosmos.org/glycoprotein>).
+    Do not write http://rdf.glycosmos.org/glycoprotein/<AC> as an entity IRI — it returns 0 rows.
+    Glycans and motif links use http://rdf.glycoinfo.org/.
+  - LABEL/MULTIPLICITY: A single motif IRI and a single external Resource_entry may carry MULTIPLE
+    rdfs:label values (synonyms; ChEBI entries carry both the systematic name and "ChEBI"). Use
+    DISTINCT or aggregate (SAMPLE/GROUP_CONCAT) when retrieving labels to avoid duplicate rows.
+  - EXTERNAL XREFS SPAN MULTIPLE GRAPHS: lowercase has_resource_entry links resolve to Resource_entry
+    nodes in <…/glycans> AND partner graphs (glycome-db, jcggdb_aist, bcsdb, glycobase). A bulk
+    external-xref query restricted to a single FROM graph misses the others. For one glycan, omit
+    FROM (default-graph union) or list the graphs you need.
+  - MANDATORY FROM FOR BULK QUERIES: the endpoint hosts 140+ graphs. Omit FROM only for small,
+    targeted lookups (a single glycan/protein IRI). For class-wide scans always pin FROM <graph>.
 
 shape_expressions: |
   PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -72,82 +106,98 @@ shape_expressions: |
   PREFIX glytoucan: <http://www.glytoucan.org/glyco/owl/glytoucan#>
   PREFIX glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#>
   PREFIX glycoepitope: <http://www.glycoepitope.jp/epitopes/glycoepitope.owl#>
-  PREFIX sugarbind: <http://rdf.glycoinfo.org/SugarBind/ontology#>
   PREFIX sio: <http://semanticscience.org/resource/>
   PREFIX faldo: <http://biohackathon.org/resource/faldo#>
   PREFIX gn: <http://glyconavi.org/owl#>
 
-  # 117,864 glycans in graph <http://rdf.glytoucan.org/core>
-  # IRI pattern: <http://rdf.glycoinfo.org/glycan/G[0-9]{5}[A-Z]{2}>
+  # 117,864 glycans. Entity IRI: <http://rdf.glycoinfo.org/glycan/G[0-9]{5}[A-Z]{2}>
+  # type + has_primary_id live in <http://rdf.glytoucan.org/core>.
   <SaccharideShape> {
     a [ glycan:Saccharide ] ;
-    glytoucan:has_primary_id xsd:string ;   # GlyTouCan accession, e.g. "G00051MO"; 99.8% populated
-    glycan:has_Resource_entry IRI * ;       # links to external DBs (ChEBI, PubChem, PDB…); 80% populated
-    glycan:has_motif IRI *                  # motif glycan IRI; queries must omit FROM clause
+    glytoucan:has_primary_id xsd:string ;       # GlyTouCan accession e.g. "G00051MO"; 99.75% (117,571)
+    glycan:has_Resource_entry IRI * ;           # CAPITAL R: GlyTouCan SELF-reference only; 86.2% (101,600); core graph
+    glycan:has_resource_entry IRI * ;           # lowercase r: EXTERNAL DB refs; 44.1% (51,947); glycans + partner graphs
+    glycan:has_glycosequence @<GlycosequenceShape> * ;  # in glycosequence graph
+    glycan:has_motif IRI *                       # glycan-form motif IRI (see MotifShape); glycosequence graph
   }
 
-  # 153,178 glycoproteins in graph <http://rdf.glycosmos.org/glycoprotein>
-  # IRI pattern: <http://rdf.glycosmos.org/glycoprotein/[UniProtAC]>
+  # Sequence node. IRI: <glycan_IRI>_<format> (a named IRI, not a blank node).
+  # In <http://rdf.glycosmos.org/glycans/glycosequence>. Up to 5 formats per glycan.
+  <GlycosequenceShape> {
+    glycan:has_sequence xsd:string ;            # the sequence string
+    glycan:in_carbohydrate_format IRI           # one of the 5 format IRIs below
+    # glycan:carbohydrate_format_wurcs            (254,078 nodes)
+    # glycan:carbohydrate_format_iupac_extended   (193,073)
+    # glycan:carbohydrate_format_iupac_condensed  (124,929)
+    # glycan:carbohydrate_format_glycoct          (117,466)
+    # glycan:carbohydrate_format_glycam_condensed (25,050)
+  }
+
+  # External cross-reference node. Reached via lowercase glycan:has_resource_entry.
+  # IRI encodes the external ID, e.g. <http://rdf.glycoinfo.org/pubchem/compound/CID91847572>,
+  # <http://purl.obolibrary.org/obo/CHEBI_146083> (ChEBI uses the OBO IRI — federation-ready).
+  <ResourceEntryShape> {
+    a [ glycan:Resource_entry ] ;
+    rdfs:label xsd:string + ;                   # external DB name e.g. "PubChem Compound","ChEBI" (may be multi-valued)
+    dcterms:identifier xsd:string               # the external accession e.g. "91847572","146083"
+  }
+
+  # 153,178 glycoproteins. Entity IRI: <http://glycosmos.org/glycoprotein/[UniProtAC]>
+  # In <http://rdf.glycosmos.org/glycoprotein>.
   <GlycoproteinShape> {
     a [ glycan:Glycoprotein ] ;
-    rdfs:label xsd:string ? ;               # only 17% populated; use UniProt AC instead
-    rdfs:seeAlso IRI * ;                    # links to UniProt (139K), GlyGen (12K), GlyConnect (2K)
-    glycan:has_taxon IRI ? ;                # <http://identifiers.org/taxonomy/[NCBI_TaxID]>; 18% populated
-    glycoconjugate:glycosylated_at @<GlycosylationSiteShape> *
+    rdfs:label xsd:string ? ;                   # protein name; 90.8% (139,075)
+    glycan:has_taxon IRI ? ;                     # <http://identifiers.org/taxonomy/[NCBI_TaxID]>; 90.8% (139,075)
+    rdfs:seeAlso IRI * ;                         # UniProt (purl.uniprot.org/uniprot/), GlyGen, PubChem, RaftProt, GPDB2
+    glycoconjugate:glycosylated_at @<GlycosylationSiteShape> *   # 411,240 links
   }
 
-  # 414,798 glycosylation sites in graph <http://rdf.glycosmos.org/glycoprotein>
-  # IRI pattern: <http://rdf.glycosmos.org/glycosylationsite/SITE[0-9]+>
+  # 414,798 glycosylation sites. Entity IRI: <http://glycosmos.org/glycosylationsite/SITE[0-9]+>
+  # In <http://rdf.glycosmos.org/glycoprotein>.
   <GlycosylationSiteShape> {
     a [ glycoconjugate:Glycosylation_Site ] ;
-    sio:SIO_000772 IRI ;                    # references parent protein entry (UniProt, GlyGen…)
-    faldo:location @<FaldoLocationShape> ? ; # 98.3% of sites have position data
-    dcterms:references IRI * ;
-    glycoconjugate:has_saccharide IRI *
+    sio:SIO_000772 IRI + ;                       # parent protein reference (UniProt and/or GlyGen IRI)
+    faldo:location @<FaldoLocationShape> ? ;     # 98.3% of sites (407,793) have a position
+    dcterms:references IRI * ;                    # PubMed evidence <http://identifiers.org/pubmed/[PMID]>
+    glycoconjugate:has_saccharide IRI *          # attached glycan <http://rdf.glycoinfo.org/glycan/[ID]>
   }
 
+  # FALDO location node. IRI: <http://glycosmos.org/location/LOC[0-9]+> (named, not a blank node).
   <FaldoLocationShape> {
-    a [ faldo:ExactPosition faldo:FuzzyPosition ] ;    # value set — either type (ExactPosition: 663K, FuzzyPosition: 7K)
-    faldo:position xsd:integer ?                        # present on ExactPosition; absent on FuzzyPosition
+    a [ faldo:ExactPosition ] ;                  # ExactPosition dominant
+    faldo:position xsd:integer                   # 1-based residue index
   }
 
-  # 423,164 glycogenes in graph <http://rdf.glycosmos.org/glycogenes>
+  # 423,164 glycogenes. Entity IRI: <http://glycosmos.org/glycogene/[NCBI_GeneID]>
+  # In <http://rdf.glycosmos.org/glycogenes>.
   <GlycogeneShape> {
     a [ glycan:Glycogene ] ;
-    rdfs:label xsd:string ? ;               # 32% populated
-    rdfs:seeAlso IRI * ;                    # links to NCBI Gene (423K), KEGG (381K), HGNC
-    glycan:has_taxon IRI ? ;                # 0.4% populated — rarely useful for filtering
-    dcterms:description xsd:string ?
+    rdfs:label xsd:string ;                      # 100% (423,164) — well populated, safe to filter
+    dcterms:description xsd:string ;             # 100% (423,164)
+    glycan:has_taxon IRI ;                        # 100% (423,164) <http://identifiers.org/taxonomy/[NCBI_TaxID]>
+    rdfs:seeAlso IRI * ;                          # NCBI Gene (identifiers.org/ncbigene/), KEGG (kegg.genes/), UniProt (purl.uniprot.org/geneid/)
+    sio:SIO_000255 IRI *                          # has-attribute scaffold (~6 per gene)
   }
 
-  # 173 epitopes in graph <http://rdf.glycoinfo.org/glycoepitope>
+  # 173 epitopes. IRI: <http://www.glycoepitope.jp/epitopes/EP[0-9]+>
+  # In <http://rdf.glycoinfo.org/glycoepitope>.
   <GlycanEpitopeShape> {
     a [ glycan:Glycan_epitope ] ;
-    rdfs:label xsd:string ;
-    skos:altLabel xsd:string * ;
-    glycan:has_glycosequence IRI * ;
-    glycoepitope:has_antibody IRI * ;
-    glycoepitope:organism IRI * ;
-    glycoepitope:tissue IRI *
+    rdfs:label xsd:string ;                      # 100% (173); free-text names e.g. "Lewis x"
+    dcterms:identifier xsd:string ;
+    skos:altLabel xsd:string * ;                 # synonyms (71)
+    glycoepitope:has_antibody IRI * ;            # 841
+    glycoepitope:organism IRI * ;                # 155
+    glycoepitope:tissue IRI * ;                  # 292
+    glycan:has_glycosequence IRI *               # 227
   }
 
-  # 133 motifs in graph <http://rdf.glycosmos.org/glycans/motif_label>
-  # Motif IRIs follow glycan IRI pattern: <http://rdf.glycoinfo.org/glycan/[GlyTouCan_ID]>
+  # 133 motifs. Definition/label IRI: <http://glycoinfo.org/motif/[GlyTouCan_ID]>
+  # In <http://rdf.glycosmos.org/glycans/motif_label>. NOTE: this is NOT the has_motif link IRI
+  # (which is <http://rdf.glycoinfo.org/glycan/[ID]>). Same ID suffix, different namespace.
   <MotifShape> {
     a [ gn:Motif ] ;
-    rdfs:label xsd:string
-  }
-
-  # 739 SugarBind lectins; 739 referenced interactions in graph <http://rdf.glycosmos.org/sugarbind>
-  # 5,322 UniLectin lectins in graph <http://rdf.glycosmos.org/lectin>
-  <LectinShape> {
-    a [ sugarbind:Lectin ] ;
-    rdfs:label xsd:string ?
-  }
-
-  <LectinInteractionShape> {
-    a [ sugarbind:ReferencedInteraction ] ;
-    rdfs:label xsd:string ?                 # composite label e.g. "LEC12_LIG5_PUB10496867_ARE2"
+    rdfs:label xsd:string +                      # one OR MORE labels (synonyms) per motif
   }
 
 sample_rdf_entries:
@@ -156,49 +206,83 @@ sample_rdf_entries:
     @prefix glytoucan: <http://www.glytoucan.org/glyco/owl/glytoucan#> .
     @prefix glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#> .
     @prefix glycoinfo: <http://rdf.glycoinfo.org/> .
-    @prefix glycosmos: <http://rdf.glycosmos.org/> .
+    @prefix glycosmos: <http://glycosmos.org/> .
+    @prefix gn: <http://glyconavi.org/owl#> .
+    @prefix obo: <http://purl.obolibrary.org/obo/> .
     @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
     @prefix dcterms: <http://purl.org/dc/terms/> .
     @prefix sio: <http://semanticscience.org/resource/> .
     @prefix faldo: <http://biohackathon.org/resource/faldo#> .
   entries:
-    - title: Glycan Core Entry with External Cross-Reference
-      description: Illustrates the primary glycan structure pattern — GlyTouCan ID plus Resource_entry links to external databases (PubChem, ChEBI, PDB).
+    - title: Glycan with self-reference, external cross-references, and a WURCS sequence
+      description: |
+        Shows the TWO resource-entry predicates side by side — has_Resource_entry (capital R,
+        GlyTouCan self) vs has_resource_entry (lowercase r, external DBs incl. ChEBI as an OBO IRI)
+        — plus the named glycosequence node carrying a WURCS string. Triples are distributed:
+        type/has_primary_id/has_Resource_entry in the core graph; has_resource_entry + external
+        nodes in the glycans/partner graphs; has_glycosequence in the glycosequence graph.
       rdf: |
-        glycoinfo:glycan/G00051MO a glycan:Saccharide ;
-          glytoucan:has_primary_id "G00051MO" ;
-          glycan:has_Resource_entry glycoinfo:resource-entry/G00051MO .
+        glycoinfo:glycan/G00547ZN a glycan:Saccharide ;
+          glytoucan:has_primary_id "G00547ZN" ;
+          glycan:has_Resource_entry glycoinfo:resource-entry/G00547ZN ;          # capital R → self
+          glycan:has_resource_entry glycoinfo:pubchem/compound/CID91847572 ;     # lowercase r → external
+          glycan:has_resource_entry obo:CHEBI_146083 .                           # lowercase r → external (OBO IRI)
 
-        glycoinfo:resource-entry/G00051MO a glycan:Resource_entry ;
-          rdfs:label "PubChem" ;
-          dcterms:identifier "91844260" .
+        glycoinfo:resource-entry/G00547ZN a glycan:Resource_entry ;
+          dcterms:identifier "G00547ZN" .                                        # the GlyTouCan ID itself (no rdfs:label)
 
-    - title: Glycoprotein with Glycosylation Site (non-obvious FALDO + SIO pattern)
-      description: Shows the indirect glycosylation site pattern — sio:SIO_000772 links site to parent protein reference; faldo:location carries sequence position. Note that has_taxon IRI uses identifiers.org namespace.
+        obo:CHEBI_146083 a glycan:Resource_entry ;
+          rdfs:label "ChEBI" ;
+          dcterms:identifier "146083" .
+
+        glycoinfo:glycan/G00547ZN_wurcs glycan:has_sequence
+            "WURCS=2.0/3,3,2/[a1122h-1a_1-5][a2122h-1b_1-5_2*NCC/3=O][a2112h-1b_1-5_2*NCC/3=O_4*OSO/3=O/3=O]/1-2-3/a2-b1_b4-c1" ;
+          glycan:in_carbohydrate_format glycan:carbohydrate_format_wurcs .
+
+    - title: Glycoprotein with a glycosylation site (FALDO position + parent-protein + saccharide)
+      description: |
+        The indirect site pattern. Entity IRIs use the http://glycosmos.org/ base (NOT rdf.glycosmos.org).
+        sio:SIO_000772 links the site to its parent protein reference; faldo:location points to a NAMED
+        location node (LOC…) carrying the integer position; glycoconjugate:has_saccharide names the glycan;
+        dcterms:references carries PubMed evidence.
       rdf: |
-        glycosmos:glycoprotein/P02763 a glycan:Glycoprotein ;
-          rdfs:label "Alpha-1-acid glycoprotein 1" ;
+        glycosmos:glycoprotein/P13224 a glycan:Glycoprotein ;
+          rdfs:label "Platelet glycoprotein Ib beta chain" ;
           glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
-          glycoconjugate:glycosylated_at glycosmos:glycosylationsite/SITE00187901 .
+          rdfs:seeAlso <http://purl.uniprot.org/uniprot/P13224> ;
+          glycoconjugate:glycosylated_at glycosmos:glycosylationsite/SITE00220625 .
 
-        glycosmos:glycosylationsite/SITE00187901 a glycoconjugate:Glycosylation_Site ;
-          sio:SIO_000772 <http://rdf.glycoinfo.org/dbid/glygen/P02763> ;
-          faldo:location [ a faldo:ExactPosition ; faldo:position 33 ] ;
-          glycoconjugate:has_saccharide glycoinfo:glycan/G00051MO .
+        glycosmos:glycosylationsite/SITE00220625 a glycoconjugate:Glycosylation_Site ;
+          sio:SIO_000772 <http://rdf.glycoinfo.org/dbid/glygen/P13224> ;
+          dcterms:references <http://identifiers.org/pubmed/23584533> ;
+          faldo:location glycosmos:location/LOC00220625 ;
+          glycoconjugate:has_saccharide glycoinfo:glycan/G57321FI .
 
-    - title: Glycan Motif Link (span-graph pattern)
-      description: Demonstrates the motif linking pattern — the motif IRI is itself a glycan IRI. These glycan:has_motif triples are distributed across graphs, so queries for motif-bearing glycans must omit the FROM clause.
+        glycosmos:location/LOC00220623 a faldo:ExactPosition ;
+          faldo:position 65 .
+
+    - title: Glycan motif link and its label (the dual-IRI bridge)
+      description: |
+        The has_motif object is a glycan-namespace IRI; the motif's gn:Motif definition and its label(s)
+        live under a DIFFERENT namespace (glycoinfo.org/motif/) sharing only the GlyTouCan ID. A motif may
+        carry several labels (synonyms). To name a motif, bridge by the shared ID suffix.
       rdf: |
-        glycoinfo:glycan/G01416HI glycan:has_motif glycoinfo:glycan/G00031MO .
+        # has_motif link (in graph <http://rdf.glycosmos.org/glycans/glycosequence>):
+        glycoinfo:glycan/G00176HZ glycan:has_motif glycoinfo:glycan/G00030MO .
 
-        # In graph <http://rdf.glycosmos.org/glycans/motif_label>:
-        # glycoinfo:glycan/G00031MO a gn:Motif ;
-        #   rdfs:label "O-Glycan core 1" .
+        # motif definition + labels (in graph <http://rdf.glycosmos.org/glycans/motif_label>):
+        <http://glycoinfo.org/motif/G00030MO> a gn:Motif ;
+          rdfs:label "N-Glycan complex" .
+
+        <http://glycoinfo.org/motif/G00031MO> a gn:Motif ;
+          rdfs:label "O-Glycan core 1" ;
+          rdfs:label "T antigen" ;
+          rdfs:label "TF antigen" .
 
 sparql_query_examples:
-  - title: Retrieve Human Glycoproteins Count
-    description: Use the specific NCBI Taxonomy IRI for Homo sapiens with mandatory FROM clause.
-    question: How many human glycoproteins are in the database?
+  - title: Count human glycoproteins
+    description: Filter by the specific NCBI Taxonomy IRI for Homo sapiens, scoped to the glycoprotein graph.
+    question: How many human glycoproteins are in GlyCosmos?
     complexity: basic
     sparql: |
       PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
@@ -211,24 +295,74 @@ sparql_query_examples:
       }
       LIMIT 1
 
-  - title: Find Glycans by Motif IRI
-    description: Retrieve glycans containing the O-Glycan core 1 (T antigen) motif using its glycan IRI. FROM clause omitted because motif relationships span multiple graphs.
-    question: Which glycans contain the O-Glycan core 1 motif?
+  - title: Retrieve all sequence formats for a glycan
+    description: |
+      A glycan carries up to 5 sequence encodings via named glycosequence nodes. Select the format IRI
+      and the string. Scoped to the glycosequence graph where has_glycosequence lives.
+    question: What sequence representations (WURCS, IUPAC, GlycoCT…) exist for glycan G00051MO?
     complexity: basic
     sparql: |
       PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
-      PREFIX glytoucan: <http://www.glytoucan.org/glyco/owl/glytoucan#>
 
-      # Motif IRI is itself a glycan IRI — FROM omitted (spans multiple graphs)
-      SELECT ?glycan ?gtcId
+      SELECT ?format ?seq
+      FROM <http://rdf.glycosmos.org/glycans/glycosequence>
       WHERE {
-        ?glycan glycan:has_motif <http://rdf.glycoinfo.org/glycan/G00031MO> ;
-                glytoucan:has_primary_id ?gtcId .
+        <http://rdf.glycoinfo.org/glycan/G00051MO> glycan:has_glycosequence ?seqNode .
+        ?seqNode glycan:in_carbohydrate_format ?format ;
+                 glycan:has_sequence ?seq .
       }
-      LIMIT 100
+      LIMIT 10
 
-  - title: Glycoprotein Distribution Across Species
-    description: Aggregate glycoprotein counts per organism using taxonomy IRI grouping.
+  - title: Glycans bearing a motif, with the motif's name (dual-IRI bridge)
+    description: |
+      Find glycans carrying the N-Glycan complex motif and report their GlyTouCan IDs plus the motif label.
+      Demonstrates the bridge: has_motif uses the glycan-form IRI; the label lives on the motif-form IRI.
+      Three graphs in the FROM set: glycosequence (has_motif), core (has_primary_id), motif_label (label).
+    question: Which glycans contain the N-Glycan complex motif, and what is that motif called?
+    complexity: intermediate
+    sparql: |
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX glytoucan: <http://www.glytoucan.org/glyco/owl/glytoucan#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT DISTINCT ?gtcId (SAMPLE(?ml) AS ?motifLabel)
+      FROM <http://rdf.glycosmos.org/glycans/glycosequence>
+      FROM <http://rdf.glytoucan.org/core>
+      FROM <http://rdf.glycosmos.org/glycans/motif_label>
+      WHERE {
+        ?glycan glycan:has_motif <http://rdf.glycoinfo.org/glycan/G00030MO> ;   # glycan-form link IRI
+                glytoucan:has_primary_id ?gtcId .
+        <http://glycoinfo.org/motif/G00030MO> rdfs:label ?ml .                  # motif-form label IRI
+      }
+      GROUP BY ?gtcId
+      LIMIT 20
+
+  - title: External database cross-references for glycans (ChEBI)
+    description: |
+      Retrieve external IDs via the LOWERCASE has_resource_entry predicate (the capital-R form gives only
+      the GlyTouCan self-reference). ChEBI Resource_entry nodes are OBO IRIs; filter on the DB-name label.
+      Joins the glycans graph (link + node) with the core graph (GlyTouCan ID).
+    question: Which glycans map to a ChEBI entry, and what are their ChEBI IDs?
+    complexity: intermediate
+    sparql: |
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX glytoucan: <http://www.glytoucan.org/glyco/owl/glytoucan#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+
+      SELECT DISTINCT ?gtcId ?chebiId ?res
+      FROM <http://rdf.glycosmos.org/glycans>
+      FROM <http://rdf.glytoucan.org/core>
+      WHERE {
+        ?glycan glycan:has_resource_entry ?res ;        # lowercase r — external DBs
+                glytoucan:has_primary_id ?gtcId .
+        ?res rdfs:label "ChEBI" ;
+             dcterms:identifier ?chebiId .
+      }
+      LIMIT 20
+
+  - title: Glycoprotein distribution across species
+    description: Aggregate glycoprotein counts per organism using the taxonomy IRI as the grouping key.
     question: How many glycoproteins are annotated per species?
     complexity: intermediate
     sparql: |
@@ -244,83 +378,32 @@ sparql_query_examples:
       ORDER BY DESC(?count)
       LIMIT 20
 
-  - title: Glycosylation Sites in Multiple Model Organisms
-    description: Use VALUES with taxonomy IRIs to retrieve glycosylation site positions for human, mouse, and rat.
-    question: What are the glycosylation site positions in human, mouse, and rat proteins?
-    complexity: intermediate
-    sparql: |
-      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
-      PREFIX glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#>
-      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
-
-      SELECT ?taxon ?protein ?site ?position
-      FROM <http://rdf.glycosmos.org/glycoprotein>
-      WHERE {
-        VALUES ?taxon {
-          <http://identifiers.org/taxonomy/9606>
-          <http://identifiers.org/taxonomy/10090>
-          <http://identifiers.org/taxonomy/10116>
-        }
-        ?protein a glycan:Glycoprotein ;
-                 glycan:has_taxon ?taxon ;
-                 glycoconjugate:glycosylated_at ?site .
-        OPTIONAL { ?site faldo:location/faldo:position ?position . }
-      }
-      LIMIT 100
-
-  - title: Search Glycoepitopes by Name
-    description: Text search on epitope labels using FILTER — justified because epitope names are unstructured free-text strings with no controlled vocabulary or IRI equivalent.
-    question: Which epitopes have "Lewis" in their name?
-    complexity: intermediate
-    sparql: |
-      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-
-      # Text search justified: rdfs:label and skos:altLabel on glycan:Glycan_epitope
-      # are unstructured free-text names (e.g. "Lewis x", "CD15", "X-hapten").
-      # No classification IRI or typed predicate exists for epitope name categories.
-      # bif:contains is DISABLED on this endpoint — FILTER(CONTAINS()) is required.
-      SELECT ?epitope ?label
-      FROM <http://rdf.glycoinfo.org/glycoepitope>
-      WHERE {
-        ?epitope a glycan:Glycan_epitope ;
-                 rdfs:label ?label .
-        FILTER(CONTAINS(LCASE(?label), "lewis"))
-      }
-      LIMIT 20
-
-  - title: Cross-Entity Join — Glycan to Protein to Gene
-    description: Multi-graph join linking a known glycan IRI to associated proteins and genes.
-    question: For glycan G00051MO, which proteins and glycogenes are associated?
+  - title: Human glycosylation sites with residue position and attached glycan
+    description: |
+      Walk glycoprotein -> site -> FALDO position and attached saccharide for human proteins.
+      faldo:location/faldo:position traverses the named location node to the integer index.
+    question: What are the glycosylation positions and attached glycans on human glycoproteins?
     complexity: advanced
     sparql: |
       PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
       PREFIX glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#>
-      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-      SELECT DISTINCT ?protein ?proteinLabel ?gene ?geneLabel
+      SELECT ?protein ?label ?position ?saccharide
       FROM <http://rdf.glycosmos.org/glycoprotein>
-      FROM <http://rdf.glycosmos.org/glycogenes>
       WHERE {
-        ?site glycoconjugate:has_saccharide <http://rdf.glycoinfo.org/glycan/G00051MO> ;
-              sio:SIO_000772 ?proteinRef .
         ?protein a glycan:Glycoprotein ;
-                 rdfs:seeAlso ?proteinRef .
-        OPTIONAL { ?protein rdfs:label ?proteinLabel . }
-        OPTIONAL {
-          ?protein rdfs:seeAlso ?uniprotRef .
-          FILTER(CONTAINS(STR(?uniprotRef), "uniprot"))
-          ?gene a glycan:Glycogene ;
-                rdfs:seeAlso ?uniprotRef .
-          OPTIONAL { ?gene rdfs:label ?geneLabel . }
-        }
+                 glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
+                 rdfs:label ?label ;
+                 glycoconjugate:glycosylated_at ?site .
+        ?site faldo:location/faldo:position ?position .
+        OPTIONAL { ?site glycoconjugate:has_saccharide ?saccharide }
       }
       LIMIT 50
 
-  - title: Human Glycoprotein Statistics — Aggregated Metrics
-    description: Nested SELECT to compute protein count, total sites, and position range for human glycoproteins without loading the full dataset.
+  - title: Aggregate glycosylation statistics for human glycoproteins
+    description: Nested aggregation — protein count, site count, and position range — without materializing the full set.
     question: What are the aggregate glycosylation statistics for human glycoproteins?
     complexity: advanced
     sparql: |
@@ -347,88 +430,100 @@ cross_database_queries:
   co_located_databases: [glycosmos]
   examples: []
   notes: |
-    GlyCosmos is the only database on its dedicated endpoint (https://ts.glycosmos.org/sparql).
-    Cross-database federated SPARQL is not available.
-    To link externally, use the cross-reference IRIs retrieved from glycan:has_Resource_entry
-    (for PubChem/ChEBI compound IDs) and rdfs:seeAlso (for UniProt/NCBI Gene IDs), then
-    query the respective RDF portals independently.
+    GlyCosmos is the only database on its dedicated endpoint (https://ts.glycosmos.org/sparql);
+    federated cross-database SPARQL is not available. Bridge externally using the cross-reference
+    IRIs minted from the data:
+    - Chemical/structure: glycan:has_resource_entry (LOWERCASE) -> ChEBI (OBO IRI obo:CHEBI_<id>,
+      directly federatable with ChEBI RDF), PubChem (rdf.glycoinfo.org/pubchem/{compound,substance}/),
+      GlyConnect, HMDB, GlycomeDB.
+    - Protein: glycoprotein rdfs:seeAlso and site sio:SIO_000772 -> UniProt (purl.uniprot.org/uniprot/<AC>).
+    - Gene: glycogene rdfs:seeAlso -> NCBI Gene (identifiers.org/ncbigene/<id>),
+      KEGG (identifiers.org/kegg.genes/hsa:<id>), UniProt geneid.
+    Extract these IRIs, then query the target RDF portal independently.
 
 cross_references:
-  - pattern: glycan:has_Resource_entry
+  - pattern: glycan:has_resource_entry (LOWERCASE r) — external chemical/structure databases
     description: |
-      Glycans link to external structure and chemical databases via Resource_entry objects.
-      ~80% of glycans (94K/117K) have at least one external reference.
+      The lowercase predicate links a glycan to external-DB Resource_entry nodes carrying
+      rdfs:label = DB name and dcterms:identifier = external ID. 51,947 glycans (44.1%) have at least
+      one. Resource_entry IRIs encode the ID; ChEBI uses the OBO IRI (federation-ready). Nodes are
+      spread across the glycans graph and partner graphs (glycome-db, jcggdb_aist, bcsdb, glycobase).
     databases:
-      structure:
-        - "Carbbank: ~44K, GlycomeDB: ~39K, GLYCOSCIENCES.de: ~22K, JCGGDB: ~22K, BCSDB: ~8K bacterial"
       chemical:
-        - "PubChem Substance/Compound: ~32K each, ChEBI: ~11K, KEGG: ~10K"
-      protein_structure:
-        - "PDB: ~6K structural entries"
+        - "PubChem Compound: 31,774 glycans (rdf.glycoinfo.org/pubchem/compound/CID<n>)"
+        - "PubChem Substance: 31,774 (rdf.glycoinfo.org/pubchem/substance/SID<n>)"
+        - "ChEBI: 10,598 (http://purl.obolibrary.org/obo/CHEBI_<n>)"
+        - "Human Metabolome Database: 276"
+      structure:
+        - "GlycomeDB: 39,377 (partner graph); GlyConnect structure: 3,369; GlyConnect composition: 597"
+        - "JCGGDB: 7,874; BCSDB: 5,448; GlycoShape: 217 (also Carbbank, GLYCOSCIENCES.de in partner graphs)"
 
-  - pattern: rdfs:seeAlso (Glycoproteins and Glycogenes)
+  - pattern: glycan:has_Resource_entry (CAPITAL R) — GlyTouCan self-reference
     description: |
-      Protein and gene cross-references via rdfs:seeAlso. Covers 153K glycoproteins
-      and 423K glycogenes with links to UniProt, NCBI Gene, KEGG, HGNC, GlyGen, GlyConnect.
+      The capital-R predicate links a glycan to a single self-referencing Resource_entry in the core
+      graph whose dcterms:identifier is the GlyTouCan ID itself and whose in_glycan_database is
+      glytoucan:database_glytoucan. It carries NO external identifier. 101,600 glycans (86.2%).
+      Do NOT use this predicate to obtain PubChem/ChEBI IDs — use the lowercase form above.
+    databases:
+      self:
+        - "GlyTouCan: 101,600 (in_glycan_database = glytoucan:database_glytoucan)"
+
+  - pattern: rdfs:seeAlso / sio:SIO_000772 (glycoproteins, sites, glycogenes)
+    description: |
+      Protein/gene cross-references. Glycoprotein rdfs:seeAlso (202,435 links) and site sio:SIO_000772
+      point to UniProt (purl.uniprot.org/uniprot/<AC>) plus GlyGen, PubChem, RaftProt, GPDB2. Glycogene
+      rdfs:seeAlso (850,921 links) points to NCBI Gene, KEGG, and UniProt geneid.
     databases:
       protein:
-        - "UniProt: 139K, GlyGen: 12K, GlyConnect: 2K, ACGG GPDB2: 14K, PubChem: 16K"
+        - "UniProt (purl.uniprot.org/uniprot/), GlyGen, PubChem, RaftProt, ACGG GPDB2"
       gene:
-        - "NCBI Gene: 423K, KEGG Genes: 381K, HGNC: human gene nomenclature"
-
-  - pattern: sio:SIO_000772 (Glycosylation Sites)
-    description: |
-      Glycosylation sites reference parent protein entries via sio:SIO_000772 predicate.
-      414K sites with links to UniProt, GlyGen, GlyConnect, ACGG GPDB2, O-GlcNAc DB.
-    databases:
-      protein:
-        - "UniProt: primary, GlyGen: glycosylation-specific, GlyConnect: experimental"
+        - "NCBI Gene (identifiers.org/ncbigene/), KEGG (identifiers.org/kegg.genes/hsa:), UniProt geneid"
 
 architectural_notes:
   query_strategy:
-    - "MANDATORY FIRST STEP: call get_MIE_file('glycosmos') and read critical_warnings + shape_expressions"
-    - "ALWAYS include FROM <graph_iri> — omitting it queries 140+ graphs and causes timeouts"
-    - "EXCEPTION: glycan:has_motif spans multiple graphs — omit FROM for motif queries"
-    - "Exploratory: run SPARQL to find example entities and extract specific IRIs"
-    - "Comprehensive: use specific taxonomy IRIs, motif IRIs, or VALUES with multiple IRIs"
-    - "Text search: FILTER(CONTAINS(LCASE(?text), 'kw')) — bif:contains is DISABLED here"
-    - "Priority: Specific IRIs > VALUES with IRIs > Graph navigation > FILTER(CONTAINS())"
+    - "MANDATORY FIRST STEP: get_MIE_file('glycosmos'); read critical_warnings (predicate-case trap, dual motif IRI)"
+    - "External glycan xrefs: use LOWERCASE glycan:has_resource_entry, not capital has_Resource_entry"
+    - "Motif/sequence queries: FROM <http://rdf.glycosmos.org/glycans/glycosequence>"
+    - "Motif name: bridge has_motif object (glycan/ form) to <http://glycoinfo.org/motif/[ID]> by GlyTouCan ID"
+    - "Entity IRIs use http://glycosmos.org/ (proteins/sites/genes); graphs use http://rdf.glycosmos.org/"
+    - "Organisms: specific taxonomy IRIs (human=9606, mouse=10090, rat=10116, arabidopsis=3702)"
+    - "Priority: Specific IRIs > VALUES with IRIs > typed predicates / graph navigation > bif:contains > FILTER(CONTAINS())"
 
   schema_design:
-    - "140+ named graphs; key data graphs listed in schema_info.graphs"
-    - "FALDO ontology for sequence positions (ExactPosition, FuzzyPosition)"
-    - "SIO predicate sio:SIO_000772 links glycosylation sites to parent protein references"
-    - "Resource_entry pattern for external DB cross-references (label = DB name, identifier = DB ID)"
-    - "Motif IRIs are glycan IRIs: <http://rdf.glycoinfo.org/glycan/[GlyTouCanID]>"
+    - "Glycan core (type, has_primary_id, capital has_Resource_entry) in <http://rdf.glytoucan.org/core>"
+    - "Sequences (5 formats) and has_motif links in <http://rdf.glycosmos.org/glycans/glycosequence>"
+    - "Motif definitions (gn:Motif) + labels in <http://rdf.glycosmos.org/glycans/motif_label>, motif/ IRI form"
+    - "External Resource_entry nodes + lowercase has_resource_entry links in <…/glycans> and partner graphs"
+    - "Glycoproteins/sites/locations in <http://rdf.glycosmos.org/glycoprotein>; FALDO ExactPosition with named LOC node"
+    - "sio:SIO_000772 links a site to its parent protein reference; faldo:location/faldo:position gives the index"
     - "Taxonomy IRI pattern: <http://identifiers.org/taxonomy/[NCBI_TaxID]>"
-    - "Integrated ontologies: GO, ECO, UBERON, HPO, MONDO, DOID, SIO, GlycoNAVI (gn:)"
 
   performance:
-    - "CRITICAL: FROM clause improves performance 10-100x; always include it"
-    - "Apply taxonomy and type filters early to reduce result sets before joins"
-    - "Use LIMIT on all exploratory and large-dataset queries"
-    - "Nested SELECT for complex aggregations to avoid memory exhaustion"
-    - "Motif-spanning queries (no FROM) are slower — compensate with LIMIT"
+    - "Pin FROM <graph> for class-wide scans; the endpoint hosts 140+ graphs"
+    - "Targeted single-IRI lookups may omit FROM (default-graph union) — useful for cross-graph xref fetches"
+    - "Apply taxonomy/type filters before joins; LIMIT all exploratory queries"
+    - "bif:contains IS enabled — prefer it over FILTER(CONTAINS()) for free-text search; split property paths first"
+    - "Nested SELECT for aggregations over the 414K-site / 423K-gene graphs"
 
   data_integration:
-    - "Chemical: ChEBI/PubChem via glycan:has_Resource_entry"
-    - "Protein/Gene: UniProt/NCBI Gene via rdfs:seeAlso"
-    - "Pathway: KEGG and Reactome via rdfs:seeAlso on glycogenes"
-    - "Structure: PDB via glycan:has_Resource_entry"
-    - "Lectin: SugarBind (739 lectins, 739 interactions) and UniLectin (5,322 lectins)"
+    - "Chemical/structure: ChEBI (OBO IRI), PubChem via LOWERCASE glycan:has_resource_entry"
+    - "Protein: UniProt via glycoprotein rdfs:seeAlso and site sio:SIO_000772"
+    - "Gene: NCBI Gene / KEGG / UniProt geneid via glycogene rdfs:seeAlso"
+    - "Self-reference: glycan:has_Resource_entry (capital) yields only the GlyTouCan ID"
 
   data_quality:
-    - "GlyTouCan IDs: pattern G[0-9]{5}[A-Z]{2} (e.g. G00051MO); 99.8% glycan coverage"
-    - "Label sparsity: glycan <1%, protein 17%, gene 32% — use IDs and seeAlso links"
-    - "Taxon coverage: protein 18%, gene 0.4% — taxon filter not reliable for genes"
-    - "Position data: 98.3% of glycosylation sites have faldo:ExactPosition"
-    - "Motif count may vary between releases — verify with COUNT query if precision needed"
+    - "GlyTouCan IDs: pattern G[0-9]{5}[A-Z]{2}; has_primary_id 99.75%"
+    - "Labels well populated now: glycoprotein 90.8%, glycogene 100% (label/description/taxon). Glycan rdfs:label <1% — use has_primary_id"
+    - "Glycoprotein/glycogene taxon coverage 90.8% / 100% — taxon filtering is reliable (was sparse in older releases)"
+    - "Site position data: 98.3% have faldo:ExactPosition"
+    - "Multi-valued labels: motifs (e.g. G00031MO has 3) and ChEBI Resource_entry (name + 'ChEBI') — use DISTINCT"
+    - "Counts may shift between quarterly releases — re-verify with COUNT if precision is needed"
 
   text_search_justification:
-    - "Number of the 7 example queries using text search: 1 (query 5 — epitope names)"
-    - "Fields where text search is legitimate: rdfs:label / skos:altLabel on glycan:Glycan_epitope (free-form names like 'Lewis x', 'CD15'); dcterms:description on glycan:Glycogene"
-    - "Reason: No classification IRI, typed predicate, or controlled vocabulary exists for epitope names or gene descriptions"
-    - "All other entity types (organism, motif, chemical, protein) have structured IRI alternatives"
+    - "Number of the 7 example queries using text search: 0 — every concept used has a structured IRI or typed predicate"
+    - "Legitimate text-search fields IF needed: rdfs:label/skos:altLabel on glycan:Glycan_epitope (free-text names like 'Lewis x'); dcterms:description on glycan:Glycogene"
+    - "bif:contains is enabled (verified 2026-06-27): use ?label bif:contains \"'Lewis'\" for indexed search; FILTER(CONTAINS()) only as fallback"
+    - "Organisms, motifs, chemicals, proteins, genes all have specific IRIs — text search is not needed for them"
 
 data_statistics:
   total_entities:
@@ -438,114 +533,142 @@ data_statistics:
     glycogenes: 423164
     glycoepitopes: 173
     motifs: 133
-    sugarbind_lectins: 739
-    sugarbind_interactions: 739
-    unilectin_proteins: 5095
-  verified_date: "2025-04-21"
-  verification_method: "Direct COUNT queries on each named graph"
+  verified_date: "2026-06-27"
+  verification_method: "Direct COUNT(DISTINCT) queries on each named graph"
   coverage:
-    glycans_with_resource_entry: "80.0%"
-    glycans_with_primary_id: "99.8%"
-    sites_with_position_data: "98.3%"
-    proteins_with_taxon: "18%"
-    proteins_with_label: "17%"
-    genes_with_taxon: "0.4%"
-    genes_with_label: "32%"
-    verified_date: "2025-04-21"
+    glycans_with_primary_id: "99.75% (117,571/117,864)"
+    glycans_with_self_resource_entry_capital: "86.2% (101,600/117,864)"
+    glycans_with_external_resource_entry_lowercase: "44.1% (51,947/117,864)"
+    glycoproteins_with_label: "90.8% (139,075/153,178)"
+    glycoproteins_with_taxon: "90.8% (139,075/153,178)"
+    glycogenes_with_label_description_taxon: "100% (423,164/423,164)"
+    sites_with_position_data: "98.3% (407,793/414,798)"
+    verified_date: "2026-06-27"
+  external_xref_glycan_counts:
+    pubchem_compound: 31774
+    pubchem_substance: 31774
+    chebi: 10598
+    glycomedb: 39377
+    glyconnect_structure: 3369
+    glyconnect_composition: 597
+    jcggdb: 7874
+    bcsdb: 5448
+    hmdb: 276
+    glycoshape: 217
+    verified_date: "2026-06-27"
+  sequence_format_nodes:
+    wurcs: 254078
+    iupac_extended: 193073
+    iupac_condensed: 124929
+    glycoct: 117466
+    glycam_condensed: 25050
+    verified_date: "2026-06-27"
   species_distribution_glycoproteins:
     human_9606: 16604
     mouse_10090: 10713
     rat_10116: 2576
     arabidopsis_3702: 2251
     c_elegans_6239: 1447
-    verified_date: "2025-04-21"
+    cow_9913: 1249
+    verified_date: "2026-06-27"
 
 anti_patterns:
-  - title: "Circular Reasoning with Search Results"
-    problem: "Using glycan IRIs sampled from a text-search result as the scope of a comprehensive count — counts only the sample."
+  - title: "Schema Check Before Text Search"
+    problem: "Jumping to a label text search for a concept that has a structured IRI or typed predicate."
     wrong_sparql: |
-      # WRONG: pasted sampled glycan IRIs from a bif:contains result
-      VALUES ?glycan {
-        <http://rdf.glycoinfo.org/glycan/G00031MO>
-        <http://rdf.glycoinfo.org/glycan/G00033MO>
-      }
-      SELECT (COUNT(?glycan) AS ?count) WHERE { }
-      LIMIT 1
-    correct_sparql: |
-      # CORRECT: use the motif IRI discovered during exploration to count all core-1 glycans
-      SELECT (COUNT(DISTINCT ?glycan) AS ?count)
-      FROM <http://rdf.glycoinfo.org/glycan>
-      WHERE {
-        ?glycan glycan:has_motif <http://rdf.glycoinfo.org/glycan/G00031MO> .
-      }
-      LIMIT 1
-    explanation: "Use exploratory queries to discover motif, organism, or epitope IRIs. Use those as structured filter values in comprehensive queries — not the sampled glycan IRIs themselves."
-
-  - title: "Using bif:contains (Disabled on This Endpoint)"
-    problem: "bif:contains is not enabled on ts.glycosmos.org/sparql despite Virtuoso backend; returns a SPARQL error."
-    wrong_sparql: |
-      ?label bif:contains "'lewis'"  # ERROR: not enabled
-    correct_sparql: |
-      FILTER(CONTAINS(LCASE(?label), "lewis"))  # Required fallback
-    explanation: "This endpoint is Virtuoso but bif:contains is disabled. Use FILTER(CONTAINS(LCASE(?text), 'kw')) for all text searches."
-
-  - title: "Skipping Schema Check Before Text Search"
-    problem: "Using text search without examining MIE shape_expressions for structured alternatives."
-    wrong_sparql: |
-      # Jumps to text search without schema check
+      # WRONG: scanning glycan labels for a motif (glycan rdfs:label is <1% populated anyway)
       PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
       SELECT ?glycan WHERE {
-        ?glycan a glycan:Saccharide ;
-                rdfs:label ?label .
-        FILTER(CONTAINS(LCASE(?label), "core 1"))
+        ?glycan a glycan:Saccharide ; rdfs:label ?l .
+        FILTER(CONTAINS(LCASE(?l), "n-glycan complex"))
       }
     correct_sparql: |
-      # 1. get_MIE_file("glycosmos") → shape_expressions shows glycan:has_motif predicate
-      # 2. Exploratory SPARQL finds motif glycan IRI: <http://rdf.glycoinfo.org/glycan/G00031MO>
-      # 3. Use discovered IRI (FROM omitted because motif triples span graphs):
+      # CORRECT: the motif has an IRI. Use has_motif (glycosequence graph) and bridge to the label.
       PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
       PREFIX glytoucan: <http://www.glytoucan.org/glyco/owl/glytoucan#>
-      SELECT ?glycan ?gtcId
+      SELECT ?gtcId
+      FROM <http://rdf.glycosmos.org/glycans/glycosequence>
+      FROM <http://rdf.glytoucan.org/core>
       WHERE {
-        ?glycan glycan:has_motif <http://rdf.glycoinfo.org/glycan/G00031MO> ;
+        ?glycan glycan:has_motif <http://rdf.glycoinfo.org/glycan/G00030MO> ;
                 glytoucan:has_primary_id ?gtcId .
       }
       LIMIT 100
-    explanation: "Always check MIE and inspect examples. Motifs, organisms, and chemical entities all have specific IRI alternatives — text search is rarely the right first choice."
+    explanation: "Motifs, organisms, chemicals, proteins, and genes all have specific IRIs. Check shape_expressions before reaching for text search."
+
+  - title: "Wrong Resource-Entry Predicate Case"
+    problem: "Using has_Resource_entry (capital R) to fetch external IDs returns only the GlyTouCan self-reference."
+    wrong_sparql: |
+      # WRONG: capital R yields dcterms:identifier = the GlyTouCan ID itself, never PubChem/ChEBI
+      ?glycan glycan:has_Resource_entry ?res .
+      ?res dcterms:identifier ?id .   # ?id is "G00547ZN", not "146083"
+    correct_sparql: |
+      # CORRECT: lowercase r reaches external-DB Resource_entry nodes
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT ?dbName ?extId
+      FROM <http://rdf.glycosmos.org/glycans>
+      WHERE {
+        <http://rdf.glycoinfo.org/glycan/G00547ZN> glycan:has_resource_entry ?res .
+        ?res rdfs:label ?dbName ; dcterms:identifier ?extId .
+      }
+      LIMIT 20
+    explanation: "The two predicates differ only by the case of 'Resource'. Capital = GlyTouCan self-ref; lowercase = external cross-references."
+
+  - title: "Joining the Two Motif IRI Forms Directly"
+    problem: "Trying to read a motif's label off the has_motif object IRI returns nothing — that IRI carries no label."
+    wrong_sparql: |
+      # WRONG: the glycan-form motif IRI has no rdfs:label in motif_label
+      ?glycan glycan:has_motif ?motif .
+      ?motif rdfs:label ?label .       # 0 rows: label is on http://glycoinfo.org/motif/[ID], not glycan/[ID]
+    correct_sparql: |
+      # CORRECT: bridge by GlyTouCan ID — has_motif uses glycan/ form, the label uses motif/ form
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT DISTINCT ?label
+      FROM <http://rdf.glycosmos.org/glycans/motif_label>
+      WHERE {
+        <http://glycoinfo.org/motif/G00030MO> a <http://glyconavi.org/owl#Motif> ;
+            rdfs:label ?label .
+      }
+      LIMIT 10
+    explanation: "has_motif object = <http://rdf.glycoinfo.org/glycan/[ID]>; motif label lives on <http://glycoinfo.org/motif/[ID]>. Same ID suffix, different namespace — bridge, don't equate."
 
   - title: "Text Search Instead of Taxonomy IRI"
     problem: "Filtering organisms by label text when a specific NCBI Taxonomy IRI is available."
     wrong_sparql: |
       ?protein glycan:has_taxon ?taxon .
       ?taxon rdfs:label ?label .
-      FILTER(CONTAINS(LCASE(?label), "human"))  # slow, imprecise
+      FILTER(CONTAINS(LCASE(?label), "human"))   # slow, imprecise
     correct_sparql: |
-      ?protein glycan:has_taxon <http://identifiers.org/taxonomy/9606> .  # fast, exact
-    explanation: "Use specific taxonomy IRIs: human=9606, mouse=10090, rat=10116, Arabidopsis=3702, C.elegans=6239, S.cerevisiae=559292."
+      ?protein glycan:has_taxon <http://identifiers.org/taxonomy/9606> .   # fast, exact
+    explanation: "Use taxonomy IRIs: human=9606, mouse=10090, rat=10116, Arabidopsis=3702, C.elegans=6239."
+
 common_errors:
-  - error: "Query timeout after 120 seconds"
+  - error: "Empty result fetching external glycan IDs"
     causes:
-      - "FROM clause missing — searches 140+ graphs"
-      - "No LIMIT on large datasets (414K sites, 423K genes)"
-      - "FILTER(CONTAINS()) without early type/taxonomy filters"
+      - "Used has_Resource_entry (capital R) — returns only the GlyTouCan self-reference"
+      - "Restricted FROM to one graph while the external Resource_entry node lives in a partner graph"
+      - "Tried to read a motif label off the has_motif object IRI (wrong namespace)"
     solutions:
-      - "Add FROM <graph_iri> to every query (except motif queries)"
-      - "Add LIMIT; pre-filter by glycan:has_taxon or rdf:type before text search"
+      - "Use LOWERCASE glycan:has_resource_entry for external DB IDs"
+      - "Omit FROM for a single-glycan xref fetch, or include the partner graphs (glycome-db, jcggdb_aist, bcsdb)"
+      - "Bridge motif IRIs by GlyTouCan ID: has_motif -> glycan/[ID]; label -> http://glycoinfo.org/motif/[ID]"
+
+  - error: "Query timeout or empty class-wide scan"
+    causes:
+      - "FROM clause missing on a class-wide scan — searches 140+ graphs"
+      - "Wrong entity IRI base (http://rdf.glycosmos.org/glycoprotein/<AC> instead of http://glycosmos.org/...)"
+      - "No LIMIT on the 414K-site or 423K-gene graphs"
+    solutions:
+      - "Pin FROM <graph>; entities use http://glycosmos.org/, graphs use http://rdf.glycosmos.org/"
+      - "Add LIMIT; pre-filter by glycan:has_taxon or rdf:type before aggregation"
       - "Use nested SELECT for complex aggregations"
 
-  - error: "Empty result set or missing labels"
+  - error: "Duplicate rows when retrieving motif or ChEBI labels"
     causes:
-      - "Relying on rdfs:label which is sparsely populated (<1% glycans, 17% proteins)"
-      - "Wrong IRI namespace for taxonomy (should be <http://identifiers.org/taxonomy/…>)"
-      - "Expecting motif matches with FROM clause (triples span graphs)"
+      - "A motif IRI carries multiple rdfs:label synonyms (e.g. G00031MO has 3)"
+      - "A ChEBI Resource_entry carries both the systematic name and the literal 'ChEBI'"
     solutions:
-      - "Use glytoucan:has_primary_id for glycan IDs, rdfs:seeAlso for protein/gene links"
-      - "Verify IRI namespace with exploratory query before filtering"
-      - "Omit FROM for glycan:has_motif queries"
-
-  - error: "bif:contains SPARQL parse error"
-    causes:
-      - "bif:contains is disabled on ts.glycosmos.org despite Virtuoso backend"
-    solutions:
-      - "Replace all bif:contains with FILTER(CONTAINS(LCASE(?text), 'keyword'))"
-      - "Add early type and taxonomy filters before FILTER(CONTAINS()) to limit scan scope"
+      - "Use SELECT DISTINCT, or aggregate with SAMPLE()/GROUP_CONCAT() and GROUP BY the entity"
