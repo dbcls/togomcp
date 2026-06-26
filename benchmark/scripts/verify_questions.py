@@ -4,6 +4,7 @@ Verification script for TogoMCP benchmark questions (YAML format).
 
 Validates question_XXX.yaml files against QUESTION_FORMAT.md specification.
 """
+import csv
 import re
 import sys
 from collections import Counter, defaultdict
@@ -26,12 +27,51 @@ BASE_PATH = Path(__file__).resolve().parents[1] / "questions"
 
 VALID_TYPES = {"yes_no", "factoid", "list", "summary", "choice"}
 
-VALID_DATABASES = {
+# The set of valid databases is the canonical RDF-database registry — the
+# `database` column of togo_mcp/data/resources/endpoints.csv — NOT a hardcoded
+# list. Databases are added/removed there over time; deriving the set keeps this
+# validator current with no edit (per the repo's "endpoints.csv drives
+# everything" convention). The frozen fallback below is used only if the CSV
+# can't be read (e.g. the script is run outside the repo checkout).
+ENDPOINTS_CSV = (Path(__file__).resolve().parents[2]
+                 / "togo_mcp" / "data" / "resources" / "endpoints.csv")
+
+_FALLBACK_DATABASES = {
     "uniprot", "rhea", "pubchem", "pdb", "chembl", "chebi", "reactome",
     "ensembl", "amrportal", "mesh", "go", "taxonomy", "mondo", "nando",
     "bacdive", "mediadive", "clinvar", "pubmed", "pubtator", "ncbigene",
     "medgen", "ddbj", "glycosmos",
 }
+
+
+# Endpoint groups that are out of scope for this life-science benchmark.
+# `nims` is the NIMS materials-science endpoint — e.g. the `supercon`
+# superconducting-materials database — which is not life science. Databases on
+# these endpoints are excluded from the valid set even though endpoints.csv
+# lists them; excluding by endpoint group (not by name) also auto-excludes any
+# future materials database added to the same endpoint.
+_EXCLUDED_ENDPOINTS = {"nims"}
+
+
+def load_valid_databases():
+    """Read the database registry from endpoints.csv, excluding non-life-science
+    endpoint groups; fall back to the frozen set if the CSV is unreachable."""
+    try:
+        with open(ENDPOINTS_CSV, newline="", encoding="utf-8") as fh:
+            dbs = {row["database"].strip()
+                   for row in csv.DictReader(fh)
+                   if row.get("database", "").strip()
+                   and row.get("endpoint_name", "").strip() not in _EXCLUDED_ENDPOINTS}
+        if dbs:
+            return dbs
+    except OSError:
+        pass
+    print(f"  ⚠  endpoints.csv not readable at {ENDPOINTS_CSV}; "
+          f"using frozen fallback database set ({len(_FALLBACK_DATABASES)})")
+    return set(_FALLBACK_DATABASES)
+
+
+VALID_DATABASES = load_valid_databases()
 
 # Top-level required fields (present in every question)
 REQUIRED_FIELDS = [
@@ -717,8 +757,12 @@ def verify_questions(targets=None):
 
     missing_dbs = sorted(VALID_DATABASES - set(db_counts.keys()))
     if missing_dbs:
-        print(f"  ❌ Databases never used: {missing_dbs}")
-        all_issues.append(f"Databases never used: {missing_dbs}")
+        # Warning, not error: the registry grows over time, and a newly added
+        # database legitimately has no question yet. Full coverage is a goal
+        # (the Next-Question Guidance below surfaces these at count 0), not a
+        # hard gate that would block validation the moment a database is added.
+        print(f"  ⚠  Databases not yet covered ({len(missing_dbs)}): {missing_dbs}")
+        all_warnings.append(f"Databases not yet covered: {missing_dbs}")
     else:
         print(f"  ✓ All {len(VALID_DATABASES)} databases used at least once")
 
