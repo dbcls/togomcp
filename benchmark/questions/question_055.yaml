@@ -1,0 +1,218 @@
+id: question_055
+type: summary
+body: >-
+  Proline is synthesized from glutamate by a short, conserved enzymatic module: a
+  bifunctional synthase generates the intermediate Delta-1-pyrroline-5-carboxylate,
+  which a family of pyrroline-5-carboxylate reductase paralogs then convert to proline.
+  Provide an integrated evolutionary and physiological characterization of the human
+  enzymes of this module — at what taxonomic depth is each enzyme's ortholog group
+  rooted, how are the reductase paralogs related to one another by descent, what
+  catalytic identity do they share, and how broadly across tissues is each expressed?
+
+inspiration_keyword:
+  keyword_id: KW-0641
+  name: Proline biosynthesis
+  category: Biological process
+
+togomcp_databases_used:
+  - oma
+  - uniprot
+  - bgee
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 2
+  rdf_necessity: 2
+  total: 10
+  passed: true
+
+pubmed_test:
+  time_spent: 14 minutes
+  method: |
+    Tried to recover the integrated answer from PubMed: "proline biosynthesis ALDH18A1 PYCR
+    evolutionary origin orthology conservation tissue expression" (0 results), "pyrroline-5-carboxylate
+    reductase PYCR paralogs evolution duplication vertebrates" (0 results), and the broader
+    "proline biosynthesis pathway evolution conservation enzymes" (47 results). Read the most
+    relevant review (PMID 25367752, Fichman et al. 2015, "Evolution of proline biosynthesis").
+  result: |
+    The Fichman review establishes the GENERAL picture — proline biosynthesis is conserved across
+    the three domains of life, and in higher plants and animals the first two steps are fused into
+    a bifunctional P5C synthase (consistent with OMA rooting that enzyme's orthologous group only at
+    Eukaryota). But it does NOT provide the specific current-database facts this question integrates:
+    the discrete OMA taxonomic-range rooting of each orthologous group (reductase family at LUCA vs
+    synthase at Eukaryota), the descent relationships among the three human PYCR paralogs, or the
+    Bgee high-confidence tissue-expression breadth of each enzyme. The qualitative evolution is
+    reviewed; the specific, quantitative, cross-resource integration is not literature-recoverable.
+  conclusion: PASS (general pathway evolution is reviewed, but the specific OMA HOG rooting + paralog topology + Bgee expression breadth integrated here require live database queries)
+
+sparql_queries:
+  - query_number: 1
+    database: uniprot
+    description: >-
+      Roster + function axis — the reviewed human enzymes annotated with the Proline biosynthesis
+      keyword (KW-0641), with recommended name and EC number. Defines the complete 4-enzyme scope:
+      the bifunctional synthase ALDH18A1 plus the three EC 1.5.1.2 reductases PYCR1/PYCR2/PYCR3.
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
+
+      SELECT ?acc ?name ?ec
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                 up:classifiedWith keywords:641 ;
+                 up:recommendedName ?rn .
+        ?rn up:fullName ?name .
+        OPTIONAL { ?rn up:ecName ?ec }
+        BIND(STRAFTER(STR(?protein), "uniprot/") AS ?acc)
+      }
+    result_count: 4
+
+  - query_number: 2
+    database: oma
+    description: >-
+      Locate the 4 enzymes in OMA via UniProt cross-reference and retrieve each one's human
+      species-level Hierarchical Orthologous Group (HOG) cluster. ALDH18A1 falls in HOG family
+      E0804879; PYCR1/PYCR2/PYCR3 all fall in a single family E1027413, and their cluster paths
+      encode the paralog topology (PYCR1 and PYCR2 share the longest lineage = closest paralogs;
+      PYCR3 branches earlier).
+    query: |
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX lscr: <http://purl.org/lscr#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+
+      SELECT ?up ?omaId ?cluster
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          VALUES ?up {
+            <http://purl.uniprot.org/uniprot/P54886> <http://purl.uniprot.org/uniprot/P32322>
+            <http://purl.uniprot.org/uniprot/Q96C36> <http://purl.uniprot.org/uniprot/Q53H96>
+          }
+          ?protein a orth:Protein ;
+                   lscr:xrefUniprot ?up ;
+                   dct:identifier ?omaId .
+          FILTER(STRSTARTS(?omaId, "HUMAN"))
+          ?cluster orth:hasHomologousMember ?protein ;
+                   orth:hasTaxonomicRange <http://purl.uniprot.org/taxonomy/9606> .
+        }
+      }
+    result_count: 4
+
+  - query_number: 3
+    database: oma
+    description: >-
+      Evolutionary origin axis — climb each enzyme's HOG to its root via the upward property path
+      (^orth:hasHomologousMember)+, taking the topmost ancestor (no further parent) and reading its
+      taxonomic range. ALDH18A1's family roots at Eukaryota (taxon 2759); the PYCR reductase family
+      (E1027413) roots at LUCA, marking it as universal across cellular life.
+    query: |
+      PREFIX orth: <http://purl.org/net/orth#>
+
+      SELECT ?gene ?root ?rootTaxon
+      WHERE {
+        VALUES (?anchor ?gene) {
+          (<https://omabrowser.org/oma/hog/resolve/HOG:E0804879.10b_9606> "ALDH18A1")
+          (<https://omabrowser.org/oma/hog/resolve/HOG:E1027413.10b.13d.33d.12a.10d.6b.5b.6a_9606> "PYCR1")
+          (<https://omabrowser.org/oma/hog/resolve/HOG:E1027413.10b.13d.33d.12a.10d.6b.5a_9606> "PYCR2")
+          (<https://omabrowser.org/oma/hog/resolve/HOG:E1027413.10b.13a_9606> "PYCR3")
+        }
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          ?anchor (^orth:hasHomologousMember)+ ?root .
+          ?root orth:hasTaxonomicRange ?rootTaxon .
+          FILTER NOT EXISTS { ?above orth:hasHomologousMember ?root }
+        }
+      }
+      ORDER BY ?gene
+    result_count: 4
+
+  - query_number: 4
+    database: bgee
+    description: >-
+      Expression axis — the number of distinct anatomical entities in which each enzyme's human gene
+      has a high-confidence (CIO_0000029) expression call, excluding the GO_0005575 cellular-component
+      fallback. All four are broadly expressed (336-525 tissues), consistent with a housekeeping module.
+    query: |
+      PREFIX genex: <http://purl.org/genex#>
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX lscr: <http://purl.org/lscr#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?sym (COUNT(DISTINCT ?anat) AS ?nTissues)
+      WHERE {
+        GRAPH <http://bgee.org> {
+          VALUES ?up {
+            <http://purl.uniprot.org/uniprot/P54886> <http://purl.uniprot.org/uniprot/P32322>
+            <http://purl.uniprot.org/uniprot/Q96C36> <http://purl.uniprot.org/uniprot/Q53H96>
+          }
+          ?gene a orth:Gene ;
+                rdfs:label ?sym ;
+                orth:organism <https://bgee.org/species/9606> ;
+                lscr:xrefUniprot ?up .
+          ?call a genex:Expression ;
+                genex:hasSequenceUnit ?gene ;
+                genex:hasConfidenceLevel obo:CIO_0000029 ;
+                genex:hasExpressionCondition ?cond .
+          ?cond genex:hasAnatomicalEntity ?anat .
+          FILTER(?anat != obo:GO_0005575)
+        }
+      }
+      GROUP BY ?sym
+      ORDER BY DESC(?nTissues)
+    result_count: 4
+
+rdf_triples: |
+  @prefix up:        <http://purl.uniprot.org/core/> .
+  @prefix keywords:  <http://purl.uniprot.org/keywords/> .
+  @prefix uniprot:   <http://purl.uniprot.org/uniprot/> .
+  @prefix taxon:     <http://purl.uniprot.org/taxonomy/> .
+  @prefix skos:      <http://www.w3.org/2004/02/skos/core#> .
+  @prefix orth:      <http://purl.org/net/orth#> .
+  @prefix omahog:    <https://omabrowser.org/oma/hog/resolve/> .
+  @prefix omaont:    <http://omabrowser.org/ontology/oma#> .
+  @prefix lscr:      <http://purl.org/lscr#> .
+
+  keywords:641 skos:prefLabel "Proline biosynthesis" .
+  # Database: uniprot | Query: 1 | Comment: KW-0641 defines the module scope; 4 reviewed human enzymes carry it — ALDH18A1 + PYCR1/PYCR2/PYCR3
+
+  uniprot:P54886 up:classifiedWith keywords:641 ; up:recommendedName/up:fullName "Delta-1-pyrroline-5-carboxylate synthase" .
+  # Database: uniprot | Query: 1 | Comment: ALDH18A1 — bifunctional synthase catalysing the first two steps (glutamate -> P5C); no single EC on the recommended name
+
+  uniprot:P32322 up:classifiedWith keywords:641 ; up:recommendedName/up:fullName "Pyrroline-5-carboxylate reductase 1, mitochondrial" .
+  # Database: uniprot | Query: 1 | Comment: PYCR1 — EC 1.5.1.2 reductase (P5C -> proline), mitochondrial; PYCR2 and PYCR3 share the same EC 1.5.1.2 catalytic identity
+
+  omahog:HOG:E0804879_2759 orth:hasTaxonomicRange taxon:2759 .
+  # Database: oma | Query: 3 | Comment: Root of ALDH18A1's HOG family (E0804879) sits at Eukaryota (taxon 2759) — the bifunctional synthase is a eukaryotic feature (prokaryotes split the two activities)
+
+  omahog:HOG:E1027413 orth:hasTaxonomicRange omaont:TAX_RANGE_LUCA .
+  # Database: oma | Query: 3 | Comment: Root of the PYCR reductase family (E1027413) is LUCA — the reductase orthologous group is universal across all cellular life
+
+  omahog:HOG:E1027413.10b.13d.33d.12a.10d.6b.5b.6a_9606 a orth:OrthologsCluster .
+  # Database: oma | Query: 2 | Comment: PYCR1 human cluster; shares the deep path ...10d.6b with PYCR2 (...5a vs PYCR1 ...5b) — PYCR1 and PYCR2 are the closest paralogs
+
+  omahog:HOG:E1027413.10b.13a_9606 a orth:OrthologsCluster .
+  # Database: oma | Query: 2 | Comment: PYCR3 human cluster; branches at the .13a node, sharing only ...10b.13 with the PYCR1/PYCR2 lineage — PYCR3 diverged earlier within the same LUCA-rooted family
+
+  omaont:GENE_ENSG00000143811 lscr:xrefUniprot uniprot:Q96C36 .
+  # Database: bgee | Query: 4 | Comment: PYCR2 (Bgee gene) — broadest expression of the four, with high-confidence calls in 525 distinct anatomical entities
+
+  omaont:GENE_ENSG00000104524 lscr:xrefUniprot uniprot:Q53H96 .
+  # Database: bgee | Query: 4 | Comment: PYCR3 (Bgee gene) — most restricted of the four at 336 tissues; all four nonetheless qualify as broadly/ubiquitously expressed housekeeping enzymes
+
+exact_answer: ""
+
+ideal_answer: |
+  The human proline-biosynthesis module comprises four reviewed enzymes: the bifunctional Delta-1-pyrroline-5-carboxylate synthase ALDH18A1, which converts glutamate to the cyclic intermediate Delta-1-pyrroline-5-carboxylate (P5C), and three pyrroline-5-carboxylate reductases — PYCR1, PYCR2, and PYCR3 — which all share EC 1.5.1.2 and reduce P5C to proline. The orthology data reveal a two-tier evolutionary history. The reductase step is the more ancient: PYCR1, PYCR2, and PYCR3 all belong to a single hierarchical orthologous group (OMA family E1027413) whose root is placed at the last universal common ancestor (LUCA), so the reductase is conserved across bacteria, archaea, and eukaryotes alike. The bifunctional synthase ALDH18A1, by contrast, sits in a separate group (E0804879) rooted only at Eukaryota — consistent with the fact that prokaryotes carry out its first two steps with two separate enzymes and only eukaryotes fused them into one polypeptide. The three reductases are therefore paralogs that arose by gene duplication within the one ancient family rather than as independent inventions; their nested cluster lineages place PYCR1 and PYCR2 as the closest sister paralogs, with PYCR3 having diverged earlier. Despite this duplication, the paralogs have not partitioned sharply by tissue: all four enzymes are broadly, near-ubiquitously expressed, each detected at high confidence across hundreds of anatomical sites (PYCR2 the broadest at 525 distinct tissues, then ALDH18A1 at 498 and PYCR1 at 397, with PYCR3 the most restricted at 336). The integrated picture is of an essential, deeply conserved metabolic module whose terminal reductase step underwent paralogous expansion while retaining the housekeeping, broadly expressed character expected of core amino-acid biosynthesis.
+
+question_template_used: "Summary Multi-Dimensional (evolutionary origin x function x expression of a gene module)"
+
+time_spent:
+  exploration: 45 minutes
+  formulation: 15 minutes
+  verification: 15 minutes
+  pubmed_test: 14 minutes
+  extraction: 20 minutes
+  documentation: 25 minutes
+  total: 134 minutes
