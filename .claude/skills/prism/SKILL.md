@@ -2,15 +2,14 @@
 name: prism
 description: >
   PRISM finds entities (genes, proteins, compounds) at the INTERSECTION of two or more property sets on RDF
-  knowledge graphs via TogoMCP — e.g. "genes common to disease X and druggable pathway Y", "targets both associated
-  with phenotype P and modulated by existing drugs", "compounds both substrate of enzyme A and approved drugs". Use
-  whenever the user asks a set-intersection / overlap / "what is common to" / "is there a gene or target that is both
-  ... and ..." question, a drug-repurposing or target-identification question, or anything combining a
-  DISEASE/PHENOTYPE axis with a FUNCTION axis and/or a DRUGGABILITY axis. Trigger even if the user just says "shared
-  genes between A and B", "druggable targets for disease X", or "intersection of ... and ...". PRISM forces each axis
-  to be a reproducible predicate, expanded over the ontology hierarchy, triangulated across evidence sources, and
-  intersected by stable IDs with a provenance ledger. If you catch yourself listing candidate genes from memory,
-  STOP and use it.
+  knowledge graphs via TogoMCP — e.g. "genes common to disease X and druggable pathway Y", "targets both linked
+  to phenotype P and modulated by existing drugs". Use whenever the user asks a set-intersection / overlap /
+  "what is common to" / "is there a gene or target that is both ... and ..." question, a drug-repurposing or
+  target-identification question, or anything combining a DISEASE/PHENOTYPE axis with a FUNCTION axis and/or a
+  DRUGGABILITY axis. Trigger even on "shared genes between A and B", "druggable targets for disease X", or
+  "intersection of ... and ...". PRISM makes each axis a reproducible predicate expanded over the ontology
+  hierarchy, triangulated across evidence sources, and intersected by stable IDs with a provenance ledger. If
+  you catch yourself listing candidate genes from memory, STOP and use it.
 ---
 
 # PRISM — Predicate-defined, Reproducible, Identifier-bridged, Set-intersection Mining
