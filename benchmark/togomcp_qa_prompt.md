@@ -1,6 +1,6 @@
 # TogoMCP QA Review Prompt
 
-> **Usage:** Paste this prompt into a new Claude session. No file attachment needed — Claude reads everything automatically and updates this file when done.
+> **⚠️ Status.** This file's live role is the **Progress Tracker** table at the bottom — the `qa-generator` skill appends a row per question (Phase 11), and it is the only place the per-question QA verdict (`P`/`W`/`F`) is recorded. The C01–C25 reviewer checklist below is **superseded** by `.claude/skills/qa-generator/references/qa-checklist.md` (C01–C26), which is what the skill runs at generation time. The checklist is retained here for reference only — do not treat it (or the stale `…/togo-mcp/evaluation2/…` paths in it) as current.
 
 ---
 
@@ -240,5 +240,6 @@ Mark: `P` = pass · `W` = minor issues · `F` = major errors
 | 050 | P      | —      |
 | 051 | P      | —      |
 | 052 | P      | —      |
+| 053 | P      | —      |
 
-**Summary:** `P` = 52 &nbsp;·&nbsp; `W` = 0 &nbsp;·&nbsp; `F` = 0 &nbsp;·&nbsp; Reviewed: 52 / 52
+**Summary:** `P` = 53 &nbsp;·&nbsp; `W` = 0 &nbsp;·&nbsp; `F` = 0 &nbsp;·&nbsp; Reviewed: 53 / 53

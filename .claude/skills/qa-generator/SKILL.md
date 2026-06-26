@@ -1,6 +1,6 @@
 ---
 name: qa-generator
-description: Generate new benchmark questions for the TogoMCP evaluation set (benchmark/questions/question_XXX.yaml). Use this skill whenever the user asks to create, write, add, or extend benchmark questions / the QA set / the evaluation dataset for TogoMCP — e.g. "add a few benchmark questions", "extend the QA set", "we need more list-type questions", "write a new question about <topic/database>", "grow the benchmark past 50", or anything mentioning benchmark/questions, coverage_tracker.yaml, the QA creation guide, or question YAML files. Each question is produced end-to-end against live RDF databases (SPARQL, OLS4, PubMed) following the v5.5.0 type-first protocol, then presented for approval before it is written.
+description: Generate new benchmark questions for the TogoMCP evaluation set (benchmark/questions/question_XXX.yaml). Use this skill whenever the user asks to create, write, add, or extend benchmark questions / the QA set / the evaluation dataset for TogoMCP — e.g. "add a few benchmark questions", "extend the QA set", "we need more list-type questions", "write a new question about a given topic or database", "grow the benchmark past 50", or anything mentioning benchmark/questions, coverage_tracker.yaml, the QA creation guide, or question YAML files. Each question is produced end-to-end against live RDF databases (SPARQL, OLS4, PubMed) following the v5.5.0 type-first protocol, then presented for approval before it is written.
 ---
 
 # TogoMCP Benchmark QA Generator
@@ -72,12 +72,11 @@ Show the user: the rendered YAML, the verify result, and the C01–C26 verdict. 
 This skill stops at **approved, validated questions + updated tracker**. It does **not** run `automated_test_runner.py` or `add_llm_evaluation.py` — collecting answers and scoring the new questions is a separate, explicitly-triggered step (it incurs billed API runs).
 
 ## Source of truth
-The canonical, full protocol lives in the repo and overrides anything distilled here if they ever disagree:
-- `benchmark/QA_CREATION_GUIDE.md` — the v5.5.0 protocol
-- `benchmark/QUESTION_FORMAT.md` — the YAML schema
-- `benchmark/togomcp_qa_prompt.md` — the QA review prompt (C01–C26) + progress tracker
+The skill's `references/` files are authoritative for the generation protocol — they are the in-loop, current versions and are what you follow. For the YAML schema specifically, `benchmark/QUESTION_FORMAT.md` remains the canonical spec (`references/question-schema.md` is its distilled form); consult it when a schema detail is ambiguous.
 
-The `references/` files here are the distilled, in-loop actionable versions; read the canonical doc when a detail is ambiguous.
+Two older repo docs are **not** authoritative for generation — do not defer to them on conflict:
+- `benchmark/QA_CREATION_GUIDE.md` — the original v5.5.0 long-form protocol, kept for background/history only. It predates this skill and has stale paths and tool names; the `references/` files supersede it.
+- `benchmark/togomcp_qa_prompt.md` — now used **only** as the QA progress-tracker data file that Phase 11 appends to (it holds the per-question P/W/F verdict, which lives nowhere else). Its embedded C01–C25 reviewer prompt is superseded by `references/qa-checklist.md` (C01–C26).
 
 ## File & tool map
 

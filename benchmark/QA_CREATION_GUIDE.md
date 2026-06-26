@@ -1,3 +1,8 @@
+> **⚠️ SUPERSEDED / HISTORICAL — not the operative protocol.**
+> This long-form guide predates the `qa-generator` Claude skill (`.claude/skills/qa-generator/`). The skill and its `references/` files are now authoritative for generating questions and are kept current, whereas this document has stale paths (`…/togo-mcp/evaluation2/…`), an outdated "50 questions" target, and tool names (`Filesystem:*`, `togomcp_local`) that no longer match how questions are created. Retained for background and history only — do **not** follow it directly.
+
+---
+
 Create a question following the instructions below.
 
 ---

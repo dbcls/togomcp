@@ -1,0 +1,209 @@
+id: question_053
+type: yes_no
+body: >-
+  Does every distinct enzyme class (EC number) catalogued in the
+  6-hydroxymethyl-dihydropterin diphosphate biosynthesis pathway have at least
+  one corresponding approved biochemical reaction in the curated reactions record?
+
+inspiration_keyword:
+  keyword_id: KW-0289
+  name: Folate biosynthesis
+  category: Biological process
+
+togomcp_databases_used:
+  - brenda
+  - rhea
+
+verification_score:
+  biological_insight: 2
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 10
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: |
+    Searched PubMed for "6-hydroxymethyl-dihydropterin diphosphate biosynthesis
+    pathway enzyme classes Rhea approved reactions coverage" and
+    "HMDHP diphosphate biosynthesis EC number annotation completeness reaction database".
+  result: |
+    Both searches returned 0 results. No PubMed publication enumerates the specific set
+    of enzyme classes catalogued in the 6-hydroxymethyl-dihydropterin diphosphate
+    biosynthesis pathway, nor assesses whether each has an approved biochemical reaction
+    counterpart. The general pathway biology is described in the literature, but
+    answering this specific coverage question requires querying the current content of
+    two live RDF databases.
+  conclusion: PASS (cannot answer from literature; requires querying current curated database state)
+
+sparql_queries:
+  - query_number: 1
+    database: brenda
+    description: Retrieve all distinct EC classes in BRENDA's 6-hydroxymethyl-dihydropterin diphosphate biosynthesis pathway (pathway/8) with their enzyme names
+    query: |
+      PREFIX d3o: <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT DISTINCT ?ec ?ecLabel
+      FROM <http://rdfportal.org/dataset/brenda>
+      WHERE {
+        ?reaction d3o:partOf <https://purl.dsmz.de/brenda/pathway/8> ;
+                  d3o:catalyzedByClass ?ec .
+        ?ec rdfs:label ?ecLabel .
+      }
+      ORDER BY ?ec
+    result_count: 11
+
+  - query_number: 2
+    database: rhea
+    description: For each of the 11 EC classes in the BRENDA pathway, count approved Rhea reactions; all 11 must return a non-zero count
+    query: |
+      PREFIX rhea: <http://rdf.rhea-db.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?ec (COUNT(DISTINCT ?reaction) AS ?rxnCount)
+      WHERE {
+        VALUES ?ec {
+          <http://purl.uniprot.org/enzyme/2.5.1.105>
+          <http://purl.uniprot.org/enzyme/2.7.6.3>
+          <http://purl.uniprot.org/enzyme/3.1.4.56>
+          <http://purl.uniprot.org/enzyme/3.5.4.16>
+          <http://purl.uniprot.org/enzyme/3.5.4.25>
+          <http://purl.uniprot.org/enzyme/3.5.4.39>
+          <http://purl.uniprot.org/enzyme/3.6.1.67>
+          <http://purl.uniprot.org/enzyme/4.1.2.25>
+          <http://purl.uniprot.org/enzyme/4.1.2.59>
+          <http://purl.uniprot.org/enzyme/4.1.2.60>
+          <http://purl.uniprot.org/enzyme/4.2.1.160>
+        }
+        ?reaction rdfs:subClassOf rhea:Reaction ;
+                  rhea:status <http://rdf.rhea-db.org/Approved> ;
+                  rhea:ec ?ec .
+      }
+      GROUP BY ?ec
+      ORDER BY ?ec
+    result_count: 11
+
+  - query_number: 3
+    database: rhea
+    description: Arithmetic verification — count distinct EC classes from the pathway that have at least one approved Rhea reaction; must equal 11 (= total EC classes from Query 1)
+    query: |
+      PREFIX rhea: <http://rdf.rhea-db.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT (COUNT(DISTINCT ?ec) AS ?ecCoveredCount)
+      WHERE {
+        VALUES ?ec {
+          <http://purl.uniprot.org/enzyme/2.5.1.105>
+          <http://purl.uniprot.org/enzyme/2.7.6.3>
+          <http://purl.uniprot.org/enzyme/3.1.4.56>
+          <http://purl.uniprot.org/enzyme/3.5.4.16>
+          <http://purl.uniprot.org/enzyme/3.5.4.25>
+          <http://purl.uniprot.org/enzyme/3.5.4.39>
+          <http://purl.uniprot.org/enzyme/3.6.1.67>
+          <http://purl.uniprot.org/enzyme/4.1.2.25>
+          <http://purl.uniprot.org/enzyme/4.1.2.59>
+          <http://purl.uniprot.org/enzyme/4.1.2.60>
+          <http://purl.uniprot.org/enzyme/4.2.1.160>
+        }
+        ?reaction rdfs:subClassOf rhea:Reaction ;
+                  rhea:status <http://rdf.rhea-db.org/Approved> ;
+                  rhea:ec ?ec .
+      }
+    result_count: 1
+
+rdf_triples: |
+  @prefix d3o:  <https://purl.dsmz.de/schema/> .
+  @prefix ec:   <https://purl.dsmz.de/brenda/ec/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix rhea: <http://rdf.rhea-db.org/> .
+  @prefix enz:  <http://purl.uniprot.org/enzyme/> .
+
+  <https://purl.dsmz.de/brenda/pathway/8> rdfs:label "6-hydroxymethyl-dihydropterin diphosphate biosynthesis" .
+  # Database: brenda | Query: 1 | Comment: BRENDA pathway 8 is the 6-hydroxymethyl-dihydropterin diphosphate biosynthesis pathway containing 11 distinct EC classes
+
+  ec:3.5.4.16 rdfs:label "GTP cyclohydrolase I" .
+  # Database: brenda | Query: 1 | Comment: EC 3.5.4.16 catalyses the first committed step; produces 7,8-dihydroneopterin 3'-triphosphate + formate from GTP (canonical bacterial/eukaryote route)
+
+  ec:3.5.4.39 rdfs:label "GTP cyclohydrolase IV" .
+  # Database: brenda | Query: 1 | Comment: EC 3.5.4.39 is an archaeal/plant GTP cyclohydrolase producing the 2',3'-cyclic phosphate intermediate
+
+  ec:3.5.4.25 rdfs:label "GTP cyclohydrolase II" .
+  # Database: brenda | Query: 1 | Comment: EC 3.5.4.25 converts GTP to a ribosyl-aminopyrimidine en route to the riboflavin/archaeal folate branch-point
+
+  ec:3.6.1.67 rdfs:label "dihydroneopterin triphosphate diphosphatase" .
+  # Database: brenda | Query: 1 | Comment: EC 3.6.1.67 cleaves diphosphate from the 3'-triphosphate to yield dihydroneopterin 3'-phosphate
+
+  ec:3.1.4.56 rdfs:label "7,8-dihydroneopterin 2',3'-cyclic phosphate phosphodiesterase" .
+  # Database: brenda | Query: 1 | Comment: EC 3.1.4.56 opens the cyclic phosphate; only EC class in this pathway with 2 approved Rhea reactions (RHEA:35799 and RHEA:35803) for the two regioisomeric products
+
+  ec:4.2.1.160 rdfs:label "2,5-diamino-6-(5-phospho-D-ribosylamino)pyrimidin-4(3H)-one isomerase/dehydratase" .
+  # Database: brenda | Query: 1 | Comment: EC 4.2.1.160 reroutes the riboflavin-branch aminopyrimidine intermediate back to dihydroneopterin 3'-phosphate
+
+  ec:4.1.2.25 rdfs:label "dihydroneopterin aldolase" .
+  # Database: brenda | Query: 1 | Comment: EC 4.1.2.25 cleaves glycolaldehyde from free 7,8-dihydroneopterin to yield 6-hydroxymethyl-7,8-dihydropterin
+
+  ec:4.1.2.59 rdfs:label "dihydroneopterin phosphate aldolase" .
+  # Database: brenda | Query: 1 | Comment: EC 4.1.2.59 performs the same aldolase cleavage on the 3'-phosphate form of dihydroneopterin
+
+  ec:4.1.2.60 rdfs:label "dihydroneopterin triphosphate aldolase" .
+  # Database: brenda | Query: 1 | Comment: EC 4.1.2.60 performs the aldolase cleavage on the 3'-triphosphate form of dihydroneopterin
+
+  ec:2.7.6.3 rdfs:label "2-amino-4-hydroxy-6-hydroxymethyldihydropteridine diphosphokinase" .
+  # Database: brenda | Query: 1 | Comment: EC 2.7.6.3 phosphorylates 6-hydroxymethyl-7,8-dihydropterin to the eponymous diphosphate product; the direct substrate of dihydropteroate synthase
+
+  ec:2.5.1.105 rdfs:label "7,8-dihydropterin-6-yl-methyl-4-(beta-D-ribofuranosyl)aminobenzene 5'-phosphate synthase" .
+  # Database: brenda | Query: 1 | Comment: EC 2.5.1.105 extends the pathway into the archaeal methanopterin branch by coupling dihydropterin diphosphate to para-aminobenzoate ribonucleoside
+
+  <http://rdf.rhea-db.org/17473> rhea:accession "RHEA:17473" ; rhea:ec enz:3.5.4.16 ; rhea:status <http://rdf.rhea-db.org/Approved> .
+  # Database: rhea | Query: 2 | Comment: RHEA:17473 — GTP + H2O = 7,8-dihydroneopterin 3'-triphosphate + formate + H(+); approved reaction for EC 3.5.4.16
+
+  <http://rdf.rhea-db.org/25860> rhea:accession "RHEA:25860" ; rhea:ec enz:3.5.4.39 ; rhea:status <http://rdf.rhea-db.org/Approved> .
+  # Database: rhea | Query: 2 | Comment: RHEA:25860 — GTP + H2O = 7,8-dihydroneopterin 2',3'-cyclic phosphate + formate + diphosphate + H(+); approved reaction for EC 3.5.4.39
+
+  <http://rdf.rhea-db.org/23704> rhea:accession "RHEA:23704" ; rhea:ec enz:3.5.4.25 ; rhea:status <http://rdf.rhea-db.org/Approved> .
+  # Database: rhea | Query: 2 | Comment: RHEA:23704 — GTP + 4 H2O = 2,5-diamino-6-hydroxy-4-(5-phosphoribosylamino)-pyrimidine + formate + 2 phosphate + 3 H(+); approved reaction for EC 3.5.4.25
+
+  <http://rdf.rhea-db.org/25302> rhea:accession "RHEA:25302" ; rhea:ec enz:3.6.1.67 ; rhea:status <http://rdf.rhea-db.org/Approved> .
+  # Database: rhea | Query: 2 | Comment: RHEA:25302 — 7,8-dihydroneopterin 3'-triphosphate + H2O = 7,8-dihydroneopterin 3'-phosphate + diphosphate + H(+); approved reaction for EC 3.6.1.67
+
+  <http://rdf.rhea-db.org/35799> rhea:accession "RHEA:35799" ; rhea:ec enz:3.1.4.56 ; rhea:status <http://rdf.rhea-db.org/Approved> .
+  # Database: rhea | Query: 2 | Comment: RHEA:35799 — cyclic phosphate + H2O = 7,8-dihydroneopterin 3'-phosphate; first of two approved reactions for EC 3.1.4.56
+
+  <http://rdf.rhea-db.org/35803> rhea:accession "RHEA:35803" ; rhea:ec enz:3.1.4.56 ; rhea:status <http://rdf.rhea-db.org/Approved> .
+  # Database: rhea | Query: 2 | Comment: RHEA:35803 — cyclic phosphate + H2O = 7,8-dihydroneopterin 2'-phosphate; second approved reaction for EC 3.1.4.56 (regioisomeric product)
+
+  <http://rdf.rhea-db.org/45136> rhea:accession "RHEA:45136" ; rhea:ec enz:4.2.1.160 ; rhea:status <http://rdf.rhea-db.org/Approved> .
+  # Database: rhea | Query: 2 | Comment: RHEA:45136 — aminopyrimidine 5'-phosphate = 7,8-dihydroneopterin 3'-phosphate + H2O; approved reaction for EC 4.2.1.160
+
+  <http://rdf.rhea-db.org/10540> rhea:accession "RHEA:10540" ; rhea:ec enz:4.1.2.25 ; rhea:status <http://rdf.rhea-db.org/Approved> .
+  # Database: rhea | Query: 2 | Comment: RHEA:10540 — 7,8-dihydroneopterin = 6-hydroxymethyl-7,8-dihydropterin + glycolaldehyde; approved reaction for EC 4.1.2.25
+
+  <http://rdf.rhea-db.org/51016> rhea:accession "RHEA:51016" ; rhea:ec enz:4.1.2.59 ; rhea:status <http://rdf.rhea-db.org/Approved> .
+  # Database: rhea | Query: 2 | Comment: RHEA:51016 — 7,8-dihydroneopterin 3'-phosphate = glycolaldehyde phosphate + 6-hydroxymethyl-7,8-dihydropterin; approved reaction for EC 4.1.2.59
+
+  <http://rdf.rhea-db.org/52772> rhea:accession "RHEA:52772" ; rhea:ec enz:4.1.2.60 ; rhea:status <http://rdf.rhea-db.org/Approved> .
+  # Database: rhea | Query: 2 | Comment: RHEA:52772 — 7,8-dihydroneopterin 3'-triphosphate = glycolaldehyde triphosphate + 6-hydroxymethyl-7,8-dihydropterin; approved reaction for EC 4.1.2.60
+
+  <http://rdf.rhea-db.org/11412> rhea:accession "RHEA:11412" ; rhea:ec enz:2.7.6.3 ; rhea:status <http://rdf.rhea-db.org/Approved> .
+  # Database: rhea | Query: 2 | Comment: RHEA:11412 — 6-hydroxymethyl-7,8-dihydropterin + ATP = (7,8-dihydropterin-6-yl)methyl diphosphate + AMP + H(+); approved reaction for EC 2.7.6.3
+
+  <http://rdf.rhea-db.org/35951> rhea:accession "RHEA:35951" ; rhea:ec enz:2.5.1.105 ; rhea:status <http://rdf.rhea-db.org/Approved> .
+  # Database: rhea | Query: 2 | Comment: RHEA:35951 — 4-(beta-D-ribofuranosyl)aminobenzene 5'-phosphate + dihydropterin diphosphate = archaeal folate precursor + diphosphate; approved reaction for EC 2.5.1.105
+
+exact_answer: "yes"
+
+ideal_answer: |
+  Yes. Every one of the 11 distinct enzyme classes in the 6-hydroxymethyl-dihydropterin diphosphate biosynthesis pathway has at least one approved, chemically balanced biochemical reaction on record (12 total reactions, because EC 3.1.4.56 has two — one for each regioisomeric hydrolysis product of the 2',3'-cyclic phosphate). The pathway encompasses three parallel GTP cyclohydrolase activities: GTP cyclohydrolase I (EC 3.5.4.16) opens GTP to 7,8-dihydroneopterin 3'-triphosphate via the canonical bacterial and eukaryotic route; GTP cyclohydrolase IV (EC 3.5.4.39) produces the 2',3'-cyclic phosphate intermediate in the archaeal/plant route; and GTP cyclohydrolase II (EC 3.5.4.25) converts GTP to a ribosyl-aminopyrimidine at the riboflavin branch-point. These intermediates are processed by a dihydroneopterin triphosphate diphosphatase (EC 3.6.1.67), a 2',3'-cyclic-phosphate phosphodiesterase (EC 3.1.4.56), and an aminopyrimidine isomerase/dehydratase (EC 4.2.1.160) that reroutes the riboflavin-branch intermediate back to dihydroneopterin 3'-phosphate. Three aldolase variants — EC 4.1.2.25, EC 4.1.2.59, and EC 4.1.2.60 — cleave the glycolaldehyde side-chain from dihydroneopterin at the free, 3'-phosphate, and 3'-triphosphate phosphorylation states respectively, all yielding the common 6-hydroxymethyl-7,8-dihydropterin intermediate. A diphosphokinase (EC 2.7.6.3) then transfers a diphosphate to this hydroxymethyl group to form the pathway's eponymous product, the direct substrate of dihydropteroate synthase. Finally, a dedicated synthase (EC 2.5.1.105) extends the pathway into the archaeal methanopterin branch by condensing the dihydropterin diphosphate with para-aminobenzoate ribonucleoside. The complete reaction coverage across all 11 enzyme classes reflects the mature annotation state of this ancient, universally conserved pteridine biosynthetic axis.
+
+question_template_used: "Yes/No Complete Coverage (pathway EC classes vs approved reactions)"
+
+time_spent:
+  exploration: 25 minutes
+  formulation: 15 minutes
+  verification: 20 minutes
+  pubmed_test: 10 minutes
+  extraction: 20 minutes
+  documentation: 20 minutes
+  total: 110 minutes
