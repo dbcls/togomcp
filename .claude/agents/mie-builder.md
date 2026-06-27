@@ -7,7 +7,12 @@ description: >
   database — one invocation per database. Not for interactive, user-steered single-file work
   (run the mie-generator skill in the main thread for that). The agent does its own Phase 5
   validation, but the caller is expected to RE-validate independently (see mie-refresh workflow).
-tools: Read, Write, Edit, Bash, Glob, Grep, WebFetch, ToolSearch
+# No `tools` allowlist: omitting it inherits ALL parent tools — crucially the MCP tools
+# (run_sparql, get_graph_list, …) and the Skill tool. A `tools:` allowlist is STRICT; listing
+# built-ins without the MCP tools would BLOCK run_sparql (nothing, not even ToolSearch, bypasses it),
+# and MCP servers are inherited from the parent session so `mcpServers:` is not needed here.
+skills:
+  - mie-generator   # preloads SKILL.md into context at startup (still read its references/ files)
 model: inherit
 ---
 
@@ -17,9 +22,11 @@ must be terse and machine-checkable — NOT a chat reply.
 
 ## Procedure — follow the skill, do not improvise
 
-1. Read `.claude/skills/mie-generator/SKILL.md` in full, plus its `references/` files
-   (`query-strategy.md`, `mie-structure.md`, `template.yaml`, `anti-patterns.md`). That document is
-   the canonical procedure. Follow every phase (0–6) exactly. Do not shortcut it from memory.
+1. The mie-generator `SKILL.md` should be preloaded into your context (via the `skills:` frontmatter).
+   If it is NOT already in your context, `Read .claude/skills/mie-generator/SKILL.md` first. It is the
+   canonical procedure — follow every phase (0–6) exactly; do not shortcut it from memory. Either way,
+   read its `references/` files too (`query-strategy.md`, `mie-structure.md`, `template.yaml`,
+   `anti-patterns.md`), which are NOT preloaded.
 2. Load the live tools you need via ToolSearch, e.g.
    `select:mcp__togomcp-dev__run_sparql,mcp__togomcp-dev__get_graph_list,mcp__togomcp-dev__get_sparql_endpoints,mcp__togomcp-dev__list_categories`.
    Use the **togomcp-dev** server (local stdio) — it picks up fresh `endpoints.csv` rows; the remote
