@@ -9,7 +9,7 @@ description: >-
   proteins/processes against databases, score the evidence for a paper's claims,
   or build a cross-database evidence chain (ChEBI → Rhea → UniProt → Reactome →
   GO). Triggers on "article analysis", "validate this study", "check this paper's
-  claims". Workflow source: workflows/research_article_analysis.md.
+  claims". The full method lives in references/research_article_analysis.md.
 ---
 
 # Research Article Analysis (claim validation via TogoMCP SPARQL)
@@ -17,62 +17,39 @@ description: >-
 Validate a paper claim-by-claim by running structured SPARQL against five RDF
 databases — **ChEBI, Rhea, Reactome, UniProt, GO** — and citing the query
 results (exact formulas, equations, EC numbers, GO definitions), not the paper's
-prose or keyword-search text. The real driver is the **TogoMCP MCP tools**
-(`run_sparql`, the `search_*` tools, `get_MIE_file`). The committed harness
-`smoke.py` is the offline canary that proves all 10 query types still resolve.
+prose or keyword-search text. The driver is the **TogoMCP MCP tools**
+(`run_sparql`, the `search_*` tools, `get_MIE_file`).
 
-Paths below are relative to the repo root. The full phased checklist, ID-tracking
-templates, scoring rubric, and anti-skipping safeguards live in
-[workflows/research_article_analysis.md](workflows/research_article_analysis.md)
+The full phased checklist, ID-tracking templates, scoring rubric, and
+anti-skipping safeguards live in
+[references/research_article_analysis.md](references/research_article_analysis.md)
 — read it for the deliverable structure and discipline. **This SKILL.md is the
 operational path: the SPARQL that actually works (the printed templates have two
 bugs — see Gotchas), the verified tool calls, and the traps.**
 
 ## Prerequisites
 
-- A running TogoMCP server. Prefer the **local dev** server (`togomcp-dev` tools)
-  — the remote registry can be stale. From the repo: `uv sync && uv run togo-mcp-local`.
-- For the offline harness: Python 3 only (stdlib `urllib`; no pip install).
-- Network access to `rdfportal.org`.
+- The **TogoMCP MCP server** connected to your client (e.g. Claude Desktop,
+  Claude Code). Its `run_sparql`, `search_*`, and `get_MIE_file` tools are what
+  drive this skill.
+- Network access from that server to `rdfportal.org`.
 
-## Verify first (agent path — run before trusting the templates)
+## Warm-up check (confirm connectivity before trusting the templates)
 
-`smoke.py` runs the *corrected* form of all 10 query types (2 per database)
-against the live RDF Portal endpoints `run_sparql` routes to, so it works with no
-MCP server running. Run it to confirm every database still answers:
-
-```bash
-python3 .claude/skills/research-article-analysis/smoke.py
-```
-
-Expected (verified this session, ~30–90s; the bile-acid example from the workflow):
-
-```
-PASS  chebi: structure (chemrof namespace!): 1 rows
-PASS  chebi: hierarchy: 6 rows
-PASS  rhea: equation search: 10 rows
-PASS  rhea: participants + chebi xref: 5 rows
-PASS  reactome: pathway structure: 20 rows
-PASS  reactome: complex: 15 rows
-PASS  uniprot: function (name/EC, NO classifiedWith join): 1 rows
-PASS  uniprot: GO terms (localization/function): 10 rows
-PASS  go: definitions: 2 rows
-PASS  go: hierarchy: 2 rows
-
-10/10 checks passed
-```
-
-A **FAIL** means that database's query type is broken (endpoint down or schema
-drift) — fix the pattern below and in the workflow before relying on it.
+Before relying on the templates, send the ChEBI structure query below through the
+`run_sparql` tool and confirm it returns a row — that proves the endpoint is
+reachable and the (chemrof-namespace) pattern still resolves. If it returns
+nothing, that database's query type is broken (endpoint down or schema drift) —
+re-read its MIE via `get_MIE_file` and fix the pattern below before relying on it.
 
 ## Run the analysis (phases, with verified queries)
 
-Follow the phase discipline in the workflow doc: **2A** select databases (5
+Follow the phase discipline in the reference doc: **2A** select databases (5
 rules), **2B** `get_MIE_file(database=...)` for each, **2C** keyword-search to
 get IDs, **2D** run 2+ SPARQL per database using those IDs, **3** synthesize, **4**
-score. Drive 2D with `togomcp-dev` `run_sparql`. The query types below were all
-run live this session (bile-acid example) and returned data — copy these, not the
-workflow's printed templates.
+score. Drive 2D with the TogoMCP `run_sparql` tool. The query types below were all
+run live (bile-acid example) and returned data — copy these, not the reference
+doc's printed templates.
 
 **ChEBI — structure (⚠ uses `chemrof:`, NOT `chebi:`):**
 ```
@@ -90,7 +67,7 @@ FROM <http://rdf.ebi.ac.uk/dataset/chebi> WHERE {
 → cholic acid, C24H40O5, 408.579, SMILES, InChIKey BHQCQFFYRZLCQQ-OELDTZBJSA-N
 ```
 ChEBI hierarchy uses `rdfs:subClassOf` + the `obo/CHEBI_` filter (works as printed
-in the workflow). Definition is `obo:IAO_0000115`; monoisotopic mass is
+in the reference doc). Definition is `obo:IAO_0000115`; monoisotopic mass is
 `chemrof:monoisotopic_mass`; InChI string is `chemrof:inchi_string`.
 
 **Rhea — equation search & participants (work as printed):**
@@ -141,7 +118,7 @@ SELECT DISTINCT ?goTerm WHERE {
 `FROM <http://rdfportal.org/ontology/go>`, `DISTINCT`, and the `obo/GO_` filter.
 Definitions via `obo:IAO_0000115`; hierarchy via `rdfs:subClassOf`.
 
-**Cross-database evidence chain** (the workflow's required deliverable) is real
+**Cross-database evidence chain** (the reference doc's required deliverable) is real
 and reproducible: ChEBI cholate (`CHEBI_15378`) appears as a `rhea:chebi`
 participant of RHEA:14541, whose EC links to a UniProt enzyme, which appears in
 the Reactome "GPBAR1: Bile acids" complex, annotated with GO terms.
@@ -152,7 +129,7 @@ schema source.
 
 ## Gotchas (the template bugs and silent-fail traps)
 
-- **ChEBI: the workflow's printed structure query returns ZERO rows.** It uses
+- **ChEBI: the reference doc's printed structure query returns ZERO rows.** It uses
   `chebi:formula` / `chebi:mass` / `chebi:smiles` / `chebi:inchikey`
   (`http://purl.obolibrary.org/obo/chebi/`). RDF Portal's ChEBI stores those under
   the **chemrof** namespace instead: `chemrof:generalized_empirical_formula`,
@@ -180,15 +157,14 @@ schema source.
 
 | Symptom | Fix |
 |---|---|
-| `smoke.py` ChEBI structure FAILS | Confirm chemrof predicates with `SELECT ?p ?o { obo:CHEBI_16359 ?p ?o FILTER(isLiteral(?o)) }`; namespace may have changed again |
+| ChEBI structure query returns 0 rows | Confirm chemrof predicates with `SELECT ?p ?o { obo:CHEBI_16359 ?p ?o FILTER(isLiteral(?o)) }`; namespace may have changed again |
 | UniProt query `ReadTimeout` | You joined `recommendedName` with `classifiedWith` — split into two queries (see above) |
-| `run_sparql` returns empty but smoke.py passes | Missing/wrong `FROM` graph, dropped `^^xsd:string`, or `chebi:` instead of `chemrof:` — diff against the verified queries here |
+| `run_sparql` returns empty unexpectedly | Missing/wrong `FROM` graph, dropped `^^xsd:string`, or `chebi:` instead of `chemrof:` — diff against the verified queries here |
 | `go: definitions` returns 0 | GO uses the `primary` endpoint and `FROM <http://rdfportal.org/ontology/go>` — not the ebi graph |
 
-## The harness
+## Full method
 
-[smoke.py](.claude/skills/research-article-analysis/smoke.py) — stdlib-only
-verifier of all 10 query types (5 databases × 2) against the live RDF Portal
-endpoints, with the chemrof and UniProt-split corrections baked in. Run it before
-an analysis and whenever a query pattern here is edited. The MCP tools are the
-real driver for the analysis itself; smoke.py proves the patterns are sound.
+[references/research_article_analysis.md](references/research_article_analysis.md)
+— the full phased checklist, ID-tracking templates, scoring rubric, and
+anti-skipping safeguards. This SKILL.md gives the corrected operational queries;
+that file gives the discipline and the deliverable structure.
