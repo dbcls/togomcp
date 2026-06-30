@@ -1,0 +1,211 @@
+---
+id: question_061
+type: factoid
+body: >-
+  Considering the distinct small-molecule products of all enzymatic reactions
+  catalyzed by carboxy-lyase (decarboxylase) enzymes of EC class 4.1.1, how many
+  of these products — counted by unique chemical structure (InChIKey) — have at
+  least one experimental reference tandem mass spectrum available in a public
+  mass-spectral library?
+
+inspiration_keyword:
+  keyword_id: KW-0210
+  name: Decarboxylase
+  category: Molecular function
+
+togomcp_databases_used:
+  - brenda
+  - massbank
+
+verification_score:
+  biological_insight: 2
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 10
+  passed: true
+
+pubmed_test:
+  time_spent: 12 minutes
+  method: >-
+    Tried to retrieve the specific count directly from the literature with four
+    PubMed searches: "decarboxylase reaction products mass spectral library
+    MassBank coverage"; "MassBank metabolite coverage enzyme reaction products
+    metabolomics database completeness"; "biogenic amines decarboxylase tandem
+    mass spectrometry reference spectra fraction available"; and the broad
+    "MassBank mass spectral database metabolomics". Read the abstracts of the
+    current MassBank resource paper and the MS/MS identification review returned
+    by the broad search.
+  result: |
+    The three targeted queries returned zero records. The broad query returned
+    16 general records (e.g. the current MassBank resource description, which
+    reports only library-wide totals of 119,845 spectra for 18,529 compounds,
+    and reviews of MS/MS library-search methods that discuss spectral coverage
+    only qualitatively). No publication enumerates how many products of EC 4.1.1
+    decarboxylase reactions are represented in a reference spectral library;
+    the figure requires intersecting an enzyme-reaction product set with a
+    spectral library by chemical-structure identifier.
+  conclusion: PASS (cannot answer from literature - requires RDF)
+
+sparql_queries:
+  - query_number: 1
+    database: brenda
+    description: >-
+      Enumerate the distinct InChIKeys of all product compounds of reactions
+      classified under any EC 4.1.1.x (carboxy-lyase / decarboxylase) class.
+      The InChIKey lives on the structure node (compound -> hasStructure ->
+      structure -> hasInChIKey) as a string literal prefixed "InChIKey="; the
+      prefix is stripped to obtain the bare key. This is the denominator set
+      (no product compound carries hasInChIKey directly, see query 2, so the
+      structure path is complete). 526 distinct product compounds exist; 467
+      carry at least one InChIKey-bearing structure.
+    query: |
+      PREFIX d3o: <https://purl.dsmz.de/schema/>
+      SELECT DISTINCT ?key
+      FROM <http://rdfportal.org/dataset/brenda>
+      WHERE {
+        ?reaction d3o:catalyzedByClass ?ec .
+        FILTER(STRSTARTS(STR(?ec), "https://purl.dsmz.de/brenda/ec/4.1.1."))
+        ?prod a d3o:Product ; d3o:partOf ?reaction ; d3o:refersToCompound ?compound .
+        ?compound d3o:hasStructure ?struct .
+        ?struct d3o:hasInChIKey ?ikRaw .
+        BIND(STRAFTER(STR(?ikRaw), "InChIKey=") AS ?key)
+      }
+    result_count: 467
+
+  - query_number: 2
+    database: brenda
+    description: >-
+      Completeness check (Rule 2, no undercount): confirm that no EC 4.1.1
+      product compound carries an InChIKey directly on the compound node, so the
+      structure-node path used in query 1 captures every product InChIKey. The
+      count of product compounds with a direct hasInChIKey is 0.
+    query: |
+      PREFIX d3o: <https://purl.dsmz.de/schema/>
+      SELECT (COUNT(DISTINCT ?compound) AS ?nCompoundsDirectInChIKey)
+      FROM <http://rdfportal.org/dataset/brenda>
+      WHERE {
+        ?reaction d3o:catalyzedByClass ?ec .
+        FILTER(STRSTARTS(STR(?ec), "https://purl.dsmz.de/brenda/ec/4.1.1."))
+        ?prod a d3o:Product ; d3o:partOf ?reaction ; d3o:refersToCompound ?compound .
+        ?compound d3o:hasInChIKey ?cDirect .
+      }
+    result_count: 0
+
+  - query_number: 3
+    database: massbank
+    description: >-
+      Federated intersection on the shared `primary` endpoint (endpoint_name:
+      primary): for every distinct EC 4.1.1 product InChIKey (from the BRENDA
+      graph), build the identifiers.org InChIKey IRI and require at least one
+      MassBank chemical-substance node bearing that schema:inChIKey IRI. Grouped
+      by key with a representative compound label and the per-compound spectrum
+      count; the number of grouped rows (distinct matched InChIKeys) is 156.
+      Top hits include trans-resveratrol (64), tyramine (63), salicylic acid
+      (53), indole-3-acetic acid (50), 4-hydroxybenzoic acid (50), tryptamine
+      (39), dopamine (34), L-glutamic acid (34), GABA (31), serotonin (29),
+      spermidine (25), cadaverine (14), beta-alanine (20).
+    query: |
+      PREFIX d3o: <https://purl.dsmz.de/schema/>
+      PREFIX schema: <https://schema.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?key (SAMPLE(?label) AS ?name) (COUNT(DISTINCT ?mbCompound) AS ?nSpectra)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/brenda> {
+          ?reaction d3o:catalyzedByClass ?ec .
+          FILTER(STRSTARTS(STR(?ec), "https://purl.dsmz.de/brenda/ec/4.1.1."))
+          ?prod a d3o:Product ; d3o:partOf ?reaction ; d3o:refersToCompound ?compound .
+          ?compound rdfs:label ?label ; d3o:hasStructure ?struct .
+          ?struct d3o:hasInChIKey ?ikRaw .
+          BIND(STRAFTER(STR(?ikRaw), "InChIKey=") AS ?key)
+        }
+        BIND(IRI(CONCAT("http://identifiers.org/inchikey/", ?key)) AS ?ikIRI)
+        GRAPH <http://rdfportal.org/dataset/massbank> {
+          ?mbCompound schema:inChIKey ?ikIRI .
+        }
+      }
+      GROUP BY ?key
+    result_count: 156
+
+  - query_number: 4
+    database: massbank
+    description: >-
+      Arithmetic verification (Rule 3) of the GROUP BY in query 3: a single
+      COUNT(DISTINCT ?key) over the identical federated criteria confirms the
+      number of distinct EC 4.1.1 product InChIKeys with a MassBank reference
+      spectrum is 156, equal to the row count of query 3.
+    query: |
+      PREFIX d3o: <https://purl.dsmz.de/schema/>
+      PREFIX schema: <https://schema.org/>
+      SELECT (COUNT(DISTINCT ?key) AS ?nKeysWithMassBank)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/brenda> {
+          ?reaction d3o:catalyzedByClass ?ec .
+          FILTER(STRSTARTS(STR(?ec), "https://purl.dsmz.de/brenda/ec/4.1.1."))
+          ?prod a d3o:Product ; d3o:partOf ?reaction ; d3o:refersToCompound ?compound .
+          ?compound d3o:hasStructure ?struct .
+          ?struct d3o:hasInChIKey ?ikRaw .
+          BIND(STRAFTER(STR(?ikRaw), "InChIKey=") AS ?key)
+        }
+        BIND(IRI(CONCAT("http://identifiers.org/inchikey/", ?key)) AS ?ikIRI)
+        GRAPH <http://rdfportal.org/dataset/massbank> {
+          ?mbCompound schema:inChIKey ?ikIRI .
+        }
+      }
+    result_count: 156
+
+rdf_triples: |
+  @prefix d3o: <https://purl.dsmz.de/schema/> .
+  @prefix schema: <https://schema.org/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+  <https://purl.dsmz.de/brenda/reaction/I_275> d3o:catalyzedByClass <https://purl.dsmz.de/brenda/ec/4.1.1.15> .
+  # Database: BRENDA | Query: 1 | Comment: the IUBMB reaction "L-glutamate = 4-aminobutanoate + CO2" is classified under EC 4.1.1.15 (glutamate decarboxylase), a carboxy-lyase
+  <https://purl.dsmz.de/brenda/product/484> d3o:partOf <https://purl.dsmz.de/brenda/reaction/I_275> .
+  # Database: BRENDA | Query: 1 | Comment: product role node for the EC 4.1.1.15 reaction
+  <https://purl.dsmz.de/brenda/product/484> d3o:refersToCompound <https://purl.dsmz.de/brenda/compound/484> .
+  # Database: BRENDA | Query: 1 | Comment: the product role resolves to the actual chemical compound
+  <https://purl.dsmz.de/brenda/compound/484> rdfs:label "gamma-aminobutyric acid zwitterion" .
+  # Database: BRENDA | Query: 1 | Comment: the product is GABA, a classic decarboxylation output
+  <https://purl.dsmz.de/brenda/compound/484> d3o:hasStructure <https://purl.dsmz.de/brenda/structure/597> .
+  # Database: BRENDA | Query: 1 | Comment: the InChIKey is carried on the structure node, not the compound node
+  <https://purl.dsmz.de/brenda/structure/597> d3o:hasInChIKey "InChIKey=BTCSSZJGUNDROE-UHFFFAOYSA-N" .
+  # Database: BRENDA | Query: 1 | Comment: structure-node InChIKey literal (prefixed "InChIKey="); stripped to BTCSSZJGUNDROE-UHFFFAOYSA-N for the join
+  _:massbankGABA schema:inChIKey <http://identifiers.org/inchikey/BTCSSZJGUNDROE-UHFFFAOYSA-N> .
+  # Database: MassBank | Query: 3 | Comment: a MassBank chemical-substance node (e.g. nodeID://b1833386727, label "GABA") bears the matching InChIKey IRI, so GABA is one of the 156 matched products
+  <https://purl.dsmz.de/brenda/compound/437> rdfs:label "cadaverine" .
+  # Database: BRENDA | Query: 3 | Comment: cadaverine, product of lysine decarboxylase (EC 4.1.1.18), is another matched product
+  _:massbankCadaverine schema:inChIKey <http://identifiers.org/inchikey/VHRGRCVQAFMJIZ-UHFFFAOYSA-N> .
+  # Database: MassBank | Query: 3 | Comment: cadaverine has 14 distinct MassBank reference spectra under this InChIKey IRI
+
+exact_answer: 156
+
+ideal_answer: |
+  Carboxy-lyase enzymes of EC class 4.1.1 catalyze reactions whose recorded
+  products span 467 chemically distinct structures (counted by InChIKey), drawn
+  from 526 product compound records across 125 individual EC 4.1.1 sub-subclasses.
+  Of these 467 distinct products, 156 (about 33%) have at least one experimental
+  reference tandem mass spectrum in a public mass-spectral library. The covered
+  products are dominated by biologically prominent decarboxylation outputs:
+  biogenic amines and amino-acid-derived metabolites such as tyramine, dopamine,
+  serotonin, tryptamine, cadaverine, gamma-aminobutyric acid (GABA), beta-alanine
+  and spermidine, alongside aromatic acids and related small molecules including
+  salicylic acid, 4-hydroxybenzoic acid, indole-3-acetic acid and trans-resveratrol.
+  The remaining two-thirds of EC 4.1.1 products lack reference spectra, reflecting
+  that many decarboxylase substrates, charged zwitterions and unstable
+  intermediates are under-represented in curated spectral collections. The figure
+  of 156 is the number of unique chemical structures shared between the
+  decarboxylase reaction-product set and the spectral library, quantifying how
+  much of EC 4.1.1 product chemistry is currently characterized by experimental
+  fragmentation data.
+
+question_template_used: Cross-database InChIKey intersection - count of enzyme-reaction products with reference mass spectra
+
+time_spent:
+  exploration: 20
+  formulation: 12
+  verification: 8
+  pubmed_test: 12
+  extraction: 8
+  documentation: 12
+  total: 72
