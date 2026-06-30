@@ -38,9 +38,9 @@ schema_info:
     - http://rdfportal.org/dataset/brenda
   kw_search_tools: []
   version:
-    mie_version: "2.1"
+    mie_version: "2.2"
     mie_created: "2026-04-28"
-    mie_updated: "2026-04-29"
+    mie_updated: "2026-06-30"
     data_version: "Release 2026"
     update_frequency: "Irregular"
   access:
@@ -60,7 +60,8 @@ critical_warnings: |
   - EFFECTOR ROLES ARE CONTEXT-SPECIFIC: Inhibitor and Activator IRIs represent the
     *role* of a compound in context, not the compound itself. Each inhibitor/activator
     node has `d3o:refersToCompound` → the actual ChemicalCompound node (which holds
-    the label, InChI, and InChIKey). Do not expect structural data on the inhibitor IRI.
+    the label; its InChI/InChIKey live on a separate MolecularStructure node reached via
+    `d3o:hasStructure`, see below). Do not expect structural data on the inhibitor IRI.
   - REACTION IRI PREFIXES: Reactions have two subtypes in their IRI: `reaction/I_N`
     (IUBMB reactions, canonical) and `reaction/S_N` (substrate-specific variants).
     The predicate `d3o:isIubmbReaction` is present on IUBMB reactions. Both types have
@@ -74,6 +75,25 @@ critical_warnings: |
   - TISSUE AND LOCALIZATION USE `d3o:expresses`: Tissue and Localization nodes link to
     enzymes via `d3o:expresses` (not `d3o:foundIn`). The predicate direction is:
     tissue/localization → enzyme, not enzyme → tissue/localization.
+  - STRUCTURE DATA IS ONE HOP FROM THE COMPOUND: InChI and InChIKey are NOT on the
+    ChemicalCompound node — they live on a MolecularStructure node reached via
+    `?compound d3o:hasStructure ?struct ; ?struct d3o:hasInChIKey ?k`. Querying
+    `?compound d3o:hasInChIKey` directly returns 0 rows. Each compound has at most ONE
+    InChIKey-bearing structure (there is never more than one distinct InChIKey per
+    compound), but only ~80% of compounds (171,721 of 214,688) have one — the other ~20%
+    carry only dangling `hasStructure` references to untyped stub nodes with no InChI/
+    InChIKey, so the join above yields nothing for them. A compound may list several
+    `hasStructure` objects, but at most one resolves to a real typed MolecularStructure;
+    the rest are empty stubs. Use an OPTIONAL on the structure→InChIKey hop if you need to
+    keep structure-less compounds in the result.
+  - INCHIKEY LITERAL CARRIES AN `InChIKey=` PREFIX: `d3o:hasInChIKey` stores the value as
+    `"InChIKey=ATHGHQPFGPMSJY-UHFFFAOYSA-N"`, NOT the bare `"ATHGHQPFGPMSJY-UHFFFAOYSA-N"`.
+    Exact-matching a bare key — `FILTER(?k = "ATHGHQPFGPMSJY-UHFFFAOYSA-N")` or a `VALUES`
+    block of bare keys — returns 0 rows (the #1 silent-fail spot here). To match, or to
+    federate to MassBank / ChEBI / PubChem (which key on the bare InChIKey, e.g. the IRI
+    `http://identifiers.org/inchikey/<KEY>`), strip the prefix first:
+    `BIND(STRAFTER(STR(?k), "InChIKey=") AS ?key)`. (The InChI literal likewise begins
+    `"InChI=1S/..."`, but that is the standard InChI form, so InChI needs no stripping.)
 
 shape_expressions: |
   PREFIX d3o:  <https://purl.dsmz.de/schema/>
@@ -97,7 +117,7 @@ shape_expressions: |
     rdfs:label xsd:string ;          # enzyme common name, e.g. "ornithine decarboxylase"
     dct:description xsd:string ;     # IUBMB description, e.g. "A pyridoxal-phosphate protein."
     d3o:hasSynonyms xsd:string + ;   # gene names, isoform names, synonyms
-    d3o:hasSystematicName xsd:string # IUBMB systematic name
+    d3o:hasSystematicName xsd:string ? # IUBMB systematic name; ~91% of EC classes (6,793 of 7,453)
   }
 
   # IRI pattern: https://purl.dsmz.de/brenda/organism/{N}
@@ -106,7 +126,7 @@ shape_expressions: |
     a [ d3o:BiologicalMaterial ] ;
     rdfs:label xsd:string ;          # organism name/strain
     d3o:hasSynonym xsd:string * ;    # synonyms including taxonomic lineage strings
-    d3o:hasTaxID xsd:integer ? ;     # NCBI Taxonomy ID as integer; ~50% coverage
+    d3o:hasTaxID xsd:int ? ;         # NCBI Taxonomy ID, stored as xsd:int (~49% coverage, 14,976 nodes); Virtuoso value-matches a plain `9606` literal
     d3o:hasIdentifier IRI ?          # link to external taxonomy resource
   }
 
@@ -147,17 +167,20 @@ shape_expressions: |
   <CompoundShape> {
     a [ d3o:ChemicalCompound d3o:ChemicalMaterial ] ;
     rdfs:label xsd:string ;          # compound name, e.g. "spermidine"
-    d3o:hasIdentifier xsd:integer ;  # internal BRENDA compound ID integer
+    d3o:hasIdentifier xsd:int ;      # internal BRENDA compound ID (stored as xsd:int)
     d3o:hasSynonym xsd:string * ;    # alternative names
-    d3o:hasStructure @<StructureShape> +  # one or more molecular structure entries
+    d3o:hasStructure @<StructureShape> +  # 1+ links; ~80% of compounds have one TYPED structure (below), the rest are dangling untyped stubs
   }
 
   # IRI pattern: https://purl.dsmz.de/brenda/structure/{N}
-  # ~171,721 structure entries
+  # 171,721 typed structure entries — one per the 80% of compounds that have InChI data.
+  # NOTE: ~107K hasStructure objects are dangling untyped nodes (no triples) and do NOT
+  # match this shape; filter on `?struct a d3o:MolecularStructure` (or just require
+  # d3o:hasInChIKey) to keep only real structures.
   <StructureShape> {
     a [ d3o:MolecularStructure ] ;
-    d3o:hasInChI xsd:string ;        # InChI string for structure lookup
-    d3o:hasInChIKey xsd:string       # InChIKey for exact-match searches
+    d3o:hasInChI xsd:string ;        # InChI string, stored with the standard "InChI=1S/..." prefix
+    d3o:hasInChIKey xsd:string       # InChIKey, stored WITH a non-standard "InChIKey=" prefix — strip via STRAFTER for bare-key matching/federation (see critical_warnings)
   }
 
   # IRI pattern: https://purl.dsmz.de/brenda/reaction/{I_N or S_N}
@@ -167,7 +190,7 @@ shape_expressions: |
     rdfs:label xsd:string ;              # reaction equation string, e.g. "L-ornithine = putrescine + CO2"
     d3o:catalyzedBy @<EnzymeShape> * ;   # specific enzyme instances
     d3o:catalyzedByClass @<ECNumberShape> + ;  # EC class(es) that catalyze this
-    d3o:isIubmbReaction xsd:boolean ? ; # present on IUBMB canonical reactions (I_ prefix)
+    d3o:isIubmbReaction xsd:boolean ;   # on EVERY reaction: true for the 8,674 IUBMB (I_) reactions, false for the 131,186 substrate-specific (S_) variants
     d3o:partOf @<PathwayShape> * ;
     d3o:hasReference @<ReferenceShape> *
   }
@@ -542,8 +565,8 @@ architectural_notes:
 
   data_quality:
     - "Organism nodes are strain-specific (e.g. 'Saccharomyces cerevisiae X 2180') — multiple per species"
-    - "hasTaxID is present on ~50% of organism nodes; absent entries need label-based lookup"
-    - "Compounds have multiple structure nodes (different stereoisomers, salts, isotopes)"
+    - "hasTaxID is present on ~49% of organism nodes (14,976 of 30,338); absent entries need label-based lookup"
+    - "InChIKey/structure coverage is ~80% (171,721 of 214,688 compounds), exactly one InChIKey each; the other ~20% have only dangling hasStructure stubs with no InChI/InChIKey"
     - "Inhibitor/139 (spermidine) affects 100+ EC classes — very broad inhibitor nodes exist"
 
   text_search_justification:
@@ -555,8 +578,8 @@ architectural_notes:
 
 data_statistics:
   total_entities: 54720
-  verified_date: "2026-04-28"
-  verification_method: "Direct COUNT on d3o:Enzyme instances from earlier class-count query"
+  verified_date: "2026-06-30"
+  verification_method: "Direct COUNT on d3o:Enzyme instances; all class counts below re-verified 2026-06-30 against the live graph and unchanged from 2026-04-28 (Release 2026)"
 
   coverage:
     enzyme_instances:
@@ -570,7 +593,15 @@ data_statistics:
     compounds:
       value: "214,688 chemical compounds"
       calculation: "COUNT of d3o:ChemicalCompound class"
-      verified_date: "2026-04-28"
+      verified_date: "2026-06-30"
+    structures:
+      value: "171,721 typed MolecularStructure nodes (with InChI + InChIKey)"
+      calculation: "COUNT of d3o:MolecularStructure class"
+      verified_date: "2026-06-30"
+    compounds_with_inchikey:
+      value: "171,721 compounds carry an InChIKey (80.0% of 214,688); exactly one key each"
+      calculation: "COUNT(DISTINCT ?cmpd) where ?cmpd d3o:hasStructure/d3o:hasInChIKey ?k — remaining ~20% have only dangling hasStructure stubs"
+      verified_date: "2026-06-30"
     reactions:
       value: "139,860 reactions"
       calculation: "COUNT of d3o:Reaction class"
