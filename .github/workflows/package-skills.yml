@@ -1,9 +1,16 @@
 name: Package skills
 
-# Bundles each Claude Code skill under .claude/skills/<name>/ into a
-# <name>.skill zip archive. NOTE: `.skill` is NOT an official Claude Code
-# format — it is a local packaging convention here. To install one, unzip it
-# into a skills directory, e.g.  unzip qa-generator.skill -d .claude/skills/
+# Bundles the DISTRIBUTABLE Claude Code skills under .claude/skills/<name>/ into
+# their own <name>.skill zip archives, uploaded as a SEPARATE artifact per skill
+# (and attached individually to a GitHub Release on skills-v* tags).
+#
+# Only the portable, MCP-driven analysis skills are packaged. Repo-bound dev /
+# maintenance skills (they need Bash, git, and this repo's files, so they cannot
+# run on Claude Desktop) are EXCLUDED — see EXCLUDE below.
+#
+# NOTE: `.skill` is NOT an official Claude Code format — it is a local packaging
+# convention here. To install one, unzip it into a skills directory, e.g.
+#   unzip prism.skill -d .claude/skills/
 
 on:
   push:
@@ -14,35 +21,56 @@ permissions:
   contents: write            # needed to attach assets to a Release on tag runs
 
 jobs:
-  package:
+  # Discover the skill directories so the package job can fan out one job per skill.
+  discover:
     runs-on: ubuntu-latest
+    outputs:
+      skills: ${{ steps.list.outputs.skills }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        name: List packageable skills as a JSON array
+        run: |
+          set -euo pipefail
+          # Repo-bound dev/maintenance skills are NOT distributed to Claude
+          # Desktop (they need Bash/git/repo files). Exclude them from packaging.
+          EXCLUDE='^(mie-generator|intro-page-updater|qa-generator)$'
+          skills="$(ls -d .claude/skills/*/ | xargs -n1 basename \
+                    | grep -Ev "$EXCLUDE" | jq -R . | jq -cs .)"
+          echo "Packaging skills: $skills"
+          echo "skills=$skills" >> "$GITHUB_OUTPUT"
+
+  # One job per skill -> one independent .skill archive + one artifact each.
+  package:
+    needs: discover
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: ${{ fromJson(needs.discover.outputs.skills) }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build .skill archives
+      - name: Build ${{ matrix.skill }}.skill
+        env:
+          SKILL: ${{ matrix.skill }}
         run: |
           set -euo pipefail
           mkdir -p dist
-          shopt -s nullglob
-          for dir in .claude/skills/*/; do
-            name="$(basename "$dir")"
-            ( cd .claude/skills && \
-              zip -r "../../dist/${name}.skill" "$name" \
-                  -x '*/worktrees/*' '*/.DS_Store' '*/__pycache__/*' )
-            echo "built dist/${name}.skill"
-          done
-          echo "--- built archives ---"
-          ls -la dist
+          ( cd .claude/skills && \
+            zip -r "../../dist/${SKILL}.skill" "$SKILL" \
+                -x '*/worktrees/*' '*/.DS_Store' '*/__pycache__/*' )
+          ls -la "dist/${SKILL}.skill"
 
-      - name: Upload as workflow artifacts
+      - name: Upload ${{ matrix.skill }}.skill as its own artifact
         uses: actions/upload-artifact@v4
         with:
-          name: skills
-          path: dist/*.skill
+          name: ${{ matrix.skill }}.skill
+          path: dist/${{ matrix.skill }}.skill
           if-no-files-found: error
 
-      - name: Attach to GitHub Release
+      - name: Attach ${{ matrix.skill }}.skill to the Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.skill
+          files: dist/${{ matrix.skill }}.skill
