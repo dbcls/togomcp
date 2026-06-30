@@ -312,8 +312,24 @@ If this fails, fix the YAML before calling the work done.
 1. Re-run the Phase 2b predicate survey and compare against the documented predicates. Any predicate with COUNT > 0 that is absent from the shape must be either added or explicitly noted as intentionally excluded.
 2. Confirm every `@<ShapeRef>` has a defined `<…Shape>` block.
 3. For every predicate marked `?` (optional), confirm with a cardinality query that at least one subject has 0 values for it. For every predicate with no modifier (required), confirm its COUNT equals the class instance count.
+4. **Verify `@<ShapeRef>` object-class conformance — not just that the ref resolves.** Item 2 confirms the *block exists*; this confirms the *objects actually belong to it*. For every predicate written as `<predicate> @<TargetShape>`, GROUP BY the object's `rdf:type` and confirm the result includes `<TargetShape>`'s declared anchor class. A predicate whose objects are *not* typed as the referenced shape's class — or are split across several classes — is a shape error (or an undocumented polymorphic link, cf. Phase 2's polymorphism probe): fix the `@<…>` target, or split it and document the polymorphism. A blank-node target with no `rdf:type` is itself a finding — note it explicitly rather than implying a typed class.
 
-This step is not optional. `shape_expressions` is the section a downstream LLM relies on most heavily for query construction. An unaudited shape is equivalent to an untested SPARQL example.
+   ```sparql
+   SELECT ?objType (COUNT(*) AS ?n) WHERE {
+     GRAPH <…> { ?s a <SubjectClass> ; <predicate> ?o .
+                 OPTIONAL { ?o a ?objType } }
+   } GROUP BY ?objType ORDER BY DESC(?n)
+   ```
+
+5. **Probe the value type of *every* literal-valued predicate in the shape — not only the ones a query will filter on.** Phase 2's datatype probe (the `DATATYPE()` table) is scoped to literals you plan to match exactly; this is the blanket pass that catches a wrong `xsd:…` annotation on an incidental field. For each predicate whose shape value is a literal datatype, GROUP BY its actual datatype and confirm the shape's annotation matches the stored form. A mismatch (e.g. shape says `xsd:integer`, data stores plain or `xsd:string`), or a predicate that stores **mixed** datatypes, must be corrected in the shape and — if it affects exact matching — surfaced in `critical_warnings`.
+
+   ```sparql
+   SELECT (DATATYPE(?o) AS ?dt) (COUNT(*) AS ?n) WHERE {
+     GRAPH <…> { ?s a <SubjectClass> ; <predicate> ?o }
+   } GROUP BY (DATATYPE(?o)) ORDER BY DESC(?n)
+   ```
+
+This step is not optional. `shape_expressions` is the section a downstream LLM relies on most heavily for query construction. An unaudited shape is equivalent to an untested SPARQL example. Items 4–5 are what separate a shape that is *internally consistent* from one that is *true to the data*: a resolvable `@<ref>` pointing at the wrong object class, or a confidently-wrong datatype, both produce queries that run and silently return nothing.
 
 **5f. Verify `critical_warnings` content.** For every predicate name and IRI string cited in `critical_warnings`, run a minimal query confirming it exists in the endpoint:
 
@@ -363,7 +379,8 @@ Only after Phases 1–5 are complete, report to the user:
   - Statistics verified: [date]
   - YAML parses cleanly
   - shape_expressions audited: all shapes verified against live predicate surveys,
-    all @<ShapeRef>s resolved, all cardinality modifiers confirmed
+    all @<ShapeRef>s resolved AND their object classes confirmed by rdf:type GROUP BY,
+    all cardinality modifiers confirmed, all literal-valued predicates datatype-probed
   - critical_warnings verified: all cited predicate names and IRIs confirmed against endpoint
   - cross_references verified: IRI forms confirmed by DESCRIBE, coverage % from COUNT queries
   - schema_info.categories checked: all tokens exact-matched against list_categories()
