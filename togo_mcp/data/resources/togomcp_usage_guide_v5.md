@@ -20,10 +20,33 @@ any follow-up that extends a prior answer / any message with no bounded answer i
 
 ---
 
+## ⛔ GATE 0a — WORKLOAD TYPE (check this too, orthogonal to GATE 0)
+
+Does the task require enumerating/processing a result set whose size is
+unknown but plausibly large (counts in the thousands+), or comparing
+full graph contents rather than a sample?
+
+Signals: "all triples", "every X", "compare graph A vs B in full",
+"how many total", "extract the full set of Y for offline analysis",
+"audit/diff an ontology against its data usage".
+
+```
+Interactive (bounded, sample-sized) → proceed to GATE 0 as today
+Bulk/heavy (large or unknown extent) → see BULK MODE section below.
+  Do NOT run an unbounded SPARQL query directly — the endpoint has a
+  ~60s ceiling and will very likely time out, burning a tool call for
+  nothing. Probe size first.
+```
+
+---
+
 ## 🚫 CRITICAL RULES
 
-**1. No filesystem or scripting tools.** 8× slower, 2× more tool calls, wrong answers.
-If post-processing feels necessary, the SPARQL query is wrong — fix it instead.
+**1. No filesystem or scripting tools — for interactive/bounded questions.**
+8× slower, 2× more tool calls, wrong answers *in that regime*. If
+post-processing feels necessary on a bounded question, the SPARQL query
+is wrong — fix it instead. For bulk/heavy workloads (GATE 0a), see
+BULK MODE — scripting is the correct tool there, not a workaround.
 
 **2. Max 2 consecutive `run_sparql` calls.** Counter resets after any non-SPARQL call.
 At call #3: stop. Pivot to a search tool, `ncbi_esearch`, `togoid_convertId`, or
@@ -208,6 +231,39 @@ cross-DB → `ncbi_esummary` for detail → one concise paragraph. Each fact onc
 
 ---
 
+## 🏗️ BULK MODE — heavy retrieval / full comparison tasks
+
+Triggered by GATE 0a. Treat `run_sparql` as a probe, not a retrieval
+engine, once a task leaves bounded/sample-sized territory.
+
+1. **Study the shape first, with cheap bounded probes only:**
+   - `get_MIE_file(database)` — schema + `critical_warnings`.
+   - `get_graph_list(database)` — which named graphs hold what.
+   - `COUNT(*)` queries to size the problem before touching it:
+     `SELECT (COUNT(*) AS ?c) WHERE { ... }` — never skip sizing an
+     unbounded task.
+   - One or two `LIMIT 50` samples to confirm predicate/datatype shape.
+
+2. **Decide:** can this be done in ≤2–3 bounded SPARQL calls (one
+   `GROUP BY`, one `VALUES` batch)? If yes, stay in normal SPARQL
+   discipline (LIMIT, max 2 consecutive) — this was not actually bulk.
+
+3. **If not, switch to scripting:**
+   - Extract via paginated SPARQL (`OFFSET`/`LIMIT` loops, ~5k–10k
+     rows/page) driven from a script, not one giant query.
+   - Do joins, set comparison, ontology diffing, and aggregation
+     locally after extraction — not server-side in one query.
+   - Example from practice: confirming whether a predicate is defined
+     as part of an ontology vs. only used in data — probe `get_graph_list`
+     → bounded `COUNT(*)` per candidate graph → only escalate to a
+     scripted/paginated pull if a full dump turns out to be necessary.
+
+4. **Never retry an unbounded query verbatim after a timeout.** Either
+   add `LIMIT`/`OFFSET` pagination, narrow with a specific
+   `GRAPH`/`VALUES` clause, or fall back to scripted pagination per (3).
+
+---
+
 ## ⚠️ KNOWN-HARD QUERIES
 
 | Pattern | Fallback |
@@ -217,6 +273,7 @@ cross-DB → `ncbi_esummary` for detail → one concise paragraph. Each fact onc
 | Human metalloprotease targets + structure counts | `togoid_convertId uniprot→pdb`; report counts separately. |
 | Rhea reactions filtered by UniProt keyword | Read UniProt MIE for keyword IRI (`up:classifiedWith`); EC-prefix fallback overcounts. |
 | Bacterial gene counts via NCBI | Field tags mandatory: `"Archaea[Organism] AND nifH[Gene Name]"` — omitting loses 70–80%. |
+| Full predicate/ontology coverage across many graphs | `COUNT`-first probing per graph (BULK MODE), not one cross-graph query |
 
 ---
 
