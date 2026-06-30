@@ -1,0 +1,240 @@
+id: question_057
+type: list
+body: >-
+  List the approved human gene symbols for aminotransferases (enzymes in EC class 2.6.1.-)
+  whose human enzyme is experimentally documented to be inhibited by aminooxyacetate.
+
+inspiration_keyword:
+  keyword_id: KW-0032
+  name: Aminotransferase
+  category: Molecular function
+
+togomcp_databases_used:
+  - hgnc
+  - brenda
+
+verification_score:
+  biological_insight: 2
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 10
+  passed: true
+
+pubmed_test:
+  time_spent: 15 minutes
+  method: |
+    Query 1: "aminooxyacetate inhibition human aminotransferases comprehensive list EC 2.6.1" — 0 results.
+    Query 2: "aminooxyacetic acid branched chain aminotransferase kynurenine aminotransferase inhibition" — 0 results.
+    Query 3 (broad, to confirm topic exists): "aminooxyacetate transaminase inhibitor" — 361 results;
+      read abstracts of PMID 38646781 and PMID 36272463.
+  result: |
+    Aminooxyacetate is a well-known generic transaminase inhibitor (361 articles), but the
+    literature consists of single-enzyme or physiological studies — e.g. its effect on the
+    mitochondrial transaminase GOT2 in muscle/C2C12 mitochondria (PMID 38646781) and on
+    oxaloacetate clearance and complex-II respiration (PMID 36272463). No publication
+    enumerates the set of approved human aminotransferase genes for which inhibition by
+    aminooxyacetate is curated in the human enzyme. That set is a property of the current
+    enzyme-database curation (and notably is NOT what textbook biochemistry predicts, since
+    the documented set excludes the canonical cytosolic isoenzyme GOT1), so it cannot be
+    recovered from the literature or from training knowledge.
+  conclusion: PASS (cannot answer from literature - requires current RDF curation state)
+
+sparql_queries:
+  - query_number: 1
+    database: hgnc
+    description: |
+      Establish the candidate universe: approved human genes whose enzyme is classified as an
+      aminotransferase (EC 2.6.1.-). Cross-references are typed nodes, so navigate
+      gene -> rdfs:seeAlso -> (a idt:ec-code) -> dct:identifier and prefix-filter "2.6.1.".
+      Returns 22 gene-EC rows spanning 16 distinct genes and 15 EC numbers (some genes carry
+      more than one EC number, e.g. AGXT 2.6.1.44/2.6.1.51).
+    query: |
+      PREFIX m2r:  <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct:  <http://purl.org/dc/terms/>
+      PREFIX idt:  <http://identifiers.org/>
+
+      SELECT DISTINCT ?symbol ?ecNum
+      FROM <http://rdfportal.org/dataset/hgnc>
+      WHERE {
+        ?gene a m2r:Gene ;
+              rdfs:label ?symbol ;
+              rdfs:seeAlso ?ecRef .
+        ?ecRef a idt:ec-code ;
+               dct:identifier ?ecNum .
+        FILTER(STRSTARTS(?ecNum, "2.6.1."))
+      }
+      ORDER BY ?ecNum ?symbol
+    result_count: 22
+
+  - query_number: 2
+    database: brenda
+    description: |
+      Gold query (cross-database, single primary endpoint, both graphs). Of the 16 candidate
+      human aminotransferase genes, keep those whose EC class has an inhibitor record that
+      (a) refers to aminooxyacetate and (b) is documented in the human enzyme (organism
+      taxID 9606). HGNC supplies the approved gene symbol and EC code; BRENDA supplies the
+      organism-resolved inhibitor curation — neither database alone can answer this.
+      The EC link is the IRI-path string of the BRENDA EC node matched to the HGNC EC code
+      (BIND + STR=STR, per both MIE cross-database recipes). Aminooxyacetate is pinned to its
+      canonical BRENDA compound node (compound/1019); the only other aminooxyacetate node,
+      the hemihydrochloride salt compound/75944, was checked separately and inhibits 0 of
+      these human aminotransferases, so this scope is complete. Returns 14 distinct genes
+      (the answer); it excludes GOT1 and GFPT1, which are in the candidate universe but lack
+      a curated human aminooxyacetate-inhibition record.
+    query: |
+      PREFIX d3o:  <https://purl.dsmz.de/schema/>
+      PREFIX m2r:  <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct:  <http://purl.org/dc/terms/>
+      PREFIX idt:  <http://identifiers.org/>
+
+      SELECT DISTINCT ?symbol
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/hgnc> {
+          ?gene a m2r:Gene ;
+                rdfs:label ?symbol ;
+                rdfs:seeAlso ?ecRef .
+          ?ecRef a idt:ec-code ;
+                 dct:identifier ?ecNum .
+          FILTER(STRSTARTS(?ecNum, "2.6.1."))
+        }
+        GRAPH <http://rdfportal.org/dataset/brenda> {
+          ?ec a d3o:ECNumber .
+          BIND(STRAFTER(STR(?ec), "https://purl.dsmz.de/brenda/ec/") AS ?ecNum2)
+          FILTER(STR(?ecNum2) = STR(?ecNum))
+          ?inhibitor a d3o:Inhibitor ;
+                     d3o:affectsClass ?ec ;
+                     d3o:foundIn ?org ;
+                     d3o:refersToCompound <https://purl.dsmz.de/brenda/compound/1019> .
+          ?org d3o:hasTaxID 9606 .
+        }
+      }
+      ORDER BY ?symbol
+    result_count: 14
+
+  - query_number: 3
+    database: brenda
+    description: |
+      Arithmetic verification of the list length: COUNT(DISTINCT ?symbol) over the identical
+      criteria as Query 2. Returns 14, matching the 14 gene symbols listed by Query 2.
+    query: |
+      PREFIX d3o:  <https://purl.dsmz.de/schema/>
+      PREFIX m2r:  <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct:  <http://purl.org/dc/terms/>
+      PREFIX idt:  <http://identifiers.org/>
+
+      SELECT (COUNT(DISTINCT ?symbol) AS ?nGenes)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/hgnc> {
+          ?gene a m2r:Gene ; rdfs:label ?symbol ; rdfs:seeAlso ?ecRef .
+          ?ecRef a idt:ec-code ; dct:identifier ?ecNum .
+          FILTER(STRSTARTS(?ecNum, "2.6.1."))
+        }
+        GRAPH <http://rdfportal.org/dataset/brenda> {
+          ?ec a d3o:ECNumber .
+          BIND(STRAFTER(STR(?ec), "https://purl.dsmz.de/brenda/ec/") AS ?ecNum2)
+          FILTER(STR(?ecNum2) = STR(?ecNum))
+          ?inhibitor a d3o:Inhibitor ;
+                     d3o:affectsClass ?ec ;
+                     d3o:foundIn ?org ;
+                     d3o:refersToCompound <https://purl.dsmz.de/brenda/compound/1019> .
+          ?org d3o:hasTaxID 9606 .
+        }
+      }
+    result_count: 1
+
+rdf_triples: |
+  @prefix m2r:  <http://med2rdf.org/ontology/med2rdf#> .
+  @prefix d3o:  <https://purl.dsmz.de/schema/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix dct:  <http://purl.org/dc/terms/> .
+  @prefix idt:  <http://identifiers.org/> .
+
+  <http://identifiers.org/hgnc/4552> a m2r:Gene .
+  # Database: HGNC | Query: 1 | Comment: approved human gene GPT (one answer-list member)
+  <http://identifiers.org/hgnc/4552> rdfs:label "GPT" .
+  # Database: HGNC | Query: 1 | Comment: official gene symbol
+  <http://identifiers.org/hgnc/4552> rdfs:seeAlso <http://identifiers.org/ec-code/2.6.1.2> .
+  # Database: HGNC | Query: 1 | Comment: GPT cross-referenced to EC 2.6.1.2 (alanine transaminase)
+  <http://identifiers.org/ec-code/2.6.1.2> a idt:ec-code .
+  # Database: HGNC | Query: 1 | Comment: typed EC-code cross-reference node
+  <http://identifiers.org/ec-code/2.6.1.2> dct:identifier "2.6.1.2" .
+  # Database: HGNC | Query: 1 | Comment: EC number string = join key to BRENDA
+  <http://identifiers.org/hgnc/976> a m2r:Gene .
+  # Database: HGNC | Query: 1 | Comment: approved human gene BCAT1 (one answer-list member)
+  <http://identifiers.org/hgnc/976> rdfs:label "BCAT1" .
+  # Database: HGNC | Query: 1 | Comment: official gene symbol
+  <http://identifiers.org/hgnc/976> rdfs:seeAlso <http://identifiers.org/ec-code/2.6.1.42> .
+  # Database: HGNC | Query: 1 | Comment: BCAT1 cross-referenced to EC 2.6.1.42
+  <http://identifiers.org/ec-code/2.6.1.42> dct:identifier "2.6.1.42" .
+  # Database: HGNC | Query: 1 | Comment: EC number string = join key to BRENDA
+
+  <https://purl.dsmz.de/brenda/ec/2.6.1.2> a d3o:ECNumber .
+  # Database: BRENDA | Query: 2 | Comment: EC node whose IRI path "2.6.1.2" matches the HGNC EC code
+  <https://purl.dsmz.de/brenda/ec/2.6.1.2> rdfs:label "alanine transaminase" .
+  # Database: BRENDA | Query: 2 | Comment: enzyme name for EC 2.6.1.2 (= GPT)
+  <https://purl.dsmz.de/brenda/inhibitor/1019> a d3o:Inhibitor .
+  # Database: BRENDA | Query: 2 | Comment: inhibitor role node
+  <https://purl.dsmz.de/brenda/inhibitor/1019> d3o:affectsClass <https://purl.dsmz.de/brenda/ec/2.6.1.2> .
+  # Database: BRENDA | Query: 2 | Comment: this inhibition affects EC 2.6.1.2
+  <https://purl.dsmz.de/brenda/inhibitor/1019> d3o:foundIn _:org9606 .
+  # Database: BRENDA | Query: 2 | Comment: documented in the human enzyme context
+  _:org9606 d3o:hasTaxID 9606 .
+  # Database: BRENDA | Query: 2 | Comment: organism is Homo sapiens (NCBI taxID 9606)
+  _:org9606 rdfs:label "Homo sapiens" .
+  # Database: BRENDA | Query: 2 | Comment: organism label
+  <https://purl.dsmz.de/brenda/inhibitor/1019> d3o:refersToCompound <https://purl.dsmz.de/brenda/compound/1019> .
+  # Database: BRENDA | Query: 2 | Comment: the inhibitor compound
+  <https://purl.dsmz.de/brenda/compound/1019> rdfs:label "Aminooxyacetate" .
+  # Database: BRENDA | Query: 2 | Comment: compound = aminooxyacetate
+  <https://purl.dsmz.de/brenda/compound/1019> d3o:hasStructure _:str1019 .
+  # Database: BRENDA | Query: 2 | Comment: structure node for aminooxyacetate
+  _:str1019 d3o:hasInChIKey "InChIKey=NQRKYASMKDDGHT-UHFFFAOYSA-M" .
+  # Database: BRENDA | Query: 2 | Comment: InChIKey confirming compound identity (canonical node, not the salt)
+
+exact_answer:
+  - AADAT
+  - ABAT
+  - AGXT
+  - AGXT2
+  - BCAT1
+  - BCAT2
+  - GOT2
+  - GPT
+  - GPT2
+  - KYAT1
+  - KYAT3
+  - OAT
+  - PSAT1
+  - TAT
+
+ideal_answer: |
+  Fourteen approved human genes encode aminotransferases (EC 2.6.1.-) whose human enzyme is
+  curated as inhibited by aminooxyacetate: AADAT, ABAT, AGXT, AGXT2, BCAT1, BCAT2, GOT2, GPT,
+  GPT2, KYAT1, KYAT3, OAT, PSAT1, and TAT. These span the major transamination reactions of
+  human metabolism — aspartate/alanine transamination (GOT2, GPT, GPT2), branched-chain amino
+  acid catabolism (BCAT1, BCAT2), GABA turnover (ABAT), ornithine and glyoxylate metabolism
+  (OAT, AGXT, AGXT2), serine biosynthesis (PSAT1), and the kynurenine/2-aminoadipate pathways
+  (AADAT, KYAT1, KYAT3). Aminooxyacetate is a general inhibitor of pyridoxal 5'-phosphate
+  (PLP)-dependent enzymes, forming a stable oxime with the PLP cofactor shared by all
+  aminotransferases, which is why it is documented across this broad set. The candidate
+  universe contains 16 human aminotransferase genes; the two not returned are GFPT1 and the
+  cytosolic aspartate aminotransferase GOT1, for which no human-enzyme aminooxyacetate
+  inhibition record is curated — an absence in the current database rather than a biochemical
+  expectation, since GOT1 is a classic PLP transaminase. Answering therefore requires joining
+  the approved human gene/EC nomenclature to organism-resolved enzyme inhibitor curation; it
+  cannot be derived from either source alone or from prior knowledge.
+
+question_template_used: "Cross-database filtered list (HGNC gene symbol <-> BRENDA inhibitor via EC number)"
+
+time_spent:
+  exploration: 50 minutes
+  formulation: 20 minutes
+  verification: 20 minutes
+  pubmed_test: 15 minutes
+  extraction: 20 minutes
+  documentation: 25 minutes
+  total: 150 minutes

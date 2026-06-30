@@ -1,0 +1,208 @@
+id: question_056
+type: factoid
+body: >-
+  How many reference tandem mass spectrometry (MS/MS) spectra are catalogued for the
+  vitamin B6-derived enzyme cofactor pyridoxal 5'-phosphate?
+
+inspiration_keyword:
+  keyword_id: KW-0663
+  name: Pyridoxal phosphate
+  category: Ligand
+
+togomcp_databases_used:
+  - chebi
+  - massbank
+
+verification_score:
+  biological_insight: 2
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 10
+  passed: true
+
+pubmed_test:
+  time_spent: 15 minutes
+  method: |
+    Query 1: "pyridoxal 5'-phosphate MassBank reference mass spectra number" — 0 results.
+    Query 2: "pyridoxal phosphate tandem mass spectrometry reference spectral library count
+      instrument types" — 0 results.
+    Query 3 (broad, to confirm the topic exists): "pyridoxal 5'-phosphate mass spectrometry
+      fragmentation" — 23 results; read abstracts of PMID 35003002 and PMID 31233711.
+  result: |
+    The two targeted queries returned nothing. The broad query found 23 articles, but they
+    are mechanistic or applied studies — e.g. detecting the covalent PLP-Lys302 adduct of a
+    transcription factor by MS (PMID 35003002), and a method for sequencing PLP-modified
+    peptides by multi-stage tandem MS (PMID 31233711). None enumerates how many curated
+    reference MS/MS spectra exist for free pyridoxal 5'-phosphate. That figure is a property
+    of the current spectral-repository snapshot, not of any publication, so it cannot be
+    recovered from the literature.
+  conclusion: PASS (cannot answer from literature - requires current RDF repository state)
+
+sparql_queries:
+  - query_number: 1
+    database: chebi
+    description: |
+      Resolve the cofactor pyridoxal 5'-phosphate to its canonical chemical identity and
+      structure key (standard InChIKey), which is the join key used to gather its reference
+      spectra. The neutral free cofactor is CHEBI:18405 (formula C8H10NO6P); its standard
+      InChIKey is NGVDGCNFYWLIFO-UHFFFAOYSA-N.
+    query: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX chemrof: <https://w3id.org/chemrof/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?label ?formula ?mass ?inchikey ?charge
+      FROM <http://rdf.ebi.ac.uk/dataset/chebi>
+      WHERE {
+        obo:CHEBI_18405 a owl:Class ;
+                        rdfs:label ?label .
+        OPTIONAL { obo:CHEBI_18405 chemrof:generalized_empirical_formula ?formula }
+        OPTIONAL { obo:CHEBI_18405 chemrof:mass ?mass }
+        OPTIONAL { obo:CHEBI_18405 chemrof:inchi_key_string ?inchikey }
+        OPTIONAL { obo:CHEBI_18405 chemrof:charge ?charge }
+      }
+    result_count: 1
+
+  - query_number: 2
+    database: massbank
+    description: |
+      Count the distinct reference mass spectra whose measured chemical substance is
+      pyridoxal 5'-phosphate, matched by its standard InChIKey IRI (the structure-based
+      join key recommended by the schema; names are not used). Returns 22. A skeleton-block
+      scan (FILTER CONTAINS "NGVDGCNFYWLIFO") confirmed this neutral InChIKey is the only
+      PLP structure key present, so no protonation/charge variant is missed (Rule 2 scope).
+    query: |
+      PREFIX mb: <http://www.massbank.jp/ontology/>
+      PREFIX schema: <https://schema.org/>
+
+      SELECT (COUNT(DISTINCT ?spectrum) AS ?nSpectra)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/massbank> {
+          ?c schema:inChIKey <http://identifiers.org/inchikey/NGVDGCNFYWLIFO-UHFFFAOYSA-N> .
+          ?spectrum mb:compound ?c .
+        }
+      }
+    result_count: 1
+
+  - query_number: 3
+    database: massbank
+    description: |
+      Arithmetic-verification / breakdown of the 22 spectra by acquisition method
+      (instrument type x ion mode x MS level). The four groups sum to 8 + 6 + 4 + 4 = 22,
+      matching the total in Query 2, and confirm every record is a tandem (MS2) spectrum.
+    query: |
+      PREFIX mb: <http://www.massbank.jp/ontology/>
+      PREFIX schema: <https://schema.org/>
+
+      SELECT ?instrument_type ?ion_mode ?ms_type (COUNT(DISTINCT ?spectrum) AS ?n)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/massbank> {
+          ?c schema:inChIKey <http://identifiers.org/inchikey/NGVDGCNFYWLIFO-UHFFFAOYSA-N> .
+          ?spectrum mb:compound ?c ;
+                    mb:analytical_methods_and_conditions ?ac .
+          ?ac mb:instrument_type ?instrument_type ;
+              mb:ion_mode ?ion_mode ;
+              mb:ms_type ?ms_type .
+        }
+      }
+      GROUP BY ?instrument_type ?ion_mode ?ms_type
+      ORDER BY DESC(?n)
+    result_count: 4
+
+rdf_triples: |
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix owl: <http://www.w3.org/2002/07/owl#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix chemrof: <https://w3id.org/chemrof/> .
+  @prefix mb: <http://www.massbank.jp/ontology/> .
+  @prefix schema: <https://schema.org/> .
+  @prefix dcterms: <http://purl.org/dc/terms/> .
+
+  obo:CHEBI_18405 a owl:Class .
+  # Database: ChEBI | Query: 1 | Comment: pyridoxal 5'-phosphate chemical entity
+  obo:CHEBI_18405 rdfs:label "pyridoxal 5'-phosphate" .
+  # Database: ChEBI | Query: 1 | Comment: preferred name of the cofactor
+  obo:CHEBI_18405 chemrof:generalized_empirical_formula "C8H10NO6P" .
+  # Database: ChEBI | Query: 1 | Comment: molecular formula
+  obo:CHEBI_18405 chemrof:mass 247.143 .
+  # Database: ChEBI | Query: 1 | Comment: average molecular mass
+  obo:CHEBI_18405 chemrof:inchi_key_string "NGVDGCNFYWLIFO-UHFFFAOYSA-N" .
+  # Database: ChEBI | Query: 1 | Comment: standard InChIKey = structure-based join key into the spectral repository
+
+  <https://identifiers.org/massbank/MSBNK-Keio_Univ-KO001615> a mb:MassSpectrum .
+  # Database: MassBank | Query: 2 | Comment: one of the 22 reference spectra for PLP
+  <https://identifiers.org/massbank/MSBNK-Keio_Univ-KO001615> dcterms:identifier "MSBNK-Keio_Univ-KO001615" .
+  # Database: MassBank | Query: 2 | Comment: MassBank accession
+  <https://identifiers.org/massbank/MSBNK-Keio_Univ-KO001615> mb:compound _:plp1 .
+  # Database: MassBank | Query: 2 | Comment: links the spectrum to its measured chemical substance
+  _:plp1 a schema:chemicalsubstance .
+  # Database: MassBank | Query: 2 | Comment: chemical-substance node (lowercase class IRI)
+  _:plp1 schema:inChIKey <http://identifiers.org/inchikey/NGVDGCNFYWLIFO-UHFFFAOYSA-N> .
+  # Database: MassBank | Query: 2 | Comment: same InChIKey as ChEBI CHEBI:18405 — the cross-database link
+  _:plp1 schema:molecularFormula "C8H10NO6P" .
+  # Database: MassBank | Query: 2 | Comment: formula matches the ChEBI record
+  <https://identifiers.org/massbank/MSBNK-Keio_Univ-KO001615> mb:analytical_methods_and_conditions _:ac1 .
+  # Database: MassBank | Query: 3 | Comment: acquisition method node
+  _:ac1 mb:instrument_type "LC-ESI-QQ" .
+  # Database: MassBank | Query: 3 | Comment: instrument type (triple-quadrupole LC-ESI)
+  _:ac1 mb:ion_mode "NEGATIVE" .
+  # Database: MassBank | Query: 3 | Comment: negative ion mode
+  _:ac1 mb:ms_type "MS2" .
+  # Database: MassBank | Query: 3 | Comment: tandem (MS/MS) acquisition
+  <https://identifiers.org/massbank/MSBNK-RIKEN-PR100274> a mb:MassSpectrum .
+  # Database: MassBank | Query: 2 | Comment: another of the 22 reference spectra for PLP
+  <https://identifiers.org/massbank/MSBNK-RIKEN-PR100274> dcterms:identifier "MSBNK-RIKEN-PR100274" .
+  # Database: MassBank | Query: 2 | Comment: MassBank accession (different contributor)
+  <https://identifiers.org/massbank/MSBNK-RIKEN-PR100274> mb:compound _:plp2 .
+  # Database: MassBank | Query: 2 | Comment: links the spectrum to its measured chemical substance
+  _:plp2 a schema:chemicalsubstance .
+  # Database: MassBank | Query: 2 | Comment: chemical-substance node
+  _:plp2 schema:inChIKey <http://identifiers.org/inchikey/NGVDGCNFYWLIFO-UHFFFAOYSA-N> .
+  # Database: MassBank | Query: 2 | Comment: same PLP InChIKey
+  <https://identifiers.org/massbank/MSBNK-RIKEN-PR100274> mb:analytical_methods_and_conditions _:ac2 .
+  # Database: MassBank | Query: 3 | Comment: acquisition method node
+  _:ac2 mb:instrument_type "LC-ESI-QTOF" .
+  # Database: MassBank | Query: 3 | Comment: instrument type (quadrupole time-of-flight LC-ESI)
+  _:ac2 mb:ion_mode "POSITIVE" .
+  # Database: MassBank | Query: 3 | Comment: positive ion mode
+  _:ac2 mb:ms_type "MS2" .
+  # Database: MassBank | Query: 3 | Comment: tandem (MS/MS) acquisition
+
+exact_answer: 22
+
+ideal_answer: |
+  There are 22 reference tandem mass spectra (MS/MS) catalogued for pyridoxal 5'-phosphate, the
+  phosphorylated, catalytically active form of vitamin B6 that serves as an enzyme cofactor
+  (ChEBI:18405; molecular formula C8H10NO6P; standard InChIKey NGVDGCNFYWLIFO-UHFFFAOYSA-N). All
+  22 records are MS2 spectra acquired by liquid-chromatography electrospray ionization, split
+  across two instrument geometries and both ionization polarities: 14 on a triple-quadrupole
+  (LC-ESI-QQ; 8 negative + 6 positive) and 8 on a quadrupole time-of-flight (LC-ESI-QTOF; 4
+  negative + 4 positive), which sums to 22. Spectra were contributed by several laboratories
+  (e.g. Keio University and RIKEN). The compound was matched by its standard InChIKey rather than
+  by name, and a scan of the full InChIKey skeleton confirmed this neutral structure key is the
+  only representation of pyridoxal 5'-phosphate present, so no charge/protonation variant is
+  omitted from the count.
+
+question_template_used: "Cross-database structure-to-spectrum count (InChIKey join ChEBI -> MassBank)"
+
+structured_vocabulary_check:
+  concept: pyridoxal 5'-phosphate
+  ontology_used: ChEBI
+  resolved_entity: "CHEBI:18405 (pyridoxal 5'-phosphate)"
+  structure_key: "InChIKey NGVDGCNFYWLIFO-UHFFFAOYSA-N"
+  scope_note: >-
+    Skeleton-block scan (CONTAINS "NGVDGCNFYWLIFO") over MassBank InChIKeys returned only the
+    neutral -N form; the ChEBI dianion CHEBI:597326 (...-L) has no MassBank spectra, so scope is
+    complete.
+  comprehensive: true
+
+time_spent:
+  exploration: 35 minutes
+  formulation: 15 minutes
+  verification: 20 minutes
+  pubmed_test: 15 minutes
+  extraction: 20 minutes
+  documentation: 20 minutes
+  total: 125 minutes
