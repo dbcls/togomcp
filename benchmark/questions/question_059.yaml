@@ -1,0 +1,273 @@
+id: question_059
+type: summary
+body: >-
+  Thiamine diphosphate, the catalytically active diphosphorylated form of
+  vitamin B1, is one of the most widely deployed enzyme cofactors and stabilises
+  acyl-anion (carbanion) intermediates for reactions that make or break
+  carbon-carbon bonds adjacent to a carbonyl. Provide an integrated
+  characterization of this cofactor that spans its chemical identity, its
+  enzymatic deployment, and its analytical representation: what is the molecular
+  formula of the curated, fully ionised active-cofactor form; across the
+  manually reviewed protein universe, how many distinct enzymes recruit it and
+  how are those enzymes distributed among the seven top-level Enzyme Commission
+  classes; and to what extent is the molecule itself documented by reference
+  tandem mass spectra, including the ionization polarities represented?
+
+inspiration_keyword:
+  keyword_id: KW-0786
+  name: Thiamine pyrophosphate
+  category: Ligand
+
+togomcp_databases_used:
+  - chebi
+  - uniprot
+  - massbank
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 12
+  passed: true
+
+pubmed_test:
+  time_spent: 15 minutes
+  method: >-
+    Tried to assemble the integrated answer from the literature. Searched
+    "thiamine diphosphate dependent enzymes EC class distribution number reviewed
+    proteins" (0 results), "thiamine diphosphate reference mass spectrometry
+    tandem MS/MS spectral library" (0 results), "thiamine diphosphate dependent
+    enzymes superfamily diversity" (4 hits: PMIDs 23157214, 20122171, 24888727,
+    38951114) and "thiamine vitamers metabolomics mass spectrometry
+    quantification" (0 results); read the abstracts.
+  result: |
+    The substantive hits describe the Thiamine diphosphate-dependent Enzyme
+    Engineering Database (TEED; PMIDs 20122171, 23157214), which organises ThDP
+    enzymes by sequence/structure into 8 superfamilies and 63 homologous families
+    over ~9,400 proteins, and a niche biosynthesis study (PMID 38951114). This
+    structural-superfamily taxonomy is orthogonal to — and would actively mislead
+    a reader away from — the Enzyme Commission distribution across the curated
+    Swiss-Prot universe, and none of the sources reports the number of reviewed
+    enzymes that recruit the cofactor, their EC-class breakdown, or how many
+    reference tandem mass spectra of the molecule exist (or in which ion modes).
+    Producing the integrated, count-level profile requires live aggregation
+    across the chemical-ontology, protein, and mass-spectral knowledge graphs.
+  conclusion: PASS (cannot answer from literature - requires live cross-database RDF aggregation)
+
+# STRUCTURED VOCABULARY DISCOVERY
+# The inspiration concept "thiamine pyrophosphate" (UniProt keyword KW-0786) was
+# resolved to a structured cofactor IRI by reading the up:Cofactor_Annotation
+# nodes of the keyword's reviewed proteins (Query 1). The dominant cofactor is
+# ChEBI CHEBI:58937 "thiamine(1+) diphosphate(3-)" (1359 of the keyword set);
+# the remaining cofactor IRIs are the metal ions those enzymes co-require
+# (Mg2+/CHEBI:18420, Mn2+/CHEBI:29035, Ca2+/CHEBI:29108, etc.), confirming
+# CHEBI:58937 is THE thiamine-diphosphate cofactor. The protein scope (Query 3)
+# is then defined precisely by the cofactor IRI itself, not the keyword string.
+
+# ARITHMETIC VERIFICATION (Checkpoint B — GROUP BY reconciliation)
+#   Query 4 GROUP BY EC top-level class (COUNT DISTINCT protein over the
+#   thiamine-diphosphate cofactor set):
+#     EC 2 (transferases)   = 949
+#     EC 1 (oxidoreductases) = 266
+#     EC 4 (lyases)         = 135
+#     EC 3 (hydrolases)     =  26
+#     EC 5/6/7              =   0
+#   Sum of per-class counts = 949 + 266 + 135 + 26 = 1376.
+#   Query 5 independent total of distinct proteins carrying >=1 EC number = 1363.
+#   Query 3 independent total of the whole cofactor set                  = 1369.
+#   Reconciliation: sum 1376 > with-EC total 1363 by 13 -> 13 proteins are
+#   multifunctional and carry EC numbers in two different top-level classes
+#   (counted once per class). 1369 - 1363 = 6 proteins carry the cofactor but no
+#   EC number (non-catalytic/regulatory or incompletely annotated). Overlap and
+#   shortfall both explained; the transferase plurality is unaffected.
+
+sparql_queries:
+  - query_number: 1
+    database: uniprot
+    description: >-
+      Resolve the inspiration keyword (KW-0786, Thiamine pyrophosphate) to a
+      structured cofactor IRI: list the ChEBI cofactors referenced by the
+      Cofactor annotations of the keyword's reviewed proteins, with how many
+      proteins cite each. CHEBI:58937 (thiamine diphosphate) dominates; the rest
+      are co-required metal ions.
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+
+      SELECT ?cof (COUNT(DISTINCT ?protein) AS ?nProt)
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:classifiedWith <http://purl.uniprot.org/keywords/786> ;
+                 up:annotation ?ann .
+        ?ann a up:Cofactor_Annotation ;
+             up:cofactor ?cof .
+      }
+      GROUP BY ?cof
+      ORDER BY DESC(?nProt)
+    result_count: 12
+
+  - query_number: 2
+    database: chebi
+    description: >-
+      Chemical identity of the active cofactor CHEBI:58937: label, molecular
+      formula, mass, and standard InChIKey (whose skeleton bridges to the mass
+      spectral library).
+    query: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX chemrof: <https://w3id.org/chemrof/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?label ?formula ?mass ?inchikey
+      FROM <http://rdf.ebi.ac.uk/dataset/chebi>
+      WHERE {
+        obo:CHEBI_58937 a owl:Class ; rdfs:label ?label .
+        OPTIONAL { obo:CHEBI_58937 chemrof:generalized_empirical_formula ?formula }
+        OPTIONAL { obo:CHEBI_58937 chemrof:mass ?mass }
+        OPTIONAL { obo:CHEBI_58937 chemrof:inchi_key_string ?inchikey }
+      }
+    result_count: 1
+
+  - query_number: 3
+    database: uniprot
+    description: >-
+      Total reviewed (Swiss-Prot) proteins that recruit thiamine diphosphate
+      (CHEBI:58937) as a cofactor — the full protein scope of the profile.
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+
+      SELECT (COUNT(DISTINCT ?protein) AS ?nTotal)
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:annotation ?ann .
+        ?ann a up:Cofactor_Annotation ;
+             up:cofactor <http://purl.obolibrary.org/obo/CHEBI_58937> .
+      }
+    result_count: 1
+
+  - query_number: 4
+    database: uniprot
+    description: >-
+      Distribution of the thiamine-diphosphate cofactor enzymes across the
+      top-level EC classes (COUNT DISTINCT protein per class). This is the
+      GROUP BY whose reconciliation is recorded above.
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+
+      SELECT ?ecClass (COUNT(DISTINCT ?protein) AS ?n)
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:annotation ?ann .
+        ?ann a up:Cofactor_Annotation ;
+             up:cofactor <http://purl.obolibrary.org/obo/CHEBI_58937> .
+        ?protein up:enzyme ?ec .
+        BIND(STRBEFORE(STRAFTER(STR(?ec), "enzyme/"), ".") AS ?ecClass)
+      }
+      GROUP BY ?ecClass
+      ORDER BY DESC(?n)
+    result_count: 4
+
+  - query_number: 5
+    database: uniprot
+    description: >-
+      Arithmetic reconciliation (Checkpoint B): distinct thiamine-diphosphate
+      cofactor proteins that carry at least one EC number, computed
+      independently of the GROUP BY to quantify multi-class overlap (1376 sum vs
+      1363 with-EC vs 1369 total).
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+
+      SELECT (COUNT(DISTINCT ?protein) AS ?nWithEC)
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:annotation ?ann .
+        ?ann a up:Cofactor_Annotation ;
+             up:cofactor <http://purl.obolibrary.org/obo/CHEBI_58937> .
+        ?protein up:enzyme ?ec .
+      }
+    result_count: 1
+
+  - query_number: 6
+    database: massbank
+    description: >-
+      Reference tandem mass spectra of the thiamine-diphosphate molecule,
+      matched by its InChIKey skeleton (AYEKOFBPNLCAJY, charge-state agnostic)
+      and grouped by ionization polarity and MS level.
+    query: |
+      PREFIX mb: <http://www.massbank.jp/ontology/>
+      PREFIX schema: <https://schema.org/>
+
+      SELECT ?ionMode ?msType (COUNT(DISTINCT ?s) AS ?nSpectra)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/massbank> {
+          ?c schema:inChIKey ?ik .
+          FILTER(STRSTARTS(STR(?ik), "http://identifiers.org/inchikey/AYEKOFBPNLCAJY"))
+          ?s mb:compound ?c ;
+             mb:analytical_methods_and_conditions ?ac .
+          ?ac mb:ion_mode ?ionMode ; mb:ms_type ?msType .
+        }
+      }
+      GROUP BY ?ionMode ?msType
+      ORDER BY DESC(?nSpectra)
+    result_count: 2
+
+rdf_triples: |
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix chemrof: <https://w3id.org/chemrof/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
+  @prefix enzyme: <http://purl.uniprot.org/enzyme/> .
+  @prefix mb: <http://www.massbank.jp/ontology/> .
+  @prefix mbr: <https://identifiers.org/massbank/> .
+  @prefix schema: <https://schema.org/> .
+
+  obo:CHEBI_58937 rdfs:label "thiamine(1+) diphosphate(3-)" .
+  # Database: ChEBI | Query: 2 | Comment: CHEBI:58937 is the curated, fully ionised active cofactor form of vitamin B1
+
+  obo:CHEBI_58937 chemrof:generalized_empirical_formula "C12H16N4O7P2S" .
+  # Database: ChEBI | Query: 2 | Comment: molecular formula; mass 422.296, net charge 2- (1+ on the thiazolium, 3- on the diphosphate)
+
+  obo:CHEBI_58937 chemrof:inchi_key_string "AYEKOFBPNLCAJY-UHFFFAOYSA-L" .
+  # Database: ChEBI | Query: 2 | Comment: standard InChIKey; the AYEKOFBPNLCAJY skeleton is the structural key joining ChEBI to MassBank
+
+  uniprot:P29401 up:annotation _:annTKT .
+  # Database: UniProt | Query: 3 | Comment: human transketolase (TKT) carries a cofactor annotation (one of 1369 reviewed proteins using this cofactor)
+
+  _:annTKT a up:Cofactor_Annotation .
+  # Database: UniProt | Query: 3 | Comment: the annotation is typed Cofactor_Annotation
+
+  _:annTKT up:cofactor obo:CHEBI_58937 .
+  # Database: UniProt | Query: 3 | Comment: its cofactor is thiamine diphosphate (CHEBI:58937) — the IRI join from UniProt to ChEBI defining the protein scope
+
+  uniprot:P29401 up:enzyme enzyme:2.2.1.1 .
+  # Database: UniProt | Query: 4 | Comment: transketolase EC 2.2.1.1 -> EC class 2 (transferases), the dominant class with 949 proteins
+
+  uniprot:P06169 up:enzyme enzyme:4.1.1.43 .
+  # Database: UniProt | Query: 4 | Comment: pyruvate decarboxylase (PDC1) EC 4.1.1.43 -> EC class 4 (lyases, 135 proteins), the classic ThDP decarboxylases
+
+  mbr:MSBNK-Keio_Univ-KO000471 mb:compound _:cmpdTDP .
+  # Database: MassBank | Query: 6 | Comment: one of the 10 reference MS/MS spectra of thiamine diphosphate (negative-ion mode, LC-ESI-QQ)
+
+  _:cmpdTDP schema:inChIKey <http://identifiers.org/inchikey/AYEKOFBPNLCAJY-UHFFFAOYSA-O> .
+  # Database: MassBank | Query: 6 | Comment: the measured compound shares the AYEKOFBPNLCAJY skeleton with CHEBI:58937 — the structural bridge to the cofactor
+
+exact_answer: ""
+
+ideal_answer: |
+  Thiamine diphosphate, the active form of vitamin B1, is curated as the fully ionised species thiamine(1+) diphosphate(3-) (CHEBI:58937) with molecular formula C12H16N4O7P2S, a monoisotopic-scale mass of about 422.3, and a net charge of 2- arising from a 1+ thiazolium and a 3- diphosphate; its InChIKey skeleton is AYEKOFBPNLCAJY. Across the manually reviewed (Swiss-Prot) protein universe, 1,369 distinct enzymes recruit this cofactor, and their distribution across the top-level Enzyme Commission classes is strikingly uneven: transferases (EC 2) dominate with 949 enzymes, followed by oxidoreductases (EC 1) with 266 and lyases (EC 4) with 135, with only 26 hydrolases (EC 3) and none at all among the isomerases (EC 5), ligases (EC 6) or translocases (EC 7). This profile is a direct readout of the cofactor's chemistry, which generates a resonance-stabilised carbanion at the thiazolium C2 to act on carbon adjacent to a carbonyl: the transferase plurality is the transketolases and the ketol/acyl-transferring 2-oxo-acid carboligases, the oxidoreductases are the decarboxylating E1 components of the 2-oxo-acid dehydrogenase complexes (pyruvate, 2-oxoglutarate and branched-chain), and the lyases are the textbook decarboxylases such as pyruvate decarboxylase and acetohydroxyacid synthase. The class counts overlap modestly — the 949+266+135+26 = 1,376 class memberships exceed the 1,363 enzymes that carry any EC number because 13 enzymes are multifunctional across two classes, while the remaining 6 of the 1,369 carry the cofactor without an assigned EC number. By contrast, the molecule itself is sparsely represented as a measured analyte: the reference mass-spectral record holds only 10 tandem (MS2) spectra of thiamine diphosphate, acquired on a single LC-ESI triple-quadrupole platform and split evenly between positive- and negative-ion mode (five each), so the cofactor that anchors well over a thousand curated enzymes has a comparatively thin analytical footprint as a free small molecule.
+
+question_template_used: Cross-database integrative cofactor profile (chemical identity + EC-class enzymatic deployment + reference-spectrum evidence)
+
+time_spent:
+  exploration: 40 minutes
+  formulation: 20 minutes
+  verification: 25 minutes
+  pubmed_test: 15 minutes
+  extraction: 20 minutes
+  documentation: 25 minutes
+  total: 145 minutes

@@ -1,0 +1,218 @@
+id: question_060
+type: yes_no
+body: >-
+  Cysteine dioxygenase (CDO1) catalyses the committed step of cysteine
+  catabolism in humans, using a mononuclear non-heme iron centre to oxidise free
+  L-cysteine to cysteinesulfinate (3-sulfino-L-alanine) and thereby feeding the
+  taurine and inorganic-sulfate biosynthetic routes. This enzyme is conserved
+  across the animal kingdom, with recognisable counterparts in nematodes and
+  insects as well as in vertebrates. When orthologs of this protein are inferred
+  across the tree of life, does the baker's yeast Saccharomyces cerevisiae genome
+  also encode an ortholog of human cysteine dioxygenase?
+
+inspiration_keyword:
+  keyword_id: KW-0223
+  name: Dioxygenase
+  category: Molecular function
+
+togomcp_databases_used:
+  - uniprot
+  - oma
+
+verification_score:
+  biological_insight: 3
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 15 minutes
+  method: >-
+    Tried to establish whether Saccharomyces cerevisiae has a cysteine-dioxygenase
+    ortholog. Searched "cysteine dioxygenase Saccharomyces cerevisiae yeast
+    ortholog conservation" (0 results), "cysteine dioxygenase evolution
+    phylogenetic distribution eukaryotes" (3 hits: PMIDs 37511002, 31176866,
+    41828374) and "Saccharomyces cerevisiae cysteine catabolism dioxygenase
+    absence" (1 hit: PMID 19138101); read the abstracts.
+  result: |
+    The retrieved literature characterises CDO gene families in plants (the plant
+    cysteine oxidase / PCO family in Brassica, PMID 37511002) and in bony fish
+    (two CDO paralogs in goldfish, PMID 31176866), and a yeast study that merely
+    uses S. cerevisiae to dissect nitrosative stress without addressing cysteine
+    dioxygenase orthology (PMID 19138101). None states whether the budding-yeast
+    genome encodes a cysteine-dioxygenase ortholog. Establishing the presence or
+    absence of an ortholog in a specific genome — distinguishing a true
+    evolutionary loss from incomplete annotation — requires cross-species
+    orthology inference, not the human sequence or the scattered species-specific
+    reports.
+  conclusion: PASS (cannot answer from literature - requires live cross-species ortholog inference)
+
+# NOTE ON SCOPE / VERIFICATION (no GROUP BY -> no Rule-3 sum check; positive controls instead)
+# The negative answer ("no yeast ortholog") is established with positive controls so the
+# absence cannot be a coverage gap:
+#   - Query 3 (anchored on the COMPLETE S. cerevisiae proteome, taxon 559292) shows budding
+#     yeast DOES contribute proteins to other 2-oxoglutarate/Fe(II) dioxygenase families
+#     checked here — the acireductone-dioxygenase/methionine-salvage family (root HOG
+#     E0813616, ADI1) and the prolyl-hydroxylase family (root HOG E0804865, OGFOD1) each
+#     return one yeast member — but NO yeast protein falls in CDO1's family (root HOG E0814862).
+#     (Of the 6 dioxygenase families probed, only 2 contain a yeast member; CDO1's does not.)
+#   - Query 4 confirms CDO1's family E0814862 is present across animals — one member each in
+#     Drosophila melanogaster (taxon 7227) and Caenorhabditis elegans (taxon 6239) — while
+#     S. cerevisiae (559292) again contributes none.
+# Yeast genome IS covered by the resource (it yields members for other families), so the
+# absence from CDO1's family is a genuine loss in the fungal lineage, not missing data.
+
+sparql_queries:
+  - query_number: 1
+    database: uniprot
+    description: >-
+      Identify the human enzyme: confirm UniProt Q16878 is reviewed human
+      cysteine dioxygenase (EC 1.13.11.20, gene CDO1) carrying the Dioxygenase
+      keyword KW-0223.
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT ?mnemonic ?fullName ?ec ?gene
+      WHERE {
+        <http://purl.uniprot.org/uniprot/Q16878> a up:Protein ;
+              up:reviewed 1 ;
+              up:mnemonic ?mnemonic ;
+              up:recommendedName ?rn ;
+              up:classifiedWith <http://purl.uniprot.org/keywords/223> ;
+              up:enzyme ?ec .
+        ?rn up:fullName ?fullName .
+        OPTIONAL { <http://purl.uniprot.org/uniprot/Q16878> up:encodedBy ?g . ?g skos:prefLabel ?gene }
+      }
+    result_count: 1
+
+  - query_number: 2
+    database: oma
+    description: >-
+      Locate the OMA protein for human CDO1 (via UniProt cross-reference Q16878)
+      and its species-level hierarchical-orthologous-group cluster, establishing
+      the gene-family root HOG (E0814862) used for the cross-species checks.
+    query: |
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX lscr: <http://purl.org/lscr#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+
+      SELECT ?protein ?omaId ?hogId
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          ?protein a orth:Protein ;
+                   lscr:xrefUniprot <http://purl.uniprot.org/uniprot/Q16878> ;
+                   dct:identifier ?omaId .
+          FILTER(STRSTARTS(?omaId, "HUMAN"))
+          ?cluster a orth:OrthologsCluster ;
+                   orth:hasHomologousMember ?protein ;
+                   orth:hasTaxonomicRange <http://purl.uniprot.org/taxonomy/9606> ;
+                   dct:identifier ?hogId .
+        }
+      }
+    result_count: 1
+
+  - query_number: 3
+    database: oma
+    description: >-
+      Conservation check anchored on the complete S. cerevisiae proteome (taxon
+      559292): for each of several dioxygenase gene families (CDO1=E0814862 plus
+      controls), count budding-yeast members. CDO1's family returns none; the
+      acireductone-dioxygenase (E0813616) and prolyl-hydroxylase (E0804865)
+      families each return a yeast member, proving the yeast proteome is covered.
+    query: |
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+
+      SELECT ?rootStem (COUNT(DISTINCT ?protein) AS ?nYeast)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          ?org a orth:Organism ; obo:RO_0002162 <http://purl.uniprot.org/taxonomy/559292> .
+          ?protein a orth:Protein ; orth:organism ?org .
+          ?cluster orth:hasHomologousMember ?protein ;
+                   orth:hasTaxonomicRange <http://purl.uniprot.org/taxonomy/559292> ;
+                   dct:identifier ?hogId .
+          VALUES ?rootStem { "HOG:E0814862" "HOG:E0813616" "HOG:E0814135" "HOG:E0806658" "HOG:E0804865" "HOG:E0802792" }
+          FILTER(STRSTARTS(?hogId, ?rootStem))
+        }
+      }
+      GROUP BY ?rootStem
+    result_count: 2
+
+  - query_number: 4
+    database: oma
+    description: >-
+      Animal-conservation check for CDO1's family (root HOG E0814862): count
+      members in Drosophila melanogaster (7227), Caenorhabditis elegans (6239),
+      and S. cerevisiae (559292). The two animals each contribute a member; the
+      yeast returns none, so the family is animal-wide but absent from budding yeast.
+    query: |
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+
+      SELECT ?taxon (COUNT(DISTINCT ?protein) AS ?nMembers)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          VALUES ?taxon {
+            <http://purl.uniprot.org/taxonomy/7227>
+            <http://purl.uniprot.org/taxonomy/6239>
+            <http://purl.uniprot.org/taxonomy/559292>
+          }
+          ?org a orth:Organism ; obo:RO_0002162 ?taxon .
+          ?protein a orth:Protein ; orth:organism ?org .
+          ?cluster orth:hasHomologousMember ?protein ;
+                   orth:hasTaxonomicRange ?taxon ;
+                   dct:identifier ?hogId .
+          FILTER(STRSTARTS(?hogId, "HOG:E0814862"))
+        }
+      }
+      GROUP BY ?taxon
+    result_count: 2
+
+rdf_triples: |
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
+  @prefix enzyme: <http://purl.uniprot.org/enzyme/> .
+  @prefix keywords: <http://purl.uniprot.org/keywords/> .
+  @prefix lscr: <http://purl.org/lscr#> .
+  @prefix orth: <http://purl.org/net/orth#> .
+  @prefix omainfo: <https://omabrowser.org/oma/info/> .
+  @prefix omahog: <https://omabrowser.org/oma/hog/resolve/> .
+
+  uniprot:Q16878 up:enzyme enzyme:1.13.11.20 .
+  # Database: UniProt | Query: 1 | Comment: human CDO1 (Q16878) is cysteine dioxygenase, EC 1.13.11.20 — the committed step of cysteine catabolism
+
+  uniprot:Q16878 up:classifiedWith keywords:223 .
+  # Database: UniProt | Query: 1 | Comment: CDO1 carries the Dioxygenase keyword (KW-0223), the inspiration keyword
+
+  omainfo:HUMAN80350 lscr:xrefUniprot uniprot:Q16878 .
+  # Database: OMA | Query: 2 | Comment: OMA protein HUMAN80350 cross-references UniProt CDO1 (Q16878) — the bridge from the enzyme to the orthology graph
+
+  omahog:HOG:E0814862.3b.7a.6a_9606 orth:hasHomologousMember omainfo:HUMAN80350 .
+  # Database: OMA | Query: 2 | Comment: human CDO1 belongs to gene-family root HOG E0814862 (its human species-level cluster, taxon 9606)
+
+  omahog:HOG:E0814862.3b.7a_6239 orth:hasHomologousMember omainfo:CAEEL18121 .
+  # Database: OMA | Query: 4 | Comment: a Caenorhabditis elegans protein in the SAME root family E0814862 — CDO1 is conserved across animals (worm)
+
+  omahog:HOG:E0813616.3b_559292 orth:hasHomologousMember omainfo:YEAST04804 .
+  # Database: OMA | Query: 3 | Comment: positive control — a S. cerevisiae protein IS placed in the acireductone-dioxygenase family (E0813616); the yeast proteome is covered, yet no yeast protein falls in CDO1's family E0814862
+
+exact_answer: "no"
+
+ideal_answer: |
+  No. Human cysteine dioxygenase (CDO1; EC 1.13.11.20) — the mononuclear non-heme iron enzyme that commits free L-cysteine to catabolism by oxidising it to cysteinesulfinate, supplying the taurine and sulfate pathways — has no ortholog in the baker's yeast Saccharomyces cerevisiae. Cross-species orthology inference places CDO1 in a gene family (root group E0814862) that is well represented throughout the animal kingdom, with orthologs present in the nematode Caenorhabditis elegans and the fruit fly Drosophila melanogaster as well as in vertebrates, yet no protein from the S. cerevisiae genome is assigned to this family. The absence is a genuine evolutionary loss rather than a gap in coverage: the same resource readily places budding-yeast proteins in other 2-oxoglutarate/iron dioxygenase families — for instance the acireductone-dioxygenase family of the methionine-salvage pathway (root group E0813616) and the OGFOD1 prolyl-hydroxylase family (root group E0804865) each contain a yeast member — so the yeast proteome is fully represented and simply lacks a cysteine-dioxygenase counterpart. This matches the biology that S. cerevisiae does not operate the cysteinesulfinate branch of cysteine catabolism; consequently, the absence of this otherwise animal-wide enzyme from budding yeast is a fact that can only be settled by orthology inference across genomes, not from the human protein's own sequence or annotation.
+
+question_template_used: Cross-species ortholog presence/absence (is human protein X conserved in species S?)
+
+time_spent:
+  exploration: 45 minutes
+  formulation: 20 minutes
+  verification: 25 minutes
+  pubmed_test: 15 minutes
+  extraction: 20 minutes
+  documentation: 20 minutes
+  total: 145 minutes

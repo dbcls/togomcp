@@ -227,6 +227,15 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                     "url": "https://togomcp.rdfportal.org/mcp"
                 }
             },
+            # Intentionally broad: the benchmark registers several remote
+            # scientific MCP servers (config.yaml: togomcp, pubmed,
+            # pubdictionaries, ols) and mcp__* admits all of their tools, so it
+            # must NOT be narrowed to a single server. This stays safe only
+            # because setting_sources=[] (see the call methods) bounds the MCP
+            # registry to exactly the servers passed in mcp_servers — no
+            # inherited claude-mem / togomcp-dev servers — so mcp__* cannot reach
+            # a cross-session-memory tool. Non-MCP tools are denied separately by
+            # the can_use_tool gate.
             "allowed_tools": ["mcp__*"],
             "disallowed_tools": ["WebSearch", "WebFetch", "web_search", "web_fetch"],
         }
@@ -359,8 +368,12 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                 disallowed_tools=self.config["disallowed_tools"],
                 can_use_tool=self._deny_all_tools,
                 max_turns=1,             # single-shot answer, no tool loop
-                # Same hermeticity guard as the TogoMCP path: do not inherit
-                # MCP servers / settings from ~/.claude or project .claude.
+                # Session isolation: same guard as the TogoMCP path.
+                # setting_sources=[] (SDK isolation mode) loads no
+                # user/project/local settings, so there are no inherited MCP
+                # servers, no claude-mem plugin or its SessionStart memory hook,
+                # and no CLAUDE.md. See the fuller note in _make_togomcp_call
+                # (including the options.skills caveat).
                 setting_sources=[],
             )
 
@@ -629,13 +642,28 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                 allowed_tools=self.config["allowed_tools"],
                 disallowed_tools=self.config["disallowed_tools"],
                 can_use_tool=self._auto_approve_mcp_tools,
-                # Hermeticity: disable inheriting MCP servers / settings from
-                # the user's ~/.claude/settings.json or any project-level
-                # .claude/settings.json. Without this, the SDK pulls in every
-                # MCP server the user has registered with Claude Code (e.g.
-                # togomcp-dev for local dev work), contaminating the benchmark
-                # — verified empirically with 56 unintended mcp__togomcp-dev__*
-                # tool calls across 7 questions in with_guide-2026-05-03.csv.
+                # Hermeticity / cross-session isolation. setting_sources=[] is
+                # the SDK's "isolation mode": it loads NO filesystem settings —
+                # not ~/.claude/settings.json (user), .claude/settings.json
+                # (project), or .claude/settings.local.json (local). That blocks
+                # everything those files wire in:
+                #   - inherited MCP servers (e.g. togomcp-dev for local dev work
+                #     — verified as 56 unintended mcp__togomcp-dev__* calls
+                #     across 7 questions in with_guide-2026-05-03.csv);
+                #   - the claude-mem plugin and its SessionStart hook, which is
+                #     how OTHER SESSIONS' memory (past-session observations,
+                #     MEMORY.md recall, its mcp__plugin_claude-mem_mcp-search__*
+                #     tools) would otherwise be injected into a run; and
+                #   - CLAUDE.md (loaded only when "project" is in setting_sources).
+                # The only MCP servers in play are those explicitly passed in
+                # mcp_servers (config.yaml: togomcp, pubmed, pubdictionaries,
+                # ols) — all remote scientific endpoints with no session memory —
+                # so the mcp__* allow-pattern cannot reach a memory tool.
+                # CAVEAT: keep this an explicit []. Do NOT set options.skills
+                # while leaving setting_sources unset/None — the SDK then
+                # silently defaults setting_sources to ["user","project"]
+                # (see _apply_skills_defaults in the SDK), re-loading user
+                # settings and the memory plugin.
                 setting_sources=[],
             )
 
