@@ -8,69 +8,58 @@ description: >-
   disease across biological scales (molecular → pathway → cellular → tissue →
   clinical → treatment), or convert disease/protein/drug IDs across databases for
   a disease. Also triggers on "disease analysis", "pathophysiology of X",
-  "what proteins/pathways/drugs are involved in X". The workflow source is
-  workflows/disease_analysis.md.
+  "what proteins/pathways/drugs are involved in X". The full method lives in
+  references/disease_analysis.md.
 ---
 
 # Disease Analysis (multi-scale, TogoMCP-driven)
 
 Systematic analysis of any disease from molecular defect to clinical symptom,
-built from structured queries (not model recall). The real driver is the
+built from structured queries (not model recall). The driver is the
 **TogoMCP MCP tools** (`run_sparql`, `togoid_convertId`, `togoid_countId`) plus
-OLS4 and PubMed. The committed harness `smoke.py` is the offline canary that
-proves the workflow's query patterns still resolve before you rely on them.
+OLS4 and PubMed.
 
-Paths below are relative to the repo root (`<unit>/`). The full prompt template,
-output format, and per-disease-category customizations live in
-[workflows/disease_analysis.md](workflows/disease_analysis.md) — read it for the
-deliverable structure. This SKILL.md is the *operational* path: verified queries,
-the exact tool calls, and the traps.
+The full prompt template, output format, and per-disease-category customizations
+live in [references/disease_analysis.md](references/disease_analysis.md) — read it
+for the deliverable structure. This SKILL.md is the *operational* path: verified
+queries, the exact tool calls, and the traps.
 
 ## Prerequisites
 
-- A running TogoMCP server. Prefer the **local dev** server (`togomcp-dev` tools)
-  — the remote registry can be stale. From the repo: `uv sync && uv run togo-mcp-local`.
-- For the offline harness: Python 3 only (stdlib `urllib`; no pip install).
-- Network access to `rdfportal.org` and `api.togoid.dbcls.jp`.
+- The **TogoMCP MCP server** connected to your client (e.g. Claude Desktop,
+  Claude Code). Its `run_sparql`, `togoid_*`, `search_*`, and `get_MIE_file`
+  tools are what drive this skill.
+- The **OLS4** and **PubMed** MCP tools (used in Phase 1 and Phase 6).
+- Network access from those servers to `rdfportal.org` and `api.togoid.dbcls.jp`.
 
-## Verify first (agent path — run this before trusting the workflow)
+## Warm-up check (confirm connectivity before trusting the workflow)
 
-`smoke.py` hits the same SPARQL endpoints and TogoID API the MCP tools wrap, so
-it works even with no MCP server running. Run it to confirm every workflow phase
-still returns data:
-
-```bash
-python3 .claude/skills/disease-analysis/smoke.py
-```
-
-Expected (verified this session, ~30–60s):
+Before a full analysis, send one Phase-2 query and one TogoID conversion through
+the MCP tools and confirm both return rows — that proves the SPARQL endpoint and
+the TogoID API are both reachable and the patterns still resolve:
 
 ```
-PASS  UniProt disease proteins ('osteoarthritis'): 1 rows
-PASS  Reactome pathway search ('collagen degradation'): 10 rows
-PASS  Reactome participants (xsd:string xref): 10 rows
-PASS  TogoID uniprot,ncbigene: 4 rows
-PASS  TogoID uniprot,pdb: 65 rows
-PASS  TogoID mondo,mesh: 1 rows
-PASS  TogoID chembl_compound,pubchem_compound: 2 rows
-
-7/7 checks passed
+run_sparql(database="uniprot", sparql_query="""
+PREFIX up: <http://purl.uniprot.org/core/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT DISTINCT ?protein WHERE {
+  ?protein a up:Protein ; up:reviewed 1 ;
+           up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+           up:annotation ?annot .
+  ?annot a up:Disease_Annotation ; rdfs:comment ?c .
+  ?c bif:contains "'osteoarthritis'"
+} LIMIT 5""")
+togoid_convertId(ids="P45452", route="uniprot,pdb")     → structures for MMP13
 ```
 
-Point it at any disease keyword (drives only the UniProt full-text check):
-
-```bash
-python3 .claude/skills/disease-analysis/smoke.py --disease "Parkinson disease"
-```
-
-If a check **FAILS**, the corresponding workflow step is broken (endpoint down,
-schema drift, or full-text index changed) — fix that before running the analysis,
-and update the query pattern below + in workflows/disease_analysis.md.
+If either returns nothing, that step is broken (endpoint down, schema drift, or
+full-text index changed) — diagnose it (re-read the database's MIE via
+`get_MIE_file`) before running the analysis.
 
 ## Run the analysis (the six phases, with verified tool calls)
 
-Drive these with the `togomcp-dev` (preferred) or `togomcp` MCP tools. Each call
-below was run live this session and returned data.
+Drive these with the TogoMCP MCP tools. Each call below was run live and
+returned data.
 
 **Phase 1 — Disease ID & ontology cross-refs.** Resolve the disease to MONDO via
 OLS4, then fan out:
@@ -171,14 +160,14 @@ is the authoritative schema/warnings source and is fresher than this doc.
 
 | Symptom | Fix |
 |---|---|
-| `smoke.py` Reactome checks FAIL but UniProt passes | EBI endpoint down or schema drift; retry, then check `get_MIE_file(database="reactome")` for changed predicates |
-| MCP `run_sparql` returns empty but `smoke.py` passes | You likely passed an endpoint group to `database=` or dropped `^^xsd:string` / `FROM` — compare against the verified queries above |
+| Reactome query returns empty but UniProt works | EBI endpoint down or schema drift; retry, then check `get_MIE_file(database="reactome")` for changed predicates |
+| `run_sparql` returns empty unexpectedly | You likely passed an endpoint group to `database=` or dropped `^^xsd:string` / `FROM` — compare against the verified queries above |
 | TogoID convert returns `[]` | Route ordering wrong, or IDs in wrong format — check `togoid_getDataset(dataset="...")` and `togoid_getAllRelation()` |
-| `urllib...timed out` in smoke.py | Endpoints are slow under load; rerun (TIMEOUT is 90s) |
+| Query times out | Endpoints are slow under load; add/lower a `LIMIT` and retry |
 
-## The harness
+## Full method
 
-[smoke.py](.claude/skills/disease-analysis/smoke.py) — stdlib-only verifier of all
-six phases against the live RDF Portal + TogoID services. Run it before an
-analysis and whenever a query pattern here is edited. The MCP tools are the real
-driver for the analysis itself; smoke.py proves the patterns they send are sound.
+[references/disease_analysis.md](references/disease_analysis.md) — the complete
+prompt template, the deliverable/output structure, and the per-disease-category
+customizations. This SKILL.md gives the operational queries and traps; that file
+gives the shape of the final analysis.
