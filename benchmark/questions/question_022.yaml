@@ -1,8 +1,8 @@
 id: question_022
 type: factoid
 body: "How many distinct human glycogenes in the GlyCosmos glycobiology database
-  are annotated with the biological process 'protein N-linked glycosylation' (GO:0006487)
-  or any of its descendant terms in the Gene Ontology?"
+  are annotated with the biological process 'glycoprotein biosynthetic process'
+  (GO:0009101) or any of its descendant terms in the Gene Ontology?"
 
 inspiration_keyword:
   keyword_id: KW-0900
@@ -24,22 +24,25 @@ verification_score:
 pubmed_test:
   time_spent: 10 minutes
   method: |
-    Searched PubMed for "human glycogenes N-linked glycosylation complete list count"
-    and "GlyCosmos glycogene N-glycosylation database annotation count". Both
-    searches returned zero results. No publication reports the specific count of
-    human glycogenes in GlyCosmos annotated with GO:0006487 or its descendants.
+    Searched PubMed for "number of human glycogenes glycoprotein biosynthetic
+    process GlyCosmos Gene Ontology count" and "total human glycosyltransferase
+    genes glycoprotein biosynthesis N-linked O-linked proteoglycan complete
+    count". Both returned zero results.
   result: |
-    No relevant results found. The specific count of human glycogenes in the
-    GlyCosmos database carrying a particular GO annotation requires querying
-    the current database state and cannot be recovered from the literature.
+    No publication reports the number of human glycogenes in GlyCosmos carrying
+    a GO:0009101 (or descendant) annotation. The figure depends on the present
+    GlyCosmos gene set joined to the current Gene Ontology subclass hierarchy and
+    cannot be recovered from the literature.
   conclusion: PASS (cannot answer from literature - requires current database state)
 
 sparql_queries:
   - query_number: 1
     database: go
     description: >
-      Find all descendant terms of GO:0006487 (protein N-linked glycosylation)
-      using transitive subClassOf traversal in the Gene Ontology RDF.
+      Enumerate every descendant of GO:0009101 (glycoprotein biosynthetic
+      process) by transitive subClassOf traversal in the Gene Ontology RDF.
+      Returns 32 descendant terms, matching canonical GO (OLS4). This is the
+      live scope the count in Query 2 must cover (Rule 2: no hard-coded subset).
     query: |
       PREFIX obo: <http://purl.obolibrary.org/obo/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -47,40 +50,39 @@ sparql_queries:
       SELECT DISTINCT ?descendant ?label
       FROM <http://rdfportal.org/ontology/go>
       WHERE {
-        ?descendant rdfs:subClassOf+ obo:GO_0006487 ;
+        ?descendant rdfs:subClassOf+ obo:GO_0009101 ;
                     rdfs:label ?label .
         FILTER(STRSTARTS(STR(?descendant), "http://purl.obolibrary.org/obo/GO_"))
       }
-    result_count: 7
+    result_count: 32
 
   - query_number: 2
     database: glycosmos
     description: >
-      Count distinct human glycogenes in GlyCosmos annotated with GO:0006487
-      (protein N-linked glycosylation) or any of its 7 descendant terms.
-      Uses all 8 GO term IRIs discovered in Query 1.
+      Count distinct human glycogenes annotated with GO:0009101 OR any of its
+      descendants. Runs on the shared `primary` endpoint as a cross-graph join:
+      the GO graph supplies the subClassOf* closure of GO:0009101 (anchor +
+      32 descendants), the GlyCosmos glycogene graph supplies the per-gene GO
+      annotations (via sio:SIO_000255 -> up:classifiedWith). The reflexive
+      subClassOf* makes the scope exhaustive without a hard-coded VALUES list.
     query: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
       PREFIX sio: <http://semanticscience.org/resource/>
       PREFIX up: <http://purl.uniprot.org/core/>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
 
-      SELECT (COUNT(DISTINCT ?gene) as ?count)
-      FROM <http://rdf.glycosmos.org/glycogenes>
+      SELECT (COUNT(DISTINCT ?gene) AS ?count)
       WHERE {
-        ?gene a glycan:Glycogene ;
-              glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
-              sio:SIO_000255 ?bn .
-        ?bn up:classifiedWith ?goTerm .
-        VALUES ?goTerm {
-          obo:GO_0006487   # protein N-linked glycosylation
-          obo:GO_0006491   # N-glycan processing
-          obo:GO_0016256   # N-glycan processing to lysosome
-          obo:GO_0018279   # protein N-linked glycosylation via asparagine
-          obo:GO_1904381   # Golgi apparatus mannose trimming
-          obo:GO_0180057   # protein N-linked glycosylation via asparagine, post-translational
-          obo:GO_0180058   # protein N-linked glycosylation via asparagine, cotranslational
-          obo:GO_0016258   # N-glycan diversification
+        GRAPH <http://rdfportal.org/ontology/go> {
+          ?goTerm rdfs:subClassOf* obo:GO_0009101 .
+          FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
+        }
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          ?gene a glycan:Glycogene ;
+                glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
+                sio:SIO_000255 ?bn .
+          ?bn up:classifiedWith ?goTerm .
         }
       }
     result_count: 1
@@ -88,35 +90,35 @@ sparql_queries:
   - query_number: 3
     database: glycosmos
     description: >
-      Count human glycogenes per GO term to characterise the distribution
-      and verify arithmetic (overlap check: sum of per-term counts vs. unique total).
+      Per-GO-term gene counts (arithmetic check for Query 2's GROUP-free total).
+      15 of the 33 in-scope terms carry human glycogenes; the per-term counts sum
+      to 296 while the distinct-gene total is 208, so 88 gene-term assignments are
+      shared — i.e. 88 genes carry more than one in-scope annotation (sum > total,
+      overlap documented per Rule 3). Cross-graph join on the `primary` endpoint.
     query: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
       PREFIX sio: <http://semanticscience.org/resource/>
       PREFIX up: <http://purl.uniprot.org/core/>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
 
-      SELECT ?goTerm (COUNT(DISTINCT ?gene) as ?count)
-      FROM <http://rdf.glycosmos.org/glycogenes>
+      SELECT ?goTerm ?goLabel (COUNT(DISTINCT ?gene) AS ?n)
       WHERE {
-        ?gene a glycan:Glycogene ;
-              glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
-              sio:SIO_000255 ?bn .
-        ?bn up:classifiedWith ?goTerm .
-        VALUES ?goTerm {
-          obo:GO_0006487
-          obo:GO_0006491
-          obo:GO_0016256
-          obo:GO_0018279
-          obo:GO_1904381
-          obo:GO_0180057
-          obo:GO_0180058
-          obo:GO_0016258
+        GRAPH <http://rdfportal.org/ontology/go> {
+          ?goTerm rdfs:subClassOf* obo:GO_0009101 ;
+                  rdfs:label ?goLabel .
+          FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
+        }
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          ?gene a glycan:Glycogene ;
+                glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
+                sio:SIO_000255 ?bn .
+          ?bn up:classifiedWith ?goTerm .
         }
       }
-      GROUP BY ?goTerm
-      ORDER BY DESC(?count)
-    result_count: 5
+      GROUP BY ?goTerm ?goLabel
+      ORDER BY DESC(?n)
+    result_count: 15
 
 rdf_triples: |
   @prefix obo: <http://purl.obolibrary.org/obo/> .
@@ -127,87 +129,62 @@ rdf_triples: |
   @prefix up: <http://purl.uniprot.org/core/> .
   @prefix taxon: <http://identifiers.org/taxonomy/> .
 
-  # --- GO ontology hierarchy (Query 1) ---
-  obo:GO_0006491 rdfs:subClassOf+ obo:GO_0006487 .
-  # Database: go | Query: 1 | Comment: N-glycan processing is a descendant of protein N-linked glycosylation
-
-  obo:GO_0018279 rdfs:subClassOf+ obo:GO_0006487 .
-  # Database: go | Query: 1 | Comment: Protein N-linked glycosylation via asparagine is a descendant
-
-  obo:GO_0016256 rdfs:subClassOf+ obo:GO_0006487 .
-  # Database: go | Query: 1 | Comment: N-glycan processing to lysosome is a descendant
-
-  obo:GO_1904381 rdfs:subClassOf+ obo:GO_0006487 .
-  # Database: go | Query: 1 | Comment: Golgi apparatus mannose trimming is a descendant
-
-  obo:GO_0016258 rdfs:subClassOf+ obo:GO_0006487 .
-  # Database: go | Query: 1 | Comment: N-glycan diversification is a descendant
-
-  obo:GO_0180057 rdfs:subClassOf+ obo:GO_0006487 .
-  # Database: go | Query: 1 | Comment: Post-translational N-linked glycosylation via asparagine is a descendant
-
-  obo:GO_0180058 rdfs:subClassOf+ obo:GO_0006487 .
-  # Database: go | Query: 1 | Comment: Co-translational N-linked glycosylation via asparagine is a descendant
+  # --- GO ontology hierarchy under GO:0009101 (Query 1) ---
+  obo:GO_0006487 rdfs:subClassOf+ obo:GO_0009101 .
+  # Database: go | Query: 1 | Comment: protein N-linked glycosylation is a descendant of glycoprotein biosynthetic process
+  obo:GO_0006493 rdfs:subClassOf+ obo:GO_0009101 .
+  # Database: go | Query: 1 | Comment: protein O-linked glycosylation is a descendant of glycoprotein biosynthetic process
+  obo:GO_0030166 rdfs:subClassOf+ obo:GO_0009101 .
+  # Database: go | Query: 1 | Comment: proteoglycan biosynthetic process is a descendant of glycoprotein biosynthetic process
 
   # --- GlyCosmos glycogene annotations (Query 2 / 3) ---
-  glycosmos:56052 a glycan:Glycogene ;
-                  rdfs:label "ALG1" ;
-                  glycan:has_taxon taxon:9606 .
-  # Database: glycosmos | Query: 2 | Comment: ALG1 (mannosyltransferase; CDG type Ik gene) annotated with GO:0006487
+  glycosmos:3703 a glycan:Glycogene ; rdfs:label "STT3A" ; glycan:has_taxon taxon:9606 .
+  # Database: glycosmos | Query: 2 | Comment: STT3A (OST catalytic subunit) annotated with GO:0006487 — N-linked branch
+  glycosmos:2589 a glycan:Glycogene ; rdfs:label "GALNT1" ; glycan:has_taxon taxon:9606 .
+  # Database: glycosmos | Query: 3 | Comment: GALNT1 annotated with GO:0006493 AND its child GO:0016266 — O-GalNAc branch (a source of overlap)
+  glycosmos:10585 a glycan:Glycogene ; rdfs:label "POMT1" ; glycan:has_taxon taxon:9606 .
+  # Database: glycosmos | Query: 3 | Comment: POMT1 annotated with GO:0035269 (protein O-linked glycosylation via mannose) — O-mannose branch
+  glycosmos:2131 a glycan:Glycogene ; rdfs:label "EXT1" ; glycan:has_taxon taxon:9606 .
+  # Database: glycosmos | Query: 3 | Comment: EXT1 annotated with GO:0015012 and GO:0030210 — heparan sulfate/heparin proteoglycan branch
+  glycosmos:64131 a glycan:Glycogene ; rdfs:label "XYLT1" ; glycan:has_taxon taxon:9606 .
+  # Database: glycosmos | Query: 3 | Comment: XYLT1 annotated with GO:0030166, GO:0050650 and GO:0015012 simultaneously — proteoglycan linkage enzyme, a multi-term overlap example
 
-  glycosmos:10195 a glycan:Glycogene ;
-                  rdfs:label "ALG3" ;
-                  glycan:has_taxon taxon:9606 .
-  # Database: glycosmos | Query: 2 | Comment: ALG3 annotated with GO:0006487
-
-  glycosmos:4124 a glycan:Glycogene ;
-                 rdfs:label "MAN2A1" ;
-                 glycan:has_taxon taxon:9606 .
-  # Database: glycosmos | Query: 3 | Comment: MAN2A1 annotated with GO:0006491 (N-glycan processing)
-
-  glycosmos:56886 a glycan:Glycogene ;
-                  rdfs:label "UGGT1" ;
-                  glycan:has_taxon taxon:9606 .
-  # Database: glycosmos | Query: 3 | Comment: UGGT1 annotated with GO:0018279
-
-  glycosmos:79158 a glycan:Glycogene ;
-                  rdfs:label "GNPTAB" ;
-                  glycan:has_taxon taxon:9606 .
-  # Database: glycosmos | Query: 3 | Comment: GNPTAB annotated with GO:0016256 (N-glycan processing to lysosome)
-
-  glycosmos:4121 a glycan:Glycogene ;
-                 rdfs:label "MAN1A1" ;
-                 glycan:has_taxon taxon:9606 .
-  # Database: glycosmos | Query: 3 | Comment: MAN1A1 annotated with GO:1904381 (Golgi mannose trimming)
-
-exact_answer: 82
+exact_answer: 208
 
 ideal_answer: |
-  Eighty-two distinct human glycogenes registered in GlyCosmos are annotated
-  with the GO biological process 'protein N-linked glycosylation' (GO:0006487)
-  or any of its seven descendant terms in the Gene Ontology (GO:0018279
-  protein N-linked glycosylation via asparagine; GO:0006491 N-glycan processing;
-  GO:1904381 Golgi apparatus mannose trimming; GO:0016256 N-glycan processing to
-  lysosome; GO:0016258 N-glycan diversification; GO:0180057 and GO:0180058 for
-  co- and post-translational variants). The per-term counts total 102 annotations
-  across the 82 unique genes, indicating that 20 genes carry two or more of these
-  GO terms simultaneously (for example, MAN1A2 is annotated with both GO:0006491
-  and GO:1904381). The set includes the dolichol-pathway transferases ALG1–ALG14
-  and the OST complex subunits STT3A/STT3B and DDOST/RPN1/RPN2, which catalyse
-  the core N-glycan assembly and transfer; mannose-trimming enzymes MAN1A1,
-  MAN1A2, MAN2A1, and MAN2A2; complex-type processing glycosyltransferases MGAT1–5;
-  glycan-remodelling enzymes UGGT1, UGGT2, and MOGS; as well as lysosomal
-  targeting enzymes GNPTAB and GNPTG. Many of these genes underlie congenital
-  disorders of glycosylation (CDG) when mutated, underscoring the clinical
-  relevance of this pathway.
+  Two hundred and eight distinct human glycogenes registered in GlyCosmos are
+  annotated with the Gene Ontology biological process 'glycoprotein biosynthetic
+  process' (GO:0009101) or one of its 32 descendant terms. The set spans the
+  three major branches of protein glycosylation. The N-linked branch contributes
+  the dolichol-pathway and oligosaccharyltransferase machinery (ALG1-ALG14,
+  DPAGT1, RFT1, STT3A/STT3B, DDOST, RPN1/RPN2, MAGT1, TUSC3), the dolichol-
+  phosphate-mannose donors DPM1-DPM3, and the branching/processing enzymes
+  MGAT1-MGAT5, MOGS and MAN1A1/MAN1A2/MAN2A1/MAN2A2. The O-linked branch
+  contributes the full GalNAc-transferase family (GALNT1-GALNT18, plus C1GALT1
+  and its chaperone C1GALT1C1), the O-mannosylation genes POMT1/POMT2,
+  POMGNT1/POMGNT2, FKTN, FKRP and LARGE1/LARGE2, and the O-fucosylation genes
+  POFUT1/POFUT2 and POGLUT1. The proteoglycan/glycosaminoglycan branch
+  contributes the linkage-region and chain-extension enzymes XYLT1/XYLT2,
+  B4GALT7, B3GAT3, EXT1/EXT2 and EXTL1-EXTL3, the sulfotransferases NDST1-NDST4,
+  the CHST family and HS3ST genes, and CSGALNACT1/CSGALNACT2. Because many
+  glycogenes carry more than one of these annotations, the per-term counts sum to
+  296 across the 208 unique genes — an overlap of 88 reflecting enzymes shared
+  between pathways or annotated at several levels of the hierarchy (for example
+  XYLT1 appears under proteoglycan, chondroitin-sulfate and heparan-sulfate
+  biosynthesis at once, and GALNT1 under both 'protein O-linked glycosylation' and
+  its 'via N-acetylgalactosamine' child). Many of these genes underlie congenital
+  disorders of glycosylation and the dystroglycanopathies when mutated, spanning
+  N-glycosylation CDG (e.g. ALG1, PMM2, MGAT2), O-mannosylation muscular
+  dystrophies (POMT1, FKTN, FKRP, LARGE1) and proteoglycan linkeropathies
+  (B4GALT7, B3GAT3, XYLT1).
 
 question_template_used: Template 2 (Cross-Database Counting)
 
 time_spent:
   exploration: 40 minutes
-  formulation: 15 minutes
+  formulation: 20 minutes
   verification: 30 minutes
   pubmed_test: 10 minutes
   extraction: 20 minutes
   documentation: 25 minutes
-  total: 140 minutes
+  total: 145 minutes
