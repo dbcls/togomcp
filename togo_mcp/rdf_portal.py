@@ -293,12 +293,15 @@ async def get_MIE_file(
     dbname: str = "",
     db: str = "",
 ) -> str:
-    f"""
+    """
     Get the MIE file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database in YAML format, which can be used as a hint to build SPARQL queries.
+
+    (The authoritative list of supported `database` values is injected into the
+    tool `description=` on the decorator above; see DATABASE_DESCRIPTION.)
 
     Args:
         database (str): The name of the database for which to retrieve the shape expression.
-            Accepts aliases `dbname` and `db`. Supported values are {", ".join(SPARQL_ENDPOINT.keys())}.
+            Accepts aliases `dbname` and `db`.
         dbname (str, optional): Alias for `database`.
         db (str, optional): Alias for `database`.
 

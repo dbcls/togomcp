@@ -158,7 +158,10 @@ async def search_uniprot_entity(
         limit (int): The maximum number of results to return. Default is 20.
 
     Returns:
-        str: TSV-formatted results with columns: accession, protein_name, organism_name.
+        str: TSV-formatted results with columns: accession, protein_name,
+        organism_name. On upstream/HTTP failure this tool does NOT raise — it
+        returns a plain string beginning with "Error:" (not TSV). Check for that
+        prefix before parsing rows.
     """
     query = _resolve_query_alias(
         query,
@@ -249,7 +252,10 @@ async def search_chembl_id_lookup(
     `search`, `term`, `keyword`, `keywords`, `search_term`, or `name`.
 
     Returns:
-        str: A JSON-formatted string containing the search results.
+        dict: {'total_count' (int), 'results' (list)} where each result has
+        'chembl_id', 'entity_type', and 'score'. On upstream/HTTP failure this
+        tool does NOT raise — it returns a dict with a single 'error' key
+        instead. Check for 'error' before reading 'results'.
     """
     query = _resolve_query_alias(
         query,
@@ -266,6 +272,10 @@ async def search_chembl_id_lookup(
             "search, term, keyword, keywords, search_term, name."
         )
     bulk = await search_chembl_generic("chembl_id_lookup", query, limit)
+    if "error" in bulk:
+        # Propagate the upstream-failure payload rather than silently
+        # collapsing it into an empty {'total_count': 0, 'results': []}.
+        return bulk
     total_count = bulk.get("page_meta", {}).get("total_count", 0)
     parsed_results = []
     for result in bulk.get("chembl_id_lookups", []):
@@ -343,8 +353,10 @@ async def search_chembl_target(
         - CELL-LINE: Cell line target
         - ORGANISM: Whole organism target
 
-    Raises:
-        httpx.HTTPError: If the API request fails
+    On upstream/HTTP failure this tool does NOT raise — it returns a dict with a
+    single 'error' key (a message plus a "fall back to SPARQL" hint) instead of
+    the usual {'total_count', 'results'} shape. Check for 'error' before reading
+    'results'.
     """
     query = _resolve_query_alias(
         query,
@@ -361,6 +373,10 @@ async def search_chembl_target(
             "search, term, keyword, keywords, search_term, name."
         )
     bulk = await search_chembl_generic("target", query, limit)
+    if "error" in bulk:
+        # Propagate the upstream-failure payload rather than silently
+        # collapsing it into an empty {'total_count': 0, 'results': []}.
+        return bulk
     total_count = bulk.get("page_meta", {}).get("total_count", 0)
 
     parsed_results = []
@@ -444,8 +460,10 @@ async def search_chembl_molecule(
         - Higher scores indicate better matches to the query
         - For structure-based searches, use SMILES or InChI notation
 
-    Raises:
-        httpx.HTTPError: If the API request fails
+    On upstream/HTTP failure this tool does NOT raise — it returns a dict with a
+    single 'error' key (a message plus a "fall back to SPARQL" hint) instead of
+    the usual {'total_count', 'results'} shape. Check for 'error' before reading
+    'results'.
     """
     query = _resolve_query_alias(
         query,
@@ -462,6 +480,10 @@ async def search_chembl_molecule(
             "search, term, keyword, keywords, search_term, name."
         )
     bulk = await search_chembl_generic("molecule", query, limit)
+    if "error" in bulk:
+        # Propagate the upstream-failure payload rather than silently
+        # collapsing it into an empty {'total_count': 0, 'results': []}.
+        return bulk
     total_count = bulk.get("page_meta", {}).get("total_count", 0)
     parsed_results = []
     for molecule in bulk.get("molecules", []):
@@ -485,7 +507,9 @@ async def get_pubchem_compound_id(compound_name: str) -> str:
     Args: Compound name
         example: "resveratrol"
 
-    Returns: PubChem Compound ID in the JSON format
+    Returns: PubChem Compound ID in the JSON format. On upstream/HTTP failure
+        this tool does NOT raise — it returns a plain string beginning with
+        "Error:" (not JSON). Check for that prefix before parsing.
     """
     url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{compound_name}/cids/JSON"
     try:
@@ -513,7 +537,9 @@ async def get_compound_attributes_from_pubchem(pubchem_compound_id: str) -> str:
     Args: PubChem Compound ID
         example: "445154"
 
-    Returns: Compound attributes in the JSON format
+    Returns: Compound attributes in the JSON format. On upstream/HTTP failure
+        this tool does NOT raise — it returns a plain string beginning with
+        "Error:" (not JSON). Check for that prefix before parsing.
     """
     url = "https://togodx.dbcls.jp/human/sparqlist/api/metastanza_pubchem_compound"
     params = {"id": pubchem_compound_id}
@@ -820,7 +846,10 @@ async def search_mesh_descriptor(
         limit (int): The maximum number of results to return. Default is 10.
 
     Returns:
-        str: A JSON-formatted string containing the search results.
+        str: A JSON-formatted string containing the search results. On
+        upstream/HTTP failure this tool does NOT raise — it returns a plain
+        string beginning with "Error:" (not JSON). Check for that prefix before
+        parsing.
     """
     query = _resolve_query_alias(
         query,
