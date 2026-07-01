@@ -55,9 +55,10 @@ def togomcp_usage_guide() -> str:
     Returns:
         str: The content of the TogoMCP v4 usage guide.
     """
-    with open(TOGOMCP_USAGE_GUIDE, encoding="utf-8") as file:
-        prompt = file.read()
-    return prompt
+    # The guide is split into part files by change-cadence; assemble them in
+    # sorted order, joined by the section separator, into one document.
+    parts = sorted(Path(TOGOMCP_USAGE_GUIDE).glob("*.md"))
+    return "\n\n---\n\n".join(p.read_text(encoding="utf-8") for p in parts)
 
 
 # --- Tools for RDF Portal --- #
