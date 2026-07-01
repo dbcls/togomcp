@@ -86,6 +86,9 @@ async def getRelation(source: str, target: str) -> str:
     before calling convertId. Also reveals the nature of the relationship
     (e.g., "encoded by", "has structure", "is target of").
 
+    This is a single-hop, pairwise check: pass `source` and `target` as two
+    separate args (unlike convertId, which takes one comma-joined `route`).
+
     Args:
         source: Source database key (e.g., 'uniprot', 'ncbigene', 'chembl_target')
         target: Target database key (e.g., 'pdb', 'ensembl_gene', 'hgnc')
@@ -214,7 +217,9 @@ async def convertId(
             (e.g., ["672", "675", "7157"]) or a comma-separated string
             ("672,675,7157").
             Examples: "672,675,7157" (NCBI Gene IDs), "P38398,P04637" (UniProt)
-        route: Comma-separated pair of dataset keys: 'source,target'.
+        route: Comma-separated pair of dataset keys: 'source,target'. NOTE: this
+            is a single joined string, NOT separate `source`/`target` args (as in
+            countId/getRelation) — because a route may be multi-hop (3+ datasets).
             Examples:
                 - 'ncbigene,uniprot' (Gene → Protein)
                 - 'uniprot,pdb' (Protein → 3D Structure)
@@ -272,6 +277,9 @@ async def countId(source: str, target: str, ids: str | list[str]) -> dict:
         - Verify your IDs are in the correct format
         - Estimate result size before a large convertId call
         - Check if a conversion route works for your specific IDs
+
+    This is a single-hop, pairwise check: pass `source` and `target` as two
+    separate args (unlike convertId, which takes one comma-joined `route`).
 
     Args:
         source: Source database key (e.g., 'ncbigene', 'uniprot')

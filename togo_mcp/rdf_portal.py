@@ -293,12 +293,15 @@ async def get_MIE_file(
     dbname: str = "",
     db: str = "",
 ) -> str:
-    f"""
+    """
     Get the MIE file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database in YAML format, which can be used as a hint to build SPARQL queries.
+
+    (The authoritative list of supported `database` values is injected into the
+    tool `description=` on the decorator above; see DATABASE_DESCRIPTION.)
 
     Args:
         database (str): The name of the database for which to retrieve the shape expression.
-            Accepts aliases `dbname` and `db`. Supported values are {", ".join(SPARQL_ENDPOINT.keys())}.
+            Accepts aliases `dbname` and `db`.
         dbname (str, optional): Alias for `database`.
         db (str, optional): Alias for `database`.
 
@@ -427,6 +430,42 @@ def _normalize_terms(value: str | list[str] | None) -> list[str]:
     return [s.strip().lower() for s in value if isinstance(s, str) and s.strip()]
 
 
+# Filler words dropped from multi-word keyword phrases so a phrase like
+# "mechanism of action" matches on its content words, not the connective tissue.
+_PHRASE_STOPWORDS = frozenset(
+    {"of", "the", "and", "or", "a", "an", "for", "to", "in", "on", "with"}
+)
+
+
+def _singularize(token: str) -> str:
+    """Naive plural→singular: drop a trailing 's' so a query for "targets"
+    matches curated "target" and "variants" matches "variant". Leaves 'ss'
+    endings and short words alone (class, is, gas)."""
+    if len(token) > 3 and token.endswith("s") and not token.endswith("ss"):
+        return token[:-1]
+    return token
+
+
+def _keyword_matches(keyword: str, haystack: str) -> bool:
+    """True if `keyword` matches `haystack`.
+
+    A user keyword may be a multi-word phrase (e.g. "drug targets"). It matches
+    when every content token is found in the haystack as a substring —
+    order-independent and plural-tolerant (each token is tested both as-is and
+    singularized). This is deliberately looser than a literal phrase-substring
+    test, which brittly failed on word order and plurals: "drug targets" missed
+    the curated "drug"+"target", and "clinical variants" missed "clinical
+    significance"+"variant". Both are hinted verbatim in the Usage Guide, so the
+    matcher must honor them.
+    """
+    tokens = [t for t in keyword.split() if t not in _PHRASE_STOPWORDS]
+    if not tokens:  # phrase was entirely stopwords — fall back to raw tokens
+        tokens = keyword.split()
+    if not tokens:
+        return False
+    return all((t in haystack) or (_singularize(t) in haystack) for t in tokens)
+
+
 def _make_snippet(text: str, keyword: str, context: int = 80) -> str:
     """Return ~context chars surrounding the first occurrence of keyword (case-insensitive).
     Falls back to the leading slice when no match is found."""
@@ -449,8 +488,14 @@ def find_databases(
         str | list[str] | None,
         Field(
             description=(
-                "Keyword or list of keywords (case-insensitive substring match against "
-                "title, description, and the database's curated keywords field)."
+                "Data-type / domain keyword(s) describing the KIND of data you "
+                "need (e.g. 'drug targets', 'variants', 'expression', 'pathways', "
+                "'orthologs'), as a single string or a list. Matched (case-"
+                "insensitively, order- and plural-tolerant) against each database's "
+                "title, description, and curated keywords. Prefer several related "
+                "terms (OR-matched) over one narrow phrase. Do NOT pass specific "
+                "entities (gene symbols, drug names, accessions) — use the search_* "
+                "tools for those."
             )
         ),
     ] = None,
@@ -485,17 +530,34 @@ def find_databases(
     """
     Database discovery — REQUIRED first step for any TogoMCP workflow.
 
-    Always call this BEFORE `get_MIE_file()` or `run_sparql()`. Pass any search
-    terms you have (gene, pathway, drug target, variant, organism, disease,
-    enzyme class, etc.) as `keywords`. Returns 1–3 candidate databases scoped
-    to your terms — much more efficient than browsing the full catalog.
+    Always call this BEFORE `get_MIE_file()` or `run_sparql()`. Returns 1–3
+    candidate databases scoped to your terms — much more efficient than browsing
+    the full catalog.
+
+    HOW TO CHOOSE `keywords` (this is what makes or breaks the search):
+    - Match is against each database's curated KIND-OF-DATA vocabulary, plus its
+      title and description — NOT against specific entities. So feed data-type /
+      domain words: "drug targets", "variants", "expression", "pathways",
+      "orthologs", "structures", "compounds", "reactions", "glycans".
+    - Do NOT pass a specific entity as a keyword — a gene symbol (BRCA1), drug
+      name (imatinib), accession (P04637), or a narrow class term (kinase,
+      GPCR). Those are not in the index and will miss; look entities up with the
+      `search_*` tools (search_uniprot_entity, search_chembl_target, …) instead.
+    - Pass SEVERAL related terms as a list, not one narrow phrase. Matching is
+      OR by default (`match="any"`), so more synonyms = higher recall, e.g.
+      keywords=["drug target", "inhibitor", "bioactivity"] rather than just
+      "kinase". Multi-word phrases and plurals are handled (each content word is
+      matched independently and singularized).
+    - If the result is empty, GENERALIZE: swap the term for a broader
+      data-domain synonym ("kinase" → "enzyme" / "drug target"; "SNP" →
+      "variant") and retry, or call `list_categories()` to browse domains.
 
     Workflow:
     1. find_databases(keywords=[...]) — identify 1–3 relevant databases.
     2. get_MIE_file(database) — learn each candidate's schema and SPARQL idioms.
     3. run_sparql() — query with the discovered structured properties.
 
-    Common keywords to try: "MANE" (Ensembl), "drug targets" (ChEMBL),
+    Proven keywords: "MANE" (Ensembl), "drug targets" (ChEMBL),
     "clinical variants" (ClinVar), "pathways" (Reactome), "variants" (gnomAD),
     "ortholog" (OMA), "expression" (Bgee).
 
@@ -526,7 +588,7 @@ def find_databases(
             r["description"].lower(),
             " ".join(r["keywords"]),
         ])
-        matched = [k for k in kw_list if k in haystack]
+        matched = [k for k in kw_list if _keyword_matches(k, haystack)]
 
         if kw_list:
             if match == "all" and len(matched) < len(kw_list):

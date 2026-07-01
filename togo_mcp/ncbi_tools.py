@@ -164,10 +164,15 @@ def _validate_query_field_tags(query: str, database: str) -> dict[str, Any]:
             issues.append(f"Term '{term}' found without [Organism] field tag")
             suggestions.append(f"Consider: '{term.capitalize()}[Organism]'")
 
-    # Detect potential gene symbols without [Gene Name] tag (uppercase 3+ letters)
+    # Detect potential gene symbols without [Gene Name] tag (uppercase 3+ letters).
+    # Exclude boolean operators, which are also all-caps and would otherwise be
+    # flagged as gene symbols (e.g. suggesting 'AND[Gene Name]').
     if database == "gene":
         gene_pattern = r"\b[A-Z]{3,}\d*\b"
-        potential_genes = re.findall(gene_pattern, query)
+        _boolean_ops = {"AND", "OR", "NOT"}
+        potential_genes = [
+            g for g in re.findall(gene_pattern, query) if g not in _boolean_ops
+        ]
         if potential_genes and "[Gene Name]" not in query:
             issues.append(
                 f"Potential gene symbols found without [Gene Name] tag: {', '.join(set(potential_genes))}"

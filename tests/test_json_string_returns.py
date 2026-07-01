@@ -13,7 +13,12 @@ import httpx
 import pytest
 import respx
 
-from togo_mcp.rdf_portal import find_databases, list_databases
+from togo_mcp.rdf_portal import (
+    _keyword_matches,
+    _singularize,
+    find_databases,
+    list_databases,
+)
 from togo_mcp.togoid import convertId, getRelation
 
 _TOGOID = "https://api.togoid.dbcls.jp"
@@ -35,6 +40,44 @@ class TestRdfPortalListReturns:
         hit = find_databases(keywords=["protein"])
         assert isinstance(hit, str)
         assert isinstance(json.loads(hit), list)
+
+
+class TestKeywordMatcher:
+    """Multi-word / plural / word-order matching for find_databases.
+
+    Regression for phrase misses: "drug targets" and "clinical variants" are
+    hinted verbatim in the Usage Guide but previously returned [] because the
+    matcher did a brittle whole-phrase substring test against space-joined
+    curated keywords.
+    """
+
+    def test_singularize_drops_trailing_s(self) -> None:
+        assert _singularize("targets") == "target"
+        assert _singularize("variants") == "variant"
+
+    def test_singularize_leaves_ss_and_short_words(self) -> None:
+        assert _singularize("class") == "class"  # 'ss' ending kept
+        assert _singularize("is") == "is"  # too short
+        assert _singularize("kinase") == "kinase"  # no trailing 's'
+
+    def test_phrase_matches_out_of_order_and_plural(self) -> None:
+        hay = "compound drug target bioactivity assay"
+        assert _keyword_matches("drug targets", hay)  # plural + adjacent
+        assert _keyword_matches("targets of drugs", hay)  # reordered + stopword
+
+    def test_phrase_requires_all_content_tokens(self) -> None:
+        hay = "compound drug bioactivity assay"  # no 'target'
+        assert not _keyword_matches("drug targets", hay)
+
+    def test_drug_targets_finds_chembl_first(self) -> None:
+        res = json.loads(find_databases(keywords="drug targets"))
+        dbs = [r["database"] for r in res]
+        assert "chembl" in dbs
+        assert dbs[0] == "chembl"  # ranked first
+
+    def test_clinical_variants_finds_clinvar(self) -> None:
+        res = json.loads(find_databases(keywords="clinical variants"))
+        assert "clinvar" in [r["database"] for r in res]
 
 
 class TestTogoidListReturns:

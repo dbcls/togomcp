@@ -8,6 +8,8 @@ import respx
 
 from togo_mcp.api_tools import (
     _resolve_query_alias,
+    search_chembl_id_lookup,
+    search_chembl_molecule,
     search_chembl_target,
     search_pdb_entity,
     search_reactome_entity,
@@ -109,6 +111,45 @@ class TestSearchChemblTarget:
         assert result["total_count"] == 1
         assert result["results"][0]["chembl_id"] == "CHEMBL203"
         assert result["results"][0]["name"] == "EGFR"
+
+    @pytest.mark.asyncio
+    async def test_http_error_propagates_error_key(self) -> None:
+        """An upstream failure must surface as {'error': ...}, NOT collapse into
+        an empty {'total_count': 0, 'results': []} that reads as 'no matches'.
+
+        Regression: previously the caller did bulk.get('targets', []) on the
+        error dict, swallowing the failure.
+        """
+        with respx.mock(using="httpx") as router:
+            router.get(
+                "https://www.ebi.ac.uk/chembl/api/data/target/search.json"
+            ).mock(return_value=httpx.Response(500, text="Server Error"))
+            result = await search_chembl_target("EGFR")
+        assert "error" in result
+        assert "ChEMBL REST API request failed" in result["error"]
+        assert "total_count" not in result
+
+    @pytest.mark.asyncio
+    async def test_molecule_http_error_propagates_error_key(self) -> None:
+        """search_chembl_molecule propagates the upstream-failure payload."""
+        with respx.mock(using="httpx") as router:
+            router.get(
+                "https://www.ebi.ac.uk/chembl/api/data/molecule/search.json"
+            ).mock(return_value=httpx.Response(500, text="Server Error"))
+            result = await search_chembl_molecule("aspirin")
+        assert "error" in result
+        assert "total_count" not in result
+
+    @pytest.mark.asyncio
+    async def test_id_lookup_http_error_propagates_error_key(self) -> None:
+        """search_chembl_id_lookup propagates the upstream-failure payload."""
+        with respx.mock(using="httpx") as router:
+            router.get(
+                "https://www.ebi.ac.uk/chembl/api/data/chembl_id_lookup/search.json"
+            ).mock(return_value=httpx.Response(500, text="Server Error"))
+            result = await search_chembl_id_lookup("CHEMBL25")
+        assert "error" in result
+        assert "total_count" not in result
 
 
 # ---------------------------------------------------------------------------
