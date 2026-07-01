@@ -1,0 +1,205 @@
+id: question_065
+type: summary
+body: "Provide an integrated profile of the human aminopeptidase enzyme family: the range of catalytic activities and subfamilies it spans, how its genes are distributed across the chromosomes, and the overall pattern of its tissue expression — which members are broadly expressed versus tissue-restricted."
+
+inspiration_keyword:
+  keyword_id: KW-0031
+  name: Aminopeptidase
+  category: Molecular function
+
+togomcp_databases_used:
+  - uniprot
+  - hgnc
+  - bgee
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 2
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: >
+    Searched "human aminopeptidase gene family chromosomal dispersal tissue-restricted expression
+    Bgee" and "XPNPEP2 DPP4 aminopeptidase absent expression tissues genomic locations survey" via
+    PubMed (ncbi_esearch).
+  result: |
+    Both queries returned zero results. Individual aminopeptidases and their subfamilies are well
+    studied, but no single publication provides the integrated cross-resource profile assembled
+    here — the exact membership of the UniProt "Aminopeptidase" keyword set (31 human proteins),
+    their dispersal across 16 chromosomes with no clustering, and the Bgee expression partition
+    (25 of 31 carrying tissue-absence calls, headed by XPNPEP2 absent in 58 structures, versus a
+    ubiquitous housekeeping subset). That synthesis is a database-state result across UniProt,
+    HGNC, and Bgee, not a recallable or single-paper fact.
+  conclusion: PASS (the integrated function/genomic-distribution/expression profile requires live UniProt + HGNC + Bgee state)
+
+sparql_queries:
+  - query_number: 1
+    database: uniprot
+    description: >
+      Membership and catalytic scope. Retrieve all reviewed human proteins carrying the UniProt
+      "Aminopeptidase" keyword (keywords/31) with their recommended names. Returns 31 proteins
+      spanning several peptidase clans: aminopeptidase N/A/B/O (ANPEP, ENPEP, RNPEP, AOPEP),
+      ER aminopeptidases (ERAP1, ERAP2), methionine aminopeptidases (METAP1, METAP1D, METAP2),
+      dipeptidyl peptidases (DPP3, DPP4, DPP7, DPP8, DPP9), Xaa-Pro aminopeptidases (XPNPEP1-3),
+      cytosol aminopeptidase (LAP3), and others.
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT ?sym ?name WHERE {
+        ?p a up:Protein ; up:reviewed true ; up:organism taxon:9606 ;
+           up:classifiedWith <http://purl.uniprot.org/keywords/31> ;
+           up:encodedBy/skos:prefLabel ?sym ;
+           up:recommendedName/up:fullName ?name .
+      }
+      ORDER BY ?sym
+    result_count: 31
+
+  - query_number: 2
+    database: hgnc
+    description: >
+      Genomic distribution. For the 31 aminopeptidase gene symbols, look up each gene's HGNC
+      chromosomal-location string and GROUP BY chromosome. 30 of the 31 resolve to an HGNC
+      location (NPEPPSL1 has no location record), spread across 16 different chromosomes with no
+      clustering — the largest tally is only 4 genes (chromosome 2), reflecting the independent
+      evolutionary origins of the distinct peptidase clans.
+    query: |
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT ?chr (COUNT(DISTINCT ?gene) AS ?n) WHERE {
+        VALUES ?sym { "ACTMAP" "ANPEP" "AOPEP" "DNPEP" "DPP3" "DPP4" "DPP7" "DPP8" "DPP9" "ENPEP"
+          "ERAP1" "ERAP2" "JMJD7" "KDM8" "LAP3" "LNPEP" "METAP1" "METAP1D" "METAP2" "NAALADL1"
+          "NPEPL1" "NPEPPS" "NPEPPSL1" "PLBD1" "RNPEP" "RNPEPL1" "TPP2" "TRHDE" "XPNPEP1"
+          "XPNPEP2" "XPNPEP3" }
+        GRAPH <http://rdfportal.org/dataset/hgnc> {
+          ?gene a m2r:Gene ; rdfs:label ?sym ; obo:so_part_of ?loc .
+          BIND(REPLACE(STR(?loc), "^([0-9XY]+).*$", "$1") AS ?chr)
+        }
+      }
+      GROUP BY ?chr
+      ORDER BY DESC(?n)
+    result_count: 16
+
+  - query_number: 3
+    database: bgee
+    description: >
+      Expression pattern. Cross-graph on SIB: for each aminopeptidase, count the anatomical
+      structures where Bgee reports an AbsenceExpression (not-expressed) call. 25 of the 31 carry
+      absence calls — i.e. are tissue-restricted — led by XPNPEP2 (58 structures), KDM8 (44),
+      TRHDE (36), NAALADL1 (35), DPP4 (31), ENPEP (29), ANPEP (28). The remaining 6 (including the
+      cytosolic LAP3 and methionine aminopeptidase METAP1) have no absence calls, matching a
+      ubiquitous housekeeping role.
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX genex: <http://purl.org/genex#>
+      PREFIX lscr: <http://purl.org/lscr#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT ?sym (COUNT(DISTINCT ?anat) AS ?nAbsentStructures) WHERE {
+        GRAPH <http://sparql.uniprot.org/uniprot> {
+          ?p a up:Protein ; up:reviewed true ; up:organism taxon:9606 ;
+             up:classifiedWith <http://purl.uniprot.org/keywords/31> ;
+             up:encodedBy/skos:prefLabel ?sym .
+        }
+        GRAPH <http://bgee.org> {
+          ?gene a orth:Gene ; orth:organism <https://bgee.org/species/9606> ;
+                lscr:xrefUniprot ?p .
+          ?call a genex:AbsenceExpression ; genex:hasSequenceUnit ?gene ;
+                genex:hasExpressionCondition ?cond .
+          ?cond genex:hasAnatomicalEntity ?anat .
+          FILTER(?anat != obo:GO_0005575)
+        }
+      }
+      GROUP BY ?sym
+      ORDER BY DESC(?nAbsentStructures)
+    result_count: 25
+
+arithmetic_verification:
+  query: "HGNC per-chromosome gene counts (Query 2) vs. aminopeptidase genes with an HGNC location"
+  sum_of_category_counts: 30
+  total_distinct_entities: 30
+  result: "Sum of the 16 per-chromosome counts (4+3+3+3+3+2+2+2+1+1+1+1+1+1+1+1 = 30) = the 30 aminopeptidase genes carrying an HGNC location. 30 of the 31 keyword proteins map (NPEPPSL1 has no HGNC location record) — a documented, mutually-exclusive partition (each gene on one chromosome), no clustering. Separately, the Bgee expression partition is 25 tissue-restricted (>=1 absence call) + 6 ubiquitous (none) = 31."
+  interpretation: |
+    The two aggregations describe complementary facets. Genomic distribution: 30 of the 31 human
+    aminopeptidase genes map to HGNC locations scattered over 16 chromosomes, the largest cluster
+    being just 4 genes on chromosome 2 — the family is genomically dispersed, consistent with its
+    members arising in unrelated peptidase clans (M1, M17, M24, S9, etc.). Expression: 25 of 31
+    carry Bgee absence calls and are therefore tissue-restricted to varying degrees (XPNPEP2 most
+    strongly, absent in 58 structures), while 6 — including cytosolic LAP3 and methionine
+    aminopeptidase METAP1 — are ubiquitously expressed housekeeping enzymes. The profile is
+    internally consistent and additive across the three resources.
+
+rdf_triples: |
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+  @prefix m2r: <http://med2rdf.org/ontology/med2rdf#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix orth: <http://purl.org/net/orth#> .
+  @prefix genex: <http://purl.org/genex#> .
+  @prefix lscr: <http://purl.org/lscr#> .
+  @prefix keywords: <http://purl.uniprot.org/keywords/> .
+  @prefix oma: <http://omabrowser.org/ontology/oma#> .
+  @prefix bgee: <http://bgee.org/#> .
+
+  <http://purl.uniprot.org/uniprot/P15144> up:classifiedWith keywords:31 .
+  # Database: UniProt | Query: 1 | Comment: ANPEP (aminopeptidase N) is a member of the keyword set
+
+  <http://purl.uniprot.org/uniprot/P15144> up:recommendedName/up:fullName "Aminopeptidase N" .
+  # Database: UniProt | Query: 1 | Comment: recommended name of ANPEP — an M1-clan ectoaminopeptidase
+
+  <http://purl.uniprot.org/uniprot/Q9NZ08> up:classifiedWith keywords:31 .
+  # Database: UniProt | Query: 1 | Comment: ERAP1 (ER aminopeptidase 1) — trims peptides for MHC-I antigen presentation
+
+  <http://purl.uniprot.org/uniprot/P28838> up:classifiedWith keywords:31 .
+  # Database: UniProt | Query: 1 | Comment: LAP3 (cytosol aminopeptidase) — ubiquitous, no Bgee absence calls
+
+  <http://purl.uniprot.org/uniprot/O43895> up:classifiedWith keywords:31 .
+  # Database: UniProt | Query: 1 | Comment: XPNPEP2 (Xaa-Pro aminopeptidase 2) — the most tissue-restricted member
+
+  <http://identifiers.org/hgnc/500> obo:so_part_of "15q26.1" .
+  # Database: HGNC | Query: 2 | Comment: ANPEP on chromosome 15
+
+  <http://identifiers.org/hgnc/18173> obo:so_part_of "5q15" .
+  # Database: HGNC | Query: 2 | Comment: ERAP1 on chromosome 5 (with ERAP2, one of the few adjacencies)
+
+  <http://identifiers.org/hgnc/18449> obo:so_part_of "4p15.32" .
+  # Database: HGNC | Query: 2 | Comment: LAP3 on chromosome 4
+
+  <http://identifiers.org/hgnc/12823> obo:so_part_of "Xq26.1" .
+  # Database: HGNC | Query: 2 | Comment: XPNPEP2 is the sole X-linked member — illustrates the dispersal across 16 chromosomes
+
+  oma:GENE_ENSG00000122121 lscr:xrefUniprot <http://purl.uniprot.org/uniprot/O43895> .
+  # Database: Bgee | Query: 3 | Comment: Bgee gene for XPNPEP2 bridged to UniProt O43895
+
+  bgee:NOT_EXPRESSED_76929130 a genex:AbsenceExpression .
+  # Database: Bgee | Query: 3 | Comment: an AbsenceExpression (not-expressed) call
+
+  bgee:NOT_EXPRESSED_76929130 genex:hasSequenceUnit oma:GENE_ENSG00000122121 .
+  # Database: Bgee | Query: 3 | Comment: XPNPEP2 reported absent in Brodmann area 10 — one of its 58 tissue-absence calls
+
+exact_answer: ""
+
+ideal_answer: |
+  The human aminopeptidase family, as delimited by the UniProt "Aminopeptidase" keyword, comprises 31 reviewed proteins that together cover a broad sweep of N-terminal peptide-processing chemistry across several distinct peptidase clans: the M1 zinc ectoaminopeptidases (aminopeptidase N/ANPEP, glutamyl aminopeptidase A/ENPEP, leucyl-cystinyl aminopeptidase/LNPEP, the endoplasmic-reticulum aminopeptidases ERAP1 and ERAP2, and the TRH-degrading ectoenzyme TRHDE), the M17 cytosol aminopeptidase LAP3, the M24 methionine aminopeptidases (METAP1, METAP1D, METAP2), the S9 dipeptidyl peptidases (DPP3, DPP4, DPP7, DPP8, DPP9) and tripeptidyl-peptidase TPP2, the Xaa-Pro (proline-specific) aminopeptidases XPNPEP1-3, and additional members such as aspartyl aminopeptidase DNPEP, aminopeptidase B/RNPEP, aminopeptidase O/AOPEP, and puromycin-sensitive aminopeptidase NPEPPS. Genomically the family is dispersed rather than clustered: 30 of the 31 genes map to HGNC chromosomal locations (NPEPPSL1 lacks a location record) scattered over 16 different chromosomes, and the largest single-chromosome tally is only four genes (chromosome 2), consistent with the members having arisen independently in unrelated protease clans rather than by local gene duplication. Their tissue-expression behaviour is mixed: 25 of the 31 carry Bgee "not-expressed" (absence) calls and are therefore tissue-restricted to varying degrees — most strongly XPNPEP2 (reported absent in 58 anatomical structures, including cortical Brodmann areas), followed by KDM8, TRHDE, NAALADL1, DPP4, ENPEP, and ANPEP — whereas six members, including the cytosolic LAP3 and methionine aminopeptidase METAP1, show no absence calls at all, in keeping with a constitutive housekeeping role in N-terminal methionine excision and general protein turnover. The overall picture is of an evolutionarily heterogeneous, genomically scattered enzyme family whose broadly expressed catalytic core is complemented by a larger set of lineage- or organ-restricted specialists.
+
+question_template_used: "Multi-database family profile (UniProt function/membership + HGNC genomic distribution + Bgee expression pattern) synthesised into one narrative"
+
+time_spent:
+  exploration: 40 minutes
+  formulation: 15 minutes
+  verification: 25 minutes
+  pubmed_test: 10 minutes
+  extraction: 20 minutes
+  documentation: 25 minutes
+  total: 135 minutes

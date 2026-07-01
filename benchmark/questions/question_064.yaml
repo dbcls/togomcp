@@ -1,0 +1,196 @@
+id: question_064
+type: yes_no
+body: "According to curated gene-expression data, is every human antioxidant protein expressed across all profiled anatomical structures, with none of them reported as not expressed (absent) in any tissue?"
+
+inspiration_keyword:
+  keyword_id: KW-0049
+  name: Antioxidant
+  category: Molecular function
+
+togomcp_databases_used:
+  - uniprot
+  - bgee
+
+verification_score:
+  biological_insight: 3
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 2
+  total: 10
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: >
+    Searched "antioxidant enzymes ubiquitous versus tissue-restricted expression peroxiredoxin
+    superoxide dismutase absence" and "SOD3 haptoglobin S100A9 not expressed absent anatomical
+    structures Bgee expression call" via PubMed (ncbi_esearch).
+  result: |
+    Both queries returned zero results. It is broadly known that some antioxidant proteins are
+    tissue-restricted (extracellular SOD3, myeloid S100A9, liver-secreted haptoglobin) while the
+    peroxiredoxins and cytosolic SOD1 are near-ubiquitous, so a reader might guess the answer is
+    "no". But no publication enumerates, over the exact UniProt "Antioxidant" keyword set, which
+    members carry curated Bgee absence (not-expressed) calls and in how many anatomical structures
+    — that specific partition (4 of 14, with SOD3 called absent in 39 structures including blood
+    and cortical areas) is a Bgee-data-state result, not a recallable or literature-derivable fact.
+  conclusion: PASS (the specific absence partition requires current Bgee expression-call state; not answerable from literature)
+
+sparql_queries:
+  - query_number: 1
+    database: uniprot
+    description: >
+      Define the exhaustive set (Rule 2). Count the reviewed human proteins carrying the UniProt
+      "Antioxidant" keyword (keywords/49). There are 14: HP, PRDX1-6, PRXL2A, S100A9, SELENOW,
+      SOD1, SOD3, SRXN1, TP53INP1. All 14 have a Bgee gene and are reported expressed in the liver
+      (so absence, not lack of data, is what the question probes).
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT (COUNT(DISTINCT ?symStr) AS ?nGenes) WHERE {
+        ?p a up:Protein ;
+           up:reviewed true ;
+           up:organism taxon:9606 ;
+           up:classifiedWith <http://purl.uniprot.org/keywords/49> ;
+           up:encodedBy/skos:prefLabel ?sym .
+        BIND(STR(?sym) AS ?symStr)
+      }
+    result_count: 14
+
+  - query_number: 2
+    database: bgee
+    description: >
+      Cross-graph on the SIB endpoint (UniProt + Bgee). For each of the 14 antioxidant proteins,
+      bridge to its Bgee gene via lscr:xrefUniprot and count the distinct anatomical structures
+      in which it carries an AbsenceExpression (not-expressed) call. Only 4 of the 14 return any:
+      SOD3 (39 structures), HP (33), S100A9 (22), TP53INP1 (1). The other 10 have zero absence
+      calls. Because at least one member is reported absent somewhere, the answer to the question
+      is NO.
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX genex: <http://purl.org/genex#>
+      PREFIX lscr: <http://purl.org/lscr#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT ?sym (COUNT(DISTINCT ?anat) AS ?nAbsentStructures) WHERE {
+        GRAPH <http://sparql.uniprot.org/uniprot> {
+          ?p a up:Protein ; up:reviewed true ; up:organism taxon:9606 ;
+             up:classifiedWith <http://purl.uniprot.org/keywords/49> ;
+             up:encodedBy/skos:prefLabel ?sym .
+        }
+        GRAPH <http://bgee.org> {
+          ?gene a orth:Gene ; orth:organism <https://bgee.org/species/9606> ;
+                lscr:xrefUniprot ?p .
+          ?call a genex:AbsenceExpression ; genex:hasSequenceUnit ?gene ;
+                genex:hasExpressionCondition ?cond .
+          ?cond genex:hasAnatomicalEntity ?anat .
+          FILTER(?anat != obo:GO_0005575)
+        }
+      }
+      GROUP BY ?sym
+      ORDER BY DESC(?nAbsentStructures)
+    result_count: 4
+
+  - query_number: 3
+    database: bgee
+    description: >
+      Substantiate one absence call concretely. The Bgee gene for SOD3 (extracellular superoxide
+      dismutase, UniProt P08294) is oma:GENE_ENSG00000109610; it carries AbsenceExpression calls
+      in blood (UBERON_0000178) among 39 structures — confirming these are genuine not-expressed
+      calls in real tissues, not missing data.
+    query: |
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX genex: <http://purl.org/genex#>
+      PREFIX lscr: <http://purl.org/lscr#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT ?call ?anat WHERE {
+        GRAPH <http://bgee.org> {
+          ?gene a orth:Gene ; orth:organism <https://bgee.org/species/9606> ;
+                lscr:xrefUniprot <http://purl.uniprot.org/uniprot/P08294> .
+          ?call a genex:AbsenceExpression ; genex:hasSequenceUnit ?gene ;
+                genex:hasExpressionCondition ?cond .
+          ?cond genex:hasAnatomicalEntity ?anat .
+          FILTER(?anat = obo:UBERON_0000178)
+        }
+      }
+      LIMIT 3
+    result_count: 3
+
+arithmetic_verification:
+  query: "Antioxidant proteins with >=1 Bgee absence call vs. with none (Query 2 against the Query 1 total)"
+  sum_of_category_counts: 14
+  total_distinct_entities: 14
+  result: "4 members carry absence calls (SOD3, HP, S100A9, TP53INP1) + 10 with none (PRDX1-6, PRXL2A, SELENOW, SOD1, SRXN1) = 14 total — VALID, mutually exclusive partition. Since 4 > 0, not all members are absence-free, so the answer is NO."
+  interpretation: |
+    All 14 human "Antioxidant"-keyword proteins are present in Bgee and expressed in the liver, so
+    the question is genuinely about reported absence, not missing data. Exactly 4 of the 14 carry
+    at least one AbsenceExpression call: SOD3 (extracellular SOD, absent in 39 structures including
+    blood and cortical Brodmann areas), HP (haptoglobin, 33), S100A9 (calprotectin, myeloid-
+    restricted, 22), and TP53INP1 (1). The remaining 10 — the six peroxiredoxins, PRXL2A, SELENOW,
+    cytosolic SOD1, and sulfiredoxin SRXN1 — have no absence calls, consistent with ubiquitous
+    housekeeping antioxidant defence. Because at least one member is reported absent, the universal
+    claim is false: the answer is NO.
+
+rdf_triples: |
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+  @prefix orth: <http://purl.org/net/orth#> .
+  @prefix genex: <http://purl.org/genex#> .
+  @prefix lscr: <http://purl.org/lscr#> .
+  @prefix keywords: <http://purl.uniprot.org/keywords/> .
+  @prefix oma: <http://omabrowser.org/ontology/oma#> .
+  @prefix bgee: <http://bgee.org/#> .
+
+  <http://purl.uniprot.org/uniprot/P08294> up:classifiedWith keywords:49 .
+  # Database: UniProt | Query: 1 | Comment: SOD3 carries the Antioxidant keyword (set membership)
+
+  <http://purl.uniprot.org/uniprot/P08294> up:encodedBy/skos:prefLabel "SOD3" .
+  # Database: UniProt | Query: 1 | Comment: gene symbol SOD3 (extracellular superoxide dismutase)
+
+  oma:GENE_ENSG00000109610 a orth:Gene .
+  # Database: Bgee | Query: 2 | Comment: Bgee gene entry for SOD3 (human)
+
+  oma:GENE_ENSG00000109610 lscr:xrefUniprot <http://purl.uniprot.org/uniprot/P08294> .
+  # Database: Bgee | Query: 2 | Comment: bridge from the Bgee SOD3 gene to UniProt P08294
+
+  bgee:NOT_EXPRESSED_173193434 a genex:AbsenceExpression .
+  # Database: Bgee | Query: 3 | Comment: an AbsenceExpression (not-expressed) call
+
+  bgee:NOT_EXPRESSED_173193434 genex:hasSequenceUnit oma:GENE_ENSG00000109610 .
+  # Database: Bgee | Query: 3 | Comment: this not-expressed call is for SOD3, in blood (UBERON_0000178) — a genuine absence, driving the NO answer
+
+  <http://purl.uniprot.org/uniprot/P00738> up:classifiedWith keywords:49 .
+  # Database: UniProt | Query: 1 | Comment: HP (haptoglobin) antioxidant — 33 structures with absence calls
+
+  <http://purl.uniprot.org/uniprot/P06702> up:classifiedWith keywords:49 .
+  # Database: UniProt | Query: 1 | Comment: S100A9 (calprotectin) antioxidant — 22 structures with absence calls (myeloid-restricted)
+
+  <http://purl.uniprot.org/uniprot/Q96A56> up:classifiedWith keywords:49 .
+  # Database: UniProt | Query: 1 | Comment: TP53INP1 antioxidant — 1 structure with an absence call
+
+  <http://purl.uniprot.org/uniprot/P32119> up:classifiedWith keywords:49 .
+  # Database: UniProt | Query: 1 | Comment: PRDX2 (peroxiredoxin-2) antioxidant — zero absence calls (ubiquitous)
+
+  <http://purl.uniprot.org/uniprot/P00441> up:classifiedWith keywords:49 .
+  # Database: UniProt | Query: 1 | Comment: SOD1 (cytosolic superoxide dismutase) antioxidant — zero absence calls (ubiquitous)
+
+exact_answer: "no"
+
+ideal_answer: |
+  No. Of the 14 human proteins carrying the UniProt "Antioxidant" keyword — haptoglobin (HP), the six peroxiredoxins (PRDX1-6), PRXL2A, S100A9, selenoprotein W (SELENOW), the superoxide dismutases SOD1 and SOD3, sulfiredoxin (SRXN1), and TP53INP1 — four are reported as not expressed (absent) in at least one anatomical structure in Bgee, so they are not ubiquitously expressed. SOD3 (extracellular superoxide dismutase) carries absence calls in 39 structures, including blood and cortical Brodmann areas; haptoglobin in 33; the myeloid-restricted calprotectin subunit S100A9 in 22; and TP53INP1 in one. The remaining ten members — the peroxiredoxins, PRXL2A, SELENOW, cytosolic SOD1, and sulfiredoxin — have no absence calls at all, matching their role as ubiquitous housekeeping components of cellular redox defence. All 14 do have Bgee data and are expressed in the liver, so the four exceptions reflect genuine tissue-restricted expression rather than missing measurements. The contrast — a ubiquitously expressed enzymatic core versus a handful of secreted or lineage-restricted antioxidants — is exactly what the absence-call data captures, and it is why the blanket statement that every antioxidant protein is expressed in every tissue is false.
+
+question_template_used: "Set-level universal claim tested against Bgee presence/absence calls (is every keyword-family member expressed in all tissues)"
+
+time_spent:
+  exploration: 35 minutes
+  formulation: 15 minutes
+  verification: 20 minutes
+  pubmed_test: 10 minutes
+  extraction: 15 minutes
+  documentation: 20 minutes
+  total: 115 minutes
