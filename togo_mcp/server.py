@@ -34,7 +34,10 @@ _sparql_extra_var: ContextVar[dict[str, Any] | None] = ContextVar(
 _PACKAGE_DATA_DIR = Path(__file__).parent.joinpath("data")
 CWD = Path(os.getenv("TOGOMCP_DIR", str(_PACKAGE_DATA_DIR)))
 MIE_DIR = str(CWD.joinpath("mie"))
-TOGOMCP_USAGE_GUIDE = str(CWD.joinpath("resources", "togomcp_usage_guide_v5.md"))
+# Directory of usage-guide part files, split by change-cadence and assembled
+# (sorted *.md, joined by the section separator) at serve time. The "_v5" in
+# the dir name is what _detect_usage_guide_version() reads.
+TOGOMCP_USAGE_GUIDE = str(CWD.joinpath("resources", "usage_guide_v5"))
 RDF_CONFIG_TEMPLATE = str(CWD.joinpath("rdf-config", "template.yaml"))
 ENDPOINTS_CSV = str(CWD.joinpath("resources", "endpoints.csv"))
 INDEX_HTML = str(CWD.joinpath("docs", "togomcp-intro.html"))
