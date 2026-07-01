@@ -46,8 +46,11 @@ re-read its MIE via `get_MIE_file` and fix the pattern below before relying on i
 
 Follow the phase discipline in the reference doc: **2A** select databases (5
 rules), **2B** `get_MIE_file(database=...)` for each, **2C** keyword-search to
-get IDs, **2D** run 2+ SPARQL per database using those IDs, **3** synthesize, **4**
-score. Drive 2D with the TogoMCP `run_sparql` tool. The query types below were all
+get IDs, **2D** run 2+ SPARQL per database using those IDs, **3A** reconstruct the
+DB-backed logical flow (results → conclusion) + **3B** triage the gaps, **4** score
+flow soundness, then deliver the four-part **FINAL SUMMARY** (main claim /
+conclusion / DB-backed flow / gap analysis). Drive 2D with the TogoMCP
+`run_sparql` tool. The query types below were all
 run live (bile-acid example) and returned data — copy these, not the reference
 doc's printed templates.
 
