@@ -12,8 +12,9 @@
 - [ ] ✅ PHASE 2B: Read ALL MIE files for selected databases
 - [ ] ✅ PHASE 2C: Run keyword searches
 - [ ] ✅ PHASE 2D: **Execute complex SPARQL queries FOR EACH DATABASE** (NON-NEGOTIABLE)
-- [ ] ✅ PHASE 3: Synthesize evidence
-- [ ] ✅ PHASE 4: Assess validation
+- [ ] ✅ PHASE 3: Reconstruct the argument (3A DB-backed logical flow) + triage gaps (3B)
+- [ ] ✅ PHASE 4: Score flow soundness + record gap disposition
+- [ ] ✅ FINAL SUMMARY: Main claim / Conclusion / DB-backed flow / Gap analysis
 
 **⚠️ CRITICAL: Completing Phase 2D for ALL selected databases is NON-NEGOTIABLE. Skipping ANY database invalidates the entire analysis.**
 
@@ -21,11 +22,15 @@
 
 ## PHASE 1: EXTRACT KEY ELEMENTS
 
-**Quick extraction (5 minutes):**
+**Quick extraction (5 minutes). Items 1-3 feed the Final Summary directly — capture them in the article's own terms:**
 
-1. **Main Research Question**: One sentence
-2. **Key Conclusions**: 3-5 bullet points
-3. **Key Entities**: 
+1. **Main Claim**: One sentence — the single assertion the paper argues for (not a topic, not a question; the thing that would be *false* if the paper is wrong).
+2. **Central Conclusion**: 1-3 sentences — what the authors say follows from their results.
+3. **Argument skeleton (results → conclusion)**: list the paper's own inferential steps in order. This is the spine you will DB-back in Phase 3A.
+   - **Experimental observation(s)**: what was measured/observed — the paper's NEW data. These will NOT be in the databases; do not expect to validate them.
+   - **Inferential step(s)**: each "we observed X, therefore Y" link.
+   - **Background premise per step**: the already-known biology each inference relies on. THIS is what the databases can confirm or refute.
+4. **Key Entities**:
    - Metabolites/Chemicals: [list with structures/formulas if mentioned]
    - Proteins/Genes: [list with IDs if mentioned]
    - Reactions: [list transformations]
@@ -581,72 +586,111 @@ Step 5 (GO): GO:####### - "skeletal muscle atrophy"
 
 ---
 
-## PHASE 3: EVIDENCE SYNTHESIS
+## PHASE 3: EVIDENCE SYNTHESIS — RECONSTRUCT THE ARGUMENT, THEN TRIAGE THE GAPS
 
-### For Each Major Claim, Document:
+Phase 2D validated entities. Phase 3 assembles them into the paper's *argument* and isolates what the databases cannot account for. Two products: **3A** the DB-backed logical flow, **3B** the triaged gap analysis. Do NOT skip 3A — a pile of validated entities is not an argument.
 
-**✅ Supporting Evidence (with database IDs and SPARQL results):**
-- Chemical identity: [ChEBI ID, formula from SPARQL: C##H##O##, mass: ### Da]
-- Reaction mechanism: [Rhea ID, equation from SPARQL: A + B = C + D, EC #.#.#.#]
-- Enzyme function: [UniProt ID, EC from SPARQL, GO terms from SPARQL]
-- Pathway connectivity: [Reactome ID, subpathways from SPARQL]
-- Process definition: [GO ID, definition from SPARQL]
-- Evidence chain: [Complete cross-database path with all IDs]
+### 3A. DB-Backed Logical Flow (results → conclusion)
 
-**⚠️ Contradictions/Nuances:**
-- Unexpected annotations
-- Alternative mechanisms
-- Missing intermediates
-- Conflicts between databases
+Take the argument skeleton from Phase 1 and annotate each step with the SPARQL evidence for its *background premise*. Keep the paper's OWN observations separate from the DB-backed premises — the observations are the new data (not in the DBs); the premises are what the DBs can confirm.
 
-**🆕 Novel Findings (NOT in databases):**
-- Known components in new contexts
-- New connections between known entities
-- Cell-type-specific mechanisms
-- Disease-specific alterations
+**Template — one row per inferential step:**
+```
+STEP n: [paper's observation]  ──→  [paper's inference]
+  Background premise (already-known biology the inference relies on):
+    [statement]
+  DB evidence for the premise:
+    [ChEBI/Rhea/UniProt/Reactome/GO ID + exact SPARQL result: formula / equation / EC / GO definition]
+  Premise status: ☑ DB-CONFIRMED | ⚠ DB-PARTIAL | ✗ DB-ABSENT | ✗ DB-CONTRADICTS
+```
 
-**❌ Critical Gaps:**
-- Missing metabolites (searched ChEBI, not found)
-- Missing reactions (searched Rhea, not found)
-- Missing EC numbers (queried UniProt, absent)
-- Missing pathway components (queried Reactome, incomplete)
-- Missing GO annotations (queried GO, term doesn't exist)
+A chain of ☑ DB-CONFIRMED premises beneath the paper's observations = a logically sound, evidence-backed flow from results to conclusion. Any ⚠/✗ premise is a point where the flow depends on something the databases do not (yet) support — carry it to 3B. The cross-database evidence chain (ChEBI→Rhea→UniProt→Reactome→GO) is *supporting* biochemical connectivity for a premise; it is NOT itself the logical flow.
+
+### 3B. Gap Analysis — triage, do NOT assume novelty
+
+Every ⚠ DB-PARTIAL / ✗ DB-ABSENT / ✗ DB-CONTRADICTS item is a gap between the article and the databases. **A gap is a hypothesis to triage, not a finding.** There are many reasons a gap exists; novelty is only one. Before calling anything novel, RULE OUT the mundane explanations — the query-artifact branch is **non-optional**, because this workflow can manufacture false gaps (dropped `FROM`, `chebi:` vs `chemrof:`, missing `^^xsd:string`).
+
+For each gap, assign ONE primary explanation and a confidence:
+
+| Explanation | What it means | How to rule it in/out |
+|---|---|---|
+| **QUERY-ARTIFACT** | The gap is a bug in *our* query, not a real absence | RE-RUN with corrected `FROM`/namespace/`^^xsd:string`; re-check the MIE. MUST be excluded first. |
+| **CONTRADICTION** | The DB actively disagrees with the claim | SPARQL returned a conflicting value (different formula, different EC, obsolete/renamed term) |
+| **SCOPE / COVERAGE** | Entity is real but lives in a DB we didn't query, or is outside this DB's remit | Try a supporting DB (PubChem, ChEMBL, PDB); check the DB's declared scope |
+| **CURATION LAG** | Known & published, just not in this RDF snapshot | Entity exists upstream (primary DB site / literature) but not in the Portal graph |
+| **TRIVIAL / KNOWN** | Absent only because uncurated, not because new | The premise is textbook biology no one bothered to encode |
+| **CANDIDATE NOVELTY** | Plausibly the paper's genuine new contribution | Survives a CORRECT query, sits on an otherwise DB-CONFIRMED flow, and none of the above fit |
+
+Only after the first five are excluded does a gap earn **CANDIDATE NOVELTY** — and it is phrased "suggests," never "proves." A gap on an unverified query is a bug, not a discovery.
+
+**Gap record template:**
+```
+GAP n: [what the article claims / needs that the DB does not supply]
+  Located at: STEP n of the logical flow (3A)
+  Query verified correct? ☑ (re-ran, still absent) / ☐ (NOT yet — resolve before triaging)
+  Primary explanation: [QUERY-ARTIFACT | CONTRADICTION | SCOPE | CURATION LAG | TRIVIAL | CANDIDATE NOVELTY]
+  Confidence: [high/med/low] — [one line of reasoning]
+  If CANDIDATE NOVELTY: why each of the other five was excluded
+```
 
 ---
 
 ## PHASE 4: ASSESSMENT
 
-### Validation Score for Each Major Claim:
+Two DISTINCT judgments — do NOT collapse them:
+- **Flow soundness** (a score): how well the DB-backed *premises* support the paper's inferences.
+- **Gap disposition** (NOT a score): what each unsupported item most likely IS, from the 3B triage. A CANDIDATE-NOVELTY gap is **not** a validation failure — it is a finding.
 
-| Aspect | Score (1-10) | SPARQL Evidence | Database IDs |
-|--------|--------------|-----------------|--------------|
-| Chemical Identity | X/10 | ChEBI query returned formula C##H##O##, mass ### | CHEBI:#### |
-| Reaction Mechanism | X/10 | Rhea query returned equation A+B=C+D, EC #.#.#.# | RHEA:#### |
-| Pathway Structure | X/10 | Reactome query returned N subpathways | R-HSA-#### |
-| Protein Function | X/10 | UniProt query returned EC + ## GO terms | P####, GO:#### |
-| Cross-DB Chain | X/10 | Built complete 5-step evidence chain | [all IDs] |
+### Flow soundness — score the BACKGROUND PREMISES, not the novelty
 
-### Evidence Quality Levels:
+Score each inferential step (from 3A) by how well its background premise is DB-backed. A premise the DB confirms scores high; a premise the DB *contradicts* scores low. A premise the DB is merely *silent* on is NOT scored here — it goes to the gap triage (3B). **Silence is not evidence against the paper.**
 
-- **★★★★★ Perfect (10/10)**: SPARQL queries returned exact structures, equations, definitions matching article
-- **★★★★☆ Strong (8-9/10)**: All components verified via SPARQL, minor gaps in connections
-- **★★★☆☆ Moderate (5-7/10)**: Major components verified via SPARQL, significant gaps remain
-- **★★☆☆☆ Weak (3-4/10)**: Only keyword searches done, few SPARQL validations
-- **★☆☆☆☆ None (1-2/10)**: SPARQL queries contradict article claims OR queries not executed
+| Step / Premise | Premise DB-support (1-10) | SPARQL Evidence | Database IDs |
+|----------------|---------------------------|-----------------|--------------|
+| Step 1: [premise] | X/10 | [exact formula/equation/EC/GO def from SPARQL] | [IDs] |
+| Step 2: [premise] | X/10 | ... | ... |
 
-### Overall Summary:
+### Evidence Quality Levels (apply to the PREMISE, not the paper's new data):
 
-**Strengths:** [Cite specific SPARQL query results - formulas, equations, pathway structures]
+- **★★★★★ Perfect (10/10)**: SPARQL returned exact structure/equation/definition matching the premise
+- **★★★★☆ Strong (8-9/10)**: premise verified via SPARQL, minor connective gaps
+- **★★★☆☆ Moderate (5-7/10)**: premise partly verified via SPARQL
+- **★★☆☆☆ Weak (3-4/10)**: premise mostly unverified (only keyword search)
+- **★☆☆☆☆ Contradicted (1-2/10)**: **SPARQL actively CONTRADICTS the premise** — reserved for disagreement, NOT for mere absence
 
-**Novel Contributions:** [What new biology is added beyond database knowledge]
+**⚠️ Absence ≠ low score.** If the DB is silent because the item is triaged as CANDIDATE NOVELTY (or curation lag / scope), it does NOT lower flow soundness — it is reported in the gap analysis as a finding, not scored as a failure. Only a CONTRADICTION drags the score down.
 
-**Critical Gaps:** [Specific missing database entries identified through SPARQL queries]
+### Gap disposition summary (carried from 3B):
 
-**Database Recommendations:** 
-- "Add ChEBI:##### for metabolite X with formula C24H40O4 (verified by mass spec in article)"
-- "Add Rhea reaction: cholate + taurine = taurocholate + H2O (EC 6.2.1.7)"
-- "Add GO term: cancer cachexia as biological process (parent: GO:0032501)"
-- "Link Reactome R-HSA-##### to GO:####### (pathway-process connection missing)"
+| Gap | Located at | Query verified? | Explanation | Confidence |
+|-----|-----------|-----------------|-------------|------------|
+| Gap 1 | Step n | ☑ | CANDIDATE NOVELTY | med |
+| Gap 2 | Step n | ☑ | CURATION LAG | high |
+
+### Database Recommendations (only for gaps triaged as LAG / SCOPE / CANDIDATE NOVELTY):
+- Curation-lag gap: "Add ChEBI:##### for metabolite X, formula C24H40O4 (verified by mass spec in article)"
+- Scope gap: "Link Reactome R-HSA-##### to GO:####### (pathway-process connection missing)"
+- Candidate-novelty gap: flag to authors/curators as *possibly new*, pending independent confirmation — do NOT assert as established fact.
+
+---
+
+## FINAL SUMMARY — THE USER-FACING DELIVERABLE
+
+Everything above is the *work*; this is the *report* you present to the user. Four parts, in this order. Do not bury them in the scoring tables — this is what the user asked for.
+
+### 1. Main Claim
+[One sentence, from Phase 1 — the single assertion the paper argues for.]
+
+### 2. Conclusion
+[1-3 sentences, from Phase 1 — what the authors say follows from their results.]
+
+### 3. Logical Flow (results → conclusion), database-backed
+[From 3A. Show the chain: each experimental observation → inference → conclusion, with each *background premise* annotated by its SPARQL evidence and status (☑ DB-CONFIRMED / ⚠ DB-PARTIAL / ✗ DB-ABSENT / ✗ DB-CONTRADICTS). Make explicit which links are DB-confirmed and which rest on something the databases do not supply. This is the spine of the paper's argument, with the known parts anchored to exact database facts (formulas, equations, EC numbers, GO definitions) — not to the paper's prose.]
+
+### 4. Gap Analysis — where the databases fall silent, and what that might mean
+[From 3B. For each gap: state it, confirm the query was verified correct, then give the triaged explanation and confidence. Surface CANDIDATE-NOVELTY gaps as the most interesting output — the parts of the paper that curated knowledge cannot yet account for — but phrase them as *suggesting* possible novelty, having explicitly ruled out query artifacts, contradiction, scope, curation lag, and triviality. State plainly: a gap is a hypothesis about *why* the databases are silent, not a proof of discovery. Many gaps are mundane; call those what they are.]
+
+**One-line verdict:** [Is the paper's flow DB-sound? Which gap(s), if any, are candidate-novelty vs. mundane, and with what confidence?]
 
 ---
 
@@ -833,10 +877,12 @@ AI: "Analysis complete! Validated with exact formulas, reaction equations, pathw
 
 ---
 
-**Template v6.0** | 2025-01-26 | Enhanced with ID tracking system to ensure every keyword search result gets SPARQL validation
+**Template v7.0** | 2026-07-01 | Reoriented from per-entity fact-checking to argument reconstruction + gap triage
 
-**KEY IMPROVEMENT IN v6.0:**
-- Added mandatory ID tracking table (☐ Pending → ☑ Completed)
-- Every ID from keyword search MUST be queried with SPARQL
-- Prevents citing search result text instead of SPARQL query results
-- Example: Found Q969Q1 → MUST execute SPARQL → Get EC number + GO terms → Cite SPARQL results
+**KEY IMPROVEMENT IN v7.0:**
+- Phase 1 now extracts the **argument skeleton** (observation → inference → premise), separating the paper's NEW data from the DB-backable background premises
+- Phase 3 rewritten: **3A** DB-backed logical flow (results → conclusion), **3B** gap triage — a gap is a hypothesis, not a finding
+- Phase 4 fixes the scoring inversion: **absence ≠ low score**; only an active CONTRADICTION lowers flow soundness. Silence goes to gap triage instead
+- New **FINAL SUMMARY** deliverable: Main Claim / Conclusion / DB-backed Logical Flow / Gap Analysis
+- Gaps are triaged across six explanations (query-artifact, contradiction, scope, curation lag, trivial, candidate novelty); novelty is only claimed after the mundane five are ruled out, and phrased "suggests," never "proves"
+- Retains v6.0's ID tracking (Phase 2C/2D): every keyword-search ID still MUST be SPARQL-validated
