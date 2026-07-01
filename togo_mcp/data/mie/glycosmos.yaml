@@ -5,8 +5,12 @@ schema_info:
     glycoproteins, glycosylation sites, glycogenes, glycoepitopes, lectins, and
     glycolipids. Glycans carry multi-format sequences (WURCS, IUPAC, GlycoCT) and
     structural motifs; glycoproteins carry residue-level glycosylation sites with
-    FALDO positions. Primary uses: glycobiology research, biomarker discovery,
-    drug-target identification.
+    FALDO positions. GlyCosmos also integrates a disease layer (DOID-keyed
+    disease→glycogene associations from Alliance of Genome Resources + GDGDB) and
+    Gene Ontology annotations on glycogenes, and links genes to their glycoproteins
+    internally via a shared UniProt geneid node (no external ID conversion needed).
+    Primary uses: glycobiology research, biomarker discovery, drug-target
+    identification, disease-gene and gene-function analysis.
   keywords:
     - glycan
     - glycosylation
@@ -24,8 +28,16 @@ schema_info:
     - monosaccharide
     - glycosylation site
     - glycan motif
+    - disease
+    - gene ontology
+    - go annotation
+    - disease gene
+    - doid
   categories:
     - glycan
+    - disease
+    - gene
+    - protein
   endpoint: https://ts.glycosmos.org/sparql
   base_uri: http://rdf.glycoinfo.org/
   graphs:
@@ -39,10 +51,20 @@ schema_info:
     - http://rdf.glycosmos.org/glycans
     # Glycoproteins, glycosylation sites, FALDO location nodes
     - http://rdf.glycosmos.org/glycoprotein
-    # Glycogenes
+    # Glycogenes — includes rdfs:seeAlso geneid bridge AND the GO-annotation scaffold
     - http://rdf.glycosmos.org/glycogenes
     # Glycoepitopes
     - http://rdf.glycoinfo.org/glycoepitope
+    # Disease entities (glycan:Disease) + untyped attribute bnodes → glycogene + evidence
+    - http://rdf.glycosmos.org/disease
+    # Upstream disease-gene source (Alliance of Genome Resources / GDGDB integration)
+    - http://rdf.glycosmos.org/genomealliance
+    # Disease Ontology (DOID) — labels/synonyms/hierarchy/xrefs for obo:DOID_ IRIs
+    - http://purl.obolibrary.org/obo/doid
+    # Gene Ontology — labels for the obo:GO_ terms used in glycogene GO annotations
+    - http://purl.obolibrary.org/obo/go.owl
+    # Human Protein Atlas cross-reference nodes (Ensembl Gene ID keyed, ID-only)
+    - http://rdf.glycosmos.org/HPA
     # Partner cross-reference graphs (additional external Resource_entry nodes)
     - http://rdf.glytoucan.org/partner/glycome-db
     - http://rdf.glytoucan.org/partner/jcggdb_aist
@@ -53,9 +75,9 @@ schema_info:
   kw_search_tools:
     - sparql
   version:
-    mie_version: "3.0"
-    mie_created: "2026-06-27"
-    data_version: "2025.04 snapshot (counts and schema re-verified 2026-06-27)"
+    mie_version: "4.0"
+    mie_created: "2026-07-01"
+    data_version: "2025.04 snapshot (glycan/protein counts verified 2026-06-27; disease/GO layer + gene-protein bridge verified 2026-07-01)"
     update_frequency: "Quarterly"
   access:
     backend: "Virtuoso (bif:contains IS enabled — verified 2026-06-27)"
@@ -76,6 +98,34 @@ critical_warnings: |
     GlyCosmos/GlyTouCan-local predicate NOT present in GlycoRDF (the self-reference Resource_entry
     class is likewise capital-R, diverging from the ontology's lowercase resource_entry). Do not
     expect the capital-R form when validating against GlycoRDF or reusing GlycoRDF-based tooling.
+  - sio:SIO_000255 IS A SHARED "has-attribute" SCAFFOLD REUSED FOR TWO DIFFERENT PURPOSES —
+    disambiguate by GRAPH + the attribute node's inner predicate (#1 trap for the disease/GO layer):
+    * In <http://rdf.glycosmos.org/disease>: a glycan:Disease → sio:SIO_000255 → UNTYPED bnode
+      whose sio:SIO_000001 = an associated glycogene and sio:SIO_000772 = an Alliance of Genome
+      Resources evidence URL (https://www.alliancegenome.org/disease/DOID:...).
+    * In <http://rdf.glycosmos.org/glycogenes>: a glycan:Glycogene → sio:SIO_000255 → UNTYPED bnode
+      whose up:classifiedWith = a GO term (obo:GO_...), sio:SIO_000253 = source DB,
+      dcterms:references = PubMed, sio:SIO_000772 = an ECO evidence code.
+    Both attribute bnodes are UNTYPED (no rdf:type) — you cannot select them by class; reach them
+    only through their parent + sio:SIO_000255, then branch on the inner predicate.
+  - DISEASE-GENE QUERIES ARE MULTI-SPECIES BY DEFAULT — taxon filter is MANDATORY for "human":
+    disease→sio:SIO_000001 points to glycogene IRIs by NCBI GeneID, but the SAME disease mixes
+    human, mouse, rat, etc. genes (the IRI is numeric — species is NOT encoded in it). To restrict
+    to human you MUST join the gene into <http://rdf.glycosmos.org/glycogenes> and filter
+    glycan:has_taxon <http://identifiers.org/taxonomy/9606>. Example: DOID:9352 (type 2 diabetes)
+    has 326 associated genes across all species but only 129 human. Omitting the taxon filter
+    silently over-counts by ~2.5×.
+  - DISEASE ENTITIES CARRY NO rdfs:label. The disease NAME is not on the
+    <http://glycosmos.org/disease/DOID:N> entity — it lives on the obo:DOID_N IRI (reached via
+    the disease's rdfs:seeAlso) in the <http://purl.obolibrary.org/obo/doid> graph. Likewise GO
+    term names are in <http://purl.obolibrary.org/obo/go.owl>, not on the glycogene attribute node.
+    Join to the ontology graph to display a human-readable name.
+  - GLYCOGENE ↔ GLYCOPROTEIN JOIN IS INTERNAL — DO NOT USE TogoID OR AN EXTERNAL UniProt QUERY:
+    a glycogene and its glycoprotein share the node <http://purl.uniprot.org/geneid/[GeneID]> as
+    an implicit join key. In <…/glycogenes>: glycogene rdfs:seeAlso → geneid node. In
+    <…/glycoprotein>: <http://purl.uniprot.org/uniprot/[AC]> rdfs:seeAlso → the SAME geneid node,
+    and the glycoprotein rdfs:seeAlso → that UniProt IRI. Traverse
+    glycogene → geneid ← uniprotAC ← glycoprotein entirely within GlyCosmos.
   - MOTIF DUAL-IRI SYSTEM: A motif has TWO distinct IRIs sharing the same GlyTouCan ID suffix.
     * has_motif LINK object: <http://rdf.glycoinfo.org/glycan/[GlyTouCan_ID]> (glycan namespace).
     * Motif DEFINITION/LABEL (a gn:Motif, in motif_label graph):
@@ -86,11 +136,19 @@ critical_warnings: |
     <http://rdf.glycosmos.org/glycans/glycosequence>. Scope motif/sequence queries with
     FROM <http://rdf.glycosmos.org/glycans/glycosequence>. (has_primary_id is in the CORE graph,
     so queries returning both a motif AND a GlyTouCan ID need both graphs in the FROM set.)
-  - ENTITY IRI BASE ≠ GRAPH IRI BASE: Glycoprotein, glycosylation-site, location, and glycogene
-    ENTITIES use base http://glycosmos.org/ (e.g. http://glycosmos.org/glycoprotein/P13224), while
-    the GRAPHS that hold them use base http://rdf.glycosmos.org/ (e.g. <http://rdf.glycosmos.org/glycoprotein>).
-    Do not write http://rdf.glycosmos.org/glycoprotein/<AC> as an entity IRI — it returns 0 rows.
+  - ENTITY IRI BASE ≠ GRAPH IRI BASE: Glycoprotein, glycosylation-site, location, glycogene, and
+    disease ENTITIES use base http://glycosmos.org/ (e.g. http://glycosmos.org/glycoprotein/P13224,
+    http://glycosmos.org/disease/DOID:9352), while the GRAPHS that hold them use base
+    http://rdf.glycosmos.org/ (e.g. <http://rdf.glycosmos.org/glycoprotein>). Do not write
+    http://rdf.glycosmos.org/glycoprotein/<AC> as an entity IRI — it returns 0 rows.
     Glycans and motif links use http://rdf.glycoinfo.org/.
+  - NO TISSUE / EXPRESSION DATA ON GLYCOPROTEINS: glycan:Glycoprotein carries only type,
+    rdfs:label, rdfs:seeAlso, glycan:has_taxon, and glycoconjugate:glycosylated_at — there is NO
+    organ/tissue/expression-level predicate. The HPA graph holds only Ensembl-Gene-ID cross-
+    reference nodes (rdfs:Resource), NOT expression measurements. For a "where is it expressed"
+    question the only structured proxy inside GlyCosmos is GO Cellular Component
+    (up:classifiedWith → obo:GO_ localization terms such as axon/dendrite/synapse) on the
+    glycogene; true expression profiles require an external resource (HPA, Bgee).
   - LABEL/MULTIPLICITY: A single motif IRI and a single external Resource_entry may carry MULTIPLE
     rdfs:label values (synonyms; ChEBI entries carry both the systematic name and "ChEBI"). Use
     DISTINCT or aggregate (SAMPLE/GROUP_CONCAT) when retrieving labels to avoid duplicate rows.
@@ -112,6 +170,7 @@ shape_expressions: |
   PREFIX glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#>
   PREFIX glycoepitope: <http://www.glycoepitope.jp/epitopes/glycoepitope.owl#>
   PREFIX sio: <http://semanticscience.org/resource/>
+  PREFIX up: <http://purl.uniprot.org/core/>
   PREFIX faldo: <http://biohackathon.org/resource/faldo#>
   PREFIX gn: <http://glyconavi.org/owl#>
 
@@ -148,12 +207,14 @@ shape_expressions: |
   }
 
   # 153,178 glycoproteins. Entity IRI: <http://glycosmos.org/glycoprotein/[UniProtAC]>
-  # In <http://rdf.glycosmos.org/glycoprotein>.
+  # In <http://rdf.glycosmos.org/glycoprotein>. NOTE: NO tissue/expression predicate exists here
+  # (only the 5 predicates below). The rdfs:seeAlso set includes the UniProt IRI that carries the
+  # geneid-node link used to join back to the glycogene (see GlycogeneShape).
   <GlycoproteinShape> {
     a [ glycan:Glycoprotein ] ;
     rdfs:label xsd:string ? ;                   # protein name; 90.8% (139,075)
     glycan:has_taxon IRI ? ;                     # <http://identifiers.org/taxonomy/[NCBI_TaxID]>; 90.8% (139,075)
-    rdfs:seeAlso IRI * ;                         # UniProt (purl.uniprot.org/uniprot/), GlyGen, PubChem, RaftProt, GPDB2
+    rdfs:seeAlso IRI * ;                         # UniProt (purl.uniprot.org/uniprot/), GlyGen, PubChem, HMDB, O-GlcNAc, GPDB2, GlyConnect
     glycoconjugate:glycosylated_at @<GlycosylationSiteShape> *   # 411,240 links
   }
 
@@ -179,9 +240,36 @@ shape_expressions: |
     a [ glycan:Glycogene ] ;
     rdfs:label xsd:string ;                      # 100% (423,164) — well populated, safe to filter
     dcterms:description xsd:string ;             # 100% (423,164)
-    glycan:has_taxon IRI ;                        # 100% (423,164) <http://identifiers.org/taxonomy/[NCBI_TaxID]>
-    rdfs:seeAlso IRI * ;                          # NCBI Gene (identifiers.org/ncbigene/), KEGG (kegg.genes/), UniProt (purl.uniprot.org/geneid/)
-    sio:SIO_000255 IRI *                          # has-attribute scaffold (~6 per gene)
+    glycan:has_taxon IRI ;                        # 100% (423,164) <http://identifiers.org/taxonomy/[NCBI_TaxID]> — REQUIRED for human filter
+    rdfs:seeAlso IRI * ;                          # NCBI Gene (identifiers.org/ncbigene/), KEGG, AND <http://purl.uniprot.org/geneid/[GeneID]> (protein-join bridge)
+    sio:SIO_000255 @<GoAnnotationAttrShape> *     # GO-annotation scaffold; 97.8% of genes (413,865) carry ≥1
+  }
+
+  # Untyped blank node carrying ONE Gene Ontology annotation. Reached via glycogene sio:SIO_000255.
+  # In <http://rdf.glycosmos.org/glycogenes>. One bnode per GO annotation (INSR/3643 has 205).
+  # No rdf:type — reachable only through the parent glycogene.
+  <GoAnnotationAttrShape> {
+    up:classifiedWith IRI ;                       # GO term <http://purl.obolibrary.org/obo/GO_[0-9]+>; label in obo/go.owl (required, 1/node)
+    sio:SIO_000253 IRI ;                          # source DB e.g. <http://glycosmos.org/database/NCBI> (required, 1/node)
+    dcterms:references IRI ? ;                     # PubMed evidence (present on ~67% of nodes: 138/205 for INSR)
+    sio:SIO_000772 IRI ?                           # ECO evidence code (present on ~64% of nodes: 131/205 for INSR)
+  }
+
+  # 4,372 diseases. Entity IRI: <http://glycosmos.org/disease/DOID:[0-9]+>
+  # In <http://rdf.glycosmos.org/disease>. Sourced from Alliance of Genome Resources + GDGDB
+  # (upstream graph <http://rdf.glycosmos.org/genomealliance>). Every disease has ≥1 gene link
+  # (26,827 disease-gene links total). Carries NO rdfs:label — the NAME is on the obo:DOID_ IRI.
+  <DiseaseShape> {
+    a [ glycan:Disease ] ;
+    rdfs:seeAlso IRI ;                            # <http://purl.obolibrary.org/obo/DOID_[0-9]+> — label source (obo/doid graph)
+    sio:SIO_000255 @<DiseaseGeneAttrShape> +      # one UNTYPED bnode per associated gene
+  }
+
+  # Untyped blank node linking a disease to ONE associated gene + its evidence.
+  # In <http://rdf.glycosmos.org/disease>. No rdf:type.
+  <DiseaseGeneAttrShape> {
+    sio:SIO_000001 IRI ;                          # the gene <http://glycosmos.org/glycogene/[NCBI_GeneID]> (multi-species — filter by taxon)
+    sio:SIO_000772 IRI                            # evidence <https://www.alliancegenome.org/disease/DOID:[0-9]+>
   }
 
   # 173 epitopes. IRI: <http://www.glycoepitope.jp/epitopes/EP[0-9]+>
@@ -212,8 +300,8 @@ sample_rdf_entries:
     @prefix glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#> .
     @prefix glycoinfo: <http://rdf.glycoinfo.org/> .
     @prefix glycosmos: <http://glycosmos.org/> .
-    @prefix gn: <http://glyconavi.org/owl#> .
     @prefix obo: <http://purl.obolibrary.org/obo/> .
+    @prefix up: <http://purl.uniprot.org/core/> .
     @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
     @prefix dcterms: <http://purl.org/dc/terms/> .
     @prefix sio: <http://semanticscience.org/resource/> .
@@ -249,7 +337,7 @@ sample_rdf_entries:
         The indirect site pattern. Entity IRIs use the http://glycosmos.org/ base (NOT rdf.glycosmos.org).
         sio:SIO_000772 links the site to its parent protein reference; faldo:location points to a NAMED
         location node (LOC…) carrying the integer position; glycoconjugate:has_saccharide names the glycan;
-        dcterms:references carries PubMed evidence.
+        dcterms:references carries PubMed evidence. The glycoprotein itself carries NO tissue/expression triple.
       rdf: |
         glycosmos:glycoprotein/P13224 a glycan:Glycoprotein ;
           rdfs:label "Platelet glycoprotein Ib beta chain" ;
@@ -263,26 +351,40 @@ sample_rdf_entries:
           faldo:location glycosmos:location/LOC00220625 ;
           glycoconjugate:has_saccharide glycoinfo:glycan/G57321FI .
 
-        glycosmos:location/LOC00220623 a faldo:ExactPosition ;
-          faldo:position 65 .
+        glycosmos:location/LOC00220625 a faldo:ExactPosition ;
+          faldo:position 83 .
 
-    - title: Glycan motif link and its label (the dual-IRI bridge)
+    - title: Disease→gene→GO integration and the glycogene↔glycoprotein bridge (INSR / type 2 diabetes)
       description: |
-        The has_motif object is a glycan-namespace IRI; the motif's gn:Motif definition and its label(s)
-        live under a DIFFERENT namespace (glycoinfo.org/motif/) sharing only the GlyTouCan ID. A motif may
-        carry several labels (synonyms). To name a motif, bridge by the shared ID suffix.
+        The integrative backbone (v4). A glycan:Disease carries NO name of its own — the label
+        "type 2 diabetes mellitus" is on its obo:DOID_ seeAlso in the doid graph. The disease links
+        to genes through an UNTYPED blank node (sio:SIO_000255 → sio:SIO_000001 = gene,
+        sio:SIO_000772 = Alliance of Genome Resources evidence). The SAME sio:SIO_000255 scaffold is
+        reused on the glycogene for GO annotation (→ up:classifiedWith = GO term). The glycogene and
+        its glycoprotein share <http://purl.uniprot.org/geneid/3643> as an implicit join key — the
+        glycogene and the UniProt IRI both rdfs:seeAlso that node, so no TogoID hop is needed.
       rdf: |
-        # has_motif link (in graph <http://rdf.glycosmos.org/glycans/glycosequence>):
-        glycoinfo:glycan/G00176HZ glycan:has_motif glycoinfo:glycan/G00030MO .
+        # disease graph:
+        <http://glycosmos.org/disease/DOID:9352> a glycan:Disease ;
+          rdfs:seeAlso obo:DOID_9352 ;                          # name lives in the doid graph, not here
+          sio:SIO_000255 [                                       # untyped bnode, one per associated gene
+            sio:SIO_000001 glycosmos:glycogene/3643 ;            # INSR (numeric NCBI GeneID; species not in IRI)
+            sio:SIO_000772 <https://www.alliancegenome.org/disease/DOID:9352> ] .
 
-        # motif definition + labels (in graph <http://rdf.glycosmos.org/glycans/motif_label>):
-        <http://glycoinfo.org/motif/G00030MO> a gn:Motif ;
-          rdfs:label "N-Glycan complex" .
+        # glycogenes graph — GO annotation scaffold + the geneid join bridge:
+        glycosmos:glycogene/3643 a glycan:Glycogene ;
+          rdfs:label "INSR" ;
+          glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
+          rdfs:seeAlso <http://identifiers.org/ncbigene/3643> ,
+                       <http://purl.uniprot.org/geneid/3643> ;    # <-- shared join node
+          sio:SIO_000255 [ up:classifiedWith obo:GO_0005159 ] .   # "insulin-like growth factor receptor binding"
 
-        <http://glycoinfo.org/motif/G00031MO> a gn:Motif ;
-          rdfs:label "O-Glycan core 1" ;
-          rdfs:label "T antigen" ;
-          rdfs:label "TF antigen" .
+        # glycoprotein graph — the other side of the geneid bridge:
+        <http://purl.uniprot.org/uniprot/P06213> rdfs:seeAlso <http://purl.uniprot.org/geneid/3643> .
+        glycosmos:glycoprotein/P06213 a glycan:Glycoprotein ;
+          rdfs:label "Insulin receptor" ;
+          glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
+          rdfs:seeAlso <http://purl.uniprot.org/uniprot/P06213> .
 
 sparql_query_examples:
   - title: Count human glycoproteins
@@ -318,30 +420,6 @@ sparql_query_examples:
       }
       LIMIT 10
 
-  - title: Glycans bearing a motif, with the motif's name (dual-IRI bridge)
-    description: |
-      Find glycans carrying the N-Glycan complex motif and report their GlyTouCan IDs plus the motif label.
-      Demonstrates the bridge: has_motif uses the glycan-form IRI; the label lives on the motif-form IRI.
-      Three graphs in the FROM set: glycosequence (has_motif), core (has_primary_id), motif_label (label).
-    question: Which glycans contain the N-Glycan complex motif, and what is that motif called?
-    complexity: intermediate
-    sparql: |
-      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
-      PREFIX glytoucan: <http://www.glytoucan.org/glyco/owl/glytoucan#>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-      SELECT DISTINCT ?gtcId (SAMPLE(?ml) AS ?motifLabel)
-      FROM <http://rdf.glycosmos.org/glycans/glycosequence>
-      FROM <http://rdf.glytoucan.org/core>
-      FROM <http://rdf.glycosmos.org/glycans/motif_label>
-      WHERE {
-        ?glycan glycan:has_motif <http://rdf.glycoinfo.org/glycan/G00030MO> ;   # glycan-form link IRI
-                glytoucan:has_primary_id ?gtcId .
-        <http://glycoinfo.org/motif/G00030MO> rdfs:label ?ml .                  # motif-form label IRI
-      }
-      GROUP BY ?gtcId
-      LIMIT 20
-
   - title: External database cross-references for glycans (ChEBI)
     description: |
       Retrieve external IDs via the LOWERCASE has_resource_entry predicate (the capital-R form gives only
@@ -366,69 +444,121 @@ sparql_query_examples:
       }
       LIMIT 20
 
-  - title: Glycoprotein distribution across species
-    description: Aggregate glycoprotein counts per organism using the taxonomy IRI as the grouping key.
-    question: How many glycoproteins are annotated per species?
+  - title: Human genes associated with a disease (DOID)
+    description: |
+      Disease→gene links live in the disease graph via an untyped bnode (sio:SIO_000255/sio:SIO_000001).
+      The association is MULTI-SPECIES, so the human filter (join into the glycogenes graph and require
+      glycan:has_taxon 9606) is mandatory — without it the count roughly triples. The disease's own name
+      comes from the doid graph, not the disease entity.
+    question: Which human glycogenes are associated with type 2 diabetes (DOID:9352)?
     complexity: intermediate
     sparql: |
+      PREFIX sio: <http://semanticscience.org/resource/>
       PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
-
-      SELECT ?taxon (COUNT(DISTINCT ?protein) AS ?count)
-      FROM <http://rdf.glycosmos.org/glycoprotein>
-      WHERE {
-        ?protein a glycan:Glycoprotein ;
-                 glycan:has_taxon ?taxon .
-      }
-      GROUP BY ?taxon
-      ORDER BY DESC(?count)
-      LIMIT 20
-
-  - title: Human glycosylation sites with residue position and attached glycan
-    description: |
-      Walk glycoprotein -> site -> FALDO position and attached saccharide for human proteins.
-      faldo:location/faldo:position traverses the named location node to the integer index.
-    question: What are the glycosylation positions and attached glycans on human glycoproteins?
-    complexity: advanced
-    sparql: |
-      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
-      PREFIX glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#>
-      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-      SELECT ?protein ?label ?position ?saccharide
-      FROM <http://rdf.glycosmos.org/glycoprotein>
+      SELECT DISTINCT ?gene ?geneLabel
       WHERE {
-        ?protein a glycan:Glycoprotein ;
-                 glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
-                 rdfs:label ?label ;
-                 glycoconjugate:glycosylated_at ?site .
-        ?site faldo:location/faldo:position ?position .
-        OPTIONAL { ?site glycoconjugate:has_saccharide ?saccharide }
+        GRAPH <http://rdf.glycosmos.org/disease> {
+          <http://glycosmos.org/disease/DOID:9352> sio:SIO_000255/sio:SIO_000001 ?gene .
+        }
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          ?gene rdfs:label ?geneLabel ;
+                glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
+        }
       }
       LIMIT 50
 
-  - title: Aggregate glycosylation statistics for human glycoproteins
-    description: Nested aggregation — protein count, site count, and position range — without materializing the full set.
-    question: What are the aggregate glycosylation statistics for human glycoproteins?
+  - title: Gene Ontology annotations of a glycogene
+    description: |
+      GO terms hang off the glycogene via the reused sio:SIO_000255 scaffold: each untyped attribute
+      bnode carries up:classifiedWith = a GO term (OBO IRI). GO names live in the go.owl graph, so bridge
+      to obo/go.owl for the label. 97.8% of glycogenes carry at least one GO annotation.
+    question: What GO terms is the glycogene INSR (3643) annotated with, and what are their names?
+    complexity: intermediate
+    sparql: |
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT DISTINCT ?goTerm ?goLabel
+      WHERE {
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          <http://glycosmos.org/glycogene/3643> sio:SIO_000255/up:classifiedWith ?goTerm .
+        }
+        GRAPH <http://purl.obolibrary.org/obo/go.owl> {
+          ?goTerm rdfs:label ?goLabel .
+        }
+      }
+      LIMIT 50
+
+  - title: Glycogene→glycoprotein direct join via the shared geneid node (no TogoID)
+    description: |
+      A glycogene and its glycoprotein are connected inside GlyCosmos through the shared node
+      <http://purl.uniprot.org/geneid/[GeneID]>: the glycogene rdfs:seeAlso it, and in the glycoprotein
+      graph the UniProt IRI rdfs:seeAlso the same node while the glycoprotein rdfs:seeAlso that UniProt IRI.
+      This replaces any external ID-conversion step.
+    question: For the glycogene INSR (3643), what is its GlyCosmos glycoprotein entry?
     complexity: advanced
     sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
-      PREFIX glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#>
-      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
 
-      SELECT
-        (COUNT(DISTINCT ?protein) AS ?totalProteins)
-        (COUNT(DISTINCT ?site) AS ?totalSites)
-        (MIN(?pos) AS ?minPosition)
-        (MAX(?pos) AS ?maxPosition)
-      FROM <http://rdf.glycosmos.org/glycoprotein>
+      SELECT ?geneidNode ?uniprotAC ?glycoprotein ?gpLabel
       WHERE {
-        ?protein a glycan:Glycoprotein ;
-                 glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
-                 glycoconjugate:glycosylated_at ?site .
-        OPTIONAL { ?site faldo:location/faldo:position ?pos . }
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          <http://glycosmos.org/glycogene/3643> rdfs:seeAlso ?geneidNode .
+          FILTER(STRSTARTS(STR(?geneidNode), "http://purl.uniprot.org/geneid/"))
+        }
+        GRAPH <http://rdf.glycosmos.org/glycoprotein> {
+          ?uniprotAC rdfs:seeAlso ?geneidNode .
+          ?glycoprotein a glycan:Glycoprotein ;
+                        rdfs:seeAlso ?uniprotAC ;
+                        rdfs:label ?gpLabel .
+          FILTER(STRSTARTS(STR(?uniprotAC), "http://purl.uniprot.org/uniprot/"))
+        }
       }
-      LIMIT 1
+      LIMIT 10
+
+  - title: Disease × GO localization × glycoprotein composite (4-graph integration)
+    description: |
+      The flagship integrative query: human glycoproteins whose gene is associated with a disease AND
+      annotated to a neuronal GO Cellular Component (axon/dendrite/synapse), returned with the glycoprotein.
+      Chains four graphs — disease (association), glycogenes (taxon + GO + geneid bridge), glycoprotein
+      (the geneid join) — using GO CC as a localization proxy (GlyCosmos has no tissue/expression data).
+    question: Which human type-2-diabetes glycogenes localized to neuronal compartments are registered glycoproteins?
+    complexity: advanced
+    sparql: |
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+
+      SELECT DISTINCT ?geneLabel ?glycoprotein ?gpLabel
+      WHERE {
+        VALUES ?goTerm { <http://purl.obolibrary.org/obo/GO_0030424>   # axon
+                         <http://purl.obolibrary.org/obo/GO_0030425>   # dendrite
+                         <http://purl.obolibrary.org/obo/GO_0045202> } # synapse
+        GRAPH <http://rdf.glycosmos.org/disease> {
+          <http://glycosmos.org/disease/DOID:9352> sio:SIO_000255/sio:SIO_000001 ?gene .
+        }
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          ?gene rdfs:label ?geneLabel ;
+                rdfs:seeAlso ?geneidNode ;
+                sio:SIO_000255/up:classifiedWith ?goTerm ;
+                glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
+          FILTER(STRSTARTS(STR(?geneidNode), "http://purl.uniprot.org/geneid/"))
+        }
+        GRAPH <http://rdf.glycosmos.org/glycoprotein> {
+          ?uniprotAC rdfs:seeAlso ?geneidNode .
+          ?glycoprotein a glycan:Glycoprotein ;
+                        rdfs:seeAlso ?uniprotAC ;
+                        rdfs:label ?gpLabel ;
+                        glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
+          FILTER(STRSTARTS(STR(?uniprotAC), "http://purl.uniprot.org/uniprot/"))
+        }
+      }
+      LIMIT 50
 
 cross_database_queries:
   shared_endpoint: glycosmos
@@ -436,15 +566,18 @@ cross_database_queries:
   examples: []
   notes: |
     GlyCosmos is the only database on its dedicated endpoint (https://ts.glycosmos.org/sparql);
-    federated cross-database SPARQL is not available. Bridge externally using the cross-reference
-    IRIs minted from the data:
+    federated cross-database SPARQL is not available. Much integration that would otherwise need an
+    external hop is done INTERNALLY across GlyCosmos's own named graphs (see the advanced examples):
+    - Glycogene ↔ glycoprotein: join on the shared <http://purl.uniprot.org/geneid/[GeneID]> node —
+      do NOT use TogoID or an external UniProt query.
+    - Disease → gene: sio:SIO_000255/sio:SIO_000001 in the disease graph (multi-species; taxon-filter).
+    - Gene → GO: sio:SIO_000255/up:classifiedWith in the glycogenes graph; names in obo/go.owl.
+    - Disease/GO names: obo/doid and obo/go.owl graphs on the same endpoint.
+    For genuine external federation, extract the cross-reference IRIs minted from the data:
     - Chemical/structure: glycan:has_resource_entry (LOWERCASE) -> ChEBI (OBO IRI obo:CHEBI_<id>,
-      directly federatable with ChEBI RDF), PubChem (rdf.glycoinfo.org/pubchem/{compound,substance}/),
-      GlyConnect, HMDB, GlycomeDB.
+      directly federatable with ChEBI RDF), PubChem, GlyConnect, HMDB, GlycomeDB.
     - Protein: glycoprotein rdfs:seeAlso and site sio:SIO_000772 -> UniProt (purl.uniprot.org/uniprot/<AC>).
-    - Gene: glycogene rdfs:seeAlso -> NCBI Gene (identifiers.org/ncbigene/<id>),
-      KEGG (identifiers.org/kegg.genes/hsa:<id>), UniProt geneid.
-    Extract these IRIs, then query the target RDF portal independently.
+    - Gene: glycogene rdfs:seeAlso -> NCBI Gene (identifiers.org/ncbigene/<id>), KEGG, UniProt geneid.
 
 cross_references:
   - pattern: glycan:has_resource_entry (LOWERCASE r) — external chemical/structure databases
@@ -473,24 +606,49 @@ cross_references:
       self:
         - "GlyTouCan: 101,600 (in_glycan_database = glytoucan:database_glytoucan)"
 
-  - pattern: rdfs:seeAlso / sio:SIO_000772 (glycoproteins, sites, glycogenes)
+  - pattern: rdfs:seeAlso / sio:SIO_000772 (glycoproteins, sites, glycogenes) — protein & gene xrefs
     description: |
-      Protein/gene cross-references. Glycoprotein rdfs:seeAlso (202,435 links) and site sio:SIO_000772
-      point to UniProt (purl.uniprot.org/uniprot/<AC>) plus GlyGen, PubChem, RaftProt, GPDB2. Glycogene
-      rdfs:seeAlso (850,921 links) points to NCBI Gene, KEGG, and UniProt geneid.
+      Protein/gene cross-references. Glycoprotein rdfs:seeAlso and site sio:SIO_000772 point to UniProt
+      (purl.uniprot.org/uniprot/<AC>) plus GlyGen, PubChem, HMDB, O-GlcNAc, GPDB2, GlyConnect. Glycogene
+      rdfs:seeAlso points to NCBI Gene, KEGG, and — critically — <http://purl.uniprot.org/geneid/<id>>,
+      the node shared with the UniProt IRI in the glycoprotein graph that enables the internal
+      glycogene↔glycoprotein join (no TogoID needed).
     databases:
       protein:
-        - "UniProt (purl.uniprot.org/uniprot/), GlyGen, PubChem, RaftProt, ACGG GPDB2"
+        - "UniProt (purl.uniprot.org/uniprot/), GlyGen, PubChem, HMDB, O-GlcNAc, ACGG GPDB2, GlyConnect"
       gene:
-        - "NCBI Gene (identifiers.org/ncbigene/), KEGG (identifiers.org/kegg.genes/hsa:), UniProt geneid"
+        - "NCBI Gene (identifiers.org/ncbigene/), KEGG, UniProt geneid (purl.uniprot.org/geneid/ — join bridge)"
+
+  - pattern: disease rdfs:seeAlso → DOID; glycogene sio:SIO_000255/up:classifiedWith → GO — disease & function
+    description: |
+      Disease entities (glycan:Disease, 4,372) carry rdfs:seeAlso to obo:DOID_<n>; their human-readable
+      names, synonyms, hierarchy, and MeSH/OMIM/ICD10/UMLS xrefs are in the obo/doid graph. Disease→gene
+      evidence links point to Alliance of Genome Resources (alliancegenome.org/disease/DOID:<n>). Glycogene
+      GO annotations (up:classifiedWith, 413,865 genes = 97.8%) use obo:GO_<n> IRIs with labels in the
+      obo/go.owl graph and ECO evidence codes (sio:SIO_000772). The HPA graph holds only Ensembl-Gene-ID
+      cross-reference nodes (rdf.glycoinfo.org/dbid/hpa/ENSG<n>, rdfs:Resource) — ID references, not
+      expression values.
+    databases:
+      disease:
+        - "Disease Ontology: obo:DOID_<n> (labels/hierarchy in obo/doid graph)"
+        - "Alliance of Genome Resources: alliancegenome.org/disease/DOID:<n> (evidence)"
+      function:
+        - "Gene Ontology: obo:GO_<n> via glycogene sio:SIO_000255/up:classifiedWith (labels in obo/go.owl)"
+        - "ECO evidence codes via the GO attribute bnode sio:SIO_000772"
+      expression_xref_only:
+        - "Human Protein Atlas: rdf.glycoinfo.org/dbid/hpa/ENSG<n> (Ensembl Gene ID; ID reference only, no expression data)"
 
 architectural_notes:
   query_strategy:
-    - "MANDATORY FIRST STEP: get_MIE_file('glycosmos'); read critical_warnings (predicate-case trap, dual motif IRI)"
+    - "MANDATORY FIRST STEP: get_MIE_file('glycosmos'); read critical_warnings (predicate-case trap, dual motif IRI, sio:SIO_000255 dual use, multi-species disease genes)"
     - "External glycan xrefs: use LOWERCASE glycan:has_resource_entry, not capital has_Resource_entry"
+    - "Disease→gene: sio:SIO_000255/sio:SIO_000001 in the disease graph; ALWAYS join glycogenes + filter has_taxon 9606 for human"
+    - "Disease/GO names: join obo/doid (disease) or obo/go.owl (GO term) — entity nodes carry no label"
+    - "Gene→GO: sio:SIO_000255/up:classifiedWith in the glycogenes graph (attribute bnode is untyped)"
+    - "Glycogene↔glycoprotein: join on shared <http://purl.uniprot.org/geneid/[GeneID]> node — never TogoID"
     - "Motif/sequence queries: FROM <http://rdf.glycosmos.org/glycans/glycosequence>"
     - "Motif name: bridge has_motif object (glycan/ form) to <http://glycoinfo.org/motif/[ID]> by GlyTouCan ID"
-    - "Entity IRIs use http://glycosmos.org/ (proteins/sites/genes); graphs use http://rdf.glycosmos.org/"
+    - "Entity IRIs use http://glycosmos.org/ (proteins/sites/genes/diseases); graphs use http://rdf.glycosmos.org/"
     - "Organisms: specific taxonomy IRIs (human=9606, mouse=10090, rat=10116, arabidopsis=3702)"
     - "Priority: Specific IRIs > VALUES with IRIs > typed predicates / graph navigation > bif:contains > FILTER(CONTAINS())"
 
@@ -500,11 +658,16 @@ architectural_notes:
     - "Motif definitions (gn:Motif) + labels in <http://rdf.glycosmos.org/glycans/motif_label>, motif/ IRI form"
     - "External Resource_entry nodes + lowercase has_resource_entry links in <…/glycans> and partner graphs"
     - "Glycoproteins/sites/locations in <http://rdf.glycosmos.org/glycoprotein>; FALDO ExactPosition with named LOC node"
+    - "Glycoproteins carry NO tissue/expression predicate — only type/label/seeAlso/has_taxon/glycosylated_at"
     - "sio:SIO_000772 links a site to its parent protein reference; faldo:location/faldo:position gives the index"
+    - "Diseases (glycan:Disease) in <http://rdf.glycosmos.org/disease>; disease→sio:SIO_000255→untyped bnode→sio:SIO_000001 gene + sio:SIO_000772 evidence"
+    - "sio:SIO_000255 is REUSED: disease graph → gene link (SIO_000001); glycogenes graph → GO term (up:classifiedWith)"
+    - "Glycogene rdfs:seeAlso includes <http://purl.uniprot.org/geneid/[GeneID]> — the join bridge shared with the UniProt IRI in the glycoprotein graph"
+    - "Ontology labels: DOID names in obo/doid graph, GO names in obo/go.owl graph (both on this endpoint)"
     - "Taxonomy IRI pattern: <http://identifiers.org/taxonomy/[NCBI_TaxID]>"
 
   performance:
-    - "Pin FROM <graph> for class-wide scans; the endpoint hosts 140+ graphs"
+    - "Pin FROM <graph> (or GRAPH <graph>) for class-wide scans; the endpoint hosts 140+ graphs"
     - "Targeted single-IRI lookups may omit FROM (default-graph union) — useful for cross-graph xref fetches"
     - "Apply taxonomy/type filters before joins; LIMIT all exploratory queries"
     - "bif:contains IS enabled — prefer it over FILTER(CONTAINS()) for free-text search; split property paths first"
@@ -514,21 +677,26 @@ architectural_notes:
     - "Chemical/structure: ChEBI (OBO IRI), PubChem via LOWERCASE glycan:has_resource_entry"
     - "Protein: UniProt via glycoprotein rdfs:seeAlso and site sio:SIO_000772"
     - "Gene: NCBI Gene / KEGG / UniProt geneid via glycogene rdfs:seeAlso"
-    - "Self-reference: glycan:has_Resource_entry (capital) yields only the GlyTouCan ID"
+    - "Disease: DOID via disease rdfs:seeAlso; disease→gene via sio:SIO_000255/sio:SIO_000001 (Alliance of Genome Resources)"
+    - "Function: GO via glycogene sio:SIO_000255/up:classifiedWith; labels in obo/go.owl"
+    - "Gene↔protein internal bridge: shared purl.uniprot.org/geneid node (replaces TogoID)"
 
   data_quality:
     - "GlyTouCan IDs: pattern G[0-9]{5}[A-Z]{2}; has_primary_id 99.75%"
-    - "Labels well populated now: glycoprotein 90.8%, glycogene 100% (label/description/taxon). Glycan rdfs:label <1% — use has_primary_id"
-    - "Glycoprotein/glycogene taxon coverage 90.8% / 100% — taxon filtering is reliable (was sparse in older releases)"
+    - "Labels well populated: glycoprotein 90.8%, glycogene 100% (label/description/taxon). Glycan rdfs:label <1% — use has_primary_id"
+    - "Glycoprotein/glycogene taxon coverage 90.8% / 100% — taxon filtering is reliable"
+    - "GO annotation coverage on glycogenes: 97.8% (413,865/423,164) carry ≥1 up:classifiedWith term"
+    - "Every disease (4,372) has ≥1 gene link, but gene sets are MULTI-SPECIES — always taxon-filter for a single organism"
+    - "Disease and GO attribute bnodes are UNTYPED — reachable only via the parent + sio:SIO_000255"
     - "Site position data: 98.3% have faldo:ExactPosition"
     - "Multi-valued labels: motifs (e.g. G00031MO has 3) and ChEBI Resource_entry (name + 'ChEBI') — use DISTINCT"
     - "Counts may shift between quarterly releases — re-verify with COUNT if precision is needed"
 
   text_search_justification:
     - "Number of the 7 example queries using text search: 0 — every concept used has a structured IRI or typed predicate"
-    - "Legitimate text-search fields IF needed: rdfs:label/skos:altLabel on glycan:Glycan_epitope (free-text names like 'Lewis x'); dcterms:description on glycan:Glycogene"
+    - "Legitimate text-search fields IF needed: rdfs:label/skos:altLabel on glycan:Glycan_epitope (free-text names like 'Lewis x'); dcterms:description on glycan:Glycogene; disease/GO labels in obo/doid & obo/go.owl"
     - "bif:contains is enabled (verified 2026-06-27): use ?label bif:contains \"'Lewis'\" for indexed search; FILTER(CONTAINS()) only as fallback"
-    - "Organisms, motifs, chemicals, proteins, genes all have specific IRIs — text search is not needed for them"
+    - "Organisms, motifs, chemicals, proteins, genes, diseases (DOID), and GO terms all have specific IRIs — text search is not needed for them"
 
 data_statistics:
   total_entities:
@@ -538,7 +706,8 @@ data_statistics:
     glycogenes: 423164
     glycoepitopes: 173
     motifs: 133
-  verified_date: "2026-06-27"
+    diseases: 4372
+  verified_date: "2026-06-27 (glycan/protein/gene); 2026-07-01 (diseases)"
   verification_method: "Direct COUNT(DISTINCT) queries on each named graph"
   coverage:
     glycans_with_primary_id: "99.75% (117,571/117,864)"
@@ -547,8 +716,17 @@ data_statistics:
     glycoproteins_with_label: "90.8% (139,075/153,178)"
     glycoproteins_with_taxon: "90.8% (139,075/153,178)"
     glycogenes_with_label_description_taxon: "100% (423,164/423,164)"
+    glycogenes_with_go_annotation: "97.8% (413,865/423,164)"
     sites_with_position_data: "98.3% (407,793/414,798)"
-    verified_date: "2026-06-27"
+    verified_date: "2026-06-27 (glycan/protein); 2026-07-01 (GO coverage)"
+  disease_layer:
+    disease_entities: 4372
+    disease_gene_links: 26827
+    example_doid_9352_type2_diabetes:
+      genes_all_species: 326
+      genes_human_only: 129
+    verified_date: "2026-07-01"
+    verification_method: "COUNT(DISTINCT) on the disease graph; human count via join to glycogenes has_taxon 9606"
   external_xref_glycan_counts:
     pubchem_compound: 31774
     pubchem_substance: 31774
@@ -599,7 +777,7 @@ anti_patterns:
                 glytoucan:has_primary_id ?gtcId .
       }
       LIMIT 100
-    explanation: "Motifs, organisms, chemicals, proteins, and genes all have specific IRIs. Check shape_expressions before reaching for text search."
+    explanation: "Motifs, organisms, chemicals, proteins, genes, diseases, and GO terms all have specific IRIs. Check shape_expressions before reaching for text search."
 
   - title: "Wrong Resource-Entry Predicate Case"
     problem: "Using has_Resource_entry (capital R) to fetch external IDs returns only the GlyTouCan self-reference."
@@ -640,18 +818,33 @@ anti_patterns:
       LIMIT 10
     explanation: "has_motif object = <http://rdf.glycoinfo.org/glycan/[ID]>; motif label lives on <http://glycoinfo.org/motif/[ID]>. Same ID suffix, different namespace — bridge, don't equate."
 
-  - title: "Text Search Instead of Taxonomy IRI"
-    problem: "Filtering organisms by label text when a specific NCBI Taxonomy IRI is available."
+  - title: "Using TogoID or External UniProt to Link Glycogene ↔ Glycoprotein"
+    problem: "Reaching for an external ID-conversion hop to connect a glycogene to its glycoprotein, when GlyCosmos already shares a join node internally."
     wrong_sparql: |
-      ?protein glycan:has_taxon ?taxon .
-      ?taxon rdfs:label ?label .
-      FILTER(CONTAINS(LCASE(?label), "human"))   # slow, imprecise
+      # WRONG: leaving GlyCosmos to convert NCBI GeneID -> UniProt AC via TogoID, then re-entering
+      # (extra round-trip, and it drops the association evidence that lives in GlyCosmos)
+      # e.g. togoid_convertId(ncbigene:3643 -> uniprot) then query glycoprotein/<AC>
     correct_sparql: |
-      ?protein glycan:has_taxon <http://identifiers.org/taxonomy/9606> .   # fast, exact
-    explanation: "Use taxonomy IRIs: human=9606, mouse=10090, rat=10116, Arabidopsis=3702, C.elegans=6239."
+      # CORRECT: join on the shared purl.uniprot.org/geneid node inside GlyCosmos
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      SELECT ?glycoprotein ?gpLabel
+      WHERE {
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          <http://glycosmos.org/glycogene/3643> rdfs:seeAlso ?geneidNode .
+          FILTER(STRSTARTS(STR(?geneidNode), "http://purl.uniprot.org/geneid/"))
+        }
+        GRAPH <http://rdf.glycosmos.org/glycoprotein> {
+          ?uniprotAC rdfs:seeAlso ?geneidNode .
+          ?glycoprotein a glycan:Glycoprotein ; rdfs:seeAlso ?uniprotAC ; rdfs:label ?gpLabel .
+          FILTER(STRSTARTS(STR(?uniprotAC), "http://purl.uniprot.org/uniprot/"))
+        }
+      }
+      LIMIT 10
+    explanation: "The glycogene and the UniProt IRI both rdfs:seeAlso <http://purl.uniprot.org/geneid/[GeneID]>; that node is the join key. Staying inside GlyCosmos is one query and keeps the disease/GO context attached."
 
 common_errors:
-  - error: "Empty result fetching external glycan IDs"
+  - error: "Empty result fetching external glycan IDs, or a motif label"
     causes:
       - "Used has_Resource_entry (capital R) — returns only the GlyTouCan self-reference"
       - "Restricted FROM to one graph while the external Resource_entry node lives in a partner graph"
@@ -661,19 +854,22 @@ common_errors:
       - "Omit FROM for a single-glycan xref fetch, or include the partner graphs (glycome-db, jcggdb_aist, bcsdb)"
       - "Bridge motif IRIs by GlyTouCan ID: has_motif -> glycan/[ID]; label -> http://glycoinfo.org/motif/[ID]"
 
-  - error: "Query timeout or empty class-wide scan"
+  - error: "Disease query returns mixed-species genes, over-counts, or shows no disease name"
     causes:
-      - "FROM clause missing on a class-wide scan — searches 140+ graphs"
-      - "Wrong entity IRI base (http://rdf.glycosmos.org/glycoprotein/<AC> instead of http://glycosmos.org/...)"
+      - "Omitted the taxon filter — disease→gene sets mix human/mouse/rat (e.g. 326 vs 129 human for DOID:9352)"
+      - "Looked for rdfs:label on the disease entity — it has none"
+      - "Assumed sio:SIO_000255 means the same thing in the disease and glycogenes graphs"
+    solutions:
+      - "Join the gene into <…/glycogenes> and filter glycan:has_taxon <http://identifiers.org/taxonomy/9606>"
+      - "Get the disease name from obo:DOID_<n> rdfs:label in the <http://purl.obolibrary.org/obo/doid> graph"
+      - "Branch on the attribute bnode's inner predicate: sio:SIO_000001 = gene (disease graph); up:classifiedWith = GO (glycogenes graph)"
+
+  - error: "Empty or wrong glycogene↔glycoprotein join, or timeout on a class-wide scan"
+    causes:
+      - "Tried to equate the NCBI GeneID IRI with a UniProt AC directly, or used TogoID instead of the internal bridge"
+      - "Missing FROM/GRAPH on a class-wide scan (140+ graphs), or wrong entity IRI base (rdf.glycosmos.org instead of glycosmos.org)"
       - "No LIMIT on the 414K-site or 423K-gene graphs"
     solutions:
-      - "Pin FROM <graph>; entities use http://glycosmos.org/, graphs use http://rdf.glycosmos.org/"
-      - "Add LIMIT; pre-filter by glycan:has_taxon or rdf:type before aggregation"
-      - "Use nested SELECT for complex aggregations"
-
-  - error: "Duplicate rows when retrieving motif or ChEBI labels"
-    causes:
-      - "A motif IRI carries multiple rdfs:label synonyms (e.g. G00031MO has 3)"
-      - "A ChEBI Resource_entry carries both the systematic name and the literal 'ChEBI'"
-    solutions:
-      - "Use SELECT DISTINCT, or aggregate with SAMPLE()/GROUP_CONCAT() and GROUP BY the entity"
+      - "Join on the shared <http://purl.uniprot.org/geneid/[GeneID]> node (glycogene rdfs:seeAlso ↔ UniProt IRI rdfs:seeAlso)"
+      - "Pin GRAPH/FROM <graph>; entities use http://glycosmos.org/, graphs use http://rdf.glycosmos.org/"
+      - "Add LIMIT; pre-filter by glycan:has_taxon or rdf:type before aggregation; nested SELECT for aggregations"
