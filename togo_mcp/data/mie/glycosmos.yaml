@@ -9,8 +9,17 @@ schema_info:
     disease→glycogene associations from Alliance of Genome Resources + GDGDB) and
     Gene Ontology annotations on glycogenes, and links genes to their glycoproteins
     internally via a shared UniProt geneid node (no external ID conversion needed).
-    Primary uses: glycobiology research, biomarker discovery, drug-target
-    identification, disease-gene and gene-function analysis.
+    The endpoint additionally hosts a CAZy layer (821 Carbohydrate-Active enZyme
+    families — glycoside hydrolases, glycosyltransferases, polysaccharide lyases,
+    carbohydrate esterases, auxiliary activities, carbohydrate-binding modules — over
+    ~870k UniProt enzyme sequences with EC numbers) and a Human Protein Atlas (HPA)
+    tissue/cell-type expression layer (IHC levels High/Medium/Low/Not detected keyed
+    by Ensembl Gene ID + gene symbol). ~60 named graphs in total; this MIE documents
+    the glycan/protein/gene/disease/GO backbone plus the CAZy and HPA layers in depth
+    and catalogs the remaining specialist graphs (see schema_info.graphs).
+    Primary uses: glycobiology research, carbohydrate-active enzyme discovery,
+    biomarker discovery, drug-target identification, disease-gene and gene-function
+    analysis, tissue-expression profiling of glycogenes.
   keywords:
     - glycan
     - glycosylation
@@ -33,6 +42,17 @@ schema_info:
     - go annotation
     - disease gene
     - doid
+    - cazy
+    - carbohydrate-active enzyme
+    - glycoside hydrolase
+    - glycosyltransferase
+    - polysaccharide lyase
+    - carbohydrate-binding module
+    - ec number
+    - glycolipid
+    - tissue expression
+    - human protein atlas
+    - hpa
   categories:
     - glycan
     - disease
@@ -40,7 +60,13 @@ schema_info:
     - protein
   endpoint: https://ts.glycosmos.org/sparql
   base_uri: http://rdf.glycoinfo.org/
+  # ~60 named graphs on this endpoint (each with a companion <graph>/void descriptor
+  # carrying void:triples — query the /void graphs for exact sizes). The graphs below
+  # are grouped: FULLY DOCUMENTED (shapes + examples in this MIE) first, then a
+  # CATALOG of the remaining specialist graphs with one-line roles so nothing is
+  # invisible. Triple counts (~) are from the VoID descriptors, verified 2026-07-01.
   graphs:
+    # ── FULLY DOCUMENTED (backbone) ──────────────────────────────────────────────
     # Glycan core (GlyTouCan): type, has_primary_id, has_Resource_entry (self-reference)
     - http://rdf.glytoucan.org/core
     # Glycan sequences (WURCS/IUPAC/GlycoCT) AND has_motif links
@@ -63,8 +89,16 @@ schema_info:
     - http://purl.obolibrary.org/obo/doid
     # Gene Ontology — labels for the obo:GO_ terms used in glycogene GO annotations
     - http://purl.obolibrary.org/obo/go.owl
-    # Human Protein Atlas cross-reference nodes (Ensembl Gene ID keyed, ID-only)
+    # CAZy: 821 Carbohydrate-Active enZyme families (dbid/cazy/<FAM>) + ~870k UniProt
+    # enzyme sequences (up:Protein) with EC numbers. ~16.5M triples. (CazyFamilyShape/CazyProteinShape)
+    - http://rdf.glycosmos.org/cazy
+    # Human Protein Atlas: IHC tissue/cell-type EXPRESSION (glycodm:tissue/cellType/level)
+    # keyed by Ensembl Gene ID + gene symbol. ~4.8M triples. (HpaGeneShape/HpaExpressionShape)
     - http://rdf.glycosmos.org/HPA
+    # Glycolipids: 6,046 LIPID MAPS-keyed glycan:Glycolipid entities → LipidMaps + PubChem. ~62k triples.
+    - http://rdf.glycosmos.org/glycolipid
+    # Glycan trivial/common names (GlycoNAVI CAN entries, rdfs:label "saccharide GD1a"…). ~5.7k triples.
+    - http://rdf.glycosmos.org/glycans/trivialname
     # Partner cross-reference graphs (additional external Resource_entry nodes)
     - http://rdf.glytoucan.org/partner/glycome-db
     - http://rdf.glytoucan.org/partner/jcggdb_aist
@@ -72,12 +106,64 @@ schema_info:
     - http://rdf.glycosmos.org/glycans/glycobase
     - http://rdf.glycosmos.org/sugarbind
     - http://rdf.glycosmos.org/lectin
+    # ── CATALOG (present on the endpoint; not shaped here — probe before use) ───────
+    # Glycan structure/derivation graphs:
+    - http://rdf.glycosmos.org/glycans/wurcsrdf        # ~50M: atom-level WURCS RDF (MonosaccharideDB); very low-level
+    - http://rdf.glycosmos.org/glycans/subsumption     # ~1.1M: glycan substructure/subsumption (is-a / contains) relations
+    - http://rdf.glycosmos.org/glycans/taxon           # ~172k: glycan↔source-organism (has_taxon) links
+    - http://rdf.glycosmos.org/glycans/glycostore      # ~15k: GlycoStore (HPLC/CE glycan analytics)
+    - http://rdf.glycosmos.org/glycans/glycopaint      #        GlycoPAINT structure images
+    - http://rdf.glycosmos.org/mcaw_glycans            # MCAW-DB glycan alignment (small)
+    # Protein / enzyme / interaction graphs:
+    - http://rdf.glycoinfo.org/gpdb                    # ~3M: GlycoProtDB (glycoprotein predictions)
+    - http://rdf.glycosmos.org/psicquic                # ~24M: PSICQUIC molecular interactions
+    - http://rdf.glycosmos.org/matrixdb                # ~210k: MatrixDB extracellular-matrix interactions
+    - http://rdf.glycosmos.org/Rhea                    # ~5.3M: Rhea biochemical reactions (glyco-relevant subset)
+    - http://rdf.glycosmos.org/lipidmaps_gene          # ~57k: LIPID MAPS gene↔lipid associations
+    # Gene / genome / expression graphs:
+    - http://rdf.glycosmos.org/hgnc                    # ~43k: HGNC human gene nomenclature
+    - http://rdf.glycosmos.org/mbgd                    # ~30M: MBGD microbial-genome orthologs
+    - http://rdf.glycosmos.org/kegg                    # ~2M: KEGG genes/orthology
+    - http://rdf.glycosmos.org/chipatlas_genes         # ~53k: ChIP-Atlas gene targets
+    - http://rdf.glycosmos.org/chipatlas_colo          # ~18k: ChIP-Atlas colocalization
+    # Pathway graphs:
+    - http://rdf.glycosmos.org/pathway                 # ~868k: GlyCosmos pathway model
+    - http://rdf.glycosmos.org/pathway/inference       # ~326k: inferred pathway links
+    - http://rdf.glycosmos.org/pathway_reactome        # ~20.5M: Reactome pathways
+    - http://rdf.glycosmos.org/Pathways_LPS            # ~43k: LPS biosynthesis pathways
+    # Disease / phenotype ontologies (beyond DOID):
+    - http://rdf.glycosmos.org/mondo                   # ~2.5M: MONDO disease ontology
+    - http://rdf.glycosmos.org/hpo                     # ~1M: Human Phenotype Ontology
+    - http://rdf.glycosmos.org/disease/pubchem         # ~13k: disease↔PubChem
+    - http://rdf.glycosmos.org/glycovid_pubchem        # ~2.8M: GlycoVID (COVID-19 glyco) PubChem
+    # Anatomy / taxonomy / evidence ontologies:
+    - http://purl.obolibrary.org/obo/uberon            # ~1.1M: UBERON anatomy
+    - http://rdf.glycosmos.org/uberon                  # UBERON (GlyCosmos copy)
+    - http://ddbj.nig.ac.jp/ontologies/taxonomy/       # ~37.7M: NCBI/DDBJ taxonomy ontology
+    - http://purl.obolibrary.org/obo/eco.owl           # ~75k: Evidence & Conclusion Ontology
+    - http://semanticscience.org/ontology/sio.owl      # ~16k: SIO upper ontology
+    # Lectin / binding / array graphs:
+    - http://rdf.glycosmos.org/carbogrove              # ~1.3M: CarboGrove glycan-array binding
+    - http://rdf.glycoinfo.org/lfdb                    # ~266k: Lectin Frontier DB (LfDB) affinities
+    - http://rdf.glycoinfo.org/gpdb2gtc                # GlycoProtDB↔GlyTouCan mapping
+    # Species-/domain-specific glyco graphs (glycoinfo.org partners):
+    - http://rdf.glycoinfo.org/gdgdb                   # GDGDB (glyco-disease genes)
+    - http://rdf.glycoinfo.org/ggdb                    # ~86k: GGDB (glycogene DB)
+    - http://rdf.glycoinfo.org/ggdonto                 # GGD ontology
+    - http://rdf.glycoinfo.org/paconto                 # ~82k: pathogen-adhesin/glycan ontology
+    - http://rdf.glycosmos.org/plantgarden             # ~247k: PlantGARDEN plant glyco
+    - http://rdf.glycosmos.org/glycoparadb             # GlycoParaDB (parasite glycans)
+    - http://www.flyglycodb.org/fgdb                   # ~9k: FlyGlycoDB (Drosophila)
+    - http://rdf.glycosmos.org/glycomeatlas            # GlycomeAtlas tissue glycomics
+    - http://totalglycome.glycosmos.org                # ~24k: TotalGlycome
+    - http://rdf.glycosmos.org/pubmed                  # ~66k: glyco literature index
+    - http://rdf.glycosmos.org/pubchem                 # ~23M: PubChem (glyco compounds)
   kw_search_tools:
     - sparql
   version:
-    mie_version: "4.0"
+    mie_version: "4.1"
     mie_created: "2026-07-01"
-    data_version: "2025.04 snapshot (glycan/protein counts verified 2026-06-27; disease/GO layer + gene-protein bridge verified 2026-07-01)"
+    data_version: "2025.04 snapshot (glycan/protein counts verified 2026-06-27; disease/GO layer + gene-protein bridge verified 2026-07-01; CAZy + HPA-expression layers + full graph catalog added and verified 2026-07-01)"
     update_frequency: "Quarterly"
   access:
     backend: "Virtuoso (bif:contains IS enabled — verified 2026-06-27)"
@@ -142,13 +228,24 @@ critical_warnings: |
     http://rdf.glycosmos.org/ (e.g. <http://rdf.glycosmos.org/glycoprotein>). Do not write
     http://rdf.glycosmos.org/glycoprotein/<AC> as an entity IRI — it returns 0 rows.
     Glycans and motif links use http://rdf.glycoinfo.org/.
-  - NO TISSUE / EXPRESSION DATA ON GLYCOPROTEINS: glycan:Glycoprotein carries only type,
-    rdfs:label, rdfs:seeAlso, glycan:has_taxon, and glycoconjugate:glycosylated_at — there is NO
-    organ/tissue/expression-level predicate. The HPA graph holds only Ensembl-Gene-ID cross-
-    reference nodes (rdfs:Resource), NOT expression measurements. For a "where is it expressed"
-    question the only structured proxy inside GlyCosmos is GO Cellular Component
-    (up:classifiedWith → obo:GO_ localization terms such as axon/dendrite/synapse) on the
-    glycogene; true expression profiles require an external resource (HPA, Bgee).
+  - TISSUE EXPRESSION LIVES IN THE HPA GRAPH, NOT ON THE GLYCOPROTEIN (v4.1 correction): the
+    glycan:Glycoprotein entity carries NO expression predicate, but <http://rdf.glycosmos.org/HPA>
+    holds Human Protein Atlas IHC expression — a gene resource <…/dbid/hpa/ENSG[0-9]+> carries
+    glycodm:geneSymbol and rdfs:seeAlso → 1.19M UNTYPED bnodes, each with glycodm:tissue,
+    glycodm:cellType, glycodm:level ("High"/"Medium"/"Low"/"Not detected", xsd:string). (A prior
+    version wrongly called HPA "ID cross-references only, no expression" — false.) Join to a
+    glycogene by SYMBOL (glycodm:geneSymbol == glycogene rdfs:label; HPA is Ensembl-keyed, glycogene
+    NCBI-GeneID-keyed — symbols aren't unique, so scope to the specific gene). Genome-wide (13,468
+    genes), not glyco-only. GO Cellular Component on the glycogene is a complementary localization proxy.
+  - CAZY FAMILY ↔ PROTEIN JOIN IS INDIRECT (via GenBank accession, NOT a direct link): in
+    <http://rdf.glycosmos.org/cazy> a family <…/dbid/cazy/[FAM]> (an up:Resource — NOT a glycan class;
+    FAM = GH13, GT2, PL1, CE1, AA9, CBM48…) carries dcterms:title (name), dcterms:description
+    (activities+EC), rdfs:label (CAZy CLASS e.g. "Glycoside Hydrolases (GHs)"), rdfs:seeAlso → member
+    <…/dbid/genbank/[ACC]>. The ~870k UniProt enzymes (up:Protein) are SEPARATE nodes with rdfs:label,
+    up:enzyme (EC IRI), rdfs:seeAlso → <…/embl-cds/[ACC]>. Family→protein REQUIRES the bridge:
+    family rdfs:seeAlso ?gb ; ?gb owl:sameAs ?emblcds ; ?prot rdfs:seeAlso ?emblcds . There is no
+    family predicate on the protein and no reverse link (naive queries return nothing). CAZy proteins
+    carry NO glycan:has_taxon (taxon is on the genbank member node — protein taxon filters return 0).
   - LABEL/MULTIPLICITY: A single motif IRI and a single external Resource_entry may carry MULTIPLE
     rdfs:label values (synonyms; ChEBI entries carry both the systematic name and "ChEBI"). Use
     DISTINCT or aggregate (SAMPLE/GROUP_CONCAT) when retrieving labels to avoid duplicate rows.
@@ -173,6 +270,8 @@ shape_expressions: |
   PREFIX up: <http://purl.uniprot.org/core/>
   PREFIX faldo: <http://biohackathon.org/resource/faldo#>
   PREFIX gn: <http://glyconavi.org/owl#>
+  PREFIX owl: <http://www.w3.org/2002/07/owl#>
+  PREFIX glycodm: <http://glycodm/ontology#>   # note: non-dereferenceable host, but this IS the stored namespace
 
   # 117,864 glycans. Entity IRI: <http://rdf.glycoinfo.org/glycan/G[0-9]{5}[A-Z]{2}>
   # type + has_primary_id live in <http://rdf.glytoucan.org/core>.
@@ -293,6 +392,63 @@ shape_expressions: |
     rdfs:label xsd:string +                      # one OR MORE labels (synonyms) per motif
   }
 
+  # 821 CAZy families. IRI: <http://rdf.glycoinfo.org/dbid/cazy/[FAM]> (FAM = GH13, GT2, PL1, CE1,
+  # AA9, CBM48…). In <http://rdf.glycosmos.org/cazy>. Typed up:Resource (NOT a glycan class).
+  # By class: 430 GH, 135 GT, 107 PL, 102 CBM, 27 AA, 20 CE.
+  <CazyFamilyShape> {
+    a [ up:Resource ] ;
+    dcterms:title xsd:string ;                   # family name e.g. "Glycoside Hydrolase Family 13" (typed xsd:string)
+    dcterms:description xsd:string ? ;           # activities + EC list, ';'-separated (typed xsd:string; ~most families)
+    rdfs:label xsd:string ;                      # CAZy CLASS name e.g. "Glycoside Hydrolases (GHs)"
+    rdfs:seeAlso IRI *                           # member sequences <http://rdf.glycoinfo.org/dbid/genbank/[ACC]>
+  }
+
+  # ~869,966 CAZy enzyme sequences. Entity IRI: <http://purl.uniprot.org/uniprot/[AC]>.
+  # In <http://rdf.glycosmos.org/cazy>. NO glycan:has_taxon here (taxon is on the genbank member
+  # node). Join to a family ONLY via the genbank/embl-cds bridge (see critical_warnings).
+  <CazyProteinShape> {
+    a [ up:Protein ] ;
+    rdfs:label xsd:string ;                      # protein name e.g. "Alpha-amylase" (100%: 869,966/869,966)
+    up:enzyme IRI * ;                            # EC number <http://purl.uniprot.org/enzyme/[EC]>; 41% (357,511)
+    rdfs:seeAlso IRI +                           # <http://purl.uniprot.org/embl-cds/[ACC]> (join key) + geneid; 100%
+  }
+
+  # 13,468 HPA gene records. Entity IRI: <http://rdf.glycoinfo.org/dbid/hpa/ENSG[0-9]+> (Ensembl Gene ID).
+  # In <http://rdf.glycosmos.org/HPA>. Typed rdfs:Resource. Genome-wide (not glyco-only).
+  <HpaGeneShape> {
+    a [ rdfs:Resource ] ;
+    glycodm:geneSymbol xsd:string ;              # HGNC gene symbol e.g. "INSR" (join key to glycogene rdfs:label)
+    rdfs:seeAlso ( @<HpaExpressionShape> OR IRI ) *   # POLYMORPHIC: mostly UNTYPED expression bnodes
+                                                 # (one per tissue/cell IHC measurement); a minority are
+                                                 # dbid/hpa/ IRI cross-refs. Filter isBlank() for expression.
+  }
+
+  # Untyped blank node carrying ONE HPA IHC expression measurement. Reached via HPA gene rdfs:seeAlso.
+  # In <http://rdf.glycosmos.org/HPA>. No rdf:type — reachable only through the parent gene resource.
+  <HpaExpressionShape> {
+    glycodm:tissue xsd:string ;                  # tissue/organ e.g. "cerebral cortex", "pancreas"
+    glycodm:cellType xsd:string ? ;              # cell type e.g. "neuronal cells", "glandular cells"
+    glycodm:level xsd:string                     # "High" | "Medium" | "Low" | "Not detected" (typed xsd:string)
+  }
+
+  # 6,046 glycolipids. Entity IRI: <http://glycosmos.org/glycolipid/[LIPIDMAPS_ID]> (e.g. LMSP0601FN07).
+  # In <http://rdf.glycosmos.org/glycolipid>. Essentially a cross-reference hub (no rdfs:label).
+  # NOTE: the owl:Class nodes in this graph are the LipidMaps seeAlso TARGETS, not the glycolipid
+  # entities themselves — the glycan:Glycolipid entity is typed glycan:Glycolipid only.
+  <GlycolipidShape> {
+    a [ glycan:Glycolipid ] ;
+    rdfs:seeAlso IRI +                           # LipidMaps <https://www.lipidmaps.org/rdf/[ID]> + PubChem compound
+  }
+
+  # ~106 glycan trivial-name records (GlycoNAVI CAN). IRI: <http://rdf.glyconavi.org/CAN/CAN[0-9]+/[name]/carbohydrate>.
+  # In <http://rdf.glycosmos.org/glycans/trivialname>. The trivial name is embedded in rdfs:label as
+  # "saccharide <NAME>" (e.g. "saccharide GD1a", "saccharide GM2" — gangliosides). Typed glycan/saccharide.
+  <TrivialNameShape> {
+    a [ <http://purl.jp/bio/12/glyco/glycan/saccharide> ] ;
+    rdfs:label xsd:string ;                      # "saccharide <trivialName>"
+    <http://purl.jp/bio/12/glyco/glycan/has_glycosequence> IRI *   # sequence node(s)
+  }
+
 sample_rdf_entries:
   rdf_prefixes: |
     @prefix glycan: <http://purl.jp/bio/12/glyco/glycan#> .
@@ -306,6 +462,8 @@ sample_rdf_entries:
     @prefix dcterms: <http://purl.org/dc/terms/> .
     @prefix sio: <http://semanticscience.org/resource/> .
     @prefix faldo: <http://biohackathon.org/resource/faldo#> .
+    @prefix owl: <http://www.w3.org/2002/07/owl#> .
+    @prefix glycodm: <http://glycodm/ontology#> .
   entries:
     - title: Glycan with self-reference, external cross-references, and a WURCS sequence
       description: |
@@ -385,6 +543,42 @@ sample_rdf_entries:
           rdfs:label "Insulin receptor" ;
           glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
           rdfs:seeAlso <http://purl.uniprot.org/uniprot/P06213> .
+
+    - title: CAZy family and one of its member enzymes (indirect GenBank→sameAs→embl-cds join)
+      description: |
+        In the cazy graph. A CAZy family node (up:Resource, NOT a glycan class) carries dcterms:title
+        (family name), rdfs:label (the CAZy CLASS name), dcterms:description (activities+EC), and
+        rdfs:seeAlso → member GenBank accession nodes. The ~870k UniProt enzyme sequences are SEPARATE
+        up:Protein nodes carrying an EC number and rdfs:seeAlso → an embl-cds node. The family↔protein
+        link is INDIRECT: family → genbank/[ACC] → (owl:sameAs) → embl-cds/[ACC] ← (rdfs:seeAlso) protein.
+      rdf: |
+        # cazy graph:
+        <http://rdf.glycoinfo.org/dbid/cazy/GH13> a up:Resource ;
+          dcterms:title "Glycoside Hydrolase Family 13" ;
+          rdfs:label "Glycoside Hydrolases (GHs)" ;                 # CAZy class name
+          rdfs:seeAlso <http://rdf.glycoinfo.org/dbid/genbank/AHZ20761.1> .
+
+        <http://rdf.glycoinfo.org/dbid/genbank/AHZ20761.1> a up:Resource ;
+          owl:sameAs <http://purl.uniprot.org/embl-cds/AHZ20761.1> .   # bridge to the UniProt-side accession
+
+        <http://purl.uniprot.org/uniprot/A0A024BSQ8> a up:Protein ;
+          rdfs:label "Alpha-amylase" ;
+          up:enzyme <http://purl.uniprot.org/enzyme/3.2.1.1> ;         # EC number
+          rdfs:seeAlso <http://purl.uniprot.org/embl-cds/AHZ20761.1> . # same accession → joins to GH13
+
+    - title: HPA tissue/cell-type expression for a gene (INSR / ENSG00000171105)
+      description: |
+        In the HPA graph. Corrects the earlier "no expression data" claim. A gene resource keyed by
+        Ensembl Gene ID carries glycodm:geneSymbol (the join key to a glycogene's rdfs:label) and
+        rdfs:seeAlso → UNTYPED expression bnodes, each an IHC measurement with tissue, cell type, and
+        a level ("High"/"Medium"/"Low"/"Not detected", stored as xsd:string).
+      rdf: |
+        <http://rdf.glycoinfo.org/dbid/hpa/ENSG00000171105> a rdfs:Resource ;
+          glycodm:geneSymbol "INSR" ;
+          rdfs:seeAlso [
+            glycodm:tissue "testis" ;
+            glycodm:cellType "Leydig cells" ;
+            glycodm:level "Medium" ] .
 
 sparql_query_examples:
   - title: Count human glycoproteins
@@ -560,6 +754,82 @@ sparql_query_examples:
       }
       LIMIT 50
 
+  - title: CAZy families of a given class, with their EC/activity descriptions
+    description: |
+      CAZy family nodes live in the cazy graph as up:Resource with dcterms:title (family name),
+      rdfs:label (the CAZy CLASS, e.g. "GlycosylTransferases (GTs)"), and dcterms:description
+      (activities + EC numbers). Filter by the class label to list all families of one class.
+    question: List the glycosyltransferase (GT) families in CAZy with their activities.
+    complexity: intermediate
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+
+      SELECT ?family ?title ?description
+      FROM <http://rdf.glycosmos.org/cazy>
+      WHERE {
+        ?family rdfs:label "GlycosylTransferases (GTs)" ;
+                dcterms:title ?title .
+        OPTIONAL { ?family dcterms:description ?description }
+      }
+      ORDER BY ?title
+      LIMIT 50
+
+  - title: UniProt enzyme sequences in a CAZy family (indirect GenBank→embl-cds join)
+    description: |
+      The family↔protein link is INDIRECT — there is no direct predicate. Bridge from the family
+      to its member GenBank accessions (rdfs:seeAlso), map each to the UniProt-side embl-cds node
+      (owl:sameAs), then pick the up:Protein that rdfs:seeAlso that same embl-cds node. Returns the
+      protein AC, name, and EC number. GH13 (α-amylase family) resolves to 2,867 proteins.
+    question: Which UniProt enzymes are in CAZy family GH13, and what are their EC numbers?
+    complexity: advanced
+    sparql: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+      SELECT DISTINCT ?protein ?name ?ec
+      FROM <http://rdf.glycosmos.org/cazy>
+      WHERE {
+        <http://rdf.glycoinfo.org/dbid/cazy/GH13> rdfs:seeAlso ?gb .
+        ?gb owl:sameAs ?emblcds .
+        ?protein a up:Protein ;
+                 rdfs:seeAlso ?emblcds ;
+                 rdfs:label ?name .
+        OPTIONAL { ?protein up:enzyme ?ec }
+      }
+      LIMIT 50
+
+  - title: HPA tissue expression for a glycogene, joined by gene symbol
+    description: |
+      GlyCosmos DOES hold HPA IHC expression (in the HPA graph) — the glycoprotein entity does not.
+      Join the glycogene (keyed by NCBI GeneID, rdfs:label = symbol) to the HPA gene record
+      (glycodm:geneSymbol) BY SYMBOL, then read the expression bnodes (tissue/cellType/level).
+      level is one of "High"/"Medium"/"Low"/"Not detected" (xsd:string). INSR (3643) has 43 tissues.
+    question: In which tissues is the glycogene INSR expressed at Medium level according to HPA?
+    complexity: intermediate
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX glycodm: <http://glycodm/ontology#>
+
+      SELECT DISTINCT ?tissue ?cellType ?level
+      WHERE {
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          <http://glycosmos.org/glycogene/3643> rdfs:label ?sym ;
+              glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
+        }
+        GRAPH <http://rdf.glycosmos.org/HPA> {
+          ?gene glycodm:geneSymbol ?sym ;
+                rdfs:seeAlso ?exp .
+          ?exp glycodm:tissue ?tissue ;
+               glycodm:level ?level .
+          OPTIONAL { ?exp glycodm:cellType ?cellType }
+          FILTER(?level = "Medium")
+        }
+      }
+      LIMIT 50
+
 cross_database_queries:
   shared_endpoint: glycosmos
   co_located_databases: [glycosmos]
@@ -625,9 +895,7 @@ cross_references:
       names, synonyms, hierarchy, and MeSH/OMIM/ICD10/UMLS xrefs are in the obo/doid graph. Disease→gene
       evidence links point to Alliance of Genome Resources (alliancegenome.org/disease/DOID:<n>). Glycogene
       GO annotations (up:classifiedWith, 413,865 genes = 97.8%) use obo:GO_<n> IRIs with labels in the
-      obo/go.owl graph and ECO evidence codes (sio:SIO_000772). The HPA graph holds only Ensembl-Gene-ID
-      cross-reference nodes (rdf.glycoinfo.org/dbid/hpa/ENSG<n>, rdfs:Resource) — ID references, not
-      expression values.
+      obo/go.owl graph and ECO evidence codes (sio:SIO_000772).
     databases:
       disease:
         - "Disease Ontology: obo:DOID_<n> (labels/hierarchy in obo/doid graph)"
@@ -635,8 +903,25 @@ cross_references:
       function:
         - "Gene Ontology: obo:GO_<n> via glycogene sio:SIO_000255/up:classifiedWith (labels in obo/go.owl)"
         - "ECO evidence codes via the GO attribute bnode sio:SIO_000772"
-      expression_xref_only:
-        - "Human Protein Atlas: rdf.glycoinfo.org/dbid/hpa/ENSG<n> (Ensembl Gene ID; ID reference only, no expression data)"
+
+  - pattern: CAZy — carbohydrate-active enzymes (cazy graph; see critical_warnings for the join)
+    description: "821 families (6 classes: 430 GH, 135 GT, 107 PL, 102 CBM, 27 AA, 20 CE) over ~870k UniProt enzymes; 357,511 (41%) carry an EC number."
+    databases:
+      enzyme:
+        - "UniProt (purl.uniprot.org/uniprot/<AC>) + EC (purl.uniprot.org/enzyme/<EC>)"
+        - "CAZy families (rdf.glycoinfo.org/dbid/cazy/<FAM>); members via genbank/embl-cds bridge"
+
+  - pattern: HPA — Human Protein Atlas tissue expression (HPA graph; join to glycogene by symbol)
+    description: "13,468 genes, 1.19M IHC measurement bnodes (glycodm:tissue/cellType/level); genome-wide, not glyco-only."
+    databases:
+      expression:
+        - "rdf.glycoinfo.org/dbid/hpa/ENSG<n> (Ensembl Gene ID) + glycodm:geneSymbol"
+
+  - pattern: glycolipid — LIPID MAPS + PubChem (glycolipid graph; cross-reference hub)
+    description: "6,046 glycan:Glycolipid entities keyed by LIPID MAPS ID (glycosmos.org/glycolipid/<LM_ID>)."
+    databases:
+      lipid:
+        - "LipidMaps (lipidmaps.org/rdf/<LM_ID>) + PubChem Compound (rdf.glycoinfo.org/pubchem/compound/CID<n>)"
 
 architectural_notes:
   query_strategy:
@@ -648,23 +933,22 @@ architectural_notes:
     - "Glycogene↔glycoprotein: join on shared <http://purl.uniprot.org/geneid/[GeneID]> node — never TogoID"
     - "Motif/sequence queries: FROM <http://rdf.glycosmos.org/glycans/glycosequence>"
     - "Motif name: bridge has_motif object (glycan/ form) to <http://glycoinfo.org/motif/[ID]> by GlyTouCan ID"
+    - "CAZy families: FROM <http://rdf.glycosmos.org/cazy>; filter by rdfs:label (CAZy class) or fetch dbid/cazy/<FAM> directly"
+    - "CAZy family→protein: INDIRECT — family rdfs:seeAlso ?gb; ?gb owl:sameAs ?emblcds; ?prot rdfs:seeAlso ?emblcds (no direct link)"
+    - "CAZy proteins have NO has_taxon — filter the genbank member node for organism, not the up:Protein"
+    - "Tissue expression: HPA graph (glycodm:tissue/cellType/level); join glycogene→HPA by SYMBOL (glycodm:geneSymbol == glycogene rdfs:label)"
     - "Entity IRIs use http://glycosmos.org/ (proteins/sites/genes/diseases); graphs use http://rdf.glycosmos.org/"
     - "Organisms: specific taxonomy IRIs (human=9606, mouse=10090, rat=10116, arabidopsis=3702)"
     - "Priority: Specific IRIs > VALUES with IRIs > typed predicates / graph navigation > bif:contains > FILTER(CONTAINS())"
 
-  schema_design:
-    - "Glycan core (type, has_primary_id, capital has_Resource_entry) in <http://rdf.glytoucan.org/core>"
-    - "Sequences (5 formats) and has_motif links in <http://rdf.glycosmos.org/glycans/glycosequence>"
-    - "Motif definitions (gn:Motif) + labels in <http://rdf.glycosmos.org/glycans/motif_label>, motif/ IRI form"
-    - "External Resource_entry nodes + lowercase has_resource_entry links in <…/glycans> and partner graphs"
-    - "Glycoproteins/sites/locations in <http://rdf.glycosmos.org/glycoprotein>; FALDO ExactPosition with named LOC node"
-    - "Glycoproteins carry NO tissue/expression predicate — only type/label/seeAlso/has_taxon/glycosylated_at"
-    - "sio:SIO_000772 links a site to its parent protein reference; faldo:location/faldo:position gives the index"
-    - "Diseases (glycan:Disease) in <http://rdf.glycosmos.org/disease>; disease→sio:SIO_000255→untyped bnode→sio:SIO_000001 gene + sio:SIO_000772 evidence"
-    - "sio:SIO_000255 is REUSED: disease graph → gene link (SIO_000001); glycogenes graph → GO term (up:classifiedWith)"
-    - "Glycogene rdfs:seeAlso includes <http://purl.uniprot.org/geneid/[GeneID]> — the join bridge shared with the UniProt IRI in the glycoprotein graph"
-    - "Ontology labels: DOID names in obo/doid graph, GO names in obo/go.owl graph (both on this endpoint)"
-    - "Taxonomy IRI pattern: <http://identifiers.org/taxonomy/[NCBI_TaxID]>"
+  schema_design:   # per-graph shapes are in shape_expressions; only cross-graph facts here
+    - "ENTITY base http://glycosmos.org/ (proteins/sites/genes/diseases/glycolipids) ≠ GRAPH base http://rdf.glycosmos.org/; glycans/motifs use http://rdf.glycoinfo.org/"
+    - "sio:SIO_000255 is REUSED: disease graph → gene link (sio:SIO_000001); glycogenes graph → GO term (up:classifiedWith). Both attribute bnodes are untyped"
+    - "Glycogene↔glycoprotein bridge: shared <http://purl.uniprot.org/geneid/[GeneID]> node (glycogene rdfs:seeAlso ↔ UniProt IRI rdfs:seeAlso)"
+    - "CAZy family↔protein bridge: family rdfs:seeAlso genbank/<ACC> owl:sameAs embl-cds/<ACC> ← protein rdfs:seeAlso (no direct link)"
+    - "HPA↔glycogene bridge: HPA glycodm:geneSymbol == glycogene rdfs:label (Ensembl-keyed HPA vs NCBI-GeneID glycogene)"
+    - "Ontology labels live in separate graphs: DOID→obo/doid, GO→obo/go.owl; entity nodes carry no label"
+    - "Taxonomy IRI pattern: <http://identifiers.org/taxonomy/[NCBI_TaxID]> (human=9606, mouse=10090, rat=10116, arabidopsis=3702)"
 
   performance:
     - "Pin FROM <graph> (or GRAPH <graph>) for class-wide scans; the endpoint hosts 140+ graphs"
@@ -673,13 +957,7 @@ architectural_notes:
     - "bif:contains IS enabled — prefer it over FILTER(CONTAINS()) for free-text search; split property paths first"
     - "Nested SELECT for aggregations over the 414K-site / 423K-gene graphs"
 
-  data_integration:
-    - "Chemical/structure: ChEBI (OBO IRI), PubChem via LOWERCASE glycan:has_resource_entry"
-    - "Protein: UniProt via glycoprotein rdfs:seeAlso and site sio:SIO_000772"
-    - "Gene: NCBI Gene / KEGG / UniProt geneid via glycogene rdfs:seeAlso"
-    - "Disease: DOID via disease rdfs:seeAlso; disease→gene via sio:SIO_000255/sio:SIO_000001 (Alliance of Genome Resources)"
-    - "Function: GO via glycogene sio:SIO_000255/up:classifiedWith; labels in obo/go.owl"
-    - "Gene↔protein internal bridge: shared purl.uniprot.org/geneid node (replaces TogoID)"
+  # (data_integration removed in v4.1 — see cross_references for the full xref map.)
 
   data_quality:
     - "GlyTouCan IDs: pattern G[0-9]{5}[A-Z]{2}; has_primary_id 99.75%"
@@ -693,8 +971,8 @@ architectural_notes:
     - "Counts may shift between quarterly releases — re-verify with COUNT if precision is needed"
 
   text_search_justification:
-    - "Number of the 7 example queries using text search: 0 — every concept used has a structured IRI or typed predicate"
-    - "Legitimate text-search fields IF needed: rdfs:label/skos:altLabel on glycan:Glycan_epitope (free-text names like 'Lewis x'); dcterms:description on glycan:Glycogene; disease/GO labels in obo/doid & obo/go.owl"
+    - "Number of the 10 example queries using text search: 0 — every concept used has a structured IRI or typed predicate (CAZy class/family, HPA symbol/level, disease DOID, GO term all keyed)"
+    - "Legitimate text-search fields IF needed: rdfs:label/skos:altLabel on glycan:Glycan_epitope (free-text names like 'Lewis x'); dcterms:description on glycan:Glycogene and CAZy families (enzyme activities); disease/GO labels in obo/doid & obo/go.owl"
     - "bif:contains is enabled (verified 2026-06-27): use ?label bif:contains \"'Lewis'\" for indexed search; FILTER(CONTAINS()) only as fallback"
     - "Organisms, motifs, chemicals, proteins, genes, diseases (DOID), and GO terms all have specific IRIs — text search is not needed for them"
 
@@ -707,7 +985,11 @@ data_statistics:
     glycoepitopes: 173
     motifs: 133
     diseases: 4372
-  verified_date: "2026-06-27 (glycan/protein/gene); 2026-07-01 (diseases)"
+    cazy_families: 821
+    cazy_enzyme_sequences: 869966
+    glycolipids: 6046
+    hpa_expression_genes: 13468
+  verified_date: "2026-06-27 (glycan/protein/gene); 2026-07-01 (diseases, CAZy, HPA, glycolipid)"
   verification_method: "Direct COUNT(DISTINCT) queries on each named graph"
   coverage:
     glycans_with_primary_id: "99.75% (117,571/117,864)"
@@ -719,6 +1001,21 @@ data_statistics:
     glycogenes_with_go_annotation: "97.8% (413,865/423,164)"
     sites_with_position_data: "98.3% (407,793/414,798)"
     verified_date: "2026-06-27 (glycan/protein); 2026-07-01 (GO coverage)"
+  cazy_layer:
+    families: 821
+    families_by_class: { GH: 430, GT: 135, PL: 107, CBM: 102, AA: 27, CE: 20 }
+    enzyme_sequences: 869966
+    sequences_with_ec: 357511
+    example_GH13_alpha_amylase_proteins: 2867
+    verified_date: "2026-07-01"
+    verification_method: "COUNT(DISTINCT) on the cazy graph; family→protein via genbank/embl-cds bridge"
+  hpa_expression_layer:
+    genes: 13468
+    expression_measurement_bnodes: 1195665
+    levels: ["High", "Medium", "Low", "Not detected"]
+    example_INSR_tissues: 43
+    verified_date: "2026-07-01"
+    verification_method: "COUNT on the HPA graph; gene keyed by Ensembl Gene ID + glycodm:geneSymbol"
   disease_layer:
     disease_entities: 4372
     disease_gene_links: 26827
@@ -843,6 +1140,27 @@ anti_patterns:
       LIMIT 10
     explanation: "The glycogene and the UniProt IRI both rdfs:seeAlso <http://purl.uniprot.org/geneid/[GeneID]>; that node is the join key. Staying inside GlyCosmos is one query and keeps the disease/GO context attached."
 
+  - title: "Expecting a Direct CAZy Family↔Protein Link (or a Taxon on the Protein)"
+    problem: "Assuming a UniProt enzyme node carries its CAZy family (or a has_taxon) directly. It carries neither — the family link is via a GenBank accession bridge, and taxon is on the member node."
+    wrong_sparql: |
+      # WRONG: there is no cazy:family predicate on the protein, and no has_taxon on up:Protein
+      ?protein a up:Protein ; ?familyPred <http://rdf.glycoinfo.org/dbid/cazy/GH13> .   # 0 rows
+      ?protein glycan:has_taxon <http://identifiers.org/taxonomy/9606> .                 # 0 rows
+    correct_sparql: |
+      # CORRECT: bridge family → genbank member → (owl:sameAs) embl-cds ← (seeAlso) protein
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      SELECT DISTINCT ?protein ?name
+      FROM <http://rdf.glycosmos.org/cazy>
+      WHERE {
+        <http://rdf.glycoinfo.org/dbid/cazy/GH13> rdfs:seeAlso ?gb .
+        ?gb owl:sameAs ?emblcds .
+        ?protein a up:Protein ; rdfs:seeAlso ?emblcds ; rdfs:label ?name .
+      }
+      LIMIT 50
+    explanation: "CAZy family and UniProt Protein are separate nodes joined only through GenBank/EMBL-CDS accessions (family rdfs:seeAlso genbank/<ACC> owl:sameAs embl-cds/<ACC> ← protein rdfs:seeAlso). Proteins carry EC (up:enzyme) but no family predicate and no taxon."
+
 common_errors:
   - error: "Empty result fetching external glycan IDs, or a motif label"
     causes:
@@ -863,6 +1181,16 @@ common_errors:
       - "Join the gene into <…/glycogenes> and filter glycan:has_taxon <http://identifiers.org/taxonomy/9606>"
       - "Get the disease name from obo:DOID_<n> rdfs:label in the <http://purl.obolibrary.org/obo/doid> graph"
       - "Branch on the attribute bnode's inner predicate: sio:SIO_000001 = gene (disease graph); up:classifiedWith = GO (glycogenes graph)"
+
+  - error: "Empty CAZy protein list, or 'GlyCosmos has no expression data'"
+    causes:
+      - "Tried a direct family↔protein predicate — none exists; the join is via a GenBank/embl-cds bridge"
+      - "Filtered CAZy up:Protein by glycan:has_taxon — proteins carry no taxon (it is on the genbank member node)"
+      - "Believed HPA holds only ID cross-references — it actually holds IHC tissue/cell expression (glycodm:level)"
+    solutions:
+      - "Bridge: family rdfs:seeAlso genbank/<ACC> owl:sameAs embl-cds/<ACC> ← protein rdfs:seeAlso"
+      - "For CAZy family metadata use dbid/cazy/<FAM> (dcterms:title/description, rdfs:label=CAZy class)"
+      - "For expression query the HPA graph: gene glycodm:geneSymbol → rdfs:seeAlso bnode → glycodm:tissue/cellType/level; join to a glycogene by symbol"
 
   - error: "Empty or wrong glycogene↔glycoprotein join, or timeout on a class-wide scan"
     causes:
