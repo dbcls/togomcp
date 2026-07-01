@@ -1,0 +1,267 @@
+id: question_062
+type: list
+body: "In curated disease-gene associations from a glycoscience knowledge base, which human genes are linked to long QT syndrome when the disorder is considered together with all of its subtypes - the numbered congenital long QT forms and Jervell-Lange-Nielsen syndrome? List the gene symbols."
+
+inspiration_keyword:
+  keyword_id: KW-0454
+  name: Long QT syndrome
+  category: Disease
+
+togomcp_databases_used:
+  - glycosmos
+  - uniprot
+
+verification_score:
+  biological_insight: 3
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: >
+    Searched "long QT syndrome causative genes glycosylation review" and
+    "ALG10B KCNH2 glycosylation long QT syndrome" via PubMed (ncbi_esearch),
+    then read the one abstract returned (PMID 17189275).
+  result: |
+    The first query returned zero results. The second returned a single mechanistic
+    paper (PMID 17189275, J Biol Chem 2007) showing that the alpha-1,2-glucosyltransferase
+    KCR1/ALG10 protects the HERG (KCNH2) channel from pharmacological block - it confirms
+    the ALG10B<->KCNH2 glyco-relevant link but does not enumerate any curated set of
+    long-QT-associated genes. No article lists the specific set of human genes that a
+    glycoscience resource associates with long QT syndrome across the disorder and all its
+    DOID subtypes; that set is a database-state artifact merging Alliance of Genome Resources
+    and GDGDB curation, and it includes members (SCN4B, KCNJ5, AKAP9, ANK2, ALG10B) while
+    omitting other textbook LQT genes (e.g. KCNJ2, CALM1-3, CAV3, TRDN).
+  conclusion: PASS (cannot answer from literature - requires current curated disease-gene state + DOID hierarchy)
+
+sparql_queries:
+  - query_number: 1
+    database: glycosmos
+    description: >
+      Exhaustive answer. Collect every disease entity whose Disease Ontology IRI is
+      DOID_2843 (long QT syndrome) OR any descendant of it (rdfs:subClassOf* over the
+      Disease Ontology graph - captures the numbered LQT subtypes and Jervell-Lange-Nielsen
+      syndrome), follow the disease->attribute-bnode->gene scaffold to the associated
+      glycogenes, and restrict to human (has_taxon 9606). Returns the distinct gene symbols.
+    query: |
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+
+      SELECT DISTINCT ?geneLabel ?gene
+      WHERE {
+        GRAPH <http://purl.obolibrary.org/obo/doid> {
+          ?doidIRI rdfs:subClassOf* <http://purl.obolibrary.org/obo/DOID_2843> .
+        }
+        GRAPH <http://rdf.glycosmos.org/disease> {
+          ?disease rdfs:seeAlso ?doidIRI ;
+                   sio:SIO_000255/sio:SIO_000001 ?gene .
+        }
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          ?gene rdfs:label ?geneLabel ;
+                glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
+        }
+      }
+      ORDER BY ?geneLabel
+    result_count: 11
+
+  - query_number: 2
+    database: glycosmos
+    description: >
+      Coverage-gap demonstration (Rule 2). The same query scoped to ONLY the parent node
+      DOID:2843, without descendant expansion, returns just 6 human genes - proving that
+      querying the bare disease node silently drops 5 genes contributed by the subtype
+      entities. The exhaustive (descendant-inclusive) scope in Query 1 is mandatory.
+    query: |
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+
+      SELECT (COUNT(DISTINCT ?gene) AS ?genesBareNode)
+      WHERE {
+        GRAPH <http://rdf.glycosmos.org/disease> {
+          <http://glycosmos.org/disease/DOID:2843> sio:SIO_000255/sio:SIO_000001 ?gene .
+        }
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          ?gene glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
+        }
+      }
+    result_count: 6
+
+  - query_number: 3
+    database: glycosmos
+    description: >
+      Arithmetic verification (per disease-entity breakdown). Group the human gene links by
+      the DOID subtree node they come from. The per-node gene-link counts sum to 18, while the
+      distinct-gene total is 11 - the overlap arises because several genes (e.g. KCNQ1, KCNE1)
+      are associated with the parent disorder AND one or more subtypes. This is the expected
+      "sum of category counts > distinct total" case, explained in arithmetic_verification.
+    query: |
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+
+      SELECT ?doidIRI ?doidLabel (COUNT(DISTINCT ?gene) AS ?nHumanGeneLinks)
+      WHERE {
+        GRAPH <http://purl.obolibrary.org/obo/doid> {
+          ?doidIRI rdfs:subClassOf* <http://purl.obolibrary.org/obo/DOID_2843> ;
+                   rdfs:label ?doidLabel .
+        }
+        GRAPH <http://rdf.glycosmos.org/disease> {
+          ?disease rdfs:seeAlso ?doidIRI ;
+                   sio:SIO_000255/sio:SIO_000001 ?gene .
+        }
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          ?gene glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
+        }
+      }
+      GROUP BY ?doidIRI ?doidLabel
+      ORDER BY ?doidIRI
+    result_count: 11
+
+  - query_number: 4
+    database: uniprot
+    description: >
+      Cross-database confirmation. Map the 11 NCBI Gene IDs from Query 1 to their reviewed
+      (Swiss-Prot) human protein entries and official gene symbols in UniProt, confirming each
+      gene resolves to exactly one reviewed human entry with the expected symbol.
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT DISTINCT ?geneid ?protein ?symbol
+      WHERE {
+        VALUES ?geneid {
+          <http://purl.uniprot.org/geneid/10142> <http://purl.uniprot.org/geneid/144245>
+          <http://purl.uniprot.org/geneid/287>   <http://purl.uniprot.org/geneid/775>
+          <http://purl.uniprot.org/geneid/3753>  <http://purl.uniprot.org/geneid/9992>
+          <http://purl.uniprot.org/geneid/3757>  <http://purl.uniprot.org/geneid/3762>
+          <http://purl.uniprot.org/geneid/3784>  <http://purl.uniprot.org/geneid/6330>
+          <http://purl.uniprot.org/geneid/6331>
+        }
+        ?protein a up:Protein ;
+                 up:reviewed true ;
+                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                 rdfs:seeAlso ?geneid ;
+                 up:encodedBy/skos:prefLabel ?symbol .
+      }
+      ORDER BY ?symbol
+    result_count: 11
+
+arithmetic_verification:
+  query: "GlyCosmos: per-DOID-subtree human gene-link counts (Query 3) vs. distinct human genes (Query 1)"
+  sum_of_category_counts: 18
+  total_distinct_entities: 11
+  result: "Sum of per-subtype gene-links (6+1+2+1+1+1+1+1+1+1+2 = 18) > distinct genes (11) — overlap of 7 explained (genes shared across the parent disorder and its subtypes)."
+  interpretation: |
+    Eleven distinct human genes are associated with the long QT syndrome DOID subtree. The
+    associations are spread over 11 disease entities: long QT syndrome (DOID:2843, 6 genes),
+    long QT syndrome 1/2/3/5/6/8/10/11/13 (DOID:0110644/0110645/0110646/0110647/0110648/
+    0110649/0110651/0110652/0110654), and Jervell-Lange-Nielsen syndrome (DOID:2842, 2 genes).
+    Summing the per-entity gene-link counts gives 18 because several genes recur across levels
+    (e.g. KCNQ1 and KCNE1 appear under the parent disorder and under Jervell-Lange-Nielsen
+    syndrome). Deduplicating to distinct genes yields 11. Scoping to only the parent node
+    DOID:2843 (Query 2) returns 6, so descendant expansion adds 5 genes; the categories are
+    overlapping, not mutually exclusive.
+
+rdf_triples: |
+  @prefix glycan: <http://purl.jp/bio/12/glyco/glycan#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix sio: <http://semanticscience.org/resource/> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+
+  obo:DOID_0110644 rdfs:subClassOf obo:DOID_2843 .
+  # Database: GlyCosmos | Query: 1 | Comment: Disease Ontology graph — long QT syndrome 1 is a direct subclass of long QT syndrome; subClassOf* captures it
+
+  obo:DOID_2842 rdfs:subClassOf obo:DOID_2843 .
+  # Database: GlyCosmos | Query: 1 | Comment: Disease Ontology graph — Jervell-Lange-Nielsen syndrome is a subclass of long QT syndrome
+
+  <http://glycosmos.org/disease/DOID:2843> a glycan:Disease .
+  # Database: GlyCosmos | Query: 1 | Comment: Disease entity for the parent disorder (disease graph)
+
+  <http://glycosmos.org/disease/DOID:2843> rdfs:seeAlso obo:DOID_2843 .
+  # Database: GlyCosmos | Query: 1 | Comment: Disease entity carries no label of its own; name resolves via its DOID seeAlso in the doid graph
+
+  <http://glycosmos.org/disease/DOID:0110645> rdfs:seeAlso obo:DOID_0110645 .
+  # Database: GlyCosmos | Query: 1 | Comment: long QT syndrome 2 disease entity, linked to its DOID subtype IRI
+
+  <http://glycosmos.org/disease/DOID:0110645> sio:SIO_000255/sio:SIO_000001 <http://glycosmos.org/glycogene/3757> .
+  # Database: GlyCosmos | Query: 1 | Comment: LQT2 -> untyped attribute bnode -> associated glycogene 3757 (KCNH2)
+
+  <http://glycosmos.org/glycogene/3757> rdfs:label "KCNH2" .
+  # Database: GlyCosmos | Query: 1 | Comment: glycogene label = gene symbol KCNH2
+
+  <http://glycosmos.org/glycogene/3757> glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
+  # Database: GlyCosmos | Query: 1 | Comment: human — required taxon filter (associations are multi-species by default)
+
+  <http://glycosmos.org/glycogene/3784> rdfs:label "KCNQ1" .
+  # Database: GlyCosmos | Query: 1 | Comment: KCNQ1 — associated with parent disorder, LQT1, and Jervell-Lange-Nielsen (source of overlap)
+
+  <http://glycosmos.org/glycogene/144245> rdfs:label "ALG10B" .
+  # Database: GlyCosmos | Query: 1 | Comment: ALG10B — an N-glycosylation alpha-1,2-glucosyltransferase; genuinely a glycogene, links to KCNH2 channel glycosylation
+
+  <http://glycosmos.org/glycogene/775> rdfs:label "CACNA1C" .
+  # Database: GlyCosmos | Query: 1 | Comment: CACNA1C — L-type calcium channel (Timothy syndrome / LQT8)
+
+  <http://purl.uniprot.org/uniprot/Q12809> a up:Protein .
+  # Database: UniProt | Query: 4 | Comment: KCNH2 protein entry
+
+  <http://purl.uniprot.org/uniprot/Q12809> up:reviewed true .
+  # Database: UniProt | Query: 4 | Comment: Q12809 is a reviewed (Swiss-Prot) entry
+
+  <http://purl.uniprot.org/uniprot/Q12809> rdfs:seeAlso <http://purl.uniprot.org/geneid/3757> .
+  # Database: UniProt | Query: 4 | Comment: cross-reference to NCBI GeneID 3757 (the join key back to the glycogene)
+
+  <http://purl.uniprot.org/uniprot/Q12809> up:encodedBy/skos:prefLabel "KCNH2" .
+  # Database: UniProt | Query: 4 | Comment: official gene symbol KCNH2 confirms the GlyCosmos label
+
+  <http://purl.uniprot.org/uniprot/P51787> up:reviewed true .
+  # Database: UniProt | Query: 4 | Comment: KCNQ1 -> reviewed entry P51787
+
+  <http://purl.uniprot.org/uniprot/P51787> up:encodedBy/skos:prefLabel "KCNQ1" .
+  # Database: UniProt | Query: 4 | Comment: official gene symbol KCNQ1
+
+  <http://purl.uniprot.org/uniprot/Q5I7T1> up:reviewed true .
+  # Database: UniProt | Query: 4 | Comment: ALG10B -> reviewed entry Q5I7T1
+
+  <http://purl.uniprot.org/uniprot/Q5I7T1> up:encodedBy/skos:prefLabel "ALG10B" .
+  # Database: UniProt | Query: 4 | Comment: official gene symbol ALG10B
+
+  <http://purl.uniprot.org/uniprot/Q13936> up:reviewed true .
+  # Database: UniProt | Query: 4 | Comment: CACNA1C -> reviewed entry Q13936
+
+  <http://purl.uniprot.org/uniprot/Q13936> up:encodedBy/skos:prefLabel "CACNA1C" .
+  # Database: UniProt | Query: 4 | Comment: official gene symbol CACNA1C
+
+exact_answer:
+  - "AKAP9 (NCBI:10142, UniProt:Q99996)"
+  - "ALG10B (NCBI:144245, UniProt:Q5I7T1)"
+  - "ANK2 (NCBI:287, UniProt:Q01484)"
+  - "CACNA1C (NCBI:775, UniProt:Q13936)"
+  - "KCNE1 (NCBI:3753, UniProt:P15382)"
+  - "KCNE2 (NCBI:9992, UniProt:Q9Y6J6)"
+  - "KCNH2 (NCBI:3757, UniProt:Q12809)"
+  - "KCNJ5 (NCBI:3762, UniProt:P48544)"
+  - "KCNQ1 (NCBI:3784, UniProt:P51787)"
+  - "SCN4B (NCBI:6330, UniProt:Q8IWT1)"
+  - "SCN5A (NCBI:6331, UniProt:Q14524)"
+
+ideal_answer: |
+  Eleven human genes are linked to long QT syndrome in the curated disease-gene associations of GlyCosmos once the disorder is expanded over its Disease Ontology subtree (the parent term DOID:2843 plus the numbered congenital forms LQT1, 2, 3, 5, 6, 8, 10, 11, 13 and Jervell-Lange-Nielsen syndrome, DOID:2842): AKAP9 (UniProt Q99996), ALG10B (Q5I7T1), ANK2 (Q01484), CACNA1C (Q13936), KCNE1 (P15382), KCNE2 (Q9Y6J6), KCNH2 (Q12809), KCNJ5 (P48544), KCNQ1 (P51787), SCN4B (Q8IWT1), and SCN5A (Q14524). Each maps to exactly one reviewed human Swiss-Prot entry. The set is biologically coherent: it is dominated by cardiac ion-channel pore-forming and regulatory subunits (the potassium channels KCNQ1/KCNH2 and their beta-subunits KCNE1/KCNE2, the sodium channel SCN5A with its beta-subunit SCN4B, the L-type calcium channel CACNA1C, and the inward-rectifier KCNJ5), together with the membrane-scaffolding/adapter proteins ANK2 and AKAP9. Notably it also includes ALG10B, an endoplasmic-reticulum alpha-1,2-glucosyltransferase of the N-glycosylation pathway whose activity protects the KCNH2 (hERG) channel from block - an explicitly glyco-relevant contributor that a purely cardiological gene list would omit. Answering the question correctly requires traversing the Disease Ontology hierarchy rather than a single disease node: restricting to the bare DOID:2843 term returns only 6 genes, so the 5 genes contributed solely by the subtype entities would be silently lost. Because several genes (for example KCNQ1 and KCNE1) recur across the parent disorder and Jervell-Lange-Nielsen syndrome, the per-entity association counts sum to 18 while the deduplicated set is 11.
+
+question_template_used: "Ontology-hierarchy exhaustive enumeration (disease DOID subtree -> curated gene associations, cross-database confirmed in UniProt)"
+
+time_spent:
+  exploration: 30 minutes
+  formulation: 15 minutes
+  verification: 25 minutes
+  pubmed_test: 10 minutes
+  extraction: 15 minutes
+  documentation: 25 minutes
+  total: 120 minutes
