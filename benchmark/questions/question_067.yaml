@@ -1,0 +1,203 @@
+---
+id: question_067
+type: choice
+body: >-
+  The human genome encodes prenyltransferases (EC 2.5.1 sub-subclass) that fall
+  into four enzyme activities carrying a complete, fully assigned EC number:
+  4-hydroxybenzoate polyprenyltransferase (gene UBIAD1, EC 2.5.1.39), protein
+  farnesyltransferase (EC 2.5.1.58), protein geranylgeranyltransferase type I
+  (EC 2.5.1.59), and Rab / type-II protein geranylgeranyltransferase
+  (EC 2.5.1.60). In a comprehensive, manually curated enzyme-function knowledge
+  base that records, for each EC class, every distinct source organism in which
+  the activity has been experimentally characterized, which of these four enzyme
+  activities is documented across the greatest number of distinct organisms?
+
+choices:
+  - "4-Hydroxybenzoate polyprenyltransferase — human UBIAD1 (EC 2.5.1.39)"
+  - "Protein farnesyltransferase — human FNTA/FNTB (EC 2.5.1.58)"
+  - "Protein geranylgeranyltransferase type I — human FNTA/PGGT1B (EC 2.5.1.59)"
+  - "Rab / type-II protein geranylgeranyltransferase — human RABGGTA/RABGGTB (EC 2.5.1.60)"
+
+inspiration_keyword:
+  keyword_id: KW-0637
+  name: Prenyltransferase
+  category: Molecular function
+
+togomcp_databases_used:
+  - uniprot
+  - brenda
+
+verification_score:
+  biological_insight: 2
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 10
+  passed: true
+
+pubmed_test:
+  time_spent: 12 minutes
+  method: >-
+    Tried to answer the ranking from the literature with four PubMed searches:
+    (1) "prenyltransferase enzymes comparison number of organisms taxonomic
+    distribution farnesyltransferase geranylgeranyltransferase"; (2) "BRENDA
+    database organism coverage prenyltransferase EC 2.5.1.39 species count";
+    (3) "protein prenyltransferases evolutionary conservation across eukaryotes
+    farnesyltransferase geranylgeranyltransferase Rab"; (4) "4-hydroxybenzoate
+    polyprenyltransferase ubiquinone biosynthesis conservation bacteria
+    eukaryotes distribution".
+  result: |
+    All four searches returned zero results. No paper tabulates the number of
+    distinct source organisms in which each of these four EC-classified
+    activities has been experimentally characterized, and none ranks them against
+    one another on that basis. The answer is a property of the current curated
+    experimental-characterization records for each EC class — a database-state
+    aggregate that shifts as curation grows — and cannot be recovered from the
+    primary literature.
+  conclusion: PASS (cannot answer from literature - requires RDF)
+
+# STRUCTURED VOCABULARY DISCOVERY
+# The option set is fixed by UniProt keyword KW-0637 (Prenyltransferase): Query 1
+# enumerates the EC numbers assigned to reviewed human prenyltransferases. Five
+# EC strings are returned, but one (2.5.1.-) is an INCOMPLETE/wildcard EC — not a
+# queryable BRENDA EC class and a redundant secondary annotation of UBIAD1 (whose
+# complete activity 2.5.1.39 is already in scope). The four COMPLETE EC classes
+# (2.5.1.39, .58, .59, .60) are the full comparison set; all four are carried into
+# Query 2 (no sampling). No ontology getDescendants expansion applies (keyword-,
+# not ontology-subtree-, scoped).
+
+sparql_queries:
+  - query_number: 1
+    database: uniprot
+    description: >-
+      Establish the option set — the EC numbers assigned to reviewed human
+      (taxon 9606) proteins classified with keyword KW-0637 (Prenyltransferase),
+      with their gene symbols. Returns 5 EC strings; four are complete
+      (2.5.1.39 = UBIAD1; 2.5.1.58 = FNTA/FNTB; 2.5.1.59 = FNTA/PGGT1B;
+      2.5.1.60 = RABGGTA/RABGGTB) and one (2.5.1.-) is an incomplete wildcard EC
+      excluded from the comparison. The four complete ECs are the choices.
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT ?ec (GROUP_CONCAT(DISTINCT ?gene; separator=", ") AS ?genes)
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                 up:classifiedWith keywords:637 ;
+                 up:enzyme ?ec .
+        OPTIONAL { ?protein up:encodedBy ?g . ?g skos:prefLabel ?gene . }
+      }
+      GROUP BY ?ec
+      ORDER BY ?ec
+    result_count: 5
+
+  - query_number: 2
+    database: brenda
+    description: >-
+      For each of the four complete prenyltransferase EC classes, count the
+      distinct source organisms in which enzyme instances of that class are
+      documented (enzyme instance -> d3o:foundIn -> organism). Grouped per EC,
+      ordered descending. The top row is EC 2.5.1.39 (4-hydroxybenzoate
+      polyprenyltransferase, UBIAD1's activity) with 1171 organisms, ahead of
+      2.5.1.58 (1077), 2.5.1.59 (1001), and 2.5.1.60 (499).
+    query: |
+      PREFIX d3o: <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?ec ?ecLabel (COUNT(DISTINCT ?organism) AS ?nOrg)
+      FROM <http://rdfportal.org/dataset/brenda>
+      WHERE {
+        VALUES ?ec {
+          <https://purl.dsmz.de/brenda/ec/2.5.1.39>
+          <https://purl.dsmz.de/brenda/ec/2.5.1.58>
+          <https://purl.dsmz.de/brenda/ec/2.5.1.59>
+          <https://purl.dsmz.de/brenda/ec/2.5.1.60>
+        }
+        ?ec rdfs:label ?ecLabel .
+        ?enzyme d3o:isClassifiedAs ?ec ;
+                d3o:foundIn ?organism .
+      }
+      GROUP BY ?ec ?ecLabel
+      ORDER BY DESC(?nOrg)
+    result_count: 4
+
+  - query_number: 3
+    database: brenda
+    description: >-
+      Arithmetic verification for the Query 2 GROUP BY. Independently re-count the
+      winner's organisms (EC 2.5.1.39 alone -> 1171, confirming the top row) and
+      the distinct UNION of organisms across all four ECs (-> 1382). The per-EC
+      counts sum to 3748, far exceeding the 1382-organism union: the categories
+      are NOT a partition (most organisms carry several of these prenyltransferases
+      and are counted under more than one EC). The winner alone spans 1171 of the
+      1382 union organisms.
+    query: |
+      PREFIX d3o: <https://purl.dsmz.de/schema/>
+
+      SELECT
+        (COUNT(DISTINCT ?orgWin) AS ?winnerOrgs)
+        (COUNT(DISTINCT ?orgAll) AS ?unionOrgs)
+      FROM <http://rdfportal.org/dataset/brenda>
+      WHERE {
+        {
+          ?eWin d3o:isClassifiedAs <https://purl.dsmz.de/brenda/ec/2.5.1.39> ;
+                d3o:foundIn ?orgWin .
+        }
+        UNION
+        {
+          VALUES ?ecAll {
+            <https://purl.dsmz.de/brenda/ec/2.5.1.39>
+            <https://purl.dsmz.de/brenda/ec/2.5.1.58>
+            <https://purl.dsmz.de/brenda/ec/2.5.1.59>
+            <https://purl.dsmz.de/brenda/ec/2.5.1.60>
+          }
+          ?eAll d3o:isClassifiedAs ?ecAll ;
+                d3o:foundIn ?orgAll .
+        }
+      }
+    result_count: 1
+
+rdf_triples: |
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix keywords: <http://purl.uniprot.org/keywords/> .
+  @prefix upenz: <http://purl.uniprot.org/enzyme/> .
+  @prefix d3o: <https://purl.dsmz.de/schema/> .
+  @prefix ec: <https://purl.dsmz.de/brenda/ec/> .
+  @prefix enz: <https://purl.dsmz.de/brenda/enzyme/> .
+  @prefix org: <https://purl.dsmz.de/brenda/organism/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+  <http://purl.uniprot.org/uniprot/Q9Y5Z9> a up:Protein .
+  # Database: UniProt | Query: 1 | Comment: UBIAD1, the human gene product behind the winning enzyme activity
+  <http://purl.uniprot.org/uniprot/Q9Y5Z9> up:classifiedWith keywords:637 .
+  # Database: UniProt | Query: 1 | Comment: classified with KW-0637 (Prenyltransferase) — the keyword defining the four-option set
+  <http://purl.uniprot.org/uniprot/Q9Y5Z9> up:enzyme upenz:2.5.1.39 .
+  # Database: UniProt | Query: 1 | Comment: UBIAD1's fully assigned EC activity, EC 2.5.1.39 (the winning class)
+  ec:2.5.1.39 rdfs:label "4-hydroxybenzoate polyprenyltransferase" .
+  # Database: BRENDA | Query: 2 | Comment: the label of the winning EC class in the curated enzyme knowledge base
+  enz:1975 d3o:isClassifiedAs ec:2.5.1.39 .
+  # Database: BRENDA | Query: 2 | Comment: one BRENDA enzyme instance classified under EC 2.5.1.39
+  enz:1975 d3o:foundIn org:18692 .
+  # Database: BRENDA | Query: 2 | Comment: that instance is documented in a source organism (one of the 1171 distinct organisms for this EC)
+  org:18692 rdfs:label "Oryza sativa" .
+  # Database: BRENDA | Query: 2 | Comment: the organism name for this enzyme instance
+
+exact_answer:
+  - "4-Hydroxybenzoate polyprenyltransferase — human UBIAD1 (EC 2.5.1.39)"
+
+ideal_answer: |
+  Among the four fully classified enzyme activities of the human prenyltransferases, 4-hydroxybenzoate polyprenyltransferase — the activity assigned to UBIAD1, EC 2.5.1.39 — is documented across the most distinct source organisms, 1,171, narrowly ahead of protein farnesyltransferase (EC 2.5.1.58, 1,077 organisms), protein geranylgeranyltransferase type I (EC 2.5.1.59, 1,001), and the Rab / type-II protein geranylgeranyltransferase (EC 2.5.1.60, 499). The ranking tracks biology: EC 2.5.1.39 is a core enzyme of ubiquinone (coenzyme Q) biosynthesis, an essentially universal pathway of aerobic life, so its activity has been experimentally characterized across a very broad phylogenetic range; the CaaX and Rab protein-prenyltransferases, although also widely conserved in eukaryotes, have been characterized in fewer organisms, and the Rab enzyme least of all. The four activities together span a union of 1,382 distinct organisms, while the per-activity counts sum to 3,748 — far more — because most organisms possess several of these prenyltransferases and are therefore counted under more than one EC class; the winning activity alone accounts for 1,171 of the 1,382 union organisms. The comparison depends on the current body of experimental-characterization data for each class rather than on any fixed sequence property.
+
+question_template_used: comparative facet ranking among a keyword-defined enzyme family (UniProt keyword -> EC set -> BRENDA organism-breadth argmax)
+
+time_spent:
+  exploration: 25
+  formulation: 15
+  verification: 8
+  pubmed_test: 12
+  extraction: 10
+  documentation: 15
+  total: 85

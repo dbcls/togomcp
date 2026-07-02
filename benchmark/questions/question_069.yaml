@@ -1,0 +1,261 @@
+id: question_069
+type: yes_no
+body: "Among the archaeal type strains preserved in the culture catalogue of Japan's NITE Biological Resource Center, the strains' species fall into several class-level ranks of the standard hierarchical classification of organisms. Is the class represented by the greatest number of distinct type strains a methanogenic (methane-producing) lineage?"
+
+inspiration_keyword:
+  keyword_id: KW-0484
+  name: Methanogenesis
+  category: Biological process
+
+togomcp_databases_used:
+  - nbrc
+  - taxonomy
+
+verification_score:
+  biological_insight: 3
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 8 minutes
+  method: |
+    Ran three programmatic PubMed searches attempting to establish which archaeal class is
+    most represented among the type strains of the collection (the fact the yes/no answer
+    turns on):
+    (1) "NBRC NITE Biological Resource Center archaeal type strains taxonomic class distribution"
+    (2) "archaea culture collection type strains Methanomicrobia Halobacteria most represented class"
+    (3) "diversity of archaeal strains preserved culture collections methanogens halophiles"
+  result: |
+    All three searches returned zero indexed articles. The published literature describes
+    individual archaeal taxa and reviews archaeal cultivation, but no study reports the
+    class-level breakdown of the archaeal type strains actually held in a specific culture
+    collection, still less which class is the single most represented. Because the top two
+    classes are separated by only three strains (methanogenic Methanomicrobia at 45 vs.
+    halophilic, non-methanogenic Halobacteria at 42), the yes/no answer cannot be guessed
+    from general knowledge of archaeal diversity — it is an aggregate over the collection's
+    current catalogue joined to the current taxonomic classification of each strain's species.
+  conclusion: PASS (cannot answer from literature; the yes/no hinges on a live join of the culture catalogue to the taxonomic hierarchy, and on a 3-strain margin)
+
+sparql_queries:
+  - query_number: 1
+    database: nbrc
+    description: >-
+      Scope query (culture catalogue only). Count the archaeal type strains and how many
+      carry a taxonomic cross-reference. Archaeal = organism category mccv:MCCV_000038 =
+      mccv:MCCV_000041; type strain = mccv:MCCV_000017 = 1 (bare integer). Anchored on
+      brso:BiologicalResource so equivalent-strain nodes are not miscounted.
+    query: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+
+      SELECT
+        (COUNT(DISTINCT ?strain)   AS ?archaealTypeStrains)
+        (COUNT(DISTINCT ?withTaxon) AS ?withTaxonLink)
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?strain a brso:BiologicalResource ;
+                  mccv:MCCV_000017 1 ;
+                  mccv:MCCV_000038 mccv:MCCV_000041 .
+          OPTIONAL {
+            ?strain mccv:MCCV_000065 ?taxon .
+            BIND(?strain AS ?withTaxon)
+          }
+        }
+      }
+    result_count: 1
+
+  - query_number: 2
+    database: taxonomy
+    description: >-
+      Cross-graph class distribution on the shared primary endpoint. For each archaeal type
+      strain, walk its species taxon (mccv:MCCV_000065) up the classification with
+      rdfs:subClassOf* to the ancestor whose tax:rank is tax:Class, then count distinct
+      strains per class. The most-represented class determines the yes/no answer.
+    query: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+
+      SELECT ?class ?id ?className (COUNT(DISTINCT ?strain) AS ?n)
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?strain a brso:BiologicalResource ;
+                  mccv:MCCV_000017 1 ;
+                  mccv:MCCV_000038 mccv:MCCV_000041 ;
+                  mccv:MCCV_000065 ?taxon .
+        }
+        GRAPH <http://rdfportal.org/ontology/taxonomy> {
+          ?taxon rdfs:subClassOf* ?class .
+          ?class tax:rank tax:Class ;
+                 rdfs:label ?className ;
+                 dcterms:identifier ?id .
+        }
+      }
+      GROUP BY ?class ?id ?className
+      ORDER BY DESC(?n)
+    result_count: 11
+
+  - query_number: 3
+    database: taxonomy
+    description: >-
+      Arithmetic verification. Count the distinct archaeal type strains that have any
+      class-ranked ancestor, to confirm the per-class counts of Query 2 sum to the total
+      (45+42+20+19+3+3+2+2+1+1+1 = 139) with no coverage gap and no double counting.
+    query: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT (COUNT(DISTINCT ?strain) AS ?totalWithClass)
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?strain a brso:BiologicalResource ;
+                  mccv:MCCV_000017 1 ;
+                  mccv:MCCV_000038 mccv:MCCV_000041 ;
+                  mccv:MCCV_000065 ?taxon .
+        }
+        GRAPH <http://rdfportal.org/ontology/taxonomy> {
+          ?taxon rdfs:subClassOf* ?class .
+          ?class tax:rank tax:Class .
+        }
+      }
+    result_count: 1
+
+  - query_number: 4
+    database: nbrc
+    description: >-
+      Evidence for the winning class. List representative archaeal type strains whose
+      species falls in class Methanomicrobia (taxon 224756), returning the catalogue
+      number, accepted name and species taxon IRI.
+    query: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT ?strain ?nbrcNo ?name ?taxon
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?strain a brso:BiologicalResource ;
+                  mccv:MCCV_000017 1 ;
+                  mccv:MCCV_000038 mccv:MCCV_000041 ;
+                  mccv:MCCV_000010 ?nbrcNo ;
+                  skos:prefLabel ?name ;
+                  mccv:MCCV_000065 ?taxon .
+        }
+        GRAPH <http://rdfportal.org/ontology/taxonomy> {
+          ?taxon rdfs:subClassOf* ?class .
+          ?class tax:rank tax:Class ; rdfs:label "Methanomicrobia" .
+        }
+      }
+      ORDER BY ?name
+      LIMIT 5
+    result_count: 5
+
+rdf_triples: |
+  @prefix mccv:    <http://purl.jp/bio/10/mccv#> .
+  @prefix brso:    <http://purl.jp/bio/10/brso/> .
+  @prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+  @prefix tax:     <http://ddbj.nig.ac.jp/ontologies/taxonomy/> .
+  @prefix taxon:   <http://identifiers.org/taxonomy/> .
+  @prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix dcterms: <http://purl.org/dc/terms/> .
+  @prefix cul:     <http://purl.jp/bio/103/nite/nbrc/cultures/> .
+  @prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+  @prefix ex:      <http://example.org/nbrc-taxa-analysis#> .
+
+  ex:archaealTypeStrainSet ex:totalArchaealTypeStrains "142"^^xsd:integer .
+  # Database: nbrc | Query: 1 | Comment: 142 archaeal type strains in the catalogue (mccv:MCCV_000038 = mccv:MCCV_000041 Archaea AND mccv:MCCV_000017 = 1 type strain), anchored on brso:BiologicalResource
+
+  ex:archaealTypeStrainSet ex:withTaxonomyLink "139"^^xsd:integer .
+  # Database: nbrc | Query: 1 | Comment: 139 of the 142 carry a species cross-reference (mccv:MCCV_000065); the remaining 3 have no taxon link and cannot be placed in a class
+
+  cul:00101707 a brso:BiologicalResource ;
+      mccv:MCCV_000017 1 ;
+      mccv:MCCV_000038 mccv:MCCV_000041 ;
+      skos:prefLabel "Methanocella paludicola" ;
+      mccv:MCCV_000010 "NBRC 00101707" ;
+      mccv:MCCV_000065 taxon:570267 .
+  # Database: nbrc | Query: 4 | Comment: Representative winning-class type strain — Methanocella paludicola (NBRC 00101707), a methanogen; its species taxon 570267 resolves to class Methanomicrobia
+
+  cul:00107633 a brso:BiologicalResource ;
+      skos:prefLabel "Methanococcoides burtonii" ;
+      mccv:MCCV_000065 taxon:29291 .
+  # Database: nbrc | Query: 4 | Comment: A second Methanomicrobia type strain — Methanococcoides burtonii (NBRC 00107633), also a methanogen, species taxon 29291
+
+  taxon:570267 rdfs:subClassOf* taxon:224756 .
+  # Database: taxonomy | Query: 2 | Comment: Lineage link placing Methanocella paludicola (570267) inside class Methanomicrobia (224756) via transitive rdfs:subClassOf
+
+  taxon:224756 a tax:Taxon ; tax:rank tax:Class ; rdfs:label "Methanomicrobia" ; dcterms:identifier 224756 ;
+      ex:nbrcArchaealTypeStrainCount "45"^^xsd:integer .
+  # Database: taxonomy | Query: 2 | Comment: Class Methanomicrobia (NCBI taxid 224756) — 45 distinct archaeal type strains, the greatest of any class; Methanomicrobia is a methanogenic (methane-producing) lineage, so the yes/no answer is YES
+
+  taxon:183963 a tax:Taxon ; tax:rank tax:Class ; rdfs:label "Halobacteria" ; dcterms:identifier 183963 ;
+      ex:nbrcArchaealTypeStrainCount "42"^^xsd:integer .
+  # Database: taxonomy | Query: 2 | Comment: Class Halobacteria (taxid 183963) — 42 type strains, the close runner-up (margin of 3); halophilic and NOT methanogenic, so had it led the answer would be NO
+
+  taxon:183924 a tax:Taxon ; tax:rank tax:Class ; rdfs:label "Thermoprotei" ; dcterms:identifier 183924 ;
+      ex:nbrcArchaealTypeStrainCount "20"^^xsd:integer .
+  # Database: taxonomy | Query: 2 | Comment: Class Thermoprotei (taxid 183924) — 20 type strains, third
+
+  taxon:183925 a tax:Taxon ; tax:rank tax:Class ; rdfs:label "Methanobacteria" ; dcterms:identifier 183925 ;
+      ex:nbrcArchaealTypeStrainCount "19"^^xsd:integer .
+  # Database: taxonomy | Query: 2 | Comment: Class Methanobacteria (taxid 183925) — 19 type strains, fourth; also a methanogenic class
+
+  taxon:183980 ex:nbrcArchaealTypeStrainCount "3"^^xsd:integer .
+  # Database: taxonomy | Query: 2 | Comment: Class Archaeoglobi (taxid 183980) — 3 type strains
+  taxon:183939 ex:nbrcArchaealTypeStrainCount "3"^^xsd:integer .
+  # Database: taxonomy | Query: 2 | Comment: Class Methanococci (taxid 183939) — 3 type strains, a methanogenic class
+  taxon:183967 ex:nbrcArchaealTypeStrainCount "2"^^xsd:integer .
+  # Database: taxonomy | Query: 2 | Comment: Class Thermoplasmata (taxid 183967) — 2 type strains
+  taxon:183968 ex:nbrcArchaealTypeStrainCount "2"^^xsd:integer .
+  # Database: taxonomy | Query: 2 | Comment: Class Thermococci (taxid 183968) — 2 type strains
+  taxon:171536 ex:nbrcArchaealTypeStrainCount "1"^^xsd:integer .
+  # Database: taxonomy | Query: 2 | Comment: Class Methanonatronarchaeia (taxid 171536) — 1 type strain, a methanogenic class
+  taxon:1643678 ex:nbrcArchaealTypeStrainCount "1"^^xsd:integer .
+  # Database: taxonomy | Query: 2 | Comment: Class Nitrososphaeria (taxid 1643678) — 1 type strain (the only non-Euryarchaeota class present)
+  taxon:183988 ex:nbrcArchaealTypeStrainCount "1"^^xsd:integer .
+  # Database: taxonomy | Query: 2 | Comment: Class Methanopyri (taxid 183988) — 1 type strain, a methanogenic class
+
+  ex:archaealTypeStrainSet ex:sumOfPerClassCounts "139"^^xsd:integer .
+  # Database: taxonomy | Query: 3 | Comment: Arithmetic check — 45+42+20+19+3+3+2+2+1+1+1 = 139 = the independently counted total with a class-ranked ancestor; every strain maps to exactly one class, so there is no coverage gap and no double counting
+
+exact_answer: "yes"
+
+ideal_answer: |
+  Yes. The archaeal class represented by the greatest number of distinct type strains in the
+  collection is Methanomicrobia — a methanogenic (methane-producing) lineage — with 45 type
+  strains, narrowly ahead of the halophilic, non-methanogenic class Halobacteria with 42. The
+  remaining classes trail well behind: Thermoprotei (20), Methanobacteria (19, also
+  methanogenic), Archaeoglobi (3), Methanococci (3, methanogenic), Thermoplasmata (2),
+  Thermococci (2), and one type strain each in Methanonatronarchaeia and Methanopyri (both
+  methanogenic) and in Nitrososphaeria. Of the 142 archaeal type strains in the catalogue,
+  139 carry a species cross-reference that can be placed in the taxonomic hierarchy; those 139
+  sum exactly across the eleven classes (45+42+20+19+3+3+2+2+1+1+1 = 139), confirming that each
+  strain falls in exactly one class with no gap or overlap, while the 3 strains without a
+  taxonomic link are unclassifiable to class. Methanogens are split here across five classes
+  (Methanomicrobia, Methanobacteria, Methanococci, Methanopyri, Methanonatronarchaeia), and
+  together with the easily cultivated halophiles of Halobacteria they dominate the archaeal
+  type-strain holdings because these lineages have long been amenable to pure culture. The
+  answer is genuinely data-dependent rather than recallable: Methanomicrobia leads Halobacteria
+  by only three strains, so the identity of the single most-represented class — and hence
+  whether it is a methanogenic one — must be computed from the current joined database state
+  and would flip with modest catalogue additions or ongoing reclassification of archaeal taxa.
+
+question_template_used: "Template 7 variant (Yes/No — is a computed maximum a member of a named functional class)"
+
+time_spent:
+  exploration: 25 minutes
+  formulation: 15 minutes
+  verification: 15 minutes
+  pubmed_test: 8 minutes
+  extraction: 15 minutes
+  documentation: 25 minutes
+  total: 103 minutes
