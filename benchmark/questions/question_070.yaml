@@ -1,0 +1,285 @@
+id: question_070
+type: summary
+body: "Alport syndrome is a hereditary disorder of the glomerular basement membrane that causes progressive kidney disease, commonly accompanied by sensorineural hearing loss and ocular abnormalities. Provide an integrated summary of its molecular genetic basis and its clinical sequence-variant landscape: the causative genes and the collagen network they encode, the cytogenetic locations and inheritance patterns of those genes, and how the clinically classified variants recorded for the condition are distributed across pathogenic, benign, and uncertain-significance classes."
+
+inspiration_keyword:
+  keyword_id: KW-0023
+  name: Alport syndrome
+  category: Disease
+
+togomcp_databases_used:
+  - medgen
+  - clinvar
+  - ncbigene
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 12
+  passed: true
+
+pubmed_test:
+  time_spent: 9 minutes
+  method: |
+    Ran three programmatic PubMed searches attempting to retrieve the specific fact the
+    summary quantifies — the current distribution of clinically classified Alport-syndrome
+    sequence variants across pathogenicity classes:
+    (1) "Alport syndrome ClinVar variant classification distribution uncertain significance pathogenic COL4A3 COL4A4 COL4A5"
+    (2) "Alport syndrome type IV collagen variant spectrum clinical significance benign uncertain database summary"
+    (3) "COL4A3 COL4A4 COL4A5 variant classification counts conflicting interpretations Alport"
+  result: |
+    All three searches returned zero indexed articles. The published literature reviews the
+    genetics of Alport syndrome and reports individual pathogenic variants, but it does not
+    provide the current variant-archive tally — how many distinct classified variants exist
+    for the condition and how they partition into pathogenic, benign, uncertain, and
+    conflicting classes, or how those variants distribute across the three collagen genes.
+    Those figures are a live aggregate over the current variant database state (which is
+    revised monthly as submissions and reclassifications accrue) joined to the clinical
+    concept and gene records, and cannot be reconstructed from literature.
+  conclusion: PASS (cannot answer from literature; requires a live join of the clinical concept, its gene records, and the current variant archive)
+
+sparql_queries:
+  - query_number: 1
+    database: medgen
+    description: >-
+      Retrieve the Alport-syndrome clinical concept (CUI C1567741): its preferred label,
+      UMLS semantic type, and definition. Establishes the disease anchor for the cross-graph
+      joins on the shared ncbi endpoint.
+    query: |
+      PREFIX mo:   <http://med2rdf/ontology/medgen#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT ?label ?sty ?definition
+      FROM <http://rdfportal.org/dataset/medgen>
+      WHERE {
+        <http://www.ncbi.nlm.nih.gov/medgen/C1567741> a mo:ConceptID ;
+            rdfs:label ?label ;
+            mo:sty ?sty .
+        OPTIONAL { <http://www.ncbi.nlm.nih.gov/medgen/C1567741> skos:definition ?definition }
+      }
+    result_count: 1
+
+  - query_number: 2
+    database: medgen
+    description: >-
+      Retrieve structured MGSAT attributes for the Alport concept — cytogenetic locations,
+      chromosomes, OMIM phenotypic-series id, and the count of associated genetic tests —
+      which document the multi-locus genetic architecture of the disease.
+    query: |
+      PREFIX mo:   <http://med2rdf/ontology/medgen#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+      SELECT ?attr_name (GROUP_CONCAT(DISTINCT ?attr_value; separator="; ") AS ?values)
+      FROM <http://rdfportal.org/dataset/medgen>
+      WHERE {
+        <http://www.ncbi.nlm.nih.gov/medgen/C1567741> mo:mgsat ?sat .
+        ?sat rdfs:label ?attr_name ; rdf:value ?attr_value .
+        VALUES ?attr_name { "NCBI_CYTOGEN_LOC" "NCBI_CHROSOME" "NCBI_PHENOTYPICSERIES_ID" }
+      }
+      GROUP BY ?attr_name
+    result_count: 3
+
+  - query_number: 3
+    database: clinvar
+    description: >-
+      Disease-anchored variant landscape. Join the Alport MedGen concept to ClinVar via the
+      variant -> med2rdf:disease -> dct:references -> MedGen-seeAlso path (with the mandatory
+      www.ncbi -> ncbi namespace conversion), then count distinct classified variants grouped
+      by germline clinical significance. This is the summary's quantitative backbone.
+    query: |
+      PREFIX mo:       <http://med2rdf/ontology/medgen#>
+      PREFIX rdfs:     <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct:      <http://purl.org/dc/terms/>
+      PREFIX cvo:      <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf:  <http://med2rdf.org/ontology/med2rdf#>
+
+      SELECT ?significance (COUNT(DISTINCT ?variant) AS ?n)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/medgen> {
+          ?mg_concept a mo:ConceptID ; dct:identifier "C1567741" .
+          BIND(IRI(REPLACE(STR(?mg_concept), "www.ncbi", "ncbi")) AS ?cv_uri)
+        }
+        GRAPH <http://rdfportal.org/dataset/clinvar> {
+          ?cv_disease a med2rdf:Disease ; dct:references ?ref .
+          ?ref rdfs:seeAlso ?cv_uri .
+          ?variant a cvo:VariationArchiveType ;
+              med2rdf:disease ?cv_disease ;
+              cvo:record_status "current" ;
+              cvo:classified_record ?classrec .
+          ?classrec cvo:classifications ?classi .
+          ?classi cvo:germline_classification ?germ .
+          ?germ cvo:description ?significance .
+        }
+      }
+      GROUP BY ?significance
+      ORDER BY DESC(?n)
+    result_count: 8
+
+  - query_number: 4
+    database: clinvar
+    description: >-
+      Arithmetic verification (Rule 3). Count total distinct classified variants for the
+      Alport concept, to confirm the eight per-significance counts of Query 3 sum to the
+      total (267+214+74+67+64+63+54+50 = 853) with no gap.
+    query: |
+      PREFIX mo:       <http://med2rdf/ontology/medgen#>
+      PREFIX rdfs:     <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct:      <http://purl.org/dc/terms/>
+      PREFIX cvo:      <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf:  <http://med2rdf.org/ontology/med2rdf#>
+
+      SELECT (COUNT(DISTINCT ?variant) AS ?totalVariants)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/medgen> {
+          ?mg_concept a mo:ConceptID ; dct:identifier "C1567741" .
+          BIND(IRI(REPLACE(STR(?mg_concept), "www.ncbi", "ncbi")) AS ?cv_uri)
+        }
+        GRAPH <http://rdfportal.org/dataset/clinvar> {
+          ?cv_disease a med2rdf:Disease ; dct:references ?ref .
+          ?ref rdfs:seeAlso ?cv_uri .
+          ?variant a cvo:VariationArchiveType ;
+              med2rdf:disease ?cv_disease ;
+              cvo:classified_record ?classrec .
+          ?classrec cvo:classifications ?classi .
+          ?classi cvo:germline_classification ?germ .
+          ?germ cvo:description ?significance .
+        }
+      }
+    result_count: 1
+
+  - query_number: 5
+    database: clinvar
+    description: >-
+      Partition the same disease-anchored variant set by causative gene (variant ->
+      classified_record -> sio:SIO_000628 -> med2rdf:gene). Gene IRIs resolved to symbols via
+      a ClinVar Gene lookup (cvo:symbol/cvo:cytogenetic_location): gene/1286=COL4A4,
+      gene/1285=COL4A3, gene/1287=COL4A5 (the three type IV collagen genes), gene/654841=MFF-DT
+      (a divergent transcript overlapping COL4A3/COL4A4 at 2q36.3), plus minor overlapping
+      2q36.3 features and a few incidental deafness genes (CLDN14, MYO15A).
+    query: |
+      PREFIX mo:       <http://med2rdf/ontology/medgen#>
+      PREFIX rdfs:     <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct:      <http://purl.org/dc/terms/>
+      PREFIX cvo:      <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf:  <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX sio:      <http://semanticscience.org/resource/>
+
+      SELECT ?gene (COUNT(DISTINCT ?variant) AS ?n)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/medgen> {
+          ?mg_concept a mo:ConceptID ; dct:identifier "C1567741" .
+          BIND(IRI(REPLACE(STR(?mg_concept), "www.ncbi", "ncbi")) AS ?cv_uri)
+        }
+        GRAPH <http://rdfportal.org/dataset/clinvar> {
+          ?cv_disease a med2rdf:Disease ; dct:references ?ref .
+          ?ref rdfs:seeAlso ?cv_uri .
+          ?variant a cvo:VariationArchiveType ;
+              med2rdf:disease ?cv_disease ;
+              cvo:classified_record ?classrec .
+          ?classrec sio:SIO_000628 ?gene_bn .
+          ?gene_bn med2rdf:gene ?gene .
+        }
+      }
+      GROUP BY ?gene
+      ORDER BY DESC(?n)
+    result_count: 8
+
+  - query_number: 6
+    database: ncbigene
+    description: >-
+      Retrieve the gene-level annotation (official symbol, gene type, full description) for
+      the three causative type IV collagen genes from NCBI Gene, adding the molecular-basis
+      scale to the disease-and-variant picture.
+    query: |
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      PREFIX dct:   <http://purl.org/dc/terms/>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?gid ?symbol ?type ?description
+      FROM <http://rdfportal.org/dataset/ncbigene>
+      WHERE {
+        VALUES ?gid { "1285" "1286" "1287" }
+        ?g a insdc:Gene ; dct:identifier ?gid ; rdfs:label ?symbol .
+        OPTIONAL { ?g ncbio:typeOfGene ?type }
+        OPTIONAL { ?g dct:description ?description }
+      }
+    result_count: 3
+
+rdf_triples: |
+  @prefix mo:      <http://med2rdf/ontology/medgen#> .
+  @prefix medgen:  <http://www.ncbi.nlm.nih.gov/medgen/> .
+  @prefix sty:     <http://purl.bioontology.org/ontology/STY/> .
+  @prefix gene:    <http://ncbi.nlm.nih.gov/gene/> .
+  @prefix cvo:     <http://purl.jp/bio/10/clinvar/> .
+  @prefix insdc:   <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
+  @prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+  @prefix dct:     <http://purl.org/dc/terms/> .
+  @prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+  @prefix ex:      <http://example.org/alport-variant-analysis#> .
+
+  medgen:C1567741 a mo:ConceptID ; rdfs:label "Alport syndrome" ; mo:sty sty:T047 .
+  # Database: medgen | Query: 1 | Comment: The Alport syndrome clinical concept (CUI C1567741), UMLS semantic type T047 "Disease or Syndrome"; anchors the disease-first join to the variant archive
+
+  medgen:C1567741 skos:definition "Alport syndrome is a genetic condition characterized by kidney disease, hearing loss, and eye abnormalities." .
+  # Database: medgen | Query: 1 | Comment: Concept definition (first sentence); progressive kidney disease with sensorineural hearing loss and ocular changes (e.g. anterior lenticonus)
+
+  medgen:C1567741 ex:cytogeneticLocations "2q36.3; Xq22.3" ; ex:chromosomes "2; X" ; ex:phenotypicSeries "PS301050" .
+  # Database: medgen | Query: 2 | Comment: Structured MGSAT attributes — the disease maps to two loci (2q36.3 autosomal, Xq22.3 X-linked) and belongs to OMIM phenotypic series PS301050, encoding its multi-locus, dual-inheritance architecture
+
+  gene:1285 a insdc:Gene ; rdfs:label "COL4A3" ; dct:description "collagen type IV alpha 3 chain" .
+  # Database: ncbigene | Query: 6 | Comment: COL4A3 (NCBI Gene 1285), protein-coding, at 2q36.3 — the alpha-3 chain of type IV collagen
+  gene:1286 a insdc:Gene ; rdfs:label "COL4A4" ; dct:description "collagen type IV alpha 4 chain" .
+  # Database: ncbigene | Query: 6 | Comment: COL4A4 (NCBI Gene 1286), protein-coding, at 2q36.3 (head-to-head with COL4A3) — the alpha-4 chain
+  gene:1287 a insdc:Gene ; rdfs:label "COL4A5" ; dct:description "collagen type IV alpha 5 chain" .
+  # Database: ncbigene | Query: 6 | Comment: COL4A5 (NCBI Gene 1287), protein-coding, at Xq22.3 — the alpha-5 chain; the three genes form the alpha3-alpha4-alpha5 collagen IV network of the glomerular basement membrane
+
+  medgen:C1567741 ex:totalClassifiedVariants "853"^^xsd:integer .
+  # Database: clinvar | Query: 4 | Comment: 853 distinct classified sequence variants recorded for the Alport concept (arithmetic-verification total)
+
+  medgen:C1567741 ex:variantsUncertainSignificance "267"^^xsd:integer .
+  # Database: clinvar | Query: 3 | Comment: 267 variants of Uncertain significance (largest class)
+  medgen:C1567741 ex:variantsConflicting "214"^^xsd:integer .
+  # Database: clinvar | Query: 3 | Comment: 214 variants with Conflicting classifications of pathogenicity
+  medgen:C1567741 ex:variantsBenign "74"^^xsd:integer .
+  # Database: clinvar | Query: 3 | Comment: 74 Benign
+  medgen:C1567741 ex:variantsPathogenic "67"^^xsd:integer .
+  # Database: clinvar | Query: 3 | Comment: 67 Pathogenic
+  medgen:C1567741 ex:variantsLikelyBenign "64"^^xsd:integer .
+  # Database: clinvar | Query: 3 | Comment: 64 Likely benign
+  medgen:C1567741 ex:variantsLikelyPathogenic "63"^^xsd:integer .
+  # Database: clinvar | Query: 3 | Comment: 63 Likely pathogenic
+  medgen:C1567741 ex:variantsPathogenicLikelyPathogenic "54"^^xsd:integer .
+  # Database: clinvar | Query: 3 | Comment: 54 Pathogenic/Likely pathogenic
+  medgen:C1567741 ex:variantsBenignLikelyBenign "50"^^xsd:integer .
+  # Database: clinvar | Query: 3 | Comment: 50 Benign/Likely benign; sum 267+214+74+67+64+63+54+50 = 853 = total (Query 4), so the significance partition is complete with no gap
+
+  gene:1286 ex:alportVariantCount "440"^^xsd:integer .
+  # Database: clinvar | Query: 5 | Comment: COL4A4 carries the most disease-anchored variants (440)
+  gene:1285 ex:alportVariantCount "355"^^xsd:integer .
+  # Database: clinvar | Query: 5 | Comment: COL4A3 (355); COL4A3+COL4A4 on chromosome 2 dominate
+  gene:1287 ex:alportVariantCount "55"^^xsd:integer .
+  # Database: clinvar | Query: 5 | Comment: COL4A5 on the X chromosome (55); far fewer than the autosomal pair in this concept's annotation
+  gene:654841 ex:alportVariantCount "338"^^xsd:integer .
+  # Database: clinvar | Query: 5 | Comment: MFF-DT, a divergent transcript overlapping COL4A3/COL4A4 at 2q36.3 (338); variants here are co-annotations of the same COL4A3/COL4A4 variants, so the per-gene counts (440+355+55+338+... = 1204) exceed the 853 distinct variants — an expected overlap, not a coverage gap
+
+exact_answer: ""
+
+ideal_answer: |
+  Alport syndrome is a hereditary type IV collagen disorder of the glomerular basement membrane, recorded as a disease/syndrome concept whose hallmark features are progressive kidney disease, sensorineural hearing loss, and ocular changes such as anterior lenticonus. Its molecular basis is the alpha3-alpha4-alpha5 network of type IV collagen encoded by three protein-coding genes: COL4A3 and COL4A4, adjacent head-to-head at 2q36.3, and COL4A5 at Xq22.3 — a two-locus distribution (chromosomes 2 and X; OMIM phenotypic series PS301050) that directly explains the disease's dual inheritance, with X-linked disease arising from COL4A5 and autosomal dominant or recessive disease from COL4A3/COL4A4. Across the sequence variants clinically classified for the condition, 853 distinct variants are on record, and their interpretation landscape is dominated by uncertainty: 267 are of uncertain significance and a further 214 carry conflicting classifications, so 481 of 853 (56%) lack a confident call, against 184 that are pathogenic to some degree (67 pathogenic, 63 likely pathogenic, 54 pathogenic/likely pathogenic) and 188 on the benign side (74 benign, 64 likely benign, 50 benign/likely benign); these eight classes sum exactly to 853. Partitioned by gene, essentially all variants fall in the three collagen genes, with COL4A4 (440) and COL4A3 (355) on chromosome 2 together far outnumbering COL4A5 (55) on the X — although the per-gene counts sum to more than 853 (about 1,204) because many 2q36.3 variants are co-annotated to the overlapping MFF divergent transcript (MFF-DT, 338) and to other features at the same locus, and a handful map incidentally to unlinked deafness genes such as CLDN14 and MYO15A. The overall picture is of a well-defined trigenic collagen disorder whose variant record is large but interpretively immature: uncertain and conflicting entries outnumber definitive pathogenic calls by roughly two-and-a-half to one, reflecting the ongoing clinical challenge of distinguishing benign type IV collagen missense variation from disease-causing change.
+
+question_template_used: "Summary Multi-Scale disease profile (clinical concept + molecular gene basis + variant-interpretation landscape) synthesised into one narrative"
+
+time_spent:
+  exploration: 35 minutes
+  formulation: 20 minutes
+  verification: 15 minutes
+  pubmed_test: 9 minutes
+  extraction: 20 minutes
+  documentation: 30 minutes
+  total: 129 minutes
