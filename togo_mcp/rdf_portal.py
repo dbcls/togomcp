@@ -53,7 +53,7 @@ def togomcp_usage_guide() -> str:
     Re-run GATE 0 every turn — prior workflow does not carry forward.
 
     Returns:
-        str: The content of the TogoMCP v4 usage guide.
+        str: The content of the TogoMCP usage guide.
     """
     # The guide is split into part files by change-cadence; assemble them in
     # sorted order, joined by the section separator, into one document.
