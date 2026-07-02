@@ -33,8 +33,9 @@ schema_info:
     - http://purl.jp/bio/103/nite/culture/
   kw_search_tools: []
   version:
-    mie_version: "2.0"
+    mie_version: "2.1"
     mie_created: "2026-07-02"
+    mie_updated: "2026-07-03"
     data_version: "RDF Portal snapshot 2026-07"
     update_frequency: "Periodic (with NBRC catalogue releases)"
   access:
@@ -71,17 +72,51 @@ critical_warnings: |
   - TEMPERATURE LIVES ON A BLANK NODE, NOT ON THE STRAIN: growth temperature is reached via
     `?strain sio:SIO_000216 [ a mpo:MPO_00102 ; sio:SIO_000300 ?degC ; sio:SIO_000221 obo:UO_0000027 ]`.
     MPO_00102 is the single recorded cultivation (growth) temperature (on ~all strains); MPO_00103
-    and MPO_00104 are the two endpoints of a temperature range on the minority recorded with one.
+    and MPO_00104 are the two endpoints of a temperature range on the 1,708 strains recorded with one.
     Values are xsd:integer °C. A direct `?strain ?p ?temperature` triple does not exist.
     NOTE: these numeric MPO ids are the snapshot's own; the published MPO ontology numbers the same
     concepts differently (growth temperature = MPO_10008/…) — query with the ids documented here.
+  - ⚠ TEMPERATURE-RANGE VALUES ARE INVERTED (MPO_00103 vs MPO_00104): for ALL 1,708 strains that
+    carry a range, the value under mpo:MPO_00103 (labelled "minimum" by the schema) is ALWAYS
+    strictly greater than the value under mpo:MPO_00104 (labelled "maximum") — verified on 100% of
+    range-holding strains (1,708/1,708, 0 exceptions, 2026-07-03). The min/max roles are
+    systematically swapped in the source data. Treat mpo:MPO_00103 as the effective MAXIMUM and
+    mpo:MPO_00104 as the effective MINIMUM, or (safer) surface both values WITHOUT a min/max label
+    and let the caller compare them numerically — e.g. `?low = IF(?v103 > ?v104, ?v104, ?v103)`.
+    Do NOT report MPO_00103 as a minimum. (Mitigation only; root fix requires NITE source correction.)
   - MCCV_000072 AND SIO_000008 ARE POLYMORPHIC: a sample node (mccv:MCCV_000028) links via
     mccv:MCCV_000072 to BOTH an isolation-source node (mccv:MCCV_000007) and a geographic-origin
     node (mccv:MCCV_000008). On a source node, sio:SIO_000008 resolves to a MEO habitat IRI
     (`http://purl.jp/bio/11/meo/MEO_*`); on a geography node it resolves to a GAZ gazetteer IRI
     (`http://purl.obolibrary.org/obo/GAZ_*`). Filter on the child node's rdf:type to disambiguate.
-  - INSDC IRI USES A COLON: mccv:MCCV_000077 objects are `http://identifiers.org/insdc:<ACCESSION>`
-    (colon after "insdc", not a slash). Constructing the slash form joins to nothing.
+  - GENOME ACCESSIONS SPAN THREE NAMESPACES — `insdc:` ALONE MISSES ~32%: mccv:MCCV_000077 objects
+    use three distinct identifiers.org namespaces, not just INSDC:
+    `http://identifiers.org/insdc:<acc>` (4,453 triples, 67.8%; note the **http** scheme and the
+    COLON after "insdc", not a slash), `https://identifiers.org/refseq.gcf:<acc>` (1,958, 29.8%;
+    **https**), and `https://identifiers.org/insdc.gca:<acc>` (152, 2.3%; **https**). Filtering on
+    the `insdc:` prefix alone silently drops ~32% of accessions, and the http/https scheme differs
+    between the three. Match namespace-agnostically with `FILTER(CONTAINS(STR(?acc), "identifiers.org/"))`
+    or enumerate all three prefixes. 1,957 distinct strains carry at least one accession (8.2%).
+  - FREE-TEXT ISOLATION SOURCE IS NOT CASE-NORMALISED: mccv:MCCV_000030 (isolation-source text)
+    mixes capitalisations for the same concept — "Soil" (1,763) vs "soil" (1,285), "Seawater" (542)
+    vs "seawater" (57), "Air" (74) vs "air" (44). A case-sensitive `FILTER(?x = "Soil")` or VALUES
+    match misses up to ~42% of the matching strains. Match case-insensitively:
+    `FILTER(LCASE(STR(?source)) = "soil")`, or use bif:contains (case-insensitive on this Virtuoso).
+  - GEOGRAPHY LABEL IS NOT ALWAYS A CURRENT COUNTRY: the geography node's rdfs:label (documented as
+    "country name") also holds obsolete states — "USSR" (157), "Czechoslovakia" (13), "Yugoslavia"
+    (2) — and non-sovereign / non-country entities — "High sea" (160), "Antarctica" (64), "Arctic"
+    (1). Do not assume every value is a present-day ISO country. "Czechoslovakia" additionally has
+    NO sio:SIO_000008 GAZ link (0/13) — the only geography label lacking GAZ resolution.
+  - NCBI TAXONOMY COVERAGE IS HIGHLY UNEVEN BY ORGANISM CATEGORY: the 91.2% overall figure for
+    mccv:MCCV_000065 does NOT apply uniformly — Archaea 99.0% (302/305), Bacteria 98.3%
+    (9,121/9,276), Yeasts 94.6% (3,491/3,692), Fungi 85.7% (8,694/10,140), Algae 55.3% (260/470),
+    Phages 1.9% (2/104). Taxon-based queries scoped to phages or algae will silently return
+    near-empty or heavily partial results — apply the per-category caveat.
+  - MULTI-VALUED PREDICATES CAUSE CARTESIAN ROW BLOW-UP: joining more than one multi-valued
+    predicate in a single query (e.g. mccv:MCCV_000077 genome accessions × dcterms:references
+    PubMed refs) emits one row per combination — for the 1,477 strains with both, that is 10,943
+    rows (~7.4× inflation), so a bare COUNT(*) over-reports. Use COUNT(DISTINCT ?strain), aggregate
+    with GROUP_CONCAT, or query each multi-valued predicate in a separate query.
 
 shape_expressions: |
   PREFIX mccv:    <http://purl.jp/bio/10/mccv#>
@@ -117,13 +152,13 @@ shape_expressions: |
     mccv:MCCV_000034 xsd:string ? ;                  # "biosafety level": "L1"|"L2"|"L1*" (~100%, 23,986)
     mccv:MCCV_000027 xsd:string ? ;                  # "history" — deposit/isolation history free text (~100%, 23,984)
     mccv:MCCV_000046 xsd:integer ? ;                 # "is approved": 0|1 (92.3%)
-    mccv:MCCV_000065 IRI ? ;                          # "is a species" -> NCBI Taxonomy IRI (91.2%) identifiers.org/taxonomy/<taxid>
-    brso:organism @<OrganismShape> ? ;               # organism node -> taxon (91.2%)
+    mccv:MCCV_000065 IRI ? ;                          # "is a species" -> NCBI Taxonomy IRI (91.2%; identifiers.org/taxonomy/<taxid>). CANONICAL taxon path — prefer this direct link. Fully redundant with brso:organism/obo:RO_0002162 (21,870/21,870 agree, 0 mismatches). Coverage is UNEVEN by category (Phages 1.9%, Algae 55.3%) — see critical_warnings.
+    brso:organism @<OrganismShape> ? ;               # organism node -> taxon (91.2%); two-hop equivalent of mccv:MCCV_000065 (same taxon IRI in 100% of cases) — no reason to prefer it over the direct link.
     mccv:MCCV_000028 @<SampleShape> ? ;              # "isolated from" -> sample (habitat + geography) (80.9%)
-    sio:SIO_000216 @<TemperatureMeasurementShape> * ; # growth-temperature measurement(s) (~100%, 23,983)
+    sio:SIO_000216 @<TemperatureMeasurementShape> * ; # growth-temperature measurement(s) (~100%, 23,983); single value MPO_00102 or a RANGE (MPO_00103/00104) whose min/max are INVERTED — see TemperatureMeasurementShape + critical_warnings
     mccv:MCCV_000024 @<EquivalentStrainShape> * ;    # "other culture collection information" -> equiv strain (51.1%)
-    dcterms:references IRI * ;                        # PubMed IRIs identifiers.org/pubmed/<pmid> (30.8%)
-    mccv:MCCV_000077 IRI * ;                          # INSDC genome/nuc. accession identifiers.org/insdc:<acc> (8.2%)
+    dcterms:references IRI * ;                        # PubMed IRIs identifiers.org/pubmed/<pmid> (30.8%); multi-valued — beware Cartesian blow-up when joined with MCCV_000077
+    mccv:MCCV_000077 IRI * ;                          # genome/nucleotide accession (1,957 strains, 8.2%) across THREE namespaces — identifiers.org/insdc: (http), refseq.gcf: (https), insdc.gca: (https); the insdc: prefix alone misses ~32%. See critical_warnings
     mccv:MCCV_000033 xsd:string *                    # "application" note, e.g. "<compound>;production" (~12%)
   }
 
@@ -160,22 +195,24 @@ shape_expressions: |
   # Typed mccv:MCCV_000007 ("Habitat"). sio:SIO_000008 -> MEO habitat IRI (labels in microbedbjp graph).
   <IsolationSourceShape> {
     a [ mccv:MCCV_000007 ] ;
-    mccv:MCCV_000030 xsd:string ? ;                 # "isolation source description", e.g. "buttermilk"
+    mccv:MCCV_000030 xsd:string ? ;                 # "isolation source description", e.g. "buttermilk"; free text, NOT case-normalised (Soil/soil, Seawater/seawater) — match with LCASE(); see critical_warnings
     sio:SIO_000008 IRI ?                            # MEO habitat http://purl.jp/bio/11/meo/MEO_*
   }
 
   # ── Geographic origin / country (blank node) ────────────────────────────────
-  # Typed mccv:MCCV_000008. rdfs:label = country name; sio:SIO_000008 -> GAZ gazetteer IRI.
+  # Typed mccv:MCCV_000008. rdfs:label = geography name (usually a country); sio:SIO_000008 -> GAZ gazetteer IRI.
   <GeographicOriginShape> {
     a [ mccv:MCCV_000008 ] ;
-    rdfs:label xsd:string ? ;                       # country name, e.g. "Japan"
-    sio:SIO_000008 IRI ?                            # GAZ http://purl.obolibrary.org/obo/GAZ_*
+    rdfs:label xsd:string ? ;                       # geography name — usually a country ("Japan") but also obsolete states (USSR, Czechoslovakia, Yugoslavia) and non-country entities (High sea, Antarctica, Arctic); see critical_warnings
+    sio:SIO_000008 IRI ?                            # GAZ http://purl.obolibrary.org/obo/GAZ_* (absent for "Czechoslovakia": 0/13)
   }
 
   # ── Growth-temperature measurement (blank node) ─────────────────────────────
-  # reached via sio:SIO_000216. Typed mpo:MPO_00102 (optimal) | MPO_00103 (min) | MPO_00104 (max).
+  # reached via sio:SIO_000216. Typed mpo:MPO_00102 (single growth temp) | MPO_00103 | MPO_00104 (range endpoints).
+  # ⚠ RANGE MIN/MAX ARE INVERTED: the MPO_00103 ("min") value is ALWAYS > the MPO_00104 ("max") value
+  # on all 1,708 range strains — MPO_00103 is the effective MAX, MPO_00104 the MIN. See critical_warnings.
   <TemperatureMeasurementShape> {
-    a [ mpo:MPO_00102 ] ;                            # or MPO_00103 / MPO_00104
+    a [ mpo:MPO_00102 ] ;                            # single growth temp (~all strains); OR MPO_00103/MPO_00104 = range endpoints (1,708 strains; labels swapped — see note above)
     sio:SIO_000300 xsd:integer ;                    # value in degrees Celsius
     sio:SIO_000221 [ obo:UO_0000027 ]               # unit = degree Celsius
   }
@@ -360,25 +397,107 @@ sparql_query_examples:
       }
       LIMIT 20
 
-  - title: "Strains of a given NCBI taxon with genome accession (if any)"
-    description: Filter strains by their NCBI Taxonomy cross-reference (mccv:MCCV_000065) and
-      optionally surface INSDC genome accessions (mccv:MCCV_000077, identifiers.org/insdc:<acc>).
-    question: "Which NBRC strains map to NCBI taxon 1613 (Limosilactobacillus fermentum), and do any have a genome?"
+  - title: "Strains of a given NCBI taxon with genome accessions across ALL three namespaces"
+    description: Filter strains by their NCBI Taxonomy cross-reference (mccv:MCCV_000065) and surface
+      genome/nucleotide accessions (mccv:MCCV_000077). CRITICAL — mccv:MCCV_000077 spans three
+      identifiers.org namespaces (insdc via http, refseq.gcf via https, insdc.gca via https); a
+      filter on the insdc prefix alone drops ~32%. Match namespace-agnostically with CONTAINS().
+    question: "Which NBRC strains map to NCBI taxon 1613 (Limosilactobacillus fermentum), and what genome/assembly accessions (any namespace) do they have?"
     complexity: advanced
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+
+      SELECT ?nbrcNo ?namespace ?accession
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?strain a brso:BiologicalResource ;
+                  mccv:MCCV_000065 <http://identifiers.org/taxonomy/1613> ;
+                  mccv:MCCV_000010 ?nbrcNo ;
+                  mccv:MCCV_000077 ?accession .
+          # namespace-agnostic: keep insdc: / refseq.gcf: / insdc.gca: alike, then tag which one
+          FILTER(CONTAINS(STR(?accession), "identifiers.org/"))
+          BIND(REPLACE(STR(?accession), "^https?://identifiers.org/([^:]+):.*$", "$1") AS ?namespace)
+        }
+      }
+      ORDER BY ?nbrcNo ?namespace
+      LIMIT 20
+
+  - title: "Isolation source, case-insensitively (mitigates the Soil/soil split)"
+    description: mccv:MCCV_000030 free-text isolation source is NOT case-normalised ("Soil" 1,763 vs
+      "soil" 1,285). Match with LCASE() to catch every capitalisation — a case-sensitive equality on
+      "Soil" alone would miss ~42% of soil-isolated strains.
+    question: "Which NBRC strains were isolated from soil, counting every capitalisation of the source text?"
+    complexity: intermediate
     sparql: |
       PREFIX mccv: <http://purl.jp/bio/10/mccv#>
       PREFIX brso: <http://purl.jp/bio/10/brso/>
       PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
 
-      SELECT ?strain ?nbrcNo ?genome
+      SELECT ?strain ?name ?source
       WHERE {
         GRAPH <http://purl.jp/bio/103/nite/culture/> {
           ?strain a brso:BiologicalResource ;
-                  mccv:MCCV_000065 <http://identifiers.org/taxonomy/1613> ;
-                  mccv:MCCV_000010 ?nbrcNo .
-          OPTIONAL { ?strain mccv:MCCV_000077 ?genome }
+                  skos:prefLabel ?name ;
+                  mccv:MCCV_000028/mccv:MCCV_000072 ?src .
+          ?src a mccv:MCCV_000007 ;                        # isolation-source node (not geography)
+               mccv:MCCV_000030 ?source .
+          FILTER(LCASE(STR(?source)) = "soil")            # catches "Soil" AND "soil" (3,048 strains total)
         }
       }
+      LIMIT 20
+
+  - title: "Growth-temperature range with min/max recovered numerically (labels are inverted)"
+    description: For the 1,708 strains recorded with a temperature RANGE (mpo:MPO_00103 + MPO_00104),
+      the schema's min/max labels are systematically swapped. Do NOT trust the labels — take the
+      numeric minimum and maximum of the two values with IF(), so the result is correct regardless.
+    question: "What are the true low and high ends of the recorded growth-temperature range for each range-holding strain?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX mpo:  <http://purl.jp/bio/10/mpo/>
+      PREFIX sio:  <http://semanticscience.org/resource/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT ?strain ?name (IF(?v103 > ?v104, ?v104, ?v103) AS ?lowC)
+                           (IF(?v103 > ?v104, ?v103, ?v104) AS ?highC)
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?strain a brso:BiologicalResource ;
+                  skos:prefLabel ?name ;
+                  sio:SIO_000216 ?mA , ?mB .
+          ?mA a mpo:MPO_00103 ; sio:SIO_000300 ?v103 .    # schema "min" — actually the higher value
+          ?mB a mpo:MPO_00104 ; sio:SIO_000300 ?v104 .    # schema "max" — actually the lower value
+        }
+      }
+      ORDER BY DESC(?highC)
+      LIMIT 20
+
+  - title: "Aggregate multi-valued genome + PubMed links per strain (avoid Cartesian blow-up)"
+    description: Joining two multi-valued predicates (mccv:MCCV_000077 × dcterms:references) emits one
+      row per combination (~7.4x inflation on strains with both). GROUP_CONCAT collapses each strain
+      to a single row with all accessions and all PubMed refs, so counts and output stay correct.
+    question: "For sequenced NBRC strains, list each once with all its genome accessions and all its PubMed references."
+    complexity: advanced
+    sparql: |
+      PREFIX mccv:    <http://purl.jp/bio/10/mccv#>
+      PREFIX brso:    <http://purl.jp/bio/10/brso/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX skos:    <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT ?strain ?name
+        (GROUP_CONCAT(DISTINCT STR(?acc);  separator=" | ") AS ?genomeAccessions)
+        (GROUP_CONCAT(DISTINCT STR(?pmid); separator=" | ") AS ?pubmedRefs)
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?strain a brso:BiologicalResource ;
+                  skos:prefLabel ?name ;
+                  mccv:MCCV_000077 ?acc .                 # multi-valued
+          OPTIONAL { ?strain dcterms:references ?pmid }   # multi-valued
+        }
+      }
+      GROUP BY ?strain ?name
       LIMIT 20
 
   - title: "Count strains by country of geographic origin"
@@ -448,19 +567,24 @@ cross_database_queries:
 cross_references:
   - pattern: mccv:MCCV_000065 and brso:organism / obo:RO_0002162
     description: |
-      Two paths to NCBI Taxonomy. mccv:MCCV_000065 links the strain directly to a taxon IRI;
-      brso:organism -> organism node -> obo:RO_0002162 gives the same taxon. IRI form:
-      http://identifiers.org/taxonomy/<taxid>. Both present on ~91% of strains.
+      Two fully redundant paths to the same NCBI Taxonomy IRI. mccv:MCCV_000065 links the strain
+      directly; brso:organism -> organism node -> obo:RO_0002162 gives the identical taxon
+      (21,870/21,870 agree, 0 mismatches — prefer the direct mccv:MCCV_000065). IRI form:
+      http://identifiers.org/taxonomy/<taxid>. 91.2% overall, but UNEVEN by category (Phages 1.9%,
+      Algae 55.3%, Fungi 85.7%, Yeasts 94.6%, Bacteria 98.3%, Archaea 99.0%) — see coverage_by_category.
     databases:
       taxonomy:
-        - "NCBI Taxonomy: 21,870 / 23,987 strains (91.2%)"
+        - "NCBI Taxonomy: 21,870 / 23,987 strains (91.2% overall; see per-category breakdown)"
   - pattern: mccv:MCCV_000077
     description: |
-      INSDC nucleotide / genome sequence accession as an IRI of the form
-      http://identifiers.org/insdc:<ACCESSION> (colon, not slash). Multi-valued.
+      Genome / nucleotide / assembly accession as an identifiers.org IRI, across THREE namespaces
+      (NOT insdc: only): http://identifiers.org/insdc:<acc> (http, colon not slash; 67.8% of triples),
+      https://identifiers.org/refseq.gcf:<acc> (https; 29.8%), https://identifiers.org/insdc.gca:<acc>
+      (https; 2.3%). Multi-valued. Filtering on insdc: alone misses ~32%; match with
+      CONTAINS("identifiers.org/") or enumerate all three prefixes.
     databases:
       sequence:
-        - "INSDC (DDBJ/ENA/GenBank): 1,957 / 23,987 strains (8.2%)"
+        - "INSDC / RefSeq assembly (DDBJ/ENA/GenBank + RefSeq GCF/GCA): 1,957 / 23,987 strains (8.2%; 1,845 via insdc: prefix alone)"
   - pattern: dcterms:references
     description: |
       Literature citations as PubMed IRIs (http://identifiers.org/pubmed/<pmid>). Multi-valued.
@@ -512,8 +636,8 @@ architectural_notes:
     - "Property paths like mccv:MCCV_000028/mccv:MCCV_000072 are fine when the subject is a typed strain; add LIMIT."
     - "bif:contains (Virtuoso, indexed) is available for free-text fields (mccv:MCCV_000027 attribution, mccv:MCCV_000030 source) if ever needed; split property paths before it."
   data_integration:
-    - "NCBI Taxonomy via mccv:MCCV_000065 / brso:organism (identifiers.org/taxonomy/)."
-    - "INSDC genomes via mccv:MCCV_000077 (identifiers.org/insdc:<acc> — colon form)."
+    - "NCBI Taxonomy via mccv:MCCV_000065 (canonical) / brso:organism (redundant) (identifiers.org/taxonomy/); coverage uneven by category."
+    - "Genomes/assemblies via mccv:MCCV_000077 across three namespaces — insdc: (http), refseq.gcf: (https), insdc.gca: (https); insdc: alone misses ~32%."
     - "PubMed via dcterms:references (identifiers.org/pubmed/)."
     - "Cross-collection equivalence via mccv:MCCV_000024 (+ mccv:MCCV_000025 catalogue URLs)."
     - "Habitat via MEO (microbedbjp graph); geography via GAZ."
@@ -523,7 +647,7 @@ architectural_notes:
     - "Growth temperature is present on ~100% of strains; a small minority carry a two-endpoint range (MPO_00103/MPO_00104) instead of a single value (MPO_00102)."
     - "mccv:MCCV_000017 = is-type-strain (1 = type strain, 6,275; 0 = not) and mccv:MCCV_000046 = is-approved (0|1) are integer flags."
   text_search_justification:
-    - "Number of the 7 example queries that use text search: 0."
+    - "Number of the 10 example queries that use text search: 0."
     - "Fields where text search IS legitimate: mccv:MCCV_000027 (attribution/history) and mccv:MCCV_000030 (free-text isolation source) — genuine free text."
     - "Everything else is structured: organism category (enum IRI), biosafety (typed literal), taxon/genome/PubMed (IRIs), habitat (MEO IRI), geography (country label + GAZ IRI)."
 
@@ -545,13 +669,34 @@ data_statistics:
   coverage:
     type_strain: "26.2% (6,275 / 23,987 are type strains; mccv:MCCV_000017 = 1)"
     growth_temperature: "~100% (23,983 / 23,987)"
+    temperature_range: "7.1% (1,708 / 23,987 have a MPO_00103/MPO_00104 range; min/max INVERTED)"
     organism_category: "100% (23,987 / 23,987)"
-    ncbi_taxonomy_link: "91.2% (21,870 / 23,987)"
+    ncbi_taxonomy_link: "91.2% (21,870 / 23,987) overall — but highly uneven by category, see coverage_by_category"
     isolation_sample: "80.9% (19,411 / 23,987)"
     equivalent_strain_other_collection: "51.1% (12,254 / 23,987)"
     pubmed_reference: "30.8% (7,383 / 23,987)"
-    insdc_genome_accession: "8.2% (1,957 / 23,987)"
-    verified_date: "2026-07-02"
+    genome_accession_any_namespace: "8.2% (1,957 / 23,987 have >=1 mccv:MCCV_000077; spans insdc:/refseq.gcf:/insdc.gca:, NOT insdc: only)"
+    genome_accession_insdc_prefix_only: "7.7% (1,845 / 23,987; the insdc: prefix alone — misses the refseq.gcf:/insdc.gca: strains)"
+    verified_date: "2026-07-03"
+
+  coverage_by_category:
+    # NCBI Taxonomy link (mccv:MCCV_000065) is far from uniform — do not apply the 91.2% overall to phages/algae.
+    ncbi_taxonomy_link:
+      Archaea: "99.0% (302/305)"
+      Bacteria: "98.3% (9,121/9,276)"
+      Yeasts: "94.6% (3,491/3,692)"
+      Fungi: "85.7% (8,694/10,140)"
+      Algae: "55.3% (260/470)"
+      Phages: "1.9% (2/104)"
+    genome_accession_namespaces:
+      # mccv:MCCV_000077 triples by namespace (a strain may carry several)
+      "insdc: (http)": "67.8% of triples (4,453)"
+      "refseq.gcf: (https)": "29.8% of triples (1,958)"
+      "insdc.gca: (https)": "2.3% of triples (152)"
+    equivalent_strain_catalogue_url:
+      # mccv:MCCV_000024 equiv-strain edges carrying a mccv:MCCV_000025 catalogue URL
+      with_catalogue_url: "53.6% (20,727 / 38,689 equiv-strain edges)"
+    verified_date: "2026-07-03"
 
 anti_patterns:
   - title: "Counting mccv:MCCV_000001 as the number of strains"
@@ -590,6 +735,50 @@ anti_patterns:
       ?m a <http://purl.jp/bio/10/mpo/MPO_00102> ;
          <http://semanticscience.org/resource/SIO_000300> ?tempC .
     explanation: "Walk sio:SIO_000216 to the MPO measurement node, then read sio:SIO_000300 (value) and sio:SIO_000221 (unit)."
+  - title: "Reporting mpo:MPO_00103 as the minimum growth temperature"
+    problem: "The range min/max are inverted: on all 1,708 range strains the MPO_00103 (\"min\") value is ALWAYS greater than the MPO_00104 (\"max\") value. Trusting the labels reports the range backwards."
+    wrong_sparql: |
+      ?m a <http://purl.jp/bio/10/mpo/MPO_00103> ;                 # WRONG: this is the effective MAX, not the min
+         <http://semanticscience.org/resource/SIO_000300> ?minTemp .
+    correct_sparql: |
+      ?s <http://semanticscience.org/resource/SIO_000216> ?mA , ?mB .
+      ?mA a <http://purl.jp/bio/10/mpo/MPO_00103> ; <http://semanticscience.org/resource/SIO_000300> ?v103 .
+      ?mB a <http://purl.jp/bio/10/mpo/MPO_00104> ; <http://semanticscience.org/resource/SIO_000300> ?v104 .
+      BIND(IF(?v103 > ?v104, ?v104, ?v103) AS ?minTemp)
+      BIND(IF(?v103 > ?v104, ?v103, ?v104) AS ?maxTemp)
+    explanation: "Take the numeric min/max of the two values with IF(); do not rely on the MPO_00103=min / MPO_00104=max labelling, which is swapped in the source data (verified 1,708/1,708)."
+  - title: "Case-sensitive equality on the isolation-source text"
+    problem: "mccv:MCCV_000030 is not case-normalised (Soil 1,763 vs soil 1,285); an exact-case match misses ~42% of matching strains."
+    wrong_sparql: |
+      ?src <http://purl.jp/bio/10/mccv#MCCV_000030> "Soil" .        # 1,763 strains — misses the 1,285 "soil"
+    correct_sparql: |
+      ?src <http://purl.jp/bio/10/mccv#MCCV_000030> ?source .
+      FILTER(LCASE(STR(?source)) = "soil")                          # 3,048 strains (Soil + soil)
+    explanation: "Free-text source values mix capitalisation; normalise with LCASE() (or bif:contains) so every form is caught."
+  - title: "Filtering genome accessions on the insdc: prefix only"
+    problem: "mccv:MCCV_000077 spans three namespaces (insdc: 67.8%, refseq.gcf: 29.8%, insdc.gca: 2.3%); an insdc:-only filter silently drops ~32% of accessions."
+    wrong_sparql: |
+      ?s <http://purl.jp/bio/10/mccv#MCCV_000077> ?acc .
+      FILTER(STRSTARTS(STR(?acc), "http://identifiers.org/insdc:"))  # misses refseq.gcf: and insdc.gca:
+    correct_sparql: |
+      ?s <http://purl.jp/bio/10/mccv#MCCV_000077> ?acc .
+      FILTER(CONTAINS(STR(?acc), "identifiers.org/"))                # keeps all three namespaces
+    explanation: "Match namespace-agnostically (CONTAINS 'identifiers.org/') or enumerate insdc:/refseq.gcf:/insdc.gca:; note insdc: uses http while the other two use https."
+  - title: "Counting over two multi-valued predicates joined together"
+    problem: "Joining mccv:MCCV_000077 and dcterms:references in one WHERE yields the Cartesian product (10,943 rows for the 1,477 strains with both); COUNT(*) then over-reports ~7.4x."
+    wrong_sparql: |
+      SELECT (COUNT(*) AS ?n) WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?s a <http://purl.jp/bio/10/brso/BiologicalResource> ;
+             <http://purl.jp/bio/10/mccv#MCCV_000077> ?acc ;
+             <http://purl.org/dc/terms/references> ?pmid . } }   # = 10,943, NOT a strain count
+    correct_sparql: |
+      SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {                   # = 1,477 strains
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?s a <http://purl.jp/bio/10/brso/BiologicalResource> ;
+             <http://purl.jp/bio/10/mccv#MCCV_000077> ?acc ;
+             <http://purl.org/dc/terms/references> ?pmid . } }
+    explanation: "Use COUNT(DISTINCT ?strain), aggregate multi-valued predicates with GROUP_CONCAT, or query each in a separate statement — never COUNT(*) across two multi-valued joins."
 
 common_errors:
   - error: "Empty results for a valid-looking query"
@@ -597,18 +786,21 @@ common_errors:
       - "GRAPH clause omitted — query hits the wrong/empty default graph on the shared endpoint."
       - "Added ^^xsd:string to a string match (values are stored plain; the typed form returns 0)."
       - "Filtered on mccv:MCCV_000001 or read temperature/medium directly off the strain."
-      - "INSDC IRI built with a slash instead of the colon form (identifiers.org/insdc:<acc>)."
+      - "Genome accession filtered on the insdc: prefix only (misses refseq.gcf:/insdc.gca: ~32%); or an INSDC IRI built with a slash instead of the colon form."
+      - "Case-sensitive match on a free-text field (mccv:MCCV_000030 Soil vs soil) — misses other capitalisations."
+      - "Taxon query scoped to phages/algae, where mccv:MCCV_000065 coverage is 1.9% / 55.3% (near-empty by design)."
     solutions:
       - "Add GRAPH <http://purl.jp/bio/103/nite/culture/> to every block."
-      - "Match strings with the plain literal or STR()-comparison — not ^^xsd:string."
+      - "Match strings with the plain literal or STR()-comparison — not ^^xsd:string; normalise free text with LCASE()."
       - "Anchor on brso:BiologicalResource; walk blank nodes for temperature/medium/source."
-      - "Copy IRI forms verbatim from cross_references."
+      - "Match genome accessions namespace-agnostically (CONTAINS 'identifiers.org/'); copy IRI forms verbatim from cross_references."
   - error: "Strain count / statistics look inflated"
     causes:
       - "Counting mccv:MCCV_000001 (includes equivalent-strain nodes) instead of brso:BiologicalResource."
-      - "Not using COUNT(DISTINCT) over multi-valued predicates (equivalents, references, temperature)."
+      - "Not using COUNT(DISTINCT) over multi-valued predicates (equivalents, references, genome accessions, temperature)."
+      - "Joining two multi-valued predicates (MCCV_000077 x dcterms:references) — Cartesian product, ~7.4x inflation."
     solutions:
-      - "Count brso:BiologicalResource; use COUNT(DISTINCT ?strain)."
+      - "Count brso:BiologicalResource; use COUNT(DISTINCT ?strain); GROUP_CONCAT or separate multi-valued predicates."
   - error: "Habitat/geography query returns the wrong node or no label"
     causes:
       - "mccv:MCCV_000072 returns both source and geography nodes; sio:SIO_000008 is MEO on one, GAZ on the other."
