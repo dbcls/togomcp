@@ -1,0 +1,620 @@
+schema_info:
+  title: "MoG+ (Mouse Genomes plus) variant / genotype RDF"
+  description: |
+    Genome-wide sequence variation across inbred and wild-derived mouse strains, from the
+    MoG+ resource. Each record is a variant (SNV or indel) on the GRCm39 assembly with its
+    per-strain genotype calls, Ensembl VEP and/or SnpEff functional-consequence annotations,
+    coordinate-based Ensembl gene overlaps, and the source VCF INFO/FORMAT header definitions.
+    ~146M variants, ~600M genotype calls and ~279M VEP annotations across 62 mouse strains.
+    Primary uses: locate variants by strain / gene / genomic region, retrieve per-strain
+    genotypes, and mine functional consequences of mouse variation. Reference genome: GRCm39.
+  keywords:
+    - mouse variant
+    - mouse genome
+    - SNV
+    - indel
+    - genotype
+    - inbred strain
+    - VEP
+    - snpeff
+    - consequence
+    - VCF
+    - GRCm39
+    - Ensembl gene
+    - genome variation
+    - bioresource
+  categories:
+    - variant
+    - genomics
+  endpoint: https://rdfportal.org/primary/sparql
+  base_uri: http://identifiers.org/mogplus/
+  graphs:
+    - http://rdfportal.org/dataset/mogplus
+  kw_search_tools: []
+  version:
+    mie_version: "1.0"
+    mie_created: "2026-07-03"
+    data_version: "RDF Portal snapshot 2026-07 (MoG+ releases v3, v2.1)"
+    update_frequency: "Periodic (with MoG+ releases)"
+  access:
+    backend: "Virtuoso (supports bif:contains, but text search is never needed here)"
+
+critical_warnings: |
+  - ⚠ BILLION-TRIPLE GRAPH — BOUND EVERY QUERY OR IT TIMES OUT / 503s: this graph holds
+    ~600M genotype calls, ~279M VEP annotations, ~170M position nodes, ~146M variants
+    (132M gvo:SNV + 14M gvo:Variation). Any query that scans a whole class — an unfiltered
+    COUNT/GROUP BY over a class, a class-wide ORDER BY, or a broad property survey — will time
+    out (60 s) or return HTTP 503. EVERY query must anchor on at least one of: a specific
+    variant IRI; a strain via med2rdf:sample; an Ensembl gene via mogplus:overlaps_gene; a
+    bounded gvo:pos range combined with a release+chromosome IRI-prefix filter; or a specific
+    consequence SO IRI — and keep a LIMIT. Even `LIMIT 100` does NOT make a class-wide ORDER BY
+    safe (the sort happens before the limit).
+  - ⚠ THE VARIANT IRI ENCODES RELEASE + CHROMOSOME; MULTIPLE RELEASES CO-EXIST: variant IRIs are
+    `http://identifiers.org/mogplus/<release>/<chromosome>/GRCm39#<pos>-<ref>-<alt>`. Observed
+    releases: `v3` and `v2.1` (MoG+ docs also reference `REL2021`); chromosomes 1–19, X, Y, MT
+    and unplaced scaffolds (e.g. `Un_MU069435v1`); assembly always GRCm39. THE SAME genomic
+    variant exists under several release IRIs — verified: `#3050118-G-A` is present under both
+    `.../v3/1/GRCm39#` and `.../v2.1/1/GRCm39#`. A coordinate / gene / consequence query that does
+    not pin a release returns each variant once PER release (silent duplication). Pin the release
+    (and usually the chromosome) with `FILTER(STRSTARTS(STR(?variant), "http://identifiers.org/mogplus/v3/1/GRCm39#"))`.
+  - ⚠ gvo:pos IS NOT A GENOME COORDINATE BY ITSELF — THE CHROMOSOME IS ONLY IN THE IRI: pos is a
+    per-chromosome position; there is NO chromosome predicate on the variant, and faldo:reference
+    is the ASSEMBLY (mco:.../GRCm39), not the chromosome. Filtering `?pos` without pinning the
+    chromosome mixes chromosomes — verified: a bare `ORDER BY ?pos` interleaves chr 3, 9, 18 and
+    scaffolds at the same numeric position. For a region query, filter BOTH the release+chromosome
+    IRI prefix AND the pos range.
+  - gvo:SNV AND gvo:Variation ARE DISJOINT VARIANT TYPES: gvo:SNV (132M, single-nucleotide
+    substitutions) and gvo:Variation (14M, indels / multi-nucleotide) are mutually exclusive — a
+    variant has exactly one. For "all variants" use `FILTER(?t IN (gvo:SNV, gvo:Variation))` (or
+    query one type); do not assume gvo:SNV alone covers everything.
+  - VEP AND SnpEff ARE TWO INDEPENDENT ANNOTATION SYSTEMS — USE THE SO-IRI FIELDS: vep:has_consequence
+    (vep:ConsequenceAnnotation, 279M) and snpeff:has_annotation (snpeff:Annotation, 158M) are
+    separate. To filter by a Sequence-Ontology consequence, use vep:consequence (an obo:SO_* IRI) on
+    VEP and snpeff:normalized_consequence (an obo:SO_* IRI) on SnpEff. snpeff:annotation and
+    *:consequence_label are RAW text terms (e.g. "intergenic_region") — never join those to an SO IRI.
+    Also: vep:gene / vep:feature are Ensembl IRIs (joinable), but snpeff:gene_id / snpeff:gene_name are
+    STRINGS (e.g. "CHR_START-ENSMUSG00000102693"), NOT IRIs — not directly joinable to Ensembl.
+  - MOST CROSS-REFERENCE IRIs ARE CROSS-ENDPOINT (NOT ON THIS ENDPOINT): Ensembl gene/transcript IRIs
+    (http://rdf.ebi.ac.uk/resource/ensembl/*) live on the EBI endpoint; MGI IRIs
+    (http://identifiers.org/mgi/*) and the MCO reference (http://identifiers.org/mco/*) are external.
+    Only the Sequence Ontology (obo:SO_* consequences) is CO-LOCATED on this primary endpoint
+    (graph http://rdfportal.org/ontology/so). Joining Ensembl/MGI needs federation; SO does not.
+  - mogbs:NA IS A POLYMORPHIC STRAIN NODE: the bioresource IRI .../bioresource/NA collapses ≥4
+    distinct strains (KK/HiJ, NON/LtJ, QSi3, QSi5) under one node labelled "NA" with mgi:NA. Also
+    dct:identifier is multi-valued on some strains (e.g. JF1_Ms, MSM_Ms carry two). Do not treat
+    mogbs:NA as one strain, and use DISTINCT when counting strains by identifier.
+  - COMPACT (v21) GENOTYPE MODEL — ABSENCE OF A CALL ≠ REFERENCE GENOTYPE: no-call genotypes are
+    omitted, and reference (0/0) genotypes may be omitted by converter option. A variant's
+    vcf:has_genotype_call therefore lists only strains with a recorded (usually non-reference) call;
+    a strain missing from that list is not necessarily homozygous-reference.
+
+shape_expressions: |
+  PREFIX rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+  PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+  PREFIX xsd:     <http://www.w3.org/2001/XMLSchema#>
+  PREFIX dct:     <http://purl.org/dc/terms/>
+  PREFIX faldo:   <http://biohackathon.org/resource/faldo#>
+  PREFIX gvo:     <http://genome-variation.org/resource#>
+  PREFIX vcf:     <http://genome-variation.org/resource/vcf#>
+  PREFIX vep:     <http://genome-variation.org/resource/vep#>
+  PREFIX snpeff:  <http://genome-variation.org/resource/snpeff#>
+  PREFIX mogplus: <http://identifiers.org/mogplus/ontology#>
+  PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+  PREFIX brso:    <http://purl.jp/bio/10/brso/>
+  PREFIX obo:     <http://purl.obolibrary.org/obo/>
+
+  # Cardinalities below come from the MoG+ rdf-config model + entity inspections. Exact per-predicate
+  # coverage is NOT computed: at ~146M variants / ~600M calls a coverage scan times out. Counts shown
+  # are exact class totals (COUNT(?s) per rdf:type, verified 2026-07-03).
+
+  # ── Variant ─────────────────────────────────────────────────────────────────
+  # 146,122,161 total = gvo:SNV (131,856,375) + gvo:Variation (14,265,786), DISJOINT.
+  # IRI: http://identifiers.org/mogplus/<release>/<chr>/GRCm39#<pos>-<ref>-<alt>  (release+chr in the IRI!)
+  <VariantShape> {
+    a [ gvo:SNV gvo:Variation ] ;                   # EXACTLY ONE of the two (SNV = substitution, Variation = indel/MNV)
+    gvo:pos xsd:integer ;                           # 1-based position ON ITS CHROMOSOME (chr is only in the IRI)
+    gvo:ref xsd:string ;                            # reference allele
+    gvo:alt xsd:string ;                            # alternate allele
+    faldo:location @<ExactPositionShape> ;          # 1 location node (position + reference assembly)
+    gvo:filter xsd:string ? ;                       # VCF FILTER, e.g. "PASS" (optional)
+    vcf:has_genotype_call @<GenotypeCallShape> * ;  # per-strain calls (compact: only strains with a recorded call)
+    vep:has_consequence @<VepConsequenceAnnotationShape> * ;  # Ensembl VEP annotations (one per transcript/consequence)
+    snpeff:has_annotation @<SnpEffAnnotationShape> * ;        # SnpEff annotations (independent of VEP)
+    mogplus:overlaps_gene IRI * ;                   # Ensembl gene IRI(s) this variant's coordinate overlaps (rdf.ebi.ac.uk/.../ensembl/ENSMUSG*)
+    vcf:variation_class xsd:string ? ;              # e.g. "SNP" (optional)
+    vcf:has_info_field @<InfoFieldShape> * ;        # raw INFO fields (e.g. LOF/NMD), when retained
+    vcf:source_file_index xsd:string *              # source VCF index (optional)
+  }
+
+  # ── ExactPosition (blank node) ──────────────────────────────────────────────
+  # 169,744,691; reached via faldo:location. faldo:reference is the ASSEMBLY, not the chromosome.
+  <ExactPositionShape> {
+    a [ faldo:ExactPosition ] ;
+    faldo:position xsd:integer ;                    # same value as gvo:pos
+    faldo:reference IRI                             # assembly IRI: http://identifiers.org/mco/<n>/GRCm39
+  }
+
+  # ── GenotypeCall (per-strain call) ──────────────────────────────────────────
+  # 600,367,585; IRI: <variant-iri>/genotype/<strain-code>. Reached via vcf:has_genotype_call.
+  <GenotypeCallShape> {
+    a [ vcf:GenotypeCall ] ;
+    med2rdf:sample @<BiologicalResourceShape> ;     # the strain sampled (mogbs:<code>)
+    vcf:genotype xsd:string ;                       # "0/1", "1/1", "1|1", ...
+    vcf:ad_ref xsd:integer ? ;                      # reference-allele read depth
+    vcf:ad_alt xsd:integer ? ;                      # alternate-allele read depth
+    vcf:sample_read_depth xsd:integer ? ;           # total depth (DP)
+    vcf:genotype_likelihoods xsd:string ? ;         # PL, e.g. "1510,0,1651"
+    vcf:minimum_read_depth xsd:integer ? ;
+    vcf:phased_genotype xsd:string ? ;
+    vcf:phase_id xsd:string ? ;
+    vcf:strand_bias_counts xsd:string ?
+  }
+
+  # ── BiologicalResource (mouse strain) ───────────────────────────────────────
+  # 62; IRI: http://identifiers.org/mogplus/bioresource/<code>. The small anchor set for strain queries.
+  <BiologicalResourceShape> {
+    a [ brso:BiologicalResource ] ;
+    rdfs:label xsd:string ;                         # strain name, e.g. "FLS/Shi" (mogbs:NA is polymorphic — see critical_warnings)
+    dct:identifier xsd:string * ;                   # assembly/strain id(s); MULTI-VALUED on some strains
+    rdfs:seeAlso IRI *                              # MGI strain IRI(s): http://identifiers.org/mgi/<id>
+  }
+
+  # ── VepConsequenceAnnotation ────────────────────────────────────────────────
+  # 278,831,395; reached via vep:has_consequence. gene/feature are Ensembl IRIs (joinable).
+  <VepConsequenceAnnotationShape> {
+    a [ vep:ConsequenceAnnotation ] ;
+    vep:consequence IRI * ;                         # SO term IRI(s), obo:SO_* (queryable; may be >1 per annotation)
+    vep:consequence_label xsd:string ? ;            # raw SO term text (not for SO-IRI joins)
+    rdfs:label xsd:string ? ;                       # same raw term text
+    vep:impact xsd:string ? ;                       # HIGH | MODERATE | LOW | MODIFIER
+    vep:allele xsd:string ? ;
+    vep:symbol xsd:string ? ;                       # gene symbol, e.g. "Xkr4"
+    vep:gene IRI ? ;                                # Ensembl gene IRI (rdf.ebi.ac.uk/.../ensembl/ENSMUSG*)
+    vep:feature IRI ? ;                             # Ensembl transcript IRI (ENSMUST*)
+    vep:feature_type xsd:string ? ;                 # "Transcript", ...
+    vep:biotype xsd:string ? ;
+    vep:exon xsd:string ? ; vep:intron xsd:string ? ;
+    vep:hgvsc xsd:string ? ; vep:hgvsp xsd:string ? ;
+    vep:cdna_position xsd:string ? ; vep:cds_position xsd:string ? ; vep:protein_position xsd:string ? ;
+    vep:amino_acids xsd:string ? ; vep:codons xsd:string ? ;
+    vep:distance xsd:integer ? ; vep:strand xsd:integer ? ;
+    vep:symbol_source xsd:string ? ; vep:sift xsd:string ?
+  }
+
+  # ── SnpEffAnnotation ────────────────────────────────────────────────────────
+  # 157,702,888; reached via snpeff:has_annotation. gene fields are STRINGS (not IRIs).
+  <SnpEffAnnotationShape> {
+    a [ snpeff:Annotation ] ;
+    snpeff:annotation xsd:string ? ;                # RAW SnpEff term, e.g. "intergenic_region" (NOT an SO IRI)
+    snpeff:normalized_consequence IRI ? ;           # SO term IRI, obo:SO_* (the queryable field)
+    snpeff:normalized_consequence_label xsd:string ? ;
+    rdfs:label xsd:string ? ;
+    snpeff:impact xsd:string ? ;                    # HIGH | MODERATE | LOW | MODIFIER
+    snpeff:allele xsd:string ? ;
+    snpeff:gene_name xsd:string ? ;                 # STRING, not an IRI
+    snpeff:gene_id xsd:string ? ;                   # STRING (e.g. "CHR_START-ENSMUSG...") — not directly joinable
+    snpeff:feature_type xsd:string ? ; snpeff:feature_id xsd:string ? ;
+    snpeff:transcript_biotype xsd:string ? ; snpeff:rank xsd:string ? ;
+    snpeff:hgvsc xsd:string ? ; snpeff:hgvsp xsd:string ? ;
+    snpeff:distance xsd:integer ? ; snpeff:errors_warnings_info xsd:string ?
+  }
+
+  # ── InfoField (raw VCF INFO on a variant) ───────────────────────────────────
+  # 293,355; IRI: <variant-iri>/info/<KEY>. Reached via vcf:has_info_field.
+  <InfoFieldShape> {
+    a [ vcf:InfoField ] ;
+    vcf:info_key xsd:string ;                       # INFO key, e.g. "LOF"
+    rdf:value xsd:string ;                          # parsed value
+    vcf:raw_value xsd:string ?                      # original text value
+  }
+
+  # ── VCF header definitions (per release) ────────────────────────────────────
+  # InfoFieldDefinition (39) + FormatFieldDefinition (16).
+  # IRI: http://identifiers.org/mogplus/<release>/GRCm39/vcf/header/{info|format}/<KEY>
+  <InfoFieldDefinitionShape> {
+    a [ vcf:InfoFieldDefinition ] ;
+    vcf:id xsd:string ;                             # e.g. "CSQ", "ANN", "DP"
+    vcf:number xsd:string ? ;                       # VCF Number, e.g. "1", "A", "."
+    vcf:type xsd:string ? ;                         # "String" | "Integer" | "Float" | "Flag"
+    dct:description xsd:string ?                    # e.g. the full VEP CSQ format string
+  }
+  <FormatFieldDefinitionShape> {
+    a [ vcf:FormatFieldDefinition ] ;
+    vcf:id xsd:string ; vcf:number xsd:string ? ; vcf:type xsd:string ? ; dct:description xsd:string ?
+  }
+
+sample_rdf_entries:
+  rdf_prefixes: |
+    @prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+    @prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+    @prefix dct:     <http://purl.org/dc/terms/> .
+    @prefix faldo:   <http://biohackathon.org/resource/faldo#> .
+    @prefix gvo:     <http://genome-variation.org/resource#> .
+    @prefix vcf:     <http://genome-variation.org/resource/vcf#> .
+    @prefix vep:     <http://genome-variation.org/resource/vep#> .
+    @prefix med2rdf: <http://med2rdf.org/ontology/med2rdf#> .
+    @prefix brso:    <http://purl.jp/bio/10/brso/> .
+    @prefix obo:     <http://purl.obolibrary.org/obo/> .
+    @prefix mogbs:   <http://identifiers.org/mogplus/bioresource/> .
+    @prefix mgi:     <http://identifiers.org/mgi/> .
+    @prefix var:     <http://identifiers.org/mogplus/v3/1/GRCm39#> .
+  entries:
+    - title: "Variant (SNV) 3050118-G-A on GRCm39 chr 1, MoG+ v3 — central entity"
+      description: An SNV showing the core variant predicates, the faldo location node (position +
+        assembly reference), two per-strain genotype calls, and a VEP consequence annotation.
+      rdf: |
+        var:3050118-G-A a gvo:SNV ;
+            gvo:pos 3050118 ;
+            gvo:ref "G" ;
+            gvo:alt "A" ;
+            faldo:location [ a faldo:ExactPosition ;
+                             faldo:position 3050118 ;
+                             faldo:reference <http://identifiers.org/mco/1/GRCm39> ] ;
+            vcf:has_genotype_call var:3050118-G-A/genotype/FLS_Shi , var:3050118-G-A/genotype/STR_OrtCrlj ;
+            vep:has_consequence var:3050118-G-A/vep/1 .
+
+    - title: "GenotypeCall — FLS/Shi genotype at variant 3050118-G-A (linker node)"
+      description: A per-strain call linking the variant to a BiologicalResource via med2rdf:sample,
+        carrying the genotype and allele read depths.
+      rdf: |
+        var:3050118-G-A/genotype/FLS_Shi a vcf:GenotypeCall ;
+            med2rdf:sample mogbs:FLS_Shi ;
+            vcf:genotype "0/1" ;
+            vcf:ad_ref 48 ;
+            vcf:ad_alt 45 ;
+            vcf:sample_read_depth 93 ;
+            vcf:genotype_likelihoods "1510,0,1651" .
+
+    - title: "BiologicalResource — the FLS/Shi mouse strain (anchor entity)"
+      description: One of the 62 strains, with its display name, an assembly/strain identifier, and
+        a cross-reference to its MGI strain record.
+      rdf: |
+        mogbs:FLS_Shi a brso:BiologicalResource ;
+            rdfs:label "FLS/Shi" ;
+            dct:identifier "FLSagv1.1" ;
+            rdfs:seeAlso mgi:6145597 .
+
+sparql_query_examples:
+  - title: "Look up one variant by its IRI"
+    description: Cheapest possible query — direct IRI lookup of a variant's type, position, alleles,
+      FILTER status and the assembly reference. The variant IRI carries release (v3) and chromosome (1).
+    question: "What are the type, position, alleles and reference assembly of variant v3/1/GRCm39#3050118-G-A?"
+    complexity: basic
+    sparql: |
+      PREFIX gvo:   <http://genome-variation.org/resource#>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+
+      SELECT ?type ?pos ?ref ?alt ?filter ?assembly
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          BIND(<http://identifiers.org/mogplus/v3/1/GRCm39#3050118-G-A> AS ?variant)
+          ?variant a ?type ;
+                   gvo:pos ?pos ; gvo:ref ?ref ; gvo:alt ?alt ;
+                   faldo:location ?loc .
+          ?loc faldo:reference ?assembly .
+          OPTIONAL { ?variant gvo:filter ?filter }
+        }
+      }
+
+  - title: "List the mouse strains (BiologicalResource)"
+    description: Enumerate the 62 strains with their names and MGI cross-references. This is one of the
+      only classes small enough to scan whole; use it to discover strain IRIs for the genotype queries.
+    question: "Which mouse strains does MoG+ cover, and what are their MGI records?"
+    complexity: basic
+    sparql: |
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?strain ?label ?mgi
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          ?strain a brso:BiologicalResource ;
+                  rdfs:label ?label .
+          OPTIONAL { ?strain rdfs:seeAlso ?mgi }
+        }
+      }
+      ORDER BY ?label
+
+  - title: "Which strains carry a specific variant, with genotypes"
+    description: Anchor on a variant IRI, walk vcf:has_genotype_call to each call, and read the strain
+      (med2rdf:sample), genotype and allele depths. Compact model — only strains with a recorded call appear.
+    question: "Which strains carry variant v3/1/GRCm39#3050118-G-A and what are their genotypes and read depths?"
+    complexity: intermediate
+    sparql: |
+      PREFIX gvo:     <http://genome-variation.org/resource#>
+      PREFIX vcf:     <http://genome-variation.org/resource/vcf#>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?strainLabel ?genotype ?adRef ?adAlt ?dp
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          <http://identifiers.org/mogplus/v3/1/GRCm39#3050118-G-A> vcf:has_genotype_call ?call .
+          ?call med2rdf:sample ?strain ;
+                vcf:genotype ?genotype .
+          ?strain rdfs:label ?strainLabel .
+          OPTIONAL { ?call vcf:ad_ref ?adRef }
+          OPTIONAL { ?call vcf:ad_alt ?adAlt }
+          OPTIONAL { ?call vcf:sample_read_depth ?dp }
+        }
+      }
+      ORDER BY ?strainLabel
+
+  - title: "Variants overlapping an Ensembl gene (release-pinned)"
+    description: Use the mogplus:overlaps_gene coordinate-overlap link to an Ensembl gene IRI. PIN THE
+      RELEASE with a variant-IRI prefix filter — otherwise the same variant is returned once per release.
+    question: "Which MoG+ v3 variants overlap the Ensembl gene ENSMUSG00000051951 (Xkr4)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX gvo:     <http://genome-variation.org/resource#>
+      PREFIX mogplus: <http://identifiers.org/mogplus/ontology#>
+      PREFIX ensg:    <http://rdf.ebi.ac.uk/resource/ensembl/>
+
+      SELECT ?variant ?pos ?ref ?alt
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          ?variant mogplus:overlaps_gene ensg:ENSMUSG00000051951 ;
+                   gvo:pos ?pos ; gvo:ref ?ref ; gvo:alt ?alt .
+          FILTER(STRSTARTS(STR(?variant), "http://identifiers.org/mogplus/v3/"))
+        }
+      }
+      ORDER BY ?pos
+      LIMIT 100
+
+  - title: "SnpEff annotations for one variant (raw term vs normalized SO IRI)"
+    description: Anchor on a variant IRI and read its SnpEff annotations. Note the split — snpeff:annotation
+      is the RAW SnpEff term (a string), snpeff:normalized_consequence is the queryable SO IRI.
+    question: "What SnpEff annotations (raw term, normalized SO consequence, impact, HGVS) does variant 3070088-CTTTTTT-C carry?"
+    complexity: intermediate
+    sparql: |
+      PREFIX snpeff: <http://genome-variation.org/resource/snpeff#>
+
+      SELECT ?rawTerm ?normalizedConsequence ?normalizedLabel ?impact ?hgvsc
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          <http://identifiers.org/mogplus/v3/1/GRCm39#3070088-CTTTTTT-C> snpeff:has_annotation ?ann .
+          OPTIONAL { ?ann snpeff:annotation ?rawTerm }
+          OPTIONAL { ?ann snpeff:normalized_consequence ?normalizedConsequence }
+          OPTIONAL { ?ann snpeff:normalized_consequence_label ?normalizedLabel }
+          OPTIONAL { ?ann snpeff:impact ?impact }
+          OPTIONAL { ?ann snpeff:hgvsc ?hgvsc }
+        }
+      }
+
+  - title: "VEP consequence detail for variants in a gene (release-pinned)"
+    description: Join variants overlapping a gene to their VEP annotations, reading the SO consequence IRI,
+      impact, gene symbol, transcript (Ensembl IRI) and HGVSc. Bounded by gene + release, so it stays fast.
+    question: "For MoG+ v3 variants overlapping Xkr4 (ENSMUSG00000051951), what VEP consequences, impacts and transcripts are predicted?"
+    complexity: advanced
+    sparql: |
+      PREFIX gvo:     <http://genome-variation.org/resource#>
+      PREFIX vep:     <http://genome-variation.org/resource/vep#>
+      PREFIX mogplus: <http://identifiers.org/mogplus/ontology#>
+      PREFIX ensg:    <http://rdf.ebi.ac.uk/resource/ensembl/>
+
+      SELECT ?variant ?consequence ?impact ?symbol ?feature ?hgvsc
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          ?variant mogplus:overlaps_gene ensg:ENSMUSG00000051951 ;
+                   vep:has_consequence ?ann .
+          FILTER(STRSTARTS(STR(?variant), "http://identifiers.org/mogplus/v3/"))
+          ?ann vep:consequence ?consequence .
+          OPTIONAL { ?ann vep:impact ?impact }
+          OPTIONAL { ?ann vep:symbol ?symbol }
+          OPTIONAL { ?ann vep:feature ?feature }
+          OPTIONAL { ?ann vep:hgvsc ?hgvsc }
+        }
+      }
+      LIMIT 100
+
+  - title: "Variants in a genomic region — release AND chromosome pinned"
+    description: The correct way to do a coordinate-range query. Pin release+chromosome via the variant-IRI
+      prefix (chromosome is ONLY in the IRI) AND bound gvo:pos. Omitting the prefix mixes releases and
+      chromosomes (see critical_warnings / anti_patterns).
+    question: "What MoG+ v3 variants lie between chr1:3,050,000 and chr1:3,060,000 on GRCm39?"
+    complexity: advanced
+    sparql: |
+      PREFIX gvo: <http://genome-variation.org/resource#>
+
+      SELECT ?variant ?pos ?ref ?alt
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          ?variant gvo:pos ?pos ; gvo:ref ?ref ; gvo:alt ?alt .
+          FILTER(STRSTARTS(STR(?variant), "http://identifiers.org/mogplus/v3/1/GRCm39#"))
+          FILTER(?pos >= 3050000 && ?pos <= 3060000)
+        }
+      }
+      ORDER BY ?pos
+      LIMIT 100
+
+cross_database_queries:
+  shared_endpoint: primary
+  co_located_databases: [so]
+  examples:
+    - title: "VEP consequence SO IRI -> Sequence Ontology term label (same endpoint)"
+      description: |
+        The only same-endpoint cross-graph join for MoG+. VEP/SnpEff consequences are obo:SO_* IRIs;
+        the Sequence Ontology is co-located on this primary endpoint in graph
+        http://rdfportal.org/ontology/so, so the SO IRI joins directly to its human-readable label.
+        Ensembl (vep:gene/feature) and MGI (rdfs:seeAlso) are NOT here — those need federation.
+        Bounded by gene + release to stay within performance limits.
+      databases_used: [mogplus, so]
+      complexity: advanced
+      sparql: |
+        PREFIX vep:     <http://genome-variation.org/resource/vep#>
+        PREFIX mogplus: <http://identifiers.org/mogplus/ontology#>
+        PREFIX ensg:    <http://rdf.ebi.ac.uk/resource/ensembl/>
+        PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+
+        SELECT DISTINCT ?variant ?consequence ?soLabel
+        WHERE {
+          GRAPH <http://rdfportal.org/dataset/mogplus> {
+            ?variant mogplus:overlaps_gene ensg:ENSMUSG00000051951 ;
+                     vep:has_consequence ?ann .
+            FILTER(STRSTARTS(STR(?variant), "http://identifiers.org/mogplus/v3/"))
+            ?ann vep:consequence ?consequence .
+          }
+          GRAPH <http://rdfportal.org/ontology/so> {
+            ?consequence rdfs:label ?soLabel .
+          }
+        }
+        LIMIT 50
+      notes: |
+        - Linking via: the obo:SO_* IRI, shared between the mogplus graph and the SO ontology graph.
+        - SO term labels are NOT in the mogplus graph; they are in http://rdfportal.org/ontology/so.
+        - Ensembl gene/transcript and MGI strain IRIs require the EBI endpoint / external resolution.
+
+cross_references:
+  - pattern: mogplus:overlaps_gene and vep:gene / vep:feature
+    description: |
+      Ensembl mouse gene / transcript IRIs of the form http://rdf.ebi.ac.uk/resource/ensembl/<ENSMUSG*|ENSMUST*>.
+      mogplus:overlaps_gene is a coordinate-overlap link on the variant; vep:gene / vep:feature are on the VEP
+      annotation. These resolve on the EBI endpoint (Ensembl), not on this primary endpoint.
+    databases:
+      gene:
+        - "Ensembl (EBI endpoint): gene ENSMUSG* via mogplus:overlaps_gene / vep:gene; transcript ENSMUST* via vep:feature"
+  - pattern: vep:consequence / snpeff:normalized_consequence
+    description: |
+      Sequence Ontology consequence terms as obo:SO_* IRIs (http://purl.obolibrary.org/obo/SO_*). CO-LOCATED
+      on this primary endpoint (graph http://rdfportal.org/ontology/so) — directly joinable for labels.
+      snpeff:annotation is the raw text term, NOT an SO IRI.
+    databases:
+      ontology:
+        - "Sequence Ontology (co-located, graph http://rdfportal.org/ontology/so): consequence obo:SO_* IRIs"
+  - pattern: rdfs:seeAlso (on BiologicalResource)
+    description: |
+      MGI mouse-strain IRIs of the form http://identifiers.org/mgi/<id>. External (not on this endpoint).
+    databases:
+      strain:
+        - "MGI (external): strain records via rdfs:seeAlso"
+  - pattern: faldo:reference
+    description: |
+      Reference-assembly IRI http://identifiers.org/mco/<n>/GRCm39 on the variant's ExactPosition node.
+      This is the ASSEMBLY, not the chromosome (the chromosome is a segment of the variant IRI).
+    databases:
+      assembly:
+        - "MCO / GRCm39 assembly IRI (external identifier)"
+
+architectural_notes:
+  query_strategy:
+    - "FIRST: this is a billion-triple graph. Decide your anchor BEFORE writing the query — a specific variant IRI, a strain (med2rdf:sample), an Ensembl gene (mogplus:overlaps_gene), a release+chromosome IRI prefix + pos range, or a specific SO consequence IRI."
+    - "Always scope to GRAPH <http://rdfportal.org/dataset/mogplus> and keep a LIMIT; never run a class-wide COUNT/ORDER BY."
+    - "Pin the release (and usually chromosome) via STRSTARTS on the variant IRI — the same variant recurs across releases."
+    - "For 'all variants' use FILTER(?t IN (gvo:SNV, gvo:Variation)); the two types are disjoint."
+    - "For consequence filtering use the SO IRI fields (vep:consequence, snpeff:normalized_consequence), not the raw text terms."
+    - "Priority: specific variant/strain/gene IRIs > release+chr IRI-prefix + pos range > SO-IRI consequence filter > (never) class scans."
+  schema_design:
+    - "Central entity: Variant (gvo:SNV | gvo:Variation), 146M; IRI mogplus/<release>/<chr>/GRCm39#<pos>-<ref>-<alt>."
+    - "Satellites off the variant: faldo:location (ExactPosition), vcf:has_genotype_call (GenotypeCall -> strain), vep:has_consequence (VEP), snpeff:has_annotation (SnpEff), mogplus:overlaps_gene (Ensembl IRI), vcf:has_info_field (InfoField)."
+    - "GenotypeCall (600M) is the variant<->strain linker via med2rdf:sample; BiologicalResource is the 62-strain anchor set."
+    - "VEP and SnpEff are parallel, independent consequence systems; both expose an SO-IRI field plus raw text."
+    - "VCF header definitions (InfoFieldDefinition 39, FormatFieldDefinition 16) are per release (/<release>/GRCm39/vcf/header/...)."
+  performance:
+    - "The graph is the constraint: unbounded patterns 503 or time out at 60 s (verified during authoring)."
+    - "Anchored lookups (variant IRI, strain, gene) are fast; a pos-range query is fast when the release+chr IRI prefix is pinned and the range is narrow."
+    - "Avoid crossing two high-cardinality satellites in one query (e.g. all genotype calls x all VEP annotations of many variants) — it explodes; anchor on one variant or aggregate."
+  data_integration:
+    - "Sequence Ontology consequences (obo:SO_*) are co-located on this endpoint (graph http://rdfportal.org/ontology/so) — join for labels/definitions."
+    - "Ensembl genes/transcripts (rdf.ebi.ac.uk/.../ensembl/) are on the EBI endpoint — federation needed."
+    - "MGI strains (identifiers.org/mgi/) and the MCO/GRCm39 assembly (identifiers.org/mco/) are external identifiers."
+  text_search_justification:
+    - "Number of the 7 example queries that use text search: 0."
+    - "No field needs text search: variants/strains/genes are IRIs, consequences are SO IRIs, impacts/genotypes are short controlled tokens."
+    - "STRSTARTS on the variant IRI is IRI-prefix pinning (release/chromosome), not free-text search."
+
+data_statistics:
+  total_entities: 146122161   # variants = gvo:SNV + gvo:Variation
+  verified_date: "2026-07-03"
+  verification_method: "Direct COUNT(?s) per rdf:type in GRAPH <http://rdfportal.org/dataset/mogplus>; entity chains and example queries inspected live."
+  by_class:
+    genotype_call_vcf_GenotypeCall: 600367585
+    vep_ConsequenceAnnotation: 278831395
+    faldo_ExactPosition: 169744691
+    snpeff_Annotation: 157702888
+    variant_gvo_SNV: 131856375
+    variant_gvo_Variation: 14265786
+    info_field_vcf_InfoField: 293355
+    biological_resource_strains: 62
+    info_field_definition: 39
+    format_field_definition: 16
+  variants_total: 146122161
+  mouse_strains: 62
+  reference_assembly: "GRCm39"
+  observed_releases: "v3, v2.1 (MoG+ docs also reference REL2021); the variant IRI embeds <release>/<chromosome>/GRCm39"
+  notes: "Per-predicate coverage percentages are not computed: a coverage scan over 146M variants / 600M calls exceeds the 60 s endpoint timeout. Class totals above are exact COUNTs."
+
+anti_patterns:
+  - title: "Unbounded class scan (COUNT / ORDER BY over a whole class)"
+    problem: "Any query touching a full class (146M variants, 600M calls) times out at 60 s or returns HTTP 503."
+    wrong_sparql: |
+      # 503 / timeout — sorts 146M variants before applying LIMIT
+      SELECT ?variant ?pos WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          ?variant a <http://genome-variation.org/resource#SNV> ; <http://genome-variation.org/resource#pos> ?pos .
+        }
+      } ORDER BY ?pos LIMIT 100
+    correct_sparql: |
+      # Anchor first (release+chromosome IRI prefix) AND bound the range, then order the small result
+      PREFIX gvo: <http://genome-variation.org/resource#>
+      SELECT ?variant ?pos WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          ?variant gvo:pos ?pos .
+          FILTER(STRSTARTS(STR(?variant), "http://identifiers.org/mogplus/v3/1/GRCm39#"))
+          FILTER(?pos >= 3050000 && ?pos <= 3060000)
+        }
+      } ORDER BY ?pos LIMIT 100
+    explanation: "Always anchor on a specific variant/strain/gene IRI or a release+chromosome IRI prefix + narrow pos range before sorting or counting."
+  - title: "Coordinate / gene query without pinning the release"
+    problem: "The same genomic variant exists under multiple release IRIs (v3, v2.1, ...); an unpinned query returns each variant once per release (silent duplication)."
+    wrong_sparql: |
+      # returns 3050118-G-A twice (v3 and v2.1), etc.
+      ?variant <http://genome-variation.org/resource#pos> ?pos ;
+               <http://biohackathon.org/resource/faldo#location> [ <http://biohackathon.org/resource/faldo#reference> <http://identifiers.org/mco/1/GRCm39> ] .
+      FILTER(?pos >= 3050000 && ?pos <= 3060000)
+    correct_sparql: |
+      ?variant <http://genome-variation.org/resource#pos> ?pos .
+      FILTER(STRSTARTS(STR(?variant), "http://identifiers.org/mogplus/v3/1/GRCm39#"))
+      FILTER(?pos >= 3050000 && ?pos <= 3060000)
+    explanation: "faldo:reference is the assembly (shared by all releases) and does NOT disambiguate release. Pin the release with the variant-IRI prefix."
+  - title: "Filtering by gvo:pos without pinning the chromosome"
+    problem: "pos is per-chromosome and there is no chromosome predicate; a bare pos filter mixes chromosomes (chr 3, 9, 18, scaffolds ...) at the same numeric position."
+    wrong_sparql: |
+      ?variant <http://genome-variation.org/resource#pos> ?pos .
+      FILTER(?pos >= 3050000 && ?pos <= 3060000)   # matches every chromosome
+    correct_sparql: |
+      ?variant <http://genome-variation.org/resource#pos> ?pos .
+      FILTER(STRSTARTS(STR(?variant), "http://identifiers.org/mogplus/v3/1/GRCm39#"))  # chr 1, release v3
+      FILTER(?pos >= 3050000 && ?pos <= 3060000)
+    explanation: "The chromosome is only in the variant IRI. Pin release+chromosome via the IRI prefix for any coordinate query."
+  - title: "Filtering consequences by the raw text term instead of the SO IRI (schema check before text search)"
+    problem: "snpeff:annotation and *:consequence_label are raw text terms; matching them with CONTAINS() is slow and misses the structured Sequence-Ontology link."
+    wrong_sparql: |
+      ?ann <http://genome-variation.org/resource/snpeff#annotation> ?term .
+      FILTER(CONTAINS(?term, "intergenic"))
+    correct_sparql: |
+      # use the normalized SO IRI (queryable, joinable to the SO ontology graph)
+      ?ann <http://genome-variation.org/resource/snpeff#normalized_consequence> <http://purl.obolibrary.org/obo/SO_0001628> .
+      # VEP equivalent: ?ann vep:consequence <http://purl.obolibrary.org/obo/SO_0001628> .
+    explanation: "Consequences are Sequence-Ontology IRIs (vep:consequence, snpeff:normalized_consequence). Filter by the SO IRI; the raw text fields are for display only."
+
+common_errors:
+  - error: "Query times out or returns HTTP 503"
+    causes:
+      - "No anchor — a class-wide scan, COUNT, or ORDER BY over variants / genotype calls / annotations."
+      - "pos range without a release+chromosome IRI prefix, so the whole genome is scanned."
+      - "Crossing two high-cardinality satellites (all genotype calls x all VEP annotations of many variants)."
+    solutions:
+      - "Anchor on a specific variant/strain/gene IRI or a release+chromosome IRI prefix; keep a LIMIT."
+      - "Add FILTER(STRSTARTS(STR(?variant), \"http://identifiers.org/mogplus/<release>/<chr>/GRCm39#\")) before a pos range."
+      - "Aggregate or anchor on one variant instead of joining two satellites across many variants."
+  - error: "Each variant appears multiple times in the results"
+    causes:
+      - "The release was not pinned — the same genomic variant exists under v3, v2.1, (REL2021)."
+      - "A variant with multiple VEP/SnpEff annotations or genotype calls fans out rows."
+    solutions:
+      - "Pin the release with the variant-IRI prefix; add DISTINCT or GROUP BY when fanning out over annotations/calls."
+  - error: "Join to Ensembl gene / MGI strain returns nothing"
+    causes:
+      - "Ensembl (rdf.ebi.ac.uk/.../ensembl/) and MGI (identifiers.org/mgi/) IRIs are not on this primary endpoint."
+    solutions:
+      - "Only the Sequence Ontology (obo:SO_*) is co-located (graph http://rdfportal.org/ontology/so); reach Ensembl/MGI by federation or a separate query to their endpoints."
