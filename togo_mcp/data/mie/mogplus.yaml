@@ -8,6 +8,17 @@ schema_info:
     ~146M variants, ~600M genotype calls and ~279M VEP annotations across 62 mouse strains.
     Primary uses: locate variants by strain / gene / genomic region, retrieve per-strain
     genotypes, and mine functional consequences of mouse variation. Reference genome: GRCm39.
+    Scope caveats (verified 2026-07-04): (1) MoG+ represents short-read-derived SNVs and small
+    indels ONLY — gene-scale structural variants (large deletions/duplications) are out of scope
+    and will not appear even where well documented in the literature (e.g. the classic C57BL/6J-
+    specific Nnt deletion). (2) The reference strain underlying GRCm39, C57BL/6J, is NOT one of the
+    62 genotyped strains — it defines the REF allele, so it never appears as a variant carrier; the
+    panel does include related substrains (C57BL/6NJ, C57BL/10J, C57BL/10SnJ, C57BR/cdJ). (3) The
+    two releases (v3, v2.1) cover DISJOINT strain cohorts, not successive snapshots of one panel
+    (see critical_warnings). (4) Some releases were produced by liftover from an earlier assembly
+    (source TBD — the header defines SwappedAlleles / ReverseComplementedAlleles liftover flags), but
+    these flags are almost never populated per-variant, so REF/ALT-swap artifacts cannot currently be
+    reliably detected from the RDF.
   keywords:
     - mouse variant
     - mouse genome
@@ -32,8 +43,9 @@ schema_info:
     - http://rdfportal.org/dataset/mogplus
   kw_search_tools: []
   version:
-    mie_version: "1.0"
+    mie_version: "1.1"
     mie_created: "2026-07-03"
+    mie_revised: "2026-07-04"
     data_version: "RDF Portal snapshot 2026-07 (MoG+ releases v3, v2.1)"
     update_frequency: "Periodic (with MoG+ releases)"
   access:
@@ -45,10 +57,13 @@ critical_warnings: |
     (132M gvo:SNV + 14M gvo:Variation). Any query that scans a whole class — an unfiltered
     COUNT/GROUP BY over a class, a class-wide ORDER BY, or a broad property survey — will time
     out (60 s) or return HTTP 503. EVERY query must anchor on at least one of: a specific
-    variant IRI; a strain via med2rdf:sample; an Ensembl gene via mogplus:overlaps_gene; a
-    bounded gvo:pos range combined with a release+chromosome IRI-prefix filter; or a specific
-    consequence SO IRI — and keep a LIMIT. Even `LIMIT 100` does NOT make a class-wide ORDER BY
-    safe (the sort happens before the limit).
+    variant IRI; a strain via med2rdf:sample (see the strain-anchor caveat below — a strain
+    anchor is only safe WITHOUT a mismatched release filter); an Ensembl gene via
+    mogplus:overlaps_gene; a bounded gvo:pos range combined with a release+chromosome IRI-prefix
+    filter; or a specific consequence SO IRI — and keep a LIMIT. Even `LIMIT 100` does NOT make a
+    class-wide ORDER BY safe (the sort happens before the limit). Note: a gvo:pos range that walks
+    vcf:has_genotype_call over many variants (e.g. to enumerate a release's strain panel) times out
+    even for a 5 kb window — do not try to list a release's strains from a coordinate range.
   - ⚠ THE VARIANT IRI ENCODES RELEASE + CHROMOSOME; MULTIPLE RELEASES CO-EXIST: variant IRIs are
     `http://identifiers.org/mogplus/<release>/<chromosome>/GRCm39#<pos>-<ref>-<alt>`. Observed
     releases: `v3` and `v2.1` (MoG+ docs also reference `REL2021`); chromosomes 1–19, X, Y, MT
@@ -57,6 +72,18 @@ critical_warnings: |
     `.../v3/1/GRCm39#` and `.../v2.1/1/GRCm39#`. A coordinate / gene / consequence query that does
     not pin a release returns each variant once PER release (silent duplication). Pin the release
     (and usually the chromosome) with `FILTER(STRSTARTS(STR(?variant), "http://identifiers.org/mogplus/v3/1/GRCm39#"))`.
+  - ⚠ v3 AND v2.1 ARE DISJOINT STRAIN COHORTS, NOT TWO VERSIONS OF ONE PANEL: the two releases
+    genotype NON-OVERLAPPING sets of strains (verified 2026-07-04: for a spot-checked variant, v3
+    reported 9 strains — BLG2, CHD/Ms, HMI/Ms, JF1/Ms, KJR, MSM/Ms, NC/Nga, NJL/Ms, SWN/Ms — and
+    v2.1 reported 19 different strains — 129P2/OlaHsd, 129S1/SvImJ, DBA/2J, CAST/EiJ, PWK/PhJ,
+    SPRET/EiJ, etc. — with ZERO overlap; DBA/2J has only v2.1 calls, STR/OrtCrlj only v3). Pinning
+    the release therefore does more than avoid double-counting — it also determines WHICH mouse
+    cohort you are querying. A query that UNIONs both releases without saying so implicitly merges
+    two cohorts that were never genotyped together. There is no release-membership predicate on
+    BiologicalResource (see BiologicalResourceShape), and a full strain→release enumeration is not
+    feasible on this endpoint (the genotype-call walk times out). To learn which release(s) a strain
+    has data in, run the two-step probe in anti_patterns entry 5 (a no-filter LIMIT-1 probe on the
+    strain), never a strain anchor + release FILTER on a strain that may be outside that release.
   - ⚠ gvo:pos IS NOT A GENOME COORDINATE BY ITSELF — THE CHROMOSOME IS ONLY IN THE IRI: pos is a
     per-chromosome position; there is NO chromosome predicate on the variant, and faldo:reference
     is the ASSEMBLY (mco:.../GRCm39), not the chromosome. Filtering `?pos` without pinning the
@@ -87,6 +114,28 @@ critical_warnings: |
     omitted, and reference (0/0) genotypes may be omitted by converter option. A variant's
     vcf:has_genotype_call therefore lists only strains with a recorded (usually non-reference) call;
     a strain missing from that list is not necessarily homozygous-reference.
+  - vep:hgvsc / vep:hgvsp ARE FREQUENTLY / ALWAYS EMPTY — USE snpeff:hgvsc / snpeff:hgvsp INSTEAD:
+    verified 2026-07-04 that for a confirmed missense variant (v3/13/GRCm39#119541135-G-A, Nnt) all 4
+    VEP annotation nodes had EMPTY vep:hgvsc / vep:hgvsp even though vep:protein_position ("35"),
+    vep:amino_acids ("T/M") and vep:codons ("aCg/aTg") were populated; a 466-annotation sample over a
+    chr1/v3 window had 0/466 vep:hgvsc populated. The equivalent snpeff:hgvsc ("c.104C>T") and
+    snpeff:hgvsp ("p.Thr35Met") on the same variant WERE populated and consistent. For HGVS-keyed
+    lookups (literature / ClinVar cross-referencing) prefer snpeff:hgvsc / snpeff:hgvsp; from VEP,
+    reconstruct HGVS from vep:protein_position / vep:amino_acids / vep:codons rather than expecting hgvsc/hgvsp.
+  - vcf:has_info_field CARRIES ONLY A HANDFUL OF KEYS — NOT THE GATK QC METRICS THE HEADER DEFINES:
+    InfoFieldDefinition (39 rows) declares GATK joint-genotyping QC fields (AC, AF, AN, DP, MQ, QD, FS,
+    SOR, BaseQRankSum, …) plus LOF, NMD and the liftover flags. But per-variant only a few are actually
+    attached: a chr1/v3 scan (verified 2026-07-04) found LOF (379), NMD (31) and ReverseComplementedAlleles
+    (1) — and ZERO rows for AC/AF/AN/DP/MQ/QD/FS/SOR/etc. Do NOT expect the QC metrics queryable via
+    vcf:has_info_field; they exist only as header definitions. SwappedAlleles was not observed in the
+    sample at all. Because these liftover flags are almost never populated, REF/ALT-swap artifacts from
+    liftover cannot be reliably detected from the RDF today.
+  - gvo:filter ABSENCE IS AMBIGUOUS AND SILENTLY DROPPED BY `= "PASS"`: in a chr1:3–5 Mb v3 window
+    (44,714 variants, verified 2026-07-04) 42,367 had gvo:filter = "PASS" and 2,347 (~5.2%) had NO
+    gvo:filter value at all (not a fail code — simply absent); no non-PASS value was observed. The meaning
+    of absence (not-yet-evaluated vs. implicitly-PASS vs. dropped-in-conversion) is currently unknown.
+    `FILTER(?filter = "PASS")` silently drops the ~5% no-value rows too — use `OPTIONAL { ?variant gvo:filter ?filter }`
+    and handle the unbound case explicitly if you need those variants.
 
 shape_expressions: |
   PREFIX rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -116,13 +165,13 @@ shape_expressions: |
     gvo:ref xsd:string ;                            # reference allele
     gvo:alt xsd:string ;                            # alternate allele
     faldo:location @<ExactPositionShape> ;          # 1 location node (position + reference assembly)
-    gvo:filter xsd:string ? ;                       # VCF FILTER, e.g. "PASS" (optional)
+    gvo:filter xsd:string ? ;                       # VCF FILTER: only "PASS" observed, but ABSENT on ~5% of variants (chr1 3–5Mb v3 sample). Absence ≠ fail and is ambiguous; `= "PASS"` silently drops the no-value rows.
     vcf:has_genotype_call @<GenotypeCallShape> * ;  # per-strain calls (compact: only strains with a recorded call)
     vep:has_consequence @<VepConsequenceAnnotationShape> * ;  # Ensembl VEP annotations (one per transcript/consequence)
     snpeff:has_annotation @<SnpEffAnnotationShape> * ;        # SnpEff annotations (independent of VEP)
     mogplus:overlaps_gene IRI * ;                   # Ensembl gene IRI(s) this variant's coordinate overlaps (rdf.ebi.ac.uk/.../ensembl/ENSMUSG*)
     vcf:variation_class xsd:string ? ;              # e.g. "SNP" (optional)
-    vcf:has_info_field @<InfoFieldShape> * ;        # raw INFO fields (e.g. LOF/NMD), when retained
+    vcf:has_info_field @<InfoFieldShape> * ;        # in practice only LOF, NMD and rarely ReverseComplementedAlleles/SwappedAlleles are attached; GATK QC metrics (AC/AF/AN/DP/MQ/QD/FS/SOR/...) are header-defined but NOT observed per-variant
     vcf:source_file_index xsd:string *              # source VCF index (optional)
   }
 
@@ -152,6 +201,10 @@ shape_expressions: |
 
   # ── BiologicalResource (mouse strain) ───────────────────────────────────────
   # 62; IRI: http://identifiers.org/mogplus/bioresource/<code>. The small anchor set for strain queries.
+  # NO release/panel-membership predicate: you CANNOT tell from this class which release (v3/v2.1) a strain
+  # belongs to. The two releases are disjoint cohorts (see critical_warnings); membership can only be probed
+  # via a no-filter genotype-call lookup on the strain, and a full enumeration is not feasible on this endpoint.
+  # C57BL/6J (the GRCm39 reference strain) is NOT in this set — it defines REF, so it never carries variants.
   <BiologicalResourceShape> {
     a [ brso:BiologicalResource ] ;
     rdfs:label xsd:string ;                         # strain name, e.g. "FLS/Shi" (mogbs:NA is polymorphic — see critical_warnings)
@@ -174,7 +227,7 @@ shape_expressions: |
     vep:feature_type xsd:string ? ;                 # "Transcript", ...
     vep:biotype xsd:string ? ;
     vep:exon xsd:string ? ; vep:intron xsd:string ? ;
-    vep:hgvsc xsd:string ? ; vep:hgvsp xsd:string ? ;
+    vep:hgvsc xsd:string ? ; vep:hgvsp xsd:string ? ;   # FREQUENTLY/ALWAYS EMPTY (0/466 in a chr1/v3 sample, empty even on a confirmed missense with protein_position populated) — use snpeff:hgvsc/hgvsp for HGVS
     vep:cdna_position xsd:string ? ; vep:cds_position xsd:string ? ; vep:protein_position xsd:string ? ;
     vep:amino_acids xsd:string ? ; vep:codons xsd:string ? ;
     vep:distance xsd:integer ? ; vep:strand xsd:integer ? ;
@@ -201,6 +254,8 @@ shape_expressions: |
 
   # ── InfoField (raw VCF INFO on a variant) ───────────────────────────────────
   # 293,355; IRI: <variant-iri>/info/<KEY>. Reached via vcf:has_info_field.
+  # Observed keys (chr1/v3 sample): LOF, NMD, ReverseComplementedAlleles only. NOT the GATK QC metrics
+  # (AC/AF/AN/DP/MQ/QD/FS/SOR/...) — those are defined in InfoFieldDefinition but not attached to variants.
   <InfoFieldShape> {
     a [ vcf:InfoField ] ;
     vcf:info_key xsd:string ;                       # INFO key, e.g. "LOF"
@@ -384,6 +439,10 @@ sparql_query_examples:
   - title: "VEP consequence detail for variants in a gene (release-pinned)"
     description: Join variants overlapping a gene to their VEP annotations, reading the SO consequence IRI,
       impact, gene symbol, transcript (Ensembl IRI) and HGVSc. Bounded by gene + release, so it stays fast.
+      NOTE - multi-transcript fan-out is expected, not a bug - a variant with consequences on N Ensembl
+      transcripts returns N rows (one per ?ann / vep:feature); e.g. one Nnt missense call returned 4 rows,
+      one per transcript. To dedup at the variant level, add DISTINCT or GROUP BY ?variant. Also note
+      vep:hgvsc is usually EMPTY here (use snpeff:hgvsc for HGVS - see critical_warnings).
     question: "For MoG+ v3 variants overlapping Xkr4 (ENSMUSG00000051951), what VEP consequences, impacts and transcripts are predicted?"
     complexity: advanced
     sparql: |
@@ -507,6 +566,8 @@ architectural_notes:
     - "Central entity: Variant (gvo:SNV | gvo:Variation), 146M; IRI mogplus/<release>/<chr>/GRCm39#<pos>-<ref>-<alt>."
     - "Satellites off the variant: faldo:location (ExactPosition), vcf:has_genotype_call (GenotypeCall -> strain), vep:has_consequence (VEP), snpeff:has_annotation (SnpEff), mogplus:overlaps_gene (Ensembl IRI), vcf:has_info_field (InfoField)."
     - "GenotypeCall (600M) is the variant<->strain linker via med2rdf:sample; BiologicalResource is the 62-strain anchor set."
+    - "SCHEMA GAP: BiologicalResource has no release/panel-membership predicate, yet v3 and v2.1 are disjoint strain cohorts — so 'which release is this strain in?' cannot be answered from the class and cannot be enumerated in bulk (genotype-call walk times out). This is an upstream schema request; today it is only answerable per-strain via a no-filter genotype-call probe."
+    - "Scope: short-read-derived SNVs (gvo:SNV) and small indels (gvo:Variation) only — no structural variants. Some releases are liftover products (SwappedAlleles/ReverseComplementedAlleles header flags) but those flags are almost never populated per-variant."
     - "VEP and SnpEff are parallel, independent consequence systems; both expose an SO-IRI field plus raw text."
     - "VCF header definitions (InfoFieldDefinition 39, FormatFieldDefinition 16) are per release (/<release>/GRCm39/vcf/header/...)."
   performance:
@@ -540,8 +601,13 @@ data_statistics:
   variants_total: 146122161
   mouse_strains: 62
   reference_assembly: "GRCm39"
-  observed_releases: "v3, v2.1 (MoG+ docs also reference REL2021); the variant IRI embeds <release>/<chromosome>/GRCm39"
-  notes: "Per-predicate coverage percentages are not computed: a coverage scan over 146M variants / 600M calls exceeds the 60 s endpoint timeout. Class totals above are exact COUNTs."
+  observed_releases: "v3, v2.1 (MoG+ docs also reference REL2021); the variant IRI embeds <release>/<chromosome>/GRCm39. v3 and v2.1 are DISJOINT strain cohorts (verified 2026-07-04)."
+  sampled_findings:   # verified 2026-07-04 on bounded windows (class-wide scans time out)
+    info_field_keys_chr1_v3: "LOF 379, NMD 31, ReverseComplementedAlleles 1; zero AC/AF/AN/DP/MQ/QD/FS/SOR/... (GATK QC metrics header-defined but not attached per-variant)"
+    gvo_filter_chr1_3to5Mb_v3: "42,367 PASS + 2,347 absent (~5.2%) of 44,714 variants; no non-PASS value observed"
+    vep_hgvsc_coverage_chr1_v3_sample: "0 of 466 VEP annotations had vep:hgvsc; snpeff:hgvsc/hgvsp populated on the same variants"
+    nnt_vep_impact_v3: "MODIFIER 3434, LOW 28, MODERATE 4, HIGH 0 — no structural variant / large deletion (short-read SNV+indel callset only)"
+  notes: "Per-predicate coverage percentages are not computed: a coverage scan over 146M variants / 600M calls exceeds the 60 s endpoint timeout. Class totals above are exact COUNTs; sampled_findings are bounded-window samples. Structural variants are out of scope; the GRCm39 reference strain C57BL/6J is not among the 62 genotyped strains."
 
 anti_patterns:
   - title: "Unbounded class scan (COUNT / ORDER BY over a whole class)"
@@ -596,6 +662,31 @@ anti_patterns:
       ?ann <http://genome-variation.org/resource/snpeff#normalized_consequence> <http://purl.obolibrary.org/obo/SO_0001628> .
       # VEP equivalent: ?ann vep:consequence <http://purl.obolibrary.org/obo/SO_0001628> .
     explanation: "Consequences are Sequence-Ontology IRIs (vep:consequence, snpeff:normalized_consequence). Filter by the SO IRI; the raw text fields are for display only."
+  - title: "Strain anchor + release filter on a strain that may be outside that release"
+    problem: "A strain anchored via med2rdf:sample is normally a fast anchor, but adding a release-prefix FILTER for a release the strain has NO data in makes Virtuoso exhaust the strain's entire call set to prove the empty result — a 60 s timeout. The two releases are disjoint cohorts, so any given strain has data in only one release."
+    wrong_sparql: |
+      # Times out: DBA/2J has only v2.1 calls, so filtering for v3 forces a full call-set scan
+      PREFIX vcf:     <http://genome-variation.org/resource/vcf#>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      SELECT ?variant WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          ?call med2rdf:sample <http://identifiers.org/mogplus/bioresource/DBA_2J> .
+          ?variant vcf:has_genotype_call ?call .
+          FILTER(STRSTARTS(STR(?variant), "http://identifiers.org/mogplus/v3/"))
+        }
+      } LIMIT 5
+    correct_sparql: |
+      # Step 1 — probe the strain WITHOUT a release filter (returns instantly) to see which release it has data in
+      PREFIX vcf:     <http://genome-variation.org/resource/vcf#>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      SELECT ?variant WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          ?call med2rdf:sample <http://identifiers.org/mogplus/bioresource/DBA_2J> .
+          ?variant vcf:has_genotype_call ?call .
+        }
+      } LIMIT 5
+      # The returned variant IRIs reveal the release (here: .../v2.1/...); only THEN add a matching release filter.
+    explanation: "A strain anchor is safe only without a mismatched release filter. Probe the strain with a no-filter LIMIT-1/5 query first to discover which release it belongs to (there is no release-membership predicate on BiologicalResource), then apply the correct release prefix. Never combine a strain anchor with a release FILTER for a release the strain may not be in."
 
 common_errors:
   - error: "Query times out or returns HTTP 503"
@@ -603,6 +694,8 @@ common_errors:
       - "No anchor — a class-wide scan, COUNT, or ORDER BY over variants / genotype calls / annotations."
       - "pos range without a release+chromosome IRI prefix, so the whole genome is scanned."
       - "Crossing two high-cardinality satellites (all genotype calls x all VEP annotations of many variants)."
+      - "Strain anchor (med2rdf:sample) combined with a release FILTER for a release the strain has no data in — the disjoint cohorts mean the filtered result is empty but Virtuoso scans the strain's whole call set to prove it (see anti_patterns entry 5)."
+      - "Walking vcf:has_genotype_call over a gvo:pos range to enumerate a release's strain panel — times out even for a 5 kb window."
     solutions:
       - "Anchor on a specific variant/strain/gene IRI or a release+chromosome IRI prefix; keep a LIMIT."
       - "Add FILTER(STRSTARTS(STR(?variant), \"http://identifiers.org/mogplus/<release>/<chr>/GRCm39#\")) before a pos range."
