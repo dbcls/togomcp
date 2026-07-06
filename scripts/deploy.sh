@@ -41,8 +41,9 @@ PROD_SMOKE_HOST="togomcp.rdfportal.org"         # Host header used for the prod 
 PROD_CONFIRM_PHRASE="togomcp.rdfportal.org"
 
 # Env vars forwarded to the container when TOGOMCP_ENV_FILE is not set.
-TOGOMCP_ENV_VARS=(TOGOMCP_QUERY_LOG TOGOMCP_LOG_QUERY_TEXT TOGOMCP_STATS_USER \
-                  TOGOMCP_STATS_PASSWORD TOGOMCP_LOG_HASH_SALT NCBI_API_KEY)
+TOGOMCP_ENV_VARS=(TOGOMCP_ALLOWED_HOSTS TOGOMCP_QUERY_LOG TOGOMCP_LOG_QUERY_TEXT \
+                  TOGOMCP_STATS_USER TOGOMCP_STATS_PASSWORD TOGOMCP_LOG_HASH_SALT \
+                  NCBI_API_KEY)
 ENV_FILE="${TOGOMCP_ENV_FILE:-}"
 
 # --------------------------------------------------------------------------- #
