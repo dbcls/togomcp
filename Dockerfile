@@ -16,9 +16,11 @@ WORKDIR /app
 
 # Copy the entire project into the container
 COPY . .
-RUN uv sync
+# --frozen: install exactly what uv.lock pins; fail the build if the lock is
+# stale vs pyproject.toml instead of silently re-resolving to newer versions.
+RUN uv sync --frozen
 # Expose the port your FastAPI/Uvicorn server listens on (adjust if needed)
 EXPOSE 8000
 
 # Command to run your MCP server
-CMD ["uv", "run", "togo-mcp-server"]
+CMD ["uv", "run", "--frozen", "togo-mcp-server"]
