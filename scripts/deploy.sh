@@ -15,8 +15,12 @@
 #     with zero changes.
 #   * every promote saves a rollback pointer.
 #
-# Env values for the container come from an env-file (recommended) or the current shell:
-#   export TOGOMCP_ENV_FILE=/path/to/togomcp.env   # KEY=VALUE lines
+# Env values are loaded from the first source that exists:
+#   1. $TOGOMCP_ENV_FILE   (explicit override path)
+#   2. <repo>/.env         (the same file compose reads)
+#   3. the current shell
+# Per-service vars take their _TEST variant on the test container, matching
+# compose.yaml (TOGOMCP_STATS_PASSWORD_TEST -> test, TOGOMCP_STATS_PASSWORD -> prod).
 #
 set -euo pipefail
 
@@ -40,11 +44,11 @@ PROD_SMOKE_HOST="togomcp.rdfportal.org"         # Host header used for the prod 
 # Set it to your real public production hostname.
 PROD_CONFIRM_PHRASE="togomcp.rdfportal.org"
 
-# Env vars forwarded to the container when TOGOMCP_ENV_FILE is not set.
-TOGOMCP_ENV_VARS=(TOGOMCP_ALLOWED_HOSTS TOGOMCP_QUERY_LOG TOGOMCP_LOG_QUERY_TEXT \
-                  TOGOMCP_STATS_USER TOGOMCP_STATS_PASSWORD TOGOMCP_LOG_HASH_SALT \
-                  NCBI_API_KEY)
-ENV_FILE="${TOGOMCP_ENV_FILE:-}"
+# Vars forwarded to each container. Per-service vars take their _TEST variant on
+# the test container (mirrors compose.yaml); shared vars are identical for both.
+TOGOMCP_PERSERVICE_VARS=(TOGOMCP_ALLOWED_HOSTS TOGOMCP_QUERY_LOG TOGOMCP_LOG_QUERY_TEXT \
+                         TOGOMCP_STATS_USER TOGOMCP_STATS_PASSWORD TOGOMCP_LOG_HASH_SALT)
+TOGOMCP_SHARED_VARS=(NCBI_API_KEY)
 
 # --------------------------------------------------------------------------- #
 # Helpers
@@ -53,25 +57,42 @@ log()  { printf '\033[1;34m[deploy]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[deploy:warn]\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[deploy:error]\033[0m %s\n' "$*" >&2; exit 1; }
 
-env_args() {
-  # Prints one podman arg per line for mapfile consumption.
-  if [[ -n "$ENV_FILE" ]]; then
-    [[ -f "$ENV_FILE" ]] || die "TOGOMCP_ENV_FILE=$ENV_FILE not found"
-    printf -- '--env-file\n%s\n' "$ENV_FILE"
-    return
-  fi
-  local any_set=0 v
-  for v in "${TOGOMCP_ENV_VARS[@]}"; do
-    printf -- '-e\n%s\n' "$v"
-    [[ -n "${!v:-}" ]] && any_set=1
-  done
-  [[ "$any_set" == 1 ]] || warn "no TOGOMCP_ENV_FILE and no TOGOMCP_* vars set in shell — \
-container will start with empty config. Set TOGOMCP_ENV_FILE to a KEY=VALUE file."
+load_dotenv() {  # file — safe KEY=VALUE parse, no code execution
+  local file=$1 line key val
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"                       # strip trailing CR
+    [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue   # comment / blank
+    [[ "$line" != *=* ]] && continue
+    key="${line%%=*}"; val="${line#*=}"
+    key="${key//[[:space:]]/}"
+    [[ -z "$key" ]] && continue
+    if [[ "$val" == \"*\" || "$val" == \'*\' ]]; then val="${val:1:${#val}-2}"; fi
+    export "$key=$val"
+  done < "$file"
 }
 
-recreate() {  # name port image
-  local name=$1 port=$2 image=$3 eargs=()
-  mapfile -t eargs < <(env_args)
+_resolve() {  # kind(test|prod) var  -> prints the effective value
+  local name="$2"
+  [[ "$1" == test ]] && name="${2}_TEST"
+  printf '%s' "${!name:-}"
+}
+
+env_args() {  # kind(test|prod) — prints podman -e args, one token per line
+  local kind=$1 v val any=0
+  for v in "${TOGOMCP_PERSERVICE_VARS[@]}"; do
+    val=$(_resolve "$kind" "$v")
+    printf -- '-e\n%s=%s\n' "$v" "$val"; [[ -n "$val" ]] && any=1
+  done
+  for v in "${TOGOMCP_SHARED_VARS[@]}"; do
+    val="${!v:-}"
+    printf -- '-e\n%s=%s\n' "$v" "$val"; [[ -n "$val" ]] && any=1
+  done
+  [[ "$any" == 1 ]] || warn "no env values found (checked ${ENV_SOURCE:-current shell}); container starts with empty config."
+}
+
+recreate() {  # name port image kind
+  local name=$1 port=$2 image=$3 kind=$4 eargs=()
+  mapfile -t eargs < <(env_args "$kind")
   log "recreating '$name' on :$port from ${image}"
   podman rm -f "$name" >/dev/null 2>&1 || true
   podman run -d --name "$name" -p "${port}:8000" "${eargs[@]}" "$image" >/dev/null
@@ -99,7 +120,7 @@ cmd_test() {
   local build_args=(); [[ "${NO_CACHE:-0}" == "1" ]] && build_args+=(--no-cache)
   podman build "${build_args[@]}" -t "${IMAGE_REPO}:${TEST_TAG}" "$REPO_ROOT"
   log "built ${IMAGE_REPO}:${TEST_TAG} = $(short "$(img_id "${IMAGE_REPO}:${TEST_TAG}")")"
-  recreate "$TEST_CONTAINER" "$TEST_PORT" "${IMAGE_REPO}:${TEST_TAG}"
+  recreate "$TEST_CONTAINER" "$TEST_PORT" "${IMAGE_REPO}:${TEST_TAG}" test
   smoke "$TEST_PORT" "$TEST_SMOKE_HOST" "TEST"
   log "TEST is up and healthy. Review it, then promote with:  $0 prod"
 }
@@ -134,7 +155,7 @@ cmd_prod() {
 
   # 5. Promote the SAME bytes that were tested (no rebuild), then recreate prod.
   podman tag "$candidate" "${IMAGE_REPO}:${PROD_TAG}"
-  recreate "$PROD_CONTAINER" "$PROD_PORT" "${IMAGE_REPO}:${PROD_TAG}"
+  recreate "$PROD_CONTAINER" "$PROD_PORT" "${IMAGE_REPO}:${PROD_TAG}" prod
 
   # 6. Smoke-test production.
   smoke "$PROD_PORT" "$PROD_SMOKE_HOST" "PROD"
@@ -146,7 +167,7 @@ cmd_rollback() {
     || die "no ${IMAGE_REPO}:prod-previous saved — nothing to roll back to"
   log "rolling PRODUCTION back to ${IMAGE_REPO}:prod-previous ($(short "$(img_id "${IMAGE_REPO}:prod-previous")"))"
   podman tag "${IMAGE_REPO}:prod-previous" "${IMAGE_REPO}:${PROD_TAG}"
-  recreate "$PROD_CONTAINER" "$PROD_PORT" "${IMAGE_REPO}:${PROD_TAG}"
+  recreate "$PROD_CONTAINER" "$PROD_PORT" "${IMAGE_REPO}:${PROD_TAG}" prod
   smoke "$PROD_PORT" "$PROD_SMOKE_HOST" "PROD(rollback)"
   log "rollback complete."
 }
@@ -162,6 +183,17 @@ cmd_status() {
     fi
   done
 }
+
+# --------------------------------------------------------------------------- #
+# Load env source: explicit override > repo .env > current shell
+# --------------------------------------------------------------------------- #
+ENV_SOURCE="${TOGOMCP_ENV_FILE:-}"
+[[ -z "$ENV_SOURCE" && -f "$REPO_ROOT/.env" ]] && ENV_SOURCE="$REPO_ROOT/.env"
+if [[ -n "$ENV_SOURCE" ]]; then
+  [[ -f "$ENV_SOURCE" ]] || die "env file not found: $ENV_SOURCE"
+  load_dotenv "$ENV_SOURCE"
+  log "loaded env from $ENV_SOURCE"
+fi
 
 # --------------------------------------------------------------------------- #
 # Dispatch
@@ -182,7 +214,7 @@ Usage: $0 {test|prod|rollback|status}
   status    Show current image per container.
 
 Optional env:
-  TOGOMCP_ENV_FILE=/path/to/env   Use --env-file instead of shell pass-through.
+  TOGOMCP_ENV_FILE=/path/to/env   Load this file instead of <repo>/.env.
   NO_CACHE=1                      Force a clean rebuild in 'test'.
 USAGE
     exit 1 ;;
