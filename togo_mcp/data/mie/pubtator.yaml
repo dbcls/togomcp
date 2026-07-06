@@ -6,15 +6,19 @@ schema_info:
     linked to PubMed articles using MeSH disease identifiers, NCBI Gene IDs, and dbSNP rsIDs.
     Each Disease/Gene annotation records mention frequency within articles; variant annotations
     come from ClinVar/dbSNP and use blank nodes without dcterms:subject.
+    SCOPE: only Disease and Gene (dcterms:subject) plus Variant (blank-node) annotations are
+    present. The Chemical, Species, and CellLine entity types annotated by the upstream
+    PubTator3 service are NOT included in this RDF conversion — do not expect them here.
+    Provenance (dcterms:source) is recorded for only ~1.6% of annotations; the tool/pipeline
+    version generating the remaining Disease/Gene annotations is not distinguishable from the
+    RDF alone.
   keywords:
     - annotation
     - entity
     - article
     - gene
     - disease
-    - chemical
     - mutation
-    - species
     - text mining
     - named entity recognition
     - bioconcept
@@ -31,8 +35,9 @@ schema_info:
   kw_search_tools:
     - sparql
   version:
-    mie_version: "2.1"
+    mie_version: "2.2"
     mie_created: "2026-04-29"
+    mie_revised: "2026-07-06"
     data_version: "PubTator Central 2024"
     update_frequency: "Regularly updated"
   access:
@@ -48,13 +53,34 @@ critical_warnings: |
   - ENTITY TYPE COVERAGE: Only two dcterms:subject values exist: "Disease" (162M) and
     "Gene" (72.6M). Do NOT assume other entity types; using any other string returns 0 results.
   - ANNOTATION_COUNT MAXIMUMS DIFFER BY TYPE: Disease max=5, Gene max=9.
-    Using FILTER(?count > 5) on Disease silently returns zero rows — not a query error.
     Use FILTER(?count >= 4) for Disease; FILTER(?count > 5) for Gene.
+    A FILTER on annotation_count outside the valid range returns zero rows *only if the
+    query is otherwise scoped* (a specific IRI, or an inner LIMIT before the filter). An
+    UNSCOPED range filter over the full 238M-annotation graph does NOT return quickly —
+    it TIMES OUT rather than returning zero. Always scope before filtering annotation_count.
   - ALWAYS USE LIMIT: 238M total annotations. Any query without LIMIT risks timeout.
     COUNT(*) queries without a GRAPH clause time out consistently.
+  - VARIANT SOURCE VALUES MUST INCLUDE "PubTator3": filtering variant annotations by
+    dcterms:source with VALUES { "ClinVar" "dbSNP" "dbGAP" } silently DROPS THE MAJORITY.
+    "PubTator3" is the plurality source both per-variant (e.g. rs429358: PubTator3=2818 /
+    91.1%, dbSNP=227, ClinVar=48, dbGAP=1) and corpus-wide (PubTator3 2,230,751 vs.
+    ClinVar+dbSNP+dbGAP 1,566,329 combined — 58.7% vs 41.3%). Always use
+    VALUES { "ClinVar" "dbSNP" "dbGAP" "PubTator3" }.
   - BLANK NODES FOR VARIANT ANNOTATIONS: Variant annotations use blank node subjects
     (nodeID:// pattern). They cannot be retrieved by IRI; filter by dcterms:source value
-    ("ClinVar", "dbSNP", "dbGAP") or by body IRI prefix (identifiers.org/dbsnp/).
+    ("ClinVar", "dbSNP", "dbGAP", "PubTator3") or by body IRI prefix (identifiers.org/dbsnp/).
+  - MESH IRI IS NOT A DIRECT JOIN KEY: oa:hasBody on Disease annotations mints
+    http://identifiers.org/mesh/D###### — this is PubTator's OWN identifiers.org form and
+    does NOT resolve in TogoMCP's `mesh` database. `mesh` lives on a DIFFERENT endpoint
+    (primary, not ncbi) and uses base http://id.nlm.nih.gov/mesh/. To join, rewrite the IRI:
+    BIND(URI(REPLACE(STR(?meshBody), "identifiers.org/mesh/", "id.nlm.nih.gov/mesh/")) AS ?meshIRI)
+    and reach `mesh` via a cross-endpoint SERVICE (see cross_database_queries). `mesh` is
+    NOT co-located with pubtator.
+  - GENE ANNOTATIONS ARE NOT SPECIES-RESTRICTED: oa:hasBody points to NCBI Gene IDs for
+    human AND model-organism orthologs of the same symbol (e.g. human APP=351 and mouse
+    App=11820 both surface for Alzheimer's disease) with NO taxon field on the annotation
+    itself. To restrict to one species, join ncbigene:taxid in the `ncbigene` graph and
+    filter to http://identifiers.org/taxonomy/9606 (human) — see cross_database_queries.
 
 shape_expressions: |
   PREFIX rdf:      <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -219,10 +245,18 @@ sparql_query_examples:
       ORDER BY DESC(?count)
       LIMIT 100
 
-  - title: Top genes co-mentioned with a specific disease (aggregation)
-    description: Uses specific MeSH IRI for Alzheimer Disease (D000544) and aggregates gene co-occurrences across the corpus.
+  - title: Top genes co-mentioned with a specific disease (pre-bounded aggregation)
+    description: |
+      Uses the specific MeSH IRI for Alzheimer Disease (D000544) and aggregates gene
+      co-occurrences. The article set is pre-bounded with an inner SELECT DISTINCT ... LIMIT
+      subquery BEFORE joining to Gene annotations — this is what makes the query tractable.
+      NOTE: the naive form (joining Gene and Disease annotations on ?article without the inner
+      LIMIT) is timeout-prone even scoped to one disease IRI once the disease's article count
+      exceeds ~10^4-10^5; the pre-bounding caps the join. Results interleave human and
+      non-human orthologs (e.g. human APP=351 AND mouse App=11820) — add a species filter
+      (see cross_database_queries) to restrict to one taxon.
     question: What genes are most commonly mentioned alongside Alzheimer Disease?
-    complexity: intermediate
+    complexity: advanced
     sparql: |
       PREFIX oa:      <http://www.w3.org/ns/oa#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
@@ -230,21 +264,30 @@ sparql_query_examples:
       SELECT ?geneId (COUNT(DISTINCT ?article) AS ?cooccurrence)
       FROM <http://rdfportal.org/dataset/pubtator_central>
       WHERE {
+        {
+          SELECT DISTINCT ?article WHERE {
+            ?diseaseAnn dcterms:subject "Disease" ;
+                        oa:hasBody <http://identifiers.org/mesh/D000544> ;
+                        oa:hasTarget ?article .
+          }
+          LIMIT 5000
+        }
         ?geneAnn dcterms:subject "Gene" ;
                  oa:hasBody ?geneId ;
                  oa:hasTarget ?article .
-        ?diseaseAnn dcterms:subject "Disease" ;
-                    oa:hasBody <http://identifiers.org/mesh/D000544> ;
-                    oa:hasTarget ?article .
       }
       GROUP BY ?geneId
       ORDER BY DESC(?cooccurrence)
       LIMIT 50
 
-  - title: Variant annotations from ClinVar/dbSNP linked to a PubMed article
-    description: Retrieves blank-node variant annotations using dcterms:source VALUES — the only reliable predicate for this entity type (no dcterms:subject exists).
-    question: Which dbSNP variants are annotated in a given paper via ClinVar or dbSNP?
-    complexity: advanced
+  - title: Variant annotations from ClinVar/dbSNP/PubTator3 linked to a PubMed article
+    description: |
+      Retrieves blank-node variant annotations using dcterms:source VALUES — the only reliable
+      predicate for this entity type (no dcterms:subject exists). The VALUES list MUST include
+      "PubTator3": it is the majority source (58.7% corpus-wide), so omitting it silently drops
+      most variant annotations.
+    question: Which dbSNP variants are annotated in a given paper via ClinVar, dbSNP, or PubTator3?
+    complexity: intermediate
     sparql: |
       PREFIX oa:      <http://www.w3.org/ns/oa#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
@@ -256,7 +299,7 @@ sparql_query_examples:
              dcterms:source ?source ;
              oa:hasBody ?variantId ;
              oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/26467025> .
-        VALUES ?source { "ClinVar" "dbSNP" "dbGAP" }
+        VALUES ?source { "ClinVar" "dbSNP" "dbGAP" "PubTator3" }
       }
       LIMIT 100
 
@@ -299,7 +342,101 @@ cross_database_queries:
     - pubmed
     - ncbigene
     - medgen
+  not_co_located:
+    - "mesh — pubtator's oa:hasBody mints http://identifiers.org/mesh/ IRIs, but the `mesh`
+       database is on a DIFFERENT endpoint (primary, not ncbi) with base
+       http://id.nlm.nih.gov/mesh/. Joining requires an IRI rewrite AND a cross-endpoint
+       SERVICE call (see the MeSH-label example below) — it is not a same-endpoint GRAPH join."
   examples:
+    - title: Resolve PubTator disease MeSH IRIs to labels (cross-endpoint SERVICE)
+      description: |
+        pubtator (ncbi endpoint) mints http://identifiers.org/mesh/D###### on oa:hasBody, which
+        does NOT resolve in the `mesh` database (primary endpoint, base http://id.nlm.nih.gov/mesh/).
+        Rewrite the IRI with REPLACE, then reach `mesh` via SERVICE.
+
+        CRITICAL query-construction detail: the local pubtator triple pattern must be MATERIALIZED
+        in an inner subquery before the SERVICE call. A naive `?ann oa:hasBody ?meshBody . BIND(...)
+        SERVICE {...}` silently returns ZERO rows on Virtuoso because the SERVICE is dispatched
+        before ?meshBody is ground. The inner SELECT forces materialization first.
+      databases_used:
+        - pubtator
+        - mesh
+      complexity: advanced
+      sparql: |
+        PREFIX oa:      <http://www.w3.org/ns/oa#>
+        PREFIX dcterms: <http://purl.org/dc/terms/>
+        PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+
+        SELECT ?meshBody ?meshIRI ?label WHERE {
+          {
+            SELECT DISTINCT ?meshBody WHERE {
+              GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+                ?ann dcterms:subject "Disease" ;
+                     oa:hasBody ?meshBody ;
+                     oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/18935173> .
+              }
+            }
+          }
+          BIND(URI(REPLACE(STR(?meshBody), "identifiers.org/mesh/", "id.nlm.nih.gov/mesh/")) AS ?meshIRI)
+          SERVICE <https://rdfportal.org/primary/sparql> {
+            ?meshIRI rdfs:label ?label .
+          }
+        }
+        LIMIT 20
+      notes: |
+        - Linking via: oa:hasBody (identifiers.org/mesh/) → REPLACE → id.nlm.nih.gov/mesh/ (mesh base)
+        - Run from the ncbi endpoint (database: pubtator); SERVICE reaches primary for mesh labels.
+        - mesh rdfs:label returns both the descriptor name and the D-number string per subject.
+        - Inner subquery materialization is MANDATORY — without it Virtuoso returns 0 rows.
+        - MIE files checked: pubtator, mesh
+
+    - title: Human-only genes co-mentioned with a disease (species filter via ncbigene taxid)
+      description: |
+        Same disease-gene co-occurrence as the aggregation example, but restricted to Homo sapiens
+        by joining ncbigene:taxid in the `ncbigene` graph (co-located on the ncbi endpoint). Without
+        this filter, human and model-organism orthologs of the same symbol interleave (human APP=351
+        AND mouse App=11820 both appear for Alzheimer's). Article set is pre-bounded for tractability.
+      databases_used:
+        - pubtator
+        - ncbigene
+      complexity: advanced
+      sparql: |
+        PREFIX oa:       <http://www.w3.org/ns/oa#>
+        PREFIX dcterms:  <http://purl.org/dc/terms/>
+        PREFIX ncbigene: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+        PREFIX rdfs:     <http://www.w3.org/2000/01/rdf-schema#>
+
+        SELECT ?geneId ?symbol (COUNT(DISTINCT ?article) AS ?cooccurrence)
+        WHERE {
+          {
+            SELECT DISTINCT ?article WHERE {
+              GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+                ?diseaseAnn dcterms:subject "Disease" ;
+                            oa:hasBody <http://identifiers.org/mesh/D000544> ;
+                            oa:hasTarget ?article .
+              }
+            }
+            LIMIT 5000
+          }
+          GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+            ?geneAnn dcterms:subject "Gene" ;
+                     oa:hasBody ?geneId ;
+                     oa:hasTarget ?article .
+          }
+          GRAPH <http://rdfportal.org/dataset/ncbigene> {
+            ?geneId ncbigene:taxid <http://identifiers.org/taxonomy/9606> ;
+                    rdfs:label ?symbol .
+          }
+        }
+        GROUP BY ?geneId ?symbol
+        ORDER BY DESC(?cooccurrence)
+        LIMIT 15
+      notes: |
+        - Linking via: oa:hasBody → identifiers.org/ncbigene/ IRI (direct subject match in ncbigene)
+        - Species filter: ncbigene:taxid = taxonomy/9606; swap for another taxon IRI as needed.
+        - Same-endpoint join (ncbi) — no SERVICE required; use endpoint_name: ncbi for cross-graph.
+        - MIE files checked: pubtator, ncbigene
+
     - title: PubTator gene annotations enriched with PubMed titles
       description: |
         Integrates PubTator Gene annotations with PubMed article metadata using pre-filtering.
@@ -390,9 +527,14 @@ cross_references:
       Variant annotations (blank nodes) link to dbSNP rsIDs.
     databases:
       diseases:
-        - "MeSH: 100% coverage via http://identifiers.org/mesh/D######"
+        - "MeSH: 100% coverage via http://identifiers.org/mesh/D###### — but this is PubTator's
+           OWN identifiers.org minting and is NOT the join key the `mesh` database accepts. `mesh`
+           uses base http://id.nlm.nih.gov/mesh/ on a different endpoint (primary). To join, rewrite:
+           BIND(URI(REPLACE(STR(?meshBody), \"identifiers.org/mesh/\", \"id.nlm.nih.gov/mesh/\")) AS ?meshIRI)
+           and use a cross-endpoint SERVICE (see cross_database_queries)."
       genes:
-        - "NCBI Gene: 100% coverage via http://identifiers.org/ncbigene/######"
+        - "NCBI Gene: 100% coverage via http://identifiers.org/ncbigene/###### — direct subject
+           match in the co-located `ncbigene` graph (same ncbi endpoint), no rewrite needed."
       variants:
         - "dbSNP: 100% of variant annotations via http://identifiers.org/dbsnp/rs######"
 
@@ -429,13 +571,24 @@ architectural_notes:
     - "Cross-database queries require explicit GRAPH clauses for each dataset"
     - "Pre-filter with bif:contains INSIDE the PubMed GRAPH block before joining PubTator (99.9997% reduction)"
     - "Aggregations: pre-filter to a specific disease/gene IRI before GROUP BY to avoid timeout"
+    - "Disease/gene co-occurrence aggregations without an inner LIMIT on the pre-filtered article
+       set are timeout-prone EVEN when scoped to a single disease IRI, once that disease's article
+       count exceeds ~10^4-10^5 (Alzheimer's D000544 fails ~2/3 of runs naive; add an inner
+       SELECT DISTINCT ?article ... LIMIT N subquery before joining Gene annotations)"
     - "CRITICAL: split property paths before bif:contains on Virtuoso (do not chain /)"
 
   data_integration:
-    - "identifiers.org/mesh/ IRIs align with MeSH RDF vocabulary"
-    - "identifiers.org/ncbigene/ IRIs are direct subject matches in the NCBI Gene RDF graph"
+    - "identifiers.org/mesh/ IRIs are PubTator's own minting and do NOT resolve in the `mesh`
+       database (base http://id.nlm.nih.gov/mesh/, on the primary endpoint); rewrite via REPLACE
+       + cross-endpoint SERVICE to join — mesh is NOT co-located with pubtator"
+    - "identifiers.org/ncbigene/ IRIs are direct subject matches in the NCBI Gene RDF graph;
+       ncbigene:taxid there is the only way to resolve species for a PubTator gene annotation"
     - "identifiers.org/dbsnp/ IRIs align with dbSNP variant identifiers"
     - "Shares the NCBI endpoint with PubMed, NCBI Gene, ClinVar, and MedGen"
+    - "GOLDEN PATH (gene→variant→disease→literature): a ClinVar/MedGen disease reaches PubTator
+       Disease annotations via MeSH, but MedGen mgconso emits id.nlm.nih.gov/mesh/ while PubTator
+       oa:hasBody uses identifiers.org/mesh/ — transform with
+       REPLACE('id.nlm.nih.gov/mesh/','identifiers.org/mesh/'). Full verified example: clinvar/medgen MIEs."
 
   data_quality:
     - "Only 1.59% of annotations (3,797,080) carry a dcterms:source provenance field"
@@ -511,6 +664,65 @@ anti_patterns:
         FILTER(?count >= 4)
       } LIMIT 50
     explanation: "Disease max=5, Gene max=9. Check critical_warnings before writing annotation_count filters."
+
+  - title: "Unscoped annotation_count Range Filter Times Out"
+    problem: |
+      A FILTER on annotation_count without a narrowing IRI or an inner LIMIT does NOT return quickly
+      with zero rows — it TIMES OUT scanning the full 238M-annotation graph. This is a distinct failure
+      mode from the wrong-threshold case above: there the (scoped) query returns 0 fast; here the
+      (unscoped) query hangs.
+    wrong_sparql: |
+      # Times out: range filter over the entire Disease population, nothing else to bound it.
+      PREFIX pubtator: <http://purl.jp/bio/10/pubtator-central/ontology#>
+      PREFIX dcterms:  <http://purl.org/dc/terms/>
+      SELECT ?ann ?count
+      FROM <http://rdfportal.org/dataset/pubtator_central>
+      WHERE {
+        ?ann dcterms:subject "Disease" ;
+             pubtator:annotation_count ?count .
+        FILTER(?count > 5)
+      } LIMIT 5
+    correct_sparql: |
+      # Scope first (specific disease IRI), THEN filter — returns immediately.
+      PREFIX pubtator: <http://purl.jp/bio/10/pubtator-central/ontology#>
+      PREFIX oa:       <http://www.w3.org/ns/oa#>
+      PREFIX dcterms:  <http://purl.org/dc/terms/>
+      SELECT ?article ?count
+      FROM <http://rdfportal.org/dataset/pubtator_central>
+      WHERE {
+        ?ann dcterms:subject "Disease" ;
+             oa:hasBody <http://identifiers.org/mesh/D003920> ;
+             oa:hasTarget ?article ;
+             pubtator:annotation_count ?count .
+        FILTER(?count >= 4)
+      } LIMIT 50
+    explanation: "annotation_count filters must be applied AFTER scoping to a specific IRI (or an inner LIMIT). An unscoped range filter over 238M annotations times out rather than returning fast."
+
+  - title: "Incomplete Variant Source VALUES List Drops the Majority"
+    problem: "Filtering variant annotations with VALUES {\"ClinVar\" \"dbSNP\" \"dbGAP\"} silently omits \"PubTator3\", the plurality source (58.7% corpus-wide, 91.1% for some variants). The query runs and returns rows — just a small minority of the real matches."
+    wrong_sparql: |
+      # Silently drops all PubTator3-sourced variant annotations (the majority).
+      PREFIX oa:      <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT ?variantId ?source
+      FROM <http://rdfportal.org/dataset/pubtator_central>
+      WHERE {
+        ?ann oa:hasBody ?variantId ; dcterms:source ?source ;
+             oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/26467025> .
+        VALUES ?source { "ClinVar" "dbSNP" "dbGAP" }
+      } LIMIT 100
+    correct_sparql: |
+      # Include "PubTator3" — the plurality source.
+      PREFIX oa:      <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT ?variantId ?source
+      FROM <http://rdfportal.org/dataset/pubtator_central>
+      WHERE {
+        ?ann oa:hasBody ?variantId ; dcterms:source ?source ;
+             oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/26467025> .
+        VALUES ?source { "ClinVar" "dbSNP" "dbGAP" "PubTator3" }
+      } LIMIT 100
+    explanation: "\"PubTator3\" is the majority dcterms:source for variant annotations. Any VALUES list that omits it silently loses most of the data — see critical_warnings."
 
   - title: "Text Search When Structured Predicate Exists"
     problem: "Using FILTER(CONTAINS()) on dcterms:subject when it is a typed literal with known exact values."

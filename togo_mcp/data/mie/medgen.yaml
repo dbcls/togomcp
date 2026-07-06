@@ -33,8 +33,9 @@ schema_info:
   kw_search_tools:
     - ncbi_esearch
   version:
-    mie_version: "2.1"
+    mie_version: "2.2"
     mie_created: "2026-04-29"
+    mie_revised: "2026-07-06"
     data_version: "Current NCBI release"
     update_frequency: "Monthly"
   access:
@@ -45,10 +46,14 @@ critical_warnings: |
     (mo:manifestation_of, mo:disease_has_associated_gene, mo:isa, mo:inverse_isa, etc.),
     NOT only through MGREL entities. Use direct properties for most queries; use MGREL
     only when provenance (dct:source, mo:suppress, mo:aui1/2) is needed.
-  - GENE STUB IRIs: Objects of mo:disease_has_associated_gene are MedGen CUI IRIs
-    (e.g. http://www.ncbi.nlm.nih.gov/medgen/C1333922) that are NOT loaded as ConceptID
-    instances in this dataset. Joining ?gene rdfs:label always returns empty. Return the
-    gene IRI as-is or cross-reference to NCBI Gene via togoid conversion.
+  - GENE STUB IRIs — AND HOW TO ACTUALLY RESOLVE THEM (corrected): Objects of
+    mo:disease_has_associated_gene are MedGen CUI IRIs (e.g. .../medgen/C1333922) NOT loaded as
+    ConceptID instances; ?gene rdfs:label always returns empty. CRITICAL: these stub gene CUIs also
+    do NOT convert in TogoID — togoid_countId(medgen,ncbigene, "C1333922,...") returns
+    {source:0, target:0}. To get NCBI Gene IDs, pass the DISEASE concept CUI (not the stub gene CUI)
+    to togoid_convertId(ids=["C0023467"], route="medgen,ncbigene") → 17 genes for AML (KRAS 3845,
+    NPM1 4869, RUNX1T1 861, ...). The medgen↔ncbigene TogoID route is a disease-CUI→gene aggregation,
+    unrelated to the intermediate stub CUIs.
   - MGSAT PROPERTY NAMES: MGSAT blank nodes use rdf:value (attribute value) and
     rdfs:label (attribute name). NOT mo:atn / mo:atv / mo:cui / mo:atui (old schema).
     Common rdfs:label values: GENESYMBOL, NCBI_OMIM, NCBI_ALTERNATE_ID, NEOPLASTIC_STATUS,
@@ -265,7 +270,9 @@ sparql_query_examples:
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
       # mo:disease_has_associated_gene objects are stub IRIs (no rdfs:label in MedGen).
-      # Return gene_iri for cross-referencing with NCBI Gene via togoid.
+      # To get NCBI Gene IDs, do NOT convert these stub CUIs (they yield source=0 in TogoID).
+      # Instead pass the DISEASE CUI to TogoID:
+      #   togoid_convertId(ids=["C0023467"], route="medgen,ncbigene") -> 17 genes (KRAS 3845, NPM1 4869, ...)
       SELECT ?disease_label ?gene_iri
       FROM <http://rdfportal.org/dataset/medgen>
       WHERE {
@@ -433,6 +440,49 @@ cross_database_queries:
         - URI pattern: www.ncbi.nlm.nih.gov (MedGen) -> ncbi.nlm.nih.gov (ClinVar)
         - MIE files read: medgen, clinvar
 
+    - title: "Golden path: MedGen disease → MeSH → PubTator gene co-mention → PubMed"
+      description: |
+        MedGen is the bridge in the gene→variant→disease→literature chain: its mo:mgconso maps a
+        disease CUI to a MeSH descriptor, which PubTator's Disease annotations use. Takes a MedGen
+        CUI + a target gene, returns PubMed articles co-mentioning both.
+
+        CRITICAL two-namespace MeSH bridge: MedGen mgconso emits http://id.nlm.nih.gov/mesh/ but
+        PubTator oa:hasBody uses http://identifiers.org/mesh/ — transform with
+        REPLACE("id.nlm.nih.gov/mesh/","identifiers.org/mesh/") or the join silently returns 0.
+      databases_used: [medgen, pubtator, pubmed]
+      complexity: advanced
+      sparql: |
+        PREFIX mo:      <http://med2rdf/ontology/medgen#>
+        PREFIX oa:      <http://www.w3.org/ns/oa#>
+        PREFIX dcterms: <http://purl.org/dc/terms/>
+        PREFIX dct:     <http://purl.org/dc/terms/>
+        PREFIX bibo:    <http://purl.org/ontology/bibo/>
+        PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+
+        SELECT DISTINCT ?ptMesh ?pmid ?title
+        WHERE {
+          GRAPH <http://rdfportal.org/dataset/medgen> {
+            ?concept dct:identifier "C0677776" ; mo:mgconso ?mgbn .
+            ?mgbn rdfs:seeAlso ?meshIRI .
+            FILTER(STRSTARTS(STR(?meshIRI), "http://id.nlm.nih.gov/mesh/"))
+          }
+          BIND(IRI(REPLACE(STR(?meshIRI), "id.nlm.nih.gov/mesh/", "identifiers.org/mesh/")) AS ?ptMesh)
+          GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+            ?gAnn dcterms:subject "Gene" ; oa:hasBody <http://identifiers.org/ncbigene/672> ;
+                  oa:hasTarget ?article .
+            ?dAnn dcterms:subject "Disease" ; oa:hasBody ?ptMesh ; oa:hasTarget ?article .
+          }
+          GRAPH <http://rdfportal.org/dataset/pubmed> {
+            ?article bibo:pmid ?pmid ; dct:title ?title .
+          }
+        }
+        LIMIT 10
+      notes: |
+        - The disease CUI (C0677776) can come from a ClinVar variant (see clinvar MIE golden-path).
+        - mgconso→MeSH bridge REQUIRES the id.nlm.nih.gov/mesh → identifiers.org/mesh transform.
+        - Verified: C0677776 → mesh/D061325 → 15 BRCA1 breast/ovarian-cancer articles.
+        - MIE files checked: medgen, pubtator, pubmed
+
 cross_references:
   - pattern: mo:mgconso blank nodes -> rdfs:seeAlso
     description: |
@@ -469,7 +519,7 @@ architectural_notes:
     - "Comprehensive: use ConceptID direct relationship properties (mo:manifestation_of etc.) -- faster than MGREL"
     - "Provenance queries: use MGREL (mo:cui1/cui2/rela/dct:source) only when source attribution is needed"
     - "Attributes: access via mo:mgsat blank nodes; rdfs:label = attr name, rdf:value = attr value"
-    - "Gene labels: mo:disease_has_associated_gene objects are stub IRIs -- use togoid to convert CUI to NCBI Gene IDs for cross-referencing"
+    - "Gene labels: mo:disease_has_associated_gene objects are stub IRIs -- pass the DISEASE CUI (not the stub gene CUI) to togoid route medgen,ncbigene for gene IDs"
     - "Text search: bif:contains (Virtuoso) for unstructured rdfs:label when no semantic type IRI covers the topic"
     - "Priority: Specific concept IRIs > Typed direct predicates > MGREL traversal > bif:contains"
 
@@ -498,7 +548,8 @@ architectural_notes:
     - "www.orpha.net/ORDO/Orphanet_* (Orphanet), purl.bioontology.org/ontology/SNOMEDCT/* (SNOMED)"
     - "ClinVar linkage: disease -> dct:references -> blank node -> rdfs:seeAlso -> MedGen URI"
     - "URI conversion for ClinVar: REPLACE(STR(?mg), 'www.ncbi', 'ncbi')"
-    - "Gene name resolution: use togoid to convert MedGen CUI stub IRIs to NCBI Gene IDs"
+    - "Gene name resolution: pass the DISEASE concept CUI (NOT the stub gene CUI, which gives
+       TogoID source=0) to togoid_convertId(route='medgen,ncbigene'), then query ncbigene"
 
   data_quality:
     - "skos:definition coverage: ~33.6% (78,578 / 233,939 concepts)"
@@ -665,9 +716,12 @@ common_errors:
     causes:
       - "Gene concept objects are stub IRIs not loaded as ConceptID instances in MedGen"
       - "Attempting ?gene rdfs:label always returns empty for these stub IRIs"
+      - "Passing the stub gene CUI to TogoID — it is not in the medgen dataset (returns source=0)"
     solutions:
       - "Return gene IRIs directly without joining on rdfs:label"
-      - "For gene names, use togoid to convert MedGen CUI stub IRIs to NCBI Gene IDs, then query ncbigene"
+      - "For NCBI Gene IDs, pass the DISEASE concept CUI (not the stub gene CUI) to
+         togoid_convertId(route='medgen,ncbigene') — e.g. C0023467 → 17 AML genes. Verified: stub
+         CUIs give togoid_countId source=0/target=0; the disease CUI gives source=1/target=17."
 
   - error: "Cross-database query (MedGen/ClinVar) returns no results"
     causes:
