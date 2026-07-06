@@ -32,8 +32,9 @@ schema_info:
   kw_search_tools:
     - ncbi_esearch
   version:
-    mie_version: "2.1"
+    mie_version: "2.2"
     mie_created: "2026-04-29"
+    mie_revised: "2026-07-06"
     data_version: "Release 2026.04"
     update_frequency: "Regular updates"
   access:
@@ -57,6 +58,13 @@ critical_warnings: |
     GRAPH clauses; placing BIND inside a GRAPH clause silently returns 0 results.
   - GRAPH CLAUSE MANDATORY: Omitting FROM or GRAPH clause causes cross-graph interference.
     Always specify FROM <http://rdfportal.org/dataset/ncbigene> or an explicit GRAPH.
+  - SPECIES MIXING IN PUBTATOR CO-MENTION JOINS: PubTator Gene annotations
+    (oa:hasBody → identifiers.org/ncbigene/*) are NOT species-restricted, so a disease–gene
+    co-mention join that reaches ncbigene will interleave human and model-organism orthologs of the
+    same symbol unless you filter. Measured: Alzheimer (mesh/D000544) gene co-mention top-15 included
+    4 mouse genes (App 11820, Tnf 21926, Il1b 16176, Il6 16193) alongside their human orthologs. When
+    joining PubTator to ncbigene, add ?geneId ncbio:taxid <http://identifiers.org/taxonomy/9606> (or
+    the target taxon) to restrict species — the co-mention itself carries no taxon.
 
 shape_expressions: |
   PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
@@ -363,37 +371,40 @@ cross_database_queries:
 
     - title: Gene-Literature Co-occurrence via PubTator
       description: |
-        Links genes to annotated publications using structured gene mention predicates.
+        Counts PubMed articles that mention a gene, via PubTator Gene annotations.
 
-        Linking strategy:
-        - NCBI Gene: dct:identifier yields gene ID as plain string
-        - PubTator: pubtator:ncbiGeneIdentifier links article annotations to gene IDs
-        - Direct string match; no URI conversion or text search required for gene linking
+        Linking strategy (CORRECTED v2.2 — the prior schema pubtator:ncbiGeneIdentifier /
+        pubtator:hasAnnotation / graph "pubtator" returns 0 rows; it does not exist):
+        - PubTator Gene annotations live in GRAPH <http://rdfportal.org/dataset/pubtator_central>,
+          typed dcterms:subject "Gene", with oa:hasBody → identifiers.org/ncbigene/{id}.
+        - That oa:hasBody IRI IS the ncbigene subject IRI — DIRECT IRI join, no string/dct:identifier.
+        - oa:hasTarget → PubMed article IRI (http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid}).
+        - PubTator Gene annotations are NOT species-restricted; the ncbio:taxid filter here keeps it
+          to the intended human gene (see critical_warnings on species mixing).
       databases_used: [ncbigene, pubtator]
       complexity: intermediate
       sparql: |
         PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
-        PREFIX dct: <http://purl.org/dc/terms/>
-        PREFIX pubtator: <http://pubannotation.org/ontology/pubannotation.owl#>
+        PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+        PREFIX oa:   <http://www.w3.org/ns/oa#>
+        PREFIX dcterms: <http://purl.org/dc/terms/>
 
-        SELECT ?gene_symbol ?gene_id ?article ?pub_id
+        SELECT ?gene_symbol (COUNT(DISTINCT ?article) AS ?n_articles)
         WHERE {
           GRAPH <http://rdfportal.org/dataset/ncbigene> {
-            VALUES ?ncbi_gene { <http://identifiers.org/ncbigene/7157> }  # TP53
-            ?ncbi_gene dct:identifier ?gene_id ;
-                       rdfs:label ?gene_symbol .
+            VALUES ?gene { <http://identifiers.org/ncbigene/7157> }  # TP53
+            ?gene a insdc:Gene ; rdfs:label ?gene_symbol ;
+                  ncbio:taxid <http://identifiers.org/taxonomy/9606> .
           }
-          GRAPH <http://rdfportal.org/dataset/pubtator> {
-            ?annotation pubtator:ncbiGeneIdentifier ?gene_id .
-            ?article pubtator:hasAnnotation ?annotation .
-            ?article dct:identifier ?pub_id .
+          GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+            ?ann dcterms:subject "Gene" ; oa:hasBody ?gene ; oa:hasTarget ?article .
           }
         }
-        LIMIT 30
+        GROUP BY ?gene_symbol
       notes: |
-        - Linking via: dct:identifier (plain string) → pubtator:ncbiGeneIdentifier
-        - No URI conversion needed — shared string identifier
-        - Performance: ~3-5s (Tier 2)
+        - Linking via: ncbigene subject IRI = PubTator oa:hasBody IRI (direct, no conversion)
+        - Verified: TP53 (ncbigene/7157) → 273,965 co-mentioning articles
+        - Graph is pubtator_central (NOT "pubtator"); entity type via dcterms:subject "Gene"
         - MIE files checked: ncbigene, pubtator
 
 cross_references:
@@ -484,7 +495,9 @@ architectural_notes:
   data_integration:
     - "identifiers.org IRIs enable seamless cross-database linking without text matching"
     - "ClinVar integration: dct:identifier (string) → CONCAT URI conversion → med2rdf:gene"
-    - "PubTator integration: dct:identifier (string) → pubtator:ncbiGeneIdentifier direct match"
+    - "PubTator integration: ncbigene subject IRI (identifiers.org/ncbigene/{id}) = PubTator
+       oa:hasBody IRI in graph pubtator_central (dcterms:subject 'Gene') — direct IRI join, and add
+       ncbio:taxid to avoid cross-species mixing (NOT pubtator:ncbiGeneIdentifier, which does not exist)"
     - "miRBase integration: insdc:dblink with identifiers.org/mirbase/ prefix for miRNA genes"
     - "Cross-DB BIND must be placed BETWEEN GRAPH clauses, never inside a GRAPH block"
     - "Check MIE files for BOTH databases before writing any cross-database query"

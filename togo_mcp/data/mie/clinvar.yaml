@@ -31,8 +31,9 @@ schema_info:
   kw_search_tools:
     - ncbi_esearch
   version:
-    mie_version: "2.1"
+    mie_version: "2.2"
     mie_created: "2026-04-29"
+    mie_revised: "2026-07-06"
     data_version: "Release 2025.01"
     update_frequency: "Monthly"
   access:
@@ -57,6 +58,14 @@ critical_warnings: |
   - DCT:SOURCE CASE INCONSISTENCY: Both "MeSH" and "MESH" exist as dct:source values; likewise
     "HP" and "Human Phenotype Ontology" coexist. Use VALUES ?source { "MeSH" "MESH" } to
     avoid silently missing half the MeSH cross-references.
+
+  - DUPLICATE DISEASE BLANK NODES INFLATE COUNTS (SILENT): med2rdf:disease produces MULTIPLE
+    blank nodes on the same variant that point to the SAME disease (same dct:identifier), because
+    multiple SCV submissions each assert the trait. DISTINCT on the blank node (?dis) is useless —
+    each bnode is already unique. Measured: BRCA1 (gene/672) Pathogenic variants = 3,989 distinct
+    variants but a naive variant→disease→MedGen join returns 14,769 rows (~3.7x inflation) for only
+    45 distinct MedGen CUIs. For "how many variants relate to disease X" use COUNT(DISTINCT ?variant),
+    or GROUP BY ?variant then de-dup on dct:identifier — never COUNT(*) or COUNT(?dis).
 
 shape_expressions: |
   PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
@@ -332,7 +341,9 @@ sparql_query_examples:
 
       # Graph navigation: variant → med2rdf:disease → dct:references → TypeXref → dct:source/identifier
       # WARNING: "MeSH"/"MESH" both exist — use VALUES for both if querying MeSH
-      SELECT ?label ?source ?identifier ?seeAlso
+      # SELECT DISTINCT is REQUIRED: med2rdf:disease has duplicate blank nodes pointing to the same
+      # disease (see critical_warnings); without DISTINCT the (variant,source,id) rows inflate ~3.7x.
+      SELECT DISTINCT ?label ?source ?identifier ?seeAlso
       FROM <http://rdfportal.org/dataset/clinvar>
       WHERE {
         VALUES ?gene_uri { <http://ncbi.nlm.nih.gov/gene/672> }
@@ -351,41 +362,38 @@ sparql_query_examples:
       }
       LIMIT 100
 
-  - title: Multi-Submitter Variants Updated in 2024 (Advanced Filters + OPTIONAL)
-    description: Find well-evidenced variants with multiple submitters and recent updates.
-    question: Which BRCA1 variants have 3+ submitters updated since 2024?
+  - title: Somatic Oncogenicity Classification for a Cancer Gene (KRAS, non-germline branch)
+    description: |
+      Demonstrates the oncogenicity_classification and somatic_clinical_impact branches (NOT the
+      germline branch most examples use). KRAS hotspot variants are classified Oncogenic/Likely
+      oncogenic with Tier somatic impact — germline-only queries silently miss all of these.
+    question: What is the oncogenicity classification of KRAS variants, and their somatic clinical impact tier?
     complexity: advanced
     sparql: |
       PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
       PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
       PREFIX sio: <http://semanticscience.org/resource/>
-      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-      SELECT ?variant ?label ?type ?num_submitters ?last_updated ?significance ?review_status
+      # Oncogenicity/somatic branches — parallel to cvo:germline_classification, NOT the same node.
+      SELECT ?label ?oncogenicity ?somatic_impact
       FROM <http://rdfportal.org/dataset/clinvar>
       WHERE {
-        VALUES ?gene_uri { <http://ncbi.nlm.nih.gov/gene/672> }
+        VALUES ?gene_uri { <http://ncbi.nlm.nih.gov/gene/3845> }  # KRAS
         ?gene_bn med2rdf:gene ?gene_uri .
         ?classrec sio:SIO_000628 ?gene_bn .
         ?variant a cvo:VariationArchiveType ;
                  rdfs:label ?label ;
-                 cvo:variation_type ?type ;
-                 cvo:record_status "current" ;
                  cvo:record_type "classified" ;
-                 cvo:number_of_submitters ?num_submitters ;
-                 cvo:date_last_updated ?last_updated ;
                  cvo:classified_record ?classrec .
-        FILTER(?num_submitters >= 3)
-        FILTER(?last_updated >= "2024-01-01"^^xsd:date)
+        ?classrec cvo:classifications ?classi .
+        ?classi cvo:oncogenicity_classification ?onc .
+        ?onc cvo:description ?oncogenicity .
         OPTIONAL {
-          ?classrec cvo:classifications ?classi .
-          ?classi cvo:germline_classification ?germ .
-          ?germ cvo:description ?significance ;
-                cvo:review_status ?review_status .
+          ?classi cvo:somatic_clinical_impact ?sci .
+          ?sci cvo:description ?somatic_impact .
         }
       }
-      ORDER BY DESC(?num_submitters)
-      LIMIT 100
+      LIMIT 50
 
   - title: Exploratory Variant Search by Gene Symbol in Label (Text Search)
     description: Exploratory search for variants mentioning a gene symbol when specific gene IRI is not yet known.
@@ -514,6 +522,53 @@ cross_database_queries:
         - Performance: ~2-3s (Tier 1)
         - Gene ID conversion: ClinVar integer → ncbigene string (BIND required)
         - MIE files checked: clinvar, ncbigene
+
+    - title: "Golden path: gene → pathogenic variant → disease → MeSH → literature co-mention"
+      description: |
+        The full 5-stage biological chain across the ncbi endpoint. STAGE 1-2 (discovery, run
+        separately — a 4-graph single join TIMES OUT): use example query "Disease Cross-Reference
+        Pattern for BRCA1" to get the MedGen CUIs of a gene's Pathogenic variants (BRCA1 → e.g.
+        C0677776 "Hereditary breast ovarian cancer syndrome"). STAGES 3-5 (the runnable join below):
+        MedGen CUI → MeSH IRI (mo:mgconso) → PubTator gene+disease co-mention → PubMed title.
+
+        NON-OBVIOUS BRIDGE (two IRI transforms, both mandatory):
+        - MedGen mgconso MeSH IRI uses http://id.nlm.nih.gov/mesh/ ; PubTator oa:hasBody uses
+          http://identifiers.org/mesh/ — REPLACE("id.nlm.nih.gov/mesh/","identifiers.org/mesh/").
+        - (ClinVar→MedGen in stage 1-2 uses the www→no-www swap documented elsewhere.)
+      databases_used: [clinvar, medgen, pubtator, pubmed]
+      complexity: advanced
+      sparql: |
+        PREFIX mo:      <http://med2rdf/ontology/medgen#>
+        PREFIX oa:      <http://www.w3.org/ns/oa#>
+        PREFIX dcterms: <http://purl.org/dc/terms/>
+        PREFIX dct:     <http://purl.org/dc/terms/>
+        PREFIX bibo:    <http://purl.org/ontology/bibo/>
+        PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+
+        # Stages 3-5. ?cui (here C0677776) comes from the ClinVar stage-1-2 discovery query.
+        SELECT DISTINCT ?ptMesh ?pmid ?title
+        WHERE {
+          GRAPH <http://rdfportal.org/dataset/medgen> {
+            ?concept dct:identifier "C0677776" ; mo:mgconso ?mgbn .
+            ?mgbn rdfs:seeAlso ?meshIRI .
+            FILTER(STRSTARTS(STR(?meshIRI), "http://id.nlm.nih.gov/mesh/"))
+          }
+          BIND(IRI(REPLACE(STR(?meshIRI), "id.nlm.nih.gov/mesh/", "identifiers.org/mesh/")) AS ?ptMesh)
+          GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+            ?gAnn dcterms:subject "Gene" ; oa:hasBody <http://identifiers.org/ncbigene/672> ;
+                  oa:hasTarget ?article .
+            ?dAnn dcterms:subject "Disease" ; oa:hasBody ?ptMesh ; oa:hasTarget ?article .
+          }
+          GRAPH <http://rdfportal.org/dataset/pubmed> {
+            ?article bibo:pmid ?pmid ; dct:title ?title .
+          }
+        }
+        LIMIT 10
+      notes: |
+        - The single 4-graph join (adding ClinVar stage 1-2) TIMES OUT — run stages 1-2 separately.
+        - mgconso→MeSH bridge REQUIRES the id.nlm.nih.gov/mesh → identifiers.org/mesh transform.
+        - Verified: C0677776 → mesh/D061325 → 15 BRCA1 breast/ovarian-cancer articles.
+        - MIE files checked: clinvar, medgen, pubtator, pubmed
 
 cross_references:
   - pattern: med2rdf:disease → dct:references → TypeXref (dct:source + dct:identifier + rdfs:seeAlso)
@@ -732,6 +787,38 @@ anti_patterns:
         ?v cvo:classified_record ?classrec .
       }
     explanation: "Use search APIs to discover gene IRIs; use those IRIs to query the full dataset."
+
+  - title: "Duplicate Disease Blank Nodes Inflating Counts"
+    problem: "Counting variant–disease relations with COUNT(*) or COUNT(?dis). med2rdf:disease has multiple blank nodes per variant pointing to the SAME disease (one per SCV submission), so rows inflate ~3.7x. DISTINCT on the blank node does nothing (each bnode is unique)."
+    wrong_sparql: |
+      # WRONG: 14,769 rows for only 3,989 BRCA1 Pathogenic variants (45 distinct diseases)
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      SELECT (COUNT(*) AS ?n)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        ?gene_bn med2rdf:gene <http://ncbi.nlm.nih.gov/gene/672> .
+        ?classrec sio:SIO_000628 ?gene_bn .
+        ?variant cvo:classified_record ?classrec ; med2rdf:disease ?dis .
+        ?dis dct:references ?ref . ?ref dct:source "MedGen" ; dct:identifier ?cui .
+      }
+    correct_sparql: |
+      # CORRECT: COUNT(DISTINCT ?variant) → 3,989; COUNT(DISTINCT ?cui) → 45
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      SELECT (COUNT(DISTINCT ?variant) AS ?variants) (COUNT(DISTINCT ?cui) AS ?diseases)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        ?gene_bn med2rdf:gene <http://ncbi.nlm.nih.gov/gene/672> .
+        ?classrec sio:SIO_000628 ?gene_bn .
+        ?variant cvo:classified_record ?classrec ; med2rdf:disease ?dis .
+        ?dis dct:references ?ref . ?ref dct:source "MedGen" ; dct:identifier ?cui .
+      }
+    explanation: "med2rdf:disease blank nodes duplicate per submission. Always COUNT(DISTINCT ?variant) or de-dup on dct:identifier — never COUNT(*)/COUNT(?dis)."
 
 common_errors:
   - error: "Cross-database MedGen query returns empty results"
