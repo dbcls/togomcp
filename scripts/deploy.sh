@@ -93,9 +93,14 @@ env_args() {  # kind(test|prod) — prints podman -e args, one token per line
 recreate() {  # name port image kind
   local name=$1 port=$2 image=$3 kind=$4 eargs=()
   mapfile -t eargs < <(env_args "$kind")
+  # Bind-mount the log dir like compose does (main -> ./logs, test -> ./logs-test),
+  # so a TOGOMCP_QUERY_LOG path under /var/log/togomcp exists and persists.
+  local logdir="$REPO_ROOT/logs"; [[ "$kind" == test ]] && logdir="$REPO_ROOT/logs-test"
+  mkdir -p "$logdir"
   log "recreating '$name' on :$port from ${image}"
   podman rm -f "$name" >/dev/null 2>&1 || true
-  podman run -d --name "$name" -p "${port}:8000" "${eargs[@]}" "$image" >/dev/null
+  podman run -d --name "$name" -p "${port}:8000" -v "${logdir}:/var/log/togomcp" \
+    "${eargs[@]}" "$image" >/dev/null
 }
 
 smoke() {  # port host label  -> dies unless 200

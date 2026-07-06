@@ -441,15 +441,26 @@ class _ToolCallLogger(_Middleware):
         self._enabled = bool(log_path)
         self._log: logging.Logger | None = None
         if self._enabled:
-            handler = RotatingFileHandler(
-                log_path, maxBytes=50_000_000, backupCount=10, encoding="utf-8"
-            )
-            handler.setFormatter(logging.Formatter("%(message)s"))
-            log = logging.getLogger("togomcp.toolcalls")
-            log.setLevel(logging.INFO)
-            log.propagate = False
-            log.handlers = [handler]
-            self._log = log
+            try:
+                log_dir = os.path.dirname(log_path)
+                if log_dir:
+                    os.makedirs(log_dir, exist_ok=True)
+                handler = RotatingFileHandler(
+                    log_path, maxBytes=50_000_000, backupCount=10, encoding="utf-8"
+                )
+                handler.setFormatter(logging.Formatter("%(message)s"))
+                log = logging.getLogger("togomcp.toolcalls")
+                log.setLevel(logging.INFO)
+                log.propagate = False
+                log.handlers = [handler]
+                self._log = log
+            except OSError as exc:
+                # A logging misconfiguration must never stop the server booting.
+                logger.warning(
+                    "tool-call logging disabled: cannot open %s (%s)", log_path, exc
+                )
+                self._enabled = False
+                self._log = None
 
     @staticmethod
     def _client_ip() -> str | None:
