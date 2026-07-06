@@ -35,7 +35,7 @@ schema_info:
   kw_search_tools:
     - sparql
   version:
-    mie_version: "2.2"
+    mie_version: "2.3"
     mie_created: "2026-04-29"
     mie_revised: "2026-07-06"
     data_version: "PubTator Central 2024"
@@ -352,12 +352,13 @@ cross_database_queries:
       description: |
         pubtator (ncbi endpoint) mints http://identifiers.org/mesh/D###### on oa:hasBody, which
         does NOT resolve in the `mesh` database (primary endpoint, base http://id.nlm.nih.gov/mesh/).
-        Rewrite the IRI with REPLACE, then reach `mesh` via SERVICE.
-
-        CRITICAL query-construction detail: the local pubtator triple pattern must be MATERIALIZED
-        in an inner subquery before the SERVICE call. A naive `?ann oa:hasBody ?meshBody . BIND(...)
-        SERVICE {...}` silently returns ZERO rows on Virtuoso because the SERVICE is dispatched
-        before ?meshBody is ground. The inner SELECT forces materialization first.
+        Rewrite the IRI with REPLACE, then reach `mesh` via a cross-endpoint SERVICE. Virtuoso
+        binds ?meshBody from the local GRAPH pattern before evaluating the SERVICE, so ?meshIRI is
+        already ground when the SERVICE is dispatched — the plain form below works as written.
+        (Optional efficiency refinement: wrapping the local pattern in an inner
+        `SELECT DISTINCT ?meshBody` de-duplicates MeSH IRIs so the SERVICE fires once per distinct
+        IRI rather than once per annotation. It is NOT required for correctness — both forms return
+        the identical rows, verified 2026-07-06.)
       databases_used:
         - pubtator
         - mesh
@@ -368,14 +369,10 @@ cross_database_queries:
         PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
 
         SELECT ?meshBody ?meshIRI ?label WHERE {
-          {
-            SELECT DISTINCT ?meshBody WHERE {
-              GRAPH <http://rdfportal.org/dataset/pubtator_central> {
-                ?ann dcterms:subject "Disease" ;
-                     oa:hasBody ?meshBody ;
-                     oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/18935173> .
-              }
-            }
+          GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+            ?ann dcterms:subject "Disease" ;
+                 oa:hasBody ?meshBody ;
+                 oa:hasTarget <http://rdf.ncbi.nlm.nih.gov/pubmed/18935173> .
           }
           BIND(URI(REPLACE(STR(?meshBody), "identifiers.org/mesh/", "id.nlm.nih.gov/mesh/")) AS ?meshIRI)
           SERVICE <https://rdfportal.org/primary/sparql> {
@@ -387,7 +384,9 @@ cross_database_queries:
         - Linking via: oa:hasBody (identifiers.org/mesh/) → REPLACE → id.nlm.nih.gov/mesh/ (mesh base)
         - Run from the ncbi endpoint (database: pubtator); SERVICE reaches primary for mesh labels.
         - mesh rdfs:label returns both the descriptor name and the D-number string per subject.
-        - Inner subquery materialization is MANDATORY — without it Virtuoso returns 0 rows.
+        - Both the plain form (above) and an inner `SELECT DISTINCT ?meshBody` form return the
+          identical rows (verified 2026-07-06); the inner subquery is an optional dedup for
+          efficiency, not a correctness requirement.
         - MIE files checked: pubtator, mesh
 
     - title: Human-only genes co-mentioned with a disease (species filter via ncbigene taxid)
