@@ -33,9 +33,9 @@ schema_info:
     - http://rdfportal.org/dataset/amrportal
   kw_search_tools: []
   version:
-    mie_version: "2.1"
+    mie_version: "2.2"
     mie_created: "2025-04-21"
-    mie_updated: "2026-04-29"
+    mie_updated: "2026-07-07"
     data_version: "Current as of 2025"
     update_frequency: "Irregular updates"
   license:
@@ -418,18 +418,21 @@ cross_database_queries:
           VALUES (?antibiotic ?resistant) {
             ("ciprofloxacin" 21368)
             ("ampicillin" 21660)
-            ("gentamicin" 15000)
+            ("gentamicin" 8398)
           }
           GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
             ?mol a cco:SmallMolecule ;
                  rdfs:label ?chemblLabel ;
                  cco:highestDevelopmentPhase ?developmentPhase .
-            FILTER(LCASE(?chemblLabel) = ?antibiotic)
+            FILTER(LCASE(STR(?chemblLabel)) = STR(?antibiotic))
           }
         }
       notes: |
         - Run as two separate queries; paste Stage 1 counts into Stage 2 VALUES.
         - NEVER combine COUNT and cross-GRAPH join in one query — guaranteed timeout.
+        - STR() on BOTH sides of the name FILTER is required: a VALUES-bound plain literal does
+          NOT compare equal to LCASE()'s xsd:string output in Virtuoso — without it the join
+          silently returns 0 rows (verified 2026-07-07). Stage-2 phases: cipro/ampicillin/gentamicin all 4.
         - MIE files checked: amrportal, chembl.
 
     - title: AMR Resistance Enriched with ChEBI Chemical Properties
@@ -446,7 +449,7 @@ cross_database_queries:
       sparql: |
         PREFIX amr: <http://example.org/ebiamr#>
         PREFIX obo: <http://purl.obolibrary.org/obo/>
-        PREFIX chebi: <http://purl.obolibrary.org/obo/chebi/>
+        PREFIX chemrof: <https://w3id.org/chemrof/>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
         SELECT ?region ?chebiLabel ?formula (COUNT(*) as ?resistant)
@@ -459,7 +462,7 @@ cross_database_queries:
           }
           GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
             obo:CHEBI_100241 rdfs:label ?chebiLabel .
-            OPTIONAL { obo:CHEBI_100241 chebi:formula ?formula }
+            OPTIONAL { obo:CHEBI_100241 chemrof:generalized_empirical_formula ?formula }
           }
         }
         GROUP BY ?region ?chebiLabel ?formula
@@ -467,6 +470,9 @@ cross_database_queries:
       notes: |
         - Geographic pre-filter within GRAPH reduces >99% of rows before join.
         - ChEBI IRI CHEBI:100241 = ciprofloxacin; discovered via OLS4:searchClasses.
+        - ChEBI molecular properties use the chemrof: namespace (chemrof:generalized_empirical_formula);
+          the old obo/chebi/ chebi:formula predicate was removed upstream and returns 0 rows silently.
+        - Verified 2026-07-07: ciprofloxacin C17H18FN3O3; resistant counts Americas 8403, Europe 4513.
         - MIE files checked: amrportal, chebi.
 
 cross_references:
@@ -566,9 +572,13 @@ architectural_notes:
 data_statistics:
   total_phenotypes: 1714486
   total_genotypes: 1164007
-  total_unique_biosamples: 170958
-  verified_date: "2025-04-21"
-  verification_method: "Direct COUNT queries on amrportal graph"
+  total_unique_biosamples: 170958   # DISTINCT amr:bioSample across BOTH entity types (170,750 on phenotypes alone)
+  verified_date: "2026-07-07"
+  verification_method: "Direct COUNT queries on amrportal graph. Re-verified 2026-07-07, all unchanged:
+    phenotypes 1,714,486; genotypes 1,164,007; unique biosamples 170,958; full resistance distribution
+    (resistant 302,729 / susceptible 1,040,897 / intermediate 35,332 / non-susceptible 828 /
+    susceptible-dose dependent 213 / missing 334,487). Coverage percentages below retain their original
+    2025-04-21 verification (not re-run)."
 
   coverage:
     phenotype_with_aro_iri: "92.7%"
@@ -634,20 +644,25 @@ anti_patterns:
   - title: "Circular Reasoning with Search Results"
     problem: "Using sampled entity IRIs from an exploratory query as the scope of a comprehensive count or aggregate."
     wrong_sparql: |
-      # WRONG: pastes sampled IRIs into VALUES — counts only those organisms, not the full dataset
-      VALUES ?isolate { <http://rdfportal.org/dataset/amrportal/isolate/12345>
-                        <http://rdfportal.org/dataset/amrportal/isolate/67890> }
+      # WRONG: pastes sampled IRIs into VALUES — counts only those isolates, not the full dataset
+      PREFIX amr: <http://example.org/ebiamr#>
       SELECT (COUNT(?m) AS ?count)
       FROM <http://rdfportal.org/dataset/amrportal>
-      WHERE { ?m a amr:PhenotypeMeasurement ; amr:isolate ?isolate . }
+      WHERE {
+        VALUES ?isolate { <http://rdfportal.org/dataset/amrportal/isolate/12345>
+                          <http://rdfportal.org/dataset/amrportal/isolate/67890> }
+        ?m a amr:PhenotypeMeasurement ; amr:isolate ?isolate .
+      }
       LIMIT 1
     correct_sparql: |
-      # CORRECT: use controlled vocabulary values discovered during exploration
-      VALUES ?amrClass { "BETA-LACTAM" "AMINOGLYCOSIDE" }
+      # CORRECT: use controlled vocabulary values discovered during exploration.
+      # NOTE: amr:amrClass lives on GenotypeFeature, NOT PhenotypeMeasurement (the latter returns 0).
+      PREFIX amr: <http://example.org/ebiamr#>
       SELECT (COUNT(DISTINCT ?m) AS ?count)
       FROM <http://rdfportal.org/dataset/amrportal>
       WHERE {
-        ?m a amr:PhenotypeMeasurement ; amr:amrClass ?amrClass .
+        VALUES ?amrClass { "BETA-LACTAM" "AMINOGLYCOSIDE" }
+        ?m a amr:GenotypeFeature ; amr:amrClass ?amrClass .
       }
       LIMIT 1
     explanation: "Use exploratory queries to discover controlled vocabulary values (amrClass, antibioticName, phenotype). Use those as filter criteria in comprehensive queries — not the sampled isolate IRIs themselves."
