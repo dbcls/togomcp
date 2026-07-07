@@ -1,0 +1,39 @@
+name: Renovate
+
+# Self-hosted Renovate — runs the Renovate CLI on a schedule and reads ./renovate.json.
+# No third-party GitHub App: the compute is this repo's Actions runner.
+# NOTE: scheduled runs only fire from the DEFAULT branch, so this file must be on main
+# to run on cron. Use the "Run workflow" button (workflow_dispatch) to trigger manually.
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'        # 02:00 UTC every Monday — this cron IS the cadence
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: Renovate log level (info | debug)
+        required: false
+        default: info
+
+permissions:
+  contents: write               # create/update branches
+  pull-requests: write          # open dependency PRs
+  issues: write                 # maintain the Dependency Dashboard issue
+
+# Never run two Renovate passes at once.
+concurrency:
+  group: renovate
+  cancel-in-progress: false
+
+jobs:
+  renovate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Renovate
+        uses: renovatebot/github-action@v41   # Renovate self-updates this pin via the github-actions manager
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_ONBOARDING: 'false'         # renovate.json already exists — skip the onboarding PR
+          LOG_LEVEL: ${{ inputs.logLevel || 'info' }}
