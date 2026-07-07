@@ -13,8 +13,10 @@ Descriptive header. Required fields:
 - `endpoint`: SPARQL endpoint URL
 - `base_uri`: root URI namespace
 - `graphs`: list of named graphs in the endpoint
+- `co_hosted_graphs` (OPTIONAL): free-text strings, each naming another graph that shares this endpoint and the trap it poses (IRI re-typing, `COUNT(*)` inflation, empty-stub graphs). Add only for shared endpoints where co-tenants can corrupt results.
 - `kw_search_tools`: list of available keyword-search tool names, or `[]` if none
-- `version`: `mie_version`, `mie_created` (today's date), `data_version`, `update_frequency`
+- `version`: `mie_version`, `mie_created` (today's date), `data_version`, `update_frequency`. `mie_version` is this database's OWN document revision (bump per edit) — **not** the spec version.
+- `license` (OPTIONAL): `data_license` string; include when the source states a data-use license
 - `access.backend`: `"Virtuoso"` / `"Blazegraph"` / etc. — determines `bif:contains` availability
 
 ## 2. `critical_warnings`
