@@ -1,5 +1,5 @@
 # Create an introductory HTML page for TogoMCP
-TogoMCP is a comprehensive Model Context Protocol (MCP) server that provides LLM agents with access to a vast ecosystem of life sciences databases through SPARQL queries, RDF data exploration, and ID conversion services. It integrates over 20 major biological and biomedical databases, offering researchers a powerful toolkit for cross-database queries, data integration, and knowledge discovery.
+TogoMCP is a comprehensive Model Context Protocol (MCP) server that provides LLM agents with access to a vast ecosystem of life sciences databases through SPARQL queries, RDF data exploration, and ID conversion services. It integrates over 30 major biological and biomedical databases, offering researchers a powerful toolkit for cross-database queries, data integration, and knowledge discovery.
 
 The TogoMCP endpoint is available at https://togomcp.rdfportal.org/mcp.
 It is developed by DBCLS.
