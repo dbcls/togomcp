@@ -1,5 +1,5 @@
 # Use a lightweight Python base image
-FROM docker.io/astral/uv:python3.12-bookworm-slim
+FROM docker.io/astral/uv:python3.12-bookworm-slim@sha256:5d275ca5f0da33c3368ac8fbb85fafabad023b3b8a7cff39a94ac0baecfd9a50
 
 # Install tzdata so the TZ env var (set in compose.yaml) resolves correctly
 # instead of silently falling back to UTC.
