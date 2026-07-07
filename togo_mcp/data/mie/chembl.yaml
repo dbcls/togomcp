@@ -34,9 +34,9 @@ schema_info:
     - search_chembl_molecule
     - search_chembl_target
   version:
-    mie_version: "3.0"
+    mie_version: "3.1"
     mie_created: "2025-02-10"
-    mie_updated: "2026-04-29"
+    mie_updated: "2026-07-07"
     data_version: ChEMBL 34.0
     update_frequency: Quarterly
   license:
@@ -58,6 +58,10 @@ critical_warnings: |
     (http://www.ebi.ac.uk/chebi/searchId.do?chebiId=CHEBI%3A[ID]) which does NOT match ChEBI RDF
     IRIs (http://purl.obolibrary.org/obo/CHEBI_[ID]). Cross-database joins require:
     BIND(IRI(CONCAT("http://purl.obolibrary.org/obo/CHEBI_", REPLACE(STR(?xref), ".*CHEBI%3A", ""))) AS ?chebiId)
+    Once joined, molecular properties on the ChEBI side use the chemrof: namespace
+    (https://w3id.org/chemrof/): chemrof:generalized_empirical_formula, chemrof:mass (xsd:decimal),
+    chemrof:smiles_string, chemrof:inchi_key_string. The old obo/chebi/ predicates (chebi:formula,
+    chebi:mass) were REMOVED upstream and return 0 results silently — see the ChEBI cross-DB example.
   - PERFORMANCE: Combining cco:taxonomy IRI with cco:hasProteinClassification in one query
     times out (verified 2026-04-21). Use the typed predicate cco:organismName "Homo sapiens"
     for organism filtering in combined queries instead of the taxonomy IRI.
@@ -114,7 +118,8 @@ shape_expressions: |
     cco:taxonomy IRI * ;
     cco:hasProteinClassification IRI * ;
     cco:hasTargetComponent @<TargetComponentShape> *
-  # COUNTS: 10,962 SingleProtein + complex/family targets (~36% have protein classification)
+  # COUNTS: 10,962 SingleProtein targets; 17,803 target entities total across ALL cco:targetType
+  #         values (adds ProteinComplex/ProteinFamily/etc.). ~36% of SingleProtein have classification.
   # NOTE: taxonomy IRI alone works; combined with classification IRI can time out (use
   #       cco:organismName "Homo sapiens" for organism filtering in combined queries)
   }
@@ -404,7 +409,9 @@ cross_database_queries:
         - ChEMBL: cco:moleculeXref → EBI URL (http://www.ebi.ac.uk/chebi/searchId.do?chebiId=CHEBI%3A[ID])
         - Conversion: BIND+REPLACE constructs purl.obolibrary.org IRI for RDF join
         - CRITICAL: skos:exactMatch does NOT link molecules to ChEBI (only TargetComponent→UniProt)
-        - Pre-filter to phase>=3 reduces 1.9M→~10k molecules before the cross-DB join
+        - CRITICAL: ChEBI molecular properties use the chemrof: namespace, NOT obo/chebi/ — the old
+          chebi:formula / chebi:mass predicates return 0 results silently (see critical_warnings)
+        - Pre-filter to phase=4 reduces 1.9M→~4k molecules before the cross-DB join
       databases_used:
         - chembl
         - chebi
@@ -412,7 +419,7 @@ cross_database_queries:
       sparql: |
         PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
         PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        PREFIX chebi: <http://purl.obolibrary.org/obo/chebi/>
+        PREFIX chemrof: <https://w3id.org/chemrof/>
 
         SELECT DISTINCT ?moleculeLabel ?chebiLabel ?formula ?mass ?developmentPhase
         WHERE {
@@ -421,7 +428,7 @@ cross_database_queries:
                       rdfs:label ?moleculeLabel ;
                       cco:moleculeXref ?xref ;
                       cco:highestDevelopmentPhase ?developmentPhase .
-            FILTER(?developmentPhase >= 3)
+            FILTER(?developmentPhase = 4)
             FILTER(CONTAINS(STR(?xref), "chebi/searchId"))
             BIND(IRI(CONCAT("http://purl.obolibrary.org/obo/CHEBI_",
                      REPLACE(STR(?xref), ".*CHEBI%3A", ""))) AS ?chebiId)
@@ -429,28 +436,37 @@ cross_database_queries:
           GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
             ?chebiId a owl:Class ;
                      rdfs:label ?chebiLabel .
-            OPTIONAL { ?chebiId chebi:formula ?formula }
-            OPTIONAL { ?chebiId chebi:mass ?mass }
+            OPTIONAL { ?chebiId chemrof:generalized_empirical_formula ?formula }
+            OPTIONAL { ?chebiId chemrof:mass ?mass }
           }
         }
-        ORDER BY DESC(?developmentPhase)
+        ORDER BY DESC(?mass)
         LIMIT 50
       notes: |
         - Linking: cco:moleculeXref + BIND/REPLACE → purl.obolibrary.org ChEBI IRI
-        - Pre-filtering to phase>=3 reduces join size by ~99.5%
+        - Molecular properties: chemrof:generalized_empirical_formula, chemrof:mass (xsd:decimal) —
+          ChEBI migrated off the obo/chebi/ namespace; the old chebi:formula/chebi:mass yield 0 rows
+        - Pre-filtering to phase=4 reduces join size by ~99.8%
+        - Verified 2026-07-07: oritavancin (C86H97Cl3N10O26, 1793 Da), vancomycin, daptomycin
         - Performance: ~1-2s with aggressive filtering
         - MIE files checked: chembl, chebi
 
-    - title: Link ChEMBL Drug Targets to Reactome Pathways via UniProt
+    - title: Link ChEMBL Drug Targets to Reactome Reactions via UniProt
       description: |
-        Connects ChEMBL drug targets to Reactome biological pathways for mechanism-of-action
-        analysis in a systems biology context.
+        Connects a drug's mechanism-of-action target(s) to the Reactome reactions the target
+        participates in, for systems-biology context. Anchor on specific molecule IRIs and use the
+        curated mechanism link — NOT a drug-name label scan over the 1.9M-molecule graph.
 
         Linking strategy:
-        - ChEMBL: cco:hasTargetComponent/skos:exactMatch → UniProt IRI
-        - Reactome: bp:xref with bp:db="UniProt"^^xsd:string → bp:id matches UniProt accession
-        - CRITICAL: ^^xsd:string required for Reactome bp:db comparisons (from Reactome MIE)
-        - Pre-filter by drug name reduces search before the cross-DB join
+        - ChEMBL: anchor VALUES ?molecule ; mechanism via ?mech cco:hasMolecule ?molecule /
+          cco:hasTarget ?target (reverse direction has full 7,568-mechanism coverage) ;
+          target → cco:hasTargetComponent/skos:exactMatch → UniProt IRI
+        - Bridge: strip the accession off the UniProt IRI and RE-TYPE it as ^^xsd:string with STRDT —
+          Reactome's bp:id is xsd:string-typed, so a plain/untyped literal joins to 0 rows
+        - Reactome: bp:UnificationXref with bp:db "UniProt"^^xsd:string ; bp:id <acc> → bp:xref →
+          bp:entityReference → bp:Protein ; reaction (bp:left|bp:right) ?protein
+        - TWO ^^xsd:string traps: BOTH bp:db AND bp:id are xsd:string-typed (verified 2026-07-07:
+          bp:id "P01375"^^xsd:string matches, plain "P01375" matches 0)
       databases_used:
         - chembl
         - reactome
@@ -461,37 +477,45 @@ cross_database_queries:
         PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
         PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-        SELECT DISTINCT ?drugName ?targetName ?pathwayName
+        SELECT DISTINCT ?molLabel ?targetName ?reactionName
         WHERE {
           GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
-            ?molecule a cco:SmallMolecule ;
-                      rdfs:label ?drugName ;
-                      cco:hasActivity/cco:hasAssay/cco:hasTarget ?target .
+            VALUES ?molecule {
+              <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL1201581>   # infliximab
+              <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL1064>      # simvastatin
+            }
+            ?molecule rdfs:label ?molLabel .
+            ?mech a cco:Mechanism ;
+                  cco:hasMolecule ?molecule ;
+                  cco:hasTarget ?target .
             ?target a cco:SingleProtein ;
                     rdfs:label ?targetName ;
-                    cco:organismName "Homo sapiens" ;
                     cco:hasTargetComponent/skos:exactMatch ?uniprotId .
-            FILTER(?drugName = "ASPIRIN")
             FILTER(STRSTARTS(STR(?uniprotId), "http://purl.uniprot.org/uniprot/"))
+            # Re-type the accession as xsd:string so it matches Reactome's typed bp:id
+            BIND(STRDT(STRAFTER(STR(?uniprotId), "uniprot/"), xsd:string) AS ?acc)
           }
           GRAPH <http://rdf.ebi.ac.uk/dataset/reactome> {
-            ?protein a bp:Protein ;
-                     bp:entityReference/bp:xref ?protXref .
             ?protXref a bp:UnificationXref ;
-                      bp:db "UniProt"^^xsd:string ;  # ^^xsd:string CRITICAL
-                      bp:id ?uniprotIdStr .
-            ?pathway a bp:Pathway ;
-                     bp:displayName ?pathwayName ;
-                     bp:pathwayComponent/bp:left|bp:right ?protein .
-            FILTER(CONTAINS(STR(?uniprotId), ?uniprotIdStr))
+                      bp:db "UniProt"^^xsd:string ;   # ^^xsd:string CRITICAL
+                      bp:id ?acc .                    # ?acc is ^^xsd:string via STRDT — CRITICAL
+            ?ref bp:xref ?protXref .
+            ?protein a bp:Protein ;
+                     bp:entityReference ?ref .
+            ?reaction (bp:left|bp:right) ?protein ;
+                      bp:displayName ?reactionName .
           }
         }
         LIMIT 20
       notes: |
-        - Linking: TargetComponent/skos:exactMatch → UniProt IRI bridging to Reactome bp:xref
-        - ^^xsd:string is CRITICAL for Reactome bp:db (from Reactome MIE anti-patterns)
-        - Pre-filter by drug name reduces search before join
-        - Performance: ~3-5s (Tier 2) with property paths
+        - Anchor on specific molecule IRIs (VALUES) — the old drug-name label scan +
+          cco:hasActivity property path over the full graph TIMED OUT at 60s (do not use)
+        - Use the curated cco:Mechanism link (7,568 rows) not cco:hasActivity (21M activity rows)
+        - Exact typed bp:id join replaces FILTER(CONTAINS(...)) — both faster and trap-free
+        - Reaction-level participation avoids recursive bp:pathwayComponent traversal; to reach
+          top-level PATHWAYs you must walk ?pathway bp:pathwayComponent+ ?reaction (see reactome MIE)
+        - Verified 2026-07-07: simvastatin→HMGCR ("HMGCR gene expression"),
+          infliximab→TNF ("SPPL2a/b cleaves TNF(1-76)")
         - MIE files checked: chembl, reactome
 
   # Isolated endpoint note: not applicable — chembl shares ebi endpoint with chebi/reactome/ensembl
@@ -614,14 +638,18 @@ data_statistics:
   total_molecules: 1920603
   total_activities: 21000000
   total_assays: 1890749
-  total_targets: 10962
+  total_targets: 17803              # all target entities (any cco:targetType); verified 2026-07-07
+  single_protein_targets: 10962     # cco:SingleProtein only — the UniProt-mappable / classifiable subset
   total_documents: 99141
   total_mechanisms: 7568
   total_indications: 59954
   human_protein_kinases: 423
   alzheimers_drugs: 305
-  verified_date: "2026-04-21"
-  verification_method: "Direct COUNT queries on each entity type (molecules, assays, targets, indications verified)"
+  verified_date: "2026-07-07"
+  verification_method: "Direct COUNT queries on each entity type, all re-run 2026-07-07 on ChEMBL 34.0 and
+    unchanged: molecules 1,920,603; assays 1,890,749; SingleProtein targets 10,962 (17,803 all target
+    types); documents 99,141; mechanisms 7,568; indications 59,954; human protein kinases 423; Alzheimer's
+    drugs (MeSH D000544) 305. Prior label total_targets:10962 corrected — that figure is SingleProtein-only."
   coverage:
     indications_with_mesh: "100%"
     indications_with_efo: "~99.7%"
@@ -667,17 +695,21 @@ anti_patterns:
       WHERE { ?activity cco:hasMolecule ?molecule . }
       LIMIT 1
     correct_sparql: |
-      # CORRECT: use the protein classification IRI discovered during exploration
+      # CORRECT: use the protein classification IRI discovered during exploration.
+      # Scope through the curated cco:Mechanism link (bounded, ~7.5k rows) — NOT
+      # ?activity cco:hasAssay/cco:hasMolecule, which fans out over 21M activities and
+      # TIMES OUT at 60s even for a COUNT (verified 2026-07-07).
       SELECT (COUNT(DISTINCT ?molecule) AS ?count)
       FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
-        ?assay cco:hasTarget ?target .
         ?target cco:hasProteinClassification
                 <http://rdf.ebi.ac.uk/resource/chembl/protclass/CHEMBL_PC_1100> .
-        ?activity cco:hasAssay ?assay ; cco:hasMolecule ?molecule .
+        ?mechanism a cco:Mechanism ;
+                   cco:hasTarget ?target ;
+                   cco:hasMolecule ?molecule .
       }
       LIMIT 1
-    explanation: "Use exploratory queries to discover classification IRIs or MeSH IRIs. Use those in comprehensive queries — not the sampled molecule or target IRIs themselves."
+    explanation: "Use exploratory queries to discover classification IRIs or MeSH IRIs, then scope comprehensively by that IRI — not by sampled molecule/target IRIs. Count via the bounded cco:Mechanism link (685 kinase-targeting molecules, verified 2026-07-07); the activity-level fan-out over 21M rows times out."
 
   - title: Text Search When MeSH Descriptor IRI Exists
     problem: Filtering on cco:hasMeshHeading text when specific MeSH IRIs provide 100% coverage and are indexed.
@@ -720,7 +752,8 @@ anti_patterns:
                   cco:standardUnits ?units .
         FILTER(xsd:decimal(?value) < 100 && ?units = "nM")
       }
-    explanation: Always bind cco:standardUnits and include it in FILTER comparisons.
+      LIMIT 50
+    explanation: Always bind cco:standardUnits and include it in FILTER comparisons. Keep a LIMIT — an unbounded scan of the 21M-row activity graph times out.
 
 common_errors:
   - error: "Query timeout or slow performance"

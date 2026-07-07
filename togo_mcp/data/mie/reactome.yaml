@@ -29,9 +29,9 @@ schema_info:
   kw_search_tools:
     - search_reactome_entity
   version:
-    mie_version: "6.2"
+    mie_version: "6.3"
     mie_created: "2026-04-29"
-    mie_updated: "2026-06-22"
+    mie_updated: "2026-07-07"
     data_version: "Release 95"
     update_frequency: "Quarterly"
   access:
@@ -126,7 +126,7 @@ shape_expressions: |
     bp:xref @<XrefShape> *
   }
 
-  # Proteins: ~232,467 | Complexes: ~109,261 | SmallMolecules: ~51,214 | DNA/RNA: ~2,691
+  # Proteins: ~232,467 | Complexes: ~110,887 | SmallMolecules: ~51,612 | DNA/RNA: ~2,691
   # ENTITYSET NOTE: 45,785 instances are EntitySet "functional groups" carrying
   #   bp:comment "Converted from EntitySet in Reactome"^^xsd:string and bp:memberPhysicalEntity
   #   links to individual members (221,164 member triples). Reactions point to the GROUP via
@@ -164,7 +164,7 @@ shape_expressions: |
     bp:controlType [ "ACTIVATION" "INHIBITION" ] ?
   }
 
-  # ~49,574 ModificationFeature instances
+  # ~50,701 ModificationFeature instances
   # MOD ontology IDs in UnificationXref on SequenceModificationVocabulary:
   #   "MOD:00046" = O-phospho-L-serine
   #   "MOD:00047" = O-phospho-L-threonine
@@ -183,7 +183,7 @@ shape_expressions: |
     bp:xref @<UnificationXrefShape> *    # MOD ontology IDs available here
   }
 
-  # ~1,525 distinct terms; use exact term strings (e.g. "plasma membrane"^^xsd:string)
+  # ~1,529 distinct terms; use exact term strings (e.g. "plasma membrane"^^xsd:string)
   # Linked to GO cellular component via UnificationXref ("plasma membrane" = GO:0005886)
   <CellularLocationVocabularyShape> {
     a [ bp:CellularLocationVocabulary ] ;
@@ -598,7 +598,7 @@ cross_database_queries:
         PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
         PREFIX owl: <http://www.w3.org/2002/07/owl#>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX chebi: <http://purl.obolibrary.org/obo/chebi/>
+        PREFIX chemrof: <https://w3id.org/chemrof/>
         PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
         SELECT DISTINCT ?reactomeName ?chebiLabel ?formula ?mass
@@ -622,14 +622,18 @@ cross_database_queries:
           GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
             ?chebiUri a owl:Class ;
                       rdfs:label ?chebiLabel .
-            OPTIONAL { ?chebiUri chebi:formula ?formula }
-            OPTIONAL { ?chebiUri chebi:mass ?mass }
+            OPTIONAL { ?chebiUri chemrof:generalized_empirical_formula ?formula }
+            OPTIONAL { ?chebiUri chemrof:mass ?mass }
           }
         }
         LIMIT 50
       notes: |
         - Linking via: ChEBI IDs (bp:id "CHEBI:NNNNN") → URI conversion to obo/CHEBI_NNNNN
+        - ChEBI molecular properties use the chemrof: namespace (chemrof:generalized_empirical_formula,
+          chemrof:mass); the old obo/chebi/ chebi:formula / chebi:mass were removed upstream and return
+          0 rows silently.
         - Performance: ~3-5s with organism + "metabolism" pre-filters
+        - Verified 2026-07-07: water (H2O, 18.015), cholesterol (C27H46O, 386.664), calcitriol
         - MIE files checked: reactome, chebi
 
     - title: Link Reactome Cancer Pathway Proteins to Late-Stage ChEMBL Drugs
@@ -701,7 +705,7 @@ cross_references:
         - "GENE ONTOLOGY UnificationXref: ~1.5K — secondary only"
       chemicals:
         - "ChEBI: ~21.5K small molecule references (UnificationXref)"
-        - "Guide to Pharmacology: ~8.6K drug-target interactions (UnificationXref)"
+        - "Guide to Pharmacology - Ligands: 8,578 ligand xrefs (UnificationXref) — bp:db is the exact string \"Guide to Pharmacology - Ligands\"^^xsd:string"
         - "PubChem Compound: ~583 compound IDs (UnificationXref)"
       modifications:
         - "MOD: ~1.4K protein modification ontology IDs (UnificationXref on SequenceModificationVocabulary)"
@@ -773,29 +777,40 @@ architectural_notes:
     - "bif:contains preferred over FILTER(CONTAINS()) — Virtuoso backend, indexed text search"
 
 data_statistics:
-  verified_date: "2026-04-22"
-  verification_method: "Direct COUNT queries on the EBI SPARQL endpoint (Release 95)"
+  verified_date: "2026-07-07"
+  verification_method: |
+    Direct COUNT queries on the EBI SPARQL endpoint. Re-verified 2026-07-07: data is still labelled
+    Release 95 (entity IRIs remain .../biopax/95/...) but several counts drifted since the 2026-04-22
+    pass — a within-release reload. Exact/unchanged: pathways 23,277; human pathways 2,848; reactions
+    93,950; proteins 232,467; catalysis 50,692; MOD xrefs 1,402; UniProt 91,627; UniProt Isoform 374;
+    ChEBI 21,570; GO UnificationXref 1,529; total Unification/Relationship/Publication xrefs
+    1,207,533 / 84,097 / 295,299; EntitySet groups 45,785 / member links 221,164. Drifted values below
+    carry an inline "was" note.
   total_pathways: 23277
   human_pathways: 2848
   total_reactions: 93950
   total_proteins: 232467
-  total_complexes: 109261
-  total_small_molecules: 51214
+  total_complexes: 110887          # was 109,261 on 2026-04-22
+  total_small_molecules: 51612     # was 51,214
   total_catalysis: 50692
-  total_species: 30
-  modification_features: 49574
-  cellular_locations: 1525
-  sequence_modification_types: 1430
-  stoichiometry_instances: 279491
-  control_type_activation: 56722
-  control_type_inhibition: 4320
-  go_relationship_xrefs: 68305
+  total_species: 57                # distinct bp:BioSource names (recorded as 30 before; "30+" in description)
+  modification_features: 50701     # was 49,574
+  cellular_locations: 1529         # distinct bp:CellularLocationVocabulary (was 1,525)
+  sequence_modification_types: 1418 # distinct bp:SequenceModificationVocabulary (was 1,430)
+  stoichiometry_instances: 286423  # was 279,491
+  control_type_activation: 57350   # bp:controlType across Catalysis + Control (was 56,722)
+  control_type_inhibition: 4469    # was 4,320
+  # GO in RelationshipXref — TWO distinct metrics, do not conflate:
+  go_relationship_xref_instances: 26721    # distinct RelationshipXref instances, bp:db "GENE ONTOLOGY"
+  go_relationship_annotation_links: 68949  # ?entity bp:xref -> those xrefs (reused across entities); this
+                                           # ~68K is what backs the "~98% of GO via RelationshipXref" claim
+                                           # (68,949 links vs 1,529 UnificationXref). Was recorded as 68,305.
   go_unification_xrefs: 1529
   uniprot_xrefs: 91627            # bp:db "UniProt"^^xsd:string — bare accession in bp:id
   uniprot_isoform_xrefs: 374      # bp:db "UniProt Isoform"^^xsd:string — accession + "-N" in bp:id
   chebi_xrefs: 21570
   mod_xrefs: 1402
-  guide_to_pharmacology_xrefs: 8578
+  guide_to_pharmacology_xrefs: 8578   # bp:db is "Guide to Pharmacology - Ligands"^^xsd:string (exact label)
   total_unification_xrefs: 1207533
   total_relationship_xrefs: 84097
   total_publication_xrefs: 295299
