@@ -1,4 +1,4 @@
-# MIE File Specification v2.1
+# MIE File Specification v2.2
 
 ## 1. Overview
 
@@ -19,7 +19,13 @@ Metadata Interoperability Exchange (MIE) files are compact YAML documents that d
 - **Extension**: `.yaml`
 - **Location**: `togo_mcp/data/mie/[database].yaml`
 
-### 1.4 Key Updates in v2.1
+### 1.4 Key Updates in v2.2
+
+- **`mie_version` clarified**: it is the per-database revision of the MIE *document*, bumped on each substantive edit — **not** the spec version. Databases version independently (e.g. `pdb` at `6.0`, `go` at `2.1`). Earlier spec text mislabeled it "MIE spec version".
+- **`schema_info.co_hosted_graphs` documented** (OPTIONAL): free-text entries naming other graphs that share the SPARQL endpoint and the traps they pose (IRI re-typing, `COUNT(*)` inflation, empty-stub graphs). Add only for shared endpoints.
+- **`schema_info.license` documented** (OPTIONAL): a `data_license` string; include when the source states a data-use license.
+
+### 1.5 Key Updates in v2.1
 
 - **`shape_expressions` discipline**: every `@<ShapeRef>` must resolve to a defined block in the same section; optional co-types written as separate `a [ T ] ?` lines, not grouped in `a [ T1 T2 … ] +`.
 - **Phase 2 — Discover, expanded**: per-class predicate survey for *every* class going into `shape_expressions` (not only the anchor class); parent-anchored bnode-tracing query; cardinality distribution query with the modifier-mapping table; flag predicates with surprising COUNT distributions as `critical_warnings` candidates during the survey itself.
@@ -28,7 +34,7 @@ Metadata Interoperability Exchange (MIE) files are compact YAML documents that d
 - **`data_statistics.by_class`**: documented as a structured per-class count block alongside `total_entities` and `coverage`.
 - **LIMIT rule relaxed**: a query must have a *bounded* result set — `LIMIT` is required unless the query is an aggregate (`COUNT`, `SUM`, `AVG`, `MIN`, `MAX`), an `ASK`, or anchored on a specific-IRI subject whose cardinality is bounded by the schema.
 
-### 1.5 Key Updates in v2.0
+### 1.6 Key Updates in v2.0
 
 - **New section**: `critical_warnings` — schema pathologies, silent-failure traps, mandatory performance filters. Placed early so a reader scans it first.
 - **Sample RDF entries**: reduced from 5 to 3 entries, with a single shared `rdf_prefixes` block instead of repeated `@prefix` declarations per entry.
@@ -86,12 +92,20 @@ schema_info:
   endpoint: uri                    # REQUIRED: SPARQL endpoint URL
   base_uri: uri                    # REQUIRED: base namespace URI
   graphs: array<uri>               # REQUIRED: named graph URIs
+  co_hosted_graphs: array<string>  # OPTIONAL: other graphs sharing this endpoint that a query may
+                                   #   accidentally hit — each entry names the graph URI + the trap it
+                                   #   poses (IRI re-typing, COUNT inflation, empty-stub graphs). Add
+                                   #   when the endpoint is shared and co-tenants can corrupt results.
   kw_search_tools: array<string>   # REQUIRED: keyword search tools (may be [])
   version:                         # REQUIRED: version metadata
-    mie_version: string            # REQUIRED: MIE spec version (e.g., "2.0")
+    mie_version: string            # REQUIRED: this MIE document's OWN revision number, bumped per
+                                   #   database on each substantive edit (e.g. "2.3", "6.0"). It is
+                                   #   NOT the spec version — do not tie it to this document's version.
     mie_created: date              # REQUIRED: ISO 8601 format (YYYY-MM-DD)
     data_version: string           # REQUIRED: database version/release
     update_frequency: string       # REQUIRED: update schedule
+  license:                         # OPTIONAL: licensing metadata
+    data_license: string           #   data-use license, e.g. "CC BY-SA 3.0", "Public Domain (U.S. Government)"
   access:                          # REQUIRED: access metadata
     backend: string                # REQUIRED: triple store (determines bif:contains support)
 ```
@@ -117,6 +131,9 @@ The `kw_search_tools` field enumerates keyword-search methods available for this
 - `description` is 2–3 sentences and documents the major entity types.
 - All URIs are valid and accessible.
 - `mie_created` uses ISO 8601 (`YYYY-MM-DD`).
+- `mie_version` is the **per-database revision of this MIE document**, not the spec version. Start a new database at `"1.0"` (or `"2.0"` when regenerated under this spec) and bump it on each substantive edit; databases version independently (e.g. `pdb` is at `6.0` while `go` is at `2.1`).
+- `co_hosted_graphs` (optional) is only needed when the database shares its SPARQL endpoint with other graphs that can silently corrupt results (IRI re-typing, `COUNT(*)` inflation, empty-stub graphs). Each entry is a free-text string naming the graph URI and the trap. Omit for single-tenant endpoints.
+- `license` (optional) carries a `data_license` string. Include it when the source states a data-use license.
 - `access.backend` is required; it determines whether `bif:contains` is available and therefore drives query-strategy decisions downstream.
 - `keywords` are lowercase, single tokens or short phrases; 8–15 entries.
 - `categories` come from the controlled taxonomy in §3.1.5; 1–3 entries per database. **Use the exact token verbatim — lowercase, underscores for multi-word slugs (e.g. `drug_target`). Do not Title Case (`Genomics`), pluralize (`proteins`), space-separate (`comparative genomics`), or invent variants (`proteomics`, `gene_annotation`). The token must match an entry in the §3.1.5 table character-for-character.**
@@ -1052,6 +1069,7 @@ An MIE file is complete and compliant when:
 | 1.1     | 2025-01-17 | Added `cross_database_queries` section, `kw_search_tools` field, pipe syntax requirement, `backend` field, MIE file reference guidance.                                                                                                                                                                              |
 | 2.0     | 2026-04-22 | New `critical_warnings` section; sample RDF reduced from 5 to 3 with shared prefix block; query-strategy hierarchy and Gate Check formalised; filesystem-based workflow (MIE files, ShEx, SPARQL examples as files); stronger validation — all example triples retrievable, all example queries tested; `data_statistics` simplified; anti-patterns expanded to 3–4 entries with mandatory "schema check before text search" topic. |
 | 2.1     | 2026-04-30 | `shape_expressions` discipline: every `@<ShapeRef>` resolves; optional co-types as separate `?` lines. Phase 2 Discover expanded with per-class predicate survey, parent-anchored bnode tracing, cardinality distribution query + modifier-mapping table, and `critical_warnings` candidate flagging. Phase 5 Validate gains 5e (shape audit), 5f (critical_warnings verification), 5g (cross_references IRI/coverage verification), 5h (PREFIX verification); 5b extended to `anti_patterns.correct_sparql` + cross-DB join-validity spot-check; 5c extended with arithmetic cross-check. `schema_info.categories` `list_categories()` exact-match enforcement. `data_statistics.by_class` documented. LIMIT rule relaxed to "bounded result set" (aggregate / ASK / specific-IRI subject also acceptable). |
+| 2.2     | 2026-07-07 | Doc-conformance patch (no format change). `mie_version` re-specified as the per-database MIE document revision, not the spec version — earlier text mislabeled it. Documented two optional `schema_info` subkeys already in use: `co_hosted_graphs` (shared-endpoint co-tenant traps; used by `uniprot`) and `license.data_license` (used by 10 files). Appendix A template updated accordingly. |
 
 ## 12. References
 
@@ -1110,14 +1128,18 @@ schema_info:
   graphs:
     - http://example.org/dataset
     - http://example.org/ontology
+  co_hosted_graphs:                # OPTIONAL — only when the endpoint is shared (see §3.1.4)
+    - "http://example.org/other  — [trap this co-tenant graph poses]"
   kw_search_tools:
     - [api_name]                   # or []
   version:
-    mie_version: "2.1"
+    mie_version: "1.0"             # this DB's OWN revision, bump per edit — NOT the spec version
     mie_created: "YYYY-MM-DD"
     mie_updated: "YYYY-MM-DD"      # OPTIONAL — set when revising an existing MIE
     data_version: "Release YYYY.MM"
     update_frequency: "Monthly"
+  license:                         # OPTIONAL — include when the source states a license
+    data_license: "CC BY 4.0"
   access:
     backend: "Virtuoso"            # or "Blazegraph", etc.
 
@@ -1444,8 +1466,9 @@ common_errors:
 
 ---
 
-**Document Status**: Specification v2.1
+**Document Status**: Specification v2.2
 **Compliance**: required for all MIE files in `togo_mcp/data/mie/`
 **Principle**: Compact · Complete · Correct · Actionable · Validated
+**Core shift in v2.2**: Documentation-conformance patch (no format change) — `mie_version` re-specified as the per-database document revision; optional `schema_info.co_hosted_graphs` and `license` documented.
 **Core shift in v2.1**: Pre-publication audit pass — `shape_expressions` discipline (every `@<ShapeRef>` resolves; optional co-types explicit); discovery-time signals for `critical_warnings`; section-by-section verification (5e–5h) before publishing.
 **Core shift in v2.0**: Filesystem-based workflow; structured lookups over text search; every example validated against the live endpoint.
