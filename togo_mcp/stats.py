@@ -267,9 +267,12 @@ def _percentile(sorted_vals: list[float], pct: float) -> float:
 def aggregate(
     records: Iterable[dict[str, Any]],
     endpoint_groups: dict[str, str] | None = None,
+    mie_dates: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Roll records up into a JSON-serializable monthly statistics structure."""
     endpoint_groups = endpoint_groups or {}
+    mie_dates = mie_dates or {}
+    records = list(records)  # consumed twice: monthly rollup + trap feed
 
     # month -> accumulators
     tool_durs: dict[str, dict[str, list[float]]] = defaultdict(
@@ -390,6 +393,7 @@ def aggregate(
         "months": sorted(months),
         "by_month": by_month,
         "mie_candidates": _mie_candidates(by_month),
+        "mie_trap_candidates": mie_trap_candidates(records, endpoint_groups, mie_dates),
     }
 
 
@@ -427,16 +431,177 @@ def _mie_candidates(by_month: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 # --------------------------------------------------------------------------- #
+# MIE-trap candidates — the *filtered* feed (the signal you can act on)
+# --------------------------------------------------------------------------- #
+# The raw `mie_candidates` ranking above overcounts: it double-counts a single
+# stuck session that retried one bad query N times, and it flags failures that a
+# since-published MIE edit already fixed. This feed applies four corrections so a
+# non-zero entry is genuinely worth a human's time:
+#   1. date-filter — drop failures that predate the database's current MIE
+#      (`mie_updated`/`mie_created`); those were likely already addressed.
+#   2. dedup by query_sha256 — one distinct query, with a `retries` count, not N.
+#   3. exclude schema-probe queries — predicate surveys / cardinality probes an
+#      MIE *author* runs; they empty/time-out by design, not signal.
+#   4. refine the taxonomy — only empty/timeout/huge on a well-formed query is a
+#      MIE trap; 4xx is a SPARQL grammar/dialect error (counted separately).
+# Nothing is dropped silently: every exclusion is tallied in the return value.
+
+# Only these SPARQL outcomes point at an MIE gap (wrong predicate, missing filter,
+# unbounded pattern). syntax_error (4xx) is a grammar error, reported separately.
+TRAP_CLASSES = ("empty_result", "timeout", "huge_result")
+
+# A GROUP BY query touching at most this many concrete predicates is treated as a
+# schema-introspection probe (e.g. `SELECT ?p (COUNT(*)) … GROUP BY ?p`), not a
+# real query. Conservative by design — it under-catches multi-predicate probes
+# rather than risk excluding a legitimate user aggregation.
+SCHEMA_PROBE_MAX_PREDICATES = 1
+
+
+def day_of(rec: dict[str, Any]) -> str | None:
+    """UTC 'YYYY-MM-DD' for a record, or None if the timestamp is unusable."""
+    ts = rec.get("ts")
+    if not isinstance(ts, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%d")
+
+
+def load_mie_dates(mie_dir: str) -> dict[str, str]:
+    """Map database -> its current MIE revision date ('YYYY-MM-DD').
+
+    Uses `mie_updated` when present, else `mie_created`. Regex-parsed, no YAML
+    dependency (mirrors server._detect_mie_bundle_version). A failure at time T
+    is only actionable if it postdates this date.
+    """
+    out: dict[str, str] = {}
+    try:
+        paths = sorted(Path(mie_dir).glob("*.yaml"))
+    except OSError:
+        return out
+    for path in paths:
+        updated = created = None
+        try:
+            with open(path, encoding="utf-8") as fh:
+                for line in fh:
+                    if updated is None:
+                        m = re.search(r'mie_updated:\s*"?(\d{4}-\d{2}-\d{2})', line)
+                        if m:
+                            updated = m.group(1)
+                    if created is None:
+                        m = re.search(r'mie_created:\s*"?(\d{4}-\d{2}-\d{2})', line)
+                        if m:
+                            created = m.group(1)
+                    if updated:
+                        break
+        except OSError:
+            continue
+        date = updated or created
+        if date:
+            out[path.stem] = date
+    return out
+
+
+def is_schema_probe(shape: Any) -> bool:
+    """True if a query_shape looks like schema introspection, not a real query.
+
+    Predicate/cardinality surveys (`GROUP BY ?p`) carry the `group` flag and touch
+    at most SCHEMA_PROBE_MAX_PREDICATES concrete qnames (the surveyed predicate is
+    a variable, so it never appears as a qname). Returns False when the shape is
+    missing (older records predate query_shape) — better to keep than to guess.
+    """
+    if not isinstance(shape, dict):
+        return False
+    flags = shape.get("flags") or {}
+    return bool(flags.get("group")) and shape.get("n_predicates", 0) <= SCHEMA_PROBE_MAX_PREDICATES
+
+
+def mie_trap_candidates(
+    records: Iterable[dict[str, Any]],
+    endpoint_groups: dict[str, str] | None = None,
+    mie_dates: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Filtered, deduped MIE-trap feed. See section header for the four filters.
+
+    Returns a dict: ``candidates`` (distinct post-MIE traps, ranked by retries then
+    recency) plus transparency tallies of everything excluded.
+    """
+    endpoint_groups = endpoint_groups or {}
+    mie_dates = mie_dates or {}
+    by_query: dict[str, dict[str, Any]] = {}
+    excluded_pre_mie = excluded_probe = grammar_errors = 0
+
+    for rec in records:
+        cls = sparql_class(rec)
+        if cls is None:
+            continue
+        if cls == "syntax_error":
+            grammar_errors += 1
+            continue
+        if cls not in TRAP_CLASSES:
+            continue
+        extra = rec.get("extra") or {}
+        shape = extra.get("query_shape")
+        if is_schema_probe(shape):
+            excluded_probe += 1
+            continue
+        db = database_of(rec, endpoint_groups)
+        day = day_of(rec)
+        mdate = mie_dates.get(db) if db else None
+        if mdate and day and day <= mdate:  # failure predates the current MIE
+            excluded_pre_mie += 1
+            continue
+        sha = extra.get("query_sha256") or f"nohash:{id(rec)}"
+        cand = by_query.get(sha)
+        if cand is None:
+            preds = shape.get("predicates", []) if isinstance(shape, dict) else []
+            cand = by_query[sha] = {
+                "database": db,
+                "sparql_class": cls,
+                "query_sha256": sha[:16],
+                "predicates": preds[:20],
+                "retries": 0,
+                "first_seen": day,
+                "last_seen": day,
+            }
+        cand["retries"] += 1
+        if day:
+            if not cand["first_seen"] or day < cand["first_seen"]:
+                cand["first_seen"] = day
+            if not cand["last_seen"] or day > cand["last_seen"]:
+                cand["last_seen"] = day
+
+    candidates = sorted(
+        by_query.values(),
+        key=lambda c: (c["retries"], c["last_seen"] or ""),
+        reverse=True,
+    )
+    return {
+        "candidates": candidates,
+        "distinct_queries": len(candidates),
+        "excluded_pre_mie": excluded_pre_mie,
+        "excluded_schema_probe": excluded_probe,
+        "grammar_errors": grammar_errors,
+    }
+
+
+# --------------------------------------------------------------------------- #
 # Convenience: load + aggregate from the configured log path
 # --------------------------------------------------------------------------- #
 def compute_stats(
     log_path: str | None = None,
     endpoints_csv: str | None = None,
+    mie_dir: str | None = None,
 ) -> dict[str, Any]:
     """Load the configured log (TOGOMCP_QUERY_LOG) and return the aggregate."""
     log_path = log_path if log_path is not None else os.getenv("TOGOMCP_QUERY_LOG", "").strip()
     groups = load_endpoint_groups(endpoints_csv) if endpoints_csv else {}
-    return aggregate(iter_records(log_paths(log_path)), groups)
+    mie_dates = load_mie_dates(mie_dir) if mie_dir else {}
+    return aggregate(iter_records(log_paths(log_path)), groups, mie_dates)
 
 
 def render_html(stats: dict[str, Any]) -> str:
@@ -486,6 +651,34 @@ def render_html(stats: dict[str, Any]) -> str:
     else:
         parts.append("<p class='muted'>No failed/empty SPARQL recorded.</p>")
 
+    # Filtered, deduped MIE-trap feed — the actionable list.
+    trap = stats.get("mie_trap_candidates") or {}
+    tcand = trap.get("candidates", [])
+    parts.append("<h2>MIE traps to fix (filtered)</h2>")
+    parts.append(
+        "<p class='muted'>Distinct queries that empty/time-out <em>after</em> the current MIE "
+        "(deduped by query hash; schema-probe surveys and pre-MIE failures removed). "
+        f"Excluded: {cell(trap.get('excluded_pre_mie', 0))} pre-MIE · "
+        f"{cell(trap.get('excluded_schema_probe', 0))} schema-probe · "
+        f"{cell(trap.get('grammar_errors', 0))} grammar-error (4xx, not MIE traps). "
+        "A non-empty row here is worth a look; verify against the live endpoint before editing.</p>"
+    )
+    if tcand:
+        parts.append("<table><tr><th>database</th><th>class</th><th>retries</th>"
+                     "<th>first seen</th><th>last seen</th><th>query</th><th>predicates</th></tr>")
+        for r in tcand[:50]:
+            preds = ", ".join(r.get("predicates", [])[:8])
+            parts.append(
+                f"<tr><td>{cell(r['database'])}</td><td>{cell(r['sparql_class'])}</td>"
+                f"<td class='warn'>{cell(r['retries'])}</td><td>{cell(r['first_seen'])}</td>"
+                f"<td>{cell(r['last_seen'])}</td><td class='tag'>{cell(r['query_sha256'])}</td>"
+                f"<td class='tag'>{cell(preds)}</td></tr>"
+            )
+        parts.append("</table>")
+    else:
+        parts.append("<p class='muted'>No post-MIE traps after filtering — "
+                     "the logged failures are already-fixed or schema-probe noise.</p>")
+
     for month in reversed(months):
         m = stats["by_month"][month]
         parts.append(f"<h2>{cell(month)}</h2>")
@@ -533,12 +726,14 @@ def _main(argv: list[str] | None = None) -> int:
     ap.add_argument("log_path", nargs="?", default=os.getenv("TOGOMCP_QUERY_LOG", ""),
                     help="JSONL log path (default: $TOGOMCP_QUERY_LOG)")
     ap.add_argument("--endpoints", default="", help="endpoints.csv for DB attribution")
+    ap.add_argument("--mie", default="", help="MIE dir for date-filtering trap candidates")
     args = ap.parse_args(argv)
     if not args.log_path:
         ap.error("no log path given and TOGOMCP_QUERY_LOG is unset")
     stats = aggregate(
         iter_records(log_paths(args.log_path)),
         load_endpoint_groups(args.endpoints) if args.endpoints else {},
+        load_mie_dates(args.mie) if args.mie else {},
     )
     print(json.dumps(stats, indent=2, default=str))
     return 0

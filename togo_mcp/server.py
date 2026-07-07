@@ -580,7 +580,7 @@ def _get_stats() -> dict[str, Any]:
         return _stats_cache["data"]
     from togo_mcp import stats as _stats_mod
 
-    data = _stats_mod.compute_stats(endpoints_csv=ENDPOINTS_CSV)
+    data = _stats_mod.compute_stats(endpoints_csv=ENDPOINTS_CSV, mie_dir=MIE_DIR)
     _stats_cache["data"] = data
     _stats_cache["ts"] = now
     return data
