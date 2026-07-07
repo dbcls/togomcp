@@ -160,5 +160,100 @@ def test_aggregate_empty():
     assert agg["months"] == []
     assert agg["by_month"] == {}
     assert agg["mie_candidates"] == []
+    assert agg["mie_trap_candidates"]["candidates"] == []
     # still renders
     assert "<html" in stats.render_html(agg)
+
+
+# --------------------------------------------------------------------------- #
+# MIE-trap candidates — the filtered feed
+# --------------------------------------------------------------------------- #
+def _trap(cls, *, db="uniprot", ts="2026-07-05T10:00:00+00:00", sha="h1", shape=None):
+    """Build a SPARQL record whose *derived* class is `cls`.
+
+    `cls` is the sparql_class() result we want ("empty_result", "timeout",
+    "huge_result", "http_4xx", ...) — mapped here to the raw sparql_status +
+    n_rows/n_bytes the collector actually writes.
+    """
+    raw = {"empty_result": "ok", "huge_result": "ok",
+           "timeout": "timeout", "http_4xx": "http_4xx", "http_5xx": "http_5xx"}[cls]
+    extra = {"endpoint_url": "https://rdfportal.org/sib/sparql",
+             "sparql_status": raw, "query_sha256": sha}
+    if cls == "empty_result":
+        extra["n_rows"] = 0
+    elif cls == "huge_result":
+        extra["n_rows"] = 5
+        extra["n_bytes"] = stats.HUGE_BYTES + 1
+    if shape is not None:
+        extra["query_shape"] = shape
+    err = raw not in ("ok",)
+    return _rec(ts=ts, args={"database": db}, status="error" if err else "ok", extra=extra)
+
+
+def test_day_of():
+    assert stats.day_of({"ts": "2026-07-05T10:00:00+00:00"}) == "2026-07-05"
+    # UTC normalization crosses the date line
+    assert stats.day_of({"ts": "2026-07-05T23:00:00-03:00"}) == "2026-07-06"
+    assert stats.day_of({"ts": "nope"}) is None
+
+
+def test_load_mie_dates(tmp_path):
+    (tmp_path / "uniprot.yaml").write_text(
+        'schema_info:\n  version:\n    mie_created: "2026-01-01"\n'
+        '    mie_updated: "2026-04-29"\n')
+    (tmp_path / "rhea.yaml").write_text(
+        'schema_info:\n  version:\n    mie_created: "2026-02-02"\n')  # no mie_updated
+    dates = stats.load_mie_dates(str(tmp_path))
+    assert dates["uniprot"] == "2026-04-29"   # prefers mie_updated
+    assert dates["rhea"] == "2026-02-02"      # falls back to mie_created
+
+
+def test_is_schema_probe():
+    survey = {"flags": {"group": True}, "n_predicates": 1}      # SELECT ?p (COUNT) GROUP BY ?p
+    assert stats.is_schema_probe(survey) is True
+    real_agg = {"flags": {"group": True}, "n_predicates": 5}    # legit multi-predicate aggregate
+    assert stats.is_schema_probe(real_agg) is False
+    assert stats.is_schema_probe(None) is False                 # missing shape -> keep
+
+
+def test_trap_dedup_and_retry_count():
+    # one distinct query (same sha) failing 3x -> one candidate, retries=3
+    recs = [_trap("timeout", sha="stuck") for _ in range(3)]
+    trap = stats.aggregate(recs)["mie_trap_candidates"]
+    assert trap["distinct_queries"] == 1
+    assert trap["candidates"][0]["retries"] == 3
+
+
+def test_trap_date_filter_vs_mie():
+    # failure predates the current MIE -> excluded; a later one survives
+    recs = [
+        _trap("empty_result", db="uniprot", sha="old", ts="2026-03-01T10:00:00+00:00"),
+        _trap("empty_result", db="uniprot", sha="new", ts="2026-05-01T10:00:00+00:00"),
+    ]
+    trap = stats.aggregate(recs, mie_dates={"uniprot": "2026-04-29"})["mie_trap_candidates"]
+    assert trap["excluded_pre_mie"] == 1
+    assert [c["query_sha256"] for c in trap["candidates"]] == ["new"]
+
+
+def test_trap_excludes_probes_and_grammar_errors():
+    recs = [
+        _trap("empty_result", sha="probe",
+              shape={"flags": {"group": True}, "n_predicates": 1}),   # schema probe
+        _trap("http_4xx", sha="bad-sparql"),                          # grammar error
+        _trap("empty_result", sha="real",
+              shape={"flags": {}, "n_predicates": 3,
+                     "predicates": ["up:x", "up:y", "up:z"]}),        # real trap
+    ]
+    trap = stats.aggregate(recs)["mie_trap_candidates"]
+    assert trap["excluded_schema_probe"] == 1
+    assert trap["grammar_errors"] == 1
+    assert [c["query_sha256"] for c in trap["candidates"]] == ["real"]
+    assert trap["candidates"][0]["predicates"] == ["up:x", "up:y", "up:z"]
+
+
+def test_trap_section_renders():
+    recs = [_trap("empty_result", db="mesh", sha="r",
+                  shape={"flags": {}, "n_predicates": 2, "predicates": ["a:b"]})]
+    html = stats.render_html(stats.aggregate(recs))
+    assert "MIE traps to fix (filtered)" in html
+    assert "mesh" in html
