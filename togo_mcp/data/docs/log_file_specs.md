@@ -65,8 +65,8 @@ context under stdio transport).
 | `transport` | string | *(nullable)* | Transport in use (e.g. `http`, `stdio`). |
 | `ip_hash` | string | *(nullable)* | Salted, truncated SHA-256 of the client IP (from `X-Forwarded-For`, else peer host). `null` when there is no HTTP request context. |
 | `meta` | object | always | Server/build metadata — see [`meta`](#meta-object). |
-| `error_class` | string | on error only | Exception class name (e.g. `ValueError`). |
-| `error_message` | string | on error only | Exception message, truncated to 500 chars. |
+| `error_class` | string | on error only | Exception class name — **in practice almost always `ToolError`**. FastMCP wraps a tool's raised exception before it reaches the logging middleware, so the original class (e.g. `ValueError`) is not preserved here. To distinguish an intentional error from a genuine bug, parse `error_message`, not this field. |
+| `error_message` | string | on error only | Exception message, truncated to 500 chars. Carries the FastMCP wrapper prefix, e.g. `Error calling tool 'run_sparql': …`. |
 | `extra` | object | SPARQL calls only | SPARQL-specific enrichment — see [`extra`](#extra-object-sparql-only). |
 
 ### `meta` object
@@ -184,8 +184,8 @@ A non-SPARQL call that raised (no `extra`):
   "client_id": "…", "transport": "http",
   "ip_hash": "9f3a1c0b7e2d4a56",
   "meta": {"server_version": "2.4.0", "usage_guide_version": "v5", "mie_bundle_version": "a1b2c3d4e5f6", "client": null},
-  "error_class": "ValueError",
-  "error_message": "…"
+  "error_class": "ToolError",
+  "error_message": "Error calling tool 'search_uniprot_entity': …"
 }
 ```
 
@@ -198,13 +198,19 @@ A non-SPARQL call that raised (no `extra`):
 - buckets records by UTC month (`month_of`), attributes each to a database
   (`database_of`: explicit `database` arg → tool-name-implied DB → endpoint
   group), classifies SPARQL outcomes (`sparql_class`), and rolls everything into
-  per-month, per-tool, and per-database aggregates plus an
-  `mie_candidates` ranking (databases whose logs most suggest MIE work).
+  per-month, per-tool, and per-database aggregates plus two MIE feeds:
+  `mie_candidates` (a per-database/month ranking of where the logs most suggest
+  MIE work) and `mie_trap_candidates` (the *filtered* feed — distinct failures
+  deduped by `query_sha256`, date-filtered against each MIE's revision date via
+  `load_mie_dates`, with schema-probe surveys and 4xx grammar errors set aside so
+  a surviving entry is genuinely worth a human's time).
 
-Run it standalone:
+Run it standalone (pass `--mie` to enable the date-filtered trap feed):
 
 ```bash
-python -m togo_mcp.stats "$TOGOMCP_QUERY_LOG" --endpoints togo_mcp/data/resources/endpoints.csv
+python -m togo_mcp.stats "$TOGOMCP_QUERY_LOG" \
+  --endpoints togo_mcp/data/resources/endpoints.csv \
+  --mie togo_mcp/data/mie
 ```
 
 ## Stability notes

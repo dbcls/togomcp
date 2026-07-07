@@ -35,8 +35,9 @@ schema_info:
   kw_search_tools:
     - sparql
   version:
-    mie_version: "2.3"
+    mie_version: "2.4"
     mie_created: "2026-04-29"
+    mie_updated: "2026-07-07"
     mie_revised: "2026-07-06"
     data_version: "PubTator Central 2024"
     update_frequency: "Regularly updated"
@@ -53,7 +54,10 @@ critical_warnings: |
   - ENTITY TYPE COVERAGE: Only two dcterms:subject values exist: "Disease" (162M) and
     "Gene" (72.6M). Do NOT assume other entity types; using any other string returns 0 results.
   - ANNOTATION_COUNT MAXIMUMS DIFFER BY TYPE: Disease max=5, Gene max=9.
-    Use FILTER(?count >= 4) for Disease; FILTER(?count > 5) for Gene.
+    To get top mentions, filter AT the ceiling with >= (never above it): Disease
+    FILTER(?count >= 4) (5 is the max); Gene FILTER(?count >= 6). NEVER write
+    FILTER(?count > 5) for a Disease query — 5 IS the Disease maximum, so > 5 is always
+    empty. #1 OBSERVED MISTAKE: copying the Gene threshold (> 5) onto a Disease query.
     A FILTER on annotation_count outside the valid range returns zero rows *only if the
     query is otherwise scoped* (a specific IRI, or an inner LIMIT before the filter). An
     UNSCOPED range filter over the full 238M-annotation graph does NOT return quickly —
@@ -223,7 +227,8 @@ sparql_query_examples:
     description: |
       Uses pubtator:annotation_count typed predicate to surface high-frequency entity mentions.
       IMPORTANT: annotation_count ceiling differs by type — Disease max=5, Gene max=9.
-      Use FILTER(>= 4) for Disease; FILTER(> 5) for Gene. Using > 5 on Disease silently returns zero.
+      Filter at the ceiling with >=: Disease FILTER(?count >= 4); Gene FILTER(?count >= 6).
+      NEVER FILTER(?count > 5) on a Disease query — 5 is the Disease max, so > 5 is always empty.
     question: Which disease–article pairs have the highest mention frequency?
     complexity: intermediate
     sparql: |
@@ -231,8 +236,8 @@ sparql_query_examples:
       PREFIX dcterms:  <http://purl.org/dc/terms/>
       PREFIX pubtator: <http://purl.jp/bio/10/pubtator-central/ontology#>
 
-      # Disease annotation_count max = 5; use >= 4 (not > 5) to get top results.
-      # For Gene annotations substitute dcterms:subject "Gene" and FILTER(?count > 5).
+      # Disease annotation_count max = 5; use >= 4 (NOT > 5, which is always empty) for top results.
+      # For Gene annotations substitute dcterms:subject "Gene" and FILTER(?count >= 6).
       SELECT ?diseaseId ?article ?count
       FROM <http://rdfportal.org/dataset/pubtator_central>
       WHERE {
@@ -652,7 +657,7 @@ anti_patterns:
         FILTER(?count > 5)
       } LIMIT 50
     correct_sparql: |
-      # Correct: use >= 4 for Disease (max=5); use > 5 for Gene (max=9)
+      # Correct: use >= 4 for Disease (max=5); use >= 6 for Gene (max=9). NEVER > 5 on Disease.
       PREFIX pubtator: <http://purl.jp/bio/10/pubtator-central/ontology#>
       PREFIX dcterms:  <http://purl.org/dc/terms/>
       SELECT ?ann ?article ?count
