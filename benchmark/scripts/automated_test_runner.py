@@ -229,13 +229,15 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
             },
             # Intentionally broad: the benchmark registers several remote
             # scientific MCP servers (config.yaml: togomcp, pubmed,
-            # pubdictionaries, ols) and mcp__* admits all of their tools, so it
-            # must NOT be narrowed to a single server. This stays safe only
-            # because setting_sources=[] (see the call methods) bounds the MCP
-            # registry to exactly the servers passed in mcp_servers — no
-            # inherited claude-mem / togomcp-dev servers — so mcp__* cannot reach
-            # a cross-session-memory tool. Non-MCP tools are denied separately by
-            # the can_use_tool gate.
+            # pubdictionaries, ols) and the `mcp__*` sentinel admits all of
+            # their tools, so it must NOT be narrowed to a single server. The
+            # sentinel is expanded at the end of _load_config into one
+            # `mcp__<server>` rule per registered server (see there). This stays
+            # safe only because setting_sources=[] (see the call methods) bounds
+            # the MCP registry to exactly the servers passed in mcp_servers — no
+            # inherited claude-mem / togomcp-dev servers — so the expansion
+            # cannot reach a cross-session-memory tool. Non-MCP tools are denied
+            # separately by the can_use_tool gate.
             "allowed_tools": ["mcp__*"],
             "disallowed_tools": ["WebSearch", "WebFetch", "web_search", "web_fetch"],
         }
@@ -264,6 +266,21 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                     logger.warning(f"Config file {config_path} did not contain a dict, ignoring")
         else:
             logger.warning("No config file specified (-c / --config). Using default settings.")
+
+        # Expand the readable `mcp__*` sentinel into concrete per-server rules.
+        # claude-agent-sdk rejects a bare `mcp__*` wildcard (it treats the `*`
+        # as a tool name) and prints an "Ignoring --allowedTools rule" warning,
+        # so we translate "all MCP servers" into one `mcp__<server>` rule per
+        # registered server — the SDK's accepted "all tools from this server"
+        # form. This is equivalent to the old broad intent because the registry
+        # is bounded to exactly `mcp_servers` (setting_sources=[]), and it stays
+        # correct automatically if a config's server list changes.
+        allowed = default_config.get("allowed_tools", [])
+        if "mcp__*" in allowed:
+            server_rules = [f"mcp__{name}" for name in default_config.get("mcp_servers", {})]
+            default_config["allowed_tools"] = [
+                rule for rule in allowed if rule != "mcp__*"
+            ] + server_rules
 
         return default_config
 
@@ -476,8 +493,8 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
     ) -> PermissionResultAllow | PermissionResultDeny:
         """Auto-approve MCP tools; deny everything else.
 
-        `allowed_tools=["mcp__*"]` only filters the tool definitions advertised
-        to the model — it does NOT prevent the model from attempting built-in
+        The `allowed_tools` allow-list only filters the tool definitions
+        advertised to the model — it does NOT prevent the model from attempting built-in
         agent tools (Read, Write, Bash, Edit, …) that the SDK still exposes.
         Without this gate, those calls succeed silently. We caught it during
         the 2026-05-04 ng2 run when the model wrote five Python helpers and a

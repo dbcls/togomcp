@@ -33,7 +33,11 @@ _sparql_extra_var: ContextVar[dict[str, Any] | None] = ContextVar(
 # The MIE files are used to define the shape expressions for SPARQL queries.
 _PACKAGE_DATA_DIR = Path(__file__).parent.joinpath("data")
 CWD = Path(os.getenv("TOGOMCP_DIR", str(_PACKAGE_DATA_DIR)))
-MIE_DIR = str(CWD.joinpath("mie"))
+# TOGOMCP_MIE_DIR lets a caller point get_MIE_file at an alternative MIE corpus
+# (e.g. a section-stripped variant for the ablation harness) without touching
+# TOGOMCP_DIR. Unset → the bundled data/mie directory, so default behavior is
+# unchanged.
+MIE_DIR = os.getenv("TOGOMCP_MIE_DIR", str(CWD.joinpath("mie")))
 # Directory of usage-guide part files, split by change-cadence and assembled
 # (sorted *.md, joined by the section separator) at serve time. The "_v5" in
 # the dir name is what _detect_usage_guide_version() reads.
