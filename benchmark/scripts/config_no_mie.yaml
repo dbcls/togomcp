@@ -122,6 +122,10 @@ mcp_servers:
     url: https://www.ebi.ac.uk/ols4/api/mcp
 
 # Tool access control
+# `mcp__*` is a sentinel meaning "all tools from every registered MCP server".
+# automated_test_runner.py expands it into one `mcp__<server>` rule per entry
+# in mcp_servers above, because claude-agent-sdk rejects a bare `mcp__*`
+# wildcard (it reads the trailing `*` as a tool name and warns).
 allowed_tools:
   - "mcp__*"
 
@@ -131,17 +135,23 @@ disallowed_tools:
   - web_search
   - web_fetch
   # Block get_MIE_file across every MCP server prefix the bundled CLI may
-  # expose. Mid-string globs like `mcp__*__get_MIE_file` are silently ignored
-  # by claude-agent-sdk, so each alias must be enumerated:
+  # expose. We enumerate each concrete alias rather than rely on a mid-string
+  # glob like `mcp__*__get_MIE_file`: the SDK's rule grammar only guarantees
+  # globs in the tool position after a literal `mcp__<server>__` prefix, and a
+  # server-position glob's fate in the deny list is version-dependent — so
+  # spelling out each alias keeps the block robust regardless:
   #   - `togomcp` is the locally-configured HTTP server below.
   #   - `togomcp-dev` may be inherited from ~/.claude/settings.json (excluded
   #     by setting_sources=[], but listed defensively).
-  #   - `claude_ai_TogoMCP-Test` is attached at the Claude.ai account level
-  #     and is NOT covered by setting_sources=[] — the 2026-05-04 no_mie run
-  #     leaked 45 calls through this alias before the fix.
+  #   - `claude_ai_TogoMCP-Test` / `claude_ai_TogoMCP` are attached at the
+  #     Claude.ai account level (the test and production connectors) and are
+  #     NOT covered by setting_sources=[] — the 2026-05-04 no_mie run leaked
+  #     45 calls through the -Test alias before the fix; the production alias
+  #     is listed defensively in case that connector is the one attached.
   - mcp__togomcp__get_MIE_file
   - mcp__togomcp-dev__get_MIE_file
   - mcp__claude_ai_TogoMCP-Test__get_MIE_file
+  - mcp__claude_ai_TogoMCP__get_MIE_file
 
 # Notes:
 # - System prompts follow BioASQ ideal answer principles
