@@ -1,0 +1,184 @@
+---
+id: question_074
+type: yes_no
+body: >-
+  In Japan's system of designated intractable (rare) diseases, is von Willebrand
+  disease recorded as more than one separately designated disease entry, with
+  each of those entries additionally cross-referenced to a distinct term in the
+  standardized international disease ontology used to harmonize rare-disease
+  nomenclature (so that no two of the entries share the same international
+  identifier)?
+
+inspiration_keyword:
+  keyword_id: KW-0852
+  name: von Willebrand disease
+  category: Disease
+
+togomcp_databases_used:
+  - nando
+  - mondo
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 12
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: >-
+    Two searches aimed at answering the question directly: (1) "Japan designated
+    intractable disease von Willebrand disease notification number MONDO ontology
+    mapping classification forms"; (2) "von Willebrand disease subtypes
+    platelet-type acquired hereditary Japanese rare disease registry
+    designation".
+  result: |
+    Both queries returned 0 articles. No publication states how many separately
+    designated von Willebrand disease entries the Japanese intractable-disease
+    system recognizes, nor whether each maps to a distinct international
+    disease-ontology term. The answer requires enumerating the designated entries
+    and their cross-references in the live ontologies and cannot be obtained from
+    the literature.
+  conclusion: PASS (cannot answer from literature - requires RDF)
+
+sparql_queries:
+  - query_number: 1
+    database: nando
+    description: >-
+      Retrieve every designated von Willebrand disease entry in the Japanese
+      intractable-disease ontology (label contains "willebrand"; text search is
+      the sanctioned method for free-text disease names here) with its official
+      notification number and its MONDO cross-reference. Returns 3 entries:
+      Von Willebrand disease (NANDO:2200682, notif 39) -> MONDO_0024574;
+      Platelet-type von Willebrand disease (NANDO:2200668, notif 14) ->
+      MONDO_0008332; Acquired von Willebrand disease (NANDO:1200899, notif 288)
+      -> MONDO_0020460.
+    query: |
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+      SELECT ?id ?label ?notif ?mondo
+      FROM <http://nanbyodata.jp/ontology/nando>
+      WHERE {
+        ?disease a owl:Class ; rdfs:label ?label ; dct:identifier ?id .
+        FILTER(LANG(?label) = "en")
+        ?label bif:contains "'willebrand'" .
+        ?disease nando:hasNotificationNumber ?notif ;
+                 skos:closeMatch ?mondo .
+        FILTER(STRSTARTS(STR(?mondo), "http://purl.obolibrary.org/obo/MONDO_"))
+      }
+      ORDER BY ?id
+    result_count: 3
+
+  - query_number: 2
+    database: mondo
+    description: >-
+      Confirm the three MONDO cross-reference targets are distinct, active
+      (non-deprecated) disease classes, and read their labels: MONDO_0024574
+      "von Willebrand disease (hereditary or acquired)", MONDO_0008332
+      "platelet-type von Willebrand disease", MONDO_0020460 "acquired von
+      willebrand syndrome".
+    query: |
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?mondo ?label WHERE {
+        GRAPH <http://rdfportal.org/ontology/mondo> {
+          VALUES ?mondo {
+            <http://purl.obolibrary.org/obo/MONDO_0024574>
+            <http://purl.obolibrary.org/obo/MONDO_0008332>
+            <http://purl.obolibrary.org/obo/MONDO_0020460>
+          }
+          ?mondo a owl:Class ; rdfs:label ?label .
+          FILTER NOT EXISTS { ?mondo owl:deprecated true }
+        }
+      }
+      ORDER BY ?mondo
+    result_count: 3
+
+  - query_number: 3
+    database: nando
+    description: >-
+      Arithmetic-verification query (Rule 3): over the complete set of
+      von-Willebrand-named NANDO classes, count total entries, those that are
+      designated (have a notification number), and the number of DISTINCT MONDO
+      targets. Returns 3 = 3 = 3, confirming every entry is designated and each
+      maps to its own distinct MONDO term (no collapsing onto a shared identifier).
+    query: |
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+      SELECT (COUNT(DISTINCT ?disease) AS ?nEntries)
+             (COUNT(DISTINCT ?notifDisease) AS ?nDesignated)
+             (COUNT(DISTINCT ?mondo) AS ?nDistinctMondo)
+      FROM <http://nanbyodata.jp/ontology/nando>
+      WHERE {
+        ?disease a owl:Class ; rdfs:label ?label .
+        FILTER(LANG(?label) = "en")
+        ?label bif:contains "'willebrand'" .
+        OPTIONAL { ?disease nando:hasNotificationNumber ?n . BIND(?disease AS ?notifDisease) }
+        OPTIONAL { ?disease skos:closeMatch ?mondo .
+                   FILTER(STRSTARTS(STR(?mondo), "http://purl.obolibrary.org/obo/MONDO_")) }
+      }
+    result_count: 1
+
+rdf_triples: |
+  @prefix owl: <http://www.w3.org/2002/07/owl#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+  @prefix nando: <http://nanbyodata.jp/ontology/NANDO_> .
+  @prefix nandop: <http://nanbyodata.jp/ontology/> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+
+  nando:2200682 nandop:hasNotificationNumber "39" .
+  # Database: NANDO | Query: 1 | Comment: "Von Willebrand disease" (inherited bleeding disorder) is a designated intractable disease, notification number 39
+  nando:2200682 skos:closeMatch obo:MONDO_0024574 .
+  # Database: NANDO | Query: 1 | Comment: it is cross-referenced to MONDO_0024574 (first of three distinct MONDO targets)
+  obo:MONDO_0024574 rdfs:label "von Willebrand disease (hereditary or acquired)" .
+  # Database: MONDO | Query: 2 | Comment: the target is an active MONDO disease class
+  nando:2200668 nandop:hasNotificationNumber "14" .
+  # Database: NANDO | Query: 1 | Comment: "Platelet-type von Willebrand disease" is separately designated, notification number 14
+  nando:2200668 skos:closeMatch obo:MONDO_0008332 .
+  # Database: NANDO | Query: 1 | Comment: it maps to a DIFFERENT MONDO term, MONDO_0008332
+  obo:MONDO_0008332 rdfs:label "platelet-type von Willebrand disease" .
+  # Database: MONDO | Query: 2 | Comment: a distinct, active MONDO disease class
+  nando:1200899 nandop:hasNotificationNumber "288" .
+  # Database: NANDO | Query: 1 | Comment: "Acquired von Willebrand disease" is separately designated, notification number 288
+  nando:1200899 skos:closeMatch obo:MONDO_0020460 .
+  # Database: NANDO | Query: 1 | Comment: it maps to a third, distinct MONDO term, MONDO_0020460
+  obo:MONDO_0020460 rdfs:label "acquired von willebrand syndrome" .
+  # Database: MONDO | Query: 2 | Comment: the third distinct, active MONDO disease class — so all three designations map to distinct identifiers (answer: yes)
+
+exact_answer: "yes"
+
+ideal_answer: |
+  Yes. Japan's designated-intractable-disease (Nanbyo) system records von
+  Willebrand disease not as a single entity but as three separately designated
+  disease entries, each with its own official notification number: classic Von
+  Willebrand disease (notification 39, an inherited bleeding disorder),
+  Platelet-type von Willebrand disease (notification 14) and Acquired von
+  Willebrand disease (notification 288). Each of the three is cross-referenced to
+  a different term in the international MONDO disease ontology - respectively
+  MONDO:0024574 "von Willebrand disease (hereditary or acquired)", MONDO:0008332
+  "platelet-type von Willebrand disease" and MONDO:0020460 "acquired von
+  Willebrand syndrome". All three MONDO targets are distinct, active
+  (non-deprecated) classes, so no two of the Japanese designations collapse onto
+  the same international identifier: the counts line up as three entries, three
+  designated, three distinct MONDO terms. The granular national designation of
+  von Willebrand disease is therefore fully preserved when mapped to the
+  international ontology.
+
+question_template_used: yes_no_entity_recorded_as_multiple_designated_entries_each_with_distinct_crossref
+
+time_spent:
+  exploration: 25
+  formulation: 12
+  verification: 8
+  pubmed_test: 10
+  extraction: 10
+  documentation: 15
+  total: 80
