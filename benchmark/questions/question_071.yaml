@@ -1,0 +1,253 @@
+---
+id: question_071
+type: factoid
+body: >-
+  Among the mouse genes whose protein products are classified as IgE-binding
+  proteins, which single gene carries the largest number of recorded genomic
+  sequence variants in the Japanese wild-derived inbred mouse strain MSM/Ms,
+  and how many such variants are recorded for that strain?
+
+inspiration_keyword:
+  keyword_id: KW-0389
+  name: IgE-binding protein
+  category: Molecular function
+
+togomcp_databases_used:
+  - uniprot
+  - ensembl
+  - mogplus
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 12
+  passed: true
+
+pubmed_test:
+  time_spent: 12 minutes
+  method: >-
+    Two searches aimed at answering the question directly: (1) "MSM/Ms mouse
+    strain Ms4a2 Fcer2 IgE-binding protein gene sequence variants"; (2) "MSM/Ms
+    wild-derived mouse strain genome variation Fc epsilon receptor mast cell
+    genes strain-specific variants". Both intended to surface a per-gene,
+    per-strain variant tally.
+  result: |
+    Both queries returned 0 articles (total_count 0). No publication enumerates
+    how many genomic variants the MSM/Ms strain carries in each IgE-binding-protein
+    gene, and no source ranks these genes by MSM/Ms variant burden. The answer is
+    a count computed over the current mouse-variation callset joined to a UniProt
+    functional-keyword gene set and cannot be recovered from the literature.
+  conclusion: PASS (cannot answer from literature - requires RDF)
+
+sparql_queries:
+  - query_number: 1
+    database: uniprot
+    description: >-
+      Reviewed mouse (taxon 10090) proteins classified with the keyword
+      "IgE-binding protein" (KW-0389), with their gene names and, where present,
+      the Ensembl gene cross-reference. Defines the gene set.
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT DISTINCT ?geneName ?ensGene
+      WHERE {
+        ?protein up:organism taxon:10090 ;
+                 up:classifiedWith keywords:389 ;
+                 up:reviewed 1 ;
+                 up:encodedBy ?g .
+        ?g skos:prefLabel ?geneName .
+        OPTIONAL {
+          ?protein rdfs:seeAlso ?tx .
+          ?tx up:database <http://purl.uniprot.org/database/Ensembl> ;
+              up:transcribedFrom ?ensGene .
+        }
+      }
+      ORDER BY ?geneName
+    result_count: 7
+
+  - query_number: 2
+    database: ensembl
+    description: >-
+      Resolve the two genes lacking a UniProt Ensembl cross-reference (Lgals3
+      MGI:96778, Iap MGI:96306) to their mouse Ensembl genes via the MGI
+      rdfs:seeAlso link. Lgals3 resolves to ENSMUSG00000050335; MGI:96306 (Iap)
+      has no mouse Ensembl gene.
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT ?gene ?label ?mgi WHERE {
+        VALUES ?mgi { <http://identifiers.org/mgi/MGI:96778>
+                      <http://identifiers.org/mgi/MGI:96306> }
+        ?gene a <http://rdf.ebi.ac.uk/terms/ensembl/EnsemblGene> ;
+              rdfs:seeAlso ?mgi ;
+              rdfs:label ?label .
+        FILTER(STRSTARTS(STR(?gene),
+          "http://rdf.ebi.ac.uk/resource/ensembl/ENSMUSG"))
+      }
+    result_count: 1
+
+  - query_number: 3
+    database: mogplus
+    description: >-
+      Per-gene count of distinct variants carried by strain MSM/Ms (i.e. with a
+      genotype call for MSM_Ms) overlapping each of the six Ensembl-mapped
+      IgE-binding-protein genes. The strain anchor pins a single release cohort
+      (nrel = 1 for every gene), so no cross-release double-counting occurs.
+      Results: Ms4a2 (ENSMUSG00000024680) 86, Fcer2 (ENSMUSG00000005540) 69,
+      Lgals3 (ENSMUSG00000050335) 2, Fcgr4 (ENSMUSG00000059089) 1; Fcer1a
+      (ENSMUSG00000005339) and Fcer1g (ENSMUSG00000058715) return no rows (0).
+    query: |
+      PREFIX mogplus: <http://identifiers.org/mogplus/ontology#>
+      PREFIX vcf: <http://genome-variation.org/resource/vcf#>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+
+      SELECT ?gene (COUNT(DISTINCT ?variant) AS ?n)
+             (COUNT(DISTINCT ?rel) AS ?nrel)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          VALUES ?gene {
+            <http://rdf.ebi.ac.uk/resource/ensembl/ENSMUSG00000005339>
+            <http://rdf.ebi.ac.uk/resource/ensembl/ENSMUSG00000058715>
+            <http://rdf.ebi.ac.uk/resource/ensembl/ENSMUSG00000005540>
+            <http://rdf.ebi.ac.uk/resource/ensembl/ENSMUSG00000059089>
+            <http://rdf.ebi.ac.uk/resource/ensembl/ENSMUSG00000024680>
+            <http://rdf.ebi.ac.uk/resource/ensembl/ENSMUSG00000050335>
+          }
+          ?variant mogplus:overlaps_gene ?gene ;
+                   vcf:has_genotype_call ?call .
+          ?call med2rdf:sample
+                <http://identifiers.org/mogplus/bioresource/MSM_Ms> .
+          BIND(REPLACE(STR(?variant),
+            "^http://identifiers.org/mogplus/([^/]+)/.*$", "$1") AS ?rel)
+        }
+      }
+      GROUP BY ?gene
+      ORDER BY DESC(?n)
+    result_count: 4
+
+  - query_number: 4
+    database: mogplus
+    description: >-
+      Arithmetic-verification query (Rule 3) for query 3: a single
+      COUNT(DISTINCT ?variant) over the same six-gene set and strain. Returns
+      158, exactly matching the sum of the per-gene counts (86 + 69 + 2 + 1 = 158),
+      confirming no variant overlaps more than one of these genes.
+    query: |
+      PREFIX mogplus: <http://identifiers.org/mogplus/ontology#>
+      PREFIX vcf: <http://genome-variation.org/resource/vcf#>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+
+      SELECT (COUNT(DISTINCT ?variant) AS ?total)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          VALUES ?gene {
+            <http://rdf.ebi.ac.uk/resource/ensembl/ENSMUSG00000005339>
+            <http://rdf.ebi.ac.uk/resource/ensembl/ENSMUSG00000058715>
+            <http://rdf.ebi.ac.uk/resource/ensembl/ENSMUSG00000005540>
+            <http://rdf.ebi.ac.uk/resource/ensembl/ENSMUSG00000059089>
+            <http://rdf.ebi.ac.uk/resource/ensembl/ENSMUSG00000024680>
+            <http://rdf.ebi.ac.uk/resource/ensembl/ENSMUSG00000050335>
+          }
+          ?variant mogplus:overlaps_gene ?gene ;
+                   vcf:has_genotype_call ?call .
+          ?call med2rdf:sample
+                <http://identifiers.org/mogplus/bioresource/MSM_Ms> .
+        }
+      }
+    result_count: 1
+
+  - query_number: 5
+    database: mogplus
+    description: >-
+      Presence check confirming that Fcer1a and Fcer1g are in the callset even
+      though MSM/Ms carries none of their variants: distinct variants overlapping
+      each gene in the v3 cohort (any strain). Returns Fcer1a 40, Fcer1g 25.
+    query: |
+      PREFIX mogplus: <http://identifiers.org/mogplus/ontology#>
+      SELECT ?gene (COUNT(DISTINCT ?variant) AS ?nv3any) WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          VALUES ?gene {
+            <http://rdf.ebi.ac.uk/resource/ensembl/ENSMUSG00000005339>
+            <http://rdf.ebi.ac.uk/resource/ensembl/ENSMUSG00000058715>
+          }
+          ?variant mogplus:overlaps_gene ?gene .
+          FILTER(STRSTARTS(STR(?variant),
+            "http://identifiers.org/mogplus/v3/"))
+        }
+      } GROUP BY ?gene
+    result_count: 2
+
+rdf_triples: |
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix keywords: <http://purl.uniprot.org/keywords/> .
+  @prefix taxon: <http://purl.uniprot.org/taxonomy/> .
+  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix mogplus: <http://identifiers.org/mogplus/ontology#> .
+  @prefix gvo: <http://genome-variation.org/resource#> .
+  @prefix vcf: <http://genome-variation.org/resource/vcf#> .
+  @prefix med2rdf: <http://med2rdf.org/ontology/med2rdf#> .
+  @prefix brso: <http://purl.jp/bio/10/brso/> .
+  @prefix mogbs: <http://identifiers.org/mogplus/bioresource/> .
+  @prefix ensg: <http://rdf.ebi.ac.uk/resource/ensembl/> .
+
+  <http://purl.uniprot.org/uniprot/P20490> up:classifiedWith keywords:389 .
+  # Database: UniProt | Query: 1 | Comment: the reviewed mouse protein P20490 (Ms4a2, FcERI beta-subunit) is classified as an IgE-binding protein (KW-0389)
+  <http://purl.uniprot.org/uniprot/P20490> up:organism taxon:10090 .
+  # Database: UniProt | Query: 1 | Comment: P20490 is a Mus musculus protein, so its gene is in scope for the mouse-strain variant question
+  <http://purl.uniprot.org/uniprot/P20490> up:encodedBy _:gMs4a2 .
+  # Database: UniProt | Query: 1 | Comment: P20490 is encoded by the Ms4a2 gene (skos:prefLabel "Ms4a2")
+  ensg:ENSMUSG00000024680 rdfs:label "Ms4a2" .
+  # Database: Ensembl | Query: 1 | Comment: Ms4a2 maps to mouse Ensembl gene ENSMUSG00000024680, the coordinate-overlap key used by the variant resource
+  ensg:ENSMUSG00000050335 rdfs:seeAlso <http://identifiers.org/mgi/MGI:96778> .
+  # Database: Ensembl | Query: 2 | Comment: Lgals3 (no UniProt Ensembl xref) resolves to ENSMUSG00000050335 via its MGI:96778 link
+  mogbs:MSM_Ms a brso:BiologicalResource .
+  # Database: MoG+ | Query: 3 | Comment: MSM/Ms is one of the 62 genotyped mouse strains; it anchors the genotype-call join and pins a single release cohort
+  mogbs:MSM_Ms rdfs:label "MSM/Ms" .
+  # Database: MoG+ | Query: 3 | Comment: strain label confirming the anchor is the Japanese wild-derived strain MSM/Ms
+  <http://identifiers.org/mogplus/v3/19/GRCm39#11592954-T-C> a gvo:SNV .
+  # Database: MoG+ | Query: 3 | Comment: an example variant overlapping Ms4a2 on chromosome 19 (release v3) carried by MSM/Ms
+  <http://identifiers.org/mogplus/v3/19/GRCm39#11592954-T-C> mogplus:overlaps_gene ensg:ENSMUSG00000024680 .
+  # Database: MoG+ | Query: 3 | Comment: this variant's coordinate overlaps the Ms4a2 Ensembl gene, so it counts toward the Ms4a2 tally
+  <http://identifiers.org/mogplus/v3/19/GRCm39#11592954-T-C> vcf:has_genotype_call <http://identifiers.org/mogplus/v3/19/GRCm39#11592954-T-C/genotype/MSM_Ms> .
+  # Database: MoG+ | Query: 3 | Comment: the variant has a genotype call for MSM/Ms, i.e. the strain carries this locus
+  <http://identifiers.org/mogplus/v3/19/GRCm39#11592954-T-C/genotype/MSM_Ms> med2rdf:sample mogbs:MSM_Ms .
+  # Database: MoG+ | Query: 3 | Comment: the call links back to the MSM_Ms strain sample (the join predicate for the per-strain count)
+  <http://identifiers.org/mogplus/v3/19/GRCm39#11592954-T-C/genotype/MSM_Ms> vcf:genotype "1/1" .
+  # Database: MoG+ | Query: 3 | Comment: MSM/Ms is homozygous for the alternate allele here (a genuine non-reference call)
+
+exact_answer: "Ms4a2 (86 variants)"
+
+ideal_answer: |
+  Seven mouse genes encode reviewed proteins classified as IgE-binding proteins:
+  Fcer1a, Fcer1g, Fcer2, Fcgr4, Ms4a2, Lgals3 (galectin-3) and Iap. Ranking these
+  genes by the number of recorded genomic variants carried by the Japanese
+  wild-derived inbred strain MSM/Ms, Ms4a2 - the high-affinity IgE receptor
+  beta-subunit, mapped to mouse Ensembl gene ENSMUSG00000024680 on chromosome 19 -
+  ranks first with 86 distinct variants (loci where MSM/Ms has a non-reference
+  genotype call). Fcer2 follows with 69, then Lgals3 with 2 and Fcgr4 with 1.
+  MSM/Ms carries no variants overlapping Fcer1a or Fcer1g even though both genes
+  are represented in the callset (40 and 25 variants respectively across the
+  strain panel), meaning MSM/Ms matches the reference at those loci. Iap has no
+  corresponding mouse Ensembl gene and therefore no coordinate-mapped variants.
+  The four non-zero counts sum to 86 + 69 + 2 + 1 = 158, exactly matching an
+  independent distinct-variant total of 158, which confirms that no variant
+  overlaps more than one of these genes. Anchoring the count on the strain pins a
+  single release cohort, so the tallies are free of cross-release duplication.
+
+question_template_used: keyword_defined_gene_set_max_variant_count_by_strain
+
+time_spent:
+  exploration: 30
+  formulation: 15
+  verification: 10
+  pubmed_test: 12
+  extraction: 10
+  documentation: 20
+  total: 97

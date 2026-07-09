@@ -1,0 +1,188 @@
+---
+id: question_072
+type: choice
+body: >-
+  Among the oxygenic photosynthetic bacteria (cyanobacteria) preserved in the
+  culture catalogue of Japan's NITE Biological Resource Center, which genus is
+  represented by the greatest number of distinct strains?
+
+choices:
+  - "Synechococcus"
+  - "Phormidium"
+  - "Chroococcidiopsis"
+  - "Leptolyngbya"
+
+inspiration_keyword:
+  keyword_id: KW-0602
+  name: Photosynthesis
+  category: Biological process
+
+togomcp_databases_used:
+  - nbrc
+  - taxonomy
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 12
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: >-
+    Two searches aimed at answering the question directly: (1) "NITE Biological
+    Resource Center cyanobacteria culture collection most represented genus";
+    (2) "Japanese culture collection cyanobacteria Palau seawater Synechococcus
+    Phormidium strain holdings genus diversity".
+  result: |
+    Both queries returned 0 articles. No publication reports the genus-level
+    composition of this collection's cyanobacterial holdings or states which
+    cyanobacterial genus it holds most of. The answer is a count over the live
+    catalogue joined to the taxonomic hierarchy and cannot be obtained from the
+    literature.
+  conclusion: PASS (cannot answer from literature - requires RDF)
+
+# STRUCTURED VOCABULARY DISCOVERY
+# NCBI Taxonomy phylum Cyanobacteriota = taxid 1117 (rank Phylum; equivalentName
+# "Oxygenic photosynthetic bacteria"). Clade membership resolved by cross-graph
+# rdfs:subClassOf* traversal in the co-located taxonomy graph — ALL descendant
+# taxa carried by NBRC strains are included (no sampling).
+
+sparql_queries:
+  - query_number: 1
+    database: taxonomy
+    description: >-
+      Ground the clade: confirm NCBI taxid 1117 is the phylum Cyanobacteriota
+      (rank Phylum), whose equivalentName is literally "Oxygenic photosynthetic
+      bacteria" - the anchor for the subtree membership test.
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      SELECT ?label ?rank ?equivalentName
+      WHERE {
+        GRAPH <http://rdfportal.org/ontology/taxonomy> {
+          <http://identifiers.org/taxonomy/1117> rdfs:label ?label ;
+                                                 tax:rank ?rank .
+          OPTIONAL { <http://identifiers.org/taxonomy/1117>
+                     tax:equivalentName ?equivalentName }
+        }
+      }
+    result_count: 1
+
+  - query_number: 2
+    database: nbrc
+    description: >-
+      Per-genus count of distinct NBRC strains whose NCBI taxon lies within the
+      Cyanobacteriota phylum (cross-graph rdfs:subClassOf* to taxid 1117), then
+      up to the genus-rank ancestor. Results: Synechococcus 22, Phormidium 6,
+      Chroococcidiopsis 2, Leptolyngbya 2, Halotia 2, and seven genera with 1
+      each (Plectonema, Acaryochloris, Calothrix, Geitlerinema,
+      Thermosynechococcus, Cyanobacterium, Pseudanabaena).
+    query: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      SELECT ?genus ?genusLabel (COUNT(DISTINCT ?strain) AS ?n)
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?strain a brso:BiologicalResource ;
+                  mccv:MCCV_000065 ?taxon .
+        }
+        GRAPH <http://rdfportal.org/ontology/taxonomy> {
+          ?taxon rdfs:subClassOf* <http://identifiers.org/taxonomy/1117> .
+          ?taxon rdfs:subClassOf* ?genus .
+          ?genus tax:rank tax:Genus ;
+                 rdfs:label ?genusLabel .
+        }
+      }
+      GROUP BY ?genus ?genusLabel
+      ORDER BY DESC(?n)
+    result_count: 12
+
+  - query_number: 3
+    database: nbrc
+    description: >-
+      Arithmetic-verification query (Rule 3) for query 2: total distinct NBRC
+      strains within the Cyanobacteriota subtree. Returns 41, exactly matching
+      the sum of the per-genus counts (22+6+2+2+2+1+1+1+1+1+1+1 = 41), so every
+      strain maps to exactly one genus (no coverage gap, no overlap).
+    query: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT (COUNT(DISTINCT ?strain) AS ?total)
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?strain a brso:BiologicalResource ;
+                  mccv:MCCV_000065 ?taxon .
+        }
+        GRAPH <http://rdfportal.org/ontology/taxonomy> {
+          ?taxon rdfs:subClassOf* <http://identifiers.org/taxonomy/1117> .
+        }
+      }
+    result_count: 1
+
+rdf_triples: |
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix tax:  <http://ddbj.nig.ac.jp/ontologies/taxonomy/> .
+  @prefix mccv: <http://purl.jp/bio/10/mccv#> .
+  @prefix brso: <http://purl.jp/bio/10/brso/> .
+  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+  @prefix taxid: <http://identifiers.org/taxonomy/> .
+  @prefix cul: <http://purl.jp/bio/103/nite/nbrc/cultures/> .
+
+  taxid:1117 rdfs:label "Cyanobacteriota" .
+  # Database: taxonomy | Query: 1 | Comment: NCBI taxid 1117 is the cyanobacterial phylum, the clade anchor for the subtree membership test
+  taxid:1117 tax:rank tax:Phylum .
+  # Database: taxonomy | Query: 1 | Comment: 1117 is at phylum rank, so subClassOf* to it captures all cyanobacterial genera/species
+  taxid:1117 tax:equivalentName "Oxygenic photosynthetic bacteria" .
+  # Database: taxonomy | Query: 1 | Comment: the phylum's equivalent name is literally "oxygenic photosynthetic bacteria" - the tie to the Photosynthesis theme
+  taxid:1129 tax:rank tax:Genus .
+  # Database: taxonomy | Query: 2 | Comment: taxid 1129 (Synechococcus) is a genus-rank node, the grouping level for the count
+  taxid:1129 rdfs:label "Synechococcus" .
+  # Database: taxonomy | Query: 2 | Comment: the winning genus label
+  taxid:1129 rdfs:subClassOf taxid:1117 .
+  # Database: taxonomy | Query: 2 | Comment: Synechococcus lies within the Cyanobacteriota phylum (satisfies subClassOf* to 1117)
+  taxid:1131 rdfs:subClassOf taxid:1129 .
+  # Database: taxonomy | Query: 2 | Comment: species-level taxon "Synechococcus sp." (1131) descends from the genus Synechococcus (1129)
+  cul:00102692 a brso:BiologicalResource .
+  # Database: NBRC | Query: 2 | Comment: an NBRC strain record counted toward the Synechococcus total
+  cul:00102692 skos:prefLabel "Synechococcus sp. (class: Cyanophyceae)" .
+  # Database: NBRC | Query: 2 | Comment: its accepted scientific name places it in the Synechococcus genus
+  cul:00102692 mccv:MCCV_000065 taxid:1131 .
+  # Database: NBRC | Query: 2 | Comment: the strain's NCBI taxon link (Synechococcus sp., 1131), the join key into the taxonomy subtree
+  cul:00102692 mccv:MCCV_000038 mccv:MCCV_000044 .
+  # Database: NBRC | Query: 2 | Comment: NBRC files this cyanobacterium under organism category "Algae" (blue-green algae), not "Bacteria"
+
+exact_answer:
+  - "Synechococcus"
+
+ideal_answer: |
+  Restricting to the strains whose NCBI taxon falls within the cyanobacterial
+  phylum Cyanobacteriota (taxid 1117, whose equivalent name is "oxygenic
+  photosynthetic bacteria"), the NITE Biological Resource Center holds 41
+  cyanobacterial strains spanning 12 genera. Synechococcus dominates with 22
+  strains - more than half the total and over three times the next genus,
+  Phormidium (6); the remaining genera are minor (Chroococcidiopsis 2,
+  Leptolyngbya 2, Halotia 2, and Plectonema, Acaryochloris, Calothrix,
+  Geitlerinema, Thermosynechococcus, Cyanobacterium and Pseudanabaena with 1
+  strain each). The per-genus counts sum to exactly 41, matching the independent
+  total, so every strain maps to a single genus. These holdings are almost
+  entirely marine - most were isolated from seawater, ascidians and sponges
+  collected around Palau, the open sea and Japan - and the catalogue classifies
+  them under the "algae" (blue-green algae) organism category rather than as
+  bacteria. The most-represented cyanobacterial genus is therefore Synechococcus.
+
+question_template_used: choice_most_represented_genus_within_keyword_defined_clade_via_taxonomy_subtree
+
+time_spent:
+  exploration: 30
+  formulation: 12
+  verification: 8
+  pubmed_test: 10
+  extraction: 10
+  documentation: 18
+  total: 88

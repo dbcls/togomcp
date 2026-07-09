@@ -1,0 +1,215 @@
+---
+id: question_073
+type: list
+body: >-
+  In the mouse gene Col19a1 (collagen type XIX, alpha-1 chain), a
+  single-nucleotide substitution on chromosome 1 at position 24,318,952 of the
+  GRCm39 assembly changes a G to an A, producing the missense change
+  p.Pro1046Leu. Which inbred and wild-derived mouse strains carry the alternate
+  (A) allele at this position?
+
+inspiration_keyword:
+  keyword_id: KW-0517
+  name: Myogenesis
+  category: Biological process
+
+togomcp_databases_used:
+  - ensembl
+  - mogplus
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 12
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: >-
+    Two searches aimed at answering the question directly: (1) "Col19a1 collagen
+    XIX Pro1046Leu missense variant mouse inbred strains MSM PWK genotype
+    carrier"; (2) "wild-derived mouse strains collagen type XIX Col19a1 coding
+    variant chromosome 1 which strains carry allele".
+  result: |
+    Both queries returned 0 articles. No publication reports the per-strain
+    genotype of this specific Col19a1 p.Pro1046Leu substitution or lists which
+    inbred/wild-derived strains carry the alternate allele. The answer is a
+    genotype enumeration over the live mouse-variation callset and cannot be
+    obtained from the literature.
+  conclusion: PASS (cannot answer from literature - requires RDF)
+
+sparql_queries:
+  - query_number: 1
+    database: ensembl
+    description: >-
+      Confirm the gene identity of the Ensembl mouse gene the variant overlaps:
+      ENSMUSG00000026141 is Col19a1 (collagen, type XIX, alpha 1), Mus musculus.
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT ?label ?desc WHERE {
+        <http://rdf.ebi.ac.uk/resource/ensembl/ENSMUSG00000026141>
+            a <http://rdf.ebi.ac.uk/terms/ensembl/EnsemblGene> ;
+            rdfs:label ?label ;
+            obo:RO_0002162 <http://ensembl.org/Mus_musculus> .
+        OPTIONAL { <http://rdf.ebi.ac.uk/resource/ensembl/ENSMUSG00000026141>
+                   dcterms:description ?desc }
+      }
+    result_count: 1
+
+  - query_number: 2
+    database: mogplus
+    description: >-
+      Confirm the variant chr1:24318952 G>A is a single-nucleotide substitution
+      that overlaps the Col19a1 Ensembl gene and carries the missense annotation
+      p.Pro1046Leu (SnpEff HGVSp; VEP hgvsp is empty in this resource).
+    query: |
+      PREFIX mogplus: <http://identifiers.org/mogplus/ontology#>
+      PREFIX gvo: <http://genome-variation.org/resource#>
+      PREFIX snpeff: <http://genome-variation.org/resource/snpeff#>
+      SELECT ?type ?ref ?alt ?hgvsp ?sym WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          <http://identifiers.org/mogplus/v3/1/GRCm39#24318952-G-A>
+              a ?type ; gvo:ref ?ref ; gvo:alt ?alt ;
+              mogplus:overlaps_gene
+                <http://rdf.ebi.ac.uk/resource/ensembl/ENSMUSG00000026141> ;
+              snpeff:has_annotation ?sa .
+          ?sa snpeff:hgvsp ?hgvsp ; snpeff:gene_name ?sym .
+        }
+      }
+    result_count: 1
+
+  - query_number: 3
+    database: mogplus
+    description: >-
+      List the strains carrying the alternate allele at this locus. The genomic
+      variant is recorded under two disjoint release cohorts (both variant IRIs
+      queried); each carrier has a homozygous-alternate (1/1) genotype call.
+      Returns 11 distinct strains: CHD/Ms, HMI/Ms, JF1/Ms, KJR, MSM/Ms, NJL/Ms,
+      SWN/Ms (7) plus CZECHII/EiJ, JF1/MsJ, MOLF/EiJ, PWK/PhJ (4).
+    query: |
+      PREFIX vcf: <http://genome-variation.org/resource/vcf#>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT DISTINCT ?strainLabel ?gt WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          VALUES ?variant {
+            <http://identifiers.org/mogplus/v3/1/GRCm39#24318952-G-A>
+            <http://identifiers.org/mogplus/v2.1/1/GRCm39#24318952-G-A>
+          }
+          ?variant vcf:has_genotype_call ?call .
+          ?call med2rdf:sample ?strain ; vcf:genotype ?gt .
+          ?strain rdfs:label ?strainLabel .
+        }
+      }
+      ORDER BY ?strainLabel
+    result_count: 11
+
+  - query_number: 4
+    database: mogplus
+    description: >-
+      Arithmetic-verification query (Rule 3) for query 3: total distinct carrier
+      strains and the per-cohort split. Returns total 11 = 7 (first release
+      cohort) + 4 (second, disjoint cohort), confirming no strain is counted
+      twice (the two cohorts share no strains).
+    query: |
+      PREFIX vcf: <http://genome-variation.org/resource/vcf#>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      SELECT
+        (COUNT(DISTINCT ?strain) AS ?totalCarriers)
+        (COUNT(DISTINCT ?v3s)  AS ?v3Carriers)
+        (COUNT(DISTINCT ?v21s) AS ?v21Carriers)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          VALUES ?variant {
+            <http://identifiers.org/mogplus/v3/1/GRCm39#24318952-G-A>
+            <http://identifiers.org/mogplus/v2.1/1/GRCm39#24318952-G-A>
+          }
+          ?variant vcf:has_genotype_call ?call .
+          ?call med2rdf:sample ?strain .
+          BIND(IF(STRSTARTS(STR(?variant),
+            "http://identifiers.org/mogplus/v3/"), ?strain, ?u) AS ?v3s)
+          BIND(IF(STRSTARTS(STR(?variant),
+            "http://identifiers.org/mogplus/v2.1/"), ?strain, ?u) AS ?v21s)
+        }
+      }
+    result_count: 1
+
+rdf_triples: |
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix dcterms: <http://purl.org/dc/terms/> .
+  @prefix mogplus: <http://identifiers.org/mogplus/ontology#> .
+  @prefix gvo: <http://genome-variation.org/resource#> .
+  @prefix snpeff: <http://genome-variation.org/resource/snpeff#> .
+  @prefix vcf: <http://genome-variation.org/resource/vcf#> .
+  @prefix med2rdf: <http://med2rdf.org/ontology/med2rdf#> .
+  @prefix ensg: <http://rdf.ebi.ac.uk/resource/ensembl/> .
+  @prefix mogbs: <http://identifiers.org/mogplus/bioresource/> .
+
+  ensg:ENSMUSG00000026141 rdfs:label "Col19a1" .
+  # Database: Ensembl | Query: 1 | Comment: the Ensembl mouse gene the variant overlaps is Col19a1
+  ensg:ENSMUSG00000026141 dcterms:description "collagen, type XIX, alpha 1 [Source:MGI Symbol;Acc:MGI:1095415]" .
+  # Database: Ensembl | Query: 1 | Comment: Col19a1 encodes the alpha-1 chain of collagen type XIX (a myogenesis-associated collagen)
+  <http://identifiers.org/mogplus/v3/1/GRCm39#24318952-G-A> a gvo:SNV .
+  # Database: MoG+ | Query: 2 | Comment: the locus is a single-nucleotide substitution (chr1:24,318,952, GRCm39)
+  <http://identifiers.org/mogplus/v3/1/GRCm39#24318952-G-A> gvo:ref "G" .
+  # Database: MoG+ | Query: 2 | Comment: reference allele G
+  <http://identifiers.org/mogplus/v3/1/GRCm39#24318952-G-A> gvo:alt "A" .
+  # Database: MoG+ | Query: 2 | Comment: alternate allele A (the allele whose carriers are being listed)
+  <http://identifiers.org/mogplus/v3/1/GRCm39#24318952-G-A> mogplus:overlaps_gene ensg:ENSMUSG00000026141 .
+  # Database: MoG+ | Query: 2 | Comment: the variant's coordinate overlaps the Col19a1 gene
+  <http://identifiers.org/mogplus/v3/1/GRCm39#24318952-G-A> snpeff:has_annotation _:ann1 .
+  # Database: MoG+ | Query: 2 | Comment: the variant carries a SnpEff functional annotation
+  _:ann1 snpeff:hgvsp "p.Pro1046Leu" .
+  # Database: MoG+ | Query: 2 | Comment: the amino-acid change is a proline-to-leucine missense at codon 1046
+  <http://identifiers.org/mogplus/v3/1/GRCm39#24318952-G-A> vcf:has_genotype_call _:callMSM .
+  # Database: MoG+ | Query: 3 | Comment: a genotype call attached to the variant in the first release cohort
+  _:callMSM med2rdf:sample mogbs:MSM_Ms .
+  # Database: MoG+ | Query: 3 | Comment: MSM/Ms is one of the seven first-cohort strains carrying the alternate allele
+  _:callMSM vcf:genotype "1/1" .
+  # Database: MoG+ | Query: 3 | Comment: MSM/Ms is homozygous for the alternate (Leu) allele
+  <http://identifiers.org/mogplus/v2.1/1/GRCm39#24318952-G-A> vcf:has_genotype_call _:callPWK .
+  # Database: MoG+ | Query: 3 | Comment: the same genomic locus in the second (disjoint) release cohort
+  _:callPWK med2rdf:sample mogbs:PWK_PhJ .
+  # Database: MoG+ | Query: 3 | Comment: PWK/PhJ is one of the four second-cohort strains carrying the alternate allele
+
+exact_answer:
+  - "CHD/Ms"
+  - "HMI/Ms"
+  - "JF1/Ms"
+  - "KJR"
+  - "MSM/Ms"
+  - "NJL/Ms"
+  - "SWN/Ms"
+  - "CZECHII/EiJ"
+  - "JF1/MsJ"
+  - "MOLF/EiJ"
+  - "PWK/PhJ"
+
+ideal_answer: |
+  The Col19a1 chr1:24,318,952 G>A substitution (GRCm39), which changes proline
+  1046 of the collagen type XIX alpha-1 chain to leucine (p.Pro1046Leu), is
+  carried in the homozygous alternate state (genotype 1/1) by 11 distinct mouse
+  strains. Seven come from one genotyping panel - CHD/Ms, HMI/Ms, JF1/Ms, KJR,
+  MSM/Ms, NJL/Ms and SWN/Ms (predominantly Japanese wild-derived lines) - and
+  four from a second, non-overlapping panel: CZECHII/EiJ, JF1/MsJ, MOLF/EiJ and
+  PWK/PhJ (largely European and other wild-derived lines). Because the two panels
+  share no strains, the counts add without overlap (7 + 4 = 11). All carriers are
+  homozygous for the leucine allele, consistent with these being inbred lines
+  that diverge from the C57BL/6J reference (which defines the reference G/proline
+  allele and is not itself among the genotyped panels). No strain is heterozygous
+  at this position in the recorded calls.
+
+question_template_used: list_carrier_strains_of_a_specific_missense_variant_variant_anchored
+
+time_spent:
+  exploration: 40
+  formulation: 12
+  verification: 8
+  pubmed_test: 10
+  extraction: 12
+  documentation: 18
+  total: 100
