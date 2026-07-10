@@ -1,0 +1,618 @@
+schema_info:
+  title: Human Chromosome Ontology (HCO)
+  description: |
+    HCO is a compact ontology of the human cytogenetic map: every Giemsa-stained
+    chromosome band (cytoband, ISCN nomenclature such as 13q14.2) with its genomic
+    coordinates on both GRCh37 and GRCh38, its Giemsa stain type, and cross-references
+    to RefSeq / INSDC / Ensembl / UCSC chromosome accessions. Cytobands and chromosomes
+    are modelled as an owl:Class hierarchy; the genomic coordinates live on per-build
+    INSTANCES of those band classes, expressed with FALDO (begin/end positions).
+    ~25,646 triples: 862 cytoband classes, 25 chromosome classes (1-22, X, Y, MT),
+    1,724 band instances (862 bands x 2 genome builds), 8 Giemsa stain types.
+  keywords:
+    - cytoband
+    - chromosome band
+    - karyotype
+    - human chromosome
+    - cytogenetic
+    - giemsa
+    - ideogram
+    - chromosome
+    - genomic coordinates
+    - GRCh37
+    - GRCh38
+    - genome build
+    - FALDO
+    - chromosome location
+    - band
+  categories:
+    - genomics
+    - ontology
+  endpoint: https://rdfportal.org/primary/sparql
+  base_uri: http://identifiers.org/hco/
+  graphs:
+    - http://rdfportal.org/dataset/hco
+    # The 'primary' endpoint hosts ~40 datasets. ALWAYS scope with this GRAPH; an
+    # unscoped query pulls in MeSH, GO, HGNC, taxonomy, and dozens of ontologies.
+  kw_search_tools: []   # no dedicated search API; cytobands are found structurally
+  version:
+    mie_version: "1.0"
+    mie_created: "2026-07-10"
+    data_version: GRCh37 + GRCh38 cytobands
+    update_frequency: Static (updated with genome build releases)
+  access:
+    backend: "Virtuoso"
+
+# Critical warnings — read FIRST; these cause silent failures (wrong/zero results, no error).
+critical_warnings: |
+  - LITERAL BACKSLASH IN BUILD-QUALIFIED IRIs (THE #1 TRAP): band-instance and
+    chromosome-reference IRIs join the entity and the build with a LITERAL backslash,
+    not a slash: the IRI of band 13q14.2 on GRCh38 is
+      http://identifiers.org/hco/13q14.2\/GRCh38     (note the "\" before "/GRCh38")
+    and the chromosome reference is  http://identifiers.org/hco/13\/GRCh38 .
+    Consequences:
+      * A hand-written IRIREF <http://identifiers.org/hco/13q14.2/GRCh38> (plain slash)
+        matches NOTHING — 0 rows, no error.
+      * An IRIREF containing a raw backslash is a Virtuoso syntax error (HTTP 400).
+    NEVER construct these IRIs by hand. Reach them ONLY by navigation:
+      ?inst a ?band ; hco:build ?build ; faldo:location ?loc .   # band instance
+      ?position faldo:reference ?ref .                           # chromosome ref
+    To pick a chromosome/arm, filter the band CLASS label (ISCN), e.g.
+      ?band rdfs:label ?lbl . FILTER(REGEX(?lbl, "^13[pq]"))
+
+  - COORDINATES LIVE ON INSTANCES, NOT ON THE CYTOBAND CLASS. The class hco:13q14.2
+    carries ONLY rdfs:label + rdfs:subClassOf hco:Cytoband. Its genomic coordinates,
+    stain type, and build are on the INSTANCES typed by it (hco:13q14.2\/GRCh37|38).
+    Querying the class for faldo:location / hco:bandtype returns nothing.
+    Pattern: ?inst a hco:13q14.2 ; faldo:location ?loc .   (or a ?band; subClassOf Cytoband)
+
+  - TWO GENOME BUILDS — every band has TWO instances (GRCh37 and GRCh38) with DIFFERENT
+    coordinates. Omitting  ?inst hco:build hco:GRCh38  doubles your rows and mixes
+    GRCh37/GRCh38 positions. Always constrain hco:build to exactly one build.
+
+  - GENOME BUILD: CLASS vs INSTANCE split. hco:GRCh37 and hco:GRCh38 are build CLASSES
+    (owl:Class, subClassOf hco:GenomeBuild) and are the values of hco:build on band
+    instances. hco:GRCh38.p0 / .p7 / .p10 / .p12 are separate INSTANCES (a hco:GenomeBuild)
+    that carry hco:length, dct:date, and the NCBI-assembly rdfs:seeAlso. hco:build points
+    to the CLASS, never to a patch instance — do not expect length/date via hco:build.
+
+  - faldo:position IS xsd:integer. Range filters must compare against a plain integer
+    (FILTER(?pos <= 50000000)); the values are 1-based band start/end coordinates.
+
+shape_expressions: |
+  PREFIX hco:   <http://identifiers.org/hco/>
+  PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+  PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+  PREFIX skos:  <http://www.w3.org/2004/02/skos/core#>
+  PREFIX dct:   <http://purl.org/dc/terms/>
+  PREFIX owl:   <http://www.w3.org/2002/07/owl#>
+  PREFIX xsd:   <http://www.w3.org/2001/XMLSchema#>
+
+  # === Cytoband CLASS (862) — the named band, e.g. hco:13q14.2 ===
+  # Carries ONLY identity; coordinates are on its instances (see <CytobandInstance>).
+  <CytobandClass> {
+    a [ owl:Class ] ;
+    rdfs:subClassOf [ hco:Cytoband ] ;   # every band class points here
+    rdfs:label xsd:string                # ISCN name, e.g. "13q14.2" (plain literal)
+  }
+
+  # === Chromosome CLASS (25: 1-22, X, Y, MT) — e.g. hco:13 ===
+  <ChromosomeClass> {
+    a [ owl:Class ] ;
+    rdfs:subClassOf [ hco:HumanChromosome ] ;
+    rdfs:label xsd:string                # e.g. "Human chromosome 13", "Human mitochondrion genome"
+  }
+
+  # === Cytoband INSTANCE (1,724 = 862 bands x 2 builds) ===
+  # IRI = hco:<band>\/<build> with a LITERAL BACKSLASH (see critical_warnings).
+  # Reach ONLY by navigation. All four predicates are REQUIRED (cardinality exactly 1).
+  <CytobandInstance> {
+    a @<CytobandClass> ;                 # typed by its specific band class (e.g. hco:13q14.2)
+    hco:build @<GenomeBuildClass> ;      # hco:GRCh37 | hco:GRCh38
+    hco:bandtype @<CytobandType> ;       # Giemsa stain type
+    faldo:location @<Region>             # genomic span
+  }
+
+  # === FALDO Region (bnode, 1,724) ===
+  <Region> {
+    a [ faldo:Region ] ;
+    faldo:begin @<Position> ;
+    faldo:end   @<Position>
+  }
+
+  # === FALDO BothStrandsPosition (bnode, 3,448 = begin+end) ===
+  <Position> {
+    a [ faldo:BothStrandsPosition ] ;
+    faldo:position xsd:integer ;         # 1-based coordinate
+    faldo:reference @<ChromosomeBuildRef>  # hco:<chr>\/<build> — LITERAL BACKSLASH IRI
+  }
+
+  # === Giemsa stain type (8) — controlled vocabulary ===
+  # hco:Gneg | Gpos25 | Gpos50 | Gpos75 | Gpos100 | Acen | Gvar | Stalk
+  <CytobandType> {
+    a [ hco:CytobandType ] ;
+    rdfs:label xsd:string ;              # lowercase, e.g. "gpos50", "gneg", "acen"
+    skos:definition xsd:string ?        # e.g. "Giemsa positive band, the second lightest stain level"
+  }
+
+  # === Genome build CLASS (2) — hco:GRCh37, hco:GRCh38 (values of hco:build) ===
+  <GenomeBuildClass> {
+    a [ owl:Class ] ;
+    rdfs:subClassOf [ hco:GenomeBuild ] ;
+    rdfs:label xsd:string ;             # "GRCh37" | "GRCh38"
+    skos:altLabel xsd:string ? ;        # "hg19" | "hg38"
+    skos:definition xsd:string ?        # "Genome Reference Consortium Human Build 37/38"
+  }
+
+  # === Genome build INSTANCE (4) — patch releases hco:GRCh38.p0/.p7/.p10/.p12 ===
+  # NOTE: distinct from the build CLASS; NOT the object of hco:build.
+  <GenomeBuildInstance> {
+    a [ hco:GenomeBuild ] ;
+    rdfs:label xsd:string ;             # "GRCh38.p10"
+    hco:length xsd:integer ? ;          # total assembly length in bp
+    dct:date xsd:date ? ;
+    skos:altLabel xsd:string ? ;        # "hg38"
+    skos:definition xsd:string ? ;
+    rdfs:seeAlso IRI *                   # NCBI assembly: https://www.ncbi.nlm.nih.gov/assembly/GCA_/GCF_
+  }
+
+  # === Chromosome-build reference / cross-ref hub (50 = 25 chr x 2 builds) ===
+  # IRI = hco:<chr>\/<build> (LITERAL BACKSLASH). Target of faldo:reference.
+  # Bare hub: NO rdf:type and NO rdfs:label — only external cross-reference links.
+  <ChromosomeBuildRef> {
+    hco:refseq  IRI ? ;                 # <http://identifiers.org/refseq/NC_000013.10> (50/50 on GRCh37 set)
+    hco:insdc   IRI ? ;                 # <http://identifiers.org/insdc/CM000675.1>
+    hco:ensembl IRI ? ;                 # Ensembl chromosome-location URL
+    hco:ucsc    IRI ?                   # UCSC genome-browser URL
+  }
+
+sample_rdf_entries:
+  rdf_prefixes: |
+    @prefix hco:   <http://identifiers.org/hco/> .
+    @prefix faldo: <http://biohackathon.org/resource/faldo#> .
+    @prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+    @prefix skos:  <http://www.w3.org/2004/02/skos/core#> .
+    @prefix owl:   <http://www.w3.org/2002/07/owl#> .
+    @prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+  entries:
+    - title: Cytoband class (identity only)
+      description: |
+        The named band as an owl:Class. Note it carries ONLY label + subClassOf —
+        no coordinates. Reach coordinates via its instances (next entry).
+      rdf: |
+        hco:13q14.2 a owl:Class ;
+          rdfs:subClassOf hco:Cytoband ;
+          rdfs:label "13q14.2" .
+
+    - title: Cytoband instance with FALDO coordinates (the core pattern)
+      description: |
+        A per-build INSTANCE of band 13q14.2 on GRCh38. Its IRI contains a LITERAL
+        backslash before "/GRCh38" (shown here for illustration; it is only retrievable
+        by navigation, never by a hand-written IRIREF). hco:bandtype gives the Giemsa
+        stain, hco:build the assembly, and faldo:location the 1-based span 46,700,001-50,300,000
+        whose faldo:reference is the (also backslash-joined) chromosome-build IRI.
+      rdf: |
+        <http://identifiers.org/hco/13q14.2\/GRCh38> a hco:13q14.2 ;
+          hco:build hco:GRCh38 ;
+          hco:bandtype hco:Gpos50 ;
+          faldo:location [
+            a faldo:Region ;
+            faldo:begin [ a faldo:BothStrandsPosition ;
+                          faldo:position 46700001 ;
+                          faldo:reference <http://identifiers.org/hco/13\/GRCh38> ] ;
+            faldo:end   [ a faldo:BothStrandsPosition ;
+                          faldo:position 50300000 ;
+                          faldo:reference <http://identifiers.org/hco/13\/GRCh38> ] ] .
+
+    - title: Giemsa stain type (controlled vocabulary)
+      description: |
+        One of the 8 hco:CytobandType values, the object of hco:bandtype. Carries a
+        lowercase label and a human-readable definition.
+      rdf: |
+        hco:Gpos50 a hco:CytobandType ;
+          rdfs:label "gpos50" ;
+          skos:definition "Giemsa positive band, the second lightest stain level" .
+
+sparql_query_examples:
+  - title: List cytobands on a chromosome arm
+    description: Enumerate band classes structurally via rdfs:subClassOf hco:Cytoband, selecting an arm by the ISCN label prefix. No coordinates needed.
+    question: What cytobands are on the q arm of chromosome 13?
+    complexity: basic
+    sparql: |
+      PREFIX hco:  <http://identifiers.org/hco/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?band ?label
+      FROM <http://rdfportal.org/dataset/hco>
+      WHERE {
+        ?band rdfs:subClassOf hco:Cytoband ;
+              rdfs:label ?label .
+        FILTER(REGEX(?label, "^13q"))     # ISCN nomenclature: chr13, q arm
+      }
+      ORDER BY ?label
+
+  - title: Genomic coordinates of a named cytoband (GRCh38)
+    description: Navigate from the band class to its GRCh38 instance and read the FALDO begin/end positions. Filter hco:build to one assembly.
+    question: What are the GRCh38 start and end coordinates of band 13q14.2?
+    complexity: basic
+    sparql: |
+      PREFIX hco:   <http://identifiers.org/hco/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+
+      SELECT ?begin ?end
+      FROM <http://rdfportal.org/dataset/hco>
+      WHERE {
+        ?inst a hco:13q14.2 ;
+              hco:build hco:GRCh38 ;
+              faldo:location ?loc .
+        ?loc faldo:begin/faldo:position ?begin ;
+             faldo:end/faldo:position   ?end .
+      }
+
+  - title: Which cytoband contains a genomic position (position -> band)
+    description: |
+      The flagship lookup. Given a base position on a chromosome (selected by the ISCN
+      label prefix), find the GRCh38 band whose FALDO span contains it. faldo:position
+      is xsd:integer so the range compare is numeric.
+    question: Which GRCh38 cytoband contains position 50,000,000 on chromosome 13?
+    complexity: intermediate
+    sparql: |
+      PREFIX hco:   <http://identifiers.org/hco/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?bandLabel ?begin ?end ?stain
+      FROM <http://rdfportal.org/dataset/hco>
+      WHERE {
+        ?inst a ?band ;
+              hco:build hco:GRCh38 ;
+              hco:bandtype ?bt ;
+              faldo:location ?loc .
+        ?band rdfs:subClassOf hco:Cytoband ;
+              rdfs:label ?bandLabel .
+        ?bt rdfs:label ?stain .
+        FILTER(REGEX(?bandLabel, "^13[pq]"))     # restrict to chromosome 13
+        ?loc faldo:begin/faldo:position ?begin ;
+             faldo:end/faldo:position   ?end .
+        FILTER(?begin <= 50000000 && 50000000 <= ?end)
+      }
+
+  - title: All bands of a given Giemsa stain type (GRCh38)
+    description: Query the controlled stain vocabulary by IRI (hco:bandtype hco:Gpos100 = darkest bands). Structured lookup, no text search.
+    question: Which cytobands are darkest-staining (gpos100) on GRCh38, and how large are they?
+    complexity: intermediate
+    sparql: |
+      PREFIX hco:   <http://identifiers.org/hco/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?bandLabel ?begin ?end (?end - ?begin AS ?size)
+      FROM <http://rdfportal.org/dataset/hco>
+      WHERE {
+        ?inst a ?band ;
+              hco:build hco:GRCh38 ;
+              hco:bandtype hco:Gpos100 ;       # darkest Giemsa band, IRI lookup
+              faldo:location ?loc .
+        ?band rdfs:label ?bandLabel .
+        ?loc faldo:begin/faldo:position ?begin ;
+             faldo:end/faldo:position   ?end .
+      }
+      ORDER BY DESC(?size)
+      LIMIT 20
+
+  - title: Cross-reference chromosomes to RefSeq / INSDC (GRCh38)
+    description: |
+      Reach the chromosome-build reference hub via faldo:reference (its IRI has a literal
+      backslash, so it must be navigated, not typed), then read the external accessions.
+    question: What are the RefSeq and INSDC accessions of each chromosome on GRCh38?
+    complexity: intermediate
+    sparql: |
+      PREFIX hco:   <http://identifiers.org/hco/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT DISTINCT (STR(?ref) AS ?chromosomeBuild) ?refseq ?insdc
+      FROM <http://rdfportal.org/dataset/hco>
+      WHERE {
+        ?inst a ?band ;
+              hco:build hco:GRCh38 ;
+              faldo:location/faldo:begin/faldo:reference ?ref .
+        ?band rdfs:subClassOf hco:Cytoband .
+        OPTIONAL { ?ref hco:refseq ?refseq }
+        OPTIONAL { ?ref hco:insdc  ?insdc }
+      }
+      ORDER BY ?chromosomeBuild
+
+  - title: Compare a band's coordinates across GRCh37 and GRCh38
+    description: |
+      Because every band has one instance per build, join the two builds on the shared
+      band class to see the coordinate shift between assemblies.
+    question: How do the coordinates of band 17p13.1 differ between GRCh37 and GRCh38?
+    complexity: advanced
+    sparql: |
+      PREFIX hco:   <http://identifiers.org/hco/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+
+      SELECT ?begin37 ?end37 ?begin38 ?end38
+      FROM <http://rdfportal.org/dataset/hco>
+      WHERE {
+        ?i37 a hco:17p13.1 ; hco:build hco:GRCh37 ; faldo:location ?l37 .
+        ?l37 faldo:begin/faldo:position ?begin37 ; faldo:end/faldo:position ?end37 .
+        ?i38 a hco:17p13.1 ; hco:build hco:GRCh38 ; faldo:location ?l38 .
+        ?l38 faldo:begin/faldo:position ?begin38 ; faldo:end/faldo:position ?end38 .
+      }
+
+  - title: Per-chromosome extent from cytoband coordinates (GRCh38)
+    description: |
+      Aggregate band spans up to whole-chromosome extents. Grouping by the FALDO
+      reference (one hub per chromosome-build) partitions bands by chromosome without
+      touching the backslash IRI as a literal.
+    question: What is the min start and max end of the banded region of each chromosome on GRCh38?
+    complexity: advanced
+    sparql: |
+      PREFIX hco:   <http://identifiers.org/hco/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT (STR(?ref) AS ?chromosomeBuild)
+             (MIN(?begin) AS ?minStart) (MAX(?end) AS ?maxEnd) (COUNT(?inst) AS ?nBands)
+      FROM <http://rdfportal.org/dataset/hco>
+      WHERE {
+        ?inst a ?band ;
+              hco:build hco:GRCh38 ;
+              faldo:location ?loc .
+        ?band rdfs:subClassOf hco:Cytoband .
+        ?loc faldo:begin/faldo:position ?begin ;
+             faldo:end/faldo:position   ?end ;
+             faldo:begin/faldo:reference ?ref .
+      }
+      GROUP BY ?ref
+      ORDER BY ?chromosomeBuild
+
+cross_database_queries:
+  shared_endpoint: "https://rdfportal.org/primary/sparql"
+  co_located_databases: [hgnc, hco, mesh, go, taxonomy, mondo, nando, bacdive, mediadive, brenda, jpostdb, massbank, nbrc, mogplus]
+  examples:
+    - title: Map a gene to its cytoband and genomic coordinates (HGNC + HCO)
+      description: |
+        HGNC genes carry obo:so_part_of = a cytoband string (e.g. "17p13.1") that equals
+        the HCO band's rdfs:label (both plain literals). Join on that string to resolve a
+        gene's chromosomal band to precise GRCh38 coordinates and stain type. Both graphs
+        live on the primary endpoint, so this is a single-query join.
+      sparql: |
+        PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+        PREFIX hco:   <http://identifiers.org/hco/>
+        PREFIX obo:   <http://purl.obolibrary.org/obo/>
+
+        SELECT ?cytoband ?begin ?end ?stain
+        WHERE {
+          GRAPH <http://rdfportal.org/dataset/hgnc> {
+            ?g rdfs:label "TP53" ; obo:so_part_of ?cytoband .
+          }
+          GRAPH <http://rdfportal.org/dataset/hco> {
+            ?band rdfs:subClassOf hco:Cytoband ; rdfs:label ?cytoband .
+            ?inst a ?band ; hco:build hco:GRCh38 ; hco:bandtype ?bt ; faldo:location ?loc .
+            ?bt rdfs:label ?stain .
+            ?loc faldo:begin/faldo:position ?begin ; faldo:end/faldo:position ?end .
+          }
+        }
+  notes: |
+    The join key HGNC obo:so_part_of "17p13.1" == HCO band rdfs:label "17p13.1" (plain
+    literals; case- and format-sensitive ISCN strings). For federation OUT of HCO, use the
+    chromosome-build reference hub's IRIs: hco:refseq (identifiers.org/refseq/NC_*),
+    hco:insdc (identifiers.org/insdc/CM*), hco:ensembl (Ensembl URL), hco:ucsc (UCSC URL),
+    plus the GenomeBuild instance rdfs:seeAlso to NCBI assembly (GCA_/GCF_).
+
+cross_references:
+  - pattern: hco:refseq / hco:insdc / hco:ensembl / hco:ucsc  (on the chromosome-build hub)
+    description: |
+      The chromosome-build reference IRI (hco:<chr>\/<build>, reached via faldo:reference)
+      links each chromosome+build to external genome resources. Coverage over the 50
+      chromosome-build hubs: refseq 50, insdc 50, ensembl 98 (multiple URLs each), ucsc 48.
+    databases:
+      RefSeq:
+        - "hco:refseq -> http://identifiers.org/refseq/NC_000013.10 (chromosome RefSeq accession)"
+      INSDC:
+        - "hco:insdc -> http://identifiers.org/insdc/CM000675.1 (GenBank/INSDC accession)"
+      Ensembl:
+        - "hco:ensembl -> Ensembl chromosome-location URL (grch37/grch38)"
+      UCSC:
+        - "hco:ucsc -> UCSC genome-browser URL"
+    sparql: |
+      PREFIX hco:   <http://identifiers.org/hco/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT DISTINCT (STR(?ref) AS ?chromosomeBuild) ?refseq ?insdc ?ensembl ?ucsc
+      FROM <http://rdfportal.org/dataset/hco>
+      WHERE {
+        ?inst a ?band ; hco:build hco:GRCh37 ;
+              faldo:location/faldo:begin/faldo:reference ?ref .
+        ?band rdfs:subClassOf hco:Cytoband .
+        OPTIONAL { ?ref hco:refseq  ?refseq }
+        OPTIONAL { ?ref hco:insdc   ?insdc }
+        OPTIONAL { ?ref hco:ensembl ?ensembl }
+        OPTIONAL { ?ref hco:ucsc    ?ucsc }
+      }
+      LIMIT 30
+
+  - pattern: rdfs:seeAlso  (on GenomeBuild instances)
+    description: |
+      Patch-level GenomeBuild instances (hco:GRCh38.p0/.p7/.p10/.p12) link to the NCBI
+      assembly record via rdfs:seeAlso (both GCA_ and GCF_ accessions).
+    databases:
+      NCBI Assembly:
+        - "rdfs:seeAlso -> https://www.ncbi.nlm.nih.gov/assembly/GCA_000001405.15 / GCF_000001405.26"
+
+  - pattern: HGNC obo:so_part_of  (external join into HCO)
+    description: |
+      Not an HCO predicate, but the canonical way IN: HGNC (same endpoint) stores a gene's
+      cytoband as obo:so_part_of "17p13.1", which string-matches HCO's band rdfs:label.
+      See cross_database_queries.
+
+architectural_notes:
+  query_strategy:
+    - "MANDATORY: scope every query with FROM/GRAPH <http://rdfportal.org/dataset/hco> (shared 'primary' endpoint)"
+    - "NEVER hand-write a build-qualified IRI (hco:<band>\\/<build> or hco:<chr>\\/<build>) — literal backslash; navigate instead"
+    - "Coordinates: navigate class -> instance (a ?band) -> hco:build -> faldo:location -> begin/end -> faldo:position"
+    - "Pick a chromosome/arm by REGEX on the band CLASS label (ISCN, e.g. ^13[pq]); partition chromosomes by GROUP BY ?faldoReference"
+    - "Always constrain hco:build to one build (hco:GRCh37 | hco:GRCh38) — bands have one instance per build"
+    - "Stain type: filter hco:bandtype by IRI (hco:Gneg/Gpos25/Gpos50/Gpos75/Gpos100/Acen/Gvar/Stalk), not by label text"
+    - "Priority: subClassOf/type structure + build/bandtype IRIs > FALDO position ranges > label REGEX for chromosome selection"
+
+  schema_design:
+    - "Single graph <http://rdfportal.org/dataset/hco> (~25,646 triples) on the shared primary endpoint"
+    - "Two-layer model: named bands/chromosomes are owl:Class (hierarchy via rdfs:subClassOf Cytoband/HumanChromosome); coordinates are on per-build INSTANCES typed by those classes"
+    - "FALDO for genomic spans: faldo:location -> faldo:Region -> faldo:begin/end -> faldo:BothStrandsPosition (faldo:position xsd:integer, faldo:reference -> chromosome-build hub)"
+    - "Build-qualified IRIs join entity and build with a LITERAL BACKSLASH: hco:<entity>\\/<build>"
+    - "GenomeBuild is doubly modelled: hco:GRCh37/38 as build CLASSES (values of hco:build) and hco:GRCh38.p* as patch INSTANCES (carry length/date/assembly seeAlso)"
+    - "Controlled vocabularies: 8 hco:CytobandType (Giemsa stains) with skos:definition; chromosome set = 1-22, X, Y, MT (25)"
+
+  data_integration:
+    - "Chromosome cross-refs (refseq/insdc/ensembl/ucsc) on the faldo:reference hub, one per chromosome-build"
+    - "GenomeBuild instances link to NCBI assembly (GCA_/GCF_) via rdfs:seeAlso"
+    - "Gene->band bridge: HGNC obo:so_part_of string == HCO band rdfs:label (same endpoint, joinable in one query)"
+    - "HCO band labels follow ISCN nomenclature, enabling string joins with any resource that records cytoband location as text"
+
+  text_search_justification:
+    - "Number of 7 example queries using free-text search: 0 (no bif:contains, no CONTAINS over prose)"
+    - "REGEX on rdfs:label is used only to select a chromosome/arm by ISCN prefix (e.g. ^13[pq]) — a controlled naming scheme, not free text; the build-qualified band IRI cannot be constructed (literal backslash) so the ISCN label is the accessible structured handle"
+    - "Stain types and builds are always matched by IRI, never by label text"
+
+data_statistics:
+  total_triples: 25646
+  verified_date: "2026-07-10"
+  data_graph: "http://rdfportal.org/dataset/hco"
+
+  classes:
+    cytoband_classes: "862 (rdfs:subClassOf hco:Cytoband)"
+    chromosome_classes: "25 (rdfs:subClassOf hco:HumanChromosome: 1-22, X, Y, MT)"
+    cytoband_types: "8 (hco:CytobandType Giemsa stains)"
+    genome_build_classes: "2 (hco:GRCh37, hco:GRCh38)"
+    genome_build_instances: "4 (hco:GRCh38.p0/.p7/.p10/.p12)"
+    verified_date: "2026-07-10"
+
+  instances_and_coordinates:
+    band_instances: "1,724 (862 bands x 2 builds; 862 GRCh37 + 862 GRCh38)"
+    faldo_regions: "1,724"
+    faldo_positions: "3,448 (begin + end)"
+    chromosome_build_refs: "50 (25 chromosomes x 2 builds)"
+    faldo_position_datatype: "xsd:integer"
+    verified_date: "2026-07-10"
+
+  bandtype_distribution:
+    counts: "Gneg 828, Gpos50 242, Gpos75 178, Gpos25 174, Gpos100 162, Acen 96, Gvar 34, Stalk 10 (total 1,724 over both builds)"
+    verified_date: "2026-07-10"
+
+  cross_reference_coverage:
+    over_50_chromosome_build_hubs: "refseq 50, insdc 50, ensembl 98, ucsc 48"
+    verified_date: "2026-07-10"
+
+anti_patterns:
+  - title: "Hand-writing a build-qualified IRI"
+    problem: "Band-instance and chromosome-reference IRIs contain a LITERAL backslash (hco:13q14.2\\/GRCh38). A plain-slash IRIREF matches 0 rows; a raw-backslash IRIREF is a Virtuoso HTTP 400 syntax error. Either way you cannot type these IRIs."
+    wrong_sparql: |
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      # WRONG: plain-slash IRI does not exist -> 0 rows
+      SELECT ?begin
+      FROM <http://rdfportal.org/dataset/hco>
+      WHERE {
+        <http://identifiers.org/hco/13q14.2/GRCh38> faldo:location/faldo:begin/faldo:position ?begin .
+      }
+    correct_sparql: |
+      PREFIX hco:   <http://identifiers.org/hco/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      # RIGHT: navigate from the band class to its instance
+      SELECT ?begin
+      FROM <http://rdfportal.org/dataset/hco>
+      WHERE {
+        ?inst a hco:13q14.2 ; hco:build hco:GRCh38 ;
+              faldo:location/faldo:begin/faldo:position ?begin .
+      }
+    explanation: "Reach build-qualified entities by navigation (a ?band ; hco:build ; faldo:location / faldo:reference), never by constructing the IRI."
+
+  - title: "Querying the cytoband CLASS for coordinates"
+    problem: "The class hco:13q14.2 has only rdfs:label + rdfs:subClassOf. Coordinates/stain/build live on its INSTANCES, so asking the class for faldo:location returns nothing."
+    wrong_sparql: |
+      PREFIX hco:   <http://identifiers.org/hco/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      # WRONG: the class has no faldo:location -> 0 rows
+      SELECT ?begin
+      FROM <http://rdfportal.org/dataset/hco>
+      WHERE { hco:13q14.2 faldo:location/faldo:begin/faldo:position ?begin . }
+    correct_sparql: |
+      PREFIX hco:   <http://identifiers.org/hco/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      # RIGHT: the INSTANCE (typed by the class) carries the coordinates
+      SELECT ?begin
+      FROM <http://rdfportal.org/dataset/hco>
+      WHERE {
+        ?inst a hco:13q14.2 ; hco:build hco:GRCh38 ;
+              faldo:location/faldo:begin/faldo:position ?begin .
+      }
+    explanation: "Distinguish the band CLASS (identity) from its per-build INSTANCES (coordinates). Query ?inst a <band>, not the band itself."
+
+  - title: "Forgetting the build filter"
+    problem: "Every band has two instances (GRCh37 + GRCh38) with different coordinates. Omitting hco:build returns both, doubling rows and mixing assemblies."
+    wrong_sparql: |
+      PREFIX hco:   <http://identifiers.org/hco/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      # WRONG: two rows (GRCh37 + GRCh38), coordinates mixed
+      SELECT ?begin ?end
+      FROM <http://rdfportal.org/dataset/hco>
+      WHERE {
+        ?inst a hco:13q14.2 ; faldo:location ?loc .
+        ?loc faldo:begin/faldo:position ?begin ; faldo:end/faldo:position ?end .
+      }
+    correct_sparql: |
+      PREFIX hco:   <http://identifiers.org/hco/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      SELECT ?begin ?end
+      FROM <http://rdfportal.org/dataset/hco>
+      WHERE {
+        ?inst a hco:13q14.2 ; hco:build hco:GRCh38 ; faldo:location ?loc .
+        ?loc faldo:begin/faldo:position ?begin ; faldo:end/faldo:position ?end .
+      }
+    explanation: "Always constrain hco:build to exactly one assembly (hco:GRCh37 or hco:GRCh38)."
+
+  - title: "Schema check before text search"
+    problem: "Reaching for CONTAINS/bif:contains on labels to find bands of a stain type, when the stain is a controlled IRI vocabulary."
+    wrong_sparql: |
+      PREFIX hco:   <http://identifiers.org/hco/>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      # WRONG: free-text scan for stain when an IRI vocabulary exists
+      SELECT ?inst
+      FROM <http://rdfportal.org/dataset/hco>
+      WHERE {
+        ?inst hco:bandtype ?bt . ?bt rdfs:label ?l .
+        FILTER(CONTAINS(LCASE(?l), "gpos100"))
+      }
+    correct_sparql: |
+      PREFIX hco:   <http://identifiers.org/hco/>
+      # RIGHT: match the stain type by IRI
+      SELECT ?inst
+      FROM <http://rdfportal.org/dataset/hco>
+      WHERE { ?inst hco:bandtype hco:Gpos100 . }
+    explanation: "Stain types (hco:Gneg..hco:Stalk), builds (hco:GRCh37/38), and chromosomes are all IRIs — match them directly. Read shape_expressions before any text filter."
+
+common_errors:
+  - error: "Zero results when looking up a band's coordinates"
+    causes:
+      - "Queried the cytoband CLASS instead of its per-build INSTANCE"
+      - "Hand-wrote the build-qualified IRI with a plain slash (real IRI has a literal backslash)"
+    solutions:
+      - "Navigate: ?inst a <band> ; hco:build hco:GRCh38 ; faldo:location ?loc ."
+      - "Never construct hco:<band>\\/<build>; reach it via  a ?band  and  faldo:reference"
+
+  - error: "Doubled or inconsistent coordinates"
+    causes:
+      - "No hco:build filter — both GRCh37 and GRCh38 instances returned"
+    solutions:
+      - "Add  ?inst hco:build hco:GRCh38  (or hco:GRCh37)"
+
+  - error: "HTTP 400 'Bad character \\ (0x5c) in SPARQL expression'"
+    causes:
+      - "Put a raw backslash inside an <IRIREF> trying to write a build-qualified IRI"
+    solutions:
+      - "Do not reference these IRIs literally; bind them via navigation and, if needed, filter on STR(?iri)"
