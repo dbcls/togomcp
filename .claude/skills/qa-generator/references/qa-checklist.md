@@ -1,6 +1,6 @@
-# QA self-review checklist (C01–C25)
+# QA self-review checklist (C01–C27)
 
-Run this as Phase 8 on every candidate, in the voice of a strict reviewer trying to *reject* it. A CRITICAL or MAJOR finding must be fixed before the checkpoint — never present a question you know trips one. Output a verdict: `PASS` | `MINOR` | `MAJOR`, with the triggered codes. (Canonical wording: `benchmark/togomcp_qa_prompt.md`.)
+Run this as Phase 8 on every candidate, in the voice of a strict reviewer trying to *reject* it. A CRITICAL or MAJOR finding must be fixed before the checkpoint — never present a question you know trips one. Output a verdict: `PASS` | `MINOR` | `MAJOR`, with the triggered codes. This file is the canonical wording for the checks.
 
 ## 🔴 CRITICAL — fix before presenting
 
@@ -12,6 +12,7 @@ Run this as Phase 8 on every candidate, in the voice of a strict reviewer trying
 - **C06 Reverse engineering** — Question scope ("SLE-associated genes") broader than what was actually queried (one of several).
 - **C22 Literature-recoverable** — Could PubMed + abstracts fully answer it? Then `rdf_necessity` must be ≥2; flag if 0–1.
 - **C23 Biological insight = 0/1** — Mere inventory of database contents with no mechanistic/functional/evolutionary insight.
+- **C27 Cross-graph inflation** — If the answering endpoint co-hosts >1 database (`get_sparql_endpoints()`), the recorded count / result_count / GROUP BY was verified equal under (a) endpoint-default and (b) target-graph-pinned execution, OR it uses `COUNT(DISTINCT ?entity)` with a Phase-5 provenance probe recorded, and the stored query pins the target graph(s). A bare `COUNT` / `result_count` from a union endpoint with no scope check is an automatic MAJOR — CRITICAL when the type is `list`/`factoid`/`choice` (the number IS the answer). Absence of a MIE warning does not waive this check. (Hard Rule 4; Phase 5 provenance probe.)
 
 ## 🟠 MAJOR — fix before presenting
 

@@ -15,7 +15,6 @@ benchmark/
 ├── README.md                     # This file
 ├── QA_CREATION_GUIDE.md          # Protocol for creating benchmark questions (v5.5.0)
 ├── QUESTION_FORMAT.md            # YAML format specification for question files
-├── togomcp_qa_prompt.md          # QA review prompt + review status tracker
 ├── keywords.tsv                  # Keyword pool used for question inspiration
 ├── questions/
 │   ├── coverage_tracker.yaml     # Tracks question type and database coverage
@@ -103,7 +102,7 @@ Each question is stored as a YAML file in `questions/` following the format in `
 
 ### Step 2 — QA Review
 
-After creation, every question was reviewed against the checklist in `togomcp_qa_prompt.md`. Questions were corrected iteratively until all 50 passed (status `P` in the progress tracker at the bottom of that file). The 25 error categories checked include: coverage gaps, missing arithmetic verification, circular logic, vocabulary sampling, and format errors.
+After creation, every question is reviewed against the checklist in `.claude/skills/qa-generator/references/qa-checklist.md` (C01–C27), and corrected iteratively until it passes — a question only enters `questions/` once it has cleared that review. The error categories checked include: coverage gaps, missing arithmetic verification, circular logic, vocabulary sampling, cross-graph count inflation, and format errors.
 
 ### Step 3 — Answer Collection
 
@@ -188,7 +187,6 @@ See `scripts/CONFIG_FORMAT.md` for the full specification and YAML formatting gu
 |------|---------|
 | `QA_CREATION_GUIDE.md` | Detailed protocol (v5.5.0) for creating benchmark questions, including coverage gap detection, arithmetic verification, and type-first workflow |
 | `QUESTION_FORMAT.md` | YAML schema for question files, including field types, constraints, and complete examples |
-| `togomcp_qa_prompt.md` | QA review prompt (25 error categories) and per-question review status tracker |
 | `questions/coverage_tracker.yaml` | Running tally of question type and database usage during creation |
 | `scripts/automated_test_runner.py` | Answer collection script using `claude-agent-sdk` |
 | `scripts/run_all_conditions.sh` | Sequential orchestrator that runs all four conditions for a given date and skips existing outputs |
