@@ -104,6 +104,11 @@ While running predicate surveys, note any predicate whose COUNT distribution is 
 - COUNT is greater than the class instance count for a predicate that looks singular — document the multi-valued behaviour.
 - Two predicates return overlapping results for what appears to be the same concept — document which form is the correct join key.
 
+Caveat: this predicate survey is GRAPH-scoped, so it CANNOT see cross-graph re-declaration —
+a predicate duplicated in a SIBLING dataset's graph reads as COUNT = 1 here and looks
+perfectly singular. Never conclude "singular, therefore safe" from a scoped COUNT on a
+co-hosted endpoint. That trap is found only by the 2g union-inflation probe.
+
 Write these candidates down immediately. `critical_warnings` is assembled in Phase 4 from this list — not reconstructed from memory.
 
 **Check object polymorphism for every linking predicate.** For each predicate whose object is an IRI (not a literal or bnode), GROUP BY the object's type or namespace. A predicate whose object spans **more than one class/namespace is a denormalized, polymorphic link** — and that is simultaneously a design signal and a silent-failure trap, because any downstream query that assumes a single object type will quietly drop the other kinds.
@@ -218,6 +223,41 @@ Real case (Reactome): the obvious query `?reaction (bp:left|bp:right) ?protein` 
 
 Distinguish design from accident as you go: some divergences are principled modeling (Reactome EntitySets express "any family member fills this role"); others are export artifacts or curation drift (a predicate sometimes attached directly, sometimes via an intermediate; `UniProt` vs `UniProt Isoform` db split; a misspelled predicate). For the MIE it does not matter which it is — **document the observable behavior and its operational consequence either way.** Understanding the *why* improves your ability to predict sibling traps (if `EntitySet` exists, look for `CandidateSet`/`DefinedSet`); the warning itself records the *what*.
 
+#### 2g. Cross-graph redeclaration / union-inflation probe — co-hosted endpoints only
+
+Steps 2a–2f are deliberately GRAPH-scoped, which is exactly why they are BLIND to a whole
+class of downstream trap. On an endpoint that co-hosts >1 database (get_sparql_endpoints(),
+already called in Phase 1), a sibling dataset can re-declare the SAME predicate on the SAME
+shared IRI in its own graph. A downstream query with database=<db> defaults to the UNION of
+all graphs, so an unscoped triple pattern matches once per graph and inflates rows/COUNTs —
+silently. A scoped Phase-2b survey shows the predicate as singular (COUNT = 1 in your graph)
+and never flags it, so this probe is the ONLY place the trap is visible.
+
+Run 2g ONLY when get_sparql_endpoints() shows the endpoint hosts >1 database. Probe two kinds
+of node, reusing entities already found in 2c/2d:
+  (a) a representative entity of THIS database — catches a sibling RE-TYPING it (e.g. OMA
+      asserting `<uniprot-protein> a up:Protein` on SIB), which double-counts a bare COUNT;
+  (b) each shared reference / hub IRI it points to — taxa, ChEBI, GO, MeSH … the join keys —
+      taken from the 2c DESCRIBE object values.
+
+  SELECT ?g ?p (COUNT(*) AS ?n) WHERE {
+    VALUES ?node { <representative-entity> <hub-iri-1> <hub-iri-2> }
+    GRAPH ?g { ?node ?p ?o . }
+  } GROUP BY ?g ?p ORDER BY ?p ?g
+
+Read the result against THIS database's own graphs (schema_info.graphs from 2a). For any
+predicate appearing in a graph OUTSIDE that list, the union multiplier for that predicate =
+the number of graphs it appears in. Joining k re-declared predicates multiplies as the
+PRODUCT (scientificName x3 × rank x3 = x9 rows). Record, per re-declared predicate: the
+sibling graph(s), the multiplier, and whether it is a reference-node LABEL or a RE-TYPING of
+this DB's own entity. This list is the source for the `co_hosted_graphs` field and a
+`critical_warnings` entry in Phase 4 — write it down now, do not reconstruct from memory.
+
+Single-database endpoints (get_sparql_endpoints() shows exactly one DB) skip 2g. The weaker
+internal-split case still applies everywhere — one dataset spread over several of its OWN
+graphs (e.g. UniProt's citationmapping graph) does not cross-inflate, but keep entity counts
+on COUNT(DISTINCT ?entity) regardless.
+
 ### Phase 3 — Design the query set
 
 You are going to write **exactly 7 SPARQL examples**: 2 basic, 3 intermediate, 2 advanced. The distribution across strategies should look like:
@@ -236,7 +276,15 @@ Use `references/template.yaml` as your scaffold. Copy it to the target path, the
 
 1. `schema_info`
    - **After filling in `schema_info.categories`, call `list_categories()` and verify each token you wrote is an exact match — same case, same underscores — against the returned list. Do not proceed to the next section if any token is off-spec; fix it first.** An off-spec token silently excludes the database from `find_databases(category=…)` results.
+   - If 2g found cross-graph re-declaration, populate `co_hosted_graphs` (the field already
+     exists in the schema): one entry per sibling graph, naming the re-declared predicate(s),
+     the multiplier, and the trap kind (reference-label inflation vs. entity re-typing).
 2. `critical_warnings` (use `[]` only if there are genuinely none — most real databases have at least one silent-failure trap)
+   - If 2g fired, add a UNION-INFLATION warning: the per-predicate multipliers; that joining
+     several re-declared predicates multiplies as the PRODUCT; that `a <OwnEntityClass>` may be
+     re-typed by a sibling graph so a bare COUNT over it double-counts; and the SAFE PATTERN —
+     pin this DB's own graph(s) with GRAPH/FROM (or use COUNT(DISTINCT ?entity)). Note that
+     SELECT DISTINCT only MASKS the symptom and can collapse genuine multi-valued predicates.
 3. `shape_expressions`
 4. `sample_rdf_entries` — exactly 3, shared prefix block
 5. `sparql_query_examples` — exactly 7, distribution 2/3/2
@@ -245,6 +293,10 @@ Use `references/template.yaml` as your scaffold. Copy it to the target path, the
 8. `architectural_notes`
 9. `data_statistics`
 10. `anti_patterns` — 3–4, must include "schema check before text search"
+    - If 2g found union inflation, add it as a dedicated anti-pattern: wrong = an unscoped join
+      touching a re-declared predicate on this co-hosted endpoint (inflated rows/COUNT); correct
+      = the graph-pinned form. references/anti-patterns.md already sanctions a 5th slot for a
+      discovered database-specific trap.
 11. `common_errors` — 2–3
 
 **Before finalising `shape_expressions`:**
@@ -368,6 +420,15 @@ SELECT ?s WHERE {
 
 If the query returns no rows despite the class being known to exist, the prefix base URI is wrong. Standard W3C prefixes (`rdf:`, `rdfs:`, `owl:`, `xsd:`) do not need checking. Database-specific and ontology-specific prefixes (e.g. a Unimod prefix, a PSI-MS prefix, an internal ontology prefix) must all be confirmed.
 
+**5i. Validate cross-graph inflation warnings (co-hosted endpoints only).** If Phase 2g
+recorded re-declaration, confirm each documented multiplier by re-running the 2g probe, and
+confirm the SAFE PATTERN collapses it — the graph-pinned form must return the non-inflated
+figure that the union form inflates. Then re-run every `sparql_query_examples` entry that is
+NOT graph-scoped and confirm it does not inflate on this union endpoint; if one does, pin the
+graph in the stored query. A `co_hosted_graphs` entry whose multiplier no longer reproduces
+against the current snapshot is stale — fix or remove it. Absence of a probe on a co-hosted
+endpoint is itself a failure: 2g is mandatory whenever get_sparql_endpoints() shows >1 DB.
+
 ### Phase 6 — Final declaration
 
 Only after Phases 1–5 are complete, report to the user:
@@ -387,6 +448,8 @@ Only after Phases 1–5 are complete, report to the user:
   - prefix declarations verified: all non-standard prefixes confirmed with SELECT
   - data_statistics cross-checked: total_entities and coverage % arithmetically consistent
   - anti_patterns.correct_sparql tested: all correct_sparql blocks executed successfully
+  - cross-graph inflation checked: co-hosted endpoint probed (2g), multipliers + safe pattern
+    validated and recorded in co_hosted_graphs/critical_warnings — or "single-DB endpoint, N/A"
   - Lines: [count]
 ```
 
@@ -406,6 +469,8 @@ A complete MIE file satisfies:
 - Cross-DB: 1–2 examples if shared endpoint, otherwise `examples: []` + explanatory notes
 - `data_statistics` contains only verified counts/coverage — no `verification_queries`, `cardinality`, or `performance_characteristics` subfields
 - Valid YAML
+- On a co-hosted endpoint, cross-graph re-declaration probed (2g); any union-inflation trap
+  recorded in `co_hosted_graphs` + `critical_warnings` with the graph-pinned safe pattern
 - Anti-patterns: 3–4, including "schema check before text search"
 - Common errors: 2–3
 

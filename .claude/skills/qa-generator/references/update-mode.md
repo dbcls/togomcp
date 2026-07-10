@@ -6,8 +6,9 @@ at `NN = highest + 1`. Update mode operates on a question that **already exists*
 new ontology IRIs appear, `bif:contains` hacks become avoidable, and newly onboarded databases make
 sharper questions possible.
 
-Everything from the create protocol still applies: the **Three Hard Rules** (nothing invented;
-scope = query scope; every GROUP BY gets an arithmetic check), the **C01–C26** checklist, and the
+Everything from the create protocol still applies: the **Four Hard Rules** (nothing invented;
+scope = query scope; every GROUP BY gets an arithmetic check; union endpoints inflate silently —
+graph-scope counts), the **C01–C27** checklist, and the
 **necessity gates**. Update mode changes only *what* you write (an existing file) and *how* you keep
 the tracker honest (delta, not append). Like create mode: **one question at a time, present at the
 checkpoint, write only on approval. Never batch-write.**
@@ -57,7 +58,7 @@ materially**. A count that merely nudged (e.g. 41 → 43) usually leaves the gat
 qualitative flip (e.g. an existence yes→no, or a list gaining/losing members that change the point)
 needs the PubMed gate re-run to keep `rdf_necessity` honest.
 
-**R7. Self-review + validate.** Walk C01–C26 on the edited file (C03 especially if counts moved;
+**R7. Self-review + validate.** Walk C01–C27 on the edited file (C03/C27 especially if counts moved;
 C08/C15 if the answer's shape shifted). Run `python benchmark/scripts/verify_questions.py
 /path/to/question_0NN.yaml` (single-file) and fix every ❌.
 
@@ -65,8 +66,7 @@ C08/C15 if the answer's shape shifted). Run `python benchmark/scripts/verify_que
 the changed fields, the re-run evidence, and the C-verdict. Wait for approval.
 
 **R9. Write back + reconcile.** Overwrite the same `question_0NN.yaml`. **Tracker is untouched** —
-type, databases, and keyword did not change. The only possible tracker-adjacent edit is the
-`togomcp_qa_prompt.md` verdict cell, and only if the C-review verdict changed (e.g. `P` → `W`). Run
+type, databases, and keyword did not change. Run
 the **full** `verify_questions.py` to confirm 0 errors (a refreshed answer can shift the
 structural-near-duplicate picture only if you rewrote a query — re-check C26 if so).
 
@@ -110,8 +110,6 @@ coverage. State the justification.
   question lists, and percentages — the new question's DB-count may differ from the old one's.
 - `next_priorities`: append a replacement note, following the existing convention, e.g.
   `- 'Q0NN replaced (YYYY-MM-DD): <old topic/dbs> → <new topic/dbs>; <one-line why>'`.
-- `togomcp_qa_prompt.md`: set the `0NN` row's verdict from the new C-review; the summary counts are
-  unchanged (same number of questions).
 
 **X12. Full validation.** Run `python benchmark/scripts/verify_questions.py` (no args), drive to
 **0 errors**, then re-read the Structural Near-Duplicate Guard.
@@ -132,7 +130,6 @@ of truth, but know its blind spots:
 | `question_types[*].questions` lists | no | — | maintain by hand |
 | `keywords_used` | no (only duplicate-keyword collisions, via the structural guard) | — | maintain by hand |
 | `multi_database_metrics` (2+/3+, %) | no | — | recompute by hand |
-| `togomcp_qa_prompt.md` row/summary | no | — | maintain by hand |
 
 Workflow: make the edits → run full `verify_questions.py` → fix every ❌ (and the ⚠ db-count lines)
 → hand-reconcile the "no" rows. The validator will not tell you the manual fields are wrong, so the

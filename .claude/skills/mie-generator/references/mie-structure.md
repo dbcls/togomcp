@@ -13,7 +13,7 @@ Descriptive header. Required fields:
 - `endpoint`: SPARQL endpoint URL
 - `base_uri`: root URI namespace
 - `graphs`: list of named graphs in the endpoint
-- `co_hosted_graphs` (OPTIONAL): free-text strings, each naming another graph that shares this endpoint and the trap it poses (IRI re-typing, `COUNT(*)` inflation, empty-stub graphs). Add only for shared endpoints where co-tenants can corrupt results.
+- `co_hosted_graphs` (OPTIONAL): free-text strings, each naming another graph that shares this endpoint and the trap it poses (IRI re-typing, `COUNT(*)` inflation, empty-stub graphs). Add only for shared endpoints where co-tenants can corrupt results. Populate this from the Phase 2g union-inflation probe — it is not guessed. Each entry names the sibling graph, the re-declared predicate(s), the multiplier, and the trap kind.
 - `kw_search_tools`: list of available keyword-search tool names, or `[]` if none
 - `version`: `mie_version`, `mie_created` (today's date), `data_version`, `update_frequency`. `mie_version` is this database's OWN document revision (bump per edit) — **not** the spec version.
 - `license` (OPTIONAL): `data_license` string; include when the source states a data-use license
@@ -29,6 +29,11 @@ Categories to look for:
 - **IRI namespace traps.** Does the database use OBO IRIs where you'd expect internal ones? Does it use multiple parallel namespaces for the same concept?
 - **Typos required verbatim.** Some databases have a misspelled predicate (`referecens` instead of `references`) that is preserved for backwards compatibility. Using the correct spelling returns zero rows. Document these.
 - **Graph-specific patterns.** Some predicates only resolve in specific named graphs.
+- **Cross-graph union inflation (co-hosted endpoints).** A predicate re-declared on a shared
+  IRI by a sibling dataset's graph, or this DB's own entities re-typed by a sibling. An
+  unscoped downstream query inflates rows/COUNT by the number of graphs (product across
+  predicates). Found by Phase 2g, never by a scoped survey. Document the multiplier and the
+  graph-pinned safe pattern; mirror the sibling-graph list into schema_info.co_hosted_graphs.
 
 Use `[]` only if you have genuinely confirmed there are no traps. In practice most real databases have at least one.
 
@@ -191,7 +196,7 @@ Each entry has:
 - `correct_sparql`: the fixed version
 - `explanation`: why the wrong version is wrong
 
-The other 2–3 slots should cover database-specific traps discovered during schema exploration.
+The other 2–3 slots should cover database-specific traps discovered during schema exploration. On a co-hosted endpoint, if Phase 2g found union inflation, add a 5th anti-pattern for it (wrong = unscoped join on a re-declared predicate; correct = graph-pinned).
 
 ## 11. `common_errors`
 

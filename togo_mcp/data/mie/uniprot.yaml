@@ -49,18 +49,21 @@ schema_info:
   # cross-database joins (see cross_database_queries). Always scope with GRAPH/FROM.
   co_hosted_graphs:
     - "http://rdfportal.org/dataset/oma  — OMA orthology (584M triples). Re-types 337,813 reviewed
-       UniProt accessions as up:Protein with the SAME IRI -> COUNT(*) inflation trap; use COUNT(DISTINCT)."
+       UniProt accessions as up:Protein with the SAME IRI -> COUNT(*) inflation trap (use COUNT(DISTINCT));
+       ALSO adds OMA-only dcterms:identifier on proteins and re-declares taxon nodes with its own
+       scientificName/rank/mnemonic copies -> taxon-metadata multiplication trap (see critical_warnings)."
     - "http://id.nlm.nih.gov/mesh  — MeSH (18.3M triples); join target for up:Disease rdfs:seeAlso."
     - "http://bgee.org  — Bgee expression (6.76B triples); join via the purl.uniprot.org/bgee/ENSG...
-       rdfs:seeAlso xref + IRI transform (see cross_database_queries)."
+       rdfs:seeAlso xref + IRI transform (see cross_database_queries). ALSO re-declares taxon nodes with
+       its own scientificName/rank/commonName copies -> taxon-metadata multiplication (critical_warnings)."
     - "http://purl.jp/bio/11/goa  — EMPTY STUB (151 triples), NOT real GOA data. Do not build on it."
     - "~30 shared ontology graphs (rdfportal.org/ontology/{cl,mondo,hp,uberon,efo,pro,so,go,...})."
   kw_search_tools:
     - search_uniprot_entity
   version:
-    mie_version: "2.2"
+    mie_version: "2.3"
     mie_created: "2026-04-29"
-    mie_revised: "2026-07-06"
+    mie_revised: "2026-07-10"
     data_version: "Release 2024_06"
     update_frequency: "Monthly"
   access:
@@ -78,6 +81,27 @@ critical_warnings: |
     reviewed entries whose up:reviewed lives in the `obsolete` graph (589,059 = 574,627 current +
     14,432 obsolete). FROM <uniprot> is correct only when you specifically want CURRENT (non-obsolete)
     entries. Nothing signals either error — this is worse than an empty result.
+  - SIB UNION TAXON-METADATA MULTIPLICATION (silent ROW inflation on the everyday protein->organism
+    join): the co-hosted OMA and Bgee graphs RE-DECLARE the SAME taxon nodes
+    (http://purl.uniprot.org/taxonomy/NNNN) with their own copies of UniProt's taxon predicates. Over
+    the default union each taxon predicate is matched in every graph that re-declares it (verified for
+    tax 9606, 2026-07-10): up:scientificName x3 (taxonomy+oma+bgee), up:rank x3 (taxonomy+oma+bgee),
+    up:commonName x2 (taxonomy+bgee), up:mnemonic x2 (taxonomy+oma), rdf:type x4 (oma asserts 2).
+    Joining two of these MULTIPLIES as the PRODUCT: `?tax up:scientificName ?n ; up:rank ?r` returns
+    9 rows (3x3) for ONE taxon; the everyday `?protein up:organism ?tax . ?tax up:scientificName ?n`
+    returns 3 rows PER PROTEIN, silently tripling every count/aggregate. WORSE, the copies are not even
+    identical: up:rank is up:Taxonomic_Rank_Species in the taxonomy graph but up:Species in oma/bgee, so
+    COUNT(DISTINCT ?r)=2 and DISTINCT does NOT cleanly mask it. FIX = PIN THE GRAPH, not DISTINCT:
+      GRAPH <http://sparql.uniprot.org/taxonomy> { ?tax up:scientificName ?n ; up:rank ?r . }
+    (or scope single-DB queries with FROM <http://sparql.uniprot.org/uniprot>
+    FROM <http://sparql.uniprot.org/taxonomy>). SELECT DISTINCT / COUNT(DISTINCT) only masks the symptom
+    and can collapse genuinely multi-valued predicates (e.g. multiple skos:altLabel), prefer pinning.
+  - dcterms:identifier ON A PROTEIN IS OMA-SUPPLIED, NOT NATIVE UNIPROT: `?p a up:Protein ;
+    dcterms:identifier ?acc` exists ONLY in the co-hosted OMA graph (17,544,694 triples; ZERO in the
+    uniprot graph, verified 2026-07-10). Over the default union it resolves for OMA-covered proteins and
+    silently returns NOTHING for proteins OMA does not cover, so do not treat it as the accession source.
+    The native accession is the IRI localname (STRAFTER(STR(?p),"uniprot/")); up:mnemonic gives the
+    mnemonic (e.g. "P53_HUMAN"). To pull the OMA accession deliberately, pin GRAPH <.../dataset/oma>.
   - EMPTY STUB GRAPH: http://purl.jp/bio/11/goa contains only 151 triples (a void/placeholder), NOT
     real GOA annotation data despite its name. Do not query it expecting GO annotations — GO terms
     live on up:classifiedWith (OBO IRIs) in the uniprot graph.
@@ -113,7 +137,9 @@ shape_expressions: |
   # Always filter by up:reviewed 1 for performance and data quality.
   <ProteinShape> {
     a [ up:Protein ] ;
-    dcterms:identifier xsd:string ;          # e.g. "P04637"
+    # NOTE: the accession (e.g. "P04637") is the IRI LOCALNAME, not a triple, in the uniprot graph.
+    # dcterms:identifier on a protein is OMA-SUPPLIED (co-hosted graph only), NOT native UniProt --
+    # see critical_warnings. Use STRAFTER(STR(?p),"uniprot/") or up:mnemonic instead.
     up:mnemonic xsd:string ;                 # e.g. "P53_HUMAN" — ORGCODE suffix is organism
     up:reviewed xsd:integer ;               # INTEGER: 1=Swiss-Prot curated, 0=TrEMBL automated
     up:organism @<TaxonShape> ;             # NCBI Taxonomy IRI
@@ -211,9 +237,19 @@ shape_expressions: |
 
   # Taxonomy — lineage pre-computed as flat single-hop rdfs:subClassOf to ALL ancestors
   # NEVER use rdfs:subClassOf* — causes timeouts; single-hop covers full lineage
+  # SIB-UNION TRAP: co-hosted OMA/Bgee re-declare these same taxon nodes with their OWN copies of
+  # scientificName (x3), rank (x3), commonName (x2), mnemonic (x2) — joining any two multiplies rows
+  # as the PRODUCT. ALWAYS pin GRAPH <http://sparql.uniprot.org/taxonomy> for taxon metadata. See
+  # critical_warnings. Cardinalities below are the TRUE per-taxon values IN THE taxonomy graph.
+  # Class counts (taxonomy graph, 2026-07-10): 3,116,860 up:Taxon nodes.
   <TaxonShape> {
     a [ up:Taxon ] ;
-    up:scientificName xsd:string ;
+    up:scientificName xsd:string ? ;  # 86.6% of all Taxon (~100% of species referenced by proteins);
+                                      # single-valued per taxon in the taxonomy graph (x3 on the union)
+    up:rank IRI ? ;                   # 78.4%. taxonomy graph: up:Taxonomic_Rank_Species etc.; OMA/Bgee
+                                      # copies use the DIFFERENT up:Species vocab -> DISTINCT=2 on union
+    up:commonName xsd:string ? ;      # 1.4% only (x2 on the union: taxonomy+bgee)
+    up:mnemonic xsd:string ? ;        # 0.9% only (x2 on the union: taxonomy+oma)
     rdfs:subClassOf IRI *   # ALL ancestors stored as direct single-hop links
   }
 
@@ -229,8 +265,7 @@ sample_rdf_entries:
       description: Swiss-Prot TP53 showing gene encoding, recommended name, and PDB cross-reference.
       rdf: |
         uniprot:P04637 a up:Protein ;
-          dcterms:identifier "P04637" ;
-          up:mnemonic "P53_HUMAN" ;
+          up:mnemonic "P53_HUMAN" ;    # accession "P04637" is the IRI localname, not a triple
           up:reviewed 1 ;
           up:organism <http://purl.uniprot.org/taxonomy/9606> ;
           up:recommendedName [ up:fullName "Cellular tumor antigen p53" ] ;
@@ -706,6 +741,11 @@ architectural_notes:
     - "COUNT protein queries with COUNT(DISTINCT ?p) — the co-hosted OMA graph re-types UniProt IRIs as
        up:Protein (adds 337,813 rows), so unscoped COUNT(*) inflates to 926,872 vs true 589,059. Do NOT
        use FROM <uniprot> as the fix: it drops the 14,432 reviewed entries in the obsolete graph (574,627)"
+    - "TAXON METADATA: pin GRAPH <http://sparql.uniprot.org/taxonomy> for up:scientificName/rank/
+       commonName/mnemonic. OMA+Bgee re-declare taxon nodes, so on the default union scientificName/rank
+       are copied x3 and joins multiply as the PRODUCT (3 rows per protein on a protein->organism->
+       scientificName join). DISTINCT masks scientificName but NOT up:rank (2 distinct rank IRIs). See
+       the 'Taxon Metadata Multiplied' anti_pattern."
     - "Taxonomy lineage is pre-computed flat subClassOf — single-hop, never transitive (*)"
     - "For bif:contains: always split property paths before the text node (Virtuoso requirement)"
     - "Cross-database: apply restrictive filters within each GRAPH block before the join"
@@ -740,12 +780,27 @@ data_statistics:
   reviewed_proteins: 589059          # via COUNT(DISTINCT ?p) = 574,627 current (uniprot graph) + 14,432
                                      # obsolete graph. Unscoped COUNT(*) gives 926,872 (OMA re-typing); FROM
                                      # <uniprot> gives only 574,627 (drops obsolete). See critical_warnings.
-  human_reviewed_proteins: 20431
+  human_reviewed_proteins: 20431     # COUNT(DISTINCT ?p), re-verified 2026-07-10
   disease_annotated_reviewed: 5835
   reviewed_with_gene_name: 549969
-  verified_date: "2026-07-06"
+  verified_date: "2026-07-10"
   verification_method: "GRAPH/FROM-scoped or DISTINCT COUNT queries on reviewed proteins; all 7 SPARQL
-    examples and 4 cross-DB examples live-tested on the sib endpoint"
+    examples and 4 cross-DB examples live-tested on the sib endpoint. 2026-07-10: reviewed (589,059) and
+    human-reviewed (20,431) re-verified; taxon-metadata multiplication trap characterized (below)."
+
+  taxonomy_graph:                    # verified 2026-07-10, scoped to http://sparql.uniprot.org/taxonomy
+    taxon_nodes: 3116860
+    taxa_with_scientific_name: 2698952   # 86.6% (the ~13% without are deleted/merged nodes)
+    taxa_with_rank: 2444222              # 78.4%
+    taxa_with_common_name: 44958         # 1.4%
+    taxa_with_mnemonic: 27863            # 0.9%
+    sib_union_copies:                    # per-predicate copies of a taxon node across co-hosted graphs
+      scientificName: "x3 (taxonomy + oma + bgee) — values identical"
+      rank: "x3 (taxonomy + oma + bgee) — DIFFERENT vocab: up:Taxonomic_Rank_Species vs up:Species"
+      commonName: "x2 (taxonomy + bgee)"
+      mnemonic: "x2 (taxonomy + oma)"
+      rdf_type: "x4 across 3 graphs (oma asserts 2)"
+    protein_dcterms_identifier: "17,544,694 triples, ALL in the oma graph; 0 in the uniprot graph"
   version_label_note: "data_version 'Release 2024_06' could not be re-derived from the endpoint (no
     version-metadata predicate found); core counts reproduce exactly, consistent with no major churn"
 
@@ -816,6 +871,39 @@ anti_patterns:
       ?p) is the only robust fix for total reviewed proteins; FROM <uniprot> is correct only when you
       specifically want CURRENT (non-obsolete) entries. Row-level SELECT DISTINCT queries are unaffected
       but fragile — a rewrite to COUNT(*) reintroduces the inflation.
+
+  - title: Taxon Metadata Multiplied by Co-hosted OMA/Bgee on the Default Union
+    problem: |
+      Joining a protein to its organism's scientific name (or rank/common name) over the default union.
+      OMA and Bgee re-declare the SAME taxon nodes with their own copies of the taxon predicates, so
+      each copied predicate matches once per graph and JOINS multiply as the PRODUCT — a wrong POSITIVE
+      row count, no error. Also note: the up:rank copies use DIFFERENT vocab (up:Species in OMA/Bgee vs
+      up:Taxonomic_Rank_Species in the taxonomy graph), so COUNT(DISTINCT) does not cleanly mask it.
+    wrong_sparql: |
+      # WRONG: default union — scientificName is copied x3 (taxonomy+oma+bgee), so this returns 3 rows
+      # for ONE protein, and tripling propagates into every COUNT/GROUP BY over the result.
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+      SELECT ?sci WHERE {
+        uniprot:P04637 up:organism ?tax .
+        ?tax up:scientificName ?sci .
+      }
+      # -> 3 identical rows (inflated)
+    correct_sparql: |
+      # CORRECT: pin the taxonomy graph for taxon metadata (NOT DISTINCT) — 1 row.
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+      SELECT ?sci
+      WHERE {
+        GRAPH <http://sparql.uniprot.org/uniprot>   { uniprot:P04637 up:organism ?tax . }
+        GRAPH <http://sparql.uniprot.org/taxonomy>  { ?tax up:scientificName ?sci . }
+      }
+      # -> 1 row
+    explanation: |
+      Pin GRAPH <http://sparql.uniprot.org/taxonomy> (or FROM <uniprot> FROM <taxonomy> for single-DB
+      queries) whenever a query touches taxon predicates. SELECT DISTINCT masks the scientificName case
+      but breaks on up:rank (2 distinct rank IRIs across graphs) and can collapse genuinely multi-valued
+      predicates. Joining two copied predicates multiplies as the product (scientificName x rank = 9).
 
   - title: Querying Without Reviewed Filter
     problem: Omitting up:reviewed 1 queries ~244M TrEMBL entries; COUNT queries time out.
