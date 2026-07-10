@@ -89,20 +89,22 @@ async def get_sparql_endpoints() -> dict[str, Any]:
     name="run_sparql",
     description=(
         "Run a SPARQL query on an RDF database. "
-        f"Specify database (valid values: {', '.join(SPARQL_ENDPOINT_KEYS)}) "
-        "for single-database queries, or endpoint_name (valid values: "
-        f"{', '.join(ENDPOINT_NAMES)}) / endpoint_url for cross-database "
-        "queries on shared endpoints. Invalid database/endpoint_name values "
-        "fail immediately with a deterministic error — do not retry."
+        f"ALWAYS pass database (required; valid values: {', '.join(SPARQL_ENDPOINT_KEYS)}) "
+        "for single-database queries. For cross-database queries on a shared endpoint, "
+        "still pass a member database AND add endpoint_name (valid values: "
+        f"{', '.join(ENDPOINT_NAMES)}) or endpoint_url, which take priority over database. "
+        "Invalid database/endpoint_name values fail immediately with a deterministic "
+        "error — do not retry."
     ),
 )
 async def run_sparql(
+    *,
     sparql_query: Annotated[
         str, Field(description="The SPARQL query to execute. Alias: `query`.", default="")
     ] = "",
     database: Annotated[
-        str, Field(description=DATABASE_DESCRIPTION, default="")
-    ] = "",
+        str, Field(description=DATABASE_DESCRIPTION)
+    ],
     endpoint_name: Annotated[
         str,
         Field(
@@ -129,7 +131,7 @@ async def run_sparql(
 
     Args:
         sparql_query (str): The SPARQL query to execute. Accepts alias `query`.
-        database (str, optional): Database name for single-database queries.
+        database (str): Database name for single-database queries (required).
             Accepts aliases `dbname` and `db`.
         endpoint_name (str, optional): Endpoint name for cross-database queries (e.g., 'ebi' for ChEMBL+ChEBI).
         endpoint_url (str, optional): Direct SPARQL endpoint URL.
@@ -138,7 +140,8 @@ async def run_sparql(
         query (str, optional): Alias for `sparql_query`.
 
     Note:
-        Provide at least one of: database (or dbname/db), endpoint_name, or endpoint_url.
+        `database` is required. For cross-database queries on a shared endpoint,
+        pass a member database AND add endpoint_name (or endpoint_url).
         Priority: endpoint_url > endpoint_name > database.
 
     Returns:
@@ -159,28 +162,29 @@ async def run_sparql(
 @mcp.tool(
     name="get_graph_list",
     description=(
-        "Get a list of named graphs on a SPARQL endpoint. Virtuoso/OpenLink internal "
-        "graphs are filtered out. If `database` is given, graph URIs containing that "
-        "substring (case-insensitive) are ranked first — useful when the endpoint hosts "
-        "multiple databases (e.g. SIB hosts UniProt + Rhea + Bgee + OMA). For a database "
-        "not yet in the registry, pass `endpoint_url` (or `endpoint_name` if its parent "
-        "endpoint is registered) to bypass database validation; `database` can still be "
-        "supplied alongside as a ranking hint."
+        "Get a list of named graphs on a SPARQL endpoint. ALWAYS pass database "
+        "(required). Virtuoso/OpenLink internal graphs are filtered out. Graph URIs "
+        "containing the database substring (case-insensitive) are ranked first — useful "
+        "when the endpoint hosts multiple databases (e.g. SIB hosts UniProt + Rhea + "
+        "Bgee + OMA). For a database not yet in the registry, pass `endpoint_url` (or "
+        "`endpoint_name` if its parent endpoint is registered) to bypass database "
+        "validation; the required `database` value is then used only as a ranking hint."
     ),
 )
 async def get_graph_list(
+    *,
     database: Annotated[
         str,
         Field(
             description=(
-                "RDF database name (e.g. 'uniprot', 'chembl'). When the name is in the "
-                "registry it resolves the endpoint URL; in any case the value is used as "
-                "a case-insensitive substring to rank matching graph URIs first. Optional "
-                "if `endpoint_url` or `endpoint_name` is provided."
+                "RDF database name (e.g. 'uniprot', 'chembl'). Required. When the name is "
+                "in the registry it resolves the endpoint URL; in any case the value is "
+                "used as a case-insensitive substring to rank matching graph URIs first. "
+                "For an unregistered database, also pass `endpoint_url` or `endpoint_name` "
+                "(which take priority); `database` is then just the ranking hint."
             ),
-            default="",
         ),
-    ] = "",
+    ],
     endpoint_name: Annotated[
         str,
         Field(
@@ -218,14 +222,14 @@ async def get_graph_list(
     Get a list of named graphs on a SPARQL endpoint.
 
     The endpoint URL is resolved with the same priority used by `run_sparql`:
-    `endpoint_url` > `endpoint_name` > `database`. If only `database` is given it must
-    be in the registry; otherwise pass `endpoint_url` (or `endpoint_name`) to bypass
-    that check. `database` is also used (when present, registered or not) as a
+    `endpoint_url` > `endpoint_name` > `database`. `database` is required. If only
+    `database` is given it must be in the registry; otherwise pass `endpoint_url` (or
+    `endpoint_name`) to bypass that check, in which case `database` is used only as a
     case-insensitive substring to rank matching graph URIs first. Virtuoso/OpenLink
     internal graphs are filtered out unless `include_system=True`.
 
     Args:
-        database (str, optional): Database name. Accepts aliases `dbname` and `db`.
+        database (str): Database name (required). Accepts aliases `dbname` and `db`.
             Doubles as a substring ranking hint.
         endpoint_name (str, optional): Short endpoint name (e.g. 'primary', 'sib').
         endpoint_url (str, optional): Direct SPARQL endpoint URL.
