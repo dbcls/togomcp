@@ -1,0 +1,192 @@
+id: question_080
+type: list
+body: "Coenzyme M (2-mercaptoethanesulfonate) is one of the smallest known enzyme cofactors, best known as the terminal methyl-group carrier of methanogenesis. Considering the curated collection of approved biochemical reactions, list every reaction in which free coenzyme M, in its physiological monoanionic form, appears as a direct participant (reactant or product). Give the reactions by their stable reaction identifiers."
+
+inspiration_keyword:
+  keyword_id: KW-0174
+  name: Coenzyme M biosynthesis
+  category: Biological process
+
+togomcp_databases_used:
+  - rhea
+  - chebi
+
+verification_score:
+  biological_insight: 3
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 9 minutes
+  method: |
+    Attempted to obtain the complete set of biochemical reactions involving coenzyme M from the
+    literature:
+    (1) "coenzyme M all enzymatic reactions participant complete list methanogenesis epoxyalkane"
+    (2) "coenzyme M 2-mercaptoethanesulfonate cofactor reactions review biochemistry"
+    and read the review PMID 12524213 (Annu Rev Biochem 2003, "Aliphatic epoxide carboxylation").
+  result: |
+    The first query returned nothing; the second returned two focused reviews. The one read
+    (12524213) describes only the four-enzyme aerobic epoxide-carboxylation pathway that uses
+    coenzyme M as an "atypical cofactor" — confirming CoM participates there, but covering a single
+    pathway. No source enumerates the complete cross-pathway reaction set: the methanogenesis
+    methyl-transfer and heterodisulfide-reductase reactions plus the bacterial epoxyalkane reactions
+    are described in separate literatures, and no review lists them together as a defined reaction
+    collection. Producing the exhaustive list requires querying the curated reaction resource for
+    every approved reaction containing the specific physiological form of coenzyme M — a live
+    database enumeration, not a recallable or published set.
+  conclusion: PASS (cannot answer from literature; requires enumerating a curated reaction database for all approved reactions containing a specific ChEBI compound)
+
+# STRUCTURED VOCABULARY DISCOVERY (OLS4 searchClasses on ChEBI)
+# coenzyme M = CHEBI:17905 (neutral); its physiological conjugate base (major species at pH 7.3) is
+# CHEBI:58319 "coenzyme M(1-)" — the form the reaction database uses. Verified: 0 approved reactions
+# reference the neutral CHEBI:17905, so CHEBI:58319 captures the complete set (no coverage gap).
+
+sparql_queries:
+  - query_number: 1
+    database: rhea
+    description: >-
+      Count the approved reactions in which free coenzyme M participates, matching the physiological
+      monoanion (CHEBI:58319) on the reaction-participant path (reaction -> side -> contains ->
+      compound -> chebi). Returns 19 — the exhaustive count that the list must enumerate (Hard Rule 2).
+    query: |
+      PREFIX rh: <http://rdf.rhea-db.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT (COUNT(DISTINCT ?reaction) AS ?n)
+      WHERE {
+        ?reaction rdfs:subClassOf rh:Reaction ;
+                  rh:status rh:Approved ;
+                  rh:side ?side .
+        ?side rh:contains ?participant .
+        ?participant rh:compound ?compound .
+        ?compound rh:chebi <http://purl.obolibrary.org/obo/CHEBI_58319> .
+      }
+    result_count: 1   # n = 19
+
+  - query_number: 2
+    database: rhea
+    description: >-
+      Enumerate the 19 reactions with their stable Rhea identifier and equation. The set spans three
+      biochemistries: methyl-coenzyme M formation (corrinoid-protein methyltransferases for
+      methylamines/methanol/methanethiol/etc., and the Na+-pumping methyl-tetrahydromethanopterin /
+      -sarcinapterin methyltransferases), the heterodisulfide-reductase reactions (CoM + CoB ->
+      CoM-CoB heterodisulfide, coupled to methanophenazine/ferredoxin/F420/fumarate/H2/formate), and
+      the aerobic bacterial epoxyalkane pathway (epoxypropane + CoM; 2-oxopropyl-CoM carboxylation).
+    query: |
+      PREFIX rh: <http://rdf.rhea-db.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT DISTINCT ?rheaId ?equation
+      WHERE {
+        ?reaction rdfs:subClassOf rh:Reaction ;
+                  rh:status rh:Approved ;
+                  rh:id ?rheaId ;
+                  rh:equation ?equation ;
+                  rh:side ?side .
+        ?side rh:contains ?participant .
+        ?participant rh:compound ?compound .
+        ?compound rh:chebi <http://purl.obolibrary.org/obo/CHEBI_58319> .
+      }
+      ORDER BY ?rheaId
+    result_count: 19
+
+  - query_number: 3
+    database: rhea
+    description: >-
+      Completeness verification (Hard Rule 2 / no coverage gap). Count approved reactions referencing
+      the NEUTRAL coenzyme M form (CHEBI:17905) instead of the anion. Returns 0, confirming that the
+      reaction database uses only the monoanion (CHEBI:58319) and that the 19 reactions of Query 2 are
+      the complete set — no reaction is missed by scoping to the anionic form.
+    query: |
+      PREFIX rh: <http://rdf.rhea-db.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT (COUNT(DISTINCT ?reaction) AS ?nNeutralForm)
+      WHERE {
+        ?reaction rdfs:subClassOf rh:Reaction ;
+                  rh:status rh:Approved ;
+                  rh:side/rh:contains/rh:compound/rh:chebi <http://purl.obolibrary.org/obo/CHEBI_17905> .
+      }
+    result_count: 1   # nNeutralForm = 0 (so 19 via the anion is complete)
+
+  - query_number: 4
+    database: chebi
+    description: >-
+      Confirm the identity of the participant compound. CHEBI:58319 has label "coenzyme M(1-)"; per
+      its ChEBI definition it is the conjugate base of coenzyme M (CHEBI:17905, 2-mercaptoethanesulfonate)
+      and the major species at pH 7.3 — establishing that the reaction-database match is indeed free
+      coenzyme M in its physiological form (this is the compound-identity anchor for the whole query).
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT ?chebi ?label
+      WHERE {
+        VALUES ?chebi { obo:CHEBI_58319 obo:CHEBI_17905 }
+        ?chebi rdfs:label ?label .
+      }
+    result_count: 2   # CHEBI:58319 "coenzyme M(1-)", CHEBI:17905 "coenzyme M"
+
+rdf_triples: |
+  @prefix rh:   <http://rdf.rhea-db.org/> .
+  @prefix obo:  <http://purl.obolibrary.org/obo/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+  @prefix ex:   <http://example.org/coenzyme-m-reactions#> .
+
+  obo:CHEBI_58319 rdfs:label "coenzyme M(1-)" .
+  # Database: chebi | Query: 4 | Comment: The physiological monoanion of coenzyme M (conjugate base of CHEBI:17905, 2-mercaptoethanesulfonate; major species at pH 7.3) — the form matched in every reaction
+
+  ex:analysis ex:approvedReactionsWithFreeCoM "19"^^xsd:integer ; ex:reactionsViaNeutralForm "0"^^xsd:integer .
+  # Database: rhea | Query: 1 | Comment: 19 approved reactions contain free coenzyme M via the anion CHEBI:58319; 0 use the neutral CHEBI:17905, so the 19 are the complete set (Rule 2, no gap)
+
+  rh:32667 ex:equation "methanethiol + coenzyme M = methyl-coenzyme M + hydrogen sulfide + H(+)" .
+  # Database: rhea | Query: 2 | Comment: One of the corrinoid-independent / methylotrophic methyl-CoM-forming reactions — methanethiol methyltransferase
+  rh:45208 ex:equation "methyl-Co(III)-[methanol-specific corrinoid protein] + coenzyme M = Co(I)-[methanol-specific corrinoid protein] + methyl-coenzyme M + H(+)" .
+  # Database: rhea | Query: 2 | Comment: A corrinoid-protein methyltransferase forming methyl-CoM (methanol branch); the methylamine/dimethylamine/trimethylamine/tetramethylammonium/glycine-betaine/methylated-thiol analogues are also in the set
+  rh:53492 ex:equation "5-methyl-5,6,7,8-tetrahydromethanopterin + coenzyme M + 2 Na(+)(in) = 5,6,7,8-tetrahydromethanopterin + methyl-coenzyme M + 2 Na(+)(out)" .
+  # Database: rhea | Query: 2 | Comment: The sodium-pumping methyl-H4MPT:coenzyme M methyltransferase (Mtr) — a central membrane-bound step of hydrogenotrophic methanogenesis
+  rh:18085 ex:equation "methanophenazine + coenzyme B + coenzyme M = dihydromethanophenazine + coenzyme M-coenzyme B heterodisulfide" .
+  # Database: rhea | Query: 2 | Comment: A heterodisulfide-reductase reaction consuming free CoM (with coenzyme B) to form the CoM-CoB heterodisulfide; other electron-donor variants use ferredoxin, F420, fumarate, H2 or formate
+  rh:19421 ex:equation "(R)-2-hydroxypropyl-coenzyme M = (R)-1,2-epoxypropane + coenzyme M" .
+  # Database: rhea | Query: 2 | Comment: The aerobic bacterial epoxyalkane pathway (Xanthobacter/Rhodococcus) — CoM is the nucleophile that opens the epoxide; CoM is NOT confined to methanogenic archaea (the (S)-enantiomer reaction 20904 is also present)
+  rh:16977 ex:equation "coenzyme M + acetoacetate + NADP(+) = 2-oxopropyl-coenzyme M + CO2 + NADPH" .
+  # Database: rhea | Query: 2 | Comment: The NADPH:2-ketopropyl-CoM oxidoreductase/carboxylase step of aerobic epoxide carboxylation — the reaction that regenerates free CoM and fixes CO2
+
+exact_answer:
+  - "RHEA:16977"
+  - "RHEA:18085"
+  - "RHEA:18773"
+  - "RHEA:19421"
+  - "RHEA:20904"
+  - "RHEA:32667"
+  - "RHEA:40235"
+  - "RHEA:45208"
+  - "RHEA:45216"
+  - "RHEA:45220"
+  - "RHEA:47192"
+  - "RHEA:53492"
+  - "RHEA:55160"
+  - "RHEA:55744"
+  - "RHEA:55748"
+  - "RHEA:55752"
+  - "RHEA:60576"
+  - "RHEA:66004"
+  - "RHEA:79363"
+
+ideal_answer: |
+  Nineteen approved reactions contain free coenzyme M (matched as its physiological monoanion, ChEBI:58319 "coenzyme M(1-)") as a direct participant; no reaction uses the neutral form, so this set of 19 is complete. They fall into three biochemical groups. The first and largest group forms methyl-coenzyme M: eight corrinoid-protein methyltransferases transfer a methyl group to CoM from methanol- (RHEA:45208), methylamine- (RHEA:18773), dimethylamine- (RHEA:45216), trimethylamine- (RHEA:45220), tetramethylammonium- (RHEA:60576), glycine-betaine- (RHEA:66004), and methylated-thiol-specific (RHEA:47192) corrinoid proteins, and a methanethiol methyltransferase (RHEA:32667); two further sodium-translocating methyltransferases methylate CoM from 5-methyl-tetrahydromethanopterin (RHEA:53492) and 5-methyl-tetrahydrosarcinapterin (RHEA:79363), the central Mtr step of methanogenesis. The second group is the heterodisulfide-forming reactions that consume free CoM together with coenzyme B to make the CoM-CoB heterodisulfide, coupled to a range of electron donors — methanophenazine (RHEA:18085), fumarate (RHEA:40235), reduced ferredoxin (RHEA:55160), coenzyme F420 plus ferredoxin (RHEA:55744), H2 (RHEA:55748), and formate (RHEA:55752). The third group, strikingly, is not from methanogenic archaea at all but from the aerobic bacterial aliphatic-epoxide (epoxyalkane) carboxylation pathway of organisms such as Xanthobacter and Rhodococcus: CoM is the nucleophile that opens (R)- and (S)-1,2-epoxypropane (RHEA:19421 and RHEA:20904) and is regenerated in the NADPH-dependent carboxylation of 2-oxopropyl-CoM (RHEA:16977). The list therefore captures a small, unusual cofactor whose reactions were long thought to be the exclusive province of methanogenesis but which is in fact shared with an aerobic alkene-metabolism pathway.
+
+question_template_used: "List — enumerate every curated approved reaction in which a specific cofactor/metabolite (fixed to its physiological ChEBI form) is a direct participant (metabolite-centric reaction enumeration)"
+
+time_spent:
+  exploration: 30 minutes
+  formulation: 14 minutes
+  verification: 11 minutes
+  pubmed_test: 9 minutes
+  extraction: 18 minutes
+  documentation: 24 minutes
+  total: 106 minutes

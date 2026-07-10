@@ -1,0 +1,170 @@
+id: question_077
+type: factoid
+body: "In the current mouse reference genome assembly (GRCm39), consider the protein-coding genes annotated on each of the nuclear chromosomes — the autosomes 1 through 19 and the sex chromosomes X and Y, excluding the mitochondrial genome. Relative to each chromosome's assembled length, which single nuclear chromosome has the highest density of protein-coding genes, i.e. the greatest number of protein-coding genes per megabase?"
+
+inspiration_keyword:
+  keyword_id: KW-0158
+  name: Chromosome
+  category: Cellular component
+
+togomcp_databases_used:
+  - ensembl
+  - mco
+
+verification_score:
+  biological_insight: 3
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 9 minutes
+  method: |
+    Attempted to answer the specific question — which mouse nuclear chromosome has the highest
+    protein-coding gene density in GRCm39 — directly from the literature:
+    (1) "mouse chromosome protein-coding gene density GRCm39 highest"
+    (2) "mouse genome gene density per chromosome distribution comparison"
+    and read the single returned abstract (PMID 11528127).
+  result: |
+    The first query returned zero articles. The second returned one 2001 comparative-genomics
+    paper (PMID 11528127) that sequences a single ~620 kb syntenic locus on mouse chromosome 7
+    and reports a LOCAL gene density ("one gene per 66 kb") for that region only — it predates
+    the GRCm39 assembly (2020) by two decades and says nothing about genome-wide per-chromosome
+    protein-coding gene counts or which chromosome is densest. No source states the per-chromosome
+    density ranking: that requires counting the current protein-coding gene annotation on each
+    chromosome and normalising by the current assembled chromosome length, a live join of the gene
+    annotation set and the chromosome-length reference, not a fact recorded in the literature.
+  conclusion: PASS (cannot answer from literature; requires a live join of per-chromosome protein-coding gene counts with the GRCm39 chromosome-length reference)
+
+sparql_queries:
+  - query_number: 1
+    database: ensembl
+    description: >-
+      Count reviewed mouse (Mus musculus) protein-coding genes per GRCm39 chromosome. Genes are
+      filtered by the Ensembl species IRI (<http://ensembl.org/Mus_musculus>) and the protein_coding
+      biotype IRI (ENSGLOSSARY_0000026), grouped by their so:part_of chromosome IRI; the chromosome
+      name is derived from the IRI (version-independent, via STRAFTER on "/GRCm39/"). Returns 34 rows:
+      the 22 canonical chromosomes (1-19, X, Y, MT) plus 12 unplaced GRCm39 scaffolds. Chromosome 7
+      has the most protein-coding genes (2034), then chr2 (1822) and chr11 (1618).
+    query: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      PREFIX so: <http://purl.obolibrary.org/obo/so#>
+
+      SELECT ?name (COUNT(DISTINCT ?gene) AS ?n)
+      FROM <http://rdfportal.org/dataset/ensembl>
+      WHERE {
+        ?gene a terms:EnsemblGene ;
+              <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Mus_musculus> ;
+              terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+              so:part_of ?chr .
+        FILTER(CONTAINS(STR(?chr), "/mus_musculus/GRCm39/"))
+        BIND(STRAFTER(STR(?chr), "/GRCm39/") AS ?name)
+      }
+      GROUP BY ?name
+      ORDER BY DESC(?n)
+    result_count: 34   # 22 canonical chromosomes + 12 unplaced scaffolds; chr7=2034, chr2=1822, chr11=1618, ... chrY=154, MT=13
+
+  - query_number: 2
+    database: ensembl
+    description: >-
+      Arithmetic verification (Hard Rule 3). Total distinct mouse protein-coding genes placed on any
+      GRCm39 sequence, and the raw gene-chromosome row count. Both equal 21808, proving each gene has
+      exactly one so:part_of GRCm39 placement, so the per-chromosome counts of Query 1 sum to 21808
+      with no gene double-counted (21760 on the 22 canonical chromosomes + 48 on the 12 scaffolds).
+    query: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      PREFIX so: <http://purl.obolibrary.org/obo/so#>
+
+      SELECT (COUNT(DISTINCT ?gene) AS ?total_genes_on_grcm39) (COUNT(*) AS ?gene_chr_rows)
+      FROM <http://rdfportal.org/dataset/ensembl>
+      WHERE {
+        ?gene a terms:EnsemblGene ;
+              <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Mus_musculus> ;
+              terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+              so:part_of ?chr .
+        FILTER(CONTAINS(STR(?chr), "/mus_musculus/GRCm39/"))
+      }
+    result_count: 1   # total_genes_on_grcm39 = 21808, gene_chr_rows = 21808 (sum over Query-1 bins = 21760 canonical + 48 scaffolds)
+
+  - query_number: 3
+    database: mco
+    description: >-
+      Assembled length (bp) of every mouse chromosome on GRCm39, the normalising denominator for gene
+      density. Navigate from each chromosome class to its GRCm39 instance and read mco:length; the
+      chromosome name is taken from the IRI (mco rdfs:label is a known broken constant, so it is never
+      used). Returns 22 chromosomes; chr1 is longest (195,154,279 bp), MT shortest (16,299 bp).
+    query: |
+      PREFIX mco: <http://identifiers.org/mco/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT (STRAFTER(STR(?chr), "http://identifiers.org/mco/") AS ?name) ?length
+      FROM <http://rdfportal.org/dataset/mco>
+      WHERE {
+        ?inst a ?chr ;
+              mco:build mco:GRCm39 ;
+              mco:length ?length .
+        ?chr rdfs:subClassOf mco:MouseChromosome .
+      }
+      ORDER BY DESC(?length)
+    result_count: 22   # per-chromosome GRCm39 lengths; chr7 = 144,995,196 bp; chr11 = 121,973,369 bp; chr19 = 61,420,004 bp
+
+  # Density = (Query-1 gene count) / (Query-3 length in Mb), matched by chromosome name. The two
+  # source datasets are on different endpoints (ensembl = ebi, mco = primary), so the density is
+  # computed by joining the 22 (count, length) pairs. Among the nuclear chromosomes (excluding the
+  # mitochondrial outlier MT = 13 genes / 0.0163 Mb ~ 798 genes/Mb), chromosome 7 is the densest at
+  # 2034 / 144.995 = 14.03 genes/Mb, ahead of chr11 (1618 / 121.973 = 13.27) and chr19 (722 / 61.420 = 11.76).
+
+rdf_triples: |
+  @prefix mco:  <http://identifiers.org/mco/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+  @prefix ex:   <http://example.org/mouse-gene-density-analysis#> .
+
+  ex:analysis ex:assembly "GRCm39" ; ex:geneBiotype "protein_coding" ; ex:species "Mus musculus" .
+  # Database: ensembl | Query: 1 | Comment: Scope — protein-coding genes (biotype ENSGLOSSARY_0000026) of Mus musculus on the GRCm39 assembly, counted per chromosome via so:part_of
+
+  ex:mouseGenome ex:proteinCodingGenesOnGRCm39 "21808"^^xsd:integer ; ex:onCanonicalChromosomes "21760"^^xsd:integer ; ex:onUnplacedScaffolds "48"^^xsd:integer .
+  # Database: ensembl | Query: 2 | Comment: 21,808 protein-coding genes placed on GRCm39 (rows = distinct = 21,808, one placement per gene); 21,760 on the 22 canonical chromosomes + 48 on 12 unplaced scaffolds (Rule 3: sum of Query-1 bins = 21,808)
+
+  ex:chr7 ex:proteinCodingGenes "2034"^^xsd:integer ; ex:densityGenesPerMb "14.03" ; ex:rank "1 (highest nuclear density)" .
+  # Database: ensembl | Query: 1 | Comment: Chromosome 7 carries 2034 protein-coding genes — the most of any mouse chromosome — the numerator of its density
+  mco:7/GRCm39 mco:build mco:GRCm39 ; mco:length "144995196"^^xsd:integer .
+  # Database: mco | Query: 3 | Comment: Chromosome 7 GRCm39 length 144,995,196 bp; 2034 / 144.995 Mb = 14.03 genes/Mb — the highest density among the nuclear chromosomes (the ANSWER)
+
+  ex:chr11 ex:proteinCodingGenes "1618"^^xsd:integer ; ex:densityGenesPerMb "13.27" ; ex:rank "2" .
+  # Database: ensembl | Query: 1 | Comment: Chromosome 11, the runner-up in density
+  mco:11/GRCm39 mco:build mco:GRCm39 ; mco:length "121973369"^^xsd:integer .
+  # Database: mco | Query: 3 | Comment: Chromosome 11 GRCm39 length 121,973,369 bp; 1618 / 121.973 Mb = 13.27 genes/Mb (second highest, ~0.76 genes/Mb behind chr7)
+
+  ex:chr19 ex:proteinCodingGenes "722"^^xsd:integer ; ex:densityGenesPerMb "11.76" .
+  # Database: ensembl | Query: 1 | Comment: Chromosome 19, the shortest autosome, is third by density despite having few genes — small denominator
+  mco:19/GRCm39 mco:build mco:GRCm39 ; mco:length "61420004"^^xsd:integer .
+  # Database: mco | Query: 3 | Comment: Chromosome 19 GRCm39 length 61,420,004 bp (shortest autosome); 722 / 61.420 Mb = 11.76 genes/Mb
+
+  ex:chr1 ex:proteinCodingGenes "1211"^^xsd:integer ; ex:densityGenesPerMb "6.21" .
+  # Database: ensembl | Query: 1 | Comment: Chromosome 1, the longest chromosome, has only middling gene density — length and gene-richness are decoupled
+  mco:1/GRCm39 mco:build mco:GRCm39 ; mco:length "195154279"^^xsd:integer .
+  # Database: mco | Query: 3 | Comment: Chromosome 1 GRCm39 length 195,154,279 bp (longest); 1211 / 195.154 Mb = 6.21 genes/Mb — less than half of chr7's density
+
+  ex:chrY ex:proteinCodingGenes "154"^^xsd:integer ; ex:densityGenesPerMb "1.68" .
+  # Database: ensembl | Query: 1 | Comment: Chromosome Y has the lowest nuclear density (154 genes over 91.5 Mb) — the sparse, repeat-rich sex chromosome
+  mco:MT/GRCm39 mco:build mco:GRCm39 ; mco:length "16299"^^xsd:integer .
+  # Database: mco | Query: 3 | Comment: The mitochondrial genome (16,299 bp, 13 genes ~ 798 genes/Mb) is an extreme outlier excluded from the nuclear-chromosome comparison
+
+exact_answer: "Chromosome 7"
+
+ideal_answer: |
+  Among the nuclear chromosomes of the mouse GRCm39 assembly, chromosome 7 has the highest density of protein-coding genes, at roughly 14.0 genes per megabase. It carries 2,034 protein-coding genes — the most of any mouse chromosome — over an assembled length of about 145.0 Mb (144,995,196 bp), giving 2034/144.995 ≈ 14.03 genes/Mb. It edges out chromosome 11 (1,618 genes over 122.0 Mb ≈ 13.27 genes/Mb) and chromosome 19 (722 genes over the shortest autosome, 61.4 Mb ≈ 11.76 genes/Mb), while the longest chromosome, chromosome 1 (195.2 Mb), holds only 1,211 genes for a far lower 6.21 genes/Mb, and chromosome Y is the sparsest nuclear chromosome at 1.68 genes/Mb — showing that physical length and gene richness are decoupled. In total 21,760 of the 21,808 GRCm39-placed protein-coding genes lie on the 22 canonical chromosomes (the remaining 48 on unplaced scaffolds); the mitochondrial genome, with 13 genes packed into just 16,299 bp (~798 genes/Mb), is an extreme outlier and is set aside as it is not a nuclear chromosome. The result requires normalising the current per-chromosome gene annotation by the current assembled chromosome length, so it cannot be read off either source alone.
+
+question_template_used: "Factoid extremal aggregation (per-chromosome protein-coding gene count from genome annotation, normalised by chromosome length from the chromosome-length reference, argmax density)"
+
+time_spent:
+  exploration: 26 minutes
+  formulation: 15 minutes
+  verification: 12 minutes
+  pubmed_test: 9 minutes
+  extraction: 16 minutes
+  documentation: 24 minutes
+  total: 102 minutes
