@@ -1,0 +1,180 @@
+id: question_079
+type: yes_no
+body: "Major histocompatibility complex (MHC) class I molecules are a family of cell-surface glycoproteins that present intracellular peptides to CD8+ T cells and are central to adaptive immunity. Considering the complete set of manually reviewed human proteins classified as MHC class I molecules, are the genes that encode all of them located on the same chromosome?"
+
+inspiration_keyword:
+  keyword_id: KW-0490
+  name: MHC I
+  category: Cellular component
+
+togomcp_databases_used:
+  - uniprot
+  - hgnc
+
+verification_score:
+  biological_insight: 3
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: |
+    Attempted to answer the specific question — whether the genes for ALL reviewed human MHC
+    class I proteins lie on one chromosome — from the literature:
+    (1) "MHC class I proteins chromosomal location beta-2-microglobulin MR1 different chromosomes"
+    (2) "human MHC class I molecules all encoded single chromosome 6 HLA B2M"
+    (3) "MHC class I molecule structure beta-2-microglobulin heavy chain review"
+    and read the MHC-I review PMID 37398669 (Front Immunol 2023).
+  result: |
+    The two targeted queries returned zero articles. The review describes the functional
+    architecture of MHC class I — the polymorphic heavy chain, its non-covalent assembly with the
+    invariant light chain beta-2-microglobulin, and peptide loading — but says nothing about the
+    chromosomal locations of the encoding genes. The literature covers the MHC locus on 6p21, the
+    B2M gene on chromosome 15, and MR1 on chromosome 1 in separate contexts, but no source poses or
+    answers the completeness question over the MHC-class-I keyword set. Answering it requires
+    enumerating every reviewed human MHC class I protein and looking up each gene's chromosome — a
+    live cross-database check, not a stated fact. The intuitive answer ("yes, the MHC on chromosome
+    6") is in fact wrong, which cannot be established without the enumeration.
+  conclusion: PASS (cannot answer from literature; requires enumerating the full keyword-defined protein set and each gene's chromosomal location across two databases)
+
+sparql_queries:
+  - query_number: 1
+    database: uniprot
+    description: >-
+      Count the manually reviewed (Swiss-Prot) human (taxon 9606) proteins classified with the MHC
+      class I keyword (KW-0490 = keywords/490). Establishes the complete, exhaustive family scope:
+      exactly 9 proteins (Hard Rule 2 — the yes/no is decided over all 9, not a sample).
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+
+      SELECT (COUNT(DISTINCT ?p) AS ?n)
+      WHERE {
+        ?p a up:Protein ;
+           up:reviewed 1 ;
+           up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+           up:classifiedWith <http://purl.uniprot.org/keywords/490> .
+      }
+    result_count: 1   # n = 9 reviewed human MHC class I proteins
+
+  - query_number: 2
+    database: uniprot
+    description: >-
+      Retrieve the accession and gene symbol of each of the 9 MHC class I proteins. Result: seven HLA
+      heavy-chain genes (HLA-A P04439, HLA-B P01889, HLA-C P10321, HLA-E P13747, HLA-F P30511,
+      HLA-G P17693, HLA-H P01893), plus the invariant light chain B2M (P61769) and the non-classical
+      MHC-I-related molecule MR1 (Q95460).
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT ?acc ?gene
+      WHERE {
+        ?p a up:Protein ;
+           up:reviewed 1 ;
+           up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+           up:classifiedWith <http://purl.uniprot.org/keywords/490> ;
+           dcterms:identifier ?acc .
+        OPTIONAL { ?p up:encodedBy/skos:prefLabel ?gene }
+      }
+      ORDER BY ?gene
+    result_count: 9
+
+  - query_number: 3
+    database: hgnc
+    description: >-
+      Look up the chromosomal band (obo:so_part_of) of each of the 9 genes in HGNC, joining on the
+      UniProt accession via the typed cross-reference node. Result: HLA-A/E/F/G/H at 6p22.1, HLA-B/C
+      at 6p21.33 (all chromosome 6); B2M at 15q21.1 (chromosome 15); MR1 at 1q25.3 (chromosome 1).
+    query: |
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX idt: <http://identifiers.org/>
+
+      SELECT ?symbol ?location ?acc
+      FROM <http://rdfportal.org/dataset/hgnc>
+      WHERE {
+        VALUES ?acc { "P61769" "P04439" "P01889" "P10321" "P13747" "P30511" "P17693" "P01893" "Q95460" }
+        ?gene a m2r:Gene ;
+              rdfs:label ?symbol ;
+              rdfs:seeAlso ?ref ;
+              obo:so_part_of ?location .
+        ?ref a idt:uniprot ; dct:identifier ?acc .
+      }
+      ORDER BY ?location
+    result_count: 9
+
+  - query_number: 4
+    database: hgnc
+    description: >-
+      Arithmetic / completeness verification (Hard Rule 3). Group the 9 genes by chromosome (derived
+      from the band string). Three distinct chromosomes are returned — 6 (7 genes), 15 (1 gene, B2M),
+      1 (1 gene, MR1) — and 7 + 1 + 1 = 9 covers the full family, so the answer is unambiguously "no"
+      (the genes are NOT all on one chromosome), with no member unaccounted for.
+    query: |
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX idt: <http://identifiers.org/>
+
+      SELECT ?chromosome (COUNT(DISTINCT ?gene) AS ?nGenes) (GROUP_CONCAT(?symbol; SEPARATOR=", ") AS ?genes)
+      FROM <http://rdfportal.org/dataset/hgnc>
+      WHERE {
+        VALUES ?acc { "P61769" "P04439" "P01889" "P10321" "P13747" "P30511" "P17693" "P01893" "Q95460" }
+        ?gene a m2r:Gene ;
+              rdfs:label ?symbol ;
+              rdfs:seeAlso ?ref ;
+              obo:so_part_of ?location .
+        ?ref a idt:uniprot ; dct:identifier ?acc .
+        BIND(REPLACE(?location, "[pq].*$", "") AS ?chromosome)
+      }
+      GROUP BY ?chromosome
+      ORDER BY DESC(?nGenes)
+    result_count: 3   # chr6 = 7 (HLA-A/B/C/E/F/G/H), chr15 = 1 (B2M), chr1 = 1 (MR1); 7+1+1 = 9
+
+rdf_triples: |
+  @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
+  @prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+  @prefix ex:      <http://example.org/mhc1-chromosome-analysis#> .
+
+  ex:mhcClassI ex:reviewedHumanMembers "9"^^xsd:integer ; ex:distinctChromosomes "3"^^xsd:integer ; ex:allOnOneChromosome "false"^^xsd:boolean .
+  # Database: uniprot | Query: 1 | Comment: Exactly 9 reviewed human proteins carry the MHC class I keyword (KW-0490); they map to 3 different chromosomes, so the answer to the question is NO
+
+  uniprot:P04439 ex:gene "HLA-A" ; ex:chromosomalBand "6p22.1" .
+  # Database: hgnc | Query: 3 | Comment: HLA-A, one of the seven polymorphic HLA heavy-chain genes clustered in the MHC on chromosome 6
+  uniprot:P01889 ex:gene "HLA-B" ; ex:chromosomalBand "6p21.33" .
+  # Database: hgnc | Query: 3 | Comment: HLA-B at 6p21.33 — the classical MHC-I heavy chains (HLA-A/B/C) and non-classical (HLA-E/F/G/H) all sit on chromosome 6
+  uniprot:P10321 ex:gene "HLA-C" ; ex:chromosomalBand "6p21.33" .
+  # Database: hgnc | Query: 3 | Comment: HLA-C at 6p21.33; together the seven HLA genes account for 7 of the 9 family members
+  uniprot:P61769 ex:gene "B2M" ; ex:chromosomalBand "15q21.1" .
+  # Database: hgnc | Query: 3 | Comment: B2M (beta-2-microglobulin), the OBLIGATE invariant light chain of every MHC-I molecule, is encoded on chromosome 15 (15q21.1) — NOT chromosome 6
+  uniprot:Q95460 ex:gene "MR1" ; ex:chromosomalBand "1q25.3" .
+  # Database: hgnc | Query: 3 | Comment: MR1 (MHC class I-related), which presents microbial metabolites to MAIT cells, is encoded on chromosome 1 (1q25.3) — a third chromosome
+
+  ex:chromosome6 ex:mhcClassIGeneCount "7"^^xsd:integer .
+  # Database: hgnc | Query: 4 | Comment: 7 members on chromosome 6 (all seven HLA genes)
+  ex:chromosome15 ex:mhcClassIGeneCount "1"^^xsd:integer .
+  # Database: hgnc | Query: 4 | Comment: 1 member on chromosome 15 (B2M)
+  ex:chromosome1 ex:mhcClassIGeneCount "1"^^xsd:integer .
+  # Database: hgnc | Query: 4 | Comment: 1 member on chromosome 1 (MR1); 7 + 1 + 1 = 9 accounts for the whole family (Rule 3 complete), confirming the genes span three chromosomes
+
+exact_answer: "no"
+
+ideal_answer: |
+  No. The nine manually reviewed human MHC class I proteins are not all encoded on one chromosome; their genes are distributed across three different chromosomes. Seven of them are the HLA heavy-chain genes — the classical HLA-A, HLA-B and HLA-C plus the non-classical HLA-E, HLA-F, HLA-G and HLA-H — which are indeed clustered together in the major histocompatibility complex on the short arm of chromosome 6 (at 6p21.33 and 6p22.1). But the eighth member, B2M, encodes beta-2-microglobulin, the invariant light chain that is non-covalently associated with every MHC class I heavy chain and is obligatory for a functional molecule; it lies on chromosome 15 (15q21.1). The ninth, MR1, encodes the MHC class I-related molecule that presents microbial vitamin-B metabolites to mucosal-associated invariant T (MAIT) cells, and it is on chromosome 1 (1q25.3). So while the polymorphic heavy chains are polygenic within the chromosome-6 MHC locus, the complete MHC class I family — counting its essential light chain and its class I-related member — is encoded across chromosomes 1, 6 and 15 (7 + 1 + 1 = 9). The intuitive "yes, they are all in the MHC on chromosome 6" is therefore incorrect once the full protein set is considered.
+
+question_template_used: "Yes/no completeness check over a keyword-defined protein family (are all members' genes co-localised to one chromosome?) — exhaustive per-member chromosomal-location lookup that overturns an intuitive single-locus assumption"
+
+time_spent:
+  exploration: 34 minutes
+  formulation: 14 minutes
+  verification: 12 minutes
+  pubmed_test: 10 minutes
+  extraction: 15 minutes
+  documentation: 22 minutes
+  total: 107 minutes

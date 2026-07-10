@@ -263,5 +263,10 @@ Mark: `P` = pass · `W` = minor issues · `F` = major errors
 | 073 | P      | —      |
 | 074 | P      | —      |
 | 075 | P      | —      |
+| 076 | P      | —      |
+| 077 | P      | —      |
+| 078 | P      | —      |
+| 079 | P      | —      |
+| 080 | P      | —      |
 
-**Summary:** `P` = 70 &nbsp;·&nbsp; `W` = 0 &nbsp;·&nbsp; `F` = 0 &nbsp;·&nbsp; Reviewed: 70 / 70
+**Summary:** `P` = 80 &nbsp;·&nbsp; `W` = 0 &nbsp;·&nbsp; `F` = 0 &nbsp;·&nbsp; Reviewed: 80 / 80

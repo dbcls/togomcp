@@ -1,0 +1,165 @@
+id: question_078
+type: choice
+body: "A curated proteomics resource provides reanalysed mass-spectrometry datasets, each annotated with the single source organism of its biological sample. Across all of these datasets, the two most frequently represented organisms are, unsurprisingly, human and mouse. Setting those two aside, which of the following organisms is the source of the greatest number of datasets?"
+
+choices:
+  - "African green monkey (Chlorocebus sabaeus)"
+  - "Norway rat (Rattus norvegicus)"
+  - "Escherichia coli"
+  - "Bacillus subtilis"
+
+inspiration_keyword:
+  keyword_id: KW-1267
+  name: Proteomics identification
+  category: Technical term
+
+togomcp_databases_used:
+  - jpostdb
+  - taxonomy
+
+verification_score:
+  biological_insight: 3
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: |
+    Attempted to answer the specific question — which organism, after human and mouse, is the
+    source of the most datasets in the jPOST reanalysis database — from the literature:
+    (1) "jPOST proteomics repository species composition organisms datasets"
+    (2) "Chlorocebus sabaeus green monkey Vero cell proteomics mass spectrometry third most studied"
+    (3) "jPOST proteome standard repository database"
+    and read the current jPOST resource paper (PMID 39526391, Nucleic Acids Res 2025).
+  result: |
+    The two targeted queries returned zero articles. The jPOST resource paper describes the
+    infrastructure — jPOSTrepo (>2000 projects), the UniScore-based reanalysis protocol, the jPOSTdb
+    integrated database (>600 datasets), and the JPDM data-descriptor journal — but reports nothing
+    about the per-organism composition of the datasets, and does not state that the African green
+    monkey is the third most-represented species. That ranking is a live aggregate over the current
+    contents of the reanalysis database (which grows with each release) joined to the taxonomy of the
+    sample organisms; it is not a figure recorded in any publication.
+  conclusion: PASS (cannot answer from literature; requires a live per-organism dataset count over the current repository joined to organism taxonomy)
+
+sparql_queries:
+  - query_number: 1
+    database: jpostdb
+    description: >-
+      Count reanalysis datasets per source organism. Each Dataset has exactly one Profile -> Sample
+      -> species (an identifiers.org/taxonomy IRI). Group all 853 datasets by that species IRI.
+      Returns exactly 7 organisms: human (taxonomy/9606, 579), mouse (10090, 234), green monkey
+      (60711, 30), E. coli (562, 5), K. pneumoniae (573, 2), B. subtilis (1423, 2), rat (10116, 1).
+    query: |
+      PREFIX jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#>
+
+      SELECT ?species (COUNT(DISTINCT ?ds) AS ?nDatasets)
+      WHERE {
+        GRAPH <http://jpost.org/graph/database> {
+          ?ds a jpost:Dataset ;
+              jpost:hasProfile/jpost:hasSample ?sample .
+          ?sample jpost:species ?species .
+        }
+      }
+      GROUP BY ?species
+      ORDER BY DESC(?nDatasets)
+    result_count: 7   # 7 distinct source organisms; green monkey (taxonomy/60711) = 30 datasets, 3rd after human (579) and mouse (234)
+
+  - query_number: 2
+    database: jpostdb
+    description: >-
+      Arithmetic verification (Hard Rule 3). Total distinct datasets, datasets carrying a species,
+      and dataset-species rows. All three equal 853, proving every dataset has exactly one source
+      organism, so the 7 per-species counts of Query 1 partition the whole set with no gap or overlap
+      (579 + 234 + 30 + 5 + 2 + 2 + 1 = 853).
+    query: |
+      PREFIX jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#>
+
+      SELECT (COUNT(DISTINCT ?ds) AS ?totalDatasets)
+             (COUNT(DISTINCT ?dsWithSpecies) AS ?datasetsWithSpecies)
+             (COUNT(*) AS ?dsSpeciesRows)
+      WHERE {
+        GRAPH <http://jpost.org/graph/database> {
+          ?ds a jpost:Dataset .
+          OPTIONAL {
+            ?ds jpost:hasProfile/jpost:hasSample/jpost:species ?sp .
+            BIND(?ds AS ?dsWithSpecies)
+          }
+        }
+      }
+    result_count: 1   # totalDatasets=853, datasetsWithSpecies=853, dsSpeciesRows=853 -> exhaustive 1-species-per-dataset partition (Rule 3)
+
+  - query_number: 3
+    database: taxonomy
+    description: >-
+      Resolve each source-organism taxonomy IRI from Query 1 to its scientific and common name,
+      confirming their identities. taxid 60711 = Chlorocebus sabaeus, common name "green monkey"
+      (rank Species) — the African green monkey, whose kidney-derived Vero cell line is the standard
+      substrate for virus propagation (e.g. SARS-CoV-2), explaining its prominence in the repository.
+    query: |
+      PREFIX taxo: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?taxid ?sciName ?commonName
+      WHERE {
+        VALUES ?tax {
+          <http://identifiers.org/taxonomy/9606>
+          <http://identifiers.org/taxonomy/10090>
+          <http://identifiers.org/taxonomy/60711>
+          <http://identifiers.org/taxonomy/562>
+          <http://identifiers.org/taxonomy/573>
+          <http://identifiers.org/taxonomy/1423>
+          <http://identifiers.org/taxonomy/10116>
+        }
+        ?tax taxo:scientificName ?sciName ;
+             dcterms:identifier ?taxid .
+        OPTIONAL { ?tax taxo:genbankCommonName ?commonName }
+      }
+    result_count: 7   # 9606 Homo sapiens (human); 10090 Mus musculus (house mouse); 60711 Chlorocebus sabaeus (green monkey); 562 Escherichia coli; 573 Klebsiella pneumoniae; 1423 Bacillus subtilis; 10116 Rattus norvegicus (Norway rat)
+
+rdf_triples: |
+  @prefix taxo: <http://ddbj.nig.ac.jp/ontologies/taxonomy/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+  @prefix ex:   <http://example.org/jpost-organism-analysis#> .
+
+  ex:jpostReanalysisDb ex:totalDatasets "853"^^xsd:integer ; ex:distinctSourceOrganisms "7"^^xsd:integer .
+  # Database: jpostdb | Query: 2 | Comment: The reanalysis database holds 853 datasets across exactly 7 distinct source organisms; every dataset carries exactly one species (853 = 853 = 853), so the per-species counts partition the whole set
+
+  <http://identifiers.org/taxonomy/9606> ex:jpostDatasetCount "579"^^xsd:integer .
+  # Database: jpostdb | Query: 1 | Comment: Homo sapiens is the most-represented organism with 579 datasets (excluded from the question as one of the two obvious top organisms)
+  <http://identifiers.org/taxonomy/10090> ex:jpostDatasetCount "234"^^xsd:integer .
+  # Database: jpostdb | Query: 1 | Comment: Mus musculus is second with 234 datasets (the other excluded top organism)
+
+  <http://identifiers.org/taxonomy/60711> rdfs:label "Chlorocebus sabaeus" ; taxo:genbankCommonName "green monkey" .
+  # Database: taxonomy | Query: 3 | Comment: taxid 60711 = Chlorocebus sabaeus, the African green monkey (rank Species); its Vero kidney cell line is the standard host for propagating viruses such as SARS-CoV-2
+  <http://identifiers.org/taxonomy/60711> ex:jpostDatasetCount "30"^^xsd:integer ; ex:rankAfterHumanMouse "1 (the answer)" .
+  # Database: jpostdb | Query: 1 | Comment: The African green monkey is the source of 30 datasets — the THIRD most-represented species overall and by far the most once human and mouse are set aside (THE ANSWER)
+
+  <http://identifiers.org/taxonomy/562> rdfs:label "Escherichia coli" ; ex:jpostDatasetCount "5"^^xsd:integer .
+  # Database: taxonomy,jpostdb | Query: 3 | Comment: Escherichia coli (taxid 562) is a distractor: only 5 datasets, a sixth of the green monkey total
+  <http://identifiers.org/taxonomy/10116> rdfs:label "Rattus norvegicus" ; ex:jpostDatasetCount "1"^^xsd:integer .
+  # Database: taxonomy,jpostdb | Query: 3 | Comment: Rattus norvegicus (Norway rat, taxid 10116) is a distractor and, strikingly, the LEAST-represented organism with a single dataset — a classic model organism far behind the green monkey
+  <http://identifiers.org/taxonomy/1423> rdfs:label "Bacillus subtilis" ; ex:jpostDatasetCount "2"^^xsd:integer .
+  # Database: taxonomy,jpostdb | Query: 3 | Comment: Bacillus subtilis (taxid 1423) is a distractor with 2 datasets
+  <http://identifiers.org/taxonomy/573> rdfs:label "Klebsiella pneumoniae" ; ex:jpostDatasetCount "2"^^xsd:integer .
+  # Database: taxonomy,jpostdb | Query: 3 | Comment: Klebsiella pneumoniae (taxid 573) has 2 datasets; the seven counts 579+234+30+5+2+2+1 sum to 853 = total datasets (Rule 3 complete)
+
+exact_answer:
+  - "African green monkey (Chlorocebus sabaeus)"
+
+ideal_answer: |
+  Setting aside human (579 datasets) and mouse (234 datasets), the organism that is the source of the greatest number of reanalysed mass-spectrometry datasets is the African green monkey, Chlorocebus sabaeus (NCBI taxon 60711), with 30 datasets. This puts it third overall, and it dominates the remaining organisms by a wide margin: Escherichia coli follows with just 5 datasets, then Bacillus subtilis and Klebsiella pneumoniae with 2 each, and — strikingly for such a common model organism — the Norway rat (Rattus norvegicus) last with a single dataset. Only seven distinct source organisms appear across the 853 datasets, and each dataset is annotated with exactly one, so the counts 579 + 234 + 30 + 5 + 2 + 2 + 1 sum precisely to 853. The green monkey's unexpected prominence is not because it is a mainstream model organism but because its kidney-derived Vero cell line is the standard substrate for propagating viruses — most conspicuously SARS-CoV-2 — so a surge of virus- and infection-focused proteomics reanalyses places a non-model primate above every classic bacterial and rodent model in the repository.
+
+question_template_used: "Choice extremal aggregation with obvious top-N excluded (per-category dataset count from a proteomics repository, category identity resolved via organism taxonomy, argmax among the non-obvious remainder)"
+
+time_spent:
+  exploration: 30 minutes
+  formulation: 14 minutes
+  verification: 10 minutes
+  pubmed_test: 10 minutes
+  extraction: 16 minutes
+  documentation: 22 minutes
+  total: 102 minutes
