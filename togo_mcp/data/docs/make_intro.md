@@ -91,6 +91,7 @@ These MCP servers are strongly recommended to be used with TogoMCP.
 List the following resources with summaries. Search the Web if necessary.
 - [RDF Portal](https://rdfportal.org)
 - [TogoID](https://togoid.dbcls.jp)
+- [TogoVar](https://grch38.togovar.org/)
 - [DBCLS](https://dbcls.rois.jp)
 
 ## Source code
