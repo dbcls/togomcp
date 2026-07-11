@@ -3,6 +3,7 @@ from .rdf_portal import *
 from .api_tools import *
 from .togoid import togoid_mcp
 from .ncbi_tools import ncbi_mcp
+from .togovar import togovar_mcp
 import asyncio
 import os
 
@@ -20,6 +21,7 @@ def _allowed_hosts() -> list[str]:
 async def setup():
     mcp.mount(togoid_mcp, "togoid")
     mcp.mount(ncbi_mcp, "ncbi")
+    mcp.mount(togovar_mcp, "togovar")
 
 def run():
     asyncio.run(setup())

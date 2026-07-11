@@ -303,7 +303,9 @@ class _IgnoreUnknownSearchKwargs(_Middleware):
     _valid_kwargs_cache: dict[str, set[str]] = {}
 
     async def _valid_kwargs(self, ctx, tool_name: str) -> set[str] | None:
-        if not tool_name.startswith("search_"):
+        # Match both root-level `search_*` tools and mounted sub-server search
+        # tools, whose names carry a mount prefix (e.g. `togovar_search_variant`).
+        if "search_" not in tool_name:
             return None
         cached = self._valid_kwargs_cache.get(tool_name)
         if cached is not None:
