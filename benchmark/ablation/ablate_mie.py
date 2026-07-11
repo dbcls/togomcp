@@ -54,6 +54,12 @@ CANONICAL_SECTIONS = [
     "common_errors",
 ]
 
+# Databases excluded from the ablation corpus entirely (by MIE file stem). SuperCon
+# is a superconducting-materials DB with no benchmark question targeting it, so it
+# carries no ablation signal and only adds served-corpus noise — keep it out of every
+# variant. Override with --exclude-db (pass an empty value to exclude nothing).
+EXCLUDED_DATABASES = {"supercon"}
+
 # A column-0 top-level YAML key line, e.g. "schema_info:" or "critical_warnings: |".
 TOP_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):(\s|$)")
 
@@ -150,11 +156,16 @@ def main() -> int:
                     help=f"Output root for variants (default: {DEFAULT_OUT_DIR})")
     ap.add_argument("--sections", default=",".join(CANONICAL_SECTIONS),
                     help="Comma-separated sections to ablate (default: all 11)")
+    ap.add_argument("--exclude-db", default=",".join(sorted(EXCLUDED_DATABASES)),
+                    help="Comma-separated MIE file stems to omit from the corpus "
+                         f"(default: {','.join(sorted(EXCLUDED_DATABASES)) or '(none)'}); "
+                         "pass an empty value to exclude nothing")
     args = ap.parse_args()
 
     mie_dir = Path(args.mie_dir)
     out_dir = Path(args.out)
     sections = [s.strip() for s in args.sections.split(",") if s.strip()]
+    excluded = {s.strip() for s in args.exclude_db.split(",") if s.strip()}
 
     unknown = [s for s in sections if s not in CANONICAL_SECTIONS]
     if unknown:
@@ -166,6 +177,17 @@ def main() -> int:
     if not mie_files:
         print(f"ERROR: no MIE files under {mie_dir}", file=sys.stderr)
         return 2
+
+    if excluded:
+        kept = [f for f in mie_files if f.stem not in excluded]
+        dropped = sorted(f.stem for f in mie_files if f.stem in excluded)
+        missing = sorted(excluded - {f.stem for f in mie_files})
+        if dropped:
+            print(f"excluded {len(dropped)} database(s) from corpus: {', '.join(dropped)}")
+        if missing:
+            print(f"NOTE: --exclude-db named absent file(s): {', '.join(missing)}",
+                  file=sys.stderr)
+        mie_files = kept
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
