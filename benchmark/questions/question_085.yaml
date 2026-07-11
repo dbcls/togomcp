@@ -1,0 +1,300 @@
+id: question_085
+type: list
+body: "Congenital myasthenic syndromes are inherited disorders of neuromuscular transmission caused by germline defects in a curated set of human genes encoding proteins of the neuromuscular junction. Consider the full set of these disease genes. In a comprehensive population-scale catalogue of human genome variation - one that annotates every variant with its per-transcript functional consequence and cross-references clinically curated variant records - some of these genes carry a loss-of-function variant (a stop-gained, frame-shift, or splice donor/acceptor change) that is additionally classified as Pathogenic or Likely pathogenic in the clinical-significance archive. List every one of the disease genes for which at least one such catalogued loss-of-function variant is classified Pathogenic or Likely pathogenic."
+
+inspiration_keyword:
+  keyword_id: KW-1004
+  name: Congenital myasthenic syndrome
+  category: Disease
+
+togomcp_databases_used:
+  - uniprot
+  - hgnc
+  - togovar
+  - clinvar
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 12
+  passed: true
+
+pubmed_test:
+  time_spent: 12 minutes
+  method: |
+    Tried to answer the specific question - which congenital-myasthenic-syndrome (CMS) genes carry a
+    loss-of-function variant that is present in a population-scale variation catalogue AND classified
+    Pathogenic/Likely pathogenic in ClinVar - directly from the literature:
+    (1) "congenital myasthenic syndrome genes loss-of-function pathogenic variants population variation
+        catalogue ClinVar list"
+    (2) "congenital myasthenic syndrome which genes truncating loss-of-function pathogenic variants
+        versus missense mechanism"
+    (3) "congenital myasthenic syndrome gene panel diagnosis mutation spectrum" (topic-existence check)
+  result: |
+    The two targeted queries returned zero articles. The third (broad) query returned 5 CMS gene-panel /
+    mutation-spectrum reviews, confirming the topic is studied - but none enumerates the specific set of
+    CMS genes for which a loss-of-function variant is both catalogued in a population variation resource
+    and carries a Pathogenic/Likely-pathogenic ClinVar classification. That partition is a live join of
+    a ~390-million-variant GRCh38 catalogue's per-transcript VEP consequences with ClinVar germline
+    significance, recomputed as both resources update; it is not a figure recorded in any paper.
+  conclusion: PASS (cannot answer from literature; requires a live loss-of-function consequence filter over a population variation catalogue intersected with ClinVar clinical significance across the full disease-gene set)
+
+# STRUCTURED VOCABULARY DISCOVERY
+# UniProt keyword KW-1004 (Congenital myasthenic syndrome) -> 24 reviewed human genes (exact keyword IRI
+#   match, not text search): AGRN, ALG14, ALG2, CHAT, CHRNA1, CHRNB1, CHRND, CHRNE, COL13A1, COLQ, DOK7,
+#   DPAGT1, GFPT1, LRP4, MUSK, MYO9A, PREPL, RAPSN, SCN4A, SLC18A3, SLC25A1, SLC5A7, SYT2, VAMP1 - ALL 24
+#   evaluated (Rule 2, no sampling).
+# Loss-of-function consequence set = 4 Sequence Ontology terms (rdf:type of the per-transcript
+#   hasConsequence node, IRI-backed): SO_0001587 stop_gained, SO_0001589 frameshift_variant,
+#   SO_0001574 splice_acceptor_variant, SO_0001575 splice_donor_variant.
+# ClinVar significance = germline classification cvo:description in {Pathogenic, Likely pathogenic,
+#   Pathogenic/Likely pathogenic} (controlled vocabulary, not text search).
+
+sparql_queries:
+  - query_number: 1
+    database: uniprot
+    description: >-
+      Resolve the disease gene set. All reviewed human (taxon 9606) proteins classified with UniProt
+      keyword KW-1004 (Congenital myasthenic syndrome), with their encoding gene symbols. Returns exactly
+      24 genes: AGRN, ALG14, ALG2, CHAT, CHRNA1, CHRNB1, CHRND, CHRNE, COL13A1, COLQ, DOK7, DPAGT1,
+      GFPT1, LRP4, MUSK, MYO9A, PREPL, RAPSN, SCN4A, SLC18A3, SLC25A1, SLC5A7, SYT2, VAMP1.
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+
+      SELECT ?acc (GROUP_CONCAT(DISTINCT ?gene; SEPARATOR="/") AS ?genes)
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed true ;
+                 up:organism taxon:9606 ;
+                 up:classifiedWith keywords:1004 .
+        BIND(STRAFTER(STR(?protein), "uniprot/") AS ?acc)
+        OPTIONAL { ?protein up:encodedBy ?g . ?g skos:prefLabel ?gene }
+      }
+      GROUP BY ?acc
+      ORDER BY ?genes
+    result_count: 24   # 24 reviewed human congenital-myasthenic-syndrome genes
+
+  - query_number: 2
+    database: hgnc
+    description: >-
+      Bridge the 24 gene symbols to their stable HGNC identifiers (the exact key the variation catalogue
+      attaches VEP consequences to via tgvo:hgnc). Exact rdfs:label match, no text search. All 24 resolve,
+      e.g. CHRNE -> HGNC:1966, DOK7 -> 26594, COLQ -> 2226, RAPSN -> 9863, AGRN -> 329, CHRNA1 -> 1955.
+    query: |
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+
+      SELECT ?symbol ?hgnc_id
+      FROM <http://rdfportal.org/dataset/hgnc>
+      WHERE {
+        VALUES ?symbol { "AGRN" "ALG14" "ALG2" "CHAT" "CHRNA1" "CHRNB1" "CHRND" "CHRNE" "COL13A1"
+                         "COLQ" "DOK7" "DPAGT1" "GFPT1" "LRP4" "MUSK" "MYO9A" "PREPL" "RAPSN" "SCN4A"
+                         "SLC18A3" "SLC25A1" "SLC5A7" "SYT2" "VAMP1" }
+        ?gene a m2r:Gene ; rdfs:label ?symbol ; dct:identifier ?hgnc_id .
+      }
+      ORDER BY ?symbol
+    result_count: 24   # all 24 symbols map 1:1 to HGNC IRIs
+
+  - query_number: 3
+    database: togovar
+    description: >-
+      In the population variation catalogue, for each of the 24 genes (keyed by its HGNC IRI), collect the
+      ClinVar VariationIDs of variants that carry a LOSS-OF-FUNCTION consequence on that gene - a
+      hasConsequence node typed stop_gained / frameshift / splice_acceptor / splice_donor
+      (SO_0001587/1589/1574/1575) in GRAPH .../variant/annotation/ensembl - and that also carry a ClinVar
+      cross-link (dcterms:identifier in GRAPH .../variant/annotation/clinvar). Graph-pinned + DISTINCT, so
+      no cross-graph re-typing inflation. Returns 71 (gene, VariationID) pairs spanning 18 of the 24 genes;
+      the other 6 (ALG14, CHRNA1, CHRNB1, SLC18A3, SYT2, VAMP1) have NO catalogued LoF variant carrying a
+      ClinVar cross-link.
+    query: |
+      PREFIX tgvo: <http://togovar.biosciencedbc.jp/vocabulary/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+
+      SELECT DISTINCT ?hgnc ?vid
+      WHERE {
+        VALUES ?hgnc {
+          <http://identifiers.org/hgnc/329> <http://identifiers.org/hgnc/28287>
+          <http://identifiers.org/hgnc/23159> <http://identifiers.org/hgnc/1912>
+          <http://identifiers.org/hgnc/1955> <http://identifiers.org/hgnc/1961>
+          <http://identifiers.org/hgnc/1965> <http://identifiers.org/hgnc/1966>
+          <http://identifiers.org/hgnc/2190> <http://identifiers.org/hgnc/2226>
+          <http://identifiers.org/hgnc/26594> <http://identifiers.org/hgnc/2995>
+          <http://identifiers.org/hgnc/4241> <http://identifiers.org/hgnc/6696>
+          <http://identifiers.org/hgnc/7525> <http://identifiers.org/hgnc/7608>
+          <http://identifiers.org/hgnc/30228> <http://identifiers.org/hgnc/9863>
+          <http://identifiers.org/hgnc/10591> <http://identifiers.org/hgnc/10936>
+          <http://identifiers.org/hgnc/10979> <http://identifiers.org/hgnc/14025>
+          <http://identifiers.org/hgnc/11510> <http://identifiers.org/hgnc/12642>
+        }
+        VALUES ?lof { obo:SO_0001587 obo:SO_0001589 obo:SO_0001574 obo:SO_0001575 }
+        GRAPH <http://togovar.org/variant/annotation/ensembl> {
+          ?v tgvo:hasConsequence ?c .
+          ?c tgvo:hgnc ?hgnc ; a ?lof .
+        }
+        GRAPH <http://togovar.org/variant/annotation/clinvar> {
+          ?v dcterms:identifier ?vid .
+        }
+      }
+      ORDER BY ?hgnc ?vid
+    result_count: 71   # 71 (gene, ClinVar VariationID) LoF pairs across 18 of the 24 genes
+
+  - query_number: 4
+    database: clinvar
+    description: >-
+      Clinical-significance filter. For the 71 VariationIDs from Query 3 (their variation IRIs
+      http://ncbi.nlm.nih.gov/clinvar/variation/{id}), retrieve the germline classification and keep only
+      Pathogenic / Likely pathogenic / Pathogenic-Likely-pathogenic (record_type "classified"; split
+      property paths). Returns exactly 46 VariationIDs; the other 25 are Uncertain significance /
+      Conflicting / Benign / Likely benign and are excluded.
+    query: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+
+      SELECT ?vid ?significance
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        VALUES ?variant {
+          <http://ncbi.nlm.nih.gov/clinvar/variation/1458366> <http://ncbi.nlm.nih.gov/clinvar/variation/3020921> <http://ncbi.nlm.nih.gov/clinvar/variation/849707> <http://ncbi.nlm.nih.gov/clinvar/variation/970818>
+          <http://ncbi.nlm.nih.gov/clinvar/variation/1710697> <http://ncbi.nlm.nih.gov/clinvar/variation/2580443>
+          <http://ncbi.nlm.nih.gov/clinvar/variation/1015765> <http://ncbi.nlm.nih.gov/clinvar/variation/854671>
+          <http://ncbi.nlm.nih.gov/clinvar/variation/1452884> <http://ncbi.nlm.nih.gov/clinvar/variation/2680729> <http://ncbi.nlm.nih.gov/clinvar/variation/2680740> <http://ncbi.nlm.nih.gov/clinvar/variation/575316> <http://ncbi.nlm.nih.gov/clinvar/variation/949501>
+          <http://ncbi.nlm.nih.gov/clinvar/variation/1324078> <http://ncbi.nlm.nih.gov/clinvar/variation/18367> <http://ncbi.nlm.nih.gov/clinvar/variation/18370>
+          <http://ncbi.nlm.nih.gov/clinvar/variation/2066367> <http://ncbi.nlm.nih.gov/clinvar/variation/2090933> <http://ncbi.nlm.nih.gov/clinvar/variation/2170253> <http://ncbi.nlm.nih.gov/clinvar/variation/2680799> <http://ncbi.nlm.nih.gov/clinvar/variation/2680807> <http://ncbi.nlm.nih.gov/clinvar/variation/2843572> <http://ncbi.nlm.nih.gov/clinvar/variation/465857> <http://ncbi.nlm.nih.gov/clinvar/variation/631777> <http://ncbi.nlm.nih.gov/clinvar/variation/680256> <http://ncbi.nlm.nih.gov/clinvar/variation/731909> <http://ncbi.nlm.nih.gov/clinvar/variation/963385>
+          <http://ncbi.nlm.nih.gov/clinvar/variation/1324099> <http://ncbi.nlm.nih.gov/clinvar/variation/3065133> <http://ncbi.nlm.nih.gov/clinvar/variation/717621>
+          <http://ncbi.nlm.nih.gov/clinvar/variation/1180688> <http://ncbi.nlm.nih.gov/clinvar/variation/2680852> <http://ncbi.nlm.nih.gov/clinvar/variation/280125> <http://ncbi.nlm.nih.gov/clinvar/variation/631910> <http://ncbi.nlm.nih.gov/clinvar/variation/976238>
+          <http://ncbi.nlm.nih.gov/clinvar/variation/1471587>
+          <http://ncbi.nlm.nih.gov/clinvar/variation/1273> <http://ncbi.nlm.nih.gov/clinvar/variation/1274> <http://ncbi.nlm.nih.gov/clinvar/variation/209149> <http://ncbi.nlm.nih.gov/clinvar/variation/242521> <http://ncbi.nlm.nih.gov/clinvar/variation/2674886> <http://ncbi.nlm.nih.gov/clinvar/variation/2674895> <http://ncbi.nlm.nih.gov/clinvar/variation/711906> <http://ncbi.nlm.nih.gov/clinvar/variation/813360>
+          <http://ncbi.nlm.nih.gov/clinvar/variation/1361337>
+          <http://ncbi.nlm.nih.gov/clinvar/variation/1030066> <http://ncbi.nlm.nih.gov/clinvar/variation/649028> <http://ncbi.nlm.nih.gov/clinvar/variation/653242>
+          <http://ncbi.nlm.nih.gov/clinvar/variation/1087402> <http://ncbi.nlm.nih.gov/clinvar/variation/1194333> <http://ncbi.nlm.nih.gov/clinvar/variation/1322937> <http://ncbi.nlm.nih.gov/clinvar/variation/1431707> <http://ncbi.nlm.nih.gov/clinvar/variation/2063004> <http://ncbi.nlm.nih.gov/clinvar/variation/541195> <http://ncbi.nlm.nih.gov/clinvar/variation/679581> <http://ncbi.nlm.nih.gov/clinvar/variation/930633>
+          <http://ncbi.nlm.nih.gov/clinvar/variation/1070025> <http://ncbi.nlm.nih.gov/clinvar/variation/444502>
+          <http://ncbi.nlm.nih.gov/clinvar/variation/2933365> <http://ncbi.nlm.nih.gov/clinvar/variation/428601>
+          <http://ncbi.nlm.nih.gov/clinvar/variation/1452397> <http://ncbi.nlm.nih.gov/clinvar/variation/1971882> <http://ncbi.nlm.nih.gov/clinvar/variation/657565>
+          <http://ncbi.nlm.nih.gov/clinvar/variation/732934>
+          <http://ncbi.nlm.nih.gov/clinvar/variation/1567030> <http://ncbi.nlm.nih.gov/clinvar/variation/2137089> <http://ncbi.nlm.nih.gov/clinvar/variation/2924114> <http://ncbi.nlm.nih.gov/clinvar/variation/632161> <http://ncbi.nlm.nih.gov/clinvar/variation/664620> <http://ncbi.nlm.nih.gov/clinvar/variation/990460> <http://ncbi.nlm.nih.gov/clinvar/variation/990461>
+        }
+        ?variant cvo:variation_id ?vid ;
+                 cvo:record_type "classified" ;
+                 cvo:classified_record ?cr .
+        ?cr cvo:classifications ?cls .
+        ?cls cvo:germline_classification ?germ .
+        ?germ cvo:description ?significance .
+        VALUES ?significance { "Pathogenic" "Likely pathogenic" "Pathogenic/Likely pathogenic" }
+      }
+      ORDER BY ?vid
+    result_count: 46   # 46 of the 71 LoF VariationIDs are Pathogenic/Likely pathogenic
+
+  - query_number: 5
+    database: togovar
+    description: >-
+      Verification + gene mapping (Hard Rule 3). Feed the 46 Pathogenic/Likely-pathogenic VariationIDs
+      from Query 4 back into the catalogue and re-derive their genes via the same LoF + HGNC anchor. Returns
+      exactly 14 genes, and the per-gene pathogenic-LoF counts sum to 46 (CHRNE 8, DOK7 7, COLQ 5, then
+      AGRN/CHAT/MUSK/PREPL/RAPSN/SCN4A 3 each, CHRND/GFPT1/SLC25A1 2 each, COL13A1/LRP4 1 each =
+      8+7+5+3+3+3+3+3+3+2+2+2+1+1 = 46), so every VariationID maps to exactly one gene (no overlap) and the
+      24-gene set partitions as 14 answer genes + 10 excluded (6 with no LoF/ClinVar link + 4 whose LoF
+      variants are all non-pathogenic: ALG2, DPAGT1, MYO9A, SLC5A7).
+    query: |
+      PREFIX tgvo: <http://togovar.biosciencedbc.jp/vocabulary/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+
+      SELECT ?hgnc (COUNT(DISTINCT ?vid) AS ?pathoLof)
+      WHERE {
+        VALUES ?vid {
+          "1273" "1274" "18367" "18370" "209149" "242521" "280125" "428601" "444502" "465857"
+          "631777" "631910" "632161" "649028" "653242" "657565" "664620" "813360" "849707" "930633"
+          "963385" "976238" "1030066" "1070025" "1180688" "1322937" "1324099" "1452397" "1452884" "1458366"
+          "1710697" "1971882" "2063004" "2090933" "2137089" "2170253" "2580443" "2674886" "2674895" "2680729"
+          "2680740" "2680799" "2680807" "2680852" "2843572" "3020921"
+        }
+        VALUES ?lof { obo:SO_0001587 obo:SO_0001589 obo:SO_0001574 obo:SO_0001575 }
+        GRAPH <http://togovar.org/variant/annotation/clinvar> {
+          ?v dcterms:identifier ?vid .
+        }
+        GRAPH <http://togovar.org/variant/annotation/ensembl> {
+          ?v tgvo:hasConsequence ?c .
+          ?c tgvo:hgnc ?hgnc ; a ?lof .
+        }
+      }
+      GROUP BY ?hgnc
+      ORDER BY DESC(?pathoLof)
+    result_count: 14   # 14 answer genes; per-gene pathogenic-LoF counts sum to 46 (Rule 3 exact)
+
+rdf_triples: |
+  @prefix ex:   <http://example.org/togovar-cms-lof-analysis#> .
+  @prefix hgnc: <http://identifiers.org/hgnc/> .
+  @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+  ex:cmsGeneSet ex:geneCount "24"^^xsd:integer ; ex:keyword "KW-1004 Congenital myasthenic syndrome" .
+  # Database: uniprot | Query: 1 | Comment: KW-1004 resolves to exactly 24 reviewed human genes, the full set evaluated (Rule 2, no sampling)
+  ex:cmsGeneSet ex:lofClinvarLinkedVariants "71"^^xsd:integer ; ex:lofClinvarLinkedGenes "18"^^xsd:integer .
+  # Database: togovar | Query: 3 | Comment: 71 catalogued loss-of-function variants (stop_gained/frameshift/splice) carry a ClinVar cross-link, spanning 18 of the 24 genes; 6 genes have none
+  ex:cmsGeneSet ex:pathogenicLofVariants "46"^^xsd:integer ; ex:answerGeneCount "14"^^xsd:integer .
+  # Database: clinvar,togovar | Query: 4 | Comment: of the 71, exactly 46 are Pathogenic/Likely pathogenic; these map to 14 genes (24 = 14 answer + 10 excluded; 46 = sum of the 14 per-gene counts, Rule 3)
+  hgnc:1966 ex:symbol "CHRNE" ; ex:pathogenicLofCount "8"^^xsd:integer .
+  # Database: hgnc,clinvar,togovar | Query: 5 | Comment: CHRNE (HGNC:1966, acetylcholine receptor epsilon subunit) has the most - 8 pathogenic/LP loss-of-function variants; the commonest CMS gene
+  hgnc:26594 ex:symbol "DOK7" ; ex:pathogenicLofCount "7"^^xsd:integer .
+  # Database: hgnc,clinvar,togovar | Query: 5 | Comment: DOK7 (HGNC:26594) has 7 pathogenic/LP loss-of-function variants
+  hgnc:2226 ex:symbol "COLQ" ; ex:pathogenicLofCount "5"^^xsd:integer .
+  # Database: hgnc,clinvar,togovar | Query: 5 | Comment: COLQ (HGNC:2226) has 5 pathogenic/LP loss-of-function variants
+  hgnc:329 ex:symbol "AGRN" ; ex:pathogenicLofCount "3"^^xsd:integer .
+  # Database: hgnc,clinvar,togovar | Query: 5 | Comment: AGRN (HGNC:329) has 3 pathogenic/LP loss-of-function variants
+  hgnc:1912 ex:symbol "CHAT" ; ex:pathogenicLofCount "3"^^xsd:integer .
+  # Database: hgnc,clinvar,togovar | Query: 5 | Comment: CHAT (HGNC:1912) has 3 pathogenic/LP loss-of-function variants
+  hgnc:7525 ex:symbol "MUSK" ; ex:pathogenicLofCount "3"^^xsd:integer .
+  # Database: hgnc,clinvar,togovar | Query: 5 | Comment: MUSK (HGNC:7525) has 3 pathogenic/LP loss-of-function variants
+  hgnc:30228 ex:symbol "PREPL" ; ex:pathogenicLofCount "3"^^xsd:integer .
+  # Database: hgnc,clinvar,togovar | Query: 5 | Comment: PREPL (HGNC:30228) has 3 pathogenic/LP loss-of-function variants
+  hgnc:9863 ex:symbol "RAPSN" ; ex:pathogenicLofCount "3"^^xsd:integer .
+  # Database: hgnc,clinvar,togovar | Query: 5 | Comment: RAPSN (HGNC:9863) has 3 pathogenic/LP loss-of-function variants
+  hgnc:10591 ex:symbol "SCN4A" ; ex:pathogenicLofCount "3"^^xsd:integer .
+  # Database: hgnc,clinvar,togovar | Query: 5 | Comment: SCN4A (HGNC:10591) has 3 pathogenic/LP loss-of-function variants
+  hgnc:1965 ex:symbol "CHRND" ; ex:pathogenicLofCount "2"^^xsd:integer .
+  # Database: hgnc,clinvar,togovar | Query: 5 | Comment: CHRND (HGNC:1965) has 2 pathogenic/LP loss-of-function variants
+  hgnc:4241 ex:symbol "GFPT1" ; ex:pathogenicLofCount "2"^^xsd:integer .
+  # Database: hgnc,clinvar,togovar | Query: 5 | Comment: GFPT1 (HGNC:4241) has 2 pathogenic/LP loss-of-function variants
+  hgnc:10979 ex:symbol "SLC25A1" ; ex:pathogenicLofCount "2"^^xsd:integer .
+  # Database: hgnc,clinvar,togovar | Query: 5 | Comment: SLC25A1 (HGNC:10979) has 2 pathogenic/LP loss-of-function variants
+  hgnc:6696 ex:symbol "LRP4" ; ex:pathogenicLofCount "1"^^xsd:integer .
+  # Database: hgnc,clinvar,togovar | Query: 5 | Comment: LRP4 (HGNC:6696) has 1 pathogenic/LP loss-of-function variant
+  hgnc:2190 ex:symbol "COL13A1" ; ex:pathogenicLofCount "1"^^xsd:integer .
+  # Database: hgnc,clinvar,togovar | Query: 5 | Comment: COL13A1 (HGNC:2190) has 1 pathogenic/LP loss-of-function variant; per-gene counts 8+7+5+3+3+3+3+3+3+2+2+2+1+1 = 46 (Rule 3)
+  ex:excludedGenes ex:noPathogenicLof "ALG14,ALG2,CHRNA1,CHRNB1,DPAGT1,MYO9A,SLC18A3,SLC5A7,SYT2,VAMP1" .
+  # Database: clinvar,togovar | Query: 5 | Comment: the 10 excluded genes - 6 with no catalogued LoF/ClinVar-linked variant, 4 (ALG2,DPAGT1,MYO9A,SLC5A7) whose LoF variants are all Uncertain/Benign; CMS at these loci is dominated by non-LoF (missense/gain-of-function) mechanisms
+
+exact_answer:
+  - "AGRN"
+  - "CHAT"
+  - "CHRND"
+  - "CHRNE"
+  - "COL13A1"
+  - "COLQ"
+  - "DOK7"
+  - "GFPT1"
+  - "LRP4"
+  - "MUSK"
+  - "PREPL"
+  - "RAPSN"
+  - "SCN4A"
+  - "SLC25A1"
+
+ideal_answer: |
+  Fourteen of the 24 congenital-myasthenic-syndrome genes carry at least one loss-of-function variant (stop-gained, frameshift, or splice donor/acceptor) that is both catalogued in the population variation resource and classified Pathogenic or Likely pathogenic in ClinVar: AGRN, CHAT, CHRND, CHRNE, COL13A1, COLQ, DOK7, GFPT1, LRP4, MUSK, PREPL, RAPSN, SCN4A, and SLC25A1. CHRNE, the single most common CMS gene, leads with eight such pathogenic loss-of-function variants, followed by DOK7 (seven) and COLQ (five); AGRN, CHAT, MUSK, PREPL, RAPSN, and SCN4A each contribute three, CHRND, GFPT1, and SLC25A1 two each, and COL13A1 and LRP4 one each - 46 distinct pathogenic loss-of-function variants in total, each mapping to exactly one gene. The remaining ten genes fall into two groups. Six - ALG14, CHRNA1, CHRNB1, SLC18A3, SYT2, and VAMP1 - have no catalogued loss-of-function variant carrying any ClinVar cross-link at all, and four more - ALG2, DPAGT1, MYO9A, and SLC5A7 - do have such variants but none reaches Pathogenic or Likely-pathogenic (they are Uncertain significance, Conflicting, or Benign). The split is biologically meaningful: the loss-of-function-positive set is dominated by the classic recessive end-plate genes (acetylcholine-receptor subunits, the AChR-clustering pathway AGRN/LRP4/MUSK/DOK7/RAPSN, the acetylcholinesterase anchor COLQ, and the presynaptic CHAT), whereas several excluded genes cause CMS chiefly through non-loss-of-function mechanisms - CHRNA1/CHRNB1 slow-channel disease is dominant gain-of-function missense, SCN4A and the synaptic-vesicle genes act through altered rather than absent protein, and the glycosylation genes ALG2/ALG14/DPAGT1 are largely hypomorphic missense - so truncating pathogenic alleles are correspondingly absent from the catalogue for them.
+
+question_template_used: "List membership via multi-database intersection (disease gene set from a UniProt keyword -> HGNC IRIs -> population-catalogue loss-of-function VEP consequence + ClinVar cross-link -> ClinVar germline-significance filter; a gene is listed iff it has >=1 catalogued pathogenic/likely-pathogenic loss-of-function variant)"
+
+time_spent:
+  exploration: 34 minutes
+  formulation: 16 minutes
+  verification: 14 minutes
+  pubmed_test: 12 minutes
+  extraction: 18 minutes
+  documentation: 24 minutes
+  total: 118 minutes

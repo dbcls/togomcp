@@ -1,0 +1,216 @@
+id: question_084
+type: choice
+body: "Intrahepatic cholestasis - impaired formation and flow of bile within the liver - is caused by germline defects in a curated set of human genes, spanning the canonical bile-transport pumps as well as regulatory, structural, and intracellular-trafficking genes. In a comprehensive GRCh38 catalogue of human genome variation annotated with per-transcript functional-consequence predictions, these disease genes differ greatly in how many missense single-nucleotide variants they carry. Among the following four genes, which one harbours the greatest number of distinct missense variants in that catalogue?"
+
+choices:
+  - "MYO5B (unconventional myosin-Vb)"
+  - "ABCB11 (bile salt export pump)"
+  - "ATP8B1 (phospholipid-transporting ATPase IC)"
+  - "ABCB4 (phosphatidylcholine translocator)"
+
+inspiration_keyword:
+  keyword_id: KW-0988
+  name: Intrahepatic cholestasis
+  category: Disease
+
+togomcp_databases_used:
+  - uniprot
+  - hgnc
+  - togovar
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 12
+  passed: true
+
+pubmed_test:
+  time_spent: 12 minutes
+  method: |
+    Tried to answer the specific question - which intrahepatic-cholestasis gene carries the most
+    missense variants in a genome-wide human variation catalogue - directly from the literature:
+    (1) "TogoVar intrahepatic cholestasis missense variant burden gene comparison"
+    (2) "progressive familial intrahepatic cholestasis MYO5B TJP2 ABCB11 missense variant count
+        Japanese population database"
+    (3) "intrahepatic cholestasis genes germline missense variant frequency spectrum population"
+  result: |
+    All three queries returned zero articles. The individual cholestasis genes (ABCB11, ABCB4,
+    ATP8B1, MYO5B, TJP2, ...) are each well described in the disease literature, and gene-specific
+    variant catalogues exist, but no publication ranks this curated multi-gene set by the number of
+    distinct missense variants observed in a genome-wide human variation resource. That ranking is a
+    live aggregate over a ~390-million-variant GRCh38 catalogue (which grows with each release),
+    computed per gene from per-transcript VEP consequence annotations - it is not a figure recorded
+    in any paper.
+  conclusion: PASS (cannot answer from literature; requires a live per-gene missense-variant count over a genome-wide variation catalogue joined to the disease gene set)
+
+# STRUCTURED VOCABULARY DISCOVERY
+# UniProt keyword KW-0988 (Intrahepatic cholestasis) -> 19 reviewed human proteins (exact keyword IRI
+#   match, not text search): ABCB11, ABCB4, AKR1D1, AMACR, ATP8B1, CYP7B1, HSD3B7, KIF12, MYO5B,
+#   NR1H4, PSKH1, SEMA7A, SLC25A13, SLC51A, TJP2, USP53, VPS33B, VPS50, ZFYVE19 - ALL 19 counted.
+# Consequence term: Sequence Ontology SO_0001583 (missense_variant), used as the rdf:type of each
+#   per-transcript hasConsequence node in the variation catalogue (IRI-backed, no text search).
+
+sparql_queries:
+  - query_number: 1
+    database: uniprot
+    description: >-
+      Resolve the disease gene set. All reviewed human (taxon 9606) proteins classified with UniProt
+      keyword KW-0988 (Intrahepatic cholestasis), with their encoding gene symbols. Returns exactly 19
+      proteins, each with a single primary gene symbol: ABCB11, ABCB4, AKR1D1, AMACR, ATP8B1, CYP7B1,
+      HSD3B7, KIF12, MYO5B, NR1H4, PSKH1, SEMA7A, SLC25A13, SLC51A, TJP2, USP53, VPS33B, VPS50, ZFYVE19.
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+
+      SELECT ?acc (GROUP_CONCAT(DISTINCT ?gene; SEPARATOR="/") AS ?genes)
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed true ;
+                 up:organism taxon:9606 ;
+                 up:classifiedWith keywords:988 .
+        BIND(STRAFTER(STR(?protein), "uniprot/") AS ?acc)
+        OPTIONAL { ?protein up:encodedBy ?g . ?g skos:prefLabel ?gene }
+      }
+      GROUP BY ?acc
+      ORDER BY ?genes
+    result_count: 19   # 19 reviewed human intrahepatic-cholestasis genes
+
+  - query_number: 2
+    database: hgnc
+    description: >-
+      Bridge the 19 gene symbols to their stable HGNC identifiers (the nomenclature authority's IRI),
+      which is the exact key the variation catalogue uses to attach VEP consequences to a gene. Exact
+      rdfs:label match, no text search. All 19 symbols resolve, e.g. MYO5B -> HGNC:7603, ABCB11 -> 42,
+      ATP8B1 -> 3706, ABCB4 -> 45, TJP2 -> 11828, AKR1D1 -> 388.
+    query: |
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+
+      SELECT ?symbol ?hgnc_id
+      FROM <http://rdfportal.org/dataset/hgnc>
+      WHERE {
+        VALUES ?symbol { "ABCB11" "ABCB4" "AKR1D1" "AMACR" "ATP8B1" "CYP7B1" "HSD3B7"
+                         "KIF12" "MYO5B" "NR1H4" "PSKH1" "SEMA7A" "SLC25A13" "SLC51A"
+                         "TJP2" "USP53" "VPS33B" "VPS50" "ZFYVE19" }
+        ?gene a m2r:Gene ; rdfs:label ?symbol ; dct:identifier ?hgnc_id .
+      }
+      ORDER BY ?symbol
+    result_count: 19   # all 19 symbols map 1:1 to HGNC IRIs
+
+  - query_number: 3
+    database: togovar
+    description: >-
+      For every one of the 19 genes (keyed by its HGNC IRI), count the DISTINCT variants that carry a
+      missense consequence (rdf:type SO_0001583) on that gene, using the per-transcript hasConsequence
+      nodes. Pinned to GRAPH <http://togovar.org/variant/annotation/ensembl>, the only graph that holds
+      consequence nodes (provenance probe on MYO5B returned that single graph, 1748 consequence nodes),
+      so DISTINCT-variant counts are not inflated by the cross-graph re-typing of variant IRIs. Ranked
+      descending: MYO5B=445, TJP2=315, ABCB11=258, ATP8B1=231, ABCB4=215, USP53=185, KIF12=170,
+      VPS50=149, SEMA7A=149, SLC25A13=145, ZFYVE19=143, VPS33B=121, CYP7B1=120, SLC51A=110, NR1H4=107,
+      HSD3B7=106, PSKH1=97, AMACR=83, AKR1D1=56. MYO5B (HGNC:7603) wins with 445.
+    query: |
+      PREFIX tgvo: <http://togovar.biosciencedbc.jp/vocabulary/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT ?hgnc (COUNT(DISTINCT ?variant) AS ?missense)
+      WHERE {
+        VALUES ?hgnc {
+          <http://identifiers.org/hgnc/42> <http://identifiers.org/hgnc/45>
+          <http://identifiers.org/hgnc/388> <http://identifiers.org/hgnc/451>
+          <http://identifiers.org/hgnc/3706> <http://identifiers.org/hgnc/2652>
+          <http://identifiers.org/hgnc/18324> <http://identifiers.org/hgnc/21495>
+          <http://identifiers.org/hgnc/7603> <http://identifiers.org/hgnc/7967>
+          <http://identifiers.org/hgnc/9529> <http://identifiers.org/hgnc/10741>
+          <http://identifiers.org/hgnc/10983> <http://identifiers.org/hgnc/29955>
+          <http://identifiers.org/hgnc/11828> <http://identifiers.org/hgnc/29255>
+          <http://identifiers.org/hgnc/12712> <http://identifiers.org/hgnc/25956>
+          <http://identifiers.org/hgnc/20758>
+        }
+        GRAPH <http://togovar.org/variant/annotation/ensembl> {
+          ?variant tgvo:hasConsequence ?c .
+          ?c tgvo:hgnc ?hgnc ; a obo:SO_0001583 .
+        }
+      }
+      GROUP BY ?hgnc
+      ORDER BY DESC(?missense)
+    result_count: 19   # per-gene missense counts; MYO5B=445 is the maximum
+
+  - query_number: 4
+    database: togovar
+    description: >-
+      Arithmetic verification (Hard Rule 3). Total DISTINCT variants carrying a missense consequence in
+      ANY of the 19 genes, same graph-pinned criteria as Query 3 but without GROUP BY. Returns 3205,
+      exactly equal to the sum of the 19 per-gene counts (445+315+258+231+215+185+170+149+149+145+143+
+      121+120+110+107+106+97+83+56 = 3205), proving the per-gene partition is exhaustive with no variant
+      shared across two of these genes (the 19 loci are disjoint).
+    query: |
+      PREFIX tgvo: <http://togovar.biosciencedbc.jp/vocabulary/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT (COUNT(DISTINCT ?variant) AS ?total_distinct)
+      WHERE {
+        VALUES ?hgnc {
+          <http://identifiers.org/hgnc/42> <http://identifiers.org/hgnc/45>
+          <http://identifiers.org/hgnc/388> <http://identifiers.org/hgnc/451>
+          <http://identifiers.org/hgnc/3706> <http://identifiers.org/hgnc/2652>
+          <http://identifiers.org/hgnc/18324> <http://identifiers.org/hgnc/21495>
+          <http://identifiers.org/hgnc/7603> <http://identifiers.org/hgnc/7967>
+          <http://identifiers.org/hgnc/9529> <http://identifiers.org/hgnc/10741>
+          <http://identifiers.org/hgnc/10983> <http://identifiers.org/hgnc/29955>
+          <http://identifiers.org/hgnc/11828> <http://identifiers.org/hgnc/29255>
+          <http://identifiers.org/hgnc/12712> <http://identifiers.org/hgnc/25956>
+          <http://identifiers.org/hgnc/20758>
+        }
+        GRAPH <http://togovar.org/variant/annotation/ensembl> {
+          ?variant tgvo:hasConsequence ?c .
+          ?c tgvo:hgnc ?hgnc ; a obo:SO_0001583 .
+        }
+      }
+    result_count: 1   # total_distinct = 3205 == sum of 19 per-gene counts (Rule 3 exact, no overlap)
+
+rdf_triples: |
+  @prefix ex:   <http://example.org/togovar-cholestasis-analysis#> .
+  @prefix hgnc: <http://identifiers.org/hgnc/> .
+  @prefix obo:  <http://purl.obolibrary.org/obo/> .
+  @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+  ex:cholestasisGeneSet ex:geneCount "19"^^xsd:integer ; ex:keyword "KW-0988 Intrahepatic cholestasis" .
+  # Database: uniprot | Query: 1 | Comment: KW-0988 resolves to exactly 19 reviewed human genes, the full set compared in this question (Rule 2: all 19 counted, none sampled)
+  ex:cholestasisGeneSet ex:totalMissenseVariants "3205"^^xsd:integer .
+  # Database: togovar | Query: 4 | Comment: 3205 distinct variants carry a missense consequence across the 19 genes; equals the sum of the per-gene counts, so the 19 disjoint loci partition the set with no overlap (Rule 3 exact)
+  obo:SO_0001583 ex:label "missense_variant" .
+  # Database: togovar | Query: 3 | Comment: the counted consequence is Sequence Ontology missense_variant (SO_0001583), the rdf:type of each per-transcript hasConsequence node - an IRI-backed filter, no text search
+  hgnc:7603 ex:symbol "MYO5B" ; ex:missenseVariantCount "445"^^xsd:integer ; ex:rank "1 (the answer)" .
+  # Database: hgnc,togovar | Query: 3 | Comment: MYO5B (HGNC:7603, unconventional myosin-Vb; PFIC6 / microvillus inclusion disease) harbours 445 distinct missense variants - the MOST of the 19 genes (THE ANSWER)
+  hgnc:11828 ex:symbol "TJP2" ; ex:missenseVariantCount "315"^^xsd:integer ; ex:rank "2" .
+  # Database: hgnc,togovar | Query: 3 | Comment: TJP2 (HGNC:11828, tight-junction protein 2; PFIC4) is second with 315 - not offered as an option but shown to bracket the winner
+  hgnc:42 ex:symbol "ABCB11" ; ex:missenseVariantCount "258"^^xsd:integer ; ex:rank "3" .
+  # Database: hgnc,togovar | Query: 3 | Comment: ABCB11 (HGNC:42, bile salt export pump; PFIC2) is a distractor with 258 - the canonical cholestasis gene that a reader would naively pick, but well below MYO5B
+  hgnc:3706 ex:symbol "ATP8B1" ; ex:missenseVariantCount "231"^^xsd:integer ; ex:rank "4" .
+  # Database: hgnc,togovar | Query: 3 | Comment: ATP8B1 (HGNC:3706, phospholipid-transporting ATPase IC; PFIC1) is a distractor with 231
+  hgnc:45 ex:symbol "ABCB4" ; ex:missenseVariantCount "215"^^xsd:integer ; ex:rank "5" .
+  # Database: hgnc,togovar | Query: 3 | Comment: ABCB4 (HGNC:45, phosphatidylcholine translocator; PFIC3) is a distractor with 215
+  hgnc:388 ex:symbol "AKR1D1" ; ex:missenseVariantCount "56"^^xsd:integer ; ex:rank "19 (lowest)" .
+  # Database: hgnc,togovar | Query: 3 | Comment: AKR1D1 (HGNC:388) carries the fewest missense variants of the 19 genes (56), setting the low end of the 56-445 range
+
+exact_answer:
+  - "MYO5B (unconventional myosin-Vb)"
+
+ideal_answer: |
+  Among the four genes offered, MYO5B (HGNC:7603, unconventional myosin-Vb) harbours the greatest number of distinct missense variants - 445 - in the GRCh38 human variation catalogue, comfortably ahead of the three canonical bile-transport pumps that a reader would more readily associate with the disease: ABCB11 (bile salt export pump, PFIC2) with 258, ATP8B1 (PFIC1) with 231, and ABCB4 (PFIC3) with 215. The comparison is drawn over the full curated set of 19 reviewed human genes whose germline defects cause intrahepatic cholestasis, counting for each gene the distinct variants that carry a missense (Sequence Ontology missense_variant, SO_0001583) consequence on one of that gene's transcripts. Across the whole set the counts run from 56 (AKR1D1) to 445 (MYO5B), and MYO5B is in fact the overall maximum - only the tight-junction gene TJP2 (315), which is not offered as a choice, sits between it and the transporters. The 19 per-gene counts sum to exactly 3205 distinct missense variants, equal to the total counted across all genes together, confirming the 19 loci are disjoint and the ranking is exhaustive. The result is a useful corrective to intuition: variant tally scales largely with the coding footprint of the gene, and MYO5B - a very large trafficking myosin whose loss causes PFIC6 and microvillus inclusion disease - simply presents a bigger mutational target than the classic ABC transporters, so it accumulates more observed missense variation despite being the less obvious cholestasis gene.
+
+question_template_used: "Choice extremal aggregation over a disease-defined gene set (per-gene missense-variant count from a genome-wide variation catalogue, gene set defined by a UniProt disease keyword and bridged to the catalogue via stable HGNC IRIs, argmax where the non-obvious large gene beats the canonical disease genes offered as distractors)"
+
+time_spent:
+  exploration: 28 minutes
+  formulation: 12 minutes
+  verification: 10 minutes
+  pubmed_test: 12 minutes
+  extraction: 15 minutes
+  documentation: 20 minutes
+  total: 97 minutes
