@@ -4,10 +4,13 @@ FastMCP server exposing the [RDF Portal](https://rdfportal.org/) (SPARQL) plus s
 
 ## Architecture
 
-The server is assembled in [main.py](togo_mcp/main.py): a root `FastMCP` instance (`mcp`, defined in [server.py](togo_mcp/server.py)) mounts two sub-servers as prefixes:
+The server is assembled in [main.py](togo_mcp/main.py): a root `FastMCP` instance (`mcp`, defined in [server.py](togo_mcp/server.py)) mounts three sub-servers as prefixes:
 
 - `togoid_mcp` from [togoid.py](togo_mcp/togoid.py) — mounted as `togoid`
 - `ncbi_mcp` from [ncbi_tools.py](togo_mcp/ncbi_tools.py) — mounted as `ncbi`
+- `togovar_mcp` from [togovar.py](togo_mcp/togovar.py) — mounted as `togovar`
+
+A REST wrapper becomes a **mounted sub-server** (not a flat `api_tools.py` `search_*` tool) when the external API is a cohesive multi-endpoint surface with *no* SPARQL counterpart in RDF Portal — the flat wrappers are keyword-search front doors to a SPARQL database (their error hint points back to `run_sparql`), so a DB without a SPARQL endpoint doesn't belong there. TogoVar (human genome variation: gnomAD/ToMMo/JGA/BBJ frequencies, ClinVar+MGeND significance) fits the sub-server shape, like TogoID and NCBI.
 
 Tools registered directly on the root `mcp` live in [rdf_portal.py](togo_mcp/rdf_portal.py) (SPARQL, MIE files, endpoint resolution) and [api_tools.py](togo_mcp/api_tools.py) (REST search wrappers).
 
@@ -40,6 +43,7 @@ Two intentional, *different* error conventions coexist — preserve each module'
 
 - **REST-wrapper tools** in [api_tools.py](togo_mcp/api_tools.py) (`search_uniprot/pdb/mesh/reactome/rhea_entity`, ChEMBL, PubChem) and the catalog tools in [rdf_portal.py](togo_mcp/rdf_portal.py) (`list_databases`, `find_databases`): **raise `ValueError` for bad parameters** (caught early, tells the caller not to retry) but **degrade gracefully on upstream/HTTP failure** by returning a payload carrying an `error` key plus a "fall back to SPARQL" hint. Never raise on a transient HTTP error here.
 - **TogoID tools** in [togoid.py](togo_mcp/togoid.py): **raise on HTTP error** via `raise_for_status_with_body` (with a `client_error_hint`). This is the module's consistent convention; FastMCP surfaces the message to the caller. Don't convert only some togoid tools to the return-JSON style — keep the module uniform.
+- **TogoVar tools** in [togovar.py](togo_mcp/togovar.py): same convention as TogoID — **raise `ValueError` on bad params AND on HTTP error** (via `raise_for_status_with_body`); never return an `{"error": ...}` payload. No "fall back to SPARQL" hint (TogoVar has no RDF Portal endpoint). Keep the module uniform. The variant-query DSL is assembled by the pure helper `_build_variant_query` (unit-tested without HTTP); the `search_variant` tool exposes flat filters, not raw nested JSON. Note two live-API quirks the wrapper handles: the client pins `Accept: application/json` (else the API 501s), and a frequency `dataset` is an object `{"name": ...}` (a bare string 500s). The list endpoint does not echo a tgv ID — `rs`/`clinvar` cross-links come from each row's `external_link`.
 
 List-style result tools return a **JSON string of a bare array** (not a Python `list`): empty and non-empty then share one wire shape. Returning a bare `list` makes FastMCP double-represent it (text array + wrapped `{"result": ...}`), so empty vs non-empty diverge for clients. `dict` returns (ChEMBL, `get_sparql_endpoints`) and NCBI `list[TextContent]` returns are exempt — they aren't wrapped.
 
