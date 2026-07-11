@@ -1,0 +1,224 @@
+---
+id: question_082
+type: factoid
+body: >-
+  The mouse gene Tas2r117 encodes bitter taste receptor type 2 member 117, a
+  G-protein-coupled receptor. Considering the collection of inbred and
+  wild-derived laboratory mouse strains whose genomes have been sequenced and
+  called against the C57BL/6J reference (assembly GRCm39), how many distinct
+  single-nucleotide variants that fall within this gene are predicted by the
+  Variant Effect Predictor (VEP) to cause a missense amino-acid substitution in
+  the encoded protein?
+
+inspiration_keyword:
+  keyword_id: KW-0919
+  name: Taste
+  category: Biological process
+
+togomcp_databases_used:
+  - uniprot
+  - ensembl
+  - mogplus
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 12
+  passed: true
+
+pubmed_test:
+  time_spent: 12 minutes
+  method: >-
+    Two searches aimed at answering the question directly: (1) "Tas2r117 mouse"
+    to find any strain-variation study of this receptor; (2) "Tas2r bitter taste
+    receptor missense variation inbred mouse strains" to find a cross-strain
+    coding-variation count for the mouse Tas2r family. Abstracts of the returned
+    records were read.
+  result: |
+    Search (1) returned a single article (PMID 26071358), which reports only that
+    Tas2r117 transcript is absent from small-intestine cDNA - it says nothing
+    about strain-level sequence variation or missense counts. Search (2) returned
+    0 articles. No publication reports how many missense single-nucleotide
+    variants lie within Tas2r117 across the sequenced mouse strain panel; that
+    figure is a computed aggregate over the live variant callset with per-variant
+    VEP consequence annotations and cannot be obtained from the literature.
+  conclusion: PASS (cannot answer from literature - requires RDF)
+
+# STRUCTURED VOCABULARY DISCOVERY
+# Gene resolved via UniProt keyword KW-0919 (Taste) -> mouse reviewed protein
+#   Q7M715 (Tas2r117) -> Ensembl gene ENSMUSG00000058349 (togoid uniprot->ensembl_gene;
+#   confirmed by Ensembl rdfs:seeAlso Q7M715).
+# Consequence term is a single Sequence Ontology IRI, obo:SO_0001583 (missense_variant),
+#   used directly (VEP vep:consequence field) - no getDescendants expansion needed
+#   (missense_variant has no consequence-relevant sub-terms used by VEP here).
+# Graph scope: all MoG+ queries pinned to GRAPH <http://rdfportal.org/dataset/mogplus>
+#   with COUNT(DISTINCT ?variant); the SO label is read from the co-located graph
+#   <http://rdfportal.org/ontology/so> on the same endpoint. No union / cross-graph
+#   inflation is possible (Hard Rule 4 satisfied by explicit graph pinning).
+
+sparql_queries:
+  - query_number: 1
+    database: uniprot
+    description: >-
+      Establish that Tas2r117 is a taste receptor: the reviewed mouse (taxon
+      10090) protein Q7M715 has gene name Tas2r117 and is classified with keyword
+      KW-0919 (Taste). This links the gene to the inspiration keyword.
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      SELECT ?protein ?gene ?kwLabel WHERE {
+        ?protein up:reviewed true ;
+                 up:organism taxon:10090 ;
+                 up:classifiedWith keywords:919 ;
+                 up:encodedBy/skos:prefLabel ?gene .
+        keywords:919 skos:prefLabel ?kwLabel .
+        FILTER(?gene = "Tas2r117")
+      }
+    result_count: 1
+
+  - query_number: 2
+    database: ensembl
+    description: >-
+      Confirm the gene identity and location: ENSMUSG00000058349 is Tas2r117
+      (taste receptor, type 2, member 117), Mus musculus, on chromosome 6 of the
+      GRCm39 assembly, and cross-references UniProt Q7M715 (rdfs:seeAlso) - tying
+      the taste-receptor annotation to the Ensembl gene the variants overlap.
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX soterm: <http://purl.obolibrary.org/obo/so#>
+      SELECT DISTINCT ?label ?desc ?chr ?up WHERE {
+        <http://rdf.ebi.ac.uk/resource/ensembl/ENSMUSG00000058349>
+            a <http://rdf.ebi.ac.uk/terms/ensembl/EnsemblGene> ;
+            rdfs:label ?label ;
+            obo:RO_0002162 <http://ensembl.org/Mus_musculus> ;
+            dcterms:description ?desc ;
+            soterm:part_of ?chr ;
+            rdfs:seeAlso ?up .
+        FILTER(STRSTARTS(STR(?up), "http://purl.uniprot.org/uniprot/"))
+        FILTER(CONTAINS(STR(?chr), "GRCm39/"))
+      }
+    result_count: 1
+
+  - query_number: 3
+    database: mogplus
+    description: >-
+      The answer set: distinct single-nucleotide variants overlapping Tas2r117
+      (ENSMUSG00000058349) whose Ensembl VEP consequence on this gene is
+      missense_variant (obo:SO_0001583, label read from the co-located Sequence
+      Ontology graph). The vep:gene guard ensures the missense call is on
+      Tas2r117 itself. Returns 18 variants (protein positions 22-227, chr6). No
+      release filter is applied because VEP annotations for this gene exist only
+      under release v3; v2.1 variants overlapping the gene carry no VEP/SnpEff
+      annotation, so the resource-wide VEP-missense set is exactly these 18.
+    query: |
+      PREFIX gvo: <http://genome-variation.org/resource#>
+      PREFIX vep: <http://genome-variation.org/resource/vep#>
+      PREFIX mogplus: <http://identifiers.org/mogplus/ontology#>
+      PREFIX ensg: <http://rdf.ebi.ac.uk/resource/ensembl/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT DISTINCT ?variant ?pos ?ref ?alt ?aa ?soLabel WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          ?variant mogplus:overlaps_gene ensg:ENSMUSG00000058349 ;
+                   a gvo:SNV ;
+                   gvo:pos ?pos ; gvo:ref ?ref ; gvo:alt ?alt ;
+                   vep:has_consequence ?ann .
+          ?ann vep:gene ensg:ENSMUSG00000058349 ;
+               vep:consequence obo:SO_0001583 ;
+               vep:amino_acids ?aa .
+        }
+        GRAPH <http://rdfportal.org/ontology/so> {
+          obo:SO_0001583 rdfs:label ?soLabel .
+        }
+      }
+      ORDER BY ?pos
+    result_count: 18
+
+  - query_number: 4
+    database: mogplus
+    description: >-
+      Arithmetic-verification query (Rule 3) for query 3. Breaks the VEP
+      consequence annotations on Tas2r117 (vep:gene guard) down by consequence
+      label, counting DISTINCT variants per class: missense_variant 18,
+      synonymous_variant 8, 5_prime_UTR_variant 1. The three classes are disjoint
+      at the variant level and sum to 27, which equals the total distinct
+      variants VEP annotates on this gene (COUNT(DISTINCT ?variant) over the same
+      guard = 27) - confirming 18 is the exact missense subset with no
+      double-counting. VEP and SnpEff agree closely here (SnpEff labels 17 of the
+      18 as missense; the answer is defined by VEP).
+    query: |
+      PREFIX vep: <http://genome-variation.org/resource/vep#>
+      PREFIX mogplus: <http://identifiers.org/mogplus/ontology#>
+      PREFIX ensg: <http://rdf.ebi.ac.uk/resource/ensembl/>
+      SELECT ?csqLabel (COUNT(DISTINCT ?variant) AS ?n) WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          ?variant mogplus:overlaps_gene ensg:ENSMUSG00000058349 ;
+                   vep:has_consequence ?ann .
+          ?ann vep:gene ensg:ENSMUSG00000058349 ;
+               vep:consequence_label ?csqLabel .
+        }
+      }
+      GROUP BY ?csqLabel
+      ORDER BY DESC(?n)
+    result_count: 3
+
+rdf_triples: |
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix keywords: <http://purl.uniprot.org/keywords/> .
+  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix dcterms: <http://purl.org/dc/terms/> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix soterm: <http://purl.obolibrary.org/obo/so#> .
+  @prefix ensg: <http://rdf.ebi.ac.uk/resource/ensembl/> .
+  @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
+  @prefix gvo: <http://genome-variation.org/resource#> .
+  @prefix vep: <http://genome-variation.org/resource/vep#> .
+  @prefix mogplus: <http://identifiers.org/mogplus/ontology#> .
+
+  uniprot:Q7M715 up:classifiedWith keywords:919 .
+  # Database: UniProt | Query: 1 | Comment: reviewed mouse protein Q7M715 (gene Tas2r117) is classified with keyword KW-0919
+  keywords:919 skos:prefLabel "Taste" .
+  # Database: UniProt | Query: 1 | Comment: KW-0919 is the Taste keyword, so Tas2r117 is a taste receptor
+  ensg:ENSMUSG00000058349 rdfs:label "Tas2r117" .
+  # Database: Ensembl | Query: 2 | Comment: the Ensembl mouse gene the variants overlap is Tas2r117
+  ensg:ENSMUSG00000058349 dcterms:description "taste receptor, type 2, member 117 [Source:MGI Symbol;Acc:MGI:2681242]" .
+  # Database: Ensembl | Query: 2 | Comment: Tas2r117 encodes bitter taste receptor type 2 member 117
+  ensg:ENSMUSG00000058349 soterm:part_of <http://rdf.ebi.ac.uk/resource/ensembl/115/mus_musculus/GRCm39/6> .
+  # Database: Ensembl | Query: 2 | Comment: the gene lies on mouse chromosome 6 of the GRCm39 assembly
+  ensg:ENSMUSG00000058349 rdfs:seeAlso uniprot:Q7M715 .
+  # Database: Ensembl | Query: 2 | Comment: the Ensembl gene cross-references UniProt Q7M715, tying the taste-receptor keyword to the gene
+  <http://identifiers.org/mogplus/v3/6/GRCm39#132780213-A-G> a gvo:SNV .
+  # Database: MoG+ | Query: 3 | Comment: one of the 18 missense loci - a single-nucleotide A>G substitution at chr6:132,780,213 (GRCm39)
+  <http://identifiers.org/mogplus/v3/6/GRCm39#132780213-A-G> mogplus:overlaps_gene ensg:ENSMUSG00000058349 .
+  # Database: MoG+ | Query: 3 | Comment: the variant's coordinate falls within the Tas2r117 gene
+  <http://identifiers.org/mogplus/v3/6/GRCm39#132780213-A-G> vep:has_consequence _:ann1 .
+  # Database: MoG+ | Query: 3 | Comment: the variant carries an Ensembl VEP consequence annotation on Tas2r117
+  _:ann1 vep:consequence obo:SO_0001583 .
+  # Database: MoG+ | Query: 3 | Comment: VEP predicts a missense_variant consequence (SO:0001583) for this variant on Tas2r117
+  _:ann1 vep:amino_acids "K/R" .
+  # Database: MoG+ | Query: 3 | Comment: the substitution changes lysine to arginine at protein position 117 (one representative of the 18)
+  obo:SO_0001583 rdfs:label "missense_variant" .
+  # Database: Sequence Ontology | Query: 3 | Comment: SO:0001583 (co-located SO graph) is the missense_variant term the VEP annotations reference
+
+exact_answer: "18"
+
+ideal_answer: |
+  Eighteen distinct single-nucleotide variants that fall within the mouse gene Tas2r117 (bitter taste receptor type 2 member 117; Ensembl ENSMUSG00000058349, chromosome 6 of GRCm39, UniProt Q7M715) are predicted by Ensembl's Variant Effect Predictor to cause a missense amino-acid substitution in the encoded receptor. They span protein positions 22 to 227 across the receptor's coding sequence (chr6:132,779,927-132,780,543) and include substitutions such as Val22Met, Leu66His, Thr80Pro, Ile149Thr and Arg227Lys, reflecting the extensive coding diversity typical of the rapidly evolving Tas2r bitter-receptor family. These missense variants are the coding subset of the variation VEP annotates on the gene: alongside them VEP records 8 synonymous and 1 five-prime UTR variant, for 27 annotated variants in total (18 + 8 + 1 = 27), so the missense figure is exact and non-overlapping. All 18 are single-nucleotide substitutions carried by wild-derived mouse strains (for example MSM/Ms, JF1/Ms, KJR and SWN/Ms) that diverge from the C57BL/6J reference, which defines the reference allele and is not itself among the genotyped strains; SnpEff independently classifies 17 of the 18 as missense, corroborating the VEP-based count.
+
+question_template_used: factoid_count_missense_SNVs_within_a_gene_consequence_typed
+
+time_spent:
+  exploration: 45
+  formulation: 12
+  verification: 12
+  pubmed_test: 12
+  extraction: 10
+  documentation: 16
+  total: 107
