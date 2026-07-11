@@ -1,0 +1,301 @@
+id: question_081
+type: summary
+body: >-
+  The proto-oncogene HRAS, which encodes a small GTPase, is one of the most
+  intensively studied cancer genes. Because the human and mouse lineages have
+  reshuffled their chromosomes since their common ancestor, an orthologous gene
+  and its counterpart frequently reside on chromosomes bearing different numbers
+  in the two species, even where the local gene order is conserved. For the
+  orthologous HRAS gene pair, give an integrated cross-species summary of
+  chromosomal location: state the cytogenetic band of the human gene on the
+  current human reference assembly together with the Giemsa staining character
+  and the approximate coordinates of that band; identify the corresponding mouse
+  ortholog and the mouse chromosome on which it resides in the current mouse
+  reference assembly; report the assembled length of that mouse chromosome; and
+  explain what this human-versus-mouse placement illustrates about conserved
+  synteny despite the differing chromosome numbers.
+
+inspiration_keyword:
+  keyword_id: KW-0656
+  name: Proto-oncogene
+  category: Disease
+
+togomcp_databases_used:
+  - hgnc
+  - hco
+  - oma
+  - ensembl
+  - mco
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 12
+  passed: true
+
+pubmed_test:
+  time_spent: 8 minutes
+  method: |
+    Attempted to answer the specific, integrated question — the human HRAS
+    cytoband plus its Giemsa stain, the identity of the mouse ortholog, the mouse
+    chromosome it sits on, and that chromosome's GRCm39 assembled length — directly
+    from the literature with three PubMed searches:
+    (1) "HRAS human mouse ortholog chromosome 11p15 synteny chromosome 7 cytoband"
+    (2) "mouse Hras chromosome 7 GRCm39 assembled length cytogenetic band Giemsa"
+    (3) "HRAS mouse human comparative mapping conserved synteny chromosome location"
+  result: |
+    All three searches returned zero articles. The individual facts are scattered
+    across incompatible resources — the human cytoband and its Giemsa stain live in
+    a cytogenetic ontology, the ortholog assignment in a phylogenomic orthology
+    resource, the mouse chromosome placement in a genome annotation, and the exact
+    GRCm39 chromosome length in a chromosome reference — and no single paper states,
+    let alone integrates, them. In particular the Giemsa staining character of
+    11p15.5 and the exact assembled length of mouse chromosome 7 on the GRCm39 build
+    (144,995,196 bp) are assembly/ontology facts absent from the primary literature.
+  conclusion: PASS (the integrated cross-species summary cannot be assembled from the literature; it requires a live join of a cytoband ontology, an orthology resource, a genome annotation, and a mouse-chromosome reference)
+
+sparql_queries:
+  - query_number: 1
+    database: hgnc
+    description: >-
+      Resolve the human gene HRAS to its cytogenetic band. The HGNC gene record
+      carries obo:so_part_of, a plain ISCN cytoband string that is the join key to
+      the human cytoband ontology (its band rdfs:label). HRAS (hgnc/5173) maps to
+      band 11p15.5 — i.e. chromosome 11, short arm, distal band.
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo:  <http://purl.obolibrary.org/obo/>
+
+      SELECT ?gene ?cytoband
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/hgnc> {
+          ?gene rdfs:label "HRAS" ; obo:so_part_of ?cytoband .
+        }
+      }
+    result_count: 1   # HRAS = hgnc/5173, cytoband "11p15.5"
+
+  - query_number: 2
+    database: hco
+    description: >-
+      Read the GRCh38 genomic span and the Giemsa stain of band 11p15.5 from the
+      human cytoband ontology. Navigate from the band class (matched by its ISCN
+      rdfs:label) to its GRCh38 instance and read the FALDO begin/end positions and
+      the hco:bandtype label. Band 11p15.5 is Giemsa-negative (gneg, a pale band),
+      spanning GRCh38 1–2,800,000 (~2.8 Mb, the distal tip of 11p).
+    query: |
+      PREFIX hco:   <http://identifiers.org/hco/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?begin ?end ?stain
+      FROM <http://rdfportal.org/dataset/hco>
+      WHERE {
+        ?band rdfs:subClassOf hco:Cytoband ; rdfs:label "11p15.5" .
+        ?inst a ?band ; hco:build hco:GRCh38 ; hco:bandtype ?bt ; faldo:location ?loc .
+        ?bt rdfs:label ?stain .
+        ?loc faldo:begin/faldo:position ?begin ; faldo:end/faldo:position ?end .
+      }
+    result_count: 1   # begin 1, end 2,800,000, stain "gneg"
+
+  - query_number: 3
+    database: oma
+    description: >-
+      Locate the human HRAS protein in the orthology resource and its species-level
+      HOG cluster. The human OMA protein carrying the UniProt cross-reference P01112
+      is HUMAN03619; the single OrthologsCluster it is a direct member of is
+      HOG:E0792948.6w.50b.72a_9606 (taxonomic range 9606, human). Stripping the
+      _9606 species suffix yields the orthology (speciation) node .6w.50b.72a shared
+      with the mouse descendant.
+    query: |
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX lscr: <http://purl.org/lscr#>
+      PREFIX dct:  <http://purl.org/dc/terms/>
+
+      SELECT DISTINCT ?humanProt ?omaId ?cluster ?taxrange
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          ?humanProt a orth:Protein ;
+                     lscr:xrefUniprot <http://purl.uniprot.org/uniprot/P01112> ;
+                     dct:identifier ?omaId .
+          FILTER(STRSTARTS(?omaId, "HUMAN"))
+          ?cluster a orth:OrthologsCluster ;
+                   orth:hasHomologousMember ?humanProt ;
+                   orth:hasTaxonomicRange ?taxrange .
+        }
+      }
+    result_count: 1   # HUMAN03619, cluster HOG:E0792948.6w.50b.72a_9606, taxrange taxonomy/9606
+
+  - query_number: 4
+    database: oma
+    description: >-
+      Retrieve the mouse ortholog by descending from the orthology node .6w.50b.72a
+      to its mouse (taxon 10090) leaf cluster. Exactly one mouse OrthologsCluster
+      identifier begins with "HOG:E0792948.6w.50b.72a" — HOG:E0792948.6w.50b.72a.53a_10090
+      — and its protein member is MOUSE57051, the 1:1 mouse ortholog. The RAS-family
+      paralogs KRAS/NRAS fall under sibling nodes (.72b, .6c, …) and are correctly
+      excluded by the shared-prefix filter. (Property paths over the 33M-cluster
+      hierarchy time out, so navigation is done by the HOG identifier prefix.)
+    query: |
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX dct:  <http://purl.org/dc/terms/>
+
+      SELECT DISTINCT ?cid ?mouseProt ?mid
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          ?mouseCluster a orth:OrthologsCluster ;
+                        orth:hasTaxonomicRange <http://purl.uniprot.org/taxonomy/10090> ;
+                        dct:identifier ?cid ;
+                        orth:hasHomologousMember ?mouseProt .
+          FILTER(STRSTARTS(?cid, "HOG:E0792948.6w.50b.72a"))
+          ?mouseProt a orth:Protein ;
+                     dct:identifier ?mid .
+          FILTER(STRSTARTS(?mid, "MOUSE"))
+        }
+      }
+    result_count: 1   # cluster HOG:E0792948.6w.50b.72a.53a_10090, protein MOUSE57051
+
+  - query_number: 5
+    database: oma
+    description: >-
+      Confirm the identity of the mouse ortholog MOUSE57051 through its
+      cross-references. It carries UniProt xref Q61411 (mnemonic RASH_MOUSE) and an
+      rdfs:comment sourced from MGI ("Harvey rat sarcoma virus oncogene [Source:MGI
+      Symbol;Acc:MGI:96224]"), establishing MOUSE57051 as mouse Hras.
+    query: |
+      PREFIX lscr: <http://purl.org/lscr#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?uniprot ?comment
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          OPTIONAL { <https://omabrowser.org/oma/info/MOUSE57051> lscr:xrefUniprot ?uniprot }
+          OPTIONAL { <https://omabrowser.org/oma/info/MOUSE57051> rdfs:comment ?comment }
+        }
+      }
+    result_count: 4   # UniProt xrefs A0A0G2JGM2, B2KGV5, Q61411, RASH_MOUSE; comment names MGI:96224 (mouse Hras)
+
+  - query_number: 6
+    database: ensembl
+    description: >-
+      Place mouse Hras on a chromosome of the current mouse reference assembly.
+      Filtering Mus musculus protein-coding genes (biotype ENSGLOSSARY_0000026) by
+      the gene symbol "Hras" and reading its so:part_of chromosome IRI gives Ensembl
+      gene ENSMUSG00000025499 on GRCm39 chromosome 7 (chromosome name taken from the
+      "/GRCm39/" segment of the IRI, version-independent).
+    query: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      PREFIX so:    <http://purl.obolibrary.org/obo/so#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?gene ?label (STRAFTER(STR(?chr), "/GRCm39/") AS ?name)
+      FROM <http://rdfportal.org/dataset/ensembl>
+      WHERE {
+        ?gene a terms:EnsemblGene ;
+              <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Mus_musculus> ;
+              terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+              rdfs:label ?label ;
+              so:part_of ?chr .
+        FILTER(?label = "Hras")
+        FILTER(CONTAINS(STR(?chr), "/mus_musculus/GRCm39/"))
+      }
+    result_count: 1   # ENSMUSG00000025499, label "Hras", chromosome name "7"
+
+  - query_number: 7
+    database: mco
+    description: >-
+      Read the assembled length of mouse chromosome 7 on GRCm39 from the mouse
+      chromosome reference. Navigate from the chromosome class mco:7 to its GRCm39
+      instance and read mco:length and mco:refseq (identified by IRI, since the MCO
+      rdfs:label is a known broken constant). Chromosome 7 is 144,995,196 bp
+      (~145.0 Mb) with RefSeq accession NC_000073.7.
+    query: |
+      PREFIX mco:  <http://identifiers.org/mco/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT (STRAFTER(STR(?chr), "http://identifiers.org/mco/") AS ?name) ?length ?refseq
+      FROM <http://rdfportal.org/dataset/mco>
+      WHERE {
+        ?inst a ?chr ;
+              mco:build mco:GRCm39 ;
+              mco:length ?length ;
+              mco:refseq ?refseq .
+        ?chr rdfs:subClassOf mco:MouseChromosome .
+        FILTER(?chr = mco:7)
+      }
+    result_count: 1   # chromosome 7, length 144,995,196 bp, refseq NC_000073.7
+
+rdf_triples: |
+  @prefix hco:   <http://identifiers.org/hco/> .
+  @prefix mco:   <http://identifiers.org/mco/> .
+  @prefix ensg:  <http://rdf.ebi.ac.uk/resource/ensembl/> .
+  @prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+  @prefix ex:    <http://example.org/hras-cross-species-synteny#> .
+
+  ex:analysis ex:humanGene "HRAS" ; ex:mouseOrtholog "Hras" ; ex:theme "cross-species chromosomal synteny of an orthologous gene pair" .
+  # Database: hgnc | Query: 1 | Comment: Scope — the orthologous HRAS gene pair (human HRAS and its mouse ortholog), summarised across human and mouse reference assemblies
+
+  ex:HRAS_human ex:hgncId "hgnc/5173" ; ex:hgncSymbol "HRAS" ; ex:cytoband "11p15.5" .
+  # Database: hgnc | Query: 1 | Comment: HGNC gene HRAS (hgnc/5173) records obo:so_part_of "11p15.5" — the ISCN cytoband string that joins to the human cytoband ontology's band label
+
+  hco:11p15.5 ex:giemsaStain "gneg" ; ex:grch38Begin "1"^^xsd:integer ; ex:grch38End "2800000"^^xsd:integer .
+  # Database: hco | Query: 2 | Comment: HCO band 11p15.5 on GRCh38 is Giemsa-negative (gneg, a pale band), spanning ~1–2,800,000 (~2.8 Mb) at the distal tip of chromosome 11p
+
+  ex:HRAS_human ex:humanChromosome "11" .
+  # Database: hco | Query: 2 | Comment: The human gene sits on chromosome 11 (ISCN band prefix "11p") — the human member of the ortholog pair
+
+  ex:HRAS_human ex:omaProtein "HUMAN03619" ; ex:uniprot "P01112" ; ex:omaCluster "HOG:E0792948.6w.50b.72a_9606" .
+  # Database: oma | Query: 3 | Comment: The human OMA protein for HRAS (UniProt P01112) is HUMAN03619, direct member of species-level cluster HOG:E0792948.6w.50b.72a_9606 (taxon 9606)
+
+  ex:orthologyNode ex:hogFamily "HOG:E0792948" ; ex:speciationNode "HOG:E0792948.6w.50b.72a" .
+  # Database: oma | Query: 3 | Comment: Stripping the _9606 species suffix gives the orthology (speciation) node .6w.50b.72a shared by the human and mouse descendants — the node that defines the orthology
+
+  ex:Hras_mouse ex:omaProtein "MOUSE57051" ; ex:omaCluster "HOG:E0792948.6w.50b.72a.53a_10090" .
+  # Database: oma | Query: 4 | Comment: Exactly one mouse (taxon 10090) cluster descends from node .6w.50b.72a — MOUSE57051 — the 1:1 mouse ortholog; RAS paralogs KRAS/NRAS lie under sibling nodes and are excluded
+
+  ex:Hras_mouse ex:uniprot "Q61411" ; ex:uniprotMnemonic "RASH_MOUSE" ; ex:mgi "MGI:96224" ; ex:label "Harvey rat sarcoma virus oncogene" .
+  # Database: oma | Query: 5 | Comment: MOUSE57051 confirmed as mouse Hras via lscr:xrefUniprot Q61411 (RASH_MOUSE) and the MGI:96224 source annotation on rdfs:comment
+
+  ensg:ENSMUSG00000025499 ex:label "Hras" ; ex:mouseChromosome "7" .
+  # Database: ensembl | Query: 6 | Comment: Mouse Hras (Ensembl gene ENSMUSG00000025499, protein_coding) is placed via so:part_of on GRCm39 chromosome 7
+
+  mco:7/GRCm39 mco:build mco:GRCm39 ; mco:length "144995196"^^xsd:integer ; ex:refseq "NC_000073.7" .
+  # Database: mco | Query: 7 | Comment: Mouse chromosome 7 assembled length on GRCm39 is 144,995,196 bp (~145.0 Mb; RefSeq NC_000073.7) — the mouse ortholog resides here, on chromosome 7, not 11
+
+  ex:conclusion ex:humanChr "11" ; ex:mouseChr "7" ; ex:insight "orthologs on differently-numbered chromosomes: the human 11p15 ↔ mouse chromosome 7 conserved-synteny block" .
+  # Database: oma | Query: 4 | Comment: Synthesis — the orthologous pair occupies human chromosome 11 (11p15.5) versus mouse chromosome 7; orthology is defined by common ancestry (the shared HOG speciation node), not by chromosome number, and 11p15↔mouse-chr7 is a classic conserved-synteny block
+
+exact_answer: ""
+
+ideal_answer: >-
+  The orthologous HRAS gene pair is a compact illustration of conserved synteny across
+  rearranged genomes. In human, HRAS (HGNC 5173) lies in cytogenetic band 11p15.5 — the
+  distal tip of the short arm of chromosome 11 — a Giemsa-negative (gneg, pale-staining)
+  band occupying roughly the first 2.8 Mb of the chromosome (GRCh38 positions 1–2,800,000).
+  Its mouse ortholog, identified in the phylogenomic orthology hierarchy as OMA protein
+  MOUSE57051 and confirmed by its cross-references to be mouse Hras (UniProt Q61411 /
+  RASH_MOUSE, MGI:96224), descends from the same HOG speciation node (HOG:E0792948.6w.50b.72a)
+  as the human protein HUMAN03619, so the two are true 1:1 orthologs rather than paralogs of
+  the wider RAS family. In the current mouse reference assembly this ortholog (Ensembl gene
+  ENSMUSG00000025499) sits not on a chromosome numbered 11 but on mouse chromosome 7, whose
+  assembled length on GRCm39 is 144,995,196 bp (about 145.0 Mb; RefSeq NC_000073.7). The pair
+  therefore occupies human chromosome 11 versus mouse chromosome 7 — different chromosome
+  numbers for the very same ancestral gene — which is exactly what conserved synteny predicts:
+  orthology is defined by shared ancestry, not by chromosome identity, and human 11p15 maps to
+  a well-characterised syntenic block on mouse chromosome 7. Reading this summary requires
+  joining four disjoint resources — a human cytoband ontology (band and Giemsa stain), an
+  orthology resource (the ortholog assignment), a genome annotation (the mouse chromosome
+  placement) and a mouse-chromosome reference (the GRCm39 length) — none of which carries the
+  integrated picture on its own.
+
+question_template_used: "Summary cross-species chromosomal synteny of an orthologous gene pair (human cytoband + Giemsa stain from a cytogenetic ontology; ortholog identity from an orthology HOG hierarchy; mouse chromosome from genome annotation; mouse chromosome length from a chromosome reference) synthesised into one narrative"
+
+time_spent:
+  exploration: 34 minutes
+  formulation: 12 minutes
+  verification: 10 minutes
+  pubmed_test: 8 minutes
+  extraction: 14 minutes
+  documentation: 20 minutes
+  total: 98 minutes

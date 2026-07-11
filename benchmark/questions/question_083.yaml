@@ -1,0 +1,190 @@
+---
+id: question_083
+type: yes_no
+body: >-
+  In a comprehensive reference collection of standardized microbial
+  culture-media recipes, is a nickel salt (such as nickel chloride or nickel
+  sulfate) included as an ingredient in a greater number of distinct media than
+  an inorganic cobalt salt (such as cobalt chloride, cobalt sulfate, or cobalt
+  nitrate — excluding organic cobalt-containing compounds such as vitamin B12)?
+
+inspiration_keyword:
+  keyword_id: KW-0533
+  name: Nickel
+  category: Ligand
+
+togomcp_databases_used:
+  - mediadive
+  - chebi
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 12
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: >-
+    Two searches aimed at answering the comparison directly: (1) "nickel cobalt
+    trace element culture media recipe prevalence microbial cultivation"; (2)
+    "DSMZ growth media nickel versus cobalt supplementation frequency
+    comparison". Result sets inspected.
+  result: |
+    Both queries returned 0 articles. No publication reports how many
+    standardized culture-media recipes include a nickel salt versus a cobalt
+    salt, or compares the prevalence of these two trace metals across a
+    media-recipe collection. The answer is an aggregate over the live media
+    database (distinct media carrying a nickel-salt ingredient vs. a cobalt-salt
+    ingredient, with salt identity resolved through chemical cross-references)
+    and cannot be obtained from the literature.
+  conclusion: PASS (cannot answer from literature - requires RDF)
+
+# STRUCTURED VOCABULARY DISCOVERY
+# "Nickel salt" and "cobalt salt" resolved to concrete ingredient sets via the ChEBI
+# cross-reference on each media ingredient (schema:hasChEBI), NOT free-text label matching:
+#   Nickel salts  -> ChEBI 34887 (nickel dichloride), 53001 (nickel sulfate),
+#                    86149 (ammonium nickel sulfate hexahydrate)  = 9 ingredient records
+#   Cobalt salts  -> ChEBI 35696 (cobalt dichloride), 53470 (cobalt(2+) sulfate),
+#                    86209/86214 (cobalt dinitrate / hexahydrate) = 8 ingredient records
+# Completeness (Rule 2 - no sampling): an exhaustive label sweep (CONTAINS "Ni"/"nickel",
+# "Co"/"cobalt" over all 1,489 ingredients) surfaced NO nickel/cobalt inorganic-salt
+# ingredient lacking a ChEBI annotation, so the ChEBI-keyed sets are complete. Organic
+# cobalt (cobalamin/vitamin B12, ChEBI 30411; Co-carboxylase) is deliberately excluded.
+# GRAPH-SCOPING (Rule 4): the media endpoint co-hosts ~40 datasets; every media query is
+# pinned to FROM <http://rdfportal.org/dataset/mediadive> and uses COUNT(DISTINCT ?medium),
+# so no cross-graph union inflation is possible.
+
+sparql_queries:
+  - query_number: 1
+    database: chebi
+    description: >-
+      Ground the salt definitions: confirm each ChEBI identifier used to select
+      the media ingredients is an inorganic nickel or cobalt salt. Returns 7
+      compounds - nickel dichloride (34887), nickel sulfate (53001), ammonium
+      nickel sulfate hexahydrate (86149); cobalt dichloride (35696), cobalt(2+)
+      sulfate (53470), cobalt dinitrate (86209) and its hexahydrate (86214).
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT DISTINCT ?chebi ?label WHERE {
+        VALUES ?chebi { obo:CHEBI_34887 obo:CHEBI_53001 obo:CHEBI_86149
+                        obo:CHEBI_35696 obo:CHEBI_53470 obo:CHEBI_86209 obo:CHEBI_86214 }
+        ?chebi rdfs:label ?label .
+      }
+    result_count: 7
+
+  - query_number: 2
+    database: mediadive
+    description: >-
+      Count the DISTINCT culture media whose flat medium composition includes a
+      nickel-salt ingredient (any ingredient cross-referenced to ChEBI 34887,
+      53001, or 86149). Graph-scoped to the media dataset; COUNT(DISTINCT ?medium).
+      Returns 1206.
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      SELECT (COUNT(DISTINCT ?medium) AS ?nickel_media)
+      FROM <http://rdfportal.org/dataset/mediadive>
+      WHERE {
+        ?ing a schema:Ingredient ; schema:hasChEBI ?chebi .
+        FILTER(?chebi IN (34887, 53001, 86149))
+        ?comp a schema:MediumComposition ;
+              schema:containsIngredient ?ing ;
+              schema:partOfMedium ?medium .
+      }
+    result_count: 1206
+
+  - query_number: 3
+    database: mediadive
+    description: >-
+      Count the DISTINCT culture media whose flat medium composition includes an
+      inorganic cobalt-salt ingredient (ChEBI 35696, 53470, 86209, or 86214).
+      Same graph scope and COUNT(DISTINCT ?medium) pattern as query 2. Returns
+      1509 - MORE than the 1206 media with a nickel salt, so the answer is NO.
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      SELECT (COUNT(DISTINCT ?medium) AS ?cobalt_media)
+      FROM <http://rdfportal.org/dataset/mediadive>
+      WHERE {
+        ?ing a schema:Ingredient ; schema:hasChEBI ?chebi .
+        FILTER(?chebi IN (35696, 53470, 86209, 86214))
+        ?comp a schema:MediumComposition ;
+              schema:containsIngredient ?ing ;
+              schema:partOfMedium ?medium .
+      }
+    result_count: 1509
+
+  - query_number: 4
+    database: mediadive
+    description: >-
+      Completeness / no-sampling evidence: enumerate every nickel-salt and
+      cobalt-salt ingredient (by ChEBI) with the number of media each appears in.
+      Returns 17 ingredient records - 9 nickel (NiCl2 in 5 hydration states,
+      NiSO4 x2, ammonium nickel sulfate x2) and 8 cobalt (CoCl2 x4, CoSO4 x2,
+      Co(NO3)2 x2). The dominant sources are NiCl2 x 6 H2O (1117 media) and
+      CoCl2 x 6 H2O (1018 media); per-ingredient counts exceed the distinct-media
+      totals because a few media list two hydration variants.
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      SELECT ?element ?label ?chebi (COUNT(DISTINCT ?medium) AS ?n_media)
+      FROM <http://rdfportal.org/dataset/mediadive>
+      WHERE {
+        ?ing a schema:Ingredient ; rdfs:label ?label ; schema:hasChEBI ?chebi .
+        FILTER(?chebi IN (34887, 53001, 86149, 35696, 53470, 86209, 86214))
+        BIND(IF(?chebi IN (34887,53001,86149), "Nickel", "Cobalt") AS ?element)
+        OPTIONAL {
+          ?comp a schema:MediumComposition ;
+                schema:containsIngredient ?ing ;
+                schema:partOfMedium ?medium .
+        }
+      }
+      GROUP BY ?element ?label ?chebi
+      ORDER BY ?element DESC(?n_media)
+    result_count: 17
+
+rdf_triples: |
+  @prefix schema: <https://purl.dsmz.de/schema/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix mding: <https://purl.dsmz.de/mediadive/ingredient/> .
+
+  mding:40 a schema:Ingredient .
+  # Database: MediaDive | Query: 4 | Comment: ingredient/40 is NiCl2 x 6 H2O, the most-used nickel source (in 1117 media)
+  mding:40 rdfs:label "NiCl2 x 6 H2O" .
+  # Database: MediaDive | Query: 4 | Comment: label of the dominant nickel-salt ingredient
+  mding:40 schema:hasChEBI 34887 .
+  # Database: MediaDive | Query: 4 | Comment: the ingredient cross-references ChEBI 34887, identifying it as a nickel compound
+  obo:CHEBI_34887 rdfs:label "nickel dichloride" .
+  # Database: ChEBI | Query: 1 | Comment: ChEBI 34887 is nickel dichloride, confirming ingredient/40 is a nickel salt
+  mding:38 a schema:Ingredient .
+  # Database: MediaDive | Query: 4 | Comment: ingredient/38 is CoCl2 x 6 H2O, the most-used cobalt source (in 1018 media)
+  mding:38 schema:hasChEBI 35696 .
+  # Database: MediaDive | Query: 4 | Comment: the ingredient cross-references ChEBI 35696, identifying it as a cobalt compound
+  obo:CHEBI_35696 rdfs:label "cobalt dichloride" .
+  # Database: ChEBI | Query: 1 | Comment: ChEBI 35696 is cobalt dichloride, confirming ingredient/38 is an inorganic cobalt salt
+  _:compNi a schema:MediumComposition .
+  # Database: MediaDive | Query: 2 | Comment: a medium-composition record carrying a nickel-salt ingredient
+  _:compNi schema:containsIngredient mding:40 .
+  # Database: MediaDive | Query: 2 | Comment: nickel salts occur in 1206 distinct media in total
+  _:compCo a schema:MediumComposition .
+  # Database: MediaDive | Query: 3 | Comment: a medium-composition record carrying a cobalt-salt ingredient
+  _:compCo schema:containsIngredient mding:38 .
+  # Database: MediaDive | Query: 3 | Comment: inorganic cobalt salts occur in 1509 distinct media - more than the 1206 with a nickel salt, so the answer is NO
+
+exact_answer: "no"
+
+ideal_answer: |
+  No. Across the standardized culture-media recipes, an inorganic cobalt salt is included as an ingredient in more distinct media than a nickel salt. A nickel salt - nickel chloride (ChEBI 34887, chiefly NiCl2 x 6 H2O, in 1117 media), nickel sulfate (ChEBI 53001), or ammonium nickel sulfate (ChEBI 86149) - appears in 1206 distinct media in total. An inorganic cobalt salt - cobalt chloride (ChEBI 35696, chiefly CoCl2 x 6 H2O, in 1018 media), cobalt sulfate (ChEBI 53470), or cobalt nitrate (ChEBI 86209/86214) - appears in 1509 distinct media, about 300 (roughly 25%) more than nickel. Both metals are staple constituents of the trace-element solutions used to formulate anaerobe and defined media, but cobalt is supplemented slightly more universally, consistent with the near-ubiquitous requirement for cobalamin (vitamin B12) biosynthesis, whereas nickel is required by a somewhat narrower set of enzymes (hydrogenases, ureases, carbon-monoxide dehydrogenase, and the methanogenic cofactor F430). Organic cobalt sources such as cobalamin itself are excluded from this count, which considers only inorganic cobalt salts.
+
+question_template_used: yes_no_compare_ingredient_prevalence_two_compound_classes_across_media
+
+time_spent:
+  exploration: 40
+  formulation: 10
+  verification: 10
+  pubmed_test: 10
+  extraction: 10
+  documentation: 15
+  total: 95
