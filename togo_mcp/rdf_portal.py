@@ -120,8 +120,6 @@ async def run_sparql(
             default="",
         ),
     ] = "",
-    dbname: str = "",
-    db: str = "",
     query: str = "",
 ) -> str:
     """
@@ -132,11 +130,8 @@ async def run_sparql(
     Args:
         sparql_query (str): The SPARQL query to execute. Accepts alias `query`.
         database (str): Database name for single-database queries (required).
-            Accepts aliases `dbname` and `db`.
         endpoint_name (str, optional): Endpoint name for cross-database queries (e.g., 'ebi' for ChEMBL+ChEBI).
         endpoint_url (str, optional): Direct SPARQL endpoint URL.
-        dbname (str, optional): Alias for `database`.
-        db (str, optional): Alias for `database`.
         query (str, optional): Alias for `sparql_query`.
 
     Note:
@@ -147,7 +142,6 @@ async def run_sparql(
     Returns:
         str: CSV-formatted results of the SPARQL query.
     """
-    database = database or dbname or db
     sparql_query = sparql_query or query
     if not sparql_query:
         raise ValueError(
@@ -215,8 +209,6 @@ async def get_graph_list(
             default=False,
         ),
     ] = False,
-    dbname: str = "",
-    db: str = "",
 ) -> str:
     """
     Get a list of named graphs on a SPARQL endpoint.
@@ -229,19 +221,15 @@ async def get_graph_list(
     internal graphs are filtered out unless `include_system=True`.
 
     Args:
-        database (str): Database name (required). Accepts aliases `dbname` and `db`.
-            Doubles as a substring ranking hint.
+        database (str): Database name (required). Doubles as a substring ranking hint.
         endpoint_name (str, optional): Short endpoint name (e.g. 'primary', 'sib').
         endpoint_url (str, optional): Direct SPARQL endpoint URL.
         include_system (bool, optional): If True, include Virtuoso/OpenLink internal
             graphs. Default False.
-        dbname (str, optional): Alias for `database`.
-        db (str, optional): Alias for `database`.
 
     Returns:
         str: CSV-formatted list of named graphs, with database-name matches first.
     """
-    database = database or dbname or db
     if not database and not endpoint_name and not endpoint_url:
         return (
             "Error: provide one of `database`, `endpoint_name`, or `endpoint_url`. "
