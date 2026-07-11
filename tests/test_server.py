@@ -272,3 +272,59 @@ class TestToolCallLogger:
         assert rec["extra"]["endpoint_url"] == "https://x/sparql"
         assert rec["extra"]["sparql_status"] == "ok"
         assert rec["extra"]["n_rows"] == 3
+
+
+# ---------------------------------------------------------------------------
+# _IgnoreUnknownSearchKwargs middleware — mounted sub-server regression
+# ---------------------------------------------------------------------------
+class TestIgnoreUnknownSearchKwargs:
+    """A mounted sub-server search tool (e.g. togovar_search_*) is proxied as a
+    FastMCPProviderTool, which has NO `.fn`. The middleware used to derive valid
+    kwargs via `tool.fn`, raising AttributeError and killing every call to those
+    three TogoVar tools. Guard the schema-based fallback path here — none of the
+    togovar tests exercise the mount + middleware layer where the bug lived.
+    """
+
+    def _root_with_togovar(self):
+        from fastmcp import FastMCP
+        from togo_mcp.togovar import togovar_mcp
+
+        root = FastMCP("test-root")
+        root.mount(togovar_mcp, "togovar")
+        return root
+
+    def test_mounted_search_tool_valid_kwargs_no_fn(self) -> None:
+        from togo_mcp.server import _IgnoreUnknownSearchKwargs
+
+        root = self._root_with_togovar()
+        mw = _IgnoreUnknownSearchKwargs()
+        mw._valid_kwargs_cache.clear()
+        ctx = SimpleNamespace(fastmcp_context=SimpleNamespace(fastmcp=root))
+
+        # Must not raise (regression) and must resolve schema-derived arg names.
+        valid = asyncio.run(mw._valid_kwargs(ctx, "togovar_search_variant"))
+        assert valid is not None
+        assert {"gene_hgnc_id", "chromosome", "consequence", "limit"} <= valid
+
+    def test_mounted_search_tool_strips_unknown_kwargs(self) -> None:
+        from togo_mcp.server import _IgnoreUnknownSearchKwargs
+
+        root = self._root_with_togovar()
+        mw = _IgnoreUnknownSearchKwargs()
+        mw._valid_kwargs_cache.clear()
+        seen: dict = {}
+
+        async def call_next(context):
+            seen["args"] = dict(context.message.arguments)
+            return "ok"
+
+        context = SimpleNamespace(
+            message=SimpleNamespace(
+                name="togovar_search_gene",
+                arguments={"query": "ALDH2", "bogus": "drop-me"},
+            ),
+            fastmcp_context=SimpleNamespace(fastmcp=root),
+        )
+        asyncio.run(mw.on_call_tool(context, call_next))
+        # The made-up kwarg is dropped; the declared one survives.
+        assert seen["args"] == {"query": "ALDH2"}

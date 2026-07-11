@@ -317,7 +317,17 @@ class _IgnoreUnknownSearchKwargs(_Middleware):
             tool = await server.get_tool(tool_name)
         except Exception:
             return None
-        valid = set(_inspect.signature(tool.fn).parameters)
+        fn = getattr(tool, "fn", None)
+        if fn is not None:
+            # Local FunctionTool: the wrapped function is the source of truth.
+            valid = set(_inspect.signature(fn).parameters)
+        else:
+            # Mounted sub-server tools (e.g. togovar_search_*) are proxied as
+            # FastMCPProviderTool, which exposes no .fn — deriving valid arg
+            # names from tool.fn raised AttributeError and killed every call.
+            # Fall back to the accepted argument names in the input JSON schema.
+            props = (getattr(tool, "parameters", None) or {}).get("properties", {})
+            valid = set(props)
         self._valid_kwargs_cache[tool_name] = valid
         return valid
 
