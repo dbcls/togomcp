@@ -1,0 +1,200 @@
+id: question_086
+type: choice
+body: "A major microbial culture collection records, for every preserved strain, the recommended optimal temperature at which it should be grown. Among the hyperthermophilic archaea it holds are the four genera listed below, all cultivated at very high temperatures. Judging by the highest recommended cultivation temperature recorded for any strain in each genus, which of these genera is grown the hottest?"
+
+choices:
+  - "Pyrococcus"
+  - "Sulfolobus"
+  - "Thermococcus"
+  - "Pyrodictium"
+
+inspiration_keyword:
+  keyword_id: KW-1209
+  name: Archaeal flagellum biogenesis
+  category: Biological process
+
+togomcp_databases_used:
+  - nbrc
+  - taxonomy
+
+verification_score:
+  biological_insight: 3
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: |
+    Tried to answer the specific question - which of these archaeal genera has the highest recommended
+    cultivation temperature in the culture collection's catalogue - directly from the literature:
+    (1) "NITE Biological Resource Center archaea genus highest recommended cultivation temperature
+        hyperthermophile catalogue"
+    (2) "Pyrodictium Pyrococcus Sulfolobus Thermococcus culture collection recommended growth temperature
+        comparison which highest"
+  result: |
+    Both queries returned zero articles. Individual hyperthermophile species and their optimal growth
+    temperatures are extensively described, but no publication reports the per-genus recommended
+    cultivation temperatures held in this particular culture collection's catalogue, nor ranks these
+    genera by that figure. The answer is a live MAX aggregate over the collection's own recorded
+    cultivation temperatures (which track catalogue curation, not any single organism's physiological
+    optimum) grouped by genus - not a value stated in the literature.
+  conclusion: PASS (cannot answer from literature; requires a live per-genus maximum over the collection's recorded cultivation temperatures, with genus/domain assignment from NCBI Taxonomy)
+
+sparql_queries:
+  - query_number: 1
+    database: nbrc
+    description: >-
+      Establish the catalogue-wide ceiling. Walk the growth-temperature measurement scaffold
+      (sio:SIO_000216 -> optimal-temperature node mpo:MPO_00102 -> value sio:SIO_000300) over every strain,
+      graph-pinned to the NBRC culture graph (the primary endpoint co-hosts ~40 datasets). The maximum
+      recommended optimal cultivation temperature anywhere in the catalogue is 95 degC (22,275 strains carry
+      an optimal-temperature value).
+    query: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX mpo:  <http://purl.jp/bio/10/mpo/>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX sio:  <http://semanticscience.org/resource/>
+
+      SELECT (MAX(?tempC) AS ?globalMax) (COUNT(DISTINCT ?strain) AS ?strainsWithTemp)
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?strain a brso:BiologicalResource ;
+                  sio:SIO_000216 ?m .
+          ?m a mpo:MPO_00102 ; sio:SIO_000300 ?tempC .
+        }
+      }
+    result_count: 1   # globalMax = 95 degC; strainsWithTemp = 22,275
+
+  - query_number: 2
+    database: nbrc
+    description: >-
+      The argmax comparison. Maximum recommended optimal cultivation temperature per candidate genus (genus
+      matched by the accepted-name prefix), graph-pinned. Pyrodictium = 95 degC (3 strains) is the highest
+      and sits at the catalogue ceiling; Thermococcus = 90 (55 strains), Pyrococcus = 85 (3), Sulfolobus =
+      75 (2). Pyrobaculum also reaches 95 (2 strains) - the only other genus at the ceiling - and is
+      therefore deliberately NOT offered as a choice, leaving Pyrodictium the unique maximum among the four
+      options.
+    query: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX mpo:  <http://purl.jp/bio/10/mpo/>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX sio:  <http://semanticscience.org/resource/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT ?genus (MAX(?tempC) AS ?maxTempC) (COUNT(DISTINCT ?strain) AS ?nStrains)
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?strain a brso:BiologicalResource ;
+                  skos:prefLabel ?name ;
+                  sio:SIO_000216 ?m .
+          ?m a mpo:MPO_00102 ; sio:SIO_000300 ?tempC .
+          VALUES ?genus { "Pyrodictium" "Pyrobaculum" "Thermococcus" "Pyrococcus" "Sulfolobus" }
+          FILTER(STRSTARTS(?name, CONCAT(?genus, " ")))
+        }
+      }
+      GROUP BY ?genus
+      ORDER BY DESC(?maxTempC)
+    result_count: 5   # Pyrodictium 95, Pyrobaculum 95, Thermococcus 90, Pyrococcus 85, Sulfolobus 75
+
+  - query_number: 3
+    database: nbrc
+    description: >-
+      The Pyrodictium strains cultivated at the winning 95 degC, with their NCBI Taxonomy IRIs (the
+      mccv:MCCV_000065 direct taxon link) so the genus/domain can be confirmed against NCBI Taxonomy in
+      Query 4. Two strains sit at 95 degC: Pyrodictium brockii (taxonomy/35616) and Pyrodictium occultum
+      (taxonomy/2309); Pyrodictium abyssi is 90.
+    query: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX mpo:  <http://purl.jp/bio/10/mpo/>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX sio:  <http://semanticscience.org/resource/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT ?name ?taxon ?tempC
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?strain a brso:BiologicalResource ;
+                  skos:prefLabel ?name ;
+                  mccv:MCCV_000065 ?taxon ;
+                  sio:SIO_000216 ?m .
+          ?m a mpo:MPO_00102 ; sio:SIO_000300 ?tempC .
+          FILTER(STRSTARTS(?name, "Pyrodictium "))
+          FILTER(?tempC = 95)
+        }
+      }
+      ORDER BY ?name
+    result_count: 2   # Pyrodictium brockii (taxonomy/35616), Pyrodictium occultum (taxonomy/2309), both 95 degC
+
+  - query_number: 4
+    database: taxonomy
+    description: >-
+      Confirm the genus/domain classification of the four candidate genera in NCBI Taxonomy (representative
+      species taxids: Pyrodictium brockii 35616, Pyrococcus horikoshii 53953, Thermococcus sp. 35749,
+      Sulfolobus acidocaldarius 2285). All four are superkingdom Archaea. The winner Pyrodictium is a
+      crenarchaeon (phylum Crenarchaeota / Thermoproteota), as is Sulfolobus; Pyrococcus and Thermococcus
+      are euryarchaea (Euryarchaeota). Property path rdfs:subClassOf* with DISTINCT; ranks via taxo:rank.
+    query: |
+      PREFIX taxo: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT DISTINCT ?spName ?rankShort ?ancName
+      WHERE {
+        VALUES ?sp { <http://identifiers.org/taxonomy/35616>
+                     <http://identifiers.org/taxonomy/53953>
+                     <http://identifiers.org/taxonomy/35749>
+                     <http://identifiers.org/taxonomy/2285> }
+        ?sp taxo:scientificName ?spName ;
+            rdfs:subClassOf* ?anc .
+        ?anc taxo:scientificName ?ancName ;
+             taxo:rank ?rank .
+        VALUES ?rank { taxo:Genus taxo:Phylum taxo:Superkingdom }
+        BIND(STRAFTER(STR(?rank), "taxonomy/") AS ?rankShort)
+      }
+      ORDER BY ?spName ?rankShort
+    result_count: 16   # 4 genera x {Genus, Phylum(x1-2), Superkingdom}; all Superkingdom = Archaea
+
+rdf_triples: |
+  @prefix ex:   <http://example.org/nbrc-archaea-thermophily#> .
+  @prefix taxon: <http://identifiers.org/taxonomy/> .
+  @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+  ex:nbrcCatalogue ex:maxOptimalGrowthTempC "95"^^xsd:integer ; ex:strainsWithOptimalTemp "22275"^^xsd:integer .
+  # Database: nbrc | Query: 1 | Comment: 95 degC is the highest recommended optimal cultivation temperature anywhere in the catalogue (over 22,275 strains carrying an optimal-temperature value)
+  ex:Pyrodictium ex:maxOptimalGrowthTempC "95"^^xsd:integer ; ex:nStrains "3"^^xsd:integer ; ex:rank "1 (the answer)" .
+  # Database: nbrc | Query: 2 | Comment: Pyrodictium is cultivated the hottest of the four options - 95 degC, sitting at the catalogue ceiling (THE ANSWER)
+  ex:Thermococcus ex:maxOptimalGrowthTempC "90"^^xsd:integer ; ex:nStrains "55"^^xsd:integer .
+  # Database: nbrc | Query: 2 | Comment: Thermococcus (the most numerous hyperthermophile genus, 55 strains) tops out at 90 degC - a near-miss distractor, still below Pyrodictium
+  ex:Pyrococcus ex:maxOptimalGrowthTempC "85"^^xsd:integer ; ex:nStrains "3"^^xsd:integer .
+  # Database: nbrc | Query: 2 | Comment: Pyrococcus (the textbook hyperthermophile, P. furiosus) reaches only 85 degC in the catalogue's recommended temperatures - a distractor
+  ex:Sulfolobus ex:maxOptimalGrowthTempC "75"^^xsd:integer ; ex:nStrains "2"^^xsd:integer .
+  # Database: nbrc | Query: 2 | Comment: Sulfolobus (the classic acidothermophilic model archaeon) reaches only 75 degC - the coolest distractor
+  ex:Pyrobaculum ex:maxOptimalGrowthTempC "95"^^xsd:integer ; ex:offeredAsChoice false .
+  # Database: nbrc | Query: 2 | Comment: Pyrobaculum also reaches 95 degC (the only other genus at the ceiling); deliberately NOT offered as a choice so Pyrodictium is the unique maximum among the four options
+  taxon:35616 ex:name "Pyrodictium brockii" ; ex:optimalGrowthTempC "95"^^xsd:integer .
+  # Database: nbrc | Query: 3 | Comment: Pyrodictium brockii (NCBI taxon 35616) is one of the two Pyrodictium strains at the 95 degC ceiling
+  taxon:2309 ex:name "Pyrodictium occultum" ; ex:optimalGrowthTempC "95"^^xsd:integer .
+  # Database: nbrc | Query: 3 | Comment: Pyrodictium occultum (NCBI taxon 2309) is the other Pyrodictium strain at 95 degC
+  ex:Pyrodictium ex:superkingdom "Archaea" ; ex:phylum "Crenarchaeota" .
+  # Database: taxonomy | Query: 4 | Comment: the winner Pyrodictium is a crenarchaeon (phylum Crenarchaeota / Thermoproteota), domain Archaea - confirmed via NCBI Taxonomy
+  ex:Pyrococcus ex:superkingdom "Archaea" ; ex:phylum "Euryarchaeota" .
+  # Database: taxonomy | Query: 4 | Comment: Pyrococcus and Thermococcus are euryarchaea (Euryarchaeota); Sulfolobus is a crenarchaeon like Pyrodictium - all four are domain Archaea
+
+exact_answer:
+  - "Pyrodictium"
+
+ideal_answer: |
+  Among the four genera offered, Pyrodictium is cultivated at the highest recommended temperature - 95 degrees Celsius, which is in fact the ceiling of the entire culture-collection catalogue (no strain of any species is listed above 95 degC, out of the 22,275 strains that carry a recommended optimal cultivation temperature). The distractors are all genuinely hyperthermophilic but cooler in the catalogue's records: Thermococcus, despite being by far the most numerous of these genera (55 strains), tops out at 90 degC; Pyrococcus - the textbook hyperthermophile genus that includes Pyrococcus furiosus - reaches only 85 degC; and Sulfolobus, the classic acidothermophilic model archaeon, only 75 degC. Two Pyrodictium strains sit at the 95 degC ceiling, Pyrodictium brockii (NCBI taxon 35616) and Pyrodictium occultum (2309). NCBI Taxonomy confirms all four genera are members of the domain Archaea, and places the winner Pyrodictium in the Crenarchaeota (Thermoproteota) together with Sulfolobus, whereas Pyrococcus and Thermococcus are Euryarchaeota. The result is a useful corrective to intuition: the hottest-cultivated genus in the catalogue is not one of the household-name hyperthermophiles (Pyrococcus, Sulfolobus) but the less familiar crenarchaeal genus Pyrodictium - and the recommended cultivation temperatures are collection-curation values, not physiological optima, which is why they cannot be inferred from an organism's textbook growth temperature. (One caveat inherent to a single correct answer: the crenarchaeal genus Pyrobaculum also reaches 95 degC in the catalogue and is the only other genus at the ceiling, so it is deliberately excluded from the options.)
+
+question_template_used: "Choice extremal comparison over a culture-collection cultivation attribute (per-genus MAX of the recorded optimal growth temperature; the less-famous crenarchaeon beats the household-name hyperthermophiles offered as distractors; genus/domain assignment confirmed via NCBI Taxonomy)"
+
+time_spent:
+  exploration: 30 minutes
+  formulation: 14 minutes
+  verification: 12 minutes
+  pubmed_test: 10 minutes
+  extraction: 16 minutes
+  documentation: 20 minutes
+  total: 102 minutes

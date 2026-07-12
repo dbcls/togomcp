@@ -1,0 +1,141 @@
+id: question_087
+type: factoid
+body: "TGFBI encodes transforming growth factor-beta-induced protein, and mutations in it cause several of the classic inherited corneal dystrophies. A comprehensive population-scale catalogue of human genome variation records this gene's missense single-nucleotide variants, each scored by the AlphaMissense variant-effect predictor as likely benign, ambiguous, or likely pathogenic. How many of TGFBI's catalogued missense variants does AlphaMissense classify as likely pathogenic?"
+
+inspiration_keyword:
+  keyword_id: KW-1212
+  name: Corneal dystrophy
+  category: Disease
+
+togomcp_databases_used:
+  - hgnc
+  - togovar
+
+verification_score:
+  biological_insight: 2
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 10
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: |
+    Tried to answer the specific question - how many of TGFBI's missense variants a population variation
+    catalogue's AlphaMissense annotation classifies as likely pathogenic - directly from the literature:
+    (1) "TGFBI missense variants AlphaMissense likely pathogenic count population genome variation database"
+    (2) "TGFBI corneal dystrophy how many missense variants predicted pathogenic in silico population
+        catalogue"
+  result: |
+    Both queries returned zero articles. The pathogenic TGFBI mutations that cause corneal dystrophy (a
+    small recurrent set of hotspot residues, e.g. R124 and R555) are extensively described, but no
+    publication reports how many of the gene's missense variants observed across a genome-wide population
+    catalogue carry an AlphaMissense "likely pathogenic" call. That figure is a live count over the
+    catalogue's per-transcript AlphaMissense annotations (which change as the catalogue and the predictor's
+    scores are updated); it is not a number stated in any paper.
+  conclusion: PASS (cannot answer from literature; requires a live per-gene tally of missense variants by AlphaMissense pathogenicity class over a population variation catalogue)
+
+sparql_queries:
+  - query_number: 1
+    database: hgnc
+    description: >-
+      Resolve the gene symbol TGFBI to its stable HGNC identifier - the exact key the variation catalogue
+      uses to attach per-transcript consequences to a gene (tgvo:hgnc). Exact rdfs:label match, no text
+      search. TGFBI -> HGNC:11771 ("transforming growth factor beta induced"). (TGFBI is also the corneal-
+      dystrophy gene reached from UniProt keyword KW-1212 - reviewed human protein Q15582.)
+    query: |
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+
+      SELECT ?symbol ?hgnc_id ?desc
+      FROM <http://rdfportal.org/dataset/hgnc>
+      WHERE {
+        ?gene a m2r:Gene ; rdfs:label ?symbol ; dct:identifier ?hgnc_id ; dct:description ?desc .
+        VALUES ?symbol { "TGFBI" }
+      }
+    result_count: 1   # TGFBI = HGNC:11771, "transforming growth factor beta induced"
+
+  - query_number: 2
+    database: togovar
+    description: >-
+      Partition TGFBI's missense variants by AlphaMissense prediction. Anchored on the HGNC IRI (hgnc/11771)
+      on the per-transcript hasConsequence node typed missense (SO_0001583), graph-pinned to
+      GRAPH <http://togovar.org/variant/annotation/ensembl>, counting DISTINCT variants per
+      tgvo:alphamissense_prediction value. Result: likely_benign 101, likely_pathogenic 41, ambiguous 28
+      (total scored 170). THE ANSWER is 41 likely_pathogenic.
+    query: |
+      PREFIX tgvo: <http://togovar.biosciencedbc.jp/vocabulary/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT ?prediction (COUNT(DISTINCT ?variant) AS ?nVariants)
+      WHERE {
+        GRAPH <http://togovar.org/variant/annotation/ensembl> {
+          ?variant tgvo:hasConsequence ?c .
+          ?c tgvo:hgnc <http://identifiers.org/hgnc/11771> ;
+             a obo:SO_0001583 ;
+             tgvo:alphamissense_prediction ?prediction .
+        }
+      }
+      GROUP BY ?prediction
+      ORDER BY DESC(?nVariants)
+    result_count: 3   # likely_benign 101, likely_pathogenic 41, ambiguous 28
+
+  - query_number: 3
+    database: togovar
+    description: >-
+      Arithmetic verification (Hard Rule 3). Total DISTINCT missense variants on TGFBI, and the DISTINCT
+      subset carrying any AlphaMissense prediction, same graph-pinned anchor. Returns totalMissense = 178
+      and missenseWithAM = 170. The three prediction counts from Query 2 sum exactly to the scored total
+      (41 + 101 + 28 = 170), so every scored variant falls in exactly one class (no overlap); the remaining
+      178 - 170 = 8 missense variants carry no AlphaMissense score.
+    query: |
+      PREFIX tgvo: <http://togovar.biosciencedbc.jp/vocabulary/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT (COUNT(DISTINCT ?variant) AS ?totalMissense)
+             (COUNT(DISTINCT ?vAM) AS ?missenseWithAM)
+      WHERE {
+        GRAPH <http://togovar.org/variant/annotation/ensembl> {
+          ?variant tgvo:hasConsequence ?c .
+          ?c tgvo:hgnc <http://identifiers.org/hgnc/11771> ; a obo:SO_0001583 .
+          OPTIONAL {
+            ?variant tgvo:hasConsequence ?c2 .
+            ?c2 tgvo:hgnc <http://identifiers.org/hgnc/11771> ; a obo:SO_0001583 ;
+                tgvo:alphamissense_prediction ?p .
+            BIND(?variant AS ?vAM)
+          }
+        }
+      }
+    result_count: 1   # totalMissense = 178, missenseWithAM = 170 (170 = 41 + 101 + 28; 8 unscored)
+
+rdf_triples: |
+  @prefix ex:   <http://example.org/tgfbi-alphamissense#> .
+  @prefix hgnc: <http://identifiers.org/hgnc/> .
+  @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+  hgnc:11771 ex:symbol "TGFBI" ; ex:name "transforming growth factor beta induced" .
+  # Database: hgnc | Query: 1 | Comment: TGFBI resolves to HGNC:11771 - the anchor key used to attach the variation catalogue's consequences to the gene; TGFBI is the corneal-dystrophy gene of UniProt keyword KW-1212
+  hgnc:11771 ex:totalMissenseVariants "178"^^xsd:integer ; ex:missenseWithAlphaMissense "170"^^xsd:integer .
+  # Database: togovar | Query: 3 | Comment: the catalogue records 178 distinct missense variants on TGFBI, of which 170 carry an AlphaMissense score (8 unscored)
+  hgnc:11771 ex:alphaMissenseLikelyPathogenic "41"^^xsd:integer .
+  # Database: togovar | Query: 2 | Comment: THE ANSWER - 41 of TGFBI's missense variants are classified likely_pathogenic by AlphaMissense
+  hgnc:11771 ex:alphaMissenseLikelyBenign "101"^^xsd:integer ; ex:alphaMissenseAmbiguous "28"^^xsd:integer .
+  # Database: togovar | Query: 2 | Comment: the other AlphaMissense classes - 101 likely_benign and 28 ambiguous; 41 + 101 + 28 = 170 scored (Rule 3), 170 + 8 unscored = 178 total missense
+
+exact_answer: "41"
+
+ideal_answer: |
+  Of the 178 distinct missense single-nucleotide variants that the population variation catalogue records for TGFBI, 170 carry an AlphaMissense pathogenicity score, and of those AlphaMissense classifies 41 as likely pathogenic. The remaining scored variants split into 101 likely benign and 28 ambiguous (41 + 101 + 28 = 170), while 8 missense variants have no AlphaMissense call at all. The figure is a compact illustration of in-silico triage: TGFBI is clinically associated with the corneal dystrophies through only a handful of recurrent hotspot substitutions, yet across a genome-wide population survey the gene accumulates well over a hundred and fifty distinct missense changes, and a computational variant-effect predictor flags fewer than a quarter of the scored ones (41 of 170) as likely pathogenic - narrowing, but not resolving, which of the many observed variants are functionally consequential. The count cannot be looked up in the literature: it is a live tally over the catalogue's per-transcript AlphaMissense annotations, which shift as both the catalogue and the predictor are updated.
+
+question_template_used: "Factoid single-gene variant-effect-predictor triage (count of a gene's missense variants in a population variation catalogue that a computational predictor - AlphaMissense - classifies as likely pathogenic; gene resolved to its stable HGNC identifier and anchored via that key)"
+
+time_spent:
+  exploration: 30 minutes
+  formulation: 10 minutes
+  verification: 12 minutes
+  pubmed_test: 10 minutes
+  extraction: 14 minutes
+  documentation: 16 minutes
+  total: 92 minutes
