@@ -1,0 +1,361 @@
+id: question_094
+type: summary
+body: >-
+  In the mouse, guanylate cyclases are the enzymes that synthesise the second
+  messenger cyclic GMP from GTP, and they fall into two structurally distinct
+  groups: a soluble, nitric-oxide-sensing form assembled from two subunits, and a
+  set of single-pass transmembrane receptor cyclases activated by peptide or
+  sensory ligands. Provide an integrated profile of the mouse guanylate cyclase
+  gene family responsible for cGMP biosynthesis. Specifically: identify the member
+  genes and how they divide between the soluble and the receptor-type cyclases;
+  describe how the family is distributed across the mouse chromosomes on the
+  current reference assembly, noting any members that sit together at a single
+  locus; and characterise the burden of catalogued sequence variation carried by
+  these genes across the panel of wild-derived and Japanese inbred mouse strains —
+  how many distinct variants fall within each gene, the total across the family,
+  which gene carries the most variants overall, and which gene carries the most
+  protein-altering (missense) variants.
+
+inspiration_keyword:
+  keyword_id: KW-0141
+  name: cGMP biosynthesis
+  category: Biological process
+
+togomcp_databases_used:
+  - uniprot
+  - ensembl
+  - mogplus
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 12
+  passed: true
+
+pubmed_test:
+  time_spent: 8 minutes
+  method: |
+    Attempted to answer the specific, integrated question — the membership of the
+    mouse guanylate-cyclase (cGMP-synthesising) gene family, its chromosomal
+    distribution, and the per-gene burden of catalogued sequence variation across
+    the wild-derived / Japanese inbred mouse strain panel (which gene carries the
+    most variants overall and the most missense variants) — from the literature with
+    two PubMed searches, reading the returned abstracts:
+    (1) "guanylate cyclase gene family mouse inbred strain sequence variation catalog" (0 hits)
+    (2) "Gucy2c Gucy2g mouse strain SNV variant count MoG" (0 hits)
+  result: |
+    Neither search returned any article. The literature discusses individual mouse
+    guanylate cyclases and cGMP signalling physiology, but no paper enumerates the
+    reviewed cGMP-synthesising guanylate cyclase gene family together with a per-gene
+    count of the sequence variants catalogued across the wild-derived / Japanese
+    inbred mouse strain panel. The specific quantitative deliverable — that 4,079
+    distinct variants fall within the nine genes, that Gucy2c carries the most (1,078)
+    while Gucy2g carries the most missense variants (10) — is a property of the current
+    variant-catalogue database state and cannot be recovered from any publication.
+  conclusion: PASS (cannot answer from literature - requires a live join of a protein
+    keyword annotation, an assembly gene model, and a strain-panel variant catalogue)
+
+# STRUCTURED VOCABULARY DISCOVERY
+# KW-0141 (cGMP biosynthesis) resolves to exactly 9 reviewed Mus musculus (taxon 10090)
+# proteins via up:classifiedWith keywords:141 — the complete family, no ontology-descendant
+# expansion needed (a UniProt keyword, not an ontology term). All 9 genes used in every
+# downstream VALUES clause (Hard Rule 2).
+
+sparql_queries:
+  - query_number: 1
+    database: uniprot
+    description: >-
+      Resolve the complete mouse guanylate cyclase (cGMP-synthesising) family: the
+      reviewed Mus musculus (taxon 10090) proteins annotated with keyword KW-0141
+      (cGMP biosynthesis), with their gene names. Returns exactly 9 genes — the two
+      soluble guanylate cyclase subunits Gucy1a1 (Q9ERL9) and Gucy1b1 (O54865) and
+      seven single-pass transmembrane receptor cyclases: Gucy2c (Q3UWA6), Gucy2d
+      (A0A0U1RPR8), Gucy2e (P52785), Gucy2f (Q5SDA5), Gucy2g (Q6TL19), Npr1 (P18293,
+      the ANP/BNP receptor GC-A) and Npr2 (Q6VVW5, the CNP receptor GC-B).
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
+      PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      SELECT DISTINCT ?protein ?mnemonic ?geneName
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed true ;
+                 up:organism taxon:10090 ;
+                 up:classifiedWith keywords:141 ;
+                 up:mnemonic ?mnemonic ;
+                 up:encodedBy/skos:prefLabel ?geneName .
+      }
+      ORDER BY ?geneName
+    result_count: 9   # 9 reviewed mouse cGMP-synthesising guanylate cyclases (2 soluble subunits + 7 receptor cyclases)
+
+  - query_number: 2
+    database: ensembl
+    description: >-
+      Resolve each family member to its GRCm39 Ensembl gene model and read its
+      chromosome and coordinates. The 9 genes span 7 chromosomes (3, 4, 6, 7, 11, 19,
+      X); chromosome 3 alone hosts three members. Notably the two soluble-cyclase
+      subunit genes sit together at one chr3 locus — Gucy1b1 at 81,939,313-81,981,996
+      and Gucy1a1 at 81,999,734-82,053,096 — a tightly linked ~18 kb-apart pair
+      encoding the two subunits of the α1β1 heterodimer, while Npr1 lies separately on
+      chr3 at ~90.4 Mb. Gucy2f is the only X-linked member.
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+
+      SELECT DISTINCT ?symbol ?gene ?chr ?begin ?end
+      WHERE {
+        VALUES ?symbol { "Gucy1a1" "Gucy1b1" "Gucy2c" "Gucy2d" "Gucy2e" "Gucy2f" "Gucy2g" "Npr1" "Npr2" }
+        ?gene a <http://rdf.ebi.ac.uk/terms/ensembl/EnsemblGene> ;
+              rdfs:label ?symbol ;
+              faldo:location ?loc .
+        ?loc faldo:begin/faldo:position ?begin ;
+             faldo:end/faldo:position ?end ;
+             faldo:begin/faldo:reference ?ref .
+        FILTER(CONTAINS(STR(?ref), "mus_musculus/GRCm39/"))
+        BIND(STRAFTER(STR(?ref), "GRCm39/") AS ?chr)
+      }
+      ORDER BY ?symbol
+    result_count: 9   # 9 GRCm39 gene models across chromosomes 3 (x3), 4, 6, 7, 11, 19, X
+
+  - query_number: 3
+    database: mogplus
+    description: >-
+      Per-gene count of DISTINCT sequence variants (MoG+ v3 release, GRCm39) whose
+      coordinate overlaps each family gene, joined through the Ensembl gene IRI stored
+      on the variant (mogplus:overlaps_gene). The release is pinned to v3 via the
+      variant-IRI prefix (the same variant recurs under v2.1; v3 and v2.1 are disjoint
+      strain cohorts — v3 is the wild-derived / Japanese inbred panel: MSM/Ms, JF1/Ms,
+      NC/Nga, FLS/Shi, KJR, ...). The graph is pinned to
+      http://rdfportal.org/dataset/mogplus and COUNT(DISTINCT ?variant) is used
+      (Hard Rule 4). Per-gene: Gucy2c 1078, Gucy2g 585, Gucy2f 566, Gucy1a1 490,
+      Gucy2d 469, Gucy1b1 355, Gucy2e 218, Npr2 175, Npr1 143.
+    query: |
+      PREFIX mogplus: <http://identifiers.org/mogplus/ontology#>
+      PREFIX ensg: <http://rdf.ebi.ac.uk/resource/ensembl/>
+
+      SELECT ?gene (COUNT(DISTINCT ?variant) AS ?nvar)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          VALUES ?gene {
+            ensg:ENSMUSG00000033910 ensg:ENSMUSG00000028005 ensg:ENSMUSG00000042638
+            ensg:ENSMUSG00000074003 ensg:ENSMUSG00000020890 ensg:ENSMUSG00000042282
+            ensg:ENSMUSG00000055523 ensg:ENSMUSG00000027931 ensg:ENSMUSG00000028469
+          }
+          ?variant mogplus:overlaps_gene ?gene .
+          FILTER(STRSTARTS(STR(?variant), "http://identifiers.org/mogplus/v3/"))
+        }
+      }
+      GROUP BY ?gene
+      ORDER BY DESC(?nvar)
+    result_count: 9   # per-gene v3 variant counts; Gucy2c leads with 1078, Npr1 lowest with 143
+
+  - query_number: 4
+    database: mogplus
+    description: >-
+      Arithmetic verification (Rule 3) for Query 3: COUNT(DISTINCT ?variant) over all
+      nine genes together. Returns 4079, exactly equal to the sum of the nine per-gene
+      counts (1078+585+566+490+469+355+218+175+143 = 4079) — confirming the family
+      loci are disjoint (no variant overlaps two of these genes) and no double-counting
+      occurs.
+    query: |
+      PREFIX mogplus: <http://identifiers.org/mogplus/ontology#>
+      PREFIX ensg: <http://rdf.ebi.ac.uk/resource/ensembl/>
+
+      SELECT (COUNT(DISTINCT ?variant) AS ?totalvar)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          VALUES ?gene {
+            ensg:ENSMUSG00000033910 ensg:ENSMUSG00000028005 ensg:ENSMUSG00000042638
+            ensg:ENSMUSG00000074003 ensg:ENSMUSG00000020890 ensg:ENSMUSG00000042282
+            ensg:ENSMUSG00000055523 ensg:ENSMUSG00000027931 ensg:ENSMUSG00000028469
+          }
+          ?variant mogplus:overlaps_gene ?gene .
+          FILTER(STRSTARTS(STR(?variant), "http://identifiers.org/mogplus/v3/"))
+        }
+      }
+    result_count: 1   # totalvar = 4079 = sum of the 9 per-gene counts (Rule 3 satisfied)
+
+  - query_number: 5
+    database: mogplus
+    description: >-
+      Per-gene count of DISTINCT protein-altering (missense) v3 variants: variants that
+      overlap the gene AND carry a VEP consequence annotation of missense_variant
+      (SO_0001583) attributed to that same Ensembl gene (vep:gene). Per-gene: Gucy2g 10,
+      Gucy2d 6, Gucy1a1 4, Gucy2e 3, Npr1 2, Gucy2f 2, Gucy1b1 1, Gucy2c 1, Npr2 0.
+      The striking result: Gucy2c, which carries the most variants overall (1078), has
+      only a single missense variant, whereas Gucy2g — mid-ranked for total variants —
+      carries the most missense changes (10), pointing to weaker purifying selection on
+      the Gucy2g coding sequence relative to the strongly conserved soluble subunits and
+      the natriuretic-peptide receptors.
+    query: |
+      PREFIX mogplus: <http://identifiers.org/mogplus/ontology#>
+      PREFIX vep: <http://genome-variation.org/resource/vep#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX ensg: <http://rdf.ebi.ac.uk/resource/ensembl/>
+
+      SELECT ?gene (COUNT(DISTINCT ?variant) AS ?missense)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          VALUES ?gene {
+            ensg:ENSMUSG00000033910 ensg:ENSMUSG00000028005 ensg:ENSMUSG00000042638
+            ensg:ENSMUSG00000074003 ensg:ENSMUSG00000020890 ensg:ENSMUSG00000042282
+            ensg:ENSMUSG00000055523 ensg:ENSMUSG00000027931 ensg:ENSMUSG00000028469
+          }
+          ?variant mogplus:overlaps_gene ?gene ;
+                   vep:has_consequence ?ann .
+          ?ann vep:consequence obo:SO_0001583 ;
+               vep:gene ?gene .
+          FILTER(STRSTARTS(STR(?variant), "http://identifiers.org/mogplus/v3/"))
+        }
+      }
+      GROUP BY ?gene
+      ORDER BY DESC(?missense)
+    result_count: 8   # 8 genes have >=1 missense variant (Npr2 has 0); Gucy2g leads with 10
+
+  - query_number: 6
+    database: mogplus
+    description: >-
+      Arithmetic verification (Rule 3) for Query 5: COUNT(DISTINCT ?variant) of missense
+      variants over all nine genes together. Returns 29, exactly equal to the sum of the
+      per-gene missense counts (10+6+4+3+2+2+1+1+0 = 29) — the family's coding sequences
+      carry 29 distinct missense changes across the wild-derived / Japanese inbred panel.
+    query: |
+      PREFIX mogplus: <http://identifiers.org/mogplus/ontology#>
+      PREFIX vep: <http://genome-variation.org/resource/vep#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX ensg: <http://rdf.ebi.ac.uk/resource/ensembl/>
+
+      SELECT (COUNT(DISTINCT ?variant) AS ?totalMissense)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          VALUES ?gene {
+            ensg:ENSMUSG00000033910 ensg:ENSMUSG00000028005 ensg:ENSMUSG00000042638
+            ensg:ENSMUSG00000074003 ensg:ENSMUSG00000020890 ensg:ENSMUSG00000042282
+            ensg:ENSMUSG00000055523 ensg:ENSMUSG00000027931 ensg:ENSMUSG00000028469
+          }
+          ?variant mogplus:overlaps_gene ?gene ;
+                   vep:has_consequence ?ann .
+          ?ann vep:consequence obo:SO_0001583 ;
+               vep:gene ?gene .
+          FILTER(STRSTARTS(STR(?variant), "http://identifiers.org/mogplus/v3/"))
+        }
+      }
+    result_count: 1   # totalMissense = 29 = sum of the 9 per-gene missense counts (Rule 3 satisfied)
+
+rdf_triples: |
+  @prefix ensg: <http://rdf.ebi.ac.uk/resource/ensembl/> .
+  @prefix up:   <http://purl.uniprot.org/uniprot/> .
+  @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+  @prefix ex:   <http://example.org/mouse-guanylate-cyclase-family#> .
+
+  ex:profile ex:family "mouse guanylate cyclase (cGMP-synthesising) gene family" ; ex:memberCount "9"^^xsd:integer ; ex:keyword "KW-0141 cGMP biosynthesis" ; ex:assembly "GRCm39" ; ex:variantRelease "MoG+ v3 (wild-derived / Japanese inbred strain panel)" .
+  # Database: uniprot | Query: 1 | Comment: Scope — the 9 reviewed mouse proteins annotated with cGMP biosynthesis (KW-0141) constitute the guanylate cyclase family profiled across function, chromosomal location and strain-panel variation
+
+  ex:profile ex:solubleSubunits "Gucy1a1, Gucy1b1" ; ex:receptorCyclases "Gucy2c, Gucy2d, Gucy2e, Gucy2f, Gucy2g, Npr1, Npr2" .
+  # Database: uniprot | Query: 1 | Comment: The family divides into the soluble NO-sensing guanylate cyclase (α1 + β1 subunits Gucy1a1 + Gucy1b1) and seven single-pass transmembrane receptor cyclases
+
+  up:Q9ERL9 ex:symbol "Gucy1a1" ; ex:class "soluble sGC alpha-1 subunit" ; ex:ensembl ensg:ENSMUSG00000033910 ; ex:chromosome "3" .
+  # Database: uniprot | Query: 1 | Comment: Gucy1a1 (Q9ERL9) — soluble guanylate cyclase alpha-1 subunit, one half of the NO-receptor heterodimer
+
+  up:O54865 ex:symbol "Gucy1b1" ; ex:class "soluble sGC beta-1 subunit" ; ex:ensembl ensg:ENSMUSG00000028005 ; ex:chromosome "3" .
+  # Database: uniprot | Query: 1 | Comment: Gucy1b1 (O54865) — soluble guanylate cyclase beta-1 subunit, the obligate partner of alpha-1 in the sGC heterodimer
+
+  up:P18293 ex:symbol "Npr1" ; ex:class "receptor GC (NPR-A / GC-A, ANP/BNP receptor)" ; ex:ensembl ensg:ENSMUSG00000027931 ; ex:chromosome "3" .
+  # Database: uniprot | Query: 1 | Comment: Npr1 (P18293) — natriuretic peptide receptor 1 / GC-A, a membrane receptor cyclase for ANP and BNP
+
+  up:Q6VVW5 ex:symbol "Npr2" ; ex:class "receptor GC (NPR-B / GC-B, CNP receptor)" ; ex:ensembl ensg:ENSMUSG00000028469 ; ex:chromosome "4" .
+  # Database: uniprot | Query: 1 | Comment: Npr2 (Q6VVW5) — natriuretic peptide receptor 2 / GC-B, the CNP receptor cyclase
+
+  up:Q3UWA6 ex:symbol "Gucy2c" ; ex:class "receptor GC (GC-C, guanylin / heat-stable enterotoxin receptor)" ; ex:ensembl ensg:ENSMUSG00000042638 ; ex:chromosome "6" .
+  # Database: uniprot | Query: 1 | Comment: Gucy2c (Q3UWA6) — intestinal receptor cyclase GC-C, receptor for guanylin/uroguanylin and heat-stable enterotoxin
+
+  up:A0A0U1RPR8 ex:symbol "Gucy2d" ; ex:class "receptor GC (GC-D, sensory)" ; ex:ensembl ensg:ENSMUSG00000074003 ; ex:chromosome "7" .
+  # Database: uniprot | Query: 1 | Comment: Gucy2d (A0A0U1RPR8) — receptor cyclase GC-D expressed in a sensory-neuron subset
+
+  up:P52785 ex:symbol "Gucy2e" ; ex:class "receptor GC (RetGC1 / GC-E, retinal)" ; ex:ensembl ensg:ENSMUSG00000020890 ; ex:chromosome "11" .
+  # Database: uniprot | Query: 1 | Comment: Gucy2e (P52785) — retinal guanylyl cyclase 1 (GC-E), restores cGMP during phototransduction recovery
+
+  up:Q5SDA5 ex:symbol "Gucy2f" ; ex:class "receptor GC (RetGC2 / GC-F, retinal)" ; ex:ensembl ensg:ENSMUSG00000042282 ; ex:chromosome "X" .
+  # Database: uniprot | Query: 1 | Comment: Gucy2f (Q5SDA5) — retinal guanylyl cyclase 2 (GC-F), the only X-linked member of the family
+
+  up:Q6TL19 ex:symbol "Gucy2g" ; ex:class "receptor GC (GC-G)" ; ex:ensembl ensg:ENSMUSG00000055523 ; ex:chromosome "19" .
+  # Database: uniprot | Query: 1 | Comment: Gucy2g (Q6TL19) — receptor cyclase GC-G on chromosome 19
+
+  ensg:ENSMUSG00000028005 ex:begin "81939313"^^xsd:integer ; ex:end "81981996"^^xsd:integer .
+  # Database: ensembl | Query: 2 | Comment: Gucy1b1 spans chr3:81,939,313-81,981,996 (GRCm39) — immediately adjacent to Gucy1a1
+
+  ensg:ENSMUSG00000033910 ex:begin "81999734"^^xsd:integer ; ex:end "82053096"^^xsd:integer .
+  # Database: ensembl | Query: 2 | Comment: Gucy1a1 spans chr3:81,999,734-82,053,096 (GRCm39) — ~18 kb from Gucy1b1, a tightly linked paired locus encoding both subunits of the sGC α1β1 heterodimer
+
+  ex:profile ex:chromosomesSpanned "3, 4, 6, 7, 11, 19, X" ; ex:chr3Members "Gucy1a1, Gucy1b1, Npr1" .
+  # Database: ensembl | Query: 2 | Comment: The 9 genes are distributed across 7 chromosomes; chromosome 3 hosts three members (the linked Gucy1a1/Gucy1b1 pair at ~82 Mb plus Npr1 separately at ~90.4 Mb)
+
+  ensg:ENSMUSG00000042638 ex:v3Variants "1078"^^xsd:integer ; ex:missenseVariants "1"^^xsd:integer .
+  # Database: mogplus | Query: 3 | Comment: Gucy2c carries the most catalogued v3 variants of any family member (1,078) yet only 1 missense change — the bulk are non-coding, and its coding sequence is strongly conserved
+
+  ensg:ENSMUSG00000055523 ex:v3Variants "585"^^xsd:integer ; ex:missenseVariants "10"^^xsd:integer .
+  # Database: mogplus | Query: 5 | Comment: Gucy2g carries 585 v3 variants and the most missense variants of the family (10) — the greatest coding diversity, indicating relaxed purifying selection
+
+  ensg:ENSMUSG00000042282 ex:v3Variants "566"^^xsd:integer ; ex:missenseVariants "2"^^xsd:integer .
+  # Database: mogplus | Query: 3 | Comment: Gucy2f (X-linked) — 566 v3 variants, 2 missense
+
+  ensg:ENSMUSG00000074003 ex:v3Variants "469"^^xsd:integer ; ex:missenseVariants "6"^^xsd:integer .
+  # Database: mogplus | Query: 5 | Comment: Gucy2d — 469 v3 variants, 6 missense (second-most coding changes)
+
+  ensg:ENSMUSG00000020890 ex:v3Variants "218"^^xsd:integer ; ex:missenseVariants "3"^^xsd:integer .
+  # Database: mogplus | Query: 3 | Comment: Gucy2e (retinal GC-E) — 218 v3 variants, 3 missense
+
+  ensg:ENSMUSG00000028469 ex:v3Variants "175"^^xsd:integer ; ex:missenseVariants "0"^^xsd:integer .
+  # Database: mogplus | Query: 5 | Comment: Npr2 (GC-B) — 175 v3 variants and zero missense changes, the most conserved coding sequence in the family across the panel
+
+  ensg:ENSMUSG00000027931 ex:v3Variants "143"^^xsd:integer ; ex:missenseVariants "2"^^xsd:integer .
+  # Database: mogplus | Query: 3 | Comment: Npr1 (GC-A) — 143 v3 variants, the fewest of any family member, with 2 missense
+
+  ex:profile ex:totalV3Variants "4079"^^xsd:integer ; ex:totalMissenseVariants "29"^^xsd:integer .
+  # Database: mogplus | Query: 4 | Comment: Family totals — 4,079 distinct v3 variants overlap the nine genes (= sum of per-gene counts, Rule 3) and 29 of them are missense (= sum of per-gene missense, Rule 3); the disjoint loci mean no cross-gene double-counting
+
+  ex:conclusion ex:insight "the mouse cGMP-synthesising guanylate cyclase family (2 soluble subunits + 7 receptor cyclases, 9 genes on 7 chromosomes) carries 4,079 catalogued variants across the wild-derived / Japanese inbred strain panel, but coding change is rare (29 missense) and decoupled from total variant load — Gucy2c leads in total variants yet has 1 missense, while Gucy2g leads in missense" .
+  # Database: mogplus | Query: 5 | Comment: Synthesis — overall variant burden and protein-altering variation are independent axes; the receptors and soluble subunits are held under strong purifying selection while Gucy2g tolerates more coding change
+
+exact_answer: ""
+
+ideal_answer: >-
+  The mouse guanylate cyclase family responsible for cGMP biosynthesis comprises nine
+  genes, splitting into two structurally distinct classes: a soluble, nitric-oxide-sensing
+  cyclase built from two subunits — Gucy1a1 (alpha-1) and Gucy1b1 (beta-1), which form the
+  physiological NO-receptor heterodimer — and seven single-pass transmembrane receptor
+  cyclases: Npr1 (GC-A, the ANP/BNP receptor), Npr2 (GC-B, the CNP receptor), the intestinal
+  guanylin/heat-stable-enterotoxin receptor Gucy2c (GC-C), the sensory Gucy2d (GC-D), the two
+  retinal cyclases Gucy2e (RetGC1/GC-E) and Gucy2f (RetGC2/GC-F), and Gucy2g (GC-G). On the
+  GRCm39 assembly the family is scattered across seven chromosomes (3, 4, 6, 7, 11, 19 and X),
+  with chromosome 3 carrying three members; strikingly, the two soluble-cyclase subunit genes
+  sit together at a single chr3 locus — Gucy1b1 at 81.94-81.98 Mb and Gucy1a1 at 82.00-82.05 Mb,
+  only about 18 kb apart — a tightly linked pair encoding both halves of the alpha1beta1
+  heterodimer, while Npr1 lies separately further along chr3 (~90.4 Mb) and Gucy2f is the sole
+  X-linked member. Across the panel of wild-derived and Japanese inbred mouse strains, 4,079
+  distinct sequence variants fall within these nine genes, distributed very unevenly: Gucy2c
+  carries the most (1,078), followed by Gucy2g (585), Gucy2f (566), Gucy1a1 (490), Gucy2d (469),
+  Gucy1b1 (355), Gucy2e (218), Npr2 (175) and Npr1 the fewest (143). Protein-altering change,
+  however, is rare and decoupled from this overall load: only 29 of the 4,079 variants are
+  missense, and the gene with the most variants overall, Gucy2c, has just a single missense
+  change, whereas the most missense variants are carried by Gucy2g (10) — followed by Gucy2d (6)
+  and Gucy1a1 (4) — while Npr2 has none at all. This pattern shows that total variant burden and
+  coding diversity are independent axes: the soluble subunits and the natriuretic-peptide
+  receptors are held under strong purifying selection on their coding sequences, whereas Gucy2g
+  tolerates markedly more amino-acid change, consistent with relaxed constraint on this
+  receptor cyclase.
+
+question_template_used: "Summary integrated profile of a gene family (family membership and functional subdivision from a protein keyword annotation; chromosomal distribution and locus structure from an assembly gene model; per-gene and total burden of catalogued strain-panel sequence variation, with the total-variant leader vs the missense leader, from a mouse strain variant catalogue) synthesised into one narrative"
+
+time_spent:
+  exploration: 35 minutes
+  formulation: 12 minutes
+  verification: 10 minutes
+  pubmed_test: 8 minutes
+  extraction: 14 minutes
+  documentation: 18 minutes
+  total: 97 minutes
