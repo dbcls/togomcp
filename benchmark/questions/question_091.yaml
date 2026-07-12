@@ -1,0 +1,195 @@
+id: question_091
+type: factoid
+body: >-
+  Maple syrup urine disease is one of the metabolic disorders designated as an
+  intractable disease under Japan's rare-disease (Nanbyo) program, where it is
+  cross-referenced to a standard international disease-ontology identifier. Using
+  that disease identifier, how many distinct human genome variants does an
+  integrated Japanese variation database's clinical annotation place in the
+  pathogenic range — that is, classified as Pathogenic, Likely pathogenic, or the
+  combined Pathogenic/Likely pathogenic?
+
+inspiration_keyword:
+  keyword_id: KW-0466
+  name: Maple syrup urine disease
+  category: Disease
+
+togomcp_databases_used:
+  - nando
+  - togovar
+
+verification_score:
+  biological_insight: 2
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 10
+  passed: true
+
+pubmed_test:
+  time_spent: 6 minutes
+  method: |
+    Attempted to answer the specific question — the number of distinct variants a
+    genome-variation database classifies in the pathogenic range (Pathogenic / Likely
+    pathogenic / Pathogenic-or-Likely-pathogenic) for maple syrup urine disease — from
+    the literature with two PubMed searches:
+    (1) "maple syrup urine disease number of pathogenic likely pathogenic variants ClinVar classified" (0 hits)
+    (2) "maple syrup urine disease BCKDH variant spectrum Japanese genome variation database" (0 hits)
+  result: |
+    Neither search returned any article. No publication reports the count of
+    pathogenic-range variants held for this disease in a variation database — it is a
+    database-state figure (the embedded ClinVar annotation is refreshed on each release
+    and changes monthly), not a fact stated in the literature. Answering requires
+    bridging the Japanese intractable-disease ontology (which supplies the disease's
+    MONDO identifier and its designated-disease status) to the variation database's
+    clinical-significance annotation and counting distinct variants.
+  conclusion: PASS (the pathogenic-range variant count for this disease is a live
+    database-state figure absent from the literature; it requires joining a Japanese
+    intractable-disease ontology to a genome-variation database's clinical annotation)
+
+sparql_queries:
+  - query_number: 1
+    database: nando
+    description: >-
+      Resolve maple syrup urine disease in the Japanese intractable-disease ontology and
+      read its designated-disease status and MONDO cross-reference. The disease is
+      registered under Nanbyo notification number 244 (NANDO_1200791, Japanese label
+      メープルシロップ尿症) and is linked via skos:closeMatch to MONDO_0009563 — the
+      international disease identifier used to query the variation database's clinical layer.
+    query: |
+      PREFIX owl:   <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX skos:  <http://www.w3.org/2004/02/skos/core#>
+      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+
+      SELECT ?disease ?en ?ja ?notif ?mondo
+      FROM <http://nanbyodata.jp/ontology/nando>
+      WHERE {
+        ?disease a owl:Class ;
+                 nando:hasNotificationNumber ?notif ;
+                 rdfs:label ?en ; rdfs:label ?ja ;
+                 skos:closeMatch ?mondo .
+        FILTER(?notif = "244")
+        FILTER(LANG(?en) = "en")
+        FILTER(LANG(?ja) = "ja")
+        FILTER(STRSTARTS(STR(?mondo), "http://purl.obolibrary.org/obo/MONDO_"))
+      }
+    result_count: 1   # NANDO_1200791, "Maple syrup urine disease" / メープルシロップ尿症, notif 244, MONDO_0009563
+
+  - query_number: 2
+    database: togovar
+    description: >-
+      Partition the variants that the variation database's ClinVar annotation links to
+      MONDO:0009563 by germline clinical significance. Graph-pinned to the embedded
+      ClinVar dataset and using COUNT(DISTINCT ?variant) (each disease is asserted by
+      several per-submission blank nodes, which would otherwise inflate the count). The
+      eight significance categories are, in the pathogenic range, 199 Pathogenic + 179
+      Likely pathogenic + 113 Pathogenic/Likely pathogenic, and outside it 420 Uncertain
+      significance, 100 Conflicting, 901 Likely benign, 92 Benign, 43 Benign/Likely benign.
+    query: |
+      PREFIX cvo:     <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX dct:     <http://purl.org/dc/terms/>
+
+      SELECT ?sig (COUNT(DISTINCT ?variant) AS ?nVariants)
+      WHERE {
+        GRAPH <http://togovar.org/clinvar> {
+          ?ref dct:source "MONDO" ; dct:identifier "MONDO:0009563" .
+          ?dis dct:references ?ref .
+          ?variant med2rdf:disease ?dis ;
+                   a cvo:VariationArchiveType ;
+                   cvo:record_status "current" ;
+                   cvo:record_type "classified" ;
+                   cvo:classified_record ?cr .
+          ?cr cvo:classifications ?cls .
+          ?cls cvo:germline_classification ?g .
+          ?g cvo:description ?sig .
+        }
+      }
+      GROUP BY ?sig
+      ORDER BY DESC(?nVariants)
+    result_count: 8   # 8 germline-significance categories; pathogenic range = 199 + 179 + 113 = 491
+
+  - query_number: 3
+    database: togovar
+    description: >-
+      Rule-3 arithmetic check. Over the same graph-pinned pattern, count all distinct
+      variants for MONDO:0009563 across every significance level, and the distinct subset
+      whose description is one of the three pathogenic-range labels. Result: 2,047 total
+      (= the sum of the eight category counts in Query 2, so no variant is double-counted)
+      and 491 in the pathogenic range (= 199 + 179 + 113).
+    query: |
+      PREFIX cvo:     <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX dct:     <http://purl.org/dc/terms/>
+
+      SELECT (COUNT(DISTINCT ?variant) AS ?totalAllSig)
+             (COUNT(DISTINCT ?plpVariant) AS ?pathogenicRange)
+      WHERE {
+        GRAPH <http://togovar.org/clinvar> {
+          ?ref dct:source "MONDO" ; dct:identifier "MONDO:0009563" .
+          ?dis dct:references ?ref .
+          ?variant med2rdf:disease ?dis ;
+                   a cvo:VariationArchiveType ;
+                   cvo:record_status "current" ;
+                   cvo:record_type "classified" ;
+                   cvo:classified_record ?cr .
+          ?cr cvo:classifications ?cls .
+          ?cls cvo:germline_classification ?g .
+          ?g cvo:description ?sig .
+          BIND(IF(?sig IN ("Pathogenic", "Likely pathogenic", "Pathogenic/Likely pathogenic"), ?variant, ?undef) AS ?plpVariant)
+        }
+      }
+    result_count: 1   # totalAllSig = 2047, pathogenicRange = 491
+
+rdf_triples: |
+  @prefix nando: <http://nanbyodata.jp/ontology/NANDO_> .
+  @prefix obo:   <http://purl.obolibrary.org/obo/> .
+  @prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+  @prefix ex:    <http://example.org/msud-nando-togovar#> .
+
+  ex:question ex:disease "Maple syrup urine disease" ; ex:answer "491"^^xsd:integer .
+  # Database: nando | Query: 1 | Comment: Scope — the designated Japanese intractable disease maple syrup urine disease, and the count of its pathogenic-range variants in the variation database's clinical annotation
+
+  nando:1200791 ex:enLabel "Maple syrup urine disease" ; ex:jaLabel "メープルシロップ尿症" ; ex:notificationNumber "244" ; ex:mondo obo:MONDO_0009563 .
+  # Database: nando | Query: 1 | Comment: NANDO records MSUD as designated intractable disease notification #244, cross-referenced (skos:closeMatch) to MONDO_0009563 — the join key into the variation database's clinical layer
+
+  obo:MONDO_0009563 ex:pathogenic "199"^^xsd:integer ; ex:likelyPathogenic "179"^^xsd:integer ; ex:pathogenicOrLikelyPathogenic "113"^^xsd:integer .
+  # Database: togovar | Query: 2 | Comment: Variants the ClinVar annotation links to MONDO:0009563, pathogenic range: 199 Pathogenic + 179 Likely pathogenic + 113 Pathogenic/Likely pathogenic = 491 distinct
+
+  obo:MONDO_0009563 ex:uncertainSignificance "420"^^xsd:integer ; ex:conflicting "100"^^xsd:integer ; ex:likelyBenign "901"^^xsd:integer ; ex:benign "92"^^xsd:integer ; ex:benignOrLikelyBenign "43"^^xsd:integer .
+  # Database: togovar | Query: 2 | Comment: The remaining, non-pathogenic-range categories for the same condition: 420 Uncertain significance, 100 Conflicting, 901 Likely benign, 92 Benign, 43 Benign/Likely benign
+
+  ex:msudVariants ex:pathogenicRangeTotal "491"^^xsd:integer ; ex:allSignificanceTotal "2047"^^xsd:integer .
+  # Database: togovar | Query: 3 | Comment: Rule-3 check — 199+179+113 = 491 distinct pathogenic-range variants; all eight categories sum to 2,047 = COUNT(DISTINCT ?variant) over the condition (no variant double-counted; DISTINCT removes the per-submission disease-blank-node inflation)
+
+  ex:conclusion ex:insight "of 2,047 distinct variants the Japanese variation database's clinical layer links to this designated intractable disease, 491 (~24%) fall in the pathogenic range — the clinically actionable subset for the disorder" .
+  # Database: togovar | Query: 3 | Comment: Synthesis — 491 pathogenic-range variants out of 2,047 classified for maple syrup urine disease (MONDO:0009563)
+
+exact_answer: "491"
+
+ideal_answer: >-
+  491. Maple syrup urine disease is a designated Japanese intractable disease — registered
+  in the Nanbyo program under notification number 244 (Japanese name メープルシロップ尿症) —
+  and it is cross-referenced to the international disease-ontology term MONDO:0009563.
+  Querying the integrated Japanese genome-variation database's clinical (ClinVar-derived)
+  annotation for that disease term, 2,047 distinct variants are classified across all
+  significance levels; of these, 491 fall in the pathogenic range — 199 Pathogenic, 179
+  Likely pathogenic, and 113 carrying the combined Pathogenic/Likely pathogenic label. The
+  remaining 1,556 are of uncertain significance or benign-leaning (420 uncertain
+  significance, 100 conflicting classifications, 901 likely benign, 92 benign, and 43
+  benign/likely benign). The pathogenic-range set — 491 variants, about 24% of all
+  variants classified for the disease — is the clinically actionable subset, and arriving
+  at it requires joining the Japanese intractable-disease ontology, which supplies the
+  disease's MONDO identifier, to the variation database's clinical-significance annotation.
+
+question_template_used: "Factoid disease-anchored pathogenic-variant count: a designated intractable disease from a Japanese rare-disease ontology is bridged via its MONDO cross-reference to a genome-variation database's ClinVar annotation layer, counting distinct variants in the pathogenic range (Pathogenic / Likely pathogenic / Pathogenic-or-Likely-pathogenic), with a Rule-3 sum-to-total check"
+
+time_spent:
+  exploration: 30 minutes
+  formulation: 10 minutes
+  verification: 8 minutes
+  pubmed_test: 6 minutes
+  extraction: 10 minutes
+  documentation: 16 minutes
+  total: 80 minutes
