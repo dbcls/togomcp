@@ -1,0 +1,271 @@
+id: question_089
+type: summary
+body: >-
+  Hydrogenophilus thermoluteolus type strain TH-1 is a moderately thermophilic,
+  hydrogen-oxidizing bacterium that grows autotrophically by fixing carbon dioxide
+  through the Calvin-Benson-Bassham cycle. Provide an integrated profile of this
+  type strain that draws together its cultivation and provenance, its taxonomic
+  placement, and the architecture of its completely sequenced genome. Specifically:
+  give the recommended optimal cultivation temperature and the type of environment
+  from which the strain was isolated; state its full taxonomic lineage from domain
+  down to species; and describe its genome — how many replicons it comprises and,
+  for the chromosome and any plasmid, their individual sizes and topology —
+  together with the genome's gene inventory, i.e. the numbers of protein-coding,
+  transfer-RNA, and ribosomal-RNA genes.
+
+inspiration_keyword:
+  keyword_id: KW-0120
+  name: Carbon dioxide fixation
+  category: Biological process
+
+togomcp_databases_used:
+  - nbrc
+  - taxonomy
+  - ddbj
+
+verification_score:
+  biological_insight: 2
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 7 minutes
+  method: |
+    Attempted to answer the specific, integrated question — the strain's optimal
+    cultivation temperature and isolation environment, its full taxonomic lineage,
+    and its genome architecture (replicon count, chromosome and plasmid sizes and
+    topology, and the numbers of protein-coding, tRNA and rRNA genes) — from the
+    literature with two PubMed searches, reading every returned abstract:
+    (1) "Hydrogenophilus thermoluteolus TH-1 genome" (4 hits, incl. the complete-genome
+        announcement PMID 30533902, a PHB-physiology paper PMID 30579830, and the
+        Hydrogenophilus thiooxidans sp. nov. description PMID 35544290)
+    (2) "Hydrogenophilus thermoluteolus TH-1 plasmid pTH1 protein-coding genes tRNA rRNA"
+        (0 hits)
+  result: |
+    The full profile cannot be assembled from the literature. The genome-announcement
+    abstract (PMID 30533902) reports only that the complete genome was sequenced and
+    that the organism fixes CO2 via the Calvin-Benson-Bassham cycle — it gives no genome
+    size, no plasmid, and no gene, tRNA or rRNA counts. The single quantitative fact that
+    surfaces anywhere is the chromosome size (2,223,143 bp), mentioned in passing in the
+    H. thiooxidans comparison (PMID 35544290); the plasmid pTH1 size, the replicon count,
+    the per-replicon gene inventory, the optimal cultivation temperature and isolation
+    source, and the full taxonomic lineage are absent from the abstracts, and no single
+    paper integrates them. The second, count-specific search returned nothing.
+  conclusion: PASS (the integrated cultivation + taxonomy + genome-architecture profile
+    cannot be assembled from the literature; it requires a live join of a culture-collection
+    catalogue, a taxonomic hierarchy, and the annotated nucleotide-sequence record)
+
+sparql_queries:
+  - query_number: 1
+    database: nbrc
+    description: >-
+      Resolve the type strain TH-1 of Hydrogenophilus thermoluteolus in the culture
+      collection and read its cultivation metadata and genome cross-references. The
+      record NBRC 14978 is flagged as a type strain (MCCV_000017 = 1), has a single
+      recommended optimal cultivation temperature of 50 °C (the MPO_00102 measurement),
+      is isolated from Soil, maps to NCBI Taxonomy 297, and cross-references its two
+      INSDC genome replicons AP018558.1 and AP018559.1 — the join keys into the
+      nucleotide sequence archive.
+    query: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX sio:  <http://semanticscience.org/resource/>
+      PREFIX mpo:  <http://purl.jp/bio/10/mpo/>
+
+      SELECT ?name ?collNo ?isType ?taxon ?tempC ?habitat
+             (GROUP_CONCAT(DISTINCT ?acc; separator=", ") AS ?insdcAccessions)
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?strain a brso:BiologicalResource ;
+                  mccv:MCCV_000010 "NBRC 00014978" ;
+                  mccv:MCCV_000010 ?collNo ;
+                  skos:prefLabel ?name ;
+                  mccv:MCCV_000017 ?isType ;
+                  mccv:MCCV_000065 ?taxon .
+          OPTIONAL { ?strain sio:SIO_000216 ?m . ?m a mpo:MPO_00102 ; sio:SIO_000300 ?tempC . }
+          OPTIONAL { ?strain mccv:MCCV_000028 ?s . ?s mccv:MCCV_000072 ?src . ?src mccv:MCCV_000030 ?habitat . }
+          OPTIONAL { ?strain mccv:MCCV_000077 ?acc .
+                     FILTER(CONTAINS(STR(?acc), "identifiers.org/insdc:") && !CONTAINS(STR(?acc), "NZ_")) }
+        }
+      }
+      GROUP BY ?name ?collNo ?isType ?taxon ?tempC ?habitat
+    result_count: 1   # NBRC 14978, type strain (1), 50 °C, Soil, taxonomy/297, accessions AP018558.1 + AP018559.1
+
+  - query_number: 2
+    database: taxonomy
+    description: >-
+      Read the full NCBI Taxonomy lineage of taxon 297 (Hydrogenophilus thermoluteolus)
+      from superkingdom down to species by walking rdfs:subClassOf* from the species node
+      and keeping only ancestors whose taxo:rank is one of the seven principal ranks. The
+      lineage is Bacteria (superkingdom) → Pseudomonadota (phylum) → Hydrogenophilia
+      (class) → Hydrogenophilales (order) → Hydrogenophilaceae (family) → Hydrogenophilus
+      (genus) → Hydrogenophilus thermoluteolus (species). The phylum and class each carry
+      two scientific names (Pseudomonadota/Proteobacteria; Hydrogenophilia/Hydrogenophilalia),
+      hence 9 rows for 7 ranks.
+    query: |
+      PREFIX taxo: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT DISTINCT ?rankShort ?ancName ?anc
+      WHERE {
+        <http://identifiers.org/taxonomy/297> taxo:scientificName ?spName ;
+            rdfs:subClassOf* ?anc .
+        ?anc taxo:scientificName ?ancName ;
+             taxo:rank ?rank .
+        VALUES ?rank { taxo:Superkingdom taxo:Phylum taxo:Class taxo:Order taxo:Family taxo:Genus taxo:Species }
+        BIND(STRAFTER(STR(?rank), "taxonomy/") AS ?rankShort)
+      }
+      ORDER BY ?anc
+    result_count: 9   # 7 principal ranks; phylum + class each have 2 scientific names -> 9 rows
+
+  - query_number: 3
+    database: ddbj
+    description: >-
+      Read the genome architecture of the two INSDC replicons cross-referenced by the
+      strain record. Both are circular "complete genome" entries: AP018558.1 is the
+      chromosome (2,223,143 bp) and AP018559.1 is plasmid pTH1 (65,637 bp), giving a
+      two-replicon genome totalling 2,288,780 bp.
+    query: |
+      PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+
+      SELECT ?entry ?def ?length (STRAFTER(STR(?topo), "nucleotide/") AS ?topology)
+      FROM <http://rdfportal.org/dataset/ddbj>
+      WHERE {
+        VALUES ?entry { <http://identifiers.org/insdc/AP018558.1> <http://identifiers.org/insdc/AP018559.1> }
+        ?entry nuc:definition ?def ;
+               nuc:sequence ?seq .
+        ?seq nuc:sequence_length ?length ;
+             nuc:topology ?topo .
+      }
+      ORDER BY DESC(?length)
+    result_count: 2   # chromosome AP018558.1 2,223,143 bp circular; plasmid pTH1 AP018559.1 65,637 bp circular
+
+  - query_number: 4
+    database: ddbj
+    description: >-
+      Count the gene inventory per replicon, deduplicated by locus_tag. Scoping feature
+      IRIs to each accession and counting DISTINCT nuc:locus_tag per Sequence-Ontology
+      feature type gives — for the chromosome AP018558.1 — 2,077 protein-coding CDS,
+      49 tRNA genes and 9 rRNA genes (three rRNA operons); the plasmid AP018559.1 adds
+      71 protein-coding CDS and no structural-RNA genes. Whole-genome totals: 2,148 CDS,
+      49 tRNA, 9 rRNA. (ro:0002162 = taxonomy/297 keeps the join to this organism's
+      features fast; locus_tag deduplication is required — see Query 5.)
+    query: |
+      PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ro:  <http://purl.obolibrary.org/obo/RO_>
+
+      SELECT ?entry ?ftype (COUNT(DISTINCT ?locus) AS ?n)
+      FROM <http://rdfportal.org/dataset/ddbj>
+      WHERE {
+        VALUES (?entry ?frag) {
+          ("AP018558.1" "AP018558.1#feature")
+          ("AP018559.1" "AP018559.1#feature")
+        }
+        ?f a ?ftype ;
+           ro:0002162 <http://identifiers.org/taxonomy/297> ;
+           nuc:locus_tag ?locus .
+        FILTER(CONTAINS(STR(?f), ?frag))
+        VALUES ?ftype { nuc:Coding_Sequence nuc:Transfer_RNA nuc:Ribosomal_RNA }
+      }
+      GROUP BY ?entry ?ftype
+      ORDER BY ?entry DESC(?n)
+    result_count: 4   # AP018558.1: CDS 2077, tRNA 49, rRNA 9; AP018559.1: CDS 71
+
+  - query_number: 5
+    database: ddbj
+    description: >-
+      Provenance / deduplication check for the gene counts. The DDBJ RDF loads the
+      chromosome annotation twice (two CDS serial-number series, e.g. CDS.6249 and
+      CDS.12335 for the same locus HPTL_0001), so a naive COUNT of CDS feature IRIs is
+      inflated exactly 2x. Counting feature IRIs versus DISTINCT locus_tag on the
+      chromosome returns 4,154 vs 2,077 — confirming the within-graph 2x duplication and
+      justifying COUNT(DISTINCT ?locus) in Query 4.
+    query: |
+      PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ro:  <http://purl.obolibrary.org/obo/RO_>
+
+      SELECT (COUNT(DISTINCT ?f) AS ?nFeatureIRI) (COUNT(DISTINCT ?locus) AS ?nDistinctLocus)
+      FROM <http://rdfportal.org/dataset/ddbj>
+      WHERE {
+        ?f a nuc:Coding_Sequence ;
+           ro:0002162 <http://identifiers.org/taxonomy/297> ;
+           nuc:locus_tag ?locus .
+        FILTER(CONTAINS(STR(?f), "AP018558.1#feature"))
+      }
+    result_count: 1   # 4154 CDS feature IRIs collapse to 2077 distinct locus_tags (2x duplication)
+
+rdf_triples: |
+  @prefix insdc: <http://identifiers.org/insdc/> .
+  @prefix taxo:  <http://identifiers.org/taxonomy/> .
+  @prefix nbrc:  <http://purl.jp/bio/103/nite/nbrc/cultures/> .
+  @prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+  @prefix ex:    <http://example.org/hydrogenophilus-th1-genome-profile#> .
+
+  ex:profile ex:organism "Hydrogenophilus thermoluteolus" ; ex:strain "TH-1" ; ex:theme "integrated cultivation, taxonomy, and genome-architecture profile of a thermophilic CO2-fixing type strain" .
+  # Database: nbrc | Query: 1 | Comment: Scope — the type strain TH-1 of Hydrogenophilus thermoluteolus, profiled across culture-collection metadata, taxonomic lineage, and its complete genome
+
+  nbrc:00014978 ex:collectionNumber "NBRC 14978" ; ex:isTypeStrain "1"^^xsd:integer ; ex:optimalGrowthTempC "50"^^xsd:integer ; ex:isolationSource "Soil" ; ex:taxon taxo:297 .
+  # Database: nbrc | Query: 1 | Comment: The catalogue records strain TH-1 (NBRC 14978) as a type strain, recommended optimal cultivation temperature 50 °C, isolated from soil, mapped to NCBI Taxonomy 297
+
+  nbrc:00014978 ex:genomeAccession insdc:AP018558.1 , insdc:AP018559.1 .
+  # Database: nbrc | Query: 1 | Comment: The strain record cross-references its two INSDC genome replicons (AP018558.1, AP018559.1) — the join key into the nucleotide sequence archive
+
+  taxo:297 ex:superkingdom "Bacteria" ; ex:phylum "Pseudomonadota" ; ex:class "Hydrogenophilia" ; ex:order "Hydrogenophilales" ; ex:family "Hydrogenophilaceae" ; ex:genus "Hydrogenophilus" ; ex:species "Hydrogenophilus thermoluteolus" .
+  # Database: taxonomy | Query: 2 | Comment: Full NCBI Taxonomy lineage of taxon 297 from superkingdom to species (phylum also known as Proteobacteria; class also listed as Hydrogenophilalia)
+
+  insdc:AP018558.1 ex:moleculeType "chromosome" ; ex:lengthBp "2223143"^^xsd:integer ; ex:topology "circular" .
+  # Database: ddbj | Query: 3 | Comment: The chromosome (AP018558.1) is a single circular replicon of 2,223,143 bp
+
+  insdc:AP018559.1 ex:moleculeType "plasmid pTH1" ; ex:lengthBp "65637"^^xsd:integer ; ex:topology "circular" .
+  # Database: ddbj | Query: 3 | Comment: The genome also carries one circular plasmid, pTH1 (AP018559.1), of 65,637 bp; total genome 2,288,780 bp across two replicons
+
+  insdc:AP018558.1 ex:proteinCodingGenes "2077"^^xsd:integer ; ex:tRNAGenes "49"^^xsd:integer ; ex:rRNAGenes "9"^^xsd:integer .
+  # Database: ddbj | Query: 4 | Comment: Chromosomal gene inventory (distinct locus_tag): 2,077 protein-coding CDS, 49 tRNA genes, 9 rRNA genes (three rRNA operons)
+
+  insdc:AP018559.1 ex:proteinCodingGenes "71"^^xsd:integer ; ex:tRNAGenes "0"^^xsd:integer ; ex:rRNAGenes "0"^^xsd:integer .
+  # Database: ddbj | Query: 4 | Comment: Plasmid pTH1 encodes 71 protein-coding CDS and no tRNA or rRNA genes; whole-genome totals are 2,148 CDS, 49 tRNA, 9 rRNA
+
+  ex:profile ex:cdsFeatureIRIs "4154"^^xsd:integer ; ex:distinctChromosomalLoci "2077"^^xsd:integer .
+  # Database: ddbj | Query: 5 | Comment: Provenance/dedup check — the DDBJ RDF loads the chromosome annotation twice, so 4,154 CDS feature IRIs collapse to 2,077 distinct locus_tags; all gene counts use COUNT(DISTINCT locus_tag) to eliminate this within-graph 2x duplication
+
+  ex:conclusion ex:insight "a compact (~2.29 Mbp) thermophilic chemolithoautotroph genome — one circular chromosome plus one plasmid, ~2,148 protein-coding genes — matching its streamlined H2-oxidizing, CO2-fixing lifestyle" .
+  # Database: ddbj | Query: 4 | Comment: Synthesis — the small two-replicon genome and gene inventory are consistent with the moderately thermophilic hydrogen-oxidizing, CO2-fixing autotroph described for strain TH-1
+
+exact_answer: ""
+
+ideal_answer: >-
+  Hydrogenophilus thermoluteolus type strain TH-1 is a moderately thermophilic,
+  hydrogen-oxidizing bacterium held as the type strain of its species (culture-collection
+  accession NBRC 14978), with a recommended optimal cultivation temperature of 50 °C and
+  originally isolated from soil. Taxonomically it belongs to the domain Bacteria, phylum
+  Pseudomonadota (Proteobacteria), class Hydrogenophilia, order Hydrogenophilales, family
+  Hydrogenophilaceae and genus Hydrogenophilus — the lineage Bacteria → Pseudomonadota →
+  Hydrogenophilia → Hydrogenophilales → Hydrogenophilaceae → Hydrogenophilus →
+  Hydrogenophilus thermoluteolus. Its genome has been sequenced to completion and comprises
+  two circular replicons: a chromosome of 2,223,143 bp and a plasmid, pTH1, of 65,637 bp,
+  for a total of 2,288,780 bp (about 2.29 Mbp). The chromosome carries 2,077 protein-coding
+  genes, 49 tRNA genes and 9 rRNA genes (three rRNA operons), while the plasmid adds a further
+  71 protein-coding genes and no structural-RNA genes, giving whole-genome totals of 2,148
+  protein-coding CDS, 49 tRNA and 9 rRNA genes. (Gene counts are taken as distinct locus tags:
+  the archived annotation is duplicated in the underlying record, so the 4,154 chromosomal CDS
+  feature entries collapse to 2,077 genuine loci.) This compact, two-replicon genome with
+  roughly 2,148 protein-coding genes is consistent with the streamlined lifestyle of a
+  moderately thermophilic hydrogen-oxidizing chemolithoautotroph that fixes carbon dioxide
+  through the Calvin-Benson-Bassham cycle, and assembling the full picture requires joining
+  culture-collection cultivation metadata, a taxonomic hierarchy, and the annotated
+  nucleotide-sequence record.
+
+question_template_used: "Summary integrated profile of a microbial type strain (cultivation temperature + isolation source from a culture-collection catalogue; full taxonomic lineage from a taxonomy hierarchy; genome architecture — replicons, sizes, topology and per-replicon protein-coding/tRNA/rRNA gene inventory — from the annotated nucleotide-sequence archive) synthesised into one narrative"
+
+time_spent:
+  exploration: 40 minutes
+  formulation: 12 minutes
+  verification: 10 minutes
+  pubmed_test: 7 minutes
+  extraction: 12 minutes
+  documentation: 18 minutes
+  total: 99 minutes
