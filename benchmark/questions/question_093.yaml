@@ -1,0 +1,163 @@
+id: question_093
+type: list
+body: >-
+  A number of bacteria have a helical (corkscrew-shaped) cell body. Using a
+  comprehensive bacterial-strain phenotype metadatabase, list every genus that has at
+  least one strain documented with a helical cell shape. For each genus, give the
+  phylum to which it belongs according to the standard reference classification of
+  organisms, and state how many distinct phyla these helical-shaped genera span in total.
+
+inspiration_keyword:
+  keyword_id: KW-0975
+  name: Bacterial flagellum
+  category: Cellular component
+
+togomcp_databases_used:
+  - bacdive
+  - taxonomy
+
+verification_score:
+  biological_insight: 3
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 6 minutes
+  method: |
+    Attempted to answer the specific question — the complete set of bacterial genera
+    documented with a helical cell shape in a strain metadatabase, and how many phyla
+    they span — from the literature with two PubMed searches:
+    (1) "helical shaped bacteria genera across phyla Spirochaetota Pseudomonadota list" (0 hits)
+    (2) "helical cell shape bacterial genera curated strain database how many phyla" (0 hits)
+  result: |
+    Neither search returned any article. The classic spirochaetes (Borrelia, Leptospira,
+    Treponema) are well known to be helical, but no publication enumerates the specific
+    set of genera a strain metadatabase records with a helical cell shape — which includes
+    less obvious members such as Marispirochaeta and Oceanispirochaeta and the
+    spirillum-type Pseudomonadota genera Aquaspirillum, Magnetospirillum, Marinospirillum
+    and Terasakiella — nor states that they resolve to exactly two phyla. The set is a
+    database-state result requiring a phenotype metadatabase joined to a reference taxonomy.
+  conclusion: PASS (the enumerated set of helical-shaped genera and their two-phylum spread
+    is a database-state result absent from the literature; it requires joining a bacterial
+    phenotype metadatabase to the reference taxonomy)
+
+sparql_queries:
+  - query_number: 1
+    database: bacdive
+    description: >-
+      Enumerate every genus that has at least one strain recorded with the controlled
+      cell-shape value "helical-shaped", with its documented helical-strain count and the
+      NCBI Taxonomy ID(s) of those strains (the join key to the reference taxonomy). Nine
+      genera (13 strains) carry a helical cell shape.
+    query: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      PREFIX rdfs:   <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?genus (COUNT(DISTINCT ?strain) AS ?nStrains)
+             (GROUP_CONCAT(DISTINCT STR(?taxid); separator=", ") AS ?taxids)
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        ?cs a schema:CellShape ;
+            schema:describesStrain ?strain ;
+            rdfs:label "helical-shaped" .
+        ?strain schema:hasGenus ?genus .
+        OPTIONAL { ?strain schema:hasTaxID ?taxid . FILTER(isNumeric(?taxid)) }
+      }
+      GROUP BY ?genus
+      ORDER BY ?genus
+    result_count: 9   # Aquaspirillum, Borrelia, Leptospira, Magnetospirillum, Marinospirillum, Marispirochaeta, Oceanispirochaeta, Terasakiella, Treponema (13 strains)
+
+  - query_number: 2
+    database: taxonomy
+    description: >-
+      Resolve the phylum of each helical-shaped genus from the reference taxonomy, using a
+      representative strain TaxID per genus. The subClassOf* walk is GRAPH-scoped to
+      <http://rdfportal.org/ontology/taxonomy> because the taxonomy triples are duplicated
+      in a second graph (dataset/microbedbjp) and an unscoped transitive walk over the
+      co-hosted union exhausts Virtuoso's transitive memory. Five genera are Spirochaetota
+      and four are Pseudomonadota — normalising BacDive's inconsistent labels
+      ("Proteobacteria"/"Pseudomonadota"; "Spirochaetes").
+    query: |
+      PREFIX taxo: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?tax ?phylumName WHERE {
+        GRAPH <http://rdfportal.org/ontology/taxonomy> {
+          VALUES ?tax {
+            <http://identifiers.org/taxonomy/1591092>   # Aquaspirillum
+            <http://identifiers.org/taxonomy/64897>     # Borrelia
+            <http://identifiers.org/taxonomy/1958811>   # Leptospira
+            <http://identifiers.org/taxonomy/2053833>   # Magnetospirillum
+            <http://identifiers.org/taxonomy/1982602>   # Marinospirillum
+            <http://identifiers.org/taxonomy/1963862>   # Marispirochaeta
+            <http://identifiers.org/taxonomy/151>       # Oceanispirochaeta
+            <http://identifiers.org/taxonomy/1634917>   # Terasakiella
+            <http://identifiers.org/taxonomy/744515>    # Treponema
+          }
+          ?tax rdfs:subClassOf* ?anc .
+          ?anc taxo:scientificName ?phylumName ; taxo:rank taxo:Phylum .
+        }
+      }
+      ORDER BY ?phylumName ?tax
+    result_count: 9   # Pseudomonadota: Aquaspirillum, Magnetospirillum, Marinospirillum, Terasakiella (4); Spirochaetota: Borrelia, Leptospira, Marispirochaeta, Oceanispirochaeta, Treponema (5)
+
+rdf_triples: |
+  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+  @prefix ex:  <http://example.org/helical-bacteria-phyla#> .
+
+  ex:query ex:cellShape "helical-shaped" ; ex:deliverable "all genera with a helical-shaped strain, and how many phyla they span" ; ex:nGenera "9"^^xsd:integer ; ex:nStrains "13"^^xsd:integer .
+  # Database: bacdive | Query: 1 | Comment: Scope — nine genera (13 strains) are documented with a helical (corkscrew) cell shape
+
+  ex:genusStrainCounts ex:list "Aquaspirillum(1), Borrelia(4), Leptospira(1), Magnetospirillum(1), Marinospirillum(1), Marispirochaeta(1), Oceanispirochaeta(2), Terasakiella(1), Treponema(1)" .
+  # Database: bacdive | Query: 1 | Comment: The nine helical-shaped genera with their documented helical-strain counts (13 strains total)
+
+  ex:Spirochaetota ex:helicalGenera "Borrelia, Leptospira, Marispirochaeta, Oceanispirochaeta, Treponema" ; ex:genusCount "5"^^xsd:integer .
+  # Database: taxonomy | Query: 2 | Comment: Five of the nine genera belong to phylum Spirochaetota — the classic spirochaetes, for which a helical body is a defining trait
+
+  ex:Pseudomonadota ex:helicalGenera "Aquaspirillum, Magnetospirillum, Marinospirillum, Terasakiella" ; ex:genusCount "4"^^xsd:integer .
+  # Database: taxonomy | Query: 2 | Comment: The other four belong to phylum Pseudomonadota (the spirillum-type Proteobacteria); the reference taxonomy normalises BacDive's mixed labels ("Proteobacteria"/"Pseudomonadota")
+
+  ex:phylumSpread ex:nPhyla "2"^^xsd:integer ; ex:partitionCheck "Spirochaetota 5 + Pseudomonadota 4 = 9 genera" .
+  # Database: taxonomy | Query: 2 | Comment: Rule-3 check — the two phyla partition all nine genera (5 + 4 = 9); the helical-shaped genera span exactly two phyla
+
+  ex:conclusion ex:insight "helical (corkscrew) cell shape is polyphyletic — dominant among Spirochaetota but independently present in the spirillum genera of Pseudomonadota, a case of convergent cell-shape evolution across two unrelated phyla" .
+  # Database: taxonomy | Query: 2 | Comment: Synthesis — a helical body evolved in two separate phyla, not one
+
+exact_answer:
+  - "Aquaspirillum — Pseudomonadota"
+  - "Magnetospirillum — Pseudomonadota"
+  - "Marinospirillum — Pseudomonadota"
+  - "Terasakiella — Pseudomonadota"
+  - "Borrelia — Spirochaetota"
+  - "Leptospira — Spirochaetota"
+  - "Marispirochaeta — Spirochaetota"
+  - "Oceanispirochaeta — Spirochaetota"
+  - "Treponema — Spirochaetota"
+
+ideal_answer: >-
+  Nine genera are documented with a helical (corkscrew) cell shape, and they fall into just
+  two phyla. Five belong to the phylum Spirochaetota — Borrelia, Leptospira, Marispirochaeta,
+  Oceanispirochaeta and Treponema — the classic spirochaetes, for which a helical body is a
+  defining trait. The other four belong to the phylum Pseudomonadota (Proteobacteria) —
+  Aquaspirillum, Magnetospirillum, Marinospirillum and Terasakiella — the "spirillum"-type
+  genera. The reference taxonomy is needed here because the phenotype records label these
+  lineages inconsistently (for example "Proteobacteria" for some strains and "Pseudomonadota"
+  for others, and "Spirochaetes" for the spirochaetes); resolving each genus's NCBI Taxonomy
+  lineage normalises them to Pseudomonadota and Spirochaetota. The nine genera therefore span
+  exactly two phyla (5 + 4 = 9), showing that a helical cell shape is polyphyletic — dominant
+  among the Spirochaetota but independently present in the spirilla of the Pseudomonadota, a
+  clear case of convergent morphological evolution.
+
+question_template_used: "List all genera carrying a given cell-shape phenotype from a bacterial-strain metadatabase, resolve each genus's phylum via the reference taxonomy (normalising inconsistent database labels), and count how many phyla the set spans, with a Rule-3 partition check"
+
+time_spent:
+  exploration: 40 minutes
+  formulation: 12 minutes
+  verification: 10 minutes
+  pubmed_test: 6 minutes
+  extraction: 12 minutes
+  documentation: 16 minutes
+  total: 96 minutes
