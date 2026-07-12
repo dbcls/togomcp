@@ -192,20 +192,23 @@ Once connected, you can ask your AI assistant things like:
 ```
 togomcp/
 ├── togo_mcp/               # Main Python package
-│   ├── server.py           # MCP server entry point
-│   ├── main.py             # Core logic and tool registration
-│   ├── api_tools.py        # REST API integrations (ChEMBL, PDB, Reactome, etc.)
-│   ├── ncbi_tools.py       # NCBI E-utilities tools
-│   ├── rdf_portal.py       # RDF Portal / SPARQL tools
-│   ├── togoid.py           # TogoID identifier conversion tools
+│   ├── server.py           # Root FastMCP instance + tool-call logging middleware
+│   ├── main.py             # Assembles the server, mounts sub-servers, entry points
+│   ├── rdf_portal.py       # RDF Portal / SPARQL, MIE, and endpoint tools
+│   ├── api_tools.py        # REST search wrappers (UniProt, PDB, ChEMBL, Reactome, etc.)
+│   ├── ncbi_tools.py       # NCBI E-utilities sub-server
+│   ├── togoid.py           # TogoID identifier-conversion sub-server
+│   ├── togovar.py          # TogoVar human-variation sub-server
+│   ├── stats.py            # Tool-call usage-log analysis
 │   └── data/               # Bundled data files (included in wheel)
 │       ├── mie/            # MIE files (YAML, one per database)
-│       ├── docs/           # Developer documentation
-│       └── resources/      # Static resources (endpoints.csv, prompts, etc.)
-├── benchmark/              # Benchmarking scripts and results
-├── scripts/                # Utility/maintenance scripts
-├── workflows/              # Example workflow prompts
+│       ├── docs/           # Developer documentation (MIE spec, examples)
+│       └── resources/      # Static resources (endpoints.csv, usage guide, etc.)
+├── benchmark/              # Benchmark question set, scripts, and results
+├── scripts/                # Utility/maintenance scripts (deploy, Docker, MIE keywords)
+├── tests/                  # Pytest test suite
 ├── Dockerfile              # Docker build configuration
+├── compose.yaml            # Docker Compose (main + test services)
 ├── pyproject.toml          # Python project metadata and entry points
 └── uv.lock                 # Locked dependency versions (uv)
 ```
