@@ -246,7 +246,8 @@ def _server_log_tail(log_path: Path, n: int = 15) -> str:
 
 def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
                   model: str, judge_model: str | None, force: bool, dry_run: bool,
-                  python: str, runs: int = 1, judge_use_api: bool = False) -> str:
+                  python: str, runs: int = 1, judge_use_api: bool = False,
+                  answer_use_api: bool = False) -> str:
     final_scored = RESULTS_DIR / f"{cond}-scored.csv"
     if final_scored.exists() and not force:
         print(f"[{cond}] scored CSV exists — skipping (delete it or --force to re-run)")
@@ -263,13 +264,15 @@ def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
     env["TOGOMCP_MIE_DIR"] = str(variant_dir)
     env["ABLATION_PORT"] = str(port)
 
-    # With --judge-use-api the judge (add_llm_evaluation --use-api) uses the plain
-    # anthropic SDK + ANTHROPIC_API_KEY; the ANSWERING agent must NOT see that key or
-    # the bundled Claude CLI would bill the API too — strip it so answering stays on
-    # the `claude login` subscription. The two no longer share a quota (the whole
-    # point: judging on the subscription is what got rate-limited).
+    # Answering runs on the claude_agent_sdk bundled CLI. If ANTHROPIC_API_KEY is in
+    # its env, the CLI bills the Anthropic API; if absent, it uses the `claude login`
+    # subscription. The subscription can't sustain a large batch — it degrades into
+    # "Not logged in" login-error stubs (the runner mislabels them success=True) — so
+    # --answer-use-api keeps the key for reliable API answering. Without it (default)
+    # we strip the key so answering stays on the subscription; but then --judge-use-api
+    # must NOT leak the key into answering, hence the same strip.
     answer_env = env
-    if judge_use_api and "ANTHROPIC_API_KEY" in answer_env:
+    if not answer_use_api and "ANTHROPIC_API_KEY" in answer_env:
         answer_env = {k: v for k, v in env.items() if k != "ANTHROPIC_API_KEY"}
 
     # runs==1 keeps the flat <cond>-answers/scored.csv names (backward compatible);
@@ -379,9 +382,14 @@ def main() -> int:
     ap.add_argument("--judge-use-api", action="store_true",
                     help="judge via the Anthropic Messages API (plain anthropic SDK, forced "
                          "record_evaluation tool call) instead of the claude-login agent SDK. "
-                         "Requires ANTHROPIC_API_KEY in the env; that key is passed ONLY to the "
-                         "judge, not the answering agent, so answering stays on the subscription. "
-                         "Use this for long batches where subscription Opus judging gets throttled.")
+                         "Requires ANTHROPIC_API_KEY. Use for long batches where subscription "
+                         "Opus judging gets throttled.")
+    ap.add_argument("--answer-use-api", action="store_true",
+                    help="answer via the Anthropic API (keep ANTHROPIC_API_KEY in the answering "
+                         "agent's env) instead of the claude-login subscription. Requires "
+                         "ANTHROPIC_API_KEY. Use for long batches: the subscription degrades into "
+                         "'Not logged in' login-error stubs under sustained load. Without this, "
+                         "answering stays on the subscription and the key is withheld from it.")
     ap.add_argument("--port", type=int, default=8971, help="loopback port for the local server")
     ap.add_argument("--python", default=sys.executable,
                     help="interpreter for the server + benchmark subprocesses "
@@ -401,9 +409,9 @@ def main() -> int:
     if args.runs < 1:
         raise SystemExit(f"--runs must be >= 1 (got {args.runs})")
 
-    if args.judge_use_api and not os.environ.get("ANTHROPIC_API_KEY"):
-        raise SystemExit("--judge-use-api requires ANTHROPIC_API_KEY in the environment "
-                         "(e.g. `ANTHROPIC_API_KEY=$MY_ANTHROPIC_API_KEY ...`).")
+    if (args.judge_use_api or args.answer_use_api) and not os.environ.get("ANTHROPIC_API_KEY"):
+        raise SystemExit("--judge-use-api/--answer-use-api require ANTHROPIC_API_KEY in the "
+                         "environment (e.g. `ANTHROPIC_API_KEY=$MY_ANTHROPIC_API_KEY ...`).")
 
     conditions = [c.strip() for c in args.conditions.split(",") if c.strip()]
     unknown = [c for c in conditions if c not in ALL_CONDITIONS]
@@ -425,8 +433,9 @@ def main() -> int:
 
     runs_note = f" x {args.runs} runs" if args.runs > 1 else ""
     judge_path = "anthropic API" if args.judge_use_api else "claude-login agent SDK"
+    answer_path = "anthropic API" if args.answer_use_api else "claude-login subscription"
     print(f"Ablation sweep: {len(conditions)} conditions x {len(questions)} questions{runs_note}")
-    print(f"  answer-model={args.model} (subscription)  "
+    print(f"  answer={args.model} via {answer_path}  "
           f"judge={args.judge_model or '(eval default)'} via {judge_path}\n"
           f"  port={args.port}  python={args.python}\n")
 
@@ -437,7 +446,7 @@ def main() -> int:
             summary[cond] = run_condition(cond, questions, base_config, args.port,
                                           args.model, args.judge_model, args.force,
                                           args.dry_run, args.python, args.runs,
-                                          args.judge_use_api)
+                                          args.judge_use_api, args.answer_use_api)
         except SystemExit as e:
             print(f"[{cond}] ABORTED: {e}", file=sys.stderr)
             summary[cond] = "error"
