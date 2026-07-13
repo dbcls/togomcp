@@ -190,6 +190,14 @@ EVAL_TOOL = {
 JUDGE_MAX_ATTEMPTS = 3
 JUDGE_RETRY_BACKOFF = 1.0  # seconds; multiplied by the attempt number
 
+# Abort the whole run after this many CONSECUTIVE rows fail evaluation outright
+# (judge returned nothing parseable even after JUDGE_MAX_ATTEMPTS retries). A lone
+# failed row is tolerated (transient/odd answer), but a sustained streak means the
+# judge is systemically down — throttled subscription, dead host, refusing model —
+# and every remaining row would silently score 0. Better to stop loudly (like
+# FatalJudgeError) than complete a run of all-zeros. Reset on the first success.
+ABORT_AFTER_CONSECUTIVE_FAILURES = 3
+
 
 def _failed_eval(reason: str, explanation: str) -> Dict[str, Any]:
     """Zero-score result used for un-evaluable or failed rows. A total_score of
@@ -507,6 +515,7 @@ class AnswerEvaluator:
     def __init__(self, backend: JudgeBackend):
         self.backend = backend
         self.model = backend.model
+        self._consecutive_failures = 0   # streak of rows the judge couldn't score
         print(f"Initializing {backend.provider} evaluator with model: {backend.model}")
 
     @property
@@ -563,7 +572,22 @@ class AnswerEvaluator:
                 time.sleep(JUDGE_RETRY_BACKOFF * attempt)
 
         if parsed is None:
+            # This row could not be scored after every retry. Track the streak: a
+            # lone failure is per-row (recorded as a 0-sentinel the analyzer drops),
+            # but a sustained run of them means the judge is systemically down and
+            # every remaining row would silently score 0 — abort loudly instead.
+            self._consecutive_failures += 1
+            if self._consecutive_failures >= ABORT_AFTER_CONSECUTIVE_FAILURES:
+                raise FatalJudgeError(
+                    f"Judge failed {self._consecutive_failures} rows in a row "
+                    f"(last: {reason}). The judge is likely rate-limited/throttled, its "
+                    "host is down, or the model is refusing — aborting so the run does not "
+                    "complete as all-zeros. Wait and re-run, reduce concurrent Claude usage, "
+                    "or switch judge (e.g. --use-api with ANTHROPIC_API_KEY, or --provider ollama)."
+                )
             return _failed_eval(reason, explanation)
+
+        self._consecutive_failures = 0   # a good score breaks the failure streak
 
         clamp = lambda v: min(5, max(1, int(v)))
         recall = clamp(parsed.recall)
