@@ -1,0 +1,208 @@
+id: question_099
+type: factoid
+body: >-
+  An integrated glycoscience knowledge base links a defined set of human genes to
+  acute myeloid leukemia. Of those disease-associated human genes, how many encode a
+  reviewed human protein that is classified as a glycoprotein?
+
+inspiration_keyword:
+  keyword_id: KW-0325
+  name: Glycoprotein
+  category: PTM
+
+togomcp_databases_used:
+  - glycosmos
+  - uniprot
+
+verification_score:
+  biological_insight: 3
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: >
+    Attempted to answer the specific count directly. Ran ncbi_esearch on PubMed with
+    "acute myeloid leukemia associated genes glycoprotein count proportion" (3 hits) and
+    "number of AML disease genes encoding glycoproteins glycosylation UniProt keyword"
+    (0 hits), then inspected the 3 hits.
+  result: |
+    The three retrieved papers concern P-glycoprotein (MDR1/ABCB1 drug-efflux) expression
+    in AML, an unrelated sense of "glycoprotein"; none enumerates how many of the disease's
+    catalogued associated genes encode proteins carrying a glycoprotein annotation. No paper
+    reports the integrative figure, which depends on (a) the current disease-gene association
+    set curated in the glycoscience resource and (b) the current UniProt Glycoprotein keyword
+    assignments (including cytoplasmic/nuclear O-GlcNAc entries). The count is a live cross-
+    database join, not a literature-stated fact.
+  conclusion: PASS (cannot answer from literature - requires live RDF join)
+
+sparql_queries:
+  - query_number: 1
+    database: glycosmos
+    description: >
+      Count the distinct human genes that the disease layer associates with acute myeloid
+      leukemia (DOID_9119). The disease entity carries the DOID via rdfs:seeAlso; each
+      associated gene is reached through an untyped sio:SIO_000255 bnode -> sio:SIO_000001,
+      and is restricted to human by glycan:has_taxon in the glycogenes graph. Both graphs
+      are pinned explicitly (Hard Rule 4); COUNT(DISTINCT) collapses multi-source links.
+      Returns label "acute myeloid leukemia", 1 disease node, 59 human genes.
+    query: |
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?label
+             (COUNT(DISTINCT ?disease) AS ?diseaseNodes)
+             (COUNT(DISTINCT ?gene) AS ?humanGenes)
+      WHERE {
+        GRAPH <http://rdf.glycosmos.org/disease> {
+          ?disease a glycan:Disease ;
+                   rdfs:seeAlso <http://purl.obolibrary.org/obo/DOID_9119> ;
+                   sio:SIO_000255 ?attr .
+          ?attr sio:SIO_000001 ?gene .
+        }
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          ?gene glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
+        }
+        GRAPH <http://purl.obolibrary.org/obo/doid> {
+          <http://purl.obolibrary.org/obo/DOID_9119> rdfs:label ?label .
+        }
+      }
+      GROUP BY ?label
+    result_count: 1   # one row: "acute myeloid leukemia", 1 disease node, 59 human genes
+
+  - query_number: 2
+    database: glycosmos
+    description: >
+      Extract the NCBI Gene IDs of those 59 human disease-associated genes (the numeric
+      suffix of each glycogene IRI) to bridge to UniProt. Feeds the VALUES block of query 3.
+    query: |
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT (STRAFTER(STR(?gene), "glycogene/") AS ?ncbiGeneId)
+      WHERE {
+        GRAPH <http://rdf.glycosmos.org/disease> {
+          ?disease a glycan:Disease ;
+                   rdfs:seeAlso <http://purl.obolibrary.org/obo/DOID_9119> ;
+                   sio:SIO_000255 ?attr .
+          ?attr sio:SIO_000001 ?gene .
+        }
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          ?gene glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
+        }
+      }
+    result_count: 59   # 10 1027 10499 1387 1437 1440 1441 1493 1543 1555 171023 2146 2260 2322 23305 25 25939 2624 2876 29117 3078 3119 3417 3418 355 3552 3569 3685 3690 3815 3845 4026 4210 4297 4763 4846 4869 4893 54790 6427 64324 6455 648 6648 7015 7157 7298 7422 7852 7980 7994 8021 8028 8233 8301 84295 861 867 999
+
+  - query_number: 3
+    database: uniprot
+    description: >
+      THE ANSWER. Of the 59 NCBI Gene IDs (from query 2), count those that map, via the
+      GeneID cross-reference, to a reviewed (Swiss-Prot) human protein carrying keyword
+      Glycoprotein (keywords:325). COUNT(DISTINCT) over both the gene and the protein.
+      Returns 24.
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT (COUNT(DISTINCT ?geneid) AS ?glycoproteinGenes)
+             (COUNT(DISTINCT ?protein) AS ?proteins)
+      WHERE {
+        VALUES ?geneid {
+          <http://purl.uniprot.org/geneid/10> <http://purl.uniprot.org/geneid/1027> <http://purl.uniprot.org/geneid/10499> <http://purl.uniprot.org/geneid/1387> <http://purl.uniprot.org/geneid/1437> <http://purl.uniprot.org/geneid/1440> <http://purl.uniprot.org/geneid/1441> <http://purl.uniprot.org/geneid/1493> <http://purl.uniprot.org/geneid/1543> <http://purl.uniprot.org/geneid/1555> <http://purl.uniprot.org/geneid/171023> <http://purl.uniprot.org/geneid/2146> <http://purl.uniprot.org/geneid/2260> <http://purl.uniprot.org/geneid/2322> <http://purl.uniprot.org/geneid/23305> <http://purl.uniprot.org/geneid/25> <http://purl.uniprot.org/geneid/25939> <http://purl.uniprot.org/geneid/2624> <http://purl.uniprot.org/geneid/2876> <http://purl.uniprot.org/geneid/29117> <http://purl.uniprot.org/geneid/3078> <http://purl.uniprot.org/geneid/3119> <http://purl.uniprot.org/geneid/3417> <http://purl.uniprot.org/geneid/3418> <http://purl.uniprot.org/geneid/355> <http://purl.uniprot.org/geneid/3552> <http://purl.uniprot.org/geneid/3569> <http://purl.uniprot.org/geneid/3685> <http://purl.uniprot.org/geneid/3690> <http://purl.uniprot.org/geneid/3815> <http://purl.uniprot.org/geneid/3845> <http://purl.uniprot.org/geneid/4026> <http://purl.uniprot.org/geneid/4210> <http://purl.uniprot.org/geneid/4297> <http://purl.uniprot.org/geneid/4763> <http://purl.uniprot.org/geneid/4846> <http://purl.uniprot.org/geneid/4869> <http://purl.uniprot.org/geneid/4893> <http://purl.uniprot.org/geneid/54790> <http://purl.uniprot.org/geneid/6427> <http://purl.uniprot.org/geneid/64324> <http://purl.uniprot.org/geneid/6455> <http://purl.uniprot.org/geneid/648> <http://purl.uniprot.org/geneid/6648> <http://purl.uniprot.org/geneid/7015> <http://purl.uniprot.org/geneid/7157> <http://purl.uniprot.org/geneid/7298> <http://purl.uniprot.org/geneid/7422> <http://purl.uniprot.org/geneid/7852> <http://purl.uniprot.org/geneid/7980> <http://purl.uniprot.org/geneid/7994> <http://purl.uniprot.org/geneid/8021> <http://purl.uniprot.org/geneid/8028> <http://purl.uniprot.org/geneid/8233> <http://purl.uniprot.org/geneid/8301> <http://purl.uniprot.org/geneid/84295> <http://purl.uniprot.org/geneid/861> <http://purl.uniprot.org/geneid/867> <http://purl.uniprot.org/geneid/999>
+        }
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                 up:classifiedWith keywords:325 ;
+                 rdfs:seeAlso ?geneid .
+        ?geneid up:database <http://purl.uniprot.org/database/GeneID> .
+      }
+    result_count: 1   # one row: 24 glycoprotein-encoding genes / 24 proteins
+
+  - query_number: 4
+    database: uniprot
+    description: >
+      ARITHMETIC VERIFICATION (Hard Rule 3). Same 59-GeneID VALUES, but drop the
+      glycoprotein filter to a per-gene flag (OPTIONAL keywords:325). Every one of the 59
+      genes resolves to exactly one reviewed human protein; partitioning by the flag gives
+      24 glycoproteins + 35 non-glycoproteins = 59 (no gene lacks a reviewed entry, none
+      is double-counted). Confirms the answer's denominator and the disjoint partition.
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT (BOUND(?gp) AS ?isGlycoprotein) (COUNT(DISTINCT ?geneid) AS ?n)
+      WHERE {
+        VALUES ?geneid { <...same 59 GeneID IRIs as query 3...> }
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                 rdfs:seeAlso ?geneid .
+        ?geneid up:database <http://purl.uniprot.org/database/GeneID> .
+        OPTIONAL { ?protein up:classifiedWith keywords:325 . BIND(1 AS ?gp) }
+      }
+      GROUP BY (BOUND(?gp))
+    result_count: 2   # true -> 24 ; false -> 35 ; 24 + 35 = 59 (Rule 3 satisfied)
+
+rdf_triples: |
+  @prefix glycan: <http://purl.jp/bio/12/glyco/glycan#> .
+  @prefix sio: <http://semanticscience.org/resource/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix keywords: <http://purl.uniprot.org/keywords/> .
+
+  <http://glycosmos.org/disease/DOID:9119> rdfs:seeAlso <http://purl.obolibrary.org/obo/DOID_9119> .
+  # Database: GlyCosmos | Query: 1 | Comment: the disease entity for acute myeloid leukemia, keyed to DOID_9119 (label sourced from the co-hosted DOID graph)
+
+  <http://purl.obolibrary.org/obo/DOID_9119> rdfs:label "acute myeloid leukemia" .
+  # Database: GlyCosmos | Query: 1 | Comment: DOID label confirming the disease identity (obo/doid graph)
+
+  <http://glycosmos.org/disease/DOID:9119> sio:SIO_000255 _:attr9119_kit .
+  # Database: GlyCosmos | Query: 1 | Comment: one untyped association bnode per associated gene (26,827 such disease-gene links across 4,372 diseases)
+
+  _:attr9119_kit sio:SIO_000001 <http://glycosmos.org/glycogene/3815> .
+  # Database: GlyCosmos | Query: 1 | Comment: the association points to the KIT gene (NCBI GeneID 3815); one of the 59 human genes AML is linked to
+
+  <http://glycosmos.org/glycogene/3815> glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
+  # Database: GlyCosmos | Query: 1 | Comment: taxon filter that restricts the association set to Homo sapiens genes (glycogenes graph)
+
+  <http://purl.uniprot.org/uniprot/P10721> up:classifiedWith keywords:325 .
+  # Database: UniProt | Query: 3 | Comment: KIT (GeneID 3815) carries the Glycoprotein keyword -> counted among the 24 (a classical N-glycosylated receptor tyrosine kinase)
+
+  <http://purl.uniprot.org/uniprot/P10721> rdfs:seeAlso <http://purl.uniprot.org/geneid/3815> .
+  # Database: UniProt | Query: 3 | Comment: the GeneID cross-reference IRI that bridges the GlyCosmos gene (3815) to the reviewed human protein
+
+  <http://purl.uniprot.org/uniprot/P36888> up:classifiedWith keywords:325 .
+  # Database: UniProt | Query: 3 | Comment: FLT3 (GeneID 2322), the archetypal AML receptor, is a glycoprotein -> in the 24
+
+  <http://purl.uniprot.org/uniprot/P04637> up:classifiedWith keywords:325 .
+  # Database: UniProt | Query: 3 | Comment: TP53 (GeneID 7157) also carries Glycoprotein (O-GlcNAc) — a non-obvious inclusion; the count is not just cell-surface proteins
+
+  <http://purl.uniprot.org/uniprot/Q6N021> up:classifiedWith keywords:325 .
+  # Database: UniProt | Query: 3 | Comment: TET2 (GeneID 54790), a nuclear dioxygenase, is Glycoprotein via O-GlcNAc -> in the 24
+
+  <http://purl.uniprot.org/uniprot/Q01196> rdfs:seeAlso <http://purl.uniprot.org/geneid/861> .
+  # Database: UniProt | Query: 4 | Comment: RUNX1 (GeneID 861), a core AML transcription factor, resolves to a reviewed human protein but has NO Glycoprotein keyword -> among the 35 non-glycoproteins
+
+exact_answer: "24"
+
+ideal_answer: |
+  The glycoscience knowledge base's disease layer associates exactly 59 human genes with acute myeloid leukemia (DOID:9119, a single curated disease node drawing on Alliance of Genome Resources / GDGDB gene-disease links). Bridging each gene's NCBI GeneID to the reviewed human proteome and testing for the Glycoprotein keyword, 24 of the 59 genes encode a glycoprotein; the remaining 35 do not (24 + 35 = 59, with every gene resolving to exactly one reviewed Swiss-Prot entry). The 24 fall into two groups that together explain why the figure cannot be guessed from gene names alone. Most are the expected secreted or single-pass membrane glycoproteins — the receptor tyrosine kinases KIT (P10721) and FLT3 (P36888) and FGFR1 (P11362); the cytokine/receptor axis CSF2, CSF3, CSF3R, IL6, IL1A and VEGFA; the integrins ITGAV (P06756) and ITGB3 (P05106); plus CDH1, CTLA4, FAS/TNFRSF6, HLA-DQB1, CFHR1 and TFPI2. But several are cytoplasmic or nuclear regulators that carry the Glycoprotein keyword only through O-GlcNAc modification — TP53 (P04637), the dioxygenase TET2 (Q6N021), the methyltransferase EZH2 (Q15910), the nucleoporin NUP214 (P35658), and the small GTPases KRAS (P01116) and NRAS (P01111). The 35 non-glycoproteins are the intracellular drivers that dominate AML genetics: transcription factors (RUNX1, GATA2, CEBPA-class), epigenetic and chromatin factors (ASXL1, KMT2A, KAT6A, NSD1, BMI1, DNMT-associated IDH1/IDH2), splicing factors (SRSF2, U2AF1), and kinases/other regulators (ABL1, NPM1, NF1, TERT). The answer therefore reflects that AML is driven predominantly by non-glycosylated intracellular machinery, with a substantial minority (24) of glycoprotein-encoding genes once the keyword's O-GlcNAc entries are included.
+
+question_template_used: disease-associated gene set intersected with a PTM/functional annotation (count)
+
+time_spent:
+  exploration: 55
+  formulation: 20
+  verification: 15
+  pubmed_test: 10
+  extraction: 10
+  documentation: 20
+  total: 130

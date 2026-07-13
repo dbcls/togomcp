@@ -1,0 +1,167 @@
+id: question_092
+type: choice
+body: >-
+  The biogenic polyamines are small aliphatic polycations that regulate a wide range
+  of cellular processes and can modulate the activity of many enzymes. Consider the
+  four principal biogenic polyamines listed below. In a comprehensive, manually
+  curated enzyme database, each of these compounds is recorded as an inhibitor of some
+  number of distinct enzyme classes (identified by EC number). Judging by the number of
+  distinct enzyme classes each compound is recorded to inhibit, which of the four is
+  the broadest enzyme inhibitor?
+
+choices:
+  - Putrescine
+  - Cadaverine
+  - Spermidine
+  - Spermine
+
+inspiration_keyword:
+  keyword_id: KW-0620
+  name: Polyamine biosynthesis
+  category: Biological process
+
+togomcp_databases_used:
+  - chebi
+  - brenda
+
+verification_score:
+  biological_insight: 2
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 10
+  passed: true
+
+pubmed_test:
+  time_spent: 6 minutes
+  method: |
+    Attempted to answer the specific question — which of the four principal biogenic
+    polyamines is recorded as an inhibitor of the greatest number of distinct enzyme
+    classes in a curated enzyme database — from the literature with two PubMed searches:
+    (1) "putrescine cadaverine spermidine spermine number of enzyme classes inhibited comparison" (0 hits)
+    (2) "spermidine broadest polyamine enzyme inhibitor curated database EC classes" (0 hits)
+  result: |
+    Neither search returned any article. Individual polyamine–enzyme inhibition studies
+    exist, but no publication tabulates or compares how many distinct EC enzyme classes
+    each of the four polyamines inhibits. The counts (spermidine 66, spermine 55,
+    putrescine 49, cadaverine 29) are aggregate figures over a curated enzyme database's
+    inhibitor annotations — a database-state result, not a fact stated in the literature —
+    and obtaining the ranking requires joining a chemical ontology (to identify the
+    polyamines and their InChIKeys) to the enzyme database's inhibitor records.
+  conclusion: PASS (the comparative count of distinct enzyme classes inhibited by each
+    polyamine is a curated-database aggregate absent from the literature; it requires
+    joining a chemical ontology to an enzyme-inhibition database by structure key)
+
+sparql_queries:
+  - query_number: 1
+    database: chebi
+    description: >-
+      Identify the four principal biogenic polyamines in the chemical ontology and read
+      the InChIKey that will bridge them to the enzyme database. Putrescine (CHEBI:17148),
+      cadaverine (CHEBI:18127), spermidine (CHEBI:16610) and spermine (CHEBI:15746) each
+      carry a standard InChIKey via chemrof:inchi_key_string.
+    query: |
+      PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo:     <http://purl.obolibrary.org/obo/>
+      PREFIX chemrof: <https://w3id.org/chemrof/>
+
+      SELECT ?c ?label ?inchikey
+      FROM <http://rdf.ebi.ac.uk/dataset/chebi>
+      WHERE {
+        VALUES ?c { obo:CHEBI_17148 obo:CHEBI_18127 obo:CHEBI_16610 obo:CHEBI_15746 }
+        ?c rdfs:label ?label ;
+           chemrof:inchi_key_string ?inchikey .
+      }
+      ORDER BY ?label
+    result_count: 4   # cadaverine VHRGRCVQAFMJIZ; putrescine KIDHWZJUCRJVML; spermidine ATHGHQPFGPMSJY; spermine PFNFFQXMRSDOHW (all -UHFFFAOYSA-N)
+
+  - query_number: 2
+    database: brenda
+    description: >-
+      For each polyamine, count the distinct EC enzyme classes it is recorded to inhibit.
+      Match the enzyme database's compound to the ChEBI InChIKey (the database stores it
+      with an "InChIKey=" prefix), navigate compound -> Inhibitor role -> d3o:affectsClass,
+      and COUNT(DISTINCT ?ec). Graph-pinned to the BRENDA dataset. Result: spermidine 66,
+      spermine 55, putrescine 49, cadaverine 29 — spermidine is the broadest.
+    query: |
+      PREFIX d3o: <https://purl.dsmz.de/schema/>
+
+      SELECT ?ik (COUNT(DISTINCT ?ec) AS ?nEC)
+      FROM <http://rdfportal.org/dataset/brenda>
+      WHERE {
+        VALUES ?ik {
+          "InChIKey=KIDHWZJUCRJVML-UHFFFAOYSA-N"   # putrescine
+          "InChIKey=VHRGRCVQAFMJIZ-UHFFFAOYSA-N"   # cadaverine
+          "InChIKey=ATHGHQPFGPMSJY-UHFFFAOYSA-N"   # spermidine
+          "InChIKey=PFNFFQXMRSDOHW-UHFFFAOYSA-N"   # spermine
+        }
+        ?struct d3o:hasInChIKey ?ik .
+        ?compound d3o:hasStructure ?struct .
+        ?inhibitor d3o:refersToCompound ?compound ;
+                   a d3o:Inhibitor ;
+                   d3o:affectsClass ?ec .
+      }
+      GROUP BY ?ik
+      ORDER BY DESC(?nEC)
+    result_count: 4   # spermidine 66 > spermine 55 > putrescine 49 > cadaverine 29 (union vs graph-pinned both = 66 for the winner — no cross-graph inflation)
+
+rdf_triples: |
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+  @prefix ex:  <http://example.org/polyamine-enzyme-inhibition#> .
+
+  ex:question ex:comparisonSet "the four principal biogenic polyamines (putrescine, cadaverine, spermidine, spermine)" ; ex:metric "number of distinct EC enzyme classes inhibited (curated enzyme database)" ; ex:answer "Spermidine" .
+  # Database: brenda | Query: 2 | Comment: Scope — the four biogenic polyamines compared by how many distinct enzyme classes each is recorded to inhibit; the broadest is the answer
+
+  obo:CHEBI_16610 ex:name "spermidine" ; ex:inchikey "ATHGHQPFGPMSJY-UHFFFAOYSA-N" .
+  # Database: chebi | Query: 1 | Comment: Spermidine (ChEBI:16610) — its InChIKey is the structure key that bridges to the enzyme-inhibition records
+
+  obo:CHEBI_16610 ex:ecClassesInhibited "66"^^xsd:integer .
+  # Database: brenda | Query: 2 | Comment: Spermidine is recorded as an inhibitor of 66 distinct EC enzyme classes — the most of the four (the answer)
+
+  obo:CHEBI_15746 ex:name "spermine" ; ex:inchikey "PFNFFQXMRSDOHW-UHFFFAOYSA-N" .
+  # Database: chebi | Query: 1 | Comment: Spermine (ChEBI:15746) — the higher tetraamine polyamine
+
+  obo:CHEBI_15746 ex:ecClassesInhibited "55"^^xsd:integer .
+  # Database: brenda | Query: 2 | Comment: Spermine inhibits 55 distinct EC classes — second, just below spermidine
+
+  obo:CHEBI_17148 ex:name "putrescine" ; ex:inchikey "KIDHWZJUCRJVML-UHFFFAOYSA-N" .
+  # Database: chebi | Query: 1 | Comment: Putrescine (ChEBI:17148) — the diamine precursor of the higher polyamines
+
+  obo:CHEBI_17148 ex:ecClassesInhibited "49"^^xsd:integer .
+  # Database: brenda | Query: 2 | Comment: Putrescine inhibits 49 distinct EC classes — third
+
+  obo:CHEBI_18127 ex:name "cadaverine" ; ex:inchikey "VHRGRCVQAFMJIZ-UHFFFAOYSA-N" .
+  # Database: chebi | Query: 1 | Comment: Cadaverine (ChEBI:18127) — the lysine-derived diamine
+
+  obo:CHEBI_18127 ex:ecClassesInhibited "29"^^xsd:integer .
+  # Database: brenda | Query: 2 | Comment: Cadaverine inhibits 29 distinct EC classes — the narrowest of the four
+
+  ex:conclusion ex:ranking "spermidine 66 > spermine 55 > putrescine 49 > cadaverine 29" ; ex:insight "the higher, more highly charged polyamines engage more enzyme targets than the simpler diamines; the four inhibited-enzyme sets overlap, so these are per-compound breadths, not a partition" .
+  # Database: brenda | Query: 2 | Comment: Synthesis — spermidine is the broadest enzyme inhibitor; the trend tracks polyamine charge/length, but the exact counts are curated-database aggregates
+
+exact_answer:
+  - Spermidine
+
+ideal_answer: >-
+  Spermidine. Among the four principal biogenic polyamines, spermidine is recorded as an
+  inhibitor of 66 distinct enzyme classes (EC numbers) — more than spermine (55), putrescine
+  (49) or cadaverine (29) — making it the broadest enzyme inhibitor of the four. Each compound
+  was identified by its ChEBI structure and matched by InChIKey to the curated enzyme-inhibition
+  records (spermidine's InChIKey is ATHGHQPFGPMSJY-UHFFFAOYSA-N). The figures count the distinct
+  EC classes each polyamine is annotated to inhibit; the four inhibited-enzyme sets overlap, so
+  they are per-compound breadths rather than a partition of one total. The ordering fits a real
+  trend — the higher, more highly charged polyamines spermidine and spermine engage more enzyme
+  targets than the simpler diamines putrescine and cadaverine — but the specific counts come from
+  curated inhibitor annotations and are not tabulated in the primary literature.
+
+question_template_used: "Choice comparing members of a chemical class (identified by ChEBI structure and InChIKey) by a curated enzyme-database metric — the number of distinct EC enzyme classes each compound is recorded to inhibit — bridging ChEBI to BRENDA by InChIKey"
+
+time_spent:
+  exploration: 38 minutes
+  formulation: 12 minutes
+  verification: 10 minutes
+  pubmed_test: 6 minutes
+  extraction: 12 minutes
+  documentation: 16 minutes
+  total: 94 minutes

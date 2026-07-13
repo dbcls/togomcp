@@ -1,0 +1,181 @@
+id: question_100
+type: yes_no
+body: >-
+  The nine human paired box (PAX) developmental transcription-factor genes are spread
+  across several chromosomes. On the current human genome assembly, are all nine of them
+  located in Giemsa-negative (light-staining, gene-rich) cytogenetic bands?
+
+inspiration_keyword:
+  keyword_id: KW-0563
+  name: Paired box
+  category: Domain
+
+togomcp_databases_used:
+  - uniprot
+  - hgnc
+  - hco
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 12
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: >
+    Tried to answer the specific claim directly. Ran ncbi_esearch on PubMed with
+    "PAX paired box genes cytogenetic band Giemsa staining gene-rich distribution" and
+    "PAX transcription factor family chromosomal localization euchromatin heterochromatin
+    band". Both returned 0 results.
+  result: |
+    No paper reports the Giemsa-stain class of each PAX gene's cytogenetic band, nor
+    whether the family is confined to gene-rich (G-negative) chromatin. Individual PAX
+    cytogenetic assignments are scattered across the literature, but the per-band Giemsa
+    stain type is ideogram data (assembly-specific), not a literature-stated fact, and the
+    family-wide yes/no cannot be assembled from abstracts. The answer requires joining the
+    keyword-defined family to per-gene cytoband strings and to the current-build band
+    ideogram with its stain vocabulary.
+  conclusion: PASS (cannot answer from literature - requires live RDF join)
+
+sparql_queries:
+  - query_number: 1
+    database: uniprot
+    description: >
+      Define the family: the reviewed human proteins carrying the Paired box keyword
+      (keywords:563). Returns the 9 PAX transcription factors (PAX1-PAX9), establishing
+      the exhaustive gene set (Hard Rule 2 — no sampling).
+    query: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
+      SELECT (STRAFTER(STR(?protein),"uniprot/") AS ?acc) ?mnemonic
+      WHERE {
+        ?protein a up:Protein ;
+                 up:reviewed 1 ;
+                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                 up:classifiedWith keywords:563 ;
+                 up:mnemonic ?mnemonic .
+      }
+      ORDER BY ?mnemonic
+    result_count: 9   # PAX1_HUMAN P15863 ... PAX9_HUMAN P55771 (PAX1-PAX9)
+
+  - query_number: 2
+    database: hgnc
+    description: >
+      Resolve each PAX gene's cytogenetic location. HGNC stores it as an ISCN string on
+      obo:so_part_of (the join key into HCO). Returns all 9 cytobands (PAX1 20p11.22 ...
+      PAX9 14q13.3), confirming every family member has exactly one band assignment.
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT ?symbol ?cytoband
+      WHERE {
+        VALUES ?symbol { "PAX1" "PAX2" "PAX3" "PAX4" "PAX5" "PAX6" "PAX7" "PAX8" "PAX9" }
+        GRAPH <http://rdfportal.org/dataset/hgnc> {
+          ?g rdfs:label ?symbol ; obo:so_part_of ?cytoband .
+        }
+      }
+      ORDER BY ?symbol
+    result_count: 9   # PAX1 20p11.22 | PAX2 10q24.31 | PAX3 2q36.1 | PAX4 7q32.1 | PAX5 9p13.2 | PAX6 11p13 | PAX7 1p36.13 | PAX8 2q14.1 | PAX9 14q13.3
+
+  - query_number: 3
+    database: hco
+    description: >
+      THE ANSWER. For all 9 PAX gene symbols, join the gene's cytoband string
+      (HGNC obo:so_part_of) to the HCO band of that ISCN label and read its GRCh38 Giemsa
+      stain type (hco:bandtype -> rdfs:label). Both graphs are pinned explicitly on the
+      shared primary endpoint (Hard Rule 4); build fixed to GRCh38. Returns one row per
+      gene: 5 gneg + 4 gpos, so NOT all are Giemsa-negative -> answer NO.
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX hco: <http://identifiers.org/hco/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT ?symbol ?cytoband ?stain
+      WHERE {
+        VALUES ?symbol { "PAX1" "PAX2" "PAX3" "PAX4" "PAX5" "PAX6" "PAX7" "PAX8" "PAX9" }
+        GRAPH <http://rdfportal.org/dataset/hgnc> {
+          ?g rdfs:label ?symbol ; obo:so_part_of ?cytoband .
+        }
+        GRAPH <http://rdfportal.org/dataset/hco> {
+          ?band rdfs:subClassOf hco:Cytoband ; rdfs:label ?cytoband .
+          ?inst a ?band ; hco:build hco:GRCh38 ; hco:bandtype ?bt .
+          ?bt rdfs:label ?stain .
+        }
+      }
+      ORDER BY ?symbol
+    result_count: 9   # PAX1 20p11.22 gpos25 | PAX2 10q24.31 gneg | PAX3 2q36.1 gpos75 | PAX4 7q32.1 gneg | PAX5 9p13.2 gpos25 | PAX6 11p13 gneg | PAX7 1p36.13 gneg | PAX8 2q14.1 gpos50 | PAX9 14q13.3 gneg
+
+  - query_number: 4
+    database: hco
+    description: >
+      ARITHMETIC VERIFICATION (Hard Rule 3). Same join, partitioned by stain class:
+      total genes with a resolved GRCh38 band = 9; Giemsa-negative = 5; Giemsa-positive
+      (gpos25/gpos50/gpos75) = 4. 5 + 4 = 9, every gene resolves to exactly one band,
+      so the partition is complete and disjoint. Confirms the NO.
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX hco: <http://identifiers.org/hco/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT
+        (COUNT(?symbol) AS ?total)
+        (SUM(IF(?stain = "gneg", 1, 0)) AS ?gneg)
+        (SUM(IF(?stain != "gneg", 1, 0)) AS ?gpos)
+      WHERE {
+        VALUES ?symbol { "PAX1" "PAX2" "PAX3" "PAX4" "PAX5" "PAX6" "PAX7" "PAX8" "PAX9" }
+        GRAPH <http://rdfportal.org/dataset/hgnc> {
+          ?g rdfs:label ?symbol ; obo:so_part_of ?cytoband .
+        }
+        GRAPH <http://rdfportal.org/dataset/hco> {
+          ?band rdfs:subClassOf hco:Cytoband ; rdfs:label ?cytoband .
+          ?inst a ?band ; hco:build hco:GRCh38 ; hco:bandtype ?bt .
+          ?bt rdfs:label ?stain .
+        }
+      }
+    result_count: 1   # one row: total 9, gneg 5, gpos 4
+
+rdf_triples: |
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix keywords: <http://purl.uniprot.org/keywords/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix hco: <http://identifiers.org/hco/> .
+
+  <http://purl.uniprot.org/uniprot/P26367> up:classifiedWith keywords:563 .
+  # Database: UniProt | Query: 1 | Comment: PAX6 (P26367) carries the Paired box keyword; one of the 9 reviewed human PAX family members
+
+  <http://identifiers.org/hgnc/8620> rdfs:label "PAX6" .
+  # Database: HGNC | Query: 2 | Comment: the HGNC record for PAX6 (join key = approved symbol)
+
+  <http://identifiers.org/hgnc/8620> obo:so_part_of "11p13" .
+  # Database: HGNC | Query: 2 | Comment: PAX6's cytogenetic location as an ISCN string; matches an HCO band label
+
+  hco:11p13 rdfs:label "11p13" .
+  # Database: HCO | Query: 3 | Comment: the cytoband class whose label equals HGNC's obo:so_part_of string (the cross-DB join)
+
+  hco:Gneg rdfs:label "gneg" .
+  # Database: HCO | Query: 3 | Comment: band 11p13 (GRCh38 instance) is hco:bandtype hco:Gneg -> PAX6 is in a gene-rich Giemsa-negative band
+
+  <http://identifiers.org/hgnc/8617> obo:so_part_of "2q36.1" .
+  # Database: HGNC | Query: 2 | Comment: PAX3 maps to cytoband 2q36.1
+
+  hco:Gpos75 rdfs:label "gpos75" .
+  # Database: HCO | Query: 3 | Comment: band 2q36.1 (GRCh38) is hco:bandtype hco:Gpos75 (a dark, gene-poor G-band) -> PAX3 is NOT in a Giemsa-negative band; the counterexample that makes the answer NO
+
+exact_answer: "no"
+
+ideal_answer: |
+  No. On GRCh38 the nine human PAX (paired box) transcription-factor genes split across both cytogenetic chromatin compartments: five sit in Giemsa-negative (light-staining, gene-rich, GC-rich, early-replicating) bands — PAX2 (10q24.31), PAX4 (7q32.1), PAX6 (11p13), PAX7 (1p36.13) and PAX9 (14q13.3) — but the other four lie in Giemsa-positive (darker, gene-poor, AT-rich, late-replicating) bands: PAX1 (20p11.22, gpos25), PAX5 (9p13.2, gpos25), PAX8 (2q14.1, gpos50) and, most strikingly, PAX3 (2q36.1) in the dark gpos75 band. Five Giemsa-negative plus four Giemsa-positive account for all nine family members, so the family is not confined to gene-rich euchromatic bands. This runs against the common intuition that master developmental regulators cluster in gene-rich R-band territory: nearly half of the PAX paralogues reside in the more condensed, gene-poor G-band chromatin, showing that keyword-level family membership does not predict cytogenetic band character.
+
+question_template_used: family-wide universal-property check (do all members share a categorical cytogenetic attribute?) — yes/no
+
+time_spent:
+  exploration: 30
+  formulation: 15
+  verification: 10
+  pubmed_test: 10
+  extraction: 10
+  documentation: 15
+  total: 90

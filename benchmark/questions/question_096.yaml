@@ -1,0 +1,244 @@
+id: question_096
+type: list
+body: >-
+  In the standard controlled vocabulary used to index the biomedical literature,
+  the disease heading "Amyloidosis" heads a small family of more specific
+  amyloidosis headings (itself plus every narrower heading beneath it). List that
+  family of headings, and for each one give the distinct top-level disease
+  branches of the indexing hierarchy under which it is cross-classified (a single
+  heading is often filed under several organ-system branches at once). Note also,
+  for each heading, whether it has a matching term in the reference cross-species
+  disease ontology.
+
+inspiration_keyword:
+  keyword_id: KW-1008
+  name: Amyloidosis
+  category: Disease
+
+togomcp_databases_used:
+  - mesh
+  - mondo
+
+verification_score:
+  biological_insight: 2
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 8 minutes
+  method: |
+    Attempted to answer the specific question — the membership of the "Amyloidosis"
+    heading subtree in the biomedical indexing vocabulary, each member's top-level
+    disease-category cross-classifications, and which members carry a reference
+    disease-ontology cross-reference — from the literature with two PubMed searches,
+    reading the returned records:
+    (1) "amyloidosis MeSH descriptor subtree tree number categories cross-classification MONDO mapping" (0 hits)
+    (2) "list of amyloidosis subject heading descriptors disease categories cardiovascular nervous immune metabolic classification" (0 hits)
+  result: |
+    Neither search returned any article. This is a question about the internal
+    structure of a controlled indexing vocabulary and its alignment with a disease
+    ontology — the exact set of amyloidosis headings, the organ-system categories each
+    is cross-filed under, and the incomplete (3 of 7) back-mapping to the disease
+    ontology — not a research finding reported in any paper. It can only be answered by
+    querying the live vocabulary hierarchy and the ontology's cross-references.
+  conclusion: PASS (cannot answer from literature - requires the live heading hierarchy,
+    tree-number cross-classifications, and disease-ontology cross-references)
+
+# STRUCTURED VOCABULARY DISCOVERY
+# Amyloidosis heading = mesh:D000686. The heading family is its transitive narrower-descriptor
+# closure: ?d meshv:broaderDescriptor+ mesh:D000686 (UNION D000686 itself) = exactly 7 TopicalDescriptors
+# (COUNT(DISTINCT)=7, Query 4). No sampling — the whole subtree is enumerated (Hard Rule 2).
+
+sparql_queries:
+  - query_number: 1
+    database: mesh
+    description: >-
+      Enumerate the "Amyloidosis" heading family (mesh:D000686 plus its transitive narrower
+      descriptors via meshv:broaderDescriptor+) and, for each, the DISTINCT top-level disease
+      categories (first 3 characters of each tree number) it is cross-classified under. Returns
+      7 headings: Amyloidosis (D000686; C18), Amyloid Neuropathies (D017772; C10, C18), Amyloid
+      Neuropathies Familial (D028227; C10, C16, C18), Amyloidosis Familial (D028226; C16, C18),
+      Cerebral Amyloid Angiopathy (D016657; C10, C14, C18), Cerebral Amyloid Angiopathy Familial
+      (D028243; C10, C14, C16, C18) and Immunoglobulin Light-chain Amyloidosis (D000075363; C04,
+      C18, C20). Every member is filed under C18; across the family six categories appear
+      (C04, C10, C14, C16, C18, C20). Scoped with FROM <http://id.nlm.nih.gov/mesh> (Hard Rule 4).
+    query: |
+      PREFIX mesh:  <http://id.nlm.nih.gov/mesh/>
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?descriptor ?label
+             (GROUP_CONCAT(DISTINCT SUBSTR(?treeNum,1,3); separator=", ") AS ?categories)
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        { ?descriptor meshv:broaderDescriptor+ mesh:D000686 . }
+        UNION
+        { BIND(mesh:D000686 AS ?descriptor) }
+        ?descriptor a meshv:TopicalDescriptor ;
+                    rdfs:label ?label ;
+                    meshv:treeNumber ?tree .
+        ?tree rdfs:label ?treeNum .
+      }
+      GROUP BY ?descriptor ?label
+      ORDER BY ?label
+    result_count: 7   # 7 amyloidosis headings; all under C18, family spans 6 top-level categories
+
+  - query_number: 2
+    database: mesh
+    description: >-
+      Resolve the six top-level disease-category codes that appear across the family to their
+      category names (the heading whose tree number is the bare 3-character category code).
+      C04 = Neoplasms, C10 = Nervous System Diseases, C14 = Cardiovascular Diseases, C16 =
+      Congenital, Hereditary, and Neonatal Diseases and Abnormalities, C18 = Nutritional and
+      Metabolic Diseases, C20 = Immune System Diseases. (Category-root tree labels carry a
+      Virtuoso collation artifact, so they are matched by STRSTARTS with a short-length guard
+      rather than exact equality.)
+    query: |
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT ?treeNum ?label
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        ?descriptor a meshv:TopicalDescriptor ;
+                    rdfs:label ?label ;
+                    meshv:treeNumber ?tree .
+        ?tree rdfs:label ?treeNum .
+        FILTER(STRLEN(?treeNum) <= 4 &&
+          (STRSTARTS(?treeNum,"C04") || STRSTARTS(?treeNum,"C10") || STRSTARTS(?treeNum,"C14") ||
+           STRSTARTS(?treeNum,"C16") || STRSTARTS(?treeNum,"C18") || STRSTARTS(?treeNum,"C20")))
+      }
+      ORDER BY ?treeNum
+    result_count: 6   # the six category-root names spanned by the amyloidosis heading family
+
+  - query_number: 3
+    database: mondo
+    description: >-
+      Cross-reference the seven headings to the reference disease ontology via MONDO's
+      oboInOwl:hasDbXref "MESH:D######" links. Only 3 of the 7 are back-mapped at the heading
+      level: MESH:D000686 -> MONDO_0019065 (amyloidosis), MESH:D028226 -> MONDO_0018634
+      (hereditary amyloidosis), MESH:D016657 -> MONDO_0005620 (cerebral amyloid angiopathy).
+      The other four (Amyloid Neuropathies, Amyloid Neuropathies Familial, Cerebral Amyloid
+      Angiopathy Familial, Immunoglobulin Light-chain Amyloidosis) have no MONDO class pointing
+      to their heading — a real MeSH<->MONDO mapping asymmetry (e.g. MONDO maps AL amyloidosis to
+      an older supplementary chemical record, not to the newer D000075363 heading).
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+
+      SELECT ?meshId ?mondo ?label
+      WHERE {
+        GRAPH <http://rdfportal.org/ontology/mondo> {
+          VALUES ?meshId { "MESH:D000686" "MESH:D017772" "MESH:D028227" "MESH:D028226"
+                           "MESH:D016657" "MESH:D028243" "MESH:D000075363" }
+          ?mondo oboInOwl:hasDbXref ?meshId ;
+                 rdfs:label ?label .
+        }
+      }
+      ORDER BY ?meshId
+    result_count: 3   # 3 of 7 headings have a MONDO cross-reference (amyloidosis, hereditary amyloidosis, cerebral amyloid angiopathy)
+
+  - query_number: 4
+    database: mesh
+    description: >-
+      Arithmetic verification (Rule 3) for Query 1: COUNT(DISTINCT ?descriptor) over the same
+      subtree pattern returns 7, confirming the heading family has exactly seven members and that
+      the mapped (3) and unmapped (4) headings sum to the total (3 + 4 = 7).
+    query: |
+      PREFIX mesh:  <http://id.nlm.nih.gov/mesh/>
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+
+      SELECT (COUNT(DISTINCT ?descriptor) AS ?n)
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        { ?descriptor meshv:broaderDescriptor+ mesh:D000686 . }
+        UNION
+        { BIND(mesh:D000686 AS ?descriptor) }
+        ?descriptor a meshv:TopicalDescriptor .
+      }
+    result_count: 1   # n = 7 (matches Query 1; 3 MONDO-mapped + 4 unmapped = 7)
+
+rdf_triples: |
+  @prefix mesh:  <http://id.nlm.nih.gov/mesh/> .
+  @prefix obo:   <http://purl.obolibrary.org/obo/> .
+  @prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+  @prefix ex:    <http://example.org/amyloidosis-heading-family#> .
+
+  ex:family ex:rootHeading mesh:D000686 ; ex:memberCount "7"^^xsd:integer ; ex:categoriesSpanned "C04, C10, C14, C16, C18, C20" ; ex:commonCategory "C18 (Nutritional and Metabolic Diseases)" ; ex:mondoMapped "3"^^xsd:integer .
+  # Database: mesh | Query: 1 | Comment: Scope — the Amyloidosis heading (D000686) and its 6 narrower headings form a 7-member family, all filed under C18 and cross-classified across 6 top-level disease categories
+
+  ex:categoryNames ex:C04 "Neoplasms" ; ex:C10 "Nervous System Diseases" ; ex:C14 "Cardiovascular Diseases" ; ex:C16 "Congenital, Hereditary, and Neonatal Diseases and Abnormalities" ; ex:C18 "Nutritional and Metabolic Diseases" ; ex:C20 "Immune System Diseases" .
+  # Database: mesh | Query: 2 | Comment: The six top-level disease-category codes resolved to their heading names
+
+  mesh:D000686 ex:name "Amyloidosis" ; ex:categories "C18" ; ex:mondoTerm obo:MONDO_0019065 .
+  # Database: mesh | Query: 1 | Comment: Amyloidosis — filed only under C18 (Nutritional and Metabolic Diseases); maps to MONDO_0019065 (amyloidosis)
+
+  mesh:D017772 ex:name "Amyloid Neuropathies" ; ex:categories "C10, C18" ; ex:mondoTerm "none" .
+  # Database: mesh | Query: 1 | Comment: Amyloid Neuropathies — cross-filed under Nervous System (C10) and Nutritional/Metabolic (C18); no MONDO heading cross-reference
+
+  mesh:D028227 ex:name "Amyloid Neuropathies, Familial" ; ex:categories "C10, C16, C18" ; ex:mondoTerm "none" .
+  # Database: mesh | Query: 1 | Comment: Amyloid Neuropathies, Familial — Nervous System (C10) + Congenital/Hereditary/Neonatal (C16) + Nutritional/Metabolic (C18); no MONDO cross-reference
+
+  mesh:D028226 ex:name "Amyloidosis, Familial" ; ex:categories "C16, C18" ; ex:mondoTerm obo:MONDO_0018634 .
+  # Database: mesh | Query: 1 | Comment: Amyloidosis, Familial — Congenital/Hereditary/Neonatal (C16) + Nutritional/Metabolic (C18); maps to MONDO_0018634 (hereditary amyloidosis)
+
+  mesh:D016657 ex:name "Cerebral Amyloid Angiopathy" ; ex:categories "C10, C14, C18" ; ex:mondoTerm obo:MONDO_0005620 .
+  # Database: mesh | Query: 1 | Comment: Cerebral Amyloid Angiopathy — Nervous System (C10) + Cardiovascular (C14) + Nutritional/Metabolic (C18); maps to MONDO_0005620 (cerebral amyloid angiopathy)
+
+  mesh:D028243 ex:name "Cerebral Amyloid Angiopathy, Familial" ; ex:categories "C10, C14, C16, C18" ; ex:mondoTerm "none" .
+  # Database: mesh | Query: 1 | Comment: Cerebral Amyloid Angiopathy, Familial — the most broadly cross-filed member: Nervous System (C10) + Cardiovascular (C14) + Congenital/Hereditary/Neonatal (C16) + Nutritional/Metabolic (C18); no MONDO cross-reference
+
+  mesh:D000075363 ex:name "Immunoglobulin Light-chain Amyloidosis" ; ex:categories "C04, C18, C20" ; ex:mondoTerm "none" .
+  # Database: mesh | Query: 1 | Comment: Immunoglobulin Light-chain Amyloidosis (AL amyloidosis) — the only member under Neoplasms (C04) and Immune System Diseases (C20), plus Nutritional/Metabolic (C18); no MONDO heading cross-reference (MONDO maps AL amyloidosis to an older supplementary record, not this heading)
+
+  ex:mapping ex:mondoMappedHeadings "Amyloidosis, Amyloidosis Familial, Cerebral Amyloid Angiopathy" ; ex:mondoUnmappedHeadings "Amyloid Neuropathies, Amyloid Neuropathies Familial, Cerebral Amyloid Angiopathy Familial, Immunoglobulin Light-chain Amyloidosis" .
+  # Database: mondo | Query: 3 | Comment: Only 3 of the 7 headings are back-mapped by a MONDO class via hasDbXref; 3 mapped + 4 unmapped = 7 (Rule 3)
+
+  ex:conclusion ex:insight "amyloidosis is a single metabolic-disease concept (all 7 headings share C18) that the indexing vocabulary simultaneously cross-files by affected organ system — nervous, cardiovascular, immune — and by heredity and neoplastic mechanism, and the disease ontology back-references only 3 of the 7 headings" .
+  # Database: mesh | Query: 1 | Comment: Synthesis — the heading family captures amyloidosis's multi-system nature through polyhierarchy, while the MeSH<->MONDO cross-reference is incomplete (3 of 7)
+
+exact_answer:
+  - "Amyloidosis"
+  - "Amyloid Neuropathies"
+  - "Amyloid Neuropathies, Familial"
+  - "Amyloidosis, Familial"
+  - "Cerebral Amyloid Angiopathy"
+  - "Cerebral Amyloid Angiopathy, Familial"
+  - "Immunoglobulin Light-chain Amyloidosis"
+
+ideal_answer: >-
+  The "Amyloidosis" heading family in the biomedical indexing vocabulary comprises seven
+  headings: Amyloidosis together with its six narrower headings Amyloid Neuropathies; Amyloid
+  Neuropathies, Familial; Amyloidosis, Familial; Cerebral Amyloid Angiopathy; Cerebral Amyloid
+  Angiopathy, Familial; and Immunoglobulin Light-chain Amyloidosis. Every one of the seven is
+  filed under the top-level category Nutritional and Metabolic Diseases (C18), reflecting
+  amyloidosis's shared identity as a protein-deposition metabolic disorder, but most are
+  simultaneously cross-classified under additional organ-system categories, so that the family
+  as a whole spans six top-level disease categories. Amyloidosis itself sits only under
+  Nutritional and Metabolic Diseases. Amyloid Neuropathies adds Nervous System Diseases (C10);
+  Amyloid Neuropathies, Familial adds Nervous System Diseases and Congenital, Hereditary, and
+  Neonatal Diseases and Abnormalities (C16); Amyloidosis, Familial adds only C16. Cerebral
+  Amyloid Angiopathy is cross-filed under Nervous System (C10) and Cardiovascular Diseases (C14);
+  its familial form, the most broadly classified member, adds Congenital/Hereditary/Neonatal
+  (C16) as well, appearing under four categories. Immunoglobulin Light-chain (AL) amyloidosis is
+  the only member filed under Neoplasms (C04) and Immune System Diseases (C20), befitting its
+  plasma-cell origin, alongside the shared metabolic category. Cross-referencing to the reference
+  disease ontology is incomplete: only three of the seven headings are back-mapped by an ontology
+  class — Amyloidosis (MONDO_0019065), Amyloidosis, Familial (to hereditary amyloidosis,
+  MONDO_0018634) and Cerebral Amyloid Angiopathy (MONDO_0005620) — while the four remaining
+  headings, including AL amyloidosis, have no ontology class pointing to them, a genuine mapping
+  asymmetry between the two resources.
+
+question_template_used: "List a controlled-vocabulary heading subtree (a disease heading plus its narrower headings via broaderDescriptor+) with each member's polyhierarchical top-level tree-category cross-classification, plus disease-ontology (MONDO) cross-references — surfacing multi-system polyhierarchy and an incomplete MeSH<->MONDO back-mapping"
+
+time_spent:
+  exploration: 32 minutes
+  formulation: 10 minutes
+  verification: 8 minutes
+  pubmed_test: 8 minutes
+  extraction: 13 minutes
+  documentation: 16 minutes
+  total: 87 minutes

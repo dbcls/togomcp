@@ -1,0 +1,151 @@
+id: question_090
+type: yes_no
+body: >-
+  The human genome is, in total, somewhat larger than the mouse genome, which might
+  invite the assumption that each human chromosome is larger than its mouse counterpart.
+  Focusing on the X chromosome — the sex chromosome shared by both species — and using
+  the current reference genome assembly for each species, is the human X chromosome
+  longer, in base pairs, than the mouse X chromosome?
+
+inspiration_keyword:
+  keyword_id: KW-0726
+  name: Sexual differentiation
+  category: Biological process
+
+togomcp_databases_used:
+  - hco
+  - mco
+
+verification_score:
+  biological_insight: 3
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 6 minutes
+  method: |
+    Attempted to answer the specific question — whether the human X chromosome is
+    longer in base pairs than the mouse X chromosome on the current reference
+    assemblies — directly from the literature with two PubMed searches, reading the
+    returned abstracts:
+    (1) "human X chromosome mouse X chromosome assembled length base pairs comparison" (0 hits)
+    (2) "mouse X chromosome larger than human X chromosome" (7 hits, incl. reviews of
+        X-chromosome biology: PMID 29701779 "The eXceptional nature of the X chromosome",
+        PMID 28947655 on X-inactivation, PMID 30509386 on female-predominant autoimmunity)
+  result: |
+    No source states or compares the assembled base-pair lengths of the human and mouse
+    X chromosomes. The second search's hits use the word "larger" only in the sense of
+    gene content or molecular complexes — e.g. PMID 29701779 notes that a "larger number
+    of human genes" escape X-inactivation than in mouse — never physical chromosome
+    length. The exact current-assembly lengths (human GRCh38 X = 156,040,895 bp; mouse
+    GRCm39 X = 169,476,592 bp) and their comparison are assembly facts absent from the
+    abstracts; answering requires a live query of a human chromosome/cytoband reference
+    and a mouse chromosome reference.
+  conclusion: PASS (the base-pair length comparison of the two X chromosomes cannot be
+    obtained from the literature — the abstracts discuss X-chromosome gene content and
+    epigenetics, not assembled length; it requires a live join of a human cytoband
+    reference and a mouse chromosome reference on the current assemblies)
+
+sparql_queries:
+  - query_number: 1
+    database: hco
+    description: >-
+      Read the assembled length of the human X chromosome on GRCh38 from the human
+      cytoband reference. HCO has no per-chromosome length field, so it is derived as the
+      maximum band end coordinate over all GRCh38 bands of chromosome X (selected by the
+      ISCN label prefix "X"), grouped by the chromosome-build reference hub. The 40 X
+      bands run to 156,040,895 bp — the end of the terminal band Xq28, which equals the
+      GRCh38 assembled length of chromosome X (RefSeq NC_000023.11).
+    query: |
+      PREFIX hco:   <http://identifiers.org/hco/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT (STR(?ref) AS ?chromosomeBuild) (MIN(?begin) AS ?minStart)
+             (MAX(?end) AS ?maxEnd) (COUNT(?inst) AS ?nBands)
+      FROM <http://rdfportal.org/dataset/hco>
+      WHERE {
+        ?inst a ?band ;
+              hco:build hco:GRCh38 ;
+              faldo:location ?loc .
+        ?band rdfs:subClassOf hco:Cytoband ;
+              rdfs:label ?bandLabel .
+        FILTER(REGEX(?bandLabel, "^X[pq]"))
+        ?loc faldo:begin/faldo:position ?begin ;
+             faldo:end/faldo:position   ?end ;
+             faldo:begin/faldo:reference ?ref .
+      }
+      GROUP BY ?ref
+    result_count: 1   # chromosome X on GRCh38: 40 bands, extent 1-156,040,895 bp (= assembled length)
+
+  - query_number: 2
+    database: mco
+    description: >-
+      Read the assembled length of the mouse X chromosome on GRCm39 from the mouse
+      chromosome reference. Navigating from the chromosome class mco:X to its GRCm39
+      instance gives mco:length = 169,476,592 bp with RefSeq accession NC_000086.8.
+    query: |
+      PREFIX mco:  <http://identifiers.org/mco/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+      SELECT (STRAFTER(STR(?chr), "http://identifiers.org/mco/") AS ?name) ?length ?refseq
+      FROM <http://rdfportal.org/dataset/mco>
+      WHERE {
+        ?inst a ?chr ;
+              mco:build mco:GRCm39 ;
+              mco:length ?length .
+        OPTIONAL { ?inst mco:refseq ?refseq }
+        ?chr rdfs:subClassOf mco:MouseChromosome .
+        FILTER(?chr = mco:X)
+      }
+    result_count: 1   # mouse chromosome X on GRCm39: length 169,476,592 bp, RefSeq NC_000086.8
+
+rdf_triples: |
+  @prefix hco:    <http://identifiers.org/hco/> .
+  @prefix mco:    <http://identifiers.org/mco/> .
+  @prefix refseq: <http://identifiers.org/refseq/> .
+  @prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+  @prefix ex:     <http://example.org/x-chromosome-length-comparison#> .
+
+  ex:comparison ex:question "Is the human X chromosome longer than the mouse X chromosome on the current reference assemblies?" ; ex:answer "no" .
+  # Database: hco | Query: 1 | Comment: Scope — a direct cross-species comparison of X-chromosome assembled length, human GRCh38 versus mouse GRCm39
+
+  ex:humanX ex:assembly "GRCh38" ; ex:assembledLengthBp "156040895"^^xsd:integer ; ex:nBands "40"^^xsd:integer .
+  # Database: hco | Query: 1 | Comment: On GRCh38 the human X cytogenetic map spans 40 bands ending at 156,040,895 bp (terminal band Xq28); this maximum coordinate equals the assembled length of chromosome X (RefSeq NC_000023.11)
+
+  ex:mouseX ex:assembly "GRCm39" ; ex:assembledLengthBp "169476592"^^xsd:integer ; ex:refseq refseq:NC_000086.8 .
+  # Database: mco | Query: 2 | Comment: On GRCm39 the mouse X chromosome has assembled length 169,476,592 bp (RefSeq NC_000086.8)
+
+  ex:comparison ex:humanX_bp "156040895"^^xsd:integer ; ex:mouseX_bp "169476592"^^xsd:integer ; ex:differenceBp "13435697"^^xsd:integer .
+  # Database: mco | Query: 2 | Comment: Mouse X (169,476,592 bp) exceeds human X (156,040,895 bp) by 13,435,697 bp (~8.6%), so the human X is NOT longer — the answer is NO
+
+  ex:conclusion ex:insight "counterintuitive: on the current assemblies the mouse X chromosome is larger than the human X even though the human genome is overall larger — total-genome-size intuition does not transfer to individual homologous chromosomes" .
+  # Database: mco | Query: 2 | Comment: Synthesis — despite a larger overall human genome, the mouse X is the longer of the two homologous sex chromosomes on GRCh38/GRCm39
+
+exact_answer: "no"
+
+ideal_answer: >-
+  No. On the current human reference assembly (GRCh38) the X chromosome is 156,040,895 bp
+  long: its cytogenetic map comprises 40 bands running to the end of the terminal band
+  Xq28 at position 156,040,895, which equals the assembled length of chromosome X (RefSeq
+  NC_000023.11). On the current mouse reference assembly (GRCm39) the X chromosome (RefSeq
+  NC_000086.8) is 169,476,592 bp long. The mouse X is therefore about 13.4 Mb (~8.6%)
+  longer than the human X, so the human X chromosome is not the longer of the two. This is
+  a mild surprise, because the human genome as a whole is larger than the mouse genome; the
+  intuition that a larger total genome implies a larger version of every individual
+  chromosome does not hold for the X, whose mouse homolog is in fact the bigger chromosome
+  on the current assemblies.
+
+question_template_used: "Yes/no cross-species comparison of a homologous chromosome's assembled length on the current reference assemblies (human X length derived from a cytoband-reference band extent; mouse X length from a mouse chromosome reference)"
+
+time_spent:
+  exploration: 18 minutes
+  formulation: 8 minutes
+  verification: 6 minutes
+  pubmed_test: 6 minutes
+  extraction: 8 minutes
+  documentation: 14 minutes
+  total: 60 minutes
