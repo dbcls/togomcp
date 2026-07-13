@@ -210,10 +210,13 @@ async def search_uniprot_entity(
 # thousands); (2) EBI REST is ~1/3 flaky. The RDF graph resolves deterministically
 # in one indexed query, returning label + organism + type. Synonyms/brands/gene
 # symbols live on skos:altLabel (on the molecule, and on the target COMPONENT).
-# REST is retained ONLY for chemical STRUCTURE search (SMILES/InChI/InChIKey →
-# flexmatch/similarity/substructure), which needs ChEMBL's chemistry engine and
-# cannot be expressed in SPARQL. Those REST helpers keep the retry/HTML-strip
-# plumbing below; EBI REST is flaky (~1/3 of calls 500 or time out).
+# Canonical structure IDENTIFIERS (InChIKey/InChI) are stored as RDF literals, so
+# they too resolve by exact SPARQL match. REST is retained ONLY for SMILES
+# (flexmatch) — a SMILES is written differently by each toolkit, so it needs the
+# chemistry engine's structural normalization, not an exact string match — and
+# would be needed for similarity/substructure search. Those REST helpers keep the
+# retry/HTML-strip plumbing below; EBI REST is flaky (~1/3 of calls 500 or time
+# out).
 _CHEMBL_MAX_ATTEMPTS = 3  # 1 initial try + 2 retries
 _CHEMBL_BACKOFF_BASE = 1.0  # seconds; nth retry waits base*n (patched to 0 in tests)
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
@@ -361,22 +364,33 @@ async def _run_chembl_sparql(query: str) -> list[dict] | dict:
 
 
 # Structure-search routing for search_chembl_molecule.
-# /molecule/search.json is a LEXICAL text index — a SMILES string matched
-# against it returns meaningless name/synonym hits. Structure-shaped input must
-# instead go to /molecule.json with a structure filter. The detector is
-# deliberately conservative: a false positive misroutes a real drug name.
+# Structure IDENTIFIERS split by whether an exact string match is meaningful:
+#   • InChIKey / InChI are CANONICAL — every toolkit emits the identical string
+#     for a molecule — so an exact match on the RDF-stored value is correct and
+#     resolves in SPARQL (fast, on the reliable endpoint).
+#   • Canonical SMILES is toolkit-SPECIFIC — a user's SMILES is usually written
+#     differently than ChEMBL's stored canonical form, so an exact string match
+#     silently misses. It needs the REST chemistry engine's flexmatch, which
+#     normalizes tautomers/salts/charges before matching. (Similarity and
+#     substructure search would likewise need the chemistry engine.)
 _INCHIKEY_RE = re.compile(r"^[A-Z]{14}-[A-Z]{10}-[A-Z]$")
+# CHEMINF value-node types under the SIO qualified-value pattern
+# (?m sio:SIO_000008 ?node; ?node a <CHEMINF_*>; ?node sio:SIO_000300 ?value).
+_CHEMINF = {
+    "inchikey": "http://semanticscience.org/resource/CHEMINF_000059",
+    "inchi": "http://semanticscience.org/resource/CHEMINF_000113",
+}
 
 
 def _looks_like_structure(query: str) -> str | None:
     """Classify ``query`` as a chemical structure string.
 
     Returns ``"inchi"``, ``"inchikey"``, or ``"smiles"`` when the input is
-    structure-shaped, else ``None`` (route to the lexical name index).
+    structure-shaped, else ``None`` (route to name resolution).
 
-    Conservative by design — a name misrouted to the structure endpoint
-    returns nothing, so anything with whitespace (multi-word names) or without
-    unambiguous structural punctuation stays on the lexical path. This means a
+    Conservative by design — a name misrouted to a structure path returns
+    nothing, so anything with whitespace (multi-word names) or without
+    unambiguous structural punctuation stays on the name path. This means a
     bare-chain SMILES like ``CCO`` (ethanol) is NOT detected; that is the
     accepted trade-off for not misrouting drug names.
     """
@@ -394,21 +408,61 @@ def _looks_like_structure(query: str) -> str | None:
     return None
 
 
-async def _search_chembl_structure(kind: str, query: str, limit: int) -> dict:
-    """Query the ``/molecule.json`` structure endpoint (SMILES/InChI/InChIKey).
+def _bif_longest_token(text: str) -> str | None:
+    """Single-quoted bif:contains prefilter using the longest alphanumeric token.
 
-    Returns the same ``{"page_meta", "molecules"}`` shape as the lexical search
-    endpoint, so callers parse both identically.
+    For a canonical identifier (InChIKey/InChI) one long distinctive token is a
+    highly selective, always-present prefilter; the exact FILTER then guarantees
+    the match. Returns None if there is no alphanumeric token.
     """
-    field = {
-        "smiles": "molecule_structures__canonical_smiles__flexmatch",
-        "inchikey": "molecule_structures__standard_inchi_key",
-        "inchi": "molecule_structures__standard_inchi",
-    }[kind]
-    filt = {field: query, "limit": limit}
+    toks = re.findall(r"[a-z0-9]+", text.lower())
+    if not toks:
+        return None
+    return f"'{max(toks, key=len)}'"
+
+
+async def _search_chembl_smiles_flexmatch(query: str, limit: int) -> dict:
+    """SMILES → molecule via the ChEMBL REST chemistry engine (flexmatch).
+
+    Returns the ``{"page_meta", "molecules"}`` REST shape. Used only for SMILES:
+    flexmatch normalizes the structure first, so it tolerates the toolkit-specific
+    ways the same molecule's canonical SMILES may be written. (InChIKey/InChI are
+    canonical and resolved via SPARQL — see _search_chembl_inchi_sparql.)
+    """
+    filt = {
+        "molecule_structures__canonical_smiles__flexmatch": query,
+        "limit": limit,
+    }
     return await _chembl_get_json(
-        "/chembl/api/data/molecule.json", filt, context="ChEMBL structure search"
+        "/chembl/api/data/molecule.json", filt, context="ChEMBL SMILES flexmatch"
     )
+
+
+async def _search_chembl_inchi_sparql(
+    kind: str, query: str, limit: int
+) -> list[dict] | dict:
+    """Exact InChIKey / InChI → molecule lookup over the RDF graph.
+
+    These identifiers are canonical, so an exact (CASE-SENSITIVE — InChIKeys are
+    canonical uppercase) match on the stored SIO_000300 value is correct and
+    toolkit-independent. bif:contains on the longest token prefilters via the
+    Virtuoso text index. Returns CSV rows as list[dict], or {"error": ...}.
+    """
+    prefilter = _bif_longest_token(query)
+    if prefilter is None:
+        return []
+    sparql = (
+        f"{_CHEMBL_PREFIXES}\n"
+        f"PREFIX sio: <http://semanticscience.org/resource/>\n"
+        f"SELECT DISTINCT ?chembl_id ?name FROM <{_CHEMBL_GRAPH}> WHERE {{\n"
+        f"  ?node a <{_CHEMINF[kind]}> ; sio:SIO_000300 ?v .\n"
+        f'  ?v bif:contains "{prefilter}" .\n'
+        f'  FILTER(STR(?v) = "{_sparql_literal(query)}")\n'
+        f"  ?m sio:SIO_000008 ?node ; a cco:SmallMolecule ;\n"
+        f"     cco:chemblId ?chembl_id ; rdfs:label ?name .\n"
+        f"}} LIMIT {int(limit)}"
+    )
+    return await _run_chembl_sparql(sparql)
 
 
 @mcp.tool()
@@ -672,19 +726,24 @@ async def search_chembl_molecule(
     ⚠️ For biological targets (proteins, receptors, enzymes, genes such as
        EGFR, BRCA1, TP53), use `search_chembl_target` instead.
 
-    Two resolution paths, auto-selected from the query shape:
+    Resolution path is auto-selected from the query shape:
 
     • NAME / BRAND / SYNONYM → deterministic SPARQL, EXACT (case-insensitive)
       match on the molecule's skos:altLabel synonyms (which include brand and
       trade names — "Gleevec" → CHEMBL941 IMATINIB). Not fuzzy/substring: fix
       typos before calling. No relevance ranking to second-guess.
 
-    • STRUCTURE (SMILES / InChI / InChIKey) → the ChEMBL REST chemistry engine
-      (flexmatch), which SPARQL cannot do. Auto-detected from structural
-      punctuation / the "InChI=" prefix / the InChIKey pattern, e.g. aspirin's
-      SMILES "CC(=O)Oc1ccccc1C(=O)O" → CHEMBL25. Detection is conservative
-      (multi-word input, or input without structural punctuation, is treated as
-      a name), so a bare-chain SMILES like "CCO" is treated as a name.
+    • InChIKey / InChI → deterministic SPARQL, EXACT (case-SENSITIVE) match on the
+      RDF-stored identifier. These are canonical (toolkit-independent), so exact
+      match is correct, e.g. "BSYNRYMUTXBXSQ-UHFFFAOYSA-N" → CHEMBL25.
+
+    • SMILES → the ChEMBL REST chemistry engine (flexmatch), NOT exact match: a
+      SMILES is written differently by each toolkit, so flexmatch normalizes the
+      structure first, e.g. "CC(=O)Oc1ccccc1C(=O)O" → CHEMBL25.
+
+    Structure detection is conservative (multi-word input, or input without the
+    "InChI=" prefix / InChIKey pattern / structural punctuation, is treated as a
+    name), so a bare-chain SMILES like "CCO" is treated as a name.
 
     The search string can be passed as any of: `query` (canonical), `search`,
     `term`, `keyword`, `keywords`, `search_term`, or `name`.
@@ -718,10 +777,11 @@ async def search_chembl_molecule(
             "Missing search string. Pass it as `query` (canonical) or any of: "
             "search, term, keyword, keywords, search_term, name."
         )
-    # Structure-shaped input → REST chemistry engine (SPARQL cannot do this).
+    # Structure-shaped input.
     structure_kind = _looks_like_structure(query)
-    if structure_kind:
-        bulk = await _search_chembl_structure(structure_kind, query, limit)
+    if structure_kind == "smiles":
+        # SMILES canonical form is toolkit-specific → REST flexmatch normalizes.
+        bulk = await _search_chembl_smiles_flexmatch(query.strip(), limit)
         if "error" in bulk:
             return bulk
         total_count = bulk.get("page_meta", {}).get("total_count", 0)
@@ -734,6 +794,16 @@ async def search_chembl_molecule(
             for m in bulk.get("molecules", [])
         ]
         return {"total_count": total_count, "results": parsed_results}
+    if structure_kind in ("inchikey", "inchi"):
+        # Canonical identifiers → exact SPARQL lookup (reliable endpoint).
+        rows = await _search_chembl_inchi_sparql(structure_kind, query.strip(), limit)
+        if isinstance(rows, dict):
+            return rows  # {"error": ...}
+        parsed_results = [
+            {"chembl_id": r.get("chembl_id"), "name": r.get("name"), "score": None}
+            for r in rows
+        ]
+        return {"total_count": len(parsed_results), "results": parsed_results}
 
     # Name/brand/synonym → deterministic SPARQL exact match on skos:altLabel.
     match = _altlabel_match_block(query)

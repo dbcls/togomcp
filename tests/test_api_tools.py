@@ -10,6 +10,7 @@ import togo_mcp.api_tools as api_tools
 from togo_mcp.api_tools import (
     _UNIPROT_ACCESSION_RE,
     _bif_and,
+    _bif_longest_token,
     _looks_like_structure,
     _resolve_query_alias,
     _sparql_literal,
@@ -135,6 +136,18 @@ class TestBifAnd:
     def test_tokenize(self, text: str, expected: str | None) -> None:
         assert _bif_and(text) == expected
 
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            ("BSYNRYMUTXBXSQ-UHFFFAOYSA-N", "'bsynrymutxbxsq'"),  # longest block
+            ("InChI=1S/C9H8O4/c1-6", "'c9h8o4'"),  # longest token (6 > 'inchi'=5)
+            ("egfr", "'egfr'"),
+            ("---", None),
+        ],
+    )
+    def test_longest_token(self, text: str, expected: str | None) -> None:
+        assert _bif_longest_token(text) == expected
+
 
 class TestSparqlLiteral:
     """_sparql_literal escapes for a double-quoted SPARQL string literal."""
@@ -216,7 +229,9 @@ class TestSearchChemblMolecule:
         }
 
     @pytest.mark.asyncio
-    async def test_structure_uses_rest_not_sparql(self) -> None:
+    async def test_smiles_uses_rest_flexmatch_not_sparql(self) -> None:
+        # SMILES is toolkit-specific → REST flexmatch (chemistry engine), not
+        # an exact SPARQL string match that would miss most real inputs.
         body = {
             "page_meta": {"total_count": 3},
             "molecules": [{"molecule_chembl_id": "CHEMBL25", "pref_name": "ASPIRIN"}],
@@ -231,6 +246,42 @@ class TestSearchChemblMolecule:
             result = await search_chembl_molecule("CC(=O)Oc1ccccc1C(=O)O", limit=5)
         assert rest.called and not sparql.called
         assert "canonical_smiles__flexmatch" in str(rest.calls[0].request.url)
+        assert result["results"][0]["chembl_id"] == "CHEMBL25"
+
+    @pytest.mark.asyncio
+    async def test_inchikey_resolves_via_sparql(self) -> None:
+        # InChIKey is canonical → exact, CASE-SENSITIVE SPARQL match; no REST.
+        with respx.mock(using="httpx", assert_all_called=False) as router:
+            sparql = router.post(CHEMBL_SPARQL_URL).mock(
+                return_value=httpx.Response(
+                    200, text=_csv("chembl_id,name", "CHEMBL25,ASPIRIN")
+                )
+            )
+            rest = router.get("https://www.ebi.ac.uk/chembl/api/data/molecule.json")
+            result = await search_chembl_molecule("BSYNRYMUTXBXSQ-UHFFFAOYSA-N")
+        assert sparql.called and not rest.called
+        sent = _sent_query(sparql)
+        assert "CHEMINF_000059" in sent  # InChIKey value-node type
+        assert 'FILTER(STR(?v) = "BSYNRYMUTXBXSQ-UHFFFAOYSA-N")' in sent  # case-sensitive
+        assert "LCASE" not in sent
+        assert "'bsynrymutxbxsq'" in sent  # longest-token prefilter (lowercased)
+        assert result["results"][0]["chembl_id"] == "CHEMBL25"
+
+    @pytest.mark.asyncio
+    async def test_inchi_resolves_via_sparql(self) -> None:
+        inchi = "InChI=1S/C9H8O4/c1-6(10)13-8-5-3-2-4-7(8)9(11)12/h2-5H,1H3,(H,11,12)"
+        with respx.mock(using="httpx", assert_all_called=False) as router:
+            sparql = router.post(CHEMBL_SPARQL_URL).mock(
+                return_value=httpx.Response(
+                    200, text=_csv("chembl_id,name", "CHEMBL25,ASPIRIN")
+                )
+            )
+            rest = router.get("https://www.ebi.ac.uk/chembl/api/data/molecule.json")
+            result = await search_chembl_molecule(inchi)
+        assert sparql.called and not rest.called
+        sent = _sent_query(sparql)
+        assert "CHEMINF_000113" in sent  # InChI value-node type
+        assert f'FILTER(STR(?v) = "{inchi}")' in sent
         assert result["results"][0]["chembl_id"] == "CHEMBL25"
 
     @pytest.mark.asyncio
