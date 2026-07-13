@@ -246,7 +246,7 @@ def _server_log_tail(log_path: Path, n: int = 15) -> str:
 
 def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
                   model: str, judge_model: str | None, force: bool, dry_run: bool,
-                  python: str, runs: int = 1) -> str:
+                  python: str, runs: int = 1, judge_use_api: bool = False) -> str:
     final_scored = RESULTS_DIR / f"{cond}-scored.csv"
     if final_scored.exists() and not force:
         print(f"[{cond}] scored CSV exists — skipping (delete it or --force to re-run)")
@@ -262,6 +262,15 @@ def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
     env = dict(os.environ)
     env["TOGOMCP_MIE_DIR"] = str(variant_dir)
     env["ABLATION_PORT"] = str(port)
+
+    # With --judge-use-api the judge (add_llm_evaluation --use-api) uses the plain
+    # anthropic SDK + ANTHROPIC_API_KEY; the ANSWERING agent must NOT see that key or
+    # the bundled Claude CLI would bill the API too — strip it so answering stays on
+    # the `claude login` subscription. The two no longer share a quota (the whole
+    # point: judging on the subscription is what got rate-limited).
+    answer_env = env
+    if judge_use_api and "ANTHROPIC_API_KEY" in answer_env:
+        answer_env = {k: v for k, v in env.items() if k != "ANTHROPIC_API_KEY"}
 
     # runs==1 keeps the flat <cond>-answers/scored.csv names (backward compatible);
     # runs>1 writes -vR replicates and averages them into the flat <cond>-scored.csv.
@@ -311,7 +320,7 @@ def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
                 subprocess.run(
                     [python, str(RUNNER), *questions,
                      "-c", str(cfg_path), "--model", model, "-o", str(p["answers"])],
-                    check=True, cwd=str(SCRIPTS_DIR),
+                    check=True, cwd=str(SCRIPTS_DIR), env=answer_env,
                 )
         finally:
             log_fh.close()
@@ -337,9 +346,11 @@ def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
         eval_cmd = [python, str(EVALUATOR), str(p["answers"]), "-o", str(p["scored"])]
         if judge_model:
             eval_cmd += ["--model", judge_model]
-        # Evaluator inherits the env: the Claude judge (add_llm_evaluation.py default)
-        # authenticates via `claude login`, same as the runner. Do not inject a key.
-        subprocess.run(eval_cmd, check=True, cwd=str(SCRIPTS_DIR))
+        if judge_use_api:
+            eval_cmd += ["--use-api"]     # plain anthropic SDK, forced-tool-call, ANTHROPIC_API_KEY
+        # Judge inherits the full env (incl. ANTHROPIC_API_KEY when --judge-use-api);
+        # the default (no --use-api) authenticates via `claude login` like the runner.
+        subprocess.run(eval_cmd, check=True, cwd=str(SCRIPTS_DIR), env=env)
 
     # --- average replicates into the flat scored CSV ablation_analysis.py reads ---
     if runs > 1:
@@ -365,6 +376,12 @@ def main() -> int:
                          "per question (default 1). Replicates land in <cond>-scored-vN.csv; "
                          "the averaged <cond>-scored.csv feeds ablation_analysis.py. "
                          "Averaging R runs divides judge-jitter variance by R.")
+    ap.add_argument("--judge-use-api", action="store_true",
+                    help="judge via the Anthropic Messages API (plain anthropic SDK, forced "
+                         "record_evaluation tool call) instead of the claude-login agent SDK. "
+                         "Requires ANTHROPIC_API_KEY in the env; that key is passed ONLY to the "
+                         "judge, not the answering agent, so answering stays on the subscription. "
+                         "Use this for long batches where subscription Opus judging gets throttled.")
     ap.add_argument("--port", type=int, default=8971, help="loopback port for the local server")
     ap.add_argument("--python", default=sys.executable,
                     help="interpreter for the server + benchmark subprocesses "
@@ -383,6 +400,10 @@ def main() -> int:
 
     if args.runs < 1:
         raise SystemExit(f"--runs must be >= 1 (got {args.runs})")
+
+    if args.judge_use_api and not os.environ.get("ANTHROPIC_API_KEY"):
+        raise SystemExit("--judge-use-api requires ANTHROPIC_API_KEY in the environment "
+                         "(e.g. `ANTHROPIC_API_KEY=$MY_ANTHROPIC_API_KEY ...`).")
 
     conditions = [c.strip() for c in args.conditions.split(",") if c.strip()]
     unknown = [c for c in conditions if c not in ALL_CONDITIONS]
@@ -403,9 +424,11 @@ def main() -> int:
         preflight(args.python, required)
 
     runs_note = f" x {args.runs} runs" if args.runs > 1 else ""
+    judge_path = "anthropic API" if args.judge_use_api else "claude-login agent SDK"
     print(f"Ablation sweep: {len(conditions)} conditions x {len(questions)} questions{runs_note}")
-    print(f"  model={args.model}  judge={args.judge_model or '(eval default)'}  "
-          f"port={args.port}  python={args.python}\n")
+    print(f"  answer-model={args.model} (subscription)  "
+          f"judge={args.judge_model or '(eval default)'} via {judge_path}\n"
+          f"  port={args.port}  python={args.python}\n")
 
     summary: dict[str, str] = {}
     started = time.monotonic()
@@ -413,7 +436,8 @@ def main() -> int:
         try:
             summary[cond] = run_condition(cond, questions, base_config, args.port,
                                           args.model, args.judge_model, args.force,
-                                          args.dry_run, args.python, args.runs)
+                                          args.dry_run, args.python, args.runs,
+                                          args.judge_use_api)
         except SystemExit as e:
             print(f"[{cond}] ABORTED: {e}", file=sys.stderr)
             summary[cond] = "error"
