@@ -1,0 +1,184 @@
+id: question_098
+type: choice
+body: >-
+  The catecholamine biosynthesis pathway converts L-tyrosine to adrenaline (epinephrine)
+  through four sequential enzymes. Using curated multi-source gene-expression data — in
+  which each human gene is scored for the distinct anatomical structures where it is
+  detected as expressed at high confidence — which of the pathway's four enzymes, listed
+  in the options, is reported as expressed across the greatest number of distinct human
+  anatomical structures (i.e. has the broadest tissue distribution)?
+
+choices:
+  - "Tyrosine hydroxylase (TH)"
+  - "Aromatic-L-amino-acid decarboxylase (AADC/DDC)"
+  - "Dopamine beta-hydroxylase (DBH)"
+  - "Phenylethanolamine N-methyltransferase (PNMT)"
+
+inspiration_keyword:
+  keyword_id: KW-0530
+  name: Neurotransmitter biosynthesis
+  category: Biological process
+
+togomcp_databases_used:
+  - reactome
+  - bgee
+
+verification_score:
+  biological_insight: 2
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 9 minutes
+  method: |
+    Attempted to answer the specific question — which of the four catecholamine-
+    biosynthesis enzymes is reported as expressed across the greatest number of distinct
+    human anatomical structures — from the literature with two PubMed searches, reading
+    the returned records:
+    (1) "catecholamine biosynthesis enzymes tyrosine hydroxylase DDC DBH PNMT number anatomical structures expression breadth Bgee comparison" (0 hits)
+    (2) "aromatic L-amino acid decarboxylase most widely expressed tissues compared tyrosine hydroxylase dopamine beta-hydroxylase catecholamine pathway ubiquity" (0 hits)
+  result: |
+    Neither search returned any article. The relative tissue breadth of the four enzymes is
+    not stated as a ranked comparison in the literature; it is a quantitative property of a
+    curated multi-source expression atlas (the count of distinct anatomical structures with a
+    high-confidence expression call per gene) that must be computed live. General knowledge
+    that TH is "the rate-limiting, catecholaminergic-neuron-restricted" enzyme does not by
+    itself yield the ordering of all four, and the winner (the shared decarboxylase AADC/DDC,
+    expressed in 359 structures) can only be established from the database.
+  conclusion: PASS (cannot answer from literature - requires the per-gene distinct-anatomy
+    expression counts from a curated gene-expression atlas joined to the pathway's enzyme set)
+
+sparql_queries:
+  - query_number: 1
+    database: reactome
+    description: >-
+      Define the enzyme set: the four enzymes catalysing the reactions of the human
+      "Catecholamine biosynthesis" pathway, with their UniProt accessions. The pathway
+      (Homo sapiens instance) has four BiochemicalReaction components (tyrosine->dopa->
+      dopamine->noradrenaline->adrenaline); each reaction's Catalysis controller resolves,
+      through its complex components, to one enzyme: tyrosine hydroxylase TH (P07101, as the
+      "TH:Fe2+" holoenzyme complex), aromatic-L-amino-acid decarboxylase DDC (P20711, "DDC
+      dimer"), dopamine beta-hydroxylase DBH (P09172, "DBH tetramer") and phenylethanolamine
+      N-methyltransferase PNMT (P11086). displayName/name literals are datatype-typed, so they
+      are matched with STR(); UniProt xrefs use bp:db "UniProt"^^xsd:string.
+    query: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+      SELECT DISTINCT ?enzName ?acc
+      WHERE {
+        ?pathway a bp:Pathway ;
+                 bp:displayName ?dn ;
+                 bp:organism ?bs .
+        ?bs bp:name ?on .
+        FILTER(STR(?dn) = "Catecholamine biosynthesis")
+        FILTER(STR(?on) = "Homo sapiens")
+        ?pathway bp:pathwayComponent ?rxn .
+        ?cat bp:controlled ?rxn ;
+             bp:controller ?enz .
+        ?enz bp:displayName ?enzName ;
+             (bp:component|bp:memberPhysicalEntity)*/bp:entityReference ?pr .
+        ?pr bp:xref ?x .
+        ?x bp:db "UniProt"^^xsd:string ; bp:id ?acc .
+      }
+      ORDER BY ?enzName
+    result_count: 4   # TH P07101, DDC P20711, DBH P09172, PNMT P11086 — the complete 4-enzyme pathway
+
+  - query_number: 2
+    database: bgee
+    description: >-
+      Expression-breadth axis: for each enzyme's human gene (bridged from the UniProt
+      accession via lscr:xrefUniprot, organism restricted to Homo sapiens, species 9606),
+      count the DISTINCT anatomical structures carrying a high-confidence expression call
+      (genex:Expression + genex:hasConfidenceLevel CIO_0000029), excluding the
+      cellular-component fallback GO_0005575. The query is graph-scoped to
+      <http://bgee.org> and uses COUNT(DISTINCT ?anatomy) (Hard Rule 4). Result: DDC 359,
+      PNMT 342, DBH 290, TH 287 — so the ANSWER is aromatic-L-amino-acid decarboxylase (DDC),
+      expressed across the most (359) distinct anatomical structures.
+    query: |
+      PREFIX genex: <http://purl.org/genex#>
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX lscr: <http://purl.org/lscr#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX up: <http://purl.uniprot.org/uniprot/>
+
+      SELECT ?symbol (COUNT(DISTINCT ?anatomy) AS ?nAnatomies)
+      WHERE {
+        GRAPH <http://bgee.org> {
+          VALUES ?prot { up:P07101 up:P20711 up:P09172 up:P11086 }
+          ?gene a orth:Gene ;
+                rdfs:label ?symbol ;
+                orth:organism <https://bgee.org/species/9606> ;
+                lscr:xrefUniprot ?prot .
+          ?call a genex:Expression ;
+                genex:hasSequenceUnit ?gene ;
+                genex:hasConfidenceLevel obo:CIO_0000029 ;
+                genex:hasExpressionCondition ?cond .
+          ?cond genex:hasAnatomicalEntity ?anatomy .
+          FILTER(?anatomy != obo:GO_0005575)
+        }
+      }
+      GROUP BY ?symbol
+      ORDER BY DESC(?nAnatomies)
+    result_count: 4   # DDC 359 (broadest) > PNMT 342 > DBH 290 > TH 287
+
+rdf_triples: |
+  @prefix up:  <http://purl.uniprot.org/uniprot/> .
+  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+  @prefix ex:  <http://example.org/catecholamine-enzyme-expression-breadth#> .
+
+  ex:pathway ex:name "catecholamine biosynthesis (Homo sapiens)" ; ex:enzymeCount "4"^^xsd:integer ; ex:sequence "L-tyrosine -> L-dopa -> dopamine -> noradrenaline -> adrenaline" ; ex:answer "Aromatic-L-amino-acid decarboxylase (AADC/DDC)" .
+  # Database: reactome | Query: 1 | Comment: Scope — the human catecholamine biosynthesis pathway comprises exactly four sequential enzymes (complete set)
+
+  up:P07101 ex:symbol "TH" ; ex:enzyme "tyrosine hydroxylase" ; ex:step "1 (rate-limiting)" ; ex:anatomies "287"^^xsd:integer .
+  # Database: reactome+bgee | Query: 1 | Comment: TH (P07101), the rate-limiting first enzyme, is expressed in 287 distinct anatomical structures — the FEWEST of the four
+
+  up:P20711 ex:symbol "DDC" ; ex:enzyme "aromatic-L-amino-acid decarboxylase (AADC)" ; ex:step "2 (shared / multifunctional)" ; ex:anatomies "359"^^xsd:integer .
+  # Database: reactome+bgee | Query: 1 | Comment: DDC/AADC (P20711), the second enzyme, is expressed in 359 distinct anatomical structures — the MOST of the four (the answer)
+
+  up:P09172 ex:symbol "DBH" ; ex:enzyme "dopamine beta-hydroxylase" ; ex:step "3" ; ex:anatomies "290"^^xsd:integer .
+  # Database: reactome+bgee | Query: 1 | Comment: DBH (P09172), the noradrenaline-forming enzyme, is expressed in 290 distinct anatomical structures
+
+  up:P11086 ex:symbol "PNMT" ; ex:enzyme "phenylethanolamine N-methyltransferase" ; ex:step "4" ; ex:anatomies "342"^^xsd:integer .
+  # Database: reactome+bgee | Query: 1 | Comment: PNMT (P11086), the adrenaline-forming enzyme, is expressed in 342 distinct anatomical structures
+
+  ex:ranking ex:order "DDC 359 > PNMT 342 > DBH 290 > TH 287" ; ex:winner "DDC" ; ex:winnerMargin "17 anatomical structures over PNMT" .
+  # Database: bgee | Query: 2 | Comment: Ordered by expression breadth (distinct high-confidence anatomical structures); DDC/AADC leads with 359
+
+  ex:insight ex:summary "the pathway's shared, multifunctional decarboxylase (AADC/DDC), which also decarboxylates 5-hydroxytryptophan to serotonin and acts on other aromatic amino acids, has the broadest tissue distribution, whereas the catecholamine-committed rate-limiting tyrosine hydroxylase is the most transcriptionally restricted" .
+  # Database: bgee | Query: 2 | Comment: Synthesis — expression breadth tracks the enzyme's metabolic generality: the branch-shared decarboxylase is broadest, the committed first step (TH) narrowest
+
+exact_answer:
+  - "Aromatic-L-amino-acid decarboxylase (AADC/DDC)"
+
+ideal_answer: >-
+  Aromatic-L-amino-acid decarboxylase (AADC), encoded by DDC, is the enzyme reported as
+  expressed across the greatest number of distinct human anatomical structures. Across the
+  four sequential enzymes of the catecholamine biosynthesis pathway, the count of distinct
+  anatomical structures with a high-confidence expression call is 359 for DDC/AADC, 342 for
+  phenylethanolamine N-methyltransferase (PNMT), 290 for dopamine beta-hydroxylase (DBH) and
+  287 for tyrosine hydroxylase (TH) — so DDC/AADC is the broadest, leading PNMT by 17
+  structures, and TH is the most restricted. This ordering reflects the enzymes' metabolic
+  generality rather than their position in the pathway: DDC/AADC is a shared, multifunctional
+  decarboxylase that also converts 5-hydroxytryptophan to serotonin and decarboxylates other
+  aromatic amino acids, so it is expressed well beyond catecholaminergic cells (in kidney, gut,
+  blood vessels and elsewhere), giving it the widest tissue footprint. The catecholamine-
+  committed enzymes are more tightly restricted — most of all the rate-limiting tyrosine
+  hydroxylase, whose expression is confined most narrowly of the four. In other words, the
+  pathway's tissue coverage is widest at its shared branch-point decarboxylase and narrows at
+  its committed steps.
+
+question_template_used: "Choice comparing the members of a curated pathway's complete enzyme set on a curated-expression-atlas metric: a pathway database (Reactome) supplies the exact enzyme set and their UniProt accessions, and a gene-expression atlas (Bgee) supplies each enzyme's expression breadth (distinct high-confidence anatomical structures); the winner is the most broadly expressed enzyme"
+
+time_spent:
+  exploration: 55 minutes
+  formulation: 12 minutes
+  verification: 10 minutes
+  pubmed_test: 9 minutes
+  extraction: 12 minutes
+  documentation: 16 minutes
+  total: 114 minutes

@@ -1,0 +1,236 @@
+id: question_097
+type: summary
+body: >-
+  The carotenes — the hydrocarbon and closely related pigments of the carotenoid
+  biosynthesis pathway, such as phytoene, lycopene and beta-carotene — can be
+  characterised in two independent ways: biochemically, by whether a compound is a
+  documented participant in enzyme-catalysed reactions, and analytically, by whether
+  a reference tandem mass spectrum exists that would let it be identified in a
+  metabolomic sample. Treating stereoisomers (cis/trans forms) that share one
+  molecular skeleton as a single structure, give an integrated profile of how
+  completely the catalogued carotene structures are characterised along these two
+  axes: how many distinct carotene structures there are, how many are documented as
+  participants in enzyme-catalysed reactions, how many have at least one reference
+  mass spectrum, how the two kinds of coverage overlap, and which well-defined
+  pathway carotenes remain analytically uncovered.
+
+inspiration_keyword:
+  keyword_id: KW-0125
+  name: Carotenoid biosynthesis
+  category: Biological process
+
+togomcp_databases_used:
+  - chebi
+  - rhea
+  - massbank
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 12
+  passed: true
+
+pubmed_test:
+  time_spent: 9 minutes
+  method: |
+    Attempted to answer the specific question — how the catalogued carotene structures
+    split between enzymatic characterisation (participation in known reactions) and
+    analytical characterisation (existence of a reference mass spectrum), and which
+    carotenes are enzymatically known but analytically uncovered — from the literature
+    with two PubMed searches, reading the returned records:
+    (1) "carotenes reference mass spectra coverage MassBank enzymatic characterization Rhea metabolomics dark" (0 hits)
+    (2) "carotenoid biosynthesis intermediates neurosporene phytoene reference tandem mass spectra availability metabolomics library gap" (0 hits)
+  result: |
+    Neither search returned any article. This is a cross-resource coverage question about
+    the current contents of a structure ontology, a reaction database and a spectral
+    library — the exact counts (19 distinct carotene skeletons, 18 enzymatically documented,
+    10 with a reference spectrum, and the strict-subset relationship between the two) are a
+    property of live database state, not a finding reported in any paper. Reasoning from
+    general knowledge that "carotenes are well studied" gives the wrong answer, because it
+    misses that reference mass spectra exist for only about half of them and that classic
+    pathway intermediates such as neurosporene and delta-carotene are analytically uncovered.
+  conclusion: PASS (cannot answer from literature - requires a live join of a chemical-structure
+    ontology, an enzyme-reaction database and a mass-spectral library)
+
+# STRUCTURED VOCABULARY DISCOVERY
+# Carotene structural family = ChEBI subClassOf* CHEBI:23042 (carotene) restricted to entries with an
+# InChIKey: 36 ChEBI entries collapsing to 19 distinct molecular skeletons (InChIKey first block).
+# No sampling — the whole class is enumerated (Hard Rule 2). Skeleton is the MS-relevant unit
+# (tandem-MS reference libraries cannot resolve cis/trans stereoisomers).
+
+sparql_queries:
+  - query_number: 1
+    database: chebi
+    description: >-
+      Enumerate the carotene structural family: every ChEBI class under carotene (subClassOf*
+      CHEBI:23042) that carries an InChIKey, and collapse cis/trans stereoisomers to their shared
+      molecular skeleton (InChIKey first block). Returns 36 ChEBI entries representing 19 distinct
+      carotene skeletons (e.g. phytoene, phytofluene, zeta-carotene, neurosporene, lycopene, alpha-,
+      beta-, gamma-, delta-, epsilon-carotene). The 19 skeletons are the unit of analysis.
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX chemrof: <https://w3id.org/chemrof/>
+
+      SELECT (COUNT(DISTINCT ?m) AS ?entries)
+             (COUNT(DISTINCT SUBSTR(?ik,1,14)) AS ?skeletons)
+      WHERE {
+        ?m rdfs:subClassOf* <http://purl.obolibrary.org/obo/CHEBI_23042> ;
+           chemrof:inchi_key_string ?ik .
+      }
+    result_count: 1   # 36 ChEBI carotene entries -> 19 distinct molecular skeletons
+
+  - query_number: 2
+    database: rhea
+    description: >-
+      Enzymatic-characterisation axis: of the 36 carotene ChEBI entries, which are documented as
+      participants in at least one approved reaction (a Rhea compound used on a reaction side).
+      25 of the 36 entries participate in >=1 reaction; mapping these back to skeletons, 18 of the
+      19 skeletons are enzymatically characterised. Phytoene (11 reactions) and lycopene (10) are
+      the most connected. The single skeleton with NO documented reaction is alpha-zeacarotene.
+    query: |
+      PREFIX rh: <http://rdf.rhea-db.org/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+
+      SELECT ?chebi (COUNT(DISTINCT ?reaction) AS ?nReactions)
+      WHERE {
+        VALUES ?chebi {
+          obo:CHEBI_35147 obo:CHEBI_35148 obo:CHEBI_177907 obo:CHEBI_61990 obo:CHEBI_180471
+          obo:CHEBI_27787 obo:CHEBI_35165 obo:CHEBI_48710 obo:CHEBI_62449 obo:CHEBI_140678
+          obo:CHEBI_140677 obo:CHEBI_177905 obo:CHEBI_62466 obo:CHEBI_80427 obo:CHEBI_62463
+          obo:CHEBI_48717 obo:CHEBI_48716 obo:CHEBI_180470 obo:CHEBI_62474 obo:CHEBI_8191
+          obo:CHEBI_28129 obo:CHEBI_28068 obo:CHEBI_28425 obo:CHEBI_35063 obo:CHEBI_17579
+          obo:CHEBI_27533 obo:CHEBI_27705 obo:CHEBI_32549 obo:CHEBI_27740 obo:CHEBI_142538
+          obo:CHEBI_15948 obo:CHEBI_16833 obo:CHEBI_26119 obo:CHEBI_26120 obo:CHEBI_9638
+          obo:CHEBI_27362
+        }
+        ?cmp rh:chebi ?chebi .
+        ?participant rh:compound ?cmp .
+        ?side rh:contains ?participant .
+        ?reaction rh:side ?side .
+      }
+      GROUP BY ?chebi
+      ORDER BY DESC(?nReactions)
+    result_count: 25   # 25 of 36 carotene entries are reaction participants -> 18 of 19 skeletons enzymatically characterised
+
+  - query_number: 3
+    database: massbank
+    description: >-
+      Analytical-characterisation axis: of the 19 carotene skeletons, which have at least one
+      reference mass spectrum. Matching is by InChIKey first block (skeleton) because tandem-MS
+      reference libraries do not resolve cis/trans stereoisomers; the graph is pinned to the
+      MassBank graph (Hard Rule 4) and spectra are counted with COUNT(DISTINCT). 10 of the 19
+      skeletons have a spectrum: beta-carotene (7), lycopene (3), zeta-carotene (3), alpha-carotene
+      (3), 4-hydroxy-beta-carotene (2), gamma-carotene (2), torulene (1), beta-zeacarotene (1),
+      phytoene (1), phytofluene (1). The other 9 skeletons have none.
+    query: |
+      PREFIX mb: <http://www.massbank.jp/ontology/>
+      PREFIX schema: <https://schema.org/>
+
+      SELECT ?skel (COUNT(DISTINCT ?spectrum) AS ?nSpectra)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/massbank> {
+          VALUES ?skel {
+            "ANVAOWXLWRTKGA" "OAIJSZIZWZSQBC" "OVSVTCFNLSGAMM" "YVLPJIGOMTXXLP" "BIWLELKAFXRPDE"
+            "HGWBSMBLLOMJGT" "NMQZISAUULLQSP" "JCRCKXUPYKELBT" "ZWHNFQQCBBBUHX" "ATCICVFRSJQYDV"
+            "OCMSUPSDVXKDFY" "IGABZIVJSNQMPZ" "OENHQHLEOONYIE" "MICBIPJWKDDGNL" "WGIYGODPCLMGQH"
+            "QABFXOMOOYWZLZ" "HRQKOYFGHJYEFS" "BGVXBZXEFXMRGJ" "AIBOHNYYKWYQMM"
+          }
+          ?c schema:inChIKey ?ik .
+          BIND(STRBEFORE(STRAFTER(STR(?ik), "inchikey/"), "-") AS ?ikskel)
+          FILTER(?ikskel = ?skel)
+          ?spectrum mb:compound ?c .
+        }
+      }
+      GROUP BY ?skel
+      ORDER BY DESC(?nSpectra)
+    result_count: 10   # 10 of 19 carotene skeletons have >=1 reference mass spectrum
+
+  - query_number: 4
+    database: chebi
+    description: >-
+      Arithmetic verification (Rule 3) of the 2x2 characterisation partition. The 19 distinct
+      skeletons (Query 1) split by enzymatic (Query 2: 18 yes) and analytical (Query 3: 10 yes)
+      coverage into: BOTH = 10, enzymatic-only = 8, analytical-only = 0, neither = 1; 10 + 8 + 0 + 1
+      = 19. Analytical coverage is a STRICT SUBSET of enzymatic coverage (every skeleton with a
+      spectrum is also enzymatically documented; no analytical-only cell). This re-runs the Query-1
+      skeleton census as the independent total the partition must equal.
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX chemrof: <https://w3id.org/chemrof/>
+
+      SELECT (COUNT(DISTINCT SUBSTR(?ik,1,14)) AS ?totalSkeletons)
+      WHERE {
+        ?m rdfs:subClassOf* <http://purl.obolibrary.org/obo/CHEBI_23042> ;
+           chemrof:inchi_key_string ?ik .
+      }
+    result_count: 1   # totalSkeletons = 19 = 10 (both) + 8 (enzymatic-only) + 0 (analytical-only) + 1 (neither)
+
+rdf_triples: |
+  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+  @prefix ex:  <http://example.org/carotene-characterisation-coverage#> .
+
+  ex:profile ex:family "carotenes (ChEBI carotene class, CHEBI:23042)" ; ex:chebiEntries "36"^^xsd:integer ; ex:distinctSkeletons "19"^^xsd:integer ; ex:unit "molecular skeleton (InChIKey first block; cis/trans isomers merged)" .
+  # Database: chebi | Query: 1 | Comment: Scope — 36 catalogued carotene ChEBI entries collapse to 19 distinct molecular skeletons, the MS-relevant unit of analysis
+
+  ex:profile ex:enzymaticallyCharacterised "18"^^xsd:integer ; ex:enzymaticNote "18 of 19 skeletons are documented reaction participants (25 of 36 ChEBI entries); only alpha-zeacarotene has no catalogued reaction" .
+  # Database: rhea | Query: 2 | Comment: Enzymatic axis — 18 of 19 carotene skeletons participate in >=1 approved enzyme-catalysed reaction; phytoene (11 reactions) and lycopene (10) are the most connected
+
+  ex:profile ex:analyticallyCharacterised "10"^^xsd:integer ; ex:analyticalNote "10 of 19 skeletons have >=1 reference tandem mass spectrum" .
+  # Database: massbank | Query: 3 | Comment: Analytical axis — reference mass spectra exist for only 10 of the 19 carotene skeletons
+
+  ex:partition ex:both "10"^^xsd:integer ; ex:enzymaticOnly "8"^^xsd:integer ; ex:analyticalOnly "0"^^xsd:integer ; ex:neither "1"^^xsd:integer ; ex:total "19"^^xsd:integer .
+  # Database: massbank | Query: 3 | Comment: 2x2 characterisation partition — both 10, enzymatic-only 8, analytical-only 0, neither 1; 10+8+0+1 = 19 (Rule 3, Query 4)
+
+  ex:insight ex:subsetRelation "analytical coverage is a STRICT SUBSET of enzymatic coverage — every carotene with a reference spectrum is also an enzymatically documented one; there is no spectrum-only carotene" .
+  # Database: massbank | Query: 3 | Comment: Key finding — the analytical-only cell is empty (0), so reference spectra never precede biochemical characterisation for this family
+
+  ex:covered ex:spectraPresent "beta-carotene(7), lycopene(3), zeta-carotene(3), alpha-carotene(3), 4-hydroxy-beta-carotene(2), gamma-carotene(2), torulene(1), beta-zeacarotene(1), phytoene(1), phytofluene(1)" .
+  # Database: massbank | Query: 3 | Comment: The 10 analytically covered skeletons and their reference-spectrum counts (beta-carotene best represented, 7 spectra)
+
+  ex:dark ex:enzymaticButNoSpectrum "neurosporene, delta-carotene, epsilon-carotene, 7,8-dihydro-beta-carotene, 3,4-didehydrolycopene, 4,4'-diapolycopene, 4,4-dihydroxy-beta-carotene, lycopaoctaene" .
+  # Database: rhea | Query: 2 | Comment: The 8 "dark" carotenes — enzymatically documented pathway carotenes (incl. the classic desaturation intermediate neurosporene and the cyclisation-branch delta-/epsilon-carotenes) that have NO reference mass spectrum
+
+  ex:neitherMember ex:skeleton "alpha-zeacarotene" .
+  # Database: chebi | Query: 2 | Comment: The single carotene skeleton characterised on neither axis — no catalogued reaction and no reference spectrum
+
+  ex:conclusion ex:summary "the catalogued carotene family is far better characterised biochemically (18/19 skeletons in known reactions) than analytically (10/19 with a reference spectrum); analytical coverage is a strict subset of enzymatic coverage and lags it by 8 skeletons, marking concrete blind spots for untargeted carotenoid metabolomics" .
+  # Database: massbank | Query: 3 | Comment: Synthesis — enzymatic knowledge outruns analytical reference data for carotenes; 8 enzymatically-known skeletons cannot yet be confirmed from a reference spectrum
+
+exact_answer: ""
+
+ideal_answer: >-
+  The catalogued carotene family comprises 36 ChEBI entries that, once cis/trans stereoisomers
+  sharing a molecular skeleton are merged, represent 19 distinct carotene structures — among them
+  phytoene, phytofluene, zeta-carotene, neurosporene, lycopene and the alpha-, beta-, gamma-, delta-
+  and epsilon-carotenes. Along the biochemical axis these structures are very well characterised: 18
+  of the 19 skeletons (25 of the 36 ChEBI entries) are documented participants in at least one
+  approved enzyme-catalysed reaction, with phytoene (11 reactions) and lycopene (10) the most
+  connected, and only alpha-zeacarotene lacking any catalogued reaction. Along the analytical axis,
+  however, coverage is far thinner: reference tandem mass spectra exist for only 10 of the 19
+  skeletons — beta-carotene is best represented (7 spectra), followed by lycopene, zeta-carotene and
+  alpha-carotene (3 each), 4-hydroxy-beta-carotene and gamma-carotene (2 each), and torulene,
+  beta-zeacarotene, phytoene and phytofluene (1 each). Crucially, the two forms of coverage do not
+  overlap symmetrically: every carotene that has a reference spectrum is also enzymatically
+  documented, so analytical coverage is a strict subset of enzymatic coverage — the partition is 10
+  structures characterised on both axes, 8 characterised only biochemically, none only analytically,
+  and 1 (alpha-zeacarotene) on neither, summing to 19. The eight "dark" carotenes — enzymatically
+  known pathway members that still have no reference mass spectrum — include the classic desaturation
+  intermediate neurosporene, the lycopene-cyclisation branch products delta- and epsilon-carotene,
+  7,8-dihydro-beta-carotene, 3,4-didehydrolycopene, 4,4'-diapolycopene, 4,4-dihydroxy-beta-carotene
+  and lycopaoctaene. In short, for the carotene family biochemical characterisation clearly outruns
+  analytical reference data: known enzymology already reaches almost every structure, but reference
+  spectra exist for only about half, leaving concrete, named blind spots for untargeted carotenoid
+  metabolomics.
+
+question_template_used: "Summary two-axis characterisation-coverage profile of a chemical family: a structure ontology (ChEBI) defines and de-duplicates the family to distinct skeletons, a reaction database (Rhea) supplies the biochemical-characterisation axis, and a mass-spectral library (MassBank) supplies the analytical-characterisation axis; synthesise the 2x2 coverage partition and the (strict-subset) relationship between the two, naming the analytically uncovered members"
+
+time_spent:
+  exploration: 45 minutes
+  formulation: 14 minutes
+  verification: 12 minutes
+  pubmed_test: 9 minutes
+  extraction: 16 minutes
+  documentation: 20 minutes
+  total: 116 minutes
