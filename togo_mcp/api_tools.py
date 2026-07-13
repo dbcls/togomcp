@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 from typing import Annotated, Literal
@@ -199,35 +200,158 @@ async def search_uniprot_entity(
 
 
 # DB: ChEMBL
-async def search_chembl_generic(entity_type: str, query: str, limit: int = 20) -> dict:
+# EBI's ChEMBL REST index is broadly flaky: roughly one call in three returns a
+# transient HTTP 500 or times out, non-deterministically and independent of the
+# input. Its error pages are also full HTML documents. The helpers below absorb
+# both: automatic retry on 5xx/timeout, and HTML stripped out of error strings.
+_CHEMBL_MAX_ATTEMPTS = 3  # 1 initial try + 2 retries
+_CHEMBL_BACKOFF_BASE = 1.0  # seconds; nth retry waits base*n (patched to 0 in tests)
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _strip_html(text: str, max_len: int = 200) -> str:
+    """Collapse an HTML error page into a short plain-text snippet.
+
+    EBI returns full HTML documents (doctype, <script>/<style> blocks, favicon
+    links) on failure — hundreds of tokens of noise with no diagnostic value.
+    Drop scripts/styles wholesale, strip remaining tags, collapse whitespace,
+    and truncate.
     """
-    Search for ChEMBL ID by query.
+    text = re.sub(
+        r"<(script|style)\b[^>]*>.*?</\1>", " ", text, flags=re.IGNORECASE | re.DOTALL
+    )
+    text = _HTML_TAG_RE.sub(" ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) > max_len:
+        text = text[:max_len].rstrip() + "…"
+    return text
+
+
+async def _chembl_get_json(path: str, params: dict, *, context: str) -> dict:
+    """GET a ChEMBL JSON endpoint, retrying transient 5xx/timeout failures.
+
+    Returns the parsed JSON on success. On terminal failure returns
+    ``{"error": <clean message>}`` — it never raises for HTTP/transport
+    errors (the module's REST-wrapper contract). 4xx client errors are
+    terminal (no retry); 5xx and read timeouts are retried up to
+    ``_CHEMBL_MAX_ATTEMPTS`` times with a short linear backoff. HTML error
+    bodies are stripped to a short snippet.
+    """
+    last_error = "unknown error"
+    for attempt in range(_CHEMBL_MAX_ATTEMPTS):
+        last = attempt == _CHEMBL_MAX_ATTEMPTS - 1
+        try:
+            response = await _chembl_client.get(path, params=params)
+        except httpx.HTTPError as e:  # includes TimeoutException
+            last_error = f"{type(e).__name__}: {e}"
+            logger.warning(f"{context} attempt {attempt + 1} failed: {last_error}")
+            if last:
+                break
+            await asyncio.sleep(_CHEMBL_BACKOFF_BASE * (attempt + 1))
+            continue
+        if response.is_success:
+            try:
+                return response.json()
+            except (json.JSONDecodeError, ValueError):
+                # 200 with a non-JSON body — an upstream anomaly. Degrade
+                # gracefully rather than raising (REST-wrapper contract).
+                last_error = f"malformed JSON body: {_strip_html(response.text)}"
+                logger.warning(f"{context} failed (terminal): {last_error}")
+                break
+        if 500 <= response.status_code < 600 and not last:
+            last_error = f"HTTP {response.status_code}"
+            logger.warning(f"{context} attempt {attempt + 1}: {last_error}, retrying")
+            await asyncio.sleep(_CHEMBL_BACKOFF_BASE * (attempt + 1))
+            continue
+        # Terminal: a 4xx, or a 5xx after retries are exhausted.
+        last_error = f"HTTP {response.status_code}: {_strip_html(response.text)}"
+        logger.warning(f"{context} failed (terminal): {last_error}")
+        break
+    return {
+        "error": (
+            f"ChEMBL REST API request failed ({last_error}). Transient errors "
+            "were already retried automatically. If it keeps failing, fall back "
+            "to SPARQL: run_sparql(database='chembl', sparql_query=...)."
+        )
+    }
+
+
+async def search_chembl_generic(
+    entity_type: str, query: str, limit: int = 20, extra_params: dict | None = None
+) -> dict:
+    """
+    Search a ChEMBL lexical index (``/{entity_type}/search.json``) by query.
 
     Args:
         entity_type (str): The type of entity to search for.
         query (str): The query string to search for.
         limit (int): The maximum number of results to return.
+        extra_params (dict | None): Extra query-string params (e.g.
+            ``entity_type`` on the chembl_id_lookup index).
 
     Returns:
-        A dictionary parsed from the JSON response.
+        A dictionary parsed from the JSON response, or ``{"error": ...}`` on
+        terminal upstream failure.
     """
     params = {"q": query, "limit": limit}
-    try:
-        response = await _chembl_client.get(
-            f"/chembl/api/data/{entity_type}/search.json", params=params
-        )
-        raise_for_status_with_body(response, context="ChEMBL search")
-        return response.json()
-    except (httpx.HTTPError, ValueError) as e:
-        logger.warning(f"ChEMBL {entity_type} search failed: {type(e).__name__}: {e}")
-        return {
-            "error": (
-                f"ChEMBL REST API request failed ({type(e).__name__}: {e}). "
-                "Usually transient — retry once after a brief delay. If it "
-                "keeps failing, fall back to SPARQL: "
-                "run_sparql(database='chembl', sparql_query=...)."
-            )
-        }
+    if extra_params:
+        params.update(extra_params)
+    return await _chembl_get_json(
+        f"/chembl/api/data/{entity_type}/search.json",
+        params,
+        context=f"ChEMBL {entity_type} search",
+    )
+
+
+# Structure-search routing for search_chembl_molecule.
+# /molecule/search.json is a LEXICAL text index — a SMILES string matched
+# against it returns meaningless name/synonym hits. Structure-shaped input must
+# instead go to /molecule.json with a structure filter. The detector is
+# deliberately conservative: a false positive misroutes a real drug name.
+_INCHIKEY_RE = re.compile(r"^[A-Z]{14}-[A-Z]{10}-[A-Z]$")
+
+
+def _looks_like_structure(query: str) -> str | None:
+    """Classify ``query`` as a chemical structure string.
+
+    Returns ``"inchi"``, ``"inchikey"``, or ``"smiles"`` when the input is
+    structure-shaped, else ``None`` (route to the lexical name index).
+
+    Conservative by design — a name misrouted to the structure endpoint
+    returns nothing, so anything with whitespace (multi-word names) or without
+    unambiguous structural punctuation stays on the lexical path. This means a
+    bare-chain SMILES like ``CCO`` (ethanol) is NOT detected; that is the
+    accepted trade-off for not misrouting drug names.
+    """
+    s = query.strip()
+    if not s or " " in s:
+        return None
+    if s.startswith("InChI="):
+        return "inchi"
+    if _INCHIKEY_RE.match(s):
+        return "inchikey"
+    # SMILES: require structural punctuation that essentially never appears in a
+    # drug name or accession (excludes "aspirin", "EGFR", "CHEMBL25", "P00533").
+    if any(c in s for c in "=#()[]"):
+        return "smiles"
+    return None
+
+
+async def _search_chembl_structure(kind: str, query: str, limit: int) -> dict:
+    """Query the ``/molecule.json`` structure endpoint (SMILES/InChI/InChIKey).
+
+    Returns the same ``{"page_meta", "molecules"}`` shape as the lexical search
+    endpoint, so callers parse both identically.
+    """
+    field = {
+        "smiles": "molecule_structures__canonical_smiles__flexmatch",
+        "inchikey": "molecule_structures__standard_inchi_key",
+        "inchi": "molecule_structures__standard_inchi",
+    }[kind]
+    filt = {field: query, "limit": limit}
+    return await _chembl_get_json(
+        "/chembl/api/data/molecule.json", filt, context="ChEMBL structure search"
+    )
 
 
 @mcp.tool()
@@ -238,6 +362,18 @@ async def search_chembl_id_lookup(
     limit: Annotated[
         int, Field(description="The maximum number of results to return.")
     ] = 20,
+    entity_type: Annotated[
+        str,
+        Field(
+            description=(
+                "Optional filter restricting results to one ChEMBL entity kind: "
+                "COMPOUND, TARGET, ASSAY, DOCUMENT, CELL_LINE, or TISSUE. "
+                "Strongly recommended — without it, results of every kind are "
+                "interleaved by lexical score."
+            ),
+            default="",
+        ),
+    ] = "",
     search: str = "",
     term: str = "",
     keyword: str = "",
@@ -246,16 +382,39 @@ async def search_chembl_id_lookup(
     name: str = "",
 ) -> dict:
     """
-    Search for ChEMBL ID by query.
+    Look up ChEMBL IDs across ALL entity kinds by a lexical (text) query.
+
+    This is a cross-entity keyword index. For a target (protein/gene) or a
+    drug/compound specifically, prefer `search_chembl_target` /
+    `search_chembl_molecule` — they return labelled records. For precise,
+    label-carrying target resolution, SPARQL is better still
+    (run_sparql(database='chembl', ...)).
 
     The search string can be passed as any of: `query` (canonical),
     `search`, `term`, `keyword`, `keywords`, `search_term`, or `name`.
 
+    Filtering & limit:
+        - Pass `entity_type` (e.g. "TARGET") to drop the COMPOUND/ASSAY/DOCUMENT
+          noise a bare name query otherwise returns. It also measurably reduces
+          upstream 500s by narrowing the query.
+        - `limit` below 10 is raised to 10 internally: the intended hit for a
+          name/symbol query routinely sits at rank 5–6, so a small limit would
+          silently drop it. Ranking is lexical and unreliable — inspect
+          `entity_type`/`status` rather than trusting rank order.
+
     Returns:
-        dict: {'total_count' (int), 'results' (list)} where each result has
-        'chembl_id', 'entity_type', and 'score'. On upstream/HTTP failure this
-        tool does NOT raise — it returns a dict with a single 'error' key
-        instead. Check for 'error' before reading 'results'.
+        dict: {'total_count' (int), 'results' (list)}. Each result has
+        'chembl_id', 'entity_type', 'status' (ACTIVE / OBSOLETE),
+        'resource_url', and 'score'.
+
+        NOTE: this upstream endpoint does NOT return a human-readable name —
+        there is no `pref_name` field on the id-lookup index. Use `entity_type`
+        + `resource_url` to disambiguate, or resolve the ID with the
+        entity-specific tool (`search_chembl_target`/`_molecule`) or SPARQL.
+
+        On upstream/HTTP failure this tool does NOT raise — it returns a dict
+        with a single 'error' key instead. Check for 'error' before reading
+        'results'.
     """
     query = _resolve_query_alias(
         query,
@@ -271,7 +430,19 @@ async def search_chembl_id_lookup(
             "Missing search string. Pass it as `query` (canonical) or any of: "
             "search, term, keyword, keywords, search_term, name."
         )
-    bulk = await search_chembl_generic("chembl_id_lookup", query, limit)
+    extra_params = None
+    if entity_type:
+        allowed = {"COMPOUND", "TARGET", "ASSAY", "DOCUMENT", "CELL_LINE", "TISSUE"}
+        et = entity_type.strip().upper()
+        if et not in allowed:
+            raise ValueError(
+                f"Invalid entity_type {entity_type!r}. Use one of: "
+                f"{', '.join(sorted(allowed))} (or omit it to search all kinds)."
+            )
+        extra_params = {"entity_type": et}
+    bulk = await search_chembl_generic(
+        "chembl_id_lookup", query, max(limit, 10), extra_params=extra_params
+    )
     if "error" in bulk:
         # Propagate the upstream-failure payload rather than silently
         # collapsing it into an empty {'total_count': 0, 'results': []}.
@@ -283,6 +454,8 @@ async def search_chembl_id_lookup(
             {
                 "chembl_id": result.get("chembl_id"),
                 "entity_type": result.get("entity_type"),
+                "status": result.get("status"),
+                "resource_url": result.get("resource_url"),
                 "score": result.get("score"),
             }
         )
@@ -294,6 +467,7 @@ async def search_chembl_id_lookup(
 async def search_chembl_target(
     query: str = "",
     limit: int = 20,
+    organism: str = "",
     search: str = "",
     term: str = "",
     keyword: str = "",
@@ -308,41 +482,50 @@ async def search_chembl_target(
        For drug/compound/molecule names (e.g., "sorafenib", "imatinib", "aspirin"),
        use `search_chembl_molecule` instead.
 
+    ⭐ IF YOU HAVE A UNIPROT ACCESSION, USE IT. An accession (e.g. "P00533")
+       is dramatically more precise than a target name or gene symbol: for human
+       EGFR it returns the correct target CHEMBL203 at rank 1, whereas the full
+       name ranks it 6th (below a mouse ortholog and a ligand) and the symbol
+       "EGFR" ranks it 5th.
+
+    ⚠️ RANK ORDER IS UNRELIABLE. Upstream ranking is lexical and coarse (integer
+       scores, many ties) and does NOT privilege exact-name or human-organism
+       matches. A name/symbol query returns orthologs (mouse, rat), ligands, and
+       PROTEIN-PROTEIN INTERACTION complexes interleaved with the intended
+       target. You MUST inspect `organism` and `type` — do not trust the top
+       hit. For exact, label-carrying resolution, SPARQL is better still:
+       run_sparql(database='chembl', ...) filtering on rdfs:label + organismName.
+
     This tool searches for biological entities that drugs act upon — proteins,
     protein complexes, nucleic acids, organisms, tissues, and cell lines.
     "Target" here means *drug target*, NOT "the thing I am looking up".
 
-    Only the search string and `limit` are supported. The search string can be
-    passed as any of: `query` (canonical), `search`, `term`, `keyword`,
-    `keywords`, `search_term`, or `name`.
+    The search string can be passed as any of: `query` (canonical), `search`,
+    `term`, `keyword`, `keywords`, `search_term`, or `name`.
 
     Args:
         query (str): Search query string referring to a biological target. Examples:
+            - UniProt accession (e.g., "P00734") — PREFERRED, most precise
             - Target name (e.g., "Thrombin", "EGFR", "Dopamine receptor")
             - Gene name (e.g., "BRCA1", "TP53")
-            - UniProt accession (e.g., "P00734")
             - Organism name (e.g., "Homo sapiens")
         limit (int, optional): Maximum number of results to return. Defaults to 20.
+            Values below 10 are raised to 10 internally, because the intended
+            target routinely sits at rank 5–6 and a small limit would drop it.
+        organism (str, optional): If given, results are filtered (case-insensitive
+            substring, e.g. "Homo sapiens") to that organism AFTER fetching. Note
+            this filters the returned page only; `total_count` still reflects the
+            full unfiltered match count upstream.
 
     Returns:
         dict: Dictionary containing:
-            - 'total_count' (int): Total number of matching targets found
+            - 'total_count' (int): Total number of matching targets found upstream
             - 'results' (list): List of target dictionaries, each containing:
                 - 'chembl_id' (str): ChEMBL target identifier (e.g., "CHEMBL1824")
                 - 'name' (str): Preferred target name
                 - 'organism' (str): Organism name (e.g., "Homo sapiens")
                 - 'type' (str): Target type (e.g., "SINGLE PROTEIN", "PROTEIN COMPLEX")
                 - 'score' (float): Relevance score for the search query
-
-    Example:
-        >>> results = await search_chembl_target("EGFR human", limit=5)
-        >>> print(f"Found {results['total_count']} targets")
-        >>> for target in results['results']:
-        ...     print(f"{target['chembl_id']}: {target['name']} ({target['organism']})")
-
-        Output:
-        Found 15 targets
-        CHEMBL203: Epidermal growth factor receptor (Homo sapiens)
 
     Target Types:
         - SINGLE PROTEIN: Individual protein target
@@ -372,20 +555,24 @@ async def search_chembl_target(
             "Missing search string. Pass it as `query` (canonical) or any of: "
             "search, term, keyword, keywords, search_term, name."
         )
-    bulk = await search_chembl_generic("target", query, limit)
+    bulk = await search_chembl_generic("target", query, max(limit, 10))
     if "error" in bulk:
         # Propagate the upstream-failure payload rather than silently
         # collapsing it into an empty {'total_count': 0, 'results': []}.
         return bulk
     total_count = bulk.get("page_meta", {}).get("total_count", 0)
 
+    organism_filter = organism.strip().lower()
     parsed_results = []
     for target in bulk.get("targets", []):
+        target_organism = target.get("organism")
+        if organism_filter and organism_filter not in (target_organism or "").lower():
+            continue
         parsed_results.append(
             {
                 "chembl_id": target.get("target_chembl_id"),
                 "name": target.get("pref_name"),
-                "organism": target.get("organism"),
+                "organism": target_organism,
                 "type": target.get("target_type"),
                 "score": target.get("score"),
             }
@@ -411,23 +598,33 @@ async def search_chembl_molecule(
     ✅ Use this tool for drug, compound, or molecule names
        (e.g., "sorafenib", "imatinib", "aspirin", "Gleevec").
     ⚠️ For biological targets (proteins, receptors, enzymes, genes such as
-       EGFR, BRCA1, TP53), use `search_chembl_target` instead.
+       EGFR, BRCA1, TP53), use `search_chembl_target` instead. Passing a
+       target/gene name here (e.g. "EGFR") does NOT fail — it returns drugs
+       that act AGAINST that target, not the target itself. If you want the
+       target, that is the wrong tool.
 
     Molecules in ChEMBL are small-molecule drugs, drug candidates, and
     bioactive compounds — including approved drugs, clinical candidates,
     and research compounds.
 
-    Only the search string and `limit` are supported. The search string can be
-    passed as any of: `query` (canonical), `search`, `term`, `keyword`,
-    `keywords`, `search_term`, or `name`.
+    Structure search (SMILES / InChI / InChIKey) IS supported: a structure-
+    shaped query is auto-detected and routed to the ChEMBL structure endpoint
+    (exact/flex match), NOT the lexical name index — so e.g. aspirin's SMILES
+    "CC(=O)Oc1ccccc1C(=O)O" correctly returns CHEMBL25. Plain names still go to
+    the name/synonym index. Detection is conservative (multi-word input and
+    input without structural punctuation is treated as a name), so a bare-chain
+    SMILES like "CCO" is treated as a name.
+
+    The search string can be passed as any of: `query` (canonical), `search`,
+    `term`, `keyword`, `keywords`, `search_term`, or `name`.
 
     Args:
         query (str): Search query string referring to a drug or compound. Examples:
             - Generic or brand drug name (e.g., "Aspirin", "Gleevec", "Paracetamol")
-            - Research compound name
-            - Synonyms or alternative names
-            - SMILES notation (chemical structure string)
-            - InChI or InChI Key
+            - Research compound name / synonyms
+            - SMILES notation (e.g., "CC(=O)Oc1ccccc1C(=O)O") — structure search
+            - InChI (starts with "InChI=") or InChIKey (e.g.,
+              "BSYNRYMUTXBXSQ-UHFFFAOYSA-N") — structure search
         limit (int, optional): Maximum number of results to return. Defaults to 20.
 
     Returns:
@@ -436,29 +633,11 @@ async def search_chembl_molecule(
             - 'results' (list): List of molecule dictionaries, each containing:
                 - 'chembl_id' (str): ChEMBL molecule identifier (e.g., "CHEMBL25")
                 - 'name' (str): Preferred molecule name (may be None for some compounds)
-                - 'score' (float): Relevance score for the search query
-
-    Example:
-        >>> results = await search_chembl_molecule("aspirin", limit=5)
-        >>> print(f"Found {results['total_count']} molecules")
-        >>> for molecule in results['results']:
-        ...     print(f"{molecule['chembl_id']}: {molecule['name']} (score: {molecule['score']})")
-
-        Output:
-        Found 3 molecules
-        CHEMBL25: Aspirin (score: 23.5)
-        CHEMBL1456: Acetylsalicylic acid derivative (score: 12.3)
-
-    Use Cases:
-        - Finding ChEMBL IDs for known drugs or compounds
-        - Discovering molecules with similar names
-        - Searching for bioactive compounds by structure (using SMILES/InChI)
-        - Identifying research compounds and clinical candidates
+                - 'score' (float): Relevance score (None for structure-search hits)
 
     Note:
         - Some molecules may not have a preferred name and 'name' field will be None
-        - Higher scores indicate better matches to the query
-        - For structure-based searches, use SMILES or InChI notation
+        - Higher scores indicate better matches (name search only)
 
     On upstream/HTTP failure this tool does NOT raise — it returns a dict with a
     single 'error' key (a message plus a "fall back to SPARQL" hint) instead of
@@ -479,7 +658,11 @@ async def search_chembl_molecule(
             "Missing search string. Pass it as `query` (canonical) or any of: "
             "search, term, keyword, keywords, search_term, name."
         )
-    bulk = await search_chembl_generic("molecule", query, limit)
+    structure_kind = _looks_like_structure(query)
+    if structure_kind:
+        bulk = await _search_chembl_structure(structure_kind, query, limit)
+    else:
+        bulk = await search_chembl_generic("molecule", query, limit)
     if "error" in bulk:
         # Propagate the upstream-failure payload rather than silently
         # collapsing it into an empty {'total_count': 0, 'results': []}.

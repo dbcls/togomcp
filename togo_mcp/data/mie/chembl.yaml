@@ -247,7 +247,10 @@ sparql_query_examples:
     sparql: |
       PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
 
-      # Workflow: search_chembl_target("EGFR") → CHEMBL203; search_chembl_target("VEGFR2") → CHEMBL279
+      # Workflow: resolve targets to IRIs first. By UniProt accession this is exact
+      # (search_chembl_target("P00533") → CHEMBL203 rank 1). By name/symbol the intended
+      # target ranks below orthologs/ligands (EGFR → CHEMBL203 is rank ~6), so verify
+      # organism/type. Here: CHEMBL203 = EGFR (P00533), CHEMBL279 = VEGFR2 (P35968).
       SELECT ?targetLabel ?molecule ?moleculeLabel
       FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
@@ -588,6 +591,7 @@ architectural_notes:
   query_strategy:
     - "MANDATORY FIRST STEP: get_MIE_file('chembl') and read critical_warnings + shape_expressions"
     - "Exploratory: search_chembl_molecule() and search_chembl_target() to find examples and extract IRIs"
+    - "Target resolution: prefer search_chembl_target() with a UniProt accession (e.g. 'P00533' → CHEMBL203 at rank 1). Name/symbol queries rank the intended target below orthologs/ligands/PPI complexes (EGFR name → CHEMBL203 is only rank ~6), so inspect organism/type — do not trust rank. For exact resolution, SPARQL on rdfs:label + cco:organismName is most reliable."
     - "Inspection: SELECT * WHERE { VALUES ?entity {...} ?entity ?p ?o } to confirm properties"
     - "Comprehensive: use specific IRIs in VALUES or typed predicates — NOT search result IDs in VALUES"
     - "MeSH: exploratory FILTER(CONTAINS(LCASE(?meshHeading),'disease')) to find IRI, then switch to specific IRI"

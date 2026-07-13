@@ -6,8 +6,11 @@ import httpx
 import pytest
 import respx
 
+import togo_mcp.api_tools as api_tools
 from togo_mcp.api_tools import (
+    _looks_like_structure,
     _resolve_query_alias,
+    _strip_html,
     search_chembl_id_lookup,
     search_chembl_molecule,
     search_chembl_target,
@@ -16,6 +19,12 @@ from togo_mcp.api_tools import (
     search_rhea_entity,
     search_uniprot_entity,
 )
+
+
+@pytest.fixture(autouse=True)
+def _no_chembl_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Zero the ChEMBL retry backoff so the retry-then-error tests don't sleep."""
+    monkeypatch.setattr(api_tools, "_CHEMBL_BACKOFF_BASE", 0.0)
 
 
 class TestResolveQueryAlias:
@@ -150,6 +159,201 @@ class TestSearchChemblTarget:
             result = await search_chembl_id_lookup("CHEMBL25")
         assert "error" in result
         assert "total_count" not in result
+
+
+class TestChemblStructureDetection:
+    """_looks_like_structure classifies structure-shaped queries and — crucially
+    — does NOT misclassify drug names / IDs / accessions (a false positive would
+    misroute a real name to the structure endpoint and return nothing)."""
+
+    @pytest.mark.parametrize(
+        "query, expected",
+        [
+            ("CC(=O)Oc1ccccc1C(=O)O", "smiles"),  # aspirin SMILES
+            ("BSYNRYMUTXBXSQ-UHFFFAOYSA-N", "inchikey"),
+            ("InChI=1S/C9H8O4/c1-6(10)13", "inchi"),
+            ("aspirin", None),
+            ("Dopamine receptor", None),  # multi-word name
+            ("EGFR", None),
+            ("CHEMBL25", None),
+            ("P00533", None),  # UniProt accession
+            ("Gleevec", None),
+            ("CCO", None),  # bare-chain SMILES — accepted trade-off, treated as name
+            ("", None),
+        ],
+    )
+    def test_classification(self, query: str, expected: str | None) -> None:
+        assert _looks_like_structure(query) == expected
+
+
+class TestChemblStructureRouting:
+    """search_chembl_molecule routes structure-shaped input to /molecule.json and
+    plain names to /molecule/search.json — parsed into one shared shape."""
+
+    @pytest.mark.asyncio
+    async def test_smiles_routed_to_structure_endpoint(self) -> None:
+        body = {
+            "page_meta": {"total_count": 3},
+            "molecules": [
+                {"molecule_chembl_id": "CHEMBL25", "pref_name": "ASPIRIN"},
+            ],
+        }
+        with respx.mock(using="httpx") as router:
+            route = router.get(
+                "https://www.ebi.ac.uk/chembl/api/data/molecule.json"
+            ).mock(return_value=httpx.Response(200, json=body))
+            result = await search_chembl_molecule("CC(=O)Oc1ccccc1C(=O)O", limit=5)
+        assert route.called
+        # flexmatch structure filter is present, NOT a lexical q= param.
+        sent = str(route.calls[0].request.url)
+        assert "canonical_smiles__flexmatch" in sent
+        assert result["results"][0]["chembl_id"] == "CHEMBL25"
+
+    @pytest.mark.asyncio
+    async def test_name_routed_to_lexical_endpoint(self) -> None:
+        body = {
+            "page_meta": {"total_count": 1},
+            "molecules": [{"molecule_chembl_id": "CHEMBL25", "pref_name": "ASPIRIN"}],
+        }
+        with respx.mock(using="httpx") as router:
+            lexical = router.get(
+                "https://www.ebi.ac.uk/chembl/api/data/molecule/search.json"
+            ).mock(return_value=httpx.Response(200, json=body))
+            result = await search_chembl_molecule("aspirin", limit=5)
+        assert lexical.called
+        assert result["results"][0]["chembl_id"] == "CHEMBL25"
+
+
+class TestChemblIdLookupFields:
+    """id_lookup returns status/resource_url (no name field exists upstream) and
+    supports an entity_type passthrough."""
+
+    @pytest.mark.asyncio
+    async def test_status_and_resource_url_returned(self) -> None:
+        body = {
+            "page_meta": {"total_count": 1},
+            "chembl_id_lookups": [
+                {
+                    "chembl_id": "CHEMBL203",
+                    "entity_type": "TARGET",
+                    "status": "ACTIVE",
+                    "resource_url": "/chembl/api/data/target/CHEMBL203",
+                    "score": 30.0,
+                }
+            ],
+        }
+        with respx.mock(using="httpx") as router:
+            router.get(
+                "https://www.ebi.ac.uk/chembl/api/data/chembl_id_lookup/search.json"
+            ).mock(return_value=httpx.Response(200, json=body))
+            result = await search_chembl_id_lookup("EGFR", limit=5)
+        row = result["results"][0]
+        assert row["status"] == "ACTIVE"
+        assert row["resource_url"] == "/chembl/api/data/target/CHEMBL203"
+
+    @pytest.mark.asyncio
+    async def test_entity_type_forwarded(self) -> None:
+        with respx.mock(using="httpx") as router:
+            route = router.get(
+                "https://www.ebi.ac.uk/chembl/api/data/chembl_id_lookup/search.json"
+            ).mock(
+                return_value=httpx.Response(
+                    200, json={"page_meta": {"total_count": 0}, "chembl_id_lookups": []}
+                )
+            )
+            await search_chembl_id_lookup("EGFR", entity_type="target")
+        assert "entity_type=TARGET" in str(route.calls[0].request.url)
+
+    @pytest.mark.asyncio
+    async def test_invalid_entity_type_raises(self) -> None:
+        with pytest.raises(ValueError, match="Invalid entity_type"):
+            await search_chembl_id_lookup("EGFR", entity_type="PROTEIN")
+
+
+class TestChemblTargetFloorAndOrganism:
+    """target enforces a limit floor of 10 (the intended hit sits at rank ~5–6)
+    and supports a post-fetch organism filter."""
+
+    @pytest.mark.asyncio
+    async def test_limit_below_ten_raised_to_floor(self) -> None:
+        with respx.mock(using="httpx") as router:
+            route = router.get(
+                "https://www.ebi.ac.uk/chembl/api/data/target/search.json"
+            ).mock(
+                return_value=httpx.Response(
+                    200, json={"page_meta": {"total_count": 0}, "targets": []}
+                )
+            )
+            await search_chembl_target("EGFR", limit=3)
+        assert "limit=10" in str(route.calls[0].request.url)
+
+    @pytest.mark.asyncio
+    async def test_organism_filter_applied_post_fetch(self) -> None:
+        body = {
+            "page_meta": {"total_count": 2},
+            "targets": [
+                {"target_chembl_id": "CHEMBL203", "organism": "Homo sapiens"},
+                {"target_chembl_id": "CHEMBL3608", "organism": "Mus musculus"},
+            ],
+        }
+        with respx.mock(using="httpx") as router:
+            router.get(
+                "https://www.ebi.ac.uk/chembl/api/data/target/search.json"
+            ).mock(return_value=httpx.Response(200, json=body))
+            result = await search_chembl_target("EGFR", organism="Homo sapiens")
+        assert [r["chembl_id"] for r in result["results"]] == ["CHEMBL203"]
+        # total_count still reflects the full upstream match count, not the filtered page.
+        assert result["total_count"] == 2
+
+
+class TestChemblRetryAndErrorCleaning:
+    """_chembl_get_json retries transient 5xx, gives up on 4xx, and strips HTML
+    from error payloads."""
+
+    @pytest.mark.asyncio
+    async def test_retry_then_success(self) -> None:
+        body = {"page_meta": {"total_count": 1}, "targets": []}
+        with respx.mock(using="httpx") as router:
+            route = router.get(
+                "https://www.ebi.ac.uk/chembl/api/data/target/search.json"
+            ).mock(
+                side_effect=[
+                    httpx.Response(500, text="<html>err</html>"),
+                    httpx.Response(200, json=body),
+                ]
+            )
+            result = await search_chembl_target("EGFR")
+        assert route.call_count == 2
+        assert result["total_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_4xx_not_retried(self) -> None:
+        with respx.mock(using="httpx") as router:
+            route = router.get(
+                "https://www.ebi.ac.uk/chembl/api/data/target/search.json"
+            ).mock(return_value=httpx.Response(404, text="<html>nope</html>"))
+            result = await search_chembl_target("EGFR")
+        assert route.call_count == 1  # terminal, no retry
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_error_body_is_html_free(self) -> None:
+        html = (
+            "<!doctype html><html><head><script>x=1</script>"
+            "<style>a{color:red}</style></head><body>500 Internal Error</body></html>"
+        )
+        with respx.mock(using="httpx") as router:
+            router.get(
+                "https://www.ebi.ac.uk/chembl/api/data/target/search.json"
+            ).mock(return_value=httpx.Response(500, text=html))
+            result = await search_chembl_target("EGFR")
+        assert "<" not in result["error"] and ">" not in result["error"]
+        assert len(result["error"]) < 500
+
+    def test_strip_html_collapses_and_truncates(self) -> None:
+        html = "<div>  hello   <b>world</b> </div>"
+        assert _strip_html(html) == "hello world"
+        assert _strip_html("<p>" + "x" * 500 + "</p>", max_len=50).endswith("…")
 
 
 # ---------------------------------------------------------------------------
