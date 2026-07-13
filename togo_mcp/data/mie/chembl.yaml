@@ -34,9 +34,9 @@ schema_info:
     - search_chembl_molecule
     - search_chembl_target
   version:
-    mie_version: "3.1"
+    mie_version: "3.2"
     mie_created: "2025-02-10"
-    mie_updated: "2026-07-07"
+    mie_updated: "2026-07-14"
     data_version: ChEMBL 34.0
     update_frequency: Quarterly
   license:
@@ -65,6 +65,17 @@ critical_warnings: |
   - PERFORMANCE: Combining cco:taxonomy IRI with cco:hasProteinClassification in one query
     times out (verified 2026-04-21). Use the typed predicate cco:organismName "Homo sapiens"
     for organism filtering in combined queries instead of the taxonomy IRI.
+  - NAME → ID RESOLUTION (skos:altLabel): synonyms/brands (molecule) and gene symbols
+    (target component) live on skos:altLabel — NOT rdfs:label/skos:prefLabel, which hold only the
+    single canonical name. A name/brand/symbol lookup that filters rdfs:label misses them silently.
+    MECHANISM MATTERS: FILTER(LCASE(?alt)="gleevec") or FILTER(CONTAINS(...)) scans all ~1.8M
+    altLabels and takes ~11s (near timeout). Use the Virtuoso text index instead — bind the label,
+    prefilter with bif:contains, then FILTER for exactness (~0.1s):
+      ?m skos:altLabel ?alt . ?alt bif:contains "Gleevec" . FILTER(LCASE(STR(?alt)) = "gleevec")
+    bif:contains needs ?alt already bound by a triple pattern (put the skos:altLabel triple FIRST,
+    else HTTP 400). Target symbols sit on the component: ?t cco:hasTargetComponent ?c . ?c
+    skos:altLabel ?alt . ?alt bif:contains "EGFR" . Add cco:targetType "SINGLE PROTEIN" +
+    cco:organismName "Homo sapiens" to collapse orthologs/complexes to the one intended target.
 
 shape_expressions: |
   PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
@@ -75,6 +86,7 @@ shape_expressions: |
     a [ cco:SmallMolecule ] ;
     rdfs:label xsd:string ;
     skos:prefLabel xsd:string ;
+    skos:altLabel xsd:string * ;
     cco:chemblId xsd:string ;
     cco:highestDevelopmentPhase xsd:integer ? ;
     cco:atcClassification xsd:string * ;
@@ -83,6 +95,10 @@ shape_expressions: |
     cco:hasDrugIndication @<DrugIndicationShape> * ;
     cco:hasMechanism @<DrugMechanismShape> * ;
     cco:moleculeXref IRI *
+  # NOTE: skos:altLabel holds synonyms — generic + brand/trade names (e.g. "Gleevec",
+  #       "Glivec"), research codes (NSC-/SID-), and IUPAC names. It is the predicate for
+  #       name/brand → molecule ID resolution. See critical_warnings for the fast idiom.
+  #       1,839,581 SmallMolecule (~96%) carry ≥1 altLabel (verified 2026-07-14).
   # NOTE: Molecule→ChEBI links use cco:moleculeXref (EBI URL format, requires IRI conversion)
   # NOTE: skos:exactMatch is ONLY on TargetComponent (UniProt link), NOT on SmallMolecule
   # COUNTS: 1,920,603 SmallMolecule instances (verified 2026-04-21)
@@ -127,7 +143,14 @@ shape_expressions: |
   <TargetComponentShape> {
     a [ cco:TargetComponent ] ;
     cco:chemblId xsd:string ;
+    skos:altLabel xsd:string * ;
     skos:exactMatch IRI *
+  # NOTE: skos:altLabel holds component synonyms — GENE SYMBOL (e.g. "EGFR"), the UniProt
+  #       accession AS A STRING (e.g. "P00533"), the full protein name, and PDB codes. It is
+  #       the predicate for gene-symbol/protein-name → target ID resolution, and it sits on the
+  #       COMPONENT, not the Target (the cco:SingleProtein/etc. entity has NO altLabel). Reach it
+  #       via ?target cco:hasTargetComponent/skos:altLabel ?syn. 12,782 components carry altLabel.
+  #       For the accession specifically, prefer the structured skos:exactMatch IRI (below).
   # NOTE: skos:exactMatch on TargetComponent links to UniProt (http://purl.uniprot.org/uniprot/[ID])
   # COUNTS: ~11k UniProt cross-references
   }
@@ -240,6 +263,33 @@ sparql_query_examples:
       ORDER BY ?label
       LIMIT 50
 
+  - title: Resolve a Gene Symbol / Brand Name to a ChEMBL ID via skos:altLabel
+    description: "Name/symbol/brand → ID resolution. Synonyms live on skos:altLabel (gene symbols on the target COMPONENT, brands on the molecule), not rdfs:label. Uses the bif:contains text index (prefilter) + exact FILTER — fast (~0.1s); a bare FILTER(CONTAINS()) scans all altLabels and takes ~11s. Constrains to human SINGLE PROTEIN to collapse orthologs/complexes to the one intended target."
+    question: Which ChEMBL target is the gene EGFR? (and, in comment, which molecule is 'Gleevec'?)
+    complexity: basic
+    sparql: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+      # Gene symbol → target ID. altLabel is on the COMPONENT; symbol also appears as accession
+      # string "P00533" and PDB codes there. Put the skos:altLabel triple BEFORE bif:contains
+      # (else HTTP 400). SINGLE PROTEIN + Homo sapiens → exactly CHEMBL203, no orthologs/complexes.
+      SELECT DISTINCT ?target ?label
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        ?component skos:altLabel ?alt .
+        ?alt bif:contains "EGFR" .
+        FILTER(LCASE(STR(?alt)) = "egfr")
+        ?target cco:hasTargetComponent ?component ;
+                rdfs:label ?label ;
+                cco:targetType "SINGLE PROTEIN" ;
+                cco:organismName "Homo sapiens" .
+      }
+      LIMIT 10
+      # Molecule brand/synonym → ID (same idiom, altLabel on the molecule itself):
+      #   ?m a cco:SmallMolecule ; skos:altLabel ?alt . ?alt bif:contains "Gleevec" .
+      #   FILTER(LCASE(STR(?alt)) = "gleevec")   → CHEMBL941 (IMATINIB) + CHEMBL1642 (mesylate)
+
   - title: Get IC50 Measurements for Specific Targets Using VALUES with IRIs
     description: "Retrieves IC50 data for EGFR and VEGFR2 using specific target IRIs (from search_chembl_target) and typed predicate cco:standardType."
     question: What IC50 measurements exist for EGFR and VEGFR2?
@@ -247,7 +297,10 @@ sparql_query_examples:
     sparql: |
       PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
 
-      # Workflow: search_chembl_target("EGFR") → CHEMBL203; search_chembl_target("VEGFR2") → CHEMBL279
+      # Workflow: resolve targets to IRIs first. By UniProt accession this is exact
+      # (search_chembl_target("P00533") → CHEMBL203 rank 1). By name/symbol the intended
+      # target ranks below orthologs/ligands (EGFR → CHEMBL203 is rank ~6), so verify
+      # organism/type. Here: CHEMBL203 = EGFR (P00533), CHEMBL279 = VEGFR2 (P35968).
       SELECT ?targetLabel ?molecule ?moleculeLabel
       FROM <http://rdf.ebi.ac.uk/dataset/chembl>
       WHERE {
@@ -588,6 +641,7 @@ architectural_notes:
   query_strategy:
     - "MANDATORY FIRST STEP: get_MIE_file('chembl') and read critical_warnings + shape_expressions"
     - "Exploratory: search_chembl_molecule() and search_chembl_target() to find examples and extract IRIs"
+    - "Target resolution: prefer search_chembl_target() with a UniProt accession (e.g. 'P00533' → CHEMBL203 at rank 1). Name/symbol queries rank the intended target below orthologs/ligands/PPI complexes (EGFR name → CHEMBL203 is only rank ~6), so inspect organism/type — do not trust rank. For exact, deterministic resolution, SPARQL is most reliable: gene symbols/brands live on skos:altLabel (component for targets, molecule for drugs) — resolve via bif:contains + exact FILTER + SINGLE PROTEIN/Homo sapiens (see critical_warnings and the altLabel example). rdfs:label/skos:prefLabel hold ONLY the canonical name and miss synonyms."
     - "Inspection: SELECT * WHERE { VALUES ?entity {...} ?entity ?p ?o } to confirm properties"
     - "Comprehensive: use specific IRIs in VALUES or typed predicates — NOT search result IDs in VALUES"
     - "MeSH: exploratory FILTER(CONTAINS(LCASE(?meshHeading),'disease')) to find IRI, then switch to specific IRI"

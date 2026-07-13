@@ -703,11 +703,11 @@ def verify_questions(targets=None):
     print(f"{'=' * 70}")
     print(f"\nTotal Questions: {total_questions}")
 
-    if total_questions >= 50:
-        print(f"  ✓ PASS: 50-question target met")
+    if total_questions >= 100:
+        print(f"  ✓ PASS: 100-question target met")
     else:
-        pct = total_questions / 50 * 100
-        print(f"  ⚠  PROGRESS: {total_questions}/50 ({pct:.0f}%)")
+        pct = total_questions / 100 * 100
+        print(f"  ⚠  PROGRESS: {total_questions}/100 ({pct:.0f}%)")
 
     # -- Type distribution (scales with set size; balanced band ±2) --------
     # Target is total/5 (5 types), not a hard-coded 10, so the check stays

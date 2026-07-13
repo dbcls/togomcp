@@ -4,7 +4,7 @@ This directory contains the evaluation benchmark for the paper:
 
 > **TogoMCP: Natural Language Querying of Life-Science Knowledge Graphs via Schema-Guided LLMs and the Model Context Protocol**
 
-The benchmark consists of 50 biologically grounded questions spanning five question types and 23 RDF Portal databases, designed to evaluate TogoMCP's ability to answer biological questions that require live access to RDF knowledge graphs.
+The benchmark consists of 100 biologically grounded questions spanning five question types and 34 RDF Portal databases, designed to evaluate TogoMCP's ability to answer biological questions that require live access to RDF knowledge graphs.
 
 ---
 
@@ -20,7 +20,7 @@ benchmark/
 │   ├── coverage_tracker.yaml     # Tracks question type and database coverage
 │   ├── question_001.yaml         # Individual question files
 │   ├── question_002.yaml
-│   └── ... (question_001–question_050.yaml)
+│   └── ... (question_001–question_100.yaml)
 ├── scripts/
 │   ├── automated_test_runner.py  # Collects answers from baseline and TogoMCP agents
 │   ├── add_llm_evaluation.py     # Scores collected answers using Claude Opus as judge
@@ -54,7 +54,7 @@ benchmark/
 
 ### Question Set
 
-The 50 questions were created following a strict type-first protocol (`QA_CREATION_GUIDE.md`), with **10 questions per type**:
+The 100 questions were created following a strict type-first protocol (`QA_CREATION_GUIDE.md`), with **20 questions per type**:
 
 | Type | Description |
 |------|-------------|
@@ -68,7 +68,7 @@ The 50 questions were created following a strict type-first protocol (`QA_CREATI
 - Multi-database questions (2+ databases): ≥ 60%
 - Multi-database questions (3+ databases): ≥ 20%
 - UniProt usage cap: ≤ 70%
-- All 23 RDF Portal databases covered at least once
+- All 34 RDF Portal databases covered at least once
 
 Questions were validated to exclude answers recoverable from pre-training data or the published literature (PubMed test), ensuring that RDF database access is necessary to answer them correctly.
 

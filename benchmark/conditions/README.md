@@ -43,7 +43,7 @@ API-billed Claude judge, run `add_llm_evaluation.py --use-api` directly with
 cd benchmark/conditions
 VENV=/Users/arkinjo/work/GitHub/togomcp/.venv/bin/python
 
-# Full sweep, one Opus judge (all questions — 75 today):
+# Full sweep, one Opus judge (all questions — 100 today):
 python run_conditions.py --python "$VENV" --model claude-sonnet-5
 
 # Multiple judges (Opus + a local Gemma), compared side by side:
@@ -97,5 +97,5 @@ folder. With no `--date`/`--model` it analyzes the newest run; give `--date` (an
   ```bash
   python3 -c "import csv;r=list(csv.DictReader(open('results/<DATE>/<MODEL>/no_mie-answers.csv')));print('LEAK' if any('get_MIE_file' in x['tools_used'] for x in r) else 'clean')"
   ```
-- This is a multi-hour sequential run (all questions — 75 today — × conditions × judges).
+- This is a multi-hour sequential run (all questions — 100 today — × conditions × judges).
   Run under `tmux`/`nohup`; resume via re-run.

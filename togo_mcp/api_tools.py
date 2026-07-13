@@ -1,3 +1,6 @@
+import asyncio
+import csv
+import io
 import json
 import re
 from typing import Annotated, Literal
@@ -199,35 +202,267 @@ async def search_uniprot_entity(
 
 
 # DB: ChEMBL
-async def search_chembl_generic(entity_type: str, query: str, limit: int = 20) -> dict:
-    """
-    Search for ChEMBL ID by query.
+#
+# Text → ChEMBL-ID resolution runs as SPARQL against the RDF Portal graph, NOT
+# the EBI REST lexical index. Reasons: (1) the REST /search.json index is
+# token-OR ranked and buries the intended entity below orthologs/ligands/synonym
+# noise (EGFR → the receptor is only rank ~6; a protein-name query returns
+# thousands); (2) EBI REST is ~1/3 flaky. The RDF graph resolves deterministically
+# in one indexed query, returning label + organism + type. Synonyms/brands/gene
+# symbols live on skos:altLabel (on the molecule, and on the target COMPONENT).
+# Canonical structure IDENTIFIERS (InChIKey/InChI) are stored as RDF literals, so
+# they too resolve by exact SPARQL match. REST is retained ONLY for SMILES
+# (flexmatch) — a SMILES is written differently by each toolkit, so it needs the
+# chemistry engine's structural normalization, not an exact string match — and
+# would be needed for similarity/substructure search. Those REST helpers keep the
+# retry/HTML-strip plumbing below; EBI REST is flaky (~1/3 of calls 500 or time
+# out).
+_CHEMBL_MAX_ATTEMPTS = 3  # 1 initial try + 2 retries
+_CHEMBL_BACKOFF_BASE = 1.0  # seconds; nth retry waits base*n (patched to 0 in tests)
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
 
-    Args:
-        entity_type (str): The type of entity to search for.
-        query (str): The query string to search for.
-        limit (int): The maximum number of results to return.
 
-    Returns:
-        A dictionary parsed from the JSON response.
+def _strip_html(text: str, max_len: int = 200) -> str:
+    """Collapse an HTML error page into a short plain-text snippet.
+
+    EBI returns full HTML documents (doctype, <script>/<style> blocks, favicon
+    links) on failure — hundreds of tokens of noise with no diagnostic value.
+    Drop scripts/styles wholesale, strip remaining tags, collapse whitespace,
+    and truncate.
     """
-    params = {"q": query, "limit": limit}
-    try:
-        response = await _chembl_client.get(
-            f"/chembl/api/data/{entity_type}/search.json", params=params
+    text = re.sub(
+        r"<(script|style)\b[^>]*>.*?</\1>", " ", text, flags=re.IGNORECASE | re.DOTALL
+    )
+    text = _HTML_TAG_RE.sub(" ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) > max_len:
+        text = text[:max_len].rstrip() + "…"
+    return text
+
+
+async def _chembl_get_json(path: str, params: dict, *, context: str) -> dict:
+    """GET a ChEMBL JSON endpoint, retrying transient 5xx/timeout failures.
+
+    Returns the parsed JSON on success. On terminal failure returns
+    ``{"error": <clean message>}`` — it never raises for HTTP/transport
+    errors (the module's REST-wrapper contract). 4xx client errors are
+    terminal (no retry); 5xx and read timeouts are retried up to
+    ``_CHEMBL_MAX_ATTEMPTS`` times with a short linear backoff. HTML error
+    bodies are stripped to a short snippet.
+    """
+    last_error = "unknown error"
+    for attempt in range(_CHEMBL_MAX_ATTEMPTS):
+        last = attempt == _CHEMBL_MAX_ATTEMPTS - 1
+        try:
+            response = await _chembl_client.get(path, params=params)
+        except httpx.HTTPError as e:  # includes TimeoutException
+            last_error = f"{type(e).__name__}: {e}"
+            logger.warning(f"{context} attempt {attempt + 1} failed: {last_error}")
+            if last:
+                break
+            await asyncio.sleep(_CHEMBL_BACKOFF_BASE * (attempt + 1))
+            continue
+        if response.is_success:
+            try:
+                return response.json()
+            except (json.JSONDecodeError, ValueError):
+                # 200 with a non-JSON body — an upstream anomaly. Degrade
+                # gracefully rather than raising (REST-wrapper contract).
+                last_error = f"malformed JSON body: {_strip_html(response.text)}"
+                logger.warning(f"{context} failed (terminal): {last_error}")
+                break
+        if 500 <= response.status_code < 600 and not last:
+            last_error = f"HTTP {response.status_code}"
+            logger.warning(f"{context} attempt {attempt + 1}: {last_error}, retrying")
+            await asyncio.sleep(_CHEMBL_BACKOFF_BASE * (attempt + 1))
+            continue
+        # Terminal: a 4xx, or a 5xx after retries are exhausted.
+        last_error = f"HTTP {response.status_code}: {_strip_html(response.text)}"
+        logger.warning(f"{context} failed (terminal): {last_error}")
+        break
+    return {
+        "error": (
+            f"ChEMBL REST API request failed ({last_error}). Transient errors "
+            "were already retried automatically. If it keeps failing, fall back "
+            "to SPARQL: run_sparql(database='chembl', sparql_query=...)."
         )
-        raise_for_status_with_body(response, context="ChEMBL search")
-        return response.json()
-    except (httpx.HTTPError, ValueError) as e:
-        logger.warning(f"ChEMBL {entity_type} search failed: {type(e).__name__}: {e}")
+    }
+
+
+# --- name/symbol → ID resolution over the RDF graph (skos:altLabel) ---
+
+_CHEMBL_GRAPH = "http://rdf.ebi.ac.uk/dataset/chembl"
+_CHEMBL_PREFIXES = (
+    "PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>\n"
+    "PREFIX skos: <http://www.w3.org/2004/02/skos/core#>\n"
+    "PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>"
+)
+# UniProt accession (canonical pattern). A target query matching this routes to
+# the structured skos:exactMatch UniProt link instead of altLabel text search.
+_UNIPROT_ACCESSION_RE = re.compile(
+    r"^(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})$"
+)
+
+
+def _bif_and(text: str) -> str | None:
+    """Build a ``bif:contains`` argument from arbitrary caller text.
+
+    Tokenizes to alphanumeric runs, single-quotes each token, and joins with AND
+    (e.g. ``5'-nucleotidase`` → ``'5' AND 'nucleotidase'``). This is robust where
+    the raw forms make Virtuoso 500: a bare numeric token (``5``) or a
+    multi-word/punctuated phrase breaks the free-text parser, but quoting every
+    token does not. It is only a *prefilter* — the exact FILTER on the label
+    guarantees precision — so dropping apostrophes/slashes/hyphens is safe.
+    Returns ``None`` when there is no alphanumeric token to search on.
+    """
+    toks = re.findall(r"[a-z0-9]+", text.lower())
+    if not toks:
+        return None
+    return " AND ".join(f"'{t}'" for t in toks)
+
+
+def _sparql_literal(text: str) -> str:
+    """Escape ``text`` for inclusion in a double-quoted SPARQL string literal."""
+    return text.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _altlabel_match_block(query: str) -> str | None:
+    """WHERE-clause fragment matching ``?entity`` (or ?comp) by exact synonym.
+
+    Binds ?alt via skos:altLabel FIRST (bif:contains needs its var bound), fast-
+    prefilters with the text index, then FILTERs for the exact (case-insensitive)
+    label. Caller supplies the ``?entity skos:altLabel ?alt`` subject. Returns
+    None if the query has no searchable token.
+    """
+    bif = _bif_and(query)
+    if bif is None:
+        return None
+    return (
+        f'  ?alt bif:contains "{bif}" .\n'
+        f'  FILTER(LCASE(STR(?alt)) = "{_sparql_literal(query.lower())}")'
+    )
+
+
+async def _run_chembl_sparql(query: str) -> list[dict] | dict:
+    """Execute a ChEMBL SPARQL query, returning CSV rows as ``list[dict]``.
+
+    On endpoint failure returns ``{"error": ...}`` (never raises) to preserve
+    the module's REST-wrapper contract. ``execute_sparql`` returns CSV text.
+    """
+    try:
+        csv_text = await execute_sparql(query, database="chembl")
+    except (ValueError, httpx.HTTPError) as e:
+        first = str(e).splitlines()[0] if str(e).strip() else type(e).__name__
+        logger.warning(f"ChEMBL SPARQL failed: {type(e).__name__}: {first}")
         return {
             "error": (
-                f"ChEMBL REST API request failed ({type(e).__name__}: {e}). "
-                "Usually transient — retry once after a brief delay. If it "
-                "keeps failing, fall back to SPARQL: "
-                "run_sparql(database='chembl', sparql_query=...)."
+                f"ChEMBL SPARQL query failed ({first[:200]}). If this persists, "
+                "run the query yourself via run_sparql(database='chembl', ...)."
             )
         }
+    return list(csv.DictReader(io.StringIO(csv_text)))
+
+
+# Structure-search routing for search_chembl_molecule.
+# Structure IDENTIFIERS split by whether an exact string match is meaningful:
+#   • InChIKey / InChI are CANONICAL — every toolkit emits the identical string
+#     for a molecule — so an exact match on the RDF-stored value is correct and
+#     resolves in SPARQL (fast, on the reliable endpoint).
+#   • Canonical SMILES is toolkit-SPECIFIC — a user's SMILES is usually written
+#     differently than ChEMBL's stored canonical form, so an exact string match
+#     silently misses. It needs the REST chemistry engine's flexmatch, which
+#     normalizes tautomers/salts/charges before matching. (Similarity and
+#     substructure search would likewise need the chemistry engine.)
+_INCHIKEY_RE = re.compile(r"^[A-Z]{14}-[A-Z]{10}-[A-Z]$")
+# CHEMINF value-node types under the SIO qualified-value pattern
+# (?m sio:SIO_000008 ?node; ?node a <CHEMINF_*>; ?node sio:SIO_000300 ?value).
+_CHEMINF = {
+    "inchikey": "http://semanticscience.org/resource/CHEMINF_000059",
+    "inchi": "http://semanticscience.org/resource/CHEMINF_000113",
+}
+
+
+def _looks_like_structure(query: str) -> str | None:
+    """Classify ``query`` as a chemical structure string.
+
+    Returns ``"inchi"``, ``"inchikey"``, or ``"smiles"`` when the input is
+    structure-shaped, else ``None`` (route to name resolution).
+
+    Conservative by design — a name misrouted to a structure path returns
+    nothing, so anything with whitespace (multi-word names) or without
+    unambiguous structural punctuation stays on the name path. This means a
+    bare-chain SMILES like ``CCO`` (ethanol) is NOT detected; that is the
+    accepted trade-off for not misrouting drug names.
+    """
+    s = query.strip()
+    if not s or " " in s:
+        return None
+    if s.startswith("InChI="):
+        return "inchi"
+    if _INCHIKEY_RE.match(s):
+        return "inchikey"
+    # SMILES: require structural punctuation that essentially never appears in a
+    # drug name or accession (excludes "aspirin", "EGFR", "CHEMBL25", "P00533").
+    if any(c in s for c in "=#()[]"):
+        return "smiles"
+    return None
+
+
+def _bif_longest_token(text: str) -> str | None:
+    """Single-quoted bif:contains prefilter using the longest alphanumeric token.
+
+    For a canonical identifier (InChIKey/InChI) one long distinctive token is a
+    highly selective, always-present prefilter; the exact FILTER then guarantees
+    the match. Returns None if there is no alphanumeric token.
+    """
+    toks = re.findall(r"[a-z0-9]+", text.lower())
+    if not toks:
+        return None
+    return f"'{max(toks, key=len)}'"
+
+
+async def _search_chembl_smiles_flexmatch(query: str, limit: int) -> dict:
+    """SMILES → molecule via the ChEMBL REST chemistry engine (flexmatch).
+
+    Returns the ``{"page_meta", "molecules"}`` REST shape. Used only for SMILES:
+    flexmatch normalizes the structure first, so it tolerates the toolkit-specific
+    ways the same molecule's canonical SMILES may be written. (InChIKey/InChI are
+    canonical and resolved via SPARQL — see _search_chembl_inchi_sparql.)
+    """
+    filt = {
+        "molecule_structures__canonical_smiles__flexmatch": query,
+        "limit": limit,
+    }
+    return await _chembl_get_json(
+        "/chembl/api/data/molecule.json", filt, context="ChEMBL SMILES flexmatch"
+    )
+
+
+async def _search_chembl_inchi_sparql(
+    kind: str, query: str, limit: int
+) -> list[dict] | dict:
+    """Exact InChIKey / InChI → molecule lookup over the RDF graph.
+
+    These identifiers are canonical, so an exact (CASE-SENSITIVE — InChIKeys are
+    canonical uppercase) match on the stored SIO_000300 value is correct and
+    toolkit-independent. bif:contains on the longest token prefilters via the
+    Virtuoso text index. Returns CSV rows as list[dict], or {"error": ...}.
+    """
+    prefilter = _bif_longest_token(query)
+    if prefilter is None:
+        return []
+    sparql = (
+        f"{_CHEMBL_PREFIXES}\n"
+        f"PREFIX sio: <http://semanticscience.org/resource/>\n"
+        f"SELECT DISTINCT ?chembl_id ?name FROM <{_CHEMBL_GRAPH}> WHERE {{\n"
+        f"  ?node a <{_CHEMINF[kind]}> ; sio:SIO_000300 ?v .\n"
+        f'  ?v bif:contains "{prefilter}" .\n'
+        f'  FILTER(STR(?v) = "{_sparql_literal(query)}")\n'
+        f"  ?m sio:SIO_000008 ?node ; a cco:SmallMolecule ;\n"
+        f"     cco:chemblId ?chembl_id ; rdfs:label ?name .\n"
+        f"}} LIMIT {int(limit)}"
+    )
+    return await _run_chembl_sparql(sparql)
 
 
 @mcp.tool()
@@ -238,6 +473,16 @@ async def search_chembl_id_lookup(
     limit: Annotated[
         int, Field(description="The maximum number of results to return.")
     ] = 20,
+    entity_type: Annotated[
+        str,
+        Field(
+            description=(
+                "Optional filter: COMPOUND (molecules) or TARGET (proteins). "
+                "Omit to search both."
+            ),
+            default="",
+        ),
+    ] = "",
     search: str = "",
     term: str = "",
     keyword: str = "",
@@ -246,16 +491,30 @@ async def search_chembl_id_lookup(
     name: str = "",
 ) -> dict:
     """
-    Search for ChEMBL ID by query.
+    Resolve a name/synonym to ChEMBL IDs across compounds AND targets.
 
-    The search string can be passed as any of: `query` (canonical),
-    `search`, `term`, `keyword`, `keywords`, `search_term`, or `name`.
+    Cross-entity convenience wrapper: it runs the same exact-synonym SPARQL
+    resolution as `search_chembl_molecule` and `search_chembl_target` and UNIONs
+    the two, so one call covers "what ChEMBL entity is <text>?". Prefer the
+    entity-specific tools when you already know you want a drug or a target — they
+    carry the extra fields (organism/type). Only COMPOUND and TARGET are covered
+    (the two synonym-rich entity kinds); for assays/documents/cell-lines/tissues,
+    query SPARQL directly via run_sparql(database='chembl', ...).
+
+    Matching is EXACT (case-insensitive) against skos:altLabel synonyms — brands,
+    generic names, gene symbols — not fuzzy/substring. Fix typos in the query
+    before calling.
+
+    The search string can be passed as any of: `query` (canonical), `search`,
+    `term`, `keyword`, `keywords`, `search_term`, or `name`.
 
     Returns:
-        dict: {'total_count' (int), 'results' (list)} where each result has
-        'chembl_id', 'entity_type', and 'score'. On upstream/HTTP failure this
-        tool does NOT raise — it returns a dict with a single 'error' key
-        instead. Check for 'error' before reading 'results'.
+        dict: {'total_count' (int, rows returned — capped by `limit`),
+        'results' (list)}. Each result has 'chembl_id', 'entity_type'
+        (COMPOUND / TARGET), and 'name' (the entity's rdfs:label).
+
+        On endpoint failure this tool does NOT raise — it returns a dict with a
+        single 'error' key instead. Check for 'error' before reading 'results'.
     """
     query = _resolve_query_alias(
         query,
@@ -271,29 +530,65 @@ async def search_chembl_id_lookup(
             "Missing search string. Pass it as `query` (canonical) or any of: "
             "search, term, keyword, keywords, search_term, name."
         )
-    bulk = await search_chembl_generic("chembl_id_lookup", query, limit)
-    if "error" in bulk:
-        # Propagate the upstream-failure payload rather than silently
-        # collapsing it into an empty {'total_count': 0, 'results': []}.
-        return bulk
-    total_count = bulk.get("page_meta", {}).get("total_count", 0)
-    parsed_results = []
-    for result in bulk.get("chembl_id_lookups", []):
-        parsed_results.append(
-            {
-                "chembl_id": result.get("chembl_id"),
-                "entity_type": result.get("entity_type"),
-                "score": result.get("score"),
-            }
+    et = entity_type.strip().upper() if entity_type else ""
+    if et and et not in {"COMPOUND", "TARGET"}:
+        raise ValueError(
+            f"Invalid entity_type {entity_type!r}. Use COMPOUND or TARGET (this "
+            "SPARQL-backed lookup covers those two synonym-rich kinds; for "
+            "assays/documents/cell-lines/tissues query SPARQL directly)."
         )
-
-    return {"total_count": total_count, "results": parsed_results}
+    match = _altlabel_match_block(query)
+    if match is None:
+        return {"total_count": 0, "results": []}
+    compound_branch = (
+        "  {\n"
+        "    ?e skos:altLabel ?alt .\n"
+        f"{match}\n"
+        "    ?e a cco:SmallMolecule ; cco:chemblId ?chembl_id ; rdfs:label ?name .\n"
+        '    BIND("COMPOUND" AS ?entity_type)\n'
+        "  }"
+    )
+    target_branch = (
+        "  {\n"
+        "    ?comp skos:altLabel ?alt .\n"
+        f"{match}\n"
+        "    ?e cco:hasTargetComponent ?comp ;\n"
+        "       cco:chemblId ?chembl_id ; rdfs:label ?name .\n"
+        '    BIND("TARGET" AS ?entity_type)\n'
+        "  }"
+    )
+    if et == "COMPOUND":
+        body = compound_branch
+    elif et == "TARGET":
+        body = target_branch
+    else:
+        body = f"{compound_branch}\n  UNION\n{target_branch}"
+    sparql = (
+        f"{_CHEMBL_PREFIXES}\n"
+        f"SELECT DISTINCT ?chembl_id ?entity_type ?name FROM <{_CHEMBL_GRAPH}> WHERE {{\n"
+        f"{body}\n"
+        f"}} LIMIT {int(limit)}"
+    )
+    rows = await _run_chembl_sparql(sparql)
+    if isinstance(rows, dict):
+        return rows  # {"error": ...}
+    parsed_results = [
+        {
+            "chembl_id": r.get("chembl_id"),
+            "entity_type": r.get("entity_type"),
+            "name": r.get("name"),
+        }
+        for r in rows
+    ]
+    return {"total_count": len(parsed_results), "results": parsed_results}
 
 
 @mcp.tool()
 async def search_chembl_target(
     query: str = "",
     limit: int = 20,
+    organism: str = "",
+    target_type: str = "",
     search: str = "",
     term: str = "",
     keyword: str = "",
@@ -302,61 +597,51 @@ async def search_chembl_target(
     name: str = "",
 ) -> dict:
     """
-    Search for a biological TARGET (protein/receptor/enzyme) in ChEMBL.
+    Resolve a biological TARGET (protein/receptor/enzyme) to a ChEMBL ID.
 
     ⚠️ DO NOT use this tool to look up drugs, compounds, or molecules by name.
        For drug/compound/molecule names (e.g., "sorafenib", "imatinib", "aspirin"),
        use `search_chembl_molecule` instead.
 
-    This tool searches for biological entities that drugs act upon — proteins,
-    protein complexes, nucleic acids, organisms, tissues, and cell lines.
-    "Target" here means *drug target*, NOT "the thing I am looking up".
+    Resolution is deterministic SPARQL against the ChEMBL RDF graph, not a lexical
+    search — there is no ranking to second-guess:
+      • UNIPROT ACCESSION (e.g. "P00533") → the structured skos:exactMatch link.
+        Returns every target containing that protein (the single protein plus any
+        complex/family/chimera it participates in) — filter `target_type` to get
+        just one.
+      • GENE SYMBOL / PROTEIN NAME (e.g. "EGFR", "epidermal growth factor
+        receptor") → EXACT (case-insensitive) match on the target component's
+        skos:altLabel synonyms. Not fuzzy/substring — fix typos before calling.
 
-    Only the search string and `limit` are supported. The search string can be
-    passed as any of: `query` (canonical), `search`, `term`, `keyword`,
-    `keywords`, `search_term`, or `name`.
+    Every result carries `organism` and `type`, so a symbol shared across species
+    or complexes is disambiguated by inspecting those fields (or by passing the
+    `organism`/`target_type` filters) — NOT by trusting order.
+
+    The search string can be passed as any of: `query` (canonical), `search`,
+    `term`, `keyword`, `keywords`, `search_term`, or `name`.
 
     Args:
-        query (str): Search query string referring to a biological target. Examples:
-            - Target name (e.g., "Thrombin", "EGFR", "Dopamine receptor")
-            - Gene name (e.g., "BRCA1", "TP53")
-            - UniProt accession (e.g., "P00734")
-            - Organism name (e.g., "Homo sapiens")
-        limit (int, optional): Maximum number of results to return. Defaults to 20.
+        query (str): UniProt accession (preferred), gene symbol, or exact protein
+            name. Examples: "P00533", "EGFR", "Thrombin".
+        limit (int, optional): Max results. Defaults to 20.
+        organism (str, optional): Case-insensitive substring filter on organism,
+            e.g. "Homo sapiens". Applied inside the query.
+        target_type (str, optional): Exact (case-insensitive) filter on target
+            type, e.g. "SINGLE PROTEIN" — pass this to collapse an accession/symbol
+            match to the canonical single protein and drop complexes/families.
+
+    Target Types (values of `type`): SINGLE PROTEIN, PROTEIN COMPLEX,
+        PROTEIN FAMILY, PROTEIN-PROTEIN INTERACTION, CHIMERIC PROTEIN,
+        NUCLEIC-ACID, CELL-LINE, TISSUE, ORGANISM, …
 
     Returns:
-        dict: Dictionary containing:
-            - 'total_count' (int): Total number of matching targets found
-            - 'results' (list): List of target dictionaries, each containing:
-                - 'chembl_id' (str): ChEMBL target identifier (e.g., "CHEMBL1824")
-                - 'name' (str): Preferred target name
-                - 'organism' (str): Organism name (e.g., "Homo sapiens")
-                - 'type' (str): Target type (e.g., "SINGLE PROTEIN", "PROTEIN COMPLEX")
-                - 'score' (float): Relevance score for the search query
+        dict: {'total_count' (int, rows returned — capped by `limit`),
+        'results' (list)}. Each result has 'chembl_id', 'name' (rdfs:label),
+        'organism', 'type', and 'score' (always None — SPARQL exact match has no
+        relevance score; kept for shape stability).
 
-    Example:
-        >>> results = await search_chembl_target("EGFR human", limit=5)
-        >>> print(f"Found {results['total_count']} targets")
-        >>> for target in results['results']:
-        ...     print(f"{target['chembl_id']}: {target['name']} ({target['organism']})")
-
-        Output:
-        Found 15 targets
-        CHEMBL203: Epidermal growth factor receptor (Homo sapiens)
-
-    Target Types:
-        - SINGLE PROTEIN: Individual protein target
-        - PROTEIN COMPLEX: Multi-protein complex
-        - PROTEIN FAMILY: Group of related proteins
-        - NUCLEIC-ACID: DNA/RNA targets
-        - TISSUE: Tissue-level target
-        - CELL-LINE: Cell line target
-        - ORGANISM: Whole organism target
-
-    On upstream/HTTP failure this tool does NOT raise — it returns a dict with a
-    single 'error' key (a message plus a "fall back to SPARQL" hint) instead of
-    the usual {'total_count', 'results'} shape. Check for 'error' before reading
-    'results'.
+        On endpoint failure this tool does NOT raise — it returns a dict with a
+        single 'error' key instead. Check for 'error' before reading 'results'.
     """
     query = _resolve_query_alias(
         query,
@@ -372,26 +657,54 @@ async def search_chembl_target(
             "Missing search string. Pass it as `query` (canonical) or any of: "
             "search, term, keyword, keywords, search_term, name."
         )
-    bulk = await search_chembl_generic("target", query, limit)
-    if "error" in bulk:
-        # Propagate the upstream-failure payload rather than silently
-        # collapsing it into an empty {'total_count': 0, 'results': []}.
-        return bulk
-    total_count = bulk.get("page_meta", {}).get("total_count", 0)
-
-    parsed_results = []
-    for target in bulk.get("targets", []):
-        parsed_results.append(
-            {
-                "chembl_id": target.get("target_chembl_id"),
-                "name": target.get("pref_name"),
-                "organism": target.get("organism"),
-                "type": target.get("target_type"),
-                "score": target.get("score"),
-            }
+    # Route: UniProt accession → structured skos:exactMatch; else exact altLabel.
+    acc = query.strip().upper()
+    if _UNIPROT_ACCESSION_RE.match(acc):
+        match_block = (
+            f"  ?comp skos:exactMatch "
+            f"<http://purl.uniprot.org/uniprot/{acc}> ."
         )
+    else:
+        alt = _altlabel_match_block(query)
+        if alt is None:
+            return {"total_count": 0, "results": []}
+        match_block = f"  ?comp skos:altLabel ?alt .\n{alt}"
 
-    return {"total_count": total_count, "results": parsed_results}
+    filters = ""
+    if organism.strip():
+        filters += (
+            f'\n  FILTER(CONTAINS(LCASE(STR(?organism)), '
+            f'"{_sparql_literal(organism.strip().lower())}"))'
+        )
+    if target_type.strip():
+        filters += (
+            f'\n  FILTER(LCASE(STR(?type)) = '
+            f'"{_sparql_literal(target_type.strip().lower())}")'
+        )
+    sparql = (
+        f"{_CHEMBL_PREFIXES}\n"
+        f"SELECT DISTINCT ?chembl_id ?name ?organism ?type "
+        f"FROM <{_CHEMBL_GRAPH}> WHERE {{\n"
+        f"{match_block}\n"
+        f"  ?target cco:hasTargetComponent ?comp ;\n"
+        f"          cco:chemblId ?chembl_id ; rdfs:label ?name ; cco:targetType ?type .\n"
+        f"  OPTIONAL {{ ?target cco:organismName ?organism . }}{filters}\n"
+        f"}} LIMIT {int(limit)}"
+    )
+    rows = await _run_chembl_sparql(sparql)
+    if isinstance(rows, dict):
+        return rows  # {"error": ...}
+    parsed_results = [
+        {
+            "chembl_id": r.get("chembl_id"),
+            "name": r.get("name"),
+            "organism": r.get("organism") or None,
+            "type": r.get("type"),
+            "score": None,
+        }
+        for r in rows
+    ]
+    return {"total_count": len(parsed_results), "results": parsed_results}
 
 
 @mcp.tool()
@@ -406,64 +719,49 @@ async def search_chembl_molecule(
     name: str = "",
 ) -> dict:
     """
-    Search for a DRUG / COMPOUND / MOLECULE by name or structure in ChEMBL.
+    Resolve a DRUG / COMPOUND / MOLECULE (by name or structure) to a ChEMBL ID.
 
     ✅ Use this tool for drug, compound, or molecule names
        (e.g., "sorafenib", "imatinib", "aspirin", "Gleevec").
     ⚠️ For biological targets (proteins, receptors, enzymes, genes such as
        EGFR, BRCA1, TP53), use `search_chembl_target` instead.
 
-    Molecules in ChEMBL are small-molecule drugs, drug candidates, and
-    bioactive compounds — including approved drugs, clinical candidates,
-    and research compounds.
+    Resolution path is auto-selected from the query shape:
 
-    Only the search string and `limit` are supported. The search string can be
-    passed as any of: `query` (canonical), `search`, `term`, `keyword`,
-    `keywords`, `search_term`, or `name`.
+    • NAME / BRAND / SYNONYM → deterministic SPARQL, EXACT (case-insensitive)
+      match on the molecule's skos:altLabel synonyms (which include brand and
+      trade names — "Gleevec" → CHEMBL941 IMATINIB). Not fuzzy/substring: fix
+      typos before calling. No relevance ranking to second-guess.
+
+    • InChIKey / InChI → deterministic SPARQL, EXACT (case-SENSITIVE) match on the
+      RDF-stored identifier. These are canonical (toolkit-independent), so exact
+      match is correct, e.g. "BSYNRYMUTXBXSQ-UHFFFAOYSA-N" → CHEMBL25.
+
+    • SMILES → the ChEMBL REST chemistry engine (flexmatch), NOT exact match: a
+      SMILES is written differently by each toolkit, so flexmatch normalizes the
+      structure first, e.g. "CC(=O)Oc1ccccc1C(=O)O" → CHEMBL25.
+
+    Structure detection is conservative (multi-word input, or input without the
+    "InChI=" prefix / InChIKey pattern / structural punctuation, is treated as a
+    name), so a bare-chain SMILES like "CCO" is treated as a name.
+
+    The search string can be passed as any of: `query` (canonical), `search`,
+    `term`, `keyword`, `keywords`, `search_term`, or `name`.
 
     Args:
-        query (str): Search query string referring to a drug or compound. Examples:
-            - Generic or brand drug name (e.g., "Aspirin", "Gleevec", "Paracetamol")
-            - Research compound name
-            - Synonyms or alternative names
-            - SMILES notation (chemical structure string)
-            - InChI or InChI Key
+        query (str): Drug/compound name, brand, synonym, or a structure string.
+            Examples: "Aspirin", "Gleevec", "CC(=O)Oc1ccccc1C(=O)O",
+            "BSYNRYMUTXBXSQ-UHFFFAOYSA-N".
         limit (int, optional): Maximum number of results to return. Defaults to 20.
 
     Returns:
-        dict: Dictionary containing:
-            - 'total_count' (int): Total number of matching molecules found
-            - 'results' (list): List of molecule dictionaries, each containing:
-                - 'chembl_id' (str): ChEMBL molecule identifier (e.g., "CHEMBL25")
-                - 'name' (str): Preferred molecule name (may be None for some compounds)
-                - 'score' (float): Relevance score for the search query
+        dict: {'total_count' (int, rows returned — capped by `limit`),
+        'results' (list)}. Each result has 'chembl_id' (e.g. "CHEMBL25"), 'name'
+        (rdfs:label, may be None for some structure hits), and 'score' (always
+        None; kept for shape stability).
 
-    Example:
-        >>> results = await search_chembl_molecule("aspirin", limit=5)
-        >>> print(f"Found {results['total_count']} molecules")
-        >>> for molecule in results['results']:
-        ...     print(f"{molecule['chembl_id']}: {molecule['name']} (score: {molecule['score']})")
-
-        Output:
-        Found 3 molecules
-        CHEMBL25: Aspirin (score: 23.5)
-        CHEMBL1456: Acetylsalicylic acid derivative (score: 12.3)
-
-    Use Cases:
-        - Finding ChEMBL IDs for known drugs or compounds
-        - Discovering molecules with similar names
-        - Searching for bioactive compounds by structure (using SMILES/InChI)
-        - Identifying research compounds and clinical candidates
-
-    Note:
-        - Some molecules may not have a preferred name and 'name' field will be None
-        - Higher scores indicate better matches to the query
-        - For structure-based searches, use SMILES or InChI notation
-
-    On upstream/HTTP failure this tool does NOT raise — it returns a dict with a
-    single 'error' key (a message plus a "fall back to SPARQL" hint) instead of
-    the usual {'total_count', 'results'} shape. Check for 'error' before reading
-    'results'.
+        On endpoint/HTTP failure this tool does NOT raise — it returns a dict with
+        a single 'error' key instead. Check for 'error' before reading 'results'.
     """
     query = _resolve_query_alias(
         query,
@@ -479,23 +777,54 @@ async def search_chembl_molecule(
             "Missing search string. Pass it as `query` (canonical) or any of: "
             "search, term, keyword, keywords, search_term, name."
         )
-    bulk = await search_chembl_generic("molecule", query, limit)
-    if "error" in bulk:
-        # Propagate the upstream-failure payload rather than silently
-        # collapsing it into an empty {'total_count': 0, 'results': []}.
-        return bulk
-    total_count = bulk.get("page_meta", {}).get("total_count", 0)
-    parsed_results = []
-    for molecule in bulk.get("molecules", []):
-        parsed_results.append(
+    # Structure-shaped input.
+    structure_kind = _looks_like_structure(query)
+    if structure_kind == "smiles":
+        # SMILES canonical form is toolkit-specific → REST flexmatch normalizes.
+        bulk = await _search_chembl_smiles_flexmatch(query.strip(), limit)
+        if "error" in bulk:
+            return bulk
+        total_count = bulk.get("page_meta", {}).get("total_count", 0)
+        parsed_results = [
             {
-                "chembl_id": molecule.get("molecule_chembl_id"),
-                "name": molecule.get("pref_name"),
-                "score": molecule.get("score"),
+                "chembl_id": m.get("molecule_chembl_id"),
+                "name": m.get("pref_name"),
+                "score": None,
             }
-        )
+            for m in bulk.get("molecules", [])
+        ]
+        return {"total_count": total_count, "results": parsed_results}
+    if structure_kind in ("inchikey", "inchi"):
+        # Canonical identifiers → exact SPARQL lookup (reliable endpoint).
+        rows = await _search_chembl_inchi_sparql(structure_kind, query.strip(), limit)
+        if isinstance(rows, dict):
+            return rows  # {"error": ...}
+        parsed_results = [
+            {"chembl_id": r.get("chembl_id"), "name": r.get("name"), "score": None}
+            for r in rows
+        ]
+        return {"total_count": len(parsed_results), "results": parsed_results}
 
-    return {"total_count": total_count, "results": parsed_results}
+    # Name/brand/synonym → deterministic SPARQL exact match on skos:altLabel.
+    match = _altlabel_match_block(query)
+    if match is None:
+        return {"total_count": 0, "results": []}
+    sparql = (
+        f"{_CHEMBL_PREFIXES}\n"
+        f"SELECT DISTINCT ?chembl_id ?name FROM <{_CHEMBL_GRAPH}> WHERE {{\n"
+        f"  ?m skos:altLabel ?alt .\n"
+        f"{match}\n"
+        f"  ?m a cco:SmallMolecule ; cco:chemblId ?chembl_id ; rdfs:label ?name .\n"
+        f"}} LIMIT {int(limit)}"
+    )
+    rows = await _run_chembl_sparql(sparql)
+    if isinstance(rows, dict):
+        return rows  # {"error": ...}
+    parsed_results = [
+        {"chembl_id": r.get("chembl_id"), "name": r.get("name"), "score": None}
+        for r in rows
+    ]
+    return {"total_count": len(parsed_results), "results": parsed_results}
 
 
 # DB: PubChem

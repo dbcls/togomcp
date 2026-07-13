@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Select a DB-spanning pilot subset of benchmark questions for the ablation sweep.
 
-The full set is presently 75 questions (15 per type), on a planned path to 100
-(20 per type), touching 30+ distinct RDF databases. Running every question across
+The full set is presently 100 questions (20 per type), touching 34 distinct
+RDF databases. Running every question across
 12 ablation conditions is expensive, so the pilot picks a subset that still
 exercises as many databases and question types as possible —
 the ablation signal for a section is only visible on questions whose target DB
@@ -13,15 +13,26 @@ adds the most not-yet-covered databases, breaking ties toward under-represented
 question types then question id. It stops once every database is covered and at
 least --min questions are chosen (capped at --max).
 
-Variance control (why the default target is ~40, not 15)
---------------------------------------------------------
-A paired ablation delta (baseline − ablated) is dominated by two variance
-sources: judge jitter and *ceiling/floor* questions. A question whose with-tools
-baseline is already 20/20 can only move DOWN under any ablation, and one scoring
-very low bounces UP under almost any ablation — both inflate the delta SD without
-carrying real section signal (see benchmark/ablation/README power analysis: two
-such questions doubled the SD and ~doubled the required n). This script drops
-them up front where a prior baseline score is available.
+Variance control & how many questions are enough
+-------------------------------------------------
+A paired ablation delta (baseline − ablated) on the 0–20 judge score is noisy.
+Two things inflate its SD without carrying section signal: judge jitter (the same
+answer rescored varies run-to-run) and *ceiling/floor* questions — a with-tools
+baseline already at 20/20 can only move DOWN under any ablation, and one scoring
+very low bounces UP under almost any ablation. This script drops the ceiling/floor
+questions up front where a prior baseline score is available (only ~2 exist in the
+data so far).
+
+"Enough" is an effect-size question, not a fixed count. On the only sweep run to
+date (15 questions, ONE answer + ONE judge each) the paired-delta SD is ~4.5–5
+points even after the ceiling/floor drop; at that SD a paired t-test (α=.05, 80%
+power) needs n≈60–150 to resolve the ~1-point effects most sections show, and
+n=40 resolves only ~2-point effects. So ~40 is a coverage/type-balance target,
+NOT a proven significance threshold — treat single-shot contributions as
+directional. The lever that makes 40 adequate is REPLICATION, not more questions:
+`run_ablation.py --runs R` averages R runs per question, dividing the judge-jitter
+part of the variance by R (we can't yet separate judge jitter from true
+question-to-question heterogeneity — that needs replicate data).
 
 Important limitation: baselines only exist for questions already run through a
 sweep (results/baseline-scored.csv). Questions never scored yet CANNOT be
@@ -31,7 +42,7 @@ the same ceiling/floor cut post-sweep with:
 so the averaged set lands in the low-variance regime regardless.
 
 Usage:
-    python select_pilot.py                 # ~40 Qs, ceiling/floor pre-filtered
+    python select_pilot.py                 # 40 Qs, ceiling/floor pre-filtered
     python select_pilot.py --min 36 --max 40
     python select_pilot.py --no-score-filter   # coverage only, keep all Qs
     python select_pilot.py --full          # emit all questions (full sweep)
@@ -137,7 +148,9 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--questions-dir", default=str(DEFAULT_QDIR))
     ap.add_argument("--out", default=str(DEFAULT_OUT))
-    ap.add_argument("--min", type=int, default=36, help="minimum pilot size (power target ~40)")
+    ap.add_argument("--min", type=int, default=40,
+                    help="minimum pilot size (coverage/balance target; NOT a power "
+                         "guarantee — see module docstring on replication)")
     ap.add_argument("--max", type=int, default=40, help="maximum pilot size")
     ap.add_argument("--full", action="store_true", help="emit all questions, not a subset")
     ap.add_argument("--baseline-scores", default=str(DEFAULT_BASELINE),

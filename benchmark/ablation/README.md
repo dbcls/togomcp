@@ -71,8 +71,8 @@ cd benchmark/ablation
 # 1. Generate the 11 section-stripped MIE corpora (+ presence matrix).
 python ablate_mie.py
 
-# 2. Pick a DB-spanning pilot subset (~15 questions covering all 30 DBs).
-python select_pilot.py            # or: --full  for all 70
+# 2. Pick a DB-spanning pilot subset (40 questions covering all 34 DBs).
+python select_pilot.py            # or: --full  for all 100
 
 # 3. Validate orchestration without spending API credits (boots each server).
 python run_ablation.py --dry-run --conditions baseline,ablate_shape_expressions
@@ -97,10 +97,16 @@ Outputs land in `results/`:
   default 8971); only one local server is alive at a time.
 - **Contribution** = `mean(baseline) − mean(section removed)` on
   `togomcp_total_score` (0–20), paired per question. Positive ⇒ the section helps.
-- **Scale up**: `python select_pilot.py --full` then re-run the sweep for all 70
+- **Scale up**: `python select_pilot.py --full` then re-run the sweep for all 100
   questions. `--conditions` restricts to a subset of sections.
-- **Cost**: pilot ≈ 12 conditions × ~15 questions × (1 answer + 1 judge). Multiply
-  by ~4.7 for the full 70-question set.
+- **Replicates**: `run_ablation.py --runs R` answers + judges each question R times
+  per condition (replicates in `<cond>-scored-vR.csv`) and averages them per
+  question into the flat `<cond>-scored.csv`. Averaging divides the judge-jitter
+  part of the paired-delta variance by R — the lever that gives a 40-question pilot
+  usable power; a single-shot 40-Q sweep only resolves ~2-point section effects
+  (see `select_pilot.py` docstring). Cost scales ×R.
+- **Cost**: pilot ≈ 12 conditions × 40 questions × R × (1 answer + 1 judge)
+  (R=1 by default). Multiply by ~2.5 for the full 100-question set.
 
 ## Verified / not verified
 
