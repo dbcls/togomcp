@@ -24,10 +24,18 @@ Usage:
     python run_ablation.py --conditions baseline,ablate_shape_expressions
     python run_ablation.py --questions q1.yaml q2.yaml  # ad-hoc subset
     python run_ablation.py --model claude-sonnet-4-5-20250929 --judge-model claude-opus-4-8
+    python run_ablation.py --runs 5                      # 5 replicates/question, averaged
+
+With --runs N (>1) each question is answered + judged N times per condition; the
+replicates land in <cond>-scored-vR.csv and are averaged per question_id into the
+flat <cond>-scored.csv that ablation_analysis.py consumes. Averaging R runs
+divides the judge-jitter component of the paired-delta variance by R, which is the
+lever that brings the pilot into a usable-power regime (see select_pilot.py).
 """
 from __future__ import annotations
 
 import argparse
+import csv
 import os
 import subprocess
 import sys
@@ -35,6 +43,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from statistics import mean
 
 import yaml
 
@@ -129,6 +138,103 @@ def load_pilot(explicit: list[str] | None) -> list[str]:
     return files
 
 
+# Judge-criterion columns (both baseline_* and togomcp_*) where a 0 is the
+# failed-judge sentinel add_llm_evaluation writes — real per-criterion scores clamp
+# to 1–5, totals to 4–20. Matches the metrics ablation_analysis.load_scores nulls
+# out on 0. NOT the *_success 0/1 flags or *_tokens/*_cost, whose 0 is a real value.
+_SCORE_SUFFIXES = ("_recall", "_precision", "_repetition", "_readability", "_total_score")
+
+
+def _is_score_col(col: str) -> bool:
+    return col.endswith(_SCORE_SUFFIXES)
+
+
+def _is_number(x: str | None) -> bool:
+    if x is None or x == "":
+        return False
+    try:
+        float(x)
+        return True
+    except ValueError:
+        return False
+
+
+def merge_scored(run_paths: list[Path], out_path: Path) -> None:
+    """Average per-question scores across replicate scored CSVs into one CSV.
+
+    Numeric columns are averaged per question_id; text columns are copied from the
+    first replicate. For judge-criterion columns (recall/precision/repetition/
+    readability/total_score, both baseline_* and togomcp_*) a 0 is the failed-judge
+    sentinel add_llm_evaluation writes on a crashed call (real totals are 4–20), so
+    zeros are treated as missing in the average — a score is 0 only when EVERY
+    replicate failed. This matches ablation_analysis.load_scores, so the averaged
+    CSV feeds that tool unchanged. Other numerics (``*_success`` flags, tokens,
+    cost) average normally, zeros included. An ``n_runs`` column records how many
+    replicates contributed to each row.
+    """
+    present = [p for p in run_paths if p.exists()]
+    if not present:
+        raise SystemExit(f"merge: no replicate scored CSVs exist for {out_path.name}")
+
+    fieldnames: list[str] = []
+    order: list[str] = []
+    rows_by_qid: dict[str, list[dict]] = {}
+    for p in present:
+        with p.open(encoding="utf-8") as fh:
+            reader = csv.DictReader(fh)
+            if not fieldnames:
+                fieldnames = list(reader.fieldnames or [])
+            for row in reader:
+                qid = row.get("question_id")
+                if not qid:
+                    continue
+                if qid not in rows_by_qid:
+                    order.append(qid)
+                rows_by_qid.setdefault(qid, []).append(row)
+
+    # A column is numeric only if every non-blank value across all replicates parses
+    # as a float (so free-text answer columns are never averaged).
+    numeric_cols = []
+    for col in fieldnames:
+        seen_any = False
+        all_num = True
+        for rows in rows_by_qid.values():
+            for row in rows:
+                v = row.get(col, "")
+                if v in (None, ""):
+                    continue
+                seen_any = True
+                if not _is_number(v):
+                    all_num = False
+                    break
+            if not all_num:
+                break
+        if seen_any and all_num:
+            numeric_cols.append(col)
+
+    merged = []
+    for qid in order:
+        rows = rows_by_qid[qid]
+        rec = dict(rows[0])
+        rec["n_runs"] = len(rows)
+        for col in numeric_cols:
+            nums = [float(row[col]) for row in rows if _is_number(row.get(col, ""))]
+            if _is_score_col(col):
+                nz = [v for v in nums if v != 0]  # drop failed-judge sentinels
+                rec[col] = f"{mean(nz):.4g}" if nz else "0"
+            else:
+                rec[col] = f"{mean(nums):.6g}" if nums else ""
+        merged.append(rec)
+
+    out_fields = list(fieldnames)
+    if "n_runs" not in out_fields:
+        out_fields.append("n_runs")
+    with out_path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=out_fields, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(merged)
+
+
 def _server_log_tail(log_path: Path, n: int = 15) -> str:
     try:
         lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -140,10 +246,9 @@ def _server_log_tail(log_path: Path, n: int = 15) -> str:
 
 def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
                   model: str, judge_model: str | None, force: bool, dry_run: bool,
-                  python: str) -> str:
-    scored = RESULTS_DIR / f"{cond}-scored.csv"
-    answers = RESULTS_DIR / f"{cond}-answers.csv"
-    if scored.exists() and not force:
+                  python: str, runs: int = 1) -> str:
+    final_scored = RESULTS_DIR / f"{cond}-scored.csv"
+    if final_scored.exists() and not force:
         print(f"[{cond}] scored CSV exists — skipping (delete it or --force to re-run)")
         return "skipped"
 
@@ -158,49 +263,88 @@ def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
     env["TOGOMCP_MIE_DIR"] = str(variant_dir)
     env["ABLATION_PORT"] = str(port)
 
-    print(f"[{cond}] booting local server on :{port} (MIE={variant_dir.name})")
-    server_log = RESULTS_DIR / f"{cond}-server.log"
-    log_fh = server_log.open("w", encoding="utf-8")
-    server = subprocess.Popen(
-        [python, str(HERE / "_serve.py")], env=env,
-        stdout=log_fh, stderr=subprocess.STDOUT,
-    )
-    try:
-        if not wait_ready(port, server):
-            died = server.poll() is not None
-            why = "server process exited during startup" if died else f"timed out on :{port}"
-            raise SystemExit(
-                f"[{cond}] server failed to become ready ({why}). Last server output:\n"
-                f"{_server_log_tail(server_log)}\n"
-                f"  (full log: {server_log})"
-            )
-        if dry_run:
-            print(f"[{cond}] DRY-RUN: server ready; would run runner over "
-                  f"{len(questions)} questions with config {cfg_path.name}")
-            return "dry-run"
-        print(f"[{cond}] running benchmark over {len(questions)} questions (model={model})")
-        subprocess.run(
-            [python, str(RUNNER), *questions,
-             "-c", str(cfg_path), "--model", model, "-o", str(answers)],
-            check=True, cwd=str(SCRIPTS_DIR),
-        )
-    finally:
-        log_fh.close()
-        server.terminate()
-        try:
-            server.wait(timeout=15)
-        except subprocess.TimeoutExpired:
-            server.kill()
-            server.wait()
-        print(f"[{cond}] server stopped")
+    # runs==1 keeps the flat <cond>-answers/scored.csv names (backward compatible);
+    # runs>1 writes -vR replicates and averages them into the flat <cond>-scored.csv.
+    def run_paths(r: int) -> tuple[Path, Path]:
+        if runs == 1:
+            return (RESULTS_DIR / f"{cond}-answers.csv",
+                    RESULTS_DIR / f"{cond}-scored.csv")
+        return (RESULTS_DIR / f"{cond}-answers-v{r}.csv",
+                RESULTS_DIR / f"{cond}-scored-v{r}.csv")
 
-    print(f"[{cond}] LLM-judging answers -> {scored.name}")
-    eval_cmd = [python, str(EVALUATOR), str(answers), "-o", str(scored)]
-    if judge_model:
-        eval_cmd += ["--model", judge_model]
-    # Evaluator inherits the env: the Claude judge (add_llm_evaluation.py default)
-    # authenticates via `claude login`, same as the runner. Do not inject a key.
-    subprocess.run(eval_cmd, check=True, cwd=str(SCRIPTS_DIR))
+    plan = []
+    for r in range(1, runs + 1):
+        answers, scored = run_paths(r)
+        done = scored.exists() and not force          # this replicate already judged
+        need_answer = (not done) and (force or not answers.exists())
+        plan.append({"r": r, "answers": answers, "scored": scored,
+                     "done": done, "need_answer": need_answer})
+
+    # --- answering passes: one server boot serves every run that needs answers ---
+    if any(p["need_answer"] for p in plan):
+        print(f"[{cond}] booting local server on :{port} (MIE={variant_dir.name})")
+        server_log = RESULTS_DIR / f"{cond}-server.log"
+        log_fh = server_log.open("w", encoding="utf-8")
+        server = subprocess.Popen(
+            [python, str(HERE / "_serve.py")], env=env,
+            stdout=log_fh, stderr=subprocess.STDOUT,
+        )
+        try:
+            if not wait_ready(port, server):
+                died = server.poll() is not None
+                why = "server process exited during startup" if died else f"timed out on :{port}"
+                raise SystemExit(
+                    f"[{cond}] server failed to become ready ({why}). Last server output:\n"
+                    f"{_server_log_tail(server_log)}\n"
+                    f"  (full log: {server_log})"
+                )
+            if dry_run:
+                print(f"[{cond}] DRY-RUN: server ready; would run {runs} pass(es) over "
+                      f"{len(questions)} questions with config {cfg_path.name}")
+                return "dry-run"
+            for p in plan:
+                if not p["need_answer"]:
+                    continue
+                tag = "" if runs == 1 else f" (run {p['r']}/{runs})"
+                print(f"[{cond}] running benchmark over {len(questions)} questions"
+                      f"{tag} (model={model})")
+                subprocess.run(
+                    [python, str(RUNNER), *questions,
+                     "-c", str(cfg_path), "--model", model, "-o", str(p["answers"])],
+                    check=True, cwd=str(SCRIPTS_DIR),
+                )
+        finally:
+            log_fh.close()
+            server.terminate()
+            try:
+                server.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                server.kill()
+                server.wait()
+            print(f"[{cond}] server stopped")
+    elif dry_run:
+        # every replicate already answered — honor the dry-run contract without a boot
+        print(f"[{cond}] DRY-RUN: all {runs} run(s) already answered; nothing to do")
+        return "dry-run"
+
+    # --- judging passes (no server needed) ---
+    for p in plan:
+        if p["done"]:
+            print(f"[{cond}] run {p['r']} scored CSV exists — skipping judge")
+            continue
+        tag = "" if runs == 1 else f" (run {p['r']}/{runs})"
+        print(f"[{cond}] LLM-judging answers{tag} -> {p['scored'].name}")
+        eval_cmd = [python, str(EVALUATOR), str(p["answers"]), "-o", str(p["scored"])]
+        if judge_model:
+            eval_cmd += ["--model", judge_model]
+        # Evaluator inherits the env: the Claude judge (add_llm_evaluation.py default)
+        # authenticates via `claude login`, same as the runner. Do not inject a key.
+        subprocess.run(eval_cmd, check=True, cwd=str(SCRIPTS_DIR))
+
+    # --- average replicates into the flat scored CSV ablation_analysis.py reads ---
+    if runs > 1:
+        merge_scored([p["scored"] for p in plan], final_scored)
+        print(f"[{cond}] averaged {runs} run(s) -> {final_scored.name}")
     return "done"
 
 
@@ -216,6 +360,11 @@ def main() -> int:
     ap.add_argument("--model", default=DEFAULT_MODEL, help="answering model")
     ap.add_argument("--judge-model", default=None,
                     help="LLM-judge model (default: add_llm_evaluation.py's own default)")
+    ap.add_argument("--runs", type=int, default=1, metavar="N",
+                    help="answer+judge each question N times per condition and average "
+                         "per question (default 1). Replicates land in <cond>-scored-vN.csv; "
+                         "the averaged <cond>-scored.csv feeds ablation_analysis.py. "
+                         "Averaging R runs divides judge-jitter variance by R.")
     ap.add_argument("--port", type=int, default=8971, help="loopback port for the local server")
     ap.add_argument("--python", default=sys.executable,
                     help="interpreter for the server + benchmark subprocesses "
@@ -231,6 +380,9 @@ def main() -> int:
     for tool in (RUNNER, EVALUATOR):
         if not tool.exists():
             raise SystemExit(f"missing dependency script: {tool}")
+
+    if args.runs < 1:
+        raise SystemExit(f"--runs must be >= 1 (got {args.runs})")
 
     conditions = [c.strip() for c in args.conditions.split(",") if c.strip()]
     unknown = [c for c in conditions if c not in ALL_CONDITIONS]
@@ -250,7 +402,8 @@ def main() -> int:
             required.update(BENCH_IMPORTS)
         preflight(args.python, required)
 
-    print(f"Ablation sweep: {len(conditions)} conditions x {len(questions)} questions")
+    runs_note = f" x {args.runs} runs" if args.runs > 1 else ""
+    print(f"Ablation sweep: {len(conditions)} conditions x {len(questions)} questions{runs_note}")
     print(f"  model={args.model}  judge={args.judge_model or '(eval default)'}  "
           f"port={args.port}  python={args.python}\n")
 
@@ -260,7 +413,7 @@ def main() -> int:
         try:
             summary[cond] = run_condition(cond, questions, base_config, args.port,
                                           args.model, args.judge_model, args.force,
-                                          args.dry_run, args.python)
+                                          args.dry_run, args.python, args.runs)
         except SystemExit as e:
             print(f"[{cond}] ABORTED: {e}", file=sys.stderr)
             summary[cond] = "error"
