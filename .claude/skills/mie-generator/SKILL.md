@@ -13,7 +13,12 @@ This skill lives in a Claude Code environment with filesystem access and SPARQL 
 
 **1. No blind SPARQL retry loops.** Schema discovery legitimately requires many queries, but if a query fails twice in a row, stop and diagnose — wrong predicate, wrong graph, wrong IRI pattern — before retrying. More retries without diagnosis do not fix a structurally wrong query.
 
-**2. Nothing in the MIE file is invented.** Every RDF triple in `sample_rdf_entries` must be retrievable from the endpoint. Every SPARQL query in `sparql_query_examples` and `cross_database_queries` must execute successfully against the real endpoint before the file is written. Fake examples are worse than missing examples because they train the downstream LLM to write queries that look right but fail silently.
+**2. Nothing in the MIE file is invented — and "it ran" is not "it's right."** Every RDF triple in `sample_rdf_entries` must be retrievable, and every *executable claim* in the file must be executed against the real endpoint before the file is written **and its result confirmed correct**, not merely error-free:
+
+- **SPARQL** (`sparql_query_examples`, `cross_database_queries`, `anti_patterns.correct_sparql`, embedded `cross_references`): must run AND return the right thing. A query that succeeds but returns a union-inflated COUNT is a *failed* test, not a passing one — scope the graph and verify the figure (Phase 2g / 5i).
+- **Search-wrapper claims**: any assertion the file makes about a `search_*` / `ncbi_esearch` / `OLS4:searchClasses` tool's behavior (e.g. `architectural_notes.query_strategy`'s "use `search_chembl_target` for targets, EGFR → CHEMBL203") must be run through the actual tool and the claimed hit confirmed to appear at a *usable* rank/limit — not buried at rank 5 behind unrelated hits, and present at the limit the claim implies (Phase 5j).
+
+Fake or unverified examples are worse than missing ones: they train the downstream LLM to write queries *and tool-calls* that look right but fail silently.
 
 ## File locations in this environment
 
@@ -429,6 +434,20 @@ graph in the stored query. A `co_hosted_graphs` entry whose multiplier no longer
 against the current snapshot is stale — fix or remove it. Absence of a probe on a co-hosted
 endpoint is itself a failure: 2g is mandatory whenever get_sparql_endpoints() shows >1 DB.
 
+**5j. Verify every search-wrapper claim.** Rule 2 covers tool-behavior claims, not just
+SPARQL. For each assertion the file makes about a `search_*` / `ncbi_esearch` /
+`OLS4:searchClasses` tool — most live in `architectural_notes.query_strategy`, but scan the
+whole file — call the tool exactly as the claim implies and confirm the result. "Tool X maps
+term T to ID I" passes ONLY if the tool actually returns I *usably*: at the top, or within a
+limit a caller would plausibly use — not at rank 5 behind unrelated hits, and present at the
+limit the claim states. Rank matters: an ID the tool technically returns but ranks below a
+PPI complex, a mouse ortholog, or other noise is not a claim a downstream LLM can rely on. If
+the tool doesn't satisfy the claim, either rewrite it to what the tool actually does
+(including the rank/limit caveat and the disambiguation the caller needs), or drop it. A false
+tool-behavior claim is exactly the "fake example" Rule 2 forbids, aimed at a wrapper instead
+of SPARQL. (Real regression: the ChEMBL MIE claimed `search_chembl_target("EGFR") → CHEMBL203`;
+the tool returned CHEMBL203 at rank 5, and not at all at `limit=3`.)
+
 ### Phase 6 — Final declaration
 
 Only after Phases 1–5 are complete, report to the user:
@@ -450,6 +469,8 @@ Only after Phases 1–5 are complete, report to the user:
   - anti_patterns.correct_sparql tested: all correct_sparql blocks executed successfully
   - cross-graph inflation checked: co-hosted endpoint probed (2g), multipliers + safe pattern
     validated and recorded in co_hosted_graphs/critical_warnings — or "single-DB endpoint, N/A"
+  - search-wrapper claims verified: every search_*/ncbi/OLS4 tool-behavior claim run through
+    the tool and confirmed to return the stated result usably (5j) — or "no tool-behavior claims"
   - Lines: [count]
 ```
 
@@ -466,6 +487,7 @@ A complete MIE file satisfies:
 - 7 SPARQL queries (2/3/2), 6–7 prioritising structured lookups, ≤ 1 using text search — **all tested**
 - `bif:contains` preferred over `FILTER(CONTAINS())` on Virtuoso (check `access.backend`); property paths split before `bif:contains`
 - No circular reasoning (never `VALUES ?x { <results-of-search-api> }` inside a COUNT)
+- Every search-wrapper behavior claim (e.g. in `architectural_notes.query_strategy`) run through the tool and confirmed to return the stated result at a usable rank/limit — **not just that the tool ran** (5j)
 - Cross-DB: 1–2 examples if shared endpoint, otherwise `examples: []` + explanatory notes
 - `data_statistics` contains only verified counts/coverage — no `verification_queries`, `cardinality`, or `performance_characteristics` subfields
 - Valid YAML
