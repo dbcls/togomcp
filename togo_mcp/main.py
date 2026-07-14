@@ -1,6 +1,7 @@
 from .server import *
 from .rdf_portal import *
 from .api_tools import *
+from .chembl import *
 from .togoid import togoid_mcp
 from .ncbi_tools import ncbi_mcp
 from .togovar import togovar_mcp
