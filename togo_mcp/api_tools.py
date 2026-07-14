@@ -1390,8 +1390,17 @@ async def search_mesh_descriptor(
 
 # DB: Reactome
 #
-# Canonical Reactome search `types` facet values (the API is case-sensitive and
-# silently ignores unknown/mis-cased values, returning UNFILTERED results).
+# The ContentService Solr search silently RELAXES filters that would yield zero
+# results and returns UNFILTERED rows instead (its "helpful" default; the server
+# `Force filters` param that disables it has a space in its name that breaks over
+# HTTP). Confirmed live 2026-07-14: query="apoptosis" + a nonexistent species
+# returned 1058 cross-species matches. So this wrapper does NOT trust the server
+# to honor `species`/`types` — it re-applies both filters CLIENT-SIDE against the
+# fields every result already carries (`species` array, `type` == the facet
+# value), which guarantees the contract regardless of server relaxation. `types`
+# is still validated up front (a mis-cased value would also silently relax).
+#
+# Canonical Reactome search `types` facet values (case-sensitive on the server).
 # Verified against /ContentService/search/facet on 2026-06-24. Keyed by
 # lowercase for case-insensitive validation -> canonical form.
 _REACTOME_TYPES = {
@@ -1402,6 +1411,15 @@ _REACTOME_TYPES = {
         "Polymer", "Drug", "RNA Sequence", "OtherEntity", "Cell",
     )
 }
+
+# Reactome wraps matched substrings in <span class="highlighting">…</span> in
+# `name` and `summation`; strip the markup (both open and close tags).
+_REACTOME_HL_RE = re.compile(r"</?span[^>]*>")
+
+
+def _reactome_clean(text: str) -> str:
+    """Strip Reactome's search-highlighting <span> markup and trim."""
+    return _REACTOME_HL_RE.sub("", text or "").strip()
 
 
 @mcp.tool()
@@ -1443,11 +1461,23 @@ async def search_reactome_entity(
             hits *per type*, not 30 hits total. To bound the total,
             constrain `types` to a single value.
 
+    Note on filtering: the Reactome server silently ignores a `species`/`types`
+    filter that would yield zero results and returns UNFILTERED rows instead.
+    This tool defends against that by re-applying both filters CLIENT-SIDE, so a
+    species/type filter is always honored — a filter with no genuine matches
+    returns `[]`, never unrelated rows. `species` filtering keeps only entries
+    whose species list contains the requested name(s), so it drops
+    species-agnostic entities (e.g. chemical compounds); omit `species` to keep
+    them.
+
     Returns:
-        JSON string: a bare array of results, each with 'id', 'name', and
-        'type' fields. Empty and non-empty results share the same shape.
-        Example: '[{"id": "R-HSA-109581", "name": "Apoptosis",
-        "type": "Pathway"}]'
+        JSON string: a bare array of results, each with 'id' (stable Reactome
+        stId), 'name', 'type' (facet type), 'exactType' (specific class),
+        'species' (list), and 'summation' (short description, may be ''). Empty
+        and non-empty results share the same shape. Example:
+        '[{"id": "R-HSA-109581", "name": "Apoptosis", "type": "Pathway",
+        "exactType": "Pathway", "species": ["Homo sapiens"],
+        "summation": "Apoptosis is a distinct form of cell death…"}]'
 
     Raises:
         ValueError: If `query` is blank or `types`/`species` are invalid.
@@ -1469,6 +1499,11 @@ async def search_reactome_entity(
     # Build API request
     params = {"query": query, "cluster": "true", "start": 0, "rows": rows}
 
+    # `want_*` are the lowercased filter sets re-applied client-side after the
+    # response comes back (the server silently relaxes zero-yield filters).
+    want_species: set[str] | None = None
+    want_types: set[str] | None = None
+
     if species:
         species_list = [species] if isinstance(species, str) else list(species)
         bad = [s for s in species_list if s.strip().isdigit()]
@@ -1479,6 +1514,7 @@ async def search_reactome_entity(
                 "silently ignores numeric IDs and can also drop other filters."
             )
         params["species"] = ",".join(species_list)
+        want_species = {s.strip().lower() for s in species_list}
     if types:
         types_list = [types] if isinstance(types, str) else list(types)
         normalized, unknown = [], []
@@ -1493,6 +1529,7 @@ async def search_reactome_entity(
                 f"{sorted(set(_REACTOME_TYPES.values()))}."
             )
         params["types"] = ",".join(normalized)
+        want_types = {t.lower() for t in normalized}
 
     # Make API call
     resp = await _rest_get(
@@ -1513,20 +1550,30 @@ async def search_reactome_entity(
             {"error": _rest_fail_msg("Reactome REST API request", detail, "reactome")}
         ])
 
-    # Extract and return results
+    # Extract results, re-applying species/type filters client-side (the server
+    # silently relaxes zero-yield filters — see the module comment above).
     results = []
     for result_group in data.get("results", []):
         for entry in result_group.get("entries", []):
-            # Clean HTML highlighting tags from name
-            name = entry.get("name", "N/A")
-            name = re.sub(r'<span class="highlighting"\s*>', "", name)
-            name = re.sub(r"</span>", "", name)
+            entry_type = entry.get("type", "Unknown")
+            if want_types is not None and entry_type.lower() not in want_types:
+                continue
+            entry_species = entry.get("species") or []
+            if isinstance(entry_species, str):
+                entry_species = [entry_species]
+            if want_species is not None and not (
+                want_species & {s.lower() for s in entry_species}
+            ):
+                continue
 
             results.append(
                 {
                     "id": entry.get("stId", entry.get("id", "N/A")),
-                    "name": name.strip(),
-                    "type": entry.get("type", "Unknown"),
+                    "name": _reactome_clean(entry.get("name", "N/A")),
+                    "type": entry_type,
+                    "exactType": entry.get("exactType", entry_type),
+                    "species": entry_species,
+                    "summation": _strip_html(entry.get("summation", ""), max_len=240),
                 }
             )
 
