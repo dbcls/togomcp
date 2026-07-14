@@ -669,11 +669,15 @@ async def search_variant(
     All filters are optional and combined with AND. Supply zero filters to
     browse; but scope tightly — the database holds ~1 billion variants.
 
-    COUNTS: `total` is the size of the whole REST backend (~1.1 billion) and is
+    COUNTS: `total` is the size of the whole REST backend (1,097,708,150) and is
     constant across queries; `filtered` is the count matching your filters. Note
-    the REST backend is LARGER than TogoMCP's `togovar` SPARQL graph (~3.9x: the
-    SPARQL side is the annotated subset), so REST counts will not match SPARQL
-    `COUNT(*)` — they measure different sets.
+    the REST backend is LARGER than TogoMCP's `togovar` SPARQL graph (~2.8x: the
+    SPARQL side is the annotated subset, 390,725,782), so REST counts will not
+    match SPARQL `COUNT(*)` — they measure different sets.
+
+    PAGING CAP: the API allows `offset + limit <= 10,000` and returns HTTP 400
+    beyond it, so a result set larger than 10,000 cannot be fully paged. Narrow the
+    filters until `filtered` <= 10,000 to enumerate one exhaustively.
 
     STATISTICS SCOPE (stat=True): all facets are scoped to the filtered set, but
     they count at different granularities. `type` counts per variant (sums to
@@ -796,9 +800,10 @@ async def search_variant(
         result["total"] = stats.get("total")
         result["filtered"] = stats.get("filtered")
         result["statistics"] = stats
-        # The API filters facets inconsistently (consequence is whole-database,
-        # significance is a self-excluding facet); ship the scope rules so the
-        # numbers are not misread. Only annotate facets actually present.
+        # Every facet IS scoped to the filtered set; they just count at different
+        # granularities (consequence per-transcript, significance per-condition), so
+        # their sums exceed `filtered`. Ship the scope rules so the numbers are not
+        # misread as variant counts. Only annotate facets actually present.
         result["statistics_caveats"] = {
             k: v for k, v in _STATISTICS_CAVEATS.items() if k in stats
         }
