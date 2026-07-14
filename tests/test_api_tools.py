@@ -285,52 +285,6 @@ class TestSearchReactomeEntity:
 
     _REACTOME_URL = "https://reactome.org/ContentService/search/query"
 
-    @pytest.mark.asyncio
-    async def test_http_error_returns_error_array(self) -> None:
-        """HTTP errors return a JSON string holding a one-element error array."""
-        with respx.mock(using="httpx") as router:
-            router.get(self._REACTOME_URL).mock(
-                return_value=httpx.Response(500, text="Server Error")
-            )
-            result = json.loads(await search_reactome_entity("apoptosis"))
-        assert isinstance(result, list)
-        assert "Reactome REST API request failed" in result[0]["error"]
-
-    @pytest.mark.asyncio
-    async def test_empty_results_same_shape(self) -> None:
-        """Empty results are a bare JSON array, identical in shape to non-empty
-        (Bug 3 regression)."""
-        with respx.mock(using="httpx") as router:
-            router.get(self._REACTOME_URL).mock(
-                return_value=httpx.Response(200, json={"results": []})
-            )
-            result = json.loads(await search_reactome_entity("apoptosis"))
-        assert result == []
-
-    @pytest.mark.asyncio
-    async def test_invalid_type_raises(self) -> None:
-        """An unknown / mis-cased `types` value raises rather than silently
-        returning unfiltered results (Bug 2)."""
-        with pytest.raises(ValueError, match="Unknown Reactome type"):
-            await search_reactome_entity("apoptosis", types="NotARealType")
-
-    @pytest.mark.asyncio
-    async def test_type_case_normalized(self) -> None:
-        """A mis-cased but valid type is normalized to canonical case and sent
-        to the API (Bug 2)."""
-        with respx.mock(using="httpx") as router:
-            route = router.get(self._REACTOME_URL).mock(
-                return_value=httpx.Response(200, json={"results": []})
-            )
-            await search_reactome_entity("apoptosis", types="pathway")
-        assert route.calls.last.request.url.params["types"] == "Pathway"
-
-    @pytest.mark.asyncio
-    async def test_whitespace_query_raises(self) -> None:
-        """A whitespace-only query is treated as empty (Bug 4)."""
-        with pytest.raises(ValueError, match="Missing search string"):
-            await search_reactome_entity("   ")
-
     @staticmethod
     def _entry(stid: str, name: str, typ: str, species: list[str], summ: str = "") -> dict:
         return {
@@ -341,76 +295,184 @@ class TestSearchReactomeEntity:
     def _payload(self, *entries: dict) -> dict:
         return {"results": [{"entries": list(entries)}]}
 
+    # --- envelope / error contract (§4) ---
+
     @pytest.mark.asyncio
-    async def test_enriched_fields_and_highlight_stripped(self) -> None:
-        """A hit surfaces stId/type/exactType/species/summation with the search
-        highlighting <span> markup stripped from name and summation."""
-        entry = self._entry(
-            "R-HSA-109581",
-            'The <span class="highlighting" >Apoptosis</span> pathway',
-            "Pathway",
-            ["Homo sapiens"],
-            '<span class="highlighting" >Apoptosis</span> is cell death.',
-        )
+    async def test_http_error_returns_error_dict(self) -> None:
+        """HTTP errors return a ChEMBL-style {'error': ...} dict, not results."""
+        with respx.mock(using="httpx") as router:
+            router.get(self._REACTOME_URL).mock(
+                return_value=httpx.Response(500, text="Server Error")
+            )
+            result = await search_reactome_entity("apoptosis")
+        assert isinstance(result, dict)
+        assert "error" in result and "results" not in result
+        assert "Reactome REST API request failed" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_empty_results_envelope(self) -> None:
+        """Empty results use the {total_count, has_more, results} envelope."""
+        with respx.mock(using="httpx") as router:
+            router.get(self._REACTOME_URL).mock(
+                return_value=httpx.Response(200, json={"results": []})
+            )
+            result = await search_reactome_entity("apoptosis")
+        assert result == {"total_count": 0, "has_more": False, "results": []}
+
+    @pytest.mark.asyncio
+    async def test_success_envelope_shape(self) -> None:
+        """A hit returns total_count/has_more/results with the record fields."""
+        entry = self._entry("R-HSA-109581", "Apoptosis", "Pathway", ["Homo sapiens"])
         with respx.mock(using="httpx") as router:
             router.get(self._REACTOME_URL).mock(
                 return_value=httpx.Response(200, json=self._payload(entry))
             )
-            result = json.loads(await search_reactome_entity("apoptosis"))
-        assert result == [{
-            "id": "R-HSA-109581",
-            "name": "The Apoptosis pathway",
-            "type": "Pathway",
-            "exactType": "Pathway",
-            "species": ["Homo sapiens"],
-            "summation": "Apoptosis is cell death.",
-        }]
+            result = await search_reactome_entity("apoptosis")
+        assert set(result) == {"total_count", "has_more", "results"}
+        assert result["total_count"] == 1 and result["has_more"] is False
+        assert result["results"][0]["id"] == "R-HSA-109581"
+
+    # --- query / types validation ---
+
+    @pytest.mark.asyncio
+    async def test_invalid_type_raises(self) -> None:
+        with pytest.raises(ValueError, match="Unknown Reactome type"):
+            await search_reactome_entity("apoptosis", types="NotARealType")
+
+    @pytest.mark.asyncio
+    async def test_type_case_normalized(self) -> None:
+        """A mis-cased valid type is normalized to canonical case before dispatch."""
+        with respx.mock(using="httpx") as router:
+            route = router.get(self._REACTOME_URL).mock(
+                return_value=httpx.Response(200, json={"results": []})
+            )
+            await search_reactome_entity("apoptosis", types="pathway")
+        assert route.calls.last.request.url.params["types"] == "Pathway"
+
+    @pytest.mark.asyncio
+    async def test_whitespace_query_raises(self) -> None:
+        with pytest.raises(ValueError, match="Missing search string"):
+            await search_reactome_entity("   ")
+
+    # --- §1 species case-normalization + §2 validation ---
+
+    @pytest.mark.asyncio
+    async def test_species_case_normalized_before_dispatch(self) -> None:
+        """§1: a mis-cased species is normalized to canonical casing so the
+        server-side (case-sensitive) filter actually engages."""
+        with respx.mock(using="httpx") as router:
+            route = router.get(self._REACTOME_URL).mock(
+                return_value=httpx.Response(200, json={"results": []})
+            )
+            await search_reactome_entity("glycolysis", species="homo sapiens")
+        assert route.calls.last.request.url.params["species"] == "Homo sapiens"
+
+    @pytest.mark.asyncio
+    async def test_invalid_species_raises(self) -> None:
+        """§2: an unrecognized species raises — distinguishable from empty."""
+        with pytest.raises(ValueError, match="Unknown Reactome species"):
+            await search_reactome_entity("glycolysis", species="Not A Species")
+
+    @pytest.mark.asyncio
+    async def test_numeric_species_raises(self) -> None:
+        """A numeric taxon id is not a valid species name -> raises."""
+        with pytest.raises(ValueError, match="Unknown Reactome species"):
+            await search_reactome_entity("glycolysis", species="9606")
+
+    # --- client-side filter guarantees (belt-and-suspenders) ---
 
     @pytest.mark.asyncio
     async def test_species_filter_applied_client_side(self) -> None:
-        """When the server relaxes a species filter and returns cross-species
-        rows, the tool re-applies the filter and keeps only matching species."""
+        """A VALID species whose server filter got relaxed (cross-species rows
+        returned) is still honored client-side."""
         human = self._entry("R-HSA-1", "Apoptosis", "Pathway", ["Homo sapiens"])
         mouse = self._entry("R-MMU-1", "Apoptosis", "Pathway", ["Mus musculus"])
         with respx.mock(using="httpx") as router:
             router.get(self._REACTOME_URL).mock(
                 return_value=httpx.Response(200, json=self._payload(human, mouse))
             )
-            result = json.loads(
-                await search_reactome_entity("apoptosis", species="Homo sapiens")
-            )
-        assert [r["id"] for r in result] == ["R-HSA-1"]
-
-    @pytest.mark.asyncio
-    async def test_bogus_species_returns_empty_not_relaxed(self) -> None:
-        """The confirmed silent-relaxation bug: a nonexistent species must yield
-        [] even though the server returns unfiltered rows for it."""
-        rows = [
-            self._entry("R-HSA-1", "Apoptosis", "Pathway", ["Homo sapiens"]),
-            self._entry("R-MMU-1", "Apoptosis", "Pathway", ["Mus musculus"]),
-        ]
-        with respx.mock(using="httpx") as router:
-            router.get(self._REACTOME_URL).mock(
-                return_value=httpx.Response(200, json=self._payload(*rows))
-            )
-            result = json.loads(
-                await search_reactome_entity("apoptosis", species="Nonexistus fakeus")
-            )
-        assert result == []
+            result = await search_reactome_entity("apoptosis", species="Mus musculus")
+        assert [r["id"] for r in result["results"]] == ["R-MMU-1"]
 
     @pytest.mark.asyncio
     async def test_type_filter_applied_client_side(self) -> None:
-        """A relaxed `types` filter is likewise re-applied client-side."""
         pathway = self._entry("R-HSA-1", "Apoptosis", "Pathway", ["Homo sapiens"])
         reaction = self._entry("R-HSA-2", "Cleavage", "Reaction", ["Homo sapiens"])
         with respx.mock(using="httpx") as router:
             router.get(self._REACTOME_URL).mock(
                 return_value=httpx.Response(200, json=self._payload(pathway, reaction))
             )
-            result = json.loads(
-                await search_reactome_entity("apoptosis", types="Pathway")
+            result = await search_reactome_entity("apoptosis", types="Pathway")
+        assert [r["type"] for r in result["results"]] == ["Pathway"]
+
+    # --- §3 overall cap + opt-in summation ---
+
+    @pytest.mark.asyncio
+    async def test_limit_caps_and_sets_has_more(self) -> None:
+        """§3: limit is a true overall cap; has_more true when more matched."""
+        entries = [
+            self._entry(f"R-HSA-{i}", f"P{i}", "Pathway", ["Homo sapiens"])
+            for i in range(5)
+        ]
+        with respx.mock(using="httpx") as router:
+            router.get(self._REACTOME_URL).mock(
+                return_value=httpx.Response(200, json=self._payload(*entries))
             )
-        assert [r["type"] for r in result] == ["Pathway"]
+            result = await search_reactome_entity("kinase", limit=3)
+        assert result["total_count"] == 3
+        assert len(result["results"]) == 3
+        assert result["has_more"] is True
+
+    @pytest.mark.asyncio
+    async def test_summation_opt_in(self) -> None:
+        """§3: summation omitted by default, added (highlight-stripped) on request."""
+        entry = self._entry(
+            "R-HSA-1", "Apoptosis", "Pathway", ["Homo sapiens"],
+            '<span class="highlighting" >Apoptosis</span> is cell death.',
+        )
+        with respx.mock(using="httpx") as router:
+            router.get(self._REACTOME_URL).mock(
+                return_value=httpx.Response(200, json=self._payload(entry))
+            )
+            off = await search_reactome_entity("apoptosis")
+        assert "summation" not in off["results"][0]
+        with respx.mock(using="httpx") as router:
+            router.get(self._REACTOME_URL).mock(
+                return_value=httpx.Response(200, json=self._payload(entry))
+            )
+            on = await search_reactome_entity("apoptosis", include_summation=True)
+        assert on["results"][0]["summation"] == "Apoptosis is cell death."
+
+    @pytest.mark.asyncio
+    async def test_highlight_stripped_from_name(self) -> None:
+        """<span> highlighting markup is stripped from the returned name."""
+        entry = self._entry(
+            "R-HSA-1",
+            'The <span class="highlighting" >Apoptosis</span> pathway',
+            "Pathway", ["Homo sapiens"],
+        )
+        with respx.mock(using="httpx") as router:
+            router.get(self._REACTOME_URL).mock(
+                return_value=httpx.Response(200, json=self._payload(entry))
+            )
+            result = await search_reactome_entity("apoptosis")
+        assert result["results"][0]["name"] == "The Apoptosis pathway"
+
+    # --- §6 rows alias ---
+
+    @pytest.mark.asyncio
+    async def test_rows_alias_overrides_limit(self) -> None:
+        """`rows` is a deprecated alias for the overall `limit` cap."""
+        entries = [
+            self._entry(f"R-HSA-{i}", f"P{i}", "Pathway", ["Homo sapiens"])
+            for i in range(4)
+        ]
+        with respx.mock(using="httpx") as router:
+            router.get(self._REACTOME_URL).mock(
+                return_value=httpx.Response(200, json=self._payload(*entries))
+            )
+            result = await search_reactome_entity("kinase", rows=2)
+        assert result["total_count"] == 2 and result["has_more"] is True
 
 
 # ---------------------------------------------------------------------------

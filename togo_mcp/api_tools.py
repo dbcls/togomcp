@@ -688,6 +688,52 @@ _REACTOME_TYPES = {
     )
 }
 
+# Canonical Reactome species (displayName), fetched live 2026-07-14 from
+# /ContentService/data/species/all (96 species). Keyed by lowercase for
+# case-insensitive validation -> canonical casing. The server-side species
+# filter is case-SENSITIVE; a mis-cased value is silently ignored and the API
+# returns UNFILTERED results, so we normalize to canonical casing before
+# dispatch (mirrors the _REACTOME_TYPES guard).
+_REACTOME_SPECIES = {
+    s.lower(): s
+    for s in (
+        'Alphapapillomavirus 9', 'Arenicola marina', 'Bacillus anthracis', 'Bos taurus',
+        'Caenorhabditis elegans', 'Candida albicans', 'Canis familiaris', 'Cavia porcellus',
+        'Cercopithecus aethiops', 'Chlamydia trachomatis', 'Chlorocebus sabaeus',
+        'Clostridium botulinum', 'Clostridium perfringens', 'Clostridium tetani',
+        'Corynephage beta', 'Cowpox virus', 'Cricetulus griseus', 'Crithidia fasciculata',
+        'Danio rerio', 'Dengue virus', 'Dengue virus type 2', 'Dictyostelium discoideum',
+        'Drosophila melanogaster', 'Escherichia coli', 'Escherichia coli O127:H6',
+        'Escherichia coli O157:H7', 'Escherichia coli O6:K15:H31',
+        'Escherichia coli O78:H11', 'Felis catus', 'Gallus gallus', 'Hepatitis B virus',
+        'Hepatitis C Virus', 'Hepatitis C virus genotype 2a',
+        'Hepatitis C virus subtype 1a', 'Homarus americanus', 'Homo sapiens',
+        'Human SARS coronavirus', 'Human alphaherpesvirus 2', 'Human cytomegalovirus',
+        'Human gammaherpesvirus 4', 'Human herpesvirus 1', 'Human herpesvirus 8',
+        'Human immunodeficiency virus 1', 'Human papillomavirus type 16',
+        'Human papillomavirus type 18', 'Human respiratory syncytial virus A',
+        'Infectious bronchitis virus', 'Influenza A virus', 'Klebsiella pneumoniae',
+        'Legionella pneumophila', 'Leishmania major', 'Leishmania mexicana',
+        'Listeria monocytogenes', 'Listeria monocytogenes serotype 1/2a',
+        'Listeria monocytogenes serovar 1/2a', 'Macaca mulatta', 'Measles virus',
+        'Meleagris gallopavo', 'Molluscum contagiosum virus',
+        'Molluscum contagiosum virus subtype 1', 'Moloney murine leukemia virus',
+        'Mus musculus', 'Mycobacterium tuberculosis', 'Mycobacterium tuberculosis H37Rv',
+        'Neisseria gonorrhoeae', 'Neisseria meningitidis',
+        'Neisseria meningitidis serogroup B', 'Oryctolagus cuniculus', 'Oryza sativa',
+        'Ovis aries', 'Penicillium chrysogenum', 'Plasmodium falciparum',
+        'Rattus norvegicus', 'Respiratory syncytial virus', 'Rotavirus', 'Rotavirus A',
+        'Saccharomyces cerevisiae', 'Salmonella enterica', 'Salmonella typhimurium',
+        'Schizosaccharomyces pombe', 'Sendai virus',
+        'Severe acute respiratory syndrome coronavirus 2', 'Shigella flexneri',
+        'Sindbis virus', 'Staphylococcus aureus', 'Sus scrofa',
+        'Tick-borne encephalitis virus', 'Toxoplasma gondii', 'Triticum aestivum',
+        'Vaccinia virus', 'Vesicular stomatitis virus', 'Vigna radiata',
+        'Vigna radiata var. radiata', 'West Nile virus', 'Xenopus laevis',
+        'Xenopus tropicalis',
+    )
+}
+
 # Reactome wraps matched substrings in <span class="highlighting">…</span> in
 # `name` and `summation`; strip the markup (both open and close tags).
 _REACTOME_HL_RE = re.compile(r"</?span[^>]*>")
@@ -703,61 +749,67 @@ async def search_reactome_entity(
     query: str = "",
     species: str | list[str] | None = None,
     types: str | list[str] | None = None,
-    rows: int = 30,
+    limit: int = 25,
+    include_summation: bool = False,
+    rows: int | None = None,
     search: str = "",
     term: str = "",
     keyword: str = "",
     keywords: str = "",
     search_term: str = "",
     name: str = "",
-) -> str:
-    """Search the Reactome knowledgebase using keyword search.
+) -> dict:
+    """Search the Reactome pathway knowledgebase by keyword (name / fuzzy match).
+
+    Resolves a term (pathway / reaction / protein / complex / small-molecule
+    name) to Reactome stable IDs. Matching is keyword/fuzzy — UNLIKE the
+    exact-match ChEMBL search tools, so expect ranked, approximate hits.
+
+    RETURNS a dict {'total_count', 'has_more', 'results'} — NOT a bare list.
+    `total_count` is the number of records RETURNED (capped by `limit`);
+    `has_more` is true if more matched beyond the cap. Each result carries
+    'id' (stable Reactome stId, e.g. "R-HSA-109581"), 'name', 'type' (facet
+    type), 'exactType' (specific BioPAX-ish class), 'species' (list), and — only
+    when include_summation=True — 'summation' (≤240-char description). On
+    upstream failure returns {'error': ...} instead — CHECK FOR 'error' BEFORE
+    READING 'results'.
+
+    `species` and `types` are validated case-INSENSITIVELY against Reactome's
+    controlled vocabularies and normalized to canonical casing before dispatch:
+    the server-side filter is case-SENSITIVE and silently ignores a mis-cased
+    value (returning UNFILTERED results), so a mis-cased species used to lose
+    most hits. An unrecognized species/type now RAISES rather than silently
+    returning the wrong rows.
 
     Args:
-        query: The search query string (e.g., "apoptosis", "TP53", "cell cycle").
-            Accepts aliases: `search`, `term`, `keyword`, `keywords`,
-            `search_term`, `name`. If both `query` and an alias are given with
-            different values, this raises ValueError (pass only one).
-        species: Filter by species. Must be the scientific name
-            (e.g., "Homo sapiens", "Mus musculus"). Numeric NCBI taxon
-            IDs like "9606" are rejected here (this tool raises ValueError)
-            because the Reactome API silently ignores them AND can
-            degrade co-occurring filters (e.g. `types`). Accepts a
-            single string or a list of strings.
-        types: Filter by entity type(s). Accepts a single string (e.g.,
-            "Pathway") or a list (e.g., ["Pathway", "Reaction", "Complex"]).
-            Validated case-insensitively against the Reactome type enum;
-            unknown values raise ValueError (the API would otherwise silently
-            ignore them and return unfiltered results). Valid values:
-            Complex, Protein, Reaction, Set, Pathway, Genes and Transcripts,
-            Chemical Compound, DNA Sequence, Polymer, Drug, RNA Sequence,
-            OtherEntity, Cell.
-        rows: Per-category result cap. Reactome clusters results by
-            entity type (`cluster=true`), so `rows=30` returns up to 30
-            hits *per type*, not 30 hits total. To bound the total,
-            constrain `types` to a single value.
-
-    Note on filtering: the Reactome server silently ignores a `species`/`types`
-    filter that would yield zero results and returns UNFILTERED rows instead.
-    This tool defends against that by re-applying both filters CLIENT-SIDE, so a
-    species/type filter is always honored — a filter with no genuine matches
-    returns `[]`, never unrelated rows. `species` filtering keeps only entries
-    whose species list contains the requested name(s), so it drops
-    species-agnostic entities (e.g. chemical compounds); omit `species` to keep
-    them.
+        query: Search string, e.g. "apoptosis", "TP53", "cell cycle". Accepts
+            aliases: `search`, `term`, `keyword`, `keywords`, `search_term`,
+            `name` (supplying two different values raises ValueError).
+        species: Filter by species scientific name, case-insensitive
+            (e.g. "Homo sapiens", "homo sapiens", "Mus musculus"). A single
+            string or a list. Unrecognized names raise ValueError (96 species
+            available; see reactome.org/ContentService/data/species/all).
+        types: Filter by entity type(s), case-insensitive; a string or list.
+            Valid values: Cell, Chemical Compound, Complex, DNA Sequence, Drug,
+            Genes and Transcripts, OtherEntity, Pathway, Polymer, Protein,
+            RNA Sequence, Reaction, Set. Unknown values raise ValueError.
+        limit: Maximum number of records returned overall (default 25). This is
+            a true total cap — not per-type.
+        include_summation: When True, add a ≤240-char 'summation' description to
+            each record. Default False keeps the payload small (a broad default
+            search is ~hundreds of tokens instead of thousands).
+        rows: DEPRECATED alias for `limit` (the old name meant per-type rows).
+            If given, it overrides `limit`.
 
     Returns:
-        JSON string: a bare array of results, each with 'id' (stable Reactome
-        stId), 'name', 'type' (facet type), 'exactType' (specific class),
-        'species' (list), and 'summation' (short description, may be ''). Empty
-        and non-empty results share the same shape. Example:
-        '[{"id": "R-HSA-109581", "name": "Apoptosis", "type": "Pathway",
-        "exactType": "Pathway", "species": ["Homo sapiens"],
-        "summation": "Apoptosis is a distinct form of cell death…"}]'
+        dict: {'total_count': int, 'has_more': bool, 'results': [ ... ]} on
+        success, or {'error': str} on upstream/HTTP failure.
 
     Raises:
         ValueError: If `query` is blank or `types`/`species` are invalid.
     """
+    if rows is not None:  # legacy alias; `rows` now means the overall cap
+        limit = rows
     query = _resolve_query_alias(
         query,
         search=search,
@@ -772,25 +824,36 @@ async def search_reactome_entity(
             "Missing search string. Pass it as `query` (canonical) or any of: "
             "search, term, keyword, keywords, search_term, name."
         )
-    # Build API request
-    params = {"query": query, "cluster": "true", "start": 0, "rows": rows}
+    # Over-fetch by one (per type) so has_more can be detected after the overall
+    # cap; Reactome's `rows` is per-type, so this is an upper bound, not a total.
+    params = {"query": query, "cluster": "true", "start": 0, "rows": int(limit) + 1}
 
     # `want_*` are the lowercased filter sets re-applied client-side after the
-    # response comes back (the server silently relaxes zero-yield filters).
+    # response comes back (belt-and-suspenders: the server also silently relaxes
+    # a zero-yield filter and returns unrelated rows).
     want_species: set[str] | None = None
     want_types: set[str] | None = None
 
     if species:
         species_list = [species] if isinstance(species, str) else list(species)
-        bad = [s for s in species_list if s.strip().isdigit()]
-        if bad:
+        normalized_sp, unknown_sp = [], []
+        for s in species_list:
+            canon = _REACTOME_SPECIES.get(s.strip().lower())
+            (normalized_sp if canon else unknown_sp).append(canon or s)
+        if unknown_sp:
             raise ValueError(
-                f"species must be a scientific name (e.g. 'Homo sapiens'); "
-                f"got numeric taxon ID(s): {bad}. The Reactome search API "
-                "silently ignores numeric IDs and can also drop other filters."
+                f"Unknown Reactome species: {unknown_sp}. The search API is "
+                "case-SENSITIVE and silently ignores an unrecognized or mis-cased "
+                "species, returning UNFILTERED results. Pass the exact scientific "
+                "name (matched case-insensitively here), e.g. 'Homo sapiens', "
+                "'Mus musculus', 'Rattus norvegicus', 'Danio rerio', "
+                "'Saccharomyces cerevisiae'. "
+                f"{len(_REACTOME_SPECIES)} species available; see "
+                "reactome.org/ContentService/data/species/all for the full list."
             )
-        params["species"] = ",".join(species_list)
-        want_species = {s.strip().lower() for s in species_list}
+        # Canonical casing so the server-side filter actually engages.
+        params["species"] = ",".join(normalized_sp)
+        want_species = {s.lower() for s in normalized_sp}
     if types:
         types_list = [types] if isinstance(types, str) else list(types)
         normalized, unknown = [], []
@@ -814,17 +877,13 @@ async def search_reactome_entity(
     )
     if isinstance(resp, _RestError):
         logger.warning(f"Reactome search failed: {resp.message}")
-        return json.dumps([
-            {"error": _rest_fail_msg("Reactome REST API request", resp.message, "reactome")}
-        ])
+        return {"error": _rest_fail_msg("Reactome REST API request", resp.message, "reactome")}
     try:
         data = resp.json()
     except ValueError as e:
         detail = f"malformed JSON body: {_strip_html(resp.text)}"
         logger.warning(f"Reactome search returned non-JSON: {e}")
-        return json.dumps([
-            {"error": _rest_fail_msg("Reactome REST API request", detail, "reactome")}
-        ])
+        return {"error": _rest_fail_msg("Reactome REST API request", detail, "reactome")}
 
     # Extract results, re-applying species/type filters client-side (the server
     # silently relaxes zero-yield filters — see the module comment above).
@@ -842,18 +901,20 @@ async def search_reactome_entity(
             ):
                 continue
 
-            results.append(
-                {
-                    "id": entry.get("stId", entry.get("id", "N/A")),
-                    "name": _reactome_clean(entry.get("name", "N/A")),
-                    "type": entry_type,
-                    "exactType": entry.get("exactType", entry_type),
-                    "species": entry_species,
-                    "summation": _strip_html(entry.get("summation", ""), max_len=240),
-                }
-            )
+            record = {
+                "id": entry.get("stId", entry.get("id", "N/A")),
+                "name": _reactome_clean(entry.get("name", "N/A")),
+                "type": entry_type,
+                "exactType": entry.get("exactType", entry_type),
+                "species": entry_species,
+            }
+            if include_summation:
+                record["summation"] = _strip_html(entry.get("summation", ""), max_len=240)
+            results.append(record)
 
-    return json.dumps(results)
+    has_more = len(results) > int(limit)
+    results = results[: int(limit)]
+    return {"total_count": len(results), "has_more": has_more, "results": results}
 
 
 # DB: RhEA
