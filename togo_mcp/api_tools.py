@@ -302,6 +302,19 @@ _CHEMBL_PREFIXES = (
 _UNIPROT_ACCESSION_RE = re.compile(
     r"^(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})$"
 )
+# The full cco:targetType controlled vocabulary (enumerated live 2026-07-14), used
+# to validate the target_type filter so a typo fails loudly instead of as 0 rows.
+_CHEMBL_TARGET_TYPES = frozenset(
+    {
+        "SINGLE PROTEIN", "ORGANISM", "CELL-LINE", "PROTEIN COMPLEX",
+        "PROTEIN-PROTEIN INTERACTION", "PROTEIN FAMILY", "TISSUE",
+        "SELECTIVITY GROUP", "NUCLEIC-ACID", "PROTEIN COMPLEX GROUP",
+        "SMALL MOLECULE", "CHIMERIC PROTEIN", "OLIGOSACCHARIDE", "UNKNOWN",
+        "MACROMOLECULE", "SUBCELLULAR", "LIPID", "PROTEIN NUCLEIC-ACID COMPLEX",
+        "METAL", "3D CELL CULTURE", "PHENOTYPE", "UNCHECKED", "NO TARGET",
+        "ADMET", "NON-MOLECULAR",
+    }
+)
 
 
 def _bif_and(text: str) -> str | None:
@@ -508,6 +521,7 @@ async def search_chembl_id_lookup(
       is a free-text dcterms:description, so ASSAY does a keyword (token) match on
       that description, NOT an exact match, e.g. entity_type="ASSAY",
       query="acetylcholinesterase" → every assay whose description mentions it.
+      ASSAY results are relevance-ranked (best description match first).
 
     Default (no `entity_type`) searches the four EXACT-name kinds and UNIONs them.
     ASSAY is opt-in via entity_type="ASSAY" — its keyword semantics and high hit
@@ -523,8 +537,10 @@ async def search_chembl_id_lookup(
 
     Returns:
         dict: {'total_count' (int, rows returned — capped by `limit`),
-        'results' (list)}. Each result has 'chembl_id', 'entity_type', and
-        'name' (rdfs:label for the name kinds; the description for ASSAY).
+        'results' (list)}. Each result has 'chembl_id', 'entity_type', 'name'
+        (rdfs:label for the name kinds; the description for ASSAY), and 'organism'
+        (null for COMPOUND and where absent) — the organism disambiguates a name
+        shared across species, e.g. human vs mouse targets.
 
         On endpoint failure this tool does NOT raise — it returns a dict with a
         single 'error' key instead. Check for 'error' before reading 'results'.
@@ -556,14 +572,20 @@ async def search_chembl_id_lookup(
         return {"total_count": 0, "results": []}
     exact = _sparql_literal(query.lower())
 
-    def exact_branch(label: str, bind: str, rest: str, prefilter: bool) -> str:
+    def exact_branch(
+        label: str, bind: str, rest: str, prefilter: bool, has_organism: bool
+    ) -> str:
         # bind → binds ?alt (+ ?chembl_id); prefilter uses the text index (needed
         # for the huge altLabel sets, skipped for the small type-constrained ones).
+        # has_organism → carry cco:organismName so callers can disambiguate a name
+        # shared across species (e.g. mouse CHEMBL3608 vs human CHEMBL203).
         lines = ["  {", f"    {bind}"]
         if prefilter:
             lines.append(f'    ?alt bif:contains "{bif}" .')
         lines.append(f'    FILTER(LCASE(STR(?alt)) = "{exact}")')
         lines.append(f"    {rest}")
+        if has_organism:
+            lines.append("    OPTIONAL { ?e cco:organismName ?organism }")
         lines.append(f'    BIND("{label}" AS ?entity_type)')
         lines.append("  }")
         return "\n".join(lines)
@@ -574,6 +596,7 @@ async def search_chembl_id_lookup(
             "?e skos:altLabel ?alt .",
             "?e a cco:SmallMolecule ; cco:chemblId ?chembl_id ; rdfs:label ?name .",
             prefilter=True,
+            has_organism=False,  # molecules have no organism
         ),
         "TARGET": exact_branch(
             "TARGET",
@@ -581,42 +604,58 @@ async def search_chembl_id_lookup(
             "?e cco:hasTargetComponent ?comp ; cco:chemblId ?chembl_id ; "
             "rdfs:label ?name .",
             prefilter=True,
+            has_organism=True,
         ),
         "CELL_LINE": exact_branch(
             "CELL_LINE",
             "?e a cco:CellLine ; rdfs:label ?alt ; cco:chemblId ?chembl_id .",
             "BIND(STR(?alt) AS ?name)",
             prefilter=False,
+            has_organism=True,
         ),
         "TISSUE": exact_branch(
             "TISSUE",
             "?e a cco:Tissue ; rdfs:label ?alt ; cco:chemblId ?chembl_id .",
             "BIND(STR(?alt) AS ?name)",
             prefilter=False,
+            has_organism=True,
         ),
+        # ASSAY: keyword match on the free-text description, relevance-ranked via the
+        # bif:contains score (ORDER BY below); no exact FILTER, no DISTINCT.
         "ASSAY": (
             "  {\n"
             "    ?e a cco:Assay ; dcterms:description ?desc ; cco:chemblId ?chembl_id .\n"
-            f'    ?desc bif:contains "{bif}" .\n'
+            f'    ?desc bif:contains "{bif}" option (score ?sc) .\n'
+            "    OPTIONAL { ?e cco:organismName ?organism }\n"
             "    BIND(STR(?desc) AS ?name)\n"
             '    BIND("ASSAY" AS ?entity_type)\n'
             "  }"
         ),
     }
-    if et:
-        body = branches[et]
-    else:
-        # Default: the four exact-name kinds (ASSAY's keyword match is opt-in).
-        body = "\n  UNION\n".join(
-            branches[t] for t in ("COMPOUND", "TARGET", "CELL_LINE", "TISSUE")
+    prefixes = f"{_CHEMBL_PREFIXES}\nPREFIX dcterms: <http://purl.org/dc/terms/>"
+    select = "?chembl_id ?entity_type ?name ?organism"
+    if et == "ASSAY":
+        # Rank by description-match score; DISTINCT would conflict with ORDER BY ?sc.
+        sparql = (
+            f"{prefixes}\n"
+            f"SELECT {select} FROM <{_CHEMBL_GRAPH}> WHERE {{\n"
+            f"{branches['ASSAY']}\n"
+            f"}} ORDER BY DESC(?sc) LIMIT {int(limit)}"
         )
-    sparql = (
-        f"{_CHEMBL_PREFIXES}\n"
-        "PREFIX dcterms: <http://purl.org/dc/terms/>\n"
-        f"SELECT DISTINCT ?chembl_id ?entity_type ?name FROM <{_CHEMBL_GRAPH}> WHERE {{\n"
-        f"{body}\n"
-        f"}} LIMIT {int(limit)}"
-    )
+    else:
+        if et:
+            body = branches[et]
+        else:
+            # Default: the four exact-name kinds (ASSAY's keyword match is opt-in).
+            body = "\n  UNION\n".join(
+                branches[t] for t in ("COMPOUND", "TARGET", "CELL_LINE", "TISSUE")
+            )
+        sparql = (
+            f"{prefixes}\n"
+            f"SELECT DISTINCT {select} FROM <{_CHEMBL_GRAPH}> WHERE {{\n"
+            f"{body}\n"
+            f"}} LIMIT {int(limit)}"
+        )
     rows = await _run_chembl_sparql(sparql)
     if isinstance(rows, dict):
         return rows  # {"error": ...}
@@ -625,6 +664,7 @@ async def search_chembl_id_lookup(
             "chembl_id": r.get("chembl_id"),
             "entity_type": r.get("entity_type"),
             "name": r.get("name"),
+            "organism": r.get("organism") or None,
         }
         for r in rows
     ]
@@ -676,17 +716,19 @@ async def search_chembl_target(
             e.g. "Homo sapiens". Applied inside the query.
         target_type (str, optional): Exact (case-insensitive) filter on target
             type, e.g. "SINGLE PROTEIN" — pass this to collapse an accession/symbol
-            match to the canonical single protein and drop complexes/families.
+            match to the canonical single protein and drop complexes/families. Must
+            be a value from the ChEMBL target-type vocabulary (see below); an
+            unrecognized value raises rather than silently matching nothing.
 
     Target Types (values of `type`): SINGLE PROTEIN, PROTEIN COMPLEX,
         PROTEIN FAMILY, PROTEIN-PROTEIN INTERACTION, CHIMERIC PROTEIN,
-        NUCLEIC-ACID, CELL-LINE, TISSUE, ORGANISM, …
+        NUCLEIC-ACID, CELL-LINE, TISSUE, ORGANISM, SELECTIVITY GROUP,
+        SMALL MOLECULE, OLIGOSACCHARIDE, LIPID, METAL, and other rarer kinds.
 
     Returns:
         dict: {'total_count' (int, rows returned — capped by `limit`),
         'results' (list)}. Each result has 'chembl_id', 'name' (rdfs:label),
-        'organism', 'type', and 'score' (always None — SPARQL exact match has no
-        relevance score; kept for shape stability).
+        'organism', and 'type'.
 
         On endpoint failure this tool does NOT raise — it returns a dict with a
         single 'error' key instead. Check for 'error' before reading 'results'.
@@ -704,6 +746,12 @@ async def search_chembl_target(
         raise ValueError(
             "Missing search string. Pass it as `query` (canonical) or any of: "
             "search, term, keyword, keywords, search_term, name."
+        )
+    if target_type.strip() and target_type.strip().upper() not in _CHEMBL_TARGET_TYPES:
+        raise ValueError(
+            f"Invalid target_type {target_type!r}. It must be one of the ChEMBL "
+            f"target-type vocabulary: {', '.join(sorted(_CHEMBL_TARGET_TYPES))}. "
+            "(An unrecognized value would otherwise silently match nothing.)"
         )
     # Route: UniProt accession → structured skos:exactMatch; else exact altLabel.
     acc = query.strip().upper()
@@ -748,7 +796,6 @@ async def search_chembl_target(
             "name": r.get("name"),
             "organism": r.get("organism") or None,
             "type": r.get("type"),
-            "score": None,
         }
         for r in rows
     ]
@@ -804,9 +851,8 @@ async def search_chembl_molecule(
 
     Returns:
         dict: {'total_count' (int, rows returned — capped by `limit`),
-        'results' (list)}. Each result has 'chembl_id' (e.g. "CHEMBL25"), 'name'
-        (rdfs:label, may be None for some structure hits), and 'score' (always
-        None; kept for shape stability).
+        'results' (list)}. Each result has 'chembl_id' (e.g. "CHEMBL25") and
+        'name' (rdfs:label, may be None for some structure hits).
 
         On endpoint/HTTP failure this tool does NOT raise — it returns a dict with
         a single 'error' key instead. Check for 'error' before reading 'results'.
@@ -837,7 +883,6 @@ async def search_chembl_molecule(
             {
                 "chembl_id": m.get("molecule_chembl_id"),
                 "name": m.get("pref_name"),
-                "score": None,
             }
             for m in bulk.get("molecules", [])
         ]
@@ -848,7 +893,7 @@ async def search_chembl_molecule(
         if isinstance(rows, dict):
             return rows  # {"error": ...}
         parsed_results = [
-            {"chembl_id": r.get("chembl_id"), "name": r.get("name"), "score": None}
+            {"chembl_id": r.get("chembl_id"), "name": r.get("name")}
             for r in rows
         ]
         return {"total_count": len(parsed_results), "results": parsed_results}
@@ -869,7 +914,7 @@ async def search_chembl_molecule(
     if isinstance(rows, dict):
         return rows  # {"error": ...}
     parsed_results = [
-        {"chembl_id": r.get("chembl_id"), "name": r.get("name"), "score": None}
+        {"chembl_id": r.get("chembl_id"), "name": r.get("name")}
         for r in rows
     ]
     return {"total_count": len(parsed_results), "results": parsed_results}

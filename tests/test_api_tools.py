@@ -222,11 +222,7 @@ class TestSearchChemblMolecule:
         assert "'gleevec'" in sent  # normalized bif token
         assert 'FILTER(LCASE(STR(?alt)) = "gleevec")' in sent  # exactness
         assert result["total_count"] == 1
-        assert result["results"][0] == {
-            "chembl_id": "CHEMBL941",
-            "name": "IMATINIB",
-            "score": None,
-        }
+        assert result["results"][0] == {"chembl_id": "CHEMBL941", "name": "IMATINIB"}
 
     @pytest.mark.asyncio
     async def test_smiles_uses_rest_flexmatch_not_sparql(self) -> None:
@@ -329,8 +325,13 @@ class TestSearchChemblTarget:
             "name": "Epidermal growth factor receptor",
             "organism": "Homo sapiens",
             "type": "SINGLE PROTEIN",
-            "score": None,
         }
+
+    @pytest.mark.asyncio
+    async def test_invalid_target_type_raises(self) -> None:
+        # An unrecognized enum value must fail loudly, not silently match 0 rows.
+        with pytest.raises(ValueError, match="Invalid target_type"):
+            await search_chembl_target("EGFR", target_type="BOGUS_TYPE")
 
     @pytest.mark.asyncio
     async def test_symbol_uses_altlabel(self) -> None:
@@ -387,8 +388,8 @@ class TestSearchChemblIdLookup:
                 return_value=httpx.Response(
                     200,
                     text=_csv(
-                        "chembl_id,entity_type,name",
-                        "CHEMBL203,TARGET,Epidermal growth factor receptor",
+                        "chembl_id,entity_type,name,organism",
+                        "CHEMBL203,TARGET,Epidermal growth factor receptor,Homo sapiens",
                     ),
                 )
             )
@@ -399,7 +400,25 @@ class TestSearchChemblIdLookup:
                      "cco:Tissue"):
             assert frag in sent
         assert "cco:Assay" not in sent  # ASSAY excluded from the default UNION
+        assert "cco:organismName" in sent  # organism carried for disambiguation
         assert result["results"][0]["entity_type"] == "TARGET"
+        assert result["results"][0]["organism"] == "Homo sapiens"
+
+    @pytest.mark.asyncio
+    async def test_compound_organism_is_null(self) -> None:
+        # Molecules have no organism → the branch must not bind it (null in output).
+        with respx.mock(using="httpx") as router:
+            route = router.post(CHEMBL_SPARQL_URL).mock(
+                return_value=httpx.Response(
+                    200,
+                    text=_csv("chembl_id,entity_type,name,organism", "CHEMBL25,COMPOUND,ASPIRIN,"),
+                )
+            )
+            result = await search_chembl_id_lookup("aspirin", entity_type="compound")
+        sent = _sent_query(route)
+        # only the non-compound branches carry organism; here there is one branch (compound)
+        assert "cco:organismName" not in sent
+        assert result["results"][0]["organism"] is None
 
     @pytest.mark.asyncio
     async def test_entity_type_compound_single_branch(self) -> None:
@@ -450,8 +469,11 @@ class TestSearchChemblIdLookup:
             )
         sent = _sent_query(route)
         assert "cco:Assay" in sent and "dcterms:description" in sent
-        assert 'bif:contains "\'acetylcholinesterase\'"' in sent
         assert "FILTER(LCASE" not in sent  # keyword match, not exact
+        # relevance-ranked via the bif:contains score
+        assert "option (score ?sc)" in sent
+        assert "ORDER BY DESC(?sc)" in sent
+        assert "DISTINCT" not in sent  # DISTINCT would conflict with ORDER BY ?sc
         assert result["results"][0]["entity_type"] == "ASSAY"
 
     @pytest.mark.asyncio
