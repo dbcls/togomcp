@@ -21,6 +21,9 @@ schema_info:
     - atc
     - clinical trial
     - smiles
+    - inchikey
+    - cell line
+    - tissue
     - binding affinity
     - uniprot
   categories:
@@ -34,7 +37,7 @@ schema_info:
     - search_chembl_molecule
     - search_chembl_target
   version:
-    mie_version: "3.2"
+    mie_version: "3.3"
     mie_created: "2025-02-10"
     mie_updated: "2026-07-14"
     data_version: ChEMBL 34.0
@@ -76,11 +79,37 @@ critical_warnings: |
     else HTTP 400). Target symbols sit on the component: ?t cco:hasTargetComponent ?c . ?c
     skos:altLabel ?alt . ?alt bif:contains "EGFR" . Add cco:targetType "SINGLE PROTEIN" +
     cco:organismName "Homo sapiens" to collapse orthologs/complexes to the one intended target.
+    CellLine and Tissue names, by contrast, DO live on rdfs:label (e.g. "Liver", "CCRF S-180");
+    those classes are small (294 / 2,215) so a plain FILTER(LCASE(STR(?label))=...) is fine.
+  - STRUCTURE / PHYSCHEM ARE NOT DIRECT PREDICATES (SIO value nodes): SMILES, InChI, InChIKey,
+    molecular weight, logP, PSA, etc. are NOT properties directly on the molecule. They hang off
+    qualified-value nodes: ?m sio:SIO_000008 ?node . ?node a <CHEMINF_type> ; sio:SIO_000300 ?v .
+    A query like ?m cco:smiles ?s (or any direct predicate) returns 0 rows silently. CHEMINF type
+    → property: CHEMINF_000018 canonical_smiles, CHEMINF_000059 standard_inchi_key,
+    CHEMINF_000113 standard_inchi, CHEMINF_000042 full_molformula, CHEMINF_000216 full_mwt,
+    CHEMINF_000251 alogp, CHEMINF_000307 psa (full map in <MoleculePropertyShape>). For an exact
+    structure-identifier lookup, prefilter with bif:contains on the longest token, then FILTER on
+    the exact CASE-SENSITIVE value (InChIKeys are canonical uppercase):
+      ?node a sio:CHEMINF_000059 ; sio:SIO_000300 ?v . ?v bif:contains "KTUFNOKKBVMGRW" .
+      FILTER(STR(?v) = "KTUFNOKKBVMGRW-UHFFFAOYSA-N") . ?m sio:SIO_000008 ?node .
+  - ASSAY DESCRIPTION IS dcterms:description, NOT cco:description: an Assay's rdfs:label is just
+    its ChEMBL ID (not descriptive), and cco:description does NOT exist (returns 0). The searchable
+    free-text is dcterms:description (~100% of the 1.89M assays). Keyword-search it with bif:contains
+    (no exact FILTER — descriptions are free text): ?a a cco:Assay ; dcterms:description ?d . ?d
+    bif:contains "acetylcholinesterase" . Tissues use dcterms:title for the same role; CellLines use
+    dcterms:description.
+  - XSD:STRING TYPING (exact match): rdfs:label, skos:prefLabel, skos:altLabel, dcterms:description
+    and the identifier sio:SIO_000300 values are stored as typed xsd:string. A plain-literal exact
+    match — FILTER(?label = "Liver") or VALUES ?label { "Liver" } — joins to NOTHING. Use STR()-based
+    comparison (FILTER(STR(?label) = "Liver")) or append ^^xsd:string. Numeric sio:SIO_000300 values
+    (full_mwt, alogp, psa, ...) are xsd:double, not string — cast accordingly.
 
 shape_expressions: |
   PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
   PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
   PREFIX bibo: <http://purl.org/ontology/bibo/>
+  PREFIX sio: <http://semanticscience.org/resource/>
+  PREFIX dcterms: <http://purl.org/dc/terms/>
 
   <MoleculeShape> {
     a [ cco:SmallMolecule ] ;
@@ -94,7 +123,12 @@ shape_expressions: |
     cco:hasActivity @<ActivityShape> * ;
     cco:hasDrugIndication @<DrugIndicationShape> * ;
     cco:hasMechanism @<DrugMechanismShape> * ;
+    sio:SIO_000008 @<MoleculePropertyShape> * ;
     cco:moleculeXref IRI *
+  # NOTE: SMILES / InChI / InChIKey / MW / logP / PSA / molecular formula are NOT direct
+  #       predicates on the molecule — they hang off sio:SIO_000008 value nodes. See
+  #       <MoleculePropertyShape> and the STRUCTURE-PROPERTY critical_warning for the access
+  #       pattern. ~1,915,414 SmallMolecule (99.7%) carry a standard_inchi_key (verified 2026-07-14).
   # NOTE: skos:altLabel holds synonyms — generic + brand/trade names (e.g. "Gleevec",
   #       "Glivec"), research codes (NSC-/SID-), and IUPAC names. It is the predicate for
   #       name/brand → molecule ID resolution. See critical_warnings for the fast idiom.
@@ -118,11 +152,70 @@ shape_expressions: |
 
   <AssayShape> {
     a [ cco:Assay ] ;
+    rdfs:label xsd:string ;
+    dcterms:description xsd:string ? ;
     cco:chemblId xsd:string ;
     cco:assayType xsd:string ;
     cco:organismName xsd:string * ;
-    cco:hasTarget @<TargetShape>
+    cco:hasTarget @<TargetShape> ;
+    cco:hasDocument IRI ?
+  # NOTE: rdfs:label on an Assay is just its ChEMBL ID (e.g. "CHEMBL615156"), NOT descriptive.
+  #       The searchable free text is dcterms:description (e.g. "Inhibitory constant against
+  #       human placenta 17-beta-hydroxysteroid dehydrogenase"), present on 1,890,708/1,890,749
+  #       (~100%). It is dcterms:description — cco:description does NOT exist (returns 0 rows).
   # COUNTS: 1,890,749 Assay instances; assayType values: "Binding", "Functional", "ADME"
+  }
+
+  <MoleculePropertyShape> {
+    a [ sio:CHEMINF_000018 sio:CHEMINF_000059 sio:CHEMINF_000113 sio:CHEMINF_000042
+        sio:CHEMINF_000216 sio:CHEMINF_000350 sio:CHEMINF_000251 sio:CHEMINF_000307
+        sio:CHEMINF_000245 sio:CHEMINF_000244 sio:CHEMINF_000254 sio:CHEMINF_000300
+        sio:CHEMINF_000381 sio:CHEMINF_000312 sio:CHEMINF_000315 sio:CHEMINF_000431 ] ;
+    sio:SIO_000300 xsd:string ;
+    rdfs:label xsd:string ?
+  # A molecule's structure identifiers and physicochemical properties live on these
+  # SIO qualified-value nodes, reached as:
+  #   ?m sio:SIO_000008 ?node . ?node a <CHEMINF_type> ; sio:SIO_000300 ?value .
+  # The value-node's rdf:type (CHEMINF_*) selects WHICH property:
+  #   CHEMINF_000018 canonical_smiles     CHEMINF_000059 standard_inchi_key
+  #   CHEMINF_000113 standard_inchi        CHEMINF_000042 full_molformula
+  #   CHEMINF_000216 full_mwt              CHEMINF_000350 mw_freebase
+  #   CHEMINF_000251 alogp   CHEMINF_000307 psa   CHEMINF_000245 hba   CHEMINF_000244 hbd
+  #   CHEMINF_000254 rtb     CHEMINF_000300 heavy_atoms   CHEMINF_000381 aromatic_rings
+  #   CHEMINF_000312 num_ro5_violations   CHEMINF_000315 ro3_pass   CHEMINF_000431 qed_weighted
+  # DATATYPE TRAP: sio:SIO_000300 is xsd:string for the text identifiers (smiles/inchi/
+  #   inchi_key/molformula) but xsd:double for numeric properties (full_mwt, alogp, psa, ...).
+  #   InChIKey/InChI are canonical → exact match; SMILES is toolkit-specific → not portable.
+  }
+
+  <CellLineShape> {
+    a [ cco:CellLine ] ;
+    rdfs:label xsd:string ;
+    cco:chemblId xsd:string ;
+    dcterms:description xsd:string ;
+    cco:organismName xsd:string ? ;
+    cco:cellosaurusId xsd:string ? ;
+    cco:hasCLO IRI ? ;
+    cco:hasEFO IRI ? ;
+    cco:taxonomy IRI * ;
+    cco:cellXref IRI *
+  # rdfs:label is the descriptive cell-line name (e.g. "CCRF S-180", "143B", "A10") — use it for
+  # cell-line name → ID (exact, case-insensitive via STR()). dcterms:description mirrors the name.
+  # COUNTS: 2,215 CellLine instances (all carry rdfs:label + chemblId + dcterms:description)
+  }
+
+  <TissueShape> {
+    a [ cco:Tissue ] ;
+    rdfs:label xsd:string ;
+    cco:chemblId xsd:string ;
+    cco:targetType xsd:string ;
+    dcterms:title xsd:string ;
+    cco:organismName xsd:string ? ;
+    cco:taxonomy IRI *
+  # Tissues are modelled as targets (cco:targetType is always "TISSUE"). rdfs:label is the tissue
+  # name (e.g. "Liver", "Femur", "Blood") — use it for tissue → ID. NOTE the human-readable text
+  # is rdfs:label AND dcterms:title (NOT dcterms:description, unlike CellLine/Assay).
+  # COUNTS: 294 Tissue instances
   }
 
   <TargetShape> {
@@ -289,6 +382,28 @@ sparql_query_examples:
       # Molecule brand/synonym → ID (same idiom, altLabel on the molecule itself):
       #   ?m a cco:SmallMolecule ; skos:altLabel ?alt . ?alt bif:contains "Gleevec" .
       #   FILTER(LCASE(STR(?alt)) = "gleevec")   → CHEMBL941 (IMATINIB) + CHEMBL1642 (mesylate)
+
+  - title: Retrieve a Molecule's Structure Identifiers and Physicochemical Properties
+    description: "SMILES / InChIKey / molecular formula / MW / logP etc. are NOT direct predicates — each hangs off a sio:SIO_000008 qualified-value node whose rdf:type (a CHEMINF_* class) selects the property, with the value on sio:SIO_000300. Retrieves four properties for imatinib at once."
+    question: What are the SMILES, InChIKey, molecular formula and molecular weight of imatinib (CHEMBL941)?
+    complexity: intermediate
+    sparql: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+
+      # Each property is a value node: ?m sio:SIO_000008 ?node . ?node a <CHEMINF_type> ;
+      #   sio:SIO_000300 ?value . The CHEMINF class picks the property (full map in
+      #   <MoleculePropertyShape>). Values are xsd:string for identifiers, xsd:double for numerics.
+      SELECT ?smiles ?inchiKey ?formula ?mwt
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        VALUES ?m { <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL941> }
+        ?m sio:SIO_000008 ?sn . ?sn a sio:CHEMINF_000018 ; sio:SIO_000300 ?smiles .   # canonical_smiles
+        ?m sio:SIO_000008 ?kn . ?kn a sio:CHEMINF_000059 ; sio:SIO_000300 ?inchiKey .  # standard_inchi_key
+        ?m sio:SIO_000008 ?fn . ?fn a sio:CHEMINF_000042 ; sio:SIO_000300 ?formula .   # full_molformula
+        ?m sio:SIO_000008 ?mn . ?mn a sio:CHEMINF_000216 ; sio:SIO_000300 ?mwt .       # full_mwt
+      }
+      # → CHEMBL941: SMILES Cc1ccc(...)n1, InChIKey KTUFNOKKBVMGRW-UHFFFAOYSA-N, C29H31N7O, 493.62
 
   - title: Get IC50 Measurements for Specific Targets Using VALUES with IRIs
     description: "Retrieves IC50 data for EGFR and VEGFR2 using specific target IRIs (from search_chembl_target) and typed predicate cco:standardType."
@@ -686,7 +801,7 @@ architectural_notes:
     - "Number of the 7 example queries using text search: 1 (Query 6)"
     - "Query 6 uses FILTER(CONTAINS(?mechanismType, \"INHIBITOR\")) on cco:mechanismActionType — a controlled-vocabulary string literal. A VALUES block would require listing all inhibitor subtypes (COMPETITIVE INHIBITOR, IRREVERSIBLE INHIBITOR, etc.); CONTAINS is the pragmatic alternative. All other mechanism/activity lookups use exact typed predicates."
     - "All other entity classes have structured predicates: organism (cco:organismName), disease (cco:hasMesh IRI), protein family (cco:hasProteinClassification IRI), activity type (cco:standardType), assay type (cco:assayType)"
-    - "bif:contains appropriate only for cco:description / rdfs:comment free-text fields (not needed in any of the 7 examples beyond Q6)"
+    - "bif:contains appropriate for genuine free-text fields — dcterms:description on Assay/CellLine (NOT cco:description, which does not exist) and dcterms:title on Tissue — e.g. keyword-searching assay descriptions. Not needed in any of the structured example queries."
 
 data_statistics:
   total_molecules: 1920603
@@ -697,6 +812,10 @@ data_statistics:
   total_documents: 99141
   total_mechanisms: 7568
   total_indications: 59954
+  total_cell_lines: 2215            # cco:CellLine; rdfs:label is descriptive (verified 2026-07-14)
+  total_tissues: 294               # cco:Tissue; cco:targetType "TISSUE" (verified 2026-07-14)
+  molecules_with_inchikey: 1915414  # ~99.7% of molecules carry a standard_inchi_key value node (2026-07-14)
+  assays_with_description: 1890708  # ~100% of assays carry dcterms:description (2026-07-14)
   human_protein_kinases: 423
   alzheimers_drugs: 305
   verified_date: "2026-07-07"
@@ -735,6 +854,26 @@ anti_patterns:
                 cco:hasProteinClassification <http://rdf.ebi.ac.uk/resource/chembl/protclass/CHEMBL_PC_1100> .
       }
     explanation: MIE schema shows cco:hasProteinClassification. Inspect examples to extract the IRI. Use it for comprehensive, precise, fast results.
+
+  - title: Structure/Physchem Queried as a Direct Predicate
+    problem: Treating SMILES / InChIKey / molecular weight as direct predicates on the molecule. They are NOT — they hang off sio:SIO_000008 qualified-value nodes typed by a CHEMINF class. The direct-predicate form returns 0 rows silently (there is no cco:smiles / cco:inchiKey).
+    wrong_sparql: |
+      # WRONG: invented direct predicate — returns nothing, no error
+      SELECT ?m ?inchiKey
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        ?m a cco:SmallMolecule ; cco:standardInchiKey ?inchiKey .
+      } LIMIT 10
+    correct_sparql: |
+      # CORRECT: traverse the SIO value node; the CHEMINF class selects which property
+      PREFIX sio: <http://semanticscience.org/resource/>
+      SELECT ?m ?inchiKey
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        ?m a cco:SmallMolecule ; sio:SIO_000008 ?node .
+        ?node a sio:CHEMINF_000059 ; sio:SIO_000300 ?inchiKey .   # CHEMINF_000059 = standard_inchi_key
+      } LIMIT 10
+    explanation: Structure identifiers and physicochemical properties use the SIO qualified-value pattern. See <MoleculePropertyShape> for the full CHEMINF-class → property map. For an exact identifier lookup, prefilter with bif:contains on the value's longest token, then FILTER on the exact value (case-sensitive for InChIKey/InChI).
 
   - title: Circular Reasoning with Search Results
     problem: Using molecule or target IRIs sampled from an exploratory query as the scope of a comprehensive count or activity aggregate.

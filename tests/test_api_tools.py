@@ -222,11 +222,7 @@ class TestSearchChemblMolecule:
         assert "'gleevec'" in sent  # normalized bif token
         assert 'FILTER(LCASE(STR(?alt)) = "gleevec")' in sent  # exactness
         assert result["total_count"] == 1
-        assert result["results"][0] == {
-            "chembl_id": "CHEMBL941",
-            "name": "IMATINIB",
-            "score": None,
-        }
+        assert result["results"][0] == {"chembl_id": "CHEMBL941", "name": "IMATINIB"}
 
     @pytest.mark.asyncio
     async def test_smiles_uses_rest_flexmatch_not_sparql(self) -> None:
@@ -300,7 +296,7 @@ class TestSearchChemblMolecule:
             route = router.post(CHEMBL_SPARQL_URL)
             result = await search_chembl_molecule("---")
         assert not route.called
-        assert result == {"total_count": 0, "results": []}
+        assert result == {"total_count": 0, "has_more": False, "results": []}
 
 
 class TestSearchChemblTarget:
@@ -329,8 +325,13 @@ class TestSearchChemblTarget:
             "name": "Epidermal growth factor receptor",
             "organism": "Homo sapiens",
             "type": "SINGLE PROTEIN",
-            "score": None,
         }
+
+    @pytest.mark.asyncio
+    async def test_invalid_target_type_raises(self) -> None:
+        # An unrecognized enum value must fail loudly, not silently match 0 rows.
+        with pytest.raises(ValueError, match="Invalid target_type"):
+            await search_chembl_target("EGFR", target_type="BOGUS_TYPE")
 
     @pytest.mark.asyncio
     async def test_symbol_uses_altlabel(self) -> None:
@@ -377,26 +378,47 @@ class TestSearchChemblTarget:
 
 
 class TestSearchChemblIdLookup:
-    """Cross-entity resolution: UNION over compound + target branches, each an
-    exact altLabel match; entity_type narrows to one branch."""
+    """Cross-entity resolution. Default UNIONs the four EXACT-name kinds
+    (compound/target/cell_line/tissue); ASSAY is opt-in keyword-in-description."""
 
     @pytest.mark.asyncio
-    async def test_default_unions_both(self) -> None:
+    async def test_default_unions_four_name_kinds(self) -> None:
         with respx.mock(using="httpx") as router:
             route = router.post(CHEMBL_SPARQL_URL).mock(
                 return_value=httpx.Response(
                     200,
                     text=_csv(
-                        "chembl_id,entity_type,name",
-                        "CHEMBL203,TARGET,Epidermal growth factor receptor",
+                        "chembl_id,entity_type,name,organism",
+                        "CHEMBL203,TARGET,Epidermal growth factor receptor,Homo sapiens",
                     ),
                 )
             )
             result = await search_chembl_id_lookup("EGFR")
         sent = _sent_query(route)
-        assert "UNION" in sent
-        assert "cco:SmallMolecule" in sent and "cco:hasTargetComponent" in sent
+        assert sent.count("UNION") == 3  # 4 branches
+        for frag in ("cco:SmallMolecule", "cco:hasTargetComponent", "cco:CellLine",
+                     "cco:Tissue"):
+            assert frag in sent
+        assert "cco:Assay" not in sent  # ASSAY excluded from the default UNION
+        assert "cco:organismName" in sent  # organism carried for disambiguation
         assert result["results"][0]["entity_type"] == "TARGET"
+        assert result["results"][0]["organism"] == "Homo sapiens"
+
+    @pytest.mark.asyncio
+    async def test_compound_organism_is_null(self) -> None:
+        # Molecules have no organism → the branch must not bind it (null in output).
+        with respx.mock(using="httpx") as router:
+            route = router.post(CHEMBL_SPARQL_URL).mock(
+                return_value=httpx.Response(
+                    200,
+                    text=_csv("chembl_id,entity_type,name,organism", "CHEMBL25,COMPOUND,ASPIRIN,"),
+                )
+            )
+            result = await search_chembl_id_lookup("aspirin", entity_type="compound")
+        sent = _sent_query(route)
+        # only the non-compound branches carry organism; here there is one branch (compound)
+        assert "cco:organismName" not in sent
+        assert result["results"][0]["organism"] is None
 
     @pytest.mark.asyncio
     async def test_entity_type_compound_single_branch(self) -> None:
@@ -412,9 +434,80 @@ class TestSearchChemblIdLookup:
         assert "cco:SmallMolecule" in sent and "cco:hasTargetComponent" not in sent
 
     @pytest.mark.asyncio
+    async def test_cell_line_uses_label_filter_no_prefilter(self) -> None:
+        # Small type-constrained set → plain exact FILTER on rdfs:label, no
+        # bif:contains prefilter needed.
+        with respx.mock(using="httpx") as router:
+            route = router.post(CHEMBL_SPARQL_URL).mock(
+                return_value=httpx.Response(
+                    200, text=_csv("chembl_id,entity_type,name", "CHEMBL3307278,CELL_LINE,CCRF S-180")
+                )
+            )
+            result = await search_chembl_id_lookup("CCRF S-180", entity_type="cell_line")
+        sent = _sent_query(route)
+        assert "cco:CellLine" in sent
+        assert "bif:contains" not in sent  # no prefilter for the small set
+        assert 'FILTER(LCASE(STR(?alt)) = "ccrf s-180")' in sent
+        assert result["results"][0]["chembl_id"] == "CHEMBL3307278"
+
+    @pytest.mark.asyncio
+    async def test_assay_keyword_in_description(self) -> None:
+        # ASSAY does a keyword match on dcterms:description — bif:contains, and
+        # crucially NO exact FILTER (descriptions are free text, not names). It
+        # exposes `description` (not `name`) + a relevance `score`, ranked.
+        with respx.mock(using="httpx") as router:
+            route = router.post(CHEMBL_SPARQL_URL).mock(
+                return_value=httpx.Response(
+                    200,
+                    text=_csv(
+                        "chembl_id,entity_type,description,organism,sc",
+                        "CHEMBL641506,ASSAY,Inhibition of human acetylcholinesterase,,28",
+                        "CHEMBL9,ASSAY,weaker match,,12",
+                    ),
+                )
+            )
+            result = await search_chembl_id_lookup(
+                "acetylcholinesterase", entity_type="assay"
+            )
+        sent = _sent_query(route)
+        assert "cco:Assay" in sent and "dcterms:description" in sent
+        assert "FILTER(LCASE" not in sent  # keyword match, not exact
+        # relevance-ranked via the bif:contains score
+        assert "option (score ?sc)" in sent
+        assert "ORDER BY DESC(?sc)" in sent
+        assert "DISTINCT" not in sent  # DISTINCT would conflict with ORDER BY ?sc
+        row = result["results"][0]
+        assert row["entity_type"] == "ASSAY"
+        assert row["name"] is None  # assays have no name
+        assert row["description"] == "Inhibition of human acetylcholinesterase"
+        assert row["score"] == 28  # populated + non-increasing
+        assert result["results"][1]["score"] == 12
+
+    @pytest.mark.asyncio
+    async def test_has_more_true_when_over_limit(self) -> None:
+        # Over-fetch by one: limit+1 rows returned → has_more True, page capped.
+        with respx.mock(using="httpx") as router:
+            router.post(CHEMBL_SPARQL_URL).mock(
+                return_value=httpx.Response(
+                    200,
+                    text=_csv(
+                        "chembl_id,entity_type,name,organism",
+                        "CHEMBL1,TISSUE,Liver,Rattus norvegicus",
+                        "CHEMBL2,TISSUE,Liver,Homo sapiens",
+                        "CHEMBL3,TISSUE,Liver,Mus musculus",  # the +1 over limit=2
+                    ),
+                )
+            )
+            result = await search_chembl_id_lookup("Liver", limit=2)
+        assert result["has_more"] is True
+        assert result["total_count"] == 2  # capped to limit
+        assert len(result["results"]) == 2
+
+    @pytest.mark.asyncio
     async def test_invalid_entity_type_raises(self) -> None:
+        # DOCUMENT is explicitly unsupported; ASSAY is now valid.
         with pytest.raises(ValueError, match="Invalid entity_type"):
-            await search_chembl_id_lookup("EGFR", entity_type="ASSAY")
+            await search_chembl_id_lookup("EGFR", entity_type="DOCUMENT")
 
 
 class TestChemblStructureRetryAndErrorCleaning:

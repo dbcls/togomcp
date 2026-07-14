@@ -328,3 +328,17 @@ class TestIgnoreUnknownSearchKwargs:
         asyncio.run(mw.on_call_tool(context, call_next))
         # The made-up kwarg is dropped; the declared one survives.
         assert seen["args"] == {"query": "ALDH2"}
+
+
+class TestServerVersion:
+    """serverInfo.version must be TogoMCP's own version, not FastMCP's default."""
+
+    def test_reports_togomcp_version_not_fastmcp(self) -> None:
+        from importlib.metadata import version
+
+        from togo_mcp.server import mcp
+
+        assert mcp.version == version("togo-mcp")
+        # Sanity: it's a real version string, not the "0+unknown" source fallback
+        # (the package is installed in the test env).
+        assert mcp.version and mcp.version != "0+unknown"
