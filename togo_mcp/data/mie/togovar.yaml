@@ -61,7 +61,7 @@ schema_info:
     - "http://togovar.org/clinvar — full embedded ClinVar RDF. Its nodes re-use dcterms:identifier and med2rdf:gene, but dcterms:identifier here is the ClinVar *AlleleID*, NOT the VariationID (see critical_warnings ALLELEID/VARIATIONID trap). Join the variant layer into this graph ONLY via clinvar:variation_id (xsd:integer); never via dcterms:identifier."
   kw_search_tools: []
   version:
-    mie_version: "1.1"
+    mie_version: "1.2"
     mie_created: "2026-07-12"
     mie_updated: "2026-07-14"
     data_version: "GRCh38 endpoint (grch38.togovar.org), snapshot 2026-07"
@@ -148,14 +148,21 @@ critical_warnings: |
     IDs (http://rdf.ebi.ac.uk/resource/ensembl/217) — both minted under the SAME
     ensembl namespace. The sibling tgvo:gene_symbol_source ("HGNC" vs "EntrezGene")
     distinguishes them. Filter to the ENSG form if you mean Ensembl genes.
-  - REST togovar_search_variant CAVEATS. (1) For genes with large structural
-    variants (BRCA1, DMD, ...), the `variant` id embeds the full multi-kb REF/ALT
-    sequence, so responses can exceed client/token limits — use a small `limit` and
-    avoid `stat=True` together with row bodies. (2) In `stat=True` output the `type`
-    and `dataset` facets ARE scoped to the filtered set, but the `consequence` and
-    `significance` facets are NOT (verified: for disease_id MONDO_0007254 filtered =
-    24,550 yet consequence missense SO_0001583 = 334,380 and significance US = 26,894).
-    Do NOT read the consequence/significance breakdowns as counts of the query result.
+  - REST togovar_search_variant NOTES. (1) Each result row carries `tgv_id` and a
+    reconstructed `variant_iri` — either resolves in this SPARQL endpoint, so the
+    REST->SPARQL handoff is direct (fetch frequencies/significance via REST, then
+    deep-dive VEP/cross-refs here). Large structural-variant alleles are summarized
+    in the row (with `ref_length`/`alt_length`); pass `include_full_alleles=True`
+    only when the full sequence is needed. (2) In `stat=True` output ALL facets are
+    scoped to the filtered set, but they count at different granularities: `type`
+    and `dataset` count PER VARIANT (type sums to `filtered`), while `consequence`
+    counts PER VARIANT-TRANSCRIPT (the same VEP fan-out documented below — sum =
+    `filtered` x mean transcripts/variant, ~5-6 for a typical gene but 400+ in
+    transcript-dense loci like BRCA1) and `significance` counts PER
+    VARIANT-CONDITION classification record. So consequence/significance sums
+    legitimately exceed `filtered` and must NOT be read as variant counts of the
+    query result — they are annotation-record counts (use COUNT(DISTINCT) semantics
+    when reasoning about variants).
 
 shape_expressions: |
   PREFIX gvo:   <http://genome-variation.org/resource#>
@@ -511,29 +518,32 @@ controlled_vocabularies:
       togovar_search_variant returns clinical significance as short codes in the
       `significance[].interpretations` array and in the stat `significance` facet.
       These are TogoVar's own abbreviations of ClinVar/MGeND germline classifications.
-      Verified codes observed live for rs671 include P, DR, RF, PR; the codes below
-      are the standard ClinVar mappings. A few codes (LPLP, NC, AN, CS) were observed
-      in stat facets but are not confidently expandable here — confirm against
-      TogoVar's official legend before quoting them to a user.
+      The full legend below is the authoritative TogoVar mapping (from the TogoVar UI
+      advanced_search_conditions.json, clinvar bucket — a superset of the mgend bucket);
+      all codes are confirmed. Note PLP/LPLP are LOW-PENETRANCE variants, NOT the
+      "Pathogenic/Likely pathogenic" combined class.
     legend:
+      NC: Not in ClinVar
       P: Pathogenic
       LP: Likely pathogenic
-      PLP: Pathogenic/Likely pathogenic
-      B: Benign
-      LB: Likely benign
-      US: Uncertain significance
-      CI: Conflicting interpretations of pathogenicity
-      RF: Risk factor
-      DR: Drug response
-      PR: Protective
-      A: Association
-      AF: Affects
-      O: Other
-      NP: Not provided
+      PLP: Pathogenic, low penetrance
+      LPLP: Likely pathogenic, low penetrance
       ERA: Established risk allele
       LRA: Likely risk allele
       URA: Uncertain risk allele
-    unconfirmed_codes: ["LPLP", "NC", "AN", "CS"]   # observed in stat facets; verify against TogoVar docs
+      US: Uncertain significance
+      LB: Likely benign
+      B: Benign
+      CI: Conflicting interpretations of pathogenicity
+      DR: Drug response
+      CS: Confers sensitivity
+      RF: Risk factor
+      A: Association
+      PR: Protective
+      AF: Affects
+      O: Other
+      NP: Not provided
+      AN: Association not found
   - name: Sequence Ontology consequence terms
     description: |
       Functional consequences (tgvo:most_severe_consequence and the rdf:type of each
