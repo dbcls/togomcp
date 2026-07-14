@@ -377,11 +377,11 @@ class TestSearchChemblTarget:
 
 
 class TestSearchChemblIdLookup:
-    """Cross-entity resolution: UNION over compound + target branches, each an
-    exact altLabel match; entity_type narrows to one branch."""
+    """Cross-entity resolution. Default UNIONs the four EXACT-name kinds
+    (compound/target/cell_line/tissue); ASSAY is opt-in keyword-in-description."""
 
     @pytest.mark.asyncio
-    async def test_default_unions_both(self) -> None:
+    async def test_default_unions_four_name_kinds(self) -> None:
         with respx.mock(using="httpx") as router:
             route = router.post(CHEMBL_SPARQL_URL).mock(
                 return_value=httpx.Response(
@@ -394,8 +394,11 @@ class TestSearchChemblIdLookup:
             )
             result = await search_chembl_id_lookup("EGFR")
         sent = _sent_query(route)
-        assert "UNION" in sent
-        assert "cco:SmallMolecule" in sent and "cco:hasTargetComponent" in sent
+        assert sent.count("UNION") == 3  # 4 branches
+        for frag in ("cco:SmallMolecule", "cco:hasTargetComponent", "cco:CellLine",
+                     "cco:Tissue"):
+            assert frag in sent
+        assert "cco:Assay" not in sent  # ASSAY excluded from the default UNION
         assert result["results"][0]["entity_type"] == "TARGET"
 
     @pytest.mark.asyncio
@@ -412,9 +415,50 @@ class TestSearchChemblIdLookup:
         assert "cco:SmallMolecule" in sent and "cco:hasTargetComponent" not in sent
 
     @pytest.mark.asyncio
+    async def test_cell_line_uses_label_filter_no_prefilter(self) -> None:
+        # Small type-constrained set → plain exact FILTER on rdfs:label, no
+        # bif:contains prefilter needed.
+        with respx.mock(using="httpx") as router:
+            route = router.post(CHEMBL_SPARQL_URL).mock(
+                return_value=httpx.Response(
+                    200, text=_csv("chembl_id,entity_type,name", "CHEMBL3307278,CELL_LINE,CCRF S-180")
+                )
+            )
+            result = await search_chembl_id_lookup("CCRF S-180", entity_type="cell_line")
+        sent = _sent_query(route)
+        assert "cco:CellLine" in sent
+        assert "bif:contains" not in sent  # no prefilter for the small set
+        assert 'FILTER(LCASE(STR(?alt)) = "ccrf s-180")' in sent
+        assert result["results"][0]["chembl_id"] == "CHEMBL3307278"
+
+    @pytest.mark.asyncio
+    async def test_assay_keyword_in_description(self) -> None:
+        # ASSAY does a keyword match on dcterms:description — bif:contains, and
+        # crucially NO exact FILTER (descriptions are free text, not names).
+        with respx.mock(using="httpx") as router:
+            route = router.post(CHEMBL_SPARQL_URL).mock(
+                return_value=httpx.Response(
+                    200,
+                    text=_csv(
+                        "chembl_id,entity_type,name",
+                        "CHEMBL641506,ASSAY,Inhibition of human acetylcholinesterase",
+                    ),
+                )
+            )
+            result = await search_chembl_id_lookup(
+                "acetylcholinesterase", entity_type="assay"
+            )
+        sent = _sent_query(route)
+        assert "cco:Assay" in sent and "dcterms:description" in sent
+        assert 'bif:contains "\'acetylcholinesterase\'"' in sent
+        assert "FILTER(LCASE" not in sent  # keyword match, not exact
+        assert result["results"][0]["entity_type"] == "ASSAY"
+
+    @pytest.mark.asyncio
     async def test_invalid_entity_type_raises(self) -> None:
+        # DOCUMENT is explicitly unsupported; ASSAY is now valid.
         with pytest.raises(ValueError, match="Invalid entity_type"):
-            await search_chembl_id_lookup("EGFR", entity_type="ASSAY")
+            await search_chembl_id_lookup("EGFR", entity_type="DOCUMENT")
 
 
 class TestChemblStructureRetryAndErrorCleaning:

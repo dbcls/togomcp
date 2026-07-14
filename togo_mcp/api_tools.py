@@ -477,8 +477,9 @@ async def search_chembl_id_lookup(
         str,
         Field(
             description=(
-                "Optional filter: COMPOUND (molecules) or TARGET (proteins). "
-                "Omit to search both."
+                "Optional: COMPOUND, TARGET, CELL_LINE, TISSUE, or ASSAY. Omit to "
+                "search the four name kinds together. ASSAY (keyword match on the "
+                "assay description) is opt-in only."
             ),
             default="",
         ),
@@ -491,27 +492,39 @@ async def search_chembl_id_lookup(
     name: str = "",
 ) -> dict:
     """
-    Resolve a name/synonym to ChEMBL IDs across compounds AND targets.
+    Resolve a name to ChEMBL IDs across several entity kinds in one call.
 
-    Cross-entity convenience wrapper: it runs the same exact-synonym SPARQL
-    resolution as `search_chembl_molecule` and `search_chembl_target` and UNIONs
-    the two, so one call covers "what ChEMBL entity is <text>?". Prefer the
-    entity-specific tools when you already know you want a drug or a target — they
-    carry the extra fields (organism/type). Only COMPOUND and TARGET are covered
-    (the two synonym-rich entity kinds); for assays/documents/cell-lines/tissues,
-    query SPARQL directly via run_sparql(database='chembl', ...).
+    Cross-entity convenience wrapper over the ChEMBL RDF graph. Two matching
+    regimes, because the entity kinds carry different searchable text:
 
-    Matching is EXACT (case-insensitive) against skos:altLabel synonyms — brands,
-    generic names, gene symbols — not fuzzy/substring. Fix typos in the query
-    before calling.
+    • EXACT (case-insensitive) NAME match — COMPOUND (skos:altLabel: brands,
+      generics, synonyms), TARGET (component skos:altLabel: gene symbols, protein
+      names), CELL_LINE and TISSUE (rdfs:label, e.g. "Liver", "CCRF S-180"). Not
+      fuzzy/substring — fix typos before calling. Prefer the entity-specific tools
+      (`search_chembl_molecule` / `search_chembl_target`) when you know the kind;
+      they carry extra fields (organism/type).
+
+    • KEYWORD-IN-DESCRIPTION — ASSAY. Assays have no name; their searchable text
+      is a free-text dcterms:description, so ASSAY does a keyword (token) match on
+      that description, NOT an exact match, e.g. entity_type="ASSAY",
+      query="acetylcholinesterase" → every assay whose description mentions it.
+
+    Default (no `entity_type`) searches the four EXACT-name kinds and UNIONs them.
+    ASSAY is opt-in via entity_type="ASSAY" — its keyword semantics and high hit
+    counts would otherwise swamp a name lookup. (DOCUMENT is not supported; query
+    SPARQL directly for it.)
 
     The search string can be passed as any of: `query` (canonical), `search`,
     `term`, `keyword`, `keywords`, `search_term`, or `name`.
 
+    Args:
+        entity_type (str, optional): One of COMPOUND, TARGET, CELL_LINE, TISSUE,
+            ASSAY. Omit to search the four name kinds together.
+
     Returns:
         dict: {'total_count' (int, rows returned — capped by `limit`),
-        'results' (list)}. Each result has 'chembl_id', 'entity_type'
-        (COMPOUND / TARGET), and 'name' (the entity's rdfs:label).
+        'results' (list)}. Each result has 'chembl_id', 'entity_type', and
+        'name' (rdfs:label for the name kinds; the description for ASSAY).
 
         On endpoint failure this tool does NOT raise — it returns a dict with a
         single 'error' key instead. Check for 'error' before reading 'results'.
@@ -531,40 +544,75 @@ async def search_chembl_id_lookup(
             "search, term, keyword, keywords, search_term, name."
         )
     et = entity_type.strip().upper() if entity_type else ""
-    if et and et not in {"COMPOUND", "TARGET"}:
+    allowed = {"COMPOUND", "TARGET", "CELL_LINE", "TISSUE", "ASSAY"}
+    if et and et not in allowed:
         raise ValueError(
-            f"Invalid entity_type {entity_type!r}. Use COMPOUND or TARGET (this "
-            "SPARQL-backed lookup covers those two synonym-rich kinds; for "
-            "assays/documents/cell-lines/tissues query SPARQL directly)."
+            f"Invalid entity_type {entity_type!r}. Use one of: "
+            f"{', '.join(sorted(allowed))} (DOCUMENT is not supported — query "
+            "SPARQL directly). Omit it to search the four name kinds together."
         )
-    match = _altlabel_match_block(query)
-    if match is None:
+    bif = _bif_and(query)
+    if bif is None:
         return {"total_count": 0, "results": []}
-    compound_branch = (
-        "  {\n"
-        "    ?e skos:altLabel ?alt .\n"
-        f"{match}\n"
-        "    ?e a cco:SmallMolecule ; cco:chemblId ?chembl_id ; rdfs:label ?name .\n"
-        '    BIND("COMPOUND" AS ?entity_type)\n'
-        "  }"
-    )
-    target_branch = (
-        "  {\n"
-        "    ?comp skos:altLabel ?alt .\n"
-        f"{match}\n"
-        "    ?e cco:hasTargetComponent ?comp ;\n"
-        "       cco:chemblId ?chembl_id ; rdfs:label ?name .\n"
-        '    BIND("TARGET" AS ?entity_type)\n'
-        "  }"
-    )
-    if et == "COMPOUND":
-        body = compound_branch
-    elif et == "TARGET":
-        body = target_branch
+    exact = _sparql_literal(query.lower())
+
+    def exact_branch(label: str, bind: str, rest: str, prefilter: bool) -> str:
+        # bind → binds ?alt (+ ?chembl_id); prefilter uses the text index (needed
+        # for the huge altLabel sets, skipped for the small type-constrained ones).
+        lines = ["  {", f"    {bind}"]
+        if prefilter:
+            lines.append(f'    ?alt bif:contains "{bif}" .')
+        lines.append(f'    FILTER(LCASE(STR(?alt)) = "{exact}")')
+        lines.append(f"    {rest}")
+        lines.append(f'    BIND("{label}" AS ?entity_type)')
+        lines.append("  }")
+        return "\n".join(lines)
+
+    branches = {
+        "COMPOUND": exact_branch(
+            "COMPOUND",
+            "?e skos:altLabel ?alt .",
+            "?e a cco:SmallMolecule ; cco:chemblId ?chembl_id ; rdfs:label ?name .",
+            prefilter=True,
+        ),
+        "TARGET": exact_branch(
+            "TARGET",
+            "?comp skos:altLabel ?alt .",
+            "?e cco:hasTargetComponent ?comp ; cco:chemblId ?chembl_id ; "
+            "rdfs:label ?name .",
+            prefilter=True,
+        ),
+        "CELL_LINE": exact_branch(
+            "CELL_LINE",
+            "?e a cco:CellLine ; rdfs:label ?alt ; cco:chemblId ?chembl_id .",
+            "BIND(STR(?alt) AS ?name)",
+            prefilter=False,
+        ),
+        "TISSUE": exact_branch(
+            "TISSUE",
+            "?e a cco:Tissue ; rdfs:label ?alt ; cco:chemblId ?chembl_id .",
+            "BIND(STR(?alt) AS ?name)",
+            prefilter=False,
+        ),
+        "ASSAY": (
+            "  {\n"
+            "    ?e a cco:Assay ; dcterms:description ?desc ; cco:chemblId ?chembl_id .\n"
+            f'    ?desc bif:contains "{bif}" .\n'
+            "    BIND(STR(?desc) AS ?name)\n"
+            '    BIND("ASSAY" AS ?entity_type)\n'
+            "  }"
+        ),
+    }
+    if et:
+        body = branches[et]
     else:
-        body = f"{compound_branch}\n  UNION\n{target_branch}"
+        # Default: the four exact-name kinds (ASSAY's keyword match is opt-in).
+        body = "\n  UNION\n".join(
+            branches[t] for t in ("COMPOUND", "TARGET", "CELL_LINE", "TISSUE")
+        )
     sparql = (
         f"{_CHEMBL_PREFIXES}\n"
+        "PREFIX dcterms: <http://purl.org/dc/terms/>\n"
         f"SELECT DISTINCT ?chembl_id ?entity_type ?name FROM <{_CHEMBL_GRAPH}> WHERE {{\n"
         f"{body}\n"
         f"}} LIMIT {int(limit)}"
