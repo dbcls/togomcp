@@ -1065,6 +1065,10 @@ async def search_rhea_entity(
     'chebi-id' → 'chebi_id'). On upstream failure returns {'error': ...} instead
     — CHECK FOR 'error' BEFORE READING 'results'.
 
+    Valid `columns` (default rhea-id,equation): rhea-id, equation, chebi,
+    chebi-id, ec, uniprot, go, pubmed, reaction-xref(EcoCyc|KEGG|MetaCyc|
+    Reactome|M-CSA).
+
     Args:
         query: Search string, e.g. "ATP", "glucose", "ec:1.1.1.1",
             "chebi:17234", "uniprot:*". REQUIRED — a blank query raises
@@ -1160,10 +1164,21 @@ async def search_rhea_entity(
     if not col_ids:
         raise ValueError("columns must name at least one valid Rhea column.")
 
+    # Always fetch `rhea-id` as a stable anchor even if the caller didn't ask
+    # for it. `columns` is a PROJECTION over fields — it must never change which
+    # ROWS come back. But a projection onto only sparse column(s) (e.g. a row
+    # with no reaction-xref(Reactome)) makes Rhea emit an all-blank TSV data
+    # line; blank lines are indistinguishable from the trailing newline and get
+    # dropped during parsing, silently shrinking the row set and corrupting
+    # total_count/has_more. rhea-id is non-empty on every row, so anchoring on
+    # it keeps every matched row countable; we project back to the requested
+    # columns for output below.
+    fetch_ids = col_ids if "rhea-id" in col_ids else ["rhea-id", *col_ids]
+
     # Over-fetch by one so has_more can be detected after truncating to `limit`.
     params = {
         "query": query,
-        "columns": ",".join(col_ids),
+        "columns": ",".join(fetch_ids),
         "format": "tsv",
         "limit": limit + 1,
     }
@@ -1174,23 +1189,26 @@ async def search_rhea_entity(
         return {"error": _rest_fail_msg("Rhea REST API request", resp.message, "rhea")}
 
     # Parse TSV. The header row carries display LABELS ("Reaction identifier"),
-    # not column IDs, so we map by POSITION against the requested `col_ids`.
-    # Values never contain tabs (multi-valued cells are ';'-joined), so a plain
-    # tab split is safe; a trailing empty cell may be dropped, hence the guard.
-    lines = resp.text.strip().split("\n")
-    if len(lines) < 2:
-        return {"total_count": 0, "has_more": False, "results": []}
-
-    keys = [_RHEA_COLUMNS[c] for c in col_ids]
-    results = []
-    for line in lines[1:]:  # first line is the header
-        if not line.strip():
-            continue
+    # not column IDs, so we map by POSITION against `fetch_ids`. Values never
+    # contain tabs (multi-valued cells are ';'-joined), so a plain tab split is
+    # safe. A row is real iff its rhea-id anchor is populated — that is the ONLY
+    # blank-line filter, so a row with every OTHER column empty still survives.
+    fetch_keys = [_RHEA_COLUMNS[c] for c in fetch_ids]
+    anchor = fetch_ids.index("rhea-id")
+    rows = []
+    for line in resp.text.split("\n")[1:]:  # first line is the header
         parts = line.split("\t")
-        results.append(
-            {key: (parts[i] if i < len(parts) else "") for i, key in enumerate(keys)}
+        if anchor >= len(parts) or not parts[anchor].strip():
+            continue  # header-only / trailing blank line, not a data row
+        rows.append(
+            {k: (parts[i] if i < len(parts) else "") for i, k in enumerate(fetch_keys)}
         )
 
-    has_more = len(results) > limit
-    results = results[:limit]
+    # has_more from the RAW row count (before truncation), so the projection
+    # can't influence it. Then project onto the requested columns only — every
+    # requested column is present as a key on every row, blank ("") included.
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    out_keys = [_RHEA_COLUMNS[c] for c in col_ids]
+    results = [{k: row[k] for k in out_keys} for row in rows]
     return {"total_count": len(results), "has_more": has_more, "results": results}

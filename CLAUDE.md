@@ -47,6 +47,16 @@ Two intentional, *different* error conventions coexist — preserve each module'
 
 List-style result tools return a **JSON string of a bare array** (not a Python `list`): empty and non-empty then share one wire shape. Returning a bare `list` makes FastMCP double-represent it (text array + wrapped `{"result": ...}`), so empty vs non-empty diverge for clients. `dict` returns (ChEMBL, `search_reactome_entity`, `get_sparql_endpoints`) and NCBI `list[TextContent]` returns are exempt — they aren't wrapped. `search_reactome_entity` uses the ChEMBL envelope `{total_count, has_more, results}` on success and `{"error": ...}` on failure (it validates+normalizes `species`/`types` case-insensitively against vendored vocabularies and raises on an unknown value — the server-side filter is case-sensitive and silently ignores a mis-cased value; `limit` is a true overall cap, not per-type; `summation` is opt-in).
 
+## Versioning
+
+The version in `pyproject.toml` is read at runtime via `importlib.metadata` and reported in `serverInfo.version` (the deployment tell — a stale build shows the old number). Bump it on every `dev → main` release, and sync `uv.lock` in the same commit.
+
+The "public contract" of this server is the **tool surface** as a client sees it — tool names, parameters, and return shapes — NOT any importable Python API. Apply semver against that surface, using the **agent-pragmatic** policy (our dominant client is an LLM that re-reads the tool schema every session and adapts, so a return-shape change is less catastrophic than for a compiled client):
+
+- **MAJOR** (`x.0.0`) — a change an agent genuinely can't recover from: **remove or rename a tool**, remove a parameter, or make an optional parameter required.
+- **MINOR** (`1.x.0`) — new capability, old calls still work: add a tool/database/optional parameter, add a field to a return object, widen accepted input (new alias, case-insensitivity). **Return-shape changes ride here too** (e.g. bare-list → `{total_count, has_more, results}`) — that's why the Reactome (1.1→1.2) and Rhea (1.2→1.3) overhauls were minor despite reshaping returns. Strict semver would call those MAJOR; we don't, deliberately, because agents adapt. (Caveat: a purely programmatic client hitting the endpoint *can* break on a reshape — weigh that if such consumers appear.)
+- **PATCH** (`1.3.x`) — behavior fixed, contract unchanged: a bug fix that makes a tool return what it already promised (the `chebi:CHEBI:` 500, the empty-query guard), docstring/description fixes, a silently-relaxed filter now honored, internal refactors/tests.
+
 ## Testing
 
 ```bash

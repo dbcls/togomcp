@@ -692,6 +692,75 @@ class TestSearchRheaEntity:
         assert result["results"][0] == {"rhea_id": "RHEA:10000"}
 
     @pytest.mark.asyncio
+    async def test_projection_does_not_change_row_set(self) -> None:
+        """`columns` is a projection over FIELDS, never ROWS: total_count and
+        has_more must be invariant under `columns`, even when the projected
+        column is empty on every row. Regression for the sparse-column row-drop
+        that silently collapsed total_count/has_more to 0/false."""
+        _KEY = {
+            "rhea-id": "rhea_id", "equation": "equation", "chebi": "chebi",
+            "chebi-id": "chebi_id", "ec": "ec", "uniprot": "uniprot",
+            "go": "go", "pubmed": "pubmed",
+            "reaction-xref(EcoCyc)": "xref_ecocyc",
+            "reaction-xref(KEGG)": "xref_kegg",
+            "reaction-xref(MetaCyc)": "xref_metacyc",
+            "reaction-xref(Reactome)": "xref_reactome",
+            "reaction-xref(M-CSA)": "xref_mcsa",
+        }
+
+        def _mock(request: httpx.Request) -> httpx.Response:
+            # Worst case: rhea-id anchor populated, every OTHER column blank.
+            fetched = request.url.params.get("columns").split(",")
+            header = "\t".join(f"h_{c}" for c in fetched)
+            body = "\n".join(
+                "\t".join(rid if c == "rhea-id" else "" for c in fetched)
+                for rid in ("RHEA:1", "RHEA:2", "RHEA:3")
+            )
+            return httpx.Response(200, text=f"{header}\n{body}\n")
+
+        with respx.mock(using="httpx") as router:
+            router.get("https://www.rhea-db.org/rhea").mock(side_effect=_mock)
+            for col in _KEY:
+                r = await search_rhea_entity("glucose", limit=10, columns=col)
+                assert r["total_count"] == 3, col
+                assert r["has_more"] is False, col
+                assert len(r["results"]) == 3, col
+                # every requested column present as a key on every row, blank ok
+                assert all(_KEY[col] in row for row in r["results"]), col
+
+    @pytest.mark.asyncio
+    async def test_sparse_column_still_returns_rows(self) -> None:
+        """The pathological case: projecting onto only a sparse xref column must
+        still return the matched rows (with the xref blank), not an empty
+        envelope. rhea-id is fetched as an anchor to keep rows countable."""
+        captured = {}
+
+        def _mock(request: httpx.Request) -> httpx.Response:
+            captured["columns"] = request.url.params.get("columns")
+            # Rhea emits an all-blank data line per row for a sole sparse column;
+            # the anchor makes the tool fetch rhea-id too, so each line has content.
+            return httpx.Response(
+                200,
+                text=(
+                    "Reaction identifier\tCross-reference (Reactome)\n"
+                    "RHEA:14293\t\nRHEA:14405\t\nRHEA:22152\t\n"
+                ),
+            )
+
+        with respx.mock(using="httpx") as router:
+            router.get("https://www.rhea-db.org/rhea").mock(side_effect=_mock)
+            r = await search_rhea_entity(
+                "glucose", limit=2, columns="reaction-xref(Reactome)"
+            )
+        # anchor prepended to the outgoing request
+        assert captured["columns"] == "rhea-id,reaction-xref(Reactome)"
+        assert r["total_count"] == 2
+        assert r["has_more"] is True  # 3 matched > limit 2
+        assert all("xref_reactome" in row for row in r["results"])
+        # projected down to ONLY the requested column (anchor dropped from output)
+        assert r["results"][0] == {"xref_reactome": ""}
+
+    @pytest.mark.asyncio
     async def test_chebi_double_prefix_collapsed(self) -> None:
         """A canonically-prefixed ChEBI id in a chebi:-scoped term (chebi:CHEBI:
         17234) is collapsed to the bare form the API accepts, avoiding an opaque
