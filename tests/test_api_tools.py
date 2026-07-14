@@ -42,9 +42,9 @@ def _sent_query(route) -> str:
 
 
 @pytest.fixture(autouse=True)
-def _no_chembl_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Zero the ChEMBL retry backoff so the retry-then-error tests don't sleep."""
-    monkeypatch.setattr(api_tools, "_CHEMBL_BACKOFF_BASE", 0.0)
+def _no_rest_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Zero the REST retry backoff so the retry-then-error tests don't sleep."""
+    monkeypatch.setattr(api_tools, "_REST_BACKOFF_BASE", 0.0)
 
 
 class TestResolveQueryAlias:
@@ -107,6 +107,34 @@ class TestSearchUniprotEntity:
             result = await search_uniprot_entity("TP53")
         assert isinstance(result, str)
         assert "UniProt REST API request failed" in result
+
+    @pytest.mark.asyncio
+    async def test_retries_5xx_then_succeeds(self) -> None:
+        """The shared `_rest_get` plumbing now retries transient 5xx for the
+        non-ChEMBL REST wrappers too (they previously did a single try)."""
+        tsv_body = "Entry\tProtein names\tOrganism\nP04637\tp53\tHomo sapiens\n"
+        with respx.mock(using="httpx") as router:
+            route = router.get("https://rest.uniprot.org/uniprotkb/search").mock(
+                side_effect=[
+                    httpx.Response(503, text="<html>busy</html>"),
+                    httpx.Response(200, text=tsv_body),
+                ]
+            )
+            result = await search_uniprot_entity("TP53")
+        assert route.call_count == 2
+        assert "P04637" in result
+
+    @pytest.mark.asyncio
+    async def test_4xx_not_retried(self) -> None:
+        """4xx is a terminal client error — no retry, degrades to a message."""
+        with respx.mock(using="httpx") as router:
+            route = router.get("https://rest.uniprot.org/uniprotkb/search").mock(
+                return_value=httpx.Response(400, text="<html>bad</html>")
+            )
+            result = await search_uniprot_entity("TP53")
+        assert route.call_count == 1
+        assert "UniProt REST API request failed" in result
+        assert "<" not in result and ">" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -781,6 +809,87 @@ class TestSearchReactomeEntity:
         """A whitespace-only query is treated as empty (Bug 4)."""
         with pytest.raises(ValueError, match="Missing search string"):
             await search_reactome_entity("   ")
+
+    @staticmethod
+    def _entry(stid: str, name: str, typ: str, species: list[str], summ: str = "") -> dict:
+        return {
+            "stId": stid, "id": stid, "name": name, "type": typ,
+            "exactType": typ, "species": species, "summation": summ,
+        }
+
+    def _payload(self, *entries: dict) -> dict:
+        return {"results": [{"entries": list(entries)}]}
+
+    @pytest.mark.asyncio
+    async def test_enriched_fields_and_highlight_stripped(self) -> None:
+        """A hit surfaces stId/type/exactType/species/summation with the search
+        highlighting <span> markup stripped from name and summation."""
+        entry = self._entry(
+            "R-HSA-109581",
+            'The <span class="highlighting" >Apoptosis</span> pathway',
+            "Pathway",
+            ["Homo sapiens"],
+            '<span class="highlighting" >Apoptosis</span> is cell death.',
+        )
+        with respx.mock(using="httpx") as router:
+            router.get(self._REACTOME_URL).mock(
+                return_value=httpx.Response(200, json=self._payload(entry))
+            )
+            result = json.loads(await search_reactome_entity("apoptosis"))
+        assert result == [{
+            "id": "R-HSA-109581",
+            "name": "The Apoptosis pathway",
+            "type": "Pathway",
+            "exactType": "Pathway",
+            "species": ["Homo sapiens"],
+            "summation": "Apoptosis is cell death.",
+        }]
+
+    @pytest.mark.asyncio
+    async def test_species_filter_applied_client_side(self) -> None:
+        """When the server relaxes a species filter and returns cross-species
+        rows, the tool re-applies the filter and keeps only matching species."""
+        human = self._entry("R-HSA-1", "Apoptosis", "Pathway", ["Homo sapiens"])
+        mouse = self._entry("R-MMU-1", "Apoptosis", "Pathway", ["Mus musculus"])
+        with respx.mock(using="httpx") as router:
+            router.get(self._REACTOME_URL).mock(
+                return_value=httpx.Response(200, json=self._payload(human, mouse))
+            )
+            result = json.loads(
+                await search_reactome_entity("apoptosis", species="Homo sapiens")
+            )
+        assert [r["id"] for r in result] == ["R-HSA-1"]
+
+    @pytest.mark.asyncio
+    async def test_bogus_species_returns_empty_not_relaxed(self) -> None:
+        """The confirmed silent-relaxation bug: a nonexistent species must yield
+        [] even though the server returns unfiltered rows for it."""
+        rows = [
+            self._entry("R-HSA-1", "Apoptosis", "Pathway", ["Homo sapiens"]),
+            self._entry("R-MMU-1", "Apoptosis", "Pathway", ["Mus musculus"]),
+        ]
+        with respx.mock(using="httpx") as router:
+            router.get(self._REACTOME_URL).mock(
+                return_value=httpx.Response(200, json=self._payload(*rows))
+            )
+            result = json.loads(
+                await search_reactome_entity("apoptosis", species="Nonexistus fakeus")
+            )
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_type_filter_applied_client_side(self) -> None:
+        """A relaxed `types` filter is likewise re-applied client-side."""
+        pathway = self._entry("R-HSA-1", "Apoptosis", "Pathway", ["Homo sapiens"])
+        reaction = self._entry("R-HSA-2", "Cleavage", "Reaction", ["Homo sapiens"])
+        with respx.mock(using="httpx") as router:
+            router.get(self._REACTOME_URL).mock(
+                return_value=httpx.Response(200, json=self._payload(pathway, reaction))
+            )
+            result = json.loads(
+                await search_reactome_entity("apoptosis", types="Pathway")
+            )
+        assert [r["type"] for r in result] == ["Pathway"]
 
 
 # ---------------------------------------------------------------------------
