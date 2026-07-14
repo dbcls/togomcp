@@ -98,7 +98,9 @@ async def get_sparql_endpoints() -> dict[str, Any]:
         "still pass a member database AND add endpoint_name (valid values: "
         f"{', '.join(ENDPOINT_NAMES)}) or endpoint_url, which take priority over database. "
         "Invalid database/endpoint_name values fail immediately with a deterministic "
-        "error — do not retry."
+        "error — do not retry. "
+        "RETURNS the query results as a CSV-formatted string (first row is the "
+        "header of SELECT variable names)."
     ),
 )
 async def run_sparql(
@@ -169,7 +171,10 @@ async def run_sparql(
         "when the endpoint hosts multiple databases (e.g. SIB hosts UniProt + Rhea + "
         "Bgee + OMA). For a database not yet in the registry, pass `endpoint_url` (or "
         "`endpoint_name` if its parent endpoint is registered) to bypass database "
-        "validation; the required `database` value is then used only as a ranking hint."
+        "validation; the required `database` value is then used only as a ranking hint. "
+        "RETURNS a CSV-formatted list of named graphs (database-name matches first); "
+        "on missing endpoint selection it returns a string beginning with 'Error:' "
+        "— check for that prefix before use."
     ),
 )
 async def get_graph_list(
@@ -283,7 +288,7 @@ SELECT DISTINCT ?graph WHERE {
 
 @mcp.tool(
     name="get_MIE_file",
-    description="**At the start of any task, identify ALL databases needed and call this tool for EACH of them before writing any SPARQL queries.** Do not query a database until its MIE file has been read. Get the MIE (Metadata Interoperability Exchange) file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database.",
+    description="**At the start of any task, identify ALL databases needed and call this tool for EACH of them before writing any SPARQL queries.** Do not query a database until its MIE file has been read. Get the MIE (Metadata Interoperability Exchange) file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database. RETURNS the MIE file as a YAML-formatted string; an unknown database returns a string beginning with 'Error:' that lists the valid database names.",
 )
 async def get_MIE_file(
     database: Annotated[
