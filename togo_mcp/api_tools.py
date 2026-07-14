@@ -1042,6 +1042,13 @@ async def search_rhea_entity(
     a BARE ChEBI number, not the `CHEBI:` prefix; a redundant `chebi:CHEBI:17234`
     is auto-corrected to `chebi:17234` (the prefixed form otherwise 500s).
 
+    RETURNS a dict {'total_count', 'has_more', 'results'} — NOT a bare list.
+    'total_count' is the number of reactions RETURNED (capped by `limit`, max
+    500); 'has_more' is true if more matched beyond the cap. Each result carries
+    the requested `columns` as snake_cased keys (e.g. 'rhea-id' → 'rhea_id',
+    'chebi-id' → 'chebi_id'). On upstream failure returns {'error': ...} instead
+    — CHECK FOR 'error' BEFORE READING 'results'.
+
     Args:
         query: Search string, e.g. "ATP", "glucose", "ec:1.1.1.1",
             "chebi:17234", "uniprot:*". REQUIRED — a blank query raises
