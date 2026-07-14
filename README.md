@@ -163,7 +163,7 @@ TogoMCP exposes tools for querying the following (via SPARQL or REST APIs):
 | Category | Resources |
 |---|---|
 | Proteins / Proteomics | UniProt, PDB, jPOST |
-| Genes / Genomics | NCBI Gene, Ensembl, HGNC, OMA, Bgee, DDBJ, MoG+ |
+| Genes / Genomics | NCBI Gene, Ensembl, HGNC, OMA, Bgee, HCO, MCO, DDBJ, MoG+, TogoVar |
 | Chemistry | ChEMBL, PubChem, ChEBI, Rhea, BRENDA, MassBank |
 | Pathways | Reactome |
 | Disease / Clinical | ClinVar, MedGen, MONDO, NANDO |
