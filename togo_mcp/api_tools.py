@@ -98,10 +98,13 @@ class _RestError:
     REST-wrapper boundary.
     """
 
-    __slots__ = ("message",)
+    __slots__ = ("message", "status_code")
 
-    def __init__(self, message: str) -> None:
+    def __init__(self, message: str, status_code: int | None = None) -> None:
         self.message = message
+        # HTTP status for an error response; None for a transport/timeout error.
+        # Lets a caller special-case a status (e.g. Reactome's 404 = "no matches").
+        self.status_code = status_code
 
 
 async def _rest_get(
@@ -121,12 +124,14 @@ async def _rest_get(
     a short snippet.
     """
     last_error = "unknown error"
+    last_status: int | None = None
     for attempt in range(_REST_MAX_ATTEMPTS):
         last = attempt == _REST_MAX_ATTEMPTS - 1
         try:
             response = await client.get(path, params=params, headers=headers)
         except httpx.HTTPError as e:  # includes TimeoutException
             last_error = f"{type(e).__name__}: {e}"
+            last_status = None
             logger.warning(f"{context} attempt {attempt + 1} failed: {last_error}")
             if last:
                 break
@@ -134,6 +139,7 @@ async def _rest_get(
             continue
         if response.is_success:
             return response
+        last_status = response.status_code
         if 500 <= response.status_code < 600 and not last:
             last_error = f"HTTP {response.status_code}"
             logger.warning(f"{context} attempt {attempt + 1}: {last_error}, retrying")
@@ -143,7 +149,7 @@ async def _rest_get(
         last_error = f"HTTP {response.status_code}: {_strip_html(response.text)}"
         logger.warning(f"{context} failed (terminal): {last_error}")
         break
-    return _RestError(last_error)
+    return _RestError(last_error, last_status)
 
 
 def _rest_fail_msg(subject: str, detail: str, database: str) -> str:
@@ -749,7 +755,7 @@ async def search_reactome_entity(
     query: str = "",
     species: str | list[str] | None = None,
     types: str | list[str] | None = None,
-    limit: int = 25,
+    limit: int | None = None,
     include_summation: bool = False,
     rows: int | None = None,
     search: str = "",
@@ -793,13 +799,13 @@ async def search_reactome_entity(
             Valid values: Cell, Chemical Compound, Complex, DNA Sequence, Drug,
             Genes and Transcripts, OtherEntity, Pathway, Polymer, Protein,
             RNA Sequence, Reaction, Set. Unknown values raise ValueError.
-        limit: Maximum number of records returned overall (default 25). This is
-            a true total cap — not per-type.
+        limit: Maximum number of records returned overall (default 25). A true
+            total cap, not per-type.
         include_summation: When True, add a ≤240-char 'summation' description to
             each record. Default False keeps the payload small (a broad default
             search is ~hundreds of tokens instead of thousands).
         rows: DEPRECATED alias for `limit` (the old name meant per-type rows).
-            If given, it overrides `limit`.
+            Passing both `limit` and `rows` with different values raises.
 
     Returns:
         dict: {'total_count': int, 'has_more': bool, 'results': [ ... ]} on
@@ -808,8 +814,15 @@ async def search_reactome_entity(
     Raises:
         ValueError: If `query` is blank or `types`/`species` are invalid.
     """
-    if rows is not None:  # legacy alias; `rows` now means the overall cap
-        limit = rows
+    # `rows` is a deprecated alias for `limit` (both mean the overall cap).
+    # Supplying both with different values is a caller error — raise, mirroring
+    # the query-alias conflict check, rather than silently picking one.
+    if limit is not None and rows is not None and limit != rows:
+        raise ValueError(
+            f"Pass only one of `limit` and `rows` (aliases for the overall "
+            f"result cap); got limit={limit}, rows={rows}."
+        )
+    limit = limit if limit is not None else (rows if rows is not None else 25)
     query = _resolve_query_alias(
         query,
         search=search,
@@ -876,6 +889,13 @@ async def search_reactome_entity(
         headers={"Accept": "application/json"}, context="Reactome search",
     )
     if isinstance(resp, _RestError):
+        # Reactome signals "nothing matched" with HTTP 404 (reason NOT_FOUND,
+        # message "No entries found for query: …"). That is an EMPTY result set,
+        # not an upstream failure — return the empty envelope so a caller doesn't
+        # read `error` and conclude the endpoint broke. Any other 404 (or other
+        # status) stays a genuine error.
+        if resp.status_code == 404 and "No entries found" in resp.message:
+            return {"total_count": 0, "has_more": False, "results": []}
         logger.warning(f"Reactome search failed: {resp.message}")
         return {"error": _rest_fail_msg("Reactome REST API request", resp.message, "reactome")}
     try:
@@ -909,7 +929,9 @@ async def search_reactome_entity(
                 "species": entry_species,
             }
             if include_summation:
-                record["summation"] = _strip_html(entry.get("summation", ""), max_len=240)
+                # max_len=239 so the truncated form (239 chars + "…") is ≤240,
+                # matching the docstring's "≤240-char" promise.
+                record["summation"] = _strip_html(entry.get("summation", ""), max_len=239)
             results.append(record)
 
     has_more = len(results) > int(limit)

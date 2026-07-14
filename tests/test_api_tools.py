@@ -320,6 +320,53 @@ class TestSearchReactomeEntity:
         assert result == {"total_count": 0, "has_more": False, "results": []}
 
     @pytest.mark.asyncio
+    async def test_zero_match_404_returns_empty_not_error(self) -> None:
+        """Reactome signals 'no matches' as HTTP 404 (NOT_FOUND); that must map to
+        an empty result set, NOT an {'error': ...} the caller reads as a failure."""
+        body = (
+            '{"code":404,"reason":"NOT_FOUND","url":"http://reactome.org/'
+            'ContentService/search/query","messages":["No entries found for '
+            'query: zzqxwvfoobarnotreal"],"targets":null}'
+        )
+        with respx.mock(using="httpx") as router:
+            router.get(self._REACTOME_URL).mock(
+                return_value=httpx.Response(404, text=body)
+            )
+            result = await search_reactome_entity("zzqxwvfoobarnotreal")
+        assert result == {"total_count": 0, "has_more": False, "results": []}
+
+    @pytest.mark.asyncio
+    async def test_other_404_is_still_an_error(self) -> None:
+        """A 404 that is NOT the 'no entries found' signal stays a genuine error."""
+        with respx.mock(using="httpx") as router:
+            router.get(self._REACTOME_URL).mock(
+                return_value=httpx.Response(404, text="Not Found")
+            )
+            result = await search_reactome_entity("apoptosis")
+        assert "error" in result and "results" not in result
+
+    @pytest.mark.asyncio
+    async def test_limit_rows_conflict_raises(self) -> None:
+        """`limit` and `rows` are aliases; conflicting values raise (like the
+        query-alias conflict check), rather than silently picking one."""
+        with pytest.raises(ValueError, match="only one of `limit` and `rows`"):
+            await search_reactome_entity("kinase", limit=10, rows=5)
+
+    @pytest.mark.asyncio
+    async def test_summation_capped_at_240(self) -> None:
+        """A long summation is truncated so the returned value is ≤240 chars
+        (240 + ellipsis was 241 — the documented cap is 240)."""
+        entry = self._entry(
+            "R-HSA-1", "Apoptosis", "Pathway", ["Homo sapiens"], "x" * 500
+        )
+        with respx.mock(using="httpx") as router:
+            router.get(self._REACTOME_URL).mock(
+                return_value=httpx.Response(200, json=self._payload(entry))
+            )
+            result = await search_reactome_entity("apoptosis", include_summation=True)
+        assert len(result["results"][0]["summation"]) <= 240
+
+    @pytest.mark.asyncio
     async def test_success_envelope_shape(self) -> None:
         """A hit returns total_count/has_more/results with the record fields."""
         entry = self._entry("R-HSA-109581", "Apoptosis", "Pathway", ["Homo sapiens"])
