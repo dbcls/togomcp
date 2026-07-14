@@ -446,20 +446,40 @@ def _build_variant_query(
     return {"and": clauses}
 
 
+# Genotype-count keys on a frequency panel. NOT universal — they are per-source
+# (verified on rs671: jga_wgs carries the full set, jga_snp only aac/arc/rrc, ncbn
+# only aac, tommo/jga_wes/gem_j_wga none, gnomAD neither), so each key is copied
+# only when the panel actually has it rather than defaulted to None.
+_GENOTYPE_KEYS = ("aac", "arc", "rrc", "hac", "hoc", "aoc", "ooc", "roc")
+
+
 def _project_variant(
-    row: dict[str, Any], include_full_alleles: bool = False
+    row: dict[str, Any],
+    include_full_alleles: bool = False,
+    include_transcripts: bool = False,
 ) -> dict[str, Any]:
     """Flatten a /search/variant data row into the fields agents actually use.
 
-    `tgv_id` (the row's `id`) and the reconstructed `variant_iri` are the two
-    stable keys for a SPARQL round-trip (frequency/significance via REST here ->
-    VEP/cross-references via SPARQL). Cross-database identifiers live under
-    `external_link` (dbsnp -> rs, clinvar -> VCV), surfaced as `rs`/`clinvar`.
-    Per-dataset frequencies are reshaped into a `{source: {af, ac, an}}` map.
+    `tgv_id` (the row's `id`) is the stable key for a SPARQL round-trip. It is
+    NULL for variants outside the SPARQL subset, and `variant_iri` is emitted ONLY
+    when it is non-null: the IRI is built mechanically from coordinates, so a row
+    with no tgv_id would otherwise carry an IRI that resolves to nothing (verified:
+    ClinVar-Pathogenic CFTR 7:117480132-C-T has tgv_id=null and no node in the
+    SPARQL variant graph). Cross-database identifiers live under `external_link`
+    (dbsnp -> rs, clinvar -> VCV), surfaced as `rs`/`clinvar`.
+
+    Per-dataset frequencies are reshaped into a `{source: {...}}` map carrying
+    af/ac/an plus the QC `filter` and whatever genotype counts that panel has
+    (hom-alt/het/hom-ref/hemizygous) — these drive carrier-frequency and
+    Hardy-Weinberg reasoning and are per-source, not universal.
 
     Opaque codes are given human-readable companions: `type_label`,
     `most_severe_consequence_label`, and `interpretation_labels` on each
     significance entry (the raw codes are kept for backward compatibility).
+
+    Per-transcript VEP (`transcripts`: HGVS c/p/g + per-transcript predictions) is
+    opt-in via include_transcripts — a variant in a transcript-dense locus can
+    carry 400+ transcript annotations, so it is kept out of the default payload.
 
     Large structural variants carry multi-kb REF/ALT; the `variant` label is
     length-bounded and `reference`/`alternate` are summarized (with true
@@ -476,7 +496,18 @@ def _project_variant(
     for f in row.get("frequencies") or []:
         src = f.get("source")
         if src:
-            freqs[src] = {"af": f.get("af"), "ac": f.get("ac"), "an": f.get("an")}
+            entry: dict[str, Any] = {
+                "af": f.get("af"),
+                "ac": f.get("ac"),
+                "an": f.get("an"),
+                "filter": f.get("filter"),
+            }
+            if f.get("quality") is not None:
+                entry["quality"] = f["quality"]
+            for gk in _GENOTYPE_KEYS:
+                if gk in f:
+                    entry[gk] = f[gk]
+            freqs[src] = entry
 
     significance = []
     for s in row.get("significance") or []:
@@ -487,7 +518,11 @@ def _project_variant(
             "interpretation_labels": [
                 _SIGNIFICANCE_LABELS.get(i, i) for i in interps
             ],
-            "conditions": [c.get("name") for c in s.get("conditions", [])],
+            "submission_count": s.get("submission_count"),
+            "conditions": [
+                {"name": c.get("name"), "medgen": c.get("medgen")}
+                for c in s.get("conditions", [])
+            ],
         })
 
     chrom = row.get("chromosome")
@@ -496,11 +531,13 @@ def _project_variant(
     alt = row.get("alternate")
     vtype = row.get("type")
     msc = row.get("most_severe_consequence")
+    tgv = row.get("id")
 
-    return {
-        "tgv_id": row.get("id"),
+    projected = {
+        "tgv_id": tgv,
         "variant": f"{chrom}:{pos}:{_compact_allele(ref)}>{_compact_allele(alt)}",
-        "variant_iri": _variant_iri(chrom, pos, ref, alt),
+        # Only emit an IRI that actually resolves in the SPARQL subset.
+        "variant_iri": _variant_iri(chrom, pos, ref, alt) if tgv else None,
         "type": vtype,
         "type_label": _SO_LABELS.get(vtype) if vtype else None,
         "chromosome": chrom,
@@ -520,6 +557,54 @@ def _project_variant(
         "significance": significance,
         "frequencies": freqs,
     }
+
+    if include_transcripts:
+        transcripts = []
+        for tr in row.get("transcripts") or []:
+            cons = tr.get("consequence") or []
+            transcripts.append({
+                "transcript_id": tr.get("transcript_id"),
+                "gene_id": tr.get("gene_id"),
+                "hgnc_id": tr.get("hgnc_id"),
+                "consequence": cons,
+                "consequence_labels": [_SO_LABELS.get(c, c) for c in cons],
+                "hgvs_c": tr.get("hgvs_c"),
+                "hgvs_p": tr.get("hgvs_p"),
+                "hgvs_g": tr.get("hgvs_g"),
+                "sift": tr.get("sift"),
+                "polyphen": tr.get("polyphen"),
+                "alphamissense": tr.get("alphamissense"),
+            })
+        projected["transcripts"] = transcripts
+
+    return projected
+
+
+def _label_facets(stats: dict[str, Any]) -> dict[str, Any]:
+    """Add `*_labeled` companions to the code-keyed stat facets (C7).
+
+    `type`/`consequence` are keyed by SO accession and `significance` by TogoVar's
+    abbreviation codes; neither is readable on its own. The raw facets are left
+    untouched for backward compatibility.
+
+    ZERO COUNTS ARE DROPPED here. The API returns the FULL vocabulary in every
+    facet — all 36 SO consequence terms and all 21 significance codes — mostly
+    zeros (rs671: 3 non-zero of 36). Mirroring those into a labelled copy would
+    double the noise, so the companion carries only what actually matched. Read the
+    raw facet if you need the zeros.
+    """
+    labeled: dict[str, Any] = {}
+    for facet, table in (
+        ("type", _SO_LABELS),
+        ("consequence", _SO_LABELS),
+        ("significance", _SIGNIFICANCE_LABELS),
+    ):
+        counts = stats.get(facet)
+        if isinstance(counts, dict):
+            labeled[f"{facet}_labeled"] = {
+                table.get(code, code): n for code, n in counts.items() if n
+            }
+    return labeled
 
 
 @togovar_mcp.tool()
@@ -658,6 +743,7 @@ async def search_variant(
     offset: Annotated[int, Field(ge=0)] = 0,
     stat: bool = False,
     include_full_alleles: bool = False,
+    include_transcripts: bool = False,
 ) -> str:
     """Search TogoVar for human genome variants with population frequencies.
 
@@ -669,11 +755,15 @@ async def search_variant(
     All filters are optional and combined with AND. Supply zero filters to
     browse; but scope tightly — the database holds ~1 billion variants.
 
-    COUNTS: `total` is the size of the whole REST backend (~1.1 billion) and is
+    COUNTS: `total` is the size of the whole REST backend (1,097,708,150) and is
     constant across queries; `filtered` is the count matching your filters. Note
-    the REST backend is LARGER than TogoMCP's `togovar` SPARQL graph (~3.9x: the
-    SPARQL side is the annotated subset), so REST counts will not match SPARQL
-    `COUNT(*)` — they measure different sets.
+    the REST backend is LARGER than TogoMCP's `togovar` SPARQL graph (~2.8x: the
+    SPARQL side is the annotated subset, 390,725,782), so REST counts will not
+    match SPARQL `COUNT(*)` — they measure different sets.
+
+    PAGING CAP: the API allows `offset + limit <= 10,000` and returns HTTP 400
+    beyond it, so a result set larger than 10,000 cannot be fully paged. Narrow the
+    filters until `filtered` <= 10,000 to enumerate one exhaustively.
 
     STATISTICS SCOPE (stat=True): all facets are scoped to the filtered set, but
     they count at different granularities. `type` counts per variant (sums to
@@ -684,8 +774,12 @@ async def search_variant(
     significance sums exceed `filtered` and must NOT be summed against it (they
     are not per-variant counts). See `statistics_caveats` for the per-facet rule.
 
-    ROUND-TRIP TO SPARQL: each row carries `tgv_id` and `variant_iri`; either
-    resolves in the `togovar` SPARQL graph for VEP/cross-reference deep dives.
+    ROUND-TRIP TO SPARQL: gate on `tgv_id`. It is NULL for variants that exist in
+    the REST backend but NOT in the (smaller) SPARQL subset — including some
+    ClinVar-Pathogenic ones. `variant_iri` is emitted ONLY when `tgv_id` is
+    non-null, so a non-null `variant_iri` is safe to query in the `togovar` SPARQL
+    graph; a row with `tgv_id: null` has no SPARQL record at all, and REST is the
+    only source for it.
 
     TWO-STEP WORKFLOW for gene/disease filters:
         1. `search_gene("ALDH2")` -> hgnc_id -> pass as `gene_hgnc_id`.
@@ -719,27 +813,44 @@ async def search_variant(
             significance). REQUIRED to get a count — e.g. "how many variants
             match". Left False by default because computing the aggregation is
             the slow part of the query; use stat=False when you only need rows.
-            See STATISTICS SCOPE above — the facets are not uniformly filtered.
+            See STATISTICS SCOPE above — every facet is scoped to the filtered
+            set, but they count at different granularities, so only `type` sums
+            to `filtered`.
         include_full_alleles: If True, return full REF/ALT sequences even for
             large structural variants. Default False summarizes alleles over
             ~50 bp as "<head>…(<n> bp)" to keep the response inline-readable;
             `ref_length`/`alt_length` always give the true lengths.
+        include_transcripts: If True, add a `transcripts` list to each row with
+            the per-transcript VEP annotation the REST backend already carries:
+            transcript/gene IDs, SO consequence(+labels), HGVS c/p/g, and
+            per-transcript SIFT/PolyPhen/AlphaMissense. Default False — a variant
+            in a transcript-dense locus (e.g. BRCA1) can carry 400+ transcript
+            annotations, which would dominate the response. Note this means HGVS
+            and per-transcript predictions do NOT require a SPARQL round-trip.
 
     Returns:
         str: JSON string
         `{"data": [...], "total"?, "filtered"?, "statistics"?,
           "statistics_caveats"?, "truncated"?}`.
-        Each data row carries `tgv_id`, `variant` (a length-bounded
-        chr:pos:ref>alt locus label), `variant_iri` (for SPARQL round-trip;
-        null for very long alleles), coordinates, `reference`/`alternate`
-        (summarized unless include_full_alleles) with `ref_length`/`alt_length`,
+        Each data row carries `tgv_id` (null if the variant is not in the SPARQL
+        subset), `variant` (a length-bounded chr:pos:ref>alt locus label),
+        `variant_iri` (non-null only when `tgv_id` is — see ROUND-TRIP above),
+        coordinates, `reference`/`alternate` (summarized unless
+        include_full_alleles) with `ref_length`/`alt_length`,
         `type`(+`type_label`), genes, `rs` (dbSNP) and `clinvar` (VCV)
         cross-links, `most_severe_consequence`(+`_label`),
         SIFT/PolyPhen/AlphaMissense scores, clinical `significance` (each with
-        `interpretations` codes + `interpretation_labels`), and a `frequencies`
-        map keyed by dataset ({af, ac, an}). `total`/`filtered`/`statistics`/
-        `statistics_caveats` are present ONLY when `stat=True`. `truncated` is
-        present (and data rows trimmed) only if the response would be oversized.
+        `interpretations` codes + `interpretation_labels`, `submission_count`,
+        and `conditions` as {name, medgen CUI}), and a `frequencies` map keyed by
+        dataset ({af, ac, an, filter, quality?} plus genotype counts where the
+        panel provides them: aac=hom-alt, arc=het, rrc=hom-ref, hac/hoc=hemizygous
+        — these are PER-SOURCE, so check the key rather than assuming it exists).
+        `transcripts` is present only with include_transcripts=True.
+        `total`/`filtered`/`statistics`/`statistics_caveats` are present ONLY when
+        `stat=True`; `statistics` also carries `*_labeled` companions for the
+        code-keyed facets (type/consequence/significance), and `scroll` reports the
+        API's paging cap. `truncated` is present (and data rows trimmed) only if
+        the response would be oversized.
 
         Clinical-significance codes (in `interpretations`): P=Pathogenic,
         LP=Likely pathogenic, PLP=Pathogenic low-penetrance, LPLP=Likely
@@ -784,10 +895,16 @@ async def search_variant(
 
     result: dict[str, Any] = {
         "data": [
-            _project_variant(row, include_full_alleles)
+            _project_variant(row, include_full_alleles, include_transcripts)
             for row in payload.get("data", [])
         ],
     }
+    # Surface the API's hard paging cap (offset + limit <= max_rows; HTTP 400
+    # beyond it) so a caller paging a large result set sees the ceiling instead of
+    # discovering it as an error.
+    scroll = payload.get("scroll")
+    if isinstance(scroll, dict) and scroll.get("max_rows") is not None:
+        result["scroll"] = scroll
     # Match counts and the category breakdown come from the statistics block,
     # which the API only computes (and it is the expensive part) when stat=1.
     # With stat=False the caller gets rows only — counts are omitted, not zero.
@@ -795,10 +912,13 @@ async def search_variant(
         stats = payload["statistics"]
         result["total"] = stats.get("total")
         result["filtered"] = stats.get("filtered")
-        result["statistics"] = stats
-        # The API filters facets inconsistently (consequence is whole-database,
-        # significance is a self-excluding facet); ship the scope rules so the
-        # numbers are not misread. Only annotate facets actually present.
+        # The facets are keyed by SO accession / significance code, which are
+        # unreadable on their own; ship labelled companions alongside the raw ones.
+        result["statistics"] = {**stats, **_label_facets(stats)}
+        # Every facet IS scoped to the filtered set; they just count at different
+        # granularities (consequence per-transcript, significance per-condition), so
+        # their sums exceed `filtered`. Ship the scope rules so the numbers are not
+        # misread as variant counts. Only annotate facets actually present.
         result["statistics_caveats"] = {
             k: v for k, v in _STATISTICS_CAVEATS.items() if k in stats
         }
