@@ -1012,6 +1012,13 @@ _RHEA_COLUMNS_LC = {col.lower(): col for col in _RHEA_COLUMNS}
 # blows the context window. 500 is generous for any real search.
 _RHEA_MAX_LIMIT = 500
 
+# A `chebi:`-scoped term takes a BARE ChEBI number (chebi:17234). ChEBI IDs are
+# canonically written WITH the prefix (CHEBI:17234) everywhere else — including
+# this tool's own chebi_id output — so a caller naturally forms chebi:CHEBI:17234.
+# The embedded ':' then breaks Rhea's Lucene parser and it returns an opaque
+# HTTP 500. Collapse the redundant prefix to what the caller obviously meant.
+_RHEA_CHEBI_DOUBLE_PREFIX_RE = re.compile(r"(?i)\bchebi:chebi:")
+
 
 @mcp.tool()
 async def search_rhea_entity(
@@ -1031,14 +1038,16 @@ async def search_rhea_entity(
     Matching is KEYWORD/FUZZY over reaction participants, equations, EC numbers,
     and cross-references — NOT exact-ID lookup. A term like "glucose" matches any
     reaction mentioning glucose. Field-scoped terms and wildcards are supported
-    (e.g. `ec:1.1.1.1`, `uniprot:*`).
+    (e.g. `ec:1.1.1.1`, `chebi:17234`, `uniprot:*`). A `chebi:`-scoped term takes
+    a BARE ChEBI number, not the `CHEBI:` prefix; a redundant `chebi:CHEBI:17234`
+    is auto-corrected to `chebi:17234` (the prefixed form otherwise 500s).
 
     Args:
         query: Search string, e.g. "ATP", "glucose", "ec:1.1.1.1",
-            "uniprot:*". REQUIRED — a blank query raises ValueError (it would
-            otherwise dump an arbitrary slice of the whole database). Accepts
-            aliases: `search`, `term`, `keyword`, `keywords`, `search_term`,
-            `name` (supplying two different values raises ValueError).
+            "chebi:17234", "uniprot:*". REQUIRED — a blank query raises
+            ValueError (it would otherwise dump an arbitrary slice of the whole
+            database). Accepts aliases: `search`, `term`, `keyword`, `keywords`,
+            `search_term`, `name` (supplying two different values raises ValueError).
         limit: Maximum number of reactions returned (default 25). Must be
             between 0 and 500; a negative limit or one above 500 raises
             ValueError. `has_more` in the result signals whether more matched.
@@ -1084,6 +1093,9 @@ async def search_rhea_entity(
         search_term=search_term,
         name=name,
     ).strip()
+    # Collapse a redundant `chebi:CHEBI:` prefix (see _RHEA_CHEBI_DOUBLE_PREFIX_RE)
+    # so a canonically-formatted ChEBI ID doesn't trigger an opaque upstream 500.
+    query = _RHEA_CHEBI_DOUBLE_PREFIX_RE.sub("chebi:", query)
     if not query:
         # A blank query makes Rhea return an arbitrary first slice of the whole
         # database (ordered by ID) — plausible-looking rows unrelated to any

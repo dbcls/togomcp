@@ -692,6 +692,31 @@ class TestSearchRheaEntity:
         assert result["results"][0] == {"rhea_id": "RHEA:10000"}
 
     @pytest.mark.asyncio
+    async def test_chebi_double_prefix_collapsed(self) -> None:
+        """A canonically-prefixed ChEBI id in a chebi:-scoped term (chebi:CHEBI:
+        17234) is collapsed to the bare form the API accepts, avoiding an opaque
+        upstream 500 (§2). Case-insensitive on both the scope and the prefix."""
+        tsv_body = "Reaction identifier\nRHEA:10076\n"
+        captured = {}
+        with respx.mock(using="httpx") as router:
+            def _capture(request: httpx.Request) -> httpx.Response:
+                captured["query"] = request.url.params.get("query")
+                return httpx.Response(200, text=tsv_body)
+
+            router.get("https://www.rhea-db.org/rhea").mock(side_effect=_capture)
+            await search_rhea_entity("chebi:CHEBI:17234", columns="rhea-id")
+        assert captured["query"] == "chebi:17234"
+
+        with respx.mock(using="httpx") as router:
+            def _capture2(request: httpx.Request) -> httpx.Response:
+                captured["query"] = request.url.params.get("query")
+                return httpx.Response(200, text=tsv_body)
+
+            router.get("https://www.rhea-db.org/rhea").mock(side_effect=_capture2)
+            await search_rhea_entity("CHEBI:CHEBI:17234", columns="rhea-id")
+        assert captured["query"] == "chebi:17234"
+
+    @pytest.mark.asyncio
     async def test_unknown_column_raises(self) -> None:
         """An invalid column is rejected, not forwarded — the API would silently
         drop it and return a narrower table without warning."""
