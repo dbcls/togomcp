@@ -1002,12 +1002,21 @@ _RHEA_COLUMNS = {
     "reaction-xref(Reactome)": "xref_reactome",
     "reaction-xref(M-CSA)": "xref_mcsa",
 }
+# Lowercase → canonical, so `columns` can be matched case-INSENSITIVELY (the
+# API's own filter is case-sensitive, but there's no reason to make the caller
+# pay for that; we normalize to canonical casing before dispatch). Mirrors the
+# case-insensitive handling of Reactome's `species`/`types`.
+_RHEA_COLUMNS_LC = {col.lower(): col for col in _RHEA_COLUMNS}
+# Hard ceiling on `limit`. Rhea has ~18k+ reactions and no server-side cap, so
+# an unbounded limit (e.g. 20000) can return a six-figure-token payload that
+# blows the context window. 500 is generous for any real search.
+_RHEA_MAX_LIMIT = 500
 
 
 @mcp.tool()
 async def search_rhea_entity(
     query: str = "",
-    limit: int | None = 100,
+    limit: int | None = 25,
     columns: str | list[str] = "rhea-id,equation",
     search: str = "",
     term: str = "",
@@ -1015,55 +1024,57 @@ async def search_rhea_entity(
     keywords: str = "",
     search_term: str = "",
     name: str = "",
-) -> str:
+) -> dict:
     """
-    Search Rhea database for biochemical reactions using keyword search.
+    Search the Rhea reaction database by keyword and return matching reactions.
+
+    Matching is KEYWORD/FUZZY over reaction participants, equations, EC numbers,
+    and cross-references — NOT exact-ID lookup. A term like "glucose" matches any
+    reaction mentioning glucose. Field-scoped terms and wildcards are supported
+    (e.g. `ec:1.1.1.1`, `uniprot:*`).
 
     Args:
-        query (str): Search query string. Free-text terms match reaction
-                    participants, EC numbers, cross-references, etc. Supports
-                    field-scoped terms and wildcards. Examples:
-                    - "ATP" - find reactions involving ATP
-                    - "glucose" - find reactions with glucose
-                    - "ec:1.1.1.1" - reactions for a given EC number
-                    - "uniprot:*" - reactions with UniProt-annotated enzymes
-                    - "" - retrieve all reactions
-                    Accepts aliases: `search`, `term`, `keyword`, `keywords`,
-                    `search_term`, `name`. If both `query` and an alias are
-                    given with different values, this raises ValueError (pass only one).
-        limit (int, optional): Maximum number of results. Defaults to 100.
-            Must be >= 0; a negative limit is rejected (it would make Rhea
-            return the entire database).
-        columns (str | list[str], optional): Which fields to return, as a
-            comma-separated string or a list of column IDs. Defaults to
-            "rhea-id,equation". Each requested column becomes a key on every
-            result row. Valid column IDs (case-sensitive):
-              - rhea-id     -> rhea_id     (reaction identifier, e.g. RHEA:10000)
-              - equation    -> equation    (textual reaction equation)
-              - chebi       -> chebi        (';'-joined ChEBI participant names)
-              - chebi-id    -> chebi_id     (';'-joined ChEBI identifiers)
-              - ec          -> ec           (';'-joined EC numbers)
-              - uniprot     -> uniprot      (count of annotated UniProtKB entries)
-              - go          -> go           (GO id + label)
-              - pubmed      -> pubmed       (';'-joined PubMed ids)
+        query: Search string, e.g. "ATP", "glucose", "ec:1.1.1.1",
+            "uniprot:*". REQUIRED — a blank query raises ValueError (it would
+            otherwise dump an arbitrary slice of the whole database). Accepts
+            aliases: `search`, `term`, `keyword`, `keywords`, `search_term`,
+            `name` (supplying two different values raises ValueError).
+        limit: Maximum number of reactions returned (default 25). Must be
+            between 0 and 500; a negative limit or one above 500 raises
+            ValueError. `has_more` in the result signals whether more matched.
+        columns: Which fields to return, as a comma-separated string or a list
+            of column IDs (case-INSENSITIVE). Default "rhea-id,equation". Each
+            requested column becomes a key on every result row; hyphenated IDs
+            are snake_cased in the output (e.g. `chebi-id` → `chebi_id`). The 13
+            valid column IDs and their output keys:
+              - chebi                   -> chebi        (';'-joined ChEBI names)
+              - chebi-id                -> chebi_id     (';'-joined ChEBI ids)
+              - ec                      -> ec           (';'-joined EC numbers)
+              - equation                -> equation     (textual reaction equation)
+              - go                      -> go           (GO id + label)
+              - pubmed                  -> pubmed       (';'-joined PubMed ids)
               - reaction-xref(EcoCyc)   -> xref_ecocyc
-              - reaction-xref(MetaCyc)  -> xref_metacyc
               - reaction-xref(KEGG)     -> xref_kegg
-              - reaction-xref(Reactome) -> xref_reactome
               - reaction-xref(M-CSA)    -> xref_mcsa
-            An unknown column raises ValueError (the API would otherwise
-            silently drop it and return an unannounced narrower table).
+              - reaction-xref(MetaCyc)  -> xref_metacyc
+              - reaction-xref(Reactome) -> xref_reactome
+              - rhea-id                 -> rhea_id      (e.g. RHEA:10000)
+              - uniprot                 -> uniprot      (count of annotated UniProtKB entries)
+            An unknown column raises ValueError — the API would otherwise
+            silently drop it and return an unannounced narrower table.
 
     Returns:
-        JSON string: a bare array of reactions, one object per reaction keyed by
-        the requested columns. Empty and non-empty results share the same shape.
-        Example: '[{"rhea_id": "RHEA:10000", "equation": "ATP + H2O = ..."}]'
+        dict: {'total_count': int, 'has_more': bool, 'results': [ ... ]} on
+        success, where each result is one reaction keyed by the requested
+        columns. `total_count` is the number of rows returned (capped by
+        `limit`); `has_more` is true if more reactions matched beyond the cap.
+        On upstream/HTTP failure returns {'error': str} instead — CHECK FOR
+        'error' BEFORE READING 'results'.
 
     Raises:
-        ValueError: If `limit` is negative or `columns` names an unknown field.
+        ValueError: If `query` is blank, `limit` is out of range, or `columns`
+            names an unknown field.
     """
-    # Unlike other search tools, Rhea permits an empty query (returns all
-    # reactions). Only coalesce when an alias was provided.
     query = _resolve_query_alias(
         query,
         search=search,
@@ -1073,47 +1084,59 @@ async def search_rhea_entity(
         search_term=search_term,
         name=name,
     ).strip()
-
-    if limit is not None and limit < 0:
+    if not query:
+        # A blank query makes Rhea return an arbitrary first slice of the whole
+        # database (ordered by ID) — plausible-looking rows unrelated to any
+        # search. Raise instead, matching the ChEMBL/Reactome guard.
         raise ValueError(
-            f"limit must be >= 0 (got {limit}). A negative limit makes Rhea "
-            "return the entire result set (thousands of reactions)."
+            "Missing search string. Pass it as `query` (canonical) or any of: "
+            "search, term, keyword, keywords, search_term, name."
         )
 
-    # Normalize + validate columns. Reject unknowns rather than let the server
-    # silently drop them (see _RHEA_COLUMNS). Preserve caller order and drop
-    # duplicates so the TSV columns line up positionally with `col_ids`.
+    if limit is None:
+        limit = 25
+    if limit < 0 or limit > _RHEA_MAX_LIMIT:
+        raise ValueError(
+            f"limit must be between 0 and {_RHEA_MAX_LIMIT} (got {limit}). "
+            "Rhea applies no server-side cap, so an unbounded limit can return "
+            "a payload large enough to exhaust the context window."
+        )
+
+    # Normalize + validate columns case-insensitively (see _RHEA_COLUMNS_LC).
+    # Reject unknowns rather than let the server silently drop them. Preserve
+    # caller order and drop duplicates so the TSV columns line up positionally
+    # with `col_ids`.
     if isinstance(columns, str):
         requested = [c.strip() for c in columns.split(",") if c.strip()]
     else:
         requested = [str(c).strip() for c in columns if str(c).strip()]
     col_ids, seen = [], set()
     for col in requested:
-        if col not in _RHEA_COLUMNS:
+        canon = _RHEA_COLUMNS_LC.get(col.lower())
+        if canon is None:
             raise ValueError(
                 f"Unknown Rhea column {col!r}. The API silently drops invalid "
                 "columns and returns a narrower table without warning. Valid "
-                f"column IDs (case-sensitive): {sorted(_RHEA_COLUMNS)}."
+                f"column IDs (case-insensitive): {sorted(_RHEA_COLUMNS)}."
             )
-        if col not in seen:
-            seen.add(col)
-            col_ids.append(col)
+        if canon not in seen:
+            seen.add(canon)
+            col_ids.append(canon)
     if not col_ids:
         raise ValueError("columns must name at least one valid Rhea column.")
 
+    # Over-fetch by one so has_more can be detected after truncating to `limit`.
     params = {
         "query": query,
         "columns": ",".join(col_ids),
         "format": "tsv",
-        "limit": limit,
+        "limit": limit + 1,
     }
 
     resp = await _rest_get(_rhea_client, "/rhea", params=params, context="Rhea search")
     if isinstance(resp, _RestError):
         logger.warning(f"Rhea search failed: {resp.message}")
-        return json.dumps([
-            {"error": _rest_fail_msg("Rhea REST API request", resp.message, "rhea")}
-        ])
+        return {"error": _rest_fail_msg("Rhea REST API request", resp.message, "rhea")}
 
     # Parse TSV. The header row carries display LABELS ("Reaction identifier"),
     # not column IDs, so we map by POSITION against the requested `col_ids`.
@@ -1121,7 +1144,7 @@ async def search_rhea_entity(
     # tab split is safe; a trailing empty cell may be dropped, hence the guard.
     lines = resp.text.strip().split("\n")
     if len(lines) < 2:
-        return json.dumps([])
+        return {"total_count": 0, "has_more": False, "results": []}
 
     keys = [_RHEA_COLUMNS[c] for c in col_ids]
     results = []
@@ -1133,4 +1156,6 @@ async def search_rhea_entity(
             {key: (parts[i] if i < len(parts) else "") for i, key in enumerate(keys)}
         )
 
-    return json.dumps(results)
+    has_more = len(results) > limit
+    results = results[:limit]
+    return {"total_count": len(results), "has_more": has_more, "results": results}
