@@ -29,9 +29,9 @@ schema_info:
   kw_search_tools:
     - search_reactome_entity
   version:
-    mie_version: "6.3"
+    mie_version: "6.4"
     mie_created: "2026-04-29"
-    mie_updated: "2026-07-07"
+    mie_updated: "2026-07-14"
     data_version: "Release 95"
     update_frequency: "Quarterly"
   access:
@@ -98,6 +98,18 @@ critical_warnings: |
     (apoptosis) — which is why ROCK1 looks "easier to find". This is faithful biology
     (ROCK1/ROCK2 are interchangeable in RHO signaling), not a Reactome bug — do not conclude
     ROCK2 is under-annotated.
+  - SEARCH-TOOL stId IS NOT A SPARQL IRI: search_reactome_entity() returns a Reactome stable ID
+    in its `id` field (e.g. "R-HSA-109581"), alongside `species`, `exactType`, and `summation`.
+    That stId is NOT the BioPAX subject IRI. BioPAX subjects look like
+    <http://www.reactome.org/biopax/95/48887#Pathway2221> — a per-export counter that is
+    UNGUESSABLE from the stId. Pasting the stId (or a hand-built reactome.org URL) as a SPARQL
+    subject returns 0 rows silently. BRIDGE via the Reactome xref instead (verified 2026-07-14:
+    R-HSA-109581 -> Pathway2221 "Apoptosis"):
+        ?entity bp:xref [ bp:db "Reactome"^^xsd:string ; bp:id "R-HSA-109581"^^xsd:string ] .
+    The ^^xsd:string is mandatory (see warning (a)). Bonus: the stId is species-specific
+    (R-HSA = human, R-MMU = mouse, …), so bridging on it targets exactly ONE organism's entity —
+    cleaner than matching bp:displayName, which hits the same-named pathway in every species.
+    Use the search result's `species` field to confirm the intended organism before bridging.
 
 shape_expressions: |
   PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
@@ -730,12 +742,12 @@ architectural_notes:
   query_strategy:
     - "ALWAYS read get_MIE_file('reactome') and scan critical_warnings before writing queries"
     - "PRE-FLIGHT LITERAL SWEEP (do this before submitting EVERY query): scan every quoted literal in VALUES, FILTER =, and triple-pattern objects. If it binds to bp:db / bp:id / bp:name / bp:eCNumber / bp:controlType, it MUST carry ^^xsd:string — plain strings silently return 0 rows. VALUES is the highest-miss spot because the typing requirement isn't visually cued there."
-    - "Exploratory: use search_reactome_entity() to find example entities and extract typed values"
+    - "Exploratory: use search_reactome_entity() to find entities — it returns a Reactome stId (id field), species, exactType, and summation. The stId is NOT a BioPAX IRI; bridge it via bp:xref (bp:db 'Reactome'^^xsd:string, bp:id '<stId>'^^xsd:string) to reach the SPARQL entity. See critical_warnings."
     - "Exact matching: always use ^^xsd:string for bp:db, bp:id, bp:name, bp:eCNumber, bp:controlType"
     - "GO terms: query RelationshipXref (68K) — NOT UnificationXref (1.5K misses 98% of GO data)"
     - "Modifications: use VALUES with MOD IDs to avoid text search (MOD:00046/47/48/00696 for phospho)"
     - "Cellular locations: use exact term strings ('plasma membrane'^^xsd:string) — no text search"
-    - "Pathway hierarchy: anchor to specific IRI via search_reactome_entity(); use bp:pathwayComponent+"
+    - "Pathway hierarchy: resolve a name to a Reactome stId via search_reactome_entity(), bridge the stId to the BioPAX entity via bp:xref (bp:db 'Reactome'^^xsd:string), then traverse with bp:pathwayComponent+"
     - "ENTITYSET MEMBERS: a protein participating in a reaction only as a member of a functional group (EntitySet; bp:comment 'Converted from EntitySet in Reactome') is INVISIBLE to bp:left|bp:right direct search (45,785 groups, 221,164 member links). Always UNION three branches: (1) direct reaction participant, (2) complex component (bp:component+), (3) EntitySet member (bp:memberPhysicalEntity+, transitive — sets nest). Catalysis controllers have the same issue (10,579 cases) — UNION bp:controller too. Detect groups by the COMMENT, not rdf:type (most are typed bp:Protein). Run the 'Detect EntitySet Membership' diagnostic first. Verified: ROCK2 (O75116) reachable only via branch (3); ROCK1 (Q13464) needs (3) for RHO pathways and (1) for Apoptosis."
     - "Text search: bif:contains for bp:displayName pathway discovery only (Virtuoso indexed)"
     - "Priority: Specific IRIs/VALUES > Typed predicates > Graph navigation > bif:contains"
