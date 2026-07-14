@@ -68,6 +68,10 @@ def togomcp_usage_guide() -> str:
 async def get_sparql_endpoints() -> dict[str, Any]:
     """Get the available SPARQL endpoints for RDF Portal.
 
+    RETURNS a dict with two keys: `databases` (maps each database ->
+    {url, endpoint_name, keyword_search}) and `endpoints` (maps each
+    endpoint_name -> {url, databases}).
+
     Returns:
         Dict with two keys:
         - databases: Dict mapping database -> {url, endpoint_name, keyword_search}
@@ -126,6 +130,9 @@ async def run_sparql(
     Run a SPARQL query on an RDF database.
 
     Use `get_MIE_file()` to understand the RDF graph structure of each database.
+
+    RETURNS the query results as a CSV-formatted string (first row is the
+    header of SELECT variable names).
 
     Args:
         sparql_query (str): The SPARQL query to execute. Accepts alias `query`.
@@ -611,6 +618,9 @@ def list_categories() -> dict[str, list[str]]:
 
     Use this when you don't yet have specific keywords — drill down with
     `find_databases(category=...)` once you've identified relevant categories.
+
+    RETURNS a dict mapping each category name -> a sorted list of database
+    names, or an empty dict if no databases have been categorized yet.
 
     Returns:
         Dict mapping category name -> sorted list of database names. Returns an empty

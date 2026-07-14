@@ -200,6 +200,11 @@ async def search_uniprot_entity(
     The search string can be passed as any of: `query` (canonical),
     `search`, `term`, `keyword`, `keywords`, `search_term`, or `name`.
 
+    RETURNS a TSV string with columns: accession, protein_name, organism_name.
+    On upstream/HTTP failure this tool does NOT raise — it returns a plain
+    string beginning with "Error:" (not TSV). CHECK FOR the "Error:" prefix
+    BEFORE parsing rows.
+
     Args:
         query (str): The Solr-style query string for the UniProtKB /search endpoint.
 
@@ -503,6 +508,12 @@ async def search_pdb_entity(
     each result carries the experimental method, resolution, bound ligands,
     and citation; for `cc`, the formula, SMILES, and InChI.
 
+    RETURNS a JSON string `{"total": int | null, "results": [ {…fields…} ]}`.
+    `total` is `null` when PDBj gives no count (typical for structured-filter
+    searches) — that is NOT zero and does NOT mean "no results"; consult
+    `results` directly. On upstream/HTTP failure returns a JSON object with an
+    `error` key instead — CHECK FOR `error` BEFORE reading `results`.
+
     Args:
         db (str): The database to search in. Allowed values are:
             - "pdb" (Protein Data Bank, macromolecular structures)
@@ -640,6 +651,10 @@ async def search_mesh_descriptor(
 ) -> str:
     """
     Search for MeSH ID by query.
+
+    RETURNS a JSON-formatted string of the search results. On upstream/HTTP
+    failure this tool does NOT raise — it returns a plain string beginning with
+    "Error:" (not JSON). CHECK FOR the "Error:" prefix BEFORE parsing.
 
     Args:
         query (str): The query string to search for. Accepts aliases:

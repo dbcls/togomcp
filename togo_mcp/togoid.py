@@ -89,6 +89,11 @@ async def getRelation(source: str, target: str) -> str:
     This is a single-hop, pairwise check: pass `source` and `target` as two
     separate args (unlike convertId, which takes one comma-joined `route`).
 
+    RETURNS a JSON string of a bare array of relationship objects, each with
+    `forward` (label from source to target), `reverse` (label from target to
+    source), and `description` (explanation of the link). An empty array means
+    no direct route exists.
+
     Args:
         source: Source database key (e.g., 'uniprot', 'ncbigene', 'chembl_target')
         target: Target database key (e.g., 'pdb', 'ensembl_gene', 'hgnc')
@@ -150,6 +155,11 @@ async def getDataset(dataset: str) -> dict:
     Retrieves detailed metadata about a single dataset, including its ID format,
     URI prefix, example IDs, and available annotations.
 
+    RETURNS a dict with `label` (human-readable name), `regex` (ID-validation
+    pattern — use it to check your IDs are well-formed), `prefix` (URI prefixes
+    for linking), `examples` (sample IDs — test with countId before bulk
+    conversion), and `annotations` (available annotation types).
+
     Args:
         dataset: Dataset key (e.g., 'uniprot', 'ncbigene', 'pdb', 'chembl_target',
                  'ensembl_gene', 'hgnc', 'pubchem_compound')
@@ -205,6 +215,10 @@ async def convertId(
 
     Maps IDs between biological databases — e.g., NCBI Gene IDs to UniProt
     accessions, or UniProt accessions to PDB structure IDs.
+
+    RETURNS a JSON string of a bare array of [source_id, target_id] pairs,
+    e.g. '[["672", "P38398"], ["675", "O15129"]]'. An empty array means none
+    of the input IDs converted along the route.
 
     IMPORTANT WORKFLOW:
         1. First call getAllRelation() or getRelation() to verify the conversion
