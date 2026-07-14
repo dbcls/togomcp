@@ -596,3 +596,62 @@ class TestSearchRheaEntity:
             result = json.loads(await search_rhea_entity("ATP"))
         assert isinstance(result, list)
         assert "Rhea REST API request failed" in result[0]["error"]
+
+    @pytest.mark.asyncio
+    async def test_custom_columns_parsed_by_position(self) -> None:
+        """Extra columns are mapped to friendly keys by position (the TSV header
+        carries display labels, not column IDs, so position is the only anchor)."""
+        tsv_body = (
+            "Reaction identifier\tEC number\tCross-reference (KEGG)\n"
+            "RHEA:10736\tEC:1.1.1.1;EC:1.1.1.71\tKEGG:R00623\n"
+        )
+        captured = {}
+        with respx.mock(using="httpx") as router:
+            def _capture(request: httpx.Request) -> httpx.Response:
+                captured["columns"] = request.url.params.get("columns")
+                return httpx.Response(200, text=tsv_body)
+
+            router.get("https://www.rhea-db.org/rhea").mock(side_effect=_capture)
+            result = json.loads(
+                await search_rhea_entity(
+                    "ec:1.1.1.1", columns="rhea-id,ec,reaction-xref(KEGG)"
+                )
+            )
+        assert captured["columns"] == "rhea-id,ec,reaction-xref(KEGG)"
+        assert result[0] == {
+            "rhea_id": "RHEA:10736",
+            "ec": "EC:1.1.1.1;EC:1.1.1.71",
+            "xref_kegg": "KEGG:R00623",
+        }
+
+    @pytest.mark.asyncio
+    async def test_columns_accepts_list(self) -> None:
+        """`columns` may be a list of IDs, deduped in caller order."""
+        tsv_body = "Reaction identifier\tEquation\nRHEA:10000\tATP + H2O = ADP + Pi\n"
+        captured = {}
+        with respx.mock(using="httpx") as router:
+            def _capture(request: httpx.Request) -> httpx.Response:
+                captured["columns"] = request.url.params.get("columns")
+                return httpx.Response(200, text=tsv_body)
+
+            router.get("https://www.rhea-db.org/rhea").mock(side_effect=_capture)
+            result = json.loads(
+                await search_rhea_entity(
+                    "ATP", columns=["rhea-id", "equation", "rhea-id"]
+                )
+            )
+        assert captured["columns"] == "rhea-id,equation"
+        assert result[0]["rhea_id"] == "RHEA:10000"
+
+    @pytest.mark.asyncio
+    async def test_unknown_column_raises(self) -> None:
+        """An invalid column is rejected, not forwarded — the API would silently
+        drop it and return a narrower table without warning."""
+        with pytest.raises(ValueError, match="Unknown Rhea column"):
+            await search_rhea_entity("ATP", columns="rhea-id,bogus")
+
+    @pytest.mark.asyncio
+    async def test_empty_columns_raises(self) -> None:
+        """A columns value naming no valid field is rejected."""
+        with pytest.raises(ValueError, match="at least one valid Rhea column"):
+            await search_rhea_entity("ATP", columns=" , ")
