@@ -178,31 +178,42 @@ _IRI_ALLELE_MAX = 50
 # `truncated` note is added so the payload stays inline-readable.
 _MAX_RESPONSE_CHARS = 90_000
 
-# Per-facet scope of the `stat=True` statistics block. The TogoVar API applies
-# the query filters INCONSISTENTLY across facets — verified live: `type`/
-# `dataset` are scoped to the filtered set, but `consequence` is returned
-# whole-database (its counts are orders of magnitude larger than `filtered` and
-# barely move when the filter changes), and `significance` is faceted (it
-# excludes its own significance filter and counts per variant-condition). This
-# is a backend behavior a REST proxy cannot re-scope, so we ship the caveats
-# alongside the raw numbers to stop callers from summing them against
-# `filtered`. Attached to the response as `statistics_caveats`.
+# Per-facet counting granularity of the `stat=True` statistics block. ALL four
+# facets ARE scoped to the filtered set (verified live: each responds to the
+# gene/disease/consequence/location filters), but they count at DIFFERENT
+# granularities, so only `type` sums to `filtered`:
+#   - `type`/`dataset` count per variant.
+#   - `consequence` counts per variant-TRANSCRIPT (VEP fan-out): its sum is
+#     `filtered` x mean transcripts/variant, a locus-dependent multiple — ~5-6
+#     for a typical gene (e.g. ALDH2) but 400+ in transcript-dense regions
+#     (e.g. the BRCA1 locus, where one variant has ~460 transcript annotations).
+#   - `significance` counts per variant-CONDITION classification record (a
+#     variant classified under several conditions counts once each).
+# So consequence/significance sums legitimately exceed `filtered` and must NOT
+# be compared to it — but they are not "unscoped" and not whole-database. We
+# ship these caveats alongside the raw numbers as `statistics_caveats`.
 _STATISTICS_CAVEATS = {
-    "type": "Scoped to the filtered set (per-value counts sum to `filtered`).",
+    "type": (
+        "Per-variant count, scoped to the filtered set (values sum to `filtered`)."
+    ),
     "dataset": (
-        "Scoped to the filtered set; a variant present in N datasets is counted "
-        "N times, so the sum may exceed `filtered` while each value is <= it."
+        "Per-variant count scoped to the filtered set; a variant present in N "
+        "cohorts is counted N times, so the sum may exceed `filtered` while each "
+        "value is <= it."
     ),
     "consequence": (
-        "NOT scoped — the TogoVar API returns the WHOLE-DATABASE consequence "
-        "distribution regardless of filters. Do NOT sum against `filtered` or "
-        "read these as counts for the filtered set."
+        "Scoped to the filtered set but counted PER VARIANT-TRANSCRIPT (VEP "
+        "consequence fan-out), so the sum = `filtered` x mean transcripts per "
+        "variant — a locus-dependent multiple (~5-6 for a typical gene, 400+ in "
+        "transcript-dense regions like BRCA1). Read each value as 'annotation "
+        "records with this consequence', NOT 'variants'; do NOT compare the sum "
+        "to `filtered`."
     ),
     "significance": (
-        "Faceted, NOT a filtered count: reflects the gene/disease-filtered set "
-        "MINUS the significance filter itself, counted per variant-condition (a "
-        "variant may recur under several conditions). May exceed `filtered`; do "
-        "NOT sum against it."
+        "Scoped to the filtered set but counted PER VARIANT-CONDITION "
+        "classification record (a variant classified under several conditions "
+        "counts once each), so the sum can exceed `filtered`. Do NOT compare the "
+        "sum to `filtered`."
     ),
 }
 
@@ -586,10 +597,12 @@ async def search_disease(
 
     COVERAGE LIMIT: TogoVar only indexes diseases that have ClinVar/MGeND
     variant associations, so some canonical/parent MONDO terms are simply absent
-    here (e.g. MONDO_0007254 "breast cancer" is a valid `disease_id` for
-    `search_variant`, returning ~24,550 variants, yet does NOT appear in these
-    results). If you already know the MONDO ID, pass it straight to
-    `search_variant`; do not assume this resolver is exhaustive.
+    here (e.g. MONDO_0007254 "breast cancer" does NOT appear in these results).
+    But a broad/parent MONDO ID still WORKS as a `disease_id` in `search_variant`
+    even when unlisted here — the variant search resolves it via MONDO descendant
+    expansion (MONDO_0007254 -> ~24,550 variants). So if you know or can resolve
+    the canonical MONDO ID (e.g. via OLS4 or the `mondo` RDF database), pass it
+    straight to `search_variant`; do not assume this resolver is exhaustive.
 
     Args:
         query (str): Disease name (e.g. "breast cancer", "Marfan syndrome").
@@ -662,11 +675,14 @@ async def search_variant(
     SPARQL side is the annotated subset), so REST counts will not match SPARQL
     `COUNT(*)` — they measure different sets.
 
-    STATISTICS SCOPE (stat=True): only the `type` and `dataset` facets are
-    scoped to the filtered set. `consequence` is returned whole-database by the
-    API (ignores your filters) and `significance` is a facet excluding its own
-    filter — do NOT sum either against `filtered`. See `statistics_caveats` in
-    the response for the per-facet rule.
+    STATISTICS SCOPE (stat=True): all facets are scoped to the filtered set, but
+    they count at different granularities. `type` counts per variant (sums to
+    `filtered`); `dataset` per variant-cohort; `consequence` per
+    variant-TRANSCRIPT (VEP fan-out, so its sum is `filtered` x transcripts per
+    variant — ~5-6 for a typical gene, 400+ in transcript-dense loci like
+    BRCA1); `significance` per variant-condition record. So consequence/
+    significance sums exceed `filtered` and must NOT be summed against it (they
+    are not per-variant counts). See `statistics_caveats` for the per-facet rule.
 
     ROUND-TRIP TO SPARQL: each row carries `tgv_id` and `variant_iri`; either
     resolves in the `togovar` SPARQL graph for VEP/cross-reference deep dives.

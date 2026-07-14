@@ -488,7 +488,12 @@ async def test_search_variant_statistics_caveats():
     )
     out = json.loads(await search_variant(gene_hgnc_id=404, stat=True))
     caveats = out["statistics_caveats"]
-    assert "consequence" in caveats and "NOT scoped" in caveats["consequence"]
+    # consequence is scoped but per variant-transcript — the caveat warns against
+    # summing it against `filtered`, not that it is "unscoped".
+    assert "consequence" in caveats
+    assert "PER VARIANT-TRANSCRIPT" in caveats["consequence"]
+    assert "do NOT compare the sum" in caveats["consequence"].lower() or \
+        "not compare the sum" in caveats["consequence"].lower()
     assert "type" in caveats
     # facets absent from the response are not annotated
     assert "dataset" not in caveats
