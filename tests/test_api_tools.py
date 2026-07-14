@@ -550,7 +550,7 @@ class TestSearchRheaEntity:
 
     @pytest.mark.asyncio
     async def test_basic_search(self) -> None:
-        """Successful Rhea search returns parsed TSV results."""
+        """Successful Rhea search returns an envelope of parsed TSV results."""
         tsv_body = (
             "Rhea ID\tEquation\n"
             "RHEA:10000\tATP + H2O = ADP + Pi\n"
@@ -560,39 +560,171 @@ class TestSearchRheaEntity:
             router.get("https://www.rhea-db.org/rhea").mock(
                 return_value=httpx.Response(200, text=tsv_body)
             )
-            result = json.loads(await search_rhea_entity("ATP", limit=5))
-        assert len(result) == 2
-        assert result[0]["rhea_id"] == "RHEA:10000"
-        assert "ATP" in result[0]["equation"]
+            result = await search_rhea_entity("ATP", limit=5)
+        assert result["total_count"] == 2
+        assert result["has_more"] is False
+        assert result["results"][0]["rhea_id"] == "RHEA:10000"
+        assert "ATP" in result["results"][0]["equation"]
 
     @pytest.mark.asyncio
     async def test_empty_response_same_shape(self) -> None:
-        """An empty TSV response returns a bare JSON array `[]`, identical in
-        shape to the non-empty case (Bug 3 regression)."""
+        """An empty TSV response returns the same envelope with an empty list,
+        so empty and non-empty share one shape."""
         tsv_body = "Rhea ID\tEquation\n"
         with respx.mock(using="httpx") as router:
             router.get("https://www.rhea-db.org/rhea").mock(
                 return_value=httpx.Response(200, text=tsv_body)
             )
-            result = json.loads(
-                await search_rhea_entity("nonexistent_compound", limit=5)
-            )
-        assert result == []
+            result = await search_rhea_entity("nonexistent_compound", limit=5)
+        assert result == {"total_count": 0, "has_more": False, "results": []}
+
+    @pytest.mark.asyncio
+    async def test_has_more_boundary(self) -> None:
+        """has_more is boundary-correct: over-fetching limit+1 detects overflow.
+        With 3 matching rows, limit=2 -> has_more True and 2 rows returned."""
+        tsv_body = (
+            "Rhea ID\tEquation\n"
+            "RHEA:1\ta\nRHEA:2\tb\nRHEA:3\tc\n"  # server returns limit+1 = 3
+        )
+        captured = {}
+        with respx.mock(using="httpx") as router:
+            def _capture(request: httpx.Request) -> httpx.Response:
+                captured["limit"] = request.url.params.get("limit")
+                return httpx.Response(200, text=tsv_body)
+
+            router.get("https://www.rhea-db.org/rhea").mock(side_effect=_capture)
+            result = await search_rhea_entity("glucose", limit=2)
+        assert captured["limit"] == "3"  # over-fetched by one
+        assert result["has_more"] is True
+        assert result["total_count"] == 2
+        assert len(result["results"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_empty_query_raises(self) -> None:
+        """A blank query raises rather than dumping an arbitrary slice of the DB
+        (§1 silent-wrong-answer guard)."""
+        with pytest.raises(ValueError, match="Missing search string"):
+            await search_rhea_entity()
+        with pytest.raises(ValueError, match="Missing search string"):
+            await search_rhea_entity(query="")
 
     @pytest.mark.asyncio
     async def test_negative_limit_raises(self) -> None:
-        """A negative limit is rejected, not forwarded (Bug 1) — otherwise Rhea
-        dumps the entire database."""
-        with pytest.raises(ValueError, match="limit must be >= 0"):
+        """A negative limit is rejected, not forwarded — otherwise Rhea dumps
+        the entire database."""
+        with pytest.raises(ValueError, match="limit must be between 0 and 500"):
             await search_rhea_entity("ATP", limit=-1)
 
     @pytest.mark.asyncio
-    async def test_http_error_returns_error_array(self) -> None:
-        """HTTP errors return a JSON string holding a one-element error array."""
+    async def test_limit_over_ceiling_raises(self) -> None:
+        """A limit above the ceiling raises — no single call can return a
+        six-figure-token payload (§2)."""
+        with pytest.raises(ValueError, match="limit must be between 0 and 500"):
+            await search_rhea_entity("glucose", limit=20000)
+
+    @pytest.mark.asyncio
+    async def test_http_error_returns_error_dict(self) -> None:
+        """HTTP errors return an {'error': ...} dict, same type as success."""
         with respx.mock(using="httpx") as router:
             router.get("https://www.rhea-db.org/rhea").mock(
                 return_value=httpx.Response(500, text="Server Error")
             )
-            result = json.loads(await search_rhea_entity("ATP"))
-        assert isinstance(result, list)
-        assert "Rhea REST API request failed" in result[0]["error"]
+            result = await search_rhea_entity("ATP")
+        assert isinstance(result, dict)
+        assert "Rhea REST API request failed" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_custom_columns_parsed_by_position(self) -> None:
+        """Extra columns are mapped to friendly keys by position (the TSV header
+        carries display labels, not column IDs, so position is the only anchor)."""
+        tsv_body = (
+            "Reaction identifier\tEC number\tCross-reference (KEGG)\n"
+            "RHEA:10736\tEC:1.1.1.1;EC:1.1.1.71\tKEGG:R00623\n"
+        )
+        captured = {}
+        with respx.mock(using="httpx") as router:
+            def _capture(request: httpx.Request) -> httpx.Response:
+                captured["columns"] = request.url.params.get("columns")
+                return httpx.Response(200, text=tsv_body)
+
+            router.get("https://www.rhea-db.org/rhea").mock(side_effect=_capture)
+            result = await search_rhea_entity(
+                "ec:1.1.1.1", columns="rhea-id,ec,reaction-xref(KEGG)"
+            )
+        assert captured["columns"] == "rhea-id,ec,reaction-xref(KEGG)"
+        assert result["results"][0] == {
+            "rhea_id": "RHEA:10736",
+            "ec": "EC:1.1.1.1;EC:1.1.1.71",
+            "xref_kegg": "KEGG:R00623",
+        }
+
+    @pytest.mark.asyncio
+    async def test_columns_accepts_list(self) -> None:
+        """`columns` may be a list of IDs, deduped in caller order."""
+        tsv_body = "Reaction identifier\tEquation\nRHEA:10000\tATP + H2O = ADP + Pi\n"
+        captured = {}
+        with respx.mock(using="httpx") as router:
+            def _capture(request: httpx.Request) -> httpx.Response:
+                captured["columns"] = request.url.params.get("columns")
+                return httpx.Response(200, text=tsv_body)
+
+            router.get("https://www.rhea-db.org/rhea").mock(side_effect=_capture)
+            result = await search_rhea_entity(
+                "ATP", columns=["rhea-id", "equation", "rhea-id"]
+            )
+        assert captured["columns"] == "rhea-id,equation"
+        assert result["results"][0]["rhea_id"] == "RHEA:10000"
+
+    @pytest.mark.asyncio
+    async def test_columns_case_insensitive(self) -> None:
+        """`columns` matches case-insensitively and normalizes to canonical
+        casing before dispatch (§5) — RHEA-ID behaves like rhea-id."""
+        tsv_body = "Reaction identifier\nRHEA:10000\n"
+        captured = {}
+        with respx.mock(using="httpx") as router:
+            def _capture(request: httpx.Request) -> httpx.Response:
+                captured["columns"] = request.url.params.get("columns")
+                return httpx.Response(200, text=tsv_body)
+
+            router.get("https://www.rhea-db.org/rhea").mock(side_effect=_capture)
+            result = await search_rhea_entity("ATP", columns="RHEA-ID")
+        assert captured["columns"] == "rhea-id"  # normalized to canonical
+        assert result["results"][0] == {"rhea_id": "RHEA:10000"}
+
+    @pytest.mark.asyncio
+    async def test_chebi_double_prefix_collapsed(self) -> None:
+        """A canonically-prefixed ChEBI id in a chebi:-scoped term (chebi:CHEBI:
+        17234) is collapsed to the bare form the API accepts, avoiding an opaque
+        upstream 500 (§2). Case-insensitive on both the scope and the prefix."""
+        tsv_body = "Reaction identifier\nRHEA:10076\n"
+        captured = {}
+        with respx.mock(using="httpx") as router:
+            def _capture(request: httpx.Request) -> httpx.Response:
+                captured["query"] = request.url.params.get("query")
+                return httpx.Response(200, text=tsv_body)
+
+            router.get("https://www.rhea-db.org/rhea").mock(side_effect=_capture)
+            await search_rhea_entity("chebi:CHEBI:17234", columns="rhea-id")
+        assert captured["query"] == "chebi:17234"
+
+        with respx.mock(using="httpx") as router:
+            def _capture2(request: httpx.Request) -> httpx.Response:
+                captured["query"] = request.url.params.get("query")
+                return httpx.Response(200, text=tsv_body)
+
+            router.get("https://www.rhea-db.org/rhea").mock(side_effect=_capture2)
+            await search_rhea_entity("CHEBI:CHEBI:17234", columns="rhea-id")
+        assert captured["query"] == "chebi:17234"
+
+    @pytest.mark.asyncio
+    async def test_unknown_column_raises(self) -> None:
+        """An invalid column is rejected, not forwarded — the API would silently
+        drop it and return a narrower table without warning."""
+        with pytest.raises(ValueError, match="Unknown Rhea column"):
+            await search_rhea_entity("ATP", columns="rhea-id,bogus")
+
+    @pytest.mark.asyncio
+    async def test_empty_columns_raises(self) -> None:
+        """A columns value naming no valid field is rejected."""
+        with pytest.raises(ValueError, match="at least one valid Rhea column"):
+            await search_rhea_entity("ATP", columns=" , ")

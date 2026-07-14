@@ -134,6 +134,75 @@ def _fmt(x: float | None, spec: str = "+.2f") -> str:
     return "n/a" if x is None else format(x, spec)
 
 
+# --- Effort dimension --------------------------------------------------------
+# The judge score measures answer QUALITY; it is blind to how much work the agent
+# did to get there. Removing a query-guidance section (e.g. sparql_query_examples)
+# can leave answer quality unchanged while forcing the agent to issue many more
+# SPARQL attempts — an EFFORT cost the score never sees. These helpers surface it.
+SPARQL_TOOL = "run_sparql"
+EFFORT_KEYS = ("n_sparql", "n_tools", "wall_s", "cost")
+
+
+def _effort_from_row(row: dict) -> dict:
+    tu = row.get("tools_used") or ""
+    calls = [t.strip() for t in tu.split(",") if t.strip()]   # full call sequence, with repeats
+
+    def fnum(k: str) -> float:
+        try:
+            return float(row.get(k) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    return {
+        "n_sparql": sum(1 for t in calls if t.endswith(SPARQL_TOOL)),
+        "n_tools": len(calls),
+        "wall_s": fnum("togomcp_time"),
+        "cost": fnum("togomcp_cost_usd"),
+    }
+
+
+def load_effort(condition: str, results: Path) -> dict[str, dict]:
+    """question_id -> per-run-averaged effort for a condition.
+
+    Reads the replicate <cond>-scored-vN.csv files (averaging effort across runs,
+    since the merged <cond>-scored.csv keeps only run 1's tools_used) and falls
+    back to the merged file when no replicates exist (a --runs 1 sweep).
+    """
+    files = sorted(glob.glob(str(results / f"{condition}-scored-v*.csv")))
+    if not files:
+        merged = results / f"{condition}-scored.csv"
+        files = [str(merged)] if merged.exists() else []
+    agg: dict[str, list[dict]] = {}
+    for f in files:
+        with open(f, encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                qid = row.get("question_id")
+                if qid:
+                    agg.setdefault(qid, []).append(_effort_from_row(row))
+    return {qid: {k: mean(d[k] for d in runs) for k in EFFORT_KEYS}
+            for qid, runs in agg.items()}
+
+
+def paired_effort(base: dict[str, dict], abl: dict[str, dict],
+                  exclude: set[str]) -> dict | None:
+    """Mean (ablated − baseline) effort over questions scored under both.
+
+    Positive delta ⇒ removing the section made the agent work HARDER (more
+    queries / tools / time / cost) for the same answer ⇒ the section buys
+    efficiency. Paired per question, same exclude set as the quality analysis.
+    """
+    qids = (base.keys() & abl.keys()) - exclude
+    if not qids:
+        return None
+    out: dict = {"n": len(qids)}
+    for k in EFFORT_KEYS:
+        base_mean = mean(base[q][k] for q in qids)
+        out[f"delta_{k}"] = mean(abl[q][k] - base[q][k] for q in qids)
+        out[f"base_{k}"] = base_mean
+        out[f"pct_{k}"] = (out[f"delta_{k}"] / base_mean * 100) if base_mean else 0.0
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -184,6 +253,10 @@ def main() -> int:
     sec_dbs = sections_with_db()
     qdbs = question_dbs()
 
+    # Effort baseline (query/tool/time/cost per question), paired against each
+    # ablation below. Empty when no per-run/merged answer data carries tools_used.
+    base_effort = load_effort("baseline", results)
+
     rows = []
     for section in CANONICAL_SECTIONS:
         csv_path = results / f"ablate_{section}-scored.csv"
@@ -211,6 +284,14 @@ def main() -> int:
         for sm in SUBMETRICS:
             smb, sma, _ = paired_mean(baseline, ablated, sm, None)
             row[f"delta_{sm}"] = None if smb is None else round(smb - sma, 3)
+
+        # Effort delta: how much harder the agent worked with this section removed.
+        eff = paired_effort(base_effort, load_effort(f"ablate_{section}", results), exclude)
+        row["delta_sparql"] = None if eff is None else round(eff["delta_n_sparql"], 2)
+        row["pct_sparql"] = None if eff is None else round(eff["pct_n_sparql"], 1)
+        row["delta_tools"] = None if eff is None else round(eff["delta_n_tools"], 2)
+        row["delta_wall_s"] = None if eff is None else round(eff["delta_wall_s"], 1)
+        row["delta_cost"] = None if eff is None else round(eff["delta_cost"], 4)
         rows.append(row)
 
     if not rows:
@@ -221,6 +302,7 @@ def main() -> int:
     out_csv = results / "ablation_contributions.csv"
     fieldnames = ["section", "spotlight", "n", "mean_baseline", "mean_ablated",
                   "contribution", *[f"delta_{m}" for m in SUBMETRICS],
+                  "delta_sparql", "pct_sparql", "delta_tools", "delta_wall_s", "delta_cost",
                   "n_relevant", "contribution_relevant"]
     with out_csv.open("w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=fieldnames)
@@ -232,12 +314,19 @@ def main() -> int:
     write_report(rows, results / "ablation_report.md", metric, base_mean, len(baseline))
 
     # console summary
-    print(f"{'section':28s} {'spotlight?':10s} {'n':>3s} {'base':>6s} {'abl':>6s} {'contrib':>8s}")
+    has_effort = any(r.get("delta_sparql") is not None for r in rows)
+    hdr = f"{'section':28s} {'spot':4s} {'n':>3s} {'base':>6s} {'abl':>6s} {'contrib':>8s}"
+    if has_effort:
+        hdr += f" {'Δsparql':>8s} {'Δcost$':>7s}"
+    print(hdr)
     for r in rows:
         spot = "yes" if r["spotlight"] != "-" else ""
-        print(f"{r['section']:28s} {spot:10s} {r['n']:>3d} "
-              f"{_fmt(r['mean_baseline'], '.2f'):>6s} {_fmt(r['mean_ablated'], '.2f'):>6s} "
-              f"{_fmt(r['contribution']):>8s}")
+        line = (f"{r['section']:28s} {spot:4s} {r['n']:>3d} "
+                f"{_fmt(r['mean_baseline'], '.2f'):>6s} {_fmt(r['mean_ablated'], '.2f'):>6s} "
+                f"{_fmt(r['contribution']):>8s}")
+        if has_effort:
+            line += f" {_fmt(r.get('delta_sparql')):>8s} {_fmt(r.get('delta_cost'), '+.3f'):>7s}"
+        print(line)
     print(f"\nwrote {out_csv}")
     print(f"wrote {results / 'ablation_report.md'}")
     return 0
@@ -276,6 +365,30 @@ def write_report(rows: list[dict], path: Path, metric: str,
             f"{_fmt(r['contribution_relevant'])} |"
         )
 
+    # Effort dimension — visible only if the answer data carried tools_used.
+    if any(r.get("delta_sparql") is not None for r in rows):
+        lines += [
+            "",
+            "## Effort — what each section saves (blind spot of the quality score)",
+            "",
+            "Δ = mean(section removed − baseline), paired per question. **Positive ⇒ removing "
+            "the section made the agent work harder** (more SPARQL attempts / tools / time / "
+            "cost) for the same answer — i.e. the section buys efficiency the quality score "
+            "above cannot see. A section can be ~0 on Contribution yet clearly positive here.",
+            "",
+            "| Section | Δ run_sparql | Δ SPARQL % | Δ tool calls | Δ wall (s) | Δ cost ($) |",
+            "|---|---:|---:|---:|---:|---:|",
+        ]
+        for r in sorted(rows, key=lambda r: (r.get("delta_sparql") is None,
+                                             -(r.get("delta_sparql") or 0))):
+            pct = r.get("pct_sparql")
+            lines.append(
+                f"| `{r['section']}` | {_fmt(r.get('delta_sparql'))} | "
+                f"{('n/a' if pct is None else f'{pct:+.0f}%')} | "
+                f"{_fmt(r.get('delta_tools'))} | {_fmt(r.get('delta_wall_s'), '+.0f')} | "
+                f"{_fmt(r.get('delta_cost'), '+.3f')} |"
+            )
+
     lines += [
         "",
         "## Caveats",
@@ -292,6 +405,10 @@ def write_report(rows: list[dict], path: Path, metric: str,
         "with today's uniformly-complete MIEs this matches the overall column.",
         "- A near-zero or negative contribution means removing the section did not hurt (or "
         "helped) on this pilot — a candidate for trimming or a coverage gap in the questions.",
+        "- Effort deltas are averaged across the `--runs` replicates (the merged CSV keeps "
+        "only run 1's `tools_used`, so they read the per-run files); Δ SPARQL % is relative "
+        "to the baseline mean. A big positive effort delta with ~0 contribution means the "
+        "section trades away quality-neutral efficiency — the score can't price it.",
         "",
     ]
     path.write_text("\n".join(lines), encoding="utf-8")

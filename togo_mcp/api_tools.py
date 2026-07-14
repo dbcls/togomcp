@@ -200,6 +200,11 @@ async def search_uniprot_entity(
     The search string can be passed as any of: `query` (canonical),
     `search`, `term`, `keyword`, `keywords`, `search_term`, or `name`.
 
+    RETURNS a TSV string with columns: accession, protein_name, organism_name.
+    On upstream/HTTP failure this tool does NOT raise — it returns a plain
+    string beginning with "Error:" (not TSV). CHECK FOR the "Error:" prefix
+    BEFORE parsing rows.
+
     Args:
         query (str): The Solr-style query string for the UniProtKB /search endpoint.
 
@@ -319,14 +324,15 @@ async def search_uniprot_entity(
 @mcp.tool()
 async def get_pubchem_compound_id(compound_name: str) -> str:
     """
-    Get a PubChem compound ID
+    Get a PubChem compound ID (CID) for a compound name.
 
-    Args: Compound name
-        example: "resveratrol"
+    RETURNS the PubChem Compound ID(s) as a JSON-formatted string. On
+    upstream/HTTP failure this tool does NOT raise — it returns a plain string
+    beginning with "Error:" (not JSON). CHECK FOR the "Error:" prefix BEFORE
+    parsing.
 
-    Returns: PubChem Compound ID in the JSON format. On upstream/HTTP failure
-        this tool does NOT raise — it returns a plain string beginning with
-        "Error:" (not JSON). Check for that prefix before parsing.
+    Args:
+        compound_name (str): Compound name, e.g. "resveratrol".
     """
     url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{compound_name}/cids/JSON"
     resp = await _rest_get(_pubchem_client, url, context="PubChem CID lookup")
@@ -341,14 +347,14 @@ async def get_pubchem_compound_id(compound_name: str) -> str:
 @mcp.tool()
 async def get_compound_attributes_from_pubchem(pubchem_compound_id: str) -> str:
     """
-    Get compound attributes from PubChem RDF
+    Get compound attributes from PubChem RDF.
 
-    Args: PubChem Compound ID
-        example: "445154"
+    RETURNS the compound attributes as a JSON-formatted string. On upstream/HTTP
+    failure this tool does NOT raise — it returns a plain string beginning with
+    "Error:" (not JSON). CHECK FOR the "Error:" prefix BEFORE parsing.
 
-    Returns: Compound attributes in the JSON format. On upstream/HTTP failure
-        this tool does NOT raise — it returns a plain string beginning with
-        "Error:" (not JSON). Check for that prefix before parsing.
+    Args:
+        pubchem_compound_id (str): PubChem Compound ID (CID), e.g. "445154".
     """
     url = "https://togodx.dbcls.jp/human/sparqlist/api/metastanza_pubchem_compound"
     params = {"id": pubchem_compound_id}
@@ -503,6 +509,12 @@ async def search_pdb_entity(
     each result carries the experimental method, resolution, bound ligands,
     and citation; for `cc`, the formula, SMILES, and InChI.
 
+    RETURNS a JSON string `{"total": int | null, "results": [ {…fields…} ]}`.
+    `total` is `null` when PDBj gives no count (typical for structured-filter
+    searches) — that is NOT zero and does NOT mean "no results"; consult
+    `results` directly. On upstream/HTTP failure returns a JSON object with an
+    `error` key instead — CHECK FOR `error` BEFORE reading `results`.
+
     Args:
         db (str): The database to search in. Allowed values are:
             - "pdb" (Protein Data Bank, macromolecular structures)
@@ -640,6 +652,10 @@ async def search_mesh_descriptor(
 ) -> str:
     """
     Search for MeSH ID by query.
+
+    RETURNS a JSON-formatted string of the search results. On upstream/HTTP
+    failure this tool does NOT raise — it returns a plain string beginning with
+    "Error:" (not JSON). CHECK FOR the "Error:" prefix BEFORE parsing.
 
     Args:
         query (str): The query string to search for. Accepts aliases:
@@ -979,43 +995,118 @@ async def search_reactome_entity(
 
 
 # DB: RhEA
+# The Rhea table endpoint (/rhea) exposes a fixed, documented set of columns
+# (rhea-db.org/help/rest-api). This maps each valid column ID to the JSON key
+# it becomes in the result, and doubles as the validation vocabulary: an
+# UNKNOWN column is SILENTLY DROPPED by the server (HTTP 200, no error, just a
+# narrower table) — the same silent-relaxation trap as Reactome's `types` — so
+# we reject unknown columns up front rather than let a caller believe they
+# requested EC numbers and receive none. Keys mirror the column ID with `-`
+# collapsed to `_`; the parenthesised cross-reference columns get short aliases.
+_RHEA_COLUMNS = {
+    "rhea-id": "rhea_id",
+    "equation": "equation",
+    "chebi": "chebi",
+    "chebi-id": "chebi_id",
+    "ec": "ec",
+    "uniprot": "uniprot",  # count of UniProtKB entries annotated with the reaction
+    "go": "go",
+    "pubmed": "pubmed",
+    "reaction-xref(EcoCyc)": "xref_ecocyc",
+    "reaction-xref(MetaCyc)": "xref_metacyc",
+    "reaction-xref(KEGG)": "xref_kegg",
+    "reaction-xref(Reactome)": "xref_reactome",
+    "reaction-xref(M-CSA)": "xref_mcsa",
+}
+# Lowercase → canonical, so `columns` can be matched case-INSENSITIVELY (the
+# API's own filter is case-sensitive, but there's no reason to make the caller
+# pay for that; we normalize to canonical casing before dispatch). Mirrors the
+# case-insensitive handling of Reactome's `species`/`types`.
+_RHEA_COLUMNS_LC = {col.lower(): col for col in _RHEA_COLUMNS}
+# Hard ceiling on `limit`. Rhea has ~18k+ reactions and no server-side cap, so
+# an unbounded limit (e.g. 20000) can return a six-figure-token payload that
+# blows the context window. 500 is generous for any real search.
+_RHEA_MAX_LIMIT = 500
+
+# A `chebi:`-scoped term takes a BARE ChEBI number (chebi:17234). ChEBI IDs are
+# canonically written WITH the prefix (CHEBI:17234) everywhere else — including
+# this tool's own chebi_id output — so a caller naturally forms chebi:CHEBI:17234.
+# The embedded ':' then breaks Rhea's Lucene parser and it returns an opaque
+# HTTP 500. Collapse the redundant prefix to what the caller obviously meant.
+_RHEA_CHEBI_DOUBLE_PREFIX_RE = re.compile(r"(?i)\bchebi:chebi:")
+
+
 @mcp.tool()
 async def search_rhea_entity(
     query: str = "",
-    limit: int | None = 100,
+    limit: int | None = 25,
+    columns: str | list[str] = "rhea-id,equation",
     search: str = "",
     term: str = "",
     keyword: str = "",
     keywords: str = "",
     search_term: str = "",
     name: str = "",
-) -> str:
+) -> dict:
     """
-    Search Rhea database for biochemical reactions using keyword search.
+    Search the Rhea reaction database by keyword and return matching reactions.
+
+    Matching is KEYWORD/FUZZY over reaction participants, equations, EC numbers,
+    and cross-references — NOT exact-ID lookup. A term like "glucose" matches any
+    reaction mentioning glucose. Field-scoped terms and wildcards are supported
+    (e.g. `ec:1.1.1.1`, `chebi:17234`, `uniprot:*`). A `chebi:`-scoped term takes
+    a BARE ChEBI number, not the `CHEBI:` prefix; a redundant `chebi:CHEBI:17234`
+    is auto-corrected to `chebi:17234` (the prefixed form otherwise 500s).
+
+    RETURNS a dict {'total_count', 'has_more', 'results'} — NOT a bare list.
+    'total_count' is the number of reactions RETURNED (capped by `limit`, max
+    500); 'has_more' is true if more matched beyond the cap. Each result carries
+    the requested `columns` as snake_cased keys (e.g. 'rhea-id' → 'rhea_id',
+    'chebi-id' → 'chebi_id'). On upstream failure returns {'error': ...} instead
+    — CHECK FOR 'error' BEFORE READING 'results'.
 
     Args:
-        query (str): Search query string. Examples:
-                    - "ATP" - find reactions involving ATP
-                    - "glucose" - find reactions with glucose
-                    - "uniprot:*" - reactions with UniProt annotations
-                    - "" - retrieve all reactions
-                    Accepts aliases: `search`, `term`, `keyword`, `keywords`,
-                    `search_term`, `name`. If both `query` and an alias are
-                    given with different values, this raises ValueError (pass only one).
-        limit (int, optional): Maximum number of results. Defaults to 100.
-            Must be >= 0; a negative limit is rejected (it would make Rhea
-            return the entire database).
+        query: Search string, e.g. "ATP", "glucose", "ec:1.1.1.1",
+            "chebi:17234", "uniprot:*". REQUIRED — a blank query raises
+            ValueError (it would otherwise dump an arbitrary slice of the whole
+            database). Accepts aliases: `search`, `term`, `keyword`, `keywords`,
+            `search_term`, `name` (supplying two different values raises ValueError).
+        limit: Maximum number of reactions returned (default 25). Must be
+            between 0 and 500; a negative limit or one above 500 raises
+            ValueError. `has_more` in the result signals whether more matched.
+        columns: Which fields to return, as a comma-separated string or a list
+            of column IDs (case-INSENSITIVE). Default "rhea-id,equation". Each
+            requested column becomes a key on every result row; hyphenated IDs
+            are snake_cased in the output (e.g. `chebi-id` → `chebi_id`). The 13
+            valid column IDs and their output keys:
+              - chebi                   -> chebi        (';'-joined ChEBI names)
+              - chebi-id                -> chebi_id     (';'-joined ChEBI ids)
+              - ec                      -> ec           (';'-joined EC numbers)
+              - equation                -> equation     (textual reaction equation)
+              - go                      -> go           (GO id + label)
+              - pubmed                  -> pubmed       (';'-joined PubMed ids)
+              - reaction-xref(EcoCyc)   -> xref_ecocyc
+              - reaction-xref(KEGG)     -> xref_kegg
+              - reaction-xref(M-CSA)    -> xref_mcsa
+              - reaction-xref(MetaCyc)  -> xref_metacyc
+              - reaction-xref(Reactome) -> xref_reactome
+              - rhea-id                 -> rhea_id      (e.g. RHEA:10000)
+              - uniprot                 -> uniprot      (count of annotated UniProtKB entries)
+            An unknown column raises ValueError — the API would otherwise
+            silently drop it and return an unannounced narrower table.
 
     Returns:
-        JSON string: a bare array of reactions, each with 'rhea_id' and
-        'equation'. Empty and non-empty results share the same shape.
-        Example: '[{"rhea_id": "RHEA:10000", "equation": "ATP + H2O = ..."}]'
+        dict: {'total_count': int, 'has_more': bool, 'results': [ ... ]} on
+        success, where each result is one reaction keyed by the requested
+        columns. `total_count` is the number of rows returned (capped by
+        `limit`); `has_more` is true if more reactions matched beyond the cap.
+        On upstream/HTTP failure returns {'error': str} instead — CHECK FOR
+        'error' BEFORE READING 'results'.
 
     Raises:
-        ValueError: If `limit` is negative.
+        ValueError: If `query` is blank, `limit` is out of range, or `columns`
+            names an unknown field.
     """
-    # Unlike other search tools, Rhea permits an empty query (returns all
-    # reactions). Only coalesce when an alias was provided.
     query = _resolve_query_alias(
         query,
         search=search,
@@ -1025,38 +1116,81 @@ async def search_rhea_entity(
         search_term=search_term,
         name=name,
     ).strip()
-
-    if limit is not None and limit < 0:
+    # Collapse a redundant `chebi:CHEBI:` prefix (see _RHEA_CHEBI_DOUBLE_PREFIX_RE)
+    # so a canonically-formatted ChEBI ID doesn't trigger an opaque upstream 500.
+    query = _RHEA_CHEBI_DOUBLE_PREFIX_RE.sub("chebi:", query)
+    if not query:
+        # A blank query makes Rhea return an arbitrary first slice of the whole
+        # database (ordered by ID) — plausible-looking rows unrelated to any
+        # search. Raise instead, matching the ChEMBL/Reactome guard.
         raise ValueError(
-            f"limit must be >= 0 (got {limit}). A negative limit makes Rhea "
-            "return the entire result set (thousands of reactions)."
+            "Missing search string. Pass it as `query` (canonical) or any of: "
+            "search, term, keyword, keywords, search_term, name."
         )
 
+    if limit is None:
+        limit = 25
+    if limit < 0 or limit > _RHEA_MAX_LIMIT:
+        raise ValueError(
+            f"limit must be between 0 and {_RHEA_MAX_LIMIT} (got {limit}). "
+            "Rhea applies no server-side cap, so an unbounded limit can return "
+            "a payload large enough to exhaust the context window."
+        )
+
+    # Normalize + validate columns case-insensitively (see _RHEA_COLUMNS_LC).
+    # Reject unknowns rather than let the server silently drop them. Preserve
+    # caller order and drop duplicates so the TSV columns line up positionally
+    # with `col_ids`.
+    if isinstance(columns, str):
+        requested = [c.strip() for c in columns.split(",") if c.strip()]
+    else:
+        requested = [str(c).strip() for c in columns if str(c).strip()]
+    col_ids, seen = [], set()
+    for col in requested:
+        canon = _RHEA_COLUMNS_LC.get(col.lower())
+        if canon is None:
+            raise ValueError(
+                f"Unknown Rhea column {col!r}. The API silently drops invalid "
+                "columns and returns a narrower table without warning. Valid "
+                f"column IDs (case-insensitive): {sorted(_RHEA_COLUMNS)}."
+            )
+        if canon not in seen:
+            seen.add(canon)
+            col_ids.append(canon)
+    if not col_ids:
+        raise ValueError("columns must name at least one valid Rhea column.")
+
+    # Over-fetch by one so has_more can be detected after truncating to `limit`.
     params = {
         "query": query,
-        "columns": "rhea-id,equation",
+        "columns": ",".join(col_ids),
         "format": "tsv",
-        "limit": limit,
+        "limit": limit + 1,
     }
 
     resp = await _rest_get(_rhea_client, "/rhea", params=params, context="Rhea search")
     if isinstance(resp, _RestError):
         logger.warning(f"Rhea search failed: {resp.message}")
-        return json.dumps([
-            {"error": _rest_fail_msg("Rhea REST API request", resp.message, "rhea")}
-        ])
+        return {"error": _rest_fail_msg("Rhea REST API request", resp.message, "rhea")}
 
-    # Parse TSV response
+    # Parse TSV. The header row carries display LABELS ("Reaction identifier"),
+    # not column IDs, so we map by POSITION against the requested `col_ids`.
+    # Values never contain tabs (multi-valued cells are ';'-joined), so a plain
+    # tab split is safe; a trailing empty cell may be dropped, hence the guard.
     lines = resp.text.strip().split("\n")
     if len(lines) < 2:
-        return json.dumps([])
+        return {"total_count": 0, "has_more": False, "results": []}
 
-    # First line is header, skip it
+    keys = [_RHEA_COLUMNS[c] for c in col_ids]
     results = []
-    for line in lines[1:]:
-        if line.strip():
-            parts = line.split("\t")
-            if len(parts) >= 2:
-                results.append({"rhea_id": parts[0], "equation": parts[1]})
+    for line in lines[1:]:  # first line is the header
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        results.append(
+            {key: (parts[i] if i < len(parts) else "") for i, key in enumerate(keys)}
+        )
 
-    return json.dumps(results)
+    has_more = len(results) > limit
+    results = results[:limit]
+    return {"total_count": len(results), "has_more": has_more, "results": results}

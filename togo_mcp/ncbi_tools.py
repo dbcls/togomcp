@@ -367,6 +367,14 @@ async def esearch(
     • With field tags: ~1,300 results (100% recall) ✅
     • Performance loss: Missing field tags = 70-80% data loss!
 
+    EXAMPLE (Gene):
+    ✅ query="Archaea[Organism] AND (nifH[Gene Name] OR nitrogenase[All Fields])"
+    ❌ query="archaea AND nifH"  (missing [Organism]/[Gene Name] tags → ~23% recall)
+
+    RETURNS formatted text results carrying the database-specific IDs. On a
+    missing/invalid `database` or `query` it returns a single text item whose
+    message begins with "Error:" — check for that prefix before using the IDs.
+
     Args:
         database: NCBI database name (alias: `db`). Supported values:
             - "gene" or "ncbigene": NCBI Gene database ⚠️ FIELD TAGS CRITICAL
@@ -517,6 +525,10 @@ async def esummary(
     """
     Fetch summary information for given IDs using esummary.
     Useful for getting detailed info after esearch.
+
+    RETURNS a text item holding the parsed JSON summary data. On a
+    missing/invalid `database` or empty `ids` it returns a single text item
+    whose message begins with "Error:" — check for that prefix before use.
 
     Args:
         database: NCBI database name (alias: `db`)
