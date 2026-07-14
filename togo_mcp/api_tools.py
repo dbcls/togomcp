@@ -324,14 +324,15 @@ async def search_uniprot_entity(
 @mcp.tool()
 async def get_pubchem_compound_id(compound_name: str) -> str:
     """
-    Get a PubChem compound ID
+    Get a PubChem compound ID (CID) for a compound name.
 
-    Args: Compound name
-        example: "resveratrol"
+    RETURNS the PubChem Compound ID(s) as a JSON-formatted string. On
+    upstream/HTTP failure this tool does NOT raise — it returns a plain string
+    beginning with "Error:" (not JSON). CHECK FOR the "Error:" prefix BEFORE
+    parsing.
 
-    Returns: PubChem Compound ID in the JSON format. On upstream/HTTP failure
-        this tool does NOT raise — it returns a plain string beginning with
-        "Error:" (not JSON). Check for that prefix before parsing.
+    Args:
+        compound_name (str): Compound name, e.g. "resveratrol".
     """
     url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{compound_name}/cids/JSON"
     resp = await _rest_get(_pubchem_client, url, context="PubChem CID lookup")
@@ -346,14 +347,14 @@ async def get_pubchem_compound_id(compound_name: str) -> str:
 @mcp.tool()
 async def get_compound_attributes_from_pubchem(pubchem_compound_id: str) -> str:
     """
-    Get compound attributes from PubChem RDF
+    Get compound attributes from PubChem RDF.
 
-    Args: PubChem Compound ID
-        example: "445154"
+    RETURNS the compound attributes as a JSON-formatted string. On upstream/HTTP
+    failure this tool does NOT raise — it returns a plain string beginning with
+    "Error:" (not JSON). CHECK FOR the "Error:" prefix BEFORE parsing.
 
-    Returns: Compound attributes in the JSON format. On upstream/HTTP failure
-        this tool does NOT raise — it returns a plain string beginning with
-        "Error:" (not JSON). Check for that prefix before parsing.
+    Args:
+        pubchem_compound_id (str): PubChem Compound ID (CID), e.g. "445154".
     """
     url = "https://togodx.dbcls.jp/human/sparqlist/api/metastanza_pubchem_compound"
     params = {"id": pubchem_compound_id}
