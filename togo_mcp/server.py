@@ -6,6 +6,8 @@ import os
 import re
 import secrets
 import time
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
@@ -283,8 +285,16 @@ async def execute_sparql(
     return response.text
 
 
-# The Primary MCP server
-mcp = FastMCP("TogoMCP: RDF Portal MCP Server")
+# The Primary MCP server.
+# Pass TogoMCP's OWN version explicitly — otherwise FastMCP defaults serverInfo.version
+# to its own package version, so `initialize` would advertise FastMCP's version under
+# TogoMCP's name (misleading: it moves on a FastMCP upgrade, not on a TogoMCP release).
+try:
+    _TOGOMCP_VERSION = _pkg_version("togo-mcp")
+except PackageNotFoundError:  # not installed as a distribution (source-tree run)
+    _TOGOMCP_VERSION = "0+unknown"
+
+mcp = FastMCP("TogoMCP: RDF Portal MCP Server", version=_TOGOMCP_VERSION)
 
 
 from fastmcp.server.middleware import Middleware as _Middleware
