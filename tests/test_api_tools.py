@@ -337,10 +337,28 @@ class TestSearchReactomeEntity:
 
     @pytest.mark.asyncio
     async def test_other_404_is_still_an_error(self) -> None:
-        """A 404 that is NOT the 'no entries found' signal stays a genuine error."""
+        """A non-JSON 404 (e.g. an HTML 'Not Found' page from a renamed path) is
+        NOT the no-match signal and stays a genuine error."""
         with respx.mock(using="httpx") as router:
             router.get(self._REACTOME_URL).mock(
-                return_value=httpx.Response(404, text="Not Found")
+                return_value=httpx.Response(404, text="<html>404 Not Found</html>")
+            )
+            result = await search_reactome_entity("apoptosis")
+        assert "error" in result and "results" not in result
+
+    @pytest.mark.asyncio
+    async def test_404_json_but_not_no_match_is_error(self) -> None:
+        """The guard keys on the message, not just status+reason: a JSON 404 with
+        reason NOT_FOUND but a different message (e.g. an endpoint/API migration)
+        must stay an error — otherwise every query would silently return empty
+        while the tool looked healthy."""
+        body = (
+            '{"code":404,"reason":"NOT_FOUND",'
+            '"messages":["HTTP 404 Not Found"],"targets":null}'
+        )
+        with respx.mock(using="httpx") as router:
+            router.get(self._REACTOME_URL).mock(
+                return_value=httpx.Response(404, text=body)
             )
             result = await search_reactome_entity("apoptosis")
         assert "error" in result and "results" not in result

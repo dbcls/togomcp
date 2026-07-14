@@ -98,13 +98,20 @@ class _RestError:
     REST-wrapper boundary.
     """
 
-    __slots__ = ("message", "status_code")
+    __slots__ = ("message", "status_code", "body")
 
-    def __init__(self, message: str, status_code: int | None = None) -> None:
+    def __init__(
+        self, message: str, status_code: int | None = None, body: str | None = None
+    ) -> None:
         self.message = message
         # HTTP status for an error response; None for a transport/timeout error.
         # Lets a caller special-case a status (e.g. Reactome's 404 = "no matches").
         self.status_code = status_code
+        # Raw (untruncated, un-stripped) response body for an HTTP-status error,
+        # capped for memory; None for a transport error. `message` is the short
+        # loggable form — `body` is for callers that must inspect it structurally
+        # (e.g. parse a JSON error to tell "no matches" from a broken endpoint).
+        self.body = body
 
 
 async def _rest_get(
@@ -125,13 +132,14 @@ async def _rest_get(
     """
     last_error = "unknown error"
     last_status: int | None = None
+    last_body: str | None = None
     for attempt in range(_REST_MAX_ATTEMPTS):
         last = attempt == _REST_MAX_ATTEMPTS - 1
         try:
             response = await client.get(path, params=params, headers=headers)
         except httpx.HTTPError as e:  # includes TimeoutException
             last_error = f"{type(e).__name__}: {e}"
-            last_status = None
+            last_status, last_body = None, None
             logger.warning(f"{context} attempt {attempt + 1} failed: {last_error}")
             if last:
                 break
@@ -147,9 +155,10 @@ async def _rest_get(
             continue
         # Terminal: a 4xx, or a 5xx after retries are exhausted.
         last_error = f"HTTP {response.status_code}: {_strip_html(response.text)}"
+        last_body = response.text[:4096]  # raw body for structural inspection
         logger.warning(f"{context} failed (terminal): {last_error}")
         break
-    return _RestError(last_error, last_status)
+    return _RestError(last_error, last_status, last_body)
 
 
 def _rest_fail_msg(subject: str, detail: str, database: str) -> str:
@@ -750,6 +759,34 @@ def _reactome_clean(text: str) -> str:
     return _REACTOME_HL_RE.sub("", text or "").strip()
 
 
+def _reactome_is_no_match(body: str | None) -> bool:
+    """True iff a 404 body is Reactome's "no entries found" signal.
+
+    Reactome returns HTTP 404 both for "nothing matched this query" (an EMPTY
+    result set) and for a genuinely broken request (a renamed endpoint path, an
+    API-version migration, …). Only the former should map to empty results;
+    everything else must surface as an error, or the tool would look healthy
+    while silently returning nothing for every query. So key NARROWLY on the
+    structured body — reason == "NOT_FOUND" AND the message text — not on the
+    404 status alone. A non-JSON / differently-shaped 404 body returns False
+    (→ genuine error).
+    """
+    if not body:
+        return False
+    try:
+        payload = json.loads(body)
+    except (ValueError, TypeError):
+        return False
+    if not isinstance(payload, dict) or payload.get("reason") != "NOT_FOUND":
+        return False
+    messages = payload.get("messages") or []
+    return (
+        bool(messages)
+        and isinstance(messages[0], str)
+        and messages[0].startswith("No entries found for query")
+    )
+
+
 @mcp.tool()
 async def search_reactome_entity(
     query: str = "",
@@ -892,9 +929,11 @@ async def search_reactome_entity(
         # Reactome signals "nothing matched" with HTTP 404 (reason NOT_FOUND,
         # message "No entries found for query: …"). That is an EMPTY result set,
         # not an upstream failure — return the empty envelope so a caller doesn't
-        # read `error` and conclude the endpoint broke. Any other 404 (or other
-        # status) stays a genuine error.
-        if resp.status_code == 404 and "No entries found" in resp.message:
+        # read `error` and conclude the endpoint broke. Key narrowly on the
+        # structured body (see _reactome_is_no_match): any OTHER 404 — a renamed
+        # path, an API migration — stays a genuine error rather than silently
+        # reporting "no results" for every query.
+        if resp.status_code == 404 and _reactome_is_no_match(resp.body):
             return {"total_count": 0, "has_more": False, "results": []}
         logger.warning(f"Reactome search failed: {resp.message}")
         return {"error": _rest_fail_msg("Reactome REST API request", resp.message, "reactome")}
