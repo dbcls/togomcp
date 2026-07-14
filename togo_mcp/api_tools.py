@@ -56,6 +56,112 @@ def _resolve_query_alias(
     return next(iter(provided.values()), "")
 
 
+# ---------------------------------------------------------------------------
+# Shared REST plumbing
+#
+# Every REST-wrapper tool below fronts a flaky third-party HTTP API (EBI is
+# ~1/3 flaky; the others have occasional 5xx/timeout blips). They share one
+# resilience story: retry transient 5xx/read-timeout failures with a short
+# linear backoff, treat 4xx as terminal, collapse HTML error pages to a short
+# snippet, and NEVER raise for an HTTP/transport error — degrade to an
+# `error`-carrying payload with a "fall back to SPARQL" hint (the module's
+# REST-wrapper contract). `_rest_get` centralizes that; each tool keeps its
+# own success-body handling (`.text` vs `.json()`) and error-envelope shape
+# (plain "Error:" string / `{"error"}` dict / bare `[{"error"}]` array).
+# ---------------------------------------------------------------------------
+
+_REST_MAX_ATTEMPTS = 3  # 1 initial try + 2 retries
+_REST_BACKOFF_BASE = 1.0  # seconds; nth retry waits base*n (patched to 0 in tests)
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _strip_html(text: str, max_len: int = 200) -> str:
+    """Collapse an HTML error page into a short plain-text snippet.
+
+    Upstream APIs return full HTML documents (doctype, <script>/<style> blocks,
+    favicon links) on failure — hundreds of tokens of noise with no diagnostic
+    value. Drop scripts/styles wholesale, strip remaining tags, collapse
+    whitespace, and truncate.
+    """
+    text = re.sub(
+        r"<(script|style)\b[^>]*>.*?</\1>", " ", text, flags=re.IGNORECASE | re.DOTALL
+    )
+    text = _HTML_TAG_RE.sub(" ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) > max_len:
+        text = text[:max_len].rstrip() + "…"
+    return text
+
+
+class _RestError:
+    """Terminal outcome of `_rest_get`, carrying a clean, short message.
+
+    Distinguishable from a successful ``httpx.Response`` via ``isinstance`` so
+    callers branch on the outcome without an exception crossing the
+    REST-wrapper boundary.
+    """
+
+    __slots__ = ("message",)
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+
+
+async def _rest_get(
+    client: httpx.AsyncClient,
+    path: str,
+    *,
+    params: dict | None = None,
+    headers: dict | None = None,
+    context: str,
+) -> "httpx.Response | _RestError":
+    """GET ``path``, retrying transient 5xx/timeout failures with linear backoff.
+
+    Returns the successful ``httpx.Response`` (2xx). On terminal failure returns
+    ``_RestError(<clean short message>)`` — it never raises for HTTP/transport
+    errors. 4xx client errors are terminal (no retry); 5xx and read timeouts are
+    retried up to ``_REST_MAX_ATTEMPTS`` times. HTML error bodies are stripped to
+    a short snippet.
+    """
+    last_error = "unknown error"
+    for attempt in range(_REST_MAX_ATTEMPTS):
+        last = attempt == _REST_MAX_ATTEMPTS - 1
+        try:
+            response = await client.get(path, params=params, headers=headers)
+        except httpx.HTTPError as e:  # includes TimeoutException
+            last_error = f"{type(e).__name__}: {e}"
+            logger.warning(f"{context} attempt {attempt + 1} failed: {last_error}")
+            if last:
+                break
+            await asyncio.sleep(_REST_BACKOFF_BASE * (attempt + 1))
+            continue
+        if response.is_success:
+            return response
+        if 500 <= response.status_code < 600 and not last:
+            last_error = f"HTTP {response.status_code}"
+            logger.warning(f"{context} attempt {attempt + 1}: {last_error}, retrying")
+            await asyncio.sleep(_REST_BACKOFF_BASE * (attempt + 1))
+            continue
+        # Terminal: a 4xx, or a 5xx after retries are exhausted.
+        last_error = f"HTTP {response.status_code}: {_strip_html(response.text)}"
+        logger.warning(f"{context} failed (terminal): {last_error}")
+        break
+    return _RestError(last_error)
+
+
+def _rest_fail_msg(subject: str, detail: str, database: str) -> str:
+    """Shared "REST API failed → retry already done → fall back to SPARQL" hint.
+
+    ``subject`` names the failed operation (e.g. "UniProt REST API request");
+    ``database`` is the RDF-Portal key for the SPARQL fallback suggestion.
+    """
+    return (
+        f"{subject} failed ({detail}). Transient errors were already retried "
+        "automatically. If it keeps failing, fall back to SPARQL: "
+        f"run_sparql(database='{database}', sparql_query=...)."
+    )
+
+
 ######################################
 #####　Database-specific tools ########
 ######################################
@@ -186,19 +292,15 @@ async def search_uniprot_entity(
         "format": "tsv",
         "size": limit,
     }
-    try:
-        response = await _uniprot_client.get("/uniprotkb/search", params=params)
-        raise_for_status_with_body(response, context="UniProt search")
-        data = response.text
-        return data
-    except (httpx.HTTPError, ValueError) as e:
-        logger.warning(f"UniProt search failed: {type(e).__name__}: {e}")
-        return (
-            f"Error: UniProt REST API request failed ({type(e).__name__}: {e}). "
-            "Usually transient — retry once after a brief delay. If it keeps "
-            "failing, fall back to SPARQL: "
-            "run_sparql(database='uniprot', sparql_query=...)."
+    resp = await _rest_get(
+        _uniprot_client, "/uniprotkb/search", params=params, context="UniProt search"
+    )
+    if isinstance(resp, _RestError):
+        logger.warning(f"UniProt search failed: {resp.message}")
+        return "Error: " + _rest_fail_msg(
+            "UniProt REST API request", resp.message, "uniprot"
         )
+    return resp.text
 
 
 # DB: ChEMBL
@@ -214,79 +316,29 @@ async def search_uniprot_entity(
 # they too resolve by exact SPARQL match. REST is retained ONLY for SMILES
 # (flexmatch) — a SMILES is written differently by each toolkit, so it needs the
 # chemistry engine's structural normalization, not an exact string match — and
-# would be needed for similarity/substructure search. Those REST helpers keep the
-# retry/HTML-strip plumbing below; EBI REST is flaky (~1/3 of calls 500 or time
-# out).
-_CHEMBL_MAX_ATTEMPTS = 3  # 1 initial try + 2 retries
-_CHEMBL_BACKOFF_BASE = 1.0  # seconds; nth retry waits base*n (patched to 0 in tests)
-_HTML_TAG_RE = re.compile(r"<[^>]+>")
-
-
-def _strip_html(text: str, max_len: int = 200) -> str:
-    """Collapse an HTML error page into a short plain-text snippet.
-
-    EBI returns full HTML documents (doctype, <script>/<style> blocks, favicon
-    links) on failure — hundreds of tokens of noise with no diagnostic value.
-    Drop scripts/styles wholesale, strip remaining tags, collapse whitespace,
-    and truncate.
-    """
-    text = re.sub(
-        r"<(script|style)\b[^>]*>.*?</\1>", " ", text, flags=re.IGNORECASE | re.DOTALL
-    )
-    text = _HTML_TAG_RE.sub(" ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    if len(text) > max_len:
-        text = text[:max_len].rstrip() + "…"
-    return text
+# would be needed for similarity/substructure search. Those REST helpers ride on
+# the shared `_rest_get` retry/HTML-strip plumbing near the top of this module;
+# EBI REST is flaky (~1/3 of calls 500 or time out).
 
 
 async def _chembl_get_json(path: str, params: dict, *, context: str) -> dict:
-    """GET a ChEMBL JSON endpoint, retrying transient 5xx/timeout failures.
+    """GET a ChEMBL JSON endpoint, retrying transient failures via `_rest_get`.
 
-    Returns the parsed JSON on success. On terminal failure returns
-    ``{"error": <clean message>}`` — it never raises for HTTP/transport
-    errors (the module's REST-wrapper contract). 4xx client errors are
-    terminal (no retry); 5xx and read timeouts are retried up to
-    ``_CHEMBL_MAX_ATTEMPTS`` times with a short linear backoff. HTML error
-    bodies are stripped to a short snippet.
+    Returns the parsed JSON on success. On terminal failure — including a 200
+    with a non-JSON body — returns ``{"error": <clean message>}``; it never
+    raises for HTTP/transport errors (the module's REST-wrapper contract).
     """
-    last_error = "unknown error"
-    for attempt in range(_CHEMBL_MAX_ATTEMPTS):
-        last = attempt == _CHEMBL_MAX_ATTEMPTS - 1
-        try:
-            response = await _chembl_client.get(path, params=params)
-        except httpx.HTTPError as e:  # includes TimeoutException
-            last_error = f"{type(e).__name__}: {e}"
-            logger.warning(f"{context} attempt {attempt + 1} failed: {last_error}")
-            if last:
-                break
-            await asyncio.sleep(_CHEMBL_BACKOFF_BASE * (attempt + 1))
-            continue
-        if response.is_success:
-            try:
-                return response.json()
-            except (json.JSONDecodeError, ValueError):
-                # 200 with a non-JSON body — an upstream anomaly. Degrade
-                # gracefully rather than raising (REST-wrapper contract).
-                last_error = f"malformed JSON body: {_strip_html(response.text)}"
-                logger.warning(f"{context} failed (terminal): {last_error}")
-                break
-        if 500 <= response.status_code < 600 and not last:
-            last_error = f"HTTP {response.status_code}"
-            logger.warning(f"{context} attempt {attempt + 1}: {last_error}, retrying")
-            await asyncio.sleep(_CHEMBL_BACKOFF_BASE * (attempt + 1))
-            continue
-        # Terminal: a 4xx, or a 5xx after retries are exhausted.
-        last_error = f"HTTP {response.status_code}: {_strip_html(response.text)}"
-        logger.warning(f"{context} failed (terminal): {last_error}")
-        break
-    return {
-        "error": (
-            f"ChEMBL REST API request failed ({last_error}). Transient errors "
-            "were already retried automatically. If it keeps failing, fall back "
-            "to SPARQL: run_sparql(database='chembl', sparql_query=...)."
-        )
-    }
+    resp = await _rest_get(_chembl_client, path, params=params, context=context)
+    if isinstance(resp, _RestError):
+        return {"error": _rest_fail_msg("ChEMBL REST API request", resp.message, "chembl")}
+    try:
+        return resp.json()
+    except (json.JSONDecodeError, ValueError):
+        # 200 with a non-JSON body — an upstream anomaly. Degrade gracefully
+        # rather than raising (REST-wrapper contract).
+        detail = f"malformed JSON body: {_strip_html(resp.text)}"
+        logger.warning(f"{context} failed (terminal): {detail}")
+        return {"error": _rest_fail_msg("ChEMBL REST API request", detail, "chembl")}
 
 
 # --- name/symbol → ID resolution over the RDF graph (skos:altLabel) ---
@@ -986,21 +1038,13 @@ async def get_pubchem_compound_id(compound_name: str) -> str:
         "Error:" (not JSON). Check for that prefix before parsing.
     """
     url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{compound_name}/cids/JSON"
-    try:
-        response = await _pubchem_client.get(url)
-        raise_for_status_with_body(response, context="PubChem CID lookup")
-        return response.text
-    except (httpx.HTTPError, ValueError) as e:
-        logger.warning(
-            f"PubChem CID lookup failed for {compound_name!r}: "
-            f"{type(e).__name__}: {e}"
+    resp = await _rest_get(_pubchem_client, url, context="PubChem CID lookup")
+    if isinstance(resp, _RestError):
+        logger.warning(f"PubChem CID lookup failed for {compound_name!r}: {resp.message}")
+        return "Error: " + _rest_fail_msg(
+            f"PubChem CID lookup for {compound_name!r}", resp.message, "pubchem"
         )
-        return (
-            f"Error: PubChem CID lookup failed for {compound_name!r} "
-            f"({type(e).__name__}: {e}). Usually transient — retry once after "
-            "a brief delay. If it keeps failing, fall back to SPARQL: "
-            "run_sparql(database='pubchem', sparql_query=...)."
-        )
+    return resp.text
 
 
 @mcp.tool()
@@ -1017,22 +1061,20 @@ async def get_compound_attributes_from_pubchem(pubchem_compound_id: str) -> str:
     """
     url = "https://togodx.dbcls.jp/human/sparqlist/api/metastanza_pubchem_compound"
     params = {"id": pubchem_compound_id}
-    try:
-        response = await _pubchem_client.get(url, params=params)
-        raise_for_status_with_body(response, context="PubChem compound attributes")
-        return response.text
-    except (httpx.HTTPError, ValueError) as e:
+    resp = await _rest_get(
+        _pubchem_client, url, params=params, context="PubChem compound attributes"
+    )
+    if isinstance(resp, _RestError):
         logger.warning(
             f"PubChem compound-attributes fetch failed for "
-            f"{pubchem_compound_id!r}: {type(e).__name__}: {e}"
+            f"{pubchem_compound_id!r}: {resp.message}"
         )
-        return (
-            f"Error: PubChem compound-attributes fetch failed for "
-            f"{pubchem_compound_id!r} ({type(e).__name__}: {e}). Usually "
-            "transient — retry once after a brief delay. If it keeps failing, "
-            "fall back to SPARQL: run_sparql(database='pubchem', "
-            "sparql_query=...)."
+        return "Error: " + _rest_fail_msg(
+            f"PubChem compound-attributes fetch for {pubchem_compound_id!r}",
+            resp.message,
+            "pubchem",
         )
+    return resp.text
 
 
 # DB: PDB
@@ -1262,41 +1304,35 @@ async def search_pdb_entity(
         )
 
     project = _PDB_ROW_PROJECTORS[db]
+    resp = await _rest_get(
+        _pdbj_client, f"/rest/newweb/search/{db}", params=params, context="PDBj search"
+    )
+    if isinstance(resp, _RestError):
+        logger.warning(f"PDBj search failed for db={db!r} query={query!r}: {resp.message}")
+        return json.dumps(
+            {"error": _rest_fail_msg("PDBj REST API request", resp.message, "pdb")}
+        )
     try:
-        response = await _pdbj_client.get(
-            f"/rest/newweb/search/{db}", params=params
+        payload = resp.json()
+    except ValueError as e:
+        detail = f"malformed JSON body: {_strip_html(resp.text)}"
+        logger.warning(f"PDBj search returned non-JSON for db={db!r}: {e}")
+        return json.dumps(
+            {"error": _rest_fail_msg("PDBj REST API request", detail, "pdb")}
         )
-        raise_for_status_with_body(response, context="PDBj search")
-        payload = response.json()
-        raw_total = payload.get("total", 0)
-        try:
-            total_results = int(raw_total)
-        except (TypeError, ValueError):
-            total_results = 0
-        # PDBj returns -1 ("not computed") for structured-filter searches, even
-        # alongside real rows. Surface that as null rather than a nonsensical
-        # negative count.
-        if total_results < 0:
-            total_results = None
-        # `limit`/`offset` are honored server-side; the slice is a safety belt.
-        result_list = [
-            project(entry) for entry in payload.get("results", [])[:limit]
-        ]
-        response_dict = {"total": total_results, "results": result_list}
-        return json.dumps(response_dict)
-    except (httpx.HTTPError, ValueError) as e:
-        logger.warning(
-            f"PDBj search failed for db={db!r} query={query!r}: "
-            f"{type(e).__name__}: {e}"
-        )
-        return json.dumps({
-            "error": (
-                f"PDBj REST API request failed ({type(e).__name__}: {e}). "
-                "Usually transient — retry once after a brief delay. If it "
-                "keeps failing, fall back to SPARQL: "
-                "run_sparql(database='pdb', sparql_query=...)."
-            )
-        })
+    raw_total = payload.get("total", 0)
+    try:
+        total_results = int(raw_total)
+    except (TypeError, ValueError):
+        total_results = 0
+    # PDBj returns -1 ("not computed") for structured-filter searches, even
+    # alongside real rows. Surface that as null rather than a nonsensical
+    # negative count.
+    if total_results < 0:
+        total_results = None
+    # `limit`/`offset` are honored server-side; the slice is a safety belt.
+    result_list = [project(entry) for entry in payload.get("results", [])[:limit]]
+    return json.dumps({"total": total_results, "results": result_list})
 
 
 # DB: MeSH
@@ -1340,21 +1376,16 @@ async def search_mesh_descriptor(
             "search, term, keyword, keywords, search_term, name."
         )
     params = {"label": query, "match": "contains", "limit": limit}
-    try:
-        response = await _mesh_client.get("/mesh/lookup/descriptor", params=params)
-        raise_for_status_with_body(response, context="MeSH descriptor lookup")
-        return response.text
-    except (httpx.HTTPError, ValueError) as e:
-        logger.warning(
-            f"MeSH descriptor lookup failed for {query!r}: "
-            f"{type(e).__name__}: {e}"
+    resp = await _rest_get(
+        _mesh_client, "/mesh/lookup/descriptor", params=params,
+        context="MeSH descriptor lookup",
+    )
+    if isinstance(resp, _RestError):
+        logger.warning(f"MeSH descriptor lookup failed for {query!r}: {resp.message}")
+        return "Error: " + _rest_fail_msg(
+            "MeSH descriptor lookup", resp.message, "mesh"
         )
-        return (
-            f"Error: MeSH descriptor lookup failed ({type(e).__name__}: {e}). "
-            "Usually transient — retry once after a brief delay. If it keeps "
-            "failing, fall back to SPARQL: "
-            "run_sparql(database='mesh', sparql_query=...)."
-        )
+    return resp.text
 
 
 # DB: Reactome
@@ -1464,25 +1495,23 @@ async def search_reactome_entity(
         params["types"] = ",".join(normalized)
 
     # Make API call
+    resp = await _rest_get(
+        _reactome_client, "/ContentService/search/query", params=params,
+        headers={"Accept": "application/json"}, context="Reactome search",
+    )
+    if isinstance(resp, _RestError):
+        logger.warning(f"Reactome search failed: {resp.message}")
+        return json.dumps([
+            {"error": _rest_fail_msg("Reactome REST API request", resp.message, "reactome")}
+        ])
     try:
-        response = await _reactome_client.get(
-            "/ContentService/search/query",
-            params=params,
-            headers={"Accept": "application/json"},
-        )
-        raise_for_status_with_body(response, context="Reactome search")
-        data = response.json()
-    except (httpx.HTTPError, ValueError) as e:
-        logger.warning(f"Reactome search failed: {type(e).__name__}: {e}")
-        return json.dumps([{
-            "error": (
-                f"Reactome REST API request failed ({type(e).__name__}: "
-                f"{e}). Reactome's search endpoint can be slow or briefly "
-                "unavailable. Retry once after a brief delay. If it keeps "
-                "failing, fall back to SPARQL: "
-                "run_sparql(database='reactome', sparql_query=...)."
-            )
-        }])
+        data = resp.json()
+    except ValueError as e:
+        detail = f"malformed JSON body: {_strip_html(resp.text)}"
+        logger.warning(f"Reactome search returned non-JSON: {e}")
+        return json.dumps([
+            {"error": _rest_fail_msg("Reactome REST API request", detail, "reactome")}
+        ])
 
     # Extract and return results
     results = []
@@ -1565,33 +1594,24 @@ async def search_rhea_entity(
         "limit": limit,
     }
 
-    try:
-        response = await _rhea_client.get("/rhea", params=params)
-        raise_for_status_with_body(response, context="Rhea search")
+    resp = await _rest_get(_rhea_client, "/rhea", params=params, context="Rhea search")
+    if isinstance(resp, _RestError):
+        logger.warning(f"Rhea search failed: {resp.message}")
+        return json.dumps([
+            {"error": _rest_fail_msg("Rhea REST API request", resp.message, "rhea")}
+        ])
 
-        # Parse TSV response
-        lines = response.text.strip().split("\n")
+    # Parse TSV response
+    lines = resp.text.strip().split("\n")
+    if len(lines) < 2:
+        return json.dumps([])
 
-        if len(lines) < 2:
-            return json.dumps([])
+    # First line is header, skip it
+    results = []
+    for line in lines[1:]:
+        if line.strip():
+            parts = line.split("\t")
+            if len(parts) >= 2:
+                results.append({"rhea_id": parts[0], "equation": parts[1]})
 
-        # First line is header, skip it
-        results = []
-        for line in lines[1:]:
-            if line.strip():
-                parts = line.split("\t")
-                if len(parts) >= 2:
-                    results.append({"rhea_id": parts[0], "equation": parts[1]})
-
-        return json.dumps(results)
-
-    except (httpx.HTTPError, ValueError) as e:
-        logger.warning(f"Rhea search failed: {type(e).__name__}: {e}")
-        return json.dumps([{
-            "error": (
-                f"Rhea REST API request failed ({type(e).__name__}: {e}). "
-                "Usually transient — retry once after a brief delay. If it "
-                "keeps failing, fall back to SPARQL: "
-                "run_sparql(database='rhea', sparql_query=...)."
-            )
-        }])
+    return json.dumps(results)

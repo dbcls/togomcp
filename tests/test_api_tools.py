@@ -42,9 +42,9 @@ def _sent_query(route) -> str:
 
 
 @pytest.fixture(autouse=True)
-def _no_chembl_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Zero the ChEMBL retry backoff so the retry-then-error tests don't sleep."""
-    monkeypatch.setattr(api_tools, "_CHEMBL_BACKOFF_BASE", 0.0)
+def _no_rest_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Zero the REST retry backoff so the retry-then-error tests don't sleep."""
+    monkeypatch.setattr(api_tools, "_REST_BACKOFF_BASE", 0.0)
 
 
 class TestResolveQueryAlias:
@@ -107,6 +107,34 @@ class TestSearchUniprotEntity:
             result = await search_uniprot_entity("TP53")
         assert isinstance(result, str)
         assert "UniProt REST API request failed" in result
+
+    @pytest.mark.asyncio
+    async def test_retries_5xx_then_succeeds(self) -> None:
+        """The shared `_rest_get` plumbing now retries transient 5xx for the
+        non-ChEMBL REST wrappers too (they previously did a single try)."""
+        tsv_body = "Entry\tProtein names\tOrganism\nP04637\tp53\tHomo sapiens\n"
+        with respx.mock(using="httpx") as router:
+            route = router.get("https://rest.uniprot.org/uniprotkb/search").mock(
+                side_effect=[
+                    httpx.Response(503, text="<html>busy</html>"),
+                    httpx.Response(200, text=tsv_body),
+                ]
+            )
+            result = await search_uniprot_entity("TP53")
+        assert route.call_count == 2
+        assert "P04637" in result
+
+    @pytest.mark.asyncio
+    async def test_4xx_not_retried(self) -> None:
+        """4xx is a terminal client error — no retry, degrades to a message."""
+        with respx.mock(using="httpx") as router:
+            route = router.get("https://rest.uniprot.org/uniprotkb/search").mock(
+                return_value=httpx.Response(400, text="<html>bad</html>")
+            )
+            result = await search_uniprot_entity("TP53")
+        assert route.call_count == 1
+        assert "UniProt REST API request failed" in result
+        assert "<" not in result and ">" not in result
 
 
 # ---------------------------------------------------------------------------
