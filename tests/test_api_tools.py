@@ -296,7 +296,7 @@ class TestSearchChemblMolecule:
             route = router.post(CHEMBL_SPARQL_URL)
             result = await search_chembl_molecule("---")
         assert not route.called
-        assert result == {"total_count": 0, "results": []}
+        assert result == {"total_count": 0, "has_more": False, "results": []}
 
 
 class TestSearchChemblTarget:
@@ -453,14 +453,16 @@ class TestSearchChemblIdLookup:
     @pytest.mark.asyncio
     async def test_assay_keyword_in_description(self) -> None:
         # ASSAY does a keyword match on dcterms:description — bif:contains, and
-        # crucially NO exact FILTER (descriptions are free text, not names).
+        # crucially NO exact FILTER (descriptions are free text, not names). It
+        # exposes `description` (not `name`) + a relevance `score`, ranked.
         with respx.mock(using="httpx") as router:
             route = router.post(CHEMBL_SPARQL_URL).mock(
                 return_value=httpx.Response(
                     200,
                     text=_csv(
-                        "chembl_id,entity_type,name",
-                        "CHEMBL641506,ASSAY,Inhibition of human acetylcholinesterase",
+                        "chembl_id,entity_type,description,organism,sc",
+                        "CHEMBL641506,ASSAY,Inhibition of human acetylcholinesterase,,28",
+                        "CHEMBL9,ASSAY,weaker match,,12",
                     ),
                 )
             )
@@ -474,7 +476,32 @@ class TestSearchChemblIdLookup:
         assert "option (score ?sc)" in sent
         assert "ORDER BY DESC(?sc)" in sent
         assert "DISTINCT" not in sent  # DISTINCT would conflict with ORDER BY ?sc
-        assert result["results"][0]["entity_type"] == "ASSAY"
+        row = result["results"][0]
+        assert row["entity_type"] == "ASSAY"
+        assert row["name"] is None  # assays have no name
+        assert row["description"] == "Inhibition of human acetylcholinesterase"
+        assert row["score"] == 28  # populated + non-increasing
+        assert result["results"][1]["score"] == 12
+
+    @pytest.mark.asyncio
+    async def test_has_more_true_when_over_limit(self) -> None:
+        # Over-fetch by one: limit+1 rows returned → has_more True, page capped.
+        with respx.mock(using="httpx") as router:
+            router.post(CHEMBL_SPARQL_URL).mock(
+                return_value=httpx.Response(
+                    200,
+                    text=_csv(
+                        "chembl_id,entity_type,name,organism",
+                        "CHEMBL1,TISSUE,Liver,Rattus norvegicus",
+                        "CHEMBL2,TISSUE,Liver,Homo sapiens",
+                        "CHEMBL3,TISSUE,Liver,Mus musculus",  # the +1 over limit=2
+                    ),
+                )
+            )
+            result = await search_chembl_id_lookup("Liver", limit=2)
+        assert result["has_more"] is True
+        assert result["total_count"] == 2  # capped to limit
+        assert len(result["results"]) == 2
 
     @pytest.mark.asyncio
     async def test_invalid_entity_type_raises(self) -> None:
