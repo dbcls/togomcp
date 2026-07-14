@@ -1065,6 +1065,10 @@ async def search_rhea_entity(
     'chebi-id' → 'chebi_id'). On upstream failure returns {'error': ...} instead
     — CHECK FOR 'error' BEFORE READING 'results'.
 
+    Valid `columns` (default rhea-id,equation): rhea-id, equation, chebi,
+    chebi-id, ec, uniprot, go, pubmed, reaction-xref(EcoCyc|KEGG|MetaCyc|
+    Reactome|M-CSA).
+
     Args:
         query: Search string, e.g. "ATP", "glucose", "ec:1.1.1.1",
             "chebi:17234", "uniprot:*". REQUIRED — a blank query raises
