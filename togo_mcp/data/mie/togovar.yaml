@@ -9,8 +9,14 @@ schema_info:
     supporting reference datasets (ClinVar, Ensembl gene models, HGNC, MedGen,
     MONDO, Sequence Ontology, GWAS Catalog, PubMed/PubTator, MeSH, EFO, GO).
     Primary use: variant-to-gene-to-consequence lookup and clinical-significance
-    triage for human variants. NOTE: per-population allele frequencies are NOT in
-    this endpoint (REST API only) — see critical_warnings.
+    triage for human variants.
+    TWO IMPORTANT SCOPE NOTES (see critical_warnings): (1) this SPARQL endpoint is
+    an ANNOTATED SUBSET of TogoVar — it holds 390,725,782 variants, while the
+    TogoVar REST API (togovar_search_variant) reports 1,097,708,150 (~2.8x more);
+    do not treat the SPARQL total as "the size of TogoVar". (2) per-population
+    ALLELE FREQUENCIES are NOT in this endpoint at all — they are REST-only.
+    Clinical significance IS reachable in SPARQL (via a deep embedded-ClinVar
+    blank-node path, verified in example #7) but REST is the robust fallback.
   keywords:
     - variant
     - variation
@@ -42,7 +48,7 @@ schema_info:
     - http://togovar.org/hgnc                           # HGNC gene records (med2rdf:Gene)
     - http://togovar.org/medgen                         # MedGen (MGREL relations)
     - http://togovar.org/mondo                          # MONDO disease ontology
-    - http://togovar.org/so                             # Sequence Ontology (owl:Class)
+    - http://togovar.org/so                             # Sequence Ontology (rdfs:label per SO term)
     - http://togovar.org/go                             # Gene Ontology
     - http://togovar.org/mesh                           # MeSH
     - http://togovar.org/efo                            # Experimental Factor Ontology
@@ -52,11 +58,12 @@ schema_info:
     - http://togovar.org/hco                            # Human Chromosome Ontology (reference IRIs)
   co_hosted_graphs:
     - "http://togovar.org/variant/annotation/clinvar — RE-TYPES the SAME variant IRI as `a gvo:SNV`/Deletion/etc. that http://togovar.org/variant already types (2,944,525 variants). An unscoped `?s a gvo:SNV` COUNT double-counts these. Multiplier = x2 for ClinVar-annotated variants. Safe pattern: pin GRAPH <http://togovar.org/variant> or use COUNT(DISTINCT ?variant)."
-    - "http://togovar.org/clinvar — full embedded ClinVar RDF; its own med2rdf:Variation / clinvar:VariationArchiveType nodes re-use dcterms:identifier and med2rdf:gene on shared IRIs. Join to the variant layer only via the ClinVar VariationID string; do not COUNT variant classes across this graph."
+    - "http://togovar.org/clinvar — full embedded ClinVar RDF. Its nodes re-use dcterms:identifier and med2rdf:gene, but dcterms:identifier here is the ClinVar *AlleleID*, NOT the VariationID (see critical_warnings ALLELEID/VARIATIONID trap). Join the variant layer into this graph ONLY via clinvar:variation_id (xsd:integer); never via dcterms:identifier."
   kw_search_tools: []
   version:
-    mie_version: "1.0"
+    mie_version: "1.2"
     mie_created: "2026-07-12"
+    mie_updated: "2026-07-14"
     data_version: "GRCh38 endpoint (grch38.togovar.org), snapshot 2026-07"
     update_frequency: "Periodic (aligned with TogoVar releases)"
   license:
@@ -65,13 +72,48 @@ schema_info:
     backend: "Virtuoso"
 
 critical_warnings: |
+  - ALLELEID vs VARIATIONID JOIN-KEY COLLISION (silent WRONG-GENE trap). In the
+    embedded ClinVar graph <http://togovar.org/clinvar>, dcterms:identifier is the
+    ClinVar *AlleleID* (xsd:string), NOT the VariationID. The annotation graph
+    <http://togovar.org/variant/annotation/clinvar> stores dcterms:identifier =
+    *VariationID* (xsd:string). Joining these two on dcterms:identifier is WRONG:
+    the numeric spaces overlap, so it silently binds an unrelated record. Verified:
+    for rs671/ALDH2 (VariationID 18390) the string-on-string join returns AlleleID
+    18390 = a SRD5A2 record on chr2 (variation_id 3351), i.e. the WRONG gene
+    (ncbigene:6716 instead of ncbigene:217). CORRECT join: cast the annotation-layer
+    VariationID string with xsd:integer() and BIND it, then match the embedded graph
+    on clinvar:variation_id (xsd:integer). Use a BIND-as-object join, NOT a FILTER:
+    `FILTER(?vid = xsd:integer(?variationId))` across two GRAPH blocks with no shared
+    variable returns 0 rows in Virtuoso; `BIND(xsd:integer(?variationId) AS ?vid)`
+    then `?cv clinvar:variation_id ?vid` works (see example #7). NB: within the
+    embedded graph, clinvar:variation_id sits on BOTH an allele-level blank node
+    (which carries med2rdf:gene + clinvar:name) AND the variation IRI
+    <http://ncbi.nlm.nih.gov/clinvar/variation/{id}> (which carries the
+    classified_record / significance chain) — join both by variation_id.
+  - SPARQL IS A SUBSET OF TOGOVAR; COUNTS DIFFER FROM THE REST API. This SPARQL
+    endpoint holds 390,725,782 variants, but the TogoVar REST API
+    (togovar_search_variant) reports total = 1,097,708,150 (~2.8x larger). Do NOT
+    reconcile counts across the two backends or quote the SPARQL total as "the size
+    of TogoVar". Treat SPARQL as the annotated subset; use REST for whole-database
+    totals and for allele frequencies.
   - NO ALLELE FREQUENCY IN THIS ENDPOINT. TogoVar's headline per-population
     frequencies (ToMMo/54KJPN, gnomAD genomes/exomes, JGA, GEM-J WGA, NCBN, BBJ)
     are NOT stored in this SPARQL endpoint — they are served only via the TogoVar
     REST API (togovar.py sub-server). Verified: even rs671 (extremely common) has
-    only the 9 core predicates and no frequency predicate in ANY graph. There is no
-    `frequency`/`info` bnode chain in the variant graph. Do not attempt to query
-    frequencies here; you will get 0 rows, not an error.
+    only the core predicates and no frequency predicate in ANY graph. Do not query
+    frequencies here; you will get 0 rows, not an error. (Frequencies DO come back
+    in the REST togovar_search_variant row payload.)
+  - CLINICAL SIGNIFICANCE IS DEEP BUT REACHABLE IN SPARQL; REST IS THE ROBUST PATH.
+    Pathogenic/benign/drug-response interpretations live behind an asymmetric
+    blank-node chain in the embedded ClinVar graph:
+    <variation IRI> clinvar:classified_record -> clinvar:classifications ->
+    clinvar:germline_classification -> clinvar:description (the significance literal,
+    e.g. "drug response") + clinvar:review_status. Verified for rs671 (example #7).
+    CAVEAT: the attachment path is not uniform across records — some nodes carry
+    clinvar:classifications directly (no classified_record hop) — so a single fixed
+    property path can miss records. For reliable significance/conditions across
+    arbitrary variants, prefer the REST API (togovar_search_variant returns a clean
+    `significance` array with interpretation codes + conditions).
   - CROSS-GRAPH RE-TYPING / UNION INFLATION. The same variant IRI is typed
     `a <http://genome-variation.org/resource#SNV>` (or Deletion/Insertion/...) in
     BOTH <http://togovar.org/variant> AND <http://togovar.org/variant/annotation/clinvar>
@@ -86,6 +128,12 @@ critical_warnings: |
     (dcterms:identifier = ClinVar VariationID, gvo:info = ALLELEID) lives in
     <http://togovar.org/variant/annotation/clinvar>. Querying the wrong graph returns
     0 rows silently — always pin the correct GRAPH.
+  - PER-TRANSCRIPT FAN-OUT. tgvo:hasConsequence is a blank node PER TRANSCRIPT
+    overlap, so projecting tgvo:hgvsp / tgvo:transcript / tgvo:gene multiplies rows
+    per variant. Verified: the single variant 111781979-C-T (ALDH2 p.Pro59Leu)
+    returns 5 consequence bnodes (4 distinct HGVSp: ENSP00000261733 / ENSP00000403349
+    / NP_000681 / NP_001191818). COUNT variants with COUNT(DISTINCT ?variant) and use
+    SELECT DISTINCT for listings, or you will over-count.
   - NORMALIZED vs VCF ALLELES. gvo:ref/gvo:alt are VOA-normalized (trimmed) alleles
     and are the EMPTY STRING "" for pure deletions (alt) / insertions (ref).
     gvo:ref_vcf/gvo:alt_vcf carry the VCF anchor base (never empty). gvo:pos differs
@@ -94,11 +142,27 @@ critical_warnings: |
   - gvo:pos and faldo:position are xsd:integer. Match with an integer literal
     (e.g. `gvo:pos 111803962`), NOT a string ("111803962") — a string joins to nothing.
     gvo:ref/gvo:alt and dcterms:identifier are xsd:string (plain literal matches fine).
+    clinvar:variation_id and clinvar:allele_id are xsd:integer (match with integers).
   - tgvo:gene IS POLYMORPHIC UNDER ONE NAMESPACE. Objects of tgvo:gene are BOTH
     Ensembl gene IRIs (http://rdf.ebi.ac.uk/resource/ensembl/ENSG...) AND NCBI Gene
     IDs (http://rdf.ebi.ac.uk/resource/ensembl/217) — both minted under the SAME
     ensembl namespace. The sibling tgvo:gene_symbol_source ("HGNC" vs "EntrezGene")
     distinguishes them. Filter to the ENSG form if you mean Ensembl genes.
+  - REST togovar_search_variant NOTES. (1) Each result row carries `tgv_id` and a
+    reconstructed `variant_iri` — either resolves in this SPARQL endpoint, so the
+    REST->SPARQL handoff is direct (fetch frequencies/significance via REST, then
+    deep-dive VEP/cross-refs here). Large structural-variant alleles are summarized
+    in the row (with `ref_length`/`alt_length`); pass `include_full_alleles=True`
+    only when the full sequence is needed. (2) In `stat=True` output ALL facets are
+    scoped to the filtered set, but they count at different granularities: `type`
+    and `dataset` count PER VARIANT (type sums to `filtered`), while `consequence`
+    counts PER VARIANT-TRANSCRIPT (the same VEP fan-out documented below — sum =
+    `filtered` x mean transcripts/variant, ~5-6 for a typical gene but 400+ in
+    transcript-dense loci like BRCA1) and `significance` counts PER
+    VARIANT-CONDITION classification record. So consequence/significance sums
+    legitimately exceed `filtered` and must NOT be read as variant counts of the
+    query result — they are annotation-record counts (use COUNT(DISTINCT) semantics
+    when reasoning about variants).
 
 shape_expressions: |
   PREFIX gvo:   <http://genome-variation.org/resource#>
@@ -108,6 +172,8 @@ shape_expressions: |
   PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
   PREFIX rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
   PREFIX obo:   <http://purl.obolibrary.org/obo/>
+  PREFIX cvo:   <http://purl.jp/bio/10/clinvar/>
+  PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
 
   # ---- CORE VARIANT (graph: http://togovar.org/variant) ----
   # Total 390,725,782 variants: SNV 339,076,968 | Deletion 29,307,469 |
@@ -115,8 +181,8 @@ shape_expressions: |
   # http://identifiers.org/hco/{chr}/GRCh38#{pos}-{ref}-{alt}
   <VariantShape> {
     a [ gvo:SNV gvo:Deletion gvo:Insertion gvo:MNV gvo:Indel ] ;  # exactly one type
-    dcterms:identifier xsd:string ;        # tgv ID, e.g. "tgv239865485" — exactly 1
-    gvo:pos      xsd:integer ;             # normalized 1-based position (=1)
+    dcterms:identifier xsd:string ;        # tgv ID, e.g. "tgv47264307" — exactly 1
+    gvo:pos      xsd:integer ;             # normalized 1-based position
     gvo:pos_vcf  xsd:integer ;             # VCF position (indels differ from pos by 1)
     gvo:ref      xsd:string ;             # normalized REF ("" for pure insertions)
     gvo:alt      xsd:string ;             # normalized ALT ("" for pure deletions)
@@ -150,10 +216,10 @@ shape_expressions: |
   # Same variant IRI as subject; ~100% of variants annotated (sampling N=2000 SNV).
   <VepAnnotationShape> {
     rdfs:seeAlso IRI * ;                        # dbSNP: http://identifiers.org/dbsnp/rs... (~99% of SNVs; 0..n)
-    tgvo:most_severe_consequence IRI ;          # SO term obo:SO_XXXXXXX (exactly 1)
-    tgvo:hasConsequence @<ConsequenceShape> +   # one per transcript overlap
+    tgvo:most_severe_consequence IRI ;          # SO term obo:SO_XXXXXXX (exactly 1); label in the `so` graph
+    tgvo:hasConsequence @<ConsequenceShape> +   # one per transcript overlap (PER-TRANSCRIPT FAN-OUT)
   }
-  # Consequence blank node — typed with its SO consequence term(s).
+  # Consequence blank node — typed with its SO consequence term(s). One PER TRANSCRIPT.
   <ConsequenceShape> {
     a [ obo:SO_0001583 ] * ;                    # rdf:type = SO consequence term(s), e.g. missense_variant
     tgvo:transcript IRI ? ;                     # http://rdf.ebi.ac.uk/resource/ensembl.transcript/{ENST|NM_...}
@@ -175,24 +241,56 @@ shape_expressions: |
 
   # ---- CLINVAR ANNOTATION (graph: http://togovar.org/variant/annotation/clinvar) ----
   # RE-DECLARES the variant IRI (same subject) — see critical_warnings union inflation.
-  # 2,944,525 variants carry this annotation.
+  # 2,944,525 variants carry this annotation. dcterms:identifier here = ClinVar VariationID.
   <ClinvarAnnotationShape> {
     a [ gvo:SNV gvo:Deletion gvo:Insertion ] ;  # re-typed here (double-count trap)
-    dcterms:identifier xsd:string ;             # ClinVar VariationID, e.g. "18390"
+    dcterms:identifier xsd:string ;             # ClinVar VariationID, e.g. "18390" (NOT the AlleleID)
     gvo:ref xsd:string ; gvo:alt xsd:string ;
     gvo:pos xsd:integer ;
     faldo:location @<LocationShape> ;
     gvo:info @<ClinvarInfoShape> +              # key/value INFO bnode
   }
-  # INFO key/value bnode; observed key so far: ALLELEID (rdfs:label) + rdf:value.
+  # INFO key/value bnode; observed key: ALLELEID (rdfs:label) + rdf:value (the AlleleID integer).
   <ClinvarInfoShape> {
     rdfs:label xsd:string ;                     # e.g. "ALLELEID"
     rdf:value xsd:integer                       # e.g. 33429 (the ClinVar Allele ID) — xsd:integer
   }
-  # For full clinical significance / conditions, join the ClinVar VariationID into the
-  # embedded ClinVar dataset graph <http://togovar.org/clinvar> (DBCLS ClinVar RDF;
-  # med2rdf:Variation nodes keyed by dcterms:identifier; med2rdf:gene -> NCBI gene).
-  # That graph mirrors the standalone `clinvar` database — see clinvar.yaml.
+
+  # ---- EMBEDDED CLINVAR DATASET (graph: http://togovar.org/clinvar) ----
+  # DBCLS ClinVar RDF (mirrors the standalone `clinvar` database, see clinvar.yaml).
+  # clinvar:variation_id (xsd:integer) is the CORRECT join key from the annotation layer
+  # (dcterms:identifier there = VariationID string -> xsd:integer -> clinvar:variation_id).
+  # A given VariationID resolves to TWO node kinds, both carrying clinvar:variation_id:
+  #  (1) an ALLELE-LEVEL blank node — carries med2rdf:gene (-> ncbigene IRI) and clinvar:name;
+  #  (2) the VARIATION IRI <http://ncbi.nlm.nih.gov/clinvar/variation/{id}> — carries rdfs:label,
+  #      clinvar:accession (VCV...), and the significance chain via clinvar:classified_record.
+  <ClinvarAlleleShape> {                        # node kind (1) — reached by clinvar:variation_id
+    a [ med2rdf:Variation cvo:TypeAllele ] ;
+    cvo:variation_id xsd:integer ;              # e.g. 18390
+    cvo:allele_id    xsd:integer ;              # e.g. 33429 (this is dcterms:identifier in this graph)
+    dcterms:identifier xsd:string ;             # AlleleID as string (NOT the VariationID — collision trap)
+    med2rdf:gene IRI ? ;                         # http://ncbi.nlm.nih.gov/gene/{n} (NCBI gene)
+    cvo:name xsd:string * ;                     # e.g. "NM_000690.4(ALDH2):c.1510G>A (p.Glu504Lys)"
+    cvo:canonical_spdi xsd:string ?             # e.g. "NC_000012.12:111803961:G:A"
+  }
+  <ClinvarVariationShape> {                     # node kind (2) — the significance carrier
+    a [ cvo:VariationArchiveType ] ;
+    cvo:variation_id xsd:integer ;
+    cvo:accession xsd:string ? ;                # VCV000018390
+    rdfs:label xsd:string ? ;
+    cvo:classified_record @<ClinvarClassifiedRecordShape> ?
+  }
+  # Significance chain (verified for rs671; attachment path can vary across records).
+  <ClinvarClassifiedRecordShape> {
+    cvo:classifications @<ClinvarClassificationsShape> ?
+  }
+  <ClinvarClassificationsShape> {
+    cvo:germline_classification @<GermlineClassificationShape> ?
+  }
+  <GermlineClassificationShape> {
+    cvo:description  xsd:string ;               # THE significance literal, e.g. "drug response", "Pathogenic"
+    cvo:review_status xsd:string ?              # e.g. "reviewed by expert panel"
+  }
 
 sample_rdf_entries:
   rdf_prefixes: |
@@ -202,6 +300,8 @@ sample_rdf_entries:
     @prefix dcterms: <http://purl.org/dc/terms/> .
     @prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
     @prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+    @prefix cvo:     <http://purl.jp/bio/10/clinvar/> .
+    @prefix med2rdf: <http://med2rdf.org/ontology/med2rdf#> .
     @prefix hco:     <http://identifiers.org/hco/12/GRCh38#> .
   entries:
     - title: "Core SNV record — rs671 / ALDH2 (graph: variant)"
@@ -230,13 +330,22 @@ sample_rdf_entries:
                 tgvo:transcript <http://rdf.ebi.ac.uk/resource/ensembl.transcript/ENST00000261733> ;
                 tgvo:hgvsp "ENSP00000261733.2:p.Glu504Lys" ;
                 tgvo:impact "MODERATE" ] .
-    - title: "ClinVar annotation — re-typed variant IRI (graph: variant/annotation/clinvar)"
-      description: The SAME variant IRI re-declared with the ClinVar VariationID and an ALLELEID INFO bnode (illustrates the union-inflation trap).
+    - title: "Embedded ClinVar allele + significance — rs671 (graph: clinvar)"
+      description: The embedded-ClinVar allele node (gene, name, keyed by clinvar:variation_id) and the variation-IRI significance chain reached via classified_record. Shows the CORRECT join key (variation_id, integer) — dcterms:identifier here is the AlleleID.
       rdf: |
-        # GRAPH <http://togovar.org/variant/annotation/clinvar>
-        hco:111803962-G-A a gvo:SNV ;                 # re-typed here AND in the variant graph
-            dcterms:identifier "18390" ;              # ClinVar VariationID
-            gvo:info [ rdfs:label "ALLELEID" ; rdf:value 33429 ] .
+        # GRAPH <http://togovar.org/clinvar>
+        _:allele a med2rdf:Variation, cvo:TypeAllele ;
+            cvo:variation_id 18390 ;                # correct join key (integer VariationID)
+            cvo:allele_id 33429 ;
+            dcterms:identifier "33429" ;            # AlleleID as string (NOT the VariationID)
+            med2rdf:gene <http://ncbi.nlm.nih.gov/gene/217> ;   # ALDH2 (NOT SRD5A2/6716)
+            cvo:name "NM_000690.4(ALDH2):c.1510G>A (p.Glu504Lys)" .
+        <http://ncbi.nlm.nih.gov/clinvar/variation/18390>
+            cvo:variation_id 18390 ; cvo:accession "VCV000018390" ;
+            cvo:classified_record [ cvo:classifications [
+                cvo:germline_classification [
+                    cvo:description "drug response" ;
+                    cvo:review_status "reviewed by expert panel" ] ] ] .
 
 sparql_query_examples:
   - title: "Variant core record by TogoVar variant IRI"
@@ -257,25 +366,28 @@ sparql_query_examples:
       }
       LIMIT 20
 
-  - title: "Resolve a dbSNP rsID to variant + most-severe consequence"
-    description: dbSNP rsIDs are stored as IRIs (rdfs:seeAlso) in the ensembl annotation graph — use the IRI, not a text match.
-    question: "Which TogoVar variant is dbSNP rs671, and what is its most severe consequence?"
+  - title: "Resolve a dbSNP rsID to variant + most-severe consequence (with SO label)"
+    description: dbSNP rsIDs are stored as IRIs (rdfs:seeAlso) in the ensembl annotation graph — use the IRI, not a text match. The SO consequence IRI is opaque; join the embedded `so` graph to get its human-readable label.
+    question: "Which TogoVar variant is dbSNP rs671, and what is its most severe consequence (with a readable label)?"
     complexity: basic
     sparql: |
       PREFIX tgvo: <http://togovar.biosciencedbc.jp/vocabulary/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-      SELECT ?variant ?soConsequence
+      SELECT ?variant ?soConsequence ?soLabel
       WHERE {
         GRAPH <http://togovar.org/variant/annotation/ensembl> {
           ?variant rdfs:seeAlso <http://identifiers.org/dbsnp/rs671> ;
                    tgvo:most_severe_consequence ?soConsequence .
         }
+        GRAPH <http://togovar.org/so> {                 # SO term labels live here
+          ?soConsequence rdfs:label ?soLabel .          # SO_0001583 -> "missense_variant"
+        }
       }
       LIMIT 20
 
   - title: "All variants in a gene by Ensembl gene IRI, with consequence"
-    description: Filter the consequence bnode by the Ensembl gene IRI (typed predicate lookup) — no gene-name text search.
+    description: Filter the consequence bnode by the Ensembl gene IRI (typed predicate lookup) — no gene-name text search. DISTINCT collapses the per-transcript fan-out.
     question: "List variants affecting ALDH2 (ENSG00000111275) with their most severe consequence."
     complexity: intermediate
     sparql: |
@@ -292,7 +404,7 @@ sparql_query_examples:
       LIMIT 20
 
   - title: "SAFE variant-class count (avoid cross-graph re-typing inflation)"
-    description: Demonstrates the graph-pinned COUNT that returns the true class size; the unscoped form double-counts ClinVar-annotated variants.
+    description: Demonstrates the graph-pinned COUNT that returns the true class size; the unscoped form double-counts ClinVar-annotated variants. (A `GROUP BY ?type` over this graph also works, but returns FALDO position types alongside the 5 variant classes.)
     question: "How many Insertion variants are in TogoVar?"
     complexity: intermediate
     sparql: |
@@ -307,7 +419,7 @@ sparql_query_examples:
       LIMIT 1
 
   - title: "Predicted-deleterious missense variants in a gene (SIFT)"
-    description: Uses the controlled SIFT prediction literal and the Ensembl gene IRI on the same consequence bnode; STRSTARTS covers the *_low_confidence variants.
+    description: Uses the controlled SIFT prediction literal and the Ensembl gene IRI on the same consequence bnode; STRSTARTS covers the *_low_confidence variants. DISTINCT collapses per-transcript fan-out.
     question: "Which ALDH2 variants are predicted deleterious by SIFT, and what is the protein change?"
     complexity: intermediate
     sparql: |
@@ -326,7 +438,7 @@ sparql_query_examples:
       LIMIT 20
 
   - title: "Full variant report joining core + VEP annotation graphs"
-    description: Cross-GRAPH join within the endpoint — core coordinates from the variant graph, dbSNP + gene + protein change from the ensembl annotation graph, anchored on a gene to stay bounded.
+    description: Cross-GRAPH join within the endpoint — core coordinates from the variant graph, dbSNP + gene + protein change from the ensembl annotation graph, anchored on a gene to stay bounded. DISTINCT collapses per-transcript fan-out.
     question: "For ALDH2 variants, give position, ref/alt, dbSNP rsID and protein consequence."
     complexity: advanced
     sparql: |
@@ -348,22 +460,36 @@ sparql_query_examples:
       }
       LIMIT 20
 
-  - title: "Variant to ClinVar VariationID to embedded ClinVar dataset gene"
-    description: Bridge the variant layer to the embedded DBCLS ClinVar RDF via the ClinVar VariationID string join; the ClinVar variation node carries the NCBI gene link.
-    question: "For the variant chr12:111803962 G>A, what ClinVar VariationID and gene does the ClinVar dataset record?"
+  - title: "Variant to ClinVar gene + germline significance (CORRECT variation_id join)"
+    description: >
+      Clinical-triage flagship. Bridges the variant layer to the embedded ClinVar RDF via the
+      ClinVar VariationID cast to INTEGER and joined on clinvar:variation_id — the CORRECT key.
+      Joining on dcterms:identifier instead (the AlleleID in the embedded graph) silently returns
+      the WRONG gene (rs671 -> SRD5A2 instead of ALDH2). The join is a BIND-as-object, not a FILTER
+      cast (a cross-GRAPH FILTER on variation_id returns 0 rows in Virtuoso). Gene + name come from
+      the allele-level node; significance from the variation-IRI classified_record chain.
+    question: "For chr12:111803962 G>A (rs671), what gene, variant name and ClinVar germline significance does the embedded ClinVar dataset record?"
     complexity: advanced
     sparql: |
       PREFIX dcterms: <http://purl.org/dc/terms/>
       PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX cvo:     <http://purl.jp/bio/10/clinvar/>
+      PREFIX xsd:     <http://www.w3.org/2001/XMLSchema#>
 
-      SELECT DISTINCT ?variationId ?gene
+      SELECT DISTINCT ?variationId ?gene ?name ?significance ?reviewStatus
       WHERE {
         GRAPH <http://togovar.org/variant/annotation/clinvar> {
-          <http://identifiers.org/hco/12/GRCh38#111803962-G-A> dcterms:identifier ?variationId .
+          <http://identifiers.org/hco/12/GRCh38#111803962-G-A> dcterms:identifier ?variationId .  # VariationID (string)
         }
-        GRAPH <http://togovar.org/clinvar> {           # embedded ClinVar RDF (see clinvar.yaml)
-          ?cv dcterms:identifier ?variationId ;
-              med2rdf:gene ?gene .
+        BIND(xsd:integer(?variationId) AS ?vid)      # cast + BIND, then join as a triple object
+        GRAPH <http://togovar.org/clinvar> {
+          ?alleleNode cvo:variation_id ?vid ;        # INTEGER VariationID — the correct join key
+                      med2rdf:gene ?gene .            # -> ncbigene:217 (ALDH2); NOT 6716 (SRD5A2)
+          OPTIONAL { ?alleleNode cvo:name ?name FILTER(isLiteral(?name)) }
+          ?varNode cvo:variation_id ?vid ;
+                   cvo:classified_record/cvo:classifications/cvo:germline_classification ?gc .
+          ?gc cvo:description ?significance .          # e.g. "drug response"
+          OPTIONAL { ?gc cvo:review_status ?reviewStatus }
         }
       }
       LIMIT 20
@@ -379,11 +505,54 @@ cross_database_queries:
     reference datasets AS INTERNAL GRAPHS (clinvar, ensembl gene models, hgnc, medgen,
     mondo, so, gwas-catalog, mesh, efo, go, pubmed, pubtator), so the important joins are
     CROSS-GRAPH within this endpoint — demonstrated in sparql_query_examples #6 (core+VEP)
-    and #7 (variant -> ClinVar VariationID -> embedded ClinVar dataset).
+    and #7 (variant -> ClinVar variation_id -> embedded ClinVar gene + significance).
     Manual bridging to RDF Portal: use the stable external IRIs TogoVar exposes as join keys
     — dbSNP rsID (http://identifiers.org/dbsnp/rs...), Ensembl gene (ENSG...), Ensembl
-    transcript, HGNC (http://identifiers.org/hgnc/...), SO terms (obo:SO_...), and ClinVar
-    VariationID — via TogoID conversion or a separate query against the RDF Portal endpoint.
+    transcript, HGNC (http://identifiers.org/hgnc/...), SO terms (obo:SO_...), NCBI gene
+    (from the embedded ClinVar med2rdf:gene), and ClinVar VariationID — via TogoID conversion
+    or a separate query against the RDF Portal endpoint.
+
+controlled_vocabularies:
+  - name: TogoVar REST clinical-significance abbreviation codes
+    description: |
+      togovar_search_variant returns clinical significance as short codes in the
+      `significance[].interpretations` array and in the stat `significance` facet.
+      These are TogoVar's own abbreviations of ClinVar/MGeND germline classifications.
+      The full legend below is the authoritative TogoVar mapping (from the TogoVar UI
+      advanced_search_conditions.json, clinvar bucket — a superset of the mgend bucket);
+      all codes are confirmed. Note PLP/LPLP are LOW-PENETRANCE variants, NOT the
+      "Pathogenic/Likely pathogenic" combined class.
+    legend:
+      NC: Not in ClinVar
+      P: Pathogenic
+      LP: Likely pathogenic
+      PLP: Pathogenic, low penetrance
+      LPLP: Likely pathogenic, low penetrance
+      ERA: Established risk allele
+      LRA: Likely risk allele
+      URA: Uncertain risk allele
+      US: Uncertain significance
+      LB: Likely benign
+      B: Benign
+      CI: Conflicting interpretations of pathogenicity
+      DR: Drug response
+      CS: Confers sensitivity
+      RF: Risk factor
+      A: Association
+      PR: Protective
+      AF: Affects
+      O: Other
+      NP: Not provided
+      AN: Association not found
+  - name: Sequence Ontology consequence terms
+    description: |
+      Functional consequences (tgvo:most_severe_consequence and the rdf:type of each
+      hasConsequence bnode) are Sequence Ontology IRIs (http://purl.obolibrary.org/obo/SO_XXXXXXX).
+      Their human-readable labels are in the embedded <http://togovar.org/so> graph via
+      rdfs:label (verified: SO_0001583 -> "missense_variant"). Join there for labels;
+      do NOT hardcode SO numbers. Common ones: SO_0001583 missense_variant,
+      SO_0001627 intron_variant, SO_0001819 synonymous_variant, SO_0001589 frameshift_variant,
+      SO_0001587 stop_gained.
 
 cross_references:
   - pattern: rdfs:seeAlso (dbSNP)
@@ -406,64 +575,78 @@ cross_references:
     description: |
       Functional consequences are Sequence Ontology term IRIs
       (http://purl.obolibrary.org/obo/SO_XXXXXXX), both as most_severe_consequence and
-      as the rdf:type of each hasConsequence bnode. The SO terms themselves are in the
-      embedded <http://togovar.org/so> graph.
+      as the rdf:type of each hasConsequence bnode. Labels are in the embedded
+      <http://togovar.org/so> graph (rdfs:label; see example #2 and controlled_vocabularies).
     databases:
       variant:
         - "TogoVar: most_severe_consequence on ~100% of variants (sampling N=2000)"
-  - pattern: dcterms:identifier (ClinVar VariationID) -> embedded ClinVar
+  - pattern: ClinVar VariationID -> embedded ClinVar (clinvar:variation_id, INTEGER)
     description: |
       The clinvar annotation graph stores the ClinVar VariationID as dcterms:identifier
-      (xsd:string). Join it into <http://togovar.org/clinvar> (DBCLS ClinVar RDF) for
-      significance, conditions (MONDO/MedGen), and gene links.
+      (xsd:string). To reach the embedded ClinVar dataset <http://togovar.org/clinvar>,
+      CAST it to xsd:integer and join on clinvar:variation_id — NOT on dcterms:identifier,
+      which in the embedded graph is the ClinVar AlleleID (numeric-space collision returns
+      the wrong record; see critical_warnings). From there: med2rdf:gene (-> NCBI gene) and
+      clinvar:name on the allele-level node; germline significance via
+      clinvar:classified_record/classifications/germline_classification/description on the
+      variation IRI. Also links out via rdfs:seeAlso to
+      http://ncbi.nlm.nih.gov/clinvar/variation/{id} and clinvar:accession (VCV...).
     databases:
       variant:
         - "TogoVar: 2,944,525 variants carry a ClinVar annotation (~0.75% of 390.7M)"
 
 architectural_notes:
   query_strategy:
-    - "FIRST: read this MIE; note which GRAPH each predicate lives in (core vs ensembl-anno vs clinvar-anno)."
-    - "KEYWORD ENTRY (REST->SPARQL handoff): resolve names with the TogoVar REST tools, then anchor SPARQL on the returned ID. togovar_search_gene('ALDH2')->hgnc_id 404 anchors directly via `?c tgvo:hgnc <http://identifiers.org/hgnc/404>` (no Ensembl-ENSG conversion needed; verified 6,490 ALDH2 variants). togovar_search_disease(name)->MONDO id feeds the <http://togovar.org/mondo> graph / ClinVar join. rsIDs need no search — they are rdfs:seeAlso IRIs."
-    - "Anchor on a specific IRI: variant IRI (hco/{chr}/GRCh38#{pos}-{ref}-{alt}), dbSNP rsID, Ensembl gene ENSG, or HGNC IRI."
+    - "FIRST: read this MIE; note which GRAPH each predicate lives in (core vs ensembl-anno vs clinvar-anno vs embedded-clinvar)."
+    - "KEYWORD ENTRY (REST->SPARQL handoff): resolve names with the TogoVar REST tools, then anchor SPARQL on the returned ID. togovar_search_gene('ALDH2')->hgnc_id 404 anchors directly via `?c tgvo:hgnc <http://identifiers.org/hgnc/404>` (no Ensembl-ENSG conversion needed). togovar_search_disease(name)->MONDO id feeds the <http://togovar.org/mondo> graph / ClinVar join. rsIDs need no search — they are rdfs:seeAlso IRIs."
+    - "REST RESOLVER CAVEATS before anchoring SPARQL: (a) togovar_search_gene does LOOSE PREFIX matching and returns ~40 rows for any 'ALD*' query — a NON-EXISTENT symbol like 'ALDH2A1' returns the SAME ~40 rows as 'ALDH2' (trailing chars ignored), and it mixes approved symbols with aliases under one hgnc_id (e.g. ALDHX and ALDH1B1 both hgnc_id 407). VERIFY the returned symbol EXACTLY equals the intended gene before using its hgnc_id; the correct hit is first, but do not trust rank blindly. (b) togovar_search_disease may OMIT the canonical MONDO term: 'breast cancer' returns only subtypes and NOT MONDO_0007254, which is nonetheless a valid disease_id (togovar_search_variant filtered=24,550). When you intend a superclass, pass the broad/ancestor MONDO term explicitly."
+    - "Anchor on a specific IRI: variant IRI (hco/{chr}/GRCh38#{pos}-{ref}-{alt}), dbSNP rsID, Ensembl gene ENSG, HGNC IRI, or ClinVar variation IRI."
     - "Always pin GRAPH — predicates are graph-scoped and the variant IRI is re-typed across graphs."
     - "For counts of variant classes, pin GRAPH <http://togovar.org/variant> (or COUNT(DISTINCT)) to avoid the x2 ClinVar re-typing inflation."
+    - "To bridge into the embedded ClinVar dataset, CAST the VariationID to xsd:integer and join on clinvar:variation_id (never dcterms:identifier); use BIND-as-object, not a cross-GRAPH FILTER."
     - "Priority: Specific IRIs > typed predicates (SO/impact/prediction literals) > cross-graph joins. Text search is not needed."
   schema_design:
-    - "Central entity: Variant (390.7M) with 9 core predicates in the variant graph; type is one of SNV/Deletion/Insertion/MNV/Indel."
+    - "Central entity: Variant (390.7M in SPARQL; REST reports 1.1B total) with core predicates in the variant graph; type is one of SNV/Deletion/Insertion/MNV/Indel."
     - "Coordinates via FALDO: SNV->ExactPosition, Insertion->InBetweenPosition, Deletion/multi-base->Region(begin/end InBetweenPosition). Normalized (gvo:*) vs VCF (gvo:*_vcf) allele/pos pairs."
     - "Annotation is layered in separate graphs keyed by the SAME variant IRI: ensembl (VEP consequences, dbSNP), clinvar (VariationID, ALLELEID)."
-    - "hasConsequence bnodes are per-transcript, typed with SO consequence term(s), carrying gene/transcript/HGVS/impact/SIFT/PolyPhen/AlphaMissense."
+    - "hasConsequence bnodes are PER-TRANSCRIPT, typed with SO consequence term(s), carrying gene/transcript/HGVS/impact/SIFT/PolyPhen/AlphaMissense — they fan out (use DISTINCT / COUNT DISTINCT)."
+    - "Embedded ClinVar: a VariationID maps to an allele-level bnode (med2rdf:gene, clinvar:name) AND a variation IRI (classified_record -> classifications -> germline_classification -> description = significance). Both carry clinvar:variation_id."
     - "Reference ontologies/datasets embedded as graphs: clinvar (DBCLS ClinVar RDF), ensembl gene models, hgnc, medgen, mondo, so, go, mesh, efo, gwas-catalog, pubmed, pubtator, hco."
   performance:
-    - "COUNT/DISTINCT over the full annotation graphs (390M+ subjects) times out (~90s) — anchor on a gene/variant IRI, or use the indexed class-count on the variant graph."
-    - "Class-partitioned COUNTs on the variant graph (?s a gvo:SNV) ARE fast (Virtuoso type index)."
+    - "Per-class COUNT with the class PINNED is fast (Virtuoso type index): SELECT (COUNT(?v) AS ?n) WHERE { GRAPH <http://togovar.org/variant> { ?v a gvo:SNV } } returns 339,076,968 quickly."
+    - "GROUP BY ?type over GRAPH <http://togovar.org/variant> also completes (returns in seconds on the current snapshot) but includes the FALDO position types (ExactPosition/InBetweenPosition/Region) alongside the 5 variant classes — filter to gvo:* types or read data_statistics.by_class."
+    - "COUNT(DISTINCT ?s) over an entire 390M-subject ANNOTATION graph (ensembl/clinvar) is heavy — anchor on a gene/variant IRI instead of scanning."
     - "Bound every consequence/gene query with a specific gene or variant IRI plus LIMIT."
     - "bif:contains is available (Virtuoso) but unnecessary here; if ever used, split property paths before it."
   data_integration:
-    - "Join keys: variant IRI (internal cross-graph), dbSNP rsID, Ensembl gene/transcript IRI, HGNC IRI, SO term IRI, ClinVar VariationID."
-    - "ClinVar clinical detail lives in the embedded <http://togovar.org/clinvar> graph — reuse the clinvar.yaml MIE for its deep schema."
+    - "Join keys: variant IRI (internal cross-graph), dbSNP rsID, Ensembl gene/transcript IRI, HGNC IRI, SO term IRI, and — into embedded ClinVar — clinvar:variation_id (xsd:integer), NOT dcterms:identifier."
+    - "ClinVar clinical detail (significance, conditions) lives in the embedded <http://togovar.org/clinvar> graph — reuse the clinvar.yaml MIE for its deep schema. REST is the robust fallback for significance."
     - "Allele frequencies are external to this endpoint (TogoVar REST API only)."
   data_quality:
     - "The same variant IRI is re-typed in the clinvar annotation graph (union inflation trap)."
+    - "Embedded-ClinVar dcterms:identifier is the AlleleID, whose numeric space overlaps VariationIDs — join on clinvar:variation_id or bind the wrong gene."
     - "tgvo:gene mixes Ensembl gene IRIs and NCBI Gene IDs under one namespace (disambiguate via gene_symbol_source)."
     - "gvo:ref/gvo:alt are empty strings for pure indels; use gvo:ref_vcf/gvo:alt_vcf for anchor-base VCF form."
     - "tgvo:sift and tgvo:polyphen have MIXED xsd:decimal/xsd:integer datatypes (numeric comparison works; exact equality does not)."
+    - "hasConsequence fans out per transcript; count with COUNT(DISTINCT ?variant)."
   text_search_justification:
     - "Number of the 7 example queries that use text search: 0."
-    - "Every filter concept here is IRI- or controlled-literal-backed: genes (ENSG/HGNC IRIs), variants (dbSNP/variant IRIs), consequences (SO IRIs), impact/SIFT/PolyPhen (controlled literals)."
+    - "Every filter concept here is IRI- or controlled-literal-backed: genes (ENSG/HGNC IRIs), variants (dbSNP/variant IRIs), consequences (SO IRIs), impact/SIFT/PolyPhen (controlled literals), significance (clinvar:description literal)."
     - "No free-text predicate exists on variants, so no bif:contains is warranted."
 
 data_statistics:
   total_entities: 390725782
-  verified_date: "2026-07-12"
-  verification_method: "Direct GROUP BY type COUNT on GRAPH <http://togovar.org/variant> (indexed)"
+  rest_api_total_variants: 1097708150
+  sparql_is_subset: true
+  verified_date: "2026-07-14"
+  verification_method: "GROUP BY type COUNT on GRAPH <http://togovar.org/variant> (indexed); REST total from togovar_search_variant stat"
   by_class:
     SNV: 339076968
     Deletion: 29307469
     Insertion: 22340786
     MNV: 492
     Indel: 67
-    verified_date: "2026-07-12"
+    verified_date: "2026-07-14"
   coverage:
     vep_consequence: "~100% of variants (most_severe_consequence present)"
     vep_calculation: "sampling N=2000 SNV: all sampled had a most_severe_consequence"
@@ -489,6 +672,28 @@ anti_patterns:
       } LIMIT 20
     explanation: "Genes are identified by Ensembl (ENSG) and HGNC IRIs; use the IRI, which is canonical and indexed."
 
+  - title: "AlleleID/VariationID join-key collision (wrong ClinVar gene)"
+    problem: "Joining the annotation-layer VariationID to the embedded ClinVar graph on dcterms:identifier. In the embedded graph dcterms:identifier is the AlleleID; the numeric spaces overlap, so the join silently binds an unrelated record and returns the wrong gene."
+    wrong_sparql: |
+      # rs671 (VariationID 18390) -> AlleleID 18390 -> variation_id 3351 -> SRD5A2 (gene 6716). WRONG.
+      GRAPH <http://togovar.org/variant/annotation/clinvar> {
+        <...#111803962-G-A> dcterms:identifier ?vid . }
+      GRAPH <http://togovar.org/clinvar> {
+        ?cv dcterms:identifier ?vid ; med2rdf:gene ?gene . }   # string==string collision
+    correct_sparql: |
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      SELECT DISTINCT ?gene WHERE {
+        GRAPH <http://togovar.org/variant/annotation/clinvar> {
+          <http://identifiers.org/hco/12/GRCh38#111803962-G-A> dcterms:identifier ?variationId . }
+        BIND(xsd:integer(?variationId) AS ?vid)              # cast + BIND, not a FILTER
+        GRAPH <http://togovar.org/clinvar> {
+          ?cv cvo:variation_id ?vid ; med2rdf:gene ?gene . }  # -> ncbigene:217 (ALDH2). CORRECT.
+      } LIMIT 20
+    explanation: "clinvar:variation_id (xsd:integer) is the only correct join key from the annotation layer; dcterms:identifier in the embedded graph is the AlleleID. Bind the cast integer and use it as a triple object — a cross-GRAPH FILTER on variation_id returns 0 rows in Virtuoso."
+
   - title: "Unscoped Variant-Class COUNT (cross-graph re-typing inflation)"
     problem: "Counting a variant class without pinning the graph double-counts the 2.94M ClinVar-annotated variants re-typed in the clinvar annotation graph."
     wrong_sparql: |
@@ -501,57 +706,41 @@ anti_patterns:
       }
     explanation: "The same variant IRI is typed gvo:SNV in both the variant and clinvar annotation graphs; pin the core graph (or COUNT DISTINCT) for the true class size."
 
-  - title: "Querying Allele Frequency from SPARQL"
-    problem: "Expecting per-population allele frequencies (ToMMo, gnomAD, JGA...) in this endpoint; they are not here."
+  - title: "Per-transcript fan-out inflates variant counts"
+    problem: "Projecting tgvo:hgvsp / tgvo:transcript / tgvo:gene multiplies rows per variant — one row per transcript overlap on the hasConsequence bnode."
     wrong_sparql: |
-      # Returns 0 rows — no such predicate anywhere in the endpoint
-      ?variant tgvo:frequency ?f .
-    correct_sparql: |
-      # Frequencies come from the TogoVar REST API, not SPARQL. From SPARQL you can only
-      # obtain identity/annotation; fetch the variant IRI or rsID here, then call the REST API:
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      SELECT ?variant WHERE {
+      # e.g. ALDH2 111781979-C-T (p.Pro59Leu) returns 5 rows (ENSP/ENSP/NP/NP + 1 no-HGVSp)
+      SELECT ?variant ?hgvsp WHERE {
         GRAPH <http://togovar.org/variant/annotation/ensembl> {
-          ?variant rdfs:seeAlso <http://identifiers.org/dbsnp/rs671> .
-        }
-      } LIMIT 1
-    explanation: "This SPARQL endpoint holds variant identity, coordinates, VEP consequences and ClinVar/annotation only. Allele frequencies are served by the TogoVar REST API."
-
-  - title: "Normalized vs VCF Allele/Position Confusion"
-    problem: "Matching a VCF-style REF/ALT (with anchor base) against gvo:ref/gvo:alt, which are normalized and empty for pure indels."
-    wrong_sparql: |
-      # A VCF deletion "TTCAGG.../T" will never match the normalized alleles
-      ?v gvo:ref "TTCAGGAAGTCAGATGGTTAAGCGACTG" ; gvo:alt "T" .
+          ?variant tgvo:hasConsequence ?c . ?c tgvo:hgvsp ?hgvsp } }
     correct_sparql: |
-      PREFIX gvo: <http://genome-variation.org/resource#>
-      SELECT ?v WHERE {
-        GRAPH <http://togovar.org/variant> {
-          ?v gvo:ref_vcf "TTCAGGAAGTCAGATGGTTAAGCGACTG" ; gvo:alt_vcf "T" .   # VCF pair
-        }
-      } LIMIT 5
-    explanation: "gvo:ref/gvo:alt are VOA-normalized (trimmed, empty for pure indels); use the gvo:*_vcf pair to match VCF input, and gvo:pos_vcf for the VCF position."
+      PREFIX tgvo: <http://togovar.biosciencedbc.jp/vocabulary/>
+      SELECT (COUNT(DISTINCT ?variant) AS ?n) WHERE {
+        GRAPH <http://togovar.org/variant/annotation/ensembl> {
+          ?variant tgvo:hasConsequence ?c .
+          ?c tgvo:hgnc <http://identifiers.org/hgnc/404> }
+      }
+    explanation: "hasConsequence is a per-transcript bnode; count DISTINCT variants and use SELECT DISTINCT for listings when fanning out over consequences."
 
 common_errors:
   - error: "Empty results despite a valid-looking query"
     causes:
-      - "Predicate queried in the wrong graph (core vs ensembl-anno vs clinvar-anno)"
+      - "Predicate queried in the wrong graph (core vs ensembl-anno vs clinvar-anno vs embedded-clinvar)"
       - "Looking for allele frequency (not present in this endpoint)"
       - "Matching gvo:pos with a string, or matching normalized alleles against VCF alleles"
+      - "Cross-GRAPH FILTER(?vid = xsd:integer(?variationId)) instead of BIND-as-object join (returns 0 rows)"
       - "SIFT/PolyPhen prediction filter using '=' when values include *_low_confidence suffixes"
     solutions:
       - "Pin the GRAPH that owns the predicate (see shape_expressions graph comments)"
       - "Fetch frequencies from the TogoVar REST API, not SPARQL"
       - "Use integer literals for gvo:pos/faldo:position; use gvo:*_vcf for VCF alleles"
+      - "BIND(xsd:integer(?variationId) AS ?vid) and join `?cv clinvar:variation_id ?vid`"
       - "Use STRSTARTS(?pred, 'deleterious') / VALUES for prediction categories"
-  - error: "Query timeout"
+  - error: "Wrong gene / wrong record from a ClinVar join"
     causes:
-      - "COUNT(DISTINCT ?s) over an entire 390M-subject annotation graph"
-      - "Unbounded consequence/gene traversal without a specific gene or variant IRI"
-      - "Enumerating all named graphs or all predicates over the full store"
+      - "Joined the embedded ClinVar graph on dcterms:identifier (= AlleleID), whose numbers collide with VariationIDs"
     solutions:
-      - "Anchor on a specific gene/variant/dbSNP IRI and add LIMIT"
-      - "For class totals use the indexed class-count on GRAPH <http://togovar.org/variant>"
-      - "Avoid SELECT DISTINCT ?g / DISTINCT ?p sweeps over the union graph"
+      - "Join on clinvar:variation_id (xsd:integer); dcterms:identifier in that graph is the AlleleID"
   - error: "Counts larger than expected"
     causes:
       - "Cross-graph re-typing: ClinVar-annotated variants counted in both variant and clinvar graphs"
