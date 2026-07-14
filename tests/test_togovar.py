@@ -16,6 +16,7 @@ from togo_mcp.togovar import (
     _build_variant_query,
     _compact_allele,
     _match_type,
+    _label_facets,
     _project_variant,
     _range_from_bounds,
     _summarize_allele,
@@ -181,8 +182,20 @@ def test_project_variant():
     assert p["genes"] == ["ALDH2"]
     assert p["rs"] == ["rs671"]
     assert p["clinvar"] == ["VCV000018390"]
-    assert p["frequencies"]["tommo"] == {"af": 0.21, "ac": 52, "an": 250}
-    assert p["significance"][0]["conditions"] == ["Alcohol sensitivity"]
+    assert p["frequencies"]["tommo"] == {
+        "af": 0.21,
+        "ac": 52,
+        "an": 250,
+        "filter": None,  # C3: QC status is always surfaced; None = not reported
+    }
+    # C4: conditions keep the MedGen CUI, not just the display name
+    assert p["significance"][0]["conditions"] == [
+        {"name": "Alcohol sensitivity", "medgen": "C123"}
+    ]
+    # C5: no tgv_id on this row -> the variant is not in the SPARQL subset, so no
+    # IRI is emitted (it would resolve to nothing).
+    assert p["tgv_id"] is None
+    assert p["variant_iri"] is None
 
 
 # --------------------------------------------------------------------------- #
@@ -222,6 +235,135 @@ def test_project_variant_unknown_code_falls_through():
     assert p["most_severe_consequence_label"] is None
     # unknown significance code passes through unchanged, never dropped
     assert p["significance"][0]["interpretation_labels"] == ["ZZ"]
+
+
+# --------------------------------------------------------------------------- #
+# C2-C5, C7 — stop discarding data the REST backend already returns
+# --------------------------------------------------------------------------- #
+def test_variant_iri_gated_on_tgv_id():
+    """C5: variant_iri is a constructed coordinate IRI, so it must NOT be emitted
+    for a variant absent from the SPARQL subset (tgv_id is null there) — the IRI
+    would resolve to zero rows. Real case: ClinVar-Pathogenic CFTR 7:117480132-C-T.
+    """
+    absent = {"id": None, "chromosome": "7", "position": 117480132,
+              "reference": "C", "alternate": "T"}
+    present = {"id": "tgv207092446", "chromosome": "7", "position": 117480108,
+               "reference": "C", "alternate": "T"}
+
+    assert _project_variant(absent)["variant_iri"] is None
+    assert (
+        _project_variant(present)["variant_iri"]
+        == "http://identifiers.org/hco/7/GRCh38#117480108-C-T"
+    )
+
+
+def test_project_variant_transcripts_are_opt_in():
+    """C2: per-transcript VEP is carried by REST but kept out of the default
+    payload (a BRCA1-locus variant has 400+ transcript annotations).
+    """
+    row = {
+        "id": "tgv47264307",
+        "transcripts": [
+            {
+                "transcript_id": "ENST00000261733",
+                "gene_id": "ENSG00000111275",
+                "hgnc_id": 404,
+                "consequence": ["SO_0001583"],
+                "hgvs_c": "ENST00000261733.7:c.1510G>A",
+                "hgvs_p": "ENSP00000261733.2:p.Glu504Lys",
+                "hgvs_g": "NC_000012.12:g.111803962G>A",
+                "sift": 0.0,
+                "polyphen": 0.709,
+                "alphamissense": 0.8864,
+            }
+        ],
+    }
+    assert "transcripts" not in _project_variant(row)
+
+    t = _project_variant(row, include_transcripts=True)["transcripts"][0]
+    assert t["transcript_id"] == "ENST00000261733"
+    assert t["hgvs_p"] == "ENSP00000261733.2:p.Glu504Lys"
+    assert t["consequence_labels"] == ["missense_variant"]  # SO code gets a label
+    assert t["alphamissense"] == 0.8864  # per-transcript prediction, not the row's
+
+
+def test_frequencies_keep_qc_filter_and_genotype_counts():
+    """C3: genotype counts are PER-SOURCE, not universal — copy each key only when
+    the panel actually has it (verified live on rs671).
+    """
+    row = {
+        "id": "tgv47264307",
+        "frequencies": [
+            # full genotype set + quality
+            {"source": "jga_wgs", "af": 0.2, "ac": 4, "an": 20, "filter": ["PASS"],
+             "aac": 1, "arc": 2, "rrc": 7, "hac": 3, "hoc": 4},
+            # het/hom only, no hemizygous, no quality
+            {"source": "jga_snp", "af": 0.24, "ac": 9, "an": 40, "filter": ["PASS"],
+             "aac": 11778, "arc": 66470, "rrc": 104717},
+            # no genotype counts at all, but has quality
+            {"source": "tommo", "af": 0.192, "ac": 20904, "an": 108604,
+             "filter": ["PASS"], "quality": 8700090.0},
+        ],
+    }
+    f = _project_variant(row)["frequencies"]
+
+    assert f["jga_wgs"]["hac"] == 3 and f["jga_wgs"]["rrc"] == 7
+    assert f["jga_snp"]["arc"] == 66470
+    assert "hac" not in f["jga_snp"]  # absent key is not invented as None
+    assert f["tommo"]["quality"] == 8700090.0
+    assert not {"aac", "arc", "rrc"} & set(f["tommo"])  # panel has no genotypes
+    assert f["tommo"]["filter"] == ["PASS"]  # QC status preserved on every panel
+
+
+def test_significance_keeps_submission_count_and_medgen():
+    """C4: MedGen CUI is the join key to disease databases; submission_count is the
+    evidence weight behind an interpretation."""
+    row = {
+        "id": "tgv47264307",
+        "significance": [
+            {
+                "source": "clinvar",
+                "interpretations": ["P"],
+                "submission_count": 1,
+                "conditions": [
+                    {"name": "AMED syndrome, digenic", "medgen": "C5436906"}
+                ],
+            }
+        ],
+    }
+    s = _project_variant(row)["significance"][0]
+    assert s["submission_count"] == 1
+    assert s["conditions"] == [
+        {"name": "AMED syndrome, digenic", "medgen": "C5436906"}
+    ]
+
+
+def test_label_facets_adds_readable_companions():
+    """C7: stat facets are keyed by raw SO accessions / significance codes.
+
+    The API returns the FULL vocabulary in each facet, mostly zeros, so the
+    labelled companion must drop them or it doubles the response noise.
+    """
+    stats = {
+        "filtered": 1,
+        "type": {"SO_0001483": 1},
+        "consequence": {"SO_0001583": 4, "SO_0001624": 2, "SO_0001587": 0},
+        "significance": {"P": 1, "DR": 1, "B": 0, "NC": 0},
+        "dataset": {"tommo": 1},  # not code-keyed -> no labelled companion
+    }
+    labeled = _label_facets(stats)
+
+    assert labeled["type_labeled"] == {"SNV": 1}
+    assert labeled["consequence_labeled"] == {
+        "missense_variant": 4,
+        "3_prime_UTR_variant": 2,
+    }
+    assert labeled["significance_labeled"] == {"Pathogenic": 1, "Drug response": 1}
+    assert "stop_gained" not in labeled["consequence_labeled"]  # zeros dropped
+    assert "Benign" not in labeled["significance_labeled"]
+    assert "dataset_labeled" not in labeled
+    # raw facets are untouched (zeros included) — the labelled maps are additive
+    assert stats["consequence"]["SO_0001587"] == 0
 
 
 # --------------------------------------------------------------------------- #
