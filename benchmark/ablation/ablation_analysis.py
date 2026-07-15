@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import csv
 import glob
+import re
 from pathlib import Path
 from statistics import mean
 
@@ -203,6 +204,124 @@ def paired_effort(base: dict[str, dict], abl: dict[str, dict],
     return out
 
 
+# --- Exact-answer correctness (secondary, tolerance-based) -------------------
+# The judge's 4x(1-5) score has a large per-question SD. A crisper 0/1 match of
+# the agent's answer against the question YAML's `exact_answer` gold is a
+# lower-variance (if coarser) lens. Tolerance matters for factoids: the gold
+# integer is frozen at question-creation and the live DB count drifts, so an
+# exact-integer match penalizes DB drift, not the agent — a relative tolerance
+# separates "wrong" from "gold is a bit stale". Caveats baked into the report:
+# `choice` sits near a 100% ceiling (no discrimination), and factoids remain
+# confounded by drift beyond the tolerance band. Summary questions have no gold.
+_UNITS = {w: i for i, w in enumerate(
+    "zero one two three four five six seven eight nine ten eleven twelve thirteen "
+    "fourteen fifteen sixteen seventeen eighteen nineteen".split())}
+_TENS = {w: (i + 2) * 10 for i, w in enumerate(
+    "twenty thirty forty fifty sixty seventy eighty ninety".split())}
+_SCALES = {"hundred": 100, "thousand": 1000, "million": 1_000_000, "billion": 1_000_000_000}
+
+
+def _word_numbers(text: str) -> list[int]:
+    """Integer values of spelled-out English cardinals ('four hundred twenty-eight')."""
+    vals, cur, res, on = [], 0, 0, False
+    for w in re.findall(r"[a-z]+", text.lower()):
+        if w in _UNITS:
+            cur += _UNITS[w]; on = True
+        elif w in _TENS:
+            cur += _TENS[w]; on = True
+        elif w == "hundred":
+            cur = (cur or 1) * 100; on = True
+        elif w in _SCALES:
+            res += (cur or 1) * _SCALES[w]; cur = 0; on = True
+        elif w == "and" and on:
+            continue
+        else:
+            if on:
+                vals.append(res + cur)
+            cur = res = 0; on = False
+    if on:
+        vals.append(res + cur)
+    return vals
+
+
+def grade_exact(answer: str | None, gtype: str, gexact, tol: float) -> float | None:
+    """0/1 correctness (list: fractional recall) vs the gold, or None if ungradable."""
+    a = (answer or "").strip()
+    if gtype == "summary" or gexact in (None, "", []):
+        return None
+    al = a.lower()
+    if gtype == "yes_no":
+        stance = "yes" if re.match(r"\W*yes\b", al) else "no" if re.match(r"\W*no\b", al) else None
+        return 1.0 if stance == str(gexact).strip().lower() else 0.0
+    if gtype == "factoid":
+        try:
+            gold = int(str(gexact).replace(",", "").strip())
+        except (TypeError, ValueError):
+            return None
+        cands = [int(x.replace(",", "")) for x in re.findall(r"\d[\d,]*", a)] + _word_numbers(a)
+        if gold == 0:
+            return 1.0 if 0 in cands else 0.0
+        return 1.0 if any(abs(c - gold) <= tol * gold for c in cands) else 0.0
+    items = gexact if isinstance(gexact, list) else [gexact]
+    if gtype == "choice":
+        s = str(items[0]).strip().strip("[]'\"").lower()
+        hit = re.search(rf"\b{re.escape(s)}\b", al) if len(s) <= 4 else (s in al)
+        return 1.0 if hit else 0.0
+    if gtype == "list":                       # fractional recall of gold entities
+        got = 0
+        for it in items:
+            key = re.split(r"\s*\(", str(it))[0].strip().lower()
+            key = key.split()[0] if key else key
+            if key and (re.search(rf"\b{re.escape(key)}\b", al) if len(key) <= 4 else key in al):
+                got += 1
+        return got / len(items) if items else 0.0
+    return None
+
+
+def load_gold() -> dict[str, dict]:
+    gold = {}
+    for f in glob.glob(str(QUESTIONS_DIR / "question_*.yaml")):
+        q = yaml.safe_load(open(f, encoding="utf-8")) or {}
+        qid = q.get("id", Path(f).stem)
+        gold[qid] = {"type": q.get("type"), "exact": q.get("exact_answer")}
+    return gold
+
+
+def load_correctness(condition: str, gold: dict, tol: float, results: Path) -> dict[str, float]:
+    """question_id -> per-run-averaged exact-answer correctness for a condition."""
+    files = sorted(glob.glob(str(results / f"{condition}-scored-v*.csv")))
+    if not files:
+        merged = results / f"{condition}-scored.csv"
+        files = [str(merged)] if merged.exists() else []
+    per: dict[str, list[float]] = {}
+    for f in files:
+        for r in csv.DictReader(open(f, encoding="utf-8")):
+            qid = r.get("question_id")
+            if not qid:
+                continue
+            g = gold.get(qid)
+            if not g:
+                continue
+            c = grade_exact(r.get("togomcp_answer"), g["type"], g["exact"], tol)
+            if c is not None:
+                per.setdefault(qid, []).append(c)
+    return {qid: mean(v) for qid, v in per.items() if v}
+
+
+def paired_correctness(base: dict[str, float], abl: dict[str, float],
+                       exclude: set[str]) -> dict | None:
+    """Mean(baseline − ablated) exact-answer correctness, paired per question."""
+    qids = (base.keys() & abl.keys()) - exclude
+    if not qids:
+        return None
+    return {
+        "n": len(qids),
+        "base": mean(base[q] for q in qids),
+        "abl": mean(abl[q] for q in qids),
+        "contribution": mean(base[q] - abl[q] for q in qids),
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -219,6 +338,9 @@ def main() -> int:
     ap.add_argument("--exclude-floor", type=float, default=None, metavar="N",
                     help="also auto-drop every question whose BASELINE metric is <= N "
                          "(bounces up under ablation → variance, no signal). Try 12.")
+    ap.add_argument("--exact-tolerance", type=float, default=0.10, metavar="FRAC",
+                    help="relative tolerance for factoid exact-answer matching (default 0.10 "
+                         "= within 10%%; absorbs live-DB drift from the frozen gold count).")
     args = ap.parse_args()
     exclude = set(args.exclude)
 
@@ -257,6 +379,10 @@ def main() -> int:
     # ablation below. Empty when no per-run/merged answer data carries tools_used.
     base_effort = load_effort("baseline", results)
 
+    # Exact-answer correctness baseline (secondary, lower-variance quality lens).
+    gold = load_gold()
+    base_correct = load_correctness("baseline", gold, args.exact_tolerance, results)
+
     rows = []
     for section in CANONICAL_SECTIONS:
         csv_path = results / f"ablate_{section}-scored.csv"
@@ -292,6 +418,15 @@ def main() -> int:
         row["delta_tools"] = None if eff is None else round(eff["delta_n_tools"], 2)
         row["delta_wall_s"] = None if eff is None else round(eff["delta_wall_s"], 1)
         row["delta_cost"] = None if eff is None else round(eff["delta_cost"], 4)
+
+        # Exact-answer correctness delta (secondary quality lens): baseline − ablated.
+        cor = paired_correctness(base_correct,
+                                 load_correctness(f"ablate_{section}", gold,
+                                                  args.exact_tolerance, results), exclude)
+        row["correct_baseline"] = None if cor is None else round(cor["base"], 3)
+        row["correct_ablated"] = None if cor is None else round(cor["abl"], 3)
+        row["correct_contribution"] = None if cor is None else round(cor["contribution"], 3)
+        row["n_correct"] = None if cor is None else cor["n"]
         rows.append(row)
 
     if not rows:
@@ -303,6 +438,7 @@ def main() -> int:
     fieldnames = ["section", "spotlight", "n", "mean_baseline", "mean_ablated",
                   "contribution", *[f"delta_{m}" for m in SUBMETRICS],
                   "delta_sparql", "pct_sparql", "delta_tools", "delta_wall_s", "delta_cost",
+                  "correct_baseline", "correct_ablated", "correct_contribution", "n_correct",
                   "n_relevant", "contribution_relevant"]
     with out_csv.open("w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=fieldnames)
@@ -311,13 +447,18 @@ def main() -> int:
 
     base_vals = [r[metric] for r in baseline.values() if r.get(metric) is not None]
     base_mean = mean(base_vals) if base_vals else float("nan")
-    write_report(rows, results / "ablation_report.md", metric, base_mean, len(baseline))
+    base_correct_overall = mean(base_correct.values()) if base_correct else None
+    write_report(rows, results / "ablation_report.md", metric, base_mean, len(baseline),
+                 base_correct_overall)
 
     # console summary
     has_effort = any(r.get("delta_sparql") is not None for r in rows)
+    has_correct = any(r.get("correct_contribution") is not None for r in rows)
     hdr = f"{'section':28s} {'spot':4s} {'n':>3s} {'base':>6s} {'abl':>6s} {'contrib':>8s}"
     if has_effort:
         hdr += f" {'Δsparql':>8s} {'Δcost$':>7s}"
+    if has_correct:
+        hdr += f" {'Δcorr':>7s}"
     print(hdr)
     for r in rows:
         spot = "yes" if r["spotlight"] != "-" else ""
@@ -326,6 +467,9 @@ def main() -> int:
                 f"{_fmt(r['contribution']):>8s}")
         if has_effort:
             line += f" {_fmt(r.get('delta_sparql')):>8s} {_fmt(r.get('delta_cost'), '+.3f'):>7s}"
+        if has_correct:
+            cc = r.get("correct_contribution")
+            line += f" {('n/a' if cc is None else f'{cc*100:+.0f}pp'):>7s}"
         print(line)
     print(f"\nwrote {out_csv}")
     print(f"wrote {results / 'ablation_report.md'}")
@@ -333,7 +477,8 @@ def main() -> int:
 
 
 def write_report(rows: list[dict], path: Path, metric: str,
-                 base_mean: float, n_baseline_q: int) -> None:
+                 base_mean: float, n_baseline_q: int,
+                 base_correct: float | None = None) -> None:
     lines = [
         "# MIE Subcomponent Ablation — Contribution Report",
         "",
@@ -387,6 +532,33 @@ def write_report(rows: list[dict], path: Path, metric: str,
                 f"{('n/a' if pct is None else f'{pct:+.0f}%')} | "
                 f"{_fmt(r.get('delta_tools'))} | {_fmt(r.get('delta_wall_s'), '+.0f')} | "
                 f"{_fmt(r.get('delta_cost'), '+.3f')} |"
+            )
+
+    # Exact-answer correctness — secondary, lower-variance quality lens.
+    if any(r.get("correct_contribution") is not None for r in rows):
+        base_c = "" if base_correct is None else f" Baseline correctness: **{base_correct*100:.1f}%**."
+        lines += [
+            "",
+            "## Exact-answer correctness (secondary quality lens)",
+            "",
+            f"0/1 match of the answer against the question's `exact_answer` gold (list: "
+            f"fractional recall), paired per question; Δ = baseline − ablated in percentage "
+            f"points.{base_c} Lower variance than the graded score, but **read with care**: "
+            "`choice` sits near a 100% ceiling (no discrimination) and `factoid` stays "
+            "confounded by live-DB drift beyond the tolerance band — `yes_no`/`list` are the "
+            "cleaner bands.",
+            "",
+            "| Section | Baseline % | Ablated % | Δ correct (pp) | n |",
+            "|---|---:|---:|---:|---:|",
+        ]
+        for r in sorted(rows, key=lambda r: (r.get("correct_contribution") is None,
+                                             -(r.get("correct_contribution") or 0))):
+            cc, cb, ca = (r.get("correct_contribution"), r.get("correct_baseline"),
+                          r.get("correct_ablated"))
+            lines.append(
+                f"| `{r['section']}` | {('n/a' if cb is None else f'{cb*100:.1f}')} | "
+                f"{('n/a' if ca is None else f'{ca*100:.1f}')} | "
+                f"{('n/a' if cc is None else f'{cc*100:+.1f}')} | {r.get('n_correct', '-')} |"
             )
 
     lines += [
