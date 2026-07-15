@@ -403,13 +403,13 @@ def main() -> int:
             "n": n,
             "mean_baseline": None if mb is None else round(mb, 3),
             "mean_ablated": None if ma is None else round(ma, 3),
-            "contribution": None if mb is None else round(mb - ma, 3),
+            "contribution": None if mb is None or ma is None else round(mb - ma, 3),
             "n_relevant": n_r,
-            "contribution_relevant": None if mb_r is None else round(mb_r - ma_r, 3),
+            "contribution_relevant": None if mb_r is None or ma_r is None else round(mb_r - ma_r, 3),
         }
         for sm in SUBMETRICS:
             smb, sma, _ = paired_mean(baseline, ablated, sm, None)
-            row[f"delta_{sm}"] = None if smb is None else round(smb - sma, 3)
+            row[f"delta_{sm}"] = None if smb is None or sma is None else round(smb - sma, 3)
 
         # Effort delta: how much harder the agent worked with this section removed.
         eff = paired_effort(base_effort, load_effort(f"ablate_{section}", results), exclude)
