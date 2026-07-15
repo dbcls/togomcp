@@ -207,12 +207,12 @@ def paired_effort(base: dict[str, dict], abl: dict[str, dict],
 # --- Exact-answer correctness (secondary, tolerance-based) -------------------
 # The judge's 4x(1-5) score has a large per-question SD. A crisper 0/1 match of
 # the agent's answer against the question YAML's `exact_answer` gold is a
-# lower-variance (if coarser) lens. Tolerance matters for factoids: the gold
-# integer is frozen at question-creation and the live DB count drifts, so an
-# exact-integer match penalizes DB drift, not the agent — a relative tolerance
-# separates "wrong" from "gold is a bit stale". Caveats baked into the report:
-# `choice` sits near a 100% ceiling (no discrimination), and factoids remain
-# confounded by drift beyond the tolerance band. Summary questions have no gold.
+# lower-variance (if coarser) lens. Factoids use a relative tolerance as a safety
+# margin for minor DB drift, but spot-checks (re-running the gold queries live)
+# show factoid mismatches are mostly REAL agent miscounts on multi-step
+# aggregations — the golds re-run to their stored values — not stale golds. So low
+# factoid correctness is a valid signal the graded score smooths over. `choice`
+# sits near a 100% ceiling (no discrimination). Summary questions have no gold.
 _UNITS = {w: i for i, w in enumerate(
     "zero one two three four five six seven eight nine ten eleven twelve thirteen "
     "fourteen fifteen sixteen seventeen eighteen nineteen".split())}
@@ -543,10 +543,11 @@ def write_report(rows: list[dict], path: Path, metric: str,
             "",
             f"0/1 match of the answer against the question's `exact_answer` gold (list: "
             f"fractional recall), paired per question; Δ = baseline − ablated in percentage "
-            f"points.{base_c} Lower variance than the graded score, but **read with care**: "
-            "`choice` sits near a 100% ceiling (no discrimination) and `factoid` stays "
-            "confounded by live-DB drift beyond the tolerance band — `yes_no`/`list` are the "
-            "cleaner bands.",
+            f"points.{base_c} Lower variance than the graded score. `choice` sits near a "
+            "100% ceiling (no discrimination); `factoid` mismatches are mostly REAL agent "
+            "miscounts on multi-step aggregations (the gold queries re-run to their stored "
+            "values), which the graded score smooths over — the tolerance only absorbs minor "
+            "DB drift, not these genuine errors.",
             "",
             "| Section | Baseline % | Ablated % | Δ correct (pp) | n |",
             "|---|---:|---:|---:|---:|",
