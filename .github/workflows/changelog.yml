@@ -1,0 +1,90 @@
+name: Changelog
+
+# A dev -> main PR that bumps pyproject's version IS a release, and a release must
+# carry a CHANGELOG entry.
+#
+# This is enforced mechanically because intention demonstrably does not enforce it.
+# The version-bump rule lives in CLAUDE.md and has been followed on every release;
+# the changelog rule was written nowhere, and the file drifted 8 releases / 303
+# commits behind before anyone noticed — while its [Unreleased] section described
+# work that had already shipped. Same author, same care, different outcome: the
+# rule that was written down got followed.
+#
+# Deliberately narrow, to stay a signal rather than noise:
+#   - fires ONLY when pyproject.toml's version actually changes
+#   - asks ONLY for a matching "## [x.y.z] - YYYY-MM-DD" heading
+#   - non-release PRs are never touched
+# It does not police wording, sections, or whether [Unreleased] was tidied.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  changelog-entry:
+    name: Release PRs must update CHANGELOG.md
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0          # need the base commit to diff the version
+
+      - name: Require a CHANGELOG entry when the version changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          version_at() {
+            git show "$1:pyproject.toml" 2>/dev/null \
+              | sed -n 's/^version = "\(.*\)"/\1/p' | head -1
+          }
+
+          old=$(version_at "$BASE_SHA")
+          new=$(version_at HEAD)
+
+          if [ -z "$new" ]; then
+            echo "::error::Could not read version from pyproject.toml at HEAD."
+            exit 1
+          fi
+
+          if [ "$old" = "$new" ]; then
+            echo "Version unchanged ($new) — not a release. No CHANGELOG entry required."
+            exit 0
+          fi
+
+          echo "Release detected: $old -> $new"
+
+          # escape dots so 1.6.1 cannot match 1x6x1
+          esc=$(printf '%s' "$new" | sed 's/\./\\./g')
+          if grep -qE "^## \[${esc}\] - [0-9]{4}-[0-9]{2}-[0-9]{2}" CHANGELOG.md; then
+            echo "OK: CHANGELOG.md has a '## [$new] - <date>' heading."
+            exit 0
+          fi
+
+          echo "::error file=CHANGELOG.md::Version bumped to $new but CHANGELOG.md has no '## [$new] - YYYY-MM-DD' heading."
+          cat >&2 <<MSG
+
+          This PR bumps pyproject.toml $old -> $new, which makes it a release.
+
+          Add a dated section to CHANGELOG.md:
+
+              ## [$new] - $(date -u +%Y-%m-%d)
+
+              ### Added / Changed / Fixed
+              - ...
+
+          moving anything under [Unreleased] that ships in this release, and add the
+          compare link at the foot of the file.
+
+          After the PR merges, tag the MERGE commit (the convention every existing
+          tag follows) and push it:
+
+              git tag v$new <merge-sha> && git push origin v$new
+
+          See CLAUDE.md > Versioning for the full release checklist.
+          MSG
+          exit 1
