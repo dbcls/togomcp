@@ -371,6 +371,10 @@ def main() -> int:
                     help="explicit question YAML paths (default: pilot_questions.txt)")
     ap.add_argument("--base-config", default=str(DEFAULT_BASE_CONFIG),
                     help=f"benchmark config to clone (default: {DEFAULT_BASE_CONFIG})")
+    ap.add_argument("--results-dir", default=None, metavar="DIR",
+                    help="write results here instead of ./results. Use to stage a NEW batch of "
+                         "questions (run every condition for them in one batch, then fold in with "
+                         "append_results.py) — extends n without re-running the existing set.")
     ap.add_argument("--model", default=DEFAULT_MODEL, help="answering model")
     ap.add_argument("--judge-model", default=None,
                     help="LLM-judge model (default: add_llm_evaluation.py's own default)")
@@ -408,6 +412,12 @@ def main() -> int:
 
     if args.runs < 1:
         raise SystemExit(f"--runs must be >= 1 (got {args.runs})")
+
+    if args.results_dir:
+        global RESULTS_DIR, RENDERED_DIR
+        RESULTS_DIR = Path(args.results_dir)
+        RENDERED_DIR = RESULTS_DIR / "rendered_configs"
+        print(f"results dir: {RESULTS_DIR}")
 
     if (args.judge_use_api or args.answer_use_api) and not os.environ.get("ANTHROPIC_API_KEY"):
         raise SystemExit("--judge-use-api/--answer-use-api require ANTHROPIC_API_KEY in the "
