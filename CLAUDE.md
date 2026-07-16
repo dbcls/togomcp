@@ -51,6 +51,15 @@ List-style result tools return a **JSON string of a bare array** (not a Python `
 
 The version in `pyproject.toml` is read at runtime via `importlib.metadata` and reported in `serverInfo.version` (the deployment tell — a stale build shows the old number). Bump it on every `dev → main` release, and sync `uv.lock` in the same commit.
 
+**A `dev → main` PR that bumps the version is a release. All four steps below are required — do not do only the first:**
+
+1. **Bump** `pyproject.toml` + sync `uv.lock` in the same commit.
+2. **Add a dated `CHANGELOG.md` section** (`## [x.y.z] - YYYY-MM-DD`) and move anything under `[Unreleased]` that ships in it; add the compare link at the foot of the file. CI enforces the heading ([changelog.yml](.github/workflows/changelog.yml)) but not its quality — write for someone diffing two versions, and say *why* a change matters, not just what moved.
+3. **Merge via PR** to `main` (every release since #23 has; `gh pr create --base main --head dev`).
+4. **Tag the MERGE commit** — `git tag vX.Y.Z <merge-sha> && git push origin vX.Y.Z`. Lightweight tags on the merge, not the bump: that is what every existing tag points at. **Not every merge is a release** — a docs-only merge (e.g. #157) carries no bump and gets no tag.
+
+Steps 2 and 4 exist as rules because they were the ones nobody wrote down: the changelog fell 8 releases and 303 commits behind, and tagging stopped dead after v1.0.1 — while the bump rule, which *was* written here, was followed every time. Both were reconstructed on 2026-07-17; don't let them drift again.
+
 The "public contract" of this server is the **tool surface** as a client sees it — tool names, parameters, and return shapes — NOT any importable Python API. Apply semver against that surface, using the **agent-pragmatic** policy (our dominant client is an LLM that re-reads the tool schema every session and adapts, so a return-shape change is less catastrophic than for a compiled client):
 
 - **MAJOR** (`x.0.0`) — a change an agent genuinely can't recover from: **remove or rename a tool**, remove a parameter, or make an optional parameter required.
