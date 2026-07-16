@@ -131,7 +131,7 @@ schema_info:
   kw_search_tools:
     - OLS4:searchClasses
   version:
-    mie_version: "2.0"
+    mie_version: "2.1"
     mie_created: "2026-07-16"
     mie_updated: "2026-07-16"
     data_version: "Per-graph; see graphs list. Snapshot verified 2026-07-16."
@@ -227,9 +227,23 @@ critical_warnings: |
     it, but <ontology/clo> carries BOTH "definition" AND "textual definition" — so a single graph
     can yield two labels for one IRI. Pin the owner via iri_namespaces + schema_design, and
     expect to pick among several rows even then.
-  - RO_/BFO_ PREDICATES HAVE NO HOME GRAPH — there is no <ontology/ro> or <ontology/bfo>. They
-    resolve only because OBO import closures embed them, so EVERY hit is second-hand. Prefer the
-    <ontology/go> copy; expect benign variants ("part of"/"part_of"); treat a lone dissenter as noise.
+  - RO_/BFO_/IAO_ PREDICATES HAVE NO HOME GRAPH, AND <ontology/go> IS NOT A RELIABLE FALLBACK.
+    There is no <ontology/ro> or <ontology/bfo>. These terms resolve only where an importing
+    ontology's closure happens to embed them, so EVERY hit is second-hand AND coverage is
+    per-term, not per-graph: a graph carries only the RO_/BFO_ terms IT uses.
+    VERIFIED 2026-07-16 — GO does NOT carry these at all, so a go-pinned lookup returns 0 rows:
+      RO_0002206 "expressed in" -> cl, clo, pro, uberon        (NOT go)
+      RO_0002162 "in taxon"     -> cl, clo, efo, po, uberon     (NOT go)
+      BFO_0000001 "entity"      -> clo, uberon                  (NOT go)
+    whereas GO does carry the ones it uses (RO_0002211 "regulates" -> go + 5 others;
+    BFO_0000050 "part of" -> 10 graphs incl. go; IAO_0000115 -> 15 graphs incl. go).
+    DO NOT pin a single graph for an RO_/BFO_/IAO_ term. Bind ?g over a VALUES set and read all
+    rows — <ontology/uberon> and <ontology/clo> carried every term tested here and are the
+    broadest carriers, but confirm rather than assume. Take the majority label; expect benign
+    variants ("part of"/"part_of"); treat a lone dissenter as noise (see xco's "has_component"
+    for RO_0002211 in the conflicting-labels warning above).
+    NOTE this contradicts advice shipped in v1.0-v2.0 of this file ("prefer the ontology/go
+    copy"), which silently returned 0 rows for any RO_/BFO_ term GO does not itself use.
   - IAO_0100001 ("term replaced by") IS POLYMORPHIC — IN THREE FORMS, not two.
     (a) an IRI node; (b) an xsd:string CURIE literal ("GO:0039502"); (c) an xsd:string literal
     holding a FULL IRI ("http://purl.obolibrary.org/obo/MONDO_0004989"). VERIFIED 2026-07-16:
@@ -757,7 +771,7 @@ architectural_notes:
     - "ALWAYS pin the owning GRAPH; ALWAYS annotate exact-match literals ^^xsd:string; ALWAYS COUNT(DISTINCT) over a subClassOf* expansion"
     - "Priority: Specific IRIs > owner-pinned label lookup > subtree/partonomy expansion > text search (never needed here)"
   schema_design:
-    - "IRI prefix -> owning graph (the pin map). obo-namespace: HP_ -> ontology/hp; GO_ -> ontology/go; UBERON_ -> ontology/uberon; CL_ -> ontology/cl; CLO_ -> ontology/clo; SO_ -> ontology/so; ECO_ -> ontology/eco; MONDO_ -> ontology/mondo; PR_ -> ontology/pro; PO_ -> ontology/po; XCO_ -> ontology/xco; CMO_ -> ontology/cmo; MMO_ -> ontology/mmo; UO_ -> ontology/uo. NON-obo namespace (see iri_namespaces): ebi.ac.uk/efo/EFO_ -> ontology/efo; purl.org/sig/ont/fma/fma -> ontology/fma; semanticscience.org/resource/SIO_ -> ontology/sio; edamontology.org/{data_,operation_,format_,topic_} -> ontology/edam; mdatahub.org/data/meo/MEO_ -> ontology/meo. RO_/BFO_/IAO_ have NO home graph — prefer the ontology/go copy."
+    - "IRI prefix -> owning graph (the pin map). obo-namespace: HP_ -> ontology/hp; GO_ -> ontology/go; UBERON_ -> ontology/uberon; CL_ -> ontology/cl; CLO_ -> ontology/clo; SO_ -> ontology/so; ECO_ -> ontology/eco; MONDO_ -> ontology/mondo; PR_ -> ontology/pro; PO_ -> ontology/po; XCO_ -> ontology/xco; CMO_ -> ontology/cmo; MMO_ -> ontology/mmo; UO_ -> ontology/uo. NON-obo namespace (see iri_namespaces): ebi.ac.uk/efo/EFO_ -> ontology/efo; purl.org/sig/ont/fma/fma -> ontology/fma; semanticscience.org/resource/SIO_ -> ontology/sio; edamontology.org/{data_,operation_,format_,topic_} -> ontology/edam; mdatahub.org/data/meo/MEO_ -> ontology/meo. RO_/BFO_/IAO_ have NO home graph and NO reliable single fallback — do NOT pin ontology/go (it lacks every RO_/BFO_ term GO does not itself use, e.g. RO_0002206/RO_0002162/BFO_0000001). Bind ?g over a VALUES set instead; see critical_warnings."
     - "The obo/oboInOwl class schema is uniform across the obo-family graphs, so OboClassShape serves all of them — but FMA, SIO, EDAM and EFO diverge (see predicate_by_ontology and FmaClassShape). 'One shape serves every ontology' is FALSE."
     - "Every graph is a self-contained import closure. That is WHY the upper-ontology properties are re-declared 7-15 times, why pinning is mandatory, and why a graph's owl:Class count can overstate its native vocabulary (EFO 20% native, CL 19%) — though many graphs are 100% native. See by_class."
   performance:

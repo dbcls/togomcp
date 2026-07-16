@@ -41,9 +41,9 @@ schema_info:
     - http://rdfportal.org/dataset/ensembl_taxonomy
   kw_search_tools: []
   version:
-    mie_version: "2.5"
+    mie_version: "2.7"
     mie_created: "2026-02-28"
-    mie_updated: "2026-04-29"
+    mie_updated: "2026-07-16"
     data_version: Release 115
     update_frequency: Quarterly
     query_test_status: |
@@ -139,16 +139,16 @@ shape_expressions: |
 
   <EnsemblExonShape> {
     a [ terms:EnsemblExon ] ;
-    a [ obo:SO_0000147 ] ;
+    a [ obo:SO_0000147 ] ;                      # SO "exon"
     dcterms:identifier xsd:string ;
     faldo:location BNode
   }
 
   <EnsemblOrderedExonShape> {
     a [ terms:EnsemblOrderedExon ] ;
-    a [ sio:SIO_001261 ] ;
-    sio:SIO_000628 @<EnsemblExonShape> ;        # refers to exon
-    sio:SIO_000300 xsd:integer                  # rank/position
+    a [ sio:SIO_001261 ] ;                      # SIO "ordered list item"
+    sio:SIO_000628 @<EnsemblExonShape> ;        # SIO "refers to" — points at the exon
+    sio:SIO_000300 xsd:integer                  # SIO "has value" — here the rank/position
   }
 
   # KEY CONTROLLED VOCABULARY IRIs:
@@ -607,29 +607,46 @@ data_statistics:
     misc_RNA_ENSGLOSSARY_0000046: 2418
     snRNA_ENSGLOSSARY_0000042: 2094
     miRNA_ENSGLOSSARY_0000038: 1945
-    SO_0002107: 1801
+    # COMPLETE: all 39 human biotypes; the counts sum to exactly 87,693 = the human gene
+    # total above. (Through v2.5 this table listed only the top 30, silently omitting 9
+    # biotypes totalling 39 genes — it looked exhaustive but was not.)
+    # Labels verified 2026-07-16. terms:has_biotype is a MIXED vocabulary: values are SO
+    # IRIs, Ensembl-glossary IRIs, or terms:<name> IRIs — resolve each in its own source.
+    #   SO_*          -> the `ontology` database, GRAPH <http://rdfportal.org/ontology/so>
+    #   ENSGLOSSARY_* -> <http://ensembl.org/glossary/ENSGLOSSARY_NNNNNNN> on THIS endpoint
+    #   LRG_Gene / Artifact -> <http://rdf.ebi.ac.uk/terms/ensembl/*> on THIS endpoint
+    transcribed_unprocessed_pseudogene_SO_0002107: 1801
     LRG_Gene: 1324
-    SO_0002109: 1219
-    ENSGLOSSARY_0000057: 1084
-    ENSGLOSSARY_0000043: 1020
-    SO_0000777: 516
-    SO_0002102: 300
-    ENSGLOSSARY_0000059: 229
-    SO_0002108: 206
-    ENSGLOSSARY_0000063: 160
-    ENSGLOSSARY_0000053: 97
-    ENSGLOSSARY_0000065: 93
-    ENSGLOSSARY_0000040: 71
-    ENSGLOSSARY_0000060: 64
-    SO_0002339: 51
-    SO_0002103: 46
-    ENSGLOSSARY_0000061: 24
-    ENSGLOSSARY_0000062: 23
-    SO_0000088: 22
-    ENSGLOSSARY_0000047: 20
+    transcribed_processed_pseudogene_SO_0002109: 1219
+    TEC_ENSGLOSSARY_0000057: 1084
+    snoRNA_ENSGLOSSARY_0000043: 1020
+    pseudogenic_rRNA_SO_0000777: 516
+    IG_V_pseudogene_SO_0002102: 300
+    IG_V_gene_ENSGLOSSARY_0000059: 229
+    transcribed_unitary_pseudogene_SO_0002108: 206
+    TR_V_gene_ENSGLOSSARY_0000063: 160
+    unitary_pseudogene_ENSGLOSSARY_0000053: 97
+    TR_J_gene_ENSGLOSSARY_0000065: 93
+    rRNA_ENSGLOSSARY_0000040: 71
+    IG_D_gene_ENSGLOSSARY_0000060: 64
+    scaRNA_gene_SO_0002339: 51
+    TR_V_pseudogene_SO_0002103: 46
+    IG_J_gene_ENSGLOSSARY_0000061: 24
+    IG_C_gene_ENSGLOSSARY_0000062: 23
+    mt_gene_SO_0000088: 22
+    Pseudogene_ENSGLOSSARY_0000047: 20
     Artifact: 19
-    SO_0002100: 11
-    SO_0002181: 9
+    IG_C_pseudogene_SO_0002100: 11
+    ribozyme_gene_SO_0002181: 9
+    TR_C_gene_ENSGLOSSARY_0000066: 8
+    IG_J_pseudogene_SO_0002101: 6
+    TR_D_gene_ENSGLOSSARY_0000064: 6
+    sncRNA_gene_SO_0002342: 6
+    TR_J_pseudogene_SO_0002104: 4
+    vaultRNA_ENSGLOSSARY_0000045: 4
+    translated_processed_pseudogene_SO_0002105: 2
+    mt_rRNA_gene_SO_0002363: 2
+    IG_pseudogene_ENSGLOSSARY_0000054: 1
   human_quality_metrics:
     canonical_transcripts: 87693
     mane_select: 19338
@@ -665,15 +682,23 @@ anti_patterns:
   - title: Circular Reasoning with Search Results
     problem: Using gene IRIs sampled from an exploratory result as the scope of a comprehensive species-wide count.
     wrong_sparql: |
-      # WRONG: pasted sampled Ensembl gene IRIs — counts only those genes, not all kinases
-      VALUES ?gene {
-        <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000012048>
-        <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000141510>
+      # WRONG: pasted sampled gene IRIs — counts only those 2, not all human protein-coding genes
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      SELECT (COUNT(DISTINCT ?gene) AS ?count)
+      WHERE {
+        VALUES ?gene {
+          <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000012048>
+          <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000141510>
+        }
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?gene <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> ;
+                terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> .
+        }
       }
-      SELECT (COUNT(?gene) AS ?count) WHERE { }
-      LIMIT 1
+      # -> 2. The VALUES list caps the answer; it is not measured from the data.
     correct_sparql: |
-      # CORRECT: use the biotype IRI discovered during exploration for a comprehensive count
+      # CORRECT: scope by the biotype IRI and let the data supply the genes
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
       SELECT (COUNT(DISTINCT ?gene) AS ?count)
       WHERE {
         GRAPH <http://rdfportal.org/dataset/ensembl> {
@@ -681,7 +706,8 @@ anti_patterns:
                 terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> .
         }
       }
-      LIMIT 1
+      # -> 23,262. Verified 2026-07-16; matches
+      #    data_statistics.human_biotype_distribution.protein_coding_ENSGLOSSARY_0000026.
     explanation: "Use exploratory queries to discover species and biotype IRIs. Use those as structured filter criteria in comprehensive queries — not the sampled gene IRIs themselves."
 
   - title: Text Search When Specific Biotype IRI Exists

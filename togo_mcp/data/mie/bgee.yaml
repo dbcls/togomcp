@@ -32,8 +32,9 @@ schema_info:
     - http://bgee.org
   kw_search_tools: []
   version:
-    mie_version: "2.1"
+    mie_version: "2.2"
     mie_created: "2026-04-29"
+    mie_updated: "2026-07-16"
     data_version: "Bgee 15.2"
     update_frequency: "Annual"
   access:
@@ -62,9 +63,12 @@ critical_warnings: |
   - EXPRESSION TABLE IS HUGE: genex:Expression has 709M instances; genex:AbsenceExpression
     adds 4.6M. Never run an unfiltered COUNT or LIMIT-less query against it.
     Always filter by gene, anatomy, or species first; add LIMIT during exploration.
-  - GENES HAVE MULTIPLE rdf:type ENTRIES: orth:Gene, orth:GeneTreeNode,
-    orth:SequenceUnit, obo:SO_0000704, obo:CDAO_0000140, obo:BFO_0000001/2.
-    Filter on orth:Gene as the canonical class.
+  - GENES HAVE MULTIPLE rdf:type ENTRIES: orth:Gene, orth:GeneTreeNode, orth:SequenceUnit,
+    obo:SO_0000704 ("gene"), obo:CDAO_0000140 ("Node"), obo:BFO_0000001 ("entity") and
+    obo:BFO_0000002 ("continuant") — all 6 on the same 1,559,014 genes, so a bare
+    `?g a ?class` COUNT multiplies. Filter on orth:Gene as the canonical class.
+    (Labels verified 2026-07-16: SO_/BFO_ via the `ontology` database's graphs; CDAO_0000140
+    via OLS4 — there is no CDAO graph on this endpoint.)
   - ABSENCE CALLS ARE A SEPARATE CLASS: Genes that are NOT expressed in a condition
     are typed genex:AbsenceExpression, not genex:Expression. To get "all calls",
     union both classes; to get "expressed", filter to genex:Expression only.
@@ -584,29 +588,42 @@ anti_patterns:
     explanation: "Bgee uses two parallel taxon IRI namespaces. Gene → bgeespecies:NNN; ExpressionCondition → taxonomy:NNN (UniProt). Bridge with obo:RO_0002162."
 
   - title: "Circular Reasoning with Search Results"
-    problem: "Using gene or condition IRIs sampled from an exploratory query as the scope of a comprehensive expression count — counts only the sample."
+    problem: "Using gene IRIs sampled from an exploratory query as the scope of a comprehensive expression count. The VALUES list, not the data, then determines the answer — and the result looks like a measurement."
     wrong_sparql: |
-      # WRONG: pasted sampled gene IRIs — counts only those genes' expression, not all brain-expressed genes
-      VALUES ?gene {
-        <http://www.ensembl.org/id/ENSG00000141510>
-        <http://www.ensembl.org/id/ENSG00000012048>
-      }
-      SELECT (COUNT(DISTINCT ?cond) AS ?count)
-      FROM <http://rdfportal.org/dataset/bgee>
-      WHERE { ?expr genex:hasExpressionCondition ?cond ; oba:RO_0002206 ?gene . }
-      LIMIT 1
-    correct_sparql: |
-      # CORRECT: use the anatomy IRI and developmental stage discovered during exploration
+      # WRONG: pasted sampled gene IRIs — counts only those 2 genes, not all brain-expressed genes
+      PREFIX genex: <http://purl.org/genex#>
       SELECT (COUNT(DISTINCT ?gene) AS ?count)
-      FROM <http://rdfportal.org/dataset/bgee>
+      FROM <http://bgee.org>
       WHERE {
+        VALUES ?gene {
+          <http://omabrowser.org/ontology/oma#GENE_FBgn0020497>
+          <http://omabrowser.org/ontology/oma#GENE_FBgn0020440>
+        }
         ?expr a genex:Expression ;
-              oba:RO_0002206 ?gene ;
+              genex:hasSequenceUnit ?gene ;
               genex:hasExpressionCondition ?cond .
         ?cond genex:hasAnatomicalEntity <http://purl.obolibrary.org/obo/UBERON_0000955> .
       }
-      LIMIT 1
-    explanation: "Use anatomical entity IRIs (not sampled gene IRIs) for comprehensive expression queries. Pasting sampled gene IRIs from exploratory queries counts only those genes."
+      # -> 2. The VALUES list caps the answer; it is not measured from the data.
+    correct_sparql: |
+      # CORRECT: scope by the anatomy IRI and let the data supply the genes
+      PREFIX genex: <http://purl.org/genex#>
+      SELECT (COUNT(DISTINCT ?gene) AS ?count)
+      FROM <http://bgee.org>
+      WHERE {
+        ?expr a genex:Expression ;
+              genex:hasSequenceUnit ?gene ;
+              genex:hasExpressionCondition ?cond .
+        ?cond genex:hasAnatomicalEntity <http://purl.obolibrary.org/obo/UBERON_0000955> .
+      }
+      # -> 953,541 distinct genes across all species. Verified 2026-07-16.
+    explanation: >
+      Verified 2026-07-16: the pasted-sample form returns 2, the anatomy-scoped form 953,541.
+      Two further traps this example encodes, both of which return 0 rows rather than an error:
+      the Expression -> gene link is genex:hasSequenceUnit (NOT obo:RO_0002206 "expressed in",
+      which Bgee does not use), and the gene IRI is the OMA namespace
+      (omabrowser.org/ontology/oma#GENE_<id>) — an Ensembl IRI such as
+      <http://www.ensembl.org/id/ENSG00000141510> matches nothing here.
 
   - title: "Treating genex:isExpressedIn as a clean anatomy link"
     problem: |
