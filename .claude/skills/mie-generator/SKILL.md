@@ -181,11 +181,34 @@ Do this for every distinct bnode-valued predicate you encounter — typed-value 
 
 Note also that bnode shapes reached via different parent classes may differ in structure even when they share the same predicate name — the same property can resolve to an `ExactPosition` bnode (carrying an integer + a back-reference IRI) on one parent class and to a `Region` bnode (carrying `begin` and `end` sub-bnodes) on another. Never assume two bnode chains with the same predicate name have the same internal structure; verify each one independently via a parent-anchored query.
 
-#### 2d. Anchor IRIs via search tools
+#### 2d. Anchor IRIs via search tools — and resolve opaque IRIs back to labels
 
 If the database has a dedicated search tool (`search_uniprot_entity`, `search_chembl_molecule`, `search_chembl_target`, `search_pdb_entity`, `search_reactome_entity`, `search_rhea_entity`, `search_mesh_descriptor`, `OLS4:searchClasses`, `ncbi_esearch`), use it to turn human-readable terms ("TP53", "tumor protein p53", "kinase activity") into specific IRIs. Then DESCRIBE those IRIs to learn the canonical predicate names. This is the fastest path from "I know what concept I'm looking for" to "I have a structured-IRI query that works."
 
 If no search tool exists (BRENDA, BacDive, MediaDive, SuperCon, Glycosmos, NIMS): generate a short `bif:contains` (Virtuoso) probe to find one example, DESCRIBE it, and pivot to typed-predicate queries from there. Document this as the only legitimate text-search use, and note in `architectural_notes.text_search_justification` why no structured alternative existed.
+
+**The inverse direction — an opaque IRI whose meaning you don't know.** 2b/2c routinely surface bare numeric OBO IRIs (`SO_0000704`, `RO_0002211`, `BFO_0000050`, `ECO_0000269`) as predicates or objects. **Never guess one from its shape, and never gloss one in a comment you didn't resolve** — a wrong gloss in `shape_expressions` is invisible to Phase 5 (the query still runs) and ships as fact.
+
+The primary endpoint carries ~40 ontology graphs under `http://rdfportal.org/ontology/` (`go`, `hp`, `so`, `uberon`, `cl`, `clo`, `eco`, `efo`, `mondo`, `pro`, `fma`, `edam`, `sio`, `po`, `xco`, `cmo`, `meo`, `mmo`, `uo`, plus the `glycordf`/`orth`/`piero` schema vocabularies). Batch-resolve against them in **one** query — this works from any endpoint's survey, resolves many IRIs at once, and covers **object properties as well as classes**:
+
+```sparql
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT ?iri ?g ?label WHERE {
+  VALUES ?iri { <http://purl.obolibrary.org/obo/SO_0000704>
+                <http://purl.obolibrary.org/obo/RO_0002211> }
+  GRAPH ?g { ?iri rdfs:label ?label }
+  FILTER(LANG(?label) IN ("", "en"))
+}
+```
+(`database=go`, `endpoint_name=primary` — any registered member DB works as the routing hint.)
+
+Three verified traps, all of which produce a confidently wrong answer rather than an empty one:
+
+- **Never `FILTER(LANG(?label) = "en")`.** The authoritative labels in `ontology/go`, `ontology/hp`, and `ontology/so` carry **no language tag at all**; only the copies re-imported by other ontologies are tagged `en`. Filtering on `"en"` silently drops the owning ontology's label and leaves you quoting a second-hand one. Always `IN ("", "en")` — that also excludes the Japanese labels (e.g. PubCaseFinder's 発作 for `HP_0001250`).
+- **The same IRI gets conflicting labels from different graphs — take the owner's, not the first row.** Map the IRI prefix to its home graph (`SO_`→`ontology/so`, `HP_`→`ontology/hp`, `GO_`→`ontology/go`, `UBERON_`→`ontology/uberon`, `CL_`→`ontology/cl`, `ECO_`→`ontology/eco`, `EFO_`→`ontology/efo`). Real case: `RO_0002211` is "regulates" in `go`/`cl`/`clo`/`po`/`uberon` but **"has_component" in `ontology/xco`** — flatly wrong. Row order is arbitrary without an `ORDER BY`, so "the first row" is not a deterministic pick, let alone a correct one: bind the owning graph, or read all rows and take the majority.
+- **Shared-prefix predicates (`RO_`, `BFO_`) have no home graph** — there is no `ontology/ro`. They resolve only because OBO import closures embed them, so every hit is second-hand. Prefer the `ontology/go` copy, expect harmless variants (`part of` / `part_of`; `regulates` / `regulates (processual)`), and treat a lone dissenting label as noise.
+
+Use **OLS4** (`OLS4:searchClasses`, `fetch`, `getAncestors`/`getDescendants`) instead when the term's ontology isn't on the primary endpoint, or when you need the *definition*, synonyms, or hierarchy rather than a label. OLS4 is per-ontology authoritative, so it sidesteps the cross-graph collision above entirely — but it's one term per call and can't join to data. Rule of thumb: **many IRIs → the batch SPARQL above; one IRI you need to genuinely understand → OLS4.**
 
 #### 2e. Verify predicate cardinality for every shape
 
