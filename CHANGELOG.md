@@ -13,8 +13,28 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [1.6.2] - 2026-07-17
+
+### Added
+- **The release process is now enforced, not remembered.** `CLAUDE.md` states a
+  release as four required steps (bump + `uv.lock`, CHANGELOG section, PR to
+  `main`, tag the *merge* commit), and
+  [`.github/workflows/changelog.yml`](.github/workflows/changelog.yml) fails a
+  `dev → main` PR that changes `pyproject`'s version without a matching
+  `## [x.y.z] - YYYY-MM-DD` heading. The check fires only on a real version
+  change and asks only for the heading.
+
 ### Fixed
-- `ontology` MIE (v2.2 → v2.3): `IAO_0000233` documented as an `xsd:anyURI`
+- **This changelog.** It documented through 1.0.1 while `pyproject` had reached
+  1.6.1 — eight undocumented releases, 303 commits — and its `[Unreleased]`
+  section described the FastMCP 421 / `deploy.sh` / reproducible-build work that
+  had already shipped. That section *was* 1.1.0 and is now dated as such;
+  1.2.0–1.6.1 are reconstructed from git history. Tagging had also stopped after
+  `v1.0.1`; `v1.1.0`–`v1.6.1` now exist, on the merge commits, matching the
+  existing convention.
+- `ontology` MIE (v2.2 → v2.3): `IAO_0000233` was documented as an `xsd:anyURI`
   literal "(a LITERAL, not IRI)" — backwards for the very graph its count came
   from. The predicate is polymorphic *by graph*: all IRI in `hp` (1,461), all
   `xsd:anyURI` literals in `go` (20,249), `xsd:string` in `cl`, mixed in
@@ -202,7 +222,8 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v1.6.1...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v1.6.2...HEAD
+[1.6.2]: https://github.com/dbcls/togomcp/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/dbcls/togomcp/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/dbcls/togomcp/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/dbcls/togomcp/compare/v1.4.0...v1.5.0
