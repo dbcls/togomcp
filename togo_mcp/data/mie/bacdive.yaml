@@ -36,9 +36,9 @@ schema_info:
   kw_search_tools:
     - sparql
   version:
-    mie_version: "2.1"
+    mie_version: "2.2"
     mie_created: "2026-04-21"
-    mie_updated: "2026-04-29"
+    mie_updated: "2026-07-16"
     data_version: "BacDive 2024"
     update_frequency: "Quarterly"
   license:
@@ -50,6 +50,15 @@ schema_info:
     max_query_timeout: "60 seconds"
 
 critical_warnings: |
+  - schema:hasGramStain IS ^^rr:Literal, NOT A STRING — AND ITS SIBLINGS ARE NOT.
+    VERIFIED 2026-07-16: all 18,215 hasGramStain values carry datatype
+    <http://www.w3.org/ns/r2rml#Literal> (an R2RML mapping artifact), so the obvious
+    `schema:hasGramStain "positive"` matches ZERO rows, silently. Its sibling
+    schema:hasOxygenTolerance is plain xsd:string (29,051) — so the form varies BY PREDICATE
+    inside this one graph and you cannot generalize from one probe.
+    SAFE: FILTER(STR(?v) = "positive")  -> 6,325 strains (works for every form here)
+    ALSO WORKS: schema:hasGramStain "positive"^^<http://www.w3.org/ns/r2rml#Literal>
+    WRONG:      schema:hasGramStain "positive"                 -> 0 rows, no error
   - TAXID DUAL-TYPE TRAP (xsd:int, NOT xsd:integer): schema:hasTaxID holds BOTH numeric values
     typed as xsd:int (e.g. 435^^xsd:int) AND plain strings (e.g. "species", "strain"^^xsd:string).
     Two safe filter patterns:
@@ -794,12 +803,17 @@ anti_patterns:
         ?desc bif:contains "'gram positive'"
       }
     correct_sparql: |
-      # CORRECT: typed predicate with controlled vocabulary value
-      SELECT ?strain WHERE {
+      # CORRECT: typed predicate with controlled vocabulary value.
+      # hasGramStain is stored as ^^rr:Literal, so the plain "positive" matches NOTHING —
+      # compare via STR(), which is correct for every literal form here.
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      SELECT (COUNT(DISTINCT ?strain) AS ?n) WHERE {
         ?gs a schema:GramStain ;
-            schema:hasGramStain "positive" ;
+            schema:hasGramStain ?gramStain ;
             schema:describesStrain ?strain .
+        FILTER(STR(?gramStain) = "positive")
       }
+      # -> 6,325 strains. Verified 2026-07-16.
     explanation: "BacDive has typed predicates for every phenotype. Text search on dct:description is only legitimate for unstructured prose queries. Check shape_expressions before writing any query."
 
   - title: Skipping MIE Schema Check Before Query Design
@@ -840,14 +854,18 @@ anti_patterns:
       SELECT (COUNT(?strain) AS ?count) WHERE { ... }
     correct_sparql: |
       # CORRECT: use discovered controlled vocabulary values to query the full dataset
-      VALUES ?oxygenTolerance { "obligate anaerobe" "microaerophile" }
+      PREFIX schema: <https://purl.dsmz.de/schema/>
       SELECT (COUNT(DISTINCT ?strain) AS ?count)
       FROM <http://rdfportal.org/dataset/bacdive>
       WHERE {
+        VALUES ?oxygenTolerance { "obligate anaerobe" "microaerophile" }
         ?ot a schema:OxygenTolerance ;
             schema:hasOxygenTolerance ?oxygenTolerance ;
             schema:describesStrain ?strain .
       }
+      # -> 4,694 strains. Verified 2026-07-16.
+      # NOTE VALUES must sit INSIDE the WHERE clause. Placed before SELECT (as this block
+      # did through v2.1) it is a syntax error, not a query — Virtuoso SP030.
     explanation: "Use exploratory queries to discover controlled vocabulary values and IRI patterns. Use those values in comprehensive queries — not the sampled entity IRIs themselves."
 
 common_errors:
