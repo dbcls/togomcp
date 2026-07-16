@@ -131,28 +131,47 @@ SELECT ?ns (COUNT(*) AS ?n) WHERE {
 
 Run this on every predicate you plan to traverse in `sparql_query_examples`. If the object set is heterogeneous: enumerate **all** object kinds with their counts in the shape comment and `critical_warnings`, and show the disambiguating filter (e.g. `FILTER(CONTAINS(STR(?o), "/protein/"))`) in the example query. Real case: PubChem's `obo:RO_0000057` (MeasureGroup → target) resolves to protein **and** taxonomy, gene, cell, and anatomy IRIs — five object kinds under one predicate; a query filtering to only one silently loses the rest, and the first revision documented only three of the five until this GROUP BY was run.
 
-**Probe the literal datatype and language tag for every literal you'll match exactly.** Whenever a predicate's object is a literal that a downstream query will match in a `VALUES` block, a `FILTER(?x = …)`, or a triple-pattern object, the *stored* lexical form must match the *query* term exactly — including datatype and language tag. Guessing is a silent-failure trap: a query term of the wrong datatype returns 0 rows with no error. Never assume; probe how the literal is actually stored:
+**Probe the literal form for every literal you'll match exactly — EMPIRICALLY, by matching it.** Whenever a predicate's object is a literal that a downstream query will match in a `VALUES` block, a `FILTER(?x = …)`, or a triple-pattern object, the *stored* term must match the *query* term exactly — including datatype and language tag. A query term of the wrong form returns 0 rows with no error.
+
+> **`DATATYPE()` CANNOT ANSWER THIS QUESTION — DO NOT BUILD THE MATCH FORM FROM IT.** On Virtuoso (and any RDF-1.1 store), a *plain* literal and an *`xsd:string`-typed* literal BOTH report `DATATYPE() = xsd:string`, because RDF 1.1 defines them as the same value. But Virtuoso matches **terms, not values**: the two forms do NOT unify in a triple pattern *or* in `FILTER(?x = …)`. So `DATATYPE()` reports identically for two graphs whose required match form is **opposite**, and a probe-driven guess is right half the time and silently wrong the other half.
+>
+> Verified 2026-07-16 on the RDF Portal primary endpoint, both reporting `DATATYPE() = xsd:string`:
+> - `<ontology/hp>` — `HP_0001250 rdfs:label "Seizure"^^xsd:string` MATCHES; plain `"Seizure"` → 0 rows.
+> - `<ontology/efo>` — `EFO_0000305 rdfs:label "obsolete_breast carcinoma"` MATCHES; the `^^xsd:string` form → 0 rows.
+>
+> This is exactly how a previous `ontology.yaml` shipped the false lead warning "every literal here is xsd:string" — true for hp/go, inverted for uberon/cl/efo/edam.
+
+`DATATYPE()`/`LANG()` remain useful for what they *can* see — a language tag, and genuine non-string types (`xsd:integer`, `xsd:boolean`, `xsd:date`) — so still run the survey to spot those and any mixed typing:
 
 ```sparql
 SELECT ?dt ?lang (COUNT(*) AS ?n) WHERE {
-  GRAPH <…> {
-    ?s <predicate> ?o .
-    BIND(DATATYPE(?o) AS ?dt)
-    BIND(LANG(?o) AS ?lang)
-  }
+  GRAPH <…> { ?s <predicate> ?o . BIND(DATATYPE(?o) AS ?dt) BIND(LANG(?o) AS ?lang) }
 } GROUP BY ?dt ?lang ORDER BY DESC(?n)
+```
+
+But when the survey says "string-ish" (`xsd:string` with no lang), you have learned nothing about the match form. **Settle it by trying each candidate form against a known term** — one ASK per form, cheap and decisive:
+
+```sparql
+ASK { GRAPH <…> { <known-subject> <predicate> "known value" } }                    # plain
+ASK { GRAPH <…> { <known-subject> <predicate> "known value"^^xsd:string } }        # typed
+ASK { GRAPH <…> { <known-subject> <predicate> "known value"@en } }                 # lang-tagged
 ```
 
 Map the result to the exact-match rule, and record it in `critical_warnings` whenever a query would break by getting it wrong:
 
-| Observed storage | Exact-match query term must be |
+| Established by ASK | Exact-match query term must be |
 |---|---|
-| `xsd:string` (typed) | `"value"^^xsd:string` — a plain `"value"` joins to nothing |
-| plain literal (`?dt` is blank, no lang) | `"value"` — adding `^^xsd:string` joins to nothing |
-| language-tagged (`?lang` = `en`, …) | `"value"@en`, or compare via `STR(?o) = "value"` / `langMatches()` |
-| `xsd:integer` / `xsd:decimal` / `xsd:double` | the matching numeric type — `"2"^^xsd:integer` ≠ `"2"^^xsd:decimal` ≠ `2.0` |
+| only the typed ASK is true | `"value"^^xsd:string` — a plain `"value"` joins to nothing |
+| only the plain ASK is true | `"value"` — adding `^^xsd:string` joins to nothing |
+| only the `@en` ASK is true | `"value"@en` — both bare forms join to nothing |
+| `xsd:integer` / `xsd:decimal` / `xsd:double` (visible to `DATATYPE()`) | the matching numeric type — `"2"^^xsd:integer` ≠ `"2"^^xsd:decimal` ≠ `2.0` |
 
-The nastiest variant is **inconsistent typing within one predicate** (some values `xsd:string`, some plain, or mixed numeric types): the GROUP BY shows two or more rows for the same predicate. Then no single exact-match form catches everything — document it and use `STR()`-based comparison (or a `VALUES` block listing both forms) in the example query. Real case: Reactome stores `bp:db` / `bp:id` / `bp:name` / `bp:eCNumber` / `bp:controlType` as `xsd:string`, so every `VALUES`/`FILTER =`/object literal needs `^^xsd:string` — its single most common silent-failure mode, now the file's lead `critical_warning`. `VALUES` is the highest-miss spot because the typing requirement isn't visually cued there the way it is in a triple object.
+Two rules that follow, both verified:
+
+- **`FILTER(?x = "value")` is NOT a workaround.** It is term-based on Virtuoso and fails identically to the triple pattern (`FILTER(?l = "Seizure")` on hp → false; `FILTER(?l = "Seizure"^^xsd:string)` → true). Only **`FILTER(STR(?x) = "value")`** unifies all three forms — verified matching in go (typed), uberon + edam (plain) and fma + sio (`@en`) alike. Prefer `STR()` in any example query that spans graphs or whose form you have not established by ASK; use the bare typed/plain form only where you have (it is faster and index-friendly).
+- **The form can vary BY GRAPH inside ONE endpoint, and even by predicate inside one graph.** Never generalize from one probe to "this database stores X". Real case: `<ontology/fma>` stores `rdfs:label` as `@en` (104,919 of 104,936) while its *sibling* predicates `fma:preferred_name` / `fma:definition` on the very same subject are `xsd:string`. Probe per graph, and per predicate you will match.
+
+The nastiest variant is **inconsistent typing within one predicate** (some values `xsd:string`, some plain, or mixed numeric types): the GROUP BY shows two or more rows for the same predicate. Then no single exact-match form catches everything — document it and use `STR()`-based comparison (or a `VALUES` block listing every form) in the example query. Real case: Reactome stores `bp:db` / `bp:id` / `bp:name` / `bp:eCNumber` / `bp:controlType` as `xsd:string`, so every `VALUES`/`FILTER =`/object literal needs `^^xsd:string` — its single most common silent-failure mode, now the file's lead `critical_warning`. `VALUES` is the highest-miss spot because the typing requirement isn't visually cued there the way it is in a triple object.
 
 #### 2c. DESCRIBE 3–5 representative entities
 
@@ -204,7 +223,7 @@ SELECT ?iri ?g ?label WHERE {
 
 Three verified traps, all of which produce a confidently wrong answer rather than an empty one:
 
-- **Never `FILTER(LANG(?label) = "en")`.** The authoritative labels in `ontology/go`, `ontology/hp`, and `ontology/so` carry **no language tag at all**; only the copies re-imported by other ontologies are tagged `en`. Filtering on `"en"` silently drops the owning ontology's label and leaves you quoting a second-hand one. Always `IN ("", "en")` — that also excludes the Japanese labels (e.g. PubCaseFinder's 発作 for `HP_0001250`).
+- **Never `FILTER(LANG(?label) = "en")` — and never `= ""` either.** The authoritative labels in `ontology/go`, `ontology/hp`, and `ontology/so` carry **no language tag at all**; only the copies re-imported by other ontologies are tagged `en`. Filtering on `"en"` silently drops the owning ontology's label and leaves you quoting a second-hand one. But the rule **inverts** for the non-OBO graphs: in `ontology/fma`, `ontology/sio` and `ontology/meo` the ontology's OWN label IS `@en` (verified 2026-07-16: 104,919 of FMA's 104,936 labels are `@en`; only 17 are `xsd:string`), so `= ""` drops ~99.98% of them. Always `IN ("", "en")` — the only form correct on both halves of the endpoint. It also excludes the Japanese labels (e.g. PubCaseFinder's 発作 for `HP_0001250`).
 - **The same IRI gets conflicting labels from different graphs — take the owner's, not the first row.** Map the IRI prefix to its home graph (`SO_`→`ontology/so`, `HP_`→`ontology/hp`, `GO_`→`ontology/go`, `UBERON_`→`ontology/uberon`, `CL_`→`ontology/cl`, `ECO_`→`ontology/eco`, `EFO_`→`ontology/efo`). Real case: `RO_0002211` is "regulates" in `go`/`cl`/`clo`/`po`/`uberon` but **"has_component" in `ontology/xco`** — flatly wrong. Row order is arbitrary without an `ORDER BY`, so "the first row" is not a deterministic pick, let alone a correct one: bind the owning graph, or read all rows and take the majority.
 - **Shared-prefix predicates (`RO_`, `BFO_`) have no home graph** — there is no `ontology/ro`. They resolve only because OBO import closures embed them, so every hit is second-hand. Prefer the `ontology/go` copy, expect harmless variants (`part of` / `part_of`; `regulates` / `regulates (processual)`), and treat a lone dissenting label as noise.
 
@@ -401,7 +420,9 @@ If this fails, fix the YAML before calling the work done.
    } GROUP BY ?objType ORDER BY DESC(?n)
    ```
 
-5. **Probe the value type of *every* literal-valued predicate in the shape — not only the ones a query will filter on.** Phase 2's datatype probe (the `DATATYPE()` table) is scoped to literals you plan to match exactly; this is the blanket pass that catches a wrong `xsd:…` annotation on an incidental field. For each predicate whose shape value is a literal datatype, GROUP BY its actual datatype and confirm the shape's annotation matches the stored form. A mismatch (e.g. shape says `xsd:integer`, data stores plain or `xsd:string`), or a predicate that stores **mixed** datatypes, must be corrected in the shape and — if it affects exact matching — surfaced in `critical_warnings`.
+5. **Probe the value type of *every* literal-valued predicate in the shape — not only the ones a query will filter on.** Phase 2's literal probe is scoped to literals you plan to match exactly; this is the blanket pass that catches a wrong `xsd:…` annotation on an incidental field. For each predicate whose shape value is a literal datatype, GROUP BY its actual datatype and confirm the shape's annotation matches the stored form. A mismatch (e.g. shape says `xsd:integer`, data stores plain or `xsd:string`), or a predicate that stores **mixed** datatypes, must be corrected in the shape and — if it affects exact matching — surfaced in `critical_warnings`.
+
+   **Remember what this GROUP BY cannot see** (Phase 2b): it does NOT distinguish a plain literal from an `xsd:string`-typed one — both report `xsd:string` — so it can neither confirm nor refute a `xsd:string` annotation in the shape. It catches genuine type errors (`xsd:integer` vs string) and language tags only. For any literal the shape's downstream queries will match exactly, settle the form with the per-form ASK from Phase 2b and annotate the shape from THAT. A shape saying `xsd:string` is a claim about the match form; it must be earned by an ASK, not inferred from `DATATYPE()`.
 
    ```sparql
    SELECT (DATATYPE(?o) AS ?dt) (COUNT(*) AS ?n) WHERE {
