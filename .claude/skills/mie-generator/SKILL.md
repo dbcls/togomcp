@@ -149,7 +149,13 @@ SELECT ?dt ?lang (COUNT(*) AS ?n) WHERE {
 } GROUP BY ?dt ?lang ORDER BY DESC(?n)
 ```
 
-> **A NON-`xsd:` DATATYPE IS A REAL DATATYPE — NOT A STRING.** The survey above *can* see this one, and the failure mode is glossing an unfamiliar datatype IRI as "text". The common culprit is **`rr:Literal`** (`<http://www.w3.org/ns/r2rml#Literal>`), stamped on values by an R2RML relational-to-RDF mapping. It matches neither the plain nor the `^^xsd:string` form. Verified 2026-07-16 in `bacdive`: all 18,215 `schema:hasGramStain` values are `^^rr:Literal`, so `hasGramStain "positive"` returns **0 rows** silently, while `"positive"^^rr:Literal` and `FILTER(STR(?v)="positive")` both match (6,325 strains). Treat ANY datatype you don't recognise as its own term form and ASK for it explicitly.
+> **THERE IS NO CLOSED LIST OF STRING-LIKE FORMS. ASK FOR WHATEVER DATATYPE THE SURVEY ACTUALLY REPORTS.** Do not memorise "plain / `xsd:string` / `@en`" as the options — a value that *reads* as text can carry any datatype, and only that exact datatype matches. Two verified culprits, and the list is open:
+> - **`xsd:anyURI`** — an `xsd:` type, so a "watch out for non-`xsd:` datatypes" rule misses it. `<ontology/go>`'s `obo:IAO_0000233` is 20,249 values, ALL `^^xsd:anyURI`: `"…/issues/29194"^^xsd:anyURI` matches, while **both** the plain form and `^^xsd:string` return 0 rows.
+> - **`rr:Literal`** (`<http://www.w3.org/ns/r2rml#Literal>`) — stamped by an R2RML relational-to-RDF mapping. `bacdive`'s 18,215 `schema:hasGramStain` values are all `^^rr:Literal`, so `hasGramStain "positive"` returns 0 rows silently.
+>
+> Expect others (`xsd:token`, `xsd:normalizedString`, `xsd:NCName`, `xsd:language`, custom datatypes) and treat each as its own term form. `FILTER(STR(?x) = …)` matches every one of them — verified for `xsd:anyURI` and `rr:Literal` as well as plain/typed/`@en`.
+
+> **AN EMPTY `DATATYPE()` MAY MEAN "NOT A LITERAL", NOT "odd string type".** `DATATYPE()` is unbound on an IRI, so an empty column can be a non-literal object rather than a lang-tagged one. Check `isLiteral()` / `isIRI()` before concluding anything. Verified 2026-07-16: `<ontology/hp>`'s `obo:IAO_0000233` reports an empty datatype because all 1,461 objects are **IRIs** — while the same predicate in `<ontology/go>` is 20,249 `xsd:anyURI` **literals**, in `<ontology/cl>` `xsd:string` literals, and in `mondo`/`uberon` a *mix* of `xsd:anyURI` literals and a handful of IRIs. One predicate, IRI-or-literal and three datatypes, decided by the graph. `ontology.yaml` shipped this annotated `xsd:anyURI ?` with the comment "(a LITERAL, not IRI)" — exactly backwards for the graph its own counts came from.
 
 But when the survey says "string-ish" (`xsd:string` with no lang), you have learned nothing about the match form. **Settle it by trying each candidate form against a known term** — one ASK per form, cheap and decisive:
 
@@ -157,9 +163,11 @@ But when the survey says "string-ish" (`xsd:string` with no lang), you have lear
 ASK { GRAPH <…> { <known-subject> <predicate> "known value" } }                    # plain
 ASK { GRAPH <…> { <known-subject> <predicate> "known value"^^xsd:string } }        # typed
 ASK { GRAPH <…> { <known-subject> <predicate> "known value"@en } }                 # lang-tagged
-ASK { GRAPH <…> { <known-subject> <predicate> "known value"^^<dt-from-survey> } }  # any non-xsd
-                                                                                   # datatype the
-                                                                                   # survey showed
+ASK { GRAPH <…> { <known-subject> <predicate> "known value"^^<dt-from-survey> } }  # EVERY datatype
+                                                                                   # the survey
+                                                                                   # reported — incl.
+                                                                                   # xsd: ones like
+                                                                                   # xsd:anyURI
 ```
 
 Map the result to the exact-match rule, and record it in `critical_warnings` whenever a query would break by getting it wrong:
@@ -169,8 +177,9 @@ Map the result to the exact-match rule, and record it in `critical_warnings` whe
 | only the typed ASK is true | `"value"^^xsd:string` — a plain `"value"` joins to nothing |
 | only the plain ASK is true | `"value"` — adding `^^xsd:string` joins to nothing |
 | only the `@en` ASK is true | `"value"@en` — both bare forms join to nothing |
-| the survey showed a non-`xsd:` datatype (e.g. `rr:Literal`) | `"value"^^<that-exact-datatype>` — plain AND `^^xsd:string` both join to nothing |
-| `xsd:integer` / `xsd:decimal` / `xsd:double` (visible to `DATATYPE()`) | the matching numeric type — `"2"^^xsd:integer` ≠ `"2"^^xsd:decimal` ≠ `2.0` |
+| the survey reported ANY other datatype (`xsd:anyURI`, `rr:Literal`, `xsd:token`, …) | `"value"^^<that-exact-datatype>` — plain AND `^^xsd:string` both join to nothing |
+| `xsd:integer` / `xsd:decimal` / `xsd:double` | the matching numeric type — `"2"^^xsd:integer` ≠ `"2"^^xsd:decimal` ≠ `2.0`. (Numerics DO coerce in Virtuoso where strings do not: on an `xsd:boolean`, both `= 1` and `= true` match.) |
+| no ASK is true, and `isIRI()` is true | it is **not a literal** — do not annotate it as one |
 
 Two rules that follow, both verified:
 
