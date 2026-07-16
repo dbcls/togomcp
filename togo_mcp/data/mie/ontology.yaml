@@ -131,7 +131,7 @@ schema_info:
   kw_search_tools:
     - OLS4:searchClasses
   version:
-    mie_version: "2.1"
+    mie_version: "2.2"
     mie_created: "2026-07-16"
     mie_updated: "2026-07-16"
     data_version: "Per-graph; see graphs list. Snapshot verified 2026-07-16."
@@ -244,6 +244,16 @@ critical_warnings: |
     for RO_0002211 in the conflicting-labels warning above).
     NOTE this contradicts advice shipped in v1.0-v2.0 of this file ("prefer the ontology/go
     copy"), which silently returned 0 rows for any RO_/BFO_ term GO does not itself use.
+  - THE IAO_* ANNOTATION PREDICATES ARE POLYMORPHIC BY GRAPH — CHECK isIRI() BEFORE ASSUMING.
+    IAO_0000233 ("term tracker item") is an IRI in one graph and a literal in another, with a
+    different literal datatype again in a third. VERIFIED 2026-07-16: hp = 1,461 ALL IRI;
+    go = 20,249 ALL xsd:anyURI literals; cl = 757 (xsd:string literals + 87 IRIs); mondo and
+    uberon = xsd:anyURI literals with a handful of IRIs mixed in. So `?t IAO_0000233 ?o .
+    ?o rdfs:label ?l` joins to nothing in go (the object is a literal), and
+    `FILTER(STR(?o) = "...")` is the only form that works across all five. Note ^^xsd:string
+    matches NOTHING in go — the datatype there is xsd:anyURI, which is string-like but is NOT
+    xsd:string. NOTE a DATATYPE() survey shows an EMPTY datatype for hp, which means "not a
+    literal", not "untyped string".
   - IAO_0100001 ("term replaced by") IS POLYMORPHIC — IN THREE FORMS, not two.
     (a) an IRI node; (b) an xsd:string CURIE literal ("GO:0039502"); (c) an xsd:string literal
     holding a FULL IRI ("http://purl.obolibrary.org/obo/MONDO_0004989"). VERIFIED 2026-07-16:
@@ -319,7 +329,18 @@ shape_expressions: |
                                                        #   Present in efo; ABSENT in fma/sio/edam.
     obo:IAO_0100001 (IRI OR xsd:string) ? ;            # "term replaced by" — POLYMORPHIC, see warnings
     obo:IAO_0000231 IRI ? ;                            # 3,961 — "has obsolescence reason"
-    obo:IAO_0000233 xsd:anyURI ? ;                     # 1,461 — "term tracker item" (a LITERAL, not IRI)
+    obo:IAO_0000233 (IRI OR xsd:anyURI OR xsd:string) ? ;
+                                                       # "term tracker item" — POLYMORPHIC BY GRAPH.
+                                                       # VERIFIED 2026-07-16:
+                                                       #   hp:     1,461 — ALL IRI, no literals
+                                                       #   go:    20,249 — ALL xsd:anyURI literals
+                                                       #   mondo: 21,161 — xsd:anyURI + 2 IRI
+                                                       #   uberon:   550 — xsd:anyURI + 5 IRI
+                                                       #   cl:       757 — xsd:string + 87 IRI
+                                                       # Through v2.1 this said "xsd:anyURI (a
+                                                       # LITERAL, not IRI)" — backwards for hp, whose
+                                                       # count it quoted. ^^xsd:string matches NOTHING
+                                                       # in go; use STR() if you span graphs.
     owl:deprecated xsd:boolean ? ;                     # 4,019 in hp — only ever true^^xsd:boolean
     rdfs:comment xsd:string ? ;                        # 4,685
   }
