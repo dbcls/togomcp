@@ -149,12 +149,17 @@ SELECT ?dt ?lang (COUNT(*) AS ?n) WHERE {
 } GROUP BY ?dt ?lang ORDER BY DESC(?n)
 ```
 
+> **A NON-`xsd:` DATATYPE IS A REAL DATATYPE — NOT A STRING.** The survey above *can* see this one, and the failure mode is glossing an unfamiliar datatype IRI as "text". The common culprit is **`rr:Literal`** (`<http://www.w3.org/ns/r2rml#Literal>`), stamped on values by an R2RML relational-to-RDF mapping. It matches neither the plain nor the `^^xsd:string` form. Verified 2026-07-16 in `bacdive`: all 18,215 `schema:hasGramStain` values are `^^rr:Literal`, so `hasGramStain "positive"` returns **0 rows** silently, while `"positive"^^rr:Literal` and `FILTER(STR(?v)="positive")` both match (6,325 strains). Treat ANY datatype you don't recognise as its own term form and ASK for it explicitly.
+
 But when the survey says "string-ish" (`xsd:string` with no lang), you have learned nothing about the match form. **Settle it by trying each candidate form against a known term** — one ASK per form, cheap and decisive:
 
 ```sparql
 ASK { GRAPH <…> { <known-subject> <predicate> "known value" } }                    # plain
 ASK { GRAPH <…> { <known-subject> <predicate> "known value"^^xsd:string } }        # typed
 ASK { GRAPH <…> { <known-subject> <predicate> "known value"@en } }                 # lang-tagged
+ASK { GRAPH <…> { <known-subject> <predicate> "known value"^^<dt-from-survey> } }  # any non-xsd
+                                                                                   # datatype the
+                                                                                   # survey showed
 ```
 
 Map the result to the exact-match rule, and record it in `critical_warnings` whenever a query would break by getting it wrong:
@@ -164,12 +169,13 @@ Map the result to the exact-match rule, and record it in `critical_warnings` whe
 | only the typed ASK is true | `"value"^^xsd:string` — a plain `"value"` joins to nothing |
 | only the plain ASK is true | `"value"` — adding `^^xsd:string` joins to nothing |
 | only the `@en` ASK is true | `"value"@en` — both bare forms join to nothing |
+| the survey showed a non-`xsd:` datatype (e.g. `rr:Literal`) | `"value"^^<that-exact-datatype>` — plain AND `^^xsd:string` both join to nothing |
 | `xsd:integer` / `xsd:decimal` / `xsd:double` (visible to `DATATYPE()`) | the matching numeric type — `"2"^^xsd:integer` ≠ `"2"^^xsd:decimal` ≠ `2.0` |
 
 Two rules that follow, both verified:
 
-- **`FILTER(?x = "value")` is NOT a workaround.** It is term-based on Virtuoso and fails identically to the triple pattern (`FILTER(?l = "Seizure")` on hp → false; `FILTER(?l = "Seizure"^^xsd:string)` → true). Only **`FILTER(STR(?x) = "value")`** unifies all three forms — verified matching in go (typed), uberon + edam (plain) and fma + sio (`@en`) alike. Prefer `STR()` in any example query that spans graphs or whose form you have not established by ASK; use the bare typed/plain form only where you have (it is faster and index-friendly).
-- **The form can vary BY GRAPH inside ONE endpoint, and even by predicate inside one graph.** Never generalize from one probe to "this database stores X". Real case: `<ontology/fma>` stores `rdfs:label` as `@en` (104,919 of 104,936) while its *sibling* predicates `fma:preferred_name` / `fma:definition` on the very same subject are `xsd:string`. Probe per graph, and per predicate you will match.
+- **`FILTER(?x = "value")` is NOT a workaround.** It is term-based on Virtuoso and fails identically to the triple pattern (`FILTER(?l = "Seizure")` on hp → false; `FILTER(?l = "Seizure"^^xsd:string)` → true). Only **`FILTER(STR(?x) = "value")`** unifies every form — verified matching in go (typed), uberon + edam (plain), fma + sio (`@en`) and bacdive (`rr:Literal`) alike. Prefer `STR()` in any example query that spans graphs or whose form you have not established by ASK; use the bare typed/plain form only where you have (it is faster and index-friendly).
+- **The form can vary BY GRAPH inside ONE endpoint, by predicate inside one graph, and even across predicates on the SAME SUBJECT.** Never generalize from one probe to "this database stores X". Two verified cases: `<ontology/fma>` stores `rdfs:label` as `@en` (104,919 of 104,936) while its sibling `fma:preferred_name` / `fma:definition` on the very same subject are `xsd:string`. And a `bacdive` GramStain node carries `rdfs:label` as `xsd:string` but `hasGramStain` + `hasPhenotypeInformation` as `rr:Literal` — while `hasOxygenTolerance`, the same modelling family, is plain `xsd:string`. Probe per graph, and per predicate you will match.
 
 The nastiest variant is **inconsistent typing within one predicate** (some values `xsd:string`, some plain, or mixed numeric types): the GROUP BY shows two or more rows for the same predicate. Then no single exact-match form catches everything — document it and use `STR()`-based comparison (or a `VALUES` block listing every form) in the example query. Real case: Reactome stores `bp:db` / `bp:id` / `bp:name` / `bp:eCNumber` / `bp:controlType` as `xsd:string`, so every `VALUES`/`FILTER =`/object literal needs `^^xsd:string` — its single most common silent-failure mode, now the file's lead `critical_warning`. `VALUES` is the highest-miss spot because the typing requirement isn't visually cued there the way it is in a triple object.
 
