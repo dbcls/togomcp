@@ -37,9 +37,9 @@ schema_info:
     - search_chembl_molecule
     - search_chembl_target
   version:
-    mie_version: "3.3"
+    mie_version: "3.4"
     mie_created: "2025-02-10"
-    mie_updated: "2026-07-14"
+    mie_updated: "2026-07-16"
     data_version: ChEMBL 34.0
     update_frequency: Quarterly
   license:
@@ -98,11 +98,22 @@ critical_warnings: |
     (no exact FILTER — descriptions are free text): ?a a cco:Assay ; dcterms:description ?d . ?d
     bif:contains "acetylcholinesterase" . Tissues use dcterms:title for the same role; CellLines use
     dcterms:description.
-  - XSD:STRING TYPING (exact match): rdfs:label, skos:prefLabel, skos:altLabel, dcterms:description
-    and the identifier sio:SIO_000300 values are stored as typed xsd:string. A plain-literal exact
-    match — FILTER(?label = "Liver") or VALUES ?label { "Liver" } — joins to NOTHING. Use STR()-based
-    comparison (FILTER(STR(?label) = "Liver")) or append ^^xsd:string. Numeric sio:SIO_000300 values
-    (full_mwt, alogp, psa, ...) are xsd:double, not string — cast accordingly.
+  - STRING LITERALS ARE PLAIN — DO NOT ADD ^^xsd:string (exact-match trap). rdfs:label,
+    skos:prefLabel, skos:altLabel, dcterms:description and the string-valued sio:SIO_000300
+    (canonical_smiles, ...) are stored as PLAIN literals. Appending ^^xsd:string matches NOTHING.
+    VERIFIED 2026-07-16, each by a two-form ASK:
+      rdfs:label     "Aminopeptidase N" -> matches; "Aminopeptidase N"^^xsd:string -> 0 rows
+      skos:prefLabel "CETIRIZINE"       -> matches; "CETIRIZINE"^^xsd:string       -> 0 rows
+      sio:SIO_000300 "O"                -> matches; "O"^^xsd:string                -> 0 rows
+    DO NOT be misled by a DATATYPE() probe: it reports xsd:string for these (RDF 1.1 treats a
+    plain literal and an xsd:string-typed one as the same VALUE), but Virtuoso matches TERMS, so
+    the two do not unify — in a triple pattern OR in FILTER(?x = ...). An earlier version of this
+    file inverted exactly this and told callers to append ^^xsd:string, which returns 0 rows.
+    Use the PLAIN form, or FILTER(STR(?label) = "Liver") if you want to be form-agnostic.
+    Numeric sio:SIO_000300 values (full_mwt, alogp, psa, ...) are genuinely xsd:double — that IS
+    visible to DATATYPE() — so cast accordingly; isNumeric(?v) separates them from the strings.
+    NOTE this is why the Reactome bridge below uses STRDT: Reactome DOES store typed xsd:string,
+    so crossing ChEMBL (plain) -> Reactome (typed) requires an explicit re-type.
 
 shape_expressions: |
   PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
