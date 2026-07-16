@@ -36,7 +36,7 @@ schema_info:
   kw_search_tools:
     - sparql
   version:
-    mie_version: "2.2"
+    mie_version: "2.3"
     mie_created: "2026-04-21"
     mie_updated: "2026-07-16"
     data_version: "BacDive 2024"
@@ -50,15 +50,20 @@ schema_info:
     max_query_timeout: "60 seconds"
 
 critical_warnings: |
-  - schema:hasGramStain IS ^^rr:Literal, NOT A STRING — AND ITS SIBLINGS ARE NOT.
-    VERIFIED 2026-07-16: all 18,215 hasGramStain values carry datatype
-    <http://www.w3.org/ns/r2rml#Literal> (an R2RML mapping artifact), so the obvious
-    `schema:hasGramStain "positive"` matches ZERO rows, silently. Its sibling
-    schema:hasOxygenTolerance is plain xsd:string (29,051) — so the form varies BY PREDICATE
-    inside this one graph and you cannot generalize from one probe.
-    SAFE: FILTER(STR(?v) = "positive")  -> 6,325 strains (works for every form here)
-    ALSO WORKS: schema:hasGramStain "positive"^^<http://www.w3.org/ns/r2rml#Literal>
-    WRONG:      schema:hasGramStain "positive"                 -> 0 rows, no error
+  - GRAMSTAIN VALUES ARE ^^rr:Literal, NOT STRINGS (silent 0-row trap).
+    VERIFIED 2026-07-16: all 36,430 rr:Literal triples in this graph sit on GramStain nodes —
+    schema:hasGramStain (18,215) and schema:hasPhenotypeInformation (18,215), both typed
+    <http://www.w3.org/ns/r2rml#Literal> (an R2RML relational-mapping artifact). So:
+      WRONG:      schema:hasGramStain "positive"                 -> 0 rows, no error
+      SAFE:       FILTER(STR(?v) = "positive")  -> 6,325 strains (correct for EVERY form here)
+      ALSO WORKS: schema:hasGramStain "positive"^^<http://www.w3.org/ns/r2rml#Literal>
+    THE DATATYPE VARIES BY PREDICATE AND BY CLASS — never generalize from one probe:
+      - on the SAME GramStain subject, rdfs:label is xsd:string while hasGramStain and
+        hasPhenotypeInformation are rr:Literal;
+      - schema:hasPhenotypeInformation is rr:Literal on GramStain, but xsd:boolean (15,913)
+        MIXED WITH xsd:string (1,148) on CellMotility — one predicate, three datatypes;
+      - schema:hasOxygenTolerance, the same modelling family, is plain xsd:string (29,051).
+    A DATATYPE() survey scoped to one class tells you nothing about the others.
   - TAXID DUAL-TYPE TRAP (xsd:int, NOT xsd:integer): schema:hasTaxID holds BOTH numeric values
     typed as xsd:int (e.g. 435^^xsd:int) AND plain strings (e.g. "species", "strain"^^xsd:string).
     Two safe filter patterns:
@@ -78,6 +83,7 @@ critical_warnings: |
 shape_expressions: |
   PREFIX schema: <https://purl.dsmz.de/schema/>
   PREFIX dct: <http://purl.org/dc/terms/>
+  PREFIX rr: <http://www.w3.org/ns/r2rml#>   # only for the rr:Literal datatype below
 
   # ── Core entity ────────────────────────────────────────────────────────────
   <StrainShape> {                   # 97,334 instances; IRI: bacdive/strain/{id}
@@ -110,8 +116,13 @@ shape_expressions: |
   <GramStainShape> {                # 18,215 instances; IRI: bacdive/gram_strain/{id}
     a [ schema:GramStain schema:MicrobialPhenotype schema:Phenotype schema:CellMorphology ] ;
     rdfs:label xsd:string ;         # "Gram positive" / "Gram negative" / "Gram variable"
-    schema:hasGramStain xsd:string ; # controlled: "positive", "negative", "variable"
-    schema:hasPhenotypeInformation xsd:string ? ;
+                                    # NOTE: xsd:string here, but the two predicates BELOW on
+                                    # this same subject are rr:Literal. See critical_warnings.
+    schema:hasGramStain rr:Literal ; # ^^<http://www.w3.org/ns/r2rml#Literal>, NOT a string.
+                                     # controlled: "positive", "negative", "variable".
+                                     # Match with FILTER(STR(?v) = "positive") — the plain
+                                     # literal form returns 0 rows silently.
+    schema:hasPhenotypeInformation rr:Literal ? ;  # also rr:Literal, not xsd:string
     schema:describesStrain IRI ;
     schema:hasReference IRI ?
   }
@@ -127,9 +138,17 @@ shape_expressions: |
 
   <CellMotilityShape> {             # 15,913 instances; IRI: bacdive/cell_motility/{id}
     a [ schema:CellMotility schema:MicrobialPhenotype schema:Phenotype ] ;
-    rdfs:label xsd:integer ;        # 1 = motile, 0 = non-motile (integer, not boolean)
-    schema:isMotile xsd:integer ;   # same: 1 or 0
-    schema:hasPhenotypeInformation xsd:integer ? ;
+    rdfs:label xsd:boolean ;        # true = motile, false = non-motile. VERIFIED 2026-07-16:
+                                    # xsd:boolean, NOT xsd:integer as claimed through v2.2.
+                                    # Both `= true` and `= 1` match (Virtuoso coerces numerics
+                                    # to boolean), so this is a wrong annotation, not a trap.
+    schema:isMotile xsd:boolean ;   # same: xsd:boolean (15,913)
+    schema:hasPhenotypeInformation (xsd:boolean OR xsd:string) ? ;
+                                    # MIXED WITHIN THIS CLASS: 15,913 xsd:boolean + 1,148
+                                    # xsd:string. And on <GramStainShape> the SAME predicate is
+                                    # rr:Literal — it is polymorphic per class. Never assume one
+                                    # datatype for it; see critical_warnings.
+    schema:hasFlagellumArrangement xsd:string ? ;  # 1,148 — e.g. flagellum placement
     schema:describesStrain IRI ;
     schema:hasReference IRI ?
   }
