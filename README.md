@@ -170,7 +170,7 @@ TogoMCP exposes tools for querying the following (via SPARQL or REST APIs):
 | Literature | PubMed, PubTator |
 | Microbiology | BacDive, MediaDive, AMR Portal, NBRC |
 | Glycomics | GlyCosmos |
-| Ontologies / Vocabulary | MeSH, GO |
+| Ontologies / Vocabulary | MeSH, GO, Ontology Graphs (HP, UBERON, CL, SO, ECO, EFO, PRO, FMA, …) |
 | Taxonomy | NCBI Taxonomy |
 | Materials Science | SuperCon |
 

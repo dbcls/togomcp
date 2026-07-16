@@ -31,9 +31,9 @@ schema_info:
   kw_search_tools:
     - OLS4:searchClasses
   version:
-    mie_version: "2.1"
+    mie_version: "2.2"
     mie_created: "2025-04-21"
-    mie_updated: "2026-04-29"
+    mie_updated: "2026-07-16"
     data_version: Current release
     update_frequency: Quarterly
   license:
@@ -53,9 +53,16 @@ critical_warnings: |
   - ACTIVE DISEASE COUNT: Total owl:Class = 2,777; active (non-deprecated) = 2,769. Most queries
     should use the active set. Pre-filter with STRSTARTS(STR(?disease), "http://nanbyodata.jp/ontology/NANDO_")
     to exclude blank nodes and OWL scaffolding classes.
-  - skos:closeMatch COVERS MULTIPLE TARGETS: The 2,341 closeMatch triples include both MONDO
-    (2,150) and a small number of other targets. Always add
-    FILTER(STRSTARTS(STR(?match), "http://purl.obolibrary.org/obo/MONDO_")) when targeting MONDO.
+  - skos:closeMatch IS MANY-TO-MANY — COUNT(*) IS NOT A DISEASE COUNT: 2,341 closeMatch triples
+    span 2,150 distinct diseases and 1,572 distinct MONDO terms (verified 2026-07-16). 157 diseases
+    carry 2 MONDO mappings and 17 carry 3, so COUNT(*) over-reports diseases by 191 (+8.9%);
+    conversely 617 MONDO terms are each claimed by more than one NANDO disease, so the reverse
+    direction collapses. Use COUNT(DISTINCT ?disease) or COUNT(DISTINCT ?mondo) deliberately —
+    whichever side you actually mean.
+  - ALL closeMatch TARGETS ARE MONDO — 2,341 of 2,341, zero non-MONDO (verified 2026-07-16). The
+    FILTER(STRSTARTS(STR(?match), "http://purl.obolibrary.org/obo/MONDO_")) used in the examples
+    below is DEFENSIVE, not corrective: it is currently a no-op. Keep it so queries stay correct
+    if NANDO adds other targets, but do not expect it to remove any rows today.
 
 shape_expressions: |
   PREFIX rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -234,7 +241,10 @@ sparql_query_examples:
       LIMIT 50
 
   - title: Find Diseases with MONDO Cross-References
-    description: Uses STRSTARTS to filter skos:closeMatch to MONDO-only targets; avoids returning non-MONDO closeMatch values.
+    description: >
+      All closeMatch targets are MONDO today, so the STRSTARTS filter is defensive (a no-op) rather
+      than corrective — it guards against NANDO adding other targets later. Note ?disease repeats
+      for the 174 diseases that carry 2-3 MONDO mappings; add DISTINCT if you want one row each.
     question: Which NANDO diseases have MONDO mappings for international harmonization?
     complexity: intermediate
     sparql: |
@@ -419,11 +429,12 @@ cross_references:
     description: |
       Semantic mapping to MONDO Disease Ontology for international harmonization.
       77% coverage enables Japanese researchers to access international disease resources.
-      2,341 total triples; 2,150 are MONDO targets; remaining are other ontologies.
-      Always add FILTER(STRSTARTS(STR(?match), "http://purl.obolibrary.org/obo/MONDO_")) for MONDO-only.
+      Many-to-many: 2,341 triples span 2,150 distinct diseases (77% of 2,777) and 1,572 distinct
+      MONDO terms — see critical_warnings before counting either side. All 2,341 targets are MONDO
+      (verified 2026-07-16); the STRSTARTS filter below is defensive, not corrective.
     databases:
       disease_ontologies:
-        - "MONDO: 2,150 mappings (77% of 2,777 diseases)"
+        - "MONDO: 2,150 diseases mapped (77% of 2,777) via 2,341 triples to 1,572 distinct MONDO terms"
     sparql: |
       PREFIX owl:  <http://www.w3.org/2002/07/owl#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>

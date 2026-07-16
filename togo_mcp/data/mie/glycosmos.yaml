@@ -53,6 +53,12 @@ schema_info:
     - tissue expression
     - human protein atlas
     - hpa
+    - lectin name
+    - lectin grounding
+    - carbogrove
+    - lfdb
+    - unilectin
+    - agglutinin
   categories:
     - glycan
     - disease
@@ -105,6 +111,8 @@ schema_info:
     - http://rdf.glytoucan.org/partner/bcsdb
     - http://rdf.glycosmos.org/glycans/glycobase
     - http://rdf.glycosmos.org/sugarbind
+    # Lectin-name grounding HUB: 5,100 curated GL lectins (rdfs:label + skos:altLabel) with
+    # rdfs:seeAlso → UniProt(100%)/UniLectin3D/CarboGrove/LfDB. (LectinHubShape)
     - http://rdf.glycosmos.org/lectin
     # ── CATALOG (present on the endpoint; not shaped here — probe before use) ───────
     # Glycan structure/derivation graphs:
@@ -143,8 +151,8 @@ schema_info:
     - http://purl.obolibrary.org/obo/eco.owl           # ~75k: Evidence & Conclusion Ontology
     - http://semanticscience.org/ontology/sio.owl      # ~16k: SIO upper ontology
     # Lectin / binding / array graphs:
-    - http://rdf.glycosmos.org/carbogrove              # ~1.3M: CarboGrove glycan-array binding
-    - http://rdf.glycoinfo.org/lfdb                    # ~266k: Lectin Frontier DB (LfDB) affinities
+    - http://rdf.glycosmos.org/carbogrove              # ~1.3M: CarboGrove glycan-array binding; lectin names on cg:LectinName/cg:CommonName (CarboGroveLectinShape)
+    - http://rdf.glycoinfo.org/lfdb                    # ~266k: Lectin Frontier DB (LfDB) affinities; lectin names on lfdb:has_lectin_name (LfdbLectinShape)
     - http://rdf.glycoinfo.org/gpdb2gtc                # GlycoProtDB↔GlyTouCan mapping
     # Species-/domain-specific glyco graphs (glycoinfo.org partners):
     - http://rdf.glycoinfo.org/gdgdb                   # GDGDB (glyco-disease genes)
@@ -161,9 +169,9 @@ schema_info:
   kw_search_tools:
     - sparql
   version:
-    mie_version: "4.1"
+    mie_version: "4.2"
     mie_created: "2026-07-01"
-    data_version: "2025.04 snapshot (glycan/protein counts verified 2026-06-27; disease/GO layer + gene-protein bridge verified 2026-07-01; CAZy + HPA-expression layers + full graph catalog added and verified 2026-07-01)"
+    data_version: "2025.04 snapshot (glycan/protein counts verified 2026-06-27; disease/GO layer + gene-protein bridge verified 2026-07-01; CAZy + HPA-expression layers + full graph catalog added and verified 2026-07-01; lectin-name grounding layer — GL hub + LfDB + CarboGrove — added and verified 2026-07-16)"
     update_frequency: "Quarterly"
   access:
     backend: "Virtuoso (bif:contains IS enabled — verified 2026-06-27)"
@@ -272,6 +280,9 @@ shape_expressions: |
   PREFIX gn: <http://glyconavi.org/owl#>
   PREFIX owl: <http://www.w3.org/2002/07/owl#>
   PREFIX glycodm: <http://glycodm/ontology#>   # note: non-dereferenceable host, but this IS the stored namespace
+  PREFIX lfdb: <http://purl.jp/bio/12/lfdb/2014/7/owl#>          # Lectin Frontier DB (LfDB) 2014 ontology
+  PREFIX cg: <http://rdf.glycoinfo.org/carbogrove/Ontology#>     # CarboGrove ontology (note: /Ontology# with capital O)
+  PREFIX sb: <http://rdf.glycoinfo.org/SugarBind/ontology#>      # SugarBind ontology — the sb:Lectin class (used by the GL hub AND CarboGrove)
 
   # 117,864 glycans. Entity IRI: <http://rdf.glycoinfo.org/glycan/G[0-9]{5}[A-Z]{2}>
   # type + has_primary_id live in <http://rdf.glytoucan.org/core>.
@@ -447,6 +458,60 @@ shape_expressions: |
     a [ <http://purl.jp/bio/12/glyco/glycan/saccharide> ] ;
     rdfs:label xsd:string ;                      # "saccharide <trivialName>"
     <http://purl.jp/bio/12/glyco/glycan/has_glycosequence> IRI *   # sequence node(s)
+  }
+
+  # ── LECTIN-NAME GROUNDING (three tiers; START at the hub) ─────────────────────
+  # 5,100 curated GlyCosmos lectins — the PRIMARY lectin-name index and the place to START a
+  # name→ID lookup. Entity IRI: <http://glycosmos.org/lectin/GL_[0-9]{6}>. In
+  # <http://rdf.glycosmos.org/lectin>. Typed sb:Lectin (SugarBind ontology class). Unlike LfDB /
+  # CarboGrove below, names are on STANDARD predicates (rdfs:label + skos:altLabel), and rdfs:seeAlso
+  # fans out to UniProt (100% of labeled lectins), UniLectin3D, CarboGrove, and LfDB — so ONE name
+  # lookup yields the UniProt AC plus every source-DB ID. This is the lectin→protein handoff.
+  <LectinHubShape> {
+    a [ sb:Lectin ] ;
+    rdfs:label xsd:string ? ;                    # full lectin name e.g. "Concanavalin-A"; 99.9% (5,095/5,100); xsd:string typed
+    skos:altLabel xsd:string * ;                 # abbreviations/synonyms e.g. "ABL","jacalin","ConA"; 126 lectins, 241 values; xsd:string
+    glycan:has_taxon IRI ? ;                      # <http://identifiers.org/taxonomy/[taxid]>; 99.9% (5,095)
+    rdfs:seeAlso IRI + ;                          # 100% (5,100); POLYMORPHIC handoff (5,856 links): UniProt
+                                                 #   <http://purl.uniprot.org/uniprot/[AC]> (5,095=100%), UniLectin3D
+                                                 #   <https://unilectin.unige.ch/rdf/…> (595), CarboGrove
+                                                 #   <http://rdf.glycoinfo.org/dbid/carbogrove/[AC]> (82), LfDB <http://acgg.asia/lfdb2/LfDB####> (81)
+    dcterms:references IRI * ;                    # PubMed evidence <http://identifiers.org/pubmed/[PMID]>; 326 links
+    <http://mcawdb.glycoinfo.org/term#has_mcawdb_resource> IRI *   # MCAW-DB glycan-alignment resource; 140
+  }
+
+  # SOURCE DB — Lectin Frontier DB (LfDB). 398 lectins. Entity IRI: <http://acgg.asia/lfdb2/LfDB[0-9]{4}>.
+  # In <http://rdf.glycoinfo.org/lfdb>. The lectin NAME is on the BESPOKE predicate lfdb:has_lectin_name
+  # (473 names over 398 lectins, incl. short names like "RSL") — there is NO rdfs:label here, so a naive
+  # rdfs:label lookup returns 0. bif:contains the name literal to ground. seeAlso goes to PDB/Pfam/INSDC,
+  # NOT UniProt (reach a protein via the GL hub, or via PDB/INSDC here).
+  <LfdbLectinShape> {
+    a [ glycan:Lectin ] ;
+    dcterms:identifier xsd:string ;              # LfDB ID e.g. "LfDB0001"; 100% (398); xsd:string (also encoded in the IRI)
+    lfdb:has_lectin_name xsd:string + ;          # NAME→ID target; 473 over 398 (multi-valued); xsd:string; e.g. "Annexin IV","RSL"
+    up:organism IRI ;                            # 100% (398) → a <…/LfDB####/#taxon> organism node (not an identifiers.org taxon IRI)
+    lfdb:has_number_of_CRDs xsd:int ;            # 100% (398); carbohydrate-recognition-domain count; xsd:int (NOT xsd:integer)
+    lfdb:in_pfam_family IRI ? ;                   # 297; Pfam family IRI
+    lfdb:has_monosaccharide_specificity IRI ? ;  # 231; → MonosaccharideDB IRI (an IRI, NOT a string)
+    glycan:has_AA_sequence xsd:string ? ;        # 96; amino-acid sequence; xsd:string
+    glycan:published_in IRI ? ;                  # 106; citation/journal node
+    dcterms:image IRI ? ;                        # 216; depiction image
+    rdfs:seeAlso IRI *                           # 913 over 398; POLYMORPHIC: PDB <http://identifiers.org/pdb/> (371),
+                                                 #   Pfam <http://identifiers.org/pfam/> (299), INSDC <http://identifiers.org/insdc/> (243) — NOT UniProt
+    # (also carries boilerplate dcterms:publisher/hasVersion/license, 398 each — metadata, omitted)
+  }
+
+  # SOURCE DB — CarboGrove (glycan-array binding). 200 lectin entities; 100 carry curated names.
+  # Entity IRI: <http://rdf.glycoinfo.org/dbid/carbogrove/[UniProtAC]> — UniProt-AC-keyed, so the IRI
+  # accession IS the UniProt link (no seeAlso hop needed). In <http://rdf.glycosmos.org/carbogrove>.
+  # Typed sb:Lectin (same SugarBind class as the hub). Names are on BESPOKE predicates cg:LectinName /
+  # cg:CommonName (NOT rdfs:label). The PubDictionaries `lectin-name_carbogrove` set mirrors these.
+  <CarboGroveLectinShape> {
+    a [ sb:Lectin ] ;
+    cg:LectinName xsd:string * ;                 # full name e.g. "Datura Stramonium Agglutinin"; 103 over 100 lectins (50%); xsd:string
+    cg:CommonName xsd:string * ;                 # abbreviation e.g. "DSA","ConA","RSL"; 103 over 100 lectins; xsd:string
+    cg:ResultID IRI * ;                          # 367; glycan-array binding-result nodes <…/carbogrove/result/[N]>
+    rdfs:seeAlso IRI ?                            # 100/200; → other carbogrove nodes (self-refs), not UniProt
   }
 
 sample_rdf_entries:
@@ -830,6 +895,49 @@ sparql_query_examples:
       }
       LIMIT 50
 
+  - title: Ground a lectin name to a UniProt AC + source-DB IDs via the GL hub
+    description: |
+      The PRIMARY lectin-name lookup. The curated GL lectins in <http://rdf.glycosmos.org/lectin>
+      carry the name on the STANDARD rdfs:label (and abbreviations on skos:altLabel), so bif:contains
+      resolves a free-text lectin name to a GL_###### hub entity; rdfs:seeAlso then hands off to the
+      UniProt AC (present for 100% of labeled lectins) plus the LfDB / CarboGrove / UniLectin3D source
+      IDs. One query grounds the name AND yields every cross-reference — no bespoke predicate needed.
+    question: What is the UniProt accession (and source-DB IDs) for concanavalin lectins?
+    complexity: intermediate
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sb: <http://rdf.glycoinfo.org/SugarBind/ontology#>
+
+      SELECT DISTINCT ?lectin ?label ?xref
+      FROM <http://rdf.glycosmos.org/lectin>
+      WHERE {
+        ?lectin a sb:Lectin ;
+                rdfs:label ?label .
+        ?label bif:contains "'Concanavalin'" .
+        OPTIONAL { ?lectin rdfs:seeAlso ?xref }
+      }
+      LIMIT 30
+
+  - title: Ground a lectin name (or synonym) directly in LfDB
+    description: |
+      LfDB carries the lectin name on the BESPOKE predicate lfdb:has_lectin_name (473 names over 398
+      lectins, incl. short names like "RSL") — there is NO rdfs:label path, so this is the only direct
+      grounding route into LfDB. bif:contains (Virtuoso, enabled) the name literal to resolve a free-text
+      lectin name/synonym to an LfDB ID <http://acgg.asia/lfdb2/LfDB####>. (For a UniProt handoff, prefer
+      the GL-hub query above; LfDB's own seeAlso targets are PDB/Pfam/INSDC, not UniProt.)
+    question: What is the LfDB lectin ID for annexin lectins?
+    complexity: basic
+    sparql: |
+      PREFIX lfdb: <http://purl.jp/bio/12/lfdb/2014/7/owl#>
+
+      SELECT DISTINCT ?lectin ?name
+      FROM <http://rdf.glycoinfo.org/lfdb>
+      WHERE {
+        ?lectin lfdb:has_lectin_name ?name .
+        ?name bif:contains "'Annexin'" .
+      }
+      LIMIT 20
+
 cross_database_queries:
   shared_endpoint: glycosmos
   co_located_databases: [glycosmos]
@@ -923,6 +1031,23 @@ cross_references:
       lipid:
         - "LipidMaps (lipidmaps.org/rdf/<LM_ID>) + PubChem Compound (rdf.glycoinfo.org/pubchem/compound/CID<n>)"
 
+  - pattern: lectin names — GL hub (standard predicates) + LfDB + CarboGrove (bespoke); name→UniProt handoff
+    description: |
+      Lectin name→ID grounding lives in three tiers. START at the HUB: the lectin graph's curated GL
+      lectins carry the name on STANDARD rdfs:label + skos:altLabel and rdfs:seeAlso out to UniProt (100%
+      of labeled lectins), UniLectin3D, CarboGrove, and LfDB — so a single name lookup grounds the name
+      AND returns the UniProt AC and every source-DB ID. The two source DBs put names on BESPOKE
+      predicates (no rdfs:label): LfDB lfdb:has_lectin_name (473 names / 398 lectins, incl. short names)
+      and CarboGrove cg:LectinName / cg:CommonName (100 of 200 lectins; the PubDictionaries
+      `lectin-name_carbogrove` set mirrors these). CarboGrove entity IRIs are UniProt-AC-keyed.
+    databases:
+      hub:
+        - "GL hub: <http://rdf.glycosmos.org/lectin> <http://glycosmos.org/lectin/GL_######> (sb:Lectin, 5,100); rdfs:label (5,095) + skos:altLabel (126)"
+        - "hub seeAlso: UniProt purl.uniprot.org/uniprot/<AC> (5,095=100%), UniLectin3D (595), CarboGrove dbid/carbogrove/<AC> (82), LfDB acgg.asia/lfdb2/LfDB#### (81)"
+      source:
+        - "LfDB: <http://rdf.glycoinfo.org/lfdb> lfdb:has_lectin_name (473/398); seeAlso → PDB/Pfam/INSDC"
+        - "CarboGrove: <http://rdf.glycosmos.org/carbogrove> cg:LectinName / cg:CommonName (103 each / 100 lectins); IRI keyed by UniProt AC"
+
 architectural_notes:
   query_strategy:
     - "MANDATORY FIRST STEP: get_MIE_file('glycosmos'); read critical_warnings (predicate-case trap, dual motif IRI, sio:SIO_000255 dual use, multi-species disease genes)"
@@ -937,18 +1062,16 @@ architectural_notes:
     - "CAZy family→protein: INDIRECT — family rdfs:seeAlso ?gb; ?gb owl:sameAs ?emblcds; ?prot rdfs:seeAlso ?emblcds (no direct link)"
     - "CAZy proteins have NO has_taxon — filter the genbank member node for organism, not the up:Protein"
     - "Tissue expression: HPA graph (glycodm:tissue/cellType/level); join glycogene→HPA by SYMBOL (glycodm:geneSymbol == glycogene rdfs:label)"
+    - "Lectin name→ID grounding — START at the hub: <http://rdf.glycosmos.org/lectin> GL lectins (<…/GL_######>, sb:Lectin, 5,100) carry rdfs:label + skos:altLabel (STANDARD) and rdfs:seeAlso → UniProt(100%)/UniLectin3D/CarboGrove/LfDB. bif:contains the label; one lookup yields the UniProt AC + every source-DB ID."
+    - "Direct into the bespoke source DBs (NO rdfs:label — naive rdfs:label search returns 0): LfDB lfdb:has_lectin_name (<http://rdf.glycoinfo.org/lfdb>, 473/398, incl. short names; seeAlso→PDB/Pfam/INSDC not UniProt); CarboGrove cg:LectinName/cg:CommonName (<http://rdf.glycosmos.org/carbogrove>, 100/200; IRI is UniProt-AC-keyed). lfdb:=…/lfdb/2014/7/owl#, cg:=…/carbogrove/Ontology#."
     - "Entity IRIs use http://glycosmos.org/ (proteins/sites/genes/diseases); graphs use http://rdf.glycosmos.org/"
     - "Organisms: specific taxonomy IRIs (human=9606, mouse=10090, rat=10116, arabidopsis=3702)"
     - "Priority: Specific IRIs > VALUES with IRIs > typed predicates / graph navigation > bif:contains > FILTER(CONTAINS())"
 
-  schema_design:   # per-graph shapes are in shape_expressions; only cross-graph facts here
-    - "ENTITY base http://glycosmos.org/ (proteins/sites/genes/diseases/glycolipids) ≠ GRAPH base http://rdf.glycosmos.org/; glycans/motifs use http://rdf.glycoinfo.org/"
-    - "sio:SIO_000255 is REUSED: disease graph → gene link (sio:SIO_000001); glycogenes graph → GO term (up:classifiedWith). Both attribute bnodes are untyped"
-    - "Glycogene↔glycoprotein bridge: shared <http://purl.uniprot.org/geneid/[GeneID]> node (glycogene rdfs:seeAlso ↔ UniProt IRI rdfs:seeAlso)"
-    - "CAZy family↔protein bridge: family rdfs:seeAlso genbank/<ACC> owl:sameAs embl-cds/<ACC> ← protein rdfs:seeAlso (no direct link)"
-    - "HPA↔glycogene bridge: HPA glycodm:geneSymbol == glycogene rdfs:label (Ensembl-keyed HPA vs NCBI-GeneID glycogene)"
-    - "Ontology labels live in separate graphs: DOID→obo/doid, GO→obo/go.owl; entity nodes carry no label"
-    - "Taxonomy IRI pattern: <http://identifiers.org/taxonomy/[NCBI_TaxID]> (human=9606, mouse=10090, rat=10116, arabidopsis=3702)"
+  schema_design:   # cross-graph structural facts; per-graph shapes are in shape_expressions, operational steps in query_strategy
+    - "ENTITY base http://glycosmos.org/ (proteins/sites/genes/diseases/glycolipids) ≠ GRAPH base http://rdf.glycosmos.org/; glycans/motifs use http://rdf.glycoinfo.org/; ontology labels live in obo/doid & obo/go.owl (entity nodes carry no label)"
+    - "sio:SIO_000255 is REUSED: disease graph → gene (sio:SIO_000001); glycogenes graph → GO (up:classifiedWith). Both attribute bnodes are untyped"
+    - "Internal join bridges: glycogene↔glycoprotein via shared <http://purl.uniprot.org/geneid/[ID]>; CAZy family↔protein via genbank/<ACC> owl:sameAs embl-cds/<ACC>; HPA↔glycogene via glycodm:geneSymbol == glycogene rdfs:label; lectin GL-hub↔source via rdfs:seeAlso"
 
   performance:
     - "Pin FROM <graph> (or GRAPH <graph>) for class-wide scans; the endpoint hosts 140+ graphs"
@@ -959,20 +1082,15 @@ architectural_notes:
 
   # (data_integration removed in v4.1 — see cross_references for the full xref map.)
 
-  data_quality:
-    - "GlyTouCan IDs: pattern G[0-9]{5}[A-Z]{2}; has_primary_id 99.75%"
-    - "Labels well populated: glycoprotein 90.8%, glycogene 100% (label/description/taxon). Glycan rdfs:label <1% — use has_primary_id"
-    - "Glycoprotein/glycogene taxon coverage 90.8% / 100% — taxon filtering is reliable"
-    - "GO annotation coverage on glycogenes: 97.8% (413,865/423,164) carry ≥1 up:classifiedWith term"
-    - "Every disease (4,372) has ≥1 gene link, but gene sets are MULTI-SPECIES — always taxon-filter for a single organism"
-    - "Disease and GO attribute bnodes are UNTYPED — reachable only via the parent + sio:SIO_000255"
-    - "Site position data: 98.3% have faldo:ExactPosition"
-    - "Multi-valued labels: motifs (e.g. G00031MO has 3) and ChEBI Resource_entry (name + 'ChEBI') — use DISTINCT"
-    - "Counts may shift between quarterly releases — re-verify with COUNT if precision is needed"
+  data_quality:   # coverage figures live in data_statistics; only non-obvious query-affecting facts here
+    - "Glycan rdfs:label is <1% populated — key glycans by glytoucan:has_primary_id (99.75%; pattern G[0-9]{5}[A-Z]{2}), not label"
+    - "Disease→gene sets are MULTI-SPECIES — always taxon-filter (has_taxon 9606); disease & GO attribute bnodes are UNTYPED (reach via parent + sio:SIO_000255)"
+    - "Multi-valued labels: motifs (G00031MO has 3), ChEBI Resource_entry (name + 'ChEBI'), lectin skos:altLabel / has_lectin_name — use DISTINCT/aggregate"
+    - "Counts may shift between quarterly releases — re-COUNT if precision matters"
 
   text_search_justification:
-    - "Number of the 10 example queries using text search: 0 — every concept used has a structured IRI or typed predicate (CAZy class/family, HPA symbol/level, disease DOID, GO term all keyed)"
-    - "Legitimate text-search fields IF needed: rdfs:label/skos:altLabel on glycan:Glycan_epitope (free-text names like 'Lewis x'); dcterms:description on glycan:Glycogene and CAZy families (enzyme activities); disease/GO labels in obo/doid & obo/go.owl"
+    - "Number of the 12 example queries using text search: 2 — both are lectin-NAME grounding (GL-hub rdfs:label and LfDB lfdb:has_lectin_name). This is the one place text search is unavoidable: a lectin name/synonym is a free-text human label with no controlled-vocabulary IRI to look it up by, so grounding the name via bif:contains IS the entry point. Every OTHER concept (CAZy class/family, HPA symbol/level, disease DOID, GO term) has a structured IRI or typed predicate and uses no text search."
+    - "Legitimate text-search fields: lectin names (GL-hub rdfs:label/skos:altLabel; LfDB lfdb:has_lectin_name; CarboGrove cg:LectinName/cg:CommonName); rdfs:label/skos:altLabel on glycan:Glycan_epitope (free-text names like 'Lewis x'); dcterms:description on glycan:Glycogene and CAZy families (enzyme activities); disease/GO labels in obo/doid & obo/go.owl"
     - "bif:contains is enabled (verified 2026-06-27): use ?label bif:contains \"'Lewis'\" for indexed search; FILTER(CONTAINS()) only as fallback"
     - "Organisms, motifs, chemicals, proteins, genes, diseases (DOID), and GO terms all have specific IRIs — text search is not needed for them"
 
@@ -989,8 +1107,8 @@ data_statistics:
     cazy_enzyme_sequences: 869966
     glycolipids: 6046
     hpa_expression_genes: 13468
-  verified_date: "2026-06-27 (glycan/protein/gene); 2026-07-01 (diseases, CAZy, HPA, glycolipid)"
-  verification_method: "Direct COUNT(DISTINCT) queries on each named graph"
+  verified_date: "2026-06-27 (glycan/protein/gene); 2026-07-01 (diseases, CAZy, HPA, glycolipid); 2026-07-16 (lectin grounding)"
+  verification_method: "Direct COUNT(DISTINCT) queries on each named graph (applies to every block below)"
   coverage:
     glycans_with_primary_id: "99.75% (117,571/117,864)"
     glycans_with_self_resource_entry_capital: "86.2% (101,600/117,864)"
@@ -1000,30 +1118,27 @@ data_statistics:
     glycogenes_with_label_description_taxon: "100% (423,164/423,164)"
     glycogenes_with_go_annotation: "97.8% (413,865/423,164)"
     sites_with_position_data: "98.3% (407,793/414,798)"
-    verified_date: "2026-06-27 (glycan/protein); 2026-07-01 (GO coverage)"
   cazy_layer:
     families: 821
     families_by_class: { GH: 430, GT: 135, PL: 107, CBM: 102, AA: 27, CE: 20 }
     enzyme_sequences: 869966
     sequences_with_ec: 357511
     example_GH13_alpha_amylase_proteins: 2867
-    verified_date: "2026-07-01"
-    verification_method: "COUNT(DISTINCT) on the cazy graph; family→protein via genbank/embl-cds bridge"
   hpa_expression_layer:
     genes: 13468
     expression_measurement_bnodes: 1195665
     levels: ["High", "Medium", "Low", "Not detected"]
     example_INSR_tissues: 43
-    verified_date: "2026-07-01"
-    verification_method: "COUNT on the HPA graph; gene keyed by Ensembl Gene ID + glycodm:geneSymbol"
   disease_layer:
     disease_entities: 4372
     disease_gene_links: 26827
-    example_doid_9352_type2_diabetes:
-      genes_all_species: 326
-      genes_human_only: 129
-    verified_date: "2026-07-01"
-    verification_method: "COUNT(DISTINCT) on the disease graph; human count via join to glycogenes has_taxon 9606"
+    example_doid_9352_type2_diabetes: { genes_all_species: 326, genes_human_only: 129 }
+  lectin_name_grounding_layer:
+    gl_hub_lectins: 5100                 # <http://rdf.glycosmos.org/lectin>, sb:Lectin, GL_###### IRIs
+    gl_hub_with_rdfs_label: 5095         # 99.9%; + skos:altLabel on 126 (241 values)
+    gl_hub_with_uniprot_seealso: 5095    # 100% of labeled → uniprot/<AC>; seeAlso also → CarboGrove(82), LfDB(81), UniLectin3D(595)
+    lfdb_lectins: 398                    # <http://rdf.glycoinfo.org/lfdb>, glycan:Lectin; lfdb:has_lectin_name = 473 values (all ≥1)
+    carbogrove_lectin_entities: 200      # <http://rdf.glycosmos.org/carbogrove>, sb:Lectin; cg:LectinName/CommonName on 100 (103 values each)
   external_xref_glycan_counts:
     pubchem_compound: 31774
     pubchem_substance: 31774
@@ -1035,14 +1150,12 @@ data_statistics:
     bcsdb: 5448
     hmdb: 276
     glycoshape: 217
-    verified_date: "2026-06-27"
   sequence_format_nodes:
     wurcs: 254078
     iupac_extended: 193073
     iupac_condensed: 124929
     glycoct: 117466
     glycam_condensed: 25050
-    verified_date: "2026-06-27"
   species_distribution_glycoproteins:
     human_9606: 16604
     mouse_10090: 10713
@@ -1050,7 +1163,6 @@ data_statistics:
     arabidopsis_3702: 2251
     c_elegans_6239: 1447
     cow_9913: 1249
-    verified_date: "2026-06-27"
 
 anti_patterns:
   - title: "Schema Check Before Text Search"
@@ -1095,25 +1207,6 @@ anti_patterns:
       }
       LIMIT 20
     explanation: "The two predicates differ only by the case of 'Resource'. Capital = GlyTouCan self-ref; lowercase = external cross-references."
-
-  - title: "Joining the Two Motif IRI Forms Directly"
-    problem: "Trying to read a motif's label off the has_motif object IRI returns nothing — that IRI carries no label."
-    wrong_sparql: |
-      # WRONG: the glycan-form motif IRI has no rdfs:label in motif_label
-      ?glycan glycan:has_motif ?motif .
-      ?motif rdfs:label ?label .       # 0 rows: label is on http://glycoinfo.org/motif/[ID], not glycan/[ID]
-    correct_sparql: |
-      # CORRECT: bridge by GlyTouCan ID — has_motif uses glycan/ form, the label uses motif/ form
-      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      SELECT DISTINCT ?label
-      FROM <http://rdf.glycosmos.org/glycans/motif_label>
-      WHERE {
-        <http://glycoinfo.org/motif/G00030MO> a <http://glyconavi.org/owl#Motif> ;
-            rdfs:label ?label .
-      }
-      LIMIT 10
-    explanation: "has_motif object = <http://rdf.glycoinfo.org/glycan/[ID]>; motif label lives on <http://glycoinfo.org/motif/[ID]>. Same ID suffix, different namespace — bridge, don't equate."
 
   - title: "Using TogoID or External UniProt to Link Glycogene ↔ Glycoprotein"
     problem: "Reaching for an external ID-conversion hop to connect a glycogene to its glycoprotein, when GlyCosmos already shares a join node internally."
@@ -1161,43 +1254,38 @@ anti_patterns:
       LIMIT 50
     explanation: "CAZy family and UniProt Protein are separate nodes joined only through GenBank/EMBL-CDS accessions (family rdfs:seeAlso genbank/<ACC> owl:sameAs embl-cds/<ACC> ← protein rdfs:seeAlso). Proteins carry EC (up:enzyme) but no family predicate and no taxon."
 
-common_errors:
-  - error: "Empty result fetching external glycan IDs, or a motif label"
-    causes:
-      - "Used has_Resource_entry (capital R) — returns only the GlyTouCan self-reference"
-      - "Restricted FROM to one graph while the external Resource_entry node lives in a partner graph"
-      - "Tried to read a motif label off the has_motif object IRI (wrong namespace)"
-    solutions:
-      - "Use LOWERCASE glycan:has_resource_entry for external DB IDs"
-      - "Omit FROM for a single-glycan xref fetch, or include the partner graphs (glycome-db, jcggdb_aist, bcsdb)"
-      - "Bridge motif IRIs by GlyTouCan ID: has_motif -> glycan/[ID]; label -> http://glycoinfo.org/motif/[ID]"
+  - title: "Searching rdfs:label for a Lectin Name in LfDB / CarboGrove"
+    problem: "LfDB and CarboGrove put lectin names on BESPOKE predicates, not rdfs:label — a naive rdfs:label search over those graphs returns 0, and the source graphs don't hand off to UniProt anyway."
+    wrong_sparql: |
+      # WRONG: LfDB lectins carry NO rdfs:label — 0 rows
+      SELECT ?lectin WHERE {
+        GRAPH <http://rdf.glycoinfo.org/lfdb> {
+          ?lectin a <http://purl.jp/bio/12/glyco/glycan#Lectin> ; rdfs:label ?l .
+          FILTER(CONTAINS(?l, "Concanavalin"))
+        }
+      }
+    correct_sparql: |
+      # CORRECT: START at the GL hub (standard rdfs:label) and follow rdfs:seeAlso to UniProt + source IDs
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sb: <http://rdf.glycoinfo.org/SugarBind/ontology#>
+      SELECT DISTINCT ?lectin ?label ?xref
+      FROM <http://rdf.glycosmos.org/lectin>
+      WHERE {
+        ?lectin a sb:Lectin ; rdfs:label ?label .
+        ?label bif:contains "'Concanavalin'" .
+        OPTIONAL { ?lectin rdfs:seeAlso ?xref }
+      }
+      LIMIT 30
+    explanation: "The lectin graph's GL_###### hub uses standard rdfs:label + skos:altLabel and seeAlso-links to UniProt (100%), LfDB, CarboGrove, UniLectin3D. To search LfDB or CarboGrove directly, use their bespoke name predicates (lfdb:has_lectin_name; cg:LectinName/cg:CommonName), not rdfs:label."
 
-  - error: "Disease query returns mixed-species genes, over-counts, or shows no disease name"
-    causes:
-      - "Omitted the taxon filter — disease→gene sets mix human/mouse/rat (e.g. 326 vs 129 human for DOID:9352)"
-      - "Looked for rdfs:label on the disease entity — it has none"
-      - "Assumed sio:SIO_000255 means the same thing in the disease and glycogenes graphs"
-    solutions:
-      - "Join the gene into <…/glycogenes> and filter glycan:has_taxon <http://identifiers.org/taxonomy/9606>"
-      - "Get the disease name from obo:DOID_<n> rdfs:label in the <http://purl.obolibrary.org/obo/doid> graph"
-      - "Branch on the attribute bnode's inner predicate: sio:SIO_000001 = gene (disease graph); up:classifiedWith = GO (glycogenes graph)"
-
+common_errors:   # concrete wrong/correct SPARQL for each of these is in anti_patterns above
+  - error: "Empty external-glycan-ID or motif-label result"
+    fix: "Use LOWERCASE glycan:has_resource_entry (capital R = GlyTouCan self-ref only); for one glycan omit FROM or add partner graphs (glycome-db/jcggdb_aist/bcsdb). Motif label: bridge has_motif glycan/[ID] → <http://glycoinfo.org/motif/[ID]>."
+  - error: "Disease query over-counts, mixes species, or shows no disease name"
+    fix: "Join the gene into <…/glycogenes> + filter has_taxon 9606 (326→129 for DOID:9352); disease name is on obo:DOID_<n> in the doid graph; sio:SIO_000255 = gene in the disease graph but GO in the glycogenes graph."
   - error: "Empty CAZy protein list, or 'GlyCosmos has no expression data'"
-    causes:
-      - "Tried a direct family↔protein predicate — none exists; the join is via a GenBank/embl-cds bridge"
-      - "Filtered CAZy up:Protein by glycan:has_taxon — proteins carry no taxon (it is on the genbank member node)"
-      - "Believed HPA holds only ID cross-references — it actually holds IHC tissue/cell expression (glycodm:level)"
-    solutions:
-      - "Bridge: family rdfs:seeAlso genbank/<ACC> owl:sameAs embl-cds/<ACC> ← protein rdfs:seeAlso"
-      - "For CAZy family metadata use dbid/cazy/<FAM> (dcterms:title/description, rdfs:label=CAZy class)"
-      - "For expression query the HPA graph: gene glycodm:geneSymbol → rdfs:seeAlso bnode → glycodm:tissue/cellType/level; join to a glycogene by symbol"
-
-  - error: "Empty or wrong glycogene↔glycoprotein join, or timeout on a class-wide scan"
-    causes:
-      - "Tried to equate the NCBI GeneID IRI with a UniProt AC directly, or used TogoID instead of the internal bridge"
-      - "Missing FROM/GRAPH on a class-wide scan (140+ graphs), or wrong entity IRI base (rdf.glycosmos.org instead of glycosmos.org)"
-      - "No LIMIT on the 414K-site or 423K-gene graphs"
-    solutions:
-      - "Join on the shared <http://purl.uniprot.org/geneid/[GeneID]> node (glycogene rdfs:seeAlso ↔ UniProt IRI rdfs:seeAlso)"
-      - "Pin GRAPH/FROM <graph>; entities use http://glycosmos.org/, graphs use http://rdf.glycosmos.org/"
-      - "Add LIMIT; pre-filter by glycan:has_taxon or rdf:type before aggregation; nested SELECT for aggregations"
+    fix: "CAZy family→protein is INDIRECT (family rdfs:seeAlso genbank/<ACC> owl:sameAs embl-cds/<ACC> ← protein rdfs:seeAlso); CAZy proteins carry no taxon. HPA DOES hold IHC expression (glycodm:tissue/cellType/level) — join to a glycogene by symbol."
+  - error: "Empty/wrong glycogene↔glycoprotein join, or class-scan timeout"
+    fix: "Join on the shared <http://purl.uniprot.org/geneid/[GeneID]> node (never TogoID); pin GRAPH/FROM (entities use glycosmos.org, graphs use rdf.glycosmos.org); LIMIT + pre-filter big scans."
+  - error: "Zero rows searching a lectin name by rdfs:label in LfDB/CarboGrove"
+    fix: "Those use bespoke predicates (lfdb:has_lectin_name; cg:LectinName/cg:CommonName). Start at the GL hub (<http://rdf.glycosmos.org/lectin>, standard rdfs:label + skos:altLabel) and follow rdfs:seeAlso to UniProt + source IDs."
