@@ -329,12 +329,32 @@ Probe two kinds of node, reusing entities already found in 2c/2d:
   (a) a representative entity of THIS database — catches a sibling RE-TYPING it (e.g. OMA
       asserting `<uniprot-protein> a up:Protein` on SIB), which double-counts a bare COUNT;
   (b) each shared reference / hub IRI it points to — taxa, ChEBI, GO, MeSH … the join keys —
-      taken from the 2c DESCRIBE object values.
+      taken from the 2c DESCRIBE object values. **Follow the hub even if the hub is not your
+      database**: NBRC's `mccv:MCCV_000065` lands on `identifiers.org/taxonomy/<taxid>`, which
+      microbedbjp re-declares — so "pin the NBRC graph" was NOT enough; the trap was on the
+      NAME leg, ×1.94, in a graph the reader never asked for.
 
   SELECT ?g ?p (COUNT(*) AS ?n) WHERE {
     VALUES ?node { <representative-entity> <hub-iri-1> <hub-iri-2> }
     GRAPH ?g { ?node ?p ?o . }
   } GROUP BY ?g ?p ORDER BY ?p ?g
+
+**Keep `?p` unbound. Do NOT lead with `?s a <YourClass>`.** This query is deliberately a REVERSE
+probe — every predicate, no type filter — because that is the only shape that sees all three
+failure modes at once. A type-first probe produces FALSE CLEANS, twice observed:
+  - `ensembl_grch37` types genes as `obo:SO_0001217`, NOT `terms:EnsemblGene` — invisible to a
+    type probe — while re-declaring `rdfs:label` on the SAME gene IRIs. Real multiplier ×3. The
+    agent that hit this said: "My first two probes came back 'clean' for that reason."
+  - `glycovid_pubchem` declares MeSH *descriptor* IRIs as `meshv:Concept`: same-class overlap 0
+    (looks clean), cross-class overlap 768, and its label is the bare accession ("D000163").
+**Inflation is a PRODUCT of legs**: a graph carrying only the type still multiplies against a graph
+carrying only the label (chebi water = 4 type-graphs × 3 label-graphs = ×12). So a per-leg count is
+not the answer — after the reverse probe, run the realistic join pinned vs unpinned and report THAT.
+
+Then compare VALUES, not just row counts. Two graphs supplying the same predicate with DIFFERENT
+values is worse than a duplicate, because DISTINCT cannot mask it and the result still looks well
+formed (EFO drops MONDO's "obsolete " prefix; DDBJ labels taxon 9606 `"9606"` where
+ontology/taxonomy says `"Homo sapiens"`).
 
 Read the result against THIS database's own graphs (schema_info.graphs from 2a). For any
 predicate appearing in a graph OUTSIDE that list, the union multiplier for that predicate =
@@ -345,9 +365,13 @@ this DB's own entity. This list is the source for the `co_hosted_graphs` field a
 `critical_warnings` entry in Phase 4 — write it down now, do not reconstruct from memory.
 
 **Record the outcome either way — a clean probe is a RESULT, not a skip.** If 2g finds no
-re-declaration, write `co_hosted_graphs: ["2g probe run YYYY-MM-DD — no re-declaration found"]`.
-An omitted field and a probed-clean field look identical in the finished MIE, and only one of
-them is trustworthy; absence on a multi-graph endpoint is a Phase-5 review failure.
+re-declaration, say so AND say what you probed: which legs (type, label/identifier, cross-class,
+hub) and the figure behind the verdict. A bare "no re-declaration found" is not enough — a narrow
+probe and a thorough one leave identical notes, and the narrow one is how false cleans survive.
+Good: *"PROBED CLEAN — ALL LEGS (2026-07-17): reverse probe on 18 IRIs → all 54,242 triples in the
+DB's own graph; label leg 0 in every co-tenant."* An omitted field and a probed-clean field look
+identical in the finished MIE, and only one is trustworthy; absence on a multi-graph endpoint is a
+Phase-5 review failure.
 
 The ONLY exemption is an endpoint where `get_graph_list()` returns exactly one graph (across the
 current 36 databases, only `supercon` qualifies — it returns its own graph plus `owl#`). Say so
