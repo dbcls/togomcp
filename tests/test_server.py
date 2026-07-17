@@ -342,3 +342,64 @@ class TestServerVersion:
         # Sanity: it's a real version string, not the "0+unknown" source fallback
         # (the package is installed in the test env).
         assert mcp.version and mcp.version != "0+unknown"
+
+
+class TestMIETrapBanner:
+    """get_MIE_file prepends a trap banner above the YAML body.
+
+    The traps that produced wrong benchmark answers were all documented in the
+    right MIE and simply not re-read at the moment a predicate was typed, so the
+    banner exists to make them unskippable. It must never swallow the file.
+    """
+
+    def test_headlines_warnings_and_co_hosted_graphs(self) -> None:
+        from togo_mcp.rdf_portal import _mie_trap_banner
+
+        content = (
+            "schema_info:\n"
+            "  co_hosted_graphs:\n"
+            '    - "http://example.org/sib — re-types 42 IRIs"\n'
+            "critical_warnings: |\n"
+            "  - FIRST TRAP: does a bad thing.\n"
+            "    continuation line, not a warning of its own\n"
+            "  - SECOND TRAP: does another.\n"
+        )
+        banner = _mie_trap_banner(content, "demo")
+        assert "`demo`" in banner
+        assert "2 CRITICAL WARNING(S)" in banner
+        assert "1 CO-HOSTED GRAPH(S)" in banner
+        assert "FIRST TRAP" in banner and "SECOND TRAP" in banner
+        # Every line is a YAML comment, so the result still parses as YAML.
+        assert all(line.startswith("#") for line in banner.splitlines())
+
+    def test_sub_bullets_do_not_become_warnings(self) -> None:
+        """Indented sub-bullets belong to their parent warning, not the count."""
+        from togo_mcp.rdf_portal import _mie_trap_banner
+
+        content = (
+            "critical_warnings: |\n"
+            "  - PARENT TRAP: has two sub-cases.\n"
+            "      - sub-case one\n"
+            "      - sub-case two\n"
+        )
+        assert "1 CRITICAL WARNING(S)" in _mie_trap_banner(content, "demo")
+
+    def test_banner_never_blocks_the_file(self) -> None:
+        """A malformed or bannerless MIE still returns its content."""
+        from togo_mcp.rdf_portal import _mie_trap_banner
+
+        assert _mie_trap_banner("{{ not: valid: yaml", "demo") == ""
+        assert _mie_trap_banner("schema_info:\n  title: x\n", "demo") == ""
+
+    def test_real_mie_banner_precedes_yaml_and_parses(self) -> None:
+        import yaml
+
+        from togo_mcp.rdf_portal import _mie_trap_banner
+
+        path = Path("togo_mcp/data/mie/uniprot.yaml")
+        content = path.read_text(encoding="utf-8")
+        banner = _mie_trap_banner(content, "uniprot")
+        assert "dcterms:identifier" in banner  # the trap that broke Q076
+        # Banner + body must still be loadable as YAML by any downstream consumer.
+        doc = yaml.safe_load(banner + content)
+        assert doc["schema_info"]["title"] == "UniProt RDF"

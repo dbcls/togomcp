@@ -13,7 +13,80 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **`uniprot.yaml` prescribed including 14,432 deleted entries, and called the correct
+  exclusion an anti-fix.** The MIE told readers that `COUNT(DISTINCT ?p)` → 589,059 was
+  the right protein count and that `FROM <sparql.uniprot.org/uniprot>` "silently drops"
+  data. Verified live: the 589,059 includes 14,432 entries that all carry `up:obsolete 1`
+  — deletions, not data. Two *independent* corrections were conflated: `COUNT(DISTINCT)`
+  defeats the co-hosted OMA graph's 337,813 re-typings (same IRIs, so they collapse),
+  while the obsolete entries are *different* IRIs and survive DISTINCT. Current Swiss-Prot
+  is **574,627** (`FROM <uniprot>` and `FILTER NOT EXISTS { ?p up:obsolete 1 }` agree
+  exactly). The retracted advice appeared in six places, including an `anti_patterns` block
+  teaching it as a rule; all six now agree.
+- **`uniprot.yaml`'s "93.4% of reviewed proteins have gene names" was wrong three ways.**
+  The figure counted `up:encodedBy` presence (gene *nodes*, 549,969), not gene *symbols*
+  (`skos:prefLabel`, **503,655** — 46,314 gene nodes are unnamed), and divided by the
+  inclusive-of-deleted 589,059. Both figures are now recorded separately, and `<GeneShape>`
+  warns that an inner join on `skos:prefLabel` silently drops those 46,314 proteins.
+- **`mie_revised` was invisible to `stats.py`.** Six MIEs used `mie_revised`; the spec and
+  `load_mie_dates()` use `mie_updated`, so those files silently fell back to `mie_created`
+  and reported revision dates ~2.5 months stale (uniprot/clinvar/medgen/ncbigene/pubtator
+  all read as 2026-04-29). That skewed failure triage, which treats a failure as actionable
+  only if it postdates the MIE date. All six normalized to `mie_updated`.
+- **`taxonomy.yaml` understated the `tax:Superkingdom` trap.** It documented "returns 0 rows
+  with no error" — true only when pinned. Unpinned it returns 173,618 taxa, every one from
+  the co-hosted `microbedbjp` graph: a plausible answer built entirely on legacy nomenclature.
+- Stale figures corrected in `mondo.yaml` (33,840 classes / 3,974 deprecated / 29,866 active,
+  and four coverage percentages re-measured) and `bacdive.yaml`.
+
+### Added
+
+- **`co_hosted_graphs` on `mondo` and `taxonomy`**, both probe-verified: `ontology/efo`
+  re-declares 16,423 of MONDO's 33,840 classes (×4 join multiplier — 83,035 rows vs 33,766
+  pinned), and `dataset/microbedbjp` re-declares 2,153,834 NCBI taxon IRIs at an *older
+  nomenclature vintage* (40,252 taxa carry a conflicting `scientificName` — taxid 1224 is
+  "Pseudomonadota" authoritatively but "Proteobacteria" there). `dataset/gtdb` was probed
+  and recorded as clean — it uses its own IRIs, zero overlap.
+- **`mondo.yaml`: EFO's label copy can hide obsolescence.** Where the two graphs disagree
+  (5 classes), EFO holds a stale label omitting MONDO's `obsolete ` prefix — so
+  `FILTER(!STRSTARTS(?label, "obsolete"))` over the union keeps a retired class.
+- **`rhea.yaml`: never name a participant via the ChEBI IRI.** `rh:chebi` points at an OBO
+  class carrying no `rh:id` (0 of 13,530) and `rdfs:label` on only 428 (3.2%) — so that join
+  silently drops ~96.8% of participants as a *partial* result. Names live on Rhea's own
+  compound node (`rh:name`, 100% coverage). Includes an anti-pattern pair.
+- **`bacdive.yaml`: `schema:` is not schema.org.** It means `https://purl.dsmz.de/schema/`;
+  the endpoint auto-declares it, so the conventional `PREFIX schema: <http://schema.org/>`
+  makes every pattern return 0 rows silently. Also: phylum names are stored unmerged across
+  two nomenclature vintages (Firmicutes 13,862 + Bacillota 1,944, etc.), so filtering on the
+  current name alone returns a small minority.
+- **`get_MIE_file` now prepends a trap banner** headlining that database's critical warnings
+  and co-hosted graphs above the YAML body, with a per-predicate check instruction. The
+  banner is `#`-commented, so banner + body still parses as YAML.
+
+### Changed
+
+- **MIE spec v2.2 → v2.3.** `co_hosted_graphs` promoted OPTIONAL → **REQUIRED whenever the
+  endpoint hosts >1 named graph**, and the trigger corrected from *databases-per-endpoint* to
+  *graphs-per-endpoint*. The old wording exempted exactly the wrong files: `togovar` sits
+  alone on its endpoint and re-types 2.9M variant IRIs across its own graphs, and
+  `glycosmos`/`pubchem`/`pdb`/`ddbj` host 43–150 graphs each while being "single-database".
+  A clean probe must now be recorded explicitly (`"2g probe run … — no re-declaration
+  found"`); only a genuinely single-graph endpoint (`supercon`) is exempt.
+- **`data_version` given a provenance rule.** It was REQUIRED but derived from nothing,
+  ranging from real (`ChEMBL 34.0`) to placeholder (`Current`, `2025+`) to wrong
+  (`uniprot: "Release 2024_06"` against data modified 2026-01-28). It must now be a verified
+  date or an endpoint-derived release citing its source, and be re-checked whenever
+  `mie_updated` is bumped.
+- **`mie-generator`**: 2g probe gated on `get_graph_list()` > 1 graph (was
+  `get_sparql_endpoints()` > 1 database); missing `co_hosted_graphs` is now a Phase-5 review
+  failure; new 5i-2 verifies `data_version` provenance.
+- **`qa-generator`**: new **C29 MIE contradiction (named-check)** — every predicate must be
+  checked against the MIE's `co_hosted_graphs`/`critical_warnings` *as it is written*, not
+  recalled from a Phase-1 read. Q076 called `get_MIE_file('uniprot')` and still used
+  `dcterms:identifier`, which that file already documented as OMA-supplied. C27's trigger
+  corrected likewise, and it now notes that `COUNT(DISTINCT)` is not a universal fix.
 
 ## [1.6.2] - 2026-07-17
 

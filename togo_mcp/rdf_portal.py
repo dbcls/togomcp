@@ -2,6 +2,7 @@ import csv as _csv
 import io as _io
 import json
 from pathlib import Path
+import re
 import sys
 from typing import Annotated, Any, Literal
 
@@ -300,6 +301,15 @@ async def get_MIE_file(
     """
     Get the MIE file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database in YAML format, which can be used as a hint to build SPARQL queries.
 
+    RETURNS the MIE as YAML, preceded by a `#`-commented banner headlining that
+    database's CRITICAL WARNINGS and CO-HOSTED GRAPHS. Read the banner first: it
+    lists the silent-failure traps — the ones that return a wrong POSITIVE or
+    partial result with no error. Then, for EVERY predicate you use, check it
+    against `co_hosted_graphs`/`critical_warnings` before writing the query.
+    Reading this file once is not enough; the traps that have caused wrong
+    answers were all documented here and simply not re-consulted at the moment
+    the predicate was typed.
+
     (The authoritative list of supported `database` values is injected into the
     tool `description=` on the decorator above; see DATABASE_DESCRIPTION.)
 
@@ -308,9 +318,6 @@ async def get_MIE_file(
             Accepts aliases `dbname` and `db`.
         dbname (str, optional): Alias for `database`.
         db (str, optional): Alias for `database`.
-
-    Returns:
-        str: The MIE file containing the RDF schema information in YAML format.
     """
     database = database or dbname or db
     if not database:
@@ -336,7 +343,81 @@ async def get_MIE_file(
         )
     with open(mie_file, encoding="utf-8") as file:
         content = file.read()
-    return f"Content-type: application/yaml; charset=utf-8\n{content}"
+    return (
+        f"Content-type: application/yaml; charset=utf-8\n"
+        f"{_mie_trap_banner(content, database)}{content}"
+    )
+
+
+def _first_sentence(text: str, limit: int = 160) -> str:
+    """Condense one warning/entry to a single scannable headline."""
+    flat = " ".join(text.split())
+    for stop in (". ", " — ", ": "):
+        head, sep, _ = flat.partition(stop)
+        if sep and len(head) <= limit:
+            return head
+    return flat[:limit] + ("…" if len(flat) > limit else "")
+
+
+def _mie_trap_banner(content: str, database: str) -> str:
+    """Headline the silent-failure traps ABOVE the YAML body.
+
+    The traps that have caused wrong answers were already documented, in the
+    right file, and simply not read at the moment a predicate was typed. The
+    body still holds the authoritative text — this is a scannable index that
+    is impossible to skim past, not a replacement for it.
+    """
+    try:
+        doc = yaml.safe_load(content)
+        if not isinstance(doc, dict):
+            return ""
+        info = doc.get("schema_info") or {}
+        co_hosted = info.get("co_hosted_graphs") or []
+        warnings = doc.get("critical_warnings") or ""
+    except Exception:
+        # Never let a banner failure block the file the caller asked for.
+        return ""
+
+    if isinstance(warnings, str):
+        # Split on TOP-LEVEL bullets only. yaml strips the block scalar's common
+        # indent, so a warning starts at column 0 and its continuation/sub-bullets
+        # are indented — splitting on any "- " would promote sub-bullets to
+        # warnings of their own.
+        items = [w.strip() for w in re.split(r"\n- ", "\n" + warnings) if w.strip()]
+    elif isinstance(warnings, list):
+        items = [str(w).strip() for w in warnings if str(w).strip()]
+    else:
+        items = []
+
+    if not items and not co_hosted:
+        return ""
+
+    lines = [
+        f"# READ THIS BEFORE WRITING ANY SPARQL AGAINST `{database}`.",
+        "# These are silent-failure traps: they return a wrong POSITIVE result or a",
+        "# partial one, with no error. Full text is in the YAML body below.",
+    ]
+    if items:
+        lines.append(f"# {len(items)} CRITICAL WARNING(S):")
+        lines += [f"#   {i}. {_first_sentence(w)}" for i, w in enumerate(items, 1)]
+    if co_hosted:
+        lines.append(
+            f"# {len(co_hosted)} CO-HOSTED GRAPH(S) — this endpoint's other graphs can "
+            "re-declare"
+        )
+        lines.append(
+            "#   your predicates and inflate/skew results unless you pin the graph:"
+        )
+        lines += [f"#   - {_first_sentence(str(g))}" for g in co_hosted]
+    lines.append(
+        "# For EVERY predicate you are about to use, check it against the above: is it "
+        "supplied"
+    )
+    lines.append(
+        "#   by a co-hosted graph rather than this database, and does a warning already "
+        "name it?"
+    )
+    return "\n".join(lines) + "\n"
 
 
 # Module-level cache for database records loaded from MIE schema_info sections.

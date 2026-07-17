@@ -32,9 +32,10 @@ schema_info:
   kw_search_tools:
     - search_rhea_entity
   version:
-    mie_version: "2.5"
+    mie_version: "2.6"
     mie_created: "2026-06-27"
-    data_version: "Release 2024+ (RDF Portal SIB snapshot)"
+    mie_updated: "2026-07-17"
+    data_version: "RDF Portal snapshot — verified 2026-07-17"
     update_frequency: "Quarterly"
   access:
     backend: "Virtuoso"
@@ -60,6 +61,19 @@ critical_warnings: |
     (-> rhea:chebi). Shortcutting any hop returns empty results silently. rhea:contains is the
     union property; the numbered forms (rhea:contains1..contains40, contains2n, containsNplus1,
     containsNminus1) encode stoichiometric coefficients — there is NO numeric coefficient literal.
+  - NEVER NAME A PARTICIPANT VIA THE ChEBI IRI — rhea:chebi POINTS OUT OF RHEA (silent-drop trap,
+    verified 2026-07-17). rhea:chebi's object is an OBO class (http://purl.obolibrary.org/obo/CHEBI_*)
+    that is NOT a Rhea entity and carries almost none of Rhea's own predicates:
+      * `?chebi rhea:id ?x`      -> 0 of 13,530 participant ChEBI IRIs have it. ALWAYS empty.
+      * `?chebi rdfs:label ?x`   -> only 428 of 13,530 (3.2%) have it. SILENTLY DROPS ~96.8% of
+                                    participants — including everyday ones: GTP (CHEBI:37565) and
+                                    GDP (CHEBI:58189) both have NO rdfs:label here.
+    The name/formula/charge live on RHEA'S OWN Compound node, which is the rhea:chebi SUBJECT:
+    all 14,485 compound nodes carry rhea:name (100% coverage). So bind the compound, not the ChEBI:
+        ?compound rhea:chebi ?chebi ; rhea:name ?name .     # correct — 100% coverage
+    Also available on the compound: rhea:accession, rhea:formula, rhea:charge. Because an inner join
+    on rdfs:label returns 3.2% instead of 0%, this fails as a PARTIAL result — a plausible short list
+    rather than an obvious empty one, which is why it survived undetected in benchmark Q024 q5.
   - STATUS IS AN IRI, NOT A LITERAL: use <http://rdf.rhea-db.org/Approved> (also Preliminary,
     Obsolete). `rhea:status "Approved"` silently returns 0 rows. Apply Approved early as the
     primary quality filter (17,635 of 18,071 are Approved).
@@ -596,6 +610,34 @@ data_statistics:
     Quarterly updates — verify current statistics at www.rhea-db.org for the latest release.
 
 anti_patterns:
+  - title: "Naming a Participant via the ChEBI IRI Instead of the Rhea Compound Node"
+    problem: |
+      Reading a participant's name off the rhea:chebi object. That IRI is an OBO class, not a Rhea
+      entity: 0 of 13,530 participant ChEBI IRIs carry rhea:id, and only 428 (3.2%) carry rdfs:label.
+      The join silently drops ~96.8% of participants — a PARTIAL result, not an empty one, so it
+      looks like a plausible short answer. (Verified 2026-07-17; this is what broke benchmark Q024 q5.)
+    wrong_sparql: |
+      # WRONG — rhea:id on a ChEBI IRI: ALWAYS 0 rows
+      ?participant rhea:compound ?compound .
+      ?compound rhea:chebi ?chebi .
+      ?chebi rhea:id ?name .
+
+      # ALSO WRONG — rdfs:label on a ChEBI IRI: silently keeps only the 3.2% that have one.
+      # GTP (CHEBI:37565) and GDP (CHEBI:58189) have NO rdfs:label and vanish here.
+      ?chebi rdfs:label ?name .
+    correct_sparql: |
+      # CORRECT — the name lives on Rhea's own Compound node (the rhea:chebi SUBJECT).
+      # All 14,485 compound nodes carry rhea:name: 100% coverage.
+      ?participant rhea:compound ?compound .
+      ?compound rhea:chebi ?chebi ;
+                rhea:name ?name .
+      # Also on the compound: rhea:accession, rhea:formula, rhea:charge.
+    explanation: |
+      rhea:chebi is an OUTBOUND cross-reference — it points from Rhea into the ChEBI ontology. Rhea
+      does not re-declare ChEBI's labels locally, so the ChEBI IRI is an identifier to join on, never
+      a place to read names from. Keep every literal read on the Rhea side of that edge. If you need
+      the ChEBI-side label, query the `chebi` database (ebi endpoint) instead.
+
   - title: "Text Search When a Structured Property Exists"
     problem: "Using bif:contains on equation text when a ChEBI, EC, or GO IRI is available."
     wrong_sparql: |

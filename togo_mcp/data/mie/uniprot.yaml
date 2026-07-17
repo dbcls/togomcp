@@ -2,10 +2,12 @@ schema_info:
   title: UniProt RDF
   description: |
     Comprehensive protein sequence and functional information integrating Swiss-Prot
-    (manually curated, 589K entries) and TrEMBL (automatically annotated, ~244M entries).
+    (manually curated, 574,627 current entries — 589,059 if the 14,432 DELETED entries in the
+    co-hosted `obsolete` graph are included; see critical_warnings) and TrEMBL (automatically
+    annotated, ~244M entries).
     Contains sequences, functions, domains, structures, variants, disease associations,
     and cross-references to 200+ databases. CRITICAL: Always filter by up:reviewed 1
-    for quality queries — omitting it queries ~244M instead of 589K (99.8% overhead).
+    for quality queries — omitting it queries ~244M instead of ~575K (99.8% overhead).
   keywords:
     - protein
     - sequence
@@ -61,10 +63,10 @@ schema_info:
   kw_search_tools:
     - search_uniprot_entity
   version:
-    mie_version: "2.3"
+    mie_version: "2.4"
     mie_created: "2026-04-29"
-    mie_revised: "2026-07-10"
-    data_version: "Release 2024_06"
+    mie_updated: "2026-07-17"
+    data_version: "RDF Portal snapshot — verified 2026-07-17"
     update_frequency: "Monthly"
   access:
     backend: "Virtuoso (supports bif:contains)"
@@ -72,15 +74,29 @@ schema_info:
 # Critical warnings: schema pathologies, IRI traps, mandatory performance filters.
 # Read before writing any query — each item here causes silent failures or timeouts.
 critical_warnings: |
-  - USE COUNT(DISTINCT) FOR PROTEIN COUNTS — NOT FROM-SCOPING (silent inflation, wrong positive
-    number): `a up:Protein` is asserted for reviewed proteins across THREE graphs — uniprot (574,627),
-    the co-hosted OMA graph (337,813 re-typings of the SAME purl.uniprot.org/uniprot/ IRIs), and
-    obsolete (14,432). So `SELECT (COUNT(*) ...) { ?p a up:Protein ; up:reviewed 1 }` over the default
-    union returns 926,872 — inflated. The CORRECT fix is COUNT(DISTINCT ?p) → 589,059. Do NOT "fix" it
-    with FROM <http://sparql.uniprot.org/uniprot>: that returns 574,627, silently DROPPING the 14,432
-    reviewed entries whose up:reviewed lives in the `obsolete` graph (589,059 = 574,627 current +
-    14,432 obsolete). FROM <uniprot> is correct only when you specifically want CURRENT (non-obsolete)
-    entries. Nothing signals either error — this is worse than an empty result.
+  - PROTEIN COUNTS NEED TWO INDEPENDENT CORRECTIONS — DO NOT CONFLATE THEM (silent inflation, wrong
+    positive number; all figures verified live 2026-07-17). `a up:Protein` is asserted for reviewed
+    proteins across THREE graphs — uniprot (574,627), the co-hosted OMA graph (337,813 re-typings of
+    the SAME purl.uniprot.org/uniprot/ IRIs), and obsolete (14,432 DISTINCT IRIs of their own). So
+    `SELECT (COUNT(*) ...) { ?p a up:Protein ; up:reviewed 1 }` over the default union returns
+    574,627 + 337,813 + 14,432 = 926,872 — inflated by BOTH problems at once. They are separate:
+      (1) OMA re-typing — the OMA rows carry the SAME IRIs, so COUNT(DISTINCT ?p) collapses them.
+          This is what DISTINCT fixes, and it is ALL that DISTINCT fixes.
+      (2) Obsolete entries — the obsolete graph holds 14,432 DIFFERENT IRIs, so they SURVIVE
+          COUNT(DISTINCT). They are DELETED entries: all 14,432 carry `up:obsolete 1` (verified —
+          the count of obsolete-graph reviewed proteins and the count carrying the flag are both
+          14,432). E.g. P09896 (RL44_HUMAN, up:modified 2004-05-10) is up:obsolete 1, up:replacedBy
+          -> P83881/2/3/4, and exists ONLY in the obsolete graph. They are NOT current Swiss-Prot.
+    So COUNT(DISTINCT ?p) alone -> 589,059 = 574,627 current + 14,432 DELETED. That number answers
+    "current + historical", not "how big is Swiss-Prot".
+    CHOOSE BY INTENT:
+      - CURRENT reviewed proteins (the usual case) -> COUNT(DISTINCT ?p) AND exclude obsolete, via
+        either FILTER NOT EXISTS { ?p up:obsolete 1 } or FROM <http://sparql.uniprot.org/uniprot>.
+        Both return exactly 574,627 (verified identical) — the graph pin performs correction (2).
+      - INCLUDING historical/deleted entries (rare — say so explicitly) -> COUNT(DISTINCT ?p) ->
+        589,059.
+    FROM <http://sparql.uniprot.org/uniprot> does NOT "silently drop" data: it drops DELETIONS, which
+    is normally what you want. Nothing signals the inflation — it is worse than an empty result.
   - SIB UNION TAXON-METADATA MULTIPLICATION (silent ROW inflation on the everyday protein->organism
     join): the co-hosted OMA and Bgee graphs RE-DECLARE the SAME taxon nodes
     (http://purl.uniprot.org/taxonomy/NNNN) with their own copies of UniProt's taxon predicates. Over
@@ -106,7 +122,7 @@ critical_warnings: |
     real GOA annotation data despite its name. Do not query it expecting GO annotations — GO terms
     live on up:classifiedWith (OBO IRIs) in the uniprot graph.
   - MANDATORY FILTER: Always add up:reviewed 1 — omitting it queries ~244M entries
-    instead of 589K and causes all COUNT queries to time out.
+    instead of ~575K and causes all COUNT queries to time out.
   - GO NAMESPACE TRAP: up:classifiedWith uses OBO IRIs
     (http://purl.obolibrary.org/obo/GO_XXXXXXX), NOT http://purl.uniprot.org/go/.
     The wrong namespace silently returns 0 results.
@@ -133,7 +149,7 @@ shape_expressions: |
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
   PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-  # ~589K Swiss-Prot (reviewed=1); ~244M TrEMBL (reviewed=0)
+  # ~575K current Swiss-Prot (reviewed=1); ~244M TrEMBL (reviewed=0)
   # Always filter by up:reviewed 1 for performance and data quality.
   <ProteinShape> {
     a [ up:Protein ] ;
@@ -143,7 +159,7 @@ shape_expressions: |
     up:mnemonic xsd:string ;                 # e.g. "P53_HUMAN" — ORGCODE suffix is organism
     up:reviewed xsd:integer ;               # INTEGER: 1=Swiss-Prot curated, 0=TrEMBL automated
     up:organism @<TaxonShape> ;             # NCBI Taxonomy IRI
-    up:encodedBy @<GeneShape> * ;           # 93.4% of reviewed proteins have gene names
+    up:encodedBy @<GeneShape> * ;           # 95.7% of current reviewed proteins have a gene node
     up:sequence @<IsoformShape> * ;         # Canonical + alternate isoforms
     up:recommendedName @<NameShape> ? ;     # Expert-curated name (Swiss-Prot)
     up:submittedName @<NameShape> * ;       # Auto-submitted name (TrEMBL)
@@ -161,10 +177,13 @@ shape_expressions: |
   }
 
   # Gene — accessed via up:encodedBy
-  # 549,969 of 589,059 reviewed proteins have gene names (93.4%)
+  # Of 574,627 CURRENT reviewed proteins (verified 2026-07-17): 549,969 (95.7%) have a gene NODE,
+  # but only 503,655 (87.6%) have a gene SYMBOL — 46,314 gene nodes carry no skos:prefLabel.
+  # So skos:prefLabel below is effectively OPTIONAL in practice: an inner join on it silently drops
+  # those 46,314 proteins. Use OPTIONAL when you want coverage, not just the named subset.
   <GeneShape> {
     a [ up:Gene ] ;
-    skos:prefLabel xsd:string ;   # Official gene symbol (e.g. "TP53")
+    skos:prefLabel xsd:string ;   # Official gene symbol (e.g. "TP53") — absent on 46,314 gene nodes
     skos:altLabel xsd:string *    # Synonyms (e.g. "P53")
   }
 
@@ -739,8 +758,10 @@ architectural_notes:
   performance:
     - "CRITICAL: up:reviewed 1 must appear in every query (99.8% row reduction)"
     - "COUNT protein queries with COUNT(DISTINCT ?p) — the co-hosted OMA graph re-types UniProt IRIs as
-       up:Protein (adds 337,813 rows), so unscoped COUNT(*) inflates to 926,872 vs true 589,059. Do NOT
-       use FROM <uniprot> as the fix: it drops the 14,432 reviewed entries in the obsolete graph (574,627)"
+       up:Protein (adds 337,813 rows), so unscoped COUNT(*) inflates to 926,872. DISTINCT fixes ONLY
+       that, leaving 589,059 = 574,627 current + 14,432 DELETED (up:obsolete 1) entries. For CURRENT
+       Swiss-Prot also exclude obsolete — FILTER NOT EXISTS { ?p up:obsolete 1 } or
+       FROM <http://sparql.uniprot.org/uniprot>, both exactly 574,627. See critical_warnings."
     - "TAXON METADATA: pin GRAPH <http://sparql.uniprot.org/taxonomy> for up:scientificName/rank/
        commonName/mnemonic. OMA+Bgee re-declare taxon nodes, so on the default union scientificName/rank
        are copied x3 and joins multiply as the PRODUCT (3 rows per protein on a protein->organism->
@@ -767,7 +788,8 @@ architectural_notes:
   data_quality:
     - "Swiss-Prot (reviewed=1) has expert-curated annotations; TrEMBL is automated and incomplete"
     - "Functional annotations: ~80% complete for Swiss-Prot vs 20-30% for TrEMBL"
-    - "Gene names present for 93.4% of reviewed proteins (549,969/589,059)"
+    - "Gene NODE present for 95.7% of current reviewed proteins (549,969/574,627); gene SYMBOL
+       (skos:prefLabel) for only 87.6% (503,655/574,627) — 46,314 gene nodes are unnamed"
 
   text_search_justification:
     - "Number of the 7 example queries using text search: 0"
@@ -777,16 +799,25 @@ architectural_notes:
 
 data_statistics:
   total_proteins: ~244000000
-  reviewed_proteins: 589059          # via COUNT(DISTINCT ?p) = 574,627 current (uniprot graph) + 14,432
-                                     # obsolete graph. Unscoped COUNT(*) gives 926,872 (OMA re-typing); FROM
-                                     # <uniprot> gives only 574,627 (drops obsolete). See critical_warnings.
-  human_reviewed_proteins: 20431     # COUNT(DISTINCT ?p), re-verified 2026-07-10
-  disease_annotated_reviewed: 5835
-  reviewed_with_gene_name: 549969
-  verified_date: "2026-07-10"
+  reviewed_proteins: 574627          # CURRENT Swiss-Prot: COUNT(DISTINCT ?p) + exclude obsolete
+                                     # (FROM <uniprot> or FILTER NOT EXISTS { ?p up:obsolete 1 } —
+                                     # both give exactly this). USE THIS as "the size of Swiss-Prot".
+  reviewed_proteins_incl_deleted: 589059   # COUNT(DISTINCT ?p) unpinned = 574,627 current + 14,432
+                                     # DELETED (up:obsolete 1) entries. Only for "current + historical".
+                                     # Unscoped COUNT(*) gives 926,872 — OMA re-typing. See critical_warnings.
+  human_reviewed_proteins: 20431     # COUNT(DISTINCT ?p), current; re-verified 2026-07-17 (unchanged)
+  disease_annotated_reviewed: 5835   # current; re-verified 2026-07-17 (unchanged)
+  reviewed_with_gene_node: 549969    # current, up:encodedBy ?gene present = 95.7% of 574,627
+  reviewed_with_gene_symbol: 503655  # current, gene carries skos:prefLabel = 87.6% of 574,627.
+                                     # NOT the same as the line above: 46,314 proteins have a gene
+                                     # NODE with no prefLabel. Count the one you actually mean.
+  verified_date: "2026-07-17"
   verification_method: "GRAPH/FROM-scoped or DISTINCT COUNT queries on reviewed proteins; all 7 SPARQL
-    examples and 4 cross-DB examples live-tested on the sib endpoint. 2026-07-10: reviewed (589,059) and
-    human-reviewed (20,431) re-verified; taxon-metadata multiplication trap characterized (below)."
+    examples and 4 cross-DB examples live-tested on the sib endpoint. 2026-07-17: every figure re-run.
+    Per-graph split confirmed exactly (uniprot 574,627 + oma 337,813 re-typings + obsolete 14,432 =
+    926,872 COUNT(*)); all 14,432 obsolete-graph entries carry up:obsolete 1; the former
+    reviewed_with_gene_name: 549969 was corrected — it measured up:encodedBy presence, not gene
+    symbols (503,655), and was divided by the inclusive-of-deleted 589,059 to yield a wrong 93.4%."
 
   taxonomy_graph:                    # verified 2026-07-10, scoped to http://sparql.uniprot.org/taxonomy
     taxon_nodes: 3116860
@@ -819,7 +850,8 @@ data_statistics:
   coverage:
     reviewed_with_function: "~80%"
     reviewed_with_go: ">85%"
-    reviewed_with_gene_name: "93.4%"
+    reviewed_with_gene_node: "95.7%"     # up:encodedBy present (549,969/574,627)
+    reviewed_with_gene_symbol: "87.6%"   # gene carries skos:prefLabel (503,655/574,627)
     reviewed_with_pdb: "~13-15%"
     reviewed_with_alphafold: ">98%"
     reviewed_with_disease_annotation: "1.0%"
@@ -850,27 +882,41 @@ anti_patterns:
       for genuinely unstructured free-text fields like rdfs:comment on annotation nodes.
       Always read shape_expressions and inspect example entities before using text search.
 
-  - title: Protein COUNT Inflated by Co-hosted OMA (and split across the obsolete graph)
+  - title: Protein COUNT Hit by TWO Independent Problems — OMA Re-typing AND Deleted Entries
     problem: |
       Counting up:Protein with COUNT(*) over the default union. `a up:Protein` is asserted for reviewed
       proteins in THREE graphs — uniprot (574,627), OMA (337,813 re-typings of the same IRIs), obsolete
-      (14,432) — so COUNT(*) returns 926,872, not the true 589,059. A wrong POSITIVE number, no error.
+      (14,432 IRIs of their own) — so COUNT(*) returns 926,872. A wrong POSITIVE number, no error.
+      The trap is that ONE fix does not solve it: DISTINCT and graph-pinning address DIFFERENT problems.
     wrong_sparql: |
       # WRONG: unscoped, no DISTINCT — OMA re-typing adds 337,813 duplicate rows
       PREFIX up: <http://purl.uniprot.org/core/>
       SELECT (COUNT(*) AS ?n) WHERE { ?p a up:Protein ; up:reviewed 1 . }
-      # → 926,872 (inflated)
+      # → 926,872 (inflated by BOTH problems)
     correct_sparql: |
-      # CORRECT: COUNT(DISTINCT ?p) — robust regardless of how many graphs re-type the IRI
+      # CORRECT for "how big is Swiss-Prot" (the usual intent): DISTINCT *and* exclude deleted entries
       PREFIX up: <http://purl.uniprot.org/core/>
-      SELECT (COUNT(DISTINCT ?p) AS ?n) WHERE { ?p a up:Protein ; up:reviewed 1 . }
-      # → 589,059 (correct; = 574,627 current + 14,432 obsolete)
+      SELECT (COUNT(DISTINCT ?p) AS ?n)
+      FROM <http://sparql.uniprot.org/uniprot>
+      WHERE { ?p a up:Protein ; up:reviewed 1 . }
+      # → 574,627 — current reviewed proteins.
+      # Identical result, without the pin:
+      #   SELECT (COUNT(DISTINCT ?p) AS ?n) WHERE {
+      #     ?p a up:Protein ; up:reviewed 1 . FILTER NOT EXISTS { ?p up:obsolete 1 } }
+      # → 574,627 (verified identical to the pinned form)
     explanation: |
-      Do NOT "fix" this with FROM <http://sparql.uniprot.org/uniprot> — that returns 574,627, silently
-      dropping the 14,432 reviewed proteins whose up:reviewed lives in the obsolete graph. COUNT(DISTINCT
-      ?p) is the only robust fix for total reviewed proteins; FROM <uniprot> is correct only when you
-      specifically want CURRENT (non-obsolete) entries. Row-level SELECT DISTINCT queries are unaffected
-      but fragile — a rewrite to COUNT(*) reintroduces the inflation.
+      The two corrections are independent and must both be applied for the usual intent:
+        (1) COUNT(DISTINCT ?p) defeats the OMA re-typing, because OMA re-uses the SAME IRIs — they
+            collapse under DISTINCT. This is all DISTINCT does.
+        (2) The obsolete graph holds 14,432 DIFFERENT IRIs, so they SURVIVE DISTINCT. All 14,432 carry
+            up:obsolete 1 — they are DELETED entries (e.g. P09896/RL44_HUMAN, up:replacedBy → P83881-4),
+            not current proteins. Excluding them is a separate decision, performed either by
+            FILTER NOT EXISTS { ?p up:obsolete 1 } or by pinning the uniprot graph.
+      COUNT(DISTINCT ?p) ALONE gives 589,059 = 574,627 current + 14,432 deleted. That is not the size of
+      Swiss-Prot; use it only when you deliberately want current + historical entries, and say so.
+      FROM <http://sparql.uniprot.org/uniprot> does not "silently drop" data — it drops DELETIONS.
+      Row-level SELECT DISTINCT queries are unaffected by (1) but fragile — a rewrite to COUNT(*)
+      reintroduces the inflation.
 
   - title: Taxon Metadata Multiplied by Co-hosted OMA/Bgee on the Default Union
     problem: |
@@ -921,7 +967,7 @@ anti_patterns:
                  up:organism <http://purl.uniprot.org/taxonomy/9606> .
       }
     explanation: |
-      up:reviewed 1 reduces scope from ~244M to 589K (99.8% reduction) and is mandatory (integer, not
+      up:reviewed 1 reduces scope from ~244M to ~575K (99.8% reduction) and is mandatory (integer, not
       boolean/string). Use COUNT(DISTINCT ?protein): the co-hosted OMA graph re-types UniProt IRIs as
       up:Protein, so a bare COUNT(*) even with reviewed+organism inflates (40,209 vs true 20,431).
 

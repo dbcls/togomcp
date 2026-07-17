@@ -73,7 +73,7 @@ anchored on one does not fail loudly when the address dies — it matches nothin
 
 ## Workflow — one question, then checkpoint
 
-Generate **one** question through all phases, then **stop and present it for the user's approval** (the YAML + the `verify_questions.py` result + your C01–C28 self-review). Only after approval do you write the file and update the tracker. For a "generate N" request, loop this — pause on each. Never batch-write.
+Generate **one** question through all phases, then **stop and present it for the user's approval** (the YAML + the `verify_questions.py` result + your C01–C29 self-review). Only after approval do you write the file and update the tracker. For a "generate N" request, loop this — pause on each. Never batch-write.
 
 ### Phase 0 — Pick the type (type-first; non-negotiable)
 Read `benchmark/questions/coverage_tracker.yaml`. Choose the **most under-represented** `type` (target ≈ total/5 per type; the five types are `yes_no`, `factoid`, `list`, `summary`, `choice`). If the user named a type/topic/database, honor it but still record the coverage rationale. Type is chosen **before** databases and keywords — not fitted to a keyword afterward.
@@ -81,7 +81,7 @@ Read `benchmark/questions/coverage_tracker.yaml`. Choose the **most under-repres
 > **Shortcut:** `python benchmark/scripts/verify_questions.py` (full run, no args) prints a **Next-Question Guidance** block that does Phase 0–1's bookkeeping for you — the per-type shortfall to the next balanced milestone, the most under-used databases to prefer, and how much UniProt headroom remains under the 70% cap. Use it to make the type/database picks unambiguous rather than eyeballing the tracker.
 
 ### Phase 1 — Pick databases (type-compatible, under-used)
-The valid database set is the live registry — `togo_mcp/data/resources/endpoints.csv` (= what `list_databases()` returns) — restricted to **life-science** databases; `verify_questions.py` derives its accepted set from that same file, excluding non-life-science endpoint groups (currently `nims`, the NIMS materials-science endpoint, e.g. the `supercon` superconductor database). So any current life-science database is fair game and **newly added life-science databases are not only allowed but are the highest-priority coverage targets** (they appear at count 0 in the Next-Question Guidance). Do not build questions on the excluded materials databases even though `list_databases()` shows them — the validator will reject them. Prefer under-used databases (the guidance lists them; the tracker's `databases` counts are a secondary view that may lag for just-added ones). Call `list_databases()`, then pick **2–3** with complementary domains and a real cross-reference path (e.g. UniProt→PDB, ChEMBL→ChEBI), compatible with the type (`summary` needs ≥3). Call `get_MIE_file()` for each chosen database before writing any SPARQL. Avoid pushing UniProt past 70% of the set.
+The valid database set is the live registry — `togo_mcp/data/resources/endpoints.csv` (= what `list_databases()` returns) — restricted to **life-science** databases; `verify_questions.py` derives its accepted set from that same file, excluding non-life-science endpoint groups (currently `nims`, the NIMS materials-science endpoint, e.g. the `supercon` superconductor database). So any current life-science database is fair game and **newly added life-science databases are not only allowed but are the highest-priority coverage targets** (they appear at count 0 in the Next-Question Guidance). Do not build questions on the excluded materials databases even though `list_databases()` shows them — the validator will reject them. Prefer under-used databases (the guidance lists them; the tracker's `databases` counts are a secondary view that may lag for just-added ones). Call `list_databases()`, then pick **2–3** with complementary domains and a real cross-reference path (e.g. UniProt→PDB, ChEMBL→ChEBI), compatible with the type (`summary` needs ≥3). Call `get_MIE_file()` for each chosen database before writing any SPARQL — and read its `co_hosted_graphs` + `critical_warnings` FIRST, not the schema first. **This call alone is not enough**: Q076 was written against a UniProt MIE that already documented the exact `dcterms:identifier` trap it then fell into. The MIE must be re-consulted *per predicate* at the moment you write it (C29), not read once and remembered. Avoid pushing UniProt past 70% of the set.
 
 ### Phase 2 — Pick a keyword
 Read `benchmark/keywords.tsv` (columns: `Keyword ID`, `Name`, `Category`). Filter by the type and the chosen databases, drop any already in the tracker's `keywords_used`, and pick **randomly** from what remains (do not browse for an appealing topic — that inverts the workflow). Avoid famous entities (BRCA1, TP53, insulin, aspirin, glycolysis, E. coli K-12, …).
@@ -128,7 +128,7 @@ the evidence that scoping was applied.
 ### Phase 7 — Assemble the YAML
 Fill every required field per [references/question-schema.md](references/question-schema.md) and [references/template.yaml](references/template.yaml): correct `exact_answer` format for the type; `rdf_triples` with a `# Database: X | Query: N | Comment: ...` line after **every** triple; a `verification_score` that honestly totals ≥9 with no zero dimension; a synthesized `ideal_answer` (single paragraph for `summary`; no meta-references like "according to UniProt"). The question `body` must be self-contained and must **not** name a database.
 
-### Phase 8 — Self-review against C01–C28
+### Phase 8 — Self-review against C01–C29
 Walk the full checklist in [references/qa-checklist.md](references/qa-checklist.md). Any CRITICAL (C01–C06, C22, C23, C27) or MAJOR finding means fix it before presenting — do not present a question you know is flawed. **For C26 (structural near-duplicate), actively scan the existing questions that share this candidate's `type` and database set** — read their `body` and `sparql_queries` and confirm the candidate uses a genuinely different query pattern/predicate path, not the same shape with a new keyword. This is the one check the machine validator can't fully make at the checkpoint (single-file mode sees only this file), so it's on you here. Produce a short verdict (PASS / MINOR / MAJOR) with the triggered codes.
 
 ### Phase 9 — Machine validation
@@ -139,7 +139,7 @@ python benchmark/scripts/verify_questions.py /path/to/candidate.yaml   # single-
 Fix every ❌ error. (Single-file mode checks structure/format only — it does **not** see the rest of the set, so the aggregate gates and the structural near-duplicate guard run later, in the full Phase-11 validation. Phase 0–1 *biases* toward balance; the full run is what *enforces* the coverage caps and surfaces signature/keyword collisions.)
 
 ### Phase 10 — CHECKPOINT: present for approval
-Show the user: the rendered YAML, the verify result, and the C01–C28 verdict. **Wait.** Do not write into `benchmark/questions/` or touch the tracker until they approve.
+Show the user: the rendered YAML, the verify result, and the C01–C29 verdict. **Wait.** Do not write into `benchmark/questions/` or touch the tracker until they approve.
 
 ### Phase 11 — Commit the question (after approval only)
 - Assign the next id: `question_0NN.yaml` where NN = (current highest + 1), `id` field matching the filename.
@@ -168,7 +168,7 @@ This skill stops at **approved, validated questions + updated tracker**. It does
 The skill's `references/` files are authoritative for the generation protocol — they are the in-loop, current versions and are what you follow. For the YAML schema specifically, `benchmark/QUESTION_FORMAT.md` remains the canonical spec (`references/question-schema.md` is its distilled form); consult it when a schema detail is ambiguous.
 
 One older repo doc is **not** authoritative for generation — do not defer to it on conflict:
-- `benchmark/QA_CREATION_GUIDE.md` — the original v5.5.0 long-form protocol, kept for background/history only. It predates this skill and has stale paths and tool names; the `references/` files supersede it. (An earlier `benchmark/togomcp_qa_prompt.md`, holding a legacy C01–C25 reviewer prompt and a per-question P/W/F tracker, was retired — a question's presence in `benchmark/questions/` already means it passed the checkpoint, and `references/qa-checklist.md` (C01–C28) is the current checklist.)
+- `benchmark/QA_CREATION_GUIDE.md` — the original v5.5.0 long-form protocol, kept for background/history only. It predates this skill and has stale paths and tool names; the `references/` files supersede it. (An earlier `benchmark/togomcp_qa_prompt.md`, holding a legacy C01–C25 reviewer prompt and a per-question P/W/F tracker, was retired — a question's presence in `benchmark/questions/` already means it passed the checkpoint, and `references/qa-checklist.md` (C01–C29) is the current checklist.)
 
 ## File & tool map
 
