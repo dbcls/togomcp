@@ -43,7 +43,7 @@ from statistics import NormalDist, mean, stdev
 
 import yaml
 
-from ablate_mie import CANONICAL_SECTIONS
+from ablate_mie import CANONICAL_SECTIONS, GROUPS
 
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[1]
@@ -119,17 +119,27 @@ def question_dbs() -> dict[str, set[str]]:
 
 
 def sections_with_db() -> dict[str, set[str]]:
-    """section -> set of databases whose MIE contains it (from section_presence.csv)."""
+    """label -> databases whose MIE carries it (from section_presence.csv).
+
+    Group labels (`group_<name>`) map to the UNION of their members' databases: a
+    group ablation is relevant to a question if ANY of its sections is.
+    """
     out: dict[str, set[str]] = {s: set() for s in CANONICAL_SECTIONS}
-    if not PRESENCE_CSV.exists():
-        return out
-    with PRESENCE_CSV.open(encoding="utf-8") as fh:
-        for row in csv.DictReader(fh):
-            db = row["database"]
-            for s in CANONICAL_SECTIONS:
-                if row.get(s) == "1":
-                    out[s].add(db)
+    if PRESENCE_CSV.exists():
+        with PRESENCE_CSV.open(encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                db = row["database"]
+                for s in CANONICAL_SECTIONS:
+                    if row.get(s) == "1":
+                        out[s].add(db)
+    for g, members in GROUPS.items():
+        out[f"group_{g}"] = set().union(*(out[m] for m in members)) if members else set()
     return out
+
+
+def analysis_labels() -> list[str]:
+    """Every condition the analysis knows how to read: the 11 sections + each group."""
+    return CANONICAL_SECTIONS + [f"group_{g}" for g in GROUPS]
 
 
 def _fmt(x: float | None, spec: str = "+.2f") -> str:
@@ -438,7 +448,7 @@ def main() -> int:
     base_correct = load_correctness("baseline", gold, args.exact_tolerance, results)
 
     rows = []
-    for section in CANONICAL_SECTIONS:
+    for section in analysis_labels():
         csv_path = results / f"ablate_{section}-scored.csv"
         if not csv_path.exists():
             continue
@@ -558,7 +568,7 @@ def write_report(rows: list[dict], path: Path, metric: str,
         "'this section does nothing' when its CI excludes 0** (marked `*`); everything else "
         "is consistent with no effect, regardless of its sign.",
         "",
-        "## All 11 sections, ranked by contribution",
+        f"## All {len(rows)} ablations, ranked by contribution",
         "",
         "| Rank | Section | Spotlight category | n | Baseline | Ablated | Contribution (±95% CI) | z |",
         "|---:|---|---|---:|---:|---:|---:|---:|",

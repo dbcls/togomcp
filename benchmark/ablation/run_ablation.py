@@ -47,7 +47,7 @@ from statistics import mean
 
 import yaml
 
-from ablate_mie import CANONICAL_SECTIONS  # single source of truth for the 11
+from ablate_mie import CANONICAL_SECTIONS, GROUPS  # single source of truth
 
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[1]
@@ -60,7 +60,11 @@ PILOT_FILE = HERE / "pilot_questions.txt"
 RESULTS_DIR = HERE / "results"
 RENDERED_DIR = RESULTS_DIR / "rendered_configs"
 
-ALL_CONDITIONS = ["baseline"] + [f"ablate_{s}" for s in CANONICAL_SECTIONS]
+SECTION_CONDITIONS = ["baseline"] + [f"ablate_{s}" for s in CANONICAL_SECTIONS]
+GROUP_CONDITIONS = [f"ablate_group_{g}" for g in GROUPS]
+# Valid set = both; the DEFAULT stays section-only so existing invocations are
+# unchanged. `--conditions groups` is the shorthand for baseline + every group.
+ALL_CONDITIONS = SECTION_CONDITIONS + GROUP_CONDITIONS
 DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
 
 
@@ -365,8 +369,10 @@ def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--conditions", default=",".join(ALL_CONDITIONS),
-                    help="comma-separated conditions (default: baseline + all 11 ablations)")
+    ap.add_argument("--conditions", default=",".join(SECTION_CONDITIONS),
+                    help="comma-separated conditions (default: baseline + all 11 "
+                         "single-section ablations). Use 'groups' for baseline + every "
+                         "GROUP ablation (build them first: ablate_mie.py --groups all).")
     ap.add_argument("--questions", nargs="+", default=None,
                     help="explicit question YAML paths (default: pilot_questions.txt)")
     ap.add_argument("--base-config", default=str(DEFAULT_BASE_CONFIG),
@@ -424,6 +430,8 @@ def main() -> int:
                          "environment (e.g. `ANTHROPIC_API_KEY=$MY_ANTHROPIC_API_KEY ...`).")
 
     conditions = [c.strip() for c in args.conditions.split(",") if c.strip()]
+    if conditions == ["groups"]:
+        conditions = ["baseline"] + GROUP_CONDITIONS
     unknown = [c for c in conditions if c not in ALL_CONDITIONS]
     if unknown:
         raise SystemExit(f"unknown condition(s): {', '.join(unknown)}\nvalid: {', '.join(ALL_CONDITIONS)}")

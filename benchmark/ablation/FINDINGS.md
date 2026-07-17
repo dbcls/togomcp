@@ -82,8 +82,14 @@ section.
 
 Two levers remain, in order of expected value:
 
-1. **Group ablation** — remove a whole group (e.g. all query-guidance sections at
-   once) so redundancy can't compensate. Bigger effects, same cost.
+1. **Group ablation** — remove a whole functional group at once so redundancy can't
+   compensate. **Built and ready** (`ablate_mie.py --groups all`; three groups
+   partitioning all 11 sections; recipe in the README): bigger effects *and* cheaper —
+   4 conditions ≈ $260 vs the 12 ≈ $780 spent here, with a lower corrected bar
+   (|z|>2.39 for k=3). Σ of single-section contributions per group — a weak heuristic,
+   since the joint effect should exceed the sum under redundancy — puts `guardrails`
+   ahead (+0.82) of `orientation` (+0.23) and `query` (+0.11). Run it into its **own**
+   `--results-dir` so it gets its own in-batch baseline (see Trap 1).
 2. **The full 100-question set** — n≈88 would resolve a `common_errors`-sized effect
    even after multiple-comparison correction. `append_results.py` extends n without
    re-running what's already done.

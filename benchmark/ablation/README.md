@@ -111,6 +111,42 @@ same batch (16.72 → 17.13) made the pattern vanish, and rebased the effort axi
 baseline predates the ablations, delete it and let it re-run. When extending the set,
 run **every** condition for the new questions in one batch.
 
+## Group ablation (the recommended follow-up)
+
+Leave-one-out measures a section's **marginal** value with its 10 redundant siblings
+still in place — which is why all 11 came back null (see [FINDINGS.md](FINDINGS.md)).
+Removing a whole functional group at once is the direct test of that redundancy, and it
+wins twice: redundancy can't compensate (**bigger effects**) and it needs **4 conditions
+instead of 12** (**~$260 vs ~$780**, and a lower multiple-comparison bar — |z|>2.39 for
+k=3 vs |z|>2.84 for k=11).
+
+The three groups partition all 11 sections (`GROUPS` in `ablate_mie.py`, asserted):
+
+| Group | Sections | % of MIE bytes |
+|---|---|---:|
+| `query` — helps CONSTRUCT a query | schema_info, shape_expressions, sparql_query_examples, cross_references, cross_database_queries | 53% |
+| `guardrails` — warns OFF a wrong query | critical_warnings, common_errors, anti_patterns | 25% |
+| `orientation` — ORIENTS in the database | architectural_notes, data_statistics, sample_rdf_entries | 22% |
+
+```bash
+python ablate_mie.py --sections "" --groups all        # build the 3 group variants
+
+# Run into its OWN results dir: the group sweep needs its own baseline, in its own
+# batch. Pointing it at ./results would SKIP baseline and silently reuse the section
+# sweep's — the exact confound in FINDINGS.md.
+ANTHROPIC_API_KEY=$MY_ANTHROPIC_API_KEY NCBI_API_KEY=... \
+python run_ablation.py --results-dir results_groups --conditions groups \
+       --runs 3 --answer-use-api --judge-use-api
+
+python ablation_analysis.py --results results_groups --exclude-ceiling 20 --exclude-floor 12
+```
+
+Prediction worth recording before the run: summing each group's single-section
+contributions (a **weak** heuristic — the group contrast is a different estimand, and
+under redundancy the joint effect should be *larger* than the sum), `guardrails` leads
+at Σ+0.82, ahead of `orientation` (+0.23) and `query` (+0.11). That `query` is 5
+sections and 53% of the corpus yet sums to ~0.11 is itself the thing worth testing.
+
 ## Extending n without re-running the sweep
 
 The analysis keys on `question_id` and pairs per question, so more questions can be
