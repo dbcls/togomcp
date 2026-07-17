@@ -470,6 +470,8 @@ If `ASK` returns false, the triple as written does not exist in the endpoint. Do
 
 **5b. Test every SPARQL query.** Run all 7 of `sparql_query_examples`, every example in `cross_database_queries`, every `correct_sparql` block in `anti_patterns`, and any SPARQL embedded in `cross_references`. Every single one. If a query times out or errors, fix it or replace it — do not ship queries that don't run. If a query runs but returns zero rows when it shouldn't, that's also a failure (usually a namespace trap — investigate and document in `critical_warnings`).
 
+Automate the zero-row/error half of this: `uv run python scripts/check_mie_examples.py <db>` runs every `sparql`/`correct_sparql` block against the live endpoint and flags ZERO-row and ERROR results (it harvests the file's PREFIXes, so snippets that omit them still run; it treats a lone `COUNT`→0 as zero-row; it reports 5xx as net-fail, not a defect). **Require a clean run — 0 zero-row, 0 error — before shipping.** This exists because Phase 5b was documented but not actually run: six MIEs shipped `correct_sparql` blocks that returned 0 (oma/supercon/ddbj/pubchem/pubtator/jpostdb, fixed 2026-07-18). Two things the tool does NOT cover, so do them by hand: a query that returns the WRONG rows (5b's "returns the right thing" — e.g. a union-inflated COUNT, or taxonomy's bare-namespace-rank example that returned botanical sections) passes the tool but is still a failure; and the queries must already be paste-ready (self-contained or using only PREFIXes declared elsewhere in the file) for it to run them.
+
 For each cross-database query that returns results, additionally spot-check join validity: take one join value from the result set and run a quick `ASK` or `SELECT` against the second database to confirm it resolves to a real entity there. A query returning 3 rows when thousands are expected is a join failure, not a passing test — the IRI form used for linking likely differs between the two databases.
 
 **5c. Verify statistics.** Every count or coverage percentage in `data_statistics` must come from a real query you ran, and must have a `verified_date`. If you can't verify a number, omit it rather than guessing.
@@ -608,7 +610,7 @@ Only after Phases 1–5 are complete, report to the user:
   - schema_info.categories checked: all tokens exact-matched against list_categories()
   - prefix declarations verified: all non-standard prefixes confirmed with SELECT
   - data_statistics cross-checked: total_entities and coverage % arithmetically consistent
-  - anti_patterns.correct_sparql tested: all correct_sparql blocks executed successfully
+  - anti_patterns.correct_sparql tested: all correct_sparql blocks executed successfully — confirm via `check_mie_examples.py <db>` returning 0 zero-row / 0 error (5b)
   - cross-graph inflation checked: co-hosted endpoint probed (2g), multipliers + safe pattern
     validated and recorded in co_hosted_graphs/critical_warnings — or "single-DB endpoint, N/A"
   - search-wrapper claims verified: every search_*/ncbi/OLS4 tool-behavior claim run through

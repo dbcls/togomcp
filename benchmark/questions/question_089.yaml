@@ -103,24 +103,31 @@ sparql_queries:
       and keeping only ancestors whose taxo:rank is one of the seven principal ranks. The
       lineage is Bacteria (superkingdom) → Pseudomonadota (phylum) → Hydrogenophilia
       (class) → Hydrogenophilales (order) → Hydrogenophilaceae (family) → Hydrogenophilus
-      (genus) → Hydrogenophilus thermoluteolus (species). The phylum and class each carry
-      two scientific names (Pseudomonadota/Proteobacteria; Hydrogenophilia/Hydrogenophilalia),
-      hence 9 rows for 7 ranks.
+      (genus) → Hydrogenophilus thermoluteolus (species) — 7 ranks, one row each. The
+      query is pinned to the authoritative graph; the legacy microbedbjp copy (unpinned)
+      double-lists the phylum (Pseudomonadota/Proteobacteria) and class
+      (Hydrogenophilia/Hydrogenophilalia) under both nomenclature vintages, inflating to 9 rows.
     query: |
       PREFIX taxo: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
       SELECT DISTINCT ?rankShort ?ancName ?anc
+      FROM <http://rdfportal.org/ontology/taxonomy>
       WHERE {
         <http://identifiers.org/taxonomy/297> taxo:scientificName ?spName ;
             rdfs:subClassOf* ?anc .
         ?anc taxo:scientificName ?ancName ;
              taxo:rank ?rank .
-        VALUES ?rank { taxo:Superkingdom taxo:Phylum taxo:Class taxo:Order taxo:Family taxo:Genus taxo:Species }
-        BIND(STRAFTER(STR(?rank), "taxonomy/") AS ?rankShort)
+        # In the authoritative graph the domain rank is the bare-namespace IRI, not taxo:Superkingdom
+        # (which lives only in the legacy graph); exclude the "cellular organisms" root (131567),
+        # which shares that bare-namespace rank IRI.
+        VALUES ?rank { <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+                       taxo:Phylum taxo:Class taxo:Order taxo:Family taxo:Genus taxo:Species }
+        FILTER(?anc != <http://identifiers.org/taxonomy/131567>)
+        BIND(IF(STR(?rank) = "http://ddbj.nig.ac.jp/ontologies/taxonomy/", "Superkingdom", STRAFTER(STR(?rank), "taxonomy/")) AS ?rankShort)
       }
       ORDER BY ?anc
-    result_count: 9   # 7 principal ranks; phylum + class each have 2 scientific names -> 9 rows
+    result_count: 7   # 7 principal ranks, one row each; graph-pinned (was 9 unpinned, inflated by dual-vintage phylum + class names)
 
   - query_number: 3
     database: ddbj

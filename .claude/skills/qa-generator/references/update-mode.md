@@ -139,10 +139,27 @@ discipline is on you.
 
 ## Staleness audit (find what to update)
 
-To discover *which* questions have drifted without editing anything:
+To discover *which* questions have drifted without editing anything, run the automated first pass,
+then hand-triage what it flags:
 
-1. For each `question_0NN.yaml`, run sub-mode **R1–R3** (load, re-run queries verbatim, diff). This
-   is read-only and read-heavy (it re-executes every query in the set).
+**Automated pass — `benchmark/scripts/check_answer_drift.py`.** Re-runs every `sparql_queries[*]`
+entry against its database's live endpoint (resolved from `endpoints.csv`) and reports where the live
+result no longer matches the recorded `result_count`. It is the machine version of R2, and it is what
+`verify_questions.py` cannot do (that tool checks structure only and never executes a query — which is
+exactly why the six co-tenancy-inflation drifts of 2026-07 sat undetected). Usage:
+`uv run python benchmark/scripts/check_answer_drift.py` (whole set) or `... 60 71 100` (specific Qs);
+`--timeout`, `--retries`, `--strict` available. It understands the dual `result_count` convention (row
+count vs. a lone scalar aggregate's value), skips non-SPARQL steps (OLS4/PubMed notes) and materials
+DBs, and — crucially — reports network/timeout failures as ERROR, **not** as drift, so a flaky
+endpoint never masquerades as a moved answer. Exit code = number of DRIFT rows.
+
+A DRIFT row is a *candidate*, not a verdict: the count may have moved for a legitimate reason (the
+database grew), or the query may be reading an inflated union (the 2026-07 case — the fix was to pin
+the graph, not to update the number). Decide which per §0.2 of the co-tenancy findings doc before
+adopting any number.
+
+1. Run the automated pass above (or, for a single question, sub-mode **R1–R3**: load, re-run verbatim,
+   diff).
 2. Report the drifted questions: `id`, which `result_count`/answer moved, old → new.
 3. Take each drifted question through **Refresh** (or **Replace** if it's beyond saving), one at a
    time, pausing at the checkpoint — exactly like the create loop. **Never batch-write fixes.**

@@ -54,9 +54,9 @@ schema_info:
        co-tenancy traps; probed 2026-07-17."
   kw_search_tools: []
   version:
-    mie_version: "2.3"
+    mie_version: "2.4"
     mie_created: "2026-04-30"
-    mie_updated: "2026-07-17"
+    mie_updated: "2026-07-18"
     # Dated-snapshot form: the data graph <http://jpost.org/graph/database> carries NO dataset-level
     # version triple (probed void:triples, owl:versionInfo/versionIRI, dcterms:modified|issued|
     # hasVersion, void:Dataset/owl:Ontology descriptors). The only version on the endpoint is
@@ -778,16 +778,20 @@ anti_patterns:
       WHERE { ?pept a jpost:Peptide ; jpost:isDetectedIn ?prot . }
       LIMIT 1
     correct_sparql: |
-      # CORRECT: use the UniProt IRI (structured predicate) discovered during exploration
+      # CORRECT: use the UniProt IRI (structured predicate) discovered during exploration.
+      # Protein -> Peptide runs through the PeptideEvidence blank node, NOT a direct reverse
+      # predicate: jpost:isDetectedIn does NOT exist (silent 0 rows). See ProteinShape/PeptideEvidence.
+      PREFIX jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#>
       SELECT (COUNT(DISTINCT ?pept) AS ?count)
       FROM <http://jpost.org/graph/database>
       WHERE {
         ?prot a jpost:Protein ;
-              jpost:hasDatabaseSequence <http://purl.uniprot.org/uniprot/P01116> .
-        ?pept a jpost:Peptide ; jpost:isDetectedIn ?prot .
+              jpost:hasDatabaseSequence <http://purl.uniprot.org/uniprot/P01116> ;
+              jpost:hasPeptideEvidence [ jpost:hasPeptide ?pept ] .
       }
       LIMIT 1
-    explanation: "Use the jpost:hasDatabaseSequence IRI predicate to scope comprehensive counts. Pasting sampled PRT IRIs only counts those specific project-dataset combinations."
+      # -> 242 distinct peptides for P01116 (KRAS). Verified 2026-07-18.
+    explanation: "Use jpost:hasDatabaseSequence to scope by protein, then reach peptides through the PeptideEvidence bnode (jpost:hasPeptideEvidence/jpost:hasPeptide) — there is NO direct jpost:isDetectedIn predicate; using it silently returns 0. Pasting sampled PRT IRIs only counts those project-dataset combinations."
 
   - title: "Querying peptide sequence as a direct property"
     problem: "Treating the AA sequence as a literal directly on the Peptide."

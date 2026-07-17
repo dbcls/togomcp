@@ -63,9 +63,9 @@ schema_info:
   kw_search_tools:
     - search_uniprot_entity
   version:
-    mie_version: "2.4"
+    mie_version: "2.5"
     mie_created: "2026-04-29"
-    mie_updated: "2026-07-17"
+    mie_updated: "2026-07-18"
     data_version: "RDF Portal snapshot — verified 2026-07-17"
     update_frequency: "Monthly"
   access:
@@ -97,6 +97,13 @@ critical_warnings: |
         589,059.
     FROM <http://sparql.uniprot.org/uniprot> does NOT "silently drop" data: it drops DELETIONS, which
     is normally what you want. Nothing signals the inflation — it is worse than an empty result.
+    NOT JUST COUNTS — A ROW-RETURNING SELECT DOUBLES TOO: the OMA re-typing (1) asserts the SAME
+    IRI in a second graph, so `SELECT ?protein WHERE { ?protein a up:Protein ; up:reviewed 1 ; ... }`
+    over the union returns each protein TWICE (once per graph). COUNT(DISTINCT) does not apply to a
+    row query — the fix is SELECT DISTINCT or, better, pin FROM <http://sparql.uniprot.org/uniprot>
+    (the pin also drops the obsolete duplicates in one move). Verified 2026-07-18: an unpinned
+    `SELECT ?protein` for reviewed human proteins under a keyword returned 278/8/62 rows where the
+    true distinct counts are 141/4/31 — exactly 2x on the proteins that have an OMA re-typing.
   - SIB UNION TAXON-METADATA MULTIPLICATION (silent ROW inflation on the everyday protein->organism
     join): the co-hosted OMA and Bgee graphs RE-DECLARE the SAME taxon nodes
     (http://purl.uniprot.org/taxonomy/NNNN) with their own copies of UniProt's taxon predicates. Over

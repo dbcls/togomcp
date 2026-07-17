@@ -15,6 +15,45 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 _Nothing yet._
 
+## [1.7.1] - 2026-07-18
+
+Follow-up to the 1.7.0 co-tenancy sweep: the sweep verified `co_hosted_graphs` and
+`critical_warnings` but not the example queries agents copy. An audit of all 36 MIEs
+found — and this release fixes — templates that silently returned 0 rows or contradicted
+their own file. No tool-surface change; the served MIE/guide content is corrected.
+
+### Fixed
+
+- **11 broken example queries across 10 MIEs, each verified live.** Nine `anti_patterns.correct_sparql`
+  / example blocks that returned 0 rows against the endpoint: `oma` (impossible class + no
+  organism→taxon edge; rewritten as a HOG-family GROUP BY → 8,763), `supercon` (fictitious
+  namespace/class → real `Schema:OxideAndMetallic` Tc scaffold → 4,707), `ddbj` (Gene `bfo:0000050`
+  points at the Sequence, not the Entry → 3,244,894), `pubchem` (CID string mistaken for SMILES +
+  unpinned descriptor graph → 1,231), `pubtator` (threshold above the IRI's max), `jpostdb`
+  (non-existent `jpost:isDetectedIn` → PeptideEvidence bnode path → 242), `bacdive` (`^^rr:Literal`
+  GramStain + boolean SporeFormation), `taxonomy` (Superkingdom example missing the graph pin and the
+  `131567` exclusion, and mis-describing the bare-namespace rank), `nando` (anti-pattern taught
+  `STRSTARTS` as corrective when it is a no-op — real fix is pin + `COUNT(DISTINCT)`); plus `pubmed`'s
+  cross-DB join (`rdfs:seeAlso`→`fabio:hasSubjectTerm` for a disease topic).
+- **Secondary-section doc drift in 6 MIEs**: `chebi` (a `data_integration` bullet prescribing a
+  dead `skos:exactMatch`→ChEBI join), `pubmed` (`mesh/2025` pointer that resolves 0), `chembl`
+  (34.0/36.0 version mismatch — counts re-confirmed on 36.0), `glycosmos` (~60 vs measured 148 graphs),
+  `go` ("EIGHT" vs ten graphs), `mediadive` (missing the shared-DSMZ-namespace `schema:` prefix warning).
+- **`amrportal`** two-stage cross-DB example split into two independently-runnable examples (was one
+  un-runnable concatenated block).
+- **`uniprot`** OMA warning extended to row-returning `SELECT`s (was framed as counts-only).
+- **Benchmark**: 12 questions graph-pinned against co-tenant inflation (no recorded answer changed).
+
+### Added
+
+- **`scripts/check_mie_examples.py`** — runs every MIE's `sparql`/`correct_sparql` block against the
+  live endpoint and gates on zero-row/error (with an `expect_empty` allowlist). Wired into the
+  mie-generator skill's Phase 5b, which required this check but only in prose.
+- **`benchmark/scripts/check_answer_drift.py`** — re-runs every stored benchmark query against its
+  recorded `result_count`, the gap `verify_questions.py` (structure-only) can't cover.
+- **Usage guide**: CO-TENANCY point 1 now says pin the graph *set* a database owns (UniProt is ~16
+  graphs) — a single-graph pin returns empty for a leg whose data lives in a sibling.
+
 ## [1.7.0] - 2026-07-17
 
 ### Added
@@ -389,6 +428,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v1.6.2...HEAD
+[1.7.1]: https://github.com/dbcls/togomcp/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/dbcls/togomcp/compare/v1.6.2...v1.7.0
 [1.6.2]: https://github.com/dbcls/togomcp/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/dbcls/togomcp/compare/v1.6.0...v1.6.1

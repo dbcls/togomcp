@@ -68,9 +68,9 @@ schema_info:
        cannot inflate a join."
   kw_search_tools: []
   version:
-    mie_version: "2.4"
+    mie_version: "2.5"
     mie_created: "2025-04-21"
-    mie_updated: "2026-07-17"
+    mie_updated: "2026-07-18"
     data_version: "RDF Portal snapshot — verified 2026-07-17"
     update_frequency: "Irregular updates"
   license:
@@ -438,20 +438,18 @@ cross_database_queries:
   shared_endpoint: ebi
   co_located_databases: [chembl, chebi, reactome, ensembl]
   examples:
-    - title: Resistance Counts Linked to ChEMBL Compounds (Two-Stage Aggregation)
+    # This cross-DB link is a TWO-STAGE pattern: aggregating resistance counts AND joining to
+    # ChEMBL in one query times out on 1.7M rows. The two stages are split into two runnable
+    # examples below — run Stage 1, paste its counts into Stage 2's VALUES. (They were previously
+    # one `sparql` block concatenating both queries, which is not runnable as a single query.)
+    - title: Resistance Counts per Antibiotic — Stage 1 of 2 (aggregate within amrportal GRAPH)
       description: |
-        Aggregate AMR resistance within its own GRAPH first, then join to ChEMBL.
-        Aggregating across GRAPHs in a single query causes guaranteed timeout on 1.7M rows.
-
-        Linking strategy:
-        - Stage 1: COUNT resistant records per antibioticName within amrportal GRAPH (5-7s)
-        - Stage 2: join aggregated summary to ChEMBL rdfs:label via LCASE matching (<1s)
-        - No structured IRI bridge between AMR and ChEMBL — name matching is the only link
-        - MIE files checked: amrportal, chembl
-      databases_used: [amrportal, chembl]
+        Stage 1 of the amrportal -> ChEMBL two-stage pattern: COUNT resistant records per
+        antibioticName WITHIN the amrportal GRAPH. Run this alone, then paste its counts into the
+        Stage-2 VALUES block (next example) — aggregating across GRAPHs in one query times out.
+      databases_used: [amrportal]
       complexity: intermediate
       sparql: |
-        # STAGE 1 — run independently first (5-7s)
         PREFIX amr: <http://example.org/ebiamr#>
         SELECT ?antibiotic (COUNT(*) as ?resistant)
         FROM <http://rdfportal.org/dataset/amrportal>
@@ -462,8 +460,18 @@ cross_database_queries:
           FILTER(?antibiotic IN ("ciprofloxacin", "ampicillin", "gentamicin"))
         }
         GROUP BY ?antibiotic
+      notes: |
+        - ~5-7s. Verified 2026-07-18: ciprofloxacin 21368, ampicillin 21660, gentamicin 8398.
+        - NEVER combine this COUNT with the cross-GRAPH ChEMBL join in one query — guaranteed timeout.
 
-        # STAGE 2 — substitute Stage 1 results into VALUES, then run (<1s)
+    - title: Link Resistance Counts to ChEMBL Development Phase — Stage 2 of 2
+      description: |
+        Stage 2: substitute the Stage-1 counts into a VALUES block and join to ChEMBL by name.
+        There is no structured IRI bridge between AMR and ChEMBL — LCASE name matching is the only
+        link. Refresh the VALUES numbers whenever Stage 1 is re-run.
+      databases_used: [amrportal, chembl]
+      complexity: intermediate
+      sparql: |
         PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         SELECT ?antibiotic ?resistant ?developmentPhase
@@ -481,11 +489,10 @@ cross_database_queries:
           }
         }
       notes: |
-        - Run as two separate queries; paste Stage 1 counts into Stage 2 VALUES.
-        - NEVER combine COUNT and cross-GRAPH join in one query — guaranteed timeout.
         - STR() on BOTH sides of the name FILTER is required: a VALUES-bound plain literal does
           NOT compare equal to LCASE()'s xsd:string output in Virtuoso — without it the join
-          silently returns 0 rows (verified 2026-07-07). Stage-2 phases: cipro/ampicillin/gentamicin all 4.
+          silently returns 0 rows (verified 2026-07-07).
+        - Verified 2026-07-18: cipro/ampicillin/gentamicin all highestDevelopmentPhase 4.
         - MIE files checked: amrportal, chembl.
 
     - title: AMR Resistance Enriched with ChEBI Chemical Properties

@@ -46,9 +46,9 @@ schema_info:
        glycosmos ~150, togovar), holds multiple graphs. Verified 2026-07-17."
   kw_search_tools: []
   version:
-    mie_version: "4.2"
+    mie_version: "4.3"
     mie_created: "2026-04-29"
-    mie_updated: "2026-07-17"
+    mie_updated: "2026-07-18"
     data_version: "NIMS SuperCon RDF 2026 snapshot (archival; last substantive entries 2019-2020)"
     update_frequency: "Effectively frozen: 4 papers added 2021, 2 in 2022, 1 in 2023"
   license:
@@ -727,18 +727,27 @@ anti_patterns:
       SELECT (COUNT(?sample) AS ?count) WHERE { }
       LIMIT 1
     correct_sparql: |
-      # CORRECT: use the typed predicate (structure type) discovered during exploration
-      PREFIX Schema: <http://purl.org/supercon/schema#>
+      # CORRECT: use the real namespace/class + the typed Tc property-node scaffold.
+      # The earlier form used a fictitious PREFIX Schema: <http://purl.org/supercon/schema#> and
+      # a non-existent class Schema:Sample -> 0 rows. Real base is dice.nims.go.jp; the sample
+      # class is Schema:OxideAndMetallic; and the Tc datum's IAO_0000221 must point at an
+      # INSTANCE property node (a Schema:tc) reached from the sample via sio:SIO_000008.
+      PREFIX sio:    <http://semanticscience.org/resource/>
+      PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
+      PREFIX obo:    <http://purl.obolibrary.org/obo/>
       SELECT (COUNT(DISTINCT ?sample) AS ?count)
       FROM <http://rdfportal.org/dataset/supercon>
       WHERE {
-        ?sample a Schema:Sample .
-        ?meas obo:OBI_0000299 ?tcDatum .
-        ?tcDatum obo:IAO_0000221 Schema:tc ; sio:SIO_000300 ?tc .
-        FILTER(?tc > 77)
+        ?sample a Schema:OxideAndMetallic ;
+                sio:SIO_000008 ?tcProp .
+        ?tcProp a Schema:tc .
+        ?tcDatum obo:IAO_0000221 ?tcProp ;
+                 sio:SIO_000300 ?tcVal .
+        FILTER(?tcVal > 77)
       }
       LIMIT 1
-    explanation: "Use structured predicates (property type, unit filter) discovered during exploration for comprehensive queries. Pasting sampled sample IRIs from a top-N result only counts those N samples."
+      # -> 4,707 samples with Tc > 77 K. Verified 2026-07-18.
+    explanation: "Use structured predicates for comprehensive counts, not sampled sample IRIs. The real Schema namespace is http://dice.nims.go.jp/ontology/SuperCon-ont/Schema# and the sample class is Schema:OxideAndMetallic; a Tc value is reached sample -> sio:SIO_000008 -> (a Schema:tc) property node <- obo:IAO_0000221 datum -> sio:SIO_000300 value."
 
   - title: Mixing lattice parameter units without inspection
     problem: |
