@@ -145,22 +145,29 @@ sparql_queries:
 
   - query_number: 5
     database: go
-    description: Retrieve labels and immediate parent terms for the two key melatonin biosynthesis molecular functions (GO:0004059, GO:0017096)
+    description: >-
+      Retrieve labels and immediate parent terms for the two key melatonin biosynthesis
+      molecular functions (GO:0004059, GO:0017096). Labels are normalised with STR() and
+      the go graph is pinned: GO serves some labels BOTH as a plain literal and as an
+      xsd:string typed-literal — distinct RDF terms that SELECT DISTINCT cannot collapse —
+      and "N-acetyltransferase activity" is one of them, which is why this query recorded
+      4 rows when only 3 exist (Hard Rule 4; same trap as GO_0005183 in question_014).
     query: |
       PREFIX obo: <http://purl.obolibrary.org/obo/>
 
-      SELECT ?term ?label ?parentLabel
+      SELECT DISTINCT ?term (STR(?rawLabel) AS ?label) (STR(?rawParentLabel) AS ?parentLabel)
+      FROM <http://rdfportal.org/ontology/go>
       WHERE {
         VALUES ?term {
           obo:GO_0004059
           obo:GO_0017096
         }
-        ?term rdfs:label ?label .
+        ?term rdfs:label ?rawLabel .
         ?term rdfs:subClassOf ?parent .
-        ?parent rdfs:label ?parentLabel .
+        ?parent rdfs:label ?rawParentLabel .
         FILTER(STRSTARTS(STR(?parent), "http://purl.obolibrary.org/obo/GO_"))
       }
-    result_count: 4
+    result_count: 3   # 3 real term->parent pairs. Recorded as 4 until 2026-07-17: "N-acetyltransferase activity" is stored as both a plain and an xsd:string literal, so GO_0004059 came back twice.
 
 rdf_triples: |
   @prefix up: <http://purl.uniprot.org/core/> .

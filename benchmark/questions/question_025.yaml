@@ -47,14 +47,16 @@ sparql_queries:
       Confirm that disease classes associated with KCNQ2, KCNQ3, KCNB1, and KCNT1
       are classified under the epilepsy root class MONDO:0005027. Uses OMIM cross-references
       for KCNQ2 (DEE7/OMIM:613720), KCNQ3 (BFNC2/OMIM:121201), and KCNB1 (DEE34/OMIM:616645);
-      and label search for KCNT1 disease (epilepsy of infancy with migrating focal seizures).
+      the KCNT1 disease is confirmed separately by Query 2. Returns one class per OMIM
+      xref (3 rows); SELECT DISTINCT is required because the mondo graph serves duplicate
+      triples.
     query: |
       PREFIX owl: <http://www.w3.org/2002/07/owl#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
       PREFIX obo: <http://purl.obolibrary.org/obo/>
 
-      SELECT ?disease ?mondoId ?label ?omimXref
+      SELECT DISTINCT ?disease ?mondoId ?label ?omimXref
       FROM <http://rdfportal.org/ontology/mondo>
       WHERE {
         ?disease a owl:Class ;
@@ -68,30 +70,35 @@ sparql_queries:
         FILTER NOT EXISTS { ?disease owl:deprecated true }
       }
       ORDER BY ?omimXref
-    result_count: 4
+    result_count: 3   # one disease per OMIM xref: MONDO:0007366 (121201) | MONDO:0013387 (613720) | MONDO:0014718 (616645). SELECT DISTINCT is required — the mondo graph serves duplicate triples, so without it the row count is an unstable multiple of 3.
 
   - query_number: 2
     database: mondo
     description: |
-      Confirm KCNT1-associated disease (epilepsy of infancy with migrating focal seizures,
-      MONDO:0100025) is under the MONDO:0005027 epilepsy hierarchy.
+      Confirm the KCNT1-associated disease (malignant migrating partial seizures of
+      infancy, MONDO:0017385) is under the MONDO:0005027 epilepsy hierarchy.
+      NOTE: this was MONDO:0100025 ("epilepsy of infancy with migrating focal seizures")
+      when the question was written; MONDO has since obsoleted that term (owl:deprecated
+      true, stripped of its parents) and points to MONDO:0017385 as its replacement via
+      obo:IAO_0100001. Because the query rightly excludes deprecated classes, the old IRI
+      now yields 0 rows rather than a wrong answer.
     query: |
       PREFIX owl: <http://www.w3.org/2002/07/owl#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
       PREFIX obo: <http://purl.obolibrary.org/obo/>
 
-      SELECT ?disease ?mondoId ?label
+      SELECT DISTINCT ?disease ?mondoId ?label
       FROM <http://rdfportal.org/ontology/mondo>
       WHERE {
-        VALUES ?disease { obo:MONDO_0100025 }
+        VALUES ?disease { obo:MONDO_0017385 }
         ?disease a owl:Class ;
                  rdfs:label ?label ;
                  oboInOwl:id ?mondoId ;
                  rdfs:subClassOf* obo:MONDO_0005027 .
         FILTER NOT EXISTS { ?disease owl:deprecated true }
       }
-    result_count: 2
+    result_count: 1   # MONDO:0017385 "malignant migrating partial seizures of infancy" — confirmed under MONDO:0005027. SELECT DISTINCT required (duplicate triples in the mondo graph).
 
   - query_number: 3
     database: ncbigene
@@ -219,11 +226,15 @@ rdf_triples: |
     rdfs:subClassOf* obo:MONDO_0005027 .
   # Database: MONDO | Query: 1 | Comment: DEE34, the KCNB1-linked encephalopathy, classified under epilepsy
 
-  obo:MONDO_0100025 a owl:Class ;
-    rdfs:label "epilepsy of infancy with migrating focal seizures" ;
-    oboInOwl:id "MONDO:0100025" ;
+  obo:MONDO_0017385 a owl:Class ;
+    rdfs:label "malignant migrating partial seizures of infancy" ;
+    oboInOwl:id "MONDO:0017385" ;
     rdfs:subClassOf* obo:MONDO_0005027 .
-  # Database: MONDO | Query: 2 | Comment: EIMFS (KCNT1-associated disease) confirmed under epilepsy hierarchy
+  # Database: MONDO | Query: 2 | Comment: EIMFS/MMPSI (KCNT1-associated disease) confirmed under epilepsy hierarchy
+
+  obo:MONDO_0100025 obo:IAO_0100001 obo:MONDO_0017385 ;
+    owl:deprecated true .
+  # Database: MONDO | Query: 2 | Comment: the term this question originally used, MONDO:0100025, has since been obsoleted; MONDO names MONDO:0017385 as its replacement (obo:IAO_0100001 = "term replaced by")
 
   <http://identifiers.org/ncbigene/3785> a insdc:Gene ;
     rdfs:label "KCNQ2" ;
@@ -273,7 +284,7 @@ exact_answer:
   - "KCNQ2"
 
 ideal_answer: |
-  Among the four voltage-gated potassium channel genes KCNQ2, KCNQ3, KCNB1, and KCNT1 — all associated with MONDO-classified epilepsy syndromes — KCNQ2 (gene ID 3785, chromosome 20q13.33) has by far the greatest number of pathogenic or likely pathogenic germline variants in ClinVar, with 759 such variants, compared to 118 for KCNT1, and 102 each for KCNB1 and KCNQ3 (ClinVar January 2025 release; arithmetic verification: sum 1,081 > total distinct 1,077, indicating 4 variants attributed to multiple genes). This substantial variant burden reflects KCNQ2's role as the causal gene for both the severe DEE7 (developmental and epileptic encephalopathy 7, MONDO:0013387) and the milder benign familial neonatal convulsions type 1, making it a major target of clinical sequencing in pediatric epilepsy. KCNQ2 and KCNQ3 encode the Kv7.2 and Kv7.3 subunits that co-assemble to form the neuronal M-channel responsible for regulating neuronal excitability; KCNQ2 variants are more frequently pathogenic and more clinically diverse in severity than KCNQ3 variants, which mainly cause the milder BFNC2 (MONDO:0007366). KCNT1 encodes the sodium-activated KNa1.1 (SLACK) channel and causes the severe epilepsy of infancy with migrating focal seizures (EIMFS, MONDO:0100025), while KCNB1 encodes the Kv2.1 delayed-rectifier channel associated with DEE34 (MONDO:0014718); both have a smaller but clinically significant variant spectrum compared to KCNQ2.
+  Among the four voltage-gated potassium channel genes KCNQ2, KCNQ3, KCNB1, and KCNT1 — all associated with MONDO-classified epilepsy syndromes — KCNQ2 (gene ID 3785, chromosome 20q13.33) has by far the greatest number of pathogenic or likely pathogenic germline variants in ClinVar, with 759 such variants, compared to 118 for KCNT1, and 102 each for KCNB1 and KCNQ3 (ClinVar January 2025 release; arithmetic verification: sum 1,081 > total distinct 1,077, indicating 4 variants attributed to multiple genes). This substantial variant burden reflects KCNQ2's role as the causal gene for both the severe DEE7 (developmental and epileptic encephalopathy 7, MONDO:0013387) and the milder benign familial neonatal convulsions type 1, making it a major target of clinical sequencing in pediatric epilepsy. KCNQ2 and KCNQ3 encode the Kv7.2 and Kv7.3 subunits that co-assemble to form the neuronal M-channel responsible for regulating neuronal excitability; KCNQ2 variants are more frequently pathogenic and more clinically diverse in severity than KCNQ3 variants, which mainly cause the milder BFNC2 (MONDO:0007366). KCNT1 encodes the sodium-activated KNa1.1 (SLACK) channel and causes the severe epilepsy of infancy with migrating focal seizures, which MONDO now classes as malignant migrating partial seizures of infancy (EIMFS/MMPSI, MONDO:0017385 — the replacement for the obsoleted MONDO:0100025), while KCNB1 encodes the Kv2.1 delayed-rectifier channel associated with DEE34 (MONDO:0014718); both have a smaller but clinically significant variant spectrum compared to KCNQ2.
 
 question_template_used: Template 5 (Bounded Comparison)
 

@@ -80,10 +80,12 @@ pubmed_test:
 #     CCNT2 22, CCNB2 21, CCNL2 19, CABLES1 13, CCND1 12, CCNA2 12, CCND3 11,
 #     CCNE2 11, CCNC 11, CCNQ 8, CCNE1 8, CABLES2 7, CCND2 7, CCNA1 4, CCNF 4,
 #     CCNB3 2, CCNO 2, CCNI 1, CCNG1 1, CCNJL 1  (27 rows)
-#     3 of the 30 cyclins (CCNG2, CCNI2, CCNJ) returned 0 projects -> no row.
+#     5 of the 32 cyclins (CCNG2, CCNI2, CCNJ, CCNYL2, CCNYL3) returned 0 projects -> no row.
+#     (CCNYL2/Q5T2Q4 and CCNYL3/P0C7X3 were absent from the family set entirely until
+#      2026-07-17, when Query 1's accidental join through the co-hosted OMA graph was removed.)
 #   Sum of all per-cyclin project counts = 418 project-instances.
 #   Query 3 (independent winner check): COUNT(DISTINCT project) for CCNH alone = 52 (matches GROUP BY top row).
-#   Query 4 (reconciliation): COUNT(DISTINCT project) over the whole 30-member set = 95.
+#   Query 4 (reconciliation): COUNT(DISTINCT project) over the whole 32-member set = 95.
 #   Sum 418 > total 95 because the categories (cyclins) overlap on the project
 #   axis: a single broad shotgun-proteome project routinely detects several
 #   cyclins at once (418 / 95 ~ 4.4 cyclins per cyclin-bearing project). The
@@ -96,28 +98,36 @@ sparql_queries:
     description: >-
       Enumerate the complete set of reviewed human (taxon 9606) proteins carrying
       UniProt keyword KW-0195 (Cyclin) with their accessions and gene symbols.
-      This fixes the full 30-member family scope used by Query 2 (no sampling).
+      This fixes the full 32-member family scope used by Query 2 (no sampling).
+      The accession is derived from the protein IRI with STRAFTER, NOT from
+      dcterms:identifier: on the shared sib endpoint that predicate is supplied ONLY by
+      the co-hosted OMA graph, so joining on it silently turns this UniProt query into a
+      UniProt-INTERSECT-OMA query. That is what happened here — the earlier version
+      returned 30, dropping CCNYL2 (Q5T2Q4) and CCNYL3 (P0C7X3), the two reviewed human
+      cyclins with no OMA record, and the gap propagated into Query 2's VALUES block as a
+      Hard Rule 2 coverage gap. Graph-pinned to the uniprot graph (Hard Rule 4).
     query: |
       PREFIX up: <http://purl.uniprot.org/core/>
       PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
 
       SELECT ?protein ?acc ?mnemonic ?gene
+      FROM <http://sparql.uniprot.org/uniprot>
       WHERE {
         ?protein a up:Protein ;
                  up:reviewed 1 ;
                  up:organism <http://purl.uniprot.org/taxonomy/9606> ;
-                 dcterms:identifier ?acc ;
                  up:mnemonic ?mnemonic ;
                  up:classifiedWith <http://purl.uniprot.org/keywords/195> .
+        BIND(STRAFTER(STR(?protein), "uniprot/") AS ?acc)
         OPTIONAL { ?protein up:encodedBy ?g . ?g skos:prefLabel ?gene . }
       }
       ORDER BY ?gene
-    result_count: 30
+    result_count: 32   # 32 reviewed human cyclins. Recorded as 30 until 2026-07-17, when q1 joined through the co-hosted OMA graph's dcterms:identifier and silently dropped CCNYL2 (Q5T2Q4) and CCNYL3 (P0C7X3); neither is detected in any jPOST project, so the answer (CCNH) is unaffected.
 
   - query_number: 2
     database: jpostdb
     description: >-
-      For all 30 cyclin UniProt accessions, count the distinct reanalysed
+      For all 32 cyclin UniProt accessions, count the distinct reanalysed
       proteomics projects (jPOST Projects) whose identified proteins map to that
       accession via jpost:hasDatabaseSequence, grouped per cyclin and ordered by
       project count. The top row is the answer.
@@ -129,7 +139,8 @@ sparql_queries:
       WHERE {
         GRAPH <http://jpost.org/graph/database> {
           VALUES ?up {
-            <http://purl.uniprot.org/uniprot/Q8TDN4> <http://purl.uniprot.org/uniprot/Q9BTV7>
+            <http://purl.uniprot.org/uniprot/P0C7X3> <http://purl.uniprot.org/uniprot/Q5T2Q4>
+      <http://purl.uniprot.org/uniprot/Q8TDN4> <http://purl.uniprot.org/uniprot/Q9BTV7>
             <http://purl.uniprot.org/uniprot/P78396> <http://purl.uniprot.org/uniprot/P20248>
             <http://purl.uniprot.org/uniprot/P14635> <http://purl.uniprot.org/uniprot/O95067>
             <http://purl.uniprot.org/uniprot/Q8WWL7> <http://purl.uniprot.org/uniprot/P24863>
@@ -177,7 +188,7 @@ sparql_queries:
     database: jpostdb
     description: >-
       Arithmetic reconciliation (Checkpoint B): total distinct jPOST projects
-      detecting at least one of the 30 cyclins. This is the overlap denominator —
+      detecting at least one of the 32 cyclins. This is the overlap denominator —
       because the per-cyclin counts sum to 418 across only 95 distinct projects,
       a single project detects several cyclins on average.
     query: |
@@ -187,7 +198,8 @@ sparql_queries:
       WHERE {
         GRAPH <http://jpost.org/graph/database> {
           VALUES ?up {
-            <http://purl.uniprot.org/uniprot/Q8TDN4> <http://purl.uniprot.org/uniprot/Q9BTV7>
+            <http://purl.uniprot.org/uniprot/P0C7X3> <http://purl.uniprot.org/uniprot/Q5T2Q4>
+      <http://purl.uniprot.org/uniprot/Q8TDN4> <http://purl.uniprot.org/uniprot/Q9BTV7>
             <http://purl.uniprot.org/uniprot/P78396> <http://purl.uniprot.org/uniprot/P20248>
             <http://purl.uniprot.org/uniprot/P14635> <http://purl.uniprot.org/uniprot/O95067>
             <http://purl.uniprot.org/uniprot/Q8WWL7> <http://purl.uniprot.org/uniprot/P24863>
@@ -259,8 +271,9 @@ ideal_answer: |
   cyclin-E1 in 8, because they are expressed transiently, at low copy number, and
   in proliferating cells rather than in the broad steady-state tissue and
   cell-line proteomes that dominate the repository. The full family spans a wide
-  detectability range — 27 of the 30 reviewed human cyclins are seen in at least
-  one project, while cyclin-G2, cyclin-I2 and cyclin-J are not detected at all.
+  detectability range — 27 of the 32 reviewed human cyclins are seen in at least
+  one project, while five are not detected at all: cyclin-G2, cyclin-I2, cyclin-J,
+  and the two cyclin-Y-like paralogues CCNYL2 and CCNYL3.
   Across the 95 distinct projects that contain any cyclin, cyclin-H alone appears
   in 52 (about 55%), making it the single most reproducibly observed cyclin in
   the reanalysed proteomics corpus.

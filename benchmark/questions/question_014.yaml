@@ -44,32 +44,32 @@ pubmed_test:
 sparql_queries:
   - query_number: 1
     database: go
-    description: Retrieve GO term for hormone activity and all its descendants
+    description: >
+      Retrieve the GO term for hormone activity (GO:0005179) and all its descendants —
+      the exhaustive term set that feeds the VALUES block of Queries 2-4. Three things
+      this query must get right, each of which silently broke the earlier version:
+      (a) rdfs:subClassOf* is REFLEXIVE and so already yields the root — the previous
+      "{ BIND(?rootTerm AS ?term) } UNION { ... FILTER(?term != ?rootTerm) }" construction
+      dropped the root entirely, because ?rootTerm is bound by a VALUES block OUTSIDE the
+      union group and is therefore unbound inside that BIND; (b) the label must be
+      normalised with STR() — GO_0005183 carries its label BOTH as a plain literal and as
+      an xsd:string typed-literal, which are distinct RDF terms that SELECT DISTINCT will
+      not collapse, producing a spurious duplicate row; (c) the go graph must be pinned,
+      since the unpinned default graph mixes in togoid relation graphs. Returns exactly
+      the 20 terms listed in Query 2's VALUES block.
     query: |
       PREFIX obo: <http://purl.obolibrary.org/obo/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX owl: <http://www.w3.org/2002/07/owl#>
-      
-      # Get hormone activity term and all descendants
-      SELECT DISTINCT ?term ?label
+
+      # Get hormone activity term and all descendants (subClassOf* is reflexive -> root included)
+      SELECT DISTINCT ?term (STR(?rawLabel) AS ?label)
+      FROM <http://rdfportal.org/ontology/go>
       WHERE {
-        VALUES ?rootTerm { obo:GO_0005179 }
-        
-        {
-          # Include the root term
-          BIND(?rootTerm AS ?term)
-        }
-        UNION
-        {
-          # Include all descendants
-          ?term rdfs:subClassOf* ?rootTerm .
-          FILTER(?term != ?rootTerm)
-        }
-        
-        ?term rdfs:label ?label .
+        ?term rdfs:subClassOf* obo:GO_0005179 ;
+              rdfs:label ?rawLabel .
       }
       ORDER BY ?term
-    result_count: 19
+    result_count: 20   # GO:0005179 (root) + 19 descendants — identical to the 20-term VALUES block of Queries 2-4
     
   - query_number: 2
     database: uniprot

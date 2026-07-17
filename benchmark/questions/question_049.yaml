@@ -52,7 +52,14 @@ vocabulary_discovery:
 sparql_queries:
   - query_number: 1
     database: reactome
-    description: Get all biochemical reactions and EC numbers in the human CoA biosynthesis pathway (R-HSA-196783, IRI Pathway305 in biopax/95/48887; was Pathway2251 in biopax/40, refreshed 2026-07-13)
+    description: >
+      Get all biochemical reactions and EC numbers in the human CoA biosynthesis pathway,
+      ANCHORED ON ITS REACTOME STABLE ID (R-HSA-196783) rather than on a BioPAX IRI. BioPAX
+      subject IRIs are per-export counters — release number, per-species export file id and
+      element id all change every quarterly release, and a dead IRI returns 0 rows SILENTLY.
+      This query previously hardcoded .../biopax/40/48887#Pathway2251 and had to be
+      hand-patched to .../biopax/95/48887#Pathway305 for release 95; the stable ID ends that
+      cycle. See reactome.yaml critical_warnings, "SEARCH-TOOL stId IS NOT A SPARQL IRI".
     query: |
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
@@ -60,7 +67,10 @@ sparql_queries:
       SELECT ?reaction ?reactionName ?ec
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        <http://www.reactome.org/biopax/95/48887#Pathway305> bp:pathwayComponent ?reaction .
+        ?pathway a bp:Pathway ;
+           bp:xref [ bp:db "Reactome"^^xsd:string ;
+                     bp:id "R-HSA-196783"^^xsd:string ] ;
+           bp:pathwayComponent ?reaction .
         ?reaction a bp:BiochemicalReaction ;
                   bp:displayName ?reactionName .
         OPTIONAL { ?reaction bp:eCNumber ?ec }
@@ -87,28 +97,41 @@ sparql_queries:
 
   - query_number: 3
     database: uniprot
-    description: Get subcellular localization preferred labels for all 10 CoA biosynthesis proteins
+    description: >-
+      Get subcellular localization preferred labels for all 10 CoA biosynthesis proteins.
+      Every triple pattern is inside an explicit GRAPH block. The earlier version pinned only
+      the locations graph and left the protein patterns in the endpoint's default union, where
+      the sib endpoint's duplicate triples inflated the result to 42 rows; SELECT DISTINCT
+      happened to collapse it back to the correct 17, which is precisely the situation Hard
+      Rule 4 warns against ("SELECT DISTINCT alone is NOT the fix" — it hides row duplication
+      rather than preventing it, and would mask a genuine multi-valued predicate). Pinning both
+      graphs cuts the raw rows from 42 to 21, so DISTINCT is now collapsing only real multiplicity
+      (21 -> 17: one protein can reach the same location label via several annotations) instead of
+      also absorbing graph duplication. The 17 is unchanged, but it is now a property of the query
+      rather than a cancellation of two errors.
     query: |
       PREFIX up: <http://purl.uniprot.org/core/>
       PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
 
       SELECT DISTINCT ?mnemonic ?locLabel
       WHERE {
-        ?protein a up:Protein ;
-                 up:reviewed 1 ;
-                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
-                 up:mnemonic ?mnemonic ;
-                 up:classifiedWith <http://purl.obolibrary.org/obo/GO_0015937> ;
-                 up:annotation ?locAnnot .
-        ?locAnnot a up:Subcellular_Location_Annotation ;
-                  up:locatedIn ?locBN .
-        ?locBN up:cellularComponent ?locIri .
+        GRAPH <http://sparql.uniprot.org/uniprot> {
+          ?protein a up:Protein ;
+                   up:reviewed 1 ;
+                   up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                   up:mnemonic ?mnemonic ;
+                   up:classifiedWith <http://purl.obolibrary.org/obo/GO_0015937> ;
+                   up:annotation ?locAnnot .
+          ?locAnnot a up:Subcellular_Location_Annotation ;
+                    up:locatedIn ?locBN .
+          ?locBN up:cellularComponent ?locIri .
+        }
         GRAPH <http://sparql.uniprot.org/locations> {
           ?locIri skos:prefLabel ?locLabel .
         }
       }
       ORDER BY ?mnemonic
-    result_count: 17
+    result_count: 17   # 17 distinct (mnemonic, location) pairs, from 21 raw rows. The two reducers are now doing separate, legitimate jobs: the GRAPH pins remove the sib default-graph duplication (raw rows 42 -> 21, i.e. exactly 2x), and SELECT DISTINCT collapses the remaining genuine multiplicity 21 -> 17 (a protein can reach the same location label through more than one Subcellular_Location_Annotation). Before the pin, DISTINCT was silently absorbing BOTH — which is why Hard Rule 4 says DISTINCT alone is not the fix.
 
   - query_number: 4
     database: chembl
