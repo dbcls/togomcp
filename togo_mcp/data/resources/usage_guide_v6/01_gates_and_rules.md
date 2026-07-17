@@ -1,4 +1,4 @@
-# TogoMCP Usage Guide (v5)
+# TogoMCP Usage Guide (v6)
 
 ---
 
@@ -58,6 +58,11 @@ synthesize from partial data.
 | 3–4                    | 16.55     |
 | 8+                     | 16.43     |
 
+**3. Pin every graph in every SPARQL query.** Endpoints are shared (`primary` hosts 16
+databases; `sib` hosts UniProt *and* OMA) and an unpinned query reads all of them —
+returning a plausible, correctly-shaped, wrong number with **no error**. `SELECT
+DISTINCT` is not a substitute. See 🕸️ CO-TENANCY.
+
 ---
 
 ## 🧠 STEP −1: ANALYZE (no tools)
@@ -91,6 +96,6 @@ STEP −1 → analyze
 STEP  0 → find_databases(keywords=[...])   always first
 STEP  1 → search tool or ncbi_esearch
 STEP  2 → get_MIE_file(database)           always before run_sparql
-STEP  3 → run_sparql()  LIMIT 10 first · max 2 consecutive
+STEP  3 → run_sparql()  PIN EVERY GRAPH · LIMIT 10 first · max 2 consecutive
 STEP  4 → synthesize    no repetition · no meta-commentary
 ```

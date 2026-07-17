@@ -34,14 +34,14 @@ def togomcp_usage_guide() -> str:
     """
     ⚠️ CALL THIS TOOL FIRST every turn, before any other TogoMCP tool.
 
-    Returns the v4 Usage Guide, which enforces the empirically-validated workflow:
+    Returns the v6 Usage Guide, which enforces the empirically-validated workflow:
 
         GATE 0: classify the question (bounded → STEP −1 | open-ended → EXPLORATION).
         STEP −1: analyze entities, databases, endpoints (no tools).
         STEP  0: find_databases(keywords=[...]) — token-efficient discovery.
         STEP  1: specialized search or ncbi_esearch — ground in real IRIs.
         STEP  2: get_MIE_file(database) — required before any run_sparql.
-        STEP  3: run_sparql() — LIMIT 10 first; max 2 consecutive calls, then pivot.
+        STEP  3: run_sparql() — pin every graph; LIMIT 10 first; max 2 consecutive.
         STEP  4: synthesize — each fact once, no meta-commentary.
 
     Why this matters (measured): questions with ≥3 consecutive run_sparql calls
@@ -50,6 +50,12 @@ def togomcp_usage_guide() -> str:
     guide also documents the controlled category taxonomy used by
     find_databases() and the EXPLORATION habits (Seed Definition, concierge
     check, prioritized Next Steps) for open-ended deep dives.
+
+    Most RDF Portal endpoints host MANY databases (primary: 16, ebi: 5, ncbi: 5,
+    sib: 4) and every endpoint hosts many GRAPHS. An unpinned query silently
+    reads all of them, so a co-hosted graph can supply a predicate you believe is
+    native and return a plausible, correctly-shaped, WRONG number — with no error.
+    The guide's CO-TENANCY section is the one to read before writing SPARQL.
 
     Re-run GATE 0 every turn — prior workflow does not carry forward.
 

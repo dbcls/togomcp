@@ -76,7 +76,7 @@ Static per-process build/version identifiers plus the reporting client:
 | Field | Type | Description |
 | --- | --- | --- |
 | `server_version` | string \| null | Installed `togo-mcp` package version. |
-| `usage_guide_version` | string \| null | Detected usage-guide bundle version (e.g. `v5`), parsed from the served directory name. |
+| `usage_guide_version` | string \| null | Detected usage-guide bundle version (e.g. `v6`), parsed from the served directory name. |
 | `mie_bundle_version` | string \| null | `sha256[:12]` over sorted `<file>=<mie_version>` lines across all MIE YAMLs — changes whenever any MIE's `mie_version` changes. |
 | `client` | object \| null | Reporting MCP client `{ "name", "version" }`, when advertised. |
 
@@ -147,7 +147,7 @@ A successful SPARQL call:
   "ip_hash": "9f3a1c0b7e2d4a56",
   "meta": {
     "server_version": "2.4.0",
-    "usage_guide_version": "v5",
+    "usage_guide_version": "v6",
     "mie_bundle_version": "a1b2c3d4e5f6",
     "client": {"name": "claude-ai", "version": "1.0"}
   },
@@ -183,7 +183,7 @@ A non-SPARQL call that raised (no `extra`):
   "session_id": "…", "request_id": "…", "origin_request_id": null,
   "client_id": "…", "transport": "http",
   "ip_hash": "9f3a1c0b7e2d4a56",
-  "meta": {"server_version": "2.4.0", "usage_guide_version": "v5", "mie_bundle_version": "a1b2c3d4e5f6", "client": null},
+  "meta": {"server_version": "2.4.0", "usage_guide_version": "v6", "mie_bundle_version": "a1b2c3d4e5f6", "client": null},
   "error_class": "ToolError",
   "error_message": "Error calling tool 'search_uniprot_entity': …"
 }

@@ -26,7 +26,7 @@ def test_hash_ip_is_irreversible_and_deterministic():
 def test_static_meta_shape():
     m = server._STATIC_META
     assert set(m) == {"server_version", "usage_guide_version", "mie_bundle_version"}
-    assert m["usage_guide_version"] == "v5"             # from usage-guide filename
+    assert m["usage_guide_version"] == "v6"             # from usage-guide filename
     assert m["server_version"]                          # importlib.metadata resolved
     assert m["mie_bundle_version"] and len(m["mie_bundle_version"]) == 12
 

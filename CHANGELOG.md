@@ -13,8 +13,45 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Changed
+
+- **Usage guide v5 → v6: the endpoint table was wrong exactly where it mattered most.**
+  It listed `sib` as "UniProt · Rhea" — OMA has been mounted there since 2026-04-28, and
+  OMA is the graph that silently supplies `dcterms:identifier` and produced the one
+  materially wrong benchmark answer (Q076: 248, truth 249). The guide was actively
+  *reassuring* an agent that no co-tenant could corrupt a UniProt query. `primary` was
+  listed with 5 databases; it hosts **16**. `ebi` was missing AMR Portal, and six
+  endpoints (pubchem, pdb, ddbj, glycosmos, nims, togovar) were absent entirely — the
+  table covered 15 of 36 databases. Now generated from and **regression-tested against**
+  `endpoints.csv` (`TestUsageGuideEndpointTable`), because this table drifts silently and
+  a stale copy is worse than none. Entries are now the exact `database=` keys, since a
+  display name ("MoG+", "AMR Portal") does not resolve.
+- **Usage guide gained the defensive-SPARQL rules it never had.** A grep of all four v5
+  part files for `GRAPH`/`FROM <`/pin/`DISTINCT`/`xsd:string` returned **zero** hits: every
+  rule ratified by the 2026-07-17 audit lived only in `qa-generator` (Hard Rules 4/5,
+  C28/C29) or the MIE spec — i.e. on the *authoring* path. The usage guide is what a **live
+  agent** reads, and it carried none of them. Added: CRITICAL RULE 3 (pin every graph), a
+  🕸️ CO-TENANCY section, and three silent-failure traps (literal-form polymorphism →
+  `STR(?label)`; hollow `VALUES` blocks, which are valid SPARQL returning a plausible wrong
+  number; release-pinned IRIs → stable-ID anchoring with mandatory `^^xsd:string`).
+  Co-tenancy is framed as a property of **graphs, not databases**, so single-tenant
+  endpoints (TogoVar: 2.9M variant IRIs re-typed across its own two graphs) are not
+  mistaken for safe.
+- **The pin is not ground truth, and the guide says so.** Pinning can drop *legitimate*
+  rows — `dataset/microbedbjp` re-declares NCBI Taxonomy at an older nomenclature vintage,
+  and "Superkingdom Bacteria" survives only there. A pinned/unpinned disagreement is
+  documented as a finding to explain, not a number to adopt; trusting the pin blindly would
+  have turned two correct benchmark answers into wrong ones.
+- **`get_MIE_file` reading order now surfaces `co_hosted_graphs`** (rank 2, required as of
+  spec v2.3), with the per-predicate re-consultation rule and "the MIE describes; the
+  endpoint decides" — the lesson of the uniprot prescription below.
+
 ### Fixed
 
+- **`TogoMCP_Usage_Guide` advertised "the v4 Usage Guide"** while serving v5 — two versions
+  stale. The docstring is the tool description an LLM reads, so it now names v6 and carries
+  the co-tenancy warning at point-of-call (`Returns:` sections are dropped by FastMCP; this
+  text sits above it).
 - **`uniprot.yaml` prescribed including 14,432 deleted entries, and called the correct
   exclusion an anti-fix.** The MIE told readers that `COUNT(DISTINCT ?p)` → 589,059 was
   the right protein count and that `FROM <sparql.uniprot.org/uniprot>` "silently drops"
