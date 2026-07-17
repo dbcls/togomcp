@@ -26,13 +26,37 @@ schema_info:
   graphs:
     - http://rdfportal.org/dataset/pubmed
     - http://rdfportal.org/dataset/nlm_catalog
-    - http://id.nlm.nih.gov/mesh/2025
+    # Was http://id.nlm.nih.gov/mesh/2025 until 2026-07-17 — a silent-fail entry. PubMed's
+    # fabio:hasSubjectTerm points at UNVERSIONED mesh/D000544 IRIs, which the year-versioned
+    # graph (mesh/2025/D000544) shares ZERO IRIs with, so pinning the advertised graph resolved
+    # 0 of any PMID's subject terms. The unversioned graph below is the one that works (verified:
+    # 14 labels vs 0 for PMID 31978945). It is MeSH's graph, not PubMed's own — listed here
+    # because the everyday subject-term join is unusable without it. See critical_warnings.
+    - http://id.nlm.nih.gov/mesh
+  co_hosted_graphs:
+    - "http://id.nlm.nih.gov/mesh + http://id.nlm.nih.gov/mesh/2015..2025 (12 MeSH graphs) — the
+       endpoint holds ELEVEN year-versioned MeSH snapshots alongside the unversioned one. Each declares
+       meshv:TopicalDescriptor independently (mesh/2025: 30,360 descriptors; mesh: 30,248; mesh/2024:
+       30,172; mesh/2023: 29,865; mesh/2022: 29,607; mesh/2021: 29,331; mesh/2020: 29,054; mesh/2019:
+       28,767; mesh/2018: 28,378; mesh/2017: 27,921; mesh/2016: 27,336; mesh/2015: 26,912). This is NOT
+       a union-inflation trap: IRI overlap between mesh and mesh/2025 is ZERO (measured) because the
+       year graphs namespace their IRIs by year (mesh/2025/D000544, mesh/2025/C01.375) while PubMed's
+       fabio:hasSubjectTerm points at the UNVERSIONED mesh/D000544. Same precedent as dataset/gtdb
+       re-hosting NCBI Taxonomy with no IRI overlap. It IS a WRONG-GRAPH trap instead — see
+       critical_warnings: the mesh/2025 entry in `graphs:` above cannot resolve a PubMed subject term
+       (0 rows); the unversioned http://id.nlm.nih.gov/mesh graph is the only one that can."
+    - "2g probe run 2026-07-17 — no re-declaration of PubMed's own entities found. Probed 7
+       representative article IRIs (rdf.ncbi.nlm.nih.gov/pubmed/{1,2,12345,10022128,25741868,31452104,
+       33961781}): all 281 triples and all 7 bibo:pmid assertions live in dataset/pubmed and in no other
+       graph. dataset/pubtator_central references article IRIs only as oa:hasTarget OBJECTS — an xref,
+       not a re-declaration — so it cannot inflate a PubMed join."
   kw_search_tools:
     - ncbi_esearch
   version:
-    mie_version: "2.1"
+    mie_version: "2.2"
     mie_created: "2026-04-29"
-    data_version: "Updated continuously"
+    mie_updated: "2026-07-17"
+    data_version: "RDF Portal snapshot — verified 2026-07-17"
     update_frequency: "Daily"
   license:
     data_license: "Public Domain"
@@ -43,6 +67,20 @@ schema_info:
     backend: "Virtuoso"
 
 critical_warnings: |
+  - WRONG MESH GRAPH = SILENT ZERO (the `graphs:` list above is misleading; verified 2026-07-17):
+    The endpoint holds 12 MeSH graphs — the unversioned <http://id.nlm.nih.gov/mesh> plus eleven
+    year snapshots <http://id.nlm.nih.gov/mesh/2015> .. <http://id.nlm.nih.gov/mesh/2025>. The YEAR
+    graphs namespace their IRIs BY YEAR (mesh/2025/D000544), so they share ZERO IRIs with the
+    unversioned descriptors (mesh/D000544) that PubMed's fabio:hasSubjectTerm / rdfs:seeAlso
+    actually point to. Consequence, measured on 3 articles (PMIDs 31452104, 25741868, 33961781)
+    resolving 17 subject terms:
+      GRAPH <http://id.nlm.nih.gov/mesh/2025> { ?term rdfs:label ?l }  ->  0 rows   (SILENT FAIL)
+      GRAPH <http://id.nlm.nih.gov/mesh>      { ?term rdfs:label ?l }  -> 19 rows   (CORRECT)
+    FIX: always resolve MeSH descriptor labels in <http://id.nlm.nih.gov/mesh> — NEVER in a
+    mesh/YYYY graph. Use a mesh/YYYY graph only to ask what the vocabulary looked like in that
+    year, and then only with year-prefixed IRIs. (19 rows vs 17 distinct terms = 1.1x, from
+    descriptors carrying more than one label — use DISTINCT, not a graph change, for that.)
+
   - MESH IRI NAMESPACE TRAP (rdfs:seeAlso vs fabio:hasSubjectTerm):
     rdfs:seeAlso contains plain MeSH descriptor IRIs — including publication types
     (e.g. mesh:D016428 = "Journal Article", mesh:D016454 = "Review") AND some topic

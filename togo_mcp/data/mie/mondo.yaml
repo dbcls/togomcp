@@ -2,8 +2,9 @@ schema_info:
   title: MONDO (Monarch Disease Ontology)
   description: |
     Comprehensive disease ontology integrating 39+ disease databases into a unified hierarchical
-    classification system. Contains 30,612 disease classes (26,660 active) covering genetic disorders,
-    infectious diseases, cancers, psychiatric disorders, and rare diseases. Primary use cases include
+    classification system. Contains 33,840 disease classes (29,866 active, 3,974 owl:deprecated;
+    verified 2026-07-17 in the ontology/mondo graph) covering genetic disorders, infectious diseases,
+    cancers, psychiatric disorders, and rare diseases. Primary use cases include
     translational research, precision medicine, literature mining, and cross-database disease queries.
   keywords:
     - disease
@@ -28,20 +29,49 @@ schema_info:
   base_uri: http://purl.obolibrary.org/obo/
   graphs:
     - http://rdfportal.org/ontology/mondo
+  co_hosted_graphs:
+    - "http://rdfportal.org/ontology/efo — EFO imports MONDO and RE-DECLARES 16,423 of the 33,840
+       MONDO_* classes (48.5%) under the SAME obo IRIs, with its own `a owl:Class`, rdfs:label and
+       oboInOwl:id copies. Multiplier on the everyday `?c a owl:Class ; rdfs:label ?l` = x4 for a
+       co-declared class (2 type matches x 2 label matches), so unpinned that query returns 83,035 rows
+       for 33,766 labelled classes (2.46x) vs exactly 33,766 pinned. Trap kind: COUNT(*) inflation +
+       join multiplication. FIX = pin GRAPH <http://rdfportal.org/ontology/mondo>. Verified 2026-07-17.
+       NOTE: `ontology` is a registered UMBRELLA database holding BOTH ontology/mondo and ontology/efo
+       — querying database='ontology' does not scope you to MONDO."
+    - "The ~30 rdfportal.org/ontology/* graphs + id.nlm.nih.gov/mesh + purl.jp/bio/11/goa share this
+       endpoint (and are replicated onto the pdb/ddbj/pubchem endpoints too). Only efo re-declares
+       MONDO classes; the rest are join targets, not co-tenancy traps. Probed 2026-07-17."
   kw_search_tools:
     - OLS4:searchClasses
   version:
-    mie_version: "2.1"
+    mie_version: "2.2"
     mie_created: "2026-04-21"
-    mie_updated: "2026-04-29"
-    data_version: "2025+"
+    mie_updated: "2026-07-17"
+    data_version: "RDF Portal snapshot — verified 2026-07-17"
     update_frequency: "Monthly"
   access:
     backend: "Virtuoso"
 
 critical_warnings: |
+  - PIN THE MONDO GRAPH — CO-HOSTED EFO RE-DECLARES HALF OF MONDO (silent inflation; verified
+    2026-07-17). EFO imports MONDO, so 16,423 of the 33,840 MONDO_* classes (48.5%) exist in BOTH
+    <http://rdfportal.org/ontology/mondo> and <http://rdfportal.org/ontology/efo> under the SAME IRI,
+    each graph carrying its own `a owl:Class` / rdfs:label / oboInOwl:id. Over the default union the
+    matches MULTIPLY as a PRODUCT: `?c a owl:Class ; rdfs:label ?l` = 2 x 2 = 4 rows for every
+    co-declared class -> 83,035 rows for 33,766 labelled classes (2.46x). Pinned it is exactly 33,766.
+      FIX:  GRAPH <http://rdfportal.org/ontology/mondo> { ... }   (or FROM the same)
+    COUNT(DISTINCT ?c) masks the count but NOT a two-variable read, and pinning is what you want anyway.
+  - EFO'S LABEL COPY CAN HIDE OBSOLESCENCE (wrong POSITIVE result; verified 2026-07-17). Where the two
+    graphs disagree on rdfs:label (only 5 classes, but they are the worst 5), EFO holds a STALE copy
+    that OMITS MONDO's "obsolete " prefix — e.g. MONDO_0014866 is "obsolete Charcot-Marie-Tooth disease
+    axonal type 2T" in mondo but "Charcot-Marie-Tooth disease axonal type 2T" in efo (same for
+    MONDO_0100025, MONDO_0859244, MONDO_0005719). So the common idiom
+    `FILTER(!STRSTARTS(?label, "obsolete"))` over the UNION does not remove them: the un-prefixed EFO
+    label survives the filter and a retired class is presented as current. Pin the mondo graph, and
+    prefer the structural `FILTER NOT EXISTS { ?c owl:deprecated true }` over label-text matching.
   - DEPRECATED FILTER: Always add FILTER NOT EXISTS { ?disease owl:deprecated true } — omitting it
-    queries 30,612 classes including 3,952 deprecated terms, inflating all counts and returning stale IRIs.
+    queries 33,840 classes including 3,974 deprecated terms (29,866 active; verified 2026-07-17 in the
+    ontology/mondo graph), inflating all counts and returning stale IRIs.
   - BLANK NODE TRAP: rdfs:subClassOf returns OWL restriction blank nodes alongside named classes.
     Always add FILTER(isIRI(?parent)) when navigating the hierarchy to exclude blank nodes.
   - XREF PREFIX FORMAT: oboInOwl:hasDbXref values use "PREFIX:ID" string literals (e.g. "OMIM:143100",
@@ -57,18 +87,19 @@ shape_expressions: |
   PREFIX obo: <http://purl.obolibrary.org/obo/>
   PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
 
-  # ~26,660 active owl:Class instances (30,612 total including deprecated)
+  # 29,866 active owl:Class instances (33,840 total incl. 3,974 deprecated; verified 2026-07-17,
+  # pinned to ontology/mondo — unpinned, co-hosted EFO re-declares 16,423 of them. See critical_warnings.)
   <DiseaseClass> {
     a [ owl:Class ] ;                          # required
     rdfs:label xsd:string ;                    # required; always present on active classes
     oboInOwl:id xsd:string ;                   # "MONDO:NNNNNNN" format — used for display IDs
-    obo:IAO_0000115 xsd:string ? ;             # textual definition — 68.3% coverage
+    obo:IAO_0000115 xsd:string ? ;             # textual definition — 64.8% coverage
     rdfs:subClassOf IRI * ;                    # parent class(es); use FILTER(isIRI()) — see WARNING
     oboInOwl:hasExactSynonym xsd:string * ;    # semantically equivalent alternative names
     oboInOwl:hasRelatedSynonym xsd:string * ;  # broader/narrower alternative names — use with caution
-    oboInOwl:hasDbXref xsd:string * ;          # "PREFIX:ID" cross-refs to 39+ DBs — 97.4% coverage
+    oboInOwl:hasDbXref xsd:string * ;          # "PREFIX:ID" cross-refs to 39+ DBs — 97.8% coverage
     skos:exactMatch IRI * ;                    # formal ontology-level equivalence links
-    owl:deprecated xsd:boolean ?              # present and true on ~3,952 obsolete terms
+    owl:deprecated xsd:boolean ?              # present and true on 3,974 obsolete terms
   }
 
   # Key category IRIs for hierarchy queries (verified 2026-04-21):
@@ -81,9 +112,10 @@ shape_expressions: |
   # obo:MONDO_0021136 — rare disease
 
   # oboInOwl:hasDbXref prefixes and approximate coverage among active diseases:
-  # UMLS / MEDGEN : ~70%     OMIM     : ~36.7%
+  # (OMIM/MESH re-measured 2026-07-17 against 29,866 active; the others are older estimates)
+  # UMLS / MEDGEN : ~70%     OMIM     : 32.8%
   # DOID           : ~39%    Orphanet : ~34%
-  # GARD           : ~35%    MESH     : ~30.5%
+  # GARD           : ~35%    MESH     : 26.8%
   # SCTID          : ~31%    NCIT     : ~25%
   # ICD9           : ~19%    ICD11    : ~14%
   # ICD10CM        : ~9%     EFO      : ~8%
@@ -444,7 +476,7 @@ architectural_notes:
   data_quality:
     - "Monthly releases — statistics may change; re-verify counts before publication"
     - "Exact synonyms are semantically equivalent; related synonyms may be broader or narrower"
-    - "~3,952 deprecated terms retained with owl:deprecated true; always exclude in production queries"
+    - "3,974 deprecated terms retained with owl:deprecated true; always exclude in production queries"
     - "Cross-reference coverage varies widely: UMLS/MEDGEN ~70% vs ICDO ~3%"
 
   text_search_justification:
@@ -453,9 +485,9 @@ architectural_notes:
     - "All other query patterns use specific IRIs or hasDbXref with STRSTARTS — structured, no text search needed"
 
 data_statistics:
-  total_classes: 30612
-  active_classes: 26660
-  deprecated_classes: 3952
+  total_classes: 33840        # verified 2026-07-17, pinned to ontology/mondo
+  active_classes: 29866
+  deprecated_classes: 3974
   verified_date: "2026-04-21"
   verification_method: "Direct COUNT queries on live endpoint"
 
@@ -465,11 +497,11 @@ data_statistics:
     infectious_disease_MONDO_0005550: 1078
     psychiatric_disorder_MONDO_0002025: 437
 
-  coverage:
-    diseases_with_cross_references: "97.4% (25,978/26,660)"
-    diseases_with_definitions: "68.3% (18,219/26,660)"
-    diseases_with_omim_xref: "36.7% (9,794/26,660)"
-    diseases_with_mesh_xref: "30.5% (8,125/26,660)"
+  coverage:   # all re-measured 2026-07-17, pinned to ontology/mondo, active classes only
+    diseases_with_cross_references: "97.8% (29,201/29,866)"
+    diseases_with_definitions: "64.8% (19,363/29,866)"
+    diseases_with_omim_xref: "32.8% (9,807/29,866)"
+    diseases_with_mesh_xref: "26.8% (8,005/29,866)"
 
 anti_patterns:
   - title: "Circular Reasoning with Search Results"
@@ -566,7 +598,7 @@ common_errors:
   - error: "Hierarchy query returns blank nodes or inflated counts"
     causes:
       - "Missing FILTER(isIRI(?parent)) — OWL restriction blank nodes included"
-      - "Missing deprecated filter — 3,952 obsolete terms counted"
+      - "Missing deprecated filter — 3,974 obsolete terms counted"
     solutions:
       - "Add FILTER(isIRI(?parent)) in all rdfs:subClassOf traversals"
       - "Always add FILTER NOT EXISTS { ?disease owl:deprecated true }"

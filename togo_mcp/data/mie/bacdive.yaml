@@ -33,13 +33,37 @@ schema_info:
   base_uri: https://purl.dsmz.de/
   graphs:
     - http://rdfportal.org/dataset/bacdive
+  co_hosted_graphs:
+    - "http://rdfportal.org/dataset/mediadive — SHARES BacDive's VOCABULARY but NOT its IRIs. MediaDive
+       declares 45,685 dsmz:Strain and 3,289 dsmz:CultureMedium using the SAME DSMZ class IRIs
+       (https://purl.dsmz.de/schema/*) that BacDive uses. IRI overlap with BacDive's own graph is ZERO
+       for BOTH classes (measured: 0 shared Strain, 0 shared CultureMedium) — so it CANNOT duplicate
+       rows on a join. What it DOES do is contaminate the SCOPE of an unpinned count: `?s a dsmz:Strain`
+       returns 143,019 strains UNPINNED (= 97,334 BacDive + 45,685 MediaDive, exactly disjoint, 1 row
+       each) vs 97,334 pinned = x1.47 OVER-COUNT of entities, not of rows. CultureMedium: 51,018
+       unpinned vs 47,729 pinned = x1.07. FIX = pin GRAPH <http://rdfportal.org/dataset/bacdive>.
+       Verified 2026-07-17."
+    - "http://rdfportal.org/dataset/brenda — same DSMZ vocabulary, one contact class: BRENDA declares
+       54,720 dsmz:Enzyme, BacDive 573,112. IRI overlap = ZERO (measured), so this is scope bleed on an
+       unpinned `?e a dsmz:Enzyme` (627,832 unpinned = 573,112 + 54,720, exactly disjoint), never row
+       duplication. Verified 2026-07-17."
+    - "2g probe run 2026-07-17 — NO same-IRI re-declaration of BacDive entities found anywhere on the
+       endpoint. Probed dsmz:Strain, GramStain, CellShape, OxygenTolerance, CultureMedium and
+       GenomeSequence across every graph: apart from the MediaDive/BRENDA vocabulary sharing above
+       (zero IRI overlap), every declaration on a purl.dsmz.de/bacdive/* IRI lives in BacDive's own
+       graph. The ~30 rdfportal.org/ontology/* graphs + mesh + goa are join targets, not co-tenants."
   kw_search_tools:
     - sparql
   version:
-    mie_version: "2.3"
+    mie_version: "2.5"
     mie_created: "2026-04-21"
-    mie_updated: "2026-07-16"
-    data_version: "BacDive 2024"
+    mie_updated: "2026-07-17"
+    data_version: "RDF Portal snapshot — verified 2026-07-17"   # no dataset-level version triple
+                                                                # exists on the endpoint (checked
+                                                                # void:triples/owl:versionInfo/
+                                                                # dcterms:modified|issued|hasVersion);
+                                                                # the former "BacDive 2024" was not
+                                                                # derivable from the data.
     update_frequency: "Quarterly"
   license:
     data_license: "CC BY 4.0"
@@ -50,6 +74,36 @@ schema_info:
     max_query_timeout: "60 seconds"
 
 critical_warnings: |
+  - THE `schema:` PREFIX IS **NOT** schema.org (silent 0-row trap; verified 2026-07-17). Throughout
+    this file `schema:` means <https://purl.dsmz.de/schema/> — DSMZ's own vocabulary. The endpoint
+    auto-declares it, which is why the example queries below carry no PREFIX line for it. But if you
+    add the conventional declaration yourself:
+      WRONG:   PREFIX schema: <http://schema.org/>   -> EVERY schema:* pattern returns 0 rows, no error
+      WRONG:   PREFIX schema: <https://schema.org/>  -> same
+      CORRECT: PREFIX schema: <https://purl.dsmz.de/schema/>
+    Note the https + the /schema/ path. Safest is to use a distinctive prefix of your own
+    (e.g. `PREFIX dsmz: <https://purl.dsmz.de/schema/>`) so you cannot collide with a habit-typed
+    schema.org declaration. Exceptions that are NOT in this namespace: rdfs:label,
+    rdfs:hasScientificName, dcterms:description; strain IRIs are https://purl.dsmz.de/bacdive/strain/N.
+  - PHYLUM NAMES ARE STORED UNMERGED ACROSS TWO NOMENCLATURE VINTAGES (silent undercount; verified
+    2026-07-17). The 2021 ICNP renaming (Firmicutes -> Bacillota etc.) was applied to SOME strain
+    records and not others, and schema:hasPhylum keeps BOTH as separate literal values. Whole-graph
+    counts of DISTINCT strains:
+      Actinobacteria 40,163  + Actinomycetota    839
+      Proteobacteria 28,935  + Pseudomonadota  2,398
+      Firmicutes     13,862  + Bacillota       1,944
+      Bacteroidetes   3,476  + Bacteroidota      647   (+ "Bacteroidetes, not validated" 116)
+      Euryarchaeota     892  + Methanobacteriota  29
+      Spirochaetes      138  + Spirochaetota     371
+      Tenericutes       146  + Mycoplasmatota    109
+      Planctomycetes    141  + Planctomycetota    31
+    A phylum's TRUE total is the SUM of both spellings. The legacy name usually dominates by 10-50x,
+    so filtering on the CURRENT name alone silently returns a small minority (Bacillota gives 1,944 of
+    the true 15,806) — a plausible wrong number, never an error. Match both, e.g.
+    `VALUES ?phylum { "Firmicutes" "Bacillota" }`, and never rank phyla without merging first: the
+    ranking changes. The split is NOT stable — it shifts as records are re-curated, so re-derive the
+    pairs rather than trusting these counts. Also present as non-taxa: "Not assigned to order" (1,343),
+    "unclassified" (24). (This falsified benchmark Q008's "ties with Firmicutes" claim.)
   - GRAMSTAIN VALUES ARE ^^rr:Literal, NOT STRINGS (silent 0-row trap).
     VERIFIED 2026-07-16: all 36,430 rr:Literal triples in this graph sit on GramStain nodes —
     schema:hasGramStain (18,215) and schema:hasPhenotypeInformation (18,215), both typed

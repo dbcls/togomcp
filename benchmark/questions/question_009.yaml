@@ -42,25 +42,34 @@ sparql_queries:
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-      SELECT DISTINCT ?pathway ?pathwayName
+      SELECT DISTINCT ?pathway ?pathwayName ?stableId
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
         ?pathway a bp:Pathway ;
                  bp:displayName ?pathwayName ;
-                 bp:organism ?org .
+                 bp:organism ?org ;
+                 bp:xref [ bp:db "Reactome"^^xsd:string ; bp:id ?stableId ] .
         ?org bp:name "Homo sapiens"^^xsd:string .
         FILTER(CONTAINS(LCASE(?pathwayName), "leukotriene"))
       }
       ORDER BY ?pathwayName
-    result_count: 2
+    result_count: 2   # R-HSA-391906 "Leukotriene receptors" | R-HSA-2142691 "Synthesis of Leukotrienes (LT) and Eoxins (EX)" <- the pathway Queries 2-3 use. ?stableId is the release-stable anchor; the ?pathway IRI is for orientation only.
 
   - query_number: 2
     database: reactome
     description: |
-      Extract all human proteins with catalytic roles in pathway R-HSA-Synthesis of
-      Leukotrienes and Eoxins (Pathway133 in biopax/95; was Pathway2081 in biopax/40,
-      refreshed 2026-07-13) via bp:Catalysis relationships, resolved
-      through direct proteins and complex components, with UniProt cross-references
+      Extract all human proteins with catalytic roles in "Synthesis of Leukotrienes (LT)
+      and Eoxins (EX)" via bp:Catalysis relationships, resolved through direct proteins
+      and complex components, with UniProt cross-references.
+      ANCHORED ON THE REACTOME STABLE ID (R-HSA-2142691), NOT on a BioPAX IRI. BioPAX
+      subject IRIs are per-export counters — release number, per-species export file id
+      and element id all change every quarterly release, and a dead IRI returns 0 rows
+      SILENTLY. This query previously hardcoded .../biopax/40/48887#Pathway2081 and had to
+      be hand-patched to .../biopax/95/48887#Pathway133 when Reactome moved to release 95;
+      anchoring on the stable ID removes the need for such patching entirely. See
+      reactome.yaml critical_warnings, "SEARCH-TOOL stId IS NOT A SPARQL IRI".
+      NOTE: 23 rows but only 8 distinct enzymes — DISTINCT is over the (name, id) PAIR and
+      a protein carries several bp:name values. Query 3 counts the 8.
     query: |
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
@@ -68,8 +77,10 @@ sparql_queries:
       SELECT DISTINCT ?proteinName ?uniprotId
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        <http://www.reactome.org/biopax/95/48887#Pathway133>
-          bp:pathwayComponent ?reaction .
+        ?pathway a bp:Pathway ;
+                 bp:xref [ bp:db "Reactome"^^xsd:string ;
+                           bp:id "R-HSA-2142691"^^xsd:string ] ;
+                 bp:pathwayComponent ?reaction .
 
         ?catalysis a bp:Catalysis ;
                    bp:controlled ?reaction ;
@@ -105,8 +116,10 @@ sparql_queries:
       SELECT (COUNT(DISTINCT ?uniprotId) AS ?totalEnzymes)
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        <http://www.reactome.org/biopax/95/48887#Pathway133>
-          bp:pathwayComponent ?reaction .
+        ?pathway a bp:Pathway ;
+                 bp:xref [ bp:db "Reactome"^^xsd:string ;
+                           bp:id "R-HSA-2142691"^^xsd:string ] ;
+                 bp:pathwayComponent ?reaction .
 
         ?catalysis a bp:Catalysis ;
                    bp:controlled ?reaction ;

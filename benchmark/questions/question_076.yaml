@@ -36,7 +36,7 @@ pubmed_test:
     The two hyper-specific queries returned zero articles; the broader queries returned reviews on
     Hox-cluster regulation (topologically associating domains, CTCF timers) and Dlx bigene enhancer
     sharing. None report a genome-wide cytogenetic tally of the reviewed homeobox gene set: not the
-    248-gene / 154-band count, not that band 7p15.2 (HOXA + EVX1) and band 2q31.1 (HOXD + DLX1/DLX2 +
+    249-gene / 155-band count, not that band 7p15.2 (HOXA + EVX1) and band 2q31.1 (HOXD + DLX1/DLX2 +
     EVX2) are tied at 12 genes each, and not the Giemsa stain (gpos50, gneg, gneg, gpos25) or GRCh38
     coordinates of the cluster bands. Those are a live aggregate over the current protein-keyword set
     joined to gene nomenclature/location and to the chromosome-band ontology, not a fact stated in the
@@ -53,28 +53,36 @@ sparql_queries:
     database: uniprot
     description: >-
       Retrieve every reviewed (Swiss-Prot) human (taxon 9606) protein annotated with the Homeobox
-      keyword (KW-0371 = keywords/371), returning its accession. Defines the protein scope; the 248
+      keyword (KW-0371 = keywords/371), returning its accession. Defines the protein scope; the 249
       accessions returned here are the exhaustive VALUES set reused in the HGNC/HCO joins below
       (Hard Rule 2 — no sampling).
+      The accession is derived from the protein IRI with STRAFTER, NOT from dcterms:identifier.
+      On the shared sib endpoint dcterms:identifier is not a UniProt predicate at all — it is
+      supplied ONLY by the co-hosted OMA graph — so joining on it silently converts this UniProt
+      query into a UniProt-INTERSECT-OMA query. That is exactly what happened: the earlier version
+      returned 248, dropping Q17RH7 (TPRXL_HUMAN), the one reviewed human homeobox protein with no
+      OMA record, and every downstream count inherited the gap. Graph-pinning to the uniprot graph
+      is what makes the foreign dependency impossible (Hard Rule 4).
     query: |
       PREFIX up: <http://purl.uniprot.org/core/>
 
       SELECT (COUNT(DISTINCT ?p) AS ?nprot) (COUNT(DISTINCT ?acc) AS ?nacc)
+      FROM <http://sparql.uniprot.org/uniprot>
       WHERE {
         ?p a up:Protein ;
            up:reviewed 1 ;
            up:organism <http://purl.uniprot.org/taxonomy/9606> ;
-           up:classifiedWith <http://purl.uniprot.org/keywords/371> ;
-           dcterms:identifier ?acc .
+           up:classifiedWith <http://purl.uniprot.org/keywords/371> .
+        BIND(STRAFTER(STR(?p), "uniprot/") AS ?acc)
       }
-    result_count: 1   # returns nprot=248, nacc=248 (248 distinct reviewed human homeobox proteins/accessions)
+    result_count: 1   # returns nprot=249, nacc=249. Recorded as 248 until 2026-07-17, when q1 still joined through the co-hosted OMA graph's dcterms:identifier and silently dropped Q17RH7 (TPRXL_HUMAN).
 
   - query_number: 2
     database: hgnc
     description: >-
-      Cytogenetic distribution. For the 248 homeobox accessions, join each to its HGNC gene via the
+      Cytogenetic distribution. For the 249 homeobox accessions, join each to its HGNC gene via the
       typed UniProt cross-reference node (rdfs:seeAlso -> idt:uniprot -> dct:identifier) and read the
-      chromosomal band string obo:so_part_of, then count distinct genes per band. All 248 accessions
+      chromosomal band string obo:so_part_of, then count distinct genes per band. All 249 accessions
       map to exactly one HGNC gene, each with one location string. Returns 154 band rows; the five
       largest are 7p15.2 (12), 2q31.1 (12), 12q13.13 (10), 17q21.32 (10), 4q35.2 (8).
     query: |
@@ -87,7 +95,7 @@ sparql_queries:
       SELECT ?band (COUNT(DISTINCT ?gene) AS ?n)
       FROM <http://rdfportal.org/dataset/hgnc>
       WHERE {
-        VALUES ?acc { "A0A1W2PPF3" "A0A1W2PPK0" "A0A1W2PPM1" "A2RU54" "A6NCS4" "A6NDR6" "A6NFQ7" "A6NHT5" "A6NJ46" "A6NJG6" "A6NJT0" "A6NLW8" "A6NMT0" "A6NNA5" "A8K0S8" "A8MTQ0" "A8MZ59" "E9PGG2" "O00470" "O14529" "O14627" "O14770" "O14813" "O15266" "O15499" "O15522" "O43186" "O43248" "O43316" "O43364" "O43365" "O43711" "O43763" "O43812" "O60315" "O60393" "O60422" "O60479" "O60663" "O60902" "O75360" "O75364" "O95076" "O95096" "O95231" "O95343" "O95475" "O95948" "P09016" "P09017" "P09067" "P09086" "P09629" "P09630" "P0C7M4" "P0CJ85" "P0CJ86" "P0CJ87" "P0CJ88" "P0CJ89" "P0CJ90" "P0DV77" "P13378" "P14651" "P14652" "P14653" "P14859" "P17481" "P17482" "P17483" "P17509" "P19622" "P20264" "P20265" "P20719" "P20823" "P23759" "P23760" "P26367" "P28069" "P28356" "P28358" "P28360" "P31249" "P31260" "P31267" "P31268" "P31269" "P31270" "P31271" "P31273" "P31274" "P31275" "P31276" "P31277" "P31314" "P32242" "P32243" "P35452" "P35453" "P35548" "P35680" "P37275" "P39880" "P40424" "P40425" "P40426" "P43699" "P47902" "P48742" "P49335" "P49639" "P49640" "P50219" "P50221" "P50222" "P50458" "P52945" "P52951" "P52952" "P52954" "P54821" "P55347" "P56177" "P56178" "P56179" "P56915" "P58304" "P61371" "P78337" "P78367" "P78411" "P78412" "P78413" "P78414" "P78415" "P78424" "P78426" "Q00056" "Q00444" "Q01826" "Q01851" "Q01860" "Q03014" "Q03052" "Q03828" "Q04741" "Q04743" "Q05925" "Q06416" "Q07687" "Q12837" "Q14549" "Q14774" "Q14863" "Q15270" "Q15319" "Q15475" "Q15583" "Q15699" "Q15911" "Q2M1V0" "Q3B8N5" "Q3C1V8" "Q5SQQ9" "Q5XKR4" "Q63HK5" "Q68G74" "Q6IQ32" "Q6NSW7" "Q6NT76" "Q6RFH8" "Q6XYB7" "Q6ZNG2" "Q6ZSZ6" "Q7Z353" "Q7Z5D8" "Q86UP3" "Q8IUE0" "Q8IUE1" "Q8IX15" "Q8IYA7" "Q8N196" "Q8N693" "Q8N7G0" "Q8N7R0" "Q8N7U7" "Q8NFW5" "Q8NHV9" "Q8TAU0" "Q8TE12" "Q92786" "Q92826" "Q92988" "Q969G2" "Q96A47" "Q96IS3" "Q96KN3" "Q96PT3" "Q96PT4" "Q96QS3" "Q99453" "Q99626" "Q99687" "Q99697" "Q99801" "Q99811" "Q9BPY8" "Q9BQY4" "Q9BYU1" "Q9BZE3" "Q9BZI1" "Q9BZM3" "Q9C056" "Q9C0A1" "Q9GZN2" "Q9GZZ0" "Q9H161" "Q9H2C1" "Q9H2P0" "Q9H2W2" "Q9H2Z4" "Q9H4I2" "Q9H4S2" "Q9H9S0" "Q9HB31" "Q9HBU1" "Q9NP08" "Q9NPC8" "Q9NQ69" "Q9NRE2" "Q9NY43" "Q9NYD6" "Q9NZR4" "Q9UBC0" "Q9UBR4" "Q9UBX0" "Q9UBX2" "Q9UD57" "Q9UIU6" "Q9UIW0" "Q9UKI9" "Q9UKY1" "Q9UMQ3" "Q9UPM6" "Q9UPW6" "Q9Y2V3" "Q9Y6X8" }
+        VALUES ?acc { "A0A1W2PPF3" "A0A1W2PPK0" "A0A1W2PPM1" "A2RU54" "A6NCS4" "A6NDR6" "A6NFQ7" "A6NHT5" "A6NJ46" "A6NJG6" "A6NJT0" "A6NLW8" "A6NMT0" "A6NNA5" "A8K0S8" "A8MTQ0" "A8MZ59" "E9PGG2" "O00470" "O14529" "O14627" "O14770" "O14813" "O15266" "O15499" "O15522" "O43186" "O43248" "O43316" "O43364" "O43365" "O43711" "O43763" "O43812" "O60315" "O60393" "O60422" "O60479" "O60663" "O60902" "O75360" "O75364" "O95076" "O95096" "O95231" "O95343" "O95475" "O95948" "P09016" "P09017" "P09067" "P09086" "P09629" "P09630" "P0C7M4" "P0CJ85" "P0CJ86" "P0CJ87" "P0CJ88" "P0CJ89" "P0CJ90" "P0DV77" "P13378" "P14651" "P14652" "P14653" "P14859" "P17481" "P17482" "P17483" "P17509" "P19622" "P20264" "P20265" "P20719" "P20823" "P23759" "P23760" "P26367" "P28069" "P28356" "P28358" "P28360" "P31249" "P31260" "P31267" "P31268" "P31269" "P31270" "P31271" "P31273" "P31274" "P31275" "P31276" "P31277" "P31314" "P32242" "P32243" "P35452" "P35453" "P35548" "P35680" "P37275" "P39880" "P40424" "P40425" "P40426" "P43699" "P47902" "P48742" "P49335" "P49639" "P49640" "P50219" "P50221" "P50222" "P50458" "P52945" "P52951" "P52952" "P52954" "P54821" "P55347" "P56177" "P56178" "P56179" "P56915" "P58304" "P61371" "P78337" "P78367" "P78411" "P78412" "P78413" "P78414" "P78415" "P78424" "P78426" "Q00056" "Q00444" "Q01826" "Q01851" "Q01860" "Q03014" "Q03052" "Q03828" "Q04741" "Q04743" "Q05925" "Q06416" "Q07687" "Q12837" "Q14549" "Q14774" "Q14863" "Q15270" "Q15319" "Q15475" "Q15583" "Q15699" "Q15911" "Q17RH7" "Q2M1V0" "Q3B8N5" "Q3C1V8" "Q5SQQ9" "Q5XKR4" "Q63HK5" "Q68G74" "Q6IQ32" "Q6NSW7" "Q6NT76" "Q6RFH8" "Q6XYB7" "Q6ZNG2" "Q6ZSZ6" "Q7Z353" "Q7Z5D8" "Q86UP3" "Q8IUE0" "Q8IUE1" "Q8IX15" "Q8IYA7" "Q8N196" "Q8N693" "Q8N7G0" "Q8N7R0" "Q8N7U7" "Q8NFW5" "Q8NHV9" "Q8TAU0" "Q8TE12" "Q92786" "Q92826" "Q92988" "Q969G2" "Q96A47" "Q96IS3" "Q96KN3" "Q96PT3" "Q96PT4" "Q96QS3" "Q99453" "Q99626" "Q99687" "Q99697" "Q99801" "Q99811" "Q9BPY8" "Q9BQY4" "Q9BYU1" "Q9BZE3" "Q9BZI1" "Q9BZM3" "Q9C056" "Q9C0A1" "Q9GZN2" "Q9GZZ0" "Q9H161" "Q9H2C1" "Q9H2P0" "Q9H2W2" "Q9H2Z4" "Q9H4I2" "Q9H4S2" "Q9H9S0" "Q9HB31" "Q9HBU1" "Q9NP08" "Q9NPC8" "Q9NQ69" "Q9NRE2" "Q9NY43" "Q9NYD6" "Q9NZR4" "Q9UBC0" "Q9UBR4" "Q9UBX0" "Q9UBX2" "Q9UD57" "Q9UIU6" "Q9UIW0" "Q9UKI9" "Q9UKY1" "Q9UMQ3" "Q9UPM6" "Q9UPW6" "Q9Y2V3" "Q9Y6X8" }
         ?gene a m2r:Gene ;
               rdfs:seeAlso ?ref ;
               obo:so_part_of ?band .
@@ -95,15 +103,15 @@ sparql_queries:
       }
       GROUP BY ?band
       ORDER BY DESC(?n)
-    result_count: 154   # 154 distinct location strings; top bands 7p15.2=12, 2q31.1=12, 12q13.13=10, 17q21.32=10, 4q35.2=8
+    result_count: 155   # 155 distinct location strings; top bands 7p15.2=12, 2q31.1=12, 12q13.13=10, 17q21.32=10, 4q35.2=8. The 155th is 3p25.1, the singleton band of the recovered TPRXL (Q17RH7).
 
   - query_number: 3
     database: hgnc
     description: >-
-      Arithmetic verification (Hard Rule 3). Over the same 248-accession set, count total distinct
-      genes, total distinct bands, and total gene->band rows. genes = rows = 248 proves each gene has
-      exactly one band, so the per-band counts of Query 2 sum to 248 with no coverage gap and no
-      overlap (248 = sum over the 154 bands).
+      Arithmetic verification (Hard Rule 3). Over the same 249-accession set, count total distinct
+      genes, total distinct bands, and total gene->band rows. genes = rows = 249 proves each gene has
+      exactly one band, so the per-band counts of Query 2 sum to 249 with no coverage gap and no
+      overlap (249 = sum over the 155 bands).
     query: |
       PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -114,13 +122,13 @@ sparql_queries:
       SELECT (COUNT(DISTINCT ?gene) AS ?genes) (COUNT(DISTINCT ?band) AS ?bands) (COUNT(*) AS ?rows)
       FROM <http://rdfportal.org/dataset/hgnc>
       WHERE {
-        VALUES ?acc { "A0A1W2PPF3" "A0A1W2PPK0" "A0A1W2PPM1" "A2RU54" "A6NCS4" "A6NDR6" "A6NFQ7" "A6NHT5" "A6NJ46" "A6NJG6" "A6NJT0" "A6NLW8" "A6NMT0" "A6NNA5" "A8K0S8" "A8MTQ0" "A8MZ59" "E9PGG2" "O00470" "O14529" "O14627" "O14770" "O14813" "O15266" "O15499" "O15522" "O43186" "O43248" "O43316" "O43364" "O43365" "O43711" "O43763" "O43812" "O60315" "O60393" "O60422" "O60479" "O60663" "O60902" "O75360" "O75364" "O95076" "O95096" "O95231" "O95343" "O95475" "O95948" "P09016" "P09017" "P09067" "P09086" "P09629" "P09630" "P0C7M4" "P0CJ85" "P0CJ86" "P0CJ87" "P0CJ88" "P0CJ89" "P0CJ90" "P0DV77" "P13378" "P14651" "P14652" "P14653" "P14859" "P17481" "P17482" "P17483" "P17509" "P19622" "P20264" "P20265" "P20719" "P20823" "P23759" "P23760" "P26367" "P28069" "P28356" "P28358" "P28360" "P31249" "P31260" "P31267" "P31268" "P31269" "P31270" "P31271" "P31273" "P31274" "P31275" "P31276" "P31277" "P31314" "P32242" "P32243" "P35452" "P35453" "P35548" "P35680" "P37275" "P39880" "P40424" "P40425" "P40426" "P43699" "P47902" "P48742" "P49335" "P49639" "P49640" "P50219" "P50221" "P50222" "P50458" "P52945" "P52951" "P52952" "P52954" "P54821" "P55347" "P56177" "P56178" "P56179" "P56915" "P58304" "P61371" "P78337" "P78367" "P78411" "P78412" "P78413" "P78414" "P78415" "P78424" "P78426" "Q00056" "Q00444" "Q01826" "Q01851" "Q01860" "Q03014" "Q03052" "Q03828" "Q04741" "Q04743" "Q05925" "Q06416" "Q07687" "Q12837" "Q14549" "Q14774" "Q14863" "Q15270" "Q15319" "Q15475" "Q15583" "Q15699" "Q15911" "Q2M1V0" "Q3B8N5" "Q3C1V8" "Q5SQQ9" "Q5XKR4" "Q63HK5" "Q68G74" "Q6IQ32" "Q6NSW7" "Q6NT76" "Q6RFH8" "Q6XYB7" "Q6ZNG2" "Q6ZSZ6" "Q7Z353" "Q7Z5D8" "Q86UP3" "Q8IUE0" "Q8IUE1" "Q8IX15" "Q8IYA7" "Q8N196" "Q8N693" "Q8N7G0" "Q8N7R0" "Q8N7U7" "Q8NFW5" "Q8NHV9" "Q8TAU0" "Q8TE12" "Q92786" "Q92826" "Q92988" "Q969G2" "Q96A47" "Q96IS3" "Q96KN3" "Q96PT3" "Q96PT4" "Q96QS3" "Q99453" "Q99626" "Q99687" "Q99697" "Q99801" "Q99811" "Q9BPY8" "Q9BQY4" "Q9BYU1" "Q9BZE3" "Q9BZI1" "Q9BZM3" "Q9C056" "Q9C0A1" "Q9GZN2" "Q9GZZ0" "Q9H161" "Q9H2C1" "Q9H2P0" "Q9H2W2" "Q9H2Z4" "Q9H4I2" "Q9H4S2" "Q9H9S0" "Q9HB31" "Q9HBU1" "Q9NP08" "Q9NPC8" "Q9NQ69" "Q9NRE2" "Q9NY43" "Q9NYD6" "Q9NZR4" "Q9UBC0" "Q9UBR4" "Q9UBX0" "Q9UBX2" "Q9UD57" "Q9UIU6" "Q9UIW0" "Q9UKI9" "Q9UKY1" "Q9UMQ3" "Q9UPM6" "Q9UPW6" "Q9Y2V3" "Q9Y6X8" }
+        VALUES ?acc { "A0A1W2PPF3" "A0A1W2PPK0" "A0A1W2PPM1" "A2RU54" "A6NCS4" "A6NDR6" "A6NFQ7" "A6NHT5" "A6NJ46" "A6NJG6" "A6NJT0" "A6NLW8" "A6NMT0" "A6NNA5" "A8K0S8" "A8MTQ0" "A8MZ59" "E9PGG2" "O00470" "O14529" "O14627" "O14770" "O14813" "O15266" "O15499" "O15522" "O43186" "O43248" "O43316" "O43364" "O43365" "O43711" "O43763" "O43812" "O60315" "O60393" "O60422" "O60479" "O60663" "O60902" "O75360" "O75364" "O95076" "O95096" "O95231" "O95343" "O95475" "O95948" "P09016" "P09017" "P09067" "P09086" "P09629" "P09630" "P0C7M4" "P0CJ85" "P0CJ86" "P0CJ87" "P0CJ88" "P0CJ89" "P0CJ90" "P0DV77" "P13378" "P14651" "P14652" "P14653" "P14859" "P17481" "P17482" "P17483" "P17509" "P19622" "P20264" "P20265" "P20719" "P20823" "P23759" "P23760" "P26367" "P28069" "P28356" "P28358" "P28360" "P31249" "P31260" "P31267" "P31268" "P31269" "P31270" "P31271" "P31273" "P31274" "P31275" "P31276" "P31277" "P31314" "P32242" "P32243" "P35452" "P35453" "P35548" "P35680" "P37275" "P39880" "P40424" "P40425" "P40426" "P43699" "P47902" "P48742" "P49335" "P49639" "P49640" "P50219" "P50221" "P50222" "P50458" "P52945" "P52951" "P52952" "P52954" "P54821" "P55347" "P56177" "P56178" "P56179" "P56915" "P58304" "P61371" "P78337" "P78367" "P78411" "P78412" "P78413" "P78414" "P78415" "P78424" "P78426" "Q00056" "Q00444" "Q01826" "Q01851" "Q01860" "Q03014" "Q03052" "Q03828" "Q04741" "Q04743" "Q05925" "Q06416" "Q07687" "Q12837" "Q14549" "Q14774" "Q14863" "Q15270" "Q15319" "Q15475" "Q15583" "Q15699" "Q15911" "Q17RH7" "Q2M1V0" "Q3B8N5" "Q3C1V8" "Q5SQQ9" "Q5XKR4" "Q63HK5" "Q68G74" "Q6IQ32" "Q6NSW7" "Q6NT76" "Q6RFH8" "Q6XYB7" "Q6ZNG2" "Q6ZSZ6" "Q7Z353" "Q7Z5D8" "Q86UP3" "Q8IUE0" "Q8IUE1" "Q8IX15" "Q8IYA7" "Q8N196" "Q8N693" "Q8N7G0" "Q8N7R0" "Q8N7U7" "Q8NFW5" "Q8NHV9" "Q8TAU0" "Q8TE12" "Q92786" "Q92826" "Q92988" "Q969G2" "Q96A47" "Q96IS3" "Q96KN3" "Q96PT3" "Q96PT4" "Q96QS3" "Q99453" "Q99626" "Q99687" "Q99697" "Q99801" "Q99811" "Q9BPY8" "Q9BQY4" "Q9BYU1" "Q9BZE3" "Q9BZI1" "Q9BZM3" "Q9C056" "Q9C0A1" "Q9GZN2" "Q9GZZ0" "Q9H161" "Q9H2C1" "Q9H2P0" "Q9H2W2" "Q9H2Z4" "Q9H4I2" "Q9H4S2" "Q9H9S0" "Q9HB31" "Q9HBU1" "Q9NP08" "Q9NPC8" "Q9NQ69" "Q9NRE2" "Q9NY43" "Q9NYD6" "Q9NZR4" "Q9UBC0" "Q9UBR4" "Q9UBX0" "Q9UBX2" "Q9UD57" "Q9UIU6" "Q9UIW0" "Q9UKI9" "Q9UKY1" "Q9UMQ3" "Q9UPM6" "Q9UPW6" "Q9Y2V3" "Q9Y6X8" }
         ?gene a m2r:Gene ;
               rdfs:seeAlso ?ref ;
               obo:so_part_of ?band .
         ?ref a idt:uniprot ; dct:identifier ?acc .
       }
-    result_count: 1   # genes=248, bands=154, rows=248 -> sum over bands = 248 (Rule 3 satisfied; no gap, no overlap)
+    result_count: 1   # genes=249, bands=155, rows=249 -> sum over bands = 249 (Rule 3 satisfied; no gap, no overlap)
 
   - query_number: 4
     database: hgnc
@@ -139,7 +147,7 @@ sparql_queries:
       FROM <http://rdfportal.org/dataset/hgnc>
       WHERE {
         VALUES ?band { "7p15.2" "2q31.1" "12q13.13" "17q21.32" "4q35.2" }
-        VALUES ?acc { "A0A1W2PPF3" "A0A1W2PPK0" "A0A1W2PPM1" "A2RU54" "A6NCS4" "A6NDR6" "A6NFQ7" "A6NHT5" "A6NJ46" "A6NJG6" "A6NJT0" "A6NLW8" "A6NMT0" "A6NNA5" "A8K0S8" "A8MTQ0" "A8MZ59" "E9PGG2" "O00470" "O14529" "O14627" "O14770" "O14813" "O15266" "O15499" "O15522" "O43186" "O43248" "O43316" "O43364" "O43365" "O43711" "O43763" "O43812" "O60315" "O60393" "O60422" "O60479" "O60663" "O60902" "O75360" "O75364" "O95076" "O95096" "O95231" "O95343" "O95475" "O95948" "P09016" "P09017" "P09067" "P09086" "P09629" "P09630" "P0C7M4" "P0CJ85" "P0CJ86" "P0CJ87" "P0CJ88" "P0CJ89" "P0CJ90" "P0DV77" "P13378" "P14651" "P14652" "P14653" "P14859" "P17481" "P17482" "P17483" "P17509" "P19622" "P20264" "P20265" "P20719" "P20823" "P23759" "P23760" "P26367" "P28069" "P28356" "P28358" "P28360" "P31249" "P31260" "P31267" "P31268" "P31269" "P31270" "P31271" "P31273" "P31274" "P31275" "P31276" "P31277" "P31314" "P32242" "P32243" "P35452" "P35453" "P35548" "P35680" "P37275" "P39880" "P40424" "P40425" "P40426" "P43699" "P47902" "P48742" "P49335" "P49639" "P49640" "P50219" "P50221" "P50222" "P50458" "P52945" "P52951" "P52952" "P52954" "P54821" "P55347" "P56177" "P56178" "P56179" "P56915" "P58304" "P61371" "P78337" "P78367" "P78411" "P78412" "P78413" "P78414" "P78415" "P78424" "P78426" "Q00056" "Q00444" "Q01826" "Q01851" "Q01860" "Q03014" "Q03052" "Q03828" "Q04741" "Q04743" "Q05925" "Q06416" "Q07687" "Q12837" "Q14549" "Q14774" "Q14863" "Q15270" "Q15319" "Q15475" "Q15583" "Q15699" "Q15911" "Q2M1V0" "Q3B8N5" "Q3C1V8" "Q5SQQ9" "Q5XKR4" "Q63HK5" "Q68G74" "Q6IQ32" "Q6NSW7" "Q6NT76" "Q6RFH8" "Q6XYB7" "Q6ZNG2" "Q6ZSZ6" "Q7Z353" "Q7Z5D8" "Q86UP3" "Q8IUE0" "Q8IUE1" "Q8IX15" "Q8IYA7" "Q8N196" "Q8N693" "Q8N7G0" "Q8N7R0" "Q8N7U7" "Q8NFW5" "Q8NHV9" "Q8TAU0" "Q8TE12" "Q92786" "Q92826" "Q92988" "Q969G2" "Q96A47" "Q96IS3" "Q96KN3" "Q96PT3" "Q96PT4" "Q96QS3" "Q99453" "Q99626" "Q99687" "Q99697" "Q99801" "Q99811" "Q9BPY8" "Q9BQY4" "Q9BYU1" "Q9BZE3" "Q9BZI1" "Q9BZM3" "Q9C056" "Q9C0A1" "Q9GZN2" "Q9GZZ0" "Q9H161" "Q9H2C1" "Q9H2P0" "Q9H2W2" "Q9H2Z4" "Q9H4I2" "Q9H4S2" "Q9H9S0" "Q9HB31" "Q9HBU1" "Q9NP08" "Q9NPC8" "Q9NQ69" "Q9NRE2" "Q9NY43" "Q9NYD6" "Q9NZR4" "Q9UBC0" "Q9UBR4" "Q9UBX0" "Q9UBX2" "Q9UD57" "Q9UIU6" "Q9UIW0" "Q9UKI9" "Q9UKY1" "Q9UMQ3" "Q9UPM6" "Q9UPW6" "Q9Y2V3" "Q9Y6X8" }
+        VALUES ?acc { "A0A1W2PPF3" "A0A1W2PPK0" "A0A1W2PPM1" "A2RU54" "A6NCS4" "A6NDR6" "A6NFQ7" "A6NHT5" "A6NJ46" "A6NJG6" "A6NJT0" "A6NLW8" "A6NMT0" "A6NNA5" "A8K0S8" "A8MTQ0" "A8MZ59" "E9PGG2" "O00470" "O14529" "O14627" "O14770" "O14813" "O15266" "O15499" "O15522" "O43186" "O43248" "O43316" "O43364" "O43365" "O43711" "O43763" "O43812" "O60315" "O60393" "O60422" "O60479" "O60663" "O60902" "O75360" "O75364" "O95076" "O95096" "O95231" "O95343" "O95475" "O95948" "P09016" "P09017" "P09067" "P09086" "P09629" "P09630" "P0C7M4" "P0CJ85" "P0CJ86" "P0CJ87" "P0CJ88" "P0CJ89" "P0CJ90" "P0DV77" "P13378" "P14651" "P14652" "P14653" "P14859" "P17481" "P17482" "P17483" "P17509" "P19622" "P20264" "P20265" "P20719" "P20823" "P23759" "P23760" "P26367" "P28069" "P28356" "P28358" "P28360" "P31249" "P31260" "P31267" "P31268" "P31269" "P31270" "P31271" "P31273" "P31274" "P31275" "P31276" "P31277" "P31314" "P32242" "P32243" "P35452" "P35453" "P35548" "P35680" "P37275" "P39880" "P40424" "P40425" "P40426" "P43699" "P47902" "P48742" "P49335" "P49639" "P49640" "P50219" "P50221" "P50222" "P50458" "P52945" "P52951" "P52952" "P52954" "P54821" "P55347" "P56177" "P56178" "P56179" "P56915" "P58304" "P61371" "P78337" "P78367" "P78411" "P78412" "P78413" "P78414" "P78415" "P78424" "P78426" "Q00056" "Q00444" "Q01826" "Q01851" "Q01860" "Q03014" "Q03052" "Q03828" "Q04741" "Q04743" "Q05925" "Q06416" "Q07687" "Q12837" "Q14549" "Q14774" "Q14863" "Q15270" "Q15319" "Q15475" "Q15583" "Q15699" "Q15911" "Q17RH7" "Q2M1V0" "Q3B8N5" "Q3C1V8" "Q5SQQ9" "Q5XKR4" "Q63HK5" "Q68G74" "Q6IQ32" "Q6NSW7" "Q6NT76" "Q6RFH8" "Q6XYB7" "Q6ZNG2" "Q6ZSZ6" "Q7Z353" "Q7Z5D8" "Q86UP3" "Q8IUE0" "Q8IUE1" "Q8IX15" "Q8IYA7" "Q8N196" "Q8N693" "Q8N7G0" "Q8N7R0" "Q8N7U7" "Q8NFW5" "Q8NHV9" "Q8TAU0" "Q8TE12" "Q92786" "Q92826" "Q92988" "Q969G2" "Q96A47" "Q96IS3" "Q96KN3" "Q96PT3" "Q96PT4" "Q96QS3" "Q99453" "Q99626" "Q99687" "Q99697" "Q99801" "Q99811" "Q9BPY8" "Q9BQY4" "Q9BYU1" "Q9BZE3" "Q9BZI1" "Q9BZM3" "Q9C056" "Q9C0A1" "Q9GZN2" "Q9GZZ0" "Q9H161" "Q9H2C1" "Q9H2P0" "Q9H2W2" "Q9H2Z4" "Q9H4I2" "Q9H4S2" "Q9H9S0" "Q9HB31" "Q9HBU1" "Q9NP08" "Q9NPC8" "Q9NQ69" "Q9NRE2" "Q9NY43" "Q9NYD6" "Q9NZR4" "Q9UBC0" "Q9UBR4" "Q9UBX0" "Q9UBX2" "Q9UD57" "Q9UIU6" "Q9UIW0" "Q9UKI9" "Q9UKY1" "Q9UMQ3" "Q9UPM6" "Q9UPW6" "Q9Y2V3" "Q9Y6X8" }
         ?gene a m2r:Gene ; rdfs:label ?symbol ;
               rdfs:seeAlso ?ref ; obo:so_part_of ?band .
         ?ref a idt:uniprot ; dct:identifier ?acc .
@@ -176,7 +184,7 @@ sparql_queries:
     database: hco
     description: >-
       Cross-graph coverage (the flagship HGNC->HCO join, both on the primary endpoint). Counts how
-      many of the 248 genes fall in a band that HCO recognises as a single ISCN cytoband. Returns
+      many of the 249 genes fall in a band that HCO recognises as a single ISCN cytoband. Returns
       241 genes across 149 HCO cytobands; the 7 unresolved genes sit at non-single-band strings
       (DUX1/DUX3/DUX5 "not on reference assembly"; HMBOX1 8p21.1-p12, CUX2 12q24.11-q24.12,
       ZFHX3 16q22.2-q22.3 spanning ranges; SHOX at pseudoautosomal Xp22.33 and Yp11.32).
@@ -191,7 +199,7 @@ sparql_queries:
       SELECT (COUNT(DISTINCT ?gene) AS ?genes_in_hco_bands) (COUNT(DISTINCT ?band) AS ?hco_bands)
       WHERE {
         GRAPH <http://rdfportal.org/dataset/hgnc> {
-          VALUES ?acc { "A0A1W2PPF3" "A0A1W2PPK0" "A0A1W2PPM1" "A2RU54" "A6NCS4" "A6NDR6" "A6NFQ7" "A6NHT5" "A6NJ46" "A6NJG6" "A6NJT0" "A6NLW8" "A6NMT0" "A6NNA5" "A8K0S8" "A8MTQ0" "A8MZ59" "E9PGG2" "O00470" "O14529" "O14627" "O14770" "O14813" "O15266" "O15499" "O15522" "O43186" "O43248" "O43316" "O43364" "O43365" "O43711" "O43763" "O43812" "O60315" "O60393" "O60422" "O60479" "O60663" "O60902" "O75360" "O75364" "O95076" "O95096" "O95231" "O95343" "O95475" "O95948" "P09016" "P09017" "P09067" "P09086" "P09629" "P09630" "P0C7M4" "P0CJ85" "P0CJ86" "P0CJ87" "P0CJ88" "P0CJ89" "P0CJ90" "P0DV77" "P13378" "P14651" "P14652" "P14653" "P14859" "P17481" "P17482" "P17483" "P17509" "P19622" "P20264" "P20265" "P20719" "P20823" "P23759" "P23760" "P26367" "P28069" "P28356" "P28358" "P28360" "P31249" "P31260" "P31267" "P31268" "P31269" "P31270" "P31271" "P31273" "P31274" "P31275" "P31276" "P31277" "P31314" "P32242" "P32243" "P35452" "P35453" "P35548" "P35680" "P37275" "P39880" "P40424" "P40425" "P40426" "P43699" "P47902" "P48742" "P49335" "P49639" "P49640" "P50219" "P50221" "P50222" "P50458" "P52945" "P52951" "P52952" "P52954" "P54821" "P55347" "P56177" "P56178" "P56179" "P56915" "P58304" "P61371" "P78337" "P78367" "P78411" "P78412" "P78413" "P78414" "P78415" "P78424" "P78426" "Q00056" "Q00444" "Q01826" "Q01851" "Q01860" "Q03014" "Q03052" "Q03828" "Q04741" "Q04743" "Q05925" "Q06416" "Q07687" "Q12837" "Q14549" "Q14774" "Q14863" "Q15270" "Q15319" "Q15475" "Q15583" "Q15699" "Q15911" "Q2M1V0" "Q3B8N5" "Q3C1V8" "Q5SQQ9" "Q5XKR4" "Q63HK5" "Q68G74" "Q6IQ32" "Q6NSW7" "Q6NT76" "Q6RFH8" "Q6XYB7" "Q6ZNG2" "Q6ZSZ6" "Q7Z353" "Q7Z5D8" "Q86UP3" "Q8IUE0" "Q8IUE1" "Q8IX15" "Q8IYA7" "Q8N196" "Q8N693" "Q8N7G0" "Q8N7R0" "Q8N7U7" "Q8NFW5" "Q8NHV9" "Q8TAU0" "Q8TE12" "Q92786" "Q92826" "Q92988" "Q969G2" "Q96A47" "Q96IS3" "Q96KN3" "Q96PT3" "Q96PT4" "Q96QS3" "Q99453" "Q99626" "Q99687" "Q99697" "Q99801" "Q99811" "Q9BPY8" "Q9BQY4" "Q9BYU1" "Q9BZE3" "Q9BZI1" "Q9BZM3" "Q9C056" "Q9C0A1" "Q9GZN2" "Q9GZZ0" "Q9H161" "Q9H2C1" "Q9H2P0" "Q9H2W2" "Q9H2Z4" "Q9H4I2" "Q9H4S2" "Q9H9S0" "Q9HB31" "Q9HBU1" "Q9NP08" "Q9NPC8" "Q9NQ69" "Q9NRE2" "Q9NY43" "Q9NYD6" "Q9NZR4" "Q9UBC0" "Q9UBR4" "Q9UBX0" "Q9UBX2" "Q9UD57" "Q9UIU6" "Q9UIW0" "Q9UKI9" "Q9UKY1" "Q9UMQ3" "Q9UPM6" "Q9UPW6" "Q9Y2V3" "Q9Y6X8" }
+          VALUES ?acc { "A0A1W2PPF3" "A0A1W2PPK0" "A0A1W2PPM1" "A2RU54" "A6NCS4" "A6NDR6" "A6NFQ7" "A6NHT5" "A6NJ46" "A6NJG6" "A6NJT0" "A6NLW8" "A6NMT0" "A6NNA5" "A8K0S8" "A8MTQ0" "A8MZ59" "E9PGG2" "O00470" "O14529" "O14627" "O14770" "O14813" "O15266" "O15499" "O15522" "O43186" "O43248" "O43316" "O43364" "O43365" "O43711" "O43763" "O43812" "O60315" "O60393" "O60422" "O60479" "O60663" "O60902" "O75360" "O75364" "O95076" "O95096" "O95231" "O95343" "O95475" "O95948" "P09016" "P09017" "P09067" "P09086" "P09629" "P09630" "P0C7M4" "P0CJ85" "P0CJ86" "P0CJ87" "P0CJ88" "P0CJ89" "P0CJ90" "P0DV77" "P13378" "P14651" "P14652" "P14653" "P14859" "P17481" "P17482" "P17483" "P17509" "P19622" "P20264" "P20265" "P20719" "P20823" "P23759" "P23760" "P26367" "P28069" "P28356" "P28358" "P28360" "P31249" "P31260" "P31267" "P31268" "P31269" "P31270" "P31271" "P31273" "P31274" "P31275" "P31276" "P31277" "P31314" "P32242" "P32243" "P35452" "P35453" "P35548" "P35680" "P37275" "P39880" "P40424" "P40425" "P40426" "P43699" "P47902" "P48742" "P49335" "P49639" "P49640" "P50219" "P50221" "P50222" "P50458" "P52945" "P52951" "P52952" "P52954" "P54821" "P55347" "P56177" "P56178" "P56179" "P56915" "P58304" "P61371" "P78337" "P78367" "P78411" "P78412" "P78413" "P78414" "P78415" "P78424" "P78426" "Q00056" "Q00444" "Q01826" "Q01851" "Q01860" "Q03014" "Q03052" "Q03828" "Q04741" "Q04743" "Q05925" "Q06416" "Q07687" "Q12837" "Q14549" "Q14774" "Q14863" "Q15270" "Q15319" "Q15475" "Q15583" "Q15699" "Q15911" "Q17RH7" "Q2M1V0" "Q3B8N5" "Q3C1V8" "Q5SQQ9" "Q5XKR4" "Q63HK5" "Q68G74" "Q6IQ32" "Q6NSW7" "Q6NT76" "Q6RFH8" "Q6XYB7" "Q6ZNG2" "Q6ZSZ6" "Q7Z353" "Q7Z5D8" "Q86UP3" "Q8IUE0" "Q8IUE1" "Q8IX15" "Q8IYA7" "Q8N196" "Q8N693" "Q8N7G0" "Q8N7R0" "Q8N7U7" "Q8NFW5" "Q8NHV9" "Q8TAU0" "Q8TE12" "Q92786" "Q92826" "Q92988" "Q969G2" "Q96A47" "Q96IS3" "Q96KN3" "Q96PT3" "Q96PT4" "Q96QS3" "Q99453" "Q99626" "Q99687" "Q99697" "Q99801" "Q99811" "Q9BPY8" "Q9BQY4" "Q9BYU1" "Q9BZE3" "Q9BZI1" "Q9BZM3" "Q9C056" "Q9C0A1" "Q9GZN2" "Q9GZZ0" "Q9H161" "Q9H2C1" "Q9H2P0" "Q9H2W2" "Q9H2Z4" "Q9H4I2" "Q9H4S2" "Q9H9S0" "Q9HB31" "Q9HBU1" "Q9NP08" "Q9NPC8" "Q9NQ69" "Q9NRE2" "Q9NY43" "Q9NYD6" "Q9NZR4" "Q9UBC0" "Q9UBR4" "Q9UBX0" "Q9UBX2" "Q9UD57" "Q9UIU6" "Q9UIW0" "Q9UKI9" "Q9UKY1" "Q9UMQ3" "Q9UPM6" "Q9UPW6" "Q9Y2V3" "Q9Y6X8" }
           ?gene a m2r:Gene ; rdfs:seeAlso ?ref ; obo:so_part_of ?band .
           ?ref a idt:uniprot ; dct:identifier ?acc .
         }
@@ -199,7 +207,7 @@ sparql_queries:
           ?bandClass rdfs:subClassOf hco:Cytoband ; rdfs:label ?band .
         }
       }
-    result_count: 1   # genes_in_hco_bands=241, hco_bands=149 (7 of 248 genes at non-single-band locations)
+    result_count: 1   # genes_in_hco_bands=242, hco_bands=150 (7 of 249 genes at non-single-band locations)
 
 rdf_triples: |
   @prefix up:    <http://purl.uniprot.org/core/> .
@@ -212,14 +220,14 @@ rdf_triples: |
 
   <http://purl.uniprot.org/keywords/371> rdfs:label "Homeobox" .
   # Database: uniprot | Query: 1 | Comment: The UniProt keyword KW-0371 (Homeobox) used to define the protein scope
-  ex:homeoboxSet ex:reviewedHumanProteins "248"^^xsd:integer .
-  # Database: uniprot | Query: 1 | Comment: 248 distinct reviewed (Swiss-Prot) human proteins carry the Homeobox keyword (up:classifiedWith keywords/371, taxon 9606) — the exhaustive scope
+  ex:homeoboxSet ex:reviewedHumanProteins "249"^^xsd:integer .
+  # Database: uniprot | Query: 1 | Comment: 249 distinct reviewed (Swiss-Prot) human proteins carry the Homeobox keyword (up:classifiedWith keywords/371, taxon 9606) — the exhaustive scope
 
-  ex:homeoboxSet ex:distinctHgncGenes "248"^^xsd:integer ; ex:distinctLocationBands "154"^^xsd:integer .
-  # Database: hgnc | Query: 3 | Comment: All 248 accessions map to 248 HGNC genes, each with exactly one obo:so_part_of location string, across 154 distinct bands; genes = rows = 248 so per-band counts sum to 248 (Rule 3, no gap/overlap)
+  ex:homeoboxSet ex:distinctHgncGenes "249"^^xsd:integer ; ex:distinctLocationBands "155"^^xsd:integer .
+  # Database: hgnc | Query: 3 | Comment: All 249 accessions map to 249 HGNC genes, each with exactly one obo:so_part_of location string, across 154 distinct bands; genes = rows = 248 so per-band counts sum to 248 (Rule 3, no gap/overlap)
 
   ex:homeoboxSet ex:genesInHcoCytobands "241"^^xsd:integer ; ex:distinctHcoCytobands "149"^^xsd:integer .
-  # Database: hco | Query: 6 | Comment: 241 of the 248 genes resolve to a single ISCN cytoband in HCO (149 distinct GRCh38 bands); the flagship HGNC obo:so_part_of == HCO band rdfs:label join on the shared primary endpoint
+  # Database: hco | Query: 6 | Comment: 242 of the 249 genes resolve to a single ISCN cytoband in HCO (150 distinct GRCh38 bands); the flagship HGNC obo:so_part_of == HCO band rdfs:label join on the shared primary endpoint
 
   ex:band_7p15_2 ex:homeoboxGeneCount "12"^^xsd:integer ; ex:members "HOXA1-HOXA13, EVX1" .
   # Database: hgnc | Query: 4 | Comment: 7p15.2 harbours 12 homeobox genes (the HOXA cluster HOXA1-13 plus EVX1) — tied for the largest cluster
@@ -247,12 +255,12 @@ rdf_triples: |
   # Database: hco | Query: 5 | Comment: HCO band class 4q35.2; GRCh38 instance is Giemsa gpos25, spanning 186,200,001-190,214,555 (~4.0 Mb), the subtelomeric 4q terminus
 
   ex:unresolvedGenes ex:count "7"^^xsd:integer ; ex:examples "DUX1/DUX3/DUX5 (not on reference assembly); SHOX (pseudoautosomal Xp22.33 and Yp11.32); HMBOX1/CUX2/ZFHX3 (range-spanning locations)" .
-  # Database: hco | Query: 6 | Comment: 7 of the 248 genes lack a single-band ISCN string so do not resolve to one HCO cytoband — unplaced DUX paralogues, the pseudoautosomal SHOX, and three genes recorded as multi-band ranges
+  # Database: hco | Query: 6 | Comment: 7 of the 249 genes lack a single-band ISCN string so do not resolve to one HCO cytoband — unplaced DUX paralogues, the pseudoautosomal SHOX, and three genes recorded as multi-band ranges
 
 exact_answer: ""
 
 ideal_answer: |
-  The manually reviewed human proteins carrying a homeobox domain number 248, and every one maps to a single approved gene, so the family spans 248 genes distributed across 154 distinct cytogenetic-location strings; 241 of these genes resolve to a single ISCN band, occupying 149 distinct cytobands on the GRCh38 assembly. Their distribution is strongly clustered, reflecting the tandem-array organisation of homeobox loci. The two largest clusters are tied at 12 genes each: band 7p15.2, which holds the HOXA cluster (HOXA1 through HOXA13) together with EVX1, and band 2q31.1, which holds the HOXD cluster (HOXD1 through HOXD13) together with the DLX1/DLX2 bigene pair and EVX2. Next are the other two Hox loci, each with 10 genes: 12q13.13, carrying the HOXC cluster (HOXC4 through HOXC13) plus POU6F1, and 17q21.32, carrying the complete HOXB cluster (HOXB1 through HOXB13). A fifth notable cluster of 8 genes sits at the subtelomeric band 4q35.2 — not a Hox locus but the DUX4/DUX4L double-homeobox array of the D4Z4 macrosatellite, the region implicated in facioscapulohumeral muscular dystrophy. Cytogenetically these clusters are heterogeneous: the two co-largest bands differ in Giemsa character, with 7p15.2 staining gpos50 (GRCh38 25,500,001-27,900,000, ~2.4 Mb) and 2q31.1 staining gneg (168,900,001-177,100,000, ~8.2 Mb); 12q13.13 is gneg (51,100,001-54,500,000), while 17q21.32 and 4q35.2 are both gpos25 (46,800,001-49,300,000 and 186,200,001-190,214,555 respectively). Seven genes cannot be placed on a single band and are excluded from the cytoband tally: the DUX1/DUX3/DUX5 paralogues recorded as "not on reference assembly", the short-stature homeobox gene SHOX in the pseudoautosomal regions of Xp22.33 and Yp11.32, and HMBOX1, CUX2 and ZFHX3, whose locations are given as multi-band ranges. Overall, the reviewed homeobox gene set is a textbook example of a family whose members are concentrated in a handful of ancient tandem clusters — the four Hox loci accounting for 44 genes in just four bands — set against a long tail of singleton bands, and the four Hox clusters themselves span the full range of Giemsa staining rather than sharing a single cytogenetic signature.
+  The manually reviewed human proteins carrying a homeobox domain number 249, and every one maps to a single approved gene, so the family spans 249 genes distributed across 155 distinct cytogenetic-location strings; 242 of these genes resolve to a single ISCN band, occupying 150 distinct cytobands on the GRCh38 assembly. Their distribution is strongly clustered, reflecting the tandem-array organisation of homeobox loci. The two largest clusters are tied at 12 genes each: band 7p15.2, which holds the HOXA cluster (HOXA1 through HOXA13) together with EVX1, and band 2q31.1, which holds the HOXD cluster (HOXD1 through HOXD13) together with the DLX1/DLX2 bigene pair and EVX2. Next are the other two Hox loci, each with 10 genes: 12q13.13, carrying the HOXC cluster (HOXC4 through HOXC13) plus POU6F1, and 17q21.32, carrying the complete HOXB cluster (HOXB1 through HOXB13). A fifth notable cluster of 8 genes sits at the subtelomeric band 4q35.2 — not a Hox locus but the DUX4/DUX4L double-homeobox array of the D4Z4 macrosatellite, the region implicated in facioscapulohumeral muscular dystrophy. Cytogenetically these clusters are heterogeneous: the two co-largest bands differ in Giemsa character, with 7p15.2 staining gpos50 (GRCh38 25,500,001-27,900,000, ~2.4 Mb) and 2q31.1 staining gneg (168,900,001-177,100,000, ~8.2 Mb); 12q13.13 is gneg (51,100,001-54,500,000), while 17q21.32 and 4q35.2 are both gpos25 (46,800,001-49,300,000 and 186,200,001-190,214,555 respectively). Seven genes cannot be placed on a single band and are excluded from the cytoband tally: the DUX1/DUX3/DUX5 paralogues recorded as "not on reference assembly", the short-stature homeobox gene SHOX in the pseudoautosomal regions of Xp22.33 and Yp11.32, and HMBOX1, CUX2 and ZFHX3, whose locations are given as multi-band ranges. Overall, the reviewed homeobox gene set is a textbook example of a family whose members are concentrated in a handful of ancient tandem clusters — the four Hox loci accounting for 44 genes in just four bands — set against a long tail of singleton bands (among them 3p25.1, the lone band of TPRXL), and the four Hox clusters themselves span the full range of Giemsa staining rather than sharing a single cytogenetic signature.
 
 question_template_used: "Summary Multi-scale cytogenetic distribution of a keyword-defined protein family (reviewed protein set + gene nomenclature/chromosomal location + cytoband ontology with Giemsa stain and coordinates) synthesised into one narrative"
 

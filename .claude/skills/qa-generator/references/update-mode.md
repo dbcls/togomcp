@@ -6,9 +6,9 @@ at `NN = highest + 1`. Update mode operates on a question that **already exists*
 new ontology IRIs appear, `bif:contains` hacks become avoidable, and newly onboarded databases make
 sharper questions possible.
 
-Everything from the create protocol still applies: the **Four Hard Rules** (nothing invented;
+Everything from the create protocol still applies: the **Five Hard Rules** (nothing invented;
 scope = query scope; every GROUP BY gets an arithmetic check; union endpoints inflate silently —
-graph-scope counts), the **C01–C27** checklist, and the
+graph-scope counts), the **C01–C29** checklist, and the
 **necessity gates**. Update mode changes only *what* you write (an existing file) and *how* you keep
 the tracker honest (delta, not append). Like create mode: **one question at a time, present at the
 checkpoint, write only on approval. Never batch-write.**
@@ -58,7 +58,7 @@ materially**. A count that merely nudged (e.g. 41 → 43) usually leaves the gat
 qualitative flip (e.g. an existence yes→no, or a list gaining/losing members that change the point)
 needs the PubMed gate re-run to keep `rdf_necessity` honest.
 
-**R7. Self-review + validate.** Walk C01–C27 on the edited file (C03/C27 especially if counts moved;
+**R7. Self-review + validate.** Walk C01–C29 on the edited file (C03/C27 especially if counts moved;
 C08/C15 if the answer's shape shifted). Run `python benchmark/scripts/verify_questions.py
 /path/to/question_0NN.yaml` (single-file) and fix every ❌.
 

@@ -12,7 +12,7 @@ Never search one category and declare it the winner.
 **SYNTHESIS** (2–3 SPARQL) — entity searches → MIE → SPARQL → `togoid_convertId` if
 cross-DB → `ncbi_esummary` for detail → one concise paragraph. Each fact once.
 
-**EXPLORATION** (1–4 SPARQL) — default when GATE 0 routes NO. Four required habits:
+**EXPLORATION** (1–4 SPARQL) — default when GATE 0 routes NO. Five required habits:
 
 1. **Seed Definition** (before any tool):
    - Seed in one sentence.
@@ -44,11 +44,61 @@ cross-DB → `ncbi_esummary` for detail → one concise paragraph. Each fact onc
 
 ## 🚨 SPARQL DISCIPLINE
 
-- **Before:** read `critical_warnings` + `shape_expressions`; ground with a search tool first.
-- **While writing:** copy PREFIXes from MIE; `LIMIT 10` first; `VALUES` for batch lookups
-  (≤15 items); one broad `GROUP BY` over many narrow queries.
+- **Before:** read `critical_warnings` + `co_hosted_graphs` + `shape_expressions`; ground
+  with a search tool first.
+- **While writing:** copy PREFIXes from MIE; **pin every graph** (see CO-TENANCY);
+  `LIMIT 10` first; `VALUES` for batch lookups (≤15 items); one broad `GROUP BY` over
+  many narrow queries.
 - **On failure:** max 2 consecutive. At #3: pivot to search, `ncbi_esearch`, TogoID, or
   partial synthesis.
+
+---
+
+## 🕸️ CO-TENANCY & SILENT-FAILURE TRAPS
+
+Everything in this section fails **silently** — no error, no zero rows, no doubled
+count. The result is plausible, correctly shaped, and wrong.
+
+An unpinned query reads **every graph on the endpoint**, not just your database's. A
+sibling graph that re-declares a predicate inflates counts; one that *supplies* a
+predicate you assume is native narrows your query to an intersection.
+`dcterms:identifier` looks like UniProt's — on `sib` only the co-hosted **OMA** graph
+supplies it, so `?protein dcterms:identifier ?acc` silently becomes **UniProt INTERSECT
+OMA**, dropping every protein with no OMA record. It returned a wrong count (248; truth
+249) that passed every check for months.
+
+1. **Pin every pattern.** `FROM <g>` or `GRAPH <g> { ... }`. Partial pinning still
+   leaks — the unpinned patterns read the union.
+2. **`SELECT DISTINCT` is NOT the fix.** It can absorb inflation and hand you the right
+   number for the wrong reason, then break when the multiplicity changes.
+3. **Check a predicate is native:** bind the subject and run
+   `SELECT ?g WHERE { GRAPH ?g { <subj> <pred> ?o } }`. >1 graph → re-declared.
+   Nothing from your database's graph → it was never yours.
+4. **Joins multiply.** *k* re-declared patterns → **2^k** rows per entity.
+5. **Single-tenant ≠ safe.** The trap is graphs, not databases (see ENDPOINTS).
+6. **The pin is not ground truth.** If pinned ≠ unpinned, that gap is a **finding to
+   explain**, not a number to adopt. `dataset/microbedbjp` re-declares NCBI Taxonomy at
+   an **older nomenclature vintage** (Proteobacteria *and* Pseudomonadota), and
+   "Superkingdom Bacteria" survives **only** there — the authoritative graph has an empty
+   rank IRI since NCBI retired "superkingdom". Blind pinning turns correct answers wrong.
+7. **Normalize literals with `STR(?label)`.** Some labels exist twice — plain and
+   `xsd:string`. Distinct RDF terms, so `DISTINCT` won't collapse them and `GROUP BY`
+   splits the group (`GO_0005183`, `CHEBI:29108`). Scan every quoted literal against the
+   MIE's `critical_warnings`; `VALUES` blocks are the worst spot.
+8. **Never write a `VALUES` block you did not populate from a query you ran.** An
+   **empty** one is *valid SPARQL* — it returns one row of `0` instead of erroring. An
+   abridged one ("representative", "…") computes a well-shaped number from the wrong set.
+9. **Anchor on stable IDs, never an export-local IRI.** Ask: *does any component encode a
+   release, a build, an export file, or a counter?* A Reactome BioPAX IRI
+   (`.../biopax/95/48887#Pathway2258`) encodes **three**, all re-minted quarterly; the old
+   one now has zero triples. Passing today proves nothing — the defect is invisible until
+   the next release.
+
+   ```sparql
+   ?pathway bp:xref [ bp:db "Reactome"^^xsd:string ; bp:id "R-HSA-196807"^^xsd:string ] .
+   ```
+
+   The `^^xsd:string` is mandatory — without it the join silently returns 0.
 
 ---
 

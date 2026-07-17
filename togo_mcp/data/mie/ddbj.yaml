@@ -33,12 +33,15 @@ schema_info:
     - http://rdfportal.org/ontology/so
     - http://rdfportal.org/ontology/faldo
     - http://rdfportal.org/ontology/taxonomy
+  co_hosted_graphs:
+    - "http://rdfportal.org/ontology/taxonomy — INWARD TRAP (this graph is one of DDBJ's OWN four, which is exactly why it is easy to miss). It RE-TYPES the SAME taxon IRI that <http://rdfportal.org/dataset/ddbj> already types: <http://identifiers.org/taxonomy/9606> is `a nuc:Taxonomy` in dataset/ddbj AND `a taxonomy:Taxon` in ontology/taxonomy. Overlap measured 2026-07-17: 2,203,603 shared taxon IRIs (dataset/ddbj declares 2,216,673 nuc:Taxonomy; ontology/taxonomy declares 2,698,386 taxonomy:Taxon). BOTH graphs put rdfs:label on the shared IRI, with DIFFERENT values: ontology/taxonomy gives the scientific name (\"Homo sapiens\"), dataset/ddbj gives the bare taxid STRING (\"9606\"). Multiplier = x2 on rdfs:label — measured over a 1,000-taxon sample: unscoped 1,999 rows vs 999 rows pinned to GRAPH <http://rdfportal.org/ontology/taxonomy>. Safe pattern: pin GRAPH <http://rdfportal.org/ontology/taxonomy> for any taxon NAME (also the only source of taxonomy:rank, scientificName, genbankCommonName, authority, and the rdfs:subClassOf* lineage); pin GRAPH <http://rdfportal.org/dataset/ddbj> for the entry→taxon link. Never leave a taxon rdfs:label unscoped."
+    - "~39 shared ontology/vocabulary graphs on this endpoint that are NOT in DDBJ's four (http://purl.jp/bio/11/goa; id.nlm.nih.gov/mesh + /vocab + /void; the rdfportal.org/ontology/* suite beyond so/faldo/taxonomy — go, mondo, uberon, cl, sio, hp, efo, …; owl#) — join targets, not co-tenancy traps; probed 2026-07-17. nuc:Entry, nuc:Gene, nuc:Coding_Sequence, nuc:Source and faldo:Region are each declared in <http://rdfportal.org/dataset/ddbj> ONLY (verified by excluding dataset/ddbj from the GROUP BY — every class returned an EMPTY result), and a VALUES probe over insdc/AP009552.1, AB000001.1, AP012306.1 found those IRIs in dataset/ddbj ONLY. Endpoint total: 43 graphs."
   kw_search_tools: []
   version:
-    mie_version: "2.2"
-    mie_updated: "2026-07-16"
+    mie_version: "2.3"
+    mie_updated: "2026-07-17"
     mie_created: "2026-04-29"
-    data_version: "DDBJ Release (continuous updates)"
+    data_version: "RDF Portal snapshot — verified 2026-07-17. (No release number is derivable from this endpoint: GRAPH <http://rdfportal.org/dataset/ddbj> carries no dcterms:modified / dcterms:issued / dcterms:hasVersion / owl:versionInfo — probed 2026-07-17. The previous value \"DDBJ Release\" was not endpoint-derived.)"
     update_frequency: "Daily"
   license:
     data_license: "CC0 1.0 Universal (CC0 1.0) Public Domain Dedication"
@@ -52,6 +55,18 @@ critical_warnings: |
   - MANDATORY ENTRY SCOPE: ALWAYS add FILTER(CONTAINS(STR(?feature), "ACCESSION")) before
     joining Gene, CDS, RNA, or other feature types. Without this, the query creates a Cartesian
     product across all ~280M entries and times out within seconds.
+  - TAXON LABEL IS DOUBLE-DECLARED — x2 AND HALF THE ANSWERS ARE THE TAXID (measured 2026-07-17):
+    the same taxon IRI <http://identifiers.org/taxonomy/9606> is typed in TWO of DDBJ's own graphs —
+    `a nuc:Taxonomy` in <http://rdfportal.org/dataset/ddbj> and `a taxonomy:Taxon` in
+    <http://rdfportal.org/ontology/taxonomy> — and BOTH attach rdfs:label, with different values:
+    ontology/taxonomy -> "Homo sapiens", dataset/ddbj -> "9606" (the bare taxid string).
+    2,203,603 taxon IRIs are shared. An unscoped `?taxon rdfs:label ?name` therefore returns
+    TWO rows per taxon: measured over a 1,000-taxon sample, unscoped = 1,999 rows vs 999 rows
+    pinned to GRAPH <http://rdfportal.org/ontology/taxonomy>. Multiplier = x2, and a naive
+    LIMIT/first-row pick has a ~50% chance of returning "9606" as the organism NAME.
+    FIX: pin GRAPH <http://rdfportal.org/ontology/taxonomy> for any taxon name/rank/lineage
+    (it alone carries taxonomy:scientificName, taxonomy:rank and the rdfs:subClassOf* hierarchy);
+    pin GRAPH <http://rdfportal.org/dataset/ddbj> for the entry->taxon link.
   - SIO PROPERTY TRAP: sio:SIO_010081 does NOT link CDS to Gene in this database.
     The actual predicate is bfo:0000050 (part of). Using sio:SIO_010081 silently returns 0 rows.
   - ShEx vs DATA DISCREPANCY: The upstream ShEx lists insdc_ontology:dbxref for external links,

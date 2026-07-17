@@ -342,3 +342,130 @@ class TestServerVersion:
         # Sanity: it's a real version string, not the "0+unknown" source fallback
         # (the package is installed in the test env).
         assert mcp.version and mcp.version != "0+unknown"
+
+
+class TestMIETrapBanner:
+    """get_MIE_file prepends a trap banner above the YAML body.
+
+    The traps that produced wrong benchmark answers were all documented in the
+    right MIE and simply not re-read at the moment a predicate was typed, so the
+    banner exists to make them unskippable. It must never swallow the file.
+    """
+
+    def test_headlines_warnings_and_co_hosted_graphs(self) -> None:
+        from togo_mcp.rdf_portal import _mie_trap_banner
+
+        content = (
+            "schema_info:\n"
+            "  co_hosted_graphs:\n"
+            '    - "http://example.org/sib — re-types 42 IRIs"\n'
+            "critical_warnings: |\n"
+            "  - FIRST TRAP: does a bad thing.\n"
+            "    continuation line, not a warning of its own\n"
+            "  - SECOND TRAP: does another.\n"
+        )
+        banner = _mie_trap_banner(content, "demo")
+        assert "`demo`" in banner
+        assert "2 CRITICAL WARNING(S)" in banner
+        assert "1 CO-HOSTED GRAPH(S)" in banner
+        assert "FIRST TRAP" in banner and "SECOND TRAP" in banner
+        # Every line is a YAML comment, so the result still parses as YAML.
+        assert all(line.startswith("#") for line in banner.splitlines())
+
+    def test_sub_bullets_do_not_become_warnings(self) -> None:
+        """Indented sub-bullets belong to their parent warning, not the count."""
+        from togo_mcp.rdf_portal import _mie_trap_banner
+
+        content = (
+            "critical_warnings: |\n"
+            "  - PARENT TRAP: has two sub-cases.\n"
+            "      - sub-case one\n"
+            "      - sub-case two\n"
+        )
+        assert "1 CRITICAL WARNING(S)" in _mie_trap_banner(content, "demo")
+
+    def test_banner_never_blocks_the_file(self) -> None:
+        """A malformed or bannerless MIE still returns its content."""
+        from togo_mcp.rdf_portal import _mie_trap_banner
+
+        assert _mie_trap_banner("{{ not: valid: yaml", "demo") == ""
+        assert _mie_trap_banner("schema_info:\n  title: x\n", "demo") == ""
+
+    def test_real_mie_banner_precedes_yaml_and_parses(self) -> None:
+        import yaml
+
+        from togo_mcp.rdf_portal import _mie_trap_banner
+
+        path = Path("togo_mcp/data/mie/uniprot.yaml")
+        content = path.read_text(encoding="utf-8")
+        banner = _mie_trap_banner(content, "uniprot")
+        assert "dcterms:identifier" in banner  # the trap that broke Q076
+        # Banner + body must still be loadable as YAML by any downstream consumer.
+        doc = yaml.safe_load(banner + content)
+        assert doc["schema_info"]["title"] == "UniProt RDF"
+
+
+class TestUsageGuideEndpointTable:
+    """The guide's endpoint table is a hand-written copy of endpoints.csv.
+
+    It silently drifted before: `sib` was listed as "UniProt · Rhea" long after OMA
+    was mounted there (2026-04-28), so the guide told agents no co-tenant could
+    corrupt a UniProt query — the exact trap that produced a wrong benchmark answer.
+    These tests fail the build instead of the agent.
+    """
+
+    def _guide_table(self) -> str:
+        from togo_mcp.server import TOGOMCP_USAGE_GUIDE
+
+        return Path(TOGOMCP_USAGE_GUIDE, "02_budgets_and_discovery.md").read_text(
+            encoding="utf-8"
+        )
+
+    def _csv_rows(self) -> list[dict[str, str]]:
+        from togo_mcp.server import ENDPOINTS_CSV
+
+        with open(ENDPOINTS_CSV, encoding="utf-8") as fh:
+            return list(csv.DictReader(fh))
+
+    def test_every_database_key_is_listed_verbatim(self) -> None:
+        """Agents copy these into database=; a display name would not resolve."""
+        guide = self._guide_table()
+        missing = [r["database"] for r in self._csv_rows() if f"`{r['database']}`" not in guide]
+        assert not missing, f"database keys absent from the guide's endpoint table: {missing}"
+
+    def test_per_endpoint_counts_match_the_registry(self) -> None:
+        import collections
+        import re
+
+        real = collections.Counter(r["endpoint_name"] for r in self._csv_rows())
+        claimed = {
+            m.group(1): int(m.group(2))
+            for m in re.finditer(r"^\| \*\*(\w+)\*\* \| (\d+) \|", self._guide_table(), re.M)
+        }
+        assert claimed == dict(real), (
+            f"guide endpoint counts {claimed} != endpoints.csv {dict(real)}"
+        )
+
+    def test_shared_endpoints_are_not_understated(self) -> None:
+        """The co-tenancy warning is only true if the counts are."""
+        guide = self._guide_table()
+        assert "CO-TENANCY" in guide
+        assert "`oma`" in guide, "OMA co-hosts sib and must be visible on the sib row"
+
+    def test_guide_title_matches_the_served_directory_version(self) -> None:
+        """The dir name is the version of record; the title drifted to v5 and the
+        tool docstring to v4 while v5 was being served. Keep the three in step."""
+        import re
+
+        from togo_mcp.server import _detect_usage_guide_version
+
+        version = _detect_usage_guide_version()
+        title = Path(
+            __import__("togo_mcp.server", fromlist=["x"]).TOGOMCP_USAGE_GUIDE,
+            "01_gates_and_rules.md",
+        ).read_text(encoding="utf-8")
+        m = re.search(r"^# TogoMCP Usage Guide \((v\d+)\)", title, re.M)
+        assert m, "guide title must declare its version"
+        assert m.group(1) == version, (
+            f"guide title says {m.group(1)} but the served directory is {version}"
+        )

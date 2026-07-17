@@ -110,9 +110,10 @@ While running predicate surveys, note any predicate whose COUNT distribution is 
 - Two predicates return overlapping results for what appears to be the same concept — document which form is the correct join key.
 
 Caveat: this predicate survey is GRAPH-scoped, so it CANNOT see cross-graph re-declaration —
-a predicate duplicated in a SIBLING dataset's graph reads as COUNT = 1 here and looks
-perfectly singular. Never conclude "singular, therefore safe" from a scoped COUNT on a
-co-hosted endpoint. That trap is found only by the 2g union-inflation probe.
+a predicate duplicated in ANOTHER graph (a sibling dataset's, or another of this database's own)
+reads as COUNT = 1 here and looks perfectly singular. Never conclude "singular, therefore safe"
+from a scoped COUNT on any endpoint holding more than one graph. That trap is found only by the
+2g union-inflation probe.
 
 Write these candidates down immediately. `critical_warnings` is assembled in Phase 4 from this list — not reconstructed from memory.
 
@@ -285,27 +286,75 @@ Real case (Reactome): the obvious query `?reaction (bp:left|bp:right) ?protein` 
 
 Distinguish design from accident as you go: some divergences are principled modeling (Reactome EntitySets express "any family member fills this role"); others are export artifacts or curation drift (a predicate sometimes attached directly, sometimes via an intermediate; `UniProt` vs `UniProt Isoform` db split; a misspelled predicate). For the MIE it does not matter which it is — **document the observable behavior and its operational consequence either way.** Understanding the *why* improves your ability to predict sibling traps (if `EntitySet` exists, look for `CandidateSet`/`DefinedSet`); the warning itself records the *what*.
 
-#### 2g. Cross-graph redeclaration / union-inflation probe — co-hosted endpoints only
+#### 2g. Cross-graph redeclaration / union-inflation probe — MANDATORY on any multi-GRAPH endpoint
 
 Steps 2a–2f are deliberately GRAPH-scoped, which is exactly why they are BLIND to a whole
-class of downstream trap. On an endpoint that co-hosts >1 database (get_sparql_endpoints(),
-already called in Phase 1), a sibling dataset can re-declare the SAME predicate on the SAME
-shared IRI in its own graph. A downstream query with database=<db> defaults to the UNION of
-all graphs, so an unscoped triple pattern matches once per graph and inflates rows/COUNTs —
-silently. A scoped Phase-2b survey shows the predicate as singular (COUNT = 1 in your graph)
-and never flags it, so this probe is the ONLY place the trap is visible.
+class of downstream trap. Any graph on this endpoint — a sibling database, or another graph
+belonging to this same database — can re-declare the SAME predicate on the SAME shared IRI.
+A downstream query with database=<db> defaults to the UNION of all graphs, so an unscoped
+triple pattern matches once per graph and inflates rows/COUNTs — silently. A scoped Phase-2b
+survey shows the predicate as singular (COUNT = 1 in your graph) and never flags it, so this
+probe is the ONLY place the trap is visible.
 
-Run 2g ONLY when get_sparql_endpoints() shows the endpoint hosts >1 database. Probe two kinds
-of node, reusing entities already found in 2c/2d:
+**Trigger: run 2g whenever `get_graph_list()` returns MORE THAN ONE graph.** Do NOT gate this
+on the number of DATABASES on the endpoint — that is the wrong question, and it was the actual
+bug in this skill until 2026-07-17:
+
+> `togovar` has an endpoint entirely to itself. Under the old "co-hosts >1 database" rule it
+> skipped 2g. It needed the probe anyway: `togovar.org/variant/annotation/clinvar` re-types the
+> same variant IRIs that `togovar.org/variant` declares — ×2 across 2,944,525 variants. The
+> re-declaring graph belonged to the SAME database. Likewise `glycosmos` sits alone on its
+> endpoint and hosts ~150 graphs; `pdb`, `ddbj` and `pubchem` are each "single-database" yet
+> carry 43–68 graphs (the full `rdfportal.org/ontology/*` suite plus `mesh` and `goa`).
+
+Conversely, sharing an endpoint does NOT imply a trap — `rhea` shares SIB with UniProt/Bgee/OMA
+and probes genuinely clean: no co-tenant touches an `rdf.rhea-db.org` IRI at all. **The entry must
+come from the probe, in both directions.**
+
+**Classify into THREE kinds. Zero IRI overlap does NOT mean safe** — this skill said it did until
+2026-07-17, and two independent probes disproved it:
+  1. **Same IRI, same predicate → ROW DUPLICATION.** EFO re-declares 16,423 MONDO classes → ×4 on
+     `?c a owl:Class ; rdfs:label ?l`. DISTINCT masks it; the pin fixes it.
+  2. **Same IRI, CONFLICTING value → WRONG ANSWER.** DISTINCT cannot help. `microbedbjp` names taxid
+     1224 "Proteobacteria" vs the authoritative "Pseudomonadota"; DDBJ labels taxon 9606 `"9606"`
+     while `ontology/taxonomy` labels it `"Homo sapiens"`.
+  3. **Same CLASS, DISJOINT IRIs → SCOPE BLEED.** Nothing is duplicated; foreign ENTITIES are added.
+     Every row unique and well-formed, so **DISTINCT is useless and only the pin helps**. Measured:
+     `?e a dsmz:Enzyme` = 627,832 unpinned, only 8.7% BRENDA's (×11.47); MediaDive's culture media
+     ×15.5; `?t a taxo:Taxon` 3,764,445 vs 2,840,372 pinned (×1.33, surplus = gtdb + microbedbjp).
+     A ×2 duplicate is conspicuous; a ×15 union of plausible foreign rows is not.
+So the overlap probe CLASSIFIES a trap; it never dismisses one. Zero overlap rules out kind 1 only.
+
+Probe two kinds of node, reusing entities already found in 2c/2d:
   (a) a representative entity of THIS database — catches a sibling RE-TYPING it (e.g. OMA
       asserting `<uniprot-protein> a up:Protein` on SIB), which double-counts a bare COUNT;
   (b) each shared reference / hub IRI it points to — taxa, ChEBI, GO, MeSH … the join keys —
-      taken from the 2c DESCRIBE object values.
+      taken from the 2c DESCRIBE object values. **Follow the hub even if the hub is not your
+      database**: NBRC's `mccv:MCCV_000065` lands on `identifiers.org/taxonomy/<taxid>`, which
+      microbedbjp re-declares — so "pin the NBRC graph" was NOT enough; the trap was on the
+      NAME leg, ×1.94, in a graph the reader never asked for.
 
   SELECT ?g ?p (COUNT(*) AS ?n) WHERE {
     VALUES ?node { <representative-entity> <hub-iri-1> <hub-iri-2> }
     GRAPH ?g { ?node ?p ?o . }
   } GROUP BY ?g ?p ORDER BY ?p ?g
+
+**Keep `?p` unbound. Do NOT lead with `?s a <YourClass>`.** This query is deliberately a REVERSE
+probe — every predicate, no type filter — because that is the only shape that sees all three
+failure modes at once. A type-first probe produces FALSE CLEANS, twice observed:
+  - `ensembl_grch37` types genes as `obo:SO_0001217`, NOT `terms:EnsemblGene` — invisible to a
+    type probe — while re-declaring `rdfs:label` on the SAME gene IRIs. Real multiplier ×3. The
+    agent that hit this said: "My first two probes came back 'clean' for that reason."
+  - `glycovid_pubchem` declares MeSH *descriptor* IRIs as `meshv:Concept`: same-class overlap 0
+    (looks clean), cross-class overlap 768, and its label is the bare accession ("D000163").
+**Inflation is a PRODUCT of legs**: a graph carrying only the type still multiplies against a graph
+carrying only the label (chebi water = 4 type-graphs × 3 label-graphs = ×12). So a per-leg count is
+not the answer — after the reverse probe, run the realistic join pinned vs unpinned and report THAT.
+
+Then compare VALUES, not just row counts. Two graphs supplying the same predicate with DIFFERENT
+values is worse than a duplicate, because DISTINCT cannot mask it and the result still looks well
+formed (EFO drops MONDO's "obsolete " prefix; DDBJ labels taxon 9606 `"9606"` where
+ontology/taxonomy says `"Homo sapiens"`).
 
 Read the result against THIS database's own graphs (schema_info.graphs from 2a). For any
 predicate appearing in a graph OUTSIDE that list, the union multiplier for that predicate =
@@ -315,10 +364,23 @@ sibling graph(s), the multiplier, and whether it is a reference-node LABEL or a 
 this DB's own entity. This list is the source for the `co_hosted_graphs` field and a
 `critical_warnings` entry in Phase 4 — write it down now, do not reconstruct from memory.
 
-Single-database endpoints (get_sparql_endpoints() shows exactly one DB) skip 2g. The weaker
-internal-split case still applies everywhere — one dataset spread over several of its OWN
-graphs (e.g. UniProt's citationmapping graph) does not cross-inflate, but keep entity counts
-on COUNT(DISTINCT ?entity) regardless.
+**Record the outcome either way — a clean probe is a RESULT, not a skip.** If 2g finds no
+re-declaration, say so AND say what you probed: which legs (type, label/identifier, cross-class,
+hub) and the figure behind the verdict. A bare "no re-declaration found" is not enough — a narrow
+probe and a thorough one leave identical notes, and the narrow one is how false cleans survive.
+Good: *"PROBED CLEAN — ALL LEGS (2026-07-17): reverse probe on 18 IRIs → all 54,242 triples in the
+DB's own graph; label leg 0 in every co-tenant."* An omitted field and a probed-clean field look
+identical in the finished MIE, and only one is trustworthy; absence on a multi-graph endpoint is a
+Phase-5 review failure.
+
+The ONLY exemption is an endpoint where `get_graph_list()` returns exactly one graph (across the
+current 36 databases, only `supercon` qualifies — it returns its own graph plus `owl#`). Say so
+in the field rather than omitting it.
+
+Do not assume a same-database sibling graph is safe: the "internal split" case cross-inflates
+whenever the two graphs share IRIs (togovar above). It is benign only where they do not (e.g.
+UniProt's citationmapping graph) — which is something you establish with the probe, not by
+assumption. Keep entity counts on COUNT(DISTINCT ?entity) regardless.
 
 ### Phase 3 — Design the query set
 
@@ -338,9 +400,15 @@ Use `references/template.yaml` as your scaffold. Copy it to the target path, the
 
 1. `schema_info`
    - **After filling in `schema_info.categories`, call `list_categories()` and verify each token you wrote is an exact match — same case, same underscores — against the returned list. Do not proceed to the next section if any token is off-spec; fix it first.** An off-spec token silently excludes the database from `find_databases(category=…)` results.
-   - If 2g found cross-graph re-declaration, populate `co_hosted_graphs` (the field already
-     exists in the schema): one entry per sibling graph, naming the re-declared predicate(s),
-     the multiplier, and the trap kind (reference-label inflation vs. entity re-typing).
+   - **`co_hosted_graphs` is REQUIRED whenever `get_graph_list()` returned >1 graph** (the field
+     already exists in the schema). If 2g found re-declaration: one entry per sibling graph,
+     naming the re-declared predicate(s), the multiplier, the trap kind (reference-label
+     inflation / entity re-typing / empty stub / older nomenclature vintage) and the fix. If 2g
+     found nothing, write the explicit `"2g probe run YYYY-MM-DD — no re-declaration found"` —
+     do NOT leave the field out; a silent omission is indistinguishable from never having probed.
+     Copy the shape from `togovar.yaml` or `uniprot.yaml`; do not invent a new one.
+   - `data_version`: a date you verified this session, or an endpoint-derived release citing its
+     source. Never carry the old value forward unchecked (see 5i-2).
 2. `critical_warnings` (use `[]` only if there are genuinely none — most real databases have at least one silent-failure trap)
    - If 2g fired, add a UNION-INFLATION warning: the per-predicate multipliers; that joining
      several re-declared predicates multiplies as the PRODUCT; that `a <OwnEntityClass>` may be
@@ -484,14 +552,29 @@ SELECT ?s WHERE {
 
 If the query returns no rows despite the class being known to exist, the prefix base URI is wrong. Standard W3C prefixes (`rdf:`, `rdfs:`, `owl:`, `xsd:`) do not need checking. Database-specific and ontology-specific prefixes (e.g. a Unimod prefix, a PSI-MS prefix, an internal ontology prefix) must all be confirmed.
 
-**5i. Validate cross-graph inflation warnings (co-hosted endpoints only).** If Phase 2g
+**5i. Validate cross-graph inflation warnings (any multi-GRAPH endpoint).** If Phase 2g
 recorded re-declaration, confirm each documented multiplier by re-running the 2g probe, and
 confirm the SAFE PATTERN collapses it — the graph-pinned form must return the non-inflated
 figure that the union form inflates. Then re-run every `sparql_query_examples` entry that is
 NOT graph-scoped and confirm it does not inflate on this union endpoint; if one does, pin the
 graph in the stored query. A `co_hosted_graphs` entry whose multiplier no longer reproduces
-against the current snapshot is stale — fix or remove it. Absence of a probe on a co-hosted
-endpoint is itself a failure: 2g is mandatory whenever get_sparql_endpoints() shows >1 DB.
+against the current snapshot is stale — fix or remove it.
+
+**A MISSING `co_hosted_graphs` ON A MULTI-GRAPH ENDPOINT IS A REVIEW FAILURE — fail the file.**
+The gate is `get_graph_list()` returning >1 graph, NOT `get_sparql_endpoints()` showing >1
+database (that older wording exempted `togovar`, `glycosmos`, `pdb`, `ddbj` and `pubchem`, all
+of which host multiple graphs on an endpoint of their own). Accept exactly three states:
+  - probe-confirmed entries, each naming graph + predicate + multiplier + trap kind + fix;
+  - the explicit string `"2g probe run YYYY-MM-DD — no re-declaration found"`;
+  - a single-graph endpoint, stated as such (only `supercon` qualifies today).
+Silence is not one of them.
+
+**5i-2. Verify `data_version` provenance.** It must be either `"RDF Portal snapshot — verified
+YYYY-MM-DD"` with a date you probed THIS session, or an endpoint-derived release that cites how
+it was derived (e.g. Reactome's `bp:db "Reactome Database ID Release 95"`). A release number you
+cannot re-derive from the endpoint right now is a failure — replace it with the dated-snapshot
+form. Never carry the previous value forward unchecked when bumping `mie_updated`: that is how
+`uniprot.yaml` sat at "Release 2024_06" against data modified 2026-01-28.
 
 **5j. Verify every search-wrapper claim.** Rule 2 covers tool-behavior claims, not just
 SPARQL. For each assertion the file makes about a `search_*` / `ncbi_esearch` /

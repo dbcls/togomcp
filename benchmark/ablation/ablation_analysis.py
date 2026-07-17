@@ -37,12 +37,13 @@ import argparse
 import csv
 import glob
 import re
+from math import sqrt
 from pathlib import Path
-from statistics import mean
+from statistics import NormalDist, mean, stdev
 
 import yaml
 
-from ablate_mie import CANONICAL_SECTIONS
+from ablate_mie import CANONICAL_SECTIONS, GROUPS
 
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[1]
@@ -118,21 +119,80 @@ def question_dbs() -> dict[str, set[str]]:
 
 
 def sections_with_db() -> dict[str, set[str]]:
-    """section -> set of databases whose MIE contains it (from section_presence.csv)."""
+    """label -> databases whose MIE carries it (from section_presence.csv).
+
+    Group labels (`group_<name>`) map to the UNION of their members' databases: a
+    group ablation is relevant to a question if ANY of its sections is.
+    """
     out: dict[str, set[str]] = {s: set() for s in CANONICAL_SECTIONS}
-    if not PRESENCE_CSV.exists():
-        return out
-    with PRESENCE_CSV.open(encoding="utf-8") as fh:
-        for row in csv.DictReader(fh):
-            db = row["database"]
-            for s in CANONICAL_SECTIONS:
-                if row.get(s) == "1":
-                    out[s].add(db)
+    if PRESENCE_CSV.exists():
+        with PRESENCE_CSV.open(encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                db = row["database"]
+                for s in CANONICAL_SECTIONS:
+                    if row.get(s) == "1":
+                        out[s].add(db)
+    for g, members in GROUPS.items():
+        out[f"group_{g}"] = set().union(*(out[m] for m in members)) if members else set()
     return out
+
+
+def analysis_labels() -> list[str]:
+    """Every condition the analysis knows how to read: the 11 sections + each group."""
+    return CANONICAL_SECTIONS + [f"group_{g}" for g in GROUPS]
 
 
 def _fmt(x: float | None, spec: str = "+.2f") -> str:
     return "n/a" if x is None else format(x, spec)
+
+
+# --- Error bars --------------------------------------------------------------
+# Every delta here is a PAIRED per-question difference, so its uncertainty comes
+# from the spread of those differences — not from the two condition means. A
+# contribution is only distinguishable from "the section does nothing" when its
+# CI excludes 0. Normal approximation (1.96); at n~35 the t-correction is ~4%,
+# immaterial to any conclusion drawn here, and it keeps this stdlib-only.
+_Z95 = 1.96
+
+
+def _bonferroni_z(k: int) -> float:
+    """Two-sided |z| threshold at α = 0.05/k — the bar one section must clear when
+    k sections are tested at once."""
+    return NormalDist().inv_cdf(1 - (0.05 / max(k, 1)) / 2)
+
+
+def _delta_stats(deltas: list[float]) -> dict:
+    """mean / sd / se / 95% CI half-width over paired per-question deltas."""
+    n = len(deltas)
+    if n == 0:
+        return {"n": 0, "mean": None, "sd": None, "se": None, "ci95": None}
+    m = mean(deltas)
+    if n < 2:
+        return {"n": n, "mean": m, "sd": None, "se": None, "ci95": None}
+    sd = stdev(deltas)
+    se = sd / sqrt(n)
+    return {"n": n, "mean": m, "sd": sd, "se": se, "ci95": _Z95 * se}
+
+
+def paired_contribution(base: dict[str, dict], abl: dict[str, dict], metric: str,
+                        restrict: set[str] | None) -> dict:
+    """Contribution (baseline − ablated) per question, with its error bar."""
+    deltas = []
+    for qid in base.keys() & abl.keys():
+        if restrict is not None and qid not in restrict:
+            continue
+        bv, av = base[qid].get(metric), abl[qid].get(metric)
+        if bv is None or av is None:
+            continue
+        deltas.append(bv - av)
+    return _delta_stats(deltas)
+
+
+def _sig(stats: dict | None) -> str:
+    """'*' when the 95% CI excludes 0 (i.e. distinguishable from no effect)."""
+    if not stats or stats.get("ci95") is None or stats.get("mean") is None:
+        return ""
+    return "*" if abs(stats["mean"]) > stats["ci95"] else ""
 
 
 # --- Effort dimension --------------------------------------------------------
@@ -198,7 +258,11 @@ def paired_effort(base: dict[str, dict], abl: dict[str, dict],
     out: dict = {"n": len(qids)}
     for k in EFFORT_KEYS:
         base_mean = mean(base[q][k] for q in qids)
-        out[f"delta_{k}"] = mean(abl[q][k] - base[q][k] for q in qids)
+        st = _delta_stats([abl[q][k] - base[q][k] for q in qids])
+        out[f"delta_{k}"] = st["mean"]
+        out[f"ci95_{k}"] = st["ci95"]
+        out[f"se_{k}"] = st["se"]
+        out[f"sig_{k}"] = _sig(st)
         out[f"base_{k}"] = base_mean
         out[f"pct_{k}"] = (out[f"delta_{k}"] / base_mean * 100) if base_mean else 0.0
     return out
@@ -384,7 +448,7 @@ def main() -> int:
     base_correct = load_correctness("baseline", gold, args.exact_tolerance, results)
 
     rows = []
-    for section in CANONICAL_SECTIONS:
+    for section in analysis_labels():
         csv_path = results / f"ablate_{section}-scored.csv"
         if not csv_path.exists():
             continue
@@ -397,6 +461,7 @@ def main() -> int:
         relevant = {qid for qid, dbs in qdbs.items() if dbs & dbs_with}
         mb_r, ma_r, n_r = paired_mean(baseline, ablated, metric, relevant)
 
+        cstat = paired_contribution(baseline, ablated, metric, None)
         row = {
             "section": section,
             "spotlight": "; ".join(SPOTLIGHT.get(section, [])) or "-",
@@ -404,6 +469,9 @@ def main() -> int:
             "mean_baseline": None if mb is None else round(mb, 3),
             "mean_ablated": None if ma is None else round(ma, 3),
             "contribution": None if mb is None or ma is None else round(mb - ma, 3),
+            "contribution_ci95": None if cstat["ci95"] is None else round(cstat["ci95"], 3),
+            "contribution_se": None if cstat["se"] is None else round(cstat["se"], 3),
+            "contribution_sig": _sig(cstat),
             "n_relevant": n_r,
             "contribution_relevant": None if mb_r is None or ma_r is None else round(mb_r - ma_r, 3),
         }
@@ -414,6 +482,9 @@ def main() -> int:
         # Effort delta: how much harder the agent worked with this section removed.
         eff = paired_effort(base_effort, load_effort(f"ablate_{section}", results), exclude)
         row["delta_sparql"] = None if eff is None else round(eff["delta_n_sparql"], 2)
+        row["delta_sparql_ci95"] = None if eff is None or eff["ci95_n_sparql"] is None \
+            else round(eff["ci95_n_sparql"], 2)
+        row["delta_sparql_sig"] = "" if eff is None else eff["sig_n_sparql"]
         row["pct_sparql"] = None if eff is None else round(eff["pct_n_sparql"], 1)
         row["delta_tools"] = None if eff is None else round(eff["delta_n_tools"], 2)
         row["delta_wall_s"] = None if eff is None else round(eff["delta_wall_s"], 1)
@@ -436,8 +507,10 @@ def main() -> int:
 
     out_csv = results / "ablation_contributions.csv"
     fieldnames = ["section", "spotlight", "n", "mean_baseline", "mean_ablated",
-                  "contribution", *[f"delta_{m}" for m in SUBMETRICS],
-                  "delta_sparql", "pct_sparql", "delta_tools", "delta_wall_s", "delta_cost",
+                  "contribution", "contribution_ci95", "contribution_se", "contribution_sig",
+                  *[f"delta_{m}" for m in SUBMETRICS],
+                  "delta_sparql", "delta_sparql_ci95", "delta_sparql_sig", "pct_sparql",
+                  "delta_tools", "delta_wall_s", "delta_cost",
                   "correct_baseline", "correct_ablated", "correct_contribution", "n_correct",
                   "n_relevant", "contribution_relevant"]
     with out_csv.open("w", newline="", encoding="utf-8") as fh:
@@ -454,19 +527,24 @@ def main() -> int:
     # console summary
     has_effort = any(r.get("delta_sparql") is not None for r in rows)
     has_correct = any(r.get("correct_contribution") is not None for r in rows)
-    hdr = f"{'section':28s} {'spot':4s} {'n':>3s} {'base':>6s} {'abl':>6s} {'contrib':>8s}"
+    hdr = (f"{'section':28s} {'spot':4s} {'n':>3s} {'base':>6s} {'abl':>6s} "
+           f"{'contrib':>8s} {'±95%CI':>7s}")
     if has_effort:
-        hdr += f" {'Δsparql':>8s} {'Δcost$':>7s}"
+        hdr += f" {'Δsparql':>8s} {'±95%CI':>7s} {'Δcost$':>7s}"
     if has_correct:
         hdr += f" {'Δcorr':>7s}"
     print(hdr)
+    print("  (* = 95% CI excludes 0, i.e. distinguishable from 'section does nothing')")
     for r in rows:
         spot = "yes" if r["spotlight"] != "-" else ""
         line = (f"{r['section']:28s} {spot:4s} {r['n']:>3d} "
                 f"{_fmt(r['mean_baseline'], '.2f'):>6s} {_fmt(r['mean_ablated'], '.2f'):>6s} "
-                f"{_fmt(r['contribution']):>8s}")
+                f"{_fmt(r['contribution']) + r.get('contribution_sig', ''):>8s} "
+                f"{_fmt(r.get('contribution_ci95'), '.2f'):>7s}")
         if has_effort:
-            line += f" {_fmt(r.get('delta_sparql')):>8s} {_fmt(r.get('delta_cost'), '+.3f'):>7s}"
+            line += (f" {_fmt(r.get('delta_sparql')) + r.get('delta_sparql_sig', ''):>8s}"
+                     f" {_fmt(r.get('delta_sparql_ci95'), '.2f'):>7s}"
+                     f" {_fmt(r.get('delta_cost'), '+.3f'):>7s}")
         if has_correct:
             cc = r.get("correct_contribution")
             line += f" {('n/a' if cc is None else f'{cc*100:+.0f}pp'):>7s}"
@@ -485,19 +563,55 @@ def write_report(rows: list[dict], path: Path, metric: str,
         f"**Metric:** `{metric}` (TogoMCP with-tools LLM-judge score, max {SCORE_MAX}).  ",
         f"**Baseline mean:** {base_mean:.2f}/{SCORE_MAX} over {n_baseline_q} questions.  ",
         "**Contribution** = mean(baseline) − mean(section removed); higher ⇒ the section "
-        "matters more. Deltas are paired per question.",
+        "matters more. Deltas are paired per question, shown with a 95% CI over the paired "
+        "per-question differences. **A contribution is only distinguishable from "
+        "'this section does nothing' when its CI excludes 0** (marked `*`); everything else "
+        "is consistent with no effect, regardless of its sign.",
         "",
-        "## All 11 sections, ranked by contribution",
+        f"## All {len(rows)} ablations, ranked by contribution",
         "",
-        "| Rank | Section | Spotlight category | n | Baseline | Ablated | Contribution |",
-        "|---:|---|---|---:|---:|---:|---:|",
+        "| Rank | Section | Spotlight category | n | Baseline | Ablated | Contribution (±95% CI) | z |",
+        "|---:|---|---|---:|---:|---:|---:|---:|",
     ]
     for i, r in enumerate(rows, 1):
+        ci = r.get("contribution_ci95")
+        ci_s = "" if ci is None else f" ± {ci:.2f}"
+        se = r.get("contribution_se")
+        c = r.get("contribution")
+        z = (c / se) if (se and c is not None) else None
         lines.append(
             f"| {i} | `{r['section']}` | {r['spotlight']} | {r['n']} | "
             f"{_fmt(r['mean_baseline'], '.2f')} | {_fmt(r['mean_ablated'], '.2f')} | "
-            f"**{_fmt(r['contribution'])}** |"
+            f"**{_fmt(r['contribution'])}{ci_s}**{r.get('contribution_sig', '')} | "
+            f"{('n/a' if z is None else f'{z:+.2f}')} |"
         )
+
+    # Verdict — the multiple-comparison caveat belongs next to the stars, not in a
+    # footnote, because a single borderline hit across 11 tests is what chance looks
+    # like. Bonferroni over the number of sections actually reported.
+    n_sig = sum(1 for r in rows if r.get("contribution_sig"))
+    k = len(rows)
+    z_bonf = _bonferroni_z(k)
+    lines += [
+        "",
+        "## Verdict",
+        "",
+        f"**{n_sig} of {k}** sections have a 95% CI excluding 0"
+        + (" — i.e. no section is distinguishable from 'this section does nothing'."
+           if n_sig == 0 else "."),
+        "",
+        f"**Multiple comparisons matter here.** {k} sections are tested, so at α=0.05 about "
+        f"{0.05 * k:.1f} false positives are expected by chance alone. A lone section at the "
+        f"nominal threshold is therefore NOT evidence on its own: a Bonferroni-corrected "
+        f"threshold (α=0.05/{k}≈{0.05 / k:.4f}) needs **|z| > {z_bonf:.2f}**. Read `*` as "
+        "\"worth following up\", not \"established\".",
+        "",
+        "**Leave-one-out understates.** Each section is removed while the other "
+        f"{k - 1} remain, so redundant siblings cover for it — a near-zero contribution means "
+        "\"not individually necessary given everything else\", NOT \"worthless\". Removing a "
+        "whole *group* (e.g. all query-guidance sections at once) is what would expose their "
+        "joint value.",
+    ]
 
     lines += ["", "## Spotlight — the 4 spec-named categories", "",
               "| Section | Category | Contribution | Contribution (relevance-scoped) |",
@@ -521,14 +635,17 @@ def write_report(rows: list[dict], path: Path, metric: str,
             "cost) for the same answer — i.e. the section buys efficiency the quality score "
             "above cannot see. A section can be ~0 on Contribution yet clearly positive here.",
             "",
-            "| Section | Δ run_sparql | Δ SPARQL % | Δ tool calls | Δ wall (s) | Δ cost ($) |",
+            "| Section | Δ run_sparql (±95% CI) | Δ SPARQL % | Δ tool calls | Δ wall (s) | Δ cost ($) |",
             "|---|---:|---:|---:|---:|---:|",
         ]
         for r in sorted(rows, key=lambda r: (r.get("delta_sparql") is None,
                                              -(r.get("delta_sparql") or 0))):
             pct = r.get("pct_sparql")
+            ci = r.get("delta_sparql_ci95")
+            ci_s = "" if ci is None else f" ± {ci:.2f}"
             lines.append(
-                f"| `{r['section']}` | {_fmt(r.get('delta_sparql'))} | "
+                f"| `{r['section']}` | {_fmt(r.get('delta_sparql'))}{ci_s}"
+                f"{r.get('delta_sparql_sig', '')} | "
                 f"{('n/a' if pct is None else f'{pct:+.0f}%')} | "
                 f"{_fmt(r.get('delta_tools'))} | {_fmt(r.get('delta_wall_s'), '+.0f')} | "
                 f"{_fmt(r.get('delta_cost'), '+.3f')} |"

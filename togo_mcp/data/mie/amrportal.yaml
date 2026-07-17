@@ -31,12 +31,47 @@ schema_info:
   base_uri: http://example.org/ebiamr#
   graphs:
     - http://rdfportal.org/dataset/amrportal
+  co_hosted_graphs:
+    - "ENTITY LEGS PROBED CLEAN (re-probed 2026-07-17, all legs + cross-class, not type-only).
+       amr:PhenotypeMeasurement (1,714,486) and amr:GenotypeFeature (1,164,007) occur ONLY in
+       http://rdfportal.org/dataset/amrportal. Structurally immune and re-verified: every entity
+       subject is a genuine blank node (sampled subjects render as `nodeID://b2332233384` etc.),
+       and a blank node cannot be re-declared by another graph. NOTE a Virtuoso quirk that can
+       fake a refutation of this: isBlank(?s) AND isIRI(?s) BOTH return 1 for these subjects
+       (1,714,486 each) — isIRI() is NOT evidence the entities are IRIs. This is the one leg no
+       co-tenant can reach; it is the reason amrportal is fundamentally low-risk."
+    - "ARO LEG — the MIE was WRONG here until 2026-07-17, and the error was in the SAFE direction
+       for joins but the WRONG direction for capability. The old text claimed obo/ARO_* is
+       'declared in ZERO graphs on this endpoint' and 'no ARO ontology is loaded'. FALSE: the
+       amrportal graph itself EMBEDS the ARO ontology — 8,582 owl:Class subjects, of which 8,564
+       carry an rdfs:label. obo:ARO_0000073 rdfs:label = \"meropenem\", supplied by
+       http://rdfportal.org/dataset/amrportal and by NO other graph. So ARO labels ARE resolvable
+       on this endpoint (pin to the amrportal graph) — you do NOT need OLS4 to name an ARO IRI.
+       Inflation risk on this leg is nil: multiplier ×1, ARO IRIs are amrportal-only."
+    - "OBO STUB — SMALL MEASURED COLLISION (row duplication + one conflicting value). Alongside
+       ARO, the amrportal graph carries an 18-class import-closure stub (DOID/NCIT/SYMP/UBERON/HP).
+       DOID, NCIT and SYMP are not loaded anywhere on ebi, so they are inert. But 4 IRIs ARE
+       re-declared by co-tenants on the rdfs:label leg: obo:UBERON_0001003, obo:UBERON_0003134,
+       obo:UBERON_0003135 (each labelled by amrportal + clo + efo + uberon + cl = 5 graphs) and
+       obo:HP_0031292 (amrportal + efo + hp = 3 graphs). MEASURED: an unpinned
+       `?s rdfs:label ?o` over those 4 IRIs returns 18 rows; pinned to the amrportal graph it
+       returns 4 → multiplier ×4.5. WORSE, HP_0031292 is a CONFLICTING VALUE, not a duplicate:
+       amrportal says \"cutaneous abscess\" while efo and hp both say \"Cutaneous abscess\" —
+       DISTINCT cannot collapse those and a case-sensitive FILTER/VALUES match will silently
+       disagree depending on which graph answered. SCOPE: latent, not everyday — no amrportal
+       entity predicate points at these 4 IRIs (amr:isolationSource and amr:host are plain
+       strings, not UBERON/HP IRIs), so a normal amrportal query never reaches them. FIX: pin the
+       graph on any OBO label lookup, as every sparql_query_examples entry already does."
+    - "Outbound hub IRIs re-probed clean 2026-07-17: amr:bioSample targets
+       (https://identifiers.org/biosample/*) are declared in ZERO graphs — the co-hosted
+       `biosamples` graph uses a different IRI scheme — so they are pure outbound references that
+       cannot inflate a join."
   kw_search_tools: []
   version:
-    mie_version: "2.2"
+    mie_version: "2.4"
     mie_created: "2025-04-21"
-    mie_updated: "2026-07-07"
-    data_version: "Current as of 2025"
+    mie_updated: "2026-07-17"
+    data_version: "RDF Portal snapshot — verified 2026-07-17"
     update_frequency: "Irregular updates"
   license:
     data_license: "Public domain (NCBI/EBI)"
@@ -49,6 +84,24 @@ critical_warnings: |
     Omitting it causes aggregation queries to scan all endpoint graphs and time out.
   - ALL ENTITIES ARE BLANK NODES: PhenotypeMeasurement and GenotypeFeature have no named URIs.
     amr:bioSample IRI is the ONLY join key between phenotype and genotype records.
+    Corollary (verified 2026-07-17): because they are blank nodes, no co-hosted graph can
+    re-declare them — amrportal's entity legs are immune to union-inflation. Do not be misled
+    by Virtuoso returning isIRI(?s)=1 for these subjects; isBlank(?s) is also 1.
+  - ARO LABELS ARE AVAILABLE IN-GRAPH — PIN THE GRAPH: the amrportal graph EMBEDS the ARO
+    ontology (8,582 owl:Class, 8,564 with rdfs:label), so you can name an ARO IRI without OLS4:
+    GRAPH <http://rdfportal.org/dataset/amrportal> { obo:ARO_0000073 rdfs:label ?l } → "meropenem".
+    ARO IRIs are declared in NO other graph on this endpoint, so this leg cannot inflate (×1).
+    (An earlier version of this MIE wrongly stated no ARO ontology is loaded here — it is.)
+  - UNPINNED OBO LABEL LOOKUPS INFLATE AND CAN CONFLICT: alongside ARO the graph carries an
+    18-class import stub. Four of those IRIs are ALSO labelled by co-tenants — obo:UBERON_0001003,
+    obo:UBERON_0003134, obo:UBERON_0003135 (amrportal + clo + efo + uberon + cl) and
+    obo:HP_0031292 (amrportal + efo + hp). MEASURED 2026-07-17: unpinned `?s rdfs:label ?o` over
+    these 4 IRIs = 18 rows vs 4 pinned to the amrportal graph (×4.5 inflation). HP_0031292 is
+    worse than a duplicate — the VALUES CONFLICT: amrportal "cutaneous abscess" vs efo/hp
+    "Cutaneous abscess". DISTINCT cannot fix a conflicting value, and a case-sensitive match will
+    silently succeed or fail depending on which graph answered. ALWAYS pin the GRAPH on an OBO
+    label lookup. No amrportal entity predicate points at these IRIs (isolationSource/host are
+    plain strings), so this only bites ad-hoc ontology lookups.
   - GEOGRAPHIC REGION VALUES: amr:geographicalRegion uses 5 broad continents —
     "Americas","Europe","Asia","Oceania","Africa" — NOT WHO region names.
     For finer resolution use amr:geographicalSubregion (e.g. "South-eastern Asia", note lowercase 'e').

@@ -89,14 +89,97 @@ Outputs land in `results/`:
 - `ablation_contributions.csv` — one ranked row per section.
 - `ablation_report.md` — ranked table + 4-category spotlight + caveats.
 
+> **Read [FINDINGS.md](FINDINGS.md) before running or interpreting a sweep.** The
+> 2026-07 run was a null result (0/11 sections significant), and it records the two
+> traps that produced convincing-looking wrong answers first: a banked baseline, and
+> an aggregate mistaken for a per-question effect.
+
+## ⚠️ Never bank a baseline across batches
+
+`run_ablation.py` skips a condition whose `<cond>-scored.csv` already exists. That is
+what makes a sweep resumable — and it is also the harness's sharpest edge: if the
+baseline was produced in an **earlier session**, the sweep silently reuses it and every
+contribution is measured against a different batch.
+
+This is not hypothetical. In 2026-07 a baseline banked from a 1-condition trial ran
+~0.4/20 low, which made **all 11** contributions negative — "removing any section
+helps". All contributions subtract the *same* baseline, so they are not independent:
+one low baseline drags them all negative together. Re-running the baseline fresh in the
+same batch (16.72 → 17.13) made the pattern vanish, and rebased the effort axis too.
+
+**Rule:** a question's baseline and ablated rows must come from the same batch. If the
+baseline predates the ablations, delete it and let it re-run. When extending the set,
+run **every** condition for the new questions in one batch.
+
+## Group ablation (the recommended follow-up)
+
+Leave-one-out measures a section's **marginal** value with its 10 redundant siblings
+still in place — which is why all 11 came back null (see [FINDINGS.md](FINDINGS.md)).
+Removing a whole functional group at once is the direct test of that redundancy, and it
+wins twice: redundancy can't compensate (**bigger effects**) and it needs **4 conditions
+instead of 12** (**~$260 vs ~$780**, and a lower multiple-comparison bar — |z|>2.39 for
+k=3 vs |z|>2.84 for k=11).
+
+The three groups partition all 11 sections (`GROUPS` in `ablate_mie.py`, asserted):
+
+| Group | Sections | % of MIE bytes |
+|---|---|---:|
+| `query` — helps CONSTRUCT a query | schema_info, shape_expressions, sparql_query_examples, cross_references, cross_database_queries | 53% |
+| `guardrails` — warns OFF a wrong query | critical_warnings, common_errors, anti_patterns | 25% |
+| `orientation` — ORIENTS in the database | architectural_notes, data_statistics, sample_rdf_entries | 22% |
+
+```bash
+python ablate_mie.py --sections "" --groups all        # build the 3 group variants
+
+# Run into its OWN results dir: the group sweep needs its own baseline, in its own
+# batch. Pointing it at ./results would SKIP baseline and silently reuse the section
+# sweep's — the exact confound in FINDINGS.md.
+ANTHROPIC_API_KEY=$MY_ANTHROPIC_API_KEY NCBI_API_KEY=... \
+python run_ablation.py --results-dir results_groups --conditions groups \
+       --runs 3 --answer-use-api --judge-use-api
+
+python ablation_analysis.py --results results_groups --exclude-ceiling 20 --exclude-floor 12
+```
+
+Prediction worth recording before the run: summing each group's single-section
+contributions (a **weak** heuristic — the group contrast is a different estimand, and
+under redundancy the joint effect should be *larger* than the sum), `guardrails` leads
+at Σ+0.82, ahead of `orientation` (+0.23) and `query` (+0.11). That `query` is 5
+sections and 53% of the corpus yet sums to ~0.11 is itself the thing worth testing.
+
+## Extending n without re-running the sweep
+
+The analysis keys on `question_id` and pairs per question, so more questions can be
+folded in later — the ones already swept are not redone (~$0.54/question-run; +25
+questions ≈ $490 vs ≈ $1.9k for a 100-question redo):
+
+```bash
+python append_results.py --list-existing results        # what's already covered
+python run_ablation.py --results-dir results_batch2 \
+       --questions <new...> --runs 3 --answer-use-api --judge-use-api   # ALL conditions, one batch
+python append_results.py results_batch2 results         # fold in (idempotent, dedups by qid)
+python ablation_analysis.py --exclude-ceiling 20 --exclude-floor 12
+```
+
 ## Notes & knobs
 
 - **Idempotent**: a condition whose `results/<cond>-scored.csv` exists is skipped.
-  Delete it (or pass `--force`) to re-run. A partial sweep resumes safely.
+  Delete it (or pass `--force`) to re-run. A partial sweep resumes safely — but see
+  the baseline warning above before relying on a *reused* baseline.
+- **Use the API, not the subscription, for anything this size**:
+  `--answer-use-api --judge-use-api` (needs `ANTHROPIC_API_KEY`). On `claude login` the
+  Opus judge gets rate-limited into empty responses and the answering agent degrades
+  into `"Not logged in"` stubs that the runner still records as `success=True`.
 - **Sequential**: conditions run one at a time on one loopback port (`--port`,
   default 8971); only one local server is alive at a time.
 - **Contribution** = `mean(baseline) − mean(section removed)` on
   `togomcp_total_score` (0–20), paired per question. Positive ⇒ the section helps.
+  Reported with a **95% CI over the paired per-question deltas**; a contribution only
+  means anything when its CI excludes 0 (`*`). Mind the **multiple comparisons**: 11
+  sections are tested, so ~0.6 nominal hits are expected by chance and the corrected
+  bar is |z| > 2.84 — the report's Verdict section spells this out. And an *aggregate*
+  difference is not an effect: removing `sparql_query_examples` shifted total SPARQL
+  calls +25%, but paired per question it was +0.87 ± 1.07 (i.e. nothing).
 - **Scale up**: `python select_pilot.py --full` then re-run the sweep for all 100
   questions. `--conditions` restricts to a subset of sections.
 - **Replicates**: `run_ablation.py --runs R` answers + judges each question R times

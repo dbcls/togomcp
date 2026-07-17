@@ -1,4 +1,4 @@
-# MIE File Specification v2.2
+# MIE File Specification v2.3
 
 ## 1. Overview
 
@@ -22,7 +22,7 @@ Metadata Interoperability Exchange (MIE) files are compact YAML documents that d
 ### 1.4 Key Updates in v2.2
 
 - **`mie_version` clarified**: it is the per-database revision of the MIE *document*, bumped on each substantive edit — **not** the spec version. Databases version independently (e.g. `pdb` at `6.0`, `go` at `2.1`). Earlier spec text mislabeled it "MIE spec version".
-- **`schema_info.co_hosted_graphs` documented** (OPTIONAL): free-text entries naming other graphs that share the SPARQL endpoint and the traps they pose (IRI re-typing, `COUNT(*)` inflation, empty-stub graphs). Add only for shared endpoints.
+- **`schema_info.co_hosted_graphs` documented** (**REQUIRED whenever the endpoint hosts more than one named graph** — see §3.1.4): free-text entries naming other graphs on the endpoint and the traps they pose (row duplication, conflicting values, scope bleed, empty-stub graphs), each populated from the union-inflation probe. If the probe finds nothing, say so explicitly — the field is never silently omitted.
 - **`schema_info.license` documented** (OPTIONAL): a `data_license` string; include when the source states a data-use license.
 
 ### 1.5 Key Updates in v2.1
@@ -92,17 +92,23 @@ schema_info:
   endpoint: uri                    # REQUIRED: SPARQL endpoint URL
   base_uri: uri                    # REQUIRED: base namespace URI
   graphs: array<uri>               # REQUIRED: named graph URIs
-  co_hosted_graphs: array<string>  # OPTIONAL: other graphs sharing this endpoint that a query may
-                                   #   accidentally hit — each entry names the graph URI + the trap it
-                                   #   poses (IRI re-typing, COUNT inflation, empty-stub graphs). Add
-                                   #   when the endpoint is shared and co-tenants can corrupt results.
+  co_hosted_graphs: array<string>  # REQUIRED when the endpoint hosts >1 named graph (see §3.1.4):
+                                   #   other graphs on this endpoint that a query may accidentally
+                                   #   hit — each entry names the graph URI + the trap it poses (IRI
+                                   #   re-typing, COUNT inflation, empty-stub graphs) + the measured
+                                   #   multiplier. Populate from the union-inflation probe, never by
+                                   #   guessing. If the probe finds no re-declaration, record that
+                                   #   explicitly rather than omitting the field.
   kw_search_tools: array<string>   # REQUIRED: keyword search tools (may be [])
   version:                         # REQUIRED: version metadata
     mie_version: string            # REQUIRED: this MIE document's OWN revision number, bumped per
                                    #   database on each substantive edit (e.g. "2.3", "6.0"). It is
                                    #   NOT the spec version — do not tie it to this document's version.
     mie_created: date              # REQUIRED: ISO 8601 format (YYYY-MM-DD)
-    data_version: string           # REQUIRED: database version/release
+    data_version: string           # REQUIRED: the data snapshot behind this MIE. MUST be either a
+                                   #   verified date ("RDF Portal snapshot — verified YYYY-MM-DD")
+                                   #   or a release number DERIVED FROM THE ENDPOINT, citing how.
+                                   #   Never copied from the upstream project's website. See §3.1.4.
     update_frequency: string       # REQUIRED: update schedule
   license:                         # OPTIONAL: licensing metadata
     data_license: string           #   data-use license, e.g. "CC BY-SA 3.0", "Public Domain (U.S. Government)"
@@ -132,7 +138,27 @@ The `kw_search_tools` field enumerates keyword-search methods available for this
 - All URIs are valid and accessible.
 - `mie_created` uses ISO 8601 (`YYYY-MM-DD`).
 - `mie_version` is the **per-database revision of this MIE document**, not the spec version. Start a new database at `"1.0"` (or `"2.0"` when regenerated under this spec) and bump it on each substantive edit; databases version independently (e.g. `pdb` is at `6.0` while `go` is at `2.1`).
-- `co_hosted_graphs` (optional) is only needed when the database shares its SPARQL endpoint with other graphs that can silently corrupt results (IRI re-typing, `COUNT(*)` inflation, empty-stub graphs). Each entry is a free-text string naming the graph URI and the trap. Omit for single-tenant endpoints.
+- `co_hosted_graphs` is **REQUIRED whenever the endpoint hosts more than one named graph**, as reported by `get_graph_list`. Each entry is a free-text string naming the graph URI, the re-declared predicate(s), the **measured multiplier**, and the trap kind (IRI re-typing, `COUNT(*)` inflation, empty-stub graph, older-vintage re-declaration). Populate it from the union-inflation probe — **never guess an entry; a guessed one is worse than none.**
+
+  **The trigger is graphs-per-endpoint, NOT databases-per-endpoint.** Do not reason from `endpoints.csv`: an endpoint listed there against a single database routinely hosts many graphs, and those co-tenants are exactly as dangerous. `togovar` has an endpoint to itself and still needed the field — `togovar.org/variant/annotation/clinvar` re-types the same variant IRIs that `togovar.org/variant` declares, ×2 across 2,944,525 variants. `glycosmos` likewise sits alone on its endpoint and hosts ~150 graphs. Conversely, sharing an endpoint does **not** imply a trap: `rhea` shares the SIB endpoint with UniProt/Bgee/OMA and probes genuinely clean — no co-tenant touches an `rdf.rhea-db.org` IRI.
+
+  **There are THREE trap kinds, not two. Zero IRI overlap does NOT mean safe** (this rule said otherwise until 2026-07-17, and it was wrong):
+
+  1. **Same IRI, same predicate → ROW DUPLICATION.** The classic. `ontology/efo` re-declares 16,423 MONDO classes, so `?c a owl:Class ; rdfs:label ?l` yields ×4 per co-declared class. `COUNT(DISTINCT ?entity)` masks the count; the graph pin actually fixes it.
+  2. **Same IRI, CONFLICTING value → WRONG ANSWER.** Worse, because DISTINCT cannot help and the result looks fine. `dataset/microbedbjp` gives taxid 1224 the name "Proteobacteria" where the authoritative graph says "Pseudomonadota". DDBJ labels taxon 9606 `"9606"` while `ontology/taxonomy` labels it `"Homo sapiens"` — a naive first-row pick returns the bare taxid as the organism name.
+  3. **Same CLASS, DISJOINT IRI space → SCOPE BLEED.** No duplication at all: a co-tenant declaring the same class over its own IRIs silently adds *foreign entities*. Every row is unique and well-formed, so `DISTINCT` is useless — **only the pin helps**. Measured: `?e a dsmz:Enzyme` returns 627,832 on the BRENDA endpoint of which only 54,720 (8.7%) are BRENDA's — the rest are BacDive's (×11.47). `?s a dsmz:CultureMedium ; rdfs:label ?l` returns 51,018 for MediaDive, 93.5% of them BacDive's (×15.5). `?t a taxo:Taxon` returns 3,764,445 vs 2,840,372 pinned (×1.33), the surplus being `dataset/gtdb`'s own-IRI taxa plus microbedbjp's non-shared nodes. A ×2 duplicate is conspicuous; a ×15 union of plausible foreign rows is not.
+
+  So run the overlap probe to classify the trap, never to dismiss it. Zero overlap rules out kind 1 — it says nothing about kind 3.
+
+  If the probe finds no re-declaration, **record that outcome explicitly, and say what you probed** — a bare "clean" is nearly worthless to the next reader. State which legs were checked (type, label/identifier, cross-class, hub) and the figure that supports the verdict, e.g. *"PROBED CLEAN — ALL LEGS (2026-07-17): reverse probe on 18 IRIs → all 54,242 triples in the DB's own graph; label leg 0 in mesh/biomodels/chebi."* A "probed, clean" note and a never-probed omission look identical in the file otherwise, and the second is the one that causes wrong answers — but so do a narrow probe and a thorough one, unless the note says which it was. The only exemption is an endpoint that genuinely hosts exactly one graph (`supercon` is currently the only such database); state that rather than omitting the field.
+- `data_version` must be **derivable and checkable**, in one of exactly two forms. It is REQUIRED, and before this rule it was derived from nothing — across 36 files it ranged from real (`ChEMBL 34.0`) through unfalsifiable placeholders (`Current`, `Latest GO Release`, `2025+`) to flatly wrong (`uniprot: "Release 2024_06"`, while every entry checked carried `up:modified 2026-01-28`).
+
+  1. **Default — a verified date:** `data_version: "RDF Portal snapshot — verified YYYY-MM-DD"`, using the date you actually probed the endpoint. Unfalsifiable but *true*, and it makes staleness visible.
+  2. **Carve-out — a release number, ONLY if the endpoint states it, and say how.** Format: `data_version: "Release 95 (derived from bp:db 'Reactome Database ID Release NN'; verified YYYY-MM-DD)"`. This is not hypothetical: Reactome publishes its release in the data and its BioPAX IRIs embed `/biopax/95/`, so the release is load-bearing — it is *why* those IRIs rot between releases.
+
+  **Never assert a release read off the upstream project's website.** That is the `2024_06` failure mode: unverifiable at authoring time, and nothing ever re-checks it. If you cannot derive a release from the endpoint, use form 1 — a probe for `void:triples` / `owl:versionInfo` / `dcterms:modified|issued|hasVersion` returning nothing is a legitimate finding, and worth noting inline (see `bacdive.yaml`).
+
+  **`data_version` must be re-checked whenever `mie_updated` is bumped.** It was previously outside the revision loop entirely: `uniprot.yaml` was revised on 2026-07-10 while `data_version` sat at `2024_06`.
 - `license` (optional) carries a `data_license` string. Include it when the source states a data-use license.
 - `access.backend` is required; it determines whether `bif:contains` is available and therefore drives query-strategy decisions downstream.
 - `keywords` are lowercase, single tokens or short phrases; 8–15 entries.
@@ -1070,6 +1096,7 @@ An MIE file is complete and compliant when:
 | 2.0     | 2026-04-22 | New `critical_warnings` section; sample RDF reduced from 5 to 3 with shared prefix block; query-strategy hierarchy and Gate Check formalised; filesystem-based workflow (MIE files, ShEx, SPARQL examples as files); stronger validation — all example triples retrievable, all example queries tested; `data_statistics` simplified; anti-patterns expanded to 3–4 entries with mandatory "schema check before text search" topic. |
 | 2.1     | 2026-04-30 | `shape_expressions` discipline: every `@<ShapeRef>` resolves; optional co-types as separate `?` lines. Phase 2 Discover expanded with per-class predicate survey, parent-anchored bnode tracing, cardinality distribution query + modifier-mapping table, and `critical_warnings` candidate flagging. Phase 5 Validate gains 5e (shape audit), 5f (critical_warnings verification), 5g (cross_references IRI/coverage verification), 5h (PREFIX verification); 5b extended to `anti_patterns.correct_sparql` + cross-DB join-validity spot-check; 5c extended with arithmetic cross-check. `schema_info.categories` `list_categories()` exact-match enforcement. `data_statistics.by_class` documented. LIMIT rule relaxed to "bounded result set" (aggregate / ASK / specific-IRI subject also acceptable). |
 | 2.2     | 2026-07-07 | Doc-conformance patch (no format change). `mie_version` re-specified as the per-database MIE document revision, not the spec version — earlier text mislabeled it. Documented two optional `schema_info` subkeys already in use: `co_hosted_graphs` (shared-endpoint co-tenant traps; used by `uniprot`) and `license.data_license` (used by 10 files). Appendix A template updated accordingly. |
+| 2.3     | 2026-07-17 | **Two fields tightened after a benchmark audit traced wrong answers to documented-but-unread traps.** `co_hosted_graphs` promoted OPTIONAL → **REQUIRED whenever the endpoint hosts >1 named graph**, populated from the union-inflation probe, with "probed, none found" recorded explicitly rather than omitted. The trigger was corrected from *shared endpoint* (databases-per-endpoint) to *multi-graph endpoint* (graphs-per-endpoint): the old wording exempted `togovar`, which sits alone on its endpoint and re-types 2.9M variant IRIs across its own graphs, and `glycosmos` (~150 graphs, own endpoint). `data_version` given a **provenance rule** — it was REQUIRED but derived from nothing, yielding values from real (`ChEMBL 34.0`) to placeholder (`Current`) to wrong (`uniprot: Release 2024_06` against data modified 2026-01-28); now it must be a verified date or an endpoint-derived release that cites its source, and must be re-checked whenever `mie_updated` is bumped. |
 
 ## 12. References
 
@@ -1128,8 +1155,11 @@ schema_info:
   graphs:
     - http://example.org/dataset
     - http://example.org/ontology
-  co_hosted_graphs:                # OPTIONAL — only when the endpoint is shared (see §3.1.4)
-    - "http://example.org/other  — [trap this co-tenant graph poses]"
+  co_hosted_graphs:                # REQUIRED when the endpoint hosts >1 named graph (see §3.1.4).
+                                   #   Populate from the union-inflation probe; never guess.
+    - "http://example.org/other  — [what it re-declares] + [measured multiplier] + [trap kind] + [fix]"
+    # If the probe found nothing, say so instead of omitting the field:
+    #   - "2g probe run YYYY-MM-DD — no re-declaration found"
   kw_search_tools:
     - [api_name]                   # or []
   version:
@@ -1470,5 +1500,7 @@ common_errors:
 **Compliance**: required for all MIE files in `togo_mcp/data/mie/`
 **Principle**: Compact · Complete · Correct · Actionable · Validated
 **Core shift in v2.2**: Documentation-conformance patch (no format change) — `mie_version` re-specified as the per-database document revision; optional `schema_info.co_hosted_graphs` and `license` documented.
+
+**Core shift in v2.3**: `co_hosted_graphs` is REQUIRED on any multi-graph endpoint (trigger corrected from databases-per-endpoint to graphs-per-endpoint), and `data_version` must be endpoint-derived and dated. Both changes exist because the knowledge was already being written correctly and then not read or not checked.
 **Core shift in v2.1**: Pre-publication audit pass — `shape_expressions` discipline (every `@<ShapeRef>` resolves; optional co-types explicit); discovery-time signals for `critical_warnings`; section-by-section verification (5e–5h) before publishing.
 **Core shift in v2.0**: Filesystem-based workflow; structured lookups over text search; every example validated against the live endpoint.

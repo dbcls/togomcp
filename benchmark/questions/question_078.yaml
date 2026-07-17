@@ -98,11 +98,23 @@ sparql_queries:
       confirming their identities. taxid 60711 = Chlorocebus sabaeus, common name "green monkey"
       (rank Species) — the African green monkey, whose kidney-derived Vero cell line is the standard
       substrate for virus propagation (e.g. SARS-CoV-2), explaining its prominence in the repository.
+      SELECT DISTINCT is required. NOT because NCBI Taxonomy stores anything twice: on the primary
+      endpoint the co-hosted dataset/microbedbjp graph RE-DECLARES taxonomy triples, so each of
+      scientificName, dcterms:identifier and genbankCommonName matches in TWO graphs. The join then
+      multiplies: 2^3 = 8 rows for a taxon with a common name, 2^2 = 4 without — which is exactly the
+      44 observed (3 taxa x 4 + 4 taxa x 8). The 7 organisms are real. microbedbjp carries an OLDER
+      nomenclature vintage of NCBI Taxonomy, so on lineage queries the union also returns each clade
+      twice under its legacy and current names (e.g. Proteobacteria vs Pseudomonadota) — see
+      question_089. No MIE declares microbedbjp in a graphs: field, so only a live provenance probe
+      names it; the endpoint co-hosting 16 databases is warning enough to pin regardless.
+      dcterms: must also be declared explicitly — the query relied on Virtuoso predefining that
+      prefix, which is not portable.
     query: |
       PREFIX taxo: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
 
-      SELECT ?taxid ?sciName ?commonName
+      SELECT DISTINCT ?taxid ?sciName ?commonName
       WHERE {
         VALUES ?tax {
           <http://identifiers.org/taxonomy/9606>

@@ -30,12 +30,43 @@ schema_info:
   base_uri: http://bgee.org/#
   graphs:
     - http://bgee.org
+  co_hosted_graphs:
+    - "http://rdfportal.org/dataset/oma — OMA orthology. Bgee mints its genes in OMA's OWN
+       namespace (<http://omabrowser.org/ontology/oma#GENE_*>), so the two graphs share IRIs:
+       908,030 of Bgee's 1,559,014 orth:Gene subjects are ALSO typed orth:Gene in the OMA graph
+       -> UNION JOIN INFLATION. Measured 2026-07-17: human genes with a label
+       (?s a orth:Gene ; rdfs:label ?l ; orth:organism <https://bgee.org/species/9606>)
+       = 67,139 rows pinned to GRAPH <http://bgee.org> vs 87,569 rows unpinned (x1.30); the
+       20,430-row delta is exactly the 20,430 human Bgee genes OMA re-types. WORSE THAN A COUNT
+       BUG: OMA also re-declares orth:organism and lscr:xrefEnsemblGene on the SAME gene IRIs with
+       DIFFERENT values — <oma#GENE_ENSG00000141510> has orth:organism <https://bgee.org/species/9606>
+       in the Bgee graph and <https://omabrowser.org/oma/genome/9606> in the OMA graph, so an
+       unpinned ?gene orth:organism ?org returns both and mixes two species namespaces.
+       FIX: always pin GRAPH <http://bgee.org>."
+    - "ANATOMY-LABEL HUB (x1.64 overall, x5 worst case) — Bgee's anatomy IRIs (UBERON_*, CL_*, GO_*)
+       are re-labelled by the ontology co-tenants http://rdfportal.org/ontology/{uberon,cl,efo,clo,go,po,pro,pro-reasoned}
+       and http://sparql.uniprot.org/{go,locations,keywords}. Measured 2026-07-17: Bgee's 40,646
+       genex:AnatomicalEntity subjects joined to rdfs:label = 40,646 rows pinned vs 66,652 rows
+       unpinned (uberon +14,984, cl +7,195, efo +2,102, clo +1,466, go +105, uniprot/go +105,
+       uniprot/locations +24, pro +8, pro-reasoned +8, uniprot/keywords +8, po +1). A well-covered
+       term is worse: <obo:UBERON_0000955> has an rdfs:label in 5 graphs (bgee, uberon, cl, efo, clo)
+       -> x5. This multiplies as a PRODUCT against any per-gene expression join.
+       FIX: pin the label lookup to GRAPH <http://bgee.org> (Bgee carries its own label for every
+       one of the 40,646), or to a single ontology graph if you want the ontology's wording."
+    - "up:Taxon HUB (x3) — <http://purl.uniprot.org/taxonomy/NNN> nodes reached via
+       genex:ExpressionCondition -> obo:RO_0002162 carry up:scientificName in THREE graphs:
+       http://bgee.org, http://rdfportal.org/dataset/oma and http://sparql.uniprot.org/taxonomy
+       (verified 2026-07-17 on taxonomy/9606 and taxonomy/10090: 2 rows from each of the 3 graphs).
+       FIX: pin the taxon lookup to ONE graph."
+    - "PROBED CLEAN 2026-07-17: genex:AnatomicalEntity (40,646) and genex:ExpressionCondition are
+       declared ONLY in http://bgee.org. orth:Organism has ZERO IRI overlap with OMA — Bgee's 52
+       organisms are <https://bgee.org/species/NNN>, OMA's 2,927 are <https://omabrowser.org/oma/genome/NNN>."
   kw_search_tools: []
   version:
-    mie_version: "2.2"
+    mie_version: "2.3"
     mie_created: "2026-04-29"
-    mie_updated: "2026-07-16"
-    data_version: "Bgee 15.2"
+    mie_updated: "2026-07-17"
+    data_version: "RDF Portal snapshot — verified 2026-07-17"
     update_frequency: "Annual"
   access:
     backend: "Virtuoso (supports bif:contains)"
@@ -49,6 +80,22 @@ critical_warnings: |
     <http://purl.uniprot.org/taxonomy/NNN> (typed up:Taxon). Bridge:
     <https://bgee.org/species/NNN> obo:RO_0002162 <http://purl.uniprot.org/taxonomy/NNN>.
     Picking the wrong namespace silently returns 0 rows.
+  - MANDATORY GRAPH CLAUSE — THE OMA CO-TENANT SHARES BGEE'S GENE IRIs: the SIB endpoint also
+    hosts <http://rdfportal.org/dataset/oma>, and because Bgee mints genes in OMA's namespace
+    (oma#GENE_*), 908,030 of Bgee's 1,559,014 orth:Gene IRIs are typed orth:Gene in BOTH graphs.
+    Unpinned queries inflate: human genes with a label = 67,139 rows pinned to
+    GRAPH <http://bgee.org> vs 87,569 unpinned (x1.30, verified 2026-07-17). OMA also re-declares
+    orth:organism on those same IRIs pointing at <https://omabrowser.org/oma/genome/NNN> instead of
+    <https://bgee.org/species/NNN>, so an unpinned ?gene orth:organism ?org silently returns two
+    different species namespaces. FIX: always wrap Bgee patterns in GRAPH <http://bgee.org>.
+  - ANATOMY LABELS ARE MULTIPLIED x1.64 (x5 WORST CASE) BY THE ONTOLOGY CO-TENANTS: UBERON_/CL_/GO_
+    IRIs are re-labelled in uberon, cl, efo, clo, go, po, pro, pro-reasoned and three UniProt graphs.
+    Bgee's 40,646 genex:AnatomicalEntity joined to rdfs:label = 40,646 rows pinned to
+    GRAPH <http://bgee.org> vs 66,652 unpinned; obo:UBERON_0000955 alone has a label in 5 graphs.
+    This multiplies as a PRODUCT against a per-gene expression join. FIX: pin the rdfs:label lookup
+    to GRAPH <http://bgee.org> — Bgee carries its own label for all 40,646.
+  - up:scientificName ON A UniProt TAXON IS DECLARED IN 3 GRAPHS (bgee, oma, uniprot/taxonomy) —
+    verified 2026-07-17. Pin the taxon lookup to one graph or every taxon join triples.
   - GENE IRI USES OMA NAMESPACE: Genes are minted as
     <http://omabrowser.org/ontology/oma#GENE_<EXTERNAL_ID>> where EXTERNAL_ID is the
     upstream species-specific accession (Ensembl ENSG.../ENSDARG..., WBGene..., FB...,

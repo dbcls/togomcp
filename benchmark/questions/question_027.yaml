@@ -40,29 +40,46 @@ pubmed_test:
 sparql_queries:
   - query_number: 1
     database: reactome
-    description: Find the human nicotinate metabolism pathway IRI in Reactome
+    description: >
+      Find the human nicotinate metabolism pathway in Reactome and, crucially, resolve it
+      to its RELEASE-STABLE identifier (?stableId), which is what Query 2 consumes. The
+      ?pathway IRI is returned only for orientation — never carry it forward, because it is
+      a per-export counter that changes every Reactome release (see Query 2). The
+      species filter is required: 15 species share the displayName "Nicotinate metabolism".
     query: |
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-      SELECT DISTINCT ?pathway ?name
+      SELECT DISTINCT ?pathway ?name ?stableId
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
         ?pathway a bp:Pathway ;
                  bp:displayName ?name ;
-                 bp:organism ?org .
+                 bp:organism ?org ;
+                 bp:xref [ bp:db "Reactome"^^xsd:string ; bp:id ?stableId ] .
         ?org bp:name "Homo sapiens"^^xsd:string .
         FILTER(CONTAINS(LCASE(?name), "nicotinate") || CONTAINS(LCASE(?name), "nicotinamide"))
       }
       LIMIT 20
-    result_count: 1
+    result_count: 1   # R-HSA-196807 "Nicotinate metabolism" (release-95 IRI 48887#Pathway312, shown for orientation only)
 
   - query_number: 2
     database: reactome
     description: |
       Retrieve all distinct UniProt IDs of proteins acting as enzymatic catalysts
-      (via Catalysis relationships, including proteins within complexes) in the
-      Nicotinate metabolism pathway (http://www.reactome.org/biopax/40/48887#Pathway2258)
+      (via Catalysis relationships, including proteins within complexes) in the human
+      Nicotinate metabolism pathway.
+      ANCHORED ON THE REACTOME STABLE ID (R-HSA-196807), NOT on a BioPAX IRI. A BioPAX
+      subject IRI such as .../biopax/95/48887#Pathway312 is a per-export counter: the
+      release number, the per-species export file id and the element id ALL change on
+      every quarterly Reactome release, and the dead IRI then matches nothing and returns
+      0 rows SILENTLY. This query originally hardcoded .../biopax/40/48887#Pathway2258
+      and broke exactly that way when Reactome moved 40 -> 95. The stable-ID xref is the
+      documented bridge (see reactome.yaml critical_warnings, "SEARCH-TOOL stId IS NOT A
+      SPARQL IRI"); every one of Reactome's 23,277 pathways carries one. It is also
+      species-specific (R-HSA = human), so it pins the human pathway exactly — unlike
+      bp:displayName "Nicotinate metabolism", which matches 15 species' pathways.
+      The ^^xsd:string on bp:db/bp:id is mandatory; without it the join silently yields 0.
     query: |
       PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
       PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
@@ -70,7 +87,10 @@ sparql_queries:
       SELECT DISTINCT ?uniprotId
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        <http://www.reactome.org/biopax/40/48887#Pathway2258> bp:pathwayComponent ?reaction .
+        ?pathway a bp:Pathway ;
+                 bp:xref [ bp:db "Reactome"^^xsd:string ;
+                           bp:id "R-HSA-196807"^^xsd:string ] ;
+                 bp:pathwayComponent ?reaction .
         ?reaction a bp:BiochemicalReaction .
         ?catalysis bp:controlled ?reaction ;
                    bp:controller ?controller .
@@ -193,13 +213,19 @@ rdf_triples: |
   @prefix taxon: <http://purl.uniprot.org/taxonomy/> .
   @prefix rhea: <http://rdf.rhea-db.org/> .
 
-  <http://www.reactome.org/biopax/40/48887#Pathway2258> a bp:Pathway ;
+  <http://www.reactome.org/biopax/95/48887#Pathway312> a bp:Pathway ;
     bp:displayName "Nicotinate metabolism"^^xsd:string .
-  # Database: Reactome | Query: 1 | Comment: Human nicotinate metabolism pathway IRI
+  # Database: Reactome | Query: 1 | Comment: Human nicotinate metabolism pathway as exported in release 95. This IRI is NOT stable — release number, export file id and element id are all per-export — so it is recorded for orientation only and never used as a query anchor.
 
-  <http://www.reactome.org/biopax/40/48887#Pathway2258> bp:pathwayComponent
-    <http://www.reactome.org/biopax/40/48887#BiochemicalReaction5500> .
-  # Database: Reactome | Query: 2 | Comment: Pathway contains multiple BiochemicalReaction components
+  <http://www.reactome.org/biopax/95/48887#Pathway312> bp:xref [
+    bp:db "Reactome"^^xsd:string ;
+    bp:id "R-HSA-196807"^^xsd:string
+  ] .
+  # Database: Reactome | Query: 1 | Comment: THE STABLE ANCHOR. R-HSA-196807 survives Reactome releases and is species-specific (R-HSA = human), so it pins this pathway exactly where displayName would match 15 species. All 23,277 Reactome pathways carry such an xref.
+
+  <http://www.reactome.org/biopax/95/48887#Pathway312> bp:pathwayComponent
+    <http://www.reactome.org/biopax/95/48887#BiochemicalReaction2193> .
+  # Database: Reactome | Query: 2 | Comment: Pathway contains multiple BiochemicalReaction components (e.g. "QPRT transfers PRIB to QUIN to form NAMN")
 
   uniprot:P43490 a up:Protein ;
     up:reviewed 1 ;

@@ -28,19 +28,56 @@ schema_info:
   base_uri: https://purl.dsmz.de/mediadive/
   graphs:
     - http://rdfportal.org/dataset/mediadive
+  co_hosted_graphs:
+    - "http://rdfportal.org/dataset/bacdive — BacDive SHARES MediaDive's ENTIRE `purl.dsmz.de/schema/`
+       VOCABULARY (both are DSMZ resources) and declares its own entities under the SAME CLASS NAMES:
+       47,729 schema:CultureMedium and 97,334 schema:Strain live in the bacdive graph. This is a
+       UNION hazard, NOT an IRI-duplication trap: the IRI spaces are DISJOINT
+       (mediadive = purl.dsmz.de/mediadive/medium/102, purl.dsmz.de/mediadive/strain/28948;
+       bacdive = purl.dsmz.de/bacdive/culture_medium/100000, purl.dsmz.de/bacdive/strain/10000) and the
+       measured overlap is EXACTLY ZERO for both classes. So rows are never DUPLICATED — instead FOREIGN
+       ENTITIES ARE SILENTLY ADDED, which is just as wrong and harder to notice (every row still looks
+       well-formed and unique). Measured 2026-07-17: `?s a schema:CultureMedium ; rdfs:label ?l`
+       returns 51,018 rows / 51,018 subjects unpinned vs 3,289 / 3,289 pinned = x15.5 (51,018 =
+       3,289 + 47,729 exactly). `?s a schema:Strain ; schema:hasBacDiveID ?b` returns 33,226 subjects
+       pinned but bacdive contributes a further 97,334 subjects carrying the SAME predicate = x3.93.
+       FIX = pin GRAPH <http://rdfportal.org/dataset/mediadive>. Verified 2026-07-17."
+    - "The ~30 rdfportal.org/ontology/* graphs + <http://id.nlm.nih.gov/mesh> + <http://purl.jp/bio/11/goa>
+       + the togoid relation/label graphs share this endpoint — join targets, not co-tenancy traps for
+       MediaDive; probed 2026-07-17. Probed classes: schema:CultureMedium, schema:Medium,
+       schema:Ingredient, schema:Strain, schema:Solution, schema:GrowthCondition,
+       schema:MediumComposition, schema:SolutionRecipe — of these ONLY CultureMedium and Strain appear
+       outside the mediadive graph (both in bacdive, see above); the other six are exclusive to
+       <http://rdfportal.org/dataset/mediadive>."
   kw_search_tools:
     - sparql
   version:
-    mie_version: "2.1"
+    mie_version: "2.2"
     mie_created: "2025-07-15"
-    mie_updated: "2026-04-29"
-    data_version: "Current"
+    mie_updated: "2026-07-17"
+    # No release identifier is derivable from the endpoint: the mediadive graph carries NO
+    # owl:versionInfo, dcterms:modified/issued/hasVersion/date, and no void:triples (queried
+    # 2026-07-17). Hence the dated-snapshot form — do NOT substitute a number from the MediaDive
+    # website; it would not be verifiable against what is actually loaded here.
+    data_version: "RDF Portal snapshot — verified 2026-07-17"
     update_frequency: "Regular"
   access:
     backend: "Virtuoso"
 
 # Critical warnings: schema pathologies and silent-failure traps.
 critical_warnings: |
+  - ⚠ BACDIVE SHARES THIS VOCABULARY — AN UNPINNED QUERY SILENTLY ADDS BACDIVE'S ENTITIES.
+    BacDive is the other DSMZ resource on this endpoint and uses the SAME purl.dsmz.de/schema/
+    class names. Without a GRAPH clause:
+      `?s a schema:CultureMedium ; rdfs:label ?l`  -> 51,018 rows (UNION: 3,289 MediaDive media
+                                                     + 47,729 BacDive culture_medium nodes)
+      pinned to GRAPH <http://rdfportal.org/dataset/mediadive> -> 3,289 rows   (x15.5 inflation)
+      `?s a schema:Strain ; schema:hasBacDiveID ?b` -> 33,226 subjects pinned, but BacDive
+                                                     contributes 97,334 more    (x3.93)
+    (verified 2026-07-17). This is NOT row duplication — the two IRI spaces are disjoint (measured
+    overlap = 0), so every returned row looks unique and well-formed. That is what makes it dangerous:
+    you get MORE ENTITIES THAN EXIST IN MEDIADIVE, not visible duplicates, and a COUNT looks plausible.
+    FIX: always scope with GRAPH <http://rdfportal.org/dataset/mediadive>.
   - INTEGER BOOLEAN TRAP: schema:isComplex stores integers 0/1, NOT booleans.
     Using `schema:isComplex false` or `schema:isComplex true` silently returns 0 results.
     Correct usage: `schema:isComplex 0` (defined) and `schema:isComplex 1` (complex).

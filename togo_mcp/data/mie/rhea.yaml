@@ -29,12 +29,40 @@ schema_info:
   base_uri: http://rdf.rhea-db.org/
   graphs:
     - http://rdfportal.org/dataset/rhea
+  co_hosted_graphs:
+    - "PROBED CLEAN — ALL LEGS, INCLUDING THE LABEL LEG (re-probed 2026-07-17; the earlier pass was
+       already close to a reverse probe, and this closes it out). Rhea is co-hosted on the SIB
+       endpoint with UniProt's 14 graphs, http://bgee.org, http://rdfportal.org/dataset/oma, MeSH
+       and ~35 http://rdfportal.org/ontology/* graphs. `?s rhea:accession ?a` = 86,938 subjects,
+       counted across EVERY graph with no type constraint — all in http://rdfportal.org/dataset/rhea
+       and nowhere else. REVERSE probe (VALUES of 18 IRIs — 12 reaction IRIs plus the vocabulary
+       terms rhea:Reaction, rhea:ReactionSide, rhea:Compound, rhea:accession, rhea:equation,
+       rhea:side — asking for triples in ANY graph, no type constraint): all 264 triples land in the
+       Rhea graph alone; 0 rows from any co-tenant. LABEL leg probed explicitly and separately
+       (rdfs:label, skos:prefLabel, dcterms:title, dcterms:identifier grouped by graph): the only
+       label supplier for a Rhea IRI is the Rhea graph itself (rdfs:label 4 rows); no co-tenant
+       re-declares a rdf.rhea-db.org IRI on ANY leg, so no unpinned Rhea join can inflate.
+       OBJECT-position check (the one thing a subject-keyed reverse probe cannot see): UniProt DOES
+       reference Rhea heavily — for just 3 reaction IRIs (rhea:10000/16109/11748) there are 33,606
+       triples in <http://sparql.uniprot.org/uniprot> pointing AT them. That is a join target, not a
+       re-declaration: UniProt never puts those IRIs in subject position, so it supplies no competing
+       type or label and cannot inflate a Rhea-keyed query. It does mean a Rhea↔UniProt enzyme join
+       is legitimately many-to-one — high row counts there are real biology, not a co-tenancy bug."
+    - "ChEBI is NOT co-hosted (checked 2026-07-17) — the SIB endpoint has no ChEBI graph, and the Rhea
+       graph itself carries no rdfs:label for its rh:chebi targets. Of the 13,530 distinct
+       <http://purl.obolibrary.org/obo/CHEBI_*> IRIs Rhea points at, only ~400 pick up an rdfs:label
+       anywhere here, incidentally, from ontology graphs that import ChEBI fragments: efo (344 IRIs /
+       350 rows), uberon (95/135), clo (25/29), pro and pro-reasoned (21/141 each). This is not
+       inflation of Rhea's own entities, but note that a compound-label lookup CANNOT be pinned to the
+       Rhea graph (it returns 0) and is unreliable on this endpoint — resolve ChEBI labels against the
+       separate `chebi` database instead."
   kw_search_tools:
     - search_rhea_entity
   version:
-    mie_version: "2.5"
+    mie_version: "2.8"
     mie_created: "2026-06-27"
-    data_version: "Release 2024+ (RDF Portal SIB snapshot)"
+    mie_updated: "2026-07-17"
+    data_version: "RDF Portal snapshot — verified 2026-07-17"
     update_frequency: "Quarterly"
   access:
     backend: "Virtuoso"
@@ -60,6 +88,19 @@ critical_warnings: |
     (-> rhea:chebi). Shortcutting any hop returns empty results silently. rhea:contains is the
     union property; the numbered forms (rhea:contains1..contains40, contains2n, containsNplus1,
     containsNminus1) encode stoichiometric coefficients — there is NO numeric coefficient literal.
+  - NEVER NAME A PARTICIPANT VIA THE ChEBI IRI — rhea:chebi POINTS OUT OF RHEA (silent-drop trap,
+    verified 2026-07-17). rhea:chebi's object is an OBO class (http://purl.obolibrary.org/obo/CHEBI_*)
+    that is NOT a Rhea entity and carries almost none of Rhea's own predicates:
+      * `?chebi rhea:id ?x`      -> 0 of 13,530 participant ChEBI IRIs have it. ALWAYS empty.
+      * `?chebi rdfs:label ?x`   -> only 428 of 13,530 (3.2%) have it. SILENTLY DROPS ~96.8% of
+                                    participants — including everyday ones: GTP (CHEBI:37565) and
+                                    GDP (CHEBI:58189) both have NO rdfs:label here.
+    The name/formula/charge live on RHEA'S OWN Compound node, which is the rhea:chebi SUBJECT:
+    all 14,485 compound nodes carry rhea:name (100% coverage). So bind the compound, not the ChEBI:
+        ?compound rhea:chebi ?chebi ; rhea:name ?name .     # correct — 100% coverage
+    Also available on the compound: rhea:accession, rhea:formula, rhea:charge. Because an inner join
+    on rdfs:label returns 3.2% instead of 0%, this fails as a PARTIAL result — a plausible short list
+    rather than an obvious empty one, which is why it survived undetected in benchmark Q024 q5.
   - STATUS IS AN IRI, NOT A LITERAL: use <http://rdf.rhea-db.org/Approved> (also Preliminary,
     Obsolete). `rhea:status "Approved"` silently returns 0 rows. Apply Approved early as the
     primary quality filter (17,635 of 18,071 are Approved).
@@ -596,6 +637,34 @@ data_statistics:
     Quarterly updates — verify current statistics at www.rhea-db.org for the latest release.
 
 anti_patterns:
+  - title: "Naming a Participant via the ChEBI IRI Instead of the Rhea Compound Node"
+    problem: |
+      Reading a participant's name off the rhea:chebi object. That IRI is an OBO class, not a Rhea
+      entity: 0 of 13,530 participant ChEBI IRIs carry rhea:id, and only 428 (3.2%) carry rdfs:label.
+      The join silently drops ~96.8% of participants — a PARTIAL result, not an empty one, so it
+      looks like a plausible short answer. (Verified 2026-07-17; this is what broke benchmark Q024 q5.)
+    wrong_sparql: |
+      # WRONG — rhea:id on a ChEBI IRI: ALWAYS 0 rows
+      ?participant rhea:compound ?compound .
+      ?compound rhea:chebi ?chebi .
+      ?chebi rhea:id ?name .
+
+      # ALSO WRONG — rdfs:label on a ChEBI IRI: silently keeps only the 3.2% that have one.
+      # GTP (CHEBI:37565) and GDP (CHEBI:58189) have NO rdfs:label and vanish here.
+      ?chebi rdfs:label ?name .
+    correct_sparql: |
+      # CORRECT — the name lives on Rhea's own Compound node (the rhea:chebi SUBJECT).
+      # All 14,485 compound nodes carry rhea:name: 100% coverage.
+      ?participant rhea:compound ?compound .
+      ?compound rhea:chebi ?chebi ;
+                rhea:name ?name .
+      # Also on the compound: rhea:accession, rhea:formula, rhea:charge.
+    explanation: |
+      rhea:chebi is an OUTBOUND cross-reference — it points from Rhea into the ChEBI ontology. Rhea
+      does not re-declare ChEBI's labels locally, so the ChEBI IRI is an identifier to join on, never
+      a place to read names from. Keep every literal read on the Rhea side of that edge. If you need
+      the ChEBI-side label, query the `chebi` database (ebi endpoint) instead.
+
   - title: "Text Search When a Structured Property Exists"
     problem: "Using bif:contains on equation text when a ChEBI, EC, or GO IRI is available."
     wrong_sparql: |
