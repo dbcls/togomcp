@@ -38,8 +38,8 @@ schema_info:
     - "~39 shared ontology/vocabulary graphs on this endpoint that are NOT in DDBJ's four (http://purl.jp/bio/11/goa; id.nlm.nih.gov/mesh + /vocab + /void; the rdfportal.org/ontology/* suite beyond so/faldo/taxonomy — go, mondo, uberon, cl, sio, hp, efo, …; owl#) — join targets, not co-tenancy traps; probed 2026-07-17. nuc:Entry, nuc:Gene, nuc:Coding_Sequence, nuc:Source and faldo:Region are each declared in <http://rdfportal.org/dataset/ddbj> ONLY (verified by excluding dataset/ddbj from the GROUP BY — every class returned an EMPTY result), and a VALUES probe over insdc/AP009552.1, AB000001.1, AP012306.1 found those IRIs in dataset/ddbj ONLY. Endpoint total: 43 graphs."
   kw_search_tools: []
   version:
-    mie_version: "2.3"
-    mie_updated: "2026-07-17"
+    mie_version: "2.4"
+    mie_updated: "2026-07-18"
     mie_created: "2026-04-29"
     data_version: "RDF Portal snapshot — verified 2026-07-17. (No release number is derivable from this endpoint: GRAPH <http://rdfportal.org/dataset/ddbj> carries no dcterms:modified / dcterms:issued / dcterms:hasVersion / owl:versionInfo — probed 2026-07-17. The previous value \"DDBJ Release\" was not endpoint-derived.)"
     update_frequency: "Daily"
@@ -651,16 +651,20 @@ anti_patterns:
       WHERE { ?gene a nuc:Gene ; bfo:0000050 ?entry . }
       LIMIT 1
     correct_sparql: |
-      # CORRECT: use division IRI discovered during exploration for full-division aggregate
+      # CORRECT: scope by division IRI, then reach Gene through the Entry's SEQUENCE.
+      # A Gene's bfo:0000050 (part_of) points to the Sequence node, NOT the Entry (see GeneShape),
+      # so `?gene bfo:0000050 ?entry` matches NOTHING. Hop Entry --nuc:sequence--> Sequence <--bfo:0000050-- Gene.
       SELECT (COUNT(DISTINCT ?gene) AS ?geneCount)
       FROM <http://rdfportal.org/dataset/ddbj>
       WHERE {
         ?entry a nuc:Entry ;
-               nuc:division <http://ddbj.nig.ac.jp/ontologies/nucleotide/Division#PHG> .
-        ?gene a nuc:Gene ; bfo:0000050 ?entry .
+               nuc:division <http://ddbj.nig.ac.jp/ontologies/nucleotide/Division#PHG> ;
+               nuc:sequence ?seq .
+        ?gene a nuc:Gene ; bfo:0000050 ?seq .
       }
       LIMIT 1
-    explanation: "Use division IRIs to scope comprehensive aggregations across the full dataset. Pasting sampled entry IRIs into VALUES only counts those specific entries."
+      # -> 3,244,894 genes across the PHG division. Verified 2026-07-18.
+    explanation: "Two lessons: (1) use division IRIs to scope comprehensive aggregations, not sampled entry IRIs in VALUES; (2) a Gene's bfo:0000050 (part_of) points to the SequenceShape, NOT the Entry — join Entry→Sequence→Gene via nuc:sequence, or the query silently returns 0."
 
   - title: "Aggregation Without Division or Entry Scope"
     problem: "COUNT(*) on nuc:Entry or features without a filter scans all 280M entries and times out."

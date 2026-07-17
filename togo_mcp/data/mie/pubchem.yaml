@@ -50,9 +50,9 @@ schema_info:
     - ncbi_esearch
     - get_pubchem_compound_id
   version:
-    mie_version: "2.4"
+    mie_version: "2.5"
     mie_created: "2026-04-29"
-    mie_updated: "2026-07-17"
+    mie_updated: "2026-07-18"
     data_version: "PubChemRDF, dcterms:modified 2026-05-06 — DERIVED FROM THE ENDPOINT: <http://rdf.ncbi.nlm.nih.gov/pubchem/void.ttl#PubChemRDF> dcterms:modified \"2026-05-06\" in GRAPH <http://rdf.ncbi.nlm.nih.gov/pubchem/void>. Verified 2026-07-17."
     update_frequency: "Continuous"
   access:
@@ -688,18 +688,25 @@ anti_patterns:
       SELECT (COUNT(?compound) AS ?count) WHERE { }
       LIMIT 1
     correct_sparql: |
-      # CORRECT: use the ChEBI role IRI discovered during exploration
+      # CORRECT: comprehensive count via a typed descriptor IRI. Two fixes over the naive form:
+      # (1) CHEMINF_000335 is Molecular Formula; CHEMINF_000140 is the CID STRING (e.g. "2244"),
+      #     not a structure descriptor — filtering it as SMILES matches nothing.
+      # (2) a descriptor's rdf:type and value live in the descriptor/compound graph, so BOTH
+      #     graphs must be pinned or the ?descriptor triples resolve to nothing.
+      # (An exact molecular-formula match is used instead of a SMILES CONTAINS scan, which would
+      #  time out over 119M compounds — see the CHEMINF aggregation-timeout warning.)
       PREFIX cheminf: <http://semanticscience.org/resource/>
       SELECT (COUNT(DISTINCT ?compound) AS ?count)
       FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/compound>
+      FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/descriptor/compound>
       WHERE {
         ?compound cheminf:SIO_000008 ?descriptor .
-        ?descriptor a cheminf:CHEMINF_000140 ;
-                    cheminf:SIO_000300 ?smiles .
-        FILTER(CONTAINS(?smiles, "N"))
+        ?descriptor a cheminf:CHEMINF_000335 ;
+                    cheminf:SIO_000300 "C9H8O4" .
       }
       LIMIT 1
-    explanation: "Use structured descriptor predicates or ChEBI classification IRIs for comprehensive compound queries. Pasting sampled compound IRIs only counts that exploratory sample."
+      # -> 1,231 compounds share molecular formula C9H8O4. Verified 2026-07-18.
+    explanation: "Use structured descriptor predicates for comprehensive counts, not sampled compound IRIs in VALUES. Two silent-0 traps fixed: CHEMINF_000140 is the CID string (not SMILES), and descriptor rdf:type/value live in the descriptor/compound graph — pin BOTH compound and descriptor/compound graphs."
 
   - title: "Bioassay Title Text Search When the Structured Compound-Target Path Exists"
     problem: >

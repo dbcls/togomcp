@@ -50,9 +50,9 @@ schema_info:
   kw_search_tools:
     - ncbi_esearch
   version:
-    mie_version: "2.2"
+    mie_version: "2.3"
     mie_created: "2025-04-22"
-    mie_updated: "2026-07-17"
+    mie_updated: "2026-07-18"
     data_version: "RDF Portal snapshot — verified 2026-07-17"
     update_frequency: "Monthly"
   license:
@@ -84,7 +84,9 @@ critical_warnings: |
     legacy-vintage data wearing a rank the authoritative graph deliberately does not use. A query
     that "works" here is reading the wrong graph. To select domain-level nodes in the authoritative
     graph use BIND or FILTER(STR(?rank) = "http://ddbj.nig.ac.jp/ontologies/taxonomy/"); "cellular
-    organisms" (taxon:131567) carries the same bare namespace rank IRI.
+    organisms" (taxon:131567) carries the same bare namespace rank IRI, so EXCLUDE it with
+    FILTER(?taxon != <http://identifiers.org/taxonomy/131567>) to get only the biological top-level
+    clades (the 3 cellular domains + Viruses + ~10 viral realms = ~14). This rank is NOT domain-only.
   - PERFORMANCE: With 2.7M+ taxa, all exploratory queries MUST have a LIMIT
     clause. Unbounded rdfs:subClassOf* traversal without a specific starting
     taxon IRI will time out. Always start transitive lineage queries from a
@@ -597,13 +599,17 @@ anti_patterns:
         ?taxon a tax:Taxon ; tax:rank tax:Superkingdom ; rdfs:label ?label .
       }
     correct_sparql: |
-      # Correct: filter by bare namespace IRI for domain-level taxa
-      SELECT ?taxon ?label WHERE {
+      # Correct: (1) PIN the authoritative graph, (2) filter by the bare-namespace rank IRI,
+      # (3) EXCLUDE the cellular-organisms root (131567), which shares that same rank IRI.
+      SELECT ?taxon ?label
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
         ?taxon a tax:Taxon ;
                tax:rank <http://ddbj.nig.ac.jp/ontologies/taxonomy/> ;
                rdfs:label ?label .
-      } LIMIT 10
-    explanation: "Eukaryota (taxon:2759), Bacteria (taxon:2), and Archaea (taxon:2157) use the bare namespace IRI as rank. This is documented in critical_warnings."
+        FILTER(?taxon != <http://identifiers.org/taxonomy/131567>)
+      } LIMIT 20
+    explanation: "The bare-namespace rank IRI <http://ddbj.nig.ac.jp/ontologies/taxonomy/> is NOT domain-only — it marks the ~15 highest-level clades NCBI leaves without a formal rank: the three cellular domains (Bacteria taxon:2, Archaea taxon:2157, Eukaryota taxon:2759), the acellular root Viruses (taxon:10239) and ~10 viral realms (Riboviria, Duplodnaviria, …), plus the cellular-organisms root (taxon:131567), which is excluded here. Two mandatory scopings: (a) PIN <http://rdfportal.org/ontology/taxonomy> — unpinned, the legacy microbedbjp graph applies this rank IRI to other taxa (e.g. botanical sections) and duplicates every row; (b) exclude 131567. Verified 2026-07-18: as written returns 14 clade rows; unpinned returns duplicated botanical sections."
 
   - title: "Unbounded Transitive Lineage Queries"
     problem: "Using rdfs:subClassOf* without a specific starting IRI causes timeout on 2.7M+ records."

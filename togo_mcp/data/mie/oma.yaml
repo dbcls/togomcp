@@ -52,9 +52,9 @@ schema_info:
        overlap with Bgee's 52 (<https://omabrowser.org/oma/genome/NNN> vs <https://bgee.org/species/NNN>)."
   kw_search_tools: []
   version:
-    mie_version: "2.2"
+    mie_version: "2.3"
     mie_created: "2026-04-29"
-    mie_updated: "2026-07-17"
+    mie_updated: "2026-07-18"
     data_version: "RDF Portal snapshot — verified 2026-07-17"
     update_frequency: "Annual"
   access:
@@ -661,21 +661,34 @@ anti_patterns:
       SELECT (COUNT(?pair) AS ?count) WHERE { }
       LIMIT 1
     correct_sparql: |
-      # CORRECT: use the taxonomy IRI to count all human-mouse orthologs comprehensively
-      PREFIX oma: <https://omabrowser.org/ontology/oma#>
+      # CORRECT: count human-mouse ortholog groups via shared HOG family prefix.
+      # NOTE the earlier form was impossible: the class is orth:OrthologsCluster (not
+      # OrthologousCluster), there is no oma:organism->taxonomy edge (a protein reaches a
+      # taxon via orth:organism ?org . ?org obo:RO_0002162 <taxon>), AND OMA leaf clusters are
+      # single-species, so no one cluster holds both a human and a mouse member. Human (9606)
+      # and mouse (10090) species leaves of the SAME family share the family token at the head
+      # of dct:identifier (e.g. HOG:E0756069) — GROUP BY it, HAVING both species present. A
+      # single pass; avoids the hasHomologousMember+ property-path timeout.
       PREFIX orth: <http://purl.org/net/orth#>
-      SELECT (COUNT(DISTINCT ?pair) AS ?count)
+      PREFIX dct:  <http://purl.org/dc/terms/>
+      SELECT (COUNT(?family) AS ?count)
       WHERE {
-        GRAPH <http://rdfportal.org/dataset/oma> {
-          ?pair a orth:OrthologousCluster ;
-                orth:hasHomologousMember ?prot1 ;
-                orth:hasHomologousMember ?prot2 .
-          ?prot1 oma:organism <http://purl.uniprot.org/taxonomy/9606> .
-          ?prot2 oma:organism <http://purl.uniprot.org/taxonomy/10090> .
+        SELECT ?family (COUNT(DISTINCT ?sp) AS ?nsp)
+        WHERE {
+          GRAPH <http://rdfportal.org/dataset/oma> {
+            VALUES ?sp { <http://purl.uniprot.org/taxonomy/9606> <http://purl.uniprot.org/taxonomy/10090> }
+            ?leaf a orth:OrthologsCluster ;
+                  orth:hasTaxonomicRange ?sp ;
+                  dct:identifier ?id .
+            BIND(STRBEFORE(?id, ".") AS ?family)
+          }
         }
+        GROUP BY ?family
+        HAVING (COUNT(DISTINCT ?sp) = 2)
       }
       LIMIT 1
-    explanation: "Use taxonomy IRIs to scope comprehensive orthology counts. Pasting sampled cluster IRIs from a species lookup only counts those specific orthologs."
+      # -> 8,763 HOG families with both a human and a mouse ortholog. Verified 2026-07-18.
+    explanation: "Scope a comprehensive count via taxonomy IRIs, not sampled cluster IRIs. Three traps: class is orth:OrthologsCluster (not OrthologousCluster); there is no oma:organism->taxonomy edge (use orth:organism/obo:RO_0002162); and leaf clusters are single-species, so count shared HOG family prefixes (dct:identifier) across the two species rather than expecting one cluster to hold both."
 
   - title: "Missing Identifier Filter (Row Explosion)"
     problem: >

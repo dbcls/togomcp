@@ -57,9 +57,9 @@ schema_info:
   kw_search_tools:
     - OLS4:searchClasses
   version:
-    mie_version: "2.4"
+    mie_version: "2.5"
     mie_created: "2025-04-21"
-    mie_updated: "2026-07-17"
+    mie_updated: "2026-07-18"
     # Endpoint-DERIVED (queried 2026-07-17), correcting the previous "Current release" placeholder:
     #   <http://nanbyodata.jp/ontology/nando.owl#> owl:versionInfo   "2023-11-28"
     #                                              owl:versionIRI    <https://nanbyodata.jp/ontology/2023-11-28/nando.ttl>
@@ -141,7 +141,7 @@ shape_expressions: |
     rdfs:seeAlso IRI * ;                       # KEGG (519), govt docs, patient portals — 6,120 triples
     dct:source IRI ? ;                         # govt PDFs/docs — 2,397 diseases (86%)
     dct:description xsd:string ? ;             # Japanese clinical description — 1,211 diseases (44%)
-    owl:deprecated xsd:integer ?               # present on 9 obsolete entries
+    owl:deprecated xsd:integer ?               # present on 8 obsolete entries
   }
 
 sample_rdf_entries:
@@ -620,19 +620,22 @@ anti_patterns:
       }
     explanation: "Always use FILTER(LANG(?label) = 'en'/'ja'/'ja-hira') to select exactly one language variant."
 
-  - title: "Unfiltered skos:closeMatch Including Non-MONDO Targets"
-    problem: "Querying skos:closeMatch without IRI prefix filter returns 2,341 triples instead of the 2,150 MONDO-specific ones."
+  - title: "Counting Diseases by Raw skos:closeMatch Rows (many-to-many inflation)"
+    problem: "skos:closeMatch is many-to-many AND re-declared across co-hosted graphs. Pinned to nando it is 2,341 mapping rows spanning only 2,150 distinct diseases (some map to several MONDO terms), so COUNT(*) over-reports diseases by 191; unpinned it also reads six other graphs' closeMatch (nikkaji, mondo, efo, …)."
     wrong_sparql: |
-      # Returns 191 extra non-MONDO triples silently
-      SELECT ?disease ?match WHERE {
+      # Counts mapping ROWS (not diseases) AND reads every co-hosted graph -> doubly inflated
+      SELECT (COUNT(*) AS ?n) WHERE {
         ?disease skos:closeMatch ?match .
       }
     correct_sparql: |
-      SELECT ?disease ?match WHERE {
+      # Pin the nando graph; COUNT(DISTINCT) the axis you actually mean.
+      SELECT (COUNT(DISTINCT ?disease) AS ?nDiseases)
+      FROM <http://nanbyodata.jp/ontology/nando>
+      WHERE {
         ?disease skos:closeMatch ?match .
-        FILTER(STRSTARTS(STR(?match), "http://purl.obolibrary.org/obo/MONDO_"))
+        FILTER(STRSTARTS(STR(?match), "http://purl.obolibrary.org/obo/MONDO_"))  # defensive no-op: all nando targets are MONDO today
       }
-    explanation: "skos:closeMatch covers MONDO and other targets. Apply STRSTARTS filter immediately when targeting MONDO specifically."
+    explanation: "All 2,341 nando closeMatch targets are MONDO (verified 2026-07-16), so the STRSTARTS filter removes nothing today — it is DEFENSIVE, not corrective (do not expect it to drop non-MONDO rows). The real trap is twofold: (1) co-tenancy — unpinned, skos:closeMatch is re-declared across 7 graphs, so PIN <http://nanbyodata.jp/ontology/nando>; (2) cardinality — pinned it is many-to-many, COUNT(*)=2,341 rows vs COUNT(DISTINCT ?disease)=2,150 diseases. Pin the graph and COUNT(DISTINCT) the side you mean. Verified 2026-07-18."
 
   - title: "Circular Reasoning: Using Search Results in VALUES for Comprehensive Counts"
     problem: "Putting search API results in VALUES counts only the retrieved sample, not the full database."
