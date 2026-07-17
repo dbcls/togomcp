@@ -49,11 +49,17 @@ schema_info:
        three MCCV_000001 populations are ~2.4x NBRC's own count in aggregate. FIX = pin
        GRAPH <http://purl.jp/bio/103/nite/culture/> (this file's first critical_warning already mandates
        it — this probe quantifies WHY). Verified 2026-07-17.
-       CAVEAT: measured as CLASS COUNTS per graph plus the pairwise overlaps listed above; a
-       pinned-vs-unpinned count on a realistic property join (e.g. + dcterms:identifier) could NOT be
-       completed — the primary endpoint went into sustained HTTP 503 (~12 min, a trivial `BIND(1)` query
-       also 503'd, so it was an endpoint outage, not query weight). RIKEN x NARO was not measured, so no
-       exact 3-graph union total is claimed here."
+       GAP CLOSED 2026-07-17 (the earlier revision could not run these — the endpoint was in a
+       sustained outage). All three populations are PAIRWISE DISJOINT: NBRC x RIKEN = 0, NBRC x NARO = 0,
+       and RIKEN x NARO = 0 (the last one now measured). So the union is EXACTLY the sum —
+       `?s a mccv:MCCV_000001` returns 153,459 DISTINCT unpinned = 62,676 NBRC + 64,341 RIKEN +
+       26,442 NARO, i.e. x2.45 NBRC's own count, and only 40.8% of what you get back is NBRC's.
+       On a REALISTIC PROPERTY JOIN (`?s a mccv:MCCV_000001 ; dcterms:identifier ?id`): 89,118 rows for
+       89,118 DISTINCT strains unpinned — a clean 1:1, ZERO row duplication — of which 62,676 are NBRC's
+       and 26,442 NARO's (x1.42). RIKEN contributes nothing here because its MCCV_000001 nodes are blank
+       nodes carrying no dcterms:identifier. This is the signature of SCOPE BLEED: nothing duplicates, so
+       COUNT(DISTINCT) is worthless — every surplus row is a well-formed FOREIGN strain. Only the graph
+       pin removes them."
     - "RELEVANT TO THIS DB'S LABEL BEHAVIOUR: NBRC's 23,987 brso:BiologicalResource nodes carry NO
        rdfs:label — measured 2026-07-17, an unpinned `?s a brso:BiologicalResource ; rdfs:label ?l`
        returns 19,514 rows, ALL of them RIKEN (19,452) + mogplus (62), and ZERO NBRC. This independently
@@ -62,19 +68,35 @@ schema_info:
        returns 100% foreign strains and 0% NBRC, i.e. it looks like data while containing none of yours."
     - "The ~30 rdfportal.org/ontology/* graphs (incl. meo, taxonomy) + <http://id.nlm.nih.gov/mesh> +
        <http://purl.jp/bio/11/goa> + the togoid relation/label graphs share this endpoint — join targets,
-       not co-tenancy traps for NBRC; probed 2026-07-17. NOT PROBED THIS SESSION (endpoint outage): the
-       taxonomy-hub question — whether NBRC's taxon links traverse a graph carrying the
-       <http://rdfportal.org/dataset/microbedbjp> older-nomenclature vintage. Treat NBRC's taxonomy
-       traversal as UNVERIFIED for co-tenancy until that probe is run; do not assume it is clean."
+       not co-tenancy traps for NBRC; probed 2026-07-17."
+    - "http://rdfportal.org/dataset/microbedbjp — **THE TAXONOMY HUB IS A TRAP, NOT CLEAN** (this was
+       recorded UNVERIFIED after an endpoint outage; PROBED 2026-07-17 and the prior was CORRECT).
+       NBRC's canonical taxon link `mccv:MCCV_000065` points at identifiers.org/taxonomy/<taxid> — the
+       exact IRI space microbedbjp re-declares at an OLDER NOMENCLATURE VINTAGE. Of NBRC's taxa,
+       9,239 are named in <http://rdfportal.org/ontology/taxonomy> and 8,573 ALSO in microbedbjp, so the
+       everyday strain->taxon->name join NEARLY DOUBLES:
+         `?s mccv:MCCV_000065 ?taxon . ?taxon taxo:scientificName ?name`
+             unpinned -> 42,416 rows / 21,869 strains  (x1.94)
+             taxon graph pinned -> 21,858 rows / 21,858 strains (clean 1:1)
+       1,211 of those taxa carry CONFLICTING names between the two graphs (legacy vs current), so this
+       is not only inflation — a GROUP BY ?name splits one clade across two spellings. FIX = pin
+       GRAPH <http://rdfportal.org/ontology/taxonomy> for the name leg.
+       BUT THE PIN IS NOT GROUND TRUTH — it silently DROPS 11 strains (8 taxa) whose ONLY
+       scientificName lives in microbedbjp: taxonomy/53604 Wickerhamomyces strasburgensis (4 strains),
+       plus Pseudonocardia sichuanensis, Candida cellulolytica, Dactylosporangium matsuzakiense,
+       Streptomyces labedae, Micromonospora oryzae, Streptomyces asiaticus, Monocillium nordinii (1
+       each). That is exactly the 21,869 - 21,858 delta. If completeness matters, pin the name leg and
+       add an OPTIONAL microbedbjp fallback for those; if correctness of the NAME matters, pin and
+       accept the 11. Decide deliberately — do not let the union decide for you."
   kw_search_tools: []
   version:
-    mie_version: "2.2"
+    mie_version: "2.3"
     mie_created: "2026-07-02"
     mie_updated: "2026-07-17"
-    # Normalized to the required dated-snapshot form. No release number is asserted: NBRC catalogue
-    # release identifiers were NOT probed this session (the endpoint was in sustained 503), so nothing
-    # is claimed as endpoint-derived. The previous "RDF Portal snapshot 2026-07" carried no derivation
-    # either — this only re-dates the verification.
+    # Dated-snapshot form; no release number asserted (none is endpoint-derivable). The two probe
+    # gaps left by the 2026-07-17 endpoint outage were CLOSED later the same day: the realistic
+    # property join and the RIKEN x NARO overlap are now measured, and the taxonomy-hub prior was
+    # probed and CONFIRMED as a real trap (x1.94). No UNVERIFIED claims remain in this file.
     data_version: "RDF Portal snapshot — verified 2026-07-17"
     update_frequency: "Periodic (with NBRC catalogue releases)"
   access:
@@ -84,7 +106,24 @@ critical_warnings: |
   - GRAPH IS MANDATORY: every query must be scoped with
     `GRAPH <http://purl.jp/bio/103/nite/culture/>`. The primary endpoint co-hosts ~40
     datasets; without the graph clause queries mix NBRC with MeSH/GO/BacDive/MEO/etc. and
-    return wrong or huge results.
+    return wrong or huge results. Quantified 2026-07-17: `?s a mccv:MCCV_000001` returns
+    153,459 strains unpinned — only 40.8% of them NBRC's (62,676; the rest are RIKEN JCM
+    64,341 + NARO 26,442, all three pairwise DISJOINT). Nothing is duplicated, so
+    COUNT(DISTINCT) does NOT help: the surplus rows are well-formed FOREIGN strains, and
+    only the pin removes them. See co_hosted_graphs.
+  - PINNING THE NBRC GRAPH IS NOT ENOUGH — THE TAXON NAME LEG NEEDS ITS OWN PIN (verified
+    2026-07-17). NBRC's canonical taxon link mccv:MCCV_000065 lands on
+    identifiers.org/taxonomy/<taxid>, which the co-hosted <http://rdfportal.org/dataset/microbedbjp>
+    re-declares at an OLDER NOMENCLATURE VINTAGE. So even with the NBRC graph pinned, the name leg
+    doubles:
+      GRAPH <http://purl.jp/bio/103/nite/culture/> { ?s mccv:MCCV_000065 ?taxon . }
+      ?taxon taxo:scientificName ?name .              # <- UNPINNED: 42,416 rows / 21,869 strains
+    Pinning the name leg to GRAPH <http://rdfportal.org/ontology/taxonomy> gives a clean
+    21,858 rows / 21,858 strains (x1.94 collapsed). 1,211 of NBRC's taxa carry CONFLICTING names
+    across the two graphs, so an unpinned GROUP BY ?name also splits one clade into two spellings.
+    CAVEAT (the pin is not ground truth): pinning drops 11 strains / 8 taxa whose ONLY name lives in
+    microbedbjp — e.g. Wickerhamomyces strasburgensis (taxonomy/53604, 4 strains), Streptomyces
+    labedae. That is exactly the 21,869 - 21,858 delta. See co_hosted_graphs for the full list.
   - STRING LITERALS ARE PLAIN — DO NOT ADD ^^xsd:string: string values (dcterms:identifier,
     skos:prefLabel, mccv:MCCV_000010 strain no., mccv:MCCV_000012 name+author, mccv:MCCV_000027
     attribution, mccv:MCCV_000030 isolation source, mccv:MCCV_000033 property note,
