@@ -166,17 +166,42 @@ schema_info:
     - http://totalglycome.glycosmos.org                # ~24k: TotalGlycome
     - http://rdf.glycosmos.org/pubmed                  # ~66k: glyco literature index
     - http://rdf.glycosmos.org/pubchem                 # ~23M: PubChem (glyco compounds)
+  co_hosted_graphs:
+    # 2g union-inflation probe, 2026-07-17. Endpoint total: 148 graphs (84 substantive +
+    # 64 paired */void dataset descriptors). This endpoint is the WORST re-declaration case
+    # of the four single-endpoint DBs — glycan:Saccharide is typed in THIRTEEN graphs.
+    - "http://rdf.glycosmos.org/tmp/glycosequence — STAGING DUPLICATE, the single worst trap here. It is a byte-for-byte twin of <http://rdf.glycosmos.org/glycans/glycosequence>: BOTH type exactly 254,097 glycan:Saccharide IRIs and their overlap is 254,097 — i.e. 100% of both (measured 2026-07-17). Every glycan is therefore counted TWICE before any other graph is considered. Multiplier = x2 on its own. The sibling staging graphs http://rdf.glycosmos.org/tmp/wurcsrdf (594 Saccharide IRIs) and http://rdf.glycosmos.org/tmp/subsumption behave the same way. NEVER let a tmp/* graph into a query: pin your GRAPH explicitly, or the count is wrong before you start."
+    - "glycan:Saccharide IS DECLARED IN 13 GRAPHS — measured 2026-07-17 with `SELECT ?g (COUNT(DISTINCT ?s)) WHERE { GRAPH ?g { ?s a glycan:Saccharide } }`: tmp/glycosequence 254,097; glycans/glycosequence 254,097; glycans/wurcsrdf 246,049; glycans/motif/wurcsrdf 213,285; glytoucan.org/core 117,864; glycoinfo.org/ggdb 3,106; glycans_glycoshape 647; totalglycome 621; tmp/wurcsrdf 594; ecodab 206; sugarbind 173; glycans/glycopaint 8; glycoinfo.org/paconto 1. These are the SAME GlyTouCan accession IRIs, not parallel ID spaces — core ∩ glycans/glycosequence = 114,089 shared IRIs. Consequence: an UNSCOPED `?s a glycan:Saccharide` yields 1,090,748 rows for only 262,477 distinct IRIs — MULTIPLIER = x4.16 average. The authoritative registry is <http://rdf.glytoucan.org/core> (117,864 glycans). Safe pattern: pin GRAPH <http://rdf.glytoucan.org/core> to enumerate glycans, and use COUNT(DISTINCT ?glycan) always."
+    - "http://rdf.glycosmos.org/genomealliance — RE-TYPES 24,136 of the SAME glycan:Glycogene IRIs that <http://rdf.glycosmos.org/glycogenes> declares (overlap measured 2026-07-17 = 24,136, i.e. 100% of genomealliance's glycogenes sit inside glycogenes). Multiplier = x2 for those genes specifically; unscoped `?s a glycan:Glycogene` = 447,339 rows / 423,203 distinct IRIs (x1.06 overall, because glycogenes' other ~399k are unique). glycoparadb adds 39 more. Safe pattern: pin GRAPH <http://rdf.glycosmos.org/glycogenes> (423,164 glycogenes) or COUNT(DISTINCT ?gene)."
+    - "http://rdf.glycoinfo.org/gpdb — RE-TYPES 14,103 of the SAME glycan:Glycoprotein IRIs that <http://rdf.glycosmos.org/glycoprotein> declares (92% of gpdb's 15,315 sit inside glycoprotein's 153,178). Unscoped `?s a glycan:Glycoprotein` = 169,036 rows / 154,933 distinct IRIs — multiplier x1.09 overall, x2 on the shared UniProt IRIs. ggdb (281), glycoepitope (261) and paconto (1) also declare the class. Safe pattern: pin GRAPH <http://rdf.glycosmos.org/glycoprotein>."
+    - "up:Protein IS DECLARED IN 8 GRAPHS — cazy 869,966; glycoprotein 139,075; Rhea 97,465; pathway 83,352; glycoinfo.org/gpdb 15,315; lectin 5,095; flyglycodb/fgdb 183; glycoparadb 40 (measured 2026-07-17). MOSTLY DISJOINT: unscoped `?s a up:Protein` = 1,210,491 rows / 1,173,895 distinct IRIs, multiplier x1.03. But the overlap is REAL where it matters — cazy ∩ glycoprotein = 5,418 shared UniProt IRIs, i.e. the CAZy enzymes that are themselves glycoproteins are double-typed. Pin the GRAPH matching your intent (cazy = CAZy enzyme sequences, glycoprotein = glycosylation carriers) rather than relying on the union."
+    - "~30 shared ontology / external-copy graphs (purl.obolibrary.org/obo/go.owl, /doid, /uberon, /eco.owl; semanticscience.org/ontology/sio.owl; ddbj.nig.ac.jp/ontologies/taxonomy/; and GlyCosmos' own embedded copies rdf.glycosmos.org/{hgnc,mondo,hpo,uberon,kegg,pubchem,pubmed,Rhea}) — join targets, not co-tenancy traps; probed 2026-07-17. They key on their source databases' native IRI spaces (obo:GO_*, obo:DOID_*, identifiers.org/taxonomy/*, HGNC/MONDO/HPO IRIs) and do NOT re-declare glycan:Saccharide, glycan:Glycogene or glycan:Glycoprotein. NOTE the two UBERON copies (purl.obolibrary.org/obo/uberon and rdf.glycosmos.org/uberon) — pin one. The 64 */void graphs are VoID dataset descriptors (void:triples/distinctSubjects); they hold no entity data."
   kw_search_tools:
     - sparql
   version:
-    mie_version: "4.2"
+    mie_version: "4.3"
     mie_created: "2026-07-01"
-    data_version: "2025.04 snapshot (glycan/protein counts verified 2026-06-27; disease/GO layer + gene-protein bridge verified 2026-07-01; CAZy + HPA-expression layers + full graph catalog added and verified 2026-07-01; lectin-name grounding layer — GL hub + LfDB + CarboGrove — added and verified 2026-07-16)"
+    mie_updated: "2026-07-17"
+    data_version: "RDF Portal snapshot — verified 2026-07-17 (glycan/protein counts verified 2026-06-27; disease/GO layer + gene-protein bridge verified 2026-07-01; CAZy + HPA-expression layers + full graph catalog added and verified 2026-07-01; lectin-name grounding layer — GL hub + LfDB + CarboGrove — added and verified 2026-07-16; co_hosted_graphs 2g probe + graph re-declaration figures verified 2026-07-17). No release number is derivable from this endpoint: the */void graphs carry void:triples/entities but NO dcterms:modified / dcterms:issued / dcterms:hasVersion / owl:versionInfo — probed 2026-07-17. The former \"2025.04\" label was taken from the project website, not the endpoint, and has been dropped per spec v2.3."
     update_frequency: "Quarterly"
   access:
     backend: "Virtuoso (bif:contains IS enabled — verified 2026-06-27)"
 
 critical_warnings: |
+  - UNSCOPED `?s a glycan:Saccharide` OVERCOUNTS GLYCANS BY x4.16 (measured 2026-07-17):
+    THIRTEEN graphs on this endpoint type the SAME GlyTouCan IRIs as glycan:Saccharide.
+    Union: 1,090,748 rows for only 262,477 distinct IRIs. Pinned to the authoritative
+    registry GRAPH <http://rdf.glytoucan.org/core>: 117,864 glycans.
+    Worst offender: <http://rdf.glycosmos.org/tmp/glycosequence> is a STAGING DUPLICATE of
+    <http://rdf.glycosmos.org/glycans/glycosequence> — both type exactly 254,097 Saccharide
+    IRIs and overlap 100% (254,097 shared), so every glycan is doubled before anything else
+    is joined. tmp/wurcsrdf and tmp/subsumption are the same kind of staging twin.
+    FIX: ALWAYS pin an explicit GRAPH (use <http://rdf.glytoucan.org/core> to enumerate or
+    count glycans) AND use COUNT(DISTINCT ?glycan). Never let a tmp/* graph into a query.
+    The same pattern applies, less severely, to glycan:Glycogene (glycogenes vs
+    genomealliance — 24,136 IRIs double-typed) and glycan:Glycoprotein (glycoprotein vs
+    gpdb — 14,103 double-typed).
+
   - TWO RESOURCE-ENTRY PREDICATES (CASE-SENSITIVE, DIFFERENT MEANING — #1 silent-fail trap):
     * glycan:has_Resource_entry (CAPITAL R) — in <http://rdf.glytoucan.org/core>, links each
       glycan to a SELF-reference Resource_entry whose dcterms:identifier is the GlyTouCan ID

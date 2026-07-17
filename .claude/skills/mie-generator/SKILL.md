@@ -308,9 +308,24 @@ bug in this skill until 2026-07-17:
 > carry 43–68 graphs (the full `rdfportal.org/ontology/*` suite plus `mesh` and `goa`).
 
 Conversely, sharing an endpoint does NOT imply a trap — `rhea` shares SIB with UniProt/Bgee/OMA
-and probes clean, and `dataset/gtdb` co-habits with NCBI Taxonomy but uses entirely its own IRIs
-(zero overlap), so it cannot inflate a taxon join. **The entry must come from the probe, in both
-directions.** Probe two kinds of node, reusing entities already found in 2c/2d:
+and probes genuinely clean: no co-tenant touches an `rdf.rhea-db.org` IRI at all. **The entry must
+come from the probe, in both directions.**
+
+**Classify into THREE kinds. Zero IRI overlap does NOT mean safe** — this skill said it did until
+2026-07-17, and two independent probes disproved it:
+  1. **Same IRI, same predicate → ROW DUPLICATION.** EFO re-declares 16,423 MONDO classes → ×4 on
+     `?c a owl:Class ; rdfs:label ?l`. DISTINCT masks it; the pin fixes it.
+  2. **Same IRI, CONFLICTING value → WRONG ANSWER.** DISTINCT cannot help. `microbedbjp` names taxid
+     1224 "Proteobacteria" vs the authoritative "Pseudomonadota"; DDBJ labels taxon 9606 `"9606"`
+     while `ontology/taxonomy` labels it `"Homo sapiens"`.
+  3. **Same CLASS, DISJOINT IRIs → SCOPE BLEED.** Nothing is duplicated; foreign ENTITIES are added.
+     Every row unique and well-formed, so **DISTINCT is useless and only the pin helps**. Measured:
+     `?e a dsmz:Enzyme` = 627,832 unpinned, only 8.7% BRENDA's (×11.47); MediaDive's culture media
+     ×15.5; `?t a taxo:Taxon` 3,764,445 vs 2,840,372 pinned (×1.33, surplus = gtdb + microbedbjp).
+     A ×2 duplicate is conspicuous; a ×15 union of plausible foreign rows is not.
+So the overlap probe CLASSIFIES a trap; it never dismisses one. Zero overlap rules out kind 1 only.
+
+Probe two kinds of node, reusing entities already found in 2c/2d:
   (a) a representative entity of THIS database — catches a sibling RE-TYPING it (e.g. OMA
       asserting `<uniprot-protein> a up:Protein` on SIB), which double-counts a bare COUNT;
   (b) each shared reference / hub IRI it points to — taxa, ChEBI, GO, MeSH … the join keys —

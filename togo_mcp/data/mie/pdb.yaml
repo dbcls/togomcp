@@ -48,12 +48,17 @@ schema_info:
     # RENAMED 2026-07 (was http://rdfportal.org/dataset/pdbj — now GONE).
     # This single graph holds both the pdbo ontology and all data (PDB entries +
     # chemical components). The old pdbx-v50.owl# schema namespace is inactive.
+  co_hosted_graphs:
+    - "http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr — RE-USES the SAME PDB entry IRIs (<http://rdf.wwpdb.org/pdb/XXXX>) that <http://rdfportal.org/dataset/pdb> declares: 29,544 datablock IRIs are shared (measured 2026-07-17). It does NOT re-type them (`?s a pdbo:datablock` is declared in dataset/pdb ONLY — 562,592 IRIs, single graph), so COUNTS ARE SAFE: multiplier = x1 on any pdbo:datablock count. The real hazard is rdfs:label. dataset/pdb puts ZERO rdfs:label on datablock IRIs (measured: 0); BMRB attaches exactly one per shared NMR entry, valued \"info:pdb/1ATP\" — a useless internal URI, NOT the structure title. So an UNSCOPED `?s a pdbo:datablock ; rdfs:label ?l` silently yields 29,552 rows / 29,550 entries (2 entries carry 2 labels) that all look like PDB data but come from BMRB; the same query pinned to GRAPH <http://rdfportal.org/dataset/pdb> yields 0. Fix: never use rdfs:label for a PDB entry — the title is dc:title and the ID is dct:identifier, both in dataset/pdb. Pin GRAPH <http://rdfportal.org/dataset/pdb>."
+    - "http://bmrbpub.protein.osaka-u.ac.jp/rdf/bms — same BMRB deposition set; shares only 8 datablock IRIs with dataset/pdb (measured 2026-07-17). Negligible, and likewise no re-typing. http://bmrbpub.protein.osaka-u.ac.jp/schema/mmcif_nmr-star.owl is the BMRB schema (no entry IRIs)."
+    - "~42 shared ontology/vocabulary graphs (http://purl.jp/bio/11/goa; id.nlm.nih.gov/mesh + /vocab + /void; the 37-graph rdfportal.org/ontology/* suite — go, mondo, taxonomy, uberon, cl, so, sio, …; owl#) — join targets, not co-tenancy traps; probed 2026-07-17. None declares pdbo:datablock, and a VALUES probe over pdb/1ATP, 4HHB, 1CRN, 2GBP, 6LU7 found those IRIs in dataset/pdb (238 triples) and BMRB /bmr (3) ONLY — ZERO occurrences anywhere else. Endpoint total: 46 graphs."
   kw_search_tools:
     - search_pdb_entity
   version:
-    mie_version: "7.0"
+    mie_version: "7.1"
     mie_created: "2026-07-09"
-    data_version: Current (weekly updates)
+    mie_updated: "2026-07-17"
+    data_version: "RDF Portal snapshot — verified 2026-07-17. (No release number is derivable from this endpoint: GRAPH <http://rdfportal.org/dataset/pdb> carries no dcterms:modified / dcterms:issued / dcterms:hasVersion / owl:versionInfo — probed 2026-07-17.)"
     update_frequency: Weekly
   access:
     backend: "Virtuoso"
@@ -67,6 +72,18 @@ critical_warnings: |
     Omitting FROM entirely still works (Virtuoso queries all graphs) but scans
     unrelated graphs on this endpoint (BMRB, MeSH, dozens of ontologies) — always use
     the correct graph name explicitly.
+
+  - CO-HOSTED BMRB INJECTS PHANTOM rdfs:label ON PDB ENTRY IRIs (measured 2026-07-17):
+    the BMRB graph <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> re-uses 29,544 of the SAME
+    <http://rdf.wwpdb.org/pdb/XXXX> IRIs that dataset/pdb declares. dataset/pdb itself puts
+    rdfs:label on ZERO entries. So an unscoped
+      ?s a pdbo:datablock ; rdfs:label ?l
+    returns 29,552 rows (29,550 entries) whose label is "info:pdb/1ATP" — a BMRB internal URI,
+    NOT a title; pinned to GRAPH <http://rdfportal.org/dataset/pdb> the same query returns 0.
+    This does NOT inflate counts (pdbo:datablock is typed in dataset/pdb only, multiplier x1)
+    but it silently answers a title/label question with the wrong database's string.
+    FIX: use dc:title for the title and dct:identifier for the 4-char ID, and pin
+    GRAPH <http://rdfportal.org/dataset/pdb>. Never use rdfs:label on a PDB entry.
 
   - MANDATORY NAMESPACE: Use pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
     The old pdbx-v50.owl# namespace is inactive and silently returns 0 results.

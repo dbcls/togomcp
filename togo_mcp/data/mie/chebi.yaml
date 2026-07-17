@@ -30,19 +30,60 @@ schema_info:
   base_uri: http://purl.obolibrary.org/obo/CHEBI_
   graphs:
     - http://rdf.ebi.ac.uk/dataset/chebi
+  co_hosted_graphs:
+    - "http://rdfportal.org/ontology/efo — EFO (Experimental Factor Ontology). Genuinely
+       RE-DECLARES a ChEBI subset under ChEBI's OWN obo:CHEBI_* IRIs: 2,079 CHEBI_ classes
+       typed owl:Class, of which 2,072 also carry EFO's own rdfs:label, 2,065 carry
+       oboInOwl:id, and 1,746 even carry chemrof:generalized_empirical_formula — i.e. it
+       copies ChEBI's own predicates, not merely an outbound xref. Measured overlap with the
+       `chebi` graph: 2,072 / 2,072 (100%) -> real union-inflation trap."
+    - "http://rdfportal.org/ontology/uberon — UBERON anatomy ontology. RE-DECLARES 915
+       obo:CHEBI_* classes as owl:Class, all 915 with their own rdfs:label. Measured overlap
+       with the `chebi` graph: 915 / 915 (100%) -> real trap."
+    - "http://rdfportal.org/ontology/cl — Cell Ontology. RE-DECLARES 179 obo:CHEBI_* IRIs as
+       owl:Class but supplies NO rdfs:label. It therefore inflates only the rdf:type leg of a
+       join (it multiplies the type-leg factor in the PRODUCT below), never the label leg."
+    - "MEASURED MULTIPLIER (verified 2026-07-17): inflation is a PRODUCT of the type-leg and
+       label-leg graph counts, so it far exceeds 2x on affected entities. For
+       `?s a owl:Class ; rdfs:label ?l` — water (CHEBI_15377) is typed owl:Class in 4 graphs
+       (chebi, efo, uberon, cl) and labelled in 3 (chebi, efo, uberon) => 4 x 3 = 12 rows
+       unpinned vs 1 row GRAPH-pinned = 12x. D-glucose (CHEBI_17234) = 9x; ethanol
+       (CHEBI_16236) = 4x. SCOPE IS BOUNDED: only ~2,079 of ChEBI's 224,523 CHEBI_ classes
+       (~0.9%) are affected — but they are the common, biologically central ones (water,
+       glucose, ethanol), i.e. exactly the entities an everyday query touches. Probed clean:
+       ontology/go, ontology/mondo, ontology/hp re-declare ZERO CHEBI_ classes.
+       FIX: pin GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> around every leg."
   kw_search_tools:
     - OLS4:searchClasses
   version:
-    mie_version: "2.2"
+    mie_version: "2.3"
     mie_created: "2026-04-29"
-    mie_updated: "2026-06-19"
-    data_version: "Release 2025"
+    mie_updated: "2026-07-17"
+    data_version: "Release 250 (derived from owl:versionInfo 250 and owl:versionIRI <http://purl.obolibrary.org/obo/chebi/250/chebi.owl> on <http://purl.obolibrary.org/obo/chebi.owl>; verified 2026-07-17)"
     update_frequency: "Monthly"
   access:
     backend: "Virtuoso"
 
 # Critical warnings: schema pathologies, IRI traps, mandatory performance filters.
 critical_warnings: |
+  - UNION-INFLATION TRAP (EFO/UBERON/CL RE-DECLARE ChEBI CLASSES): The shared ebi endpoint
+    co-hosts ontologies that copy a ChEBI subset under ChEBI's OWN obo:CHEBI_* IRIs, with
+    their own rdfs:label / oboInOwl:id / even chemrof:generalized_empirical_formula:
+        efo    2,079 CHEBI_ classes (2,072 labelled) — 100% overlap with the chebi graph
+        uberon   915 CHEBI_ classes (  915 labelled) — 100% overlap
+        cl       179 CHEBI_ classes (    0 labelled) — inflates the rdf:type leg only
+    Inflation is a PRODUCT of the per-leg graph counts, so it is much worse than 2x.
+    MEASURED 2026-07-17 on `?s a owl:Class ; rdfs:label ?l`:
+        water     (CHEBI_15377): UNION 12 rows vs PINNED 1 = 12x  (4 type-graphs x 3 label-graphs)
+        D-glucose (CHEBI_17234): UNION  9 rows vs PINNED 1 =  9x
+        ethanol   (CHEBI_16236): UNION  4 rows vs PINNED 1 =  4x
+    Only ~0.9% of ChEBI's 224,523 classes are affected — but they are the everyday ones
+    (water, glucose, ethanol), so a "simple" query is the MOST likely to hit this.
+    FIX — pin the graph around EVERY leg:
+        WRONG: ?s a owl:Class ; rdfs:label ?l ; chemrof:mass ?m .
+        RIGHT: GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
+                 ?s a owl:Class ; rdfs:label ?l ; chemrof:mass ?m . }
+    Probed clean: ontology/go, ontology/mondo, ontology/hp re-declare ZERO CHEBI_ classes.
   - NAMESPACE MIGRATION (CRITICAL — ALL OLD QUERIES BROKEN): Molecular data properties
     migrated from chebi/ to https://w3id.org/chemrof/. Old predicates return 0 results silently.
     CORRECT mappings:

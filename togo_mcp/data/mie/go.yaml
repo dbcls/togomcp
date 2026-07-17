@@ -26,13 +26,38 @@ schema_info:
   base_uri: http://purl.obolibrary.org/obo/
   graphs:
     - http://rdfportal.org/ontology/go
+  co_hosted_graphs:
+    - "http://rdf.glycosmos.org/glycoprotein — RE-DECLARES 19,255 GO_* IRIs as owl:Class under the SAME
+       obo IRIs (overlap with GO's own graph = 19,255 / 19,255, i.e. 100%). It carries the rdf:type
+       assertion ONLY — zero rdfs:label triples on those IRIs — so it multiplies the type-match leg of a
+       join without adding a label leg. Verified 2026-07-17."
+    - "http://rdfportal.org/ontology/cl (7,688), .../uberon (7,431), .../efo (777), .../clo (745),
+       .../pro (191), .../pro-reasoned (191), http://metadb.riken.jp/db/SSBD (17),
+       http://rdf.glycosmos.org/swisslipids (10), .../ontology/po (3) — each re-declares GO_* IRIs as
+       owl:Class AND (except SSBD) attaches its own rdfs:label: cl 7,688 label rows, uberon 7,433,
+       efo 764, clo 747, pro 191, pro-reasoned 191, swisslipids 10, po 5. These are import shadows of GO
+       terms inside other OBO ontologies. Verified 2026-07-17."
+    - "MEASURED MULTIPLIER — the everyday join `?c a owl:Class ; rdfs:label ?l` restricted to
+       obo:GO_* returns 158,185 rows / 48,330 distinct classes UNPINNED, vs exactly 48,321 rows /
+       48,321 classes when pinned to GRAPH <http://rdfportal.org/ontology/go> = x3.27 row inflation.
+       The multiplier is a PRODUCT (n type-matches x m label-matches per co-declared class), which is
+       why glycoprotein's label-free re-declaration still inflates. GO's own graph is internally clean
+       (48,321 rows for 48,321 classes, 1:1). FIX = pin GRAPH <http://rdfportal.org/ontology/go>.
+       Verified 2026-07-17."
+    - "NOT a trap: the ~30 other rdfportal.org/ontology/* graphs, http://id.nlm.nih.gov/mesh and
+       http://purl.jp/bio/11/goa share this endpoint but do not re-declare GO's own predicates on GO's
+       own IRIs — goa in particular is an annotation layer that REFERENCES GO terms (join target, not
+       co-tenancy). Probed 2026-07-17."
   kw_search_tools:
     - OLS4:searchClasses
   version:
-    mie_version: "2.1"
+    mie_version: "2.2"
     mie_created: "2025-02-10"
-    mie_updated: "2026-04-29"
-    data_version: "Latest GO Release"
+    mie_updated: "2026-07-17"
+    # Derived from the endpoint, not from geneontology.org: <http://purl.obolibrary.org/obo/go.owl>
+    # owl:versionInfo "2026-05-19" (and owl:versionIRI .../releases/2026-05-19/go.owl) in
+    # GRAPH <http://rdfportal.org/ontology/go>. The former "Latest GO Release" was a placeholder.
+    data_version: "GO release 2026-05-19 (owl:versionInfo on obo:go.owl; verified 2026-07-17)"
     update_frequency: "Monthly"
   access:
     backend: "Virtuoso"
@@ -42,6 +67,24 @@ critical_warnings: |
   - MANDATORY FROM CLAUSE: Every query on the shared 'primary' endpoint MUST include
     FROM <http://rdfportal.org/ontology/go>. Omitting it queries all co-located ontologies
     (MeSH, MONDO, taxonomy, etc.), causes timeouts, and returns incorrect results.
+  - EIGHT OTHER GRAPHS RE-DECLARE GO's OWN IRIs — x3.27 SILENT ROW INFLATION (verified 2026-07-17).
+    This is why the FROM clause above is mandatory, quantified. The everyday join
+      ?c a owl:Class ; rdfs:label ?l .   FILTER(STRSTARTS(STR(?c), "http://purl.obolibrary.org/obo/GO_"))
+    returns 158,185 rows for 48,330 classes UNPINNED, but exactly 48,321 rows for 48,321 classes
+    when pinned to GRAPH/FROM <http://rdfportal.org/ontology/go>. Every duplicate row is a
+    same-IRI re-declaration in a co-hosted graph, NOT a data error:
+      http://rdf.glycosmos.org/glycoprotein  19,255 GO_* typed owl:Class (type only, no label)
+      http://rdfportal.org/ontology/cl        7,688 typed + labelled
+      http://rdfportal.org/ontology/uberon    7,431 typed + 7,433 label rows
+      + efo (777), clo (745), pro (191), pro-reasoned (191), SSBD (17), swisslipids (10), po (3)
+    The inflation is a PRODUCT of the legs (n type-matches x m label-matches per class), so it grows
+    as you add triple patterns — a 3-pattern query inflates worse than this 2-pattern measurement.
+    NOTE this is a DIFFERENT defect from the plain-vs-^^xsd:string literal-form duplication documented
+    below; that one occurs WITHIN a single graph. GO's own graph is internally clean on this join
+    (48,321 rows / 48,321 classes, exactly 1:1).
+    FIX = FROM <http://rdfportal.org/ontology/go> (or a GRAPH block). Never rely on DISTINCT alone:
+    it hides the row inflation but still pays the cost, and any COUNT/aggregate over the unpinned
+    pattern is wrong.
   - MANDATORY STRSTARTS FILTER: Always add FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
     to exclude non-GO classes (BFO, RO, OBI, etc.) that share the same graph. Without it,
     counts are inflated and queries are slow.

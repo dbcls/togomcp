@@ -39,12 +39,34 @@ schema_info:
     - http://rdfportal.org/dataset/ensembl-glossary
     - http://rdfportal.org/dataset/ensembl_ontology
     - http://rdfportal.org/dataset/ensembl_taxonomy
+  co_hosted_graphs:
+    - "http://rdf.ebi.ac.uk/dataset/expressionatlas — Expression Atlas. RE-DECLARES Ensembl
+       gene IRIs (http://rdf.ebi.ac.uk/resource/ensembl/ENSG*/ENSMUSG*) with the SAME IRI,
+       carrying its own rdfs:label, dcterms:identifier and a rdf:type of
+       terms/expressionatlas/EnsemblDatabaseReference. Measured overlap with the `ensembl`
+       graph: 349,742 gene IRIs share an rdfs:label. AFFECTS ALL SPECIES (human AND mouse) —
+       this is the widest re-declaration on the endpoint. -> row-multiplication trap."
+    - "http://rdfportal.org/dataset/ensembl_grch37 — Ensembl GRCh37 (legacy human assembly).
+       RE-DECLARES human gene IRIs with the SAME IRI as the main `ensembl` graph, carrying its
+       own rdfs:label, dcterms:identifier, dcterms:description, obo:RO_0002162 (taxon),
+       rdfs:seeAlso and faldo:location. Measured overlap: 53,636 human gene IRIs share an
+       rdfs:label. It does NOT re-use terms:EnsemblGene as its rdf:type (it types genes as
+       obo:SO_0001217 / terms:protein_coding), so a rdf:type-only probe MISSES it — the
+       collision is on the label/identifier predicates. HUMAN ONLY (mouse is unaffected)."
+    - "MEASURED MULTIPLIER (verified 2026-07-17): for `?s a terms:EnsemblGene ; rdfs:label ?l`
+       over 5 human genes (BRCA1/BRCA2/TP53/EGFR/BRAF), unpinned = 15 rows vs GRAPH-pinned
+       = 5 rows -> 3x inflation (ensembl + ensembl_grch37 + expressionatlas each supply a
+       label). Same query over 5 mouse genes: unpinned = 10 rows vs pinned = 5 -> 2x
+       (ensembl + expressionatlas; grch37 is human-only). This is the confirmed cause of the
+       doubled counts seen in benchmark Q071 q2 and Q073 q1. FIX: always pin
+       GRAPH <http://rdfportal.org/dataset/ensembl> (or FROM) around EVERY leg of the query —
+       COUNT(DISTINCT ?gene) alone does NOT save an aggregate over ?label or a SUM/AVG."
   kw_search_tools: []
   version:
-    mie_version: "2.7"
+    mie_version: "2.8"
     mie_created: "2026-02-28"
-    mie_updated: "2026-07-16"
-    data_version: Release 115
+    mie_updated: "2026-07-17"
+    data_version: "Release 115 (derived from the release-scoped chromosome IRI http://rdf.ebi.ac.uk/resource/ensembl/115/homo_sapiens/GRCh38/17 reached via so:part_of; verified 2026-07-17)"
     update_frequency: Quarterly
     query_test_status: |
       All 7 SPARQL queries and cross-database queries verified/retested 2026-04-29.
@@ -62,6 +84,25 @@ schema_info:
 
 # Critical warnings: schema pathologies and IRI traps that cause silent failures.
 critical_warnings: |
+  - UNION-INFLATION TRAP (CO-HOSTED GRAPHS RE-DECLARE ENSEMBL GENE IRIs) — #1 CAUSE OF
+    WRONG COUNTS ON THIS ENDPOINT. Two co-tenants re-declare the SAME gene IRI
+    (http://rdf.ebi.ac.uk/resource/ensembl/ENSG*) with their OWN rdfs:label and
+    dcterms:identifier:
+      - expressionatlas   (349,742 gene IRIs overlap by label; ALL species, human + mouse)
+      - ensembl_grch37    ( 53,636 human gene IRIs overlap by label; HUMAN ONLY)
+    An unpinned query silently multiplies rows. MEASURED 2026-07-17 on
+    `?s a terms:EnsemblGene ; rdfs:label ?l`:
+        5 human genes -> UNION 15 rows  vs  PINNED 5 rows   = 3x
+        5 mouse genes -> UNION 10 rows  vs  PINNED 5 rows   = 2x
+    Note ensembl_grch37 does NOT re-use terms:EnsemblGene as rdf:type (it uses
+    obo:SO_0001217 / terms:protein_coding), so adding `a terms:EnsemblGene` does NOT protect
+    you — the collision is on the LABEL/IDENTIFIER leg, which is where the extra rows come in.
+    FIX — pin the graph around EVERY leg, not just the type leg:
+        WRONG: ?g a terms:EnsemblGene ; rdfs:label ?l .
+        RIGHT: GRAPH <http://rdfportal.org/dataset/ensembl> {
+                 ?g a terms:EnsemblGene ; rdfs:label ?l . }
+    COUNT(DISTINCT ?gene) hides the trap for a gene count but NOT for any aggregate over
+    ?label (or a SUM/AVG/GROUP_CONCAT), which still sees 2-3 copies of every row.
   - SPECIES IRI TRAP: Ensembl uses its OWN species IRIs, NOT NCBI Taxonomy.
     WRONG (returns 0): ?gene obo:RO_0002162 <http://identifiers.org/taxonomy/9606> .
     CORRECT:          ?gene <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> .

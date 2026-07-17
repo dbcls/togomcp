@@ -36,12 +36,32 @@ schema_info:
   base_uri: https://purl.dsmz.de/brenda/
   graphs:
     - http://rdfportal.org/dataset/brenda
+  co_hosted_graphs:
+    - "http://rdfportal.org/dataset/bacdive — SHARES BRENDA's VOCABULARY but NOT its IRIs, on exactly
+       ONE class. BacDive declares 573,112 d3o:Enzyme (10.5x more than BRENDA's 54,720) using the SAME
+       class IRI <https://purl.dsmz.de/schema/Enzyme> — both datasets are DSMZ products and share the
+       d3o schema namespace. IRI overlap is ZERO (measured 0 shared subjects), so a join CANNOT be
+       row-duplicated. The hazard is SCOPE, and it is large: `?e a d3o:Enzyme` returns 627,832 entities
+       UNPINNED (= 573,112 BacDive + 54,720 BRENDA, exactly disjoint, 1 row each) vs 54,720 pinned —
+       an x11.47 OVER-COUNT in which 91% of the 'enzymes' are BacDive strain-associated enzymes, not
+       BRENDA entries. A count returns silently, looks plausible, and is wrong by an order of magnitude.
+       FIX = FROM <http://rdfportal.org/dataset/brenda>. Verified 2026-07-17."
+    - "2g probe run 2026-07-17 — NO same-IRI re-declaration of BRENDA entities found. d3o:Enzyme is the
+       ONLY class BRENDA shares with any co-hosted graph: d3o:ECNumber (7,453), ChemicalCompound
+       (214,688), MolecularStructure (171,721), Reaction (139,860), BiologicalMaterial (30,338) and
+       Tissue (4,815) are each declared in BRENDA's graph and NOWHERE else on the endpoint. The ~30
+       rdfportal.org/ontology/* graphs + mesh + goa are join targets, not co-tenancy traps."
   kw_search_tools: []
   version:
-    mie_version: "2.2"
+    mie_version: "2.3"
     mie_created: "2026-04-28"
-    mie_updated: "2026-06-30"
-    data_version: "Release 2026"
+    mie_updated: "2026-07-17"
+    # No dataset-level version triple exists on the endpoint: probed void:triples, owl:versionInfo,
+    # owl:versionIRI, dcterms:modified|issued|hasVersion and pav:version in
+    # GRAPH <http://rdfportal.org/dataset/brenda>, plus void:Dataset/owl:Ontology descriptor nodes —
+    # none present (dcterms:issued exists only on individual reference/* nodes, as publication years).
+    # The former "Release 2026" was copied from brenda-enzymes.org, not derivable from the data.
+    data_version: "RDF Portal snapshot — verified 2026-07-17"
     update_frequency: "Irregular"
   access:
     backend: "Virtuoso"
@@ -50,6 +70,15 @@ critical_warnings: |
   - QUERY SCOPE: Always include FROM <http://rdfportal.org/dataset/brenda> or a GRAPH
     clause. Without it, queries span all primary-endpoint datasets and will time out or
     return mixed results.
+  - THE SCOPE WARNING ABOVE, QUANTIFIED — BacDive CO-HOSTS 573,112 d3o:Enzyme (verified 2026-07-17).
+    BacDive is the other DSMZ dataset on this endpoint and it uses the SAME d3o vocabulary, so
+    `?e a d3o:Enzyme` UNPINNED returns 627,832 enzymes — 573,112 of them BacDive's, only 54,720
+    BRENDA's. That is an x11.47 over-count in which 91% of the rows are not BRENDA data. It does not
+    error, and it does not duplicate rows (the two IRI sets are provably disjoint — 0 shared subjects),
+    so DISTINCT will NOT save you: the extra entities are real, distinct, and simply belong to another
+    database. Only the FROM/GRAPH pin fixes it. d3o:Enzyme is the only shared class — every other
+    BRENDA class (ECNumber, ChemicalCompound, Reaction, MolecularStructure, ...) is BRENDA-exclusive
+    on this endpoint, so this is the one count that silently lies.
   - ENZYME IDs ARE INTERNAL, NOT EC NUMBERS: Enzyme IRIs use internal BRENDA numeric IDs
     (e.g. https://purl.dsmz.de/brenda/enzyme/2485), NOT EC numbers. Multiple enzyme
     instances exist per EC class (one per organism). Always navigate from EC number to

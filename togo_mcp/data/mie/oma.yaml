@@ -29,11 +29,33 @@ schema_info:
   base_uri: https://omabrowser.org/oma/
   graphs:
     - http://rdfportal.org/dataset/oma
+  co_hosted_graphs:
+    - "http://bgee.org — Bgee gene expression. Bgee mints ITS genes in OMA's OWN namespace
+       (<http://omabrowser.org/ontology/oma#GENE_*>), so it re-types 908,030 of OMA's 8,462,320
+       orth:Gene IRIs as orth:Gene -> UNION JOIN INFLATION. Measured 2026-07-17 on human:
+       ALL 20,430 OMA genes with orth:organism <https://omabrowser.org/oma/genome/9606> carry
+       `?s a orth:Gene` in BOTH graphs (20,430 rows from each), so an unpinned type join is x2.00
+       exactly. Bgee additionally hangs rdfs:label, dcterms:identifier, dcterms:description,
+       lscr:xrefUniprot and 6,169 genex:isExpressedIn triples on those same gene IRIs, plus a
+       CONFLICTING orth:organism -> <https://bgee.org/species/NNN>: <oma#GENE_ENSG00000141510>
+       resolves to two different organism IRIs unpinned. NOTE the unpinned form is not merely wrong,
+       it is unrunnable — the human gene+xrefEnsemblGene query returns 20,430 rows pinned but
+       ANYTIME-timeouts (HTTP 500) with no GRAPH clause. FIX: always pin
+       GRAPH <http://rdfportal.org/dataset/oma>."
+    - "up:Taxon HUB (x3) — <http://purl.uniprot.org/taxonomy/NNN> nodes carry up:scientificName in
+       THREE graphs: http://rdfportal.org/dataset/oma, http://bgee.org and
+       http://sparql.uniprot.org/taxonomy (verified 2026-07-17 on taxonomy/9606 and taxonomy/10090:
+       2 rows from each of the 3 graphs). FIX: pin the taxon lookup to ONE graph."
+    - "PROBED CLEAN 2026-07-17: OMA's other primary classes are declared ONLY in
+       http://rdfportal.org/dataset/oma — orth:Protein (17,383,786), orth:OrthologsCluster
+       (33,451,292), orth:HierarchicalGeneTree (1,040,435). orth:Organism (2,927) has ZERO IRI
+       overlap with Bgee's 52 (<https://omabrowser.org/oma/genome/NNN> vs <https://bgee.org/species/NNN>)."
   kw_search_tools: []
   version:
-    mie_version: "2.1"
+    mie_version: "2.2"
     mie_created: "2026-04-29"
-    data_version: "OMA Release 2024"
+    mie_updated: "2026-07-17"
+    data_version: "RDF Portal snapshot — verified 2026-07-17"
     update_frequency: "Annual"
   access:
     backend: "Virtuoso"
@@ -57,6 +79,16 @@ schema_info:
 critical_warnings: |
   - MANDATORY GRAPH CLAUSE: always add GRAPH <http://rdfportal.org/dataset/oma> { ... }.
     Omitting it queries UniProt (17 M entries), Rhea, and Bgee simultaneously — instant timeout.
+  - BGEE SHARES OMA'S GENE IRIs — THE GRAPH CLAUSE IS NOT JUST ABOUT SPEED: Bgee mints its genes
+    in OMA's own namespace (oma#GENE_*), so <http://bgee.org> re-types 908,030 of OMA's 8,462,320
+    orth:Gene IRIs. Verified 2026-07-17: all 20,430 OMA human genes carry `?s a orth:Gene` in BOTH
+    graphs (20,430 rows each) -> an unpinned type join is x2.00 exactly. Bgee also puts a
+    CONFLICTING orth:organism -> <https://bgee.org/species/NNN> on those same IRIs alongside OMA's
+    <https://omabrowser.org/oma/genome/NNN>. And the unpinned form is not just wrong but unrunnable:
+    the human gene+lscr:xrefEnsemblGene query returns 20,430 rows pinned, ANYTIME-timeout unpinned.
+    FIX: GRAPH <http://rdfportal.org/dataset/oma>, and COUNT(DISTINCT ?gene) if you must go unpinned.
+  - up:scientificName ON A UniProt TAXON IS DECLARED IN 3 GRAPHS (oma, bgee, uniprot/taxonomy) —
+    verified 2026-07-17. Pin the taxon lookup to one graph or every taxon join triples.
   - IDENTIFIER AMBIGUITY: each protein has 5–20 dct:identifier values. Always add
     FILTER(STRSTARTS(?id, "SPECIESCODE")) — e.g., STRSTARTS(?id, "HUMAN") — to get the
     OMA-native identifier (e.g., "HUMAN01315"). Omitting it explodes result rows by 10–20x.

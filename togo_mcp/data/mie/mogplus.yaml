@@ -41,17 +41,62 @@ schema_info:
   base_uri: http://identifiers.org/mogplus/
   graphs:
     - http://rdfportal.org/dataset/mogplus
+  co_hosted_graphs:
+    - "brso:BiologicalResource IS SHARED BY THREE GRAPHS — an unpinned strain list is ~315x too long.
+       MoG+'s 62 strain nodes are typed <http://purl.jp/bio/10/brso/BiologicalResource>, and so are two
+       OTHER co-hosted collections: <http://purl.jp/bio/103/nite/culture/> (NBRC, 23,987) and
+       <http://metadb.riken.jp/db/xsearch_jcm_brso> (RIKEN JCM, 19,452). UNION hazard, NOT an
+       IRI-duplication trap: all three pairwise IRI overlaps measured EXACTLY ZERO (mogplus x nbrc = 0,
+       mogplus x riken = 0, nbrc x riken = 0) because the namespaces are disjoint
+       (identifiers.org/mogplus/bioresource/BFM vs purl.jp/bio/103/nite/nbrc/cultures/00113675 vs
+       metadb.riken.jp/db/rikenbrc_jcm_microbe/JCM_1948). So rows are never duplicated — FOREIGN STRAINS
+       ARE SILENTLY ADDED. Measured 2026-07-17 on the realistic strain-listing join
+       `?s a brso:BiologicalResource ; rdfs:label ?l`: 19,514 rows / 19,514 subjects unpinned vs
+       62 / 62 pinned = x314.7 (19,514 = 62 MoG+ + 19,452 RIKEN exactly; NBRC's 23,987 do NOT appear
+       because they carry skos:prefLabel, not rdfs:label — so the blow-up depends on which predicate you
+       join, another reason to pin rather than reason about it).
+       FIX = pin GRAPH <http://rdfportal.org/dataset/mogplus>. Verified 2026-07-17."
+    - "2g probe — THE VARIANT LAYER IS EXCLUSIVE, no re-declaration found. gvo:SNV, gvo:Variation,
+       vcf:GenotypeCall and vep:ConsequenceAnnotation are declared in
+       <http://rdfportal.org/dataset/mogplus> and in NO OTHER GRAPH on this endpoint (probed with a
+       ?g != mogplus exclusion, 2026-07-17). So the variant/genotype/consequence core — the reason to
+       use this DB — carries no co-tenancy risk; only the brso:BiologicalResource strain hub does."
+    - "faldo:ExactPosition is declared in 5 other graphs (mbgd .../resource/gene and .../resource/default,
+       <http://rdf.glycosmos.org/glycoprotein>, <http://fams.bio.chuo-u.ac.jp/GPCR/rdf/>,
+       <http://jpost.org/graph/database>). NOT a trap by IRI: sampled 2026-07-17, each uses its own
+       namespace (mbgd.genome.ad.jp/rdf/resource/gene/aae:AQ_001/location/begin) or blank nodes
+       (jPOST: nodeID://b1855932909) — none is in identifiers.org/mogplus/. CAVEAT: this was
+       established by SAMPLING, not an exhaustive overlap count — the exhaustive query times out
+       against MoG+'s ~170M position nodes, and per this file's first critical_warning an unbounded
+       faldo scan will 503 anyway. Never query faldo:ExactPosition unpinned/unbounded here regardless."
   kw_search_tools: []
   version:
-    mie_version: "1.1"
+    mie_version: "1.2"
     mie_created: "2026-07-03"
-    mie_updated: "2026-07-04"
-    data_version: "RDF Portal snapshot 2026-07 (MoG+ releases v3, v2.1)"
+    mie_updated: "2026-07-17"
+    # Endpoint-DERIVED (queried 2026-07-17): the four ontology nodes in the mogplus graph
+    # (<http://identifiers.org/mogplus/ontology>, .../resource/vep, .../resource/vcf,
+    # .../resource/snpeff) each carry owl:versionInfo "draft-2026-07-01". No release-level
+    # owl:versionInfo / dcterms:hasVersion|issued|modified exists for the DATA itself, so the
+    # dated-snapshot form carries the load date.
+    data_version: "RDF Portal snapshot — verified 2026-07-17 (MoG+ releases v3 + v2.1; the graph's ontology nodes carry owl:versionInfo \"draft-2026-07-01\", derived from the endpoint — there is no release-level version triple for the data)"
     update_frequency: "Periodic (with MoG+ releases)"
   access:
     backend: "Virtuoso (supports bif:contains, but text search is never needed here)"
 
 critical_warnings: |
+  - ⚠ THE 62-STRAIN PANEL IS ONLY 62 STRAINS IF YOU PIN THE GRAPH. brso:BiologicalResource is
+    shared by two OTHER co-hosted collections — NBRC (<http://purl.jp/bio/103/nite/culture/>,
+    23,987) and RIKEN JCM (<http://metadb.riken.jp/db/xsearch_jcm_brso>, 19,452). Unpinned
+    `?s a brso:BiologicalResource ; rdfs:label ?l` -> 19,514 rows; pinned to
+    GRAPH <http://rdfportal.org/dataset/mogplus> -> 62 (x314.7, verified 2026-07-17). The IRI
+    spaces are disjoint (all three pairwise overlaps = 0), so nothing is DUPLICATED — instead you
+    silently get a list of foreign culture-collection strains that have no genotypes here, and
+    every row still looks well-formed. Any subsequent med2rdf:sample join against them returns
+    ZERO rows, which reads as "no variants" rather than as an error.
+    FIX: always scope with GRAPH <http://rdfportal.org/dataset/mogplus>. (The variant layer —
+    gvo:SNV / gvo:Variation / vcf:GenotypeCall / vep:ConsequenceAnnotation — is exclusive to this
+    graph and carries no such risk; only the strain hub does.)
   - ⚠ BILLION-TRIPLE GRAPH — BOUND EVERY QUERY OR IT TIMES OUT / 503s: this graph holds
     ~600M genotype calls, ~279M VEP annotations, ~170M position nodes, ~146M variants
     (132M gvo:SNV + 14M gvo:Variation). Any query that scans a whole class — an unfiltered

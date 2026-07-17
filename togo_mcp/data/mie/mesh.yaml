@@ -32,12 +32,48 @@ schema_info:
     - http://id.nlm.nih.gov/mesh
     - http://id.nlm.nih.gov/mesh/vocab
     - http://id.nlm.nih.gov/mesh/void
+  co_hosted_graphs:
+    - "http://rdf.glycosmos.org/glycovid_pubchem — RE-DECLARES 768 REAL MeSH DESCRIPTOR IRIs UNDER A
+       WRONG TYPE AND WITH A BOGUS LABEL. It declares 879 subjects as meshv:Concept, but they are NOT
+       MeSH concept IRIs — they are MeSH DESCRIPTOR IRIs (e.g. <http://id.nlm.nih.gov/mesh/D000163>),
+       768 of which are meshv:TopicalDescriptor in the authoritative <http://id.nlm.nih.gov/mesh> graph
+       (the exact-class overlap on meshv:Concept is 0, which is precisely why a naive same-class overlap
+       probe MISSES this — the re-declaration is CROSS-TYPE). It carries only 2 predicates: rdf:type and
+       rdfs:label. Its rdfs:label is the WORST part: for ALL 768 co-declared descriptors the label is the
+       BARE ACCESSION STRING, not the term name — D000163 is labelled \"D000163\" here but
+       \"Acquired Immunodeficiency Syndrome\" authoritatively; 768/768 disagree. Multiplier on the
+       everyday `?d a meshv:TopicalDescriptor ; rdfs:label ?l`: 31,030 rows / 30,248 subjects unpinned
+       vs 30,262 rows / 30,248 subjects pinned = x1.025 — SMALL but pure poison, because the 768
+       affected descriptors are disease terms and each gains a duplicate row whose label is an
+       accession. A label lookup can return \"D000163\" instead of the disease name, and a
+       FILTER/REGEX/bif:contains on the label silently drops those descriptors. (The pinned 30,262 vs
+       30,248 gap is MeSH's own: 14 descriptors legitimately carry 2 rdfs:labels.)
+       FIX = pin GRAPH <http://id.nlm.nih.gov/mesh>. Verified 2026-07-17."
+    - "CONFIRMED PRIOR — no OTHER graph re-declares MeSH. Type-distribution probe over 9 MeSH classes
+       (meshv:TopicalDescriptor 30,248 / Concept 466,976 / Term 869,536 / SCR_Chemical 250,445 /
+       SCR_Disease 6,771 / GeographicalDescriptor 401 / PublicationType 189 / Qualifier 84 / CheckTag 2)
+       found EVERY one exclusively in <http://id.nlm.nih.gov/mesh>, with the single exception of
+       meshv:Concept in glycovid_pubchem above. MeSH is a very common join target on this endpoint —
+       the many togoid relation graphs (mondo-mesh, doid-mesh, medgen-mesh, chembl_compound-mesh,
+       orphanet_phenotype-mesh) REFERENCE MeSH IRIs in object position but declare no type or label for
+       them: referencing is NOT re-declaring, and they cannot inflate a MeSH join. Probed 2026-07-17."
   kw_search_tools:
     - search_mesh_descriptor
   version:
-    mie_version: "2.1"
+    mie_version: "2.2"
     mie_created: "2026-04-29"
-    data_version: "2024"
+    mie_updated: "2026-07-17"
+    # The previous bare "2024" was NOT endpoint-derived — spot-checked and RETRACTED 2026-07-17.
+    # What the endpoint actually offers, and why none of it establishes the release:
+    #   - GRAPH <http://id.nlm.nih.gov/mesh/void> describes the MeSH RDF SERVICE, not this load:
+    #     its dcterms:date/dcterms:created are 2014-11-01 and its owl:versionInfo is "1.0.0"
+    #     (the VoID doc's own version). Its void:dataDump list statically names mesh2020..mesh2024
+    #     .nt + a bare mesh.nt REGARDLESS of which one was ingested — it is a menu, not a receipt.
+    #   - Newest meshv:dateRevised over all 28,792 TopicalDescriptors = 2023-11-17. That is
+    #     CONSISTENT with the NLM 2024 release (published Nov 2023) and rules out anything older,
+    #     but it is a lower bound, not proof of the release label.
+    # Hence the dated-snapshot form. If you need the exact release, do not trust "2024".
+    data_version: "RDF Portal snapshot — verified 2026-07-17 (release year not derivable from the endpoint; newest descriptor dateRevised = 2023-11-17, consistent with but not proof of MeSH 2024)"
     update_frequency: "Annual"
   license:
     data_license: "Public Domain (U.S. Government)"
@@ -49,6 +85,19 @@ schema_info:
 
 # Critical warnings: schema pathologies and silent-failure traps.
 critical_warnings: |
+  - ⚠ UNPINNED LABEL LOOKUPS CAN RETURN A MeSH ACCESSION INSTEAD OF THE TERM NAME. The co-hosted
+    graph <http://rdf.glycosmos.org/glycovid_pubchem> re-declares 768 real MeSH descriptor IRIs
+    (typed meshv:Concept there, though they are meshv:TopicalDescriptor in MeSH proper) and gives
+    each an rdfs:label equal to its BARE ACCESSION. All 768 disagree with MeSH's own label:
+      <http://id.nlm.nih.gov/mesh/D000163>  rdfs:label "Acquired Immunodeficiency Syndrome"  (mesh graph)
+      <http://id.nlm.nih.gov/mesh/D000163>  rdfs:label "D000163"                             (glycovid_pubchem)
+    Unpinned `?d a meshv:TopicalDescriptor ; rdfs:label ?l` -> 31,030 rows for 30,248 descriptors;
+    pinned to GRAPH <http://id.nlm.nih.gov/mesh> -> 30,262 rows for the same 30,248 (verified
+    2026-07-17). Only x1.025 overall, so it will NOT look wrong in a count — but the 768 affected
+    terms are DISEASE descriptors, exactly what MeSH is usually queried for. Consequences: a label
+    lookup may return "D000163"; a FILTER/REGEX/bif:contains on ?l silently misses those terms; a
+    label-keyed dictionary is silently corrupted.
+    FIX: always scope with GRAPH <http://id.nlm.nih.gov/mesh>.
   - WRONG HIERARCHY PREDICATE (silent failure): Use meshv:broaderDescriptor (not meshv:broader)
     for Descriptor-to-Descriptor hierarchy. meshv:broader returns 0 results with no error.
     Qualifiers use meshv:broaderQualifier; Concepts use meshv:broaderConcept.
