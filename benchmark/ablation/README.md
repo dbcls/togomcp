@@ -89,14 +89,61 @@ Outputs land in `results/`:
 - `ablation_contributions.csv` — one ranked row per section.
 - `ablation_report.md` — ranked table + 4-category spotlight + caveats.
 
+> **Read [FINDINGS.md](FINDINGS.md) before running or interpreting a sweep.** The
+> 2026-07 run was a null result (0/11 sections significant), and it records the two
+> traps that produced convincing-looking wrong answers first: a banked baseline, and
+> an aggregate mistaken for a per-question effect.
+
+## ⚠️ Never bank a baseline across batches
+
+`run_ablation.py` skips a condition whose `<cond>-scored.csv` already exists. That is
+what makes a sweep resumable — and it is also the harness's sharpest edge: if the
+baseline was produced in an **earlier session**, the sweep silently reuses it and every
+contribution is measured against a different batch.
+
+This is not hypothetical. In 2026-07 a baseline banked from a 1-condition trial ran
+~0.4/20 low, which made **all 11** contributions negative — "removing any section
+helps". All contributions subtract the *same* baseline, so they are not independent:
+one low baseline drags them all negative together. Re-running the baseline fresh in the
+same batch (16.72 → 17.13) made the pattern vanish, and rebased the effort axis too.
+
+**Rule:** a question's baseline and ablated rows must come from the same batch. If the
+baseline predates the ablations, delete it and let it re-run. When extending the set,
+run **every** condition for the new questions in one batch.
+
+## Extending n without re-running the sweep
+
+The analysis keys on `question_id` and pairs per question, so more questions can be
+folded in later — the ones already swept are not redone (~$0.54/question-run; +25
+questions ≈ $490 vs ≈ $1.9k for a 100-question redo):
+
+```bash
+python append_results.py --list-existing results        # what's already covered
+python run_ablation.py --results-dir results_batch2 \
+       --questions <new...> --runs 3 --answer-use-api --judge-use-api   # ALL conditions, one batch
+python append_results.py results_batch2 results         # fold in (idempotent, dedups by qid)
+python ablation_analysis.py --exclude-ceiling 20 --exclude-floor 12
+```
+
 ## Notes & knobs
 
 - **Idempotent**: a condition whose `results/<cond>-scored.csv` exists is skipped.
-  Delete it (or pass `--force`) to re-run. A partial sweep resumes safely.
+  Delete it (or pass `--force`) to re-run. A partial sweep resumes safely — but see
+  the baseline warning above before relying on a *reused* baseline.
+- **Use the API, not the subscription, for anything this size**:
+  `--answer-use-api --judge-use-api` (needs `ANTHROPIC_API_KEY`). On `claude login` the
+  Opus judge gets rate-limited into empty responses and the answering agent degrades
+  into `"Not logged in"` stubs that the runner still records as `success=True`.
 - **Sequential**: conditions run one at a time on one loopback port (`--port`,
   default 8971); only one local server is alive at a time.
 - **Contribution** = `mean(baseline) − mean(section removed)` on
   `togomcp_total_score` (0–20), paired per question. Positive ⇒ the section helps.
+  Reported with a **95% CI over the paired per-question deltas**; a contribution only
+  means anything when its CI excludes 0 (`*`). Mind the **multiple comparisons**: 11
+  sections are tested, so ~0.6 nominal hits are expected by chance and the corrected
+  bar is |z| > 2.84 — the report's Verdict section spells this out. And an *aggregate*
+  difference is not an effect: removing `sparql_query_examples` shifted total SPARQL
+  calls +25%, but paired per question it was +0.87 ± 1.07 (i.e. nothing).
 - **Scale up**: `python select_pilot.py --full` then re-run the sweep for all 100
   questions. `--conditions` restricts to a subset of sections.
 - **Replicates**: `run_ablation.py --runs R` answers + judges each question R times

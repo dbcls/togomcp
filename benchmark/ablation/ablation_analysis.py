@@ -39,7 +39,7 @@ import glob
 import re
 from math import sqrt
 from pathlib import Path
-from statistics import mean, stdev
+from statistics import NormalDist, mean, stdev
 
 import yaml
 
@@ -143,6 +143,12 @@ def _fmt(x: float | None, spec: str = "+.2f") -> str:
 # CI excludes 0. Normal approximation (1.96); at n~35 the t-correction is ~4%,
 # immaterial to any conclusion drawn here, and it keeps this stdlib-only.
 _Z95 = 1.96
+
+
+def _bonferroni_z(k: int) -> float:
+    """Two-sided |z| threshold at α = 0.05/k — the bar one section must clear when
+    k sections are tested at once."""
+    return NormalDist().inv_cdf(1 - (0.05 / max(k, 1)) / 2)
 
 
 def _delta_stats(deltas: list[float]) -> dict:
@@ -554,17 +560,48 @@ def write_report(rows: list[dict], path: Path, metric: str,
         "",
         "## All 11 sections, ranked by contribution",
         "",
-        "| Rank | Section | Spotlight category | n | Baseline | Ablated | Contribution (±95% CI) |",
-        "|---:|---|---|---:|---:|---:|---:|",
+        "| Rank | Section | Spotlight category | n | Baseline | Ablated | Contribution (±95% CI) | z |",
+        "|---:|---|---|---:|---:|---:|---:|---:|",
     ]
     for i, r in enumerate(rows, 1):
         ci = r.get("contribution_ci95")
         ci_s = "" if ci is None else f" ± {ci:.2f}"
+        se = r.get("contribution_se")
+        c = r.get("contribution")
+        z = (c / se) if (se and c is not None) else None
         lines.append(
             f"| {i} | `{r['section']}` | {r['spotlight']} | {r['n']} | "
             f"{_fmt(r['mean_baseline'], '.2f')} | {_fmt(r['mean_ablated'], '.2f')} | "
-            f"**{_fmt(r['contribution'])}{ci_s}**{r.get('contribution_sig', '')} |"
+            f"**{_fmt(r['contribution'])}{ci_s}**{r.get('contribution_sig', '')} | "
+            f"{('n/a' if z is None else f'{z:+.2f}')} |"
         )
+
+    # Verdict — the multiple-comparison caveat belongs next to the stars, not in a
+    # footnote, because a single borderline hit across 11 tests is what chance looks
+    # like. Bonferroni over the number of sections actually reported.
+    n_sig = sum(1 for r in rows if r.get("contribution_sig"))
+    k = len(rows)
+    z_bonf = _bonferroni_z(k)
+    lines += [
+        "",
+        "## Verdict",
+        "",
+        f"**{n_sig} of {k}** sections have a 95% CI excluding 0"
+        + (" — i.e. no section is distinguishable from 'this section does nothing'."
+           if n_sig == 0 else "."),
+        "",
+        f"**Multiple comparisons matter here.** {k} sections are tested, so at α=0.05 about "
+        f"{0.05 * k:.1f} false positives are expected by chance alone. A lone section at the "
+        f"nominal threshold is therefore NOT evidence on its own: a Bonferroni-corrected "
+        f"threshold (α=0.05/{k}≈{0.05 / k:.4f}) needs **|z| > {z_bonf:.2f}**. Read `*` as "
+        "\"worth following up\", not \"established\".",
+        "",
+        "**Leave-one-out understates.** Each section is removed while the other "
+        f"{k - 1} remain, so redundant siblings cover for it — a near-zero contribution means "
+        "\"not individually necessary given everything else\", NOT \"worthless\". Removing a "
+        "whole *group* (e.g. all query-guidance sections at once) is what would expose their "
+        "joint value.",
+    ]
 
     lines += ["", "## Spotlight — the 4 spec-named categories", "",
               "| Section | Category | Contribution | Contribution (relevance-scoped) |",
