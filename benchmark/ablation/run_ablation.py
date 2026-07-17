@@ -421,7 +421,12 @@ def main() -> int:
 
     if args.results_dir:
         global RESULTS_DIR, RENDERED_DIR
-        RESULTS_DIR = Path(args.results_dir)
+        # Resolve to absolute: the runner/judge subprocesses run with cwd=SCRIPTS_DIR,
+        # so a relative --results-dir would make the rendered-config path (-c) and the
+        # answer-output path (-o) resolve against benchmark/scripts instead of here.
+        # The config would then be "not found" and the runner would silently fall back
+        # to default settings (production togomcp URL, full MIEs) — zero ablation signal.
+        RESULTS_DIR = Path(args.results_dir).resolve()
         RENDERED_DIR = RESULTS_DIR / "rendered_configs"
         print(f"results dir: {RESULTS_DIR}")
 
