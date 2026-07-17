@@ -28,8 +28,16 @@ So a clean run is necessary, not sufficient. ZERO/ERROR on a `correct_sparql` is
 near-certain defect; ZERO on a `sparql` example is a strong flag to review.
 
 Network/timeout failures are reported as ERROR but called out separately so a flaky
-endpoint is not mistaken for a broken query. Exit code = ZERO + ERROR count on
-`correct_sparql` blocks (the high-confidence defects); pass --strict to count all.
+endpoint is not mistaken for a broken query.
+
+Exit code = ZERO + ERROR count over ALL example blocks (not just `correct_sparql`).
+An earlier version gated only on `correct_sparql`, which let a broken `sparql`
+example (pubmed's cross-DB join, wrong predicate → 0 rows) slip through triage — so
+now every zero-row example fails the gate. A genuinely-empty example (rare — one that
+demonstrates "no results is the answer") must be marked in the MIE with a sibling
+`expect_empty: true` on that example dict; the checker then treats its 0 rows as OK,
+and if such an example later STARTS returning rows it prints a "stale expect_empty"
+note so the marker gets removed. Net-fail (5xx / timeout) never counts.
 
 Usage:
     uv run python scripts/check_mie_examples.py                 # all MIEs
@@ -105,11 +113,15 @@ def complete_query(query, file_prefixes):
 
 
 def walk_queries(node, path=""):
-    """Yield (jsonpath, key, query_text) for every COPY_KEYS value."""
+    """Yield (jsonpath, key, query_text, expect_empty) for every COPY_KEYS value.
+
+    `expect_empty` is the sibling `expect_empty: true` flag on the dict holding the
+    query — the allowlist marker for an example that legitimately returns 0 rows."""
     if isinstance(node, dict):
+        expect_empty = bool(node.get("expect_empty"))
         for k, v in node.items():
             if k in COPY_KEYS and isinstance(v, str):
-                yield f"{path}/{k}", k, v
+                yield f"{path}/{k}", k, v, expect_empty
             else:
                 yield from walk_queries(v, f"{path}/{k}")
     elif isinstance(node, list):
@@ -169,8 +181,6 @@ def main():
     ap.add_argument("dbs", nargs="*", help="database names to check (default: all)")
     ap.add_argument("--timeout", type=float, default=90.0)
     ap.add_argument("--delay", type=float, default=0.3)
-    ap.add_argument("--strict", action="store_true",
-                    help="exit-count includes sparql-example ZERO/ERROR, not just correct_sparql")
     args = ap.parse_args()
 
     endpoints = load_endpoint_map()
@@ -179,7 +189,7 @@ def main():
         want = set(args.dbs)
         files = [f for f in files if f.stem in want]
 
-    zero, errs, netfail, skips, ok = [], [], [], 0, 0
+    zero, errs, netfail, stale, skips, ok = [], [], [], [], 0, 0
     for f in files:
         db = f.stem
         text = f.read_text(encoding="utf-8")
@@ -190,12 +200,9 @@ def main():
             continue
         file_prefixes = harvest_prefixes(text)
         ep = endpoints.get(db)
-        for jpath, key, q in walk_queries(d):
+        for jpath, key, q, expect_empty in walk_queries(d):
             tag = f"{db} {jpath.lstrip('/')}"
-            if not is_runnable_sparql(q):
-                skips += 1
-                continue
-            if not ep:
+            if not is_runnable_sparql(q) or not ep:
                 skips += 1
                 continue
             n, err = run(ep, complete_query(q, file_prefixes), args.timeout)
@@ -208,31 +215,44 @@ def main():
                 errs.append((tag, key, err))
                 print(f"  ✗  {tag} [{key}] ERROR: {err}", flush=True)
             elif n == 0:
-                zero.append((tag, key))
-                print(f"  ✗  {tag} [{key}] ZERO ROWS", flush=True)
+                if expect_empty:  # allowlisted — genuinely-empty example
+                    ok += 1
+                    print(f"  ✓  {tag} 0 rows (expect_empty)", flush=True)
+                else:
+                    zero.append((tag, key))
+                    print(f"  ✗  {tag} [{key}] ZERO ROWS", flush=True)
             else:
                 ok += 1
+                if expect_empty:  # marker now lies — example returns rows
+                    stale.append((tag, n))
+                    print(f"  !  {tag} STALE expect_empty (now {n} rows)", flush=True)
 
     print("\n" + "=" * 70)
     print(f"MIE EXAMPLE CHECK — {ok} ok, {len(zero)} zero-row, {len(errs)} error, "
-          f"{len(netfail)} net-fail, {skips} skipped")
+          f"{len(netfail)} net-fail, {len(stale)} stale-marker, {skips} skipped")
     print("=" * 70)
     hi = lambda items: [t for t in items if t[1] == "correct_sparql"]  # noqa: E731
     if zero or errs:
         print("\nHIGH CONFIDENCE — anti_pattern correct_sparql that ZERO/ERROR (near-certain defect):")
         for tag, key, *rest in hi(zero) + hi(errs):
             print(f"  {tag}: {rest[0] if rest else 'ZERO ROWS'}")
-        print("\nEXAMPLES (sparql_query_examples / cross_database) that ZERO/ERROR (review):")
-        for tag, key, *rest in zero + errs:
-            if key != "correct_sparql":
+        others = [(t, k, *r) for t, k, *r in (zero + errs) if k != "correct_sparql"]
+        if others:
+            print("\nEXAMPLES (sparql_query_examples / cross_database) that ZERO/ERROR"
+                  " — disposition each; mark expect_empty only if 0 is genuinely correct:")
+            for tag, key, *rest in others:
                 print(f"  {tag}: {rest[0] if rest else 'ZERO ROWS'}")
+    if stale:
+        print("\nSTALE expect_empty (marker says empty but query now returns rows — remove the marker):")
+        for tag, n in stale:
+            print(f"  {tag}: now {n} rows")
     if netfail:
         print("\nNET-FAIL (endpoint unreachable — NOT a query defect):")
         for tag, key, err in netfail:
             print(f"  {tag}: {err}")
 
-    exit_items = (zero + errs) if args.strict else (hi(zero) + hi(errs))
-    sys.exit(min(len(exit_items), 125))
+    # Gate on EVERY un-allowlisted zero-row/error, plus stale markers (which lie).
+    sys.exit(min(len(zero) + len(errs) + len(stale), 125))
 
 
 if __name__ == "__main__":
