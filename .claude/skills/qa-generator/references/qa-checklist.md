@@ -1,4 +1,4 @@
-# QA self-review checklist (C01–C27)
+# QA self-review checklist (C01–C28)
 
 Run this as Phase 8 on every candidate, in the voice of a strict reviewer trying to *reject* it. A CRITICAL or MAJOR finding must be fixed before the checkpoint — never present a question you know trips one. Output a verdict: `PASS` | `MINOR` | `MAJOR`, with the triggered codes. This file is the canonical wording for the checks.
 
@@ -12,6 +12,8 @@ Run this as Phase 8 on every candidate, in the voice of a strict reviewer trying
 - **C06 Reverse engineering** — Question scope ("SLE-associated genes") broader than what was actually queried (one of several).
 - **C22 Literature-recoverable** — Could PubMed + abstracts fully answer it? Then `rdf_necessity` must be ≥2; flag if 0–1.
 - **C23 Biological insight = 0/1** — Mere inventory of database contents with no mechanistic/functional/evolutionary insight.
+- **C28 Volatile anchor** — Does any stored query hardcode an entity IRI that encodes a release, build, export file, or load-order counter? Such an IRI is an address, not an identifier: it is re-minted upstream on every rebuild and the stale one then matches nothing and returns **0 rows silently**. A Reactome BioPAX subject (`.../biopax/95/48887#Pathway312` — release, export-file and element counters, all volatile) is an automatic CRITICAL; anchor on the stable-ID xref instead (`bp:xref [ bp:db "Reactome"^^xsd:string ; bp:id "R-HSA-…"^^xsd:string ]`, `^^xsd:string` mandatory). The check generalises beyond Reactome: for every hardcoded IRI, ask whether a stable accession exists and anchor on that. Keeping the volatile IRI in `rdf_triples` for orientation is fine if marked never-carry-forward. Passing today proves nothing — this defect is invisible until the next upstream release. (Hard Rule 5.)
+
 - **C27 Cross-graph inflation** — If the answering endpoint co-hosts >1 database (`get_sparql_endpoints()`), the recorded count / result_count / GROUP BY was verified equal under (a) endpoint-default and (b) target-graph-pinned execution, OR it uses `COUNT(DISTINCT ?entity)` with a Phase-5 provenance probe recorded, and the stored query pins the target graph(s). A bare `COUNT` / `result_count` from a union endpoint with no scope check is an automatic MAJOR — CRITICAL when the type is `list`/`factoid`/`choice` (the number IS the answer). Absence of a MIE warning does not waive this check. (Hard Rule 4; Phase 5 provenance probe.)
 
 ## 🟠 MAJOR — fix before presenting

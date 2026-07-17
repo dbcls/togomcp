@@ -5,11 +5,11 @@ description: Generate, refresh, or replace benchmark questions for the TogoMCP e
 
 # TogoMCP Benchmark QA Generator
 
-This skill produces new, fully-validated benchmark questions one at a time, enforcing the type-first creation protocol and the 27-category QA review that the existing 50 questions passed. A question is only useful if it **requires live RDF access to answer** and is **arithmetically self-consistent**; this skill exists to guarantee both, not just to emit plausible-looking YAML.
+This skill produces new, fully-validated benchmark questions one at a time, enforcing the type-first creation protocol and the 28-category QA review that the existing 100 questions passed. A question is only useful if it **requires live RDF access to answer** and is **arithmetically self-consistent**; this skill exists to guarantee both, not just to emit plausible-looking YAML.
 
 It runs in a Claude Code environment with the **TogoMCP MCP server** (SPARQL + REST wrappers + TogoID), **OLS4** (ontology lookup), and **PubMed/NCBI** tools connected, plus filesystem access. Use those tools freely — that is the normal mode here. **Either TogoMCP server works** — they expose the identical tool surface, differing only in the tool prefix (`mcp__togomcp-dev__*` vs `mcp__togomcp__*`). Prefer the local `togomcp-dev` when present because its registry is fresher (it picks up new `endpoints.csv` rows immediately); the remote `togomcp` is a fine fallback for the established databases, with the one caveat that its registry can lag, so a *recently added* database may not be available there yet. OLS4 and PubMed are separate servers, unaffected by which TogoMCP you use.
 
-## The Four Hard Rules
+## The Five Hard Rules
 
 **1. Nothing is invented.** Every SPARQL query in `sparql_queries` must execute successfully against the real endpoint before it is written. Every `result_count`, every triple in `rdf_triples`, and every fact in `ideal_answer` must come from an actual query result you ran this session. A fabricated count or triple is worse than a missing one — it silently poisons the benchmark.
 
@@ -39,9 +39,41 @@ count, a result_count, or a GROUP BY breakdown, AND whose endpoint co-hosts >1 d
   - SELECT DISTINCT alone is NOT the fix: it hides row dupes but can still leak a
     graph-duplicated attribute in the projection and masks genuine multi-valued predicates.
 
+**5. Anchor on stable identifiers — never on an export-local IRI.**
+An entity IRI that encodes a release, an export file, or a load-order counter is not an
+identifier, it is an address, and it is re-minted upstream on every rebuild. A stored query
+anchored on one does not fail loudly when the address dies — it matches nothing and returns
+**0 rows silently**, which then reads as "the answer changed".
+  - **Reactome BioPAX is the canonical case and is BANNED as an anchor.** A subject like
+    `<http://www.reactome.org/biopax/95/48887#Pathway312>` encodes THREE volatile counters —
+    release (`95`), per-species export file (`48887`), element id (`Pathway312`) — and all
+    three change on Reactome's quarterly release. Anchor on the Reactome stable ID instead;
+    every one of the 23,277 pathways carries one, as do physical entities:
+
+        ?pathway a bp:Pathway ;
+                 bp:xref [ bp:db "Reactome"^^xsd:string ;
+                           bp:id "R-HSA-196807"^^xsd:string ] .
+
+    The `^^xsd:string` is mandatory (reactome.yaml critical_warnings) — without it the join
+    silently yields 0, i.e. the same failure you were avoiding. The stable ID is also
+    species-specific (`R-HSA` = human), so it pins ONE organism where `bp:displayName`
+    "Nicotinate metabolism" matches 15 species' pathways. Never filter on
+    `bp:db "Reactome Database ID Release 95"` either — that db NAME embeds the release.
+  - **Generalise the test, don't memorise the example.** Before storing any hardcoded IRI as a
+    query anchor, ask: *does any component of this IRI encode a release, a build, a file, or a
+    counter?* If yes, find the accession-bearing xref/property and anchor on that. Prefer, in
+    order: (a) a stable accession xref, (b) a name + organism/scope filter, (c) chaining from
+    the previous query — and only ever (d) a raw IRI you have shown to be stable.
+  - **Recording the volatile IRI is fine; anchoring on it is not.** Keep it in `rdf_triples`
+    or a comment for orientation, explicitly marked as never-carry-forward.
+  - This is not hypothetical: Q027 hardcoded a release-40 IRI and returned 0 rows silently
+    once Reactome reached 95 (its recorded answer was right the whole time), while Q009 and
+    Q049 were hand-patched 40→95 by editing the literal — treating the symptom each quarter
+    instead of the cause. All four Reactome questions are now stable-ID anchored.
+
 ## Workflow — one question, then checkpoint
 
-Generate **one** question through all phases, then **stop and present it for the user's approval** (the YAML + the `verify_questions.py` result + your C01–C27 self-review). Only after approval do you write the file and update the tracker. For a "generate N" request, loop this — pause on each. Never batch-write.
+Generate **one** question through all phases, then **stop and present it for the user's approval** (the YAML + the `verify_questions.py` result + your C01–C28 self-review). Only after approval do you write the file and update the tracker. For a "generate N" request, loop this — pause on each. Never batch-write.
 
 ### Phase 0 — Pick the type (type-first; non-negotiable)
 Read `benchmark/questions/coverage_tracker.yaml`. Choose the **most under-represented** `type` (target ≈ total/5 per type; the five types are `yes_no`, `factoid`, `list`, `summary`, `choice`). If the user named a type/topic/database, honor it but still record the coverage rationale. Type is chosen **before** databases and keywords — not fitted to a keyword afterward.
@@ -64,6 +96,13 @@ Determine graph scope first. Read the MIE `endpoint` + `graphs:` fields. If the 
 co-hosts >1 database (get_sparql_endpoints()), pin the target graph(s) with GRAPH/FROM
 rather than relying on the default union — the union is the source of silent count
 inflation (Hard Rule 4).
+
+Then check every anchor you are about to hardcode (Hard Rule 5). An exploration query hands
+you an entity IRI; that IRI is often an address, not an identifier. Before pasting it into a
+stored query, look for a release/build/file/counter component in it — for Reactome BioPAX
+there are three — and if present, resolve the entity to its stable accession xref and anchor
+on that instead. The dead-address failure is silent (0 rows), so it will not surface in
+Phase 5; it surfaces months later as phantom "drift".
 
 ### Phase 5 — Arithmetic verification
 For every `GROUP BY`, run the verification query (Rule 3) and record the check.
@@ -89,7 +128,7 @@ the evidence that scoping was applied.
 ### Phase 7 — Assemble the YAML
 Fill every required field per [references/question-schema.md](references/question-schema.md) and [references/template.yaml](references/template.yaml): correct `exact_answer` format for the type; `rdf_triples` with a `# Database: X | Query: N | Comment: ...` line after **every** triple; a `verification_score` that honestly totals ≥9 with no zero dimension; a synthesized `ideal_answer` (single paragraph for `summary`; no meta-references like "according to UniProt"). The question `body` must be self-contained and must **not** name a database.
 
-### Phase 8 — Self-review against C01–C27
+### Phase 8 — Self-review against C01–C28
 Walk the full checklist in [references/qa-checklist.md](references/qa-checklist.md). Any CRITICAL (C01–C06, C22, C23, C27) or MAJOR finding means fix it before presenting — do not present a question you know is flawed. **For C26 (structural near-duplicate), actively scan the existing questions that share this candidate's `type` and database set** — read their `body` and `sparql_queries` and confirm the candidate uses a genuinely different query pattern/predicate path, not the same shape with a new keyword. This is the one check the machine validator can't fully make at the checkpoint (single-file mode sees only this file), so it's on you here. Produce a short verdict (PASS / MINOR / MAJOR) with the triggered codes.
 
 ### Phase 9 — Machine validation
@@ -100,7 +139,7 @@ python benchmark/scripts/verify_questions.py /path/to/candidate.yaml   # single-
 Fix every ❌ error. (Single-file mode checks structure/format only — it does **not** see the rest of the set, so the aggregate gates and the structural near-duplicate guard run later, in the full Phase-11 validation. Phase 0–1 *biases* toward balance; the full run is what *enforces* the coverage caps and surfaces signature/keyword collisions.)
 
 ### Phase 10 — CHECKPOINT: present for approval
-Show the user: the rendered YAML, the verify result, and the C01–C27 verdict. **Wait.** Do not write into `benchmark/questions/` or touch the tracker until they approve.
+Show the user: the rendered YAML, the verify result, and the C01–C28 verdict. **Wait.** Do not write into `benchmark/questions/` or touch the tracker until they approve.
 
 ### Phase 11 — Commit the question (after approval only)
 - Assign the next id: `question_0NN.yaml` where NN = (current highest + 1), `id` field matching the filename.
@@ -129,7 +168,7 @@ This skill stops at **approved, validated questions + updated tracker**. It does
 The skill's `references/` files are authoritative for the generation protocol — they are the in-loop, current versions and are what you follow. For the YAML schema specifically, `benchmark/QUESTION_FORMAT.md` remains the canonical spec (`references/question-schema.md` is its distilled form); consult it when a schema detail is ambiguous.
 
 One older repo doc is **not** authoritative for generation — do not defer to it on conflict:
-- `benchmark/QA_CREATION_GUIDE.md` — the original v5.5.0 long-form protocol, kept for background/history only. It predates this skill and has stale paths and tool names; the `references/` files supersede it. (An earlier `benchmark/togomcp_qa_prompt.md`, holding a legacy C01–C25 reviewer prompt and a per-question P/W/F tracker, was retired — a question's presence in `benchmark/questions/` already means it passed the checkpoint, and `references/qa-checklist.md` (C01–C27) is the current checklist.)
+- `benchmark/QA_CREATION_GUIDE.md` — the original v5.5.0 long-form protocol, kept for background/history only. It predates this skill and has stale paths and tool names; the `references/` files supersede it. (An earlier `benchmark/togomcp_qa_prompt.md`, holding a legacy C01–C25 reviewer prompt and a per-question P/W/F tracker, was retired — a question's presence in `benchmark/questions/` already means it passed the checkpoint, and `references/qa-checklist.md` (C01–C28) is the current checklist.)
 
 ## File & tool map
 
