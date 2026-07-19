@@ -24,13 +24,23 @@ Usage:
     python run_ablation.py --conditions baseline,ablate_shape_expressions
     python run_ablation.py --questions q1.yaml q2.yaml  # ad-hoc subset
     python run_ablation.py --model claude-sonnet-4-5-20250929 --judge-model claude-opus-4-8
-    python run_ablation.py --runs 5                      # 5 replicates/question, averaged
+    python run_ablation.py --runs 5                      # 5 answer+judge reps/question
+    python run_ablation.py --runs 1 --judge-runs 5       # 1 answer x 5 judges/question
 
-With --runs N (>1) each question is answered + judged N times per condition; the
-replicates land in <cond>-scored-vR.csv and are averaged per question_id into the
-flat <cond>-scored.csv that ablation_analysis.py consumes. Averaging R runs
-divides the judge-jitter component of the paired-delta variance by R, which is the
-lever that brings the pilot into a usable-power regime (see select_pilot.py).
+Two independent replication axes, both averaged per question_id into the flat
+<cond>-scored.csv that ablation_analysis.py consumes:
+
+  --runs R       re-ANSWERS (server boot + fresh agent run) AND judges R times.
+                 Averages answer stochasticity + judge jitter, at full answering cost.
+  --judge-runs M re-JUDGES the SAME answers M times, no re-answering. Averages ONLY
+                 judge jitter, at a fraction of the cost (a judge pass has no server
+                 boot, no multi-step agent, no run_sparql round-trips).
+
+They compose: --runs R --judge-runs M averages R*M scored files (<cond>-scored-vR-vM
+.csv; ablation_analysis's -scored-v* glob absorbs both names). Per-question judge SD
+is the dominant term saturating the pilot's CIs, so --runs 1 --judge-runs 5 buys the
+same /5 judge-jitter reduction as --runs 5 far more cheaply, and mirrors the
+conditions-study design (1 answer x 5 judges) that produced significant results.
 """
 from __future__ import annotations
 
@@ -62,9 +72,18 @@ RENDERED_DIR = RESULTS_DIR / "rendered_configs"
 
 SECTION_CONDITIONS = ["baseline"] + [f"ablate_{s}" for s in CANONICAL_SECTIONS]
 GROUP_CONDITIONS = [f"ablate_group_{g}" for g in GROUPS]
-# Valid set = both; the DEFAULT stays section-only so existing invocations are
+# no_mie is a whole-MIE condition: get_MIE_file is DENIED at the tool level (via the
+# base config's disallowed_tools) rather than the corpus being section-stripped. It
+# reuses the same server/render/replicate machinery, so run it with
+#   --base-config benchmark/scripts/config_no_mie.yaml   (denies get_MIE_file + a
+#   matching prompt) and a mie_variants/no_mie dir (a baseline copy — the served
+# corpus is moot since the tool is blocked). Pair it against the baseline in the
+# same --results-dir. The main() guard below refuses to run it with a base config
+# that still ALLOWS get_MIE_file (that would be a silent WITH-MIE run).
+NON_MIE_CONDITIONS = ["no_mie"]
+# Valid set = all three; the DEFAULT stays section-only so existing invocations are
 # unchanged. `--conditions groups` is the shorthand for baseline + every group.
-ALL_CONDITIONS = SECTION_CONDITIONS + GROUP_CONDITIONS
+ALL_CONDITIONS = SECTION_CONDITIONS + GROUP_CONDITIONS + NON_MIE_CONDITIONS
 DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
 
 
@@ -251,7 +270,7 @@ def _server_log_tail(log_path: Path, n: int = 15) -> str:
 def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
                   model: str, judge_model: str | None, force: bool, dry_run: bool,
                   python: str, runs: int = 1, judge_use_api: bool = False,
-                  answer_use_api: bool = False) -> str:
+                  answer_use_api: bool = False, judge_runs: int = 1) -> str:
     final_scored = RESULTS_DIR / f"{cond}-scored.csv"
     if final_scored.exists() and not force:
         print(f"[{cond}] scored CSV exists — skipping (delete it or --force to re-run)")
@@ -280,7 +299,7 @@ def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
         answer_env = {k: v for k, v in env.items() if k != "ANTHROPIC_API_KEY"}
 
     # runs==1 keeps the flat <cond>-answers/scored.csv names (backward compatible);
-    # runs>1 writes -vR replicates and averages them into the flat <cond>-scored.csv.
+    # runs>1 writes -vR answer replicates. scored_base is the -o handed to the judge.
     def run_paths(r: int) -> tuple[Path, Path]:
         if runs == 1:
             return (RESULTS_DIR / f"{cond}-answers.csv",
@@ -288,13 +307,23 @@ def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
         return (RESULTS_DIR / f"{cond}-answers-v{r}.csv",
                 RESULTS_DIR / f"{cond}-scored-v{r}.csv")
 
+    # Mirror add_llm_evaluation._versioned_paths: --runs 1 writes scored_base itself;
+    # --runs M writes scored_base-v1..-vM. So one answer file fans out to M judge CSVs.
+    def judge_scored_paths(scored_base: Path) -> list[Path]:
+        if judge_runs == 1:
+            return [scored_base]
+        return [scored_base.with_name(f"{scored_base.stem}-v{j}{scored_base.suffix}")
+                for j in range(1, judge_runs + 1)]
+
     plan = []
     for r in range(1, runs + 1):
-        answers, scored = run_paths(r)
-        done = scored.exists() and not force          # this replicate already judged
+        answers, scored_base = run_paths(r)
+        scored_files = judge_scored_paths(scored_base)   # the M judge CSVs for this answer
+        done = all(f.exists() for f in scored_files) and not force  # already fully judged
         need_answer = (not done) and (force or not answers.exists())
-        plan.append({"r": r, "answers": answers, "scored": scored,
-                     "done": done, "need_answer": need_answer})
+        plan.append({"r": r, "answers": answers, "scored_base": scored_base,
+                     "scored_files": scored_files, "done": done,
+                     "need_answer": need_answer})
 
     # --- answering passes: one server boot serves every run that needs answers ---
     if any(p["need_answer"] for p in plan):
@@ -346,11 +375,14 @@ def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
     # --- judging passes (no server needed) ---
     for p in plan:
         if p["done"]:
-            print(f"[{cond}] run {p['r']} scored CSV exists — skipping judge")
+            print(f"[{cond}] run {p['r']} scored CSV(s) exist — skipping judge")
             continue
-        tag = "" if runs == 1 else f" (run {p['r']}/{runs})"
-        print(f"[{cond}] LLM-judging answers{tag} -> {p['scored'].name}")
-        eval_cmd = [python, str(EVALUATOR), str(p["answers"]), "-o", str(p["scored"])]
+        tag = "" if runs == 1 else f" (answer {p['r']}/{runs})"
+        jtag = "" if judge_runs == 1 else f" x{judge_runs} judges"
+        print(f"[{cond}] LLM-judging answers{tag}{jtag} -> {p['scored_base'].name}")
+        eval_cmd = [python, str(EVALUATOR), str(p["answers"]), "-o", str(p["scored_base"])]
+        if judge_runs > 1:
+            eval_cmd += ["--runs", str(judge_runs)]   # M judge passes over the SAME answers
         if judge_model:
             eval_cmd += ["--model", judge_model]
         if judge_use_api:
@@ -359,10 +391,12 @@ def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
         # the default (no --use-api) authenticates via `claude login` like the runner.
         subprocess.run(eval_cmd, check=True, cwd=str(SCRIPTS_DIR), env=env)
 
-    # --- average replicates into the flat scored CSV ablation_analysis.py reads ---
-    if runs > 1:
-        merge_scored([p["scored"] for p in plan], final_scored)
-        print(f"[{cond}] averaged {runs} run(s) -> {final_scored.name}")
+    # --- average all R*M scored files into the flat scored CSV ablation_analysis reads ---
+    all_scored = [f for p in plan for f in p["scored_files"]]
+    if len(all_scored) > 1:
+        merge_scored(all_scored, final_scored)
+        print(f"[{cond}] averaged {len(all_scored)} scored file(s) "
+              f"({runs} answer x {judge_runs} judge) -> {final_scored.name}")
     return "done"
 
 
@@ -388,7 +422,14 @@ def main() -> int:
                     help="answer+judge each question N times per condition and average "
                          "per question (default 1). Replicates land in <cond>-scored-vN.csv; "
                          "the averaged <cond>-scored.csv feeds ablation_analysis.py. "
-                         "Averaging R runs divides judge-jitter variance by R.")
+                         "Averaging R runs divides judge-jitter variance by R (but also "
+                         "re-answers R times, at full answering cost).")
+    ap.add_argument("--judge-runs", type=int, default=1, metavar="M",
+                    help="re-JUDGE each answer M times WITHOUT re-answering, then average "
+                         "(default 1). Far cheaper than --runs for cutting judge jitter: a "
+                         "judge pass has no server boot, agent run, or SPARQL round-trips. "
+                         "--runs R --judge-runs M averages R*M scored files. "
+                         "--runs 1 --judge-runs 5 mirrors the conditions-study design.")
     ap.add_argument("--judge-use-api", action="store_true",
                     help="judge via the Anthropic Messages API (plain anthropic SDK, forced "
                          "record_evaluation tool call) instead of the claude-login agent SDK. "
@@ -418,6 +459,8 @@ def main() -> int:
 
     if args.runs < 1:
         raise SystemExit(f"--runs must be >= 1 (got {args.runs})")
+    if args.judge_runs < 1:
+        raise SystemExit(f"--judge-runs must be >= 1 (got {args.judge_runs})")
 
     if args.results_dir:
         global RESULTS_DIR, RENDERED_DIR
@@ -445,6 +488,19 @@ def main() -> int:
     if not base_config.exists():
         raise SystemExit(f"base config not found: {base_config}")
 
+    # Footgun guard: no_mie MUST run on a base config that denies get_MIE_file.
+    # With the default config.yaml the tool stays available and it becomes a silent
+    # WITH-MIE run — the same class of silent-invalid failure as the --results-dir bug.
+    if "no_mie" in conditions:
+        denied = (yaml.safe_load(base_config.read_text(encoding="utf-8")) or {}).get(
+            "disallowed_tools") or []
+        if not any("get_MIE_file" in str(d) for d in denied):
+            raise SystemExit(
+                f"condition 'no_mie' requires a --base-config that denies get_MIE_file, "
+                f"but {base_config} does not. Use "
+                f"benchmark/scripts/config_no_mie.yaml. Running no_mie on the default "
+                f"config.yaml would silently serve WITH the MIE.")
+
     questions = load_pilot(args.questions)
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -454,7 +510,8 @@ def main() -> int:
             required.update(BENCH_IMPORTS)
         preflight(args.python, required)
 
-    runs_note = f" x {args.runs} runs" if args.runs > 1 else ""
+    runs_note = f" x {args.runs} answer-runs" if args.runs > 1 else ""
+    runs_note += f" x {args.judge_runs} judge-runs" if args.judge_runs > 1 else ""
     judge_path = "anthropic API" if args.judge_use_api else "claude-login agent SDK"
     answer_path = "anthropic API" if args.answer_use_api else "claude-login subscription"
     print(f"Ablation sweep: {len(conditions)} conditions x {len(questions)} questions{runs_note}")
@@ -469,7 +526,8 @@ def main() -> int:
             summary[cond] = run_condition(cond, questions, base_config, args.port,
                                           args.model, args.judge_model, args.force,
                                           args.dry_run, args.python, args.runs,
-                                          args.judge_use_api, args.answer_use_api)
+                                          args.judge_use_api, args.answer_use_api,
+                                          args.judge_runs)
         except SystemExit as e:
             print(f"[{cond}] ABORTED: {e}", file=sys.stderr)
             summary[cond] = "error"
