@@ -83,13 +83,9 @@ section.
 Two levers remain, in order of expected value:
 
 1. **Group ablation** — remove a whole functional group at once so redundancy can't
-   compensate. **Built and ready** (`ablate_mie.py --groups all`; three groups
-   partitioning all 11 sections; recipe in the README): bigger effects *and* cheaper —
-   4 conditions ≈ $260 vs the 12 ≈ $780 spent here, with a lower corrected bar
-   (|z|>2.39 for k=3). Σ of single-section contributions per group — a weak heuristic,
-   since the joint effect should exceed the sum under redundancy — puts `guardrails`
-   ahead (+0.82) of `orientation` (+0.23) and `query` (+0.11). Run it into its **own**
-   `--results-dir` so it gets its own in-batch baseline (see Trap 1).
+   compensate. **Run 2026-07-19 → also null on both axes** (see the next section).
+   Predicted `guardrails` would lead; it came last. The redundancy-compensation
+   hypothesis this lever was meant to expose was *refuted*, not confirmed.
 2. **The full 100-question set** — n≈88 would resolve a `common_errors`-sized effect
    even after multiple-comparison correction. `append_results.py` extends n without
    re-running what's already done.
@@ -99,6 +95,144 @@ so we can count queries but not their **outcomes**. Logging each `run_sparql` re
 (syntax error / empty / rows) in `automated_test_runner.py` would give failed-query
 rate and first-query success rate — far more sensitive than raw call counts, and it
 would directly test whether the query-guidance sections do what they claim.
+
+## Group ablation (2026-07-19 sweep) — the follow-up, also null
+
+The 2026-07-08 sweep left "run the group ablation" as the top lever. It took nine days
+to actually land, because **every prior group attempt was silently voided by a
+harness bug** — not by anything about the science.
+
+### The bug that ate every earlier group attempt
+
+`run_ablation.py` passes the rendered-config path (`-c`) and answer-output path (`-o`)
+to the runner/judge subprocesses, which run with `cwd=SCRIPTS_DIR`. When
+`--results-dir` was **relative** — exactly as the README's group recipe documented
+(`--results-dir results_groups`) — those paths resolved against `benchmark/scripts`
+instead of `benchmark/ablation`. The config was then *not found*, the runner fell back
+to **default settings (production togomcp URL, full MIEs)**, and the booted-but-idle
+local server was never queried. Every condition served identical full MIEs → zero
+ablation signal. The section sweep escaped this only because it used the **absolute**
+default results dir (`HERE/"results"`); the group command's relative `--results-dir`
+was the sole trigger. Tell-tale: a compromised condition's `<cond>-server.log` has
+**0 `CallToolRequest`s** while a valid one has ~1500. Fixed in `c7fc2cd`
+(`Path(args.results_dir).resolve()`); the valid run below shows 1492–2041 tool calls
+per condition. **Always confirm non-zero `CallToolRequest`s per condition before
+trusting an ablation result.**
+
+### What was run
+
+| | |
+|---|---|
+| Design | 4 conditions (baseline + 3 groups) × 40-question pilot × 3 replicates |
+| Groups | `query` (schema_info, shape_expressions, sparql_query_examples, cross_references, cross_database_queries; 53% of MIE bytes) · `guardrails` (critical_warnings, common_errors, anti_patterns; 25%) · `orientation` (architectural_notes, data_statistics, sample_rdf_entries; 22%) |
+| Answering / Judge | `claude-sonnet-4-5-20250929` / eval default, **Anthropic API** (`--answer-use-api --judge-use-api`) |
+| Cost / wall | ~$265 answering / ~27.5 h |
+| Validity | per-condition local-server tool calls 1492–2041 (all queried the stripped local server, not production) |
+
+### Headline: null on both axes
+
+**0 of 3 groups** have a 95% CI excluding 0 — on judge score *or* exact-answer
+correctness. Baseline **16.88/20** (trimmed). Removing the entire `query` group —
+**53% of the MIE** — costs only **+0.20 pts**.
+
+Judge score (`ablation_analysis.py --exclude-ceiling 20 --exclude-floor 12`, n=35;
+untrimmed n=40 in parens):
+
+| Group | Contribution (±95% CI) | z | Δ run_sparql (±CI) | Δ correctness |
+|---|---:|---:|---:|---:|
+| `query` | **+0.20 ± 0.40** (+0.23 ± 0.39) | +0.98 | +0.83 ± 1.67 | +7pp |
+| `orientation` | +0.10 ± 0.52 (+0.11 ± 0.47) | +0.38 | −0.86 ± 0.99 | −5pp |
+| `guardrails` | +0.04 ± 0.45 (+0.04 ± 0.39) | +0.17 | **−0.92 ± 0.92\*** | +8pp |
+
+Exact-answer correctness, paired per question **with a CI** (gradable questions only,
+so summary-type are dropped → n=31 untrimmed / 26 trimmed):
+
+| Group | Δ correctness (±95% CI), untrimmed | z |
+|---|---:|---:|
+| `query` | **+0.069 ± 0.082** | +1.65 |
+| `guardrails` | +0.063 ± 0.094 | +1.31 |
+| `orientation` | −0.038 ± 0.091 | −0.82 |
+
+The reported "~7pp correctness drop" from removing `query` is a **real trend but
+underpowered** — z≈1.65, CI still includes 0, and correctness has *less* power than the
+score axis (n=31, not 40). It is the only near-miss on either axis.
+
+### What it means
+
+* **The redundancy hypothesis is refuted.** The group sweep existed because
+  leave-one-*section*-out was null *supposedly* because redundant siblings compensated —
+  so removing a whole group should show a big effect. It doesn't. Group effects are as
+  null as single-section effects. Redundancy isn't the story; on this metric/these
+  questions the MIE content just doesn't move the score.
+* **The pre-registered prediction failed.** Σ-of-single-sections predicted `guardrails`
+  leads (+0.82). It came **last** (+0.04); `query` leads but null. The Σ heuristic has
+  no predictive value here.
+* **The one robust effect is behavioral, not quality:** removing `guardrails`
+  significantly **cuts** SPARQL calls (−0.92\*) — the warnings provoke extra defensive
+  queries. Trimmed and untrimmed agree on ordering, magnitudes, and this significance.
+* **Ceiling is the likely ceiling on power.** Baseline ~16.7–16.9/20 with per-question
+  SD≈1 (see the baseline-variability note): the judge score is too saturated to resolve
+  sub-0.4-pt effects even at runs=3. To chase the `query` correctness trend, make
+  correctness the primary endpoint and power n to ~150+, or add per-query outcome
+  logging (failed/empty/rows) for a sharper effort signal.
+
+## no_mie (whole MIE removed) — 2026-07-19/20 sweep — the FIRST non-null
+
+Escalation of the group null: if removing 53% of the MIE (the `query` group) did
+nothing, does removing **all** of it? `no_mie` blocks `get_MIE_file` at the tool level
+(`config_no_mie.yaml` `disallowed_tools` + a matching prompt) instead of stripping the
+corpus — so the agent keeps every other tool (run_sparql, NCBI, PubChem, search_*) and
+loses only the MIE. Run as a first-class `run_ablation.py` condition
+(`--conditions no_mie --base-config benchmark/scripts/config_no_mie.yaml`; a guard
+refuses a base config that still allows get_MIE_file) on the local server, so it pairs
+against the group sweep's baseline. Validity: **0** get_MIE_file executions server-side
+(13 attempts, all blocked — the model still reflexively reaches for it ~7% of questions).
+
+**Result: significant.** baseline − no_mie on the judge score:
+
+| judging | trim | contribution (±95% CI) | z |
+|---|---|---:|---:|
+| 1-judge (3 ans×1) | untrimmed | +0.93 ± 0.68 | 2.68 ✱ |
+| 5-judge (3 ans×5) | untrimmed | +0.88 ± 0.66 | 2.62 ✱ |
+| 5-judge (3 ans×5) | trimmed (−4) | +0.91 ± 0.72 | 2.48 ✱ |
+
+A single planned comparison, so the bar is |z|>1.96; the effect clears it (p≈0.007–0.02)
+and is stable across judge treatments (0.88–0.94). Exact-answer **correctness** drops only
++0.06–0.08 (NS, n=31) — the MIE improves judged *quality* more than raw correctness.
+
+### The redundancy arc completes (and reverses the group conclusion)
+
+| removed | contribution | significant? |
+|---|---:|---|
+| one section (×11) | ≤ +0.65 | none |
+| one group (×3) | ≤ +0.20 | none |
+| Σ of the 3 groups | +0.34 | — |
+| **whole MIE** | **+0.88–0.93** | **yes** |
+
+The whole-MIE effect is **~2.7× the sum of its group parts** — super-additive, the
+signature of **strong redundancy**. This *disambiguates* the group nulls: alone they were
+"no value OR redundant"; no_mie shows the MIE genuinely helps (+0.9/20), so the group
+nulls are **redundancy, not worthlessness**. Section-null + group-null + whole-significant
+is one coherent story: real value, heavily distributed. (The earlier "redundancy refuted"
+note in the group section was premature — it's *confirmed* once no_mie is in hand.)
+
+### Variance is ANSWER-limited, not judge-limited (corrects a standing assumption)
+
+The 5× re-judge barely moved the CI (±0.68→±0.66). Decomposing the baseline's
+3 answers × 5 judges: judge-jitter SD **0.41** vs between-answer (agent stochasticity)
+SD **1.20** — the per-question mean variance is `va/3 + vj/15` = 0.478 + 0.011, i.e.
+**98% answer-side**. So the pilot's CIs are limited by agent run-to-run variance, NOT
+judge jitter — reversing the belief (carried in the baseline-variability notes and the
+group caveats) that judge jitter dominated. The conditions study benefited from 5 judges
+because it had *1 answer*; our 3-answer design is answer-limited. The lever that would
+tighten these CIs is **more answer replicates** (6 ans×1 judge → variance 0.267, ~halved)
+or **more questions** — not more judges. `--judge-runs` remains useful as a cheap
+robustness check (it confirmed the effect isn't judge-noise), just not as a power lever here.
+
+Caveat: baseline is cross-batch (Trap 1), but the effect (0.9) is ~2.7× the baseline's own
+replicate drift (±0.35), so it survives a worst-case baseline shift. Sharpened scored CSVs
+kept as `*-scored-5judge.csv`; primary `*-scored.csv` restored to the 1-judge batch so the
+group conditions stay validly paired.
 
 ## Side findings
 

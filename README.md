@@ -1,4 +1,4 @@
-# TogoMCP: MCP Server for the RDF Portal
+# TogoMCP: An MCP Server for Life-Science Databases
 
 ![Python >=3.11](https://img.shields.io/badge/python-%3E%3D3.11-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
