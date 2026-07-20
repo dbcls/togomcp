@@ -1,8 +1,9 @@
 # MIE Subcomponent Ablation — Findings (2026-07 sweep)
 
 The generated `results/ablation_report.md` is gitignored (regenerable). This file is
-the durable record of what the 2026-07 sweep actually found, and — more usefully —
-of the two methodological traps it walked into, so the next run doesn't repeat them.
+the durable record of what the 2026-07 ablation sweeps — section (leave-one-out), group,
+and whole-MIE `no_mie` — actually found, and, more usefully, of the methodological traps
+they walked into, so the next run doesn't repeat them.
 
 ## What was run
 
@@ -17,7 +18,8 @@ of the two methodological traps it walked into, so the next run doesn't repeat t
 ## Headline: a null result
 
 **0 of 11 sections** have a 95% CI excluding 0 — on *any* axis (judge score,
-exact-answer correctness, or effort). Baseline mean **17.13/20**.
+exact-answer correctness, or effort). Baseline mean **17.13/20**. (The exact-answer axis
+was re-verified 0/11 under the 2026-07-20 `grade_exact` generalization.)
 
 | Section | Contribution (±95% CI) | z | Δ run_sparql (±CI) |
 |---|---:|---:|---:|
@@ -83,9 +85,10 @@ section.
 Two levers remain, in order of expected value:
 
 1. **Group ablation** — remove a whole functional group at once so redundancy can't
-   compensate. **Run 2026-07-19 → also null on both axes** (see the next section).
-   Predicted `guardrails` would lead; it came last. The redundancy-compensation
-   hypothesis this lever was meant to expose was *refuted*, not confirmed.
+   compensate. **Run 2026-07-19 → null on judge score, borderline on correctness** (see the
+   group-ablation section). Predicted `guardrails` would lead; it came last. At this point the
+   redundancy-compensation hypothesis *looked* refuted — but the whole-MIE `no_mie` run below
+   overturns that to **confirmed**.
 2. **The full 100-question set** — n≈88 would resolve a `common_errors`-sized effect
    even after multiple-comparison correction. `append_results.py` extends n without
    re-running what's already done.
@@ -96,7 +99,7 @@ so we can count queries but not their **outcomes**. Logging each `run_sparql` re
 rate and first-query success rate — far more sensitive than raw call counts, and it
 would directly test whether the query-guidance sections do what they claim.
 
-## Group ablation (2026-07-19 sweep) — the follow-up, also null
+## Group ablation (2026-07-19 sweep) — the follow-up, also null (borderline on correctness)
 
 The 2026-07-08 sweep left "run the group ablation" as the top lever. It took nine days
 to actually land, because **every prior group attempt was silently voided by a
@@ -165,11 +168,14 @@ real trend, still underpowered. Correctness has *less* power than the score axis
 
 ### What it means
 
-* **The redundancy hypothesis is refuted.** The group sweep existed because
-  leave-one-*section*-out was null *supposedly* because redundant siblings compensated —
-  so removing a whole group should show a big effect. It doesn't. Group effects are as
-  null as single-section effects. Redundancy isn't the story; on this metric/these
-  questions the MIE content just doesn't move the score.
+* **Redundancy — the group-alone reading, later reversed by no_mie.** The group sweep existed
+  because leave-one-*section*-out was null *supposedly* because redundant siblings compensated —
+  so removing a whole group should show a big effect. On the judge score it doesn't: group
+  effects are as null as single-section. *At this point in the investigation* that looked like
+  the redundancy hypothesis was refuted and the MIE simply didn't move the score. **The no_mie
+  run below overturns that** — the whole MIE *does* move the score (+0.9/20), so the group nulls
+  are redundancy after all: real value, no single group necessary. (Kept here as the
+  chronological reading; see "The redundancy arc completes" below for the resolution.)
 * **The pre-registered prediction failed.** Σ-of-single-sections predicted `guardrails`
   leads (+0.82). It came **last** (+0.04); `query` leads but null. The Σ heuristic has
   no predictive value here.
@@ -220,8 +226,8 @@ The whole-MIE effect is **~2.7× the sum of its group parts** — super-additive
 signature of **strong redundancy**. This *disambiguates* the group nulls: alone they were
 "no value OR redundant"; no_mie shows the MIE genuinely helps (+0.9/20), so the group
 nulls are **redundancy, not worthlessness**. Section-null + group-null + whole-significant
-is one coherent story: real value, heavily distributed. (The earlier "redundancy refuted"
-note in the group section was premature — it's *confirmed* once no_mie is in hand.)
+is one coherent story: real value, heavily distributed. (This is where the group section's
+chronological "looked-refuted" reading resolves — to confirmed.)
 
 ### Variance is ANSWER-limited, not judge-limited (corrects a standing assumption)
 
@@ -243,11 +249,20 @@ group conditions stay validly paired.
 
 ## Side findings
 
-* **Exact-answer correctness (secondary metric).** Factoid correctness is low
-  (~29% at pilot scale). Re-running all 20 factoid gold queries live found **20/20
-  fresh, zero drift** — so those misses are **real agent miscounts** on multi-step
-  aggregations, not stale golds. The 4×(1–5) judge smooths these over; the binary
-  metric exposes them. `choice` sits at a 100% ceiling (no discrimination).
+* **Exact-answer correctness (secondary metric).** Factoid is the weakest type and stays
+  low: ~29% at the 2026-07-08 section-sweep scale; on the group-sweep baseline it re-grades
+  to **0.46 (n=8)**, with whole-baseline correctness **0.74** and `choice` at a 100% ceiling
+  (no discrimination). The misses are **structural, not noisy**: the same factoids fail on
+  all 3 replicates (3 single-hop UniProt+GO counts pass deterministically; 4 multi-step
+  DISTINCT aggregations across joins / cross-DB fail deterministically), and 2 of the four
+  fail by only ~10–15% (011: 29 vs 26; 022: 178 vs 208) — a counting/dedup discrepancy, not
+  a lost query. Re-running all 20 factoid gold queries live found **20/20 fresh, zero drift**,
+  so these are **real agent miscounts** on multi-step aggregations, not stale golds; the
+  4×(1–5) judge smooths them over while the binary metric exposes them — consistent with the
+  no_mie result (the MIE lifts judged quality more than raw counts). *(Grader note: the n=7→8
+  bump and the group/no_mie correctness figures reflect `grade_exact` being generalized
+  2026-07-20 to score compound "entity (N)" factoids on both parts; before that Q071's string
+  gold `"Ms4a2 (86 variants)"` returned `None` and was dropped from every tally.)*
 * **Subscription auth cannot sustain a batch this size.** Answering *and* Opus judging
   on `claude login` degraded into rate-limited empty judge responses and, worse,
   `"Not logged in · Please run /login"` answer stubs that the runner recorded as
