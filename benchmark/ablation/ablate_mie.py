@@ -207,6 +207,12 @@ def main() -> int:
                          "Use 'all' for all of them. Default: none. Group ablation is the "
                          "direct test of the redundancy that makes leave-one-out null — "
                          "see FINDINGS.md.")
+    ap.add_argument("--keep-groups", default="",
+                    help="Comma-separated LEAVE-ONE-IN variants to build (each KEEPS only that "
+                         f"group and strips the other two): {', '.join(GROUPS)}. Use 'all' for "
+                         "keep_query, keep_guardrails, keep_orientation. The complement of "
+                         "--groups: tests whether a group is SUFFICIENT alone (paired against "
+                         "no_mie), not whether it is necessary. Default: none.")
     ap.add_argument("--exclude-db", default=",".join(sorted(EXCLUDED_DATABASES)),
                     help="Comma-separated MIE file stems to omit from the corpus "
                          f"(default: {','.join(sorted(EXCLUDED_DATABASES)) or '(none)'}); "
@@ -232,8 +238,19 @@ def main() -> int:
         print(f"ERROR: unknown group(s): {', '.join(unknown_g)}", file=sys.stderr)
         print(f"Valid: {', '.join(GROUPS)} (or 'all')", file=sys.stderr)
         return 2
-    if not sections and not groups:
-        print("ERROR: nothing to build — pass --sections and/or --groups", file=sys.stderr)
+
+    keep_groups = [g.strip() for g in args.keep_groups.split(",") if g.strip()]
+    if keep_groups == ["all"]:
+        keep_groups = list(GROUPS)
+    unknown_k = [g for g in keep_groups if g not in GROUPS]
+    if unknown_k:
+        print(f"ERROR: unknown keep-group(s): {', '.join(unknown_k)}", file=sys.stderr)
+        print(f"Valid: {', '.join(GROUPS)} (or 'all')", file=sys.stderr)
+        return 2
+
+    if not sections and not groups and not keep_groups:
+        print("ERROR: nothing to build — pass --sections, --groups, and/or --keep-groups",
+              file=sys.stderr)
         return 2
 
     mie_files = sorted(mie_dir.glob("*.yaml"))
@@ -346,6 +363,37 @@ def main() -> int:
         }
         print(f"{cond:32s}  removed {len(members)} section(s) from {touched:2d}/"
               f"{len(mie_files)} files  ({', '.join(members)})")
+
+    # --- one variant dir per LEAVE-ONE-IN group (keep only it; strip the other two) ---
+    for group in keep_groups:
+        strip = [s for g, members in GROUPS.items() if g != group for s in members]
+        cond = f"keep_{group}"
+        cdir = out_dir / cond
+        if cdir.exists():
+            shutil.rmtree(cdir)
+        cdir.mkdir(parents=True)
+
+        touched = 0
+        deltas: dict[str, int] = {}
+        for f in mie_files:
+            original = texts[f.name]
+            new_text, removed = strip_sections(original, strip)
+            if removed:
+                touched += 1
+                deltas[f.name] = len(original) - len(new_text)
+                if not _validates(new_text):
+                    warnings.append(f"{cond}/{f.name}: result does not parse as YAML")
+            (cdir / f.name).write_text(new_text, encoding="utf-8")
+
+        manifest["conditions"][cond] = {
+            "keeps_group": group,
+            "kept_sections": GROUPS[group],
+            "stripped_sections": strip,
+            "files_touched": touched,
+            "byte_deltas": deltas,
+        }
+        print(f"{cond:32s}  kept only {group} ({len(GROUPS[group])} sec), stripped "
+              f"{len(strip)} section(s) from {touched:2d}/{len(mie_files)} files")
 
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 

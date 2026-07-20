@@ -81,9 +81,15 @@ GROUP_CONDITIONS = [f"ablate_group_{g}" for g in GROUPS]
 # same --results-dir. The main() guard below refuses to run it with a base config
 # that still ALLOWS get_MIE_file (that would be a silent WITH-MIE run).
 NON_MIE_CONDITIONS = ["no_mie"]
-# Valid set = all three; the DEFAULT stays section-only so existing invocations are
-# unchanged. `--conditions groups` is the shorthand for baseline + every group.
-ALL_CONDITIONS = SECTION_CONDITIONS + GROUP_CONDITIONS + NON_MIE_CONDITIONS
+# Leave-one-in: keep ONLY one group, strip the other two (built by
+# ablate_mie.py --keep-groups all). The complement of the group ablation — tests
+# whether a group is SUFFICIENT alone (pair keep_X against no_mie), not whether it
+# is necessary. Served via get_MIE_file like the group variants (default config).
+KEEP_CONDITIONS = [f"keep_{g}" for g in GROUPS]
+# Valid set = all four families; the DEFAULT stays section-only so existing
+# invocations are unchanged. `--conditions groups` is baseline + every group;
+# `--conditions keep` is baseline + every leave-one-in.
+ALL_CONDITIONS = SECTION_CONDITIONS + GROUP_CONDITIONS + NON_MIE_CONDITIONS + KEEP_CONDITIONS
 DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
 
 
@@ -480,6 +486,8 @@ def main() -> int:
     conditions = [c.strip() for c in args.conditions.split(",") if c.strip()]
     if conditions == ["groups"]:
         conditions = ["baseline"] + GROUP_CONDITIONS
+    elif conditions == ["keep"]:
+        conditions = ["baseline"] + KEEP_CONDITIONS
     unknown = [c for c in conditions if c not in ALL_CONDITIONS]
     if unknown:
         raise SystemExit(f"unknown condition(s): {', '.join(unknown)}\nvalid: {', '.join(ALL_CONDITIONS)}")
