@@ -129,33 +129,39 @@ trusting an ablation result.**
 | Cost / wall | ~$265 answering / ~27.5 h |
 | Validity | per-condition local-server tool calls 1492–2041 (all queried the stripped local server, not production) |
 
-### Headline: null on both axes
+### Headline: null on judge score; a borderline query-correctness near-miss
 
-**0 of 3 groups** have a 95% CI excluding 0 — on judge score *or* exact-answer
-correctness. Baseline **16.88/20** (trimmed). Removing the entire `query` group —
-**53% of the MIE** — costs only **+0.20 pts**.
+**No group clears the multiple-comparison bar on either axis.** On judge score all three
+CIs include 0. On exact-answer correctness `query`'s *untrimmed* CI now barely excludes 0
+(+0.088 ± 0.087, z=1.97) — but that is the single-comparison threshold; with k=3 the bar is
+|z|>2.39, its trimmed CI still includes 0, so it does not survive. Baseline **16.88/20**
+(trimmed). Removing the entire `query` group — **53% of the MIE** — costs only **+0.20 pts**
+on the score.
 
 Judge score (`ablation_analysis.py --exclude-ceiling 20 --exclude-floor 12`, n=35;
 untrimmed n=40 in parens):
 
 | Group | Contribution (±95% CI) | z | Δ run_sparql (±CI) | Δ correctness |
 |---|---:|---:|---:|---:|
-| `query` | **+0.20 ± 0.40** (+0.23 ± 0.39) | +0.98 | +0.83 ± 1.67 | +7pp |
-| `orientation` | +0.10 ± 0.52 (+0.11 ± 0.47) | +0.38 | −0.86 ± 0.99 | −5pp |
-| `guardrails` | +0.04 ± 0.45 (+0.04 ± 0.39) | +0.17 | **−0.92 ± 0.92\*** | +8pp |
+| `query` | **+0.20 ± 0.40** (+0.23 ± 0.39) | +0.98 | +0.83 ± 1.67 | +9pp |
+| `orientation` | +0.10 ± 0.52 (+0.11 ± 0.47) | +0.38 | −0.86 ± 0.99 | −3pp |
+| `guardrails` | +0.04 ± 0.45 (+0.04 ± 0.39) | +0.17 | **−0.92 ± 0.92\*** | +6pp |
 
-Exact-answer correctness, paired per question **with a CI** (gradable questions only,
-so summary-type are dropped → n=31 untrimmed / 26 trimmed):
+Exact-answer correctness, paired per question **with a CI** (gradable questions only, so
+summary-type are dropped → **n=32 untrimmed / 27 trimmed**; Q071 became gradable on
+2026-07-20 when `grade_exact` was generalized to score compound "entity (N)" factoids on
+both parts — before that its string gold returned `None`):
 
 | Group | Δ correctness (±95% CI), untrimmed | z |
 |---|---:|---:|
-| `query` | **+0.069 ± 0.082** | +1.65 |
-| `guardrails` | +0.063 ± 0.094 | +1.31 |
-| `orientation` | −0.038 ± 0.091 | −0.82 |
+| `query` | **+0.088 ± 0.087** | +1.97 |
+| `guardrails` | +0.061 ± 0.091 | +1.30 |
+| `orientation` | −0.027 ± 0.091 | −0.58 |
 
-The reported "~7pp correctness drop" from removing `query` is a **real trend but
-underpowered** — z≈1.65, CI still includes 0, and correctness has *less* power than the
-score axis (n=31, not 40). It is the only near-miss on either axis.
+Removing `query` is the **only near-miss on either axis**: its correctness drop sits right
+at the nominal single-comparison threshold (z≈1.97, untrimmed CI just excludes 0) but fails
+the k=3 correction and reverts to CI-includes-0 when trimmed (+0.092 ± 0.095, z=1.89) — a
+real trend, still underpowered. Correctness has *less* power than the score axis (n=32 vs 40).
 
 ### What it means
 
@@ -198,7 +204,8 @@ against the group sweep's baseline. Validity: **0** get_MIE_file executions serv
 
 A single planned comparison, so the bar is |z|>1.96; the effect clears it (p≈0.007–0.02)
 and is stable across judge treatments (0.88–0.94). Exact-answer **correctness** drops only
-+0.06–0.08 (NS, n=31) — the MIE improves judged *quality* more than raw correctness.
++0.06–0.07 (NS, n=32: +0.056 ± 0.119 untrimmed / +0.073 ± 0.129 trimmed) — the MIE improves
+judged *quality* more than raw correctness.
 
 ### The redundancy arc completes (and reverses the group conclusion)
 

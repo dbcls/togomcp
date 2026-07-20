@@ -318,14 +318,33 @@ def grade_exact(answer: str | None, gtype: str, gexact, tol: float) -> float | N
         stance = "yes" if re.match(r"\W*yes\b", al) else "no" if re.match(r"\W*no\b", al) else None
         return 1.0 if stance == str(gexact).strip().lower() else 0.0
     if gtype == "factoid":
-        try:
-            gold = int(str(gexact).replace(",", "").strip())
-        except (TypeError, ValueError):
-            return None
-        cands = [int(x.replace(",", "")) for x in re.findall(r"\d[\d,]*", a)] + _word_numbers(a)
-        if gold == 0:
-            return 1.0 if 0 in cands else 0.0
-        return 1.0 if any(abs(c - gold) <= tol * gold for c in cands) else 0.0
+        # A factoid gold may be a bare count (int / "326"), or a string encoding an
+        # entity name AND/OR a count — e.g. "Ms4a2 (86 variants)" (a two-part
+        # "which X and how many") or "Ms4a2" (which-entity). Grade EVERY part the
+        # gold names: the count numerically (within tolerance) and the entity as a
+        # key match (leading token before "(", like the list/choice graders). A
+        # bare-number gold keeps the original numeric-only behavior exactly.
+        gs = str(gexact).strip()
+        head = re.split(r"\s*\(", gs, 1)[0].strip()
+        tok = head.split()[0] if head.split() else ""
+        if re.fullmatch(r"[\d,]+", tok):          # bare numeric gold (7 of 8 factoids)
+            name_key = ""
+            gnums = [int(x.replace(",", "")) for x in re.findall(r"\d[\d,]*", gs)]
+        else:                                     # entity, optionally followed by a count
+            name_key = tok.lower()
+            rest = gs[gs.find(tok) + len(tok):]   # digits AFTER the name (skip any in it, e.g. Ms4a2)
+            gnums = [int(x.replace(",", "")) for x in re.findall(r"\d[\d,]*", rest)]
+        gold_num = gnums[0] if gnums else None
+        if gold_num is None and not name_key:
+            return None                            # nothing gradable
+        ok = True
+        if name_key:                               # entity must be named (list/choice-style key match)
+            ok = bool(re.search(rf"\b{re.escape(name_key)}\b", al)) if len(name_key) <= 4 \
+                else (name_key in al)
+        if ok and gold_num is not None:            # count must appear within tolerance
+            cands = [int(x.replace(",", "")) for x in re.findall(r"\d[\d,]*", a)] + _word_numbers(a)
+            ok = (0 in cands) if gold_num == 0 else any(abs(c - gold_num) <= tol * gold_num for c in cands)
+        return 1.0 if ok else 0.0
     items = gexact if isinstance(gexact, list) else [gexact]
     if gtype == "choice":
         s = str(items[0]).strip().strip("[]'\"").lower()
