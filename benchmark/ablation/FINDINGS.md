@@ -176,6 +176,64 @@ score axis (n=31, not 40). It is the only near-miss on either axis.
   correctness the primary endpoint and power n to ~150+, or add per-query outcome
   logging (failed/empty/rows) for a sharper effort signal.
 
+## no_mie (whole MIE removed) — 2026-07-19/20 sweep — the FIRST non-null
+
+Escalation of the group null: if removing 53% of the MIE (the `query` group) did
+nothing, does removing **all** of it? `no_mie` blocks `get_MIE_file` at the tool level
+(`config_no_mie.yaml` `disallowed_tools` + a matching prompt) instead of stripping the
+corpus — so the agent keeps every other tool (run_sparql, NCBI, PubChem, search_*) and
+loses only the MIE. Run as a first-class `run_ablation.py` condition
+(`--conditions no_mie --base-config benchmark/scripts/config_no_mie.yaml`; a guard
+refuses a base config that still allows get_MIE_file) on the local server, so it pairs
+against the group sweep's baseline. Validity: **0** get_MIE_file executions server-side
+(13 attempts, all blocked — the model still reflexively reaches for it ~7% of questions).
+
+**Result: significant.** baseline − no_mie on the judge score:
+
+| judging | trim | contribution (±95% CI) | z |
+|---|---|---:|---:|
+| 1-judge (3 ans×1) | untrimmed | +0.93 ± 0.68 | 2.68 ✱ |
+| 5-judge (3 ans×5) | untrimmed | +0.88 ± 0.66 | 2.62 ✱ |
+| 5-judge (3 ans×5) | trimmed (−4) | +0.91 ± 0.72 | 2.48 ✱ |
+
+A single planned comparison, so the bar is |z|>1.96; the effect clears it (p≈0.007–0.02)
+and is stable across judge treatments (0.88–0.94). Exact-answer **correctness** drops only
++0.06–0.08 (NS, n=31) — the MIE improves judged *quality* more than raw correctness.
+
+### The redundancy arc completes (and reverses the group conclusion)
+
+| removed | contribution | significant? |
+|---|---:|---|
+| one section (×11) | ≤ +0.65 | none |
+| one group (×3) | ≤ +0.20 | none |
+| Σ of the 3 groups | +0.34 | — |
+| **whole MIE** | **+0.88–0.93** | **yes** |
+
+The whole-MIE effect is **~2.7× the sum of its group parts** — super-additive, the
+signature of **strong redundancy**. This *disambiguates* the group nulls: alone they were
+"no value OR redundant"; no_mie shows the MIE genuinely helps (+0.9/20), so the group
+nulls are **redundancy, not worthlessness**. Section-null + group-null + whole-significant
+is one coherent story: real value, heavily distributed. (The earlier "redundancy refuted"
+note in the group section was premature — it's *confirmed* once no_mie is in hand.)
+
+### Variance is ANSWER-limited, not judge-limited (corrects a standing assumption)
+
+The 5× re-judge barely moved the CI (±0.68→±0.66). Decomposing the baseline's
+3 answers × 5 judges: judge-jitter SD **0.41** vs between-answer (agent stochasticity)
+SD **1.20** — the per-question mean variance is `va/3 + vj/15` = 0.478 + 0.011, i.e.
+**98% answer-side**. So the pilot's CIs are limited by agent run-to-run variance, NOT
+judge jitter — reversing the belief (carried in the baseline-variability notes and the
+group caveats) that judge jitter dominated. The conditions study benefited from 5 judges
+because it had *1 answer*; our 3-answer design is answer-limited. The lever that would
+tighten these CIs is **more answer replicates** (6 ans×1 judge → variance 0.267, ~halved)
+or **more questions** — not more judges. `--judge-runs` remains useful as a cheap
+robustness check (it confirmed the effect isn't judge-noise), just not as a power lever here.
+
+Caveat: baseline is cross-batch (Trap 1), but the effect (0.9) is ~2.7× the baseline's own
+replicate drift (±0.35), so it survives a worst-case baseline shift. Sharpened scored CSVs
+kept as `*-scored-5judge.csv`; primary `*-scored.csv` restored to the 1-judge batch so the
+group conditions stay validly paired.
+
 ## Side findings
 
 * **Exact-answer correctness (secondary metric).** Factoid correctness is low
