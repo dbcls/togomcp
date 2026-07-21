@@ -1,0 +1,303 @@
+# MIE v3 PILOT — BacDive. Hand-authored 2026-07-21 on the `mie-redesign` branch.
+# Second pilot (contrast to UniProt): niche/name-opaque DB, own `primary` endpoint, literal-typing-heavy.
+# Format: benchmark/redesign/MIE_v3_spec.md. Every verified count/result re-run live on the stated date.
+database: bacdive
+
+# ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
+discovery:
+  title: BacDive — Bacterial Diversity Metadatabase
+  description: >
+    Standardized bacterial + archaeal strain metadata: taxonomy, morphology, physiology,
+    growth/culture conditions, media, isolation source, enzymes, 16S/genome sequences,
+    pathogenicity/biosafety — 97k+ strains, cross-linked to NCBI Taxonomy, culture collections,
+    ENA/GenBank, and MediaDive media recipes.
+  keywords: [bacteria, archaea, strain, culture, growth condition, medium, morphology, physiology,
+             16s rrna, genome, isolation, habitat, temperature, oxygen tolerance, gram stain, enzyme, biosafety]
+  categories: [microbe]
+
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/primary/sparql   # RDF Portal "primary" endpoint (NOT sib)
+base_uri: https://purl.dsmz.de/
+graphs:
+  primary: http://rdfportal.org/dataset/bacdive
+  co_hosted:                       # same endpoint; SHARE the DSMZ vocabulary but ZERO IRI overlap
+    mediadive: "45,685 dsmz:Strain + media recipes; join via schema:hasBacDiveID (see xdb_*). Scope-bleeds unpinned counts (gotcha scope_bleed)."
+    brenda:    "54,720 dsmz:Enzyme on the same vocabulary; zero IRI overlap — scope-bleed only, never row duplication."
+
+entity_counts:                     # graph-pinned unless noted; verified 2026-07-21
+  strains:            97334         # pinned (FROM the bacdive graph)
+  strains_unpinned:   143019        # + 45,685 MediaDive strains (disjoint) — INFLATED scope, never report
+  enzymes:            573112
+  culture_media:      47729
+  coverage: "culture temp ~97% of strains · numeric taxID ~99% · 16S ~37% · genome ~52% · gram stain ~19% · pathogenicity ~4%"
+
+global_gotchas:                    # the few that bite ANY query — verified 2026-07-21
+  - id: schema_prefix
+    say: >
+      `schema:` here is <https://purl.dsmz.de/schema/> (DSMZ's own vocabulary), NOT schema.org. The
+      endpoint auto-declares it. If you add `PREFIX schema: <http://schema.org/>` yourself, EVERY
+      schema:* pattern returns 0 rows with no error. Declare `PREFIX schema: <https://purl.dsmz.de/schema/>`
+      (note https + /schema/), or use a distinctive prefix like `dsmz:` so a habit-typed schema.org can't collide.
+  - id: scope_bleed
+    say: >
+      Co-hosted MediaDive/BRENDA reuse the DSMZ classes with ZERO IRI overlap, so they can't duplicate
+      join rows — but they DO inflate an unpinned entity count: `?s a schema:Strain` = 143,019 unpinned
+      (97,334 BacDive + 45,685 MediaDive, disjoint) vs 97,334 pinned (×1.47). FIX = pin
+      `FROM <http://rdfportal.org/dataset/bacdive>` (or GRAPH for cross-DB). DISTINCT does NOT fix it (distinct entities, not dup rows).
+  - id: phylum_vintage_split
+    say: >
+      schema:hasPhylum keeps BOTH nomenclature vintages as separate literals — the 2021 ICNP renaming
+      (Firmicutes→Bacillota, Proteobacteria→Pseudomonadota, …) was applied to only some records. A phylum's
+      TRUE total is the SUM of both spellings (Firmicutes 13,862 + Bacillota 1,944 = 15,806); filtering the
+      current name alone silently returns a small minority. Match both (VALUES) and never rank phyla without
+      merging. The split shifts as records are re-curated — re-derive the pairs, don't trust a frozen list.
+  - id: datatype_variance
+    say: >
+      Literal datatypes VARY by predicate AND by class — never generalize from one probe. Known traps
+      (fixes shown inline in the examples): GramStain values are ^^rr:Literal not xsd:string (match via
+      FILTER(STR(?v)=...)); schema:hasTaxID is xsd:int (NOT xsd:integer) and ALSO appears as a plain string
+      (use FILTER(isNumeric(?taxID))); schema:hasBiosafetyLevel is a STRING ("2", not 2); isTypeStrain/isMotile
+      are integers 1/0 while schema:hasAbility is xsd:boolean true. Run DATATYPE() per class before filtering.
+  - id: reserved_score
+    say: "In `option (score ?score)` for bif:contains, ?score is a Virtuoso reserved keyword -> use ?sc."
+
+# ── examples: verified, executable atoms. Hub-and-spoke — a phenotype node links to its strain via
+#    schema:describesStrain (direction: phenotype -> strain). Taxonomy is redundant ON the Strain. ──
+examples:
+  - id: strain_lookup
+    intent: full metadata for known strains by IRI (the Strain hub)
+    question: "Taxonomy, designation, and type-strain status for BacDive strains 1 and 550?"
+    complexity: basic
+    sparql: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?strain ?strainLabel ?genus ?species ?phylum ?isType ?designation
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        VALUES ?strain { <https://purl.dsmz.de/bacdive/strain/1> <https://purl.dsmz.de/bacdive/strain/550> }
+        ?strain a schema:Strain ; rdfs:label ?strainLabel ;
+                schema:hasGenus ?genus ; schema:hasSpecies ?species ;
+                schema:hasPhylum ?phylum ; schema:isTypeStrain ?isType .   # integer 1=type, 0=not
+        OPTIONAL { ?strain schema:hasDesignation ?designation }
+      }
+      LIMIT 10
+    verified: {result_rows: 2, date: "2026-07-21", first_row: "strain/1 = Acetobacter aceti (Proteobacteria, isType 0)"}
+    teaches: "Strain is the hub; taxonomy (hasGenus/hasSpecies/hasPhylum) is stored redundantly ON the Strain — no lineage traversal needed."
+
+  - id: count_strains            # ELEVATED aggregation — the scope-bleed recipe
+    intent: count strains correctly (graph-pinned) vs the inflated unpinned count
+    question: "How many strains are in BacDive?"
+    complexity: aggregation
+    sparql: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      SELECT (COUNT(DISTINCT ?s) AS ?strains)
+      FROM <http://rdfportal.org/dataset/bacdive>          # pin — else MediaDive strains bleed in
+      WHERE { ?s a schema:Strain . }
+    verified: {strains: 97334, date: "2026-07-21"}
+    teaches: "Graph-pin every count on this endpoint; the pinned Strain total is 97,334."
+    traps_avoided:
+      - "Unpinned = 143,019 (+ 45,685 disjoint MediaDive strains). DISTINCT does NOT fix it — pin the graph (gotcha scope_bleed)."
+
+  - id: phylum_merge             # ELEVATED aggregation — the vintage-split recipe
+    intent: count strains in a phylum across BOTH nomenclature vintages
+    question: "How many strains belong to the Firmicutes/Bacillota phylum?"
+    complexity: aggregation
+    sparql: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      SELECT ?phylum (COUNT(DISTINCT ?s) AS ?n)
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        VALUES ?phylum { "Firmicutes" "Bacillota" }        # legacy + 2021 ICNP name — SUM them
+        ?s a schema:Strain ; schema:hasPhylum ?phylum .
+      }
+      GROUP BY ?phylum
+    verified: {Firmicutes: 13862, Bacillota: 1944, true_total: 15806, date: "2026-07-21"}
+    teaches: "A phylum's real count is the SUM of legacy + renamed spellings; match both with VALUES."
+    traps_avoided:
+      - "Filtering only 'Bacillota' returns 1,944 of the true 15,806 — a plausible wrong number, never an error (gotcha phylum_vintage_split)."
+
+  - id: oxygen_tolerance
+    intent: strains by controlled-vocabulary phenotype value (OxygenTolerance)
+    question: "How many strains are obligate anaerobes vs microaerophiles?"
+    complexity: basic
+    sparql: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      SELECT ?oxygenTolerance (COUNT(DISTINCT ?strain) AS ?n)
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        VALUES ?oxygenTolerance { "obligate anaerobe" "microaerophile" }
+        ?ot a schema:OxygenTolerance ; schema:describesStrain ?strain ; schema:hasOxygenTolerance ?oxygenTolerance .
+      }
+      GROUP BY ?oxygenTolerance
+    verified: {microaerophile: 4472, obligate_anaerobe: 224, date: "2026-07-21"}
+    teaches: "Phenotype pattern: ?node a schema:<Phenotype> ; schema:describesStrain ?strain ; schema:has<Phenotype> <controlled value>. hasOxygenTolerance is a plain xsd:string."
+
+  - id: pathogens_bsl
+    intent: join two administrative phenotypes (Pathogenicity + RiskAssessment)
+    question: "Which confirmed human pathogens are biosafety level 2 or 3?"
+    complexity: intermediate
+    sparql: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      SELECT (COUNT(DISTINCT ?strain) AS ?n)
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        ?strain a schema:Strain .
+        ?patho a schema:Pathogenicity ; schema:describesStrain ?strain ; schema:isHumanPathogen "yes" .
+        ?ra a schema:RiskAssessment ; schema:describesStrain ?strain ; schema:hasBiosafetyLevel ?bsl .
+        FILTER(?bsl IN ("2", "3"))
+      }
+    verified: {n: 1405, date: "2026-07-21"}
+    teaches: "Two phenotype nodes join on the same ?strain hub."
+    traps_avoided:
+      - "hasBiosafetyLevel is a STRING (\"2\", also \"L1\"/\"1+\"/\"3**\") — `= 2` (integer) returns 0 rows (gotcha datatype_variance)."
+
+  - id: gram_spore
+    intent: multi-phenotype join with mixed literal datatypes (GramStain + SporeFormation)
+    question: "How many strains are Gram-positive spore-formers?"
+    complexity: intermediate
+    sparql: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      SELECT (COUNT(DISTINCT ?strain) AS ?n)
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        ?strain a schema:Strain .
+        ?gs a schema:GramStain ; schema:describesStrain ?strain ; schema:hasGramStain ?gram .
+        FILTER(STR(?gram) = "positive")          # hasGramStain is ^^rr:Literal, NOT xsd:string
+        ?sp a schema:SporeFormation ; schema:describesStrain ?strain ; schema:hasAbility true .  # xsd:boolean
+      }
+    verified: {n: 1549, date: "2026-07-21"}
+    teaches: "Match rr:Literal values via FILTER(STR(?v)=...); schema:hasAbility is boolean true (spore-forming)."
+    traps_avoided:
+      - "schema:hasGramStain \"positive\" (plain string) returns 0 rows — it is ^^<http://www.w3.org/ns/r2rml#Literal>. Use STR(). And hasAbility is xsd:boolean true, NOT integer 1 (gotcha datatype_variance)."
+
+  - id: enzyme_strain
+    intent: enzyme activities recorded for a strain (Enzyme phenotype)
+    question: "What enzymes and EC numbers are recorded for BacDive strain 1290?"
+    complexity: intermediate
+    sparql: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?enzymeLabel ?ecNumber ?activity
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        VALUES ?strain { <https://purl.dsmz.de/bacdive/strain/1290> }
+        ?enzyme a schema:Enzyme ; rdfs:label ?enzymeLabel ; schema:describesStrain ?strain ;
+                schema:hasECNumber ?ecNumber ; schema:hasActivity ?activity .    # activity "+"/"-"
+      }
+      LIMIT 50
+    verified: {result_rows: 11, date: "2026-07-21", first_row: "lysine decarboxylase (EC 4.1.1.18), activity +"}
+    teaches: "Enzyme nodes carry hasECNumber + hasActivity ('+' present / '-' absent), linked to the strain via describesStrain."
+
+  - id: halophiles
+    intent: quantitative phenotype range filter (SaltTolerance)
+    question: "Which strains grow at maximum NaCl concentrations above 10%?"
+    complexity: advanced
+    sparql: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      SELECT (COUNT(DISTINCT ?strain) AS ?n)
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        ?ht a schema:SaltTolerance ; schema:describesStrain ?strain ;
+            schema:hasSaltType "NaCl" ; schema:hasTestType "maximum" ; schema:hasTestAbility "positive" ;
+            schema:hasSaltConcentrationRangeEnd ?saltMax .
+        FILTER(?saltMax > 10)
+      }
+    verified: {n: 12, date: "2026-07-21"}
+    teaches: "Quantitative phenotypes carry typed test qualifiers (hasSaltType/hasTestType/hasTestAbility) + numeric range predicates (…RangeStart/…RangeEnd)."
+    traps_avoided:
+      - "The SaltTolerance IRI namespace is bacdive/halophily/{id}, not bacdive/salt_tolerance/ — reach it by TYPE (a schema:SaltTolerance), not by IRI pattern."
+
+  - id: motile_phylo             # ELEVATED aggregation — clade distribution + isNumeric taxID
+    intent: distribution of motile type strains with 16S, grouped by phylum
+    question: "Which phyla have the most motile type strains that have a 16S rRNA sequence?"
+    complexity: aggregation
+    sparql: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?phylum (COUNT(DISTINCT ?strain) AS ?count)
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        ?strain a schema:Strain ; schema:hasPhylum ?phylum ; schema:isTypeStrain 1 ; schema:hasTaxID ?taxID .
+        FILTER(isNumeric(?taxID))                # xsd:int values
+        ?mot a schema:CellMotility ; schema:describesStrain ?strain ; schema:isMotile 1 .
+        ?seq a schema:16SSequence ; schema:describesStrain ?strain ; schema:hasSequenceAccession ?accession .
+      }
+      GROUP BY ?phylum ORDER BY DESC(?count) LIMIT 8
+    verified: {top: "Proteobacteria 2329, Firmicutes 868, Bacteroidetes 321", date: "2026-07-21"}
+    teaches: "isTypeStrain/isMotile are integer 1; taxID needs FILTER(isNumeric(?taxID))."
+    traps_avoided:
+      - "NEVER FILTER(datatype(?taxID) = xsd:integer) — the values are xsd:int and it returns 0 rows; isNumeric() is safe (gotcha datatype_variance)."
+      - "Results still show the phylum split (Proteobacteria vs Pseudomonadota separately) — merge before ranking (gotcha phylum_vintage_split)."
+
+  - id: xdb_mediadive_id
+    intent: "cross-DB (intra-primary): BacDive strains -> MediaDive growth media via hasBacDiveID"
+    question: "What growth media does MediaDive record for BacDive Bacillus strains?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?bacDiveLabel ?bacDiveID ?mediumLabel ?temp
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/bacdive> {
+          ?bdStrain a schema:Strain ; rdfs:label ?bacDiveLabel ;
+                    schema:hasBacDiveID ?bacDiveID ; schema:hasGenus "Bacillus" .
+        }
+        GRAPH <http://rdfportal.org/dataset/mediadive> {
+          ?mdStrain a schema:Strain ; schema:hasBacDiveID ?bacDiveID .
+          ?growth a schema:GrowthCondition ; schema:relatedToStrain ?mdStrain ;
+                  schema:partOfMedium ?medium ; schema:growthTemperature ?temp .
+          ?medium rdfs:label ?mediumLabel .
+        }
+      }
+      LIMIT 20
+    verified: {result_rows: 20, date: "2026-07-21", first_row: "Bacillus subtilis 1156 -> NUTRIENT AGAR @ 30C"}
+    teaches: "MediaDive is co-hosted on the primary endpoint; join on schema:hasBacDiveID (xsd:integer, ~34% coverage) — direct GRAPH join, no TogoID."
+
+  - id: xdb_mediadive_link
+    intent: "cross-DB: BacDive CultureMedium web link -> MediaDive RDF IRI via string transform -> ingredients"
+    question: "What are the medium ingredients (g/L) for BacDive Bacillus strains, via MediaDive?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?strainLabel ?mediumLabel ?ingredientLabel ?gPerL
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/bacdive> {
+          ?strain a schema:Strain ; rdfs:label ?strainLabel ; schema:hasGenus "Bacillus" .
+          ?bdMedium a schema:CultureMedium ; schema:describesStrain ?strain ;
+                    rdfs:label ?mediumLabel ; schema:hasMediaLink ?mediaLink .
+          FILTER(CONTAINS(STR(?mediaLink), "mediadive"))
+          BIND(REPLACE(STR(?mediaLink), "^https://mediadive\\.dsmz\\.de/medium/", "") AS ?mediumID)
+        }
+        BIND(URI(CONCAT("https://purl.dsmz.de/mediadive/medium/", ?mediumID)) AS ?mdMedium)
+        GRAPH <http://rdfportal.org/dataset/mediadive> {
+          ?mdMedium a schema:CultureMedium .
+          ?comp a schema:MediumComposition ; schema:partOfMedium ?mdMedium ;
+                schema:containsIngredient ?ingredient ; schema:gramsPerLiter ?gPerL .
+          ?ingredient rdfs:label ?ingredientLabel .
+        }
+      }
+      ORDER BY ?strainLabel DESC(?gPerL)
+      LIMIT 20
+    verified: {result_rows: 20, date: "2026-07-21", first_row: "Bacillus acidicola 1207 -> ALICYCLOBACILLUS MEDIUM -> Agar 15 g/L"}
+    teaches: "When only a web-URL link exists (schema:hasMediaLink -> mediadive.dsmz.de/medium/{ID}), REPLACE it to the RDF IRI purl.dsmz.de/mediadive/medium/{ID} to join — the ~20% of strains without a BacDiveID join still reach MediaDive this way."
+
+# ── schema_delta: non-obvious structure no example already shows ──
+schema_delta:
+  - "HUB-AND-SPOKE: Strain is the hub; EVERY phenotype/condition/sequence node links to it via schema:describesStrain, direction phenotype -> strain (never the reverse). Most phenotype nodes carry 3-4 rdf:type assertions (specific + abstract)."
+  - "CellShape and NutritionType have NO dedicated typed predicate — the value is in rdfs:label of the node only; query by rdfs:label."
+  - "Sequences: 16SSequence / GenomeSequence nodes carry schema:hasSequenceAccession + schema:fromSequenceDB ('ena'/'ncbi')."
+  - "bif:contains is legitimate ONLY on dct:description (free text); split the property path before the text node (Virtuoso)."
+
+# ── id_join_map ──
+id_join_map:
+  stable_anchor: "Strain IRI https://purl.dsmz.de/bacdive/strain/N. schema:hasBacDiveID is the integer key used for MediaDive joins."
+  same_endpoint_joins:            # co-hosted on `primary` — direct GRAPH join, NO TogoID
+    mediadive: "schema:hasBacDiveID integer match (~34%, see xdb_mediadive_id) OR MediaLink URL->IRI transform (~20%, see xdb_mediadive_link)"
+    taxonomy:  "schema:hasTaxID (xsd:int, isNumeric filter) -> NCBI Taxonomy; ~99% of strains"
+  xref_via_link:                  # string accessions / web links on spoke nodes
+    ena:      "schema:hasSequenceAccession on 16SSequence (fromSequenceDB 'ena', ~60%)"
+    genbank:  "schema:hasSequenceAccession on GenomeSequence (fromSequenceDB 'ncbi', ~40%)"
+    collections: "schema:hasLink on CultureCollectionNumber -> DSMZ (>90%), JCM (~40%), KCTC (~30%), CCUG (~25%)"

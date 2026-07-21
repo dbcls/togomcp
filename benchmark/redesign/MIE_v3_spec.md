@@ -108,11 +108,14 @@ model can guess it (basic prefixes, `rdfs:label`), it does **not** belong here.
 ### 3.5 `id_join_map` (required) — the least-recoverable asset
 ```yaml
 id_join_map:
-  stable_anchor:       # how to anchor stably (the IRI/accession pattern; secondary human keys)
-  same_endpoint_joins: # {db: "the join predicate/path"} — direct, no bridge
-  xref_via_seeAlso:    # {db: "prefix + coverage %"} — rdfs:seeAlso-style xrefs
-  bridged_via_togoid:  # list — DBs that need togoid_convertId (NOT co-hosted)
+  stable_anchor:        # how to anchor stably (the IRI/accession pattern; secondary human keys)
+  same_endpoint_joins:  # {db: "the join predicate/path"} — co-hosted, direct GRAPH join, no bridge
+  xrefs:                # {db: "the xref predicate + prefix/coverage"} — outbound references
+  bridged_via_togoid:   # list — DBs reachable only via togoid_convertId (NOT co-hosted)
 ```
+The `xrefs` bucket is mechanism-agnostic — name each entry after however the DB actually points
+out (rdfs:seeAlso by IRI prefix, a `hasLink`/accession string, an ID that needs a transform). A
+DB whose joins are all intra-endpoint may have no `bridged_via_togoid` at all (both are optional).
 
 ## 4. Authoring rules
 
