@@ -1,0 +1,221 @@
+# MIE v3 PILOT — UniProt. Hand-authored 2026-07-21 on the `mie-redesign` branch.
+# Format: internal_docs/mie-redesign-from-scratch-2026-07-20.md §3 (header · examples · schema_delta · id_join_map).
+# Every `verified:` count/result was re-run live against the SIB endpoint on the stated date.
+database: uniprot
+
+# ── discovery: the four fields a build-time generator rolls into the Usage Guide catalog (spec §1.1).
+#    Keep SMALL and uniform — multiplied across the whole catalog. NOT served per-request. ──
+discovery:
+  title: UniProt RDF
+  description: >
+    Curated (Swiss-Prot) and automatic (TrEMBL) protein sequence + functional annotation:
+    sequences, domains, PTMs, isoforms, natural variants, disease links, GO terms, EC/enzyme
+    activity, catalysed Rhea reactions, and 200+ cross-references.
+  keywords: [protein, sequence, swiss-prot, trembl, reviewed, function, domain, isoform,
+             enzyme, ec number, natural variant, disease, gene ontology, cross-reference]
+  categories: [protein, annotation]
+
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/sib/sparql
+base_uri: http://purl.uniprot.org/
+# SIB co-hosts UniProt + Rhea + OMA + MeSH + Bgee in the default-graph union: the source of BOTH the
+# count-inflation traps (gotcha `union_inflation`/`taxon_multiplication`) AND the direct cross-DB joins
+# (examples `xdb_*`) — no TogoID bridge needed for those four. PDB/ChEMBL/Ensembl still bridge via TogoID.
+graphs:
+  primary: http://sparql.uniprot.org/uniprot
+  supporting: [taxonomy, go, diseases, enzyme, keywords, pathways, locations, citations, core]
+  co_hosted:                       # NOT UniProt-owned; live in the same union
+    oma:  "584M triples; re-types 337,813 reviewed UniProt IRIs as up:Protein (count-inflation source); reverse-join via lscr:xrefSwissProt"
+    mesh: "join target for up:Disease rdfs:seeAlso -> id.nlm.nih.gov/mesh/"
+    bgee: "expression; join via rdfs:seeAlso purl.uniprot.org/bgee/<ENSG> + IRI transform"
+    rhea: "reactions; join via up:enzyme EC IRI == rhea:ec (same namespace)"
+    goa:  "EMPTY STUB (151 triples), purl.jp/bio/11/goa — NOT real GOA data; ignore it"
+
+entity_counts:                     # COUNT(DISTINCT), graph-pinned unless noted; verified 2026-07-21
+  reviewed_current:      574627    # Swiss-Prot, current (FROM <.../uniprot>)  — the usual "how big is Swiss-Prot" answer
+  reviewed_with_deleted: 589059    # + 14,432 obsolete (up:obsolete 1); "current + historical", rarely wanted
+  union_raw_countstar:   926872    # unpinned COUNT(*) — INFLATED, never report (see gotcha union_inflation)
+  trembl_approx:         244000000
+  gene_symbol_coverage:  "503,655 / 574,627 reviewed carry a gene symbol (87.6%); 549,969 have a gene node (95.7%)"
+
+global_gotchas:                    # the few that bite ANY query — verified 2026-07-21
+  - id: reviewed_filter
+    say: "ALWAYS `up:reviewed 1` (integer 1, not \"1\"/true). Omitting it queries ~244M TrEMBL rows -> timeout; wrong type -> 0 rows."
+  - id: union_inflation
+    say: >
+      `a up:Protein ; up:reviewed 1` matches in THREE graphs (uniprot 574,627 + co-hosted OMA 337,813 re-typings of the
+      SAME IRIs + obsolete 14,432 distinct DELETED IRIs) -> unpinned COUNT(*) = 926,872. Two INDEPENDENT fixes:
+      (1) COUNT(DISTINCT ?p) collapses the OMA same-IRI re-typings -> 589,059; (2) to drop the 14,432 DELETED entries too,
+      pin `FROM <http://sparql.uniprot.org/uniprot>` OR `FILTER NOT EXISTS { ?p up:obsolete 1 }` -> 574,627 (current Swiss-Prot).
+      A ROW query doubles the same way -> use SELECT DISTINCT or pin the graph. Nothing signals the inflation; it is worse than an empty result.
+  - id: taxon_multiplication
+    say: >
+      OMA and Bgee RE-DECLARE the same taxon nodes (purl.uniprot.org/taxonomy/N) with their own copies of
+      up:scientificName/rank/commonName/mnemonic. On the default union a protein->organism->scientificName join returns
+      ~3 rows PER protein (product), silently tripling aggregates; up:rank even differs (Taxonomic_Rank_Species vs Species) so
+      DISTINCT can't fully mask it. FIX = pin `GRAPH <http://sparql.uniprot.org/taxonomy>`, not DISTINCT.
+  - id: no_protein_label
+    say: "up:Protein has NO rdfs:label. Names come from up:recommendedName/up:fullName (Swiss-Prot) or up:submittedName/up:fullName (TrEMBL). rdfs:label on a protein -> 0 rows silently."
+  - id: flat_lineage
+    say: "Taxonomy lineage is pre-computed as flat single-hop rdfs:subClassOf (every ancestor). NEVER use rdfs:subClassOf* (transitive) — it times out; single-hop already covers the full lineage."
+
+# ── examples: the load-bearing content. Each is executable, verified, and IS the schema+shape+sample it
+#    would otherwise be written four times over. `traps_avoided` are the inline, query-specific warnings. ──
+examples:
+  - id: sequence_mass
+    intent: amino-acid sequence + mass of a protein (up:sequence -> Simple_Sequence -> rdf:value)
+    question: "What is the canonical amino-acid sequence and mass of human insulin (P01308)?"
+    complexity: basic
+    sparql: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      SELECT ?sequence ?mass (STRLEN(?sequence) AS ?length)
+      WHERE {
+        VALUES ?protein { uniprot:P01308 }
+        ?protein up:sequence ?seq .
+        ?seq a up:Simple_Sequence ; rdf:value ?sequence ; up:mass ?mass .
+        FILTER(CONTAINS(STR(?seq), "/P01308-1"))   # pin the canonical isoform — see trap
+      }
+    verified: {result_rows: 1, mass: 11981, length: 110, date: "2026-07-21"}
+    teaches: "up:sequence -> up:Simple_Sequence -> rdf:value carries the letters; up:mass carries the Da."
+    traps_avoided:
+      - "up:sequence on P01308 ALSO returns the INS-IGF2 readthrough isoform (isoforms/F8WCM5-1, 200 aa) typed Simple_Sequence — the naive query returns 2 sequences. Pin the accession's own -1 isoform IRI to get the canonical."
+
+  - id: go_function
+    intent: proteins by GO molecular-function term (OBO IRI namespace)
+    question: "How many reviewed proteins have protein-kinase activity?"
+    complexity: basic
+    sparql: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT (COUNT(DISTINCT ?protein) AS ?n)
+      FROM <http://sparql.uniprot.org/uniprot>
+      WHERE {
+        VALUES ?goTerm { obo:GO_0004674 obo:GO_0004672 }   # ser/thr kinase; protein kinase
+        ?protein a up:Protein ; up:reviewed 1 ; up:classifiedWith ?goTerm .
+      }
+    verified: {n: 4782, date: "2026-07-21"}
+    teaches: "GO annotation is up:classifiedWith an OBO IRI. FROM-pin the uniprot graph for a clean DISTINCT count."
+    traps_avoided:
+      - "GO terms are OBO IRIs (obo:GO_XXXXXXX), NOT purl.uniprot.org/go/ — wrong namespace returns 0 rows silently."
+      - "up:classifiedWith ALSO carries UniProt keywords (purl.uniprot.org/keywords/NNN); if mixing, distinguish by FILTER(STRSTARTS(STR(?x), ...))."
+
+  - id: count_swissprot           # the ELEVATED `aggregation` class — targets the factoid miscount failure mode
+    intent: count current reviewed Swiss-Prot proteins (the union-inflation recipe)
+    question: "How many proteins are in current Swiss-Prot?"
+    complexity: aggregation
+    sparql: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      SELECT (COUNT(DISTINCT ?p) AS ?current_swissprot)
+      FROM <http://sparql.uniprot.org/uniprot>            # graph-pin does BOTH corrections at once
+      WHERE { ?p a up:Protein ; up:reviewed 1 . }
+    verified: {current_swissprot: 574627, date: "2026-07-21"}
+    teaches: "Graph-pinning the uniprot graph gives the current-Swiss-Prot count in one move (drops OMA re-typings AND obsolete)."
+    traps_avoided:
+      - "Unpinned COUNT(*) = 926,872 (inflated); COUNT(DISTINCT) alone = 589,059 (keeps 14,432 DELETED). See gotcha union_inflation for the full decomposition and the 'include historical' variant."
+
+  - id: disease_variants
+    intent: disease-linked natural variants of a protein (substitution + disease + dbSNP)
+    question: "Which natural variants of TP53 (P04637) carry a substitution, and their disease / dbSNP links?"
+    complexity: intermediate
+    sparql: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?substitution ?diseaseLabel ?dbsnp
+      WHERE {
+        VALUES ?protein { uniprot:P04637 }
+        ?protein up:annotation ?annot .
+        ?annot a up:Natural_Variant_Annotation ; up:substitution ?substitution .
+        OPTIONAL { ?annot skos:related ?disease . ?disease skos:prefLabel ?diseaseLabel . }   # ~39% carry a disease
+        OPTIONAL { ?annot rdfs:seeAlso ?dbsnp . FILTER(STRSTARTS(STR(?dbsnp), "http://purl.uniprot.org/dbsnp/")) }  # ~66% carry dbSNP
+      }
+    verified: {result_rows: 1363, date: "2026-07-21", note: "row count includes the OPTIONAL cross-product; use DISTINCT on ?substitution for unique substitutions"}
+    teaches: "Natural_Variant_Annotation carries up:substitution; disease is skos:related -> up:Disease -> skos:prefLabel (variant-level), dbSNP is rdfs:seeAlso by prefix."
+    traps_avoided:
+      - "Variant-level disease is skos:related; the PROTEIN-level disease link is a different predicate (up:annotation -> Disease_Annotation -> up:disease). Do not conflate the two tiers."
+
+  - id: xdb_rhea                    # ELEVATED `cross_db` class
+    intent: "cross-DB: human enzymes -> catalysed Rhea reactions via shared EC IRIs (same SIB endpoint)"
+    question: "Which Rhea reactions do human reviewed enzymes catalyse?"
+    complexity: cross_db
+    endpoint_name: sib
+    sparql: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX rhea: <http://rdf.rhea-db.org/>
+      SELECT ?protein ?mnemonic ?ecNumber ?reaction ?equation
+      WHERE {
+        GRAPH <http://sparql.uniprot.org/uniprot> {
+          ?protein a up:Protein ; up:reviewed 1 ;
+                   up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                   up:mnemonic ?mnemonic ; up:enzyme ?ecNumber .
+        }
+        GRAPH <http://rdfportal.org/dataset/rhea> {
+          ?reaction rdfs:subClassOf rhea:Reaction ; rhea:status rhea:Approved ;
+                    rhea:ec ?ecNumber ; rhea:equation ?equation .
+        }
+      }
+      LIMIT 25
+    verified: {result_rows: 25, date: "2026-07-21", first_row: "P00326 ADH1G_HUMAN -> rhea:10736 (primary alcohol + NAD+ = aldehyde + NADH + H+)"}
+    teaches: "UniProt up:enzyme EC IRIs are the SAME IRIs as Rhea rhea:ec — a direct GRAPH join, no text search, no ID bridge."
+    traps_avoided:
+      - "The aggregate COUNT form of this join TIMES OUT (>60s). Use the row form with LIMIT, or pre-filter one side to a single EC/organism before counting."
+
+  - id: xdb_mesh
+    intent: "cross-DB: human disease proteins -> MeSH descriptor label (co-hosted, direct join)"
+    question: "What MeSH descriptors correspond to the diseases of human reviewed proteins?"
+    complexity: cross_db
+    endpoint_name: sib
+    sparql: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?protein ?mnemonic ?diseaseLabel ?meshLabel
+      WHERE {
+        GRAPH <http://sparql.uniprot.org/uniprot> {
+          ?protein a up:Protein ; up:reviewed 1 ;
+                   up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                   up:mnemonic ?mnemonic ; up:annotation ?annot .
+          ?annot a up:Disease_Annotation ; up:disease ?disease .
+        }
+        GRAPH <http://sparql.uniprot.org/diseases> {
+          ?disease skos:prefLabel ?diseaseLabel ; rdfs:seeAlso ?meshIRI .
+          FILTER(STRSTARTS(STR(?meshIRI), "http://id.nlm.nih.gov/mesh/"))
+        }
+        GRAPH <http://id.nlm.nih.gov/mesh> { ?meshIRI rdfs:label ?meshLabel . }
+      }
+      LIMIT 15
+    verified: {result_rows: 15, date: "2026-07-21", first_row: "P25054 APC_HUMAN -> 'Desmoid disease, hereditary' -> MeSH 'Abdominal Neoplasms'"}
+    teaches: "up:disease -> up:Disease rdfs:seeAlso -> MeSH descriptor IRI (prefix-filtered), whose rdfs:label lives in the co-hosted mesh graph — one join, no bridge."
+
+# ── schema_delta: ONLY non-obvious predicates/idioms no example above already demonstrates.
+#    If a predicate appears in an example, it is NOT repeated here. ──
+schema_delta:
+  - "Gene symbol: ?protein up:encodedBy ?gene . ?gene skos:prefLabel ?symbol (skos:altLabel = synonyms). 87.6% coverage — 46,314 gene nodes are unnamed."
+  - "Position features (domains/PTMs/binding sites): ?protein up:annotation ?a . ?a a up:{Domain,Modified_Residue,Binding_Site}_Annotation ; up:range ?r . ?r faldo:begin/faldo:position ?b ; faldo:end/faldo:position ?e . (FALDO for ALL positional features.)"
+  - "Catalytic activity is an indirect 3-hop scaffold: up:annotation -> up:Catalytic_Activity_Annotation -> up:catalyticActivity -> up:catalyzedReaction -> Rhea IRI. Do not reach ?reaction directly from ?protein."
+  - "EC by class: up:enzyme ?ec ; FILTER(STRSTARTS(STR(?ec), 'http://purl.uniprot.org/enzyme/2.7')) for a whole EC subtree."
+  - "Isoforms: canonical = uniprot:ACC-1 (Simple_Sequence); alternates uniprot:ACC-2..N (Modified_Sequence). Suffix -N = isoform number, not an index."
+  - "dcterms:identifier on a protein is OMA-supplied (co-hosted graph only), NOT the native accession. Native accession = STRAFTER(STR(?p),'uniprot/'); up:mnemonic = e.g. 'P53_HUMAN'."
+
+# ── id_join_map: the least-recoverable asset — how to anchor stably and cross to other DBs. ──
+id_join_map:
+  stable_anchor: "Accession IRI uniprot:P04637 (= localname of the up:Protein IRI). up:mnemonic is a secondary human key (P53_HUMAN)."
+  same_endpoint_joins:            # SIB co-hosted — direct GRAPH join, NO TogoID
+    rhea: "up:enzyme EC IRI == rhea:ec (see example xdb_rhea)"
+    mesh: "up:disease -> up:Disease rdfs:seeAlso -> id.nlm.nih.gov/mesh/ (see example xdb_mesh)"
+    oma:  "reverse: OMA ?e lscr:xrefSwissProt uniprot:ACC (381,038 such triples); ?e also carries lscr:xrefEnsemblProtein, lscr:xrefNCBIRefSeq (verified 2026-07-18, re-verify on next pass)"
+    bgee: "rdfs:seeAlso purl.uniprot.org/bgee/<ENSG> (94.1% of human reviewed) -> BIND IRI transform to omabrowser.org/ontology/oma#GENE_<ENSG> -> bgee graph genex:isExpressedIn (verified 2026-07-18, re-verify)"
+  xref_via_seeAlso:               # rdfs:seeAlso, prefix-filtered; coverage of reviewed proteins
+    pdb: "rdf.wwpdb.org ~13-15%"
+    alphafold: "alphafolddb >98%"
+    embl: "~95%"
+    refseq: "~80%"
+    hgnc: "100% of human"
+    interpro: ">98%"
+    dbsnp: "purl.uniprot.org/dbsnp/rs... (~66% of natural variants)"
+    omim: "purl.uniprot.org/mim/..."
+  bridged_via_togoid:             # NOT co-hosted — use togoid_convertId
+    - "PDB, ChEMBL, Ensembl accession bridging still routes through TogoID."
