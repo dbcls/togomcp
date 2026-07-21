@@ -26,14 +26,21 @@ Output CSV columns:
     - ideal_answer: Expected ideal answer
     - baseline_success: Whether baseline query executed successfully (True/False)
     - baseline_answer: Answer from baseline Claude (no tools)
-    - baseline_input_tokens: Input tokens consumed by baseline call
+    - baseline_input_tokens: Uncached input tokens consumed by baseline call
     - baseline_output_tokens: Output tokens consumed by baseline call
+    - baseline_cache_creation_tokens / baseline_cache_read_tokens: prompt-cache
+      buckets (≈0 for baseline — single turn, no tools)
     - baseline_cost_usd: Estimated USD cost for baseline call
     - togomcp_success: Whether TogoMCP query executed successfully (True/False)
     - togomcp_answer: Answer from TogoMCP Claude (with tools)
-    - togomcp_input_tokens: Input tokens consumed by TogoMCP call (all turns)
-    - togomcp_output_tokens: Output tokens consumed by TogoMCP call (all turns)
-    - togomcp_cost_usd: Estimated USD cost for TogoMCP call
+    - togomcp_input_tokens: UNCACHED input tokens, cumulative over the tool loop
+    - togomcp_output_tokens: Output tokens, cumulative over the tool loop
+    - togomcp_cache_creation_tokens / togomcp_cache_read_tokens: prompt-cache
+      buckets — where large MIE reads are actually billed
+    - togomcp_total_input_tokens: input + cache_creation + cache_read; the true
+      input-side load and the metric to compare MIE corpora (e.g. v2 vs v3) on
+    - togomcp_cost_usd: USD cost for TogoMCP call (CLI total_cost_usd when
+      available — already cache-aware; else the cache-aware _calc_cost fallback)
     - total_cost_usd: Combined cost for this question
     - tools_used: Comma-separated list of tools used by TogoMCP
 """
@@ -84,52 +91,101 @@ logger = logging.getLogger(__name__)
 # Cost calculation helpers
 # ---------------------------------------------------------------------------
 
-def _calc_cost(input_tokens: int, output_tokens: int, pricing: Dict) -> float:
-    """Return estimated USD cost given token counts and per-million-token prices."""
-    input_cost  = input_tokens  / 1_000_000 * pricing["input_per_million"]
-    output_cost = output_tokens / 1_000_000 * pricing["output_per_million"]
-    return round(input_cost + output_cost, 6)
+def _calc_cost(
+    input_tokens: int,
+    output_tokens: int,
+    pricing: Dict,
+    cache_creation_tokens: int = 0,
+    cache_read_tokens: int = 0,
+) -> float:
+    """Return estimated USD cost given the four token buckets and per-million rates.
 
-
-def _extract_usage_from_obj(obj) -> Optional[Dict[str, int]]:
+    Fallback path only — when the CLI does not hand us an authoritative
+    ``total_cost_usd``. Cache tokens are priced separately (a cache read is far
+    cheaper than fresh input, a cache write slightly dearer); ignoring them here
+    would badly over- or under-state the cost of a tool-heavy run whose large
+    MIE reads are almost entirely cache traffic. Rates default off the base
+    input rate if the pricing dict omits them.
     """
-    Try to pull input_tokens / output_tokens from an object that may carry
-    usage information in several common shapes:
-      - obj.usage.input_tokens / obj.usage.output_tokens
-      - obj.input_tokens / obj.output_tokens  (flat)
-      - dict keys 'input_tokens', 'output_tokens'
-    Returns a dict {"input_tokens": int, "output_tokens": int} or None.
+    base_in = pricing["input_per_million"]
+    cache_read_rate  = pricing.get("cache_read_per_million",  base_in * 0.1)
+    cache_write_rate = pricing.get("cache_write_per_million", base_in * 1.25)
+    cost = (
+        input_tokens          / 1_000_000 * base_in
+        + output_tokens       / 1_000_000 * pricing["output_per_million"]
+        + cache_creation_tokens / 1_000_000 * cache_write_rate
+        + cache_read_tokens     / 1_000_000 * cache_read_rate
+    )
+    return round(cost, 6)
+
+
+# Token buckets we track. input_tokens here is *uncached* input only; the two
+# cache buckets carry the rest (a large MIE read lands in cache_creation on the
+# first turn, then cache_read on every later turn that keeps it in context).
+# Recording all three is what makes the redesign's byte savings measurable — the
+# saving shows up in cache tokens, not in the small input_tokens field, and is
+# largely masked in USD by prompt-cache discounting.
+_USAGE_KEYS = (
+    "input_tokens",
+    "output_tokens",
+    "cache_creation_input_tokens",
+    "cache_read_input_tokens",
+)
+
+
+def _extract_full_usage(obj) -> Optional[Dict[str, int]]:
+    """
+    Pull the full Anthropic-style token breakdown from an object that may carry
+    a ``usage`` dict/object (``ResultMessage``, ``AssistantMessage``), or expose
+    the counts flat / be a raw usage dict itself.
+
+    Returns a dict with all four ``_USAGE_KEYS`` (absent buckets default to 0),
+    or ``None`` if neither input nor output token counts are present.
+
+    Note: ``ResultMessage.usage`` is the *cumulative* session total (same source
+    as ``total_cost_usd``), whereas ``AssistantMessage.usage`` is per-turn — so
+    callers must read the cumulative figure from the ResultMessage and must NOT
+    also sum the per-turn AssistantMessage usage (that double-counts).
     """
     if obj is None:
         return None
 
-    # Attribute-based (SDK objects)
-    usage = getattr(obj, "usage", None)
-    if usage is not None:
-        # ResultMessage.usage is a plain dict; other SDKs use objects
-        if isinstance(usage, dict):
-            inp = usage.get("input_tokens")
-            out = usage.get("output_tokens")
-        else:
-            inp = getattr(usage, "input_tokens", None)
-            out = getattr(usage, "output_tokens", None)
-        if inp is not None and out is not None:
-            return {"input_tokens": int(inp), "output_tokens": int(out)}
+    src = getattr(obj, "usage", None)
+    if src is None:
+        # The object might itself be the usage carrier (flat attrs or raw dict).
+        if isinstance(obj, dict) and ("input_tokens" in obj or "output_tokens" in obj):
+            src = obj
+        elif getattr(obj, "input_tokens", None) is not None or \
+                getattr(obj, "output_tokens", None) is not None:
+            src = obj
+    if src is None:
+        return None
 
-    # Flat attributes directly on the object
-    inp = getattr(obj, "input_tokens", None)
-    out = getattr(obj, "output_tokens", None)
-    if inp is not None and out is not None:
-        return {"input_tokens": int(inp), "output_tokens": int(out)}
+    def _get(key):
+        return src.get(key) if isinstance(src, dict) else getattr(src, key, None)
 
-    # Dict-style
-    if isinstance(obj, dict):
-        inp = obj.get("input_tokens")
-        out = obj.get("output_tokens")
-        if inp is not None and out is not None:
-            return {"input_tokens": int(inp), "output_tokens": int(out)}
+    # Prefer the per-turn ledger when the CLI provides one. Empirically the
+    # top-level fields reflect only the primary model's *final* turn, so on a
+    # multi-turn tool loop (the benchmark's normal case) they under-count;
+    # summing `iterations` is the cumulative primary-model total and is correct
+    # whether the top-level figure is a running sum or a last-turn snapshot.
+    # (Auxiliary-model overhead — e.g. the CLI's haiku summarizer — is
+    # deliberately excluded here; it doesn't carry the MIE context. Whole-run
+    # dollar cost still comes from the CLI's cache-aware total_cost_usd.)
+    iters = _get("iterations")
+    if isinstance(iters, list) and iters:
+        acc = dict.fromkeys(_USAGE_KEYS, 0)
+        for it in iters:
+            if isinstance(it, dict):
+                for k in _USAGE_KEYS:
+                    acc[k] += int(it.get(k) or 0)
+        return acc
 
-    return None
+    inp = _get("input_tokens")
+    out = _get("output_tokens")
+    if inp is None and out is None:
+        return None
+    return {k: int(_get(k) or 0) for k in _USAGE_KEYS}
 
 
 class TestRunner:
@@ -183,6 +239,11 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
             "pricing": {
                 "input_per_million": 3.0,
                 "output_per_million": 15.0,
+                # Sonnet 4.5 cache rates: read ~0.1x input, 5-min write ~1.25x.
+                # Used only by the _calc_cost fallback; the CLI's total_cost_usd
+                # is preferred when present and is already cache-aware.
+                "cache_read_per_million": 0.3,
+                "cache_write_per_million": 3.75,
             },
             "baseline_system_prompt": (
                 "You are an expert assistant answering biological and biomedical questions. "
@@ -395,8 +456,7 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
             )
 
             final_text   = None
-            total_input  = 0
-            total_output = 0
+            usage        = dict.fromkeys(_USAGE_KEYS, 0)
             usage_found  = False
             cost_usd     = 0.0
             use_cli_cost = False
@@ -417,15 +477,17 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                     except StopAsyncIteration:
                         break
 
-                    usage = _extract_usage_from_obj(message)
-                    if usage:
-                        total_input  += usage["input_tokens"]
-                        total_output += usage["output_tokens"]
-                        usage_found   = True
-
+                    # Read the CUMULATIVE session usage off the ResultMessage
+                    # only — it is the authoritative total (same source as
+                    # total_cost_usd). Summing per-turn AssistantMessage usage
+                    # would double-count. (Baseline is single-turn anyway.)
                     if isinstance(message, ResultMessage):
                         if hasattr(message, 'result') and isinstance(message.result, str):
                             final_text = message.result
+                        result_usage = _extract_full_usage(message)
+                        if result_usage:
+                            usage = result_usage
+                            usage_found = True
                         cli_cost = getattr(message, 'total_cost_usd', None)
                         if cli_cost is not None:
                             cost_usd = float(cli_cost)
@@ -440,7 +502,10 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                 )
 
             if not use_cli_cost:
-                cost_usd = _calc_cost(total_input, total_output, self.config["pricing"])
+                cost_usd = _calc_cost(
+                    usage["input_tokens"], usage["output_tokens"], self.config["pricing"],
+                    usage["cache_creation_input_tokens"], usage["cache_read_input_tokens"],
+                )
 
             # Treat an empty answer as a failure, same as the TogoMCP path: an
             # empty ResultMessage usually means the subprocess died mid-stream
@@ -454,8 +519,10 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                         "check test_runner.log."
                     ),
                     "elapsed_time": elapsed_time,
-                    "input_tokens": total_input,
-                    "output_tokens": total_output,
+                    "input_tokens": usage["input_tokens"],
+                    "output_tokens": usage["output_tokens"],
+                    "cache_creation_tokens": usage["cache_creation_input_tokens"],
+                    "cache_read_tokens": usage["cache_read_input_tokens"],
                     "cost_usd": cost_usd,
                 }
 
@@ -463,8 +530,10 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                 "success": True,
                 "text": final_text,
                 "elapsed_time": elapsed_time,
-                "input_tokens": total_input,
-                "output_tokens": total_output,
+                "input_tokens": usage["input_tokens"],
+                "output_tokens": usage["output_tokens"],
+                "cache_creation_tokens": usage["cache_creation_input_tokens"],
+                "cache_read_tokens": usage["cache_read_input_tokens"],
                 "cost_usd": cost_usd,
             }
 
@@ -478,6 +547,8 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                 "elapsed_time": elapsed_time,
                 "input_tokens": 0,
                 "output_tokens": 0,
+                "cache_creation_tokens": 0,
+                "cache_read_tokens": 0,
                 "cost_usd": 0.0,
             }
 
@@ -564,6 +635,8 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                     "elapsed_time": self.config["timeout"],
                     "input_tokens": 0,
                     "output_tokens": 0,
+                    "cache_creation_tokens": 0,
+                    "cache_read_tokens": 0,
                     "cost_usd": 0.0,
                 }
                 attempt_failed = True
@@ -577,6 +650,8 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                     "elapsed_time": 0,
                     "input_tokens": 0,
                     "output_tokens": 0,
+                    "cache_creation_tokens": 0,
+                    "cache_read_tokens": 0,
                     "cost_usd": 0.0,
                 }
                 attempt_failed = True
@@ -686,8 +761,7 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
 
             final_text   = None
             tool_uses    = []
-            total_input  = 0
-            total_output = 0
+            usage        = dict.fromkeys(_USAGE_KEYS, 0)
             usage_found  = False
             cost_usd     = 0.0
             use_cli_cost = False
@@ -712,13 +786,6 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                     except StopAsyncIteration:
                         break
 
-                    # ---- Accumulate token usage from every message ----
-                    usage = _extract_usage_from_obj(message)
-                    if usage:
-                        total_input  += usage["input_tokens"]
-                        total_output += usage["output_tokens"]
-                        usage_found   = True
-
                     # ---- Collect tool names ----
                     if isinstance(message, AssistantMessage):
                         if hasattr(message, 'content') and isinstance(message.content, list):
@@ -738,17 +805,23 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                                     # _auto_approve_mcp_tools.
                                     tool_uses.append(name)
 
-                                # Some SDKs embed usage inside content blocks too
-                                inner_usage = _extract_usage_from_obj(block)
-                                if inner_usage:
-                                    total_input  += inner_usage["input_tokens"]
-                                    total_output += inner_usage["output_tokens"]
-                                    usage_found   = True
-
-                    # ---- Capture final answer + authoritative cost ----
+                    # ---- Capture final answer + CUMULATIVE usage + cost ----
+                    # Token usage is read off the ResultMessage ONLY: its usage
+                    # is the whole-session cumulative total (same source as
+                    # total_cost_usd), covering every turn of the tool loop —
+                    # including the cache_creation/cache_read buckets where the
+                    # big MIE reads are billed. Summing the per-turn
+                    # AssistantMessage usage instead (the old code did) both
+                    # double-counted and dropped the cache buckets, which is why
+                    # togomcp_input_tokens read as ~400 and the redesign's
+                    # input-byte saving was invisible.
                     if isinstance(message, ResultMessage):
                         if hasattr(message, 'result') and isinstance(message.result, str):
                             final_text = message.result
+                        result_usage = _extract_full_usage(message)
+                        if result_usage:
+                            usage = result_usage
+                            usage_found = True
                         # The CLI already calculates true cost (incl. cache charges);
                         # prefer it over our own recomputation when available.
                         cli_cost = getattr(message, 'total_cost_usd', None)
@@ -766,7 +839,10 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                 )
 
             if not use_cli_cost:
-                cost_usd = _calc_cost(total_input, total_output, self.config["pricing"])
+                cost_usd = _calc_cost(
+                    usage["input_tokens"], usage["output_tokens"], self.config["pricing"],
+                    usage["cache_creation_input_tokens"], usage["cache_read_input_tokens"],
+                )
 
             # Reject empty-result responses as failures so the retry loop sees
             # them. An empty `final_text` (no ResultMessage with text) usually
@@ -783,8 +859,10 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                     ),
                     "tool_uses": tool_uses,
                     "elapsed_time": elapsed_time,
-                    "input_tokens": total_input,
-                    "output_tokens": total_output,
+                    "input_tokens": usage["input_tokens"],
+                    "output_tokens": usage["output_tokens"],
+                    "cache_creation_tokens": usage["cache_creation_input_tokens"],
+                    "cache_read_tokens": usage["cache_read_input_tokens"],
                     "cost_usd": cost_usd,
                 }
 
@@ -793,8 +871,10 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                 "text": final_text,
                 "tool_uses": tool_uses,
                 "elapsed_time": elapsed_time,
-                "input_tokens": total_input,
-                "output_tokens": total_output,
+                "input_tokens": usage["input_tokens"],
+                "output_tokens": usage["output_tokens"],
+                "cache_creation_tokens": usage["cache_creation_input_tokens"],
+                "cache_read_tokens": usage["cache_read_input_tokens"],
                 "cost_usd": cost_usd,
             }
 
@@ -809,6 +889,8 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                 "elapsed_time": elapsed_time,
                 "input_tokens": 0,
                 "output_tokens": 0,
+                "cache_creation_tokens": 0,
+                "cache_read_tokens": 0,
                 "cost_usd": 0.0,
             }
 
@@ -896,13 +978,24 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
             "baseline_answer":       baseline_answer,
             "baseline_input_tokens": baseline_result["input_tokens"],
             "baseline_output_tokens":baseline_result["output_tokens"],
+            "baseline_cache_creation_tokens": baseline_result.get("cache_creation_tokens", 0),
+            "baseline_cache_read_tokens":     baseline_result.get("cache_read_tokens", 0),
             "baseline_cost_usd":     baseline_result["cost_usd"],
-            # TogoMCP
+            # TogoMCP. input_tokens is uncached input only; the redesign's byte
+            # saving lands in the cache buckets. total_input_tokens sums all
+            # three and is the metric to compare v2 vs v3 MIE corpora on.
             "togomcp_success":       togomcp_result["success"],
             "togomcp_time":          round(togomcp_result.get("elapsed_time", 0.0), 2),
             "togomcp_answer":        togomcp_answer,
             "togomcp_input_tokens":  togomcp_result["input_tokens"],
             "togomcp_output_tokens": togomcp_result["output_tokens"],
+            "togomcp_cache_creation_tokens": togomcp_result.get("cache_creation_tokens", 0),
+            "togomcp_cache_read_tokens":     togomcp_result.get("cache_read_tokens", 0),
+            "togomcp_total_input_tokens": (
+                togomcp_result["input_tokens"]
+                + togomcp_result.get("cache_creation_tokens", 0)
+                + togomcp_result.get("cache_read_tokens", 0)
+            ),
             "togomcp_cost_usd":      togomcp_result["cost_usd"],
             # Combined
             "total_cost_usd":        total_cost,
@@ -971,12 +1064,17 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                     "baseline_answer":       f"[SYSTEM ERROR: {str(e)}]",
                     "baseline_input_tokens": 0,
                     "baseline_output_tokens":0,
+                    "baseline_cache_creation_tokens": 0,
+                    "baseline_cache_read_tokens":     0,
                     "baseline_cost_usd":     0.0,
                     "togomcp_success":       False,
                     "togomcp_time":          0.0,
                     "togomcp_answer":        f"[SYSTEM ERROR: {str(e)}]",
                     "togomcp_input_tokens":  0,
                     "togomcp_output_tokens": 0,
+                    "togomcp_cache_creation_tokens": 0,
+                    "togomcp_cache_read_tokens":     0,
+                    "togomcp_total_input_tokens":    0,
                     "togomcp_cost_usd":      0.0,
                     "total_cost_usd":        0.0,
                     "tools_used":            "",
@@ -1016,6 +1114,8 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
             "baseline_answer",
             "baseline_input_tokens",
             "baseline_output_tokens",
+            "baseline_cache_creation_tokens",
+            "baseline_cache_read_tokens",
             "baseline_cost_usd",
             # TogoMCP
             "togomcp_success",
@@ -1023,6 +1123,9 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
             "togomcp_answer",
             "togomcp_input_tokens",
             "togomcp_output_tokens",
+            "togomcp_cache_creation_tokens",
+            "togomcp_cache_read_tokens",
+            "togomcp_total_input_tokens",
             "togomcp_cost_usd",
             # Combined
             "total_cost_usd",
@@ -1062,9 +1165,12 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
         bl_out  = sum(r.get("baseline_output_tokens", 0) for r in self.results)
         bl_cost = sum(r.get("baseline_cost_usd",      0.0) for r in self.results)
 
-        tg_in   = sum(r.get("togomcp_input_tokens",  0) for r in self.results)
-        tg_out  = sum(r.get("togomcp_output_tokens", 0) for r in self.results)
-        tg_cost = sum(r.get("togomcp_cost_usd",      0.0) for r in self.results)
+        tg_in     = sum(r.get("togomcp_input_tokens",           0) for r in self.results)
+        tg_out    = sum(r.get("togomcp_output_tokens",          0) for r in self.results)
+        tg_ccreate= sum(r.get("togomcp_cache_creation_tokens",  0) for r in self.results)
+        tg_cread  = sum(r.get("togomcp_cache_read_tokens",      0) for r in self.results)
+        tg_tot_in = sum(r.get("togomcp_total_input_tokens",     0) for r in self.results)
+        tg_cost   = sum(r.get("togomcp_cost_usd",             0.0) for r in self.results)
 
         grand_cost = sum(r.get("total_cost_usd", 0.0) for r in self.results)
 
@@ -1085,7 +1191,10 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
         print("TOKEN USAGE:")
         print(f"  Baseline   input  tokens:    {bl_in:>12,}  (avg {bl_in//total if total else 0:,}/q)")
         print(f"  Baseline   output tokens:    {bl_out:>12,}  (avg {bl_out//total if total else 0:,}/q)")
-        print(f"  TogoMCP    input  tokens:    {tg_in:>12,}  (avg {tg_in//total if total else 0:,}/q)")
+        print(f"  TogoMCP    input  tokens:    {tg_in:>12,}  (avg {tg_in//total if total else 0:,}/q)  [uncached only]")
+        print(f"  TogoMCP    cache-create:     {tg_ccreate:>12,}  (avg {tg_ccreate//total if total else 0:,}/q)")
+        print(f"  TogoMCP    cache-read:       {tg_cread:>12,}  (avg {tg_cread//total if total else 0:,}/q)")
+        print(f"  TogoMCP    TOTAL input:      {tg_tot_in:>12,}  (avg {tg_tot_in//total if total else 0:,}/q)  <- v2/v3 metric")
         print(f"  TogoMCP    output tokens:    {tg_out:>12,}  (avg {tg_out//total if total else 0:,}/q)")
         print()
         print("ESTIMATED COST (USD):")
@@ -1131,9 +1240,12 @@ Examples:
 Output CSV columns (new token/cost columns marked with *):
     question_id, question_type, question, ideal_answer
     baseline_success, baseline_time, baseline_answer
-    * baseline_input_tokens, * baseline_output_tokens, * baseline_cost_usd
+    * baseline_input_tokens, * baseline_output_tokens
+    * baseline_cache_creation_tokens, * baseline_cache_read_tokens, * baseline_cost_usd
     togomcp_success, togomcp_time, togomcp_answer
-    * togomcp_input_tokens, * togomcp_output_tokens, * togomcp_cost_usd
+    * togomcp_input_tokens, * togomcp_output_tokens
+    * togomcp_cache_creation_tokens, * togomcp_cache_read_tokens
+    * togomcp_total_input_tokens, * togomcp_cost_usd
     * total_cost_usd
     tools_used
 

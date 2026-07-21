@@ -75,8 +75,10 @@ directly). The *runtime* saving that should buy is **invisible in this run**:
 Two reasons the −11% is not a trustworthy "the redesign saves 11%":
 1. **The harness under-logs input tokens.** `togomcp_input_tokens` is ~**400/answer** (median 402,
    max 1,668), but one `get_MIE_file(uniprot)` returns 5,000–14,000 tokens — so the field captures
-   only a fraction (likely the final turn, not the cumulative agent loop). The byte-driven **input**
-   saving the redesign targets is therefore unmeasured.
+   only a fraction. (Root cause since pinned: the harness recorded only the `input_tokens` field and
+   dropped the `cache_creation`/`cache_read` buckets where MIE reads are billed — see the DONE
+   follow-up below. Not "final turn only" as first guessed.) The byte-driven **input** saving the
+   redesign targets is therefore unmeasured *in this run's data*.
 2. **The −11% is an OUTPUT-token effect** (−44K output, not −input), which is answer-variance-
    dependent — possibly a denser MIE → tighter reasoning / fewer failed-query retries, possibly
    noise at n=25×3. Not attributable to the byte savings.
@@ -85,10 +87,30 @@ Theoretical input saving (unconfirmed): ~9–10K / ~8K fewer input tokens per un
 read, ≈ $0.03/query per read at Sonnet input rates × turns-that-carry-the-context — but **prompt
 caching** likely discounts a re-read ~10×, which is probably why billed cost barely moves.
 
-**Follow-up (harness):** to get a real cost number, sum token usage across the **whole agent loop**
-(every model call in a question's run), not just the final turn — the ablation FINDINGS flagged the
-same gap (`tools_used` records names only). Until then, report the byte reduction (certain) and treat
-any dollar delta from this harness as indicative, not deterministic.
+**Follow-up (harness) — DONE 2026-07-22.** Root cause was narrower and worse than "final turn only":
+`automated_test_runner.py` recorded only the `input_tokens` field of the SDK usage dict and dropped
+the two prompt-cache buckets — `cache_creation_input_tokens` and `cache_read_input_tokens` — which is
+exactly where a large MIE read is billed. A single-turn probe makes it vivid: `input_tokens: 10` vs
+`cache_creation_input_tokens: 20366` on the same call. So the redesign's whole target (input bytes)
+was structurally unmeasured, not merely noisy. The old loop also *summed per-turn `AssistantMessage`
+usage on top of the cumulative `ResultMessage` usage* — a latent double-count that the missing-cache
+under-count happened to mask.
+
+**Fix (in `automated_test_runner.py`):**
+- Read cumulative usage from the `ResultMessage` only, and prefer summing its per-turn `iterations`
+  ledger (correct whether the top-level figure is a running sum or a last-turn snapshot; kills the
+  double-count). Primary-model scope — auxiliary CLI overhead (haiku summarizer) is excluded, as it
+  doesn't carry MIE context.
+- New CSV columns: `togomcp_cache_creation_tokens`, `togomcp_cache_read_tokens`,
+  `togomcp_total_input_tokens` (= input + both cache buckets — **the v2-vs-v3 metric**), mirrored for
+  baseline (≈0 there — a clean control). `_calc_cost` fallback is now cache-aware; the CLI's
+  `total_cost_usd` is still preferred and was already correct.
+- `run_ablation.py` needs no change (dynamic-fieldname averaging); `add_llm_evaluation.py` passes the
+  columns through (pandas read→write). Helpers unit-tested (single-turn, multi-turn sum, fallback).
+
+The next targeted re-run (item 1 below) will therefore *measure* the input-byte win in
+`togomcp_total_input_tokens`; USD stays the secondary metric because prompt-cache discounting masks it
+(the ablation FINDINGS flagged the same whole-loop gap — `tools_used` records names only).
 
 ## Verdict & next step
 
