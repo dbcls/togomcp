@@ -97,18 +97,27 @@ The run data shows the agent routing around it. Fallback `list_databases` calls 
 corpus, all 36 records collapse to `title="No title found."` and an error `description`, and
 `keywords`/`categories` are empty. What survives is **only the bare `database` identifier
 column** (sourced from the endpoint registry `SPARQL_ENDPOINT.keys()`, not `schema_info`). So
-discovery degrades to **names-only across both tools** — it is not a healthy fallback. The
-recovery works *only* because (a) the identifiers survive and (b) they are semantically
-transparent (uniprot, clinvar, reactome…) **and this benchmark is name-anchored**: the agent
-reads the surviving roster, recognizes the target by name, and `get_MIE_file`/`run_sparql`
-proceed unchanged (103 vs 101/98 calls across the three replicates). A question needing
-*semantic* DB selection (answerable only from descriptions/keywords) would have **no**
-recovery path — so the +0.20 is a benchmark-specific robustness result, not a general one.
+discovery degrades to **names-only across both tools** — it is not a healthy fallback. Yet the
+agent never actually loses DB-name knowledge, because **the complete database roster is always in
+the tool schema**: `DATABASE_DESCRIPTION` (server.py) is the `database`-parameter description on
+both `run_sparql` and `get_MIE_file`, and it enumerates all 36 identifiers (`"Must be exactly one
+of: uniprot, rhea, … amrportal, … nbrc, mogplus, …"`) via `SPARQL_ENDPOINT.keys()`. Tool schemas
+aren't stripped by any ablation, so **every DB name is visible in every condition** — the niche
+ones (amrportal, jpostdb, nbrc, mogplus…) included. Stripping `schema_info` therefore removes only
+the *semantic* layer (the keyword filter + the one-line descriptions), **not the roster**; the
+agent reads all 36 names from the enum regardless, maps need→DB from those names + its priors, and
+if a name is opaque can probe with `get_MIE_file`. So it recognizes the target and
+`get_MIE_file`/`run_sparql` proceed unchanged (103 vs 101/98 calls across the three replicates).
+The benchmark is **name-free but domain-transparent** — questions don't name their DB (the runner
+sends only the body), but the target is recoverable from the ever-present roster + priors. The
+residual discovery difficulty is narrow and specific: **name-opaque** DBs (jpostdb, mogplus, nbrc,
+mediadive, hco/mco, nando) whose identifier doesn't convey content — and even those are
+probe-recoverable — so the +0.20 is a benchmark-specific robustness result, not a general one.
 
 So the +0.20 null is **not** "the schema_info text is worthless" — it is "the agent is
 robust to losing the schema_info content AND the keyword-discovery front door at once,
-because the bare DB roster survives and the questions' targets are name-recognizable." Two
-knock-ons: (a) **`ablate_group_query` inherits the same confound** — `schema_info` is one of
+because the full DB roster is always in the tool schema (`DATABASE_DESCRIPTION`) and the target
+stays recoverable from it + priors." Two knock-ons: (a) **`ablate_group_query` inherits the same confound** — `schema_info` is one of
 its five stripped sections, so its +0.20 null also breaks discovery; (b) **`no_mie` does
 NOT** — it blocks `get_MIE_file` at the tool level on the *full* corpus, never disallows
 `find_databases`/`list_databases`, so discovery reads intact `schema_info`. `no_mie` thus
