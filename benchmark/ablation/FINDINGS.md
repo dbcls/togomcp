@@ -26,7 +26,7 @@ was re-verified 0/11 under the 2026-07-20 `grade_exact` generalization.)
 | `common_errors` | **+0.65 ± 0.65** | **+1.94** | +0.63 ± 1.04 |
 | `cross_database_queries` | +0.25 ± 0.77 | +0.63 | −0.02 ± 0.75 |
 | `architectural_notes` | +0.23 ± 0.51 | +0.91 | −0.10 ± 0.46 |
-| `schema_info` | +0.20 ± 0.50 | +0.77 | −0.07 ± 0.66 |
+| `schema_info` † | +0.20 ± 0.50 | +0.77 | −0.07 ± 0.66 |
 | `critical_warnings` | +0.14 ± 0.62 | +0.43 | −0.19 ± 0.69 |
 | `data_statistics` | +0.07 ± 0.66 | +0.21 | +0.11 ± 0.79 |
 | `anti_patterns` | +0.04 ± 0.40 | +0.19 | −0.05 ± 0.43 |
@@ -34,6 +34,10 @@ was re-verified 0/11 under the 2026-07-20 `grade_exact` generalization.)
 | `sample_rdf_entries` | −0.08 ± 0.63 | −0.24 | −0.09 ± 0.76 |
 | `sparql_query_examples` | −0.13 ± 0.57 | −0.44 | +0.66 ± 0.88 |
 | `shape_expressions` | −0.15 ± 0.54 | −0.53 | −0.13 ± 0.86 |
+
+† `schema_info` is **not a clean leave-one-out** — stripping it also disables
+`find_databases` (the required STEP 0), so its near-zero contribution is a robustness
+result, not evidence the text is worthless. See Trap 3.
 
 `common_errors` is the one near-miss: z=1.94 (nominal p≈0.052), and the only section
 pointing the same way on both quality (+0.65) and effort (+0.63). **It is not a
@@ -73,6 +77,44 @@ drove SPARQL calls 466 → 585 (**+25%**) across the run. It does not survive pa
 Per-question query counts vary enormously (paired SD ≈ 3.2), so the per-question
 delta was +0.87 ± 1.07 — CI includes 0. The aggregate ratio was reading a sum as an
 effect. Every delta reported here is now a *paired per-question* difference with a CI.
+
+## Trap 3 — `schema_info` is not a clean leave-one-out (it disables `find_databases`)
+
+The `schema_info` row (+0.20 ± 0.50, z=0.77) must **not** be read symmetrically with the
+other ten. Removing `common_errors` or `shape_expressions` only deletes text the LLM reads
+*through* `get_MIE_file`. Removing `schema_info` does that **and disables a required tool**:
+`find_databases`/`list_databases` build their entire searchable catalog from each served
+MIE's `schema_info` block (title/description/keywords/categories) via `_load_databases_cache`
+in `rdf_portal.py` — and the served corpus is `TOGOMCP_MIE_DIR`, the stripped variant. With
+`schema_info` gone, every catalog record collapses to `title="No title found."`,
+`keywords=[]`, an error `description` — so `find_databases(keywords=[...])`, the
+pre-registered STEP 0, returns near-empty for essentially every query. It's a **dual
+ablation** (lost content **+** broken discovery), not a marginal leave-one-out.
+
+The run data shows the agent routing around it. Fallback `list_databases` calls jump from
+**1–2** (baseline / other conditions) to **38** in `ablate_schema_info`. But note
+`list_databases` is **also degraded** by the same strip — verified against the stripped
+corpus, all 36 records collapse to `title="No title found."` and an error `description`, and
+`keywords`/`categories` are empty. What survives is **only the bare `database` identifier
+column** (sourced from the endpoint registry `SPARQL_ENDPOINT.keys()`, not `schema_info`). So
+discovery degrades to **names-only across both tools** — it is not a healthy fallback. The
+recovery works *only* because (a) the identifiers survive and (b) they are semantically
+transparent (uniprot, clinvar, reactome…) **and this benchmark is name-anchored**: the agent
+reads the surviving roster, recognizes the target by name, and `get_MIE_file`/`run_sparql`
+proceed unchanged (103 vs 101/98 calls across the three replicates). A question needing
+*semantic* DB selection (answerable only from descriptions/keywords) would have **no**
+recovery path — so the +0.20 is a benchmark-specific robustness result, not a general one.
+
+So the +0.20 null is **not** "the schema_info text is worthless" — it is "the agent is
+robust to losing the schema_info content AND the keyword-discovery front door at once,
+because the bare DB roster survives and the questions' targets are name-recognizable." Two
+knock-ons: (a) **`ablate_group_query` inherits the same confound** — `schema_info` is one of
+its five stripped sections, so its +0.20 null also breaks discovery; (b) **`no_mie` does
+NOT** — it blocks `get_MIE_file` at the tool level on the *full* corpus, never disallows
+`find_databases`/`list_databases`, so discovery reads intact `schema_info`. `no_mie` thus
+isolates the value of the schema/example *content* with discovery functional — a cleaner
+separation than either `schema_info`/`query` condition, which strengthens the +0.9/20
+no_mie effect as a content effect, not a discovery effect.
 
 ## Interpreting the null
 
@@ -146,9 +188,19 @@ untrimmed n=40 in parens):
 
 | Group | Contribution (±95% CI) | z | Δ run_sparql (±CI) | Δ correctness |
 |---|---:|---:|---:|---:|
-| `query` | **+0.20 ± 0.40** (+0.23 ± 0.39) | +0.98 | +0.83 ± 1.67 | +9pp |
+| `query` † | **+0.20 ± 0.40** (+0.23 ± 0.39) | +0.98 | +0.83 ± 1.67 | +9pp |
 | `orientation` | +0.10 ± 0.52 (+0.11 ± 0.47) | +0.38 | −0.86 ± 0.99 | −3pp |
 | `guardrails` | +0.04 ± 0.45 (+0.04 ± 0.39) | +0.17 | **−0.92 ± 0.92\*** | +6pp |
+
+† The `query` group **contains `schema_info`**, so removing it *also disables
+`find_databases`* — the same dual ablation as the section-level `schema_info` condition
+(Trap 3), not a clean content ablation. The tell is identical: fallback `list_databases`
+calls jump **2 → 40** under `ablate_group_query` (guardrails 5, orientation 2, baseline 2),
+the agent routing around a dead discovery front door onto the surviving bare DB roster. So
+`query`'s "only +0.20 for 53% of the MIE" — and its correctness near-miss below — are
+partly a *discovery-breakage-then-recovery* result, not purely the value of the
+query-construction content. `no_mie` (which leaves `find_databases` working) is the clean
+read on content value.
 
 Exact-answer correctness, paired per question **with a CI** (gradable questions only, so
 summary-type are dropped → **n=32 untrimmed / 27 trimmed**; Q071 became gradable on
@@ -246,6 +298,69 @@ Caveat: baseline is cross-batch (Trap 1), but the effect (0.9) is ~2.7× the bas
 replicate drift (±0.35), so it survives a worst-case baseline shift. Sharpened scored CSVs
 kept as `*-scored-5judge.csv`; primary `*-scored.csv` restored to the 1-judge batch so the
 group conditions stay validly paired.
+
+## Leave-one-in (keep-one-group) — 2026-07-20/21 sweep — SUFFICIENCY confirmed
+
+The sufficiency complement to the group leave-one-out: instead of "is group X *necessary*
+given the other two?" (all null), ask "is group X *sufficient alone*?" Each `keep_<g>`
+condition KEEPS only that group's sections and strips the other two (`ablate_mie.py
+--keep-groups all`), served on the local server so it pairs against the group sweep's
+baseline + the `no_mie` batch already there.
+
+| | |
+|---|---|
+| Design | 3 conditions (keep_query / keep_guardrails / keep_orientation) × 40-question pilot × 3 replicates, all-API |
+| Validity | per-condition local-server tool calls 1613 / 2152 / 2184 — all queried the stripped local server |
+| Analysis | `analyze_keep.py`: **sufficiency** = keep − no_mie · **%gap** = share of the +0.9 whole-MIE effect recovered · **complement** = baseline − keep |
+
+### Headline: the `query` group alone recovers 99% of the whole-MIE effect
+
+Whole-MIE gap (baseline − no_mie): **+0.93 ± 0.68**. Against that:
+
+| group (untrimmed) | sufficiency (keep − no_mie) | z | %gap | complement (base − keep) | corr (keep − no_mie) |
+|---|---:|---:|---:|---:|---:|
+| **`keep_query`** | **+0.92 ± 0.54 ✱** | **+3.32** | **99%** | +0.01 ± 0.54 | +0.015 ± 0.090 |
+| `keep_orientation` | +0.41 ± 0.89 | +0.89 | 44% | +0.52 ± 0.78 | +0.077 ± 0.102 |
+| `keep_guardrails` | +0.12 ± 0.66 | +0.36 | 13% | +0.81 ± 0.64 | −0.045 ± 0.090 |
+
+`keep_query` is the **only** significant cell (CI excludes 0, z=3.32; trimmed +0.97 ± 0.59,
+z=3.25 — stable). The `query` group **alone** — schema/shape/examples/cross-refs/cross-DB —
+lifts +0.92/20 above no-MIE, **99% of the +0.9 the whole MIE provides**, and its complement
+is **+0.01**: dropping guardrails+orientation from the full MIE costs nothing. Correctness
+moves on no axis (all three keep − no_mie CIs include 0), consistent with the no_mie finding
+that the MIE lifts judged *quality* more than raw counts.
+
+This closes the redundancy arc from the sufficiency side: section-null + group-null +
+whole-significant + **one-group-sufficient** = the value is real, heavily distributed
+*within the query group*, and guardrails/orientation are near-dispensable given it.
+
+### The discovery confound (Trap 3) fired — but cancels for the headline
+
+`schema_info` lives in the `query` group, so — exactly as flagged before the run — the two
+conditions that strip it ran with a broken discovery front door. The `list_databases`
+fallback rate is the tell:
+
+| condition | list_databases | schema_info kept | discovery |
+|---|---:|---|---|
+| baseline / no_mie / **keep_query** | 2 / 4 / **2** | yes | **works** |
+| keep_guardrails | **40** | no | names-only |
+| keep_orientation | **55** | no | names-only |
+
+The crucial point: **the `keep_query` result is measured entirely between working-discovery
+conditions.** Its sufficiency pairs keep_query against `no_mie`, and its complement against
+`baseline` — all three retain `schema_info` and show a flat ~2–4 `list_databases` rate. So
+discovery is held constant across the whole `keep_query` comparison and **the confound
+cancels**: +0.92 is a clean measurement of query *content* value, not a discovery artifact.
+
+The confound lands only on `keep_guardrails`/`keep_orientation`, and it biases their
+sufficiency **downward** (broken discovery handicaps them by ≤~0.2, the Trap 3 ceiling).
+Correcting for it nudges them *up* (+0.12→~+0.32, +0.41→~+0.61) — both still NS, story
+unchanged. So the true query-vs-rest gradient is slightly *less* extreme than the raw
+99%/13%, but `keep_query`'s dominance is unconfounded. By where `schema_info` sits, the one
+result the confound could have ruined is the one it can't touch. (A clean sufficiency number
+for the other two groups would need a keep-variant that retains `schema_info`'s four
+discovery keys in every condition — not run, since it can only *raise* two already-small,
+already-conservative effects.)
 
 ## Side findings
 
