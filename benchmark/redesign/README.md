@@ -43,7 +43,7 @@ carry only the non-recoverable.
 | 1 | Finalize the schema (write `MIE_v3_spec.md`) | ✅ done |
 | 2 | Pilot MIE(s) in the new format, live-verified | ✅ UniProt + BacDive (62–64% smaller, live-verified) |
 | 3 | Smoke test (pilot subset vs v2.x, ablation harness) — bail early on gross regression | ✅ done — **yellow light**, see `smoke/FINDINGS.md` |
-| 3a | Diagnose q066 systematic regression; fold the lesson into `MIE_v3_spec.md` | ⬜ next |
+| 3a | Diagnose q066 regression; fold the lesson into `MIE_v3_spec.md` | ✅ done — keyword-enumeration route was demoted to a caveat; fixed (spec §4.4 + `keyword_enum` example) |
 | 4 | Author the **full** redesigned corpus (all 36) | ⬜ (needs 3a; 100Q gate needs full corpus — coverage is all-or-nothing) |
 | 5 | **Release gate**: full-100Q equivalence run | ⬜ |
 | 6 | Release (MAJOR): flip served corpus + retire discovery trio | ⬜ |

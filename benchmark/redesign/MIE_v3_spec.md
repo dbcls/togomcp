@@ -141,7 +141,22 @@ Before a fact earns bytes: can the model get it from training or one `get_graph_
 exploratory `SELECT`? If yes, cut it. Exception: an example's own scaffolding (PREFIX,
 SELECT, rdfs:label) rides for free because the non-recoverable idiom can't be shown without it.
 
-### 4.4 Progressive disclosure (optional, forward-looking)
+### 4.4 A positive route is not a caveat (the enumeration rule)
+A mechanism that is a **primary query route** must appear as its own `example` (or `schema_delta`
+entry) — it must **not** survive only as a `traps_avoided` caveat on some other example. Many
+mechanisms are dual: they are both "*the* way to do X" and "watch out for X when doing Y."
+Compression tends to keep the caveat and drop the route, which reads to the agent as "avoid this,"
+the opposite of the intent.
+- *Concrete failure (smoke test, q066):* UniProt keyword classification (`up:classifiedWith
+  keywords:NNN`) is THE route to enumerate "all proteins with feature/domain X" (LIM domain → 71).
+  The v3 draft kept it only as a caveat on the GO example ("up:classifiedWith *also* carries
+  keywords, filter them out"), so the agent used name/annotation text instead and undercounted
+  (14–25 vs 71) — **systematically, all 3 runs**. Fix: a first-class `keyword_enum` example.
+- *Rule of thumb:* for every "**all** entities with property P" question the DB can answer, there
+  should be an example showing the **set-level** route (a controlled-vocabulary term / typed
+  predicate), not just a per-instance or text-match pattern. Enumeration ≠ instance lookup.
+
+### 4.5 Progressive disclosure (optional, forward-looking)
 The header is the cheap tier; `examples` the expensive one. A future `get_MIE_file(database,
 level=header|+examples|full)` can serve tiers. Author so the header stands alone.
 
@@ -153,3 +168,5 @@ level=header|+examples|full)` can serve tiers. Author so the header stands alone
 5. Every `co_hosted` graph that inflates/joins/stubs is flagged.
 6. No fact restated across sections (§4.2); nothing in `schema_delta` that an example shows.
 7. Byte count recorded vs the v2.x file it replaces (the deterministic half of the win).
+8. Every set-level enumeration route the DB supports ("**all** entities with property X") has its
+   own example, not only a per-instance/text pattern or a `traps_avoided` mention (§4.4).

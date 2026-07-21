@@ -43,10 +43,20 @@ Q066 (uniprot+jpostdb, factoid — "reviewed human proteins with a LIM domain, m
   **14** LIM-domain proteins vs the true **71**).
 
 Not noise — v3 reliably steers the agent to a narrower, wrong protein set for domain-based
-enumeration. **Leading hypothesis:** the v3 uniprot `faldo_positions` example demonstrates domain
-lookup via `Domain_Annotation` (per-occurrence), which for "*all* proteins with domain X" yields a
-different/narrower set than the keyword/InterPro route — and the agent followed the example.
-Fixable (an authoring rule), but a genuine content-guidance gap the compression introduced.
+enumeration.
+
+**Diagnosis (CONFIRMED, 2026-07-22).** The gold route for "reviewed human proteins with a LIM
+domain" is the **keyword** classification `up:classifiedWith keywords:440` (KW-0440). Verified
+live, the routes give: **keyword → 71** (correct), Domain_Annotation-text → 25, name-text → 45 —
+non-keyword routes silently **undercount**. The v2 uniprot MIE documents keyword classification as
+a first-class enumeration route in ~5 places (a critical warning, a sample triple
+`up:classifiedWith keywords:1185`, a `cross_references` pattern with ~99% coverage, an
+architectural note). The v3 rewrite **collapsed all of that into a single negative caveat** on the
+GO example ("up:classifiedWith *also* carries keywords, filter them out") — so the agent reads
+keywords as noise to exclude, not as the route to enumerate, and falls back to text/annotation
+undercounting. **Fix applied:** a first-class `keyword_enum` example in `mie_v3/uniprot.yaml`
+(verified 71) + a generalizable spec rule `MIE_v3_spec.md §4.4` ("a positive route is not a
+caveat" / the enumeration rule) protecting all 34 DBs.
 
 ### q033 is variance, not a gap
 Q033 (bacdive+uniprot, list): v3 per-run [19, 4, 15] — one run nailed it (19), one bombed (4).
@@ -65,11 +75,14 @@ before the full-corpus build — v3 compression can drop query-guidance that mat
 enumeration questions, and it did so *systematically* on q066. uniprot is flat on average (−0.13),
 so this is a targeted authoring gap, not a broken format.
 
-**Before scaling to the 34-DB corpus:** diagnose q066's actual SPARQL (v2 vs v3 server logs) to
-confirm the `Domain_Annotation`-vs-InterPro/keyword hypothesis, then fold the lesson into
-`MIE_v3_spec.md` as an authoring rule ("domain/keyword *enumeration* examples must show the
-set-level route, not only the per-annotation one"). That converts one smoke finding into a spec
-guard protecting all 34 DBs.
+**Diagnosis + fix DONE (2026-07-22)** — see the confirmed diagnosis above. The lesson is now spec
+rule §4.4 (a positive route is not a caveat) + checklist item 8, and the uniprot pilot has a
+`keyword_enum` example. **Remaining before scaling to the 34-DB corpus:**
+1. Re-verify the fix lands in the agent loop — a cheap targeted re-run of just q066 (and the other
+   uniprot enumeration questions) on the patched v3 corpus should recover to v2 parity. (Not yet
+   done — the full 25-question re-run is only worth it once more DBs change.)
+2. Apply §4.4 when authoring the full corpus: every DB with a controlled-vocabulary enumeration
+   route needs a set-level example.
 
 ## Reproduce
 

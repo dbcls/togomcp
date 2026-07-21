@@ -101,6 +101,25 @@ examples:
       - "GO terms are OBO IRIs (obo:GO_XXXXXXX), NOT purl.uniprot.org/go/ — wrong namespace returns 0 rows silently."
       - "up:classifiedWith ALSO carries UniProt keywords (purl.uniprot.org/keywords/NNN); if mixing, distinguish by FILTER(STRSTARTS(STR(?x), ...))."
 
+  - id: keyword_enum
+    intent: enumerate ALL proteins carrying a UniProt keyword (domain / feature / function) — the classification route
+    question: "How many reviewed human proteins carry a LIM domain?"
+    complexity: basic
+    sparql: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX keywords: <http://purl.uniprot.org/keywords/>
+      SELECT (COUNT(DISTINCT ?protein) AS ?n)
+      FROM <http://sparql.uniprot.org/uniprot>
+      WHERE {
+        ?protein a up:Protein ; up:reviewed 1 ;
+                 up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                 up:classifiedWith keywords:440 .    # KW-0440 = LIM domain
+      }
+    verified: {n: 71, date: "2026-07-22"}
+    teaches: "To enumerate proteins by a domain/feature/functional class, use up:classifiedWith keywords:NNN (the KW number). This is the PRIMARY route for 'all proteins with feature X' — keywords cover ~99% of reviewed proteins."
+    traps_avoided:
+      - "Do NOT use a name/comment text match or the per-annotation route for whole-set enumeration: for LIM domain, the keyword gives 71 while Domain_Annotation-with-'LIM'-in-rdfs:comment gives only 25 and a name text match gives 45. Text/annotation routes silently UNDERCOUNT."
+
   - id: count_swissprot           # the ELEVATED `aggregation` class — targets the factoid miscount failure mode
     intent: count current reviewed Swiss-Prot proteins (the union-inflation recipe)
     question: "How many proteins are in current Swiss-Prot?"
