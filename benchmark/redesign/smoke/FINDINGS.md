@@ -62,11 +62,33 @@ caveat" / the enumeration rule) protecting all 34 DBs.
 Q033 (bacdive+uniprot, list): v3 per-run [19, 4, 15] — one run nailed it (19), one bombed (4).
 v3 *can* do it; it's an unstable hard multi-step question. The bacdive −1.66 mean is mostly this.
 
-## Token savings: not measurable from this harness
+## Token savings / dollar cost: NOT reliably measurable from this harness
 The v3 files are 62–64% smaller (uniprot 57→21 KB, bacdive 50→19 KB — the deterministic win, measured
-directly). But the harness's `togomcp_input_tokens` (~434) is far too small to include a MIE read, so
-it does **not** capture cumulative context and can't confirm the runtime token reduction. A
-logging limitation, not a redesign result.
+directly). The *runtime* saving that should buy is **invisible in this run**:
+
+| metric (75 answers/condition) | v2 | v3 | diff |
+|---|---:|---:|---:|
+| togomcp cost | $42.17 | $37.58 | **−$4.59 (−11%)** |
+| input tokens (sum) | 32,560 | 31,830 | −730 |
+| output tokens (sum) | 523,757 | 479,800 | −43,957 (−8%) |
+
+Two reasons the −11% is not a trustworthy "the redesign saves 11%":
+1. **The harness under-logs input tokens.** `togomcp_input_tokens` is ~**400/answer** (median 402,
+   max 1,668), but one `get_MIE_file(uniprot)` returns 5,000–14,000 tokens — so the field captures
+   only a fraction (likely the final turn, not the cumulative agent loop). The byte-driven **input**
+   saving the redesign targets is therefore unmeasured.
+2. **The −11% is an OUTPUT-token effect** (−44K output, not −input), which is answer-variance-
+   dependent — possibly a denser MIE → tighter reasoning / fewer failed-query retries, possibly
+   noise at n=25×3. Not attributable to the byte savings.
+
+Theoretical input saving (unconfirmed): ~9–10K / ~8K fewer input tokens per uniprot / bacdive MIE
+read, ≈ $0.03/query per read at Sonnet input rates × turns-that-carry-the-context — but **prompt
+caching** likely discounts a re-read ~10×, which is probably why billed cost barely moves.
+
+**Follow-up (harness):** to get a real cost number, sum token usage across the **whole agent loop**
+(every model call in a question's run), not just the final turn — the ablation FINDINGS flagged the
+same gap (`tools_used` records names only). Until then, report the byte reduction (certain) and treat
+any dollar delta from this harness as indicative, not deterministic.
 
 ## Verdict & next step
 
