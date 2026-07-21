@@ -41,11 +41,16 @@ carry only the non-recoverable.
 | # | Step | State |
 |---|---|---|
 | 1 | Finalize the schema (write `MIE_v3_spec.md`) | ✅ done |
-| 2 | Pilot MIE(s) in the new format, live-verified | 🔄 UniProt done; ≥1 contrasting DB next |
-| 3 | Smoke test (pilot subset vs v2.5, ablation harness) — bail early on gross regression | ⬜ |
-| 4 | Author the **full** redesigned corpus (all 36) | ⬜ |
+| 2 | Pilot MIE(s) in the new format, live-verified | ✅ UniProt + BacDive (62–64% smaller, live-verified) |
+| 3 | Smoke test (pilot subset vs v2.x, ablation harness) — bail early on gross regression | ✅ done — **yellow light**, see `smoke/FINDINGS.md` |
+| 3a | Diagnose q066 systematic regression; fold the lesson into `MIE_v3_spec.md` | ⬜ next |
+| 4 | Author the **full** redesigned corpus (all 36) | ⬜ (needs 3a; 100Q gate needs full corpus — coverage is all-or-nothing) |
 | 5 | **Release gate**: full-100Q equivalence run | ⬜ |
 | 6 | Release (MAJOR): flip served corpus + retire discovery trio | ⬜ |
+
+Smoke result (2026-07-21/22): overall −0.44 ± 0.82 (NS); uniprot flat (−0.13, n=20), a **systematic**
+v3 regression on q066 (LIM-domain enumeration — v3 found 14 proteins vs true 71, all 3 runs). The
+compression can drop set-level enumeration guidance; diagnose before scaling (step 3a).
 
 **Validation (step 5) is an equivalence test, not "did the score go up?":**
 - tokens/bytes **down** — the deterministic win (no stats).

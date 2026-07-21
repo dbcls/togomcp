@@ -86,10 +86,16 @@ NON_MIE_CONDITIONS = ["no_mie"]
 # whether a group is SUFFICIENT alone (pair keep_X against no_mie), not whether it
 # is necessary. Served via get_MIE_file like the group variants (default config).
 KEEP_CONDITIONS = [f"keep_{g}" for g in GROUPS]
-# Valid set = all four families; the DEFAULT stays section-only so existing
+# MIE v3 redesign smoke test (benchmark/redesign/): a 2-corpus A/B, NOT an ablation.
+# smoke_v2 = full current corpus; smoke_v3 = same but uniprot+bacdive swapped for their
+# v3 rewrites. Both are ordinary mie_variants/<cond>/ dirs, so run_condition serves them
+# unchanged; they only need to be on the valid list. Compare the two per question.
+SMOKE_CONDITIONS = ["smoke_v2", "smoke_v3"]
+# Valid set = all families; the DEFAULT stays section-only so existing
 # invocations are unchanged. `--conditions groups` is baseline + every group;
 # `--conditions keep` is baseline + every leave-one-in.
-ALL_CONDITIONS = SECTION_CONDITIONS + GROUP_CONDITIONS + NON_MIE_CONDITIONS + KEEP_CONDITIONS
+ALL_CONDITIONS = (SECTION_CONDITIONS + GROUP_CONDITIONS + NON_MIE_CONDITIONS
+                  + KEEP_CONDITIONS + SMOKE_CONDITIONS)
 DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
 
 

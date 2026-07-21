@@ -378,8 +378,26 @@ def _mie_trap_banner(content: str, database: str) -> str:
         if not isinstance(doc, dict):
             return ""
         info = doc.get("schema_info") or {}
-        co_hosted = info.get("co_hosted_graphs") or []
-        warnings = doc.get("critical_warnings") or ""
+        # Co-hosted graphs: v2 = schema_info.co_hosted_graphs (list of strings);
+        # v3 = graphs.co_hosted (dict {name: note}). Read new-or-old location.
+        co_hosted = info.get("co_hosted_graphs")
+        if not co_hosted:
+            gco = (doc.get("graphs") or {}).get("co_hosted")
+            if isinstance(gco, dict):
+                co_hosted = [f"{k}: {v}" for k, v in gco.items()]
+            elif isinstance(gco, list):
+                co_hosted = gco
+        co_hosted = co_hosted or []
+        # Warnings: v2 = critical_warnings (block string / list);
+        # v3 = global_gotchas (list of {id, say}). Read new-or-old location.
+        warnings = doc.get("critical_warnings")
+        if not warnings:
+            gg = doc.get("global_gotchas")
+            if isinstance(gg, list):
+                warnings = [
+                    (g.get("say") if isinstance(g, dict) else str(g)) for g in gg
+                ]
+        warnings = warnings or ""
     except Exception:
         # Never let a banner failure block the file the caller asked for.
         return ""
@@ -461,10 +479,14 @@ def _load_databases_cache() -> list[dict[str, Any]]:
             if not isinstance(data, dict):
                 raise yaml.YAMLError("YAML file is not a dictionary.")
 
-            schema_info = data.get("schema_info")
+            # MIE v3 renames `schema_info` -> `discovery` (same four discovery
+            # fields). Read new-or-old location so the catalog (and thus
+            # find_databases/list_databases) keeps working across the transition.
+            schema_info = data.get("discovery") or data.get("schema_info")
             if not isinstance(schema_info, dict):
                 raise yaml.YAMLError(
-                    "'schema_info' section not found or not a dictionary."
+                    "neither 'discovery' (v3) nor 'schema_info' (v2) section "
+                    "found, or it is not a dictionary."
                 )
 
             record["title"] = schema_info.get("title") or "No title found."
