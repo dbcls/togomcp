@@ -137,6 +137,66 @@ examples:
     traps_avoided:
       - "Variant-level disease is skos:related; the PROTEIN-level disease link is a different predicate (up:annotation -> Disease_Annotation -> up:disease). Do not conflate the two tiers."
 
+  - id: faldo_positions
+    intent: positional features of a protein (PTMs, domains, binding sites) via FALDO ranges
+    question: "What modified residues, domains, and binding sites does TP53 (P04637) have, with positions?"
+    complexity: intermediate
+    sparql: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?annotType ?comment ?beginPos ?endPos
+      WHERE {
+        VALUES ?protein { uniprot:P04637 }
+        ?protein up:annotation ?annot .
+        ?annot a ?annotType .
+        OPTIONAL { ?annot rdfs:comment ?comment }
+        OPTIONAL { ?annot up:range ?range . ?range faldo:begin/faldo:position ?beginPos ; faldo:end/faldo:position ?endPos . }
+        FILTER(?annotType IN (up:Modified_Residue_Annotation, up:Domain_Annotation, up:Binding_Site_Annotation))
+      }
+    verified: {result_rows: 36, distinct_types: 3, date: "2026-07-21"}
+    teaches: "ALL positional features use FALDO: up:annotation -> typed *_Annotation -> up:range -> faldo:begin/end -> faldo:position. Filter by annotation type."
+
+  - id: ec_class
+    intent: proteins by EC class via the up:enzyme IRI-prefix filter
+    question: "How many reviewed proteins are transferases (EC 2.7.*)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      SELECT (COUNT(DISTINCT ?protein) AS ?n)
+      FROM <http://sparql.uniprot.org/uniprot>
+      WHERE {
+        ?protein a up:Protein ; up:reviewed 1 ; up:enzyme ?ecNumber .
+        FILTER(STRSTARTS(STR(?ecNumber), "http://purl.uniprot.org/enzyme/2.7"))
+      }
+    verified: {n: 34103, date: "2026-07-21"}
+    teaches: "up:enzyme points at an EC IRI (purl.uniprot.org/enzyme/X.X.X.X); STRSTARTS on the prefix selects a whole EC subtree."
+
+  - id: taxonomy_agg               # ELEVATED `aggregation` class — clade counts on the flat lineage
+    intent: aggregate proteins per taxonomic clade using the pre-flattened single-hop lineage
+    question: "Which bacterial order has more reviewed carbon-fixation proteins: Enterobacterales or Synechococcales?"
+    complexity: aggregation
+    sparql: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX taxonomy: <http://purl.uniprot.org/taxonomy/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?order (COUNT(DISTINCT ?protein) AS ?count)
+      FROM <http://sparql.uniprot.org/uniprot>
+      FROM <http://sparql.uniprot.org/taxonomy>
+      WHERE {
+        VALUES ?order { taxonomy:91347 taxonomy:1890424 }    # Enterobacterales, Synechococcales
+        VALUES ?goTerm { obo:GO_0015977 obo:GO_0043427 }     # carbon fixation, C4 photosynthesis
+        ?protein a up:Protein ; up:reviewed 1 ; up:organism ?organism ; up:classifiedWith ?goTerm .
+        ?organism rdfs:subClassOf ?order .
+      }
+      GROUP BY ?order ORDER BY DESC(?count)
+    verified: {Enterobacterales_91347: 61, Synechococcales_1890424: 53, date: "2026-07-21"}
+    teaches: "Reach a clade with a SINGLE-HOP ?organism rdfs:subClassOf ?order; pin both graphs (FROM uniprot + taxonomy)."
+    traps_avoided:
+      - "NEVER rdfs:subClassOf* (transitive) for lineage — it times out; the flat single-hop already lists every ancestor (gotcha flat_lineage). Pinning the taxonomy graph also avoids the taxon-multiplication trap."
+
   - id: xdb_rhea                    # ELEVATED `cross_db` class
     intent: "cross-DB: human enzymes -> catalysed Rhea reactions via shared EC IRIs (same SIB endpoint)"
     question: "Which Rhea reactions do human reviewed enzymes catalyse?"
@@ -190,13 +250,60 @@ examples:
     verified: {result_rows: 15, date: "2026-07-21", first_row: "P25054 APC_HUMAN -> 'Desmoid disease, hereditary' -> MeSH 'Abdominal Neoplasms'"}
     teaches: "up:disease -> up:Disease rdfs:seeAlso -> MeSH descriptor IRI (prefix-filtered), whose rdfs:label lives in the co-hosted mesh graph — one join, no bridge."
 
+  - id: xdb_oma
+    intent: "cross-DB: UniProt <-> OMA cross-references (Ensembl protein, RefSeq) via reverse xref"
+    question: "What is the OMA entry and its Ensembl/RefSeq cross-references for TP53 (P04637)?"
+    complexity: cross_db
+    endpoint_name: sib
+    sparql: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX lscr: <http://purl.org/lscr#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+      SELECT ?omaEntry ?omaLabel ?ensemblProtein ?refseq
+      WHERE {
+        GRAPH <http://sparql.uniprot.org/uniprot> { uniprot:P04637 a up:Protein ; up:reviewed 1 . }
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          ?omaEntry lscr:xrefSwissProt uniprot:P04637 ; rdfs:label ?omaLabel .
+          OPTIONAL { ?omaEntry lscr:xrefEnsemblProtein ?ensemblProtein }
+          OPTIONAL { ?omaEntry lscr:xrefNCBIRefSeq ?refseq }
+        }
+      }
+      LIMIT 10
+    verified: {result_rows: 4, date: "2026-07-21", first_row: "OMA HUMAN31522 'TP53' -> ENSP00000484409 / NP_001119589"}
+    teaches: "OMA reverse-links to the SAME UniProt IRI via lscr:xrefSwissProt (381,038 triples); the OMA entry then carries Ensembl-protein + RefSeq xrefs. Direct join, no bridge."
+    traps_avoided:
+      - "This same-IRI reuse is ALSO the count-inflation source (gotcha union_inflation) — the join opportunity and the hazard share one cause."
+
+  - id: xdb_bgee
+    intent: "cross-DB: anatomical structures where a protein is expressed, via Bgee xref + IRI transform"
+    question: "In which anatomical structures is TP53 (P04637) expressed, per Bgee?"
+    complexity: cross_db
+    endpoint_name: sib
+    sparql: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX genex: <http://purl.org/genex#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT DISTINCT ?anatLabel
+      WHERE {
+        GRAPH <http://sparql.uniprot.org/uniprot> {
+          <http://purl.uniprot.org/uniprot/P04637> rdfs:seeAlso ?bgeeRef .
+          FILTER(STRSTARTS(STR(?bgeeRef), "http://purl.uniprot.org/bgee/"))
+          BIND(IRI(CONCAT("http://omabrowser.org/ontology/oma#GENE_", STRAFTER(STR(?bgeeRef), "bgee/"))) AS ?bgeeGene)
+        }
+        GRAPH <http://bgee.org> {
+          ?bgeeGene genex:isExpressedIn ?anatEntity . ?anatEntity rdfs:label ?anatLabel .
+        }
+      }
+      LIMIT 15
+    verified: {result_rows: 15, date: "2026-07-21", first_rows: "uterine cervix, nose, islet of Langerhans, pituitary gland"}
+    teaches: "Bgee has no direct UniProt IRI: take rdfs:seeAlso purl.uniprot.org/bgee/<ENSG> (94.1% of human reviewed), then BIND-transform to omabrowser.org/ontology/oma#GENE_<ENSG> to reach the bgee graph."
+
 # ── schema_delta: ONLY non-obvious predicates/idioms no example above already demonstrates.
 #    If a predicate appears in an example, it is NOT repeated here. ──
 schema_delta:
   - "Gene symbol: ?protein up:encodedBy ?gene . ?gene skos:prefLabel ?symbol (skos:altLabel = synonyms). 87.6% coverage — 46,314 gene nodes are unnamed."
-  - "Position features (domains/PTMs/binding sites): ?protein up:annotation ?a . ?a a up:{Domain,Modified_Residue,Binding_Site}_Annotation ; up:range ?r . ?r faldo:begin/faldo:position ?b ; faldo:end/faldo:position ?e . (FALDO for ALL positional features.)"
-  - "Catalytic activity is an indirect 3-hop scaffold: up:annotation -> up:Catalytic_Activity_Annotation -> up:catalyticActivity -> up:catalyzedReaction -> Rhea IRI. Do not reach ?reaction directly from ?protein."
-  - "EC by class: up:enzyme ?ec ; FILTER(STRSTARTS(STR(?ec), 'http://purl.uniprot.org/enzyme/2.7')) for a whole EC subtree."
+  - "Catalytic activity is an indirect 3-hop scaffold: up:annotation -> up:Catalytic_Activity_Annotation -> up:catalyticActivity -> up:catalyzedReaction -> Rhea IRI. Do not reach ?reaction directly from ?protein. (Example xdb_rhea joins the same reactions via the EC IRI instead.)"
   - "Isoforms: canonical = uniprot:ACC-1 (Simple_Sequence); alternates uniprot:ACC-2..N (Modified_Sequence). Suffix -N = isoform number, not an index."
   - "dcterms:identifier on a protein is OMA-supplied (co-hosted graph only), NOT the native accession. Native accession = STRAFTER(STR(?p),'uniprot/'); up:mnemonic = e.g. 'P53_HUMAN'."
 
@@ -206,8 +313,8 @@ id_join_map:
   same_endpoint_joins:            # SIB co-hosted — direct GRAPH join, NO TogoID
     rhea: "up:enzyme EC IRI == rhea:ec (see example xdb_rhea)"
     mesh: "up:disease -> up:Disease rdfs:seeAlso -> id.nlm.nih.gov/mesh/ (see example xdb_mesh)"
-    oma:  "reverse: OMA ?e lscr:xrefSwissProt uniprot:ACC (381,038 such triples); ?e also carries lscr:xrefEnsemblProtein, lscr:xrefNCBIRefSeq (verified 2026-07-18, re-verify on next pass)"
-    bgee: "rdfs:seeAlso purl.uniprot.org/bgee/<ENSG> (94.1% of human reviewed) -> BIND IRI transform to omabrowser.org/ontology/oma#GENE_<ENSG> -> bgee graph genex:isExpressedIn (verified 2026-07-18, re-verify)"
+    oma:  "reverse: OMA ?e lscr:xrefSwissProt uniprot:ACC (381,038 triples); ?e also carries Ensembl-protein + RefSeq xrefs (see example xdb_oma)"
+    bgee: "rdfs:seeAlso purl.uniprot.org/bgee/<ENSG> (94.1% of human reviewed) + IRI transform to the bgee graph (see example xdb_bgee)"
   xref_via_seeAlso:               # rdfs:seeAlso, prefix-filtered; coverage of reviewed proteins
     pdb: "rdf.wwpdb.org ~13-15%"
     alphafold: "alphafolddb >98%"
