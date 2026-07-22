@@ -1,0 +1,312 @@
+# MIE v3 — SuperCon (NIMS superconducting-materials database). AGENT-authored 2026-07-22 on `mie-redesign`.
+# Format: benchmark/redesign/MIE_v3_spec.md. Every verified count/result re-run LIVE on the nims endpoint 2026-07-22.
+# Byte count vs the v2 file it replaces (spec §5 item 7): v2 togo_mcp/data/mie/supercon.yaml = 42,657 bytes;
+# this v3 file = 21,789 bytes → 48.9% smaller. See footer for the exact `wc -c` figures.
+# NOTE: SuperCon has NO benchmark question (coverage_tracker: "supercon excluded — non-life-science"),
+# so §4.6 leakage risk is nil; subjects below are still canonical (YBCO, H3S, cuprates).
+database: supercon
+
+# ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
+discovery:
+  title: SuperCon — NIMS Superconducting Materials Database
+  description: >
+    Curated experimental records for oxide and metallic superconductors (NIMS), extracted from ~7,249
+    journal articles: critical temperature (Tc and variants), critical magnetic fields, crystal structure,
+    lattice parameters, thermal/normal-state properties, and synthesis conditions, typed by a co-loaded
+    244-class SuperCon-ont OWL ontology.
+  keywords: [superconductor, superconducting material, critical temperature, tc, critical field, cuprate,
+             oxide, inorganic compound, crystal structure, lattice parameter, materials informatics, nims,
+             physical property, experimental measurement]
+  categories: [materials, physics]
+
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/nims/sparql
+base_uri: http://dice.nims.go.jp/ontology/SuperCon-ont/
+graphs:
+  primary: http://rdfportal.org/dataset/supercon   # the DB's ONLY data graph — data + the SuperCon-ont ontology are co-loaded here
+  co_hosted:
+    NONE: >
+      TRUE SINGLE-TENANT — the ONLY such DB of the 36. get_graph_list(supercon) returns exactly two graphs
+      (2026-07-22): the data graph <http://rdfportal.org/dataset/supercon> and the W3C stub
+      <http://www.w3.org/2002/07/owl#>. No co-tenant can re-declare these IRIs, so union inflation is
+      impossible and the default union == the pinned graph. (Every other endpoint — even single-DATASET ones
+      like pdb/ddbj/pubchem/togovar — holds many graphs.) Still FROM-pin the data graph for habit + speed.
+
+entity_counts:                     # graph-pinned COUNT(DISTINCT), live 2026-07-22
+  oxide_metallic_samples: 165969   # Schema:OxideAndMetallic — but ~80.8% are skeleton nodes with NO name/formula/Tc
+  samples_with_tc:        26358    # DISTINCT samples carrying a Schema:tc measurement (15.9% of all samples)
+  samples_tc_above_77K:   4707     # DISTINCT samples with recommended Tc > 77 K (liquid-N2)
+  hc2zero_property_nodes: 1759     # upper critical field at 0 K — the second-most-common field property
+  ontology_owl_classes:   244      # co-loaded SuperCon-ont: SuperConductingProperty(37) NormalStateProperty(18) MechanicalProperty(12) ThermalProperty(9) StructuralProperty(7) MagneticProperty(5)
+
+global_gotchas:                    # the traps that bite ANY query on this DB — verified 2026-07-22
+  - id: measurement_scaffold
+    say: >
+      THE #1 silent-0-row trap. A numeric value hangs off a DATUM node, and obo:IAO_0000221 ("is about") is
+      on the DATUM, NOT on the Schema:Measurement node. CORRECT (and shortest — skip the Measurement hop):
+      ?sample sio:SIO_000008 ?propNode . ?propNode a Schema:tc .
+      ?datum obo:IAO_0000221 ?propNode ; sio:SIO_000300 ?value ; sio:SIO_000221 ?unit .
+      Putting IAO_0000221 on the Measurement node returns 0 rows with no error. Every property (tc, hc2zero,
+      gamma, lata, …) uses this identical scaffold — only the `a Schema:<prop>` type on ?propNode changes.
+  - id: reference_typo
+    say: >
+      The reference predicate is misspelled IN THE DATA: dct:referecens (…"cens", not …"nces"). The correct
+      spelling dct:references matches NOTHING. sample --dct:referecens--> bibo:Article node (internal ref# IRI).
+  - id: structure_typo
+    say: >
+      Class-IRI typo asymmetry: INSTANCE data is typed Schema:IntermalStructure (typo, ~26k nodes) — use THIS
+      for data queries; the correctly-spelled ONTOLOGY class Schema:InternalStructure exists only for
+      rdfs:label/rdfs:subClassOf metadata lookups. Mixing them silently returns 0 rows.
+  - id: subclassof_star_join_bug
+    say: >
+      Virtuoso property-path quirk: transitive rdfs:subClassOf* / + returns 0 rows when its START variable is
+      bound by another join (?node a ?cls . ?cls rdfs:subClassOf* :X). SuperCon's property hierarchy is only
+      ONE level deep, so use SINGLE-STEP rdfs:subClassOf instead — it works even when join-bound (see
+      enum_by_property). For deeper walks, materialize the subclass list and inline as VALUES.
+
+# ── examples: verified, executable atoms. Model: a sample (Schema:OxideAndMetallic) links to every property /
+#    identity / structure node via sio:SIO_000008; each numeric property reaches its value via the datum scaffold. ──
+examples:
+  - id: sample_lookup
+    intent: name, formula, and Tc for a known sample IRI (the datum scaffold in its simplest form)
+    question: "What is the formula and Tc of SuperCon sample msc_om0000949?"
+    complexity: basic
+    sparql: |
+      PREFIX smp:    <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/smp#>
+      PREFIX sio:    <http://semanticscience.org/resource/>
+      PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
+      PREFIX obo:    <http://purl.obolibrary.org/obo/>
+      SELECT ?name ?formula ?tcVal ?tcUnit
+      FROM <http://rdfportal.org/dataset/supercon>
+      WHERE {
+        VALUES ?sample { smp:msc_om0000949 }
+        ?sample sio:SIO_000008 ?nameProp, ?elmProp, ?tcProp .
+        ?nameProp a Schema:name    ; sio:SIO_000300 ?name .
+        ?elmProp  a Schema:element ; sio:SIO_000300 ?formula .
+        ?tcProp a Schema:tc .
+        ?tcDatum obo:IAO_0000221 ?tcProp ; sio:SIO_000300 ?tcVal .
+        OPTIONAL { ?tcDatum sio:SIO_000221 ?tcUnit . }
+      }
+    verified: {result_rows: 1, name: "YBa2Cu3Oz", formula: "Y1Ba2Cu3O6.96", tcVal: 88.5, date: "2026-07-22"}
+    teaches: "Identity (Schema:name / Schema:element carry sio:SIO_000300 strings) and every physical property both hang off the sample via sio:SIO_000008; the datum scaffold (IAO_0000221 on the datum) delivers the numeric value."
+    traps_avoided:
+      - "Tc unit is 'K' for 75.9% of records and empty string '' for 24.1% — BOTH mean Kelvin. Never filter tcUnit='K' (drops a quarter of the data); treat '' as K."
+
+  - id: samples_by_publication
+    intent: all samples reported in one paper, via the misspelled reference predicate
+    question: "Which SuperCon samples are documented in Physical Review B paper PRB0404517?"
+    complexity: basic
+    sparql: |
+      PREFIX ref:    <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/ref#>
+      PREFIX sio:    <http://semanticscience.org/resource/>
+      PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
+      PREFIX dct:    <http://purl.org/dc/terms/>
+      SELECT ?sample ?name ?formula
+      FROM <http://rdfportal.org/dataset/supercon>
+      WHERE {
+        ?sample a Schema:OxideAndMetallic ;
+                dct:referecens ref:PRB0404517 ;
+                sio:SIO_000008 ?nameProp, ?elmProp .
+        ?nameProp a Schema:name    ; sio:SIO_000300 ?name .
+        ?elmProp  a Schema:element ; sio:SIO_000300 ?formula .
+      }
+      LIMIT 20
+    verified: {result_rows: "≥5", first_row: "msc_om0000949 = YBa2Cu3Oz (Y1Ba2Cu3O6.96)", date: "2026-07-22"}
+    teaches: "sample --dct:referecens--> ref:<CODE> internal bibo:Article node. Reference codes are journal-prefixed: PRB=Phys.Rev.B, NAT=Nature, PHC=Physica C, JPC, etc."
+    traps_avoided:
+      - "dct:referecens is misspelled in the data (gotcha reference_typo); the correct dct:references returns 0 rows."
+
+  - id: tc_above_77
+    intent: enumerate high-Tc superconductors by numeric property filter
+    question: "Which superconductors have a recommended Tc above 77 K (liquid-nitrogen)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX sio:    <http://semanticscience.org/resource/>
+      PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
+      PREFIX obo:    <http://purl.obolibrary.org/obo/>
+      SELECT ?name ?formula ?tcVal
+      FROM <http://rdfportal.org/dataset/supercon>
+      WHERE {
+        ?sample a Schema:OxideAndMetallic ;
+                sio:SIO_000008 ?nameProp, ?elmProp, ?tcProp .
+        ?nameProp a Schema:name    ; sio:SIO_000300 ?name .
+        ?elmProp  a Schema:element ; sio:SIO_000300 ?formula .
+        ?tcProp a Schema:tc .
+        ?tcDatum obo:IAO_0000221 ?tcProp ; sio:SIO_000300 ?tcVal .
+        FILTER(?tcVal > 77 && ?tcVal < 250)
+      }
+      ORDER BY DESC(?tcVal)
+      LIMIT 50
+    verified: {top_row: "H2S at 203 K, then Hg/Tl/Bi cuprates ~136–143 K", date: "2026-07-22"}
+    teaches: "Numeric property filter: reach the value via the datum scaffold, then FILTER. Schema:tc is the recommended/canonical Tc — prefer it over t1/t2/t3/tcsus variants for cross-sample comparison."
+    traps_avoided:
+      - "RETRACTED high-Tc entries carry NO flag: LuH ~294 K (ref NAT0615000244, retracted Nov 2023), C-S-H ~287.7 K (ref NAT586000373, retracted Sep 2022), plus a spurious 323 K PbCO3 outlier (ref PHC3510078). Bound the filter (?tcVal < 250) for any conservative/ML set."
+
+  - id: tc_and_hc2
+    intent: samples with BOTH Tc and upper-critical-field measurements (multi-property join)
+    question: "Which superconductors have both a Tc and an upper critical field (Hc2 at 0 K)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX sio:    <http://semanticscience.org/resource/>
+      PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
+      PREFIX obo:    <http://purl.obolibrary.org/obo/>
+      SELECT ?name ?formula ?tcVal ?hc2Val
+      FROM <http://rdfportal.org/dataset/supercon>
+      WHERE {
+        ?sample a Schema:OxideAndMetallic ;
+                sio:SIO_000008 ?nameProp, ?elmProp, ?tcProp, ?hc2Prop .
+        ?nameProp a Schema:name    ; sio:SIO_000300 ?name .
+        ?elmProp  a Schema:element ; sio:SIO_000300 ?formula .
+        ?tcProp  a Schema:tc      . ?tcDatum  obo:IAO_0000221 ?tcProp  ; sio:SIO_000300 ?tcVal .
+        ?hc2Prop a Schema:hc2zero . ?hc2Datum obo:IAO_0000221 ?hc2Prop ; sio:SIO_000300 ?hc2Val .
+        FILTER(?tcVal > 30)
+      }
+      ORDER BY DESC(?tcVal)
+      LIMIT 30
+    verified: {first_row: "H2S: Tc 203, Hc2 70; then TlBa2Ca3Cu4Oz Tc 128 Hc2 207", date: "2026-07-22"}
+    teaches: "The scaffold generalizes to ANY property pair — just add another `?p a Schema:<class>` + its datum. Requiring two property types on the same sample intersects them (useful for Ginzburg-Landau analysis)."
+
+  - id: high_tc_with_publication
+    intent: join property data to source literature metadata (title + year)
+    question: "For high-Tc cuprates (Tc 100–140 K), what are the source paper titles and years?"
+    complexity: intermediate
+    sparql: |
+      PREFIX sio:    <http://semanticscience.org/resource/>
+      PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
+      PREFIX obo:    <http://purl.obolibrary.org/obo/>
+      PREFIX dct:    <http://purl.org/dc/terms/>
+      PREFIX prism:  <http://prismstandard.org/namespaces/basic/2.0/>
+      SELECT ?name ?tcVal ?title ?year
+      FROM <http://rdfportal.org/dataset/supercon>
+      WHERE {
+        ?sample a Schema:OxideAndMetallic ;
+                sio:SIO_000008 ?nameProp, ?tcProp ;
+                dct:referecens ?refIRI .
+        ?nameProp a Schema:name ; sio:SIO_000300 ?name .
+        ?tcProp a Schema:tc .
+        ?tcDatum obo:IAO_0000221 ?tcProp ; sio:SIO_000300 ?tcVal .
+        FILTER(?tcVal > 100 && ?tcVal < 140)
+        ?refIRI dct:title ?title ; prism:publicationDate ?year .
+      }
+      ORDER BY DESC(?tcVal)
+      LIMIT 30
+    verified: {first_row: "(Tl,Hg)Ba2Ca2Cu3O9 Tc 137.4 → '...Sm and Yb' (2009)", date: "2026-07-22"}
+    teaches: "The bibo:Article node reached via dct:referecens carries dct:title, dct:creator, dct:bibliographicCitation, and prism:publicationDate (4-digit year string)."
+    traps_avoided:
+      - "prism:publicationDate is a STRING year ('1989'), not a date; 32 article nodes have '' instead of a year — make it OPTIONAL if completeness matters."
+
+  - id: all_properties_for_sample
+    intent: gather EVERY superconducting property of a sample WITH ontology-defined semantics (label + comment)
+    question: "What are all superconducting properties measured for sample msc_om0000949, and what does each mean?"
+    complexity: advanced
+    sparql: |
+      PREFIX smp:    <http://dice.nims.go.jp/ontology/SuperCon-ont/supercon-rdf/smp#>
+      PREFIX sio:    <http://semanticscience.org/resource/>
+      PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
+      PREFIX obo:    <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs:   <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?propLabel ?propComment ?value ?unit
+      FROM <http://rdfportal.org/dataset/supercon>
+      WHERE {
+        smp:msc_om0000949 sio:SIO_000008 ?propNode .
+        ?propNode a ?propClass .
+        ?propClass rdfs:subClassOf Schema:SuperConductingProperty ; rdfs:label ?propLabel .
+        OPTIONAL { ?propClass rdfs:comment ?propComment . }
+        ?datum obo:IAO_0000221 ?propNode ; sio:SIO_000300 ?value .
+        OPTIONAL { ?datum sio:SIO_000221 ?unit . }
+      }
+      ORDER BY ?propLabel
+    verified: {result_rows: 6, labels: "cohere, dhc2dt, penet, t2, tc, tcwidth", date: "2026-07-22"}
+    teaches: "The co-loaded ontology lets you collect ALL of a sample's superconducting properties in one shot via single-step `?propClass rdfs:subClassOf Schema:SuperConductingProperty`, each self-documented by rdfs:label + rdfs:comment — instead of enumerating tc/t1/t2/hc2zero/… IRIs by hand. Swap the parent class for Schema:ThermalProperty / Schema:MagneticProperty / etc. to gather other categories."
+    traps_avoided:
+      - "Use SINGLE-STEP rdfs:subClassOf here, NOT rdfs:subClassOf* — the transitive path with a join-bound class variable returns 0 rows on this Virtuoso endpoint (gotcha subclassof_star_join_bug). The hierarchy is only one level deep, so single-step is complete."
+
+  - id: count_tc_above_77
+    intent: correctly COUNT distinct samples over liquid-N2 (the graph-pinned aggregation recipe)
+    question: "How many superconductors have a recommended Tc above 77 K?"
+    complexity: aggregation
+    sparql: |
+      PREFIX sio:    <http://semanticscience.org/resource/>
+      PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
+      PREFIX obo:    <http://purl.obolibrary.org/obo/>
+      SELECT (COUNT(DISTINCT ?sample) AS ?n)
+      FROM <http://rdfportal.org/dataset/supercon>
+      WHERE {
+        ?sample a Schema:OxideAndMetallic ; sio:SIO_000008 ?tcProp .
+        ?tcProp a Schema:tc .
+        ?tcDatum obo:IAO_0000221 ?tcProp ; sio:SIO_000300 ?tcVal .
+        FILTER(?tcVal > 77)
+      }
+    verified: {n: 4707, date: "2026-07-22"}
+    teaches: "COUNT(DISTINCT ?sample) at the SAMPLE (not the datum) level — one sample can carry several tc datum nodes, so counting datums over-counts."
+    traps_avoided:
+      - "This unbounded count (>77) still includes the retracted ~287/~294 K records and the 323 K outlier; add `&& ?tcVal < 250` for an analysis-grade count."
+
+  - id: enum_by_property
+    intent: SET-LEVEL enumeration — how many samples carry EACH superconducting property (the §4.4 route)
+    question: "For each superconducting property type, how many samples in SuperCon have it measured?"
+    complexity: aggregation
+    sparql: |
+      PREFIX sio:    <http://semanticscience.org/resource/>
+      PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
+      PREFIX rdfs:   <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?propLabel (COUNT(DISTINCT ?sample) AS ?nSamples)
+      FROM <http://rdfportal.org/dataset/supercon>
+      WHERE {
+        ?propClass rdfs:subClassOf Schema:SuperConductingProperty ; rdfs:label ?propLabel .
+        ?propNode a ?propClass .
+        ?sample a Schema:OxideAndMetallic ; sio:SIO_000008 ?propNode .
+      }
+      GROUP BY ?propLabel
+      ORDER BY DESC(?nSamples)
+    verified: {top: "tc 26358, t2 17117, tcsus 5624, tcn 4641, t3 4606, t1 4051, hc2zero 1759", property_types_returned: 31, date: "2026-07-22"}
+    teaches: "THE enumeration route for 'all samples with property X': drive the class facet from the ontology (`?propClass rdfs:subClassOf Schema:SuperConductingProperty`) so a SINGLE query enumerates every typed property AND its coverage — no hand-listing of Schema:tc/t1/t2/… IRIs. To restrict to one property, replace ?propClass with a fixed type (a Schema:hc2zero)."
+    traps_avoided:
+      - "37 SuperConductingProperty subclasses are DEFINED but only 31 have instances — the GROUP BY naturally omits the empty ones. That is correct; do not assume a missing label means a broken query."
+
+  - id: synthesis_text_search
+    intent: free-text search over synthesis descriptions (the sole legitimate bif:contains target)
+    question: "Which samples were prepared by sintering, per their synthesis notes?"
+    complexity: intermediate
+    sparql: |
+      PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
+      PREFIX rdfs:   <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio:    <http://semanticscience.org/resource/>
+      SELECT ?sample ?text
+      FROM <http://rdfportal.org/dataset/supercon>
+      WHERE {
+        ?prep a Schema:SamplePreparation ; rdfs:comment ?text .
+        ?text bif:contains "'sinter'" .
+        ?sample sio:SIO_000008 ?prep .
+      }
+      LIMIT 20
+    verified: {matches_for_sinter: 32, date: "2026-07-22"}
+    teaches: "rdfs:comment on Schema:SamplePreparation is the ONLY free-text field in SuperCon — every other quantity has a typed Schema: predicate (never bif:contains a name/formula/Tc). Virtuoso bif:contains is the indexed way to search it."
+    traps_avoided:
+      - "Synthesis notes are heavy LAB SHORTHAND, not prose: SIN=sinter, CAL=calcine, Q=quench, RT=room temp, HIP=hot isostatic press. `bif:contains 'sintering'` returns 0 while 'sinter' returns 32 — search stems/abbreviations, not full English words."
+
+# ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
+schema_delta:
+  - "OTHER PROPERTY CATEGORIES reuse the identical single-step-subClassOf idiom (example all_properties_for_sample), just swap the parent class: Schema:ThermalProperty (debyet, gamma, spheat), Schema:MagneticProperty (curiet, curiec, neelt), Schema:MechanicalProperty (dens), Schema:NormalStateProperty (18 subclasses). Each leaf value is reached by the same datum scaffold."
+  - "LATTICE PARAMETERS lata/latb/latc (subclasses of LatticeConstant) carry a UNIT trap on sio:SIO_000221: most values are 'A' (Angstrom) or '' (assume A), but ~155 records use 'nm' = 10x Angstrom. Always read/filter the unit before comparing or aggregating lattice values, else a 10x scale error creeps in."
+  - "CRYSTAL STRUCTURE nodes (typed Schema:IntermalStructure — the typo, gotcha structure_typo) reach a structure-type via obo:BFO_0000051: only 19.1% are named IRIs (Schema:str1_01..07); 80.9% are BLANK nodes. Any IRI-based structure-type filter silently discards ~81% of structure data — use OPTIONAL and don't require a named IRI."
+  - "DATA-QUALITY duplicate: Schema:t2 (midpoint Tc) is empirically IDENTICAL to Schema:tc in all ~17,117 co-occurring records (0 mismatches) despite distinct ontology semantics — omit t2 from ML feature matrices. Schema:tcn is the lowest temperature measured WITHOUT observing superconductivity (a lower bound, NOT a positive Tc)."
+
+# ── id_join_map: SuperCon is a self-contained materials DB — its literature is INTERNAL and it carries NO
+#    external database IRIs. There is no same-endpoint or same-graph cross-DB join and no TogoID route. ──
+id_join_map:
+  stable_anchor: >
+    Sample = smp:msc_omNNNNNNN IRI, typed Schema:OxideAndMetallic, with a matching dct:identifier string.
+    Human keys are Schema:name (common name) and Schema:element (stoichiometric formula), both via sio:SIO_000300.
+    Literature ref = ref:<CODE> IRI (journal-prefixed: PRB/NAT/PHC/JPC…), typed bibo:Article.
+  same_endpoint_joins:            # SuperCon is the ONLY dataset on the nims endpoint — no co-tenant to join
+    none: "SuperCon is the sole database on https://rdfportal.org/nims/sparql; no cross-DATABASE SPARQL join is possible in one query (only the internal data↔ontology↔bibo:Article graph)."
+  xrefs:                          # SuperCon embeds NO external DB IRIs (no DOI/PMID/PubChem CID on the nodes)
+    internal_literature: "sample --dct:referecens--> bibo:Article (7,249 internal publication nodes); dct:bibliographicCitation is a free-text 'JOURNAL,VOL(YEAR)PAGE' string — parse it externally to recover a DOI/PMID (not stored as an IRI)."
+    pubchem_by_formula: "Schema:element formula strings (stoichiometric notation) can seed get_pubchem_compound_id() to bridge OUT to PubChem — a string-to-tool step, NOT an in-graph join."
+  bridged_via_togoid:             # none — SuperCon carries no standard accession TogoID recognizes
+    - "None. SuperCon sample IRIs are NIMS-internal with no cross-DB accession; there is no togoid_convertId route in or out."
+
+# ── byte-count footer (spec §5 item 7) ──
+# v2: `wc -c togo_mcp/data/mie/supercon.yaml` = 42657 bytes
+# v3: `wc -c benchmark/redesign/mie_v3/supercon.yaml` = 21789 bytes → 48.9% smaller than v2.

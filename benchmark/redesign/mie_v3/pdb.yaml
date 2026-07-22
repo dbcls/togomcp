@@ -1,0 +1,311 @@
+# MIE v3 — PDB (Protein Data Bank). Agent-authored 2026-07-22 on `mie-redesign`.
+# Format: benchmark/redesign/MIE_v3_spec.md. Every verified count/result re-run live on the pdb endpoint 2026-07-22.
+# Byte count vs the v2 file it replaces (spec §5 item 7): v2 togo_mcp/data/mie/pdb.yaml = 52,122 bytes;
+# this v3 file = 23,410 bytes → 55.1% smaller. See the footer for the exact `wc -c` figures.
+database: pdb
+
+# ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
+discovery:
+  title: PDB — Protein Data Bank
+  description: >
+    3D structural data for biological macromolecules (~255,508 entries) from X-ray crystallography, cryo-EM,
+    and NMR, with experimental method, resolution, biological assembly / oligomeric state, EC enzyme
+    classification, engineered mutations, bonds, and residue-level SIFTS cross-references to UniProt, Pfam,
+    InterPro, CATH, SCOP, GO, and Ensembl.
+  keywords: [protein structure, 3d structure, x-ray crystallography, cryo-em, nmr, macromolecule, resolution,
+             biological assembly, oligomeric state, ec number, enzyme, mutation, disulfide, metal coordination,
+             sifts, pfam, interpro, cath, scop, ligand, binding site]
+  categories: [structure, protein]
+
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/pdb/sparql   # PDB's own endpoint (46 graphs total: PDB data + BMRB + ~42 ontologies)
+base_uri: http://rdf.wwpdb.org/pdb/
+graphs:
+  primary: http://rdfportal.org/dataset/pdb   # holds BOTH the pdbo ontology AND all data (PDB entries + chemical components)
+  co_hosted:
+    "bmrbpub.protein.osaka-u.ac.jp/rdf/bmr": >
+      BMRB (NMR) — RE-USES 29,544 of the SAME <http://rdf.wwpdb.org/pdb/XXXX> entry IRIs that dataset/pdb declares.
+      It does NOT re-type them (pdbo:datablock is declared in dataset/pdb ONLY), so it does NOT inflate a
+      pdbo:datablock COUNT (×1). The hazard is rdfs:label: dataset/pdb puts ZERO rdfs:label on entries, while
+      BMRB attaches one valued "info:pdb/1ATP" (a useless internal URI, NOT the title). An UNSCOPED
+      `?s a pdbo:datablock ; rdfs:label ?l` silently returns ~29,550 BMRB-sourced rows (gotcha never_use_label).
+    "ontology/go, ontology/taxonomy, id.nlm.nih.gov/mesh, ontology/{mondo,uberon,cl,so,sio,…}": >
+      ~42 shared ontology/vocabulary graphs on this endpoint. JOIN TARGETS, not co-tenancy traps — none declare
+      pdbo:datablock and none overlap PDB entry IRIs. The GO graph (ontology/go) is directly joinable to SIFTS GO
+      segments via the obo GO IRI on the SAME endpoint — no federation needed (example xdb_go_labels).
+
+entity_counts:                     # every count COUNT(DISTINCT ?entry) + graph-pinned, live 2026-07-22
+  structural_entries: 255508       # pdb:XXXX only (entry FILTER applied — see gotcha entry_filter)
+  all_datablocks: 562592           # WITHOUT the entry FILTER — includes ~307K cc:XXX chemical components; never report as "structures"
+  by_method: "X-RAY DIFFRACTION 205,340 · ELECTRON MICROSCOPY 34,846 · SOLUTION NMR 14,670 · then ELECTRON CRYSTALLOGRAPHY 288 / NEUTRON 265 / SOLID-STATE NMR 198 / ... (example method_enum)"
+  coverage: "EC-annotated ~45% (115,544) · UniProt xref ~92% (236,197) · SIFTS domains ~78% (199,538) · biological assembly 100% (255,508)"
+
+global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
+  - id: graph_pin
+    say: >
+      The data graph is <http://rdfportal.org/dataset/pdb>. It was RENAMED from <http://rdfportal.org/dataset/pdbj>
+      in 2026-07 — a query with FROM <http://rdfportal.org/dataset/pdbj> returns ZERO rows silently (the old graph
+      no longer exists). Omitting FROM works but scans BMRB + ~42 ontologies on this endpoint (slow, and see
+      never_use_label). Always pin FROM (or GRAPH) <http://rdfportal.org/dataset/pdb>.
+  - id: namespace
+    say: >
+      pdbo: is <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>. The old pdbx-v50.owl# namespace is inactive
+      and every pattern using it returns 0 rows silently.
+  - id: entry_filter
+    say: >
+      dataset/pdb holds TWO datablock populations: ~255,508 PDB structural entries (pdb:XXXX) and ~307K chemical
+      components (cc:XXX). A bare `?entry a pdbo:datablock` COUNT = 562,592. ALWAYS add
+      FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/")) and COUNT(DISTINCT ?entry) for structure stats.
+  - id: never_use_label
+    say: >
+      dataset/pdb puts NO rdfs:label on entries — the co-hosted BMRB graph injects a phantom one valued
+      "info:pdb/1ATP" on ~29,550 shared IRIs. Never read a PDB title/id from rdfs:label. Title = dc:title
+      (<http://purl.org/dc/elements/1.1/>); 4-char ID = dct:identifier; and pin GRAPH dataset/pdb.
+  - id: resolution_is_method_specific
+    say: >
+      Resolution lives in a DIFFERENT predicate per method. X-ray = pdbo:refine.ls_d_res_high; cryo-EM =
+      pdbo:em_3d_reconstruction.resolution (EM entries have NO refine node — 99.83% of EM carries the em field);
+      NMR has neither. Reading EM resolution from refine silently drops nearly all EM structures.
+
+# ── examples: verified, executable atoms. The mmCIF category–item shape is universal:
+#    ?entry pdbo:has_<X>Category / pdbo:has_<X> ?node — every example below rides that path.
+#    Neutral illustrative subjects (carbonic anhydrase EC 4.2.1.1, immunoglobulin PF00047, Bos taurus 9913,
+#    hen lysozyme P00698) — deliberately NOT the benchmark's kinase/protease/biotin subjects (§4.6). ──
+examples:
+  - id: count_entries
+    intent: count structural entries correctly (the entry-filter + graph-pin recipe)
+    question: "How many structures are in the PDB?"
+    complexity: aggregation
+    sparql: |
+      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
+      SELECT (COUNT(DISTINCT ?entry) AS ?total)
+      FROM <http://rdfportal.org/dataset/pdb>
+      WHERE {
+        ?entry a pdbo:datablock .
+        FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
+      }
+    verified: {total: 255508, date: "2026-07-22"}
+    teaches: "The universal PDB scaffold: pin FROM <dataset/pdb>, type ?entry a pdbo:datablock, FILTER the pdb/ IRI prefix, COUNT(DISTINCT). Every other example builds on this stem."
+    traps_avoided:
+      - "Without the STRSTARTS entry FILTER the count is 562,592 — it includes ~307K cc:XXX chemical-component datablocks (gotcha entry_filter)."
+
+  - id: method_enum
+    intent: enumerate ALL entries by experimental method — the exptl.method controlled-vocabulary route
+    question: "How many PDB structures were determined by each experimental method?"
+    complexity: aggregation
+    sparql: |
+      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
+      SELECT ?method (COUNT(DISTINCT ?entry) AS ?entries)
+      FROM <http://rdfportal.org/dataset/pdb>
+      WHERE {
+        ?entry a pdbo:datablock .
+        FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
+        ?entry pdbo:has_exptlCategory/pdbo:has_exptl/pdbo:exptl.method ?method .
+      }
+      GROUP BY ?method
+      ORDER BY DESC(?entries)
+    verified: {distinct_methods: 13, top: "X-RAY DIFFRACTION 205340, ELECTRON MICROSCOPY 34846, SOLUTION NMR 14670", date: "2026-07-22"}
+    teaches: "pdbo:exptl.method is a closed controlled vocabulary (13 exact string values). GROUP BY it to enumerate the whole DB by method — the set-level route, no text search. Filter it (= \"ELECTRON MICROSCOPY\") to scope any query to one technique."
+
+  - id: organism_by_taxon
+    intent: structures of an organism via the taxonomy IRI, catching all source categories
+    question: "How many Bos taurus (cattle) structures are in the PDB?"
+    complexity: basic
+    sparql: |
+      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
+      # Bos taurus = <http://purl.uniprot.org/taxonomy/9913>. Source is split across categories:
+      #   entity_src_gen (recombinant) + entity_src_nat (natural) both carry link_to_taxonomy_source.
+      SELECT (COUNT(DISTINCT ?entry) AS ?count)
+      FROM <http://rdfportal.org/dataset/pdb>
+      WHERE {
+        ?entry a pdbo:datablock .
+        FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
+        { ?entry pdbo:has_entity_src_genCategory/pdbo:has_entity_src_gen/pdbo:link_to_taxonomy_source <http://purl.uniprot.org/taxonomy/9913> }
+        UNION
+        { ?entry pdbo:has_entity_src_natCategory/pdbo:has_entity_src_nat/pdbo:link_to_taxonomy_source <http://purl.uniprot.org/taxonomy/9913> }
+      }
+    verified: {count: 4058, gen_only: 1986, date: "2026-07-22"}
+    teaches: "Filter organism by the UniProt taxonomy IRI (fast + unambiguous vs a name text-search). link_to_taxonomy_source lives on the entity_src_gen AND entity_src_nat nodes — UNION them."
+    traps_avoided:
+      - "entity_src_gen alone gives 1,986 of the true 4,058 — natural-source (entity_src_nat) entries are missed. A third category, pdbx_entity_src_syn (synthetic), has ONLY the literal ncbi_taxonomy_id (no IRI); UNION it in if you need synthetic sources too."
+
+  - id: ec_enum
+    intent: enumerate ALL entries of an enzyme function — the EC classification route (IRI + literal)
+    question: "How many PDB structures are carbonic anhydrase (EC 4.2.1.1)?"
+    complexity: aggregation
+    sparql: |
+      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
+      # EC lives on the ENTITY node, not the entry. The ENZYME IRI is the clean route.
+      SELECT (COUNT(DISTINCT ?entry) AS ?entries)
+      FROM <http://rdfportal.org/dataset/pdb>
+      WHERE {
+        ?entry a pdbo:datablock .
+        FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
+        ?entry pdbo:has_entityCategory/pdbo:has_entity ?ent .
+        ?ent pdbo:link_to_enzyme <http://purl.uniprot.org/enzyme/4.2.1.1> .   # IRI route
+        # literal equivalent: ?ent pdbo:entity.pdbx_ec "4.2.1.1"  (but see the multi-EC trap)
+      }
+    verified: {entries: 1573, literal_exact_match: 1539, date: "2026-07-22"}
+    teaches: "EC classification is on the entity (pdbo:has_entity), via the literal pdbo:entity.pdbx_ec (\"4.2.1.1\") OR the IRI pdbo:link_to_enzyme <http://purl.uniprot.org/enzyme/EC>. Query by a single EC to enumerate every structure of that function — the set-level route."
+    traps_avoided:
+      - "The literal exact match `entity.pdbx_ec \"4.2.1.1\"` gives 1,539 — it MISSES multi-function entities whose value is \"4.2.1.1,4.2.1.69\". link_to_enzyme splits those into one IRI per EC and catches all 1,573. Prefer the IRI for enumeration."
+      - "An EC PREFIX is NOT a function name. FILTER(STRSTARTS(?ec,\"2.7.\")) is NOT \"kinases\": 2.7.7 is nucleotidyltransferases (polymerases). And STRSTARTS(?ec,\"4.2.1.1\") wrongly also matches \"4.2.1.10\"/\"4.2.1.11\". For a class, either enumerate the exact sub-EC IRIs or anchor the string with a trailing dot."
+
+  - id: sifts_pfam_enum
+    intent: enumerate ALL structures containing a domain — the SIFTS xref_db_acc route
+    question: "Which PDB structures contain an immunoglobulin (Pfam PF00047) domain?"
+    complexity: advanced
+    sparql: |
+      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
+      PREFIX dc:   <http://purl.org/dc/elements/1.1/>
+      SELECT ?entry_id (SAMPLE(?title) AS ?title)
+      FROM <http://rdfportal.org/dataset/pdb>
+      WHERE {
+        ?entry a pdbo:datablock .
+        FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
+        BIND(STRAFTER(STR(?entry), "http://rdf.wwpdb.org/pdb/") AS ?entry_id)
+        ?entry pdbo:has_pdbx_sifts_xref_db_segmentsCategory/pdbo:has_pdbx_sifts_xref_db_segments ?seg .
+        ?seg pdbo:pdbx_sifts_xref_db_segments.xref_db "Pfam" ;
+             pdbo:pdbx_sifts_xref_db_segments.xref_db_acc "PF00047" .
+        OPTIONAL { ?entry dc:title ?title }
+      }
+      GROUP BY ?entry_id
+      LIMIT 20
+    verified: {distinct_structures_total: 203, result_rows: 20, date: "2026-07-22"}
+    teaches: "SIFTS residue segments are the typed cross-reference route. Filter xref_db (\"Pfam\"|\"GO\"|\"InterPro\"|\"CATH\"|\"SCOP\"|\"SCOP2\"|\"SCOP2B\"|\"Ensembl\") + xref_db_acc (the accession, e.g. \"PF00047\", \"GO:0004089\") to enumerate every structure carrying that domain/annotation — no text search. Drop the GROUP BY and use COUNT(DISTINCT ?entry) for the total (203)."
+    traps_avoided:
+      - "Each segment also exposes a dedicated IRI (pdbo:link_to_pfam / link_to_interpro / link_to_cath / link_to_scop, and pdbo:link_to_go in obo form <http://purl.obolibrary.org/obo/GO_…>) — use those to join out to the domain/ontology DB (example xdb_go_labels)."
+
+  - id: uniprot_structures
+    intent: all PDB structures of one protein, via the UniProt cross-reference
+    question: "Which PDB structures correspond to UniProt P00698 (hen egg-white lysozyme)?"
+    complexity: basic
+    sparql: |
+      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
+      PREFIX dc:   <http://purl.org/dc/elements/1.1/>
+      SELECT ?entry_id (SAMPLE(?title) AS ?title)
+      FROM <http://rdfportal.org/dataset/pdb>
+      WHERE {
+        ?entry a pdbo:datablock .
+        FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
+        BIND(STRAFTER(STR(?entry), "http://rdf.wwpdb.org/pdb/") AS ?entry_id)
+        ?entry pdbo:has_struct_refCategory/pdbo:has_struct_ref/pdbo:link_to_uniprot <http://purl.uniprot.org/uniprot/P00698> .
+        OPTIONAL { ?entry dc:title ?title }
+      }
+      GROUP BY ?entry_id
+      LIMIT 10
+    verified: {distinct_structures_total: 1335, result_rows: 10, date: "2026-07-22"}
+    teaches: "struct_ref carries the primary UniProt link: pdbo:link_to_uniprot → <http://purl.uniprot.org/uniprot/ACCESSION> (~92% of entries). Filter by a known accession to list every structure of that protein. Residue-level mapping is the sibling pdbx_sifts_unp_segments (unp_acc, unp_start/end)."
+
+  - id: oligomeric_state
+    intent: distribution of biological oligomeric state over a function-scoped set (assembly axis)
+    question: "What oligomeric states do carbonic anhydrase structures adopt?"
+    complexity: intermediate
+    sparql: |
+      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
+      SELECT ?oligomeric_details (COUNT(DISTINCT ?entry) AS ?entries)
+      FROM <http://rdfportal.org/dataset/pdb>
+      WHERE {
+        ?entry a pdbo:datablock .
+        FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
+        ?entry pdbo:has_entityCategory/pdbo:has_entity/pdbo:link_to_enzyme <http://purl.uniprot.org/enzyme/4.2.1.1> .
+        ?entry pdbo:has_pdbx_struct_assemblyCategory/pdbo:has_pdbx_struct_assembly ?asm .
+        ?asm pdbo:pdbx_struct_assembly.id "1" ;                          # primary assembly only
+             pdbo:pdbx_struct_assembly.oligomeric_details ?oligomeric_details .
+      }
+      GROUP BY ?oligomeric_details
+      ORDER BY DESC(?entries)
+    verified: {top: "monomeric 1374, dimeric 125, tetrameric 48, trimeric 16", date: "2026-07-22"}
+    teaches: "pdbo:pdbx_struct_assembly.oligomeric_details is the queryable controlled term for the functional oligomer (\"monomeric\", \"dimeric\", …). Present for 100% of entries. Filter assembly.id \"1\" (primary assembly) so entries defining several assemblies are not double-counted."
+    traps_avoided:
+      - "Values have case variance — \"dimeric\" (125) AND a stray \"Dimeric\" (1) are distinct GROUP BY keys. LCASE(?oligomeric_details) before grouping if you need the true merge."
+
+  - id: xray_resolution
+    intent: highest-resolution X-ray structures of a function-scoped set (method-specific resolution)
+    question: "What are the highest-resolution X-ray carbonic anhydrase structures?"
+    complexity: intermediate
+    sparql: |
+      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
+      PREFIX dc:   <http://purl.org/dc/elements/1.1/>
+      SELECT ?entry_id ?res (SAMPLE(?title) AS ?title)
+      FROM <http://rdfportal.org/dataset/pdb>
+      WHERE {
+        ?entry a pdbo:datablock .
+        FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
+        BIND(STRAFTER(STR(?entry), "http://rdf.wwpdb.org/pdb/") AS ?entry_id)
+        ?entry pdbo:has_entityCategory/pdbo:has_entity/pdbo:link_to_enzyme <http://purl.uniprot.org/enzyme/4.2.1.1> .
+        ?entry pdbo:has_exptlCategory/pdbo:has_exptl/pdbo:exptl.method "X-RAY DIFFRACTION" .
+        ?entry pdbo:has_refineCategory/pdbo:has_refine/pdbo:refine.ls_d_res_high ?res .   # X-ray resolution
+        OPTIONAL { ?entry dc:title ?title }
+      }
+      GROUP BY ?entry_id ?res
+      ORDER BY ?res
+      LIMIT 10
+    verified: {best_resolution: 0.9, top_entry: "6KM2 (0.9 Å)", date: "2026-07-22"}
+    teaches: "For X-ray, resolution is pdbo:refine.ls_d_res_high (ORDER BY ASC = best first). This is the X-ray-only path."
+    traps_avoided:
+      - "For cryo-EM the SAME query returns nothing — EM entries have no refine node. Use pdbo:em_3d_reconstruction.resolution instead (covers 99.83% of EM; e.g. 343 EM structures resolve ≤2.0 Å DB-wide). NMR has neither (gotcha resolution_is_method_specific)."
+
+  - id: xdb_go_labels
+    intent: "cross-DB: PDB SIFTS GO segments → GO term labels via the co-hosted GO ontology graph (same endpoint, no federation)"
+    question: "Which GO molecular functions are annotated on carbonic anhydrase structures, and how many structures each?"
+    complexity: cross_db
+    endpoint_name: pdb
+    sparql: |
+      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?go_iri (SAMPLE(?go_label) AS ?label) (COUNT(DISTINCT ?entry) AS ?structures)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/pdb> {
+          ?entry a pdbo:datablock .
+          FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
+          ?entry pdbo:has_entityCategory/pdbo:has_entity/pdbo:link_to_enzyme <http://purl.uniprot.org/enzyme/4.2.1.1> .
+          ?entry pdbo:has_pdbx_sifts_xref_db_segmentsCategory/pdbo:has_pdbx_sifts_xref_db_segments ?seg .
+          ?seg pdbo:pdbx_sifts_xref_db_segments.xref_db "GO" ;
+               pdbo:link_to_go ?go_iri .
+        }
+        GRAPH <http://rdfportal.org/ontology/go> {
+          ?go_iri rdfs:label ?go_label .
+        }
+      }
+      GROUP BY ?go_iri
+      ORDER BY DESC(?structures)
+      LIMIT 10
+    verified: {top: "GO_0004089 'carbonate dehydratase activity' 1226, GO_0016829 'lyase activity' 1225, GO_0046872 'metal ion binding' 1220", date: "2026-07-22"}
+    teaches: "The GO ontology is CO-HOSTED on the PDB endpoint. SIFTS pdbo:link_to_go emits obo-form IRIs (<…/obo/GO_NNNN>) that match rdfs:label in GRAPH <http://rdfportal.org/ontology/go> — a direct two-GRAPH join on one endpoint, no SERVICE and no TogoID. Same trick works for the co-hosted taxonomy/mesh/mondo/uberon graphs."
+    traps_avoided:
+      - "Use pdbo:link_to_go (obo <…/obo/GO_NNNN>) for the join, NOT the xref_db_acc literal (\"GO:0005344\") — the co-hosted GO graph keys terms by the obo IRI, so the literal string joins nothing."
+
+# ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
+schema_delta:
+  - "Category–item shape is universal: entry --pdbo:has_<X>Category--> node --pdbo:has_<X>--> typed item, and every item back-links pdbo:of_datablock → entry. Item predicates are dotted, e.g. pdbo:exptl.method, pdbo:refine.ls_d_res_high."
+  - "Engineered mutations: pdbo:has_struct_ref_seq_difCategory/pdbo:has_struct_ref_seq_dif → node with pdbo:struct_ref_seq_dif.details (\"engineered mutation\"|\"expression tag\"|\"variant\"|\"conflict\"), .mon_id (residue in the structure), .pdbx_seq_db_accession_code (the UniProt acc). THE route for 'structures with mutation X'."
+  - "Bonds: pdbo:has_struct_connCategory/pdbo:has_struct_conn → .conn_type_id controlled value \"disulf\"|\"metalc\"|\"covale\"|\"hydrog\"; .ptnr1_auth_comp_id / .ptnr2_auth_comp_id name the two partners (e.g. \"HIS\"/\"HEM\" for a metal coordination)."
+  - "Modified residues / PTMs: pdbo:has_pdbx_struct_mod_residueCategory/pdbo:has_pdbx_struct_mod_residue → .auth_comp_id (modified code), .parent_comp_id (unmodified parent)."
+  - "Ligand binding sites: pdbo:has_struct_siteCategory/pdbo:has_struct_site → .pdbx_auth_comp_id (the bound ligand code, e.g. \"SO4\"), .details."
+  - "cryo-EM detail beyond resolution: pdbo:em_3d_reconstruction.num_particles / .symmetry_type; pdbo:em_experiment.reconstruction_method (\"SINGLE PARTICLE\"|\"HELICAL\"|\"TOMOGRAPHY\")."
+  - "Free-text search is legitimate ONLY on pdbo:struct_keywords.pdbx_keywords and dc:title (unstructured). For anything with a controlled predicate (method, EC, organism, domain) prefer the typed route — it finds far more than the keyword field. Use FILTER(CONTAINS(LCASE(?t),…)); bif:contains times out on the category property-path chains here."
+  - "Sequence: pdbo:has_entity_polyCategory/pdbo:has_entity_poly → .pdbx_seq_one_letter_code (one-letter sequence) + .type (e.g. \"polypeptide(L)\")."
+
+# ── id_join_map: how to anchor stably and cross to other resources. ──
+id_join_map:
+  stable_anchor: >
+    Entry IRI is the UPPERCASE http://rdf.wwpdb.org/pdb/XXXX (e.g. pdb:1ATP); 4-char ID = dct:identifier "1ATP".
+    owl:sameAs → the lowercase IRI; skos:altLabel → lowercase id + extended "pdb_00001atp"; dct:references → the
+    entry DOI. NEVER anchor a title/id on rdfs:label (BMRB phantom — gotcha never_use_label).
+  same_endpoint_joins:            # co-hosted on the pdb endpoint — direct GRAPH join, NO TogoID, NO SERVICE
+    go:       "SIFTS GO segment pdbo:link_to_go (obo <…/obo/GO_NNNN>) → GRAPH <http://rdfportal.org/ontology/go> for rdfs:label/definition (example xdb_go_labels)"
+    taxonomy: "pdbo:link_to_taxonomy_source (<http://purl.uniprot.org/taxonomy/N>) on entity_src_gen/nat → co-hosted NCBI-taxonomy ontology graph for names/rank"
+    mesh_mondo_uberon_cl: "~42 co-hosted ontology graphs are all GRAPH-joinable on this endpoint by their obo/purl IRIs"
+  xrefs:                          # outbound IRIs carried on PDB nodes (bridge to other endpoints)
+    uniprot:  "pdbo:link_to_uniprot → <http://purl.uniprot.org/uniprot/ACC> on struct_ref (~92%) AND residue-level on pdbx_sifts_unp_segments; query the SIB endpoint with these accessions (example uniprot_structures)"
+    enzyme:   "pdbo:link_to_enzyme → <http://purl.uniprot.org/enzyme/EC> on the entity (~45%; example ec_enum)"
+    pfam_interpro_cath_scop: "pdbo:link_to_pfam / link_to_interpro / link_to_cath / link_to_scop on SIFTS segments (78% of entries carry SIFTS)"
+    doi_pubmed: "pdbo:link_to_doi (<http://doi.org/…>) + pdbo:link_to_pubmed (<http://rdf.ncbi.nlm.nih.gov/pubmed/PMID>) on the citation node"
+    emdb_bmrb: "pdbo:database_2.database_id \"EMDB\" (cryo-EM map) / \"BMRB\" (NMR) with .database_code"
+  bridged_via_togoid:             # UniProt full records / other RDF Portal DBs on OTHER endpoints
+    - "PDB entry ID ↔ UniProt / other DBs via togoid_convertId(\"pdb\", …) when materialising accession lists for a separate-endpoint federation."
+
+# ── byte-count footer (spec §5 item 7) ──
+# v2: `wc -c togo_mcp/data/mie/pdb.yaml` = 52122 bytes
+# v3: `wc -c benchmark/redesign/mie_v3/pdb.yaml` = 23410 bytes → 55.1% smaller than v2.

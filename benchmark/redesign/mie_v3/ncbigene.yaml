@@ -1,0 +1,244 @@
+# MIE v3 — NCBI Gene. AGENT-authored 2026-07-22 on `mie-redesign`.
+# Format: benchmark/redesign/MIE_v3_spec.md. Every verified count/result re-run live on the ncbigene
+# endpoint 2026-07-22. Byte count vs the v2 file it replaces (spec §5 item 7): v2
+# togo_mcp/data/mie/ncbigene.yaml = 35,209 bytes; this v3 file = 17,005 bytes → 51.7% smaller (see footer).
+database: ncbigene
+
+# ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
+discovery:
+  title: NCBI Gene
+  description: >
+    Gene records for all organisms (57.8M genes): symbol, full name, gene type, chromosome/cytoband,
+    synonyms, nomenclature status, cross-species orthology, and IRI/string cross-references to
+    Ensembl, HGNC, OMIM, and miRBase.
+  keywords: [gene, gene symbol, gene type, ncbi, annotation, synonym, chromosome, cytoband, organism,
+             taxonomy, ortholog, nomenclature, ensembl, hgnc, omim, mirbase, ncrna, protein-coding, pseudogene]
+  categories: [gene]
+
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/ncbi/sparql   # the "ncbi" endpoint_name for cross-DB joins
+base_uri: http://identifiers.org/ncbigene/
+graphs:
+  primary: http://rdfportal.org/dataset/ncbigene   # the ONLY graph declaring `a insdc:Gene`
+  co_hosted:                       # same "ncbi" endpoint; reachable by explicit GRAPH pin
+    medgen: >
+      JOIN target, NON-inflating. Writes gene→disease on ncbigene's OWN IRIs: `<ncbigene/ID> obo:RO_0003302
+      <medgen concept>` (5,065 gene subjects) + rdfs:seeAlso. Enables a DIRECT same-IRI cross-DB join (example
+      xdb_medgen). Does NOT inflate: it asserts NO rdf:type on genes, so `?g a insdc:Gene` never picks up a
+      MedGen entity, and its predicate set is disjoint from ncbigene's (ncbigene never uses rdfs:seeAlso on a gene).
+    clinvar: >
+      JOIN target, DIFFERENT namespace — ClinVar keys genes as http://ncbi.nlm.nih.gov/gene/{id}, NOT the
+      identifiers.org IRI. Requires a BIND+CONCAT URI conversion between GRAPH clauses (example xdb_clinvar).
+    pubtator_central: >
+      JOIN target — PubTator Gene annotations' oa:hasBody IS the identifiers.org/ncbigene/{id} IRI (direct join),
+      but annotations are NOT species-restricted (see id_join_map pubtator note).
+    other: "pubmed, nlm_catalog, and ~13 MeSH graphs also share this endpoint; none re-type or overlap gene IRIs."
+
+entity_counts:                     # graph-pinned (FROM the ncbigene graph); verified live 2026-07-22
+  total_genes:  57768578           # all organisms — `COUNT(*) { ?g a insdc:Gene }` completes (~single graph, no join)
+  human_genes:  193288             # ncbio:taxid <taxonomy/9606>
+  human_official_nomenclature: 45003   # ncbio:nomenclatureStatus "official"
+
+global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
+  - id: taxid_mandatory
+    say: >
+      ncbio:taxid is THE mandatory first filter. Without `?gene ncbio:taxid <http://identifiers.org/taxonomy/N>`
+      a query scans all 57.8M genes and times out. It is an IRI (taxonomy/9606=human, 10090=mouse, 10116=rat,
+      511145=E. coli K-12), never a text/name — never bif:contains an organism name.
+  - id: graph_pin
+    say: >
+      Always FROM <http://rdfportal.org/dataset/ncbigene> (or GRAPH-pin). The endpoint co-hosts medgen/clinvar/
+      pubtator/mesh; medgen even writes on the SAME gene IRIs (gene→disease). Unpinned queries can silently mix graphs.
+  - id: label_is_symbol
+    say: >
+      rdfs:label = the gene SYMBOL ("TP53"), NOT the full name. The full name is dct:description ("tumor protein p53").
+      Matching a full gene name against rdfs:label returns 0 rows silently. Symbols are the label; descriptions are free text.
+  - id: biological_region_dominates
+    say: >
+      For human, the most common ncbio:typeOfGene is "biological-region" (~128k), NOT "protein-coding" (~20k). A
+      "how many genes" that assumes protein-coding dominance undercounts. Always name the exact typeOfGene value you mean.
+
+# ── examples: verified, executable atoms. `a insdc:Gene`; identifiers.org/ncbigene/{id} IRIs;
+#    controlled-vocab predicates ncbio:typeOfGene + ncbio:nomenclatureStatus; ncbio:taxid = organism IRI. ──
+examples:
+  - id: gene_lookup
+    intent: direct multi-gene lookup by IRI — symbol, full name, type, chromosome (the IRI pattern + label/description split)
+    question: "What are the symbol, full name, gene type, and chromosome for genes 7157, 672, and 3630?"
+    complexity: basic
+    sparql: |
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      SELECT ?gene ?symbol ?full_name ?type ?chromosome
+      FROM <http://rdfportal.org/dataset/ncbigene>
+      WHERE {
+        VALUES ?gene {
+          <http://identifiers.org/ncbigene/7157>   # TP53
+          <http://identifiers.org/ncbigene/672>    # BRCA1
+          <http://identifiers.org/ncbigene/3630>   # INS
+        }
+        ?gene rdfs:label ?symbol ; ncbio:typeOfGene ?type .
+        OPTIONAL { ?gene dct:description ?full_name }
+        OPTIONAL { ?gene insdc:chromosome ?chromosome }
+      }
+    verified: {result_rows: 3, date: "2026-07-22", first_row: "3630 INS 'insulin' protein-coding chr11"}
+    teaches: "A gene is <http://identifiers.org/ncbigene/{id}>. rdfs:label = symbol; dct:description = full name (free text); ncbio:typeOfGene = controlled vocab; insdc:chromosome is a plain string ('11','X','MT')."
+
+  - id: enum_gene_type
+    intent: enumerate ALL genes by controlled-vocab typeOfGene, organism-scoped (THE set-level enumeration route + mandatory taxid)
+    question: "How many genes of each type does E. coli K-12 MG1655 have?"
+    complexity: aggregation
+    sparql: |
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      SELECT ?type (COUNT(DISTINCT ?gene) AS ?count)
+      FROM <http://rdfportal.org/dataset/ncbigene>
+      WHERE {
+        ?gene a insdc:Gene ;
+              ncbio:taxid <http://identifiers.org/taxonomy/511145> ;   # E. coli K-12 MG1655 — MANDATORY organism scope
+              ncbio:typeOfGene ?type .                                 # controlled vocab: swap the taxid, or add a value filter, for any org/type
+      }
+      GROUP BY ?type ORDER BY DESC(?count)
+    verified: {protein-coding: 4288, pseudo: 145, ncRNA: 98, tRNA: 86, rRNA: 22, other: 1, total: 4640, date: "2026-07-22"}
+    teaches: "ncbio:typeOfGene is THE controlled-vocabulary enumeration axis ('protein-coding','ncRNA','pseudo','tRNA','rRNA','biological-region','snoRNA','snRNA'…). To get 'all genes of type X' add `ncbio:typeOfGene \"X\"` alongside the mandatory ncbio:taxid. NEVER text-search a gene type or organism — both are structured predicates."
+    traps_avoided:
+      - "Omitting ncbio:taxid makes this a 57.8M-gene scan → timeout (gotcha taxid_mandatory). Enumeration MUST be organism-scoped."
+      - "Do NOT bif:contains 'protein coding' on a label — use the ncbio:typeOfGene value directly; a text match misses the typed set and mixes unrelated hits."
+
+  - id: xref_navigation
+    intent: outbound cross-references of a gene via insdc:dblink IRIs, separated by identifiers.org namespace prefix
+    question: "What Ensembl, HGNC, and OMIM identifiers does the insulin gene (3630) link to?"
+    complexity: intermediate
+    sparql: |
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      SELECT ?dblink
+      FROM <http://rdfportal.org/dataset/ncbigene>
+      WHERE {
+        <http://identifiers.org/ncbigene/3630> insdc:dblink ?dblink .
+        FILTER( STRSTARTS(STR(?dblink), "http://identifiers.org/ensembl/") ||
+                STRSTARTS(STR(?dblink), "http://identifiers.org/hgnc/")    ||
+                STRSTARTS(STR(?dblink), "http://identifiers.org/mim/") )
+      }
+    verified: {result_rows: 3, date: "2026-07-22", rows: "ensembl/ENSG00000254647, hgnc/6081, mim/176730"}
+    teaches: "insdc:dblink carries IRI-based xrefs (identifiers.org/ensembl|hgnc|mim|mirbase/…); STRSTARTS on STR(?dblink) selects one target DB. String-format xrefs ('Database:ID', e.g. AllianceGenome) live on insdc:db_xref instead — filter those with CONTAINS()."
+    traps_avoided:
+      - "insdc:dblink (IRI) and insdc:db_xref (string) are DIFFERENT predicates; a namespace you don't find under one is often under the other."
+
+  - id: nomenclature_official
+    intent: enumerate genes by the ncbio:nomenclatureStatus controlled vocab (curation-completeness axis)
+    question: "How many human genes carry official HGNC nomenclature, and list some with full names?"
+    complexity: intermediate
+    sparql: |
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      SELECT ?gene ?symbol ?fullName
+      FROM <http://rdfportal.org/dataset/ncbigene>
+      WHERE {
+        ?gene a insdc:Gene ;
+              rdfs:label ?symbol ;
+              ncbio:taxid <http://identifiers.org/taxonomy/9606> ;
+              ncbio:nomenclatureStatus "official" .    # controlled vocab: "official" | "interim"
+        OPTIONAL { ?gene ncbio:fullName ?fullName }
+      }
+      LIMIT 100
+    verified: {result_rows: 100, human_official_total: 45003, date: "2026-07-22"}
+    teaches: "ncbio:nomenclatureStatus is a second controlled-vocab filter ('official' vs 'interim'); ncbio:fullName is the curated full name distinct from the free-text dct:description."
+
+  - id: orthology
+    intent: cross-species orthologs of a gene via the internal orth:hasOrtholog graph (undocumented in official ShEx)
+    question: "Which cross-species orthologs does human TP53 (7157) have?"
+    complexity: advanced
+    sparql: |
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      PREFIX orth: <http://purl.org/net/orth#>
+      SELECT ?ortholog ?symbol ?taxid
+      FROM <http://rdfportal.org/dataset/ncbigene>
+      WHERE {
+        <http://identifiers.org/ncbigene/7157> orth:hasOrtholog ?ortholog .   # start from ONE gene IRI
+        ?ortholog rdfs:label ?symbol ; ncbio:taxid ?taxid .
+      }
+      LIMIT 100
+    verified: {result_rows: 100, distinct_orthologs_total: 510, date: "2026-07-22", first_row: "ncbigene/30590 'tp53' (Danio rerio, taxonomy/7955)"}
+    teaches: "orth:hasOrtholog links a gene IRI to other ncbigene IRIs across species (bidirectional; present for well-annotated genes though ABSENT from the official ShEx). Each ortholog carries its own ncbio:taxid organism IRI."
+    traps_avoided:
+      - "ALWAYS anchor on a specific gene IRI and add LIMIT. `?g1 orth:hasOrtholog ?g2` unbounded scans millions of ortholog pairs → timeout."
+
+  - id: xdb_medgen
+    intent: "cross-DB: gene → associated diseases via co-hosted MedGen, DIRECT same-IRI join (no conversion)"
+    question: "What diseases are associated with BRCA1 (672) in MedGen?"
+    complexity: cross_db
+    endpoint_name: ncbi
+    sparql: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      SELECT ?gene_symbol ?disease_cui ?disease_label
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ncbigene> {
+          <http://identifiers.org/ncbigene/672> rdfs:label ?gene_symbol .
+        }
+        GRAPH <http://rdfportal.org/dataset/medgen> {
+          <http://identifiers.org/ncbigene/672> obo:RO_0003302 ?concept .   # gene→disease, keyed on the SAME ncbigene IRI
+          ?concept rdfs:label ?disease_label ; dct:identifier ?disease_cui .
+        }
+      }
+    verified: {result_rows: 4, date: "2026-07-22", first_row: "BRCA1 → C0346153 'Familial cancer of breast'"}
+    teaches: "MedGen is co-hosted and writes gene→disease on the SAME identifiers.org/ncbigene/{id} IRI via obo:RO_0003302 — a direct GRAPH join, NO URI conversion, NO TogoID bridge. The MedGen concept carries rdfs:label (disease name), dct:identifier (UMLS CUI), and skos:definition."
+
+  - id: xdb_clinvar
+    intent: "cross-DB: count a gene's clinical variants in ClinVar — demonstrates the mandatory IRI-namespace conversion"
+    question: "How many current ClinVar variants are recorded for the insulin gene (3630)?"
+    complexity: cross_db
+    endpoint_name: ncbi
+    sparql: |
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      SELECT ?gene_symbol (COUNT(DISTINCT ?variant) AS ?n_variants)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ncbigene> {
+          <http://identifiers.org/ncbigene/3630> dct:identifier ?gene_id ; rdfs:label ?gene_symbol .
+        }
+        # BIND BETWEEN the GRAPH clauses — ClinVar keys genes on a DIFFERENT namespace than identifiers.org
+        BIND(IRI(CONCAT("http://ncbi.nlm.nih.gov/gene/", ?gene_id)) AS ?cv_gene_uri)
+        GRAPH <http://rdfportal.org/dataset/clinvar> {
+          ?allele_bnode med2rdf:gene ?cv_gene_uri .
+          ?classrec sio:SIO_000628 ?allele_bnode .
+          ?variant a cvo:VariationArchiveType ; cvo:record_status "current" ; cvo:classified_record ?classrec .
+        }
+      }
+      GROUP BY ?gene_symbol
+    verified: {n_variants: 225, date: "2026-07-22", gene_symbol: "INS"}
+    teaches: "ClinVar keys genes as http://ncbi.nlm.nih.gov/gene/{id}, NOT the identifiers.org IRI. Take dct:identifier (a PLAIN string despite the ShEx saying xsd:integer — use it directly, no STR()), CONCAT it into the ClinVar URI, then join med2rdf:gene."
+    traps_avoided:
+      - "The BIND(CONCAT(...)) MUST sit BETWEEN the two GRAPH clauses. Placed INSIDE a GRAPH block it silently binds nothing and returns 0 rows."
+      - "dct:identifier is stored as a plain string ('3630'), not xsd:integer — usable directly in CONCAT; never rely on numeric comparison."
+
+# ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
+schema_delta:
+  - "Synonyms/alt names: insdc:gene_synonym (alternative symbols, e.g. 'P53','LFS1') and dct:alternative (alternative full names) — both multi-valued, both free text."
+  - "insdc:map = cytogenetic band string (e.g. '17p13.1'), distinct from insdc:chromosome ('17'). dct:modified = last-update date as a plain STRING ('2024-11-21'), not xsd:date."
+  - "String-format xrefs live on insdc:db_xref in 'Database:ID' form (e.g. 'AllianceGenome:HGNC:11998') — filter with CONTAINS(), not STRSTARTS on an IRI; contrast insdc:dblink (IRI form, example xref_navigation)."
+  - "Free-text discovery ONLY on dct:description (the sole unstructured field): `?gene dct:description ?d . ?d bif:contains \"'insulin' AND 'receptor'\"` (Virtuoso indexed; split the property path before bif:contains). Organism/type/chromosome are structured — never text-search them."
+
+# ── id_join_map: how to anchor stably and cross to other resources. ──
+id_join_map:
+  stable_anchor: >
+    Gene = http://identifiers.org/ncbigene/{GeneID} (the numeric NCBI Gene ID). dct:identifier repeats the ID as a
+    plain string; rdfs:label = the symbol (not unique across organisms — always disambiguate by ncbio:taxid).
+  same_endpoint_joins:            # co-hosted on the "ncbi" endpoint — direct GRAPH join, NO TogoID
+    medgen:   "obo:RO_0003302 on the SAME ncbigene IRI → MedGen disease concept (rdfs:label + dct:identifier CUI). Direct, no conversion (example xdb_medgen)."
+    clinvar:  "requires namespace conversion: identifiers.org/ncbigene/{id} → http://ncbi.nlm.nih.gov/gene/{id} via BIND+CONCAT, then med2rdf:gene (example xdb_clinvar)."
+    pubtator: "PubTator Gene annotation `?ann dcterms:subject \"Gene\" ; oa:hasBody <ncbigene IRI> ; oa:hasTarget <pubmed IRI>` in GRAPH <pubtator_central> — the oa:hasBody IRI IS the ncbigene IRI (direct). WARNING: annotations are NOT species-restricted, so a co-mention join interleaves a symbol's human + model-organism orthologs; add ncbio:taxid to restrict."
+  xrefs:                          # outbound references carried on genes
+    ensembl: "insdc:dblink → identifiers.org/ensembl/ENSG… (~20% of human genes)"
+    hgnc:    "insdc:dblink → identifiers.org/hgnc/{id} (~human, official nomenclature)"
+    omim:    "insdc:dblink → identifiers.org/mim/{id} (disease/phenotype, ~human)"
+    mirbase: "insdc:dblink → identifiers.org/mirbase/{id} (miRNA genes)"
+    alliancegenome: "insdc:db_xref STRING 'AllianceGenome:…' (no identifiers.org IRI)"
+  bridged_via_togoid:             # DBs NOT co-hosted on this endpoint
+    - "UniProt, PDB, ChEMBL, RefSeq, etc. — bridge the NCBI Gene ID via togoid_convertId (ncbigene → target)."
+
+# ── byte-count footer (spec §5 item 7) ──
+# v2: `wc -c togo_mcp/data/mie/ncbigene.yaml` = 35209 bytes
+# v3: `wc -c benchmark/redesign/mie_v3/ncbigene.yaml` = 17005 bytes → 51.7% smaller than v2.

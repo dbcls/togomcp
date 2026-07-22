@@ -1,0 +1,361 @@
+# MIE v3 — NBRC (NITE Biological Resource Center culture catalogue). AGENT-authored 2026-07-22 on `mie-redesign`.
+# Format: benchmark/redesign/MIE_v3_spec.md. Every verified count/result re-run live on the nbrc endpoint 2026-07-22.
+# Byte count vs the v2 file it replaces (spec §5 item 7): v2 togo_mcp/data/mie/nbrc.yaml = 58,354 bytes;
+# this v3 file = 25,974 bytes → 55.5% smaller. See the footer for the exact `wc -c` figures.
+database: nbrc
+
+# ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
+discovery:
+  title: NBRC — NITE Biological Resource Center culture catalogue
+  description: >
+    Catalogue of ~24k microbial strains (bacteria, archaea, fungi, yeasts, algae, phages) distributed by
+    Japan's NITE Biological Resource Center — accepted scientific name, NBRC catalogue number, organism
+    category, type-strain status, growth temperature/medium, isolation source + geographic origin, biosafety
+    level, equivalent strain numbers in other world collections, and links to NCBI Taxonomy, INSDC/RefSeq
+    genomes, and PubMed.
+  keywords: [culture collection, biological resource, microbial strain, nbrc, nite, bacteria, archaea, fungi,
+             yeast, algae, type strain, isolation source, growth temperature, culture medium, biosafety level,
+             habitat, geographic origin, strain equivalence]
+  categories: [microbe]
+
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/primary/sparql   # the shared "primary" endpoint (~40 datasets) — NBRC is ONE tenant
+base_uri: http://purl.jp/bio/103/nite/nbrc/
+graphs:
+  primary: http://purl.jp/bio/103/nite/culture/    # NBRC's OWN graph — the mandatory pin target for every strain query
+  co_hosted:
+    riken_jcm + naro_genebank: >
+      INFLATION. Two OTHER culture collections re-use NBRC's own classes mccv:MCCV_000001 and
+      brso:BiologicalResource with ZERO IRI overlap (disjoint namespaces). They never DUPLICATE a row — they
+      SILENTLY ADD foreign strains, each well-formed. Unpinned `?s a mccv:MCCV_000001` = 153,459 (NBRC 62,676
+      + RIKEN JCM 64,341 + NARO 26,442, all pairwise disjoint) — only 40.8% is NBRC's. COUNT(DISTINCT) does
+      NOT help (distinct foreign entities, not dup rows); only the graph pin removes them (gotcha graph_pin).
+    microbedbjp: >
+      JOIN + TRAP. The "taxonomy hub": (a) JOIN — holds MEO habitat labels reached from NBRC isolation-source
+      nodes (example xdb_meo). (b) TRAP — it RE-DECLARES the same identifiers.org/taxonomy/N IRIs NBRC points
+      at, at an OLDER nomenclature vintage, so an UNPINNED taxon-name leg doubles (gotcha taxon_name_pin).
+    ontology/taxonomy: >
+      JOIN. NCBI Taxonomy scientificName / rank / lineage on the same identifiers.org/taxonomy/N IRIs NBRC
+      links via mccv:MCCV_000065 — a direct GRAPH join (example xdb_taxon_name). PIN this graph for the name leg.
+    other_ontologies: >
+      ~30 more rdfportal.org/ontology/* graphs (incl. meo, go, mondo) + id.nlm.nih.gov/mesh + purl.jp/bio/11/goa —
+      join targets, NOT co-tenancy traps for NBRC (none re-type NBRC's strain IRIs; probed).
+
+entity_counts:                     # graph-pinned COUNT(DISTINCT), live 2026-07-22
+  strains: 23987                   # ?s a brso:BiologicalResource in the culture graph — THE holdings count
+  type_strains: 6275               # mccv:MCCV_000017 1
+  by_category: {Fungi: 10140, Bacteria: 9276, Yeasts: 3692, Algae: 470, Archaea: 305, Phages: 104}   # mccv:MCCV_000038
+  strains_unpinned_MCCV_000001: 153459   # INFLATED — NBRC 62,676 + RIKEN 64,341 + NARO 26,442; NEVER report as NBRC (gotcha graph_pin)
+  coverage: "growth temp ~100% · NCBI taxon 91.2% (UNEVEN: Archaea 99% → Phages 1.9%, Algae 55%) · isolation sample 80.9% · equiv-strain 51.1% · PubMed 30.8% · genome accession 8.2%"
+
+global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
+  - id: graph_pin
+    say: >
+      GRAPH IS MANDATORY: scope every query with `GRAPH <http://purl.jp/bio/103/nite/culture/>` (or FROM). The
+      primary endpoint co-hosts ~40 datasets; without the pin, RIKEN JCM + NARO strains bleed in (unpinned
+      `?s a mccv:MCCV_000001` = 153,459, only 40.8% NBRC) and other datasets mix in. Nothing DUPLICATES, so
+      COUNT(DISTINCT) does not save you — the surplus rows are well-formed FOREIGN strains; only the pin removes them.
+  - id: anchor_brso
+    say: >
+      ANCHOR HOLDINGS ON brso:BiologicalResource (23,987), NEVER on mccv:MCCV_000001 (62,676 in-graph — it is
+      polymorphic, also typing the ~38,689 equivalent-strain designation blank nodes). Alternative anchor:
+      FILTER(STRSTARTS(STR(?s), "http://purl.jp/bio/103/nite/nbrc/cultures/")). NBRC strains carry skos:prefLabel
+      (the scientific name), NOT rdfs:label.
+  - id: plain_literals
+    say: >
+      String values are stored as PLAIN literals (dcterms:identifier, skos:prefLabel, the NBRC number
+      mccv:MCCV_000010, biosafety mccv:MCCV_000034, isolation source mccv:MCCV_000030, geography rdfs:label…).
+      An exact match written with the explicit type — `"L1"^^xsd:string` or a typed VALUES row — returns 0 rows,
+      even though DATATYPE() reports xsd:string. Match the PLAIN literal ("L1") or compare via STR(?x)="L1".
+      VALUES blocks are the #1 silent-fail spot.
+  - id: no_ontology_labels
+    say: >
+      MCCV / MPO / brso terms carry NO rdfs:label in the NBRC graph — you CANNOT discover or filter predicates
+      by human-readable name; query by the numeric IRIs documented here (their meanings come from the MCCV/MPO
+      ontologies, not the endpoint). Ontology-number skew: this snapshot uses mpo:MPO_00102/00103/00104 for growth
+      temperature and mccv:MCCV_000038 for organism category — the published ontologies number these differently.
+  - id: taxon_name_pin
+    say: >
+      Pinning the NBRC graph is NOT enough for the TAXON NAME leg. mccv:MCCV_000065 lands on
+      identifiers.org/taxonomy/N, which co-hosted microbedbjp re-declares at an OLDER vintage — so an UNPINNED
+      `?taxon taxo:scientificName ?name` doubles (Algae slice live 2026-07-22: unpinned 427 rows / 260 strains
+      → pinned 260/260; whole-DB ×1.94). FIX = wrap the name leg in GRAPH <http://rdfportal.org/ontology/taxonomy>.
+      Caveat: the pin drops ~11 strains whose ONLY scientificName lives in microbedbjp — pin for a correct NAME,
+      add an OPTIONAL microbedbjp fallback only if completeness matters.
+
+# ── examples: verified, executable atoms. Hub = brso:BiologicalResource strain (IRI .../cultures/<8-digit>);
+#    blank-node satellites off it: cultivation temperature (sio:SIO_000216), sample (mccv:MCCV_000028 →
+#    isolation source + geography), equivalent strains (mccv:MCCV_000024). ──
+examples:
+  - id: strain_lookup
+    intent: core metadata for one strain by its culture IRI (the cheapest query)
+    question: "What are the scientific name, NBRC number, biosafety level and data-view page of strain NBRC 00113675?"
+    complexity: basic
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+      SELECT ?name ?nbrcNo ?biosafety ?homepage
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          <http://purl.jp/bio/103/nite/nbrc/cultures/00113675>
+              skos:prefLabel ?name ; mccv:MCCV_000010 ?nbrcNo ; foaf:homepage ?homepage .
+          OPTIONAL { <http://purl.jp/bio/103/nite/nbrc/cultures/00113675> mccv:MCCV_000034 ?biosafety }
+        }
+      }
+    verified: {result_rows: 1, date: "2026-07-22", first_row: "Phaeocalicium polyporaeum · NBRC 00113675 · L1"}
+    teaches: "Name = skos:prefLabel; catalogue number = mccv:MCCV_000010 ('NBRC <id>'); biosafety = mccv:MCCV_000034 (plain 'L1'); NITE page = foaf:homepage. Strain IRI is .../cultures/<8-digit id>."
+
+  - id: type_strains_by_category
+    intent: combine the organism-category enum with the type-strain flag (both structured — no text search)
+    question: "Which yeast type strains does NBRC hold?"
+    complexity: basic
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      SELECT ?strain ?name ?nbrcNo
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?strain a brso:BiologicalResource ;
+                  mccv:MCCV_000038 mccv:MCCV_000043 ;   # organism category = Yeasts (enum IRI)
+                  mccv:MCCV_000017 1 ;                   # is type strain — INTEGER 1, not "1"
+                  skos:prefLabel ?name ; mccv:MCCV_000010 ?nbrcNo .
+        }
+      }
+      ORDER BY ?name LIMIT 20
+    verified: {matching_strains: 863, date: "2026-07-22", sample: "Myxozyma geophila"}
+    teaches: "mccv:MCCV_000038 → a category enum IRI (Bacteria MCCV_000040 · Archaea MCCV_000041 · Fungi MCCV_000042 · Yeasts MCCV_000043 · Algae MCCV_000044 · Phages MCCV_000045). mccv:MCCV_000017 = is-type-strain, matched as the bare integer 1."
+
+  - id: count_by_category
+    intent: the SET-LEVEL enumeration route — count ALL strains per organism category (§4.4 route for this DB)
+    question: "How many NBRC strains are in each organism category?"
+    complexity: aggregation
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      SELECT ?category (COUNT(DISTINCT ?s) AS ?n)
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?s a brso:BiologicalResource ; mccv:MCCV_000038 ?category .
+        }
+      }
+      GROUP BY ?category ORDER BY DESC(?n)
+    verified: {rows: 6, Fungi_MCCV_000042: 10140, Bacteria_MCCV_000040: 9276, Yeasts_MCCV_000043: 3692, Algae_MCCV_000044: 470, Archaea_MCCV_000041: 305, Phages_MCCV_000045: 104, date: "2026-07-22"}
+    teaches: "mccv:MCCV_000038 is the 6-value in-graph category enum — THE structured route to 'all strains of category X' and its counts. Anchor on brso:BiologicalResource + pin the graph so foreign strains don't inflate."
+    traps_avoided:
+      - "This is the IN-GRAPH categorical route. To enumerate a whole higher CLADE (e.g. all strains under a family) you instead expand mccv:MCCV_000065 taxon IRIs via rdfs:subClassOf* in GRAPH <http://rdfportal.org/ontology/taxonomy> — a different, cross-graph mechanism, not this category enum."
+
+  - id: growth_temperature
+    intent: read a strain's growth temperature via the blank-node measurement scaffold
+    question: "What is the recorded growth temperature of NBRC 00000001?"
+    complexity: basic
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX mpo:  <http://purl.jp/bio/10/mpo/>
+      PREFIX sio:  <http://semanticscience.org/resource/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      SELECT ?name ?tempC ?unit
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          <http://purl.jp/bio/103/nite/nbrc/cultures/00000001> skos:prefLabel ?name ; sio:SIO_000216 ?m .
+          ?m a mpo:MPO_00102 ; sio:SIO_000300 ?tempC ; sio:SIO_000221 ?unit .
+        }
+      }
+    verified: {result_rows: 1, date: "2026-07-22", first_row: "Rhodotorula mucilaginosa · 24 °C · UO_0000027"}
+    teaches: "Temperature is NOT a direct strain property — walk ?strain sio:SIO_000216 → [ a mpo:MPO_00102 ; sio:SIO_000300 ?degC (xsd:integer) ; sio:SIO_000221 obo:UO_0000027 (°C) ]. `?strain mpo:MPO_00102 ?t` returns 0 rows."
+
+  - id: temperature_range
+    intent: recover the true low/high of a temperature RANGE — the source min/max labels are swapped
+    question: "What are the true low and high ends of the cultivation-temperature range for range-holding strains?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX mpo:  <http://purl.jp/bio/10/mpo/>
+      PREFIX sio:  <http://semanticscience.org/resource/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      SELECT ?name (IF(?v103 > ?v104, ?v104, ?v103) AS ?lowC) (IF(?v103 > ?v104, ?v103, ?v104) AS ?highC)
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?strain a brso:BiologicalResource ; skos:prefLabel ?name ; sio:SIO_000216 ?mA , ?mB .
+          ?mA a mpo:MPO_00103 ; sio:SIO_000300 ?v103 .   # schema "min" — actually the HIGHER value
+          ?mB a mpo:MPO_00104 ; sio:SIO_000300 ?v104 .   # schema "max" — actually the LOWER value
+        }
+      }
+      ORDER BY DESC(?highC) LIMIT 5
+    verified: {result_rows: 5, date: "2026-07-22", first_row: "Archaeoglobus profundus · low 75 · high 85"}
+    teaches: "A minority of strains carry a two-endpoint temperature RANGE (mpo:MPO_00103 + mpo:MPO_00104) instead of a single mpo:MPO_00102. Reach both endpoints on separate blank nodes off sio:SIO_000216."
+    traps_avoided:
+      - "The min/max roles are SYSTEMATICALLY SWAPPED in the source (MPO_00103 'min' is ALWAYS > MPO_00104 'max', 1,708/1,708 strains). Do NOT report MPO_00103 as the minimum — recover the true low/high numerically with IF()."
+
+  - id: isolation_source
+    intent: isolation source text + MEO habitat IRI via the polymorphic sample chain, matched case-insensitively
+    question: "Which NBRC strains were isolated from seawater (any capitalisation)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX sio:  <http://semanticscience.org/resource/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      SELECT ?name ?source ?meoHabitat
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?strain a brso:BiologicalResource ; skos:prefLabel ?name ;
+                  mccv:MCCV_000028/mccv:MCCV_000072 ?src .
+          ?src a mccv:MCCV_000007 ;                       # isolation-source node (NOT the geography node)
+               mccv:MCCV_000030 ?source .
+          FILTER(LCASE(STR(?source)) = "seawater")        # catches "Seawater" AND "seawater"
+          OPTIONAL { ?src sio:SIO_000008 ?meoHabitat }
+        }
+      }
+      LIMIT 20
+    verified: {matching_strains: 599, date: "2026-07-22"}
+    teaches: "Sample chain: ?strain mccv:MCCV_000028/mccv:MCCV_000072 → a child node. mccv:MCCV_000072 is POLYMORPHIC — filter the child by rdf:type mccv:MCCV_000007 (isolation source: free-text mccv:MCCV_000030 + MEO IRI on sio:SIO_000008) vs mccv:MCCV_000008 (geography)."
+    traps_avoided:
+      - "mccv:MCCV_000030 is free text and NOT case-normalised (Soil 1,763 vs soil 1,285; Seawater 542 vs seawater 57). A case-sensitive equality misses up to ~42% — match with LCASE(STR(?source))."
+
+  - id: genome_accessions
+    intent: genome/assembly accessions for a taxon across ALL THREE identifiers.org namespaces
+    question: "What genome/assembly accessions (any namespace) do NBRC strains of NCBI taxon 1931 carry?"
+    complexity: advanced
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      SELECT ?nbrcNo ?namespace ?accession
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?strain a brso:BiologicalResource ;
+                  mccv:MCCV_000065 <http://identifiers.org/taxonomy/1931> ;
+                  mccv:MCCV_000010 ?nbrcNo ; mccv:MCCV_000077 ?accession .
+          FILTER(CONTAINS(STR(?accession), "identifiers.org/"))   # namespace-agnostic — keeps all three
+          BIND(REPLACE(STR(?accession), "^https?://identifiers.org/([^:]+):.*$", "$1") AS ?namespace)
+        }
+      }
+      ORDER BY ?nbrcNo ?namespace LIMIT 20
+    verified: {result_rows: 20, date: "2026-07-22", first_row: "NBRC 00013847 · insdc · BSRR00000000.1"}
+    teaches: "mccv:MCCV_000065 filters strains by a known NCBI Taxonomy IRI (identifiers.org/taxonomy/N). mccv:MCCV_000077 is the genome/assembly accession."
+    traps_avoided:
+      - "mccv:MCCV_000077 spans THREE namespaces (live 2026-07-22): http://identifiers.org/insdc:<acc> (4,453 triples; note http + COLON), https://identifiers.org/refseq.gcf:<acc> (1,958; https), https://identifiers.org/insdc.gca:<acc> (152; https). Filtering the insdc: prefix alone silently drops ~32% — match CONTAINS('identifiers.org/')."
+
+  - id: equivalent_strains
+    intent: cross-collection strain numbers for one NBRC strain (WFCC equivalence)
+    question: "Under what strain numbers is NBRC 00000008 held in other world culture collections?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mccv:    <http://purl.jp/bio/10/mccv#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT ?otherNumber ?catalogueURL
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          <http://purl.jp/bio/103/nite/nbrc/cultures/00000008> mccv:MCCV_000024 ?equiv .
+          ?equiv dcterms:identifier ?otherNumber .
+          OPTIONAL { ?equiv mccv:MCCV_000025 ?catalogueURL }
+        }
+      }
+      LIMIT 20
+    verified: {result_rows: 8, date: "2026-07-22", first_row: "DBVPG 6023 → dbvpg.unipg.it/...; also ATCC 4922, DSM 70073, JCM 1617, CBS 1970"}
+    teaches: "mccv:MCCV_000024 → an equivalent-strain blank node carrying dcterms:identifier (the other collection's number, e.g. 'JCM 1617', 'ATCC 4922') and OPTIONAL mccv:MCCV_000025 (a URL to that collection's record). Covers 51.1% of strains."
+
+  - id: count_country
+    intent: distribution of strains by country of geographic origin (the geography branch of the sample chain)
+    question: "What are the most common countries of geographic origin for NBRC strains?"
+    complexity: aggregation
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?country (COUNT(DISTINCT ?strain) AS ?nStrains)
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?strain a brso:BiologicalResource ; mccv:MCCV_000028/mccv:MCCV_000072 ?geo .
+          ?geo a mccv:MCCV_000008 ;                       # geography node (NOT the isolation-source node)
+               rdfs:label ?country .
+        }
+      }
+      GROUP BY ?country ORDER BY DESC(?nStrains) LIMIT 6
+    verified: {top: "Japan 9169, Thailand 1571, Korea 943, China 846, USA 695, Indonesia 563", date: "2026-07-22"}
+    teaches: "Geography rides the SAME polymorphic mccv:MCCV_000072 as isolation source — pick the child typed mccv:MCCV_000008; its rdfs:label is the (plain-literal) country name."
+    traps_avoided:
+      - "The geography rdfs:label is NOT always a current sovereign country: it also holds obsolete states (USSR 157, Czechoslovakia 13, Yugoslavia 2) and non-country entities (High sea 160, Antarctica 64). Do not assume every value is a present-day ISO country."
+
+  - id: xdb_taxon_name
+    intent: "cross-DB: NBRC strains → NCBI Taxonomy scientific name + rank via the co-hosted ontology/taxonomy graph"
+    question: "What are the NCBI scientific names and taxonomic ranks of NBRC algae strains?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX taxo: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      SELECT ?name ?sciName ?rank
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?strain a brso:BiologicalResource ; mccv:MCCV_000038 mccv:MCCV_000044 ;   # Algae
+                  skos:prefLabel ?name ; mccv:MCCV_000065 ?taxon .
+        }
+        GRAPH <http://rdfportal.org/ontology/taxonomy> {          # PIN the name leg (else it doubles)
+          ?taxon taxo:scientificName ?sciName ; taxo:rank ?rank .
+        }
+      }
+      LIMIT 10
+    verified: {result_rows: 10, algae_pinned: "260 rows / 260 strains", date: "2026-07-22", first_row: "Polarella glacialis (rank Species)"}
+    teaches: "NBRC's mccv:MCCV_000065 IRIs ARE NCBI Taxonomy's IRIs; the co-hosted ontology/taxonomy graph carries taxo:scientificName / taxo:rank / lineage — a direct GRAPH join on the same endpoint, no TogoID."
+    traps_avoided:
+      - "PIN the name leg in GRAPH <http://rdfportal.org/ontology/taxonomy>. Unpinned, co-hosted microbedbjp re-declares the same taxon IRIs at an older vintage and the join doubles (Algae live: 427 rows / 260 strains vs pinned 260/260; whole-DB ×1.94) — and 1,211 taxa carry conflicting names, so a GROUP BY ?name splits one clade in two (gotcha taxon_name_pin)."
+
+  - id: xdb_meo
+    intent: "cross-DB: NBRC isolation-source MEO habitat IRI → its human label in the co-hosted microbedbjp graph"
+    question: "What environment (MEO) labels describe where NBRC strains were isolated?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX sio:  <http://semanticscience.org/resource/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?name ?meo ?habitatLabel
+      WHERE {
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?strain a brso:BiologicalResource ; skos:prefLabel ?name ;
+                  mccv:MCCV_000028/mccv:MCCV_000072 ?src .
+          ?src a mccv:MCCV_000007 ; sio:SIO_000008 ?meo .   # MEO habitat IRI (purl.jp/bio/11/meo/MEO_*)
+        }
+        GRAPH <http://rdfportal.org/dataset/microbedbjp> { ?meo rdfs:label ?habitatLabel . }
+      }
+      LIMIT 10
+    verified: {result_rows: 10, date: "2026-07-22", first_row: "Saccharibacillus sp. → MEO_0000006 = 'air'"}
+    teaches: "On an isolation-source node (mccv:MCCV_000007), sio:SIO_000008 is a MEO habitat IRI whose LABEL is NOT in the NBRC graph — resolve it in GRAPH <http://rdfportal.org/dataset/microbedbjp>. (On a geography node it is a GAZ IRI instead.)"
+
+# ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
+schema_delta:
+  - "MEDIA ARE LINK-ONLY STUBS: culture condition is ?strain mccv:MCCV_000073 → [ a mccv:MCCV_000005 ; mccv:MCCV_000018 <medium IRI> ]. The medium IRI (.../nbrc/medium/<id>, 817 distinct) carries NO triples anywhere on the endpoint — no name, no composition. Treat it as an opaque identifier."
+  - "MULTI-VALUED CARTESIAN BLOW-UP: joining two multi-valued predicates in one query — e.g. mccv:MCCV_000077 (genome accessions) × dcterms:references (PubMed) — emits one row per COMBINATION (~7.4× for the 1,477 strains with both). Use COUNT(DISTINCT ?strain), GROUP_CONCAT, or query each predicate separately."
+  - "TAXON COVERAGE IS UNEVEN BY CATEGORY: the 91.2% mccv:MCCV_000065 figure does NOT hold per category — Archaea 99% · Bacteria 98% · Yeasts 95% · Fungi 86% · Algae 55% · Phages 1.9%. A taxon-scoped query on phages/algae returns near-empty by design."
+  - "brso:organism → [ a sio:SIO_010000 ; obo:RO_0002162 <taxon IRI> ] is a two-hop path to the SAME NCBI taxon as the direct mccv:MCCV_000065 (21,870/21,870 agree, 0 mismatches). Prefer the direct link."
+  - "TWO id forms: dcterms:identifier is the internal 'NBRC_<id>' (underscore); mccv:MCCV_000010 is the display catalogue number 'NBRC <id>' (space). mccv:MCCV_000012 is the qualified name+author string; mccv:MCCV_000046 is an integer is-approved flag."
+  - "bif:contains (Virtuoso, indexed) is available for the genuine free-text fields — mccv:MCCV_000027 (deposit/isolation history) and mccv:MCCV_000030 (isolation source). Everything else (category, taxon, biosafety, habitat) is structured; do not text-search it."
+
+# ── id_join_map: how to anchor stably and cross to other resources. ──
+id_join_map:
+  stable_anchor: >
+    Strain = culture IRI http://purl.jp/bio/103/nite/nbrc/cultures/<8-digit id>; anchor on
+    `a brso:BiologicalResource` (NOT mccv:MCCV_000001 — polymorphic). Catalogue number via mccv:MCCV_000010
+    ("NBRC <id>"); accepted name via skos:prefLabel.
+  same_endpoint_joins:            # co-hosted on the primary endpoint — direct GRAPH join, NO TogoID
+    ncbi_taxonomy: "mccv:MCCV_000065 → identifiers.org/taxonomy/N; names/rank/lineage in GRAPH <ontology/taxonomy> via taxo:scientificName / taxo:rank — PIN that graph for the name leg (example xdb_taxon_name; gotcha taxon_name_pin)"
+    meo_habitat:   "isolation-source node (mccv:MCCV_000007) sio:SIO_000008 → MEO IRI (purl.jp/bio/11/meo/MEO_*); labels in GRAPH <dataset/microbedbjp> (example xdb_meo)"
+    gaz_geography: "geography node (mccv:MCCV_000008) sio:SIO_000008 → GAZ IRI (obo/GAZ_*); absent for a few labels (e.g. Czechoslovakia)"
+  xrefs:                          # outbound references carried on NBRC strains
+    genome:            "mccv:MCCV_000077 → identifiers.org/{insdc: (http) | refseq.gcf: (https) | insdc.gca: (https)}; 8.2% of strains; insdc: alone misses ~32% (example genome_accessions)"
+    pubmed:            "dcterms:references → identifiers.org/pubmed/PMID (30.8%); multi-valued"
+    other_collections: "mccv:MCCV_000024 → dcterms:identifier (JCM/ATCC/DSM/CBS/VKM/… number) + mccv:MCCV_000025 (catalogue URL); 51.1% (example equivalent_strains)"
+    wfcc_ccinfo:       "mccv:MCCV_000076 → wfcc.info/ccinfo/collection/by_id/825 (constant — the NBRC collection itself)"
+  bridged_via_togoid:             # external RDF Portal DBs with no same-endpoint graph
+    - "NCBI-taxonomy / INSDC-genome accessions → other RDF Portal DBs (e.g. UniProt, ncbigene) via togoid_convertId when no co-hosted graph carries the join."
+
+# ── byte-count footer (spec §5 item 7) ──
+# v2: `wc -c togo_mcp/data/mie/nbrc.yaml` = 58354 bytes
+# v3: `wc -c benchmark/redesign/mie_v3/nbrc.yaml` = 25974 bytes → 55.5% smaller than v2.
