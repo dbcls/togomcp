@@ -55,8 +55,16 @@ architectural note). The v3 rewrite **collapsed all of that into a single negati
 GO example ("up:classifiedWith *also* carries keywords, filter them out") — so the agent reads
 keywords as noise to exclude, not as the route to enumerate, and falls back to text/annotation
 undercounting. **Fix applied:** a first-class `keyword_enum` example in `mie_v3/uniprot.yaml`
-(verified 71) + a generalizable spec rule `MIE_v3_spec.md §4.4` ("a positive route is not a
++ a generalizable spec rule `MIE_v3_spec.md §4.4` ("a positive route is not a
 caveat" / the enumeration rule) protecting all 34 DBs.
+
+> **De-overfit update (2026-07-22).** The `keyword_enum` example originally used q066's *exact*
+> subject — LIM domain (KW-0440), even carrying the count 71 — which made the q066 recovery below
+> partly circular (the MIE contained the answer). Its illustrative subject was swapped to a neutral,
+> non-benchmark keyword (SH3 domain KW-0727 = 108); the **route is unchanged**. Consequently the
+> q066 recovery measured below is a *lower bound* on the real fix, and the step-5 100Q run is now the
+> clean test of whether the general keyword route transfers to LIM domain. New rule: spec §4.6 +
+> checklist item 9 (no example subject may be a benchmark question's entity for that DB).
 
 ### q033 is variance, not a gap
 Q033 (bacdive+uniprot, list): v3 per-run [19, 4, 15] — one run nailed it (19), one bombed (4).
