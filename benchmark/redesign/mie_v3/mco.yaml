@@ -1,0 +1,219 @@
+# MIE v3 — MCO (Mouse Chromosome Ontology). Hand-authored 2026-07-22 on the `mie-redesign` branch.
+# Format: benchmark/redesign/MIE_v3_spec.md. Every count/result re-run live 2026-07-22 (§4.1).
+# Tiny flat ontology (466 triples): 22 chromosome classes + 2 build classes + 44 per-build instances.
+# Byte count: v2 togo_mcp/data/mie/mco.yaml = 25,926 bytes -> v3 = 15,086 bytes (~42% smaller).
+database: mco
+
+# ── discovery: rolled into the Usage Guide catalog at build time (§3.1). Small + uniform. ──
+discovery:
+  title: MCO — Mouse Chromosome Ontology
+  description: >
+    Reference ontology of the mouse (Mus musculus) chromosome set — the 22 chromosomes
+    (1-19, X, Y, MT) as owl:Classes, each with per-build GRCm38 (mm10) and GRCm39 (mm39)
+    instances carrying chromosome length and RefSeq/INSDC/Ensembl/UCSC accessions.
+  keywords: [mouse chromosome, mus musculus, karyotype, genome build, grcm38, grcm39, mm10, mm39,
+             chromosome length, reference genome, genome assembly]
+  categories: [genomics, ontology]
+
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/primary/sparql   # RDF Portal "primary" endpoint
+base_uri: http://identifiers.org/mco/
+graphs:
+  primary: http://rdfportal.org/dataset/mco
+  co_hosted:
+    # ~15 databases (mesh, go, taxonomy, mondo, hgnc, mogplus, hco, bacdive, brenda, ...) plus ~30
+    # rdfportal.org/ontology/* graphs share the `primary` endpoint. NONE overlap MCO's IRI space:
+    # an exhaustive reverse probe (all predicates, any graph) over every MCO subject finds all 466
+    # triples ONLY in <http://rdfportal.org/dataset/mco> (re-probed 2026-07-22: ?s ?p <mco:2> and
+    # ?s ?p <insdc/CM000995.3> each resolve in the mco graph alone). So co-tenants neither inflate
+    # a pinned count nor duplicate a join row — pin the graph for PERFORMANCE/SCOPE only, never for
+    # collision. MCO has NO same-endpoint join partner keyed on its IRIs; its only cross-DB path is
+    # cross-endpoint federation to Ensembl (see example gene_chromosome_length).
+    none_overlap: "no co-hosted graph re-declares an MCO IRI (exhaustive reverse probe 2026-07-22)"
+
+entity_counts:                     # graph-pinned COUNT + SUM; verified 2026-07-22
+  triples:              466         # whole graph
+  chromosome_classes:   22          # rdfs:subClassOf mco:MouseChromosome (1-19, X, Y, MT)
+  build_classes:        2           # mco:GRCm38 (mm10), mco:GRCm39 (mm39)
+  chromosome_build_instances: 44    # 22 chromosomes x 2 builds
+  nuclear_length_grcm39: 2723414844 # SUM of 21 chromosome lengths (excludes MT 16,299 bp)
+
+global_gotchas:                    # the 5 that bite ANY query on MCO — verified 2026-07-22
+  - id: graph_pin
+    say: >
+      MANDATORY: scope every query with FROM (or GRAPH) <http://rdfportal.org/dataset/mco>. The shared
+      `primary` endpoint hosts ~15 databases + ~30 ontologies; an unpinned query drags in foreign
+      owl:Class / rdfs:subClassOf triples and is slow. Pinning is for scope + performance (no IRI
+      collision exists — see graphs.co_hosted).
+  - id: broken_labels
+    say: >
+      ALL 22 chromosome-class rdfs:label values are the IDENTICAL broken string "Mouse chromosome 1"
+      (verified: exactly 1 distinct value across all 22). NEVER identify/filter a chromosome by label
+      — it silently matches the wrong chromosome or none. Use the IRI (mco:2, mco:X, mco:MT) and derive
+      the name with BIND(STRAFTER(STR(?chr), "http://identifiers.org/mco/") AS ?name). Build-class labels
+      (GRCm38/GRCm39) ARE correct — only chromosome-class labels are broken.
+  - id: class_vs_instance
+    say: >
+      Length/build/xrefs live on the per-build INSTANCES, NOT on the chromosome CLASS. The class mco:2
+      carries ONLY rdfs:label + rdfs:subClassOf — asking `mco:2 mco:length ?l` returns 0 rows. Navigate
+      class -> instance: ?inst a mco:2 ; mco:build mco:GRCm39 ; mco:length ?l .
+  - id: two_builds
+    say: >
+      Every chromosome has TWO instances (mco:GRCm38 and mco:GRCm39) with DIFFERENT lengths. Omitting
+      the mco:build filter doubles rows and mixes assemblies. Always constrain mco:build to ONE build.
+  - id: grcm38_stubs
+    say: >
+      On GRCm38 instances mco:refseq / mco:insdc / mco:ucsc are EMPTY placeholder base-IRIs
+      (identifiers.org/refseq/ with no accession) that resolve to nothing. Only GRCm39 carries real
+      accessions (refseq NC_*, insdc CM*, ucsc ...position=chrN; 22/22 each). For any RefSeq/INSDC/UCSC
+      use, FILTER ?inst mco:build mco:GRCm39. (mco:ensembl is the exception — populated on BOTH builds.)
+
+# ── examples: verified, executable atoms (each re-run 2026-07-22). Neutral non-benchmark subjects
+#    (chr 2, chr 5, all-22, Actb) — mco is used by q077/q081/q090 (chr 7 density, HRAS ortholog, X
+#    length); those exact subjects are avoided per §4.6. ──
+examples:
+  - id: list_chromosomes          # SET-LEVEL ENUMERATION route (§4.4 / Phase-5 item 8)
+    intent: enumerate all mouse chromosomes by IRI (labels are broken, so name comes from the IRI)
+    question: "What chromosomes does MCO cover?"
+    complexity: basic
+    sparql: |
+      PREFIX mco:  <http://identifiers.org/mco/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?chr (STRAFTER(STR(?chr), "http://identifiers.org/mco/") AS ?name)
+      FROM <http://rdfportal.org/dataset/mco>
+      WHERE { ?chr rdfs:subClassOf mco:MouseChromosome . }
+      ORDER BY ?name
+    verified: {n_chromosomes: 22, date: "2026-07-22", note: "1-19, X, Y, MT"}
+    teaches: "THE enumeration axis: ?chr rdfs:subClassOf mco:MouseChromosome gives all 22; identify by IRI, derive the name with STRAFTER — never by rdfs:label."
+    traps_avoided:
+      - "rdfs:label is the constant 'Mouse chromosome 1' on all 22 classes — a FILTER/CONTAINS on the label is useless (gotcha broken_labels)."
+
+  - id: chromosome_length
+    intent: length of one chromosome on a chosen build (class -> instance navigation)
+    question: "How long is mouse chromosome 2 on GRCm39?"
+    complexity: basic
+    sparql: |
+      PREFIX mco: <http://identifiers.org/mco/>
+      SELECT ?length
+      FROM <http://rdfportal.org/dataset/mco>
+      WHERE { ?inst a mco:2 ; mco:build mco:GRCm39 ; mco:length ?length . }
+    verified: {length: 181755017, date: "2026-07-22"}
+    teaches: "Length is on the per-build INSTANCE typed by the chromosome class: ?inst a mco:<chr> ; mco:build mco:GRCm39 ; mco:length ?len."
+    traps_avoided:
+      - "Querying the CLASS (`mco:2 mco:length ?l`) returns 0 rows — length is on the instance (gotcha class_vs_instance)."
+      - "Omitting mco:build returns BOTH builds' lengths (gotcha two_builds)."
+
+  - id: build_compare
+    intent: compare one chromosome's length between the two assemblies (join two instances on the class)
+    question: "How does mouse chromosome 2 length differ between GRCm38 and GRCm39?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mco: <http://identifiers.org/mco/>
+      SELECT ?len38 ?len39 (?len39 - ?len38 AS ?delta)
+      FROM <http://rdfportal.org/dataset/mco>
+      WHERE {
+        ?i38 a mco:2 ; mco:build mco:GRCm38 ; mco:length ?len38 .
+        ?i39 a mco:2 ; mco:build mco:GRCm39 ; mco:length ?len39 .
+      }
+    verified: {len38: 182113224, len39: 181755017, delta: -358207, date: "2026-07-22"}
+    teaches: "Each chromosome has one instance per build, both typed by the same class — bind them as two patterns (?i38, ?i39) to compare assemblies."
+
+  - id: chromosome_xrefs
+    intent: RefSeq + INSDC + UCSC accessions for every chromosome (GRCm39 only)
+    question: "What are the RefSeq and INSDC accessions for each mouse chromosome?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mco:  <http://identifiers.org/mco/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT (STRAFTER(STR(?chr), "http://identifiers.org/mco/") AS ?name) ?refseq ?insdc ?ucsc
+      FROM <http://rdfportal.org/dataset/mco>
+      WHERE {
+        ?chr rdfs:subClassOf mco:MouseChromosome .
+        ?inst a ?chr ; mco:build mco:GRCm39 ;   # GRCm38 refseq/insdc/ucsc are empty stubs
+              mco:refseq ?refseq ; mco:insdc ?insdc ; mco:ucsc ?ucsc .
+      }
+      ORDER BY ?name
+    verified: {result_rows: 22, date: "2026-07-22", chr2: "refseq NC_000068.8, insdc CM000995.3"}
+    teaches: "Cross-refs are single-valued instance predicates; pin mco:build mco:GRCm39 and read mco:refseq/insdc/ucsc across all 22 chromosomes."
+    traps_avoided:
+      - "Without the GRCm39 build filter you get empty placeholder stubs from the GRCm38 instances (gotcha grcm38_stubs)."
+
+  - id: genome_length             # ELEVATED aggregation — SUM + COUNT, graph-pinned, MT excluded
+    intent: total assembled nuclear-genome length on GRCm39
+    question: "What is the total assembled length of the mouse nuclear genome on GRCm39?"
+    complexity: aggregation
+    sparql: |
+      PREFIX mco:  <http://identifiers.org/mco/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT (SUM(?length) AS ?nuclearLength) (COUNT(DISTINCT ?inst) AS ?nChromosomes)
+      FROM <http://rdfportal.org/dataset/mco>
+      WHERE {
+        ?chr rdfs:subClassOf mco:MouseChromosome .
+        ?inst a ?chr ; mco:build mco:GRCm39 ; mco:length ?length .
+        FILTER(?chr != mco:MT)          # exclude the mitochondrion (16,299 bp) from the nuclear total
+      }
+    verified: {nuclear_length: 2723414844, n_chromosomes: 21, date: "2026-07-22"}
+    teaches: "Aggregate per-instance lengths with SUM over the GRCm39 build; graph-pin, and exclude mco:MT for a nuclear (non-mitochondrial) total. Drop the FILTER to include MT (22 -> 2,723,431,143 bp)."
+
+  - id: gene_chromosome_length    # ELEVATED cross_db — cross-endpoint SERVICE federation (ebi -> primary)
+    intent: chromosome + its GRCm39 length for a given mouse gene (Ensembl on ebi, MCO on primary)
+    question: "Which chromosome is mouse Actb on, and how long is that chromosome on GRCm39?"
+    complexity: cross_db
+    endpoint_name: primary          # run from the primary endpoint (MCO); SERVICE reaches out to ebi (Ensembl)
+    sparql: |
+      PREFIX mco:  <http://identifiers.org/mco/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX so:   <http://purl.obolibrary.org/obo/so#>
+      SELECT ?chrName ?length
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/mco> {
+          ?chr rdfs:subClassOf mco:MouseChromosome .
+          BIND(STRAFTER(STR(?chr), "http://identifiers.org/mco/") AS ?chrName)
+          ?inst a ?chr ; mco:build mco:GRCm39 ; mco:length ?length .
+        }
+        SERVICE <https://rdfportal.org/ebi/sparql> {           # Ensembl lives on the ebi endpoint
+          <http://rdf.ebi.ac.uk/resource/ensembl/ENSMUSG00000029580> so:part_of ?ensChr .
+          FILTER(STRENDS(STR(?ensChr), CONCAT("/GRCm39/", ?chrName)))
+        }
+      }
+    verified: {chrName: "5", length: 151758149, date: "2026-07-22", note: "Actb = ENSMUSG00000029580"}
+    teaches: "MCO has NO same-endpoint join partner; federate cross-endpoint with SERVICE to Ensembl (ebi). Join by chromosome NAME, not IRI: Ensembl's so:part_of chromosome IRI carries a release number (.../ensembl/115/mus_musculus/GRCm39/5) that mco:ensembl lacks, so match the '/GRCm39/<name>' tail."
+    traps_avoided:
+      - "Do NOT join mco:ensembl directly to Ensembl's chromosome IRI — mco:ensembl is version-less (.../ensembl/mus_musculus/GRCm39/5) but Ensembl's own IRI has a release segment (/115/), so an equality join yields 0 rows. Extract the chromosome name and match on that."
+      - "mco:ensembl is also MULTI-VALUED (an rdf.ebi.ac.uk RDF IRI + an ensembl.org browser URL); if you use it, FILTER(STRSTARTS(STR(?ensembl), 'http://rdf.ebi.ac.uk')) for the single canonical IRI."
+
+# ── schema_delta: non-obvious structure NO example above already shows ──
+schema_delta:
+  - "BUILD CLASSES are the objects of mco:build: mco:GRCm38 and mco:GRCm39, each an owl:Class rdfs:subClassOf mco:MouseGenomeBuild, with CORRECT rdfs:label (GRCm38/GRCm39) + skos:altLabel (mm10/mm39) + skos:definition. Resolve an mm10/mm39 alias via skos:altLabel."
+  - "Instance IRI form is mco:<chr>/<build> with a PLAIN slash (e.g. mco:2/GRCm39) — directly writable if you must address an instance by IRI rather than via `?inst a mco:<chr> ; mco:build ...` (contrast HCO, which uses a literal backslash)."
+  - "Whole-chromosome granularity ONLY: no cytobands, genes, or FALDO sub-chromosomal coordinates. Predicates: mco:build, mco:length (xsd:integer), mco:refseq, mco:insdc, mco:ucsc, mco:ensembl."
+
+# ── id_join_map ──
+id_join_map:
+  stable_anchor: >
+    Chromosome CLASS IRI http://identifiers.org/mco/<N> (mco:1 .. mco:19, mco:X, mco:Y, mco:MT) — the
+    canonical identifiers.org mouse-chromosome identifier. Per-build INSTANCE IRI = mco:<N>/<build>.
+    Anchor by IRI, never by rdfs:label (broken constant).
+  same_endpoint_joins: {}          # NONE: no co-hosted `primary` dataset keys on MCO IRIs (verified 2026-07-22)
+  xrefs:                           # outbound reference IRIs on the GRCm39 build instances
+    refseq:  "mco:refseq -> http://identifiers.org/refseq/NC_* (GRCm39 only; GRCm38 is an empty stub); 22/22"
+    insdc:   "mco:insdc -> http://identifiers.org/insdc/CM* (GenBank/INSDC, GRCm39 only); 22/22"
+    ucsc:    "mco:ucsc -> UCSC hgTracks URL ...db=mm39&position=chrN (GRCm39 only)"
+    ensembl: "mco:ensembl -> http://rdf.ebi.ac.uk/resource/ensembl/mus_musculus/GRCm39/<chr> (RDF IRI, both builds, multi-valued). VERSION-LESS: to reach the live Ensembl graph (ebi endpoint) match by chromosome name, not IRI equality — see example gene_chromosome_length."
+  bridged_via_togoid: []           # chromosomes are not TogoID entities
+
+# ── Phase-5 self-check (§5) — 2026-07-22 ──
+# 1. Parses as YAML; required keys present (database, discovery, endpoint, graphs, examples, id_join_map). OK
+# 2. discovery has title/description/keywords/categories; description is one sentence. OK
+# 3. Every example has verified: with a date: field (not on:), each re-run live 2026-07-22. OK
+# 4. aggregation (genome_length) + cross_db (gene_chromosome_length, SERVICE ebi->primary) both present. OK
+# 5. co_hosted flagged: NONE inflate/join/stub — stated with the exhaustive reverse-probe evidence. OK
+# 6. No fact restated across sections; nothing in schema_delta that an example shows. OK
+# 7. Byte count recorded vs v2 (header + footer). OK
+# 8. Enumeration route (subClassOf mco:MouseChromosome, 22) is a first-class example (list_chromosomes);
+#    mco is OK-tier in enumeration_audit.md (carried across, re-verified). OK
+# 9. No example subject is a benchmark keyword/class/gold entity for mco (q077 chr7 density, q081 HRAS,
+#    q090 X length avoided; vehicles = chr2, chr5/Actb, all-22, all neutral & grep-checked). OK
+#
+# Byte count: v2 = 25,926 bytes; v3 = 15,086 bytes (-10,840, ~42% smaller). Smaller wins are limited
+# here: v2 was already a lean 466-triple ontology, and v3 ADDS a real cross_db (SERVICE) example v2 lacked.

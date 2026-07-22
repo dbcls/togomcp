@@ -1,0 +1,347 @@
+# MIE v3 — ChEMBL (bioactive molecules, drug targets, bioactivities). AGENT-authored 2026-07-22 on `mie-redesign`.
+# Format: benchmark/redesign/MIE_v3_spec.md. Every verified count/result re-run live on the chembl endpoint 2026-07-22.
+# This is the SPARQL MIE for chembl (distinct from the REST search_chembl_* tools).
+# Byte count vs the v2 file it replaces (spec §5 item 7): v2 togo_mcp/data/mie/chembl.yaml = 56,619 bytes;
+# this v3 file = 24,880 bytes → 56.1% smaller. See the footer for exact `wc -c` figures.
+# §4.6 (no test leakage): chembl is scored by q005/q006/q009/q021/q039/q041/q049/q075 (Kinase, Metalloprotease,
+#   Leukotriene/Prostaglandin/Coenzyme-A biosynthesis, Proteasome, Brugada syndrome, Antimicrobial). This file's
+#   illustrative subjects deliberately avoid all of those — the flagship family is PHOSPHODIESTERASE (neutral).
+database: chembl
+
+# ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
+discovery:
+  title: ChEMBL RDF
+  description: >
+    Manually curated bioactive molecules with drug-like properties: ~1.9M compounds, 1.9M assays,
+    21M+ bioactivity measurements (IC50/Ki/…), drug targets, mechanisms of action, and disease
+    indications — the compound↔target↔activity surface for pharmacology and drug discovery.
+  keywords: [compound, bioactive molecule, drug, target, bioactivity, ic50, ki, assay, inhibitor,
+             mechanism of action, drug indication, atc, smiles, inchikey, protein classification,
+             uniprot, mesh, development phase]
+  categories: [compound, drug_target]
+
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/ebi/sparql
+base_uri: http://rdf.ebi.ac.uk/resource/chembl/
+graphs:
+  primary: http://rdf.ebi.ac.uk/dataset/chembl   # the ONLY graph that types ChEMBL entities (SmallMolecule/Target/Assay/…)
+  co_hosted:                       # the `ebi` endpoint hosts several EBI datasets; these are JOIN TARGETS, not inflation
+    chebi: >
+      NO count-inflation: ChEMBL entities were exhaustively probed to live ONLY in dataset/chembl (both TYPE and
+      LABEL legs, 2026-07-17) — a bare `?m a cco:SmallMolecule` does NOT double across graphs the way UniProt does
+      on SIB. chebi IS a direct join target for molecule structure (example xdb_chebi) BUT cco:moleculeXref points
+      at an EBI WEB URL, not the obo:CHEBI_ IRI — you must transform it before joining (see xdb_chebi + gotcha graph_pin).
+    reactome: "join target: target→UniProt accession→Reactome bp:UnificationXref (example xdb_reactome). No IRI overlap with ChEMBL."
+    ensembl: "co-hosted but NOT directly joinable from ChEMBL IRIs — bridge gene/protein IDs via TogoID."
+
+entity_counts:                     # COUNT(DISTINCT), FROM-pinned; re-run live 2026-07-22
+  small_molecules:        1920603  # cco:SmallMolecule
+  assays:                 1890749  # cco:Assay (~100% carry dcterms:description)
+  single_protein_targets: 10962    # cco:SingleProtein — the UniProt-mappable / classifiable target subset (17,803 across ALL cco:targetType)
+  mechanisms:             7568     # cco:Mechanism (curated MoA link — bounded; use it, not the 21M-row activity fan-out)
+  indications:            59954    # cco:DrugIndication (100% MeSH, ~99.7% EFO)
+
+global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
+  - id: graph_pin
+    say: >
+      ALWAYS pin FROM <http://rdf.ebi.ac.uk/dataset/chembl> (or GRAPH it). The `ebi` endpoint co-hosts chebi/reactome/
+      ensembl; an unpinned query can silently mix graphs, and every cross-DB join needs explicit GRAPH blocks. NOTE:
+      unlike UniProt-on-SIB, ChEMBL's OWN entities were probed to occur ONLY in this graph, so the pin is for
+      correctness + cross-DB scoping, NOT for de-duplicating a union — a plain COUNT does not inflate here.
+  - id: label_is_canonical_only
+    say: >
+      rdfs:label / skos:prefLabel hold ONLY the single canonical name. ALL synonyms & brand/trade names (on the
+      MOLECULE) and gene symbols, the UniProt accession-as-string, and PDB codes (on the TargetComponent — NOT the
+      target entity) live on skos:altLabel. A name/brand/symbol lookup that filters rdfs:label misses them silently.
+      Fast idiom (bif:contains prefilter + exact FILTER) shown in example name_resolve.
+  - id: structure_not_direct
+    say: >
+      SMILES / InChIKey / molecular formula / MW / logP / PSA are NOT predicates on the molecule. They hang off
+      sio:SIO_000008 qualified-value nodes whose rdf:type (a CHEMINF_* class) selects WHICH property. `?m cco:smiles ?s`
+      (or any invented direct predicate) returns 0 rows silently. The CHEMINF→property map + access idiom is in
+      example molecule_structure.
+  - id: plain_literals
+    say: >
+      String literals (rdfs:label, skos:*Label, dcterms:description, and the string sio:SIO_000300 values —
+      smiles/inchi/inchikey/formula) are PLAIN literals; appending ^^xsd:string matches NOTHING (a DATATYPE() probe
+      misleadingly reports xsd:string — Virtuoso matches TERMS, not values). Numeric sio:SIO_000300 (full_mwt, alogp,
+      psa) genuinely ARE xsd:double. Use the plain form, or FILTER(STR(?x)=...) to be form-agnostic.
+  - id: taxonomy_classification_timeout
+    say: >
+      Combining a cco:taxonomy IRI with cco:hasProteinClassification in one query TIMES OUT. For organism filtering
+      use the typed predicate cco:organismName "Homo sapiens" instead of the taxonomy IRI (see example class_enum).
+
+# ── examples: the load-bearing content — executable, verified atoms. Core model:
+#    Molecule → Activity → Assay → Target (cco:hasMolecule / cco:hasAssay / cco:hasTarget). ──
+examples:
+  - id: class_enum
+    intent: enumerate ALL human targets in a protein family via its classification IRI (the set-level target route)
+    question: "Which human phosphodiesterase drug targets are in ChEMBL?"
+    complexity: basic
+    sparql: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      # CHEMBL_PC_1034 = Phosphodiesterase family. Discover a family's IRI: ?pc a cco:ProteinClassification ;
+      #   rdfs:label ?l . FILTER(CONTAINS(LCASE(?l),"phosphodiesterase")) — then reuse the IRI. Swap the PC number
+      #   for ANY family (kinase, GPCR, protease, cytochrome P450 CHEMBL_PC_1031, …).
+      SELECT ?target ?label
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        ?target a cco:SingleProtein ;
+                rdfs:label ?label ;
+                cco:hasProteinClassification <http://rdf.ebi.ac.uk/resource/chembl/protclass/CHEMBL_PC_1034> ;
+                cco:organismName "Homo sapiens" .
+      }
+      ORDER BY ?label
+    verified: {result_rows: 29, date: "2026-07-22", first_row: "CHEMBL254 = 3',5'-cyclic-AMP phosphodiesterase 4A"}
+    teaches: "cco:hasProteinClassification <CHEMBL_PC_NNN> is THE set-level route to 'all targets in family X' — a controlled-vocabulary IRI, complete and index-fast, NOT a bif:contains scan of target labels. ~36% of SingleProtein targets carry a classification."
+    traps_avoided:
+      - "Filter organism with cco:organismName \"Homo sapiens\" (typed predicate). Combining a cco:taxonomy IRI with the classification IRI times out (gotcha taxonomy_classification_timeout)."
+      - "The naive route — bif:contains 'phosphodiesterase' on rdfs:label — misses orthologs/renamed entries and mixes non-target entities; the classification IRI is the complete set."
+
+  - id: disease_drugs
+    intent: enumerate ALL drugs indicated for a disease via its MeSH descriptor IRI (the set-level indication route)
+    question: "Which drugs are in development or approved for Parkinson disease?"
+    complexity: intermediate
+    sparql: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      # MeSH D010300 = Parkinson Disease. cco:hasMesh has 100% coverage on DrugIndication. Discover the IRI with an
+      # exploratory FILTER(CONTAINS(LCASE(?heading),"parkinson")) on cco:hasMeshHeading, then reuse the IRI.
+      SELECT DISTINCT ?molecule ?moleculeLabel ?phase
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        ?indication a cco:DrugIndication ;
+                    cco:hasMesh <http://identifiers.org/mesh/D010300> ;
+                    cco:highestDevelopmentPhase ?phase ;
+                    cco:hasMolecule ?molecule .
+        ?molecule rdfs:label ?moleculeLabel .
+      }
+      ORDER BY DESC(?phase) ?moleculeLabel
+    verified: {distinct_molecules: 253, date: "2026-07-22"}
+    teaches: "cco:hasMesh <identifiers.org/mesh/DNNNNNN> is THE set-level route to 'all drugs for disease X' (100% coverage) — never FILTER(CONTAINS) on cco:hasMeshHeading text. cco:highestDevelopmentPhase 0–4 gates by stage (4 = approved). cco:hasEFO carries the EFO ontology IRI in parallel (~99.7%)."
+
+  - id: name_resolve
+    intent: resolve a gene symbol (or brand name) to a ChEMBL ID via skos:altLabel + the Virtuoso text index
+    question: "Which ChEMBL target is the gene ADRB2?"
+    complexity: basic
+    sparql: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      SELECT DISTINCT ?target ?label
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        ?component skos:altLabel ?alt .
+        ?alt bif:contains "ADRB2" .            # put the skos:altLabel triple BEFORE bif:contains, else HTTP 400
+        FILTER(LCASE(STR(?alt)) = "adrb2")
+        ?target cco:hasTargetComponent ?component ;
+                rdfs:label ?label ;
+                cco:targetType "SINGLE PROTEIN" ;
+                cco:organismName "Homo sapiens" .
+      }
+    verified: {result_rows: 1, date: "2026-07-22", first_row: "CHEMBL210 = Beta-2 adrenergic receptor"}
+    teaches: "Gene symbol → target: altLabel is on the target COMPONENT (?target cco:hasTargetComponent ?c . ?c skos:altLabel …). bif:contains prefilters via the text index (~0.1s) then FILTER pins exactness; a bare FILTER(CONTAINS()) scans ~1.8M altLabels (~11s, near timeout). SINGLE PROTEIN + Homo sapiens collapses orthologs/complexes to the one target."
+    traps_avoided:
+      - "Brand/synonym → MOLECULE uses the same idiom but altLabel sits on the molecule itself: ?m a cco:SmallMolecule ; skos:altLabel ?alt . ?alt bif:contains \"...\" — NOT on a component."
+
+  - id: molecule_structure
+    intent: SMILES / InChIKey / formula / MW of a molecule via the SIO qualified-value nodes
+    question: "What are the SMILES, InChIKey, molecular formula and weight of caffeine (CHEMBL113)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      # Each property is a value node: ?m sio:SIO_000008 ?node . ?node a <CHEMINF_type> ; sio:SIO_000300 ?value .
+      # CHEMINF_000018 canonical_smiles · 000059 standard_inchi_key · 000113 standard_inchi · 000042 full_molformula
+      # 000216 full_mwt · 000251 alogp · 000307 psa · 000245 hba · 000244 hbd · 000381 aromatic_rings · 000431 qed
+      SELECT ?smiles ?inchiKey ?formula ?mwt
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        VALUES ?m { <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL113> }
+        ?m sio:SIO_000008 ?sn . ?sn a sio:CHEMINF_000018 ; sio:SIO_000300 ?smiles .
+        ?m sio:SIO_000008 ?kn . ?kn a sio:CHEMINF_000059 ; sio:SIO_000300 ?inchiKey .
+        ?m sio:SIO_000008 ?fn . ?fn a sio:CHEMINF_000042 ; sio:SIO_000300 ?formula .
+        ?m sio:SIO_000008 ?mn . ?mn a sio:CHEMINF_000216 ; sio:SIO_000300 ?mwt .
+      }
+    verified: {inchiKey: "RYYVLZVUVIJVGH-UHFFFAOYSA-N", formula: "C8H10N4O2", mwt: 194.19, date: "2026-07-22"}
+    teaches: "The rdf:type of the sio:SIO_000008 value node (a CHEMINF_* class) selects WHICH structure/physchem property; the value is on sio:SIO_000300. For an exact identifier lookup, prefilter with bif:contains on the value's longest token then FILTER the exact CASE-SENSITIVE value (InChIKeys are canonical uppercase). ~99.7% of molecules carry a standard_inchi_key."
+
+  - id: target_activities
+    intent: bioactivity measurements for a target, filtered by measurement type (cco:standardType)
+    question: "What IC50 measurements exist against the beta-2 adrenergic receptor?"
+    complexity: intermediate
+    sparql: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      SELECT ?molecule ?moleculeLabel ?value ?units
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        VALUES ?target { <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL210> }
+        ?activity a cco:Activity ;
+                  cco:standardType "IC50" ;                 # controlled vocab: IC50, Ki, Kd, EC50, …
+                  cco:hasMolecule ?molecule ;
+                  cco:hasAssay/cco:hasTarget ?target .
+        ?molecule rdfs:label ?moleculeLabel .
+        OPTIONAL { ?activity cco:standardValue ?value }
+        OPTIONAL { ?activity cco:standardUnits ?units }
+      }
+      LIMIT 50
+    verified: {result_rows: 50, date: "2026-07-22", first_row: "ATENOLOL 14634.0 nM"}
+    teaches: "Activity→target is the property path cco:hasAssay/cco:hasTarget; cco:standardType is a typed controlled-vocabulary value (no text search). Anchor the target by IRI (from name_resolve or search_chembl_target)."
+    traps_avoided:
+      - "ALWAYS bind cco:standardUnits when comparing values — 1 nM ≠ 1 uM ≠ 1 % — and keep a LIMIT: an unbounded scan of the 21M-row activity graph times out."
+
+  - id: assay_search
+    intent: keyword-search assay free text (the one legitimate bif:contains field)
+    question: "How many assays mention phosphodiesterase in their description?"
+    complexity: basic
+    sparql: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT (COUNT(DISTINCT ?a) AS ?n)
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        ?a a cco:Assay ; dcterms:description ?d .
+        ?d bif:contains "phosphodiesterase" .
+      }
+    verified: {n: 1286, date: "2026-07-22"}
+    teaches: "An Assay's searchable free text is dcterms:description (~100% coverage), NOT rdfs:label (just the ChEMBL ID) and NOT cco:description (does not exist → 0 rows). Tissues use dcterms:title for this role; CellLines use dcterms:description. bif:contains is the right tool only for genuine free text like this."
+
+  - id: count_family_drugs        # ELEVATED aggregation — the bounded-count recipe
+    intent: count distinct drugs acting on a target family via the curated Mechanism link
+    question: "How many distinct molecules have a mechanism of action against a phosphodiesterase?"
+    complexity: aggregation
+    sparql: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      SELECT (COUNT(DISTINCT ?molecule) AS ?n)
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        ?target cco:hasProteinClassification <http://rdf.ebi.ac.uk/resource/chembl/protclass/CHEMBL_PC_1034> .
+        ?mechanism a cco:Mechanism ; cco:hasTarget ?target ; cco:hasMolecule ?molecule .
+      }
+    verified: {n: 51, date: "2026-07-22"}
+    teaches: "Count drugs-per-target via the curated cco:Mechanism link (7,568 rows total, bounded) — combine a classification IRI with cco:Mechanism and COUNT(DISTINCT)."
+    traps_avoided:
+      - "Do NOT count via ?activity cco:hasAssay/cco:hasMolecule — that fans out over 21M activities and TIMES OUT at 60s even for a COUNT. The Mechanism link is the curated, bounded path."
+      - "Do NOT scope a comprehensive count by molecule/target IRIs sampled from an exploratory query (circular reasoning) — scope by the classification IRI."
+
+  - id: moa_integration
+    intent: multi-entity integration — disease indication → molecule → mechanism → target in one query
+    question: "For late-stage Parkinson disease drugs, what are their mechanisms and human protein targets?"
+    complexity: advanced
+    sparql: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      SELECT DISTINCT ?moleculeLabel ?targetLabel ?mechanismType ?phase
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        ?indication a cco:DrugIndication ;
+                    cco:hasMesh <http://identifiers.org/mesh/D010300> ;   # Parkinson Disease
+                    cco:highestDevelopmentPhase ?phase ;
+                    cco:hasMolecule ?molecule .
+        ?molecule rdfs:label ?moleculeLabel .
+        ?mechanism a cco:Mechanism ; cco:hasMolecule ?molecule ;
+                   cco:mechanismActionType ?mechanismType ; cco:hasTarget ?target .
+        ?target a cco:SingleProtein ; rdfs:label ?targetLabel ; cco:organismName "Homo sapiens" .
+        FILTER(?phase >= 3)
+      }
+      ORDER BY ?moleculeLabel
+      LIMIT 50
+    verified: {result_rows: 50, date: "2026-07-22", first_row: "AMPRELOXETINE → Sodium-dependent noradrenaline transporter (INHIBITOR, phase 3)"}
+    teaches: "Indication (cco:hasMesh) and mechanism (cco:Mechanism → cco:mechanismActionType + cco:hasTarget) join on the shared ?molecule. All four filter dimensions are typed predicates — no text search anywhere."
+
+  - id: xdb_chebi                  # ELEVATED cross_db
+    intent: "cross-DB: ChEMBL approved drugs → ChEBI chemical structure (formula, mass) via moleculeXref + IRI transform"
+    question: "What are the ChEBI formulas and masses for ChEMBL approved drugs?"
+    complexity: cross_db
+    endpoint_name: ebi
+    sparql: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX chemrof: <https://w3id.org/chemrof/>
+      SELECT DISTINCT ?moleculeLabel ?chebiLabel ?formula ?mass
+      WHERE {
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
+          ?molecule a cco:SmallMolecule ; rdfs:label ?moleculeLabel ;
+                    cco:moleculeXref ?xref ; cco:highestDevelopmentPhase 4 .   # phase=4 pre-filter: 1.9M → ~4k
+          FILTER(CONTAINS(STR(?xref), "chebi/searchId"))
+          # cco:moleculeXref is an EBI WEB URL (…searchId.do?chebiId=CHEBI%3ANNN) — rebuild the obo IRI to join:
+          BIND(IRI(CONCAT("http://purl.obolibrary.org/obo/CHEBI_",
+                   REPLACE(STR(?xref), ".*CHEBI%3A", ""))) AS ?chebiId)
+        }
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
+          ?chebiId a owl:Class ; rdfs:label ?chebiLabel .
+          OPTIONAL { ?chebiId chemrof:generalized_empirical_formula ?formula }
+          OPTIONAL { ?chebiId chemrof:mass ?mass }
+        }
+      }
+      ORDER BY ?moleculeLabel
+      LIMIT 50
+    verified: {result_rows: 50, date: "2026-07-22", first_row: "ABACAVIR → 'abacavir' C14H18N6O, 286.339"}
+    teaches: "Molecule→ChEBI is cco:moleculeXref, but it stores an EBI web URL, NOT the obo:CHEBI_ IRI — BIND+REPLACE rebuilds purl.obolibrary.org/obo/CHEBI_N to join. On the ChEBI side use the chemrof: namespace (chemrof:mass / chemrof:generalized_empirical_formula); the old chebi:formula/chebi:mass were removed upstream (0 rows)."
+    traps_avoided:
+      - "skos:exactMatch does NOT link a molecule to ChEBI — it is ONLY on TargetComponent (→UniProt). Using it here returns 0 rows silently; use cco:moleculeXref."
+      - "Pre-filter one side (phase=4 → ~4k molecules) BEFORE the cross-graph join, or the 1.9M-molecule scan is slow."
+
+  - id: xdb_reactome              # second cross_db — the typed-literal bridge
+    intent: "cross-DB: a drug's mechanism target → the Reactome reactions it participates in, via UniProt accession"
+    question: "What Reactome reactions do the mechanism-of-action targets of simvastatin and thiothixene participate in?"
+    complexity: cross_db
+    endpoint_name: ebi
+    sparql: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      SELECT DISTINCT ?molLabel ?targetName ?reactionName
+      WHERE {
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
+          VALUES ?molecule {
+            <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL1064>   # simvastatin
+            <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL1201>   # thiothixene
+          }
+          ?molecule rdfs:label ?molLabel .
+          ?mech a cco:Mechanism ; cco:hasMolecule ?molecule ; cco:hasTarget ?target .
+          ?target a cco:SingleProtein ; rdfs:label ?targetName ;
+                  cco:hasTargetComponent/skos:exactMatch ?uniprotId .
+          FILTER(STRSTARTS(STR(?uniprotId), "http://purl.uniprot.org/uniprot/"))
+          BIND(STRDT(STRAFTER(STR(?uniprotId), "uniprot/"), xsd:string) AS ?acc)   # re-type as xsd:string — CRITICAL
+        }
+        GRAPH <http://rdf.ebi.ac.uk/dataset/reactome> {
+          ?protXref a bp:UnificationXref ; bp:db "UniProt"^^xsd:string ; bp:id ?acc .
+          ?ref bp:xref ?protXref .
+          ?protein a bp:Protein ; bp:entityReference ?ref .
+          ?reaction (bp:left|bp:right) ?protein ; bp:displayName ?reactionName .
+        }
+      }
+      LIMIT 20
+    verified: {result_rows: 3, date: "2026-07-22", first_row: "SIMVASTATIN → HMG-CoA reductase → 'HMGCR gene expression'"}
+    teaches: "Target→UniProt is cco:hasTargetComponent/skos:exactMatch (a UniProt IRI). Reactome's bp:id is xsd:string-TYPED, so STRDT-re-type the bare accession before the join; a plain literal matches 0. Anchor on molecule IRIs + the curated cco:Mechanism link (NOT a name scan over 1.9M molecules, which times out)."
+    traps_avoided:
+      - "BOTH bp:db AND bp:id are ^^xsd:string in Reactome — a plain \"P04035\" (or a plain bp:db \"UniProt\") matches 0 rows. This is the inverse of ChEMBL's plain-literal rule (gotcha plain_literals): crossing plain→typed needs an explicit STRDT."
+
+# ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
+schema_delta:
+  - "Molecule ATC codes: cco:atcClassification (string, e.g. 'R06AA09'); cco:substanceType ('Small molecule'/…); cco:highestDevelopmentPhase (integer 0–4, 4=approved) is also directly on the molecule, not only on indications."
+  - "TargetComponent bridges Target→UniProt: ?target cco:hasTargetComponent ?c . ?c skos:exactMatch <purl.uniprot.org/uniprot/ACC> (~11k xrefs). skos:exactMatch is ONLY on the component, never on the SmallMolecule or the Target entity."
+  - "Assay facets are typed controlled vocab: cco:assayType ('Binding'/'Functional'/'ADME') and cco:organismName. CellLine/Tissue are small classes whose NAME is on rdfs:label (CellLine ~2,215; Tissue 294, modelled as cco:targetType 'TISSUE')."
+  - "Document→literature: cco:Document links to PubMed (bibo:pmid, ~99k xrefs) for evidence provenance."
+  - "cco:moleculeXref also targets PubChem (2.2M), ZINC (1.2M), DrugBank (8.4k), FDA-SRS (32k), HMDB (12k), SureChEMBL (540k) as database-specific URLs — most need a per-source transform to reach an RDF IRI (only ChEBI is co-hosted; see xdb_chebi)."
+
+# ── id_join_map: how to anchor stably and cross to other resources. ──
+id_join_map:
+  stable_anchor: >
+    Every entity has cco:chemblId (e.g. CHEMBL113) and its IRI is
+    http://rdf.ebi.ac.uk/resource/chembl/<type>/CHEMBLNNN (molecule/, target/, assay/, protclass/CHEMBL_PC_N).
+    rdfs:label = the single canonical name; synonyms/gene-symbols are on skos:altLabel (gotcha label_is_canonical_only).
+  same_endpoint_joins:            # co-hosted on the `ebi` endpoint — direct GRAPH join (with the noted transform)
+    chebi:    "molecule cco:moleculeXref (EBI web URL) → BIND+REPLACE → obo:CHEBI_N; properties in chemrof: (see xdb_chebi)"
+    reactome: "target cco:hasTargetComponent/skos:exactMatch → UniProt accession → STRDT xsd:string → Reactome bp:UnificationXref bp:id (see xdb_reactome)"
+  xrefs:                          # outbound references carried on ChEMBL entities
+    uniprot:  "TargetComponent skos:exactMatch → purl.uniprot.org/uniprot/ACC (~11k, on the component only)"
+    mesh:     "DrugIndication cco:hasMesh → identifiers.org/mesh/DNNNNNN (100% of indications)"
+    efo:      "DrugIndication cco:hasEFO → EFO ontology IRI (~99.7%)"
+    pubchem:  "molecule cco:moleculeXref → pubchem.ncbi.nlm.nih.gov/compound/CID (URL string; 2.2M)"
+    pubmed:   "Document bibo:pmid (~99k)"
+  bridged_via_togoid:             # NOT co-hosted / not IRI-joinable — route via togoid_convertId
+    - "Ensembl gene/protein, PDB, DrugBank, and non-ChEBI chemical DBs: convert the accession via togoid_convertId (or resolve UniProt first, then bridge)."
+
+# ── byte-count footer (spec §5 item 7) ──
+# v2: `wc -c togo_mcp/data/mie/chembl.yaml` = 56619 bytes
+# v3: `wc -c benchmark/redesign/mie_v3/chembl.yaml` = 24880 bytes → 56.1% smaller than v2.
