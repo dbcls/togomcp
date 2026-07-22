@@ -1,0 +1,254 @@
+# MIE v3 — DDBJ (DNA Data Bank of Japan). First AGENT-authored v3 file, 2026-07-22 on `mie-redesign`.
+# Format: benchmark/redesign/MIE_v3_spec.md. Every verified count/result re-run live on the ddbj endpoint 2026-07-22.
+# Byte count vs the v2 file it replaces (spec §5 item 7): v2 togo_mcp/data/mie/ddbj.yaml = 37,163 bytes;
+# this v3 file = 18,502 bytes → 50.2% smaller. See the footer for the exact `wc -c` figures.
+database: ddbj
+
+# ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
+discovery:
+  title: DDBJ — DNA Data Bank of Japan
+  description: >
+    INSDC nucleotide sequence records (~280M entries across 21 divisions — EST/PAT/GSS dominate by count,
+    annotated genomes in BCT/VRL/PHG/PLN) with Gene/CDS/RNA features carrying FALDO coordinates, Sequence
+    Ontology typing, and cross-references to NCBI Taxonomy/Protein, BioProject, BioSample, and PubMed.
+  keywords: [nucleotide sequence, dna, rna, gene, cds, genome, accession, insdc, division, est, patent,
+             organism, taxonomy, feature annotation, locus tag, bioproject, biosample, ncbi protein]
+  categories: [sequence]
+
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/ddbj/sparql   # DDBJ is the sole DATASET on its own endpoint (43 graphs total)
+base_uri: http://identifiers.org/insdc/
+graphs:
+  primary: http://rdfportal.org/dataset/ddbj   # the ONLY graph that declares nuc:Entry/Gene/Coding_Sequence/Source/faldo:Region
+  supporting: [ontology/so, ontology/faldo]     # DDBJ's own ontology graphs (SO term + FALDO vocab labels)
+  co_hosted:
+    ontology/taxonomy: >
+      NCBI-Taxonomy data layer, co-hosted. TWO faces: (a) INFLATION — it RE-TYPES the SAME
+      identifiers.org/taxonomy/N IRIs that dataset/ddbj already types, and BOTH graphs put rdfs:label on
+      them with DIFFERENT values (ontology/taxonomy = "Homo sapiens", dataset/ddbj = the bare taxid "9606");
+      an unscoped taxon rdfs:label returns x2 rows, half of them the taxid string (gotcha taxon_label_double).
+      (b) JOIN + ENUM — it is the SOLE source of tax:scientificName, tax:rank, tax:authority and the
+      rdfs:subClassOf* lineage/subtree (examples xdb_taxonomy, enum_taxonomy_subtree).
+    other_ontologies: >
+      ~39 more shared ontology/vocab graphs on this endpoint (rdfportal.org/ontology/{go,mondo,uberon,cl,hp,
+      sio,efo,…}, id.nlm.nih.gov/mesh, purl.jp/bio/11/goa). Join targets, NOT co-tenancy traps — none re-type
+      or overlap DDBJ's own entity IRIs (probed via GROUP BY graph). Reach them by GRAPH-pinning explicitly.
+
+entity_counts:                     # graph-pinned division counts, live 2026-07-22 — the unpinned total is not one-query countable
+  phg_entries: 52724               # Division#PHG (phage)
+  bct_entries: 2973050             # Division#BCT (bacteria)
+  total_note: "~280M entries across 21 divisions; an UNPINNED total COUNT scans all rows and TIMES OUT (gotcha aggregation_scope) — count per-division IRI instead."
+
+global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
+  - id: mandatory_entry_scope
+    say: >
+      Feature types (Gene, Coding_Sequence, RNA, Source) span ~280M entries. Joining them WITHOUT first
+      pinning to one entry — FILTER(CONTAINS(STR(?feature), "ACCESSION")) — builds a Cartesian product and
+      times out in seconds. Always entry-scope (an accession) OR division-scope (a Division# IRI) before a feature join.
+  - id: aggregation_scope
+    say: >
+      COUNT(*)/GROUP BY over nuc:Entry or any feature WITHOUT a division/entry filter scans all ~280M rows and
+      times out (60s). Scope to a single nuc:division IRI (a per-division COUNT completes in <5s) or use LIMIT sampling.
+  - id: taxon_label_double
+    say: >
+      The same taxon IRI is typed in TWO graphs and BOTH carry rdfs:label with different values: ontology/taxonomy
+      → the scientific name ("Homo sapiens"), dataset/ddbj → the bare taxid string ("9606"). An unscoped
+      `?taxon rdfs:label ?name` returns x2 rows and a first-row/LIMIT pick has ~50% odds of yielding "9606" AS the
+      organism name. FIX: pin GRAPH <http://rdfportal.org/ontology/taxonomy> for any taxon NAME/rank/lineage;
+      pin GRAPH <http://rdfportal.org/dataset/ddbj> for the entry→taxon link. Never leave a taxon label unscoped.
+  - id: from_clause
+    say: "Always FROM (or GRAPH-pin) <http://rdfportal.org/dataset/ddbj> for entry/feature queries — omitting the graph pin silently mixes co-hosted ontologies and can 0-row or inflate."
+
+# ── examples: verified, executable atoms. Entry is the hub (nuc:sequence → Sequence; features part_of via
+#    bfo:0000050). locus_tag (>99%) is the primary feature key; nuc:gene symbol is OPTIONAL (~60%). ──
+examples:
+  - id: entry_by_division
+    intent: list entries in a sequence category via its Division# IRI (the first-class categorical filter)
+    question: "What phage entries are in DDBJ?"
+    complexity: basic
+    sparql: |
+      PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      # Division IRIs: BCT=bacteria PHG=phage VRL=viral PLN=plant EST=expressed-tags PAT=patents
+      #                CON=constructed TSA=transcriptome HUM=human PRI=primates (21 total)
+      SELECT ?entry ?organism ?definition
+      FROM <http://rdfportal.org/dataset/ddbj>
+      WHERE {
+        ?entry a nuc:Entry ;
+               nuc:division <http://ddbj.nig.ac.jp/ontologies/nucleotide/Division#PHG> ;
+               nuc:organism ?organism ;
+               nuc:definition ?definition .
+      }
+      LIMIT 5
+    verified: {result_rows: 5, division_total: 52724, date: "2026-07-22", first_row: "AF203973.1 = Escherichia phage RB49"}
+    teaches: "nuc:division takes a full Division# IRI (the fragment is part of the IRI, not a placeholder); it is the primary categorical filter and the scope that makes aggregation tractable."
+
+  - id: feature_by_locus
+    intent: gene symbol + product + NCBI-protein xref for a locus tag (the primary feature key)
+    question: "What are the annotations for locus tag Mal52_08030?"
+    complexity: basic
+    sparql: |
+      PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      SELECT ?feature ?type ?gene_symbol ?product ?protein
+      FROM <http://rdfportal.org/dataset/ddbj>
+      WHERE {
+        ?feature nuc:locus_tag "Mal52_08030" ; a ?type .
+        OPTIONAL { ?feature nuc:gene ?gene_symbol }
+        OPTIONAL { ?feature nuc:product ?product }
+        OPTIONAL { ?feature rdfs:seeAlso ?protein . FILTER(CONTAINS(STR(?protein), "ncbiprotein")) }
+      }
+    verified: {result_rows: 4, distinct_types: 2, date: "2026-07-22", note: "Gene 'clpX' + Coding_Sequence 'ATP-dependent Clp protease ATP-binding subunit ClpX' → ncbiprotein/QDU42347.1"}
+    teaches: "A locus_tag returns BOTH its Gene and its Coding_Sequence node; nuc:gene (symbol) is OPTIONAL (~60% coverage) and NCBI-protein is rdfs:seeAlso prefix-filtered on the CDS."
+    traps_avoided:
+      - "One locus_tag can map to MULTIPLE feature-instance IRIs (…:gene.341869 and …:gene.156917 both = Mal52_08030) — count DISTINCT ?type, not raw rows, and never assume one node per locus."
+
+  - id: genes_by_taxon
+    intent: genes of an organism by its NCBI Taxonomy IRI (ro:0002162 — the structured alternative to name text-search)
+    question: "What genes are annotated for taxonomy 2527995 (Symmachiella dynata)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ro: <http://purl.obolibrary.org/obo/RO_>
+      SELECT ?gene ?locus ?gene_name
+      FROM <http://rdfportal.org/dataset/ddbj>
+      WHERE {
+        ?gene a nuc:Gene ; ro:0002162 <http://identifiers.org/taxonomy/2527995> ; nuc:locus_tag ?locus .
+        OPTIONAL { ?gene nuc:gene ?gene_name }
+      }
+      LIMIT 20
+    verified: {result_rows: 20, date: "2026-07-22", first_row: "Pan258_28100 (srp54)"}
+    teaches: "Every Gene/CDS/RNA/Source feature and every Sequence carries ro:0002162 → an identifiers.org/taxonomy/N IRI (>99%). Filtering by a known taxon IRI is exact and index-fast — prefer it over a bif:contains organism name search."
+
+  - id: sequence_metadata
+    intent: sequence object of an entry — length, topology, and the INSDC tri-partner FASTA links
+    question: "What is the sequence length, topology, and the partner FASTA links for CP036276.1?"
+    complexity: intermediate
+    sparql: |
+      PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      SELECT ?length ?topology (COUNT(?fasta) AS ?partner_links)
+      FROM <http://rdfportal.org/dataset/ddbj>
+      WHERE {
+        <http://identifiers.org/insdc/CP036276.1> nuc:sequence ?seq .
+        ?seq nuc:sequence_length ?length ; nuc:topology ?topology ; rdfs:seeAlso ?fasta .
+      }
+      GROUP BY ?length ?topology
+    verified: {length: 7767809, topology: "nuc:circular", partner_links: 3, date: "2026-07-22"}
+    teaches: "Reach sequence metadata via ?entry nuc:sequence ?seq; the Sequence node holds nuc:sequence_length, nuc:topology (nuc:circular|nuc:linear), and exactly 3 rdfs:seeAlso FASTA links (DDBJ getentry / ENA / NCBI nuccore)."
+
+  - id: gene_cds_protein
+    intent: entry-scoped Gene↔CDS↔NCBI-protein integration with FALDO coordinates (the mandatory-scope idiom)
+    question: "Give the gene, product, coordinates, and NCBI Protein ID for CDS features in CP036276.1."
+    complexity: advanced
+    sparql: |
+      PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX bfo: <http://purl.obolibrary.org/obo/BFO_>
+      SELECT ?locus ?gene_name ?product ?start ?end ?protein
+      FROM <http://rdfportal.org/dataset/ddbj>
+      WHERE {
+        ?cds a nuc:Coding_Sequence ; nuc:locus_tag ?locus ; nuc:product ?product ;
+             faldo:location ?region ; rdfs:seeAlso ?protein .
+        FILTER(CONTAINS(STR(?cds), "CP036276.1"))          # MANDATORY entry scope BEFORE the join
+        FILTER(CONTAINS(STR(?protein), "ncbiprotein"))
+        ?region faldo:begin/faldo:position ?start ; faldo:end/faldo:position ?end .
+        ?cds bfo:0000050 ?gene . ?gene a nuc:Gene .          # CDS part_of Gene
+        OPTIONAL { ?gene nuc:gene ?gene_name }
+      }
+      LIMIT 20
+    verified: {result_rows: 20, date: "2026-07-22", first_row: "Mal52_08030 clpX 1001623–1002915 → ncbiprotein/QDU42347.1"}
+    teaches: "CDS→Gene is bfo:0000050 (part_of); coordinates are FALDO (faldo:location → faldo:begin/end → faldo:position); NCBI protein is rdfs:seeAlso on the CDS. Entry-scope the CDS FIRST."
+    traps_avoided:
+      - "sio:SIO_010081 does NOT link CDS→Gene here — it returns 0 rows silently. The real predicate is bfo:0000050."
+      - "The COUNT(DISTINCT ?cds) form of this exact join TIMES OUT (verified live 2026-07-22, 60s). Use the row form with LIMIT, or pre-scope to one entry before counting."
+
+  - id: count_division
+    intent: count entries in a division correctly (the scoped-aggregation recipe)
+    question: "How many phage (PHG) entries are in DDBJ?"
+    complexity: aggregation
+    sparql: |
+      PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      SELECT (COUNT(?e) AS ?n)
+      FROM <http://rdfportal.org/dataset/ddbj>
+      WHERE {
+        ?e a nuc:Entry ; nuc:division <http://ddbj.nig.ac.jp/ontologies/nucleotide/Division#PHG> .
+      }
+    verified: {n: 52724, date: "2026-07-22"}
+    teaches: "Scope a COUNT to one Division# IRI and it completes in <5s; the whole-DB total must be summed across per-division counts."
+    traps_avoided:
+      - "An unscoped COUNT(*) over nuc:Entry scans ~280M rows and times out (gotcha aggregation_scope)."
+
+  - id: enum_taxonomy_subtree
+    intent: enumerate ALL DDBJ entries for a WHOLE CLADE via the taxonomy subtree (the set-level higher-clade route)
+    question: "How many DDBJ entries belong to the family Planctomycetaceae (across all its species/strains)?"
+    complexity: aggregation
+    sparql: |
+      PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ro: <http://purl.obolibrary.org/obo/RO_>
+      SELECT (COUNT(DISTINCT ?entry) AS ?clade_entries)
+      WHERE {
+        GRAPH <http://rdfportal.org/ontology/taxonomy> {
+          ?taxon rdfs:subClassOf* <http://identifiers.org/taxonomy/126> .   # 126 = Planctomycetaceae (Family); 299 descendant taxa
+        }
+        GRAPH <http://rdfportal.org/dataset/ddbj> {
+          ?entry a nuc:Entry ; nuc:sequence ?seq . ?seq ro:0002162 ?taxon .
+        }
+      }
+    verified: {clade_entries: 2925, descendant_taxa: 299, date: "2026-07-22"}
+    teaches: "To enumerate every entry (or feature) for a whole clade, expand the clade to all descendant taxa with rdfs:subClassOf* IN GRAPH <ontology/taxonomy>, then join those taxon IRIs to dataset/ddbj via ro:0002162. This is THE route for 'all DDBJ records under genus/family/order X' — a per-species taxon-IRI loop misses everything below the queried rank."
+    traps_avoided:
+      - "ontology/taxonomy is a TRUE hierarchy (rdfs:subClassOf = the single immediate parent), so you MUST use transitive rdfs:subClassOf* to descend a clade — a bare rdfs:subClassOf only reaches direct children. (Contrast UniProt's pre-flattened lineage.) Scope to a genus/family/order to stay under the 60s limit; a phylum-wide subtree can be very heavy."
+      - "Do the subClassOf* expansion in the ontology/taxonomy GRAPH; the dataset/ddbj graph does not carry the lineage hierarchy."
+
+  - id: xdb_taxonomy
+    intent: "cross-DB: DDBJ entries → NCBI-Taxonomy scientific name + rank via the co-hosted ontology/taxonomy graph"
+    question: "What are the organism scientific names and taxonomic ranks for DDBJ phage entries?"
+    complexity: cross_db
+    endpoint_name: ddbj
+    sparql: |
+      PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ro: <http://purl.obolibrary.org/obo/RO_>
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      SELECT ?entry ?sciName ?rank
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ddbj> {
+          ?entry a nuc:Entry ; nuc:division <http://ddbj.nig.ac.jp/ontologies/nucleotide/Division#PHG> ; nuc:sequence ?seq .
+          ?seq ro:0002162 ?taxon .
+        }
+        GRAPH <http://rdfportal.org/ontology/taxonomy> {
+          ?taxon tax:scientificName ?sciName ; tax:rank ?rank .
+        }
+      }
+      LIMIT 15
+    verified: {result_rows: 15, date: "2026-07-22", first_row: "AP000400.1 → 'Escherichia coli O157:H7' (NoRank)"}
+    teaches: "The identifiers.org/taxonomy/N IRIs on DDBJ features ARE NCBI Taxonomy's IRIs; the co-hosted ontology/taxonomy graph carries tax:scientificName, tax:rank, tax:authority and the lineage — a direct GRAPH join on the same endpoint, no TogoID bridge."
+    traps_avoided:
+      - "Do NOT read the organism name from `?taxon rdfs:label` unscoped — dataset/ddbj puts the bare taxid ('9606') on that same predicate (gotcha taxon_label_double). Use tax:scientificName in the ontology/taxonomy graph, or pin that graph for rdfs:label."
+
+# ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
+schema_delta:
+  - "Entry→feature topology: a Gene's bfo:0000050 (part_of) points to the SEQUENCE node, NOT the Entry. To reach genes from an entry, hop Entry --nuc:sequence--> Sequence <--bfo:0000050-- Gene; `?gene bfo:0000050 ?entry` matches nothing."
+  - "External project/sample links use nuc:dblink (NOT nuc:dbxref — the upstream ShEx says insdc_ontology:dbxref but the DATA uses nuc:dblink): ?entry nuc:dblink → identifiers.org/bioproject/PRJ… and /biosample/SAMN… (~85% of annotated genome entries)."
+  - "Literature: ?entry nuc:reference ?ref . ?ref insdcref:pubmed → identifiers.org/pubmed/PMID (insdcref: = http://ddbj.nig.ac.jp/ontologies/nucleotide/reference#); rdf:value on ?ref is the 1-based reference number."
+  - "SO typing: every feature carries rdfs:subClassOf → a Sequence Ontology term IRI (obo/SO_…, labels in the co-hosted ontology/so graph). rdfs:label = skos:prefLabel = dcterms:identifier = the locus_tag value on features."
+  - "Entry free-text: nuc:organism (organism name, >99%) and nuc:taxonomy (full lineage STRING, e.g. 'Bacteria; Planctomycetota; …') are literals on the Entry; for name discovery when the taxid is unknown, `?organism bif:contains \"'escherichia' AND 'coli'\"` (Virtuoso, entry-level only) then switch to the ro:0002162 taxon IRI for real work."
+
+# ── id_join_map: how to anchor stably and cross to other resources. ──
+id_join_map:
+  stable_anchor: >
+    Entry = INSDC accession IRI http://identifiers.org/insdc/ACCESSION (e.g. CP036276.1). Features are
+    …#feature:START-END:STRAND:TYPE.N; nuc:locus_tag is the stable per-feature key (>99% coverage).
+  same_endpoint_joins:            # co-hosted on the ddbj endpoint — direct GRAPH join, NO TogoID
+    ncbi_taxonomy: "ro:0002162 → identifiers.org/taxonomy/N IRI; names/rank/lineage in GRAPH <ontology/taxonomy> via tax:scientificName / tax:rank / rdfs:subClassOf* (examples xdb_taxonomy, enum_taxonomy_subtree)"
+    sequence_ontology: "feature rdfs:subClassOf → obo/SO_… IRI; term labels in GRAPH <ontology/so>"
+  xrefs:                          # outbound references carried on DDBJ entries/features
+    ncbi_protein: "rdfs:seeAlso on a Coding_Sequence → identifiers.org/ncbiprotein/ACCESSION (>95% of CDS)"
+    bioproject:   "nuc:dblink → identifiers.org/bioproject/PRJ… (~85% annotated entries)"
+    biosample:    "nuc:dblink → identifiers.org/biosample/SAMN… (~85% annotated entries)"
+    pubmed:       "nuc:reference → insdcref:pubmed → identifiers.org/pubmed/PMID"
+    insdc_fasta:  "rdfs:seeAlso on the Sequence node → DDBJ getentry / ENA / NCBI nuccore FASTA (3 per sequence)"
+    uniprot:      "nuc:inference literal on some CDS carries 'similar to AA sequence:UniProtKB:Pxxxxx' (unstructured string; parse, do not join)"
+  bridged_via_togoid:             # DDBJ is a standalone endpoint — external DBs (UniProt entries, Ensembl, etc.) route via TogoID on the insdc/ncbiprotein accession
+    - "INSDC/NCBI-protein accessions → other RDF Portal DBs via togoid_convertId when no same-endpoint graph exists."
+
+# ── byte-count footer (spec §5 item 7) ──
+# v2: `wc -c togo_mcp/data/mie/ddbj.yaml` = 37163 bytes
+# v3: `wc -c benchmark/redesign/mie_v3/ddbj.yaml` = 18502 bytes → 50.2% smaller than v2.
