@@ -1,0 +1,395 @@
+# MIE v3 — GlyCosmos (glycoscience portal). AGENT-authored v3 file, 2026-07-22 on `mie-redesign`.
+# Format: benchmark/redesign/MIE_v3_spec.md. Every verified count/result re-run live on the glycosmos endpoint 2026-07-22.
+# Byte count vs the v2 file it replaces (spec §5 item 7): v2 togo_mcp/data/mie/glycosmos.yaml = 88,307 bytes;
+# this v3 file = 30,622 bytes → 65.3% smaller. Exact `wc -c` figures in the footer.
+database: glycosmos
+
+# ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
+discovery:
+  title: GlyCosmos — Glycoscience Portal
+  description: >
+    Integrated glycoscience: glycan structures (GlyTouCan, multi-format WURCS/IUPAC/GlycoCT),
+    glycoproteins with residue-level glycosylation sites (FALDO), glycogenes with GO annotation,
+    disease→glycogene associations (DOID), CAZy carbohydrate-active enzyme families, HPA tissue
+    expression, glycolipids, glycoepitopes, and a curated lectin-name grounding hub.
+  keywords: [glycan, glycosylation, glycoprotein, saccharide, wurcs, glytoucan, n-glycan, o-glycan,
+             glycogene, monosaccharide, glycan motif, epitope, lectin, cazy, carbohydrate-active enzyme,
+             glycoside hydrolase, glycosyltransferase, ec number, disease gene, doid, gene ontology,
+             tissue expression, human protein atlas, glycolipid]
+  categories: [glycan, protein, gene, disease]
+
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://ts.glycosmos.org/sparql   # GlyCosmos' OWN dedicated endpoint; NO federation — cross-DB work is intra-endpoint cross-GRAPH
+base_uri: http://rdf.glycoinfo.org/          # glycans/motifs; NOTE proteins/genes/diseases use http://glycosmos.org/ (see gotcha entity_vs_graph_base)
+# ~84 substantive named graphs (148 incl. paired /void size descriptors). This is the WORST re-declaration
+# endpoint of any single-DB RDF Portal database: glycan:Saccharide is typed in 13 graphs (gotcha saccharide_inflation).
+graphs:
+  primary: http://rdf.glytoucan.org/core          # AUTHORITATIVE glycan registry (117,864 Saccharide IRIs) — pin this to enumerate/count glycans
+  supporting:                                     # same-DB backbone graphs (each holds a distinct entity layer)
+    - glycans/glycosequence   # has_glycosequence (WURCS/IUPAC/GlycoCT) + has_motif links
+    - glycans                 # external Resource_entry nodes (lowercase has_resource_entry targets)
+    - glycoprotein            # glycan:Glycoprotein + Glycosylation_Site + FALDO location nodes
+    - glycogenes              # glycan:Glycogene + GO-annotation scaffold + geneid protein-join bridge
+    - disease                 # glycan:Disease + disease→gene association bnodes
+    - cazy                    # 821 CAZy families (up:Resource) + ~870k up:Protein enzyme sequences
+    - HPA                     # Human Protein Atlas IHC tissue/cell expression (glycodm:tissue/cellType/level)
+    - lectin                  # curated GL lectin-name grounding hub (sb:Lectin, rdfs:label + skos:altLabel)
+    - glycolipid              # 6,046 glycan:Glycolipid (LipidMaps/PubChem hub)
+    - glycoepitope            # 173 glycan:Glycan_epitope (free-text names)
+    - glycans/motif_label     # 133 gn:Motif definitions/labels (glycoinfo.org/motif/ IRIs)
+  co_hosted:
+    obo_ontology_graphs: >
+      NAME/JOIN targets, not co-tenancy traps: obo/doid (disease names), obo/go.owl (GO-term names),
+      obo/uberon (anatomy). Entity nodes here carry the human-readable labels the glycosmos.org
+      entities LACK (gotcha no_entity_labels). Reach by explicit GRAPH pin. They key on their own
+      IRI spaces (obo:DOID_*, obo:GO_*) and do NOT re-type glycan:Saccharide/Glycogene/Glycoprotein.
+    tmp_staging_graphs: >
+      INFLATION — tmp/glycosequence is a byte-for-byte STAGING TWIN of glycans/glycosequence (both
+      type the SAME 254,097 Saccharide IRIs, 100% overlap); tmp/wurcsrdf, tmp/subsumption are the same.
+      They double every glycan before any join. NEVER let a tmp/* graph into a query — pin GRAPH explicitly.
+    genomealliance_gpdb: >
+      INFLATION — genomealliance re-types 24,136 of glycogenes' SAME glycan:Glycogene IRIs (100% overlap);
+      gpdb re-types 14,103 of glycoprotein's SAME glycan:Glycoprotein IRIs. Pin the backbone graph
+      (glycogenes / glycoprotein) or COUNT(DISTINCT); an unscoped class count inflates.
+    embedded_source_copies: >
+      GlyCosmos' own copies of external DBs on this endpoint: hgnc, mondo, hpo, kegg, pubchem, pubmed,
+      Rhea, pathway_reactome, plus specialist glyco graphs (gpdb, carbogrove, lfdb, sugarbind, ggdb,
+      psicquic, matrixdb…). Join targets — probe before use; pin the GRAPH matching your intent.
+
+entity_counts:                     # COUNT(DISTINCT), graph-pinned, live 2026-07-22
+  glycans:                117864   # pinned FROM <http://rdf.glytoucan.org/core> — the authoritative registry
+  glycans_unpinned_rows:  1090748  # unscoped `?s a glycan:Saccharide` = 1,090,748 rows for only 262,477 distinct IRIs (x4.16 — INFLATED, never report)
+  glycoproteins_human:    16604    # taxonomy/9606, pinned FROM <…/glycoprotein>
+  glycogenes_all:         423164   # across all species (has_taxon-keyed); GO annotation covers 97.8%
+  cazy_families:          821      # 430 GH · 135 GT · 107 PL · 102 CBM · 27 AA · 20 CE
+  cazy_enzyme_sequences:  869966   # up:Protein nodes in the cazy graph (41% carry an EC number)
+  glycans_with_chebi:     10598    # via lowercase has_resource_entry -> ChEBI Resource_entry
+
+global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
+  - id: saccharide_inflation
+    say: >
+      glycan:Saccharide is typed in 13 graphs on this endpoint — the SAME GlyTouCan IRIs re-declared, not
+      parallel ID spaces. An unscoped `?s a glycan:Saccharide` = 1,090,748 rows for only 262,477 distinct
+      IRIs (x4.16), worst offender the STAGING TWIN tmp/glycosequence (100% dup of glycans/glycosequence).
+      FIX: pin GRAPH <http://rdf.glytoucan.org/core> (the authoritative registry, 117,864) to enumerate or
+      count glycans, and always COUNT(DISTINCT ?glycan). Never let a tmp/* graph into a query.
+  - id: resource_entry_case
+    say: >
+      TWO case-sensitive resource-entry predicates with DIFFERENT meaning (the #1 silent-fail trap):
+      glycan:has_Resource_entry (CAPITAL R) = the GlyTouCan SELF-reference only (dcterms:identifier is the
+      GlyTouCan ID itself, no external ID); glycan:has_resource_entry (lowercase r) = EXTERNAL DB refs
+      (PubChem/ChEBI/GlyConnect, carrying rdfs:label = DB name + dcterms:identifier = the external ID).
+      Capital-R expecting a ChEBI/PubChem ID silently returns the self-reference. Use lowercase for xrefs.
+  - id: entity_vs_graph_base
+    say: >
+      ENTITY IRI base ≠ GRAPH IRI base. Glycoprotein/site/glycogene/disease ENTITIES use http://glycosmos.org/
+      (e.g. http://glycosmos.org/glycogene/3643, http://glycosmos.org/disease/DOID:9352); the GRAPHS holding
+      them use http://rdf.glycosmos.org/ (e.g. GRAPH <http://rdf.glycosmos.org/glycogenes>). Glycans/motifs
+      use http://rdf.glycoinfo.org/. Writing http://rdf.glycosmos.org/glycoprotein/<AC> as an entity IRI = 0 rows.
+  - id: no_entity_labels
+    say: >
+      Disease, GO-annotation, and motif ENTITY nodes carry NO human-readable name of their own. A disease's
+      name is on its obo:DOID_ IRI in GRAPH <http://purl.obolibrary.org/obo/doid>; a GO term's name is in
+      GRAPH <http://purl.obolibrary.org/obo/go.owl>; a motif's name is on <http://glycoinfo.org/motif/[ID]>
+      in the motif_label graph. Reading rdfs:label off the glycosmos.org entity returns nothing — join to the
+      ontology graph. (Glycogene rdfs:label IS the gene symbol and IS populated 100%; glycan rdfs:label is <1%.)
+  - id: sio_scaffold_dual
+    say: >
+      sio:SIO_000255 is a shared "has-attribute" scaffold pointing to an UNTYPED bnode (no rdf:type — you
+      cannot select it by class; reach it only via parent + sio:SIO_000255, then branch on the inner
+      predicate). It is REUSED for two purposes: in the disease graph the bnode's sio:SIO_000001 = an
+      associated glycogene; in the glycogenes graph the bnode's up:classifiedWith = a GO term. Disambiguate
+      by GRAPH + inner predicate, never by the bnode type.
+
+# ── examples: verified, executable atoms. GlyCosmos integration is INTRA-ENDPOINT cross-GRAPH (no federation);
+#    the geneid node, the sio scaffold, and the genbank/embl-cds bridge are the load-bearing joins. ──
+examples:
+  - id: glycan_sequences
+    intent: all sequence encodings of a glycan (up to 5 formats via named glycosequence nodes)
+    question: "What sequence representations (WURCS, IUPAC, GlycoCT…) exist for glycan G00051MO?"
+    complexity: basic
+    sparql: |
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      SELECT ?format ?seq
+      FROM <http://rdf.glycosmos.org/glycans/glycosequence>
+      WHERE {
+        <http://rdf.glycoinfo.org/glycan/G00051MO> glycan:has_glycosequence ?seqNode .
+        ?seqNode glycan:in_carbohydrate_format ?format ; glycan:has_sequence ?seq .
+      }
+    verified: {result_rows: 5, date: "2026-07-22", formats: "wurcs, glycoct, iupac_condensed, iupac_extended, glycam_condensed"}
+    teaches: "A glycan reaches its sequences via glycan:has_glycosequence -> a named glycosequence node (IRI = <glycan>_<format>, NOT a bnode) carrying glycan:in_carbohydrate_format (the format IRI) + glycan:has_sequence (the string). Pin the glycosequence graph. Glycan IRI = http://rdf.glycoinfo.org/glycan/<GlyTouCanID>."
+
+  - id: glycan_xref_chebi
+    intent: external DB cross-references of glycans (the lowercase-predicate route)
+    question: "Which glycans map to a ChEBI entry, and what are their ChEBI IDs?"
+    complexity: intermediate
+    sparql: |
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX glytoucan: <http://www.glytoucan.org/glyco/owl/glytoucan#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT DISTINCT ?gtcId ?chebiId ?res
+      FROM <http://rdf.glycosmos.org/glycans>
+      FROM <http://rdf.glytoucan.org/core>
+      WHERE {
+        ?glycan glycan:has_resource_entry ?res ;          # lowercase r — EXTERNAL DBs
+                glytoucan:has_primary_id ?gtcId .
+        ?res rdfs:label "ChEBI" ; dcterms:identifier ?chebiId .
+      }
+      LIMIT 20
+    verified: {result_rows: 20, glycans_with_chebi_total: 10598, date: "2026-07-22", first_row: "G00547ZN -> ChEBI 146083 (obo:CHEBI_146083)"}
+    teaches: "External xrefs: lowercase glycan:has_resource_entry -> a Resource_entry node with rdfs:label = DB name + dcterms:identifier = the external ID. ChEBI nodes ARE OBO IRIs (obo:CHEBI_<n>) — federation-ready. 10,598 glycans carry a ChEBI ref."
+    traps_avoided:
+      - "CAPITAL-R glycan:has_Resource_entry returns ONLY the GlyTouCan self-reference (dcterms:identifier = the GlyTouCan ID, no external DB) — it silently yields the wrong IDs (gotcha resource_entry_case)."
+      - "Resource_entry nodes span the glycans graph AND partner graphs (glycome-db/jcggdb_aist/bcsdb/glycobase); for a bulk sweep across ALL external DBs, add those graphs or omit FROM for one glycan."
+
+  - id: count_glycans
+    intent: count registered glycans correctly (the saccharide-inflation recipe)
+    question: "How many glycans are in GlyCosmos / GlyTouCan?"
+    complexity: aggregation
+    sparql: |
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      SELECT (COUNT(DISTINCT ?glycan) AS ?glycans)
+      FROM <http://rdf.glytoucan.org/core>          # pin the authoritative registry — else 13 graphs re-type the same IRIs
+      WHERE { ?glycan a glycan:Saccharide . }
+    verified: {glycans: 117864, date: "2026-07-22"}
+    teaches: "Pin GRAPH/FROM <http://rdf.glytoucan.org/core> (the authoritative registry) and use COUNT(DISTINCT) to count glycans."
+    traps_avoided:
+      - "Unscoped `?s a glycan:Saccharide` = 1,090,748 rows for only 262,477 distinct IRIs (x4.16) — 13 graphs re-type the SAME GlyTouCan IRIs, worst the tmp/glycosequence staging twin. Nothing signals the inflation (gotcha saccharide_inflation)."
+
+  - id: disease_human_genes
+    intent: human glycogenes associated with a disease + the disease name (the mandatory taxon filter)
+    question: "Which human glycogenes are associated with type 2 diabetes (DOID:9352)?"
+    complexity: cross_db
+    endpoint_name: glycosmos
+    sparql: |
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?diseaseName (COUNT(DISTINCT ?gene) AS ?human_genes)
+      WHERE {
+        GRAPH <http://rdf.glycosmos.org/disease> {
+          <http://glycosmos.org/disease/DOID:9352> sio:SIO_000255/sio:SIO_000001 ?gene ;
+                                                    rdfs:seeAlso ?doid .
+          FILTER(STRSTARTS(STR(?doid), "http://purl.obolibrary.org/obo/DOID_"))
+        }
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          ?gene glycan:has_taxon <http://identifiers.org/taxonomy/9606> .    # MANDATORY human filter
+        }
+        GRAPH <http://purl.obolibrary.org/obo/doid> { ?doid rdfs:label ?diseaseName . }
+      }
+      GROUP BY ?diseaseName
+    verified: {human_genes: 129, all_species: 326, diseaseName: "type 2 diabetes mellitus", date: "2026-07-22"}
+    teaches: "Disease->gene is sio:SIO_000255/sio:SIO_000001 in the disease graph; the disease NAME is on the obo:DOID_ IRI (rdfs:seeAlso) in the obo/doid graph, NOT on the glycosmos.org disease entity."
+    traps_avoided:
+      - "Disease->gene links are MULTI-SPECIES (the gene IRI is a numeric NCBI GeneID; species is NOT encoded in it). Omitting the has_taxon 9606 join into the glycogenes graph over-counts ~2.5x: DOID:9352 = 326 genes across all species vs 129 human."
+
+  - id: gene_go
+    intent: GO annotations of a glycogene via the reused sio scaffold + the GO-name join
+    question: "What GO terms is the glycogene INSR (3643) annotated with, and their names?"
+    complexity: intermediate
+    sparql: |
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT DISTINCT ?goTerm ?goLabel
+      WHERE {
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          <http://glycosmos.org/glycogene/3643> sio:SIO_000255/up:classifiedWith ?goTerm .
+        }
+        GRAPH <http://purl.obolibrary.org/obo/go.owl> { ?goTerm rdfs:label ?goLabel . }
+      }
+    verified: {distinct_go_terms: 110, date: "2026-07-22"}
+    teaches: "Gene->GO is sio:SIO_000255/up:classifiedWith in the glycogenes graph (the untyped attribute bnode carries up:classifiedWith = an obo:GO_ IRI); the GO name lives in the go.owl graph. 97.8% of glycogenes carry >=1 GO annotation."
+    traps_avoided:
+      - "The SAME sio:SIO_000255 scaffold in the DISEASE graph points to a gene (sio:SIO_000001), not a GO term — the inner predicate + graph disambiguate (gotcha sio_scaffold_dual)."
+
+  - id: gene_protein_bridge
+    intent: glycogene -> its GlyCosmos glycoprotein WITHOUT an external ID conversion (the shared geneid node)
+    question: "For the glycogene INSR (3643), what is its GlyCosmos glycoprotein entry?"
+    complexity: cross_db
+    endpoint_name: glycosmos
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      SELECT ?uniprotAC ?glycoprotein ?gpLabel
+      WHERE {
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          <http://glycosmos.org/glycogene/3643> rdfs:seeAlso ?geneidNode .
+          FILTER(STRSTARTS(STR(?geneidNode), "http://purl.uniprot.org/geneid/"))
+        }
+        GRAPH <http://rdf.glycosmos.org/glycoprotein> {
+          ?uniprotAC rdfs:seeAlso ?geneidNode .
+          ?glycoprotein a glycan:Glycoprotein ; rdfs:seeAlso ?uniprotAC ; rdfs:label ?gpLabel .
+          FILTER(STRSTARTS(STR(?uniprotAC), "http://purl.uniprot.org/uniprot/"))
+        }
+      }
+    verified: {result_rows: 1, date: "2026-07-22", first_row: "geneid/3643 -> uniprot/P06213 -> glycoprotein/P06213 'Insulin receptor'"}
+    teaches: "A glycogene and its glycoprotein share <http://purl.uniprot.org/geneid/[GeneID]> as an implicit join node: the glycogene rdfs:seeAlso it, and in the glycoprotein graph the UniProt IRI rdfs:seeAlso the SAME node while the glycoprotein rdfs:seeAlso that UniProt IRI. Traverse entirely inside GlyCosmos."
+    traps_avoided:
+      - "Do NOT leave GlyCosmos to convert NCBI GeneID -> UniProt AC via TogoID: it is an extra round-trip and drops the disease/GO context. The geneid node is the internal bridge (anti_pattern in v2)."
+
+  - id: cazy_families
+    intent: CAZy families of one enzyme class, with their activities
+    question: "List the glycosyltransferase (GT) families in CAZy with their activities."
+    complexity: intermediate
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT ?family ?title ?description
+      FROM <http://rdf.glycosmos.org/cazy>
+      WHERE {
+        ?family rdfs:label "GlycosylTransferases (GTs)" ; dcterms:title ?title .   # rdfs:label = CAZy CLASS name
+        OPTIONAL { ?family dcterms:description ?description }                        # activities + EC list
+      }
+      ORDER BY ?title
+    verified: {result_rows: 135, date: "2026-07-22", note: "class breakdown 430 GH · 135 GT · 107 PL · 102 CBM · 27 AA · 20 CE"}
+    teaches: "A CAZy family node (<…/dbid/cazy/[FAM]>) is a up:Resource (NOT a glycan class): dcterms:title = family name, rdfs:label = the CAZy CLASS name (filter it to list a whole class), dcterms:description = activities+EC. Pin the cazy graph."
+
+  - id: cazy_family_proteins
+    intent: UniProt enzymes of a CAZy family via the INDIRECT GenBank->embl-cds bridge
+    question: "Which UniProt enzymes are in CAZy family GH13 (alpha-amylases)?"
+    complexity: cross_db
+    endpoint_name: glycosmos
+    sparql: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      SELECT (COUNT(DISTINCT ?protein) AS ?n)
+      FROM <http://rdf.glycosmos.org/cazy>
+      WHERE {
+        <http://rdf.glycoinfo.org/dbid/cazy/GH13> rdfs:seeAlso ?gb .   # family -> GenBank member node
+        ?gb owl:sameAs ?emblcds .                                       # -> UniProt-side embl-cds accession
+        ?protein a up:Protein ; rdfs:seeAlso ?emblcds .                 # protein <- same accession
+      }
+    verified: {n: 2867, date: "2026-07-22"}
+    teaches: "CAZy family<->protein is INDIRECT — no direct predicate. Bridge: family rdfs:seeAlso genbank/[ACC] ; owl:sameAs embl-cds/[ACC] ; protein rdfs:seeAlso that same embl-cds node. Protein name = rdfs:label, EC = up:enzyme (41% coverage)."
+    traps_avoided:
+      - "There is NO family predicate on the up:Protein and no reverse link — `?protein ?p <…/cazy/GH13>` returns nothing. And CAZy up:Protein nodes carry NO glycan:has_taxon (taxon is on the genbank member node), so a protein taxon filter returns 0 rows."
+
+  - id: hpa_tissue
+    intent: HPA tissue expression of a glycogene (join by SYMBOL to the HPA graph)
+    question: "In which tissues is the glycogene INSR expressed at Medium level (HPA)?"
+    complexity: cross_db
+    endpoint_name: glycosmos
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX glycodm: <http://glycodm/ontology#>
+      SELECT DISTINCT ?tissue ?cellType
+      WHERE {
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          <http://glycosmos.org/glycogene/3643> rdfs:label ?sym ;
+              glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
+        }
+        GRAPH <http://rdf.glycosmos.org/HPA> {
+          ?hpa glycodm:geneSymbol ?sym ; rdfs:seeAlso ?exp .
+          ?exp glycodm:tissue ?tissue ; glycodm:level "Medium" .          # "High"|"Medium"|"Low"|"Not detected"
+          OPTIONAL { ?exp glycodm:cellType ?cellType }
+        }
+      }
+    verified: {distinct_medium_tissues: 29, date: "2026-07-22"}
+    teaches: "GlyCosmos DOES hold HPA IHC expression (in the HPA graph) — the glycoprotein entity does NOT. An HPA gene record (<…/dbid/hpa/ENSG…>) carries glycodm:geneSymbol + rdfs:seeAlso -> untyped expression bnodes (glycodm:tissue/cellType/level, level is xsd:string). Join to a glycogene by SYMBOL (glycodm:geneSymbol == glycogene rdfs:label)."
+    traps_avoided:
+      - "HPA is Ensembl-keyed, glycogene is NCBI-GeneID-keyed — the ONLY join is the gene SYMBOL, and symbols aren't unique, so anchor the specific glycogene IRI (and taxon-filter) rather than symbol alone. The glycoprotein entity has NO expression predicate; earlier docs wrongly called HPA 'ID cross-references only' — it is real IHC expression."
+
+  - id: lectin_grounding
+    intent: ground a free-text lectin NAME to a UniProt AC + source-DB IDs via the GL hub
+    question: "What is the UniProt accession (and source-DB IDs) for concanavalin lectins?"
+    complexity: intermediate
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sb: <http://rdf.glycoinfo.org/SugarBind/ontology#>
+      SELECT DISTINCT ?lectin ?label ?xref
+      FROM <http://rdf.glycosmos.org/lectin>
+      WHERE {
+        ?lectin a sb:Lectin ; rdfs:label ?label .
+        ?label bif:contains "'Concanavalin'" .          # Virtuoso free-text index (enabled)
+        OPTIONAL { ?lectin rdfs:seeAlso ?xref }
+      }
+      LIMIT 30
+    verified: {result_rows: 30, date: "2026-07-22", first_row: "GL_002303 'Concanavalin-A' -> uniprot/P02866 + LfDB0170 + carbogrove/P02866 + UniLectin3D"}
+    teaches: "START lectin-name lookups at the GL hub (<http://rdf.glycosmos.org/lectin>, sb:Lectin, GL_###### IRIs): names are on STANDARD rdfs:label (+ skos:altLabel for abbreviations), and rdfs:seeAlso hands off to UniProt (100% of labeled lectins) + UniLectin3D/CarboGrove/LfDB — one lookup grounds the name AND yields every source ID."
+    traps_avoided:
+      - "The source DBs LfDB and CarboGrove put names on BESPOKE predicates (lfdb:has_lectin_name; cg:LectinName/cg:CommonName), NOT rdfs:label — a naive rdfs:label search over those graphs returns 0. Start at the hub; see schema_delta for direct source-DB grounding."
+
+  - id: enum_go_glycogenes
+    intent: enumerate ALL human glycogenes carrying a GO term (the reverse-GO set route — Tier A, buried in v2)
+    question: "How many human glycogenes are annotated to 'protein glycosylation' (GO:0006486)?"
+    complexity: aggregation
+    sparql: |
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      SELECT (COUNT(DISTINCT ?gene) AS ?n)
+      WHERE {
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          ?gene sio:SIO_000255/up:classifiedWith <http://purl.obolibrary.org/obo/GO_0006486> ;
+                glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
+        }
+      }
+    verified: {n: 81, date: "2026-07-22", cross_check: "GO:0006487 (protein N-linked glycosylation) = 58; GO:0016757 (glycosyltransferase activity) = 19"}
+    teaches: "REVERSE-GO ENUMERATION — to find EVERY gene with GO term X, drive the sio:SIO_000255/up:classifiedWith path FROM the GO IRI to ?gene (not gene->GO). This is the set-level route for 'all glycogenes with function X'; add has_taxon 9606 for the human subset. The same scaffold used forward (gene_go) runs backward here."
+    traps_avoided:
+      - "Do NOT text-search glycogene labels/descriptions for the function name — the GO term is a controlled IRI; the typed sio:SIO_000255/up:classifiedWith route is exact, a name match silently undercounts."
+
+  - id: enum_hpa_tissue
+    intent: enumerate ALL human glycogenes with High expression in a tissue (the reverse-HPA set route — Tier A, buried in v2)
+    question: "How many human glycogenes are expressed at High level in the cerebral cortex (HPA)?"
+    complexity: aggregation
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX glycodm: <http://glycodm/ontology#>
+      SELECT (COUNT(DISTINCT ?gene) AS ?n)
+      WHERE {
+        GRAPH <http://rdf.glycosmos.org/HPA> {
+          ?hpa glycodm:geneSymbol ?sym ; rdfs:seeAlso ?exp .
+          ?exp glycodm:tissue "cerebral cortex" ; glycodm:level "High" .    # drive FROM the tissue+level
+        }
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          ?gene rdfs:label ?sym ; glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
+        }
+      }
+    verified: {n: 1663, date: "2026-07-22"}
+    teaches: "REVERSE-HPA ENUMERATION — to find EVERY glycogene expressed at a level in a tissue, filter the HPA expression bnodes by glycodm:tissue + glycodm:level FIRST, collect the symbols, then join back to glycogenes by symbol. This is the set-level 'all genes High in tissue X' route (the forward hpa_tissue example runs gene->tissues; this runs tissue->genes)."
+    traps_avoided:
+      - "tissue/level are xsd:string literals matched exactly ('High'/'Medium'/'Low'/'Not detected', case-sensitive; tissue names as HPA spells them). The symbol join can map one symbol to multiple glycogene IRIs — COUNT(DISTINCT ?gene), and taxon-filter to stay in the human set."
+
+# ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
+schema_delta:
+  - "GLYCOSYLATION SITES (FALDO): glycoprotein glycoconjugate:glycosylated_at -> a glycoconjugate:Glycosylation_Site (IRI <http://glycosmos.org/glycosylationsite/SITE…>) -> faldo:location -> a faldo:ExactPosition node (<…/location/LOC…>) with faldo:position (1-based, xsd:integer, 98.3% of sites); the site's parent protein is sio:SIO_000772 and its attached glycan is glycoconjugate:has_saccharide. 414,798 sites."
+  - "MOTIF DUAL-IRI: a motif has TWO IRIs sharing the GlyTouCan ID suffix. The glycan:has_motif LINK object is <http://rdf.glycoinfo.org/glycan/[ID]> (glycosequence graph); the motif DEFINITION/label is a gn:Motif at <http://glycoinfo.org/motif/[ID]> (motif_label graph, note glycoinfo.org NOT rdf.glycoinfo.org). They do not join directly — carry the ID across. 133 motifs (rdfs:label may be multi-valued)."
+  - "LECTIN SOURCE DBs (bespoke name predicates, NO rdfs:label): LfDB (<http://rdf.glycoinfo.org/lfdb>, glycan:Lectin) puts names on lfdb:has_lectin_name (473 over 398, incl. short names like 'RSL'), seeAlso -> PDB/Pfam/INSDC (not UniProt); CarboGrove (<http://rdf.glycosmos.org/carbogrove>, sb:Lectin) on cg:LectinName / cg:CommonName (IRI is UniProt-AC-keyed). Prefer the GL hub (example lectin_grounding); use these for direct source grounding. lfdb: = <http://purl.jp/bio/12/lfdb/2014/7/owl#>, cg: = <http://rdf.glycoinfo.org/carbogrove/Ontology#> (capital O)."
+  - "GLYCOEPITOPES: 173 glycan:Glycan_epitope (<http://www.glycoepitope.jp/epitopes/EP…>, glycoepitope graph) with free-text rdfs:label ('Lewis x'), skos:altLabel synonyms, glycoepitope:has_antibody/organism/tissue, glycan:has_glycosequence."
+  - "GLYCOLIPIDS: 6,046 glycan:Glycolipid (<http://glycosmos.org/glycolipid/[LIPIDMAPS_ID]>, glycolipid graph) — a cross-reference hub (NO rdfs:label), rdfs:seeAlso -> LipidMaps + PubChem compound."
+  - "HPA gene record rdfs:seeAlso is POLYMORPHIC: mostly untyped expression bnodes (one per IHC measurement), a minority are dbid/hpa/ IRI cross-refs — filter isBlank(?exp) if a bulk sweep pulls both."
+
+# ── id_join_map: how to anchor stably and cross to other resources. GlyCosmos is single-endpoint; all
+#    integration is intra-endpoint cross-GRAPH (no TogoID needed for the internal joins). ──
+id_join_map:
+  stable_anchor: >
+    Glycan = GlyTouCan accession (glytoucan:has_primary_id, pattern G[0-9]{5}[A-Z]{2}; IRI
+    http://rdf.glycoinfo.org/glycan/<ID>) — key by this, NOT rdfs:label (<1% populated). Glycoprotein =
+    UniProt AC (IRI http://glycosmos.org/glycoprotein/<AC>). Glycogene = NCBI GeneID
+    (http://glycosmos.org/glycogene/<GeneID>; rdfs:label = symbol, 100%). Disease = DOID
+    (http://glycosmos.org/disease/DOID:<n>). CAZy family = <http://rdf.glycoinfo.org/dbid/cazy/[FAM]>.
+  same_endpoint_joins:            # intra-GlyCosmos cross-GRAPH — direct join, NO TogoID
+    glycoprotein_glycogene: "shared node <http://purl.uniprot.org/geneid/[GeneID]> — glycogene rdfs:seeAlso it, glycoprotein-side UniProt IRI rdfs:seeAlso the same node (example gene_protein_bridge)"
+    disease_gene: "disease sio:SIO_000255/sio:SIO_000001 -> glycogene IRI (multi-species; taxon-filter — example disease_human_genes)"
+    gene_go: "glycogene sio:SIO_000255/up:classifiedWith -> obo:GO_ IRI; name in GRAPH <obo/go.owl> (examples gene_go, enum_go_glycogenes)"
+    disease_name: "disease rdfs:seeAlso -> obo:DOID_ IRI; name in GRAPH <obo/doid>"
+    cazy_family_protein: "family rdfs:seeAlso genbank/[ACC] ; owl:sameAs embl-cds/[ACC] ; up:Protein rdfs:seeAlso same (example cazy_family_proteins)"
+    hpa_expression: "join glycogene rdfs:label (symbol) == HPA glycodm:geneSymbol (examples hpa_tissue, enum_hpa_tissue)"
+  xrefs:                          # outbound minted IRIs on the data — federation-ready
+    chebi:     "lowercase glycan:has_resource_entry -> obo:CHEBI_<n> (OBO IRI; 10,598 glycans)"
+    pubchem:   "lowercase glycan:has_resource_entry -> rdf.glycoinfo.org/pubchem/compound/CID<n> (31,774 glycans)"
+    uniprot:   "glycoprotein rdfs:seeAlso + site sio:SIO_000772 -> purl.uniprot.org/uniprot/<AC>"
+    ncbigene:  "glycogene rdfs:seeAlso -> identifiers.org/ncbigene/<id> (also KEGG, and the geneid join node)"
+    lipidmaps: "glycolipid rdfs:seeAlso -> lipidmaps.org/rdf/<LM_ID> + PubChem"
+  bridged_via_togoid:             # single-endpoint DB — external DBs beyond the minted xref IRIs route via TogoID
+    - "Reach RDF Portal DBs not represented here (e.g. Ensembl transcript models, PDB structures) via togoid_convertId on the UniProt AC / NCBI GeneID / GlyTouCan accession."
+
+# ── byte-count footer (spec §5 item 7) ──
+# v2: `wc -c togo_mcp/data/mie/glycosmos.yaml` = 88307 bytes
+# v3: `wc -c benchmark/redesign/mie_v3/glycosmos.yaml` = 30622 bytes → 65.3% smaller than v2.
