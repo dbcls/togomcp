@@ -169,4 +169,8 @@ level=header|+examples|full)` can serve tiers. Author so the header stands alone
 6. No fact restated across sections (§4.2); nothing in `schema_delta` that an example shows.
 7. Byte count recorded vs the v2.x file it replaces (the deterministic half of the win).
 8. Every set-level enumeration route the DB supports ("**all** entities with property X") has its
-   own example, not only a per-instance/text pattern or a `traps_avoided` mention (§4.4).
+   own example, not only a per-instance/text pattern or a `traps_avoided` mention (§4.4). Check this
+   DB's row in `enumeration_audit.md` (all 36 DBs pre-scanned): if it is **Tier A**, the v3 file must
+   add a *new* standalone `enum_*` example (the route is buried in v2); if **Tier B/C**, keep the
+   worked query and its load-bearing caveat together — do not compress the query away and leave only
+   the warning.

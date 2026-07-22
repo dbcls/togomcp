@@ -44,7 +44,8 @@ carry only the non-recoverable.
 | 2 | Pilot MIE(s) in the new format, live-verified | ✅ UniProt + BacDive (62–64% smaller, live-verified) |
 | 3 | Smoke test (pilot subset vs v2.x, ablation harness) — bail early on gross regression | ✅ done — **yellow light**, see `smoke/FINDINGS.md` |
 | 3a | Diagnose q066 regression; fold the lesson into `MIE_v3_spec.md` | ✅ done — keyword-enumeration route was demoted to a caveat; fixed (spec §4.4 + `keyword_enum` example) |
-| 4 | Author the **full** redesigned corpus (all 36) | ⬜ (needs 3a; 100Q gate needs full corpus — coverage is all-or-nothing) |
+| 3b | §4.4 enumeration-route audit of all 36 DBs → `enumeration_audit.md` | ✅ done — 34/36 already first-class; 4 Tier-A buried routes (ddbj/glycosmos/pubchem/mogplus) to un-bury, tiers B/C to keep route+caveat together |
+| 4 | Author the **full** redesigned corpus (all 36) | ⬜ (needs 3a+3b; 100Q gate needs full corpus — coverage is all-or-nothing). Per-DB §4.4 obligations in `enumeration_audit.md` |
 | 5 | **Release gate**: full-100Q equivalence run | ⬜ |
 | 6 | Release (MAJOR): flip served corpus + retire discovery trio | ⬜ |
 
@@ -86,4 +87,5 @@ spec isn't overfit to UniProt, then the smoke test (step 3).
 
 - `README.md` — this plan/status.
 - `MIE_v3_spec.md` — the v3 format contract.
+- `enumeration_audit.md` — per-DB §4.4 enumeration-route checklist for step-4 authoring.
 - `mie_v3/<db>.yaml` — new-format MIEs (pilots first, full corpus later).
