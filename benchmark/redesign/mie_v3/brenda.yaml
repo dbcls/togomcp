@@ -1,0 +1,261 @@
+# MIE v3 — BRENDA. Hand-authored 2026-07-22 on the `mie-redesign` branch.
+# Format: benchmark/redesign/MIE_v3_spec.md. Every verified count/result re-run live on the stated date.
+# Byte count: v2 togo_mcp/data/mie/brenda.yaml = 39,322 B; this v3 file = 19,140 B (see footer) — ~51% smaller.
+# §4.6 note: v2's canonical subject (EC 4.1.1.17 ornithine decarboxylase, a decarboxylase, inhibited by
+#   spermidine) collides with benchmark q061 (EC 4.1.1.x decarboxylases) and q092 (spermidine polyamine
+#   inhibitor); the BRENDA↔HGNC EC-string join is q057's technique. All illustrative subjects here were
+#   swapped to neutral, live-verified members (EC 1.1.1.1 alcohol dehydrogenase, EC 2.7.11.1, 3.4.22.36).
+database: brenda
+
+# ── discovery: the four fields rolled into the Usage Guide catalog at build time (spec §3.1). Keep small. ──
+discovery:
+  title: BRENDA (Braunschweig Enzyme Database)
+  description: >
+    Manually curated enzyme data classified by EC number: enzyme instances (one per organism),
+    EC-class definitions, inhibitors/activators/cofactors, substrates/products, reactions, tissue
+    and subcellular-localization expression, chemical compounds with InChI/InChIKey, and literature.
+  keywords: [enzyme, ec number, enzymatic reaction, substrate, product, inhibitor, activator,
+             cofactor, biochemistry, catalysis, inchi, inchikey, tissue expression, subcellular localization]
+  categories: [reaction, protein, enzymology]
+
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/primary/sparql   # RDF Portal "primary" endpoint
+base_uri: https://purl.dsmz.de/brenda/
+graphs:
+  primary: http://rdfportal.org/dataset/brenda
+  co_hosted:                       # same primary endpoint; must flag any that inflate/join/stub
+    bacdive:  "573,112 d3o:Enzyme on the SAME DSMZ d3o vocabulary, ZERO IRI overlap → cannot duplicate join
+               rows but MASSIVELY inflates an unpinned `?e a d3o:Enzyme` count (gotcha scope_bleed). d3o:Enzyme
+               is the ONLY class BRENDA shares with any co-hosted graph."
+    hgnc:     "join target: HGNC gene rdfs:seeAlso → idt:ec-code dct:identifier == BRENDA EC-number string (see xdb_hgnc)."
+    mesh:     "join target for reference/MeSH linkage; not a co-tenancy trap."
+    # go, taxonomy, mondo, nando, mediadive also co-hosted on primary — join targets, not scope-bleed traps.
+
+entity_counts:                     # COUNT(DISTINCT), graph-pinned unless noted; verified 2026-07-22
+  enzyme_instances:   54720        # pinned (FROM the brenda graph)
+  enzyme_unpinned:    627832       # + 573,112 disjoint BacDive enzymes — INFLATED ×11.47, never report (gotcha scope_bleed)
+  ec_classes:         7453         # d3o:ECNumber
+  compounds:          214688       # d3o:ChemicalCompound (~80% carry a typed InChIKey structure)
+  reactions:          139860       # d3o:Reaction (8,674 IUBMB reaction/I_N + 131,186 substrate-specific reaction/S_N)
+  organisms:          30338        # d3o:BiologicalMaterial (strain-level; ~49% carry a numeric hasTaxID)
+  inhibitors:         110187       # d3o:Inhibitor role nodes
+
+global_gotchas:                    # the few that bite ANY BRENDA query — verified 2026-07-22
+  - id: scope_bleed
+    say: >
+      Co-hosted BacDive re-uses the SAME class IRI d3o:Enzyme (573,112 of them) with ZERO IRI overlap.
+      So `?e a d3o:Enzyme` UNPINNED = 627,832 (54,720 BRENDA + 573,112 BacDive, disjoint) — an ×11.47
+      over-count where 91% of rows are BacDive strain-enzymes, not BRENDA. It never errors and DISTINCT
+      does NOT fix it (the extra entities are real & distinct, just another DB's). FIX = pin
+      `FROM <http://rdfportal.org/dataset/brenda>`. d3o:Enzyme is the ONLY class that bleeds — every other
+      BRENDA class (ECNumber, ChemicalCompound, Reaction, MolecularStructure, …) is BRENDA-exclusive here.
+  - id: enzyme_vs_ec_iri
+    say: >
+      Enzyme IRIs are INTERNAL numeric IDs (brenda/enzyme/2485), NOT EC numbers; there are many enzyme
+      instances per EC class. EC-class IRIs encode the dotted number directly (brenda/ec/1.1.1.1) — use
+      that IRI in triple patterns. To reach all instances of a class, navigate `?e d3o:isClassifiedAs
+      <ec/X.X.X.X>`, never by guessing enzyme IRIs (see enum_by_ec).
+  - id: role_not_compound
+    say: >
+      Inhibitor/Activator/Cofactor/Substrate/Product IRIs are context-specific ROLE nodes, not the compound.
+      They carry NO rdfs:label. Reach the chemical via `d3o:refersToCompound` → ChemicalCompound (which holds
+      rdfs:label); its InChI/InChIKey live one further hop out on a MolecularStructure via d3o:hasStructure.
+  - id: inchikey_prefix
+    say: >
+      d3o:hasInChIKey stores the value WITH a non-standard `InChIKey=` prefix ("InChIKey=RIKM…-N"), so a bare
+      key `FILTER(?k = "RIKM…-N")` or a VALUES of bare keys returns 0 rows — the #1 silent-fail here. Strip it
+      before matching or federating to ChEBI/PubChem/MassBank (which key on the bare InChIKey):
+      `BIND(STRAFTER(STR(?k), "InChIKey=") AS ?key)`. (The InChI literal keeps the standard "InChI=1S/…" and
+      needs no stripping.) Note the structure hop is optional-coverage: only ~80% of compounds (171,721) have a
+      typed MolecularStructure; the rest carry only dangling untyped stub nodes — OPTIONAL the hop to keep them.
+  - id: no_kinetics
+    say: >
+      Km, Vmax, Ki, kcat are NOT in the RDF export despite BRENDA's website (predicates d3o:hasKm/hasKi/hasVmax/
+      hasKcat do not exist — `?s d3o:hasKm ?km` = 0 rows, re-confirmed 2026-07-22). Use the BRENDA REST API /
+      web interface for kinetic constants.
+
+# ── examples: verified, executable atoms. Central model: EC-class (brenda/ec/X.X.X.X) is the anchor;
+#    Enzyme = one instance per organism, reached via d3o:isClassifiedAs. Effectors are ROLE nodes. ──
+examples:
+  - id: enum_by_ec               # the set-level enumeration route (audit: brenda OK-tier, first-class)
+    intent: enumerate ALL enzyme instances (and host organisms) of an EC class — the isClassifiedAs route
+    question: "Which organisms have alcohol dehydrogenase (EC 1.1.1.1) recorded in BRENDA?"
+    complexity: basic
+    sparql: |
+      PREFIX d3o:  <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?enzyme ?orgLabel
+      FROM <http://rdfportal.org/dataset/brenda>
+      WHERE {
+        ?enzyme d3o:isClassifiedAs <https://purl.dsmz.de/brenda/ec/1.1.1.1> ;   # EC IRI encodes the number
+                d3o:foundIn ?organism .
+        ?organism rdfs:label ?orgLabel .
+      }
+      LIMIT 20
+    verified: {result_rows_capped: 20, date: "2026-07-22", first_row: "enzyme/304634 → Acetivibrio thermocellus DSM 1237"}
+    teaches: "THE enumeration route: ?e d3o:isClassifiedAs <ec/X.X.X.X> gives every enzyme instance of a class; swap the EC IRI for any class. Use the EC IRI directly — do not text-search the name."
+    traps_avoided:
+      - "Do NOT paste sampled enzyme IRIs into a VALUES list as the scope of a count — that counts only those instances. Use the EC-class IRI for the complete set (gotcha enzyme_vs_ec_iri)."
+
+  - id: ec_details
+    intent: IUBMB definition of an EC class (name, description, systematic name, gene-name synonyms)
+    question: "What is the IUBMB name, description, and systematic name of EC 1.1.1.1?"
+    complexity: basic
+    sparql: |
+      PREFIX d3o:  <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct:  <http://purl.org/dc/terms/>
+      SELECT ?ecLabel ?description ?systematicName (COUNT(DISTINCT ?syn) AS ?nSynonyms)
+      FROM <http://rdfportal.org/dataset/brenda>
+      WHERE {
+        <https://purl.dsmz.de/brenda/ec/1.1.1.1> rdfs:label ?ecLabel ; dct:description ?description .
+        OPTIONAL { <https://purl.dsmz.de/brenda/ec/1.1.1.1> d3o:hasSystematicName ?systematicName }
+        OPTIONAL { <https://purl.dsmz.de/brenda/ec/1.1.1.1> d3o:hasSynonyms ?syn }
+      }
+      GROUP BY ?ecLabel ?description ?systematicName
+    verified: {ecLabel: "alcohol dehydrogenase", systematicName: "alcohol:NAD+ oxidoreductase", nSynonyms: 152, date: "2026-07-22"}
+    teaches: "The EC-class node carries rdfs:label (common name), dct:description (IUBMB text), d3o:hasSystematicName (~91% of classes), and many d3o:hasSynonyms (gene/isoform names)."
+
+  - id: count_enzymes            # ELEVATED aggregation — the scope-bleed recipe
+    intent: count BRENDA enzyme instances correctly (graph-pinned) vs the inflated unpinned count
+    question: "How many enzyme instances are in BRENDA?"
+    complexity: aggregation
+    sparql: |
+      PREFIX d3o: <https://purl.dsmz.de/schema/>
+      SELECT (COUNT(DISTINCT ?e) AS ?enzymes)
+      FROM <http://rdfportal.org/dataset/brenda>          # pin — else BacDive enzymes bleed in
+      WHERE { ?e a d3o:Enzyme . }
+    verified: {enzymes: 54720, date: "2026-07-22"}
+    teaches: "Graph-pin every count on this endpoint; the pinned enzyme-instance total is 54,720."
+    traps_avoided:
+      - "Unpinned = 627,832 (+ 573,112 disjoint BacDive d3o:Enzyme). DISTINCT does NOT fix it — pin the graph (gotcha scope_bleed). This is the ONE class that silently lies."
+
+  - id: enzyme_breadth_agg       # ELEVATED aggregation — per-class instance/organism coverage
+    intent: compare enzyme-instance and organism coverage across several EC classes in one query
+    question: "How many enzyme instances and organisms does BRENDA record for alcohol dehydrogenase,
+      non-specific ser/thr protein kinase, and caspase-1?"
+    complexity: aggregation
+    sparql: |
+      PREFIX d3o:  <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?ec ?ecLabel (COUNT(DISTINCT ?enzyme) AS ?enzymeCount) (COUNT(DISTINCT ?organism) AS ?orgCount)
+      FROM <http://rdfportal.org/dataset/brenda>
+      WHERE {
+        VALUES ?ec {
+          <https://purl.dsmz.de/brenda/ec/1.1.1.1>     # alcohol dehydrogenase
+          <https://purl.dsmz.de/brenda/ec/2.7.11.1>    # non-specific ser/thr protein kinase
+          <https://purl.dsmz.de/brenda/ec/3.4.22.36>   # caspase-1
+        }
+        ?ec rdfs:label ?ecLabel .
+        ?enzyme d3o:isClassifiedAs ?ec ; d3o:foundIn ?organism .
+      }
+      GROUP BY ?ec ?ecLabel
+    verified: {alcohol_dehydrogenase: "178 instances / 2182 organisms", ser_thr_kinase: "383 / 1163", caspase_1: "23 / 162", date: "2026-07-22"}
+    teaches: "COUNT(DISTINCT ?enzyme) per EC class over VALUES gives comparable breadth. Note organisms can EXCEED instances (one enzyme node may be foundIn many organisms) — count each independently."
+
+  - id: inhibitors_structures
+    intent: inhibitors of an EC class → compound → InChIKey (role-node + structure-hop navigation)
+    question: "What compounds inhibit alcohol dehydrogenase (EC 1.1.1.1), and what are their InChIKeys?"
+    complexity: intermediate
+    sparql: |
+      PREFIX d3o:  <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?compLabel ?inchiKey (STRAFTER(STR(?inchiKey), "InChIKey=") AS ?bareKey)
+      FROM <http://rdfportal.org/dataset/brenda>
+      WHERE {
+        ?inhibitor a d3o:Inhibitor ;
+                   d3o:affectsClass <https://purl.dsmz.de/brenda/ec/1.1.1.1> ;   # ALWAYS restrict — 110K inhibitor nodes
+                   d3o:refersToCompound ?compound .                              # role node → compound
+        ?compound rdfs:label ?compLabel ; d3o:hasStructure ?structure .          # structure is on the compound
+        ?structure d3o:hasInChIKey ?inchiKey .
+      }
+      LIMIT 10
+    verified: {result_rows_capped: 10, date: "2026-07-22", first_row: "fomepizole → InChIKey=RIKMMFOAQPJVMX-UHFFFAOYSA-N (bare RIKMMFOAQPJVMX-UHFFFAOYSA-N)"}
+    teaches: "Effector navigation: role node (a d3o:Inhibitor ; d3o:affectsClass <ec>) → d3o:refersToCompound → compound (rdfs:label) → d3o:hasStructure → d3o:hasInChIKey."
+    traps_avoided:
+      - "The InChIKey literal carries an `InChIKey=` prefix — a bare-key filter/VALUES returns 0 rows; strip via STRAFTER for matching or federation (gotcha inchikey_prefix)."
+      - "Omitting d3o:affectsClass scans all 110,187 inhibitor nodes; the compound name/InChIKey are NOT on the inhibitor node — you MUST hop through refersToCompound (gotcha role_not_compound)."
+
+  - id: enzymes_by_taxid         # second enumeration axis — organism by NCBI Taxonomy ID (integer)
+    intent: enumerate EC classes BRENDA records for an organism, via the integer d3o:hasTaxID
+    question: "For how many distinct EC classes does BRENDA have data in Saccharomyces cerevisiae (taxon 4932)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX d3o: <https://purl.dsmz.de/schema/>
+      SELECT (COUNT(DISTINCT ?ec) AS ?ecClasses)
+      FROM <http://rdfportal.org/dataset/brenda>
+      WHERE {
+        ?organism a d3o:BiologicalMaterial ; d3o:hasTaxID 4932 .   # integer literal, NOT "4932"
+        ?enzyme d3o:foundIn ?organism ; d3o:isClassifiedAs ?ec .
+      }
+    verified: {ecClasses: 989, date: "2026-07-22"}
+    teaches: "d3o:hasTaxID is the organism→NCBI-Taxonomy hook; combine with isClassifiedAs to enumerate an organism's enzyme repertoire. hasTaxID covers ~49% of organism nodes."
+    traps_avoided:
+      - "d3o:hasTaxID is xsd:integer — use the bare integer 4932, not \"4932\" (a string literal returns 0 rows). Organisms are strain-level; ~51% have no taxID and need rdfs:label lookup."
+
+  - id: xdb_hgnc                 # ELEVATED cross_db — co-hosted GRAPH join on the primary endpoint
+    intent: "cross-DB: BRENDA EC classes ↔ HGNC human genes via the shared EC-number string"
+    question: "Which human genes (HGNC) map to a BRENDA EC class, matched by EC number?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX d3o:  <https://purl.dsmz.de/schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX m2r:  <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX dct:  <http://purl.org/dc/terms/>
+      PREFIX idt:  <http://identifiers.org/>
+      SELECT ?geneSymbol ?ecNum ?ecLabel
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/hgnc> {
+          ?gene a m2r:Gene ; rdfs:label ?geneSymbol ; rdfs:seeAlso ?ecCode .
+          ?ecCode a idt:ec-code ; dct:identifier ?ecNum .
+        }
+        GRAPH <http://rdfportal.org/dataset/brenda> {
+          ?ec a d3o:ECNumber ; rdfs:label ?ecLabel .
+          BIND(STRAFTER(STR(?ec), "https://purl.dsmz.de/brenda/ec/") AS ?ecNum2)
+          FILTER(STR(?ecNum2) = STR(?ecNum))     # normalize typed-string vs plain-string before comparing
+        }
+      }
+      LIMIT 15
+    verified: {result_rows_capped: 15, date: "2026-07-22", first_row: "LPIN1 → EC 3.1.3.4 (phosphatidate phosphatase)"}
+    teaches: "BRENDA and HGNC are co-hosted on the primary endpoint — join with pure GRAPH clauses (no FROM). The EC number is the key: HGNC gene rdfs:seeAlso → idt:ec-code dct:identifier == the string in BRENDA's EC IRI path."
+    traps_avoided:
+      - "FILTER(STRAFTER(STR(?ec), prefix) = ?ecNum) can fail in Virtuoso on an xsd:string vs plain-string mismatch — always BIND then FILTER(STR(?a)=STR(?b)). Use only GRAPH clauses (no FROM+GRAPH mix) for cross-graph joins."
+
+# ── schema_delta: non-obvious predicates/idioms NO example above already demonstrates ──
+schema_delta:
+  - "Reactions: ?rxn a d3o:Reaction ; d3o:catalyzedByClass <ec/X.X.X.X> (links to the EC class) ; rdfs:label (equation string) ; d3o:isIubmbReaction (boolean, true on the 8,674 IUBMB reaction/I_N, false on substrate-specific reaction/S_N). Substrate/Product are ROLE nodes like Inhibitor: ?role a d3o:Substrate|d3o:Product ; d3o:partOf ?rxn ; d3o:refersToCompound ?compound."
+  - "Tissue / subcellular Localization expression flows FROM the anatomy TO the enzyme: ?tissue a d3o:Tissue ; d3o:expresses ?enzyme ; d3o:partOf ?organism (NOT enzyme→tissue, and NOT d3o:foundIn). Localization nodes (a d3o:Localization) use the same d3o:expresses pattern."
+  - "References: ?ref a d3o:Reference ; d3o:hasPubMedID (string PMID). PubMed lives on the separate NCBI endpoint — bridge by PMID string, not by SPARQL join."
+  - "Activators (a d3o:Activator ; d3o:activates) and Cofactors (a d3o:Cofactor ; d3o:isCofactorOf) mirror the Inhibitor role-node → refersToCompound pattern."
+
+# ── id_join_map: the least-recoverable asset — how to anchor stably and cross to other DBs ──
+id_join_map:
+  stable_anchor: >
+    EC-class IRI https://purl.dsmz.de/brenda/ec/X.X.X.X (dotted EC number in the path) is the primary anchor.
+    Enzyme instance IRIs (brenda/enzyme/N) are INTERNAL numeric IDs — never treat them as EC numbers.
+  same_endpoint_joins:            # co-hosted on `primary` — direct GRAPH join, NO TogoID
+    hgnc:     "EC-number string: HGNC gene rdfs:seeAlso → idt:ec-code dct:identifier == BRENDA EC IRI path (see xdb_hgnc)"
+    chebi/pubchem/massbank: "structure key: compound d3o:hasStructure → d3o:hasInChIKey, STRAFTER-strip the 'InChIKey=' prefix to the bare key these DBs index on (gotcha inchikey_prefix)"
+    taxonomy: "d3o:hasTaxID (xsd:integer) on organism nodes → NCBI Taxonomy; ~49% coverage"
+  xrefs:
+    pubmed:   "d3o:hasPubMedID (string) on d3o:Reference nodes — ~100% of references; NCBI endpoint, no SPARQL join"
+  bridged_via_togoid:             # not co-hosted / cross-endpoint — use togoid_convertId
+    - "UniProt, KEGG, and other protein/pathway IDs are not carried in BRENDA's RDF — bridge from an EC number or organism via TogoID."
+
+# ── Phase-5 self-check (spec §5) ──
+#  1. Parses as YAML; required keys present (database, discovery, endpoint, graphs, examples, id_join_map). ✔
+#  2. discovery has all four fields; description is one sentence. ✔
+#  3. Every example has verified: with date: "2026-07-22" (date:, not on:), all re-run live this pass. ✔
+#  4. ≥1 aggregation (count_enzymes, enzyme_breadth_agg) AND ≥1 cross_db (xdb_hgnc). ✔
+#  5. Every inflating/joining/stubbing co_hosted graph flagged: bacdive (scope_bleed ×11.47), hgnc (join), mesh (join). ✔
+#  6. No fact restated across sections; nothing in schema_delta that an example shows (reactions/tissue/refs/activators only). ✔
+#  7. Byte count recorded vs v2 (39,322 B) — see header + footer. ✔
+#  8. Set-level enumeration route present as a first-class example: enum_by_ec (d3o:isClassifiedAs) + enzymes_by_taxid
+#     (d3o:hasTaxID) — audit lists brenda OK-tier with both routes first-class; carried across + re-verified. ✔
+#  9. No example subject is a benchmark keyword/class/gold entity for brenda (§4.6): swapped v2's EC 4.1.1.17
+#     ornithine decarboxylase / spermidine (q061/q092) to neutral EC 1.1.1.1 / 2.7.11.1 / 3.4.22.36; xdb_hgnc
+#     kept generic (no EC filter) so it does not pin q057's aminotransferase subject. ✔
+#
+# Byte footer: v2 = 39,322 B → v3 = 19,140 B (~51% smaller). Verified live against
+# https://rdfportal.org/primary/sparql (graph http://rdfportal.org/dataset/brenda) on 2026-07-22.

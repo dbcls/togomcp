@@ -1,0 +1,245 @@
+# MIE v3 — MONDO (Mondo Disease Ontology). Agent-authored 2026-07-22 on `mie-redesign`.
+# Format: benchmark/redesign/MIE_v3_spec.md. Every verified count/result re-run live on the mondo
+# endpoint 2026-07-22. Byte count vs the v2 file it replaces (spec §5 item 7):
+# v2 togo_mcp/data/mie/mondo.yaml = 31,081 bytes; this v3 file = 17,584 bytes → 43.4% smaller. See footer.
+# enumeration_audit.md tier: OK — subClassOf*/hasDbXref routes already first-class in v2; carried across,
+# re-verified + dated (enum_category_subtree + enum_by_omim_xref).
+database: mondo
+
+# ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
+discovery:
+  title: MONDO — Mondo Disease Ontology
+  description: >
+    Unified disease ontology integrating 39+ source vocabularies into one owl:Class hierarchy
+    (~29.9k active disease classes) with definitions, synonyms, a single hasDbXref cross-reference
+    predicate to OMIM/Orphanet/MeSH/DOID/UMLS/ICD, and skos:exactMatch equivalence links.
+  keywords: [disease, ontology, disorder, syndrome, rare disease, genetic disease, infectious disease,
+             cancer, cross-reference, omim, orphanet, doid, mesh, icd, disease classification, subclass hierarchy]
+  categories: [disease, ontology]
+
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/primary/sparql   # RDF Portal "primary" endpoint (endpoint_name: primary)
+base_uri: http://purl.obolibrary.org/obo/        # class IRI = obo:MONDO_NNNNNNN
+graphs:
+  primary: http://rdfportal.org/ontology/mondo    # the DB's own graph — the default pin target
+  co_hosted:                                       # same endpoint; flag inflation/join/stub (spec §3.2)
+    ontology/efo: >
+      INFLATION. EFO imports MONDO and RE-DECLARES 16,423 of the ~33.8k MONDO_* classes (~48.5%) under the
+      SAME obo IRIs, each with its own `a owl:Class` + rdfs:label. Over the default union, `?c a owl:Class ;
+      rdfs:label ?l` MULTIPLIES (2 types × 2 labels = 4 rows) → 83,035 rows unpinned vs 33,766 pinned (×2.46).
+      COUNT(DISTINCT) masks the count but NOT a two-variable read. FIX = pin GRAPH/FROM ontology/mondo
+      (gotcha pin_mondo_graph). NOTE: database='ontology' is a registered UMBRELLA over BOTH mondo and efo —
+      it does NOT scope you to MONDO; use database='mondo'.
+    id.nlm.nih.gov/mesh: "JOIN target (not a trap): MONDO hasDbXref 'MESH:D…' → construct the mesh IRI to join (example xdb_mesh)."
+    other_ontologies: >
+      ~30 more rdfportal.org/ontology/* graphs (go, nando, uberon, hp, …) + purl.jp/bio/11/goa share this
+      endpoint. Join targets, NOT co-tenancy traps — only efo re-declares MONDO's own class IRIs (probed 2026-07-22).
+
+entity_counts:                     # graph-pinned COUNT(DISTINCT), live 2026-07-22
+  active_disease_classes: 29866    # pinned, MONDO_* owl:Class, FILTER NOT EXISTS owl:deprecated true
+  total_incl_deprecated: 33840     # ~3,974 owl:deprecated true (retired; always filter out)
+  classes_with_omim_xref: 9807     # ~32.8% of active
+  category_hereditary: 11801       # subClassOf* MONDO_0003847
+  category_cancer: 2272            # subClassOf* MONDO_0004992
+  category_infectious: 1079        # subClassOf* MONDO_0005550
+
+global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
+  - id: pin_mondo_graph
+    say: >
+      PIN GRAPH/FROM <http://rdfportal.org/ontology/mondo>. Co-hosted EFO re-declares ~half of MONDO under the
+      SAME IRIs with its own type+label, so an unpinned `?c a owl:Class ; rdfs:label ?l` returns 83,035 rows for
+      33,766 labelled classes (×2.46 product inflation). Pinning is the fix; COUNT(DISTINCT) hides a count but not
+      a two-variable read. EFO also holds STALE label copies that drop MONDO's "obsolete " prefix — one more reason
+      to pin and to filter obsolescence structurally (owl:deprecated), never by label text.
+  - id: deprecated_filter
+    say: >
+      Always add FILTER NOT EXISTS { ?disease owl:deprecated true }. Omitting it queries ~33,840 classes including
+      ~3,974 deprecated (active = 29,866), inflating every count and returning retired IRIs. Prefer this structural
+      filter over `FILTER(!STRSTARTS(?label,"obsolete"))` — the label test misses EFO's un-prefixed stale copies.
+  - id: iri_blank_node
+    say: >
+      rdfs:subClassOf points to OWL restriction BLANK NODES alongside named parents. Add FILTER(isIRI(?parent))
+      whenever you read hierarchy parents, or you get bnode garbage rows.
+  - id: subclassof_star_dag
+    say: >
+      MONDO is a multiple-inheritance DAG, so `?d rdfs:subClassOf* <category>` returns ONE ROW PER PATH — a disease
+      reachable by 3 routes appears 3×. Use SELECT DISTINCT ?disease (or COUNT(DISTINCT ?disease)); a bare COUNT/row
+      list silently over-counts.
+  - id: xref_prefix
+    say: >
+      oboInOwl:hasDbXref values are "PREFIX:ID" STRING literals ("OMIM:143100", "MESH:D006816", "Orphanet:399") — one
+      predicate for all 39+ sources. Match with FILTER(STRSTARTS(?xref,"OMIM:")), never CONTAINS (mid-string false hits).
+      MeSH/OMIM are strings, not IRIs — to JOIN, construct the target IRI (SUBSTR+CONCAT, see xdb_mesh).
+
+# ── examples: verified, executable atoms. IRI = obo:MONDO_NNNNNNN; oboInOwl:id = "MONDO:NNNNNNN" display string.
+#    Subjects are canonical/neutral (Huntington disease, infectious/cancer/hereditary categories) — NOT drawn from
+#    the mondo benchmark questions (epilepsy, autoimmune, MLD, Leigh, von Willebrand, RP, amyloidosis, MSUD). §4.6. ──
+examples:
+  - id: disease_lookup
+    intent: full profile of a known disease by IRI (label, definition, synonyms, xrefs)
+    question: "What are the label, definition, synonyms, and cross-references for Huntington disease?"
+    complexity: basic
+    sparql: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+      SELECT ?label ?definition ?synonym ?xref
+      FROM <http://rdfportal.org/ontology/mondo>
+      WHERE {
+        obo:MONDO_0007739 rdfs:label ?label .
+        OPTIONAL { obo:MONDO_0007739 obo:IAO_0000115 ?definition }
+        OPTIONAL { obo:MONDO_0007739 oboInOwl:hasExactSynonym ?synonym }
+        OPTIONAL { obo:MONDO_0007739 oboInOwl:hasDbXref ?xref }
+      }
+      LIMIT 50
+    verified: {label: "Huntington disease", synonyms: 6, xrefs: 16, has_definition: true, date: "2026-07-22"}
+    teaches: "Direct-IRI lookup is the fastest pattern: rdfs:label (required), obo:IAO_0000115 (definition, ~65% coverage), oboInOwl:hasExactSynonym (0..n), oboInOwl:hasDbXref (0..n 'PREFIX:ID' strings). OPTIONAL every non-label field."
+
+  - id: ancestors
+    intent: all ancestor disease classes via the transitive subclass path, blank nodes excluded
+    question: "What are all ancestor disease classes of Huntington disease?"
+    complexity: basic
+    sparql: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+      SELECT DISTINCT ?ancestor ?ancestorId ?ancestorLabel
+      FROM <http://rdfportal.org/ontology/mondo>
+      WHERE {
+        obo:MONDO_0007739 rdfs:subClassOf+ ?ancestor .
+        ?ancestor rdfs:label ?ancestorLabel ; oboInOwl:id ?ancestorId .
+        FILTER(isIRI(?ancestor))
+      }
+    verified: {distinct_ancestors: 13, date: "2026-07-22"}
+    teaches: "rdfs:subClassOf+ walks up the hierarchy (use `*` to include self). Requiring ?ancestor rdfs:label filters to named classes on its own, but keep FILTER(isIRI(?ancestor)) as the explicit guard against OWL restriction bnodes."
+    traps_avoided:
+      - "Without FILTER(isIRI(?parent)) a bare `rdfs:subClassOf ?parent` returns OWL restriction blank nodes mixed in (gotcha iri_blank_node)."
+
+  - id: enum_category_subtree
+    intent: enumerate ALL diseases under a category via subClassOf* (the set-level enumeration route)
+    question: "Which diseases are classified as infectious diseases?"
+    complexity: intermediate
+    sparql: |
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+      SELECT DISTINCT ?disease ?mondoId ?label
+      FROM <http://rdfportal.org/ontology/mondo>
+      WHERE {
+        ?disease a owl:Class ; rdfs:label ?label ; oboInOwl:id ?mondoId ;
+                 rdfs:subClassOf* obo:MONDO_0005550 .   # infectious disease category
+        FILTER NOT EXISTS { ?disease owl:deprecated true }
+      }
+      ORDER BY ?mondoId
+      LIMIT 100
+    verified: {total_in_subtree: 1079, first_row: "MONDO:0000222 = seminal vesicle acute gonorrhea", date: "2026-07-22"}
+    teaches: "THE enumeration route: `?d a owl:Class ; rdfs:subClassOf* <categoryIRI>` returns every descendant of a disease category (1,079 for infectious). Category IRIs: MONDO_0003847 hereditary, MONDO_0004992 cancer, MONDO_0005550 infectious, MONDO_0000001 root. Discover an unknown category IRI first (OLS4 / a label lookup), then expand — never paste text-search hits into VALUES (that samples, not enumerates)."
+    traps_avoided:
+      - "Multiple-inheritance DAG: subClassOf* yields one row PER PATH, so a disease reachable by several routes duplicates. SELECT DISTINCT (here) or COUNT(DISTINCT) is mandatory (gotcha subclassof_star_dag)."
+      - "Omitting FILTER NOT EXISTS owl:deprecated adds retired classes to the set (gotcha deprecated_filter)."
+
+  - id: count_categories
+    intent: correct graph-pinned COUNT(DISTINCT) across disease categories (the aggregation recipe)
+    question: "How many active diseases belong to each major disease category?"
+    complexity: aggregation
+    sparql: |
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT ?categoryLabel (COUNT(DISTINCT ?disease) AS ?count)
+      FROM <http://rdfportal.org/ontology/mondo>          # pin — else co-hosted EFO inflates
+      WHERE {
+        VALUES (?category ?categoryLabel) {
+          (obo:MONDO_0003847 "hereditary disease")
+          (obo:MONDO_0004992 "cancer")
+          (obo:MONDO_0005550 "infectious disease")
+        }
+        ?disease a owl:Class ; rdfs:subClassOf* ?category .
+        FILTER NOT EXISTS { ?disease owl:deprecated true }
+      }
+      GROUP BY ?categoryLabel
+      ORDER BY DESC(?count)
+    verified: {hereditary_disease: 11801, cancer: 2272, infectious_disease: 1079, date: "2026-07-22"}
+    teaches: "Aggregate by counting DISTINCT descendants of each category IRI, graph-pinned and deprecated-filtered. COUNT(DISTINCT ?disease) is doubly needed here: it collapses BOTH the DAG multi-path duplicates AND any co-hosted EFO re-declarations."
+    traps_avoided:
+      - "Unpinned, the same query joins EFO's re-declared copies; a two-variable read would return ×2.46 rows (33,766 → 83,035). Pin the graph (gotcha pin_mondo_graph)."
+
+  - id: enum_by_omim_xref
+    intent: enumerate ALL diseases carrying a given source cross-reference (set-level xref route)
+    question: "Which diseases have an OMIM cross-reference, and how many are there?"
+    complexity: intermediate
+    sparql: |
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+      SELECT ?disease ?label ?omimXref
+      FROM <http://rdfportal.org/ontology/mondo>
+      WHERE {
+        ?disease a owl:Class ; rdfs:label ?label ;
+                 oboInOwl:hasDbXref ?omimXref .
+        FILTER(STRSTARTS(?omimXref, "OMIM:"))
+        FILTER NOT EXISTS { ?disease owl:deprecated true }
+      }
+      LIMIT 50
+    verified: {diseases_with_omim: 9807, date: "2026-07-22", note: "swap COUNT(DISTINCT ?disease) for the total"}
+    teaches: "The second enumeration axis: one predicate (oboInOwl:hasDbXref) covers all 39+ sources; select a source by STRSTARTS on its 'PREFIX:' string (OMIM: ~32.8%, Orphanet:, MESH: ~26.8%, DOID:, UMLS: ~70%). Swap the prefix for a different registry."
+    traps_avoided:
+      - "CONTAINS(?xref,'OMIM') matches mid-string values too; STRSTARTS with the trailing colon is exact (gotcha xref_prefix)."
+
+  - id: xdb_mesh
+    intent: "cross-DB (intra-primary): MONDO diseases → MeSH descriptors by constructing the mesh IRI from the xref string"
+    question: "What MeSH descriptors correspond to MONDO infectious diseases?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+      SELECT DISTINCT ?mondoLabel ?meshURI ?meshLabel
+      WHERE {
+        GRAPH <http://rdfportal.org/ontology/mondo> {
+          ?d a owl:Class ; rdfs:label ?mondoLabel ;
+             rdfs:subClassOf* obo:MONDO_0005550 ;            # pre-filter to infectious disease FIRST
+             oboInOwl:hasDbXref ?xref .
+          FILTER(STRSTARTS(?xref, "MESH:"))
+          FILTER NOT EXISTS { ?d owl:deprecated true }
+        }
+        BIND(URI(CONCAT("http://id.nlm.nih.gov/mesh/", SUBSTR(?xref, 6))) AS ?meshURI)   # "MESH:D017726" → mesh IRI
+        GRAPH <http://id.nlm.nih.gov/mesh> { ?meshURI rdfs:label ?meshLabel . }
+      }
+      LIMIT 20
+    verified: {result_rows: 20, first_row: "cytomegalovirus retinitis → mesh/D017726 'Cytomegalovirus Retinitis'", date: "2026-07-22"}
+    teaches: "MeSH is co-hosted on the primary endpoint — direct GRAPH join, no TogoID. hasDbXref stores 'MESH:D…' STRINGS, so BIND(URI(CONCAT('http://id.nlm.nih.gov/mesh/', SUBSTR(?xref,6)))) rebuilds the IRI (drop the 'MESH:' prefix = 5 chars, SUBSTR is 1-based so start at 6). Pre-filter inside the mondo GRAPH before the join."
+    traps_avoided:
+      - "SELECT DISTINCT is required — a MeSH descriptor with several rdfs:label values (and the DAG multi-path) duplicates rows otherwise."
+      - "Filtering the MeSH label AFTER the join scans the whole cross product; restrict the MONDO side (category IRI) inside its GRAPH first."
+
+# ── schema_delta: non-obvious predicates/vocab NO example above already demonstrates. ──
+schema_delta:
+  - "skos:exactMatch — formal ontology-level equivalence links expressed as IRIs (DOID/EFO/UMLS/NCIT/SNOMED), separate from the string-based hasDbXref. Use for OWL reasoning; hasDbXref for enumeration/prefix filtering."
+  - "oboInOwl:hasRelatedSynonym — BROADER/NARROWER alternative names (vs hasExactSynonym = semantically equivalent). Do not treat related synonyms as equivalents when matching by name."
+  - "Psychiatric-disorder scope split: MONDO_0002025 'psychiatric disorder' holds only ~437 subtypes; most mental conditions sit under MONDO_0005084 'mental or behavioural disorder' (~1,400). Confirm the exact category IRI before an aggregate — a plausible IRI can silently undercount."
+  - "bif:contains (Virtuoso free-text) is legitimate ONLY on rdfs:label/definition when no category IRI or hasDbXref route exists. Split the property path first: `?d rdfs:label ?l . ?l bif:contains \"'term'\"`. It is almost never the first step — MONDO has a category IRI for most named disease groups."
+
+# ── id_join_map: how to anchor stably and cross to other resources. ──
+id_join_map:
+  stable_anchor: >
+    Disease = obo:MONDO_NNNNNNN IRI (http://purl.obolibrary.org/obo/MONDO_ + 7 digits); oboInOwl:id carries the
+    display string "MONDO:NNNNNNN". Deprecated IRIs are retained (owl:deprecated true) — anchor only on active classes.
+  same_endpoint_joins:            # co-hosted on `primary` — direct GRAPH join, NO TogoID
+    mesh: "hasDbXref 'MESH:D…' string → BIND the http://id.nlm.nih.gov/mesh/… IRI (SUBSTR+CONCAT), GRAPH-join id.nlm.nih.gov/mesh (example xdb_mesh; ~26.8% of active diseases)"
+    nando: "reverse direction — NANDO (Japanese intractable diseases, GRAPH nanbyodata.jp/ontology/nando) maintains skos:closeMatch → the MONDO IRI directly; join from the NANDO side, no string transform (~84% of NANDO diseases)"
+  xrefs:                          # outbound 'PREFIX:ID' string cross-refs on hasDbXref — one predicate, 39+ sources
+    omim: "hasDbXref 'OMIM:NNNNNN' (~32.8%) — genetic-disorder registry; strip 'OMIM:' for the numeric MIM number"
+    orphanet: "hasDbXref 'Orphanet:NNN' (~34%) — rare diseases"
+    doid: "hasDbXref 'DOID:NNNN' (~39%) — Disease Ontology; also present as skos:exactMatch IRIs"
+    umls_medgen: "hasDbXref 'UMLS:C…' / 'MEDGEN:…' (~70%) — bridge to MedGen concepts (CUI)"
+    icd: "hasDbXref 'ICD10:…' / 'ICD10CM:…' / 'ICD11:…' / 'ICD9:…' — clinical classification codes"
+  bridged_via_togoid:             # DBs on OTHER endpoints (no co-hosted graph) — go via the xref ID
+    - "UniProt / ChEMBL / disease-gene resources on separate endpoints: extract the OMIM/Orphanet/UMLS ID from hasDbXref, then togoid_convertId (or the target DB's own disease field). No same-endpoint graph to GRAPH-join."
+
+# ── byte-count footer (spec §5 item 7) ──
+# v2: `wc -c togo_mcp/data/mie/mondo.yaml` = 31081 bytes
+# v3: `wc -c benchmark/redesign/mie_v3/mondo.yaml` = 17584 bytes → 43.4% smaller than v2.

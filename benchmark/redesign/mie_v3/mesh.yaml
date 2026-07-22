@@ -1,0 +1,278 @@
+# MIE v3 — MeSH (Medical Subject Headings). Hand-authored 2026-07-22 on the `mie-redesign` branch.
+# Format: benchmark/redesign/MIE_v3_spec.md. Every count/result re-run live 2026-07-22 (§4.1).
+# OK-tier DB (enumeration_audit.md): controlled vocabulary — tree-number enumeration is the headline
+# route; meshv:treeNumber STRSTARTS + meshv:broaderDescriptor+ both carried across first-class.
+# Byte count: v2 togo_mcp/data/mie/mesh.yaml = 44,464 B  →  this file = 19,576 B (56% smaller).
+database: mesh
+
+# ── discovery: rolled into the Usage Guide catalog at build time (§3.1). Keep small + uniform. ──
+discovery:
+  title: MeSH RDF — Medical Subject Headings
+  description: >
+    NLM's controlled biomedical thesaurus for PubMed indexing: ~30k topical descriptors on a
+    tree-number hierarchy (16 categories A–Z), plus ~250k supplementary chemical records, qualifiers,
+    ~467k concepts and ~870k terms; the standard cross-ontology disease/chemical vocabulary hub.
+  keywords: [controlled vocabulary, thesaurus, medical subject headings, descriptor, tree number,
+             qualifier, subheading, supplementary concept record, concept, term, pubmed indexing,
+             disease vocabulary, chemical vocabulary, cross-reference]
+  categories: [ontology, disease]
+
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/primary/sparql   # RDF Portal "primary" endpoint (shared, 200+ graphs)
+base_uri: http://id.nlm.nih.gov/mesh/
+graphs:
+  primary: http://id.nlm.nih.gov/mesh            # the authoritative graph — the default pin target
+  supporting:
+    - http://id.nlm.nih.gov/mesh/vocab           # the meshv: schema/vocabulary
+    - http://id.nlm.nih.gov/mesh/void            # VoID service doc (describes the RDF SERVICE, not this load)
+  co_hosted:
+    glycovid_pubchem: >
+      http://rdf.glycosmos.org/glycovid_pubchem RE-DECLARES 768 real MeSH descriptor IRIs (typed
+      meshv:Concept there, though they are meshv:TopicalDescriptor in MeSH proper) and gives each an
+      rdfs:label equal to its BARE ACCESSION ("D000163" instead of the term name). POISONS unpinned
+      label lookups — see gotcha glycovid_label_poison. FIX = pin GRAPH <http://id.nlm.nih.gov/mesh>.
+    togoid_relation_graphs: >
+      mondo-mesh / doid-mesh / medgen-mesh / chembl_compound-mesh / orphanet_phenotype-mesh etc.
+      REFERENCE MeSH IRIs in object position but declare no rdf:type or rdfs:label for them —
+      referencing is NOT re-declaring; they cannot inflate a MeSH type/label count. No pin needed for them.
+
+entity_counts:                                   # graph-pinned COUNT(DISTINCT); verified 2026-07-22
+  topical_descriptors: 30248
+  concepts:            466976
+  terms:               869536
+  scr_chemical:        250445
+  tree_numbers:        81732
+  qualifiers:          84
+  descriptor_labels_pinned:   "30262 rows / 30248 subjects (14 descriptors legitimately carry 2 labels)"
+  descriptor_labels_unpinned: "31030 rows / 30248 subjects — +768 poisoned rows from glycovid_pubchem (×1.025)"
+  coverage: "descriptors: 100% have a tree number & label · ~31% have meshv:annotation · ~99.6% have a broaderDescriptor · ~33% of Terms carry a thesaurusID"
+
+global_gotchas:                                  # the few that bite ANY query — verified 2026-07-22
+  - id: pin_the_graph
+    say: >
+      ALWAYS scope FROM <http://id.nlm.nih.gov/mesh> (or GRAPH for cross-DB). Unscoped, the query
+      runs across the shared 200+-graph "primary" endpoint and returns cross-graph noise or times out.
+  - id: glycovid_label_poison
+    say: >
+      Unpinned `?d a meshv:TopicalDescriptor ; rdfs:label ?l` returns 31,030 rows for 30,248 descriptors;
+      pinned it returns 30,262 (verified 2026-07-22). The 768 extra rows come from co-hosted
+      glycovid_pubchem, which labels each affected descriptor with its BARE ACCESSION ("D000163") instead
+      of the term name — and the 768 are all DISEASE terms. A label lookup can return the accession; a
+      FILTER/REGEX/bif:contains on the label silently drops those descriptors. Only ×1.025 overall, so it
+      never looks wrong in a count. FIX = pin GRAPH <http://id.nlm.nih.gov/mesh>.
+  - id: silent_wrong_predicates
+    say: >
+      Three predicate swaps return 0 rows with NO error. Descriptor→descriptor hierarchy is
+      meshv:broaderDescriptor, NOT meshv:broader (broader = empty). Scope notes on a Descriptor are
+      meshv:annotation, NOT meshv:scopeNote (scopeNote is valid only on a Concept). Qualifiers use
+      meshv:broaderQualifier and Concepts meshv:broaderConcept — never the plain broader.
+  - id: indirect_attributes
+    say: >
+      Two heavily-wanted attributes are one hop away, never on the entity: CAS meshv:registryNumber is
+      on the Concept (?e meshv:preferredConcept ?c . ?c meshv:registryNumber ?rn), and external
+      meshv:thesaurusID is on the Term (?e meshv:preferredTerm ?t . ?t meshv:thesaurusID ?x). Both are
+      partial-coverage — always OPTIONAL. Note also Term labels are meshv:prefLabel, NOT rdfs:label.
+
+# ── examples: verified, executable atoms (§3.3). Descriptor is the hub; Tree/Concept/Term hang off it. ──
+examples:
+  - id: descriptor_lookup
+    intent: full annotation + tree position + parent for a known descriptor IRI (the two silent-fail traps in one query)
+    question: "What is the scope annotation, tree number, and parent of the Acetylcholinesterase descriptor?"
+    complexity: basic
+    sparql: |
+      PREFIX mesh:  <http://id.nlm.nih.gov/mesh/>
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?label ?annotation ?treeNum ?broaderLabel
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        mesh:D000110 rdfs:label ?label .
+        OPTIONAL { mesh:D000110 meshv:annotation ?annotation }                       # NOT meshv:scopeNote
+        OPTIONAL { mesh:D000110 meshv:treeNumber ?tree . ?tree rdfs:label ?treeNum }
+        OPTIONAL { mesh:D000110 meshv:broaderDescriptor ?b . ?b rdfs:label ?broaderLabel }  # NOT meshv:broader
+      }
+    verified: {result_rows: 1, label: "Acetylcholinesterase", treeNum: "D08.811.277.352.100.170.176", broader: "Cholinesterases", date: "2026-07-22"}
+    teaches: "Descriptor IRI = mesh:D######. annotation/treeNumber are OPTIONAL (only ~31% have annotation). Batch several IRIs with a VALUES ?descriptor {...} block."
+    traps_avoided:
+      - "meshv:broader and meshv:scopeNote both return 0 rows on a Descriptor with no error — use meshv:broaderDescriptor and meshv:annotation (gotcha silent_wrong_predicates)."
+
+  - id: tree_category_enum
+    intent: "ENUMERATION ROUTE #1 (headline) — ALL descriptors under a tree category via STRSTARTS on the tree-number label"
+    question: "Which topical descriptors are classified under the Enzymes and Coenzymes (D08) tree category?"
+    complexity: intermediate
+    sparql: |
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT (COUNT(DISTINCT ?descriptor) AS ?n)
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        ?descriptor a meshv:TopicalDescriptor ; meshv:treeNumber ?tree .
+        ?tree rdfs:label ?treeNum .
+        FILTER(STRSTARTS(?treeNum, "D08"))       # drop the COUNT + add ?descriptor ?label to list them
+      }
+    verified: {n: 1853, date: "2026-07-22"}
+    teaches: "The set-level route for 'all descriptors in category/subtree X': match the tree-number LABEL string with STRSTARTS. A prefix is as coarse or fine as you like — 'D08' a whole category, 'D08.811.277' a sub-branch."
+    traps_avoided:
+      - "Do NOT text-search the descriptor label (bif:contains 'enzyme') — it misses descriptors filed under D08 that aren't named 'enzyme', and catches unrelated ones. The tree number is the controlled axis."
+
+  - id: ancestor_walk
+    intent: "ENUMERATION ROUTE #2 — ALL hierarchical ancestors of a descriptor via the transitive broaderDescriptor+ path"
+    question: "What are all the hierarchical parent descriptors of Caffeine?"
+    complexity: advanced
+    sparql: |
+      PREFIX mesh:  <http://id.nlm.nih.gov/mesh/>
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT DISTINCT ?parent ?parentLabel
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        mesh:D002110 meshv:broaderDescriptor+ ?parent .   # + = transitive; NOT meshv:broader
+        ?parent rdfs:label ?parentLabel .
+      }
+      ORDER BY ?parentLabel
+    verified: {distinct_parents: 7, includes: "Alkaloids, Purines, Xanthines, Heterocyclic Compounds", date: "2026-07-22"}
+    teaches: "meshv:broaderDescriptor+ walks the whole ancestor chain from one descriptor; drop the + for direct parents only. The reverse (all descendants of X) is ?d meshv:broaderDescriptor+ mesh:D###### ."
+    traps_avoided:
+      - "A descriptor can sit at multiple tree positions, so the raw path yields duplicate ancestor rows (Heterocyclic Compounds appears twice for Caffeine) — use SELECT DISTINCT / COUNT(DISTINCT)."
+
+  - id: category_distribution
+    intent: aggregate descriptor counts across all top-level MeSH categories (graph-pinned COUNT)
+    question: "How many topical descriptors fall in each major MeSH tree category?"
+    complexity: aggregation
+    sparql: |
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?category (COUNT(DISTINCT ?descriptor) AS ?count)
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        ?descriptor a meshv:TopicalDescriptor ; meshv:treeNumber ?tree .
+        ?tree rdfs:label ?treeLabel .
+        BIND(SUBSTR(?treeLabel, 1, 1) AS ?category)   # first char = top category letter
+      }
+      GROUP BY ?category
+      ORDER BY DESC(?count)
+    verified: {top: "D (Chemicals/Drugs) 10541, C (Diseases) 5032, B (Organisms) 3964, E 3102, G 2430", date: "2026-07-22"}
+    teaches: "COUNT(DISTINCT ?descriptor) because a descriptor with N tree numbers yields N rows — DISTINCT collapses them. A descriptor cross-classified across categories is counted once per category (correctly)."
+    traps_avoided:
+      - "A tiny '[' bucket (74) appears — some tree-number labels start with '[' (a Virtuoso collation artifact); safe to ignore, not a real category."
+
+  - id: allowable_qualifiers
+    intent: valid indexing subheadings (qualifiers) for a descriptor
+    question: "Which qualifiers (subheadings) may be paired with the Caffeine descriptor for indexing?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mesh:  <http://id.nlm.nih.gov/mesh/>
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?qualLabel
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        mesh:D002110 meshv:allowableQualifier ?q .
+        ?q rdfs:label ?qualLabel .
+      }
+      ORDER BY ?qualLabel
+    verified: {first_rows: "administration & dosage, adverse effects, agonists, analogs & derivatives", date: "2026-07-22"}
+    teaches: "meshv:allowableQualifier lists the 84 subheadings valid for a descriptor. The precomputed cross-product (679k meshv:AllowedDescriptorQualifierPair with hasDescriptor/hasQualifier) is the reverse index: all descriptors that allow a given qualifier."
+
+  - id: scr_registry_number
+    intent: CAS registry numbers for supplementary chemical records (indirect via Concept)
+    question: "What are the CAS registry numbers of MeSH supplementary chemical records?"
+    complexity: intermediate
+    sparql: |
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?chemical ?label ?regNum
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        ?chemical a meshv:SCR_Chemical ; rdfs:label ?label ;
+                  meshv:preferredConcept ?concept .        # registryNumber is on the Concept, NOT here
+        ?concept meshv:registryNumber ?regNum .
+        FILTER(?regNum != "0")                             # "0" = no CAS number assigned
+      }
+      LIMIT 5
+    verified: {first_row: "C086195 N-acetylgalactosaminyl-alpha(1-3)galactose = CAS 66781-75-7", date: "2026-07-22"}
+    teaches: "SCR_Chemical (C###### IRI, 250k records) has NO tree numbers — hierarchy is via meshv:mappedTo/meshv:preferredMappedTo to a TopicalDescriptor. Its CAS number lives on meshv:preferredConcept → meshv:registryNumber, never directly on the SCR entity."
+
+  - id: descriptor_xref
+    intent: outbound cross-references to external databases (indirect via Term)
+    question: "Which MeSH descriptors carry an OMIM cross-reference?"
+    complexity: intermediate
+    sparql: |
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?descriptor ?descLabel ?xref
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        ?descriptor a meshv:TopicalDescriptor ; rdfs:label ?descLabel ;
+                    meshv:preferredTerm ?term .            # thesaurusID is on the Term
+        ?term meshv:thesaurusID ?xref .
+        FILTER(CONTAINS(?xref, "OMIM"))
+      }
+      LIMIT 5
+    verified: {first_row: "D003550 Cystic Fibrosis = 'OMIM (2013)'", date: "2026-07-22"}
+    teaches: "External xrefs (OMIM, FDA SRS/UNII, INN, ChEBI, SNOMED CT, FMA) are meshv:thesaurusID strings on the Term, reached via meshv:preferredTerm. ~33% of Terms carry one — always OPTIONAL in real queries."
+
+  - id: xdb_mondo_mapping
+    intent: "cross-DB (intra-primary): MONDO disease classes → MeSH descriptors via oboInOwl:hasDbXref"
+    question: "What are the MeSH descriptors for Parkinson disease, asthma, and epilepsy in MONDO?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX owl:      <http://www.w3.org/2002/07/owl#>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+      PREFIX rdfs:     <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo:      <http://purl.obolibrary.org/obo/>
+      SELECT ?mondoLabel ?meshId ?meshLabel ?meshType
+      WHERE {
+        GRAPH <http://rdfportal.org/ontology/mondo> {
+          VALUES ?mondoDisease { obo:MONDO_0004979 obo:MONDO_0005180 obo:MONDO_0005027 }  # pre-filter first
+          ?mondoDisease a owl:Class ; rdfs:label ?mondoLabel ; oboInOwl:hasDbXref ?meshXref .
+          FILTER(STRSTARTS(STR(?meshXref), "MESH:"))
+        }
+        BIND(URI(CONCAT("http://id.nlm.nih.gov/mesh/", SUBSTR(STR(?meshXref), 6))) AS ?meshDescriptor)
+        BIND(SUBSTR(STR(?meshXref), 6) AS ?meshId)
+        GRAPH <http://id.nlm.nih.gov/mesh> {
+          ?meshDescriptor rdfs:label ?meshLabel ; a ?type .
+          BIND(STRAFTER(STR(?type), "vocab#") AS ?meshType)
+        }
+      }
+      ORDER BY ?mondoLabel
+    verified: {result_rows: 3, mappings: "asthma→D001249, epilepsy→D004827, Parkinson disease→D010300 (all TopicalDescriptor)", date: "2026-07-22"}
+    teaches: "MONDO is co-hosted on 'primary'. It points OUT with oboInOwl:hasDbXref 'MESH:D######'; strip the 'MESH:' prefix (SUBSTR from 6) and CONCAT the MeSH base URI to reconstruct the IRI. Pre-filter MONDO IRIs in a VALUES block BEFORE the join, never a label FILTER after it."
+    traps_avoided:
+      - "A MESH: xref can point to a D-prefix TopicalDescriptor OR a C-prefix SCR record — bind ?type to tell them apart. ~28% of MONDO diseases carry a MESH xref, so a full scan is a partial mapping, never total."
+
+# ── schema_delta: non-obvious structure NO example above shows (§3.4) ──
+schema_delta:
+  - "SCR hierarchy: supplementary records (SCR_Chemical/Disease/Organism/Protocol/Population/Anatomy) have NO tree numbers — reach a TopicalDescriptor via meshv:mappedTo (any) or meshv:preferredMappedTo (the single best)."
+  - "meshv:pharmacologicalAction links a chemical descriptor or SCR record to the descriptor for its action (e.g. an NSAID → Anti-Inflammatory Agents, Non-Steroidal) — a semantic axis orthogonal to the tree."
+  - "Sibling hierarchies for the non-descriptor classes: Qualifier→meshv:broaderQualifier, Concept→meshv:broaderConcept/narrowerConcept/relatedConcept."
+  - "meshv:DisallowedDescriptorQualifierPair (1,041) carries meshv:useInstead pointing at the preferred descriptor+qualifier combination — the 'do not index this way' table."
+
+# ── id_join_map (§3.5) — the least-recoverable asset ──
+id_join_map:
+  stable_anchor: >
+    IRI http://id.nlm.nih.gov/mesh/<accession>. Accession prefix encodes the type: D###### = TopicalDescriptor,
+    C###### = SCR record, Q###### = Qualifier, M####### = Concept, T####### = Term. meshv:identifier repeats
+    the accession as a string. Descriptor labels are unique enough to key on ONLY when graph-pinned (glycovid poison).
+  same_endpoint_joins:            # co-hosted on `primary` — direct GRAPH join, NO TogoID needed
+    mondo:    "oboInOwl:hasDbXref 'MESH:D######' (reverse direction: MONDO→MeSH). ~28% of MONDO diseases. See xdb_mondo_mapping."
+    pubtator: "annotations use oa:hasBody <http://identifiers.org/mesh/D######>. NOTE the IRI FORM DIFFERS — identifiers.org/mesh/, NOT id.nlm.nih.gov/mesh/ — reconcile the base URI before joining."
+    pubmed:   "fabio:hasPrimarySubjectTerm / rdfs:seeAlso also use the identifiers.org/mesh/ IRI form (see the pubtator note)."
+  xrefs:                          # outbound references, both one hop off the descriptor
+    external_thesaurus: "meshv:thesaurusID on the Term (via meshv:preferredTerm): OMIM, FDA SRS/UNII, INN, ChEBI, SNOMED CT, FMA. ~33% of Terms. See descriptor_xref."
+    cas_registry:       "meshv:registryNumber on the Concept (via meshv:preferredConcept): CAS number, or '0' if none. See scr_registry_number."
+  bridged_via_togoid:             # MeSH is a TogoID dataset — reachable from IDs with no direct co-hosted graph
+    - "mesh ↔ mondo / doid / medgen / orphanet / chembl_compound / chebi via togoid_convertId (also present as reference-only togoid relation graphs on this endpoint — object-position only, no type/label)"
+
+# Footer — byte count (Phase-5 item 7): v2 44,464 B → v3 this file 19,576 B (56% smaller).
+# Phase-5 self-check (2026-07-22):
+#  1. Parses as YAML; required keys present (database, discovery, endpoint, graphs, examples, id_join_map). ✓
+#  2. discovery has title/description/keywords/categories; description is one sentence. ✓
+#  3. Every example has verified: with date "2026-07-22" (date:, not on:); all 8 re-run live this pass. ✓
+#  4. ≥1 aggregation (category_distribution) + ≥1 cross_db (xdb_mondo_mapping). ✓
+#  5. co_hosted glycovid_pubchem flagged as inflating/poisoning label lookups; togoid relation graphs flagged as reference-only (no inflation). ✓
+#  6. No fact restated across sections; nothing in schema_delta that an example shows (mappedTo/pharmacologicalAction/broaderQualifier/Disallowed pairs are new). ✓
+#  7. Byte count recorded above. ✓
+#  8. Enumeration routes: mesh is OK-tier — BOTH set-level routes carried first-class: tree_category_enum (STRSTARTS treeNumber, D08→1853) and ancestor_walk (broaderDescriptor+, transitive). Not left as caveats. ✓
+#  9. No example subject is a benchmark descriptor/tree-category for this DB (§4.6): avoided SLE/disease-categories (q010), Mucopolysaccharidosis (q019), Bardet-Biedl (q029), Brugada (q039), Cockayne (q047), Amyloidosis (q096); used neutral Acetylcholinesterase/Caffeine/D08-enzymes/Parkinson-asthma-epilepsy. ✓

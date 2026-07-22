@@ -1,0 +1,230 @@
+# MIE v3 — Gene Ontology (GO). Agent-authored 2026-07-22 on `mie-redesign`.
+# Format: benchmark/redesign/MIE_v3_spec.md. Every verified count/result re-run live on the `go` database 2026-07-22.
+# Byte count vs the v2 file it replaces (spec §5 item 7): v2 togo_mcp/data/mie/go.yaml = 33,079 bytes;
+# this v3 file = 17,771 bytes → 46.3% smaller. Exact `wc -c` figures in the footer.
+# enumeration_audit.md: go is OK-tier — enumeration IS the point. BOTH set-level routes carried first-class:
+#   hasOBONamespace (3-value controlled) → example enum_namespace; rdfs:subClassOf+ subtree → example subtree_descendants.
+database: go
+
+# ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
+discovery:
+  title: Gene Ontology (GO)
+  description: >
+    Cross-species controlled vocabulary for gene-product function, organized into three independent
+    domains (biological_process, molecular_function, cellular_component) with a DAG hierarchy,
+    definitions, synonyms, GO-slim subsets, and string cross-references to EC/RHEA/Reactome/MetaCyc/KEGG.
+  keywords: [gene ontology, ontology, biological process, molecular function, cellular component,
+             go term, functional annotation, obo, controlled vocabulary, hierarchy, subclassof, dag]
+  categories: [ontology]
+
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/primary/sparql   # RDF Portal "primary" endpoint (shared with MANY ontologies)
+base_uri: http://purl.obolibrary.org/obo/
+graphs:
+  primary: http://rdfportal.org/ontology/go       # the DB's own graph — the default pin target; internally 1:1 clean
+  co_hosted:                       # same endpoint; several graphs RE-DECLARE GO's own IRIs → ×3.27 row inflation
+    import_shadows: >
+      TEN graphs re-declare the SAME obo:GO_* IRIs as owl:Class (glycosmos/glycoprotein 19,255 type-only + NO
+      label; ontology/cl 7,688, uberon 7,431, efo, clo, pro, pro-reasoned, RIKEN/SSBD, swisslipids, po — most
+      also attach their OWN rdfs:label). These are import shadows of GO terms inside other OBO ontologies.
+      INFLATION: the everyday `?c a owl:Class ; rdfs:label ?l` on obo:GO_* returns 158,185 rows / 48,330 classes
+      UNPINNED vs exactly 48,321 rows / 48,321 classes PINNED to <ontology/go> = ×3.27 (gotcha graph_pin). The
+      multiplier is a PRODUCT of legs (n type-matches × m label-matches per co-declared class), so it worsens as
+      you add patterns. GO's own graph is 1:1 clean. FIX = FROM/GRAPH <http://rdfportal.org/ontology/go>.
+    join_targets: >
+      TogoID relation graphs (dataset/togoid/relation/ncbigene-go, ensembl_transcript-go) plus mesh/mondo/
+      taxonomy/nando etc. share the endpoint but REFERENCE GO IRIs rather than re-declaring them — join targets,
+      not co-tenancy traps (examples xdb_ncbigene). Reach them by GRAPH-pinning the relation/ontology graph.
+
+entity_counts:                     # every count COUNT(DISTINCT) + graph-pinned to <ontology/go>, live 2026-07-22
+  go_classes_total: 48321          # obo:GO_* owl:Class with a label (pinned; 1:1 rows:classes)
+  deprecated: 13704                # owl:deprecated true (~28% — up from 9,512 at 2026-04-21; monthly release drift)
+  active_biological_process: 24136 # hasOBONamespace, non-deprecated
+  active_molecular_function: 10052 # hasOBONamespace, non-deprecated
+  active_cellular_component: 4075  # hasOBONamespace, non-deprecated
+  note: "Active-per-namespace sums to 38,263 (terms carrying hasOBONamespace and not deprecated). Counts shift every monthly release — a re-run that disagrees is drift, not rot."
+
+global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
+  - id: graph_pin
+    say: >
+      MANDATORY: FROM (or GRAPH) <http://rdfportal.org/ontology/go> on EVERY query. The primary endpoint hosts
+      ~30 ontologies AND ten graphs that re-declare GO's own obo:GO_* IRIs (gotcha import_shadows) → ×3.27 row
+      inflation and any COUNT over the unpinned pattern is WRONG. DISTINCT hides the rows but still pays the cost
+      and cannot fix an aggregate. Unpinned queries also drag in BFO/RO/OBI classes and can time out.
+  - id: strstarts_filter
+    say: >
+      Always add FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_")) to exclude non-GO OWL classes
+      (BFO, RO, OBI, and blank-node OWL restriction axioms) that share the graph. Without it counts inflate and
+      subClassOf objects include anonymous restriction nodes, not just GO parents.
+  - id: str_for_typed_literal
+    say: >
+      Virtuoso needs STR() for typed-literal comparison. FILTER(?ns = "biological_process") silently returns 0
+      rows; the datatype must be stripped: FILTER(STR(?ns) = "biological_process"). Same for the ^^xsd:string
+      form. Valid hasOBONamespace values: biological_process | molecular_function | cellular_component.
+  - id: deprecation_filter
+    say: >
+      ~28% of classes (13,704 / 48,321) carry owl:deprecated true. Any active-term query/count must exclude them:
+      FILTER NOT EXISTS { ?go owl:deprecated ?d . FILTER(?d = true) }. subClassOf+ traversals also descend into
+      obsolete branches. If a known GO ID returns nothing, check oboinowl:hasAlternativeId (merged/split terms).
+
+# ── examples: verified, executable atoms. GO term = obo:GO_NNNNNNN (7-digit). rdfs:label + oboinowl:id +
+#    IAO_0000115 definition ~100% on active terms; hierarchy is a DAG (multiple parents) via rdfs:subClassOf. ──
+examples:
+  - id: term_by_iri
+    intent: full property dump for a known GO term (the direct-IRI lookup — fastest, after an OLS4 keyword search)
+    question: "What are the label, namespace, definition, and parents of GO:0004672?"
+    complexity: basic
+    sparql: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT ?property ?value
+      FROM <http://rdfportal.org/ontology/go>
+      WHERE { obo:GO_0004672 ?property ?value . }
+      LIMIT 50
+    verified: {label: "protein kinase activity", namespace: "molecular_function", distinct_predicates: 12, date: "2026-07-22"}
+    teaches: "Once you have the IRI (from OLS4:searchClasses or a cross-ref), a bare ?property ?value dump returns everything: rdfs:label, oboinowl:id 'GO:0004672', IAO_0000115 definition, hasOBONamespace, subClassOf parents, synonyms, hasDbXref, inSubset. Cheapest possible lookup."
+
+  - id: enum_namespace              # ELEVATED aggregation — set-level route #1 (the 3-value controlled vocabulary)
+    intent: count ALL active terms in each GO domain via the typed namespace predicate (NOT text search)
+    question: "How many active (non-deprecated) terms are in each of the three GO domains?"
+    complexity: aggregation
+    sparql: |
+      PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      SELECT ?namespace (COUNT(DISTINCT ?go) AS ?count)
+      FROM <http://rdfportal.org/ontology/go>
+      WHERE {
+        ?go oboinowl:hasOBONamespace ?namespace .
+        FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
+        FILTER NOT EXISTS { ?go owl:deprecated ?d . FILTER(?d = true) }
+      }
+      GROUP BY ?namespace ORDER BY DESC(?count)
+    verified: {biological_process: 24136, molecular_function: 10052, cellular_component: 4075, date: "2026-07-22"}
+    teaches: "hasOBONamespace is a controlled 3-value predicate — the STRUCTURED route to enumerate/partition GO by domain. To LIST rather than count, SELECT ?go ?label with the same body. Never bif:contains a namespace name: it is a typed literal, use the predicate."
+    traps_avoided:
+      - "FILTER(?ns = \"molecular_function\") returns 0 rows (typed literal) — use FILTER(STR(?ns) = ...) (gotcha str_for_typed_literal)."
+      - "Drop the graph pin and the co-hosted import-shadow graphs re-declare these IRIs → inflated per-namespace counts (gotcha graph_pin)."
+
+  - id: term_parents
+    intent: direct parent terms of a GO class (one hop up the DAG), filtering out OWL restriction axioms
+    question: "What are the direct parent terms of protein kinase activity (GO:0004672)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?parent ?parentLabel
+      FROM <http://rdfportal.org/ontology/go>
+      WHERE {
+        obo:GO_0004672 rdfs:subClassOf ?parent .
+        ?parent rdfs:label ?parentLabel .
+        FILTER(STRSTARTS(STR(?parent), "http://purl.obolibrary.org/obo/GO_"))
+      }
+    verified: {result_rows: 3, date: "2026-07-22", parents: "GO_0016301 kinase activity; GO_0016773 phosphotransferase activity, alcohol group as acceptor; GO_0140096 catalytic activity, acting on a protein"}
+    teaches: "The DAG is bare rdfs:subClassOf (a term has MULTIPLE parents — here 3). Use rdfs:subClassOf (no +) for immediate parents."
+    traps_avoided:
+      - "rdfs:subClassOf objects also include anonymous OWL restriction axioms (blank nodes) and non-GO IRIs on many terms — the STRSTARTS(...GO_) filter keeps only real GO parents (gotcha strstarts_filter)."
+
+  - id: subtree_descendants        # set-level route #2 (transitive subClassOf+ subtree) — carries its own COUNT
+    intent: enumerate the ENTIRE subtree under a parent GO term via rdfs:subClassOf+ (the comprehensive, non-circular route)
+    question: "List all descendant terms of kinase activity (GO:0016301), and how many are there?"
+    complexity: advanced
+    sparql: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      # Swap the SELECT for  (COUNT(DISTINCT ?descendant) AS ?n)  to get the set SIZE (= 347).
+      SELECT DISTINCT ?descendant ?label
+      FROM <http://rdfportal.org/ontology/go>
+      WHERE {
+        ?descendant rdfs:subClassOf+ obo:GO_0016301 ;
+                    rdfs:label ?label .
+        FILTER(STRSTARTS(STR(?descendant), "http://purl.obolibrary.org/obo/GO_"))
+      }
+      LIMIT 100
+    verified: {descendant_count: 347, date: "2026-07-22", note: "COUNT(DISTINCT) form over the full subtree = 347 descendants of GO:0016301"}
+    teaches: "rdfs:subClassOf+ (transitive) from a PARENT IRI is THE route for 'all terms under concept X' — the complete subtree, not the handful of hits a label search returns. Discover the parent IRI once (OLS4/xref), then expand it. subClassOf* (with *) includes the parent itself; + excludes it."
+    traps_avoided:
+      - "CIRCULAR REASONING: never load individual OLS4 search hits into VALUES and COUNT them — that just re-counts the hits you already had, bounded by the search LIMIT. Anchor on the parent IRI and let subClassOf+ reach the full set."
+      - "+ / * traverse into obsolete branches; add the deprecation filter (gotcha deprecation_filter) for active-only descendants. Property-path queries are heavier — keep a LIMIT while exploring."
+
+  - id: xref_by_db                 # ELEVATED aggregation — the string-typed cross-reference route
+    intent: find/count GO terms cross-referenced to a specific external DB via the string-typed hasDbXref
+    question: "How many GO terms carry an EC (enzyme classification) cross-reference?"
+    complexity: aggregation
+    sparql: |
+      PREFIX oboinowl: <http://www.geneontology.org/formats/oboInOwl#>
+      SELECT (COUNT(DISTINCT ?go) AS ?n_terms)
+      FROM <http://rdfportal.org/ontology/go>
+      WHERE {
+        ?go oboinowl:hasDbXref ?xref .
+        FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
+        FILTER(STRSTARTS(STR(?xref), "EC:"))
+      }
+    verified: {n_terms: 4661, date: "2026-07-22", note: "Swap 'EC:' for 'RHEA:'/'Reactome:'/'MetaCyc:'/'KEGG_REACTION:' to target another DB; add ?xref to SELECT to list the accessions."}
+    teaches: "hasDbXref is STRING-typed ('PREFIX:accession', e.g. 'EC:2.7.11.1', 'RHEA:24793', 'Reactome:R-HSA-156832'), NOT an IRI. Filter a target DB with STRSTARTS(STR(?xref), 'EC:'). This is the enumeration route for 'all GO terms linked to database X'."
+    traps_avoided:
+      - "hasDbXref is not dereferenceable — you cannot follow it as an IRI or GRAPH-join on it directly; parse the string, then bridge to the target DB's own IRI (see id_join_map xrefs)."
+
+  - id: xdb_ncbigene
+    intent: "cross-DB: GO term → the NCBI genes annotated with it, via the co-hosted TogoID relation graph (structured, no text search)"
+    question: "How many NCBI genes (all organisms) are annotated with protein kinase activity (GO:0004672)?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX togoid: <http://togoid.dbcls.jp/ontology#>
+      SELECT ?goTerm ?goLabel (COUNT(DISTINCT ?geneId) AS ?n_genes)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/togoid/relation/ncbigene-go> {
+          ?geneId togoid:TIO_000004 ?goTerm .
+        }
+        GRAPH <http://rdfportal.org/ontology/go> {
+          VALUES ?goTerm { obo:GO_0004672 }
+          ?goTerm rdfs:label ?goLabel .
+        }
+      }
+      GROUP BY ?goTerm ?goLabel
+    verified: {n_genes: 391431, date: "2026-07-22", first_row: "GO_0004672 'protein kinase activity' → 391,431 genes"}
+    teaches: "GO annotation lives OUTSIDE the GO graph. TogoID pre-computes the gene↔GO edge as togoid:TIO_000004 in relation graph <dataset/togoid/relation/ncbigene-go> — a direct GRAPH join on the same 'primary' endpoint (no bridge call). Anchor GO IRIs in the ontology/go graph, join gene IRIs in the relation graph. ensembl_transcript-go is the transcript equivalent."
+    traps_avoided:
+      - "GO's own graph has NO gene-product instances — a GO class is a concept, not a set of genes. Do not look for genes inside ontology/go; use the TogoID relation graph (or reactome/uniprot annotation) instead."
+
+# ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
+schema_delta:
+  - "oboinowl:inSubset is IRI-typed (e.g. obo:go#goslim_generic, obo:go#goslim_chembl) — GO-slim membership; NOT a string. Filter by the slim IRI to get a curated term subset."
+  - "Four synonym predicates, all xsd:string: oboinowl:hasExactSynonym / hasRelatedSynonym / hasNarrowSynonym / hasBroadSynonym. oboinowl:hasAlternativeId (xsd:string) tracks merged/split IDs — the recovery path when a known GO ID returns nothing."
+  - "obo:BFO_0000051 (has_part) encodes compositional part-of relations between GO terms, an IRI edge distinct from the subClassOf DAG."
+  - "Text discovery on unstructured labels/definitions: split the property path before bif:contains (Virtuoso) — `?go rdfs:label ?l . ?l bif:contains \"'kinase'\"`. Legitimate ONLY for free-text fields (rdfs:label, rdfs:comment, IAO_0000115); for domains use hasOBONamespace, for hierarchy use subClassOf+."
+
+# ── id_join_map: how to anchor stably and cross to other resources. ──
+id_join_map:
+  stable_anchor: >
+    GO term = obo:GO_NNNNNNN IRI (http://purl.obolibrary.org/obo/GO_ + 7-digit zero-padded), mirrored by
+    oboinowl:id "GO:NNNNNNN" and skos:notation. hasAlternativeId carries superseded IDs for merged terms.
+  same_endpoint_joins:            # co-hosted on the 'primary' endpoint — direct GRAPH join, NO TogoID call
+    ncbigene: "TogoID relation graph <dataset/togoid/relation/ncbigene-go>, predicate togoid:TIO_000004 (gene→GO IRI); see xdb_ncbigene"
+    ensembl_transcript: "TogoID relation graph <dataset/togoid/relation/ensembl_transcript-go> (transcript→GO IRI)"
+  xrefs:                          # STRING-typed oboinowl:hasDbXref — parse the 'PREFIX:accession' value, then bridge
+    ec: "hasDbXref 'EC:x.x.x.x' → enzyme classification (~4,661 terms)"
+    rhea: "hasDbXref 'RHEA:NNNNN' → Rhea reaction (~4,698 terms); bridge to the rhea DB by its own IRI"
+    reactome: "hasDbXref 'Reactome:R-HSA-...' → Reactome pathway/reaction (~2,316 terms)"
+    metacyc_kegg: "hasDbXref 'MetaCyc:...' (~5,049) / 'KEGG_REACTION:...' (~1,739) — string only, not dereferenceable"
+  bridged_via_togoid:             # for DBs with no same-endpoint graph and no hasDbXref edge
+    - "GO IRIs → UniProt/other annotated DBs via togoid_convertId, or via each DB's own GO-annotation predicate (UniProt up:classifiedWith, Reactome RelationshipXref)."
+
+# ── byte-count footer (spec §5 item 7) ──
+# v2: `wc -c togo_mcp/data/mie/go.yaml` = 33079 bytes
+# v3: `wc -c benchmark/redesign/mie_v3/go.yaml` = 17771 bytes → 46.3% smaller than v2.
+#
+# PHASE-5 self-check (spec §5, 9 items):
+#  1. Parses as YAML; required keys present (database, discovery, endpoint, graphs, examples, id_join_map). ✓
+#  2. discovery has all four fields; description is one sentence. ✓
+#  3. Every example has verified: with a date: field (not on:), all re-run live 2026-07-22. ✓
+#  4. ≥1 aggregation (enum_namespace, xref_by_db) AND ≥1 cross_db (xdb_ncbigene). ✓
+#  5. co_hosted import-shadow graphs flagged (×3.27 inflation, gotcha graph_pin); TogoID join graphs flagged. ✓
+#  6. No fact restated across sections; nothing in schema_delta that an example shows. ✓
+#  7. Byte count recorded vs v2 (33,079 → 17,771, 46.3% smaller). ✓
+#  8. BOTH set-level enumeration routes are standalone examples: hasOBONamespace (enum_namespace),
+#     rdfs:subClassOf+ subtree (subtree_descendants), plus hasDbXref enum (xref_by_db). OK-tier per audit. ✓
+#  9. No example subject is a benchmark GO ID/keyword for this DB — GO:0004672 (protein kinase activity) and
+#     GO:0016301 (kinase activity) both checked absent from benchmark/questions/*.yaml; namespace/EC-xref are
+#     generic routes. No test leakage. ✓
