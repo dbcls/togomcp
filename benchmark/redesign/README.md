@@ -34,7 +34,8 @@ parts:
 5. `id_join_map` — stable anchors + cross-DB join paths.
 
 Rules: everything countable is verified and dated (machine-testable); one fact, one place;
-carry only the non-recoverable.
+carry only the non-recoverable; every set-level enumeration route is a first-class example
+(§4.4); no example subject is a benchmark question's entity (§4.6 — no test leakage).
 
 ## Execution sequence (gated)
 
@@ -46,7 +47,7 @@ carry only the non-recoverable.
 | 3a | Diagnose q066 regression; fold the lesson into `MIE_v3_spec.md` | ✅ done — keyword-enumeration route was demoted to a caveat; fixed (spec §4.4 + `keyword_enum` example) |
 | 3b | §4.4 enumeration-route audit of all 36 DBs → `enumeration_audit.md` | ✅ done — 34/36 already first-class; 4 Tier-A buried routes (ddbj/glycosmos/pubchem/mogplus) to un-bury, tiers B/C to keep route+caveat together |
 | 4 | Author the **full** redesigned corpus (all 36) | ✅ **36/36 done** — all agent-authored (2 hand-authored pilots + 34 delegated), every enum route independently live-re-verified, all under §4.6 (no test leakage). 302 examples; byte reductions 29–65%. Live-verify caught many v2 errors along the way. Per-DB obligations from `enumeration_audit.md` all satisfied |
-| 5 | **Release gate**: full-100Q equivalence run | ⬜ (unblocked — full corpus now exists) |
+| 5 | **Release gate**: full-100Q equivalence run | 🔄 harness ready, not yet started — runs `--conditions smoke_v2,full_v3` (smoke_v2 = full prod v2, byte-identical to `togo_mcp/data/mie/`; `full_v3` = full v3 corpus) in **4×25-QA batches** with a review gate per batch, folded via `append_results.py`. API answering (~$80 + ~8h per batch). Dry-run green |
 | 6 | Release (MAJOR): flip served corpus + retire discovery trio | ⬜ |
 
 Smoke result (2026-07-21/22): overall −0.44 ± 0.82 (NS); uniprot flat (−0.13, n=20), a **systematic**
@@ -70,22 +71,30 @@ compression can drop set-level enumeration guidance; diagnose before scaling (st
   (descriptions) moves to a build-time Usage-Guide generator.
 - **Transition ordering:** ship/validate the guide-catalog generator *before* removing the trio.
 
-## Current status (2026-07-21)
+## Current status (2026-07-22)
 
-- `MIE_v3_spec.md` — the authorable spec (152 lines vs the v2.3 spec's 1506).
-- `mie_v3/uniprot.yaml` — hand-authored UniProt pilot, **coverage-matched** to v2.5 (11
-  examples: 7 single + 4 cross-DB), **~64% smaller** (57.4 KB → 20.9 KB), every count/example
-  re-run live 2026-07-21 (zero drift).
-- Authoring surfaced real query bugs the old prose missed — the insulin readthrough-isoform
-  trap, the Rhea `COUNT` timeout — now inline `traps_avoided`; plus a `date:`-not-`on:`
-  YAML-boolean footgun, documented in the spec.
+- **Corpus complete — 36/36 v3 files** (`mie_v3/*.yaml`), **302 examples**, every enumeration route
+  independently re-verified live, all authored under §4.6. Byte reductions **29–65%**. 2 hand-authored
+  pilots + 34 delegated one-agent-per-DB, each caller-re-validated (never trusting the builder's own
+  Phase-5 check). Authoring + live-verify caught real v2 errors across the corpus (chebi role-IRI
+  mislabel, mediadive 6-vs-12-value CV, rhea dropped-`rhea:side` cross-join, pdb EC-prefix over-match,
+  clinvar gene-bnode split, …).
+- **q066 arc closed.** The keyword-enumeration regression is fixed (spec §4.4 + a first-class
+  `keyword_enum` example), then **de-overfit** per §4.6 (the example now uses SH3 domain, *not* the
+  benchmark's LIM domain), and a **transfer re-run confirmed the route generalizes** — de-overfit v3
+  lands LMO7/50 on all 3 runs (score 18, no LIM-domain entity in the MIE). See `smoke/FINDINGS.md`.
+- **Two authoring rules emerged from the smoke and are now in the spec:** §4.4 (a positive route is
+  not a caveat) and §4.6 (illustrative subjects must not be benchmark entities — no test leakage),
+  each with a Phase-5 checklist item (8 and 9). Also landed this cycle: a benchmark token-accounting
+  fix so the redesign's input-byte win is measurable (cache buckets — see `smoke/FINDINGS.md`).
 
-**Next:** a second, contrasting pilot (cross-DB-heavy or isolated-endpoint DB) to check the
-spec isn't overfit to UniProt, then the smoke test (step 3).
+**Next:** step 5 — the batched 100Q equivalence run (harness ready; see the step 5 row).
 
 ## Files
 
 - `README.md` — this plan/status.
-- `MIE_v3_spec.md` — the v3 format contract.
-- `enumeration_audit.md` — per-DB §4.4 enumeration-route checklist for step-4 authoring.
-- `mie_v3/<db>.yaml` — new-format MIEs (pilots first, full corpus later).
+- `MIE_v3_spec.md` — the v3 format contract (incl. §4.4 enumeration rule, §4.6 no-test-leakage).
+- `enumeration_audit.md` — per-DB §4.4 enumeration-route checklist (all 36 DBs; drove step-4 authoring).
+- `mie_v3/<db>.yaml` — new-format MIEs (**all 36 complete**).
+- `smoke/FINDINGS.md` — durable record of the smoke test + q066 fix/de-overfit/transfer + token fix.
+- `release/` — step-5 equivalence-run outputs (regenerable `results_*` gitignored; `FINDINGS.md` tracked).
