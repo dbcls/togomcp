@@ -1,0 +1,326 @@
+# MIE v3 — Ensembl. Agent-authored 2026-07-22 on `mie-redesign`.
+# Format: benchmark/redesign/MIE_v3_spec.md. Every verified count/result re-run live on the ensembl
+# (EBI) endpoint 2026-07-22. Enumeration-audit tier: B/C — the has_biotype / has_transcript_flag
+# set-level route is first-class in v2 and CARRIED here (examples enum_biotype + enum_transcript_flag),
+# with the load-bearing GRAPH-pin caveat kept attached (grch37 + expressionatlas 3x/2x inflation).
+# Byte count vs the v2 file it replaces (spec §5 item 7): v2 togo_mcp/data/mie/ensembl.yaml = 40,254 bytes;
+# this v3 file = 22,952 bytes → 43% smaller. Exact `wc -c` in the footer.
+database: ensembl
+
+# ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
+discovery:
+  title: Ensembl RDF
+  description: >
+    Genome annotation for vertebrates and five non-vertebrate divisions (bacteria/fungi/metazoa/plants/
+    protists): genes typed by biotype (protein-coding, lncRNA, miRNA, pseudogenes), transcripts with
+    quality flags (MANE Select, canonical, APPRIS, TSL), proteins, exons, FALDO genomic coordinates, and
+    cross-references to UniProt/HGNC/NCBI Gene/Reactome/OMIM/PDB.
+  keywords: [gene, transcript, mrna, protein, genome, annotation, chromosome, exon, biotype,
+             protein-coding, lncrna, mirna, pseudogene, mane select, coordinates, stable id, species, vertebrate]
+  categories: [gene, sequence]
+
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/ebi/sparql   # the EBI endpoint (also hosts ChEMBL/ChEBI/Reactome/AMRPortal)
+base_uri: http://rdf.ebi.ac.uk/resource/ensembl/
+# Data version: Ensembl Release 115 (the release number is baked into the chromosome IRI:
+#   http://rdf.ebi.ac.uk/resource/ensembl/115/homo_sapiens/GRCh38/17 — confirmed live 2026-07-22).
+graphs:
+  primary: http://rdfportal.org/dataset/ensembl   # GRCh38 + all species; the default pin target for vertebrate work
+  supporting:                                       # same-DB Ensembl graphs — pin the one that matches your division
+    - ensembl_bacteria      # non-vertebrate divisions; MASSIVE — always species-filter or timeout (gotcha nonvert_timeout)
+    - ensembl_fungi
+    - ensembl_metazoa
+    - ensembl_plants
+    - ensembl_protists
+    - ensembl-glossary      # rdfs:label + IAO_0000115 definitions for the ENSGLOSSARY_* biotype/flag IRIs (gotcha glossary_labels_graph)
+    - ensembl_taxonomy      # maps Ensembl species IRIs → NCBI Taxonomy via skos:relatedMatch (~1268 entries; see id_join_map)
+    - ensembl_ontology      # 19 OWL feature classes; rarely needed for data queries
+    - ensembl_grch37        # legacy human assembly — RE-DECLARES the SAME human ENSG* IRIs with its own label/identifier → INFLATION (gotcha graph_pin_inflation), HUMAN ONLY
+  co_hosted:                # datasets sharing the ebi endpoint (NOT Ensembl-owned)
+    expressionatlas: >
+      RE-DECLARES the SAME Ensembl gene IRIs (ENSG*/ENSMUSG*) with its own rdfs:label + dcterms:identifier —
+      349,742 gene IRIs overlap by label, ALL species (human AND mouse). The widest inflation source on the
+      endpoint (gotcha graph_pin_inflation). IRI namespace http://rdf.ebi.ac.uk/dataset/expressionatlas.
+    chembl:   "join target: Ensembl rdfs:seeAlso UniProt IRI == ChEMBL cco:hasTargetComponent/skos:exactMatch UniProt IRI (example xdb_chembl). GRAPH <http://rdf.ebi.ac.uk/dataset/chembl>."
+    chebi:    "compound ontology on the same endpoint; reachable by GRAPH-pin for downstream ChEMBL/Reactome joins."
+    reactome: "pathways; Ensembl genes/proteins carry rdfs:seeAlso identifiers.org/reactome/ (direct IRI match)."
+    amrportal: "AMR data on the same endpoint; join target only."
+
+entity_counts:                     # COUNT(DISTINCT), graph-pinned to <dataset/ensembl>, HUMAN — verified 2026-07-22
+  human_genes:            87693
+  human_transcripts:      535380   # via ?t so:transcribed_from (a human gene) — transcripts carry NO species IRI (gotcha species_iri)
+  human_proteins:         247155   # translated transcripts (46.2% of transcripts encode a protein)
+  human_protein_coding_genes: 23262   # biotype ENSGLOSSARY_0000026
+  human_lncrna_genes:     36490    # biotype ENSGLOSSARY_0000028 — the single largest biotype
+  mane_select_transcripts: 19338   # transcript flag ENSGLOSSARY_0000365 (human-only concept)
+  genes_with_uniprot_xref: 24347   # 27.8% of human genes — the ceiling on Ensembl↔UniProt/ChEMBL integration
+  nonvert_note: "Whole-division gene counts for bacteria/metazoa/plants time out (graphs are huge) — always species-scope."
+
+global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
+  - id: graph_pin_inflation
+    say: >
+      #1 CAUSE OF WRONG COUNTS. Two co-tenants RE-DECLARE the SAME human/mouse gene IRIs with their own
+      rdfs:label + dcterms:identifier: expressionatlas (349,742 IRIs, ALL species) and ensembl_grch37
+      (53,636 IRIs, HUMAN only). An UNPINNED query multiplies rows — MEASURED 2026-07-22 on
+      `?g a terms:EnsemblGene ; rdfs:label ?l` over 5 human genes: unpinned = 15 rows vs pinned = 5 (×3);
+      5 mouse genes = 10 vs 5 (×2, grch37 is human-only). FIX: pin GRAPH <http://rdfportal.org/dataset/ensembl>
+      (or FROM) around EVERY leg that touches a label/identifier, not just the type leg — grch37 does NOT
+      re-use terms:EnsemblGene as its rdf:type, so `a terms:EnsemblGene` does NOT protect you. COUNT(DISTINCT
+      ?gene) hides it for a gene count but NOT for any aggregate over ?label / SUM / AVG / GROUP_CONCAT.
+  - id: species_iri
+    say: >
+      Ensembl uses its OWN species IRIs, NOT NCBI Taxonomy — `obo:RO_0002162 <http://identifiers.org/taxonomy/9606>`
+      returns 0 silently; use `<http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens>`.
+      Subdomain varies by division: vertebrates ensembl.org, else {division}.ensembl.org (metazoa.ensembl.org/
+      Drosophila_melanogaster, plants.ensembl.org/Arabidopsis_thaliana, fungi.ensembl.org/Saccharomyces_cerevisiae).
+      The species IRI lives ONLY on the GENE — transcripts/proteins carry no RO_0002162, so reach a species-scoped
+      transcript/protein via `?t so:transcribed_from ?gene` with the species filter on ?gene.
+  - id: nonvert_timeout
+    say: "Non-vertebrate graphs (bacteria especially) are massive — ALWAYS include a species IRI filter, or the query times out immediately. There is no cheap whole-division count."
+  - id: glossary_labels_graph
+    say: >
+      Biotype/flag values are ENSGLOSSARY_* IRIs whose rdfs:label + definition live ONLY in the
+      ensembl-glossary graph — querying a label in <dataset/ensembl> returns empty. Filter/GROUP BY the IRI
+      (it is stable and exact); resolve the human label in GRAPH <http://rdfportal.org/dataset/ensembl-glossary>.
+
+# ── examples: verified, executable atoms. Central-dogma hub: Gene --so:transcribed_from<-- Transcript
+#    --so:translates_to--> Protein; coordinates are FALDO; xrefs are rdfs:seeAlso (prefix-filtered). ──
+examples:
+  - id: gene_by_id
+    intent: direct gene lookup by stable accession + species IRI (the basic anchor)
+    question: "What are the label, description, and biotype of human gene ENSG00000012048 (BRCA1)?"
+    complexity: basic
+    sparql: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      SELECT ?label ?description ?biotype
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?gene a terms:EnsemblGene ;
+                dcterms:identifier "ENSG00000012048" ;
+                rdfs:label ?label ;
+                dcterms:description ?description ;
+                terms:has_biotype ?biotype ;
+                <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> .
+        }
+      }
+    verified: {result_rows: 1, label: "BRCA1", biotype: "ENSGLOSSARY_0000026 (protein_coding)", date: "2026-07-22"}
+    teaches: "dcterms:identifier holds the bare accession (ENSG…/ENST…/ENSP…); rdfs:label is the gene symbol; terms:has_biotype is an IRI (resolve its label in ensembl-glossary)."
+
+  - id: enum_biotype
+    intent: enumerate ALL human genes of a biotype via its glossary IRI — the set-level classification route
+    question: "How many protein-coding genes are in the human genome?"
+    complexity: aggregation
+    sparql: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      # ENSGLOSSARY_0000026 = protein_coding (0000028 = lncRNA, 0000038 = miRNA, 0000048 = processed_pseudogene)
+      SELECT (COUNT(DISTINCT ?gene) AS ?count)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?gene a terms:EnsemblGene ;
+                terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+                <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> .
+        }
+      }
+    verified: {count: 23262, date: "2026-07-22"}
+    teaches: "To enumerate 'ALL genes of biotype X', filter terms:has_biotype by the biotype IRI — the PRIMARY set-level route (exact + index-fast). Do NOT text-match a biotype label: labels live in a separate graph and text search silently mis- or under-counts."
+    traps_avoided:
+      - "MUST graph-pin: unpinned, the co-hosted expressionatlas + ensembl_grch37 re-declare each human gene IRI, inflating a label/row aggregate ~3× (gotcha graph_pin_inflation). This count uses COUNT(DISTINCT ?gene) AND the GRAPH pin — the pin is what protects any downstream ?label/SUM aggregate that DISTINCT alone cannot."
+      - "terms:has_biotype is a MIXED vocabulary: most values are ENSGLOSSARY_* IRIs, some are Sequence-Ontology SO_* IRIs, a few are terms:<name> (LRG_Gene, Artifact). Run the enum_biotype_distribution query first to discover every biotype IRI for the genome you are counting."
+
+  - id: enum_transcript_flag
+    intent: enumerate ALL transcripts carrying a quality flag via its glossary IRI (the flag route)
+    question: "How many MANE Select transcripts does Ensembl have?"
+    complexity: aggregation
+    sparql: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      # ENSGLOSSARY_0000365 = MANE Select (0000023 = canonical, 0000016 = APPRIS P1, 0000006 = TSL 1, 0000020 = GENCODE Basic)
+      SELECT (COUNT(DISTINCT ?transcript) AS ?count)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?transcript a terms:EnsemblTranscript ;
+                      terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000365> .
+        }
+      }
+    verified: {count: 19338, date: "2026-07-22"}
+    teaches: "Transcript quality is a controlled flag set: terms:has_transcript_flag → ENSGLOSSARY_* IRI. This is the set-level route for 'all MANE Select / canonical / APPRIS-P1 transcripts'. MANE Select is human-only, so no species filter is needed here; for a species-scoped flag count, join via so:transcribed_from a species-filtered gene (transcripts carry no species IRI — gotcha species_iri)."
+    traps_avoided:
+      - "canonical (ENSGLOSSARY_0000023) is exactly 1 per gene (= the gene total, 87,693 human), NOT a quality signal like MANE Select — do not treat 'canonical' as 'best/reviewed'."
+
+  - id: enum_biotype_distribution
+    intent: full biotype breakdown of a genome — discover every biotype IRI + its gene count in one pass
+    question: "How many genes of each biotype exist in the human genome?"
+    complexity: aggregation
+    sparql: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      SELECT ?biotype (COUNT(DISTINCT ?gene) AS ?count)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?gene a terms:EnsemblGene ;
+                terms:has_biotype ?biotype ;
+                <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> .
+        }
+      }
+      GROUP BY ?biotype ORDER BY DESC(?count)
+    verified: {top: "lncRNA_0000028: 36490, protein_coding_0000026: 23262, processed_pseudogene_0000048: 10234", biotype_iris: 39, sum_equals: 87693, date: "2026-07-22"}
+    teaches: "GROUP BY terms:has_biotype yields all 39 human biotype IRIs; the counts SUM to the whole-genome gene total (87,693). Use the returned IRIs directly as filters in enum_biotype-style queries — never guess biotype IRIs from labels."
+
+  - id: mane_on_chromosome
+    intent: combine biotype + quality-flag + chromosome + species IRIs (the precise multi-filter idiom)
+    question: "Which protein-coding genes on human chromosome 17 have a MANE Select transcript?"
+    complexity: intermediate
+    sparql: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      PREFIX so: <http://purl.obolibrary.org/obo/so#>
+      SELECT ?gene_label ?transcript_id
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?gene a terms:EnsemblGene ;
+                rdfs:label ?gene_label ;
+                <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> ;
+                so:part_of <http://rdf.ebi.ac.uk/resource/ensembl/115/homo_sapiens/GRCh38/17> .
+          ?transcript so:transcribed_from ?gene ;
+                      dcterms:identifier ?transcript_id ;
+                      terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000365> .
+        }
+      }
+      LIMIT 10
+    verified: {result_rows: 10, date: "2026-07-22", first_row: "MAP2K6 → ENST00000590474"}
+    teaches: "so:part_of takes a full chromosome IRI; so:transcribed_from links transcript→gene. Stack structured IRI filters (species + chromosome + flag) rather than text-matching any of them."
+    traps_avoided:
+      - "The chromosome IRI embeds the release number: .../ensembl/115/homo_sapiens/GRCh38/17. '115' changes each Ensembl release — discover it live (e.g. from a gene's so:part_of) rather than hardcoding a stale version."
+
+  - id: gene_transcript_protein
+    intent: traverse Gene→Transcript→Protein and pull the UniProt xref (the central-dogma join)
+    question: "What proteins does BRCA1 encode and which UniProt accessions do they map to?"
+    complexity: intermediate
+    sparql: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      PREFIX so: <http://purl.obolibrary.org/obo/so#>
+      SELECT ?transcript_id ?protein_id ?uniprot
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?gene a terms:EnsemblGene ;
+                rdfs:label "BRCA1" ;
+                <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> .
+          ?transcript so:transcribed_from ?gene ;
+                      dcterms:identifier ?transcript_id ;
+                      so:translates_to ?protein .
+          ?protein dcterms:identifier ?protein_id ;
+                   rdfs:seeAlso ?uniprot .
+          FILTER(STRSTARTS(STR(?uniprot), "http://purl.uniprot.org/uniprot/"))
+        }
+      }
+      LIMIT 10
+    verified: {result_rows: 10, date: "2026-07-22", canonical_uniprot: "P38398", note: "one transcript can map to multiple UniProt (canonical P38398 + TrEMBL isoforms)"}
+    teaches: "Protein reaches UniProt via rdfs:seeAlso, prefix-filtered to purl.uniprot.org/uniprot/. Only ~27.8% of human genes have a UniProt xref — this is the coverage ceiling for any Ensembl→UniProt→ChEMBL chain."
+
+  - id: gene_coordinates_faldo
+    intent: chromosome + start/end + strand from FALDO blank nodes (the coordinate idiom)
+    question: "What are the genomic coordinates and strand of BRCA1?"
+    complexity: advanced
+    sparql: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX so: <http://purl.obolibrary.org/obo/so#>
+      SELECT DISTINCT ?chr ?start ?end ?strand
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?gene a terms:EnsemblGene ;
+                rdfs:label "BRCA1" ;
+                so:part_of ?chr ;
+                <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> ;
+                faldo:location ?loc .
+          ?loc faldo:begin ?b . ?b faldo:position ?start ; rdf:type ?strand_type .
+          ?loc faldo:end ?e . ?e faldo:position ?end .
+          FILTER(?strand_type IN (faldo:ForwardStrandPosition, faldo:ReverseStrandPosition))
+          BIND(IF(?strand_type = faldo:ForwardStrandPosition, "+", "-") AS ?strand)
+          FILTER(CONTAINS(STR(?chr), "/GRCh38/"))
+        }
+      }
+    verified: {result_rows: 1, chr: "…/115/homo_sapiens/GRCh38/17", start: 43044292, end: 43170245, strand: "-", date: "2026-07-22"}
+    teaches: "Coordinates are FALDO: faldo:location → faldo:begin/end → faldo:position; strand comes from the position's rdf:type (Forward/ReverseStrandPosition)."
+    traps_avoided:
+      - "FALDO positions are DUAL-typed (ExactPosition + a StrandPosition) — without FILTER(?strand_type IN (faldo:ForwardStrandPosition, faldo:ReverseStrandPosition)) every row DOUBLES silently."
+      - "A gene's so:part_of / FALDO also returns LRG (Locus Reference Genomic) entries with different coordinates. FILTER(CONTAINS(STR(?chr), \"/GRCh38/\")) restricts to the canonical assembly."
+
+  - id: nonvertebrate_metazoa
+    intent: same schema in a non-vertebrate division — only the graph + species subdomain change
+    question: "List protein-coding genes in Drosophila melanogaster."
+    complexity: intermediate
+    sparql: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      SELECT ?gene_id ?label
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl_metazoa> {
+          ?gene a terms:EnsemblGene ;
+                dcterms:identifier ?gene_id ;
+                rdfs:label ?label ;
+                terms:has_biotype <http://ensembl.org/glossary/ENSGLOSSARY_0000026> ;
+                <http://purl.obolibrary.org/obo/RO_0002162> <http://metazoa.ensembl.org/Drosophila_melanogaster> .
+        }
+      }
+      LIMIT 5
+    verified: {result_rows: 5, date: "2026-07-22", first_row: "FBgn0000116 Argk1"}
+    teaches: "Non-vertebrate divisions use the SAME predicates/biotype IRIs; switch the GRAPH (ensembl_metazoa/_plants/_fungi/_bacteria/_protists) AND the species subdomain ({division}.ensembl.org/Species). The species filter is MANDATORY here (gotcha nonvert_timeout)."
+
+  - id: xdb_chembl
+    intent: "cross-DB: human genes → ChEMBL drug targets via the shared UniProt IRI (same ebi endpoint)"
+    question: "Which human genes correspond to a ChEMBL single-protein drug target?"
+    complexity: cross_db
+    endpoint_name: ebi
+    sparql: |
+      PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      SELECT DISTINCT ?gene_label ?target_id ?target_label
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/ensembl> {
+          ?gene a terms:EnsemblGene ;
+                rdfs:label ?gene_label ;
+                rdfs:seeAlso ?uniprot ;
+                <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> .
+          FILTER(STRSTARTS(STR(?uniprot), "http://purl.uniprot.org/uniprot/"))
+        }
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
+          ?target a cco:SingleProtein ;
+                  rdfs:label ?target_label ;
+                  cco:chemblId ?target_id ;
+                  cco:hasTargetComponent/skos:exactMatch ?uniprot .
+        }
+      }
+      LIMIT 15
+    verified: {result_rows: 15, date: "2026-07-22", first_row: "KMO → CHEMBL2145 (Kynurenine 3-monooxygenase)"}
+    teaches: "Ensembl and ChEMBL are co-hosted on the ebi endpoint: Ensembl's rdfs:seeAlso UniProt IRI is the SAME IRI as ChEMBL's cco:hasTargetComponent/skos:exactMatch target — a direct GRAPH join, no text search and no TogoID bridge."
+    traps_avoided:
+      - "The bridge is UniProt: coverage is capped at the ~27.8% of human genes that carry a UniProt xref, so this join can never span the whole genome."
+
+# ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
+schema_delta:
+  - "Gene synonyms: skos:altLabel on the gene (e.g. BRCA1 → 'RNF53','BRCC1','FANCS'). Gene description is dcterms:description ('… [Source:HGNC Symbol;Acc:HGNC:1100]')."
+  - "Exon order: a transcript exposes exons as an ordered list — sio:SIO_000974 → ordered-exon node → sio:SIO_000628 (refers-to exon) + sio:SIO_000300 (integer rank); plain membership is so:has_part → terms:EnsemblExon. Exon IRIs also type as obo:SO_0000147."
+  - "Versioned transcript: terms:has_versioned_transcript → a version-suffixed IRI (e.g. ENST00000357654.9); the unversioned dcterms:identifier is the stable key."
+  - "Transcript/protein xref targets differ from genes: transcripts rdfs:seeAlso → GO terms (obo/GO_) + RefSeq; proteins rdfs:seeAlso → UniProt + PDB (identifiers.org/pdb/) + Reactome."
+
+# ── id_join_map: how to anchor stably and cross to other resources. ──
+id_join_map:
+  stable_anchor: >
+    Gene IRI http://rdf.ebi.ac.uk/resource/ensembl/ENSG… (transcript = ensembl.transcript/ENST…, protein =
+    ensembl.protein/ENSP…). dcterms:identifier holds the bare versionless accession — the stable per-feature key.
+  same_endpoint_joins:            # co-hosted on the ebi endpoint — direct GRAPH join, NO TogoID
+    chembl:   "Ensembl rdfs:seeAlso UniProt IRI == ChEMBL cco:hasTargetComponent/skos:exactMatch UniProt IRI (example xdb_chembl)"
+    reactome: "Ensembl rdfs:seeAlso → identifiers.org/reactome/R-… (direct IRI match to the reactome graph)"
+    ncbi_taxonomy: "GRAPH <ensembl_taxonomy>: <http://ensembl.org/{Species}> skos:relatedMatch → identifiers.org/taxonomy/N (the ONLY bridge from Ensembl's own species IRI to a NCBI taxid; ~1268 species)"
+  xrefs:                          # outbound rdfs:seeAlso, prefix-filtered; coverage of human genes
+    uniprot:  "gene/protein rdfs:seeAlso → purl.uniprot.org/uniprot/ (24,347 human genes = 27.8%)"
+    hgnc:     "gene rdfs:seeAlso → identifiers.org/hgnc/HGNC:N"
+    ncbigene: "gene rdfs:seeAlso → identifiers.org/ncbigene/N"
+    omim:     "gene rdfs:seeAlso → identifiers.org/omim/N"
+    pdb:      "protein rdfs:seeAlso → identifiers.org/pdb/XXXX"
+    go:       "transcript rdfs:seeAlso → obo/GO_ (molecular function/process/component)"
+    refseq:   "transcript rdfs:seeAlso → RefSeq accessions"
+  bridged_via_togoid:             # NOT co-hosted on ebi — route via togoid_convertId on the ENSG/ENST/ENSP accession
+    - "Ensembl gene/transcript/protein ↔ other RDF Portal DBs (e.g. mogplus mouse variants, jpostdb, bgee on other endpoints) via togoid_convertId when no same-endpoint graph carries the link."
+
+# ── byte-count footer (spec §5 item 7) ──
+# v2: `wc -c togo_mcp/data/mie/ensembl.yaml` = 40254 bytes
+# v3: `wc -c benchmark/redesign/mie_v3/ensembl.yaml` = 22952 bytes → 43.0% smaller than v2.

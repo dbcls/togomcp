@@ -1,0 +1,277 @@
+# MIE v3 — ClinVar (NCBI clinical variation archive). AGENT-authored 2026-07-22 on `mie-redesign`.
+# Format: benchmark/redesign/MIE_v3_spec.md. Every verified count/result re-run live on the clinvar
+# endpoint 2026-07-22. Tier-B in enumeration_audit.md: the significance-value enumeration is already a
+# first-class v2 route — carried across here as `enum_significance`, with its TWO load-bearing caveats
+# (the THREE classification branches + the ~3.7x disease-bnode inflation) kept inline with the queries.
+# Byte count vs v2 (spec §5 item 7): v2 togo_mcp/data/mie/clinvar.yaml = 42,101 bytes; this v3 file
+# = 20,307 bytes → 51.8% smaller. Exact `wc -c` figures in the footer.
+database: clinvar
+
+# ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
+discovery:
+  title: ClinVar RDF
+  description: >
+    NCBI's public archive of human genomic variants and their clinically asserted significance
+    (pathogenic/benign/VUS across germline, oncogenicity, and somatic branches), with variant→gene
+    links and disease cross-references to MedGen/OMIM/Orphanet/MONDO/MeSH/HPO — ~3.59M variant records.
+  keywords: [variant, mutation, clinical significance, pathogenic, benign, uncertain significance, vus,
+             snp, indel, cnv, gene, disease, phenotype, germline, somatic, oncogenicity, hgvs, medgen]
+  categories: [variant, disease]
+
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/ncbi/sparql   # the shared NCBI endpoint (~58 graphs); ClinVar is one dataset on it
+base_uri: http://ncbi.nlm.nih.gov/clinvar/
+graphs:
+  primary: http://rdfportal.org/dataset/clinvar   # the ONLY graph that types cvo:VariationArchiveType / cvo:Gene / the classification bnodes
+  co_hosted:                       # same NCBI endpoint. Reverse-probe (v2, 2026-07-17): NO co-hosted graph
+                                   # re-types or re-labels a ClinVar IRI → zero row-inflation. All are JOIN targets, not traps.
+    dataset/medgen: >
+      JOIN target — ClinVar's disease TypeXref rdfs:seeAlso points at MedGen concepts, BUT ClinVar writes
+      http://ncbi.nlm.nih.gov/medgen/C* (no www) while MedGen types http://www.ncbi.nlm.nih.gov/medgen/C*
+      (WITH www). A direct-IRI join silently 0-rows; swap www→no-www (example xdb_medgen). No inflation.
+    dataset/ncbigene: >
+      JOIN target — ClinVar's gene IRIs are http://ncbi.nlm.nih.gov/gene/{id}; NCBI Gene RDF types
+      http://identifiers.org/ncbigene/{id} (disjoint namespace). Join on the shared integer gene id, not the IRI.
+    dataset/pubtator_central + dataset/pubmed: >
+      Literature reach (co-mention → PubMed), but only via a MedGen→MeSH bridge two hops out — a single
+      ClinVar+PubTator+PubMed join TIMES OUT; run the MedGen-CUI discovery step separately first.
+    "id.nlm.nih.gov/mesh (+12 year graphs)": >
+      MeSH descriptors. ClinVar asserts NOTHING on MeSH IRIs (probed) — reach MeSH only through the disease
+      TypeXref dct:identifier ("D061325"), not by expecting ClinVar triples on a mesh: IRI.
+
+entity_counts:                     # graph-pinned, COUNT(DISTINCT), live 2026-07-22
+  classified_variants: 3588257     # cvo:record_type "classified" — HAVE cvo:classified_record
+  included_variants: 712           # cvo:record_type "included" — LACK cvo:classified_record (gotcha included_no_classrec)
+  total_variants: 3588969
+  gene_entities: 92318             # IRI-typed cvo:Gene ONLY — see gene_bnode gotcha; raw cvo:Gene = 4,964,971 (mostly per-record bnodes)
+  pathogenic_germline: 200004      # DISTINCT variants with germline cvo:description "Pathogenic" (example enum_significance)
+
+global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
+  - id: from_clause
+    say: >
+      Always FROM (or GRAPH-pin) <http://rdfportal.org/dataset/clinvar>. The NCBI endpoint co-hosts ~58
+      graphs; an unpinned pattern mixes them and can 0-row or return wrong data. Every example pins the graph.
+  - id: included_no_classrec
+    say: >
+      The 712 cvo:record_type "included" variants have NO cvo:classified_record, so ANY classification /
+      gene-link / significance traversal silently drops them (and, worse, if you forget the type filter you
+      may traverse into nothing). Add cvo:record_type "classified" whenever you navigate a classified_record bnode.
+  - id: gene_bnode
+    say: >
+      cvo:Gene is applied to 4,964,971 nodes but only 92,318 are IRI gene entities — the other ~4.87M are
+      per-record BLANK nodes. `COUNT(?g WHERE ?g a cvo:Gene)` massively over-counts "how many genes". Count
+      genes as isIRI(?g), or count DISTINCT gene IRIs reached via med2rdf:gene. The IRI is ncbi.nlm.nih.gov/gene/{id}.
+  - id: source_case
+    say: >
+      dct:source on disease TypeXref nodes has case-inconsistent duplicates: both "MeSH" and "MESH" exist,
+      and "HP" vs "Human Phenotype Ontology" coexist. Filtering one spelling silently misses ~half. Use
+      VALUES ?source { "MeSH" "MESH" } (etc.) when selecting a source.
+
+# ── examples: verified, executable atoms. Central entity = cvo:VariationArchiveType (IRI
+#    …/clinvar/variation/{id}). Classification & gene links hang off a cvo:classified_record BLANK node;
+#    disease xrefs hang off med2rdf:disease BLANK nodes. Split property paths across explicit vars. ──
+examples:
+  - id: variant_lookup
+    intent: all direct properties of one variant by its IRI (the fastest anchor)
+    question: "What are the properties of ClinVar variant VCV000856461?"
+    complexity: basic
+    sparql: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      SELECT ?property ?value
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE { <http://ncbi.nlm.nih.gov/clinvar/variation/856461> ?property ?value . }
+      LIMIT 50
+    verified: {result_rows: 21, date: "2026-07-22", note: "VCV000856461 = NM_007294.4(BRCA1):c.2244dup, Duplication, record_type classified; carries 2 med2rdf:disease bnodes"}
+    teaches: "The variation IRI tail = cvo:variation_id (integer); cvo:accession is the VCV string. Direct properties are flat literals; classification/gene/disease all sit BEHIND blank nodes (following examples)."
+    traps_avoided:
+      - "A variant carries MULTIPLE med2rdf:disease bnodes pointing at the SAME disease (one per SCV submission) — visible here as two nodeIDs. This is the seed of the ~3.7x inflation (see disease_xref_count)."
+
+  - id: variants_by_gene
+    intent: variants linked to specific genes via the NCBI Gene IRI (the structured, non-text route)
+    question: "What variants are associated with BRCA1 and TP53?"
+    complexity: basic
+    sparql: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      # Gene IRI = http://ncbi.nlm.nih.gov/gene/{NCBI gene id}; find the id via ncbi_esearch('gene','BRCA1[sym] AND human[organism]')
+      SELECT ?variant ?label ?type ?gene_uri
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        VALUES ?gene_uri {
+          <http://ncbi.nlm.nih.gov/gene/672>    # BRCA1
+          <http://ncbi.nlm.nih.gov/gene/7157>   # TP53
+        }
+        ?gene_bn med2rdf:gene ?gene_uri .
+        ?classrec sio:SIO_000628 ?gene_bn .
+        ?variant a cvo:VariationArchiveType ;
+                 rdfs:label ?label ;
+                 cvo:variation_type ?type ;
+                 cvo:record_status "current" ;
+                 cvo:classified_record ?classrec .
+      }
+      LIMIT 10
+    verified: {result_rows: 10, date: "2026-07-22", first_row: "variation/856461 NM_007294.4(BRCA1):c.2244dup"}
+    teaches: "Variant→gene is a 2-hop blank-node walk: variant --cvo:classified_record--> ?classrec --sio:SIO_000628--> ?gene_bn --med2rdf:gene--> gene IRI. VALUES on gene IRIs prunes 3.5M variants to the target gene(s) up front."
+    traps_avoided:
+      - "rdfs:label is HGVS free text, not a gene symbol — never text-match it to find a gene's variants; resolve the gene id first and use the IRI. bif:contains on the label is exploratory only."
+
+  - id: enum_significance
+    intent: enumerate ALL variants by germline clinical significance (the set-level significance route)
+    question: "How many ClinVar variants fall in each germline clinical-significance class (Pathogenic, VUS, …)?"
+    complexity: aggregation
+    sparql: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      SELECT ?significance (COUNT(DISTINCT ?variant) AS ?n)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 cvo:record_type "classified" ;
+                 cvo:classified_record ?classrec .
+        ?classrec cvo:classifications ?classi .
+        ?classi cvo:germline_classification ?germ .
+        ?germ cvo:description ?significance .
+      }
+      GROUP BY ?significance
+      ORDER BY DESC(?n)
+      LIMIT 20
+    verified: {top: "Uncertain significance 1,821,577; Likely benign 993,150; Benign 213,802; Pathogenic 200,004; Likely pathogenic 107,204", date: "2026-07-22"}
+    teaches: "THE set-level significance enumeration: the controlled value lives on cvo:description of the germline classification bnode, reached variant → classified_record → cvo:classifications → cvo:germline_classification → cvo:description. Pin the exact string (e.g. \"Pathogenic\") to count/list one class; COUNT(DISTINCT ?variant) because a variant can have multiple submissions."
+    traps_avoided:
+      - "THREE classification BRANCHES exist under cvo:classifications: cvo:germline_classification, cvo:oncogenicity_classification, cvo:somatic_clinical_impact. This query enumerates ONLY germline; a cancer/somatic variant classified 'Oncogenic' has NO germline node and is silently absent (see oncogenicity_kras for the other two branches)."
+      - "Omitting cvo:record_type \"classified\" lets the 712 'included' variants (no classified_record) enter the pattern and adds nothing but risk (gotcha included_no_classrec)."
+
+  - id: count_variation_type
+    intent: distribution of active variants across variation types (a typed-predicate aggregation)
+    question: "What variation types exist in ClinVar and how many of each?"
+    complexity: aggregation
+    sparql: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      SELECT ?variation_type (COUNT(?variant) AS ?count)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:variation_type ?variation_type ;
+                 cvo:record_status "current" .
+      }
+      GROUP BY ?variation_type
+      ORDER BY DESC(?count)
+      LIMIT 30
+    verified: {top: "single nucleotide variant 3,236,823; Deletion 160,620; Duplication 73,448; Microsatellite 36,328", date: "2026-07-22"}
+    teaches: "cvo:variation_type is a flat literal directly on the variant (no bnode) — the cheapest categorical facet. Because it needs no classification traversal, this aggregation completes without a per-gene pre-filter."
+
+  - id: disease_xref_count
+    intent: variant→disease xref navigation AND correct counting past the duplicate-bnode inflation
+    question: "How many distinct BRCA1 Pathogenic variants, and how many distinct MedGen disease concepts, are linked?"
+    complexity: aggregation
+    sparql: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      # Navigation: variant → med2rdf:disease → dct:references → TypeXref → dct:source + dct:identifier
+      SELECT (COUNT(DISTINCT ?variant) AS ?variants) (COUNT(DISTINCT ?cui) AS ?diseases)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        ?gene_bn med2rdf:gene <http://ncbi.nlm.nih.gov/gene/672> .    # BRCA1
+        ?classrec sio:SIO_000628 ?gene_bn .
+        ?variant cvo:record_type "classified" ;
+                 cvo:classified_record ?classrec ;
+                 med2rdf:disease ?dis .
+        ?classrec cvo:classifications ?cls .
+        ?cls cvo:germline_classification/cvo:description "Pathogenic" .
+        ?dis dct:references ?ref .
+        ?ref dct:source "MedGen" ; dct:identifier ?cui .
+      }
+    verified: {variants: 3989, diseases: 45, date: "2026-07-22"}
+    teaches: "Disease xrefs live on TypeXref bnodes: med2rdf:disease → dct:references → node with dct:source (\"MedGen\"/\"OMIM\"/\"Orphanet\"/\"MONDO\"/\"MeSH\") + dct:identifier + optional rdfs:seeAlso. Always aggregate with COUNT(DISTINCT ?variant) / COUNT(DISTINCT ?cui)."
+    traps_avoided:
+      - "The IDENTICAL query with COUNT(*) returns 14,769 — ~3.7x inflation — because med2rdf:disease emits one duplicate bnode PER SCV submission, all pointing to the same disease. DISTINCT on the bnode (?dis) does NOT help (each bnode is already unique); you MUST de-dup on ?variant and on dct:identifier. Verified 14,769 raw vs 3,989 variants / 45 CUIs, 2026-07-22."
+
+  - id: oncogenicity_kras
+    intent: the somatic/oncogenicity branches (NOT germline) — the classifications a germline query misses
+    question: "What is the oncogenicity classification and somatic clinical-impact tier of KRAS variants?"
+    complexity: advanced
+    sparql: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      SELECT ?label ?oncogenicity ?somatic_impact
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        VALUES ?gene_uri { <http://ncbi.nlm.nih.gov/gene/3845> }   # KRAS
+        ?gene_bn med2rdf:gene ?gene_uri .
+        ?classrec sio:SIO_000628 ?gene_bn .
+        ?variant a cvo:VariationArchiveType ;
+                 rdfs:label ?label ;
+                 cvo:record_type "classified" ;
+                 cvo:classified_record ?classrec .
+        ?classrec cvo:classifications ?classi .
+        ?classi cvo:oncogenicity_classification ?onc .
+        ?onc cvo:description ?oncogenicity .
+        OPTIONAL { ?classi cvo:somatic_clinical_impact ?sci . ?sci cvo:description ?somatic_impact . }
+      }
+      LIMIT 50
+    verified: {result_rows: 19, date: "2026-07-22", first_row: "KRAS c.183A>C (p.Gln61His) → Oncogenic / Tier II - Potential"}
+    teaches: "cvo:oncogenicity_classification (\"Oncogenic\"/\"Likely oncogenic\"/…) and cvo:somatic_clinical_impact (\"Tier I–IV\") are SIBLINGS of cvo:germline_classification under the same cvo:classifications node — each on its own bnode with its own cvo:description. Somatic impact is sparse → OPTIONAL it. This is why a germline-only enumeration undercounts cancer variants."
+
+  - id: xdb_medgen
+    intent: "cross-DB: ClinVar variants → MedGen disease-concept label, across the co-hosted NCBI endpoint"
+    question: "Which variants are linked to MedGen concept C0677776 (Hereditary breast-ovarian cancer syndrome), with its label?"
+    complexity: cross_db
+    endpoint_name: ncbi
+    sparql: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX mo: <http://med2rdf/ontology/medgen#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      SELECT ?var_label ?var_type ?medgen_cui ?medgen_label
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/medgen> {
+          VALUES ?medgen_concept { <http://www.ncbi.nlm.nih.gov/medgen/C0677776> }
+          ?medgen_concept a mo:ConceptID ; dct:identifier ?medgen_cui ; rdfs:label ?medgen_label .
+          BIND(IRI(REPLACE(STR(?medgen_concept), "www.ncbi", "ncbi")) AS ?cv_uri)   # www → no-www
+        }
+        GRAPH <http://rdfportal.org/dataset/clinvar> {
+          ?dis a med2rdf:Disease ; dct:references ?ref .
+          ?ref rdfs:seeAlso ?cv_uri .
+          ?variant a cvo:VariationArchiveType ; rdfs:label ?var_label ;
+                   cvo:variation_type ?var_type ; cvo:record_status "current" ; med2rdf:disease ?dis .
+        }
+      }
+      LIMIT 10
+    verified: {result_rows: 10, date: "2026-07-22", first_row: "NM_007294.4(BRCA1):c.453T>G → 'Hereditary breast ovarian cancer syndrome'"}
+    teaches: "MedGen is co-hosted on the ncbi endpoint — a direct two-GRAPH join, no TogoID. Anchor a MedGen ConceptID, convert its www IRI to ClinVar's no-www form with REPLACE, then match on the TypeXref rdfs:seeAlso. Pre-selecting the concept (VALUES) keeps it fast."
+    traps_avoided:
+      - "Using the MedGen www IRI directly inside the ClinVar graph returns 0 rows — MedGen = http://www.ncbi.nlm.nih.gov/medgen/, ClinVar seeAlso = http://ncbi.nlm.nih.gov/medgen/. The www→no-www swap is mandatory (co_hosted dataset/medgen)."
+
+# ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
+schema_delta:
+  - "GENE ENTITY (the 92,318 IRI cvo:Gene, distinct from the ~4.87M per-record bnodes): the IRI gene carries cvo:symbol, cvo:full_name, cvo:hgnc_id (\"HGNC:1100\", string), cvo:omim (integer, ~4,000 genes), cvo:cytogenetic_location. Reach a gene entity directly at http://ncbi.nlm.nih.gov/gene/{id} — no traversal."
+  - "REVIEW STATUS / evidence tier: the germline (and each) classification bnode also carries cvo:review_status — a controlled vocabulary (\"reviewed by expert panel\", \"practice guideline\", \"criteria provided, single submitter\", \"criteria provided, multiple submitters, no conflicts\", \"no assertion criteria provided\"). This is the evidence-quality filter; add it beside cvo:description to keep only high-confidence calls."
+  - "DATE TYPING: cvo:date_created / cvo:date_last_updated are xsd:date; dct:created / dct:modified carry the SAME dates but as xsd:string — filter on the cvo: (typed date) ones for range queries."
+  - "TEXT SEARCH (exploratory only): rdfs:label = cvo:variation_name = HGVS free text with no controlled vocabulary. Virtuoso bif:contains works (?label bif:contains \"'EGFR'\") but only for discovery — resolve to a gene IRI (variants_by_gene) for any real/count query."
+
+# ── id_join_map: how to anchor stably and cross to other resources. ──
+id_join_map:
+  stable_anchor: >
+    Variant = http://ncbi.nlm.nih.gov/clinvar/variation/{variation_id} (IRI tail == cvo:variation_id integer);
+    human key = cvo:accession "VCV000856461". Gene = http://ncbi.nlm.nih.gov/gene/{ncbi_gene_id} (IRI-typed cvo:Gene).
+  same_endpoint_joins:            # co-hosted on the ncbi endpoint — direct GRAPH join, NO TogoID
+    medgen:   "disease TypeXref rdfs:seeAlso → ncbi.nlm.nih.gov/medgen/C* ; MedGen types the www.ncbi form — apply the www→no-www REPLACE swap (example xdb_medgen)"
+    ncbigene: "med2rdf:gene → ncbi.nlm.nih.gov/gene/{id}; NCBI Gene RDF uses identifiers.org/ncbigene/{id} — join on the shared integer id (BIND the id as a string), not the IRI"
+    pubtator/pubmed: "literature co-mention, reachable only via a MedGen-CUI → MeSH-IRI bridge two hops out; run the discovery step separately (a single 3+ graph join times out)"
+  xrefs:                          # outbound, on disease TypeXref nodes (dct:source + dct:identifier [+ rdfs:seeAlso]) or on the Gene entity
+    omim:     "dct:source \"OMIM\" on a TypeXref; also cvo:omim (integer) directly on the Gene entity"
+    orphanet: "dct:source \"Orphanet\", dct:identifier the ORPHA number"
+    mondo:    "dct:source \"MONDO\", dct:identifier \"MONDO:0007254\""
+    mesh:     "dct:source \"MeSH\"/\"MESH\" (case-split — VALUES both), dct:identifier the MeSH descriptor id (e.g. \"D061325\")"
+    hpo:      "dct:source \"HP\"/\"Human Phenotype Ontology\" (also split)"
+    hgnc:     "cvo:hgnc_id \"HGNC:NNNN\" on the Gene entity (~100% of genes)"
+  bridged_via_togoid:             # for DBs NOT co-hosted on the ncbi endpoint
+    - "dbSNP rs / TogoVar / other RDF Portal DBs: convert the ClinVar variation id or the gene id via togoid_convertId when no same-endpoint graph carries the target."
+
+# ── byte-count footer (spec §5 item 7) ──
+# v2: `wc -c togo_mcp/data/mie/clinvar.yaml` = 42101 bytes
+# v3: `wc -c benchmark/redesign/mie_v3/clinvar.yaml` = 20307 bytes → 51.8% smaller than v2.

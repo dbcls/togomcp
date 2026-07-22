@@ -1,0 +1,270 @@
+# MIE v3 — NCBI Taxonomy (RDF Portal). AGENT-authored 2026-07-22 on `mie-redesign`.
+# Format: benchmark/redesign/MIE_v3_spec.md. Every verified count/result re-run live on the taxonomy
+# endpoint (rdfportal primary) 2026-07-22. Tier-C DB (enumeration_audit.md): tax:rank IRI (rank enum)
+# and rdfs:subClassOf(+/*) subtree are the CORE routes — both first-class below, each carrying its
+# load-bearing graph-pin caveat inline (route+caveat kept as one unit per §4.4).
+# Byte count vs the v2 file it replaces (spec §5 item 7): v2 togo_mcp/data/mie/taxonomy.yaml = 33,096 bytes;
+# this v3 file = 19,812 bytes → 40.1% smaller. See the footer for the exact `wc -c` figures.
+database: taxonomy
+
+# ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
+discovery:
+  title: NCBI Taxonomy RDF
+  description: >
+    Hierarchical biological classification of ~2.84M taxa (species → root) with scientific/common names,
+    synonyms, 45 rank IRIs, nuclear+mitochondrial genetic codes, and owl:sameAs/rdfs:seeAlso cross-links
+    to OBO NCBITaxon and UniProt — the organism backbone joined by every taxon-scoped DB on RDF Portal.
+  keywords: [taxonomy, organism, species, taxon, rank, lineage, phylogeny, classification, scientific name,
+             common name, synonym, genetic code, subtree, clade, ncbi taxonomy]
+  categories: [taxonomy]
+
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/primary/sparql   # RDF Portal "primary" endpoint
+base_uri: http://identifiers.org/taxonomy/        # taxon subject IRIs: identifiers.org/taxonomy/{numeric-id}
+graphs:
+  primary: http://rdfportal.org/ontology/taxonomy   # the authoritative graph — the MANDATORY pin target
+  co_hosted:                       # same endpoint; BOTH re-use the taxo:Taxon class → union hazards
+    dataset/microbedbjp: >
+      RE-DECLARATION TRAP (inflation + stale names). An older nomenclature vintage that re-uses the SAME
+      identifiers.org/taxonomy/N IRIs with its OWN tax:scientificName/tax:rank copies, so an UNPINNED
+      taxon-name/rank join DOUBLES and renamed clades appear under BOTH names — live 2026-07-22, taxon:1224
+      tax:scientificName = "Proteobacteria" (microbedbjp) AND "Pseudomonadota" (ontology/taxonomy) over the
+      union (gotcha pin_graph, superkingdom). ALSO the sole source of the phantom tax:Superkingdom rank
+      (gotcha superkingdom). FIX = pin GRAPH/FROM <http://rdfportal.org/ontology/taxonomy>.
+    dataset/gtdb: >
+      SCOPE-BLEED (entity inflation, NO row duplication). ~901K taxo:Taxon nodes under DISJOINT IRIs (zero
+      overlap with the authoritative graph) — cannot multiply an IRI-specific join, but an unpinned
+      enumeration/COUNT absorbs them as extra entities: `?t a taxo:Taxon` = 3,764,445 unpinned vs 2,840,372
+      pinned (×1.33, live 2026-07-22). Every row is unique so COUNT(DISTINCT) does NOT fix it — only the graph pin does.
+
+entity_counts:                     # graph-pinned COUNT(DISTINCT), live 2026-07-22
+  taxa_total:        2840372       # pinned to ontology/taxonomy; UNPINNED = 3,764,445 (+gtdb+microbedbjp, gotcha pin_graph) — never report
+  rank_species:      2315826
+  rank_genus:        132573
+  rank_family:       11524
+  rank_order:        2139
+  rank_class:        627
+  rank_phylum:       336
+  rank_kingdom:      22
+  coverage: "scientificName ~99% · owl:sameAs exactly 5/taxon (OBO+DDBJ+NCBI-web+OBO-OWL+BerkeleyBOP) · rdfs:seeAlso exactly 1 UniProt link/taxon · commonName ~11% (higher in vertebrates)"
+
+global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
+  - id: pin_graph
+    say: >
+      ALWAYS FROM (or GRAPH-pin) <http://rdfportal.org/ontology/taxonomy>. Two co-hosted graphs re-use the
+      taxo:Taxon class: microbedbjp re-declares the SAME taxon IRIs (doubles name/rank joins + stale names),
+      gtdb adds ~901K disjoint taxa (scope-bleeds enumerations/counts, ×1.33). Unpinned queries return a
+      plausible WRONG result, never an error. DISTINCT does not fix scope-bleed — only the pin does.
+  - id: superkingdom
+    say: >
+      tax:Superkingdom DOES NOT EXIST in the authoritative graph — `?t tax:rank tax:Superkingdom` returns 0
+      pinned but 173,618 UNPINNED (all legacy microbedbjp rows), so it "works" on the union and reads the
+      WRONG graph (worse than a 0-row failure). The ~14 top-level clades (Bacteria taxon:2, Archaea 2157,
+      Eukaryota 2759, Viruses 10239 + ~10 viral realms) carry the BARE namespace IRI
+      <http://ddbj.nig.ac.jp/ontologies/taxonomy/> as their rank — see example domain_clades.
+  - id: start_iri
+    say: >
+      With 2.84M taxa, an UNBOUNDED rdfs:subClassOf(+/*) with an unbound subject times out (60s). Every
+      transitive lineage/subtree MUST anchor on a specific taxon IRI (the start of an ancestor walk, or the
+      clade root of a descendant subtree) and carry a LIMIT on exploratory (non-COUNT) forms.
+  - id: obo_iri_subject
+    say: >
+      Taxon subjects use http://identifiers.org/taxonomy/{id} ONLY. The OBO form
+      http://purl.obolibrary.org/obo/NCBITaxon_{id} appears solely as an owl:sameAs OBJECT — using it in
+      subject position returns 0 rows silently. Convert via owl:sameAs, do not assume it.
+
+# ── examples: verified, executable atoms. Taxon is the hub: rdfs:label (sci name), dcterms:identifier (int
+#    taxid), tax:rank (→ a rank IRI), rdfs:subClassOf (→ the SINGLE immediate parent — a true hierarchy). ──
+examples:
+  - id: taxon_lookup
+    intent: full annotations for known taxa by their IRIs (the Taxon hub)
+    question: "What are the rank, scientific name, common name, and genetic code for Homo sapiens and Mus musculus?"
+    complexity: basic
+    sparql: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT ?taxon ?label ?id ?rank ?sciName ?commonName ?geneticCode
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        VALUES ?taxon { taxon:9606 taxon:10090 }
+        ?taxon a tax:Taxon ; rdfs:label ?label ; dcterms:identifier ?id ;
+               tax:rank ?rank ; tax:scientificName ?sciName .
+        OPTIONAL { ?taxon tax:commonName ?commonName }
+        OPTIONAL { ?taxon tax:geneticCode ?geneticCode }
+      }
+      LIMIT 10
+    verified: {result_rows: 2, date: "2026-07-22", first_row: "taxon:10090 = Mus musculus (Species, common 'mouse', GeneticCode1)"}
+    teaches: "Anchor on the taxon IRI (identifiers.org/taxonomy/{taxid}); rdfs:label == tax:scientificName (the sci name), dcterms:identifier is the integer taxid, tax:rank yields a rank IRI. commonName (~11%) and geneticCode are OPTIONAL. Discover unknown taxids with ncbi_esearch('taxonomy', 'name')."
+
+  - id: species_in_genus
+    intent: direct children of a genus filtered by rank IRI (the rank-enum route, one level down)
+    question: "What species belong to the genus Escherichia (taxon:561)?"
+    complexity: basic
+    sparql: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?species ?label
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        ?species a tax:Taxon ; tax:rank tax:Species ;
+                 rdfs:subClassOf taxon:561 ; rdfs:label ?label .
+      }
+      LIMIT 20
+    verified: {result_rows: 10, date: "2026-07-22", first_row: "taxon:562 = Escherichia coli"}
+    teaches: "Combine the rank IRI (tax:Species) with a bare rdfs:subClassOf <genusIRI> for direct children at a chosen rank — a controlled-vocab filter, never a label text-search. Escherichia has exactly 10 species. For deeper-than-one-level use subClassOf* (example subtree_enum)."
+
+  - id: lineage
+    intent: full ancestor lineage of a taxon via transitive subClassOf (upward traversal)
+    question: "What is the complete taxonomic lineage of humans (taxon:9606) up to root?"
+    complexity: intermediate
+    sparql: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT ?ancestor ?rank ?label ?id
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        taxon:9606 rdfs:subClassOf* ?ancestor .
+        ?ancestor a tax:Taxon ; tax:rank ?rank ; rdfs:label ?label ; dcterms:identifier ?id .
+      }
+      ORDER BY DESC(?id)
+      LIMIT 50
+    verified: {result_rows: 32, date: "2026-07-22", note: "Homo sapiens → Homo → Hominidae → … → Eukaryota → cellular organisms → root (many intervening ranks are 'Clade')"}
+    teaches: "rdfs:subClassOf* from a START taxon IRI walks the ancestor chain (inclusive of self). Anchoring on the specific IRI is mandatory — an unbound subject times out (gotcha start_iri). Note most intermediate nodes carry rank tax:Clade, not a Linnaean rank."
+
+  - id: count_by_rank
+    intent: enumerate taxa per taxonomic rank via rank IRIs (THE set-level rank-enumeration route)
+    question: "How many taxa exist at each major taxonomic rank?"
+    complexity: aggregation
+    sparql: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?rank ?rankLabel (COUNT(DISTINCT ?taxon) AS ?count)
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        VALUES ?rank { tax:Species tax:Genus tax:Family tax:Order tax:Class tax:Phylum tax:Kingdom }
+        ?taxon a tax:Taxon ; tax:rank ?rank .
+        ?rank rdfs:label ?rankLabel .
+      }
+      GROUP BY ?rank ?rankLabel
+      ORDER BY DESC(?count)
+    verified: {species: 2315826, genus: 132573, family: 11524, order: 2139, class: 627, phylum: 336, kingdom: 22, date: "2026-07-22"}
+    teaches: "The rank-enumeration route: VALUES over rank IRIs (tax:Species/Genus/Family/…) + COUNT(DISTINCT). Rank IRIs are the controlled vocabulary — filtering by them is exact and index-fast, never a label match. This is the primary 'all taxa at rank X' answer."
+    traps_avoided:
+      - "MUST pin FROM <ontology/taxonomy>: unpinned, gtdb's ~901K taxa + microbedbjp's re-declared copies inflate every rank count (gotcha pin_graph). DISTINCT does not save you — the surplus rows are distinct entities."
+
+  - id: subtree_enum
+    intent: enumerate ALL species under a WHOLE clade via the transitive subtree (THE set-level subtree route)
+    question: "How many species does the database record under the family Enterobacteriaceae (taxon:543), across every genus below it?"
+    complexity: aggregation
+    sparql: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT (COUNT(DISTINCT ?species) AS ?species_in_clade)
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        ?species rdfs:subClassOf* taxon:543 ; tax:rank tax:Species .
+      }
+    verified: {species_in_clade: 23148, date: "2026-07-22", note: "family 543 = Enterobacteriaceae; the subtree spans all descendant genera"}
+    teaches: "The subtree-enumeration route: rdfs:subClassOf* <cladeIRI> gathers EVERY descendant at any depth, then a rank filter (tax:Species) selects the level you want. This is THE way to answer 'all X under genus/family/order Y' — a bare rdfs:subClassOf reaches only direct children and misses everything below the next rank."
+    traps_avoided:
+      - "ontology/taxonomy is a TRUE hierarchy (rdfs:subClassOf = the single immediate parent), so descending a clade REQUIRES the transitive `*` — not a flattened lineage. Anchor on the clade IRI (gotcha start_iri): an unbounded subtree over 2.84M taxa times out; scope to genus/family/order, a phylum-wide subtree can exceed 60s."
+      - "Pin FROM <ontology/taxonomy> — unpinned, gtdb/microbedbjp descendants scope-bleed into the count (gotcha pin_graph)."
+
+  - id: domain_clades
+    intent: select the ~14 top-level clades — the tax:Superkingdom silent-failure workaround
+    question: "What are the biological top-level clades (cellular domains + viral realms) in NCBI Taxonomy?"
+    complexity: intermediate
+    sparql: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?taxon ?label
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        ?taxon a tax:Taxon ;
+               tax:rank <http://ddbj.nig.ac.jp/ontologies/taxonomy/> ;   # the BARE namespace IRI, NOT tax:Superkingdom
+               rdfs:label ?label .
+        FILTER(?taxon != <http://identifiers.org/taxonomy/131567>)        # exclude the "cellular organisms" root
+      }
+    verified: {result_rows: 14, date: "2026-07-22", note: "Bacteria(2), Archaea(2157), Eukaryota(2759), Viruses(10239) + ~10 viral realms (Riboviria, Duplodnaviria, Varidnaviria, …)"}
+    teaches: "Top-level clades carry the BARE namespace IRI <http://ddbj.nig.ac.jp/ontologies/taxonomy/> as their rank (NCBI leaves them formally rank-less). Select by that IRI and exclude the 'cellular organisms' root (taxon:131567), which shares it, to get the ~14 biological top clades."
+    traps_avoided:
+      - "tax:Superkingdom does NOT exist (gotcha superkingdom): pinned it 0-rows, unpinned it returns 173,618 legacy microbedbjp rows — a query that 'works' unpinned is reading the wrong graph. Use the bare-namespace rank IRI in the pinned graph instead."
+
+  - id: species_per_genus
+    intent: rank genera by species richness (biodiversity aggregation joining two rank tiers)
+    question: "Which genera have the most species in the database?"
+    complexity: aggregation
+    sparql: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?genus ?genusLabel (COUNT(DISTINCT ?species) AS ?speciesCount)
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        ?species a tax:Taxon ; tax:rank tax:Species ; rdfs:subClassOf ?genus .
+        ?genus tax:rank tax:Genus ; rdfs:label ?genusLabel .
+      }
+      GROUP BY ?genus ?genusLabel
+      ORDER BY DESC(?speciesCount)
+      LIMIT 10
+    verified: {top: "Cortinarius 2070, Astragalus 1630, Megaselia 1312, Russula 1285", date: "2026-07-22"}
+    teaches: "Join two rank tiers on the single-step rdfs:subClassOf (species → its genus), constrain BOTH ends by rank IRI, then GROUP BY the parent. Direct subClassOf (not `*`) is correct here — a species' genus is its immediate parent."
+
+  - id: xdb_bacdive
+    intent: "cross-DB (intra-primary): all BacDive strains under a genus, via the taxonomy subtree → integer taxID join"
+    question: "How many BacDive strains fall under the genus Bacillus (taxon:1386), across all its species?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      SELECT (COUNT(DISTINCT ?strain) AS ?strains)
+      WHERE {
+        GRAPH <http://rdfportal.org/ontology/taxonomy> {
+          ?species rdfs:subClassOf* taxon:1386 ; tax:rank tax:Species ; dcterms:identifier ?taxID .
+        }
+        GRAPH <http://rdfportal.org/dataset/bacdive> {
+          ?strain a schema:Strain ; schema:hasTaxID ?taxID .
+          FILTER(isNumeric(?taxID))
+        }
+      }
+    verified: {strains: 2450, date: "2026-07-22"}
+    teaches: "NCBI Taxonomy is the organism backbone co-hosted on `primary`: expand a clade to its species taxids with subClassOf* IN GRAPH <ontology/taxonomy>, then join dcterms:identifier (int taxid) to another DB's taxid key — here BacDive schema:hasTaxID — as a direct GRAPH join, no TogoID bridge. Same pattern reaches any taxid-keyed DB on the endpoint."
+    traps_avoided:
+      - "BacDive schema:hasTaxID is xsd:int and ALSO appears as a plain string — FILTER(isNumeric(?taxID)) before the join, and never FILTER(datatype()=xsd:integer) (the values are xsd:int, 0 rows)."
+
+# ── schema_delta: non-obvious predicates/structure NO example above already shows. ──
+schema_delta:
+  - "Naming variants beyond scientificName/commonName: tax:genbankCommonName (preferred GenBank common name), tax:synonym (historical names, e.g. E. coli 'Bacillus coli'), tax:equivalentName, tax:authority (full citation 'Homo sapiens Linnaeus, 1758'), tax:uniqueName (disambiguation). commonName ~11%; synonyms/authority richest in bacteria."
+  - "Genetic codes: tax:geneticCode (nuclear) and tax:geneticCodeMt (mitochondrial) → tax:GeneticCode{N} IRIs (rdfs:label carries the code name). ~100% where a genome exists."
+  - "Reorganization history: tax:merged → the identifiers.org/taxonomy IRIs of taxa merged INTO this one (bacteria-heavy); tax:typeMaterial → strain-collection strings ('ATCC 11775', 'DSM 30083') on bacterial/fungal species."
+  - "rank IRIs beyond the Linnaean seven: 45 total including tax:Subspecies, tax:Strain, tax:Varietas, tax:NoRank (253K taxa incl. root taxon:1), and tax:Clade (unranked internal nodes — dominant in a deep lineage, see example lineage)."
+  - "Label discovery when the taxid is unknown: `?label bif:contains \"'mouse'\"` (Virtuoso indexed full-text, faster than FILTER CONTAINS) inside the pinned graph — then switch to the taxon IRI for real work. Split any property path before the bif:contains text node."
+
+# ── id_join_map: how to anchor stably and cross to other resources. ──
+id_join_map:
+  stable_anchor: >
+    Taxon IRI http://identifiers.org/taxonomy/{taxid} (== dcterms:identifier integer). rdfs:label ==
+    tax:scientificName is the human key (~99%). NEVER use the OBO form NCBITaxon_{id} as a subject
+    (gotcha obo_iri_subject) — it is an owl:sameAs object only.
+  same_endpoint_joins:            # co-hosted on `primary` — direct GRAPH join, NO TogoID
+    taxid_keyed_dbs: "the integer taxid (dcterms:identifier) joins to any taxid-keyed DB on `primary` — e.g. BacDive schema:hasTaxID (example xdb_bacdive), MediaDive; expand a clade first via subClassOf* to reach every member"
+    ddbj: "DDBJ (separate endpoint) joins the OTHER direction — its features carry ro:0002162 → these identifiers.org/taxonomy/N IRIs; DDBJ's own v3 file co-hosts THIS graph for scientificName/rank/lineage"
+  xrefs:                          # outbound equivalences on every taxon (exactly-5 owl:sameAs + 1 seeAlso)
+    obo_ncbitaxon: "owl:sameAs → purl.obolibrary.org/obo/NCBITaxon_{id} (100%; the ontology-interop form — object only)"
+    uniprot:       "rdfs:seeAlso → purl.uniprot.org/taxonomy/{id} (exactly 1/taxon, 100%) — the bridge to UniProt proteins/proteomes (UniProt is on the `sib` endpoint → federate or TogoID)"
+    legacy_forms:  "owl:sameAs also → DDBJ (ddbj.nig.ac.jp/ontologies/taxonomy/{id}), NCBI web (ncbi.nlm.nih.gov/taxonomy/{id}), OBO-OWL, Berkeley-BOP (5 total, 100%)"
+  bridged_via_togoid:             # cross-endpoint DBs keyed on taxid but not co-hosted
+    - "UniProt, Ensembl, and other non-`primary` DBs keyed on organism → togoid_convertId on the taxid, or federate via the rdfs:seeAlso UniProt IRI."
+
+# ── byte-count footer (spec §5 item 7) ──
+# v2: `wc -c togo_mcp/data/mie/taxonomy.yaml` = 33096 bytes
+# v3: `wc -c benchmark/redesign/mie_v3/taxonomy.yaml` = 19812 bytes → 40.1% smaller than v2.
