@@ -61,10 +61,18 @@ caveat" / the enumeration rule) protecting all 34 DBs.
 > **De-overfit update (2026-07-22).** The `keyword_enum` example originally used q066's *exact*
 > subject — LIM domain (KW-0440), even carrying the count 71 — which made the q066 recovery below
 > partly circular (the MIE contained the answer). Its illustrative subject was swapped to a neutral,
-> non-benchmark keyword (SH3 domain KW-0727 = 108); the **route is unchanged**. Consequently the
-> q066 recovery measured below is a *lower bound* on the real fix, and the step-5 100Q run is now the
-> clean test of whether the general keyword route transfers to LIM domain. New rule: spec §4.6 +
+> non-benchmark keyword (SH3 domain KW-0727 = 108); the **route is unchanged**. New rule: spec §4.6 +
 > checklist item 9 (no example subject may be a benchmark question's entity for that DB).
+>
+> **Transfer test — PASSED (2026-07-22), the circularity is resolved.** Re-ran q066 ×3 on the
+> *de-overfit* smoke_v3 (SH3-domain MIE — contains **no** LIM domain, no 71) via subscription auth (no
+> ANTHROPIC_API_KEY). All 3 runs: **score 18, winner LMO7 (Q8WWI1), 50 phosphopeptides** (ahead of
+> LIMA1 39 / LIMCH1 36 — gold-exact), **zero "14" undercount**. `tools_used` shows get_MIE_file →
+> run_sparql: the agent **generalized** `up:classifiedWith keywords:NNN` from the SH3 example to LIM
+> domain (KW-0440). So the q066 fix is a real, transferable route — **not** answer-leakage. Note it
+> even edged the overfit LIM-domain version (18.0 flat vs 17.0 [15,19,19]): removing the exact
+> benchmark entity did not hurt and improved consistency. This makes the recovery definitive; the
+> step-5 100Q run remains the corpus-wide equivalence check, but q066 specifically is settled.
 
 ### q033 is variance, not a gap
 Q033 (bacdive+uniprot, list): v3 per-run [19, 4, 15] — one run nailed it (19), one bombed (4).
