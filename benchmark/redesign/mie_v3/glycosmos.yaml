@@ -1,7 +1,7 @@
 # MIE v3 — GlyCosmos (glycoscience portal). AGENT-authored v3 file, 2026-07-22 on `mie-redesign`.
 # Format: benchmark/redesign/MIE_v3_spec.md. Every verified count/result re-run live on the glycosmos endpoint 2026-07-22.
 # Byte count vs the v2 file it replaces (spec §5 item 7): v2 togo_mcp/data/mie/glycosmos.yaml = 88,307 bytes;
-# this v3 file = 30,622 bytes → 65.3% smaller. Exact `wc -c` figures in the footer.
+# this v3 file = 33,924 bytes → 61.6% smaller. Exact `wc -c` figures in the footer.
 database: glycosmos
 
 # ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
@@ -333,6 +333,47 @@ examples:
     traps_avoided:
       - "Do NOT text-search glycogene labels/descriptions for the function name — the GO term is a controlled IRI; the typed sio:SIO_000255/up:classifiedWith route is exact, a name match silently undercounts."
 
+  - id: enum_go_descendants
+    intent: enumerate glycogenes for a GO term OR ANY OF ITS DESCENDANTS — the "…or descendant terms" set route (Tier A; needs the AUTHORITATIVE GO hierarchy, NOT the endpoint's own go.owl copy)
+    question: "How many human glycogenes are annotated to 'protein O-linked glycosylation' (GO:0006493) or any of its descendant GO terms?"
+    complexity: cross_db
+    sparql: |
+      # TWO-database recipe (glycosmos has NO federation, and its embedded go.owl is an unreliable partial
+      # GO snapshot — see traps). STEP 1 expands the term over the AUTHORITATIVE GO on the `go` RDF database;
+      # STEP 2 VALUES-joins the resulting IRIs to the glycogenes reverse-GO route. Run as two run_sparql calls.
+      #
+      # ── STEP 1 · database: go ──  collect the descendant IRIs (subClassOf* over the real Gene Ontology):
+      #   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      #   PREFIX obo:  <http://purl.obolibrary.org/obo/>
+      #   SELECT DISTINCT ?desc WHERE {
+      #     ?desc rdfs:subClassOf* obo:GO_0006493 .
+      #     FILTER(STRSTARTS(STR(?desc), "http://purl.obolibrary.org/obo/GO_"))
+      #   }
+      #   -> 16 GO IRIs (GO_0006493 + 15 descendants), pasted into the VALUES block below.
+      #
+      # ── STEP 2 · database: glycosmos ──  count human glycogenes carrying ANY of those terms (runnable as-is):
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT (COUNT(DISTINCT ?gene) AS ?n)
+      WHERE {
+        VALUES ?desc {
+          obo:GO_0006493 obo:GO_0015012 obo:GO_0016266 obo:GO_0030210 obo:GO_0035269 obo:GO_0036066
+          obo:GO_0050650 obo:GO_0050651 obo:GO_0120532 obo:GO_0140264 obo:GO_0140265 obo:GO_0180059
+          obo:GO_0180062 obo:GO_0180063 obo:GO_0180064 obo:GO_7770074
+        }
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          ?gene sio:SIO_000255/up:classifiedWith ?desc ;
+                glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
+        }
+      }
+    verified: {n: 121, date: "2026-07-22", go_db_terms: 16, local_goowl_undercount: 100}
+    teaches: "A '<GO term> OR ITS DESCENDANTS' enumeration is a TWO-database recipe: (1) expand the term with rdfs:subClassOf* on the authoritative `go` RDF database to get the descendant IRIs, (2) VALUES those IRIs into the glycogenes reverse-GO join (enum_go_glycogenes). The single-term route (enum_go_glycogenes) answers only the exact term and undercounts any '…or descendants' question."
+    traps_avoided:
+      - "Do NOT expand descendants with the endpoint's OWN embedded GO graph (GRAPH <http://purl.obolibrary.org/obo/go.owl>) — it is a PARTIAL/stale GO snapshot whose subClassOf* closure diverges from the real ontology, giving a different term set and a wrong gene count (here 100 vs the correct 121). Source descendant IRIs from the native `go` database only."
+      - "glycogenes are annotated to GO IRIs the local go.owl does not connect back to the parent term, so a purely intra-glycosmos subClassOf* traversal misses them no matter how careful the query — the external `go` expansion is mandatory, not an optimization."
+
   - id: enum_hpa_tissue
     intent: enumerate ALL human glycogenes with High expression in a tissue (the reverse-HPA set route — Tier A, buried in v2)
     question: "How many human glycogenes are expressed at High level in the cerebral cortex (HPA)?"
@@ -392,4 +433,6 @@ id_join_map:
 
 # ── byte-count footer (spec §5 item 7) ──
 # v2: `wc -c togo_mcp/data/mie/glycosmos.yaml` = 88307 bytes
-# v3: `wc -c benchmark/redesign/mie_v3/glycosmos.yaml` = 30622 bytes → 65.3% smaller than v2.
+# v3: `wc -c benchmark/redesign/mie_v3/glycosmos.yaml` = 33924 bytes → 61.6% smaller than v2.
+# (2026-07-22 canary fix: added example enum_go_descendants — the GO-term-plus-descendants enumeration
+#  route via the native `go` DB; the endpoint's embedded go.owl is a partial/divergent GO snapshot.)
