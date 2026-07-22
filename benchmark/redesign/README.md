@@ -45,7 +45,7 @@ carry only the non-recoverable.
 | 3 | Smoke test (pilot subset vs v2.x, ablation harness) — bail early on gross regression | ✅ done — **yellow light**, see `smoke/FINDINGS.md` |
 | 3a | Diagnose q066 regression; fold the lesson into `MIE_v3_spec.md` | ✅ done — keyword-enumeration route was demoted to a caveat; fixed (spec §4.4 + `keyword_enum` example) |
 | 3b | §4.4 enumeration-route audit of all 36 DBs → `enumeration_audit.md` | ✅ done — 34/36 already first-class; 4 Tier-A buried routes (ddbj/glycosmos/pubchem/mogplus) to un-bury, tiers B/C to keep route+caveat together |
-| 4 | Author the **full** redesigned corpus (all 36) | ⬜ (needs 3a+3b; 100Q gate needs full corpus — coverage is all-or-nothing). Per-DB §4.4 obligations in `enumeration_audit.md` |
+| 4 | Author the **full** redesigned corpus (all 36) | 🔄 **6/36** (uniprot, bacdive, + **all 4 Tier-A: ddbj, glycosmos, pubchem, mogplus** — agent-authored, each buried route un-buried + independently live-re-verified). Remaining: 9 Tier-B/C + ~21 OK. Per-DB §4.4 obligations in `enumeration_audit.md`; delegated authoring loop proven |
 | 5 | **Release gate**: full-100Q equivalence run | ⬜ |
 | 6 | Release (MAJOR): flip served corpus + retire discovery trio | ⬜ |
 
