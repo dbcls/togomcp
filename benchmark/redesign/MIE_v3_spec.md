@@ -160,6 +160,21 @@ the opposite of the intent.
 The header is the cheap tier; `examples` the expensive one. A future `get_MIE_file(database,
 level=header|+examples|full)` can serve tiers. Author so the header stands alone.
 
+### 4.6 Illustrative subjects must not be drawn from the benchmark (no test leakage)
+An example teaches a **route**; the specific entity it uses is just the vehicle. Never pick that
+entity from the evaluation set — an example whose subject is a benchmark question's exact
+keyword / class / gold entity leaks the test answer into the corpus and inflates the step-5
+equivalence run on that question (the MIE "knows" the answer instead of the agent deriving it).
+- *How this bit us:* the first-draft `keyword_enum` (uniprot) and `enum_has_role` (chebi) used
+  **LIM domain** (q066) and **antimicrobial agent** (q075) — the exact subjects of those questions,
+  and `keyword_enum` even carried q066's first-step count (71). Fixed by swapping to neutral,
+  live-verified subjects (SH3 domain → 108; neurotoxin → 89) that exercise the identical route.
+- *Rule:* before finalizing an example, check its subject (keyword phrase, class IRI, gold gene /
+  compound / accession) against `benchmark/questions/*.yaml` (the `inspiration_keyword` and
+  `exact_answer` fields — a one-line grep). If it collides with a question that uses **this DB**,
+  pick a different member of the same class. Canonical, non-benchmark subjects (ATP, TP53, BRCA1)
+  are fine; the point is only to avoid the specific entities the benchmark scores on.
+
 ## 5. Validation checklist (Phase 5 — non-negotiable)
 1. File parses as YAML; required keys present (§2).
 2. `discovery` has all four fields; description is one sentence.
@@ -174,3 +189,6 @@ level=header|+examples|full)` can serve tiers. Author so the header stands alone
    add a *new* standalone `enum_*` example (the route is buried in v2); if **Tier B/C**, keep the
    worked query and its load-bearing caveat together — do not compress the query away and leave only
    the warning.
+9. No example's subject is a benchmark question's keyword / class / gold entity for **this DB**
+   (§4.6) — grep the subject against `benchmark/questions/*.yaml`; swap to a neutral member if it
+   collides. No test leakage.

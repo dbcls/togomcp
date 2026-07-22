@@ -5,7 +5,7 @@
 # carried as first-class examples (enum_subclass_hierarchy, enum_has_role); their load-bearing caveats ride
 # inline, never as a lone warning.
 # Byte count vs the v2 file it replaces (spec §5 item 7): v2 togo_mcp/data/mie/chebi.yaml = 38,434 bytes;
-# this v3 file = 21,854 bytes → 43.1% smaller. See the footer for the exact `wc -c` figures.
+# this v3 file = 21,817 bytes → 43.2% smaller. See the footer for the exact `wc -c` figures.
 database: chebi
 
 # ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
@@ -117,7 +117,7 @@ examples:
 
   - id: enum_has_role
     intent: enumerate ALL chemicals bearing a biological ROLE via the RO_0000087 owl:Restriction (set-level ROUTE #2)
-    question: "How many antimicrobial agents are in ChEBI, and what are some with their formulas?"
+    question: "How many neurotoxins are in ChEBI, and what are some with their formulas?"
     complexity: aggregation
     sparql: |
       PREFIX obo: <http://purl.obolibrary.org/obo/>
@@ -128,10 +128,10 @@ examples:
         ?entity a owl:Class ; rdfs:subClassOf ?r .
         ?r a owl:Restriction ;
            owl:onProperty obo:RO_0000087 ;          # has_role
-           owl:someValuesFrom obo:CHEBI_33281 .      # CHEBI:33281 = antimicrobial agent
+           owl:someValuesFrom obo:CHEBI_50910 .      # CHEBI:50910 = neurotoxin (swap for any role IRI)
       }
-    verified: {count: 425, date: "2026-07-22", sample_rows: "hydrogen peroxide (H2O2), tunicamycin, ciprofloxacin, tetracycline, streptozocin"}
-    teaches: "THE role enumeration route: the 3-triple owl:Restriction on owl:onProperty RO_0000087 + owl:someValuesFrom <role IRI> lists every chemical asserted to have that role. This is a DIFFERENT axis from the class hierarchy — a role (antimicrobial, ligand, solvent) is not a structural subclass."
+    verified: {count: 89, date: "2026-07-22", sample_rows: "(S)-nicotine, (R)-sarin, (S)-amphetamine, domoic acid, ibotenic acid"}
+    teaches: "THE role enumeration route: the 3-triple owl:Restriction on owl:onProperty RO_0000087 + owl:someValuesFrom <role IRI> lists every chemical asserted to have that role. This is a DIFFERENT axis from the class hierarchy — a role (neurotoxin, ligand, solvent) is not a structural subclass."
     traps_avoided:
       - "There is NO direct `?entity obo:RO_0000087 obo:CHEBI_33281` triple — that returns 0 rows. The restriction blank node is mandatory (gotcha restriction_pattern)."
       - "Swap owl:someValuesFrom to any other role IRI (RO_0000087 stays) to enumerate a different role; swap owl:onProperty to RO_0018034/RO_0018036/… for chemical relationships (conjugate acid, tautomer)."
@@ -178,7 +178,7 @@ examples:
 
   - id: role_and_hierarchy
     intent: compose BOTH set-level routes in one query — hierarchy (subClassOf+) AND role (owl:Restriction)
-    question: "Which amino acids also act as antimicrobial agents, with their formulas?"
+    question: "Which amino acids also act as neurotoxins, with their formulas?"
     complexity: advanced
     sparql: |
       PREFIX obo: <http://purl.obolibrary.org/obo/>
@@ -192,12 +192,12 @@ examples:
         ?entity rdfs:subClassOf ?r .
         ?r a owl:Restriction ;
            owl:onProperty obo:RO_0000087 ;                  # has_role   (ROUTE #2)
-           owl:someValuesFrom obo:CHEBI_33281 .             # antimicrobial agent
+           owl:someValuesFrom obo:CHEBI_50910 .             # neurotoxin
         OPTIONAL { ?entity chemrof:generalized_empirical_formula ?formula }
         FILTER(STRSTARTS(STR(?entity), "http://purl.obolibrary.org/obo/CHEBI_"))
       }
       LIMIT 20
-    verified: {result_rows: 12, date: "2026-07-22", first_row: "trovafloxacin (C20H15F3N4O3); also myriocin, azoxybacilin, sinefungin"}
+    verified: {result_rows: 5, date: "2026-07-22", first_row: "L-dopa; also L-BMAA, ibotenic acid, domoic acid, dysiherbaine"}
     teaches: "The two enumeration axes intersect cleanly: subClassOf+ constrains STRUCTURE, the RO_0000087 restriction constrains ROLE, both on the same ?entity. This is the general 'X-type chemicals that do Y' pattern."
     traps_avoided:
       - "Do NOT try to combine two ROLES as two direct restrictions expecting inheritance — a role asserted on a superclass is not repeated as a direct restriction on the entity, so `has_role A AND has_role B` on one node is often 0. Cross a role with the STRUCTURAL hierarchy (as here) instead, which is inherited via subClassOf+."
@@ -299,4 +299,4 @@ id_join_map:
 
 # ── byte-count footer (spec §5 item 7) ──
 # v2: `wc -c togo_mcp/data/mie/chebi.yaml` = 38434 bytes
-# v3: `wc -c benchmark/redesign/mie_v3/chebi.yaml` = 21854 bytes → 43.1% smaller than v2.
+# v3: `wc -c benchmark/redesign/mie_v3/chebi.yaml` = 21817 bytes → 43.2% smaller than v2.
