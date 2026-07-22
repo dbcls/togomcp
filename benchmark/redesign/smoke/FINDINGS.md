@@ -121,10 +121,31 @@ so this is a targeted authoring gap, not a broken format.
 
 **Diagnosis + fix DONE (2026-07-22)** — see the confirmed diagnosis above. The lesson is now spec
 rule §4.4 (a positive route is not a caveat) + checklist item 8, and the uniprot pilot has a
-`keyword_enum` example. **Remaining before scaling to the 34-DB corpus:**
-1. Re-verify the fix lands in the agent loop — a cheap targeted re-run of just q066 (and the other
-   uniprot enumeration questions) on the patched v3 corpus should recover to v2 parity. (Not yet
-   done — the full 25-question re-run is only worth it once more DBs change.)
+`keyword_enum` example.
+
+**Re-verification DONE (2026-07-22) — fix confirmed in the agent loop.** Targeted re-run of q066
+alone (3 replicates × smoke_v2 vs the *patched* smoke_v3; `results_q066_recheck/`, ~13 min). Gold
+re-verified live first (keyword→**71**; LMO7/Q8WWI1=**50**, ahead of LIMA1 39 / LIMCH1 36).
+
+| | pre-fix v3 | v2 (ref) | **patched v3** |
+|---|---|---|---|
+| per-run judge score | [12, 13, 13] | [19, 19, 17] → 18.0 | **[15, 19, 19] → 17.0** |
+| winner named | LIMA1 (wrong) ×3 | LMO7 ×3 | **LMO7 ×3** |
+
+Δ(v3−v2) went from **≈−4.7** (pre-fix) to **−1.0**. The keyword-enumeration regression is closed:
+patched v3 routes via KW-0440 → 71 → LMO7 on all three runs. The residual −1.0 is one run (v3 score
+15) that named LMO7 correctly but reported **309** (phospho-PSMs) instead of **50** distinct
+*sequences* — a distinct-peptide-vs-PSM aggregation wobble that also appears in a v2 run (score 17),
+so it is shared question difficulty, not a v3 authoring gap.
+
+*Token-accounting side check (validates the harness fix):* the new columns populate with the real
+cumulative figures — before, q066 logged `input_tokens≈8`; now `togomcp_total_input_tokens` reads
+**63–82K** (bulk is `cache_read`, 63–81K). Directionally, patched v3 mean total_input **66.7K** vs v2
+**74.9K** (−11%) and cost **$0.34** vs **$0.48**; n=3 on one question with v2 spanning 63–82K, so
+**indicative only** — but it is the first time this input-side number was measurable at all.
+
+**Remaining before scaling to the 34-DB corpus:**
+1. ~~Re-verify the fix lands in the agent loop.~~ **DONE — see above.**
 2. Apply §4.4 when authoring the full corpus: every DB with a controlled-vocabulary enumeration
    route needs a set-level example.
 
