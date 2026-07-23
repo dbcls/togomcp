@@ -162,3 +162,23 @@ Run 2026-07-23→24, `results_rel_batch3/` (469.8 min ≈ 7.8h). 0 invalid cells
 - CI crosses 0 ⇒ genuine **equivalence** (not a proven gain); lower bound −0.11 sits well inside the
   −0.5 non-regression margin ⇒ v3 does not regress. Stable vs n=50 (+0.34, CI [−0.14,+0.82]) — narrowing.
 - Fully-refused (dropped): q032, q034, q044, q071. CI ladder: 10 → 35 → 50 → **75** done. One batch left (q076–q100).
+
+## Step 5b — batch 4 (q076–q085; 10 Q, ×3, API)
+
+Run 2026-07-24, `results_rel_batch4/` (194.9 min ≈ 3.2h). 0 invalid; 1 refusal (v3 q079 r1).
+
+- **Raw** Δ = +0.10/20; **Clean** Δ = **+0.33/20** over 10 usable Q (v3 17.66 vs v2 17.10).
+- **Batch-4 gate: PASS.** Two clean regression-signatures, both SHARED-difficulty (not v3 defects):
+  - q079 (−2.3): MHC-I "on one chromosome?" — gold "No" (B2M chr15, MR1 chr1). BOTH arms answer "Yes,
+    all chr6" (miss B2M/MR1); v3 clean 11,11 marginally below v2 12,14,14. Shared blind spot.
+  - q076 (−1.3): homeobox exact-count summary — BOTH arms fabricate/vary counts (v2 249/234/246,
+    v3 237/235/257); v3 slightly worse. Same fabrication class as q021.
+
+## Cumulative (n=85: + batch4)
+
+- **CLEAN** paired Δ = **+0.30/20** (81 usable Q), 95% CI **[−0.09, +0.69]**; pooled +0.36, strict-3/3 +0.39.
+  better/tie/worse 32/26/23.
+- Stable across the ladder: n=50 +0.34 [−0.14,+0.82] → 75 +0.29 [−0.11,+0.70] → **85 +0.30 [−0.09,+0.69]**.
+  CI still straddles 0 (equivalence, not a proven gain); lower bound −0.09 well inside the −0.5
+  non-regression margin. Fully-refused (dropped): q032, q034, q044, q071.
+- CI ladder: 10 → 35 → 50 → 75 → **85** done. Final batch: q086–q100 (15 Q) → n=100.
