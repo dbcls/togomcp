@@ -9,8 +9,11 @@ the argument and `MIE_v3_spec.md` is the contract.*
 ## Why
 
 The 2026-07 MIE ablation sweeps established that the current v2.3 format carries heavy,
-*orthogonal* redundancy — the same fact written up to four ways (schema list, ShEx shape,
-worked query, sample triple):
+*orthogonal* redundancy — the same predicate-level fact restated up to three ways (ShEx
+shape in `shape_expressions`, sample triple in `sample_rdf_entries`, worked query in
+`sparql_query_examples`; the `cross_references` list is a loose fourth for xref predicates).
+`schema_info` is *not* a restatement — it's the metadata header, kept in v3 as `discovery`
++ `header`. The ablation findings:
 
 - **Whole MIE helps** (`no_mie` removed the whole thing → **+0.9/20**, z≈2.6, significant).
 - **No single section or group is *necessary*** (leave-one-out: all 11 sections and all 3
@@ -19,7 +22,7 @@ worked query, sample triple):
   the whole-MIE effect, z=3.32; guardrails/orientation 13%/44%, NS).
 
 ⇒ The value is real but concentrated in query-construction content. Reorganize *around it*,
-collapse the 4× restatement, and drop the prose-only sections — same value, far fewer tokens.
+collapse the 3× schema restatement, and drop the prose-only sections — same value, far fewer tokens.
 
 ## The v3 format (see `MIE_v3_spec.md`)
 

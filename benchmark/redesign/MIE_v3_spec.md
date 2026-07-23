@@ -15,9 +15,12 @@ queries it can reuse. v3 is organized by **agent need × recoverability** with t
 
 ### 1.2 Why v3 (evidence)
 The 2026-07 ablations found the v2.3 layout carries heavy *orthogonal* redundancy — the
-same fact written up to four ways (schema list, ShEx shape, worked query, sample triple).
+same predicate-level fact restated up to three ways (ShEx shape in `shape_expressions`,
+sample triple in `sample_rdf_entries`, worked query in `sparql_query_examples`; the
+`cross_references` list adds a loose fourth for xref predicates). (`schema_info` is *not*
+one of these — it is the metadata header, and survives into v3 as `discovery` + `header`.)
 Leave-one-in confirmed the value concentrates in the query-construction content: the
-`query` group alone recovers **99%** of the whole-MIE benefit. v3 collapses the 4×
+`query` group alone recovers **99%** of the whole-MIE benefit. v3 collapses the
 restatement into one example-atom and drops the prose-only sections, keeping the value at a
 fraction of the bytes (UniProt pilot: **~55–74% smaller**).
 
