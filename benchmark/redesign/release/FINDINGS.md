@@ -140,3 +140,25 @@ q033), not a corpus defect. No regression signature on clean cells.
   refusal message** — not a real v3/v2 difference. These are excluded from the clean verdict; effective
   n is reduced but the equivalence conclusion is unchanged.
 - CI ladder: 10 → 35 → **50** done. v3 tracking at-or-above v2 on both raw and clean.
+
+## Step 5b — batch 3 (q049–q075 minus canary; 25 Q, ×3, API)
+
+Run 2026-07-23→24, `results_rel_batch3/` (469.8 min ≈ 7.8h). 0 invalid cells; only 6 refusal cells
+(v2=4 / v3=2, on q050/q057/q059 — no fully-refused question).
+
+- **Raw** Δ = +0.63/20 (v3 17.45 vs v2 16.83). **Clean** Δ = **+0.21/20** over 25 usable Q (v3 17.82 vs v2 17.55).
+- **Batch-3 gate: PASS** — clean positive, no systematic defect.
+- Two clean regression-signatures, both SOFT single-question (watch at 100Q, neither q022-style):
+  - q057 (−4.0): BRENDA aminotransferase-list. On the non-refused runs v3 has FULL recall (all 14 genes)
+    but lower PRECISION (rec5/prec2–3 vs v2 5/5) — v3's EC 2.6.1.- filter admits false positives. Right
+    answer set, looser filtering. (r1 was a refusal on both arms.)
+  - q055 (−2.3): OMA deep-rooting nuance — BOTH arms wrongly root the P5C-reductase family at Eukaryota
+    instead of LUCA; v3 does so all 3 runs, v2 got it right once. Both imperfect, v3 slightly more so.
+
+## Cumulative (n=75: + batch3, folded into results_release)
+
+- **CLEAN** paired Δ = **+0.29/20** (per-question, 71 usable Q), 95% CI **[−0.11, +0.70]**. Estimators
+  agree: pooled +0.33, strict-3/3 +0.36. better/tie/worse 28/22/21.
+- CI crosses 0 ⇒ genuine **equivalence** (not a proven gain); lower bound −0.11 sits well inside the
+  −0.5 non-regression margin ⇒ v3 does not regress. Stable vs n=50 (+0.34, CI [−0.14,+0.82]) — narrowing.
+- Fully-refused (dropped): q032, q034, q044, q071. CI ladder: 10 → 35 → 50 → **75** done. One batch left (q076–q100).
