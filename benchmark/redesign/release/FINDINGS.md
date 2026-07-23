@@ -78,9 +78,14 @@ in 25-QA batches).** Watch q027/q031 in their batch; if the both-arms-weak patte
 
 Run 2026-07-22→23, `results_rel_batch1/` (431.7 min ≈ 7.2h). **0 invalid cells** (no timeouts, no stubs).
 
-- **Batch-1 paired Δ = +1.31/20** (v3 16.56 vs v2 15.25). better/tie/worse (|Δ|>0.5): **13/4/8**.
-- v3's wins largely come from *fixing v2's flaky cases*: q008 +7.3, q018 +10.3, q020 +4.3, q019 +3.7,
-  q012 +3.3 (v2 had runs scoring 4 on q008/q018/q032; v3 stable).
+- **Batch-1 RAW paired Δ = +1.31/20** (v3 16.56 vs v2 15.25), better/tie/worse **13/4/8** — but this is
+  **CONTAMINATED by imbalanced AUP refusals** (v2=8 cells vs v3=3; see the refusal note under batch 2).
+  The big apparent "v3 wins" q008 (+7.3) and q018 (+10.3) were **v2 REFUSALS, not capability gaps**:
+  v2 q008 `[4,12,4]` / q018 `[4,18,4]` — the 4s are refusal-floored cells; v3 had none there. So the raw
+  +1.31 is inflated by refusal luck, NOT a real v3 advantage. Correction to an earlier claim in this doc.
+- **Batch-1 CLEAN paired Δ (refusals excluded) = +0.58/20** over 24 usable Q (v3 17.07 vs v2 16.60) —
+  a modest but genuine v3 edge survives once refusals are removed; only the *inflated* portion of the
+  raw +1.31 was refusal luck. Trust the clean number. Refusal-touched Qs: q008, q015, q018, q028, q032.
 - Regression-signature (v3 below v2 all runs) — all NOISE-BAND, not route defects:
   - q026 (−4.0): v3 found every fact (CID 168989, CHEBI:17601, RHEA:20772, EC 2.5.1.9) but 2/3 runs
     mis-concluded "No" on a compound-vs-class semantic technicality. r2 got the correct "Yes" (18).
