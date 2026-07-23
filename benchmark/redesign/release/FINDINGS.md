@@ -103,11 +103,13 @@ Run 2026-07-22→23, `results_rel_batch1/` (431.7 min ≈ 7.2h). **0 invalid cel
 
 ## Cumulative (n=35: canary 10 + batch1 25, folded into results_release; fixed q022 seeded first)
 
-- **Overall paired Δ = +0.92/20** (v3 16.18 vs v2 15.25). better/tie/worse: **19/5/11**.
+- **Overall RAW paired Δ = +0.92/20** (v3 16.18 vs v2 15.25). better/tie/worse: **19/5/11**. ⚠️ RAW =
+  refusal-contaminated and asymmetric (batch-1 refusals were v2-heavy); superseded by the CLEAN n=50
+  number below (+0.34, CI crosses 0). Do not cite this +0.92 as the delta.
 - Regression-signature set = q010,q021,q026 (batch1) + q027,q031 (canary) — all diagnosed noise-band
   (reasoning/precision variance or both-arms-weak), none a corpus defect.
 - 1 invalid cell total: q061 v3 r1 (the one canary timeout), correctly excluded.
-- CI ladder: 10 → **35** done. v3 leads by ~+0.9/20 — tracking well above the "flat within ±0.5" bar.
+- CI ladder: 10 → **35** done.
 
 ## Step 5b — batch 2 (q033–q048; 15 Q, ×3, API)
 
@@ -128,7 +130,11 @@ q033), not a corpus defect. No regression signature on clean cells.
 
 - **Raw**: paired Δ = **+0.56/20** (v3 15.87 vs v2 15.30), better/tie/worse 23/11/16.
 - **Clean** (refusals excluded, 46 usable Q): paired Δ = **+0.34/20** (v3 17.10 vs v2 16.77), 21/10/15.
-- Both PASS the "flat within ±0.5" bar and tilt slightly positive — v3 ≥ v2.
+  Robust across 3 estimators: per-question paired +0.341, pooled grand-mean +0.359, strict-3/3-clean
+  +0.350. **95% CI [−0.14, +0.82] — crosses 0**, so this is genuine *equivalence* (delta indistinguishable
+  from zero), NOT a proven improvement. The mild positive tilt should not be over-claimed. Key point: the
+  CI lower bound (−0.14) sits well inside the −0.5 non-regression margin ⇒ v3 demonstrably does not regress.
+- Both PASS the "flat within ±0.5" bar; n=100 will tighten the interval.
 - **Refusal contamination is corpus-wide** (balanced across arms): fully-refused questions so far =
   q032, q034, q044, q071. NB **q071's canary "bad question" (identical 420-char answers) was the
   refusal message** — not a real v3/v2 difference. These are excluded from the clean verdict; effective
