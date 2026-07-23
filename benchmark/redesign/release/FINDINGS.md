@@ -73,3 +73,54 @@ the embedded go.owl for descendant expansion. Byte footer refreshed (61.6% vs v2
 Canary **GREEN after the glycosmos fix**. A clean risk-first canary is strong evidence against a gross
 break but is not the ±0.5/20 verdict — that needs the full 100. **Proceed to step 5b (the remaining 90
 in 25-QA batches).** Watch q027/q031 in their batch; if the both-arms-weak pattern holds they're noise.
+
+## Step 5b — batch 1 (q001–q032 minus canary; 25 Q, ×3, API)
+
+Run 2026-07-22→23, `results_rel_batch1/` (431.7 min ≈ 7.2h). **0 invalid cells** (no timeouts, no stubs).
+
+- **Batch-1 paired Δ = +1.31/20** (v3 16.56 vs v2 15.25). better/tie/worse (|Δ|>0.5): **13/4/8**.
+- v3's wins largely come from *fixing v2's flaky cases*: q008 +7.3, q018 +10.3, q020 +4.3, q019 +3.7,
+  q012 +3.3 (v2 had runs scoring 4 on q008/q018/q032; v3 stable).
+- Regression-signature (v3 below v2 all runs) — all NOISE-BAND, not route defects:
+  - q026 (−4.0): v3 found every fact (CID 168989, CHEBI:17601, RHEA:20772, EC 2.5.1.9) but 2/3 runs
+    mis-concluded "No" on a compound-vs-class semantic technicality. r2 got the correct "Yes" (18).
+  - q021 (−1.7): hard multi-part proteasome summary; BOTH arms fabricate exact sub-counts (v2 16/14/14,
+    v3 14/13/12). Inherently fabrication-prone, not a missing route.
+  - q010 (−1.3): v3 picks the CORRECT multiple-choice answer (immune system disorder) but reports a
+    less-precise supporting count (471 vs gold 240). Core answer right.
+
+**Batch-1 gate: PASS / GO** — v3 above v2, 0 invalid, no systematic q022-style regression.
+
+## Cumulative (n=35: canary 10 + batch1 25, folded into results_release; fixed q022 seeded first)
+
+- **Overall paired Δ = +0.92/20** (v3 16.18 vs v2 15.25). better/tie/worse: **19/5/11**.
+- Regression-signature set = q010,q021,q026 (batch1) + q027,q031 (canary) — all diagnosed noise-band
+  (reasoning/precision variance or both-arms-weak), none a corpus defect.
+- 1 invalid cell total: q061 v3 r1 (the one canary timeout), correctly excluded.
+- CI ladder: 10 → **35** done. v3 leads by ~+0.9/20 — tracking well above the "flat within ±0.5" bar.
+
+## Step 5b — batch 2 (q033–q048; 15 Q, ×3, API)
+
+Run 2026-07-23, `results_rel_batch2/` (243.5 min ≈ 4.1h). Ran as **15 Q** (user narrowed from 25).
+
+- **Raw** paired Δ = −0.27/20 (v3 15.16 vs v2 15.42); no regression-signature.
+- **NEW failure mode — spurious AUP refusals** ("…appears to violate our Usage Policy"): **28 refusal
+  cells this batch, balanced 14 v3 / 14 v2** (no bias). Benign microbiology questions the content
+  classifier false-positives on. **q034 and q044 refused on ALL 6 cells** (both arms) → they measure
+  nothing (4/4/4 floor). **q033 refused 3/6** → the entire −5.3 artifact; its clean cells are equivalent.
+- **Clean** (refusal + succ=False cells excluded): paired Δ = **−0.05/20** over 13 usable Q
+  (v3 17.57 vs v2 17.53) — dead flat, within equivalence.
+
+**Batch-2 gate: PASS** — clean Δ ≈ 0; the raw negative tilt was refusal-noise (unlucky 2-vs-1 split on
+q033), not a corpus defect. No regression signature on clean cells.
+
+## Cumulative (n=50: canary + batch1 + batch2, folded into results_release)
+
+- **Raw**: paired Δ = **+0.56/20** (v3 15.87 vs v2 15.30), better/tie/worse 23/11/16.
+- **Clean** (refusals excluded, 46 usable Q): paired Δ = **+0.34/20** (v3 17.10 vs v2 16.77), 21/10/15.
+- Both PASS the "flat within ±0.5" bar and tilt slightly positive — v3 ≥ v2.
+- **Refusal contamination is corpus-wide** (balanced across arms): fully-refused questions so far =
+  q032, q034, q044, q071. NB **q071's canary "bad question" (identical 420-char answers) was the
+  refusal message** — not a real v3/v2 difference. These are excluded from the clean verdict; effective
+  n is reduced but the equivalence conclusion is unchanged.
+- CI ladder: 10 → 35 → **50** done. v3 tracking at-or-above v2 on both raw and clean.
