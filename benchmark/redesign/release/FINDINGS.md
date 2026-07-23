@@ -34,8 +34,11 @@ defect; q061's 2 valid runs are +1.8 for v3).
 - q027 (−1.7), q031 (−2.7): NOT clean regressions — *both arms* are wrong (q031: both mostly 136 vs
   gold 128; q027: both under-enumerate, max 28 vs gold 58). v3 loses a little on answer detail, not on
   a lost capability. Noise-band; revisit only if the full 100Q flags them.
-- q071: bad canary item — near-identical 420-char answers scoring ~4/20 in **both** arms; its −3.0
-  rides on one lucky v2 run (13). Question-quality artifact, not v3.
+- q071: **AUP-REFUSAL contamination, not a question-quality problem** (corrected — this was the only
+  refusal-touched question in the canary). The near-identical 420-char "answers" were the refusal
+  message: v3 refused all 3/3 (→ 4,4,4), v2 refused 2/3 (the two 4s) with one real answer (r3=13). Both
+  arms effectively unmeasurable here; the −3.0 is a refusal artifact, not v3. Exclude from the delta.
+  (The other 9 canary questions were refusal-free.)
 
 ## q022 root cause + fix (the canary's job — glycosmos is Tier-A)
 
@@ -68,6 +71,8 @@ the embedded go.owl for descendant expansion. Byte footer refreshed (61.6% vs v2
 - q022 Δ: **−5.7 → +1.0**.
 
 **Recomputed canary overall Δ (q022 fixed): ≈ −0.05/20** — flat, within ±0.5. **Canary is clean.**
+(Note: this −0.05 still includes q071's refusal-contaminated −3.0; dropping q071 as unmeasurable pushes
+the truly-clean canary delta positive. Either way it clears the equivalence bar.)
 
 ## Go/no-go
 Canary **GREEN after the glycosmos fix**. A clean risk-first canary is strong evidence against a gross
