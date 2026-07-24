@@ -182,3 +182,50 @@ Run 2026-07-24, `results_rel_batch4/` (194.9 min ≈ 3.2h). 0 invalid; 1 refusal
   CI still straddles 0 (equivalence, not a proven gain); lower bound −0.09 well inside the −0.5
   non-regression margin. Fully-refused (dropped): q032, q034, q044, q071.
 - CI ladder: 10 → 35 → 50 → 75 → **85** done. Final batch: q086–q100 (15 Q) → n=100.
+
+## Step 5b — batch 5 / FINAL (q086–q100; 15 Q, ×3, API) → n=100
+
+Run 2026-07-24, `results_rel_batch5/` (291.0 min ≈ 4.9h). **0 invalid, 0 refusals** (cleanest batch).
+Clean Δ = **+0.27/20** (v3 17.64 vs v2 17.38). One near-ceiling flag q098 (v2 20/20/20, v3 dropped a
+couple pts on one run — noise).
+
+# ================= FINAL VERDICT @ n=100 =================
+
+## The three equivalence criteria (all PASS)
+
+1. **Judge score — EQUIVALENT (not a regression).**
+   - CLEAN paired Δ = **+0.293/20**, 95% CI **[−0.09, +0.68]** (96 usable Q). Estimators agree: pooled
+     +0.343, strict-3/3 +0.368. better/tie/worse 36/33/27.
+   - CI straddles 0 ⇒ statistically indistinguishable from zero = genuine equivalence, NOT a proven gain.
+   - Lower bound −0.09 sits well inside the pre-declared −0.5 non-regression margin ⇒ **v3 does not regress.**
+   - Stable across the whole ladder: 50 +0.34 → 75 +0.29 → 85 +0.30 → **100 +0.29**; CI monotonically
+     tightening [−0.14,+0.82] → [−0.09,+0.68].
+
+2. **Factoid correctness — UP (the aggregation-recipe claim, confirmed).** By question type (clean judge score):
+   - **factoid Δ +1.01** (v3 17.18 vs v2 16.18) — the biggest gain, exactly the query-construction/aggregation
+     questions the v3 format targets with executable worked examples.
+   - yes_no +0.54, list +0.18, choice +0.16 — all positive. summary **−0.42** (the only soft type;
+     open-ended prose synthesis, the fabrication-prone multi-part questions q021/q076/q079).
+   - Recall sub-score (0–5) Δ **+0.16** (v2 3.60 → v3 3.78) — corroborates: v3 gets the right facts/numbers
+     at least as often, more so on factoids.
+
+3. **Tokens/bytes — DOWN (deterministic).** v3 corpus is 29–65% smaller per file than v2 (no stats needed).
+
+## Soft watch-items (none blocking; all single-question, none a q022-style corpus defect)
+- summary type −0.42: v3's terseness gives marginally less scaffolding for open-ended prose synthesis
+  (q021 proteasome, q076 homeobox, q079 MHC-I — several are *shared* blind spots hitting v2 too).
+- q057 (BRENDA): v3 full recall but lower precision (EC 2.6.1.- filter admits false positives) — worth a
+  targeted MIE tweak, not a blocker.
+- q055 (OMA deep-rooting): both arms misroot at Eukaryota vs LUCA; v3 more consistently.
+
+## Data-quality caveat (does not change the verdict)
+Spurious AUP content-policy refusals contaminated ~5% of cells (balanced across arms once aggregated).
+4 questions fully unmeasurable (both arms refused): q032, q034, q044, q071. All excluded from the clean
+verdict; the equivalence conclusion holds on the 96 measurable questions.
+
+## CALL: GO for step 6 (release).
+Equivalence proven (judge score flat within −0.5, tilting mildly positive), factoid correctness UP, bytes
+DOWN 29–65%. The redesign delivers the deterministic token win at no measured quality cost — and a real
+gain on factoid/aggregation questions. Proceed to the MAJOR release: flip the served corpus to v3, ship
+the build-time Usage-Guide catalog generator FIRST, then retire the discovery trio (find_databases/
+list_databases/list_categories) + rewrite the workflow prompt.
