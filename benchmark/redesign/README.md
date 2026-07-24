@@ -100,5 +100,7 @@ compression can drop set-level enumeration guidance; diagnose before scaling (st
 - `enumeration_audit.md` — per-DB §4.4 enumeration-route checklist (all 36 DBs; drove step-4 authoring).
 - `mie_v3/<db>.yaml` — new-format MIEs (**all 36 complete**).
 - `smoke/FINDINGS.md` — durable record of the smoke test + q066 fix/de-overfit/transfer + token fix.
+- `TIER_C_authoring_migration.md` — OPEN follow-up: migrate the MIE authoring tooling (`mie-generator`
+  skill, `mie-builder` agent, `mie-refresh` workflow) from the v2 format to v3. Non-blocking for release.
 - `release/` — step-5 equivalence run: `README.md` (runbook), `canary_questions.txt` (locked 10-Q
   canary), and outputs (regenerable `results_*` gitignored; `FINDINGS.md` will hold the durable numbers).
