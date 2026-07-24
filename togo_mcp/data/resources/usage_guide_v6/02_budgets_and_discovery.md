@@ -18,15 +18,15 @@ Use `togoid_getAllRelation` for discovery; `togoid_getRelation` only to confirm 
 
 ## 🔍 STEP 0: DATABASE DISCOVERY
 
-- **`find_databases(keywords=[...])`** — default; token-efficient substring match on title,
-  description, and curated synonyms. Add `match="all"` to require every keyword.
-- **`find_databases(category=...)`** — browse a topic area (`protein`, `gene`, `variant`,
-  `compound`, `drug_target`, `pathway`, `reaction`, `ontology`, `structure`, `literature`,
-  `taxonomy`, `disease`, `materials`, `physics`, …). Call `list_categories()` first if unsure.
-- **`list_databases()`** — full catalog; higher cost. Only when too vague to keyword-match.
+**No tool call.** The **DATABASE CATALOG** (next section) lists every database with what it holds,
+grouped by category — it is already in this guide, so scan it directly. Match the KIND of data you
+need (not an entity name) against the catalog, pick 1–3 candidate databases, then go straight to
+STEP 2 (`get_MIE_file`). The full roster of `database=` keys is also on the `run_sparql` /
+`get_MIE_file` schema, so you never need a tool to learn what exists.
 
-Quick hints: "MANE" → Ensembl · "drug targets" → ChEMBL · "clinical variants" → ClinVar ·
-"pathways" → Reactome · "superconductor" → SuperCon · "glycobiology" → GlyCosmos.
+The catalog's "By category" index is the controlled taxonomy (`protein`, `gene`, `variant`,
+`compound`, `drug_target`, `pathway`, `reaction`, `ontology`, `structure`, `literature`,
+`taxonomy`, `disease`, `materials`, `physics`, …); quick hints and per-database keywords are there too.
 
 ---
 

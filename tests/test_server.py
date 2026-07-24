@@ -223,7 +223,7 @@ class TestToolCallLogger:
         async def call_next(_ctx):
             return "ok"
 
-        out = asyncio.run(mw.on_call_tool(_build_ctx("find_databases", {"keywords": ["x"]}), call_next))
+        out = asyncio.run(mw.on_call_tool(_build_ctx("run_sparql", {"database": "uniprot"}), call_next))
         assert out == "ok"
 
         for h in mw._log.handlers:  # type: ignore[union-attr]
@@ -231,8 +231,8 @@ class TestToolCallLogger:
         records = _read_jsonl(log_path)
         assert len(records) == 1
         rec = records[0]
-        assert rec["tool"] == "find_databases"
-        assert rec["args"] == {"keywords": ["x"]}
+        assert rec["tool"] == "run_sparql"
+        assert rec["args"] == {"database": "uniprot"}
         assert rec["status"] == "ok"
         assert rec["session_id"] == "sess-1"
         assert rec["transport"] == "stdio"

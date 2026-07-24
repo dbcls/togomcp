@@ -46,7 +46,10 @@ def assembled_tools():
 def test_server_exposes_all_tools(assembled_tools) -> None:
     """The assembled server exposes the full tool catalog (sanity check that the
     fixture actually mounted the sub-servers)."""
-    assert len(assembled_tools) >= 32
+    # Dropped from 32 to 29 when the discovery trio (find_databases /
+    # list_databases / list_categories) was retired — the catalog moved into the
+    # Usage Guide (DATABASE CATALOG section) as a static, generated resource.
+    assert len(assembled_tools) >= 29
 
 
 def test_every_tool_has_a_nonempty_description(assembled_tools) -> None:
