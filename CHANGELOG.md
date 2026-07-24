@@ -15,6 +15,46 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 _Nothing yet._
 
+## [2.0.0] - 2026-07-24
+
+The MIE-format redesign (**v3**). A ground-up rewrite of every MIE around verified, executable
+worked examples — the load-bearing query-construction content the 2026-07 ablations isolated —
+collapsing the v2 format's 4× restatement (schema list + ShEx shape + worked query + sample triple)
+into one atomic unit. All 36 served MIEs were rebuilt; the corpus is **50.9% smaller**
+(1.57 MB → 770 KB). Validated as an equivalence gate over the full 100-question benchmark (×3, API
+answering + judging): judge score flat within the declared ±0.5 margin (paired Δ **+0.29/20**, 95%
+CI [−0.09, +0.68]), factoid correctness **up** (+1.0 on factoid questions), and measured runtime
+**−15% input tokens / −15% cost / −6% latency**. Durable record:
+`benchmark/redesign/release/FINDINGS.md`.
+
+MAJOR because the discovery trio is removed from the tool surface.
+
+### Removed
+
+- **`find_databases`, `list_databases`, `list_categories`** — the discovery trio. The full
+  `database=` roster is already always on the `run_sparql` / `get_MIE_file` schema, and the
+  descriptions/keywords/categories they served moved to a static, generated **Database Catalog**
+  section of the Usage Guide. Removing them retires a whole class of "which tool tells me what
+  exists" round-trips (agents can pick a database by reading the guide).
+
+### Added
+
+- **Database Catalog in the Usage Guide** — a build-time section listing all 36 databases (title,
+  one-line description, keywords) grouped by category, generated from the MIE `discovery:` blocks by
+  `scripts/generate_usage_guide_catalog.py` (`--check` / `--list-categories` modes), with a
+  `test_catalog_in_sync` drift guard and a CI job (`catalog.yml`).
+
+### Changed
+
+- **Served MIE corpus flipped to the v3 format** (`togo_mcp/data/mie/*`) — same databases, new
+  structure (`discovery` / header / `examples` / `schema_delta` / `id_join_map`), 29–65% smaller per
+  file. No server-code change: the reader already handled both formats (`discovery`-or-`schema_info`,
+  `global_gotchas`-or-`critical_warnings`).
+- **Workflow STEP 0 is now a no-tool catalog scan** (was `find_databases(...)`) — updated in the
+  `TogoMCP_Usage_Guide` docstring and guide parts 01/02/03.
+- **Empirical budgets + tool tiers refreshed** from the v3 100-question run (optimal total tool
+  calls 6–15 → 4–10; consecutive-SPARQL penalty 1.26 → ~1.1; `find_databases` removed from the tiers).
+
 ## [1.7.1] - 2026-07-18
 
 Follow-up to the 1.7.0 co-tenancy sweep: the sweep verified `co_hosted_graphs` and
@@ -427,7 +467,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v1.6.2...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/dbcls/togomcp/compare/v1.7.1...v2.0.0
 [1.7.1]: https://github.com/dbcls/togomcp/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/dbcls/togomcp/compare/v1.6.2...v1.7.0
 [1.6.2]: https://github.com/dbcls/togomcp/compare/v1.6.1...v1.6.2

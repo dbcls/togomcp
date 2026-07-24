@@ -223,7 +223,7 @@ class TestToolCallLogger:
         async def call_next(_ctx):
             return "ok"
 
-        out = asyncio.run(mw.on_call_tool(_build_ctx("find_databases", {"keywords": ["x"]}), call_next))
+        out = asyncio.run(mw.on_call_tool(_build_ctx("run_sparql", {"database": "uniprot"}), call_next))
         assert out == "ok"
 
         for h in mw._log.handlers:  # type: ignore[union-attr]
@@ -231,8 +231,8 @@ class TestToolCallLogger:
         records = _read_jsonl(log_path)
         assert len(records) == 1
         rec = records[0]
-        assert rec["tool"] == "find_databases"
-        assert rec["args"] == {"keywords": ["x"]}
+        assert rec["tool"] == "run_sparql"
+        assert rec["args"] == {"database": "uniprot"}
         assert rec["status"] == "ok"
         assert rec["session_id"] == "sess-1"
         assert rec["transport"] == "stdio"
@@ -399,10 +399,12 @@ class TestMIETrapBanner:
         path = Path("togo_mcp/data/mie/uniprot.yaml")
         content = path.read_text(encoding="utf-8")
         banner = _mie_trap_banner(content, "uniprot")
-        assert "dcterms:identifier" in banner  # the trap that broke Q076
+        assert "up:reviewed" in banner  # the #1 uniprot trap (reviewed-flag filter)
         # Banner + body must still be loadable as YAML by any downstream consumer.
         doc = yaml.safe_load(banner + content)
-        assert doc["schema_info"]["title"] == "UniProt RDF"
+        # v3 renamed schema_info -> discovery; the banner must not break parsing either way.
+        meta = doc.get("discovery") or doc.get("schema_info")
+        assert meta["title"] == "UniProt RDF"
 
 
 class TestUsageGuideEndpointTable:

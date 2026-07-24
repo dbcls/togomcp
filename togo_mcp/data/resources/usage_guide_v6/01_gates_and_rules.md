@@ -93,7 +93,7 @@ to endpoints. If cross-endpoint, plan the TogoID bridge now.
 ```
 GATE 0  → classify (bounded → STEP −1 | open-ended → Seed Definition)
 STEP −1 → analyze
-STEP  0 → find_databases(keywords=[...])   always first
+STEP  0 → pick DB(s) from the DATABASE CATALOG (no tool call)   always first
 STEP  1 → search tool or ncbi_esearch
 STEP  2 → get_MIE_file(database)           always before run_sparql
 STEP  3 → run_sparql()  PIN EVERY GRAPH · LIMIT 10 first · max 2 consecutive
