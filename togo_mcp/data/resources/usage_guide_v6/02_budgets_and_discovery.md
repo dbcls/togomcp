@@ -2,31 +2,40 @@
 
 | Metric             | Optimal    | Red flag |
 |--------------------|------------|----------|
-| Total tool calls   | 6–15       | 21+      |
+| Total tool calls   | 4–10       | 21+      |
 | Total SPARQL calls | 1–3        | 7+       |
 | Consecutive SPARQL | 1–2        | 3+       |
 
-**Tool tiers** (avg score, ≥5 appearances):
-- **Tier 1 (≥17.5):** `search_mesh_descriptor` · `search_chembl_target` · `get_pubchem_compound_id` · `togoid_getAllRelation` · `search_reactome_entity` · `search_pdb_entity`
-- **Tier 2 (17.0–17.5):** `search_rhea_entity` · `togoid_convertId` · `ncbi_esummary` · `run_sparql` · `ncbi_esearch` · `OLS:search`
-- **Tier 3 (<17.0):** `search_uniprot_entity` · `PubMed:search_articles` · `OLS:getDescendants` · `togoid_getRelation`
+Score peaks at ≤10 tool calls and 1–3 SPARQL, then declines steadily (21+ calls ≈ −2.5 pts vs
+the sweet spot; ≥3 **consecutive** run_sparql ≈ **−1.1** vs ≤2). With STEP 0 now a no-tool catalog
+scan, a compliant flow is typically MIE + 1–3 SPARQL (+ one grounding search) — aim low.
 
-If `OLS:*` or `PubMed:*` unavailable, substitute `search_mesh_descriptor` / `ncbi_esearch`.
-Use `togoid_getAllRelation` for discovery; `togoid_getRelation` only to confirm a known route.
+**Tool tiers** (mean answer score when the tool appears, ≥5 uses):
+- **Tier 1 (≥17.5):** `search_mesh_descriptor` · `get_compound_attributes_from_pubchem` · `search_chembl_target` · `OLS:search` · `get_pubchem_compound_id`
+- **Tier 2 (17.0–17.5):** `run_sparql` · `togoid_getAllRelation` · `ncbi_esearch` · `search_chembl_molecule`
+- **Tier 3 (<17.0):** `search_rhea_entity` · `ncbi_esummary` · `search_reactome_entity` · `search_uniprot_entity` · `togoid_convertId`
+
+Tiers rank by the *questions* a tool tends to appear on as much as the tool itself — treat as a
+soft prior, not a ban. If `OLS:*` or `PubMed:*` unavailable, substitute `search_mesh_descriptor` /
+`ncbi_esearch`. Use `togoid_getAllRelation` for discovery; `togoid_getRelation` only to confirm a
+known route.
+
+> Budgets + tiers derived from the v3 equivalence run (100 questions × 3, 2026-07, refusal cells
+> excluded, n=282). Directions are stable across models; the exact cut-points are a guide, not a gate.
 
 ---
 
 ## 🔍 STEP 0: DATABASE DISCOVERY
 
-- **`find_databases(keywords=[...])`** — default; token-efficient substring match on title,
-  description, and curated synonyms. Add `match="all"` to require every keyword.
-- **`find_databases(category=...)`** — browse a topic area (`protein`, `gene`, `variant`,
-  `compound`, `drug_target`, `pathway`, `reaction`, `ontology`, `structure`, `literature`,
-  `taxonomy`, `disease`, `materials`, `physics`, …). Call `list_categories()` first if unsure.
-- **`list_databases()`** — full catalog; higher cost. Only when too vague to keyword-match.
+**No tool call.** The **DATABASE CATALOG** (next section) lists every database with what it holds,
+grouped by category — it is already in this guide, so scan it directly. Match the KIND of data you
+need (not an entity name) against the catalog, pick 1–3 candidate databases, then go straight to
+STEP 2 (`get_MIE_file`). The full roster of `database=` keys is also on the `run_sparql` /
+`get_MIE_file` schema, so you never need a tool to learn what exists.
 
-Quick hints: "MANE" → Ensembl · "drug targets" → ChEMBL · "clinical variants" → ClinVar ·
-"pathways" → Reactome · "superconductor" → SuperCon · "glycobiology" → GlyCosmos.
+The catalog's "By category" index is the controlled taxonomy (`protein`, `gene`, `variant`,
+`compound`, `drug_target`, `pathway`, `reaction`, `ontology`, `structure`, `literature`,
+`taxonomy`, `disease`, `materials`, `physics`, …); quick hints and per-database keywords are there too.
 
 ---
 

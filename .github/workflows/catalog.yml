@@ -1,0 +1,50 @@
+name: Catalog
+
+# The database catalog served in the Usage Guide
+# (togo_mcp/data/resources/usage_guide_v6/02b_database_catalog.md) is GENERATED
+# from every MIE `discovery:` block by scripts/generate_usage_guide_catalog.py.
+# If a database is added, removed, or re-described and the catalog is not
+# regenerated, the served guide silently goes stale — the same class of drift
+# the changelog rule guards against, enforced the same way.
+#
+# Deliberately narrow: fires ONLY when an input to the catalog changes (an MIE
+# file, the generator, or the committed catalog itself), and asks ONLY that the
+# committed file equals `--check`. It fixes nothing and polices nothing else.
+
+on:
+  pull_request:
+    paths:
+      - "togo_mcp/data/mie/**"
+      - "togo_mcp/data/resources/usage_guide_v6/02b_database_catalog.md"
+      - "scripts/generate_usage_guide_catalog.py"
+  push:
+    branches: [main]
+    paths:
+      - "togo_mcp/data/mie/**"
+      - "togo_mcp/data/resources/usage_guide_v6/02b_database_catalog.md"
+      - "scripts/generate_usage_guide_catalog.py"
+
+permissions:
+  contents: read
+
+jobs:
+  catalog-in-sync:
+    name: Database catalog is in sync with the MIE discovery blocks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install the one dependency the generator needs
+        run: pip install "pyyaml>=6.0"
+
+      - name: Catalog must equal the generator output
+        run: |
+          set -euo pipefail
+          if ! python scripts/generate_usage_guide_catalog.py --check; then
+            echo "::error file=togo_mcp/data/resources/usage_guide_v6/02b_database_catalog.md::Catalog is stale. Run: python scripts/generate_usage_guide_catalog.py, then commit the result."
+            exit 1
+          fi

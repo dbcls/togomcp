@@ -29,7 +29,7 @@ Fake or unverified examples are worse than missing ones: they train the downstre
 
 Phase 2 (live discovery) is the canonical source of truth for the schema and example queries — never let prior assumptions override what the endpoint actually exposes.
 
-The MCP tools `get_MIE_file` and `save_MIE_file` are **not** used in this environment — read and write MIE files directly. The remaining TogoMCP tools (`run_sparql`, `find_databases`, `list_databases`, `get_sparql_endpoints`, `get_graph_list`, the search APIs) ARE used; they hit live endpoints and cannot be replaced by filesystem access. `WebFetch` is used in Phase 0 to look up unregistered endpoints on rdfportal.org.
+The MCP tools `get_MIE_file` and `save_MIE_file` are **not** used in this environment — read and write MIE files directly. The remaining TogoMCP tools (`run_sparql`, `get_sparql_endpoints`, `get_graph_list`, the search APIs) ARE used; they hit live endpoints and cannot be replaced by filesystem access. `WebFetch` is used in Phase 0 to look up unregistered endpoints on rdfportal.org. **Do not rely on the discovery trio (`find_databases` / `list_databases` / `list_categories`) — it is being retired.** The database catalog it served is now a static, generated Usage-Guide section (`togo_mcp/data/resources/usage_guide_v6/02b_database_catalog.md`); when this skill changes a MIE's discovery block, regenerate that catalog (Phase 6).
 
 ## Workflow
 
@@ -399,7 +399,7 @@ Read `references/query-strategy.md` now if you haven't — it contains the decis
 Use `references/template.yaml` as your scaffold. Copy it to the target path, then fill it in. Required sections, in order:
 
 1. `schema_info`
-   - **After filling in `schema_info.categories`, call `list_categories()` and verify each token you wrote is an exact match — same case, same underscores — against the returned list. Do not proceed to the next section if any token is off-spec; fix it first.** An off-spec token silently excludes the database from `find_databases(category=…)` results.
+   - **After filling in the category tokens (`schema_info.categories` in v2 / `discovery.categories` in v3), verify each token is an exact match — same case, same underscores — against the categories already in use across the corpus.** The canonical set is whatever categories are already in use across the corpus — print it with `uv run python scripts/generate_usage_guide_catalog.py --list-categories` (this replaces the retired `list_categories()` tool). An off-spec token fragments the catalog — a near-duplicate category with one member instead of joining an existing group. Do not proceed until every token matches or is a deliberate new category.
    - **`co_hosted_graphs` is REQUIRED whenever `get_graph_list()` returned >1 graph** (the field
      already exists in the schema). If 2g found re-declaration: one entry per sibling graph,
      naming the re-declared predicate(s), the multiplier, the trap kind (reference-label
@@ -592,9 +592,17 @@ tool-behavior claim is exactly the "fake example" Rule 2 forbids, aimed at a wra
 of SPARQL. (Real regression: the ChEMBL MIE claimed `search_chembl_target("EGFR") → CHEMBL203`;
 the tool returned CHEMBL203 at rank 5, and not at all at `limit=3`.)
 
-### Phase 6 — Final declaration
+### Phase 6 — Regenerate the catalog, then declare
 
-Only after Phases 1–5 are complete, report to the user:
+**If you added, removed, or changed the MIE's discovery block** (`discovery:` in v3 / `schema_info:` in v2 — its title, description, keywords, or categories), regenerate the static database catalog so the served Usage Guide stays in sync:
+
+```bash
+uv run python scripts/generate_usage_guide_catalog.py   # rewrites usage_guide_v6/02b_database_catalog.md
+```
+
+The `tests/test_catalog_in_sync.py` drift guard fails if you skip this. A pure examples/schema edit that left the discovery block untouched produces no diff — running it is still safe (idempotent). Include the regenerated `02b_database_catalog.md` in your changes.
+
+Only after Phases 1–5 (and the regeneration above) are complete, report to the user:
 
 ```
 ✓ MIE file written to ./togo_mcp/data/mie/<db>.yaml
@@ -607,7 +615,8 @@ Only after Phases 1–5 are complete, report to the user:
     all cardinality modifiers confirmed, all literal-valued predicates datatype-probed
   - critical_warnings verified: all cited predicate names and IRIs confirmed against endpoint
   - cross_references verified: IRI forms confirmed by DESCRIBE, coverage % from COUNT queries
-  - schema_info.categories checked: all tokens exact-matched against list_categories()
+  - category tokens checked: all exact-matched against the committed catalog's category index (list_categories() retired)
+  - database catalog regenerated: `generate_usage_guide_catalog.py` run if the discovery block changed; 02b_database_catalog.md in the changeset (test_catalog_in_sync passes)
   - prefix declarations verified: all non-standard prefixes confirmed with SELECT
   - data_statistics cross-checked: total_entities and coverage % arithmetically consistent
   - anti_patterns.correct_sparql tested: all correct_sparql blocks executed successfully — confirm via `check_mie_examples.py <db>` returning 0 zero-row / 0 error (5b)

@@ -1,0 +1,253 @@
+# Step 5 — equivalence run FINDINGS (durable)
+
+Regenerable `results_rel_*/` dirs are gitignored; this file holds the durable numbers + decisions.
+
+## Step 5a — the CANARY (10 risk-first Q, ×3, smoke_v2 vs full_v3, API answer+judge)
+
+Run 2026-07-22, `results_rel_canary/` (250.7 min, ~$34).
+
+### Validity
+All 60 cells succeeded with tool calls **except one**: `q061 full_v3 run-1` timed out (exhausted 3
+retries, ~372 s/attempt; `succ=False`, 0 tool calls) — a transient per-call timeout on a heavy
+question, correctly flagged so it can't pose as a real answer. Excluded from scoring. **0 login-error
+stubs.** Gate passes (the one bad cell is a timeout on the v2-equivalent heavy question, not a corpus
+defect; q061's 2 valid runs are +1.8 for v3).
+
+### Scores (valid cells; v3−v2 paired per question)
+| Q | DBs | v2 runs | v2μ | v3 runs | v3μ | Δ |
+|---|---|---|---|---|---|---|
+| q002 | uniprot+go | 20,18,19 | 19.0 | 20,19,20 | 19.7 | +0.7 |
+| q006 | chembl+pdb+uniprot | 11,11,14 | 12.0 | 15,13,15 | 14.3 | +2.3 |
+| q011 | pubchem+rhea+chebi | 18,17,17 | 17.3 | 16,20,18 | 18.0 | +0.7 |
+| q014 | go+taxonomy+uniprot | 19,19,18 | 18.7 | 18,19,18 | 18.3 | −0.3 |
+| q022 | go+glycosmos | 19,19,13 | 17.0 | 11,12,11 | 11.3 | **−5.7** |
+| q027 | reactome+uniprot+rhea | 13,11,13 | 12.3 | 10,11,11 | 10.7 | −1.7 |
+| q031 | uniprot+rhea | 16,18,17 | 17.0 | 15,13,15 | 14.3 | −2.7 |
+| q043 | rhea+chebi | 20,19,19 | 19.3 | 20,20,20 | 20.0 | +0.7 |
+| q061 | brenda+massbank | 14,11,13 | 12.7 | 15,14 (r1 timeout) | 14.5 | +1.8 |
+| q071 | uniprot+ensembl+mogplus | 4,4,13 | 7.0 | 4,4,4 | 4.0 | −3.0 |
+
+**Overall paired Δ = −0.72/20** (outside the ±0.5 margin) — but **driven almost entirely by q022**.
+
+### Regression scan (v3 below v2 on every run — the q066 signature)
+- **q022 (−5.7) — REAL, systematic, now FIXED (see below).**
+- q027 (−1.7), q031 (−2.7): NOT clean regressions — *both arms* are wrong (q031: both mostly 136 vs
+  gold 128; q027: both under-enumerate, max 28 vs gold 58). v3 loses a little on answer detail, not on
+  a lost capability. Noise-band; revisit only if the full 100Q flags them.
+- q071: **AUP-REFUSAL contamination, not a question-quality problem** (corrected — this was the only
+  refusal-touched question in the canary). The near-identical 420-char "answers" were the refusal
+  message: v3 refused all 3/3 (→ 4,4,4), v2 refused 2/3 (the two 4s) with one real answer (r3=13). Both
+  arms effectively unmeasurable here; the −3.0 is a refusal artifact, not v3. Exclude from the delta.
+  (The other 9 canary questions were refusal-free.)
+
+## q022 root cause + fix (the canary's job — glycosmos is Tier-A)
+
+**Question:** distinct human glycogenes in GlyCosmos annotated to GO:0009101 *or any descendant* (gold **208**, 32 descendants).
+
+**Root cause (subtler than "v3 lost a route"):** the GlyCosmos endpoint's OWN embedded
+`GRAPH <http://purl.obolibrary.org/obo/go.owl>` is a **partial/divergent GO snapshot**. Its
+`subClassOf*` closure for GO:0009101 yields only **14** terms → **44 genes** — which is exactly what
+v3 computed. v3 was self-consistent on glycosmos; it trusted a deficient local hierarchy. The gold 208
+needs the **authoritative full GO** (33 terms). Verified natively:
+- `go` RDF database (RDF Portal): `subClassOf*` GO:0009101 = **33 terms**.
+- VALUES those 33 IRIs into the glycosmos glycogenes reverse-GO join = **208** (matches gold exactly).
+- v2 reached 208 only by fetching GO externally (`mcp__ols__getDescendants` + Bash) — and was unstable
+  (run 3 fell to 44).
+
+**Fix (`mie_v3/glycosmos.yaml`, 2026-07-22):** added first-class §4.4 example `enum_go_descendants` —
+the "GO term **or its descendants**" enumeration is a **two-database recipe**: (1) expand with
+`rdfs:subClassOf*` on the native **`go`** database to get descendant IRIs, (2) VALUES-join to
+glycogenes. §4.6-safe demonstrator: **GO:0006493** (O-linked glycosylation), *not* q022's GO:0009101 —
+verified **121** via `go` vs **100** via the deficient local go.owl. Two `traps_avoided` forbid using
+the embedded go.owl for descendant expansion. Byte footer refreshed (61.6% vs v2).
+
+**Fix verified (`results_rel_q022fix/`, 2026-07-22, 15.1 min, ~$3):**
+| | v2 | v3 |
+|---|---|---|
+| q022 after fix | 17.0 (19,19,13) | **18.0 (18,18,18)** |
+- v3 lands **208 on all 3 runs** (was 44/44/44), using **only native `run_sparql`** (go-expansion +
+  glycosmos VALUES) — no Bash, no OLS4. The MIE example alone drove it.
+- v3 is now **more stable than v2** here (v2 run 3 still collapses to 44).
+- q022 Δ: **−5.7 → +1.0**.
+
+**Recomputed canary overall Δ (q022 fixed): ≈ −0.05/20** — flat, within ±0.5. **Canary is clean.**
+(Note: this −0.05 still includes q071's refusal-contaminated −3.0; dropping q071 as unmeasurable pushes
+the truly-clean canary delta positive. Either way it clears the equivalence bar.)
+
+## Go/no-go
+Canary **GREEN after the glycosmos fix**. A clean risk-first canary is strong evidence against a gross
+break but is not the ±0.5/20 verdict — that needs the full 100. **Proceed to step 5b (the remaining 90
+in 25-QA batches).** Watch q027/q031 in their batch; if the both-arms-weak pattern holds they're noise.
+
+## Step 5b — batch 1 (q001–q032 minus canary; 25 Q, ×3, API)
+
+Run 2026-07-22→23, `results_rel_batch1/` (431.7 min ≈ 7.2h). **0 invalid cells** (no timeouts, no stubs).
+
+- **Batch-1 RAW paired Δ = +1.31/20** (v3 16.56 vs v2 15.25), better/tie/worse **13/4/8** — but this is
+  **CONTAMINATED by imbalanced AUP refusals** (v2=8 cells vs v3=3; see the refusal note under batch 2).
+  The big apparent "v3 wins" q008 (+7.3) and q018 (+10.3) were **v2 REFUSALS, not capability gaps**:
+  v2 q008 `[4,12,4]` / q018 `[4,18,4]` — the 4s are refusal-floored cells; v3 had none there. So the raw
+  +1.31 is inflated by refusal luck, NOT a real v3 advantage. Correction to an earlier claim in this doc.
+- **Batch-1 CLEAN paired Δ (refusals excluded) = +0.58/20** over 24 usable Q (v3 17.07 vs v2 16.60) —
+  a modest but genuine v3 edge survives once refusals are removed; only the *inflated* portion of the
+  raw +1.31 was refusal luck. Trust the clean number. Refusal-touched Qs: q008, q015, q018, q028, q032.
+- Regression-signature (v3 below v2 all runs) — all NOISE-BAND, not route defects:
+  - q026 (−4.0): v3 found every fact (CID 168989, CHEBI:17601, RHEA:20772, EC 2.5.1.9) but 2/3 runs
+    mis-concluded "No" on a compound-vs-class semantic technicality. r2 got the correct "Yes" (18).
+  - q021 (−1.7): hard multi-part proteasome summary; BOTH arms fabricate exact sub-counts (v2 16/14/14,
+    v3 14/13/12). Inherently fabrication-prone, not a missing route.
+  - q010 (−1.3): v3 picks the CORRECT multiple-choice answer (immune system disorder) but reports a
+    less-precise supporting count (471 vs gold 240). Core answer right.
+
+**Batch-1 gate: PASS / GO** — v3 above v2, 0 invalid, no systematic q022-style regression.
+
+## Cumulative (n=35: canary 10 + batch1 25, folded into results_release; fixed q022 seeded first)
+
+- **Overall RAW paired Δ = +0.92/20** (v3 16.18 vs v2 15.25). better/tie/worse: **19/5/11**. ⚠️ RAW =
+  refusal-contaminated and asymmetric (batch-1 refusals were v2-heavy); superseded by the CLEAN n=50
+  number below (+0.34, CI crosses 0). Do not cite this +0.92 as the delta.
+- Regression-signature set = q010,q021,q026 (batch1) + q027,q031 (canary) — all diagnosed noise-band
+  (reasoning/precision variance or both-arms-weak), none a corpus defect.
+- 1 invalid cell total: q061 v3 r1 (the one canary timeout), correctly excluded.
+- CI ladder: 10 → **35** done.
+
+## Step 5b — batch 2 (q033–q048; 15 Q, ×3, API)
+
+Run 2026-07-23, `results_rel_batch2/` (243.5 min ≈ 4.1h). Ran as **15 Q** (user narrowed from 25).
+
+- **Raw** paired Δ = −0.27/20 (v3 15.16 vs v2 15.42); no regression-signature.
+- **NEW failure mode — spurious AUP refusals** ("…appears to violate our Usage Policy"): **28 refusal
+  cells this batch, balanced 14 v3 / 14 v2** (no bias). Benign microbiology questions the content
+  classifier false-positives on. **q034 and q044 refused on ALL 6 cells** (both arms) → they measure
+  nothing (4/4/4 floor). **q033 refused 3/6** → the entire −5.3 artifact; its clean cells are equivalent.
+- **Clean** (refusal + succ=False cells excluded): paired Δ = **−0.05/20** over 13 usable Q
+  (v3 17.57 vs v2 17.53) — dead flat, within equivalence.
+
+**Batch-2 gate: PASS** — clean Δ ≈ 0; the raw negative tilt was refusal-noise (unlucky 2-vs-1 split on
+q033), not a corpus defect. No regression signature on clean cells.
+
+## Cumulative (n=50: canary + batch1 + batch2, folded into results_release)
+
+- **Raw**: paired Δ = **+0.56/20** (v3 15.87 vs v2 15.30), better/tie/worse 23/11/16.
+- **Clean** (refusals excluded, 46 usable Q): paired Δ = **+0.34/20** (v3 17.10 vs v2 16.77), 21/10/15.
+  Robust across 3 estimators: per-question paired +0.341, pooled grand-mean +0.359, strict-3/3-clean
+  +0.350. **95% CI [−0.14, +0.82] — crosses 0**, so this is genuine *equivalence* (delta indistinguishable
+  from zero), NOT a proven improvement. The mild positive tilt should not be over-claimed. Key point: the
+  CI lower bound (−0.14) sits well inside the −0.5 non-regression margin ⇒ v3 demonstrably does not regress.
+- Both PASS the "flat within ±0.5" bar; n=100 will tighten the interval.
+- **Refusal contamination is corpus-wide** (balanced across arms): fully-refused questions so far =
+  q032, q034, q044, q071. NB **q071's canary "bad question" (identical 420-char answers) was the
+  refusal message** — not a real v3/v2 difference. These are excluded from the clean verdict; effective
+  n is reduced but the equivalence conclusion is unchanged.
+- CI ladder: 10 → 35 → **50** done. v3 tracking at-or-above v2 on both raw and clean.
+
+## Step 5b — batch 3 (q049–q075 minus canary; 25 Q, ×3, API)
+
+Run 2026-07-23→24, `results_rel_batch3/` (469.8 min ≈ 7.8h). 0 invalid cells; only 6 refusal cells
+(v2=4 / v3=2, on q050/q057/q059 — no fully-refused question).
+
+- **Raw** Δ = +0.63/20 (v3 17.45 vs v2 16.83). **Clean** Δ = **+0.21/20** over 25 usable Q (v3 17.82 vs v2 17.55).
+- **Batch-3 gate: PASS** — clean positive, no systematic defect.
+- Two clean regression-signatures, both SOFT single-question (watch at 100Q, neither q022-style):
+  - q057 (−4.0): BRENDA aminotransferase-list. On the non-refused runs v3 has FULL recall (all 14 genes)
+    but lower PRECISION (rec5/prec2–3 vs v2 5/5) — v3's EC 2.6.1.- filter admits false positives. Right
+    answer set, looser filtering. (r1 was a refusal on both arms.)
+  - q055 (−2.3): OMA deep-rooting nuance — BOTH arms wrongly root the P5C-reductase family at Eukaryota
+    instead of LUCA; v3 does so all 3 runs, v2 got it right once. Both imperfect, v3 slightly more so.
+
+## Cumulative (n=75: + batch3, folded into results_release)
+
+- **CLEAN** paired Δ = **+0.29/20** (per-question, 71 usable Q), 95% CI **[−0.11, +0.70]**. Estimators
+  agree: pooled +0.33, strict-3/3 +0.36. better/tie/worse 28/22/21.
+- CI crosses 0 ⇒ genuine **equivalence** (not a proven gain); lower bound −0.11 sits well inside the
+  −0.5 non-regression margin ⇒ v3 does not regress. Stable vs n=50 (+0.34, CI [−0.14,+0.82]) — narrowing.
+- Fully-refused (dropped): q032, q034, q044, q071. CI ladder: 10 → 35 → 50 → **75** done. One batch left (q076–q100).
+
+## Step 5b — batch 4 (q076–q085; 10 Q, ×3, API)
+
+Run 2026-07-24, `results_rel_batch4/` (194.9 min ≈ 3.2h). 0 invalid; 1 refusal (v3 q079 r1).
+
+- **Raw** Δ = +0.10/20; **Clean** Δ = **+0.33/20** over 10 usable Q (v3 17.66 vs v2 17.10).
+- **Batch-4 gate: PASS.** Two clean regression-signatures, both SHARED-difficulty (not v3 defects):
+  - q079 (−2.3): MHC-I "on one chromosome?" — gold "No" (B2M chr15, MR1 chr1). BOTH arms answer "Yes,
+    all chr6" (miss B2M/MR1); v3 clean 11,11 marginally below v2 12,14,14. Shared blind spot.
+  - q076 (−1.3): homeobox exact-count summary — BOTH arms fabricate/vary counts (v2 249/234/246,
+    v3 237/235/257); v3 slightly worse. Same fabrication class as q021.
+
+## Cumulative (n=85: + batch4)
+
+- **CLEAN** paired Δ = **+0.30/20** (81 usable Q), 95% CI **[−0.09, +0.69]**; pooled +0.36, strict-3/3 +0.39.
+  better/tie/worse 32/26/23.
+- Stable across the ladder: n=50 +0.34 [−0.14,+0.82] → 75 +0.29 [−0.11,+0.70] → **85 +0.30 [−0.09,+0.69]**.
+  CI still straddles 0 (equivalence, not a proven gain); lower bound −0.09 well inside the −0.5
+  non-regression margin. Fully-refused (dropped): q032, q034, q044, q071.
+- CI ladder: 10 → 35 → 50 → 75 → **85** done. Final batch: q086–q100 (15 Q) → n=100.
+
+## Step 5b — batch 5 / FINAL (q086–q100; 15 Q, ×3, API) → n=100
+
+Run 2026-07-24, `results_rel_batch5/` (291.0 min ≈ 4.9h). **0 invalid, 0 refusals** (cleanest batch).
+Clean Δ = **+0.27/20** (v3 17.64 vs v2 17.38). One near-ceiling flag q098 (v2 20/20/20, v3 dropped a
+couple pts on one run — noise).
+
+# ================= FINAL VERDICT @ n=100 =================
+
+## The three equivalence criteria (all PASS)
+
+1. **Judge score — EQUIVALENT (not a regression).**
+   - CLEAN paired Δ = **+0.293/20**, 95% CI **[−0.09, +0.68]** (96 usable Q). Estimators agree: pooled
+     +0.343, strict-3/3 +0.368. better/tie/worse 36/33/27.
+   - CI straddles 0 ⇒ statistically indistinguishable from zero = genuine equivalence, NOT a proven gain.
+   - Lower bound −0.09 sits well inside the pre-declared −0.5 non-regression margin ⇒ **v3 does not regress.**
+   - Stable across the whole ladder: 50 +0.34 → 75 +0.29 → 85 +0.30 → **100 +0.29**; CI monotonically
+     tightening [−0.14,+0.82] → [−0.09,+0.68].
+
+2. **Factoid correctness — UP (the aggregation-recipe claim, confirmed).** By question type (clean judge score):
+   - **factoid Δ +1.01** (v3 17.18 vs v2 16.18) — the biggest gain, exactly the query-construction/aggregation
+     questions the v3 format targets with executable worked examples.
+   - yes_no +0.54, list +0.18, choice +0.16 — all positive. summary **−0.42** (the only soft type;
+     open-ended prose synthesis, the fabrication-prone multi-part questions q021/q076/q079).
+   - Recall sub-score (0–5) Δ **+0.16** (v2 3.60 → v3 3.78) — corroborates: v3 gets the right facts/numbers
+     at least as often, more so on factoids.
+
+3. **Tokens/bytes — DOWN (deterministic).** v3 corpus is 29–65% smaller per file than v2 (no stats needed).
+
+## Soft watch-items (none blocking; all single-question, none a q022-style corpus defect)
+- summary type −0.42: v3's terseness gives marginally less scaffolding for open-ended prose synthesis
+  (q021 proteasome, q076 homeobox, q079 MHC-I — several are *shared* blind spots hitting v2 too).
+- q057 (BRENDA): v3 full recall but lower precision (EC 2.6.1.- filter admits false positives) — worth a
+  targeted MIE tweak, not a blocker.
+- q055 (OMA deep-rooting): both arms misroot at Eukaryota vs LUCA; v3 more consistently.
+
+## Data-quality caveat (does not change the verdict)
+Spurious AUP content-policy refusals contaminated ~5% of cells (balanced across arms once aggregated).
+4 questions fully unmeasurable (both arms refused): q032, q034, q044, q071. All excluded from the clean
+verdict; the equivalence conclusion holds on the 96 measurable questions.
+
+## CALL: GO for step 6 (release).
+Equivalence proven (judge score flat within −0.5, tilting mildly positive), factoid correctness UP, bytes
+DOWN 29–65%. The redesign delivers the deterministic token win at no measured quality cost — and a real
+gain on factoid/aggregation questions. Proceed to the MAJOR release: flip the served corpus to v3, ship
+the build-time Usage-Guide catalog generator FIRST, then retire the discovery trio (find_databases/
+list_databases/list_categories) + rewrite the workflow prompt.
+
+## Measured runtime cost/time @ n=100 (clean cells: v2=279 / v3=282)
+
+The deterministic win, MEASURED at runtime (not just file bytes). Per question, v3 vs v2:
+
+| metric (per Q) | v2 | v3 | Δ | % |
+|---|---|---|---|---|
+| total input tokens | 73,059 | 61,790 | −11,269 | **−15.4%** |
+|  · cache-read | 71,394 | 59,255 | −12,138 | −17.0% |
+|  · cache-creation | 1,658 | 2,527 | +869 | +52.4% |
+| output tokens | 656 | 686 | +30 | +4.6% |
+| cost $/Q | 0.52 | 0.44 | −0.08 | **−14.8%** |
+| time s/Q | 150.9 | 142.0 | −8.9 | **−5.9%** |
+
+- **−15% input tokens / −15% cost / −6% time at equivalent quality.** Dominant driver: cache-read −17%
+  (smaller MIE ⇒ fewer tokens re-read from cache every turn of every session). On this run alone v3 cost
+  $124.78 vs v2 $144.93 (~$20 / 14% cheaper).
+- Why −15% tokens when files are 29–65% smaller: the MIE is a large but not total share of per-Q context
+  (system prompt, tool schemas, SPARQL payloads, reasoning persist) — a ~50% file shrink lands as ~15%
+  fewer TOTAL input tokens. Still substantial; compounds across every production session.
+- cache-creation +52% is a small absolute base (1.7k→2.5k, one-time-per-context) swamped by cache-read
+  savings. output +4.6% = v3's marginally richer (higher-scoring) factoid answers.

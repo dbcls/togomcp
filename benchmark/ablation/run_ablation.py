@@ -86,10 +86,23 @@ NON_MIE_CONDITIONS = ["no_mie"]
 # whether a group is SUFFICIENT alone (pair keep_X against no_mie), not whether it
 # is necessary. Served via get_MIE_file like the group variants (default config).
 KEEP_CONDITIONS = [f"keep_{g}" for g in GROUPS]
-# Valid set = all four families; the DEFAULT stays section-only so existing
+# MIE v3 redesign smoke test (benchmark/redesign/): a 2-corpus A/B, NOT an ablation.
+# smoke_v2 = full current corpus; smoke_v3 = same but uniprot+bacdive swapped for their
+# v3 rewrites. Both are ordinary mie_variants/<cond>/ dirs, so run_condition serves them
+# unchanged; they only need to be on the valid list. Compare the two per question.
+SMOKE_CONDITIONS = ["smoke_v2", "smoke_v3"]
+# MIE v3 redesign RELEASE gate (step 5): the full-corpus equivalence A/B. Reuse
+# smoke_v2 as the v2 arm (it is already the full current production corpus, byte-for-byte
+# identical to togo_mcp/data/mie/), and full_v3 as the v3 arm (mie_variants/full_v3 = a
+# copy of benchmark/redesign/mie_v3, all 36 files). Ordinary mie_variants/<cond>/ dirs,
+# served unchanged; run `--conditions smoke_v2,full_v3` in 25-question batches, fold with
+# append_results.py. Pair v3 against v2 per question.
+RELEASE_CONDITIONS = ["full_v3"]
+# Valid set = all families; the DEFAULT stays section-only so existing
 # invocations are unchanged. `--conditions groups` is baseline + every group;
 # `--conditions keep` is baseline + every leave-one-in.
-ALL_CONDITIONS = SECTION_CONDITIONS + GROUP_CONDITIONS + NON_MIE_CONDITIONS + KEEP_CONDITIONS
+ALL_CONDITIONS = (SECTION_CONDITIONS + GROUP_CONDITIONS + NON_MIE_CONDITIONS
+                  + KEEP_CONDITIONS + SMOKE_CONDITIONS + RELEASE_CONDITIONS)
 DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
 
 

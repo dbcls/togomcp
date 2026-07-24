@@ -1,6 +1,6 @@
 ## 📋 WORKFLOWS
 
-**VERIFICATION** (1–2 SPARQL) — `GATE 0` → analyze → find_databases → search/esearch
+**VERIFICATION** (1–2 SPARQL) — `GATE 0` → analyze → pick DB from the catalog → search/esearch
 (often sufficient) → MIE if needed → run_sparql LIMIT 10 → answer.
 
 **ENUMERATION** (2–3 SPARQL) — + exploratory SPARQL LIMIT 10 → comprehensive COUNT.
