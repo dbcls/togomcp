@@ -1,6 +1,6 @@
 # §4.4 Enumeration-route audit — all 36 databases
 
-*The enforceable input to `MIE_v3_spec.md` §4.4 ("a positive route is not a caveat") and Phase-5
+*The enforceable input to `togo_mcp/data/docs/MIE_v3_spec.md` §4.4 ("a positive route is not a caveat") and Phase-5
 checklist item 8. Produced 2026-07-22 by a 4-way parallel read of every v2 `togo_mcp/data/mie/*.yaml`
 (no live queries — documentation mining; the v2 counts were live-verified at their own authoring).
 Purpose: when authoring each v3 file (redesign step 4), guarantee the DB's set-level enumeration

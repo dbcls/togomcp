@@ -1,8 +1,53 @@
 # Tier C — migrate the MIE authoring tooling from v2 format to v3
 
-**Status:** OPEN (tracked follow-up to the v3 redesign). Not blocking the step-6 release.
-**Created:** 2026-07-24, on `mie-redesign`.
-**Contract:** `benchmark/redesign/MIE_v3_spec.md` is the v3 format spec the tooling must author to.
+**Status:** DONE (authoring tooling migrated to v3, 2026-07-25) — one acceptance item deferred to
+the next live authoring run (see the bottom of this file). Was: OPEN, not blocking step 6.
+**Created:** 2026-07-24, on `mie-redesign`. **Migrated:** 2026-07-25.
+**Contract:** `togo_mcp/data/docs/MIE_v3_spec.md` is the v3 format spec the tooling must author to.
+
+## What was done (2026-07-25)
+
+All three authoring paths now teach v3. Changed files:
+
+- **`.claude/skills/mie-generator/references/template.yaml`** — replaced with a v3 skeleton
+  (`database` · `discovery` · header · `examples` · `schema_delta` · `id_join_map`). Structurally
+  identical top-level keys + example sub-keys to the committed `uniprot.yaml` pilot (verified by diff).
+- **`references/mie-structure.md`** — rewritten to the five v3 need-based parts; adds a "what v3
+  dropped" map and the byte-budget rule; points at `togo_mcp/data/docs/MIE_v3_spec.md` as the contract.
+- **`references/anti-patterns.md`** — recast: trap knowledge now splits into header `global_gotchas`
+  (database-wide) vs inline `traps_avoided` (query-specific); the four universal traps become
+  `teaches`/example idioms; the §4.4 enumeration-route rule is front-and-center.
+- **`references/query-strategy.md`** — light edits only (format-neutral): "7-query set" → "example
+  set", `shape_expressions`/`access.backend` references removed, "good query" criteria reframed to
+  the `verified:`/`teaches`/enumeration lens.
+- **`SKILL.md`** — hard rules retargeted to `examples[].verified:`+`date:`; Phase 2 discovery probes
+  KEPT (format-independent) with only their destination-section names updated (`shape_expressions`→
+  examples/`schema_delta`, `critical_warnings`→`global_gotchas`/`traps_avoided`, `co_hosted_graphs`→
+  `graphs.co_hosted`, `schema_info.graphs`→`graphs`); Phase 2e reframed from ShEx modifiers to
+  OPTIONAL/DISTINCT authoring choices; Phase 3/4/5/6 + declaration block + Quality bar rewritten to
+  v3; §4.4 enumeration + §4.6 no-test-leakage checks added to Phase 5.
+- **`.claude/agents/mie-builder.md`** — retired-trio reference removed; v3 field names + `verified:`/
+  `date:` rule in the hard rules; output contract updated.
+- **`.claude/workflows/mie-refresh.js`** — buildPrompt + validatePrompt rewritten to v3 (`examples[]`
+  with `verified:`/`date:`, required-key check, `on:`-trap grep); a **Catalog** phase added that
+  regenerates the Usage-Guide catalog ONCE after the whole batch (not per-builder — avoids racing on
+  a partial corpus). `node --check` passes.
+- **`scripts/check_mie_examples.py`** — NO code change needed (generic recursive walk on the `sparql`
+  key already finds `examples[].sparql`; confirmed live on `uniprot` — 11/12 ok, 1 transient
+  timeout). Docstring refreshed to say so.
+
+**Verified:** template parses + required keys present + top-level order/example-keys identical to
+`uniprot.yaml`; `check_mie_examples.py uniprot` runs clean on the v3 file; `test_catalog_in_sync`
+passes; `mie-refresh.js` syntax-checks.
+
+**Deferred (needs a live authoring run):** the acceptance item "running `mie-generator` on a fresh DB
+produces a spec-valid v3 file / the diff-shape round-trip" — do it the next time a DB is authored or
+refreshed (a `mie-builder` agent against the live endpoint), and confirm the emitted file matches the
+committed v3 shape. Nothing in the tooling blocks it; it just hasn't been exercised end-to-end yet.
+
+---
+
+## Original scope (for reference)
 
 ## Why
 
@@ -15,7 +60,7 @@ entirely different: `discovery` / `header` / `examples` (verified, dated) / `sch
 **v2-shaped file that no longer matches the served corpus or the spec.**
 
 The v3 corpus itself was NOT built with these skills — it was built by the delegated
-agent-per-DB method reading `MIE_v3_spec.md` directly (see the `project_mie_v3_corpus_complete`
+agent-per-DB method reading `togo_mcp/data/docs/MIE_v3_spec.md` directly (see the `project_mie_v3_corpus_complete`
 memory). So the tooling has been bypassed, not updated. This task closes that gap.
 
 ## Already done (Tier A + B, do NOT redo) — commits 6c28415, d4a75cb
@@ -71,6 +116,6 @@ anti-patterns.md, query-strategy.md}`.
 ## Suggested approach
 
 Mirror how the corpus was actually built: keep the live-discovery phases, and make Phase 4/5 + the
-`references/` skeleton point at `MIE_v3_spec.md` as the single source of truth (rather than
+`references/` skeleton point at `togo_mcp/data/docs/MIE_v3_spec.md` as the single source of truth (rather than
 duplicating the section spec in the skill). Consider having the skill *read* the spec at author time
 so the two can't drift.

@@ -1,6 +1,6 @@
 # Query Strategy
 
-This file contains the detailed query design guidance for writing SPARQL examples in an MIE file. Read it before designing the 7-query set in Phase 3 of the main workflow.
+This file contains the detailed query design guidance for writing the `examples` in a v3 MIE file. Read it before designing the example set in Phase 3 of the main workflow. It is format-neutral — the strategy hierarchy is the same whatever the file layout; only the section names changed in v3 (`examples` with a `verified:` block per query, not a fixed `sparql_query_examples` count).
 
 ## Query design hierarchy
 
@@ -116,7 +116,7 @@ The search API's role is to help you discover the relevant concept IRIs. Once yo
 
 Before using `bif:contains` or `FILTER(CONTAINS())` in any example query, confirm **all** of these:
 
-- [ ] You have read the full `shape_expressions` section (including inline comments)
+- [ ] You have inspected the live schema (Phase 2 class/predicate survey) for specific IRIs
 - [ ] You have checked for specific IRIs (ontology, taxonomy, classification codes)
 - [ ] You have checked for typed predicates with controlled vocabularies
 - [ ] You have checked for hierarchical relationships (`rdfs:subClassOf`, `skos:broader`)
@@ -142,7 +142,7 @@ Before using `bif:contains` or `FILTER(CONTAINS())` in any example query, confir
 
 ### Check the backend first
 
-`access.backend: "Virtuoso"` in `schema_info` determines whether `bif:contains` is available. If you don't know, run a minimal `bif:contains` query once and see if it errors.
+RDF Portal endpoints are Virtuoso, so `bif:contains` is normally available. If you don't know, run a minimal `bif:contains` query once and see if it errors. (v3 has no `access.backend` field — the backend is not documented per-file; establish it by probing when it matters.)
 
 ### Split property paths before `bif:contains`
 
@@ -176,13 +176,14 @@ The argument is a string with Virtuoso-specific operators:
 
 Inner quotes must be single quotes. The outer string is the usual double-quoted SPARQL literal.
 
-## What makes a query good in an MIE file
+## What makes an example good in an MIE file
 
-The 7 example queries are not just there to work — they are there to teach the schema to the next LLM. For each one, ask:
+The `examples` are not just there to work — in v3 each one **is** the schema shape, the sample, and (via `traps_avoided`) the warning, all at once. For each one, ask:
 
-- Does the query use a pattern that generalises? A reader should be able to swap in a different IRI and get a different-but-sensible result.
-- Does it demonstrate a non-obvious access pattern that the reader would not guess from the ShEx alone? (Measurement scaffolds, blank-node activity records, and reified statements are prime candidates.)
-- Does it include a `LIMIT`? (Always.)
-- Does it include comments explaining non-obvious choices (why this predicate, why this filter)?
+- Does the query use a pattern that generalises? A reader should be able to swap in a different IRI and get a different-but-sensible result. The `teaches` line names that reusable idiom explicitly.
+- Does it demonstrate a non-obvious access pattern the reader would not guess? (Measurement scaffolds, blank-node activity records, reified statements, FALDO ranges, indirect value hops are prime candidates.)
+- Does its `verified:` block carry the actual live result **and** a `date:`? (Always — spec §4.1.)
+- Is it a set-level enumeration route where the DB supports one? (Then it is its own example, not a caveat — spec §4.4.)
+- Does it include a `LIMIT` where a row query could run away, and comments explaining non-obvious choices?
 
-A query that passes all four is carrying its weight. A query that just demonstrates "you can SELECT things" is not.
+A query that passes these is carrying its weight. A query that just demonstrates "you can SELECT things" is not.

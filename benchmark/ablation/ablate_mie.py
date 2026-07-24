@@ -39,7 +39,10 @@ try:
 except ImportError:  # pragma: no cover
     yaml = None
 
-# Canonical 11 MIE top-level sections, in spec order (MIE_file_specs.md §2/§3).
+# Canonical 11 MIE top-level sections of the v2 format, in spec order. This harness is a
+# historical v2 artifact (the 2026-07 ablation sweeps); the v2 spec that defined these sections
+# (MIE_file_specs.md) was retired 2026-07-25 when the corpus flipped to v3 — see git history, or
+# togo_mcp/data/docs/MIE_v3_spec.md §1.3 for the v2→v3 section mapping.
 CANONICAL_SECTIONS = [
     "schema_info",
     "critical_warnings",

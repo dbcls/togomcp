@@ -1,9 +1,11 @@
-# MIE File Specification v3 (DRAFT — `mie-redesign` branch)
+# MIE File Specification v3
 
-*Companion to the design rationale in `internal_docs/mie-redesign-from-scratch-2026-07-20.md`
-(gitignored). Worked reference: `benchmark/redesign/mie_v3/uniprot.yaml`. This spec is the
-authorable contract; the rationale explains **why** each rule exists (with the ablation
-evidence). Where they disagree, this spec wins.*
+*The authorable contract for every MIE file under `togo_mcp/data/mie/`. It supersedes the retired
+v2 spec (`MIE_file_specs.md`, removed 2026-07-25). Worked reference: `togo_mcp/data/mie/uniprot.yaml`
+(the hand-authored v3 pilot). The design rationale — **why** each rule exists, with the ablation
+evidence — lives in `internal_docs/mie-redesign-from-scratch-2026-07-20.md` (gitignored, not
+shipped). Where the rationale and this spec disagree, this spec wins. The authoring tooling that
+implements it is the `mie-generator` skill (`.claude/skills/mie-generator/`).*
 
 ## 1. Overview
 

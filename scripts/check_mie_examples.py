@@ -10,12 +10,20 @@ templates that silently return 0 rows or error against the live endpoint
 A "correct" example that returns 0 is worse than no example: it teaches a broken
 query.
 
-This script closes that gap for the runnable part. For every MIE it extracts the
-`sparql` blocks (from `sparql_query_examples` and `cross_database_queries`) and the
-`correct_sparql` blocks (from `anti_patterns`) — the queries a reader is meant to
-COPY — runs each against the database's own endpoint (resolved from endpoints.csv),
-and flags ZERO-row and ERROR results. It deliberately SKIPS `wrong_sparql` (those
-are meant to fail).
+This script closes that gap for the runnable part. It is FORMAT-AGNOSTIC: a generic
+recursive walk yields every value under a `sparql`, `correct_sparql`, or `query` key,
+so it covers both v3 (`examples[].sparql` — the queries a reader copies) and any
+lingering v2 files (`sparql_query_examples` / `cross_database_queries` `.sparql` and
+`anti_patterns.correct_sparql`). It runs each against the database's own endpoint
+(resolved from endpoints.csv) and flags ZERO-row and ERROR results. It deliberately
+SKIPS `wrong_sparql` (those are meant to fail). In v3 there are no `correct_sparql`
+blocks, so the "high confidence" bucket below is simply empty for a v3 file — every
+example query is judged on the same ZERO/ERROR gate.
+
+This is the runnable half of MIE v3 spec §4.1 ("a CI job can execute every example");
+it does NOT check that each example carries a `verified:`/`date:` block or that the
+recorded figure still matches — that lives in the mie-generator Phase 5 and the
+mie-refresh re-validation agent.
 
 Limits — this catches only the runnable-and-empty failure mode:
   - A query that returns the WRONG rows (e.g. taxonomy's bare-namespace-rank

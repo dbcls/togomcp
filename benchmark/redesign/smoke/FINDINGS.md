@@ -55,7 +55,7 @@ architectural note). The v3 rewrite **collapsed all of that into a single negati
 GO example ("up:classifiedWith *also* carries keywords, filter them out") — so the agent reads
 keywords as noise to exclude, not as the route to enumerate, and falls back to text/annotation
 undercounting. **Fix applied:** a first-class `keyword_enum` example in `mie_v3/uniprot.yaml`
-+ a generalizable spec rule `MIE_v3_spec.md §4.4` ("a positive route is not a
++ a generalizable spec rule `togo_mcp/data/docs/MIE_v3_spec.md §4.4` ("a positive route is not a
 caveat" / the enumeration rule) protecting all 34 DBs.
 
 > **De-overfit update (2026-07-22).** The `keyword_enum` example originally used q066's *exact*
