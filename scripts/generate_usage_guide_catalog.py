@@ -161,7 +161,17 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--check", action="store_true", help="exit 1 if the committed file is stale")
     ap.add_argument("--stdout", action="store_true", help="print to stdout, do not write")
+    ap.add_argument(
+        "--list-categories",
+        action="store_true",
+        help="print the canonical category vocabulary in use (replaces the retired list_categories tool)",
+    )
     args = ap.parse_args(argv)
+
+    if args.list_categories:
+        cats = sorted({c for r in load_records() for c in r["categories"]})
+        sys.stdout.write("\n".join(cats) + "\n")
+        return 0
 
     content = build()
 
