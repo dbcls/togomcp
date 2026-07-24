@@ -229,3 +229,25 @@ DOWN 29–65%. The redesign delivers the deterministic token win at no measured 
 gain on factoid/aggregation questions. Proceed to the MAJOR release: flip the served corpus to v3, ship
 the build-time Usage-Guide catalog generator FIRST, then retire the discovery trio (find_databases/
 list_databases/list_categories) + rewrite the workflow prompt.
+
+## Measured runtime cost/time @ n=100 (clean cells: v2=279 / v3=282)
+
+The deterministic win, MEASURED at runtime (not just file bytes). Per question, v3 vs v2:
+
+| metric (per Q) | v2 | v3 | Δ | % |
+|---|---|---|---|---|
+| total input tokens | 73,059 | 61,790 | −11,269 | **−15.4%** |
+|  · cache-read | 71,394 | 59,255 | −12,138 | −17.0% |
+|  · cache-creation | 1,658 | 2,527 | +869 | +52.4% |
+| output tokens | 656 | 686 | +30 | +4.6% |
+| cost $/Q | 0.52 | 0.44 | −0.08 | **−14.8%** |
+| time s/Q | 150.9 | 142.0 | −8.9 | **−5.9%** |
+
+- **−15% input tokens / −15% cost / −6% time at equivalent quality.** Dominant driver: cache-read −17%
+  (smaller MIE ⇒ fewer tokens re-read from cache every turn of every session). On this run alone v3 cost
+  $124.78 vs v2 $144.93 (~$20 / 14% cheaper).
+- Why −15% tokens when files are 29–65% smaller: the MIE is a large but not total share of per-Q context
+  (system prompt, tool schemas, SPARQL payloads, reasoning persist) — a ~50% file shrink lands as ~15%
+  fewer TOTAL input tokens. Still substantial; compounds across every production session.
+- cache-creation +52% is a small absolute base (1.7k→2.5k, one-time-per-context) swamped by cache-read
+  savings. output +4.6% = v3's marginally richer (higher-scoring) factoid answers.
