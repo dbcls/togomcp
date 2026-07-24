@@ -1,219 +1,174 @@
-# MIE Structure — Per-Section Requirements
+# MIE Structure — Per-Section Requirements (v3)
 
-The 11 sections of an MIE file, in required order, with what to include and what to omit.
+The authorable contract is `togo_mcp/data/docs/MIE_v3_spec.md`; this file is the
+working companion to it. Where they disagree, **the spec wins** — read it first.
 
-## 1. `schema_info`
+v3 has **five need-based parts**, not eleven author-function sections. Top-level
+keys, in order:
 
-Descriptive header. Required fields:
+| key | required | what it is |
+|---|---|---|
+| `database` | ✅ | the DB key (== filename stem == `SPARQL_ENDPOINT` key) |
+| `discovery` | ✅ | the 4 catalog fields (title, description, keywords, categories) |
+| `endpoint` (+ `base_uri`, `graphs`, `entity_counts`, `global_gotchas`) | ✅ endpoint/graphs | the header — provenance + database-wide truths |
+| `examples` | ✅ | the load-bearing content — verified, executable atoms |
+| `schema_delta` | optional | ONLY non-obvious predicates no example demonstrates |
+| `id_join_map` | ✅ | stable anchors + cross-DB join paths |
 
-- `title`: canonical database name
-- `description`: 2–3 sentences — what the database contains, its main entity types, primary use cases
-- `keywords`: 8–15 lowercase terms for `find_databases()` discovery. Include synonyms a user might type instead of the canonical term (e.g. `mutation`, `polymorphism` alongside `variant`). See spec §3.1.5.
-- `categories`: 1–3 entries drawn from the controlled taxonomy in spec §3.1.5. **Copy each token verbatim — lowercase, underscores for multi-word (e.g. `drug_target`). Do not Title Case (`Genomics`), pluralize (`proteins`), space-separate (`comparative genomics`), or invent variants.** `list_categories()` is case-sensitive; off-spec tokens fragment the index into single-DB buckets. Pick categories that genuinely characterize the database — don't tag every category whose vocabulary appears once in the description.
-- `endpoint`: SPARQL endpoint URL
-- `base_uri`: root URI namespace
-- `graphs`: list of named graphs in the endpoint
-- `co_hosted_graphs` (**REQUIRED whenever `get_graph_list()` returns >1 graph**): free-text strings, each naming another graph on this endpoint and the trap it poses. Three kinds, and **zero IRI overlap does NOT mean safe**: (1) same IRI+predicate → row duplication (DISTINCT masks, pin fixes); (2) same IRI, conflicting value → wrong answer (DISTINCT cannot help); (3) same class, disjoint IRIs → **scope bleed**, foreign entities silently added, every row unique so only the pin helps (BRENDA's `dsmz:Enzyme` is 8.7% BRENDA unpinned, ×11.47). Also: empty-stub graphs. Populate this from the Phase 2g union-inflation probe — it is not guessed. Each entry names the sibling graph, the re-declared predicate(s), the multiplier, and the trap kind. **The trigger is graphs-per-endpoint, not databases-per-endpoint** — `togovar` is alone on its endpoint and still needs it (its own `annotation/clinvar` graph re-types 2.9M variant IRIs ×2). If the probe finds nothing, record `"2g probe run YYYY-MM-DD — no re-declaration found"`; never omit the field silently. Only a genuinely single-graph endpoint (currently just `supercon`) is exempt.
-- `kw_search_tools`: list of available keyword-search tool names, or `[]` if none
-- `version`: `mie_version`, `mie_created` (today's date), `data_version`, `update_frequency`. `mie_version` is this database's OWN document revision (bump per edit) — **not** the spec version.
-- `license` (OPTIONAL): `data_license` string; include when the source states a data-use license
-- `access.backend`: `"Virtuoso"` / `"Blazegraph"` / etc. — determines `bif:contains` availability
+The central design move: **one verified example replaces the ShEx shape, the
+sample triple, and the annotated warning** it would otherwise be written as three
+or four times (spec §1.2 — the `query` group alone recovers 99% of the whole-MIE
+benefit; the restatement is dropped). Carry only what the model **cannot recover**
+on its own (spec §4.3).
 
-## 2. `critical_warnings`
+## 1. `database`
 
-A plain string (YAML `|` block) listing silent-failure traps. These are the first things a reader scans, so put anything that would make a query return 0 rows without erroring.
+A single scalar: the DB key. Lowercase, matches the filename stem and the
+endpoint-registry key in `endpoints.csv`.
 
-Categories to look for:
+## 2. `discovery` (required — kept SMALL)
 
-- **Mandatory performance filters.** Is there a status flag that, if omitted, blows up the result set by 1000x? (e.g. UniProt's `up:reviewed 1` — without it you query 244M entries instead of 589K.)
-- **IRI namespace traps.** Does the database use OBO IRIs where you'd expect internal ones? Does it use multiple parallel namespaces for the same concept?
-- **Typos required verbatim.** Some databases have a misspelled predicate (`referecens` instead of `references`) that is preserved for backwards compatibility. Using the correct spelling returns zero rows. Document these.
-- **Graph-specific patterns.** Some predicates only resolve in specific named graphs.
-- **Cross-graph union inflation (co-hosted endpoints).** A predicate re-declared on a shared
-  IRI by a sibling dataset's graph, or this DB's own entities re-typed by a sibling. An
-  unscoped downstream query inflates rows/COUNT by the number of graphs (product across
-  predicates). Found by Phase 2g, never by a scoped survey. Document the multiplier and the
-  graph-pinned safe pattern; mirror the sibling-graph list into schema_info.co_hosted_graphs.
+The four fields a build-time generator rolls into the Usage-Guide catalog
+(`scripts/generate_usage_guide_catalog.py`). It is the **source of truth for
+cross-DB discovery** and is multiplied across the whole catalog, so keep it
+minimal and uniform across DBs. It is **not** served per-request.
 
-Use `[]` only if you have genuinely confirmed there are no traps. In practice most real databases have at least one.
+- `title`: short human title (e.g. `UniProt RDF`).
+- `description`: **ONE tight sentence** — what kind of data, phrased for keyword /
+  semantic matching. Not a paragraph.
+- `keywords`: data-type / domain terms (lowercase), **not** entity names. Include
+  synonyms a user might type (`mutation`, `polymorphism` alongside `variant`).
+- `categories`: 1–3 coarse buckets. **Copy each token verbatim** — lowercase,
+  underscores for multi-word (`drug_target`). Do not Title-Case, pluralize,
+  space-separate, or invent variants. Print the corpus's canonical set with
+  `uv run python scripts/generate_usage_guide_catalog.py --list-categories`; an
+  off-spec token fragments the catalog into a single-DB bucket.
 
-**Verification requirement:** Every predicate name and IRI string cited in `critical_warnings` must be confirmed against the live endpoint in Phase 5f. Traps to document should be identified systematically during Phase 2b by flagging surprising COUNT distributions — not reconstructed from memory in Phase 4.
+Moving or renaming these four keys requires updating whatever aggregates them
+(the guide generator, and the server's `_load_databases_cache`).
 
-## 3. `shape_expressions`
+## 3. Header — `endpoint`, `base_uri`, `graphs`, `entity_counts`, `global_gotchas`
 
-ShEx-style schema for every major entity type, as a YAML `|` string. Build from the live discovery in Phase 2 (class enumeration + DESCRIBE-style inspection of representative entities) — verify every shape against the endpoint.
+Provenance and database-wide truths, served by `get_MIE_file`. Author it so the
+header **stands alone** (spec §4.5 — a future `level=header` tier may serve it
+without the examples).
 
-Inline comments should document:
+- `endpoint`: SPARQL endpoint URL.
+- `base_uri`: optional root namespace.
+- `graphs`:
+  - `primary`: the DB's own graph IRI — the **default pin target**.
+  - `supporting`: list of same-DB graph localnames (optional).
+  - `co_hosted`: `{name: "one-line note"}` — datasets sharing the endpoint. **MUST
+    flag any that (a) inflate counts, (b) enable a direct cross-DB join, or (c) are
+    empty stubs.** Populate from the Phase 2g union-inflation probe, never guess.
+    On a multi-graph endpoint where 2g came back clean, record that explicitly
+    (`probed_clean: "2g probe run YYYY-MM-DD — no re-declaration found"`) rather
+    than omitting the field — a silent omission is indistinguishable from never
+    having probed. Only a genuinely single-graph endpoint (currently just
+    `supercon`) is exempt.
+- `entity_counts` (optional): every value **`COUNT(DISTINCT)` + graph-pinned**,
+  each with a `date:` (or a single global `verified:` date). This is where the
+  "how big is this DB" answers live; also record the inflated unpinned `COUNT(*)`
+  with a "never report" note when union inflation exists, so the trap is concrete.
+- `global_gotchas`: the **2–5 that bite ANY query** on this DB (union inflation,
+  a mandatory filter, absent labels, a timeout-prone path). Each is `{id, say}`
+  where `say` states **what silently fails + the fix**. Query-specific traps do
+  **not** go here — they ride inline on the example (`traps_avoided`, §4).
 
-- Instance counts for major entity types (from discovery queries)
-- Non-obvious predicate semantics (what does `foo:observedValue` actually mean in context?)
-- IRI patterns and namespace gotchas
-- Measurement scaffolds or indirect value access patterns (blank nodes, reified statements)
+## 4. `examples` (required) — the core
 
-```
-PREFIX ex: <http://example.org/>
+Each example is self-contained, executable, verified, and dated. Fields:
 
-<EntityShape> {
-  a [ ex:Type ] ;                  # ~2.4M instances
-  ex:required xsd:string ;
-  ex:optional xsd:string ?         # ~18% of entities have this
-}
-```
+- `id`: short slug.
+- `intent`: one line — what this teaches.
+- `question`: the natural-language question it answers.
+- `complexity`: `basic` | `intermediate` | `advanced` | `aggregation` | `cross_db`.
+- `endpoint_name`: the endpoint group (e.g. `sib`) — **only** for `cross_db`
+  examples; omit for single-DB ones.
+- `sparql`: a complete, runnable query (PREFIXes included; `LIMIT` where a row
+  query could run away).
+- `verified`: **REQUIRED** — a map of the actual live result plus `date:`
+  (`{n: 108, date: "2026-07-22"}`). Re-run this pass. Use `date:`, **never `on:`**
+  (YAML 1.1 parses the bare word `on` as boolean `true` — spec §4.1 trap); quote
+  the date value.
+- `teaches`: the reusable idiom in one line.
+- `traps_avoided` (optional): the inline, query-specific warnings — "what the
+  naive query gets wrong + the fix".
 
-**Verification requirements for `shape_expressions`** (mirrors Phase 5e):
+Rules across the set:
 
-- Every shape class must have a completed predicate survey from Phase 2b.
-- Every bnode-valued predicate must have been traced via the parent-anchored query from Phase 2c.
-- Every cardinality modifier (`?`, `+`, `*`, or absent) must be backed by a Phase 2e cardinality distribution query.
-- Every `@<ShapeRef>` must resolve to a defined block in the same section.
-- Optional co-types must be written as separate `a [ T ] ?` lines, not grouped in a single `a [ T1 T2 … ] +` block.
+- **Elevate the least-recoverable classes.** Every MIE that can support them
+  SHOULD include at least one `aggregation` and one `cross_db` example. An
+  `aggregation` example ships its verified total and demonstrates
+  `COUNT(DISTINCT)` + graph-scoping.
+- **Enumeration is first-class (spec §4.4).** For every "**all** entities with
+  property X" question the DB can answer, there must be an example showing the
+  **set-level** route (a controlled-vocabulary term / typed predicate), not just a
+  per-instance or text-match pattern, and **not** buried as a `traps_avoided`
+  caveat on some other example. Check this DB's row in
+  `benchmark/redesign/enumeration_audit.md` (all 36 DBs pre-scanned): **Tier A**
+  DBs must add a *new* standalone `enum_*` example (the route is buried in v2);
+  **Tier B/C** DBs must keep the worked query and its load-bearing caveat together.
+- **No test leakage (spec §4.6).** An example's subject (keyword phrase, class
+  IRI, gold gene/compound/accession) must **not** be a benchmark question's exact
+  subject for **this DB**. Grep it against `benchmark/questions/*.yaml`
+  (`inspiration_keyword` / `exact_answer`) before finalizing; swap to a neutral
+  member of the same class if it collides. Canonical non-benchmark subjects (ATP,
+  TP53, BRCA1) are fine.
+- **One fact, one place (spec §4.2).** A predicate shown in any example is **not**
+  repeated in `schema_delta`. A warning is database-wide (`global_gotchas`) **or**
+  query-specific (`traps_avoided`) — never both.
 
-## 4. `sample_rdf_entries`
+There is no fixed count (v2's "exactly 7, 2/3/2" is retired). Author the set the
+DB's questions need: cover the primary lookup routes, the enumeration route(s),
+one aggregation, and one cross-DB join where they exist. Typical files land at
+8–14 examples; a rich hub DB (UniProt) more.
 
-**Exactly 3 entries.** Single shared `rdf_prefixes` block at the top — do not repeat `@prefix` declarations in every entry.
+## 5. `schema_delta` (optional)
 
-The 3 entries should:
+A short list of **non-obvious** predicates / vocabularies / entity types a query
+might need but that **no example demonstrates**. Not a schema dump. If a predicate
+is shown in an example, or the model can guess it (basic prefixes, `rdfs:label`),
+it does **not** belong here. Prose one-liners, each carrying the semantics + a
+coverage figure where relevant.
 
-- Cover the most important entity types in the database
-- Demonstrate at least one non-obvious access pattern (measurement scaffold, cross-reference, reified statement)
-- Include enough context that a reader can see how the pieces connect
+## 6. `id_join_map` (required) — the least-recoverable asset
 
-**Every triple must be validated against the endpoint via a SELECT or ASK query.** No made-up IRIs, no fabricated literals.
+How to anchor stably and cross to other databases.
 
-```yaml
-sample_rdf_entries:
-  rdf_prefixes: |
-    @prefix ex: <http://example.org/> .
-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  entries:
-    - title: "Representative entity"
-      description: One-sentence purpose.
-      rdf: |
-        ex:entity1 a ex:Type ;
-                   ex:required "value" .
-```
+- `stable_anchor`: how to anchor stably — the IRI/accession pattern, plus any
+  secondary human key (e.g. a mnemonic).
+- `same_endpoint_joins` (optional): `{db: "join predicate/path"}` — co-hosted DBs
+  reachable by a **direct GRAPH join, no bridge**. Point each at the `cross_db`
+  example that demonstrates it.
+- `xrefs` (optional): `{db: "xref predicate + prefix/coverage"}` — outbound
+  references. **Mechanism-agnostic**: name each entry after however the DB actually
+  points out (`rdfs:seeAlso` by IRI prefix, a `hasLink`/accession string, an ID
+  that needs a transform).
+- `bridged_via_togoid` (optional): list of DBs reachable **only** via
+  `togoid_convertId` (NOT co-hosted). A DB whose joins are all intra-endpoint may
+  have none.
 
-## 5. `sparql_query_examples`
+## What v3 does NOT have
 
-**Exactly 7 queries. Distribution: 2 basic / 3 intermediate / 2 advanced.**
+Do not carry these v2 sections forward — they were dropped deliberately (spec §1.3):
 
-Requirements across the set:
+- `shape_expressions`, `sample_rdf_entries` — the example **is** the shape and the
+  sample; don't restate them.
+- `sparql_query_examples` / `cross_database_queries` as separate sections — folded
+  into `examples` (with `cross_db` and `aggregation` elevated as complexity tiers).
+- `cross_references` — becomes `id_join_map`.
+- `critical_warnings` / `anti_patterns` / `common_errors` — database-wide traps go
+  to `global_gotchas`; query-specific ones go inline as `traps_avoided`. There is
+  no standalone anti-pattern section and no mandatory "schema check before text
+  search" entry; that guidance now lives as `teaches`/`traps_avoided` on the
+  enumeration examples themselves.
+- `architectural_notes`, `data_statistics` — the few non-obvious notes go to
+  `schema_delta`; the counts go to header `entity_counts`.
 
-- ≥ 2 queries use specific IRIs or VALUES with IRIs
-- ≥ 2 queries use typed predicates or graph navigation
-- ≤ 1 query uses text search (with Gate Check passed — see `references/query-strategy.md`)
-- All 7 include a `LIMIT` clause
-- All 7 are tested against the endpoint before the file is written
+## Byte budget
 
-Each entry has:
-
-- `title`: action-oriented, specific
-- `description`: 1–2 sentences of context
-- `question`: the natural-language question the query answers
-- `complexity`: `basic` | `intermediate` | `advanced`
-- `sparql`: the query, with inline comments explaining non-obvious choices
-
-If a query uses text search, add a comment in the SPARQL explaining why no structured alternative exists.
-
-## 6. `cross_database_queries`
-
-If the target database shares a SPARQL endpoint with others (RDF Portal, ChEMBL endpoint with UniProt, etc.), include 1–2 cross-database examples.
-
-**Before writing any cross-database query**, read the MIE files of every other database involved (from `./togo_mcp/data/mie/`) to confirm the linking predicates and shared IRI namespaces.
-
-```yaml
-cross_database_queries:
-  shared_endpoint: endpoint_name
-  co_located_databases: [db1, db2]
-  examples:
-    - title: "..."
-      description: |
-        Linking strategy:
-        - db1: predicate X links to shared IRI namespace (e.g. EC numbers)
-        - db2: predicate Y links to same IRI namespace
-        - Direct IRI matching; no text search required
-      databases_used: [db1, db2]
-      complexity: intermediate
-      sparql: |
-        ...
-      notes: |
-        - Linking via: [IRI type]
-        - MIE files checked: db1, db2
-```
-
-**Isolated endpoint?** Use `examples: []` and a `notes` block explaining why, plus manual bridging strategies.
-
-## 7. `cross_references`
-
-Pattern descriptions for each cross-reference predicate (`rdfs:seeAlso`, `skos:exactMatch`, custom predicates). For each pattern:
-
-- `pattern`: the predicate
-- `description`: what it links to
-- `databases`: coverage by category (e.g. "UniProt: 78%", "ChEMBL: 45%")
-- `sparql`: optional — include only if the pattern is non-trivial
-
-**Verification requirements:**
-
-- The IRI form documented for each pattern must be confirmed by DESCRIBEing a real entity (Phase 5g), not inferred from documentation.
-- Every coverage percentage must come from a COUNT query (Phase 5g), not an estimate.
-- If two IRI forms exist for the same concept, document both and specify which is the correct join key for cross-database federation.
-
-## 8. `architectural_notes`
-
-Six sub-sections:
-
-- `query_strategy`: priority order for writing new queries against this database
-- `schema_design`: central entity types and their relationships, key controlled vocabularies, IRI patterns
-- `performance`: critical filters, key optimizations, `bif:contains` tips for Virtuoso
-- `data_integration`: cross-reference patterns and coverage
-- `data_quality`: known anomalies, duplicates, data entry artifacts
-- `text_search_justification`: number of example queries using text search, fields where it's legitimate, reasons structured alternatives were confirmed absent
-
-## 9. `data_statistics`
-
-**Counts and coverage percentages only.** Every number has a verified date and a verification method.
-
-- `total_entities`: total count
-- `verified_date`: ISO date
-- `verification_method`: "Direct COUNT query" or "sampling with N=..."
-- `coverage`: sub-fields for key properties, each with its own percentage and calculation
-
-**Omit these sub-sections** (they are auditing artefacts that clutter the file at query time):
-
-- `verification_queries` — not needed at query time
-- `cardinality` (avg-X-per-entity) — rarely useful
-- `performance_characteristics` — belongs in `architectural_notes.performance`
-
-## 10. `anti_patterns`
-
-**3–4 entries.** The first must be "Schema Check Before Text Search" (or equivalent) — this is the single most common failure mode.
-
-Each entry has:
-
-- `title`
-- `problem`: one-sentence statement of the mistake
-- `wrong_sparql`: minimal example of the bad pattern
-- `correct_sparql`: the fixed version
-- `explanation`: why the wrong version is wrong
-
-The other 2–3 slots should cover database-specific traps discovered during schema exploration. On a co-hosted endpoint, if Phase 2g found union inflation, add a 5th anti-pattern for it (wrong = unscoped join on a re-declared predicate; correct = graph-pinned).
-
-## 11. `common_errors`
-
-**2–3 entries.** Each with:
-
-- `error`: symptom (the error message or behaviour the user sees)
-- `causes`: list of root causes
-- `solutions`: list of concrete fixes
-
-Good picks: timeout / slow query, empty results, cross-database query failure.
-
-## Line budget
-
-| Database complexity    | Target lines |
-|------------------------|--------------|
-| Small / focused        | 400–500      |
-| Typical                | 500–700      |
-| Complex (UniProt-like) | 700–900      |
-
-If you're over 900 lines, look for duplication between `shape_expressions` (which documents the schema) and `architectural_notes.schema_design` (which explains the schema). Keep the factual schema in `shape_expressions` and the higher-level reasoning in `architectural_notes`.
+The win is measured, not vibed. Record the byte count of the v3 file vs the v2.x
+file it replaces (spec §5 item 7) — the UniProt pilot came in **~55–74% smaller**.
+There is no line ceiling, but if a v3 file is not clearly smaller than its v2
+predecessor, you are probably restating a fact the examples already carry.

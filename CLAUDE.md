@@ -86,4 +86,4 @@ uv run togo-mcp-server       # HTTP :8000
 
 ## Editing MIE files
 
-MIE YAMLs in `togo_mcp/data/mie/` drive the `get_MIE_file` tool — the primary schema/example resource LLMs read before writing SPARQL. The format spec is [MIE_file_specs.md](togo_mcp/data/docs/MIE_file_specs.md). When adding a database, also add an entry to `resources/endpoints.csv`.
+MIE YAMLs in `togo_mcp/data/mie/` drive the `get_MIE_file` tool — the primary schema/example resource LLMs read before writing SPARQL. The corpus is the **v3 format**; the format spec is [MIE_v3_spec.md](togo_mcp/data/docs/MIE_v3_spec.md) (it supersedes the retired v2 `MIE_file_specs.md`). The authoring tooling that implements it is the `mie-generator` skill under `.claude/skills/`. When adding a database, also add an entry to `resources/endpoints.csv`.

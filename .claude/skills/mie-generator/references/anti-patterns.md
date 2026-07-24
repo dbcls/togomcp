@@ -1,142 +1,114 @@
-# Anti-patterns and Common Errors
+# Traps: `global_gotchas` and `traps_avoided` (v3)
 
-Worked examples of the four patterns that must appear in every MIE file's `anti_patterns` section (or close equivalents tailored to the specific database), plus the common error scenarios.
+v3 has **no `anti_patterns` section**. The trap knowledge that v2 packed into
+`anti_patterns` / `critical_warnings` / `common_errors` now lives in two places,
+split by scope (spec §4.2 — one fact, one place):
 
-## Anti-pattern 1: Text search when a structured property exists
+- **`global_gotchas`** (header) — the 2–5 traps that bite **ANY** query on this
+  DB. Each is `{id, say}`; `say` states *what silently fails + the fix*.
+- **`traps_avoided`** (inline on an example) — a **query-specific** warning: what
+  the naive version of *this* query gets wrong, and the fix, right next to the
+  correct query that avoids it.
 
-**Problem.** Using string matching when a specific IRI or typed predicate is available.
+A warning is database-wide **or** query-specific — never both, never a separate
+prose section. This file is a cookbook of the recurring traps and where each one
+belongs.
 
-**Wrong:**
+## The enumeration trap is the one that matters most (spec §4.4)
 
-```sparql
-# Inefficient: text search for a controlled vocabulary value
-?description bif:contains "'antibacterial'"
+The single highest-value thing these files teach is the **set-level enumeration
+route**: how to get **ALL** entities with property/feature/class X. The failure
+mode (regressed on benchmark q066) is compression keeping the *caveat* about a
+predicate while dropping the *worked route* — which reads to the agent as "avoid
+this," the opposite of the intent.
+
+So a positive route is **never** only a `traps_avoided` caveat. It is its own
+`example` (a `basic`/`intermediate` query, often `enum_*`). The caveat then rides
+*on that example* as a `traps_avoided` line telling the reader **not** to fall
+back to text matching:
+
+```yaml
+- id: keyword_enum
+  intent: enumerate ALL proteins carrying a UniProt keyword — the classification route
+  complexity: basic
+  sparql: |
+    SELECT (COUNT(DISTINCT ?protein) AS ?n)
+    FROM <http://sparql.uniprot.org/uniprot>
+    WHERE { ?protein a up:Protein ; up:reviewed 1 ; up:classifiedWith keywords:727 . }  # KW-0727 = SH3 domain
+  verified: {n: 108, date: "2026-07-22"}
+  teaches: "Enumerate by a domain/feature/function via up:classifiedWith keywords:NNN — the PRIMARY route for 'all proteins with feature X'."
+  traps_avoided:
+    - "Do NOT substitute a name/comment text match — it misses synonyms and non-name mentions and silently UNDERCOUNTS. Resolve the feature name to its KW number, then enumerate by that IRI."
 ```
 
-**Correct:**
+## The four universal traps and where they go
+
+These held in v2 as the four mandatory anti-patterns. In v3 they are mostly
+**`teaches`/`traps_avoided` on the enumeration and lookup examples**, or a
+`global_gotchas` entry when they are database-wide.
+
+### 1. Text search when a structured property exists
+
+Controlled vocabularies exist so you don't guess spellings. The IRI is canonical;
+the text is not. Express this as an **example** that uses the IRI, with a
+`traps_avoided` line naming the text query it replaces:
+
+- *wrong idiom* — `?description bif:contains "'antibacterial'"`
+- *right idiom* — `?molecule cco:atcClassification <http://www.whocc.no/atc/J01> .`
+
+### 2. Skipping the schema check before text search
+
+The workflow (read the schema → use a search API to find example entities →
+DESCRIBE them → extract IRIs → query by IRI) is the *author's* method, not
+something to ship as prose. What ships is the resulting IRI-based `example`. If
+text search survives at all in a file, it is one example with a `teaches` line
+stating in one sentence why no structured alternative exists.
+
+### 3. Circular reasoning with search results
+
+Never `VALUES ?x { <20 results from a search API> }` inside a `COUNT` — the count
+is predetermined by the search-result size. The search API discovers concept
+IRIs; the **triplestore** holds the answer. Any `aggregation` example must count
+the full dataset against a controlled-vocab IRI, not a hand-pasted result set:
 
 ```sparql
-# Efficient: use the specific IRI from the ATC classification
-?molecule cco:atcClassification <http://www.whocc.no/atc/J01> .
-```
-
-**Why.** Controlled vocabularies exist precisely so that you don't have to guess spellings or worry about alternative wordings. The IRI is canonical, the text is not.
-
-## Anti-pattern 2: Skipping the schema check before text search
-
-**Problem.** Reaching for text search without first reading `shape_expressions` to look for structured alternatives.
-
-**Wrong:**
-
-```sparql
-# No schema check performed — jumps straight to text search
-?text bif:contains "'kinase'"
-```
-
-**Correct workflow:**
-
-1. `get_MIE_file(db)` → read `shape_expressions`
-2. Use the search API (`search_chembl_target`, `search_uniprot_entity`, etc.) to find examples
-3. DESCRIBE the examples to extract concept IRIs
-4. Use those IRIs:
-
-```sparql
-VALUES ?term {
-  <http://purl.obolibrary.org/obo/GO_0016301>   # kinase activity
-  <http://purl.obolibrary.org/obo/GO_0004672>   # protein kinase activity
-}
-?entity classificationPredicate ?term .
-```
-
-**Why.** RDF databases are curated. If you think you need free-text search, you're almost always missing a predicate that someone put in precisely so you wouldn't have to.
-
-## Anti-pattern 3: Circular reasoning with search results
-
-**Problem.** Using search API results inside a `VALUES` block and then counting them. The count is predetermined by the size of the search result — you're not counting anything useful.
-
-**Wrong:**
-
-```sparql
-VALUES ?entity { ex:1 ex:2 ... ex:20 }   # only the 20 results from the search API
-SELECT (COUNT(?entity) AS ?count) WHERE { ... }
-# Result: 20. Obviously.
-```
-
-**Correct.** Use the search API to discover concept IRIs, then query the full dataset against those IRIs:
-
-```sparql
-VALUES ?classification { <term:A> <term:B> }
 SELECT (COUNT(DISTINCT ?entity) AS ?count)
-WHERE { ?entity hasClassification ?classification . }
+WHERE { ?entity ex:hasClassification <term:A> . }   # not VALUES of prior results
 ```
 
-**Why.** The search API exists to help you find relevant concepts in a huge vocabulary. It's a discovery tool, not an answer tool. The full dataset lives in the triplestore.
+### 4. Unindexed text search when indexed is available
 
-## Anti-pattern 4: Unindexed text search when indexed is available
+On Virtuoso, `?text bif:contains "'keyword'"` uses the full-text index;
+`FILTER(CONTAINS(LCASE(?text), "keyword"))` forces a full scan and often times
+out. If a file legitimately needs text search, the example uses `bif:contains`
+and its `teaches` says so.
 
-**Problem.** Using `FILTER(CONTAINS())` when `bif:contains` is available (Virtuoso backend).
+## Database-wide traps → `global_gotchas`
 
-**Wrong:**
+These are not query-specific; they bite everything. Each becomes a `{id, say}`:
 
-```sparql
-FILTER(CONTAINS(LCASE(?text), "keyword"))   # unindexed, full scan
-```
+- **Mandatory performance filter** — a status flag whose omission blows up the
+  result set (`up:reviewed 1` — without it you query ~244M rows instead of ~574K).
+  `id: reviewed_filter`.
+- **Union inflation on a co-hosted endpoint** — a predicate re-declared on a
+  shared IRI by a sibling graph, or this DB's own entities re-typed by a sibling,
+  so an unscoped `COUNT` inflates by the number of graphs (product across joined
+  predicates). Found only by Phase 2g. `id: union_inflation`; the `say` gives the
+  multiplier and the graph-pinned safe pattern, and the same sibling list is
+  mirrored into `graphs.co_hosted`.
+- **IRI namespace trap** — OBO IRIs where you'd expect internal ones; the wrong
+  namespace returns 0 rows silently.
+- **Absent labels** — e.g. `up:Protein` has no `rdfs:label`; a label query returns
+  0 rows silently, and the names come from a different predicate.
+- **Timeout-prone path** — e.g. a pre-flattened lineage where `rdfs:subClassOf*`
+  times out but single-hop already covers the full ancestry.
+- **Verbatim typo** — a misspelled predicate preserved for compatibility, where
+  the corrected spelling returns 0 rows.
 
-**Correct:**
+## Verification (non-negotiable)
 
-```sparql
-?text bif:contains "'keyword'"   # uses Virtuoso's full-text index
-```
-
-**Why.** `FILTER(CONTAINS())` forces a full scan of every literal in scope. On a 100M+ triple store this is slow and often times out. `bif:contains` uses a proper inverted index.
-
-## Common Error 1: Slow query or timeout
-
-**Causes:**
-
-- Text search used where structured IRIs or predicates are available
-- Missing critical filters (reviewed status, graph clauses, date ranges)
-- `FILTER(CONTAINS())` used when `bif:contains` would work
-- Property path used just before `bif:contains` (forces intermediate materialization)
-
-**Solutions:**
-
-- Re-read `critical_warnings` and `shape_expressions` for mandatory filters
-- Replace text search with structured lookups where possible
-- On Virtuoso, use `bif:contains`; split property paths before it
-- Always include a `LIMIT`
-
-## Common Error 2: Empty or incomplete results
-
-**Causes:**
-
-- `VALUES` block populated with search results instead of concept IRIs (circular reasoning)
-- Wrong IRI namespace — this fails silently, returning 0 rows rather than erroring
-- Missing hierarchical navigation (query asks for "kinases" but only matches the specific term, not subclasses)
-- Required status flag or graph clause omitted, returning a different slice of data than expected
-
-**Solutions:**
-
-- Re-read `critical_warnings` for known namespace traps
-- DESCRIBE an example entity to confirm IRI patterns match what your query expects
-- Use `rdfs:subClassOf+` or `skos:broader+` for hierarchical coverage
-- Check that `GRAPH` clauses match the graph list in `schema_info.graphs`
-
-## Common Error 3: Cross-database query timeout or empty results
-
-**Causes:**
-
-- Failed to read the MIE files of all databases in the query (so linking predicates weren't confirmed)
-- Missing `GRAPH` clauses (query runs against the union graph, which is slow or differently shaped)
-- Joining before filtering — the join is evaluated over the full product of both databases, then filtered, instead of the other way around
-
-**Solutions:**
-
-- Read MIE files for every database involved; confirm the shared IRI namespace that links them
-- Use explicit `GRAPH` clauses for each database
-- Apply restrictive filters inside each `GRAPH` block before the cross-database join
-- Add `LIMIT` at every query level
-
-## A note on documenting database-specific anti-patterns
-
-The four anti-patterns above are universal. If you discovered a database-specific trap during schema exploration (e.g. "ChEMBL target IDs look like CHEMBL1234 but are IRIs `http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL1234` — users consistently write the bare ID"), add it as a fifth anti-pattern or fold it into one of the existing four. The goal is that a reader of the MIE file never falls into a trap that you already climbed out of.
+Every predicate name and IRI cited in a `global_gotchas` or `traps_avoided` entry
+must exist on the live endpoint (Phase 5). A warning about a non-existent
+predicate is worse than no warning — the reader avoids the wrong thing while the
+real trap stays unflagged. Traps are collected **during Phase 2** (from surprising
+COUNT distributions and the 2g probe), not reconstructed from memory in Phase 4.

@@ -1,322 +1,151 @@
-# MIE File Template
+# MIE File Template — v3 format
 #
 # Copy this scaffold to ./togo_mcp/data/mie/<db>.yaml and fill it in.
-# Replace every [bracketed] placeholder. Remove any section-level comments
-# that are just instructions to you — they shouldn't ship in the final file.
+# The authorable contract is togo_mcp/data/docs/MIE_v3_spec.md — read it; where
+# this template and the spec disagree, the spec wins. Worked reference:
+# togo_mcp/data/mie/uniprot.yaml (the hand-authored v3 pilot).
 #
-# Section order is fixed. Sections 1-11 below must appear in this order.
+# v3 is organized by AGENT NEED × RECOVERABILITY, with the verified, executable
+# worked example as the atomic unit. The example IS the schema shape, the sample
+# triple, AND the annotated warning it would otherwise be written as three times.
+#
+# Top-level keys, IN ORDER:
+#   database        (required)
+#   discovery       (required) — the 4 catalog fields
+#   endpoint + base_uri + graphs + entity_counts + global_gotchas  = the header
+#   examples        (required) — the load-bearing content
+#   schema_delta    (optional) — ONLY non-obvious predicates no example shows
+#   id_join_map     (required) — the least-recoverable asset
+#
+# Remove any comment that is just an instruction to you — it should not ship.
 
-schema_info:
-  title: [DATABASE_NAME]
-  description: |
-    [2-3 sentences: contents, entity types, primary use cases]
-  # 8-15 lowercase keywords for token-efficient discovery via find_databases().
-  # Include synonyms a user might type instead of the canonical term
-  # (e.g. mutation/polymorphism alongside variant). See spec §3.1.5.
-  keywords:
-    - [keyword1]
-    - [keyword2]
-  # 1-3 categories from the controlled taxonomy. See spec §3.1.5 for the full list.
-  # Pick the categories that genuinely characterize this database, not every category
-  # whose vocabulary appears once in the description.
-  categories:
-    - [category1]
-  endpoint: https://rdfportal.org/example/sparql
-  base_uri: http://example.org/
-  graphs:
-    - http://example.org/dataset
-    - http://example.org/ontology
-  co_hosted_graphs:       # REQUIRED when get_graph_list() returns >1 graph — graphs-per-endpoint,
-                          # NOT databases-per-endpoint. Populate from the Phase 2g probe; never guess.
-    - "http://example.org/other  — [what it re-declares] + [measured multiplier] + [trap kind: IRI re-typing / COUNT inflation / empty stub / older vintage] + [fix: pin GRAPH <...>]"
-    # Probe came back clean? Record that — do not omit the field:
-    #   - "2g probe run YYYY-MM-DD — no re-declaration found"
-  kw_search_tools:
-    - [api_name]   # or []
-  version:
-    mie_version: "1.0"    # this DB's OWN revision, bump on each substantive edit — NOT the spec version
-    mie_created: "YYYY-MM-DD"
-    data_version: "Release YYYY.MM"
-    update_frequency: "Monthly"
-  license:                # OPTIONAL — include when the source states a data-use license
-    data_license: "CC BY 4.0"
-  access:
-    backend: "Virtuoso"   # or "Blazegraph", etc. Determines bif:contains availability.
+database: [db_key]          # == filename stem == SPARQL_ENDPOINT key (lowercase)
 
-# Silent-failure traps, mandatory performance filters, IRI namespace traps, typos
-# that must be preserved verbatim. Use [] only if you've genuinely confirmed none exist.
-critical_warnings: |
-  - [Example] MANDATORY FILTER: Always add `?entity up:reviewed 1` — omitting it queries
-    244M instead of 589K entries and causes all COUNT queries to time out.
-  - [Example] IRI NAMESPACE TRAP: GO terms in `up:classifiedWith` use OBO IRIs
-    (http://purl.obolibrary.org/obo/GO_XXXXXXX), NOT http://purl.uniprot.org/go/.
-    Wrong namespace silently returns 0 rows.
-  - [Example] TYPO (required verbatim): `dct:referecens` (not `dct:references`).
-    Using the corrected spelling returns zero results.
+# ── discovery: the four fields a build-time generator rolls into the Usage Guide
+#    catalog (spec §3.1). Keep SMALL and uniform — it is multiplied across the
+#    whole catalog and is the source of truth for cross-DB discovery. NOT served
+#    per-request. Moving/renaming these keys means updating the catalog generator
+#    (scripts/generate_usage_guide_catalog.py) and the server's _load_databases_cache. ──
+discovery:
+  title: [Short human title, e.g. "UniProt RDF"]
+  description: >
+    [ONE tight sentence: what kind of data this holds, phrased for keyword /
+    semantic matching. Not a paragraph.]
+  # data-type / domain terms (lowercase), NOT entity names. Include synonyms a
+  # user might type (mutation/polymorphism alongside variant).
+  keywords: [keyword1, keyword2, keyword3]
+  # 1-3 coarse buckets. Copy each token VERBATIM (lowercase, underscores for
+  # multi-word, e.g. drug_target) from the categories already in the corpus —
+  # print them with:  uv run python scripts/generate_usage_guide_catalog.py --list-categories
+  # An off-spec token fragments the catalog into a single-DB bucket.
+  categories: [category1]
 
-shape_expressions: |
-  PREFIX ex: <http://example.org/>
+# ── header: provenance + database-wide truths (served by get_MIE_file only) ──
+endpoint: https://rdfportal.org/example/sparql
+base_uri: http://example.org/          # optional
+graphs:
+  primary: http://example.org/dataset  # the DB's own graph IRI — the default pin target
+  supporting: [ontology, taxonomy]     # same-DB graph localnames (optional)
+  co_hosted:                           # {name: "one-line note"} — datasets sharing the endpoint.
+                                       # MUST flag any that (a) inflate counts, (b) enable a direct
+                                       # cross-DB join, or (c) are empty stubs. Populate from the
+                                       # Phase 2g probe — never guess.
+    otherdb: "[what it re-declares + measured multiplier + trap kind (count-inflation / re-typing / empty stub / join target) + fix]"
+    # Probe came back clean on a multi-graph endpoint? Record it, do not omit:
+    #   probed_clean: "2g probe run YYYY-MM-DD — no re-declaration found (legs: type, label, hub)"
 
-  <EntityShape> {
-    a [ ex:Type ] ;                  # instance count: ~N
-    ex:required xsd:string ;
-    ex:optional xsd:string ?         # coverage: X%
-  }
-  # Document inline:
-  # - Instance counts for major entity types
-  # - Non-obvious predicate semantics
-  # - IRI patterns and namespace gotchas
-  # - Measurement scaffolds or indirect value access patterns
+entity_counts:            # OPTIONAL. Every value COUNT(DISTINCT) + graph-pinned, with a date.
+  primary_entities: 12345 # verified 2026-07-24 — the usual "how big is this DB" answer
+  # union_raw_countstar: 99999   # unpinned COUNT(*) — INFLATED, never report (see gotcha)
 
-# Exactly 3 entries. Single shared prefix block. Every triple validated against the endpoint.
-sample_rdf_entries:
-  rdf_prefixes: |
-    @prefix ex: <http://example.org/> .
-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  entries:
-    - title: "[Title — most representative entity]"
-      description: One-sentence purpose.
-      rdf: |
-        ex:entity1 a ex:Type ;
-                   ex:required "value" .
-    - title: "[Title — illustrates a non-obvious pattern]"
-      description: One sentence.
-      rdf: |
-        ex:entity2 a ex:Type ;
-                   ex:optional "value" .
-    - title: "[Title — cross-reference or measurement scaffold]"
-      description: One sentence.
-      rdf: |
-        ex:entity3 a ex:Type ;
-                   rdfs:seeAlso <http://external.org/123> .
+global_gotchas:           # the 2-5 that bite ANY query on this DB. DATABASE-WIDE only —
+                          # query-specific traps go inline in the example (traps_avoided).
+  - id: [slug]
+    say: "[what silently fails + the fix]"
+  # - id: union_inflation
+  #   say: "`a ex:Thing` matches in N graphs -> unpinned COUNT(*) inflated ×N. FIX: pin GRAPH <...> or COUNT(DISTINCT)."
 
-# Exactly 7 queries. Distribution: 2 basic / 3 intermediate / 2 advanced.
-# Every query tested against the endpoint before the file is written.
-sparql_query_examples:
-  - title: "[Action using specific IRIs]"
-    description: Context.
-    question: "Question?"
-    complexity: basic
+# ── examples: the core (required). Each is self-contained, executable, verified,
+#    and dated. Elevate the least-recoverable classes: include at least one
+#    `aggregation` and one `cross_db` example where the DB supports them, and a
+#    first-class `enum_*` example for every set-level enumeration route (§4.4).
+#    A predicate shown in ANY example is NOT repeated in schema_delta. ──
+examples:
+  - id: [slug]
+    intent: [one line — what this teaches]
+    question: "[natural-language question it answers]"
+    complexity: basic          # basic | intermediate | advanced | aggregation | cross_db
     sparql: |
       PREFIX ex: <http://example.org/>
-
       SELECT ?entity ?label
       WHERE {
-        ?entity ex:classification <http://example.org/concepts/SpecificType> ;
+        ?entity ex:classification <http://example.org/concept/SpecificType> ;
                 rdfs:label ?label .
       }
       LIMIT 20
+    verified: {result_rows: 20, date: "YYYY-MM-DD"}   # REQUIRED — re-run live this pass.
+                                                      # Use `date:`, NEVER `on:` (YAML parses
+                                                      # bare `on` as boolean true — §4.1 trap).
+    teaches: "[the reusable idiom in one line]"
+    traps_avoided:             # optional — the inline, query-specific warnings
+      - "[what the naive query gets wrong + the fix]"
 
-  - title: "[Basic #2]"
-    description: Context.
-    question: "Question?"
+  - id: [enum_slug]            # a set-level enumeration route (§4.4). Check this DB's row in
+    intent: enumerate ALL entities carrying a controlled-vocabulary term / typed predicate
+    question: "How many/which [entities] have [feature X]?"
     complexity: basic
     sparql: |
-      ...
-      LIMIT 20
+      PREFIX ex: <http://example.org/>
+      SELECT (COUNT(DISTINCT ?entity) AS ?n)
+      WHERE { ?entity ex:classifiedWith <http://example.org/term/NNN> . }
+    verified: {n: 0, date: "YYYY-MM-DD"}
+    teaches: "To enumerate by class/feature, use the controlled-vocab IRI — NOT a name/text match (which undercounts)."
+    # Subject must NOT be a benchmark question's keyword/class/gold entity (§4.6) —
+    # grep it against benchmark/questions/*.yaml; swap to a neutral member if it collides.
 
-  - title: "[Intermediate #1 — typed predicate]"
-    description: Context.
-    question: "Question?"
-    complexity: intermediate
+  - id: [agg_slug]             # ELEVATED aggregation class — ships its verified total + COUNT(DISTINCT)+pin
+    intent: count [entities] with graph-scoping (the union-inflation-safe recipe)
+    question: "How many [entities] are there?"
+    complexity: aggregation
     sparql: |
-      ...
-      LIMIT 20
+      PREFIX ex: <http://example.org/>
+      SELECT (COUNT(DISTINCT ?e) AS ?total)
+      FROM <http://example.org/dataset>       # graph-pin corrects union inflation
+      WHERE { ?e a ex:Thing . }
+    verified: {total: 0, date: "YYYY-MM-DD"}
+    teaches: "Graph-pin + COUNT(DISTINCT) gives the un-inflated total."
 
-  - title: "[Intermediate #2 — graph navigation]"
-    description: Context.
-    question: "Question?"
-    complexity: intermediate
+  - id: [xdb_slug]             # ELEVATED cross_db class — least-recoverable, highest-failure
+    intent: "cross-DB: [this DB] -> [other DB] via [shared IRI / xref]"
+    question: "[cross-database question]"
+    complexity: cross_db
+    endpoint_name: [group]     # e.g. sib — ONLY for cross_db; omit for single-DB examples
     sparql: |
-      ...
+      PREFIX ex: <http://example.org/>
+      SELECT ?a ?b
+      WHERE {
+        GRAPH <http://example.org/dataset> { ?a ex:hasId ?shared . }
+        GRAPH <http://otherdb.org/graph>   { ?b other:linkedTo ?shared . }
+      }
       LIMIT 20
+    verified: {result_rows: 20, date: "YYYY-MM-DD"}
+    teaches: "[which IRI is the shared join key, and that it needs no text search / no ID bridge]"
 
-  - title: "[Intermediate #3 — text search, if justified]"
-    description: Context.
-    question: "Question?"
-    complexity: intermediate
-    sparql: |
-      # Text search justified: [field] is unstructured free text; checked
-      # shape_expressions and inspected examples — no controlled vocabulary exists.
-      # Virtuoso backend: bif:contains (indexed).
-      ?text bif:contains "'keyword1' OR 'keyword2'"
-      ...
-      LIMIT 20
+# ── schema_delta (optional): ONLY non-obvious predicates / vocabularies / entity
+#    types a query might need that NO example above demonstrates. Not a schema
+#    dump. If it is shown in an example, or the model can guess it (basic prefixes,
+#    rdfs:label), it does NOT belong here. ──
+schema_delta:
+  - "[predicate/idiom + one-line semantics + coverage, for something no example shows]"
 
-  - title: "[Advanced #1]"
-    description: Context.
-    question: "Question?"
-    complexity: advanced
-    sparql: |
-      ...
-      LIMIT 20
-
-  - title: "[Advanced #2]"
-    description: Context.
-    question: "Question?"
-    complexity: advanced
-    sparql: |
-      ...
-      LIMIT 20
-
-# 1-2 examples if a shared endpoint exists. examples: [] + notes otherwise.
-cross_database_queries:
-  shared_endpoint: example_endpoint
-  co_located_databases: [db1, db2]
-  examples:
-    - title: "[Structured cross-database link]"
-      description: |
-        Linking strategy:
-        - db1: predicate X links to shared IRI namespace
-        - db2: predicate Y links to same IRI namespace
-        - Direct IRI matching; no text search required
-      databases_used: [db1, db2]
-      complexity: intermediate
-      sparql: |
-        PREFIX db1: <http://db1.org/>
-        PREFIX db2: <http://db2.org/>
-
-        SELECT ?entity1 ?entity2 ?sharedIRI
-        WHERE {
-          GRAPH <db1_graph> { ?entity1 db1:hasIdentifier ?sharedIRI . }
-          GRAPH <db2_graph> { ?entity2 db2:linkedTo ?sharedIRI . }
-        }
-        LIMIT 20
-      notes: |
-        - Linking via: [IRI type, e.g. EC numbers, taxonomy]
-        - MIE files checked: db1, db2
-
-  # If no cross-database queries are possible, use:
-  # examples: []
-  # notes: |
-  #   [DATABASE] is the only database on this endpoint. Cross-database SPARQL is
-  #   not possible. To link externally: [describe manual bridging strategies].
-
-cross_references:
-  - pattern: rdfs:seeAlso
-    description: |
-      Brief explanation of what this cross-reference pattern links to.
-    databases:
-      category:
-        - "Database name: coverage percentage"
-    # sparql: optional — include only if the pattern is non-trivial
-
-architectural_notes:
-  query_strategy:
-    - "FIRST: read get_MIE_file('dbname') / the MIE file; examine shape_expressions"
-    - "Exploratory: use [search_api or exploratory SPARQL] to find examples and extract IRIs"
-    - "Comprehensive: use specific IRIs in VALUES or direct predicates for complete results"
-    - "Text search: bif:contains (Virtuoso) > FILTER(CONTAINS()) — only when no structured alternative"
-    - "Priority: Specific IRIs > Typed predicates > Graph navigation > Text search"
-
-  schema_design:
-    - "Central entity types and their relationships"
-    - "Key controlled vocabularies and their predicates"
-    - "IRI patterns and namespaces; namespace gotchas"
-    - "Indirect value access patterns (e.g. measurement scaffolds)"
-
-  performance:
-    - "Critical filters that must appear in every query"
-    - "Key optimizations and best practices"
-    - "bif:contains usage — split property paths before it on Virtuoso"
-
-  data_integration:
-    - "Cross-reference patterns and coverage"
-    - "Linking predicates to external databases"
-
-  data_quality:
-    - "Data coverage and completeness notes"
-    - "Known anomalies, duplicates, or data entry artifacts"
-
-  text_search_justification:
-    - "Number of the 7 example queries that use text search: N"
-    - "Fields where text search IS legitimate: [list]"
-    - "Reason structured alternatives were confirmed absent for each"
-
-data_statistics:
-  total_entities: [count]
-  verified_date: "YYYY-MM-DD"
-  verification_method: "Direct COUNT query / sampling with N=..."
-
-  coverage:
-    key_property: "XX%"
-    calculation: "[numerator / denominator]"
-    verified_date: "YYYY-MM-DD"
-  # No verification_queries sub-field
-  # No cardinality sub-section
-  # No performance_characteristics sub-section
-
-anti_patterns:
-  - title: "Text Search When Structured Property Exists"
-    problem: "Using string search when a specific IRI or typed predicate is available."
-    wrong_sparql: |
-      ?description bif:contains "'specific term'"
-    correct_sparql: |
-      ?entity classification <http://example.org/terms/SpecificTerm> .
-    explanation: "Use search tools to find examples, inspect to extract IRIs, then use those IRIs."
-
-  - title: "Skipping Schema Check Before Text Search"
-    problem: "Using text search without examining MIE shape_expressions for structured alternatives."
-    wrong_sparql: |
-      ?text bif:contains "'keyword'"
-    correct_sparql: |
-      # Workflow:
-      # 1. Read the MIE file → shape_expressions
-      # 2. search_entity("keyword") → inspect examples → extract IRIs
-      # 3. Use discovered IRIs:
-      VALUES ?term { <http://example.org/term/123> <http://example.org/term/456> }
-      ?entity classificationPredicate ?term .
-    explanation: "Always check MIE schema and inspect examples before defaulting to text search."
-
-  - title: "Circular Reasoning with Search Results"
-    problem: "Using search API results in VALUES for comprehensive questions."
-    wrong_sparql: |
-      VALUES ?entity { ex:1 ex:2 ... ex:20 }
-      SELECT (COUNT(?entity) AS ?count) WHERE { ... }
-    correct_sparql: |
-      VALUES ?classification { <term:A> <term:B> }
-      SELECT (COUNT(DISTINCT ?entity) AS ?count)
-      WHERE { ?entity hasClassification ?classification . }
-    explanation: "Search finds examples to discover IRIs. Use those IRIs to query the complete dataset."
-
-  - title: "Unindexed Text Search When Indexed Is Available"
-    problem: "Using FILTER(CONTAINS()) when bif:contains is available (Virtuoso backend)."
-    wrong_sparql: |
-      FILTER(CONTAINS(LCASE(?text), "keyword"))
-    correct_sparql: |
-      ?text bif:contains "'keyword'"
-    explanation: "bif:contains uses the Virtuoso full-text index. FILTER(CONTAINS()) does a full scan."
-
-common_errors:
-  - error: "Slow query / timeout"
-    causes:
-      - "Using text search when structured IRIs or predicates are available"
-      - "Missing critical filters (e.g. reviewed status, graph clause)"
-      - "Using FILTER(CONTAINS()) when bif:contains is available"
-      - "Property path used just before bif:contains"
-    solutions:
-      - "Check critical_warnings and shape_expressions for mandatory filters"
-      - "Replace text search with structured lookups"
-      - "Use bif:contains on Virtuoso; split property paths before it"
-      - "Add LIMIT to every query"
-
-  - error: "Empty or incomplete results"
-    causes:
-      - "Used VALUES with search results instead of concept IRIs (circular reasoning)"
-      - "Wrong IRI namespace (silent failure — returns 0 rows, no error)"
-      - "Missing hierarchical navigation"
-    solutions:
-      - "Read critical_warnings for known namespace traps"
-      - "DESCRIBE an example entity to confirm IRI patterns"
-      - "Use rdfs:subClassOf+ / skos:broader+ for hierarchical coverage"
-
-  - error: "Cross-database query timeout or empty results"
-    causes:
-      - "Did not read MIE files for all databases in the query"
-      - "Missing GRAPH clauses"
-      - "Missing pre-filtering within each GRAPH block before joining"
-    solutions:
-      - "Read MIE files for ALL databases; confirm linking predicates"
-      - "Use explicit GRAPH clauses for each database"
-      - "Apply restrictive filters within each GRAPH block before the cross-database join"
-      - "Add LIMIT at every query level"
+# ── id_join_map (required): the least-recoverable asset — how to anchor stably
+#    and cross to other DBs. Each xrefs entry is named after HOW the DB points out
+#    (rdfs:seeAlso by IRI prefix, a hasLink string, an ID needing a transform). ──
+id_join_map:
+  stable_anchor: "[the IRI/accession pattern to anchor on; secondary human keys]"
+  same_endpoint_joins:      # co-hosted — direct GRAPH join, NO TogoID bridge (optional)
+    otherdb: "[the join predicate/path]"
+  xrefs:                    # outbound references, mechanism-agnostic + coverage (optional)
+    pdb: "[xref predicate + prefix/coverage]"
+  bridged_via_togoid:       # DBs reachable ONLY via togoid_convertId, NOT co-hosted (optional)
+    - "[db list that routes through TogoID]"

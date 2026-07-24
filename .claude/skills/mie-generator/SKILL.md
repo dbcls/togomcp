@@ -7,16 +7,18 @@ description: Generate or update MIE (Metadata Interoperability Exchange) YAML fi
 
 An MIE file is a compact YAML document that describes an RDF database well enough for an LLM to write correct, efficient SPARQL against it on the first try. Good MIE files are the difference between "Claude writes a working query" and "Claude times out the endpoint with a `FILTER(CONTAINS())` over 244M triples".
 
+**Format: v3.** The authorable contract is `togo_mcp/data/docs/MIE_v3_spec.md` — read it before writing. v3 is organized by **agent need × recoverability** with the **verified, executable worked example as the atomic unit**: five need-based parts (`database`, `discovery`, the header, `examples`, `schema_delta`, `id_join_map`), where each example simultaneously **is** the schema shape, the sample triple, and (via `traps_avoided`) the warning it would otherwise be written as three or four times. The worked reference is the hand-authored pilot `togo_mcp/data/mie/uniprot.yaml`. Carry only what the model **cannot recover** on its own (spec §4.3); where this skill and the spec disagree, the spec wins.
+
 This skill lives in a Claude Code environment with filesystem access and SPARQL execution tools (from the `togomcp_local` MCP server). Use filesystem tools freely — that is the normal mode of operation here.
 
 ## The Two Hard Rules
 
 **1. No blind SPARQL retry loops.** Schema discovery legitimately requires many queries, but if a query fails twice in a row, stop and diagnose — wrong predicate, wrong graph, wrong IRI pattern — before retrying. More retries without diagnosis do not fix a structurally wrong query.
 
-**2. Nothing in the MIE file is invented — and "it ran" is not "it's right."** Every RDF triple in `sample_rdf_entries` must be retrievable, and every *executable claim* in the file must be executed against the real endpoint before the file is written **and its result confirmed correct**, not merely error-free:
+**2. Nothing in the MIE file is invented — and "it ran" is not "it's right."** Every `examples` entry must be executed against the real endpoint before the file is written, its live result recorded in the `verified:` block **with a `date:`**, and that result **confirmed correct**, not merely error-free:
 
-- **SPARQL** (`sparql_query_examples`, `cross_database_queries`, `anti_patterns.correct_sparql`, embedded `cross_references`): must run AND return the right thing. A query that succeeds but returns a union-inflated COUNT is a *failed* test, not a passing one — scope the graph and verify the figure (Phase 2g / 5i).
-- **Search-wrapper claims**: any assertion the file makes about a `search_*` / `ncbi_esearch` / `OLS4:searchClasses` tool's behavior (e.g. `architectural_notes.query_strategy`'s "use `search_chembl_target` for targets, EGFR → CHEMBL203") must be run through the actual tool and the claimed hit confirmed to appear at a *usable* rank/limit — not buried at rank 5 behind unrelated hits, and present at the limit the claim implies (Phase 5j).
+- **SPARQL** (every `examples[].sparql`, including the `aggregation` and `cross_db` ones): must run AND return the right thing. A query that succeeds but returns a union-inflated COUNT is a *failed* test, not a passing one — scope the graph and verify the figure (Phase 2g / 5c). The `verified:` block records the actual figure you saw, so a later re-run that disagrees is a drift signal, not silent rot.
+- **Search-wrapper claims**: any assertion the file makes about a `search_*` / `ncbi_esearch` / `OLS4:searchClasses` tool's behavior (e.g. "use `search_chembl_target` for targets, EGFR → CHEMBL203") must be run through the actual tool and the claimed hit confirmed to appear at a *usable* rank/limit — not buried at rank 5 behind unrelated hits, and present at the limit the claim implies (Phase 5e).
 
 Fake or unverified examples are worse than missing ones: they train the downstream LLM to write queries *and tool-calls* that look right but fail silently.
 
@@ -29,7 +31,7 @@ Fake or unverified examples are worse than missing ones: they train the downstre
 
 Phase 2 (live discovery) is the canonical source of truth for the schema and example queries — never let prior assumptions override what the endpoint actually exposes.
 
-The MCP tools `get_MIE_file` and `save_MIE_file` are **not** used in this environment — read and write MIE files directly. The remaining TogoMCP tools (`run_sparql`, `get_sparql_endpoints`, `get_graph_list`, the search APIs) ARE used; they hit live endpoints and cannot be replaced by filesystem access. `WebFetch` is used in Phase 0 to look up unregistered endpoints on rdfportal.org. **Do not rely on the discovery trio (`find_databases` / `list_databases` / `list_categories`) — it is being retired.** The database catalog it served is now a static, generated Usage-Guide section (`togo_mcp/data/resources/usage_guide_v6/02b_database_catalog.md`); when this skill changes a MIE's discovery block, regenerate that catalog (Phase 6).
+The MCP tools `get_MIE_file` and `save_MIE_file` are **not** used in this environment — read and write MIE files directly. The remaining TogoMCP tools (`run_sparql`, `get_sparql_endpoints`, `get_graph_list`, the search APIs) ARE used; they hit live endpoints and cannot be replaced by filesystem access. `WebFetch` is used in Phase 0 to look up unregistered endpoints on rdfportal.org. **The discovery trio (`find_databases` / `list_databases` / `list_categories`) is retired — do not call it.** The database catalog it served is now a static, generated Usage-Guide section (`togo_mcp/data/resources/usage_guide_v6/02b_database_catalog.md`), built from every MIE's `discovery:` block; when this skill changes a MIE's `discovery` block, regenerate that catalog (Phase 6).
 
 ## Workflow
 
@@ -57,28 +59,28 @@ After registration, proceed to Phase 1.
 
 Before touching the endpoint:
 
-1. `Read ./togo_mcp/data/mie/<db>.yaml` — is there an existing MIE? If yes, this is an update, not a fresh build. Note which sections are weak. **Treat every claim in the existing file as a hint to verify, not a source of truth — including `schema_info.graphs`. Graphs get added upstream all the time, and a previously-correct graph list can be incomplete by the next snapshot.** Phase 2a is mandatory whether you're authoring or revising.
+1. `Read ./togo_mcp/data/mie/<db>.yaml` — is there an existing MIE? If yes, this is an update, not a fresh build. It may be a v2 file (the pre-redesign format) — you are rewriting it to v3, so treat its structure as legacy, not a template. **Treat every claim in the existing file as a hint to verify, not a source of truth — including its graph list. Graphs get added upstream all the time, and a previously-correct graph list can be incomplete by the next snapshot.** Phase 2a is mandatory whether you're authoring or revising.
 2. Call `get_sparql_endpoints()` — confirm the endpoint URL is what you expect (it should already be in `endpoints.csv` after Phase 0).
 
 That's it. Phase 2 is where the real work happens. Local prior art — **the existing MIE under revision** — is optional context; **do not let it shape the MIE without re-verification against the live endpoint**.
 
 ### Phase 2 — Discover (10–20 minutes)
 
-Goal: extract the named graph(s), classes, typed predicates, IRI patterns, and representative entities you'll need so that `sparql_query_examples` can prefer structured lookups over text search. This is the canonical source of truth — every fact in the MIE comes from queries you ran here.
+Goal: extract the named graph(s), classes, typed predicates, IRI patterns, and representative entities you'll need so that the `examples` can prefer structured lookups over text search. This is the canonical source of truth — every fact in the MIE comes from queries you ran here.
 
 #### 2a. Identify the data graph(s) — mandatory, including for revisions
 
 Endpoints often host multiple databases (SIB hosts UniProt + Rhea + Bgee + OMA; the primary endpoint hosts ~30 ontologies and datasets). Picking the right graph(s) is step zero.
 
-**This step is mandatory whether you're authoring a new MIE or revising an existing one.** The most common revision failure is trusting the existing `schema_info.graphs` as authoritative — graphs get added upstream between snapshots, and a stale list silently caps every downstream query. A real instance: an Ensembl revision missed `ensembl-glossary`, `ensembl_ontology`, and `ensembl_taxonomy` because the existing graphs list was treated as ground truth. If `get_graph_list` wasn't called this turn, you don't know what graphs exist.
+**This step is mandatory whether you're authoring a new MIE or revising an existing one.** The most common revision failure is trusting the existing graph list as authoritative — graphs get added upstream between snapshots, and a stale list silently caps every downstream query. A real instance: an Ensembl revision missed `ensembl-glossary`, `ensembl_ontology`, and `ensembl_taxonomy` because the existing graphs list was treated as ground truth. If `get_graph_list` wasn't called this turn, you don't know what graphs exist.
 
 ```python
 get_graph_list("<db>")
 ```
 
-`get_graph_list` filters out Virtuoso/OpenLink internal graphs and **ranks graphs whose URI contains the database slug at the top** — so `get_graph_list("bgee")` puts `<http://bgee.org>` first; `get_graph_list("supercon")` puts `<http://rdfportal.org/dataset/supercon>` first. Common URI conventions in RDF Portal: `http://<db>.org` (Bgee, Rhea, JCM), `http://rdfportal.org/dataset/<db>` (OMA, BRENDA, ChEBI, Reactome), `http://sparql.<db>.org/<db>` (UniProt). Browse the ranked list, pick the graph(s). For a revision, diff what you find against `schema_info.graphs` in the existing file — additions and removals both matter.
+`get_graph_list` filters out Virtuoso/OpenLink internal graphs and **ranks graphs whose URI contains the database slug at the top** — so `get_graph_list("bgee")` puts `<http://bgee.org>` first; `get_graph_list("supercon")` puts `<http://rdfportal.org/dataset/supercon>` first. Common URI conventions in RDF Portal: `http://<db>.org` (Bgee, Rhea, JCM), `http://rdfportal.org/dataset/<db>` (OMA, BRENDA, ChEBI, Reactome), `http://sparql.<db>.org/<db>` (UniProt). Browse the ranked list, pick the graph(s). For a revision, diff what you find against the existing file's graph list — additions and removals both matter.
 
-**Multi-graph databases** (UniProt, Bgee with subgraphs, etc.): if several graphs share the same prefix (e.g. `sparql.uniprot.org/{core,taxonomy,go,keywords,…}`), the database spans all of them — list them all in `schema_info.graphs` and document the role of each in `architectural_notes.schema_design`.
+**Multi-graph databases** (UniProt, Bgee with subgraphs, etc.): if several graphs share the same prefix (e.g. `sparql.uniprot.org/{core,taxonomy,go,keywords,…}`), the database spans all of them. In v3 this becomes `graphs.primary` (the DB's own default-pin graph) plus `graphs.supporting` (the same-DB sibling graph localnames); document any non-obvious per-graph role in `schema_delta`.
 
 **No name match**: if no graph URI contains the slug, the data graph URI is unconventional. Fall back to running quick `COUNT(*)` queries on candidate graphs to find the largest data-bearing one, or inspect the dataset's documentation. This is rare on RDF Portal.
 
@@ -98,11 +100,11 @@ WHERE { GRAPH <http://example.org/dataset> { ?s a <MajorClass> ; ?p ?o } }
 GROUP BY ?p ORDER BY DESC(?n) LIMIT 50
 ```
 
-Counts give you a feel for which classes are central (top 5 typically carry 90%+ of the data) and which predicates form the backbone of the schema. Skip BFO / CDAO / framework upper-types when documenting in `shape_expressions` — pick the canonical class.
+Counts give you a feel for which classes are central (top 5 typically carry 90%+ of the data) and which predicates form the backbone of the schema. Skip BFO / CDAO / framework upper-types — pick the canonical class.
 
-**Run a dedicated predicate survey for every class you plan to document in `shape_expressions`** — not only the top-level anchor class. Annotation classes, measurement classes, and cross-reference classes are just as likely to have missing or misnamed predicates as the central entity class. The rule is simple: if a class will appear in `shape_expressions`, its predicate survey must have been run before you write that shape. A predicate absent from the survey has no business in the shape; a predicate present in the survey with COUNT > 0 must be either documented or explicitly excluded with a note.
+**Run a dedicated predicate survey for every class an example will query** — not only the top-level anchor class. Annotation classes, measurement classes, and cross-reference classes are just as likely to have missing or misnamed predicates as the central entity class. The rule is simple: if a predicate appears in an `examples[].sparql` or a `schema_delta` entry, its survey must have been run first. A predicate you use that is absent from the survey has no business in the file; a surveyed predicate with COUNT > 0 that a query would plausibly need is either shown in an example or noted in `schema_delta`.
 
-While running predicate surveys, note any predicate whose COUNT distribution is surprising as a `critical_warnings` candidate:
+While running predicate surveys, note any predicate whose COUNT distribution is surprising as a **trap candidate** (a `global_gotchas` entry if it bites any query, or a `traps_avoided` line on the specific example it affects):
 
 - COUNT equals class instance count but the predicate name looks like it might have an alias or alternate namespace form — confirm only one form is queryable.
 - COUNT is much lower than the class instance count for a predicate that looks mandatory — document as a caveat on cardinality, or as a trap if omitting it causes a silent wrong result rather than just an empty one.
@@ -115,7 +117,7 @@ reads as COUNT = 1 here and looks perfectly singular. Never conclude "singular, 
 from a scoped COUNT on any endpoint holding more than one graph. That trap is found only by the
 2g union-inflation probe.
 
-Write these candidates down immediately. `critical_warnings` is assembled in Phase 4 from this list — not reconstructed from memory.
+Write these candidates down immediately. `global_gotchas` and the examples' `traps_avoided` lines are assembled in Phase 4 from this list — not reconstructed from memory.
 
 **Check object polymorphism for every linking predicate.** For each predicate whose object is an IRI (not a literal or bnode), GROUP BY the object's type or namespace. A predicate whose object spans **more than one class/namespace is a denormalized, polymorphic link** — and that is simultaneously a design signal and a silent-failure trap, because any downstream query that assumes a single object type will quietly drop the other kinds.
 
@@ -130,7 +132,7 @@ SELECT ?ns (COUNT(*) AS ?n) WHERE {
 # (or GROUP BY the object's rdf:type via  ?o a ?ns  when objects are typed)
 ```
 
-Run this on every predicate you plan to traverse in `sparql_query_examples`. If the object set is heterogeneous: enumerate **all** object kinds with their counts in the shape comment and `critical_warnings`, and show the disambiguating filter (e.g. `FILTER(CONTAINS(STR(?o), "/protein/"))`) in the example query. Real case: PubChem's `obo:RO_0000057` (MeasureGroup → target) resolves to protein **and** taxonomy, gene, cell, and anatomy IRIs — five object kinds under one predicate; a query filtering to only one silently loses the rest, and the first revision documented only three of the five until this GROUP BY was run.
+Run this on every predicate you plan to traverse in an example. If the object set is heterogeneous: enumerate **all** object kinds with their counts (in a `schema_delta` line or an inline query comment, and a `global_gotchas`/`traps_avoided` entry), and show the disambiguating filter (e.g. `FILTER(CONTAINS(STR(?o), "/protein/"))`) in the example query. Real case: PubChem's `obo:RO_0000057` (MeasureGroup → target) resolves to protein **and** taxonomy, gene, cell, and anatomy IRIs — five object kinds under one predicate; a query filtering to only one silently loses the rest, and the first revision documented only three of the five until this GROUP BY was run.
 
 **Probe the literal form for every literal you'll match exactly — EMPIRICALLY, by matching it.** Whenever a predicate's object is a literal that a downstream query will match in a `VALUES` block, a `FILTER(?x = …)`, or a triple-pattern object, the *stored* term must match the *query* term exactly — including datatype and language tag. A query term of the wrong form returns 0 rows with no error.
 
@@ -171,7 +173,7 @@ ASK { GRAPH <…> { <known-subject> <predicate> "known value"^^<dt-from-survey> 
                                                                                    # xsd:anyURI
 ```
 
-Map the result to the exact-match rule, and record it in `critical_warnings` whenever a query would break by getting it wrong:
+Map the result to the exact-match rule, and record it (a `global_gotchas` entry if it is database-wide, otherwise a `traps_avoided` line on the affected example) whenever a query would break by getting it wrong:
 
 | Established by ASK | Exact-match query term must be |
 |---|---|
@@ -199,7 +201,7 @@ SELECT ?p ?o WHERE { GRAPH <…> { <iri-of-entity> ?p ?o } } LIMIT 200
 
 (Plain `DESCRIBE` works on most endpoints but truncates unpredictably; the SELECT form above is more reliable.)
 
-Use these inspections to nail down: IRI patterns (`http://<base>/<class>/<id>`), denormalized predicates (one predicate that serves multiple roles — e.g. Bgee's `genex:isExpressedIn` mixing anatomy IRIs and condition IRIs), measurement scaffolds (bnode chains for typed-value triples), and parallel namespace traps (the same NCBI taxon ID minted under two different IRI schemes — Bgee, see its critical_warnings).
+Use these inspections to nail down: IRI patterns (`http://<base>/<class>/<id>`), denormalized predicates (one predicate that serves multiple roles — e.g. Bgee's `genex:isExpressedIn` mixing anatomy IRIs and condition IRIs), measurement scaffolds (bnode chains for typed-value triples), and parallel namespace traps (the same NCBI taxon ID minted under two different IRI schemes — Bgee, see its `global_gotchas`).
 
 **Trace every blank node chain.** For each predicate in your DESCRIBE output whose object is a blank node, retrieve the bnode's full predicate set by walking from the parent entity in a single query:
 
@@ -220,9 +222,9 @@ Note also that bnode shapes reached via different parent classes may differ in s
 
 If the database has a dedicated search tool (`search_uniprot_entity`, `search_chembl_molecule`, `search_chembl_target`, `search_pdb_entity`, `search_reactome_entity`, `search_rhea_entity`, `search_mesh_descriptor`, `OLS4:searchClasses`, `ncbi_esearch`), use it to turn human-readable terms ("TP53", "tumor protein p53", "kinase activity") into specific IRIs. Then DESCRIBE those IRIs to learn the canonical predicate names. This is the fastest path from "I know what concept I'm looking for" to "I have a structured-IRI query that works."
 
-If no search tool exists (BRENDA, BacDive, MediaDive, SuperCon, Glycosmos, NIMS): generate a short `bif:contains` (Virtuoso) probe to find one example, DESCRIBE it, and pivot to typed-predicate queries from there. Document this as the only legitimate text-search use, and note in `architectural_notes.text_search_justification` why no structured alternative existed.
+If no search tool exists (BRENDA, BacDive, MediaDive, SuperCon, Glycosmos, NIMS): generate a short `bif:contains` (Virtuoso) probe to find one example, DESCRIBE it, and pivot to typed-predicate queries from there. If a text-search example survives into the file at all, state in its `teaches` line (in one sentence) why no structured alternative existed.
 
-**The inverse direction — an opaque IRI whose meaning you don't know.** 2b/2c routinely surface bare numeric OBO IRIs (`SO_0000704`, `RO_0002211`, `BFO_0000050`, `ECO_0000269`) as predicates or objects. **Never guess one from its shape, and never gloss one in a comment you didn't resolve** — a wrong gloss in `shape_expressions` is invisible to Phase 5 (the query still runs) and ships as fact.
+**The inverse direction — an opaque IRI whose meaning you don't know.** 2b/2c routinely surface bare numeric OBO IRIs (`SO_0000704`, `RO_0002211`, `BFO_0000050`, `ECO_0000269`) as predicates or objects. **Never guess one from its shape, and never gloss one in a comment you didn't resolve** — a wrong gloss in an example comment or a `schema_delta` line is invisible to Phase 5 (the query still runs) and ships as fact.
 
 The primary endpoint carries ~40 ontology graphs under `http://rdfportal.org/ontology/` (`go`, `hp`, `so`, `uberon`, `cl`, `clo`, `eco`, `efo`, `mondo`, `pro`, `fma`, `edam`, `sio`, `po`, `xco`, `cmo`, `meo`, `mmo`, `uo`, plus the `glycordf`/`orth`/`piero` schema vocabularies). Batch-resolve against them in **one** query — this works from any endpoint's survey, resolves many IRIs at once, and covers **object properties as well as classes**:
 
@@ -245,9 +247,9 @@ Three verified traps, all of which produce a confidently wrong answer rather tha
 
 Use **OLS4** (`OLS4:searchClasses`, `fetch`, `getAncestors`/`getDescendants`) instead when the term's ontology isn't on the primary endpoint, or when you need the *definition*, synonyms, or hierarchy rather than a label. OLS4 is per-ontology authoritative, so it sidesteps the cross-graph collision above entirely — but it's one term per call and can't join to data. Rule of thumb: **many IRIs → the batch SPARQL above; one IRI you need to genuinely understand → OLS4.**
 
-#### 2e. Verify predicate cardinality for every shape
+#### 2e. Verify predicate cardinality for every predicate an example uses
 
-For each class–predicate pair you intend to document in `shape_expressions`, determine the actual multiplicity with a cardinality distribution query:
+For each class–predicate pair an example will traverse, determine the actual multiplicity with a cardinality distribution query. v3 has no ShEx shapes, but cardinality still decides **two concrete authoring choices**: whether a predicate must be wrapped in `OPTIONAL` in the example (some subjects have 0 values), and whether a naive join fan-outs (some subjects have >1 value → the row count multiplies, so the `verified:` block needs a note or the query needs `DISTINCT`).
 
 ```sparql
 SELECT ?nValues (COUNT(?s) AS ?nSubjects) WHERE {
@@ -260,19 +262,19 @@ SELECT ?nValues (COUNT(?s) AS ?nSubjects) WHERE {
 GROUP BY ?nValues ORDER BY ?nValues
 ```
 
-Map the result to the correct ShEx cardinality modifier:
+Map the result to the authoring choice:
 
-| Observed pattern | ShEx notation |
+| Observed pattern | v3 consequence |
 |---|---|
-| All subjects, exactly 1 value | `IRI` (no modifier — required) |
-| Some subjects have 0, none have > 1 | `IRI ?` |
-| Some subjects have > 1 | `IRI *` (if 0 is possible) or `IRI +` |
+| All subjects, exactly 1 value | required — use it as a plain triple; a coverage figure of 100% |
+| Some subjects have 0, none have > 1 | wrap in `OPTIONAL` in any example that selects it; record the coverage % (in `entity_counts` or a `schema_delta` line) |
+| Some subjects have > 1 | the join fans out — the example needs `DISTINCT` or a `verified:` note explaining the row multiplier |
 
-**Never assign `?`, `+`, or `*` based on intuition.** Every modifier must be justified by a cardinality query result. This step is cheap (one query per predicate) and catches a large class of silent errors in the finished MIE.
+**Never assume optionality or multiplicity by intuition.** Every "this is OPTIONAL" / "this can repeat" decision in an example must be justified by a cardinality query result. This step is cheap (one query per predicate) and catches a large class of silent errors — a missing `OPTIONAL` drops rows, a missing `DISTINCT` inflates a count.
 
 #### 2f. Probe design boundaries with a ground-truth asymmetry test
 
-Counts and DESCRIBEs tell you what the schema *contains*; this step tells you where the schema's worldview *diverges from yours* — which is exactly what `critical_warnings` exists to capture. A query that simply succeeds teaches you nothing about the design (you can't see why it worked). The strongest signal is a **controlled asymmetry**: two facts you are confident are biologically true and structurally equivalent, where the obvious query answers one and silently misses the other.
+Counts and DESCRIBEs tell you what the schema *contains*; this step tells you where the schema's worldview *diverges from yours* — which is exactly what `global_gotchas` and the examples' `traps_avoided` lines exist to capture. A query that simply succeeds teaches you nothing about the design (you can't see why it worked). The strongest signal is a **controlled asymmetry**: two facts you are confident are biologically true and structurally equivalent, where the obvious query answers one and silently misses the other.
 
 The method:
 
@@ -356,13 +358,13 @@ values is worse than a duplicate, because DISTINCT cannot mask it and the result
 formed (EFO drops MONDO's "obsolete " prefix; DDBJ labels taxon 9606 `"9606"` where
 ontology/taxonomy says `"Homo sapiens"`).
 
-Read the result against THIS database's own graphs (schema_info.graphs from 2a). For any
+Read the result against THIS database's own graphs (`graphs.primary` + `graphs.supporting` from 2a). For any
 predicate appearing in a graph OUTSIDE that list, the union multiplier for that predicate =
 the number of graphs it appears in. Joining k re-declared predicates multiplies as the
 PRODUCT (scientificName x3 × rank x3 = x9 rows). Record, per re-declared predicate: the
 sibling graph(s), the multiplier, and whether it is a reference-node LABEL or a RE-TYPING of
-this DB's own entity. This list is the source for the `co_hosted_graphs` field and a
-`critical_warnings` entry in Phase 4 — write it down now, do not reconstruct from memory.
+this DB's own entity. This list is the source for the `graphs.co_hosted` map and a
+`global_gotchas` entry in Phase 4 — write it down now, do not reconstruct from memory.
 
 **Record the outcome either way — a clean probe is a RESULT, not a skip.** If 2g finds no
 re-declaration, say so AND say what you probed: which legs (type, label/identifier, cross-class,
@@ -382,215 +384,96 @@ whenever the two graphs share IRIs (togovar above). It is benign only where they
 UniProt's citationmapping graph) — which is something you establish with the probe, not by
 assumption. Keep entity counts on COUNT(DISTINCT ?entity) regardless.
 
-### Phase 3 — Design the query set
+### Phase 3 — Design the example set
 
-You are going to write **exactly 7 SPARQL examples**: 2 basic, 3 intermediate, 2 advanced. The distribution across strategies should look like:
+The `examples` are the load-bearing content: each one **is** the schema shape, the sample, and (via `traps_avoided`) the warning. There is **no fixed count** — author the set the DB's questions actually need. Cover, at minimum:
 
-- ≥ 2 queries use specific IRIs or `VALUES` with IRIs
-- ≥ 2 queries use typed predicates or graph navigation (`rdfs:subClassOf+`, `skos:broader+`)
-- ≤ 1 query uses text search, and only if the Gate Check in `references/query-strategy.md` passes
+- **The primary lookup routes** — the 3–6 questions a user most often asks this DB (an entity's core attributes, its key relationships). `complexity: basic`/`intermediate`/`advanced`.
+- **Every set-level enumeration route the DB supports** (spec §4.4). For each "**all** entities with property/feature/class X" question, a first-class `enum_*` example showing the controlled-vocabulary / typed-predicate route — never only a text match, never buried as a caveat. Check this DB's row in `benchmark/redesign/enumeration_audit.md`: **Tier A** = the route is buried in v2, so add a *new* standalone `enum_*` example; **Tier B/C** = keep the worked query and its load-bearing caveat together.
+- **At least one `aggregation` example** where the DB supports counting — it ships its verified total and demonstrates `COUNT(DISTINCT)` + graph-scoping (the union-inflation-safe recipe).
+- **At least one `cross_db` example** where a co-hosted join or a documented xref exists — the least-recoverable, highest-failure class. Set `endpoint_name` on it.
 
-If you find yourself reaching for `bif:contains` or `FILTER(CONTAINS(...))` more than once, stop and re-read `references/query-strategy.md`. Almost every field that looks "free text" in an RDF database is actually backed by a controlled vocabulary or IRI somewhere.
+Strategy priorities across the set (unchanged from v2 — the format changed, the query craft did not):
+
+- Prefer specific IRIs / `VALUES` with IRIs, then typed predicates / graph navigation (`rdfs:subClassOf+`, `skos:broader+`).
+- Text search is a last resort: at most one example, and only if the Gate Check in `references/query-strategy.md` passes. If you reach for `bif:contains` / `FILTER(CONTAINS(...))` more than once, stop and re-read that file — almost every "free text" field is backed by a controlled vocabulary or IRI somewhere.
+
+**No test leakage (spec §4.6):** as you pick the subject for each example (keyword phrase, class IRI, gold gene/compound/accession), keep it clear of the benchmark. You will grep it against `benchmark/questions/*.yaml` in Phase 5; it is cheaper to pick a neutral member of the same class now.
 
 Read `references/query-strategy.md` now if you haven't — it contains the decision tree, the circular-reasoning trap, and the Virtuoso-specific `bif:contains` pitfalls (especially around property paths).
 
 ### Phase 4 — Write the file
 
-Use `references/template.yaml` as your scaffold. Copy it to the target path, then fill it in. Required sections, in order:
+Use `references/template.yaml` as your scaffold. Copy it to the target path, then fill it in. Top-level keys, **in order** (spec §2):
 
-1. `schema_info`
-   - **After filling in the category tokens (`schema_info.categories` in v2 / `discovery.categories` in v3), verify each token is an exact match — same case, same underscores — against the categories already in use across the corpus.** The canonical set is whatever categories are already in use across the corpus — print it with `uv run python scripts/generate_usage_guide_catalog.py --list-categories` (this replaces the retired `list_categories()` tool). An off-spec token fragments the catalog — a near-duplicate category with one member instead of joining an existing group. Do not proceed until every token matches or is a deliberate new category.
-   - **`co_hosted_graphs` is REQUIRED whenever `get_graph_list()` returned >1 graph** (the field
-     already exists in the schema). If 2g found re-declaration: one entry per sibling graph,
-     naming the re-declared predicate(s), the multiplier, the trap kind (reference-label
-     inflation / entity re-typing / empty stub / older nomenclature vintage) and the fix. If 2g
-     found nothing, write the explicit `"2g probe run YYYY-MM-DD — no re-declaration found"` —
-     do NOT leave the field out; a silent omission is indistinguishable from never having probed.
-     Copy the shape from `togovar.yaml` or `uniprot.yaml`; do not invent a new one.
-   - `data_version`: a date you verified this session, or an endpoint-derived release citing its
-     source. Never carry the old value forward unchecked (see 5i-2).
-2. `critical_warnings` (use `[]` only if there are genuinely none — most real databases have at least one silent-failure trap)
-   - If 2g fired, add a UNION-INFLATION warning: the per-predicate multipliers; that joining
-     several re-declared predicates multiplies as the PRODUCT; that `a <OwnEntityClass>` may be
-     re-typed by a sibling graph so a bare COUNT over it double-counts; and the SAFE PATTERN —
-     pin this DB's own graph(s) with GRAPH/FROM (or use COUNT(DISTINCT ?entity)). Note that
-     SELECT DISTINCT only MASKS the symptom and can collapse genuine multi-valued predicates.
-3. `shape_expressions`
-4. `sample_rdf_entries` — exactly 3, shared prefix block
-5. `sparql_query_examples` — exactly 7, distribution 2/3/2
-6. `cross_database_queries` — 1–2 if a shared endpoint exists, `examples: []` with explanatory `notes` otherwise
-7. `cross_references`
-8. `architectural_notes`
-9. `data_statistics`
-10. `anti_patterns` — 3–4, must include "schema check before text search"
-    - If 2g found union inflation, add it as a dedicated anti-pattern: wrong = an unscoped join
-      touching a re-declared predicate on this co-hosted endpoint (inflated rows/COUNT); correct
-      = the graph-pinned form. references/anti-patterns.md already sanctions a 5th slot for a
-      discovered database-specific trap.
-11. `common_errors` — 2–3
+1. **`database`** — the DB key (== filename stem).
+2. **`discovery`** — `title`, `description` (ONE sentence), `keywords` (lowercase domain terms), `categories`.
+   - **Verify each category token is an exact match** — same case, same underscores — against the categories already in the corpus. Print the canonical set with `uv run python scripts/generate_usage_guide_catalog.py --list-categories` (this replaces the retired `list_categories()` tool). An off-spec token fragments the catalog into a single-DB bucket. Do not proceed until every token matches or is a deliberate new category.
+3. **The header** — `endpoint`, optional `base_uri`, `graphs`, optional `entity_counts`, `global_gotchas`.
+   - **`graphs.co_hosted` is REQUIRED whenever `get_graph_list()` returned >1 graph.** If 2g found re-declaration: one `{name: note}` entry per sibling graph, naming the re-declared predicate(s), the multiplier, the trap kind (reference-label inflation / entity re-typing / empty stub / join target) and the fix. If 2g found nothing, record it explicitly (`probed_clean: "2g probe run YYYY-MM-DD — no re-declaration found"`) — do NOT omit the field; a silent omission is indistinguishable from never having probed. Copy the shape from `uniprot.yaml`; do not invent a new one.
+   - **`entity_counts`** — every value `COUNT(DISTINCT)` + graph-pinned, each with a `date:`. Record the inflated unpinned `COUNT(*)` with a "never report" note where union inflation exists.
+   - **`global_gotchas`** — the 2–5 database-wide traps, each `{id, say}`. If 2g fired, one of them is `union_inflation`: the per-predicate multipliers; that joining several re-declared predicates multiplies as the PRODUCT; that `a <OwnEntityClass>` may be re-typed by a sibling graph so a bare COUNT double-counts; and the SAFE PATTERN — pin this DB's own graph(s) with GRAPH/FROM (or use `COUNT(DISTINCT ?entity)`). Note that `SELECT DISTINCT` only MASKS the symptom and can collapse genuine multi-valued predicates.
+4. **`examples`** — the core. Each entry: `id`, `intent`, `question`, `complexity`, `sparql`, `verified:` (the live result **+ `date:`**), `teaches`, optional `traps_avoided`; `endpoint_name` on `cross_db` examples only. Include the enumeration route(s), one `aggregation`, and one `cross_db` where the DB supports them (Phase 3). A query-specific trap goes here as a `traps_avoided` line, never in `global_gotchas`.
+5. **`schema_delta`** (optional) — ONLY non-obvious predicates/idioms **no example demonstrates**. If a predicate appears in an example, it does NOT go here. Not a schema dump.
+6. **`id_join_map`** — `stable_anchor`, optional `same_endpoint_joins` (co-hosted direct GRAPH joins — point each at its `cross_db` example), optional `xrefs` (mechanism-agnostic, with coverage), optional `bridged_via_togoid`.
 
-**Before finalising `shape_expressions`:**
+**The `verified:`/`date:` YAML trap (spec §4.1):** use `date:`, **never `on:`** — YAML 1.1 parses the bare word `on` (also `off`/`yes`/`no`) as boolean `true`, so `on: 2026-07-21` becomes the key `true` and a validator looking for `on` silently finds nothing. Quote the date value too.
 
-- **Every `@<ShapeRef>` must have a corresponding defined block.** Search the `shape_expressions` string for every `@<…>` reference and confirm each one resolves to a `<…Shape> { … }` definition in the same section. A referenced-but-undefined shape is a structural error — the downstream LLM will generate property-path queries that silently return nothing.
+**One fact, one place (spec §4.2):** do not restate a fact across sections. A predicate shown in an example is not repeated in `schema_delta`. A warning is database-wide (`global_gotchas`) OR query-specific (`traps_avoided`) — never both.
 
-- **Mark optional co-types explicitly.** When a class is sometimes (but not always) additionally typed with a second class, write each sub-type as a separate optional constraint rather than grouping them in a single `a [ T1 T2 T3 ] +` block. The grouped form is correct ShEx but visually implies all types are always co-present:
+Byte budget: there is no line ceiling, but a v3 file should be **clearly smaller** than the v2 file it replaces (the pilot came in ~55–74% smaller). Record the byte count of both (Phase 5). If it isn't smaller, you are probably restating a fact the examples already carry — the example IS the shape and the sample; don't write them again.
 
-  ```shex
-  # Avoid — looks like all three are always expected:
-  a [ ex:MainType ex:SubTypeA ex:SubTypeB ] + ;
-
-  # Prefer — cardinality is explicit and verifiable:
-  a [ ex:MainType ] ;
-  a [ ex:SubTypeA ] ?   # ~80% of instances — confirmed by COUNT
-  a [ ex:SubTypeB ] ?   # ~80% of instances — confirmed by COUNT
-  ```
-
-  Annotate the percentage in an inline comment so the figure is traceable to Phase 2e.
-
-Line budget: 400–600 lines typical, up to 700–900 for genuinely complex databases. If you're over 900, you are probably duplicating between `shape_expressions` and `architectural_notes` — consolidate.
-
-`references/mie-structure.md` has the detailed requirements per section, and `references/template.yaml` is the fillable skeleton.
+`references/mie-structure.md` has the detailed requirements per key, and `references/template.yaml` is the fillable v3 skeleton. `togo_mcp/data/mie/uniprot.yaml` is the worked reference.
 
 ### Phase 5 — Validate (this is the non-negotiable part)
 
-This phase is where most MIE files go wrong, and it's where this skill diverges most from a casual "just generate the YAML" approach.
+This phase is where most MIE files go wrong, and it's where this skill diverges most from a casual "just generate the YAML" approach. The checklist mirrors spec §5.
 
-**5a. Validate every RDF example.** For each of the 3 entries in `sample_rdf_entries`, write a SELECT that retrieves exactly those triples from the endpoint and confirm it returns results. If a triple can't be retrieved, either fix it (likely the IRI or predicate is wrong) or replace the entry with one you can retrieve. **No fabricated RDF ever reaches the final file.** The downstream LLM will copy these patterns — if they're wrong, every query it writes will inherit the error.
-
-A practical check:
-
-```sparql
-ASK WHERE {
-  <http://example.org/entity1> a ex:Type ;
-                               ex:required "value" .
-}
-```
-
-If `ASK` returns false, the triple as written does not exist in the endpoint. Do not include it.
-
-**5b. Test every SPARQL query.** Run all 7 of `sparql_query_examples`, every example in `cross_database_queries`, every `correct_sparql` block in `anti_patterns`, and any SPARQL embedded in `cross_references`. Every single one. If a query times out or errors, fix it or replace it — do not ship queries that don't run. If a query runs but returns zero rows when it shouldn't, that's also a failure (usually a namespace trap — investigate and document in `critical_warnings`).
-
-Automate the zero-row/error half of this: `uv run python scripts/check_mie_examples.py <db>` runs every `sparql`/`correct_sparql` block against the live endpoint and flags ZERO-row and ERROR results (it harvests the file's PREFIXes, so snippets that omit them still run; it treats a lone `COUNT`→0 as zero-row; it reports 5xx as net-fail, not a defect). **Require a clean run — 0 zero-row, 0 error — before shipping.** This exists because Phase 5b was documented but not actually run: six MIEs shipped `correct_sparql` blocks that returned 0 (oma/supercon/ddbj/pubchem/pubtator/jpostdb, fixed 2026-07-18). Two things the tool does NOT cover, so do them by hand: a query that returns the WRONG rows (5b's "returns the right thing" — e.g. a union-inflated COUNT, or taxonomy's bare-namespace-rank example that returned botanical sections) passes the tool but is still a failure; and the queries must already be paste-ready (self-contained or using only PREFIXes declared elsewhere in the file) for it to run them.
-
-For each cross-database query that returns results, additionally spot-check join validity: take one join value from the result set and run a quick `ASK` or `SELECT` against the second database to confirm it resolves to a real entity there. A query returning 3 rows when thousands are expected is a join failure, not a passing test — the IRI form used for linking likely differs between the two databases.
-
-**5c. Verify statistics.** Every count or coverage percentage in `data_statistics` must come from a real query you ran, and must have a `verified_date`. If you can't verify a number, omit it rather than guessing.
-
-After verifying individual counts, cross-check arithmetic consistency:
-
-- Does `total_entities` equal (or plausibly approximate) the sum of the major `by_class` counts?
-- Does each coverage percentage equal `(subset count) / (class count)` to within rounding? E.g. if 673,263 entities carry a property and there are 1,021,677 in the class, the percentage must be documented as ~65.9%, not loosely as "~66%" or "~70%".
-
-Flag and correct any discrepancy before publishing.
-
-**5d. Validate the YAML.** Load the file with PyYAML to confirm it parses:
+**5a. YAML parses; required keys present.** Load the file and confirm it parses, then confirm the required top-level keys exist (`database`, `discovery`, `endpoint`, `graphs`, `examples`, `id_join_map`):
 
 ```bash
-python3 -c "import yaml; yaml.safe_load(open('./togo_mcp/data/mie/<db>.yaml'))"
+python3 -c "import yaml,sys; d=yaml.safe_load(open('./togo_mcp/data/mie/<db>.yaml')); \
+  req={'database','discovery','endpoint','graphs','examples','id_join_map'}; \
+  missing=req-set(d); sys.exit(f'MISSING KEYS: {missing}') if missing else print('keys OK')"
 ```
 
-If this fails, fix the YAML before calling the work done.
+Also confirm `discovery` has all four fields and its `description` is one sentence.
 
-**5e. Audit `shape_expressions` for completeness.** For each shape block:
+**5b. Every example is verified, dated, and actually re-run this pass.** For **every** entry in `examples`:
 
-1. Re-run the Phase 2b predicate survey and compare against the documented predicates. Any predicate with COUNT > 0 that is absent from the shape must be either added or explicitly noted as intentionally excluded.
-2. Confirm every `@<ShapeRef>` has a defined `<…Shape>` block.
-3. For every predicate marked `?` (optional), confirm with a cardinality query that at least one subject has 0 values for it. For every predicate with no modifier (required), confirm its COUNT equals the class instance count.
-4. **Verify `@<ShapeRef>` object-class conformance — not just that the ref resolves.** Item 2 confirms the *block exists*; this confirms the *objects actually belong to it*. For every predicate written as `<predicate> @<TargetShape>`, GROUP BY the object's `rdf:type` and confirm the result includes `<TargetShape>`'s declared anchor class. A predicate whose objects are *not* typed as the referenced shape's class — or are split across several classes — is a shape error (or an undocumented polymorphic link, cf. Phase 2's polymorphism probe): fix the `@<…>` target, or split it and document the polymorphism. A blank-node target with no `rdf:type` is itself a finding — note it explicitly rather than implying a typed class.
+1. Run its `sparql` against the endpoint. It must execute with no error AND return the right thing — a query that succeeds but returns a union-inflated COUNT is a *failed* test (5d). Record the live result in `verified:` and stamp `date:` with today's date.
+2. **The `verified:` value must match what you just saw.** A `verified: {n: 108}` whose query now returns 112 is a drift you must resolve (fix the query or update the figure), not paper over.
+3. **Check the `date:` key is literally `date:`, not `on:`** (spec §4.1 YAML trap — `on:` parses as boolean `true`). Grep the file: `grep -nE '^\s+on:' <file>` must return nothing.
 
-   ```sparql
-   SELECT ?objType (COUNT(*) AS ?n) WHERE {
-     GRAPH <…> { ?s a <SubjectClass> ; <predicate> ?o .
-                 OPTIONAL { ?o a ?objType } }
-   } GROUP BY ?objType ORDER BY DESC(?n)
-   ```
+Automate the zero-row/error half: `uv run python scripts/check_mie_examples.py <db>` runs every `examples[].sparql` against the live endpoint and flags ZERO-row and ERROR results (it harvests the file's PREFIXes; treats a lone `COUNT`→0 as zero-row; reports 5xx as net-fail, not a defect). **Require a clean run — 0 zero-row, 0 error — before shipping.** A genuinely-empty example (rare) must carry a sibling `expect_empty: true`. The tool does NOT catch a query that returns the WRONG rows (a union-inflated COUNT, a mis-scoped join that still yields plausible rows) — that is 5d, by hand.
 
-5. **Probe the value type of *every* literal-valued predicate in the shape — not only the ones a query will filter on.** Phase 2's literal probe is scoped to literals you plan to match exactly; this is the blanket pass that catches a wrong `xsd:…` annotation on an incidental field. For each predicate whose shape value is a literal datatype, GROUP BY its actual datatype and confirm the shape's annotation matches the stored form. A mismatch (e.g. shape says `xsd:integer`, data stores plain or `xsd:string`), or a predicate that stores **mixed** datatypes, must be corrected in the shape and — if it affects exact matching — surfaced in `critical_warnings`.
+For each `cross_db` example that returns results, spot-check join validity: take one join value from the result and `ASK`/`SELECT` against the second graph to confirm it resolves to a real entity there. A `cross_db` query returning 3 rows when thousands are expected is a join failure (the linking IRI form probably differs between the two DBs), not a passing test.
 
-   **Remember what this GROUP BY cannot see** (Phase 2b): it does NOT distinguish a plain literal from an `xsd:string`-typed one — both report `xsd:string` — so it can neither confirm nor refute a `xsd:string` annotation in the shape. It catches genuine type errors (`xsd:integer` vs string) and language tags only. For any literal the shape's downstream queries will match exactly, settle the form with the per-form ASK from Phase 2b and annotate the shape from THAT. A shape saying `xsd:string` is a claim about the match form; it must be earned by an ASK, not inferred from `DATATYPE()`.
+**5c. Elevated coverage: at least one `aggregation` and one `cross_db`** where the DB supports them, and **every set-level enumeration route has its own example** (spec §4.4). Check this DB's row in `benchmark/redesign/enumeration_audit.md`: a **Tier A** DB must add a standalone `enum_*` example; **Tier B/C** must keep the worked query + its load-bearing caveat together. Do not compress a positive route down to a `traps_avoided` caveat.
 
-   ```sparql
-   SELECT (DATATYPE(?o) AS ?dt) (COUNT(*) AS ?n) WHERE {
-     GRAPH <…> { ?s a <SubjectClass> ; <predicate> ?o }
-   } GROUP BY (DATATYPE(?o)) ORDER BY DESC(?n)
-   ```
+**5d. Cross-graph inflation (any multi-GRAPH endpoint).** If Phase 2g recorded re-declaration: re-run the 2g probe to confirm each documented multiplier, and confirm the SAFE PATTERN collapses it — the graph-pinned form must return the non-inflated figure the union form inflates. Then confirm every `aggregation`/count example is graph-scoped (or `COUNT(DISTINCT)`) so it reports the un-inflated figure. A `graphs.co_hosted` entry whose multiplier no longer reproduces is stale — fix or remove it.
 
-This step is not optional. `shape_expressions` is the section a downstream LLM relies on most heavily for query construction. An unaudited shape is equivalent to an untested SPARQL example. Items 4–5 are what separate a shape that is *internally consistent* from one that is *true to the data*: a resolvable `@<ref>` pointing at the wrong object class, or a confidently-wrong datatype, both produce queries that run and silently return nothing.
-
-**5f. Verify `critical_warnings` content.** For every predicate name and IRI string cited in `critical_warnings`, run a minimal query confirming it exists in the endpoint:
-
-```sparql
-SELECT ?s WHERE {
-  GRAPH <…> { ?s <cited-predicate> ?o }
-} LIMIT 1
-```
-
-If the query returns no rows, the cited predicate or IRI is wrong — fix it before publishing. A warning about a non-existent predicate is worse than no warning.
-
-Also confirm each warning is still accurate against the current data snapshot: a trap documented in a previous MIE version may have been corrected upstream.
-
-**5g. Verify `cross_references`.** For each cross-reference predicate documented:
-
-1. **Confirm the IRI form** by DESCRIBEing a real entity and reading the actual object value. Do not trust the database's documentation — mint the IRI from what the endpoint actually returns. If two IRI forms are present (e.g. both an `identifiers.org` form and a canonical purl), document both and specify which is the correct join key for federation.
-
-2. **Verify the coverage percentage** with a COUNT query:
-
-   ```sparql
-   SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
-     GRAPH <…> { ?s a <EntityClass> ; <crossRefPredicate> ?o }
-   }
-   ```
-
-   Divide by the class instance count from `data_statistics`. Document the result as the coverage figure — do not estimate.
-
-**5h. Verify prefix declarations.** For each non-standard prefix defined in `shape_expressions` or `sample_rdf_entries`, confirm the base URI is correct by running a minimal SELECT using that prefix:
-
-```sparql
-PREFIX ex: <http://suspected-base-uri/>
-SELECT ?s WHERE {
-  GRAPH <…> { ?s a ex:KnownClass }
-} LIMIT 1
-```
-
-If the query returns no rows despite the class being known to exist, the prefix base URI is wrong. Standard W3C prefixes (`rdf:`, `rdfs:`, `owl:`, `xsd:`) do not need checking. Database-specific and ontology-specific prefixes (e.g. a Unimod prefix, a PSI-MS prefix, an internal ontology prefix) must all be confirmed.
-
-**5i. Validate cross-graph inflation warnings (any multi-GRAPH endpoint).** If Phase 2g
-recorded re-declaration, confirm each documented multiplier by re-running the 2g probe, and
-confirm the SAFE PATTERN collapses it — the graph-pinned form must return the non-inflated
-figure that the union form inflates. Then re-run every `sparql_query_examples` entry that is
-NOT graph-scoped and confirm it does not inflate on this union endpoint; if one does, pin the
-graph in the stored query. A `co_hosted_graphs` entry whose multiplier no longer reproduces
-against the current snapshot is stale — fix or remove it.
-
-**A MISSING `co_hosted_graphs` ON A MULTI-GRAPH ENDPOINT IS A REVIEW FAILURE — fail the file.**
-The gate is `get_graph_list()` returning >1 graph, NOT `get_sparql_endpoints()` showing >1
-database (that older wording exempted `togovar`, `glycosmos`, `pdb`, `ddbj` and `pubchem`, all
-of which host multiple graphs on an endpoint of their own). Accept exactly three states:
+**A MISSING `graphs.co_hosted` ON A MULTI-GRAPH ENDPOINT IS A REVIEW FAILURE — fail the file.** The gate is `get_graph_list()` returning >1 graph, NOT `get_sparql_endpoints()` showing >1 database (that older wording exempted `togovar`, `glycosmos`, `pdb`, `ddbj`, `pubchem`, all multi-graph on an endpoint of their own). Accept exactly three states:
   - probe-confirmed entries, each naming graph + predicate + multiplier + trap kind + fix;
-  - the explicit string `"2g probe run YYYY-MM-DD — no re-declaration found"`;
+  - an explicit `probed_clean: "2g probe run YYYY-MM-DD — no re-declaration found"`;
   - a single-graph endpoint, stated as such (only `supercon` qualifies today).
 Silence is not one of them.
 
-**5i-2. Verify `data_version` provenance.** It must be either `"RDF Portal snapshot — verified
-YYYY-MM-DD"` with a date you probed THIS session, or an endpoint-derived release that cites how
-it was derived (e.g. Reactome's `bp:db "Reactome Database ID Release 95"`). A release number you
-cannot re-derive from the endpoint right now is a failure — replace it with the dated-snapshot
-form. Never carry the previous value forward unchecked when bumping `mie_updated`: that is how
-`uniprot.yaml` sat at "Release 2024_06" against data modified 2026-01-28.
+**5e. Verify every `global_gotchas` / `traps_avoided` cited predicate and IRI exists.** For every predicate name and IRI string cited in a `global_gotchas` `say` or a `traps_avoided` line, run a minimal query confirming it exists on the endpoint:
 
-**5j. Verify every search-wrapper claim.** Rule 2 covers tool-behavior claims, not just
-SPARQL. For each assertion the file makes about a `search_*` / `ncbi_esearch` /
-`OLS4:searchClasses` tool — most live in `architectural_notes.query_strategy`, but scan the
-whole file — call the tool exactly as the claim implies and confirm the result. "Tool X maps
-term T to ID I" passes ONLY if the tool actually returns I *usably*: at the top, or within a
-limit a caller would plausibly use — not at rank 5 behind unrelated hits, and present at the
-limit the claim states. Rank matters: an ID the tool technically returns but ranks below a
-PPI complex, a mouse ortholog, or other noise is not a claim a downstream LLM can rely on. If
-the tool doesn't satisfy the claim, either rewrite it to what the tool actually does
-(including the rank/limit caveat and the disambiguation the caller needs), or drop it. A false
-tool-behavior claim is exactly the "fake example" Rule 2 forbids, aimed at a wrapper instead
-of SPARQL. (Real regression: the ChEMBL MIE claimed `search_chembl_target("EGFR") → CHEMBL203`;
-the tool returned CHEMBL203 at rank 5, and not at all at `limit=3`.)
+```sparql
+SELECT ?s WHERE { GRAPH <…> { ?s <cited-predicate> ?o } } LIMIT 1
+```
+
+Zero rows → the cited predicate/IRI is wrong; fix it. A warning about a non-existent predicate is worse than no warning. Also confirm each trap is still accurate against the current snapshot — one documented in a previous version may have been corrected upstream.
+
+**5f. Verify `id_join_map` and `entity_counts`.** Mint each xref IRI form by DESCRIBEing a real entity and reading the actual object value (do not trust documentation); if two forms exist, name which is the join key. Every `entity_counts` value is `COUNT(DISTINCT)` + graph-pinned, re-run this pass, with its `date:`. A coverage percentage must equal `(subset count)/(class count)` to within rounding — document ~65.9%, not a loose "~70%".
+
+**5g. Verify every search-wrapper claim.** Rule 2 covers tool-behavior claims, not just SPARQL. For each assertion the file makes about a `search_*` / `ncbi_esearch` / `OLS4:searchClasses` tool (scan `teaches`/`traps_avoided`/`id_join_map`), call the tool exactly as the claim implies and confirm the result. "Tool X maps term T to ID I" passes ONLY if the tool returns I *usably*: at the top, or within a limit a caller would plausibly use — not at rank 5 behind unrelated hits, and present at the limit the claim states. If the tool doesn't satisfy the claim, rewrite it to what the tool actually does (with the rank/limit caveat) or drop it. (Real regression: the ChEMBL MIE claimed `search_chembl_target("EGFR") → CHEMBL203`; the tool returned CHEMBL203 at rank 5, and not at all at `limit=3`.)
+
+**5h. No test leakage (spec §4.6).** For every example, check its subject (keyword phrase, class IRI, gold gene/compound/accession) against `benchmark/questions/*.yaml` — grep the `inspiration_keyword` and `exact_answer` fields. If a subject collides with a question that uses **this DB**, swap it for a neutral member of the same class and re-verify. Canonical non-benchmark subjects (ATP, TP53, BRCA1) are fine.
+
+**5i. Record the byte count** of the v3 file and the v2 file it replaces (the deterministic half of the win — spec §5 item 7). It should be clearly smaller; if not, hunt for a fact restated across sections (§4.2) and cut it.
 
 ### Phase 6 — Regenerate the catalog, then declare
 
@@ -605,66 +488,57 @@ The `tests/test_catalog_in_sync.py` drift guard fails if you skip this. A pure e
 Only after Phases 1–5 (and the regeneration above) are complete, report to the user:
 
 ```
-✓ MIE file written to ./togo_mcp/data/mie/<db>.yaml
-  - Sample RDF entries validated: 3/3 retrievable from endpoint
-  - SPARQL queries tested: N/N executed successfully (N = 7 + cross-DB + cross-ref)
-  - Statistics verified: [date]
-  - YAML parses cleanly
-  - shape_expressions audited: all shapes verified against live predicate surveys,
-    all @<ShapeRef>s resolved AND their object classes confirmed by rdf:type GROUP BY,
-    all cardinality modifiers confirmed, all literal-valued predicates datatype-probed
-  - critical_warnings verified: all cited predicate names and IRIs confirmed against endpoint
-  - cross_references verified: IRI forms confirmed by DESCRIBE, coverage % from COUNT queries
-  - category tokens checked: all exact-matched against the committed catalog's category index (list_categories() retired)
-  - database catalog regenerated: `generate_usage_guide_catalog.py` run if the discovery block changed; 02b_database_catalog.md in the changeset (test_catalog_in_sync passes)
-  - prefix declarations verified: all non-standard prefixes confirmed with SELECT
-  - data_statistics cross-checked: total_entities and coverage % arithmetically consistent
-  - anti_patterns.correct_sparql tested: all correct_sparql blocks executed successfully — confirm via `check_mie_examples.py <db>` returning 0 zero-row / 0 error (5b)
-  - cross-graph inflation checked: co-hosted endpoint probed (2g), multipliers + safe pattern
-    validated and recorded in co_hosted_graphs/critical_warnings — or "single-DB endpoint, N/A"
+✓ MIE file (v3) written to ./togo_mcp/data/mie/<db>.yaml
+  - YAML parses; required keys present (database, discovery, endpoint, graphs, examples, id_join_map)
+  - discovery: 4 fields present, description one sentence; category tokens exact-matched (list_categories() retired)
+  - examples: N/N executed live; every one carries verified: with a date: (no `on:` key); check_mie_examples.py <db> → 0 zero-row / 0 error
+  - elevated classes: ≥1 aggregation + ≥1 cross_db present (or "DB supports neither: <why>");
+    every set-level enumeration route is a first-class example (enumeration_audit tier: [A/B/C/OK])
+  - cross-graph inflation: co-hosted endpoint probed (2g), multipliers + safe pattern validated
+    and recorded in graphs.co_hosted/global_gotchas — or "single-graph endpoint, N/A"
+  - global_gotchas/traps_avoided: all cited predicate names and IRIs confirmed against endpoint
+  - id_join_map/entity_counts verified: xref IRI forms confirmed by DESCRIBE, counts COUNT(DISTINCT)+pinned+dated
   - search-wrapper claims verified: every search_*/ncbi/OLS4 tool-behavior claim run through
-    the tool and confirmed to return the stated result usably (5j) — or "no tool-behavior claims"
-  - Lines: [count]
+    the tool and confirmed to return the stated result usably (5g) — or "no tool-behavior claims"
+  - no test leakage: no example subject collides with benchmark/questions/*.yaml for this DB (5h)
+  - database catalog regenerated: generate_usage_guide_catalog.py run if discovery changed; 02b in the changeset (test_catalog_in_sync passes)
+  - Bytes: [v3 count] (was [v2 count], −[pct]%)
 ```
 
 If any bullet can't be checked off honestly, say so and explain what's left.
 
 ## Quality bar
 
-A complete MIE file satisfies:
+A complete v3 MIE file satisfies:
 
-- Compact (400–600 lines typical, ≤ 900 for complex)
-- `critical_warnings` documents every silent-failure trap (typos in predicates, IRI namespace mismatches, mandatory performance filters)
-- All entity types appear in `shape_expressions` with inline counts
-- Exactly 3 `sample_rdf_entries` with a single shared `rdf_prefixes` block — **all 3 validated against the endpoint**
-- 7 SPARQL queries (2/3/2), 6–7 prioritising structured lookups, ≤ 1 using text search — **all tested**
-- `bif:contains` preferred over `FILTER(CONTAINS())` on Virtuoso (check `access.backend`); property paths split before `bif:contains`
-- No circular reasoning (never `VALUES ?x { <results-of-search-api> }` inside a COUNT)
-- Every search-wrapper behavior claim (e.g. in `architectural_notes.query_strategy`) run through the tool and confirmed to return the stated result at a usable rank/limit — **not just that the tool ran** (5j)
-- Cross-DB: 1–2 examples if shared endpoint, otherwise `examples: []` + explanatory notes
-- `data_statistics` contains only verified counts/coverage — no `verification_queries`, `cardinality`, or `performance_characteristics` subfields
-- Valid YAML
-- On a co-hosted endpoint, cross-graph re-declaration probed (2g); any union-inflation trap
-  recorded in `co_hosted_graphs` + `critical_warnings` with the graph-pinned safe pattern
-- Anti-patterns: 3–4, including "schema check before text search"
-- Common errors: 2–3
+- Required keys present and in order (spec §2); YAML parses.
+- Clearly smaller than the v2 file it replaces (the pilot: −55–74%). No fact restated across sections (§4.2): a predicate in an example is not repeated in `schema_delta`; a warning is `global_gotchas` OR `traps_avoided`, never both.
+- **Every** `examples[].sparql` re-run live, with a `verified:` block carrying the real result + a `date:` (never `on:`). `check_mie_examples.py <db>` clean.
+- Query craft: prioritise specific IRIs / typed predicates over text search; `bif:contains` over `FILTER(CONTAINS())` on Virtuoso, property paths split before it; no circular reasoning (never `VALUES ?x { <search-api results> }` inside a COUNT).
+- At least one `aggregation` and one `cross_db` example where the DB supports them; every set-level enumeration route is a first-class `example` (not a caveat) — spec §4.4.
+- `global_gotchas` documents every database-wide silent-failure trap (mandatory filters, IRI namespace mismatches, absent labels, verbatim typos, union inflation); every cited predicate/IRI confirmed live.
+- On a multi-graph endpoint, cross-graph re-declaration probed (2g); any union-inflation trap recorded in `graphs.co_hosted` + `global_gotchas` with the graph-pinned safe pattern (or `probed_clean`).
+- Every search-wrapper behavior claim run through the tool and confirmed at a usable rank/limit — not just that the tool ran (5g).
+- No example subject drawn from the benchmark for this DB (spec §4.6).
 
 ## Reference files
 
-- `references/query-strategy.md` — query design hierarchy, circular-reasoning trap, text-search Gate Check, Virtuoso pitfalls. **Read this before designing the query set.**
-- `references/mie-structure.md` — per-section requirements, what goes where, what to omit.
-- `references/template.yaml` — fillable YAML skeleton with inline comments.
-- `references/anti-patterns.md` — worked examples of the four mandatory anti-patterns, plus common errors.
+- `references/query-strategy.md` — query design hierarchy, circular-reasoning trap, text-search Gate Check, Virtuoso pitfalls. **Read this before designing the example set.**
+- `references/mie-structure.md` — the v3 per-key requirements, what goes where, what v3 dropped.
+- `references/template.yaml` — the fillable v3 YAML skeleton with inline comments.
+- `references/anti-patterns.md` — where trap knowledge lives in v3 (`global_gotchas` vs inline `traps_avoided`), and the enumeration-route rule.
+- `togo_mcp/data/docs/MIE_v3_spec.md` — **the authorable contract.** Read it; it wins over this skill on any disagreement.
+- `togo_mcp/data/mie/uniprot.yaml` — the worked v3 reference.
 
 ## One more thing about text search
 
-Text search (`bif:contains`, `FILTER(CONTAINS())`) is seductive because it always "works" in the sense of not erroring out. It is almost never the right choice. Before using it, confirm:
+Text search (`bif:contains`, `FILTER(CONTAINS())`) is seductive because it always "works" in the sense of not erroring out. It is almost never the right choice. Before using it in an example, confirm:
 
-- You have read the full `shape_expressions` and checked for specific IRIs
+- You have inspected the live schema (Phase 2 surveys) and checked for specific IRIs
 - You have checked for typed predicates with controlled vocabularies
 - You have checked for hierarchical relationships (`rdfs:subClassOf`, `skos:broader`)
 - You have used any available search API to find and DESCRIBE example entities
-- You can write a sentence explaining why no structured alternative exists
+- You can write a sentence (put it in the example's `teaches`) explaining why no structured alternative exists
 
 If you cannot write that sentence, the structured alternative exists — keep looking.
 

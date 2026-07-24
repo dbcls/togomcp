@@ -4,7 +4,7 @@
 branch. The full design **rationale** (with the ablation evidence) lives in
 `internal_docs/mie-redesign-from-scratch-2026-07-20.md` — a local working doc that is
 **gitignored**, so this README is the on-branch summary. Where they differ, the rationale is
-the argument and `MIE_v3_spec.md` is the contract.*
+the argument and `togo_mcp/data/docs/MIE_v3_spec.md` is the contract.*
 
 ## Why
 
@@ -24,7 +24,7 @@ shape in `shape_expressions`, sample triple in `sample_rdf_entries`, worked quer
 ⇒ The value is real but concentrated in query-construction content. Reorganize *around it*,
 collapse the 3× schema restatement, and drop the prose-only sections — same value, far fewer tokens.
 
-## The v3 format (see `MIE_v3_spec.md`)
+## The v3 format (see `togo_mcp/data/docs/MIE_v3_spec.md`)
 
 Organized by **agent need × recoverability**, with the **verified, executable worked example
 as the atomic unit** (one example *is* the schema + shape + sample + annotated warning). Five
@@ -44,10 +44,10 @@ carry only the non-recoverable; every set-level enumeration route is a first-cla
 
 | # | Step | State |
 |---|---|---|
-| 1 | Finalize the schema (write `MIE_v3_spec.md`) | ✅ done |
+| 1 | Finalize the schema (write `togo_mcp/data/docs/MIE_v3_spec.md`) | ✅ done |
 | 2 | Pilot MIE(s) in the new format, live-verified | ✅ UniProt + BacDive (62–64% smaller, live-verified) |
 | 3 | Smoke test (pilot subset vs v2.x, ablation harness) — bail early on gross regression | ✅ done — **yellow light**, see `smoke/FINDINGS.md` |
-| 3a | Diagnose q066 regression; fold the lesson into `MIE_v3_spec.md` | ✅ done — keyword-enumeration route was demoted to a caveat; fixed (spec §4.4 + `keyword_enum` example) |
+| 3a | Diagnose q066 regression; fold the lesson into `togo_mcp/data/docs/MIE_v3_spec.md` | ✅ done — keyword-enumeration route was demoted to a caveat; fixed (spec §4.4 + `keyword_enum` example) |
 | 3b | §4.4 enumeration-route audit of all 36 DBs → `enumeration_audit.md` | ✅ done — 34/36 already first-class; 4 Tier-A buried routes (ddbj/glycosmos/pubchem/mogplus) to un-bury, tiers B/C to keep route+caveat together |
 | 4 | Author the **full** redesigned corpus (all 36) | ✅ **36/36 done** — all agent-authored (2 hand-authored pilots + 34 delegated), every enum route independently live-re-verified, all under §4.6 (no test leakage). 302 examples; byte reductions 29–65%. Live-verify caught many v2 errors along the way. Per-DB obligations from `enumeration_audit.md` all satisfied |
 | 5 | **Release gate**: full-100Q equivalence run | 🔄 harness ready, not yet started — runs `--conditions smoke_v2,full_v3` (smoke_v2 = full prod v2, byte-identical to `togo_mcp/data/mie/`; `full_v3` = full v3 corpus) in **4×25-QA batches** with a review gate per batch, folded via `append_results.py`. API answering (~$80 + ~8h per batch). Dry-run green |
@@ -96,7 +96,7 @@ compression can drop set-level enumeration guidance; diagnose before scaling (st
 ## Files
 
 - `README.md` — this plan/status.
-- `MIE_v3_spec.md` — the v3 format contract (incl. §4.4 enumeration rule, §4.6 no-test-leakage).
+- `togo_mcp/data/docs/MIE_v3_spec.md` — the v3 format contract (incl. §4.4 enumeration rule, §4.6 no-test-leakage).
 - `enumeration_audit.md` — per-DB §4.4 enumeration-route checklist (all 36 DBs; drove step-4 authoring).
 - `mie_v3/<db>.yaml` — new-format MIEs (**all 36 complete**).
 - `smoke/FINDINGS.md` — durable record of the smoke test + q066 fix/de-overfit/transfer + token fix.

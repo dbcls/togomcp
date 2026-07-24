@@ -28,23 +28,28 @@ must be terse and machine-checkable — NOT a chat reply.
    read its `references/` files too (`query-strategy.md`, `mie-structure.md`, `template.yaml`,
    `anti-patterns.md`), which are NOT preloaded.
 2. Load the live tools you need via ToolSearch, e.g.
-   `select:mcp__togomcp-dev__run_sparql,mcp__togomcp-dev__get_graph_list,mcp__togomcp-dev__get_sparql_endpoints,mcp__togomcp-dev__list_categories`.
+   `select:mcp__togomcp-dev__run_sparql,mcp__togomcp-dev__get_graph_list,mcp__togomcp-dev__get_sparql_endpoints`.
    Use the **togomcp-dev** server (local stdio) — it picks up fresh `endpoints.csv` rows; the remote
-   server has a stale registry. If your prompt names a different server, use that instead.
+   server has a stale registry. If your prompt names a different server, use that instead. The
+   discovery trio (`find_databases`/`list_databases`/`list_categories`) is **retired** — do not load
+   or call it; for the category vocabulary run `scripts/generate_usage_guide_catalog.py --list-categories`.
 3. Existing MIE under `togo_mcp/data/mie/<db>.yaml` is a HINT to verify, never a source of truth —
-   including its `schema_info.graphs`. Phase 2a (`get_graph_list`) is mandatory every run.
+   including its graph list. It may still be a **v2 file** (pre-redesign layout); you are authoring
+   **v3** (`togo_mcp/data/docs/MIE_v3_spec.md`), so treat its structure as legacy, not a template.
+   Phase 2a (`get_graph_list`) is mandatory every run.
 4. Write the file directly with Write/Edit. `get_MIE_file`/`save_MIE_file` are not used here.
 
 ## The two hard rules (non-negotiable — you will be re-validated)
 
 - **No blind retry loops.** If a query fails twice, diagnose (wrong predicate / graph / IRI / literal
   typing) before retrying. More retries without diagnosis do not fix a structurally wrong query.
-- **Nothing invented.** Every triple in `sample_rdf_entries`, every query in
-  `sparql_query_examples` / `cross_database_queries` / `anti_patterns.correct_sparql`, and every
-  number in `data_statistics` must be retrieved from the live endpoint before the file is written.
-  A fabricated-but-plausible example is the worst possible output: an independent validator WILL
-  re-run your queries against the endpoint, and a false "validated" claim is a hard failure. Never
-  report a check as passed unless you actually ran it and saw it pass.
+- **Nothing invented.** Every `examples[].sparql` (including the elevated `aggregation` and
+  `cross_db` ones) and every `entity_counts` number must be retrieved from the live endpoint before
+  the file is written, its result recorded in the example's `verified:` block **with a `date:`** (never
+  `on:` — YAML parses that as boolean `true`). A fabricated-but-plausible example is the worst
+  possible output: an independent validator WILL re-run your queries against the endpoint, and a
+  false "validated" claim is a hard failure. Never report a check as passed unless you actually ran
+  it and saw it pass.
 
 ## Output contract
 
@@ -53,8 +58,8 @@ Return ONLY a compact report (no prose, no preamble):
 - `database`: the db key
 - `file_path`: `togo_mcp/data/mie/<db>.yaml`
 - `mode`: `created` | `revised`
-- `validation`: the Phase 6 declaration block verbatim (sample entries N/N, queries N/N, YAML parse,
-  shapes audited, etc.)
+- `validation`: the Phase 6 declaration block verbatim (examples N/N verified+dated, YAML parse +
+  required keys, elevated classes present, co_hosted probed, byte delta vs v2, etc.)
 - `unverifiable`: list anything you could NOT verify and why (or `none`)
 - `notes`: ≤3 lines on the most important corrections/findings (or `none`)
 
