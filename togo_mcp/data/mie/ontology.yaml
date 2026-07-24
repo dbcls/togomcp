@@ -1,399 +1,122 @@
-schema_info:
-  title: Ontology Graphs (RDF Portal primary endpoint)
-  description: |
-    A cross-ontology TERM-RESOLUTION and HIERARCHY-EXPANSION surface, not a data source.
-    The primary endpoint hosts 37 named graphs under http://rdfportal.org/ontology/ carrying
-    ~785,551 owl:Class definitions — HP, UBERON, CL, SO, ECO, EFO, PRO, FMA, CLO, EDAM, SIO,
-    PO, XCO, CMO, MEO, MMO, UO — plus the GO/MONDO/taxonomy graphs and the glycordf/orth/piero
-    schema vocabularies. Use this entry to (1) resolve an opaque IRI (SO_0000704, RO_0002211,
-    fma7088) to a label/definition/synonym set, and (2) expand a term to its subsumption subtree
-    and JOIN that subtree against data co-located on the same endpoint — the one thing OLS4
-    cannot do. For deep single-ontology work on GO, MONDO, or taxonomy use their own MIE files
-    (go, mondo, taxonomy); this entry covers the ~20 ontologies that have none.
+# MIE v3 — Ontology graphs (multi-ontology term-resolution + hierarchy-expansion surface).
+# Agent-authored 2026-07-22 on `mie-redesign`. Format: benchmark/redesign/MIE_v3_spec.md.
+# Every verified count/result re-run live on database='ontology' 2026-07-22.
+# Byte count vs the v2 file it replaces (spec §5 item 7):
+#   v2 togo_mcp/data/mie/ontology.yaml = 63,964 bytes; this v3 file = 24,868 bytes → 61.1% smaller.
+# enumeration_audit.md tier: OK — this IS the subtree-expansion surface. BOTH hierarchy routes carried
+# first-class and re-verified: is_a rdfs:subClassOf* (example is_a_subtree) + part_of BFO_0000050
+# owl:Restriction (example part_of_partonomy). Graph-pin + DISTINCT + owl:deprecated filter mandatory.
+database: ontology
 
-    READ THIS FIRST — two safe-looking assumptions that are false, each a silent 0-row failure:
-    (1) obo is NOT universal — EFO/SIO/EDAM/MEO/FMA use their own namespaces (see
-    iri_namespaces); (2) the predicates are NOT uniform — FMA has no skos:notation, no
-    oboInOwl:* and no IAO_0000115 at all (see cross_references.predicate_by_ontology).
-  keywords:
-    - ontology
-    - controlled vocabulary
-    - term lookup
-    - label resolution
-    - iri resolution
-    - subsumption hierarchy
-    - subclass expansion
-    - partonomy
-    - part of
-    - anatomy
-    - phenotype
-    - cell type
-    - evidence code
-    - sequence feature type
-    - synonym
-    - obsolete term
-    - obo
-  categories:
-    - ontology
-  endpoint: https://rdfportal.org/primary/sparql
-  # base_uri applies ONLY to the obo-based graphs below. It is NOT a global default —
-  # see iri_namespaces. Assuming it for EFO/SIO/EDAM/MEO/FMA yields a silent 0 rows.
-  base_uri: http://purl.obolibrary.org/obo/
-  iri_namespaces:
-    obo_based:
-      - prefixes: [HP, GO, UBERON, CL, SO, ECO, PR, CLO, CMO, MMO, UO, PO, XCO, MONDO, NCBITaxon]
-        namespace: "http://purl.obolibrary.org/obo/"
-        curie_rule: "PREFIX_NNNNNNN — underscore, e.g. HP:0001250 -> obo/HP_0001250"
-    non_obo:
-      # VERIFIED 2026-07-16: an obo-form IRI returns 0 rows for every entry below. The local name
-      # is NOT simply the prefix — read curie_rule before minting an IRI.
-      - {ontology: EFO,  graph: efo,  namespace: "http://www.ebi.ac.uk/efo/EFO_",         curie_rule: "EFO:0000305 -> .../efo/EFO_0000305 (underscore)"}
-      - {ontology: SIO,  graph: sio,  namespace: "http://semanticscience.org/resource/SIO_", curie_rule: "SIO:000776 -> .../resource/SIO_000776 (underscore)"}
-      - {ontology: MEO,  graph: meo,  namespace: "https://mdatahub.org/data/meo/MEO_",     curie_rule: "MEO:0000001 -> .../meo/MEO_0000001 (https, underscore)"}
-      - {ontology: EDAM, graph: edam, namespace: "http://edamontology.org/",               curie_rule: "NO 'EDAM_' prefix exists — terms are {data_,operation_,format_,topic_}NNNN (data_0863, operation_0477). The branch word IS the local name."}
-      - {ontology: FMA,  graph: fma,  namespace: "http://purl.org/sig/ont/fma/fma",        curie_rule: "FMA:7088 -> .../fma/fma7088 — LOWERCASE 'fma', NO underscore. 104,720 of fma's 104,721 owl:Class use this form (the other is dcterms:Agent)."}
-  graphs:
-    # --- Substantive ontologies WITHOUT their own MIE (this entry's primary scope) ---
-    - http://rdfportal.org/ontology/pro            # PRotein Ontology — 365,852 classes (asserted)
-    - http://rdfportal.org/ontology/pro-reasoned   # PRO inference closure — 13.8M triples (see critical_warnings)
-    - http://rdfportal.org/ontology/fma            # Foundational Model of Anatomy 5.0.0 — 104,721 (NON-obo IRIs)
-    - http://rdfportal.org/ontology/efo            # Experimental Factor Ontology 3.90.0 — 93,358 (NON-obo IRIs)
-    - http://rdfportal.org/ontology/clo            # Cell Line Ontology 2.1.188 — 43,327
-    - http://rdfportal.org/ontology/uberon         # Uberon anatomy — 27,295
-    - http://rdfportal.org/ontology/hp             # Human Phenotype Ontology 2026-06-06 — 23,829
-    - http://rdfportal.org/ontology/cl             # Cell Ontology 2026-06-08 — 19,167
-    - http://rdfportal.org/ontology/cmo            # Clinical Measurement Ontology 2026-05-30 — 4,149
-    - http://rdfportal.org/ontology/edam           # EDAM 1.26-unstable — 3,524 (NON-obo IRIs)
-    - http://rdfportal.org/ontology/so             # Sequence Ontology — 2,747
-    - http://rdfportal.org/ontology/meo            # Metagenome/Environment Ontology 1.0 — 2,390 (NON-obo IRIs)
-    - http://rdfportal.org/ontology/eco            # Evidence & Conclusion Ontology — 2,304
-    - http://rdfportal.org/ontology/po             # Plant Ontology — 2,027
-    - http://rdfportal.org/ontology/xco            # Experimental Condition Ontology 2026-06-06 — 1,839
-    - http://rdfportal.org/ontology/sio            # Semanticscience Integrated Ontology 1.61 — 1,585 (NON-obo IRIs)
-    - http://rdfportal.org/ontology/mmo            # Measurement Method Ontology — 851
-    - http://rdfportal.org/ontology/uo             # Units of measurement 2026-01-16 — 574
-    # --- Schema vocabularies (predicates you USE, not terms you look up) ---
-    - http://rdfportal.org/ontology/glycordf       # GlycoRDF schema behind GlyCosmos — 136
-    - http://rdfportal.org/ontology/piero          # Reaction/enzyme partial ontology — 35
-    - http://rdfportal.org/ontology/orth           # Orthology Ontology 2.0 (OMA instantiates it) — 34
-    # --- Have their OWN MIE file: use go / mondo / taxonomy instead for deep work ---
-    - http://rdfportal.org/ontology/go             # Gene Ontology 2026-05-19 — 51,967 (MIE: go)
-    - http://rdfportal.org/ontology/mondo          # MONDO simple 2026-06-02 — 33,840 (MIE: mondo)
-    - http://rdfportal.org/ontology/taxonomy       # NCBI taxonomy DATA, 41.3M triples (MIE: taxonomy)
-    # --- Plus 13 utility/W3C vocabularies under the same prefix, all tiny (87-14,238 triples) and
-    #     loaded only so their terms resolve, nothing to query: nucleotide (DDBJ features, the
-    #     largest), qudt, prov-o, dcterms, foaf, owl, pav, skos, faldo, void, rdf, dcelements, rdfs.
-  co_hosted_graphs:
-    - "http://rdfportal.org/ontology/* (all 37) — EVERY ontology graph re-declares the upper-ontology
-       properties and many foreign classes. rdfs:label on IAO_0000115 appears in 15 graphs,
-       BFO_0000050 in 10, RO_0002211 in 7. An unscoped lookup returns one row PER GRAPH."
-    - "http://rdfportal.org/ontology/uberon, /cl, /po, /efo, /clo, /pro — assert rdfs:subClassOf
-       edges on GO_/other foreign terms. Unscoped subtree expansion inherits them and returns a
-       DIFFERENT answer set, not merely inflated rows. See critical_warnings."
-    # The DATA graphs citing these ontologies (glycogenes, pubcasefinder, nando, open-tggates,
-    # hgnc, refex) are join targets, not re-declaration traps: see cross_database_queries.notes.
-  kw_search_tools:
-    - OLS4:searchClasses
-  version:
-    mie_version: "2.3"
-    mie_created: "2026-07-16"
-    mie_updated: "2026-07-16"
-    data_version: "Per-graph; see graphs list. Snapshot verified 2026-07-16."
-    update_frequency: "Per upstream ontology release (OBO ontologies typically monthly)"
-  access:
-    backend: "Virtuoso"
+# ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
+discovery:
+  title: Ontology graphs (RDF Portal primary)
+  description: >
+    Cross-ontology term-resolution and hierarchy-expansion surface hosting ~20 OBO/non-OBO ontologies
+    without their own MIE (HP, UBERON, CL, SO, ECO, EFO, FMA, PRO, SIO, EDAM, MEO, PO, CMO, UO, …),
+    for resolving opaque class IRIs to labels/definitions/synonyms and expanding a term to its
+    subsumption (is_a) or partonomy (part_of) subtree to JOIN against co-located data.
+  keywords: [ontology, controlled vocabulary, term resolution, iri resolution, label, synonym,
+             subsumption, subclassof, part of, partonomy, anatomy, phenotype, cell type, evidence code,
+             sequence feature, obsolete term, obo, hierarchy expansion]
+  categories: [ontology]
 
-critical_warnings: |
-  - NAMESPACE TRAP — obo IS NOT UNIVERSAL (the #1 silent failure). EFO, SIO, EDAM, MEO and FMA
-    do NOT use http://purl.obolibrary.org/obo/. An obo-form IRI for them returns ZERO rows, no
-    error. VERIFIED 2026-07-16: <obo/EFO_0022223>, <obo/FMA_7088>, <obo/SIO_000776>,
-    <obo/EDAM_0863>, <obo/MEO_0000001> -> 0 rows each; the real-namespace forms all resolve.
-    Build every IRI from schema_info.iri_namespaces. Worst offenders: FMA is lowercase with NO
-    underscore (FMA:7088 -> .../fma/fma7088); EDAM has no "EDAM_" prefix at all (data_0863).
-  - LABEL/SYNONYM LITERAL FORM IS PER-GRAPH — THE #1 TRAP HERE. The correct exact-match form is
-    INVERTED between graphs on this one endpoint, and every wrong form returns 0 rows silently.
-    VERIFIED 2026-07-16 by matching each form against a known term in each graph:
-      TYPED  (^^xsd:string matches; plain fails):    hp, go       e.g. "Seizure"^^xsd:string
-      PLAIN  (plain matches; ^^xsd:string FAILS):    uberon, cl, efo, edam, mondo   e.g. "liver"
-      @en    (only "x"@en; both bare forms fail):    fma, sio, meo   e.g. "Heart"@en
-             (104,919 of fma's 104,936 labels are @en; only 17 are xsd:string)
-    So the form is a property of the GRAPH, not the server. Probe every graph you match in.
-    DATATYPE() CANNOT DECIDE THIS: Virtuoso reports xsd:string for BOTH the typed and the plain
-    form (RDF 1.1 makes them one value; Virtuoso matches terms), so the probe reads identically
-    for hp and efo while only ONE matches ^^xsd:string. That is exactly how v1.0 of this file
-    came to assert "every literal here is xsd:string" — true for hp/go, inverted for the rest.
-    SAFE, UNIVERSAL: ?t rdfs:label ?l . FILTER(STR(?l) = "liver")  — verified in go (typed),
-    uberon + edam (plain) and fma + sio (@en). Use it whenever you span graphs or are unsure;
-    the bare typed form only in hp/go, where it is faster and index-friendly (as the pinned
-    examples below do). VALUES blocks are the highest-miss spot — the typing is not cued there.
-    NOT AN EXHAUSTIVE LIST: these three are the LABEL/synonym/notation fields. Other predicates
-    carry other datatypes — go's IAO_0000233 is xsd:anyURI, which is string-like but is NOT
-    xsd:string. Match on whatever DATATYPE() reports for the predicate you are actually using.
-  - GRAPH-PINNING IS MANDATORY FOR HIERARCHY EXPANSION — and COUNT(DISTINCT) does NOT fix it.
-    Foreign graphs assert rdfs:subClassOf on terms they do not own. Measured on GO_0006915
-    (apoptotic process): unscoped `?c rdfs:subClassOf* GO_0006915` -> 1,537 rows / 77 distinct
-    terms; pinned to GRAPH <ontology/go> -> 104 rows / 72 distinct terms. The 5 extra terms are
-    NOT duplicates: GO_0003276, GO_1900204, GO_1900205, GO_1901146 and GO_1901147 have their
-    ONLY subClassOf edge in <ontology/uberon>, not in <ontology/go> at all. The ANSWER SET
-    differs, so DISTINCT masks nothing. Always pin the owning graph.
-  - PREDICATES ARE NOT UNIFORM ACROSS ONTOLOGIES. OboClassShape describes the obo/oboInOwl
-    family ONLY. VERIFIED 2026-07-16: FMA has NO skos:notation, NO oboInOwl:*, NO IAO_0000115 —
-    it uses <fma/FMAID> (xsd:integer), <fma/preferred_name>, <fma/definition>. EDAM's definition
-    is oboInOwl:hasDefinition, NOT IAO_0000115. SIO's is dcterms:description and its ID is
-    dc:identifier. EFO has IAO_0000115 but NO skos:notation and NO oboInOwl:id. Hard-coding
-    IAO_0000115 or skos:notation across ontologies silently returns nothing. See
-    cross_references.predicate_by_ontology.
-  - subClassOf IS NOT ANATOMICAL CONTAINMENT. In UBERON/FMA/PO the partonomy lives in
-    part_of (BFO_0000050) owl:Restriction bnodes — the very bnodes an isIRI(?parent) filter
-    discards. VERIFIED 2026-07-16: `?c rdfs:subClassOf* UBERON_0000955` (brain) returns just 5
-    terms, ALL taxon variants (brain, insect embryonic brain, insect embryonic/larval brain,
-    insect adult brain, neural tube derived brain) — not one brain part. The 72 direct
-    anatomical parts (diencephalon, cerebellum, ...) are reachable ONLY via part_of. is_a means
-    "is a kind of", not "is part of". See query example 6 and the anatomy anti-pattern.
-  - DAG PATH MULTIPLICITY — COUNT(*) OVER subClassOf* IS NOT AN ENTITY COUNT. These are DAGs,
-    not trees: a multi-parent term is returned once PER PATH. VERIFIED 2026-07-16:
-    `?t rdfs:subClassOf* HP_0000707` -> 4,767 rows but only 2,825 distinct terms. Joining that
-    expansion to data multiplies every joined row by the term's path count: the HP x
-    PubCaseFinder join yields 111,591 raw rows but only 75,562 DISTINCT annotations (+48%), and
-    per-term counts inflate exactly 2x for two-parent terms (Intellectual disability 4,984 raw
-    vs 2,492 true) while single-parent terms are untouched. That unevenness CHANGES THE RANKING,
-    not just the magnitude. Always COUNT(DISTINCT ?annotation) / COUNT(DISTINCT ?term).
-  - OBSOLETE TERMS CARRY LABELS AND RESOLVE SILENTLY. owl:deprecated true^^xsd:boolean marks
-    13,704 GO / 4,019 HP / 1,390 UBERON classes (verified 2026-07-16). Of these, 10,058 GO /
-    574 HP / 1,098 UBERON / 214 CL / 211 SO are ALSO labelled — so 21% of labelled GO classes
-    are obsolete and a naive label lookup returns them as if current. Add
-    `FILTER NOT EXISTS { ?t owl:deprecated true }` unless you specifically want obsolete terms.
-  - EFO MARKS OBSOLETES TWICE: owl:deprecated true AND an "obsolete_" rdfs:label prefix.
-    VERIFIED 2026-07-16: EFO_0000305 -> "obsolete_breast carcinoma", EFO_0000270 ->
-    "obsolete_asthma", EFO_0000616 -> "obsolete_neoplasm" — well-known EFO IDs are heavily
-    obsoleted in this snapshot (4,930 of 18,382 native EFO classes = 26.8%). owl:deprecated
-    catches 4,930 and the label prefix catches only 4,915, so owl:deprecated is the RELIABLE
-    filter and the label prefix ALONE misses 15. Use owl:deprecated; add
-    FILTER(!STRSTARTS(STR(?label), "obsolete")) as a belt-and-suspenders guard.
-  - NEVER FILTER(LANG(?label) = "en") — AND NEVER FILTER(LANG(?label) = "") EITHER. Both fail,
-    on opposite halves of the endpoint. In the obo graphs a term's OWN label carries NO language
-    tag and @en marks a second-hand import, so LANG="en" drops ~99% of labels (CL: 287 @en vs
-    21,643 untagged; UBERON: 250 vs 28,764). But in fma/sio/meo the OWN label IS @en, so
-    LANG="" drops ~99.98% of FMA's (104,919 @en of 104,936). Verified 2026-07-16.
-    ALWAYS use FILTER(LANG(?label) IN ("", "en")) — the only form correct for both halves, and
-    the reason the flagship example resolves all 6 of its mixed-namespace IRIs. It also excludes
-    PubCaseFinder's Japanese (@ja) HP labels.
-  - CONFLICTING LABELS ACROSS GRAPHS — take the OWNING graph's, never "the first row" (row order
-    is arbitrary without ORDER BY). RO_0002211 is "regulates" in go/cl/clo/efo/po/uberon but
-    "has_component" in <ontology/xco> — flatly wrong. <ontology/uberon> additionally carries the
-    variant "regulates (processual)". IAO_0000115 is "definition" in all 15 graphs that declare
-    it, but <ontology/clo> carries BOTH "definition" AND "textual definition" — so a single graph
-    can yield two labels for one IRI. Pin the owner via iri_namespaces + schema_design, and
-    expect to pick among several rows even then.
-  - RO_/BFO_/IAO_ PREDICATES HAVE NO HOME GRAPH, AND <ontology/go> IS NOT A RELIABLE FALLBACK.
-    There is no <ontology/ro> or <ontology/bfo>: they resolve only where an importing ontology's
-    closure embeds them, so every hit is second-hand AND coverage is per-TERM, not per-graph —
-    a graph carries only the RO_/BFO_ terms IT uses. VERIFIED 2026-07-16, go-pinned -> 0 rows:
-      RO_0002206 "expressed in" -> cl, clo, pro, uberon      (NOT go)
-      RO_0002162 "in taxon"     -> cl, clo, efo, po, uberon  (NOT go)
-      BFO_0000001 "entity"      -> clo, uberon               (NOT go)
-    GO carries only the ones GO uses (RO_0002211 -> go + 5; BFO_0000050 -> 10 graphs incl. go;
-    IAO_0000115 -> 15 incl. go) — which is what makes "just use go" look right and fail silently.
-    So: DO NOT pin one graph. Bind ?g over a VALUES set and take the majority label. uberon and
-    clo carried every term tested, but confirm rather than assume. Expect benign variants
-    ("part of"/"part_of"); treat a lone dissenter as noise (xco's "has_component" for
-    RO_0002211 — see the conflicting-labels warning above).
-  - THE IAO_* ANNOTATION PREDICATES ARE POLYMORPHIC PER GRAPH — IN NODE KIND *AND* DATATYPE.
-    Never assume; test isIRI() and match with FILTER(STR(?o) = ...), the only form correct
-    across all of them. Both verified 2026-07-16:
-    IAO_0000233 "term tracker item" — hp: 1,461 ALL IRI (a DATATYPE() survey shows EMPTY here,
-      meaning "not a literal", NOT "untyped string"); go: 20,249 ALL xsd:anyURI literals
-      (so ^^xsd:string matches NOTHING — anyURI is string-like but is not xsd:string, and
-      `?o rdfs:label ?l` joins to nothing because the object is a literal); cl: 757 =
-      xsd:string literals + 87 IRIs; mondo 21,161 / uberon 550 = xsd:anyURI + a few IRIs.
-    IAO_0100001 "term replaced by" — THREE forms: (a) IRI node; (b) xsd:string CURIE literal
-      ("GO:0039502"); (c) xsd:string literal holding a FULL IRI (efo's EFO_0000305 — looks like
-      an IRI in results but isIRI() is false). go: 3,646 (a) + 2,211 (b); hp: 3,961 (a) + 494
-      (b); uberon: 536 (a) only. Assuming (a) silently drops 38% of GO's mappings; the CURIE
-      normalizer in query example 5 MANGLES form (c) by CONCATing the obo prefix onto a string
-      that is already a full IRI — it is safe only because it is pinned to go, which has no (c).
-      Outside go/hp, test STRSTARTS(STR(?o), "http") before normalizing.
-  - CLASS COUNTS INCLUDE IMPORTED CLASSES — "93,358 EFO classes" is NOT 93,358 EFO terms.
-    Several graphs embed their upstream import closure: EFO is only 20% native (18,382 of
-    93,358; 62,233 are obo imports such as NCBITaxon), CL is 19% (3,607 of 19,167), UBERON 60%,
-    PRO 71%. But this does NOT generalize — GO, HP, MONDO, SIO, MEO, CMO, MMO and UO are 100%
-    native. Read data_statistics.by_class, which gives total AND native per graph.
-  - <ontology/pro-reasoned> IS THE MATERIALIZED INFERENCE CLOSURE of <ontology/pro> (13.8M vs
-    PRO's asserted graph). Querying the union of both double-counts. Pick one deliberately:
-    /pro for asserted axioms, /pro-reasoned for entailed ones.
-  - <ontology/taxonomy> IS NOT A SCHEMA — it holds 41.3M triples of NCBI taxonomy DATA and is what
-    the registered `taxonomy` database points at. Do not treat it as a lightweight vocabulary.
-  - LABEL COVERAGE IS NOT 100%. In HP every unlabelled class is deprecated (3,445 of 3,445), but
-    that rule does NOT generalize: <ontology/cl> has 189 ACTIVE classes with no rdfs:label and
-    <ontology/uberon> has 45. Use OPTIONAL for rdfs:label when enumerating, or you will silently
-    drop active terms.
-  - <http://purl.jp/bio/11/goa> IS A SCHEMA STUB (owl:ObjectProperty declarations only), NOT GO
-    annotation data. It contains no GO_ term references — do not try to join to it.
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/primary/sparql   # RDF Portal "primary" endpoint (endpoint_name: primary)
+base_uri: http://purl.obolibrary.org/obo/        # applies ONLY to obo-family graphs — NOT global (gotcha namespace_map)
+graphs:
+  primary: http://rdfportal.org/ontology/hp       # no single "owner" graph — pin the OWNING ontology per term (see gotcha graph_pin). hp shown as the default illustrative pin.
+  supporting:                                      # ontologies covered here (pin localname = obo prefix, except the 5 non-obo). Own-MIE DBs noted.
+    - pro / pro-reasoned   # Protein Ontology (365,852 asserted); pro-reasoned = materialized inference closure — never union both
+    - fma                  # Foundational Model of Anatomy — NON-obo IRIs (lowercase, no underscore)
+    - efo                  # Experimental Factor Ontology — NON-obo IRIs; 20% native, 26.8% deprecated
+    - clo / uberon / cl / hp / cmo / so / eco / po / xco / mmo / uo   # obo-family
+    - edam / meo / sio     # NON-obo IRIs (see gotcha namespace_map)
+    - glycordf / piero / orth   # SCHEMA vocabularies (predicates you USE, not terms to look up)
+    - go / mondo / taxonomy     # have their OWN MIE — use those for deep single-ontology work
+  co_hosted:                                       # same 'primary' endpoint; flag inflation/join/stub (spec §3.2)
+    all_37_ontology_graphs: >
+      INFLATION. EVERY ontology/* graph is a self-contained import closure that RE-DECLARES the upper-ontology
+      properties and many foreign classes (rdfs:label on IAO_0000115 in 15 graphs, BFO_0000050 in 10, RO_0002211
+      in 7). An UNSCOPED lookup returns one row PER GRAPH, and picks an arbitrary (possibly WRONG) label — e.g.
+      RO_0002211 = "regulates" in most graphs but "has_component" in xco. FIX = GRAPH-pin the owning ontology.
+    subclassof_donor_graphs: >
+      ANSWER-SET CHANGE + can 500. uberon/cl/po/efo/clo/pro assert rdfs:subClassOf edges on GO_/other FOREIGN
+      terms they do not own, so an UNPINNED subtree expansion returns a DIFFERENT set, not merely inflated rows.
+      Worse: unpinned `?t rdfs:subClassOf* <term>` over all 37 graphs can exceed Virtuoso's transitive temp
+      memory → HTTP 500 (verified 2026-07-22 on CL_0000738). Pinning is both correctness AND survival.
+    pro-reasoned: "DUP. Materialized inference closure of ontology/pro (13.8M vs asserted). Union of both double-counts — pick /pro (asserted) OR /pro-reasoned (entailed) deliberately."
+    data_graphs: >
+      JOIN targets, not co-tenancy traps: glycosmos/glycogenes, pubcasefinder, nando, hgnc, open-tggates REFERENCE
+      ontology IRIs rather than re-declaring classes. Reach them by GRAPH-pinning both sides (example xdb_eco_glycosmos).
+    goa_stub: "STUB. <http://purl.jp/bio/11/goa> is owl:ObjectProperty declarations only — no GO_ term data. Do not join to it."
 
-shape_expressions: |
-  PREFIX obo: <http://purl.obolibrary.org/obo/>
-  PREFIX owl: <http://www.w3.org/2002/07/owl#>
-  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-  PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-  PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
-  PREFIX dcterms: <http://purl.org/dc/terms/>
-  PREFIX dc: <http://purl.org/dc/elements/1.1/>
-  PREFIX fma: <http://purl.org/sig/ont/fma/>
-  PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+entity_counts:                     # COUNT(*) of `?c a owl:Class`, isIRI, per graph; verified 2026-07-16 (stable snapshot), spot-re-checked 2026-07-22
+  owl_classes_total: 785551        # summed over 22 substantive graphs; NOT one ontology
+  note: >
+    A graph's owl:Class total is "classes PRESENT in the graph", NOT the ontology's native size: several embed
+    their upstream import closure (efo 20% native / 18,382; cl 19% / 3,607; uberon 60%; pro 71%) while go, hp,
+    mondo, sio, meo, cmo, mmo, uo are 100% native. Deprecated classes are INCLUDED (go 13,704 / hp 4,019 /
+    efo 4,930 carry owl:deprecated true) — always filter (gotcha deprecated_filter).
 
-  # ---------------------------------------------------------------------------
-  # SCOPE: OboClassShape describes the obo/oboInOwl FAMILY ONLY — hp, go, uberon,
-  # cl, so, eco, clo, cmo, mmo, uo, po, xco, mondo, pro. It does NOT describe fma
-  # (see FmaClassShape), nor sio / edam / efo (see cross_references.predicate_by_ontology).
-  # Counts below are from <ontology/hp> (23,829 classes) unless noted.
-  # ---------------------------------------------------------------------------
-  <OboClassShape> {
-    a [ owl:Class ] ;                                  # 23,829 in hp — always present
-    skos:notation xsd:string ;                         # 23,829 (100%) in hp — the CURIE "HP:0001250".
-                                                       #   ABSENT ENTIRELY in fma/sio/edam/efo.
-    rdfs:subClassOf (IRI OR BNODE) * ;                 # POLYMORPHIC, and the mix varies BY GRAPH:
-                                                       #   hp:     24,330 — ALL IRI, no bnodes
-                                                       #   go:     66,148 IRI + 16,215 bnode(owl:Restriction)
-                                                       #   uberon: 36,670 IRI + 43,981 bnode — 54% BNODE
-                                                       #   isIRI(?parent) walks the is_a tree, but in
-                                                       #   ANATOMY that DISCARDS the partonomy — the
-                                                       #   bnodes ARE the anatomy. See critical_warnings.
-    rdfs:label xsd:string ? ;                          # 20,384 (85.5%) — ABSENT on 3,445 deprecated hp
-                                                       #   classes; in cl/uberon some ACTIVE classes
-                                                       #   also lack it (189 / 45). NO lang tag.
-    oboInOwl:id xsd:string ? ;                         # 20,384 — duplicates skos:notation
-    oboInOwl:hasOBONamespace xsd:string ? ;            # 20,384 — e.g. "human_phenotype"
-    oboInOwl:hasExactSynonym xsd:string * ;            # 23,386 triples — MUST match ^^xsd:string
-    oboInOwl:hasRelatedSynonym xsd:string * ;          # 1,489
-    oboInOwl:hasBroadSynonym xsd:string * ;            # 556
-    oboInOwl:hasNarrowSynonym xsd:string * ;           # 541
-    oboInOwl:hasDbXref xsd:string * ;                  # 18,056 triples / 11,478 classes (48.2%) —
-                                                       #   CURIE STRINGS, not IRIs. Also present on
-                                                       #   non-class axiom nodes: anchor on owl:Class.
-    oboInOwl:hasAlternativeId xsd:string * ;           # 3,961 — merged-in obsolete CURIEs
-    oboInOwl:inSubset IRI * ;                          # 845 — e.g. slim membership (VERIFIED IRI)
-    oboInOwl:consider xsd:string * ;                   # 85 — suggested replacement for an obsolete
-                                                       #   term. A CURIE LITERAL, not an IRI.
-    obo:IAO_0000115 xsd:string ? ;                     # 17,344 — "definition" (VERIFIED label, 15 graphs).
-                                                       #   Present in efo; ABSENT in fma/sio/edam.
-    obo:IAO_0100001 (IRI OR xsd:string) ? ;            # "term replaced by" — POLYMORPHIC, see warnings
-    obo:IAO_0000231 IRI ? ;                            # 3,961 — "has obsolescence reason"
-    obo:IAO_0000233 (IRI OR xsd:anyURI OR xsd:string) ? ;
-                                                       # "term tracker item" — POLYMORPHIC BY GRAPH;
-                                                       # see critical_warnings. hp: 1,461 ALL IRI /
-                                                       # go: 20,249 xsd:anyURI / cl: xsd:string+IRI.
-                                                       # Use STR() if you span graphs.
-    owl:deprecated xsd:boolean ? ;                     # 4,019 in hp — only ever true^^xsd:boolean
-    rdfs:comment xsd:string ? ;                        # 4,685
-  }
-  # NOT documented (bioportal export artifact, no query value):
-  #   <http://data.bioontology.org/metadata/treeView>  # 24,330 in hp — BioPortal UI hint
-  # obo:terms_date / terms_creator / terms_contributor (13,387 / 11,270 / 6,520 in hp) are
-  # provenance literals; excluded deliberately — no retrieval use case.
+global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
+  - id: namespace_map
+    say: >
+      obo IS NOT UNIVERSAL — the #1 silent 0-row failure. FIVE ontologies do NOT use purl.obolibrary.org/obo/:
+      EFO → http://www.ebi.ac.uk/efo/EFO_NNNN ; SIO → http://semanticscience.org/resource/SIO_NNNN ;
+      MEO → https://mdatahub.org/data/meo/MEO_NNNN ; FMA → http://purl.org/sig/ont/fma/fmaNNNN
+      (LOWERCASE 'fma', NO underscore) ; EDAM → http://edamontology.org/{data_,operation_,format_,topic_}NNNN
+      (NO 'EDAM_' prefix exists). An obo-form IRI for any of these returns ZERO rows, no error. All obo-family
+      prefixes (HP, GO, UBERON, CL, SO, ECO, PR→pro, CLO, CMO, MMO, UO, PO, XCO, MONDO) pin to the graph of the
+      same localname. RO_/BFO_/IAO_ have NO home graph (see schema_delta).
+  - id: graph_pin
+    say: >
+      MANDATORY: GRAPH/FROM the OWNING ontology graph on EVERY pattern. Unscoped over the 37-graph endpoint,
+      re-declared upper-ontology labels return one arbitrary row per graph (RO_0002211 "has_component" in xco is
+      flatly wrong), foreign subClassOf edges CHANGE the descendant set (not just inflate it), and a transitive
+      subClassOf* can 500 on transitive temp memory. COUNT(DISTINCT) does NOT repair a changed answer set.
+  - id: literal_form_per_graph
+    say: >
+      The exact-match literal form is a property of the GRAPH and is INVERTED between them — every wrong form
+      returns 0 rows silently. TYPED ^^xsd:string matches in hp/go only; PLAIN in uberon/cl/efo/edam/mondo;
+      "x"@en in fma/sio/meo. SAFE EVERYWHERE: FILTER(STR(?l) = "x") — use it whenever you span graphs or are
+      unsure. DATATYPE() cannot decide this (Virtuoso reports xsd:string for both typed and plain).
+  - id: lang_filter
+    say: >
+      NEVER FILTER(LANG(?label)="en") AND NEVER FILTER(LANG(?label)="") — each drops ~99% on opposite halves.
+      obo graphs: a term's OWN label is UNtagged, @en marks an import (LANG="en" drops CL's 21,643 untagged).
+      fma/sio/meo: the OWN label IS @en (LANG="" drops 104,919 of FMA's). ALWAYS FILTER(LANG(?label) IN ("","en")).
+  - id: deprecated_filter
+    say: >
+      Obsolete terms keep labels and resolve silently: owl:deprecated true^^xsd:boolean marks 13,704 GO / 4,019 HP
+      / 1,390 UBERON classes; ~21% of labelled GO classes are obsolete. Add FILTER NOT EXISTS { ?t owl:deprecated
+      true } unless you want obsoletes. EFO double-marks (owl:deprecated AND an "obsolete_" label prefix; deprecated
+      is the reliable one). subClassOf traversals also descend into obsolete branches.
+  - id: predicate_per_ontology
+    say: >
+      The definition/ID/synonym predicate is NOT uniform. obo family → IAO_0000115 (def), skos:notation/oboInOwl:id
+      (CURIE), oboInOwl:hasExactSynonym. FMA has NONE of these → fma:definition, fma:FMAID (xsd:INTEGER),
+      fma:preferred_name/non-English_equivalent. EDAM def = oboInOwl:hasDefinition; SIO def = dcterms:description,
+      id = dc:identifier; EFO has IAO_0000115 but NO skos:notation. Hard-coding the obo form returns nothing.
 
-  # ---------------------------------------------------------------------------
-  # FMA IS A DIFFERENT SCHEMA ENTIRELY. 104,720 of 104,721 owl:Class in <ontology/fma>
-  # use http://purl.org/sig/ont/fma/fmaNNNNN (lowercase, no underscore); the 1 remainder
-  # is dcterms:Agent. VERIFIED on fma7088 ("Heart") 2026-07-16.
-  # NOTE what is ABSENT: skos:notation, oboInOwl:*, IAO_0000115 — all zero.
-  # ---------------------------------------------------------------------------
-  <FmaClassShape> {
-    a [ owl:Class ] ;
-    rdfs:label rdf:langString ;                        # "Heart"@en — @en-TAGGED, NOT xsd:string!
-                                                       #   104,919 of 104,936 fma labels are @en;
-                                                       #   only 17 are xsd:string. The INVERSE of
-                                                       #   every obo graph. "Heart"^^xsd:string
-                                                       #   matches NOTHING. See critical_warnings.
-    fma:FMAID xsd:integer ;                            # 7088 — an INTEGER, not a CURIE string.
-                                                       #   This is FMA's identifier field; there is
-                                                       #   no skos:notation to fall back on.
-    fma:preferred_name xsd:string ? ;                  # "Heart"
-    fma:definition xsd:string ? ;                      # the current definition
-    fma:non-English_equivalent xsd:string * ;          # 6 on fma7088: Coeur, Cor, Corazon, Cuore,
-                                                       #   Herz, Puso — FMA's multilingual channel
-                                                       #   (NOT lang-tagged; plain xsd:string)
-    rdfs:comment xsd:string ? ;                        # often the superseded "Old definition: ..."
-    rdfs:subClassOf (IRI OR BNODE) * ;                 # fma7088 -> fma55673 + owl:Restriction bnodes
-  }
-
-sample_rdf_entries:
-  rdf_prefixes: |
-    @prefix obo: <http://purl.obolibrary.org/obo/> .
-    @prefix owl: <http://www.w3.org/2002/07/owl#> .
-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-    @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
-    @prefix oboInOwl: <http://www.geneontology.org/formats/oboInOwl#> .
-    @prefix fma: <http://purl.org/sig/ont/fma/> .
-    @prefix efo: <http://www.ebi.ac.uk/efo/> .
-    @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-  entries:
-    - title: "Active obo term — the canonical resolution target"
-      description: >
-        HP_0001250 in GRAPH <http://rdfportal.org/ontology/hp>. Every literal is xsd:string with
-        no language tag: an exact match MUST carry ^^xsd:string.
-      rdf: |
-        obo:HP_0001250 a owl:Class ;
-            rdfs:label "Seizure"^^xsd:string ;
-            skos:notation "HP:0001250"^^xsd:string ;
-            oboInOwl:id "HP:0001250"^^xsd:string ;
-            oboInOwl:hasOBONamespace "human_phenotype"^^xsd:string ;
-            oboInOwl:hasExactSynonym "Epileptic seizure"^^xsd:string , "Seizures"^^xsd:string ;
-            oboInOwl:hasAlternativeId "HP:0001275"^^xsd:string ;
-            obo:IAO_0000115 "A seizure is an intermittent abnormality of nervous system physiology characterized by a transient occurrence of signs and/or symptoms due to abnormal excessive or synchronous neuronal activity in the brain."^^xsd:string ;
-            rdfs:subClassOf obo:HP_0012638 .
-    - title: "FMA term — a NON-obo IRI with an entirely different predicate set"
-      description: >
-        fma7088 ("Heart") in GRAPH <http://rdfportal.org/ontology/fma>. Three traps in one entry:
-        the IRI is lowercase with no underscore; NONE of skos:notation / oboInOwl:* / IAO_0000115
-        exist here; and rdfs:label is @en-TAGGED while every sibling literal is xsd:string — so
-        "Heart"^^xsd:string matches nothing. An obo-form <obo/FMA_7088> returns 0 rows.
-      rdf: |
-        fma:fma7088 a owl:Class ;
-            rdfs:label "Heart"@en ;
-            fma:FMAID 7088 ;
-            fma:preferred_name "Heart"^^xsd:string ;
-            fma:definition "Organ with cavitated organ parts, each instance of which is continuous with some systemic and pulmonary arterial and venous trees. Examples: There is only one heart."^^xsd:string ;
-            fma:non-English_equivalent "Coeur"^^xsd:string , "Cor"^^xsd:string , "Herz"^^xsd:string ;
-            rdfs:subClassOf fma:fma55673 .
-    - title: "Obsolete EFO term — NON-obo IRI, deprecated AND 'obsolete_' label prefix"
-      description: >
-        EFO_0000305 in GRAPH <http://rdfportal.org/ontology/efo> — four traps in one entry. The
-        IRI is ebi.ac.uk/efo (an obo form returns 0 rows). EFO marks obsoletes twice
-        (owl:deprecated AND the label prefix). It HAS IAO_0000115 but NO skos:notation, and its
-        IAO_0100001 is a full IRI stored as a string LITERAL (isIRI() is false). And every
-        literal below is PLAIN — efo does not store ^^xsd:string, the exact inverse of the HP
-        entry above.
-      rdf: |
-        efo:EFO_0000305 a owl:Class ;
-            rdfs:label "obsolete_breast carcinoma" ;
-            owl:deprecated true ;
-            obo:IAO_0000115 "A carcinoma that arises from epithelial cells of the breast" ;
-            obo:IAO_0100001 "http://purl.obolibrary.org/obo/MONDO_0004989" ;
-            oboInOwl:hasDbXref "EFO:0000305" , "DOID:3459" ;
-            oboInOwl:hasExactSynonym "breast carcinoma" ;
-            skos:exactMatch obo:DOID_3459 , obo:NCIT_C4872 ;
-            rdfs:subClassOf owl:Thing .
-
-sparql_query_examples:
-  - title: "Resolve a batch of opaque IRIs across MIXED namespaces (owner-graph pinned)"
-    description: >
-      The flagship pattern, and this file's namespace regression test. VALUES pairs each IRI with
-      its OWNING graph AND builds each IRI from that ontology's REAL namespace (schema_info.
-      iri_namespaces) — obo for HP, ebi.ac.uk for EFO, purl.org/sig/ont for FMA, semanticscience
-      for SIO, edamontology for EDAM, mdatahub for MEO. Assuming obo throughout drops 5 of 6 rows.
-    question: "What do HP_0001250, EFO_0022223, fma7088, SIO_000776, data_0863 and MEO_0000001 mean?"
+# ── examples: verified, executable atoms. Class = owl:Class; hierarchy is a DAG (multi-parent). Subjects are
+#    neutral/canonical (leukocyte, Heart, brain, evidence-manual, atmosphere) — NOT drawn from the ontology-graph
+#    benchmark subjects (blood UBERON_0000178, skin/epidermis UBERON_0001003, SO splice terms, plant PO). §4.6. ──
+examples:
+  - id: resolve_mixed_iris
+    intent: batch-resolve opaque class IRIs across MIXED namespaces, owner-graph pinned (the flagship + namespace regression test)
+    question: "What do CL_0000738, ECO_0000352, fma7088, SIO_010035, data_0863 and MEO_0000001 mean?"
     complexity: basic
     sparql: |
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX owl: <http://www.w3.org/2002/07/owl#>
-
       SELECT ?iri ?label ?obsolete
       WHERE {
         VALUES (?iri ?g) {
-          (<http://purl.obolibrary.org/obo/HP_0001250>       <http://rdfportal.org/ontology/hp>)
-          (<http://www.ebi.ac.uk/efo/EFO_0022223>            <http://rdfportal.org/ontology/efo>)
+          (<http://purl.obolibrary.org/obo/CL_0000738>       <http://rdfportal.org/ontology/cl>)
+          (<http://purl.obolibrary.org/obo/ECO_0000352>      <http://rdfportal.org/ontology/eco>)
           (<http://purl.org/sig/ont/fma/fma7088>             <http://rdfportal.org/ontology/fma>)
-          (<http://semanticscience.org/resource/SIO_000776>  <http://rdfportal.org/ontology/sio>)
+          (<http://semanticscience.org/resource/SIO_010035>  <http://rdfportal.org/ontology/sio>)
           (<http://edamontology.org/data_0863>               <http://rdfportal.org/ontology/edam>)
           (<https://mdatahub.org/data/meo/MEO_0000001>       <http://rdfportal.org/ontology/meo>)
         }
@@ -404,22 +127,18 @@ sparql_query_examples:
         FILTER(LANG(?label) IN ("", "en"))
         BIND(COALESCE(?dep, false) AS ?obsolete)
       }
-    # Verified 2026-07-16: 6 rows — Seizure / metabolite ratio / Heart / object /
-    # Sequence alignment / atmosphere. All obsolete=false.
-    # The obo-form variant (<obo/EFO_0022223>, <obo/FMA_7088>, <obo/SIO_000776>,
-    # <obo/EDAM_0863>, <obo/MEO_0000001>) returns 0 rows for all five — silently.
+    verified: {rows: 6, labels: "leukocyte / evidence used in manual assertion / Heart / gene / Sequence alignment / atmosphere", all_obsolete: false, date: "2026-07-22"}
+    teaches: "VALUES pairs each IRI with its OWNING graph AND builds each from that ontology's REAL namespace (gotcha namespace_map): obo for CL/ECO, ebi.ac.uk for EFO, purl.org/sig/ont for FMA, semanticscience for SIO, edamontology for EDAM, mdatahub for MEO. One round trip resolves any mixed batch. FILTER(LANG IN ('','en')) is the only form correct across both label-tag halves."
+    traps_avoided:
+      - "The obo-form variant (<obo/FMA_7088>, <obo/SIO_010035>, <obo/EDAM_0863>, <obo/MEO_0000001>) returns 0 rows for those four — SILENTLY. Assuming obo throughout drops 4 of 6 rows (gotcha namespace_map)."
 
-  - title: "Full term record for a NON-obo ontology (FMA)"
-    description: >
-      Proves the predicate set is per-ontology. FMA carries no skos:notation, no oboInOwl:*, no
-      IAO_0000115 — its ID is fma:FMAID (an integer) and its definition is fma:definition. The
-      obo-family query (skos:notation + IAO_0000115) returns nothing here.
+  - id: term_record_nonobo
+    intent: full term record for a NON-obo ontology (FMA), proving the predicate set is per-ontology
     question: "What is FMA:7088 — its FMAID, preferred name, definition and translations?"
     complexity: basic
     sparql: |
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX fma: <http://purl.org/sig/ont/fma/>
-
       SELECT ?label ?fmaid ?preferred ?definition
              (GROUP_CONCAT(DISTINCT ?nonEng; separator=" | ") AS ?translations)
       WHERE {
@@ -432,470 +151,146 @@ sparql_query_examples:
         }
       }
       GROUP BY ?label ?fmaid ?preferred ?definition
-    # Verified 2026-07-16: Heart / 7088 / Heart / "Organ with cavitated organ parts..." /
-    # Coeur | Cor | Corazon | Cuore | Herz | Puso.
+    verified: {label: "Heart", fmaid: 7088, definition_present: true, translations: "Coeur | Cor | Corazon | Cuore | Herz | Puso", date: "2026-07-22"}
+    teaches: "FMA carries NO skos:notation, NO oboInOwl:*, NO IAO_0000115 — its ID is fma:FMAID (an integer 7088), its definition is fma:definition, its label is @en-tagged. The obo-family query (skos:notation + IAO_0000115) returns nothing here (gotcha predicate_per_ontology). fma:non-English_equivalent is FMA's multilingual channel."
+    traps_avoided:
+      - "The IRI is lowercase 'fma' with NO underscore; <obo/FMA_7088> is 0 rows. rdfs:label 'Heart'^^xsd:string also matches nothing here (fma labels are @en) — this query reads label without a literal filter, so it is safe (gotcha literal_form_per_graph)."
 
-  - title: "Expand a term to its active subsumption subtree (graph-pinned, DISTINCT)"
-    description: >
-      The core hierarchy operation for a NON-anatomical ontology, where is_a is the real
-      hierarchy. Pinning <ontology/hp> keeps foreign subClassOf edges out; the owl:deprecated
-      filter keeps obsolete terms out; COUNT(DISTINCT) collapses DAG path multiplicity. All
-      three are mandatory — see critical_warnings.
-    question: "How many active HP terms are descendants of 'Abnormality of the nervous system'?"
-    complexity: intermediate
+  - id: is_a_subtree
+    intent: expand a term to its active is_a subtree, graph-pinned + DISTINCT (route #1 — subsumption; the aggregation recipe)
+    question: "How many active CL terms are descendants of 'leukocyte'?"
+    complexity: aggregation
     sparql: |
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX owl: <http://www.w3.org/2002/07/owl#>
-
       SELECT (COUNT(DISTINCT ?term) AS ?activeDescendants)
       WHERE {
-        GRAPH <http://rdfportal.org/ontology/hp> {
-          ?term rdfs:subClassOf* <http://purl.obolibrary.org/obo/HP_0000707> ;
+        GRAPH <http://rdfportal.org/ontology/cl> {
+          ?term rdfs:subClassOf* <http://purl.obolibrary.org/obo/CL_0000738> ;
                 rdfs:label ?label .
           FILTER NOT EXISTS { ?term owl:deprecated true }
         }
       }
-    # Verified 2026-07-16: 2,825 active descendants — from 4,767 raw path rows, because the DAG
-    # returns multi-parent terms once per path. COUNT(DISTINCT) is what makes this correct.
+    verified: {activeDescendants: 573, raw_path_rows: 1483, date: "2026-07-22", note: "573 distinct from 1,483 path rows — the DAG returns multi-parent terms once per path. To LIST, SELECT DISTINCT ?term ?label with the same body."}
+    teaches: "rdfs:subClassOf* is THE route to enumerate 'all terms of kind X' — the complete subtree, not a label-search sample. * includes the anchor, + excludes it. Three requirements, all mandatory: pin the OWNING graph (gotcha graph_pin), FILTER NOT EXISTS owl:deprecated, and COUNT(DISTINCT) because the hierarchy is a DAG (1,483 path rows collapse to 573 terms). Binding rdfs:label also gives Virtuoso the transitive start it needs."
+    traps_avoided:
+      - "UNPINNED `?term rdfs:subClassOf* CL_0000738` over all 37 graphs EXCEEDED Virtuoso transitive temp memory → HTTP 500 (verified 2026-07-22). Pinning is survival, not just correctness (gotcha graph_pin)."
+      - "COUNT(*) instead of COUNT(DISTINCT) reports 1,483 — a DAG over-count that also distorts per-term rankings when joined to data (gotcha graph_pin / see xdb_eco_glycosmos)."
 
-  - title: "Find a term by its exact synonym (structured, no text search)"
-    description: >
-      Synonyms are a controlled field, so an exact match beats any text search. The ^^xsd:string
-      annotation is REQUIRED — the plain-literal form returns zero rows silently.
-    question: "Which HP term has the exact synonym 'Epileptic seizure'?"
-    complexity: intermediate
-    sparql: |
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
-
-      SELECT ?term ?curie ?label
-      WHERE {
-        GRAPH <http://rdfportal.org/ontology/hp> {
-          ?term oboInOwl:hasExactSynonym "Epileptic seizure"^^xsd:string ;
-                rdfs:label ?label ;
-                skos:notation ?curie .
-        }
-      }
-    # Verified 2026-07-16: HP_0001250 / HP:0001250 / Seizure. Without ^^xsd:string: 0 rows.
-
-  - title: "Map obsolete terms to their replacements (handles the polymorphic object)"
-    description: >
-      IAO_0100001 stores its object as an IRI in some rows and an xsd:string CURIE in others,
-      within the same graph. The BIND normalizes the CURIE form to an IRI so both join.
-    question: "Which GO terms are obsolete, and what replaced them?"
-    complexity: intermediate
-    sparql: |
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX owl: <http://www.w3.org/2002/07/owl#>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-
-      SELECT ?obsolete ?oldLabel ?replacementIRI ?newLabel
-      WHERE {
-        GRAPH <http://rdfportal.org/ontology/go> {
-          ?obsolete owl:deprecated true ;
-                    rdfs:label ?oldLabel ;
-                    obo:IAO_0100001 ?rawReplacement .
-        }
-        BIND(IF(isIRI(?rawReplacement),
-                ?rawReplacement,
-                IRI(CONCAT("http://purl.obolibrary.org/obo/",
-                           REPLACE(STR(?rawReplacement), ":", "_")))
-             ) AS ?replacementIRI)
-        GRAPH <http://rdfportal.org/ontology/go> { ?replacementIRI rdfs:label ?newLabel }
-      }
-      ORDER BY ?obsolete
-      LIMIT 6
-    # Verified 2026-07-16: GO_0000003 "obsolete reproduction" -> GO_0022414 "reproductive
-    # process"; GO_0000108 -> GO_0000109; ... Resolves rows of BOTH object forms.
-
-  - title: "Walk the ANATOMICAL partonomy with part_of (subClassOf finds almost nothing)"
-    description: >
-      The correct hierarchy operation for UBERON/FMA/PO. Anatomical containment is asserted as
-      an owl:Restriction on BFO_0000050 (part of), NOT as subClassOf — so the is_a expansion in
-      example 3 is the WRONG tool here. Pattern: match the bnode restriction inline.
+  - id: part_of_partonomy
+    intent: walk the ANATOMICAL partonomy via part_of BFO_0000050 (route #2 — subClassOf finds almost nothing here)
     question: "What are the direct anatomical parts of the brain in UBERON?"
     complexity: advanced
     sparql: |
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX owl: <http://www.w3.org/2002/07/owl#>
       PREFIX obo: <http://purl.obolibrary.org/obo/>
-
       SELECT ?part ?label
       WHERE {
         GRAPH <http://rdfportal.org/ontology/uberon> {
           ?part rdfs:subClassOf [ a owl:Restriction ;
-                                  owl:onProperty obo:BFO_0000050 ;   # part of
+                                  owl:onProperty obo:BFO_0000050 ;      # part of
                                   owl:someValuesFrom obo:UBERON_0000955 ] ;
                 rdfs:label ?label .
         }
       }
       ORDER BY ?label
-    # Verified 2026-07-16: 72 direct parts (diencephalon, cerebellum, ...). By contrast
-    # `?c rdfs:subClassOf* UBERON_0000955` returns only 5 rows, ALL taxon variants of "brain"
-    # (insect embryonic brain, neural tube derived brain, ...) — zero actual brain parts.
-    # Transitive part_of is NOT pre-materialized: a multi-level partonomy needs a recursive walk
-    # over nested restrictions, which is expensive — bound the depth.
+    verified: {directParts: 72, date: "2026-07-22", examples: "diencephalon, cerebellum, ... (72 direct parts)"}
+    teaches: "TWO hierarchy predicates coexist. In UBERON/FMA/PO anatomical containment is asserted as an owl:Restriction on BFO_0000050 (part_of) BNODE — NOT as subClassOf. subClassOf means 'is a KIND of', part_of means 'is PART of'. Match the bnode restriction inline. This is the second first-class enumeration route (§4.4)."
+    traps_avoided:
+      - "The is_a expansion `?c rdfs:subClassOf* UBERON_0000955` returns only 5 rows, ALL taxon variants of 'brain' (insect embryonic brain, …) — ZERO body parts. is_a is the WRONG tool for anatomy; an isIRI(?parent) filter would discard the very bnodes that ARE the partonomy."
+      - "part_of is NOT transitively materialized — a multi-level walk recurses over nested restrictions and is expensive; bound the depth."
 
-  - title: "Detect cross-graph label collisions before trusting a resolution"
-    description: >
-      The diagnostic for the conflicting-labels warning. Compare on STR(?label), NOT on ?label —
-      the latter counts "Seizure"^^xsd:string and "Seizure"@en as distinct and reports false
-      collisions.
-    question: "Which of these IRIs are labelled inconsistently across the ontology graphs?"
-    complexity: advanced
+  - id: synonym_exact
+    intent: find a term by its exact synonym (a controlled field — beats any text search), using the graph-safe literal form
+    question: "Which cell-type term has the exact synonym 'white blood cell'?"
+    complexity: intermediate
     sparql: |
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-      SELECT ?iri (COUNT(DISTINCT ?g) AS ?graphs) (COUNT(DISTINCT ?lex) AS ?distinctLabels)
-             (GROUP_CONCAT(DISTINCT CONCAT(?gs, "=", ?lex); separator=" | ") AS ?variants)
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+      SELECT ?term ?label
       WHERE {
-        VALUES ?iri {
-          <http://purl.obolibrary.org/obo/RO_0002211>
-          <http://purl.obolibrary.org/obo/BFO_0000050>
-          <http://purl.obolibrary.org/obo/IAO_0000115>
-          <http://purl.obolibrary.org/obo/HP_0001250>
-        }
-        GRAPH ?g { ?iri rdfs:label ?label }
-        FILTER(LANG(?label) IN ("", "en"))
-        BIND(STR(?label) AS ?lex)
-        BIND(REPLACE(STR(?g), "http://rdfportal.org/ontology/", "") AS ?gs)
-      }
-      GROUP BY ?iri
-      HAVING (COUNT(DISTINCT ?lex) > 1)
-      ORDER BY DESC(?distinctLabels)
-    # Verified 2026-07-16: RO_0002211 (7 graphs, 3 labels — xco="has_component" is wrong);
-    # BFO_0000050 (10 graphs, "part of"/"part_of"); IAO_0000115 (15 graphs, clo="textual
-    # definition"). HP_0001250 correctly EXCLUDED — both its graphs agree on "Seizure".
-
-cross_database_queries:
-  shared_endpoint: primary
-  co_located_databases: [go, mondo, taxonomy, mesh, nando, hgnc, bacdive, mediadive, brenda, jpostdb, massbank, nbrc, mogplus, hco, mco, glycosmos]
-  examples:
-    - title: "ECO subtree x GlyCosmos glycogenes — split manual from automatic evidence"
-      description: >
-        The LARGEST ontology-to-data join here (1,996,752 refs) and fully hierarchy-aware:
-        expanding ECO_0000352 ("evidence used in manual assertion") splits glycogenes' manual
-        evidence from its automatic. glycosmos' sio:SIO_000772 points at the same obo ECO IRIs,
-        so the join is direct. COUNT(DISTINCT ?s) is mandatory — the ECO subtree is a DAG
-        (800 path rows / 735 distinct terms).
-      databases_used: [ontology, glycosmos]
-      complexity: advanced
-      sparql: |
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        PREFIX sio: <http://semanticscience.org/resource/>
-
-        SELECT (COUNT(DISTINCT ?eco) AS ?ecoTermsUsed)
-               (COUNT(DISTINCT ?s) AS ?manualAssertions)
-        WHERE {
-          GRAPH <http://rdfportal.org/ontology/eco> {
-            ?eco rdfs:subClassOf* <http://purl.obolibrary.org/obo/ECO_0000352> .
-            FILTER NOT EXISTS { ?eco owl:deprecated true }
-          }
-          GRAPH <http://rdf.glycosmos.org/glycogenes> {
-            ?s sio:SIO_000772 ?eco .
-          }
-        }
-      notes: |
-        - Linking via: obo ECO_ IRIs, identical on both sides (no namespace translation)
-        - Verified 2026-07-16: 23 terms / 463,051 distinct manually-asserted glycogene annotations
-        - The complement is ECO_0000501 ("evidence used in automatic assertion"): 1,533,701 refs,
-          the single largest term. 463,051 + 1,533,701 = 1,996,752 = the full ECO ref count,
-          which is how this figure was cross-checked.
-        - COUNT(*) instead of COUNT(DISTINCT ?s) returns 620,815 — a 34% over-count.
-        - MIE files checked: ontology, glycosmos
-
-    - title: "HP subtree x PubCaseFinder phenotype annotations"
-      description: >
-        Expand HP to a subtree and join it to PubCaseFinder's annotations in one query — what
-        OLS4 cannot do. Both graphs pinned, deprecated excluded, COUNT(DISTINCT ?annotation)
-        mandatory because HP is a DAG.
-      databases_used: [ontology, pubcasefinder]
-      complexity: advanced
-      sparql: |
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        PREFIX oa: <http://www.w3.org/ns/oa#>
-
-        SELECT ?label (COUNT(DISTINCT ?annotation) AS ?annotations)
-        WHERE {
-          GRAPH <http://rdfportal.org/ontology/hp> {
-            ?term rdfs:subClassOf* <http://purl.obolibrary.org/obo/HP_0000707> ;
-                  rdfs:label ?label .
-            FILTER NOT EXISTS { ?term owl:deprecated true }
-          }
-          GRAPH <https://pubcasefinder.dbcls.jp/rdf> { ?annotation oa:hasBody ?term }
-        }
-        GROUP BY ?label
-        ORDER BY DESC(?annotations)
-        LIMIT 10
-      notes: |
-        - Linking via obo HP_ IRIs, identical on both sides — no namespace translation.
-        - Verified 2026-07-16: 1,546 terms / 75,562 DISTINCT annotations. Top: Seizure 2,979,
-          Intellectual disability 2,492, Global developmental delay 2,134, Microcephaly 1,812.
-        - COUNT(*) instead gives 111,591 (+48%) AND REORDERS the top 10 — two-parent terms
-          inflate exactly 2x (Intellectual disability -> 4,984, jumping above Seizure) while
-          single-parent terms do not. The DISTINCT is a correctness fix, not a tidiness one.
-        - PubCaseFinder is NOT a registered TogoMCP database; query it via this entry.
-  notes: |
-    Many ontology graphs here are INERT — joined to nothing on this endpoint. PRO (365,852
-    classes), FMA, EFO and CLO have no data consumer; their only inbound references come from
-    other ontology graphs. Do not assume a graph's size implies it is queryable against data.
-    The measured ontology-to-data links, largest first:
-      - ECO <- glycosmos/glycogenes: 1,996,752 refs over 24 terms. HIERARCHY-AWARE.
-      - pubcasefinder -> HP: 379,263 annotations over 10,392 terms. HIERARCHY-AWARE.
-      - nando -> MONDO: 2,341 skos:closeMatch over 1,572 terms. HIERARCHY-AWARE — but it is
-        documented properly in the `nando` MIE (trilingual labels, coverage, many-to-many
-        caveat). Use that file; this entry only records that the link exists.
-      - open-tggates -> UBERON: 2 terms only (liver 20,415 / kidney 4,149). No hierarchy value.
-      - hgnc -> SO: 1 term (SO_0000704 "gene" via rdf:type on 44,997 genes). A flat tag.
-      - CL <- refex/fantom5: a handful of refs (not re-measured 2026-07-16; an unfiltered scan
-        of that graph times out — probe with a VALUES list of candidate CL terms instead).
-
-cross_references:
-  - pattern: predicate_by_ontology
-    description: |
-      THE definition / ID / synonym predicate is NOT the same across ontologies. Hard-coding the
-      obo form silently returns nothing for the four exceptions. VERIFIED 2026-07-16:
-
-      DEFINITION:
-        obo family (hp, go, uberon, cl, so, eco, clo, cmo, mondo, pro, po, xco, efo)
-                          -> obo:IAO_0000115
-        EDAM              -> oboInOwl:hasDefinition        (NOT IAO_0000115)
-        SIO               -> dcterms:description
-        FMA               -> <http://purl.org/sig/ont/fma/definition>
-
-      CURIE / IDENTIFIER:
-        obo family        -> skos:notation (hp = 100%) and/or oboInOwl:id
-        FMA               -> <http://purl.org/sig/ont/fma/FMAID>, an xsd:INTEGER (7088)
-        SIO               -> dc:identifier ("SIO_000776")
-        EFO, EDAM         -> NEITHER skos:notation NOR oboInOwl:id. Derive the ID from the IRI
-                             local name, or read oboInOwl:hasDbXref (EFO carries "EFO:0000305").
-
-      SYNONYMS:
-        obo family + EDAM -> oboInOwl:hasExactSynonym / hasRelatedSynonym / hasBroad / hasNarrow
-        FMA               -> <fma/preferred_name>, <fma/non-English_equivalent>
-        SIO               -> no synonym predicate observed on the probed term
-  - pattern: oboInOwl:hasDbXref
-    description: |
-      Cross-references to external vocabularies, stored as xsd:string CURIEs — NOT as IRIs.
-      Multi-valued: 18,056 triples over 11,478 of 23,829 hp classes (48.2%). NOTE the predicate
-      also hangs off non-class nodes (axiom reifications): unanchored it has 32,301 distinct
-      subjects, MORE than the 23,829 classes — so always anchor on `?s a owl:Class` before
-      computing coverage. Because the value is a literal CURIE it cannot be joined directly to an
-      IRI-keyed database; parse the prefix and mint the target IRI, or route through TogoID.
-  - pattern: skos:notation
-    description: |
-      The term's own CURIE ("HP:0001250"), xsd:string, on 23,829 of 23,829 hp classes (100%) —
-      the most reliable identifier field IN THE OBO FAMILY, and more complete than rdfs:label
-      (85.5%). It does NOT exist at all in fma / sio / edam / efo — see predicate_by_ontology.
-  - pattern: rdfs:subClassOf (+ the BFO_0000050 partonomy it carries)
-    description: |
-      The subsumption backbone — "is a kind of", NOT "is part of". Its object is an IRI for a
-      named parent or a BNODE for an owl:Restriction axiom, and the mix varies sharply by graph:
-      hp 100% IRI (24,330, no bnodes at all); go ~20% bnode (16,215 vs 66,148 IRI); uberon 54%
-      BNODE (43,981 vs 36,670). So isIRI(?parent) is right for hp/go and WRONG for anatomy —
-      in uberon/fma/po those bnodes ARE the partonomy the user means:
-        ?part rdfs:subClassOf [ a owl:Restriction ; owl:onProperty BFO_0000050 ;
-                                owl:someValuesFrom ?whole ]
-      Verified on UBERON_0000955 (brain): 72 direct parts vs 5 taxon variants from subClassOf*.
-      part_of is NOT transitively materialized — a multi-level walk recurses over nested
-      restrictions and is expensive; bound the depth. The restriction axioms live in the owning
-      anatomy graph, so pin that (BFO_0000050 itself has no home graph — 10 graphs declare its
-      label as "part of"/"part_of").
-      Both directions MUST be graph-pinned, and expansions counted with COUNT(DISTINCT) — these
-      are DAGs, so a multi-parent term is returned once per path. See critical_warnings.
-
-architectural_notes:
-  query_strategy:
-    - "FIRST: read this MIE; check whether the target ontology has its OWN MIE (go, mondo, taxonomy) — use that for deep single-ontology work"
-    - "SECOND: build the IRI from schema_info.iri_namespaces. Do NOT assume obo — that is the #1 silent failure here."
-    - "Many IRIs to resolve -> the owner-pinned VALUES batch (query example 1), one round trip"
-    - "One IRI you must genuinely understand (definition, synonyms, ancestors) -> OLS4 fetch / getAncestors / getDescendants — per-ontology authoritative, so no cross-graph collision"
-    - "EXACT term name -> a pinned rdfs:label match, NOT OLS4:searchClasses. VERIFIED: searchClasses('seizure', hp) buries the exact term HP_0001250 below rank 20 of 364 behind its own narrower subtypes. OLS4 search is for FUZZY/exploratory lookup only."
-    - "For that label match, pick the literal form BY GRAPH (see critical_warnings): \"X\"^^xsd:string in hp/go; plain \"X\" in uberon/cl/efo/edam; \"X\"@en in fma/sio/meo. If unsure, or across graphs, use FILTER(STR(?label) = \"X\") — it is correct everywhere."
-    - "Hierarchy + a join against data -> SPARQL here; OLS4 cannot join (it would need a 1,546-IRI VALUES block)"
-    - "ANATOMY (uberon/fma/po) -> part_of restrictions, not subClassOf. Every other ontology -> subClassOf."
-    - "ALWAYS pin the owning GRAPH; ALWAYS annotate exact-match literals ^^xsd:string; ALWAYS COUNT(DISTINCT) over a subClassOf* expansion"
-    - "Priority: Specific IRIs > owner-pinned label lookup > subtree/partonomy expansion > text search (never needed here)"
-  schema_design:
-    - "THE PIN MAP: an OBO prefix pins to the graph of the same name (HP_ -> ontology/hp, GO_ -> ontology/go, UBERON_ -> ontology/uberon, and so on for CL_/CLO_/SO_/ECO_/MONDO_/PR_(->pro)/PO_/XCO_/CMO_/MMO_/UO_). For the five NON-obo ontologies the local name is not the prefix — build the IRI from schema_info.iri_namespaces, which is the authority. RO_/BFO_/IAO_ have no home graph and no single fallback: do NOT pin ontology/go; bind ?g over a VALUES set (see critical_warnings)."
-    - "The obo/oboInOwl class schema is uniform across the obo-family graphs, so OboClassShape serves all of them — but FMA, SIO, EDAM and EFO diverge (see predicate_by_ontology and FmaClassShape). 'One shape serves every ontology' is FALSE."
-    - "Every graph is a self-contained import closure. That is WHY the upper-ontology properties are re-declared 7-15 times, why pinning is mandatory, and why a graph's owl:Class count can overstate its native vocabulary (EFO 20% native, CL 19%) — though many graphs are 100% native. See by_class."
-  performance:
-    - "Pin the GRAPH in every pattern — it is a correctness requirement AND the main performance lever (unscoped GO_0006915 expansion: 1,537 rows vs 104 pinned)."
-    - "'transitive start not given' (Virtuoso TR...): a property path needs a bound starting point. It fires inside FILTER NOT EXISTS — restructure as a subquery + MINUS — but ALSO on a bare `?c rdfs:subClassOf* <term> . FILTER(isIRI(?c))` with nothing else bound. Fix by binding a real triple after the path (e.g. `; rdfs:label ?l`), which both anchors the path and drops the bnodes isIRI was there to exclude."
-    - "Aggregates over unbound ?g across all 37 graphs time out at 60s. Bind ?g via VALUES."
-    - "A UNION of one predicate across 3+ graphs also times out; split into per-graph queries."
-    - "An unfiltered ?s ?p ?o scan of a large DATA graph (open-tggates, refex/fantom5) to find ontology refs times out at 60s; probe with a VALUES list of candidate terms instead."
-  data_integration:
-    - "oboInOwl:hasDbXref values are CURIE literals, not IRIs — not directly joinable; use TogoID for external ID mapping. The ontology-to-data joins that actually exist are inventoried, with counts, in cross_database_queries.notes."
-  data_quality:
-    - "Every quality defect here is a query trap, so all of them live in critical_warnings rather than being restated: retained-but-labelled obsoletes (incl. EFO's double convention), incomplete label coverage in cl/uberon, foreign subClassOf edges, xco's genuinely wrong RO_0002211 label, and owl:Class totals that include import closures. Read that section — this list would only go stale beside it."
-  text_search_justification:
-    - "Number of the 7 example queries that use text search: 0"
-    - "Text search is never justified here: every term carries a controlled label/ID/synonym field as an exact-match xsd:string, so a pinned exact match answers a known name deterministically."
-    - "For a name you only know approximately, OLS4:searchClasses is the fallback — but VERIFIED caveat: it ranks by relevance, not exactness, and buries an exact match whose name is a substring of its descendants' names (searchClasses('seizure', hp): HP_0001250 absent from the top 20 of 364). Always try the exact ^^xsd:string match first."
-
-data_statistics:
-  total_entities: 785551
-  verified_date: "2026-07-16"
-  verification_method: |
-    `total` = COUNT(*) of `?c a owl:Class` per graph, FILTER(isIRI(?c)); the 22 sum to exactly
-    785,551. `native` = the same, restricted via STRSTARTS to that ontology's OWN namespace (see
-    iri_namespaces) and summing to ~574,578 over the 19 measured graphs (the 3 schema vocabularies
-    are not native-measured). total - native = classes embedded from the upstream import closure
-    (NCBITaxon, CHEBI, CL, ...), so `total` is "owl:Class present in this graph", NOT "size of
-    this ontology".
-  graphs_total: 37
-  by_class:                       # {graph: {total, native}} — native omitted for schema vocabularies
-    pro:      {total: 365852, native: 260942}   # native ns: obo/PR_ (71%)
-    fma:      {total: 104721, native: 104720}   # native ns: sig/ont/fma/fma — the 1 other is dcterms:Agent
-    efo:      {total: 93358,  native: 18382}    # native ns: ebi.ac.uk/efo/EFO_ (20%) — 62,233 are obo imports
-    go:       {total: 51967,  native: 51967}    # 100% native
-    clo:      {total: 43327,  native: 39082}    # (90%)
-    mondo:    {total: 33840,  native: 33840}    # 100% native
-    uberon:   {total: 27295,  native: 16358}    # (60%)
-    hp:       {total: 23829,  native: 23829}    # 100% native
-    cl:       {total: 19167,  native: 3607}     # (19%) — the most import-heavy graph
-    cmo:      {total: 4149,   native: 4149}     # 100% native
-    edam:     {total: 3524,   native: 3522}     # native ns: edamontology.org
-    so:       {total: 2747,   native: 2650}     # (96%)
-    meo:      {total: 2390,   native: 2390}     # native ns: mdatahub.org/data/meo — 100% native
-    eco:      {total: 2304,   native: 2303}
-    po:       {total: 2027,   native: 1996}
-    xco:      {total: 1839,   native: 1831}
-    sio:      {total: 1585,   native: 1585}     # native ns: semanticscience.org — 100% native
-    mmo:      {total: 851,    native: 851}
-    uo:       {total: 574,    native: 574}
-    glycordf: {total: 136}                      # schema vocabulary
-    piero:    {total: 35}                       # schema vocabulary
-    orth:     {total: 34}                       # schema vocabulary
-  coverage:
-    hp_skos_notation: "100% (23,829/23,829) — more complete than rdfs:label"
-    hp_rdfs_label: "85.5% — 20,384/23,829; the 3,445 unlabelled are all deprecated"
-    hp_deprecated: "16.9% (4,019/23,829)"
-    go_labelled_but_obsolete: "20.8% — 10,058 labelled-obsolete of 48,321 labelled go classes (13,704 deprecated in total)"
-    efo_deprecated: "26.8% — 4,930 of 18,382 native EFO classes; 4,915 of those also carry an 'obsolete_' label prefix"
-
-anti_patterns:
-  - title: "Assuming the obo namespace for a non-obo ontology (silent 0 rows)"
-    problem: "Minting <http://purl.obolibrary.org/obo/EFO_...> / FMA_ / SIO_ / EDAM_ / MEO_ because every other ontology on this endpoint uses obo. These five do not. The query is syntactically perfect and returns nothing, with no error and no hint that the namespace is the cause."
-    wrong_sparql: |
-      # 0 rows — the IRI simply does not exist in the graph
-      GRAPH <http://rdfportal.org/ontology/fma> {
-        <http://purl.obolibrary.org/obo/FMA_7088> rdfs:label ?label
-      }
-    correct_sparql: |
-      # "Heart" — lowercase 'fma', no underscore
-      GRAPH <http://rdfportal.org/ontology/fma> {
-        <http://purl.org/sig/ont/fma/fma7088> rdfs:label ?label
-      }
-    explanation: "Verified 2026-07-16. Likewise EFO -> http://www.ebi.ac.uk/efo/EFO_0022223, SIO -> http://semanticscience.org/resource/SIO_000776, EDAM -> http://edamontology.org/data_0863 (no 'EDAM_' prefix exists at all), MEO -> https://mdatahub.org/data/meo/MEO_0000001. Build every IRI from schema_info.iri_namespaces."
-
-  - title: "Expanding an anatomy term with subClassOf* only (drops the partonomy)"
-    problem: "UBERON/FMA/PO express sub-structure with part_of (BFO_0000050) owl:Restriction bnodes. subClassOf* — especially with the isIRI(?parent) filter that is correct for HP/GO — returns only taxon-specific is_a variants, so every actual body part silently disappears."
-    wrong_sparql: |
-      # 5 rows, and NOT ONE is a part of the brain — all taxon variants of "brain" itself
-      SELECT ?c ?label WHERE { GRAPH <http://rdfportal.org/ontology/uberon> {
-        ?c rdfs:subClassOf* <http://purl.obolibrary.org/obo/UBERON_0000955> ; rdfs:label ?label . } }
-      # -> brain / insect embryonic brain / insect embryonic-larval brain / insect adult brain /
-      #    neural tube derived brain. Zero body parts. Binding rdfs:label also gives Virtuoso the
-      #    transitive start it needs — a bare FILTER(isIRI(?c)) errors instead of returning.
-    correct_sparql: |
-      # 72 direct anatomical parts (diencephalon, cerebellum, ...)
-      SELECT ?part WHERE { GRAPH <http://rdfportal.org/ontology/uberon> {
-        ?part rdfs:subClassOf [ a owl:Restriction ;
-          owl:onProperty <http://purl.obolibrary.org/obo/BFO_0000050> ;
-          owl:someValuesFrom <http://purl.obolibrary.org/obo/UBERON_0000955> ] } }
-    explanation: "Verified 2026-07-16. The anatomical hierarchy is part_of, not is_a. subClassOf means 'is a kind of', not 'is part of' — a distinction that silently returns 5 wrong rows instead of 72 right ones."
-
-  - title: "Unpinned Hierarchy Expansion (changes the ANSWER SET, not just the row count)"
-    problem: "Expanding a subtree without a GRAPH clause on a 37-graph endpoint. Foreign ontologies assert subClassOf edges on terms they do not own, so the union returns terms the owning ontology does not place in that subtree. COUNT(DISTINCT) does NOT repair this."
-    wrong_sparql: |
-      # 1,537 rows / 77 distinct terms — 5 of them pulled in by uberon's edges
-      SELECT (COUNT(DISTINCT ?c) AS ?n) WHERE {
-        ?c rdfs:subClassOf* <http://purl.obolibrary.org/obo/GO_0006915> .
-      }
-    correct_sparql: |
-      # 104 rows / 72 distinct terms — GO's own hierarchy
-      SELECT (COUNT(DISTINCT ?c) AS ?n) WHERE {
-        GRAPH <http://rdfportal.org/ontology/go> {
-          ?c rdfs:subClassOf* <http://purl.obolibrary.org/obo/GO_0006915> .
+        GRAPH <http://rdfportal.org/ontology/cl> {
+          ?term oboInOwl:hasExactSynonym ?syn ;
+                rdfs:label ?label .
+          FILTER(STR(?syn) = "white blood cell")
         }
       }
-    explanation: "Verified 2026-07-16. GO_0003276, GO_1900204, GO_1900205, GO_1901146 and GO_1901147 have their ONLY subClassOf edge in <ontology/uberon>, so the union makes them apoptosis descendants while GO itself does not. Pin the owning graph."
+    verified: {term: "CL_0000738", label: "leukocyte", date: "2026-07-22"}
+    teaches: "Synonyms are a controlled field, so an exact match beats bif:contains and beats OLS4 search (which ranks by relevance and can bury an exact hit under its own narrower subtypes). FILTER(STR(?syn) = 'x') is the literal form correct in EVERY graph — use it whenever you are unsure of a graph's typed/plain/@en convention (gotcha literal_form_per_graph)."
+    traps_avoided:
+      - "A bare `oboInOwl:hasExactSynonym 'white blood cell'` (plain, no ^^xsd:string) returns 0 rows in graphs that store the typed form. STR() sidesteps the whole per-graph typing question."
 
-  - title: "COUNT(*) over a subClassOf* expansion joined to data (DAG double-counting)"
-    problem: "Treating a hierarchy expansion as a set. These are DAGs: a multi-parent term is returned once per path, so every joined data row is multiplied by that term's path count. The result looks plausible and is wrong — and because the distortion is uneven, it changes rankings, not just totals."
-    wrong_sparql: |
-      # 111,591 "annotations" — inflated 48%; ranks Intellectual disability (4,984) above Seizure
-      SELECT ?label (COUNT(*) AS ?n) WHERE {
-        GRAPH <http://rdfportal.org/ontology/hp> {
-          ?term rdfs:subClassOf* <http://purl.obolibrary.org/obo/HP_0000707> ; rdfs:label ?label . }
-        GRAPH <https://pubcasefinder.dbcls.jp/rdf> { ?annotation oa:hasBody ?term } }
-      GROUP BY ?label ORDER BY DESC(?n)
-    correct_sparql: |
-      # 75,562 true distinct annotations; Seizure (2,979) correctly first
-      SELECT ?label (COUNT(DISTINCT ?annotation) AS ?n) WHERE {
-        GRAPH <http://rdfportal.org/ontology/hp> {
-          ?term rdfs:subClassOf* <http://purl.obolibrary.org/obo/HP_0000707> ; rdfs:label ?label . }
-        GRAPH <https://pubcasefinder.dbcls.jp/rdf> { ?annotation oa:hasBody ?term } }
-      GROUP BY ?label ORDER BY DESC(?n)
-    explanation: "Verified 2026-07-16. The HP_0000707 expansion is 4,767 path rows over 2,825 distinct terms. Two-parent terms inflate exactly 2x (Intellectual disability 4,984 -> 2,492; Microcephaly 3,624 -> 1,812) while single-parent terms are untouched (Seizure 2,979 -> 2,979) — which is precisely why the ranking breaks."
-
-  - title: "Skipping Schema Check Before Text Search — and trusting OLS4's rank for an exact name"
-    problem: "Reaching for bif:contains to find a term by name. rdfs:label / hasExactSynonym are controlled xsd:string fields, so an exact match is both cheaper and deterministic. NOTE the counter-intuitive part: OLS4:searchClasses is ALSO the wrong tool for an exact name here."
-    wrong_sparql: |
-      ?label bif:contains "'seizure'"
-    correct_sparql: |
-      # Exact name -> pinned, typed, deterministic:
-      GRAPH <http://rdfportal.org/ontology/hp> {
-        ?term rdfs:label "Seizure"^^xsd:string ;
-              skos:notation ?curie .
-        FILTER NOT EXISTS { ?term owl:deprecated true }
+  - id: xdb_eco_glycosmos
+    intent: "cross-DB: expand an ontology subtree and JOIN it to co-located data (the one thing OLS4 cannot do)"
+    question: "How many GlyCosmos glycogene annotations rest on MANUAL (vs automatic) evidence, per the ECO subtree?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      SELECT (COUNT(DISTINCT ?eco) AS ?ecoTermsUsed)
+             (COUNT(DISTINCT ?s) AS ?manualAssertions)
+      WHERE {
+        GRAPH <http://rdfportal.org/ontology/eco> {
+          ?eco rdfs:subClassOf* <http://purl.obolibrary.org/obo/ECO_0000352> .   # evidence used in manual assertion
+          FILTER NOT EXISTS { ?eco owl:deprecated true }
+        }
+        GRAPH <http://rdf.glycosmos.org/glycogenes> {
+          ?s sio:SIO_000772 ?eco .
+        }
       }
-      # -> exactly HP_0001250 / HP:0001250
-    explanation: >
-      Verified 2026-07-16. OLS4:searchClasses("seizure", ontologyId="hp") returns 364 hits and
-      does NOT surface HP_0001250 ("Seizure") in the top 20 — every high-ranked hit is a NARROWER
-      subtype (Bilateral tonic-clonic seizure with focal onset, Focal impaired awareness
-      seizure, ...). When a term's name is a substring of its own descendants' names, OLS4's
-      relevance ranking buries the exact match. Use OLS4 for fuzzy/exploratory lookup,
-      definitions and ancestors; use the pinned exact-match above when you know the name.
+    verified: {ecoTermsUsed: 23, manualAssertions: 463051, raw_rows: 620815, date: "2026-07-22", note: "COUNT(*) gives 620,815 — a 34% over-count vs the 463,051 DISTINCT annotations."}
+    teaches: "The hierarchy-aware ontology→data join: expand ECO_0000352 to its subtree in <ontology/eco>, then join to glycogenes, whose sio:SIO_000772 points at the SAME obo ECO IRIs (no namespace translation). This SPLITS glycogene annotations into manual vs automatic evidence — expansion the data graph cannot do alone. Both graphs share the 'primary' endpoint: a direct GRAPH join, no TogoID bridge."
+    traps_avoided:
+      - "COUNT(DISTINCT ?s) is mandatory: the ECO subtree is a DAG (path multiplicity), so COUNT(*) inflates 463,051 → 620,815 (+34%). DISTINCT the DATA entity, not the term."
+      - "The complement is ECO_0000501 'evidence used in automatic assertion' (1,533,701 refs); 463,051 + 1,533,701 = 1,996,752 = the full ECO ref count — the cross-check that this join is complete."
 
-common_errors:
-  - error: "Lookup returns zero rows although the term certainly exists"
-    causes:
-      - "obo namespace assumed for EFO / SIO / EDAM / MEO / FMA — the IRI does not exist (the #1 cause)"
-      - "WRONG LITERAL FORM for that graph — the required form is per-graph and INVERTED between them: ^^xsd:string in hp/go, PLAIN in uberon/cl/efo/edam/mondo, @en in fma/sio/meo. Any wrong form returns 0 rows silently."
-      - "A predicate hard-coded from the obo family that the target ontology does not have (skos:notation on FMA, IAO_0000115 on EDAM/SIO/FMA)"
-      - "LANG filtered to \"en\" (drops the untagged obo labels) OR to \"\" (drops fma/sio/meo, whose own labels ARE @en)"
-    solutions:
-      - "Build the IRI from schema_info.iri_namespaces; FMA is lowercase with no underscore, EDAM has no EDAM_ prefix"
-      - "Match with FILTER(STR(?l) = \"x\") — correct in every graph. Use a bare ^^xsd:string ONLY in hp/go; see critical_warnings."
-      - "Check cross_references.predicate_by_ontology before assuming a predicate"
-      - "Use FILTER(LANG(?label) IN (\"\", \"en\"))"
+# ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
+schema_delta:
+  - "RO_/BFO_/IAO_ predicates have NO home graph — no <ontology/ro> or <ontology/bfo> exists; they resolve only where an importing ontology's closure embeds them, and coverage is per-TERM (a graph carries only the RO_/BFO_ terms IT uses). <ontology/go> is NOT a reliable fallback. To label one, bind ?g over a VALUES set of graphs and take the majority (uberon/clo carried every term tested)."
+  - "IAO_0100001 'term replaced by' is POLYMORPHIC within one graph: an IRI node in some rows, an xsd:string CURIE ('GO:0039502') in others, occasionally a string holding a FULL IRI. To map obsoletes to replacements, BIND(IF(isIRI(?o), ?o, IRI(CONCAT('http://purl.obolibrary.org/obo/', REPLACE(STR(?o), ':', '_'))))) — but STRSTARTS(STR(?o),'http') first outside go/hp, or the CONCAT mangles form (c)."
+  - "oboInOwl:hasDbXref values are CURIE STRING literals ('DOID:3459'), NOT IRIs — 48% of hp classes carry them, but the predicate ALSO hangs off axiom-reification nodes, so anchor on `?s a owl:Class` before counting. Not directly joinable: parse the prefix and mint the target IRI, or route through TogoID."
+  - "Label coverage is NOT 100%: use OPTIONAL for rdfs:label when enumerating. In hp every unlabelled class is deprecated, but cl has 189 ACTIVE unlabelled classes and uberon 45 — a required rdfs:label silently drops them."
+  - "skos:notation is the obo-family CURIE ('HP:0001250', 100% of hp classes — more complete than rdfs:label at 85.5%); absent entirely in fma/sio/edam/efo. oboInOwl:hasAlternativeId carries merged-in obsolete CURIEs (the recovery path when a known ID returns nothing)."
 
-  - error: "Counts are too high, or a ranking looks subtly wrong"
-    causes:
-      - "COUNT(*) over a subClassOf* expansion — DAG path multiplicity multiplies each joined row"
-      - "Unpinned GRAPH, so all 37 graphs' copies of a predicate matched"
-      - "Union of <ontology/pro> and <ontology/pro-reasoned>, which double-counts asserted + entailed"
-      - "An owl:Class total mistaken for the ontology's native size (EFO is 20% native, CL 19%)"
-    solutions:
-      - "COUNT(DISTINCT ?entity) over any subClassOf* expansion — always"
-      - "Pin the owning graph in every pattern"
-      - "Pick /pro OR /pro-reasoned deliberately, never both"
-      - "Read data_statistics.by_class, which separates total from native"
+# ── id_join_map: how to anchor stably and cross to other resources. ──
+id_join_map:
+  stable_anchor: >
+    Class = the owl:Class IRI, built from the OWNING ontology's namespace (gotcha namespace_map): obo family =
+    http://purl.obolibrary.org/obo/PREFIX_NNNNNNN; the five non-obo = their own (FMA lowercase-no-underscore
+    fmaNNNN, EFO ebi.ac.uk/efo/EFO_, SIO semanticscience/SIO_, EDAM edamontology.org/{data_,…}, MEO mdatahub/MEO_).
+    Human keys: skos:notation / oboInOwl:id (obo CURIE), fma:FMAID (integer). Deprecated IRIs are retained — anchor on active classes.
+  same_endpoint_joins:            # co-hosted on 'primary' — direct GRAPH join, NO TogoID. Measured ontology→data links:
+    glycosmos: "glycogenes graph sio:SIO_000772 → obo ECO_ IRIs (identical both sides); 1,996,752 refs over 24 terms. HIERARCHY-AWARE (example xdb_eco_glycosmos)."
+    pubcasefinder: "PubCaseFinder <https://pubcasefinder.dbcls.jp/rdf> oa:hasBody → obo HP_ IRIs; 379,263 annotations. HIERARCHY-AWARE — expand the HP subtree, COUNT(DISTINCT ?annotation). (PubCaseFinder is not a registered TogoMCP DB; reach it via this endpoint.)"
+    open_tggates: "open-tggates → UBERON, but only 2 terms (liver, kidney) — a flat tag, no hierarchy value."
+    hgnc: "hgnc rdf:type → SO_0000704 'gene' on ~44,997 genes — one flat tag."
+  xrefs:                          # STRING-typed oboInOwl:hasDbXref CURIEs — parse the prefix, mint the target IRI
+    external: "'DOID:', 'MESH:', 'UMLS:', 'EC:', 'RHEA:', 'Reactome:' etc. as xsd:string CURIEs — NOT dereferenceable. skos:exactMatch (obo graphs that carry it) gives IRI-form equivalences instead, usable directly."
+  bridged_via_togoid:             # for external DBs on OTHER endpoints (no co-hosted graph, no direct IRI edge)
+    - "Ontology class IRIs / hasDbXref CURIEs → UniProt/ChEMBL/gene resources via togoid_convertId (or the target DB's own ontology-annotation predicate, e.g. UniProt up:classifiedWith). For deep GO/MONDO/taxonomy work use their OWN MIE files, not this umbrella."
 
-  - error: "Label lookup returns an obsolete term, or two contradictory labels"
-    causes:
-      - "No owl:deprecated filter — 10,058 labelled GO classes and 4,930 native EFO classes are obsolete"
-      - "Unpinned GRAPH, so a foreign graph's copy of the label won (e.g. xco's 'has_component' for RO_0002211)"
-    solutions:
-      - "Add FILTER NOT EXISTS { ?t owl:deprecated true }"
-      - "Pin the owning graph via iri_namespaces + architectural_notes.schema_design"
-      - "Run query example 7 to detect collisions before trusting a resolution"
+# ── byte-count footer (spec §5 item 7) ──
+# v2: `wc -c togo_mcp/data/mie/ontology.yaml` = 63964 bytes
+# v3: `wc -c benchmark/redesign/mie_v3/ontology.yaml` = 24868 bytes → 61.1% smaller than v2.
+#
+# PHASE-5 self-check (spec §5, 9 items):
+#  1. Parses as YAML; required keys present (database, discovery, endpoint, graphs, examples, id_join_map). ✓
+#  2. discovery has all four fields; description is one sentence. ✓
+#  3. Every example has verified: with a date: field (not on:), all re-run live 2026-07-22. ✓
+#  4. ≥1 aggregation (is_a_subtree) AND ≥1 cross_db (xdb_eco_glycosmos). ✓
+#  5. co_hosted flagged: 37-graph re-declaration inflation, foreign-subClassOf answer-change + live 500,
+#     pro-reasoned dup, data-graph join targets, goa stub. ✓
+#  6. No fact restated across sections; nothing in schema_delta that an example shows (RO/BFO home-graph,
+#     IAO_0100001 polymorphism, hasDbXref, label coverage, skos:notation are all example-absent). ✓
+#  7. Byte count recorded vs v2 (63,964 → footer). ✓
+#  8. BOTH set-level hierarchy routes are standalone examples: is_a rdfs:subClassOf* (is_a_subtree) and
+#     part_of BFO_0000050 restriction (part_of_partonomy). OK-tier per enumeration_audit.md — the subtree-
+#     expansion surface itself; both re-verified + dated. ✓
+#  9. No example subject is a benchmark question's gold entity for this DB: leukocyte (CL_0000738), Heart
+#     (fma7088), brain (UBERON_0000955), evidence-used-in-manual-assertion (ECO_0000352), atmosphere, gene,
+#     Sequence alignment — all checked absent from benchmark/questions/*.yaml as subjects; benchmark's
+#     ontology subjects (blood UBERON_0000178, skin/epidermis UBERON_0001003, SO splice terms, plant PO_00102)
+#     are deliberately avoided. No test leakage. ✓

@@ -1,789 +1,332 @@
-schema_info:
+# MIE v3 — PubChem RDF (NCBI). Agent-authored 2026-07-22 on `mie-redesign`.
+# Format: benchmark/redesign/MIE_v3_spec.md. Every verified count/result re-run live on the pubchem endpoint 2026-07-22.
+# Byte count vs the v2 file it replaces (spec §5 item 7): v2 togo_mcp/data/mie/pubchem.yaml = 46,728 bytes;
+# this v3 file = 25,419 bytes → 45.6% smaller. See the footer for the exact `wc -c` figures.
+database: pubchem
+
+# ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
+discovery:
   title: PubChem RDF
-  description: |
-    Comprehensive public database of chemical molecules and biological activities containing
-    119M compounds, 329M substance/descriptor records, 1.7M bioassays, 167K genes, 249K proteins,
-    80K pathways, and 53M patents. Integrates molecular descriptors (SMILES, InChI, MW), ontology
-    classifications (ChEBI, SNOMED CT, NCI Thesaurus), stereoisomer relationships, drug roles, and
-    bioactivity measurements via SIO and OBO ontologies.
-  keywords:
-    - compound
-    - chemical
-    - molecule
-    - drug
-    - cid
-    - smiles
-    - inchi
-    - cas
-    - bioassay
-    - bioactivity
-    - pharmacology
-    - toxicology
-    - descriptor
-    - substance
-    - target
-  categories:
-    - compound
-  endpoint: https://rdfportal.org/pubchem/sparql
-  base_uri: http://rdf.ncbi.nlm.nih.gov/pubchem/
-  graphs:
-    - http://rdf.ncbi.nlm.nih.gov/pubchem/compound
-    - http://rdf.ncbi.nlm.nih.gov/pubchem/descriptor/compound
-    - http://rdf.ncbi.nlm.nih.gov/pubchem/substance
-    - http://rdf.ncbi.nlm.nih.gov/pubchem/bioassay
-    - http://rdf.ncbi.nlm.nih.gov/pubchem/measuregroup
-    - http://rdf.ncbi.nlm.nih.gov/pubchem/endpoint
-    - http://rdf.ncbi.nlm.nih.gov/pubchem/gene
-    - http://rdf.ncbi.nlm.nih.gov/pubchem/protein
-    - http://rdf.ncbi.nlm.nih.gov/pubchem/pathway
-    - http://rdf.ncbi.nlm.nih.gov/pubchem/patent
-    - http://rdf.ncbi.nlm.nih.gov/pubchem/reference
-    - http://rdf.ncbi.nlm.nih.gov/pubchem/taxonomy
-    - http://rdf.ncbi.nlm.nih.gov/pubchem/inchikey
-    - http://rdf.ncbi.nlm.nih.gov/pubchem/synonym
-  co_hosted_graphs:
-    - "2g probe run 2026-07-17 — no re-declaration found. This endpoint carries 69 graphs: 28 rdf.ncbi.nlm.nih.gov/pubchem/* partitions, 3 id.nlm.nih.gov/mesh* graphs, 37 rdfportal.org/ontology/* graphs, and www.w3.org/2002/07/owl#. Probed vocab:Compound, vocab:Substance, vocab:BioAssay, vocab:MeasureGroup, vocab:Endpoint, vocab:Gene, vocab:Protein and vocab:Pathway with `SELECT ?g WHERE { GRAPH ?g { ?s a <Class> } }`: EVERY class is declared in exactly ONE graph (its own partition). No graph re-types another's entities."
-    - "INWARD probe (sibling PubChem partitions) — CLEAN, re-probed 2026-07-17 on the LABEL/SYNONYM leg. REVERSE probe (VALUES of 12 CID IRIs — CID1, CID100, CID702, CID1983, CID2244, CID2519, CID3345, CID3672, CID5090, CID5793, CID5288826, CID49803313 — asking for triples in ANY graph with no type constraint): all 1,513 triples land in <http://rdf.ncbi.nlm.nih.gov/pubchem/compound> and nowhere else; 0 rows from any of the other 68 graphs. LABEL leg specifically: skos:prefLabel for a CID is supplied EXACTLY ONCE, by the compound graph (CID2244 has exactly 1 skos:prefLabel and 1 dcterms:identifier there) — no sibling and no ontology graph re-declares it, so there is no duplicate and no conflicting value. The sibling descriptor/compound, synonym and inchikey graphs key on their OWN disjoint IRI spaces — descriptor/CID2244_Molecular_Weight and descriptor/CID2244_XLogP3-AA resolve only inside <…/pubchem/descriptor/compound>. Because the IRI spaces do not intersect, these siblings CANNOT inflate a CID join; they are reached via sio:has-attribute, which is why the 4-graph activity path is a join and not a duplication."
-    - "OBJECT-position map (what a subject-keyed reverse probe cannot see) — measured 2026-07-17 for compound/CID2244. Sibling graphs point AT a CID heavily: reference 148,013 triples, cooccurrence 47,830, compound 1,147, synonym 695, substance 435, pathway 9, inchikey 1. These are JOIN targets, not re-declarations — none puts the CID in subject position, so none supplies a competing type or label. Two practical consequences. (1) The synonym graph attaches to a CID solely via sio:SIO_000011 (is-attribute-of) from synonym/MD5-keyed subjects — 695 of them for CID2244 alone — so an unpinned `?syn sio:SIO_000011 ?cid` fan-out multiplies a per-compound row by the SYNONYM COUNT. That is real 1:many data, not a co-tenancy bug, but it will wreck a COUNT: aggregate with COUNT(DISTINCT ?cid) or pin/limit the synonym leg. (2) `cooccurrence` and `reference` are the two largest referrers and are NOT in this MIE's schema_info.graphs list — never let a query reach them unpinned."
-    - "~41 shared ontology/vocabulary graphs (id.nlm.nih.gov/mesh + /vocab + /void; the rdfportal.org/ontology/* suite: go, mondo, taxonomy, uberon, cl, clo, so, sio, hp, efo, eco, …; owl#) — join targets, not co-tenancy traps; probed 2026-07-17. MeSH IRIs (mesh/D001241, mesh/D000305, mesh/D003920) occur as subjects ONLY in <http://id.nlm.nih.gov/mesh>; no PubChem partition re-declares them. ZERO IRI overlap with PubChem entities."
-  kw_search_tools:
-    - ncbi_esearch
-    - get_pubchem_compound_id
-  version:
-    mie_version: "2.5"
-    mie_created: "2026-04-29"
-    mie_updated: "2026-07-18"
-    data_version: "PubChemRDF, dcterms:modified 2026-05-06 — DERIVED FROM THE ENDPOINT: <http://rdf.ncbi.nlm.nih.gov/pubchem/void.ttl#PubChemRDF> dcterms:modified \"2026-05-06\" in GRAPH <http://rdf.ncbi.nlm.nih.gov/pubchem/void>. Verified 2026-07-17."
-    update_frequency: "Continuous"
-  access:
-    backend: "Virtuoso"
+  description: >
+    Chemical compounds + substances with typed molecular descriptors (SMILES, InChI, MW, formula,
+    XLogP3), ontology classifications (ChEBI/SNOMED/NCI), FDA drug roles, stereoisomer links, and a
+    structured bioassay-activity path (compound→substance→endpoint→measuregroup→protein target) plus
+    genes, proteins, pathways, patents and literature references.
+  keywords: [compound, chemical, molecule, drug, cid, smiles, inchi, molecular weight, descriptor,
+             substance, bioassay, bioactivity, assay outcome, protein target, ic50, pathway, chebi, fda approved, patent]
+  categories: [compound]
 
-critical_warnings: |
-  - COMPOUND-TARGET LINK IS IN MEASUREGROUP, NOT BIOASSAY: The compound–target–activity path
-    lives in the measuregroup graph on vocab:MeasureGroup entities (obo:RO_0000057 -> Protein IRI),
-    NOT on BioAssay entities. A FROM clause on the bioassay graph alone CANNOT reach a target.
-    Four graphs are required: substance, endpoint, measuregroup, protein. The correct route is
-    BioAssay -(bao:BAO_0000209)-> MeasureGroup -(obo:RO_0000057)-> Protein. Note RO_0000057 is
-    HETEROGENEOUS: its object may be a Protein (/protein/), Taxonomy (/taxonomy/), Gene (/gene/),
-    Cell (/cell/), or Anatomy (/anatomy/) IRI — filter to "/protein/" when you want protein
-    targets. Verified target-type distribution (2026-06-22): protein 743,283; taxonomy 520,875;
-    gene 497,551; cell 348,133; anatomy 201,737. Verified Gilteritinib (CID49803313) -> FLT3
-    (protein/ACCP36888) via this path (2026-06-22).
-  - ENDPOINT GRAPH IS EXTREMELY LARGE: the endpoint graph holds one measurement record per
-    Substance x Assay. Scanning it without first pinning a Substance IRI (SID) will time out.
-    Always resolve the SID through the substance graph (?sub sio:CHEMINF_000477 compound:CID[N])
-    before touching the endpoint graph.
-  - MEASUREGROUP / ENDPOINT NEED THEIR OWN FROM CLAUSES: the measuregroup and endpoint graphs are
-    separate named graphs, distinct from bioassay. Omitting either FROM yields empty results with
-    no error — the RO_0000057 target link silently disappears.
-  - PDB NAMESPACE TRAP: PDB links on Protein entities use pdbx-v50.owl#link_to_pdb
-    (http://rdf.wwpdb.org/schema/pdbx-v50.owl#link_to_pdb). Using the old pdbx-v40.owl# prefix
-    returns ZERO RESULTS silently. Verified on protein:ACC10GS_A (2026-04-22).
-  - CHEMINF AGGREGATION TIMEOUT: Broad STRSTARTS scans over all 119M compounds for ChEBI
-    class aggregation time out. Use specific ChEBI IRIs discovered via get_pubchem_compound_id()
-    and entity inspection — not open-ended namespace scans.
-  - GENE ENTITY SPARSITY: Gene entities (vocab:Gene) in this endpoint only reliably have
-    rdf:type and cito:isDiscussedBy. The shape_expressions lists skos:prefLabel and up:organism
-    as optional but these were absent on all inspected gene entities (GID1, GID672, GID10004).
-    Do not rely on them in gene queries without prior verification.
-  - SEPARATE GRAPHS REQUIRED: Bioassay, protein, and pathway entities each live in separate
-    named graphs. Omitting FROM clauses returns empty results with no error.
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/pubchem/sparql   # PubChem is the sole DATASET on this endpoint (~69 graphs: 28 pubchem partitions + MeSH + ~37 ontology graphs + owl)
+base_uri: http://rdf.ncbi.nlm.nih.gov/pubchem/
+graphs:
+  primary: http://rdf.ncbi.nlm.nih.gov/pubchem/compound   # vocab:Compound + rdf:type ChEBI/SNOMED/NCI classes + drug-role RO_0000087
+  supporting:            # PubChem's OWN partitions — each entity CLASS lives in exactly ONE, none re-types another (probed 2026-07-17)
+    - descriptor/compound   # typed descriptor NODES (descriptor/CID<N>_<Name>) + their SIO_000300 values — DISJOINT IRI space, reached via sio:SIO_000008; MUST pin alongside compound (gotcha separate_graphs)
+    - substance             # vocab:Substance (SID); standardizes to its Compound via sio:CHEMINF_000477
+    - endpoint              # per-Substance×Assay measurement record + assay OUTCOME (huge — pin an SID first, gotcha endpoint_scan)
+    - measuregroup          # holds the compound→TARGET link obo:RO_0000057 (NOT on BioAssay, gotcha activity_path)
+    - bioassay              # vocab:BioAssay metadata + free-text dcterms:title
+    - protein               # vocab:Protein targets (protein/ACC<UniProtAcc>) + PDB links
+    - gene                  # vocab:Gene (sparse — only rdf:type + cito:isDiscussedBy reliable)
+    - pathway               # vocab:Pathway (bp:Pathway) + RO_0000057 participants + up:organism
+    - synonym               # per-CID synonym nodes — 1:many fan-out via sio:SIO_000011 (gotcha synonym_reference_fanout)
+    - inchikey              # InChIKey records
+    - taxonomy              # PubChem's own taxonomy/TAXID<N> IRIs (used by up:organism on protein/pathway)
+    - reference             # PubMed reference nodes — a LARGE object-position referrer of CIDs (gotcha synonym_reference_fanout)
+    - patent                # patent nodes (cito:isDiscussedBy targets)
+  co_hosted:               # NON-PubChem graphs sharing the endpoint — join targets / enrichment, NOT count-inflation (zero IRI overlap with pubchem entities, probed 2026-07-17)
+    ontology/efo: >
+      Co-hosts ChEBI: class labels (rdfs:label) AND a PARTIAL structural subClassOf hierarchy for the CHEBI_<N>
+      classes that PubChem compounds are rdf:typed with. This is the SOLE in-endpoint source for expanding a
+      ChEBI class to its members (examples xdb_chebi, enum_chebi_class). Caveat: the tree is STRUCTURAL-only and
+      incomplete — role/application classes (drug, NSAID CHEBI_35475) carry NO structural subclasses here.
+    id.nlm.nih.gov/mesh: >
+      MeSH descriptors, co-hosted, ZERO IRI overlap. But PubChem entities carry NO direct subject-position MeSH
+      link (probed CID2244 → none), so there is no clean intra-endpoint SPARQL join — reach MeSH via TogoID on the CID.
+    other_ontologies: >
+      ~35 more shared rdfportal.org/ontology/* graphs (go, mondo, taxonomy, uberon, cl, so, sio, hp, eco, …) + owl#.
+      Join targets only; none re-types a PubChem IRI (GROUP-BY-graph probed). GRAPH-pin explicitly to reach them.
 
-shape_expressions: |
-  PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
-  PREFIX sio: <http://semanticscience.org/resource/>
-  PREFIX obo: <http://purl.obolibrary.org/obo/>
-  PREFIX cito: <http://purl.org/spar/cito/>
-  PREFIX bao: <http://www.bioassayontology.org/bao#>
-  PREFIX dcterms: <http://purl.org/dc/terms/>
-  PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
-  PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>   # NOTE: v50, not v40
-  PREFIX up: <http://purl.uniprot.org/core/>
-  PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+entity_counts:            # live 2026-07-22; graph-pinned COUNTs unless noted
+  compounds:          123857833   # COUNT(vocab:Compound) FROM the compound graph — completes but is borderline; broad property scans over it time out (gotcha compound_scan_timeout)
+  proteins:           319623
+  genes:              175390
+  pathways:           80847
+  bioassays:          1910340
+  fda_approved_drugs: 15941       # obo:RO_0000087 vocab:FDAApprovedDrugs, DISTINCT, pinned
+  substances_descriptors_note: "~329M Substance+descriptor records (v2 figure, not re-COUNTed — the endpoint/descriptor graphs are too large to count in one query)."
 
-  <CompoundShape> {
-    a [ vocab:Compound ] ;
-    # Ontology classifications via rdf:type (not a separate predicate):
-    #   ChEBI:        http://purl.obolibrary.org/obo/CHEBI_[N]
-    #   SNOMED CT:    http://purl.bioontology.org/ontology/SNOMEDCT/[N]
-    #   NCI Thesaurus: http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#[C]
-    #   NDFRT:        http://purl.bioontology.org/ontology/NDFRT/[N]
-    skos:prefLabel xsd:string ? ;
-    dcterms:identifier xsd:string ? ;
-    sio:SIO_000008 @<DescriptorShape>* ;         # links to typed descriptor nodes
-    sio:CHEMINF_000455 @<CompoundShape>* ;       # stereoisomer relationships
-    obo:RO_0000087 IRI* ;                         # drug roles (vocab:FDAApprovedDrugs etc.)
-    vocab:is_active_ingredient_of IRI* ;          # links to drug product IRIs
-    cito:isDiscussedBy IRI* ;                     # patents and literature references
-    rdfs:seeAlso IRI*
-    # COUNTS: 119,093,251 Compound instances (verified 2026-04-22)
-    # FDA-approved subset: 17,367 (obo:RO_0000087 vocab:FDAApprovedDrugs)
-  }
+global_gotchas:           # the few that bite ANY query on this DB — verified 2026-07-22
+  - id: separate_graphs
+    say: >
+      Each entity class lives in its OWN named graph; omitting the FROM/GRAPH pin returns EMPTY with no error.
+      The sharpest form: a descriptor's rdf:type and SIO_000300 VALUE live in <descriptor/compound>, NOT
+      <compound>. A query filtering compounds by molecular weight/formula that pins only <compound> returns 0
+      rows silently (verified: FDA-drug + MW-range = 0 with compound only, 1,375 with compound + descriptor/compound).
+      Pin <compound> AND <descriptor/compound> together for ANY descriptor filter.
+  - id: activity_path
+    say: >
+      The compound→TARGET link is obo:RO_0000057 on a MeasureGroup, NEVER on BioAssay. The full activity route
+      spans FOUR graphs: Compound -sio:CHEMINF_000477- Substance -obo:IAO_0000136- Endpoint(outcome)
+      <-obo:OBI_0000299- MeasureGroup -obo:RO_0000057-> Protein. FROM substance+endpoint+measuregroup (+protein
+      if you read its label). Omitting measuregroup or endpoint drops the target link with no error.
+  - id: endpoint_scan
+    say: >
+      The <endpoint> graph holds one record per Substance×Assay and is enormous. Resolve the Substance IRI first
+      (?sub sio:CHEMINF_000477 compound:CID<N>) and enter <endpoint> already bound to that SID — scanning it
+      unbound times out (60s).
+  - id: compound_scan_timeout
+    say: >
+      Broad scans over all ~124M compounds — open STRSTARTS over a CHEBI/namespace, text match on a descriptor
+      value, or a GROUP BY without a type/role filter — TIME OUT. Anchor on specific CID IRIs, CHEMINF descriptor
+      type IRIs, or a drug-role IRI. For ChEBI-class enumeration this means: expand the class to a BOUNDED set of
+      descendant CHEBI IRIs first (see enum_chebi_class), never STRSTARTS the whole compound set.
+  - id: synonym_reference_fanout
+    say: >
+      A single CID is the OBJECT of hundreds of synonym nodes (695 for CID2244 via sio:SIO_000011) and tens of
+      thousands of <reference>/<cooccurrence> triples. These are real 1:many links, not co-tenancy bugs, but they
+      SILENTLY MULTIPLY a per-compound COUNT. Use COUNT(DISTINCT ?compound); never leave a synonym/reference/
+      cooccurrence leg unpinned. (cooccurrence is not even in the graph list above — never reach it unscoped.)
 
-  <DescriptorShape> {
-    # Access: ?compound sio:SIO_000008 ?desc . ?desc a ?type ; sio:SIO_000300 ?value .
-    # IRI pattern: descriptor:<CID>_<Descriptor_Name>  e.g. descriptor:CID2244_Molecular_Weight
-    a [
-      sio:CHEMINF_000334   # Molecular Weight (double)
-      sio:CHEMINF_000335   # Molecular Formula (string)
-      sio:CHEMINF_000336   # Total Formal Charge (integer)
-      sio:CHEMINF_000337   # Mono-Isotopic Weight (double)
-      sio:CHEMINF_000338   # Exact Mass (double)
-      sio:CHEMINF_000369   # Covalent Unit Count (integer)
-      sio:CHEMINF_000370   # Defined Atom Stereo Count (integer)
-      sio:CHEMINF_000371   # Defined Bond Stereo Count (integer)
-      sio:CHEMINF_000372   # Isotope Atom Count (integer)
-      sio:CHEMINF_000373   # Non-hydrogen Atom Count (integer)
-      sio:CHEMINF_000374   # Undefined Atom Stereo Count (integer)
-      sio:CHEMINF_000375   # Undefined Bond Stereo Count (integer)
-      sio:CHEMINF_000376   # Canonical SMILES (string)
-      sio:CHEMINF_000379   # Isomeric SMILES (string)
-      sio:CHEMINF_000382   # Preferred IUPAC Name (string)
-      sio:CHEMINF_000387   # Hydrogen Bond Donor Count (integer)
-      sio:CHEMINF_000388   # Hydrogen Bond Acceptor Count (integer)
-      sio:CHEMINF_000389   # Rotatable Bond Count (integer)
-      sio:CHEMINF_000390   # Structure Complexity (double)
-      sio:CHEMINF_000392   # TPSA — Topological Polar Surface Area (double)
-      sio:CHEMINF_000395   # XLogP3 (double; ~89% coverage)
-      sio:CHEMINF_000396   # IUPAC InChI (string; ~99.5% coverage)
-      sio:CHEMINF_000140   # Compound Identifier / CID (string)
-    ] ;
-    sio:SIO_000300 .        # scalar value (string | double | integer depending on type)
-  }
-
-  <SubstanceShape> {
-    a [ vocab:Substance ] ;
-    dcterms:source IRI ;             # depositor source IRI
-    dcterms:modified xsd:date ? ;
-    sio:SIO_000008 IRI* ;            # substance-level descriptors
-    obo:RO_0000056 IRI* ;            # bioassay participation links
-    sio:CHEMINF_000477 @<CompoundShape> ?   # standardized compound link
-    # COUNTS: 329,528,131 Substance/Descriptor instances
-  }
-
-  <BioAssayShape> {
-    a [ vocab:BioAssay bao:BAO_0000015 ] ;
-    dcterms:title xsd:string ;            # unstructured free text — bif:contains legitimate here
-    dcterms:source IRI ;                  # controlled IRI: e.g. pubchem/source/ChEMBL
-    dcterms:identifier xsd:string ? ;     # numeric AID as a string (e.g. "1876067")
-    rdfs:seeAlso IRI ? ;                  # source-assay cross-ref, e.g. ChEMBL assay CHEMBLnnn
-    bao:BAO_0000209 @<MeasureGroupShape>* ;  # -> MeasureGroup entities (NOT a direct target link)
-    bao:BAO_0000210 IRI ?                 # assay measurement type, e.g. bao:BAO_0000030 (binding)
-    # COUNTS: 1,768,183 BioAssay instances (verified 2026-04-22)
-    # ChEMBL-sourced: 1,742,984
-    # COMPOUND -> TARGET PATH (4 graphs required):
-    #   Compound -[sio:CHEMINF_000477]- Substance -[obo:IAO_0000136]- Endpoint
-    #            <-[obo:OBI_0000299]- MeasureGroup -[obo:RO_0000057]-> Protein
-    #   FROM graphs needed, in path order: substance, endpoint, measuregroup, protein.
-    #   The target protein link is on MeasureGroup (see <MeasureGroupShape>), never on BioAssay.
-  }
-
-  <MeasureGroupShape> {
-    # Intermediate entity between BioAssay and Endpoint; THIS is where the target link lives.
-    # IRI pattern: measuregroup/AID[N]_PMID[N]  or  measuregroup/AID[N]  (no PMID)
-    #   e.g. measuregroup/AID1876067_PMID33539089 , measuregroup/AID1
-    a [ vocab:MeasureGroup ] ;
-    a [ bao:BAO_0000040 ] ? ;            # assay-result-set co-type (commonly present)
-    dcterms:title xsd:string ? ;         # assay description, free text (bif:contains usable)
-    dcterms:source IRI ? ;               # depositor IRI, e.g. pubchem/source/ChEMBL
-    obo:OBI_0000299 @<EndpointShape>* ;  # has_specified_output -> measurement Endpoint(s)
-    obo:RO_0000057 IRI*                  # has_participant -> Protein/Taxonomy/Gene/Cell/Anatomy IRI
-    # CRITICAL: the target (vocab:Protein) link is RO_0000057 here, not on BioAssay.
-    # RO_0000057 is heterogeneous (counts verified 2026-06-22): protein/ACC[N] (743,283),
-    # taxonomy/TAXID[N] (520,875), gene/GID[N] (497,551), cell/CELLID[N] (348,133),
-    # anatomy/ANATOMYID[N] (201,737). Filter STR(?o) CONTAINS "/protein/" for protein targets.
-  }
-
-  <EndpointShape> {
-    # Per-Substance measurement record carrying the activity outcome and (often) a numeric value.
-    # IRI pattern: endpoint/SID[N]_AID[N]_PMID[N]_VALUE[N]  or  endpoint/SID[N]_AID[N]_VALUE[N]
-    #   e.g. endpoint/SID242651822_AID1876067_PMID33539089_VALUE1
-    a [ vocab:Endpoint ] ;
-    a [ bao:BAO_0000190 ] ? ;            # measurement co-type (varies by assay)
-    obo:IAO_0000136 IRI ;                # is_about -> Substance IRI (SID)
-    vocab:PubChemAssayOutcome [
-      vocab:active                       # the 5 controlled outcome IRIs (full set, verified)
-      vocab:inactive
-      vocab:inconclusive
-      vocab:probe
-      vocab:unspecified
-    ] ;
-    sio:SIO_000300 . ?                   # measured numeric value (present on quantitative endpoints)
-    sio:SIO_000221 IRI ? ;               # value unit -> obo:UO_[N] IRI
-    rdfs:label xsd:string ? ;            # measurement label, e.g. "IC50"
-    vocab:hasQualifier xsd:string ? ;    # relation qualifier, e.g. "=", ">", "<"
-    cito:citesAsDataSource IRI ?         # source reference, e.g. pubchem/reference/[PMID]
-    # NOTE: this graph is huge — always pin the Substance IRI (SID) first, then add FROM endpoint.
-  }
-
-  <GeneShape> {
-    a [ vocab:Gene sio:SIO_010035 ] ;
-    cito:isDiscussedBy IRI*          # patent reference links
-    # NOTE: skos:prefLabel and up:organism absent on all inspected instances — see critical_warnings
-    # COUNTS: 167,172 Gene instances
-  }
-
-  <ProteinShape> {
-    a [ vocab:Protein sio:SIO_010043 ] ;
-    skos:prefLabel xsd:string ;
-    dcterms:identifier xsd:string ;
-    rdfs:seeAlso IRI* ;
-    up:organism IRI ;                # e.g. taxonomy:TAXID9606 for human
-    pdbo:link_to_pdb IRI* ;          # CRITICAL: pdbx-v50.owl# prefix (NOT v40 — silent failure)
-    obo:RO_0002180 IRI* ;            # conserved domain links (pubchem/conserveddomain/PSSMID[N])
-    vocab:hasSimilarProtein IRI* ;
-    cito:isDiscussedBy IRI*
-    # COUNTS: 248,623 Protein instances
-  }
-
-  <PathwayShape> {
-    a [ vocab:Pathway bp:Pathway ] ;
-    dcterms:title xsd:string ;
-    dcterms:source IRI ;
-    up:organism IRI ;                # taxonomy IRI
-    rdfs:seeAlso IRI* ;
-    obo:RO_0000057 IRI*              # compound and gene participant links
-    # COUNTS: 80,739 Pathway instances
-  }
-
-sample_rdf_entries:
-  rdf_prefixes: |
-    @prefix compound: <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/> .
-    @prefix descriptor: <http://rdf.ncbi.nlm.nih.gov/pubchem/descriptor/> .
-    @prefix protein: <http://rdf.ncbi.nlm.nih.gov/pubchem/protein/> .
-    @prefix pathway: <http://rdf.ncbi.nlm.nih.gov/pubchem/pathway/> .
-    @prefix substance: <http://rdf.ncbi.nlm.nih.gov/pubchem/substance/> .
-    @prefix endpoint: <http://rdf.ncbi.nlm.nih.gov/pubchem/endpoint/> .
-    @prefix measuregroup: <http://rdf.ncbi.nlm.nih.gov/pubchem/measuregroup/> .
-    @prefix bao: <http://www.bioassayontology.org/bao#> .
-    @prefix vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#> .
-    @prefix sio: <http://semanticscience.org/resource/> .
-    @prefix obo: <http://purl.obolibrary.org/obo/> .
-    @prefix dcterms: <http://purl.org/dc/terms/> .
-    @prefix up: <http://purl.uniprot.org/core/> .
-    @prefix pdbo: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#> .
-    @prefix cito: <http://purl.org/spar/cito/> .
-    @prefix bp: <http://www.biopax.org/release/biopax-level3.owl#> .
-    @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  entries:
-    - title: Compound with Typed Descriptor Nodes and Drug Role
-      description: Core hub-and-spoke pattern — compound links to typed descriptor nodes (CHEMINF IRIs) via sio:SIO_000008; scalar values retrieved via sio:SIO_000300.
-      rdf: |
-        compound:CID2244 a vocab:Compound ,
-                           <http://purl.obolibrary.org/obo/CHEBI_15365> ,
-                           <http://purl.bioontology.org/ontology/SNOMEDCT/387458008> ;
-          skos:prefLabel "Aspirin" ;
-          dcterms:identifier "2244" ;
-          obo:RO_0000087 vocab:FDAApprovedDrugs ;
-          sio:SIO_000008 descriptor:CID2244_Molecular_Formula ,
-                         descriptor:CID2244_Molecular_Weight ,
-                         descriptor:CID2244_Canonical_SMILES .
-        descriptor:CID2244_Molecular_Formula a sio:CHEMINF_000335 ;
-          sio:SIO_000300 "C9H8O4" .
-        descriptor:CID2244_Molecular_Weight a sio:CHEMINF_000334 ;
-          sio:SIO_000300 180.16 .
-        descriptor:CID2244_Canonical_SMILES a sio:CHEMINF_000376 ;
-          sio:SIO_000300 "CC(=O)OC1=CC=CC=C1C(=O)O" .
-
-    - title: Protein with PDB Links (v50 namespace — non-obvious trap)
-      description: Illustrates the critical pdbx-v50.owl# namespace for PDB links — using the old v40 prefix returns zero results silently.
-      rdf: |
-        protein:ACC10GS_A a vocab:Protein , sio:SIO_010043 ;
-          skos:prefLabel "Chain A, Glutathione S-transferase P1-1" ;
-          dcterms:identifier "10GS_A" ;
-          rdfs:seeAlso <http://identifiers.org/ncbiprotein:10GS_A> ;
-          up:organism <http://rdf.ncbi.nlm.nih.gov/pubchem/taxonomy/TAXID9606> ;
-          pdbo:link_to_pdb <http://rdf.wwpdb.org/pdb/10GS> ;
-          pdbo:link_to_pdb <http://rdf.wwpdb.org/pdb/2GSS> ;
-          obo:RO_0002180 <http://rdf.ncbi.nlm.nih.gov/pubchem/conserveddomain/PSSMID198319> .
-
-    - title: Compound-Substance-Endpoint-MeasureGroup-Protein Activity Path (4 graphs)
-      description: >
-        The structured compound-target-activity path that spans four named graphs. Shows
-        Gilteritinib (CID49803313) measured active against FLT3 (protein/ACCP36888) with an
-        IC50 value. Real SPARQL must FROM all four graphs (substance, endpoint, measuregroup,
-        protein); the target link is obo:RO_0000057 on the MeasureGroup, not on any BioAssay.
-      rdf: |
-        # compound graph
-        compound:CID49803313 a vocab:Compound .
-
-        # substance graph — Substance standardizes to its Compound (CID)
-        substance:SID242651822 a vocab:Substance ;
-          sio:CHEMINF_000477 compound:CID49803313 .
-
-        # endpoint graph — one measurement record; outcome is a controlled IRI
-        endpoint:SID242651822_AID1876067_PMID33539089_VALUE1 a vocab:Endpoint , bao:BAO_0000190 ;
-          obo:IAO_0000136 substance:SID242651822 ;
-          vocab:PubChemAssayOutcome vocab:active ;
-          rdfs:label "IC50" ;
-          sio:SIO_000300 0.00029 ;
-          sio:SIO_000221 <http://purl.obolibrary.org/obo/UO_0000064> ;
-          cito:citesAsDataSource <http://rdf.ncbi.nlm.nih.gov/pubchem/reference/1335090> .
-
-        # measuregroup graph — holds the protein target link (obo:RO_0000057)
-        measuregroup:AID1876067_PMID33539089 a vocab:MeasureGroup , bao:BAO_0000040 ;
-          dcterms:title "Inhibition of Flt3 (unknown origin)" ;
-          dcterms:source <http://rdf.ncbi.nlm.nih.gov/pubchem/source/ChEMBL> ;
-          obo:OBI_0000299 endpoint:SID242651822_AID1876067_PMID33539089_VALUE1 ;
-          obo:RO_0000057 protein:ACCP36888 .
-
-        # protein graph — target (see <ProteinShape> for full predicate set)
-        protein:ACCP36888 a vocab:Protein ;
-          skos:prefLabel "Receptor-type tyrosine-protein kinase FLT3" .
-
-sparql_query_examples:
-  - title: Retrieve All Descriptors for a Specific Compound
-    description: CID-based hub-and-spoke lookup retrieving all descriptor types and scalar values.
-    question: What are all molecular descriptors for aspirin (CID2244)?
+# ── examples: verified, executable atoms. Hub-and-spoke: a Compound (CID) links to typed descriptor NODES via
+#    sio:SIO_000008, scalar value via sio:SIO_000300; ontology classes attach directly as rdf:type. ──
+examples:
+  - id: descriptors
+    intent: all typed molecular descriptors for a compound (the CID hub-and-spoke)
+    question: "What molecular descriptors does aspirin (CID2244) have?"
     complexity: basic
     sparql: |
       PREFIX compound: <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/>
       PREFIX sio: <http://semanticscience.org/resource/>
-
       SELECT ?descriptorType ?value
       WHERE {
         compound:CID2244 sio:SIO_000008 ?descriptor .
-        ?descriptor a ?descriptorType ;
-                    sio:SIO_000300 ?value .
+        ?descriptor a ?descriptorType ; sio:SIO_000300 ?value .
       }
-      LIMIT 30
+    verified: {result_rows: 23, date: "2026-07-22", sample: "CHEMINF_000335='C9H8O4', CHEMINF_000334=180.16, CHEMINF_000376='CC(=O)OC1=CC=CC=C1C(=O)O'"}
+    teaches: "Compound -sio:SIO_000008-> typed descriptor node -sio:SIO_000300-> scalar value. rdf:type of the node is the CHEMINF type IRI (formula/MW/SMILES/…). No FROM needed here because compound + descriptor/compound are both in the default union for a CID-pinned lookup."
+    traps_avoided:
+      - "There is NO single skos:prefLabel-style property carrying 'the formula' — each property is a distinct typed descriptor node reached through sio:SIO_000008, keyed by its CHEMINF rdf:type."
 
-  - title: Get Two Specific Descriptors Using VALUES with CHEMINF IRIs
-    description: Retrieve molecular formula and weight using two specific CHEMINF type IRIs in VALUES.
-    question: What is the molecular formula and molecular weight of aspirin?
+  - id: formula_weight
+    intent: two specific descriptors by their CHEMINF type IRIs (targeted, no full spoke fan-out)
+    question: "What is the molecular formula and molecular weight of aspirin?"
     complexity: basic
     sparql: |
       PREFIX compound: <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/>
       PREFIX sio: <http://semanticscience.org/resource/>
-
       SELECT ?descriptorType ?value
       WHERE {
         compound:CID2244 sio:SIO_000008 ?descriptor .
-        ?descriptor a ?descriptorType ;
-                    sio:SIO_000300 ?value .
-        VALUES ?descriptorType {
-          sio:CHEMINF_000335   # Molecular Formula
-          sio:CHEMINF_000334   # Molecular Weight
-        }
+        ?descriptor a ?descriptorType ; sio:SIO_000300 ?value .
+        VALUES ?descriptorType { sio:CHEMINF_000335 sio:CHEMINF_000334 }   # 335=Molecular Formula, 334=Molecular Weight
       }
-      LIMIT 10
+    verified: {formula: "C9H8O4", molecular_weight: 180.16, date: "2026-07-22"}
+    teaches: "Select a property by pinning its CHEMINF type IRI in VALUES on the descriptor node — the structured alternative to any text/regex over descriptor values."
 
-  - title: Find FDA-Approved Drugs by Molecular Weight Range
-    description: Uses specific role IRI (vocab:FDAApprovedDrugs) and descriptor type IRI (CHEMINF_000334) — no text search required.
-    question: Which FDA-approved drugs have molecular weights between 150 and 200?
+  - id: count_fda
+    intent: count FDA-approved drugs via the typed drug-role IRI (no text search)
+    question: "How many FDA-approved drugs are in PubChem?"
+    complexity: aggregation
+    sparql: |
+      PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT (COUNT(DISTINCT ?c) AS ?fda_drugs)
+      FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/compound>
+      WHERE { ?c a vocab:Compound ; obo:RO_0000087 vocab:FDAApprovedDrugs . }
+    verified: {fda_drugs: 15941, date: "2026-07-22"}
+    teaches: "Drug status is a typed role: obo:RO_0000087 -> vocab:FDAApprovedDrugs (also vocab:InvestigationalDrugs etc.). A first-class categorical filter, not a title text match; graph-pin <compound> for a clean DISTINCT count."
+
+  - id: fda_mw_range
+    intent: FDA-approved drugs filtered by a descriptor value range (the two-graph descriptor pin)
+    question: "Which FDA-approved drugs have a molecular weight between 150 and 200?"
     complexity: intermediate
     sparql: |
       PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
       PREFIX obo: <http://purl.obolibrary.org/obo/>
       PREFIX sio: <http://semanticscience.org/resource/>
-
-      SELECT ?compound ?weight
+      SELECT (COUNT(DISTINCT ?compound) AS ?n)
+      FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/compound>            # role IRI lives here
+      FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/descriptor/compound> # descriptor type + value live here — BOTH required
       WHERE {
-        ?compound a vocab:Compound ;
-                  obo:RO_0000087 vocab:FDAApprovedDrugs ;
-                  sio:SIO_000008 ?weightDesc .
-        ?weightDesc a sio:CHEMINF_000334 ;
-                    sio:SIO_000300 ?weight .
+        ?compound a vocab:Compound ; obo:RO_0000087 vocab:FDAApprovedDrugs ; sio:SIO_000008 ?wd .
+        ?wd a sio:CHEMINF_000334 ; sio:SIO_000300 ?weight .
         FILTER(?weight >= 150 && ?weight <= 200)
       }
-      ORDER BY ?weight
-      LIMIT 100
+    verified: {n: 1375, date: "2026-07-22"}
+    teaches: "Combining a role IRI (in <compound>) with a descriptor-value filter (in <descriptor/compound>) needs BOTH graphs pinned — a typed CHEMINF range filter, no scan over 124M compounds."
+    traps_avoided:
+      - "Pinning only <compound> returns 0 rows silently — the descriptor's rdf:type and value are in <descriptor/compound> (gotcha separate_graphs)."
 
-  - title: Find Active Protein Targets for a Compound via Structured Activity Path
-    description: >
-      Four-graph path Compound(CID) -> Substance -> Endpoint(active) -> MeasureGroup -> Protein.
-      Filters activity by the controlled vocab:PubChemAssayOutcome IRI (not dcterms:title text
-      search). No bioassay graph needed; the substance + endpoint + measuregroup FROM clauses are
-      required (protein IRIs are returned directly). RO_0000057 is heterogeneous, so the /protein/
-      filter isolates protein targets from cell-line and taxonomy participants.
-    question: Which protein targets is Gilteritinib (CID49803313) active against?
+  - id: enum_chebi_class
+    intent: enumerate ALL compounds of a ChEBI class + its subclasses (the compound-class set-level route)
+    question: "How many PubChem compounds are carboxylic acids (ChEBI class + all its structural subclasses)?"
+    complexity: aggregation
+    sparql: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT (COUNT(DISTINCT ?compound) AS ?n)
+      WHERE {
+        GRAPH <http://rdfportal.org/ontology/efo> {                 # ChEBI hierarchy is co-hosted here
+          ?chebiClass rdfs:subClassOf* obo:CHEBI_33575 .            # 33575 = carboxylic acid; 317 descendant classes
+        }
+        GRAPH <http://rdf.ncbi.nlm.nih.gov/pubchem/compound> {
+          ?compound a ?chebiClass .
+        }
+      }
+    verified: {n: 282, descendant_classes: 317, date: "2026-07-22"}
+    teaches: "PubChem types each compound ONLY with its most-specific (leaf) ChEBI class — never ancestors. So 'all compounds of ChEBI class X' MUST first expand X to descendant CHEBI IRIs with rdfs:subClassOf* in GRAPH <ontology/efo>, THEN join those IRIs to the compound graph. Expanding to a bounded class set first is what keeps it tractable."
+    traps_avoided:
+      - "The naive `?c a obo:CHEBI_33575` alone returns 0 — the parent structural class has no directly-typed compounds; you MUST descend subClassOf* to the leaves (verified: 0 direct vs 282 via subtree)."
+      - "A broad open STRSTARTS over CHEBI_ types across all 124M compounds TIMES OUT (gotcha compound_scan_timeout) — the subtree pre-filter avoids it."
+      - "The <ontology/efo> ChEBI tree is STRUCTURAL and incomplete: role/application classes (drug, NSAID CHEBI_35475) have NO structural subclasses and 0 directly-typed compounds here (verified) — this route works for STRUCTURAL parents (acid, alcohol, amine), not for pharmacological-role classes. For 'all drugs of role X' use the drug-role IRI (example count_fda) or bridge to the chebi endpoint via TogoID."
+
+  - id: compound_targets
+    intent: protein targets a compound is ACTIVE against (the 4-graph structured activity path, forward)
+    question: "Which protein targets is Gilteritinib (CID49803313) active against?"
     complexity: intermediate
     sparql: |
       PREFIX compound: <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/>
-      PREFIX vocab:    <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
-      PREFIX sio:      <http://semanticscience.org/resource/>
-      PREFIX obo:      <http://purl.obolibrary.org/obo/>
-      PREFIX dcterms:  <http://purl.org/dc/terms/>
-
+      PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
       SELECT DISTINCT ?protein ?assayTitle
       FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/substance>
       FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/endpoint>
       FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/measuregroup>
       WHERE {
         ?substance sio:CHEMINF_000477 compound:CID49803313 .
-        ?endpoint obo:IAO_0000136 ?substance ;
-                  vocab:PubChemAssayOutcome vocab:active .
-        ?mg obo:OBI_0000299 ?endpoint ;
-            obo:RO_0000057  ?protein ;
-            dcterms:title   ?assayTitle .
+        ?endpoint obo:IAO_0000136 ?substance ; vocab:PubChemAssayOutcome vocab:active .
+        ?mg obo:OBI_0000299 ?endpoint ; obo:RO_0000057 ?protein ; dcterms:title ?assayTitle .
         FILTER(CONTAINS(STR(?protein), "/protein/"))
       }
       LIMIT 20
+    verified: {result_rows: 20, date: "2026-07-22", first_targets: "protein/ACCP36888 (FLT3), ACCP30530 (AXL), ACCQ9UM73 (ALK), ACCP24864ACCP24941 (CDK2/cyclin E)"}
+    teaches: "Forward activity: pin the CID, get its SID via sio:CHEMINF_000477, filter the Endpoint by the controlled outcome vocab:PubChemAssayOutcome vocab:active, then read the target off the MeasureGroup's obo:RO_0000057. Outcome is a controlled IRI (active/inactive/inconclusive/probe/unspecified) — not a text field."
+    traps_avoided:
+      - "obo:RO_0000057 is HETEROGENEOUS — its object may be a Protein, Taxonomy, Gene, Cell or Anatomy IRI (2026-06 counts: protein 743k, taxonomy 521k, gene 498k, cell 348k, anatomy 202k). FILTER(CONTAINS(STR(?protein),\"/protein/\")) to isolate protein targets."
+      - "The target link is on MeasureGroup, not BioAssay — a title text search on <bioassay> misses it entirely (gotcha activity_path)."
 
-  - title: Search Bioassay Titles by Topic
-    description: Text search on dcterms:title — justified because BioAssay titles are unstructured free text with no controlled vocabulary or IRI equivalent.
-    question: Which bioassays relate to inhibition of COX-2?
-    complexity: intermediate
-    sparql: |
-      PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
-      PREFIX dcterms: <http://purl.org/dc/terms/>
-
-      # Text search justified: BioAssayShape dcterms:title is unstructured narrative free text.
-      # Checked full shape_expressions — no controlled vocabulary predicate exists for assay topic.
-      # Inspected examples — titles are scientific descriptions, not IRIs or typed values.
-      # Virtuoso backend confirmed: using bif:contains (indexed) over FILTER(CONTAINS()).
-      SELECT ?bioassay ?title
-      FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/bioassay>
-      WHERE {
-        ?bioassay a vocab:BioAssay ;
-                  dcterms:title ?title .
-        ?title bif:contains "'COX-2' AND 'inhibit'"
-      }
-      LIMIT 50
-
-  - title: Find Active Compounds for a Protein Target via Structured Activity Path
-    description: >
-      Reverse traversal from a Protein IRI: MeasureGroup -> Endpoint(active) -> Substance ->
-      Compound. Returns CIDs experimentally active against the target. Add a dcterms:source
-      filter on the MeasureGroup to restrict to a depositor (e.g. pubchem/source/ChEMBL).
-      Requires the measuregroup, endpoint and substance graphs.
-    question: Which compounds (CIDs) are active against FLT3 (protein/ACCP36888)?
+  - id: active_compounds
+    intent: compounds active against a protein target (the activity path, reverse — target-anchored)
+    question: "How many compounds are experimentally active against FLT3 (protein/ACCP36888)?"
     complexity: advanced
     sparql: |
       PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
-      PREFIX sio:   <http://semanticscience.org/resource/>
-      PREFIX obo:   <http://purl.obolibrary.org/obo/>
-
-      SELECT DISTINCT ?compound ?substance
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT (COUNT(DISTINCT ?compound) AS ?active_compounds)
       FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/measuregroup>
       FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/endpoint>
       FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/substance>
       WHERE {
-        ?mg obo:RO_0000057 <http://rdf.ncbi.nlm.nih.gov/pubchem/protein/ACCP36888> ;
-            obo:OBI_0000299 ?endpoint .
-        ?endpoint vocab:PubChemAssayOutcome vocab:active ;
-                  obo:IAO_0000136 ?substance .
+        ?mg obo:RO_0000057 <http://rdf.ncbi.nlm.nih.gov/pubchem/protein/ACCP36888> ; obo:OBI_0000299 ?endpoint .
+        ?endpoint vocab:PubChemAssayOutcome vocab:active ; obo:IAO_0000136 ?substance .
         ?substance sio:CHEMINF_000477 ?compound .
       }
-      LIMIT 20
+    verified: {active_compounds: 4842, date: "2026-07-22"}
+    teaches: "Reverse the path from a Protein IRI: anchor RO_0000057 on the protein, walk MeasureGroup->Endpoint(active)->Substance->Compound. Build the protein IRI directly from a UniProt accession: P36888 -> protein/ACCP36888 (no lookup needed)."
+    traps_avoided:
+      - "COUNT(DISTINCT ?compound) is mandatory — one compound has many active endpoints (multiple assays), so a bare COUNT multiplies by the endpoint count."
 
-  - title: Find Human Pathways Containing a Compound
-    description: Multi-predicate query using specific compound IRI, participant predicate (RO_0000057), and taxonomy IRI for organism — no text search.
-    question: Which human pathways involve aspirin (CID2244)?
-    complexity: advanced
+  - id: aspirin_pathways
+    intent: human pathways a compound participates in (typed participant + organism IRI)
+    question: "Which human pathways involve aspirin (CID2244)?"
+    complexity: intermediate
     sparql: |
       PREFIX compound: <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/>
       PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
       PREFIX obo: <http://purl.obolibrary.org/obo/>
       PREFIX dcterms: <http://purl.org/dc/terms/>
       PREFIX up: <http://purl.uniprot.org/core/>
-
       SELECT ?pathway ?title
       FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/pathway>
       WHERE {
-        ?pathway a vocab:Pathway ;
-                 dcterms:title ?title ;
-                 obo:RO_0000057 compound:CID2244 ;
+        ?pathway a vocab:Pathway ; dcterms:title ?title ; obo:RO_0000057 compound:CID2244 ;
                  up:organism <http://rdf.ncbi.nlm.nih.gov/pubchem/taxonomy/TAXID9606> .
       }
-      LIMIT 50
+    verified: {result_rows: 9, date: "2026-07-22", first_row: "PWID1184646 = 'Acetylsalicylic Acid Action Pathway'"}
+    teaches: "Pathway participants use obo:RO_0000057 (same predicate as MeasureGroup targets, different graph); organism is up:organism -> a PubChem taxonomy/TAXID<N> IRI. FROM the pathway graph — omitting it returns empty."
 
-cross_database_queries:
-  shared_endpoint: pubchem
-  co_located_databases: []
-  examples: []
-  notes: |
-    PubChem occupies its own isolated endpoint (https://rdfportal.org/pubchem/sparql).
-    No other RDF databases are co-located on this endpoint. Cross-database SPARQL joins
-    are not possible.
-    To integrate PubChem data with external databases, use application-level bridging:
-    - CID or InChIKey to look up compounds in ChEMBL, ChEBI, or UniChem APIs
-    - rdfs:seeAlso IRIs (Wikidata, identifiers.org) as bridging keys in application code
-    - cito:isDiscussedBy patent IRIs to join with patent databases externally
-
-cross_references:
-  - pattern: rdfs:seeAlso
-    description: |
-      External database links via rdfs:seeAlso on compounds and proteins. URL-pattern
-      inspection needed to identify target database (no structured type tag on links).
-    databases:
-      knowledge:
-        - "Wikidata: ~2-5% of compounds (primarily well-known drugs and chemicals)"
-        - "identifiers.org: protein cross-references (ncbiprotein namespace)"
-      pathway:
-        - "PathBank: pathway cross-references via pathbank.org URLs"
-
-  - pattern: rdf:type (ontology classifications)
-    description: |
-      Compounds carry external ontology class IRIs directly as rdf:type values — not via a
-      separate predicate. Covers ChEBI, SNOMED CT, NCI Thesaurus, and NDFRT; primarily on
-      bioactive and approved drug compounds (~5-10% of all compounds).
-    databases:
-      ontologies:
-        - "ChEBI: purl.obolibrary.org/obo/CHEBI_[N] — ~5-10% of compounds"
-        - "SNOMED CT: purl.bioontology.org/ontology/SNOMEDCT/[N]"
-        - "NCI Thesaurus: ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#[C]"
-        - "NDFRT: purl.bioontology.org/ontology/NDFRT/[N]"
+  - id: protein_detail
+    intent: a target protein's label, organism, and PDB structures (the v50 PDB namespace)
+    question: "What is FLT3 (protein/ACCP36888) — its name, organism, and PDB structures?"
+    complexity: basic
     sparql: |
       PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
-
-      SELECT ?chebiClass
-      WHERE {
-        VALUES ?compound { <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID2244> }
-        ?compound a vocab:Compound ; a ?chebiClass .
-        FILTER(STRSTARTS(STR(?chebiClass), "http://purl.obolibrary.org/obo/CHEBI_"))
-      }
-
-  - pattern: rdfs:seeAlso (BioAssay -> source assay)
-    description: |
-      BioAssay entities carry an rdfs:seeAlso link to the depositor's native assay record.
-      For ChEMBL-sourced assays (the large majority) this resolves to a ChEMBL assay IRI,
-      enabling application-level joins to ChEMBL assay/activity data.
-      Verified on bioassay/AID1876067 -> CHEMBL5131763 (2026-06-22).
-    databases:
-      assay:
-        - "ChEMBL assay: http://rdf.ebi.ac.uk/resource/chembl/assay/CHEMBL[N]"
-
-  - pattern: cito:isDiscussedBy
-    description: |
-      Patent and literature reference links on compounds, genes, and proteins.
-      Patent IRI pattern: pubchem/patent/[COUNTRY]-[NUMBER]-[KIND]
-    databases:
-      patents:
-        - "Multiple jurisdictions: US, EP, CN, CA, JP, KR, AU, BR (~53.7M patent records)"
-      literature:
-        - "PubMed via pubchem/reference/[PMID] namespace"
-
-architectural_notes:
-  query_strategy:
-    - "MANDATORY FIRST STEP: get_MIE_file('pubchem') — read critical_warnings and shape_expressions"
-    - "Exploratory: inspect a known compound with SELECT ?p ?o WHERE { <CID_IRI> ?p ?o } LIMIT 50"
-    - "Name -> CID: prefer get_pubchem_compound_id('aspirin') — it returns the single CANONICAL parent CID (e.g. 2244) via PUG-REST. ncbi_esearch(db=pccompound, ...) ALSO finds CIDs but returns a relevance-ranked SET of records (salts, mixtures, isotope-labeled, deposited variants) that often omits the canonical parent — use it for candidate-set / boolean / field-tag searches, NOT for pinning the one CID of a named drug."
-    - "Comprehensive: use specific CID IRIs or CHEMINF descriptor type IRIs — never reuse search API result lists as VALUES for count queries (circular reasoning)"
-    - "Drug roles: use specific IRI obo:RO_0000087 vocab:FDAApprovedDrugs — typed predicate, no text search"
-    - "Compound-target-activity: use the 4-graph path (substance -> endpoint -> measuregroup -> protein), NOT bioassay title search. Pin the CID, get the SID via sio:CHEMINF_000477, then read endpoint outcome + measuregroup RO_0000057 target. The target link is on MeasureGroup, never on BioAssay."
-    - "Pin the protein IRI BEFORE entering the 4-graph path (same as pinning the CID first). Fastest route: if you know the UniProt accession, build the IRI directly as protein/ACC<accession> (e.g. EGFR P00533 -> protein/ACCP00533, FLT3 P36888 -> protein/ACCP36888). Otherwise resolve by name with bif:contains on skos:prefLabel over the protein graph using the FULL official name ('Epidermal growth factor receptor', not the abbreviation 'EGFR'); the same prefLabel may be shared by species/source variants, so disambiguate by the embedded accession."
-    - "Gene/protein abbreviation -> full name (the prefLabel uses the full name, not the symbol): chain ncbi_esearch(db=gene, 'EGFR[Gene Name] AND Homo sapiens[Organism]') -> Gene ID, then ncbi_esummary(db=gene, <id>) -> nomenclaturename = 'epidermal growth factor receptor' (plus otheraliases for fallback strings). bif:contains is case-insensitive, so feed that name straight into the prefLabel lookup above."
-    - "Filter activity by the controlled vocab:PubChemAssayOutcome IRI: vocab:active / vocab:inactive / vocab:inconclusive / vocab:probe / vocab:unspecified"
-    - "Bioassay topics: bif:contains on dcterms:title is the ONLY justified text search case"
-    - "Separate graphs: always add FROM for bioassay, protein, and pathway queries"
-    - "Priority: Specific CID/CHEMINF IRIs > Typed predicates > Taxonomy IRIs > bif:contains (titles only)"
-
-  schema_design:
-    - "Hub-and-spoke: each compound links to typed descriptor nodes via sio:SIO_000008; scalar value via sio:SIO_000300"
-    - "Ontology classification via rdf:type directly (not a separate predicate) — ChEBI, SNOMED CT, NCI, NDFRT"
-    - "Drug roles via obo:RO_0000087 with vocab: IRIs (FDAApprovedDrugs, InvestigationalDrugs, etc.)"
-    - "Stereoisomer links: sio:CHEMINF_000455 (bidirectional between parent and isotopic/stereo variants)"
-    - "Pathway participants: obo:RO_0000057; organism: up:organism with taxonomy:TAXID[N] IRI"
-    - "Activity path (4 graphs): Compound -[sio:CHEMINF_000477]- Substance -[obo:IAO_0000136]- Endpoint(outcome) <-[obo:OBI_0000299]- MeasureGroup -[obo:RO_0000057]-> Protein. BioAssay -[bao:BAO_0000209]-> MeasureGroup links assay metadata to the activity path."
-    - "MeasureGroup IRI pattern: measuregroup/AID[N]_PMID[N] or measuregroup/AID[N] (no PMID). Endpoint IRI pattern: endpoint/SID[N]_AID[N]_PMID[N]_VALUE[N]"
-    - "MeasureGroup obo:RO_0000057 is heterogeneous: object may be protein/ACC[N], taxonomy/TAXID[N], gene/GID[N], cell/CELLID[N], or anatomy/ANATOMYID[N] — filter by IRI substring for the target class you want (verified counts 2026-06-22: protein 743k, taxonomy 521k, gene 498k, cell 348k, anatomy 202k)"
-    - "Endpoint quantitative detail: sio:SIO_000300 (numeric value), sio:SIO_000221 (unit -> obo:UO_[N]), rdfs:label (e.g. IC50), vocab:hasQualifier (=, >, <)"
-    - "PDB links on Protein: pdbo:link_to_pdb with pdbx-v50.owl# prefix (NOT v40 — silent failure)"
-
-  performance:
-    - "CID-specific queries: <1s"
-    - "FDA drug + MW range filter: efficient to ~10K results with CHEMINF type constraint"
-    - "Bioassay source filter with FROM clause: <2s (~1.7M bioassays with dcterms:source index)"
-    - "Broad STRSTARTS over all 119M compounds: TIMES OUT — scope to specific CIDs only"
-    - "Always add LIMIT; always add FROM for bioassay/protein/pathway graphs"
-    - "bif:contains: split property paths before applying on Virtuoso (no chaining)"
-
-  data_integration:
-    - "No SPARQL-joinable co-located databases (isolated endpoint)"
-    - "External bridging via CID, InChIKey, or rdfs:seeAlso identifiers in application code"
-    - "Protein→PDB: pdbo:link_to_pdb (pdbx-v50.owl# namespace — verified 2026-04-22)"
-    - "Compound→literature: cito:isDiscussedBy to pubchem/patent/ and pubchem/reference/"
-
-  data_quality:
-    - "Descriptor coverage >99% for MW, formula, SMILES; XLogP3 ~89% (CHEMINF_000395)"
-    - "Ontology classification (ChEBI/SNOMED) only ~5-10% of compounds — primarily bioactives"
-    - "Gene entity metadata (prefLabel, organism) absent on all inspected instances — unreliable"
-    - "Patent references on ~45% of compounds; Wikidata links on ~2-5% only"
-
-  text_search_justification:
-    - "Number of the 7 example queries using text search: 1"
-    - "Field where text search IS legitimate: dcterms:title on BioAssay (unstructured narrative)"
-    - "All other dimensions have structured predicates: CIDs, CHEMINF descriptor type IRIs, drug role IRIs, source IRIs, taxonomy IRIs, participant IRIs"
-    - "bif:contains used (not FILTER(CONTAINS())) — Virtuoso backend confirmed"
-
-data_statistics:
-  total_compounds: 119093251
-  total_substances_and_descriptors: 329528131
-  total_bioassays: 1768183
-  total_genes: 167172
-  total_proteins: 248623
-  total_pathways: 80739
-  total_patents: 53726453
-  fda_approved_drugs: 17367
-  verified_date: "2026-04-22"
-  verification_method: "Direct COUNT queries on vocab:Compound, vocab:BioAssay, vocab:Gene, vocab:Protein, vocab:Pathway, vocab:Patent entity types; FDA drug count via obo:RO_0000087 vocab:FDAApprovedDrugs"
-  coverage:
-    molecular_formula: ">99%"
-    calculation: "119,093,251 CHEMINF_000335 instances equals compound count — confirmed by class query"
-    molecular_weight: ">99%"
-    calculation: "119,093,251 CHEMINF_000334 instances"
-    canonical_smiles: ">99%"
-    calculation: "119,093,251 CHEMINF_000376 instances"
-    inchi: "~99.5%"
-    calculation: "118,733,502 InChIKey records (CHEMINF_000399) vs 119,093,251 compounds"
-    xlogp3: "~89%"
-    calculation: "106,114,584 CHEMINF_000395 instances vs 119,093,251 compounds"
-    ontology_classification: "~5-10%"
-    calculation: "ChEBI/SNOMED/NCI rdf:type classes primarily on bioactive and approved drug compounds"
-    patent_refs: "~45%"
-    calculation: "53,726,453 patent records; many compounds have multiple patent links"
-  staleness_warning: "Database updated continuously — counts may vary"
-
-anti_patterns:
-  - title: "Skipping Schema Check — Text Search on Structured Descriptor Values"
-    problem: "Using text match on descriptor values when CHEMINF type IRIs exist and are faster."
-    wrong_sparql: |
-      # No MIE schema check — jumps straight to text match
-      ?descriptor sio:SIO_000300 ?value .
-      ?value bif:contains "'C9H8O4'"
-    correct_sparql: |
-      # Workflow: get_MIE_file("pubchem") → found DescriptorShape with CHEMINF_000335 for formula
-      # Use the typed descriptor IRI directly — no text search needed
-      PREFIX sio: <http://semanticscience.org/resource/>
-      SELECT ?compound
-      WHERE {
-        ?compound sio:SIO_000008 ?descriptor .
-        ?descriptor a sio:CHEMINF_000335 ;
-                    sio:SIO_000300 "C9H8O4" .
-      }
-      LIMIT 20
-    explanation: "Every molecular property has a specific CHEMINF type IRI. Read shape_expressions before reaching for text search."
-
-  - title: "Wrong PDB Namespace on Protein Queries"
-    problem: "Using pdbx-v40.owl# for PDB link predicate — returns zero results silently."
-    wrong_sparql: |
-      PREFIX pdbo40: <http://rdf.wwpdb.org/schema/pdbx-v40.owl#>
-      SELECT ?protein ?pdb
-      FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/protein>
-      WHERE { ?protein pdbo40:link_to_pdb ?pdb . }
-      LIMIT 20
-    correct_sparql: |
-      # v50 is the correct prefix — verified on protein:ACC10GS_A (2026-04-22)
-      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>
-      PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
-      SELECT ?protein ?pdb
-      FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/protein>
-      WHERE {
-        ?protein a vocab:Protein ;
-                 pdbo:link_to_pdb ?pdb .
-      }
-      LIMIT 20
-    explanation: "PDB link predicate uses pdbx-v50.owl# schema. The v40 prefix is a documented silent-failure trap."
-
-  - title: "Circular Reasoning with Search Results"
-    problem: "Using compound IRIs sampled from a text-search result as the scope of a comprehensive property-based count — counts only the sample."
-    wrong_sparql: |
-      # WRONG: pasted sampled CID IRIs — counts only those compounds, not all antifungals
-      VALUES ?compound {
-        <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID5280343>
-        <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID5765>
-      }
-      SELECT (COUNT(?compound) AS ?count) WHERE { }
-      LIMIT 1
-    correct_sparql: |
-      # CORRECT: comprehensive count via a typed descriptor IRI. Two fixes over the naive form:
-      # (1) CHEMINF_000335 is Molecular Formula; CHEMINF_000140 is the CID STRING (e.g. "2244"),
-      #     not a structure descriptor — filtering it as SMILES matches nothing.
-      # (2) a descriptor's rdf:type and value live in the descriptor/compound graph, so BOTH
-      #     graphs must be pinned or the ?descriptor triples resolve to nothing.
-      # (An exact molecular-formula match is used instead of a SMILES CONTAINS scan, which would
-      #  time out over 119M compounds — see the CHEMINF aggregation-timeout warning.)
-      PREFIX cheminf: <http://semanticscience.org/resource/>
-      SELECT (COUNT(DISTINCT ?compound) AS ?count)
-      FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/compound>
-      FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/descriptor/compound>
-      WHERE {
-        ?compound cheminf:SIO_000008 ?descriptor .
-        ?descriptor a cheminf:CHEMINF_000335 ;
-                    cheminf:SIO_000300 "C9H8O4" .
-      }
-      LIMIT 1
-      # -> 1,231 compounds share molecular formula C9H8O4. Verified 2026-07-18.
-    explanation: "Use structured descriptor predicates for comprehensive counts, not sampled compound IRIs in VALUES. Two silent-0 traps fixed: CHEMINF_000140 is the CID string (not SMILES), and descriptor rdf:type/value live in the descriptor/compound graph — pin BOTH compound and descriptor/compound graphs."
-
-  - title: "Bioassay Title Text Search When the Structured Compound-Target Path Exists"
-    problem: >
-      Using bif:contains on BioAssay dcterms:title to recover compound-target relationships —
-      typically after reading only BioAssayShape and wrongly concluding no target link exists.
-      Assay titles are inconsistent free text ("ROCK inhibition" / "Rho kinase" / "FLT3" all
-      coexist), so recall is poor and the controlled activity outcome cannot be applied.
-    wrong_sparql: |
-      # WRONG — title text search; misses the structured target link entirely
-      PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
       PREFIX dcterms: <http://purl.org/dc/terms/>
-      SELECT ?assay ?title
-      FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/bioassay>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-v50.owl#>   # NOTE: v50, NOT v40
+      SELECT ?label ?id ?organism ?pdb
+      FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/protein>
       WHERE {
-        ?assay a vocab:BioAssay ;
-               dcterms:title ?title .
-        ?title bif:contains "'FLT3' AND 'gilteritinib'"
+        <http://rdf.ncbi.nlm.nih.gov/pubchem/protein/ACCP36888> skos:prefLabel ?label ; dcterms:identifier ?id ;
+            up:organism ?organism .
+        OPTIONAL { <http://rdf.ncbi.nlm.nih.gov/pubchem/protein/ACCP36888> pdbo:link_to_pdb ?pdb }
       }
-      LIMIT 50
-    correct_sparql: |
-      # CORRECT — 4-graph structured path; target via MeasureGroup obo:RO_0000057
+      LIMIT 10
+    verified: {date: "2026-07-22", label: "Receptor-type tyrosine-protein kinase FLT3", id: "P36888", organism: "taxonomy/TAXID9606", pdb_example: "rdf.wwpdb.org/pdb/5X02"}
+    teaches: "Protein carries skos:prefLabel (FULL name, not the symbol), dcterms:identifier (= UniProt accession), up:organism (PubChem taxonomy IRI), and pdbo:link_to_pdb PDB structures. FROM the protein graph."
+    traps_avoided:
+      - "PDB links use the pdbx-v50.owl# prefix. The old pdbx-v40.owl# prefix returns ZERO rows silently — a namespace trap, not a data gap."
+      - "prefLabel is the full official name ('Receptor-type tyrosine-protein kinase FLT3'), so name-based bif:contains lookups must use the full name; the symbol 'FLT3' won't match the label."
+
+  - id: xdb_chebi
+    intent: "cross-DB: enrich a compound with its ChEBI class name + parent, via the co-hosted ChEBI (efo) graph"
+    question: "What ChEBI class is aspirin (CID2244), and what is that class's parent?"
+    complexity: cross_db
+    endpoint_name: pubchem
+    sparql: |
       PREFIX compound: <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/>
-      PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
-      PREFIX sio: <http://semanticscience.org/resource/>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      SELECT DISTINCT ?protein
-      FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/substance>
-      FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/endpoint>
-      FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/measuregroup>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?chebiClass ?className ?parent ?parentName
       WHERE {
-        ?substance sio:CHEMINF_000477 compound:CID49803313 .
-        ?endpoint obo:IAO_0000136 ?substance ;
-                  vocab:PubChemAssayOutcome vocab:active .
-        ?mg obo:OBI_0000299 ?endpoint ;
-            obo:RO_0000057  ?protein .
-        FILTER(CONTAINS(STR(?protein), "/protein/"))
+        GRAPH <http://rdf.ncbi.nlm.nih.gov/pubchem/compound> {
+          compound:CID2244 a ?chebiClass .
+          FILTER(STRSTARTS(STR(?chebiClass), "http://purl.obolibrary.org/obo/CHEBI_"))
+        }
+        GRAPH <http://rdfportal.org/ontology/efo> {
+          ?chebiClass rdfs:label ?className ; rdfs:subClassOf ?parent .
+          ?parent rdfs:label ?parentName .
+          FILTER(STRSTARTS(STR(?parent), "http://purl.obolibrary.org/obo/CHEBI_"))
+        }
       }
-      LIMIT 20
-    explanation: >
-      The target protein link is held by the MeasureGroup entity (obo:RO_0000057), reachable via
-      the substance/endpoint/measuregroup/protein graphs — not by the BioAssay's free-text title.
-      The structured path also lets you filter on the controlled outcome IRI (vocab:active), giving
-      far higher precision and recall than text search. bif:contains on dcterms:title is justified
-      only for finding assays BY topic description (see text_search_justification), never for
-      compound-target relationships.
+    verified: {result_rows: 1, date: "2026-07-22", row: "CHEBI_15365 'acetylsalicylic acid' -> CHEBI_33575 'carboxylic acid'"}
+    teaches: "PubChem's ChEBI rdf:type IRIs ARE resolvable on the same endpoint: the co-hosted <ontology/efo> graph supplies their rdfs:label and structural subClassOf parent — a direct GRAPH join, no TogoID bridge. (Corrects the v2 claim that PubChem supports no cross-DB SPARQL.)"
+    traps_avoided:
+      - "The label/hierarchy is in <ontology/efo>, NOT in any pubchem partition — pin that graph. MeSH is also co-hosted but has no direct compound link, so MeSH must go through TogoID (id_join_map)."
 
-common_errors:
-  - error: "Empty results on protein, pathway, or compound-target activity queries"
-    causes:
-      - "Missing FROM clause for the protein or pathway named graph"
-      - "Using pdbx-v40.owl# namespace for PDB link predicate"
-      - "Compound-target query missing the measuregroup and/or endpoint FROM clause"
-      - "Looking for the target link on BioAssay instead of MeasureGroup (obo:RO_0000057)"
-      - "Wrong sio:CHEMINF_000477 direction: it is Substance -> Compound (?substance sio:CHEMINF_000477 ?compound)"
-    solutions:
-      - "Add FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/protein> or /pathway"
-      - "Use pdbx-v50.owl#link_to_pdb for PDB links (see critical_warnings)"
-      - "For activity queries FROM all four graphs: substance, endpoint, measuregroup, protein"
-      - "Resolve CID -> SID first (?sub sio:CHEMINF_000477 compound:CID[N]), then read the target via measuregroup obo:RO_0000057"
-      - "Verify graph URIs with get_graph_list('pubchem')"
+# ── schema_delta: non-obvious predicates/vocab NO example above already demonstrates. ──
+schema_delta:
+  - "Descriptor CHEMINF type IRIs beyond formula/MW/SMILES (all on descriptor nodes reached via sio:SIO_000008, value via sio:SIO_000300): 000336 formal charge, 000338 exact mass, 000379 isomeric SMILES, 000382 preferred IUPAC name, 000387/000388 H-bond donor/acceptor count, 000389 rotatable-bond count, 000390 structure complexity, 000392 TPSA, 000395 XLogP3 (~89% coverage), 000396 IUPAC InChI (~99.5%)."
+  - "Ontology classifications OTHER than ChEBI ride on rdf:type too (not a separate predicate): SNOMED CT purl.bioontology.org/ontology/SNOMEDCT/<N>, NCI Thesaurus ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#<C>, NDFRT. Only ~5-10% of compounds carry any ontology class (bioactives/drugs)."
+  - "Stereoisomer / parent-structure links between compounds: sio:CHEMINF_000455 (bidirectional parent<->isotope/stereo variant)."
+  - "BioAssay dcterms:title is unstructured narrative free text — bif:contains on it (Virtuoso, indexed; split the property path first, FROM <bioassay>) is the ONE justified text search on this DB, for finding assays BY topic. Never for compound-target relations (use the activity path)."
+  - "Substance->Compound direction: sio:CHEMINF_000477 points Substance -> Compound (?sub sio:CHEMINF_000477 ?cid). Reversing it returns nothing."
+  - "Gene entities are SPARSE: only rdf:type (vocab:Gene / sio:SIO_010035) and cito:isDiscussedBy are reliable; skos:prefLabel and up:organism were absent on all inspected genes — do not depend on them."
 
-  - error: "Aggregation query timeout"
-    causes:
-      - "STRSTARTS namespace scan over all 119M compounds"
-      - "Missing LIMIT on aggregations"
-      - "No entity type or descriptor type filter"
-    solutions:
-      - "Scope ChEBI/ontology lookups to specific CIDs, not the full compound set"
-      - "Always add LIMIT 20-100; add DISTINCT and ORDER BY DESC(?count) before GROUP BY"
-      - "Filter by descriptor type IRI (a sio:CHEMINF_000334) before filtering on values"
+# ── id_join_map: how to anchor stably and cross to other resources. ──
+id_join_map:
+  stable_anchor: >
+    Compound = compound:CID<N> IRI (dcterms:identifier = the bare CID string, e.g. "2244"). Substance = substance:SID<N>.
+    Protein = protein:ACC<UniProtAccession> — build it directly from a UniProt accession (P36888 -> protein/ACCP36888);
+    dcterms:identifier on the protein = that accession. InChIKey is the structure-stable secondary key.
+  same_endpoint_joins:            # co-hosted on the pubchem endpoint — direct GRAPH join, NO TogoID
+    chebi: "compound rdf:type -> obo:CHEBI_<N>; class labels + partial STRUCTURAL subClassOf hierarchy in GRAPH <http://rdfportal.org/ontology/efo> (examples xdb_chebi, enum_chebi_class). Structural classes only — role classes absent."
+  xrefs:                          # outbound references carried on PubChem entities
+    pdb:          "protein pdbo:link_to_pdb (pdbx-v50.owl# — v40 = silent 0) -> rdf.wwpdb.org/pdb/<ID> (example protein_detail)"
+    chembl_assay: "bioassay rdfs:seeAlso -> rdf.ebi.ac.uk/resource/chembl/assay/CHEMBL<N> (ChEMBL-sourced assays, the majority)"
+    patent:       "cito:isDiscussedBy -> pubchem/patent/<COUNTRY-NUMBER-KIND> (~45% of compounds)"
+    pubmed:       "cito:isDiscussedBy / cito:citesAsDataSource -> pubchem/reference/<PMID>"
+    ncbiprotein:  "protein rdfs:seeAlso -> identifiers.org/ncbiprotein:<ACC>"
+    wikidata:     "compound rdfs:seeAlso -> wikidata (~2-5% of compounds, mostly well-known drugs)"
+  bridged_via_togoid:             # NOT reachable by an intra-endpoint SPARQL join — use togoid_convertId on the CID/InChIKey
+    - "ChEMBL molecule, ChEBI (as a full ontology DB with the complete hierarchy), Ensembl, and MeSH (co-hosted but no direct compound link) route through TogoID on the CID or InChIKey."
 
-  - error: "Bioassay text search returns no results"
-    causes:
-      - "Using FILTER(CONTAINS()) instead of bif:contains on Virtuoso"
-      - "Property path chaining before bif:contains (not supported on Virtuoso)"
-      - "Missing FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/bioassay>"
-    solutions:
-      - "Use bif:contains 'term' syntax (Virtuoso indexed text, not FILTER(CONTAINS))"
-      - "Bind the title to a variable first, then apply bif:contains on that variable"
-      - "Always include FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/bioassay>"
+# ── byte-count footer (spec §5 item 7) ──
+# v2: `wc -c togo_mcp/data/mie/pubchem.yaml` = 46728 bytes
+# v3: `wc -c benchmark/redesign/mie_v3/pubchem.yaml` = 25419 bytes → 45.6% smaller than v2.

@@ -1,872 +1,261 @@
-schema_info:
-  title: jPOST (Japan ProteOme STandard repository)
-  description: |
-    jPOST is a curated proteomics data repository providing reanalysed mass-spectrometry
-    submissions originally deposited at PRIDE / PeptideAtlas / MassIVE / iProx and at
-    jPOSTrepo itself. Each Project (JPST id) bundles one or more Datasets, each with a
-    Profile describing experimental conditions (sample, fractionation, enzyme + modifications,
-    MS mode, raw data) plus identified Peptides, PeptideSpectrumMatches (PSMs), Spectra,
-    Proteins (one per UniProt accession in the project), ProteinGroups, and Modifications
-    typed against Unimod and PSI-MS ontologies. Primary use cases: locate proteomics
-    experiments by tissue / disease / cell line, retrieve detected peptide and PSM evidence
-    for a given UniProt protein, cross-project PTM discovery, sample-condition meta-analysis.
-  keywords:
-    - proteomics
-    - mass spectrometry
-    - jpost
-    - jpostdb
-    - peptide
-    - psm
-    - peptide spectrum match
-    - protein identification
-    - post-translational modification
-    - ptm
-    - unimod
-    - psi-ms
-    - reanalysis
-    - proteome
-    - shotgun proteomics
-  categories:
-    - protein
-  endpoint: https://rdfportal.org/primary/sparql
-  base_uri: http://rdf.jpostdb.org/
-  graphs:
-    - http://jpost.org/graph/database
-  co_hosted_graphs:
-    - "Label-leg / cross-class RE-PROBE 2026-07-17 — STILL CLEAN, now verified by a REVERSE probe (all
-       predicates, any graph), not a type-only one. (1) SCOPE BLEED: none — jpost:Project (598),
-       jpost:Dataset (853), jpost:Profile (853), jpost:Sample (853), jpost:Peptide (3,706,694) and
-       jpost:Protein (1,021,677 — NOT covered by the earlier probe, added here) are each declared ONLY in
-       <http://jpost.org/graph/database>. (2) REVERSE PROBE: 10 Dataset IRIs -> 271,899 triples, and a
-       mixed set of 5 Project + 5 Protein IRIs -> 141 triples, ALL in that graph and no other. So no
-       co-hosted graph re-declares a jPOST IRI on ANY leg, label included. (3) CROSS-CLASS: jPOST's graph
-       carries rdfs:label on no foreign NAMED IRI — the only non-jpost labelled subjects are BLANK NODES
-       (nodeID://*), which are graph-scoped by construction and unaddressable from outside. So jPOST
-       cannot mislabel the taxonomy/DOID/UniProt entities it references the way glycovid_pubchem does to
-       MeSH. NOTE its IRIs are jPOST-minted throughout — a Protein is entry/PRT<proj>_<ds>_<acc>, NOT the
-       UniProt IRI — which is structurally why there is nothing to collide with."
-    - "http://rdf.jpostdb.org/ontology/jpost.owl — ALSO on this endpoint and NOT listed in graphs:
-       above, but it is jPOST's SCHEMA graph, not a second copy of the data. It holds the definitions of
-       the jpost:* classes/properties (e.g. 9 triples on jpost.owl#Peptide and jpost.owl#Project) and
-       contains ZERO instance data — no entry/* or bid/* IRI appears in it. Join to it for class labels
-       if needed; it cannot inflate a query over jPOST entities. Verified 2026-07-17."
-    - "The ~30 rdfportal.org/ontology/* graphs + mesh + goa share this endpoint — join targets, not
-       co-tenancy traps; probed 2026-07-17."
-  kw_search_tools: []
-  version:
-    mie_version: "2.4"
-    mie_created: "2026-04-30"
-    mie_updated: "2026-07-18"
-    # Dated-snapshot form: the data graph <http://jpost.org/graph/database> carries NO dataset-level
-    # version triple (probed void:triples, owl:versionInfo/versionIRI, dcterms:modified|issued|
-    # hasVersion, void:Dataset/owl:Ontology descriptors). The only version on the endpoint is
-    # owl:versionInfo 0.15 on <http://rdf.jpostdb.org/ontology/jpost:owl> — that is the ONTOLOGY
-    # schema version, NOT the data release, so it is not usable here.
-    data_version: "RDF Portal snapshot — verified 2026-07-17"
-    update_frequency: "Quarterly (synchronised with jPOSTrepo releases)"
-  access:
-    backend: "Virtuoso (supports bif:contains)"
+# MIE v3 — jPOST proteomics (jPOSTdb). Agent-authored 2026-07-22 on `mie-redesign`.
+# Format: benchmark/redesign/MIE_v3_spec.md. Every verified count/result re-run live on the jpostdb
+# endpoint 2026-07-22. Byte count vs the v2 file it replaces (spec §5 item 7):
+# v2 togo_mcp/data/mie/jpostdb.yaml = 45,716 bytes; this v3 file = 19,563 bytes → 57.2% smaller. See footer.
+database: jpostdb
 
-critical_warnings: |
-  - GRAPH IS MANDATORY: every query must be scoped with `GRAPH <http://jpost.org/graph/database>`.
-    Bare triple patterns hit the Virtuoso default graph, which is empty for jPOST data and
-    silently returns zero rows on this multi-database endpoint.
-  - PEPTIDE SEQUENCES LIVE ON A BLANK NODE: the AA string is reached via
-    `?peptide jpost:hasSequence [ a obo:MS_1001344 ; rdf:value "EQQEAIEHIDEVQNEIDRLNEQASEEILK" ]`.
-    Querying `?peptide ?p "EQQEAIEHIDE..."` directly returns nothing — the sequence is never
-    a direct object of the Peptide.
-  - PROTEINS ARE MULTI-TYPED: every Protein carries `jpost:Protein` + `obo:MS_1001591` (anchor
-    protein) + `obo:MS_1002401` (representative); ~66% additionally carry
-    `jpost:RepresentativeIsoform`. Filtering on `?p a jpost:Protein` is correct, but assuming
-    only that type is set will mislead exploratory DESCRIBE inspection.
-  - PSM AND MEASUREMENT VALUES ARE BNODE SCAFFOLDS: numeric features (peptide count per
-    protein, calculated/experimental m/z, retention time, charge state, etc.) live on
-    blank nodes reached via `sio:SIO_000216` ("has attribute"). The bnode is multi-typed
-    against PSI-MS terms (`obo:MS_1001097`, `obo:MS_1002153`, `obo:MS_1000041`,
-    `obo:MS_1000894`, …) declaring what the measurement is, and the actual value is at
-    `sio:SIO_000300` ("has value"). Do not assume a single typed predicate carries the value.
-  - UNIPROT IS NOT ON THIS ENDPOINT: jPOST is hosted at https://rdfportal.org/primary/sparql
-    but UniProt lives at https://rdfportal.org/sib/sparql. Cross-graph queries against
-    UniProt fail silently with zero rows. Use SPARQL `SERVICE <https://rdfportal.org/sib/sparql>`
-    federation, or do the join client-side after extracting UniProt accessions from
-    `jpost:hasDatabaseSequence` or `rdfs:seeAlso`.
-  - PROTEIN IRIS EMBED PROJECT + DATASET + ACCESSION: `http://rdf.jpostdb.org/entry/PRT<projNum>_<dsSeq>_<UniProtAcc>`
-    means the same UniProt protein has a different IRI in every project that detected it.
-    To find ALL jPOST evidence for a UniProt accession, query by
-    `?prot jpost:hasDatabaseSequence <http://purl.uniprot.org/uniprot/Q9Y6K9>` (or by
-    `?prot rdfs:seeAlso <http://identifiers.org/uniprot/Q9Y6K9>`), not by IRI substring.
-  - UNIMOD AND PSI-MS USE OBO PURL: modifications are typed `obo:UNIMOD_4` (carbamidomethyl),
-    `obo:UNIMOD_21` (phospho), `obo:UNIMOD_35` (oxidation) using the
-    `http://www.unimod.org/obo/unimod.obo#` prefix — NOT the more common
-    `http://purl.obolibrary.org/obo/UNIMOD_*` form. PSI-MS terms use
-    `http://purl.obolibrary.org/obo/MS_*`. Mixing these prefixes returns zero rows.
+# ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
+discovery:
+  title: jPOST — Japan ProteOme STandard repository
+  description: >
+    Reanalysed mass-spectrometry proteomics submissions: each Project (JPST id) bundles Datasets with
+    experimental Profiles (sample tissue/disease/species, enzyme, MS mode) plus identified Peptides, PSMs,
+    Proteins (one per UniProt accession), and PTM/Modifications typed against Unimod and PSI-MS ontologies.
+  keywords: [proteomics, mass spectrometry, peptide, psm, peptide spectrum match, protein identification,
+             post-translational modification, ptm, unimod, psi-ms, reanalysis, proteome, shotgun proteomics]
+  categories: [protein]
 
-shape_expressions: |
-  PREFIX dct: <http://purl.org/dc/terms/>
-  PREFIX faldo: <http://biohackathon.org/resource/faldo#>
-  PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-  PREFIX jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#>
-  PREFIX obo: <http://purl.obolibrary.org/obo/>
-  PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-  PREFIX sio: <http://semanticscience.org/resource/>
-  PREFIX unimod: <http://www.unimod.org/obo/unimod.obo#>
-  PREFIX up: <http://purl.uniprot.org/core/>
-  PREFIX vcard: <http://www.w3.org/2006/vcard/ns#>
-  PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/primary/sparql   # RDF Portal "primary" endpoint (NOT sib — see co_hosted)
+base_uri: http://rdf.jpostdb.org/
+graphs:
+  primary: http://jpost.org/graph/database    # the ONLY graph that declares jpost:Project/Dataset/Peptide/Protein/Modification
+  co_hosted:                       # same endpoint; jPOST IRIs are jPOST-minted throughout → single-tenant, ZERO overlap
+    uniprot_NOT_here: >
+      TRAP, not a join. UniProt lives on the SEPARATE `sib` endpoint (https://rdfportal.org/sib/sparql), NOT on
+      primary. A jpost:hasDatabaseSequence target (purl.uniprot.org/uniprot/*) queried as a same-endpoint GRAPH
+      returns ZERO rows silently. Reach UniProt only via SERVICE federation (example xdb_uniprot).
+    ontology_graphs: >
+      ~30 shared rdfportal.org/ontology/* graphs + mesh + goa co-host here (mondo, taxonomy, go, …). Pure JOIN
+      TARGETS — none re-type or overlap a jPOST entity IRI (probed GROUP BY graph), so they do NOT inflate counts;
+      GRAPH-pin one explicitly to use it (e.g. DOID→MONDO label via oboInOwl:hasDbXref in ontology/mondo).
+    jpost_owl_schema: >
+      http://rdf.jpostdb.org/ontology/jpost.owl is jPOST's SCHEMA graph (class/property definitions only, ZERO
+      instance data — no entry/* IRI). Not a data copy, cannot inflate; join to it for class labels if needed.
 
-  # ---------------------------------------------------------------
-  # Top-level entry: a reanalysed proteomics submission.
-  # IRI: http://rdf.jpostdb.org/entry/JPST<6-digit>
-  # Instance count: 598
-  # ---------------------------------------------------------------
-  <ProjectShape> {
-    a [ jpost:Project ] ;
-    dct:identifier xsd:string ;                     # e.g. "JPST001650"
-    dct:title xsd:string ;
-    dct:description xsd:string ;
-    dct:date xsd:date ;                             # publication / last revision
-    dct:dateSubmitted xsd:date ;
-    dct:contributor @<ContributorBNodeShape> + ;    # blank-node people
-    rdfs:label xsd:string ;
-    rdfs:seeAlso IRI + ;                            # jPOSTrepo + ProteomeXchange RPXD
-    foaf:page IRI ;                                 # human-facing page
-    jpost:hasDataset @<DatasetShape> +              # 1+ datasets per project
-  }
+entity_counts:                     # COUNT(DISTINCT), graph-pinned; verified live 2026-07-22
+  projects:            598         # jpost:Project (JPST ids)
+  datasets:            853         # jpost:Dataset (~1.4 per project; Dataset is the central join hub)
+  samples:             853         # jpost:Sample (1 per Dataset Profile)
+  samples_with_disease: 6          # only 6 distinct DOID values across all samples — disease annotation is SPARSE (see enum_disease)
+  big_tables_note: "Peptide ~3.7M, PSM ~10M, Modification ~12.5M — NEVER star-scan these without a structural anchor (a Project/Protein IRI or a typed Unimod term); see gotcha hot_tables."
 
-  # ---------------------------------------------------------------
-  # One run of the analysis pipeline against one Profile.
-  # IRI: http://rdf.jpostdb.org/entry/DS<projNum>_<dsSeq>
-  # Instance count: 853  (so ~1.4 datasets / project)
-  #
-  # Dataset is the central JOIN point: it connects DOWN to Profile
-  # (experimental conditions), to Peptide (3.7M total), and to Protein
-  # (1M total) via three parallel direct predicates. This is the
-  # canonical traversal — do NOT walk Project → Protein via
-  # PeptideEvidence / IRI-substring; just go through Dataset.
-  # ---------------------------------------------------------------
-  <DatasetShape> {
-    a [ jpost:Dataset ] ;
-    dct:identifier xsd:string ;
-    jpost:hasProfile @<ProfileShape> ;              # 1:1 — experimental conditions
-    jpost:hasProtein @<ProteinShape> + ;            # 1:N — identified proteins
-    jpost:hasPeptide @<PeptideShape> + ;            # 1:N — identified peptides
-    sio:SIO_000216 BNode +                          # measurement scaffolds (counts)
-  }
+global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
+  - id: graph_mandatory
+    say: >
+      GRAPH <http://jpost.org/graph/database> is MANDATORY on every triple block. Bare patterns hit the empty
+      Virtuoso default graph on this multi-database endpoint and silently return ZERO rows.
+  - id: uniprot_off_endpoint
+    say: >
+      UniProt is on `sib`, not on this primary endpoint. jpost:hasDatabaseSequence points at purl.uniprot.org/uniprot/*
+      but that IRI is NOT resident here — a same-endpoint cross-graph join to it returns 0 rows. Use SPARQL SERVICE
+      <https://rdfportal.org/sib/sparql> (example xdb_uniprot), or extract the accession and join client-side.
+  - id: unimod_prefix
+    say: >
+      Modifications are typed with the UNIMOD term under the `http://www.unimod.org/obo/unimod.obo#` prefix
+      (unimod:UNIMOD_35), NOT the common `http://purl.obolibrary.org/obo/UNIMOD_35` (obo:) form. Verified 2026-07-22:
+      `a unimod:UNIMOD_35` = 699,291 modifications; `a obo:UNIMOD_35` = 0. PSI-MS terms DO use the obo: PURL
+      (obo:MS_*). Mixing the two namespaces returns 0 rows with no error.
+  - id: bnode_scaffolds
+    say: >
+      Two things live on BLANK NODES, never directly on the parent: (1) a peptide's AA sequence is at
+      `?pep jpost:hasSequence [ a obo:MS_1001344 ; rdf:value ?seq ]` (a direct `?pep ?p "SEQ"` matches nothing);
+      (2) every numeric measurement (peptide/PSM count, m/z, RT, charge) is `<entity> sio:SIO_000216 [ a obo:MS_<term> ;
+      sio:SIO_000300 ?value ]` — the PSI-MS type says what the number means. Do not assume a single typed value predicate.
+  - id: hot_tables
+    say: >
+      Peptide/PSM/Modification are 3.7M/10M/12.5M rows. A star pattern or COUNT over them without a structural
+      anchor (a specific Project/Protein IRI, or a typed Unimod/DOID IRI) saturates the endpoint. Always anchor first,
+      always LIMIT exploratory queries.
 
-  # ---------------------------------------------------------------
-  # Experimental conditions for one Dataset.
-  # Linked from Dataset via jpost:hasProfile (1:1).
-  # IRI: http://rdf.jpostdb.org/bid/PRF<projNum>_<dsSeq>  (note: bid/, not entry/)
-  # Instance count: 853
-  # ---------------------------------------------------------------
-  <ProfileShape> {
-    a [ jpost:Profile ] ;
-    jpost:hasSample @<SampleShape> ;
-    jpost:hasEnzymeAndModification IRI ;            # mandatory; present on all 853 Profiles
-    jpost:hasMsMode IRI ;                           # mandatory; present on all 853 Profiles (DDA / DIA / etc.)
-    jpost:hasFractionation IRI * ;                  # 0–3 values; ~55% of Profiles have ≥2
-    jpost:hasRawData @<RawDataShape> *
-  }
-
-  # ---------------------------------------------------------------
-  # Sample annotations. Only ontology IRIs — no free-text fields.
-  # Instance count: 853
-  # ---------------------------------------------------------------
-  <SampleShape> {
-    a [ jpost:Sample ] ;
-    jpost:species IRI ;                             # mandatory; identifiers.org/taxonomy/* on all 853 Samples
-    jpost:sampleType IRI + ;                        # NCIt/CLO/BTO category IRI; present on 844/853 (98.9%)
-    jpost:cellLine IRI * ;                          # BTO:* / CL:* / CLO:*
-    jpost:disease IRI * ;                           # DOID:*
-    jpost:diseaseClass IRI * ;                      # DOID:* + jpost:JPO_*
-    jpost:organ IRI *                               # NCIt (Thesaurus.owl#C…) + BTO:*
-  }
-
-  # ---------------------------------------------------------------
-  # A raw mass-spec data file referenced by a Profile.
-  # Sparsely populated: 1,962 instances against 853 Profiles — older
-  # reanalyses often have no RawData.
-  # ---------------------------------------------------------------
-  <RawDataShape> {
-    a [ jpost:RawData ] ;
-    rdfs:label xsd:string ;                         # original filename, e.g. "120129ry_604A1-46_3_4.wiff"
-    foaf:page IRI ?                                 # jPOSTrepo entry page URL (when known)
-  }
-
-  # ---------------------------------------------------------------
-  # A peptide identified within a Dataset. The amino-acid sequence
-  # is on a child blank node (NOT on the Peptide directly).
-  # IRI: http://rdf.jpostdb.org/entry/PEP<projNum>_<dsSeq>_<seq>
-  # Instance count: 3,706,694 (jpost:Peptide).
-  # 82% are also jpost:UniquePeptide; 82% jpost:UniquePeptideAtMsLevel.
-  # ---------------------------------------------------------------
-  <PeptideShape> {
-    a [ jpost:Peptide ] ;                           # mandatory base type
-    a [ jpost:UniquePeptide ] ? ;                   # ~82% of Peptides
-    a [ jpost:UniquePeptideAtMsLevel ] ? ;          # ~82% of Peptides
-    dct:identifier xsd:string ;
-    jpost:hasSequence @<PeptideSequenceBNode> ;     # AA string here
-    jpost:hasPsm @<PsmShape> + ;                    # 1+ supporting PSMs
-    sio:SIO_000216 BNode +                          # PSM count, charge etc.
-  }
-
-  # The bnode that actually carries the AA sequence string.
-  # Type is obo:MS_1001344 ("AA sequence with modifications").
-  <PeptideSequenceBNode> {
-    a [ obo:MS_1001344 ] ;
-    rdf:value xsd:string                            # e.g. "EQQEAIEHIDEVQNEIDRLNEQASEEILK"
-  }
-
-  # ---------------------------------------------------------------
-  # One peptide-spectrum match (10,032,289 total).
-  # IRI: http://rdf.jpostdb.org/entry/PSM<projNum>_<dsSeq>_<n>
-  # ---------------------------------------------------------------
-  <PsmShape> {
-    a [ jpost:PeptideSpectrumMatch ] ;
-    dct:identifier xsd:string ;
-    jpost:hasModification @<ModificationShape> * ;
-    jpost:hasSpectrum IRI ;                         # http://rdf.jpostdb.org/bid/SPC<…>
-    sio:SIO_000216 BNode +                          # m/z, RT, charge, score scaffolds
-  }
-
-  # ---------------------------------------------------------------
-  # A single PTM occurrence on a PSM. IRI is a blank node;
-  # total Modification instances: 12,518,574. The Unimod typing AND
-  # the position predicates (modificationSite + faldo:location) are
-  # absent on PTMs whose Unimod term is unknown (see data_quality).
-  # ---------------------------------------------------------------
-  <ModificationShape> {
-    a [ jpost:Modification ] ;
-    a IRI * ;                                       # zero or more unimod:UNIMOD_*; absent on unannotated mods
-    rdfs:label xsd:string ? ;                       # "Acetyl (N-term)", "Oxidation (M)" — empty on ~5.2M
-    jpost:modificationSite xsd:string ? ;           # single-letter AA code, e.g. "C"; present iff Unimod-typed
-    faldo:location @<ModificationPositionBNode> ?   # exact position within the parent peptide
-  }
-
-  # The Modification-side faldo bnode: a single ExactPosition pointing
-  # back at the parent Peptide. Distinct from PeptideEvidenceBNode's
-  # faldo:Region (begin / end pair).
-  <ModificationPositionBNode> {
-    a [ faldo:ExactPosition ] ;
-    faldo:position xsd:integer ;                    # 1-based position within the peptide
-    faldo:reference IRI                             # IRI of the parent jpost:Peptide
-  }
-
-  # ---------------------------------------------------------------
-  # An identified protein within a project. Multi-typed: jpost:Protein +
-  # jpost:RepresentativeIsoform (~66%) + obo:MS_1001591 + obo:MS_1002401.
-  # IRI: http://rdf.jpostdb.org/entry/PRT<projNum>_<dsSeq>_<UniProtAcc>
-  # Instance count: 1,021,677.
-  # ---------------------------------------------------------------
-  <ProteinShape> {
-    a [ jpost:Protein ] ;
-    a [ obo:MS_1001591 ] ;                          # anchor protein
-    a [ obo:MS_1002401 ] ;                          # representative
-    a [ jpost:RepresentativeIsoform ] ? ;
-    rdfs:label xsd:string ;                         # the UniProt accession, e.g. "Q9Y6K9"
-    dct:identifier xsd:string ;
-    rdfs:seeAlso IRI + ;                            # both id.org/uniprot AND purl.uniprot
-    jpost:hasDatabaseSequence IRI ;                 # canonical UniProt purl (typed)
-    jpost:inProteinGroup IRI ;                      # -> ProteinGroup (jpost:bid/PG…)
-    jpost:hasLeadingProtein IRI * ;                 # leading protein in same group; ~34% of Proteins
-    jpost:hasIsoform IRI * ;                        # other isoforms in same group
-    jpost:hasPeptideEvidence @<PeptideEvidenceBNode> + ;
-    sio:SIO_000216 BNode +                          # peptide count, PSM count scaffolds
-  }
-
-  # PeptideEvidence is a blank node tying a Protein to one Peptide hit
-  # at a specific position on the protein sequence. NB the location is a
-  # faldo:Region (begin/end pair), distinct from the ExactPosition used
-  # in <ModificationPositionBNode>.
-  <PeptideEvidenceBNode> {
-    a [ jpost:PeptideEvidence ] ;
-    faldo:location @<PeptideEvidenceRegionBNode> ;
-    jpost:hasPeptide @<PeptideShape>                # the supporting peptide
-  }
-
-  <PeptideEvidenceRegionBNode> {
-    a [ faldo:Region ] ;
-    faldo:begin BNode ;                             # ExactPosition with faldo:position xsd:integer
-    faldo:end BNode                                 # ExactPosition with faldo:position xsd:integer
-  }
-
-  # ---------------------------------------------------------------
-  # Contributor blank node. foaf:Person + PSI-MS contact roles.
-  # ---------------------------------------------------------------
-  <ContributorBNodeShape> {
-    a [ foaf:Person ] ;
-    a IRI + ;                                       # obo:MS_1002037 (PI), MS_1002332 (submitter), …
-    foaf:name xsd:string ;
-    vcard:organization-name xsd:string ?
-  }
-
-  # The bnode hanging off raw m/z, RT, and count predicates is identical
-  # in shape: a [ obo:MS_<feature_term> ] ; sio:SIO_000300 <numeric> .
-
-sample_rdf_entries:
-  rdf_prefixes: |
-    @prefix dct: <http://purl.org/dc/terms/> .
-    @prefix foaf: <http://xmlns.com/foaf/0.1/> .
-    @prefix idup: <http://identifiers.org/uniprot/> .
-    @prefix jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#> .
-    @prefix jpostentry: <http://rdf.jpostdb.org/entry/> .
-    @prefix obo: <http://purl.obolibrary.org/obo/> .
-    @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-    @prefix sio: <http://semanticscience.org/resource/> .
-    @prefix unimod: <http://www.unimod.org/obo/unimod.obo#> .
-    @prefix up: <http://purl.uniprot.org/uniprot/> .
-    @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-  entries:
-    - title: "Project JPST001650 — central entry, project-level metadata"
-      description: A reanalysed mouse liver/kidney proteomics study, with the canonical
-        Project predicates and forward links to its Dataset and ProteomeXchange RPXD id.
-      rdf: |
-        jpostentry:JPST001650 a jpost:Project ;
-            dct:identifier "JPST001650" ;
-            dct:title "JPST000349-12 Mouse liver and kidney proteome with antibiotics treatment [Reanalysis: JPST000349]" ;
-            dct:date "2023-04-01"^^xsd:date ;
-            dct:dateSubmitted "2022-06-01"^^xsd:date ;
-            rdfs:seeAlso <https://repository.jpostdb.org/entry/JPST001650> ,
-                         <http://proteomecentral.proteomexchange.org/dataset/RPXD034320> ;
-            foaf:page <https://repository.jpostdb.org/entry/JPST001650> ;
-            jpost:hasDataset jpostentry:DS1650_1 .
-
-    - title: "Protein PRT1635_3_A0A024RBG1 — multi-typed UniProt-linked protein"
-      description: Protein identified in dataset DS1635_3, illustrating the multi-class
-        typing pattern (jpost:Protein + RepresentativeIsoform + PSI-MS roles) and the
-        dual UniProt cross-reference (typed `hasDatabaseSequence` to the purl plus a
-        `seeAlso` to identifiers.org).
-      rdf: |
-        jpostentry:PRT1635_3_A0A024RBG1
-            a jpost:Protein ,
-              jpost:RepresentativeIsoform ,
-              obo:MS_1001591 ,
-              obo:MS_1002401 ;
-            rdfs:label "A0A024RBG1" ;
-            dct:identifier "PRT1635_3_A0A024RBG1" ;
-            rdfs:seeAlso <http://identifiers.org/uniprot/A0A024RBG1> ,
-                         up:A0A024RBG1 ;
-            jpost:hasDatabaseSequence up:A0A024RBG1 ;
-            jpost:inProteinGroup <http://rdf.jpostdb.org/bid/PG1635_3_1615> .
-
-    - title: "Peptide PEP1635_3_1 — sequence-on-bnode pattern"
-      description: Detected peptide whose amino-acid sequence is reached via the
-        `jpost:hasSequence` blank node typed `obo:MS_1001344` ("AA sequence with
-        modifications") with the literal at `rdf:value`. This is the canonical access
-        path; a direct `?pep ?p "EQQE..."` triple does not exist.
-      rdf: |
-        jpostentry:PEP1635_3_1 a jpost:Peptide , jpost:UniquePeptide , jpost:UniquePeptideAtMsLevel ;
-            dct:identifier "PEP1635_3_1" ;
-            jpost:hasSequence [ a obo:MS_1001344 ;
-                                rdf:value "EQQEAIEHIDEVQNEIDRLNEQASEEILK" ] ;
-            jpost:hasPsm jpostentry:PSM1635_3_1 .
-
-sparql_query_examples:
-  - title: "Look up a single Project by JPST id"
-    description: |
-      Direct IRI lookup. Returns the project's title, description, and ProteomeXchange
-      cross-reference. Confirms the entry exists and exposes its top-level metadata in
-      one round-trip — the cheapest possible query.
-    question: "What is the title and ProteomeXchange ID of jPOST project JPST001650?"
+# ── examples: verified, executable atoms. Hierarchy: Project → Dataset → {Profile→Sample, Protein, Peptide};
+#    Peptide → PSM → Modification. Dataset is the central join hub (hasProfile/hasProtein/hasPeptide). ──
+examples:
+  - id: project_lookup
+    intent: top-level metadata for a Project by its JPST IRI (the cheapest anchor)
+    question: "What is the title, date, and ProteomeXchange ID of jPOST project JPST001650?"
     complexity: basic
     sparql: |
       PREFIX dct: <http://purl.org/dc/terms/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
       SELECT ?title ?date ?pxRef WHERE {
         GRAPH <http://jpost.org/graph/database> {
           <http://rdf.jpostdb.org/entry/JPST001650>
-            dct:title ?title ;
-            dct:date ?date ;
-            rdfs:seeAlso ?pxRef .
-          FILTER(STRSTARTS(STR(?pxRef), "http://proteomecentral.proteomexchange.org/"))
+            dct:title ?title ; dct:date ?date ; rdfs:seeAlso ?pxRef .
+          FILTER(STRSTARTS(STR(?pxRef), "http://proteomecentral.proteomexchange.org/"))   # pick the RPXD xref
         }
       }
       LIMIT 10
+    verified: {result_rows: 1, date: "2026-07-22", first_row: "'JPST000349-12 Mouse liver and kidney proteome with antibiotics treatment' (2023-04-01) → RPXD034320"}
+    teaches: "A Project IRI is http://rdf.jpostdb.org/entry/JPST<6-digit>; rdfs:seeAlso carries BOTH the jPOSTrepo page and the ProteomeXchange RPXD id — prefix-filter to pick one."
 
-  - title: "Count datasets per project (top 10)"
-    description: |
-      Aggregates the `jpost:hasDataset` relation. Useful as a sanity check on project
-      scope — a few mega-projects bundle dozens of related runs while most have one or two.
-    question: "Which jPOST projects bundle the most datasets?"
-    complexity: basic
-    sparql: |
-      PREFIX dct: <http://purl.org/dc/terms/>
-      PREFIX jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#>
-
-      SELECT ?project ?id (COUNT(?ds) AS ?nDatasets) WHERE {
-        GRAPH <http://jpost.org/graph/database> {
-          ?project a jpost:Project ;
-                   dct:identifier ?id ;
-                   jpost:hasDataset ?ds .
-        }
-      }
-      GROUP BY ?project ?id
-      ORDER BY DESC(?nDatasets)
-      LIMIT 10
-
-  - title: "All jPOST evidence for a given UniProt accession"
-    description: |
-      Resolves a UniProt purl to every project / dataset where jPOST detected that
-      protein, via the typed `jpost:hasDatabaseSequence` predicate. This is the
-      canonical structured cross-reference and avoids the IRI-substring trap.
-    question: "Which jPOST projects detected human KRAS (UniProt P01116) and how many
-      protein-level entries do they contribute?"
+  - id: protein_evidence
+    intent: ALL jPOST protein-level evidence for a UniProt accession via the typed cross-reference (not IRI substring)
+    question: "Which jPOST projects detected human KRAS (UniProt P01116), and how many protein entries do they contribute?"
     complexity: intermediate
     sparql: |
       PREFIX dct: <http://purl.org/dc/terms/>
       PREFIX jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#>
-
-      SELECT ?projectId (COUNT(DISTINCT ?prot) AS ?nProteinEntries) WHERE {
+      SELECT (COUNT(DISTINCT ?prot) AS ?nEntries) (COUNT(DISTINCT ?project) AS ?nProjects) WHERE {
         GRAPH <http://jpost.org/graph/database> {
-          ?project a jpost:Project ;
-                   dct:identifier ?projectId ;
-                   jpost:hasDataset/jpost:hasProtein ?prot .
+          ?project a jpost:Project ; jpost:hasDataset/jpost:hasProtein ?prot .
           ?prot jpost:hasDatabaseSequence <http://purl.uniprot.org/uniprot/P01116> .
         }
       }
-      GROUP BY ?projectId
-      ORDER BY DESC(?nProteinEntries)
-      LIMIT 25
+    verified: {nEntries: 106, nProjects: 87, date: "2026-07-22"}
+    teaches: "The SAME UniProt protein gets a distinct Protein IRI (entry/PRT<proj>_<ds>_<acc>) in every project that detected it. To find ALL evidence, filter by jpost:hasDatabaseSequence <purl.uniprot.org/uniprot/ACC> — the typed, indexed cross-ref — never by PRT IRI substring."
+    traps_avoided:
+      - "There is NO reverse `jpost:isDetectedIn` predicate (silent 0 rows). Reach proteins top-down through Dataset (jpost:hasDataset/jpost:hasProtein) or, for peptide coordinates, via jpost:hasPeptideEvidence."
 
-  - title: "Peptide sequences and PSM counts for a specific protein"
-    description: |
-      Walks Protein → PeptideEvidence → Peptide → hasSequence(blank-node) to retrieve
-      AA strings. Demonstrates the mandatory blank-node hop for sequence access and
-      the measurement-scaffold pattern for PSM count.
-    question: "What peptide sequences support the AHNAK detection in dataset DS1782_1
-      (Protein PRT1782_1_Q09666), and how many PSMs back each one?"
+  - id: peptide_sequence
+    intent: peptide AA sequences supporting a protein + their PSM support (the mandatory blank-node hop)
+    question: "What peptide sequences support human serum albumin (P02768) in jPOST, and how many PSMs back each?"
     complexity: intermediate
     sparql: |
       PREFIX jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#>
       PREFIX obo:   <http://purl.obolibrary.org/obo/>
       PREFIX rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-
       SELECT ?seq (COUNT(DISTINCT ?psm) AS ?nPsms) WHERE {
         GRAPH <http://jpost.org/graph/database> {
-          <http://rdf.jpostdb.org/entry/PRT1782_1_Q09666>
-              jpost:hasPeptideEvidence/jpost:hasPeptide ?pep .
+          ?prot jpost:hasDatabaseSequence <http://purl.uniprot.org/uniprot/P02768> ;
+                jpost:hasPeptideEvidence/jpost:hasPeptide ?pep .
           ?pep jpost:hasSequence [ a obo:MS_1001344 ; rdf:value ?seq ] ;
                jpost:hasPsm ?psm .
         }
       }
       GROUP BY ?seq
       ORDER BY DESC(?nPsms)
-      LIMIT 50
+      LIMIT 10
+    verified: {result_rows: 10, date: "2026-07-22", first_row: "KVPQVSTPTLVEVSR (616 PSMs)"}
+    teaches: "The AA string is on a child blank node typed obo:MS_1001344, reached via jpost:hasSequence [ … rdf:value ?seq ]. Protein→peptide runs through the jpost:hasPeptideEvidence bnode (jpost:hasPeptideEvidence/jpost:hasPeptide), which also carries FALDO start/end coordinates."
+    traps_avoided:
+      - "A direct `?pep rdf:value ?seq` (or `?pep ?p 'SEQ'`) matches nothing — the sequence is never a direct object of the Peptide (gotcha bnode_scaffolds). This is the single most common jPOST silent failure."
 
-  - title: "Projects studying a specific disease (DOID)"
-    description: |
-      Joins Project → Dataset → Profile → Sample → disease(DOID). Also pulls the
-      project's title for human readability. Disease IRIs are pre-typed (`obo:DOID_*`),
-      so no text search is needed; the field reuses the canonical Disease Ontology.
-    question: "Which jPOST projects include samples annotated with colorectal cancer
-      (DOID:9256)?"
-    complexity: intermediate
+  - id: enum_disease
+    intent: enumerate ALL projects whose samples are annotated with a disease, via the pre-typed DOID IRI (set-level route)
+    question: "Which jPOST projects study COVID-19 (DOID:0080600)?"
+    complexity: basic
     sparql: |
       PREFIX dct:   <http://purl.org/dc/terms/>
       PREFIX jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#>
       PREFIX obo:   <http://purl.obolibrary.org/obo/>
-
       SELECT DISTINCT ?projectId ?title WHERE {
         GRAPH <http://jpost.org/graph/database> {
-          ?project a jpost:Project ;
-                   dct:identifier ?projectId ;
-                   dct:title ?title ;
-                   jpost:hasDataset ?ds .
-          ?ds jpost:hasProfile/jpost:hasSample ?sample .
-          ?sample jpost:disease obo:DOID_9256 .
+          ?project a jpost:Project ; dct:identifier ?projectId ; dct:title ?title ;
+                   jpost:hasDataset/jpost:hasProfile/jpost:hasSample ?sample .
+          ?sample jpost:disease obo:DOID_0080600 .    # swap the DOID for any disease — no text search
         }
       }
       LIMIT 25
+    verified: {result_rows: 16, date: "2026-07-22", first_row: "JPST001775 — SARS-CoV-2 proteomics reanalysis"}
+    teaches: "Sample annotations are pre-typed ontology IRIs, so 'all projects/samples with property X' is an EXACT set enumeration — jpost:disease → obo:DOID_*, jpost:sampleType → NCIt/CLO/BTO, jpost:organ → NCIt/BTO, jpost:species → identifiers.org/taxonomy/*. Filter by the IRI, never bif:contains a name."
+    traps_avoided:
+      - "Disease is SPARSE (only 6 distinct DOID values across 853 samples, ~10% of samples annotated). An empty result for a disease usually means it was never curated, not a query bug — sampleType (98.9%) and species (100%) are the dense annotations."
 
-  - title: "Most common Unimod modifications across all PSMs"
-    description: |
-      Uses the rdfs:label on Modification entries (which carry the human-readable Unimod
-      name plus the typing predicate). Aggregates over the full ~12.5M Modification
-      instances; filters out the ~5.2M instances whose label is the empty string (a known
-      data-quality artefact — see data_quality notes). The text-search Gate Check is
-      satisfied: labels are denormalised, but the query GROUPs them as-is, no FILTER /
-      bif:contains.
-    question: "What are the 10 most frequent peptide modifications across all jPOST
-      datasets, by occurrence count?"
-    complexity: advanced
+  - id: mod_by_unimod
+    intent: enumerate/count modifications of a specific PTM type via the Unimod typing IRI (the modification set-level route)
+    question: "How many oxidation modifications (Unimod 35) are recorded across all jPOST datasets?"
+    complexity: aggregation
+    sparql: |
+      PREFIX unimod: <http://www.unimod.org/obo/unimod.obo#>
+      SELECT (COUNT(?mod) AS ?nOxidation) WHERE {
+        GRAPH <http://jpost.org/graph/database> {
+          ?mod a unimod:UNIMOD_35 .    # UNIMOD_35 = Oxidation; swap the number for any PTM (4=carbamidomethyl, 1=acetyl, …)
+        }
+      }
+    verified: {nOxidation: 699291, date: "2026-07-22"}
+    teaches: "To enumerate/count a specific PTM, type-filter on the Unimod IRI: ?mod a unimod:UNIMOD_<n>. This is THE set-level modification route — exact, no text match. A Modification also chains up via ^jpost:hasModification to its PSM/Peptide/Project when you need to scope the count."
+    traps_avoided:
+      - "MUST use the unimod: prefix http://www.unimod.org/obo/unimod.obo# — `a obo:UNIMOD_35` (the obo PURL) returns 0 silently (gotcha unimod_prefix). Verified: unimod: = 699,291 vs obo: = 0."
+
+  - id: mod_frequency
+    intent: rank modification types across the whole repository by occurrence (label-based aggregation)
+    question: "What are the most frequent peptide modifications across all jPOST datasets?"
+    complexity: aggregation
     sparql: |
       PREFIX jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#>
       PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
-
       SELECT ?label (COUNT(?mod) AS ?n) WHERE {
         GRAPH <http://jpost.org/graph/database> {
-          ?mod a jpost:Modification ;
-               rdfs:label ?label .
-          FILTER(?label != "")
+          ?mod a jpost:Modification ; rdfs:label ?label .
+          FILTER(?label != "")    # ~5.2M mods carry an empty-string label (no Unimod name in source) — drop them
         }
       }
       GROUP BY ?label
       ORDER BY DESC(?n)
       LIMIT 10
+    verified: {result_rows: 10, date: "2026-07-22", first_row: "'TMT6plex (N-term)' = 444,696; then 'TMTpro (N-term)' 398,192"}
+    teaches: "jpost:Modification carries a denormalised human-readable rdfs:label (the Unimod name); GROUP BY it as-is to rank PTMs. Labels ARE the vocabulary — no join to Unimod needed for the name; use the unimod: type (mod_by_unimod) only to FILTER a specific PTM."
+    traps_avoided:
+      - "~5.2M of the ~12.5M Modification instances have an empty-string rdfs:label — FILTER(?label != '') or the empty bucket dominates the ranking."
 
-  - title: "Per-project phosphopeptide yield (UNIMOD_21)"
-    description: |
-      Counts distinct peptides carrying a phospho modification in each project.
-      Filters on the typed Unimod IRI (UNIMOD_21 = phospho) without text search.
-      Demonstrates project-grouped aggregation across a 5-step blank-node-and-IRI walk
-      (Project → Dataset → Peptide → PSM → Modification → typed Unimod term).
-    question: "Which jPOST projects yielded the most phosphopeptides (Unimod 21)?"
-    complexity: advanced
+  - id: datasets_per_project
+    intent: aggregate the Project→Dataset 1:N relation (project scope sanity check)
+    question: "Which jPOST projects bundle the most datasets?"
+    complexity: aggregation
     sparql: |
-      PREFIX dct:    <http://purl.org/dc/terms/>
-      PREFIX jpost:  <http://rdf.jpostdb.org/ontology/jpost.owl#>
-      PREFIX unimod: <http://www.unimod.org/obo/unimod.obo#>
-
-      SELECT ?projectId (COUNT(DISTINCT ?pep) AS ?nPhosphoPeptides) WHERE {
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#>
+      SELECT ?id (COUNT(DISTINCT ?ds) AS ?nDatasets) WHERE {
         GRAPH <http://jpost.org/graph/database> {
-          ?project a jpost:Project ;
-                   dct:identifier ?projectId ;
-                   jpost:hasDataset ?ds .
-          ?ds jpost:hasPeptide ?pep .
-          ?pep jpost:hasPsm ?psm .
-          ?psm jpost:hasModification ?mod .
-          ?mod a unimod:UNIMOD_21 .
+          ?project a jpost:Project ; dct:identifier ?id ; jpost:hasDataset ?ds .
         }
       }
-      GROUP BY ?projectId
-      ORDER BY DESC(?nPhosphoPeptides)
-      LIMIT 10
+      GROUP BY ?id
+      ORDER BY DESC(?nDatasets)
+      LIMIT 5
+    verified: {result_rows: 5, date: "2026-07-22", first_row: "JPST001781 = 30 datasets", totals: "598 projects / 853 datasets"}
+    teaches: "Project ↔ Dataset is 1:N (598 → 853, ~1.4/project); a few mega-projects bundle dozens of runs. Dataset is the hub that connects DOWN to Profile, Protein, and Peptide via three parallel direct predicates."
 
-cross_database_queries:
-  shared_endpoint: primary
-  co_located_databases: [mesh, go, taxonomy, mondo, nando, bacdive, mediadive, brenda, hgnc]
-  examples:
-    - title: "jPOST projects + MONDO disease labels"
-      description: |
-        Linking strategy:
-        - jPOST samples annotate disease as DOID IRIs (`obo:DOID_*`).
-        - MONDO cross-references DOIDs via `oboInOwl:hasDbXref` literals (e.g. "DOID:684").
-        - Project the DOID local id, match against MONDO's xref literal, and pick up the
-          MONDO preferred label.
-      databases_used: [jpostdb, mondo]
-      complexity: advanced
-      sparql: |
-        PREFIX dct:      <http://purl.org/dc/terms/>
-        PREFIX jpost:    <http://rdf.jpostdb.org/ontology/jpost.owl#>
-        PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
-        PREFIX rdfs:     <http://www.w3.org/2000/01/rdf-schema#>
-
-        SELECT DISTINCT ?projectId ?doidLocal ?mondoLabel WHERE {
-          GRAPH <http://jpost.org/graph/database> {
-            ?project a jpost:Project ;
-                     dct:identifier ?projectId ;
-                     jpost:hasDataset/jpost:hasProfile/jpost:hasSample ?sample .
-            ?sample jpost:disease ?doid .
-            BIND(REPLACE(STR(?doid), "^.*/DOID_", "DOID:") AS ?doidLocal)
-          }
-          GRAPH <http://rdfportal.org/ontology/mondo> {
-            ?mondoCls oboInOwl:hasDbXref ?doidLocal ;
-                      rdfs:label ?mondoLabel .
-          }
-        }
-        LIMIT 25
-      notes: |
-        - Linking via: DOID local-id literal in MONDO's `hasDbXref`. The MONDO graph
-          URI on primary is `http://rdfportal.org/ontology/mondo` (not the OBO PURL).
-        - MIE files checked: jpostdb, mondo.
-        - For UniProt-based cross-database queries (peptide → protein function, taxon),
-          UniProt is on a different endpoint (sib) — see cross_references for the
-          SERVICE federation pattern.
-
-cross_references:
-  - pattern: jpost:hasDatabaseSequence
-    description: |
-      Typed link from a jPOST Protein to its UniProt sequence record. Always present;
-      target is the canonical purl form. Use this (not `rdfs:seeAlso`) when you intend
-      to join with UniProt programmatically — it is unambiguous and unique per Protein.
-    databases:
-      protein:
-        - "UniProt: 100% of Protein entities (1,021,677 / 1,021,677)"
-
-  - pattern: rdfs:seeAlso
-    description: |
-      Cross-references vary by entity. On Project: jPOSTrepo entry page +
-      ProteomeCentral RPXD ID. On Protein: identifiers.org/uniprot AND purl.uniprot.
-      Always two values per Protein.
-    databases:
-      project:
-        - "jPOSTrepo: 100%"
-        - "ProteomeXchange (RPXD): >95%"
-      protein:
-        - "UniProt (identifiers.org form): 100%"
-        - "UniProt (purl.uniprot.org form): 100%"
-
-  - pattern: jpost:species / jpost:sampleType / jpost:disease / jpost:diseaseClass / jpost:organ / jpost:cellLine
-    description: |
-      Sample-level ontology IRIs (always structured IRIs, never free text):
-        * `jpost:species` — `http://identifiers.org/taxonomy/<taxid>`. Mandatory on every
-          Sample. To get the NCBI Taxonomy class on the same primary endpoint, swap the
-          identifiers.org form for `http://purl.bioontology.org/ontology/NCBITAXON/<taxid>`.
-        * `jpost:sampleType` — broad NCIt / CLO / BTO category (tissue, cell line, body
-          fluid, …); on 98.9% of Samples and is the most consistently populated annotation.
-        * `jpost:disease` — DOID. Cross-walks to MONDO via `oboInOwl:hasDbXref`
-          (see cross_database_queries).
-        * `jpost:diseaseClass` — mixes DOID with jpost-internal `JPO_*` coarse buckets.
-        * `jpost:organ` — NCIt (`Thesaurus.owl#C…`) plus occasional BTO.
-        * `jpost:cellLine` — BTO / CL / CLO.
-    databases:
-      taxonomy:
-        - "NCBI Taxonomy via identifiers.org/taxonomy/* (100%)"
-      sample_category:
-        - "NCI Thesaurus (Cxxxxx)"
-        - "Cell Line Ontology (CLO:xxxxxxx)"
-        - "BRENDA Tissue Ontology (BTO:xxxxxxx)"
-      disease:
-        - "Disease Ontology (DOID)"
-        - "MONDO via DOID xref"
-      anatomy:
-        - "NCI Thesaurus (Cxxxxx)"
-        - "BTO (BTO:xxxxxxx)"
-      cell:
-        - "Cell Ontology (CL:xxxxxxx)"
-        - "Cell Line Ontology (CLO:xxxxxxx)"
-
-  - pattern: SERVICE federation to UniProt
-    description: |
-      UniProt is on `https://rdfportal.org/sib/sparql`, not on primary, so cross-graph
-      queries against `<http://purl.uniprot.org/uniprot>` from jPOST return zero rows.
-      Use SPARQL 1.1 SERVICE federation. Pattern: extract UniProt purls in the GRAPH
-      block (jpost), then SERVICE the SIB endpoint to retrieve organism / function / GO.
+  - id: xdb_uniprot
+    intent: "cross-DB: jPOST-detected proteins → UniProt name/organism via SERVICE federation (UniProt is off-endpoint)"
+    question: "For human serum albumin (P02768) detected in jPOST, what is its UniProt recommended name and organism?"
+    complexity: cross_db
+    endpoint_name: primary
     sparql: |
       PREFIX jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#>
       PREFIX up: <http://purl.uniprot.org/core/>
-
-      SELECT ?prot ?upAcc ?taxon WHERE {
+      SELECT DISTINCT ?upAcc ?recName ?sciName WHERE {
         GRAPH <http://jpost.org/graph/database> {
-          ?prot a jpost:Protein ;
+          ?prot jpost:hasDatabaseSequence <http://purl.uniprot.org/uniprot/P02768> ;
                 jpost:hasDatabaseSequence ?upAcc .
         }
-        SERVICE <https://rdfportal.org/sib/sparql> {
-          ?upAcc up:organism ?taxon .
+        SERVICE <https://rdfportal.org/sib/sparql> {          # UniProt lives here, NOT on primary
+          ?upAcc up:recommendedName/up:fullName ?recName ;
+                 up:organism/up:scientificName ?sciName .
         }
       }
-      LIMIT 20
+      LIMIT 5
+    verified: {result_rows: 1, date: "2026-07-22", first_row: "P02768 → 'Albumin' / 'Homo sapiens'"}
+    teaches: "jPOST and UniProt are on SEPARATE endpoints (primary vs sib), so the join MUST be SPARQL 1.1 SERVICE federation, not a same-endpoint GRAPH block. jpost:hasDatabaseSequence yields the exact purl.uniprot.org/uniprot IRI that UniProt keys on — a clean bridge, no TogoID, no text match."
+    traps_avoided:
+      - "Querying purl.uniprot.org/uniprot/* as a co-hosted GRAPH on primary returns 0 rows silently (gotcha uniprot_off_endpoint). SELECT DISTINCT because a protein recurs across many projects' PRT IRIs, all sharing one hasDatabaseSequence target."
 
-architectural_notes:
-  query_strategy:
-    - "FIRST: read this MIE; check shape_expressions for the entity you need."
-    - "Specific IRI for project / dataset / protein lookup: PRT/PEP/PSM/DS/JPST IRIs are
-      composable from project number + dataset sequence + UniProt accession."
-    - "Comprehensive lookup of ALL jPOST evidence for a UniProt protein: query by
-      `jpost:hasDatabaseSequence <up:purl>`, NOT by IRI substring."
-    - "Sample annotations (disease, organ, cell line, disease class) are pre-typed
-      ontology IRIs — never use text search on them."
-    - "Modification labels (rdfs:label on jpost:Modification) are denormalised but
-      relatively short; aggregating by label is fine. To filter on a specific PTM, use
-      the `unimod:UNIMOD_*` typing predicate, not the label."
-    - "Priority: Specific IRIs > Typed predicates > Graph navigation > Text search."
+# ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
+schema_delta:
+  - "Protein is MULTI-TYPED: every jpost:Protein also carries obo:MS_1001591 (anchor) + obo:MS_1002401 (representative), and ~66% carry jpost:RepresentativeIsoform. `?p a jpost:Protein` is the correct filter; don't assume it's the only type on a DESCRIBE."
+  - "rdfs:label on a Protein IS the bare UniProt accession string (e.g. 'P02768'); dct:identifier is the PRT id. For the structured UniProt link use jpost:hasDatabaseSequence (typed purl, 100%), not the label."
+  - "Modification POSITION: jpost:modificationSite (single-letter AA) + faldo:location → faldo:ExactPosition (faldo:position int, faldo:reference → parent Peptide) are present IFF the Modification has a Unimod type. Label-only N-term mods (e.g. 'TMTpro (N-term)') carry no position triple by design."
+  - "Sample annotation namespaces (all pre-typed IRIs, see enum_disease): jpost:sampleType → NCIt Thesaurus.owl#C…/CLO/BTO (98.9%); jpost:organ → NCIt/BTO (6.2%); jpost:cellLine → BTO/CL/CLO (67.6%); jpost:diseaseClass → DOID + jpost:JPO_* coarse buckets (12.5%). Note some sampleType IRIs appear in BOTH `#CLO_0000031` and `#CLO:0000031` punctuation variants — match with a VALUES set or STRENDS if enumerating a category exhaustively."
+  - "DOID→MONDO label: jPOST disease is DOID only (no label). To get a disease name, GRAPH-pin ontology/mondo and match the DOID local-id literal in oboInOwl:hasDbXref (e.g. 'DOID:0080600'), then read rdfs:label — MONDO's graph URI on primary is http://rdfportal.org/ontology/mondo."
 
-  schema_design:
-    - "Five-level hierarchy: Project → Dataset → {Profile, Protein, Peptide}; Peptide → PSM → Modification.
-      Dataset is the central JOIN point — it connects DOWN to Profile, Protein, and
-      Peptide via three parallel direct predicates (`jpost:hasProfile`, `jpost:hasProtein`,
-      `jpost:hasPeptide`). Project ↔ Dataset is 1:N (598 projects / 853 datasets);
-      Peptide ↔ PSM is 1:N; PSM ↔ Modification is 1:N."
-    - "Protein → Peptide also exists via `jpost:hasPeptideEvidence` blank-node chains
-      (Protein → bnode → hasPeptide → Peptide), which carry FALDO position information.
-      Use the bnode chain when you need start/end coordinates; use Dataset → Protein and
-      Dataset → Peptide when you just need set membership."
-    - "ProteinGroup (jpost:bid/PG…) is a thin grouping construct: it carries no
-      label or attributes of its own. The 'representative' isoform of a group is
-      the Protein that ALSO carries `jpost:RepresentativeIsoform`."
-    - "All measurement values (peptide count, PSM count, m/z, RT, charge, score) are
-      blank-node scaffolds: `<entity> sio:SIO_000216 [ a obo:MS_<term> ; sio:SIO_000300 <value> ]`.
-      The PSI-MS term type tells you what the value means."
-    - "Peptide sequences are at `?pep jpost:hasSequence [ a obo:MS_1001344 ; rdf:value 'AASEQ' ]`.
-      The blank node is also reused for sequences with modifications (the same MS_1001344
-      term covers both)."
+# ── id_join_map: how to anchor stably and cross to other resources. ──
+id_join_map:
+  stable_anchor: >
+    Project = http://rdf.jpostdb.org/entry/JPST<6-digit>. Protein = entry/PRT<projNum>_<dsSeq>_<UniProtAcc>,
+    Peptide = entry/PEP…, PSM = entry/PSM…, Dataset = entry/DS<projNum>_<dsSeq>, Profile/Spectrum/ProteinGroup
+    use the bid/ path. The SAME UniProt protein has a DIFFERENT PRT IRI per project — anchor cross-project
+    lookups on jpost:hasDatabaseSequence, not on the PRT IRI.
+  same_endpoint_joins:            # co-hosted on the primary endpoint — direct GRAPH join, NO TogoID
+    mondo:    "Sample jpost:disease → obo:DOID_* ; cross to GRAPH <http://rdfportal.org/ontology/mondo> via oboInOwl:hasDbXref DOID literal (schema_delta)"
+    taxonomy: "Sample jpost:species → http://identifiers.org/taxonomy/<taxid> (100% of samples); NCBITaxon class reachable in the co-hosted taxonomy/ontology graphs"
+  xrefs:                          # outbound references carried on jPOST entities
+    uniprot:         "Protein jpost:hasDatabaseSequence → http://purl.uniprot.org/uniprot/ACC (typed, 100%). ALSO rdfs:seeAlso to identifiers.org/uniprot/ACC AND purl.uniprot form. UniProt is OFF-endpoint (sib) → join via SERVICE (example xdb_uniprot)."
+    proteomexchange: "Project rdfs:seeAlso → proteomecentral.proteomexchange.org/dataset/RPXD… (>95% of projects)"
+    jpostrepo:       "Project rdfs:seeAlso + foaf:page → repository.jpostdb.org/entry/JPST… (100%)"
+  bridged_via_togoid:             # NOT co-hosted on primary — route via togoid_convertId on the UniProt accession
+    - "PDB, Ensembl, RefSeq, gene-level DBs: extract the UniProt accession (jpost:hasDatabaseSequence) then togoid_convertId, or SERVICE UniProt on sib and follow its xrefs."
 
-  performance:
-    - "GRAPH <http://jpost.org/graph/database> is mandatory on every triple block.
-      Without it, queries hit the empty default graph and silently return nothing."
-    - "Always prefer typed predicates over property-path traversal. The 5-table walk
-      Project→Dataset→Peptide→PSM→Modification→Unimod-typing is the deepest you ever
-      need; deeper pattern paths usually mean a missing intermediate variable."
-    - "Modification (12.5M instances) and PSM (10M) are the hot tables — never run
-      a star pattern over them without a structural anchor (specific Project, Protein,
-      or typed Unimod IRI)."
-    - "bif:contains: Virtuoso supports it but jPOST has very few free-text fields
-      worth indexing — Project title and description are the only realistic targets."
-
-  data_integration:
-    - "UniProt cross-reference: 100% of Proteins via `jpost:hasDatabaseSequence` (typed)
-      AND `rdfs:seeAlso` (two flavours: identifiers.org and purl.uniprot.org)."
-    - "Disease (DOID) → MONDO: covered in cross_database_queries."
-    - "ProteomeXchange RPXD: on every Project as `rdfs:seeAlso` value."
-    - "PSI-MS controlled vocabulary: types Modification (UNIMOD_*) and the bnode-
-      scaffold measurement terms (MS_*). Both are obo: PURLs."
-
-  data_quality:
-    - "Many ontology cross-refs cluster in a few high-coverage projects. Counts on
-      `jpost:disease` etc. are not uniformly distributed across the 598 projects."
-    - "RawData is sparsely populated (1,962 instances against 853 datasets) — the file
-      list is incomplete for older reanalyses."
-    - "Some Sample annotations duplicate the same concept (e.g. a sample tagged with
-      both DOID and MONDO-equivalent class) — DISTINCT is essential when aggregating."
-    - "Empty-string `rdfs:label` literals exist on a small number of Modification
-      bnodes (no human-readable Unimod name in the source)."
-    - "Position predicates (`jpost:modificationSite` and `faldo:location` →
-      `faldo:ExactPosition`) are present iff the Modification has a Unimod typing IRI.
-      N-terminal label-only mods (e.g. `rdfs:label \"TMTpro (N-term)\"` with no Unimod
-      type) carry no position triple, by design — the position is N-terminus."
-
-  text_search_justification:
-    - "Number of the 7 example queries that use text search: 0."
-    - "Project title and description are the only fields where bif:contains would be
-      legitimate; the example set demonstrates structured access for every realistic
-      lookup, so text search did not earn a slot."
-    - "Sample-level annotations (species, sampleType, disease, organ, cell line) are
-      pre-typed ontology IRIs; modifications are typed against Unimod; protein
-      cross-references to UniProt are typed via `jpost:hasDatabaseSequence`. Text
-      search is never the first-choice strategy for any of these."
-
-data_statistics:
-  total_entities: 49918562
-  verified_date: "2026-04-30"
-  verification_method: "GROUP BY ?class COUNT(?s) over GRAPH <http://jpost.org/graph/database>; sum of all class counts"
-
-  by_class:
-    Project: 598
-    Dataset: 853
-    Profile: 853
-    Sample: 853
-    Protein: 1021677
-    ProteinGroup_RepresentativeIsoform: 673263
-    Peptide: 3706694
-    UniquePeptide: 3050659
-    PeptideSpectrumMatch: 10032289
-    Spectrum: 9351476
-    PeptideEvidence: 8613992
-    Modification: 12518574
-    UniScore: 13738983
-    RawData: 1962
-    verified_date: "2026-04-30"
-
-  coverage:
-    protein_uniprot_link: "100% (1,021,677 / 1,021,677 Protein entities have jpost:hasDatabaseSequence)"
-    project_proteomexchange_link: ">95% (rdfs:seeAlso to RPXD, present on most projects)"
-    representative_isoform: "~66% of Proteins (673,263 / 1,021,677)"
-    unique_peptide: "~82% of Peptides (3,050,659 / 3,706,694)"
-    sample_species: "100% (853 / 853 — jpost:species, identifiers.org/taxonomy/*)"
-    sample_type: "98.9% (844 / 853 — jpost:sampleType, NCIt/CLO/BTO)"
-    sample_cell_line: "67.6% (577 / 853)"
-    sample_disease_class: "12.5% (107 / 853)"
-    sample_disease: "10.1% (86 / 853)"
-    sample_organ: "6.2% (53 / 853)"
-    protein_has_leading_protein: "~34% (345,787 / 1,021,677 — group-member proteins; absent on representatives)"
-    verified_date: "2026-04-30"
-
-anti_patterns:
-  - title: "Circular Reasoning with Search Results"
-    problem: "Using protein IRIs sampled from a UniProt-based lookup as the scope of a comprehensive jPOST count."
-    wrong_sparql: |
-      # WRONG: pasted sampled protein IRIs — counts only those proteins, not all matching UniProt hits
-      VALUES ?prot {
-        <http://jpost.org/rdf/PRT0000000001_P01116>
-        <http://jpost.org/rdf/PRT0000000002_P01116>
-      }
-      SELECT (COUNT(?pept) AS ?count)
-      FROM <http://jpost.org/graph/database>
-      WHERE { ?pept a jpost:Peptide ; jpost:isDetectedIn ?prot . }
-      LIMIT 1
-    correct_sparql: |
-      # CORRECT: use the UniProt IRI (structured predicate) discovered during exploration.
-      # Protein -> Peptide runs through the PeptideEvidence blank node, NOT a direct reverse
-      # predicate: jpost:isDetectedIn does NOT exist (silent 0 rows). See ProteinShape/PeptideEvidence.
-      PREFIX jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#>
-      SELECT (COUNT(DISTINCT ?pept) AS ?count)
-      FROM <http://jpost.org/graph/database>
-      WHERE {
-        ?prot a jpost:Protein ;
-              jpost:hasDatabaseSequence <http://purl.uniprot.org/uniprot/P01116> ;
-              jpost:hasPeptideEvidence [ jpost:hasPeptide ?pept ] .
-      }
-      LIMIT 1
-      # -> 242 distinct peptides for P01116 (KRAS). Verified 2026-07-18.
-    explanation: "Use jpost:hasDatabaseSequence to scope by protein, then reach peptides through the PeptideEvidence bnode (jpost:hasPeptideEvidence/jpost:hasPeptide) — there is NO direct jpost:isDetectedIn predicate; using it silently returns 0. Pasting sampled PRT IRIs only counts those project-dataset combinations."
-
-  - title: "Querying peptide sequence as a direct property"
-    problem: "Treating the AA sequence as a literal directly on the Peptide."
-    wrong_sparql: |
-      ?pep a jpost:Peptide ;
-           rdf:value ?seq .            # zero rows — sequence is not on the Peptide
-    correct_sparql: |
-      ?pep a jpost:Peptide ;
-           jpost:hasSequence [ a obo:MS_1001344 ; rdf:value ?seq ] .
-    explanation: "The peptide sequence lives on a blank node typed `obo:MS_1001344`,
-      reached via `jpost:hasSequence`. Direct lookup bypasses the bnode and matches
-      nothing. This is the single most common silent-failure when starting on jPOST."
-
-  - title: "Substring matching on PRT IRIs to find UniProt evidence"
-    problem: "Trying to find all jPOST protein records for a UniProt accession by IRI substring."
-    wrong_sparql: |
-      ?prot a jpost:Protein .
-      FILTER(STRENDS(STR(?prot), "_P01116"))      # works, but slow and fragile
-    correct_sparql: |
-      ?prot a jpost:Protein ;
-            jpost:hasDatabaseSequence <http://purl.uniprot.org/uniprot/P01116> .
-    explanation: "The same UniProt accession produces many PRT IRIs (one per project ×
-      dataset that detected it). Substring filters on the IRI work but force a full table
-      scan. The typed predicate `jpost:hasDatabaseSequence` is indexed and unambiguous."
-
-  - title: "Skipping schema check before text search"
-    problem: "Using bif:contains on free-text fields when a structured ontology link exists."
-    wrong_sparql: |
-      ?sample ?p ?text .
-      FILTER(?text bif:contains "'cancer'")        # very slow, no schema
-    correct_sparql: |
-      ?sample jpost:disease/^oboInOwl:hasDbXref/rdfs:subClassOf*
-              <http://purl.obolibrary.org/obo/MONDO_0004992> .
-    explanation: "jPOST samples are annotated with DOID IRIs, which round-trip cleanly to
-      MONDO via `oboInOwl:hasDbXref`. Read shape_expressions before reaching for text
-      search — sample, modification, and protein metadata are all pre-typed."
-common_errors:
-  - error: "Slow query / timeout"
-    causes:
-      - "Missing GRAPH clause forces a full multi-database scan."
-      - "Star pattern over Modification (12.5M) or PSM (10M) without a structural anchor."
-      - "Property path traversal where a typed intermediate predicate exists (e.g.
-        traversing `jpost:hasPeptide/jpost:hasPsm/jpost:hasModification` without first
-        anchoring on a Project or Protein IRI)."
-      - "FILTER(CONTAINS(...)) instead of bif:contains on Virtuoso text fields."
-    solutions:
-      - "Wrap every block in `GRAPH <http://jpost.org/graph/database>`."
-      - "Add LIMIT to every query — 10M+ row classes will saturate the endpoint otherwise."
-      - "Anchor the query on a specific Project IRI, Protein IRI, or typed concept IRI
-        before walking down to Peptide / PSM / Modification."
-      - "On Virtuoso text fields, use `?text bif:contains '...'` (indexed)."
-
-  - error: "Empty results when a query 'looks right'"
-    causes:
-      - "GRAPH clause omitted — silent zero-row failure."
-      - "Cross-graph query against UniProt on the wrong endpoint (UniProt lives on sib,
-        not primary; same-endpoint cross-graph returns 0)."
-      - "Wrong IRI prefix on Unimod (using `obo:UNIMOD_*` instead of `unimod:UNIMOD_*`
-        from `http://www.unimod.org/obo/unimod.obo#`)."
-      - "Filtering for `?p a jpost:Peptide` only when needed peptides also need the
-        `jpost:UniquePeptide` constraint."
-    solutions:
-      - "Confirm GRAPH is set; DESCRIBE one expected entity to see its real predicates."
-      - "Use SPARQL `SERVICE <https://rdfportal.org/sib/sparql>` for UniProt joins."
-      - "Use the unimod prefix `http://www.unimod.org/obo/unimod.obo#`, not the obo PURL."
-      - "Read the multi-typing notes in critical_warnings: jpost:Peptide vs UniquePeptide
-        vs UniquePeptideAtMsLevel are distinct constraints."
-
-  - error: "Cross-database query with UniProt returns zero rows"
-    causes:
-      - "Querying UniProt as a same-endpoint graph from primary."
-      - "Using `idup:` (identifiers.org) form when the typed link uses `up:` (purl.uniprot)."
-    solutions:
-      - "SPARQL `SERVICE <https://rdfportal.org/sib/sparql>` is the only path to UniProt
-        from primary; see the cross_references SERVICE pattern for the canonical form."
-      - "When projecting the UniProt accession out, use `?prot jpost:hasDatabaseSequence ?up`
-        — the object is always the `http://purl.uniprot.org/uniprot/<acc>` form. Match
-        on this directly across the SERVICE boundary."
+# ── byte-count footer (spec §5 item 7) ──
+# v2: `wc -c togo_mcp/data/mie/jpostdb.yaml` = 45716 bytes
+# v3: `wc -c benchmark/redesign/mie_v3/jpostdb.yaml` = 19563 bytes → 57.2% smaller than v2.

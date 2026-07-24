@@ -1,586 +1,282 @@
-schema_info:
-  title: HGNC (HUGO Gene Nomenclature Committee)
-  description: |
-    HGNC is the authoritative resource for approved human gene nomenclature, providing
-    unique symbols and names for every human gene. Each record represents an approved
-    gene entry with its official symbol, full name, chromosomal location, approval status,
-    and cross-references to dozens of external databases (NCBI Gene, Ensembl, UniProt,
-    RefSeq, OMIM, MGI, RGD, miRBase, EC codes, and more).
-  keywords:
-    - gene
-    - human gene
-    - gene nomenclature
-    - gene symbol
-    - hgnc
-    - hugo
-    - approved gene
-    - gene name
-    - chromosomal location
-    - gene alias
-    - gene cross-reference
-    - omim
-    - ncbi gene
-    - ensembl gene
-  categories:
-    - gene
-    - genomics
-  endpoint: https://rdfportal.org/primary/sparql
-  base_uri: http://identifiers.org/hgnc/
-  graphs:
-    - http://rdfportal.org/dataset/hgnc
-  co_hosted_graphs:
-    - "Label-leg / cross-class RE-PROBE 2026-07-17 — STILL CLEAN, now verified by a REVERSE probe (all
-       predicates, any graph) rather than a type-only one. (1) SCOPE BLEED: none — obo:SO_0000704 (44,997)
-       and m2r:Gene (44,997) are declared in <http://rdfportal.org/dataset/hgnc> and in NO other graph, so
-       no foreign genes are silently added. (2) LABEL/IDENTIFIER LEG: a VALUES probe over 10 gene IRIs for
-       rdfs:label / dcterms:identifier / skos:prefLabel / rdf:type returns HGNC's own graph ONLY (10/10
-       each) — no duplicate and no conflicting label. (3) CROSS-CLASS: HGNC's graph declares rdfs:label on
-       NO non-hgnc IRI (0 rows), so it cannot mislabel a foreign entity the way glycovid_pubchem does to
-       MeSH. (4) REAL MULTIPLIER, measured not computed: `?s a m2r:Gene ; rdfs:label ?l` = 44,997 rows /
-       44,997 subjects UNPINNED vs 44,997 / 44,997 PINNED = x1.00. The reverse probe DOES surface 24
-       foreign graphs on HGNC IRIs — see the next bullet; they carry no HGNC predicate."
-    - "HGNC IRIs ARE A HUB — 24 co-hosted graphs use them as SUBJECTS, but this is REFERENCING, not
-       re-declaring, and cannot inflate an HGNC join. The togoid relation graphs (togovar-hgnc,
-       clinvar-hgnc, uniprot-hgnc, hgnc-ncbigene, ...) attach only tio:TIO_* cross-link predicates — a
-       vocabulary DISJOINT from HGNC's own. Re-confirmed by the 2026-07-17 reverse probe: over 10 gene
-       IRIs the ONLY foreign predicates found endpoint-wide are tio:TIO_000063/35/1/25/17/32/22/2 — not
-       one rdfs:label, dcterms:identifier or rdf:type among them. Volume is nonetheless high: those same
-       10 IRIs carry 238,294 tio:TIO_000063 triples in togoid/relation/togovar-hgnc and 6,971 in
-       clinvar-hgnc, vs 436 triples in HGNC's own graph. So a join on HGNC's OWN predicates is safe
-       unpinned (x1.00 measured), but any unpinned pattern touching tio:TIO_* will explode — pin
-       GRAPH <http://rdfportal.org/dataset/hgnc> as a matter of course. Verified 2026-07-17."
-  kw_search_tools: []
-  version:
-    mie_version: "2.3"
-    mie_created: "2026-04-28"
-    mie_updated: "2026-07-17"
-    # No dataset-level version triple on the endpoint: probed void:triples, owl:versionInfo,
-    # owl:versionIRI, dcterms:modified|issued|hasVersion, pav:version and void:Dataset/owl:Ontology
-    # descriptor nodes in GRAPH <http://rdfportal.org/dataset/hgnc> — none present. The former
-    # "Release 2026" was copied from genenames.org, not derivable from the data.
-    data_version: "RDF Portal snapshot — verified 2026-07-17"
-    update_frequency: "Monthly"
-  access:
-    backend: "Virtuoso"
+# MIE v3 — HGNC (HUGO Gene Nomenclature Committee). AGENT-authored 2026-07-22 on `mie-redesign`.
+# Format: benchmark/redesign/MIE_v3_spec.md. Every verified count/result re-run live on the primary endpoint 2026-07-22.
+# Byte count vs the v2 file it replaces (spec §5 item 7): v2 togo_mcp/data/mie/hgnc.yaml = 28,132 bytes;
+# this v3 file = 20,090 bytes → 28.6% smaller (v2 hgnc was already lean — no ShEx/sample bloat to shed;
+# the win here is compression-guarding the enumeration route, not raw byte reduction). See footer.
+# §4.4 note (enumeration_audit.md row: hgnc, Tier B): the set-level route "all genes bearing a typed cross-ref
+# X" (?g rdfs:seeAlso ?ref . ?ref a idt:<type>) reads like xref-navigation and is compressor-prone — it is kept
+# as the standalone first-class example `enum_by_xref_type`. HGNC has NO functional-classification hierarchy;
+# do not invent one (gotcha no_functional_hierarchy).
+database: hgnc
 
-critical_warnings: |
-  - QUERY SCOPE: All gene records use FROM <http://rdfportal.org/dataset/hgnc>. Without
-    this graph clause, queries may return empty results or mix with other primary-endpoint
-    datasets (bacdive, brenda, nando, etc.).
-  - DUAL TYPE: Every HGNC gene has BOTH `a obo:SO_0000704` AND `a m2r:Gene`. Use either
-    one; do not require both with separate triples — it will still work but adds redundancy.
-  - APPROVAL STATUS: ALL 44,960 genes have `skos:historyNote "Approved"`. This predicate
-    cannot be used to filter subsets; it is a constant on every record.
-  - CROSS-REFERENCE PATTERN: External database links are NOT stored as literals on the
-    gene. They are typed IRI nodes via `rdfs:seeAlso`. Each linked node has `a idt:<type>`
-    and `dct:identifier`. Using `rdfs:seeAlso` alone gives IRIs, not identifier strings —
-    join through the typed node to get the string value.
-  - EC-CODE IRI NAMESPACE: HGNC ec-code links use `http://identifiers.org/ec-code/{num}`,
-    NOT the BRENDA namespace `https://purl.dsmz.de/brenda/ec/{num}`. Cross-database joins
-    require STR comparison (see cross_database_queries).
-  - LOCATION IS A STRING: `obo:so_part_of` stores the chromosomal band as a plain string
-    (e.g. "17p13.1"). There is no IRI for the location — use STRSTARTS/FILTER for
-    chromosome-level filtering.
+# ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
+discovery:
+  title: HGNC — HUGO Gene Nomenclature Committee
+  description: >
+    Authoritative approved human gene nomenclature: official symbol, full name, HGNC ID, chromosomal
+    band, and a central hub of typed cross-references (NCBI Gene, Ensembl, RefSeq, UniProt, OMIM,
+    Orphanet, MGI/RGD orthologs, EC codes, miRBase) plus supporting PubMed literature.
+  keywords: [human gene, gene nomenclature, gene symbol, approved gene, gene name, hgnc id,
+             chromosomal location, cross-reference, id mapping, ncbi gene, ensembl, uniprot, omim,
+             orphanet, ec code, mirbase, ortholog, gene alias]
+  categories: [gene, genomics]
 
-shape_expressions: |
-  PREFIX m2r:  <http://med2rdf.org/ontology/med2rdf#>
-  PREFIX obo:  <http://purl.obolibrary.org/obo/>
-  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-  PREFIX dct:  <http://purl.org/dc/terms/>
-  PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-  PREFIX idt:  <http://identifiers.org/>
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/primary/sparql   # RDF Portal "primary" endpoint (shared with dozens of datasets)
+base_uri: http://identifiers.org/hgnc/
+graphs:
+  primary: http://rdfportal.org/dataset/hgnc     # the ONLY graph that declares a gene's own predicates (label/id/xrefs)
+  co_hosted:                       # same endpoint; flag anything that inflates / joins / stubs (spec §3.2)
+    brenda: >
+      JOIN target — d3o:ECNumber IRIs encode the EC number in the path
+      (https://purl.dsmz.de/brenda/ec/4.1.1.17). HGNC's idt:ec-code dct:identifier string joins to it by
+      STR-comparison (example xdb_brenda). Different EC namespace: HGNC = http://identifiers.org/ec-code/.
+    togoid_relation_graphs: >
+      INFLATION HAZARD — HGNC IRIs are TogoID's central human-gene hub, so 24+ co-hosted
+      rdfportal.org/dataset/togoid/relation/* graphs (togovar-hgnc, clinvar-hgnc, uniprot-hgnc,
+      hgnc-ncbigene, hgnc-omim_gene, ensembl_*-hgnc, orphanet_gene-hgnc, mgi_gene-hgnc, …) REFERENCE the
+      same HGNC IRIs as subjects/objects using ONLY tio:TIO_* predicates (a vocabulary DISJOINT from HGNC's
+      own). They cannot duplicate a join on HGNC's own predicates (rdfs:seeAlso/rdfs:label are ×1.00
+      unpinned), but a single gene IRI carries 9,837 tio:TIO_000063 triples in togovar-hgnc + 3,951 in
+      clinvar-hgnc — any UNPINNED pattern touching tio:TIO_* explodes. Always pin the hgnc graph (gotcha
+      graph_pin). These graphs ARE what togoid_convertId reads (id_join_map.bridged_via_togoid).
+    other_primary_datasets: >
+      bacdive, mondo, mesh, go, taxonomy, mediadive, medgen, nando + more share this endpoint. Zero overlap
+      with HGNC's own gene IRIs/predicates — join targets or noise, never re-typers. Reach by GRAPH-pinning.
 
-  # IRI pattern: http://identifiers.org/hgnc/{HGNC_ID}  e.g. hgnc/11998 = TP53
-  <HGNCGeneShape> {
-    a [ obo:SO_0000704 m2r:Gene ] ;   # ~44,960 genes; both types always present
-    rdfs:label xsd:string ;            # official gene symbol, e.g. "TP53"
-    dct:identifier xsd:string ;        # HGNC numeric ID as string, e.g. "11998"
-    dct:description xsd:string ;       # full gene name, e.g. "tumor protein p53"
-    skos:historyNote xsd:string ;      # always "Approved" — constant on every record
-    obo:so_part_of xsd:string ? ;      # chromosomal location string, e.g. "17p13.1"; 99.9%
-    skos:altLabel xsd:string * ;       # aliases, previous symbols, associated diseases
-    dct:references @<PubMedRefShape> * ;  # supporting publications
-    rdfs:seeAlso @<ExternalRefShape> *    # cross-references to external databases
-  }
+entity_counts:                     # COUNT(DISTINCT ?gene), graph-pinned; verified 2026-07-22
+  genes: 44997                     # a m2r:Gene (== a obo:SO_0000704) in the hgnc graph
+  xref_coverage:                   # DISTINCT genes carrying at least one typed cross-ref of each type
+    ncbigene: 44382                # 98.6%
+    uniprot:  20288                # 45.1% — not all genes are protein-coding (ncRNA/pseudogene)
+    mim:      17577                # 39.1% (OMIM)
+    orphanet: 4418                 # 9.8% (rare-disease genes)
+    ec_code:  2053                 # 4.6% (enzyme-coding genes)
+    mirbase:  1912                 # 4.2% (microRNA genes)
 
-  # Cross-reference nodes — accessed via rdfs:seeAlso from the gene
-  # Each node carries its database type and the identifier string
-  <ExternalRefShape> {
-    a [ idt:ncbigene      # NCBI Gene: 98.6% of genes (44,353)
-        idt:ensembl       # Ensembl gene: 94.0% (42,275)
-        idt:refseq        # RefSeq: 93.1% (41,865)
-        idt:ccds          # CCDS: 79.0% (35,506); multiple entries per gene
-        idt:uniprot       # UniProt: 45.0% (20,252)
-        idt:mgi           # MGI (mouse ortholog): 44.0% (19,798)
-        idt:rgd           # RGD (rat ortholog): 42.1% (18,946)
-        idt:mim           # OMIM: 39.1% (17,591); disease genes
-        idt:orphanet      # Orphanet: 9.8% (4,418); rare disease genes
-        idt:iuphar.receptor  # IUPHAR receptor: 8.0% (3,591)
-        idt:mirbase       # miRBase: 4.3% (1,912); microRNA genes
-        idt:lrg           # LRG: 2.9% (1,325)
-        idt:ec-code       # EC number: 2.6% (1,147); enzyme-coding genes
-        idt:ena.embl      # ENA/EMBL: ~46% (20,684)
-        idt:insdc ] ;     # INSDC: ~46% (20,684)
-    dct:identifier xsd:string   # the identifier as a string (e.g. "7157", "ENSG00000141510")
-  }
+global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
+  - id: graph_pin
+    say: >
+      ALWAYS FROM (or GRAPH-pin) <http://rdfportal.org/dataset/hgnc>. The primary endpoint co-hosts dozens
+      of datasets AND 24+ TogoID relation graphs that reference HGNC IRIs. Omitting the pin can 0-row, mix
+      foreign data, and — for any pattern touching tio:TIO_* — explode (one gene IRI = 9,837 triples in
+      togovar-hgnc alone). A join on HGNC's OWN predicates is ×1.00 unpinned, but pin anyway as a habit.
+  - id: xref_indirection
+    say: >
+      External IDs are NOT literals on the gene. Each is a typed IRI node reached by rdfs:seeAlso:
+      ?gene rdfs:seeAlso ?ref . ?ref a idt:<type> ; dct:identifier ?idString. rdfs:seeAlso ALONE yields the
+      IRI, not the identifier string, and mixes all cross-ref types — join through the typed node and its
+      dct:identifier. bif:contains cannot match rdfs:seeAlso objects (they are IRIs, not literals).
+  - id: approved_constant
+    say: >
+      ALL 44,997 genes carry skos:historyNote "Approved" — it is a constant, not a filterable subset. And
+      gene symbols are a controlled vocabulary in rdfs:label (UPPERCASE, e.g. "TP53"): match with VALUES /
+      exact string, never FILTER(CONTAINS) or bif:contains — symbol lookup is instant and indexed.
+  - id: location_is_string
+    say: >
+      obo:so_part_of stores the chromosomal band as a PLAIN STRING ("17p13.1"), with no location IRI. There
+      is no structured chromosome/arm field — use STRSTARTS/FILTER on the string (e.g. STRSTARTS(?loc,"17p")).
+  - id: no_functional_hierarchy
+    say: >
+      HGNC has NO functional / gene-family classification hierarchy in this RDF — gene function is NOT a
+      structured, enumerable property here. For "all genes doing function X" go to GO / UniProt / Reactome.
+      Text search on skos:altLabel (aliases, previous symbols, disease phrases) is exploratory ONLY and
+      never gives a comprehensive count. Do not invent a functional-classification query for HGNC.
 
-  <PubMedRefShape> {
-    a [ idt:pubmed ] ;      # 23,448 PubMed reference nodes; ~35,720 dct:references triples
-    dct:identifier xsd:string
-  }
-
-sample_rdf_entries:
-  rdf_prefixes: |
-    @prefix m2r:  <http://med2rdf.org/ontology/med2rdf#> .
-    @prefix obo:  <http://purl.obolibrary.org/obo/> .
-    @prefix hgnc: <http://identifiers.org/hgnc/> .
-    @prefix idt:  <http://identifiers.org/> .
-    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-    @prefix dct:  <http://purl.org/dc/terms/> .
-    @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
-  entries:
-    - title: "TP53 gene — approved HGNC record with chromosomal location"
-      description: Core gene record showing symbol, name, HGNC ID, chromosomal location, and approval status.
-      rdf: |
-        hgnc:11998 a obo:SO_0000704, m2r:Gene ;
-                   rdfs:label "TP53" ;
-                   dct:identifier "11998" ;
-                   dct:description "tumor protein p53" ;
-                   obo:so_part_of "17p13.1" ;
-                   skos:historyNote "Approved" ;
-                   skos:altLabel "p53" , "LFS1" , "Li-Fraumeni syndrome" .
-
-    - title: "TP53 cross-references — typed external database links via rdfs:seeAlso"
-      description: Each external cross-reference is a typed IRI node; dct:identifier holds the string ID.
-      rdf: |
-        hgnc:11998 rdfs:seeAlso idt:ncbigene/7157 ,
-                                 idt:ensembl/ENSG00000141510 ,
-                                 idt:uniprot/P04637 ,
-                                 idt:refseq/NM_000546 ,
-                                 idt:mim/191170 ,
-                                 idt:mgi/MGI:98834 ,
-                                 idt:rgd/3889 ,
-                                 idt:lrg/LRG_321 ,
-                                 idt:orphanet/120204 .
-
-        idt:ncbigene/7157 a idt:ncbigene ; dct:identifier "7157" .
-        idt:ensembl/ENSG00000141510 a idt:ensembl ; dct:identifier "ENSG00000141510" .
-        idt:uniprot/P04637 a idt:uniprot ; dct:identifier "P04637" .
-
-    - title: "TP53 literature references — PubMed links via dct:references"
-      description: Supporting publications are typed pubmed nodes linked via dct:references.
-      rdf: |
-        hgnc:11998 dct:references idt:pubmed/2047879 ,
-                                   idt:pubmed/6396087 ,
-                                   idt:pubmed/3456488 .
-
-        idt:pubmed/2047879 a idt:pubmed ; dct:identifier "2047879" .
-
-sparql_query_examples:
-  - title: "Retrieve gene records by HGNC IRI"
-    description: Look up core metadata for multiple known genes using their specific HGNC IRIs in a VALUES block.
-    question: "What are the HGNC records for TP53 (hgnc:11998) and BRCA1 (hgnc:1100)?"
+# ── examples: verified, executable atoms. The gene IRI is the hub; every external ID is INDIRECT
+#    (gene → rdfs:seeAlso → typed node → dct:identifier). ──
+examples:
+  - id: gene_lookup
+    intent: core record for known genes by HGNC IRI (symbol, name, HGNC ID, chromosomal band)
+    question: "What are the HGNC records for TP53 (hgnc/11998) and BRCA1 (hgnc/1100)?"
     complexity: basic
     sparql: |
-      PREFIX m2r:  <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX dct:  <http://purl.org/dc/terms/>
-      PREFIX obo:  <http://purl.obolibrary.org/obo/>
-
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
       SELECT ?gene ?symbol ?hgnc_id ?description ?location
       FROM <http://rdfportal.org/dataset/hgnc>
       WHERE {
-        VALUES ?gene {
-          <http://identifiers.org/hgnc/11998>
-          <http://identifiers.org/hgnc/1100>
-        }
-        ?gene a m2r:Gene ;
-              rdfs:label ?symbol ;
-              dct:identifier ?hgnc_id ;
-              dct:description ?description .
+        VALUES ?gene { <http://identifiers.org/hgnc/11998> <http://identifiers.org/hgnc/1100> }
+        ?gene a m2r:Gene ; rdfs:label ?symbol ; dct:identifier ?hgnc_id ; dct:description ?description .
         OPTIONAL { ?gene obo:so_part_of ?location }
       }
-      LIMIT 10
+    verified: {result_rows: 2, date: "2026-07-22", first_row: "hgnc/11998 = TP53, 'tumor protein p53', 17p13.1"}
+    teaches: "rdfs:label = official symbol, dct:identifier = bare numeric HGNC ID string ('11998'), dct:description = full name, obo:so_part_of = band string. Anchor by the HGNC IRI for instant lookup."
 
-  - title: "Get all cross-references for a known HGNC gene"
-    description: Retrieve all external database identifiers linked from a specific HGNC IRI.
-    question: "What are the NCBI Gene, Ensembl, UniProt, and OMIM IDs for HGNC:11998 (TP53)?"
+  - id: gene_xrefs
+    intent: all typed external cross-references for one gene (the indirect typed-node pattern)
+    question: "What are the NCBI Gene, Ensembl, UniProt, OMIM (etc.) IDs for TP53 (hgnc/11998)?"
     complexity: basic
     sparql: |
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX dct:  <http://purl.org/dc/terms/>
-
+      PREFIX dct: <http://purl.org/dc/terms/>
       SELECT ?type ?identifier
       FROM <http://rdfportal.org/dataset/hgnc>
       WHERE {
-        # Use the HGNC IRI directly for fast lookup — no text search needed
         <http://identifiers.org/hgnc/11998> rdfs:seeAlso ?ref .
-        ?ref a ?type ;
-             dct:identifier ?identifier .
+        ?ref a ?type ; dct:identifier ?identifier .
       }
-      LIMIT 30
+    verified: {result_rows: 23, date: "2026-07-22", note: "ncbigene 7157, uniprot P04637, ensembl ENSG00000141510, mim 191170, orphanet 120204, + 13 CCDS rows"}
+    teaches: "One hop rdfs:seeAlso → typed node gives every xref at once; ?type is the idt:<db> class and dct:identifier the string ID. Bind ?type to a specific class (a idt:uniprot) to pick one database."
+    traps_avoided:
+      - "CCDS returns MANY rows per gene (alternative transcripts — TP53 has 13). Use DISTINCT / GROUP BY, or filter to the type you want, before counting genes."
 
-  - title: "Find genes on a specific chromosomal arm using STRSTARTS"
-    description: Retrieve genes mapped to a chromosomal arm by filtering the string location field.
+  - id: enum_by_xref_type
+    intent: enumerate ALL genes bearing a typed cross-ref of a chosen type — the set-level xref route (§4.4)
+    question: "Which human genes are microRNA genes (i.e. carry a miRBase cross-reference)?"
+    complexity: basic
+    sparql: |
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX idt: <http://identifiers.org/>
+      SELECT ?gene ?symbol ?mirbase_id
+      FROM <http://rdfportal.org/dataset/hgnc>
+      WHERE {
+        ?gene a m2r:Gene ; rdfs:label ?symbol ; rdfs:seeAlso ?ref .
+        ?ref a idt:mirbase ; dct:identifier ?mirbase_id .   # swap idt:mirbase → idt:mim / idt:orphanet / idt:ec-code / …
+      }
+      LIMIT 20
+    verified: {result_rows: 20, set_total: 1912, date: "2026-07-22", first_row: "MIR429 → miRBase MI0001641"}
+    teaches: "THE route for 'all genes with link-type X': ?gene rdfs:seeAlso ?ref . ?ref a idt:<TYPE>. The xref type IS the gene class — miRBase=microRNA genes (1912), ec-code=enzyme genes (2053), mim=OMIM disease genes (17577), orphanet=rare-disease genes (4418). Just swap the idt:<TYPE>; COUNT(DISTINCT ?gene) gives the set size."
+    traps_avoided:
+      - "This is xref NAVIGATION but it is a first-class ENUMERATION route, not a caveat — do NOT text-search skos:altLabel or dct:description to find 'microRNA genes'; the typed xref is exact and complete, altLabel text is exploratory and undercounts (gotcha no_functional_hierarchy)."
+      - "idt:ec-code is a valid prefixed name (hyphen allowed): idt: = http://identifiers.org/, so idt:ec-code = http://identifiers.org/ec-code."
+
+  - id: chromosome_arm
+    intent: genes on a chromosomal arm via STRSTARTS on the band string (location is a string, not an IRI)
     question: "Which genes are located on chromosome arm 17p?"
     complexity: intermediate
     sparql: |
-      PREFIX m2r:  <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX dct:  <http://purl.org/dc/terms/>
-      PREFIX obo:  <http://purl.obolibrary.org/obo/>
-
-      SELECT ?gene ?symbol ?description ?location
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT (COUNT(DISTINCT ?gene) AS ?n)
       FROM <http://rdfportal.org/dataset/hgnc>
       WHERE {
-        ?gene a m2r:Gene ;
-              rdfs:label ?symbol ;
-              dct:description ?description ;
-              obo:so_part_of ?location .
-        # so_part_of is a plain string — use STRSTARTS for chromosome-level filtering
+        ?gene a m2r:Gene ; obo:so_part_of ?location .
         FILTER(STRSTARTS(?location, "17p"))
       }
-      LIMIT 20
+    verified: {n: 659, date: "2026-07-22"}
+    teaches: "obo:so_part_of is a plain band string ('17p13.1') — STRSTARTS selects a whole arm; drop LIMIT/COUNT and SELECT ?symbol ?location to list. There is no location IRI to traverse (gotcha location_is_string)."
 
-  - title: "Find disease-associated genes with OMIM cross-references"
-    description: Filter for genes that have an OMIM/MIM identifier, indicating disease association.
-    question: "Which human genes are linked to OMIM disease entries?"
-    complexity: intermediate
+  - id: xref_coverage             # ELEVATED aggregation — the hub's cross-ref census
+    intent: count how many distinct genes carry each type of cross-reference (coverage of the ID hub)
+    question: "How many HGNC genes have OMIM, Orphanet, EC-code, and miRBase cross-references respectively?"
+    complexity: aggregation
     sparql: |
-      PREFIX m2r:  <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX dct:  <http://purl.org/dc/terms/>
-      PREFIX idt:  <http://identifiers.org/>
-
-      SELECT ?gene ?symbol ?description ?omim_id
+      PREFIX idt: <http://identifiers.org/>
+      SELECT ?type (COUNT(DISTINCT ?gene) AS ?n)
       FROM <http://rdfportal.org/dataset/hgnc>
       WHERE {
-        ?gene a m2r:Gene ;
-              rdfs:label ?symbol ;
-              dct:description ?description ;
-              rdfs:seeAlso ?mim .
-        # Navigate through the typed cross-reference node to get the OMIM ID
-        ?mim a idt:mim ;
-             dct:identifier ?omim_id .
+        VALUES ?type { idt:mim idt:orphanet idt:ec-code idt:mirbase idt:ncbigene idt:uniprot }
+        ?gene a m2r:Gene ; rdfs:seeAlso ?ref .
+        ?ref a ?type .
       }
-      LIMIT 20
+      GROUP BY ?type
+    verified: {ncbigene: 44382, uniprot: 20288, mim: 17577, orphanet: 4418, ec_code: 2053, mirbase: 1912, date: "2026-07-22"}
+    teaches: "COUNT(DISTINCT ?gene) grouped by ?type gives the coverage census in one query — count DISTINCT genes (a gene can hold several refs of one type, e.g. multiple CCDS). Graph-pin so co-hosted graphs don't leak in."
 
-  - title: "Retrieve genes with Ensembl, UniProt, and NCBI Gene cross-references"
-    description: Join through multiple typed cross-reference nodes for protein-coding gene discovery.
-    question: "Which genes have Ensembl, UniProt, and NCBI Gene IDs all linked from HGNC?"
-    complexity: intermediate
-    sparql: |
-      PREFIX m2r:  <http://med2rdf.org/ontology/med2rdf#>
-      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX dct:  <http://purl.org/dc/terms/>
-      PREFIX idt:  <http://identifiers.org/>
-
-      SELECT ?gene ?symbol ?ncbigene_id ?ensembl_id ?uniprot_id
-      FROM <http://rdfportal.org/dataset/hgnc>
-      WHERE {
-        ?gene a m2r:Gene ;
-              rdfs:label ?symbol .
-        OPTIONAL {
-          ?gene rdfs:seeAlso ?ncbi .
-          ?ncbi a idt:ncbigene ;
-                dct:identifier ?ncbigene_id .
-        }
-        OPTIONAL {
-          ?gene rdfs:seeAlso ?ens .
-          ?ens a idt:ensembl ;
-               dct:identifier ?ensembl_id .
-        }
-        OPTIONAL {
-          ?gene rdfs:seeAlso ?uni .
-          ?uni a idt:uniprot ;
-               dct:identifier ?uniprot_id .
-        }
-      }
-      LIMIT 20
-
-  - title: "Genes with most supporting PubMed references"
-    description: Count supporting publications per gene to find highly curated or prominent entries.
+  - id: pubmed_refs
+    intent: genes ranked by number of supporting PubMed references (dct:references → pubmed node)
     question: "Which HGNC genes have the most linked PubMed references?"
     complexity: advanced
     sparql: |
-      PREFIX m2r:  <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX dct:  <http://purl.org/dc/terms/>
-
-      SELECT ?gene ?symbol (COUNT(DISTINCT ?ref) AS ?pub_count)
+      PREFIX dct: <http://purl.org/dc/terms/>
+      SELECT ?symbol (COUNT(DISTINCT ?ref) AS ?pub_count)
       FROM <http://rdfportal.org/dataset/hgnc>
       WHERE {
-        ?gene a m2r:Gene ;
-              rdfs:label ?symbol ;
-              dct:references ?ref .
+        ?gene a m2r:Gene ; rdfs:label ?symbol ; dct:references ?ref .
       }
       GROUP BY ?gene ?symbol
       ORDER BY DESC(?pub_count)
-      LIMIT 20
+      LIMIT 5
+    verified: {result_rows: 5, top: "WHR1 = 7", date: "2026-07-22", note: "reference counts are small — HGNC lists only nomenclature-supporting PMIDs, not the full literature"}
+    teaches: "Literature is indirect: ?gene dct:references ?ref . ?ref a idt:pubmed ; dct:identifier ?pmid (the PMID string). These are curation-supporting PMIDs (few per gene), NOT a comprehensive publication list."
 
-  - title: "Enzyme-coding genes with Orphanet links — EC code and rare disease co-annotation"
-    description: Find genes that are both enzyme-coding (have EC code cross-references) and linked to
-      Orphanet rare disease entries.
-    question: "Which human enzyme-coding genes are also associated with rare diseases in Orphanet?"
+  - id: enzyme_rare_disease
+    intent: genes intersecting two typed cross-ref classes (enzyme-coding AND rare-disease)
+    question: "Which human enzyme-coding genes are also linked to rare diseases in Orphanet?"
     complexity: advanced
     sparql: |
-      PREFIX m2r:  <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX dct:  <http://purl.org/dc/terms/>
-      PREFIX idt:  <http://identifiers.org/>
-
-      SELECT ?gene ?symbol ?description ?ec_num ?orphanet_id
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX idt: <http://identifiers.org/>
+      SELECT ?symbol ?ec_num ?orphanet_id
       FROM <http://rdfportal.org/dataset/hgnc>
       WHERE {
-        ?gene a m2r:Gene ;
-              rdfs:label ?symbol ;
-              dct:description ?description ;
-              rdfs:seeAlso ?ecRef ;
-              rdfs:seeAlso ?orphRef .
-        # EC code cross-reference (enzyme-coding genes, 2.6% of all)
-        ?ecRef a idt:ec-code ;
-               dct:identifier ?ec_num .
-        # Orphanet cross-reference (rare disease association, 9.8% of all)
-        ?orphRef a idt:orphanet ;
-                 dct:identifier ?orphanet_id .
+        ?gene a m2r:Gene ; rdfs:label ?symbol ; rdfs:seeAlso ?ecRef , ?orphRef .
+        ?ecRef   a idt:ec-code  ; dct:identifier ?ec_num .
+        ?orphRef a idt:orphanet ; dct:identifier ?orphanet_id .
       }
       LIMIT 20
+    verified: {result_rows: 20, set_total: 840, date: "2026-07-22", first_row: "ALOXE3 → EC 5.4.4.7 + Orphanet 119637"}
+    teaches: "Intersect two xref classes by attaching two typed-node legs to the same ?gene (rdfs:seeAlso ?ecRef , ?orphRef). This composes any two idt:<type> sets — the general set-intersection idiom for the ID hub."
 
-cross_database_queries:
-  shared_endpoint: primary
-  co_located_databases: [brenda, bacdive, nando, mondo, mesh, go, taxonomy, mediadive]
-  examples:
-    - title: "Link HGNC enzyme genes to BRENDA EC class entries"
-      description: |
-        Linking strategy:
-        - HGNC: genes with `rdfs:seeAlso idt:ec-code` → `dct:identifier` gives EC number string (e.g. "4.1.1.17")
-        - BRENDA: ECNumber IRIs encode the EC number in the path (https://purl.dsmz.de/brenda/ec/4.1.1.17)
-        - Join via STR comparison: BIND(STRAFTER(STR(?ec), "https://purl.dsmz.de/brenda/ec/") AS ?ecNum2),
-          then FILTER(STR(?ecNum2) = STR(?ecNum))
-        - No text search required; the join is purely IRI-string based
-      databases_used: [hgnc, brenda]
-      complexity: intermediate
-      sparql: |
-        PREFIX d3o:  <https://purl.dsmz.de/schema/>
-        PREFIX m2r:  <http://med2rdf.org/ontology/med2rdf#>
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX dct:  <http://purl.org/dc/terms/>
-        PREFIX idt:  <http://identifiers.org/>
-
-        SELECT ?geneSymbol ?ecNum ?ecLabel
-        WHERE {
-          GRAPH <http://rdfportal.org/dataset/hgnc> {
-            ?gene a m2r:Gene ;
-                  rdfs:label ?geneSymbol ;
-                  rdfs:seeAlso ?ecCode .
-            ?ecCode a idt:ec-code ;
-                    dct:identifier ?ecNum .
-          }
-          GRAPH <http://rdfportal.org/dataset/brenda> {
-            ?ec a d3o:ECNumber ;
-                rdfs:label ?ecLabel .
-            BIND(STRAFTER(STR(?ec), "https://purl.dsmz.de/brenda/ec/") AS ?ecNum2)
-            FILTER(STR(?ecNum2) = STR(?ecNum))
-          }
-        }
-        LIMIT 20
-      notes: |
-        - Linking via: EC number string extracted from BRENDA IRI vs HGNC dct:identifier
-        - MIE files checked: hgnc, brenda
-        - BRENDA EC IRI namespace: https://purl.dsmz.de/brenda/ec/
-        - HGNC EC identifier namespace: http://identifiers.org/ec-code/ (different!)
-        - BIND + FILTER(STR=STR) required because the EC numbers come as typed strings
-          from HGNC and as plain strings from STRAFTER — the STR() cast normalises them
-
-cross_references:
-  - pattern: rdfs:seeAlso
-    description: |
-      Links to typed external database nodes. Each node carries `a idt:<type>` and
-      `dct:identifier` with the database-specific ID string. Coverage varies widely
-      by database type.
-    databases:
-      genomics:
-        - "NCBI Gene: 98.6% (44,353 genes)"
-        - "Ensembl: 94.0% (42,275)"
-        - "RefSeq: 93.1% (41,865)"
-        - "CCDS: 79.0% (35,506; multiple entries per gene)"
-        - "ENA/EMBL: 46.0% (20,684)"
-        - "INSDC: 46.0% (20,684)"
-      proteins:
-        - "UniProt: 45.0% (20,252)"
-      model_organisms:
-        - "MGI (mouse): 44.0% (19,798)"
-        - "RGD (rat): 42.1% (18,946)"
-      disease:
-        - "OMIM/MIM: 39.1% (17,591)"
-        - "Orphanet: 9.8% (4,418)"
-      functional:
-        - "IUPHAR receptor: 8.0% (3,591)"
-        - "miRBase: 4.3% (1,912)"
-        - "LRG: 2.9% (1,325)"
-        - "EC code: 2.6% (1,147)"
-  - pattern: dct:references
-    description: |
-      Links to PubMed literature via typed pubmed nodes. Each node has
-      `a idt:pubmed` and `dct:identifier` with the PMID string.
-    databases:
-      literature:
-        - "PubMed: 23,448 reference nodes; 35,720 dct:references triples total"
-
-architectural_notes:
-  query_strategy:
-    - "FIRST: read the MIE file; examine shape_expressions for cross-reference node structure"
-    - "Specific IRI: use <http://identifiers.org/hgnc/{HGNC_ID}> directly for known genes"
-    - "Symbol lookup: rdfs:label exact match (gene symbols are controlled; no text search needed)"
-    - "Cross-reference: always navigate through the typed node (?gene rdfs:seeAlso ?ref . ?ref a idt:TYPE ; dct:identifier ?id)"
-    - "Chromosomal location: use STRSTARTS/FILTER on obo:so_part_of — it is a string, not an IRI"
-    - "Text search: only for skos:altLabel or dct:description free-text matching; use bif:contains"
-    - "Priority: Specific IRI > Symbol (exact label) > Typed cross-reference > Chromosomal FILTER"
-
-  schema_design:
-    - "Central entity: HGNC gene IRI (http://identifiers.org/hgnc/{ID}) with dual typing"
-    - "All external IDs are indirect: gene → rdfs:seeAlso → typed node → dct:identifier"
-    - "Gene symbol (rdfs:label) is unique and official; aliases are in skos:altLabel"
-    - "Chromosomal location (obo:so_part_of) is a band string, e.g. '17p13.1', '6q21'"
-    - "dct:references links to PubMed nodes (idt:pubmed) not directly to PMIDs"
-
-  performance:
-    - "Always include FROM <http://rdfportal.org/dataset/hgnc> or GRAPH clause"
-    - "Lookup by symbol: VALUES ?symbol { 'TP53' } is fast (indexed rdfs:label)"
-    - "Lookup by HGNC IRI: always fast — direct subject lookup"
-    - "Cross-database EC joins: use BIND+FILTER(STR=STR) not STRAFTER in FILTER alone"
-
-  data_integration:
-    - "Bridge to BRENDA: gene rdfs:seeAlso idt:ec-code → dct:identifier matches BRENDA ec/ IRI path"
-    - "Bridge to ncbigene: gene rdfs:seeAlso idt:ncbigene → dct:identifier = NCBI Gene ID"
-    - "Bridge to UniProt: gene rdfs:seeAlso idt:uniprot → dct:identifier = UniProt accession"
-    - "Bridge to OMIM: gene rdfs:seeAlso idt:mim → dct:identifier = OMIM ID string"
-
-  data_quality:
-    - "All 44,960 records have status 'Approved' — the historyNote field is not useful for filtering"
-    - "CCDS has multiple entries per gene (alternative transcripts); expect multi-row results"
-    - "UniProt coverage is ~45% — not all genes encode proteins (many are ncRNAs, pseudogenes)"
-    - "miRBase entries (4.3%) represent microRNA genes; EC code entries (2.6%) are enzyme genes"
-
-  text_search_justification:
-    - "Number of the 7 example queries that use text search: 0"
-    - "Gene symbols (rdfs:label) are controlled vocabulary — exact VALUES match preferred"
-    - "Chromosomal locations are structured strings — STRSTARTS filter preferred"
-    - "Cross-reference IDs are controlled — navigate through typed nodes"
-    - "skos:altLabel is free text (aliases, disease associations) — bif:contains applicable if needed"
-
-data_statistics:
-  total_entities: 44960
-  verified_date: "2026-04-28"
-  verification_method: "Direct COUNT query on m2r:Gene instances"
-
-  coverage:
-    ncbi_gene_xref:
-      value: "98.6%"
-      calculation: "44353 / 44960 genes"
-      verified_date: "2026-04-28"
-    ensembl_xref:
-      value: "94.0%"
-      calculation: "42275 / 44960 genes"
-      verified_date: "2026-04-28"
-    refseq_xref:
-      value: "93.1%"
-      calculation: "41865 / 44960 genes"
-      verified_date: "2026-04-28"
-    uniprot_xref:
-      value: "45.0%"
-      calculation: "20252 / 44960 genes"
-      verified_date: "2026-04-28"
-    omim_xref:
-      value: "39.1%"
-      calculation: "17591 / 44960 genes"
-      verified_date: "2026-04-28"
-    chromosomal_location:
-      value: "99.9%"
-      calculation: "44941 / 44960 genes have obo:so_part_of"
-      verified_date: "2026-04-28"
-
-anti_patterns:
-  - title: "Text Search for Gene Symbols"
-    problem: "Using bif:contains or FILTER(CONTAINS()) to find genes when an exact symbol or HGNC IRI is known."
-    wrong_sparql: |
-      ?gene dct:description ?desc .
-      ?desc bif:contains "'TP53'"
-    correct_sparql: |
-      # Gene symbols are a controlled vocabulary — use exact label match
-      VALUES ?symbol { "TP53" }
-      ?gene a m2r:Gene ;
-            rdfs:label ?symbol .
-    explanation: "rdfs:label holds the official gene symbol as an exact string. VALUES + exact match is instant; text search scans descriptions and aliases unnecessarily."
-
-  - title: "Skipping Schema Check Before Text Search"
-    problem: "Using bif:contains on cross-reference identifiers instead of navigating the typed node structure."
-    wrong_sparql: |
-      ?gene rdfs:seeAlso ?ref .
-      ?ref bif:contains "'ENSG00000141510'"
-    correct_sparql: |
-      # Cross-references are IRIs with typed nodes, not text literals
-      PREFIX idt: <http://identifiers.org/>
-      ?gene rdfs:seeAlso ?ref .
-      ?ref a idt:ensembl ;
-           dct:identifier "ENSG00000141510" .
-    explanation: "rdfs:seeAlso objects are IRIs (not string literals), so bif:contains cannot match them. Navigate to the typed node and filter on dct:identifier."
-
-  - title: "Direct rdfs:seeAlso IRI Use Without Type Filter"
-    problem: "Assuming rdfs:seeAlso links directly to an identifier string, or that a single seeAlso gives the desired type."
-    wrong_sparql: |
-      # Wrong — rdfs:seeAlso gives IRIs, not strings; mixes all cross-reference types
-      ?gene rdfs:seeAlso ?ensemblId .
-      FILTER(STRSTARTS(STR(?ensemblId), "http://identifiers.org/ensembl/"))
-    correct_sparql: |
-      PREFIX idt: <http://identifiers.org/>
+  - id: xdb_brenda                # ELEVATED cross_db — HGNC as ID hub joining out on the same endpoint
+    intent: "cross-DB: HGNC enzyme genes → BRENDA EC-class labels via the EC-number string (co-hosted on primary)"
+    question: "What BRENDA enzyme-class names correspond to HGNC enzyme-coding genes?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX d3o: <https://purl.dsmz.de/schema/>
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX dct: <http://purl.org/dc/terms/>
-      ?gene rdfs:seeAlso ?ref .
-      ?ref a idt:ensembl ;
-           dct:identifier ?ensembl_id .
-    explanation: "Using the typed node pattern (?ref a idt:ensembl) is both cleaner and better indexed than IRI string filtering."
+      PREFIX idt: <http://identifiers.org/>
+      SELECT ?geneSymbol ?ecNum ?ecLabel
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/hgnc> {
+          ?gene a m2r:Gene ; rdfs:label ?geneSymbol ; rdfs:seeAlso ?ecCode .
+          ?ecCode a idt:ec-code ; dct:identifier ?ecNum .
+        }
+        GRAPH <http://rdfportal.org/dataset/brenda> {
+          ?ec a d3o:ECNumber ; rdfs:label ?ecLabel .
+          BIND(STRAFTER(STR(?ec), "https://purl.dsmz.de/brenda/ec/") AS ?ecNum2)
+          FILTER(STR(?ecNum2) = STR(?ecNum))
+        }
+      }
+      LIMIT 10
+    verified: {result_rows: 10, date: "2026-07-22", first_row: "LPIN1 → EC 3.1.3.4 'phosphatidate phosphatase'"}
+    teaches: "HGNC and BRENDA co-locate on the primary endpoint; the EC number is the join key but the namespaces DIFFER (HGNC idt:ec-code string vs BRENDA IRI path), so extract BRENDA's EC via STRAFTER and FILTER(STR=STR). Pure GRAPH clauses (no FROM) for the cross-graph join."
+    traps_avoided:
+      - "The two EC namespaces are NOT the same IRI (HGNC = http://identifiers.org/ec-code/, BRENDA = https://purl.dsmz.de/brenda/ec/) — you cannot join by IRI equality; the STRAFTER+STR normalisation is required, and BIND-then-FILTER (not STRAFTER inside the FILTER) avoids the xsd:string typing mismatch."
 
-  - title: "Circular Reasoning with altLabel Search"
-    problem: "Using bif:contains on aliases to count how many genes are 'tumor suppressors', when that is not a structured property."
-    wrong_sparql: |
-      ?gene skos:altLabel ?alias .
-      ?alias bif:contains "'tumor suppressor'"
-      SELECT (COUNT(?gene) AS ?count) WHERE { ... }
-    correct_sparql: |
-      # Gene functional classification is not stored in HGNC as a controlled vocabulary.
-      # Use OMIM or GO (separate databases) for functional classification.
-      # Text search on altLabel is legitimate for discovery, but cannot give complete counts.
-      ?gene skos:altLabel ?alias .
-      ?alias bif:contains "'tumor suppressor'"
-      # Note: This finds only genes where someone wrote "tumor suppressor" in an alias —
-      # it is not a comprehensive functional classification query.
-    explanation: "Gene function is not a structured property in HGNC. Text search on altLabel is exploratory, not comprehensive — document this limitation in the query comment."
+# ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
+schema_delta:
+  - "Dual typing: every gene is `a obo:SO_0000704` AND `a m2r:Gene` (both always present, 44,997 each). Use either alone — m2r:Gene is concise; requiring both adds a redundant triple. obo: = http://purl.obolibrary.org/obo/, m2r: = http://med2rdf.org/ontology/med2rdf#."
+  - "skos:altLabel (skos: = http://www.w3.org/2004/02/skos/core#) holds FREE-TEXT aliases: previous symbols, alias symbols, and associated-disease phrases, mixed in one multi-valued predicate with no sub-typing. Use bif:contains here ONLY for fuzzy discovery when a symbol lookup fails — never for a comprehensive set/count (gotcha no_functional_hierarchy)."
+  - "PubMed nodes: the dct:references object is `a idt:pubmed ; dct:identifier <PMID>` (idt: = http://identifiers.org/) — same typed-node indirection as rdfs:seeAlso xrefs, but reached by dct:references, not rdfs:seeAlso."
 
-common_errors:
-  - error: "Empty results when querying by gene symbol"
-    causes:
-      - "Symbol is case-sensitive — HGNC symbols are uppercase (TP53, not tp53 or Tp53)"
-      - "Missing FROM <http://rdfportal.org/dataset/hgnc> graph clause"
-      - "Used FILTER(CONTAINS()) on rdfs:label instead of exact match or VALUES"
-    solutions:
-      - "Use VALUES ?symbol { 'TP53' } with exact uppercase symbol"
-      - "Always include FROM <http://rdfportal.org/dataset/hgnc> or GRAPH clause"
-      - "Check skos:altLabel if symbol lookup fails — gene may be known by a previous symbol"
+# ── id_join_map: HGNC is a CENTRAL human-gene ID hub — its outbound xrefs are the least-recoverable asset. ──
+id_join_map:
+  stable_anchor: >
+    Gene IRI http://identifiers.org/hgnc/{ID} (e.g. hgnc/11998 = TP53). dct:identifier = the bare numeric
+    string ("11998"); rdfs:label = the official symbol (controlled vocabulary, UPPERCASE, exact-match — the
+    reliable human key). skos:altLabel carries previous/alias symbols for fallback discovery only.
+  same_endpoint_joins:            # co-hosted on the primary endpoint — direct GRAPH join, NO TogoID
+    brenda: "idt:ec-code dct:identifier string == STRAFTER(brenda EC IRI, 'brenda/ec/'); FILTER(STR=STR) (example xdb_brenda)"
+  xrefs:                          # outbound refs via rdfs:seeAlso → (a idt:<type> ; dct:identifier); coverage of 44,997 genes
+    ncbigene: "idt:ncbigene → NCBI Gene ID (98.6%)"
+    ensembl:  "idt:ensembl → ENSG… (94.0%)"
+    refseq:   "idt:refseq → RefSeq accession (93.1%)"
+    ccds:     "idt:ccds → CCDS ID (79.0%; MULTIPLE per gene — alternative transcripts)"
+    uniprot:  "idt:uniprot → UniProt accession (45.1%; protein-coding only)"
+    mgi:      "idt:mgi → mouse ortholog (44.0%);  rgd: idt:rgd → rat ortholog (42.1%)"
+    mim:      "idt:mim → OMIM ID (39.1%);  orphanet: idt:orphanet → Orphanet ID (9.8%)"
+    ec_code:  "idt:ec-code → EC number string (4.6%; namespace http://identifiers.org/ec-code/ — NOT BRENDA's)"
+    mirbase:  "idt:mirbase → miRBase MI… (4.2%);  lrg: idt:lrg (2.9%);  iuphar.receptor (8.0%);  ena.embl/insdc (~46%)"
+    pubmed:   "dct:references → idt:pubmed node (curation-supporting PMIDs only, few per gene)"
+  bridged_via_togoid:             # HGNC is TogoID's central human-gene hub; target DBs' DATA graphs are NOT on primary
+    - "The co-hosted rdfportal.org/dataset/togoid/relation/* graphs (hgnc-ncbigene, uniprot-hgnc, ensembl_*-hgnc, togovar-hgnc, clinvar-hgnc, hgnc-omim_gene, orphanet_gene-hgnc, mgi_gene-hgnc, …) ARE what togoid_convertId consumes — use togoid_convertId to reach the actual data of NCBIGene/Ensembl/UniProt/TogoVar/ClinVar (those live on their own endpoints, not on primary). Do NOT hand-join their tio:TIO_* predicates unpinned — they explode (gotcha graph_pin). For simple ID mapping the outbound rdfs:seeAlso string is usually enough without any bridge."
 
-  - error: "Cross-reference identifier not retrievable"
-    causes:
-      - "Queried rdfs:seeAlso directly expecting a string — seeAlso returns IRIs"
-      - "Did not filter by cross-reference type (a idt:ensembl etc.)"
-      - "Multiple cross-reference types returned when only one was wanted"
-    solutions:
-      - "Always follow the typed node pattern: ?gene rdfs:seeAlso ?ref . ?ref a idt:TYPE ; dct:identifier ?id"
-      - "Filter by type (e.g. a idt:uniprot) to restrict to one database"
-      - "If multiple results per gene, use DISTINCT or GROUP BY"
-
-  - error: "Cross-database join to BRENDA returns empty results"
-    causes:
-      - "FILTER(STRAFTER(STR(?ec), prefix) = ?ecNum) fails due to xsd:string type mismatch"
-      - "Used FROM + GRAPH mixed syntax instead of pure GRAPH clauses"
-    solutions:
-      - "Use BIND(STRAFTER(STR(?ec), prefix) AS ?ecNum2) then FILTER(STR(?ecNum2) = STR(?ecNum))"
-      - "Use only GRAPH clauses (no FROM) for cross-dataset queries at the primary endpoint"
+# ── byte-count footer (spec §5 item 7) ──
+# v2: `wc -c togo_mcp/data/mie/hgnc.yaml` = 28132 bytes
+# v3: `wc -c benchmark/redesign/mie_v3/hgnc.yaml` = 20090 bytes → 28.6% smaller than v2.

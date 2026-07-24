@@ -1,683 +1,287 @@
-schema_info:
-  title: MediaDive - Microbial Culture Media Database
-  description: |
-    Comprehensive culture media database from DSMZ with 3,289 standardized recipes for bacteria,
-    archaea, fungi, yeast, microalgae, and phages. Includes 1,489 ingredients with chemical
-    cross-references (GMO 58%, CAS 59%, ChEBI 46%), 45,685 strain records (73% with BacDive links),
-    and growth conditions (pH, temperature, oxygen). Hierarchical recipe structure:
-    medium → solution → solution_recipe → ingredient with detailed preparation protocols.
-  keywords:
-    - culture medium
-    - growth medium
-    - recipe
-    - ingredient
-    - bacteria
-    - archaea
-    - fungi
-    - yeast
-    - microalgae
-    - phage
-    - dsmz
-    - bacdive
-    - media
-    - chebi
-    - component
-  categories:
-    - microbe
-  endpoint: https://rdfportal.org/primary/sparql
-  base_uri: https://purl.dsmz.de/mediadive/
-  graphs:
-    - http://rdfportal.org/dataset/mediadive
-  co_hosted_graphs:
-    - "http://rdfportal.org/dataset/bacdive — BacDive SHARES MediaDive's ENTIRE `purl.dsmz.de/schema/`
-       VOCABULARY (both are DSMZ resources) and declares its own entities under the SAME CLASS NAMES:
-       47,729 schema:CultureMedium and 97,334 schema:Strain live in the bacdive graph. This is a
-       UNION hazard, NOT an IRI-duplication trap: the IRI spaces are DISJOINT
-       (mediadive = purl.dsmz.de/mediadive/medium/102, purl.dsmz.de/mediadive/strain/28948;
-       bacdive = purl.dsmz.de/bacdive/culture_medium/100000, purl.dsmz.de/bacdive/strain/10000) and the
-       measured overlap is EXACTLY ZERO for both classes. So rows are never DUPLICATED — instead FOREIGN
-       ENTITIES ARE SILENTLY ADDED, which is just as wrong and harder to notice (every row still looks
-       well-formed and unique). Measured 2026-07-17: `?s a schema:CultureMedium ; rdfs:label ?l`
-       returns 51,018 rows / 51,018 subjects unpinned vs 3,289 / 3,289 pinned = x15.5 (51,018 =
-       3,289 + 47,729 exactly). `?s a schema:Strain ; schema:hasBacDiveID ?b` returns 33,226 subjects
-       pinned but bacdive contributes a further 97,334 subjects carrying the SAME predicate = x3.93.
-       FIX = pin GRAPH <http://rdfportal.org/dataset/mediadive>. Verified 2026-07-17."
-    - "The ~30 rdfportal.org/ontology/* graphs + <http://id.nlm.nih.gov/mesh> + <http://purl.jp/bio/11/goa>
-       + the togoid relation/label graphs share this endpoint — join targets, not co-tenancy traps for
-       MediaDive; probed 2026-07-17. Probed classes: schema:CultureMedium, schema:Medium,
-       schema:Ingredient, schema:Strain, schema:Solution, schema:GrowthCondition,
-       schema:MediumComposition, schema:SolutionRecipe — of these ONLY CultureMedium and Strain appear
-       outside the mediadive graph (both in bacdive, see above); the other six are exclusive to
-       <http://rdfportal.org/dataset/mediadive>."
-  kw_search_tools:
-    - sparql
-  version:
-    mie_version: "2.3"
-    mie_created: "2025-07-15"
-    mie_updated: "2026-07-18"
-    # No release identifier is derivable from the endpoint: the mediadive graph carries NO
-    # owl:versionInfo, dcterms:modified/issued/hasVersion/date, and no void:triples (queried
-    # 2026-07-17). Hence the dated-snapshot form — do NOT substitute a number from the MediaDive
-    # website; it would not be verifiable against what is actually loaded here.
-    data_version: "RDF Portal snapshot — verified 2026-07-17"
-    update_frequency: "Regular"
-  access:
-    backend: "Virtuoso"
+# MIE v3 — MediaDive (DSMZ microbial culture-media database). Agent-authored 2026-07-22 on `mie-redesign`.
+# Format: benchmark/redesign/MIE_v3_spec.md. Every verified count/result re-run live on the mediadive endpoint 2026-07-22.
+# Byte count vs the v2 file it replaces (spec §5 item 7): v2 togo_mcp/data/mie/mediadive.yaml = 32,339 bytes;
+# this v3 file → see the footer for the exact `wc -c` figures and %.
+# Co-hosted with BacDive on the `primary` endpoint — this is the REVERSE of the join direction shown in
+# mie_v3/bacdive.yaml (there: BacDive→MediaDive; here: MediaDive→BacDive), on the same schema:hasBacDiveID integer key.
+database: mediadive
 
-# Critical warnings: schema pathologies and silent-failure traps.
-critical_warnings: |
-  - THE `schema:` PREFIX IS **NOT** schema.org (silent 0-row trap). Throughout this file `schema:`
-    means <https://purl.dsmz.de/schema/> — DSMZ's own vocabulary, which the endpoint auto-declares
-    (so the examples carry no PREFIX line for it). If you habit-type `PREFIX schema: <http://schema.org/>`
-    yourself, EVERY schema:* pattern returns 0 rows with no error. Use the https + /schema/ path, or a
-    distinctive prefix of your own (e.g. `PREFIX md: <https://purl.dsmz.de/schema/>`).
-  - ⚠ BACDIVE SHARES THIS VOCABULARY — AN UNPINNED QUERY SILENTLY ADDS BACDIVE'S ENTITIES.
-    BacDive is the other DSMZ resource on this endpoint and uses the SAME purl.dsmz.de/schema/
-    class names. Without a GRAPH clause:
-      `?s a schema:CultureMedium ; rdfs:label ?l`  -> 51,018 rows (UNION: 3,289 MediaDive media
-                                                     + 47,729 BacDive culture_medium nodes)
-      pinned to GRAPH <http://rdfportal.org/dataset/mediadive> -> 3,289 rows   (x15.5 inflation)
-      `?s a schema:Strain ; schema:hasBacDiveID ?b` -> 33,226 subjects pinned, but BacDive
-                                                     contributes 97,334 more    (x3.93)
-    (verified 2026-07-17). This is NOT row duplication — the two IRI spaces are disjoint (measured
-    overlap = 0), so every returned row looks unique and well-formed. That is what makes it dangerous:
-    you get MORE ENTITIES THAN EXIST IN MEDIADIVE, not visible duplicates, and a COUNT looks plausible.
-    FIX: always scope with GRAPH <http://rdfportal.org/dataset/mediadive>.
-  - INTEGER BOOLEAN TRAP: schema:isComplex stores integers 0/1, NOT booleans.
-    Using `schema:isComplex false` or `schema:isComplex true` silently returns 0 results.
-    Correct usage: `schema:isComplex 0` (defined) and `schema:isComplex 1` (complex).
-  - INGREDIENT PREDICATE SPLIT: Two different predicates for ingredient access — do NOT swap them.
-    MediumComposition uses schema:containsIngredient (72,184 triples).
-    SolutionRecipe uses schema:includesIngredient (40,471 triples).
-    Using the wrong predicate returns 0 results with no error.
-  - DUAL TYPE: Every culture medium has BOTH rdf:type schema:Medium AND schema:CultureMedium.
-    Always use schema:CultureMedium in queries (3,289 instances); schema:Medium includes
-    2 additional non-culture entries (3,291 total).
-  - BACDIVE ID IS INTEGER: schema:hasBacDiveID stores plain integers, not URIs.
-    Direct integer matching works; no URI conversion is needed or correct.
+# ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
+discovery:
+  title: MediaDive — DSMZ Microbial Culture Media Database
+  description: >
+    Standardized microbial growth-media recipes from DSMZ: 3,289 media built from 1,489 ingredients
+    (chemically cross-referenced to ChEBI/CAS/KEGG/PubChem), with hierarchical medium→solution→recipe
+    composition, per-strain growth conditions (temperature/pH/oxygen), and 45,685 strains cross-linked
+    to BacDive — covering bacteria, archaea, fungi, yeast, algae and phage.
+  keywords: [culture medium, growth medium, recipe, ingredient, composition, concentration, dsmz,
+             bacteria, archaea, fungi, yeast, microalgae, phage, growth condition, temperature, ph,
+             oxygen, chebi, cas, kegg, bacdive, strain]
+  categories: [microbe]
 
-shape_expressions: |
-  PREFIX schema: <https://purl.dsmz.de/schema/>
-  PREFIX dct:    <http://purl.org/dc/terms/>
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://rdfportal.org/primary/sparql   # RDF Portal "primary" endpoint (NOT sib); shared with BacDive/BRENDA
+base_uri: https://purl.dsmz.de/mediadive/
+graphs:
+  primary: http://rdfportal.org/dataset/mediadive   # the default pin target; declares Medium/CultureMedium/Ingredient/
+                                                     # MediumComposition/Solution/SolutionRecipe/GrowthCondition/Strain
+  co_hosted:                       # same endpoint; SHARE the DSMZ purl.dsmz.de/schema/ vocabulary, ZERO IRI overlap
+    bacdive: >
+      The OTHER DSMZ resource here. TWO faces. (a) INFLATION — BacDive re-declares the SAME class names:
+      47,729 schema:CultureMedium and 97,334 schema:Strain live in the bacdive graph, so an UNPINNED
+      count silently ADDS them (media ×15.5, strains-with-BacDiveID ×3.9). IRI spaces are DISJOINT
+      (mediadive = purl.dsmz.de/mediadive/…, bacdive = purl.dsmz.de/bacdive/…) so rows are never DUPLICATED —
+      foreign entities are added instead, harder to notice (gotcha scope_bleed). (b) JOIN — schema:hasBacDiveID
+      (xsd:int) on MediaDive Strains matches BacDive Strains directly, no bridge (example xdb_bacdive).
+    other_ontologies: >
+      ~30 rdfportal.org/ontology/* graphs + id.nlm.nih.gov/mesh + purl.jp/bio/11/goa + TogoID relation/label
+      graphs share this endpoint. Join targets, NOT co-tenancy traps: probed 2026-07-17, of MediaDive's 8 core
+      classes only CultureMedium + Strain appear outside the mediadive graph (both in bacdive, above); the other
+      six (Ingredient, MediumComposition, Solution, SolutionRecipe, GrowthCondition, Medium) are exclusive to it.
 
-  # 3,289 instances. Central hub entity.
-  # schema:isComplex is INTEGER (0=defined, 1=complex) — NOT boolean.
-  <CultureMediumShape> {
-    a [ schema:CultureMedium ] ;       # also typed schema:Medium
-    rdfs:label xsd:string ;
-    schema:belongsToGroup xsd:string ;
-    schema:isComplex xsd:integer ;     # 0 or 1 — NOT true/false
-    schema:hasFinalPH xsd:string ? ;   # string range e.g. "7.0-7.2"
-    schema:hasMinPH xsd:float ? ;
-    schema:hasMaxPH xsd:float ? ;
-    schema:includesSolution IRI * ;
-    schema:hasMainSolution IRI * ;
-    schema:hasLinkToSource IRI ? ;     # DSMZ PDF URL (99% coverage)
-    schema:fromSource xsd:string ?
-  }
+entity_counts:                     # graph-pinned unless noted, COUNT(DISTINCT); verified 2026-07-22
+  culture_media:          3289     # pinned; schema:CultureMedium (schema:Medium = 3291, 2 non-culture extras)
+  culture_media_unpinned: 51018    # + 47,729 BacDive culture_medium nodes (disjoint) — INFLATED scope, never report (×15.5)
+  ingredients:            1489
+  strains:                45685
+  strains_with_bacdive:   33177    # ~73% carry schema:hasBacDiveID (pinned); unpinned this predicate = 130,560 (bacdive adds ~97k)
+  ingredient_xref_coverage: "ChEBI 687/1489 (46%) · CAS 59% · GMO 58% · PubChem 18% · KEGG 13% · MetaCyc 7% — all PARTIAL, use OPTIONAL"
 
-  # 1,489 instances. Cross-references use separate typed predicates (not rdfs:seeAlso).
-  <IngredientShape> {
-    a [ schema:Ingredient ] ;
-    rdfs:label xsd:string ;
-    schema:hasFormula xsd:string ? ;
-    schema:hasGMO IRI ? ;              # 58% coverage
-    schema:hasCAS xsd:string ? ;       # 59% coverage
-    schema:hasChEBI xsd:integer ? ;    # 46% coverage — integer, not URI
-    schema:hasPubChem xsd:integer ? ;  # 18% coverage
-    schema:hasKEGG xsd:string ? ;      # 13% coverage
-    schema:hasMetaCyc xsd:string ?     # 7% coverage
-  }
+global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
+  - id: schema_prefix
+    say: >
+      `schema:` here is <https://purl.dsmz.de/schema/> (DSMZ's own vocabulary), NOT schema.org. The endpoint
+      auto-declares it, but if you habit-type `PREFIX schema: <http://schema.org/>` yourself, EVERY schema:*
+      pattern returns 0 rows with no error. Declare `PREFIX schema: <https://purl.dsmz.de/schema/>`
+      (note https + /schema/), or use a distinctive prefix like `md:` so a habit-typed schema.org can't collide.
+  - id: scope_bleed
+    say: >
+      Co-hosted BacDive reuses the DSMZ classes with ZERO IRI overlap, so it can't duplicate rows — but it DOES
+      inflate an unpinned entity count: `?m a schema:CultureMedium` = 51,018 unpinned (3,289 MediaDive +
+      47,729 BacDive, disjoint) vs 3,289 pinned (×15.5); `?s a schema:Strain ; schema:hasBacDiveID ?b` = 130,560
+      unpinned vs 33,177 pinned. FIX = pin `FROM <http://rdfportal.org/dataset/mediadive>` (or GRAPH for cross-DB).
+      DISTINCT does NOT fix it — the extra entities are genuinely distinct, not duplicate rows.
+  - id: literal_typing
+    say: >
+      Never generalize a literal's type. INTEGER FLAGS, not booleans: schema:isComplex / isOptionalIngredient /
+      isIngredientOptional / hasGrowthIndicator store 0|1 — `isComplex true` (or false) silently returns 0 rows;
+      use `schema:isComplex 0` (defined) / `1` (complex). INTEGER IDs, not URIs: schema:hasChEBI, hasPubChem and
+      hasBacDiveID are plain integers (match directly; build the ChEBI IRI yourself if joining, example ingredient_xrefs).
+      STRINGS: schema:hasCAS, hasKEGG, hasFinalPH ("7.0-7.2" range) are strings; hasMinPH/hasMaxPH are floats.
+  - id: dual_type_medium
+    say: >
+      Every medium is typed BOTH schema:Medium AND schema:CultureMedium. Query schema:CultureMedium (3,289);
+      schema:Medium returns 3,291 (2 extra non-culture entries). belongsTaxGroup lives on the STRAIN, not the medium.
 
-  # 72,184 instances. Flat medium-ingredient link with concentration data.
-  # Uses schema:containsIngredient — NOT schema:includesIngredient (that is SolutionRecipe).
-  <MediumCompositionShape> {
-    a [ schema:MediumComposition ] ;
-    schema:partOfMedium IRI ;
-    schema:containsIngredient IRI ;    # ONLY MediumComposition uses this predicate
-    schema:gramsPerLiter xsd:float ? ; # 90.6% coverage
-    schema:mmolPerLiter xsd:float ? ;
-    schema:isOptionalIngredient xsd:integer ;  # 0 or 1
-    schema:modificationDifference xsd:string ? ;
-    schema:modifiedBy IRI ?
-  }
-
-  # 5,613 instances. Named sub-recipe referenced from medium.
-  <SolutionShape> {
-    a [ schema:Solution ] ;
-    rdfs:label xsd:string ;
-    schema:partOfMedium IRI ?
-  }
-
-  # 40,471 instances. Ingredient-amount entries within a solution.
-  # Uses schema:includesIngredient — NOT schema:containsIngredient (that is MediumComposition).
-  <SolutionRecipeShape> {
-    a [ schema:SolutionRecipe ] ;
-    schema:partOfSolution IRI ;
-    schema:includesIngredient IRI ;    # ONLY SolutionRecipe uses this predicate
-    schema:ingredientAmount xsd:float ;
-    schema:ingredientUnit xsd:string ;
-    schema:gramsPerLiter xsd:float ? ;
-    schema:mmolPerLiter xsd:float ? ;
-    schema:isIngredientOptional xsd:integer ;  # 0 or 1
-    schema:positionInRecipe xsd:integer ?
-  }
-
-  # 68,001 instances. Validated cultivation parameter per strain–medium pair.
-  <GrowthConditionShape> {
-    a [ schema:GrowthCondition ] ;
-    schema:partOfMedium IRI ;
-    schema:relatedToStrain IRI ;
-    schema:growthTemperature xsd:integer ;   # always present
-    schema:growthPH xsd:float ? ;
-    schema:hasOxygenRequirement xsd:string ? ;  # free text: "aerobic", "anaerobic", etc.
-    schema:incubationPeriod xsd:string ? ;
-    schema:hasGrowthIndicator xsd:integer ? ;
-    schema:modifiedBy IRI ?
-  }
-
-  # 45,685 instances. Taxonomic and cross-reference data.
-  # schema:hasBacDiveID is INTEGER — direct integer match, no URI conversion.
-  <StrainShape> {
-    a [ schema:Strain ] ;
-    schema:hasDSMNumber xsd:integer ;
-    schema:hasBacDiveID xsd:integer ? ;   # 73% coverage — integer, not URI
-    schema:hasSpecies xsd:string ;
-    schema:belongsTaxGroup xsd:string    # controlled: Bacterium, Fungus, Yeast,
-                                         # Microalgae, Archaeon, Phage, etc.
-  }
-
-  # 5,958 / 5,164 / 1,203 / 2,649 instances (brief).
-  <OperationalStepShape> { a [ schema:OperationalStep ] ; schema:partOfMedium IRI }
-  <EquipmentShape>        { a [ schema:Equipment ]       ; schema:partOfMedium IRI }
-  <GasComponentShape>     { a [ schema:GasComponent ]    ; schema:partOfMedium IRI }
-  <ModificationShape>     { a [ schema:Modification ]    ; schema:partOfMedium IRI }
-
-sample_rdf_entries:
-  rdf_prefixes: |
-    @prefix schema:  <https://purl.dsmz.de/schema/> .
-    @prefix md:      <https://purl.dsmz.de/mediadive/> .
-    @prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
-    @prefix dct:     <http://purl.org/dc/terms/> .
-    @prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
-  entries:
-    - title: Culture Medium (MD1-MEDIUM)
-      description: Central hub entity showing pH range, complexity flag (integer), and solution links.
-      rdf: |
-        md:medium/1118 a schema:CultureMedium, schema:Medium ;
-          rdfs:label "MD1-MEDIUM" ;
-          schema:belongsToGroup "MD1-MEDIUM" ;
-          schema:hasFinalPH "7.0-7.2" ;
-          schema:hasMinPH "7.0"^^xsd:float ;
-          schema:hasMaxPH "7.2"^^xsd:float ;
-          schema:isComplex 1 ;
-          schema:includesSolution md:solution/2247 ;
-          schema:hasMainSolution md:solution/2247 ;
-          schema:hasLinkToSource <https://www.dsmz.de/microorganisms/medium/pdf/DSMZ_Medium1118.pdf> .
-
-    - title: Ingredient with Chemical Cross-References
-      description: Shows typed predicates for each identifier database (ChEBI/CAS/KEGG are not rdfs:seeAlso).
-      rdf: |
-        md:ingredient/5 a schema:Ingredient ;
-          rdfs:label "Glucose" ;
-          schema:hasFormula "C6H12O6" ;
-          schema:hasCAS "50-99-7" ;
-          schema:hasChEBI 17234 ;
-          schema:hasPubChem 5793 ;
-          schema:hasKEGG "C00031" .
-
-    - title: SolutionRecipe vs MediumComposition (predicate split)
-      description: SolutionRecipe uses schema:includesIngredient; MediumComposition uses schema:containsIngredient.
-      rdf: |
-        # SolutionRecipe — uses includesIngredient
-        md:solution_recipe/13910 a schema:SolutionRecipe ;
-          schema:partOfSolution md:solution/2247 ;
-          schema:includesIngredient md:ingredient/84 ;
-          schema:ingredientAmount 3.0 ;
-          schema:ingredientUnit "g" ;
-          schema:gramsPerLiter "3.0"^^xsd:float ;
-          schema:isIngredientOptional 0 ;
-          schema:positionInRecipe 0 .
-
-        # MediumComposition — uses containsIngredient (flat medium-level aggregation)
-        _:mc1 a schema:MediumComposition ;
-          schema:partOfMedium md:medium/1118 ;
-          schema:containsIngredient md:ingredient/84 ;
-          schema:gramsPerLiter "3.0"^^xsd:float ;
-          schema:isOptionalIngredient 0 .
-
-sparql_query_examples:
-  - title: Media Containing a Specific Ingredient Combination (VALUES with IRIs)
-    description: Find media with both yeast extract and glucose using ingredient IRIs.
-    question: Which media contain yeast extract (ingredient/16) and glucose (ingredient/5)?
+# ── examples: verified, executable atoms. Hub = Medium. MediumComposition (flat medium↔ingredient, containsIngredient)
+#    is the fast path; Solution→SolutionRecipe (includesIngredient) is the hierarchical recipe. GrowthCondition
+#    links a Strain to a Medium. Strain carries taxonomy (belongsTaxGroup, hasSpecies) + the BacDive integer key. ──
+examples:
+  - id: media_by_ingredient
+    intent: media containing a combination of ingredients, by ingredient IRI (the flat MediumComposition path)
+    question: "Which media contain BOTH yeast extract (ingredient/16) and glucose (ingredient/5)?"
     complexity: basic
     sparql: |
       PREFIX schema: <https://purl.dsmz.de/schema/>
-
       SELECT DISTINCT ?medium ?label
       FROM <http://rdfportal.org/dataset/mediadive>
       WHERE {
-        ?comp1 schema:partOfMedium ?medium ;
-               schema:containsIngredient <https://purl.dsmz.de/mediadive/ingredient/16> .
-        ?comp2 schema:partOfMedium ?medium ;
-               schema:containsIngredient <https://purl.dsmz.de/mediadive/ingredient/5> .
+        ?comp1 schema:partOfMedium ?medium ; schema:containsIngredient <https://purl.dsmz.de/mediadive/ingredient/16> .
+        ?comp2 schema:partOfMedium ?medium ; schema:containsIngredient <https://purl.dsmz.de/mediadive/ingredient/5> .
         ?medium rdfs:label ?label .
       }
       ORDER BY ?label
       LIMIT 30
+    verified: {result_rows: 30, distinct_media_total: 468, date: "2026-07-22", first_row: "medium/1398 = 1/10 PYGV MEDIUM modified"}
+    teaches: "MediumComposition is the flat medium↔ingredient link: ?comp schema:partOfMedium ?medium ; schema:containsIngredient <ingredient IRI>. Repeat the block per ingredient for an AND. Common IRIs: ingredient/5 glucose, ingredient/16 yeast extract, ingredient/43 NaCl."
 
-  - title: Media Validated for a Taxonomic Group (Typed Predicate)
-    description: Filter strains by controlled taxonomic group value, then retrieve compatible media.
-    question: Which media are validated for fungal cultivation?
+  - id: media_by_taxgroup            # §4.4 first-class ENUMERATION route (audit Tier B — keep the worked query)
+    intent: enumerate ALL media validated for a taxonomic group via the belongsTaxGroup controlled vocabulary
+    question: "Which media are validated for fungal cultivation, and for how many strains each?"
     complexity: basic
     sparql: |
       PREFIX schema: <https://purl.dsmz.de/schema/>
-
-      SELECT DISTINCT ?medium ?label (COUNT(DISTINCT ?strain) AS ?strainCount)
+      SELECT ?medium ?label (COUNT(DISTINCT ?strain) AS ?strainCount)
       FROM <http://rdfportal.org/dataset/mediadive>
       WHERE {
-        ?strain a schema:Strain ;
-                schema:belongsTaxGroup "Fungus" .
-        ?growth schema:relatedToStrain ?strain ;
-                schema:partOfMedium ?medium .
+        ?strain a schema:Strain ; schema:belongsTaxGroup "Fungus" .   # controlled value — NOT a text search
+        ?growth schema:relatedToStrain ?strain ; schema:partOfMedium ?medium .
         ?medium rdfs:label ?label .
       }
       GROUP BY ?medium ?label
       ORDER BY DESC(?strainCount)
       LIMIT 20
+    verified: {result_rows: 20, date: "2026-07-22", first_row: "POTATO-DEXTROSE AGAR (medium/J30) — 2638 fungal strains"}
+    teaches: "schema:belongsTaxGroup is THE set-level route for 'all media/strains for organism group X'. It sits on the Strain; reach media through GrowthCondition (relatedToStrain → partOfMedium). This is a controlled vocabulary — filter by exact value, never bif:contains."
+    traps_avoided:
+      - "The vocabulary has 12 values (live 2026-07-22), not the 6 v2 documented: Bacterium 32662, Fungus 5079, Yeast 3125 (distinct from Fungus!), Microalgae 1289, Archaeon 952, Macroalgae 884, Phage 602, Protist 380, Diatom 274, Cyanobacteria 154, Dinoflagellate 90, Animal 1. Enumerate it live before assuming a value exists — e.g. yeast strains are NOT under \"Fungus\"."
+      - "belongsTaxGroup is on the Strain, not the Medium (gotcha dual_type_medium) — a `?medium schema:belongsTaxGroup` pattern returns 0 rows."
 
-  - title: Media Using a Named Solution by IRI
-    description: Find all media that include the SL-10 trace element solution by direct IRI.
-    question: Which media use solution/2423 (SL-10 trace elements)?
+  - id: count_media                  # ELEVATED aggregation — the scope-bleed recipe
+    intent: count media correctly (graph-pinned) vs the inflated unpinned count
+    question: "How many culture media are in MediaDive?"
+    complexity: aggregation
+    sparql: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      SELECT (COUNT(DISTINCT ?m) AS ?media)
+      FROM <http://rdfportal.org/dataset/mediadive>          # pin — else BacDive's 47,729 culture_medium nodes bleed in
+      WHERE { ?m a schema:CultureMedium . }
+    verified: {media: 3289, date: "2026-07-22"}
+    teaches: "Graph-pin every count on this endpoint; the pinned CultureMedium total is 3,289."
+    traps_avoided:
+      - "Unpinned = 51,018 (3,289 + 47,729 disjoint BacDive culture_medium nodes, ×15.5). DISTINCT does NOT fix it — pin the graph (gotcha scope_bleed)."
+
+  - id: defined_media
+    intent: chemically-defined media ranked by ingredient count (the integer-flag filter + composition count)
+    question: "Which chemically defined media have the most ingredients?"
     complexity: intermediate
     sparql: |
       PREFIX schema: <https://purl.dsmz.de/schema/>
-
-      SELECT ?medium ?medLabel ?solLabel
+      SELECT ?medium ?label (COUNT(DISTINCT ?ing) AS ?ingredientCount)
       FROM <http://rdfportal.org/dataset/mediadive>
       WHERE {
-        ?medium a schema:CultureMedium ;
-                rdfs:label ?medLabel ;
-                schema:includesSolution <https://purl.dsmz.de/mediadive/solution/2423> .
-        <https://purl.dsmz.de/mediadive/solution/2423> rdfs:label ?solLabel .
-      }
-      ORDER BY ?medLabel
-      LIMIT 30
-
-  - title: Cultivation Conditions for a Specific Strain (Direct IRI Lookup)
-    description: Navigate from a known strain IRI through growth conditions to medium and composition.
-    question: What are the growth conditions and media for DSM strain 1?
-    complexity: intermediate
-    sparql: |
-      PREFIX schema: <https://purl.dsmz.de/schema/>
-
-      SELECT ?medLabel ?temp ?ph ?oxygen ?ingredientLabel ?gPerL
-      FROM <http://rdfportal.org/dataset/mediadive>
-      WHERE {
-        ?growth schema:relatedToStrain <https://purl.dsmz.de/mediadive/strain/1> ;
-                schema:partOfMedium ?medium ;
-                schema:growthTemperature ?temp .
-        OPTIONAL { ?growth schema:growthPH ?ph }
-        OPTIONAL { ?growth schema:hasOxygenRequirement ?oxygen }
-        ?medium rdfs:label ?medLabel .
-        OPTIONAL {
-          ?comp schema:partOfMedium ?medium ;
-                schema:containsIngredient ?ing ;
-                schema:gramsPerLiter ?gPerL .
-          ?ing rdfs:label ?ingredientLabel .
-        }
-      }
-      ORDER BY DESC(?gPerL)
-      LIMIT 50
-
-  - title: Chemically Defined Media (Integer Boolean Predicate)
-    description: |
-      Filter media by complexity using schema:isComplex integer (0=defined, 1=complex).
-      Note: Use integer 0/1, NOT boolean false/true — booleans silently return 0 results.
-    question: Which chemically defined media have the most ingredients?
-    complexity: intermediate
-    sparql: |
-      PREFIX schema: <https://purl.dsmz.de/schema/>
-
-      SELECT ?medium ?label ?ph (COUNT(DISTINCT ?ing) AS ?ingredientCount)
-      FROM <http://rdfportal.org/dataset/mediadive>
-      WHERE {
-        ?medium a schema:CultureMedium ;
-                rdfs:label ?label ;
-                schema:isComplex 0 .
-        OPTIONAL { ?medium schema:hasFinalPH ?ph }
-        OPTIONAL {
-          ?comp schema:partOfMedium ?medium ;
-                schema:containsIngredient ?ing .
-        }
-      }
-      GROUP BY ?medium ?label ?ph
-      ORDER BY DESC(?ingredientCount)
-      LIMIT 30
-
-  - title: Media Sharing a Core Mineral Base (VALUES with Multiple IRIs)
-    description: Identify media containing at least 3 of the 4 most common mineral salts.
-    question: Which media share the NaCl / MgSO4 / CaCl2 / KH2PO4 mineral base?
-    complexity: advanced
-    sparql: |
-      PREFIX schema: <https://purl.dsmz.de/schema/>
-
-      SELECT DISTINCT ?medium ?label (COUNT(DISTINCT ?ing) AS ?matchCount)
-      FROM <http://rdfportal.org/dataset/mediadive>
-      WHERE {
-        VALUES ?ing {
-          <https://purl.dsmz.de/mediadive/ingredient/43>   # NaCl
-          <https://purl.dsmz.de/mediadive/ingredient/8>    # MgSO4 x 7 H2O
-          <https://purl.dsmz.de/mediadive/ingredient/7>    # CaCl2 x 2 H2O
-          <https://purl.dsmz.de/mediadive/ingredient/11>   # KH2PO4
-        }
-        ?comp schema:partOfMedium ?medium ;
-              schema:containsIngredient ?ing .
-        ?medium rdfs:label ?label .
+        ?medium a schema:CultureMedium ; rdfs:label ?label ; schema:isComplex 0 .   # 0 = chemically defined
+        ?comp schema:partOfMedium ?medium ; schema:containsIngredient ?ing .
       }
       GROUP BY ?medium ?label
-      HAVING (COUNT(DISTINCT ?ing) >= 3)
-      ORDER BY DESC(?matchCount) ?label
+      ORDER BY DESC(?ingredientCount)
       LIMIT 30
+    verified: {result_rows: 30, defined_media_total: 658, date: "2026-07-22", first_row: "ANAEROBIC FRESHWATER (FWM) MEDIUM — 55 ingredients"}
+    teaches: "schema:isComplex 0 = chemically defined (658 media), 1 = complex (2,631). It is an INTEGER; `isComplex false` returns 0 rows silently (gotcha literal_typing)."
 
-  - title: Ingredients with ChEBI or KEGG Identifiers (OPTIONAL + Partial Coverage)
-    description: |
-      Retrieve ingredient cross-references using OPTIONAL for each database property.
-      Mandatory pattern: use OPTIONAL per identifier then FILTER(BOUND()) for partial coverage.
-    question: Which ingredients are linked to metabolic databases (ChEBI or KEGG)?
-    complexity: advanced
+  - id: ingredient_xrefs
+    intent: ingredient chemical cross-references (partial coverage) + building the ChEBI IRI to join out
+    question: "Which ingredients carry ChEBI or KEGG identifiers, and what are their CAS numbers?"
+    complexity: intermediate
     sparql: |
       PREFIX schema: <https://purl.dsmz.de/schema/>
-
-      SELECT ?ingredient ?label ?chebi ?kegg ?cas ?pubchem
+      SELECT ?ingredient ?label ?chebi ?chebiIRI ?kegg ?cas
       FROM <http://rdfportal.org/dataset/mediadive>
       WHERE {
-        ?ingredient a schema:Ingredient ;
-                    rdfs:label ?label .
-        OPTIONAL { ?ingredient schema:hasChEBI ?chebi }
+        ?ingredient a schema:Ingredient ; rdfs:label ?label .
+        OPTIONAL { ?ingredient schema:hasChEBI ?chebi
+                   BIND(IRI(CONCAT("http://purl.obolibrary.org/obo/CHEBI_", STR(?chebi))) AS ?chebiIRI) }
         OPTIONAL { ?ingredient schema:hasKEGG ?kegg }
         OPTIONAL { ?ingredient schema:hasCAS ?cas }
-        OPTIONAL { ?ingredient schema:hasPubChem ?pubchem }
         FILTER(BOUND(?chebi) || BOUND(?kegg))
       }
       ORDER BY ?label
       LIMIT 50
+    verified: {result_rows: 50, ingredients_with_chebi: 687, date: "2026-07-22", note: "glucose (ingredient/5) hasChEBI 17234 (xsd:int) → CHEBI_17234"}
+    teaches: "Cross-refs are typed predicates, NOT rdfs:seeAlso: hasChEBI/hasPubChem (integers), hasCAS/hasKEGG (strings), hasGMO (IRI). All PARTIAL — wrap each in OPTIONAL + FILTER(BOUND). schema:hasChEBI is a bare integer; CONCAT it into a CHEBI_ IRI to join to ChEBI RDF."
+    traps_avoided:
+      - "A few ingredients have an empty rdfs:label but a valid ChEBI (e.g. ingredient/1944) — do not use label presence as a coverage proxy."
 
-cross_database_queries:
-  shared_endpoint: primary
-  co_located_databases: [bacdive, taxonomy, mesh, go, mondo, nando]
-  examples:
-    - title: BacDive Strain Recipes — Ingredient Composition by Genus
-      description: |
-        Links BacDive strain records to MediaDive media via integer schema:hasBacDiveID.
-        Retrieves complete ingredient lists for strains of a given genus.
-
-        Linking strategy:
-        - Both graphs: schema:hasBacDiveID stores integer (direct match, no URI conversion)
-        - BacDive GRAPH: pre-filter by schema:hasGenus (95% reduction: 97K → ~5K strains)
-        - MediaDive GRAPH: navigate strain → growth → medium → composition
-      databases_used: [bacdive, mediadive]
-      complexity: intermediate
-      sparql: |
-        PREFIX schema: <https://purl.dsmz.de/schema/>
-
-        SELECT ?strainLabel ?mediumLabel ?ingredientLabel ?gPerL ?chebi
-        WHERE {
-          GRAPH <http://rdfportal.org/dataset/bacdive> {
-            ?bacStrain a schema:Strain ;
-                       rdfs:label ?strainLabel ;
-                       schema:hasBacDiveID ?bacDiveID ;
-                       schema:hasGenus "Bacillus" .
-          }
-          GRAPH <http://rdfportal.org/dataset/mediadive> {
-            ?mdStrain a schema:Strain ;
-                      schema:hasBacDiveID ?bacDiveID .
-            ?growth schema:relatedToStrain ?mdStrain ;
-                    schema:partOfMedium ?medium .
-            ?medium rdfs:label ?mediumLabel .
-            ?comp schema:partOfMedium ?medium ;
-                  schema:containsIngredient ?ing ;
-                  schema:gramsPerLiter ?gPerL .
-            ?ing rdfs:label ?ingredientLabel .
-            OPTIONAL { ?ing schema:hasChEBI ?chebi }
-          }
-        }
-        ORDER BY ?strainLabel DESC(?gPerL)
-        LIMIT 50
-      notes: |
-        - Linking: integer schema:hasBacDiveID (no URI conversion needed)
-        - Performance: ~2-3s with genus pre-filter (95% reduction)
-        - Coverage: 33,226 of 45,685 MediaDive strains have BacDive links (73%)
-
-    - title: Anaerobic Bacteria with Oxygen Phenotype from BacDive
-      description: |
-        Combines BacDive oxygen tolerance phenotypes with MediaDive growth conditions.
-        Text search on oxygenTolerance is justified (unstructured phenotype free text).
-
-        Linking strategy:
-        - BacDive: schema:OxygenTolerance node via schema:describesStrain and schema:hasOxygenTolerance
-        - MediaDive: schema:growthTemperature is a typed integer predicate
-        - Pre-filter on phenotype text reduces 97K strains by ~64% before join
-      databases_used: [bacdive, mediadive]
-      complexity: advanced
-      sparql: |
-        PREFIX schema: <https://purl.dsmz.de/schema/>
-
-        SELECT ?strainLabel ?oxygenTolerance ?mediumLabel ?temp ?ph
-        WHERE {
-          GRAPH <http://rdfportal.org/dataset/bacdive> {
-            ?bacStrain a schema:Strain ;
-                       rdfs:label ?strainLabel ;
-                       schema:hasBacDiveID ?bacDiveID .
-            ?oxy a schema:OxygenTolerance ;
-                 schema:describesStrain ?bacStrain ;
-                 schema:hasOxygenTolerance ?oxygenTolerance .
-            # Text search justified: oxygenTolerance is unstructured free text phenotype
-            FILTER(CONTAINS(LCASE(?oxygenTolerance), "anaero"))
-          }
-          GRAPH <http://rdfportal.org/dataset/mediadive> {
-            ?mdStrain a schema:Strain ;
-                      schema:hasBacDiveID ?bacDiveID .
-            ?growth schema:relatedToStrain ?mdStrain ;
-                    schema:partOfMedium ?medium ;
-                    schema:growthTemperature ?temp .
-            OPTIONAL { ?growth schema:growthPH ?ph }
-            ?medium rdfs:label ?mediumLabel .
-          }
-        }
-        ORDER BY DESC(?temp)
-        LIMIT 30
-      notes: |
-        - Performance: ~5-8s due to phenotype join; phenotype filter gives 64% reduction
-        - Text search on oxygenTolerance is the only legitimate text-search here
-
-cross_references:
-  - pattern: schema:hasChEBI / schema:hasCAS / schema:hasGMO / schema:hasKEGG / schema:hasPubChem
-    description: |
-      Ingredient cross-references use dedicated typed predicates (not generic rdfs:seeAlso).
-      Coverage is partial — always use OPTIONAL per property.
-    databases:
-      chemical_identifiers:
-        - "GMO: 58% (870/1489)"
-        - "CAS: 59% (872/1489)"
-        - "ChEBI: 46% (687/1489)"
-        - "PubChem: 18%"
-        - "KEGG: 13%"
-        - "MetaCyc: 7%"
+  - id: strain_growth
+    intent: growth conditions + medium for a known strain (the GrowthCondition spoke)
+    question: "What are the growth conditions and media for MediaDive strain/1?"
+    complexity: intermediate
     sparql: |
-      SELECT ?ing ?label ?chebi ?cas ?kegg
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      SELECT ?species ?medLabel ?temp ?ph ?oxygen
       FROM <http://rdfportal.org/dataset/mediadive>
       WHERE {
-        ?ing a schema:Ingredient ; rdfs:label ?label .
-        OPTIONAL { ?ing schema:hasChEBI ?chebi }
-        OPTIONAL { ?ing schema:hasCAS ?cas }
-        OPTIONAL { ?ing schema:hasKEGG ?kegg }
-        FILTER(BOUND(?chebi) || BOUND(?cas))
-      } LIMIT 30
-
-  - pattern: schema:hasBacDiveID
-    description: |
-      Strains link to BacDive via plain integer BacDiveID. Direct integer matching;
-      no URI conversion required or valid. 73% coverage enables rich cross-database joins.
-    databases:
-      microbial:
-        - "BacDive: 73% (33,226 / 45,685 strains)"
-
-  - pattern: schema:hasLinkToSource
-    description: Each medium links to the DSMZ PDF protocol page. 99% coverage.
-    databases:
-      documentation:
-        - "DSMZ PDFs: 99% of 3,289 media"
-
-architectural_notes:
-  query_strategy:
-    - "MANDATORY: read get_MIE_file('mediadive') and check critical_warnings before querying"
-    - "Specific IRIs: use ingredient/5 (glucose), ingredient/16 (yeast extract), ingredient/43 (NaCl)"
-    - "Typed predicates: schema:belongsTaxGroup, schema:isComplex (int!), schema:growthTemperature"
-    - "Graph navigation: medium → solution → solution_recipe → ingredient for detailed recipes"
-    - "Text search (bif:contains): only for rdfs:label, schema:hasSpecies, phenotype fields"
-    - "bif:contains (indexed Virtuoso) >> FILTER(CONTAINS()) — always prefer on this endpoint"
-
-  schema_design:
-    - "Medium is the hub: MediumComposition (flat), Solution (sub-recipe), GrowthCondition (strain link)"
-    - "Two ingredient-access paths: MediumComposition/containsIngredient (flat) vs SolutionRecipe/includesIngredient (hierarchical)"
-    - "isComplex, isOptionalIngredient, isIngredientOptional, hasGrowthIndicator all store integers 0/1"
-    - "schema:belongsTaxGroup controlled values: Bacterium, Fungus, Yeast, Microalgae, Archaeon, Phage"
-    - "Chemical IDs (ChEBI, PubChem) are integers; CAS and KEGG are strings"
-
-  performance:
-    - "CRITICAL: always pre-filter compositions by medium IRI — 72K rows without filter causes timeout"
-    - "Cross-database: genus filter 95% reduction (97K→5K), species keyword 99.8%, phenotype 64%"
-    - "bif:contains: split property paths before use (Virtuoso requirement)"
-    - "Always add LIMIT (30-50) to every query"
-
-  data_integration:
-    - "Primary BacDive link: integer schema:hasBacDiveID (73% strain coverage)"
-    - "Ingredient links to ChEBI, KEGG, PubChem, CAS, GMO, MetaCyc via typed predicates"
-
-  data_quality:
-    - "pH dual format: hasFinalPH is a string range; hasMinPH/hasMaxPH are floats for numeric filtering"
-    - "schema:gramsPerLiter: 90.6% coverage in MediumComposition; use OPTIONAL"
-    - "schema:mmolPerLiter also available for molar concentration queries"
-    - "OPTIONAL fields in GrowthCondition: pH ~70%, oxygen ~80%, incubationPeriod ~40%"
-
-  text_search_justification:
-    - "Queries using text search in the 7 examples: 0 (all use structured IRIs or typed predicates)"
-    - "Cross-database queries using text search: 1 (oxygenTolerance in BacDive — justified free text)"
-    - "Legitimate text-search fields: rdfs:label (medium/ingredient names), schema:hasSpecies, phenotype strings"
-    - "NOT legitimate: taxonomic group (controlled values), isComplex (integer), temperature (integer)"
-
-data_statistics:
-  total_media: 3289
-  total_ingredients: 1489
-  total_strains: 45685
-  total_medium_compositions: 72184
-  total_growth_conditions: 68001
-  total_solution_recipes: 40471
-  total_solutions: 5613
-  verified_date: "2025-07-15"
-  verification_method: "Direct COUNT queries on each entity class"
-
-  coverage:
-    ingredients_gmo: "58% (870/1489)"
-    ingredients_cas: "59% (872/1489)"
-    ingredients_chebi: "46% (687/1489)"
-    ingredients_pubchem: "18%"
-    ingredients_kegg: "13%"
-    strains_bacdive: "73% (33,226/45,685)"
-    media_pdf_links: "~99%"
-    compositions_with_grams_per_liter: "90.6% (65,420/72,184)"
-    verified_date: "2025-07-15"
-
-anti_patterns:
-  - title: Circular Reasoning with Search Results
-    problem: Using medium IRIs sampled from an exploratory text search as the scope of a comprehensive ingredient-coverage count.
-    wrong_sparql: |
-      # WRONG: pasted sampled medium IRIs — counts only those media, not all glucose-containing media
-      VALUES ?medium {
-        <https://purl.dsmz.de/mediadive/medium/1>
-        <https://purl.dsmz.de/mediadive/medium/5>
+        <https://purl.dsmz.de/mediadive/strain/1> schema:hasSpecies ?species .
+        ?growth schema:relatedToStrain <https://purl.dsmz.de/mediadive/strain/1> ;
+                schema:partOfMedium ?medium ; schema:growthTemperature ?temp .
+        OPTIONAL { ?growth schema:growthPH ?ph }
+        OPTIONAL { ?growth schema:hasOxygenRequirement ?oxygen }
+        ?medium rdfs:label ?medLabel .
       }
-      SELECT (COUNT(?medium) AS ?count)
+      LIMIT 20
+    verified: {result_rows: 2, date: "2026-07-22", first_row: "Weizmannia coagulans → NUTRIENT AGAR @ 40C"}
+    teaches: "GrowthCondition is a per-(strain,medium) node: schema:relatedToStrain ↔ schema:partOfMedium, carrying growthTemperature (integer, ~always present), growthPH (float, OPTIONAL ~70%), hasOxygenRequirement (free-text string, OPTIONAL ~80%)."
+
+  - id: solution_recipe
+    intent: the hierarchical recipe path (medium → solution → SolutionRecipe) via includesIngredient
+    question: "What are the detailed sub-solution ingredients and amounts for medium/1118?"
+    complexity: intermediate
+    sparql: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      SELECT ?solLabel ?ingLabel ?amount ?unit
       FROM <http://rdfportal.org/dataset/mediadive>
-      WHERE { ?comp schema:partOfMedium ?medium . }
-      LIMIT 1
-    correct_sparql: |
-      # CORRECT: use ingredient IRI discovered during exploration for a comprehensive count
-      SELECT (COUNT(DISTINCT ?medium) AS ?count)
+      WHERE {
+        <https://purl.dsmz.de/mediadive/medium/1118> schema:includesSolution ?sol .
+        ?sol rdfs:label ?solLabel .
+        ?sr a schema:SolutionRecipe ; schema:partOfSolution ?sol ;
+            schema:includesIngredient ?ing ; schema:ingredientAmount ?amount ; schema:ingredientUnit ?unit .
+        ?ing rdfs:label ?ingLabel .
+      }
+      LIMIT 50
+    verified: {result_rows: 50, date: "2026-07-22", first_row: "Trace element solution SL-4 → FeSO4 x 7 H2O, 0.2 g"}
+    teaches: "Hierarchical path: Medium --includesSolution--> Solution <--partOfSolution-- SolutionRecipe --includesIngredient--> Ingredient, with ingredientAmount + ingredientUnit. This is the detailed-protocol view; MediumComposition (example media_by_ingredient) is the flattened medium-level view."
+    traps_avoided:
+      - "PREDICATE SPLIT: SolutionRecipe uses schema:includesIngredient; MediumComposition uses schema:containsIngredient. Swapping them returns 0 rows with no error — they are class-specific."
+
+  - id: media_with_ingredient_count  # ELEVATED aggregation — the secondary containsIngredient <IRI> enumeration axis
+    intent: count ALL media containing a given ingredient (comprehensive, from the ingredient IRI)
+    question: "How many media contain glucose?"
+    complexity: aggregation
+    sparql: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      SELECT (COUNT(DISTINCT ?medium) AS ?media_with_glucose)
       FROM <http://rdfportal.org/dataset/mediadive>
       WHERE {
         ?comp a schema:MediumComposition ;
               schema:containsIngredient <https://purl.dsmz.de/mediadive/ingredient/5> ;
               schema:partOfMedium ?medium .
       }
-      LIMIT 1
-    explanation: "Use the ingredient IRI discovered from one text-search query for all subsequent comprehensive queries. Pasting sampled medium IRIs only counts those specific media."
+    verified: {media_with_glucose: 568, date: "2026-07-22"}
+    teaches: "For 'all media with ingredient X', anchor on the ingredient IRI in MediumComposition and COUNT(DISTINCT ?medium) — the set-level route for ingredient membership."
+    traps_avoided:
+      - "Do NOT scope the count to a handful of medium IRIs sampled from an earlier text search — that counts only those media. Discover the ingredient IRI once, then count all media that reference it (circular-reasoning trap)."
 
-  - title: Boolean Literals for schema:isComplex (INTEGER TRAP)
-    problem: Using true/false for schema:isComplex which stores integers 0/1.
-    wrong_sparql: |
-      schema:isComplex false   # returns 0 results — no error, just empty
-    correct_sparql: |
-      schema:isComplex 0       # chemically defined
-      # schema:isComplex 1     # complex media
-    explanation: |
-      schema:isComplex (and isOptionalIngredient, isIngredientOptional) are stored as integers.
-      Boolean literals silently return zero results on Virtuoso.
+  - id: xdb_bacdive                  # ELEVATED cross_db — the MediaDive→BacDive direction (reverse of bacdive.yaml)
+    intent: "cross-DB (intra-primary): MediaDive strains + growth media → BacDive taxonomy via hasBacDiveID"
+    question: "For MediaDive's archaeal strains, what genus does BacDive record and at what temperature are they grown?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      SELECT ?species ?bacDiveID ?genus ?mediumLabel ?temp
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/mediadive> {
+          ?mdStrain a schema:Strain ; schema:belongsTaxGroup "Archaeon" ;
+                    schema:hasSpecies ?species ; schema:hasBacDiveID ?bacDiveID .
+          ?growth schema:relatedToStrain ?mdStrain ; schema:partOfMedium ?medium ;
+                  schema:growthTemperature ?temp .
+          ?medium rdfs:label ?mediumLabel .
+        }
+        GRAPH <http://rdfportal.org/dataset/bacdive> {
+          ?bdStrain a schema:Strain ; schema:hasBacDiveID ?bacDiveID ; schema:hasGenus ?genus .
+        }
+      }
+      ORDER BY DESC(?temp)
+      LIMIT 10
+    verified: {result_rows: 10, date: "2026-07-22", first_row: "Pyrolobus fumarii (BacDiveID 13523, genus Pyrolobus) → PYROLOBUS FUMARII MEDIUM @ 103C"}
+    teaches: "BacDive is co-hosted on the primary endpoint; join MediaDive→BacDive on schema:hasBacDiveID (xsd:int, ~73% coverage) via explicit GRAPH blocks — no TogoID. This is the reverse of bacdive.yaml's xdb_mediadive_id. MediaDive supplies media/growth; BacDive supplies genus/phylum/phenotype the MediaDive Strain lacks."
 
-  - title: Swapping containsIngredient / includesIngredient
-    problem: Using schema:containsIngredient on SolutionRecipe (or vice versa).
-    wrong_sparql: |
-      ?sr a schema:SolutionRecipe ;
-          schema:containsIngredient ?ing .  # returns 0 — wrong predicate for this class
-    correct_sparql: |
-      # SolutionRecipe → schema:includesIngredient
-      ?sr a schema:SolutionRecipe ;
-          schema:includesIngredient ?ing .
-      # MediumComposition → schema:containsIngredient
-      ?mc a schema:MediumComposition ;
-          schema:containsIngredient ?ing .
-    explanation: |
-      These two ingredient-access predicates are class-specific. Swapping them returns zero
-      results with no error message. Check critical_warnings before writing composition queries.
+# ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
+schema_delta:
+  - "pH dual format: schema:hasFinalPH is a STRING RANGE ('7.0-7.2') for display; schema:hasMinPH / hasMaxPH are floats for numeric filtering. Filter on the floats, never parse the range string."
+  - "Concentration predicates ride BOTH composition classes: schema:gramsPerLiter (~90.6% coverage) and schema:mmolPerLiter on MediumComposition AND on SolutionRecipe — use OPTIONAL; not every row is quantified."
+  - "Minor per-medium entities hang off schema:partOfMedium: schema:OperationalStep (prep steps), schema:Equipment, schema:GasComponent (gas-phase composition), schema:Modification (recipe variants). Reach them by TYPE + partOfMedium."
+  - "Text search: this is Virtuoso — `?label bif:contains \"'glucose'\"` (indexed) beats FILTER(CONTAINS()). Legitimate ONLY on rdfs:label (medium/ingredient/solution names) and schema:hasSpecies; taxonomic group, complexity, temperature and all IDs are structured predicates (do not text-search them)."
 
-  - title: Skipping Schema Check Before Text Search
-    problem: Jumping to bif:contains without checking for typed predicates or IRIs.
-    wrong_sparql: |
-      ?label bif:contains "'bacterium'"  # taxonomic group is a controlled value
-    correct_sparql: |
-      # 1. get_MIE_file('mediadive') → check shape_expressions
-      # 2. Find controlled value in schema:belongsTaxGroup
-      schema:belongsTaxGroup "Bacterium"
-    explanation: |
-      Always read critical_warnings and shape_expressions first. Taxonomic groups, pH,
-      temperature, complexity, and all cross-reference IDs have structured predicates.
-common_errors:
-  - error: "Empty results from composition or cross-reference queries"
-    causes:
-      - "Wrong predicate: containsIngredient vs includesIngredient (see critical_warnings)"
-      - "Boolean literal for isComplex instead of integer 0/1"
-      - "OPTIONAL omitted for partial-coverage properties (ChEBI 46%, KEGG 13%)"
-    solutions:
-      - "Check critical_warnings before any composition query"
-      - "Use OPTIONAL + FILTER(BOUND()) for cross-reference properties"
-      - "Inspect a sample entity: SELECT ?p ?o WHERE { <ingredient_IRI> ?p ?o } LIMIT 40"
+# ── id_join_map: how to anchor stably and cross to other resources. ──
+id_join_map:
+  stable_anchor: >
+    IRIs under https://purl.dsmz.de/mediadive/ : medium/N, ingredient/N, strain/N, solution/N,
+    solution_recipe/N. Human keys: schema:hasDSMNumber (integer) on strains; UPPERCASE rdfs:label on media
+    (e.g. "NUTRIENT AGAR"). Every medium is dual-typed schema:Medium + schema:CultureMedium — anchor on CultureMedium.
+  same_endpoint_joins:            # co-hosted on `primary` — direct GRAPH join, NO TogoID
+    bacdive: "schema:hasBacDiveID (xsd:int, ~73% of strains) — MediaDive Strain ↔ BacDive Strain; direct integer match, no URI conversion (example xdb_bacdive). Reverse of bacdive.yaml's xdb_mediadive_id."
+  xrefs:                          # ingredient chemical cross-refs — typed predicates (NOT rdfs:seeAlso), all PARTIAL
+    chebi:    "schema:hasChEBI = bare integer (46%); build IRI obo/CHEBI_<int> to join ChEBI RDF (example ingredient_xrefs)"
+    cas:      "schema:hasCAS = string CAS number (59%)"
+    gmo:      "schema:hasGMO = IRI (58%, the highest-coverage chemical xref)"
+    pubchem:  "schema:hasPubChem = bare integer CID (18%)"
+    kegg:     "schema:hasKEGG = string COMPOUND id 'C#####' (13%)"
+    metacyc:  "schema:hasMetaCyc = string (7%)"
+    dsmz_pdf: "schema:hasLinkToSource = DSMZ protocol PDF URL on the medium (~99%)"
+  bridged_via_togoid:             # for chemical DBs reachable only after transforming a value into an IRI/accession
+    - "ChEBI/KEGG/PubChem live as integer or string VALUES, not IRIs — build the IRI (ChEBI shown) or route the value through togoid_convertId to reach those RDF Portal DBs; there is no same-endpoint graph for them."
 
-  - error: "Timeout on composition or cross-database queries"
-    causes:
-      - "MediumComposition queried without medium IRI filter (72K rows)"
-      - "Cross-database BacDive join without pre-filtering (97K strains)"
-      - "Missing LIMIT clause"
-    solutions:
-      - "Always pre-filter by medium IRI: VALUES ?medium { <iri1> <iri2> } before composition join"
-      - "Apply genus/species/phenotype filter in BacDive GRAPH block before cross-database join"
-      - "Add LIMIT 30-50 to every query"
-
-  - error: "Text search returns partial results"
-    causes:
-      - "Using text search when a specific IRI exists for the ingredient/solution/strain"
-      - "FILTER(CONTAINS()) used instead of bif:contains (Virtuoso backend — indexed)"
-    solutions:
-      - "Find the IRI with one exploratory text query, then switch to specific IRI for comprehensive queries"
-      - "Replace FILTER(CONTAINS(?l, 'x')) with: ?l bif:contains \"'x'\""
-      - "Common IRIs: ingredient/5 (glucose), ingredient/16 (yeast extract), ingredient/43 (NaCl)"
+# ── byte-count footer (spec §5 item 7) ──
+# v2: `wc -c togo_mcp/data/mie/mediadive.yaml` = 32339 bytes
+# v3: `wc -c benchmark/redesign/mie_v3/mediadive.yaml` = 21042 bytes → 34.9% smaller than v2.

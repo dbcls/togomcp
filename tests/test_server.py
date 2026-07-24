@@ -399,10 +399,12 @@ class TestMIETrapBanner:
         path = Path("togo_mcp/data/mie/uniprot.yaml")
         content = path.read_text(encoding="utf-8")
         banner = _mie_trap_banner(content, "uniprot")
-        assert "dcterms:identifier" in banner  # the trap that broke Q076
+        assert "up:reviewed" in banner  # the #1 uniprot trap (reviewed-flag filter)
         # Banner + body must still be loadable as YAML by any downstream consumer.
         doc = yaml.safe_load(banner + content)
-        assert doc["schema_info"]["title"] == "UniProt RDF"
+        # v3 renamed schema_info -> discovery; the banner must not break parsing either way.
+        meta = doc.get("discovery") or doc.get("schema_info")
+        assert meta["title"] == "UniProt RDF"
 
 
 class TestUsageGuideEndpointTable:
