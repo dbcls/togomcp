@@ -44,7 +44,7 @@ def togomcp_usage_guide() -> str:
         STEP  4: synthesize — each fact once, no meta-commentary.
 
     Why this matters (measured): questions with ≥3 consecutive run_sparql calls
-    score 1.26 points lower than compliant ones; jumping to text search before
+    score ~1.1 points lower than compliant ones; jumping to text search before
     reading the MIE schema accounts for ~95% of silent SPARQL failures. The
     guide's DATABASE CATALOG lists all databases with what each is for (scan it
     to pick 1–3), plus the EXPLORATION habits (Seed Definition, concierge

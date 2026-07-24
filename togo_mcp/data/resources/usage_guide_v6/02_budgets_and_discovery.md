@@ -2,17 +2,26 @@
 
 | Metric             | Optimal    | Red flag |
 |--------------------|------------|----------|
-| Total tool calls   | 6–15       | 21+      |
+| Total tool calls   | 4–10       | 21+      |
 | Total SPARQL calls | 1–3        | 7+       |
 | Consecutive SPARQL | 1–2        | 3+       |
 
-**Tool tiers** (avg score, ≥5 appearances):
-- **Tier 1 (≥17.5):** `search_mesh_descriptor` · `search_chembl_target` · `get_pubchem_compound_id` · `togoid_getAllRelation` · `search_reactome_entity` · `search_pdb_entity`
-- **Tier 2 (17.0–17.5):** `search_rhea_entity` · `togoid_convertId` · `ncbi_esummary` · `run_sparql` · `ncbi_esearch` · `OLS:search`
-- **Tier 3 (<17.0):** `search_uniprot_entity` · `PubMed:search_articles` · `OLS:getDescendants` · `togoid_getRelation`
+Score peaks at ≤10 tool calls and 1–3 SPARQL, then declines steadily (21+ calls ≈ −2.5 pts vs
+the sweet spot; ≥3 **consecutive** run_sparql ≈ **−1.1** vs ≤2). With STEP 0 now a no-tool catalog
+scan, a compliant flow is typically MIE + 1–3 SPARQL (+ one grounding search) — aim low.
 
-If `OLS:*` or `PubMed:*` unavailable, substitute `search_mesh_descriptor` / `ncbi_esearch`.
-Use `togoid_getAllRelation` for discovery; `togoid_getRelation` only to confirm a known route.
+**Tool tiers** (mean answer score when the tool appears, ≥5 uses):
+- **Tier 1 (≥17.5):** `search_mesh_descriptor` · `get_compound_attributes_from_pubchem` · `search_chembl_target` · `OLS:search` · `get_pubchem_compound_id`
+- **Tier 2 (17.0–17.5):** `run_sparql` · `togoid_getAllRelation` · `ncbi_esearch` · `search_chembl_molecule`
+- **Tier 3 (<17.0):** `search_rhea_entity` · `ncbi_esummary` · `search_reactome_entity` · `search_uniprot_entity` · `togoid_convertId`
+
+Tiers rank by the *questions* a tool tends to appear on as much as the tool itself — treat as a
+soft prior, not a ban. If `OLS:*` or `PubMed:*` unavailable, substitute `search_mesh_descriptor` /
+`ncbi_esearch`. Use `togoid_getAllRelation` for discovery; `togoid_getRelation` only to confirm a
+known route.
+
+> Budgets + tiers derived from the v3 equivalence run (100 questions × 3, 2026-07, refusal cells
+> excluded, n=282). Directions are stable across models; the exact cut-points are a guide, not a gate.
 
 ---
 
