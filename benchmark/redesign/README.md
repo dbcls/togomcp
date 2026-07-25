@@ -8,10 +8,11 @@ the argument and `togo_mcp/data/docs/MIE_v3_spec.md` is the contract.*
 
 ## Why
 
-The 2026-07 MIE ablation sweeps established that the current v2.3 format carries heavy,
-*orthogonal* redundancy — the same predicate-level fact restated up to three ways (ShEx
-shape in `shape_expressions`, sample triple in `sample_rdf_entries`, worked query in
-`sparql_query_examples`; the `cross_references` list is a loose fourth for xref predicates).
+The 2026-07 MIE ablation sweeps established that the current v2.3 format documents the same
+fact up to three times over, each time in a different **form** — a predicate stated as a
+declarative constraint (ShEx shape in `shape_expressions`), shown as a concrete instance
+(sample triple in `sample_rdf_entries`), and used as an executable step (worked query in
+`sparql_query_examples`); the `cross_references` list is a loose fourth for xref predicates.
 `schema_info` is *not* a restatement — it's the metadata header, kept in v3 as `discovery`
 + `header`. The ablation findings:
 
