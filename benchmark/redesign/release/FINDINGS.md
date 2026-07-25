@@ -134,8 +134,13 @@ q033), not a corpus defect. No regression signature on clean cells.
   +0.350. **95% CI [−0.14, +0.82] — crosses 0**, so this is genuine *equivalence* (delta indistinguishable
   from zero), NOT a proven improvement. The mild positive tilt should not be over-claimed. Key point: the
   CI lower bound (−0.14) sits well inside the −0.5 non-regression margin ⇒ v3 demonstrably does not regress.
-- Both PASS the "flat within ±0.5" bar; n=100 will tighten the interval.
-- **Refusal contamination is corpus-wide** (balanced across arms): fully-refused questions so far =
+- Both PASS the **−0.5 non-regression** bar; n=100 will tighten the interval. (Stated once, since
+  the wording drifts elsewhere in this file: the operative test is one-sided — the CI **lower**
+  bound must sit inside −0.5. It is not a two-sided ±0.5 equivalence test; the final n=100 upper
+  bound is +0.68, so a TOST against ±0.5 would *not* pass. Every verdict here tests the lower
+  bound only, which is the correct test for a compression change that must not regress.)
+- **Refusal contamination is corpus-wide** (looked balanced across arms at this point; the final
+  n=100 count is 21 v2 vs 17 v3 — see the corrected data-quality caveat): fully-refused questions so far =
   q032, q034, q044, q071. NB **q071's canary "bad question" (identical 420-char answers) was the
   refusal message** — not a real v3/v2 difference. These are excluded from the clean verdict; effective
   n is reduced but the equivalence conclusion is unchanged.
@@ -201,7 +206,10 @@ couple pts on one run — noise).
    - Stable across the whole ladder: 50 +0.34 → 75 +0.29 → 85 +0.30 → **100 +0.29**; CI monotonically
      tightening [−0.14,+0.82] → [−0.09,+0.68].
 
-2. **Factoid correctness — UP (the aggregation-recipe claim, confirmed).** By question type (clean judge score):
+2. **Factoid judge score — UP (the aggregation-recipe claim, confirmed).** Note the metric: this
+   criterion is scored on the **judge score by question type**, not on the binary `grade_exact`
+   correctness grader (which is a separate, less powerful axis — see the ablation FINDINGS).
+   By question type (clean judge score):
    - **factoid Δ +1.01** (v3 17.18 vs v2 16.18) — the biggest gain, exactly the query-construction/aggregation
      questions the v3 format targets with executable worked examples.
    - yes_no +0.54, list +0.18, choice +0.16 — all positive. summary **−0.42** (the only soft type;
@@ -219,25 +227,44 @@ couple pts on one run — noise).
 - q055 (OMA deep-rooting): both arms misroot at Eukaryota vs LUCA; v3 more consistently.
 
 ## Data-quality caveat (does not change the verdict)
-Spurious AUP content-policy refusals contaminated ~5% of cells (balanced across arms once aggregated).
-4 questions fully unmeasurable (both arms refused): q032, q034, q044, q071. All excluded from the clean
-verdict; the equivalence conclusion holds on the 96 measurable questions.
+Spurious AUP content-policy refusals contaminated **6.3% of cells** — v2 21/300 (7.0%), v3 17/300
+(5.7%), so mildly v2-heavy rather than exactly balanced, in the direction that *understates* v3.
+13 questions were touched by at least one refusal; per-question counts (v2/v3 of 3 runs each):
+q034 3/3, q044 3/3, q071 2/3, q032 3/2, q033 1/2, q050 2/1, q008 2/0, q018 2/0, q057 1/1,
+q015 1/0, q059 1/0, q028 0/1, q079 0/1.
+
+4 questions are unmeasurable and excluded from the clean verdict: **q034 and q044** were refused
+on all 3 runs in *both* arms; **q032** (v2 3/3) and **q071** (v3 3/3) were fully refused in one
+arm, which leaves the pair with no comparable cell. The equivalence conclusion holds on the 96
+measurable questions.
+
+*(Corrected 2026-07-26: this previously read "~5% of cells (balanced across arms once aggregated).
+4 questions fully unmeasurable (both arms refused)". The rate is 6.3% not ~5%, the split is
+21-vs-17 not balanced, and only 2 of the 4 dropped questions were refused by both arms on every
+replicate. Recounted directly from the per-batch answer CSVs. No verdict changes: the imbalance
+runs against v3, and all four questions were excluded either way.)*
 
 ## CALL: GO for step 6 (release).
-Equivalence proven (judge score flat within −0.5, tilting mildly positive), factoid correctness UP, bytes
+Equivalence proven (judge score non-regressing against −0.5, tilting mildly positive), factoid judge score UP, bytes
 DOWN 29–65%. The redesign delivers the deterministic token win at no measured quality cost — and a real
 gain on factoid/aggregation questions. Proceed to the MAJOR release: flip the served corpus to v3, ship
 the build-time Usage-Guide catalog generator FIRST, then retire the discovery trio (find_databases/
 list_databases/list_categories) + rewrite the workflow prompt.
 
-## Measured runtime cost/time @ n=100 (clean cells: v2=279 / v3=282)
+## Measured runtime cost/time @ n=100 (clean cells: v2=279 / v3=282, of **300** each)
+
+Denominator note (verified 2026-07-26 by re-counting `results_rel_{canary,batch1..5}/*-answers-v*.csv`):
+300 = 100 questions × 3 replicates, i.e. *all* cells, not the 96-usable subset. The drops are
+**v2: 21 refusals + 0 invalid** and **v3: 17 refusals + 1 invalid** (the q061 r1 timeout) — which
+reconciles exactly with 279 and 282. Note this makes the refusal rate **7.0% (v2) / 5.7% (v3),
+6.3% combined** — see the corrected caveat below.
 
 The deterministic win, MEASURED at runtime (not just file bytes). Per question, v3 vs v2:
 
 | metric (per Q) | v2 | v3 | Δ | % |
 |---|---|---|---|---|
 | total input tokens | 73,059 | 61,790 | −11,269 | **−15.4%** |
-|  · cache-read | 71,394 | 59,255 | −12,138 | −17.0% |
+|  · cache-read | 71,394 | 59,255 | −12,139 | −17.0% |
 |  · cache-creation | 1,658 | 2,527 | +869 | +52.4% |
 | output tokens | 656 | 686 | +30 | +4.6% |
 | cost $/Q | 0.52 | 0.44 | −0.08 | **−14.8%** |

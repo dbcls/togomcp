@@ -258,8 +258,14 @@ corpus — so the agent keeps every other tool (run_sparql, NCBI, PubChem, searc
 loses only the MIE. Run as a first-class `run_ablation.py` condition
 (`--conditions no_mie --base-config benchmark/scripts/config_no_mie.yaml`; a guard
 refuses a base config that still allows get_MIE_file) on the local server, so it pairs
-against the group sweep's baseline. Validity: **0** get_MIE_file executions server-side
-(13 attempts, all blocked — the model still reflexively reaches for it ~7% of questions).
+against the group sweep's baseline. Validity: **0** get_MIE_file executions server-side —
+the block is client-side (`disallowed_tools`), so attempts never reach the server and
+`no_mie-server.log` correctly contains no `get_MIE_file` at all. The attempt rate comes from
+`tools_used` in `no_mie-answers-v{1,2,3}.csv`: **16 attempts across 13 of the 120 cells
+(10.8%), touching 10 of the 40 questions (25%)** — the model still reflexively reaches for it.
+*(Corrected 2026-07-26: this line previously read "13 attempts … ~7% of questions". 13 is the
+count of **cells** that attempted at least once, not of attempts, and 13/120 is 10.8%, not 7%.
+Recomputed directly from the answer CSVs; no downstream number depends on it.)*
 
 **Result: significant.** baseline − no_mie on the judge score:
 
