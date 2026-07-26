@@ -106,7 +106,7 @@ Rules across the set:
   **set-level** route (a controlled-vocabulary term / typed predicate), not just a
   per-instance or text-match pattern, and **not** buried as a `traps_avoided`
   caveat on some other example. Check this DB's row in
-  `benchmark/redesign/enumeration_audit.md` (all 36 DBs pre-scanned): **Tier A**
+  `enumeration_audit.md` (this directory; all 36 DBs pre-scanned): **Tier A**
   DBs must add a *new* standalone `enum_*` example (the route is buried in v2);
   **Tier B/C** DBs must keep the worked query and its load-bearing caveat together.
 - **No test leakage (spec §4.6).** An example's subject (keyword phrase, class

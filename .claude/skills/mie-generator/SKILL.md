@@ -389,7 +389,7 @@ assumption. Keep entity counts on COUNT(DISTINCT ?entity) regardless.
 The `examples` are the load-bearing content: each one **is** the schema shape, the sample, and (via `traps_avoided`) the warning. There is **no fixed count** — author the set the DB's questions actually need. Cover, at minimum:
 
 - **The primary lookup routes** — the 3–6 questions a user most often asks this DB (an entity's core attributes, its key relationships). `complexity: basic`/`intermediate`/`advanced`.
-- **Every set-level enumeration route the DB supports** (spec §4.4). For each "**all** entities with property/feature/class X" question, a first-class `enum_*` example showing the controlled-vocabulary / typed-predicate route — never only a text match, never buried as a caveat. Check this DB's row in `benchmark/redesign/enumeration_audit.md`: **Tier A** = the route is buried in v2, so add a *new* standalone `enum_*` example; **Tier B/C** = keep the worked query and its load-bearing caveat together.
+- **Every set-level enumeration route the DB supports** (spec §4.4). For each "**all** entities with property/feature/class X" question, a first-class `enum_*` example showing the controlled-vocabulary / typed-predicate route — never only a text match, never buried as a caveat. Check this DB's row in `references/enumeration_audit.md`: **Tier A** = the route is buried in v2, so add a *new* standalone `enum_*` example; **Tier B/C** = keep the worked query and its load-bearing caveat together.
 - **At least one `aggregation` example** where the DB supports counting — it ships its verified total and demonstrates `COUNT(DISTINCT)` + graph-scoping (the union-inflation-safe recipe).
 - **At least one `cross_db` example** where a co-hosted join or a documented xref exists — the least-recoverable, highest-failure class. Set `endpoint_name` on it.
 
@@ -449,7 +449,7 @@ Automate the zero-row/error half: `uv run python scripts/check_mie_examples.py <
 
 For each `cross_db` example that returns results, spot-check join validity: take one join value from the result and `ASK`/`SELECT` against the second graph to confirm it resolves to a real entity there. A `cross_db` query returning 3 rows when thousands are expected is a join failure (the linking IRI form probably differs between the two DBs), not a passing test.
 
-**5c. Elevated coverage: at least one `aggregation` and one `cross_db`** where the DB supports them, and **every set-level enumeration route has its own example** (spec §4.4). Check this DB's row in `benchmark/redesign/enumeration_audit.md`: a **Tier A** DB must add a standalone `enum_*` example; **Tier B/C** must keep the worked query + its load-bearing caveat together. Do not compress a positive route down to a `traps_avoided` caveat.
+**5c. Elevated coverage: at least one `aggregation` and one `cross_db`** where the DB supports them, and **every set-level enumeration route has its own example** (spec §4.4). Check this DB's row in `references/enumeration_audit.md`: a **Tier A** DB must add a standalone `enum_*` example; **Tier B/C** must keep the worked query + its load-bearing caveat together. Do not compress a positive route down to a `traps_avoided` caveat.
 
 **5d. Cross-graph inflation (any multi-GRAPH endpoint).** If Phase 2g recorded re-declaration: re-run the 2g probe to confirm each documented multiplier, and confirm the SAFE PATTERN collapses it — the graph-pinned form must return the non-inflated figure the union form inflates. Then confirm every `aggregation`/count example is graph-scoped (or `COUNT(DISTINCT)`) so it reports the un-inflated figure. A `graphs.co_hosted` entry whose multiplier no longer reproduces is stale — fix or remove it.
 
@@ -527,6 +527,7 @@ A complete v3 MIE file satisfies:
 - `references/mie-structure.md` — the v3 per-key requirements, what goes where, what v3 dropped.
 - `references/template.yaml` — the fillable v3 YAML skeleton with inline comments.
 - `references/anti-patterns.md` — where trap knowledge lives in v3 (`global_gotchas` vs inline `traps_avoided`), and the enumeration-route rule.
+- `references/enumeration_audit.md` — the per-DB §4.4 enumeration-route table (all 36 DBs, Tier A/B/C/OK). **Read this DB's row before Phase 3/5** — it says whether the file must add a new `enum_*` example or keep an existing route+caveat together.
 - `togo_mcp/data/docs/MIE_v3_spec.md` — **the authorable contract.** Read it; it wins over this skill on any disagreement.
 - `togo_mcp/data/mie/uniprot.yaml` — the worked v3 reference.
 

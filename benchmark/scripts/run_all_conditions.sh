@@ -11,6 +11,13 @@
 # API key, the same TogoMCP MCP endpoint, and benefit from per-condition
 # isolation when comparing tool-use behaviour.
 #
+# Scope: this is the benchmark's simple ANSWER-COLLECTION front door — it produces
+# the paper-style CSVs (with_guide/ng1/ng2/no_mie-<DATE>.csv, the naming used under
+# results-Kinjo2026/) and does NOT judge. Score them afterward with
+# add_llm_evaluation.py. For the fuller conditions *ablation study* — collect AND
+# multi-judge (Opus, Gemma, …) in one run, pinned to the production endpoint, with
+# its own results tree — use ../studies/conditions/run_conditions.py instead.
+#
 # Usage:
 #   ./run_all_conditions.sh                       # today's date, default model
 #   ./run_all_conditions.sh 2026-05-04            # specific date
