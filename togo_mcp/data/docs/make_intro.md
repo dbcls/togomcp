@@ -109,6 +109,14 @@ The footer should include the following
     </div>
 ```
 - Also add the link to each item.
+- Below the organisation block, include a row of footer links (`.footer-links`):
+  * [DBCLS Home](https://dbcls.rois.ac.jp/en/)
+  * [TogoMCP Home](https://togomcp.rdfportal.org/)
+  * [RDF Portal](https://rdfportal.org)
+  * [TogoID](https://togoid.dbcls.jp)
+  * [GitHub](https://github.com/dbcls/togomcp)
+  * [Contact](https://dbcls.rois.ac.jp/contact-en.html)
+  * [Site Policy](https://bsi.nig.ac.jp/policy)
 - Make sure all the links are alive and correct.
 
 **IMPORTANT!**
