@@ -3,7 +3,7 @@ Date: 2026-05-04
 I have created 50 questions to evaluate TogoMCP, following the instructions in `benchmark/QA_CREATION_GUIDE.md.`
 These questions are evaluated using the scripts `benchmark/scripts/automated_test_runner.py` and `benchmark/scripts/add_llm_evaluation.py`.
 The results are in 
-`benchmark/results/{condition}-yyyy-mm-dd.csv`,
+`benchmark/results-Kinjo2026/{condition}-yyyy-mm-dd.csv`,
 Where “condition” should be one of the following:
 with_guide
 ng1
@@ -15,11 +15,11 @@ I want you to independently evaluate the results from scratch, following the ins
 The evaluation results should be saved in the exact same CSV format as the original results, replacing the original scores and explanations with yours. But don’t edit the original file; make a copy.
 
 Run 5 independent evaluations and save the results in
-`benchmark/results/{condition}-yyyy-mm-dd-Opus4.7-v1.csv`
-`benchmark/results/{condition}-yyyy-mm-dd-Opus4.7-v2.csv`
-`benchmark/results/{condition}-yyyy-mm-dd-Opus4.7-v3.csv`
-`benchmark/results/{condition}-yyyy-mm-dd-Opus4.7-v4.csv`
-`benchmark/results/{condition}-yyyy-mm-dd-Opus4.7-v5.csv`
+`benchmark/results-Kinjo2026/{condition}-yyyy-mm-dd-Opus4.7-v1.csv`
+`benchmark/results-Kinjo2026/{condition}-yyyy-mm-dd-Opus4.7-v2.csv`
+`benchmark/results-Kinjo2026/{condition}-yyyy-mm-dd-Opus4.7-v3.csv`
+`benchmark/results-Kinjo2026/{condition}-yyyy-mm-dd-Opus4.7-v4.csv`
+`benchmark/results-Kinjo2026/{condition}-yyyy-mm-dd-Opus4.7-v5.csv`
 Assuming you are Opus 4.7.
 —
 You are an expert evaluator of scientific and biomedical research. Your task is to evaluate the quality of a given answer by comparing it to an ideal reference answer.

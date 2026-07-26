@@ -4,7 +4,11 @@ This directory contains the evaluation benchmark for the paper:
 
 > Kinjo, A. R., Yamamoto, Y., Bustamante-Larriet, S., Labra-Gayo, J.-E., & Fujisawa, T. (2026). **TogoMCP: Natural Language Querying of Life-Science Knowledge Graphs via Schema-Guided LLMs and the Model Context Protocol**. *Database* **2026**:baag042. https://doi.org/10.1093/database/baag042
 
-The benchmark consists of 100 biologically grounded questions spanning five question types and 34 RDF Portal databases, designed to evaluate TogoMCP's ability to answer biological questions that require live access to RDF knowledge graphs. (The TogoMCP catalog has since grown to 36 databases; the two added after the set was frozen — `supercon` and `ontology` — are not exercised by these questions.)
+The benchmark now contains 100 biologically grounded questions (20 per type) spanning 34 RDF Portal databases, designed to evaluate TogoMCP's ability to answer biological questions that require live access to RDF knowledge graphs.
+
+> **Scope of the paper's results.** The results reported in the paper live under **[`results-Kinjo2026/`](results-Kinjo2026/)** (frozen — see its README) and were computed on the **first 50 questions** (`question_001`–`question_050`, balanced 10 per type). The later 50 (`question_051`–`question_100`) were added **after** the paper and are **not** part of its evaluation. So "100 questions" below means the *current* set; the *paper's* evaluation is 50 questions.
+
+(The TogoMCP catalog has since grown to 36 databases; the two most recent — `supercon` and `ontology` — are not exercised by the question set.)
 
 ---
 
@@ -35,16 +39,14 @@ benchmark/
 │   ├── config_no_mie.yaml        # Config for "No MIE" condition
 │   ├── CONFIG_FORMAT.md          # Configuration file format documentation
 │   └── evaluation_dashboard.html # Pre-generated results dashboard
-├── results/
-│   ├── with_guide-2026-05-04.csv               # Raw answers, With Guide (current)
-│   ├── ng1-2026-05-04.csv                      # Raw answers, NG1
-│   ├── ng2-2026-05-04.csv                      # Raw answers, NG2
-│   ├── no_mie-2026-05-04.csv                   # Raw answers, No MIE
-│   ├── *-2026-05-04-Opus4.7-v{1..5}.csv        # Re-evaluated with Claude Opus 4.7 (× 5)
-│   ├── togomcp_analysis_v3.md                  # Current analysis (2026-05-04 batch)
-│   ├── togomcp_*_analysis.md                   # Per-comparison reports (current batch)
-│   ├── reevaluation.md                         # Re-evaluation design notes
-│   └── rev0/                                   # Prior batch (Feb–Mar 2026, Opus 4.6 judge)
+├── results-Kinjo2026/            # FROZEN paper-evaluation archive (its own README)
+│   ├── README.md                 # Scope (50 Q), conditions, judge batches, file scheme, rubric
+│   ├── *-2026-05-04.csv          # Raw answers, 4 conditions (canonical batch)
+│   ├── *-2026-05-04-Opus4.7-v{1..5}.csv   # Scored × 5 (Opus 4.7 judge)
+│   ├── togomcp_*_analysis*.md     # Analysis + per-comparison reports
+│   ├── reevaluation.md           # Re-evaluation design notes
+│   └── rev0/                     # Prior batch (Feb–Mar 2026; judged Opus 4.6 + 4.7)
+├── results/                      # (created on demand) scratch output for NEW / reproduction runs
 └── studies/                      # Investigations run *with* the benchmark (not the benchmark itself)
     ├── ablation/                 # MIE-subcomponent leave-one-out / leave-one-in ablation harness (+ FINDINGS)
     ├── conditions/               # Condition ablation harness (usage-guide / MIE), multi-judge
@@ -52,7 +54,10 @@ benchmark/
     └── examples/                 # Example dialogue logs (skill demos)
 ```
 
-The top level is **the benchmark** (questions, collection/eval scripts, paper results, protocol docs). `studies/` holds larger investigations that were *built on* the benchmark — each has its own README; they reach up to `../../questions` and `../../scripts`. The paper's results live in `results/` and are left untouched.
+The top level is **the benchmark** — questions, the collection/eval scripts, and the creation protocol. The other three are clearly separated:
+- **`results-Kinjo2026/`** — the paper's frozen, citable evaluation (50 questions). See its own README; do not overwrite it.
+- **`results/`** — scratch; where new or reproduction runs land (`run_all_conditions.sh` recreates it). Not the paper's numbers.
+- **`studies/`** — larger investigations built *on* the benchmark, each with its own README; they reach up to `../../questions` and `../../scripts`.
 
 ---
 
@@ -60,7 +65,7 @@ The top level is **the benchmark** (questions, collection/eval scripts, paper re
 
 ### Question Set
 
-The 100 questions were created following a strict type-first protocol (`QA_CREATION_GUIDE.md`), with **20 questions per type**:
+The set was built in two tranches: the **first 50** (`question_001`–`question_050`, 10 per type) were the paper's evaluation set; a **second 50** were added afterward, bringing the current total to **100 questions, 20 per type**. Both tranches followed the same strict type-first protocol (`QA_CREATION_GUIDE.md`). The type definitions:
 
 | Type | Description |
 |------|-------------|
@@ -70,7 +75,7 @@ The 100 questions were created following a strict type-first protocol (`QA_CREAT
 | `summary` | Multi-dimensional aggregation across 3+ databases, answered as a single paragraph |
 | `choice` | Categorical comparison requiring the agent to enumerate and count |
 
-**Database coverage targets** (enforced during creation):
+**Database coverage targets** (enforced during creation; figures below describe the full 100-question set):
 - Multi-database questions (2+ databases): ≥ 60%
 - Multi-database questions (3+ databases): ≥ 20%
 - UniProt usage cap: ≤ 70%
@@ -85,13 +90,11 @@ Four experimental conditions were evaluated (see paper §Ablation Study):
 | Condition | Config file | Description |
 |-----------|-------------|-------------|
 | **With Guide** | `config.yaml` | Full TogoMCP system with Usage Guide |
-| **NG1** | `config_no_guide1.yaml` | No Usage Guide, but with an explicit instruction to call `list_databases` and `get_MIE_file` before querying [†] |
+| **NG1** | `config_no_guide1.yaml` | No Usage Guide, but with an explicit instruction to call `list_databases` and `get_MIE_file` before querying |
 | **NG2** | `config_no_guide2.yaml` | No Usage Guide, no MIE instruction |
 | **No MIE** | `config_no_mie.yaml` | `get_MIE_file` tool excluded entirely |
 
-Each condition was compared against a **baseline** agent (Claude Sonnet 4.5, no tools) run in the same session.
-
-> [†] The `list_databases` tool named in the NG1 instruction has since been **retired** (the database catalog moved into the generated Usage Guide, `02b_database_catalog.md`). The condition and its config are preserved as-run for the paper; re-running NG1 today, the instruction to call `list_databases` simply no-ops.
+Each condition was compared against a **baseline** agent (Claude Sonnet 4.5, no tools) run in the same session. The judge, five-run protocol, batch filenames, and the retirement of NG1's `list_databases` tool are documented in [`results-Kinjo2026/README.md`](results-Kinjo2026/README.md).
 
 ---
 
@@ -112,67 +115,31 @@ Each question is stored as a YAML file in `questions/` following the format in `
 
 After creation, every question is reviewed against the checklist in `.claude/skills/qa-generator/references/qa-checklist.md` (C01–C27), and corrected iteratively until it passes — a question only enters `questions/` once it has cleared that review. The error categories checked include: coverage gaps, missing arithmetic verification, circular logic, vocabulary sampling, cross-graph count inflation, and format errors.
 
-### Step 3 — Answer Collection
+### Step 3 — Running an evaluation
 
-Answers were collected using `scripts/automated_test_runner.py`. To run all four conditions sequentially for a given date, use `scripts/run_all_conditions.sh`:
+Collect answers, then score them. New runs land in a fresh `results/` — the paper's frozen archive under `results-Kinjo2026/` is never touched.
 
 ```bash
 cd scripts
-./run_all_conditions.sh 2026-05-04        # all four conditions
-# — or per-condition —
-python automated_test_runner.py ../questions/question_*.yaml \
-    -c config.yaml \
-    -o ../results/with_guide-2026-05-04.csv
+# 1. collect answers for all four conditions on a given date -> ../results/<cond>-<DATE>.csv
+./run_all_conditions.sh 2026-07-25
+#    (or one condition: automated_test_runner.py ../questions/question_*.yaml -c config.yaml -o ../results/with_guide-<DATE>.csv)
+
+# 2. score with a Claude Opus judge, 5 runs -> ...-Opus-v1.csv … -v5.csv
+export ANTHROPIC_API_KEY=sk-ant-...
+python add_llm_evaluation.py ../results/with_guide-<DATE>.csv \
+    -o ../results/with_guide-<DATE>-Opus.csv --model claude-opus-4-8 --runs 5
 ```
 
-The script runs each question in an isolated session (no conversation history) and collects answers from both the baseline agent and the TogoMCP agent. It outputs a CSV with columns for both agents' answers, token counts, and USD cost. The four conditions were run separately using their respective config files.
+The runner executes each question in an isolated session (no history) and records both agents' answers, token counts, and cost. The judge scores each answer 1–5 on four criteria (recall, precision, non-redundancy, readability; total 4–20) with forced tool use, producing 12 score columns.
 
-### Step 4 — LLM Evaluation (initial, llama3.2)
+The `question_*.yaml` glob matches all **100** questions; to match the paper's 50-question scope use `../questions/question_0[0-4]*.yaml ../questions/question_050.yaml`.
 
-> **Note (provenance vs. current tooling):** for the paper, initial scoring used `scripts/add_llm_evaluation.py` with a local `llama3.2` model (Ollama), and those scores were then superseded by a manual Claude Opus re-evaluation on the platform (Step 5). The script has **since been rewritten** to call Claude Opus directly via the Claude API, which collapses Steps 4–5 into one command — see Step 5 for current usage. The `llama3.2` / Ollama path described here is historical.
+## Results
 
-Initial scoring was originally done with a local `llama3.2` judge, scoring each answer on four criteria (1–5 each, total 4–20):
-- **Recall** — completeness relative to the `ideal_answer`
-- **Precision** — relevance of provided information
-- **Non-redundancy** (repetition) — avoidance of repeated content
-- **Readability** — clarity and fluency
-
-These initial scores (`with_guide-2026-05-04.csv`, `ng1-2026-05-04.csv`, `ng2-2026-05-04.csv`, `no_mie-2026-05-04.csv`) were found to be insufficiently reliable for the paper and were superseded by the Claude-judged re-evaluation in Step 5.
-
-### Step 5 — Re-evaluation with Claude Opus
-
-Because the llama3.2 scores were insufficiently reliable, all four conditions were re-evaluated five times each using **Claude Opus** as the judge (250 question–run pairs per condition). The current canonical re-evaluation is the 2026-05-04 batch judged by **Opus 4.7**; the earlier 2026-02–03 batch (judged by Opus 4.6) is preserved under `results/rev0/`.
-
-The paper's Opus re-evaluation was performed manually on the platform (see `results/reevaluation.md`). That process is now automated — `add_llm_evaluation.py` calls Claude Opus through the Claude API with the same four-criteria rubric and forced tool use, producing the same 12 score columns. To reproduce the five-run batch for one condition:
-
-```bash
-export ANTHROPIC_API_KEY=sk-ant-...          # required by the anthropic SDK
-python add_llm_evaluation.py ../results/with_guide-2026-05-04.csv \
-    -o ../results/with_guide-2026-05-04-Opus.csv \
-    --model claude-opus-4-8 --runs 5         # writes ...-Opus-v1.csv … -v5.csv
-```
-
-Use `--model claude-opus-4-7` to match the model used for the paper's canonical batch.
-
-**Current batch — 2026-05-04, judge: Opus 4.7** (results reported in the paper)
-
-| Condition | Result files |
-|-----------|-------------|
-| With Guide | `with_guide-2026-05-04-Opus4.7-v1.csv` … `v5.csv` |
-| NG1 | `ng1-2026-05-04-Opus4.7-v1.csv` … `v5.csv` |
-| NG2 | `ng2-2026-05-04-Opus4.7-v1.csv` … `v5.csv` |
-| No MIE | `no_mie-2026-05-04-Opus4.7-v1.csv` … `v5.csv` |
-
-**Prior batch — 2026-02/03, judge: Opus 4.6** (archived under `results/rev0/`)
-
-| Condition | Result files |
-|-----------|-------------|
-| With Guide | `rev0/with_guide-2026-02-28-Opus4.6-v1.csv` … `v5.csv` |
-| NG1 | `rev0/ng1-2026-03-01-Opus4.6-v1.csv` … `v5.csv` |
-| NG2 | `rev0/ng2-2026-03-01-Opus4.6-v1.csv` … `v5.csv` |
-| No MIE | `rev0/no_mie-2026-02-28-Opus4.6-v1.csv` … `v5.csv` |
-
-Design notes for the re-evaluation methodology are in `results/reevaluation.md`.
+- **The paper's results** — frozen under **[`results-Kinjo2026/`](results-Kinjo2026/)** with its own README (50-question scope, conditions, the Opus 4.7 canonical batch + the `rev0/` prior batch, file scheme, rubric). Cite/compare against these; don't overwrite them.
+- **New runs** — land in `results/` (created on demand), analyzed with `scripts/results_analyzer.py` / `scripts/generate_dashboard.py`.
+- **Investigations** built on the benchmark (MIE ablations, the v3 redesign) — under `studies/`, each with its own README.
 
 ---
 

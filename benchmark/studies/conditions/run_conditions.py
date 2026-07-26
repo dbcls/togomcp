@@ -4,7 +4,14 @@
 This is the non-MIE-subcomponent counterpart to ../ablation/run_ablation.py. It
 drives the four config-based conditions the paper reported, each against the
 PRODUCTION remote TogoMCP server (no local server — the configs already point at
-https://togomcp.rdfportal.org/mcp):
+https://togomcp.rdfportal.org/mcp).
+
+If you only need to COLLECT answers for the four conditions in the paper's flat
+naming (with_guide/ng1/ng2/no_mie-<DATE>.csv under benchmark/results/), use the
+simpler benchmark/scripts/run_all_conditions.sh instead — this harness is the
+heavier superset that also multi-judges and organizes its own results/ tree.
+
+The conditions:
 
     with_guide  config.yaml              full system (usage-guide tool + MIE + guided prompt)
     MIE-instr   config_no_guide1.yaml    no usage-guide tool; MIE workflow instructions kept in prompt
