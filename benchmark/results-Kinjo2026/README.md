@@ -4,6 +4,8 @@ The evaluation results **as reported in the paper**:
 
 > Kinjo, A. R., Yamamoto, Y., Bustamante-Larriet, S., Labra-Gayo, J.-E., & Fujisawa, T. (2026). **TogoMCP: Natural Language Querying of Life-Science Knowledge Graphs via Schema-Guided LLMs and the Model Context Protocol**. *Database* **2026**:baag042. https://doi.org/10.1093/database/baag042
 
+> 📌 **Authoritative source: the [`paper2026rev1`](https://github.com/dbcls/togomcp/tree/paper2026rev1) branch.** The *exact* results behind the paper are the frozen snapshot on that branch (under `benchmark/results/`). This directory is that snapshot carried forward onto the main line for convenience — if the two ever diverge, **`paper2026rev1` is authoritative**. Cite/compare against the branch.
+
 > ⚠️ **This directory is frozen.** These CSVs and analysis notes are the citable record behind the paper's figures — do not overwrite or regenerate them in place. New or reproduction runs land in a fresh `../results/` (created on demand by `../scripts/run_all_conditions.sh`); compare against this archive, don't replace it.
 
 ## Scope

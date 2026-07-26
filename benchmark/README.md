@@ -6,7 +6,7 @@ This directory contains the evaluation benchmark for the paper:
 
 The benchmark now contains 100 biologically grounded questions (20 per type) spanning 34 RDF Portal databases, designed to evaluate TogoMCP's ability to answer biological questions that require live access to RDF knowledge graphs.
 
-> **Scope of the paper's results.** The results reported in the paper live under **[`results-Kinjo2026/`](results-Kinjo2026/)** (frozen — see its README) and were computed on the **first 50 questions** (`question_001`–`question_050`, balanced 10 per type). The later 50 (`question_051`–`question_100`) were added **after** the paper and are **not** part of its evaluation. So "100 questions" below means the *current* set; the *paper's* evaluation is 50 questions.
+> **Scope of the paper's results.** The exact results reported in the paper are the frozen snapshot on the **[`paper2026rev1`](https://github.com/dbcls/togomcp/tree/paper2026rev1)** branch (a carried-forward copy lives under **[`results-Kinjo2026/`](results-Kinjo2026/)** — see its README). They were computed on the **first 50 questions** (`question_001`–`question_050`, balanced 10 per type). The later 50 (`question_051`–`question_100`) were added **after** the paper and are **not** part of its evaluation. So "100 questions" below means the *current* set; the *paper's* evaluation is 50 questions.
 
 (The TogoMCP catalog has since grown to 36 databases; the two most recent — `supercon` and `ontology` — are not exercised by the question set.)
 
@@ -137,7 +137,7 @@ The `question_*.yaml` glob matches all **100** questions; to match the paper's 5
 
 ## Results
 
-- **The paper's results** — frozen under **[`results-Kinjo2026/`](results-Kinjo2026/)** with its own README (50-question scope, conditions, the Opus 4.7 canonical batch + the `rev0/` prior batch, file scheme, rubric). Cite/compare against these; don't overwrite them.
+- **The paper's results** — the authoritative frozen snapshot is the **[`paper2026rev1`](https://github.com/dbcls/togomcp/tree/paper2026rev1)** branch; a carried-forward copy lives under **[`results-Kinjo2026/`](results-Kinjo2026/)** with its own README (50-question scope, conditions, the Opus 4.7 canonical batch + the `rev0/` prior batch, file scheme, rubric). Cite/compare against these; don't overwrite them.
 - **New runs** — land in `results/` (created on demand), analyzed with `scripts/results_analyzer.py` / `scripts/generate_dashboard.py`.
 - **Investigations** built on the benchmark (MIE ablations, the v3 redesign) — under `studies/`, each with its own README.
 
