@@ -6,7 +6,9 @@ This directory contains the evaluation benchmark for the paper:
 
 The benchmark now contains 100 biologically grounded questions (20 per type) spanning 34 RDF Portal databases, designed to evaluate TogoMCP's ability to answer biological questions that require live access to RDF knowledge graphs.
 
-> **Scope of the paper's results.** The exact results reported in the paper are the frozen snapshot on the **[`paper2026rev1`](https://github.com/dbcls/togomcp/tree/paper2026rev1)** branch (a carried-forward copy lives under **[`results-Kinjo2026/`](results-Kinjo2026/)** — see its README). They were computed on the **first 50 questions** (`question_001`–`question_050`, balanced 10 per type). The later 50 (`question_051`–`question_100`) were added **after** the paper and are **not** part of its evaluation. So "100 questions" below means the *current* set; the *paper's* evaluation is 50 questions.
+> **Scope of the paper's results.** The exact questions **and** results reported in the paper are the frozen snapshot on the **[`paper2026rev1`](https://github.com/dbcls/togomcp/tree/paper2026rev1)** branch (a carried-forward copy of the results lives under **[`results-Kinjo2026/`](results-Kinjo2026/)** — see its README). The paper evaluated **50 questions** (the `question_001`–`question_050` slot, balanced 10 per type); the later 50 (`question_051`–`question_100`) were added afterward and are not part of it.
+>
+> **The live question set is maintained.** Any question — including 001–050 — may be **revised over time** (databases change, answers drift, errors surface), so the current `questions/` files are *not* a frozen record and may differ from what the paper ran. For the exact as-evaluated questions, use `paper2026rev1`. Below, "100 questions" means the current set.
 
 (The TogoMCP catalog has since grown to 36 databases; the two most recent — `supercon` and `ontology` — are not exercised by the question set.)
 
@@ -65,7 +67,7 @@ The top level is **the benchmark** — questions, the collection/eval scripts, a
 
 ### Question Set
 
-The set was built in two tranches: the **first 50** (`question_001`–`question_050`, 10 per type) were the paper's evaluation set; a **second 50** were added afterward, bringing the current total to **100 questions, 20 per type**. Both tranches followed the same strict type-first protocol (`QA_CREATION_GUIDE.md`). The type definitions:
+The set was built in two tranches: the **first 50** (`question_001`–`question_050`, 10 per type) covered the paper's evaluation slot; a **second 50** were added afterward, bringing the current total to **100 questions, 20 per type**. Both tranches followed the same strict type-first protocol (`QA_CREATION_GUIDE.md`). This is a **living set** — questions are revised as databases evolve or errors are found, so a given `question_NNN.yaml` may differ from its paper-time version (frozen on `paper2026rev1`). The type definitions:
 
 | Type | Description |
 |------|-------------|

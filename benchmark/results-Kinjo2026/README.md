@@ -10,7 +10,7 @@ The evaluation results **as reported in the paper**:
 
 ## Scope
 
-- **50 questions** — `question_001`–`question_050` of the benchmark set (balanced **10 per type**: yes_no, factoid, list, summary, choice). The benchmark has since grown to 100 questions; the later 50 postdate the paper and are **not** evaluated here.
+- **50 questions** — the `question_001`–`question_050` slot (balanced **10 per type**: yes_no, factoid, list, summary, choice). The benchmark has since grown to 100 questions; the later 50 postdate the paper and are **not** evaluated here. The live `../questions/` is a **maintained** set — any question may be revised over time, so those files may differ from what was evaluated; the exact as-evaluated questions are frozen alongside these results on [`paper2026rev1`](https://github.com/dbcls/togomcp/tree/paper2026rev1).
 - **Four conditions**, each compared against a **baseline** (Claude Sonnet 4.5, no tools) in the same session. The agent model is Claude Sonnet 4.5 throughout; conditions differ only in tool/prompt availability:
 
   | Condition | Config (`../scripts/`) | What it gives the agent |
