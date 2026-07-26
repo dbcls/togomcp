@@ -2,9 +2,9 @@
 
 This directory contains the evaluation benchmark for the paper:
 
-> **TogoMCP: Natural Language Querying of Life-Science Knowledge Graphs via Schema-Guided LLMs and the Model Context Protocol**
+> Kinjo, A. R., Yamamoto, Y., Bustamante-Larriet, S., Labra-Gayo, J.-E., & Fujisawa, T. (2026). **TogoMCP: Natural Language Querying of Life-Science Knowledge Graphs via Schema-Guided LLMs and the Model Context Protocol**. *Database* **2026**:baag042. https://doi.org/10.1093/database/baag042
 
-The benchmark consists of 100 biologically grounded questions spanning five question types and 34 RDF Portal databases, designed to evaluate TogoMCP's ability to answer biological questions that require live access to RDF knowledge graphs.
+The benchmark consists of 100 biologically grounded questions spanning five question types and 34 RDF Portal databases, designed to evaluate TogoMCP's ability to answer biological questions that require live access to RDF knowledge graphs. (The TogoMCP catalog has since grown to 36 databases; the two added after the set was frozen — `supercon` and `ontology` — are not exercised by these questions.)
 
 ---
 
@@ -45,8 +45,14 @@ benchmark/
 │   ├── togomcp_*_analysis.md                   # Per-comparison reports (current batch)
 │   ├── reevaluation.md                         # Re-evaluation design notes
 │   └── rev0/                                   # Prior batch (Feb–Mar 2026, Opus 4.6 judge)
-└── examples/                     # Example dialogue logs
+└── studies/                      # Investigations run *with* the benchmark (not the benchmark itself)
+    ├── ablation/                 # MIE-subcomponent leave-one-out / leave-one-in ablation harness (+ FINDINGS)
+    ├── conditions/               # Condition ablation harness (usage-guide / MIE), multi-judge
+    ├── redesign/                 # The MIE v3 redesign investigation (mie_v3 staging, release/smoke gates, FINDINGS)
+    └── examples/                 # Example dialogue logs (skill demos)
 ```
+
+The top level is **the benchmark** (questions, collection/eval scripts, paper results, protocol docs). `studies/` holds larger investigations that were *built on* the benchmark — each has its own README; they reach up to `../../questions` and `../../scripts`. The paper's results live in `results/` and are left untouched.
 
 ---
 
@@ -68,7 +74,7 @@ The 100 questions were created following a strict type-first protocol (`QA_CREAT
 - Multi-database questions (2+ databases): ≥ 60%
 - Multi-database questions (3+ databases): ≥ 20%
 - UniProt usage cap: ≤ 70%
-- All 34 RDF Portal databases covered at least once
+- All 34 RDF Portal databases (the TogoMCP catalog at the time the set was frozen) covered at least once
 
 Questions were validated to exclude answers recoverable from pre-training data or the published literature (PubMed test), ensuring that RDF database access is necessary to answer them correctly.
 
@@ -79,11 +85,13 @@ Four experimental conditions were evaluated (see paper §Ablation Study):
 | Condition | Config file | Description |
 |-----------|-------------|-------------|
 | **With Guide** | `config.yaml` | Full TogoMCP system with Usage Guide |
-| **NG1** | `config_no_guide1.yaml` | No Usage Guide, but with an explicit instruction to call `list_databases` and `get_MIE_file` before querying |
+| **NG1** | `config_no_guide1.yaml` | No Usage Guide, but with an explicit instruction to call `list_databases` and `get_MIE_file` before querying [†] |
 | **NG2** | `config_no_guide2.yaml` | No Usage Guide, no MIE instruction |
 | **No MIE** | `config_no_mie.yaml` | `get_MIE_file` tool excluded entirely |
 
 Each condition was compared against a **baseline** agent (Claude Sonnet 4.5, no tools) run in the same session.
+
+> [†] The `list_databases` tool named in the NG1 instruction has since been **retired** (the database catalog moved into the generated Usage Guide, `02b_database_catalog.md`). The condition and its config are preserved as-run for the paper; re-running NG1 today, the instruction to call `list_databases` simply no-ops.
 
 ---
 

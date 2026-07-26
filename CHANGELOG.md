@@ -25,7 +25,7 @@ into one atomic unit. All 36 served MIEs were rebuilt; the corpus is **50.9% sma
 answering + judging): judge score flat within the declared ±0.5 margin (paired Δ **+0.29/20**, 95%
 CI [−0.09, +0.68]), factoid correctness **up** (+1.0 on factoid questions), and measured runtime
 **−15% input tokens / −15% cost / −6% latency**. Durable record:
-`benchmark/redesign/release/FINDINGS.md`.
+`benchmark/studies/redesign/release/FINDINGS.md`.
 
 MAJOR because the discovery trio is removed from the tool surface.
 
