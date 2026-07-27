@@ -13,9 +13,13 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+<!-- whatsnew: 2026-07 | Published in <em>Database</em> — <a href="https://doi.org/10.1093/database/baag042" target="_blank" rel="noopener">2026:baag042</a>. -->
+
 _Nothing yet._
 
 ## [2.0.0] - 2026-07-24
+
+<!-- whatsnew: 2026-07-24 | The database knowledge files (MIE) were rewritten to a leaner format — about half the size, with faster and more reliable query construction. The three database-discovery tools (<code>list_databases</code>, <code>find_databases</code>, <code>list_categories</code>) were consolidated into the built-in Usage Guide, which now carries a catalog of all 36 databases. -->
 
 The MIE-format redesign (**v3**). A ground-up rewrite of every MIE around verified, executable
 worked examples — the load-bearing query-construction content the 2026-07 ablations isolated —
@@ -95,6 +99,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
   graphs) — a single-graph pin returns empty for a leg whose data lives in a sibling.
 
 ## [1.7.0] - 2026-07-17
+
+<!-- whatsnew: 2026-07-17 | Query results are more trustworthy: <code>get_MIE_file</code> now leads with each database's "traps" (mandatory filters, namespace pitfalls, and shared-graph count inflation), and all 36 databases document cross-graph co-tenancy so counts aren't silently inflated. -->
 
 ### Added
 

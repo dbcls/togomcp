@@ -7,6 +7,7 @@ It is developed by DBCLS.
 ## Goal
 Create an HTML page for researchers in biology and medicine who are not necessarily familiar with bioinformatics, explaining what TogoMCP is and how it can help their research. It should contain the following.
 - Summary of TogoMCP
+- What's new
 - Publication
 - Usage examples
 - Setup guide
@@ -17,6 +18,15 @@ Create an HTML page for researchers in biology and medicine who are not necessar
 - Source code
 
 ## Summary
+
+## What's new
+A short, curated list of the most recent **user-facing** updates (new databases, new/changed tools, capability changes) — the newest ~5, each one line with a date, newest first. A light section immediately after Summary, with a "What's New" menu-tab entry after Summary.
+
+- **GENERATED, not hand-edited.** The `<li>` items live between `<!-- WHATSNEW:START -->` / `<!-- WHATSNEW:END -->` sentinels and are rendered by `scripts/generate_whatsnew.py` from markers in `CHANGELOG.md`. Do not edit the items by hand.
+- **Source of truth: `CHANGELOG.md` markers.** Add one HTML-comment marker where the change is recorded (under its release heading, or `[Unreleased]` for non-release news):
+  `<!-- whatsnew: 2026-07-24 | one user-facing sentence (may use <code>/<em>/<a>) -->`
+  Include only what a *user* would notice; skip internal refactors/tests. Then run `python scripts/generate_whatsnew.py`. The `whatsnew.yml` CI + `tests/test_whatsnew_in_sync.py` fail if the page is stale.
+- End with a "Full changelog →" link to `https://github.com/dbcls/togomcp/blob/main/CHANGELOG.md`.
 
 ## Publication
 Cite the paper using the reference from the top-level `README.md`:
@@ -133,6 +143,7 @@ The footer should include the following
 - The menu tab should be sticky so the user can always see it when scrolling.
 - The menu tab should include the pointers to all the sections.
   * Summary
+  * What's New
   * Publication
   * Examples
   * Setup

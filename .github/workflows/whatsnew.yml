@@ -1,0 +1,47 @@
+name: What's New
+
+# The "What's New" list on the public intro page
+# (togo_mcp/data/docs/togomcp-intro.html, the #whats-new section) is GENERATED
+# from the `<!-- whatsnew: DATE | text -->` markers in CHANGELOG.md by
+# scripts/generate_whatsnew.py. If the markers change and the page is not
+# regenerated, the landing page silently goes stale — the same class of drift
+# the catalog guard covers, enforced the same way.
+#
+# Deliberately narrow: fires ONLY when an input changes (CHANGELOG.md, the
+# generator, or the committed page), and asks ONLY that the page equals
+# `--check`. It fixes nothing and polices nothing else.
+
+on:
+  pull_request:
+    paths:
+      - "CHANGELOG.md"
+      - "togo_mcp/data/docs/togomcp-intro.html"
+      - "scripts/generate_whatsnew.py"
+  push:
+    branches: [main]
+    paths:
+      - "CHANGELOG.md"
+      - "togo_mcp/data/docs/togomcp-intro.html"
+      - "scripts/generate_whatsnew.py"
+
+permissions:
+  contents: read
+
+jobs:
+  whatsnew-in-sync:
+    name: Intro page What's New is in sync with the CHANGELOG markers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: What's New must equal the generator output
+        run: |
+          set -euo pipefail
+          if ! python scripts/generate_whatsnew.py --check; then
+            echo "::error file=togo_mcp/data/docs/togomcp-intro.html::What's New is stale. Run: python scripts/generate_whatsnew.py, then commit the result."
+            exit 1
+          fi
