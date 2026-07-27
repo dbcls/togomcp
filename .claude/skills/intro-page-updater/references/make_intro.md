@@ -51,9 +51,9 @@ Read the following files that contain example conversations.
 Give the prompt of each session, followed by a summary of the response.
 Include the description of the TogoMCP tools used.
 
-- togo_mcp/data/docs/example1.md
-- togo_mcp/data/docs/example2.md
-- togo_mcp/data/docs/example3.md
+- example1.md   (alongside this spec, in the skill's references/)
+- example2.md
+- example3.md
 
 Each example should be presented in the following form:
 ```

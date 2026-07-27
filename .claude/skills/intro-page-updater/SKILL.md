@@ -1,6 +1,6 @@
 ---
 name: intro-page-updater
-description: Update the public TogoMCP intro/landing page at `togo_mcp/data/docs/togomcp-intro.html` whenever the catalog of databases, the catalog of MCP tools, or any other surface fact shown on the page changes. Trigger when the user adds/removes/renames a database (MIE file, `endpoints.csv` row), adds/removes/renames a tool (any `@mcp.tool` decorator in `togo_mcp/*.py`), updates the preprint citation, changes setup instructions for a host (Claude/ChatGPT/Gemini), revises the recommended companion MCP servers, or otherwise edits something the landing page advertises. Also trigger when the user says "update the intro page", "regenerate the landing page", "refresh togomcp-intro.html", "the intro is out of date", or similar — even if they don't name the file. Spec for what the page should contain is `togo_mcp/data/docs/make_intro.md`; the rendered page is `togo_mcp/data/docs/togomcp-intro.html`.
+description: Update the public TogoMCP intro/landing page at `togo_mcp/data/docs/togomcp-intro.html` whenever the catalog of databases, the catalog of MCP tools, or any other surface fact shown on the page changes. Trigger when the user adds/removes/renames a database (MIE file, `endpoints.csv` row), adds/removes/renames a tool (any `@mcp.tool` decorator in `togo_mcp/*.py`), updates the preprint citation, changes setup instructions for a host (Claude/ChatGPT/Gemini), revises the recommended companion MCP servers, or otherwise edits something the landing page advertises. Also trigger when the user says "update the intro page", "regenerate the landing page", "refresh togomcp-intro.html", "the intro is out of date", or similar — even if they don't name the file. Spec for what the page should contain is this skill's `references/make_intro.md`; the rendered page is `togo_mcp/data/docs/togomcp-intro.html`.
 ---
 
 # TogoMCP Intro Page Updater
@@ -15,7 +15,7 @@ The intro page (`togo_mcp/data/docs/togomcp-intro.html`) is the public landing p
 
 | File                                          | Role                                                  |
 |-----------------------------------------------|-------------------------------------------------------|
-| `togo_mcp/data/docs/make_intro.md`            | Spec — what the page should contain, style requirements |
+| `references/make_intro.md` (in this skill)    | Spec — what the page should contain, style requirements |
 | `togo_mcp/data/docs/togomcp-intro.html`       | Rendered page — the artifact users see                  |
 
 If a structural change crosses what the spec says (e.g. a new top-level section, a new menu tab), update **both** files. For routine catalog updates (a new database card, a renamed tool), only the HTML changes.
