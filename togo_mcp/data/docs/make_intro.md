@@ -104,11 +104,16 @@ The footer should include the following
     <img src="https://dbcls.rois.ac.jp/img/logo_dbcls.svg" alt="" class="footer__logo">
     <div class='footer__organism-text'>
         <p class="footer__organism-main">Database Center for Life Science</p>
-        <p class="footer__organism-sub">Joint Support-Center for Data Science Research</p>
+        <p class="footer__organism-sub">BioData Science Initiative (BSI)</p>
+        <p class="footer__organism-sub">National Institute of Genetics</p>
         <p class="footer__organism-sub">Research Organization of Information and Systems</p>
     </div>
 ```
-- Also add the link to each item.
+- Also add the link to each item in the organisation block:
+  * Database Center for Life Science → https://dbcls.rois.ac.jp/en/
+  * BioData Science Initiative (BSI) → https://bsi.rois.ac.jp/
+  * National Institute of Genetics → https://www.nig.ac.jp/en/
+  * Research Organization of Information and Systems → https://www.rois.ac.jp/en/
 - Below the organisation block, include a row of footer links (`.footer-links`):
   * [DBCLS Home](https://dbcls.rois.ac.jp/en/)
   * [TogoMCP Home](https://togomcp.rdfportal.org/)
