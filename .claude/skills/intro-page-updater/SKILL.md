@@ -1,6 +1,6 @@
 ---
 name: intro-page-updater
-description: Update the public TogoMCP intro/landing page at `togo_mcp/data/docs/togomcp-intro.html` whenever the catalog of databases, the catalog of MCP tools, or any other surface fact shown on the page changes. Trigger when the user adds/removes/renames a database (MIE file, `endpoints.csv` row), adds/removes/renames a tool (any `@mcp.tool` decorator in `togo_mcp/*.py`), updates the preprint citation, changes setup instructions for a host (Claude/ChatGPT/Gemini), revises the recommended companion MCP servers, or otherwise edits something the landing page advertises. Also trigger when the user says "update the intro page", "regenerate the landing page", "refresh togomcp-intro.html", "the intro is out of date", or similar — even if they don't name the file. Spec for what the page should contain is `togo_mcp/data/docs/make_intro.md`; the rendered page is `togo_mcp/data/docs/togomcp-intro.html`.
+description: Update the public TogoMCP intro/landing page at `togo_mcp/data/docs/togomcp-intro.html` whenever the catalog of databases, the catalog of MCP tools, or any other surface fact shown on the page changes. Trigger when the user adds/removes/renames a database (MIE file, `endpoints.csv` row), adds/removes/renames a tool (any `@mcp.tool` decorator in `togo_mcp/*.py`), updates the preprint citation, changes setup instructions for a host (Claude/ChatGPT/Gemini), revises the recommended companion MCP servers, or otherwise edits something the landing page advertises. Also trigger when the user says "update the intro page", "regenerate the landing page", "refresh togomcp-intro.html", "the intro is out of date", or similar — even if they don't name the file. Spec for what the page should contain is this skill's `references/make_intro.md`; the rendered page is `togo_mcp/data/docs/togomcp-intro.html`.
 ---
 
 # TogoMCP Intro Page Updater
@@ -15,7 +15,7 @@ The intro page (`togo_mcp/data/docs/togomcp-intro.html`) is the public landing p
 
 | File                                          | Role                                                  |
 |-----------------------------------------------|-------------------------------------------------------|
-| `togo_mcp/data/docs/make_intro.md`            | Spec — what the page should contain, style requirements |
+| `references/make_intro.md` (in this skill)    | Spec — what the page should contain, style requirements |
 | `togo_mcp/data/docs/togomcp-intro.html`       | Rendered page — the artifact users see                  |
 
 If a structural change crosses what the spec says (e.g. a new top-level section, a new menu tab), update **both** files. For routine catalog updates (a new database card, a renamed tool), only the HTML changes.
@@ -34,6 +34,7 @@ When a section is out of date, do not re-derive it from memory. Read the canonic
 | **Related Resources**    | `make_intro.md` (RDF Portal, TogoID, DBCLS) — verify URLs are alive                    |
 | **Source code**          | `https://github.com/dbcls/togomcp` (DBCLS canonical repo)                              |
 | **Hero endpoint URL**    | The production MCP endpoint: `https://togomcp.rdfportal.org/mcp`                       |
+| **What's New**           | Curated user-facing highlights from `CHANGELOG.md` (released entries only) — see Scenario 6 |
 
 ## Triggering edits — common scenarios
 
@@ -82,6 +83,20 @@ Delete the `<div class="tool-item">` block. Also check **Examples** (the three `
 
 For URLs in the Setup Guide, footer, or Related Resources: when changing, verify the URL is alive (e.g. with `WebFetch` or by checking the documented support article still exists). Dead links on the landing page are worse than missing entries.
 
+### Scenario 6: Keep "What's New" fresh (cross-cutting — GENERATED)
+
+The `#whats-new` section (a `.whatsnew-list` of dated one-line entries, right after Summary) is **generated, not hand-edited**: its `<li>` items sit between `<!-- WHATSNEW:START -->` / `<!-- WHATSNEW:END -->` sentinels and are produced by `scripts/generate_whatsnew.py` from `<!-- whatsnew: … -->` markers in `CHANGELOG.md`. **Do not edit the items directly** — you'd be overwritten by the next generator run, and `whatsnew.yml` CI / `tests/test_whatsnew_in_sync.py` would flag the drift.
+
+**Whenever Scenario 1–5 fires — a database or tool is added / removed / renamed, or a user-visible capability changes — add a marker to `CHANGELOG.md` and regenerate:**
+
+1. Under the relevant release heading (or `[Unreleased]` for non-release news), add:
+   `<!-- whatsnew: 2026-07-24 | one user-facing sentence -->`
+   - User-facing only (new DB, new/renamed/removed tool, format/capability change a *user* notices); skip internal refactors/tests.
+   - Date is `YYYY-MM` or `YYYY-MM-DD`. Text is trusted inline HTML — plain, non-marketing tone; use `<code>` for tool names, `<em>`/`<a>` as needed; no literal `-->`.
+2. Run `python scripts/generate_whatsnew.py` and commit the updated HTML alongside the CHANGELOG.
+
+Only the newest ~5 markers render. A **stale** What's New reads as abandonment — worse than none — so if you touch the page for any surface change and the top entry is old, add a marker for what just changed.
+
 ## Style guide — conventions baked into the existing page
 
 These are not strict rules but the patterns to match unless there's a reason to deviate:
@@ -102,6 +117,7 @@ These are not strict rules but the patterns to match unless there's a reason to 
 - [ ] Preprint citation matches the top-level `README.md`
 - [ ] No reference to a deprecated tool (e.g. `get_shex`, `get_sparql_example` — both removed) anywhere on the page
 - [ ] Sticky nav `<ul>` items still match the actual `<section id="…">` anchors
+- [ ] If this edit was a DB/tool/capability change, `#whats-new` has a fresh dated entry (Scenario 6) and the list is ~3–5 items, newest first
 
 ## Common pitfalls
 

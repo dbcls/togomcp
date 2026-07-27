@@ -7,6 +7,7 @@ It is developed by DBCLS.
 ## Goal
 Create an HTML page for researchers in biology and medicine who are not necessarily familiar with bioinformatics, explaining what TogoMCP is and how it can help their research. It should contain the following.
 - Summary of TogoMCP
+- What's new
 - Publication
 - Usage examples
 - Setup guide
@@ -17,6 +18,15 @@ Create an HTML page for researchers in biology and medicine who are not necessar
 - Source code
 
 ## Summary
+
+## What's new
+A short, curated list of the most recent **user-facing** updates (new databases, new/changed tools, capability changes) — the newest ~5, each one line with a date, newest first. A light section immediately after Summary, with a "What's New" menu-tab entry after Summary.
+
+- **GENERATED, not hand-edited.** The `<li>` items live between `<!-- WHATSNEW:START -->` / `<!-- WHATSNEW:END -->` sentinels and are rendered by `scripts/generate_whatsnew.py` from markers in `CHANGELOG.md`. Do not edit the items by hand.
+- **Source of truth: `CHANGELOG.md` markers.** Add one HTML-comment marker where the change is recorded (under its release heading, or `[Unreleased]` for non-release news):
+  `<!-- whatsnew: 2026-07-24 | one user-facing sentence (may use <code>/<em>/<a>) -->`
+  Include only what a *user* would notice; skip internal refactors/tests. Then run `python scripts/generate_whatsnew.py`. The `whatsnew.yml` CI + `tests/test_whatsnew_in_sync.py` fail if the page is stale.
+- End with a "Full changelog →" link to `https://github.com/dbcls/togomcp/blob/main/CHANGELOG.md`.
 
 ## Publication
 Cite the paper using the reference from the top-level `README.md`:
@@ -41,9 +51,9 @@ Read the following files that contain example conversations.
 Give the prompt of each session, followed by a summary of the response.
 Include the description of the TogoMCP tools used.
 
-- togo_mcp/data/docs/example1.md
-- togo_mcp/data/docs/example2.md
-- togo_mcp/data/docs/example3.md
+- example1.md   (alongside this spec, in the skill's references/)
+- example2.md
+- example3.md
 
 Each example should be presented in the following form:
 ```
@@ -104,11 +114,16 @@ The footer should include the following
     <img src="https://dbcls.rois.ac.jp/img/logo_dbcls.svg" alt="" class="footer__logo">
     <div class='footer__organism-text'>
         <p class="footer__organism-main">Database Center for Life Science</p>
-        <p class="footer__organism-sub">Joint Support-Center for Data Science Research</p>
+        <p class="footer__organism-sub">BioData Science Initiative (BSI)</p>
+        <p class="footer__organism-sub">National Institute of Genetics</p>
         <p class="footer__organism-sub">Research Organization of Information and Systems</p>
     </div>
 ```
-- Also add the link to each item.
+- Also add the link to each item in the organisation block:
+  * Database Center for Life Science → https://dbcls.rois.ac.jp/en/
+  * BioData Science Initiative (BSI) → https://bsi.rois.ac.jp/
+  * National Institute of Genetics → https://www.nig.ac.jp/en/
+  * Research Organization of Information and Systems → https://www.rois.ac.jp/en/
 - Below the organisation block, include a row of footer links (`.footer-links`):
   * [DBCLS Home](https://dbcls.rois.ac.jp/en/)
   * [TogoMCP Home](https://togomcp.rdfportal.org/)
@@ -128,6 +143,7 @@ The footer should include the following
 - The menu tab should be sticky so the user can always see it when scrolling.
 - The menu tab should include the pointers to all the sections.
   * Summary
+  * What's New
   * Publication
   * Examples
   * Setup

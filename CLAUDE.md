@@ -54,7 +54,7 @@ The version in `pyproject.toml` is read at runtime via `importlib.metadata` and 
 **A `dev → main` PR that bumps the version is a release. All four steps below are required — do not do only the first:**
 
 1. **Bump** `pyproject.toml` + sync `uv.lock` in the same commit.
-2. **Add a dated `CHANGELOG.md` section** (`## [x.y.z] - YYYY-MM-DD`) and move anything under `[Unreleased]` that ships in it; add the compare link at the foot of the file. CI enforces the heading ([changelog.yml](.github/workflows/changelog.yml)) but not its quality — write for someone diffing two versions, and say *why* a change matters, not just what moved.
+2. **Add a dated `CHANGELOG.md` section** (`## [x.y.z] - YYYY-MM-DD`) and move anything under `[Unreleased]` that ships in it; add the compare link at the foot of the file. CI enforces the heading ([changelog.yml](.github/workflows/changelog.yml)) but not its quality — write for someone diffing two versions, and say *why* a change matters, not just what moved. **If the release has a user-facing highlight** (new database/tool, a capability or format change a user would notice), add a `<!-- whatsnew: YYYY-MM-DD | one sentence -->` marker under the heading and run `python scripts/generate_whatsnew.py` to refresh the intro page's "What's New" (drift-guarded by [whatsnew.yml](.github/workflows/whatsnew.yml) + `tests/test_whatsnew_in_sync.py`).
 3. **Merge via PR** to `main` (every release since #23 has; `gh pr create --base main --head dev`).
 4. **Tag the MERGE commit** — `git tag vX.Y.Z <merge-sha> && git push origin vX.Y.Z`. Lightweight tags on the merge, not the bump: that is what every existing tag points at. **Not every merge is a release** — a docs-only merge (e.g. #157) carries no bump and gets no tag.
 
