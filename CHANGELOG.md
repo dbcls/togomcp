@@ -46,6 +46,12 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   duplicates GO labels against UniProt's own `go` graph — the labels agree, so the duplicate reads as
   a legitimate multi-valued label and `DISTINCT` hides it, while the `subClassOf` sets differ. All 12
   examples re-executed live. Doubles as the TIER_C acceptance run for the v3 authoring tooling.
+- **UniProt MIE: GO labels come from EIGHT graphs, not two.** The `go_label_duplication` trap added
+  earlier in this cycle understated itself ×2 because it was derived from a single GO term. Measured
+  across a real protein's annotations, an unpinned `?goTerm rdfs:label ?l` returns 238 rows for 70
+  terms (~3.4x) — and two of the eight sources are UniProt's *own* `keywords` and `locations` graphs,
+  so pinning "UniProt's graphs" does not fix it. Corrected, and now demonstrated by a new verified
+  `go_label_pin` example rather than described in prose.
 - **`get_sparql_endpoints` no longer advertises a nonexistent tool for MeSH.** The
   `keyword_search_api` column in `endpoints.csv` named `search_mesh_entity`; the tool is
   `search_mesh_descriptor`. All 36 rows were audited — this was the only bad value.

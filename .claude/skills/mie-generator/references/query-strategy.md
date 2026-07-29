@@ -1,6 +1,6 @@
 # Query Strategy
 
-This file contains the detailed query design guidance for writing the `examples` in a v3 MIE file. Read it before designing the example set in Phase 3 of the main workflow. It is format-neutral — the strategy hierarchy is the same whatever the file layout; only the section names changed in v3 (`examples` with a `verified:` block per query, not a fixed `sparql_query_examples` count).
+This file contains the detailed query design guidance for writing the `examples` in a v3 MIE file. Read it before designing the example set in Phase 3 of the main workflow. The strategy hierarchy is independent of file layout: it governs what each `examples` entry should be, and every entry carries its own `verified:` block — there is no fixed example count to hit.
 
 ## Query design hierarchy
 

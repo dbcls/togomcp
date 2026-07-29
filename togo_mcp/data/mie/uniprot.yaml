@@ -69,13 +69,17 @@ global_gotchas:                    # the few that bite ANY query — verified 20
       DISTINCT can't fully mask it. FIX = pin `GRAPH <http://sparql.uniprot.org/taxonomy>`, not DISTINCT.
   - id: go_label_duplication
     say: >
-      GO terms are declared TWICE on this endpoint: UniProt's own <http://sparql.uniprot.org/go> AND the co-hosted
-      <http://rdfportal.org/ontology/go>. Both carry rdfs:label and rdfs:subClassOf for the same obo:GO_* IRI, so an
-      unpinned `?goTerm rdfs:label ?l` returns ×2 rows. The LABELS AGREE (both "protein kinase activity" for GO_0004672),
-      which is what makes it dangerous — the duplicate looks like a legitimate multi-valued label, and DISTINCT hides it.
-      The subClassOf sets DIFFER (7 vs 3 for GO_0004672), so a hierarchy walk gives a different answer depending on the
-      graph. FIX = pin `GRAPH <http://sparql.uniprot.org/go>` when reading GO labels or hierarchy alongside UniProt data.
-      Annotation lookups (`up:classifiedWith obo:GO_*`) are unaffected — they touch neither graph.
+      GO term rdfs:label is supplied by EIGHT graphs on this endpoint, so an unpinned `?goTerm rdfs:label ?l`
+      multiplies rows ~3.4× (measured: P01308's 70 GO terms -> 238 rows; see example `go_label_pin`). Sources:
+      UniProt's own go (70) + co-hosted rdfportal.org/ontology/go (70, a full duplicate) + ontology/cl (40),
+      ontology/uberon (36), ontology/efo (5), bgee (2) — which import GO terms — AND UniProt's OWN keywords (8)
+      and locations (7) graphs. The multiplier VARIES per term (how many ontologies import it), so it is not a
+      fixed factor you can divide out. The LABELS AGREE, which is what makes it dangerous: the duplicate looks
+      like a legitimate multi-valued label and DISTINCT hides it. rdfs:subClassOf sets DIFFER between graphs
+      (7 vs 3 for GO_0004672), so a hierarchy walk answers differently depending on which graph it reads.
+      FIX = pin `GRAPH <http://sparql.uniprot.org/go>` — note that pinning "UniProt's graphs" is NOT enough,
+      since keywords and locations are UniProt-owned and still contribute. Annotation lookups
+      (`up:classifiedWith obo:GO_*`) are unaffected — they never touch a label.
 
   - id: no_protein_label
     say: "up:Protein has NO rdfs:label. Names come from up:recommendedName/up:fullName (Swiss-Prot) or up:submittedName/up:fullName (TrEMBL). rdfs:label on a protein -> 0 rows silently."
@@ -123,6 +127,31 @@ examples:
     traps_avoided:
       - "GO terms are OBO IRIs (obo:GO_XXXXXXX), NOT purl.uniprot.org/go/ — wrong namespace returns 0 rows silently."
       - "up:classifiedWith ALSO carries UniProt keywords (purl.uniprot.org/keywords/NNN); if mixing, distinguish by FILTER(STRSTARTS(STR(?x), ...))."
+
+  - id: go_label_pin
+    intent: read GO term LABELS alongside UniProt annotations without the eight-graph label duplication
+    question: "Which GO terms is human insulin (P01308) annotated with, and what are their labels?"
+    complexity: intermediate
+    sparql: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?goTerm ?label
+      WHERE {
+        GRAPH <http://sparql.uniprot.org/uniprot> {
+          uniprot:P01308 up:classifiedWith ?goTerm .
+          FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))   # classifiedWith also carries keywords
+        }
+        GRAPH <http://sparql.uniprot.org/go> { ?goTerm rdfs:label ?label . }      # THE PIN — without it, 238 rows
+      }
+      ORDER BY ?label
+    verified: {result_rows: 70, distinct_terms: 70, date: "2026-07-29",
+               first_rows: "G protein-coupled receptor signaling pathway; Golgi lumen; Golgi membrane; acute-phase response"}
+    teaches: "Pin BOTH sides when labelling GO terms: the annotation from the uniprot graph, the label from sparql.uniprot.org/go. Rows then equal distinct terms (70 = 70) — the 1:1 you should always sanity-check on a label join."
+    traps_avoided:
+      - "Unpinned, this returns 238 rows for the same 70 terms (~3.4x) — eight graphs supply GO rdfs:label. The labels AGREE, so nothing looks wrong; it reads as a legitimately multi-valued label (gotcha go_label_duplication)."
+      - "Pinning only `sparql.uniprot.org/uniprot` does NOT fix it: keywords and locations are also UniProt-owned graphs supplying GO labels. Pin the `go` graph specifically."
+      - "DISTINCT is the wrong instrument here — it would collapse the 238 to 70 and hide a duplication you need to see. The row-count-equals-term-count check is what tells you the join is clean."
 
   - id: keyword_enum
     intent: enumerate ALL proteins carrying a UniProt keyword (domain / feature / function) — the classification route

@@ -75,9 +75,26 @@ against an already-covered DB have still never been exercised. Do those at the n
    Nothing states which wins. The exemption was applied and P04637 retained (the four TP53 examples
    concern variants/FALDO/OMA/Bgee, none touching q099's KW-0325 glycoprotein count) — but the next
    author hits the same fork with no guidance.
-2. **No size guidance for a v3→v3 revision.** The Quality bar's "clearly smaller than the v2 file it
-   replaces" is a conversion criterion. This revision grew +11% (22,294 → 24,837 bytes) entirely from
-   new verified content, and there is no stated bar for when revision growth is legitimate.
+2. ~~**No size guidance for a v3→v3 revision.**~~ **RESOLVED 2026-07-29.** The Quality bar's "clearly
+   smaller" was a *proxy detector* for v2's 4× restatement, not a value in itself — meaningless for a
+   revision, and harmful as a target (the only way to hit a byte goal is deleting verified content).
+   Measuring the revision exposed the real defect underneath: `examples` grew by **0 bytes** while
+   `global_gotchas` (+1,257) and `graphs` (+681) absorbed everything, dropping the examples share
+   **75.1% → 68.1%** — i.e. the whole budget went to the section the ablation found *not* significant,
+   in a file where query content carries ~99% of the effect. And it is a **ratchet**: refreshes find
+   new traps and essentially never delete old ones, so composition drifts monotonically across
+   revisions in a way no single-file check can see.
+   Replaced with (a) a composition bar — `examples` share, corpus mean **64%** (sd 4, range 53–73),
+   flagged below ~60% or on a >5-point drop across a revision; and (b) a **placement test**: a finding
+   with a positive route belongs in `examples` + `traps_avoided`, and `global_gotchas` is only for
+   traps with no single demonstrable fix (§4.4 generalized from enumeration to all traps).
+   Applied to the trigger case: `go_label_duplication` had a positive route (pin the `go` graph) and
+   no example demonstrated it, so it became the `go_label_pin` example — which recovered the share to
+   69.6%. The remaining −5.5 pts is legitimate (a graph inventory and a mandatory-filter gotcha have
+   no query form) but the rule correctly forces that to be *stated* rather than assumed.
+   The skill was also made **v3-self-contained** in the same pass: all v2 references removed from
+   `SKILL.md`, `mie-structure.md`, `anti-patterns.md`, `query-strategy.md`. `enumeration_audit.md`
+   keeps its v2 column deliberately — it is a dated audit record whose content *is* the v2 status.
 
 ### Related, but outside this task's scope
 

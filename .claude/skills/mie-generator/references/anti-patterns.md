@@ -1,7 +1,6 @@
 # Traps: `global_gotchas` and `traps_avoided` (v3)
 
-v3 has **no `anti_patterns` section**. The trap knowledge that v2 packed into
-`anti_patterns` / `critical_warnings` / `common_errors` now lives in two places,
+There is **no `anti_patterns` section**. Trap knowledge lives in two places,
 split by scope (spec §4.2 — one fact, one place):
 
 - **`global_gotchas`** (header) — the 2–5 traps that bite **ANY** query on this
@@ -43,9 +42,8 @@ back to text matching:
 
 ## The four universal traps and where they go
 
-These held in v2 as the four mandatory anti-patterns. In v3 they are mostly
-**`teaches`/`traps_avoided` on the enumeration and lookup examples**, or a
-`global_gotchas` entry when they are database-wide.
+These four are mostly **`teaches`/`traps_avoided` on the enumeration and lookup
+examples**, or a `global_gotchas` entry when they are database-wide.
 
 ### 1. Text search when a structured property exists
 
