@@ -13,7 +13,20 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **ChatGPT setup guide: the plan tiers are now stated, and stated correctly.** 2.1.0 removed the tier
+  claim on the grounds that sources disagreed irreconcilably. They didn't — the disagreement was between
+  a dated, authoritative source and an undated stale one. OpenAI's help-center article (revised
+  2026-07-28) is unambiguous: Business/Enterprise/Edu get full MCP and an admin must *publish* the app;
+  **Pro is read/fetch only**; **Plus cannot use custom MCP connectors at all**. The
+  `developers.openai.com` guide the page had been pointing at claims all five tiers get full read+write,
+  and is wrong on both Plus and Pro; it carries no date or changelog, which is what made its staleness
+  invisible. Note the help-center article is Cloudflare-blocked to WebFetch *and* to curl with a browser
+  UA, so it can only be checked by a human in a browser — a 403 there is not a dead link.
+  Stating the tiers matters: a Plus user following the old steps would simply fail with no explanation.
+  Also corrected the menu path (**Settings → Apps**, not "Apps & Connectors"), added the Scan Tools and
+  admin-publish steps, and noted that Developer Mode is web-only.
 
 ## [2.1.0] - 2026-07-29
 
