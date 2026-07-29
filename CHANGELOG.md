@@ -15,6 +15,23 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 _Nothing yet._
 
+## [2.1.1] - 2026-07-29
+
+### Fixed
+
+- **ChatGPT setup guide: the plan tiers are now stated, and stated correctly.** 2.1.0 removed the tier
+  claim on the grounds that sources disagreed irreconcilably. They didn't — the disagreement was between
+  a dated, authoritative source and an undated stale one. OpenAI's help-center article (revised
+  2026-07-28) is unambiguous: Business/Enterprise/Edu get full MCP and an admin must *publish* the app;
+  **Pro is read/fetch only**; **Plus cannot use custom MCP connectors at all**. The
+  `developers.openai.com` guide the page had been pointing at claims all five tiers get full read+write,
+  and is wrong on both Plus and Pro; it carries no date or changelog, which is what made its staleness
+  invisible. Note the help-center article is Cloudflare-blocked to WebFetch *and* to curl with a browser
+  UA, so it can only be checked by a human in a browser — a 403 there is not a dead link.
+  Stating the tiers matters: a Plus user following the old steps would simply fail with no explanation.
+  Also corrected the menu path (**Settings → Apps**, not "Apps & Connectors"), added the Scan Tools and
+  admin-publish steps, and noted that Developer Mode is web-only.
+
 ## [2.1.0] - 2026-07-29
 
 <!-- whatsnew: 2026-07-29 | All tools now declare themselves <strong>read-only</strong> in the MCP protocol, so clients such as ChatGPT no longer treat every query as a write action needing confirmation. -->
@@ -580,7 +597,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.1.1...HEAD
+[2.1.1]: https://github.com/dbcls/togomcp/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/dbcls/togomcp/compare/v2.0.2...v2.1.0
 [2.0.2]: https://github.com/dbcls/togomcp/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/dbcls/togomcp/compare/v2.0.0...v2.0.1
