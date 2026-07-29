@@ -297,6 +297,24 @@ except PackageNotFoundError:  # not installed as a distribution (source-tree run
 
 mcp = FastMCP("TogoMCP: RDF Portal MCP Server", version=_TOGOMCP_VERSION)
 
+# Every tool this server exposes is a query, search, or ID conversion — nothing
+# writes to any database. Say so in the protocol rather than only in prose: a
+# client cannot infer it from the tool name, and the MCP default is the unsafe
+# one. OpenAI's ChatGPT developer-mode docs are explicit that "tools without this
+# hint are treated as write actions", which means an unannotated read-only server
+# gets a confirmation prompt on EVERY call, and can be refused outright by a plan
+# that only permits read/search connectors. Claude and other clients use the same
+# hint to decide what may be auto-approved.
+#
+# `openWorldHint` is True because every tool reaches an external endpoint (RDF
+# Portal SPARQL, NCBI, TogoID, …) rather than a closed local dataset.
+# `destructiveHint`/`idempotentHint` are deliberately unset: the MCP spec defines
+# both as meaningful only when readOnlyHint is false.
+#
+# Apply this to EVERY new tool — a tool without it silently reverts to being
+# treated as a writer. `tests/test_tool_descriptions.py` enforces it.
+READ_ONLY_TOOL = {"readOnlyHint": True, "openWorldHint": True}
+
 
 from fastmcp.server.middleware import Middleware as _Middleware
 import inspect as _inspect

@@ -28,7 +28,7 @@ def _is_system_graph(graph: str) -> bool:
     return any(pat in g for pat in _SYSTEM_GRAPH_PATTERNS)
 
 
-@mcp.tool(name="TogoMCP_Usage_Guide")
+@mcp.tool(name="TogoMCP_Usage_Guide", annotations=READ_ONLY_TOOL)
 def togomcp_usage_guide() -> str:
     """
     ⚠️ CALL THIS TOOL FIRST every turn, before any other TogoMCP tool.
@@ -70,7 +70,7 @@ def togomcp_usage_guide() -> str:
 # --- Tools for RDF Portal --- #
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_TOOL)
 async def get_sparql_endpoints() -> dict[str, Any]:
     """Get the available SPARQL endpoints for RDF Portal.
 
@@ -96,6 +96,7 @@ async def get_sparql_endpoints() -> dict[str, Any]:
 
 
 @mcp.tool(
+    annotations=READ_ONLY_TOOL,
     name="run_sparql",
     description=(
         "Run a SPARQL query on an RDF database. "
@@ -169,6 +170,7 @@ async def run_sparql(
 
 
 @mcp.tool(
+    annotations=READ_ONLY_TOOL,
     name="get_graph_list",
     description=(
         "Get a list of named graphs on a SPARQL endpoint. ALWAYS pass database "
@@ -293,6 +295,7 @@ SELECT DISTINCT ?graph WHERE {
 
 
 @mcp.tool(
+    annotations=READ_ONLY_TOOL,
     name="get_MIE_file",
     description="**At the start of any task, identify ALL databases needed and call this tool for EACH of them before writing any SPARQL queries.** Do not query a database until its MIE file has been read. Get the MIE (Metadata Interoperability Exchange) file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database. RETURNS the MIE file as a YAML-formatted string; an unknown database returns a string beginning with 'Error:' that lists the valid database names.",
 )

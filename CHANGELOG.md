@@ -13,7 +13,18 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **All 29 tools now declare `readOnlyHint`** (plus `openWorldHint`) in their MCP annotations.
+  TogoMCP has always been read-only — every tool is a query, search or ID conversion, and nothing
+  writes to a database — but that was stated only in prose, and MCP's default for an *unannotated*
+  tool is the unsafe one. OpenAI's ChatGPT developer-mode docs are explicit that "tools without this
+  hint are treated as write actions", so an unannotated read-only server draws a confirmation prompt
+  on **every** call and can be refused outright by a plan that only permits read/search connectors.
+  Claude and other clients use the same hint to decide what may be auto-approved. `destructiveHint`
+  and `idempotentHint` are deliberately left unset — the spec defines both as meaningful only when
+  `readOnlyHint` is false. A test guard fails the build if a new tool omits the annotation, since the
+  failure is otherwise invisible.
 
 ## [2.0.2] - 2026-07-29
 
