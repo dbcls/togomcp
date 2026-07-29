@@ -72,7 +72,7 @@ Read the following webpages carefully and write a concise, accurate setup guide 
 - [Claude Desktop](https://support.claude.com/en/articles/11175166-getting-started-with-custom-connectors-using-remote-mcp#h_3d1a65aded)
   * Method 1 (for paid plans). Settings -> Connectors -> "Add custom connectors"
   * Method 2. (alternative). Settings -> Developer -> Edit Config (JSON config file)
-- [ChatGPT](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt) (Developer Mode; Plus/Pro/Business/Enterprise/Edu accounts)
+- [ChatGPT](https://developers.openai.com/api/docs/guides/developer-mode) (Developer Mode, beta). **Do not state a plan-tier list on the page.** Eligibility and connector capability (read-only vs full read/write) have changed repeatedly during the beta, roll out in stages, and first-party docs, secondary write-ups and user reports disagree at any given moment — a hardcoded list goes stale silently and invites correction. Link to OpenAI's guide for eligibility, and say instead that TogoMCP needs only read access (every tool is a query/search/ID conversion, no writes), which is true on every tier. Note the `help.openai.com` article is Cloudflare-blocked to automated checks, so its liveness cannot be verified from CI or a tool — prefer the `developers.openai.com` guide, which returns 200.
 - [Gemini CLI](https://geminicli.com/docs/tools/mcp-server/#how-to-set-up-your-mcp-server) Note that TogoMCP is provided via **Streamable-HTTP, not SSE**.
 For Gemini CLI, the settings.json should be 
 ```
