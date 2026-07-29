@@ -44,9 +44,10 @@ cross-DB → `ncbi_esummary` for detail → one concise paragraph. Each fact onc
 
 ## 🚨 SPARQL DISCIPLINE
 
-- **Before:** read `critical_warnings` + `co_hosted_graphs` + `shape_expressions`; ground
-  with a search tool first.
-- **While writing:** copy PREFIXes from MIE; **pin every graph** (see CO-TENANCY);
+- **Before:** read `global_gotchas` + `graphs.co_hosted`, then pick the closest
+  `examples` entry to adapt; ground with a search tool first.
+- **While writing:** copy PREFIXes from the example you are adapting; **pin every
+  graph** (see CO-TENANCY);
   `LIMIT 10` first; `VALUES` for batch lookups (≤15 items); one broad `GROUP BY` over
   many narrow queries.
 - **On failure:** max 2 consecutive. At #3: pivot to search, `ncbi_esearch`, TogoID, or
@@ -90,7 +91,8 @@ OMA**, dropping every protein with no OMA record. It returned a wrong count (248
 7. **Normalize literals with `STR(?label)`.** Some labels exist twice — plain and
    `xsd:string`. Distinct RDF terms, so `DISTINCT` won't collapse them and `GROUP BY`
    splits the group (`GO_0005183`, `CHEBI:29108`). Scan every quoted literal against the
-   MIE's `critical_warnings`; `VALUES` blocks are the worst spot.
+   MIE's `global_gotchas` and the chosen example's `traps_avoided`; `VALUES` blocks are
+   the worst spot.
 8. **Never write a `VALUES` block you did not populate from a query you ran.** An
    **empty** one is *valid SPARQL* — it returns one row of `0` instead of erroring. An
    abridged one ("representative", "…") computes a well-shaped number from the wrong set.
@@ -114,7 +116,7 @@ Triggered by GATE 0a. Treat `run_sparql` as a probe, not a retrieval
 engine, once a task leaves bounded/sample-sized territory.
 
 1. **Study the shape first, with cheap bounded probes only:**
-   - `get_MIE_file(database)` — schema + `critical_warnings`.
+   - `get_MIE_file(database)` — verified `examples` + `global_gotchas`.
    - `get_graph_list(database)` — which named graphs hold what.
    - `COUNT(*)` queries to size the problem before touching it:
      `SELECT (COUNT(*) AS ?c) WHERE { ... }` — never skip sizing an

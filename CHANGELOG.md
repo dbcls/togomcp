@@ -17,6 +17,20 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ### Fixed
 
+- **Agent-facing docs now name the v3 MIE sections that actually exist.** The v3 release
+  reshaped the MIE format but left the *instructions* pointing at v2 keys: the Usage Guide's
+  "read in this order" list led with `critical_warnings` and included `shape_expressions`
+  (ShEx was removed wholesale in v3), and `get_MIE_file`'s own description told the agent to
+  check every predicate against `co_hosted_graphs`/`critical_warnings` — none of which appear
+  in any of the 36 served files. Every session read that. Now points at `global_gotchas`,
+  `graphs.co_hosted`, `examples` (+ per-example `traps_avoided`), `schema_delta` and
+  `id_join_map`, and steers toward adapting a live-verified example over assembling a query
+  from the schema. The trap-banner code was already format-agnostic, so served *behavior* was
+  never wrong — only the guidance. Same fix applied to the disease-analysis, qa-generator and
+  research-article-analysis skills.
+- **`get_sparql_endpoints` no longer advertises a nonexistent tool for MeSH.** The
+  `keyword_search_api` column in `endpoints.csv` named `search_mesh_entity`; the tool is
+  `search_mesh_descriptor`. All 36 rows were audited — this was the only bad value.
 - **HTTPS scheme is no longer lost behind the reverse proxy.** uvicorn parses `X-Forwarded-*`
   by default but trusts only `127.0.0.1`, and the container is published as a host port — so the
   proxy arrives via the Docker bridge gateway and `X-Forwarded-Proto` was being discarded. The app
