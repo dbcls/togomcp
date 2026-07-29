@@ -79,17 +79,19 @@ Read the following webpages carefully and write a concise, accurate setup guide 
   - **The help-center article is Cloudflare-blocked (403) to WebFetch and to curl even with a browser UA**, so it cannot be checked by a tool or from CI. A human must open it in a browser. Do not conclude from the 403 that the link is dead, and do not "fix" it by switching to a fetchable-but-wrong source — that is exactly the mistake made on 2026-07-29.
 
   Because eligibility genuinely differs by tier, **do state it** — a Plus user who follows the setup steps will otherwise just fail. Pair it with the fact that resolves the read/fetch restriction: TogoMCP needs only read access (every tool is a query/search/ID conversion, and all 29 declare `readOnlyHint`), so Pro's read-only limit does not constrain it.
-- [Gemini CLI](https://geminicli.com/docs/tools/mcp-server/#how-to-set-up-your-mcp-server) Note that TogoMCP is provided via **Streamable-HTTP, not SSE**.
-For Gemini CLI, the settings.json should be 
-```
-{
-  "mcpServers": {
-    "togomcp": {
-      "httpUrl": "https://togomcp.rdfportal.org/mcp"
-    }
-  }
-}
-```
+- **Antigravity CLI** ([config docs](https://antigravity.google/docs/mcp)) — the tab formerly labelled "Gemini CLI". **Gemini CLI was retired 2026-06-18** for the free tier, Google AI Pro, Ultra and Google One, replaced by Antigravity CLI (official announcement: [Google Developers Blog](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/), [repo discussion #27274](https://github.com/google-gemini/gemini-cli/discussions/27274)). Gemini CLI survives only for Gemini Code Assist Standard/Enterprise, Google Cloud access, and paid Gemini API keys — so the Antigravity config is the primary one and Gemini CLI is the footnote, not the reverse.
+
+  The two are **not** interchangeable, and getting it wrong fails silently:
+
+  | | Antigravity | Gemini CLI (legacy) |
+  |---|---|---|
+  | file | `~/.gemini/config/mcp_config.json` (or `.agents/mcp_config.json` per project) | `~/.gemini/settings.json` |
+  | key | `serverUrl` | `httpUrl` |
+
+  Antigravity's docs are explicit that "legacy fields like `url` or `httpUrl` are not supported". Either way TogoMCP is **Streamable HTTP, not SSE** (`url` means SSE in Gemini CLI).
+
+  **Link only to first-party docs**: `antigravity.google/docs/mcp` and `google-gemini.github.io/gemini-cli/docs/`. The page previously linked `geminicli.com`, which is one of several unofficial mirrors (`gemini-cli.xyz`, `geminicli.cloud`, `geminicli.work`) — they return 200 and look official, which is exactly the hazard. A mirror kept serving Gemini CLI instructions six weeks after the product was retired.
+
 
 ## List available databases
 Create a list of available databases with a summary of each. Exclude SuperCon from the list.
