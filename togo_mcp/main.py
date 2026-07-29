@@ -19,6 +19,24 @@ def _allowed_hosts() -> list[str]:
     extra = os.environ.get("TOGOMCP_ALLOWED_HOSTS", "")
     return _DEFAULT_ALLOWED_HOSTS + [h.strip() for h in extra.split(",") if h.strip()]
 
+# Which peer addresses may set X-Forwarded-Proto/-For. uvicorn parses those headers
+# by default but trusts only 127.0.0.1 unless told otherwise, and the container is
+# published as a host port, so the proxy arrives via the Docker bridge gateway
+# (172.16.0.0/12) — never loopback. Left at the default, uvicorn discards
+# X-Forwarded-Proto, sees scheme=http, and emits absolute redirects that downgrade
+# https:// to http:// (e.g. the /mcp/ -> /mcp trailing-slash 307).
+#
+# Deliberately NOT "*": server.py logs the peer address (hashed via _hash_ip), so
+# trusting X-Forwarded-For from anywhere would let anyone able to reach port 8000
+# directly forge the IP we record. Keep this to the networks the proxy actually
+# arrives from. Override via TOGOMCP_FORWARDED_ALLOW_IPS (comma-separated; accepts
+# addresses and CIDR) if the proxy sits on a different subnet — e.g. Docker
+# configured onto 10.0.0.0/8, or a proxy on another host in the LAN.
+_DEFAULT_FORWARDED_ALLOW_IPS = "127.0.0.1,::1,172.16.0.0/12"
+
+def _forwarded_allow_ips() -> str:
+    return os.environ.get("TOGOMCP_FORWARDED_ALLOW_IPS", "").strip() or _DEFAULT_FORWARDED_ALLOW_IPS
+
 async def setup():
     mcp.mount(togoid_mcp, "togoid")
     mcp.mount(ncbi_mcp, "ncbi")
@@ -31,6 +49,7 @@ def run():
         host="0.0.0.0",
         port=8000,
         allowed_hosts=_allowed_hosts(),
+        uvicorn_config={"forwarded_allow_ips": _forwarded_allow_ips()},
     )
 
 def run_local():

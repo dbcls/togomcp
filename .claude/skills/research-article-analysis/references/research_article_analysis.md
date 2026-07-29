@@ -171,7 +171,7 @@ Processes:     OLS4:searchClasses(ontologyId="go", query="...")
 
 Genes:         ncbi_esearch(database="gene", query)
 
-Diseases:      search_mesh_entity(query)
+Diseases:      search_mesh_descriptor(query)
 ```
 
 ### ID Tracking Template (MANDATORY):

@@ -471,3 +471,65 @@ class TestUsageGuideEndpointTable:
         assert m.group(1) == version, (
             f"guide title says {m.group(1)} but the served directory is {version}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Reverse-proxy header trust (togo_mcp.main)
+# ---------------------------------------------------------------------------
+
+
+class TestForwardedAllowIps:
+    """uvicorn parses X-Forwarded-* but trusts only 127.0.0.1 by default. The
+    container is published as a host port, so the reverse proxy arrives via the
+    Docker bridge gateway — left at the default, X-Forwarded-Proto is discarded
+    and the app emits http:// redirects behind https://."""
+
+    @staticmethod
+    def _trusts(spec: str, ip: str) -> bool:
+        from uvicorn.middleware.proxy_headers import _TrustedHosts
+
+        return ip in _TrustedHosts(spec)
+
+    def test_default_trusts_docker_bridge_and_loopback(self, monkeypatch) -> None:
+        from togo_mcp.main import _forwarded_allow_ips
+
+        monkeypatch.delenv("TOGOMCP_FORWARDED_ALLOW_IPS", raising=False)
+        spec = _forwarded_allow_ips()
+        # Docker allocates compose networks across 172.16.0.0/12, so the gateway
+        # address is not predictable — the whole range has to be covered.
+        for ip in ("172.17.0.1", "172.18.0.1", "172.31.255.254", "127.0.0.1", "::1"):
+            assert self._trusts(spec, ip), f"{ip} must be trusted by default"
+
+    def test_default_does_not_trust_the_public_internet(self, monkeypatch) -> None:
+        """Not '*': server.py records the peer address in the tool-call log, so a
+        blanket trust would let a direct caller forge the IP that gets logged."""
+        from togo_mcp.main import _forwarded_allow_ips
+
+        monkeypatch.delenv("TOGOMCP_FORWARDED_ALLOW_IPS", raising=False)
+        spec = _forwarded_allow_ips()
+        for ip in ("203.0.113.9", "10.1.2.3", "192.168.1.1"):
+            assert not self._trusts(spec, ip), f"{ip} must NOT be trusted by default"
+
+    def test_env_overrides_for_a_proxy_on_another_subnet(self, monkeypatch) -> None:
+        from togo_mcp.main import _forwarded_allow_ips
+
+        monkeypatch.setenv("TOGOMCP_FORWARDED_ALLOW_IPS", "10.0.0.0/8")
+        assert self._trusts(_forwarded_allow_ips(), "10.1.2.3")
+
+    def test_blank_env_falls_back_to_the_default(self, monkeypatch) -> None:
+        from togo_mcp.main import _DEFAULT_FORWARDED_ALLOW_IPS, _forwarded_allow_ips
+
+        monkeypatch.setenv("TOGOMCP_FORWARDED_ALLOW_IPS", "   ")
+        assert _forwarded_allow_ips() == _DEFAULT_FORWARDED_ALLOW_IPS
+
+    def test_uvicorn_config_reaches_uvicorn(self) -> None:
+        """Guard against a silent no-op: FastMCP must forward uvicorn_config into
+        uvicorn.Config, and forwarded_allow_ips must be a real Config parameter."""
+        import inspect
+
+        import uvicorn
+        from fastmcp import FastMCP
+
+        assert "forwarded_allow_ips" in inspect.signature(uvicorn.Config.__init__).parameters
+        src = inspect.getsource(FastMCP.run_http_async)
+        assert "config_kwargs.update(uvicorn_config_from_user)" in src

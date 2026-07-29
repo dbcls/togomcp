@@ -13,9 +13,63 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2.0.1] - 2026-07-29
+
 <!-- whatsnew: 2026-07 | Published in <em>Database</em> — <a href="https://doi.org/10.1093/database/baag042" target="_blank" rel="noopener">2026:baag042</a>. -->
 
-_Nothing yet._
+### Removed
+
+- **`data/resources/structured_query_insight.md`** — a dead 2026-02 working note, referenced
+  by no code and served by no tool, but shipped in every wheel and image via `package-data`.
+  Its one idea (the specific IRI → `VALUES` → typed predicate → graph navigation →
+  `bif:contains` → `FILTER(CONTAINS())` hierarchy) is already a line in the Usage Guide, and
+  its "how to document this in an MIE" section still showed the pre-v3 `sparql_query_examples`
+  skeleton. Removed because an unread file that contradicts the current format is a trap for
+  whoever greps it next, not because of its size. Recoverable from git history.
+
+### Fixed
+
+- **Agent-facing docs now name the v3 MIE sections that actually exist.** The v3 release
+  reshaped the MIE format but left the *instructions* pointing at v2 keys: the Usage Guide's
+  "read in this order" list led with `critical_warnings` and included `shape_expressions`
+  (ShEx was removed wholesale in v3), and `get_MIE_file`'s own description told the agent to
+  check every predicate against `co_hosted_graphs`/`critical_warnings` — none of which appear
+  in any of the 36 served files. Every session read that. Now points at `global_gotchas`,
+  `graphs.co_hosted`, `examples` (+ per-example `traps_avoided`), `schema_delta` and
+  `id_join_map`, and steers toward adapting a live-verified example over assembling a query
+  from the schema. The trap-banner code was already format-agnostic, so served *behavior* was
+  never wrong — only the guidance. Same fix applied to the disease-analysis, qa-generator and
+  research-article-analysis skills.
+- **UniProt MIE re-verified against the live endpoint (2026-07-29).** A UniProt release had landed
+  since the file was authored, so every count it served was stale — reviewed Swiss-Prot 574,627 →
+  575,503, and the `go_function`/`ec_class` example figures with it. Discovery also found six
+  UniProt-owned graphs missing from the graph list (including `obsolete`, whose deleted entries the
+  file's own gotchas already discussed) and a previously undocumented trap: `rdfportal.org/ontology/go`
+  duplicates GO labels against UniProt's own `go` graph — the labels agree, so the duplicate reads as
+  a legitimate multi-valued label and `DISTINCT` hides it, while the `subClassOf` sets differ. All 12
+  examples re-executed live. Doubles as the TIER_C acceptance run for the v3 authoring tooling.
+- **UniProt MIE: GO labels come from EIGHT graphs, not two.** The `go_label_duplication` trap added
+  earlier in this cycle understated itself ×2 because it was derived from a single GO term. Measured
+  across a real protein's annotations, an unpinned `?goTerm rdfs:label ?l` returns 238 rows for 70
+  terms (~3.4x) — and two of the eight sources are UniProt's *own* `keywords` and `locations` graphs,
+  so pinning "UniProt's graphs" does not fix it. Corrected, and now demonstrated by a new verified
+  `go_label_pin` example rather than described in prose.
+- **`get_sparql_endpoints` no longer advertises a nonexistent tool for MeSH.** The
+  `keyword_search_api` column in `endpoints.csv` named `search_mesh_entity`; the tool is
+  `search_mesh_descriptor`. All 36 rows were audited — this was the only bad value.
+- **HTTPS scheme is no longer lost behind the reverse proxy.** uvicorn parses `X-Forwarded-*`
+  by default but trusts only `127.0.0.1`, and the container is published as a host port — so the
+  proxy arrives via the Docker bridge gateway and `X-Forwarded-Proto` was being discarded. The app
+  therefore saw `scheme=http` and emitted absolute redirects that downgraded `https://` to `http://`
+  (visible on the `/mcp/` → `/mcp` trailing-slash 307). `forwarded_allow_ips` is now passed through
+  to uvicorn, defaulting to loopback + the Docker bridge range (`172.16.0.0/12`, since Compose
+  allocates project networks unpredictably across it) and overridable via
+  `TOGOMCP_FORWARDED_ALLOW_IPS` for a proxy on another subnet. Deliberately **not** `*`: the peer
+  address is recorded (hashed) in the tool-call log, so blanket trust would let anyone able to reach
+  port 8000 directly forge the logged IP. This is only half the fix — the proxy must also *send*
+  `X-Forwarded-Proto` (dbcls/togomcp#175).
 
 ## [2.0.0] - 2026-07-24
 
@@ -473,7 +527,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/dbcls/togomcp/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/dbcls/togomcp/compare/v1.7.1...v2.0.0
 [1.7.1]: https://github.com/dbcls/togomcp/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/dbcls/togomcp/compare/v1.6.2...v1.7.0

@@ -43,14 +43,19 @@ The catalog's "By category" index is the controlled taxonomy (`protein`, `gene`,
 
 Call `get_MIE_file(database)` before any `run_sparql`. Read in this order:
 
-1. **`critical_warnings`** — mandatory filters and IRI traps. The #1 cause of silent failures.
-2. **`co_hosted_graphs`** — which sibling graphs re-declare which predicates, and by
+1. **`global_gotchas`** — database-wide filters and IRI traps. The #1 cause of silent failures.
+2. **`graphs.co_hosted`** — which sibling graphs re-declare which predicates, and by
    what multiplier. Read this BEFORE writing a join; it is the only field that
    describes what your query does *not* say. The response's trap banner summarizes 1–2.
-3. **`shape_expressions`** — use structured predicates over text search (10–100× faster).
-4. **PREFIX declarations** — copy verbatim.
-5. **`sparql_query_examples`** — modify a working scaffold; don't write from scratch.
-6. **`anti_patterns`** — if results are empty or wrong.
+3. **`examples`** — the load-bearing section. Each carries a live-verified `sparql`
+   (with its PREFIXes — copy them verbatim), an `intent`/`question` to match against
+   your task, what it `teaches`, and the `traps_avoided` that query already handles.
+   Pick the closest one and adapt it; do not write from scratch.
+4. **`traps_avoided`** on the example you chose — the per-query counterpart to
+   `global_gotchas`. Re-read it as you edit, especially if results come back empty.
+5. **`schema_delta`** — only the predicates no example already demonstrates. Reach
+   here when adapting an example is not enough, not as a starting point.
+6. **`id_join_map`** — stable ID anchors and cross-database join paths.
 
 **Re-consult per predicate, not once per database.** Reading the MIE at the start of a
 task is not enough — the failures come from one predicate inside an otherwise fine

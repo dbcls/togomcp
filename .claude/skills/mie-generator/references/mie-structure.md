@@ -107,7 +107,7 @@ Rules across the set:
   per-instance or text-match pattern, and **not** buried as a `traps_avoided`
   caveat on some other example. Check this DB's row in
   `enumeration_audit.md` (this directory; all 36 DBs pre-scanned): **Tier A**
-  DBs must add a *new* standalone `enum_*` example (the route is buried in v2);
+  DBs must add a *new* standalone `enum_*` example (the route is not yet one);
   **Tier B/C** DBs must keep the worked query and its load-bearing caveat together.
 - **No test leakage (spec §4.6).** An example's subject (keyword phrase, class
   IRI, gold gene/compound/accession) must **not** be a benchmark question's exact
@@ -119,7 +119,7 @@ Rules across the set:
   repeated in `schema_delta`. A warning is database-wide (`global_gotchas`) **or**
   query-specific (`traps_avoided`) — never both.
 
-There is no fixed count (v2's "exactly 7, 2/3/2" is retired). Author the set the
+There is no fixed count. Author the set the
 DB's questions need: cover the primary lookup routes, the enumeration route(s),
 one aggregation, and one cross-DB join where they exist. Typical files land at
 8–14 examples; a rich hub DB (UniProt) more.
@@ -149,26 +149,24 @@ How to anchor stably and cross to other databases.
   `togoid_convertId` (NOT co-hosted). A DB whose joins are all intra-endpoint may
   have none.
 
-## What v3 does NOT have
+## The section list is closed
 
-Do not carry these v2 sections forward — they were dropped deliberately (spec §1.3):
+The keys in spec §2 are the whole file. There is no separate shapes section, no
+standalone sample-triple section, no anti-pattern section, no architectural-notes
+or statistics section — the example **is** the shape and the sample, traps split
+into `global_gotchas` (database-wide) and `traps_avoided` (query-specific), notes
+go to `schema_delta`, and counts to header `entity_counts`. If you find yourself
+wanting a key that is not in §2, the content belongs in one of the existing ones.
 
-- `shape_expressions`, `sample_rdf_entries` — the example **is** the shape and the
-  sample; don't restate them.
-- `sparql_query_examples` / `cross_database_queries` as separate sections — folded
-  into `examples` (with `cross_db` and `aggregation` elevated as complexity tiers).
-- `cross_references` — becomes `id_join_map`.
-- `critical_warnings` / `anti_patterns` / `common_errors` — database-wide traps go
-  to `global_gotchas`; query-specific ones go inline as `traps_avoided`. There is
-  no standalone anti-pattern section and no mandatory "schema check before text
-  search" entry; that guidance now lives as `teaches`/`traps_avoided` on the
-  enumeration examples themselves.
-- `architectural_notes`, `data_statistics` — the few non-obvious notes go to
-  `schema_delta`; the counts go to header `entity_counts`.
+## Composition budget
 
-## Byte budget
+The constraint is **composition, not size**. `examples` must stay the bulk of the
+file — corpus mean **64% of bytes** (sd 4, range 53–73). Measure the share, not
+the total (Phase 5i): a byte count cannot distinguish restatement from new
+verified content, and a size target can only be met by deleting verified content.
 
-The win is measured, not vibed. Record the byte count of the v3 file vs the v2.x
-file it replaces (spec §5 item 7) — the UniProt pilot came in **~55–74% smaller**.
-There is no line ceiling, but if a v3 file is not clearly smaller than its v2
-predecessor, you are probably restating a fact the examples already carry.
+Two failure shapes: a share below ~60% means prose has crowded out the
+load-bearing content; a share that **drops >5 points across a revision** means
+that revision spent its budget on guardrails rather than queries. The second is a
+ratchet — every refresh finds new traps and almost none are ever removed — so it
+is checked per revision, not just per file.

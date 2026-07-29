@@ -1,8 +1,9 @@
 # Tier C — migrate the MIE authoring tooling from v2 format to v3
 
-**Status:** DONE (authoring tooling migrated to v3, 2026-07-25) — one acceptance item deferred to
-the next live authoring run (see the bottom of this file). Was: OPEN, not blocking step 6.
-**Created:** 2026-07-24, on `mie-redesign`. **Migrated:** 2026-07-25.
+**Status:** DONE (authoring tooling migrated to v3, 2026-07-25). The deferred acceptance item was
+**exercised 2026-07-29 on the REVISION path** and passed; the fresh-DB path remains unexercised
+(see "Acceptance run" at the bottom). Was: OPEN, not blocking step 6.
+**Created:** 2026-07-24, on `mie-redesign`. **Migrated:** 2026-07-25. **Acceptance run:** 2026-07-29.
 **Contract:** `togo_mcp/data/docs/MIE_v3_spec.md` is the v3 format spec the tooling must author to.
 
 ## What was done (2026-07-25)
@@ -40,10 +41,66 @@ All three authoring paths now teach v3. Changed files:
 `uniprot.yaml`; `check_mie_examples.py uniprot` runs clean on the v3 file; `test_catalog_in_sync`
 passes; `mie-refresh.js` syntax-checks.
 
-**Deferred (needs a live authoring run):** the acceptance item "running `mie-generator` on a fresh DB
-produces a spec-valid v3 file / the diff-shape round-trip" — do it the next time a DB is authored or
-refreshed (a `mie-builder` agent against the live endpoint), and confirm the emitted file matches the
-committed v3 shape. Nothing in the tooling blocks it; it just hasn't been exercised end-to-end yet.
+## Acceptance run (2026-07-29) — revision path PASSED, fresh-DB path still open
+
+Ran the `mie-generator` skill in the main thread against `uniprot` (the v3 pilot, last verified
+2026-07-21/22). The tooling drove the full workflow and produced a spec-valid v3 file: 12/12 examples
+re-executed live, `check_mie_examples.py uniprot` clean, all 6 required keys in spec order, every
+`verified:` carrying a `date:` (no `on:` keys), catalog regen idempotent, `test_catalog_in_sync` green.
+
+**The mandatory phases earned their keep** — this was not a rubber-stamp:
+
+- A UniProt release had landed: **every count drifted** (reviewed 574,627 → 575,503; the `go_function`
+  and `ec_class` example figures; OMA `lscr:xrefSwissProt` 381,038 → 460,199).
+- **Phase 2a** (mandatory even for revisions) found the graph list incomplete — six UniProt-owned
+  graphs missing, including `obsolete`, whose 14,454 deleted entries the gotchas already discussed.
+  Exactly the "trusting the existing graph list" failure 2a exists to catch.
+- **Phase 2g** found a NEW trap: `rdfportal.org/ontology/go` duplicates GO `rdfs:label`/`subClassOf`
+  against UniProt's own `sparql.uniprot.org/go`. Labels agree (so it reads as a legitimate
+  multi-valued label and DISTINCT hides it) but `subClassOf` sets differ → now `go_label_duplication`.
+- The `union_inflation` gotcha nearly got "corrected" wrongly: probing TP53 shows no OMA triples, which
+  makes the OMA attribution look false. Per-graph decomposition shows the re-typing is a **subset**
+  (335,971 of 589,957) that happens to exclude TP53. The gotcha now says so explicitly.
+
+**Still open — the fresh-DB half.** This run started from an existing file and skipped Phase 0
+(register the endpoint). "Author a database from scratch" and the throwaway diff-shape round-trip
+against an already-covered DB have still never been exercised. Do those at the next database add.
+
+### Two skill ambiguities this run surfaced (not blocking; fix when convenient)
+
+1. **§4.6 test-leakage vs the canonical-subject exemption conflict.** `P04637` now collides with
+   `question_099` (added since the pilot was authored — the benchmark reached 100 questions), which
+   uses UniProt and names TP53 in its answer narrative. The bright-line rule says swap the subject;
+   the skill's own 5h text says "Canonical non-benchmark subjects (ATP, TP53, BRCA1) are fine."
+   Nothing states which wins. The exemption was applied and P04637 retained (the four TP53 examples
+   concern variants/FALDO/OMA/Bgee, none touching q099's KW-0325 glycoprotein count) — but the next
+   author hits the same fork with no guidance.
+2. ~~**No size guidance for a v3→v3 revision.**~~ **RESOLVED 2026-07-29.** The Quality bar's "clearly
+   smaller" was a *proxy detector* for v2's 4× restatement, not a value in itself — meaningless for a
+   revision, and harmful as a target (the only way to hit a byte goal is deleting verified content).
+   Measuring the revision exposed the real defect underneath: `examples` grew by **0 bytes** while
+   `global_gotchas` (+1,257) and `graphs` (+681) absorbed everything, dropping the examples share
+   **75.1% → 68.1%** — i.e. the whole budget went to the section the ablation found *not* significant,
+   in a file where query content carries ~99% of the effect. And it is a **ratchet**: refreshes find
+   new traps and essentially never delete old ones, so composition drifts monotonically across
+   revisions in a way no single-file check can see.
+   Replaced with (a) a composition bar — `examples` share, corpus mean **64%** (sd 4, range 53–73),
+   flagged below ~60% or on a >5-point drop across a revision; and (b) a **placement test**: a finding
+   with a positive route belongs in `examples` + `traps_avoided`, and `global_gotchas` is only for
+   traps with no single demonstrable fix (§4.4 generalized from enumeration to all traps).
+   Applied to the trigger case: `go_label_duplication` had a positive route (pin the `go` graph) and
+   no example demonstrated it, so it became the `go_label_pin` example — which recovered the share to
+   69.6%. The remaining −5.5 pts is legitimate (a graph inventory and a mandatory-filter gotcha have
+   no query form) but the rule correctly forces that to be *stated* rather than assumed.
+   The skill was also made **v3-self-contained** in the same pass: all v2 references removed from
+   `SKILL.md`, `mie-structure.md`, `anti-patterns.md`, `query-strategy.md`. `enumeration_audit.md`
+   keeps its v2 column deliberately — it is a dated audit record whose content *is* the v2 status.
+
+### Related, but outside this task's scope
+
+TIER_C chartered the three *authoring* paths only. The v3 drift in the **runtime** surface — the
+served Usage Guide's MIE reading order, the `get_MIE_file` description, the `qa-generator` skill —
+was never in scope here and was found and fixed separately in `f24c851`.
 
 ---
 

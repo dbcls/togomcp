@@ -304,16 +304,22 @@ async def get_MIE_file(
     db: str = "",
 ) -> str:
     """
-    Get the MIE file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database in YAML format, which can be used as a hint to build SPARQL queries.
+    Get the MIE file for a specific RDF database in YAML format — verified, executable worked SPARQL examples plus the database's graphs, gotchas, schema deltas and ID/join map — the primary resource for building a correct query.
 
     RETURNS the MIE as YAML, preceded by a `#`-commented banner headlining that
     database's CRITICAL WARNINGS and CO-HOSTED GRAPHS. Read the banner first: it
     lists the silent-failure traps — the ones that return a wrong POSITIVE or
     partial result with no error. Then, for EVERY predicate you use, check it
-    against `co_hosted_graphs`/`critical_warnings` before writing the query.
+    against `global_gotchas` and `graphs.co_hosted` — plus the `traps_avoided`
+    on whichever example you are adapting — before writing the query.
     Reading this file once is not enough; the traps that have caused wrong
     answers were all documented here and simply not re-consulted at the moment
     the predicate was typed.
+
+    Start from the `examples` closest to your question and adapt it: each one is
+    live-verified and dated, so its shape, graph pinning and literal typing are
+    known-good. Prefer that over assembling a query from `schema_delta`, which
+    only carries predicates no example already demonstrates.
 
     (The authoritative list of supported `database` values is injected into the
     tool `description=` on the decorator above; see DATABASE_DESCRIPTION.)

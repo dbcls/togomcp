@@ -137,7 +137,8 @@ is the authoritative schema/warnings source and is fresher than this doc.
   A plain `"UniProt"` literal (no `^^xsd:string`) matches nothing and returns an
   empty result with no error. Same applies to any `VALUES`/literal compared
   against Reactome string-typed data. Pre-flight every quoted literal against the
-  database's MIE `critical_warnings` before running.
+  database's MIE `global_gotchas` — and the `traps_avoided` on whichever example
+  you are adapting — before running.
 - **Reactome has two UniProt xref flavors:** `"UniProt"` (~91k) and
   `"UniProt Isoform"` (~374). Filtering on only one can silently drop proteins
   (e.g. NPC1L1 / Q9UHC9 is only reachable via the isoform form). For exhaustive

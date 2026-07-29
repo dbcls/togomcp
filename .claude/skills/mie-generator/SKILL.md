@@ -59,7 +59,7 @@ After registration, proceed to Phase 1.
 
 Before touching the endpoint:
 
-1. `Read ./togo_mcp/data/mie/<db>.yaml` — is there an existing MIE? If yes, this is an update, not a fresh build. It may be a v2 file (the pre-redesign format) — you are rewriting it to v3, so treat its structure as legacy, not a template. **Treat every claim in the existing file as a hint to verify, not a source of truth — including its graph list. Graphs get added upstream all the time, and a previously-correct graph list can be incomplete by the next snapshot.** Phase 2a is mandatory whether you're authoring or revising.
+1. `Read ./togo_mcp/data/mie/<db>.yaml` — is there an existing MIE? If yes, this is an update, not a fresh build. **Treat every claim in the existing file as a hint to verify, not a source of truth — including its graph list. Graphs get added upstream all the time, and a previously-correct graph list can be incomplete by the next snapshot.** Phase 2a is mandatory whether you're authoring or revising.
 2. Call `get_sparql_endpoints()` — confirm the endpoint URL is what you expect (it should already be in `endpoints.csv` after Phase 0).
 
 That's it. Phase 2 is where the real work happens. Local prior art — **the existing MIE under revision** — is optional context; **do not let it shape the MIE without re-verification against the live endpoint**.
@@ -389,11 +389,11 @@ assumption. Keep entity counts on COUNT(DISTINCT ?entity) regardless.
 The `examples` are the load-bearing content: each one **is** the schema shape, the sample, and (via `traps_avoided`) the warning. There is **no fixed count** — author the set the DB's questions actually need. Cover, at minimum:
 
 - **The primary lookup routes** — the 3–6 questions a user most often asks this DB (an entity's core attributes, its key relationships). `complexity: basic`/`intermediate`/`advanced`.
-- **Every set-level enumeration route the DB supports** (spec §4.4). For each "**all** entities with property/feature/class X" question, a first-class `enum_*` example showing the controlled-vocabulary / typed-predicate route — never only a text match, never buried as a caveat. Check this DB's row in `references/enumeration_audit.md`: **Tier A** = the route is buried in v2, so add a *new* standalone `enum_*` example; **Tier B/C** = keep the worked query and its load-bearing caveat together.
+- **Every set-level enumeration route the DB supports** (spec §4.4). For each "**all** entities with property/feature/class X" question, a first-class `enum_*` example showing the controlled-vocabulary / typed-predicate route — never only a text match, never buried as a caveat. Check this DB's row in `references/enumeration_audit.md`: **Tier A** = the route is not yet a standalone example, so add a *new* one; **Tier B/C** = keep the worked query and its load-bearing caveat together.
 - **At least one `aggregation` example** where the DB supports counting — it ships its verified total and demonstrates `COUNT(DISTINCT)` + graph-scoping (the union-inflation-safe recipe).
 - **At least one `cross_db` example** where a co-hosted join or a documented xref exists — the least-recoverable, highest-failure class. Set `endpoint_name` on it.
 
-Strategy priorities across the set (unchanged from v2 — the format changed, the query craft did not):
+Strategy priorities across the set:
 
 - Prefer specific IRIs / `VALUES` with IRIs, then typed predicates / graph navigation (`rdfs:subClassOf+`, `skos:broader+`).
 - Text search is a last resort: at most one example, and only if the Gate Check in `references/query-strategy.md` passes. If you reach for `bif:contains` / `FILTER(CONTAINS(...))` more than once, stop and re-read that file — almost every "free text" field is backed by a controlled vocabulary or IRI somewhere.
@@ -421,7 +421,13 @@ Use `references/template.yaml` as your scaffold. Copy it to the target path, the
 
 **One fact, one place (spec §4.2):** do not restate a fact across sections. A predicate shown in an example is not repeated in `schema_delta`. A warning is database-wide (`global_gotchas`) OR query-specific (`traps_avoided`) — never both.
 
-Byte budget: there is no line ceiling, but a v3 file should be **clearly smaller** than the v2 file it replaces (the pilot came in ~55–74% smaller). Record the byte count of both (Phase 5). If it isn't smaller, you are probably restating a fact the examples already carry — the example IS the shape and the sample; don't write them again.
+**The placement test — a finding with a positive route belongs in `examples`.** When Phase 2 turns up a trap, ask: *is there a query that avoids it?* If yes, that query is the finding's home — a new `example` carrying the fix, with the trap stated in its `traps_avoided`. `global_gotchas` is for traps with **no single demonstrable fix** (a mandatory filter that applies to every query; a datatype rule that cuts across all literals). This generalizes §4.4 ("a positive route is not a caveat") from enumeration to every trap.
+
+Why it matters more than it looks: the ablation found the query content carries ~99% of the whole-MIE effect, while guardrail content alone was not significant. A trap written only as prose is guidance the agent must first translate into SPARQL; written as a verified example it is a query they can copy. Same finding, different section, measurably different value.
+
+Watch this on **revisions especially**. Every refresh discovers new traps, and refreshes almost never delete an old one — so gotchas ratchet upward while `examples` stays flat unless you make it grow. That drift is invisible to any single-file check, which is why Phase 5i compares the share against the previous version.
+
+Budget: there is no line or byte ceiling. The constraint is **composition, not size** — `examples` must stay the bulk of the file (corpus mean **64% of bytes**, sd 4). Size alone cannot tell restatement from new verified content, so Phase 5i measures the share instead. If `examples` is a small slice, you are probably restating in prose a fact the examples already carry — the example IS the shape and the sample; don't write them again.
 
 `references/mie-structure.md` has the detailed requirements per key, and `references/template.yaml` is the fillable v3 skeleton. `togo_mcp/data/mie/uniprot.yaml` is the worked reference.
 
@@ -473,11 +479,25 @@ Zero rows → the cited predicate/IRI is wrong; fix it. A warning about a non-ex
 
 **5h. No test leakage (spec §4.6).** For every example, check its subject (keyword phrase, class IRI, gold gene/compound/accession) against `benchmark/questions/*.yaml` — grep the `inspiration_keyword` and `exact_answer` fields. If a subject collides with a question that uses **this DB**, swap it for a neutral member of the same class and re-verify. Canonical non-benchmark subjects (ATP, TP53, BRCA1) are fine.
 
-**5i. Record the byte count** of the v3 file and the v2 file it replaces (the deterministic half of the win — spec §5 item 7). It should be clearly smaller; if not, hunt for a fact restated across sections (§4.2) and cut it.
+**5i. Record the `examples` byte SHARE**, not just the total (the deterministic half of the win — spec §5 item 7):
+
+```bash
+uv run python -c "
+import yaml,sys; d=yaml.safe_load(open(sys.argv[1]))
+t={k:len(yaml.dump(v,default_flow_style=False,allow_unicode=True)) for k,v in d.items()}
+g=sum(t.values()); print(f'examples {t[\"examples\"]/g*100:.1f}% of {g} bytes')" ./togo_mcp/data/mie/<db>.yaml
+```
+
+Corpus mean is **64%** (sd 4; range 53–73). Two ways to fail:
+
+- **Share below ~60%** — prose has crowded out the load-bearing content. Hunt for a fact restated across sections (§4.2) and cut it.
+- **Share DROPPED >5 points since the previous version** (revisions) — the revision spent its budget on guardrails instead of queries. Re-read the placement test in Phase 4: a finding with a positive route belongs in `examples`, not in `global_gotchas` alone.
+
+Growth is fine when it is verified content in the right section. A raw byte target is not a criterion — the only way to hit one is deleting verified content.
 
 ### Phase 6 — Regenerate the catalog, then declare
 
-**If you added, removed, or changed the MIE's discovery block** (`discovery:` in v3 / `schema_info:` in v2 — its title, description, keywords, or categories), regenerate the static database catalog so the served Usage Guide stays in sync:
+**If you added, removed, or changed the MIE's `discovery` block** (title, description, keywords, or categories), regenerate the static database catalog so the served Usage Guide stays in sync:
 
 ```bash
 uv run python scripts/generate_usage_guide_catalog.py   # rewrites usage_guide_v6/02b_database_catalog.md
@@ -502,7 +522,7 @@ Only after Phases 1–5 (and the regeneration above) are complete, report to the
     the tool and confirmed to return the stated result usably (5g) — or "no tool-behavior claims"
   - no test leakage: no example subject collides with benchmark/questions/*.yaml for this DB (5h)
   - database catalog regenerated: generate_usage_guide_catalog.py run if discovery changed; 02b in the changeset (test_catalog_in_sync passes)
-  - Bytes: [v3 count] (was [v2 count], −[pct]%)
+  - Composition: examples [N]% of [total] bytes (corpus mean 64%); revisions: share was [M]%, delta [±P] pts
 ```
 
 If any bullet can't be checked off honestly, say so and explain what's left.
@@ -512,7 +532,7 @@ If any bullet can't be checked off honestly, say so and explain what's left.
 A complete v3 MIE file satisfies:
 
 - Required keys present and in order (spec §2); YAML parses.
-- Clearly smaller than the v2 file it replaces (the pilot: −55–74%). No fact restated across sections (§4.2): a predicate in an example is not repeated in `schema_delta`; a warning is `global_gotchas` OR `traps_avoided`, never both.
+- `examples` carries the bulk of the bytes (corpus mean 64%, sd 4) and a revision does not drop that share by >5 points. No fact restated across sections (§4.2): a predicate in an example is not repeated in `schema_delta`; a warning is `global_gotchas` OR `traps_avoided`, never both.
 - **Every** `examples[].sparql` re-run live, with a `verified:` block carrying the real result + a `date:` (never `on:`). `check_mie_examples.py <db>` clean.
 - Query craft: prioritise specific IRIs / typed predicates over text search; `bif:contains` over `FILTER(CONTAINS())` on Virtuoso, property paths split before it; no circular reasoning (never `VALUES ?x { <search-api results> }` inside a COUNT).
 - At least one `aggregation` and one `cross_db` example where the DB supports them; every set-level enumeration route is a first-class `example` (not a caveat) — spec §4.4.
