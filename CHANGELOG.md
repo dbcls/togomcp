@@ -15,6 +15,16 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 <!-- whatsnew: 2026-07 | Published in <em>Database</em> — <a href="https://doi.org/10.1093/database/baag042" target="_blank" rel="noopener">2026:baag042</a>. -->
 
+### Removed
+
+- **`data/resources/structured_query_insight.md`** — a dead 2026-02 working note, referenced
+  by no code and served by no tool, but shipped in every wheel and image via `package-data`.
+  Its one idea (the specific IRI → `VALUES` → typed predicate → graph navigation →
+  `bif:contains` → `FILTER(CONTAINS())` hierarchy) is already a line in the Usage Guide, and
+  its "how to document this in an MIE" section still showed the pre-v3 `sparql_query_examples`
+  skeleton. Removed because an unread file that contradicts the current format is a trap for
+  whoever greps it next, not because of its size. Recoverable from git history.
+
 ### Fixed
 
 - **Agent-facing docs now name the v3 MIE sections that actually exist.** The v3 release
