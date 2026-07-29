@@ -1,8 +1,9 @@
 # Tier C — migrate the MIE authoring tooling from v2 format to v3
 
-**Status:** DONE (authoring tooling migrated to v3, 2026-07-25) — one acceptance item deferred to
-the next live authoring run (see the bottom of this file). Was: OPEN, not blocking step 6.
-**Created:** 2026-07-24, on `mie-redesign`. **Migrated:** 2026-07-25.
+**Status:** DONE (authoring tooling migrated to v3, 2026-07-25). The deferred acceptance item was
+**exercised 2026-07-29 on the REVISION path** and passed; the fresh-DB path remains unexercised
+(see "Acceptance run" at the bottom). Was: OPEN, not blocking step 6.
+**Created:** 2026-07-24, on `mie-redesign`. **Migrated:** 2026-07-25. **Acceptance run:** 2026-07-29.
 **Contract:** `togo_mcp/data/docs/MIE_v3_spec.md` is the v3 format spec the tooling must author to.
 
 ## What was done (2026-07-25)
@@ -40,10 +41,49 @@ All three authoring paths now teach v3. Changed files:
 `uniprot.yaml`; `check_mie_examples.py uniprot` runs clean on the v3 file; `test_catalog_in_sync`
 passes; `mie-refresh.js` syntax-checks.
 
-**Deferred (needs a live authoring run):** the acceptance item "running `mie-generator` on a fresh DB
-produces a spec-valid v3 file / the diff-shape round-trip" — do it the next time a DB is authored or
-refreshed (a `mie-builder` agent against the live endpoint), and confirm the emitted file matches the
-committed v3 shape. Nothing in the tooling blocks it; it just hasn't been exercised end-to-end yet.
+## Acceptance run (2026-07-29) — revision path PASSED, fresh-DB path still open
+
+Ran the `mie-generator` skill in the main thread against `uniprot` (the v3 pilot, last verified
+2026-07-21/22). The tooling drove the full workflow and produced a spec-valid v3 file: 12/12 examples
+re-executed live, `check_mie_examples.py uniprot` clean, all 6 required keys in spec order, every
+`verified:` carrying a `date:` (no `on:` keys), catalog regen idempotent, `test_catalog_in_sync` green.
+
+**The mandatory phases earned their keep** — this was not a rubber-stamp:
+
+- A UniProt release had landed: **every count drifted** (reviewed 574,627 → 575,503; the `go_function`
+  and `ec_class` example figures; OMA `lscr:xrefSwissProt` 381,038 → 460,199).
+- **Phase 2a** (mandatory even for revisions) found the graph list incomplete — six UniProt-owned
+  graphs missing, including `obsolete`, whose 14,454 deleted entries the gotchas already discussed.
+  Exactly the "trusting the existing graph list" failure 2a exists to catch.
+- **Phase 2g** found a NEW trap: `rdfportal.org/ontology/go` duplicates GO `rdfs:label`/`subClassOf`
+  against UniProt's own `sparql.uniprot.org/go`. Labels agree (so it reads as a legitimate
+  multi-valued label and DISTINCT hides it) but `subClassOf` sets differ → now `go_label_duplication`.
+- The `union_inflation` gotcha nearly got "corrected" wrongly: probing TP53 shows no OMA triples, which
+  makes the OMA attribution look false. Per-graph decomposition shows the re-typing is a **subset**
+  (335,971 of 589,957) that happens to exclude TP53. The gotcha now says so explicitly.
+
+**Still open — the fresh-DB half.** This run started from an existing file and skipped Phase 0
+(register the endpoint). "Author a database from scratch" and the throwaway diff-shape round-trip
+against an already-covered DB have still never been exercised. Do those at the next database add.
+
+### Two skill ambiguities this run surfaced (not blocking; fix when convenient)
+
+1. **§4.6 test-leakage vs the canonical-subject exemption conflict.** `P04637` now collides with
+   `question_099` (added since the pilot was authored — the benchmark reached 100 questions), which
+   uses UniProt and names TP53 in its answer narrative. The bright-line rule says swap the subject;
+   the skill's own 5h text says "Canonical non-benchmark subjects (ATP, TP53, BRCA1) are fine."
+   Nothing states which wins. The exemption was applied and P04637 retained (the four TP53 examples
+   concern variants/FALDO/OMA/Bgee, none touching q099's KW-0325 glycoprotein count) — but the next
+   author hits the same fork with no guidance.
+2. **No size guidance for a v3→v3 revision.** The Quality bar's "clearly smaller than the v2 file it
+   replaces" is a conversion criterion. This revision grew +11% (22,294 → 24,837 bytes) entirely from
+   new verified content, and there is no stated bar for when revision growth is legitimate.
+
+### Related, but outside this task's scope
+
+TIER_C chartered the three *authoring* paths only. The v3 drift in the **runtime** surface — the
+served Usage Guide's MIE reading order, the `get_MIE_file` description, the `qa-generator` skill —
+was never in scope here and was found and fixed separately in `f24c851`.
 
 ---
 

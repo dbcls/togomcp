@@ -38,6 +38,14 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   from the schema. The trap-banner code was already format-agnostic, so served *behavior* was
   never wrong — only the guidance. Same fix applied to the disease-analysis, qa-generator and
   research-article-analysis skills.
+- **UniProt MIE re-verified against the live endpoint (2026-07-29).** A UniProt release had landed
+  since the file was authored, so every count it served was stale — reviewed Swiss-Prot 574,627 →
+  575,503, and the `go_function`/`ec_class` example figures with it. Discovery also found six
+  UniProt-owned graphs missing from the graph list (including `obsolete`, whose deleted entries the
+  file's own gotchas already discussed) and a previously undocumented trap: `rdfportal.org/ontology/go`
+  duplicates GO labels against UniProt's own `go` graph — the labels agree, so the duplicate reads as
+  a legitimate multi-valued label and `DISTINCT` hides it, while the `subClassOf` sets differ. All 12
+  examples re-executed live. Doubles as the TIER_C acceptance run for the v3 authoring tooling.
 - **`get_sparql_endpoints` no longer advertises a nonexistent tool for MeSH.** The
   `keyword_search_api` column in `endpoints.csv` named `search_mesh_entity`; the tool is
   `search_mesh_descriptor`. All 36 rows were audited — this was the only bad value.
