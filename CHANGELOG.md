@@ -15,6 +15,34 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 _Nothing yet._
 
+## [2.1.0] - 2026-07-29
+
+<!-- whatsnew: 2026-07-29 | All tools now declare themselves <strong>read-only</strong> in the MCP protocol, so clients such as ChatGPT no longer treat every query as a write action needing confirmation. -->
+
+### Added
+
+- **All 29 tools now declare `readOnlyHint`** (plus `openWorldHint`) in their MCP annotations.
+  TogoMCP has always been read-only — every tool is a query, search or ID conversion, and nothing
+  writes to a database — but that was stated only in prose, and MCP's default for an *unannotated*
+  tool is the unsafe one. OpenAI's ChatGPT developer-mode docs are explicit that "tools without this
+  hint are treated as write actions", so an unannotated read-only server draws a confirmation prompt
+  on **every** call and can be refused outright by a plan that only permits read/search connectors.
+  Claude and other clients use the same hint to decide what may be auto-approved. `destructiveHint`
+  and `idempotentHint` are deliberately left unset — the spec defines both as meaningful only when
+  `readOnlyHint` is false. A test guard fails the build if a new tool omits the annotation, since the
+  failure is otherwise invisible.
+
+### Changed
+
+- **ChatGPT setup guide no longer states a plan-tier list.** The page claimed Developer Mode was
+  available to "Plus, Pro, Business, Enterprise, or Edu". Checking that against sources found three
+  mutually inconsistent accounts — OpenAI's own developer guide says all those tiers with full
+  read+write, secondary write-ups say Plus/Pro are read-only, and user reports exclude Plus
+  entirely — with the authoritative help-center article Cloudflare-blocked to any automated check.
+  Developer Mode is a staged-rollout beta, so the tier matrix is genuinely unstable. The page now
+  links to OpenAI's guide for eligibility and states what settles it regardless: TogoMCP needs only
+  read access, so a plan limited to read/search connectors runs it in full.
+
 ## [2.0.2] - 2026-07-29
 
 ### Fixed
@@ -552,7 +580,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.0.2...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/dbcls/togomcp/compare/v2.0.2...v2.1.0
 [2.0.2]: https://github.com/dbcls/togomcp/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/dbcls/togomcp/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/dbcls/togomcp/compare/v1.7.1...v2.0.0

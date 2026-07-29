@@ -178,7 +178,7 @@ def _rest_fail_msg(subject: str, detail: str, database: str) -> str:
 #####　Database-specific tools ########
 ######################################
 # DB: UniProt
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_TOOL)
 async def search_uniprot_entity(
     query: str = "",
     limit: int = 20,
@@ -321,7 +321,7 @@ async def search_uniprot_entity(
 
 
 # DB: PubChem
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_TOOL)
 async def get_pubchem_compound_id(compound_name: str) -> str:
     """
     Get a PubChem compound ID (CID) for a compound name.
@@ -344,7 +344,7 @@ async def get_pubchem_compound_id(compound_name: str) -> str:
     return resp.text
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_TOOL)
 async def get_compound_attributes_from_pubchem(pubchem_compound_id: str) -> str:
     """
     Get compound attributes from PubChem RDF.
@@ -473,7 +473,7 @@ _PDB_ROW_PROJECTORS = {
 }
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_TOOL)
 async def search_pdb_entity(
     db: Literal["pdb", "cc", "prd"],
     query: str = "",
@@ -639,7 +639,7 @@ async def search_pdb_entity(
 
 
 # DB: MeSH
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_TOOL)
 async def search_mesh_descriptor(
     query: str = "",
     limit: int = 10,
@@ -803,7 +803,7 @@ def _reactome_is_no_match(body: str | None) -> bool:
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_TOOL)
 async def search_reactome_entity(
     query: str = "",
     species: str | list[str] | None = None,
@@ -1036,7 +1036,7 @@ _RHEA_MAX_LIMIT = 500
 _RHEA_CHEBI_DOUBLE_PREFIX_RE = re.compile(r"(?i)\bchebi:chebi:")
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_TOOL)
 async def search_rhea_entity(
     query: str = "",
     limit: int | None = 25,

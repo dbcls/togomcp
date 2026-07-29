@@ -25,7 +25,7 @@ from fastmcp import FastMCP
 import httpx
 from mcp.types import TextContent
 
-from .server import raise_for_status_with_body
+from .server import READ_ONLY_TOOL, raise_for_status_with_body
 
 # Get API key from environment
 NCBI_API_KEY = os.environ.get("NCBI_API_KEY")
@@ -339,7 +339,7 @@ def _normalize_ids(ids: str | list[str]) -> list[str]:
     return [str(i).strip() for i in ids if str(i).strip()]
 
 
-@ncbi_mcp.tool()
+@ncbi_mcp.tool(annotations=READ_ONLY_TOOL)
 async def esearch(
     database: str = "",
     query: str = "",
@@ -485,7 +485,7 @@ async def esearch(
         return [TextContent(type="text", text=f"Unexpected error: {str(e)}")]
 
 
-@ncbi_mcp.tool()
+@ncbi_mcp.tool(annotations=READ_ONLY_TOOL)
 async def list_databases() -> list[TextContent]:
     """
     List all supported NCBI databases with descriptions and example queries.
@@ -516,7 +516,7 @@ async def list_databases() -> list[TextContent]:
 
 
 # Additional utility functions for future use
-@ncbi_mcp.tool()
+@ncbi_mcp.tool(annotations=READ_ONLY_TOOL)
 async def esummary(
     database: str = "",
     ids: str | list[str] = "",
@@ -596,7 +596,7 @@ async def esummary(
             ]
 
 
-@ncbi_mcp.tool()
+@ncbi_mcp.tool(annotations=READ_ONLY_TOOL)
 async def efetch(
     database: str = "",
     ids: str | list[str] = "",

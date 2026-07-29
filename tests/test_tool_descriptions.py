@@ -80,3 +80,53 @@ def test_every_tool_description_states_what_it_returns(assembled_tools) -> None:
         "move the return/error contract into the body above `Args:`, or into "
         "the decorator `description=` for decorator-driven tools."
     )
+
+
+class TestReadOnlyAnnotations:
+    """Every TogoMCP tool is a query/search/ID conversion — nothing writes. That
+    has to be stated in the protocol, not just in prose: MCP's default for an
+    unannotated tool is the UNSAFE one. OpenAI's ChatGPT developer-mode docs say
+    "tools without this hint are treated as write actions", so an unannotated
+    read-only server draws a confirmation prompt on every call and can be refused
+    outright by a plan that only permits read/search connectors."""
+
+    def test_every_tool_declares_read_only(self) -> None:
+        tools = asyncio.run(self._tools())
+        missing = [
+            t.name
+            for t in tools
+            if getattr(getattr(t, "annotations", None), "readOnlyHint", None) is not True
+        ]
+        assert not missing, (
+            f"tools missing readOnlyHint=True: {missing}. Add "
+            "`annotations=READ_ONLY_TOOL` to the @mcp.tool decorator — without it "
+            "clients treat the tool as a writer."
+        )
+
+    def test_every_tool_declares_open_world(self) -> None:
+        """Each tool reaches an external endpoint (RDF Portal, NCBI, TogoID, …),
+        not a closed local dataset."""
+        tools = asyncio.run(self._tools())
+        missing = [
+            t.name
+            for t in tools
+            if getattr(getattr(t, "annotations", None), "openWorldHint", None) is not True
+        ]
+        assert not missing, f"tools missing openWorldHint=True: {missing}"
+
+    def test_destructive_and_idempotent_hints_stay_unset(self) -> None:
+        """The MCP spec defines both as meaningful only when readOnlyHint is false.
+        Setting them on a read-only tool is noise that implies the opposite."""
+        tools = asyncio.run(self._tools())
+        wrong = [
+            t.name
+            for t in tools
+            for hint in ("destructiveHint", "idempotentHint")
+            if getattr(getattr(t, "annotations", None), hint, None) is not None
+        ]
+        assert not wrong, f"read-only tools must leave destructive/idempotent unset: {wrong}"
+
+    @staticmethod
+    async def _tools():
+        await setup()
+        return await mcp.list_tools()

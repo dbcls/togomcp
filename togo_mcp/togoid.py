@@ -39,7 +39,7 @@ togoid_mcp = FastMCP("TogoID API server")
 # ============================================================================
 
 
-@togoid_mcp.tool()
+@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
 async def getAllRelation() -> dict:
     """Discover all available ID conversion routes between databases.
 
@@ -78,7 +78,7 @@ async def getAllRelation() -> dict:
     return response.json()
 
 
-@togoid_mcp.tool()
+@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
 async def getRelation(source: str, target: str) -> str:
     """Check if a specific ID conversion route exists and get its details.
 
@@ -123,7 +123,7 @@ async def getRelation(source: str, target: str) -> str:
     return json.dumps(response.json())
 
 
-@togoid_mcp.tool()
+@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
 async def getAllDataset() -> dict:
     """List all databases registered in TogoID with their ID formats.
 
@@ -148,7 +148,7 @@ async def getAllDataset() -> dict:
     return response.json()
 
 
-@togoid_mcp.tool()
+@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
 async def getDataset(dataset: str) -> dict:
     """Get configuration for a specific database in TogoID.
 
@@ -183,7 +183,7 @@ async def getDataset(dataset: str) -> dict:
     return response.json()
 
 
-@togoid_mcp.tool()
+@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
 async def getDescription() -> dict:
     """Get human-readable descriptions for all databases in TogoID.
 
@@ -204,7 +204,7 @@ async def getDescription() -> dict:
 # ============================================================================
 
 
-@togoid_mcp.tool()
+@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
 async def convertId(
     ids: str | list[str],
     route: str,
@@ -282,7 +282,7 @@ async def convertId(
     return json.dumps(response.json().get("results") or [])
 
 
-@togoid_mcp.tool()
+@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
 async def countId(source: str, target: str, ids: str | list[str]) -> dict:
     """Check how many of your IDs can be converted before doing bulk conversion.
 
