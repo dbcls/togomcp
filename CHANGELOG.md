@@ -15,7 +15,19 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 <!-- whatsnew: 2026-07 | Published in <em>Database</em> — <a href="https://doi.org/10.1093/database/baag042" target="_blank" rel="noopener">2026:baag042</a>. -->
 
-_Nothing yet._
+### Fixed
+
+- **HTTPS scheme is no longer lost behind the reverse proxy.** uvicorn parses `X-Forwarded-*`
+  by default but trusts only `127.0.0.1`, and the container is published as a host port — so the
+  proxy arrives via the Docker bridge gateway and `X-Forwarded-Proto` was being discarded. The app
+  therefore saw `scheme=http` and emitted absolute redirects that downgraded `https://` to `http://`
+  (visible on the `/mcp/` → `/mcp` trailing-slash 307). `forwarded_allow_ips` is now passed through
+  to uvicorn, defaulting to loopback + the Docker bridge range (`172.16.0.0/12`, since Compose
+  allocates project networks unpredictably across it) and overridable via
+  `TOGOMCP_FORWARDED_ALLOW_IPS` for a proxy on another subnet. Deliberately **not** `*`: the peer
+  address is recorded (hashed) in the tool-call log, so blanket trust would let anyone able to reach
+  port 8000 directly forge the logged IP. This is only half the fix — the proxy must also *send*
+  `X-Forwarded-Proto` (dbcls/togomcp#175).
 
 ## [2.0.0] - 2026-07-24
 
