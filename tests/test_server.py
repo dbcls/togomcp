@@ -490,15 +490,41 @@ class TestForwardedAllowIps:
 
         return ip in _TrustedHosts(spec)
 
-    def test_default_trusts_docker_bridge_and_loopback(self, monkeypatch) -> None:
+    def test_default_trusts_every_container_runtime_we_deploy_on(self, monkeypatch) -> None:
+        """The peer address depends on the runtime, and getting it wrong fails
+        SILENTLY (the header is dropped, not rejected). 2.0.1 shipped with only the
+        Docker range and did nothing in production, which is rootless podman +
+        slirp4netns: the rootlesskit port handler SNATs every inbound connection to
+        the container's own slirp address, 10.0.2.100."""
         from togo_mcp.main import _forwarded_allow_ips
 
         monkeypatch.delenv("TOGOMCP_FORWARDED_ALLOW_IPS", raising=False)
         spec = _forwarded_allow_ips()
-        # Docker allocates compose networks across 172.16.0.0/12, so the gateway
-        # address is not predictable — the whole range has to be covered.
-        for ip in ("172.17.0.1", "172.18.0.1", "172.31.255.254", "127.0.0.1", "::1"):
-            assert self._trusts(spec, ip), f"{ip} must be trusted by default"
+        cases = [
+            ("10.0.2.100", "rootless podman + slirp4netns — the production path"),
+            ("10.88.0.1", "rootful podman default bridge"),
+            ("172.17.0.1", "docker default bridge"),
+            ("172.18.0.1", "docker compose project network"),
+            ("172.31.255.254", "top of the docker bridge range"),
+            ("127.0.0.1", "loopback"),
+            ("::1", "loopback v6"),
+        ]
+        for ip, why in cases:
+            assert self._trusts(spec, ip), f"{ip} must be trusted by default ({why})"
+
+    def test_deploy_script_forwards_the_override(self) -> None:
+        """compose.yaml is NOT the production deploy path — scripts/deploy.sh is, and
+        it forwards a FIXED list of env vars. 2.0.1 documented the override in
+        .env.example while deploy.sh silently dropped it, so it was inert in prod."""
+        from pathlib import Path
+
+        deploy = Path(__file__).resolve().parents[1] / "scripts" / "deploy.sh"
+        body = deploy.read_text(encoding="utf-8")
+        block = body.split("TOGOMCP_PERSERVICE_VARS=(", 1)[1].split(")", 1)[0]
+        assert "TOGOMCP_FORWARDED_ALLOW_IPS" in block, (
+            "deploy.sh must forward TOGOMCP_FORWARDED_ALLOW_IPS or the documented "
+            "override cannot reach the container"
+        )
 
     def test_default_does_not_trust_the_public_internet(self, monkeypatch) -> None:
         """Not '*': server.py records the peer address in the tool-call log, so a

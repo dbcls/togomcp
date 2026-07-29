@@ -15,6 +15,31 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 _Nothing yet._
 
+## [2.0.2] - 2026-07-29
+
+### Fixed
+
+- **The 2.0.1 proxy fix did not work in production — two reasons, both mine.** It shipped, deployed,
+  and the `https://` → `http://` redirect downgrade persisted unchanged.
+  1. **Wrong address range.** `forwarded_allow_ips` defaulted to `172.16.0.0/12`, derived from
+     `compose.yaml`. But Compose is not the production path — `scripts/deploy.sh` is, and it runs
+     **rootless podman with slirp4netns** on vs94, where the rootlesskit port handler SNATs every
+     inbound connection to the container's own slirp address `10.0.2.100`. Not in the list, so
+     uvicorn kept discarding `X-Forwarded-Proto`. The default now covers all three runtimes we
+     deploy on: `10.0.2.0/24` (rootless podman), `10.88.0.0/16` (rootful podman), `172.16.0.0/12`
+     (docker/compose).
+  2. **The documented override could not reach the container.** `deploy.sh` forwards a fixed list of
+     env vars and `TOGOMCP_FORWARDED_ALLOW_IPS` was not in it, so setting it in `.env` did nothing.
+     Now forwarded, per-service, like every other knob.
+  Both failures were silent — an untrusted `X-Forwarded-*` header is dropped, not rejected — and both
+  came from treating `compose.yaml` as the deployment. Regression tests now assert the default trusts
+  a slirp4netns peer and that `deploy.sh` forwards the override.
+- **Corrected the rationale for not using `*`.** 2.0.1 argued a tight list protects the hashed peer
+  IP in the tool-call log from forgery. On the rootless-slirp4netns path that field is *already*
+  constant — every client arrives as `10.0.2.100` — so the tight list buys nothing there and the real
+  protection is that only the proxy can reach the published port. The argument still holds on the
+  rootful/compose paths, where the peer is the true client.
+
 ## [2.0.1] - 2026-07-29
 
 <!-- whatsnew: 2026-07 | Published in <em>Database</em> — <a href="https://doi.org/10.1093/database/baag042" target="_blank" rel="noopener">2026:baag042</a>. -->
@@ -527,7 +552,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.0.1...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.0.2...HEAD
+[2.0.2]: https://github.com/dbcls/togomcp/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/dbcls/togomcp/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/dbcls/togomcp/compare/v1.7.1...v2.0.0
 [1.7.1]: https://github.com/dbcls/togomcp/compare/v1.7.0...v1.7.1
