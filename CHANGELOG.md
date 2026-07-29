@@ -13,6 +13,10 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2.0.1] - 2026-07-29
+
 <!-- whatsnew: 2026-07 | Published in <em>Database</em> — <a href="https://doi.org/10.1093/database/baag042" target="_blank" rel="noopener">2026:baag042</a>. -->
 
 ### Removed
@@ -523,7 +527,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/dbcls/togomcp/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/dbcls/togomcp/compare/v1.7.1...v2.0.0
 [1.7.1]: https://github.com/dbcls/togomcp/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/dbcls/togomcp/compare/v1.6.2...v1.7.0
