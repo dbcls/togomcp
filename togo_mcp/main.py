@@ -21,18 +21,26 @@ def _allowed_hosts() -> list[str]:
 
 # Which peer addresses may set X-Forwarded-Proto/-For. uvicorn parses those headers
 # by default but trusts only 127.0.0.1 unless told otherwise, and the container is
-# published as a host port, so the proxy arrives via the Docker bridge gateway
-# (172.16.0.0/12) — never loopback. Left at the default, uvicorn discards
-# X-Forwarded-Proto, sees scheme=http, and emits absolute redirects that downgrade
-# https:// to http:// (e.g. the /mcp/ -> /mcp trailing-slash 307).
+# published as a host port, so the proxy NEVER arrives as loopback. Left at the
+# default, uvicorn discards X-Forwarded-Proto, sees scheme=http, and emits absolute
+# redirects that downgrade https:// to http:// (the /mcp/ -> /mcp 307).
 #
-# Deliberately NOT "*": server.py logs the peer address (hashed via _hash_ip), so
-# trusting X-Forwarded-For from anywhere would let anyone able to reach port 8000
-# directly forge the IP we record. Keep this to the networks the proxy actually
-# arrives from. Override via TOGOMCP_FORWARDED_ALLOW_IPS (comma-separated; accepts
-# addresses and CIDR) if the proxy sits on a different subnet — e.g. Docker
-# configured onto 10.0.0.0/8, or a proxy on another host in the LAN.
-_DEFAULT_FORWARDED_ALLOW_IPS = "127.0.0.1,::1,172.16.0.0/12"
+# The address depends on the container runtime, which is why this list is wide:
+#   10.0.2.0/24    rootless podman + slirp4netns (the production path on vs94:
+#                  `deploy.sh` -> rootless `podman run -p`). The rootlesskit port
+#                  handler SNATs every inbound connection to the container's own
+#                  slirp address, 10.0.2.100.
+#   10.88.0.0/16   rootful podman default bridge.
+#   172.16.0.0/12  Docker/Compose bridge range (compose.yaml).
+# Getting this wrong is silent: the header is dropped, not rejected.
+#
+# NOTE on why this is not just "*": server.py records the peer address (hashed) in
+# the tool-call log. On the rootless-slirp4netns path that field is ALREADY constant
+# — every client arrives as 10.0.2.100 — so there the tight list buys nothing over
+# "*", and the real protection is that only the proxy can reach the published port.
+# It still matters on the rootful/Compose paths, where the peer is the true client.
+# Override via TOGOMCP_FORWARDED_ALLOW_IPS (comma-separated; addresses and CIDR).
+_DEFAULT_FORWARDED_ALLOW_IPS = "127.0.0.1,::1,10.0.2.0/24,10.88.0.0/16,172.16.0.0/12"
 
 def _forwarded_allow_ips() -> str:
     return os.environ.get("TOGOMCP_FORWARDED_ALLOW_IPS", "").strip() or _DEFAULT_FORWARDED_ALLOW_IPS
