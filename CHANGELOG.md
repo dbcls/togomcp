@@ -13,6 +13,17 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2.2.0] - 2026-07-30
+
+<!-- whatsnew: 2026-07-30 | Drug lookups in ChEMBL now find <strong>biologics</strong> — antibodies, therapeutic proteins, vaccines and cell therapies were silently missing, so names like <em>Rituxan</em> or <em>efalizumab</em> returned nothing. A new <code>mode='extract'</code> also resolves the drugs named inside a clinical-trial intervention string such as "Ropivacaine 10% + Clonidine". -->
+
+Found by reading the production tool log rather than by a bug report: over three days,
+531 of 854 `search_chembl_molecule` calls and 341 of 351 ClinVar `run_sparql` calls
+returned zero rows. Two independent causes — one a real bug, one a documentation gap
+that made an LLM reproduce the same bug in hand-written SPARQL.
+
 ### Added
 
 - **`search_chembl_molecule(mode='extract')` — resolve drugs NAMED INSIDE a string.** Exact synonym
@@ -698,7 +709,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.1.3...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/dbcls/togomcp/compare/v2.1.3...v2.2.0
 [2.1.3]: https://github.com/dbcls/togomcp/compare/v2.1.2...v2.1.3
 [2.1.2]: https://github.com/dbcls/togomcp/compare/v2.1.1...v2.1.2
 [2.1.1]: https://github.com/dbcls/togomcp/compare/v2.1.0...v2.1.1
