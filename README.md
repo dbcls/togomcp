@@ -99,6 +99,15 @@ docker compose up -d togomcp-test                   # after rebuilding, recreate
 
 Override image tags and host ports via `.env` — see `.env.example` for the full list. Use `docker compose up -d --force-recreate <svc>` if compose doesn't pick up a rebuilt image, and `docker image prune -f` to clean up dangling layers.
 
+#### Behind a reverse proxy
+
+Two env vars matter if you put TogoMCP behind nginx/Caddy/Traefik. Both fail in ways that are easy to misdiagnose:
+
+- **`TOGOMCP_ALLOWED_HOSTS`** — FastMCP validates the `Host` header (DNS-rebinding protection) and answers **421** for any host not on the allow-list. The default list is localhost plus the public DBCLS vhosts, so your own hostname must be added or *every* proxied request is rejected.
+- **`TOGOMCP_FORWARDED_ALLOW_IPS`** — which peer addresses may set `X-Forwarded-Proto`/`-For`. uvicorn parses those headers but trusts only `127.0.0.1` unless told otherwise, and a container reached via a published port never arrives as loopback. Left wrong, the header is **silently dropped** (not rejected): the app then believes it is serving plain HTTP and emits redirects that downgrade `https://` to `http://`. The default covers the usual container-runtime ranges; set this only if your proxy sits elsewhere.
+
+Your proxy must also send `X-Forwarded-Proto` — nginx does not by default (`proxy_set_header X-Forwarded-Proto $scheme;`), while Caddy and Traefik do. Both halves are required; neither works alone.
+
 ### Simple: `docker run`
 
 For a single container without compose:
@@ -115,7 +124,10 @@ docker run -e NCBI_API_KEY="your-key-here" -p 8000:8000 togo-mcp
 TogoMCP can record every MCP tool call as one JSON line per call (timestamp,
 tool name, arguments, status, elapsed_ms, session/request/client IDs, transport,
 client IP). SPARQL calls are enriched with endpoint URL, HTTP code, row/byte
-counts, and a SHA-256 of the query. Useful for benchmarking, MIE iteration,
+counts, and a SHA-256 of the query. Note the client IP is the *peer* address as
+the app sees it — behind a proxy or container that is the proxy/gateway, the same
+value for every caller, unless `TOGOMCP_FORWARDED_ALLOW_IPS` lets uvicorn trust
+`X-Forwarded-For`. Useful for benchmarking, MIE iteration,
 and reconstructing multi-tool sequences.
 
 **On/off is a single env var**: `TOGOMCP_QUERY_LOG`. Unset/empty = disabled
@@ -195,7 +207,8 @@ togomcp/
 │   ├── server.py           # Root FastMCP instance + tool-call logging middleware
 │   ├── main.py             # Assembles the server, mounts sub-servers, entry points
 │   ├── rdf_portal.py       # RDF Portal / SPARQL, MIE, and endpoint tools
-│   ├── api_tools.py        # REST search wrappers (UniProt, PDB, ChEMBL, Reactome, etc.)
+│   ├── api_tools.py        # REST search wrappers (UniProt, PDB, Reactome, MeSH, PubChem, etc.)
+│   ├── chembl.py           # ChEMBL REST search wrappers
 │   ├── ncbi_tools.py       # NCBI E-utilities sub-server
 │   ├── togoid.py           # TogoID identifier-conversion sub-server
 │   ├── togovar.py          # TogoVar human-variation sub-server
@@ -217,7 +230,13 @@ togomcp/
 
 ## Contributing
 
-Contributions are welcome! To add support for a new database, add an MIE file under `togo_mcp/data/mie/` and a corresponding row in `togo_mcp/data/resources/endpoints.csv` (see the MIE spec in `togo_mcp/data/docs/`). Please open an issue or pull request on GitHub.
+Contributions are welcome!
+
+**Adding a database**: add an MIE file under `togo_mcp/data/mie/` and a corresponding row in `togo_mcp/data/resources/endpoints.csv` (see the MIE spec in `togo_mcp/data/docs/`).
+
+**Adding a tool**: pass `annotations=READ_ONLY_TOOL` to the `@mcp.tool` decorator. Every TogoMCP tool is read-only, and MCP's default for an *unannotated* tool is the unsafe one — clients such as ChatGPT treat a tool with no `readOnlyHint` as a write action, which means a confirmation prompt on every call. A test asserts this, so omitting it fails the build.
+
+Please open an issue or pull request on GitHub.
 
 ## Reference
 
