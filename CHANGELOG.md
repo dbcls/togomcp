@@ -15,6 +15,29 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 _Nothing yet._
 
+## [2.2.1] - 2026-07-30
+
+### Fixed
+
+- **A 60s SPARQL timeout sat inside the endpoints' cold-cache band, so valid queries failed by chance.**
+  RDF Portal endpoints charge a large penalty on the *first* touch of an entity's index pages. Measured
+  on the SIB endpoint across five never-queried UniProt accessions, a **minimal** single-protein lookup
+  (one IRI, `LIMIT 5`) took **53.9–62.1s cold and 0.2s warm**. The client ceiling was exactly 60.0s —
+  inside that spread — so whether a perfectly good query succeeded was a coin flip. Two such lookups
+  timed out in production on 2026-07-27. Raised to **90s**, which clears the observed cold maximum with
+  headroom while still cutting off genuinely runaway queries.
+  Raising the ceiling is the fix precisely *because* retrying is not: an **aborted** query does not warm
+  the cache (verified — abort at 20s, retry still 55.3s), so only a query allowed to *complete* pays the
+  cost once on behalf of every query after it.
+- **The timeout message diagnosed the wrong cause and forbade the one thing that would have worked.** It
+  asserted "the query is likely too heavy", told the caller to add `LIMIT` and narrow with specific IRIs,
+  and ended "Do not retry the same query without changes" — advice that is impossible to follow for a
+  query that is *already* a single IRI with `LIMIT 5`. The logs show an agent obeying it faithfully:
+  it simplified a 26-predicate query down to 8 predicates and timed out again 74 seconds later. The
+  message now names both causes, says which is likelier, and permits exactly one retry rather than
+  banning it outright — while keeping the narrow-it guidance, which remains correct for genuinely heavy
+  queries (the same log's MassBank timeout is a 4-way `mb:has_peak` self-join, and that advice fits it).
+
 ## [2.2.0] - 2026-07-30
 
 <!-- whatsnew: 2026-07-30 | Drug lookups in ChEMBL now find <strong>biologics</strong> — antibodies, therapeutic proteins, vaccines and cell therapies were silently missing, so names like <em>Rituxan</em> or <em>efalizumab</em> returned nothing. A new <code>mode='extract'</code> also resolves the drugs named inside a clinical-trial intervention string such as "Ropivacaine 10% + Clonidine". -->
@@ -709,7 +732,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.2.1...HEAD
+[2.2.1]: https://github.com/dbcls/togomcp/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/dbcls/togomcp/compare/v2.1.3...v2.2.0
 [2.1.3]: https://github.com/dbcls/togomcp/compare/v2.1.2...v2.1.3
 [2.1.2]: https://github.com/dbcls/togomcp/compare/v2.1.1...v2.1.2

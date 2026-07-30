@@ -559,3 +559,51 @@ class TestForwardedAllowIps:
         assert "forwarded_allow_ips" in inspect.signature(uvicorn.Config.__init__).parameters
         src = inspect.getsource(FastMCP.run_http_async)
         assert "config_kwargs.update(uvicorn_config_from_user)" in src
+
+
+class TestSparqlTimeout:
+    """The SPARQL client timeout is load-bearing, not a round number.
+
+    RDF Portal endpoints charge a large cold-cache penalty on first touch of an
+    entity's index pages: measured 2026-07-30 on the SIB endpoint, a minimal
+    single-protein UniProt lookup (one IRI, LIMIT 5) took 53.9-62.1s cold and
+    0.2s warm. The previous 60s ceiling sat inside that band, so a perfectly
+    good query succeeded or failed by chance — two did time out in production
+    on 2026-07-27. Anything at or below ~62s reopens that bug.
+    """
+
+    def test_timeout_clears_the_measured_cold_band(self) -> None:
+        from togo_mcp.server import _SPARQL_TIMEOUT_SECONDS, _sparql_client
+
+        assert _SPARQL_TIMEOUT_SECONDS >= 75.0, (
+            "cold single-entity lookups were measured up to 62.1s; a ceiling near "
+            "that makes a valid query fail by coin flip"
+        )
+        assert _sparql_client.timeout.read == _SPARQL_TIMEOUT_SECONDS
+
+    @pytest.mark.asyncio
+    async def test_timeout_message_names_both_causes(self) -> None:
+        """The old message asserted 'too heavy' and forbade any retry.
+
+        That advice is unfollowable for a single-IRI query with a small LIMIT —
+        there is nothing left to narrow. In the 2026-07-27 logs an agent obeyed
+        it, simplified a 26-predicate query to 8 predicates, and timed out again.
+        """
+        import httpx
+
+        from togo_mcp import server as srv
+
+        async def _boom(*a, **k):
+            raise httpx.ReadTimeout("simulated")
+
+        original = srv._sparql_client.post
+        srv._sparql_client.post = _boom  # type: ignore[method-assign]
+        try:
+            with pytest.raises(ValueError) as ei:
+                await srv.execute_sparql("SELECT * WHERE { ?s ?p ?o }", database="uniprot")
+        finally:
+            srv._sparql_client.post = original  # type: ignore[method-assign]
+        msg = str(ei.value)
+        assert "TOO HEAVY" in msg and "COLD" in msg  # both causes offered
+        assert "retry at most ONCE" in msg  # bounded retry, not a blanket ban
+        assert "90" in msg  # reports the real ceiling

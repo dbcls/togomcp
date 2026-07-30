@@ -50,8 +50,23 @@ ENDPOINTS_CSV = str(CWD.joinpath("resources", "endpoints.csv"))
 INDEX_HTML = str(CWD.joinpath("docs", "togomcp-intro.html"))
 KW_SEARCH_INSTRUCTIONS = str(CWD.joinpath("kw_search"))
 
-# Shared httpx client for SPARQL queries
-_sparql_client = httpx.AsyncClient(timeout=60.0)
+# Shared httpx client for SPARQL queries.
+#
+# 90s, not 60s: RDF Portal endpoints charge a large COLD-CACHE penalty on the
+# first touch of an entity's index pages. Measured on the SIB endpoint
+# 2026-07-30 across five never-queried UniProt accessions, a MINIMAL
+# single-protein lookup (one IRI, LIMIT 5) took 53.9-62.1s cold and 0.2s warm.
+# A 60s ceiling sat INSIDE that band, so whether a perfectly good query
+# succeeded was a coin flip — two such lookups timed out in production
+# 2026-07-27. 90s clears the observed cold maximum with headroom while still
+# cutting off genuinely runaway queries.
+#
+# Raising it does NOT make retries free: an ABORTED query does not warm the
+# cache (verified — abort at 20s, retry still 55.3s), so only a query allowed
+# to COMPLETE pays the cost once for everyone after it. That is the whole point
+# of the higher ceiling.
+_SPARQL_TIMEOUT_SECONDS = 90.0
+_sparql_client = httpx.AsyncClient(timeout=_SPARQL_TIMEOUT_SECONDS)
 
 
 def load_sparql_endpoints(path: str) -> dict[str, dict[str, str]]:
@@ -248,9 +263,18 @@ async def execute_sparql(
         extra["sparql_status"] = "timeout"
         raise ValueError(
             f"SPARQL endpoint at {url} timed out after {_sparql_client.timeout.read}s. "
-            "The query is likely too heavy. Add LIMIT, narrow with specific IRIs or GRAPH "
-            "clauses, or split into smaller queries. Do not retry the same query without "
-            f"changes. ({exc.__class__.__name__})"
+            "TWO different causes are possible — check which one before acting:\n"
+            "(1) THE QUERY IS TOO HEAVY (most likely at this duration). Narrow it: "
+            "add or lower LIMIT, anchor on specific IRIs, drop repeated self-joins on "
+            "the same predicate (?s p ?a, ?b, ?c), and split multi-graph joins into "
+            "separate queries. Do not re-send it unchanged.\n"
+            "(2) THE ENDPOINT WAS COLD. A first-ever query against a large graph can "
+            "take ~1 minute while indexes page in, even for a minimal lookup. If your "
+            "query is ALREADY anchored on specific IRIs and carries a small LIMIT, "
+            "there is nothing to narrow and this is the likely cause — the same query "
+            "may well succeed on a second attempt. But an aborted query does NOT warm "
+            "the cache, so a retry costs the same again: retry at most ONCE, never loop."
+            f" ({exc.__class__.__name__})"
         ) from exc
     except httpx.HTTPError as exc:
         extra["sparql_status"] = "network_error"
