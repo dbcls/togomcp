@@ -69,9 +69,11 @@ Key Results:
 
 ## Setup guide
 Read the following webpages carefully and write a concise, accurate setup guide for each.
-- [Claude Desktop](https://support.claude.com/en/articles/11175166-getting-started-with-custom-connectors-using-remote-mcp#h_3d1a65aded)
-  * Method 1 (for paid plans). Settings -> Connectors -> "Add custom connectors"
-  * Method 2. (alternative). Settings -> Developer -> Edit Config (JSON config file)
+- **Claude** ([custom connectors article](https://support.claude.com/en/articles/11175166-getting-started-with-custom-connectors-using-remote-mcp)) — unlike OpenAI's help centre, `support.claude.com` **is** fetchable (200), so verify against it directly rather than from memory. It carries an "Updated" date. As of 2026-07-30:
+  * Custom connectors work on Claude, Claude Desktop **and Cowork**, on **ALL plans** — Free, Pro, Max, Team, Enterprise. Free is capped at one connector; paid plans uncapped. Do not describe this as paid-only.
+  * Method 1 path is **Settings → Customize → Connectors → "+" → "Add custom connector"**. Not "Settings → Connectors", and not a button "at the bottom of the page" — both were wrong on the page until 2026-07-30.
+  * **Team/Enterprise need an owner to add it org-wide FIRST** (Organization settings → Connectors → Add → hover Custom → Web); members then connect individually. Members cannot self-add before that, so omitting this step strands every Team/Enterprise user.
+  * Method 2 (`claude_desktop_config.json` + `npx mcp-remote`) is a **community bridge, not an Anthropic-documented path** — the article says that file is for genuinely local MCP servers. Keep it as an optional fallback only; since Method 1 covers Free, its original "for people without a paid plan" rationale is gone.
 - [ChatGPT](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt) (Developer Mode, beta). **This help-center article is the ONLY canonical source for plan eligibility** — it carries an "Updated" date and is revised often. As of 2026-07-29: Business/Enterprise/Edu get full MCP (admin must enable *and publish*); **Pro is read/fetch only**; **Plus has no custom MCP at all**. Web only, no mobile.
 
   Two traps, both hit on 2026-07-29:
