@@ -13,6 +13,10 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2.1.3] - 2026-07-30
+
 ### Fixed
 
 - **Claude setup guide: wrong settings path, and Team/Enterprise had no route at all.** Verified against
@@ -630,7 +634,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.1.2...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.1.3...HEAD
+[2.1.3]: https://github.com/dbcls/togomcp/compare/v2.1.2...v2.1.3
 [2.1.2]: https://github.com/dbcls/togomcp/compare/v2.1.1...v2.1.2
 [2.1.1]: https://github.com/dbcls/togomcp/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/dbcls/togomcp/compare/v2.0.2...v2.1.0
