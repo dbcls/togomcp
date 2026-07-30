@@ -142,6 +142,38 @@ examples:
       - "THREE classification BRANCHES exist under cvo:classifications: cvo:germline_classification, cvo:oncogenicity_classification, cvo:somatic_clinical_impact. This query enumerates ONLY germline; a cancer/somatic variant classified 'Oncogenic' has NO germline node and is silently absent (see oncogenicity_kras for the other two branches)."
       - "Omitting cvo:record_type \"classified\" lets the 712 'included' variants (no classified_record) enter the pattern and adds nothing but risk (gotcha included_no_classrec)."
 
+  - id: sig_by_gene
+    intent: significance breakdown for ONE gene — the gene pin and the classification walk composed in one query
+    question: "How many EGFR variants fall in each germline clinical-significance class?"
+    complexity: aggregation
+    sparql: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      # Gene IRI = http://ncbi.nlm.nih.gov/gene/{NCBI gene id}; resolve the id with
+      # ncbi_esearch('gene','EGFR[sym] AND human[organism]') — never text-match rdfs:label.
+      SELECT ?significance (COUNT(DISTINCT ?variant) AS ?n)
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        ?gene_bn med2rdf:gene <http://ncbi.nlm.nih.gov/gene/1956> .   # EGFR
+        ?classrec sio:SIO_000628 ?gene_bn .
+        ?variant a cvo:VariationArchiveType ;
+                 cvo:record_status "current" ;
+                 cvo:record_type "classified" ;
+                 cvo:classified_record ?classrec .
+        ?classrec cvo:classifications ?classi .
+        ?classi cvo:germline_classification ?germ .
+        ?germ cvo:description ?significance .
+      }
+      GROUP BY ?significance
+      ORDER BY DESC(?n)
+      LIMIT 20
+    verified: {result_rows: 12, date: "2026-07-30", top: "Uncertain significance 1,570; Likely benign 1,309; Conflicting classifications of pathogenicity 155; Benign/Likely benign 120; Benign 107; Pathogenic 80", runtime: "0.3s"}
+    teaches: "The per-gene significance question is the two walks COMPOSED, both hanging off the SAME ?classrec bnode: enter at the gene (med2rdf:gene → sio:SIO_000628 → ?classrec) and read the classification off that same node. Anchoring on the gene IRI first prunes 3.59M variants before the classification join, so the whole query runs in well under a second."
+    traps_avoided:
+      - "DO NOT reach significance via cvo:TypeAlleleDescr + cvo:clinical_significance — it is a near-empty dead end that returns 0 rows with NO error for almost every gene. Verified 2026-07-30: of 26,161 cvo:TypeAlleleDescr nodes only 280 carry cvo:clinical_significance, and those 280 cover BRCA2 (190) and BRCA1 (90) and NOTHING ELSE — so the identical query for EGFR (or any other gene) returns 0. Significance lives on the classification bnode reached through cvo:classified_record, as above. This shape accounted for 340 of 341 zero-row ClinVar queries in the 2026-07-27..29 production logs."
+      - "cvo:name on a TypeAlleleDescr node is \"SYMBOL:c.HGVS\" (e.g. \"BTK:c.1899C>T\"), which makes STRSTARTS(?name, \"EGFR:\") LOOK like a valid gene filter. It is not a substitute for the gene IRI — besides the sparsity above, it is free text with no controlled vocabulary."
+
   - id: count_variation_type
     intent: distribution of active variants across variation types (a typed-predicate aggregation)
     question: "What variation types exist in ClinVar and how many of each?"

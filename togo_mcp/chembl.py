@@ -94,6 +94,20 @@ _CHEMBL_TARGET_TYPES = frozenset(
 )
 
 
+# Tuning for the `extract` (containment) resolution path.
+# 5 chars: measured floor that keeps incidental synonyms ("urea", "gel") out
+# while every real drug name in the 2026-07-27..29 log sample cleared it. The
+# exact-equality leg is OR'd back in so a shorter exact name is never lost.
+_MIN_CONTAINED_LEN = 5
+# Virtuoso's free-text parser degrades on long OR disjunctions; a drug name is
+# effectively always within the first few tokens of an intervention string.
+_MAX_BIF_TOKENS = 8
+# Rows fetched before span-resolution prunes nested/duplicate hits. Generous
+# because the pruning is client-side: a 3-drug regimen can legitimately draw
+# dozens of raw synonym rows, and truncating early silently loses a component.
+_EXTRACT_ROW_BUDGET = 200
+
+
 def _bif_and(text: str) -> str | None:
     """Build a ``bif:contains`` argument from arbitrary caller text.
 
@@ -131,6 +145,89 @@ def _altlabel_match_block(query: str) -> str | None:
         f'  ?alt bif:contains "{bif}" .\n'
         f'  FILTER(LCASE(STR(?alt)) = "{_sparql_literal(query.lower())}")'
     )
+
+
+def _containment_match_block(query: str) -> str | None:
+    """WHERE-clause fragment matching ``?alt`` synonyms CONTAINED IN ``query``.
+
+    The inverse of `_altlabel_match_block`: instead of "the synonym equals the
+    caller's string", this asks "the synonym occurs inside it" — which is what
+    turns a clinical-trial intervention string ("Ropivacaine 10% + Clonidine")
+    into the substances it names. bif:contains ORs the tokens (any one may carry
+    the drug); the FILTER then does the real work.
+
+    A 5-character floor keeps incidental short synonyms out; the exact-equality
+    leg is OR'd back in so a shorter *exact* name is never lost to that floor.
+    Returns None when the query has no searchable token.
+    """
+    toks = [t for t in re.findall(r"[a-z0-9]+", query.lower()) if len(t) > 2]
+    if not toks:
+        return None
+    # Cap the OR list: Virtuoso's free-text parser degrades on very long
+    # disjunctions, and a drug name is nearly always in the first few tokens.
+    bif = " OR ".join(f"'{t}'" for t in toks[:_MAX_BIF_TOKENS])
+    q = _sparql_literal(query.lower())
+    return (
+        f'  ?alt bif:contains "{bif}" .\n'
+        f"  FILTER(\n"
+        f'    (STRLEN(STR(?alt)) >= {_MIN_CONTAINED_LEN} '
+        f'&& CONTAINS("{q}", LCASE(STR(?alt))))\n'
+        f'    || LCASE(STR(?alt)) = "{q}"\n'
+        f"  )"
+    )
+
+
+def _resolve_spans(query: str, rows: list[dict]) -> list[dict]:
+    """Reduce raw containment hits to the maximal non-overlapping drug mentions.
+
+    The endpoint returns every synonym occurring anywhere in ``query``, which
+    over-generates in two ways this collapses:
+
+    * **Nested synonyms** — "Sofpironium Bromide Gel" matches SOFPIRONIUM
+      BROMIDE, SOFPIRONIUM *and* BROMIDE (the bare counter-ion). Longest-span-
+      first selection keeps only SOFPIRONIUM BROMIDE, since the shorter spans
+      overlap it. Likewise "fexofenadine HCL" keeps the hydrochloride salt
+      rather than also emitting bare FEXOFENADINE.
+    * **Genuinely distinct components** — "Ropivacaine 10% + Clonidine" yields
+      two non-overlapping spans, so both survive: a regimen resolves to its
+      parts rather than to whichever part happened to sort first.
+
+    Rows whose rdfs:label is just the ChEMBL ID (unnamed entries) are dropped —
+    they carry no information a caller can act on.
+    """
+    low = query.lower()
+    spans: list[tuple[int, int, str, str, str]] = []
+    for r in rows:
+        alt = (r.get("alt") or "").lower()
+        cid, name = r.get("chembl_id") or "", r.get("name") or ""
+        if not alt or not cid or not name or name == cid:
+            continue
+        start = low.find(alt)
+        if start < 0:  # LCASE mismatch (accents/whitespace) — not a real span
+            continue
+        spans.append((start, start + len(alt), cid, name, alt))
+    # Longest first, so a nested synonym never displaces the phrase containing it.
+    spans.sort(key=lambda s: (-(s[1] - s[0]), s[0]))
+    taken: list[tuple[int, int, str, str, str]] = []
+    for s in spans:
+        if any(not (s[1] <= t[0] or s[0] >= t[1]) for t in taken):
+            continue
+        taken.append(s)
+    seen: set[str] = set()
+    out: list[dict] = []
+    for start, end, cid, name, alt in sorted(taken):
+        if cid in seen:
+            continue
+        seen.add(cid)
+        out.append(
+            {
+                "chembl_id": cid,
+                "name": name,
+                "matched_span": query[start:end],
+                "match_type": "exact" if alt == low else "contained",
+            }
+        )
+    return out
 
 
 async def _run_chembl_sparql(query: str) -> list[dict] | dict:
@@ -180,6 +277,41 @@ _CHEMINF = {
     "inchikey": "http://semanticscience.org/resource/CHEMINF_000059",
     "inchi": "http://semanticscience.org/resource/CHEMINF_000113",
 }
+
+# Every drug-substance type a name/structure lookup may legitimately return.
+# ChEMBL's substance tree roots at cco:Substance (SmallMolecule | Biological |
+# UndefinedSubstance); a bare `?m a cco:SmallMolecule` therefore drops EVERY
+# biologic — antibodies, therapeutic proteins, vaccines, oligos, cell therapies —
+# so "efalizumab", "Rituxan" and ~1M other substances resolved to zero rows.
+#
+# Enumerated rather than matched with `?t rdfs:subClassOf* cco:Substance` for two
+# reasons: the property path costs ~17s vs ~0.15s for VALUES, and cco:Unclassified-
+# Molecule (390 instances) is orphaned in the ontology — it has no subClassOf edge,
+# so the path would silently miss it. Verified against the live endpoint 2026-07-30.
+#
+# cco:TargetComponent is deliberately EXCLUDED: it carries skos:altLabel and would
+# otherwise leak ~12.8k protein targets into molecule results (use search_chembl_target).
+_CHEMBL_MOLECULE_TYPES = (
+    "cco:SmallMolecule cco:Inorganic cco:NaturalProductDerived cco:Synthetic "
+    "cco:Biological cco:ProteinMolecule cco:Oligonucleotide cco:Oligosaccharide "
+    "cco:Enzyme cco:CellTherapy cco:Vaccine cco:Virus "
+    "cco:Antibody cco:Mab cco:Fab cco:FabPrime cco:FabPrime2 cco:ScFv cco:DiScFv "
+    "cco:SdAb cco:BiTE cco:Immunoadhesin cco:IIIfunct "
+    "cco:UndefinedSubstance cco:UnknownSubstance cco:UnclassifiedSubstance "
+    "cco:UnclassifiedMolecule"
+)
+
+
+def _molecule_type_block(var: str, *, indent: str = "  ") -> str:
+    """SPARQL constraining ``var`` to any ChEMBL drug-substance type.
+
+    Replaces a hard-coded ``a cco:SmallMolecule`` so biologics resolve too.
+    """
+    tvar = f"?_{var.lstrip('?')}_type"
+    return (
+        f"{indent}{var} a {tvar} .\n"
+        f"{indent}VALUES {tvar} {{ {_CHEMBL_MOLECULE_TYPES} }}"
+    )
 
 
 def _looks_like_structure(query: str) -> str | None:
@@ -258,8 +390,9 @@ async def _search_chembl_inchi_sparql(
         f"  ?node a <{_CHEMINF[kind]}> ; sio:SIO_000300 ?v .\n"
         f'  ?v bif:contains "{prefilter}" .\n'
         f'  FILTER(STR(?v) = "{_sparql_literal(query)}")\n'
-        f"  ?m sio:SIO_000008 ?node ; a cco:SmallMolecule ;\n"
-        f"     cco:chemblId ?chembl_id ; rdfs:label ?name .\n"
+        f"  ?m sio:SIO_000008 ?node .\n"
+        f"{_molecule_type_block('?m')}\n"
+        f"  ?m cco:chemblId ?chembl_id ; rdfs:label ?name .\n"
         f"}} LIMIT {int(limit)}"
     )
     return await _run_chembl_sparql(sparql)
@@ -382,7 +515,8 @@ async def search_chembl_id_lookup(
         "COMPOUND": exact_branch(
             "COMPOUND",
             "?e skos:altLabel ?alt .",
-            "?e a cco:SmallMolecule ; cco:chemblId ?chembl_id ; rdfs:label ?name .",
+            f"{_molecule_type_block('?e', indent='').lstrip()}\n"
+            "    ?e cco:chemblId ?chembl_id ; rdfs:label ?name .",
             prefilter=True,
             has_organism=False,  # molecules have no organism
         ),
@@ -615,10 +749,54 @@ async def search_chembl_target(
     }
 
 
+async def _extract_chembl_molecules(query: str, limit: int) -> dict:
+    """Resolve every ChEMBL substance NAMED INSIDE ``query`` (mode='extract').
+
+    For clinical-trial intervention strings and dosed/formulated product names,
+    which exact synonym matching cannot resolve by design: "Ropivacaine 10% +
+    Clonidine 1 ug/kg" is not a synonym of anything, but it names two substances.
+    """
+    match = _containment_match_block(query)
+    if match is None:
+        return {"total_count": 0, "has_more": False, "results": [], "mode": "extract"}
+    # LCASE(?alt) collapses case-variant synonyms server-side. Without it the row
+    # budget is spent on ("Temozolomide","TEMOZOLOMIDE","temozolomide") and later
+    # components of a regimen fall off the end of the LIMIT.
+    sparql = (
+        f"{_CHEMBL_PREFIXES}\n"
+        f"SELECT DISTINCT ?chembl_id ?name (LCASE(STR(?alt)) AS ?alt)\n"
+        f"FROM <{_CHEMBL_GRAPH}> WHERE {{\n"
+        f"  ?m skos:altLabel ?alt .\n"
+        f"{match}\n"
+        f"{_molecule_type_block('?m')}\n"
+        f"  ?m cco:chemblId ?chembl_id ; rdfs:label ?name .\n"
+        f"}} LIMIT {_EXTRACT_ROW_BUDGET}"
+    )
+    rows = await _run_chembl_sparql(sparql)
+    if isinstance(rows, dict):
+        return rows  # {"error": ...}
+    results = _resolve_spans(query, rows)
+    results, has_more = _paginate(results, limit)
+    out = {
+        "total_count": len(results),
+        "has_more": has_more,
+        "results": results,
+        "mode": "extract",
+    }
+    if not results:
+        out["note"] = (
+            f"No ChEMBL substance is named inside {query!r}. It may be a regimen "
+            "acronym (FOLFIRI), a procedure, a placeholder ('Treatment A'), or a "
+            "sponsor code ChEMBL does not carry."
+        )
+    return out
+
+
 @mcp.tool(annotations=READ_ONLY_TOOL)
 async def search_chembl_molecule(
     query: str = "",
     limit: int = 20,
+    mode: str = "exact",
     search: str = "",
     term: str = "",
     keyword: str = "",
@@ -656,18 +834,38 @@ async def search_chembl_molecule(
     The search string can be passed as any of: `query` (canonical), `search`,
     `term`, `keyword`, `keywords`, `search_term`, or `name`.
 
+    ⚠️ `mode='extract'` — for a string that NAMES a drug rather than IS one.
+       Exact matching (the default) cannot resolve a clinical-trial intervention
+       string, a dosed/formulated product, or a multi-drug regimen, because none
+       of those is a synonym of anything: "Ustekinumab 90 mg", "Diclofenac SR",
+       "Ropivacaine 10% + Clonidine 1 µg/kg" all return 0 rows under 'exact'.
+       `mode='extract'` instead finds every substance NAMED INSIDE the string,
+       returning one result per distinct drug — so the combination above yields
+       ROPIVACAINE and CLONIDINE. Nested synonyms collapse to the longest match
+       ("Sofpironium Bromide Gel" → SOFPIRONIUM BROMIDE, not also BROMIDE).
+       Use it as the RETRY when 'exact' returns nothing, not as the first call:
+       it is a text-extraction heuristic, so treat a hit as a candidate to
+       confirm, and note that it resolves a regimen to its COMPONENTS — it will
+       never return "FOLFIRI" itself, only the drugs a string spells out.
+
     RETURNS a dict {'total_count', 'has_more', 'results'}. `total_count` is rows
     RETURNED (capped by `limit`), not the full match count; `has_more` is true if
     more exist beyond this page. Each result has 'chembl_id' (e.g. "CHEMBL25") and
-    'name' (rdfs:label, may be None for some structure hits). On endpoint/HTTP
-    failure this tool does NOT raise — it returns a dict with a single 'error' key
-    instead; CHECK FOR 'error' BEFORE READING 'results'.
+    'name' (rdfs:label, may be None for some structure hits). Under
+    `mode='extract'` each result additionally carries 'matched_span' (the text
+    that matched) and 'match_type' ('exact' if the span is the whole query,
+    else 'contained') — CHECK 'match_type' before trusting a hit. When a call
+    returns no results, a 'note' key explains why and what to try next. On
+    endpoint/HTTP failure this tool does NOT raise — it returns a dict with a
+    single 'error' key instead; CHECK FOR 'error' BEFORE READING 'results'.
 
     Args:
         query (str): Drug/compound name, brand, synonym, or a structure string.
             Examples: "Aspirin", "Gleevec", "CC(=O)Oc1ccccc1C(=O)O",
             "BSYNRYMUTXBXSQ-UHFFFAOYSA-N".
         limit (int, optional): Maximum number of results to return. Defaults to 20.
+        mode (str, optional): "exact" (default) matches the WHOLE string against a
+            synonym; "extract" finds substances named INSIDE it. Defaults to "exact".
     """
     query = _resolve_query_alias(
         query,
@@ -683,6 +881,14 @@ async def search_chembl_molecule(
             "Missing search string. Pass it as `query` (canonical) or any of: "
             "search, term, keyword, keywords, search_term, name."
         )
+    mode = (mode or "exact").strip().lower()
+    if mode not in ("exact", "extract"):
+        raise ValueError(
+            f"Unknown mode {mode!r}. Use 'exact' (default: the whole string must "
+            "BE a synonym) or 'extract' (find substances NAMED INSIDE the string)."
+        )
+    if mode == "extract":
+        return await _extract_chembl_molecules(query, int(limit))
     # Structure-shaped input.
     structure_kind = _looks_like_structure(query)
     if structure_kind == "smiles":
@@ -731,7 +937,8 @@ async def search_chembl_molecule(
         f"SELECT DISTINCT ?chembl_id ?name FROM <{_CHEMBL_GRAPH}> WHERE {{\n"
         f"  ?m skos:altLabel ?alt .\n"
         f"{match}\n"
-        f"  ?m a cco:SmallMolecule ; cco:chemblId ?chembl_id ; rdfs:label ?name .\n"
+        f"{_molecule_type_block('?m')}\n"
+        f"  ?m cco:chemblId ?chembl_id ; rdfs:label ?name .\n"
         f"}} LIMIT {int(limit) + 1}"
     )
     rows = await _run_chembl_sparql(sparql)
@@ -742,8 +949,20 @@ async def search_chembl_molecule(
         {"chembl_id": r.get("chembl_id"), "name": r.get("name")}
         for r in rows
     ]
-    return {
+    out = {
         "total_count": len(parsed_results),
         "has_more": has_more,
         "results": parsed_results,
     }
+    if not parsed_results:
+        # An empty exact match is indistinguishable from "not in ChEMBL" unless
+        # we say why. The dominant real-world cause is a decorated string (dose,
+        # formulation, regimen) that is not itself a synonym of anything.
+        out["note"] = (
+            f"0 EXACT synonym matches for {query!r}. ChEMBL indexes single "
+            "substances, not regimens or dosed/formulated products. If this "
+            "string carries a dose, a formulation, or several drugs "
+            "(\"Ustekinumab 90 mg\", \"Ropivacaine 10% + Clonidine\"), retry "
+            "with mode='extract' to resolve the substances named inside it."
+        )
+    return out
