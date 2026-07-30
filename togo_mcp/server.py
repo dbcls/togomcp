@@ -18,7 +18,12 @@ from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_request
 import httpx
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from starlette.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    StreamingResponse,
+)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -50,8 +55,23 @@ ENDPOINTS_CSV = str(CWD.joinpath("resources", "endpoints.csv"))
 INDEX_HTML = str(CWD.joinpath("docs", "togomcp-intro.html"))
 KW_SEARCH_INSTRUCTIONS = str(CWD.joinpath("kw_search"))
 
-# Shared httpx client for SPARQL queries
-_sparql_client = httpx.AsyncClient(timeout=60.0)
+# Shared httpx client for SPARQL queries.
+#
+# 90s, not 60s: RDF Portal endpoints charge a large COLD-CACHE penalty on the
+# first touch of an entity's index pages. Measured on the SIB endpoint
+# 2026-07-30 across five never-queried UniProt accessions, a MINIMAL
+# single-protein lookup (one IRI, LIMIT 5) took 53.9-62.1s cold and 0.2s warm.
+# A 60s ceiling sat INSIDE that band, so whether a perfectly good query
+# succeeded was a coin flip — two such lookups timed out in production
+# 2026-07-27. 90s clears the observed cold maximum with headroom while still
+# cutting off genuinely runaway queries.
+#
+# Raising it does NOT make retries free: an ABORTED query does not warm the
+# cache (verified — abort at 20s, retry still 55.3s), so only a query allowed
+# to COMPLETE pays the cost once for everyone after it. That is the whole point
+# of the higher ceiling.
+_SPARQL_TIMEOUT_SECONDS = 90.0
+_sparql_client = httpx.AsyncClient(timeout=_SPARQL_TIMEOUT_SECONDS)
 
 
 def load_sparql_endpoints(path: str) -> dict[str, dict[str, str]]:
@@ -248,9 +268,18 @@ async def execute_sparql(
         extra["sparql_status"] = "timeout"
         raise ValueError(
             f"SPARQL endpoint at {url} timed out after {_sparql_client.timeout.read}s. "
-            "The query is likely too heavy. Add LIMIT, narrow with specific IRIs or GRAPH "
-            "clauses, or split into smaller queries. Do not retry the same query without "
-            f"changes. ({exc.__class__.__name__})"
+            "TWO different causes are possible — check which one before acting:\n"
+            "(1) THE QUERY IS TOO HEAVY (most likely at this duration). Narrow it: "
+            "add or lower LIMIT, anchor on specific IRIs, drop repeated self-joins on "
+            "the same predicate (?s p ?a, ?b, ?c), and split multi-graph joins into "
+            "separate queries. Do not re-send it unchanged.\n"
+            "(2) THE ENDPOINT WAS COLD. A first-ever query against a large graph can "
+            "take ~1 minute while indexes page in, even for a minimal lookup. If your "
+            "query is ALREADY anchored on specific IRIs and carries a small LIMIT, "
+            "there is nothing to narrow and this is the likely cause — the same query "
+            "may well succeed on a second attempt. But an aborted query does NOT warm "
+            "the cache, so a retry costs the same again: retry at most ONCE, never loop."
+            f" ({exc.__class__.__name__})"
         ) from exc
     except httpx.HTTPError as exc:
         extra["sparql_status"] = "network_error"
@@ -650,6 +679,60 @@ async def stats_dashboard(request: Request) -> HTMLResponse:
     except Exception as exc:  # never 500 with a stack trace; logging stays read-only
         logger.warning("stats render failed: %s", exc)
         return HTMLResponse("<h1>500</h1><p>Could not compute stats.</p>", status_code=500)
+
+
+@mcp.custom_route("/stats/log", methods=["GET"])
+async def stats_raw_log(request: Request):
+    """Stream the raw JSONL tool-call log behind the same Basic auth as /stats.
+
+    The dashboard's tables are lossy roll-ups; the questions worth asking next
+    are usually ones no pre-computed table answers (this release came out of
+    exactly that — reading the raw log surfaced two silent zero-row bugs and a
+    timeout misdiagnosis that every aggregate had shown as unremarkable).
+
+    Serves the SAME files `compute_stats` aggregates — active plus rotated —
+    concatenated OLDEST FIRST so the stream reads chronologically. Streaming,
+    not read-into-memory: this file grows without bound between rotations.
+    The path comes from TOGOMCP_QUERY_LOG only; nothing is caller-supplied, so
+    there is no traversal surface.
+    """
+    creds = _stats_configured()
+    if creds is None:
+        return PlainTextResponse("Stats dashboard not configured.", status_code=503)
+    if not _check_basic_auth(request, creds):
+        return PlainTextResponse(
+            "Authentication required", status_code=401, headers=_AUTH_HEADERS
+        )
+    from togo_mcp import stats as _stats_mod
+
+    base = os.getenv("TOGOMCP_QUERY_LOG", "").strip()
+    paths = _stats_mod.log_paths(base)
+    if not paths:
+        return PlainTextResponse("No log file found.", status_code=404)
+
+    def _iter_chunks():
+        # Reversed: log_paths returns [base (newest), base.1, base.2 (oldest)].
+        for path in reversed(paths):
+            try:
+                with open(path, "rb") as fh:
+                    while chunk := fh.read(64 * 1024):
+                        yield chunk
+            except OSError as exc:  # a file rotated away mid-stream — skip it
+                logger.warning("stats log stream: skipping %s (%s)", path, exc)
+
+    stamp = time.strftime("%Y%m%d", time.gmtime())
+    total = sum(os.path.getsize(p) for p in paths if os.path.exists(p))
+    return StreamingResponse(
+        _iter_chunks(),
+        media_type="application/x-ndjson",
+        headers={
+            "Content-Disposition": f'attachment; filename="togomcp-log-{stamp}.jsonl"',
+            # Advisory only: rotation could change the real length mid-stream,
+            # so this is not sent as Content-Length.
+            "X-Log-Bytes": str(total),
+            "X-Log-Files": str(len(paths)),
+        },
+    )
 
 
 @mcp.custom_route("/stats.json", methods=["GET"])

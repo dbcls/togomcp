@@ -601,7 +601,28 @@ def compute_stats(
     log_path = log_path if log_path is not None else os.getenv("TOGOMCP_QUERY_LOG", "").strip()
     groups = load_endpoint_groups(endpoints_csv) if endpoints_csv else {}
     mie_dates = load_mie_dates(mie_dir) if mie_dir else {}
-    return aggregate(iter_records(log_paths(log_path)), groups, mie_dates)
+    paths = log_paths(log_path)
+    out = aggregate(iter_records(paths), groups, mie_dates)
+    # Describe the bytes behind the aggregate so the dashboard's raw-log download
+    # can state its size up front, and so a downloaded file is verifiably the
+    # same input the numbers came from (the download serves exactly `paths`).
+    out["log_files"] = {
+        "n_files": len(paths),
+        "n_bytes": sum(os.path.getsize(p) for p in paths if os.path.exists(p)),
+    }
+    return out
+
+
+def _human_bytes(n: Any) -> str:
+    """Format a byte count for the dashboard ('2.6 MB'). Non-numeric → '?'."""
+    if not isinstance(n, (int, float)):
+        return "?"
+    size = float(n)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} GB"
 
 
 def render_html(stats: dict[str, Any]) -> str:
@@ -629,6 +650,21 @@ def render_html(stats: dict[str, Any]) -> str:
         f"<p class='muted'>Generated {cell(stats.get('generated_at'))} · "
         f"{cell(stats.get('n_records'))} records · months: {cell(', '.join(months)) or '—'}</p>",
     ]
+
+    # Raw-log download. Sits at the top because it is the escape hatch: every
+    # aggregate below is lossy, and the questions worth asking next are usually
+    # ones no pre-computed table answers.
+    _lf = stats.get("log_files") or {}
+    _nb, _nf = _lf.get("n_bytes"), _lf.get("n_files")
+    if _nf:
+        parts.append(
+            # Absolute: the dashboard is served at /stats with NO trailing slash,
+            # so a relative "log" would resolve to /log, not /stats/log.
+            "<p><a href='/stats/log' download>⬇ Download raw log (JSONL)</a> "
+            f"<span class='tag'>{cell(_human_bytes(_nb))} · "
+            f"{cell(_nf)} file{'s' if _nf != 1 else ''}, active + rotated · "
+            "exactly the records these tables aggregate</span></p>"
+        )
 
     cand = stats.get("mie_candidates", [])
     parts.append("<h2>MIE-improvement candidates</h2>")

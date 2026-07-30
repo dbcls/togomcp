@@ -559,3 +559,131 @@ class TestForwardedAllowIps:
         assert "forwarded_allow_ips" in inspect.signature(uvicorn.Config.__init__).parameters
         src = inspect.getsource(FastMCP.run_http_async)
         assert "config_kwargs.update(uvicorn_config_from_user)" in src
+
+
+class TestSparqlTimeout:
+    """The SPARQL client timeout is load-bearing, not a round number.
+
+    RDF Portal endpoints charge a large cold-cache penalty on first touch of an
+    entity's index pages: measured 2026-07-30 on the SIB endpoint, a minimal
+    single-protein UniProt lookup (one IRI, LIMIT 5) took 53.9-62.1s cold and
+    0.2s warm. The previous 60s ceiling sat inside that band, so a perfectly
+    good query succeeded or failed by chance — two did time out in production
+    on 2026-07-27. Anything at or below ~62s reopens that bug.
+    """
+
+    def test_timeout_clears_the_measured_cold_band(self) -> None:
+        from togo_mcp.server import _SPARQL_TIMEOUT_SECONDS, _sparql_client
+
+        assert _SPARQL_TIMEOUT_SECONDS >= 75.0, (
+            "cold single-entity lookups were measured up to 62.1s; a ceiling near "
+            "that makes a valid query fail by coin flip"
+        )
+        assert _sparql_client.timeout.read == _SPARQL_TIMEOUT_SECONDS
+
+    @pytest.mark.asyncio
+    async def test_timeout_message_names_both_causes(self) -> None:
+        """The old message asserted 'too heavy' and forbade any retry.
+
+        That advice is unfollowable for a single-IRI query with a small LIMIT —
+        there is nothing left to narrow. In the 2026-07-27 logs an agent obeyed
+        it, simplified a 26-predicate query to 8 predicates, and timed out again.
+        """
+        import httpx
+
+        from togo_mcp import server as srv
+
+        async def _boom(*a, **k):
+            raise httpx.ReadTimeout("simulated")
+
+        original = srv._sparql_client.post
+        srv._sparql_client.post = _boom  # type: ignore[method-assign]
+        try:
+            with pytest.raises(ValueError) as ei:
+                await srv.execute_sparql("SELECT * WHERE { ?s ?p ?o }", database="uniprot")
+        finally:
+            srv._sparql_client.post = original  # type: ignore[method-assign]
+        msg = str(ei.value)
+        assert "TOO HEAVY" in msg and "COLD" in msg  # both causes offered
+        assert "retry at most ONCE" in msg  # bounded retry, not a blanket ban
+        assert "90" in msg  # reports the real ceiling
+
+
+class TestRawLogDownload:
+    """/stats/log streams the raw JSONL behind the same Basic auth as /stats.
+
+    The dashboard's tables are lossy roll-ups. Release 2.2.0 came out of reading
+    the raw log directly — it surfaced two silent zero-row bugs and a timeout
+    misdiagnosis that every aggregate had shown as unremarkable — so the escape
+    hatch is the point of the feature, not a nicety.
+    """
+
+    @staticmethod
+    def _client(tmp_path, monkeypatch, *, rotated: bool = True, auth: bool = True):
+        import json as _json
+
+        from starlette.testclient import TestClient
+
+        from togo_mcp.main import mcp
+
+        active = tmp_path / "log.jsonl"
+        # ts values chosen so a chronological stream is oldest-first.
+        active.write_text(_json.dumps({"ts": "2026-07-30T00:00:00+00:00", "n": 3}) + "\n")
+        if rotated:
+            (tmp_path / "log.jsonl.1").write_text(
+                _json.dumps({"ts": "2026-07-28T00:00:00+00:00", "n": 1}) + "\n"
+                + _json.dumps({"ts": "2026-07-29T00:00:00+00:00", "n": 2}) + "\n"
+            )
+        monkeypatch.setenv("TOGOMCP_QUERY_LOG", str(active))
+        if auth:
+            monkeypatch.setenv("TOGOMCP_STATS_USER", "u")
+            monkeypatch.setenv("TOGOMCP_STATS_PASSWORD", "p")
+        else:
+            monkeypatch.delenv("TOGOMCP_STATS_USER", raising=False)
+            monkeypatch.delenv("TOGOMCP_STATS_PASSWORD", raising=False)
+        return TestClient(mcp.http_app())
+
+    def test_requires_auth(self, tmp_path, monkeypatch) -> None:
+        with self._client(tmp_path, monkeypatch) as c:
+            assert c.get("/stats/log").status_code == 401
+            assert c.get("/stats/log", auth=("u", "nope")).status_code == 401
+
+    def test_refuses_when_stats_not_configured(self, tmp_path, monkeypatch) -> None:
+        # Never expose the log just because credentials happen to be unset.
+        with self._client(tmp_path, monkeypatch, auth=False) as c:
+            assert c.get("/stats/log").status_code == 503
+
+    def test_streams_all_files_oldest_first(self, tmp_path, monkeypatch) -> None:
+        import json as _json
+
+        with self._client(tmp_path, monkeypatch) as c:
+            r = c.get("/stats/log", auth=("u", "p"))
+        assert r.status_code == 200
+        assert r.headers["content-type"].startswith("application/x-ndjson")
+        assert "attachment" in r.headers["content-disposition"]
+        assert r.headers["x-log-files"] == "2"
+        rows = [_json.loads(x) for x in r.text.splitlines() if x.strip()]
+        # Rotated siblings must be included, or the download silently under-
+        # reports versus the dashboard that aggregates them.
+        assert [x["n"] for x in rows] == [1, 2, 3]
+
+    def test_404_when_no_log_exists(self, tmp_path, monkeypatch) -> None:
+        from starlette.testclient import TestClient
+
+        from togo_mcp.main import mcp
+
+        monkeypatch.setenv("TOGOMCP_QUERY_LOG", str(tmp_path / "absent.jsonl"))
+        monkeypatch.setenv("TOGOMCP_STATS_USER", "u")
+        monkeypatch.setenv("TOGOMCP_STATS_PASSWORD", "p")
+        with TestClient(mcp.http_app()) as c:
+            assert c.get("/stats/log", auth=("u", "p")).status_code == 404
+
+    def test_dashboard_link_is_absolute(self, tmp_path, monkeypatch) -> None:
+        """/stats has no trailing slash, so a relative href would go to /log."""
+        import re
+
+        with self._client(tmp_path, monkeypatch) as c:
+            html = c.get("/stats", auth=("u", "p")).text
+            href = re.search(r"<a href='([^']+)' download", html).group(1)
+            assert href == "/stats/log"
+            assert c.get(href, auth=("u", "p")).status_code == 200
