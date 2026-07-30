@@ -15,6 +15,24 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 _Nothing yet._
 
+## [2.1.3] - 2026-07-30
+
+### Fixed
+
+- **Claude setup guide: wrong settings path, and Team/Enterprise had no route at all.** Verified against
+  Anthropic's custom-connectors article (which, unlike OpenAI's help centre, is fetchable and carries an
+  "Updated" date). Three corrections: the path is **Settings → Customize → Connectors → "+" →
+  "Add custom connector"**, not "Settings → Connectors" with a button "at the bottom of the page";
+  **Team and Enterprise require an owner to add the connector organization-wide first**
+  (Organization settings → Connectors → Add → Custom → Web) and members cannot self-add before that, so
+  the omission stranded every Team/Enterprise user; and custom connectors are available on **all plans**
+  including Free (capped at one) rather than paid-only as the heading implied — also on Cowork, not just
+  Claude and Claude Desktop.
+- **Method 2 reframed honestly.** The `claude_desktop_config.json` + `npx mcp-remote` recipe is a
+  community bridge, not an Anthropic-documented path — the article states that file is for genuinely
+  local MCP servers. It is now marked optional, with the note that Method 1 covers every plan, which
+  removes its original "for people without a paid plan" rationale.
+
 ## [2.1.2] - 2026-07-29
 
 ### Fixed
@@ -616,7 +634,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.1.2...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.1.3...HEAD
+[2.1.3]: https://github.com/dbcls/togomcp/compare/v2.1.2...v2.1.3
 [2.1.2]: https://github.com/dbcls/togomcp/compare/v2.1.1...v2.1.2
 [2.1.1]: https://github.com/dbcls/togomcp/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/dbcls/togomcp/compare/v2.0.2...v2.1.0

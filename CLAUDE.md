@@ -47,6 +47,39 @@ Two intentional, *different* error conventions coexist — preserve each module'
 
 List-style result tools return a **JSON string of a bare array** (not a Python `list`): empty and non-empty then share one wire shape. Returning a bare `list` makes FastMCP double-represent it (text array + wrapped `{"result": ...}`), so empty vs non-empty diverge for clients. `dict` returns (ChEMBL, `search_reactome_entity`, `get_sparql_endpoints`) and NCBI `list[TextContent]` returns are exempt — they aren't wrapped. `search_reactome_entity` uses the ChEMBL envelope `{total_count, has_more, results}` on success and `{"error": ...}` on failure (it validates+normalizes `species`/`types` case-insensitively against vendored vocabularies and raises on an unknown value — the server-side filter is case-sensitive and silently ignores a mis-cased value; `limit` is a true overall cap, not per-type; `summation` is opt-in).
 
+## Deployment
+
+**`compose.yaml` is NOT the production path.** Production and test run on the DBCLS host (vs94) via
+`scripts/deploy.sh` — **rootless podman** (`podman run -p`, network mode `slirp4netns`), test-before-prod,
+promoting the exact tested image without rebuilding. Compose is for local/dev only. `deploy.sh` is
+DBCLS-internal and deliberately absent from `README.md`.
+
+This distinction is written down because assuming Compose was the deployment cost two releases in a row
+(2026-07-29):
+
+- `forwarded_allow_ips` was defaulted to Docker's `172.16.0.0/12`, read off `compose.yaml`. Under rootless
+  podman + slirp4netns the rootlesskit port handler SNATs every inbound connection to the container's own
+  address `10.0.2.100`, so the value never matched and `X-Forwarded-Proto` kept being discarded.
+- `deploy.sh` forwards a **fixed list** of env vars (`TOGOMCP_PERSERVICE_VARS` / `TOGOMCP_SHARED_VARS`).
+  A knob added to `compose.yaml` and `.env.example` but not to that list is **inert in production**. Add
+  new env vars in all three places.
+
+Both failures were silent, and both passed a green test suite, because the tests asserted the assumption
+(the Docker range) rather than the environment. Two checks read what a client actually receives and cut
+through this class of bug — prefer them over local assertions whenever a change has to survive the deploy
+boundary:
+
+```bash
+# version actually being served (no session needed; /health returns only "OK")
+curl -sS -X POST https://togomcp.rdfportal.org/mcp \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}'
+```
+
+For tool metadata, capture `Mcp-Session-Id` from that response, POST `notifications/initialized`, then
+`tools/list` with the session header — that is how the 2.1.0 `readOnlyHint` annotations were confirmed to
+reach clients rather than merely to build.
+
 ## Versioning
 
 The version in `pyproject.toml` is read at runtime via `importlib.metadata` and reported in `serverInfo.version` (the deployment tell — a stale build shows the old number). Bump it on every `dev → main` release, and sync `uv.lock` in the same commit.
