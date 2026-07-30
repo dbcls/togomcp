@@ -17,6 +17,25 @@ _Nothing yet._
 
 ## [2.2.1] - 2026-07-30
 
+### Added
+
+- **`GET /stats/log` — download the raw JSONL tool-call log, linked from the top of `/stats`.** The
+  dashboard's tables are lossy roll-ups, and the failures worth finding tend not to be the ones already
+  tabulated: 2.2.0 came out of reading the raw log directly, where a 62% zero-row rate on one tool and a
+  single repeated dead-end query shape were plainly visible while every pre-computed table showed them as
+  unremarkable traffic. This makes that escape hatch a link instead of an SSH session.
+  Serves the *same* files `compute_stats` aggregates — active plus every rotated sibling, concatenated
+  oldest-first — so a download is verifiably the input the dashboard's numbers came from; serving only the
+  active file would silently under-report against the tables above it. Streamed in chunks rather than read
+  into memory (the log reaches ~550 MB across rotations), with `X-Log-Bytes`/`X-Log-Files` headers and no
+  `Content-Length`, since rotation can change the real length mid-stream.
+  Behind the **same HTTP Basic gate as `/stats`**: 503 when `TOGOMCP_STATS_USER`/`TOGOMCP_STATS_PASSWORD`
+  are unset (never an unauthenticated fallback), 401 without valid credentials, 404 when no log exists.
+  The served path comes from `TOGOMCP_QUERY_LOG` only — nothing is caller-supplied, so there is no
+  traversal surface. Documented in `log_file_specs.md`.
+  Still PATCH: the semver policy scopes the public contract to the *tool surface* (tool names, parameters,
+  return shapes), and this adds no tool and changes no return shape.
+
 ### Fixed
 
 - **A 60s SPARQL timeout sat inside the endpoints' cold-cache band, so valid queries failed by chance.**

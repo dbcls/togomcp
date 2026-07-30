@@ -18,7 +18,12 @@ from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_request
 import httpx
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from starlette.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    StreamingResponse,
+)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -674,6 +679,60 @@ async def stats_dashboard(request: Request) -> HTMLResponse:
     except Exception as exc:  # never 500 with a stack trace; logging stays read-only
         logger.warning("stats render failed: %s", exc)
         return HTMLResponse("<h1>500</h1><p>Could not compute stats.</p>", status_code=500)
+
+
+@mcp.custom_route("/stats/log", methods=["GET"])
+async def stats_raw_log(request: Request):
+    """Stream the raw JSONL tool-call log behind the same Basic auth as /stats.
+
+    The dashboard's tables are lossy roll-ups; the questions worth asking next
+    are usually ones no pre-computed table answers (this release came out of
+    exactly that — reading the raw log surfaced two silent zero-row bugs and a
+    timeout misdiagnosis that every aggregate had shown as unremarkable).
+
+    Serves the SAME files `compute_stats` aggregates — active plus rotated —
+    concatenated OLDEST FIRST so the stream reads chronologically. Streaming,
+    not read-into-memory: this file grows without bound between rotations.
+    The path comes from TOGOMCP_QUERY_LOG only; nothing is caller-supplied, so
+    there is no traversal surface.
+    """
+    creds = _stats_configured()
+    if creds is None:
+        return PlainTextResponse("Stats dashboard not configured.", status_code=503)
+    if not _check_basic_auth(request, creds):
+        return PlainTextResponse(
+            "Authentication required", status_code=401, headers=_AUTH_HEADERS
+        )
+    from togo_mcp import stats as _stats_mod
+
+    base = os.getenv("TOGOMCP_QUERY_LOG", "").strip()
+    paths = _stats_mod.log_paths(base)
+    if not paths:
+        return PlainTextResponse("No log file found.", status_code=404)
+
+    def _iter_chunks():
+        # Reversed: log_paths returns [base (newest), base.1, base.2 (oldest)].
+        for path in reversed(paths):
+            try:
+                with open(path, "rb") as fh:
+                    while chunk := fh.read(64 * 1024):
+                        yield chunk
+            except OSError as exc:  # a file rotated away mid-stream — skip it
+                logger.warning("stats log stream: skipping %s (%s)", path, exc)
+
+    stamp = time.strftime("%Y%m%d", time.gmtime())
+    total = sum(os.path.getsize(p) for p in paths if os.path.exists(p))
+    return StreamingResponse(
+        _iter_chunks(),
+        media_type="application/x-ndjson",
+        headers={
+            "Content-Disposition": f'attachment; filename="togomcp-log-{stamp}.jsonl"',
+            # Advisory only: rotation could change the real length mid-stream,
+            # so this is not sent as Content-Length.
+            "X-Log-Bytes": str(total),
+            "X-Log-Files": str(len(paths)),
+        },
+    )
 
 
 @mcp.custom_route("/stats.json", methods=["GET"])

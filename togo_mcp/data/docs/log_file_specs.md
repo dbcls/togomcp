@@ -213,6 +213,31 @@ python -m togo_mcp.stats "$TOGOMCP_QUERY_LOG" \
   --mie togo_mcp/data/mie
 ```
 
+### Getting the raw file off a running server
+
+`GET /stats/log` streams the raw JSONL — the active file plus every rotated
+sibling, concatenated **oldest first** so the stream reads chronologically. It
+serves exactly the files `compute_stats` aggregates, so a download is verifiably
+the same input the dashboard's numbers came from. The `/stats` dashboard links
+it at the top.
+
+```bash
+curl -u "$TOGOMCP_STATS_USER:$TOGOMCP_STATS_PASSWORD" \
+  https://togomcp.rdfportal.org/stats/log -o togomcp-log.jsonl
+```
+
+Same HTTP Basic gate as `/stats`: **503** when `TOGOMCP_STATS_USER` /
+`TOGOMCP_STATS_PASSWORD` are unset (never an unauthenticated fallback), **401**
+without valid credentials, **404** when no log file exists. The response carries
+`X-Log-Bytes` and `X-Log-Files`; no `Content-Length`, because rotation can change
+the real length mid-stream.
+
+Reach for this when a question outruns the dashboard. The aggregates are lossy
+by construction, and the failures worth finding tend not to be the ones already
+tabulated — release 2.2.0 came out of reading the raw log directly, where a 62%
+zero-row rate on one tool and a single repeated dead-end query shape were plainly
+visible while every pre-computed table showed them as unremarkable traffic.
+
 ## Stability notes
 
 - New top-level or `extra` fields may be **added** over time; readers must
