@@ -35,7 +35,11 @@ graphs:
     ensembl: "co-hosted but NOT directly joinable from ChEMBL IRIs — bridge gene/protein IDs via TogoID."
 
 entity_counts:                     # COUNT(DISTINCT), FROM-pinned; re-run live 2026-07-22
-  small_molecules:        1920603  # cco:SmallMolecule
+  drug_substances:        2878135  # ALL of cco:Substance's leaf types — the real "how many molecules" figure (2026-07-30)
+  small_molecules:        1920603  # cco:SmallMolecule — only 67% of the above; the rest are biologics + UnknownSubstance
+  biologics_and_other:    957532   # UnknownSubstance 932,685 · ProteinMolecule 22,870 · Antibody 1,032 · Unclassified-
+                                   # Molecule 390 · Oligonucleotide 260 · Enzyme 129 · CellTherapy 85 · Oligosaccharide 81
+                                   # (2026-07-30) — NEVER equate "molecule" with cco:SmallMolecule (example molecule_name_resolve)
   assays:                 1890749  # cco:Assay (~100% carry dcterms:description)
   single_protein_targets: 10962    # cco:SingleProtein — the UniProt-mappable / classifiable target subset (17,803 across ALL cco:targetType)
   mechanisms:             7568     # cco:Mechanism (curated MoA link — bounded; use it, not the 21M-row activity fan-out)
@@ -140,7 +144,37 @@ examples:
     verified: {result_rows: 1, date: "2026-07-22", first_row: "CHEMBL210 = Beta-2 adrenergic receptor"}
     teaches: "Gene symbol → target: altLabel is on the target COMPONENT (?target cco:hasTargetComponent ?c . ?c skos:altLabel …). bif:contains prefilters via the text index (~0.1s) then FILTER pins exactness; a bare FILTER(CONTAINS()) scans ~1.8M altLabels (~11s, near timeout). SINGLE PROTEIN + Homo sapiens collapses orthologs/complexes to the one target."
     traps_avoided:
-      - "Brand/synonym → MOLECULE uses the same idiom but altLabel sits on the molecule itself: ?m a cco:SmallMolecule ; skos:altLabel ?alt . ?alt bif:contains \"...\" — NOT on a component."
+      - "Brand/synonym → MOLECULE uses the same idiom but altLabel sits on the molecule ITSELF (?m skos:altLabel ?alt), not on a component — and the molecule's type must NOT be pinned to cco:SmallMolecule. See molecule_name_resolve."
+
+  - id: molecule_name_resolve
+    intent: resolve a brand / trade name to a ChEMBL molecule — INCLUDING biologics (the type-safe route)
+    question: "Which ChEMBL molecules are Rituxan, Humira, Keytruda and Lipitor?"
+    complexity: basic
+    sparql: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT DISTINCT ?chembl_id ?name ?substance_type
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        VALUES ?brand { "rituxan" "humira" "keytruda" "lipitor" }
+        ?m skos:altLabel ?alt .                 # altLabel is on the MOLECULE (brand + trade names live here)
+        ?alt bif:contains "'rituxan' OR 'humira' OR 'keytruda' OR 'lipitor'" .
+        FILTER(LCASE(STR(?alt)) = ?brand)       # bif:contains prefilters; FILTER pins exactness
+        ?m a ?substance_type .                  # do NOT write `a cco:SmallMolecule` here — see traps_avoided
+        VALUES ?substance_type { cco:SmallMolecule cco:Antibody cco:ProteinMolecule
+                                 cco:Oligonucleotide cco:Oligosaccharide cco:Enzyme
+                                 cco:CellTherapy cco:Vaccine cco:UnknownSubstance
+                                 cco:UnclassifiedMolecule }
+        ?m cco:chemblId ?chembl_id ; rdfs:label ?name .
+      }
+      ORDER BY ?name
+    verified: {result_rows: 5, date: "2026-07-30", rows: "CHEMBL1201580 ADALIMUMAB (Antibody); CHEMBL1487 ATORVASTATIN + CHEMBL393220 ATORVASTATIN CALCIUM (SmallMolecule); CHEMBL3137343 PEMBROLIZUMAB (Antibody); CHEMBL1201576 RITUXIMAB (Antibody)", runtime: "0.15s"}
+    teaches: "Brand → molecule is an EXACT match on skos:altLabel (trade names are stored there), prefiltered by bif:contains. Binding ?substance_type to the VALUES list instead of pinning one class both keeps biologics in and returns the type as a free column — useful because the answer's shape differs per type (an Antibody has no InChI/SMILES)."
+    traps_avoided:
+      - "`?m a cco:SmallMolecule` DROPS EVERY BIOLOGIC — silently, with no error. ChEMBL's substance tree roots at cco:Substance (SmallMolecule | Biological | UndefinedSubstance), and antibodies/proteins/vaccines/oligos/cell therapies sit under Biological. Verified 2026-07-30: this query returns 5 rows; pinning cco:SmallMolecule returns 2 (only the atorvastatins) — Rituxan, Humira and Keytruda vanish. SmallMolecule is just 1,920,603 of 2,878,135 substances (67%)."
+      - "`?t rdfs:subClassOf* cco:Substance` looks like the elegant fix but is a bad trade: ~17s vs ~0.15s for the VALUES list, and cco:UnclassifiedMolecule (390 instances) has NO subClassOf edge at all, so the path silently misses it. There is also NO RDFS inference on this endpoint — `?m a cco:Substance` matches nothing (verified 2026-07-30)."
+      - "cco:TargetComponent ALSO carries skos:altLabel — leaving the type unconstrained entirely leaks ~12.8k protein targets into molecule results. Keep the VALUES list; for targets use name_resolve."
 
   - id: molecule_structure
     intent: SMILES / InChIKey / formula / MW of a molecule via the SIO qualified-value nodes
@@ -258,8 +292,11 @@ examples:
       SELECT DISTINCT ?moleculeLabel ?chebiLabel ?formula ?mass
       WHERE {
         GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
-          ?molecule a cco:SmallMolecule ; rdfs:label ?moleculeLabel ;
-                    cco:moleculeXref ?xref ; cco:highestDevelopmentPhase 4 .   # phase=4 pre-filter: 1.9M → ~4k
+          # No `a cco:SmallMolecule` pin — it would drop 56 approved biologics that DO carry a
+          # ChEBI xref (50 ProteinMolecule, 4 UnknownSubstance, 2 Oligosaccharide). moleculeXref +
+          # highestDevelopmentPhase are molecule-only predicates, so the type constraint is redundant here.
+          ?molecule rdfs:label ?moleculeLabel ;
+                    cco:moleculeXref ?xref ; cco:highestDevelopmentPhase 4 .   # phase=4 pre-filter: 2.9M → ~2.5k
           FILTER(CONTAINS(STR(?xref), "chebi/searchId"))
           # cco:moleculeXref is an EBI WEB URL (…searchId.do?chebiId=CHEBI%3ANNN) — rebuild the obo IRI to join:
           BIND(IRI(CONCAT("http://purl.obolibrary.org/obo/CHEBI_",
@@ -273,7 +310,7 @@ examples:
       }
       ORDER BY ?moleculeLabel
       LIMIT 50
-    verified: {result_rows: 50, date: "2026-07-22", first_row: "ABACAVIR → 'abacavir' C14H18N6O, 286.339"}
+    verified: {result_rows: 50, date: "2026-07-30", first_row: "2-MERCAPTOETHANESULFONIC ACID → 'coenzyme M' C2H6O3S2, 142.201", note: "the 2026-07-22 first_row (ABACAVIR) was stale — re-running the ORIGINAL query today also returns 2-MERCAPTOETHANESULFONIC ACID first, so this is upstream drift, not the type-pin removal"}
     teaches: "Molecule→ChEBI is cco:moleculeXref, but it stores an EBI web URL, NOT the obo:CHEBI_ IRI — BIND+REPLACE rebuilds purl.obolibrary.org/obo/CHEBI_N to join. On the ChEBI side use the chemrof: namespace (chemrof:mass / chemrof:generalized_empirical_formula); the old chebi:formula/chebi:mass were removed upstream (0 rows)."
     traps_avoided:
       - "skos:exactMatch does NOT link a molecule to ChEBI — it is ONLY on TargetComponent (→UniProt). Using it here returns 0 rows silently; use cco:moleculeXref."

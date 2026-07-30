@@ -13,7 +13,71 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **`search_chembl_molecule(mode='extract')` — resolve drugs NAMED INSIDE a string.** Exact synonym
+  matching cannot resolve a clinical-trial intervention string, a dosed/formulated product, or a
+  multi-drug regimen, because none of those *is* a synonym: `"Ustekinumab 90 mg"`, `"Diclofenac SR"` and
+  `"Ropivacaine 10% + Clonidine 1 µg/kg"` all return zero rows under exact matching. These were **420 of
+  the 531** zero-row `search_chembl_molecule` calls in the 2026-07-27..29 logs. The new opt-in mode finds
+  every substance named inside the string and recovers **239 of the 420** (measured end-to-end through the
+  tool, 0 errors).
+  Nested synonyms collapse to the longest match, so `"Sofpironium Bromide Gel"` yields SOFPIRONIUM BROMIDE
+  and not also the bare counter-ion BROMIDE, while genuinely distinct components all survive
+  (`"Cisplatin, Vinblastine, Temozolomide"` → all three). Each result carries `matched_span` and
+  `match_type` (`exact` | `contained`) so a caller can tell a derived hit from a real one.
+  **Exact remains the default and is byte-for-byte unchanged** — this is a retry path, not a relaxation of
+  the existing contract. It is a text-extraction heuristic: measured false-positive rate ~1% (2 of 239, both
+  a plausible component picked out of a compound name), and it resolves a regimen to its *components*, so
+  it will never return "FOLFIRI" itself.
+  The remaining **181 terms are a genuine floor** — placeholders (`"Treatment A"`), procedures
+  (`"Sonoporation"`), sponsor codes ChEMBL does not carry (`BIIB023`, `VK-2019`), and vaccines
+  (`Synflorix`). No string technique reaches them.
+- **Zero-result returns now explain themselves.** An empty `search_chembl_molecule` result was
+  indistinguishable from "not in ChEMBL". Both modes now attach a `note` naming the likely cause and the
+  next step (exact → suggests `mode='extract'` for a decorated string; extract → names the regimen /
+  procedure / placeholder / absent-sponsor-code cases).
+
+### Fixed
+
+- **ChEMBL name and structure lookups silently dropped every biologic.** `search_chembl_molecule` and the
+  COMPOUND branch of `search_chembl_id_lookup` constrained matches to `?m a cco:SmallMolecule`. ChEMBL's
+  substance tree roots at `cco:Substance` (`SmallMolecule` | `Biological` | `UndefinedSubstance`), so
+  antibodies, therapeutic proteins, vaccines, oligos and cell therapies matched the synonym but failed the
+  type check and returned zero rows — no error, just an empty result that reads as "not in ChEMBL".
+  `efalizumab`, `Rituxan`→RITUXIMAB, `Nivolumab` and `filgrastim` were all unreachable by name; the
+  InChI/InChIKey path was hit too, where ~940k substances carry a key but are typed `UnknownSubstance`,
+  `ProteinMolecule`, `Oligonucleotide` or `Oligosaccharide` rather than `SmallMolecule`.
+  All three sites now match any drug-substance type. Found in the 2026-07-27..29 production tool logs
+  (531 of 854 `search_chembl_molecule` calls returned zero rows); replaying the distinct failing terms
+  against the widened type set recovered **110 real drugs**. The remainder are clinical-trial intervention
+  strings ("Modified FOLFOX6", "Ustekinumab 90 mg") that exact synonym matching is not meant to resolve.
+  `cco:TargetComponent` stays excluded so protein targets don't leak into molecule results.
+
+### Changed
+
+- **ChEMBL MIE: the same `cco:SmallMolecule` trap was in the *guidance*, not just the code.** The
+  `name_resolve` example's `traps_avoided` prescribed `?m a cco:SmallMolecule ; skos:altLabel ?alt` as the
+  brand/synonym→molecule idiom — so an LLM following the MIE reproduced the bug the code fix removed, and
+  there was no worked example for molecule name resolution at all. Added `molecule_name_resolve` (Rituxan,
+  Humira, Keytruda, Lipitor → 3 antibodies + 2 small molecules in 0.15s) with the counterfactual recorded:
+  pinning `cco:SmallMolecule` cuts the same query from 5 rows to 2. `xdb_chebi` carried the pin too and was
+  under-answering its own "approved drugs" question by 56 substances; the pin is redundant there
+  (`moleculeXref`/`highestDevelopmentPhase` are molecule-only) and is now gone. `entity_counts` gained
+  `drug_substances: 2,878,135` — the file previously reported only `small_molecules: 1,920,603`, which
+  reads as the size of ChEMBL and hides 33% of it.
+- **ChEMBL MIE: `xdb_chebi`'s `verified` block was stale.** Its recorded `first_row` (ABACAVIR, dated
+  2026-07-22) no longer reproduces — re-running the *original* query verbatim today returns
+  2-MERCAPTOETHANESULFONIC ACID first, so this is upstream drift rather than a consequence of the type-pin
+  removal. Re-verified and re-dated, with that distinction noted inline.
+- **ClinVar MIE: new `sig_by_gene` example, and a warning off the `TypeAlleleDescr` dead end.** The
+  per-gene significance breakdown — the composition of the gene pin and the classification walk — had no
+  worked example, and the plausible-looking shortcut through `cvo:TypeAlleleDescr` +
+  `cvo:clinical_significance` returns zero rows with no error for essentially every gene: of 26,161
+  `TypeAlleleDescr` nodes only 280 carry `clinical_significance`, and those 280 cover **BRCA2 and BRCA1
+  only**. That shape accounted for 340 of 341 zero-row ClinVar queries in the same production logs. The
+  correct route (via `cvo:classified_record`) answers the EGFR case in ~0.3s and now ships as a verified
+  example with the trap recorded in its `traps_avoided`.
 
 ## [2.1.3] - 2026-07-30
 
