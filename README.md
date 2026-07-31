@@ -72,6 +72,11 @@ Edit your Claude Desktop config file:
 
 > **Tip**: Run `which uv` (macOS/Linux) or `where uv` (Windows) to find the full path to `uv`.
 
+> **Note on KEGG**: `togo-mcp-local` also mounts the `kegg_*` tools, which the hosted
+> server does not. The KEGG API is licensed to **academic users at academic
+> institutions** and capped at 3 requests/second — by running this locally you are the
+> caller under your own institution's terms. See [KEGG (local `stdio` install only)](#kegg-local-stdio-install-only).
+
 ---
 
 ## Docker
@@ -236,6 +241,8 @@ togomcp/
 │   ├── ncbi_tools.py       # NCBI E-utilities sub-server
 │   ├── togoid.py           # TogoID identifier-conversion sub-server
 │   ├── togovar.py          # TogoVar human-variation sub-server
+│   ├── kegg.py             # KEGG sub-server — mounted by togo-mcp-local ONLY (licence, see above)
+│   ├── kgml.py             # KGML -> signed pathway graph (pure; no network, no FastMCP)
 │   ├── stats.py            # Tool-call usage-log analysis
 │   └── data/               # Bundled data files (included in wheel)
 │       ├── mie/            # MIE files (YAML, one per database)
@@ -277,3 +284,11 @@ Kinjo, A. R., Yamamoto, Y., Bustamante-Larriet, S., Labra-Gayo, J.-E., & Fujisaw
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
+The MIT licence covers **this code only**, not the data or the third-party APIs it
+reaches — each carries its own terms, and you are the caller. Most RDF Portal
+databases are open, but note in particular that the **KEGG API** (`kegg_*` tools,
+local `stdio` install only) is licensed to academic users at academic institutions
+and requires a separate academic service-provider licence to redistribute as a
+service — which is why the hosted server does not expose it. See
+[KEGG (local `stdio` install only)](#kegg-local-stdio-install-only).
