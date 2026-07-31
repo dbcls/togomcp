@@ -13,6 +13,10 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2.4.0] - 2026-07-31
+
 ### Added
 
 - **KEGG, as an OPT-IN `stdio`-only tool group** (`kegg_find`, `kegg_get_entry`,
@@ -902,6 +906,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v2.3.0...HEAD
+[2.4.0]: https://github.com/dbcls/togomcp/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/dbcls/togomcp/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/dbcls/togomcp/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/dbcls/togomcp/compare/v2.1.3...v2.2.0
