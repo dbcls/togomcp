@@ -914,10 +914,14 @@ def metabolic_gaps(graph: dict[str, Any]) -> list[dict[str, Any]]:
     meaningful one, so callers should prefer the default.
 
     So this is a *result*, not a parse failure: the set of metabolic steps missing
-    from an organism. Reactome cannot answer this at all — it covers 15 species,
-    every one a eukaryote, so E. coli is simply absent from it. That coverage gap
-    is much of the argument for carrying KEGG in the first place, and unlike the
-    signed-edge argument it does not depend on signs at all.
+    from an organism. Reactome cannot answer it, though not because the organism
+    is missing: Reactome's graph names 64 organisms, ~20 of them bacteria, and
+    E. coli is there. But it holds only PROTEIN REFERENCES for them (E. coli: 101
+    ProteinReference + 1 RnaReference, zero reactions) — pathogen molecules taking
+    part in HUMAN infection pathways. Exactly 15 organisms own a biopax:Pathway
+    and every one is a eukaryote, so no prokaryote has a pathway reconstruction to
+    compare against. That gap is much of the argument for carrying KEGG, and
+    unlike the signed-edge argument it does not depend on signs at all.
     """
     degree: dict[str, int] = defaultdict(int)
     for e in graph["edges"]:
