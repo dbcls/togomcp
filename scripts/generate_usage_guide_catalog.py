@@ -202,16 +202,26 @@ def render_local_only_kegg() -> str:
         "database: no SPARQL endpoint, no MIE, and `database=\"kegg\"` is invalid on "
         "`run_sparql`.",
         "",
-        "- **What it uniquely adds.** A pathway map as a SIGNED DIRECTED GRAPH "
-        "(activation vs inhibition per edge, from KGML relation subtypes), the FEEDBACK "
-        "LOOPS that graph contains, and, for an organism map, the metabolic steps that "
-        "organism LACKS. Reactome RDF has no equivalent of any of these, so they are not "
-        "reproducible with `run_sparql`.",
+        "- **What it uniquely adds — two things.** (1) A pathway map as a SIGNED "
+        "DIRECTED GRAPH: activation vs inhibition per edge, from KGML relation subtypes. "
+        "(2) For an organism map, the metabolic steps that organism LACKS "
+        "(`metabolic_gaps`). Reactome RDF has no equivalent of either, so neither is "
+        "reproducible with `run_sparql`. **If a question does not depend on edge SIGN or "
+        "on organism-specific absence, RDF Portal alone can usually answer it — prefer "
+        "`reactome`/`rhea` there.**",
         "- **Workflow.** `kegg_find` (keyword → entry IDs) → `kegg_get_entry` (full "
         "record incl. DBLINKS), `kegg_link` (gene↔pathway↔compound↔pubmed), "
         "`kegg_pathway_graph` (whole map), `kegg_pathway_neighborhood` (up/downstream of "
-        "one gene), `kegg_pathway_paths` (how A reaches B, and the net sign of each "
-        "route), `kegg_pathway_cycles` (negative/positive feedback loops).",
+        "one gene), `kegg_pathway_paths` (how A reaches B, and the net sign of the route).",
+        "- **Signed claims: use `kegg_pathway_paths`, not `kegg_pathway_cycles`.** A "
+        "`net_sign` needs only a PATH, whereas cycle detection needs a loop that KEGG "
+        "actually drew closed on ONE map — and it usually did not. Measured over six real "
+        "maps, `kegg_pathway_cycles` found ZERO signed cycles: canonical loops like "
+        "p53/MDM2 have one arm on another map (hsa05200 draws `MDM2 -| TP53` but not "
+        "`TP53 -> MDM2`), so they never close. **An empty cycle result means \"not drawn "
+        "as a closed loop on this map\", NEVER \"no feedback exists\" — do not report the "
+        "latter.** On metabolic maps cycle search is meaningless outright (no signed "
+        "edges, and thousands of cycles from reversible reactions).",
         "- **Reading signs.** Every graph tool returns "
         "`signal_quality.signed_edge_fraction` — how much of that map states a direction "
         "of regulation at all. It ranges from 0.98 to 0.40 across signaling maps and is 0 "

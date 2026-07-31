@@ -606,6 +606,60 @@ def _signal_quality(graph: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _cycle_interpretation(
+    graph: dict[str, Any],
+    counts: dict[str, int],
+    selected: list[dict[str, Any]],
+    artifacts_excluded: int,
+) -> list[str]:
+    """Say what a cycle result does and does not license the caller to conclude.
+
+    Cycle detection is the most misread thing this server returns, because its
+    normal answer on real data is "nothing" and the obvious reading of nothing is
+    "this pathway has no feedback". Measured over the six-map validation set it
+    found ZERO signed cycles, so the empty and all-unsigned cases are the RULE,
+    not an edge case, and each needs its own explanation attached to the result
+    rather than left in a docstring the caller may not re-read.
+    """
+    notes: list[str] = []
+    signed = counts["negative"] + counts["positive"]
+
+    if not selected:
+        notes.append(
+            "NO CYCLE FOUND — this is the usual outcome and is NOT evidence that "
+            "the pathway lacks feedback. A KEGG map is a drawing of one process, "
+            "not a complete interaction model, so a real loop routinely has an arm "
+            "that is absent from THIS map (on hsa05200, MDM2 -| TP53 is drawn but "
+            "TP53 -> MDM2 is not). Do not report 'no feedback loops' to the user. "
+            "For a signed claim use kegg_pathway_paths, whose net_sign needs only a "
+            "path and not a closed cycle."
+        )
+    elif not signed:
+        notes.append(
+            "Every cycle found is `unsigned`, i.e. its direction is UNKNOWN — at "
+            "least one edge on each loop records only a mechanism "
+            "(phosphorylation, binding) or is metabolic. These are structural "
+            "loops; they do NOT support calling anything negative or positive "
+            "feedback."
+        )
+
+    if artifacts_excluded:
+        notes.append(
+            f"{artifacts_excluded} two-cycle(s) were excluded as reversible-reaction "
+            "artifacts: a reversible reaction A<->B is emitted in both directions "
+            "and so is a cycle by construction, with no feedback meaning. Pass "
+            "include_reversible_artifacts=True to see them."
+        )
+
+    if not graph["stats"]["signed_edge_count"]:
+        notes.append(
+            "This map has NO signed edges at all (typical of metabolic maps), so a "
+            "negative/positive result is impossible here by construction. Ask this "
+            "question of a signaling map instead."
+        )
+    return notes
+
+
 @kegg_mcp.tool(annotations=READ_ONLY_TOOL)
 async def pathway_graph(
     pathway: Annotated[
@@ -998,45 +1052,68 @@ async def pathway_cycles(
     ] = "",
     max_length: Annotated[int, Field(ge=2, le=8)] = 5,
     max_cycles: Annotated[int, Field(ge=1, le=500)] = 50,
+    include_reversible_artifacts: Annotated[
+        bool, Field(description="Keep 2-cycles that are just a reversible reaction.")
+    ] = False,
 ) -> str:
-    """Find feedback loops in a KEGG pathway map, classified by sign.
+    """Find closed feedback loops drawn within a single KEGG pathway map.
 
-    A directed cycle IS a feedback loop, and the product of its edge signs says
-    which kind: negative (self-limiting/homeostatic) or positive (self-reinforcing,
-    switch-like). This is a structural claim about the pathway that no keyword
-    search surfaces, and RDF Portal cannot answer it — Reactome RDF has no
-    equivalent of KGML's activation/inhibition subtypes.
+    A directed cycle is a feedback loop, and the product of its edge signs says
+    which kind: negative (self-limiting) or positive (self-reinforcing).
 
-    RETURNS a JSON string of an object with `counts` (cycles per feedback class),
-    `cycle_count` and `cycles`. Each cycle is
-    `{"nodes": [{"id","label"}], "length", "net_sign", "feedback"}`, with
-    `feedback` one of "negative" (net_sign -1), "positive" (+1) or "unsigned" (0).
-    `unsigned` means UNKNOWN, not neutral: at least one edge in the loop records
-    only a mechanism (phosphorylation, binding/association) or is metabolic, so
-    KGML never states its direction. Check
-    `signal_quality.signed_edge_fraction` before reading these — a map at 0.40
-    (hsa04010) yields mostly `unsigned` loops, and a metabolic map at 0 yields
-    nothing else.
+    EXPECT ZERO, AND READ ZERO CORRECTLY. Measured across six real maps this
+    returns NO signed cycles at all: hsa04151 has no cycles despite being 98%
+    signed; hsa04010 and hsa05200 have 4 and 3, every one of them `unsigned`. A
+    KEGG map is a DRAWING of one process, not a complete interaction model, so a
+    textbook loop usually has an arm missing — on hsa05200 `MDM2 -| TP53` is
+    drawn but `TP53 -> MDM2` is not (its induction arm lives on another map), so
+    p53/MDM2 cannot close here at any depth. An empty result therefore means
+    "NOT DRAWN as a closed loop on THIS map", never "no feedback exists", and it
+    is not evidence of anything biological.
+
+    PREFER `kegg_pathway_paths` FOR ANY SIGNED CLAIM. Its `net_sign` needs only a
+    path, not a closed cycle, so it survives the missing arm that defeats this
+    tool — `kegg_pathway_paths(source="MDM2", target="TP53")` returns the -1
+    inhibition that the cycle search cannot see.
+
+    RETURNS a JSON string of an object with `counts` (cycles per feedback class,
+    over the whole map), `cycle_count`, `cycles`, `interpretation` and
+    `signal_quality`. Each cycle is `{"nodes": [{"id","label"}], "length",
+    "net_sign", "feedback", "reactions", "artifact"}`. `feedback` is "negative"
+    (net_sign -1), "positive" (+1) or "unsigned" (0) — and `unsigned` means
+    UNKNOWN, not neutral: some edge in the loop records only a mechanism
+    (phosphorylation, binding) or is metabolic, so KGML never states its
+    direction.
+
+    DO NOT USE THIS ON A METABOLIC MAP. Such a map has no signed edges at all, so
+    negative/positive is impossible by construction, and it is dense with cycles
+    that mean nothing: ko00010 yields over 5,000 at `max_length` 6, dominated by
+    long unsigned ones. A reversible reaction A<->B is also emitted in both
+    directions and so IS a 2-cycle by construction (82 of ko00010's 102
+    two-cycles); those specific ones are dropped by default and counted under
+    `artifacts_excluded`, but that is a small cleanup — 69 of 5,001 — and does
+    NOT make the result meaningful. Ask this question of a signaling map.
 
     THE `feedback` FILTER IS APPLIED AFTER THE `max_cycles` CAP, so on a dense map
-    the cap can fill with cycles you filtered out and leave zero matches that are
-    not really zero. `truncated` is present whenever the cap was reached — if it
-    is, raise `max_cycles` before concluding a map has no negative feedback.
+    the cap can fill with cycles the filter then removes, leaving a zero that is
+    not real. `truncated` is present whenever the cap was reached — if it is,
+    raise `max_cycles` before concluding anything.
 
     RAISES ValueError on a malformed map id or filter value, when the map has no
     KGML, and on any HTTP error — including HTTP 403/429 for the 3
     requests/second rate limit, which must not be retried.
 
     Args:
-        pathway: KEGG map id, e.g. "hsa04010". Signaling maps are where this is
-            informative; metabolic maps are unsigned throughout.
+        pathway: KEGG map id, e.g. "hsa04010". Signaling maps are the only place
+            this is informative; metabolic maps are unsigned throughout.
         feedback: Keep only one class: "negative", "positive" or "unsigned".
-            Empty (default) returns all, which is usually what you want since
-            `counts` then describes the whole map.
-        max_length: Maximum nodes in a cycle, in [2, 8]. Default 5. Long loops
-            are rarely meaningful and cost more to enumerate.
+            Empty (default) returns all; `counts` always describes the whole map.
+        max_length: Maximum nodes in a cycle, in [2, 8]. Default 5.
         max_cycles: Maximum cycles to collect BEFORE filtering, in [1, 500].
             Default 50.
+        include_reversible_artifacts: Keep the 2-cycles that are just one
+            reversible reaction drawn both ways. Default False — they are a
+            representation artifact, not feedback, and they swamp metabolic maps.
 
     Returns:
         str: JSON object as described above.
@@ -1048,13 +1125,18 @@ async def pathway_cycles(
         )
 
     pathway, graph = await _load_graph(pathway)
-    cycles = find_cycles(graph, max_length=max_length, max_cycles=max_cycles)
+    found = find_cycles(graph, max_length=max_length, max_cycles=max_cycles)
+    cap_reached = len(found) >= max_cycles
+
+    artifacts = [c for c in found if c.get("artifact")]
+    cycles = found if include_reversible_artifacts else [
+        c for c in found if not c.get("artifact")
+    ]
 
     counts = {"negative": 0, "positive": 0, "unsigned": 0}
     for c in cycles:
         counts[c["feedback"]] = counts.get(c["feedback"], 0) + 1
 
-    cap_reached = len(cycles) >= max_cycles
     selected = [c for c in cycles if c["feedback"] == feedback] if feedback else cycles
 
     payload: dict[str, Any] = {
@@ -1062,8 +1144,12 @@ async def pathway_cycles(
         "feedback_filter": feedback or "all",
         "max_length": max_length,
         "counts": counts,
+        "artifacts_excluded": 0 if include_reversible_artifacts else len(artifacts),
         "cycle_count": len(selected),
         "cycles": selected,
+        "interpretation": _cycle_interpretation(
+            graph, counts, selected, len(artifacts) if not include_reversible_artifacts else 0
+        ),
         "signal_quality": _signal_quality(graph),
     }
     if cap_reached:

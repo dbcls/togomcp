@@ -927,13 +927,68 @@ def metabolic_gaps(graph: dict[str, Any]) -> list[dict[str, Any]]:
 def find_cycles(graph: dict[str, Any], *, max_length: int = 5, max_cycles: int = 50):
     """Bounded enumeration of directed cycles — i.e. feedback loops.
 
-    Cycles with net_sign == -1 are negative feedback, +1 positive feedback. This
-    is a structural claim about the pathway that no keyword search can surface.
+    Cycles with ``net_sign == -1`` are negative feedback, +1 positive feedback.
+
+    TEMPER EXPECTATIONS — MEASURED ON REAL MAPS
+    -------------------------------------------
+    Across the six-map validation set this returned **zero SIGNED cycles**:
+    hsa04151 has no cycles at all despite being 98% signed, hsa04010 has 4 and
+    hsa05200 has 3, all of them ``unsigned``. There are two reasons, and neither
+    is a parser defect:
+
+    * A KEGG map is a DRAWING of one process, not a complete interaction model,
+      so a textbook loop is routinely missing an arm. On hsa05200, ``MDM2 -|
+      TP53`` is drawn (sign -1) but ``TP53 -> MDM2`` is not — TP53's six
+      outgoing edges all go to downstream effectors (CDKN1A, BAX, ...). The
+      induction arm lives on a different map, so the loop cannot close here at
+      any traversal depth.
+    * Closing a loop usually needs every edge on it to be signed, and most KGML
+      relations record only a MECHANISM. One unsigned edge collapses the whole
+      product to 0.
+
+    Duplicate layout entries (pitfall 8) are a THIRD reason, and this is the one
+    the parser does fix: on hsa05200 merging them takes the cycle count from 0 to
+    3. Without ``merge_duplicate_entries`` the drawn loops are invisible too.
+
+    So an empty result means "not drawn as a closed loop on THIS map", never "no
+    feedback exists". For a signed claim about regulation, prefer ``find_paths``:
+    its ``net_sign`` needs only a path, not a closed cycle, and is therefore far
+    more robust on real KGML.
+
+    REVERSIBLE-REACTION ARTIFACTS
+    -----------------------------
+    On a metabolic map a reversible reaction A<->B is emitted as edges in both
+    directions, which IS a 2-cycle by construction and is not feedback at all.
+    They dominate the two-cycles: 82 of ko00010's 102. Those carry
+    ``artifact == "reversible_reaction"`` so callers can drop them; everything
+    else has ``artifact is None``. Only the unambiguous length-2 same-reaction
+    case is marked — a longer cycle over reversible steps can be genuine
+    biochemistry (a real metabolic cycle).
+
+    That flag is a small cleanup, NOT a rescue: a metabolic map is dense with
+    cycles at any depth (ko00010 has >5,000 at ``max_length=6``, of which only 69
+    are markable artifacts) and none of them can ever be signed, because such a
+    map has no signed edges. Cycle enumeration is only meaningful on a signaling
+    map.
     """
     adj = _adjacency(graph, "downstream")
     by_id = {n["id"]: n for n in graph["nodes"]}
     out: list[dict[str, Any]] = []
     seen_keys: set[tuple] = set()
+
+    def _artifact(cycle_edges: list[dict[str, Any]]) -> str | None:
+        """Flag a 2-cycle that is just one reversible reaction drawn both ways."""
+        if len(cycle_edges) != 2:
+            return None
+        a, b = cycle_edges
+        if (
+            a.get("reversible")
+            and b.get("reversible")
+            and a.get("reaction")
+            and a.get("reaction") == b.get("reaction")
+        ):
+            return "reversible_reaction"
+        return None
 
     def dfs(start: str, node: str, path: list[str], edges: list[dict[str, Any]]):
         if len(out) >= max_cycles or len(path) > max_length:
@@ -944,8 +999,9 @@ def find_cycles(graph: dict[str, Any], *, max_length: int = 5, max_cycles: int =
                 if key in seen_keys:
                     continue
                 seen_keys.add(key)
+                cycle_edges = edges + [edge]
                 sign = 1
-                for e in edges + [edge]:
+                for e in cycle_edges:
                     sign *= e["sign"]
                 out.append(
                     {
@@ -955,6 +1011,10 @@ def find_cycles(graph: dict[str, Any], *, max_length: int = 5, max_cycles: int =
                         "feedback": (
                             "negative" if sign < 0 else "positive" if sign > 0 else "unsigned"
                         ),
+                        "reactions": sorted(
+                            {r for e in cycle_edges for r in (e.get("reaction") or [])}
+                        ),
+                        "artifact": _artifact(cycle_edges),
                     }
                 )
             elif nxt not in path and nxt > start:

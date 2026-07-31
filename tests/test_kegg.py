@@ -549,6 +549,57 @@ class TestPathwayCycles:
         with pytest.raises(ValueError, match="Invalid feedback filter"):
             await pathway_cycles(pathway=MAP, feedback="neutral")
 
+    @pytest.mark.asyncio
+    async def test_reversible_reaction_two_cycles_are_excluded_by_default(self):
+        """A reversible reaction A<->B is a 2-cycle by construction, not feedback.
+
+        The fixture's R03469 is reversible between entries 30 and 31, so it is
+        emitted in both directions. On a real metabolic map these dominate the
+        two-cycles (82 of ko00010's 102).
+        """
+        with respx.mock(using="httpx") as router:
+            _mock_kgml(router)
+            default = json.loads(await pathway_cycles(pathway=MAP, max_length=2))
+            kept = json.loads(
+                await pathway_cycles(
+                    pathway=MAP, max_length=2, include_reversible_artifacts=True
+                )
+            )
+        assert default["artifacts_excluded"] >= 1
+        assert all(c.get("artifact") is None for c in default["cycles"])
+        assert any(c.get("artifact") == "reversible_reaction" for c in kept["cycles"])
+        assert kept["artifacts_excluded"] == 0
+        assert len(kept["cycles"]) > len(default["cycles"])
+
+    @pytest.mark.asyncio
+    async def test_zero_cycles_is_explained_rather_than_left_to_be_misread(self):
+        """Empty is the NORMAL outcome on real maps, and 'no feedback exists' is
+        the wrong reading — a KEGG map routinely omits one arm of a real loop
+        (hsa05200 draws MDM2 -| TP53 but not TP53 -> MDM2)."""
+        with respx.mock(using="httpx") as router:
+            # A map with relations but no closed loop of length <= 2 other than
+            # the artifact one, which is excluded by default.
+            _mock_kgml(router)
+            result = json.loads(
+                await pathway_cycles(pathway=MAP, feedback="positive", max_length=2)
+            )
+        assert result["cycle_count"] == 0
+        joined = " ".join(result["interpretation"])
+        assert "NOT evidence" in joined
+        assert "kegg_pathway_paths" in joined
+
+    @pytest.mark.asyncio
+    async def test_unsigned_only_result_is_flagged(self):
+        with respx.mock(using="httpx") as router:
+            _mock_kgml(router)
+            result = json.loads(
+                await pathway_cycles(pathway=MAP, feedback="unsigned", max_length=3)
+            )
+        if result["cycle_count"] and not (
+            result["counts"]["negative"] or result["counts"]["positive"]
+        ):
+            assert any("UNKNOWN" in n for n in result["interpretation"])
+
 
 # --------------------------------------------------------------------------- #
 # link / conv

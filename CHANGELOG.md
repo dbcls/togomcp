@@ -69,6 +69,27 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ### Changed
 
+- **`kegg_pathway_cycles` no longer oversells what it can find, and says so in the payload.**
+  Measured across the six-map validation set it returns **zero signed cycles**: hsa04151 has no
+  cycles at all despite being 98% signed, hsa04010 and hsa05200 have 4 and 3, every one `unsigned`.
+  The reason is not a parser defect — a KEGG map is a DRAWING of one process, not a complete
+  interaction model, so a canonical loop routinely has an arm that is simply absent. On hsa05200
+  `MDM2 -| TP53` is drawn (sign -1) but `TP53 -> MDM2` is not: TP53's six outgoing edges all go to
+  downstream effectors, and the induction arm lives on another map, so p53/MDM2 cannot close at any
+  depth. (Duplicate layout entries are a third cause, and that one the parser does fix — merging
+  takes hsa05200 from 0 cycles to 3.)
+  So an empty result means "not drawn as a closed loop on THIS map", never "no feedback exists". The
+  tool now ships an `interpretation` block saying exactly that, because empty is the NORMAL outcome
+  and the obvious reading of it is wrong. **For any signed claim, `kegg_pathway_paths` is the robust
+  primitive** — its `net_sign` needs only a path, so it returns the MDM2 -| TP53 inhibition the cycle
+  search cannot see.
+- **Reversible-reaction 2-cycles are classified and excluded by default.** A reversible reaction
+  A↔B is emitted in both directions and so IS a 2-cycle by construction, with no feedback meaning
+  (82 of ko00010's 102 two-cycles). `find_cycles` now marks them `artifact:
+  "reversible_reaction"`; only the unambiguous length-2 same-reaction case is marked, since a longer
+  cycle over reversible steps can be real biochemistry. This is a small cleanup and is documented as
+  one — 69 of ko00010's 5,001 cycles at depth 6 — not a rescue: cycle enumeration on a metabolic map
+  is meaningless regardless, because such a map has no signed edges at all.
 - **The Usage Guide is now transport-aware.** The guide is served by both transports, so the KEGG
   material first shipped in full to HTTP clients that have no `kegg_*` tools — six tools' worth of
   operating instructions for things they cannot call, led by a sentence asserting KEGG "is reachable".
