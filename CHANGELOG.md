@@ -31,6 +31,14 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   every row of the answer then reads "AKT3" for a question asked about AKT1. `unresolved_note` now
   states that all three routes were tried and suggests retrying with a KEGG gene id.
 
+- **A clean shutdown printed a 38-line traceback into the client's log.** The atexit hooks in
+  `kegg.py` and `togoid.py` fell back to `asyncio.run(_client.aclose())` when no loop was running —
+  which at interpreter shutdown is always — so a fresh loop reached into the already-closed loop that
+  owned the sockets and raised `RuntimeError: Event loop is closed`. Harmless (exit code 0, stdout
+  untouched, emitted after all work) but misleading: it is the first thing anyone debugging KEGG or
+  TogoID would suspect. The hook now leaves the sockets to the OS, which reclaims them anyway. Fires
+  only in a session that made at least one request through those clients.
+
 ## [2.4.1] - 2026-07-31
 
 Four review rounds against the live KEGG API, all on `kegg_pathway_graph`'s response

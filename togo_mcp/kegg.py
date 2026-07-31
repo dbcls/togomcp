@@ -93,7 +93,12 @@ def _close_client():
         loop = asyncio.get_running_loop()
         loop.create_task(_client.aclose())
     except RuntimeError:
-        asyncio.run(_client.aclose())
+        # No running loop: the interpreter is shutting down and the loop that
+        # OWNS these sockets is already closed. Opening a fresh one to close
+        # them reaches into the dead loop and raises "Event loop is closed",
+        # which atexit prints as a 38-line traceback after a clean exit. The OS
+        # reclaims the sockets either way, so leave them.
+        pass
 
 
 atexit.register(_close_client)

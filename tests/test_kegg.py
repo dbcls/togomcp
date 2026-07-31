@@ -20,6 +20,7 @@ import respx
 from fastmcp import FastMCP
 
 import togo_mcp.kegg as kegg
+import togo_mcp.togoid as togoid
 from togo_mcp.kegg import _MAX_GRAPH_RESPONSE_CHARS as _MAX_GRAPH_CAP
 import togo_mcp.main as main
 from togo_mcp.kegg import (
@@ -1083,6 +1084,30 @@ class TestRateLimit:
             )
             elapsed = time.monotonic() - start
         assert elapsed >= 2 * 0.05
+
+
+class TestShutdown:
+    def test_atexit_close_does_not_open_a_second_event_loop(self, monkeypatch):
+        """A clean exit must not print a traceback into the client's log.
+
+        At interpreter shutdown there is no running loop, and the loop that OWNS
+        the client's sockets is already closed. Spinning up a fresh one to close
+        them reaches into the dead loop and raises "Event loop is closed", which
+        atexit reports as a 38-line traceback AFTER a successful run — exit code
+        0, stdout untouched, and the next person to debug KEGG suspects it first.
+
+        Sync test on purpose: it must run with NO loop running, which is the
+        state the atexit hook actually sees.
+        """
+        def _no_new_loop(*args, **kwargs):
+            raise AssertionError("shutdown must not start a new event loop")
+
+        # Patch the asyncio module itself: togoid imports it inside the hook, so
+        # patching a module attribute would miss it. Both hooks are the same
+        # three lines and were both wrong.
+        monkeypatch.setattr(asyncio, "run", _no_new_loop)
+        kegg._close_client()  # must be silent, and must not raise
+        togoid._close_client()
 
 
 class TestTransportErrors:
