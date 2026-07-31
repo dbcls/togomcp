@@ -15,6 +15,45 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 _Nothing yet._
 
+## [2.5.1] - 2026-08-01
+
+<!-- whatsnew: 2026-08-01 | <strong>ChatGPT users: refresh your connector.</strong> ChatGPT records TogoMCP's tool list when the connector is added and never refetches it, so tools added since then are invisible to it — re-run <em>Scan Tools</em>, or remove and re-add the connector. New databases are unaffected; those arrive through the live usage guide. -->
+
+Documentation only — no tool, parameter, or return shape changed. What prompted it was reading the
+production tool-call log: 28 calls in five days to tools that do not exist, **all** of them from
+ChatGPT connectors (`openai-mcp`), and none from any other client family.
+
+Both names were real once. `ncbi_ncbi_esearch` / `_esummary` / `_efetch` were valid until 2026-04-28,
+when the redundant `ncbi_` prefix was dropped from the raw function names (mounted under `ncbi`, they
+genuinely were `ncbi_ncbi_*`); `find_databases` was valid until the discovery trio was retired on
+2026-07-24. The two caller populations share no IP, so these are two separate cache vintages — one of
+them still in daily use three months after the rename. ChatGPT records the tool list at *Scan Tools*
+time and does not refetch it.
+
+The consequence worth acting on is the inverse of the errors: a client whose list is frozen also
+cannot see tools added *after* it was cached, and there is no runtime channel that can fix that. New
+**databases** are immune — the catalog is delivered by `TogoMCP_Usage_Guide` at query time, and
+`database` is a free-form string validated server-side, so a stale schema neither hides nor blocks a
+new database. New **tools** are not immune. Prefer a new database or a parameter on an existing tool
+over a new tool where reach matters.
+
+This also puts evidence behind the MAJOR-on-rename rule in [CLAUDE.md](CLAUDE.md): an agent cannot
+recover from a rename because its *client* never refetches. Budget months of tail traffic on any name
+that is removed or changed.
+
+### Added
+
+- **Usage Guide troubleshooting row for a stale client tool list.** Fires in both directions — a tool
+  the guide names is missing from the model's tool list (canaries: `togovar_search_variant`,
+  `search_chembl_id_lookup`), or a call returns "unknown tool". It instructs the model to tell the
+  user to re-add the connector rather than retry the name or improvise a substitute, and states that
+  databases are unaffected. The model is the only party that can see the discrepancy; the user is the
+  only one who can fix it.
+- **Connector-refresh note in the ChatGPT setup section of the intro page**, with the symptoms and the
+  fix.
+- **`TogoMCP_Usage_Guide` listed under Database &amp; Information on the intro page.** It had been
+  missing since the tool shipped, despite being the third-most-called tool on the server.
+
 ## [2.5.0] - 2026-07-31
 
 Two fixes found by using the KEGG tools rather than reading them: a seed form the
@@ -1041,7 +1080,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.5.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.5.1...HEAD
+[2.5.1]: https://github.com/dbcls/togomcp/compare/v2.5.0...v2.5.1
 [2.5.0]: https://github.com/dbcls/togomcp/compare/v2.4.1...v2.5.0
 [2.4.1]: https://github.com/dbcls/togomcp/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/dbcls/togomcp/compare/v2.3.0...v2.4.0
