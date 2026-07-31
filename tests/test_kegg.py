@@ -791,11 +791,17 @@ class TestTransportGate:
     cannot be opened by a deployment-config oversight — see main.setup().
     """
 
-    async def _tool_names(self, *, local: bool, monkeypatch) -> set[str]:
+    async def _tool_names(
+        self, *, local: bool, monkeypatch, opt_in: str | None = "1"
+    ) -> set[str]:
         # A fresh root server per call: `setup()` mutates the module-global `mcp`,
         # and a leaked mount would make this test pass for the wrong reason.
         fresh = FastMCP("gate-test")
         monkeypatch.setattr(main, "mcp", fresh)
+        if opt_in is None:
+            monkeypatch.delenv(main._KEGG_ENV_VAR, raising=False)
+        else:
+            monkeypatch.setenv(main._KEGG_ENV_VAR, opt_in)
         await main.setup(local=local)
         return {t.name for t in await fresh.list_tools()}
 
@@ -823,14 +829,69 @@ class TestTransportGate:
             "kegg_conv",
         } <= names
 
+    @pytest.mark.asyncio
+    async def test_opt_in_cannot_open_the_http_transport(self, monkeypatch):
+        """THE load-bearing test for the env var.
+
+        The transport gate is ANDed in FRONT of the opt-in, so no environment
+        setting may put KEGG on the public HTTP surface. If this ever passes
+        KEGG through, the licence boundary has become one env var wide.
+        """
+        for value in ("1", "true", "YES", "on"):
+            names = await self._tool_names(
+                local=False, monkeypatch=monkeypatch, opt_in=value
+            )
+            assert not [n for n in names if n.startswith("kegg_")], (
+                f"TOGOMCP_ENABLE_KEGG={value!r} opened the HTTP surface"
+            )
+
+    @pytest.mark.asyncio
+    async def test_stdio_without_opt_in_does_not_mount_kegg(self, monkeypatch):
+        """Default OFF: a non-academic user who installs TogoMCP and runs the
+        stdio server must not be handed KEGG tools they may not be entitled to
+        call — an LLM will use a tool it can see."""
+        names = await self._tool_names(local=True, monkeypatch=monkeypatch, opt_in=None)
+        assert not [n for n in names if n.startswith("kegg_")]
+        # The rest of the server is unaffected.
+        assert any(n.startswith("togovar_") for n in names)
+
+    @pytest.mark.parametrize(
+        "value", ["", "  ", "0", "false", "no", "off", "maybe", "ture", "enabled"]
+    )
+    def test_opt_in_parsing_is_fail_closed(self, value, monkeypatch):
+        """Empty, falsy OR MALFORMED all mean OFF.
+
+        This is what makes the env var safe where CLAUDE.md warns against one:
+        deploy.sh forwards env vars by a fixed list, so a forwarding miss yields
+        an ABSENT variable — which here DISABLES KEGG instead of enabling it.
+        A typo ("ture") must fail the same way, not default to on.
+        """
+        monkeypatch.setenv(main._KEGG_ENV_VAR, value)
+        assert main._kegg_enabled() is False
+
+    @pytest.mark.parametrize("value", ["1", "true", "TRUE", "Yes", "on", " on "])
+    def test_opt_in_accepts_the_usual_truthy_spellings(self, value, monkeypatch):
+        monkeypatch.setenv(main._KEGG_ENV_VAR, value)
+        assert main._kegg_enabled() is True
+
+    def test_opt_in_absent_is_off(self, monkeypatch):
+        monkeypatch.delenv(main._KEGG_ENV_VAR, raising=False)
+        assert main._kegg_enabled() is False
+
     async def _guide(self, *, local: bool, monkeypatch) -> str:
-        """Assemble the Usage Guide as a client on that transport receives it."""
+        """Assemble the Usage Guide as a client on that transport receives it.
+
+        Opts in, so `local=True` really mounts KEGG — the guide gate reads the
+        LIVE tool registry, so with the opt-in absent this would compare two
+        identical KEGG-free guides and pass for the wrong reason.
+        """
         import togo_mcp.rdf_portal as rdf_portal
 
         fresh = FastMCP("guide-test")
         monkeypatch.setattr(main, "mcp", fresh)
         # The guide probes the live registry through rdf_portal's own `mcp`.
         monkeypatch.setattr(rdf_portal, "mcp", fresh)
+        monkeypatch.setenv(main._KEGG_ENV_VAR, "1")
         await main.setup(local=local)
         return await rdf_portal.togomcp_usage_guide()
 
@@ -888,6 +949,7 @@ class TestTransportGate:
         repeated here because the stdio-only tools never reach that fixture."""
         fresh = FastMCP("gate-test")
         monkeypatch.setattr(main, "mcp", fresh)
+        monkeypatch.setenv(main._KEGG_ENV_VAR, "1")
         await main.setup(local=True)
         kegg_tools = [t for t in await fresh.list_tools() if t.name.startswith("kegg_")]
         assert len(kegg_tools) == 8

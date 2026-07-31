@@ -15,16 +15,25 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ### Added
 
-- **KEGG, as a `stdio`-only tool group** (`kegg_find`, `kegg_get_entry`, `kegg_pathway_graph`,
-  `kegg_pathway_neighborhood`, `kegg_pathway_paths`, `kegg_pathway_cycles`, `kegg_link`,
-  `kegg_conv`). Mounted by `togo-mcp-local` and
+- **KEGG, as an OPT-IN `stdio`-only tool group** (`kegg_find`, `kegg_get_entry`,
+  `kegg_pathway_graph`, `kegg_pathway_neighborhood`, `kegg_pathway_paths`, `kegg_pathway_cycles`,
+  `kegg_link`, `kegg_conv`). Requires BOTH the local stdio server AND `TOGOMCP_ENABLE_KEGG=1`;
+  off by default so a non-academic user can install and run TogoMCP without being handed an API
+  they may not be entitled to call — an AI assistant will use any tool it can see, and eligibility
+  is the user's to assert. The two gates answer different questions and compose with AND:
+  the transport gate (structural, not configurable) keeps the public host away from KEGG entirely,
+  and the opt-in records eligibility. Mounted by `togo-mcp-local` and
   **structurally absent from the HTTP server** — the KEGG API is licensed to academic users at
   academic institutions, and serving it from a public host that cannot verify a caller's affiliation
   would need an academic service-provider license. The gate is a `setup(local=True)` argument, not an
   env flag, deliberately: `deploy.sh` forwards env vars by a fixed list, and a knob missing from that
   list is silently inert in production — that failure happened twice in one week (2026-07-29), both
   times with a green test suite. A licensing boundary must not be one forgotten list entry away from
-  opening.
+  opening. `TOGOMCP_ENABLE_KEGG` does not weaken this: it is ANDed BEHIND the transport gate (so it
+  has no effect on the HTTP path at all — `deploy.sh` never enters the picture) and it is
+  **fail-closed**, since absent/empty/misspelled all mean OFF. The forwarding hazard is about a knob
+  whose absence leaves a boundary OPEN; this one's absence closes it. It is deliberately NOT added to
+  `compose.yaml`/`.env.example`/the `deploy.sh` lists, which would only imply it does something there.
 - **KGML parsed into a signed directed graph** (`togo_mcp/kgml.py`, pure/stdlib-only, 39 tests, no
   network). This is the point of carrying KEGG at all: RDF Portal cannot answer "does A activate or
   inhibit B" in the form KGML states it. (Reactome RDF *does* carry signed regulation — 61,819 BioPAX

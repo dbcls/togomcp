@@ -177,14 +177,17 @@ def render_non_sparql_companions() -> str:
         "on `run_sparql` and `get_MIE_file` — there is no query you can write here that "
         "reaches it.",
         "",
-        "**Check your tool list before offering KEGG to the user.** The `kegg_*` tools "
-        "are mounted only by the local stdio server (`togo-mcp-local`): the KEGG API is "
-        "licensed to academic users at academic institutions, and the public host at "
-        "togomcp.rdfportal.org cannot verify a caller's affiliation, so it does not "
-        "expose them. **If you see no `kegg_*` tool, KEGG is simply unavailable in this "
-        "session** — answer pathway questions from `reactome` or `rhea` over SPARQL, and "
-        "do not report the absence as an error or ask the user to retry. When the tools "
-        "ARE present, this guide carries a KEGG section with the details.",
+        "**Check your tool list before offering KEGG to the user.** KEGG is OFF BY "
+        "DEFAULT. The `kegg_*` tools appear only on the local stdio server "
+        "(`togo-mcp-local`) AND only when the operator sets `TOGOMCP_ENABLE_KEGG=1`, "
+        "because the KEGG API is licensed to academic users at academic institutions; "
+        "the public host at togomcp.rdfportal.org cannot verify a caller's affiliation "
+        "and never exposes them whatever the environment says. **If you see no `kegg_*` "
+        "tool, KEGG is simply unavailable in this session** — answer pathway questions "
+        "from `reactome` or `rhea` over SPARQL, and do NOT report the absence as an "
+        "error, ask the user to retry, or suggest they enable it: eligibility is theirs "
+        "to judge, not yours to prompt for. When the tools ARE present, this guide "
+        "carries a KEGG section with the details.",
         "",
     ])
 
