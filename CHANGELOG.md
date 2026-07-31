@@ -67,6 +67,23 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   Catalog now states this explicitly, since an agent that skips it will put `hsa:10458` into a SPARQL
   query and get zero rows.
 
+### Changed
+
+- **The Usage Guide is now transport-aware.** The guide is served by both transports, so the KEGG
+  material first shipped in full to HTTP clients that have no `kegg_*` tools — six tools' worth of
+  operating instructions for things they cannot call, led by a sentence asserting KEGG "is reachable".
+  It is now split: the catalog keeps a short, transport-neutral note (KEGG is not an RDF Portal
+  database, `database="kegg"` is invalid, and if you see no `kegg_*` tool then KEGG is unavailable —
+  use `reactome`/`rhea` and do not report it as an error), while the operating detail lives in
+  `usage_guide_v6/local_only/kegg.md` and is appended only where the tools are actually mounted.
+  The gate reads the LIVE tool registry rather than a flag, so the guide cannot disagree with what
+  the server exposes, and the part files sit in a subdirectory that the guide's top-level `*.md`
+  glob cannot reach by accident.
+  The first attempt at that gate was wrong in a way worth recording: it assumed `mcp.get_tool()`
+  RAISES for an unknown tool, when it returns `None`. The condition was therefore always true and
+  every HTTP client still got the stdio-only section — the exact bug the change existed to prevent.
+  Both halves are now pinned by tests that fail if the two transports stop differing.
+
 ### Notes
 
 - Every `kegg_*` tool reports **how much of a map is actually signed**

@@ -34,14 +34,15 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MIE_DIR = REPO_ROOT / "togo_mcp" / "data" / "mie"
-OUT_FILE = (
-    REPO_ROOT
-    / "togo_mcp"
-    / "data"
-    / "resources"
-    / "usage_guide_v6"
-    / "02b_database_catalog.md"
-)
+GUIDE_DIR = REPO_ROOT / "togo_mcp" / "data" / "resources" / "usage_guide_v6"
+OUT_FILE = GUIDE_DIR / "02b_database_catalog.md"
+
+# Guide parts served ONLY when the tools they document are actually mounted.
+# Deliberately in a SUBDIRECTORY: the guide assembles `sorted(glob("*.md"))` over
+# the top level, so anything here is invisible to that glob and can never be
+# served by accident to a client that lacks the tools.
+LOCAL_ONLY_DIR = GUIDE_DIR / "local_only"
+LOCAL_ONLY_KEGG = LOCAL_ONLY_DIR / "kegg.md"
 
 # Proven keyword → database hints carried over from find_databases' docstring so
 # nothing the tool taught is lost when it is retired.
@@ -154,30 +155,53 @@ def render_catalog(records: list[dict]) -> str:
 
 
 def render_non_sparql_companions() -> str:
-    """Static appendix: tool surfaces that are NOT RDF Portal databases.
+    """The KEGG note that ships to EVERY client, on both transports.
 
-    Everything above this point is driven by an MIE `discovery:` block, which
-    only exists for a SPARQL database. KEGG has neither an RDF Portal endpoint
-    nor an MIE (by design — the MIE format describes a SPARQL schema), so it can
-    never appear as a catalog row. Without a note here an agent has no way to
-    learn that KEGG exists at all, or the two things that make it different:
-    it is absent from the public HTTP server for licensing reasons, and its
-    identifiers do not work in `run_sparql`.
+    Everything above it is driven by an MIE `discovery:` block, which only exists
+    for a SPARQL database. KEGG has neither an RDF Portal endpoint nor an MIE (by
+    design — the MIE format describes a SPARQL schema), so it can never be a
+    catalog row.
+
+    This block is deliberately SHORT and says only what is true for a reader who
+    may well have no `kegg_*` tools at all — the public HTTP server does not
+    mount them. Its job is to stop an agent inventing `database="kegg"` and to
+    tell it what to do when the tools are absent. The operating instructions live
+    in `render_local_only_kegg()`, which is served only where the tools exist:
+    shipping "call `kegg_find` then `kegg_conv`" to a client that has neither is
+    at best noise and at worst an instruction to call something imaginary.
     """
     return "\n".join([
-        "**Not an RDF database — KEGG (local stdio server only):**",
+        "**Not an RDF Portal database — KEGG:**",
         "",
-        "KEGG is reachable through the `kegg_*` tools, NOT through `run_sparql`. It has "
-        "no RDF Portal endpoint and no MIE file, so `database=\"kegg\"` is invalid on "
-        "`run_sparql` and `get_MIE_file`.",
+        "KEGG has no SPARQL endpoint and no MIE file, so `database=\"kegg\"` is invalid "
+        "on `run_sparql` and `get_MIE_file` — there is no query you can write here that "
+        "reaches it.",
         "",
-        "- **Availability.** The `kegg_*` tools exist ONLY on the local stdio server "
-        "(`togo-mcp-local`). The public HTTP server at togomcp.rdfportal.org does not "
-        "expose them: the KEGG API is licensed to academic users at academic "
-        "institutions, and a public host cannot verify a caller's affiliation. "
-        "**If you do not see `kegg_*` in your tool list, KEGG is unavailable to you** — "
-        "use `reactome` or `rhea` over SPARQL instead, and do not report the absence "
-        "as an error.",
+        "**Check your tool list before offering KEGG to the user.** The `kegg_*` tools "
+        "are mounted only by the local stdio server (`togo-mcp-local`): the KEGG API is "
+        "licensed to academic users at academic institutions, and the public host at "
+        "togomcp.rdfportal.org cannot verify a caller's affiliation, so it does not "
+        "expose them. **If you see no `kegg_*` tool, KEGG is simply unavailable in this "
+        "session** — answer pathway questions from `reactome` or `rhea` over SPARQL, and "
+        "do not report the absence as an error or ask the user to retry. When the tools "
+        "ARE present, this guide carries a KEGG section with the details.",
+        "",
+    ])
+
+
+def render_local_only_kegg() -> str:
+    """The KEGG operating instructions, served ONLY where the tools are mounted.
+
+    Written for a reader who HAS the six `kegg_*` tools, so it can be direct. See
+    `render_non_sparql_companions()` for why this is a separate file.
+    """
+    return "\n".join([
+        "## 🧬 KEGG (available in this session)",
+        "",
+        "The `kegg_*` tools are mounted, so KEGG is usable here. It is NOT an RDF Portal "
+        "database: no SPARQL endpoint, no MIE, and `database=\"kegg\"` is invalid on "
+        "`run_sparql`.",
+        "",
         "- **What it uniquely adds.** A pathway map as a SIGNED DIRECTED GRAPH "
         "(activation vs inhibition per edge, from KGML relation subtypes), the FEEDBACK "
         "LOOPS that graph contains, and, for an organism map, the metabolic steps that "
@@ -194,6 +218,10 @@ def render_non_sparql_companions() -> str:
         "for metabolic ones, because most KGML relations record only a MECHANISM "
         "(phosphorylation, binding). Read a `net_sign` of 0, or an `unsigned` feedback "
         "loop, as UNKNOWN — never as \"no effect\".",
+        "- **Organism vs reference maps.** For \"which genes are in this pathway\" use the "
+        "ORGANISM map (`hsa04151`, `eco00010`), not the `ko`/`map` reference map. On a "
+        "METABOLIC map, `kegg_pathway_paths` needs a larger `max_length`: compounds are "
+        "joined through their enzyme, so the hop count is about double the reaction count.",
         "- **Bridging to RDF Portal — REQUIRED.** KEGG-namespaced IDs (`hsa:10458`, "
         "`cpd:C00031`, `path:hsa04151`) do NOT resolve in any SPARQL database. Convert "
         "them with `kegg_conv` FIRST: genes ↔ `uniprot` / `ncbi-geneid` / "
@@ -208,6 +236,10 @@ def render_non_sparql_companions() -> str:
 
 def build() -> str:
     return render_catalog(load_records()) + "\n" + render_non_sparql_companions()
+
+
+def build_local_only() -> str:
+    return render_local_only_kegg()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -226,26 +258,38 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write("\n".join(cats) + "\n")
         return 0
 
-    content = build()
+    # Both generated parts are checked/written together; a stale local-only file
+    # is exactly as wrong as a stale catalog, it is just served to fewer clients.
+    outputs = [(OUT_FILE, build()), (LOCAL_ONLY_KEGG, build_local_only())]
 
     if args.stdout:
-        sys.stdout.write(content + "\n")
+        for path, content in outputs:
+            sys.stdout.write(f"===== {path.relative_to(REPO_ROOT)} =====\n")
+            sys.stdout.write(content + "\n")
         return 0
 
     if args.check:
-        current = OUT_FILE.read_text(encoding="utf-8") if OUT_FILE.exists() else ""
-        if current != content + "\n":
+        stale = [
+            path
+            for path, content in outputs
+            if (path.read_text(encoding="utf-8") if path.exists() else "")
+            != content + "\n"
+        ]
+        if stale:
+            names = ", ".join(str(p.relative_to(REPO_ROOT)) for p in stale)
             print(
-                f"catalog OUT OF SYNC: {OUT_FILE.relative_to(REPO_ROOT)} differs from "
-                "generator output. Run: python scripts/generate_usage_guide_catalog.py",
+                f"guide OUT OF SYNC: {names} differs from generator output. "
+                "Run: python scripts/generate_usage_guide_catalog.py",
                 file=sys.stderr,
             )
             return 1
         print("catalog in sync.")
         return 0
 
-    OUT_FILE.write_text(content + "\n", encoding="utf-8")
-    print(f"wrote {OUT_FILE.relative_to(REPO_ROOT)} ({len(content)} bytes)")
+    for path, content in outputs:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content + "\n", encoding="utf-8")
+        print(f"wrote {path.relative_to(REPO_ROOT)} ({len(content)} bytes)")
     return 0
 
 

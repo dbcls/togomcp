@@ -772,6 +772,65 @@ class TestTransportGate:
             "kegg_conv",
         } <= names
 
+    async def _guide(self, *, local: bool, monkeypatch) -> str:
+        """Assemble the Usage Guide as a client on that transport receives it."""
+        import togo_mcp.rdf_portal as rdf_portal
+
+        fresh = FastMCP("guide-test")
+        monkeypatch.setattr(main, "mcp", fresh)
+        # The guide probes the live registry through rdf_portal's own `mcp`.
+        monkeypatch.setattr(rdf_portal, "mcp", fresh)
+        await main.setup(local=local)
+        return await rdf_portal.togomcp_usage_guide()
+
+    @pytest.mark.asyncio
+    async def test_remote_guide_omits_the_kegg_operating_instructions(self, monkeypatch):
+        """A client with no `kegg_*` tools must not be told how to call them.
+
+        Regression: the gate originally relied on `mcp.get_tool()` RAISING for an
+        unknown tool. It returns None instead, so the condition was always true
+        and every HTTP client received the stdio-only section — instructions to
+        call six tools it does not have.
+        """
+        guide = await self._guide(local=False, monkeypatch=monkeypatch)
+        for tool in (
+            "kegg_find",
+            "kegg_conv",
+            "kegg_pathway_graph",
+            "kegg_pathway_cycles",
+        ):
+            assert tool not in guide, f"remote guide leaks {tool} instructions"
+
+    @pytest.mark.asyncio
+    async def test_remote_guide_still_warns_kegg_is_not_a_sparql_database(
+        self, monkeypatch
+    ):
+        """The short note stays for everyone: without it an agent asked about
+        KEGG will invent `database="kegg"` and get a hard validation error."""
+        guide = await self._guide(local=False, monkeypatch=monkeypatch)
+        assert "Not an RDF Portal database — KEGG" in guide
+        assert 'database="kegg"' in guide
+        # And it must tell the agent what to do instead of erroring out.
+        assert "unavailable in this session" in guide
+
+    @pytest.mark.asyncio
+    async def test_stdio_guide_carries_the_kegg_section(self, monkeypatch):
+        guide = await self._guide(local=True, monkeypatch=monkeypatch)
+        assert "KEGG (available in this session)" in guide
+        for tool in ("kegg_find", "kegg_conv", "kegg_pathway_cycles"):
+            assert tool in guide
+        # The bridge rule is the one an agent must not miss.
+        assert "Bridging to RDF Portal" in guide
+
+    @pytest.mark.asyncio
+    async def test_the_two_transports_actually_differ(self, monkeypatch):
+        """Guards against both halves passing for the wrong reason (e.g. the
+        conditional part silently missing from the package)."""
+        remote = await self._guide(local=False, monkeypatch=monkeypatch)
+        local = await self._guide(local=True, monkeypatch=monkeypatch)
+        assert len(local) > len(remote)
+        assert remote in local or "KEGG (available" not in remote
+
     @pytest.mark.asyncio
     async def test_kegg_tools_are_read_only_and_documented(self, monkeypatch):
         """Same contract test_tool_descriptions.py applies to the HTTP surface —
