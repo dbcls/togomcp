@@ -46,6 +46,65 @@ KGML = FIXTURE.read_text()
 MAP = "xxx00000"
 
 
+def _synthetic_global_map(*, gaps: int, map_links: int, genes: int) -> str:
+    """A whole-metabolism map's SHAPE, with no KEGG-derived content.
+
+    hsa01100 is thousands of unreacted ortholog boxes (metabolic gaps) and
+    hundreds of cross-map pointers wrapped around a connected core — the only
+    shape in which the response caps compete for the budget at all.
+    """
+    entries, relations = [], []
+    for i in range(gaps):
+        entries.append(
+            f'<entry id="{90000 + i}" name="ko:K{i:05d}" type="ortholog">'
+            f'<graphics name="{i}.{i}.{i}.{i}" type="rectangle"/></entry>'
+        )
+    for i in range(map_links):
+        entries.append(
+            f'<entry id="{40000 + i}" name="path:map{i:05d}" type="map">'
+            f'<graphics name="Other pathway {i}" type="roundrectangle"/></entry>'
+        )
+    for i in range(genes):
+        entries.append(
+            f'<entry id="{i + 1}" name="hsa:{i} hsa:{i + 9000}" type="gene">'
+            f'<graphics name="GENE{i}, ALIAS{i}" type="rectangle"/></entry>'
+        )
+        if i:
+            relations.append(
+                f'<relation entry1="{i}" entry2="{i + 1}" type="PPrel">'
+                '<subtype name="activation" value="--&gt;"/></relation>'
+            )
+    return (
+        '<?xml version="1.0"?><pathway name="path:xxx01100" org="xxx" '
+        'number="01100" title="Synthetic global map">'
+        + "".join(entries) + "".join(relations) + "</pathway>"
+    )
+
+
+def _assert_graph_invariants(payload: str, graph: dict) -> None:
+    """The three properties that must hold on EVERY kegg_pathway_graph return.
+
+    They are asserted together, on every reduction path (count cap, size cap,
+    neither), because each was a shipped bug: edges pointing at nodes that were
+    cut, and a payload over the 1 MB transport limit that the caller never
+    received at all.
+    """
+    node_ids = {n["id"] for n in graph["nodes"]}
+    assert all(
+        e["source"] in node_ids and e["target"] in node_ids for e in graph["edges"]
+    ), "dangling edge: an endpoint is missing from `nodes`"
+    assert len(payload.encode()) < 1_048_576, (
+        f"payload is {len(payload.encode())} bytes — over the 1 MB transport limit"
+    )
+    touched = {e["source"] for e in graph["edges"]} | {
+        e["target"] for e in graph["edges"]
+    }
+    if graph["edges"]:
+        assert len(node_ids - touched) <= len(node_ids) / 2, (
+            "more than half the returned nodes are isolated"
+        )
+
+
 @pytest.fixture(autouse=True)
 def _isolate_module_state(monkeypatch):
     """Clear the KGML memo and disable throttling between tests.
@@ -451,32 +510,8 @@ class TestPathwayGraph:
         The rule is not which section is more precious: the section OCCUPYING the
         budget is the one that pays, and the answer keeps a floor.
         """
-        entries, relations = [], []
-        for i in range(2073):  # gaps dominate, as on the real hsa01100
-            entries.append(
-                f'<entry id="{90000 + i}" name="ko:K{i:05d}" type="ortholog">'
-                f'<graphics name="{i}.{i}.{i}.{i}" type="rectangle"/></entry>'
-            )
-        for i in range(169):
-            entries.append(
-                f'<entry id="{40000 + i}" name="path:map{i:05d}" type="map">'
-                f'<graphics name="Other pathway {i}" type="roundrectangle"/></entry>'
-            )
-        for i in range(900):
-            entries.append(
-                f'<entry id="{i + 1}" name="hsa:{i} hsa:{i + 9000}" type="gene">'
-                f'<graphics name="GENE{i}, ALIAS{i}" type="rectangle"/></entry>'
-            )
-            if i:
-                relations.append(
-                    f'<relation entry1="{i}" entry2="{i + 1}" type="PPrel">'
-                    '<subtype name="activation" value="--&gt;"/></relation>'
-                )
-        big = (
-            '<?xml version="1.0"?><pathway name="path:xxx01100" org="xxx" '
-            'number="01100" title="Synthetic global map">'
-            + "".join(entries) + "".join(relations) + "</pathway>"
-        )
+        # gaps dominate, as on the real hsa01100
+        big = _synthetic_global_map(gaps=2073, map_links=169, genes=900)
 
         async def fetch(**kwargs):
             kegg._kgml_cache.clear()
@@ -519,6 +554,74 @@ class TestPathwayGraph:
         assert len(default["metabolic_gaps"]) == 100
         assert len(default["edges"]) > 0
         assert "map larger than the requested caps" in default["truncated"]["reasons"]
+
+    @pytest.mark.asyncio
+    async def test_raising_max_gaps_cannot_spend_the_graphs_reserved_share(self):
+        """The caps must not interact backwards: raising them all shrank the graph.
+
+        `max_gaps=5000` on hsa01100 let 1,555 metabolic gaps take 74% of the
+        payload, so the graph fell to the 50-node floor — FEWER nodes than the
+        191 the same map returns at the defaults. A caller raising every cap is
+        asking for more, so `nodes`+`edges` now take `_GRAPH_BUDGET_SHARE` of the
+        budget before the supporting sections may spend any of it.
+        """
+        big = _synthetic_global_map(gaps=2073, map_links=169, genes=900)
+
+        async def fetch(**kwargs):
+            kegg._kgml_cache.clear()
+            with respx.mock(using="httpx", assert_all_called=False) as router:
+                router.get(f"{BASE}/get/xxx01100/kgml").mock(
+                    return_value=httpx.Response(200, text=big)
+                )
+                out = await pathway_graph(pathway="xxx01100", **kwargs)
+            graph = json.loads(out)
+            _assert_graph_invariants(out, graph)
+            return graph
+
+        raised = await fetch(max_nodes=5000, max_edges=20000, max_gaps=5000)
+        graph_bytes = len(
+            json.dumps({"nodes": raised["nodes"], "edges": raised["edges"]})
+        )
+        reserve = _MAX_GRAPH_CAP * kegg._GRAPH_BUDGET_SHARE
+        assert graph_bytes > reserve * 0.8, (
+            f"the graph got {graph_bytes} bytes of its {reserve:.0f}-byte reserve"
+        )
+        assert len(raised["nodes"]) > kegg._PRIMARY_FLOOR, "collapsed to the floor"
+
+        # The gaps that could not fit are reported as size_budget, NOT count:
+        # telling a caller to raise a cap it already maxed out is worse than
+        # silence, and `map_links` (small, count-capped) must keep saying count.
+        assert raised["truncated"]["metabolic_gaps"]["capped_by"] == "size_budget"
+        assert raised["truncated"]["map_links"]["capped_by"] == "count"
+        # …and the hint must name the move that actually works here. "Raise
+        # max_nodes" does not: the graph is size-bound, not count-bound.
+        hint = raised["truncated"]["hint"]
+        assert "LOWER `max_gaps`" in hint
+
+        # Lowering max_gaps is what buys graph — the property the hint asserts.
+        starved = await fetch(max_nodes=5000, max_edges=20000, max_gaps=0)
+        assert len(starved["nodes"]) > len(raised["nodes"])
+        assert starved["metabolic_gaps"] == []
+
+    @pytest.mark.asyncio
+    async def test_graph_invariants_hold_on_every_reduction_path(self):
+        """Count cap, size cap and neither: same three guarantees each time."""
+        cases = [
+            (MAP, {}),                                   # neither cap fires
+            (MAP, {"max_nodes": 2}),                     # count cap
+            ("xxx01100", {}),                            # size cap
+            ("xxx01100", {"max_nodes": 5000, "max_gaps": 5000}),
+        ]
+        big = _synthetic_global_map(gaps=2073, map_links=169, genes=900)
+        for pathway, kwargs in cases:
+            kegg._kgml_cache.clear()
+            with respx.mock(using="httpx", assert_all_called=False) as router:
+                _mock_kgml(router)
+                router.get(f"{BASE}/get/xxx01100/kgml").mock(
+                    return_value=httpx.Response(200, text=big)
+                )
+                out = await pathway_graph(pathway=pathway, **kwargs)
+            _assert_graph_invariants(out, json.loads(out))
 
     @pytest.mark.asyncio
     async def test_bounded_actually_shrinks_a_dict_not_just_labels_it(self):

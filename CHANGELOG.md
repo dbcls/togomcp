@@ -15,6 +15,21 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ### Fixed
 
+- **Raising every `kegg_pathway_graph` cap returned a SMALLER graph than the defaults.** On hsa01100,
+  `max_gaps=5000` let 1,555 metabolic gaps take 74% of the payload, so `nodes` fell to the 50-node
+  floor — against the 191 nodes / 560 edges the same map returns at the defaults. No contract was
+  broken (`max_*` are ceilings, not floors) but the tool did the opposite of what asking for more
+  means, and `truncated.hint`'s advice to "raise max_nodes/max_edges/max_gaps" was actively wrong:
+  the only move that bought graph was *lowering* `max_gaps`.
+  The caps are ceilings on ONE shared response budget, and the supporting sections were reserving
+  from it first. `nodes`+`edges` now take half the budget (`_GRAPH_BUDGET_SHARE`) before
+  `metabolic_gaps`/`map_links` may spend any of it; the supporting sections are then count-capped as
+  before and fitted into what remains, biggest-first. Same case now returns 138 nodes / 346 edges
+  with 876 gaps. Default arguments are byte-for-byte unaffected (gaps are ~10% of the payload there,
+  well inside the remainder), and a section cut for the reserve reports `capped_by: "size_budget"`
+  rather than `"count"`, so the report never suggests raising a cap that is already maxed out. When
+  the supporting sections hold enough budget to matter, `hint` now says to lower `max_gaps` and gives
+  the byte split instead of the generic advice.
 - **`kegg_pathway_graph` could return edges whose endpoints were not in `nodes`.** Under a raised
   `max_nodes` on a whole-metabolism map, 18 of 50 returned edges (and in a synthetic reproduction all
   50) referenced node ids that had been trimmed away, so the caller could not resolve a single

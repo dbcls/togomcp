@@ -234,6 +234,14 @@ _DEFAULT_MAX_EDGES = 1200
 _DEFAULT_MAX_GAPS = 100
 _MAX_MAP_LINKS = 100
 
+# Share of the response cap that nodes+edges get FIRST, before the supporting
+# sections are allowed to spend any of it. Without it the caps interact
+# backwards: `max_gaps=5000` on hsa01100 let 1,555 gaps take 74% of the payload
+# and the graph collapsed to the 50-node floor — i.e. raising every cap returned
+# a SMALLER graph than the defaults (191 nodes). A caller raising caps is asking
+# for more, so the primary answer must not be what pays for it.
+_GRAPH_BUDGET_SHARE = 0.5
+
 # In-process KGML memo. A single reasoning chain calls kegg_pathway_graph and
 # kegg_pathway_neighborhood on the same map repeatedly; without this each one is
 # another request against a 3/s budget.
@@ -858,6 +866,30 @@ def _fit_graph_to_budget(
     return take(max(low, min(_PRIMARY_FLOOR, ceiling)))
 
 
+def _fit_sections_to_budget(
+    sections: dict[str, list[Any]], budget: int
+) -> dict[str, list[Any]]:
+    """Largest prefixes of the supporting sections whose combined JSON fits.
+
+    Biggest-first, the same rule `_bounded` applies: reclaim where the bytes
+    actually are, so a 10 KB section is never emptied to cover a 100 KB
+    overflow. Applied BEFORE the graph is fitted, this is what keeps the caps
+    from interacting backwards — see `_GRAPH_BUDGET_SHARE`.
+    """
+    kept = {key: list(rows) for key, rows in sections.items()}
+
+    def size(rows: list[Any]) -> int:
+        return len(json.dumps(rows, ensure_ascii=False))
+
+    while sum(size(rows) for rows in kept.values()) > budget:
+        key = max(kept, key=lambda k: size(kept[k]))
+        if not kept[key]:
+            break
+        step = max(1, len(kept[key]) // 4)
+        kept[key] = kept[key][:-step]
+    return kept
+
+
 @kegg_mcp.tool(annotations=READ_ONLY_TOOL)
 async def pathway_graph(
     pathway: Annotated[
@@ -901,7 +933,11 @@ async def pathway_graph(
     caps, the arrays are trimmed (nodes/edges to the highest-degree subgraph) and
     `truncated` carries a `{"returned", "total"}` pair PER SECTION; `stats`
     always describes the FULL map, so a trimmed response still reports the real
-    node/edge/gap counts.
+    node/edge/gap counts. `max_nodes`, `max_edges` and `max_gaps` are ceilings on
+    ONE shared response budget, not independent quotas — half of it is reserved
+    for `nodes`+`edges` so raising `max_gaps` can no longer starve the graph, but
+    beyond that half the sections still trade against each other. Raise one cap
+    at a time, and set `max_gaps=0` when you want the largest graph.
 
     GLOBAL/OVERVIEW MAPS (01100, 01110, 01120 …) DO have KGML, but they are
     whole-metabolism drawings — hsa01100 parses to 6,382 nodes, 8,124 edges and
@@ -934,7 +970,10 @@ async def pathway_graph(
             whether `expand_members` is allowed. Default 1200.
         max_gaps: Maximum `metabolic_gaps` rows to return. Default 100; the full
             count is always in `stats.metabolic_gap_count`. Whole-metabolism maps
-            have thousands, which would otherwise dominate the response.
+            have thousands, which would otherwise dominate the response — gaps
+            may only spend what is left after `nodes`+`edges` take their reserved
+            half of the budget, so a high `max_gaps` is honored only as far as
+            that remainder allows.
 
     Returns:
         str: JSON object as described above.
@@ -970,18 +1009,9 @@ async def pathway_graph(
     stats = {**graph["stats"], "metabolic_gap_count": len(all_gaps)}
 
     all_map_links = graph["map_links"]
-    gaps = all_gaps[:max_gaps]
-    map_links = all_map_links[:_MAX_MAP_LINKS]
+    counted_gaps = all_gaps[:max_gaps]
+    counted_map_links = all_map_links[:_MAX_MAP_LINKS]
     truncated: dict[str, Any] = {}
-    if len(all_gaps) > len(gaps):
-        truncated["metabolic_gaps"] = {
-            "returned": len(gaps), "total": len(all_gaps), "capped_by": "count",
-        }
-    if len(all_map_links) > len(map_links):
-        truncated["map_links"] = {
-            "returned": len(map_links), "total": len(all_map_links),
-            "capped_by": "count",
-        }
 
     # Order by degree: a caller asking about a pathway wants its hubs.
     degree: dict[str, int] = {}
@@ -990,17 +1020,20 @@ async def pathway_graph(
         degree[e["target"]] = degree.get(e["target"], 0) + 1
     ordered = sorted(graph["nodes"], key=lambda n: -degree.get(n["id"], 0))
 
-    # Reserve everything that is NOT the graph first — it is already count-capped
-    # and small (gaps + map_links are ~22 KB), so spending it to buy nodes is a
-    # bad trade: metabolic_gaps is this tool's unique answer and vanished from
-    # every organism global map when the budget was computed the other way round.
+    # The supporting sections are reserved BEFORE the graph — spending them to
+    # buy nodes is a bad trade, since metabolic_gaps is this tool's unique answer
+    # and vanished from every organism global map when the budget was computed
+    # the other way round. But they may only reserve what is left after the graph
+    # has taken its guaranteed share, or the two caps fight and `max_gaps` wins:
+    # that is how raising every cap came to return 50 nodes where the defaults
+    # return 191. Count cap first, then this byte allowance.
     envelope = {
         "pathway": {**graph["pathway"], "id": pathway},
         "signal_quality": _signal_quality(graph),
         "stats": stats,
         "groups": graph["groups"],
-        "map_links": map_links,
-        "metabolic_gaps": gaps,
+        "map_links": [],
+        "metabolic_gaps": [],
         "metabolic_gaps_note": (
             "Ortholog boxes this organism's map draws but has no gene for — the "
             "white boxes in KEGG's rendered image. These are metabolic steps the "
@@ -1009,6 +1042,31 @@ async def pathway_graph(
         ),
         "options": graph["options"],
     }
+    fixed = len(json.dumps(envelope, ensure_ascii=False)) + 2_000  # + truncated
+    graph_share = int(_MAX_GRAPH_RESPONSE_CHARS * _GRAPH_BUDGET_SHARE)
+    supporting = _fit_sections_to_budget(
+        {"metabolic_gaps": counted_gaps, "map_links": counted_map_links},
+        max(_MAX_GRAPH_RESPONSE_CHARS - fixed - graph_share, 0),
+    )
+    gaps = supporting["metabolic_gaps"]
+    map_links = supporting["map_links"]
+    envelope["metabolic_gaps"] = gaps
+    envelope["map_links"] = map_links
+
+    for key, kept, counted, whole in (
+        ("metabolic_gaps", gaps, counted_gaps, all_gaps),
+        ("map_links", map_links, counted_map_links, all_map_links),
+    ):
+        if len(kept) < len(whole):
+            truncated[key] = {
+                "returned": len(kept),
+                "total": len(whole),
+                # "count" only if the requested cap alone bound it: a section cut
+                # further to leave the graph its share must not tell the caller
+                # that raising the cap will help.
+                "capped_by": "size_budget" if len(kept) < len(counted) else "count",
+            }
+
     reserved = len(json.dumps(envelope, ensure_ascii=False)) + 2_000  # + truncated
     nodes, edges = _fit_graph_to_budget(
         ordered,
@@ -1068,10 +1126,34 @@ async def pathway_graph(
                 ("size_budget", "response exceeded the size cap"),
             ) if kind in kinds
         ]
-        truncated["hint"] = (
-            "`stats` still describes the full map. Raise max_nodes/max_edges/"
-            "max_gaps, or use kegg_pathway_neighborhood for a focused view."
+        # A generic "raise the caps" hint is actively wrong when the supporting
+        # sections are what the graph is competing with: there the only move that
+        # buys nodes is LOWERING max_gaps, and raising it costs graph.
+        supporting_bytes = sum(
+            len(json.dumps(rows, ensure_ascii=False)) for rows in supporting.values()
         )
+        graph_bytes = len(
+            json.dumps({"nodes": nodes, "edges": edges}, ensure_ascii=False)
+        )
+        # Fire it when reclaiming those bytes would visibly grow the graph (>25%
+        # of what it currently costs), not merely when they outweigh it — at the
+        # default max_gaps they are ~10% of the payload and the generic advice is
+        # the right one.
+        if node_limit == "size_budget" and supporting_bytes * 4 > graph_bytes:
+            truncated["hint"] = (
+                f"`metabolic_gaps` and `map_links` are occupying {supporting_bytes} "
+                f"bytes against the graph's {graph_bytes} — they draw on the SAME "
+                "response budget. LOWER `max_gaps` (0 for none) to spend it on "
+                "nodes and edges instead; raising max_nodes alone will not help "
+                "here. `stats` still describes the full map."
+            )
+        else:
+            truncated["hint"] = (
+                "`stats` still describes the full map. Raise max_nodes/max_edges/"
+                "max_gaps, or use kegg_pathway_neighborhood for a focused view. "
+                "All three draw on ONE response budget, so raising one can shrink "
+                "the others."
+            )
         result["truncated"] = truncated
 
     # Backstop only for the supporting sections; nodes/edges are already fitted
