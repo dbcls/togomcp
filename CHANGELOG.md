@@ -13,6 +13,17 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2.4.1] - 2026-07-31
+
+Four review rounds against the live KEGG API, all on `kegg_pathway_graph`'s response
+reduction. Every fix below is a case where the tool returned something that looked like a
+valid answer and was not: a graph whose edges pointed at absent nodes, a whole-metabolism map
+with its `metabolic_gaps` silently gone, and a raised-cap call that returned less than the
+defaults. Only the stdio + `TOGOMCP_ENABLE_KEGG=1` audience is affected; nothing here changes
+the hosted tool surface.
+
 ### Fixed
 
 - **Raising every `kegg_pathway_graph` cap returned a SMALLER graph than the defaults.** On hsa01100,
@@ -998,7 +1009,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.4.1...HEAD
+[2.4.1]: https://github.com/dbcls/togomcp/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/dbcls/togomcp/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/dbcls/togomcp/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/dbcls/togomcp/compare/v2.2.0...v2.2.1
