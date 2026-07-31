@@ -365,9 +365,8 @@ async def find(
     """Keyword-search a KEGG database and get back matching entry IDs.
 
     This is the entry point to KEGG: almost everything else here takes an entry
-    ID this tool produces. KEGG is NOT in RDF Portal and has no SPARQL endpoint,
-    so these IDs do not work in `run_sparql` — cross them over with `kegg_conv`
-    (to UniProt / NCBI Gene / ChEBI / PubChem) before querying any RDF database.
+    ID this tool produces. KEGG IDs are not RDF-resolvable — convert them with
+    `kegg_conv` before using them in any downstream RDF query.
 
     RETURNS a JSON string of a bare array of `{"entry": str, "definition": str}`,
     e.g. `[{"entry": "cpd:C00031", "definition": "D-Glucose; Grape sugar; ..."}]`.
@@ -450,8 +449,7 @@ async def get_entry(
 
     Use this after `kegg_find` to read what an entry actually says: names,
     formula/mass, EC numbers, ORTHOLOGY, pathway membership, and DBLINKS (the
-    cross-references to ChEBI / PubChem / UniProt / NCBI that let you carry a
-    result into an RDF Portal database via `run_sparql`).
+    cross-references that let you carry a result onward via `kegg_conv`).
 
     RETURNS a JSON string of a bare array with one object per entry:
     `{"entry_id": str, "entry_type": str|null, "fields": {FIELD: [line, ...]}}`.
@@ -831,10 +829,10 @@ async def pathway_neighborhood(
     """Walk up- or downstream from a gene/compound within one KEGG pathway map.
 
     Answers "what does this gene activate or inhibit, and how far", which needs
-    KGML's signed relation subtypes. Reactome RDF can also express signed
+    KGML's signed relation subtypes. BioPAX controls can also express signed
     regulation, but of a REACTION rather than between two molecules, so reaching
-    the same statement over `run_sparql` requires inferring the net effect of each
-    reaction yourself.
+    the same statement from an RDF query would mean inferring the net effect of
+    each reaction yourself.
 
     RETURNS a JSON string of an object with `seeds` (the node ids the query
     resolved to), `unresolved` (seeds that matched NOTHING in this map — check
@@ -1191,8 +1189,8 @@ async def link(
     pairs, e.g. `[{"source": "hsa:10458", "target": "path:hsa04810"}]`. Empty
     and non-empty results share the same `[...]` shape; an empty array means
     KEGG has no such links (it answers with an empty HTTP 200, not a 404). These
-    are KEGG-namespaced IDs and will NOT resolve in `run_sparql` — pass them
-    through `kegg_conv` first to reach UniProt / NCBI Gene / ChEBI / PubChem.
+    are KEGG-namespaced IDs and are not RDF-resolvable — pass them through
+    `kegg_conv` first.
 
     RAISES ValueError on an unknown database and on any HTTP error, including
     HTTP 403/429 for the 3 requests/second rate limit, which must not be retried.

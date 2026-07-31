@@ -944,6 +944,38 @@ class TestTransportGate:
         assert remote in local or "KEGG (available" not in remote
 
     @pytest.mark.asyncio
+    async def test_only_kegg_conv_names_run_sparql_literally(self, monkeypatch):
+        """Keep the `run_sparql` token to ONE KEGG tool, so it cannot crowd the
+        real tool out of a client's tool-search results.
+
+        A deferred-tool client ranks by DESCRIPTION text and loads only the top
+        few, so a tool that does not rank is effectively uncallable. Eight KEGG
+        descriptions each naming `run_sparql` means eight decoys competing with
+        the one real `run_sparql` on exactly the query someone uses to find it
+        (observed: `run_sparql` returned only KEGG tools; the real one took seven
+        searches). Compressing the mentions to the single tool where the exact
+        name is load-bearing — `kegg_conv`, the RDF bridge — keeps the guidance
+        precise where it is read and removes it where it was boilerplate.
+
+        This is a lexical proxy, not a search test: the ranking layer is
+        client-side and this repo cannot query it. It guards the intent only.
+        """
+        fresh = FastMCP("gate-test")
+        monkeypatch.setattr(main, "mcp", fresh)
+        monkeypatch.setenv(main._KEGG_ENV_VAR, "1")
+        await main.setup(local=True)
+        naming = [
+            t.name
+            for t in await fresh.list_tools()
+            if t.name.startswith("kegg_") and "run_sparql" in (t.description or "")
+        ]
+        assert naming == ["kegg_conv"], (
+            f"tools naming `run_sparql`: {naming}. Only kegg_conv should — it is "
+            "the bridge tool, where the exact name is what the caller needs. "
+            "Elsewhere say 'not RDF-resolvable' / 'downstream RDF query' instead."
+        )
+
+    @pytest.mark.asyncio
     async def test_kegg_tools_are_read_only_and_documented(self, monkeypatch):
         """Same contract test_tool_descriptions.py applies to the HTTP surface —
         repeated here because the stdio-only tools never reach that fixture."""
