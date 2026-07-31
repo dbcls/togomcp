@@ -365,9 +365,9 @@ class TestPathwayGraph:
         graph = json.loads(out)
         assert len(graph["nodes"]) == 2
         # `truncated` now carries a {returned, total} pair PER SECTION.
-        assert graph["truncated"]["nodes"] == {
-            "returned": 2, "total": graph["stats"]["node_count"]
-        }
+        assert graph["truncated"]["nodes"]["returned"] == 2
+        assert graph["truncated"]["nodes"]["total"] == graph["stats"]["node_count"]
+        assert graph["truncated"]["nodes"]["capped_by"] == "count"
         # stats must still describe the WHOLE map, not the trimmed view.
         assert graph["stats"]["node_count"] > 2
 
@@ -429,10 +429,81 @@ class TestPathwayGraph:
         assert graph["stats"]["node_count"] > len(graph["nodes"])
         # …and every trimmed section says what it dropped.
         t = graph["truncated"]
-        assert t["metabolic_gaps"] == {"returned": len(graph["metabolic_gaps"]),
-                                       "total": 2500}
+        assert t["metabolic_gaps"]["total"] == 2500
         assert t["map_links"]["total"] == 400
         assert t["nodes"]["total"] == graph["stats"]["node_count"]
+        # The graph itself must survive: a pathway tool answering with zero edges
+        # reads as "these molecules are unconnected", which is worse than an error.
+        assert len(graph["edges"]) >= min(kegg._PRIMARY_FLOOR, graph["stats"]["edge_count"])
+
+    @pytest.mark.asyncio
+    async def test_raised_caps_never_starve_the_graph_of_edges(self):
+        """Raising the count caps must not let supporting detail eat the graph.
+
+        Regression for the swing this file has already made in BOTH directions.
+        A "gaps first" drop order threw away all 25 of hsa00010's metabolic gaps
+        to save 2 KB; reversing it to "edges first" then let a whole-metabolism
+        map's 186 KB of gaps push `edges` to ZERO — a pathway graph with no graph
+        in it, which reads as "these molecules are unconnected" and is worse than
+        an error because it does not look like one.
+
+        The rule is not which section is more precious: the section OCCUPYING the
+        budget is the one that pays, and the answer keeps a floor.
+        """
+        entries, relations = [], []
+        for i in range(2073):  # gaps dominate, as on the real hsa01100
+            entries.append(
+                f'<entry id="{90000 + i}" name="ko:K{i:05d}" type="ortholog">'
+                f'<graphics name="{i}.{i}.{i}.{i}" type="rectangle"/></entry>'
+            )
+        for i in range(169):
+            entries.append(
+                f'<entry id="{40000 + i}" name="path:map{i:05d}" type="map">'
+                f'<graphics name="Other pathway {i}" type="roundrectangle"/></entry>'
+            )
+        for i in range(900):
+            entries.append(
+                f'<entry id="{i + 1}" name="hsa:{i} hsa:{i + 9000}" type="gene">'
+                f'<graphics name="GENE{i}, ALIAS{i}" type="rectangle"/></entry>'
+            )
+            if i:
+                relations.append(
+                    f'<relation entry1="{i}" entry2="{i + 1}" type="PPrel">'
+                    '<subtype name="activation" value="--&gt;"/></relation>'
+                )
+        big = (
+            '<?xml version="1.0"?><pathway name="path:xxx01100" org="xxx" '
+            'number="01100" title="Synthetic global map">'
+            + "".join(entries) + "".join(relations) + "</pathway>"
+        )
+
+        async def fetch(**kwargs):
+            kegg._kgml_cache.clear()
+            with respx.mock(using="httpx", assert_all_called=False) as router:
+                router.get(f"{BASE}/get/xxx01100/kgml").mock(
+                    return_value=httpx.Response(200, text=big)
+                )
+                return json.loads(await pathway_graph(pathway="xxx01100", **kwargs))
+
+        raised = await fetch(max_nodes=5000, max_edges=20000, max_gaps=5000)
+        assert len(raised["edges"]) >= kegg._PRIMARY_FLOOR, "the graph was starved"
+        t = raised["truncated"]
+        # The two firing conditions must stay distinguishable…
+        assert "map larger than the requested caps" in t["reasons"]
+        assert "response exceeded the size cap" in t["reasons"]
+        # …and the section that ATE the budget must be visible, even though the
+        # count cap left it untrimmed — otherwise "why are there few edges?" is
+        # unanswerable from the response.
+        assert t["section_bytes"]["metabolic_gaps"] > t["section_bytes"]["edges"]
+        assert t["metabolic_gaps"]["capped_by"] == "size_budget"
+
+        # Default arguments must be untouched by all of this.
+        default = await fetch()
+        assert len(default["nodes"]) == 400
+        assert len(default["metabolic_gaps"]) == 100
+        assert len(default["edges"]) > 0
+        assert default["truncated"]["reasons"] == ["map larger than the requested caps"]
+        assert "section_bytes" not in default["truncated"]
 
     @pytest.mark.asyncio
     async def test_bounded_actually_shrinks_a_dict_not_just_labels_it(self):
@@ -443,11 +514,13 @@ class TestPathwayGraph:
             "big": [{"row": "x" * 100} for _ in range(3000)],
         }
         parsed = json.loads(
-            kegg._bounded(payload, note="hint", reducible=("big",))
+            kegg._bounded(payload, note="hint", secondary=("big",))
         )
         assert len(json.dumps(parsed)) <= kegg._MAX_RESPONSE_CHARS
         assert len(parsed["big"]) < 3000
         assert parsed["truncated"]["big"]["total"] == 3000
+        assert parsed["truncated"]["big"]["capped_by"] == "size_budget"
+        assert "response exceeded the size cap" in parsed["truncated"]["reasons"]
         # Un-named sections are never touched.
         assert parsed["stats"] == {"n": 3000} and parsed["keep_me"] == "small"
 

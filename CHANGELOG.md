@@ -15,6 +15,25 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ### Fixed
 
+- **Raised count caps could starve `kegg_pathway_graph` of its edges.** With
+  `max_nodes=5000, max_edges=20000, max_gaps=5000` on a whole-metabolism map, `metabolic_gaps`
+  (186 KB, 84% of the payload) consumed the size budget and `edges` came back as **0** — a pathway
+  graph with no graph in it, which reads as "these molecules are unconnected" and is more dangerous
+  than an error because it does not look like one.
+  This was the swing back from the previous fix: a "gaps first" drop order had thrown away all 25 of
+  hsa00010's gaps to save 2 KB, and reversing it to "edges first" produced this. Neither fixed order
+  is right, because the question is not which section is more precious. The backstop now works in two
+  TIERS — supporting detail (`map_links`, `groups`, `metabolic_gaps`) is spent before the graph
+  itself (`edges`, `nodes`), which additionally keeps a floor of 50 rows — and **within a tier the
+  BIGGEST section goes first**, so the section that occupies the budget is the one that gives it back
+  instead of a small section being zeroed for nothing.
+- **The truncation report no longer hides the section that caused the truncation.** `truncated` now
+  carries `reasons` (a list, so a count-cap trim and a size-backstop firing are distinguishable
+  rather than collapsed into one string), `capped_by` per section (`"count"` / `"size_budget"` /
+  `null`), and `section_bytes` when the size backstop fires. Previously the section that ate the
+  budget was the only one absent from the report — it had `returned == total`, so nothing flagged it,
+  and "why are there so few edges?" was unanswerable from the response.
+
 - **`kegg_pathway_graph` could exceed the 1 MB MCP transport limit, so the caller got nothing.**
   `_bounded` only *labelled* an oversized dict — it set `payload["truncated"]` and then serialized
   everything anyway — so the size cap was decorative for all four dict-returning KEGG tools. A

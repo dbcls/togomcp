@@ -339,23 +339,40 @@ def _parse_flat_file(text: str) -> list[dict[str, Any]]:
     return records
 
 
+# A graph tool must never answer with zero edges: that is indistinguishable from
+# "these molecules are unconnected", so it is more dangerous than an error.
+_PRIMARY_FLOOR = 50
+
+
+def _section_bytes(payload: dict[str, Any], key: str) -> int:
+    value = payload.get(key)
+    return len(json.dumps(value, ensure_ascii=False)) if isinstance(value, list) else 0
+
+
 def _bounded(
-    payload: Any, *, note: str, reducible: tuple[str, ...] = (),
+    payload: Any,
+    *,
+    note: str,
     cap: int = _MAX_RESPONSE_CHARS,
+    secondary: tuple[str, ...] = (),
+    primary: tuple[str, ...] = (),
+    primary_floor: int = 0,
 ) -> str:
-    """Serialize, shrinking to the soft cap and SAYING what was dropped.
+    """Serialize, shrinking to `cap`, and SAY what was dropped and why.
 
-    `reducible` names the dict keys whose list values may be trimmed, in
-    drop-priority order (first = dropped first). Anything not named is kept —
-    which is how `stats` keeps describing the WHOLE graph while the arrays that
-    quote it get cut.
+    Sections are reduced in two tiers: `secondary` (supporting detail) is spent
+    first, `primary` (the answer itself) only after, and never below
+    `primary_floor` rows. WITHIN a tier the BIGGEST section goes first, because
+    the goal is to reclaim bytes — zeroing a 2 KB section to cover a 6 KB
+    overflow destroys content and fixes nothing.
 
-    This used to only LABEL an oversized dict and return it in full: the branch
-    set `payload["truncated"]` and serialized everything anyway, so the cap was
-    decorative for every dict-returning tool. A whole-metabolism map
-    (`hsa01100`: 6,382 nodes, 2,073 metabolic gaps) then blew past the 1 MB
-    transport limit, and the caller got NOTHING — not even the truncation note
-    that was supposed to help it recover.
+    That ordering is the product of getting it wrong twice in both directions. A
+    fixed "gaps first" order threw away all 25 of hsa00010's metabolic gaps to
+    save 2 KB — the tool's unique answer, spent to protect bulk. Reversing it to
+    "edges first" then let a whole-metabolism map's 186 KB of gaps push `edges`
+    to ZERO, i.e. a pathway graph with no graph in it. Neither is a matter of
+    which section is more precious; it is that the section which OCCUPIES the
+    budget must be the one that pays, and the answer must keep a floor.
     """
     out = json.dumps(payload, ensure_ascii=False)
     if len(out) <= cap:
@@ -378,35 +395,73 @@ def _bounded(
             ensure_ascii=False,
         )
 
+    if not isinstance(payload, dict):
+        return out
+
     payload = dict(payload)
     existing = payload.get("truncated")
     truncated: dict[str, Any] = dict(existing) if isinstance(existing, dict) else {}
+    # What each section costs BEFORE the backstop touches it — this is what tells
+    # a caller which section ate the budget, including one that was never trimmed.
+    occupancy = {
+        key: _section_bytes(payload, key)
+        for key in (*secondary, *primary)
+        # Skip empty sections: an empty list serializes to 2 bytes and would
+        # otherwise show up as a budget occupant, which is pure noise.
+        if isinstance(payload.get(key), list) and payload[key]
+    }
 
-    dropped: dict[str, Any] = {}
-    for key in reducible:
-        if len(json.dumps(payload, ensure_ascii=False)) <= cap:
-            break
-        seq = payload.get(key)
-        if not isinstance(seq, list) or not seq:
-            continue
-        before = len(seq)
-        while payload[key] and (
-            len(json.dumps(payload, ensure_ascii=False)) > cap
-        ):
-            payload[key] = payload[key][: -max(1, len(payload[key]) // 4)]
-        if len(payload[key]) != before:
-            # A caller-level cap may already have trimmed this section, in which
-            # case `before` is the capped length, not the real total. Keep the
-            # ORIGINAL total: reporting the intermediate figure would understate
-            # how much of the map is missing, which is the one thing `truncated`
-            # exists to prevent.
-            prior = truncated.get(key)
-            total = prior["total"] if isinstance(prior, dict) and "total" in prior else before
-            dropped[key] = {"returned": len(payload[key]), "total": total}
+    def _fits() -> bool:
+        return len(json.dumps(payload, ensure_ascii=False)) <= cap
 
-    truncated.setdefault("reason", "response exceeded the size cap")
+    for tier, floor in ((secondary, 0), (primary, primary_floor)):
+        # Biggest first: reclaim where the bytes actually are.
+        for key in sorted(tier, key=lambda k: -_section_bytes(payload, k)):
+            if _fits():
+                break
+            seq = payload.get(key)
+            if not isinstance(seq, list) or len(seq) <= floor:
+                continue
+            before = len(seq)
+            while len(payload[key]) > floor and not _fits():
+                step = max(1, len(payload[key]) // 4)
+                payload[key] = payload[key][: max(floor, len(payload[key]) - step)]
+            if len(payload[key]) != before:
+                prior = truncated.get(key)
+                total = (
+                    prior["total"]
+                    if isinstance(prior, dict) and "total" in prior
+                    else before
+                )
+                truncated[key] = {
+                    "returned": len(payload[key]),
+                    "total": total,
+                    "capped_by": "size_budget",
+                }
+
+    # Mark every section that was already count-capped, and every section that
+    # merely OCCUPIED the budget — the one that starved the others is otherwise
+    # the only one absent from the report.
+    for key, size in occupancy.items():
+        entry = truncated.get(key)
+        if isinstance(entry, dict):
+            entry.setdefault("capped_by", "count")
+        elif isinstance(payload.get(key), list):
+            truncated[key] = {
+                "returned": len(payload[key]),
+                "total": len(payload[key]),
+                "capped_by": None,
+            }
+
+    reasons = truncated.get("reasons") or (
+        [truncated["reason"]] if truncated.get("reason") else []
+    )
+    reasons = [r for r in reasons if r != "response exceeded the size cap"]
+    reasons.append("response exceeded the size cap")
+    truncated.pop("reason", None)
+    truncated["reasons"] = reasons
+    truncated["section_bytes"] = occupancy
     truncated["hint"] = note
-    truncated.update(dropped)
     payload["truncated"] = truncated
     return json.dumps(payload, ensure_ascii=False)
 
@@ -876,11 +931,13 @@ async def pathway_graph(
     # backstop, so the common case degrades predictably instead of by byte count.
     if len(all_gaps) > len(gaps):
         truncated["metabolic_gaps"] = {
-            "returned": len(gaps), "total": len(all_gaps)
+            "returned": len(gaps), "total": len(all_gaps),
+            "capped_by": "count",
         }
     if len(all_map_links) > len(map_links):
         truncated["map_links"] = {
-            "returned": len(map_links), "total": len(all_map_links)
+            "returned": len(map_links), "total": len(all_map_links),
+            "capped_by": "count",
         }
     if len(nodes) > max_nodes or len(edges) > max_edges:
         # Degrade to the best-connected core rather than an arbitrary prefix: the
@@ -894,8 +951,12 @@ async def pathway_graph(
         edges = [e for e in edges if e["source"] in kept and e["target"] in kept][
             :max_edges
         ]
-        truncated["nodes"] = {"returned": len(nodes), "total": stats["node_count"]}
-        truncated["edges"] = {"returned": len(edges), "total": stats["edge_count"]}
+        truncated["nodes"] = {
+            "returned": len(nodes), "total": stats["node_count"], "capped_by": "count"
+        }
+        truncated["edges"] = {
+            "returned": len(edges), "total": stats["edge_count"], "capped_by": "count"
+        }
         truncated["selection"] = "highest-degree nodes and the edges among them"
 
     result: dict[str, Any] = {
@@ -916,7 +977,7 @@ async def pathway_graph(
         "options": graph["options"],
     }
     if truncated:
-        truncated["reason"] = "map larger than the requested caps"
+        truncated["reasons"] = ["map larger than the requested caps"]
         truncated["hint"] = (
             "`stats` still describes the full map. Raise max_nodes/max_edges/"
             "max_gaps, or use kegg_pathway_neighborhood for a focused view."
@@ -928,12 +989,13 @@ async def pathway_graph(
     return _bounded(
         result,
         note="lower max_nodes/max_edges/max_gaps or use a neighborhood query.",
-        # Drop order = bulkiest-and-tunable first, smallest-and-unique last.
-        # `edges`/`nodes` are the bulk AND have explicit caps a caller can lower,
-        # whereas `metabolic_gaps` is this tool's unique answer and costs almost
-        # nothing to keep — sacrificing 25 gaps to save 2 KB, as an earlier order
-        # did, throws away the reason to call the tool at all.
-        reducible=("edges", "nodes", "map_links", "groups", "metabolic_gaps"),
+        # `nodes`/`edges` ARE the graph — they are what the caller asked for, so
+        # they pay last and keep a floor. Everything else is supporting detail
+        # and is spent first, largest first, so the section actually occupying
+        # the budget is the one that gives it back.
+        secondary=("map_links", "groups", "metabolic_gaps"),
+        primary=("edges", "nodes"),
+        primary_floor=_PRIMARY_FLOOR,
         cap=_MAX_GRAPH_RESPONSE_CHARS,
     )
 
