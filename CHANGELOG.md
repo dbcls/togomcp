@@ -15,6 +15,34 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ### Fixed
 
+- **`kegg_pathway_graph` could return edges whose endpoints were not in `nodes`.** Under a raised
+  `max_nodes` on a whole-metabolism map, 18 of 50 returned edges (and in a synthetic reproduction all
+  50) referenced node ids that had been trimmed away, so the caller could not resolve a single
+  endpoint — while 878 of 891 returned nodes appeared edgeless on a densely connected map. Both are
+  wrong ANSWERS rather than small ones, and neither looks like an error: "this map is nearly
+  disconnected" is a plausible reading of the second.
+  The cause was reducing `nodes` and `edges` as two independent flat lists. The unit of reduction is
+  now the NODE SET — a binary search finds the largest degree-ordered prefix whose INDUCED subgraph
+  fits the budget, so every returned edge has both endpoints in `nodes` by construction, on every
+  path (no cap, count cap, size cap). Verified across all six validation maps plus both capped cases.
+- **`metabolic_gaps` and `map_links` vanished from every organism global map at default arguments.**
+  The byte budget was computed against each section's UNREDUCED size, so `edges` at its full 8,124-row
+  cost (~370 KB) made the budget look exhausted and the supporting sections were zeroed — even though
+  the actual response was 222 KB against a 250 KB cap, and the 100 gaps cost 11.5 KB. The gaps are
+  this tool's headline output, and they were invisible precisely where they mean most. The budget is
+  now computed on what is actually being returned, with the (already count-capped, ~22 KB) supporting
+  sections reserved BEFORE the graph is fitted into what remains.
+- **`capped_by` mislabelled an induced edge count as a size-budget trim.** Edges follow the node set,
+  so when the node prefix is bound by `max_nodes` the edges are too; reporting that as `size_budget`
+  told the caller to narrow the question when raising `max_nodes` is what actually helps. Edges now
+  inherit the node limit's reason unless their own count cap bound them first, and carry an explicit
+  `note` that they are the induced subgraph.
+- **`truncated.section_bytes_if_complete`** replaces the previous backstop-only diagnostic and is now
+  emitted whenever the graph is reduced, reporting what each of the four sections would have cost
+  unreduced. That is what answers "why are there so few edges?" — the section that drove the
+  reduction is otherwise invisible, since a section that merely occupied the budget has
+  `returned == total` and nothing flags it.
+
 - **Raised count caps could starve `kegg_pathway_graph` of its edges.** With
   `max_nodes=5000, max_edges=20000, max_gaps=5000` on a whole-metabolism map, `metabolic_gaps`
   (186 KB, 84% of the payload) consumed the size budget and `edges` came back as **0** — a pathway

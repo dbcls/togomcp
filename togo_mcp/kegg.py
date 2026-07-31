@@ -807,6 +807,57 @@ def _cycle_interpretation(
     return notes
 
 
+def _fit_graph_to_budget(
+    ordered_nodes: list[dict[str, Any]],
+    all_edges: list[dict[str, Any]],
+    *,
+    max_nodes: int,
+    max_edges: int,
+    budget: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Largest top-N node prefix whose INDUCED edge set still fits `budget`.
+
+    Returning nodes and edges as two independently-clipped lists is what produced
+    the worst bug this tool has had: trimming `nodes` to 1,062 and `edges` to 50
+    left every one of those 50 edges pointing at a node that had been cut, so the
+    caller could not resolve a single endpoint — and 1,062 nodes appeared
+    isolated on a densely-connected map. Both are wrong ANSWERS, not merely small
+    ones, and neither looks like an error.
+
+    So the unit of reduction is the NODE SET, and the edges are always the
+    induced subgraph over it. Shrinking nodes shrinks the edge set with them, so
+    one binary search over N satisfies the byte budget while keeping the result
+    internally consistent by construction.
+    """
+    ceiling = min(max_nodes, len(ordered_nodes))
+
+    def take(n: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        nodes = ordered_nodes[:n]
+        ids = {node["id"] for node in nodes}
+        edges = [
+            e for e in all_edges if e["source"] in ids and e["target"] in ids
+        ][:max_edges]
+        return nodes, edges
+
+    def cost(n: int) -> int:
+        nodes, edges = take(n)
+        return len(json.dumps({"nodes": nodes, "edges": edges}, ensure_ascii=False))
+
+    if ceiling == 0 or cost(ceiling) <= budget:
+        return take(ceiling)
+
+    low, high = 0, ceiling
+    while low < high:
+        mid = (low + high + 1) // 2
+        if cost(mid) <= budget:
+            low = mid
+        else:
+            high = mid - 1
+    # Never answer with nothing: a floor of nodes is more useful than an empty
+    # graph, even if it overshoots the soft budget slightly.
+    return take(max(low, min(_PRIMARY_FLOOR, ceiling)))
+
+
 @kegg_mcp.tool(annotations=READ_ONLY_TOOL)
 async def pathway_graph(
     pathway: Annotated[
@@ -918,53 +969,35 @@ async def pathway_graph(
     # cut, so the caller can always see what it is looking at a slice of.
     stats = {**graph["stats"], "metabolic_gap_count": len(all_gaps)}
 
-    nodes = graph["nodes"]
-    edges = graph["edges"]
     all_map_links = graph["map_links"]
     gaps = all_gaps[:max_gaps]
     map_links = all_map_links[:_MAX_MAP_LINKS]
     truncated: dict[str, Any] = {}
-    # A whole-metabolism map is mostly gaps and cross-map pointers, not nodes:
-    # hsa01100 carries 2,073 metabolic gaps and 169 map links, which alone
-    # serialize to ~220 KB — past the 1 MB transport limit before nodes/edges are
-    # even counted. Cap them at the source rather than relying on the size
-    # backstop, so the common case degrades predictably instead of by byte count.
     if len(all_gaps) > len(gaps):
         truncated["metabolic_gaps"] = {
-            "returned": len(gaps), "total": len(all_gaps),
-            "capped_by": "count",
+            "returned": len(gaps), "total": len(all_gaps), "capped_by": "count",
         }
     if len(all_map_links) > len(map_links):
         truncated["map_links"] = {
             "returned": len(map_links), "total": len(all_map_links),
             "capped_by": "count",
         }
-    if len(nodes) > max_nodes or len(edges) > max_edges:
-        # Degrade to the best-connected core rather than an arbitrary prefix: the
-        # hub nodes are what a caller asking about a pathway is actually after.
-        degree: dict[str, int] = {}
-        for e in edges:
-            degree[e["source"]] = degree.get(e["source"], 0) + 1
-            degree[e["target"]] = degree.get(e["target"], 0) + 1
-        nodes = sorted(nodes, key=lambda n: -degree.get(n["id"], 0))[:max_nodes]
-        kept = {n["id"] for n in nodes}
-        edges = [e for e in edges if e["source"] in kept and e["target"] in kept][
-            :max_edges
-        ]
-        truncated["nodes"] = {
-            "returned": len(nodes), "total": stats["node_count"], "capped_by": "count"
-        }
-        truncated["edges"] = {
-            "returned": len(edges), "total": stats["edge_count"], "capped_by": "count"
-        }
-        truncated["selection"] = "highest-degree nodes and the edges among them"
 
-    result: dict[str, Any] = {
+    # Order by degree: a caller asking about a pathway wants its hubs.
+    degree: dict[str, int] = {}
+    for e in graph["edges"]:
+        degree[e["source"]] = degree.get(e["source"], 0) + 1
+        degree[e["target"]] = degree.get(e["target"], 0) + 1
+    ordered = sorted(graph["nodes"], key=lambda n: -degree.get(n["id"], 0))
+
+    # Reserve everything that is NOT the graph first — it is already count-capped
+    # and small (gaps + map_links are ~22 KB), so spending it to buy nodes is a
+    # bad trade: metabolic_gaps is this tool's unique answer and vanished from
+    # every organism global map when the budget was computed the other way round.
+    envelope = {
         "pathway": {**graph["pathway"], "id": pathway},
         "signal_quality": _signal_quality(graph),
         "stats": stats,
-        "nodes": nodes,
-        "edges": edges,
         "groups": graph["groups"],
         "map_links": map_links,
         "metabolic_gaps": gaps,
@@ -976,26 +1009,79 @@ async def pathway_graph(
         ),
         "options": graph["options"],
     }
+    reserved = len(json.dumps(envelope, ensure_ascii=False)) + 2_000  # + truncated
+    nodes, edges = _fit_graph_to_budget(
+        ordered,
+        graph["edges"],
+        max_nodes=max_nodes,
+        max_edges=max_edges,
+        budget=max(_MAX_GRAPH_RESPONSE_CHARS - reserved, 10_000),
+    )
+
+    # One decision limits both: how far the node prefix could extend. Edges are
+    # the induced subgraph over it, so they inherit that reason unless their own
+    # count cap bound them first — labelling an induced edge count as
+    # "size_budget" would tell a caller to narrow the question when raising
+    # max_nodes is what actually helps.
+    node_limit = "count" if len(nodes) >= max_nodes else "size_budget"
+    if len(nodes) < stats["node_count"]:
+        truncated["nodes"] = {
+            "returned": len(nodes),
+            "total": stats["node_count"],
+            "capped_by": node_limit,
+        }
+    if len(edges) < stats["edge_count"]:
+        truncated["edges"] = {
+            "returned": len(edges),
+            "total": stats["edge_count"],
+            "capped_by": "count" if len(edges) >= max_edges else node_limit,
+            "note": "induced subgraph over the returned `nodes`",
+        }
     if truncated:
-        truncated["reasons"] = ["map larger than the requested caps"]
+        # What each section would have cost UNREDUCED. This is what answers "why
+        # are there so few edges?" — the section that drove the reduction is
+        # otherwise invisible, because a section that merely occupied the budget
+        # has returned == total and nothing flags it.
+        truncated["section_bytes_if_complete"] = {
+            "nodes": len(json.dumps(graph["nodes"], ensure_ascii=False)),
+            "edges": len(json.dumps(graph["edges"], ensure_ascii=False)),
+            "metabolic_gaps": len(json.dumps(all_gaps, ensure_ascii=False)),
+            "map_links": len(json.dumps(all_map_links, ensure_ascii=False)),
+        }
+        truncated["selection"] = (
+            "highest-degree nodes and the induced subgraph over them — every "
+            "returned edge has both endpoints in `nodes`"
+        )
+
+    result: dict[str, Any] = {**envelope, "nodes": nodes, "edges": edges}
+    if truncated:
+        # Keep the two firing conditions distinguishable: a caller who hit only
+        # the count caps can raise them, whereas one who hit the size budget
+        # cannot and must narrow the question instead.
+        kinds = {
+            v["capped_by"] for v in truncated.values()
+            if isinstance(v, dict) and v.get("capped_by")
+        }
+        truncated["reasons"] = [
+            label for kind, label in (
+                ("count", "map larger than the requested caps"),
+                ("size_budget", "response exceeded the size cap"),
+            ) if kind in kinds
+        ]
         truncated["hint"] = (
             "`stats` still describes the full map. Raise max_nodes/max_edges/"
             "max_gaps, or use kegg_pathway_neighborhood for a focused view."
         )
         result["truncated"] = truncated
-    # Backstop: anything still oversized loses whole sections in this order, so a
-    # global map degrades to a usable answer instead of exceeding the transport
-    # limit and reaching the caller as nothing at all.
+
+    # Backstop only for the supporting sections; nodes/edges are already fitted
+    # AS A PAIR and must not be clipped independently — that is what created
+    # dangling edges. Their invariant is enforced structurally in
+    # _fit_graph_to_budget, so this can never break it.
     return _bounded(
         result,
         note="lower max_nodes/max_edges/max_gaps or use a neighborhood query.",
-        # `nodes`/`edges` ARE the graph — they are what the caller asked for, so
-        # they pay last and keep a floor. Everything else is supporting detail
-        # and is spent first, largest first, so the section actually occupying
-        # the budget is the one that gives it back.
         secondary=("map_links", "groups", "metabolic_gaps"),
-        primary=("edges", "nodes"),
-        primary_floor=_PRIMARY_FLOOR,
         cap=_MAX_GRAPH_RESPONSE_CHARS,
     )
 

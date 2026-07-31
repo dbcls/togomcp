@@ -20,6 +20,7 @@ import respx
 from fastmcp import FastMCP
 
 import togo_mcp.kegg as kegg
+from togo_mcp.kegg import _MAX_GRAPH_RESPONSE_CHARS as _MAX_GRAPH_CAP
 import togo_mcp.main as main
 from togo_mcp.kegg import (
     _as_list,
@@ -494,16 +495,30 @@ class TestPathwayGraph:
         # …and the section that ATE the budget must be visible, even though the
         # count cap left it untrimmed — otherwise "why are there few edges?" is
         # unanswerable from the response.
-        assert t["section_bytes"]["metabolic_gaps"] > t["section_bytes"]["edges"]
-        assert t["metabolic_gaps"]["capped_by"] == "size_budget"
+        # The diagnostic that answers "why so few edges?": what each section
+        # would have cost unreduced, including one that was never trimmed.
+        complete = t["section_bytes_if_complete"]
+        assert set(complete) == {"nodes", "edges", "metabolic_gaps", "map_links"}
+        assert complete["nodes"] + complete["edges"] > _MAX_GRAPH_CAP
+        # Every returned edge resolves — the invariant that independent clipping
+        # of nodes and edges used to break (50/50 edges dangling).
+        node_ids = {n["id"] for n in raised["nodes"]}
+        assert all(
+            e["source"] in node_ids and e["target"] in node_ids
+            for e in raised["edges"]
+        )
+        # …and the returned nodes are not overwhelmingly edgeless.
+        touched = {e["source"] for e in raised["edges"]} | {
+            e["target"] for e in raised["edges"]
+        }
+        assert len(touched) >= len(node_ids) / 2
 
         # Default arguments must be untouched by all of this.
         default = await fetch()
         assert len(default["nodes"]) == 400
         assert len(default["metabolic_gaps"]) == 100
         assert len(default["edges"]) > 0
-        assert default["truncated"]["reasons"] == ["map larger than the requested caps"]
-        assert "section_bytes" not in default["truncated"]
+        assert "map larger than the requested caps" in default["truncated"]["reasons"]
 
     @pytest.mark.asyncio
     async def test_bounded_actually_shrinks_a_dict_not_just_labels_it(self):
