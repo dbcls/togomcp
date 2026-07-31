@@ -1,0 +1,138 @@
+<?xml version="1.0"?>
+<!--
+  Synthetic KGML built to exercise every pitfall documented in togo_mcp/kgml.py.
+  It is NOT a real KEGG map and contains no KEGG-derived content: the identifiers
+  are real accessions but the topology is invented, so this file carries no KEGG
+  licensing footprint and can live in the repo. Validate against a real map with
+  scripts/kgml_probe.py, run from an academic network.
+
+  Layout:
+    1   gene, THREE ids            -> pitfall 1 (multi-id entry)
+    2   gene, one id
+    10  group of 11 + 12           -> pitfall 2 (complex)
+    11  gene   12  gene
+    20  map pointer                -> pitfall 4 (cross-map entry)
+    30  compound  31  compound
+    40  ortholog (enzyme)  41  ortholog (enzyme)
+    50  rendering-only line entry  -> pitfall 6
+-->
+<pathway name="path:xxx00000" org="xxx" number="00000"
+         title="Synthetic pitfall map"
+         image="https://www.kegg.jp/kegg/pathway/xxx/xxx00000.png"
+         link="https://www.kegg.jp/kegg-bin/show_pathway?xxx00000">
+
+  <entry id="1" name="hsa:5290 hsa:5291 hsa:5293" type="gene"
+         link="https://www.kegg.jp/dbget-bin/www_bget?hsa:5290"
+         reaction="rn:R03469">
+    <graphics name="PIK3CA, PIK3CB, PIK3CD..." fgcolor="#000000" bgcolor="#BFFFBF"
+              type="rectangle" x="100" y="100" width="46" height="17"/>
+  </entry>
+
+  <entry id="2" name="hsa:207" type="gene"
+         link="https://www.kegg.jp/dbget-bin/www_bget?hsa:207">
+    <graphics name="AKT1" fgcolor="#000000" bgcolor="#BFFFBF"
+              type="rectangle" x="200" y="100" width="46" height="17"/>
+  </entry>
+
+  <entry id="10" name="undefined" type="group">
+    <graphics fgcolor="#000000" bgcolor="#FFFFFF"
+              type="rectangle" x="300" y="100" width="92" height="34"/>
+    <component id="11"/>
+    <component id="12"/>
+  </entry>
+
+  <entry id="11" name="hsa:2475" type="gene"
+         link="https://www.kegg.jp/dbget-bin/www_bget?hsa:2475">
+    <graphics name="MTOR" fgcolor="#000000" bgcolor="#BFFFBF"
+              type="rectangle" x="300" y="92" width="46" height="17"/>
+  </entry>
+
+  <entry id="12" name="hsa:57521 hsa:64798" type="gene"
+         link="https://www.kegg.jp/dbget-bin/www_bget?hsa:57521">
+    <graphics name="RPTOR, DEPDC5" fgcolor="#000000" bgcolor="#BFFFBF"
+              type="rectangle" x="300" y="109" width="46" height="17"/>
+  </entry>
+
+  <entry id="20" name="path:hsa04150" type="map"
+         link="https://www.kegg.jp/dbget-bin/www_bget?hsa04150">
+    <graphics name="mTOR signaling pathway" fgcolor="#000000" bgcolor="#FFFFFF"
+              type="roundrectangle" x="400" y="100" width="120" height="25"/>
+  </entry>
+
+  <entry id="30" name="cpd:C05981" type="compound"
+         link="https://www.kegg.jp/dbget-bin/www_bget?C05981">
+    <graphics name="C05981" fgcolor="#000000" bgcolor="#FFFFFF"
+              type="circle" x="150" y="200" width="8" height="8"/>
+  </entry>
+
+  <entry id="31" name="cpd:C00076" type="compound"
+         link="https://www.kegg.jp/dbget-bin/www_bget?C00076">
+    <graphics name="C00076" fgcolor="#000000" bgcolor="#FFFFFF"
+              type="circle" x="250" y="200" width="8" height="8"/>
+  </entry>
+
+  <entry id="40" name="ko:K00922" type="ortholog" reaction="rn:R03469">
+    <graphics name="2.7.1.153" fgcolor="#000000" bgcolor="#FFFFFF"
+              type="rectangle" x="200" y="250" width="46" height="17"/>
+  </entry>
+
+  <entry id="41" name="ko:K01110" type="ortholog" reaction="rn:R04372">
+    <graphics name="3.1.3.67" fgcolor="#000000" bgcolor="#FFFFFF"
+              type="rectangle" x="300" y="250" width="46" height="17"/>
+  </entry>
+
+  <entry id="50" name="path:xxx00000" type="map">
+    <graphics name="TITLE:Synthetic pitfall map" fgcolor="#000000" bgcolor="#FFFFFF"
+              type="line" x="50" y="50" width="200" height="25"/>
+  </entry>
+
+  <!-- pitfall 1: both endpoints are multi-id entries -->
+  <relation entry1="1" entry2="2" type="PPrel">
+    <subtype name="activation" value="--&gt;"/>
+    <subtype name="phosphorylation" value="+p"/>
+  </relation>
+
+  <!-- exact duplicate: KGML emits these; must be merged, not double counted -->
+  <relation entry1="1" entry2="2" type="PPrel">
+    <subtype name="activation" value="--&gt;"/>
+    <subtype name="phosphorylation" value="+p"/>
+  </relation>
+
+  <!-- pitfall 2: endpoint 10 is a GROUP; naive parse dead-ends here -->
+  <relation entry1="2" entry2="10" type="PPrel">
+    <subtype name="activation" value="--&gt;"/>
+  </relation>
+
+  <!-- closes a negative feedback loop 1 -> 2 -> 1 -->
+  <relation entry1="2" entry2="1" type="PPrel">
+    <subtype name="inhibition" value="--|"/>
+  </relation>
+
+  <!-- conflicting subtypes: must collapse to sign 0, not "last one wins" -->
+  <relation entry1="11" entry2="2" type="PPrel">
+    <subtype name="activation" value="--&gt;"/>
+    <subtype name="inhibition" value="--|"/>
+  </relation>
+
+  <!-- pitfall 3: @value="30" is an ENTRY ID, resolving to cpd:C05981 -->
+  <relation entry1="40" entry2="41" type="ECrel">
+    <subtype name="compound" value="30"/>
+  </relation>
+
+  <!-- pitfall 4: maplink must not become an intra-pathway edge by default -->
+  <relation entry1="2" entry2="20" type="maplink">
+    <subtype name="compound" value="31"/>
+  </relation>
+
+  <!-- pitfall 5: @id=40 is the ENZYME entry, @name is the reaction; reversible -->
+  <reaction id="40" name="rn:R03469" type="reversible">
+    <substrate id="30" name="cpd:C05981"/>
+    <product id="31" name="cpd:C00076"/>
+  </reaction>
+
+  <reaction id="41" name="rn:R04372" type="irreversible">
+    <substrate id="31" name="cpd:C00076"/>
+    <product id="30" name="cpd:C05981"/>
+  </reaction>
+
+</pathway>
