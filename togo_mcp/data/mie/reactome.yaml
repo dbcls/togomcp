@@ -12,8 +12,9 @@ discovery:
   description: >
     Expert-curated biological pathways and reactions in BioPAX Level 3: hierarchical pathways,
     biochemical reactions (EC numbers), physical entities (proteins/complexes/small molecules),
-    catalysis/regulation, PTMs (MOD ontology), cellular locations, and cross-references to
-    UniProt, ChEBI, GO, MOD, PubMed, ChEMBL and Guide to Pharmacology across 57 species.
+    signed catalysis/regulation (ACTIVATION/INHIBITION on reactions), PTMs (MOD ontology), cellular
+    locations, and cross-references to UniProt, ChEBI, GO, MOD, PubMed, ChEMBL and Guide to
+    Pharmacology, with pathway reconstructions for 15 eukaryotic organisms.
   keywords: [pathway, reaction, biopax, signaling, metabolism, protein, complex, small molecule,
              catalyst, enzyme, ec number, modification, phosphorylation, cellular location, gene ontology, species]
   categories: [pathway]
@@ -38,7 +39,11 @@ entity_counts:                     # COUNT(DISTINCT), graph-pinned; verified liv
   human_pathways:   2848           # bp:organism/bp:name "Homo sapiens"^^xsd:string
   total_reactions:  93950          # bp:BiochemicalReaction
   total_proteins:   232467         # bp:Protein
-  species:          57             # distinct bp:BioSource names
+  species:          57             # distinct bp:BioSource NAMES (64 distinct BioSource IRIs — several
+                                   # names are minted twice; quote whichever you mean, they differ)
+  pathway_owning_organisms: 15     # organisms with >=1 bp:Pathway — ALL eukaryotes (example enum_pathway_organisms)
+  signed_controls:  61819          # bp:controlType statements: 57,350 ACTIVATION + 4,469 INHIBITION
+  inhibition_controls: 4469        # of which 4,464 are bp:Control and 5 TemplateReactionRegulation — ZERO are bp:Catalysis
   go_relationshipxref_links: 68949 # ?entity bp:xref → RelationshipXref bp:db "GENE ONTOLOGY" — backs the "98% of GO" claim
   go_unificationxref_links:  1529  # the SAME probe on UnificationXref — the 2% trap (gotcha go_xref_type)
 
@@ -225,6 +230,74 @@ examples:
       - "Filtering bp:db \"UniProt\" only drops isoform-only proteins (e.g. NPC1L1 exists ONLY as \"UniProt Isoform\" Q9UHC9-2); a bare \"UniProt\" match returns 0 for them."
       - "A plain ?reaction (bp:left|bp:right) ?protein direct search SILENTLY misses EntitySet members: ROCK2 (O75116) has ZERO direct participations — all 31 of its pathways come via branch (3). EntitySet groups are marked bp:comment \"Converted from EntitySet in Reactome\" and are typed by member class (mostly bp:Protein), so detect by that comment, not by rdf:type."
 
+  - id: signed_regulation
+    intent: does entity X ACTIVATE or INHIBIT a reaction — the signed-regulation route
+    question: "Which reactions does MDM2 control in Reactome, and is each control activating or inhibiting?"
+    complexity: intermediate
+    sparql: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      SELECT DISTINCT ?sign ?controllerName ?reactionName
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE {
+        ?prot bp:entityReference/bp:xref ?x .
+        ?x bp:db "UniProt"^^xsd:string ; bp:id "Q00987"^^xsd:string .
+        # The controller is USUALLY a Complex or EntitySet CONTAINING the protein,
+        # not the bare Protein — the * path admits both plus the protein itself.
+        ?ctrl (bp:component|bp:memberPhysicalEntity)* ?prot .
+        ?ctl bp:controller ?ctrl ;
+             bp:controlled  ?rxn ;
+             bp:controlType ?sign .
+        ?ctrl bp:displayName ?controllerName .
+        ?rxn  bp:displayName ?reactionName .
+      }
+      ORDER BY ?sign ?reactionName
+    verified:
+      result_rows: 13
+      date: "2026-07-31"
+      note: >
+        12 ACTIVATION + 1 INHIBITION. Includes "MDM2 ubiquitinates TP53" (ACTIVATION) and
+        p14ARF:MDM2 INHIBITION of that same reaction. Dropping bp:memberPhysicalEntity from the
+        path returns only 6 rows — the TP53 row is one of the 7 lost.
+    teaches: >
+      Reactome DOES carry signed regulation (61,819 bp:controlType statements) — but the sign is on
+      a REACTION, not between two molecules. "MDM2 ubiquitinates TP53" is ACTIVATION: the control
+      activates a UBIQUITINATION reaction, whose biological effect on TP53 is repression. To answer
+      "does A up- or down-regulate B" you must read the reaction's semantics as well as the sign;
+      the sign alone will invert your conclusion. Anchor identity on the UniProt xref, never on the
+      unstable BioPAX subject IRI.
+    traps_avoided:
+      - "bp:Catalysis is 100% ACTIVATION (50,692/50,692) — BioPAX defines catalysis as inherently activating. ALL 4,464 meaningful INHIBITIONs are bp:Control (+5 TemplateReactionRegulation). Anchoring an inhibition query on bp:Catalysis returns ZERO, silently. Leave the control class UNBOUND (as here) or use bp:Control."
+      - "The controller is a Complex 2,473x vs a bare Protein 1,040x for INHIBITION controls, plus EntitySets. Writing `?ctrl a bp:Protein` (or omitting the (bp:component|bp:memberPhysicalEntity)* path) silently drops ~54% of rows — 13 -> 6 on this very query."
+      - "bp:db/bp:id need ^^xsd:string (global gotcha string_typing); the plain form joins to nothing here."
+      - "bp:controlled is polymorphic: BiochemicalReaction (4,455) + Degradation (9) for INHIBITION controls. Do not assume one class."
+
+  - id: enum_pathway_organisms
+    intent: enumerate which organisms actually HAVE pathways (the coverage-scoping route)
+    question: "Which organisms have pathway reconstructions in Reactome, and how many each?"
+    complexity: basic
+    sparql: |
+      PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+      SELECT ?organism (COUNT(DISTINCT ?pw) AS ?pathways)
+      FROM <http://rdf.ebi.ac.uk/dataset/reactome>
+      WHERE { ?pw a bp:Pathway ; bp:organism/bp:name ?organism . }
+      GROUP BY ?organism ORDER BY DESC(?pathways)
+    verified:
+      result_rows: 15
+      date: "2026-07-31"
+      note: >
+        Homo sapiens 2848, Mus 1822, Gallus 1814, Rattus 1809, Bos 1797, Sus 1780, Canis 1759,
+        Danio 1671, Xenopus tropicalis 1597, Drosophila 1572, C. elegans 1393, Dictyostelium 1070,
+        S. pombe 857, S. cerevisiae 839, Plasmodium falciparum 649. All 15 are eukaryotes.
+    teaches: >
+      RUN THIS BEFORE SCOPING ANY ORGANISM QUESTION TO REACTOME. Only 15 organisms own a pathway,
+      and every one is a eukaryote — non-human ones are orthology-inferred projections of the human
+      set (note how the counts track Homo sapiens). The bp:BioSource name count (57) is nearly four
+      times larger and does NOT mean 57 organisms are queryable for pathways.
+    traps_avoided:
+      - "entity_counts.species (57 names / 64 IRIs) counts every BioSource MENTIONED, not every organism with pathways (15). Quoting 57 as Reactome's species coverage is wrong by ~4x."
+      - "Bacteria and viruses ARE present (~20 bacterial taxa incl. E. coli, M. tuberculosis, plus HIV/SARS-CoV-2) but ONLY as reference entities inside HUMAN infection pathways: E. coli is 101 ProteinReference + 1 RnaReference and ZERO reactions, minted under the human namespace (…/48887#BioSource18). A prokaryote pathway/reaction query returns 0 rows with no error — there is no prokaryotic reconstruction to compare against. Use KEGG for prokaryote pathways."
+
   - id: xdb_chebi
     intent: "cross-DB: Reactome small molecules → ChEBI formula/mass, via the ChEBI-id→OBO-IRI transform"
     question: "What are the ChEBI formulas and masses of small molecules in human metabolism pathways?"
@@ -297,7 +370,6 @@ examples:
 # ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
 schema_delta:
   - "EntityReference separates the canonical molecule definition (UniProt/ChEBI xref lives here) from its per-pathway Protein/SmallMolecule instances; several Protein instances share one EntityReference. Reach identity via bp:entityReference/bp:xref, OR directly bp:xref on the entity (UNION both — see protein_to_pathways)."
-  - "Catalysis/regulation: bp:Catalysis (bp:controller PhysicalEntity → bp:controlled reaction) with bp:controlType exactly \"ACTIVATION\"|\"INHIBITION\"^^xsd:string; ~50.7K Catalysis instances."
   - "Literature: PublicationXref (~295K) carries bp:db \"Pubmed\"^^xsd:string + bp:id (the PMID) — the third xref type alongside Unification/Relationship."
   - "Other chemical xrefs on SmallMolecule EntityReferences: bp:db \"Guide to Pharmacology - Ligands\"^^xsd:string (8,578, exact label) and \"PubChem Compound\"^^xsd:string (~583) — both UnificationXref."
   - "Pathway ordering: bp:pathwayComponent nests pathways+reactions (use + to descend, always anchored — an unanchored bp:pathwayComponent* scans the whole graph). bp:pathwayOrder → PathwayStep → bp:stepProcess/bp:nextStep encodes the ordered step sequence."

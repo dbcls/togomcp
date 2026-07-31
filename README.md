@@ -72,6 +72,12 @@ Edit your Claude Desktop config file:
 
 > **Tip**: Run `which uv` (macOS/Linux) or `where uv` (Windows) to find the full path to `uv`.
 
+> **Note on KEGG**: TogoMCP does **not** enable KEGG by default. The `kegg_*` tools
+> require `TOGOMCP_ENABLE_KEGG=1` **and** the local `stdio` server, because the KEGG API
+> is licensed to **academic users at academic institutions**. If that is not you, simply
+> leave it unset and everything else works normally. See
+> [KEGG (opt-in, local `stdio` only)](#kegg-opt-in-local-stdio-only).
+
 ---
 
 ## Docker
@@ -186,6 +192,50 @@ TogoMCP exposes tools for querying the following (via SPARQL or REST APIs):
 | Taxonomy | NCBI Taxonomy |
 | Materials Science | SuperCon |
 
+### KEGG (opt-in, local `stdio` only)
+
+**KEGG is off by default. You do not need it, and TogoMCP is fully functional
+without it** — this section only matters if you are eligible and want it.
+
+A `kegg` tool group (`kegg_find`, `kegg_get_entry`, `kegg_pathway_graph`,
+`kegg_pathway_neighborhood`, `kegg_pathway_paths`, `kegg_pathway_cycles`,
+`kegg_link`, `kegg_conv`) is mounted only when **both** conditions hold:
+
+1. you run the local `stdio` entry point `togo-mcp-local`, **and**
+2. you set `TOGOMCP_ENABLE_KEGG=1`.
+
+Why two gates, for two different reasons:
+
+- **The transport gate is structural and not configurable.** The
+  [KEGG API](https://www.kegg.jp/kegg/rest/) is provided "for academic use by academic
+  users belonging to academic institutions", and offering a *service* built on KEGG
+  additionally requires an academic service-provider license (see
+  [KEGG's terms](https://www.kegg.jp/kegg/legal.html)). A public host cannot verify a
+  caller's affiliation, so the hosted server at togomcp.rdfportal.org — and any HTTP
+  deployment — never reaches `rest.kegg.jp`. **No environment variable can change
+  this**; `TOGOMCP_ENABLE_KEGG` has no effect on the HTTP path at all.
+- **The opt-in exists because eligibility is yours to assert.** Under `stdio` *you* are
+  the caller, but only you know whether your institution's access covers you. Mounting
+  KEGG by default would put an API call you may not be entitled to make on the path of
+  least resistance — an AI assistant will use any tool it can see. Leaving the variable
+  unset is the correct configuration for a non-academic user, and nothing else is
+  affected.
+
+Enable it in your Claude Desktop config:
+
+```json
+"env": {
+    "NCBI_API_KEY": "your-key-here",
+    "TOGOMCP_ENABLE_KEGG": "1"
+}
+```
+
+Calls are capped at **3 requests per second** (TogoMCP enforces this process-wide, and
+never retries an HTTP 403/429). KEGG is not part of RDF Portal: it has no SPARQL
+endpoint, so `database="kegg"` is invalid in `run_sparql`. Use `kegg_conv` to translate
+KEGG identifiers to UniProt, NCBI Gene/Protein, ChEBI or PubChem before querying any RDF
+database with them.
+
 ---
 
 ## Example Prompts
@@ -212,6 +262,8 @@ togomcp/
 │   ├── ncbi_tools.py       # NCBI E-utilities sub-server
 │   ├── togoid.py           # TogoID identifier-conversion sub-server
 │   ├── togovar.py          # TogoVar human-variation sub-server
+│   ├── kegg.py             # KEGG sub-server — mounted by togo-mcp-local ONLY (licence, see above)
+│   ├── kgml.py             # KGML -> signed pathway graph (pure; no network, no FastMCP)
 │   ├── stats.py            # Tool-call usage-log analysis
 │   └── data/               # Bundled data files (included in wheel)
 │       ├── mie/            # MIE files (YAML, one per database)
@@ -253,3 +305,11 @@ Kinjo, A. R., Yamamoto, Y., Bustamante-Larriet, S., Labra-Gayo, J.-E., & Fujisaw
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
+The MIT licence covers **this code only**, not the data or the third-party APIs it
+reaches — each carries its own terms, and you are the caller. Most RDF Portal
+databases are open, but note in particular that the **KEGG API** (`kegg_*` tools,
+opt-in and local `stdio` only) is licensed to academic users at academic institutions
+and requires a separate academic service-provider licence to redistribute as a
+service — which is why it is off by default and the hosted server does not expose it at
+all. See [KEGG (opt-in, local `stdio` only)](#kegg-opt-in-local-stdio-only).

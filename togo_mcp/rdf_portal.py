@@ -28,8 +28,54 @@ def _is_system_graph(graph: str) -> bool:
     return any(pat in g for pat in _SYSTEM_GRAPH_PATTERNS)
 
 
+# Guide parts that document tools which are NOT on every transport. Each entry is
+# (probe tool name, part file); the part is appended only when that tool is really
+# mounted on this server.
+#
+# Gated on the LIVE tool registry rather than on a flag or an env var, so the
+# guide cannot disagree with what the server actually exposes. That matters here
+# specifically: the KEGG tools are stdio-only for LICENSING reasons (the public
+# host cannot verify a caller's academic affiliation), and this whole boundary is
+# structural precisely because a config knob drifting out of step is the failure
+# mode that cost two releases (see CLAUDE.md, "Deployment").
+#
+# The part files live in a SUBDIRECTORY of the guide dir, so the `*.md` glob below
+# cannot pick them up by accident.
+_CONDITIONAL_GUIDE_PARTS = (
+    ("kegg_find", Path(TOGOMCP_USAGE_GUIDE) / "local_only" / "kegg.md"),
+)
+
+
+async def _conditional_guide_parts() -> list[str]:
+    """Read the guide parts whose tools are actually mounted on this server.
+
+    Shipping "call `kegg_find`, then bridge with `kegg_conv`" to a client that has
+    neither tool is noise at best and an instruction to call something imaginary
+    at worst. The short, transport-neutral KEGG note stays in the catalog for
+    everyone; only the operating detail is gated.
+    """
+    parts: list[str] = []
+    for probe, path in _CONDITIONAL_GUIDE_PARTS:
+        try:
+            tool = await mcp.get_tool(probe)
+        except Exception:
+            # Belt and braces: FastMCP currently RETURNS None for an unknown tool
+            # rather than raising, but a version that raises must also mean "not
+            # mounted" and not leak the part. Checking only for an exception is
+            # exactly the bug this guard shipped with — it made the condition
+            # always true, so every HTTP client got the stdio-only section.
+            continue
+        if tool is None:
+            continue  # not mounted on this transport — omit its guide part
+        try:
+            parts.append(path.read_text(encoding="utf-8"))
+        except OSError as exc:
+            logger.warning("usage guide: cannot read conditional part %s (%s)", path, exc)
+    return parts
+
+
 @mcp.tool(name="TogoMCP_Usage_Guide", annotations=READ_ONLY_TOOL)
-def togomcp_usage_guide() -> str:
+async def togomcp_usage_guide() -> str:
     """
     ⚠️ CALL THIS TOOL FIRST every turn, before any other TogoMCP tool.
 
@@ -62,9 +108,13 @@ def togomcp_usage_guide() -> str:
         str: The content of the TogoMCP usage guide.
     """
     # The guide is split into part files by change-cadence; assemble them in
-    # sorted order, joined by the section separator, into one document.
+    # sorted order, joined by the section separator, into one document. Parts for
+    # tools that are not on every transport are appended last, and only when the
+    # tool they document is actually mounted here.
     parts = sorted(Path(TOGOMCP_USAGE_GUIDE).glob("*.md"))
-    return "\n\n---\n\n".join(p.read_text(encoding="utf-8") for p in parts)
+    sections = [p.read_text(encoding="utf-8") for p in parts]
+    sections.extend(await _conditional_guide_parts())
+    return "\n\n---\n\n".join(sections)
 
 
 # --- Tools for RDF Portal --- #

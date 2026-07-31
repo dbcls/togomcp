@@ -34,14 +34,15 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MIE_DIR = REPO_ROOT / "togo_mcp" / "data" / "mie"
-OUT_FILE = (
-    REPO_ROOT
-    / "togo_mcp"
-    / "data"
-    / "resources"
-    / "usage_guide_v6"
-    / "02b_database_catalog.md"
-)
+GUIDE_DIR = REPO_ROOT / "togo_mcp" / "data" / "resources" / "usage_guide_v6"
+OUT_FILE = GUIDE_DIR / "02b_database_catalog.md"
+
+# Guide parts served ONLY when the tools they document are actually mounted.
+# Deliberately in a SUBDIRECTORY: the guide assembles `sorted(glob("*.md"))` over
+# the top level, so anything here is invisible to that glob and can never be
+# served by accident to a client that lacks the tools.
+LOCAL_ONLY_DIR = GUIDE_DIR / "local_only"
+LOCAL_ONLY_KEGG = LOCAL_ONLY_DIR / "kegg.md"
 
 # Proven keyword → database hints carried over from find_databases' docstring so
 # nothing the tool taught is lost when it is retired.
@@ -153,8 +154,112 @@ def render_catalog(records: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def render_non_sparql_companions() -> str:
+    """The KEGG note that ships to EVERY client, on both transports.
+
+    Everything above it is driven by an MIE `discovery:` block, which only exists
+    for a SPARQL database. KEGG has neither an RDF Portal endpoint nor an MIE (by
+    design — the MIE format describes a SPARQL schema), so it can never be a
+    catalog row.
+
+    This block is deliberately SHORT and says only what is true for a reader who
+    may well have no `kegg_*` tools at all — the public HTTP server does not
+    mount them. Its job is to stop an agent inventing `database="kegg"` and to
+    tell it what to do when the tools are absent. The operating instructions live
+    in `render_local_only_kegg()`, which is served only where the tools exist:
+    shipping "call `kegg_find` then `kegg_conv`" to a client that has neither is
+    at best noise and at worst an instruction to call something imaginary.
+    """
+    return "\n".join([
+        "**Not an RDF Portal database — KEGG:**",
+        "",
+        "KEGG has no SPARQL endpoint and no MIE file, so `database=\"kegg\"` is invalid "
+        "on `run_sparql` and `get_MIE_file` — there is no query you can write here that "
+        "reaches it.",
+        "",
+        "**Check your tool list before offering KEGG to the user.** KEGG is OFF BY "
+        "DEFAULT. The `kegg_*` tools appear only on the local stdio server "
+        "(`togo-mcp-local`) AND only when the operator sets `TOGOMCP_ENABLE_KEGG=1`, "
+        "because the KEGG API is licensed to academic users at academic institutions; "
+        "the public host at togomcp.rdfportal.org cannot verify a caller's affiliation "
+        "and never exposes them whatever the environment says. **If you see no `kegg_*` "
+        "tool, KEGG is simply unavailable in this session** — answer pathway questions "
+        "from `reactome` or `rhea` over SPARQL, and do NOT report the absence as an "
+        "error, ask the user to retry, or suggest they enable it: eligibility is theirs "
+        "to judge, not yours to prompt for. When the tools ARE present, this guide "
+        "carries a KEGG section with the details.",
+        "",
+    ])
+
+
+def render_local_only_kegg() -> str:
+    """The KEGG operating instructions, served ONLY where the tools are mounted.
+
+    Written for a reader who HAS the six `kegg_*` tools, so it can be direct. See
+    `render_non_sparql_companions()` for why this is a separate file.
+    """
+    return "\n".join([
+        "## 🧬 KEGG (available in this session)",
+        "",
+        "The `kegg_*` tools are mounted, so KEGG is usable here. It is NOT an RDF Portal "
+        "database: no SPARQL endpoint, no MIE, and `database=\"kegg\"` is invalid on "
+        "`run_sparql`.",
+        "",
+        "- **What it uniquely adds — two things, and neither is \"signs exist\".** "
+        "(1) Signed regulation at the level of the NET EFFECT BETWEEN MOLECULES "
+        "(`MDM2 -| TP53`). Reactome RDF does carry signed regulation — 61,819 BioPAX "
+        "`controlType` statements — but its sign says whether an entity promotes a "
+        "REACTION, so MDM2's repression of p53 is stored there as ACTIVATION of \"MDM2 "
+        "ubiquitinates TP53\"; recovering \"MDM2 inhibits TP53\" needs you to know that "
+        "ubiquitination means degradation. (2) ORGANISM COVERAGE: exactly 15 organisms "
+        "own a pathway in Reactome and all are eukaryotes. Bacteria DO appear there "
+        "(~20 taxa, E. coli included) but only as protein references inside HUMAN "
+        "infection pathways — no prokaryote has a pathway reconstruction. So "
+        "`metabolic_gaps` (\"which steps does this organism lack\") has no counterpart "
+        "anywhere in RDF Portal, and it does not involve signs at all. "
+        "**If a question needs neither the between-molecule net effect nor "
+        "organism-specific absence, prefer `reactome`/`rhea` over SPARQL.**",
+        "- **Workflow.** `kegg_find` (keyword → entry IDs) → `kegg_get_entry` (full "
+        "record incl. DBLINKS), `kegg_link` (gene↔pathway↔compound↔pubmed), "
+        "`kegg_pathway_graph` (whole map), `kegg_pathway_neighborhood` (up/downstream of "
+        "one gene), `kegg_pathway_paths` (how A reaches B, and the net sign of the route).",
+        "- **Signed claims: use `kegg_pathway_paths`, not `kegg_pathway_cycles`.** A "
+        "`net_sign` needs only a PATH, whereas cycle detection needs a loop that KEGG "
+        "actually drew closed on ONE map — and it usually did not. Measured over six real "
+        "maps, `kegg_pathway_cycles` found ZERO signed cycles: canonical loops like "
+        "p53/MDM2 have one arm on another map (hsa05200 draws `MDM2 -| TP53` but not "
+        "`TP53 -> MDM2`), so they never close. **An empty cycle result means \"not drawn "
+        "as a closed loop on this map\", NEVER \"no feedback exists\" — do not report the "
+        "latter.** On metabolic maps cycle search is meaningless outright (no signed "
+        "edges, and thousands of cycles from reversible reactions).",
+        "- **Reading signs.** Every graph tool returns "
+        "`signal_quality.signed_edge_fraction` — how much of that map states a direction "
+        "of regulation at all. It ranges from 0.98 to 0.40 across signaling maps and is 0 "
+        "for metabolic ones, because most KGML relations record only a MECHANISM "
+        "(phosphorylation, binding). Read a `net_sign` of 0, or an `unsigned` feedback "
+        "loop, as UNKNOWN — never as \"no effect\".",
+        "- **Organism vs reference maps.** For \"which genes are in this pathway\" use the "
+        "ORGANISM map (`hsa04151`, `eco00010`), not the `ko`/`map` reference map. On a "
+        "METABOLIC map, `kegg_pathway_paths` needs a larger `max_length`: compounds are "
+        "joined through their enzyme, so the hop count is about double the reaction count.",
+        "- **Bridging to RDF Portal — REQUIRED.** KEGG-namespaced IDs (`hsa:10458`, "
+        "`cpd:C00031`, `path:hsa04151`) do NOT resolve in any SPARQL database. Convert "
+        "them with `kegg_conv` FIRST: genes ↔ `uniprot` / `ncbi-geneid` / "
+        "`ncbi-proteinid`, chemicals ↔ `chebi` / `pubchem`. Only the converted "
+        "identifiers belong in a `run_sparql` query or a TogoID call.",
+        "- **Rate limit.** KEGG allows 3 requests/second and blocks abusers. An HTTP "
+        "403/429 from a `kegg_*` tool means that cap or an access restriction was hit — "
+        "do NOT retry it.",
+        "",
+    ])
+
+
 def build() -> str:
-    return render_catalog(load_records())
+    return render_catalog(load_records()) + "\n" + render_non_sparql_companions()
+
+
+def build_local_only() -> str:
+    return render_local_only_kegg()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -173,26 +278,38 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write("\n".join(cats) + "\n")
         return 0
 
-    content = build()
+    # Both generated parts are checked/written together; a stale local-only file
+    # is exactly as wrong as a stale catalog, it is just served to fewer clients.
+    outputs = [(OUT_FILE, build()), (LOCAL_ONLY_KEGG, build_local_only())]
 
     if args.stdout:
-        sys.stdout.write(content + "\n")
+        for path, content in outputs:
+            sys.stdout.write(f"===== {path.relative_to(REPO_ROOT)} =====\n")
+            sys.stdout.write(content + "\n")
         return 0
 
     if args.check:
-        current = OUT_FILE.read_text(encoding="utf-8") if OUT_FILE.exists() else ""
-        if current != content + "\n":
+        stale = [
+            path
+            for path, content in outputs
+            if (path.read_text(encoding="utf-8") if path.exists() else "")
+            != content + "\n"
+        ]
+        if stale:
+            names = ", ".join(str(p.relative_to(REPO_ROOT)) for p in stale)
             print(
-                f"catalog OUT OF SYNC: {OUT_FILE.relative_to(REPO_ROOT)} differs from "
-                "generator output. Run: python scripts/generate_usage_guide_catalog.py",
+                f"guide OUT OF SYNC: {names} differs from generator output. "
+                "Run: python scripts/generate_usage_guide_catalog.py",
                 file=sys.stderr,
             )
             return 1
         print("catalog in sync.")
         return 0
 
-    OUT_FILE.write_text(content + "\n", encoding="utf-8")
-    print(f"wrote {OUT_FILE.relative_to(REPO_ROOT)} ({len(content)} bytes)")
+    for path, content in outputs:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content + "\n", encoding="utf-8")
+        print(f"wrote {path.relative_to(REPO_ROOT)} ({len(content)} bytes)")
     return 0
 
 

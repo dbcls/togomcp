@@ -15,6 +15,125 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 _Nothing yet._
 
+## [2.4.0] - 2026-07-31
+
+### Added
+
+- **KEGG, as an OPT-IN `stdio`-only tool group** (`kegg_find`, `kegg_get_entry`,
+  `kegg_pathway_graph`, `kegg_pathway_neighborhood`, `kegg_pathway_paths`, `kegg_pathway_cycles`,
+  `kegg_link`, `kegg_conv`). Requires BOTH the local stdio server AND `TOGOMCP_ENABLE_KEGG=1`;
+  off by default so a non-academic user can install and run TogoMCP without being handed an API
+  they may not be entitled to call — an AI assistant will use any tool it can see, and eligibility
+  is the user's to assert. The two gates answer different questions and compose with AND:
+  the transport gate (structural, not configurable) keeps the public host away from KEGG entirely,
+  and the opt-in records eligibility. Mounted by `togo-mcp-local` and
+  **structurally absent from the HTTP server** — the KEGG API is licensed to academic users at
+  academic institutions, and serving it from a public host that cannot verify a caller's affiliation
+  would need an academic service-provider license. The gate is a `setup(local=True)` argument, not an
+  env flag, deliberately: `deploy.sh` forwards env vars by a fixed list, and a knob missing from that
+  list is silently inert in production — that failure happened twice in one week (2026-07-29), both
+  times with a green test suite. A licensing boundary must not be one forgotten list entry away from
+  opening. `TOGOMCP_ENABLE_KEGG` does not weaken this: it is ANDed BEHIND the transport gate (so it
+  has no effect on the HTTP path at all — `deploy.sh` never enters the picture) and it is
+  **fail-closed**, since absent/empty/misspelled all mean OFF. The forwarding hazard is about a knob
+  whose absence leaves a boundary OPEN; this one's absence closes it. It is deliberately NOT added to
+  `compose.yaml`/`.env.example`/the `deploy.sh` lists, which would only imply it does something there.
+- **KGML parsed into a signed directed graph** (`togo_mcp/kgml.py`, pure/stdlib-only, 39 tests, no
+  network). This is the point of carrying KEGG at all: RDF Portal cannot answer "does A activate or
+  inhibit B" in the form KGML states it. (Reactome RDF *does* carry signed regulation — 61,819 BioPAX
+  `controlType` statements — but the sign is on a REACTION, so MDM2's repression of p53 is stored
+  there as ACTIVATION of "MDM2 ubiquitinates TP53"; KGML states the between-molecule outcome
+  directly.) Raw KGML is never
+  returned — it is coordinate-heavy XML whose edges reference drawing-box ids, not genes.
+  Eight distinct traps are resolved, six from the DTD and **two found only by running real maps**
+  (both invisible in edge counts, visible only in connectivity): one entry box is a whole paralog
+  family (a naive parse drops 23–76% of identifiers); complexes are indirection nodes; an `ECrel`
+  edge's compound `@value` is an *entry id*, not an accession; cross-map pointers are not
+  interactions; a `<reaction>`'s `@id` is its *enzyme's* box; rendering-only entries are not
+  molecules; **the enzyme and compound layers are never joined by KGML** (so a metabolic map parses
+  disconnected by construction — bridged with explicit `catalysis` edges); and **one molecule is
+  drawn several times with different ids** (hsa05200: 54 duplicate drawings, 49 → 32 components once
+  merged).
+- **`metabolic_gaps` — the steps an organism cannot perform.** In an organism map KEGG keeps the
+  reference layout and leaves the missing steps as bare `ortholog` boxes. These are a *result*, not a
+  parse failure, and are reported as such. Confirmed arithmetically, twice, counting entry boxes:
+  `ko00010` reactions 63 − `hsa00010` 34 = 29 = hsa00010's isolated ortholog boxes (and 63 − 35 = 28
+  for `eco00010`). Under the default duplicate-merge these become 25 and 23 — the count of *distinct*
+  missing steps rather than boxes, which is the biologically meaningful number.
+- **Feedback-loop detection (`kegg_pathway_cycles`) and signed route enumeration
+  (`kegg_pathway_paths`).** A directed cycle *is* a feedback loop, and the product of its edge signs
+  says whether it is negative (self-limiting) or positive (self-reinforcing, switch-like) — a
+  structural claim about a pathway that no keyword search surfaces and that RDF Portal cannot answer.
+  Two traps are handled rather than left to the caller. `find_paths` returns an empty list both when
+  an endpoint matched nothing and when the endpoints are fine but unconnected, so the tool resolves
+  the endpoints itself and reports `unresolved` separately from `no_path_note`. And the
+  `feedback` filter necessarily runs AFTER the `max_cycles` cap, so a filtered-empty result under a
+  reached cap is not a real zero — `truncated` says so explicitly.
+  On METABOLIC maps `max_length` must be raised: compounds are joined through their enzyme, so the
+  hop count is about double the reaction count (glucose → pyruvate in glycolysis needs ~12, not the
+  default 6).
+- **Fixed: parallel reactions collapsed into identical path rows.** `find_paths` projected each edge
+  without its reaction accession, so two genuinely different reactions joining the same pair of
+  metabolites produced byte-identical output — a caller saw one path apparently repeated, and the
+  duplicates consumed the `max_paths` budget. The accession is now on every path edge (verified on
+  ko00010: R00200 vs R00199, two pyruvate-kinase routes that had been indistinguishable).
+- **`kegg_conv` as the bridge to RDF Portal.** KEGG identifiers do not resolve in `run_sparql`, so
+  the tool returns prefix-stripped `source_id`/`target_id` alongside the KEGG-namespaced forms:
+  genes ↔ UniProt / NCBI Gene / NCBI Protein, chemicals ↔ ChEBI / PubChem. The Usage Guide's Database
+  Catalog now states this explicitly, since an agent that skips it will put `hsa:10458` into a SPARQL
+  query and get zero rows.
+
+### Changed
+
+- **`kegg_pathway_cycles` no longer oversells what it can find, and says so in the payload.**
+  Measured across the six-map validation set it returns **zero signed cycles**: hsa04151 has no
+  cycles at all despite being 98% signed, hsa04010 and hsa05200 have 4 and 3, every one `unsigned`.
+  The reason is not a parser defect — a KEGG map is a DRAWING of one process, not a complete
+  interaction model, so a canonical loop routinely has an arm that is simply absent. On hsa05200
+  `MDM2 -| TP53` is drawn (sign -1) but `TP53 -> MDM2` is not: TP53's six outgoing edges all go to
+  downstream effectors, and the induction arm lives on another map, so p53/MDM2 cannot close at any
+  depth. (Duplicate layout entries are a third cause, and that one the parser does fix — merging
+  takes hsa05200 from 0 cycles to 3.)
+  So an empty result means "not drawn as a closed loop on THIS map", never "no feedback exists". The
+  tool now ships an `interpretation` block saying exactly that, because empty is the NORMAL outcome
+  and the obvious reading of it is wrong. **For any signed claim, `kegg_pathway_paths` is the robust
+  primitive** — its `net_sign` needs only a path, so it returns the MDM2 -| TP53 inhibition the cycle
+  search cannot see.
+- **Reversible-reaction 2-cycles are classified and excluded by default.** A reversible reaction
+  A↔B is emitted in both directions and so IS a 2-cycle by construction, with no feedback meaning
+  (82 of ko00010's 102 two-cycles). `find_cycles` now marks them `artifact:
+  "reversible_reaction"`; only the unambiguous length-2 same-reaction case is marked, since a longer
+  cycle over reversible steps can be real biochemistry. This is a small cleanup and is documented as
+  one — 69 of ko00010's 5,001 cycles at depth 6 — not a rescue: cycle enumeration on a metabolic map
+  is meaningless regardless, because such a map has no signed edges at all.
+- **The Usage Guide is now transport-aware.** The guide is served by both transports, so the KEGG
+  material first shipped in full to HTTP clients that have no `kegg_*` tools — six tools' worth of
+  operating instructions for things they cannot call, led by a sentence asserting KEGG "is reachable".
+  It is now split: the catalog keeps a short, transport-neutral note (KEGG is not an RDF Portal
+  database, `database="kegg"` is invalid, and if you see no `kegg_*` tool then KEGG is unavailable —
+  use `reactome`/`rhea` and do not report it as an error), while the operating detail lives in
+  `usage_guide_v6/local_only/kegg.md` and is appended only where the tools are actually mounted.
+  The gate reads the LIVE tool registry rather than a flag, so the guide cannot disagree with what
+  the server exposes, and the part files sit in a subdirectory that the guide's top-level `*.md`
+  glob cannot reach by accident.
+  The first attempt at that gate was wrong in a way worth recording: it assumed `mcp.get_tool()`
+  RAISES for an unknown tool, when it returns `None`. The condition was therefore always true and
+  every HTTP client still got the stdio-only section — the exact bug the change existed to prevent.
+  Both halves are now pinned by tests that fail if the two transports stop differing.
+
+### Notes
+
+- Every `kegg_*` tool reports **how much of a map is actually signed**
+  (`signal_quality.signed_edge_fraction`) next to any sign it returns. The fraction swings from 0.98
+  (hsa04151) to 0.40 (hsa04010) to 0 (metabolic maps), because most KGML relations record a
+  *mechanism* (`phosphorylation`, `binding/association`) without saying whether the effect activates
+  or inhibits. A `net_sign` of 0 means UNKNOWN, never "no effect" — without that number an agent
+  over-reads the graph.
+- The 3 requests/second KEGG cap is enforced by a **process-wide** limiter, not a per-tool one, and
+  KGML is memoized in-process; HTTP 403/429 is surfaced as a licence/rate signal and is never retried.
+- No MIE file and no `endpoints.csv` row: KEGG has no SPARQL endpoint, and the MIE format describes a
+  SPARQL schema. `database="kegg"` is invalid on `run_sparql`/`get_MIE_file` and stays that way.
+
 ## [2.3.0] - 2026-07-31
 
 <!-- whatsnew: 2026-07-31 | New database: the <strong>NHGRI-EBI GWAS Catalog</strong> — 955,930 SNP–trait associations across 89,981 studies, with p-values, effect sizes, risk alleles and mapped genes, joinable to EFO trait terms. Ask things like "which variants are associated with QT interval, and how strong is the evidence?" -->
@@ -787,6 +906,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v2.3.0...HEAD
+[2.4.0]: https://github.com/dbcls/togomcp/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/dbcls/togomcp/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/dbcls/togomcp/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/dbcls/togomcp/compare/v2.1.3...v2.2.0

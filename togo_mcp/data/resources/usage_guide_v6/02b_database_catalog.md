@@ -92,7 +92,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: publication, article, review, citation, abstract, author, journal, doi, pmid, mesh term, publication type, biomedical literature, bibliography
 - **pubtator** — PubTator Central RDF. Biomedical entity annotations text-mined from PubMed articles — Disease (MeSH) and Gene (NCBI Gene) mentions as typed oa:Annotation nodes, plus dbSNP Variant annotations, each linked to a PubMed arti… _(categories: annotation, literature)_  
   keywords: annotation, text mining, named entity recognition, literature, pubmed, pmid, disease, gene, variant, mesh, ncbi gene, dbsnp, co-mention, bioconcept
-- **reactome** — Reactome Pathway Database. Expert-curated biological pathways and reactions in BioPAX Level 3: hierarchical pathways, biochemical reactions (EC numbers), physical entities (proteins/complexes/small molecules), catalysis/regula… _(categories: pathway)_  
+- **reactome** — Reactome Pathway Database. Expert-curated biological pathways and reactions in BioPAX Level 3: hierarchical pathways, biochemical reactions (EC numbers), physical entities (proteins/complexes/small molecules), signed catalysis… _(categories: pathway)_  
   keywords: pathway, reaction, biopax, signaling, metabolism, protein, complex, small molecule, catalyst, enzyme, ec number, modification, phosphorylation, cellular location, gene ontology, species
 - **rhea** — Rhea — Annotated Biochemical Reactions. Expert-curated, atom-balanced biochemical reactions (18,071 master reactions) with ChEBI-linked participants, EC-number and GO cross-references, transport/location annotations, and PubMed citations;… _(categories: reaction)_  
   keywords: biochemical reaction, enzyme, substrate, product, cofactor, ec number, stoichiometry, mass balance, chebi, metabolite, transport, directional reaction, catalysis
@@ -104,4 +104,10 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: variant, variation, mutation, snv, snp, indel, genome, human, japanese, dbsnp, clinvar, vep, consequence, sequence ontology, sift, polyphen, pathogenic, clinical significance
 - **uniprot** — UniProt RDF. Curated (Swiss-Prot) and automatic (TrEMBL) protein sequence + functional annotation: sequences, domains, PTMs, isoforms, natural variants, disease links, GO terms, EC/enzyme activity, catalysed Rhea… _(categories: annotation, protein)_  
   keywords: protein, sequence, swiss-prot, trembl, reviewed, function, domain, isoform, enzyme, ec number, natural variant, disease, gene ontology, cross-reference
+
+**Not an RDF Portal database — KEGG:**
+
+KEGG has no SPARQL endpoint and no MIE file, so `database="kegg"` is invalid on `run_sparql` and `get_MIE_file` — there is no query you can write here that reaches it.
+
+**Check your tool list before offering KEGG to the user.** KEGG is OFF BY DEFAULT. The `kegg_*` tools appear only on the local stdio server (`togo-mcp-local`) AND only when the operator sets `TOGOMCP_ENABLE_KEGG=1`, because the KEGG API is licensed to academic users at academic institutions; the public host at togomcp.rdfportal.org cannot verify a caller's affiliation and never exposes them whatever the environment says. **If you see no `kegg_*` tool, KEGG is simply unavailable in this session** — answer pathway questions from `reactome` or `rhea` over SPARQL, and do NOT report the absence as an error, ask the user to retry, or suggest they enable it: eligibility is theirs to judge, not yours to prompt for. When the tools ARE present, this guide carries a KEGG section with the details.
 

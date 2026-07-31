@@ -45,10 +45,47 @@ _DEFAULT_FORWARDED_ALLOW_IPS = "127.0.0.1,::1,10.0.2.0/24,10.88.0.0/16,172.16.0.
 def _forwarded_allow_ips() -> str:
     return os.environ.get("TOGOMCP_FORWARDED_ALLOW_IPS", "").strip() or _DEFAULT_FORWARDED_ALLOW_IPS
 
-async def setup():
+# KEGG is opt-in AND stdio-only. Both conditions must hold; neither alone enables it.
+#
+# The KEGG API is licensed "for academic use by academic users belonging to academic
+# institutions", and providing a service on top of KEGG needs a separate academic
+# service-provider licence. So:
+#
+#   * TRANSPORT (structural). The HTTP deployment is a public DBCLS host that cannot
+#     verify a caller's affiliation, so it must never reach rest.kegg.jp. That gate is
+#     the `local` argument and is NOT configurable — no env var can open it.
+#   * ELIGIBILITY (opt-in). Under stdio the user running the process is the caller, but
+#     TogoMCP is installed by academic and non-academic users alike. Mounting KEGG by
+#     default would make an API call the user may not be entitled to into the path of
+#     least resistance — an LLM will happily call a tool it can see. Requiring an
+#     explicit opt-in makes eligibility an affirmative act by the person who can
+#     actually judge it.
+#
+# WHY AN ENV VAR IS SAFE HERE, despite the general rule against gating on one
+# (CLAUDE.md, "Deployment"): that rule exists because deploy.sh forwards env vars by a
+# FIXED LIST, so a knob missing from the list is silently inert in production — twice in
+# one week, both times with a green test suite. That hazard is entirely about a knob
+# whose absence would leave a boundary OPEN. This one is inverted and therefore
+# fail-closed: absent, empty, or unparseable all mean OFF, so a forwarding miss disables
+# KEGG rather than enabling it. And because the transport gate is ANDed in front, the
+# variable has no effect at all on the HTTP path — deploy.sh never enters the picture.
+# Deliberately NOT added to TOGOMCP_PERSERVICE_VARS/TOGOMCP_SHARED_VARS.
+_KEGG_ENV_VAR = "TOGOMCP_ENABLE_KEGG"
+_TRUTHY = frozenset(["1", "true", "yes", "on"])
+
+
+def _kegg_enabled() -> bool:
+    """True only for an explicit opt-in. Anything else — including a typo — is False."""
+    return os.environ.get(_KEGG_ENV_VAR, "").strip().lower() in _TRUTHY
+
+
+async def setup(*, local: bool = False):
     mcp.mount(togoid_mcp, "togoid")
     mcp.mount(ncbi_mcp, "ncbi")
     mcp.mount(togovar_mcp, "togovar")
+    if local and _kegg_enabled():
+        from .kegg import kegg_mcp
+        mcp.mount(kegg_mcp, "kegg")
 
 def run():
     asyncio.run(setup())
@@ -61,7 +98,7 @@ def run():
     )
 
 def run_local():
-    asyncio.run(setup())
+    asyncio.run(setup(local=True))
     mcp.run()
 
 if __name__ == "__main__":
