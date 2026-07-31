@@ -15,6 +15,41 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 _Nothing yet._
 
+## [2.3.0] - 2026-07-31
+
+<!-- whatsnew: 2026-07-31 | New database: the <strong>NHGRI-EBI GWAS Catalog</strong> — 955,930 SNP–trait associations across 89,981 studies, with p-values, effect sizes, risk alleles and mapped genes, joinable to EFO trait terms. Ask things like "which variants are associated with QT interval, and how strong is the evidence?" -->
+
+### Added
+
+- **`gwascatalog` — the NHGRI-EBI GWAS Catalog, the 37th database.** Published genome-wide
+  association results: 955,930 SNP–trait associations (801,096 at genome-wide significance) over
+  444,106 SNPs, 89,981 studies and 11,017 EFO traits. It sits on the `ebi` endpoint we already talk
+  to, so this is a registry row plus an MIE — no new infrastructure.
+  Picked from the production tool-call log rather than by guesswork: with the ~94% of traffic that is
+  a load-test harness and one automated pipeline filtered out, the largest remaining usage cluster is
+  disease-variant work chaining `clinvar` → `togovar` → `medgen` → `mondo` → `hco` → `hgnc`, and
+  trait association is the layer that thread was missing.
+  The MIE ships 10 live-verified examples (4 basic, 3 intermediate, 2 aggregation, 1 cross_db) and
+  documents three traps an agent cannot recover on its own. **The two vocabularies in the graph store
+  string literals in opposite term forms** — `gwas:has_snp_reference_id` needs `^^xsd:string` while
+  `m2r:snps` needs the plain form, and `DATATYPE()` reports `xsd:string` for both, so only an `ASK`
+  tells them apart; getting it backwards returns 0 rows silently. **Two parallel association models**
+  coexist: 955,930 med2rdf blank-node `Association`s carrying the flat row, versus 782,879
+  IRI-addressable OBAN `TraitAssociation`s — different populations, and mixing them double-counts.
+  And **`?s a gwas:Study` returns 224,583 across two disjoint IRI families**, of which only 89,981 are
+  real GCST study records; the rest are EBI `Trackable/*` publication stubs.
+  Trait labels live only in the co-hosted `ontology/efo` graph, so the `cross_db` example is the
+  route to trait names, not a nicety.
+
+### Changed
+
+- Adding a database is now documented as touching **five** files, not one: `endpoints.csv`, the MIE,
+  the regenerated `02b_database_catalog.md`, the **hand-written** endpoint table in
+  `02_budgets_and_discovery.md` (no generator touches it — two `TestUsageGuideEndpointTable` tests
+  are what catch a miss), and the intro page's database grid. The README's **Contributing** section
+  now lists all five with the guarding test for each; it previously said two, which is how three of
+  them got missed on the first pass of this very release. A *removal* really is just the registry row.
+
 ## [2.2.1] - 2026-07-30
 
 ### Added
@@ -751,7 +786,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.2.1...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/dbcls/togomcp/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/dbcls/togomcp/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/dbcls/togomcp/compare/v2.1.3...v2.2.0
 [2.1.3]: https://github.com/dbcls/togomcp/compare/v2.1.2...v2.1.3

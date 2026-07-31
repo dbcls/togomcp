@@ -1,0 +1,354 @@
+database: gwascatalog
+
+discovery:
+  title: NHGRI-EBI GWAS Catalog
+  description: >
+    Genome-wide association study results linking SNPs (rsIDs) to human traits and diseases,
+    with p-values, effect sizes, risk alleles, mapped genes and EFO trait terms.
+  keywords:
+    - gwas
+    - genome-wide association
+    - snp
+    - variant
+    - polymorphism
+    - trait
+    - phenotype
+    - p-value
+    - odds ratio
+    - effect size
+    - risk allele
+    - heritability
+    - efo
+    - association study
+  categories: [variant, genomics, disease]
+
+endpoint: https://rdfportal.org/ebi/sparql
+base_uri: http://rdf.ebi.ac.uk/dataset/gwas/
+graphs:
+  primary: http://rdf.ebi.ac.uk/dataset/gwas_catalog
+  co_hosted:
+    ontology/efo: >
+      2g probe 2026-07-31 — JOIN TARGET, not an inflator. Holds the ONLY rdfs:label and
+      obo:IAO_0000115 definition for the EFO trait IRIs this DB points at (500/500 sampled traits
+      labelled here, ×1 each; gwas_catalog itself stores NO label for a trait IRI). Cross-graph join
+      required for trait names on the OBAN side — see example xdb_trait_label_efo.
+    ontology/clo: >
+      Re-declares rdfs:label on 8 of 500 sampled trait IRIs (×2 on the label leg for those).
+      Harmless if you pin ontology/efo; only bites an unpinned `?trait rdfs:label ?l`.
+    expressionatlas: >
+      Carries rdfs:label + dct:identifier for the `identifiers.org/ensembl/ENSG*` gene IRIs used by
+      m2r:snp_gene_ids (the main `ensembl` graph does NOT). Join target for gene symbols; ×1.
+    ensembl_grch37: "Re-types the same ENSG gene IRIs (rdf:type only, ×1). No label, no value conflict."
+    biosamples: "Types 81 of 500 sampled trait IRIs. Contributes to rdf:type inflation only — see the type_triple_inflation gotcha."
+    chembl/chebi/reactome/amrportal/biomodels/ensembl*: >
+      Also on this endpoint but share no IRI with gwas_catalog — probed clean (reverse probe on 6
+      representative + hub IRIs, all legs).
+
+entity_counts:
+  associations_med2rdf: 955930          # gwas:Association (blank nodes)
+  trait_associations_oban: 782879       # gwas:TraitAssociation (IRI-addressable)
+  snps: 444106
+  distinct_efo_traits: 11017
+  studies_typed_total: 224583           # MIXED — see study_dual_population gotcha
+  studies_real_gcst: 89981              # the actual GWAS Catalog study records
+  cytogenetic_regions: 828
+  chromosomes: 24
+  genome_wide_significant_assocs: 801096  # p_value < 5e-8
+  verified: "2026-07-31"
+
+global_gotchas:
+  - id: literal_form_split
+    say: >
+      THE #1 silent-failure mode. The two vocabularies store string literals in OPPOSITE term forms,
+      and DATATYPE() reports xsd:string for BOTH so it cannot tell them apart. Verified by ASK
+      2026-07-31 on the same rsID: `gwas:has_snp_reference_id "rs1296720"` → 0 rows, needs
+      `^^xsd:string`; `m2r:snps "rs1296720"^^xsd:string` → 0 rows, needs the plain form. RULE:
+      `gwas:` predicates → ^^xsd:string; `m2r:`/`dct:` → plain. When unsure,
+      FILTER(STR(?x) = "value") matches both.
+  - id: two_parallel_models
+    say: >
+      This graph merges TWO independent association models over the same science, with DIFFERENT
+      populations. (1) med2rdf `gwas:Association` — 955,930 BLANK NODES carrying the full flat row
+      (p_value, odds_ratio, risk allele, genes, study). Blank nodes are NOT addressable by IRI:
+      you must reach them via a property (m2r:snps, m2r:mapped_trait_uri, m2r:study). (2) EBI/OBAN
+      `gwas:TraitAssociation` — 782,879 real IRIs joining a SNP IRI to an EFO trait IRI via
+      oban:has_subject / oban:has_object. Pick ONE model per query; mixing them double-counts.
+  - id: empty_string_sentinel
+    say: >
+      Absent values are stored as EMPTY STRING literals, not omitted triples. m2r:mapped_genes,
+      m2r:snp_gene_ids, m2r:upstream_gene_id, m2r:downstream_gene_id and the *_distance predicates
+      are all present on essentially every association. So OPTIONAL always binds and BOUND(?x) is
+      always true — "associations with a mapped gene" counted by triple presence returns all
+      955,930. FIX: FILTER(?g != "") or, for the IRI-valued ones, FILTER(isIRI(?g)).
+  - id: study_dual_population
+    say: >
+      `?s a gwas:Study` returns 224,583 but that is TWO disjoint IRI families: 89,981 real study
+      records at http://www.ebi.ac.uk/gwas/studies/GCST* (these carry dct:identifier, dct:description,
+      m2r:initial_sample_size) and 134,602 EBI-side http://rdf.ebi.ac.uk/dataset/gwas/Trackable/*
+      publication stubs (these carry only gwas:has_author + gwas:has_publication_date). Reporting
+      224,583 as "studies in the GWAS Catalog" is wrong. FIX: filter
+      STRSTARTS(STR(?s), "http://www.ebi.ac.uk/gwas/studies/") or require dct:identifier.
+  - id: type_triple_inflation
+    say: >
+      Every EFO trait IRI carries THREE rdf:type triples inside gwas_catalog alone — owl:Class,
+      owl:NamedIndividual, and a self-type (`?trait a <that same EFO IRI>`) — so `?t a ?type` is ×3
+      before any co-tenant, and ×4.18 unpinned (measured: 500 traits → 2,089 type triples =
+      gwas_catalog 1,500 + ontology/efo 500 + biosamples 81 + ontology/clo 8). FIX: never count
+      traits via rdf:type — COUNT(DISTINCT ?trait) anchored on oban:has_object or
+      m2r:mapped_trait_uri, with FROM <http://rdf.ebi.ac.uk/dataset/gwas_catalog>.
+
+examples:
+  - id: snp_associations_by_rsid
+    intent: all trait associations reported for one rsID, with effect statistics
+    question: "What traits is rs1296720 associated with, and how strong are the associations?"
+    complexity: basic
+    sparql: |
+      PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+      PREFIX m2r: <http://med2rdf.org/gwascatalog/terms/>
+      SELECT ?trait ?pvalue ?riskAllele ?orValue ?study
+      FROM <http://rdf.ebi.ac.uk/dataset/gwas_catalog>
+      WHERE {
+        ?a a gwas:Association ;
+           m2r:snps "rs1296720" ;              # PLAIN literal — m2r: side
+           m2r:mapped_trait ?trait ;           # on an Association this is the trait LABEL
+           m2r:p_value ?pvalue ;
+           m2r:strongest_snp_risk_allele ?riskAllele ;
+           m2r:study ?study .
+        OPTIONAL { ?a m2r:odds_ratio ?orValue }
+      }
+      ORDER BY ?pvalue
+      LIMIT 20
+    verified: {rows: 4, top_trait: "QT interval", top_pvalue: 2e-23, date: "2026-07-31"}
+    teaches: "Reach the blank-node Association through m2r:snps with a PLAIN rsID literal; the whole flat row hangs off that one node."
+    traps_avoided:
+      - "m2r:odds_ratio is MIXED-TYPED: xsd:decimal where a value exists, xsd:string \"NA\" where it does not (roughly half each). FILTER(?orValue > 1.5) silently drops the \"NA\" rows (harmless), but AVG()/MAX() over it breaks and ORDER BY sorts strings and numbers separately. Same for m2r:beta and m2r:risk_allele_frequency."
+
+  - id: study_by_accession
+    intent: resolve a GCST study accession to its trait, cohort description and publication
+    question: "What did GWAS Catalog study GCST000032 investigate, and in what cohort?"
+    complexity: basic
+    sparql: |
+      PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+      PREFIX m2r: <http://med2rdf.org/gwascatalog/terms/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      SELECT ?accession ?trait ?initialSample ?pubmed
+      FROM <http://rdf.ebi.ac.uk/dataset/gwas_catalog>
+      WHERE {
+        ?study a gwas:Study ;
+               dct:identifier "GCST000032" ;   # PLAIN literal — dct: side
+               dct:identifier ?accession .
+        OPTIONAL { ?study dct:description ?trait }
+        OPTIONAL { ?study m2r:initial_sample_size ?initialSample }
+        OPTIONAL { ?study gwas:has_pubmed_id ?pubmed }
+      }
+      LIMIT 10
+    verified: {rows: 1, trait: "Stroke", pubmed: "17434096", date: "2026-07-31"}
+    teaches: "Requiring dct:identifier is also the cheapest way to restrict ?s a gwas:Study to the 89,981 real study records."
+    traps_avoided:
+      - "dct:description holds the study's REPORTED trait as free text (\"Stroke\"), not an EFO IRI — the EFO IRI is on m2r:mapped_trait for a Study (but is a label string on an Association)."
+
+  - id: snp_location_ebi
+    intent: genomic position and cytogenetic band for an rsID via the EBI/OBAN entity
+    question: "Where in the genome is rs1296720, and which cytogenetic band is it in?"
+    complexity: basic
+    sparql: |
+      PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+      PREFIX ro: <http://www.obofoundry.org/ro/ro.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      SELECT ?snp ?position ?region
+      FROM <http://rdf.ebi.ac.uk/dataset/gwas_catalog>
+      WHERE {
+        ?snp a gwas:SingleNucleotidePolymorphism ;
+             gwas:has_snp_reference_id "rs1296720"^^xsd:string .   # TYPED — gwas: side
+        OPTIONAL { ?snp gwas:has_basepair_position ?position }
+        OPTIONAL { ?snp ro:located_in ?region }
+      }
+      LIMIT 10
+    verified: {rows: 1, position: 3823641, region: "CytogeneticRegion/16p13.3", date: "2026-07-31"}
+    teaches: "The gwas: vocabulary needs ^^xsd:string on every string match; has_basepair_position (unlike m2r:chr_pos) is a real integer."
+    traps_avoided:
+      - "You cannot build the SNP IRI from an rsID: .../SingleNucleotidePolymorphism/10064763 holds rs1296720 — the numeric tail is an internal key, NOT the rs number. Always look the SNP up by has_snp_reference_id."
+
+  - id: trait_snps_oban
+    intent: SNPs associated with an EFO trait through the IRI-addressable OBAN model
+    question: "Which SNPs are most strongly associated with QT interval?"
+    complexity: intermediate
+    sparql: |
+      PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+      PREFIX oban: <http://purl.org/oban/>
+      SELECT ?rsid ?pvalue ?traitName
+      FROM <http://rdf.ebi.ac.uk/dataset/gwas_catalog>
+      WHERE {
+        ?ta a gwas:TraitAssociation ;
+            oban:has_object <http://www.ebi.ac.uk/efo/EFO_0004682> ;   # trait
+            oban:has_subject ?snp ;                                    # SNP
+            gwas:has_p_value ?pvalue ;
+            gwas:has_gwas_trait_name ?traitName .
+        ?snp gwas:has_snp_reference_id ?rsid .
+      }
+      ORDER BY ?pvalue
+      LIMIT 10
+    verified: {rows: 10, top_rsid: "rs2074238", distinct_trait_names: ["QT interval", "QTc interval"], date: "2026-07-31"}
+    teaches: "OBAN reification: has_subject is always the SNP and has_object always the EFO trait — the direction never varies, so it is safe to anchor on either end."
+    traps_avoided:
+      - "gwas:has_p_value is xsd:double, so p-values below ~1e-308 UNDERFLOW TO 0.0 and become mutually indistinguishable (two rows here are both 0.0). To rank the extreme tail, use the rank_by_mlog route below instead."
+      - "has_gwas_trait_name is the REPORTED trait string and varies within one EFO trait (\"QT interval\" and \"QTc interval\" both map to EFO_0004682) — group on the EFO IRI, not on this label."
+
+  - id: rank_by_mlog
+    intent: rank the most significant associations without hitting double underflow
+    question: "Which variants show the strongest statistical evidence for QT interval?"
+    complexity: intermediate
+    sparql: |
+      PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+      PREFIX m2r: <http://med2rdf.org/gwascatalog/terms/>
+      SELECT ?rsid ?trait ?mlog
+      FROM <http://rdf.ebi.ac.uk/dataset/gwas_catalog>
+      WHERE {
+        ?a a gwas:Association ;
+           m2r:mapped_trait_uri <http://www.ebi.ac.uk/efo/EFO_0004682> ;
+           m2r:p_value_mlog ?mlog ;      # -log10(p), xsd:decimal — no underflow
+           m2r:snps ?rsid ;
+           m2r:mapped_trait ?trait .
+      }
+      ORDER BY DESC(?mlog)
+      LIMIT 10
+    verified: {rows: 10, top_rsid: "rs12143842", top_mlog: 776, second_mlog: 399.39794000867204, date: "2026-07-31"}
+    teaches: "Rank significance on m2r:p_value_mlog (xsd:decimal), never on the raw p-value: -log10 keeps the extreme tail ordered where xsd:double collapses it to 0.0."
+    traps_avoided:
+      - "The top two rows here are BOTH p = 0.0 on the raw p-value (see trait_snps_oban) — mlog separates them as 776 vs 399.4. Ranking on the raw p-value silently ties the strongest hits in the catalog."
+      - "A larger mlog means MORE significant, so this needs ORDER BY DESC — the opposite direction from ORDER BY ?pvalue."
+
+  - id: enum_snps_for_trait
+    intent: enumerate ALL SNPs recorded for one trait (set-level route)
+    question: "How many distinct SNPs has the GWAS Catalog associated with QT interval?"
+    complexity: basic
+    sparql: |
+      PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+      PREFIX m2r: <http://med2rdf.org/gwascatalog/terms/>
+      SELECT (COUNT(DISTINCT ?rsid) AS ?distinct_snps) (COUNT(DISTINCT ?a) AS ?associations)
+      FROM <http://rdf.ebi.ac.uk/dataset/gwas_catalog>
+      WHERE {
+        ?a a gwas:Association ;
+           m2r:mapped_trait_uri <http://www.ebi.ac.uk/efo/EFO_0004682> ;   # IRI, not a string
+           m2r:snps ?rsid .
+      }
+    verified: {distinct_snps: 631, associations: 858, date: "2026-07-31"}
+    teaches: "m2r:mapped_trait_uri is a real IRI — enumerate a trait's variants by that IRI, never by matching the trait NAME."
+    traps_avoided:
+      - "Associations (858) exceed distinct SNPs (631) because the same SNP is reported by several studies — COUNT(?a) is a study-report count, COUNT(DISTINCT ?rsid) is the variant count. Decide which one the question asks for."
+      - "Matching m2r:mapped_trait \"QT interval\" instead undercounts: that label is free text and its variants (\"QTc interval\", \"trait in response to thiazide, QT interval\") sit under the same EFO IRI."
+
+  - id: enum_traits_for_gene
+    intent: enumerate ALL traits associated with variants mapped to one gene (set-level route)
+    question: "Which traits have GWAS variants mapped to the CREBBP gene?"
+    complexity: intermediate
+    sparql: |
+      PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+      PREFIX m2r: <http://med2rdf.org/gwascatalog/terms/>
+      SELECT ?trait (COUNT(DISTINCT ?a) AS ?n)
+      FROM <http://rdf.ebi.ac.uk/dataset/gwas_catalog>
+      WHERE {
+        ?a a gwas:Association ;
+           m2r:snp_gene_ids <http://identifiers.org/ensembl/ENSG00000005339> ;   # CREBBP
+           m2r:mapped_trait ?trait .
+      }
+      GROUP BY ?trait ORDER BY DESC(?n) LIMIT 15
+    verified: {rows: 13, top: {trait: "QT interval", n: 4}, date: "2026-07-31"}
+    teaches: "m2r:snp_gene_ids carries an identifiers.org Ensembl gene IRI, so gene-anchored enumeration is a direct IRI match with no text search and no ID bridge."
+    traps_avoided:
+      - "m2r:snp_gene_ids is IRI-valued ONLY where a gene was mapped; elsewhere it is an EMPTY STRING (241 IRI vs 89 \"\" in a 330-row sample). `?a m2r:snp_gene_ids ?g` with no filter binds junk — add FILTER(isIRI(?g)) when you leave it as a variable."
+      - "m2r:mapped_genes looks like the gene field but was EMPTY on 300/300 sampled associations — snp_gene_ids is the populated one."
+      - "m2r:mapped_trait flips type by subject class: a LABEL string on an Association (used here), but an EFO IRI on a Study. Never write a query that reads it off both."
+
+  - id: agg_genome_wide_significant
+    intent: count associations passing the genome-wide significance threshold
+    question: "How many GWAS Catalog associations reach genome-wide significance (p < 5e-8)?"
+    complexity: aggregation
+    sparql: |
+      PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+      PREFIX m2r: <http://med2rdf.org/gwascatalog/terms/>
+      SELECT (COUNT(DISTINCT ?a) AS ?genome_wide_significant)
+      FROM <http://rdf.ebi.ac.uk/dataset/gwas_catalog>
+      WHERE {
+        ?a a gwas:Association ;
+           m2r:p_value ?p .
+        FILTER(?p < 5.0e-8)
+      }
+    verified: {genome_wide_significant: 801096, of_total_associations: 955930, date: "2026-07-31"}
+    teaches: "FROM-pin + COUNT(DISTINCT) is the union-safe counting recipe; m2r:p_value is uniformly xsd:double so the numeric FILTER needs no cast."
+    traps_avoided:
+      - "m2r:p_value is the only cleanly-typed numeric on the association row (500/500 xsd:double). Its neighbours are not — see the mixed-typing trap on snp_associations_by_rsid before filtering on odds_ratio or beta."
+
+  - id: agg_study_populations
+    intent: separate the two IRI families hiding behind gwas:Study
+    question: "How many studies does the GWAS Catalog actually contain?"
+    complexity: aggregation
+    sparql: |
+      PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+      SELECT ?family (COUNT(DISTINCT ?s) AS ?n) (SAMPLE(?s) AS ?example)
+      FROM <http://rdf.ebi.ac.uk/dataset/gwas_catalog>
+      WHERE {
+        ?s a gwas:Study .
+        BIND(IF(STRSTARTS(STR(?s), "http://www.ebi.ac.uk/gwas/studies/GCST"),
+                "real_gcst_study", "ebi_trackable_stub") AS ?family)
+      }
+      GROUP BY ?family
+    verified: {real_gcst_study: 89981, ebi_trackable_stub: 134602, date: "2026-07-31"}
+    teaches: "When one class spans two IRI namespaces, BIND(STRSTARTS(...)) partitions it in a single pass and shows the split instead of hiding it."
+    traps_avoided:
+      - "The headline answer is 89,981, NOT the 224,583 that `?s a gwas:Study` returns. The 134,602 Trackable/* stubs carry only has_author and has_publication_date — they are publication nodes, not studies."
+
+  - id: xdb_trait_label_efo
+    intent: "cross-graph: GWAS trait IRI -> its EFO label and definition (the only source of trait names)"
+    question: "What is EFO_0004682, and how many GWAS associations use it?"
+    complexity: cross_db
+    endpoint_name: ebi
+    sparql: |
+      PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+      PREFIX m2r: <http://med2rdf.org/gwascatalog/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT ?label ?definition (COUNT(DISTINCT ?a) AS ?associations)
+      WHERE {
+        GRAPH <http://rdfportal.org/ontology/efo> {
+          <http://www.ebi.ac.uk/efo/EFO_0004682> rdfs:label ?label .
+          OPTIONAL { <http://www.ebi.ac.uk/efo/EFO_0004682> obo:IAO_0000115 ?definition }
+        }
+        GRAPH <http://rdf.ebi.ac.uk/dataset/gwas_catalog> {
+          ?a a gwas:Association ; m2r:mapped_trait_uri <http://www.ebi.ac.uk/efo/EFO_0004682> .
+        }
+      }
+      GROUP BY ?label ?definition
+    verified: {label: "QT interval", associations: 858, has_definition: true, date: "2026-07-31"}
+    teaches: "The EFO IRI is shared verbatim between gwas_catalog and ontology/efo on the SAME endpoint — a direct two-GRAPH join, no ID bridge and no TogoID hop."
+    traps_avoided:
+      - "gwas_catalog stores NO rdfs:label for a trait IRI (0 of 500 sampled). Querying trait names inside the gwas graph alone returns nothing — the label only exists in ontology/efo."
+      - "Pin ontology/efo explicitly: unpinned, ontology/clo re-declares rdfs:label for a minority of trait IRIs and doubles those rows."
+
+schema_delta:
+  - "m2r:p_value_mlog — -log10(p) as xsd:decimal; the reliable way to rank the extreme significance tail that m2r:p_value underflows to 0.0."
+  - "m2r:chr_id and m2r:chr_pos are xsd:string, NOT numbers — a positional range filter needs xsd:integer(?chr_pos); gwas:has_basepair_position (EBI side) is already an integer."
+  - "m2r:context — the variant consequence as a bare SO term name (\"intron_variant\"), a string not an SO IRI."
+  - "m2r:upstream_gene_id / m2r:downstream_gene_id (+ the matching *_distance predicates) give the flanking genes when the SNP is intergenic; same empty-string sentinel as snp_gene_ids."
+  - "m2r:intergenic, m2r:cnv, m2r:merged are string flags (\"0\"/\"1\", \"N\"), not booleans."
+  - "ro:part_of / ro:has_part link a TraitAssociation to a parent TraitAssociation, grouping the sub-associations reported under one analysis."
+  - "gwas:has_author and gwas:has_publication_date (134,602 each) live ONLY on the Trackable/* study stubs — they are the publication metadata for the EBI side."
+  - "m2r:genotyping_technology, m2r:platform_snps_passing_qc, m2r:replication_sample_size describe study methodology; note replication_sample_size is often the literal string \"NA\"."
+
+id_join_map:
+  stable_anchor: >
+    Study = http://www.ebi.ac.uk/gwas/studies/GCST<n> (accession also on dct:identifier as a PLAIN
+    literal). Trait = the EFO IRI http://www.ebi.ac.uk/efo/EFO_<7 digits>. SNP = an opaque internal
+    IRI .../gwas/SingleNucleotidePolymorphism/<n> whose number is NOT the rs number — anchor on the
+    rsID instead, via gwas:has_snp_reference_id "rsN"^^xsd:string (EBI side) or m2r:snps "rsN" plain
+    (med2rdf side). gwas:Association is a BLANK NODE and has no stable anchor at all.
+  same_endpoint_joins:
+    efo: "EFO trait IRIs are shared verbatim with GRAPH <http://rdfportal.org/ontology/efo> — the only source of trait labels/definitions/synonyms. See example xdb_trait_label_efo."
+    expressionatlas: "m2r:snp_gene_ids Ensembl gene IRIs (http://identifiers.org/ensembl/ENSG*) carry rdfs:label + dct:identifier in GRAPH <http://rdf.ebi.ac.uk/dataset/expressionatlas>; the main ensembl graph does not."
+    ensembl_grch37: "Same ENSG IRIs are typed in GRAPH <http://rdfportal.org/dataset/ensembl_grch37> (rdf:type only — no labels)."
+  xrefs:
+    dbsnp: "rdfs:seeAlso -> http://identifiers.org/dbsnp/rs<N> as an IRI, on the Association node (~841k rdfs:seeAlso triples graph-wide)."
+    pubmed: "dct:references -> http://rdf.ncbi.nlm.nih.gov/pubmed/<pmid> as an IRI; gwas:has_pubmed_id carries the bare PMID string alongside it (1,180,513 triples)."
+    ensembl: "m2r:snp_gene_ids -> http://identifiers.org/ensembl/ENSG<N> as an IRI, but an EMPTY STRING where no gene was mapped — filter isIRI() before joining."
+  bridged_via_togoid:
+    - "ncbigene, hgnc, clinvar, togovar — not co-hosted on this endpoint; bridge with togoid_convertId using the dbSNP rsID or the Ensembl gene ID as the source key."
