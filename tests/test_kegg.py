@@ -20,6 +20,7 @@ import respx
 from fastmcp import FastMCP
 
 import togo_mcp.kegg as kegg
+import togo_mcp.togoid as togoid
 from togo_mcp.kegg import _MAX_GRAPH_RESPONSE_CHARS as _MAX_GRAPH_CAP
 import togo_mcp.main as main
 from togo_mcp.kegg import (
@@ -115,6 +116,7 @@ def _isolate_module_state(monkeypatch):
     limiter itself is exercised explicitly in TestRateLimit.
     """
     kegg._kgml_cache.clear()
+    kegg._symbol_cache.clear()
     monkeypatch.setattr(kegg, "_MIN_INTERVAL", 0.0)
     monkeypatch.setattr(kegg, "_last_request_at", 0.0)
     monkeypatch.setattr(kegg, "_BACKOFF_BASE", 0.0)
@@ -350,6 +352,16 @@ class TestGetEntry:
 def _mock_kgml(router, body: str = KGML):
     return router.get(f"{BASE}/get/{MAP}/kgml").mock(
         return_value=httpx.Response(200, text=body)
+    )
+
+
+def _mock_symbol_lookup(router, rows: str = ""):
+    """The `/find/<org>/<symbol>` fallback for a seed KGML cannot resolve.
+
+    KEGG answers "no match" with an empty HTTP 200, which is the default here.
+    """
+    return router.get(url__regex=rf"{BASE}/find/xxx/.*").mock(
+        return_value=httpx.Response(200, text=rows)
     )
 
 
@@ -665,6 +677,78 @@ class TestPathwayGraph:
 
 class TestPathwayNeighborhood:
     @pytest.mark.asyncio
+    async def test_paralog_family_member_resolves_though_the_box_is_labelled_otherwise(
+        self,
+    ):
+        """The trap this tool claims to have solved, on the way IN.
+
+        hsa04151's box 17 holds hsa:10000, hsa:207 and hsa:208 (AKT3/AKT1/AKT2)
+        and KGML labels it "AKT3, MPPH, PKB-GAMMA, …" — the drawn member's
+        symbol and ITS aliases. So `seeds="AKT1"`, the most obvious query anyone
+        would type, matched nothing while `seeds="hsa:207"` resolved instantly,
+        and `unresolved_note` said the gene might not be drawn on this map. It
+        is drawn; it is simply drawn under a sibling's name.
+        """
+        akt = (
+            '<?xml version="1.0"?><pathway name="path:xxx00001" org="xxx" '
+            'number="00001" title="Paralog box">'
+            '<entry id="17" name="hsa:10000 hsa:207 hsa:208" type="gene">'
+            '<graphics name="AKT3, MPPH, MPPH2, PKB-GAMMA" type="rectangle"/></entry>'
+            '<entry id="18" name="hsa:2475" type="gene">'
+            '<graphics name="MTOR" type="rectangle"/></entry>'
+            '<relation entry1="17" entry2="18" type="PPrel">'
+            '<subtype name="activation" value="--&gt;"/></relation>'
+            "</pathway>"
+        )
+        with respx.mock(using="httpx") as router:
+            router.get(f"{BASE}/get/xxx00001/kgml").mock(
+                return_value=httpx.Response(200, text=akt)
+            )
+            # /find is a SUBSTRING search: AKT1S1 comes back too and must be
+            # rejected, or a near-miss silently answers for the wrong gene.
+            router.get(f"{BASE}/find/xxx/AKT1").mock(
+                return_value=httpx.Response(
+                    200,
+                    text=(
+                        "hsa:207\tAKT1, AKT, PKB, RAC-ALPHA; AKT serine/threonine "
+                        "kinase 1\n"
+                        "hsa:84335\tAKT1S1, Lobe, PRAS40; AKT1 substrate 1\n"
+                    ),
+                )
+            )
+            out = await pathway_neighborhood(pathway="xxx00001", seeds="AKT1")
+        result = json.loads(out)
+
+        assert result["unresolved"] == []
+        assert result["seeds"] == ["17"]
+        assert [r["label"] for r in result["reached"]] == ["MTOR"]
+        # AKT1S1 is not in this map and must not have been used to resolve it.
+        note = result["seed_resolution"][0]
+        assert note["seed"] == "AKT1"
+        assert note["matched_members"] == ["hsa:207"]
+        # The caller asked for AKT1 and is getting a box drawn as AKT3 — saying
+        # so is the whole point, since every row below is labelled AKT3.
+        assert note["node_labels"] == ["AKT3"]
+        assert "paralog family" in note["note"]
+
+    @pytest.mark.asyncio
+    async def test_symbol_lookup_is_skipped_when_kgml_can_already_resolve(self):
+        """The fallback costs a request against a 3/s budget — only on a miss."""
+        with respx.mock(using="httpx", assert_all_called=False) as router:
+            _mock_kgml(router)
+            lookup = _mock_symbol_lookup(router)
+            for seeds in ("PIK3CA", "hsa:207", "5290", "1"):
+                await pathway_neighborhood(pathway=MAP, seeds=seeds)
+            assert not lookup.called
+            # A compound accession is not a gene symbol either: no lookup, and
+            # no request wasted on a token /find could never match.
+            await pathway_neighborhood(pathway=MAP, seeds="C00031")
+            assert not lookup.called
+            # …and a token that would alter the REST path never reaches it.
+            await pathway_neighborhood(pathway=MAP, seeds="../../get/hsa:207")
+            assert not lookup.called
+
+    @pytest.mark.asyncio
     async def test_resolves_a_gene_symbol_and_reports_net_sign(self):
         with respx.mock(using="httpx") as router:
             _mock_kgml(router)
@@ -689,10 +773,16 @@ class TestPathwayNeighborhood:
         """An absent gene must not read as a biological negative."""
         with respx.mock(using="httpx") as router:
             _mock_kgml(router)
+            lookup = _mock_symbol_lookup(router)  # KEGG knows no such symbol
             out = await pathway_neighborhood(pathway=MAP, seeds="NOTAGENE")
         result = json.loads(out)
+        assert lookup.called, "the symbol fallback must be tried before giving up"
         assert result["unresolved"] == ["NOTAGENE"]
         assert "LOOKUP failure" in result["unresolved_note"]
+        # The advice must not stop at "not drawn on this map" — that was the
+        # misleading half when the seed IS drawn, just under a sibling's label.
+        assert "hsa:207" in result["unresolved_note"]
+        assert "seed_resolution" not in result
 
     @pytest.mark.asyncio
     async def test_signed_only_drops_unsigned_edges(self):
@@ -734,6 +824,7 @@ class TestPathwayPaths:
         """find_paths returns [] for both; the tool must not conflate them."""
         with respx.mock(using="httpx") as router:
             _mock_kgml(router)
+            _mock_symbol_lookup(router)
             missing = json.loads(
                 await pathway_paths(pathway=MAP, source="NOTAGENE", target="MTOR")
             )
@@ -993,6 +1084,30 @@ class TestRateLimit:
             )
             elapsed = time.monotonic() - start
         assert elapsed >= 2 * 0.05
+
+
+class TestShutdown:
+    def test_atexit_close_does_not_open_a_second_event_loop(self, monkeypatch):
+        """A clean exit must not print a traceback into the client's log.
+
+        At interpreter shutdown there is no running loop, and the loop that OWNS
+        the client's sockets is already closed. Spinning up a fresh one to close
+        them reaches into the dead loop and raises "Event loop is closed", which
+        atexit reports as a 38-line traceback AFTER a successful run — exit code
+        0, stdout untouched, and the next person to debug KEGG suspects it first.
+
+        Sync test on purpose: it must run with NO loop running, which is the
+        state the atexit hook actually sees.
+        """
+        def _no_new_loop(*args, **kwargs):
+            raise AssertionError("shutdown must not start a new event loop")
+
+        # Patch the asyncio module itself: togoid imports it inside the hook, so
+        # patching a module attribute would miss it. Both hooks are the same
+        # three lines and were both wrong.
+        monkeypatch.setattr(asyncio, "run", _no_new_loop)
+        kegg._close_client()  # must be silent, and must not raise
+        togoid._close_client()
 
 
 class TestTransportErrors:

@@ -15,6 +15,38 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 _Nothing yet._
 
+## [2.5.0] - 2026-07-31
+
+Two fixes found by using the KEGG tools rather than reading them: a seed form the
+docstring itself advertised did not work, and a clean shutdown looked like a crash in
+the client's log. MINOR rather than PATCH because the first adds two return fields.
+
+### Fixed
+
+- **A paralog-family member could not be used as a seed under its own name.**
+  `kegg_pathway_neighborhood(pathway="hsa04151", seeds="AKT1")` returned `unresolved`, while
+  `seeds="hsa:207"` — the same gene — resolved instantly and returned 33 downstream nodes. Box 17 of
+  that map holds hsa:10000, hsa:207 and hsa:208 (AKT3/AKT1/AKT2), but KGML's `graphics/@name` carries
+  only the DRAWN label, "AKT3" and *its* aliases, and seed resolution looked no further. So the
+  paralog-family trap this tool advertises as solved was still open on the way IN, and
+  `unresolved_note` compounded it by suggesting the gene might not be drawn on the map — it is drawn,
+  under a sibling's name. Seeds and path endpoints that KGML cannot match are now looked up against
+  KEGG's gene symbols and intersected with THAT MAP's members: one extra request per unmatched
+  symbol, cached, and only on the path that would otherwise have returned nothing. `/find` is a
+  substring search, so only rows carrying the symbol verbatim in their symbol list count — "AKT1"
+  must not resolve through AKT1S1. When the fallback fires, `seed_resolution` /
+  `endpoint_resolution` says which member matched and what the box is actually labelled, because
+  every row of the answer then reads "AKT3" for a question asked about AKT1. `unresolved_note` now
+  states that all three routes were tried and suggests retrying with a KEGG gene id.
+
+- **A clean shutdown printed a 38-line traceback into the client's log.** The atexit hooks in
+  `kegg.py` and `togoid.py` fell back to `asyncio.run(_client.aclose())` when no loop was running —
+  which at interpreter shutdown is always — so a fresh loop reached into the already-closed loop that
+  owned the sockets and raised `RuntimeError: Event loop is closed`. Harmless (exit code 0, stdout
+  untouched, emitted after all work) but misleading: it is the first thing anyone debugging KEGG or
+  TogoID would suspect. The hook now leaves the sockets to the OS, which reclaims them anyway. Fires
+  only in a session that made at least one request through those clients.
+
 ## [2.4.1] - 2026-07-31
 
 Four review rounds against the live KEGG API, all on `kegg_pathway_graph`'s response
@@ -1009,7 +1041,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.4.1...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.5.0...HEAD
+[2.5.0]: https://github.com/dbcls/togomcp/compare/v2.4.1...v2.5.0
 [2.4.1]: https://github.com/dbcls/togomcp/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/dbcls/togomcp/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/dbcls/togomcp/compare/v2.2.1...v2.3.0

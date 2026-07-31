@@ -832,15 +832,21 @@ def neighborhood(
 
 def find_paths(
     graph: dict[str, Any],
-    source: str,
-    target: str,
+    source: str | Iterable[str],
+    target: str | Iterable[str],
     *,
     max_length: int = 4,
     max_paths: int = 20,
 ) -> list[dict[str, Any]]:
-    """Enumerate simple directed paths source -> target, with the net sign of each."""
-    srcs = resolve_seeds(graph, [source])
-    tgts = set(resolve_seeds(graph, [target]))
+    """Enumerate simple directed paths source -> target, with the net sign of each.
+
+    An endpoint may be a single token or an already-resolved list of node ids:
+    a gene symbol can name a box this module cannot match on its own (the box is
+    labelled with one paralog's symbol), so the tool layer resolves such tokens
+    against KEGG and passes the node ids straight in.
+    """
+    srcs = resolve_seeds(graph, [source] if isinstance(source, str) else source)
+    tgts = set(resolve_seeds(graph, [target] if isinstance(target, str) else target))
     if not srcs or not tgts:
         return []
     adj = _adjacency(graph, "downstream")
