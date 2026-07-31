@@ -179,13 +179,21 @@ def render_non_sparql_companions() -> str:
         "use `reactome` or `rhea` over SPARQL instead, and do not report the absence "
         "as an error.",
         "- **What it uniquely adds.** A pathway map as a SIGNED DIRECTED GRAPH "
-        "(activation vs inhibition per edge, from KGML relation subtypes) and, for an "
-        "organism map, the metabolic steps that organism LACKS. Reactome RDF has no "
-        "equivalent of either, so these are not reproducible with `run_sparql`.",
+        "(activation vs inhibition per edge, from KGML relation subtypes), the FEEDBACK "
+        "LOOPS that graph contains, and, for an organism map, the metabolic steps that "
+        "organism LACKS. Reactome RDF has no equivalent of any of these, so they are not "
+        "reproducible with `run_sparql`.",
         "- **Workflow.** `kegg_find` (keyword → entry IDs) → `kegg_get_entry` (full "
         "record incl. DBLINKS), `kegg_link` (gene↔pathway↔compound↔pubmed), "
-        "`kegg_pathway_graph` (whole map) or `kegg_pathway_neighborhood` (up/downstream "
-        "of one gene).",
+        "`kegg_pathway_graph` (whole map), `kegg_pathway_neighborhood` (up/downstream of "
+        "one gene), `kegg_pathway_paths` (how A reaches B, and the net sign of each "
+        "route), `kegg_pathway_cycles` (negative/positive feedback loops).",
+        "- **Reading signs.** Every graph tool returns "
+        "`signal_quality.signed_edge_fraction` — how much of that map states a direction "
+        "of regulation at all. It ranges from 0.98 to 0.40 across signaling maps and is 0 "
+        "for metabolic ones, because most KGML relations record only a MECHANISM "
+        "(phosphorylation, binding). Read a `net_sign` of 0, or an `unsigned` feedback "
+        "loop, as UNKNOWN — never as \"no effect\".",
         "- **Bridging to RDF Portal — REQUIRED.** KEGG-namespaced IDs (`hsa:10458`, "
         "`cpd:C00031`, `path:hsa04151`) do NOT resolve in any SPARQL database. Convert "
         "them with `kegg_conv` FIRST: genes ↔ `uniprot` / `ncbi-geneid` / "

@@ -399,6 +399,28 @@ def test_find_paths_returns_signed_routes(graph):
     assert shortest["net_sign"] == 1
 
 
+def test_find_paths_distinguishes_parallel_reactions(graph):
+    """Two reactions joining the same pair must not collapse into identical rows.
+
+    The fixture's compound pair 30/31 is linked by R03469 (reversible) and
+    R04372, so the same node sequence is reachable by different biochemistry.
+    Without the reaction accession on each edge the projections are
+    byte-identical, and a caller sees one path apparently repeated while the
+    duplicates consume the max_paths budget.
+    """
+    paths = find_paths(graph, "cpd:C05981", "cpd:C00076", max_length=4, max_paths=20)
+    assert paths
+    reactions = {
+        tuple(tuple(e["reaction"]) for e in p["edges"]) for p in paths
+    }
+    # Every returned path is distinguishable by its edge annotations.
+    assert len(reactions) == len({
+        (tuple(n["id"] for n in p["nodes"]), tuple(tuple(e["reaction"]) for e in p["edges"]))
+        for p in paths
+    })
+    assert any(any(e["reaction"] for e in p["edges"]) for p in paths)
+
+
 def test_find_cycles_detects_negative_feedback(graph):
     cycles = find_cycles(graph, max_length=3)
     two_cycles = [c for c in cycles if c["length"] == 2]

@@ -189,7 +189,8 @@ TogoMCP exposes tools for querying the following (via SPARQL or REST APIs):
 ### KEGG (local `stdio` install only)
 
 A `kegg` tool group (`kegg_find`, `kegg_get_entry`, `kegg_pathway_graph`,
-`kegg_pathway_neighborhood`, `kegg_link`, `kegg_conv`) is mounted **only** by
+`kegg_pathway_neighborhood`, `kegg_pathway_paths`, `kegg_pathway_cycles`,
+`kegg_link`, `kegg_conv`) is mounted **only** by
 `togo-mcp-local` (the stdio entry point used by Claude Desktop). It is **not**
 available on the hosted server at togomcp.rdfportal.org, and not on any HTTP
 deployment.

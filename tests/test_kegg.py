@@ -32,8 +32,10 @@ from togo_mcp.kegg import (
     find,
     get_entry,
     link,
+    pathway_cycles,
     pathway_graph,
     pathway_neighborhood,
+    pathway_paths,
 )
 
 BASE = "https://rest.kegg.jp"
@@ -433,6 +435,121 @@ class TestPathwayNeighborhood:
             await pathway_neighborhood(pathway=MAP, seeds="")
 
 
+class TestPathwayPaths:
+    @pytest.mark.asyncio
+    async def test_enumerates_signed_routes_between_two_molecules(self):
+        with respx.mock(using="httpx") as router:
+            _mock_kgml(router)
+            out = await pathway_paths(pathway=MAP, source="PIK3CA", target="MTOR")
+        result = json.loads(out)
+        assert result["source_nodes"] and result["target_nodes"]
+        assert not result["unresolved"]
+        assert result["path_count"] == len(result["paths"])
+        shortest = min(result["paths"], key=lambda p: p["length"])
+        assert [n["id"] for n in shortest["nodes"]] == ["1", "2", "11"]
+        assert shortest["net_sign"] == 1
+
+    @pytest.mark.asyncio
+    async def test_unresolved_endpoint_is_distinguished_from_no_path(self):
+        """find_paths returns [] for both; the tool must not conflate them."""
+        with respx.mock(using="httpx") as router:
+            _mock_kgml(router)
+            missing = json.loads(
+                await pathway_paths(pathway=MAP, source="NOTAGENE", target="MTOR")
+            )
+            # Both endpoints exist, but MTOR has no directed route back to PIK3CA.
+            nopath = json.loads(
+                await pathway_paths(
+                    pathway=MAP, source="MTOR", target="PIK3CA", max_length=1
+                )
+            )
+
+        assert missing["unresolved"] == ["NOTAGENE"]
+        assert "LOOKUP failure" in missing["unresolved_note"]
+        assert "no_path_note" not in missing
+
+        assert nopath["unresolved"] == []
+        assert nopath["path_count"] == 0
+        assert "no_path_note" in nopath
+        assert "unresolved_note" not in nopath
+
+    @pytest.mark.asyncio
+    async def test_parallel_reactions_are_reported_as_distinct_routes(self):
+        """Same node sequence via two reactions is not a duplicate — the
+        reaction accession on each edge is what tells them apart."""
+        with respx.mock(using="httpx") as router:
+            _mock_kgml(router)
+            out = await pathway_paths(
+                pathway=MAP, source="cpd:C05981", target="cpd:C00076", max_length=4
+            )
+        paths = json.loads(out)["paths"]
+        assert paths
+        assert all("reaction" in e for p in paths for e in p["edges"])
+        rendered = {json.dumps(p, sort_keys=True) for p in paths}
+        assert len(rendered) == len(paths)
+
+    @pytest.mark.asyncio
+    async def test_hitting_max_paths_is_flagged_as_non_exhaustive(self):
+        with respx.mock(using="httpx") as router:
+            _mock_kgml(router)
+            out = await pathway_paths(
+                pathway=MAP, source="cpd:C05981", target="cpd:C00076", max_paths=1
+            )
+        result = json.loads(out)
+        assert result["path_count"] == 1
+        assert "NOT exhaustive" in result["truncated"]["hint"]
+
+    @pytest.mark.asyncio
+    async def test_missing_endpoint_argument_raises(self):
+        for src, tgt in (("", "MTOR"), ("PIK3CA", ""), ("", "")):
+            with pytest.raises(ValueError, match="both required"):
+                await pathway_paths(pathway=MAP, source=src, target=tgt)
+
+
+class TestPathwayCycles:
+    @pytest.mark.asyncio
+    async def test_classifies_a_negative_feedback_loop(self):
+        with respx.mock(using="httpx") as router:
+            _mock_kgml(router)
+            out = await pathway_cycles(pathway=MAP, max_length=3)
+        result = json.loads(out)
+        assert set(result["counts"]) == {"negative", "positive", "unsigned"}
+        loop = next(
+            c
+            for c in result["cycles"]
+            if {n["id"] for n in c["nodes"]} == {"1", "2"}
+        )
+        # 1 -(activation)-> 2 -(inhibition)-> 1
+        assert loop["feedback"] == "negative"
+        assert loop["net_sign"] == -1
+
+    @pytest.mark.asyncio
+    async def test_feedback_filter_narrows_but_counts_stay_whole_map(self):
+        with respx.mock(using="httpx") as router:
+            _mock_kgml(router)
+            out = await pathway_cycles(pathway=MAP, feedback="negative", max_length=3)
+        result = json.loads(out)
+        assert result["feedback_filter"] == "negative"
+        assert all(c["feedback"] == "negative" for c in result["cycles"])
+        # `counts` describes every cycle found, not just the filtered ones, so a
+        # caller can see what the filter removed.
+        assert sum(result["counts"].values()) >= result["cycle_count"]
+
+    @pytest.mark.asyncio
+    async def test_cap_is_flagged_because_the_filter_runs_after_it(self):
+        """A filtered-empty result under a reached cap is not a real zero."""
+        with respx.mock(using="httpx") as router:
+            _mock_kgml(router)
+            out = await pathway_cycles(pathway=MAP, max_length=3, max_cycles=1)
+        result = json.loads(out)
+        assert "AFTER this cap" in result["truncated"]["hint"]
+
+    @pytest.mark.asyncio
+    async def test_invalid_feedback_filter_raises(self):
+        with pytest.raises(ValueError, match="Invalid feedback filter"):
+            await pathway_cycles(pathway=MAP, feedback="neutral")
+
+
 # --------------------------------------------------------------------------- #
 # link / conv
 # --------------------------------------------------------------------------- #
@@ -649,6 +766,8 @@ class TestTransportGate:
             "kegg_get_entry",
             "kegg_pathway_graph",
             "kegg_pathway_neighborhood",
+            "kegg_pathway_paths",
+            "kegg_pathway_cycles",
             "kegg_link",
             "kegg_conv",
         } <= names
@@ -661,7 +780,7 @@ class TestTransportGate:
         monkeypatch.setattr(main, "mcp", fresh)
         await main.setup(local=True)
         kegg_tools = [t for t in await fresh.list_tools() if t.name.startswith("kegg_")]
-        assert len(kegg_tools) == 6
+        assert len(kegg_tools) == 8
         for tool in kegg_tools:
             assert tool.annotations.readOnlyHint is True, tool.name
             assert tool.annotations.openWorldHint is True, tool.name

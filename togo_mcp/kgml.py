@@ -87,6 +87,10 @@ __all__ = [
     "find_cycles",
     "diagnose",
     "metabolic_gaps",
+    # Part of the public surface: the tool layer needs it to tell "this seed
+    # matched nothing" apart from "this seed has no path", which find_paths
+    # cannot express on its own (both come back as an empty list).
+    "resolve_seeds",
     "KGMLParseError",
 ]
 
@@ -854,6 +858,14 @@ def find_paths(
                             "sign": e["sign"],
                             "effects": e["effects"],
                             "mechanisms": e["mechanisms"],
+                            # The reaction accession is what DISTINGUISHES two
+                            # parallel edges between the same pair of nodes. Left
+                            # out, two genuinely different reactions collapse into
+                            # output rows that are byte-identical, so a caller sees
+                            # what looks like the same path repeated (and the
+                            # duplicates eat the max_paths budget). Empty for
+                            # relation-derived edges, which carry no reaction.
+                            "reaction": e.get("reaction") or [],
                         }
                         for e in edges
                     ],

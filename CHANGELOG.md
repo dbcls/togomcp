@@ -16,7 +16,8 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 ### Added
 
 - **KEGG, as a `stdio`-only tool group** (`kegg_find`, `kegg_get_entry`, `kegg_pathway_graph`,
-  `kegg_pathway_neighborhood`, `kegg_link`, `kegg_conv`). Mounted by `togo-mcp-local` and
+  `kegg_pathway_neighborhood`, `kegg_pathway_paths`, `kegg_pathway_cycles`, `kegg_link`,
+  `kegg_conv`). Mounted by `togo-mcp-local` and
   **structurally absent from the HTTP server** — the KEGG API is licensed to academic users at
   academic institutions, and serving it from a public host that cannot verify a caller's affiliation
   would need an academic service-provider license. The gate is a `setup(local=True)` argument, not an
@@ -43,6 +44,23 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   `ko00010` reactions 63 − `hsa00010` 34 = 29 = hsa00010's isolated ortholog boxes (and 63 − 35 = 28
   for `eco00010`). Under the default duplicate-merge these become 25 and 23 — the count of *distinct*
   missing steps rather than boxes, which is the biologically meaningful number.
+- **Feedback-loop detection (`kegg_pathway_cycles`) and signed route enumeration
+  (`kegg_pathway_paths`).** A directed cycle *is* a feedback loop, and the product of its edge signs
+  says whether it is negative (self-limiting) or positive (self-reinforcing, switch-like) — a
+  structural claim about a pathway that no keyword search surfaces and that RDF Portal cannot answer.
+  Two traps are handled rather than left to the caller. `find_paths` returns an empty list both when
+  an endpoint matched nothing and when the endpoints are fine but unconnected, so the tool resolves
+  the endpoints itself and reports `unresolved` separately from `no_path_note`. And the
+  `feedback` filter necessarily runs AFTER the `max_cycles` cap, so a filtered-empty result under a
+  reached cap is not a real zero — `truncated` says so explicitly.
+  On METABOLIC maps `max_length` must be raised: compounds are joined through their enzyme, so the
+  hop count is about double the reaction count (glucose → pyruvate in glycolysis needs ~12, not the
+  default 6).
+- **Fixed: parallel reactions collapsed into identical path rows.** `find_paths` projected each edge
+  without its reaction accession, so two genuinely different reactions joining the same pair of
+  metabolites produced byte-identical output — a caller saw one path apparently repeated, and the
+  duplicates consumed the `max_paths` budget. The accession is now on every path edge (verified on
+  ko00010: R00200 vs R00199, two pyruvate-kinase routes that had been indistinguishable).
 - **`kegg_conv` as the bridge to RDF Portal.** KEGG identifiers do not resolve in `run_sparql`, so
   the tool returns prefix-stripped `source_id`/`target_id` alongside the KEGG-namespaced forms:
   genes ↔ UniProt / NCBI Gene / NCBI Protein, chemicals ↔ ChEBI / PubChem. The Usage Guide's Database

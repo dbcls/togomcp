@@ -54,9 +54,12 @@ from pydantic import Field
 
 from .kgml import (
     KGMLParseError,
+    find_cycles,
+    find_paths,
     metabolic_gaps,
     neighborhood,
     parse_kgml,
+    resolve_seeds,
 )
 from .server import *
 
@@ -860,6 +863,220 @@ async def pathway_neighborhood(
             "source=<pathway>) or pick a different map."
         )
     return _bounded(payload, note="lower `depth` or `limit`.")
+
+
+@kegg_mcp.tool(annotations=READ_ONLY_TOOL)
+async def pathway_paths(
+    pathway: Annotated[
+        str, Field(description="KEGG map id, e.g. 'hsa04151'.")
+    ] = "",
+    source: Annotated[
+        str, Field(description="Start node: gene symbol, 'hsa:5290', or compound id.")
+    ] = "",
+    target: Annotated[
+        str, Field(description="End node, same accepted forms as `source`.")
+    ] = "",
+    max_length: Annotated[int, Field(ge=1, le=12)] = 6,
+    max_paths: Annotated[int, Field(ge=1, le=200)] = 20,
+) -> str:
+    """Enumerate the routes from one molecule to another within a KEGG map.
+
+    Answers "HOW does A reach B, and is the net effect activating or
+    inhibiting" — the mechanism behind a `kegg_pathway_neighborhood` hit. Needs
+    KGML's signed relation subtypes, so it is not reproducible with `run_sparql`.
+
+    RETURNS a JSON string of an object with `source_nodes`/`target_nodes` (what
+    the endpoints resolved to), `unresolved`, `path_count` and `paths`. Each path
+    is `{"nodes": [{"id","label"}], "length", "net_sign", "edges": [...]}`, where
+    `net_sign` is the product of the edge signs: +1 net activation, -1 net
+    inhibition, 0 meaning UNKNOWN — some edge states only a mechanism
+    (phosphorylation, binding) or is metabolic, so KGML never gives a direction.
+    Each edge carries its `reaction` accession, which is what tells two parallel
+    routes apart: the same node sequence via two different reactions is two
+    genuinely different rows, not a duplicate.
+
+    AN EMPTY `paths` HAS TWO DIFFERENT MEANINGS — check `unresolved` first. A
+    non-empty `unresolved` is a LOOKUP failure (typo, or the molecule is not drawn
+    on this map) and says nothing biological. An empty `unresolved` with no paths
+    means both endpoints are present but no directed route of at most
+    `max_length` edges connects them.
+
+    ON METABOLIC MAPS, RAISE `max_length`. Compounds are joined through their
+    enzyme (substrate → enzyme → product), so the hop count is roughly DOUBLE the
+    number of reactions: glucose to pyruvate in glycolysis (~10 reactions) needs
+    `max_length` around 12 and returns nothing at the default 6.
+
+    RAISES ValueError on a malformed map id, a missing endpoint, or when the map
+    has no KGML, and on any HTTP error — including HTTP 403/429 for the 3
+    requests/second rate limit, which must not be retried.
+
+    Args:
+        pathway: KEGG map id, e.g. "hsa04151". Use the ORGANISM map for a
+            question about that organism's genes.
+        source: Start point. A gene symbol as drawn on the map ("PIK3CA"), a KEGG
+            gene id ("hsa:5290"), a bare id ("5290"), a compound ("C00031") or a
+            node id all resolve.
+        target: End point, same forms.
+        max_length: Maximum edges per path, in [1, 12]. Default 6 — right for
+            signaling maps; see the metabolic note above. Cost grows steeply with
+            this on dense maps, so raise it deliberately rather than by default.
+        max_paths: Maximum paths to return, in [1, 200]. Default 20. Enumeration
+            STOPS at this cap, so the result is not exhaustive when it is hit —
+            `truncated` says when that happened.
+
+    Returns:
+        str: JSON object as described above.
+    """
+    if not source or not source.strip() or not target or not target.strip():
+        raise ValueError(
+            "`source` and `target` are both required, e.g. source='PIK3CA', "
+            "target='MTOR'."
+        )
+    source, target = source.strip(), target.strip()
+
+    pathway, graph = await _load_graph(pathway)
+
+    # find_paths() returns [] both when an endpoint matched nothing and when the
+    # endpoints are fine but unconnected. Those need different reactions from the
+    # caller, so resolve them here and report the difference explicitly.
+    source_nodes = resolve_seeds(graph, [source])
+    target_nodes = resolve_seeds(graph, [target])
+    unresolved = [
+        label
+        for label, hits in ((source, source_nodes), (target, target_nodes))
+        if not hits
+    ]
+
+    paths = (
+        find_paths(graph, source, target, max_length=max_length, max_paths=max_paths)
+        if not unresolved
+        else []
+    )
+
+    payload: dict[str, Any] = {
+        "pathway": {**graph["pathway"], "id": pathway},
+        "source": source,
+        "target": target,
+        "source_nodes": source_nodes,
+        "target_nodes": target_nodes,
+        "unresolved": unresolved,
+        "max_length": max_length,
+        "path_count": len(paths),
+        "paths": paths,
+        "signal_quality": _signal_quality(graph),
+    }
+    if unresolved:
+        payload["unresolved_note"] = (
+            f"{unresolved} matched no node in this map, so no path could be "
+            "computed. That is a LOOKUP failure, not a biological finding — the "
+            "molecule may simply not be drawn on this map. Confirm membership "
+            "with kegg_link(target=<org>, source=<pathway>) or pick another map."
+        )
+    elif not paths:
+        payload["no_path_note"] = (
+            "Both endpoints are present on this map, but no directed route of at "
+            f"most {max_length} edges connects them. On a METABOLIC map raise "
+            "`max_length`: compounds are joined through their enzyme, so the hop "
+            "count is about double the number of reactions."
+        )
+    if len(paths) >= max_paths:
+        payload["truncated"] = {
+            "reason": "enumeration stopped at `max_paths`",
+            "returned": len(paths),
+            "hint": "the path list is NOT exhaustive; raise `max_paths` to see more.",
+        }
+    return _bounded(payload, note="lower `max_length` or `max_paths`.")
+
+
+@kegg_mcp.tool(annotations=READ_ONLY_TOOL)
+async def pathway_cycles(
+    pathway: Annotated[
+        str, Field(description="KEGG map id, e.g. 'hsa04010'.")
+    ] = "",
+    feedback: Annotated[
+        str, Field(description="Filter: '' (all) | 'negative' | 'positive' | 'unsigned'.")
+    ] = "",
+    max_length: Annotated[int, Field(ge=2, le=8)] = 5,
+    max_cycles: Annotated[int, Field(ge=1, le=500)] = 50,
+) -> str:
+    """Find feedback loops in a KEGG pathway map, classified by sign.
+
+    A directed cycle IS a feedback loop, and the product of its edge signs says
+    which kind: negative (self-limiting/homeostatic) or positive (self-reinforcing,
+    switch-like). This is a structural claim about the pathway that no keyword
+    search surfaces, and RDF Portal cannot answer it — Reactome RDF has no
+    equivalent of KGML's activation/inhibition subtypes.
+
+    RETURNS a JSON string of an object with `counts` (cycles per feedback class),
+    `cycle_count` and `cycles`. Each cycle is
+    `{"nodes": [{"id","label"}], "length", "net_sign", "feedback"}`, with
+    `feedback` one of "negative" (net_sign -1), "positive" (+1) or "unsigned" (0).
+    `unsigned` means UNKNOWN, not neutral: at least one edge in the loop records
+    only a mechanism (phosphorylation, binding/association) or is metabolic, so
+    KGML never states its direction. Check
+    `signal_quality.signed_edge_fraction` before reading these — a map at 0.40
+    (hsa04010) yields mostly `unsigned` loops, and a metabolic map at 0 yields
+    nothing else.
+
+    THE `feedback` FILTER IS APPLIED AFTER THE `max_cycles` CAP, so on a dense map
+    the cap can fill with cycles you filtered out and leave zero matches that are
+    not really zero. `truncated` is present whenever the cap was reached — if it
+    is, raise `max_cycles` before concluding a map has no negative feedback.
+
+    RAISES ValueError on a malformed map id or filter value, when the map has no
+    KGML, and on any HTTP error — including HTTP 403/429 for the 3
+    requests/second rate limit, which must not be retried.
+
+    Args:
+        pathway: KEGG map id, e.g. "hsa04010". Signaling maps are where this is
+            informative; metabolic maps are unsigned throughout.
+        feedback: Keep only one class: "negative", "positive" or "unsigned".
+            Empty (default) returns all, which is usually what you want since
+            `counts` then describes the whole map.
+        max_length: Maximum nodes in a cycle, in [2, 8]. Default 5. Long loops
+            are rarely meaningful and cost more to enumerate.
+        max_cycles: Maximum cycles to collect BEFORE filtering, in [1, 500].
+            Default 50.
+
+    Returns:
+        str: JSON object as described above.
+    """
+    if feedback and feedback not in ("negative", "positive", "unsigned"):
+        raise ValueError(
+            f"Invalid feedback filter {feedback!r}. Valid: 'negative', 'positive', "
+            "'unsigned', or empty for all. Do not retry with the same value."
+        )
+
+    pathway, graph = await _load_graph(pathway)
+    cycles = find_cycles(graph, max_length=max_length, max_cycles=max_cycles)
+
+    counts = {"negative": 0, "positive": 0, "unsigned": 0}
+    for c in cycles:
+        counts[c["feedback"]] = counts.get(c["feedback"], 0) + 1
+
+    cap_reached = len(cycles) >= max_cycles
+    selected = [c for c in cycles if c["feedback"] == feedback] if feedback else cycles
+
+    payload: dict[str, Any] = {
+        "pathway": {**graph["pathway"], "id": pathway},
+        "feedback_filter": feedback or "all",
+        "max_length": max_length,
+        "counts": counts,
+        "cycle_count": len(selected),
+        "cycles": selected,
+        "signal_quality": _signal_quality(graph),
+    }
+    if cap_reached:
+        payload["truncated"] = {
+            "reason": "enumeration stopped at `max_cycles`",
+            "collected": len(cycles),
+            "hint": (
+                "the cycle list is NOT exhaustive. The `feedback` filter runs "
+                "AFTER this cap, so an empty filtered result here does not mean "
+                "the map has none — raise `max_cycles` and look again."
+            ),
+        }
+    return _bounded(payload, note="lower `max_length` or `max_cycles`.")
 
 
 @kegg_mcp.tool(annotations=READ_ONLY_TOOL)
