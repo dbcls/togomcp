@@ -12,7 +12,14 @@ Handing raw KGML to an LLM is close to useless: it is coordinate-heavy XML whose
 edges are expressed as *entry-id* references, not as biological identifiers. The
 value TogoMCP can add over `curl rest.kegg.jp/get/hsa04151/kgml` is turning it
 into a **signed directed graph over resolved identifiers**, which is a shape RDF
-Portal cannot produce (Reactome RDF has no equivalent of KGML's PPrel subtypes).
+Portal does not produce in the same FORM. Reactome RDF *does* carry signed
+regulation — 61,819 BioPAX ``controlType`` statements (57,350 ACTIVATION, 4,469
+INHIBITION) — but its sign is attached to a REACTION ("does entity X promote
+this reaction?"), not to the net effect between two gene products. MDM2's
+repression of p53 appears there as ACTIVATION of "MDM2 ubiquitinates TP53"; to
+reach "MDM2 inhibits TP53" a caller must additionally know that ubiquitination
+leads to degradation. KGML states the OUTCOME directly (``MDM2 -| TP53``). That
+difference in level, not the presence of signs, is what KEGG adds here.
 
 THE EIGHT WAYS A NAIVE PARSER GETS THIS WRONG
 ---------------------------------------------
@@ -764,8 +771,10 @@ def neighborhood(
 
     ``net_sign`` is the product of edge signs on the discovered shortest path:
     +1 net activation, -1 net inhibition, 0 if any edge on the path is unsigned
-    (mechanism-only or metabolic). This is the query KGML can answer and Reactome
-    RDF cannot.
+    (mechanism-only or metabolic). Reactome RDF can express signed regulation
+    too, but at the level of a REACTION being promoted or blocked; this returns
+    the net up/down effect BETWEEN MOLECULES, which is the form KGML uniquely
+    states outright.
     """
     seeds = list(seeds)
     start = resolve_seeds(graph, seeds)
@@ -905,8 +914,10 @@ def metabolic_gaps(graph: dict[str, Any]) -> list[dict[str, Any]]:
     meaningful one, so callers should prefer the default.
 
     So this is a *result*, not a parse failure: the set of metabolic steps missing
-    from an organism. Reactome cannot answer this at all, which is much of the
-    argument for carrying KEGG in the first place.
+    from an organism. Reactome cannot answer this at all — it covers 15 species,
+    every one a eukaryote, so E. coli is simply absent from it. That coverage gap
+    is much of the argument for carrying KEGG in the first place, and unlike the
+    signed-edge argument it does not depend on signs at all.
     """
     degree: dict[str, int] = defaultdict(int)
     for e in graph["edges"]:

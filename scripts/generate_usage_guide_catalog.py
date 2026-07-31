@@ -202,13 +202,18 @@ def render_local_only_kegg() -> str:
         "database: no SPARQL endpoint, no MIE, and `database=\"kegg\"` is invalid on "
         "`run_sparql`.",
         "",
-        "- **What it uniquely adds — two things.** (1) A pathway map as a SIGNED "
-        "DIRECTED GRAPH: activation vs inhibition per edge, from KGML relation subtypes. "
-        "(2) For an organism map, the metabolic steps that organism LACKS "
-        "(`metabolic_gaps`). Reactome RDF has no equivalent of either, so neither is "
-        "reproducible with `run_sparql`. **If a question does not depend on edge SIGN or "
-        "on organism-specific absence, RDF Portal alone can usually answer it — prefer "
-        "`reactome`/`rhea` there.**",
+        "- **What it uniquely adds — two things, and neither is \"signs exist\".** "
+        "(1) Signed regulation at the level of the NET EFFECT BETWEEN MOLECULES "
+        "(`MDM2 -| TP53`). Reactome RDF does carry signed regulation — 61,819 BioPAX "
+        "`controlType` statements — but its sign says whether an entity promotes a "
+        "REACTION, so MDM2's repression of p53 is stored there as ACTIVATION of \"MDM2 "
+        "ubiquitinates TP53\"; recovering \"MDM2 inhibits TP53\" needs you to know that "
+        "ubiquitination means degradation. (2) ORGANISM COVERAGE: Reactome holds 15 "
+        "species, all eukaryotes, so E. coli and every other prokaryote are absent from "
+        "it entirely — `metabolic_gaps` (\"which steps does this organism lack\") has no "
+        "counterpart anywhere in RDF Portal, and it does not involve signs at all. "
+        "**If a question needs neither the between-molecule net effect nor "
+        "organism-specific absence, prefer `reactome`/`rhea` over SPARQL.**",
         "- **Workflow.** `kegg_find` (keyword → entry IDs) → `kegg_get_entry` (full "
         "record incl. DBLINKS), `kegg_link` (gene↔pathway↔compound↔pubmed), "
         "`kegg_pathway_graph` (whole map), `kegg_pathway_neighborhood` (up/downstream of "

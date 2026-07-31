@@ -27,7 +27,10 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   opening.
 - **KGML parsed into a signed directed graph** (`togo_mcp/kgml.py`, pure/stdlib-only, 39 tests, no
   network). This is the point of carrying KEGG at all: RDF Portal cannot answer "does A activate or
-  inhibit B", because Reactome RDF has no equivalent of KGML's relation subtypes. Raw KGML is never
+  inhibit B" in the form KGML states it. (Reactome RDF *does* carry signed regulation — 61,819 BioPAX
+  `controlType` statements — but the sign is on a REACTION, so MDM2's repression of p53 is stored
+  there as ACTIVATION of "MDM2 ubiquitinates TP53"; KGML states the between-molecule outcome
+  directly.) Raw KGML is never
   returned — it is coordinate-heavy XML whose edges reference drawing-box ids, not genes.
   Eight distinct traps are resolved, six from the DTD and **two found only by running real maps**
   (both invisible in edge counts, visible only in connectivity): one entry box is a whole paralog

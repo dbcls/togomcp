@@ -682,9 +682,10 @@ async def pathway_graph(
     are indirection nodes; ECrel edges run through a metabolite; cross-map
     pointers are not interactions; a reaction's id is its ENZYME's box; the
     enzyme and compound layers are never joined; the same molecule is drawn
-    several times with different ids). All of that is resolved here. Reactome
-    RDF has no equivalent of KGML's activation/inhibition subtypes, so the
-    signed-graph question is one only KEGG can answer.
+    several times with different ids). All of that is resolved here. Reactome RDF
+    also carries signed regulation (61,819 BioPAX controlType statements), but its
+    sign says whether an entity promotes a REACTION, whereas KGML's says whether
+    one molecule ultimately up- or down-regulates another — the level this returns.
 
     RETURNS a JSON string of an object with `pathway` (id, title, org), `nodes`,
     `edges`, `groups` (protein complexes), `map_links` (pointers to other maps,
@@ -830,8 +831,10 @@ async def pathway_neighborhood(
     """Walk up- or downstream from a gene/compound within one KEGG pathway map.
 
     Answers "what does this gene activate or inhibit, and how far", which needs
-    KGML's signed relation subtypes — Reactome RDF in RDF Portal has no
-    equivalent, so this is not reproducible with `run_sparql`.
+    KGML's signed relation subtypes. Reactome RDF can also express signed
+    regulation, but of a REACTION rather than between two molecules, so reaching
+    the same statement over `run_sparql` requires inferring the net effect of each
+    reaction yourself.
 
     RETURNS a JSON string of an object with `seeds` (the node ids the query
     resolved to), `unresolved` (seeds that matched NOTHING in this map — check
@@ -937,7 +940,8 @@ async def pathway_paths(
 
     Answers "HOW does A reach B, and is the net effect activating or
     inhibiting" — the mechanism behind a `kegg_pathway_neighborhood` hit. Needs
-    KGML's signed relation subtypes, so it is not reproducible with `run_sparql`.
+    KGML's signed relation subtypes, which state the net effect between molecules
+    directly rather than per reaction as Reactome's BioPAX controls do.
 
     RETURNS a JSON string of an object with `source_nodes`/`target_nodes` (what
     the endpoints resolved to), `unresolved`, `path_count` and `paths`. Each path
