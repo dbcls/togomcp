@@ -13,6 +13,14 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2.5.0] - 2026-07-31
+
+Two fixes found by using the KEGG tools rather than reading them: a seed form the
+docstring itself advertised did not work, and a clean shutdown looked like a crash in
+the client's log. MINOR rather than PATCH because the first adds two return fields.
+
 ### Fixed
 
 - **A paralog-family member could not be used as a seed under its own name.**
@@ -1033,7 +1041,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.4.1...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.5.0...HEAD
+[2.5.0]: https://github.com/dbcls/togomcp/compare/v2.4.1...v2.5.0
 [2.4.1]: https://github.com/dbcls/togomcp/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/dbcls/togomcp/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/dbcls/togomcp/compare/v2.2.1...v2.3.0
