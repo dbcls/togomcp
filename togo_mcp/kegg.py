@@ -30,6 +30,25 @@ MODULE CONVENTIONS (same as togovar.py — keep uniform)
   non-empty share one wire shape. `dict` returns are exempt.
 * Every tool carries `annotations=READ_ONLY_TOOL`.
 
+IDENTIFIER FORMS — THE ONE PLACE THIS IS STATED
+------------------------------------------------
+KEGG uses two forms of the same id: database-PREFIXED (`cpd:C00031`, `hsa:7157`,
+`path:hsa04151`) and BARE (`C00031`, `7157`, `hsa04151`). Which one a response
+carries is decided by KEGG's own output, not by us, so every tool here surfaces
+BOTH wherever they can differ:
+
+* ``kegg_find``   -> ``entry`` (verbatim from KEGG) + ``entry_id`` (bare).
+* ``kegg_conv``   -> ``source``/``target`` (verbatim) + ``source_id``/``target_id`` (bare).
+* ``kegg_link``   -> ``source``/``target`` verbatim; KEGG prefixes both columns here.
+* ``kegg_get_entry`` -> ``entry_id`` is BARE and cannot be otherwise: it is read
+  from the flat file's ENTRY line, which KEGG writes unprefixed (`C00031`,
+  `7157`). Re-attach the database prefix before passing it to another KEGG tool.
+
+Rule of thumb: KEGG tools accept EITHER form on input (``_as_list`` +
+``_check_path_token`` do not care), so this matters mainly when you carry an id
+OUT of KEGG — use the bare `*_id` form for RDF queries and ID-conversion
+services, and the prefixed form when staying inside KEGG.
+
 RATE LIMIT
 ----------
 KEGG asks for <= 3 requests/second and blocks abusers. The limiter below is
@@ -194,14 +213,26 @@ _T_NUMBER = re.compile(r"^T\d{5}$")
 # A pathway map id, with the optional `path:` prefix KEGG itself emits.
 _PATHWAY_ID = re.compile(r"^(?:path:)?([a-z]{2,4})(\d{5})$")
 
-# Response soft cap, mirroring togovar._MAX_RESPONSE_CHARS.
+# Response soft cap, mirroring togovar.cap.
 _MAX_RESPONSE_CHARS = 90_000
+
+# A pathway graph is inherently bulkier than a row listing: hsa05200's 255 nodes
+# alone serialize to ~77 KB because each carries its paralog member list. At the
+# 90 KB row-listing cap the backstop was firing on ORDINARY maps and cutting
+# hsa05200 from 311 edges to 43 — a technically-bounded but useless answer. This
+# cap still protects the caller's context (250 KB is ~60k tokens) while letting
+# every normal map through whole; the MCP transport limit is 1 MB.
+_MAX_GRAPH_RESPONSE_CHARS = 250_000
 
 # Default graph-size ceilings for kegg_pathway_graph. hsa05200 ("Pathways in
 # cancer"), the largest map in the validation set, is 255 nodes / 311 edges, so
 # these clear every ordinary map and only bite on member-expanded ones.
 _DEFAULT_MAX_NODES = 400
 _DEFAULT_MAX_EDGES = 1200
+# A whole-metabolism map carries thousands of gaps and hundreds of cross-map
+# pointers; unbounded they dominate the payload (hsa01100: 2,073 + 169).
+_DEFAULT_MAX_GAPS = 100
+_MAX_MAP_LINKS = 100
 
 # In-process KGML memo. A single reasoning chain calls kegg_pathway_graph and
 # kegg_pathway_neighborhood on the same map repeatedly; without this each one is
@@ -308,14 +339,31 @@ def _parse_flat_file(text: str) -> list[dict[str, Any]]:
     return records
 
 
-def _bounded(payload: Any, *, note: str) -> str:
-    """Serialize, and if it blows the soft cap say so instead of truncating mutely."""
+def _bounded(
+    payload: Any, *, note: str, reducible: tuple[str, ...] = (),
+    cap: int = _MAX_RESPONSE_CHARS,
+) -> str:
+    """Serialize, shrinking to the soft cap and SAYING what was dropped.
+
+    `reducible` names the dict keys whose list values may be trimmed, in
+    drop-priority order (first = dropped first). Anything not named is kept —
+    which is how `stats` keeps describing the WHOLE graph while the arrays that
+    quote it get cut.
+
+    This used to only LABEL an oversized dict and return it in full: the branch
+    set `payload["truncated"]` and serialized everything anyway, so the cap was
+    decorative for every dict-returning tool. A whole-metabolism map
+    (`hsa01100`: 6,382 nodes, 2,073 metabolic gaps) then blew past the 1 MB
+    transport limit, and the caller got NOTHING — not even the truncation note
+    that was supposed to help it recover.
+    """
     out = json.dumps(payload, ensure_ascii=False)
-    if len(out) <= _MAX_RESPONSE_CHARS:
+    if len(out) <= cap:
         return out
+
     if isinstance(payload, list):
         kept = list(payload)
-        while kept and len(json.dumps(kept, ensure_ascii=False)) > _MAX_RESPONSE_CHARS:
+        while kept and len(json.dumps(kept, ensure_ascii=False)) > cap:
             del kept[-max(1, len(kept) // 4):]
         return json.dumps(
             {
@@ -329,8 +377,37 @@ def _bounded(payload: Any, *, note: str) -> str:
             },
             ensure_ascii=False,
         )
+
     payload = dict(payload)
-    payload["truncated"] = {"reason": "response exceeded the size cap", "hint": note}
+    existing = payload.get("truncated")
+    truncated: dict[str, Any] = dict(existing) if isinstance(existing, dict) else {}
+
+    dropped: dict[str, Any] = {}
+    for key in reducible:
+        if len(json.dumps(payload, ensure_ascii=False)) <= cap:
+            break
+        seq = payload.get(key)
+        if not isinstance(seq, list) or not seq:
+            continue
+        before = len(seq)
+        while payload[key] and (
+            len(json.dumps(payload, ensure_ascii=False)) > cap
+        ):
+            payload[key] = payload[key][: -max(1, len(payload[key]) // 4)]
+        if len(payload[key]) != before:
+            # A caller-level cap may already have trimmed this section, in which
+            # case `before` is the capped length, not the real total. Keep the
+            # ORIGINAL total: reporting the intermediate figure would understate
+            # how much of the map is missing, which is the one thing `truncated`
+            # exists to prevent.
+            prior = truncated.get(key)
+            total = prior["total"] if isinstance(prior, dict) and "total" in prior else before
+            dropped[key] = {"returned": len(payload[key]), "total": total}
+
+    truncated.setdefault("reason", "response exceeded the size cap")
+    truncated["hint"] = note
+    truncated.update(dropped)
+    payload["truncated"] = truncated
     return json.dumps(payload, ensure_ascii=False)
 
 
@@ -368,8 +445,12 @@ async def find(
     ID this tool produces. KEGG IDs are not RDF-resolvable — convert them with
     `kegg_conv` before using them in any downstream RDF query.
 
-    RETURNS a JSON string of a bare array of `{"entry": str, "definition": str}`,
-    e.g. `[{"entry": "cpd:C00031", "definition": "D-Glucose; Grape sugar; ..."}]`.
+    RETURNS a JSON string of a bare array of
+    `{"entry": str, "entry_id": str, "definition": str}`, e.g.
+    `[{"entry": "cpd:C00031", "entry_id": "C00031", "definition": "D-Glucose; …"}]`.
+    `entry` is verbatim from KEGG (prefixed for some databases, bare for others)
+    and `entry_id` is always the bare form — pass `entry` to other KEGG tools and
+    `entry_id` to anything outside KEGG.
     Empty and non-empty results share the same `[...]` shape — an empty array
     means KEGG matched nothing (KEGG answers "no match" with an empty HTTP 200,
     not a 404). With `option="formula"`/`"exact_mass"`/`"mol_weight"` the
@@ -429,7 +510,16 @@ async def find(
 
     text = await _kegg_get(path, context="KEGG find")
     results = [
-        {"entry": entry, "definition": definition}
+        # `entry` is verbatim from KEGG (the form the other KEGG tools take);
+        # `entry_id` is the same value with any database prefix stripped, matching
+        # kegg_conv's source_id/target_id. Emitting BOTH is what stops a caller
+        # from guessing which form a downstream tool wants — KEGG's own output is
+        # prefixed for some databases and bare for others.
+        {
+            "entry": entry,
+            "entry_id": entry.split(":", 1)[1] if ":" in entry else entry,
+            "definition": definition,
+        }
         for entry, definition in _parse_tsv_pairs(text)
     ][:limit]
     return _bounded(results, note="narrow the query or lower `limit`.")
@@ -455,7 +545,10 @@ async def get_entry(
     `{"entry_id": str, "entry_type": str|null, "fields": {FIELD: [line, ...]}}`.
     `fields` holds KEGG's own flat-file field names (ENTRY, NAME, FORMULA,
     DBLINKS, ORTHOLOGY, PATHWAY, …), each value ALWAYS a list of lines even when
-    there is only one — the shape does not vary with the data. An empty array
+    there is only one — the shape does not vary with the data. `entry_id` is
+    BARE (`C00031`, `7157`), because that is how KEGG writes the flat file's
+    ENTRY line; re-attach the database prefix (`cpd:`, `hsa:`) before feeding it
+    to another KEGG tool. An empty array
     means no entry matched (KEGG returns an empty HTTP 200, not a 404). With
     `sequence="aaseq"`/`"ntseq"` each object is instead
     `{"entry_id", "header", "sequence"}` carrying the FASTA record.
@@ -536,9 +629,10 @@ async def _fetch_kgml(pathway: str) -> str:
     if not text.strip():
         raise ValueError(
             f"KEGG has no KGML for {pathway!r} (empty response). Not every KEGG "
-            "map has a KGML file — global/overview maps (e.g. 01100, 01110) and "
-            "some BRITE-style maps have none. Pick a regular pathway map, e.g. "
-            "'hsa04151' or 'hsa00010'."
+            "map has a KGML file; BRITE-style and some specialised maps have "
+            "none. (Global/overview maps such as 01100 DO have KGML — they are "
+            "simply very large.) Verify the id with kegg_find(database='pathway', "
+            "...) or pick a regular map such as 'hsa04151' or 'hsa00010'."
         )
 
     _kgml_cache[pathway] = text
@@ -671,6 +765,7 @@ async def pathway_graph(
     ] = False,
     max_nodes: Annotated[int, Field(ge=10, le=5000)] = _DEFAULT_MAX_NODES,
     max_edges: Annotated[int, Field(ge=10, le=20000)] = _DEFAULT_MAX_EDGES,
+    max_gaps: Annotated[int, Field(ge=0, le=5000)] = _DEFAULT_MAX_GAPS,
 ) -> str:
     """Fetch a KEGG pathway map as a normalized SIGNED DIRECTED GRAPH.
 
@@ -696,15 +791,21 @@ async def pathway_graph(
     across maps and is 0 for purely metabolic ones. `metabolic_gaps` is a
     RESULT, not an error: in an organism map KEGG keeps the reference layout and
     leaves the steps that organism LACKS as bare ortholog boxes, so this lists
-    the metabolic steps the organism cannot perform. If the map exceeds
-    `max_nodes`/`max_edges` the arrays are trimmed to the highest-degree
-    subgraph and a `truncated` object states what was dropped; `stats` always
-    describes the FULL map.
+    the metabolic steps the organism cannot perform. Whenever a map exceeds the
+    caps, the arrays are trimmed (nodes/edges to the highest-degree subgraph) and
+    `truncated` carries a `{"returned", "total"}` pair PER SECTION; `stats`
+    always describes the FULL map, so a trimmed response still reports the real
+    node/edge/gap counts.
 
-    RAISES ValueError on a malformed map id, when the map has no KGML at all
-    (global/overview maps like 01100 do not), when `expand_members` would
-    produce more than `max_edges` edges, and on any HTTP error — including
-    HTTP 403/429 for the 3 requests/second rate limit, which must not be retried.
+    GLOBAL/OVERVIEW MAPS (01100, 01110, 01120 …) DO have KGML, but they are
+    whole-metabolism drawings — hsa01100 parses to 6,382 nodes, 8,124 edges and
+    2,073 metabolic gaps. They are returned heavily reduced by the caps above;
+    prefer a specific map, or `kegg_pathway_neighborhood`, over fetching one whole.
+
+    RAISES ValueError on a malformed map id, when KEGG returns no KGML for the
+    map, when `expand_members` would produce more than `max_edges` edges, and on
+    any HTTP error — including HTTP 403/429 for the 3 requests/second rate limit,
+    which must not be retried.
 
     Args:
         pathway: KEGG map id, with or without the `path:` prefix. An organism
@@ -725,6 +826,9 @@ async def pathway_graph(
             highest-degree subgraph. Default 400.
         max_edges: Edge ceiling, applied the same way, and the cap that governs
             whether `expand_members` is allowed. Default 1200.
+        max_gaps: Maximum `metabolic_gaps` rows to return. Default 100; the full
+            count is always in `stats.metabolic_gap_count`. Whole-metabolism maps
+            have thousands, which would otherwise dominate the response.
 
     Returns:
         str: JSON object as described above.
@@ -754,12 +858,30 @@ async def pathway_graph(
             pathway, expand_members=True, include_maplink=include_maplink
         )
 
-    gaps = metabolic_gaps(graph)
-    stats = graph["stats"]
+    all_gaps = metabolic_gaps(graph)
+    # `stats` must keep describing the WHOLE map even when the arrays below are
+    # cut, so the caller can always see what it is looking at a slice of.
+    stats = {**graph["stats"], "metabolic_gap_count": len(all_gaps)}
 
     nodes = graph["nodes"]
     edges = graph["edges"]
-    truncated: dict[str, Any] | None = None
+    all_map_links = graph["map_links"]
+    gaps = all_gaps[:max_gaps]
+    map_links = all_map_links[:_MAX_MAP_LINKS]
+    truncated: dict[str, Any] = {}
+    # A whole-metabolism map is mostly gaps and cross-map pointers, not nodes:
+    # hsa01100 carries 2,073 metabolic gaps and 169 map links, which alone
+    # serialize to ~220 KB — past the 1 MB transport limit before nodes/edges are
+    # even counted. Cap them at the source rather than relying on the size
+    # backstop, so the common case degrades predictably instead of by byte count.
+    if len(all_gaps) > len(gaps):
+        truncated["metabolic_gaps"] = {
+            "returned": len(gaps), "total": len(all_gaps)
+        }
+    if len(all_map_links) > len(map_links):
+        truncated["map_links"] = {
+            "returned": len(map_links), "total": len(all_map_links)
+        }
     if len(nodes) > max_nodes or len(edges) > max_edges:
         # Degrade to the best-connected core rather than an arbitrary prefix: the
         # hub nodes are what a caller asking about a pathway is actually after.
@@ -772,19 +894,9 @@ async def pathway_graph(
         edges = [e for e in edges if e["source"] in kept and e["target"] in kept][
             :max_edges
         ]
-        truncated = {
-            "reason": "map exceeded max_nodes/max_edges",
-            "returned_nodes": len(nodes),
-            "returned_edges": len(edges),
-            "total_nodes": stats["node_count"],
-            "total_edges": stats["edge_count"],
-            "selection": "highest-degree nodes and the edges among them",
-            "hint": (
-                "`stats` still describes the full map. Use "
-                "kegg_pathway_neighborhood for a focused view, or raise "
-                "max_nodes/max_edges."
-            ),
-        }
+        truncated["nodes"] = {"returned": len(nodes), "total": stats["node_count"]}
+        truncated["edges"] = {"returned": len(edges), "total": stats["edge_count"]}
+        truncated["selection"] = "highest-degree nodes and the edges among them"
 
     result: dict[str, Any] = {
         "pathway": {**graph["pathway"], "id": pathway},
@@ -793,7 +905,7 @@ async def pathway_graph(
         "nodes": nodes,
         "edges": edges,
         "groups": graph["groups"],
-        "map_links": graph["map_links"],
+        "map_links": map_links,
         "metabolic_gaps": gaps,
         "metabolic_gaps_note": (
             "Ortholog boxes this organism's map draws but has no gene for — the "
@@ -804,8 +916,26 @@ async def pathway_graph(
         "options": graph["options"],
     }
     if truncated:
+        truncated["reason"] = "map larger than the requested caps"
+        truncated["hint"] = (
+            "`stats` still describes the full map. Raise max_nodes/max_edges/"
+            "max_gaps, or use kegg_pathway_neighborhood for a focused view."
+        )
         result["truncated"] = truncated
-    return _bounded(result, note="lower max_nodes/max_edges or use a neighborhood query.")
+    # Backstop: anything still oversized loses whole sections in this order, so a
+    # global map degrades to a usable answer instead of exceeding the transport
+    # limit and reaching the caller as nothing at all.
+    return _bounded(
+        result,
+        note="lower max_nodes/max_edges/max_gaps or use a neighborhood query.",
+        # Drop order = bulkiest-and-tunable first, smallest-and-unique last.
+        # `edges`/`nodes` are the bulk AND have explicit caps a caller can lower,
+        # whereas `metabolic_gaps` is this tool's unique answer and costs almost
+        # nothing to keep — sacrificing 25 gaps to save 2 KB, as an earlier order
+        # did, throws away the reason to call the tool at all.
+        reducible=("edges", "nodes", "map_links", "groups", "metabolic_gaps"),
+        cap=_MAX_GRAPH_RESPONSE_CHARS,
+    )
 
 
 @kegg_mcp.tool(annotations=READ_ONLY_TOOL)
@@ -959,8 +1089,16 @@ async def pathway_paths(
 
     ON METABOLIC MAPS, RAISE `max_length`. Compounds are joined through their
     enzyme (substrate → enzyme → product), so the hop count is roughly DOUBLE the
-    number of reactions: glucose to pyruvate in glycolysis (~10 reactions) needs
-    `max_length` around 12 and returns nothing at the default 6.
+    number of reactions: on hsa00010, alpha-D-Glucose (C00267) to pyruvate
+    (C00022) needs `max_length` 12 (the routes are 11 hops) and returns nothing
+    at the default 6.
+
+    AND CHECK THE ANOMER. A metabolic map draws specific chemical species, not
+    the name you have in mind: hsa00010 draws D-Glucose (C00031) as an ISOLATED
+    node and starts the chain at alpha-D-Glucose (C00267), so C00031 returns no
+    path at ANY `max_length`. An empty `paths` with an empty `unresolved` can
+    therefore mean you picked the un-drawn species — the `no_path_note` says so
+    when an endpoint has no edges at all.
 
     RAISES ValueError on a malformed map id, a missing endpoint, or when the map
     has no KGML, and on any HTTP error — including HTTP 403/429 for the 3
@@ -1008,6 +1146,25 @@ async def pathway_paths(
         if not unresolved
         else []
     )
+    # A catalysis edge lets a route detour through the ENZYME box between the same
+    # substrate and product, producing a second path over the identical reaction
+    # sequence — chemically the same route, drawn differently. Those duplicates
+    # eat the `max_paths` budget, so collapse routes whose reaction sequence is
+    # already present. Different REACTIONS between the same pair stay distinct
+    # (that is the whole reason the accession is on each edge).
+    seen_reactions: set[tuple] = set()
+    deduped = []
+    for path in paths:
+        key = tuple(
+            tuple(e.get("reaction") or ()) for e in path["edges"] if e.get("reaction")
+        )
+        if key and key in seen_reactions:
+            continue
+        if key:
+            seen_reactions.add(key)
+        deduped.append(path)
+    enzyme_detours = len(paths) - len(deduped)
+    paths = deduped
 
     payload: dict[str, Any] = {
         "pathway": {**graph["pathway"], "id": pathway},
@@ -1029,12 +1186,42 @@ async def pathway_paths(
             "with kegg_link(target=<org>, source=<pathway>) or pick another map."
         )
     elif not paths:
-        payload["no_path_note"] = (
-            "Both endpoints are present on this map, but no directed route of at "
-            f"most {max_length} edges connects them. On a METABOLIC map raise "
-            "`max_length`: compounds are joined through their enzyme, so the hop "
-            "count is about double the number of reactions."
-        )
+        # An endpoint with NO edges at all is a different finding from one that is
+        # merely far away, and only the first is hopeless at any max_length. KEGG
+        # maps routinely draw a named compound as an isolated box while the chain
+        # actually runs through a specific species (hsa00010 draws D-Glucose
+        # C00031 isolated and starts at alpha-D-Glucose C00267), so an agent that
+        # cannot tell these apart concludes "no route exists" from a bad pick.
+        degree: dict[str, int] = {}
+        for e in graph["edges"]:
+            degree[e["source"]] = degree.get(e["source"], 0) + 1
+            degree[e["target"]] = degree.get(e["target"], 0) + 1
+        isolated = [
+            label
+            for label, hits in ((source, source_nodes), (target, target_nodes))
+            if not any(degree.get(n) for n in hits)
+        ]
+        if isolated:
+            payload["isolated_endpoints"] = isolated
+            payload["no_path_note"] = (
+                f"{isolated} is drawn on this map but has NO edges at all "
+                "(degree 0), so no route exists at any `max_length` — raising it "
+                "will not help. KEGG maps draw specific chemical species: a "
+                "compound you name may be the un-drawn one while the chain runs "
+                "through another (hsa00010 draws D-Glucose C00031 isolated and "
+                "starts at alpha-D-Glucose C00267). Check the neighbourhood with "
+                "kegg_pathway_neighborhood(direction='both', depth=1) and pick the "
+                "species the map actually connects."
+            )
+        else:
+            payload["no_path_note"] = (
+                "Both endpoints are present AND connected on this map, but no "
+                f"directed route of at most {max_length} edges joins them. On a "
+                "METABOLIC map raise `max_length`: compounds are joined through "
+                "their enzyme, so the hop count is about double the reaction count."
+            )
+    if enzyme_detours:
+        payload["enzyme_detours_collapsed"] = enzyme_detours
     if len(paths) >= max_paths:
         payload["truncated"] = {
             "reason": "enumeration stopped at `max_paths`",

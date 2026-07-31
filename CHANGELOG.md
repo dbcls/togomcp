@@ -13,7 +13,38 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **`kegg_pathway_graph` could exceed the 1 MB MCP transport limit, so the caller got nothing.**
+  `_bounded` only *labelled* an oversized dict — it set `payload["truncated"]` and then serialized
+  everything anyway — so the size cap was decorative for all four dict-returning KEGG tools. A
+  whole-metabolism map (`hsa01100`: 6,382 nodes, 8,124 edges, 2,073 metabolic gaps) blew past the
+  transport limit, and because the rejection happens at the transport layer the caller received not
+  even the truncation note meant to help it recover. The dict branch now really shrinks, dropping
+  named sections in priority order and reporting `{returned, total}` PER SECTION while `stats` keeps
+  describing the whole map.
+- **The same fix exposed two bad calls of my own.** The first drop-order sacrificed `metabolic_gaps`
+  first — throwing away all 25 of hsa00010's gaps to save 2 KB, i.e. the tool's unique answer to
+  protect the bulk. And the 90 KB cap, inherited from a row-listing tool, was far too tight for a
+  graph: it was firing on ORDINARY maps and cutting hsa05200 from 311 edges to 43. Graph payloads now
+  get their own 250 KB cap (still ~60k tokens, well under the 1 MB transport limit) and drop
+  bulkiest-and-tunable first, unique-and-cheap last. All six validation maps now return complete,
+  untruncated graphs. New `max_gaps` caps gaps at the source, with the true count always in
+  `stats.metabolic_gap_count`.
+- **Two false statements in the KEGG docstrings**, both found by testing rather than review:
+  global/overview maps like `01100` were said to have no KGML — they do, they are just enormous; and
+  the glycolysis example claimed `C00031 → C00022` works at `max_length` 12, which was measured on
+  `ko00010` and written up as "glycolysis". On `hsa00010`, C00031 (D-Glucose) is an ISOLATED node and
+  returns nothing at any length; the chain starts at C00267 (alpha-D-Glucose). The example is now the
+  measured one, and `kegg_pathway_paths` reports `isolated_endpoints` so a degree-0 endpoint is no
+  longer indistinguishable from "just far away".
+- **`kegg_pathway_paths` wasted its `max_paths` budget on enzyme detours** — a catalysis edge lets a
+  route bypass the enzyme box over the identical reaction sequence, which is the same chemistry drawn
+  differently. Routes repeating a reaction sequence are now collapsed and counted in
+  `enzyme_detours_collapsed`; genuinely different reactions between the same pair stay distinct.
+- **`kegg_find` now returns `entry_id`** (prefix-stripped) alongside the verbatim `entry`, matching
+  `kegg_conv`. The identifier-form policy for all four ID-returning tools is stated once, in the
+  module docstring, instead of being scattered and mutually inconsistent.
 
 ## [2.4.0] - 2026-07-31
 

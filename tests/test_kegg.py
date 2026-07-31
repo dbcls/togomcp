@@ -156,8 +156,15 @@ class TestFind:
             )
             out = await find(database="compound", query="grape sugar")
         assert route.called
+        # Both forms ship: `entry` verbatim (what KEGG tools take), `entry_id`
+        # prefix-stripped (what downstream/RDF tools take) — same contract as
+        # kegg_conv's source_id/target_id, so a caller never has to guess.
         assert json.loads(out) == [
-            {"entry": "cpd:C00031", "definition": "D-Glucose; Grape sugar"}
+            {
+                "entry": "cpd:C00031",
+                "entry_id": "C00031",
+                "definition": "D-Glucose; Grape sugar",
+            }
         ]
 
     @pytest.mark.asyncio
@@ -357,10 +364,92 @@ class TestPathwayGraph:
             out = await pathway_graph(pathway=MAP, max_nodes=2)
         graph = json.loads(out)
         assert len(graph["nodes"]) == 2
-        assert graph["truncated"]["returned_nodes"] == 2
+        # `truncated` now carries a {returned, total} pair PER SECTION.
+        assert graph["truncated"]["nodes"] == {
+            "returned": 2, "total": graph["stats"]["node_count"]
+        }
         # stats must still describe the WHOLE map, not the trimmed view.
         assert graph["stats"]["node_count"] > 2
-        assert graph["truncated"]["total_nodes"] == graph["stats"]["node_count"]
+
+    @pytest.mark.asyncio
+    async def test_global_map_shape_stays_under_the_transport_limit(self):
+        """A whole-metabolism map must degrade, not exceed the 1 MB MCP limit.
+
+        Regression for the worst failure this tool had: `_bounded` only LABELLED
+        an oversized dict (`payload["truncated"] = ...`) and then serialized it in
+        full, so the cap was decorative for every dict-returning tool. hsa01100
+        (6,382 nodes, 8,124 edges, 2,073 metabolic gaps) then blew past the
+        transport limit and the caller received NOTHING — not even the truncation
+        note meant to help it recover.
+
+        Synthetic rather than fetched: no test may touch rest.kegg.jp, and this
+        reproduces the shape that matters — thousands of unreacted ortholog boxes
+        (metabolic gaps) plus hundreds of cross-map pointers.
+        """
+        entries, relations = [], []
+        for i in range(2500):  # isolated ortholog boxes -> metabolic_gaps
+            entries.append(
+                f'<entry id="{9000 + i}" name="ko:K{i:05d}" type="ortholog">'
+                f'<graphics name="{i}.{i}.{i}.{i}" type="rectangle"/></entry>'
+            )
+        for i in range(400):  # cross-map pointers -> map_links
+            entries.append(
+                f'<entry id="{20000 + i}" name="path:map{i:05d}" type="map">'
+                f'<graphics name="Some other pathway {i}" type="roundrectangle"/></entry>'
+            )
+        for i in range(300):  # a real connected core
+            entries.append(
+                f'<entry id="{i + 1}" name="hsa:{i}" type="gene">'
+                f'<graphics name="GENE{i}" type="rectangle"/></entry>'
+            )
+            if i:
+                relations.append(
+                    f'<relation entry1="{i}" entry2="{i + 1}" type="PPrel">'
+                    '<subtype name="activation" value="--&gt;"/></relation>'
+                )
+        big = (
+            '<?xml version="1.0"?><pathway name="path:xxx01100" org="xxx" '
+            'number="01100" title="Synthetic global map">'
+            + "".join(entries) + "".join(relations) + "</pathway>"
+        )
+
+        with respx.mock(using="httpx") as router:
+            router.get(f"{BASE}/get/xxx01100/kgml").mock(
+                return_value=httpx.Response(200, text=big)
+            )
+            out = await pathway_graph(pathway="xxx01100")
+
+        assert len(out.encode()) < 1_000_000, (
+            f"payload is {len(out.encode())} bytes — over the 1 MB transport limit"
+        )
+        graph = json.loads(out)
+        # stats must still report the FULL map, which is what makes a trimmed
+        # response usable instead of merely small.
+        assert graph["stats"]["metabolic_gap_count"] == 2500
+        assert graph["stats"]["node_count"] > len(graph["nodes"])
+        # …and every trimmed section says what it dropped.
+        t = graph["truncated"]
+        assert t["metabolic_gaps"] == {"returned": len(graph["metabolic_gaps"]),
+                                       "total": 2500}
+        assert t["map_links"]["total"] == 400
+        assert t["nodes"]["total"] == graph["stats"]["node_count"]
+
+    @pytest.mark.asyncio
+    async def test_bounded_actually_shrinks_a_dict_not_just_labels_it(self):
+        """The dict branch used to add a `truncated` key and return everything."""
+        payload = {
+            "stats": {"n": 3000},
+            "keep_me": "small",
+            "big": [{"row": "x" * 100} for _ in range(3000)],
+        }
+        parsed = json.loads(
+            kegg._bounded(payload, note="hint", reducible=("big",))
+        )
+        assert len(json.dumps(parsed)) <= kegg._MAX_RESPONSE_CHARS
+        assert len(parsed["big"]) < 3000
+        assert parsed["truncated"]["big"]["total"] == 3000
+        # Un-named sections are never touched.
+        assert parsed["stats"] == {"n": 3000} and parsed["keep_me"] == "small"
 
     @pytest.mark.asyncio
     async def test_map_without_kgml_raises_a_diagnostic_error(self):
