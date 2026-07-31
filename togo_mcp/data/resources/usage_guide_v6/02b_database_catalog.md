@@ -1,6 +1,6 @@
 ## 📚 DATABASE CATALOG
 
-All 36 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
+All 37 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -9,11 +9,11 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **annotation** — `pubtator` `uniprot`
 - **antimicrobial** — `amrportal`
 - **compound** — `chebi` `chembl` `massbank` `pubchem`
-- **disease** — `clinvar` `glycosmos` `medgen` `mesh` `mondo` `nando` `togovar`
+- **disease** — `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `togovar`
 - **drug_target** — `chembl`
 - **enzymology** — `brenda`
 - **gene** — `bgee` `ensembl` `glycosmos` `hgnc` `medgen` `ncbigene`
-- **genomics** — `hco` `hgnc` `mco` `mogplus` `oma` `togovar`
+- **genomics** — `gwascatalog` `hco` `hgnc` `mco` `mogplus` `oma` `togovar`
 - **glycan** — `glycosmos`
 - **literature** — `pubmed` `pubtator`
 - **materials** — `supercon`
@@ -26,7 +26,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **sequence** — `ddbj` `ensembl`
 - **structure** — `pdb`
 - **taxonomy** — `bgee` `taxonomy`
-- **variant** — `clinvar` `mogplus` `togovar`
+- **variant** — `clinvar` `gwascatalog` `mogplus` `togovar`
 
 **All databases** (alphabetical):
 
@@ -52,6 +52,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: glycan, glycosylation, glycoprotein, saccharide, wurcs, glytoucan, n-glycan, o-glycan, glycogene, monosaccharide, glycan motif, epitope, lectin, cazy, carbohydrate-active enzyme, glycoside hydrolase, glycosyltransferase, ec number, disease gene, doid, gene ontology, tissue expression, human protein atlas, glycolipid
 - **go** — Gene Ontology (GO). Cross-species controlled vocabulary for gene-product function, organized into three independent domains (biological_process, molecular_function, cellular_component) with a DAG hierarchy, definitions,… _(categories: ontology)_  
   keywords: gene ontology, ontology, biological process, molecular function, cellular component, go term, functional annotation, obo, controlled vocabulary, hierarchy, subclassof, dag
+- **gwascatalog** — NHGRI-EBI GWAS Catalog. Genome-wide association study results linking SNPs (rsIDs) to human traits and diseases, with p-values, effect sizes, risk alleles, mapped genes and EFO trait terms. _(categories: disease, genomics, variant)_  
+  keywords: gwas, genome-wide association, snp, variant, polymorphism, trait, phenotype, p-value, odds ratio, effect size, risk allele, heritability, efo, association study
 - **hco** — HCO — Human Chromosome Ontology (cytobands). The human cytogenetic map: every Giemsa-stained chromosome band (ISCN name, e.g. _(categories: genomics, ontology)_  
   keywords: cytoband, chromosome band, karyotype, cytogenetic, giemsa stain, ideogram, genomic coordinates, grch37, grch38, genome build, faldo, chromosome location, iscn, human chromosome
 - **hgnc** — HGNC — HUGO Gene Nomenclature Committee. Authoritative approved human gene nomenclature: official symbol, full name, HGNC ID, chromosomal band, and a central hub of typed cross-references (NCBI Gene, Ensembl, RefSeq, UniProt, OMIM, Orphanet… _(categories: gene, genomics)_  
