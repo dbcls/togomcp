@@ -13,7 +13,23 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **A paralog-family member could not be used as a seed under its own name.**
+  `kegg_pathway_neighborhood(pathway="hsa04151", seeds="AKT1")` returned `unresolved`, while
+  `seeds="hsa:207"` — the same gene — resolved instantly and returned 33 downstream nodes. Box 17 of
+  that map holds hsa:10000, hsa:207 and hsa:208 (AKT3/AKT1/AKT2), but KGML's `graphics/@name` carries
+  only the DRAWN label, "AKT3" and *its* aliases, and seed resolution looked no further. So the
+  paralog-family trap this tool advertises as solved was still open on the way IN, and
+  `unresolved_note` compounded it by suggesting the gene might not be drawn on the map — it is drawn,
+  under a sibling's name. Seeds and path endpoints that KGML cannot match are now looked up against
+  KEGG's gene symbols and intersected with THAT MAP's members: one extra request per unmatched
+  symbol, cached, and only on the path that would otherwise have returned nothing. `/find` is a
+  substring search, so only rows carrying the symbol verbatim in their symbol list count — "AKT1"
+  must not resolve through AKT1S1. When the fallback fires, `seed_resolution` /
+  `endpoint_resolution` says which member matched and what the box is actually labelled, because
+  every row of the answer then reads "AKT3" for a question asked about AKT1. `unresolved_note` now
+  states that all three routes were tried and suggests retrying with a KEGG gene id.
 
 ## [2.4.1] - 2026-07-31
 

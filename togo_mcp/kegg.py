@@ -248,6 +248,18 @@ _GRAPH_BUDGET_SHARE = 0.5
 _KGML_CACHE_MAX = 32
 _kgml_cache: OrderedDict[str, str] = OrderedDict()
 
+# (org, lowercased symbol) -> KEGG gene ids. Seeded lazily, one request per
+# symbol KGML itself cannot resolve; see `_genes_for_symbol`.
+_SYMBOL_CACHE_MAX = 256
+_symbol_cache: OrderedDict[tuple[str, str], list[str]] = OrderedDict()
+
+# A token worth spending a KEGG lookup on: not a node id (digits), not an
+# already-qualified id ("hsa:207", "cpd:C00031"), not a bare accession.
+_BARE_ACCESSION = re.compile(r"^[CKDGR]\d{5}$|^\d+\.\d+\.\d+\.\d+$")
+# …and shaped like a gene symbol, which also keeps it from altering the REST
+# path it is interpolated into (cf. `_check_path_token`).
+_SYMBOL_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]*$")
+
 
 def _is_org(token: str) -> bool:
     return bool(_ORG_CODE.match(token) or _T_NUMBER.match(token))
@@ -713,6 +725,98 @@ async def _load_graph(pathway: str, **options: Any) -> tuple[str, dict[str, Any]
         return pathway, parse_kgml(text, **options)
     except KGMLParseError as exc:
         raise ValueError(f"KEGG returned unusable KGML for {pathway}: {exc}") from exc
+
+
+async def _genes_for_symbol(org: str, symbol: str) -> list[str]:
+    """KEGG gene ids whose SYMBOL list contains `symbol` EXACTLY.
+
+    `/find/<org>/<symbol>` is a substring search over names and definitions, so
+    "AKT1" also returns AKT1S1 and anything whose description mentions it. Only
+    rows carrying the symbol verbatim in their comma-separated symbol list (the
+    part before the ';') are kept — a near-miss silently resolving to the wrong
+    gene is worse than not resolving at all.
+    """
+    key = (org, symbol.lower())
+    cached = _symbol_cache.get(key)
+    if cached is not None:
+        _symbol_cache.move_to_end(key)
+        return cached
+
+    text = await _kegg_get(f"/find/{org}/{symbol}", context="KEGG symbol lookup")
+    genes: list[str] = []
+    for entry, definition in _parse_tsv_pairs(text):
+        names = definition.split(";", 1)[0]
+        if any(part.strip().lower() == key[1] for part in names.split(",")):
+            genes.append(entry)
+
+    _symbol_cache[key] = genes
+    _symbol_cache.move_to_end(key)
+    while len(_symbol_cache) > _SYMBOL_CACHE_MAX:
+        _symbol_cache.popitem(last=False)
+    return genes
+
+
+async def _resolve_endpoints(
+    graph: dict[str, Any], tokens: list[str]
+) -> tuple[dict[str, list[str]], list[dict[str, Any]]]:
+    """Map each caller token to node ids, KGML first, KEGG symbol lookup second.
+
+    KGML alone cannot do this. An entry box is a whole paralog family, but
+    `graphics/@name` carries only the DRAWN label — the first member's symbol
+    and its aliases. hsa04151's box 17 holds hsa:10000, hsa:207 and hsa:208
+    (AKT3/AKT1/AKT2) and is labelled "AKT3, MPPH, PKB-GAMMA, …", so the most
+    obvious seed anyone would type — AKT1 — matched nothing, while hsa:207
+    resolved instantly. The tool advertises that it resolves the paralog-family
+    trap, and it did so for the analysis but not for the way in.
+
+    So a token KGML cannot match is looked up against KEGG's gene symbols and
+    the result intersected with THIS MAP's members. That costs one request per
+    unmatched symbol (cached), and only on the path that would otherwise have
+    returned nothing. Returns `{token: [node ids]}` plus a note per token that
+    only the lookup could resolve — the caller must be told, because the box it
+    resolved to is labelled with a DIFFERENT gene's symbol.
+    """
+    org = graph["pathway"].get("org") or ""
+    by_member = graph["index"]["by_member"]
+    by_id = {n["id"]: n for n in graph["nodes"]}
+    resolution: dict[str, list[str]] = {}
+    notes: list[dict[str, Any]] = []
+
+    for token in tokens:
+        hits = resolve_seeds(graph, [token])
+        if hits:
+            resolution[token] = hits
+            continue
+        worth_a_lookup = (
+            _is_org(org)
+            and ":" not in token
+            and not token.isdigit()
+            and not _BARE_ACCESSION.match(token.upper())
+            and bool(_SYMBOL_TOKEN.match(token))
+        )
+        if not worth_a_lookup:
+            resolution[token] = []
+            continue
+
+        genes = await _genes_for_symbol(org, token)
+        matched = [g for g in genes if g in by_member]
+        hits = list(dict.fromkeys(nid for g in matched for nid in by_member[g]))
+        resolution[token] = hits
+        if hits:
+            notes.append({
+                "seed": token,
+                "resolved_to": hits,
+                "matched_members": matched,
+                "node_labels": [by_id[h]["label"] for h in hits],
+                "note": (
+                    f"{token} is not the drawn label of its box — one KEGG entry "
+                    "box is a whole paralog family and KGML labels it with one "
+                    "member's symbol. Resolved via KEGG's gene symbols; results "
+                    "below are for the WHOLE box, i.e. the family, not this gene "
+                    "alone."
+                ),
+            })
+    return resolution, notes
 
 
 def _signal_quality(graph: dict[str, Any]) -> dict[str, Any]:
@@ -1206,7 +1310,9 @@ async def pathway_neighborhood(
     `signal_quality.signed_edge_fraction` before reading signs at all: it is
     0.98 on hsa04151 but 0.40 on hsa04010 and 0 on metabolic maps. An empty
     `reached` with an empty `unresolved` means the seed is in the map but has no
-    edges in that direction.
+    edges in that direction. `seed_resolution` appears when a seed matched a box
+    KGML labels with a DIFFERENT gene's symbol — read it, because the answer is
+    then for the whole paralog family, whose label is not what you asked for.
 
     RAISES ValueError on a malformed map id or direction, when the map has no
     KGML, and on any HTTP error — including HTTP 403/429 for the 3
@@ -1215,9 +1321,11 @@ async def pathway_neighborhood(
     Args:
         pathway: KEGG map id, e.g. "hsa04151". Use the ORGANISM map for a
             question about that organism's genes.
-        seeds: One or more start points. A gene symbol as drawn on the map
-            ("AKT1"), a KEGG gene id ("hsa:5290"), a bare id ("5290"), a
-            compound ("C00031") or a node id all resolve.
+        seeds: One or more start points. A gene symbol ("AKT1"), a KEGG gene id
+            ("hsa:5290"), a bare id ("5290"), a compound ("C00031") or a node id
+            all resolve. A symbol that is NOT the box's drawn label — AKT1 sits
+            in a box KGML labels "AKT3" — costs one extra KEGG lookup and is
+            reported in `seed_resolution`.
         direction: "downstream" (what the seed affects, the default),
             "upstream" (what affects the seed), or "both".
         depth: Maximum number of edges from the seed, in [1, 6]. Default 2.
@@ -1246,15 +1354,20 @@ async def pathway_neighborhood(
         )
 
     pathway, graph = await _load_graph(pathway)
+    # Resolve the seeds HERE, not inside neighborhood(): a symbol that is not its
+    # box's drawn label needs a KEGG lookup, and kgml.py is deliberately pure.
+    resolution, seed_notes = await _resolve_endpoints(graph, starts)
+    unresolved = [token for token in starts if not resolution[token]]
+    node_seeds = list(dict.fromkeys(nid for hits in resolution.values() for nid in hits))
     result = neighborhood(
-        graph, starts, direction=direction, depth=depth, signed_only=signed_only
+        graph, node_seeds, direction=direction, depth=depth, signed_only=signed_only
     )
 
     reached = result["reached"]
     payload: dict[str, Any] = {
         "pathway": {**graph["pathway"], "id": pathway},
         "seeds": result["seeds"],
-        "unresolved": result["unresolved"],
+        "unresolved": unresolved,
         "direction": direction,
         "depth": depth,
         "signed_only": signed_only,
@@ -1270,12 +1383,16 @@ async def pathway_neighborhood(
             "total": len(reached),
             "hint": "lower `depth`, set signed_only=True, or raise `limit`.",
         }
-    if result["unresolved"]:
+    if seed_notes:
+        payload["seed_resolution"] = seed_notes
+    if unresolved:
         payload["unresolved_note"] = (
-            "These seeds matched no node in this map. That is a LOOKUP failure, "
-            "not a biological finding — the gene may simply not be drawn on this "
-            "map. Confirm membership with kegg_link(target=<org>, "
-            "source=<pathway>) or pick a different map."
+            "These seeds matched no node in this map, by drawn label, by member "
+            "gene id, or by KEGG gene symbol. That is a LOOKUP failure, not a "
+            "biological finding — the gene may simply not be drawn on this map. "
+            "Retry with a KEGG gene id (hsa:207) if you have one, confirm "
+            "membership with kegg_link(target=<org>, source=<pathway>), or pick a "
+            "different map."
         )
     return _bounded(payload, note="lower `depth` or `limit`.")
 
@@ -1309,7 +1426,9 @@ async def pathway_paths(
     (phosphorylation, binding) or is metabolic, so KGML never gives a direction.
     Each edge carries its `reaction` accession, which is what tells two parallel
     routes apart: the same node sequence via two different reactions is two
-    genuinely different rows, not a duplicate.
+    genuinely different rows, not a duplicate. `endpoint_resolution` appears when
+    an endpoint matched a box KGML labels with a DIFFERENT gene's symbol (AKT1
+    sits in a box labelled "AKT3"), and the paths are then for the whole box.
 
     AN EMPTY `paths` HAS TWO DIFFERENT MEANINGS — check `unresolved` first. A
     non-empty `unresolved` is a LOOKUP failure (typo, or the molecule is not drawn
@@ -1337,9 +1456,10 @@ async def pathway_paths(
     Args:
         pathway: KEGG map id, e.g. "hsa04151". Use the ORGANISM map for a
             question about that organism's genes.
-        source: Start point. A gene symbol as drawn on the map ("PIK3CA"), a KEGG
-            gene id ("hsa:5290"), a bare id ("5290"), a compound ("C00031") or a
-            node id all resolve.
+        source: Start point. A gene symbol ("PIK3CA"), a KEGG gene id
+            ("hsa:5290"), a bare id ("5290"), a compound ("C00031") or a node id
+            all resolve. A symbol that is not its box's drawn label costs one
+            extra KEGG lookup and is reported in `endpoint_resolution`.
         target: End point, same forms.
         max_length: Maximum edges per path, in [1, 12]. Default 6 — right for
             signaling maps; see the metabolic note above. Cost grows steeply with
@@ -1363,8 +1483,9 @@ async def pathway_paths(
     # find_paths() returns [] both when an endpoint matched nothing and when the
     # endpoints are fine but unconnected. Those need different reactions from the
     # caller, so resolve them here and report the difference explicitly.
-    source_nodes = resolve_seeds(graph, [source])
-    target_nodes = resolve_seeds(graph, [target])
+    resolution, endpoint_notes = await _resolve_endpoints(graph, [source, target])
+    source_nodes = resolution[source]
+    target_nodes = resolution[target]
     unresolved = [
         label
         for label, hits in ((source, source_nodes), (target, target_nodes))
@@ -1372,7 +1493,10 @@ async def pathway_paths(
     ]
 
     paths = (
-        find_paths(graph, source, target, max_length=max_length, max_paths=max_paths)
+        find_paths(
+            graph, source_nodes, target_nodes,
+            max_length=max_length, max_paths=max_paths,
+        )
         if not unresolved
         else []
     )
@@ -1408,12 +1532,16 @@ async def pathway_paths(
         "paths": paths,
         "signal_quality": _signal_quality(graph),
     }
+    if endpoint_notes:
+        payload["endpoint_resolution"] = endpoint_notes
     if unresolved:
         payload["unresolved_note"] = (
-            f"{unresolved} matched no node in this map, so no path could be "
-            "computed. That is a LOOKUP failure, not a biological finding — the "
-            "molecule may simply not be drawn on this map. Confirm membership "
-            "with kegg_link(target=<org>, source=<pathway>) or pick another map."
+            f"{unresolved} matched no node in this map — not by drawn label, not "
+            "by member gene id, not by KEGG gene symbol — so no path could be "
+            "computed. That is a LOOKUP failure, not a biological finding: the "
+            "molecule may simply not be drawn on this map. Retry with a KEGG gene "
+            "id (hsa:207) if you have one, confirm membership with "
+            "kegg_link(target=<org>, source=<pathway>), or pick another map."
         )
     elif not paths:
         # An endpoint with NO edges at all is a different finding from one that is
