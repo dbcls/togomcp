@@ -105,3 +105,13 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **uniprot** — UniProt RDF. Curated (Swiss-Prot) and automatic (TrEMBL) protein sequence + functional annotation: sequences, domains, PTMs, isoforms, natural variants, disease links, GO terms, EC/enzyme activity, catalysed Rhea… _(categories: annotation, protein)_  
   keywords: protein, sequence, swiss-prot, trembl, reviewed, function, domain, isoform, enzyme, ec number, natural variant, disease, gene ontology, cross-reference
 
+**Not an RDF database — KEGG (local stdio server only):**
+
+KEGG is reachable through the `kegg_*` tools, NOT through `run_sparql`. It has no RDF Portal endpoint and no MIE file, so `database="kegg"` is invalid on `run_sparql` and `get_MIE_file`.
+
+- **Availability.** The `kegg_*` tools exist ONLY on the local stdio server (`togo-mcp-local`). The public HTTP server at togomcp.rdfportal.org does not expose them: the KEGG API is licensed to academic users at academic institutions, and a public host cannot verify a caller's affiliation. **If you do not see `kegg_*` in your tool list, KEGG is unavailable to you** — use `reactome` or `rhea` over SPARQL instead, and do not report the absence as an error.
+- **What it uniquely adds.** A pathway map as a SIGNED DIRECTED GRAPH (activation vs inhibition per edge, from KGML relation subtypes) and, for an organism map, the metabolic steps that organism LACKS. Reactome RDF has no equivalent of either, so these are not reproducible with `run_sparql`.
+- **Workflow.** `kegg_find` (keyword → entry IDs) → `kegg_get_entry` (full record incl. DBLINKS), `kegg_link` (gene↔pathway↔compound↔pubmed), `kegg_pathway_graph` (whole map) or `kegg_pathway_neighborhood` (up/downstream of one gene).
+- **Bridging to RDF Portal — REQUIRED.** KEGG-namespaced IDs (`hsa:10458`, `cpd:C00031`, `path:hsa04151`) do NOT resolve in any SPARQL database. Convert them with `kegg_conv` FIRST: genes ↔ `uniprot` / `ncbi-geneid` / `ncbi-proteinid`, chemicals ↔ `chebi` / `pubchem`. Only the converted identifiers belong in a `run_sparql` query or a TogoID call.
+- **Rate limit.** KEGG allows 3 requests/second and blocks abusers. An HTTP 403/429 from a `kegg_*` tool means that cap or an access restriction was hit — do NOT retry it.
+

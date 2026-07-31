@@ -13,7 +13,54 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **KEGG, as a `stdio`-only tool group** (`kegg_find`, `kegg_get_entry`, `kegg_pathway_graph`,
+  `kegg_pathway_neighborhood`, `kegg_link`, `kegg_conv`). Mounted by `togo-mcp-local` and
+  **structurally absent from the HTTP server** — the KEGG API is licensed to academic users at
+  academic institutions, and serving it from a public host that cannot verify a caller's affiliation
+  would need an academic service-provider license. The gate is a `setup(local=True)` argument, not an
+  env flag, deliberately: `deploy.sh` forwards env vars by a fixed list, and a knob missing from that
+  list is silently inert in production — that failure happened twice in one week (2026-07-29), both
+  times with a green test suite. A licensing boundary must not be one forgotten list entry away from
+  opening.
+- **KGML parsed into a signed directed graph** (`togo_mcp/kgml.py`, pure/stdlib-only, 39 tests, no
+  network). This is the point of carrying KEGG at all: RDF Portal cannot answer "does A activate or
+  inhibit B", because Reactome RDF has no equivalent of KGML's relation subtypes. Raw KGML is never
+  returned — it is coordinate-heavy XML whose edges reference drawing-box ids, not genes.
+  Eight distinct traps are resolved, six from the DTD and **two found only by running real maps**
+  (both invisible in edge counts, visible only in connectivity): one entry box is a whole paralog
+  family (a naive parse drops 23–76% of identifiers); complexes are indirection nodes; an `ECrel`
+  edge's compound `@value` is an *entry id*, not an accession; cross-map pointers are not
+  interactions; a `<reaction>`'s `@id` is its *enzyme's* box; rendering-only entries are not
+  molecules; **the enzyme and compound layers are never joined by KGML** (so a metabolic map parses
+  disconnected by construction — bridged with explicit `catalysis` edges); and **one molecule is
+  drawn several times with different ids** (hsa05200: 54 duplicate drawings, 49 → 32 components once
+  merged).
+- **`metabolic_gaps` — the steps an organism cannot perform.** In an organism map KEGG keeps the
+  reference layout and leaves the missing steps as bare `ortholog` boxes. These are a *result*, not a
+  parse failure, and are reported as such. Confirmed arithmetically, twice, counting entry boxes:
+  `ko00010` reactions 63 − `hsa00010` 34 = 29 = hsa00010's isolated ortholog boxes (and 63 − 35 = 28
+  for `eco00010`). Under the default duplicate-merge these become 25 and 23 — the count of *distinct*
+  missing steps rather than boxes, which is the biologically meaningful number.
+- **`kegg_conv` as the bridge to RDF Portal.** KEGG identifiers do not resolve in `run_sparql`, so
+  the tool returns prefix-stripped `source_id`/`target_id` alongside the KEGG-namespaced forms:
+  genes ↔ UniProt / NCBI Gene / NCBI Protein, chemicals ↔ ChEBI / PubChem. The Usage Guide's Database
+  Catalog now states this explicitly, since an agent that skips it will put `hsa:10458` into a SPARQL
+  query and get zero rows.
+
+### Notes
+
+- Every `kegg_*` tool reports **how much of a map is actually signed**
+  (`signal_quality.signed_edge_fraction`) next to any sign it returns. The fraction swings from 0.98
+  (hsa04151) to 0.40 (hsa04010) to 0 (metabolic maps), because most KGML relations record a
+  *mechanism* (`phosphorylation`, `binding/association`) without saying whether the effect activates
+  or inhibits. A `net_sign` of 0 means UNKNOWN, never "no effect" — without that number an agent
+  over-reads the graph.
+- The 3 requests/second KEGG cap is enforced by a **process-wide** limiter, not a per-tool one, and
+  KGML is memoized in-process; HTTP 403/429 is surfaced as a licence/rate signal and is never retried.
+- No MIE file and no `endpoints.csv` row: KEGG has no SPARQL endpoint, and the MIE format describes a
+  SPARQL schema. `database="kegg"` is invalid on `run_sparql`/`get_MIE_file` and stays that way.
 
 ## [2.3.0] - 2026-07-31
 

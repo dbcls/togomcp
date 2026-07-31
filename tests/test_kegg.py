@@ -1,0 +1,671 @@
+"""Tests for togo_mcp.kegg — pure helpers plus respx-mocked tools.
+
+NO TEST HERE TOUCHES rest.kegg.jp. The KEGG API is licensed to academic users at
+academic institutions, and this suite runs in CI, so every request is mocked with
+respx and every KGML input is the synthetic fixture (tests/fixtures/
+kgml_pitfalls.xml), which contains no KEGG-derived content.
+
+The `@kegg_mcp.tool()` decorator returns the original coroutine, so the tool
+functions are awaited directly, as in test_togovar.py.
+"""
+
+import asyncio
+import json
+import time
+from pathlib import Path
+
+import httpx
+import pytest
+import respx
+from fastmcp import FastMCP
+
+import togo_mcp.kegg as kegg
+import togo_mcp.main as main
+from togo_mcp.kegg import (
+    _as_list,
+    _bounded,
+    _check_path_token,
+    _normalize_pathway,
+    _parse_flat_file,
+    _parse_tsv_pairs,
+    conv,
+    find,
+    get_entry,
+    link,
+    pathway_graph,
+    pathway_neighborhood,
+)
+
+BASE = "https://rest.kegg.jp"
+FIXTURE = Path(__file__).parent / "fixtures" / "kgml_pitfalls.xml"
+KGML = FIXTURE.read_text()
+# The fixture declares itself as org "xxx", map number 00000.
+MAP = "xxx00000"
+
+
+@pytest.fixture(autouse=True)
+def _isolate_module_state(monkeypatch):
+    """Clear the KGML memo and disable throttling between tests.
+
+    The rate limiter and the KGML cache are deliberately module-level (the 3
+    req/s cap is process-wide, not per-tool), so tests must reset them or they
+    leak across cases and add ~1/3 s of real sleep per mocked request. The
+    limiter itself is exercised explicitly in TestRateLimit.
+    """
+    kegg._kgml_cache.clear()
+    monkeypatch.setattr(kegg, "_MIN_INTERVAL", 0.0)
+    monkeypatch.setattr(kegg, "_last_request_at", 0.0)
+    monkeypatch.setattr(kegg, "_BACKOFF_BASE", 0.0)
+
+
+# --------------------------------------------------------------------------- #
+# Pure helpers — no HTTP
+# --------------------------------------------------------------------------- #
+class TestPureHelpers:
+    def test_as_list_splits_the_separators_an_llm_actually_uses(self):
+        assert _as_list("hsa:10458") == ["hsa:10458"]
+        assert _as_list("hsa:10458,hsa:5290") == ["hsa:10458", "hsa:5290"]
+        assert _as_list("hsa:10458, hsa:5290") == ["hsa:10458", "hsa:5290"]
+        # KEGG's own '+' joiner must round-trip.
+        assert _as_list("hsa:10458+hsa:5290") == ["hsa:10458", "hsa:5290"]
+        assert _as_list(["hsa:10458", "hsa:5290"]) == ["hsa:10458", "hsa:5290"]
+        assert _as_list("") == []
+        assert _as_list([]) == []
+
+    def test_check_path_token_rejects_path_altering_input(self):
+        assert _check_path_token(" hsa:10458 ", label="entry") == "hsa:10458"
+        for bad in ("a/b", "../get", "two words"):
+            with pytest.raises(ValueError, match="Invalid entry"):
+                _check_path_token(bad, label="entry")
+        with pytest.raises(ValueError, match="must not be empty"):
+            _check_path_token("", label="entry")
+
+    def test_normalize_pathway_accepts_the_forms_kegg_itself_emits(self):
+        # /link returns pathways prefixed; users type them bare.
+        assert _normalize_pathway("path:hsa04151") == "hsa04151"
+        assert _normalize_pathway("hsa04151") == "hsa04151"
+        assert _normalize_pathway("ko00010") == "ko00010"
+        assert _normalize_pathway("map00010") == "map00010"
+        assert _normalize_pathway("eco00010") == "eco00010"
+
+    @pytest.mark.parametrize("bad", ["hsa", "04151", "hsa4151", "hsa004151", "C00031"])
+    def test_normalize_pathway_rejects_non_map_ids(self, bad):
+        with pytest.raises(ValueError, match="Invalid pathway id"):
+            _normalize_pathway(bad)
+
+    def test_parse_flat_file_keeps_multiline_fields_as_lists(self):
+        text = (
+            "ENTRY       C00031                      Compound\n"
+            "NAME        D-Glucose;\n"
+            "            Grape sugar;\n"
+            "FORMULA     C6H12O6\n"
+            "EXACT_MASS  180.0634\n"
+            "///\n"
+        )
+        (record,) = _parse_flat_file(text)
+        assert record["entry_id"] == "C00031"
+        assert record["entry_type"] == "Compound"
+        # Every value is a list, including the single-line ones: the shape must
+        # not depend on the data.
+        assert record["fields"]["NAME"] == ["D-Glucose;", "Grape sugar;"]
+        assert record["fields"]["FORMULA"] == ["C6H12O6"]
+        assert record["fields"]["EXACT_MASS"] == ["180.0634"]
+
+    def test_parse_flat_file_splits_multiple_records(self):
+        text = "ENTRY       C00031\n///\nENTRY       C00022\n///\n"
+        records = _parse_flat_file(text)
+        assert [r["entry_id"] for r in records] == ["C00031", "C00022"]
+
+    def test_parse_flat_file_handles_field_names_past_column_11(self):
+        """Fixed-width slicing at column 12 truncates the longer field names."""
+        text = "ENTRY       hsa00010\nCARBOHYDRATE_X  value here\n///\n"
+        (record,) = _parse_flat_file(text)
+        assert record["fields"]["CARBOHYDRATE_X"] == ["value here"]
+
+    def test_parse_tsv_pairs(self):
+        assert _parse_tsv_pairs("hsa:10458\tpath:hsa04810\n\n") == [
+            ("hsa:10458", "path:hsa04810")
+        ]
+        assert _parse_tsv_pairs("") == []
+
+    def test_bounded_reports_truncation_instead_of_silently_dropping(self):
+        payload = [{"entry": f"C{i:05d}", "definition": "x" * 200} for i in range(2000)]
+        parsed = json.loads(_bounded(payload, note="narrow it"))
+        assert parsed["truncated"]["total"] == 2000
+        assert parsed["truncated"]["returned"] == len(parsed["results"])
+        assert parsed["truncated"]["returned"] < 2000
+
+    def test_bounded_passes_small_payloads_through_as_a_bare_array(self):
+        out = _bounded([{"entry": "C00031"}], note="")
+        assert json.loads(out) == [{"entry": "C00031"}]
+
+
+# --------------------------------------------------------------------------- #
+# find
+# --------------------------------------------------------------------------- #
+class TestFind:
+    @pytest.mark.asyncio
+    async def test_returns_bare_json_array_and_joins_keywords_with_plus(self):
+        with respx.mock(using="httpx") as router:
+            route = router.get(f"{BASE}/find/compound/grape+sugar").mock(
+                return_value=httpx.Response(
+                    200, text="cpd:C00031\tD-Glucose; Grape sugar\n"
+                )
+            )
+            out = await find(database="compound", query="grape sugar")
+        assert route.called
+        assert json.loads(out) == [
+            {"entry": "cpd:C00031", "definition": "D-Glucose; Grape sugar"}
+        ]
+
+    @pytest.mark.asyncio
+    async def test_empty_body_is_no_match_not_an_error(self):
+        """KEGG answers 'nothing matched' with an empty HTTP 200, never a 404."""
+        with respx.mock(using="httpx") as router:
+            router.get(url__startswith=BASE).mock(return_value=httpx.Response(200, text=""))
+            out = await find(database="compound", query="notathing")
+        assert out == "[]"
+
+    @pytest.mark.asyncio
+    async def test_limit_trims_client_side(self):
+        body = "".join(f"cpd:C{i:05d}\tname {i}\n" for i in range(50))
+        with respx.mock(using="httpx") as router:
+            router.get(url__startswith=BASE).mock(return_value=httpx.Response(200, text=body))
+            out = await find(database="compound", query="x", limit=5)
+        assert len(json.loads(out)) == 5
+
+    @pytest.mark.asyncio
+    async def test_organism_code_is_accepted_as_a_database(self):
+        with respx.mock(using="httpx") as router:
+            route = router.get(f"{BASE}/find/hsa/kinase").mock(
+                return_value=httpx.Response(200, text="hsa:10458\tBAIAP2\n")
+            )
+            await find(database="hsa", query="kinase")
+        assert route.called
+
+    @pytest.mark.asyncio
+    async def test_unknown_database_raises_without_calling_kegg(self):
+        # assert_all_called=False: the catch-all route exists precisely so the
+        # test can assert it stays UNCALLED.
+        with respx.mock(using="httpx", assert_all_called=False) as router:
+            router.get(url__startswith=BASE).mock(return_value=httpx.Response(200, text=""))
+            with pytest.raises(ValueError, match="Unknown KEGG database"):
+                await find(database="proteins", query="x")
+            assert not router.calls
+
+    @pytest.mark.asyncio
+    async def test_blank_query_raises(self):
+        with pytest.raises(ValueError, match="Missing search term"):
+            await find(database="compound", query="")
+
+    @pytest.mark.asyncio
+    async def test_option_is_appended_and_validated(self):
+        with respx.mock(using="httpx") as router:
+            route = router.get(f"{BASE}/find/compound/C6H12O6/formula").mock(
+                return_value=httpx.Response(200, text="cpd:C00031\tC6H12O6\n")
+            )
+            await find(database="compound", query="C6H12O6", option="formula")
+        assert route.called
+
+        with pytest.raises(ValueError, match="Unknown find option"):
+            await find(database="compound", query="x", option="mass")
+        # A chemical-only option against a gene database is a caller error, not
+        # something to discover as an upstream 400.
+        with pytest.raises(ValueError, match="applies only to the chemical databases"):
+            await find(database="hsa", query="x", option="formula")
+
+
+# --------------------------------------------------------------------------- #
+# get_entry
+# --------------------------------------------------------------------------- #
+class TestGetEntry:
+    @pytest.mark.asyncio
+    async def test_parses_flat_file_into_entry_objects(self):
+        body = (
+            "ENTRY       C00031                      Compound\n"
+            "NAME        D-Glucose\n"
+            "DBLINKS     ChEBI: 4167\n"
+            "            PubChem: 3333\n"
+            "///\n"
+        )
+        with respx.mock(using="httpx") as router:
+            route = router.get(f"{BASE}/get/C00031").mock(
+                return_value=httpx.Response(200, text=body)
+            )
+            out = await get_entry(entries="C00031")
+        assert route.called
+        (record,) = json.loads(out)
+        assert record["entry_id"] == "C00031"
+        assert record["fields"]["DBLINKS"] == ["ChEBI: 4167", "PubChem: 3333"]
+
+    @pytest.mark.asyncio
+    async def test_more_than_ten_entries_raises_before_any_request(self):
+        """KEGG's documented per-request cap; catching it here saves a 400."""
+        # assert_all_called=False: the catch-all route exists precisely so the
+        # test can assert it stays UNCALLED.
+        with respx.mock(using="httpx", assert_all_called=False) as router:
+            router.get(url__startswith=BASE).mock(return_value=httpx.Response(200, text=""))
+            with pytest.raises(ValueError, match="at most 10 entries"):
+                await get_entry(entries=[f"C{i:05d}" for i in range(11)])
+            assert not router.calls
+
+    @pytest.mark.asyncio
+    async def test_empty_response_is_an_empty_array(self):
+        with respx.mock(using="httpx") as router:
+            router.get(url__startswith=BASE).mock(return_value=httpx.Response(200, text=""))
+            assert await get_entry(entries="C99999") == "[]"
+
+    @pytest.mark.asyncio
+    async def test_sequence_option_returns_fasta_records(self):
+        body = ">hsa:10458 BAIAP2  (RefSeq) BAR/IMD domain\nMSLSRSEE\nMHRLKQ\n"
+        with respx.mock(using="httpx") as router:
+            route = router.get(f"{BASE}/get/hsa:10458/aaseq").mock(
+                return_value=httpx.Response(200, text=body)
+            )
+            out = await get_entry(entries="hsa:10458", sequence="aaseq")
+        assert route.called
+        (record,) = json.loads(out)
+        assert record["entry_id"] == "hsa:10458"
+        assert record["sequence"] == "MSLSRSEEMHRLKQ"
+
+    @pytest.mark.asyncio
+    async def test_kgml_is_not_reachable_through_the_sequence_option(self):
+        """Raw KGML is never returned: it costs tokens and an LLM cannot read it."""
+        with pytest.raises(ValueError, match="Unknown sequence option"):
+            await get_entry(entries="hsa04151", sequence="kgml")
+
+
+# --------------------------------------------------------------------------- #
+# pathway_graph / pathway_neighborhood
+# --------------------------------------------------------------------------- #
+def _mock_kgml(router, body: str = KGML):
+    return router.get(f"{BASE}/get/{MAP}/kgml").mock(
+        return_value=httpx.Response(200, text=body)
+    )
+
+
+class TestPathwayGraph:
+    @pytest.mark.asyncio
+    async def test_returns_a_signed_graph_with_the_mandated_caveat_fields(self):
+        with respx.mock(using="httpx") as router:
+            _mock_kgml(router)
+            out = await pathway_graph(pathway=MAP)
+        graph = json.loads(out)
+
+        assert graph["pathway"]["id"] == MAP
+        assert graph["nodes"] and graph["edges"]
+        # Handoff 6.2: signed fraction and fragmentation must always ship, so the
+        # caller can tell how much of the sign information actually exists.
+        sq = graph["signal_quality"]
+        assert sq["signed_edge_count"] <= sq["edge_count"]
+        assert 0.0 <= sq["signed_edge_fraction"] <= 1.0
+        assert sq["component_count"] >= 1 and sq["largest_component"] >= 1
+        assert len(sq["caveats"]) == 2
+        assert "metabolic_gaps" in graph and "metabolic_gaps_note" in graph
+        assert {e["sign"] for e in graph["edges"]} <= {-1, 0, 1}
+
+    @pytest.mark.asyncio
+    async def test_path_prefixed_id_resolves_to_the_same_map(self):
+        with respx.mock(using="httpx") as router:
+            _mock_kgml(router)
+            out = await pathway_graph(pathway=f"path:{MAP}")
+        assert json.loads(out)["pathway"]["id"] == MAP
+
+    @pytest.mark.asyncio
+    async def test_cross_map_pointers_are_reported_but_not_edges(self):
+        """Including them would fabricate interactions across different maps."""
+        with respx.mock(using="httpx") as router:
+            _mock_kgml(router)
+            out = await pathway_graph(pathway=MAP)
+        graph = json.loads(out)
+        assert graph["map_links"]
+        assert all(e["class"] != "maplink" for e in graph["edges"])
+
+    @pytest.mark.asyncio
+    async def test_kgml_is_memoized_so_one_map_costs_one_request(self):
+        with respx.mock(using="httpx") as router:
+            route = _mock_kgml(router)
+            await pathway_graph(pathway=MAP)
+            await pathway_graph(pathway=MAP)
+            await pathway_neighborhood(pathway=MAP, seeds="AKT1")
+        assert route.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_expand_members_is_refused_above_the_edge_cap(self):
+        """One entry box is a whole paralog family, so expansion is combinatorial."""
+        with respx.mock(using="httpx") as router:
+            _mock_kgml(router)
+            with pytest.raises(ValueError, match="expand_members=True would produce"):
+                await pathway_graph(pathway=MAP, expand_members=True, max_edges=10)
+
+    @pytest.mark.asyncio
+    async def test_expand_members_emits_one_node_per_identifier_when_it_fits(self):
+        with respx.mock(using="httpx") as router:
+            _mock_kgml(router)
+            plain = json.loads(await pathway_graph(pathway=MAP))
+            expanded = json.loads(await pathway_graph(pathway=MAP, expand_members=True))
+        # The fixture's entry 1 carries three paralogs; expansion must surface them.
+        assert len(expanded["nodes"]) > len(plain["nodes"])
+        assert all(n["member_count"] == 1 for n in expanded["nodes"])
+
+    @pytest.mark.asyncio
+    async def test_oversize_map_is_trimmed_and_says_so(self):
+        with respx.mock(using="httpx") as router:
+            _mock_kgml(router)
+            out = await pathway_graph(pathway=MAP, max_nodes=2)
+        graph = json.loads(out)
+        assert len(graph["nodes"]) == 2
+        assert graph["truncated"]["returned_nodes"] == 2
+        # stats must still describe the WHOLE map, not the trimmed view.
+        assert graph["stats"]["node_count"] > 2
+        assert graph["truncated"]["total_nodes"] == graph["stats"]["node_count"]
+
+    @pytest.mark.asyncio
+    async def test_map_without_kgml_raises_a_diagnostic_error(self):
+        """Global/overview maps have no KGML; KEGG signals that with an empty 200."""
+        with respx.mock(using="httpx") as router:
+            router.get(f"{BASE}/get/hsa01100/kgml").mock(
+                return_value=httpx.Response(200, text="")
+            )
+            with pytest.raises(ValueError, match="no KGML"):
+                await pathway_graph(pathway="hsa01100")
+
+    @pytest.mark.asyncio
+    async def test_malformed_map_id_raises_without_calling_kegg(self):
+        # assert_all_called=False: the catch-all route exists precisely so the
+        # test can assert it stays UNCALLED.
+        with respx.mock(using="httpx", assert_all_called=False) as router:
+            router.get(url__startswith=BASE).mock(return_value=httpx.Response(200, text=""))
+            with pytest.raises(ValueError, match="Invalid pathway id"):
+                await pathway_graph(pathway="not-a-map")
+            assert not router.calls
+
+
+class TestPathwayNeighborhood:
+    @pytest.mark.asyncio
+    async def test_resolves_a_gene_symbol_and_reports_net_sign(self):
+        with respx.mock(using="httpx") as router:
+            _mock_kgml(router)
+            out = await pathway_neighborhood(pathway=MAP, seeds="PIK3CA", depth=2)
+        result = json.loads(out)
+        assert result["seeds"]
+        assert not result["unresolved"]
+        assert result["reached"]
+        assert {r["net_sign"] for r in result["reached"]} <= {-1, 0, 1}
+        assert "signal_quality" in result
+
+    @pytest.mark.asyncio
+    async def test_kegg_gene_id_and_bare_id_resolve_to_the_same_node(self):
+        with respx.mock(using="httpx") as router:
+            _mock_kgml(router)
+            by_kegg = json.loads(await pathway_neighborhood(pathway=MAP, seeds="hsa:5290"))
+            by_bare = json.loads(await pathway_neighborhood(pathway=MAP, seeds="5290"))
+        assert by_kegg["seeds"] == by_bare["seeds"]
+
+    @pytest.mark.asyncio
+    async def test_unresolved_seed_is_flagged_rather_than_silently_narrowed(self):
+        """An absent gene must not read as a biological negative."""
+        with respx.mock(using="httpx") as router:
+            _mock_kgml(router)
+            out = await pathway_neighborhood(pathway=MAP, seeds="NOTAGENE")
+        result = json.loads(out)
+        assert result["unresolved"] == ["NOTAGENE"]
+        assert "LOOKUP failure" in result["unresolved_note"]
+
+    @pytest.mark.asyncio
+    async def test_signed_only_drops_unsigned_edges(self):
+        with respx.mock(using="httpx") as router:
+            _mock_kgml(router)
+            out = await pathway_neighborhood(
+                pathway=MAP, seeds="PIK3CA", depth=3, signed_only=True
+            )
+        result = json.loads(out)
+        assert all(e["sign"] in (-1, 1) for e in result["edges"])
+
+    @pytest.mark.asyncio
+    async def test_invalid_direction_raises(self):
+        with pytest.raises(ValueError, match="Invalid direction"):
+            await pathway_neighborhood(pathway=MAP, seeds="AKT1", direction="sideways")
+
+    @pytest.mark.asyncio
+    async def test_missing_seeds_raises(self):
+        with pytest.raises(ValueError, match="Missing `seeds`"):
+            await pathway_neighborhood(pathway=MAP, seeds="")
+
+
+# --------------------------------------------------------------------------- #
+# link / conv
+# --------------------------------------------------------------------------- #
+class TestLink:
+    @pytest.mark.asyncio
+    async def test_returns_source_target_pairs(self):
+        with respx.mock(using="httpx") as router:
+            route = router.get(f"{BASE}/link/pathway/hsa:10458").mock(
+                return_value=httpx.Response(200, text="hsa:10458\tpath:hsa04810\n")
+            )
+            out = await link(target="pathway", source="hsa:10458")
+        assert route.called
+        assert json.loads(out) == [
+            {"source": "hsa:10458", "target": "path:hsa04810"}
+        ]
+
+    @pytest.mark.asyncio
+    async def test_organism_target_is_accepted(self):
+        with respx.mock(using="httpx") as router:
+            route = router.get(f"{BASE}/link/hsa/path:hsa04151").mock(
+                return_value=httpx.Response(200, text="path:hsa04151\thsa:207\n")
+            )
+            await link(target="hsa", source="path:hsa04151")
+        assert route.called
+
+    @pytest.mark.asyncio
+    async def test_unknown_target_raises_without_calling_kegg(self):
+        # assert_all_called=False: the catch-all route exists precisely so the
+        # test can assert it stays UNCALLED.
+        with respx.mock(using="httpx", assert_all_called=False) as router:
+            router.get(url__startswith=BASE).mock(return_value=httpx.Response(200, text=""))
+            with pytest.raises(ValueError, match="Unknown link target database"):
+                await link(target="wikipathways", source="hsa:10458")
+            assert not router.calls
+
+
+class TestConv:
+    @pytest.mark.asyncio
+    async def test_surfaces_prefix_stripped_ids_for_the_sparql_handoff(self):
+        """KEGG-namespaced IDs do not resolve in run_sparql; the bare ones do."""
+        with respx.mock(using="httpx") as router:
+            router.get(f"{BASE}/conv/uniprot/hsa:10458").mock(
+                return_value=httpx.Response(200, text="hsa:10458\tup:P50570\n")
+            )
+            out = await conv(target="uniprot", source="hsa:10458")
+        assert json.loads(out) == [
+            {
+                "source": "hsa:10458",
+                "target": "up:P50570",
+                "source_id": "10458",
+                "target_id": "P50570",
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_chemical_conversion(self):
+        with respx.mock(using="httpx") as router:
+            router.get(f"{BASE}/conv/chebi/cpd:C00031").mock(
+                return_value=httpx.Response(200, text="cpd:C00031\tchebi:4167\n")
+            )
+            out = await conv(target="chebi", source="cpd:C00031")
+        assert json.loads(out)[0]["target_id"] == "4167"
+
+    @pytest.mark.asyncio
+    async def test_whole_namespace_conversion(self):
+        with respx.mock(using="httpx") as router:
+            route = router.get(f"{BASE}/conv/hsa/uniprot").mock(
+                return_value=httpx.Response(200, text="up:P50570\thsa:10458\n")
+            )
+            await conv(target="hsa", source="uniprot")
+        assert route.called
+
+    @pytest.mark.asyncio
+    async def test_crossing_gene_and_chemical_families_raises(self):
+        # assert_all_called=False: the catch-all route exists precisely so the
+        # test can assert it stays UNCALLED.
+        with respx.mock(using="httpx", assert_all_called=False) as router:
+            router.get(url__startswith=BASE).mock(return_value=httpx.Response(200, text=""))
+            with pytest.raises(ValueError, match="Cannot convert between identifier families"):
+                await conv(target="chebi", source="hsa:10458")
+            assert not router.calls
+
+    @pytest.mark.asyncio
+    async def test_unknown_namespace_raises(self):
+        with pytest.raises(ValueError, match="Unknown conversion namespace"):
+            await conv(target="ensembl", source="hsa:10458")
+
+
+# --------------------------------------------------------------------------- #
+# Transport behavior: rate limit, retries, licence-signal handling
+# --------------------------------------------------------------------------- #
+class TestRateLimit:
+    @pytest.mark.asyncio
+    async def test_requests_are_spaced_by_the_shared_process_wide_limiter(
+        self, monkeypatch
+    ):
+        """3 req/s is a per-PROCESS budget, so the gate must not be per-tool."""
+        monkeypatch.setattr(kegg, "_MIN_INTERVAL", 0.05)
+        monkeypatch.setattr(kegg, "_last_request_at", 0.0)
+        with respx.mock(using="httpx") as router:
+            router.get(url__startswith=BASE).mock(
+                return_value=httpx.Response(200, text="a\tb\n")
+            )
+            start = time.monotonic()
+            # Two DIFFERENT tools: a per-tool limiter would let these run together.
+            await asyncio.gather(
+                find(database="compound", query="x"),
+                link(target="pathway", source="hsa:10458"),
+                find(database="compound", query="y"),
+            )
+            elapsed = time.monotonic() - start
+        assert elapsed >= 2 * 0.05
+
+
+class TestTransportErrors:
+    @pytest.mark.asyncio
+    async def test_403_is_not_retried_and_names_the_licence_and_rate_cap(self):
+        """Retrying a 403/429 is what gets an institution's address blocked."""
+        with respx.mock(using="httpx") as router:
+            route = router.get(url__startswith=BASE).mock(
+                return_value=httpx.Response(403, text="Forbidden")
+            )
+            with pytest.raises(ValueError, match="RATE LIMIT EXCEEDED OR ACCESS RESTRICTED"):
+                await find(database="compound", query="x")
+        assert route.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_429_is_not_retried(self):
+        with respx.mock(using="httpx") as router:
+            route = router.get(url__startswith=BASE).mock(
+                return_value=httpx.Response(429, text="Too Many Requests")
+            )
+            with pytest.raises(ValueError, match="RATE LIMIT EXCEEDED"):
+                await find(database="compound", query="x")
+        assert route.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_transient_5xx_is_retried_then_succeeds(self):
+        with respx.mock(using="httpx") as router:
+            route = router.get(url__startswith=BASE).mock(
+                side_effect=[
+                    httpx.Response(502, text="bad gateway"),
+                    httpx.Response(200, text="cpd:C00031\tD-Glucose\n"),
+                ]
+            )
+            out = await find(database="compound", query="glucose")
+        assert route.call_count == 2
+        assert json.loads(out)[0]["entry"] == "cpd:C00031"
+
+    @pytest.mark.asyncio
+    async def test_persistent_5xx_raises_with_the_upstream_body(self):
+        with respx.mock(using="httpx") as router:
+            router.get(url__startswith=BASE).mock(
+                return_value=httpx.Response(500, text="internal error detail")
+            )
+            with pytest.raises(ValueError, match="internal error detail"):
+                await find(database="compound", query="x")
+
+    @pytest.mark.asyncio
+    async def test_4xx_surfaces_the_upstream_diagnostic(self):
+        with respx.mock(using="httpx") as router:
+            router.get(url__startswith=BASE).mock(
+                return_value=httpx.Response(400, text="Bad request: no such database")
+            )
+            with pytest.raises(ValueError, match="no such database"):
+                await find(database="compound", query="x")
+
+    @pytest.mark.asyncio
+    async def test_network_failure_retries_then_raises(self):
+        with respx.mock(using="httpx") as router:
+            route = router.get(url__startswith=BASE).mock(
+                side_effect=httpx.ConnectError("unreachable")
+            )
+            with pytest.raises(ValueError, match="could not reach rest.kegg.jp"):
+                await find(database="compound", query="x")
+        assert route.call_count == kegg._MAX_ATTEMPTS
+
+
+# --------------------------------------------------------------------------- #
+# The licence gate — the whole reason this sub-server exists separately
+# --------------------------------------------------------------------------- #
+class TestTransportGate:
+    """KEGG must be mounted on stdio ONLY.
+
+    The public HTTP host cannot verify a caller's academic affiliation, and
+    serving KEGG through it would need an academic service-provider licence. The
+    gate is a `local=` argument rather than an env var precisely so that it
+    cannot be opened by a deployment-config oversight — see main.setup().
+    """
+
+    async def _tool_names(self, *, local: bool, monkeypatch) -> set[str]:
+        # A fresh root server per call: `setup()` mutates the module-global `mcp`,
+        # and a leaked mount would make this test pass for the wrong reason.
+        fresh = FastMCP("gate-test")
+        monkeypatch.setattr(main, "mcp", fresh)
+        await main.setup(local=local)
+        return {t.name for t in await fresh.list_tools()}
+
+    @pytest.mark.asyncio
+    async def test_http_setup_does_not_mount_kegg(self, monkeypatch):
+        names = await self._tool_names(local=False, monkeypatch=monkeypatch)
+        assert not [n for n in names if n.startswith("kegg_")], (
+            "KEGG reached the HTTP tool surface. The public host must never call "
+            "rest.kegg.jp — see the licence note in main.setup()."
+        )
+        # The other sub-servers must still be there (guards against a no-op setup).
+        assert any(n.startswith("togovar_") for n in names)
+
+    @pytest.mark.asyncio
+    async def test_stdio_setup_mounts_kegg(self, monkeypatch):
+        names = await self._tool_names(local=True, monkeypatch=monkeypatch)
+        assert {
+            "kegg_find",
+            "kegg_get_entry",
+            "kegg_pathway_graph",
+            "kegg_pathway_neighborhood",
+            "kegg_link",
+            "kegg_conv",
+        } <= names
+
+    @pytest.mark.asyncio
+    async def test_kegg_tools_are_read_only_and_documented(self, monkeypatch):
+        """Same contract test_tool_descriptions.py applies to the HTTP surface —
+        repeated here because the stdio-only tools never reach that fixture."""
+        fresh = FastMCP("gate-test")
+        monkeypatch.setattr(main, "mcp", fresh)
+        await main.setup(local=True)
+        kegg_tools = [t for t in await fresh.list_tools() if t.name.startswith("kegg_")]
+        assert len(kegg_tools) == 6
+        for tool in kegg_tools:
+            assert tool.annotations.readOnlyHint is True, tool.name
+            assert tool.annotations.openWorldHint is True, tool.name
+            # FastMCP drops the docstring `Returns:` section, so the contract has
+            # to live in the body above `Args:`.
+            assert "RETURNS" in (tool.description or ""), tool.name
+            assert "RAISES" in (tool.description or ""), tool.name

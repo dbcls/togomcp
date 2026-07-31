@@ -153,8 +153,53 @@ def render_catalog(records: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def render_non_sparql_companions() -> str:
+    """Static appendix: tool surfaces that are NOT RDF Portal databases.
+
+    Everything above this point is driven by an MIE `discovery:` block, which
+    only exists for a SPARQL database. KEGG has neither an RDF Portal endpoint
+    nor an MIE (by design — the MIE format describes a SPARQL schema), so it can
+    never appear as a catalog row. Without a note here an agent has no way to
+    learn that KEGG exists at all, or the two things that make it different:
+    it is absent from the public HTTP server for licensing reasons, and its
+    identifiers do not work in `run_sparql`.
+    """
+    return "\n".join([
+        "**Not an RDF database — KEGG (local stdio server only):**",
+        "",
+        "KEGG is reachable through the `kegg_*` tools, NOT through `run_sparql`. It has "
+        "no RDF Portal endpoint and no MIE file, so `database=\"kegg\"` is invalid on "
+        "`run_sparql` and `get_MIE_file`.",
+        "",
+        "- **Availability.** The `kegg_*` tools exist ONLY on the local stdio server "
+        "(`togo-mcp-local`). The public HTTP server at togomcp.rdfportal.org does not "
+        "expose them: the KEGG API is licensed to academic users at academic "
+        "institutions, and a public host cannot verify a caller's affiliation. "
+        "**If you do not see `kegg_*` in your tool list, KEGG is unavailable to you** — "
+        "use `reactome` or `rhea` over SPARQL instead, and do not report the absence "
+        "as an error.",
+        "- **What it uniquely adds.** A pathway map as a SIGNED DIRECTED GRAPH "
+        "(activation vs inhibition per edge, from KGML relation subtypes) and, for an "
+        "organism map, the metabolic steps that organism LACKS. Reactome RDF has no "
+        "equivalent of either, so these are not reproducible with `run_sparql`.",
+        "- **Workflow.** `kegg_find` (keyword → entry IDs) → `kegg_get_entry` (full "
+        "record incl. DBLINKS), `kegg_link` (gene↔pathway↔compound↔pubmed), "
+        "`kegg_pathway_graph` (whole map) or `kegg_pathway_neighborhood` (up/downstream "
+        "of one gene).",
+        "- **Bridging to RDF Portal — REQUIRED.** KEGG-namespaced IDs (`hsa:10458`, "
+        "`cpd:C00031`, `path:hsa04151`) do NOT resolve in any SPARQL database. Convert "
+        "them with `kegg_conv` FIRST: genes ↔ `uniprot` / `ncbi-geneid` / "
+        "`ncbi-proteinid`, chemicals ↔ `chebi` / `pubchem`. Only the converted "
+        "identifiers belong in a `run_sparql` query or a TogoID call.",
+        "- **Rate limit.** KEGG allows 3 requests/second and blocks abusers. An HTTP "
+        "403/429 from a `kegg_*` tool means that cap or an access restriction was hit — "
+        "do NOT retry it.",
+        "",
+    ])
+
+
 def build() -> str:
-    return render_catalog(load_records())
+    return render_catalog(load_records()) + "\n" + render_non_sparql_companions()
 
 
 def main(argv: list[str] | None = None) -> int:

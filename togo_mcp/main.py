@@ -45,10 +45,27 @@ _DEFAULT_FORWARDED_ALLOW_IPS = "127.0.0.1,::1,10.0.2.0/24,10.88.0.0/16,172.16.0.
 def _forwarded_allow_ips() -> str:
     return os.environ.get("TOGOMCP_FORWARDED_ALLOW_IPS", "").strip() or _DEFAULT_FORWARDED_ALLOW_IPS
 
-async def setup():
+async def setup(*, local: bool = False):
     mcp.mount(togoid_mcp, "togoid")
     mcp.mount(ncbi_mcp, "ncbi")
     mcp.mount(togovar_mcp, "togovar")
+    # KEGG is STDIO-ONLY, and the gate is structural rather than configurable.
+    #
+    # The KEGG API is licensed "for academic use by academic users belonging to
+    # academic institutions", and providing a service on top of KEGG needs a
+    # separate academic service-provider licence. The HTTP deployment
+    # (togomcp.rdfportal.org) is a public DBCLS host that cannot verify a
+    # caller's affiliation, so it must not reach rest.kegg.jp at all; under
+    # stdio the user running the process IS the academic user.
+    #
+    # Deliberately NOT an env flag: deploy.sh forwards env vars by a fixed list
+    # (TOGOMCP_PERSERVICE_VARS / TOGOMCP_SHARED_VARS), and a knob missing from
+    # that list is silently inert in production — that failure happened twice in
+    # one week (see CLAUDE.md, "Deployment"), both times with a green test suite.
+    # A licence boundary must not be one forgotten list entry away from opening.
+    if local:
+        from .kegg import kegg_mcp
+        mcp.mount(kegg_mcp, "kegg")
 
 def run():
     asyncio.run(setup())
@@ -61,7 +78,7 @@ def run():
     )
 
 def run_local():
-    asyncio.run(setup())
+    asyncio.run(setup(local=True))
     mcp.run()
 
 if __name__ == "__main__":

@@ -186,6 +186,29 @@ TogoMCP exposes tools for querying the following (via SPARQL or REST APIs):
 | Taxonomy | NCBI Taxonomy |
 | Materials Science | SuperCon |
 
+### KEGG (local `stdio` install only)
+
+A `kegg` tool group (`kegg_find`, `kegg_get_entry`, `kegg_pathway_graph`,
+`kegg_pathway_neighborhood`, `kegg_link`, `kegg_conv`) is mounted **only** by
+`togo-mcp-local` (the stdio entry point used by Claude Desktop). It is **not**
+available on the hosted server at togomcp.rdfportal.org, and not on any HTTP
+deployment.
+
+This is a licensing boundary, not a configuration choice:
+
+- The [KEGG API](https://www.kegg.jp/kegg/rest/) is provided "for academic use by
+  academic users belonging to academic institutions", and calls are limited to
+  **3 requests per second**.
+- Providing a *service* built on KEGG additionally requires an academic service
+  provider license (see [KEGG's terms](https://www.kegg.jp/kegg/legal.html)).
+  A public host cannot verify a caller's affiliation, so it must not proxy KEGG.
+
+By running `togo-mcp-local` you are the caller, and using these tools is your
+own use of the KEGG API under your institution's terms. KEGG is not part of RDF
+Portal: it has no SPARQL endpoint, so `database="kegg"` is invalid in
+`run_sparql`. Use `kegg_conv` to translate KEGG identifiers to UniProt, NCBI
+Gene/Protein, ChEBI or PubChem before querying any RDF database with them.
+
 ---
 
 ## Example Prompts
