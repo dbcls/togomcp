@@ -1245,11 +1245,10 @@ async def conv(
 ) -> str:
     """Convert KEGG IDs to/from UniProt, NCBI Gene/Protein, ChEBI and PubChem.
 
-    THIS IS THE BRIDGE BETWEEN KEGG AND RDF PORTAL. KEGG is not a SPARQL
-    database and KEGG-namespaced IDs do not resolve in `run_sparql`, so any KEGG
-    result you want to join against uniprot, chebi, pubchem, reactome or the
-    NCBI tools must be converted here first. Conversely, convert an RDF Portal
-    identifier to KEGG before calling the other KEGG tools.
+    THIS IS THE BRIDGE OUT OF KEGG. KEGG-namespaced IDs are not RDF-resolvable,
+    so any KEGG result you want to join against a life-science knowledge graph
+    must be converted here first. Conversely, convert an external identifier to
+    KEGG before calling the other KEGG tools.
 
     Two disjoint identifier families are supported, and mixing them is an error:
     GENES convert between an organism code (hsa, eco, mmu …) and ncbi-geneid,
@@ -1260,8 +1259,8 @@ async def conv(
     `{"source", "target", "source_id", "target_id"}`, e.g.
     `[{"source": "hsa:10458", "target": "up:P50570", "source_id": "10458",
        "target_id": "P50570"}]`. `source_id`/`target_id` are the same values with
-    KEGG's namespace prefix stripped — those are what you put in a SPARQL query
-    or a TogoID call; the prefixed forms are what the other KEGG tools take.
+    KEGG's namespace prefix stripped — those are the forms downstream query and
+    ID-conversion tools accept; the prefixed forms are what the KEGG tools take.
     Empty and non-empty results share the `[...]` shape, and an empty array means
     no mapping exists (KEGG answers with an empty HTTP 200, not a 404).
 

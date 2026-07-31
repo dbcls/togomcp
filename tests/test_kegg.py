@@ -944,21 +944,25 @@ class TestTransportGate:
         assert remote in local or "KEGG (available" not in remote
 
     @pytest.mark.asyncio
-    async def test_only_kegg_conv_names_run_sparql_literally(self, monkeypatch):
-        """Keep the `run_sparql` token to ONE KEGG tool, so it cannot crowd the
-        real tool out of a client's tool-search results.
+    async def test_no_kegg_tool_names_the_sparql_tool_literally(self, monkeypatch):
+        """No KEGG description may carry the `run_sparql` token.
 
         A deferred-tool client ranks by DESCRIPTION text and loads only the top
-        few, so a tool that does not rank is effectively uncallable. Eight KEGG
-        descriptions each naming `run_sparql` means eight decoys competing with
-        the one real `run_sparql` on exactly the query someone uses to find it
-        (observed: `run_sparql` returned only KEGG tools; the real one took seven
-        searches). Compressing the mentions to the single tool where the exact
-        name is load-bearing — `kegg_conv`, the RDF bridge — keeps the guidance
-        precise where it is read and removes it where it was boilerplate.
+        few, so a tool that does not rank is effectively uncallable. Five KEGG
+        descriptions each naming `run_sparql` put five decoys on exactly the query
+        someone types to FIND run_sparql — measured: the real tool took seven
+        searches to reach.
 
-        This is a lexical proxy, not a search test: the ranking layer is
-        client-side and this repo cannot query it. It guards the intent only.
+        This assertion was first written as `== ["kegg_conv"]`, on the argument
+        that the bridge tool needs the precise name. Testing showed kegg_conv then
+        remained the sole KEGG decoy across all three probe queries, and the
+        argument does not survive: what the caller must know is "convert before
+        any RDF query", which survives periphrasis intact. The tool's own
+        vocabulary (uniprot/chebi/pubchem — the namespaces it converts between) is
+        load-bearing and deliberately kept.
+
+        A lexical proxy, not a search test: the ranking layer is client-side and
+        this repo cannot query it. It guards the intent only.
         """
         fresh = FastMCP("gate-test")
         monkeypatch.setattr(main, "mcp", fresh)
@@ -969,11 +973,34 @@ class TestTransportGate:
             for t in await fresh.list_tools()
             if t.name.startswith("kegg_") and "run_sparql" in (t.description or "")
         ]
-        assert naming == ["kegg_conv"], (
-            f"tools naming `run_sparql`: {naming}. Only kegg_conv should — it is "
-            "the bridge tool, where the exact name is what the caller needs. "
-            "Elsewhere say 'not RDF-resolvable' / 'downstream RDF query' instead."
+        assert naming == [], (
+            f"tools naming `run_sparql`: {naming}. Say 'not RDF-resolvable' or "
+            "'any downstream RDF query' instead — naming the tool competes with it "
+            "in the caller's tool search."
         )
+
+    @pytest.mark.asyncio
+    async def test_kegg_conv_still_documents_what_it_converts(self, monkeypatch):
+        """The de-collision must not strip the bridge tool's actual vocabulary.
+
+        Guards against over-applying the rule above: `uniprot`/`chebi`/`pubchem`
+        are the namespaces kegg_conv accepts, so removing them to reduce token
+        overlap would leave the tool's API undocumented — a worse failure than a
+        search collision.
+        """
+        fresh = FastMCP("gate-test")
+        monkeypatch.setattr(main, "mcp", fresh)
+        monkeypatch.setenv(main._KEGG_ENV_VAR, "1")
+        await main.setup(local=True)
+        conv_desc = next(
+            t.description or ""
+            for t in await fresh.list_tools()
+            if t.name == "kegg_conv"
+        ).lower()
+        for namespace in ("uniprot", "chebi", "pubchem", "ncbi-geneid"):
+            assert namespace in conv_desc, f"kegg_conv no longer documents {namespace}"
+        # …and it must still say WHY you would call it.
+        assert "convert" in conv_desc and "not rdf-resolvable" in conv_desc
 
     @pytest.mark.asyncio
     async def test_kegg_tools_are_read_only_and_documented(self, monkeypatch):
