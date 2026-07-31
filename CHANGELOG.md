@@ -46,7 +46,9 @@ _Nothing yet._
 - Adding a database is now documented as touching **five** files, not one: `endpoints.csv`, the MIE,
   the regenerated `02b_database_catalog.md`, the **hand-written** endpoint table in
   `02_budgets_and_discovery.md` (no generator touches it — two `TestUsageGuideEndpointTable` tests
-  are what catch a miss), and the intro page's database grid.
+  are what catch a miss), and the intro page's database grid. The README's **Contributing** section
+  now lists all five with the guarding test for each; it previously said two, which is how three of
+  them got missed on the first pass of this very release. A *removal* really is just the registry row.
 
 ## [2.2.1] - 2026-07-30
 
