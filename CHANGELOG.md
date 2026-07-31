@@ -15,6 +15,110 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 _Nothing yet._
 
+## [2.4.1] - 2026-07-31
+
+Four review rounds against the live KEGG API, all on `kegg_pathway_graph`'s response
+reduction. Every fix below is a case where the tool returned something that looked like a
+valid answer and was not: a graph whose edges pointed at absent nodes, a whole-metabolism map
+with its `metabolic_gaps` silently gone, and a raised-cap call that returned less than the
+defaults. Only the stdio + `TOGOMCP_ENABLE_KEGG=1` audience is affected; nothing here changes
+the hosted tool surface.
+
+### Fixed
+
+- **Raising every `kegg_pathway_graph` cap returned a SMALLER graph than the defaults.** On hsa01100,
+  `max_gaps=5000` let 1,555 metabolic gaps take 74% of the payload, so `nodes` fell to the 50-node
+  floor — against the 191 nodes / 560 edges the same map returns at the defaults. No contract was
+  broken (`max_*` are ceilings, not floors) but the tool did the opposite of what asking for more
+  means, and `truncated.hint`'s advice to "raise max_nodes/max_edges/max_gaps" was actively wrong:
+  the only move that bought graph was *lowering* `max_gaps`.
+  The caps are ceilings on ONE shared response budget, and the supporting sections were reserving
+  from it first. `nodes`+`edges` now take half the budget (`_GRAPH_BUDGET_SHARE`) before
+  `metabolic_gaps`/`map_links` may spend any of it; the supporting sections are then count-capped as
+  before and fitted into what remains, biggest-first. Same case now returns 138 nodes / 346 edges
+  with 876 gaps. Default arguments are byte-for-byte unaffected (gaps are ~10% of the payload there,
+  well inside the remainder), and a section cut for the reserve reports `capped_by: "size_budget"`
+  rather than `"count"`, so the report never suggests raising a cap that is already maxed out. When
+  the supporting sections hold enough budget to matter, `hint` now says to lower `max_gaps` and gives
+  the byte split instead of the generic advice.
+- **`kegg_pathway_graph` could return edges whose endpoints were not in `nodes`.** Under a raised
+  `max_nodes` on a whole-metabolism map, 18 of 50 returned edges (and in a synthetic reproduction all
+  50) referenced node ids that had been trimmed away, so the caller could not resolve a single
+  endpoint — while 878 of 891 returned nodes appeared edgeless on a densely connected map. Both are
+  wrong ANSWERS rather than small ones, and neither looks like an error: "this map is nearly
+  disconnected" is a plausible reading of the second.
+  The cause was reducing `nodes` and `edges` as two independent flat lists. The unit of reduction is
+  now the NODE SET — a binary search finds the largest degree-ordered prefix whose INDUCED subgraph
+  fits the budget, so every returned edge has both endpoints in `nodes` by construction, on every
+  path (no cap, count cap, size cap). Verified across all six validation maps plus both capped cases.
+- **`metabolic_gaps` and `map_links` vanished from every organism global map at default arguments.**
+  The byte budget was computed against each section's UNREDUCED size, so `edges` at its full 8,124-row
+  cost (~370 KB) made the budget look exhausted and the supporting sections were zeroed — even though
+  the actual response was 222 KB against a 250 KB cap, and the 100 gaps cost 11.5 KB. The gaps are
+  this tool's headline output, and they were invisible precisely where they mean most. The budget is
+  now computed on what is actually being returned, with the (already count-capped, ~22 KB) supporting
+  sections reserved BEFORE the graph is fitted into what remains.
+- **`capped_by` mislabelled an induced edge count as a size-budget trim.** Edges follow the node set,
+  so when the node prefix is bound by `max_nodes` the edges are too; reporting that as `size_budget`
+  told the caller to narrow the question when raising `max_nodes` is what actually helps. Edges now
+  inherit the node limit's reason unless their own count cap bound them first, and carry an explicit
+  `note` that they are the induced subgraph.
+- **`truncated.section_bytes_if_complete`** replaces the previous backstop-only diagnostic and is now
+  emitted whenever the graph is reduced, reporting what each of the four sections would have cost
+  unreduced. That is what answers "why are there so few edges?" — the section that drove the
+  reduction is otherwise invisible, since a section that merely occupied the budget has
+  `returned == total` and nothing flags it.
+
+- **Raised count caps could starve `kegg_pathway_graph` of its edges.** With
+  `max_nodes=5000, max_edges=20000, max_gaps=5000` on a whole-metabolism map, `metabolic_gaps`
+  (186 KB, 84% of the payload) consumed the size budget and `edges` came back as **0** — a pathway
+  graph with no graph in it, which reads as "these molecules are unconnected" and is more dangerous
+  than an error because it does not look like one.
+  This was the swing back from the previous fix: a "gaps first" drop order had thrown away all 25 of
+  hsa00010's gaps to save 2 KB, and reversing it to "edges first" produced this. Neither fixed order
+  is right, because the question is not which section is more precious. The backstop now works in two
+  TIERS — supporting detail (`map_links`, `groups`, `metabolic_gaps`) is spent before the graph
+  itself (`edges`, `nodes`), which additionally keeps a floor of 50 rows — and **within a tier the
+  BIGGEST section goes first**, so the section that occupies the budget is the one that gives it back
+  instead of a small section being zeroed for nothing.
+- **The truncation report no longer hides the section that caused the truncation.** `truncated` now
+  carries `reasons` (a list, so a count-cap trim and a size-backstop firing are distinguishable
+  rather than collapsed into one string), `capped_by` per section (`"count"` / `"size_budget"` /
+  `null`), and `section_bytes` when the size backstop fires. Previously the section that ate the
+  budget was the only one absent from the report — it had `returned == total`, so nothing flagged it,
+  and "why are there so few edges?" was unanswerable from the response.
+
+- **`kegg_pathway_graph` could exceed the 1 MB MCP transport limit, so the caller got nothing.**
+  `_bounded` only *labelled* an oversized dict — it set `payload["truncated"]` and then serialized
+  everything anyway — so the size cap was decorative for all four dict-returning KEGG tools. A
+  whole-metabolism map (`hsa01100`: 6,382 nodes, 8,124 edges, 2,073 metabolic gaps) blew past the
+  transport limit, and because the rejection happens at the transport layer the caller received not
+  even the truncation note meant to help it recover. The dict branch now really shrinks, dropping
+  named sections in priority order and reporting `{returned, total}` PER SECTION while `stats` keeps
+  describing the whole map.
+- **The same fix exposed two bad calls of my own.** The first drop-order sacrificed `metabolic_gaps`
+  first — throwing away all 25 of hsa00010's gaps to save 2 KB, i.e. the tool's unique answer to
+  protect the bulk. And the 90 KB cap, inherited from a row-listing tool, was far too tight for a
+  graph: it was firing on ORDINARY maps and cutting hsa05200 from 311 edges to 43. Graph payloads now
+  get their own 250 KB cap (still ~60k tokens, well under the 1 MB transport limit) and drop
+  bulkiest-and-tunable first, unique-and-cheap last. All six validation maps now return complete,
+  untruncated graphs. New `max_gaps` caps gaps at the source, with the true count always in
+  `stats.metabolic_gap_count`.
+- **Two false statements in the KEGG docstrings**, both found by testing rather than review:
+  global/overview maps like `01100` were said to have no KGML — they do, they are just enormous; and
+  the glycolysis example claimed `C00031 → C00022` works at `max_length` 12, which was measured on
+  `ko00010` and written up as "glycolysis". On `hsa00010`, C00031 (D-Glucose) is an ISOLATED node and
+  returns nothing at any length; the chain starts at C00267 (alpha-D-Glucose). The example is now the
+  measured one, and `kegg_pathway_paths` reports `isolated_endpoints` so a degree-0 endpoint is no
+  longer indistinguishable from "just far away".
+- **`kegg_pathway_paths` wasted its `max_paths` budget on enzyme detours** — a catalysis edge lets a
+  route bypass the enzyme box over the identical reaction sequence, which is the same chemistry drawn
+  differently. Routes repeating a reaction sequence are now collapsed and counted in
+  `enzyme_detours_collapsed`; genuinely different reactions between the same pair stay distinct.
+- **`kegg_find` now returns `entry_id`** (prefix-stripped) alongside the verbatim `entry`, matching
+  `kegg_conv`. The identifier-form policy for all four ID-returning tools is stated once, in the
+  module docstring, instead of being scattered and mutually inconsistent.
+
 ## [2.4.0] - 2026-07-31
 
 ### Added
@@ -905,7 +1009,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.4.1...HEAD
+[2.4.1]: https://github.com/dbcls/togomcp/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/dbcls/togomcp/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/dbcls/togomcp/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/dbcls/togomcp/compare/v2.2.0...v2.2.1
