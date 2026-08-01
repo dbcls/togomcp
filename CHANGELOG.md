@@ -13,7 +13,18 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **Drift guard for the Usage Guide's stale-tool-list row** (`tests/test_usage_guide_canaries.py`).
+  That row names tools in two opposite roles and each can silently go wrong. Its **canaries**
+  (`togovar_search_variant`, `search_chembl_id_lookup`) must exist — rename or remove one and it
+  disappears from *every* client's tool list, so the row fires for everyone and tells healthy users to
+  re-register, inside the document that is supposed to be authoritative. Its **phantom** examples
+  (`find_databases`, `ncbi_ncbi_esearch`) must not exist — re-introduce one, say as a redirect stub,
+  and the row cites a working call as evidence of breakage. Neither fails at build time today; the
+  damage lands in someone else's chat session. Deliberately *not* asserted: that the canaries are the
+  newest tools. A stale canary only under-detects (it catches caches older than itself and never
+  misfires), so sensitivity stays a release-checklist judgement while correctness is enforced here.
 
 ## [2.5.1] - 2026-08-01
 
