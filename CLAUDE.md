@@ -99,6 +99,13 @@ The "public contract" of this server is the **tool surface** as a client sees it
 - **MINOR** (`1.x.0`) — new capability, old calls still work: add a tool/database/optional parameter, add a field to a return object, widen accepted input (new alias, case-insensitivity). **Return-shape changes ride here too** (e.g. bare-list → `{total_count, has_more, results}`) — that's why the Reactome (1.1→1.2) and Rhea (1.2→1.3) overhauls were minor despite reshaping returns. Strict semver would call those MAJOR; we don't, deliberately, because agents adapt. (Caveat: a purely programmatic client hitting the endpoint *can* break on a reshape — weigh that if such consumers appear.)
 - **PATCH** (`1.3.x`) — behavior fixed, contract unchanged: a bug fix that makes a tool return what it already promised (the `chebi:CHEBI:` 500, the empty-query guard), docstring/description fixes, a silently-relaxed filter now honored, internal refactors/tests.
 
+**Clients cache the tool list; assume months of lag.** ChatGPT connectors record the tool list at *Scan Tools* time and never refetch — the 2026-07-27→31 production log carried 28 calls to tools that no longer exist, **all** from `openai-mcp`, one cohort still using names retired three months earlier. Two consequences:
+
+- **A rename or removal is MAJOR because the *client* can't recover, not just the agent.** Budget a long tail of calls on the old name, and prefer a deprecation alias over a clean break where the traffic matters.
+- **When you ADD a tool, repoint the canaries** in the stale-tool-list row of `usage_guide_v6/04_reference.md` at it. That row is how a stale client finds out it is stale, and a canary only detects caches older than itself — an out-of-date canary silently under-detects. `tests/test_usage_guide_canaries.py` enforces that the canaries *exist* (a removed one would fire the row for every healthy client) but deliberately cannot check that they are the *newest* tools. That part is this checklist's job.
+
+Reach differs by kind of change, so weigh it when choosing how to ship a capability: a new **database** reaches every client immediately (the catalog ships inside `TogoMCP_Usage_Guide` at query time, and `database` is a free-form string validated server-side), while a new **tool** is invisible to any client that has not re-scanned. Where reach matters, prefer a new database or a parameter on an existing tool over a new tool.
+
 ## Testing
 
 ```bash
