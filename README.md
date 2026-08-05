@@ -1,5 +1,7 @@
 # TogoMCP: An MCP Server for Life-Science Databases
 
+[![MCP Toplist](https://mcptoplist.com/badge/glama%2Fdbcls%2Ftogomcp.svg)](https://mcptoplist.com/server/glama%2Fdbcls%2Ftogomcp)
+
 ![Python >=3.11](https://img.shields.io/badge/python-%3E%3D3.11-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
