@@ -264,6 +264,65 @@ examples:
       - "A variant with the consequence on N transcripts fans out to N annotation rows — COUNT(DISTINCT ?variant), not raw rows, for a variant-level total (116 distinct variants; row count is higher)."
       - "Removing the gene anchor to count missense genome-wide TIMES OUT / 503s (gotcha billion_triple_anchor). The SO-consequence route is a positive enumeration route, but it is only tractable when co-anchored."
 
+  - id: gene_symbol_impact
+    intent: resolve a GENE SYMBOL and read its VEP impact distribution — the diagnostic that makes an empty severity result interpretable
+    question: "Does the mouse gene Adam17 have any high- or moderate-impact variants in MoG+, and how severe are its variants overall?"
+    complexity: intermediate
+    sparql: |
+      PREFIX vep: <http://genome-variation.org/resource/vep#>
+      SELECT ?impact (COUNT(*) AS ?annotations)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          ?ann vep:symbol "Adam17" ; vep:impact ?impact .    # symbol is a PLAIN STRING (MGI nomenclature)
+        }
+      }
+      GROUP BY ?impact
+      ORDER BY DESC(?annotations)
+    verified: {result_rows: 4, date: "2026-08-08", distribution: "MODIFIER 20464, LOW 205, MODERATE 54, HIGH 2"}
+    teaches: >
+      RUN THIS BEFORE filtering on severity. vep:impact is VEP's 4-level severity band (HIGH / MODERATE / LOW /
+      MODIFIER) and it is MASSIVELY skewed to MODIFIER (non-coding/regulatory): for Adam17, 20,464 MODIFIER vs 2 HIGH.
+      Asking for the distribution instead of pre-filtering distinguishes the three states a bare
+      `FILTER(?impact IN ("HIGH","MODERATE"))` collapses into one indistinguishable empty result: NO ROWS = the symbol
+      is not in VEP at all; rows with ONLY MODIFIER/LOW = the gene is present and simply has no severe variants (a real
+      answer, not a failure); HIGH/MODERATE present = proceed to the strain-level query. The annotation also carries
+      vep:gene (an ENSMUSG Ensembl IRI) alongside the symbol, so use vep:symbol to ENTER from a human gene name and
+      vep:gene / mogplus:overlaps_gene to anchor heavier queries.
+    traps_avoided:
+      - "vep:symbol is a FREE STRING (vep:symbol_source = \"MGI\"), not a controlled IRI — nothing validates it, so a symbol MoG+ has never heard of returns 0 rows exactly like a gene with no severe variants. Many MGI symbols are QTL / locus / phenotype names (Aod4, Asp3, Bdln3, Bwq5, Idd3, Obrq15, Mhdakta20…) that have NO transcript, so VEP never annotates them: of 189 symbols sampled from real failing traffic, 117 (62%) were absent from vep:symbol entirely. Confirm presence with this query before concluding a gene 'has no severe variants'."
+      - "Case matters: mouse symbols are Xxxx-cased (\"Adam17\"), not human ALL-CAPS (\"ADAM17\"). A human-style symbol silently returns 0 rows."
+
+  - id: symbol_severe_variants_by_strain
+    intent: which strains carry the HIGH/MODERATE variants of a gene named by symbol (the full symbol->severity->genotype route)
+    question: "Which mouse strains carry high- or moderate-impact Adam17 variants in the v3 cohort, and with what genotype?"
+    complexity: advanced
+    sparql: |
+      PREFIX vep:     <http://genome-variation.org/resource/vep#>
+      PREFIX vcf:     <http://genome-variation.org/resource/vcf#>
+      PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT DISTINCT ?strainLabel ?v ?impact ?geno          # DISTINCT: VEP annotates once PER TRANSCRIPT
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/mogplus> {
+          ?ann vep:symbol "Adam17" ; vep:impact ?impact .
+          FILTER(?impact IN ("HIGH","MODERATE"))
+          ?v vep:has_consequence ?ann .
+          FILTER(STRSTARTS(STR(?v), "http://identifiers.org/mogplus/v3/"))   # MANDATORY release pin
+          ?v vcf:has_genotype_call ?gt .
+          ?gt med2rdf:sample ?strain ; vcf:genotype ?geno .
+          FILTER(?geno != "0/0")
+          ?strain rdfs:label ?strainLabel .
+        }
+      }
+      ORDER BY ?strainLabel ?v
+      LIMIT 10
+    verified: {result_rows: 10, date: "2026-08-08", totals: "26 distinct rows, 6 strains, 9 variants (v3)", first_row: "BFM | v3/12/GRCm39#21374190-T-C | MODERATE | 1/1"}
+    teaches: "The full route: annotation (vep:symbol + vep:impact) -> its variant via vep:has_consequence -> vcf:has_genotype_call -> GenotypeCall -> med2rdf:sample -> strain label. Filter impact on the ANNOTATION and pin the release on the VARIANT IRI. Lead with the symbol+impact pattern (a few dozen annotations) so the 600M-row genotype table is only ever touched through those few variants."
+    traps_avoided:
+      - "WITHOUT the release FILTER this merges the two DISJOINT cohorts: 548 rows / 21 variants unpinned vs 61 rows / 9 variants for v3 alone. The extra variants are v2.1's different strain panel, NOT extra evidence for the same mice (gotchas release_in_iri, disjoint_cohorts). Nothing signals the merge."
+      - "WITHOUT DISTINCT the same variant repeats once per annotated TRANSCRIPT (61 raw rows vs 26 distinct here — one Adam17 variant carries 5 transcript annotations, incl. NMD_transcript_variant alongside missense_variant). Never read the row count as a variant or strain count."
+      - "FILTER(?geno != \"0/0\") is nearly redundant and is NOT a way to find reference strains: the call list holds only strains with a RECORDED call, so a strain absent from the result is not necessarily homozygous-reference (gotcha in variant_genotypes). Absence != reference."
+
   - id: xdb_so_label
     intent: "cross-DB (intra-primary): VEP consequence SO IRI → Sequence Ontology human-readable label"
     question: "What are the human-readable consequence types (with SO labels) for MoG+ v3 variants in Xkr4?"
@@ -296,6 +355,7 @@ examples:
 schema_delta:
   - "gvo:SNV (131,856,375) and gvo:Variation (14,265,786, indels/MNVs) are DISJOINT and mutually exclusive — a variant is exactly one. For 'all variants' use FILTER(?t IN (gvo:SNV, gvo:Variation)); gvo:SNV alone omits 14M indels."
   - "VEP vs SnpEff are two INDEPENDENT annotation systems: vep:has_consequence → vep:ConsequenceAnnotation (279M; vep:gene / vep:feature ARE Ensembl IRIs, joinable) and snpeff:has_annotation → snpeff:Annotation (158M; snpeff:gene_id / snpeff:gene_name are STRINGS like \"CHR_START-ENSMUSG...\", NOT joinable to Ensembl). Both expose an SO-IRI field (vep:consequence / snpeff:normalized_consequence) + raw text."
+  - "Remaining fields on a vep:ConsequenceAnnotation beyond those the examples use: vep:allele (the ALT this row describes), vep:biotype (\"protein_coding\"…), vep:feature_type (\"Transcript\"), vep:strand (±1, xsd:integer), vep:symbol_source (\"MGI\"), vep:intron/exon (\"3/3\" rank strings), and rdfs:label + vep:consequence_label, which BOTH duplicate the SO term as display text — filter on the obo:SO_* IRI instead (enum_missense)."
   - "vcf:has_info_field carries ONLY a handful of keys per variant (LOF, NMD, rarely ReverseComplementedAlleles) — NOT the GATK QC metrics (AC/AF/AN/DP/MQ/QD/FS/SOR): those exist only as header definitions (vcf:InfoFieldDefinition, 39 rows), never attached per-variant. Liftover flags (SwappedAlleles/ReverseComplementedAlleles) are almost never populated, so REF/ALT-swap artifacts cannot be reliably detected from the RDF."
   - "VCF header definitions are per-release: vcf:InfoFieldDefinition (39) + vcf:FormatFieldDefinition (16) at IRI .../<release>/GRCm39/vcf/header/{info|format}/<KEY>; each has vcf:id, vcf:number, vcf:type, dct:description."
   - "mogbs:NA (bioresource/NA) is a POLYMORPHIC node collapsing ≥4 strains (KK/HiJ, NON/LtJ, QSi3, QSi5) under one label \"NA\"; dct:identifier is multi-valued on some strains (JF1_Ms, MSM_Ms). Use DISTINCT when counting strains by identifier, and do not treat mogbs:NA as one strain."
@@ -319,3 +379,18 @@ id_join_map:
 # ── byte-count footer (spec §5 item 7) ──
 # v2: `wc -c togo_mcp/data/mie/mogplus.yaml` = 53097 bytes
 # v3: `wc -c benchmark/studies/redesign/mie_v3/mogplus.yaml` = 24376 bytes → 54.1% smaller than v2.
+# (2026-08-08 revision, driven by production tool-call logs rather than a debugging session. 2,789 logged
+#  mogplus run_sparql calls: 777 (27.9%) returned ZERO rows, and every one of them entered through
+#  `vep:symbol` + `vep:impact` — two predicates this file did not mention even once. Added examples
+#  gene_symbol_impact + symbol_severe_variants_by_strain to cover that entry path.
+#  The 777 empties were deterministic per symbol (189 symbols always empty, 720 always non-empty, ZERO
+#  overlap) and split into two causes that a bare severity FILTER makes indistinguishable:
+#    A (532 queries / 117 symbols) the symbol is ABSENT from vep:symbol — mostly MGI QTL/locus names
+#      (Aod4, Idd3, Obrq15, Mhdakta20) that have no transcript, so VEP never annotates them;
+#    B (245 queries /  72 symbols) the symbol is PRESENT but has no HIGH/MODERATE variant — a correct
+#      answer, not a failure. Ebf1 carries 50,916 annotations, all MODIFIER/LOW.
+#  gene_symbol_impact returns the impact DISTRIBUTION so these three states are told apart in one query.
+#  Also found: the logged template never pinned the release, so even its ~2,000 NON-empty results silently
+#  merged the disjoint v3/v2.1 cohorts (548 rows/21 variants unpinned vs 61/9 for v3) and never used
+#  DISTINCT against per-transcript fan-out (61 raw vs 26 distinct) — both now traps on the new example.
+#  All 9 pre-existing examples re-verified UNCHANGED (enum_missense 116, count_gene_variants 4125).)
