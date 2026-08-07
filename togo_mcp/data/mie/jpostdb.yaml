@@ -1,6 +1,6 @@
 # MIE v3 — jPOST proteomics (jPOSTdb). Agent-authored 2026-07-22 on `mie-redesign`.
 # Format: togo_mcp/data/docs/MIE_v3_spec.md. Every verified count/result re-run live on the jpostdb
-# endpoint 2026-07-22. Byte count vs the v2 file it replaces (spec §5 item 7):
+# endpoint 2026-08-07. Byte count vs the v2 file it replaces (spec §5 item 7):
 # v2 togo_mcp/data/mie/jpostdb.yaml = 45,716 bytes; this v3 file = 19,563 bytes → 57.2% smaller. See footer.
 database: jpostdb
 
@@ -20,27 +20,42 @@ endpoint: https://rdfportal.org/primary/sparql   # RDF Portal "primary" endpoint
 base_uri: http://rdf.jpostdb.org/
 graphs:
   primary: http://jpost.org/graph/database    # the ONLY graph that declares jpost:Project/Dataset/Peptide/Protein/Modification
-  co_hosted:                       # same endpoint; jPOST IRIs are jPOST-minted throughout → single-tenant, ZERO overlap
-    uniprot_NOT_here: >
-      TRAP, not a join. UniProt lives on the SEPARATE `sib` endpoint (https://rdfportal.org/sib/sparql), NOT on
-      primary. A jpost:hasDatabaseSequence target (purl.uniprot.org/uniprot/*) queried as a same-endpoint GRAPH
-      returns ZERO rows silently. Reach UniProt only via SERVICE federation (example xdb_uniprot).
+  co_hosted:                       # 2g probe re-run 2026-08-07 (reverse probe, ?p unbound, on 2 jPOST entities + 3 hub IRIs)
+    jpost_own_iris_clean: >
+      PROBED CLEAN — jPOST's OWN entity IRIs (entry/JPST*, entry/PRT*) resolve in http://jpost.org/graph/database
+      and NOWHERE else: all 4 rdf:type, 2 dct:identifier, 229 hasPeptideEvidence triples land in that one graph, and
+      no co-tenant re-types a jPOST class. So a graph-pinned COUNT of Project/Dataset/Protein does NOT inflate.
+    hub_iris_ARE_redeclared: >
+      INFLATION, and it is on the JOIN TARGETS, not on jPOST's own nodes — the moment a query follows a hub IRI
+      OUT of the jPOST graph it enters multi-graph territory. Verified 2026-08-07: this endpoint ALSO hosts ~40
+      rdf.glycosmos.org/* graphs, and <purl.uniprot.org/uniprot/P01116> carries rdfs:label "GTPase KRas" in BOTH
+      glycosmos/glycoprotein AND glycosmos/pathway (x2, plus up:classifiedWith x38 and its own rdf:type there);
+      <identifiers.org/taxonomy/9606> is labelled "Homo sapiens" by BOTH ontology/taxonomy and dataset/microbedbjp
+      (x2, values agree here); obo:DOID_* appears across six togoid relation graphs. MEASURED: reading rdfs:label
+      off the UniProt IRI unpinned returned 212 rows for KRAS's 106 protein entries — exactly x2. jPOST itself puts
+      NO label on the UniProt IRI, so this is pure foreign duplication. FIX: GRAPH-pin the graph you actually mean
+      on the hub leg too, or use SERVICE for UniProt (example xdb_uniprot). COUNT(DISTINCT) masks the row count but
+      not a per-graph value disagreement.
+    uniprot_NOT_here: "UniProt itself is NOT a graph here — it is off-endpoint (gotcha uniprot_off_endpoint). Only foreign RE-DECLARATIONS of its IRIs are present, per hub_iris_ARE_redeclared."
     ontology_graphs: >
-      ~30 shared rdfportal.org/ontology/* graphs + mesh + goa co-host here (mondo, taxonomy, go, …). Pure JOIN
-      TARGETS — none re-type or overlap a jPOST entity IRI (probed GROUP BY graph), so they do NOT inflate counts;
-      GRAPH-pin one explicitly to use it (e.g. DOID→MONDO label via oboInOwl:hasDbXref in ontology/mondo).
+      ~30 shared rdfportal.org/ontology/* graphs + mesh + goa co-host here (mondo, taxonomy, go, …). None re-type or
+      overlap a jPOST-minted entity IRI, so they cannot inflate a count of jPOST's OWN entities — but they DO
+      re-declare the shared hub IRIs jPOST points at (see hub_iris_ARE_redeclared). GRAPH-pin one explicitly to use
+      it (e.g. DOID→MONDO label via oboInOwl:hasDbXref in ontology/mondo).
     jpost_owl_schema: >
       http://rdf.jpostdb.org/ontology/jpost.owl is jPOST's SCHEMA graph (class/property definitions only, ZERO
       instance data — no entry/* IRI). Not a data copy, cannot inflate; join to it for class labels if needed.
 
-entity_counts:                     # COUNT(DISTINCT), graph-pinned; verified live 2026-07-22
+entity_counts:                     # COUNT(DISTINCT), graph-pinned; verified live 2026-08-07
   projects:            598         # jpost:Project (JPST ids)
   datasets:            853         # jpost:Dataset (~1.4 per project; Dataset is the central join hub)
   samples:             853         # jpost:Sample (1 per Dataset Profile)
-  samples_with_disease: 6          # only 6 distinct DOID values across all samples — disease annotation is SPARSE (see enum_disease)
-  big_tables_note: "Peptide ~3.7M, PSM ~10M, Modification ~12.5M — NEVER star-scan these without a structural anchor (a Project/Protein IRI or a typed Unimod term); see gotcha hot_tables."
+  samples_with_disease: 86         # 86 of 853 samples (10.1%) carry jpost:disease, spanning only 6 distinct DOID values — SPARSE (see enum_disease)
+  distinct_disease_doids: 6        # the whole disease vocabulary in use across the repository
+  modifications_total:  12518574   # jpost:Modification; only 13.5% carry a real name — the label split is on mod_frequency
+  big_tables_note: "Peptide ~3.7M, PSM ~10M, Modification 12.5M — NEVER star-scan these without a structural anchor (a Project/Protein IRI or a typed Unimod term); see gotcha hot_tables."
 
-global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
+global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-08-07
   - id: graph_mandatory
     say: >
       GRAPH <http://jpost.org/graph/database> is MANDATORY on every triple block. Bare patterns hit the empty
@@ -53,7 +68,7 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
   - id: unimod_prefix
     say: >
       Modifications are typed with the UNIMOD term under the `http://www.unimod.org/obo/unimod.obo#` prefix
-      (unimod:UNIMOD_35), NOT the common `http://purl.obolibrary.org/obo/UNIMOD_35` (obo:) form. Verified 2026-07-22:
+      (unimod:UNIMOD_35), NOT the common `http://purl.obolibrary.org/obo/UNIMOD_35` (obo:) form. Verified 2026-08-07:
       `a unimod:UNIMOD_35` = 699,291 modifications; `a obo:UNIMOD_35` = 0. PSI-MS terms DO use the obo: PURL
       (obo:MS_*). Mixing the two namespaces returns 0 rows with no error.
   - id: bnode_scaffolds
@@ -62,6 +77,18 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
       `?pep jpost:hasSequence [ a obo:MS_1001344 ; rdf:value ?seq ]` (a direct `?pep ?p "SEQ"` matches nothing);
       (2) every numeric measurement (peptide/PSM count, m/z, RT, charge) is `<entity> sio:SIO_000216 [ a obo:MS_<term> ;
       sio:SIO_000300 ?value ]` — the PSI-MS type says what the number means. Do not assume a single typed value predicate.
+      (3) A blank-node id printed in tool output (`nodeID://b1857439210`) is a DISPLAY LABEL of that one query
+      execution, NOT a stable or re-submittable IRI. `FILTER(?ev = <nodeID://b1857439210>)` in a follow-up query
+      silently matches NOTHING (verified 2026-08-07: 0 rows on a bnode copied verbatim from the previous result) —
+      as an IRI it denotes a different, non-existent resource. jPOST is unusually bnode-heavy (PeptideEvidence,
+      every FALDO begin/end/location node), so this bites often. To drill into ONE instance, re-bind it inside the
+      SAME query with a nested `{ SELECT ?x WHERE { … } LIMIT 1 }` subquery — never carry a nodeID across calls.
+  - id: hub_union_inflation
+    say: >
+      Pinning the jPOST graph protects jPOST's own entities but NOT the hub IRIs a query follows OUT of it
+      (UniProt, taxonomy, DOID) — those are re-declared by co-tenants, measured x2, per graphs.co_hosted. SAFE
+      PATTERN: give EVERY leg its own explicit GRAPH block, the hub leg included; joining k re-declared predicates
+      multiplies as the PRODUCT. SELECT DISTINCT only masks the duplication.
   - id: hot_tables
     say: >
       Peptide/PSM/Modification are 3.7M/10M/12.5M rows. A star pattern or COUNT over them without a structural
@@ -86,7 +113,7 @@ examples:
         }
       }
       LIMIT 10
-    verified: {result_rows: 1, date: "2026-07-22", first_row: "'JPST000349-12 Mouse liver and kidney proteome with antibiotics treatment' (2023-04-01) → RPXD034320"}
+    verified: {result_rows: 1, date: "2026-08-07", first_row: "'JPST000349-12 Mouse liver and kidney proteome with antibiotics treatment' (2023-04-01) → RPXD034320"}
     teaches: "A Project IRI is http://rdf.jpostdb.org/entry/JPST<6-digit>; rdfs:seeAlso carries BOTH the jPOSTrepo page and the ProteomeXchange RPXD id — prefix-filter to pick one."
 
   - id: protein_evidence
@@ -102,7 +129,7 @@ examples:
           ?prot jpost:hasDatabaseSequence <http://purl.uniprot.org/uniprot/P01116> .
         }
       }
-    verified: {nEntries: 106, nProjects: 87, date: "2026-07-22"}
+    verified: {nEntries: 106, nProjects: 87, date: "2026-08-07"}
     teaches: "The SAME UniProt protein gets a distinct Protein IRI (entry/PRT<proj>_<ds>_<acc>) in every project that detected it. To find ALL evidence, filter by jpost:hasDatabaseSequence <purl.uniprot.org/uniprot/ACC> — the typed, indexed cross-ref — never by PRT IRI substring."
     traps_avoided:
       - "There is NO reverse `jpost:isDetectedIn` predicate (silent 0 rows). Reach proteins top-down through Dataset (jpost:hasDataset/jpost:hasProtein) or, for peptide coordinates, via jpost:hasPeptideEvidence."
@@ -126,7 +153,7 @@ examples:
       GROUP BY ?seq
       ORDER BY DESC(?nPsms)
       LIMIT 10
-    verified: {result_rows: 10, date: "2026-07-22", first_row: "KVPQVSTPTLVEVSR (616 PSMs)"}
+    verified: {result_rows: 10, date: "2026-08-07", first_row: "KVPQVSTPTLVEVSR (616 PSMs)"}
     teaches: "The AA string is on a child blank node typed obo:MS_1001344, reached via jpost:hasSequence [ … rdf:value ?seq ]. Protein→peptide runs through the jpost:hasPeptideEvidence bnode (jpost:hasPeptideEvidence/jpost:hasPeptide), which also carries FALDO start/end coordinates."
     traps_avoided:
       - "A direct `?pep rdf:value ?seq` (or `?pep ?p 'SEQ'`) matches nothing — the sequence is never a direct object of the Peptide (gotcha bnode_scaffolds). This is the single most common jPOST silent failure."
@@ -147,7 +174,7 @@ examples:
         }
       }
       LIMIT 25
-    verified: {result_rows: 16, date: "2026-07-22", first_row: "JPST001775 — SARS-CoV-2 proteomics reanalysis"}
+    verified: {result_rows: 16, date: "2026-08-07", first_row: "JPST001775 — SARS-CoV-2 proteomics reanalysis"}
     teaches: "Sample annotations are pre-typed ontology IRIs, so 'all projects/samples with property X' is an EXACT set enumeration — jpost:disease → obo:DOID_*, jpost:sampleType → NCIt/CLO/BTO, jpost:organ → NCIt/BTO, jpost:species → identifiers.org/taxonomy/*. Filter by the IRI, never bif:contains a name."
     traps_avoided:
       - "Disease is SPARSE (only 6 distinct DOID values across 853 samples, ~10% of samples annotated). An empty result for a disease usually means it was never curated, not a query bug — sampleType (98.9%) and species (100%) are the dense annotations."
@@ -163,10 +190,40 @@ examples:
           ?mod a unimod:UNIMOD_35 .    # UNIMOD_35 = Oxidation; swap the number for any PTM (4=carbamidomethyl, 1=acetyl, …)
         }
       }
-    verified: {nOxidation: 699291, date: "2026-07-22"}
+    verified: {nOxidation: 699291, date: "2026-08-07"}
     teaches: "To enumerate/count a specific PTM, type-filter on the Unimod IRI: ?mod a unimod:UNIMOD_<n>. This is THE set-level modification route — exact, no text match. A Modification also chains up via ^jpost:hasModification to its PSM/Peptide/Project when you need to scope the count."
     traps_avoided:
       - "MUST use the unimod: prefix http://www.unimod.org/obo/unimod.obo# — `a obo:UNIMOD_35` (the obo PURL) returns 0 silently (gotcha unimod_prefix). Verified: unimod: = 699,291 vs obo: = 0."
+
+  - id: ptm_absolute_position
+    intent: translate a Modification's peptide-relative FALDO position into a UniProt-absolute residue number
+    question: "At which UniProt residue positions is AHNAK (Q09666) phosphorylated (Unimod 21)?"
+    complexity: advanced
+    sparql: |
+      PREFIX jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX unimod: <http://www.unimod.org/obo/unimod.obo#>
+      SELECT DISTINCT ?modSite (?peptBegin + ?modPos - 1 AS ?protPos)
+      WHERE {
+        GRAPH <http://jpost.org/graph/database> {
+          ?prot jpost:hasDatabaseSequence <http://purl.uniprot.org/uniprot/Q09666> ;
+                jpost:hasPeptideEvidence ?ev .
+          ?ev jpost:hasPeptide ?pep ;
+              faldo:location [ faldo:begin [ faldo:position ?peptBegin ] ] .   # PROTEIN-absolute
+          ?pep jpost:hasPsm ?psm .
+          ?psm jpost:hasModification ?mod .
+          ?mod a unimod:UNIMOD_21 ;                                            # Phospho
+               jpost:modificationSite ?modSite ;
+               faldo:location [ faldo:position ?modPos ] .                     # PEPTIDE-relative
+        }
+      }
+      ORDER BY ?protPos
+      LIMIT 20
+    verified: {result_rows: 20, total_distinct_rows: 177, date: "2026-08-07", first_rows: "S@18, S@20, T@38, S@41"}
+    teaches: "jPOST carries TWO FALDO coordinate frames and a residue-level PTM question needs BOTH. A PeptideEvidence's faldo:location/faldo:begin/faldo:position is PROTEIN-absolute (its faldo:reference is the Protein IRI, e.g. entry/PRT1615_1_Q09666); a Modification's faldo:location/faldo:position is relative to its PARENT PEPTIDE (faldo:reference is a Peptide IRI, e.g. entry/PEP1616_1_354). Compose them: protein_position = peptide_begin + modification_relative_position - 1. faldo:location is near-universal on Unimod-typed mods (1,727,200 of 1,728,710 UNIMOD_21 = 99.9%), so no OPTIONAL is needed."
+    traps_avoided:
+      - "Treating a Modification's faldo:position as protein-absolute is the silent killer: it yields plausible-looking small residue numbers (here 21 instead of 2431) that are simply wrong for every peptide after the first. Nothing errors. The two ExactPosition nodes are structurally IDENTICAL — same predicate, same rdf:type faldo:ExactPosition — and differ ONLY in what faldo:reference points at, so read faldo:reference to know which frame you are in before doing arithmetic."
+      - "Do NOT add `?mod rdfs:label ?name` to this query to name the PTM. NO Unimod-typed Modification carries rdfs:label — verified 2026-08-07: UNIMOD_1/4/21/35 all return 0 labelled instances out of 274 / 1,810,303 / 1,728,710 / 699,291. As a required pattern it zeroes the whole query (see mod_frequency for the label-bearing population, and schema_delta for the modificationClass naming route)."
 
   - id: mod_frequency
     intent: rank modification types across the whole repository by occurrence (label-based aggregation)
@@ -184,10 +241,11 @@ examples:
       GROUP BY ?label
       ORDER BY DESC(?n)
       LIMIT 10
-    verified: {result_rows: 10, date: "2026-07-22", first_row: "'TMT6plex (N-term)' = 444,696; then 'TMTpro (N-term)' 398,192"}
+    verified: {result_rows: 10, date: "2026-08-07", first_row: "'TMT6plex (N-term)' = 444,696; then 'TMTpro (N-term)' 398,192"}
     teaches: "jpost:Modification carries a denormalised human-readable rdfs:label (the Unimod name); GROUP BY it as-is to rank PTMs. Labels ARE the vocabulary — no join to Unimod needed for the name; use the unimod: type (mod_by_unimod) only to FILTER a specific PTM."
     traps_avoided:
-      - "~5.2M of the ~12.5M Modification instances have an empty-string rdfs:label — FILTER(?label != '') or the empty bucket dominates the ranking."
+      - "rdfs:label fails on Modification in TWO different ways, and only one is fixable with a FILTER. Of 12,518,574 Modification instances (verified 2026-08-07): 5,624,538 (44.9%) have NO rdfs:label PREDICATE AT ALL, 5,206,460 (41.6%) have rdfs:label \"\", and only 1,687,576 (13.5%) carry a real name. FILTER(?label != '') fixes the empty bucket — it CANNOT help with the absent bucket, because a required (non-OPTIONAL) rdfs:label pattern drops those 5.6M rows before any FILTER runs. Wrap rdfs:label in OPTIONAL whenever the query is not already restricted to the label-bearing population."
+      - "The absent-label population is not random: it is the Unimod-TYPED one. Type-filtering (`?mod a unimod:UNIMOD_21`) and joining rdfs:label as a required pattern returns ZERO rows total even though each condition alone matches millions — the two populations are effectively disjoint (example ptm_absolute_position)."
 
   - id: datasets_per_project
     intent: aggregate the Project→Dataset 1:N relation (project scope sanity check)
@@ -204,7 +262,7 @@ examples:
       GROUP BY ?id
       ORDER BY DESC(?nDatasets)
       LIMIT 5
-    verified: {result_rows: 5, date: "2026-07-22", first_row: "JPST001781 = 30 datasets", totals: "598 projects / 853 datasets"}
+    verified: {result_rows: 5, date: "2026-08-07", first_row: "JPST001781 = 30 datasets", totals: "598 projects / 853 datasets"}
     teaches: "Project ↔ Dataset is 1:N (598 → 853, ~1.4/project); a few mega-projects bundle dozens of runs. Dataset is the hub that connects DOWN to Profile, Protein, and Peptide via three parallel direct predicates."
 
   - id: xdb_uniprot
@@ -226,7 +284,7 @@ examples:
         }
       }
       LIMIT 5
-    verified: {result_rows: 1, date: "2026-07-22", first_row: "P02768 → 'Albumin' / 'Homo sapiens'"}
+    verified: {result_rows: 1, date: "2026-08-07", first_row: "P02768 → 'Albumin' / 'Homo sapiens'"}
     teaches: "jPOST and UniProt are on SEPARATE endpoints (primary vs sib), so the join MUST be SPARQL 1.1 SERVICE federation, not a same-endpoint GRAPH block. jpost:hasDatabaseSequence yields the exact purl.uniprot.org/uniprot IRI that UniProt keys on — a clean bridge, no TogoID, no text match."
     traps_avoided:
       - "Querying purl.uniprot.org/uniprot/* as a co-hosted GRAPH on primary returns 0 rows silently (gotcha uniprot_off_endpoint). SELECT DISTINCT because a protein recurs across many projects' PRT IRIs, all sharing one hasDatabaseSequence target."
@@ -235,7 +293,8 @@ examples:
 schema_delta:
   - "Protein is MULTI-TYPED: every jpost:Protein also carries obo:MS_1001591 (anchor) + obo:MS_1002401 (representative), and ~66% carry jpost:RepresentativeIsoform. `?p a jpost:Protein` is the correct filter; don't assume it's the only type on a DESCRIBE."
   - "rdfs:label on a Protein IS the bare UniProt accession string (e.g. 'P02768'); dct:identifier is the PRT id. For the structured UniProt link use jpost:hasDatabaseSequence (typed purl, 100%), not the label."
-  - "Modification POSITION: jpost:modificationSite (single-letter AA) + faldo:location → faldo:ExactPosition (faldo:position int, faldo:reference → parent Peptide) are present IFF the Modification has a Unimod type. Label-only N-term mods (e.g. 'TMTpro (N-term)') carry no position triple by design."
+  - "TWO DISJOINT Modification populations, and which one you are in decides what is queryable (the composition is worked in example ptm_absolute_position): UNIMOD-TYPED mods carry a position (faldo:location, 99.9%) and jpost:modificationSite but NO rdfs:label; LABEL-BEARING mods (e.g. 'TMTpro (N-term)') carry the human-readable Unimod name but no position triple, by design. There is no single Modification query that yields both a name and a residue position."
+  - "NAMING a Unimod-typed Modification is IMPOSSIBLE inside jPOST — stop looking for a route. The term IRI unimod:UNIMOD_21 carries ZERO triples anywhere on this endpoint, and Unimod-typed mods have no rdfs:label (example ptm_absolute_position). The one predicate that looks like a fallback, `jpost:modificationClass` -> a jpost:JPO_* IRI whose rdfs:label ('Post-translational') sits in the SCHEMA graph <http://rdf.jpostdb.org/ontology/jpost.owl>, is a DEAD END at scale: verified 2026-08-07 it exists on just 4,477 modifications database-wide across 6 classes (only 1,510 of 1,728,710 UNIMOD_21 = 0.087%), so it silently drops ~99.9% of any type-filtered set. Treat the Unimod NUMBER as the identity and map it to a name out-of-band."
   - "Sample annotation namespaces (all pre-typed IRIs, see enum_disease): jpost:sampleType → NCIt Thesaurus.owl#C…/CLO/BTO (98.9%); jpost:organ → NCIt/BTO (6.2%); jpost:cellLine → BTO/CL/CLO (67.6%); jpost:diseaseClass → DOID + jpost:JPO_* coarse buckets (12.5%). Note some sampleType IRIs appear in BOTH `#CLO_0000031` and `#CLO:0000031` punctuation variants — match with a VALUES set or STRENDS if enumerating a category exhaustively."
   - "DOID→MONDO label: jPOST disease is DOID only (no label). To get a disease name, GRAPH-pin ontology/mondo and match the DOID local-id literal in oboInOwl:hasDbXref (e.g. 'DOID:0080600'), then read rdfs:label — MONDO's graph URI on primary is http://rdfportal.org/ontology/mondo."
 
@@ -259,3 +318,20 @@ id_join_map:
 # ── byte-count footer (spec §5 item 7) ──
 # v2: `wc -c togo_mcp/data/mie/jpostdb.yaml` = 45716 bytes
 # v3: `wc -c benchmark/studies/redesign/mie_v3/jpostdb.yaml` = 19563 bytes → 57.2% smaller than v2.
+# (2026-08-07 revision, from a live AHNAK/Q09666 phosphosite debugging session. All 8 pre-existing examples
+#  re-ran with figures UNCHANGED — jpostdb is stable; the changes are additions and corrections, not drift:
+#   - NEW example ptm_absolute_position: jPOST has TWO FALDO coordinate frames (PeptideEvidence begin =
+#     protein-absolute, Modification position = peptide-relative, distinguishable only by faldo:reference) and
+#     the residue-level PTM question needs both composed. The old schema_delta line stated the pieces but no
+#     example composed them, so the arithmetic had to be rediscovered; that line is now rewritten around the
+#     two-disjoint-populations fact the example does NOT show.
+#   - mod_frequency: the label trap had only the empty-string case. Measured the real split — 5,624,538 mods
+#     have NO rdfs:label PREDICATE (44.9%), 5,206,460 have "" (41.6%), 1,687,576 have a name (13.5%). FILTER
+#     fixes only the second; the first needs OPTIONAL. No Unimod-typed mod carries a label at all.
+#   - global_gotchas bnode_scaffolds (3): a nodeID:// from tool output is an execution-local display label —
+#     FILTER(?x = <nodeID://…>) silently matches nothing.
+#   - CORRECTED the 2g claim. The old "single-tenant, ZERO overlap" held only for jPOST-MINTED IRIs (still true,
+#     re-probed). The endpoint now also carries ~40 rdf.glycosmos.org/* graphs, and the HUB IRIs jPOST points at
+#     ARE re-declared: an unpinned rdfs:label on a jPOST-referenced UniProt IRI is x2 (212 rows for 106 entries).
+#     New gotcha hub_union_inflation + graphs.co_hosted split into jpost_own_iris_clean / hub_iris_ARE_redeclared.
+#   - entity_counts: samples_with_disease was 6, which was the distinct-DOID count, not the sample count (86).)
