@@ -13,7 +13,73 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
-_Nothing yet._
+## [2.5.2] - 2026-08-08
+
+No tool, parameter, or return shape changed — this is entirely MIE content plus one test. What makes
+it worth a release is *how* the three MIE revisions were found, because two of the mechanisms are new
+and neither is visible from inside a single file.
+
+### Fixed
+
+- **glycosmos, jpostdb: the FALDO glycosylation/phosphorylation-site route is now a worked example in
+  both files.** Both described the chain in `schema_delta` prose only, and prose is what an agent has
+  to re-derive under time pressure. Two separate live sessions did exactly that and got it wrong in two
+  different ways. In glycosmos the reconstructed `PREFIX faldo:` lost its trailing `#`, which resolves
+  `faldo:location` into a namespace that exists nowhere: the query parses, executes and returns **zero
+  rows with no error** (116 rows with the `#`, 0 without). FALDO is shared vocabulary — `uniprot`,
+  `ensembl`, `ddbj`, `hco` and `mogplus` all require the identical form, so this is not a per-database
+  convention. In jpostdb the trap is arithmetic rather than syntax: there are **two** FALDO coordinate
+  frames — a PeptideEvidence `faldo:begin` is protein-absolute, a Modification `faldo:position` is
+  relative to its parent Peptide — and the two `ExactPosition` nodes are structurally identical,
+  distinguishable *only* by what `faldo:reference` points at. Reading the modification position as
+  absolute yields plausible small residue numbers that are simply wrong past the first peptide.
+- **glycosmos: two examples had started returning zero rows, and three documented facts were false.**
+  The `geneid` join node moved out of the `glycoprotein` graph into the `Rhea` graph, and `GO:0006486`
+  was obsoleted upstream and vanished with no trace (re-anchored on `GO:0006487`). The `schema_delta`
+  FALDO line was wrong on site IRI pattern, location IRI pattern, and both site figures. Saccharide
+  inflation fell ×4.16 → ×1.52 because two `tmp/*` staging twins were dropped upstream, so the
+  multiplier is now documented as reload-dependent rather than as a constant. The go.owl divergence
+  recorded in 2026-07 has been **repaired** upstream and now agrees exactly with the native `go`
+  database — kept as a dated observation, not deleted, because a snapshot that drifted once can drift
+  again.
+- **jpostdb: the `rdfs:label` trap covered only half the failure.** The file warned about empty-string
+  labels, which a `FILTER` fixes. It did not warn that for the Unimod-typed population the predicate is
+  **absent entirely**, which no `FILTER` can reach — a required (non-`OPTIONAL`) `rdfs:label` pattern
+  silently zeroes the whole query. Measured across 12,518,574 modifications: 5,624,538 (44.9%) carry no
+  label predicate, 5,206,460 (41.6%) carry `""`, 1,687,576 (13.5%) carry a real name. No Unimod-typed
+  modification carries a label at all.
+- **jpostdb: the "single-tenant, ZERO overlap" claim was true only for jPOST's own IRIs.** Re-probing
+  found the endpoint now also carries ~40 `rdf.glycosmos.org/*` graphs, and the **hub** IRIs jPOST
+  points at are re-declared: reading `rdfs:label` off a jPOST-referenced UniProt IRI returns ×2 rows
+  (212 for 106 protein entries). Graph-pinning protects a database's own entities but not the join
+  targets it follows outward — the pin has to go on every leg.
+
+### Added
+
+- **mogplus: `vep:symbol` and `vep:impact` are documented for the first time**, with two examples. This
+  one came from the production tool-call log rather than a debugging session, and it is the first time
+  that log has been read for *silent* failures instead of errors. Of 2,789 logged mogplus queries, 777
+  (27.9%) returned zero rows — and every one entered through those two predicates, which the file did
+  not mention once. The empties were deterministic per gene symbol (189 always empty, 720 always
+  non-empty, zero overlap) and split into two causes a bare severity filter renders indistinguishable:
+  the symbol is **absent** from VEP (532 queries, 117 symbols — mostly MGI QTL/locus names like `Aod4`
+  and `Idd3` that have no transcript, so VEP never annotates them), or the symbol is **present with no
+  HIGH/MODERATE variant** (245 queries, 72 symbols — a correct answer, not a failure; `Ebf1` carries
+  50,916 annotations, all MODIFIER/LOW). The new `gene_symbol_impact` example returns the impact
+  *distribution* so all three states are told apart in one query. Worse than the empties: the same
+  template never pinned the release, so its ~2,000 **non-empty** results silently merged the disjoint
+  v3/v2.1 cohorts (548 rows/21 variants unpinned vs 61/9 for v3), and never used `DISTINCT` against
+  per-transcript fan-out (61 raw vs 26 distinct). Those results were not empty, they were wrong.
+- **Drift guard for the Usage Guide's stale-tool-list row** (`tests/test_usage_guide_canaries.py`).
+  That row names tools in two opposite roles and each can silently go wrong. Its **canaries**
+  (`togovar_search_variant`, `search_chembl_id_lookup`) must exist — rename or remove one and it
+  disappears from *every* client's tool list, so the row fires for everyone and tells healthy users to
+  re-register, inside the document that is supposed to be authoritative. Its **phantom** examples
+  (`find_databases`, `ncbi_ncbi_esearch`) must not exist — re-introduce one, say as a redirect stub,
+  and the row cites a working call as evidence of breakage. Neither fails at build time today; the
+  damage lands in someone else's chat session. Deliberately *not* asserted: that the canaries are the
+  newest tools. A stale canary only under-detects (it catches caches older than itself and never
+  misfires), so sensitivity stays a release-checklist judgement while correctness is enforced here.
 
 ## [2.5.1] - 2026-08-01
 
@@ -1080,7 +1146,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.5.1...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.5.2...HEAD
+[2.5.2]: https://github.com/dbcls/togomcp/compare/v2.5.1...v2.5.2
 [2.5.1]: https://github.com/dbcls/togomcp/compare/v2.5.0...v2.5.1
 [2.5.0]: https://github.com/dbcls/togomcp/compare/v2.4.1...v2.5.0
 [2.4.1]: https://github.com/dbcls/togomcp/compare/v2.4.0...v2.4.1
