@@ -32,8 +32,17 @@
 # podman-restart.service runs `podman start --all --filter restart-policy=always`
 # at boot. Without linger there is no user systemd instance to run it, and both
 # containers stay down after a reboot — silently, since nothing here checks.
-# Verify with: loginctl show-user $USER --property=Linger
-#              systemctl --user is-enabled podman-restart
+#
+# Verify the whole path without rebooting (on the TEST container only):
+#
+#     loginctl show-user $USER --property=Linger      # -> Linger=yes
+#     podman stop togomcp-test
+#     systemctl --user restart podman-restart.service # RESTART, not start
+#     podman ps --filter name=togomcp-test            # -> Up
+#
+# Use `restart`: the unit is Type=oneshot + RemainAfterExit=yes, so it sits in
+# "active (exited)" from boot onward and `systemctl start` on it is a silent
+# no-op — which looks exactly like the unit failing to restart the container.
 #
 set -euo pipefail
 
