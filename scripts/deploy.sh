@@ -22,6 +22,28 @@
 # Per-service vars take their _TEST variant on the test container, matching
 # compose.yaml (TOGOMCP_STATS_PASSWORD_TEST -> test, TOGOMCP_STATS_PASSWORD -> prod).
 #
+# Boot-time autostart: containers are created with --restart=always, but under
+# ROOTLESS podman that policy is only acted on if the host has, once, been set up
+# with:
+#
+#     loginctl enable-linger $USER          # else the user manager dies at logout
+#     systemctl --user enable --now podman-restart.service
+#
+# podman-restart.service runs `podman start --all --filter restart-policy=always`
+# at boot. Without linger there is no user systemd instance to run it, and both
+# containers stay down after a reboot — silently, since nothing here checks.
+#
+# Verify the whole path without rebooting (on the TEST container only):
+#
+#     loginctl show-user $USER --property=Linger      # -> Linger=yes
+#     podman stop togomcp-test
+#     systemctl --user restart podman-restart.service # RESTART, not start
+#     podman ps --filter name=togomcp-test            # -> Up
+#
+# Use `restart`: the unit is Type=oneshot + RemainAfterExit=yes, so it sits in
+# "active (exited)" from boot onward and `systemctl start` on it is a silent
+# no-op — which looks exactly like the unit failing to restart the container.
+#
 set -euo pipefail
 
 # --------------------------------------------------------------------------- #
@@ -100,8 +122,8 @@ recreate() {  # name port image kind
   mkdir -p "$logdir"
   log "recreating '$name' on :$port from ${image}"
   podman rm -f "$name" >/dev/null 2>&1 || true
-  podman run -d --name "$name" -p "${port}:8000" -v "${logdir}:/var/log/togomcp" \
-    "${eargs[@]}" "$image" >/dev/null
+  podman run -d --name "$name" --restart=always -p "${port}:8000" \
+    -v "${logdir}:/var/log/togomcp" "${eargs[@]}" "$image" >/dev/null
 }
 
 smoke() {  # port host label  -> dies unless 200
@@ -178,6 +200,34 @@ cmd_rollback() {
   log "rollback complete."
 }
 
+cmd_restart() {  # [test|prod|all] — re-create from the CURRENT image; never builds, never promotes.
+  # Exists so a container-config change (e.g. adding --restart=always) can be applied
+  # to a running container without a rebuild: `podman update --restart` needs Podman 5.x
+  # and the policy cannot otherwise be changed in place.
+  local which=${1:-all} spec c port kind host label img running acted=0
+  for spec in "$TEST_CONTAINER:$TEST_PORT:test" "$PROD_CONTAINER:$PROD_PORT:prod"; do
+    IFS=: read -r c port kind <<<"$spec"
+    [[ "$which" == all || "$which" == "$kind" ]] || continue
+    if ! podman container exists "$c"; then warn "'$c' not present — skipped"; continue; fi
+    if [[ "$kind" == test ]]; then host=$TEST_SMOKE_HOST; label=TEST
+    else                            host=$PROD_SMOKE_HOST; label=PROD; fi
+
+    img=$(podman inspect "$c" --format '{{.ImageName}}')
+    running=$(podman inspect "$c" --format '{{.Image}}')
+    # Refuse if the tag has drifted off the running bytes — otherwise a "restart"
+    # would silently ship a different image (an unconfirmed prod deploy).
+    [[ -n "$img" && "$(img_id "$img")" == "$running" ]] \
+      || die "'$c': tag '$img' no longer resolves to the running image $(short "$running") — \
+aborted, nothing changed. Use '$0 test'/'$0 prod' to deploy deliberately."
+
+    log "re-creating '$c' from its current image $img ($(short "$running")) — no rebuild"
+    recreate "$c" "$port" "$img" "$kind"
+    smoke "$port" "$host" "$label(restart)"
+    acted=1
+  done
+  [[ "$acted" == 1 ]] || die "nothing to restart (no matching container present)"
+}
+
 cmd_status() {
   local c img
   for c in "$TEST_CONTAINER" "$PROD_CONTAINER"; do
@@ -208,15 +258,18 @@ case "${1:-}" in
   test)     cmd_test ;;
   prod)     cmd_prod ;;
   rollback) cmd_rollback ;;
+  restart)  cmd_restart "${2:-all}" ;;
   status)   cmd_status ;;
   *)
     cat >&2 <<USAGE
-Usage: $0 {test|prod|rollback|status}
+Usage: $0 {test|prod|rollback|restart|status}
 
   test      Build candidate, (re)create TEST ($TEST_CONTAINER, :$TEST_PORT), smoke-test.
   prod      Promote the image running on TEST to PROD ($PROD_CONTAINER, :$PROD_PORT).
             Requires TEST green + typing '$PROD_CONFIRM_PHRASE'. Never rebuilds.
   rollback  Restore PROD to the previous image.
+  restart   [test|prod|all] Re-create from the CURRENT image — applies a container-config
+            change (e.g. --restart=always) with no rebuild and no image change.
   status    Show current image per container.
 
 Optional env:
