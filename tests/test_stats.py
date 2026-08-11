@@ -47,12 +47,26 @@ def test_month_of():
     assert stats.month_of({}) is None
 
 
+def test_endpoint_outage_is_not_an_mie_trap():
+    """An upstream outage must not read as evidence that some MIE is wrong.
+
+    Before endpoint_unresponsive existed, every query issued during a portal
+    outage was logged as sparql_status="timeout" -> class "timeout", which is one
+    of TRAP_CLASSES. A multi-hour outage therefore inflated the MIE-trap counts
+    with failures no MIE edit could ever fix.
+    """
+    assert stats.sparql_class(_sparql("endpoint_unresponsive", err=True)) not in stats.TRAP_CLASSES
+    assert stats.sparql_class(_sparql("pool_exhausted", err=True)) not in stats.TRAP_CLASSES
+
+
 def test_sparql_class():
     assert stats.sparql_class(_sparql("ok", rows=10, nbytes=500)) == "ok"
     assert stats.sparql_class(_sparql("ok", rows=0, nbytes=50)) == "empty_result"
     assert stats.sparql_class(_sparql("ok", rows=99, nbytes=stats.HUGE_BYTES + 1)) == "huge_result"
     assert stats.sparql_class(_sparql("timeout", err=True)) == "timeout"
     assert stats.sparql_class(_sparql("network_error", err=True)) == "endpoint_down"
+    assert stats.sparql_class(_sparql("endpoint_unresponsive", err=True)) == "endpoint_down"
+    assert stats.sparql_class(_sparql("pool_exhausted", err=True)) == "pool_exhausted"
     assert stats.sparql_class(_sparql("http_5xx", err=True)) == "server_error"
     assert stats.sparql_class(_sparql("http_4xx", err=True)) == "syntax_error"
     # non-SPARQL record

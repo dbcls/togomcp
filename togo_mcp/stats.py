@@ -11,8 +11,9 @@ never appear in any output produced here — only derived categories and tallies
 What the collection layer records today (per JSONL line):
   ts, tool, args, status (ok|error), elapsed_ms, session_id/request_id/...,
   ip, error_class, error_message, and for SPARQL an ``extra`` dict with
-  endpoint_url, query_sha256, sparql_status (ok|timeout|network_error|
-  http_4xx|http_5xx), http_code, n_bytes, n_rows.
+  endpoint_url, query_sha256, sparql_status (ok|timeout|endpoint_unresponsive|
+  pool_exhausted|network_error|http_4xx|http_5xx), http_code, n_bytes, n_rows,
+  and — when the liveness watchdog ran — liveness_probe (passed|failed).
 
 This module derives, per calendar month (UTC):
   * per-tool: call count, error count/rate, duration p50/p95/mean
@@ -43,6 +44,7 @@ SPARQL_CLASSES = (
     "syntax_error",
     "timeout",
     "endpoint_down",
+    "pool_exhausted",
     "server_error",
     "other_error",
 )
@@ -239,8 +241,14 @@ def sparql_class(rec: dict[str, Any]) -> str | None:
         return "ok"
     if status == "timeout":
         return "timeout"
-    if status == "network_error":
+    if status in ("network_error", "endpoint_unresponsive"):
+        # endpoint_unresponsive is a liveness-probe verdict: the endpoint was not
+        # answering ANYTHING. Filing it here rather than under "timeout" keeps an
+        # upstream outage out of TRAP_CLASSES — otherwise every query issued
+        # during a portal outage counts as evidence that some MIE is wrong.
         return "endpoint_down"
+    if status == "pool_exhausted":
+        return "pool_exhausted"
     if status == "http_5xx":
         return "server_error"
     if status == "http_4xx":
