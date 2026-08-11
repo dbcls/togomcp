@@ -13,6 +13,13 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.5.3] - 2026-08-12
+
+An availability release, written during a live RDF Portal outage and verified against it. Nothing about
+the tool surface changed; what changed is what happens when the endpoint on the other side stops
+answering — previously a 90-second silence and a message naming the wrong cause, now a ~13-second
+error naming the right one.
+
 ### Fixed
 
 - **A SPARQL endpoint that is DOWN now fails in ~13s with a message that says so, instead of hanging
@@ -1180,7 +1187,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.5.2...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.5.3...HEAD
+[2.5.3]: https://github.com/dbcls/togomcp/compare/v2.5.2...v2.5.3
 [2.5.2]: https://github.com/dbcls/togomcp/compare/v2.5.1...v2.5.2
 [2.5.1]: https://github.com/dbcls/togomcp/compare/v2.5.0...v2.5.1
 [2.5.0]: https://github.com/dbcls/togomcp/compare/v2.4.1...v2.5.0
