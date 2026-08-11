@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import csv
 import hashlib
 import json
@@ -70,8 +72,175 @@ KW_SEARCH_INSTRUCTIONS = str(CWD.joinpath("kw_search"))
 # cache (verified — abort at 20s, retry still 55.3s), so only a query allowed
 # to COMPLETE pays the cost once for everyone after it. That is the whole point
 # of the higher ceiling.
+# The 90s ceiling assumes the CLIENT is willing to wait 90s. An MCP connector
+# usually is not: measured 2026-08-12 against production during a total RDF
+# Portal outage, TCP+TLS to the endpoint completed in 25ms and then not one byte
+# arrived, so every query burned the full 90s and the caller's connector gave up
+# first — the user saw "no response", never the diagnostic below. Hence the
+# liveness watchdog further down: a DEAD endpoint must fail fast (~13s), while a
+# slow-but-alive one keeps the whole 90s.
 _SPARQL_TIMEOUT_SECONDS = 90.0
-_sparql_client = httpx.AsyncClient(timeout=_SPARQL_TIMEOUT_SECONDS)
+
+# Connecting is not querying. 15s is ~600x the observed healthy connect time and
+# still far inside any connector's patience, so a connect that misses it means
+# the host is unreachable — a fact worth reporting as itself rather than as a
+# generic timeout.
+_SPARQL_CONNECT_TIMEOUT_SECONDS = 15.0
+
+# How long a caller may wait for a free connection from the pool. Kept SHORT and
+# separate from the read budget on purpose: waiting here is our own saturation,
+# not the endpoint's fault, and it must never masquerade as "your query is slow".
+_SPARQL_POOL_TIMEOUT_SECONDS = 5.0
+
+# httpx's default Limits(max_connections=100) is GLOBAL, not per-host. Measured:
+# 110 queries parked on one dead endpoint occupied all 100 slots, and a query to
+# a DIFFERENT, healthy endpoint could then not get a connection at all. Making
+# the ceiling explicit does not by itself prevent that — the short pool timeout
+# above and the circuit breaker below do — but it documents the shared resource
+# the two of them protect.
+_SPARQL_MAX_CONNECTIONS = 100
+
+_sparql_client = httpx.AsyncClient(
+    timeout=httpx.Timeout(
+        _SPARQL_TIMEOUT_SECONDS,
+        connect=_SPARQL_CONNECT_TIMEOUT_SECONDS,
+        pool=_SPARQL_POOL_TIMEOUT_SECONDS,
+    ),
+    limits=httpx.Limits(
+        max_connections=_SPARQL_MAX_CONNECTIONS,
+        max_keepalive_connections=20,
+    ),
+)
+
+# --- Endpoint liveness ------------------------------------------------------
+#
+# A SPARQL read timeout has three possible causes, and until 2026-08-12 the error
+# message offered only two (heavy query / cold cache). The third — the endpoint
+# is simply not answering anything — is invisible at the socket layer: the
+# connection opens, the TLS handshake completes, and then nothing. Only a
+# *read-level* probe can tell it apart, so that is what this does: when a query
+# is still running after _PROBE_AFTER_SECONDS, send `ASK {}` (a query with no
+# work to do) and see whether the endpoint answers at all.
+#
+# Cost on the fast path is zero: a query that finishes inside the delay never
+# triggers a probe.
+_PROBE_AFTER_SECONDS = 8.0
+_PROBE_TIMEOUT_SECONDS = 5.0
+
+# The probe MUST NOT share _sparql_client. During the outage this exists for,
+# that pool is exactly what fills up, so a probe sent through it would queue
+# behind the very failures it is meant to diagnose — and a probe that fails
+# because it never got a connection cannot distinguish "endpoint is down" from
+# "our pool is full". Its own small pool keeps the answer meaningful.
+_probe_client = httpx.AsyncClient(
+    timeout=_PROBE_TIMEOUT_SECONDS,
+    limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+)
+
+# Circuit breaker. Once an endpoint has been observed unresponsive, further
+# queries to it are refused instantly for this long instead of parking another
+# connection on it for 90s. This is what keeps one dead endpoint from eating the
+# shared pool and starving the healthy ones.
+_ENDPOINT_DOWN_TTL_SECONDS = 60.0
+_endpoint_down_until: dict[str, float] = {}
+
+
+class _EndpointUnresponsive(Exception):
+    """The endpoint failed a liveness probe: it is not answering anything."""
+
+
+def _mark_endpoint_down(url: str) -> None:
+    _endpoint_down_until[url] = time.monotonic() + _ENDPOINT_DOWN_TTL_SECONDS
+
+
+def _clear_endpoint_down(url: str) -> None:
+    _endpoint_down_until.pop(url, None)
+
+
+def _endpoint_down_remaining(url: str) -> float | None:
+    """Seconds left on the breaker for ``url``, or None if it is closed."""
+    deadline = _endpoint_down_until.get(url)
+    if deadline is None:
+        return None
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        _endpoint_down_until.pop(url, None)
+        return None
+    return remaining
+
+
+async def _probe_endpoint(url: str) -> bool:
+    """True if ``url`` answers a trivial ASK within the probe budget.
+
+    ANY HTTP response counts as alive, including 4xx/5xx: the question is
+    whether the server is answering at all, not whether it liked the query.
+    """
+    try:
+        await _probe_client.post(
+            url, data={"query": "ASK {}"}, headers={"Accept": "text/csv"}
+        )
+    except httpx.HTTPError:
+        return False
+    return True
+
+
+async def _post_with_liveness_watchdog(
+    url: str, sparql_query: str, extra: dict[str, Any]
+) -> httpx.Response:
+    """POST the query, aborting early if the endpoint turns out to be dead.
+
+    Records the probe verdict in ``extra["liveness_probe"]`` so the log — and the
+    timeout message — can say whether the endpoint was confirmed up.
+    """
+    main = asyncio.ensure_future(
+        _sparql_client.post(url, data={"query": sparql_query}, headers={"Accept": "text/csv"})
+    )
+    done, _pending = await asyncio.wait({main}, timeout=_PROBE_AFTER_SECONDS)
+    if done:
+        return main.result()  # re-raises the original httpx error, if any
+
+    if await _probe_endpoint(url):
+        # Endpoint confirmed answering. Give the query its full budget — this is
+        # the cold-cache case the 90s ceiling exists for.
+        extra["liveness_probe"] = "passed"
+        return await main
+    extra["liveness_probe"] = "failed"
+    main.cancel()
+    with contextlib.suppress(BaseException):
+        await main
+    raise _EndpointUnresponsive(url)
+
+
+def _endpoint_down_message(url: str, *, cached_for: float | None = None) -> str:
+    """Caller-facing text for cause 3: the endpoint itself is not answering."""
+    if cached_for is None:
+        evidence = (
+            f"A liveness check (`ASK {{}}`, a query with no work to do) got no "
+            f"answer within {_PROBE_TIMEOUT_SECONDS:.0f}s. A healthy endpoint "
+            f"answers it in well under a second."
+        )
+    else:
+        evidence = (
+            f"This endpoint failed a liveness check moments ago, so this call was "
+            f"refused without contacting it. It will be retried automatically "
+            f"after ~{cached_for:.0f}s."
+        )
+    return (
+        f"SPARQL endpoint at {url} is NOT RESPONDING. {evidence}\n\n"
+        "THE PROBLEM IS NOT YOUR QUERY — it was never executed. Do NOT rewrite, "
+        "narrow, or simplify it, and do NOT retry in a loop: further calls to this "
+        f"endpoint are refused instantly for the next {_ENDPOINT_DOWN_TTL_SECONDS:.0f}s.\n\n"
+        "What to do instead:\n"
+        "(a) Tell the user this endpoint is currently unavailable, and name it.\n"
+        "(b) Only the databases on THIS endpoint are affected — those on other "
+        "endpoints still work. get_sparql_endpoints() shows which database sits on "
+        "which endpoint; if another one can answer the question, use it.\n"
+        "(c) The REST search tools (search_uniprot_entity, search_pdb_entity, "
+        "search_chembl_*, ncbi_esearch, togovar_*, …) call different hosts entirely "
+        "and are unaffected.\n"
+        "(d) get_MIE_file, TogoMCP_Usage_Guide and get_sparql_endpoints read local "
+        "files and keep working, so you can still prepare the query for later."
+    )
 
 
 def load_sparql_endpoints(path: str) -> dict[str, dict[str, str]]:
@@ -260,14 +429,58 @@ async def execute_sparql(
         extra["query_text"] = sparql_query
     _sparql_extra_var.set(extra)
 
+    # Cause 3, already established: refuse instantly rather than park another
+    # connection on a dead endpoint for 90s.
+    cached_down = _endpoint_down_remaining(url)
+    if cached_down is not None:
+        extra["sparql_status"] = "endpoint_unresponsive"
+        extra["circuit_breaker"] = "open"
+        raise ValueError(_endpoint_down_message(url, cached_for=cached_down))
+
     try:
-        response = await _sparql_client.post(
-            url, data={"query": sparql_query}, headers={"Accept": "text/csv"}
-        )
+        response = await _post_with_liveness_watchdog(url, sparql_query, extra)
+    except _EndpointUnresponsive as exc:
+        extra["sparql_status"] = "endpoint_unresponsive"
+        _mark_endpoint_down(url)
+        raise ValueError(_endpoint_down_message(url)) from exc
+    except httpx.PoolTimeout as exc:
+        # Our own client ran out of connections — neither the query nor the
+        # endpoint is at fault, so neither of the timeout hints below applies.
+        extra["sparql_status"] = "pool_exhausted"
+        raise ValueError(
+            f"Could not get a connection to {url} within "
+            f"{_SPARQL_POOL_TIMEOUT_SECONDS:.0f}s: this server's SPARQL connection "
+            f"pool (max {_SPARQL_MAX_CONNECTIONS}) is currently full, usually because "
+            "many queries are queued behind a slow or unresponsive endpoint. "
+            "Your query was NOT executed and is not the problem — do not rewrite it. "
+            "Wait a few seconds and retry once; if it recurs, the endpoint you are "
+            "querying is likely degraded."
+        ) from exc
+    except httpx.ConnectTimeout as exc:
+        # No TCP/TLS connection in 15s: the host is unreachable, full stop. No
+        # probe needed — this IS the probe result.
+        extra["sparql_status"] = "endpoint_unresponsive"
+        _mark_endpoint_down(url)
+        raise ValueError(
+            f"SPARQL endpoint at {url} did not accept a connection within "
+            f"{_SPARQL_CONNECT_TIMEOUT_SECONDS:.0f}s.\n\n"
+            + _endpoint_down_message(url).split("\n\n", 1)[1]
+        ) from exc
     except httpx.TimeoutException as exc:
+        # A read/write timeout that survived the watchdog. If the probe ran and
+        # passed, the endpoint is demonstrably up, which narrows the causes to
+        # two — and lets us say so instead of guessing.
         extra["sparql_status"] = "timeout"
+        probed = extra.get("liveness_probe") == "passed"
+        evidence = (
+            "This endpoint ANSWERED a liveness check while your query was running, "
+            "so it is up and reachable — cause 3 (endpoint down) is ruled out. "
+            if probed
+            else ""
+        )
         raise ValueError(
             f"SPARQL endpoint at {url} timed out after {_sparql_client.timeout.read}s. "
+            f"{evidence}"
             "TWO different causes are possible — check which one before acting:\n"
             "(1) THE QUERY IS TOO HEAVY (most likely at this duration). Narrow it: "
             "add or lower LIMIT, anchor on specific IRIs, drop repeated self-joins on "
@@ -282,11 +495,19 @@ async def execute_sparql(
             f" ({exc.__class__.__name__})"
         ) from exc
     except httpx.HTTPError as exc:
+        # Refused, reset, DNS failure, protocol error — the endpoint is not
+        # serving, so open the breaker here too.
         extra["sparql_status"] = "network_error"
+        _mark_endpoint_down(url)
         raise ValueError(
             f"SPARQL endpoint at {url} could not be reached: "
-            f"{exc.__class__.__name__}: {exc}"
+            f"{exc.__class__.__name__}: {exc}. Your query was not executed — this is "
+            "an endpoint/network failure, not a query problem, so do not rewrite it. "
+            "Other endpoints are unaffected; see get_sparql_endpoints()."
         ) from exc
+
+    # Answered — whatever the status code, the endpoint is alive.
+    _clear_endpoint_down(url)
 
     extra["http_code"] = response.status_code
     extra["n_bytes"] = len(response.content)

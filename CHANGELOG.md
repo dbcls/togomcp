@@ -13,6 +13,47 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.5.3] - 2026-08-12
+
+An availability release, written during a live RDF Portal outage and verified against it. Nothing about
+the tool surface changed; what changed is what happens when the endpoint on the other side stops
+answering — previously a 90-second silence and a message naming the wrong cause, now a ~13-second
+error naming the right one.
+
+### Fixed
+
+- **A SPARQL endpoint that is DOWN now fails in ~13s with a message that says so, instead of hanging
+  the full 90s and blaming the query.** Observed during a total RDF Portal outage on 2026-08-12: TCP
+  connect and the TLS handshake to `rdfportal.org/sib/sparql` both completed in 25ms, and then not one
+  byte ever arrived. Nothing at the connect layer distinguishes that from a slow query, so
+  `httpx.ReadTimeout` fired at 90s and the caller was handed the two-cause message — "your query is too
+  heavy" or "the cache was cold" — when the truth was a third cause the message did not offer. Worse,
+  the caller usually never read it: an MCP connector's own tool timeout expires well before 90s, so the
+  user saw *no response at all*, and follow-up calls on that connector appeared dead too (the server
+  itself stayed responsive throughout — verified in production, `get_MIE_file` returned in 0.24s
+  immediately after a 90.97s SPARQL timeout on the same session, and again after a client-side abort).
+  A read-level liveness probe now settles it: if a query is still running after 8s, `ASK {}` goes out on
+  a **separate** httpx client with a 5s budget. No answer means the endpoint is dead, the query is
+  cancelled, and the error explains that nothing about the query needs changing, names the affected
+  endpoint, and points at the databases and REST tools that still work. Measured on the live outage:
+  90.97s → 13.10s. The probe costs nothing on the fast path — a query that finishes inside 8s never
+  triggers one — and when it *passes*, the existing two-cause message now says so explicitly, which
+  keeps the cold-cache case (53.9–62.1s measured) on its full 90s budget.
+- **One dead endpoint can no longer starve the healthy ones.** `_sparql_client` is a single
+  `httpx.AsyncClient`, and httpx's default `Limits(max_connections=100)` is *global*, not per-host:
+  with 110 queries parked on a dead endpoint, all 100 slots filled and a query to a different, healthy
+  endpoint could not get a connection at all (measured). A 60s circuit breaker now refuses queries to an
+  endpoint already found unresponsive — instantly, without opening a connection — and the pool-acquire
+  wait is split out at 5s so exhaustion reports itself as this server's saturation rather than as a slow
+  query. Connect timeouts (15s) are likewise reported as an unreachable host, not as a generic timeout.
+- **An upstream outage no longer pollutes the MIE-trap statistics.** Every query issued during one used
+  to log `sparql_status: "timeout"`, which `stats.py` counts in `TRAP_CLASSES` — so hours of failures no
+  MIE edit could ever fix read as evidence that some MIE was wrong. Endpoint-level failures now log
+  `endpoint_unresponsive` (classified `endpoint_down`) or `pool_exhausted` (its own class), and the
+  probe verdict is recorded as `liveness_probe: passed|failed`.
+
+Tool names, parameters and return shapes are unchanged; only failure timing and error text differ.
+
 ## [2.5.2] - 2026-08-08
 
 No tool, parameter, or return shape changed — this is entirely MIE content plus one test. What makes
@@ -1146,7 +1187,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.5.2...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.5.3...HEAD
+[2.5.3]: https://github.com/dbcls/togomcp/compare/v2.5.2...v2.5.3
 [2.5.2]: https://github.com/dbcls/togomcp/compare/v2.5.1...v2.5.2
 [2.5.1]: https://github.com/dbcls/togomcp/compare/v2.5.0...v2.5.1
 [2.5.0]: https://github.com/dbcls/togomcp/compare/v2.4.1...v2.5.0

@@ -4,9 +4,11 @@ import asyncio
 import csv
 import importlib
 import json
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from togo_mcp.server import load_sparql_endpoints, resolve_endpoint_url
@@ -607,6 +609,176 @@ class TestSparqlTimeout:
         assert "TOO HEAVY" in msg and "COLD" in msg  # both causes offered
         assert "retry at most ONCE" in msg  # bounded retry, not a blanket ban
         assert "90" in msg  # reports the real ceiling
+
+
+class TestEndpointLiveness:
+    """Cause 3: the endpoint is answering nothing at all.
+
+    Measured against production on 2026-08-12 during a total RDF Portal outage:
+    TCP connect and the TLS handshake to the SPARQL endpoint both completed in
+    25ms, and then not one byte ever arrived. Nothing at the connect layer
+    signals that, so every query burned the full 90s ceiling and reported "your
+    query is too heavy or the cache was cold" — neither of which was true, and
+    neither of which the caller usually saw, because an MCP connector's own tool
+    timeout expires long before 90s. Only a read-level probe tells it apart.
+    """
+
+    @staticmethod
+    def _srv(monkeypatch, *, probe_result: bool, post):
+        from togo_mcp import server as srv
+
+        srv._endpoint_down_until.clear()
+        monkeypatch.setattr(srv, "_PROBE_AFTER_SECONDS", 0.05)
+        monkeypatch.setattr(srv._sparql_client, "post", post)
+
+        async def _probe(url):
+            return probe_result
+
+        monkeypatch.setattr(srv, "_probe_endpoint", _probe)
+        return srv
+
+    @staticmethod
+    async def _hang(*a, **k):
+        await asyncio.sleep(30)
+
+    @pytest.mark.asyncio
+    async def test_dead_endpoint_fails_fast_and_blames_the_endpoint(self, monkeypatch) -> None:
+        srv = self._srv(monkeypatch, probe_result=False, post=self._hang)
+
+        started = time.perf_counter()
+        with pytest.raises(ValueError) as ei:
+            await srv.execute_sparql("SELECT * WHERE { ?s ?p ?o }", database="uniprot")
+        elapsed = time.perf_counter() - started
+
+        msg = str(ei.value)
+        assert "NOT RESPONDING" in msg
+        assert "THE PROBLEM IS NOT YOUR QUERY" in msg
+        # The advice the old message gave is exactly the advice that must NOT
+        # appear here: there is nothing to narrow in a query that never ran.
+        assert "TOO HEAVY" not in msg
+        # Must land well inside any connector's tool timeout, or the caller sees
+        # "no response" instead of this text — the whole point of the watchdog.
+        assert elapsed < 5.0
+
+    @pytest.mark.asyncio
+    async def test_breaker_refuses_without_touching_the_endpoint(self, monkeypatch) -> None:
+        srv = self._srv(monkeypatch, probe_result=False, post=self._hang)
+        with pytest.raises(ValueError):
+            await srv.execute_sparql("SELECT * WHERE { ?s ?p ?o }", database="uniprot")
+
+        async def _must_not_be_called(*a, **k):
+            raise AssertionError("breaker was open; the endpoint must not be contacted")
+
+        monkeypatch.setattr(srv._sparql_client, "post", _must_not_be_called)
+        with pytest.raises(ValueError) as ei:
+            await srv.execute_sparql("SELECT * WHERE { ?s ?p ?o }", database="uniprot")
+        assert "refused without contacting it" in str(ei.value)
+
+    @pytest.mark.asyncio
+    async def test_live_endpoint_still_gets_the_two_cause_message(self, monkeypatch) -> None:
+        """A slow but ALIVE endpoint must keep its full 90s and its old advice.
+
+        This is the cold-cache case the 90s ceiling exists for (53.9-62.1s
+        measured); a watchdog that aborted it would reintroduce the 2026-07-27
+        bug it was raised to fix.
+        """
+        async def _slow_then_timeout(*a, **k):
+            await asyncio.sleep(0.15)
+            raise httpx.ReadTimeout("simulated")
+
+        srv = self._srv(monkeypatch, probe_result=True, post=_slow_then_timeout)
+        with pytest.raises(ValueError) as ei:
+            await srv.execute_sparql("SELECT * WHERE { ?s ?p ?o }", database="uniprot")
+        msg = str(ei.value)
+        assert "TOO HEAVY" in msg and "COLD" in msg
+        assert "cause 3 (endpoint down) is ruled out" in msg
+        assert srv._endpoint_down_remaining(
+            srv.SPARQL_ENDPOINT["uniprot"]["url"]
+        ) is None, "a live endpoint must not trip the breaker"
+
+    @pytest.mark.asyncio
+    async def test_pool_exhaustion_is_not_reported_as_a_slow_query(self, monkeypatch) -> None:
+        """httpx's connection pool is GLOBAL, not per-host.
+
+        Measured: 110 queries parked on one dead endpoint filled all 100 slots,
+        and a query to a DIFFERENT, healthy endpoint could then not get a
+        connection. That surfaced as a 90s timeout blaming the innocent query.
+        """
+        from togo_mcp import server as srv
+
+        srv._endpoint_down_until.clear()
+
+        async def _pool_timeout(*a, **k):
+            raise httpx.PoolTimeout("no free connection")
+
+        monkeypatch.setattr(srv._sparql_client, "post", _pool_timeout)
+        with pytest.raises(ValueError) as ei:
+            await srv.execute_sparql("SELECT * WHERE { ?s ?p ?o }", database="uniprot")
+        msg = str(ei.value)
+        assert "connection pool" in msg
+        assert "NOT executed" in msg
+        assert "TOO HEAVY" not in msg
+
+    @pytest.mark.asyncio
+    async def test_connect_timeout_blames_the_endpoint(self, monkeypatch) -> None:
+        from togo_mcp import server as srv
+
+        srv._endpoint_down_until.clear()
+
+        async def _connect_timeout(*a, **k):
+            raise httpx.ConnectTimeout("unreachable")
+
+        monkeypatch.setattr(srv._sparql_client, "post", _connect_timeout)
+        with pytest.raises(ValueError) as ei:
+            await srv.execute_sparql("SELECT * WHERE { ?s ?p ?o }", database="uniprot")
+        msg = str(ei.value)
+        assert "did not accept a connection" in msg
+        assert "THE PROBLEM IS NOT YOUR QUERY" in msg
+        assert srv._endpoint_down_remaining(srv.SPARQL_ENDPOINT["uniprot"]["url"]) is not None
+
+    @pytest.mark.asyncio
+    async def test_a_successful_answer_closes_the_breaker(self, monkeypatch) -> None:
+        from togo_mcp import server as srv
+
+        url = srv.SPARQL_ENDPOINT["uniprot"]["url"]
+        srv._mark_endpoint_down(url)
+        # Recovery must not wait out the full TTL when the endpoint is back.
+        srv._endpoint_down_until.clear()
+
+        async def _ok(*a, **k):
+            return httpx.Response(200, text="s,p,o\na,b,c\n",
+                                  request=httpx.Request("POST", url))
+
+        monkeypatch.setattr(srv._sparql_client, "post", _ok)
+        out = await srv.execute_sparql("SELECT * WHERE { ?s ?p ?o }", database="uniprot")
+        assert "s,p,o" in out
+        assert srv._endpoint_down_remaining(url) is None
+
+    def test_probe_client_does_not_share_the_sparql_pool(self) -> None:
+        """A probe sent through the saturated pool cannot diagnose the saturation.
+
+        It would queue behind the very failures it exists to explain, and a probe
+        that fails for want of a connection cannot tell "endpoint is down" from
+        "our pool is full".
+        """
+        from togo_mcp import server as srv
+
+        assert srv._probe_client is not srv._sparql_client
+        assert srv._probe_client._transport._pool is not srv._sparql_client._transport._pool
+        assert srv._probe_client.timeout.read == srv._PROBE_TIMEOUT_SECONDS
+        # Probe + watchdog delay must both fit inside a connector's patience.
+        assert srv._PROBE_AFTER_SECONDS + srv._PROBE_TIMEOUT_SECONDS <= 20.0
+
+    def test_pool_wait_is_short_and_separate_from_the_read_budget(self) -> None:
+        from togo_mcp import server as srv
+
+        assert srv._sparql_client.timeout.read == srv._SPARQL_TIMEOUT_SECONDS
+        assert srv._sparql_client.timeout.pool == srv._SPARQL_POOL_TIMEOUT_SECONDS
+        assert srv._sparql_client.timeout.pool < 30.0, (
+            "waiting for a free connection is our own saturation; it must never "
+            "consume the query's budget or masquerade as a slow endpoint"
+        )
+        assert srv._sparql_client.timeout.connect == srv._SPARQL_CONNECT_TIMEOUT_SECONDS
 
 
 class TestRawLogDownload:
