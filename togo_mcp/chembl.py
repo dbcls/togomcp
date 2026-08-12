@@ -252,6 +252,32 @@ def _target_zero_hint(query: str, *, organism: str, target_type: str) -> str:
     )
 
 
+def _id_lookup_zero_hint(query: str, *, entity_type: str) -> str:
+    """Why a cross-entity lookup came back empty — and that it is not an outage.
+
+    Same reasoning as `_target_zero_hint`, but this tool matches EXACTLY and has
+    no substring fallback: keeping the cross-entity front door predictable is
+    worth more than making it clever, so the hint names the entity-specific tool
+    that does fall back instead.
+    """
+    scoped = (
+        f" You restricted the search to entity_type={entity_type!r}; other kinds "
+        "were not searched at all — omit it to search COMPOUND, TARGET, CELL_LINE "
+        "and TISSUE together."
+        if entity_type
+        else ""
+    )
+    return (
+        f"No ChEMBL entity exactly matched {query!r}. THIS IS NOT AN ENDPOINT FAILURE: "
+        f"the query ran and returned nothing.{scoped} This tool matches whole names "
+        "only, case-insensitively — never a prefix, a single word, or a fuzzy match, so "
+        "check spelling first. For looser matching on a protein/enzyme, call "
+        "search_chembl_target, which falls back to a substring pass over target names; "
+        "for a drug string carrying a dose or several agents, call search_chembl_molecule "
+        "with mode='extract'."
+    )
+
+
 def _containment_match_block(query: str) -> str | None:
     """WHERE-clause fragment matching ``?alt`` synonyms CONTAINED IN ``query``.
 
@@ -536,9 +562,11 @@ async def search_chembl_id_lookup(
     regimes, because the entity kinds carry different searchable text:
 
     • EXACT (case-insensitive) NAME match — COMPOUND (skos:altLabel: brands,
-      generics, synonyms), TARGET (component skos:altLabel: gene symbols, protein
-      names), CELL_LINE and TISSUE (rdfs:label, e.g. "Liver", "CCRF S-180"). Not
-      fuzzy/substring — fix typos before calling. Prefer the entity-specific tools
+      generics, synonyms), TARGET (its own rdfs:label OR its component's
+      skos:altLabel — gene symbols and protein names), CELL_LINE and TISSUE
+      (rdfs:label, e.g. "Liver", "CCRF S-180"). Not fuzzy/substring — fix typos
+      before calling, or use `search_chembl_target`, which falls back to a
+      substring pass. Prefer the entity-specific tools
       (`search_chembl_molecule` / `search_chembl_target`) when you know the kind;
       they carry extra fields (organism/type).
 
@@ -559,13 +587,21 @@ async def search_chembl_id_lookup(
     RETURNS a dict {'total_count', 'has_more', 'results'}. `total_count` is the
     number of rows RETURNED (capped by `limit`), NOT the full match count; check
     `has_more` (true = more results exist beyond this page — relevant mainly for
-    ASSAY, whose keyword search can have many hits). Each result carries
+    ASSAY, whose keyword search can have many hits). ⚠️ On a default (cross-kind)
+    search, `has_more`=true can also mean an entire entity_type is missing from
+    the page: the kinds are UNIONed and the limit is applied to the whole, so
+    e.g. "Liver" at limit=5 returns 5 TARGET rows and no TISSUE row, though both
+    exist. Do NOT conclude a kind is absent from a truncated page — raise `limit`
+    or re-run with `entity_type` set. Each result carries
     'chembl_id', 'entity_type', and 'organism' (null for COMPOUND / where absent —
     use it to tell e.g. human from mouse targets). Name kinds also carry 'name'
     (rdfs:label); ASSAY rows instead carry 'description' (the free-text assay
     description, name=null) and a relevance 'score' (higher = better match).
-    On endpoint failure this tool does NOT raise — it returns a dict with a single
-    'error' key instead; CHECK FOR 'error' BEFORE READING 'results'.
+
+    An EMPTY 'results' additionally carries 'hint'. Read it: an empty result is
+    NOT an endpoint failure, and must not be reported as one. On a real endpoint
+    failure this tool does NOT raise — it returns a dict with a single 'error'
+    key instead; CHECK FOR 'error' BEFORE READING 'results'.
 
     Args:
         entity_type (str, optional): One of COMPOUND, TARGET, CELL_LINE, TISSUE,
@@ -595,7 +631,12 @@ async def search_chembl_id_lookup(
         )
     bif = _bif_and(query)
     if bif is None:
-        return {"total_count": 0, "has_more": False, "results": []}
+        return {
+            "total_count": 0,
+            "has_more": False,
+            "results": [],
+            "hint": _id_lookup_zero_hint(query, entity_type=et),
+        }
     exact = _sparql_literal(query.lower())
 
     def exact_branch(
@@ -625,13 +666,35 @@ async def search_chembl_id_lookup(
             prefilter=True,
             has_organism=False,  # molecules have no organism
         ),
-        "TARGET": exact_branch(
-            "TARGET",
-            "?comp skos:altLabel ?alt .",
-            "?e cco:hasTargetComponent ?comp ; cco:chemblId ?chembl_id ; "
-            "rdfs:label ?name .",
-            prefilter=True,
-            has_organism=True,
+        # TARGET does not fit exact_branch: a target's name lives on TWO nodes,
+        # so it needs an inner UNION. Searching only the component's altLabel
+        # meant a target could not be found by the string this tool returns as
+        # `name` ("Aldehyde dehydrogenase" → 0 rows, while "ALDH2" → 3), and
+        # requiring cco:hasTargetComponent hid the 4,894 targets that have no
+        # protein component. Same fix as search_chembl_target; see
+        # _target_exact_match_block for the full rationale and figures.
+        #
+        # cco:targetType is what makes ?e a TARGET. It is load-bearing on the
+        # second leg: `?e rdfs:label ?tlabel` alone matches ANY labelled entity,
+        # so without it a molecule whose name collided would come back stamped
+        # entity_type="TARGET".
+        "TARGET": (
+            "  {\n"
+            "    {\n"
+            "      ?comp skos:altLabel ?alt .\n"
+            f'      ?alt bif:contains "{bif}" .\n'
+            f'      FILTER(LCASE(STR(?alt)) = "{exact}")\n'
+            "      ?e cco:hasTargetComponent ?comp .\n"
+            "    } UNION {\n"
+            "      ?e rdfs:label ?tlabel .\n"
+            f'      ?tlabel bif:contains "{bif}" .\n'
+            f'      FILTER(LCASE(STR(?tlabel)) = "{exact}")\n'
+            "    }\n"
+            "    ?e cco:targetType ?target_type ; cco:chemblId ?chembl_id ; "
+            "rdfs:label ?name .\n"
+            "    OPTIONAL { ?e cco:organismName ?organism }\n"
+            '    BIND("TARGET" AS ?entity_type)\n'
+            "  }"
         ),
         "CELL_LINE": exact_branch(
             "CELL_LINE",
@@ -713,11 +776,14 @@ async def search_chembl_id_lookup(
             }
             for r in rows
         ]
-    return {
+    out = {
         "total_count": len(parsed_results),
         "has_more": has_more,
         "results": parsed_results,
     }
+    if not parsed_results:
+        out["hint"] = _id_lookup_zero_hint(query, entity_type=et)
+    return out
 
 
 @mcp.tool(annotations=READ_ONLY_TOOL)

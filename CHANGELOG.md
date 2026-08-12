@@ -13,6 +13,40 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Fixed
+
+- **`search_chembl_id_lookup` carried the same target-name bug, and now does not.** Its TARGET branch
+  searched only the protein component's `skos:altLabel` while returning the target's own `rdfs:label` as
+  `name`, so `"Aldehyde dehydrogenase"` returned 0 rows there even after 2.6.0 had made
+  `search_chembl_target` return CHEMBL3542434 for it — two tools disagreeing about the same question.
+  The branch is now an inner UNION over both name locations, with `cco:hasTargetComponent` confined to
+  the synonym leg, so component-less targets are reachable too: `entity_type="TARGET"` on `"CCRF-CEM"`
+  went from 0 rows to CHEMBL382. `cco:targetType` was added to that branch as a guard — without it the
+  new leg would match any labelled entity and stamp it `entity_type="TARGET"`. Worth knowing when
+  reading results: a cell line exists **twice** under different IDs, as a `cco:CellLine` entity
+  (CHEMBL3307641) and as a CELL-LINE *target* (CHEMBL382); finding one is not finding the other.
+- **`search_chembl_id_lookup` empty results now carry a `hint`**, on the same reasoning as 2.6.0's: a
+  0-result is not an error and was indistinguishable from an outage. This tool stays exact on purpose —
+  a predictable cross-entity front door is worth more than a clever one — so instead of a substring
+  fallback the hint names the tools that do fall back (`search_chembl_target`,
+  `search_chembl_molecule(mode='extract')`), and flags a narrowing `entity_type` when one was passed.
+- **A gateway 5xx no longer tells the agent its query is too heavy.** 502/503/504 come from a reverse
+  proxy, not from Virtuoso, so the SPARQL engine may never have seen the query — advising "add LIMIT" is
+  then actively wrong. Observed 2026-08-12 on the ebi endpoint, where `ASK {}` and a one-IRI lookup
+  502'd identically in ~0.1s seconds after the same queries had succeeded. The status code alone cannot
+  say whether the backend is down or just dropped one request, so the liveness probe added in 2.5.3 is
+  now used to ask: probe fails → the endpoint-down message and the circuit breaker, exactly as for a
+  timeout; probe passes → a message saying the endpoint is up, this failure is specific to this request,
+  and the right first move is to **retry once unchanged** rather than rewrite. A plain 500 is Virtuoso's
+  own and is untouched — it keeps the query-weight advice and spends no probe. Logged as
+  `sparql_status: "http_gateway"` (classified `server_error`, so it stays out of the MIE-trap counts).
+
+Also documented, not changed: on a default cross-kind `search_chembl_id_lookup`, `has_more=true` can
+mean an entire `entity_type` is missing from the page — the kinds are UNIONed and the limit applies to
+the whole, so "Liver" at `limit=5` returns 5 TARGET rows and no TISSUE row although both exist. The
+docstring now says so explicitly, since "no tissue named Liver" is exactly the kind of false conclusion
+this release is about.
+
 ## [2.6.0] - 2026-08-12
 
 <!-- whatsnew: 2026-08-12 | Target lookups in ChEMBL now find a target by its <strong>own name</strong> (<em>"aldehyde dehydrogenase"</em> used to return nothing at all), reach the 4,894 targets that have no protein component — cell lines such as <em>CCRF-CEM</em>, plus tissues and organisms — and fall back to a substring match when a single word like <em>"dehydrogenase"</em> finds no exact hit. -->

@@ -144,6 +144,11 @@ _probe_client = httpx.AsyncClient(
 _ENDPOINT_DOWN_TTL_SECONDS = 60.0
 _endpoint_down_until: dict[str, float] = {}
 
+# Statuses a reverse proxy emits when it cannot get an answer from the backend.
+# Virtuoso itself never returns these, so they mean "infrastructure", not "your
+# query" — see the gateway branch in execute_sparql.
+_GATEWAY_STATUS = frozenset({502, 503, 504})
+
 
 class _EndpointUnresponsive(Exception):
     """The endpoint failed a liveness probe: it is not answering anything."""
@@ -506,17 +511,52 @@ async def execute_sparql(
             "Other endpoints are unaffected; see get_sparql_endpoints()."
         ) from exc
 
-    # Answered — whatever the status code, the endpoint is alive.
-    _clear_endpoint_down(url)
-
     extra["http_code"] = response.status_code
     extra["n_bytes"] = len(response.content)
     if response.is_success:
+        # Answered with data — the endpoint is demonstrably alive.
+        _clear_endpoint_down(url)
         extra["sparql_status"] = "ok"
         extra["n_rows"] = max(response.text.count("\n") - 1, 0)
     elif 400 <= response.status_code < 500:
+        _clear_endpoint_down(url)
         extra["sparql_status"] = "http_4xx"
+    elif response.status_code in _GATEWAY_STATUS:
+        # A reverse proxy answering for a backend it could not reach. Virtuoso
+        # never emits these; nginx does, in ~0.1s, with an HTML error page. The
+        # generic 5xx advice ("the query may be too heavy — add LIMIT") is then
+        # actively wrong: the SPARQL engine never saw the query. Observed
+        # 2026-08-12 on the ebi endpoint, where `ASK {}` and a one-IRI lookup
+        # 502'd identically while the same queries had succeeded seconds earlier.
+        #
+        # Which of the two it is cannot be read off the status code, so ask the
+        # endpoint: the same liveness probe used for timeouts settles it.
+        if not await _probe_endpoint(url):
+            extra["sparql_status"] = "endpoint_unresponsive"
+            extra["liveness_probe"] = "failed"
+            _mark_endpoint_down(url)
+            raise ValueError(
+                f"SPARQL endpoint at {url} returned HTTP {response.status_code} from "
+                f"its gateway, and is not answering a trivial query either.\n\n"
+                + _endpoint_down_message(url).split("\n\n", 1)[1]
+            )
+        _clear_endpoint_down(url)
+        extra["sparql_status"] = "http_gateway"
+        extra["liveness_probe"] = "passed"
+        raise ValueError(
+            f"SPARQL endpoint at {url} returned HTTP {response.status_code} from its "
+            "GATEWAY (a reverse proxy), not from the SPARQL engine — so the engine may "
+            "never have seen this query.\n\n"
+            "A liveness check right afterwards SUCCEEDED, so the endpoint is up and "
+            "this failure is specific to this request: either the backend dropped this "
+            "one query, or the upstream blipped for a moment.\n\n"
+            "Retry ONCE, unchanged — that is the single most likely fix here, and "
+            "rewriting the query first would be guesswork. If the retry fails the same "
+            "way, THEN treat it as too heavy: lower LIMIT, anchor on specific IRIs, and "
+            "split multi-graph joins. Never loop."
+        )
     else:
+        _clear_endpoint_down(url)
         extra["sparql_status"] = "http_5xx"
 
     raise_for_status_with_body(
