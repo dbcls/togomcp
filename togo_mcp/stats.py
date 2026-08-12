@@ -12,8 +12,9 @@ What the collection layer records today (per JSONL line):
   ts, tool, args, status (ok|error), elapsed_ms, session_id/request_id/...,
   ip, error_class, error_message, and for SPARQL an ``extra`` dict with
   endpoint_url, query_sha256, sparql_status (ok|timeout|endpoint_unresponsive|
-  pool_exhausted|network_error|http_4xx|http_5xx), http_code, n_bytes, n_rows,
-  and — when the liveness watchdog ran — liveness_probe (passed|failed).
+  pool_exhausted|network_error|http_4xx|http_5xx|http_gateway), http_code,
+  n_bytes, n_rows, and — when the liveness probe ran — liveness_probe
+  (passed|failed).
 
 This module derives, per calendar month (UTC):
   * per-tool: call count, error count/rate, duration p50/p95/mean
@@ -249,6 +250,10 @@ def sparql_class(rec: dict[str, Any]) -> str | None:
         return "endpoint_down"
     if status == "pool_exhausted":
         return "pool_exhausted"
+    if status == "http_gateway":
+        # A proxy 502/503/504 whose endpoint passed a liveness check right after:
+        # a server-side failure, but not one the query can be blamed for.
+        return "server_error"
     if status == "http_5xx":
         return "server_error"
     if status == "http_4xx":

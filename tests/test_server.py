@@ -754,6 +754,96 @@ class TestEndpointLiveness:
         assert "s,p,o" in out
         assert srv._endpoint_down_remaining(url) is None
 
+    @pytest.mark.asyncio
+    async def test_gateway_5xx_with_a_dead_endpoint_reports_the_outage(self, monkeypatch) -> None:
+        """nginx answering 502 in ~0.1s is infrastructure, not a heavy query.
+
+        Observed 2026-08-12 on the ebi endpoint: `ASK {}` and a one-IRI lookup
+        502'd identically, seconds after the same queries had succeeded. The
+        generic 5xx advice ("the query may be too heavy — add LIMIT") is wrong
+        there: the SPARQL engine never saw the query.
+        """
+        from togo_mcp import server as srv
+
+        srv._endpoint_down_until.clear()
+
+        async def _bad_gateway(*a, **k):
+            return httpx.Response(
+                502,
+                text="<html><head><title>502 Bad Gateway</title></head></html>",
+                request=httpx.Request("POST", "https://rdfportal.org/ebi/sparql"),
+            )
+
+        async def _probe_dead(url):
+            return False
+
+        monkeypatch.setattr(srv._sparql_client, "post", _bad_gateway)
+        monkeypatch.setattr(srv, "_probe_endpoint", _probe_dead)
+        with pytest.raises(ValueError) as ei:
+            await srv.execute_sparql("SELECT * WHERE { ?s ?p ?o }", database="chembl")
+        msg = str(ei.value)
+        assert "502" in msg
+        assert "THE PROBLEM IS NOT YOUR QUERY" in msg
+        assert "TOO HEAVY" not in msg
+        assert srv._endpoint_down_remaining(srv.SPARQL_ENDPOINT["chembl"]["url"]) is not None
+
+    @pytest.mark.asyncio
+    async def test_gateway_5xx_with_a_live_endpoint_says_retry_once_first(self, monkeypatch) -> None:
+        """A one-off 502 from a healthy endpoint deserves a retry, not a rewrite.
+
+        The breaker must stay CLOSED here: shutting off an endpoint that answers
+        fine would turn one bad request into a 60s outage of our own making.
+        """
+        from togo_mcp import server as srv
+
+        srv._endpoint_down_until.clear()
+
+        async def _bad_gateway(*a, **k):
+            return httpx.Response(
+                503, text="<html>503</html>",
+                request=httpx.Request("POST", "https://rdfportal.org/ebi/sparql"),
+            )
+
+        async def _probe_alive(url):
+            return True
+
+        monkeypatch.setattr(srv._sparql_client, "post", _bad_gateway)
+        monkeypatch.setattr(srv, "_probe_endpoint", _probe_alive)
+        with pytest.raises(ValueError) as ei:
+            await srv.execute_sparql("SELECT * WHERE { ?s ?p ?o }", database="chembl")
+        msg = str(ei.value)
+        assert "GATEWAY" in msg
+        assert "Retry ONCE, unchanged" in msg
+        assert "Never loop." in msg
+        assert srv._endpoint_down_remaining(srv.SPARQL_ENDPOINT["chembl"]["url"]) is None
+
+    @pytest.mark.asyncio
+    async def test_a_virtuoso_500_still_gets_the_query_weight_advice(self, monkeypatch) -> None:
+        """500 is Virtuoso's own; only 502/503/504 come from a proxy. The engine
+        DID see the query, so 'too heavy' remains the right hint — and no probe
+        should be spent on it."""
+        from togo_mcp import server as srv
+
+        srv._endpoint_down_until.clear()
+        probed = []
+
+        async def _five_hundred(*a, **k):
+            return httpx.Response(
+                500, text="Virtuoso 42000 Error ...",
+                request=httpx.Request("POST", "https://rdfportal.org/ebi/sparql"),
+            )
+
+        async def _probe(url):
+            probed.append(url)
+            return True
+
+        monkeypatch.setattr(srv._sparql_client, "post", _five_hundred)
+        monkeypatch.setattr(srv, "_probe_endpoint", _probe)
+        with pytest.raises(ValueError) as ei:
+            await srv.execute_sparql("SELECT * WHERE { ?s ?p ?o }", database="chembl")
+        assert "too heavy" in str(ei.value)
+        assert probed == [], "a Virtuoso 500 needs no liveness probe"
+
     def test_probe_client_does_not_share_the_sparql_pool(self) -> None:
         """A probe sent through the saturated pool cannot diagnose the saturation.
 

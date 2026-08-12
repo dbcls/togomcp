@@ -476,7 +476,11 @@ class TestSearchChemblIdLookup:
             )
             result = await search_chembl_id_lookup("EGFR")
         sent = _sent_query(route)
-        assert sent.count("UNION") == 3  # 4 branches
+        # Four branches are joined by three top-level UNIONs. Count those rather
+        # than every "UNION" token: the TARGET branch now contains one of its own
+        # (a target's name lives on two nodes), so a bare count says 4.
+        assert sent.count("\n  UNION\n") == 3, "four name kinds, three joins"
+        assert sent.count("UNION") == 4, "…plus the TARGET branch's inner UNION"
         for frag in ("cco:SmallMolecule", "cco:hasTargetComponent", "cco:CellLine",
                      "cco:Tissue"):
             assert frag in sent
@@ -484,6 +488,81 @@ class TestSearchChemblIdLookup:
         assert "cco:organismName" in sent  # organism carried for disambiguation
         assert result["results"][0]["entity_type"] == "TARGET"
         assert result["results"][0]["organism"] == "Homo sapiens"
+
+    @pytest.mark.asyncio
+    async def test_target_branch_searches_the_target_own_name_too(self) -> None:
+        """The TARGET branch carried the same two-node bug as search_chembl_target.
+
+        Verified live 2026-08-12 BEFORE the fix: id_lookup("Aldehyde
+        dehydrogenase") returned 0 (both default and entity_type="TARGET") while
+        "ALDH2" returned 3 — and by then search_chembl_target already returned 1,
+        so the two tools disagreed about the same question.
+        """
+        with respx.mock(using="httpx") as router:
+            route = router.post(CHEMBL_SPARQL_URL).mock(
+                return_value=httpx.Response(
+                    200,
+                    text=_csv(
+                        "chembl_id,entity_type,name,organism",
+                        "CHEMBL3542434,TARGET,Aldehyde dehydrogenase,Homo sapiens",
+                    ),
+                )
+            )
+            result = await search_chembl_id_lookup(
+                "Aldehyde dehydrogenase", entity_type="TARGET"
+            )
+        sent = _sent_query(route)
+        assert "?e rdfs:label ?tlabel" in sent
+        assert 'FILTER(LCASE(STR(?tlabel)) = "aldehyde dehydrogenase")' in sent
+        # cco:targetType is what makes ?e a target; without it the second leg
+        # would match ANY labelled entity and stamp it entity_type="TARGET".
+        assert "?e cco:targetType ?target_type" in sent
+        assert result["results"][0]["chembl_id"] == "CHEMBL3542434"
+
+    @pytest.mark.asyncio
+    async def test_target_branch_does_not_require_a_protein_component(self) -> None:
+        """4,894 targets have none (ORGANISM, CELL-LINE, TISSUE, …). A cell line
+        also exists TWICE under different IDs — CCRF-CEM is CHEMBL3307641 as a
+        cco:CellLine and CHEMBL382 as a CELL-LINE target — so the CELL_LINE
+        branch finding one does not mean the TARGET branch found the other.
+        """
+        with respx.mock(using="httpx") as router:
+            route = router.post(CHEMBL_SPARQL_URL).mock(
+                return_value=httpx.Response(
+                    200, text=_csv("chembl_id,entity_type,name,organism")
+                )
+            )
+            await search_chembl_id_lookup("CCRF-CEM", entity_type="TARGET")
+        sent = _sent_query(route)
+        _, _, second_leg = sent.partition("} UNION {")
+        assert second_leg, "the TARGET branch must offer a component-free leg"
+        assert "hasTargetComponent" not in second_leg
+
+    @pytest.mark.asyncio
+    async def test_zero_results_say_they_are_not_an_endpoint_failure(self) -> None:
+        with respx.mock(using="httpx") as router:
+            router.post(CHEMBL_SPARQL_URL).mock(
+                return_value=httpx.Response(
+                    200, text=_csv("chembl_id,entity_type,name,organism")
+                )
+            )
+            result = await search_chembl_id_lookup("zzzznotarget")
+        assert result["total_count"] == 0
+        assert "NOT AN ENDPOINT FAILURE" in result["hint"]
+        # This tool stays exact on purpose; the hint names the way out.
+        assert "search_chembl_target" in result["hint"]
+
+    @pytest.mark.asyncio
+    async def test_zero_result_hint_flags_a_narrowing_entity_type(self) -> None:
+        with respx.mock(using="httpx") as router:
+            router.post(CHEMBL_SPARQL_URL).mock(
+                return_value=httpx.Response(
+                    200, text=_csv("chembl_id,entity_type,name,organism")
+                )
+            )
+            result = await search_chembl_id_lookup("aspirin", entity_type="TARGET")
+        assert "'TARGET'" in result["hint"]
+        assert "omit it" in result["hint"]
 
     @pytest.mark.asyncio
     async def test_compound_organism_is_null(self) -> None:
