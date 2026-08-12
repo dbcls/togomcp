@@ -289,6 +289,151 @@ class TestSearchChemblTarget:
         assert result["results"][0]["chembl_id"] == "CHEMBL203"
 
     @pytest.mark.asyncio
+    async def test_a_target_is_findable_by_its_own_name(self) -> None:
+        """The `name` this tool RETURNS must also be a name it can SEARCH.
+
+        It was not. A target's name lives on two different nodes — the protein
+        component's skos:altLabel, and the target's own rdfs:label — and only the
+        first was searched, while the second is what came back as `name`.
+        Verified live 2026-08-12: CHEMBL3542434 is named "Aldehyde dehydrogenase",
+        carries NO skos:altLabel of its own, and searching that exact string
+        returned 0 rows while "ALDH2" returned it fine.
+        """
+        with respx.mock(using="httpx") as router:
+            route = router.post(CHEMBL_SPARQL_URL).mock(
+                return_value=httpx.Response(
+                    200,
+                    text=_csv(
+                        "chembl_id,name,organism,type",
+                        "CHEMBL3542434,Aldehyde dehydrogenase,Homo sapiens,PROTEIN FAMILY",
+                    ),
+                )
+            )
+            result = await search_chembl_target("Aldehyde dehydrogenase")
+        sent = _sent_query(route)
+        assert "UNION" in sent
+        assert "?target rdfs:label ?tlabel" in sent
+        assert 'FILTER(LCASE(STR(?tlabel)) = "aldehyde dehydrogenase")' in sent
+        assert result["results"][0]["chembl_id"] == "CHEMBL3542434"
+        assert result["match_mode"] == "exact"
+        assert len(route.calls) == 1  # an exact hit must not trigger the fallback
+
+    @pytest.mark.asyncio
+    async def test_targets_without_a_protein_component_are_reachable(self) -> None:
+        """4,894 targets have no cco:hasTargetComponent at all (measured
+        2026-08-12): 2,383 ORGANISM, 1,997 CELL-LINE, 294 TISSUE, and more. The
+        old WHERE clause required that predicate outside any UNION, so every one
+        of them was unreachable by ANY query — while `target_type` went on
+        advertising CELL-LINE/TISSUE/ORGANISM as filter values.
+        """
+        with respx.mock(using="httpx") as router:
+            route = router.post(CHEMBL_SPARQL_URL).mock(
+                return_value=httpx.Response(
+                    200,
+                    text=_csv(
+                        "chembl_id,name,organism,type",
+                        "CHEMBL382,CCRF-CEM,Homo sapiens,CELL-LINE",
+                    ),
+                )
+            )
+            result = await search_chembl_target("CCRF-CEM")
+        sent = _sent_query(route)
+        head, _, tail = sent.partition("} UNION {")
+        assert "hasTargetComponent" in head, "the synonym leg still needs a component"
+        assert "hasTargetComponent" not in tail, (
+            "the target-name leg must NOT require a component, or component-less "
+            "targets (CELL-LINE, ORGANISM, TISSUE) stay invisible"
+        )
+        assert result["results"][0]["type"] == "CELL-LINE"
+
+    @pytest.mark.asyncio
+    async def test_zero_exact_matches_fall_back_to_substring(self) -> None:
+        with respx.mock(using="httpx") as router:
+            route = router.post(CHEMBL_SPARQL_URL).mock(
+                side_effect=[
+                    httpx.Response(200, text=_csv("chembl_id,name,organism,type")),
+                    httpx.Response(
+                        200,
+                        text=_csv(
+                            "chembl_id,name,organism,type",
+                            "CHEMBL2931,Aldehyde dehydrogenase 1A1,Homo sapiens,SINGLE PROTEIN",
+                        ),
+                    ),
+                ]
+            )
+            result = await search_chembl_target("dehydrogenase")
+        assert len(route.calls) == 2
+        import urllib.parse
+
+        second = urllib.parse.parse_qs(
+            route.calls[1].request.content.decode()
+        )["query"][0]
+        assert 'CONTAINS(LCASE(STR(?tlabel)), "dehydrogenase")' in second
+        assert result["match_mode"] == "substring"
+        assert result["results"][0]["chembl_id"] == "CHEMBL2931"
+
+    @pytest.mark.asyncio
+    async def test_zero_results_say_they_are_not_an_endpoint_failure(self) -> None:
+        """An empty result is not an error, so a caller cannot tell it from an
+        outage — and on 2026-08-12 one was in fact read as an endpoint problem,
+        because the ebi endpoint really was down that day for unrelated reasons.
+        """
+        with respx.mock(using="httpx") as router:
+            router.post(CHEMBL_SPARQL_URL).mock(
+                return_value=httpx.Response(
+                    200, text=_csv("chembl_id,name,organism,type")
+                )
+            )
+            result = await search_chembl_target("zzzznotarget")
+        assert result["total_count"] == 0
+        assert result["match_mode"] == "none"
+        assert "NOT AN ENDPOINT FAILURE" in result["hint"]
+        assert "error" not in result
+
+    @pytest.mark.asyncio
+    async def test_zero_result_hint_names_filters_that_could_have_caused_it(self) -> None:
+        with respx.mock(using="httpx") as router:
+            router.post(CHEMBL_SPARQL_URL).mock(
+                return_value=httpx.Response(
+                    200, text=_csv("chembl_id,name,organism,type")
+                )
+            )
+            result = await search_chembl_target("EGFR", organism="Homo sapines")
+        assert "Homo sapines" in result["hint"]
+        assert "retry without them" in result["hint"]
+
+    @pytest.mark.asyncio
+    async def test_accession_never_falls_back_to_substring(self) -> None:
+        """An accession either links via skos:exactMatch or it does not; a text
+        pass on the raw string would only invent noise."""
+        with respx.mock(using="httpx") as router:
+            route = router.post(CHEMBL_SPARQL_URL).mock(
+                return_value=httpx.Response(
+                    200, text=_csv("chembl_id,name,organism,type")
+                )
+            )
+            result = await search_chembl_target("P00533")
+        assert len(route.calls) == 1
+        assert result["match_mode"] == "none"
+
+    @pytest.mark.asyncio
+    async def test_a_failing_fallback_does_not_mask_a_clean_zero(self) -> None:
+        """The first pass succeeded and legitimately found nothing. Turning that
+        into an 'error' because the optional second pass broke would report an
+        outage that did not happen — the exact confusion this work removes."""
+        with respx.mock(using="httpx") as router:
+            router.post(CHEMBL_SPARQL_URL).mock(
+                side_effect=[
+                    httpx.Response(200, text=_csv("chembl_id,name,organism,type")),
+                    httpx.Response(500, text="boom"),
+                ]
+            )
+            result = await search_chembl_target("nothing here")
+        assert "error" not in result
+        assert result["total_count"] == 0
+        assert "hint" in result
+
+    @pytest.mark.asyncio
     async def test_empty_organism_cell_becomes_none(self) -> None:
         with respx.mock(using="httpx") as router:
             router.post(CHEMBL_SPARQL_URL).mock(

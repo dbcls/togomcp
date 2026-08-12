@@ -147,6 +147,111 @@ def _altlabel_match_block(query: str) -> str | None:
     )
 
 
+def _target_exact_match_block(query: str) -> str | None:
+    """WHERE fragment binding ?target by exact (case-insensitive) name.
+
+    A target's name lives in TWO places, on two different nodes, and searching
+    only the first is why `search_chembl_target("aldehyde dehydrogenase")`
+    returned nothing while CHEMBL3542434 is literally named "Aldehyde
+    dehydrogenase" (verified live 2026-08-12):
+
+    * ``?comp skos:altLabel`` — synonyms of the target's protein COMPONENT
+      (gene symbols, UniProt recommended names). The only leg that used to exist.
+    * ``?target rdfs:label`` — the target's OWN name, i.e. the exact string this
+      tool returns as `name`. CHEMBL3542434 carries no skos:altLabel at all, so
+      component synonyms could never reach it.
+
+    The second leg also un-hides the 4,894 targets with no protein component at
+    all (2,383 ORGANISM, 1,997 CELL-LINE, 294 TISSUE, …). Those were unreachable
+    by ANY query, even though `target_type` advertises CELL-LINE/TISSUE/ORGANISM
+    as filter values — the old WHERE clause required cco:hasTargetComponent.
+
+    Returns None when the query has no searchable token.
+    """
+    bif = _bif_and(query)
+    if bif is None:
+        return None
+    q = _sparql_literal(query.lower())
+    return (
+        "  {\n"
+        "    ?comp skos:altLabel ?alt .\n"
+        f'    ?alt bif:contains "{bif}" .\n'
+        f'    FILTER(LCASE(STR(?alt)) = "{q}")\n'
+        "    ?target cco:hasTargetComponent ?comp .\n"
+        "  } UNION {\n"
+        "    ?target rdfs:label ?tlabel .\n"
+        f'    ?tlabel bif:contains "{bif}" .\n'
+        f'    FILTER(LCASE(STR(?tlabel)) = "{q}")\n'
+        "  }"
+    )
+
+
+def _target_substring_match_block(query: str) -> str | None:
+    """WHERE fragment binding ?target whose OWN name CONTAINS ``query``.
+
+    Second pass only, and only when the exact pass found nothing. Exact-first is
+    still the right default — the reason this module resolves names over SPARQL
+    rather than the EBI REST index is that token-OR ranking buries the intended
+    entity (EGFR lands at rank ~6 among orthologs and ligands). A substring pass
+    that runs ONLY on zero results, returns everything it finds unranked, and
+    labels itself `match_mode: "substring"` reintroduces none of that: there is
+    no ranking for the caller to second-guess, and nothing displaces an exact hit
+    that never existed.
+
+    Breadth is bounded in practice — 'dehydrogenase', one of the broadest tokens
+    a caller would plausibly type, matches 250 target labels (measured
+    2026-08-12, 0.35s), not thousands. bif:contains does the index work; the
+    FILTER makes it a real substring rather than a token bag.
+    """
+    bif = _bif_and(query)
+    if bif is None:
+        return None
+    q = _sparql_literal(query.lower())
+    return (
+        "  ?target rdfs:label ?tlabel .\n"
+        f'  ?tlabel bif:contains "{bif}" .\n'
+        f'  FILTER(CONTAINS(LCASE(STR(?tlabel)), "{q}"))'
+    )
+
+
+def _target_sparql(match_block: str, filters: str, limit: int) -> str:
+    """Assemble a target query around a ?target-binding match block."""
+    return (
+        f"{_CHEMBL_PREFIXES}\n"
+        f"SELECT DISTINCT ?chembl_id ?name ?organism ?type "
+        f"FROM <{_CHEMBL_GRAPH}> WHERE {{\n"
+        f"{match_block}\n"
+        f"  ?target cco:chemblId ?chembl_id ; rdfs:label ?name ; cco:targetType ?type .\n"
+        f"  OPTIONAL {{ ?target cco:organismName ?organism . }}{filters}\n"
+        f"}} LIMIT {int(limit) + 1}"
+    )
+
+
+def _target_zero_hint(query: str, *, organism: str, target_type: str) -> str:
+    """Why a target search came back empty — and that it is not an outage.
+
+    A 0-result is not an error, so a caller cannot tell it from a connectivity
+    failure. That confusion is not hypothetical: on 2026-08-12 an empty target
+    search was read as an endpoint problem, because the ebi endpoint really was
+    down that day for unrelated reasons.
+    """
+    narrowed = [f"{k}={v!r}" for k, v in (("organism", organism), ("target_type", target_type)) if v]
+    filter_note = (
+        f" NOTE: you also passed {' and '.join(narrowed)} — a match may exist that "
+        "those filters removed; retry without them to find out."
+        if narrowed
+        else ""
+    )
+    return (
+        f"No ChEMBL target matched {query!r} — not by exact name or synonym, and not "
+        "by substring of a target name. THIS IS NOT AN ENDPOINT FAILURE: the query "
+        f"ran and returned nothing.{filter_note} Matching is literal, never fuzzy, so "
+        "check spelling first. Then try a UniProt accession ('P00533'), a gene symbol "
+        "('ALDH2'), or the full official name ('Aldehyde dehydrogenase, mitochondrial') "
+        "— any of which resolves deterministically."
+    )
+
+
 def _containment_match_block(query: str) -> str | None:
     """WHERE-clause fragment matching ``?alt`` synonyms CONTAINED IN ``query``.
 
@@ -642,8 +747,10 @@ async def search_chembl_target(
         complex/family/chimera it participates in) — filter `target_type` to get
         just one.
       • GENE SYMBOL / PROTEIN NAME (e.g. "EGFR", "epidermal growth factor
-        receptor") → EXACT (case-insensitive) match on the target component's
-        skos:altLabel synonyms. Not fuzzy/substring — fix typos before calling.
+        receptor") → EXACT (case-insensitive) match, tried against BOTH the
+        target's own name and its protein component's skos:altLabel synonyms.
+      • If that finds nothing, ONE substring pass over target names runs as a
+        fallback (e.g. "dehydrogenase"). Still never fuzzy — fix typos.
 
     Every result carries `organism` and `type`, so a symbol shared across species
     or complexes is disambiguated by inspecting those fields (or by passing the
@@ -658,12 +765,18 @@ async def search_chembl_target(
     The search string can be passed as any of: `query` (canonical), `search`,
     `term`, `keyword`, `keywords`, `search_term`, or `name`.
 
-    RETURNS a dict {'total_count', 'has_more', 'results'}. `total_count` is rows
-    RETURNED (capped by `limit`), not the full match count; `has_more` is true if
-    more exist beyond this page. Each result has 'chembl_id', 'name' (rdfs:label),
-    'organism', and 'type'. On endpoint failure this tool does NOT raise — it
-    returns a dict with a single 'error' key instead; CHECK FOR 'error' BEFORE
-    READING 'results'.
+    RETURNS a dict {'total_count', 'has_more', 'results', 'match_mode'}.
+    `total_count` is rows RETURNED (capped by `limit`), not the full match count;
+    `has_more` is true if more exist beyond this page. Each result has
+    'chembl_id', 'name' (rdfs:label), 'organism', and 'type'. `match_mode` is
+    'exact', 'substring', or 'none' — 'substring' means the exact pass found
+    nothing and these are looser, UNRANKED matches, so verify 'name' before using
+    them; 'none' means both passes ran and neither matched.
+
+    An EMPTY 'results' additionally carries 'hint'. Read it: an empty result is
+    NOT an endpoint failure, and must not be reported as one. On a real endpoint
+    failure this tool does NOT raise — it returns a dict with a single 'error'
+    key instead; CHECK FOR 'error' BEFORE READING 'results'.
 
     Args:
         query (str): UniProt accession (preferred), gene symbol, or exact protein
@@ -695,19 +808,6 @@ async def search_chembl_target(
             f"target-type vocabulary: {', '.join(sorted(_CHEMBL_TARGET_TYPES))}. "
             "(An unrecognized value would otherwise silently match nothing.)"
         )
-    # Route: UniProt accession → structured skos:exactMatch; else exact altLabel.
-    acc = query.strip().upper()
-    if _UNIPROT_ACCESSION_RE.match(acc):
-        match_block = (
-            f"  ?comp skos:exactMatch "
-            f"<http://purl.uniprot.org/uniprot/{acc}> ."
-        )
-    else:
-        alt = _altlabel_match_block(query)
-        if alt is None:
-            return {"total_count": 0, "has_more": False, "results": []}
-        match_block = f"  ?comp skos:altLabel ?alt .\n{alt}"
-
     filters = ""
     if organism.strip():
         filters += (
@@ -719,19 +819,43 @@ async def search_chembl_target(
             f'\n  FILTER(LCASE(STR(?type)) = '
             f'"{_sparql_literal(target_type.strip().lower())}")'
         )
-    sparql = (
-        f"{_CHEMBL_PREFIXES}\n"
-        f"SELECT DISTINCT ?chembl_id ?name ?organism ?type "
-        f"FROM <{_CHEMBL_GRAPH}> WHERE {{\n"
-        f"{match_block}\n"
-        f"  ?target cco:hasTargetComponent ?comp ;\n"
-        f"          cco:chemblId ?chembl_id ; rdfs:label ?name ; cco:targetType ?type .\n"
-        f"  OPTIONAL {{ ?target cco:organismName ?organism . }}{filters}\n"
-        f"}} LIMIT {int(limit) + 1}"
-    )
-    rows = await _run_chembl_sparql(sparql)
+    # Route: UniProt accession → structured skos:exactMatch (no text search, and
+    # no substring fallback — an accession either links or it does not).
+    acc = query.strip().upper()
+    is_accession = bool(_UNIPROT_ACCESSION_RE.match(acc))
+    if is_accession:
+        match_block: str | None = (
+            f"  ?comp skos:exactMatch <http://purl.uniprot.org/uniprot/{acc}> .\n"
+            f"  ?target cco:hasTargetComponent ?comp ."
+        )
+    else:
+        match_block = _target_exact_match_block(query)
+    if match_block is None:
+        return {
+            "total_count": 0,
+            "has_more": False,
+            "results": [],
+            "match_mode": "exact",
+            "hint": _target_zero_hint(query, organism=organism, target_type=target_type),
+        }
+
+    rows = await _run_chembl_sparql(_target_sparql(match_block, filters, int(limit)))
     if isinstance(rows, dict):
         return rows  # {"error": ...}
+
+    match_mode = "exact"
+    if not rows and not is_accession:
+        fallback = _target_substring_match_block(query)
+        if fallback is not None:
+            fb_rows = await _run_chembl_sparql(
+                _target_sparql(fallback, filters, int(limit))
+            )
+            # A failing fallback must not turn a clean "0 exact matches" into an
+            # error: the first pass already succeeded, and its emptiness is the
+            # real answer.
+            if not isinstance(fb_rows, dict) and fb_rows:
+                rows, match_mode = fb_rows, "substring"
+
     rows, has_more = _paginate(rows, int(limit))
     parsed_results = [
         {
@@ -742,11 +866,20 @@ async def search_chembl_target(
         }
         for r in rows
     ]
-    return {
+    out = {
         "total_count": len(parsed_results),
         "has_more": has_more,
         "results": parsed_results,
+        "match_mode": match_mode,
     }
+    if not parsed_results:
+        # Both passes ran and both found nothing; reporting "exact" here would
+        # imply a looser pass was still available to try.
+        out["match_mode"] = "none"
+        out["hint"] = _target_zero_hint(
+            query, organism=organism, target_type=target_type
+        )
+    return out
 
 
 async def _extract_chembl_molecules(query: str, limit: int) -> dict:

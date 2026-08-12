@@ -13,6 +13,44 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Fixed
+
+- **`search_chembl_target` can now find a target by the name it returns.** It could not: a target's name
+  lives on two different RDF nodes — the protein component's `skos:altLabel` (gene symbols, UniProt
+  recommended names) and the target's own `rdfs:label` — and only the first was searched, while the
+  second is what came back as `name`. So `search_chembl_target("aldehyde dehydrogenase")` returned an
+  empty array although CHEMBL3542434 is named exactly "Aldehyde dehydrogenase"; that target carries no
+  `skos:altLabel` at all, so component synonyms could never reach it, while `"ALDH2"` found it fine.
+  The match block is now a UNION over both, still exact and case-insensitive.
+- **4,894 ChEMBL targets were unreachable by any query at all.** The old WHERE clause required
+  `cco:hasTargetComponent` outside any UNION, and 2,383 ORGANISM, 1,997 CELL-LINE, 294 TISSUE,
+  62 NUCLEIC-ACID and others simply have no protein component — even though the `target_type` parameter
+  advertises CELL-LINE/TISSUE/ORGANISM as valid filter values, so those filters could never match
+  anything. The target-name leg of the UNION requires no component, so `search_chembl_target("CCRF-CEM")`
+  now resolves CHEMBL382 (CELL-LINE) instead of returning nothing.
+- **A single word now finds something.** When the exact pass finds nothing, one substring pass over
+  target names runs as a fallback, labelled `match_mode: "substring"` in the response so a caller knows
+  the results are looser and unranked. Exact-first is still the default and still the reason this module
+  resolves names over SPARQL rather than the EBI REST index (token-OR ranking buries the intended entity
+  — EGFR lands around rank 6 among orthologs and ligands); a pass that runs only on zero results and
+  ranks nothing reintroduces none of that. Breadth is bounded in practice: "dehydrogenase", about as
+  broad as a caller would plausibly type, matches 250 target labels, not thousands.
+- **An empty result now says it is not an outage.** A 0-result is not an error, so a caller could not
+  distinguish "no such target" from "the endpoint is down" — and on 2026-08-12 an empty target search was
+  in fact read as a connectivity failure, because the ebi endpoint really was down that day for unrelated
+  reasons. Empty responses now carry a `hint` that states plainly the query ran and returned nothing,
+  names any `organism`/`target_type` filter that may have removed a real match, and suggests the input
+  forms that resolve deterministically. `match_mode` is `"none"` when both passes came up empty.
+
+Additive only: `match_mode` and `hint` are new keys; no existing key changed meaning, and every input
+that worked before returns at least what it returned before.
+
+Checked and NOT changed: `search_chembl_molecule` shares the same synonym helper but is structurally
+immune — every *named* small molecule carries its own `rdfs:label` among its `skos:altLabel` values
+(verified: zero exceptions), so searching synonyms alone already reaches all of them. The other
+`search_*` wrappers (UniProt, PDB, Reactome, Rhea, MeSH) do not share this code path at all; they are
+REST wrappers over `_rest_get` and never touch SPARQL.
+
 ## [2.5.3] - 2026-08-12
 
 An availability release, written during a live RDF Portal outage and verified against it. Nothing about
