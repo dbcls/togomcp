@@ -13,6 +13,15 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-08-12
+
+<!-- whatsnew: 2026-08-12 | Target lookups in ChEMBL now find a target by its <strong>own name</strong> (<em>"aldehyde dehydrogenase"</em> used to return nothing at all), reach the 4,894 targets that have no protein component — cell lines such as <em>CCRF-CEM</em>, plus tissues and organisms — and fall back to a substring match when a single word like <em>"dehydrogenase"</em> finds no exact hit. -->
+
+MINOR rather than PATCH: nothing was removed or renamed and no existing key changed meaning, but two
+response keys are new (`match_mode`, `hint`) and the tool answers queries it used to answer with an
+empty array — a widening of what the tool accepts, which is where the agent-pragmatic policy files
+additive change.
+
 ### Fixed
 
 - **`search_chembl_target` can now find a target by the name it returns.** It could not: a target's name
@@ -1225,7 +1234,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.5.3...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.6.0...HEAD
+[2.6.0]: https://github.com/dbcls/togomcp/compare/v2.5.3...v2.6.0
 [2.5.3]: https://github.com/dbcls/togomcp/compare/v2.5.2...v2.5.3
 [2.5.2]: https://github.com/dbcls/togomcp/compare/v2.5.1...v2.5.2
 [2.5.1]: https://github.com/dbcls/togomcp/compare/v2.5.0...v2.5.1
