@@ -13,6 +13,13 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-08-12
+
+The other half of 2.6.0, plus the failure mode that made the original bug hard to read. Deliberately no
+`whatsnew` marker: 2.6.0's entry already tells a user that ChEMBL target lookups now find targets by
+their own name, and they do not know or care which of the two tools they went through — a second
+near-identical line would push a genuinely distinct item off the five-item list for no benefit.
+
 ### Fixed
 
 - **`search_chembl_id_lookup` carried the same target-name bug, and now does not.** Its TARGET branch
@@ -1268,7 +1275,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.6.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.0...HEAD
+[2.7.0]: https://github.com/dbcls/togomcp/compare/v2.6.0...v2.7.0
 [2.6.0]: https://github.com/dbcls/togomcp/compare/v2.5.3...v2.6.0
 [2.5.3]: https://github.com/dbcls/togomcp/compare/v2.5.2...v2.5.3
 [2.5.2]: https://github.com/dbcls/togomcp/compare/v2.5.1...v2.5.2
