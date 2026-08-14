@@ -140,34 +140,40 @@ Before using `bif:contains` or `FILTER(CONTAINS())` in any example query, confir
 
 ## Virtuoso-specific pitfalls
 
-### `REGEX()` with two arguments silently drops top-level alternation
+### Two-argument `REGEX()` silently mishandles some metacharacters
 
-**Never ship an example — or a `traps_avoided` line — containing a bare `REGEX(?x, "A|B")`.** The
-two-argument form returns **0 rows with no error** on every endpoint in the registry. Verified
-2026-08-14 on all 10 (`primary`, `sib`, `ebi`, `pubchem`, `pdb`, `ncbi`, `ddbj`, `nims`, `glycosmos`,
-`togovar`) with a query that touches no data at all:
+**Never ship an example with a two-argument `REGEX()`. Always pass the third (flags) argument** —
+`""` is enough, `"i"` also folds case:
 
 ```sparql
-SELECT (COUNT(*) AS ?n) WHERE {
-  VALUES ?s { "Fentanyl" "Sufentanil" "Aspirin" }
-  FILTER(REGEX(?s, "Fentanyl|Sufentanil"))     # returns 0 — should be 2. Even "A|A" returns 0.
-}
+FILTER(REGEX(?label, "Fentanyl|Sufentanil", ""))
 ```
 
-Two fixes, both verified everywhere — add any third (flags) argument, or parenthesise every branch:
+The two-argument form returns **0 rows with no error** for at least two constructs, on every endpoint
+in the registry. Verified 2026-08-14 on all 10 (`primary`, `sib`, `ebi`, `pubchem`, `pdb`, `ncbi`,
+`ddbj`, `nims`, `glycosmos`, `togovar`) with queries that touch no data at all:
 
 ```sparql
-FILTER(REGEX(?label, "Fentanyl|Sufentanil", ""))   # "" is enough; "i" also folds case
-FILTER(REGEX(?label, "(Fentanyl)|(Sufentanil)"))
+VALUES ?s { "Fentanyl" "Sufentanil" }  FILTER(REGEX(?s, "Fentanyl|Sufentanil"))   # 0, want 2
+VALUES ?s { "ab" "aab" "aaab" }        FILTER(REGEX(?s, "a{1,2}b"))               # 0, want 3
 ```
 
-`LCASE()`/`STR()` do not rescue it. Single terms, character classes (`Fent[a]nyl`) and `.*`-anchored
-patterns are unaffected, which is what makes it dangerous: an example that works with one search term
-starts returning 0 the moment an author widens it to a family, and the empty result reads as "the
-database doesn't have those." A production session concluded MassBank had no fentanyls; it has 44.
-This is engine behaviour, so it belongs in the Usage Guide (SILENT-FAILURE TRAPS #10), not in each
-MIE — do not re-derive it per file. Cite it in a `traps_avoided` line only where a file's own example
-would otherwise tempt an author into the bare form.
+Alternation fails in every shape tested (`A|B`, `A|B|C`, one-sided `A|`, and even `A|A`); brace
+quantifiers fail as `{n}`, `{n,}` and `{n,m}`. `LCASE()`/`STR()` rescue neither.
+
+Parenthesising the affected construct also works, but **do not author against that** — it requires
+knowing which metacharacter is affected, and the two above are what has been *tested*, not a proof
+there is nothing else. The flags argument is unconditional and costs three characters.
+
+Unaffected (verified): plain substrings, character classes (`[Ff]entanyl`), `?` `+` `*`, anchors
+`^…$`, `.`, escapes, non-capturing groups `(?:…)`. That asymmetry is exactly what makes it dangerous
+during authoring: a single-term example works, and it starts returning 0 the moment you widen it to a
+family or add a count — read as "the database doesn't have those." A production session concluded
+MassBank had no fentanyls; it has 44.
+
+This is engine behaviour, so the rule belongs in the Usage Guide (SILENT-FAILURE TRAPS #10), not in
+each MIE — do not re-derive it per file. Cite it in a `traps_avoided` line only where a file's own
+example would otherwise tempt an author into the bare form.
 
 ### Check the backend first
 
