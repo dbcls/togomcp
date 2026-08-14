@@ -88,11 +88,14 @@ OMA**, dropping every protein with no OMA record. It returned a wrong count (248
    an **older nomenclature vintage** (Proteobacteria *and* Pseudomonadota), and
    "Superkingdom Bacteria" survives **only** there — the authoritative graph has an empty
    rank IRI since NCBI retired "superkingdom". Blind pinning turns correct answers wrong.
-7. **Normalize literals with `STR(?label)`.** Some labels exist twice — plain and
-   `xsd:string`. Distinct RDF terms, so `DISTINCT` won't collapse them and `GROUP BY`
-   splits the group (`GO_0005183`, `CHEBI:29108`). Scan every quoted literal against the
-   MIE's `global_gotchas` and the chosen example's `traps_avoided`; `VALUES` blocks are
-   the worst spot.
+7. **Normalize literals with `STR(?label)`.** One predicate in one graph can carry
+   **mixed literal forms** — plain, `^^xsd:string`, `@en`, or something rarer
+   (`^^xsd:anyURI`, `^^rr:Literal`). They are distinct RDF terms, so `DISTINCT` won't
+   collapse them, `GROUP BY` splits the group, and an exact match on the wrong form
+   returns 0 with no error. Live: `ontology/fma`'s `rdfs:label` is **104,919 `@en` +
+   17 `xsd:string`** — a bare `?s rdfs:label "…"` match reaches at most one of those
+   populations. Scan every quoted literal against the MIE's `global_gotchas` and the
+   chosen example's `traps_avoided`; `VALUES` blocks are the worst spot.
 8. **Never write a `VALUES` block you did not populate from a query you ran.** An
    **empty** one is *valid SPARQL* — it returns one row of `0` instead of erroring. An
    abridged one ("representative", "…") computes a well-shaped number from the wrong set.
