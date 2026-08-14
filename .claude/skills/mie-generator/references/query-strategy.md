@@ -140,6 +140,35 @@ Before using `bif:contains` or `FILTER(CONTAINS())` in any example query, confir
 
 ## Virtuoso-specific pitfalls
 
+### `REGEX()` with two arguments silently drops top-level alternation
+
+**Never ship an example — or a `traps_avoided` line — containing a bare `REGEX(?x, "A|B")`.** The
+two-argument form returns **0 rows with no error** on every endpoint in the registry. Verified
+2026-08-14 on all 10 (`primary`, `sib`, `ebi`, `pubchem`, `pdb`, `ncbi`, `ddbj`, `nims`, `glycosmos`,
+`togovar`) with a query that touches no data at all:
+
+```sparql
+SELECT (COUNT(*) AS ?n) WHERE {
+  VALUES ?s { "Fentanyl" "Sufentanil" "Aspirin" }
+  FILTER(REGEX(?s, "Fentanyl|Sufentanil"))     # returns 0 — should be 2. Even "A|A" returns 0.
+}
+```
+
+Two fixes, both verified everywhere — add any third (flags) argument, or parenthesise every branch:
+
+```sparql
+FILTER(REGEX(?label, "Fentanyl|Sufentanil", ""))   # "" is enough; "i" also folds case
+FILTER(REGEX(?label, "(Fentanyl)|(Sufentanil)"))
+```
+
+`LCASE()`/`STR()` do not rescue it. Single terms, character classes (`Fent[a]nyl`) and `.*`-anchored
+patterns are unaffected, which is what makes it dangerous: an example that works with one search term
+starts returning 0 the moment an author widens it to a family, and the empty result reads as "the
+database doesn't have those." A production session concluded MassBank had no fentanyls; it has 44.
+This is engine behaviour, so it belongs in the Usage Guide (SILENT-FAILURE TRAPS #10), not in each
+MIE — do not re-derive it per file. Cite it in a `traps_avoided` line only where a file's own example
+would otherwise tempt an author into the bare form.
+
 ### Check the backend first
 
 RDF Portal endpoints are Virtuoso, so `bif:contains` is normally available. If you don't know, run a minimal `bif:contains` query once and see if it errors. (v3 has no `access.backend` field — the backend is not documented per-file; establish it by probing when it matters.)

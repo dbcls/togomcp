@@ -107,6 +107,20 @@ OMA**, dropping every protein with no OMA record. It returned a wrong count (248
    ```
 
    The `^^xsd:string` is mandatory — without it the join silently returns 0.
+10. **Two-argument `REGEX()` ignores top-level alternation — 0 rows, no error.** Verified on
+    **all 10 endpoints** (2026-08-14) by a query that needs no data:
+    `VALUES ?s { "Fentanyl" "Sufentanil" "Aspirin" } FILTER(REGEX(?s, "Fentanyl|Sufentanil"))`
+    returns **0**, not 2. Even `"A|A"` returns 0. Either fix works:
+
+    ```sparql
+    FILTER(REGEX(?label, "Fentanyl|Sufentanil", ""))   # any third argument; "" is enough
+    FILTER(REGEX(?label, "(Fentanyl)|(Sufentanil)"))   # every branch parenthesised
+    ```
+
+    `LCASE()`/`STR()` do not rescue it. Single terms, character classes (`Fent[a]nyl`) and
+    `.*`-anchored patterns are unaffected — so it only bites when you widen a *working*
+    single-term filter into an alternation, which reads as "the extra terms matched nothing."
+    A real session concluded MassBank had no fentanyls; it has 44.
 
 ---
 

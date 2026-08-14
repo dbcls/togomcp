@@ -30,6 +30,7 @@
 | 3rd consecutive SPARQL | Stop. Pivot to search / NCBI / TogoID / partial synthesis. |
 | Cross-DB SPARQL fails | Check endpoints; use TogoID or NCBI bridge. |
 | Empty SPARQL results | Use structured predicates from MIE; extract IRIs via search first. Typed literal missing (`^^xsd:string`)? Predicate applied to the wrong node? |
+| `REGEX` filter with `A\|B` returns nothing | Two-arg `REGEX()` drops top-level alternation on **every** endpoint. Add a third argument (`, ""`) or parenthesise each branch: `(A)\|(B)`. See SILENT-FAILURE TRAPS #10. |
 | SPARQL timeout | Add LIMIT; replace `bif:contains` with structured IRIs. |
 | Wrong count | Master reactions only? Correct keyword IRI (not EC prefix)? |
 | **Count inflated** (2×, 4×, 8×) — or right but unproven | Co-tenancy. `GRAPH ?g` the pattern with its subject bound: >1 graph → re-declared; none of yours → foreign predicate, i.e. a silent intersection. Pin **every** pattern. `DISTINCT` hides it, doesn't fix it. |
