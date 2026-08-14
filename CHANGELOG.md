@@ -13,6 +13,53 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.7.3] - 2026-08-14
+
+**2.7.2's rule was too narrow, and one of the two fixes it offered was bad advice.** Asking "is any MIE
+inconsistent with the new rule?" turned up no inconsistency in the corpus — but checking the *mechanism*
+behind the bug, rather than only grepping for it, showed the rule itself was wrong. No tool, parameter,
+or return shape changed.
+
+Alternation is not the only construct the two-argument `REGEX()` mishandles. Brace quantifiers fail
+identically, and on the same 10 of 10 endpoints:
+
+```sparql
+VALUES ?s { "ab" "aab" "aaab" }  FILTER(REGEX(?s, "a{1,2}b"))   -- returns 0. The answer is 3.
+```
+
+Verified across `{n}`, `{n,}` and `{n,m}`, and for alternation across `A|B`, `A|B|C`, one-sided `A|` and
+`A|A`. Both are consistent with Virtuoso taking a "looks literal" fast path that mis-parses certain
+metacharacters — which means the two known-broken constructs are what has been *tested*, not a proof
+that nothing else is affected.
+
+### Changed
+
+- **The rule is now "always pass a third argument", full stop** (guide SILENT-FAILURE TRAPS #10,
+  `04_reference.md`, and the mie-generator skill). 2.7.2 offered parenthesising and the flags argument as
+  equal alternatives. Parenthesising does fix both known cases — but it requires the author to know
+  *which* metacharacter is affected, which is precisely the knowledge the trap denies them, and it does
+  nothing for a construct nobody has tested yet. The flags argument is unconditional and costs three
+  characters. The unaffected list (plain substrings, `[Ff]entanyl`, `? + *`, anchors, `.`, escapes,
+  `(?:…)`) is kept, because that asymmetry is *why* the bug survives review — a single-term filter works
+  until someone widens it to a family or adds a count.
+- **massbank + hco: `REGEX` calls updated** to the three-argument form. hco's `bands_on_arm` (`"^13q"`)
+  and `position_to_band` (`"^13[pq]"`) were **not** broken — anchors and character classes are unaffected,
+  and both re-run to their stored figures exactly (32 rows; 13q14.2 / gpos50 / 46700001 / 50300000, dates
+  re-stamped). They are changed because they were one edit away from `"^13p|^13q"`, which is the latent
+  form this rule exists to prevent.
+
+### Added
+
+- **`tests/test_regex_two_arg_guard.py` — the rule is now enforced, not advised.** It bans the
+  two-argument form outright in any executable `sparql` field across the corpus (37 parametrised cases),
+  and asserts the guide still documents the fix and both broken constructs. Two reasons it is a static
+  test rather than a live one: `check_mie_examples.py` flags zero-ROW results, so it catches a broken
+  `REGEX` only when that filter zeroes the *whole* query — inside an `OPTIONAL` or one `UNION` branch it
+  returns rows, just silently fewer, and nothing notices. And a live test would pass the day an endpoint
+  is patched, which is exactly when the corpus should still be written defensively. It found hco
+  immediately; the ad-hoc grep that preceded it did not, because that grep only looked for patterns
+  containing `|`.
+
 ## [2.7.2] - 2026-08-14
 
 Promotes 2.7.1's `regex_alternation` finding from one MIE to the Usage Guide, after establishing that it
@@ -1400,7 +1447,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.2...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.3...HEAD
+[2.7.3]: https://github.com/dbcls/togomcp/compare/v2.7.2...v2.7.3
 [2.7.2]: https://github.com/dbcls/togomcp/compare/v2.7.1...v2.7.2
 [2.7.1]: https://github.com/dbcls/togomcp/compare/v2.7.0...v2.7.1
 [2.7.0]: https://github.com/dbcls/togomcp/compare/v2.6.0...v2.7.0

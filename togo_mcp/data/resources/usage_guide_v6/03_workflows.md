@@ -107,20 +107,24 @@ OMA**, dropping every protein with no OMA record. It returned a wrong count (248
    ```
 
    The `^^xsd:string` is mandatory — without it the join silently returns 0.
-10. **Two-argument `REGEX()` ignores top-level alternation — 0 rows, no error.** Verified on
-    **all 10 endpoints** (2026-08-14) by a query that needs no data:
-    `VALUES ?s { "Fentanyl" "Sufentanil" "Aspirin" } FILTER(REGEX(?s, "Fentanyl|Sufentanil"))`
-    returns **0**, not 2. Even `"A|A"` returns 0. Either fix works:
+10. **Two-argument `REGEX()` silently mishandles some metacharacters — 0 rows, no error.**
+    **ALWAYS pass a third argument**; `""` is enough, `"i"` also folds case.
 
     ```sparql
-    FILTER(REGEX(?label, "Fentanyl|Sufentanil", ""))   # any third argument; "" is enough
-    FILTER(REGEX(?label, "(Fentanyl)|(Sufentanil)"))   # every branch parenthesised
+    FILTER(REGEX(?label, "Fentanyl|Sufentanil", ""))     # <- the fix, every time
     ```
 
-    `LCASE()`/`STR()` do not rescue it. Single terms, character classes (`Fent[a]nyl`) and
-    `.*`-anchored patterns are unaffected — so it only bites when you widen a *working*
-    single-term filter into an alternation, which reads as "the extra terms matched nothing."
-    A real session concluded MassBank had no fentanyls; it has 44.
+    Verified on **all 10 endpoints** (2026-08-14) by queries needing no data. Two constructs are
+    known broken in the 2-argument form, each returning **0** where the answer is not zero:
+    alternation — `VALUES ?s { "Fentanyl" "Sufentanil" } FILTER(REGEX(?s, "Fentanyl|Sufentanil"))`
+    → 0, want 2 (even `"A|A"` → 0); and brace quantifiers —
+    `VALUES ?s { "ab" "aab" "aaab" } FILTER(REGEX(?s, "a{1,2}b"))` → 0, want 3.
+    `LCASE()`/`STR()` do not rescue either. Parenthesising happens to fix both, but it needs you
+    to know *which* construct is affected — and the two above are what has been **tested**, not a
+    proof nothing else is. Unaffected: plain substrings, `[Ff]entanyl`, `? + *`, anchors, `.`,
+    escapes, `(?:…)`. That asymmetry is why it survives review: the filter works until someone
+    widens it to a family or adds a `{n,m}` count, and the empty result reads as "the database
+    doesn't have those." A production session concluded MassBank had no fentanyls; it has 44.
 
 ---
 
