@@ -13,6 +13,87 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.7.1] - 2026-08-14
+
+No tool, parameter, or return shape changed — this is one MIE file. It is the second release driven by
+reading the production tool-call log for *silent* failures rather than errors (2.5.2 did it for mogplus),
+and the first where the log said the file was **covering the wrong questions** rather than getting a fact
+wrong. Deliberately no `whatsnew` marker: nothing here is visible to a user who is not writing MassBank
+SPARQL, and the intro page's five-item list is better spent elsewhere.
+
+The evidence: 202 MassBank calls over 2026-07-29 → 08-14, 137 of them `run_sparql`. Two query classes
+dominated and both failed badly — peak/diagnostic-ion search (52 queries, **29% errored**: 90 s timeouts
+and gateway 502s) and batch InChIKey screening (48 queries, **63% returned empty**). Neither had an
+example. Meanwhile every predicate the file spent an example or a `schema_delta` line on —
+`has_peak_annotations`, `ch_exact_mass`, `molecularFormula`, `smiles`, `retention_time`, `pk_splash`,
+literature refs — was touched **zero** times in 137 real queries. All nine pre-existing examples still
+reproduced their stored figures exactly, so this was not drift; the file was accurate and aimed wrong.
+
+### Added
+
+- **massbank: a fragment-search route, where the file had only a prohibition.** 51 of 60 logged
+  `mb:has_peak` queries were unanchored, because "which spectra contain these product ions?" inherently
+  is; the file's only guidance was `peak_list`'s *"ALWAYS anchor on a specific spectrum IRI"*, and agents
+  ignored it because nothing was offered instead. The new `peak_diagnostic_ions` example puts the rarest
+  ion in a `DISTINCT` subquery and tests the rest with `FILTER EXISTS`: **1.10 s**, against 47–52 s for
+  the `VALUES ?target` + `ABS()` form when it finished at all and a repeated 90 s timeout for the
+  four-way `UNION`. Anchor choice is the whole trick and is now stated with numbers — the 188.1434 ±5 mDa
+  window selects 159 spectra, the 105.0699 window 4,874. Three Virtuoso traps came out of reproducing the
+  logged failures: `HAVING(COUNT(DISTINCT ?b) = 4)` over a `BIND`-only group raises `SQ200`,
+  `IF(cond, ?ik, 1/0)` raises `SR084` because both arms are evaluated, and — the dangerous one — a
+  `{ FILTER(?mz >= a && ?mz <= b) BIND(…) }` `UNION` branch whose `?mz` is bound in the *enclosing* group
+  is silently not filtered, returning all 117,295 spectra for two different ion windows.
+- **massbank: batch compound screening that reports its misses.** 30 of 48 logged screens returned empty
+  and were then rewritten five or six times chasing a bug that was not there: MassBank holds 17,921
+  structures, and of the 191 distinct InChIKeys the log queried only **31** have any spectrum. The new
+  `screen_inchikey_batch` wraps the join in `OPTIONAL` so every queried key returns, misses as
+  `n_spectra = 0`, and the caller can report coverage instead of a short list that reads as failure. The
+  base rate is now `entity_counts.size_caveat`, so "no reference spectrum published" is a reportable
+  answer rather than a suspected outage.
+- **massbank: the cross-DB direction real traffic uses.** The file documented MassBank → external ID; 34
+  logged queries went the other way. `xdb_ids_to_spectra` takes a ChEMBL/PubChem list to spectra in one
+  query on one endpoint, and both cross-DB examples now say the call needs `database=massbank` **and**
+  `endpoint_name=primary` — 7 logged calls died in schema validation having passed `endpoint_name` alone,
+  a shape the old example's bare `endpoint_name: primary` field plausibly taught.
+- **massbank: `find_compound_by_name`**, the one legitimate text-search route (MassBank has no name→IRI
+  index), and `mb:ac_instrument` — 100% coverage, the free-text instrument model behind the 49-value
+  controlled `mb:instrument_type` — documented for the first time.
+
+### Fixed
+
+- **massbank: bare `REGEX` alternation silently returns 0 rows, and now has a gotcha.** A logged user
+  searched `"fentanyl|sufentanil|alfentanil|…"`, got nothing, and concluded MassBank has no fentanyls; it
+  has 44 matching compound nodes. Verified on `rdfs:label`: the two-argument
+  `REGEX(STR(?n), "Fentanyl|Sufentanil")` returns **0**, and so does `"Fentanyl|Fentanyl"` — while the
+  same pattern matches 30 as `"(Fentanyl)|(Sufentanil)"`, 30 with an empty third argument `""`, and 44
+  with `"i"`. `LCASE()` does not rescue it. Two fixes, both verified: always pass a flags argument, or
+  parenthesise every branch. Single terms, character classes and `.*`-anchored patterns are unaffected.
+  This is Virtuoso engine behaviour rather than a MassBank fact — scoped to this file for now, but it
+  plausibly affects every database on the endpoint.
+- **massbank: the ChEMBL bridge was documented in a form that does not exist in the data.** The cross-DB
+  example recorded its result as the bare accession `CHEMBL277474`, so an agent that knows ChEMBL's own
+  RDF minted `http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL112` and got 0 rows with no error —
+  exactly what the log shows. The relation graph's subjects are `identifiers.org/chembl.compound/…`.
+  All four subject IRI templates (ChEMBL, ChEBI, PubChem, HMDB) were read off live triples and are now in
+  `id_join_map.same_endpoint_joins`, with the wrong-form trap called out by name. The inverse predicate
+  `tid:TIO_000021` (InChIKey as *subject*) also exists and is the more natural direction from MassBank;
+  the file previously documented only `TIO_000020`.
+- **massbank: the skeleton-matching advice was 75× slower than necessary.** `spectra_by_inchikey` told
+  callers to use `STRSTARTS` on the 14-character InChIKey skeleton. On an identical 178-skeleton batch,
+  both returning the same answer: `STRSTARTS`+`CONCAT` **80.7 s**, `BIND(SUBSTR(STR(?ik), 33, 14))` +
+  `VALUES` **1.07 s**. The new `screen_inchikey_skeleton` example uses the fast form, and scopes the
+  warning to the correlated multi-skeleton case — a single skeleton with a constant literal prefix has no
+  `CONCAT` and is fine. Also measured: skeleton matching lifts 31 exact hits to 32 skeletons / 47 keys, so
+  it recovers stereo variants, not an order of magnitude.
+- **massbank: drifted and missing coverage figures.** `precursor_mz_value` is 80.0% (was "~81%"),
+  `precursor_type_value` 78.4% (was "~79%"); the remaining AnalyticalMethods predicates now carry
+  measured coverage. `mb:collision_energy` was described as free text but without the vocabulary — it has
+  **769 distinct strings** across 95,772 spectra, in which `"10"` (3,594 spectra) and `"10 eV"` (2,276)
+  are the same physical setting, so the exact-match attempts seen 17 times in the log silently miss most
+  of their target. Entity counts, xref coverage (CAS 69.6% / PubChem 55.3% / ChemSpider 38.4%) and the
+  2g co-tenancy probe were all re-run and reproduce; `graphs.co_hosted` now records the probe as clean on
+  all three legs (type, entity, hub) rather than asserting it.
+
 ## [2.7.0] - 2026-08-12
 
 The other half of 2.6.0, plus the failure mode that made the original bug hard to read. Deliberately no
@@ -1275,7 +1356,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.1...HEAD
+[2.7.1]: https://github.com/dbcls/togomcp/compare/v2.7.0...v2.7.1
 [2.7.0]: https://github.com/dbcls/togomcp/compare/v2.6.0...v2.7.0
 [2.6.0]: https://github.com/dbcls/togomcp/compare/v2.5.3...v2.6.0
 [2.5.3]: https://github.com/dbcls/togomcp/compare/v2.5.2...v2.5.3
