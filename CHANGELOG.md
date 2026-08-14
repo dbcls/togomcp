@@ -13,6 +13,50 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.7.2] - 2026-08-14
+
+Promotes 2.7.1's `regex_alternation` finding from one MIE to the Usage Guide, after establishing that it
+is not a MassBank fact — or even an RDF Portal fact. No tool, parameter, or return shape changed.
+
+2.7.1 hedged: "Virtuoso engine behaviour … it plausibly affects every database on the endpoint." That
+hedge is now a measurement. The bug reproduces with a query that touches **no data at all** —
+
+```sparql
+SELECT (COUNT(*) AS ?n) WHERE {
+  VALUES ?s { "Fentanyl" "Sufentanil" "Aspirin" }
+  FILTER(REGEX(?s, "Fentanyl|Sufentanil"))     # returns 0. The answer is 2.
+}
+```
+
+— which makes it testable on every endpoint regardless of what each one hosts. All **10 of 10** in the
+registry return 0: `primary`, `sib`, `ebi`, `pubchem`, `pdb`, `ncbi`, `ddbj`, `nims`, `glycosmos`,
+`togovar`. Grouped `(A)|(B)` and three-argument `REGEX(…, "")` return 2 everywhere.
+
+### Added
+
+- **Usage Guide: `REGEX()` alternation is now SILENT-FAILURE TRAPS #10** (`03_workflows.md`). That section
+  is where the endpoint-wide zero-row traps already live — the `^^xsd:string` join that returns 0, the
+  plain-vs-typed literal split — and SPARQL DISCIPLINE already points at it before writing. The entry
+  leads with both copyable fixes rather than the warning, on the ablation result that query content
+  carries the effect and guardrail prose alone does not. It also names the reason the bug survives review:
+  single terms, character classes and `.*`-anchored patterns all work, so it only appears when someone
+  widens a *working* single-term filter into a family — and the empty result reads as "the database
+  doesn't have those."
+- **Usage Guide: a troubleshooting row** (`04_reference.md`) pointing at #10, for the case where the
+  agent already has an empty result and is working backwards. Pointer only, no restatement.
+- **mie-generator skill: the same rule under "Virtuoso-specific pitfalls"** (`references/query-strategy.md`),
+  which until now covered only `bif:contains`. Different audience and different purpose: it stops all 37
+  future MIE revisions from shipping a bare-alternation example or re-deriving the bug per file, and says
+  explicitly that the rule belongs in the guide rather than in each MIE.
+
+### Changed
+
+- **massbank: the `regex_alternation` gotcha is trimmed to its local evidence plus a pointer.** With the
+  universal rule in the guide, the file keeps what is genuinely MassBank's — the 44 matching compound
+  nodes, the session that read 0 as "no fentanyls", and the fact that compound-name search is a common
+  entry point here — and drops the restated general rule. The load-bearing part was always
+  `find_compound_by_name` demonstrating the safe form, which is unchanged.
+
 ## [2.7.1] - 2026-08-14
 
 No tool, parameter, or return shape changed — this is one MIE file. It is the second release driven by
@@ -1356,7 +1400,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.1...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.2...HEAD
+[2.7.2]: https://github.com/dbcls/togomcp/compare/v2.7.1...v2.7.2
 [2.7.1]: https://github.com/dbcls/togomcp/compare/v2.7.0...v2.7.1
 [2.7.0]: https://github.com/dbcls/togomcp/compare/v2.6.0...v2.7.0
 [2.6.0]: https://github.com/dbcls/togomcp/compare/v2.5.3...v2.6.0
