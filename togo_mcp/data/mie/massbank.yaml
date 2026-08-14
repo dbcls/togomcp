@@ -1,11 +1,28 @@
-# MIE v3 — MassBank. Agent-authored 2026-07-22 on the `mie-redesign` branch.
-# Format: togo_mcp/data/docs/MIE_v3_spec.md. Every verified count/result re-run live on the
-# rdfportal.org/primary endpoint 2026-07-22. Enumeration-audit tier: OK (method-facet + structure
-# routes already first-class in v2 — carried across, re-verified). No test leakage (§4.6): illustrative
-# subjects are Nylidrin (MSBNK-HBM4EU-HB000204) and Phenazone (VEQOALNAAJBPNY) — neither is a benchmark
-# subject; the massbank questions q056/q059/q061/q068/q097 use PLP / thiamine-PP / retinoids / carotenes.
-# Byte count vs the v2 file it replaces (spec §5 item 7): v2 togo_mcp/data/mie/massbank.yaml = 35,167 bytes;
-# this v3 file — see footer for the exact `wc -c` figures.
+# MIE v3 — MassBank. Agent-authored 2026-07-22; REVISED 2026-08-14 from production tool-call log
+# analysis (togomcp-log-20260814.jsonl: 202 MassBank calls, 137 run_sparql, 2026-07-29 → 08-14).
+# Format: togo_mcp/data/docs/MIE_v3_spec.md. Every count/result below re-run live on the
+# rdfportal.org/primary endpoint 2026-08-14 (all nine pre-existing examples reproduced unchanged).
+#
+# What the log changed (the file was well-formed but covered the wrong questions):
+#   * 52 of 137 real queries were PEAK / diagnostic-ion searches — 29% of them errored (90 s timeouts,
+#     gateway 502s) because the file offered only a PROHIBITION ("anchor on a spectrum IRI") and no
+#     route. New example peak_diagnostic_ions supplies the fast one (1.08 s where the naive form took
+#     47–52 s or timed out).
+#   * 48 were batch InChIKey screens; 30 (63%) returned empty and were then rewritten 5–6 times chasing
+#     a phantom bug. They were CORRECT — MassBank holds 17,921 structures and simply lacks those
+#     compounds. New examples screen_inchikey_batch (reports found AND not-found) + the base rate in
+#     `teaches` make "absent" a reportable answer.
+#   * Bare REGEX alternation silently returns 0 rows here — a log user concluded MassBank has no
+#     fentanyls; it has 44 matching compound nodes. New gotcha regex_alternation + example
+#     find_compound_by_name.
+#   * The ChEMBL bridge was documented as a bare accession, so agents minted ChEMBL's own
+#     rdf.ebi.ac.uk IRI form and got 0 rows. Exact subject IRI templates now in id_join_map, and the
+#     direction the log actually uses (external ID -> spectra) is now its own example.
+# Enumeration-audit tier: OK (method-facet + structure routes first-class — carried across, re-verified).
+# No test leakage (§4.6): illustrative subjects are Nylidrin, Phenazone, fentanyl/sufentanil/alfentanil,
+# paracetamol, aspirin, caffeine, cholic acid, malate. The massbank benchmark questions
+# q056/q059/q061/q068/q097 use PLP / thiamine-PP / decarboxylase / vitamin A / carotenoids — grep-confirmed
+# disjoint 2026-08-14.
 database: massbank
 
 # ── discovery: rolled into the Usage Guide catalog at build time (spec §3.1). Keep small + uniform. ──
@@ -21,37 +38,63 @@ discovery:
   categories: [compound]
 
 # ── provenance + database-wide truths (get_MIE_file only) ──
-endpoint: https://rdfportal.org/primary/sparql   # RDF Portal "primary" endpoint (NOT sib), ~39 datasets share it
+endpoint: https://rdfportal.org/primary/sparql   # RDF Portal "primary" endpoint (NOT sib), ~450 graphs share it
 base_uri: https://identifiers.org/massbank/
 graphs:
   primary: http://rdfportal.org/dataset/massbank   # the ONLY graph that declares mb:MassSpectrum & schema:chemicalsubstance
   co_hosted:
     togoid_relation_inchi_key: >
-      JOIN targets — the cross_db enabler. Co-hosted TogoID relation graphs
-      <http://rdfportal.org/dataset/togoid/relation/{pubchem_compound,chebi,chembl_compound,hmdb}-inchi_key> re-use
-      MassBank's SAME <http://identifiers.org/inchikey/KEY> IRIs, so a MassBank InChIKey joins DIRECTLY (same
-      endpoint, no external TogoID API) to a PubChem CID / ChEBI / ChEMBL / HMDB IRI. Structure: <cid|chebi|chembl>
-      tid:TIO_000020 <inchikey-IRI> (example xdb_structure_ids).
+      JOIN targets — the cross_db enabler, and the ONLY co-tenant that touches a MassBank IRI. Co-hosted
+      TogoID relation graphs <http://rdfportal.org/dataset/togoid/relation/{pubchem_compound,chebi,chembl_compound,hmdb}-inchi_key>
+      re-use MassBank's SAME <http://identifiers.org/inchikey/KEY> IRIs, so a MassBank InChIKey joins DIRECTLY
+      (same endpoint, no external TogoID API) to a PubChem CID / ChEBI / ChEMBL / HMDB IRI. NOT an inflation
+      trap: they attach only tid:TIO_000020 / tid:TIO_000021 to that IRI — never rdfs:label, never a type — so
+      no MassBank leg is re-declared and no count inflates. Both directions exist and both are verified
+      (2026-08-14): <target-ID> tid:TIO_000020 <inchikey-IRI> AND <inchikey-IRI> tid:TIO_000021 <target-ID>.
     dsmz_bacdive_brenda: >
       NAMESPACE-COLLISION trap, NOT an inflation trap. bacdive/brenda are co-hosted and ALSO declare a `schema:`
       prefix — but theirs is <https://purl.dsmz.de/schema/>, while MassBank's `schema:` genuinely IS real
       schema.org (<https://schema.org/>). The two never share IRIs; the risk is a habit-typed prefix (gotcha
-      schema_prefix). No co-hosted dataset re-types mb:MassSpectrum or schema:chemicalsubstance, so typed-class
-      counts do NOT inflate unpinned (verified: mb:MassSpectrum = 117,295 in the massbank graph and 0 elsewhere).
+      schema_prefix).
+    probed_clean: >
+      2g reverse probe re-run 2026-08-14 — ALL LEGS. (a) Type leg: mb:MassSpectrum = 117,295 and
+      schema:chemicalsubstance = 117,295, each in the massbank graph and 0 in every one of the ~450 others.
+      (b) Entity leg: unbound-?p probe on <https://identifiers.org/massbank/MSBNK-HBM4EU-HB000204> returned
+      16 predicates, all in the massbank graph — no co-tenant re-types or annotates a MassBank spectrum IRI.
+      (c) Hub leg: unbound-?p probe on two <identifiers.org/inchikey/…> IRIs returned only tid:TIO_000021 from
+      the four togoid relation graphs above. No re-declaration, no union inflation on any leg.
 
-entity_counts:                     # graph-pinned, COUNT(DISTINCT), live 2026-07-22
+entity_counts:                     # graph-pinned, COUNT(DISTINCT), live 2026-08-14 (unchanged since 2026-07-22)
   mass_spectra:            117295  # = COUNT of spectrum IRIs; ALSO = COUNT of compound bnodes (not deduplicated!)
   distinct_structures:     17921   # = COUNT(DISTINCT ?inchikey) — the real number of unique molecules
   distinct_instrument_types: 49    # controlled vocabulary on mb:instrument_type
   coverage: "InChIKey ~98.8% of spectra · rdfs:seeAlso xrefs: CAS ~69.6% / PubChem CID ~55.3% / ChemSpider ~38.4%"
+  size_caveat: >
+    17,921 distinct structures is SMALL next to a chemistry database (ChEMBL ~2.4M compounds). Screening an
+    arbitrary drug-like compound list against MassBank returns mostly misses BY DESIGN — measured on the
+    production log's own 191 queried InChIKeys, only 31 (16%) have any spectrum. An empty result for a
+    specific molecule is a real finding ("no reference spectrum published"), not a failed query. Report the
+    hit rate; do not rewrite the query.
 
-global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
+global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-08-14
   - id: mandatory_graph
     say: >
-      The primary endpoint co-hosts ~39 datasets in one Virtuoso store. Always scope to
+      The primary endpoint co-hosts ~450 graphs in one Virtuoso store. Always scope to
       GRAPH <http://rdfportal.org/dataset/massbank>. Omitting it does NOT inflate typed-class counts
       (mb:* and schema:chemicalsubstance are single-tenant here) but it makes generic/untyped patterns
       scan unrelated data — slow, or mixing MeSH/GO/BacDive/TogoID triples into an untyped result.
+  - id: regex_alternation
+    say: >
+      SILENT 0 ROWS — the two-argument form of REGEX() ignores a top-level alternation on this Virtuoso.
+      Verified 2026-08-14 on rdfs:label in the massbank graph: REGEX(STR(?n), "Fentanyl|Sufentanil") = 0
+      rows, and even REGEX(STR(?n), "Fentanyl|Fentanyl") = 0 — while the SAME pattern matches 30 as
+      REGEX(STR(?n), "(Fentanyl)|(Sufentanil)"), 30 with an empty third argument
+      REGEX(STR(?n), "Fentanyl|Sufentanil", ""), and 44 case-insensitively with
+      REGEX(STR(?n), "Fentanyl|Sufentanil", "i"). LCASE() does not rescue it:
+      REGEX(LCASE(STR(?n)), "fentanyl|sufentanil") is also 0. TWO FIXES, both verified — always pass a
+      third (flags) argument, even "", OR parenthesise every branch. Single-term patterns, character
+      classes (Fent[a]nyl) and .*-anchored patterns are unaffected. This cost a real user the conclusion
+      "MassBank has no fentanyls" (it has 44 matching compound nodes).
   - id: spectram_misspelling
     say: >
       The metadata class + predicate are misspelled "Spectram" in the source ontology and are canonical
@@ -96,7 +139,7 @@ examples:
                   mb:pk_splash ?splash ;             # SPLASH hashed spectral fingerprint
                   mb:pk_num_peak ?npeaks .           # xsd:integer
       }
-    verified: {result_rows: 1, npeaks: 6, date: "2026-07-22", definition: "Nylidrin; LC-ESI-ITFT; MS2; CE: 35%; R=15000; [M+H]+"}
+    verified: {result_rows: 1, npeaks: 6, date: "2026-08-14", definition: "Nylidrin; LC-ESI-ITFT; MS2; CE: 35%; R=15000; [M+H]+"}
     teaches: "An accession is either dcterms:identifier (string) or the IRI https://identifiers.org/massbank/<accession> (https). pk_num_peak is xsd:integer; skos:definition is the human title, mb:pk_splash the structure-agnostic spectral hash."
 
   - id: compound_structure
@@ -117,10 +160,41 @@ examples:
         OPTIONAL { ?c schema:inChIKey ?inchikey }  # IRI-valued, not a literal
       }
       GROUP BY ?formula ?mass ?inchikey ?smiles
-    verified: {result_rows: 1, formula: "C19H25NO2", mass: 299.188, inchikey: "http://identifiers.org/inchikey/PTGXAUBQBSGPKF-UHFFFAOYSA-N", date: "2026-07-22"}
+    verified: {result_rows: 1, formula: "C19H25NO2", mass: 299.188, inchikey: "http://identifiers.org/inchikey/PTGXAUBQBSGPKF-UHFFFAOYSA-N", date: "2026-08-14"}
     teaches: "Structure lives on the mb:compound blank node: schema:molecularFormula/smiles/inChI, mb:ch_exact_mass (double), schema:inChIKey (IRI). This curated compound-level formula is CLEAN (unlike fragment-level mb:tentative_formula)."
     traps_avoided:
       - "schema:name AND rdfs:label are multi-valued (trivial name + IUPAC name, ~1.8 per compound) — a naive projection returns 2 rows per spectrum. GROUP BY the structure keys + SAMPLE the name, or pick one name predicate."
+
+  - id: find_compound_by_name
+    intent: find a compound family by NAME when you have no structure identifier to anchor on
+    question: "Which fentanyl-family compounds have reference spectra in MassBank, and how many each?"
+    complexity: basic
+    sparql: |
+      PREFIX mb: <http://www.massbank.jp/ontology/>
+      PREFIX schema: <https://schema.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?name (SAMPLE(?ik) AS ?inchikey) (COUNT(DISTINCT ?spectrum) AS ?n_spectra)
+      FROM <http://rdfportal.org/dataset/massbank>
+      WHERE {
+        ?c rdfs:label ?name .
+        # every branch parenthesised AND a flags argument present — see gotcha regex_alternation
+        FILTER(REGEX(STR(?name), "(Fentanyl)|(Sufentanil)|(Alfentanil)", "i"))
+        ?spectrum a mb:MassSpectrum ; mb:compound ?c .
+        OPTIONAL { ?c schema:inChIKey ?ik }
+      }
+      GROUP BY ?name
+      ORDER BY DESC(?n_spectra) ?name
+    verified: {result_rows: 4, date: "2026-08-14", elapsed: "0.88 s", rows: "Fentanyl 20, Norfentanyl 14, Sufentanil 10, Alfentanil 5"}
+    teaches: >
+      The one legitimate text-search route: MassBank has NO name->IRI index and no compound-name controlled
+      vocabulary — the structure anchor is the InChIKey, which you cannot obtain from a name without an
+      external lookup (ChEBI/PubChem/ChEMBL), so for an in-database name query there is no structured
+      alternative. Names live on BOTH rdfs:label and schema:name with identical coverage (verified: 34
+      compound nodes match "fentanyl" via either); pick one, and GROUP BY it since both are multi-valued.
+      Once you have an InChIKey from the result, switch to the structure-anchored routes below — they are
+      exact and far cheaper.
+    traps_avoided:
+      - "Name matching is per compound-BLANK-NODE, and every spectrum owns a fresh one, so COUNT(?c) counts spectra, not molecules. COUNT(DISTINCT ?spectrum) per name (as here) or dedup on the InChIKey."
 
   - id: spectra_by_inchikey
     intent: gather EVERY spectrum of one molecule via its InChIKey IRI (the structure-anchored route)
@@ -135,8 +209,81 @@ examples:
         ?c schema:inChIKey <http://identifiers.org/inchikey/VEQOALNAAJBPNY-UHFFFAOYSA-N> .
         ?spectrum mb:compound ?c .
       }
-    verified: {nspectra: 187, date: "2026-07-22"}
-    teaches: "The InChIKey is an IRI, so match it DIRECTLY — no text search. Because compounds are per-spectrum bnodes, `?c schema:inChIKey <IRI>` then `?spectrum mb:compound ?c` gathers all 187 spectra of that structure. To include stereo/charge variants, STRSTARTS on the 14-char skeleton (first block) instead of the full key."
+    verified: {nspectra: 187, date: "2026-08-14"}
+    teaches: "The InChIKey is an IRI, so match it DIRECTLY — no text search. Because compounds are per-spectrum bnodes, `?c schema:inChIKey <IRI>` then `?spectrum mb:compound ?c` gathers all 187 spectra of that structure. For stereo/charge-agnostic matching use the 14-char skeleton — see screen_inchikey_skeleton for the form that is FAST."
+
+  - id: screen_inchikey_batch
+    intent: screen a LIST of compounds for spectral coverage, reporting hits AND misses
+    question: "Of these six molecules, which have reference MS spectra in MassBank and how many?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mb: <http://www.massbank.jp/ontology/>
+      PREFIX schema: <https://schema.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?inchikey (COUNT(DISTINCT ?spectrum) AS ?n_spectra) (SAMPLE(?nm) AS ?name)
+      FROM <http://rdfportal.org/dataset/massbank>
+      WHERE {
+        VALUES ?inchikey {
+          <http://identifiers.org/inchikey/RZVAJINKPMORJF-UHFFFAOYSA-N>   # paracetamol
+          <http://identifiers.org/inchikey/BSYNRYMUTXBXSQ-UHFFFAOYSA-N>   # aspirin
+          <http://identifiers.org/inchikey/RYYVLZVUVIJVGH-UHFFFAOYSA-N>   # caffeine
+          <http://identifiers.org/inchikey/PJMPHNIQZUBGLI-UHFFFAOYSA-N>   # fentanyl
+          <http://identifiers.org/inchikey/XZQMGGFIVXLGME-PTSROERVSA-N>   # absent from MassBank
+          <http://identifiers.org/inchikey/NFVWPZJBRDAYII-UHFFFAOYSA-N>   # absent from MassBank
+        }
+        OPTIONAL {                                  # OPTIONAL is what keeps the MISSES in the result
+          ?c schema:inChIKey ?inchikey ; rdfs:label ?nm .
+          ?spectrum a mb:MassSpectrum ; mb:compound ?c .
+        }
+      }
+      GROUP BY ?inchikey
+      ORDER BY DESC(?n_spectra)
+    verified: {result_rows: 6, date: "2026-08-14", elapsed: "3.06 s", rows: "Caffeine 95, N-(4-hydroxyphenyl)acetamide 71, aspirin 28, Fentanyl 20, and 2 keys with n_spectra = 0"}
+    teaches: >
+      THE most common real-world MassBank query — "does my compound list have reference spectra?" — and the
+      one most often misread as broken. Wrap the join in OPTIONAL and GROUP BY the InChIKey: every queried key
+      comes back, misses as n_spectra = 0, so you can report coverage ("4 of 6") instead of a short list that
+      looks like a failed query. See entity_counts.size_caveat for why the miss rate is high and legitimate:
+      MassBank covers 17,921 structures, and on a production log of 191 queried InChIKeys only 31 had any
+      spectrum. Scale freely — a VALUES block of 50+ IRIs still runs in seconds because each is an index probe.
+    traps_avoided:
+      - "Without OPTIONAL the join is inner: absent compounds vanish from the result instead of returning 0, and the caller cannot distinguish 'not in MassBank' from 'query broken'. This produced 30 empty results and repeated pointless query rewrites in the production log."
+      - "Do NOT fall back to a name/text search when a batch comes back mostly empty — the InChIKey IRI probe is exact, and a miss is a real answer. Re-verify a single key first (example spectra_by_inchikey) before suspecting the query."
+
+  - id: enum_instrument_type       # ELEVATED aggregation — the set-level controlled-vocab enumeration route
+    intent: enumerate the WHOLE instrument-type controlled vocabulary with a spectrum count each
+    question: "What instrument types are represented in MassBank, and how many spectra use each?"
+    complexity: aggregation
+    sparql: |
+      PREFIX mb: <http://www.massbank.jp/ontology/>
+      SELECT ?instrument_type (COUNT(DISTINCT ?s) AS ?n)
+      FROM <http://rdfportal.org/dataset/massbank>
+      WHERE {
+        ?s a mb:MassSpectrum ; mb:analytical_methods_and_conditions ?ac .
+        ?ac mb:instrument_type ?instrument_type .
+      }
+      GROUP BY ?instrument_type
+      ORDER BY DESC(?n)
+    verified: {distinct_instrument_types: 49, top: "LC-ESI-QTOF 47440, LC-ESI-ITFT 20038, LC-ESI-QFT 15067, EI-B 11804, LC-ESI-QQ 8832", date: "2026-08-14"}
+    teaches: "To enumerate ALL members of a controlled method vocabulary, GROUP BY the typed predicate — no text matching. This is THE set-level route for 'all instrument_type / ms_type / ion_mode values' (each is a small closed vocabulary: 49 / a handful / 2). Same pattern answers 'all ion modes' or 'all MS levels'."
+
+  - id: count_distinct_compounds   # ELEVATED aggregation — the deduplication trap
+    intent: count UNIQUE molecules vs the (undeduplicated) compound-node count
+    question: "How many distinct molecules does MassBank cover, versus how many compound records?"
+    complexity: aggregation
+    sparql: |
+      PREFIX mb: <http://www.massbank.jp/ontology/>
+      PREFIX schema: <https://schema.org/>
+      SELECT (COUNT(DISTINCT ?c) AS ?compound_nodes) (COUNT(DISTINCT ?k) AS ?distinct_molecules)
+      FROM <http://rdfportal.org/dataset/massbank>
+      WHERE {
+        ?c a schema:chemicalsubstance .           # lowercase class IRI
+        OPTIONAL { ?c schema:inChIKey ?k }
+      }
+    verified: {compound_nodes: 117295, distinct_molecules: 17921, date: "2026-08-14"}
+    teaches: "Compounds are NOT deduplicated: every spectrum owns a fresh chemicalsubstance blank node, so COUNT(?c) = the spectrum count (117,295), NOT the molecule count. COUNT(DISTINCT ?inchikey) = 17,921 gives unique structures. (bibo:Article literature refs are likewise per-spectrum — dedup on the citation.)"
+    traps_avoided:
+      - "COUNT(?c) or COUNT(?c a schema:chemicalsubstance) returns 117,295 — a plausible-looking 'compound total' that is really the spectrum count. Always dedup molecules on the InChIKey."
 
   - id: facet_method
     intent: filter spectra by the controlled method vocabularies (instrument_type + ion_mode + ms_type)
@@ -158,43 +305,8 @@ examples:
       }
       GROUP BY ?spectrum
       LIMIT 20
-    verified: {result_rows: 20, date: "2026-07-22", note: "MS2/POSITIVE alone = 65,138 spectra; LC-ESI-QTOF = 47,440"}
+    verified: {result_rows: 20, date: "2026-08-14", note: "MS2/POSITIVE alone = 65,138 spectra; LC-ESI-QTOF = 47,440"}
     teaches: "instrument_type / ion_mode / ms_type are plain-string controlled predicates on the AnalyticalMethods blank node — the method-faceting route. Combine them to slice by platform × polarity × MS level."
-
-  - id: enum_instrument_type       # ELEVATED aggregation — the set-level controlled-vocab enumeration route
-    intent: enumerate the WHOLE instrument-type controlled vocabulary with a spectrum count each
-    question: "What instrument types are represented in MassBank, and how many spectra use each?"
-    complexity: aggregation
-    sparql: |
-      PREFIX mb: <http://www.massbank.jp/ontology/>
-      SELECT ?instrument_type (COUNT(DISTINCT ?s) AS ?n)
-      FROM <http://rdfportal.org/dataset/massbank>
-      WHERE {
-        ?s a mb:MassSpectrum ; mb:analytical_methods_and_conditions ?ac .
-        ?ac mb:instrument_type ?instrument_type .
-      }
-      GROUP BY ?instrument_type
-      ORDER BY DESC(?n)
-    verified: {distinct_instrument_types: 49, top: "LC-ESI-QTOF 47440, LC-ESI-ITFT 20038, LC-ESI-QFT 15067, EI-B 11804, LC-ESI-QQ 8832", date: "2026-07-22"}
-    teaches: "To enumerate ALL members of a controlled method vocabulary, GROUP BY the typed predicate — no text matching. This is THE set-level route for 'all instrument_type / ms_type / ion_mode values' (each is a small closed vocabulary: 49 / a handful / 2). Same pattern answers 'all ion modes' or 'all MS levels'."
-
-  - id: count_distinct_compounds   # ELEVATED aggregation — the deduplication trap
-    intent: count UNIQUE molecules vs the (undeduplicated) compound-node count
-    question: "How many distinct molecules does MassBank cover, versus how many compound records?"
-    complexity: aggregation
-    sparql: |
-      PREFIX mb: <http://www.massbank.jp/ontology/>
-      PREFIX schema: <https://schema.org/>
-      SELECT (COUNT(DISTINCT ?c) AS ?compound_nodes) (COUNT(DISTINCT ?k) AS ?distinct_molecules)
-      FROM <http://rdfportal.org/dataset/massbank>
-      WHERE {
-        ?c a schema:chemicalsubstance .           # lowercase class IRI
-        OPTIONAL { ?c schema:inChIKey ?k }
-      }
-    verified: {compound_nodes: 117295, distinct_molecules: 17921, date: "2026-07-22"}
-    teaches: "Compounds are NOT deduplicated: every spectrum owns a fresh chemicalsubstance blank node, so COUNT(?c) = the spectrum count (117,295), NOT the molecule count. COUNT(DISTINCT ?inchikey) = 17,921 gives unique structures. (bibo:Article literature refs are likewise per-spectrum — dedup on the citation.)"
-    traps_avoided:
-      - "COUNT(?c) or COUNT(?c a schema:chemicalsubstance) returns 117,295 — a plausible-looking 'compound total' that is really the spectrum count. Always dedup molecules on the InChIKey."
 
   - id: peak_list
     intent: retrieve a spectrum's measured peak list (untyped blank-node navigation)
@@ -211,10 +323,79 @@ examples:
               mb:relative_intensity ?rel .   # xsd:integer 0..999 (base peak = 999)
       }
       ORDER BY DESC(?rel)
-    verified: {result_rows: 6, base_peak_mz: 282.185, date: "2026-07-22", note: "base peak rel=999 at m/z 282.185; intensity 5.30815e7"}
-    teaches: "Peaks are untyped blank nodes off mb:has_peak carrying mb:mz + mb:intensity (double) + mb:relative_intensity (integer, base peak=999). Numeric values NEVER hang off the spectrum IRI directly."
+    verified: {result_rows: 6, base_peak_mz: 282.185, date: "2026-08-14", note: "base peak rel=999 at m/z 282.185; intensity 5.30815e7"}
+    teaches: "Peaks are untyped blank nodes off mb:has_peak carrying mb:mz + mb:intensity (double) + mb:relative_intensity (integer, base peak=999). Numeric values NEVER hang off the spectrum IRI directly. When you DON'T have a spectrum in hand and want to search BY peak, use peak_diagnostic_ions — do not simply drop the anchor from this query."
     traps_avoided:
-      - "ALWAYS anchor a peak query on a specific spectrum IRI (or a tight method/compound filter): mb:has_peak spans ~3.97M blank nodes across the whole DB — an unanchored peak query scans them all and is very slow."
+      - "mb:has_peak spans ~3.97M blank nodes across the DB, so this shape is only cheap because it is anchored on one spectrum IRI. Removing the anchor without adopting the peak_diagnostic_ions recipe is the single most expensive mistake on this database — it produced 90 s timeouts and gateway 502s in production."
+
+  - id: peak_diagnostic_ions       # the fragment-search route the production log needed and lacked
+    intent: find spectra/compounds CONTAINING a set of diagnostic product ions (no spectrum known in advance)
+    question: "Which compounds have MS/MS spectra containing all three fentanyl diagnostic ions m/z 188.1434, 105.0699 and 134.0964?"
+    complexity: advanced
+    sparql: |
+      PREFIX mb: <http://www.massbank.jp/ontology/>
+      PREFIX schema: <https://schema.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?inchikey (SAMPLE(?nm) AS ?name) (COUNT(DISTINCT ?spectrum) AS ?n_spectra)
+      FROM <http://rdfportal.org/dataset/massbank>
+      WHERE {
+        {                                    # ANCHOR on the RAREST ion, in its own subquery
+          SELECT DISTINCT ?spectrum WHERE {
+            ?spectrum mb:has_peak ?p . ?p mb:mz ?mz .
+            FILTER(?mz >= 188.1424 && ?mz <= 188.1444)     # 188.1434 +- 5 mDa -> 159 spectra
+          }
+        }
+        ?spectrum mb:compound ?c .
+        ?c schema:inChIKey ?inchikey ; rdfs:label ?nm .
+        # every FURTHER ion is a FILTER EXISTS against the already-tiny anchor set
+        FILTER EXISTS { ?spectrum mb:has_peak ?p1 . ?p1 mb:mz ?m1 . FILTER(?m1 >= 105.0694 && ?m1 <= 105.0704) }
+        FILTER EXISTS { ?spectrum mb:has_peak ?p2 . ?p2 mb:mz ?m2 . FILTER(?m2 >= 134.0959 && ?m2 <= 134.0969) }
+      }
+      GROUP BY ?inchikey
+      ORDER BY DESC(?n_spectra) ?inchikey
+    verified: {result_rows: 14, date: "2026-08-14", elapsed: "1.08 s", top: "(+)-Lupanine 18 spectra", includes: "Fentanyl (PJMPHNIQZUBGLI-UHFFFAOYSA-N) 5 spectra"}
+    teaches: >
+      Spectral/fragment search IS supported and IS fast — but only in this shape: put the RAREST ion in a
+      DISTINCT subquery so it becomes the anchor, then test every other ion with FILTER EXISTS against that
+      small set. Pick the anchor by selectivity, which tracks m/z: measured 2026-08-14, the 188.1434 +-5 mDa
+      window selects 159 spectra while the 105.0699 window selects 4,874 — anchoring on the high-m/z ion is
+      what makes this 1.08 s. A +-5 mDa window is ~25 ppm at m/z 200; tighten it for high-resolution data.
+      The result is compound-level (GROUP BY the InChIKey) because one molecule owns many spectra.
+    traps_avoided:
+      - "The intuitive forms are 30-50x slower or fatal: `VALUES ?target { … } FILTER(ABS(?mz - ?target) <= …)` over the whole graph took 47-52 s in production when it finished at all, and a UNION of four bare m/z ranges timed out at 90 s repeatedly. The correlated VALUES defeats the m/z index; the UNION also returns one row per (spectrum, ion), which reads as an inflated spectrum count."
+      - "A `{ FILTER(?mz >= a && ?mz <= b) BIND('ion' AS ?ion) }` UNION branch whose ?mz is bound in the ENCLOSING group is silently NOT filtered — verified: it returned 117,295 (the entire spectrum count) for two different ion windows. Put the triple patterns INSIDE each UNION branch."
+      - "Virtuoso rejects HAVING(COUNT(DISTINCT ?bucket) = 4) over a BIND-only group with `SQ200: Aggregate function not allowed in context`, and evaluates BOTH arms of IF(cond, ?x, 1/0), raising `SR084: Division by 0`. Both are real production 500s from agents trying to count matched ions per spectrum — count with FILTER EXISTS instead, as above."
+
+  - id: screen_inchikey_skeleton
+    intent: stereo/salt-agnostic structure screening via the 14-character InChIKey skeleton block
+    question: "Ignoring stereochemistry, how many spectra and how many stereoisomers does MassBank hold for cholic acid, malate and paracetamol?"
+    complexity: advanced
+    sparql: |
+      PREFIX mb: <http://www.massbank.jp/ontology/>
+      PREFIX schema: <https://schema.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?sk (COUNT(DISTINCT ?inchikey) AS ?n_stereo_variants) (COUNT(DISTINCT ?spectrum) AS ?n_spectra)
+             (SAMPLE(?nm) AS ?name)
+      FROM <http://rdfportal.org/dataset/massbank>
+      WHERE {
+        ?c schema:inChIKey ?inchikey ; rdfs:label ?nm .
+        BIND(SUBSTR(STR(?inchikey), 33, 14) AS ?sk)   # 33 = first char past "http://identifiers.org/inchikey/"
+        VALUES ?sk { "BHQCQFFYRZLCQQ" "BJEPYKJPYRNKOW" "RZVAJINKPMORJF" "XZQMGGFIVXLGME" }
+        ?spectrum a mb:MassSpectrum ; mb:compound ?c .
+      }
+      GROUP BY ?sk
+      ORDER BY DESC(?n_stereo_variants)
+    verified: {result_rows: 3, date: "2026-08-14", elapsed: "0.51 s", rows: "BHQCQFFYRZLCQQ (Cholic acid) 17 variants / 133 spectra; BJEPYKJPYRNKOW (L-Malate) 8 / 53; RZVAJINKPMORJF (Paracetamol) 1 / 71; XZQMGGFIVXLGME absent"}
+    teaches: >
+      The first block of an InChIKey is the stereo- and charge-agnostic connectivity skeleton, and MassBank
+      really does carry many variants per skeleton (cholic acid: 17 distinct full keys). Derive it with
+      BIND(SUBSTR(STR(?ik), 33, 14)) and join it to a VALUES list of bare 14-char strings — string equality,
+      which Virtuoso hash-joins. Use this whenever your source IDs may differ from MassBank's in stereo
+      descriptor, salt or protonation state.
+    traps_avoided:
+      - "Do NOT screen a LIST of skeletons with FILTER(STRSTARTS(STR(?ik), CONCAT('http://identifiers.org/inchikey/', ?skel))) — the CONCAT is correlated with ?skel, so it is rebuilt per row and forces a full scan. Measured on an identical 178-skeleton batch, both returning the same answer: STRSTARTS+CONCAT 80.7 s, the BIND(SUBSTR)+VALUES form above 1.07 s (~75x). A SINGLE skeleton with a constant literal prefix — FILTER(STRSTARTS(STR(?ik), 'http://identifiers.org/inchikey/AYEKOFBPNLCAJY')) — has no CONCAT and is perfectly fast; the trap is only the multi-skeleton correlated form."
+      - "The join here is INNER, so a skeleton absent from MassBank drops out silently (XZQMGGFIVXLGME above). That is fine for 'what does MassBank have', but if you need explicit misses use the OPTIONAL shape from screen_inchikey_batch."
+      - "Skeleton matching widens coverage only modestly — on the production log's 191 InChIKeys it lifted 31 exact hits to 32 skeletons (47 full keys). It recovers stereo variants, not an order of magnitude; do not expect it to rescue a mostly-empty screen."
 
   - id: annotated_fragments
     intent: read annotated fragments with tentative formula + ppm mass error (the SIO/UO scaffold)
@@ -235,7 +416,7 @@ examples:
              sio:SIO_000221 ?unit .           # unit IRI = obo:UO_0000169 (parts per million)
       }
       ORDER BY ?mz
-    verified: {result_rows: 6, date: "2026-07-22", first_row: "m/z 135.08 = C9H11O+ at -0.27 ppm"}
+    verified: {result_rows: 6, date: "2026-08-14", first_row: "m/z 135.08 = C9H11O+ at -0.27 ppm"}
     teaches: "Fragment annotations hang off mb:has_peak_annotations; the mass error is a nested SIO/UO typed-value scaffold (mb:error -> [ rdf:value (signed ppm) ; sio:SIO_000221 obo:UO_0000169 ])."
     traps_avoided:
       - "mb:tentative_formula is FRAGMENT-level and DIRTY — it mixes Hill formulae with lipid shorthand ([fa(16:0)-H]-), adduct/derivatization codes ([M+NH4]+), bare m/z numbers, and placeholders ('precursor','0'). Never parse it as an elemental formula; for clean composition use compound-level schema:molecularFormula (example compound_structure)."
@@ -260,15 +441,68 @@ examples:
         OPTIONAL { GRAPH <http://rdfportal.org/dataset/togoid/relation/chebi-inchi_key>            { ?chebi  tid:TIO_000020 ?ik } }
         OPTIONAL { GRAPH <http://rdfportal.org/dataset/togoid/relation/chembl_compound-inchi_key>  { ?chembl tid:TIO_000020 ?ik } }
       }
-    verified: {formula: "C11H12N2O", cid: "pubchem/compound/CID2206", chebi: "CHEBI_31225", chembl: "CHEMBL277474", date: "2026-07-22"}
-    teaches: "MassBank's InChIKey IRIs are RE-USED as objects in the co-hosted TogoID relation graphs on the SAME primary endpoint, so a compound -> PubChem/ChEBI/ChEMBL/HMDB join is a direct multi-GRAPH query (predicate tid:TIO_000020, direction target-ID -> InChIKey-IRI) — no external togoid_convertId call. This is the useful single-endpoint bridge from a spectrum to structured chemistry."
+    verified: {formula: "C11H12N2O", cid: "http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID2206", chebi: "http://purl.obolibrary.org/obo/CHEBI_31225", chembl: "http://identifiers.org/chembl.compound/CHEMBL277474", date: "2026-08-14"}
+    teaches: >
+      MassBank's InChIKey IRIs are RE-USED as objects in the co-hosted TogoID relation graphs on the SAME
+      primary endpoint, so a compound -> PubChem/ChEBI/ChEMBL/HMDB join is a direct multi-GRAPH query
+      (predicate tid:TIO_000020, direction target-ID -> InChIKey-IRI) — no external togoid_convertId call.
+      Call it with database=massbank AND endpoint_name=primary; endpoint_name alone is rejected by schema
+      validation before the query is ever sent.
     traps_avoided:
-      - "The relation triple is <target-ID> tid:TIO_000020 <inchikey-IRI> — the InChIKey IRI is the OBJECT, the DB ID is the SUBJECT. Binding the InChIKey once (BIND) and reusing it across the relation graphs keeps the join exact and avoids the per-spectrum compound-bnode fan-out (187 spectra -> use DISTINCT)."
+      - "The relation triple is <target-ID> tid:TIO_000020 <inchikey-IRI> — the InChIKey IRI is the OBJECT, the DB ID is the SUBJECT. (The inverse tid:TIO_000021 also exists with the InChIKey as SUBJECT — verified 2026-08-14 — and is the more natural direction when starting from MassBank.) Binding the InChIKey once (BIND) and reusing it keeps the join exact and avoids the per-spectrum compound-bnode fan-out (187 spectra -> use DISTINCT)."
+      - "The returned IDs are FULL IRIs in the forms listed in id_join_map.same_endpoint_joins, NOT bare accessions. In particular ChEMBL here is http://identifiers.org/chembl.compound/CHEMBLnnn — the rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBLnnn form used by the `chembl` database itself does NOT exist in this graph and returns 0 rows silently."
+
+  - id: xdb_ids_to_spectra         # cross_db — the direction real traffic uses: external ID list -> spectra
+    intent: "cross-DB (intra-primary): start from a ChEMBL/PubChem compound list and find their MassBank spectra"
+    question: "Which of these four ChEMBL drugs have reference spectra in MassBank, and how many each?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX mb: <http://www.massbank.jp/ontology/>
+      PREFIX schema: <https://schema.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX tid: <http://togoid.dbcls.jp/ontology#>
+      SELECT ?chembl ?inchikey (SAMPLE(?nm) AS ?name) (COUNT(DISTINCT ?spectrum) AS ?n_spectra)
+      WHERE {
+        VALUES ?chembl {                            # identifiers.org form — NOT rdf.ebi.ac.uk
+          <http://identifiers.org/chembl.compound/CHEMBL112>
+          <http://identifiers.org/chembl.compound/CHEMBL25>
+          <http://identifiers.org/chembl.compound/CHEMBL113>
+          <http://identifiers.org/chembl.compound/CHEMBL596>
+        }
+        GRAPH <http://rdfportal.org/dataset/togoid/relation/chembl_compound-inchi_key> {
+          ?chembl tid:TIO_000020 ?inchikey .
+        }
+        GRAPH <http://rdfportal.org/dataset/massbank> {
+          ?c schema:inChIKey ?inchikey ; rdfs:label ?nm .
+          ?spectrum a mb:MassSpectrum ; mb:compound ?c .
+        }
+      }
+      GROUP BY ?chembl ?inchikey
+      ORDER BY DESC(?n_spectra)
+    verified: {result_rows: 4, date: "2026-08-14", elapsed: "0.14 s", rows: "CHEMBL113 (caffeine) 95, CHEMBL112 (paracetamol) 71, CHEMBL25 (aspirin) 28, CHEMBL596 (fentanyl) 20"}
+    teaches: >
+      The reverse of xdb_structure_ids and the direction most real work takes: a compound list from ChEMBL or
+      PubChem, joined through the co-hosted relation graph to MassBank spectra, in ONE query on ONE endpoint.
+      Swap the graph and the IRI form to start from PubChem CIDs
+      (togoid/relation/pubchem_compound-inchi_key, http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CIDnnn),
+      ChEBI or HMDB — the templates are in id_join_map.same_endpoint_joins. Call with database=massbank AND
+      endpoint_name=primary.
+    traps_avoided:
+      - "This join is INNER at both hops, so a compound with no InChIKey mapping and one with no MassBank spectrum both vanish identically. Mirror the OPTIONAL shape of screen_inchikey_batch when you need to tell 'no ID mapping' from 'no spectrum', and expect a low hit rate on drug-like lists (entity_counts.size_caveat)."
 
 # ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
 schema_delta:
-  - "SPECTRUM-LEVEL METADATA blank node (note the misspelling): ?spectrum mb:mass_spectram_meta_data ?m . ?m a mb:MassSpectramMetaData ; mb:precursor_mz_value (double, ~81%) ; mb:precursor_type_value ('[M+H]+' string, ~79%) ; mb:base_peak (double, ~37%). This is where precursor m/z lives — distinct from the AnalyticalMethods node."
-  - "ANALYTICAL METHOD extras (AnalyticalMethods bnode, beyond instrument_type/ion_mode/ms_type): mb:collision_energy (~82%), mb:column_name (~72%), mb:retention_time (~71%), mb:flow_rate, mb:fragmentation_mode, mb:solvent (0..n), mb:resolution — ALL free-text strings with mixed units ('35% (nominal)', '6.894 min'), not numerically typed. Filter/parse as strings."
+  - "SPECTRUM-LEVEL METADATA blank node (note the misspelling): ?spectrum mb:mass_spectram_meta_data ?m . ?m a mb:MassSpectramMetaData ; mb:precursor_mz_value (double, 80.0%) ; mb:precursor_type_value ('[M+H]+' string, 78.4%) ; mb:base_peak (double, 37.4%). This is where precursor m/z lives — distinct from the AnalyticalMethods node. Pair it with peak_diagnostic_ions to turn a fragment hit into a precursor->product transition."
+  - >
+    COLLISION ENERGY is free text and heavily non-uniform — do NOT match it exactly without checking.
+    Verified 2026-08-14: 769 DISTINCT strings across 95,772 spectra, top values
+    "6V" 10217 · "40" 4497 · "10" 3594 · "20" 3362 · "30" 2940 · "60" 2502 · "10 eV" 2276 · "20 eV" 2149 ·
+    "30%" 2102 · "90" 2100 · "40 eV" 1820 · "30 % (nominal)" 1779. Bare numbers, "N eV", "N%",
+    "N % (nominal)" and "NV" all coexist for the same physical setting, so ?ce = "10 eV" silently misses
+    the 3,594 spectra recorded as "10". Match with REGEX on the numeric part (parenthesised — see gotcha
+    regex_alternation) or GROUP BY ?ce first and read the vocabulary.
+  - "ANALYTICAL METHOD extras (AnalyticalMethods bnode, beyond instrument_type/ion_mode/ms_type/collision_energy), coverage verified 2026-08-14: mb:ac_instrument (100% — the free-text instrument MODEL, e.g. 'LTQ Orbitrap XL Thermo Scientific', complementing the 49-value controlled mb:instrument_type), mb:column_name (71.5%), mb:retention_time (71.0%), mb:flow_rate (68.7%), mb:flow_gradient (68.3%), mb:solvent (66.3%, 0..n), mb:fragmentation_mode (55.2%), mb:resolution (34.2%), mb:ionization + mb:ionization_voltage (0.8%) — ALL free-text strings with mixed units ('6.894 min'), not numerically typed. Filter/parse as strings."
   - "LITERATURE provenance: ?spectrum dcterms:references ?ref . ?ref a bibo:Article ; rdfs:label '<full citation string>' (~25% of spectra). Per-spectrum blank nodes — dedup on the citation label."
   - "mb:ch_compound_class (~97%) is a free-text compound classification string on the compound node; mb:data_processing_deprofile and rdfs:comment are optional method notes."
 
@@ -277,12 +511,18 @@ id_join_map:
   stable_anchor: >
     Spectrum = IRI https://identifiers.org/massbank/MSBNK-<contributor>-<accession> (HTTPS), also matchable by the
     dcterms:identifier string. Structure anchor = schema:inChIKey IRI http://identifiers.org/inchikey/<KEY> (HTTP) on
-    the per-spectrum compound blank node; the 14-char first block is the stereo/charge-agnostic skeleton.
+    the per-spectrum compound blank node; the 14-char first block is the stereo/charge-agnostic skeleton
+    (derive it with SUBSTR(STR(?ik), 33, 14) — example screen_inchikey_skeleton).
   same_endpoint_joins:            # co-hosted on the `primary` endpoint — direct multi-GRAPH join, NO external TogoID API
-    pubchem: "InChIKey IRI -> GRAPH togoid/relation/pubchem_compound-inchi_key { ?cid tid:TIO_000020 ?ik } (example xdb_structure_ids)"
-    chebi:   "InChIKey IRI -> GRAPH togoid/relation/chebi-inchi_key { ?chebi tid:TIO_000020 ?ik }"
-    chembl:  "InChIKey IRI -> GRAPH togoid/relation/chembl_compound-inchi_key { ?chembl tid:TIO_000020 ?ik }"
-    hmdb:    "InChIKey IRI -> GRAPH togoid/relation/hmdb-inchi_key { ?hmdb tid:TIO_000020 ?ik }"
+    how: >
+      Both directions verified live 2026-08-14: <target-ID> tid:TIO_000020 <inchikey-IRI> and the inverse
+      <inchikey-IRI> tid:TIO_000021 <target-ID>. USE THE EXACT SUBJECT IRI TEMPLATES BELOW — each was read off
+      a live triple, and a plausible-looking alternative form (notably ChEMBL's own rdf.ebi.ac.uk IRIs)
+      returns 0 rows with no error. Examples: xdb_structure_ids (outbound), xdb_ids_to_spectra (inbound).
+    pubchem: "GRAPH togoid/relation/pubchem_compound-inchi_key — subject IRI http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID<n> (e.g. CID2206)"
+    chebi:   "GRAPH togoid/relation/chebi-inchi_key — subject IRI http://purl.obolibrary.org/obo/CHEBI_<n> (underscore, e.g. CHEBI_9638)"
+    chembl:  "GRAPH togoid/relation/chembl_compound-inchi_key — subject IRI http://identifiers.org/chembl.compound/CHEMBL<n> (e.g. CHEMBL112 = paracetamol). NOT http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL<n>, which is absent from this graph."
+    hmdb:    "GRAPH togoid/relation/hmdb-inchi_key — subject IRI http://identifiers.org/hmdb/HMDB<7 digits> (e.g. HMDB0301851)"
   xrefs:                          # outbound IRI cross-references on the compound blank node (rdfs:seeAlso)
     pubchem_cid:  "rdfs:seeAlso -> http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID... (~55%; PubChem endpoint)"
     cas:          "rdfs:seeAlso -> http://identifiers.org/cas/... (~70%; external resolver)"
@@ -291,5 +531,6 @@ id_join_map:
     - "InChIKey -> LIPID MAPS, KEGG, and other structure DBs via togoid_convertId when no co-hosted relation graph exists."
 
 # ── byte-count footer (spec §5 item 7) ──
-# v2: `wc -c togo_mcp/data/mie/massbank.yaml` = 35167 bytes
-# v3: `wc -c benchmark/studies/redesign/mie_v3/massbank.yaml` = 22063 bytes -> 37.3% smaller than v2.
+# v2 (superseded): 35,167 bytes. v3 as authored 2026-07-22: 19,023 bytes, examples 66.0%.
+# v3 revised 2026-08-14: see the Phase-5i figure in the changelog/PR — 5 examples added (14 total),
+# 1 global_gotcha added; examples share must not fall below the 66.0% baseline by >5 pts.
