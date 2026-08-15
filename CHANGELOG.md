@@ -13,6 +13,50 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.7.4] - 2026-08-15
+
+Closes the last gap in the 2.7.1–2.7.3 arc: the Usage Guide is served on **every** session and nothing
+ever checked what it asserts. No tool, parameter, or return shape changed.
+
+The literal task — "test the SPARQL queries in the Usage Guide" — turned out to be nearly empty. The
+guide contains exactly **two** fenced `sparql` blocks and neither is a runnable query; both are
+fragments (a triple pattern, a `FILTER`). The guide's testable surface is not queries but **empirical
+claims**: *"without `^^xsd:string` the join silently returns 0"*, *"pinning only `.../uniprot` returns
+empty for a taxon-name leg"*, *"two-argument `REGEX()` returns 0 for alternation"*. Each is a statement
+about live endpoint behaviour, each is what the surrounding advice rests on, and each rots silently
+when an endpoint is reloaded. (The one hand-written table, ENDPOINTS, was already drift-guarded by
+`test_server.py` — no second copy added.)
+
+### Added
+
+- **`scripts/check_guide_claims.py` — 6 claims, all passing.** Each is encoded as a *pair* of queries
+  plus the expected relationship, almost always "the documented-broken form returns 0 **and** the
+  documented-good form does not". That is stronger than either half: it fails loudly both when a trap
+  disappears (endpoint patched → the guide now scares readers off a working pattern) and when a
+  workaround stops working (→ the guide's fix is wrong). Covers guide items 1, 7, 9 and 10. A script
+  rather than a pytest test, for the same reason `check_mie_examples.py` is: these endpoints returned
+  502s, 503s and 90 s timeouts repeatedly across a single afternoon, so a live test in the suite would
+  go red for reasons unrelated to any change.
+- **`tests/test_guide_claims_in_sync.py`** — offline, 9 cases. Every claim carries an `anchor`: the
+  load-bearing phrase that must still appear in the served guide. This closes the drift in *both*
+  directions, both otherwise silent — guide rewritten and the checker keeps happily verifying a
+  sentence nobody ships (still reporting "6 ok"), or a claim quietly dropped from the checker while the
+  guide keeps asserting it. It caught a defect on its first run: an anchor written from memory that
+  spanned a hard-wrapped line. Anchors must now stay within one source line, and that is noted where
+  they are defined.
+
+### Fixed
+
+- **Guide item 7 cited two examples that no longer show what it said they showed.** It claimed
+  `GO_0005183` and `CHEBI:29108` carry labels "twice — plain and `xsd:string`". Live, both carry
+  **only** `xsd:string`: `GO_0005183` in 2 graphs (efo, go) and `CHEBI_29108` in 5 (Rhea, efo, uberon,
+  pro, pro-reasoned), same value and same datatype every time. That is cross-graph *duplication* —
+  item 1's co-tenancy trap — not a datatype split, so the two IRIs were illustrating the wrong lesson.
+  The rule itself is sound and stays: the item is re-anchored on a case that is live and checked,
+  `ontology/fma`'s `rdfs:label` at **104,919 `@en` + 17 `xsd:string`** in one graph on one predicate,
+  and widened past plain-vs-typed to the forms the corpus actually contains (`@en`, `^^xsd:anyURI`,
+  `^^rr:Literal`).
+
 ## [2.7.3] - 2026-08-14
 
 **2.7.2's rule was too narrow, and one of the two fixes it offered was bad advice.** Asking "is any MIE
@@ -1447,7 +1491,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.3...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.4...HEAD
+[2.7.4]: https://github.com/dbcls/togomcp/compare/v2.7.3...v2.7.4
 [2.7.3]: https://github.com/dbcls/togomcp/compare/v2.7.2...v2.7.3
 [2.7.2]: https://github.com/dbcls/togomcp/compare/v2.7.1...v2.7.2
 [2.7.1]: https://github.com/dbcls/togomcp/compare/v2.7.0...v2.7.1
