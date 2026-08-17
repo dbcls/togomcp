@@ -8,7 +8,7 @@ It is developed by DBCLS.
 Create an HTML page for researchers in biology and medicine who are not necessarily familiar with bioinformatics, explaining what TogoMCP is and how it can help their research. It should contain the following.
 - Summary of TogoMCP
 - What's new
-- Publication
+- Publications
 - Usage examples
 - Setup guide
 - List of available databases
@@ -28,12 +28,16 @@ A short, curated list of the most recent **user-facing** updates (new databases,
   Include only what a *user* would notice; skip internal refactors/tests. Then run `python scripts/generate_whatsnew.py`. The `whatsnew.yml` CI + `tests/test_whatsnew_in_sync.py` fail if the page is stale.
 - End with a "Full changelog →" link to `https://github.com/dbcls/togomcp/blob/main/CHANGELOG.md`.
 
-## Publication
-Cite the paper using the reference from the top-level `README.md`:
+## Publications
+Cite the papers using the references from the top-level `README.md`. The **system paper** comes first — it is the one to cite for TogoMCP itself:
 
 > Kinjo, A. R., Yamamoto, Y., Bustamante-Larriet, S., Labra-Gayo, J.-E., & Fujisawa, T. (2026). TogoMCP: Natural Language Querying of Life-Science Knowledge Graphs via Schema-Guided LLMs and the Model Context Protocol. *Database* **2026**:baag042. https://doi.org/10.1093/database/baag042
 
-Link the DOI. Include the authors, year, and journal as shown.
+The **MIE v3 report** follows, with a short plain-prose note on what it measured (the ablation result behind the MIE format this server now serves):
+
+> Kinjo, A. R., & Yamamoto, Y. (2026). Measure before you rewrite: ablation-driven redesign of LLM-facing RDF schema documentation in TogoMCP. *BioHackrXiv*. https://doi.org/10.37044/osf.io/6v5ra_v1
+
+Link every DOI. Include the authors, year, and journal as shown.
 
 ## Style
 - Use https://togomcp.rdfportal.org/ as a template.
@@ -154,7 +158,7 @@ The footer should include the following
 - The menu tab should include the pointers to all the sections.
   * Summary
   * What's New
-  * Publication
+  * Publications
   * Examples
   * Setup
   * Databases

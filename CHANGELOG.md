@@ -13,6 +13,29 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.7.5] - 2026-08-17
+
+<!-- whatsnew: 2026-07-26 | Second paper out: <em>Measure before you rewrite</em> (<a href="https://doi.org/10.37044/osf.io/6v5ra_v1" target="_blank" rel="noopener">BioHackrXiv</a>) — the ablation study behind MIE v3, the schema-documentation format this server serves. -->
+
+Citation-only release. No tool, parameter, or return shape changed — but the landing page is served
+from the wheel (`server.py` mounts `docs/togomcp-intro.html` at `/`), so the second paper does not
+reach <https://togomcp.rdfportal.org/> without a build and deploy. That is the whole reason this
+carries a version bump rather than riding as a docs-only merge.
+
+The whatsnew marker is dated 2026-07-26, the BioHackrXiv publication date, so it sorts *below* the
+five entries the generator renders and does not appear in "What's New". That is deliberate: the
+citation belongs in the Publications section, not the news feed. Redate it to surface it.
+
+### Documentation
+
+- **README + intro page: added the MIE v3 report** (Kinjo & Yamamoto 2026, BioHackrXiv,
+  [doi:10.37044/osf.io/6v5ra_v1](https://doi.org/10.37044/osf.io/6v5ra_v1)) alongside the
+  *Database* system paper. It is the published measurement behind the format `get_MIE_file`
+  currently serves: single-section and group-level MIE ablations are null, whole-MIE removal
+  costs 0.9/20, and the query-construction group alone recovers 99% of that — which is why v3
+  reorganized around the verified executable example. Both surfaces now read "Publications"
+  (plural); the intro page's spec (`make_intro.md`) was updated to match.
+
 ## [2.7.4] - 2026-08-15
 
 Closes the last gap in the 2.7.1–2.7.3 arc: the Usage Guide is served on **every** session and nothing
@@ -1491,7 +1514,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.4...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.5...HEAD
+[2.7.5]: https://github.com/dbcls/togomcp/compare/v2.7.4...v2.7.5
 [2.7.4]: https://github.com/dbcls/togomcp/compare/v2.7.3...v2.7.4
 [2.7.3]: https://github.com/dbcls/togomcp/compare/v2.7.2...v2.7.3
 [2.7.2]: https://github.com/dbcls/togomcp/compare/v2.7.1...v2.7.2

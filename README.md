@@ -298,9 +298,17 @@ Note that a database *removal* really is just step 1: nothing validates against 
 
 Please open an issue or pull request on GitHub.
 
-## Reference
+## References
+
+**The system paper** — describes TogoMCP as a whole (based on MIE v2):
 
 Kinjo, A. R., Yamamoto, Y., Bustamante-Larriet, S., Labra-Gayo, J.-E., & Fujisawa, T. (2026). TogoMCP: Natural Language Querying of Life-Science Knowledge Graphs via Schema-Guided LLMs and the Model Context Protocol. *Database* **2026**:baag042. https://doi.org/10.1093/database/baag042
+
+**The MIE v3 report** — the ablation study behind the current MIE format. Removing any single MIE section (or any whole functional group) turned out to be statistically null, while removing the MIE entirely cost 0.9 points out of 20 — heavy redundancy, with the query-construction content alone recovering 99% of the total effect. MIE v3 reorganizes around that evidence, matching v2 answer quality at n=100 benchmark questions while using 15% fewer input tokens and running 6% faster:
+
+Kinjo, A. R., & Yamamoto, Y. (2026). Measure before you rewrite: ablation-driven redesign of LLM-facing RDF schema documentation in TogoMCP. *BioHackrXiv*. https://doi.org/10.37044/osf.io/6v5ra_v1
+
+The measured version of the server is archived as release v2.0.0: https://doi.org/10.5281/zenodo.21543297
 
 ## License
 
