@@ -13,6 +13,94 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.7.6] - 2026-08-19
+
+Usage-analysis release: the `/stats` dashboard was reporting numbers that could not be read
+correctly, and three of them were actively wrong. **No tool, parameter, or return shape changed** —
+this is filed as a patch against the tool surface, which is the contract semver applies to here.
+Everything below is aggregation and presentation, computed from the log format as it already is;
+the new columns work retroactively on logs already on disk.
+
+The one deployment-facing addition is `TOGOMCP_STATS_EXCLUDE_CLIENTS`, wired into all three places
+a knob has to appear (`compose.yaml`, `.env.example`, `deploy.sh`'s forwarded list).
+
+### Added
+
+- **`/stats` co-query attribution: cross-database work is no longer invisible.** A record gets one
+  primary database (its `database=` arg), so a UniProt-Rhea join on the co-hosted SIB endpoint was
+  filed entirely under uniprot — all 532 of them in 2026-08, while rhea's own row read 1 query and
+  looked unused. A new **co-query** column credits every database whose namespace a query actually
+  touched, derived from the prefixes already recorded in `extra.query_shape.predicates` (present on
+  100% of logged SPARQL, so this works retroactively). It is counted separately from `calls` on
+  purpose — one query legitimately credits several databases, and folding them together would stop
+  the row adding up. A new **Cross-database joins** table lists the filed-under → also-queried pairs.
+- **`/stats` now reports reach, not just volume.** Every per-database and per-tool row carries
+  **IPs** (distinct hashed client addresses) and a new **Per client** table gives each client its
+  calls, IPs, days, and **calls/IP**. That one ratio is the demand-vs-script tell: in 2026-08
+  `openai-mcp` sent 693 calls from 355 IPs (2.0 each — a crowd) while `mcp`, the MCP SDK's default
+  client name, sent 8,415 from 11 (765 each — a harness). The same column resolves rows that look
+  alike by volume: massbank's 229 calls came from **150** IPs and rhea's 228 from **9**.
+
+  Distinct *sessions* is deliberately NOT reported. It looks like the natural measure and is
+  actively misleading: ChatGPT connectors are stateless and open one session per call, so
+  `openai-mcp` scores 1.00 calls/session — identical to a scripted sweep, and the opposite of what
+  that number suggests. Caveat on IPs: with `TOGOMCP_LOG_HASH_SALT` unset the salt is regenerated
+  per process, so one client counts once per server restart. The dashboard says so inline.
+- **`TOGOMCP_STATS_EXCLUDE_CLIENTS`** (new, optional) drops named clients from the aggregate — the
+  escape hatch for a known self-inflicted source. On this log, excluding `mcp,glyconavi,mcporter`
+  removes 29,051 of 33,500 records; massbank's row is untouched at 229 calls / 150 IPs, while rhea
+  falls from 228 to 2. It is empty by default and never inferred: which traffic is real is an
+  operator's judgement and a wrong guess silently deletes real users. Whatever is excluded is
+  stated at the top of the dashboard. Wired into `compose.yaml`, `.env.example` **and**
+  `deploy.sh`'s forwarded list — a knob missing from that list is inert in production.
+- **MIE traps now name the other databases the failing query touched** (`co_databases`, rendered as
+  *also touched*). Three of the uniprot timeouts in this log are Rhea-predicate queries: the gap may
+  be in rhea's MIE, which was previously unreachable from rhea's row.
+
+`SIGNATURE_PREFIXES` is precision-biased: a prefix qualifies only if it is declared in an MIE file
+*and* binds to a namespace owned by exactly one database, which excludes shared vocabularies
+(`obo:`, `sio:`, `bp:`, `orth:`, `faldo:`, …). The cost is a documented blind spot — go, chebi,
+mondo, reactome, oma, bgee, hgnc and brenda are expressed *only* in shared vocabularies, so they
+always read 0 co-query: undetectable, not unused. Removing that blind spot needs the collection
+layer to record namespace IRIs instead of prefix strings, since a prefix string is the client's
+choice rather than a property of the data.
+
+**Colliding prefixes are resolved by local name** (`_AMBIGUOUS_PREFIX_QNAMES`). `schema:` is the
+live case and it is not a *shared* vocabulary but a *collision*: bacdive, mediadive and taxonomy
+bind it to DSMZ's own `https://purl.dsmz.de/schema/`, while massbank binds it to real schema.org —
+a trap each of those MIEs already warns about, because declaring the wrong one returns 0 rows with
+no error. In this log 128 records used `schema:` under a massbank primary and 10 under bacdive, so
+mapping the bare prefix either way would have mis-credited the other. Qnames exclusive to one
+database (`schema:describesStrain` → bacdive, `schema:CultureMedium` → mediadive, `schema:inChIKey`
+→ massbank) are mapped; the genuinely shared bacdive↔mediadive join vocabulary (`schema:Strain`,
+`schema:hasBacDiveID`, `schema:partOfMedium`) is deliberately left unmapped because it belongs to
+both. The sets are derived from the MIE corpus and a test re-derives them, so they fail loudly when
+a database's vocabulary moves.
+
+### Fixed
+
+- **`/stats` per-database table: `calls` no longer conflates reading an MIE with querying an
+  endpoint.** The single `calls` column made two opposite rows unreadable. massbank showed
+  229 calls / 176 SPARQL and looked like it had a REST API it does not have — the gap was 53
+  `get_MIE_file` calls. rhea showed 228 calls / 1 SPARQL and looked unused — 223 of those were
+  MIE reads. `calls` is now split into **query / graphs / search / MIE / other**, which sum
+  exactly to it. Classification is by *tool identity*, not transport: the ChEMBL search wrappers
+  are SPARQL-backed, so counting them as queries recreated the same confusion in mirror image
+  (1,215 of chembl's 7,410 endpoint hits in 2026-07 were wrapper calls, not queries anyone wrote —
+  and 4,963 of its 12,373 `calls` that month were MIE reads).
+- **NCBI E-utilities traffic no longer contaminates the RDF per-database rows.** `db=`/`database=`
+  on `ncbi_*` names an E-utilities database, and pubmed, clinvar, medgen and taxonomy are *also*
+  RDF Portal keys — so the two namespaces silently merged. In 2026-08 the pubmed row read 3,589
+  calls when its real RDF usage was 48, and clinvar 1,513 against a real 48. `database_of()` had
+  documented this exclusion since it was written but never implemented it.
+- **Three database-specific wrapper tools were missing from the per-database attribution map** and
+  their calls vanished from the table entirely: `search_chembl_id_lookup`, `get_pubchem_compound_id`,
+  `get_compound_attributes_from_pubchem` (52 calls in 2026-08). A new test scans the `@mcp.tool`
+  registrations in `api_tools.py`/`chembl.py` and fails if a wrapper is added without a mapping.
+
+Aggregation only; the log format and the tool surface are unchanged (`sparql` is still the
+endpoint-hit count the MIE-candidate feed scores against).
+
 ## [2.7.5] - 2026-08-17
 
 <!-- whatsnew: 2026-07-26 | Second paper out: <em>Measure before you rewrite</em> (<a href="https://doi.org/10.37044/osf.io/6v5ra_v1" target="_blank" rel="noopener">BioHackrXiv</a>) — the ablation study behind MIE v3, the schema-documentation format this server serves. -->
@@ -1515,6 +1603,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.5...HEAD
+[2.7.6]: https://github.com/dbcls/togomcp/compare/v2.7.5...v2.7.6
 [2.7.5]: https://github.com/dbcls/togomcp/compare/v2.7.4...v2.7.5
 [2.7.4]: https://github.com/dbcls/togomcp/compare/v2.7.3...v2.7.4
 [2.7.3]: https://github.com/dbcls/togomcp/compare/v2.7.2...v2.7.3

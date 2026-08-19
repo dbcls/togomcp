@@ -19,7 +19,9 @@ What the collection layer records today (per JSONL line):
 This module derives, per calendar month (UTC):
   * per-tool: call count, error count/rate, duration p50/p95/mean
   * SPARQL failure classification (syntax/timeout/empty/huge/endpoint-down/...)
-  * per-database usage, oriented toward surfacing MIE-improvement candidates
+  * per-database usage, split by call kind (query / graphs / search / MIE /
+    other) so "read the MIE" is never confused with "queried the endpoint",
+    oriented toward surfacing MIE-improvement candidates
 """
 from __future__ import annotations
 
@@ -50,8 +52,12 @@ SPARQL_CLASSES = (
     "other_error",
 )
 
-# search_* tools whose target database is implied by the tool name (no
+# Front-door tools whose target database is implied by the tool name (no
 # ``database`` arg). Keeps per-database stats from undercounting keyword search.
+# Add a row here whenever a database-specific wrapper tool is added to
+# api_tools.py / chembl.py — `test_search_tool_db_covers_all_wrapper_tools`
+# fails if one is missed, because an unmapped wrapper silently drops out of the
+# per-database table entirely.
 _SEARCH_TOOL_DB = {
     "search_uniprot_entity": "uniprot",
     "search_reactome_entity": "reactome",
@@ -60,7 +66,140 @@ _SEARCH_TOOL_DB = {
     "search_mesh_descriptor": "mesh",
     "search_chembl_molecule": "chembl",
     "search_chembl_target": "chembl",
+    "search_chembl_id_lookup": "chembl",
+    "get_pubchem_compound_id": "pubchem",
+    "get_compound_attributes_from_pubchem": "pubchem",
 }
+
+# Per-database call kinds. `calls` alone conflated "read the MIE" with "queried
+# the endpoint", which made two opposite rows unreadable: massbank showed 229
+# calls / 176 SPARQL (the gap was 53 get_MIE_file, not a REST API massbank does
+# not have), and rhea showed 228 calls / 1 SPARQL (223 of them MIE reads by two
+# automated clients). Classification is by TOOL IDENTITY, not by transport —
+# the ChEMBL search wrappers are SPARQL-backed, so counting them as "query"
+# would recreate the same confusion in mirror image: 1,215 of chembl's 7,410
+# endpoint hits in 2026-07 were wrapper calls, not queries anyone wrote.
+CALL_KINDS = ("query", "graphs", "search", "mie", "other")
+
+# Co-query attribution. A record gets exactly ONE primary database (the
+# ``database`` arg), which hides cross-database work: in 2026-08 all 532 queries
+# using rhea: predicates were filed under uniprot, because they joined UniProt to
+# Rhea on the co-hosted SIB endpoint and passed database=uniprot. rhea's own row
+# read 1 query, which looks like "nobody uses Rhea" and is the opposite of true.
+#
+# `query_shape.predicates` (present on 100% of logged SPARQL) carries qnames, so
+# a namespace prefix OWNED by one database is evidence that database was touched.
+# Inclusion rule, deliberately precision-biased: the prefix must be declared in
+# at least one MIE file AND bind to a namespace owned by exactly one RDF Portal
+# database. That excludes shared community vocabularies (obo:, sio:, bp:, orth:,
+# faldo:, med2rdf:, schema:, d3o:, skos:, dcterms:) — see _SHARED_PREFIXES.
+#
+# Known limitation: several databases are expressed ENTIRELY in shared
+# vocabularies and are therefore invisible here — go, chebi and mondo live under
+# obo:, reactome under bp:, oma/bgee under orth:/genex:, hgnc/brenda under d3o:.
+# A zero in the co-query column means "not detectable", not "not co-queried",
+# for those. Fixing it properly needs the collection layer to record namespace
+# IRIs rather than prefix strings, since a prefix string is the client's choice,
+# not the data's. (bacdive/mediadive are NOT in this list: they own a real
+# namespace, they just bind it to a colliding prefix — see
+# _AMBIGUOUS_PREFIX_QNAMES, which recovers them.)
+SIGNATURE_PREFIXES = {
+    "up": "uniprot",            # http://purl.uniprot.org/core/ — 1,914 records
+    "uniprot": "uniprot",       # http://purl.uniprot.org/uniprot/
+    "uniprotkb": "uniprot",
+    "rhea": "rhea",             # http://rdf.rhea-db.org/ — 532 records
+    "cco": "chembl",            # http://rdf.ebi.ac.uk/terms/chembl# — 8,620
+    "mb": "massbank",           # http://www.massbank.jp/ontology/
+    "pdbo": "pdb",              # http://rdf.wwpdb.org/schema/pdbx-*
+    "compound": "pubchem",      # http://rdf.ncbi.nlm.nih.gov/pubchem/compound/
+    "vocab": "pubchem",         # http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#
+    "tgvo": "togovar",          # http://togovar.biosciencedbc.jp/vocabulary/
+    "cvo": "clinvar",           # http://purl.jp/bio/10/clinvar/
+    "meshv": "mesh",            # http://id.nlm.nih.gov/mesh/vocab#
+    "mesh": "mesh",             # http://id.nlm.nih.gov/mesh/
+    "jpost": "jpostdb",         # http://rdf.jpostdb.org/ontology/jpost.owl#
+    "glycan": "glycosmos",      # http://purl.jp/bio/12/glyco/glycan#
+    "gc": "glycosmos",          # http://purl.jp/bio/12/glyco/conjugate#
+    "glytoucan": "glycosmos",
+    "glycodm": "glycosmos",
+    "sb": "glycosmos",          # http://rdf.glycoinfo.org/SugarBind/ontology#
+    "nando": "nando",           # http://nanbyodata.jp/ontology/NANDO_
+    "mogplus": "mogplus",       # http://identifiers.org/mogplus/ontology#
+    "snpeff": "mogplus",
+    "vcf": "mogplus",
+    "vep": "mogplus",
+    "ensg": "ensembl",          # http://rdf.ebi.ac.uk/resource/ensembl/
+    "gwas": "gwascatalog",      # http://rdf.ebi.ac.uk/terms/gwas/
+    "amr": "amrportal",         # http://example.org/ebiamr#
+    "mccv": "nbrc",             # http://purl.jp/bio/10/mccv#
+    "mpo": "nbrc",              # http://purl.jp/bio/10/mpo/
+    "ncbio": "ncbigene",        # https://dbcls.github.io/ncbigene-rdf/ontology.ttl#
+    "pubtator": "pubtator",     # http://purl.jp/bio/10/pubtator-central/ontology#
+    "hco": "hco",
+    "mco": "mco",
+    "taxon": "taxonomy",        # http://identifiers.org/taxonomy/
+    "nuc": "ddbj",              # http://ddbj.nig.ac.jp/ontologies/nucleotide/
+    "insdc": "ddbj",
+}
+
+# Prefix strings that bind to DIFFERENT namespaces in different databases, so
+# the prefix alone is worthless — but the LOCAL NAME resolves it. `schema:` is
+# the live case: bacdive, mediadive and taxonomy bind it to DSMZ's own
+# <https://purl.dsmz.de/schema/>, while massbank binds it to real schema.org.
+# In this log 128 records used schema: under a massbank primary and 10 under
+# bacdive; mapping the bare prefix to either one would have mis-credited the
+# other. Qnames exclusive to one database are listed here and win over
+# SIGNATURE_PREFIXES; genuinely shared terms (schema:Strain, schema:hasBacDiveID,
+# schema:partOfMedium \u2014 the bacdive\u2194mediadive join vocabulary) are
+# deliberately absent, because they really do belong to both.
+#
+# Derived from the MIE corpus and kept in sync by
+# `test_ambiguous_prefix_qnames_match_the_mie_corpus`, which re-derives the sets
+# and fails when a database's vocabulary moves.
+_AMBIGUOUS_PREFIX_QNAMES: dict[str, dict[str, frozenset[str]]] = {
+    "schema": {
+        "bacdive": frozenset({
+            "CellMotility", "Enzyme", "GramStain", "GrowthCondition",
+            "OxygenTolerance", "Pathogenicity", "RiskAssessment", "SaltTolerance",
+            "SporeFormation", "describesStrain", "fromSequenceDB", "hasAbility",
+            "hasActivity", "hasBiosafetyLevel", "hasDesignation", "hasECNumber",
+            "hasGramStain", "hasLink", "hasMediaLink", "hasOxygenTolerance",
+            "hasPhylum", "hasSaltConcentrationRangeEnd", "hasSaltType",
+            "hasSequenceAccession", "hasTestAbility", "hasTestType", "isHumanPathogen",
+            "isMotile", "isTypeStrain",
+        }),
+        "massbank": frozenset({
+            "ChemicalSubstance", "chemicalsubstance", "inChIKey", "molecularFormula",
+            "name", "smiles",
+        }),
+        "mediadive": frozenset({
+            "Equipment", "GasComponent", "Ingredient", "Medium", "Modification",
+            "OperationalStep", "SolutionRecipe", "belongsTaxGroup", "growthPH",
+            "hasCAS", "hasChEBI", "hasDSMNumber", "hasFinalPH", "hasGMO", "hasKEGG",
+            "hasLinkToSource", "hasMetaCyc", "hasMinPH", "hasOxygenRequirement",
+            "hasPubChem", "includesIngredient", "includesSolution", "ingredientAmount",
+            "ingredientUnit", "isComplex", "mmolPerLiter", "partOfSolution",
+        }),
+    },
+}
+
+# Prefixes deliberately NOT in SIGNATURE_PREFIXES: each binds to a vocabulary
+# shared by several databases (or by none in particular), so its presence says
+# nothing about which database was queried. Listed so the exclusion is a
+# decision on the record rather than an omission, and enforced by a test.
+# `schema:` is NOT here: it collides rather than being shared, and is resolved
+# by local name in _AMBIGUOUS_PREFIX_QNAMES.
+_SHARED_PREFIXES = frozenset({
+    "rdf", "rdfs", "owl", "xsd", "skos", "dc", "dct", "dcterms", "foaf",
+    "obo", "oboInOwl", "oboinowl", "sio", "bp", "biopax", "chemrof", "faldo",
+    "orth", "lscr", "genex", "med2rdf", "m2r", "d3o", "idt", "so",
+    "ro", "bfo", "oa", "bibo", "prism", "olo", "org", "fabio", "oban", "mo",
+    "sty", "unimod", "fma", "bif", "tid", "togoid", "terms", "gvo", "taxo",
+    "cv", "keywords", "Schema", "ref", "smp",
+})
+
+_MIE_TOOL = "get_MIE_file"
+_GRAPHS_TOOL = "get_graph_list"
 
 
 # --------------------------------------------------------------------------- #
@@ -195,6 +334,17 @@ def _args(rec: dict[str, Any]) -> dict[str, Any]:
     return a if isinstance(a, dict) else {}
 
 
+# Tool-name prefixes whose ``db``/``database`` argument names a database in a
+# FOREIGN namespace, not an RDF Portal one. NCBI E-utilities take db=pubmed /
+# clinvar / medgen / gene / taxonomy / sra — and pubmed, clinvar, medgen and
+# taxonomy are ALSO RDF Portal database keys, so the two namespaces silently
+# merged: in 2026-08 the pubmed row read 3,589 calls when its real RDF usage was
+# 48, and clinvar 1,513 against a real 48. The E-utilities calls also have no
+# endpoint and no MIE, so they can never be actionable here. database_of()
+# always documented this exclusion — it just never implemented it.
+_FOREIGN_DB_NAMESPACE_TOOLS = ("ncbi_",)
+
+
 def _arg_database(rec: dict[str, Any]) -> str:
     a = _args(rec)
     for key in ("database", "db", "dbname"):
@@ -207,15 +357,20 @@ def _arg_database(rec: dict[str, Any]) -> str:
 def database_of(rec: dict[str, Any], endpoint_groups: dict[str, str]) -> str | None:
     """Best-effort database attribution for a record.
 
-    Priority: explicit ``database`` arg > tool-name implied DB > endpoint group
-    (for cross-DB SPARQL that used endpoint_name/url). Returns None when the
-    call is not database-specific (e.g. togoid_*, list_*, ncbi_* utilities).
+    Priority: foreign-namespace exclusion > explicit ``database`` arg >
+    tool-name implied DB > endpoint group (for cross-DB SPARQL that used
+    endpoint_name/url). Returns None when the call is not database-specific
+    (togoid_*, list_*) or names a database outside RDF Portal (ncbi_*, see
+    _FOREIGN_DB_NAMESPACE_TOOLS).
     """
+    tool = rec.get("tool")
+    if isinstance(tool, str) and tool.startswith(_FOREIGN_DB_NAMESPACE_TOOLS):
+        return None
+
     db = _arg_database(rec)
     if db:
         return db
 
-    tool = rec.get("tool")
     if isinstance(tool, str) and tool in _SEARCH_TOOL_DB:
         return _SEARCH_TOOL_DB[tool]
 
@@ -262,6 +417,73 @@ def sparql_class(rec: dict[str, Any]) -> str | None:
     return "other_error"
 
 
+def client_of(rec: dict[str, Any]) -> str:
+    """Reporting MCP client name ('claude-code', 'openai-mcp', …) or '<unknown>'."""
+    meta = rec.get("meta")
+    if isinstance(meta, dict):
+        client = meta.get("client")
+        if isinstance(client, dict):
+            name = client.get("name")
+            if isinstance(name, str) and name.strip():
+                return name.strip()
+    return "<unknown>"
+
+
+def call_kind(rec: dict[str, Any]) -> str:
+    """Classify what a call *was*, for the per-database breakdown.
+
+    Tool identity wins over transport (see CALL_KINDS): `get_graph_list` and the
+    ChEMBL search wrappers both hit a SPARQL endpoint, but neither is a user
+    query. The five kinds partition every record, so they sum to ``calls``.
+    """
+    tool = rec.get("tool")
+    if tool == _MIE_TOOL:
+        return "mie"
+    if tool == _GRAPHS_TOOL:
+        return "graphs"
+    if tool in _SEARCH_TOOL_DB:
+        return "search"
+    if sparql_class(rec) is not None:
+        return "query"
+    return "other"
+
+
+def co_queried_databases(rec: dict[str, Any], primary: str | None = None) -> set[str]:
+    """Databases a SPARQL record touched *besides* its primary attribution.
+
+    Derived from the namespace prefixes in ``extra.query_shape.predicates`` via
+    SIGNATURE_PREFIXES. Empty for non-SPARQL records and for records logged
+    before query_shape existed. See SIGNATURE_PREFIXES for what this cannot see.
+    """
+    extra = rec.get("extra")
+    if not isinstance(extra, dict):
+        return set()
+    shape = extra.get("query_shape")
+    if not isinstance(shape, dict):
+        return set()
+    out = set()
+    for qname in shape.get("predicates") or []:
+        prefix, _, local = str(qname).partition(":")
+        if not local:
+            continue
+        by_local = _AMBIGUOUS_PREFIX_QNAMES.get(prefix)
+        if by_local is not None:
+            # Colliding prefix: only an exclusive local name identifies a database.
+            for db, names in by_local.items():
+                if local in names:
+                    out.add(db)
+            continue
+        db = SIGNATURE_PREFIXES.get(prefix)
+        if db is not None:
+            out.add(db)
+    out.discard(primary)
+    if isinstance(primary, str):
+        # An endpoint-group primary ("togovar (cross-db)") names the same
+        # database; crediting it as its own co-query would be pure noise.
+        out.discard(primary.removesuffix(" (cross-db)"))
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # Aggregation
 # --------------------------------------------------------------------------- #
@@ -277,22 +499,55 @@ def _percentile(sorted_vals: list[float], pct: float) -> float:
     return round(sorted_vals[lo] * (1 - frac) + sorted_vals[hi] * frac, 2)
 
 
+def parse_excluded_clients(raw: str | None) -> frozenset[str]:
+    """Parse TOGOMCP_STATS_EXCLUDE_CLIENTS ('mcp, glyconavi') into a name set."""
+    if not raw:
+        return frozenset()
+    return frozenset(part.strip() for part in raw.split(",") if part.strip())
+
+
 def aggregate(
     records: Iterable[dict[str, Any]],
     endpoint_groups: dict[str, str] | None = None,
     mie_dates: dict[str, str] | None = None,
+    exclude_clients: Iterable[str] | None = None,
 ) -> dict[str, Any]:
-    """Roll records up into a JSON-serializable monthly statistics structure."""
+    """Roll records up into a JSON-serializable monthly statistics structure.
+
+    ``exclude_clients`` drops whole clients by reported name — the escape hatch
+    for a known self-inflicted source (a benchmark harness, a catalog sweeper).
+    It is empty by default and never inferred: which traffic is "real" is an
+    operator's judgement, and a wrong guess silently deletes real users. What
+    was dropped is always reported back in ``excluded_clients``.
+    """
     endpoint_groups = endpoint_groups or {}
     mie_dates = mie_dates or {}
+    excluded = frozenset(exclude_clients or ())
     records = list(records)  # consumed twice: monthly rollup + trap feed
+    n_excluded = 0
+    if excluded:
+        kept = [r for r in records if client_of(r) not in excluded]
+        n_excluded = len(records) - len(kept)
+        records = kept
 
     # month -> accumulators
     tool_durs: dict[str, dict[str, list[float]]] = defaultdict(
         lambda: defaultdict(list)
     )
-    tool_counts: dict[str, dict[str, dict[str, int]]] = defaultdict(
-        lambda: defaultdict(lambda: {"count": 0, "errors": 0})
+    tool_counts: dict[str, dict[str, dict[str, Any]]] = defaultdict(
+        lambda: defaultdict(lambda: {"count": 0, "errors": 0, "ips": set()})
+    )
+    # month -> client name -> reach. Call counts alone cannot tell demand from a
+    # benchmark harness: in 2026-08 `mcp` (the SDK default name) sent 8,415 calls
+    # from 11 ip_hashes over 10 days, while openai-mcp sent 693 from 355. Distinct
+    # ip_hash is the discriminator; distinct SESSIONS is not, and is deliberately
+    # not reported — ChatGPT connectors are stateless, so their calls-per-session
+    # is 1.00 for the same reason a scripted sweep's is.
+    clients: dict[str, dict[str, dict[str, Any]]] = defaultdict(
+        lambda: defaultdict(
+            lambda: {"calls": 0, "errors": 0, "ips": set(), "days": set(),
+                     "tools": defaultdict(int)}
+        )
     )
     sparql: dict[str, dict[str, int]] = defaultdict(
         lambda: {c: 0 for c in SPARQL_CLASSES}
@@ -303,14 +558,22 @@ def aggregate(
             lambda: {
                 "calls": 0,
                 "sparql": 0,
+                **{k: 0 for k in CALL_KINDS},
                 "errors": 0,
                 "empty": 0,
                 "huge": 0,
                 "rows_sum": 0,
                 "rows_n": 0,
+                "co_query": 0,
+                "ips": set(),
+                "clients": set(),
                 "fail_classes": defaultdict(int),
             }
         )
+    )
+    # month -> (primary db, co-queried db) -> count
+    co_pairs: dict[str, dict[tuple[str, str], int]] = defaultdict(
+        lambda: defaultdict(int)
     )
     months: set[str] = set()
     n_total = 0
@@ -326,10 +589,26 @@ def aggregate(
         tool = rec.get("tool") or "<unknown>"
         is_error = rec.get("status") == "error"
 
+        ip = rec.get("ip_hash") or rec.get("ip")
+        client = client_of(rec)
+
         tc = tool_counts[month][tool]
         tc["count"] += 1
         if is_error:
             tc["errors"] += 1
+        if ip:
+            tc["ips"].add(ip)
+
+        cl = clients[month][client]
+        cl["calls"] += 1
+        if is_error:
+            cl["errors"] += 1
+        if ip:
+            cl["ips"].add(ip)
+        day = day_of(rec)
+        if day:
+            cl["days"].add(day)
+        cl["tools"][tool] += 1
         dur = rec.get("elapsed_ms")
         if isinstance(dur, (int, float)):
             tool_durs[month][tool].append(float(dur))
@@ -339,9 +618,22 @@ def aggregate(
             sparql[month][cls] += 1
 
         db = database_of(rec, endpoint_groups)
+        if cls is not None:
+            # Credit every database whose namespace the query actually touched.
+            # Recorded on its own counter, never folded into `calls`/`sparql` —
+            # one query legitimately credits several databases, so mixing them
+            # would make a row's numbers stop adding up.
+            for co in co_queried_databases(rec, db):
+                dbs[month][co]["co_query"] += 1
+                if db is not None:
+                    co_pairs[month][(db, co)] += 1
         if db is not None:
             d = dbs[month][db]
             d["calls"] += 1
+            d[call_kind(rec)] += 1
+            if ip:
+                d["ips"].add(ip)
+            d["clients"].add(client)
             if is_error:
                 d["errors"] += 1
             if cls is not None:
@@ -368,6 +660,7 @@ def aggregate(
             tools_out[tool] = {
                 "count": c["count"],
                 "errors": c["errors"],
+                "ips": len(c["ips"]),
                 "error_rate": round(c["errors"] / c["count"], 4) if c["count"] else 0,
                 "p50_ms": _percentile(durs, 50),
                 "p95_ms": _percentile(durs, 95),
@@ -382,11 +675,18 @@ def aggregate(
         for db, d in sorted(dbs[month].items()):
             dbs_out[db] = {
                 "calls": d["calls"],
+                # Endpoint hits (query + graphs + SPARQL-backed search wrappers).
+                # Kept because the MIE-candidate feed scores against it; the
+                # human-readable split is the CALL_KINDS breakdown below.
                 "sparql": d["sparql"],
+                **{k: d[k] for k in CALL_KINDS},
                 "errors": d["errors"],
                 "empty": d["empty"],
                 "huge": d["huge"],
                 "avg_rows": round(d["rows_sum"] / d["rows_n"], 1) if d["rows_n"] else None,
+                "co_query": d["co_query"],
+                "ips": len(d["ips"]),
+                "clients": len(d["clients"]),
                 "fail_classes": dict(d["fail_classes"]),
             }
 
@@ -397,11 +697,37 @@ def aggregate(
             "tools": tools_out,
             "sparql": {"total": sp_total, "failures": sp_fail, "classes": sp},
             "databases": dbs_out,
+            "clients": [
+                {
+                    "client": name,
+                    "calls": c["calls"],
+                    "errors": c["errors"],
+                    "ips": len(c["ips"]),
+                    "days": len(c["days"]),
+                    "calls_per_ip": round(c["calls"] / len(c["ips"]), 1) if c["ips"] else None,
+                    "top_tools": [
+                        t for t, _ in sorted(c["tools"].items(), key=lambda kv: -kv[1])[:3]
+                    ],
+                }
+                for name, c in sorted(
+                    clients[month].items(), key=lambda kv: -kv[1]["calls"]
+                )
+            ],
+            "co_query_pairs": [
+                {"primary": a, "co_queried": b, "queries": n}
+                for (a, b), n in sorted(
+                    co_pairs[month].items(), key=lambda kv: (-kv[1], kv[0])
+                )
+            ],
         }
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "n_records": n_total,
+        "excluded_clients": {
+            "names": sorted(excluded),
+            "n_records": n_excluded,
+        },
         "n_skipped_no_timestamp": n_skipped_no_month,
         "months": sorted(months),
         "by_month": by_month,
@@ -574,6 +900,10 @@ def mie_trap_candidates(
             preds = shape.get("predicates", []) if isinstance(shape, dict) else []
             cand = by_query[sha] = {
                 "database": db,
+                # Other databases the failing query actually touched. A trap in
+                # a UniProt-primary query can be a *Rhea* MIE gap; without this
+                # the rhea row shows 1 query and the trap is unfindable there.
+                "co_databases": sorted(co_queried_databases(rec, db)),
                 "sparql_class": cls,
                 "query_sha256": sha[:16],
                 "predicates": preds[:20],
@@ -615,7 +945,8 @@ def compute_stats(
     groups = load_endpoint_groups(endpoints_csv) if endpoints_csv else {}
     mie_dates = load_mie_dates(mie_dir) if mie_dir else {}
     paths = log_paths(log_path)
-    out = aggregate(iter_records(paths), groups, mie_dates)
+    excluded = parse_excluded_clients(os.getenv("TOGOMCP_STATS_EXCLUDE_CLIENTS"))
+    out = aggregate(iter_records(paths), groups, mie_dates, excluded)
     # Describe the bytes behind the aggregate so the dashboard's raw-log download
     # can state its size up front, and so a downloaded file is verifiably the
     # same input the numbers came from (the download serves exactly `paths`).
@@ -663,6 +994,14 @@ def render_html(stats: dict[str, Any]) -> str:
         f"<p class='muted'>Generated {cell(stats.get('generated_at'))} · "
         f"{cell(stats.get('n_records'))} records · months: {cell(', '.join(months)) or '—'}</p>",
     ]
+    _exc = stats.get("excluded_clients") or {}
+    if _exc.get("names"):
+        parts.append(
+            f"<p class='warn'>Excluding {cell(_exc.get('n_records', 0))} records from "
+            f"client(s) {cell(', '.join(_exc['names']))} "
+            "(<code>TOGOMCP_STATS_EXCLUDE_CLIENTS</code>). Every number below is "
+            "computed without them.</p>"
+        )
 
     # Raw-log download. Sits at the top because it is the escape hatch: every
     # aggregate below is lossy, and the questions worth asking next are usually
@@ -710,15 +1049,20 @@ def render_html(stats: dict[str, Any]) -> str:
         f"Excluded: {cell(trap.get('excluded_pre_mie', 0))} pre-MIE · "
         f"{cell(trap.get('excluded_schema_probe', 0))} schema-probe · "
         f"{cell(trap.get('grammar_errors', 0))} grammar-error (4xx, not MIE traps). "
-        "A non-empty row here is worth a look; verify against the live endpoint before editing.</p>"
+        "A non-empty row here is worth a look; verify against the live endpoint before editing. "
+        "<b>also touched</b> lists other databases the query used predicates from — the trap may "
+        "be in <em>their</em> MIE, not the one the call named.</p>"
     )
     if tcand:
-        parts.append("<table><tr><th>database</th><th>class</th><th>retries</th>"
+        parts.append("<table><tr><th>database</th><th>also touched</th><th>class</th>"
+                     "<th>retries</th>"
                      "<th>first seen</th><th>last seen</th><th>query</th><th>predicates</th></tr>")
         for r in tcand[:50]:
             preds = ", ".join(r.get("predicates", [])[:8])
             parts.append(
-                f"<tr><td>{cell(r['database'])}</td><td>{cell(r['sparql_class'])}</td>"
+                f"<tr><td>{cell(r['database'])}</td>"
+                f"<td class='tag'>{cell(', '.join(r.get('co_databases') or []))}</td>"
+                f"<td>{cell(r['sparql_class'])}</td>"
                 f"<td class='warn'>{cell(r['retries'])}</td><td>{cell(r['first_seen'])}</td>"
                 f"<td>{cell(r['last_seen'])}</td><td class='tag'>{cell(r['query_sha256'])}</td>"
                 f"<td class='tag'>{cell(preds)}</td></tr>"
@@ -743,22 +1087,94 @@ def render_html(stats: dict[str, Any]) -> str:
                      + "".join(f"<td>{cell(sp['classes'].get(c, 0))}</td>" for c in SPARQL_CLASSES)
                      + f"<td>{cell(sp['total'])}</td><td class='warn'>{cell(sp['failures'])}</td></tr></table>")
 
-        parts.append("<h3>Per database</h3><table><tr><th>database</th><th>calls</th>"
-                     "<th>SPARQL</th><th>errors</th><th>empty</th><th>huge</th>"
+        cl = m.get("clients") or []
+        if cl:
+            parts.append("<h3>Per client</h3>")
+            parts.append(
+                "<p class='muted'>Who the traffic is. <b>calls/IP</b> is the "
+                "concentration tell: ~2 is a crowd, several hundred is one "
+                "operator or a sweep. Read this table before reading any number "
+                "above as demand.</p>"
+            )
+            parts.append("<table><tr><th>client</th><th>calls</th><th>IPs</th>"
+                         "<th>calls/IP</th><th>days</th><th>errors</th>"
+                         "<th>top tools</th></tr>")
+            for c in cl[:30]:
+                parts.append(
+                    f"<tr><td>{cell(c['client'])}</td><td>{cell(c['calls'])}</td>"
+                    f"<td>{cell(c['ips'])}</td><td>{cell(c['calls_per_ip'])}</td>"
+                    f"<td>{cell(c['days'])}</td><td>{cell(c['errors'])}</td>"
+                    f"<td class='tag'>{cell(', '.join(c['top_tools']))}</td></tr>"
+                )
+            parts.append("</table>")
+
+        parts.append("<h3>Per database</h3>")
+        parts.append(
+            "<p class='muted'>calls = query + graphs + search + MIE + other. "
+            "<b>query</b> = run_sparql; <b>graphs</b> = get_graph_list; "
+            "<b>search</b> = that database\u2019s wrapper tool "
+            "(SPARQL-backed for ChEMBL, REST elsewhere); <b>MIE</b> = get_MIE_file, "
+            "which reads a bundled YAML and never touches the endpoint. "
+            "errors is over all calls; empty / huge / avg rows are over endpoint "
+            "hits only (query + graphs + search).</p>"
+        )
+        parts.append(
+            "<p class='muted'><b>co-query</b> counts queries that used this "
+            "database\u2019s namespace but were filed under another database "
+            "(they passed a different <code>database=</code>). It is NOT part of "
+            "calls \u2014 one query can credit several databases. Detection is by "
+            "namespace prefix, so databases expressed only in shared vocabularies "
+            "(go, chebi, mondo, reactome, oma, bgee, hgnc, brenda) always read 0 "
+            "here \u2014 undetectable, not unused.</p>"
+        )
+        parts.append(
+            "<p class='muted'><b>IPs</b> is the number of distinct clients "
+            "(hashed source addresses), and it is the column that separates "
+            "demand from a script: 229 calls from 150 IPs is many people, 228 "
+            "calls from 9 IPs is a handful of automated runs. Distinct "
+            "<em>sessions</em> is deliberately not shown \u2014 stateless clients "
+            "open one per call, so it measures transport, not use. Caveat: if "
+            "<code>TOGOMCP_LOG_HASH_SALT</code> is unset the salt is regenerated "
+            "each process, so one client counts once per server restart.</p>"
+        )
+        parts.append("<table><tr><th>database</th><th>calls</th><th>query</th>"
+                     "<th>graphs</th><th>search</th><th>MIE</th><th>other</th>"
+                     "<th>co-query</th><th>IPs</th><th>clients</th>"
+                     "<th>errors</th><th>empty</th><th>huge</th>"
                      "<th>avg rows</th></tr>")
         for db, d in sorted(m["databases"].items(), key=lambda kv: kv[1]["calls"], reverse=True):
             parts.append(
-                f"<tr><td>{cell(db)}</td><td>{cell(d['calls'])}</td><td>{cell(d['sparql'])}</td>"
-                f"<td>{cell(d['errors'])}</td><td>{cell(d['empty'])}</td><td>{cell(d['huge'])}</td>"
-                f"<td>{cell(d['avg_rows'])}</td></tr>"
+                f"<tr><td>{cell(db)}</td><td>{cell(d['calls'])}</td>"
+                + "".join(f"<td>{cell(d.get(k, 0))}</td>" for k in CALL_KINDS)
+                + f"<td>{cell(d.get('co_query', 0))}</td>"
+                + f"<td>{cell(d.get('ips', 0))}</td><td>{cell(d.get('clients', 0))}</td>"
+                + f"<td>{cell(d['errors'])}</td><td>{cell(d['empty'])}</td>"
+                f"<td>{cell(d['huge'])}</td><td>{cell(d['avg_rows'])}</td></tr>"
             )
         parts.append("</table>")
 
-        parts.append("<h3>Per tool</h3><table><tr><th>tool</th><th>calls</th><th>errors</th>"
+        pairs = m.get("co_query_pairs") or []
+        if pairs:
+            parts.append("<h3>Cross-database joins</h3>")
+            parts.append("<p class='muted'>Queries filed under one database that "
+                         "used another\u2019s namespace \u2014 the co-hosted-endpoint "
+                         "work the per-database rows cannot show.</p>")
+            parts.append("<table><tr><th>filed under</th><th>also queried</th>"
+                         "<th>queries</th></tr>")
+            for pr in pairs[:25]:
+                parts.append(
+                    f"<tr><td>{cell(pr['primary'])}</td><td>{cell(pr['co_queried'])}</td>"
+                    f"<td>{cell(pr['queries'])}</td></tr>"
+                )
+            parts.append("</table>")
+
+        parts.append("<h3>Per tool</h3><table><tr><th>tool</th><th>calls</th><th>IPs</th>"
+                     "<th>errors</th>"
                      "<th>error rate</th><th>p50 ms</th><th>p95 ms</th><th>mean ms</th></tr>")
         for tool, t in sorted(m["tools"].items(), key=lambda kv: kv[1]["count"], reverse=True):
             parts.append(
-                f"<tr><td>{cell(tool)}</td><td>{cell(t['count'])}</td><td>{cell(t['errors'])}</td>"
+                f"<tr><td>{cell(tool)}</td><td>{cell(t['count'])}</td>"
+                f"<td>{cell(t.get('ips', 0))}</td><td>{cell(t['errors'])}</td>"
                 f"<td>{cell(t['error_rate'])}</td><td>{cell(t['p50_ms'])}</td>"
                 f"<td>{cell(t['p95_ms'])}</td><td>{cell(t['mean_ms'])}</td></tr>"
             )
