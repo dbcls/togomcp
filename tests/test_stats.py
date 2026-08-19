@@ -84,6 +84,248 @@ def test_database_of():
     assert stats.database_of(_rec(tool="togoid_convertId", args={"ids": "x"}), groups) is None
 
 
+def test_database_of_ignores_ncbi_eutilities_namespace():
+    """NCBI db=pubmed/clinvar/medgen is a FOREIGN namespace that collides with
+    real RDF Portal keys — attributing it merged E-utilities traffic into the
+    RDF rows (pubmed read 3,589 calls against a real 48)."""
+    for arg in ("db", "database", "dbname"):
+        for tool in ("ncbi_esearch", "ncbi_efetch", "ncbi_esummary"):
+            assert stats.database_of(_rec(tool=tool, args={arg: "pubmed"}), {}) is None
+    # get_MIE_file is NOT an NCBI tool: database=pubmed there is the RDF pubmed.
+    assert stats.database_of(_rec(tool="get_MIE_file", args={"database": "pubmed"}), {}) == "pubmed"
+
+
+def test_call_kind_classifies_by_tool_identity_not_transport():
+    """get_graph_list and the ChEMBL search wrappers hit a SPARQL endpoint but
+    are not user queries; get_MIE_file hits no endpoint at all."""
+    assert stats.call_kind(_rec(tool="get_MIE_file", args={"database": "rhea"})) == "mie"
+    graphs = _sparql("ok", db="massbank", rows=3)
+    graphs["tool"] = "get_graph_list"
+    assert stats.call_kind(graphs) == "graphs"
+    chembl = _sparql("ok", db="chembl", rows=3)
+    chembl["tool"] = "search_chembl_molecule"
+    chembl["args"] = {"query": "aspirin"}
+    assert stats.call_kind(chembl) == "search"          # SPARQL-backed, still a wrapper
+    assert stats.call_kind(_rec(tool="search_uniprot_entity", args={"query": "p"})) == "search"
+    assert stats.call_kind(_sparql("ok", db="uniprot", rows=1)) == "query"
+    # run_sparql that failed on its parameters never reached the endpoint
+    assert stats.call_kind(_rec(status="error", args={"sparql_query": "SELECT *"})) == "other"
+
+
+def _shape(*preds):
+    return {"predicates": list(preds), "n_predicates": len(preds), "flags": {}}
+
+
+def test_co_queried_databases_finds_the_hidden_join():
+    """The rhea case: a UniProt-primary query that is really a UniProt-Rhea join
+    on the co-hosted SIB endpoint. rhea's own row read 1 query for 2026-08."""
+    rec = _sparql("ok", db="uniprot", rows=5)
+    rec["extra"]["query_shape"] = _shape("up:enzyme", "rhea:accession", "rhea:equation",
+                                         "rdfs:subClassOf")
+    assert stats.co_queried_databases(rec, "uniprot") == {"rhea"}
+    # the primary never credits itself, and shared vocabularies say nothing
+    assert stats.co_queried_databases(rec, "rhea") == {"uniprot"}
+    assert "rdfs" not in stats.SIGNATURE_PREFIXES
+
+
+def test_co_query_ignores_non_sparql_and_shared_vocabularies():
+    assert stats.co_queried_databases(_rec(tool="get_MIE_file", args={"database": "rhea"})) == set()
+    rec = _sparql("ok", db="chebi", rows=1)
+    rec["extra"]["query_shape"] = _shape("obo:BFO_0000050", "sio:SIO_000008", "rdfs:label")
+    assert stats.co_queried_databases(rec, "chebi") == set()
+    # an endpoint-group primary names the same database, not a second one
+    grp = _sparql("ok", db="togovar", rows=1)
+    grp["extra"]["query_shape"] = _shape("tgvo:hasFrequency")
+    assert stats.co_queried_databases(grp, "togovar (cross-db)") == set()
+
+
+def test_co_query_is_counted_separately_from_calls():
+    rec = _sparql("ok", db="uniprot", rows=5)
+    rec["extra"]["query_shape"] = _shape("up:enzyme", "rhea:accession")
+    agg = stats.aggregate([rec])["by_month"]["2026-06"]
+    dbs = agg["databases"]
+    assert dbs["uniprot"]["calls"] == 1 and dbs["uniprot"]["co_query"] == 0
+    # rhea gets the co-query credit without any call being invented for it
+    assert dbs["rhea"]["co_query"] == 1 and dbs["rhea"]["calls"] == 0
+    assert agg["co_query_pairs"] == [
+        {"primary": "uniprot", "co_queried": "rhea", "queries": 1}
+    ]
+
+
+def test_trap_candidate_carries_co_databases():
+    """A trap in a UniProt-primary query can be a Rhea MIE gap."""
+    rec = _sparql("timeout", db="uniprot", err=True)
+    rec["extra"]["query_shape"] = _shape("up:enzyme", "rhea:equation")
+    rec["extra"]["query_sha256"] = "abc123"
+    trap = stats.mie_trap_candidates([rec])
+    assert trap["candidates"][0]["co_databases"] == ["rhea"]
+
+
+def test_signature_prefixes_are_declared_in_some_mie():
+    """Guards against typos and against a prefix that no database actually uses.
+    Every signature prefix must appear as a PREFIX declaration in the MIE corpus
+    the queries are written from."""
+    import re
+    from pathlib import Path
+
+    mie_dir = Path(stats.__file__).parent / "data" / "mie"
+    declared = set()
+    for path in mie_dir.glob("*.yaml"):
+        declared |= set(re.findall(r"PREFIX\s+([A-Za-z0-9_.-]+):\s*<",
+                                   path.read_text(encoding="utf-8")))
+    missing = sorted(set(stats.SIGNATURE_PREFIXES) - declared)
+    # uniprotkb/glycodm-style client-side variants are allowed; anything else is a typo
+    assert missing == ["uniprotkb"], f"undeclared signature prefixes: {missing}"
+
+
+def test_colliding_prefix_is_resolved_by_local_name():
+    """bacdive/mediadive/taxonomy bind schema: to DSMZ's own namespace while
+    massbank binds it to real schema.org. Mapping the bare prefix either way
+    mis-credits the other (128 massbank vs 10 bacdive records in one month)."""
+    dsmz = _sparql("ok", db="bacdive", rows=3)
+    dsmz["extra"]["query_shape"] = _shape("schema:describesStrain", "schema:Strain",
+                                          "schema:hasGramStain")
+    assert stats.co_queried_databases(dsmz, "mediadive") == {"bacdive"}
+
+    schema_org = _sparql("ok", db="massbank", rows=3)
+    schema_org["extra"]["query_shape"] = _shape("schema:inChIKey", "schema:name")
+    assert stats.co_queried_databases(schema_org, "bacdive") == {"massbank"}
+    assert stats.co_queried_databases(schema_org, "massbank") == set()
+
+    # the bacdive<->mediadive join vocabulary belongs to both, so it credits neither
+    shared = _sparql("ok", db="mediadive", rows=3)
+    shared["extra"]["query_shape"] = _shape("schema:hasBacDiveID", "schema:Strain",
+                                            "schema:partOfMedium")
+    assert stats.co_queried_databases(shared, "mediadive") == set()
+    # ...but one exclusive term is enough to pin the other side of that join
+    joined = _sparql("ok", db="mediadive", rows=3)
+    joined["extra"]["query_shape"] = _shape("schema:hasBacDiveID", "schema:describesStrain")
+    assert stats.co_queried_databases(joined, "mediadive") == {"bacdive"}
+
+    assert "schema" not in stats.SIGNATURE_PREFIXES
+    assert "schema" not in stats._SHARED_PREFIXES
+
+
+def test_ambiguous_prefix_qnames_match_the_mie_corpus():
+    """The exclusive-qname sets are derived from the MIE files; re-derive them so
+    the map fails loudly when a database's vocabulary moves."""
+    import re
+    from collections import defaultdict
+    from pathlib import Path
+
+    mie_dir = Path(stats.__file__).parent / "data" / "mie"
+    for prefix, expected in stats._AMBIGUOUS_PREFIX_QNAMES.items():
+        # trailing (?![<A-Za-z0-9_]) skips prose placeholders like schema:has<Phenotype>
+        qre = re.compile(rf"\b{prefix}:([A-Za-z_][A-Za-z0-9_]*)(?![<A-Za-z0-9_])")
+        owners = defaultdict(set)
+        for path in mie_dir.glob("*.yaml"):
+            for local in set(qre.findall(path.read_text(encoding="utf-8"))):
+                owners[local].add(path.stem)
+        derived = defaultdict(set)
+        for local, dbs in owners.items():
+            if len(dbs) == 1:
+                derived[next(iter(dbs))].add(local)
+        assert {db: set(v) for db, v in expected.items()} == dict(derived), (
+            f"{prefix}: exclusive-qname map is stale vs the MIE corpus"
+        )
+
+
+def test_signature_and_shared_prefixes_are_disjoint():
+    """A prefix cannot be both an ownership signal and a shared vocabulary."""
+    overlap = set(stats.SIGNATURE_PREFIXES) & stats._SHARED_PREFIXES
+    assert not overlap, f"prefix classified both ways: {sorted(overlap)}"
+    ambiguous = set(stats._AMBIGUOUS_PREFIX_QNAMES)
+    assert not (ambiguous & set(stats.SIGNATURE_PREFIXES)), "colliding prefix also mapped whole"
+    assert not (ambiguous & stats._SHARED_PREFIXES), "colliding prefix also called shared"
+
+
+def test_signature_prefixes_name_real_databases():
+    """Every mapped database must exist in the endpoint registry, or the column
+    credits a database nobody can query."""
+    import csv
+    from pathlib import Path
+
+    csv_path = Path(stats.__file__).parent / "data" / "resources" / "endpoints.csv"
+    with open(csv_path, newline="", encoding="utf-8") as fh:
+        known = {row["database"].strip() for row in csv.DictReader(fh)}
+    mapped = set(stats.SIGNATURE_PREFIXES.values()) | {
+        db for by_local in stats._AMBIGUOUS_PREFIX_QNAMES.values() for db in by_local
+    }
+    unknown = sorted(mapped - known)
+    assert not unknown, f"signature prefixes point at unknown databases: {unknown}"
+
+
+def _call(client, ip, **kw):
+    rec = _rec(**kw)
+    rec["ip_hash"] = ip
+    rec["meta"] = {"client": {"name": client, "version": "1"}}
+    return rec
+
+
+def test_reach_counts_distinct_ips_not_sessions():
+    """Distinct ip_hash separates demand from a script; distinct sessions does
+    not (stateless clients open one per call) and is deliberately not reported."""
+    recs = [_call("openai-mcp", f"ip{i}", args={"database": "massbank"}) for i in range(5)]
+    recs += [_call("sweeper", "ipX", args={"database": "rhea"}) for _ in range(20)]
+    m = stats.aggregate(recs)["by_month"]["2026-06"]
+    assert m["databases"]["massbank"]["calls"] == 5
+    assert m["databases"]["massbank"]["ips"] == 5      # five separate clients
+    assert m["databases"]["rhea"]["calls"] == 20
+    assert m["databases"]["rhea"]["ips"] == 1          # one operator, 20 calls
+    assert "sessions" not in m["databases"]["rhea"]
+    assert m["tools"]["run_sparql"]["ips"] == 6
+
+
+def test_client_table_ranks_and_reports_concentration():
+    recs = [_call("openai-mcp", f"ip{i}", args={"database": "pdb"}) for i in range(4)]
+    recs += [_call("harness", "ipH", args={"database": "pdb"}) for _ in range(40)]
+    clients = stats.aggregate(recs)["by_month"]["2026-06"]["clients"]
+    assert [c["client"] for c in clients] == ["harness", "openai-mcp"]
+    assert clients[0]["calls_per_ip"] == 40.0   # one operator
+    assert clients[1]["calls_per_ip"] == 1.0    # a crowd
+    assert clients[0]["top_tools"] == ["run_sparql"]
+    # a record with no advertised client is still counted, not dropped
+    bare = stats.aggregate([_rec(args={"database": "pdb"})])["by_month"]["2026-06"]["clients"]
+    assert bare[0]["client"] == "<unknown>"
+
+
+def test_client_exclusion_is_opt_in_and_reported():
+    recs = [_call("harness", "ipH", args={"database": "pdb"}) for _ in range(9)]
+    recs += [_call("openai-mcp", "ipU", args={"database": "pdb"})]
+    default = stats.aggregate(recs)
+    assert default["by_month"]["2026-06"]["tool_calls"] == 10
+    assert default["excluded_clients"] == {"names": [], "n_records": 0}
+
+    filtered = stats.aggregate(recs, exclude_clients=["harness"])
+    assert filtered["by_month"]["2026-06"]["tool_calls"] == 1
+    assert filtered["excluded_clients"] == {"names": ["harness"], "n_records": 9}
+    assert filtered["n_records"] == 1
+
+
+def test_parse_excluded_clients():
+    assert stats.parse_excluded_clients(" mcp , glyconavi ") == {"mcp", "glyconavi"}
+    assert stats.parse_excluded_clients("") == frozenset()
+    assert stats.parse_excluded_clients(None) == frozenset()
+
+
+def test_search_tool_db_covers_all_wrapper_tools():
+    """Every database-specific wrapper tool must be mapped, or its calls vanish
+    from the per-database table (they carry no ``database`` arg)."""
+    import re
+    from pathlib import Path
+
+    root = Path(stats.__file__).parent
+    registered: set[str] = set()
+    for mod in ("api_tools.py", "chembl.py"):
+        src = (root / mod).read_text(encoding="utf-8")
+        registered |= set(re.findall(r"@mcp\.tool[^\n]*\n(?:@[^\n]*\n)*async def (\w+)", src))
+    assert registered, "tool-registration scan found nothing — did the decorator change?"
+    assert registered <= set(stats._SEARCH_TOOL_DB), (
+        f"unmapped wrapper tools: {sorted(registered - set(stats._SEARCH_TOOL_DB))} "
+        "— add them to stats._SEARCH_TOOL_DB"
+    )
+
+
 def test_aggregate_counts_and_rates():
     recs = [
         _sparql("ok", db="uniprot", rows=30, nbytes=2048),
@@ -111,7 +353,30 @@ def test_aggregate_counts_and_rates():
     assert sp["classes"]["timeout"] == 1
     assert sp["failures"] == 2  # syntax + timeout; empty is not a failure
     assert jun["databases"]["uniprot"]["calls"] == 2  # sparql + search tool
+    assert jun["databases"]["uniprot"]["query"] == 1
+    assert jun["databases"]["uniprot"]["search"] == 1
     assert jun["databases"]["reactome"]["empty"] == 1
+
+
+def test_call_kinds_partition_calls():
+    """calls must be the exact sum of the kind columns — the whole point of the
+    breakdown is that a reader can account for every call in the row."""
+    recs = [
+        _sparql("ok", db="massbank", rows=5),
+        _rec(tool="get_graph_list", args={"database": "massbank"},
+             extra={"endpoint_url": "https://rdfportal.org/sib/sparql",
+                    "sparql_status": "ok", "n_rows": 4}),
+        _rec(tool="get_MIE_file", args={"database": "massbank"}),
+        _rec(tool="get_MIE_file", args={"database": "massbank"}),
+        _rec(tool="search_uniprot_entity", args={"query": "p53"}),
+    ]
+    dbs = stats.aggregate(recs)["by_month"]["2026-06"]["databases"]
+    mb = dbs["massbank"]
+    assert (mb["query"], mb["graphs"], mb["mie"], mb["search"], mb["other"]) == (1, 1, 2, 0, 0)
+    assert mb["calls"] == 4
+    assert mb["sparql"] == 2       # endpoint hits: query + graphs
+    for d in dbs.values():
+        assert sum(d[k] for k in stats.CALL_KINDS) == d["calls"]
 
 
 def test_mie_candidates_ranking():
@@ -145,6 +410,27 @@ def test_render_html_is_wellformed():
     assert html.rstrip().endswith("</html>")
     assert "MIE-improvement candidates" in html
     assert "reactome" in html
+    assert "calls = query + graphs + search + MIE + other" in html
+
+
+def test_client_table_and_exclusion_banner_render():
+    recs = [_call("harness", "ipH", args={"database": "pdb"}) for _ in range(3)]
+    recs += [_call("openai-mcp", "ipU", args={"database": "pdb"})]
+    html = stats.render_html(stats.aggregate(recs))
+    assert "Per client" in html
+    assert "<td>harness</td>" in html
+    assert "TOGOMCP_STATS_EXCLUDE_CLIENTS" not in html   # nothing excluded
+
+    html = stats.render_html(stats.aggregate(recs, exclude_clients=["harness"]))
+    assert "Excluding 3 records from client(s) harness" in html
+
+
+def test_cross_database_joins_table_renders():
+    rec = _sparql("ok", db="uniprot", rows=5)
+    rec["extra"]["query_shape"] = _shape("up:enzyme", "rhea:accession")
+    html = stats.render_html(stats.aggregate([rec]))
+    assert "Cross-database joins" in html
+    assert "<td>rhea</td>" in html
 
 
 def test_sparql_shape_strips_literals():
