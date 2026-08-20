@@ -717,7 +717,12 @@ _STATIC_META: dict[str, Any] = {
 # Salt for hashing client IPs (PII). A stable salt (set TOGOMCP_LOG_HASH_SALT)
 # hashes the same IP identically across restarts within a retention window; an
 # unset salt is randomized per process, so hashes are not linkable across
-# restarts — strictly more private. Raw IPs are never written to the log.
+# restarts — strictly more private.
+#
+# `ip_hash` is written unconditionally and is the field stats.py aggregates on.
+# The RAW address is a separate, opt-in field (`ip`, see TOGOMCP_LOG_RAW_IP on
+# _ToolCallLogger) — the hash is kept alongside it so a log excerpt can be
+# shared or exported with `ip` stripped and still aggregate identically.
 _IP_SALT = os.getenv("TOGOMCP_LOG_HASH_SALT", "").strip() or secrets.token_hex(16)
 
 
@@ -769,11 +774,25 @@ class _ToolCallLogger(_Middleware):
     disabled (the default), in which case on_call_tool short-circuits and adds
     no measurable overhead. SPARQL calls enrich their record via
     _sparql_extra_var (set inside execute_sparql).
+
+    TOGOMCP_LOG_RAW_IP additionally records the client address in the clear, as
+    `ip`, so an abusive caller can actually be identified and blocked. It is
+    off by default and fail-closed on purpose: absent, empty or misspelled all
+    mean OFF, so a deploy-time env-forwarding miss (deploy.sh forwards a FIXED
+    list — see CLAUDE.md) loses the raw address rather than silently leaking
+    one. Turning it on makes the log PII, including everything /stats/log
+    streams; `ip_hash` is unaffected and is written either way.
     """
 
     def __init__(self) -> None:
         log_path = os.getenv("TOGOMCP_QUERY_LOG", "").strip()
         self._enabled = bool(log_path)
+        self._raw_ip = os.getenv("TOGOMCP_LOG_RAW_IP", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
         self._log: logging.Logger | None = None
         if self._enabled:
             try:
@@ -799,13 +818,36 @@ class _ToolCallLogger(_Middleware):
 
     @staticmethod
     def _client_ip() -> str | None:
+        """Client address for the log: the peer as *uvicorn* resolved it.
+
+        Deliberately NOT `X-Forwarded-For` read off the request. uvicorn's
+        ProxyHeadersMiddleware already substitutes the client address from that
+        header — but only when the peer is listed in `forwarded_allow_ips`
+        (main.py), and it walks the chain right-to-left to the first untrusted
+        hop. Reading the header here would skip that check entirely: anyone who
+        can reach the port could name any address they like, which is worthless
+        for the one job a raw IP has (attributing abuse). So: peer only, and let
+        the trust decision stay where it is configured.
+        """
         try:
             req: Request = get_http_request()
         except RuntimeError:
             return None
-        return req.headers.get("X-Forwarded-For") or (
-            req.client.host if req.client else None
-        )
+        return req.client.host if req.client else None
+
+    @staticmethod
+    def _forwarded_for() -> str | None:
+        """Raw X-Forwarded-For chain, verbatim — UNTRUSTED forensic context.
+
+        Caller-supplied and therefore spoofable; it is recorded next to `ip` to
+        show what was claimed, never as a substitute for what was observed.
+        """
+        try:
+            req: Request = get_http_request()
+        except RuntimeError:
+            return None
+        xff = req.headers.get("X-Forwarded-For")
+        return xff[:200] if xff else None
 
     async def on_call_tool(self, context, call_next):
         if not self._enabled:
@@ -830,6 +872,7 @@ class _ToolCallLogger(_Middleware):
             extra = _sparql_extra_var.get()
             _sparql_extra_var.reset(token)
             fctx = context.fastmcp_context
+            client_ip = self._client_ip()
             record: dict[str, Any] = {
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "tool": context.message.name,
@@ -844,9 +887,14 @@ class _ToolCallLogger(_Middleware):
                 ),
                 "client_id": getattr(fctx, "client_id", None) if fctx else None,
                 "transport": getattr(fctx, "transport", None) if fctx else None,
-                "ip_hash": _hash_ip(self._client_ip()),
+                "ip_hash": _hash_ip(client_ip),
                 "meta": {**_STATIC_META, "client": _client_info(fctx)},
             }
+            if self._raw_ip:
+                record["ip"] = client_ip
+                fwd = self._forwarded_for()
+                if fwd:
+                    record["forwarded_for"] = fwd
             if error_class is not None:
                 record["error_class"] = error_class
                 record["error_message"] = error_message
@@ -956,6 +1004,10 @@ async def stats_raw_log(request: Request):
     not read-into-memory: this file grows without bound between rotations.
     The path comes from TOGOMCP_QUERY_LOG only; nothing is caller-supplied, so
     there is no traversal surface.
+
+    NOTE: this streams records verbatim, so under TOGOMCP_LOG_RAW_IP it serves
+    raw client IPs (`ip`) to anyone holding the dashboard credentials. The
+    aggregate views never do. Treat the credentials accordingly.
     """
     creds = _stats_configured()
     if creds is None:

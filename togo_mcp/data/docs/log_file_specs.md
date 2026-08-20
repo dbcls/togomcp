@@ -29,20 +29,38 @@ variables read at process start:
 | `TOGOMCP_QUERY_LOG` | Filesystem path for the JSONL log. **Setting it (non-empty) enables logging.** Unset/empty = disabled, and `on_call_tool` short-circuits with no measurable overhead. Parent directories are created if needed. | unset (disabled) |
 | `TOGOMCP_LOG_QUERY_TEXT` | When truthy (`1`/`true`/`yes`), the raw SPARQL query text is added to `extra.query_text`. Off by default — normally only the hash and structural shape are stored. | off |
 | `TOGOMCP_LOG_HASH_SALT` | Salt for hashing client IPs. A stable salt hashes the same IP identically across restarts (linkable within a retention window); when unset, a fresh random salt is generated per process, so IP hashes are **not** linkable across restarts (strictly more private). | random per process |
+| `TOGOMCP_LOG_RAW_IP` | When truthy (`1`/`true`/`yes`/`on`), the client IP is **also** recorded in the clear as `ip` (and the raw `X-Forwarded-For` chain as `forwarded_for`). Off by default; `ip_hash` is written either way. Fail-closed: absent, empty, or misspelled all mean off. | off |
 
 ## Privacy model
 
-The format is designed so that raw personal or query-content data does not land
-in the log:
+By default the format keeps raw personal and query-content data out of the log.
+One knob deliberately trades that away, and it is stated first because it
+reverses a guarantee earlier versions of this document made unconditionally:
 
-- **Client IPs are never stored raw.** Only `ip_hash` — `sha256("<salt>:<ip>")`
-  truncated to 16 hex chars — is written. See `TOGOMCP_LOG_HASH_SALT` above.
+- **Client IPs are pseudonymous by default, raw only on request.** `ip_hash` —
+  `sha256("<salt>:<ip>")` truncated to 16 hex chars — is always written; see
+  `TOGOMCP_LOG_HASH_SALT` above. The raw address is written as `ip` **only**
+  under the explicit `TOGOMCP_LOG_RAW_IP` opt-in, whose purpose is identifying
+  an abusive caller well enough to block them. With it on, the log is personal
+  data: it needs a retention and access policy, and note that `/stats/log`
+  streams those records verbatim to anyone holding the dashboard credentials.
+  The hash is kept alongside `ip` precisely so an excerpt can be shared with
+  `ip` stripped and still aggregate identically.
+- **What `ip` actually contains.** The peer address as uvicorn's
+  `ProxyHeadersMiddleware` resolved it — i.e. the real client only when the
+  proxy's address is trusted via `forwarded_allow_ips` (`TOGOMCP_FORWARDED_ALLOW_IPS`,
+  see `main.py`); otherwise it is the proxy. The `X-Forwarded-For` header is
+  never read directly for this field: it is caller-supplied and spoofable by
+  anyone who can reach the port, which would make it worthless for attribution.
+  It is recorded separately and verbatim as `forwarded_for` (truncated to 200
+  chars) so the claimed chain can be compared against the observed peer.
 - **SPARQL query text is not stored by default.** Records carry `query_sha256`
   (an identity/dedup key) and `query_shape` (a structural fingerprint with all
   string-literal *contents* stripped — see [Query shape](#query-shape)). Raw
   text appears only under the explicit `TOGOMCP_LOG_QUERY_TEXT` opt-in.
 - **Aggregation only ever counts.** `stats.py` derives categories and tallies;
-  it never emits `args`, `ip_hash`, or query text in its output.
+  it never emits `args`, `ip`/`ip_hash`, or query text in its output — the
+  per-client "IPs" column is a *count* of distinct addresses, never a list.
 
 ## Record schema
 
@@ -63,7 +81,9 @@ context under stdio transport).
 | `origin_request_id` | string | *(nullable)* | Originating request id (for nested/forwarded calls). |
 | `client_id` | string | *(nullable)* | FastMCP client id. |
 | `transport` | string | *(nullable)* | Transport in use (e.g. `http`, `stdio`). |
-| `ip_hash` | string | *(nullable)* | Salted, truncated SHA-256 of the client IP (from `X-Forwarded-For`, else peer host). `null` when there is no HTTP request context. |
+| `ip_hash` | string | *(nullable)* | Salted, truncated SHA-256 of the client IP. `null` when there is no HTTP request context (e.g. stdio). |
+| `ip` | string | *(nullable)*, opt-in | Raw client IP — present only under `TOGOMCP_LOG_RAW_IP`. Same source as `ip_hash`: the peer address as resolved by uvicorn's proxy-header handling. |
+| `forwarded_for` | string | opt-in, when sent | Raw `X-Forwarded-For` header, verbatim, truncated to 200 chars. **Untrusted** — caller-supplied context for `ip`, not a substitute for it. Present only under `TOGOMCP_LOG_RAW_IP`, and only when the header was sent. |
 | `meta` | object | always | Server/build metadata — see [`meta`](#meta-object). |
 | `error_class` | string | on error only | Exception class name — **in practice almost always `ToolError`**. FastMCP wraps a tool's raised exception before it reaches the logging middleware, so the original class (e.g. `ValueError`) is not preserved here. To distinguish an intentional error from a genuine bug, parse `error_message`, not this field. |
 | `error_message` | string | on error only | Exception message, truncated to 500 chars. Carries the FastMCP wrapper prefix, e.g. `Error calling tool 'run_sparql': …`. |
@@ -134,6 +154,10 @@ This is the signal MIE-improvement analysis needs (e.g. "reactome queries using
 
 A successful SPARQL call:
 
+The first example has `TOGOMCP_LOG_RAW_IP` on, so it carries `ip` /
+`forwarded_for`; the second is the default configuration, where neither field
+exists.
+
 ```json
 {
   "ts": "2026-07-07T00:00:00.123456+00:00",
@@ -145,6 +169,8 @@ A successful SPARQL call:
   "session_id": "…", "request_id": "…", "origin_request_id": null,
   "client_id": "…", "transport": "http",
   "ip_hash": "9f3a1c0b7e2d4a56",
+  "ip": "203.0.113.7",
+  "forwarded_for": "203.0.113.7, 10.0.2.100",
   "meta": {
     "server_version": "2.4.0",
     "usage_guide_version": "v6",

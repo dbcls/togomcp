@@ -557,3 +557,35 @@ def test_trap_section_renders():
     html = stats.render_html(stats.aggregate(recs))
     assert "MIE traps to fix (filtered)" in html
     assert "mesh" in html
+
+
+def test_raw_ip_field_aggregates_like_ip_hash():
+    """Records carrying only the raw `ip` (TOGOMCP_LOG_RAW_IP) must aggregate
+    identically to records carrying only `ip_hash` — the reader unions the two
+    fields, so turning the knob on or off mid-retention does not split reach
+    counts across the boundary."""
+    hashed = [_call("openai-mcp", f"ip{i}", args={"database": "pdb"}) for i in range(3)]
+    raw = []
+    for i in range(3):
+        rec = _call("openai-mcp", None, args={"database": "pdb"})
+        del rec["ip_hash"]
+        rec["ip"] = f"ip{i}"
+        raw.append(rec)
+
+    from_hash = stats.aggregate(hashed)["by_month"]["2026-06"]
+    from_raw = stats.aggregate(raw)["by_month"]["2026-06"]
+    assert from_raw["databases"]["pdb"]["ips"] == from_hash["databases"]["pdb"]["ips"] == 3
+    assert from_raw["clients"][0]["ips"] == from_hash["clients"][0]["ips"] == 3
+
+
+def test_stats_output_never_contains_a_raw_ip():
+    """The dashboard reports reach as a COUNT. A raw address must not survive
+    into any aggregate, whatever the collection layer wrote."""
+    recs = [_call("openai-mcp", None, args={"database": "pdb"}) for _ in range(2)]
+    for i, rec in enumerate(recs):
+        del rec["ip_hash"]
+        rec["ip"] = f"198.51.100.{i}"
+        rec["forwarded_for"] = f"198.51.100.{i}, 10.0.2.100"
+    out = json.dumps(stats.aggregate(recs))
+    assert "198.51.100." not in out
+    assert "forwarded_for" not in out

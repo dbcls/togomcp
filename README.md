@@ -136,6 +136,13 @@ value for every caller, unless `TOGOMCP_FORWARDED_ALLOW_IPS` lets uvicorn trust
 `X-Forwarded-For`. Useful for benchmarking, MIE iteration,
 and reconstructing multi-tool sequences.
 
+The IP is recorded as a salted hash (`ip_hash`) by default. Set
+`TOGOMCP_LOG_RAW_IP=1` to *also* record it in the clear as `ip`, which is what
+lets an abusive caller be identified and blocked — at the cost of making the log
+personal data (and `/stats/log` serves it verbatim to whoever holds the dashboard
+credentials). Full field-by-field reference, including the privacy model, is in
+[`log_file_specs.md`](togo_mcp/data/docs/log_file_specs.md).
+
 **On/off is a single env var**: `TOGOMCP_QUERY_LOG`. Unset/empty = disabled
 (zero-overhead default). Set to a writable file path to enable.
 Output uses `RotatingFileHandler` (50 MB × 10, ~500 MB cap).
