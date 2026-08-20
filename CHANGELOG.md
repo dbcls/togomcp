@@ -13,6 +13,79 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.7.8] - 2026-08-20
+
+Three field reports, no tool, parameter, or return shape changed — two MIE files and one docstring.
+The common shape is a query that runs, returns rows, and is wrong or fragile in a way nothing signals.
+Worth noting for anyone triaging the next one: **two of the three reports named the wrong cause**, and
+the investigation only found the real one because the claim was reproduced rather than accepted. The
+ChEMBL report was right. The UniProt performance report blamed a `FILTER(CONTAINS())` that turned out to
+be the smaller half of the problem — a missing `FROM` pin was the larger. The `search_uniprot_entity`
+report described a silent full-text fallback that does not exist; the tool was working, its docstring was
+incomplete, and the results that looked wrong were correct. Deliberately no `whatsnew` marker: none of
+this is visible to a user who is not writing SPARQL or tool queries by hand.
+
+### Fixed
+
+- **`chembl.yaml` did not warn that one UniProt accession maps to SEVERAL ChEMBL targets of different
+  `cco:targetType` — so the obvious `?target a cco:SingleProtein` silently returns a fraction of the
+  answer.** ChEMBL curates a mechanism onto whichever target entity the curator judged right, and that is
+  frequently *not* the single protein: P10253's VOGLIBOSE and CELGOSIVIR hang off the PROTEIN FAMILY
+  "Alpha glucosidase", and P18505 (GABA-A β1) has **no** mechanism on its single-protein target at all —
+  all 69 of its drugs, the benzodiazepines and anaesthetics among them, sit on PROTEIN COMPLEX / PROTEIN
+  COMPLEX GROUP targets. Measured 2026-08-20: SINGLE PROTEIN carries only 4,948 of 6,990 mechanisms
+  (70.8%), so the type pin discards 2,042 of them, and 1,974 of the 12,253 UniProt-linked accessions
+  (16.1%) map to more than one target type. There is no error and no empty result — just a short answer,
+  which is what makes it worth a file entry rather than a docstring line.
+
+  A new verified example, **`moa_target_types`**, carries the positive route: bind `cco:targetType` as a
+  returned column instead of pinning an `rdf:type` class. That works because `cco:targetType` is on all
+  17,803 Target entities and on **zero** TargetComponents, so it admits every target kind while still
+  keeping components out of `?target` — which matters, because simply deleting the type pin is the wrong
+  fix: `cco:hasProteinClassification` and `cco:organismName` are carried by TargetComponents too. There is
+  also no `cco:Target` umbrella class to pin instead (`?t a cco:Target` returns 0 rows), so an `rdf:type`
+  constraint can only ever name one kind. On the example's three accessions the query returns 143 rows /
+  76 molecules; with the pin, 5 rows / 5 molecules.
+
+- **The same trap was live in two existing examples, and both now say so.** `class_enum` returns 29 of the
+  48 typed human phosphodiesterase targets — the families (including "Phosphodiesterase 4"), selectivity
+  groups, protein-protein interactions, the complex and the chimera all carry the same classification IRI
+  and were being dropped. `moa_integration`'s pin is a deliberate narrowing and stays, but now records what
+  it omits and points at `moa_target_types`. Following the placement rule in the MIE spec, the finding is
+  filed as a worked example plus `traps_avoided` lines rather than a `global_gotchas` paragraph: it has a
+  concrete query that avoids it, and a query an agent can copy is worth more than prose it must translate.
+
+- **`uniprot.yaml`'s `sequence_mass` example was fragile under extension, and the cause was not the one it
+  looked like.** The example selected the canonical isoform with `FILTER(CONTAINS(STR(?seq), "/P01308-1"))`
+  and carried **no `FROM` pin** — so it ran against the union of all 63 graphs on the SIB endpoint, OMA's
+  584M triples included. Alone it returned in 0.19s; bolt on two `OPTIONAL`s and it did not finish. The 2×2
+  measured 2026-08-20 (`OPTIONAL`s on `rdfs:seeAlso`/`up:database` and `up:classifiedWith`/`rdfs:label`):
+  unpinned `FILTER` form **>200s, no result**; unpinned direct-IRI form **>200s** as well; pinned `FILTER`
+  form **5.6s**; pinned direct-IRI form **~1.5s**. So the missing pin — which the file's own
+  `union_inflation` gotcha already prescribes — was the larger half, and naming the IRI removes the
+  remaining ~4×. The example now pins the graph and states `isoforms/P01308-1` directly: no `?seq` variable,
+  no post-filter, 0.4s standalone.
+
+  Three findings from verifying the replacement are recorded as `traps_avoided` rather than left implicit.
+  `isoforms/ACC-1` is **not** universal — 2,985 of 3,000 sampled reviewed human entries have it, and the
+  rest start at `-2`, `-3` or `-5` because the canonical was merged or demoted, so a direct-IRI lookup that
+  returns 0 rows needs the accession-scoped fallback. The cross-accession trap the example already warned
+  about is not a one-off: O94854 hangs five `Q9UPN3-*` isoform nodes off `up:sequence` and has no
+  `O94854-1` node at all. And every sequence node is typed **both** `up:Simple_Sequence` and
+  `up:External_Sequence`, so binding `?seq a ?class` doubles the rows.
+
+- **`search_uniprot_entity`'s docstring never mentioned the `go` field, which reads as a silent failure when
+  it is not one.** A `go:0043202` query returns proteins that look unrelated to lysosomes (keratocan,
+  osteomodulin, syndecan-3), and with `go` absent from the documented field list the natural conclusion is
+  that the tool accepted an unsupported field and fell back to full text. It does not: all three proteins
+  genuinely carry `GO:0043202` in UniProt's own RDF (confirmed by SPARQL), and an unknown field name is
+  rejected upstream with HTTP 400 (`'go_id' is not a valid search field`), surfacing as this tool's
+  documented `"Error:"` string. The docstring now documents `go` along with the two ways it *can* mislead —
+  the ID must be zero-padded to 7 digits (`go:43202` is a valid field with an unmatchable value: 0 rows,
+  HTTP 200), and the match includes GO **descendants** (192 reviewed entries carry GO:0043202 directly, 214
+  once its two children are counted). A new warning at the top of the docstring states the actual failure
+  mode: a bad *field name* errors, a bad *value* is what fails silently.
+
 ## [2.7.7] - 2026-08-20
 
 Logging release: the client IP can now be recorded in the clear, so an abusive caller can be
@@ -1648,7 +1721,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.7...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.8...HEAD
+[2.7.8]: https://github.com/dbcls/togomcp/compare/v2.7.7...v2.7.8
 [2.7.7]: https://github.com/dbcls/togomcp/compare/v2.7.6...v2.7.7
 [2.7.6]: https://github.com/dbcls/togomcp/compare/v2.7.5...v2.7.6
 [2.7.5]: https://github.com/dbcls/togomcp/compare/v2.7.4...v2.7.5

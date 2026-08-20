@@ -197,6 +197,13 @@ async def search_uniprot_entity(
        dropped and have no effect — express such filters inside the Solr
        query string instead (e.g., `organism_id:9606 AND reviewed:true`).
 
+    ⚠️ An unrecognised FIELD NAME *inside* the query string is not silently
+       ignored: UniProt rejects it (HTTP 400, "'taxon' is not a valid search
+       field") and this tool returns the "Error:" string described below.
+       Common wrong guesses that fail this way: `taxon`, `organism`, `species`,
+       `go_id`. What CAN fail silently is a valid field given an ill-formed
+       value — it returns 0 rows, or rows you did not expect, with HTTP 200.
+
     The search string can be passed as any of: `query` (canonical),
     `search`, `term`, `keyword`, `keywords`, `search_term`, or `name`.
 
@@ -246,6 +253,17 @@ async def search_uniprot_entity(
             Functional annotation:
               keyword            UniProt keyword name (e.g., "keyword:Kinase")
               keyword_id         UniProt keyword ID (e.g., "keyword_id:KW-0418")
+              go                 Gene Ontology term, by ID or by term name
+                                 (e.g., "go:0043202", 'go:"lysosomal lumen"').
+                                 TWO behaviours to know: (1) the ID must be
+                                 zero-padded to 7 digits — "go:43202" is a VALID
+                                 field with an unmatchable value, so it returns 0
+                                 rows and no error; (2) the match includes the
+                                 term's GO DESCENDANTS, so "go:0043202" also
+                                 returns proteins annotated only to its children
+                                 (acrosomal lumen, endolysosome lumen) — 192
+                                 reviewed entries carry the term directly, 214
+                                 once descendants are counted (2026-08-20).
               function           Function free-text annotation
               family             Protein family (e.g., "family:globin")
               organelle          Subcellular organelle (e.g., "organelle:chloroplast")

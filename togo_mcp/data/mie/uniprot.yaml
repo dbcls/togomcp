@@ -90,24 +90,30 @@ global_gotchas:                    # the few that bite ANY query — verified 20
 #    would otherwise be written four times over. `traps_avoided` are the inline, query-specific warnings. ──
 examples:
   - id: sequence_mass
-    intent: amino-acid sequence + mass of a protein (up:sequence -> Simple_Sequence -> rdf:value)
+    intent: amino-acid sequence + mass of a protein, selected by naming the canonical isoform IRI
     question: "What is the canonical amino-acid sequence and mass of human insulin (P01308)?"
     complexity: basic
     sparql: |
       PREFIX up: <http://purl.uniprot.org/core/>
       PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+      PREFIX isoform: <http://purl.uniprot.org/isoforms/>
       PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
       SELECT ?sequence ?mass (STRLEN(?sequence) AS ?length)
+      FROM <http://sparql.uniprot.org/uniprot>        # load-bearing, not decoration — see traps_avoided
       WHERE {
-        VALUES ?protein { uniprot:P01308 }
-        ?protein up:sequence ?seq .
-        ?seq a up:Simple_Sequence ; rdf:value ?sequence ; up:mass ?mass .
-        FILTER(CONTAINS(STR(?seq), "/P01308-1"))   # pin the canonical isoform — see trap
+        # The canonical sequence node is NAMED <isoforms/ACC-1>. State it as an IRI instead of binding
+        # ?seq and testing the string afterwards: both legs stay index-resolved, nothing is post-filtered.
+        uniprot:P01308 up:sequence isoform:P01308-1 .
+        isoform:P01308-1 rdf:value ?sequence ; up:mass ?mass .
       }
-    verified: {result_rows: 1, mass: 11981, length: 110, date: "2026-07-29"}
-    teaches: "up:sequence -> up:Simple_Sequence -> rdf:value carries the letters; up:mass carries the Da."
+    verified: {result_rows: 1, mass: 11981, length: 110, date: "2026-08-20", runtime: "0.4s",
+               under_extension: "with two OPTIONALs bolted on (rdfs:seeAlso/up:database and up:classifiedWith/rdfs:label) it returns 918 rows in 1.0\u20131.5s; the previous FILTER(CONTAINS)+unpinned form did not finish within 200s"}
+    teaches: "up:sequence \u2192 the isoform node \u2192 rdf:value carries the letters, up:mass the Da. For a known protein, name the isoform IRI: the canonical node for accession ACC is isoforms/ACC-1 in 2,985 of 3,000 sampled reviewed human entries (2026-08-20), so the lookup needs no ?seq variable and no string test at all."
     traps_avoided:
-      - "up:sequence on P01308 ALSO returns the INS-IGF2 readthrough isoform (isoforms/F8WCM5-1, 200 aa) typed Simple_Sequence — the naive query returns 2 sequences. Pin the accession's own -1 isoform IRI to get the canonical."
+      - "up:sequence on P01308 ALSO returns isoforms/F8WCM5-1 \u2014 the 200-aa INS-IGF2 readthrough, which belongs to a DIFFERENT accession \u2014 so a bare `?protein up:sequence ?seq` yields 2 sequences. Not a one-off: O94854 hangs five Q9UPN3-* isoform nodes off up:sequence and has no O94854-1 node at all."
+      - "Do NOT select the isoform with FILTER(CONTAINS(STR(?seq), \"/P01308-1\")). It passes alone (1.1s pinned) but it is a post-filter over whatever ?seq bound, so it does not survive being extended \u2014 and the query it was written in had no FROM. Measured 2026-08-20 with the two OPTIONALs above: unpinned FILTER form >200s (no result), unpinned direct-IRI form >200s too, pinned FILTER form 5.6s, this form ~1.5s. The FROM pin is the larger half of the fix (gotcha union_inflation); naming the IRI is what removes the remaining 4\u00d7."
+      - "isoforms/ACC-1 is not universal: ~0.5% of entries have no -1 node because the canonical was merged or demoted (Q9Y2K2 starts at -5, Q12955 at -3, Q8N7W2 at -2). If a direct-IRI lookup returns 0 rows, run `?p up:sequence ?seq` once and read the real node name, or scope by accession instead of by number: FILTER(STRSTARTS(STR(?seq), \"http://purl.uniprot.org/isoforms/P01308-\"))."
+      - "Every sequence node is typed BOTH up:Simple_Sequence AND up:External_Sequence, so a `?seq a ?class` binding doubles the rows. Naming the IRI avoids the type triple entirely; a fixed `?seq a up:Simple_Sequence` is safe but buys nothing here."
 
   - id: go_function
     intent: proteins by GO molecular-function term (OBO IRI namespace)

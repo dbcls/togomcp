@@ -101,6 +101,7 @@ examples:
     traps_avoided:
       - "Filter organism with cco:organismName \"Homo sapiens\" (typed predicate). Combining a cco:taxonomy IRI with the classification IRI times out (gotcha taxonomy_classification_timeout)."
       - "The naive route — bif:contains 'phosphodiesterase' on rdfs:label — misses orthologs/renamed entries and mixes non-target entities; the classification IRI is the complete set."
+      - "`a cco:SingleProtein` NARROWS this to single proteins by design — 29 of the 48 typed human PDE targets. Families, complexes, selectivity groups, PPIs and chimeras carry the same classification IRI (PROTEIN FAMILY 8 incl. 'Phosphodiesterase 4', SELECTIVITY GROUP 5, PROTEIN-PROTEIN INTERACTION 4, PROTEIN COMPLEX 1, CHIMERIC PROTEIN 1). For all 48, swap the pin for `cco:targetType ?targetType` — do NOT simply delete it: cco:hasProteinClassification + cco:organismName also sit on TargetComponents, so an unconstrained ?target matches 80 entities, 32 of them components. See example moa_target_types."
 
   - id: disease_drugs
     intent: enumerate ALL drugs indicated for a disease via its MeSH descriptor IRI (the set-level indication route)
@@ -256,6 +257,40 @@ examples:
       - "Do NOT count via ?activity cco:hasAssay/cco:hasMolecule — that fans out over 21M activities and TIMES OUT at 60s even for a COUNT. The Mechanism link is the curated, bounded path."
       - "Do NOT scope a comprehensive count by molecule/target IRIs sampled from an exploratory query (circular reasoning) — scope by the classification IRI."
 
+  - id: moa_target_types          # the TARGET-side twin of molecule_name_resolve's biologic trap
+    intent: every drug with a curated mechanism against a protein — across ALL target entities that protein sits in
+    question: "Which drugs have a curated mechanism of action against the human proteins P10253, P18505 and P47869?"
+    complexity: intermediate
+    sparql: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      SELECT ?acc ?targetType ?targetLabel ?moleculeLabel ?actionType
+      FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+      WHERE {
+        VALUES ?up { <http://purl.uniprot.org/uniprot/P10253>     # lysosomal alpha-glucosidase (GAA)
+                     <http://purl.uniprot.org/uniprot/P18505>     # GABA-A receptor subunit beta-1
+                     <http://purl.uniprot.org/uniprot/P47869> }   # GABA-A receptor subunit alpha-2
+        # NO `?target a cco:SingleProtein` pin — it would silently drop most of this answer (traps_avoided).
+        # cco:targetType is the safe discriminator: all 17,803 Target entities carry it and 0 TargetComponents
+        # do, so binding it admits EVERY target kind while still keeping components out of ?target.
+        ?target cco:hasTargetComponent/skos:exactMatch ?up ;
+                rdfs:label ?targetLabel ;
+                cco:targetType ?targetType .
+        ?mech a cco:Mechanism ; cco:hasTarget ?target ;
+              cco:hasMolecule ?mol ; cco:mechanismActionType ?actionType .
+        ?mol rdfs:label ?moleculeLabel .
+        BIND(STRAFTER(STR(?up), "uniprot/") AS ?acc)
+      }
+      ORDER BY ?acc ?targetType ?moleculeLabel
+    verified: {result_rows: 143, distinct_molecules: 76, distinct_targets: 6, date: "2026-08-20",
+               first_row: "P10253 | PROTEIN FAMILY | Alpha glucosidase | CELGOSIVIR | INHIBITOR",
+               pinned_variant: "adding `?target a cco:SingleProtein` returns 5 rows / 5 molecules"}
+    teaches: "ONE UniProt accession maps to SEVERAL ChEMBL target entities of different cco:targetType (SINGLE PROTEIN, PROTEIN FAMILY, PROTEIN COMPLEX, PROTEIN COMPLEX GROUP, SELECTIVITY GROUP, PROTEIN-PROTEIN INTERACTION, CHIMERIC PROTEIN), and the curated cco:Mechanism hangs off whichever entity the curator judged right — frequently NOT the single protein. Bind cco:targetType as a returned COLUMN instead of pinning an rdf:type class, then filter it afterwards only if you genuinely want one kind."
+    traps_avoided:
+      - "`?target a cco:SingleProtein` DROPS the family/complex mechanisms SILENTLY — no error, just a short answer. Verified 2026-08-20: this query returns 143 rows / 76 molecules; with the pin, 5 rows / 5 molecules. P10253 loses VOGLIBOSE and CELGOSIVIR (their MoA target is the PROTEIN FAMILY 'Alpha glucosidase', not the SINGLE PROTEIN 'Lysosomal alpha-glucosidase'), and P18505 collapses to ZERO — all 69 of its drugs (zolpidem, diazepam, propofol, the benzodiazepines …) hang off PROTEIN COMPLEX / PROTEIN COMPLEX GROUP targets. Database-wide the pin discards 2,042 of 6,990 mechanisms: SINGLE PROTEIN carries only 4,948 (70.8%), then PROTEIN FAMILY 755, PROTEIN COMPLEX 371, PROTEIN COMPLEX GROUP 297, NUCLEIC-ACID 231, and 13 rarer kinds. 1,974 of the 12,253 UniProt-linked accessions (16.1%) map to more than one target type."
+      - "There is NO cco:Target umbrella class to pin instead — `?t a cco:Target` returns 0 rows; only the leaf classes (cco:SingleProtein / cco:ProteinFamily / cco:ProteinComplex / …) are asserted, one per target. An rdf:type pin can therefore only ever name ONE kind."
+      - "Do not fix this by deleting the type constraint outright: cco:hasProteinClassification and cco:organismName are ALSO carried by cco:TargetComponent entities, which would then contaminate ?target (see example class_enum for the measured contamination). cco:targetType is what separates Targets from components."
+
   - id: moa_integration
     intent: multi-entity integration — disease indication → molecule → mechanism → target in one query
     question: "For late-stage Parkinson disease drugs, what are their mechanisms and human protein targets?"
@@ -279,6 +314,8 @@ examples:
       LIMIT 50
     verified: {result_rows: 50, date: "2026-07-22", first_row: "AMPRELOXETINE → Sodium-dependent noradrenaline transporter (INHIBITOR, phase 3)"}
     teaches: "Indication (cco:hasMesh) and mechanism (cco:Mechanism → cco:mechanismActionType + cco:hasTarget) join on the shared ?molecule. All four filter dimensions are typed predicates — no text search anywhere."
+    traps_avoided:
+      - "The `a cco:SingleProtein` pin here is a deliberate narrowing to human single proteins, and it silently omits any mechanism curated onto a PROTEIN FAMILY / PROTEIN COMPLEX target. For the complete per-protein drug set, use the cco:targetType idiom in example moa_target_types."
 
   - id: xdb_chebi                  # ELEVATED cross_db
     intent: "cross-DB: ChEMBL approved drugs → ChEBI chemical structure (formula, mass) via moleculeXref + IRI transform"
