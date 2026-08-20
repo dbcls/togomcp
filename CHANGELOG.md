@@ -13,6 +13,36 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Fixed
+
+- **`chembl.yaml` did not warn that one UniProt accession maps to SEVERAL ChEMBL targets of different
+  `cco:targetType` — so the obvious `?target a cco:SingleProtein` silently returns a fraction of the
+  answer.** ChEMBL curates a mechanism onto whichever target entity the curator judged right, and that is
+  frequently *not* the single protein: P10253's VOGLIBOSE and CELGOSIVIR hang off the PROTEIN FAMILY
+  "Alpha glucosidase", and P18505 (GABA-A β1) has **no** mechanism on its single-protein target at all —
+  all 69 of its drugs, the benzodiazepines and anaesthetics among them, sit on PROTEIN COMPLEX / PROTEIN
+  COMPLEX GROUP targets. Measured 2026-08-20: SINGLE PROTEIN carries only 4,948 of 6,990 mechanisms
+  (70.8%), so the type pin discards 2,042 of them, and 1,974 of the 12,253 UniProt-linked accessions
+  (16.1%) map to more than one target type. There is no error and no empty result — just a short answer,
+  which is what makes it worth a file entry rather than a docstring line.
+
+  A new verified example, **`moa_target_types`**, carries the positive route: bind `cco:targetType` as a
+  returned column instead of pinning an `rdf:type` class. That works because `cco:targetType` is on all
+  17,803 Target entities and on **zero** TargetComponents, so it admits every target kind while still
+  keeping components out of `?target` — which matters, because simply deleting the type pin is the wrong
+  fix: `cco:hasProteinClassification` and `cco:organismName` are carried by TargetComponents too. There is
+  also no `cco:Target` umbrella class to pin instead (`?t a cco:Target` returns 0 rows), so an `rdf:type`
+  constraint can only ever name one kind. On the example's three accessions the query returns 143 rows /
+  76 molecules; with the pin, 5 rows / 5 molecules.
+
+- **The same trap was live in two existing examples, and both now say so.** `class_enum` returns 29 of the
+  48 typed human phosphodiesterase targets — the families (including "Phosphodiesterase 4"), selectivity
+  groups, protein-protein interactions, the complex and the chimera all carry the same classification IRI
+  and were being dropped. `moa_integration`'s pin is a deliberate narrowing and stays, but now records what
+  it omits and points at `moa_target_types`. Following the placement rule in the MIE spec, the finding is
+  filed as a worked example plus `traps_avoided` lines rather than a `global_gotchas` paragraph: it has a
+  concrete query that avoids it, and a query an agent can copy is worth more than prose it must translate.
+
 ## [2.7.7] - 2026-08-20
 
 Logging release: the client IP can now be recorded in the clear, so an abusive caller can be
