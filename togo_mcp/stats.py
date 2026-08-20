@@ -7,10 +7,14 @@ MCP server.
 
 Privacy: aggregation only ever *counts*. Raw ``args``, ``ip``, and query text
 never appear in any output produced here — only derived categories and tallies.
+That holds even when the log itself carries raw client IPs (``TOGOMCP_LOG_RAW_IP``):
+the reach column is ``len(distinct addresses)``, never the addresses. Reading a
+raw address is what ``/stats/log`` is for.
 
 What the collection layer records today (per JSONL line):
   ts, tool, args, status (ok|error), elapsed_ms, session_id/request_id/...,
-  ip, error_class, error_message, and for SPARQL an ``extra`` dict with
+  ip_hash (plus raw ip when opted in), error_class, error_message, and for
+  SPARQL an ``extra`` dict with
   endpoint_url, query_sha256, sparql_status (ok|timeout|endpoint_unresponsive|
   pool_exhausted|network_error|http_4xx|http_5xx|http_gateway), http_code,
   n_bytes, n_rows, and — when the liveness probe ran — liveness_probe

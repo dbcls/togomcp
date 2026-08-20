@@ -34,11 +34,14 @@ def _allowed_hosts() -> list[str]:
 #   172.16.0.0/12  Docker/Compose bridge range (compose.yaml).
 # Getting this wrong is silent: the header is dropped, not rejected.
 #
-# NOTE on why this is not just "*": server.py records the peer address (hashed) in
-# the tool-call log. On the rootless-slirp4netns path that field is ALREADY constant
-# — every client arrives as 10.0.2.100 — so there the tight list buys nothing over
-# "*", and the real protection is that only the proxy can reach the published port.
-# It still matters on the rootful/Compose paths, where the peer is the true client.
+# NOTE on why this is not just "*": server.py records the peer address in the
+# tool-call log — hashed as `ip_hash` always, and in the clear as `ip` under
+# TOGOMCP_LOG_RAW_IP. That address is whatever uvicorn's ProxyHeadersMiddleware
+# resolved, which is the REAL client only when the peer is trusted here; for an
+# untrusted peer the X-Forwarded-For chain is ignored and the proxy itself is
+# recorded. So this list is what decides whether the logged IP can attribute
+# abuse at all — "*" would let any caller able to reach the port write any
+# address it liked into the log.
 # Override via TOGOMCP_FORWARDED_ALLOW_IPS (comma-separated; addresses and CIDR).
 _DEFAULT_FORWARDED_ALLOW_IPS = "127.0.0.1,::1,10.0.2.0/24,10.88.0.0/16,172.16.0.0/12"
 

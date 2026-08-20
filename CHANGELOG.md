@@ -13,6 +13,52 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.7.7] - 2026-08-20
+
+Logging release: the client IP can now be recorded in the clear, so an abusive caller can be
+identified and blocked rather than merely counted. **No tool, parameter, or return shape changed** —
+this is a patch against the tool surface, which is the contract semver applies to here. The change
+that matters most is the one under *Fixed*: the address the log recorded was caller-supplied and
+therefore spoofable, which was survivable while it was only ever hashed and is not survivable once
+it is meant to identify someone.
+
+### Added
+
+- **`TOGOMCP_LOG_RAW_IP`: record the client IP in the clear, for abuse attribution.** Off by
+  default. When set (`1`/`true`/`yes`/`on`), each tool-call record gains an `ip` field carrying
+  the raw client address alongside the existing `ip_hash`, plus `forwarded_for` — the raw,
+  untrusted `X-Forwarded-For` chain, kept verbatim next to the observed peer so the two can be
+  compared. **This reverses a guarantee `log_file_specs.md` previously made unconditionally**
+  ("client IPs are never stored raw"); that document's privacy model has been rewritten rather
+  than patched, and now states the trade explicitly: with the knob on, the log is personal data
+  and `/stats/log` streams it verbatim to whoever holds the dashboard credentials. The knob is
+  fail-closed — absent, empty, or misspelled all mean off — so a `deploy.sh` env-forwarding miss
+  loses the raw address instead of silently leaking one. Wired into all three places a knob must
+  appear (`compose.yaml`, `.env.example`, `deploy.sh`'s forwarded list).
+
+  `ip_hash` is still written unconditionally and remains what `/stats` aggregates on, so an
+  excerpt can be shared with `ip` stripped and still aggregate identically. The dashboard is
+  unchanged: reach is a *count* of distinct addresses, never a list, and a regression test now
+  pins that no raw address can reach any aggregate.
+
+### Fixed
+
+- **The logged client IP was the caller's `X-Forwarded-For` header, not the peer — i.e. spoofable.**
+  The middleware read the header directly, ahead of `request.client.host`, which skipped uvicorn's
+  `ProxyHeadersMiddleware` entirely: that middleware substitutes the header into the peer address
+  *only* for peers trusted via `forwarded_allow_ips`, walking the chain right-to-left to the first
+  untrusted hop. Reading it ourselves meant anyone able to reach the port could write any address
+  they liked into the log, and that the stored value was a comma-separated *chain* rather than an
+  address. Both were invisible while the field was only ever hashed; neither is survivable once the
+  value is meant to identify someone. The middleware now records the peer as uvicorn resolved it,
+  leaving the trust decision where it is configured. On the production path (rootless podman, peer
+  `10.0.2.100`, inside the default allow list) uvicorn has already substituted the forwarded client
+  into that peer, so this yields a strictly better value than before.
+
+  One consequence for anyone reading logs across the change: `ip_hash` was previously computed over
+  the *header string* and is now computed over the resolved address, so the same client hashes
+  differently on either side of the boundary. Reach counts spanning it can double-count a client.
+
 ## [2.7.6] - 2026-08-19
 
 Usage-analysis release: the `/stats` dashboard was reporting numbers that could not be read
@@ -1602,7 +1648,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.5...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.7...HEAD
+[2.7.7]: https://github.com/dbcls/togomcp/compare/v2.7.6...v2.7.7
 [2.7.6]: https://github.com/dbcls/togomcp/compare/v2.7.5...v2.7.6
 [2.7.5]: https://github.com/dbcls/togomcp/compare/v2.7.4...v2.7.5
 [2.7.4]: https://github.com/dbcls/togomcp/compare/v2.7.3...v2.7.4
