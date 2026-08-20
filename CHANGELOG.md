@@ -13,6 +13,18 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.7.8] - 2026-08-20
+
+Three field reports, no tool, parameter, or return shape changed — two MIE files and one docstring.
+The common shape is a query that runs, returns rows, and is wrong or fragile in a way nothing signals.
+Worth noting for anyone triaging the next one: **two of the three reports named the wrong cause**, and
+the investigation only found the real one because the claim was reproduced rather than accepted. The
+ChEMBL report was right. The UniProt performance report blamed a `FILTER(CONTAINS())` that turned out to
+be the smaller half of the problem — a missing `FROM` pin was the larger. The `search_uniprot_entity`
+report described a silent full-text fallback that does not exist; the tool was working, its docstring was
+incomplete, and the results that looked wrong were correct. Deliberately no `whatsnew` marker: none of
+this is visible to a user who is not writing SPARQL or tool queries by hand.
+
 ### Fixed
 
 - **`chembl.yaml` did not warn that one UniProt accession maps to SEVERAL ChEMBL targets of different
@@ -1709,7 +1721,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.7...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.8...HEAD
+[2.7.8]: https://github.com/dbcls/togomcp/compare/v2.7.7...v2.7.8
 [2.7.7]: https://github.com/dbcls/togomcp/compare/v2.7.6...v2.7.7
 [2.7.6]: https://github.com/dbcls/togomcp/compare/v2.7.5...v2.7.6
 [2.7.5]: https://github.com/dbcls/togomcp/compare/v2.7.4...v2.7.5
