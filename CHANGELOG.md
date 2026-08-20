@@ -43,6 +43,37 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   filed as a worked example plus `traps_avoided` lines rather than a `global_gotchas` paragraph: it has a
   concrete query that avoids it, and a query an agent can copy is worth more than prose it must translate.
 
+- **`uniprot.yaml`'s `sequence_mass` example was fragile under extension, and the cause was not the one it
+  looked like.** The example selected the canonical isoform with `FILTER(CONTAINS(STR(?seq), "/P01308-1"))`
+  and carried **no `FROM` pin** — so it ran against the union of all 63 graphs on the SIB endpoint, OMA's
+  584M triples included. Alone it returned in 0.19s; bolt on two `OPTIONAL`s and it did not finish. The 2×2
+  measured 2026-08-20 (`OPTIONAL`s on `rdfs:seeAlso`/`up:database` and `up:classifiedWith`/`rdfs:label`):
+  unpinned `FILTER` form **>200s, no result**; unpinned direct-IRI form **>200s** as well; pinned `FILTER`
+  form **5.6s**; pinned direct-IRI form **~1.5s**. So the missing pin — which the file's own
+  `union_inflation` gotcha already prescribes — was the larger half, and naming the IRI removes the
+  remaining ~4×. The example now pins the graph and states `isoforms/P01308-1` directly: no `?seq` variable,
+  no post-filter, 0.4s standalone.
+
+  Three findings from verifying the replacement are recorded as `traps_avoided` rather than left implicit.
+  `isoforms/ACC-1` is **not** universal — 2,985 of 3,000 sampled reviewed human entries have it, and the
+  rest start at `-2`, `-3` or `-5` because the canonical was merged or demoted, so a direct-IRI lookup that
+  returns 0 rows needs the accession-scoped fallback. The cross-accession trap the example already warned
+  about is not a one-off: O94854 hangs five `Q9UPN3-*` isoform nodes off `up:sequence` and has no
+  `O94854-1` node at all. And every sequence node is typed **both** `up:Simple_Sequence` and
+  `up:External_Sequence`, so binding `?seq a ?class` doubles the rows.
+
+- **`search_uniprot_entity`'s docstring never mentioned the `go` field, which reads as a silent failure when
+  it is not one.** A `go:0043202` query returns proteins that look unrelated to lysosomes (keratocan,
+  osteomodulin, syndecan-3), and with `go` absent from the documented field list the natural conclusion is
+  that the tool accepted an unsupported field and fell back to full text. It does not: all three proteins
+  genuinely carry `GO:0043202` in UniProt's own RDF (confirmed by SPARQL), and an unknown field name is
+  rejected upstream with HTTP 400 (`'go_id' is not a valid search field`), surfacing as this tool's
+  documented `"Error:"` string. The docstring now documents `go` along with the two ways it *can* mislead —
+  the ID must be zero-padded to 7 digits (`go:43202` is a valid field with an unmatchable value: 0 rows,
+  HTTP 200), and the match includes GO **descendants** (192 reviewed entries carry GO:0043202 directly, 214
+  once its two children are counted). A new warning at the top of the docstring states the actual failure
+  mode: a bad *field name* errors, a bad *value* is what fails silently.
+
 ## [2.7.7] - 2026-08-20
 
 Logging release: the client IP can now be recorded in the clear, so an abusive caller can be
