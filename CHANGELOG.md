@@ -25,7 +25,7 @@ them there; the measured failure modes of *using* the thing — asking a questio
 believing a fluent answer that came from the model rather than the endpoint, not noticing a count is
 wrong rather than the answer — were written down nowhere a new user would find them.
 
-<!-- whatsnew: 2026-08-21 | A <strong><a href="/tutorial">self-study tutorial</a></strong> now ships with the server — eight chapters taking a life-science researcher from a first question to a result they can defend, plus exercises with worked solutions. No RDF or SPARQL background assumed; also in <a href="/tutorial/ja">日本語</a>. -->
+<!-- whatsnew: 2026-08-21 | A <strong><a href="/tutorial">self-study tutorial</a></strong> now ships with the server — nine chapters and an appendix taking a life-science researcher from a first question to a result they can defend, plus exercises with worked solutions. No RDF or SPARQL background assumed; also in <a href="/tutorial/ja">日本語</a>. -->
 
 ### Added
 
