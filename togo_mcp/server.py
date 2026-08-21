@@ -52,7 +52,6 @@ MIE_DIR = os.getenv("TOGOMCP_MIE_DIR", str(CWD.joinpath("mie")))
 # the dir name is what _detect_usage_guide_version() reads — bumping the guide
 # means renaming this directory, not editing a version string.
 TOGOMCP_USAGE_GUIDE = str(CWD.joinpath("resources", "usage_guide_v6"))
-RDF_CONFIG_TEMPLATE = str(CWD.joinpath("rdf-config", "template.yaml"))
 ENDPOINTS_CSV = str(CWD.joinpath("resources", "endpoints.csv"))
 INDEX_HTML = str(CWD.joinpath("docs", "togomcp-intro.html"))
 KW_SEARCH_INSTRUCTIONS = str(CWD.joinpath("kw_search"))
