@@ -13,6 +13,20 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+<!-- whatsnew: 2026-08-21 | A <strong><a href="/tutorial">self-study tutorial</a></strong> now ships with the server — eight chapters taking a life-science researcher from a first question to a result they can defend, plus exercises with worked solutions. No RDF or SPARQL background assumed; also in <a href="/tutorial/ja">日本語</a>. -->
+
+### Added
+
+- **Tutorial pages, served by the server itself** at `/tutorial` (English) and `/tutorial/ja` (Japanese).
+  A single self-contained HTML handbook each, built from `tutorial/` and bundled under
+  `data/docs/tutorial/`, so they deploy with the wheel and need no separate hosting. Content: setup by
+  three routes, two worked demos, how the MIE/SPARQL layer actually works, a deliberate *failure* demo,
+  question-writing patterns, a four-step verification procedure, troubleshooting, and seven exercises
+  with worked solutions. The two languages cross-link to each other.
+- The intro page now points at the tutorial from the hero, the sticky menu, the end of the Setup
+  section, and the footer — previously nothing on the landing page led a new user past "it is
+  connected" to "here is how to use it well".
+
 ## [2.7.8] - 2026-08-20
 
 Three field reports, no tool, parameter, or return shape changed — two MIE files and one docstring.

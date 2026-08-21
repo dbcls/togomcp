@@ -55,6 +55,7 @@ TOGOMCP_USAGE_GUIDE = str(CWD.joinpath("resources", "usage_guide_v6"))
 ENDPOINTS_CSV = str(CWD.joinpath("resources", "endpoints.csv"))
 INDEX_HTML = str(CWD.joinpath("docs", "togomcp-intro.html"))
 KW_SEARCH_INSTRUCTIONS = str(CWD.joinpath("kw_search"))
+TUTORIAL_DIR = CWD.joinpath("docs", "tutorial")
 
 # Shared httpx client for SPARQL queries.
 #
@@ -1059,3 +1060,13 @@ async def stats_json(request: Request) -> JSONResponse:
     except Exception as exc:
         logger.warning("stats compute failed: %s", exc)
         return JSONResponse({"error": "compute failed"}, status_code=500)
+
+
+@mcp.custom_route("/tutorial", methods=["GET"])
+async def tutorial_en(request: Request) -> HTMLResponse:
+    return HTMLResponse(TUTORIAL_DIR.joinpath("tutorial-en.html").read_text(encoding="utf-8"))
+
+@mcp.custom_route("/tutorial/ja", methods=["GET"])
+async def tutorial_ja(request: Request) -> HTMLResponse:
+    return HTMLResponse(TUTORIAL_DIR.joinpath("tutorial-ja.html").read_text(encoding="utf-8"))
+

@@ -46,6 +46,24 @@ Link every DOI. Include the authors, year, and journal as shown.
 - Put the DBCLS Logo with the link at the page top.
 - Mind the contrast! 
 - The hero section should show the MCP endpoint URL.
+- The hero actions are: **Get Started** (→ `#setup`), **Read the Tutorial** (→ `/tutorial`), **View on GitHub**.
+
+## Tutorial
+The tutorial is a self-study handbook served by the server itself, not a third-party page:
+`/tutorial` (English) and `/tutorial/ja` (Japanese), routed in `togo_mcp/server.py` from
+`togo_mcp/data/docs/tutorial/tutorial-{en,ja}.html`. Because it is same-origin, link it with a
+**root-relative** href and **no** `target="_blank"`.
+
+Link it from four places, in decreasing prominence:
+- the hero actions (English only — the tutorial itself carries a language toggle);
+- the sticky menu tab, after Setup;
+- a `.tutorial-cta` banner at the **end** of the Setup section (outside the `.setup-panel` tabs), with
+  both languages — this is the highest-value placement, since it catches the reader at the moment they
+  have just connected and do not yet know what to do next;
+- the footer links row.
+
+Describe it by what the reader gains, not by its table of contents. Do not duplicate the chapter list on
+the landing page; the tutorial has its own sidebar.
 
 ## Study TogoMCP
 Explore the TogoMCP tools to study how they work and the available databases.
@@ -141,6 +159,7 @@ The footer should include the following
 - Below the organisation block, include a row of footer links (`.footer-links`):
   * [DBCLS Home](https://dbcls.rois.ac.jp/en/)
   * [TogoMCP Home](https://togomcp.rdfportal.org/)
+  * [Tutorial](/tutorial)
   * [RDF Portal](https://rdfportal.org)
   * [TogoID](https://togoid.dbcls.jp)
   * [GitHub](https://github.com/dbcls/togomcp)
@@ -161,6 +180,7 @@ The footer should include the following
   * Publications
   * Examples
   * Setup
+  * [Tutorial](/tutorial) — a separate page, not a section anchor (like Contact)
   * Databases
   * Tools
   * Other MCP Servers
