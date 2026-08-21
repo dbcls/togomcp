@@ -1,9 +1,7 @@
 import csv as _csv
 import io as _io
 from pathlib import Path
-import re
-import sys
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from pydantic import Field
 import yaml
@@ -435,41 +433,31 @@ def _mie_trap_banner(content: str, database: str) -> str:
         doc = yaml.safe_load(content)
         if not isinstance(doc, dict):
             return ""
-        info = doc.get("schema_info") or {}
-        # Co-hosted graphs: v2 = schema_info.co_hosted_graphs (list of strings);
-        # v3 = graphs.co_hosted (dict {name: note}). Read new-or-old location.
-        co_hosted = info.get("co_hosted_graphs")
-        if not co_hosted:
-            gco = (doc.get("graphs") or {}).get("co_hosted")
-            if isinstance(gco, dict):
-                co_hosted = [f"{k}: {v}" for k, v in gco.items()]
-            elif isinstance(gco, list):
-                co_hosted = gco
-        co_hosted = co_hosted or []
-        # Warnings: v2 = critical_warnings (block string / list);
-        # v3 = global_gotchas (list of {id, say}). Read new-or-old location.
-        warnings = doc.get("critical_warnings")
-        if not warnings:
-            gg = doc.get("global_gotchas")
-            if isinstance(gg, list):
-                warnings = [
-                    (g.get("say") if isinstance(g, dict) else str(g)) for g in gg
-                ]
-        warnings = warnings or ""
+        # graphs.co_hosted is {name: note} per MIE_v3_spec.md §2. The list branch is
+        # NOT v2 back-compat (v2's schema_info.co_hosted_graphs is gone) — it tolerates
+        # a hand-authored file that wrote the sequence shape, because dropping those
+        # entries would silently omit exactly the warning this banner exists to raise.
+        gco = (doc.get("graphs") or {}).get("co_hosted")
+        if isinstance(gco, dict):
+            co_hosted = [f"{k}: {v}" for k, v in gco.items()]
+        elif isinstance(gco, list):
+            co_hosted = list(gco)
+        else:
+            co_hosted = []
+        # global_gotchas is an optional list of {id, say}.
+        gg = doc.get("global_gotchas")
+        items = (
+            [
+                str(g.get("say") if isinstance(g, dict) else g).strip()
+                for g in gg
+            ]
+            if isinstance(gg, list)
+            else []
+        )
+        items = [w for w in items if w]
     except Exception:
         # Never let a banner failure block the file the caller asked for.
         return ""
-
-    if isinstance(warnings, str):
-        # Split on TOP-LEVEL bullets only. yaml strips the block scalar's common
-        # indent, so a warning starts at column 0 and its continuation/sub-bullets
-        # are indented — splitting on any "- " would promote sub-bullets to
-        # warnings of their own.
-        items = [w.strip() for w in re.split(r"\n- ", "\n" + warnings) if w.strip()]
-    elif isinstance(warnings, list):
-        items = [str(w).strip() for w in warnings if str(w).strip()]
-    else:
-        items = []
 
     if not items and not co_hosted:
         return ""

@@ -40,11 +40,21 @@ fraction of the bytes (UniProt pilot: **~55–74% smaller**).
 
 ## 2. File structure
 
-Top-level keys, in order. **Required:** `database`, `discovery`, `endpoint`, `graphs`,
-`examples`, `id_join_map`. **Optional:** `base_uri`, `entity_counts`, `global_gotchas`,
-`schema_delta`.
+Top-level keys, in order. **Required:** `mie_spec`, `database`, `discovery`, `endpoint`,
+`graphs`, `examples`, `id_join_map`. **Optional:** `base_uri`, `entity_counts`,
+`global_gotchas`, `schema_delta`.
+
+`mie_spec` is the FORMAT version and the file's first key. It is not a content version:
+it changes only when this spec changes, never when a file is edited. It exists so a reader
+can reject a format it does not understand instead of silently reading nothing — the v2→v3
+flip stranded four separate readers keyed on v2 field names, each returning empty rather
+than failing, and none noticed for a month. Consumers MUST check it. (Content identity is
+derived, not declared: `server._detect_mie_bundle_version` hashes file bytes, and staleness
+comes from `verified.date` — do not reintroduce a hand-maintained `mie_version`. v2 had one;
+its values ran 1.2–7.1 with no cross-file meaning, and its only consumer hashed it.)
 
 ```
+mie_spec: 3      # format version — bump ONLY on a spec change, never on a content edit
 database:        # the DB key (== filename stem, == SPARQL_ENDPOINT key)
 discovery:       # {title, description, keywords, categories} — the build-time catalog source
 endpoint:        # SPARQL URL   (+ base_uri, graphs, entity_counts, global_gotchas = the header)
@@ -77,7 +87,7 @@ graphs:
   supporting: # list of same-DB graph localnames
   co_hosted:  # {name: "one-line note"} — datasets sharing the endpoint. MUST flag any that
               # (a) inflate counts, (b) enable a direct cross-DB join, or (c) are empty stubs.
-entity_counts:   # optional; every count COUNT(DISTINCT)+graph-pinned, with an `on:` date or a global `verified:`
+entity_counts:   # optional; every count COUNT(DISTINCT)+graph-pinned, with a `date:` or a global `verified:`
 global_gotchas:  # the 2–5 that bite ANY query on this DB. Each: {id, say}
   - id: <slug>
     say: "<what silently fails + the fix>"

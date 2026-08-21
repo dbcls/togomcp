@@ -13,6 +13,77 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-08-21
+
+Repairs five readers that the v2→v3 MIE flip (2026-07-24) silently stranded, and adds the marker that
+would have made all five fail loudly on day one.
+
+None of them raised. Each used `.get()` with a fallback against a v2 key name that v3 had renamed, so a
+missing key was indistinguishable from "nothing recorded" — and each was covered by a test that built
+its own v2-shaped fixture instead of reading the shipped corpus, so the suite stayed green for a month
+while the functions returned nothing for all 37 databases. That is the actual defect being fixed here;
+the individual repairs are downstream of it.
+
+MINOR rather than PATCH: no tool, parameter, or return shape changed, but `get_MIE_file` now returns a
+document carrying one field it did not carry before, and a documented log field changes value.
+
+### Added
+
+- **`mie_spec: 3` — a machine-readable format marker**, the first key of every MIE file (+0.33% corpus
+  bytes). Every file already declared "MIE v3" in a leading *comment*, invisible to every parser; the
+  format could only be inferred from which key names happened to be present. `load_mie_dates` now skips
+  and logs any file whose spec it does not recognize, and `tests/test_stats.py` asserts all 37 declare
+  it — so an unreadable corpus is visible rather than empty. Documented in `MIE_v3_spec.md` §2, which
+  also records why a hand-maintained *content* version is **not** coming back: v2 had one, its values
+  ran 1.2–7.1 with no cross-file meaning, and its only consumer hashed it.
+
+### Fixed
+
+- **`mie_bundle_version` was frozen, and failed deceptively.** It hashed each MIE's `mie_version:`
+  field, dropped in v3, so every lookup returned `None` and the digest reduced to a hash of the *file
+  names* — stuck at `91ba06da8a78` across a month of edits while still looking like a healthy 12-hex
+  value. It stamps every tool-call log record's `meta`, where its whole job is identifying which MIE
+  content was live when a query ran, so **log records between 2026-07-24 and 2026-08-21 cannot be
+  attributed to an MIE bundle**. Now a derived `sha256` over file bytes, which moves on any edit,
+  add, remove, or rename. The old test asserted the value was truthy and 12 characters — a filename
+  hash satisfies both; the new one asserts the property.
+- **The MIE-trap-candidate date filter had been inert since the flip.** `load_mie_dates` scanned for
+  `mie_created`/`mie_updated`, absent from v3, and returned `{}` for all 37 databases, so correction
+  #1 of the feed (drop failures predating the current MIE) excluded nothing and `excluded_pre_mie` was
+  always 0 — fail-open, so the feed was noisier than designed, never wrong. Now reads
+  `min(examples[].verified.date)`, which is spec-required and 37/37 populated. **`min`, not `max`:**
+  typically only 1–2 of a file's 8–15 examples carry the newest date, so `max` would let a single
+  re-verified example advance a whole database by up to 29 days (chembl) and suppress a month of real
+  trap signal. Parsed as YAML rather than regex — `verified:` ships in three syntactic shapes across
+  the corpus, and `pyyaml` is a hard dependency, so the old "no YAML dependency" constraint bought
+  nothing.
+- **`_mie_trap_banner` read v2 first and v3 as fallback** — a two-day compat shim from the migration
+  that the flip inverted and nobody re-ordered, leaving the dead path checked first for a month. v2
+  reads removed; banner output verified byte-identical across all 37 files.
+- **`MIE_v3_spec.md` contradicted itself** on the `entity_counts` timestamp key: §2 said `on:` while
+  §4.1 forbids it (YAML 1.1 parses bare `on` as boolean `True`). §2 now says `date:`. The trap has not
+  fired anywhere — 0 boolean-keyed entries corpus-wide.
+
+### Removed
+
+- `scripts/bootstrap_mie_keywords.py` (+ its gitignored output) — the fifth casualty. It read
+  `schema_info.title/description` for its inputs, 0/37 in v3, and emitted an empty suggestions file:
+  output that looks like "no keywords needed". Its job now belongs to the `mie-generator` skill's
+  `discovery` block.
+- `scripts/run_docker.sh` — unreferenced, pre-dates `deploy.sh`, and actively hazardous: it uses
+  `docker` rather than rootless podman and sets neither `TOGOMCP_ALLOWED_HOSTS` nor
+  `TOGOMCP_FORWARDED_ALLOW_IPS`, walking a follower into both silent failures CLAUDE.md documents.
+- Dead constants and imports: `KW_SEARCH_INSTRUCTIONS` (pointed at a directory that does not exist),
+  `kgml._RELATION_CLASSES`, an unused `retmax` local, and three unused imports.
+
+### Notes
+
+- `benchmark/studies/ablation/` is **also** v2-pinned — its `CANONICAL_SECTIONS` has zero overlap with
+  v3 and `--mie-dir` defaults to the live corpus, so a re-run today strips 0 of 11 sections and every
+  "ablated" arm is a duplicate baseline. Its banked `FINDINGS.md` remain valid (produced against the
+  v2 corpus). Documented in its README rather than fixed; reviving it means re-deriving the sections
+  and the `GROUPS` partition from `MIE_v3_spec.md` §1.3.
+
 ## [2.8.0] - 2026-08-21
 
 A tutorial, and the routes to serve it. Nothing on the tool surface changed — no tool, parameter, or
@@ -1748,6 +1819,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.8...HEAD
+[2.9.0]: https://github.com/dbcls/togomcp/compare/v2.8.0...v2.9.0
 [2.8.0]: https://github.com/dbcls/togomcp/compare/v2.7.8...v2.8.0
 [2.7.8]: https://github.com/dbcls/togomcp/compare/v2.7.7...v2.7.8
 [2.7.7]: https://github.com/dbcls/togomcp/compare/v2.7.6...v2.7.7

@@ -6,6 +6,7 @@ FastMCP client during development; here we unit-test the pure helpers.
 """
 import json
 import os
+from pathlib import Path
 
 # Logging must be disabled during import (no log path) — the middleware reads
 # TOGOMCP_QUERY_LOG at construction time.
@@ -174,3 +175,35 @@ def test_record_carries_raw_ip_when_opted_in(monkeypatch, tmp_path):
     assert rec["forwarded_for"] == "203.0.113.7, 10.0.2.100"
     # the hash stays alongside, so stripping `ip` leaves the log aggregatable
     assert rec["ip_hash"] == server._hash_ip("203.0.113.7")
+
+
+def test_mie_bundle_version_tracks_content(tmp_path, monkeypatch):
+    """The digest must move when MIE CONTENT moves.
+
+    test_static_meta_shape only asserts "truthy, 12 chars" — which the broken
+    implementation satisfied for a month while hashing `<file>=None` lines, i.e.
+    the file NAMES alone. Shape was asserted; the property was not. This asserts
+    the property: same bytes -> same digest, changed bytes -> changed digest.
+    """
+    import shutil
+
+    src = Path("togo_mcp/data/mie")
+    shutil.copytree(src, tmp_path / "mie")
+    monkeypatch.setattr(server, "MIE_DIR", str(tmp_path / "mie"))
+
+    before = server._detect_mie_bundle_version()
+    assert before and len(before) == 12
+    assert server._detect_mie_bundle_version() == before      # deterministic
+
+    target = tmp_path / "mie" / "uniprot.yaml"
+    target.write_text(target.read_text(encoding="utf-8") + "\n# touched\n", encoding="utf-8")
+    after = server._detect_mie_bundle_version()
+    assert after != before, "digest ignored a content change"
+
+    (tmp_path / "mie" / "rhea.yaml").unlink()
+    assert server._detect_mie_bundle_version() != after       # roster change too
+
+
+def test_mie_bundle_version_none_on_empty_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "MIE_DIR", str(tmp_path))
+    assert server._detect_mie_bundle_version() is None

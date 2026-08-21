@@ -1,5 +1,23 @@
 # MIE Subcomponent Ablation Harness
 
+> [!WARNING]
+> **This harness is pinned to the v2 MIE corpus and no longer runs against the
+> tree.** `CANONICAL_SECTIONS` names v2 top-level sections (`schema_info`,
+> `critical_warnings`, `shape_expressions`, …). The served corpus flipped to v3 on
+> 2026-07-24 (1b58cfe), whose top-level keys are `database`, `discovery`,
+> `endpoint`, `base_uri`, `graphs`, `entity_counts`, `global_gotchas`, `examples`,
+> `schema_delta`, `id_join_map` — **zero overlap**. Since `ablate_mie.py` defaults
+> `--mie-dir` to the live `togo_mcp/data/mie/`, re-running it today strips **0 of
+> 11 sections from all 37 databases** and every "ablated" condition is really a
+> duplicate baseline. The failure is silent: variants get written, the run
+> completes, and the null result looks like a finding.
+>
+> The results in `FINDINGS.md` are valid — they were produced against the v2
+> corpus that was live at the time. Reviving the harness means re-deriving the
+> sections and the `GROUPS` partition against `MIE_v3_spec.md` §1.3 (the v2→v3
+> mapping), not editing the section list in place: v3 deliberately merged and
+> relocated content, so the groups no longer partition anything cleanly.
+
 Quantifies how much each **MIE section** contributes to TogoMCP benchmark
 performance by removing one section at a time from the MIE corpus and measuring
 the drop in LLM-judge scores.

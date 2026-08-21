@@ -1,5 +1,7 @@
 """Tests for the usage-log analysis engine (togo_mcp.stats)."""
 import json
+import re
+from pathlib import Path
 
 from togo_mcp import stats
 
@@ -497,15 +499,6 @@ def test_day_of():
     assert stats.day_of({"ts": "nope"}) is None
 
 
-def test_load_mie_dates(tmp_path):
-    (tmp_path / "uniprot.yaml").write_text(
-        'schema_info:\n  version:\n    mie_created: "2026-01-01"\n'
-        '    mie_updated: "2026-04-29"\n')
-    (tmp_path / "rhea.yaml").write_text(
-        'schema_info:\n  version:\n    mie_created: "2026-02-02"\n')  # no mie_updated
-    dates = stats.load_mie_dates(str(tmp_path))
-    assert dates["uniprot"] == "2026-04-29"   # prefers mie_updated
-    assert dates["rhea"] == "2026-02-02"      # falls back to mie_created
 
 
 def test_is_schema_probe():
@@ -589,3 +582,59 @@ def test_stats_output_never_contains_a_raw_ip():
     out = json.dumps(stats.aggregate(recs))
     assert "198.51.100." not in out
     assert "forwarded_for" not in out
+
+
+def test_mie_corpus_declares_the_expected_spec():
+    """Every shipped MIE declares `mie_spec: 3`.
+
+    This is the guard the v2->v3 flip lacked. Readers keyed on v2 field names
+    (`mie_created`, `mie_version`) went inert for a month because a missing key is
+    indistinguishable from "nothing recorded". `load_mie_dates` now skips any file
+    whose spec it does not recognize, so this test is what keeps that skip path
+    from quietly eating the whole corpus.
+    """
+    import yaml
+
+    paths = sorted(Path("togo_mcp/data/mie").glob("*.yaml"))
+    assert paths, "no MIE files found"
+    bad = {
+        p.name: yaml.safe_load(p.read_text(encoding="utf-8")).get("mie_spec")
+        for p in paths
+    }
+    bad = {k: v for k, v in bad.items() if v != stats.MIE_SPEC_EXPECTED}
+    assert not bad, f"MIE files not declaring mie_spec={stats.MIE_SPEC_EXPECTED}: {bad}"
+
+
+def test_load_mie_dates_reads_the_real_corpus():
+    """Against the SHIPPED corpus, not a hand-written fixture.
+
+    The previous test built its own v2-shaped file in tmp_path, so it kept passing
+    while the function returned {} for all 37 real databases. A corpus-shape claim
+    has to be asserted against the corpus.
+    """
+    dates = stats.load_mie_dates("togo_mcp/data/mie")
+    n_files = len(list(Path("togo_mcp/data/mie").glob("*.yaml")))
+    assert len(dates) == n_files, f"only {len(dates)}/{n_files} databases resolved a date"
+    assert all(re.fullmatch(r"\d{4}-\d{2}-\d{2}", d) for d in dates.values())
+
+
+def test_load_mie_dates_takes_min_not_max(tmp_path):
+    """MIN of verified.date: one re-verified example must not advance the whole file."""
+    (tmp_path / "demo.yaml").write_text(
+        "mie_spec: 3\n"
+        "examples:\n"
+        '  - {id: a, verified: {n: 1, date: "2026-07-22"}}\n'
+        '  - {id: b, verified: {n: 2, date: "2026-08-20"}}\n'
+    )
+    assert stats.load_mie_dates(str(tmp_path))["demo"] == "2026-07-22"
+
+
+def test_load_mie_dates_skips_unrecognized_spec(tmp_path):
+    """A v2 file (or any unknown spec) is skipped, not silently mis-read."""
+    (tmp_path / "old.yaml").write_text(
+        'schema_info:\n  version:\n    mie_updated: "2026-04-29"\n')
+    (tmp_path / "new.yaml").write_text(
+        "mie_spec: 3\nexamples:\n  - {id: a, verified: {n: 1, date: \"2026-07-22\"}}\n")
+    out = stats.load_mie_dates(str(tmp_path))
+    assert "old" not in out
+    assert out["new"] == "2026-07-22"

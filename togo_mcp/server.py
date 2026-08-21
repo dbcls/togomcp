@@ -54,7 +54,6 @@ MIE_DIR = os.getenv("TOGOMCP_MIE_DIR", str(CWD.joinpath("mie")))
 TOGOMCP_USAGE_GUIDE = str(CWD.joinpath("resources", "usage_guide_v6"))
 ENDPOINTS_CSV = str(CWD.joinpath("resources", "endpoints.csv"))
 INDEX_HTML = str(CWD.joinpath("docs", "togomcp-intro.html"))
-KW_SEARCH_INSTRUCTIONS = str(CWD.joinpath("kw_search"))
 TUTORIAL_DIR = CWD.joinpath("docs", "tutorial")
 
 # Shared httpx client for SPARQL queries.
@@ -684,25 +683,31 @@ def _detect_usage_guide_version() -> str | None:
 
 
 def _detect_mie_bundle_version() -> str | None:
-    """sha256[:12] over sorted '<file>=<mie_version>' lines — changes whenever
-    any MIE file's mie_version changes. Regex-parsed, no YAML dependency."""
-    items: list[str] = []
+    """sha256[:12] over sorted '<file>=<sha256(bytes)>' — a content fingerprint.
+
+    DERIVED, never hand-maintained. The previous version hashed each file's
+    `mie_version:` field, which v3 dropped: every lookup returned None, so the
+    digest reduced to a hash of the FILE NAMES and stayed frozen at 91ba06da8a78
+    across a month of MIE edits. It stamps every tool-call log record's `meta`,
+    where its whole job is telling which MIE content was live when a query ran,
+    so a frozen value silently destroys that attribution. It also failed
+    invisibly - a plausible 12-hex digest, which the test asserted the shape of.
+
+    Hashing bytes removes the coupling to any field the format may rename. Unlike
+    the trap-candidate date filter (which takes MIN of `verified.date`, so it moves
+    only on a full re-verification), a fingerprint must move on ANY touch.
+    """
     try:
         paths = sorted(Path(MIE_DIR).glob("*.yaml"))
     except OSError:
         return None
+    items: list[str] = []
     for path in paths:
-        ver = None
         try:
-            with open(path, encoding="utf-8") as fh:
-                for line in fh:
-                    m = re.search(r'mie_version:\s*"?([^"\n]+)"?', line)
-                    if m:
-                        ver = m.group(1).strip()
-                        break
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
         except OSError:
             continue
-        items.append(f"{path.name}={ver}")
+        items.append(f"{path.name}={digest}")
     if not items:
         return None
     return hashlib.sha256("\n".join(items).encode("utf-8")).hexdigest()[:12]

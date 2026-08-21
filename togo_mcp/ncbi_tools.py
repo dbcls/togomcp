@@ -275,7 +275,6 @@ def _format_esearch_result(
 
     count = esearch_result.get("count", "0")
     ids = esearch_result.get("idlist", [])
-    retmax = esearch_result.get("retmax", "0")
     retstart = esearch_result.get("retstart", "0")
     query_translation = esearch_result.get("querytranslation", "N/A")
 
