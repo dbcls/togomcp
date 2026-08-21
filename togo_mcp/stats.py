@@ -31,12 +31,17 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import os
 import re
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator
+
+import yaml
+
+log = logging.getLogger(__name__)
 
 # A result larger than this (bytes) is flagged "huge" — likely an unbounded
 # query the MIE should steer away from (missing LIMIT / over-broad pattern).
@@ -814,12 +819,29 @@ def day_of(rec: dict[str, Any]) -> str | None:
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%d")
 
 
-def load_mie_dates(mie_dir: str) -> dict[str, str]:
-    """Map database -> its current MIE revision date ('YYYY-MM-DD').
+MIE_SPEC_EXPECTED = 3
 
-    Uses `mie_updated` when present, else `mie_created`. Regex-parsed, no YAML
-    dependency (mirrors server._detect_mie_bundle_version). A failure at time T
-    is only actionable if it postdates this date.
+
+def load_mie_dates(mie_dir: str) -> dict[str, str]:
+    """Map database -> the date its MIE was last FULLY confirmed ('YYYY-MM-DD').
+
+    A failure at time T is only actionable if it postdates this date, so the value
+    must be the point at which the whole file was known good.
+
+    MIN, not max, of every example's `verified.date`. Only 1-2 of a file's 8-15
+    examples typically carry the newest date (re-verifying one chembl example moved
+    that file's max by 29 days), so max() would let a single touched example suppress
+    a month of genuine trap signal for the whole database. min() advances only on a
+    full re-verification sweep, which is exactly the claim being made.
+
+    YAML-parsed, NOT regex: `verified:` ships in three syntactic shapes across the
+    corpus - inline flow, flow spanning several lines, and block - and the word
+    "verified" also appears in section comments. pyyaml is a hard dependency, so the
+    v2-era "no YAML dependency" constraint this function used to carry bought nothing.
+
+    Skips any file not declaring `mie_spec: 3`. The v2->v3 flip silently stranded the
+    previous implementation (it scanned for `mie_created`/`mie_updated`, absent from
+    v3, and returned {} for a month); an unreadable format must be visible, not empty.
     """
     out: dict[str, str] = {}
     try:
@@ -827,25 +849,26 @@ def load_mie_dates(mie_dir: str) -> dict[str, str]:
     except OSError:
         return out
     for path in paths:
-        updated = created = None
         try:
-            with open(path, encoding="utf-8") as fh:
-                for line in fh:
-                    if updated is None:
-                        m = re.search(r'mie_updated:\s*"?(\d{4}-\d{2}-\d{2})', line)
-                        if m:
-                            updated = m.group(1)
-                    if created is None:
-                        m = re.search(r'mie_created:\s*"?(\d{4}-\d{2}-\d{2})', line)
-                        if m:
-                            created = m.group(1)
-                    if updated:
-                        break
-        except OSError:
+            doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
             continue
-        date = updated or created
-        if date:
-            out[path.stem] = date
+        if not isinstance(doc, dict) or doc.get("mie_spec") != MIE_SPEC_EXPECTED:
+            log.warning(
+                "load_mie_dates: skipping %s - mie_spec=%r, expected %d",
+                path.name, (doc or {}).get("mie_spec") if isinstance(doc, dict) else None,
+                MIE_SPEC_EXPECTED,
+            )
+            continue
+        dates = [
+            str(ex["verified"]["date"])
+            for ex in (doc.get("examples") or [])
+            if isinstance(ex, dict)
+            and isinstance(ex.get("verified"), dict)
+            and ex["verified"].get("date")
+        ]
+        if dates:
+            out[path.stem] = min(dates)
     return out
 
 

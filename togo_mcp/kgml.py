@@ -116,9 +116,6 @@ _MOLECULAR_ENTRY_TYPES = frozenset(
 )
 # Not molecular: "map" -> a link to another pathway map (pitfall 4).
 
-# relation/@type
-_RELATION_CLASSES = frozenset(["ECrel", "PPrel", "GErel", "PCrel", "maplink"])
-
 # subtype/@name -> effect sign. Only these four carry a direction of regulation;
 # everything else (phosphorylation, binding/association, ...) describes the
 # MECHANISM and is sign-neutral. Conflating "phosphorylation" with "activation"

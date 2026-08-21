@@ -358,13 +358,14 @@ class TestMIETrapBanner:
         from togo_mcp.rdf_portal import _mie_trap_banner
 
         content = (
-            "schema_info:\n"
-            "  co_hosted_graphs:\n"
-            '    - "http://example.org/sib — re-types 42 IRIs"\n'
-            "critical_warnings: |\n"
-            "  - FIRST TRAP: does a bad thing.\n"
-            "    continuation line, not a warning of its own\n"
-            "  - SECOND TRAP: does another.\n"
+            "graphs:\n"
+            "  co_hosted:\n"
+            '    "http://example.org/sib": "re-types 42 IRIs"\n'
+            "global_gotchas:\n"
+            "  - id: first\n"
+            '    say: "FIRST TRAP: does a bad thing."\n'
+            "  - id: second\n"
+            '    say: "SECOND TRAP: does another."\n'
         )
         banner = _mie_trap_banner(content, "demo")
         assert "`demo`" in banner
@@ -374,24 +375,12 @@ class TestMIETrapBanner:
         # Every line is a YAML comment, so the result still parses as YAML.
         assert all(line.startswith("#") for line in banner.splitlines())
 
-    def test_sub_bullets_do_not_become_warnings(self) -> None:
-        """Indented sub-bullets belong to their parent warning, not the count."""
-        from togo_mcp.rdf_portal import _mie_trap_banner
-
-        content = (
-            "critical_warnings: |\n"
-            "  - PARENT TRAP: has two sub-cases.\n"
-            "      - sub-case one\n"
-            "      - sub-case two\n"
-        )
-        assert "1 CRITICAL WARNING(S)" in _mie_trap_banner(content, "demo")
-
     def test_banner_never_blocks_the_file(self) -> None:
         """A malformed or bannerless MIE still returns its content."""
         from togo_mcp.rdf_portal import _mie_trap_banner
 
         assert _mie_trap_banner("{{ not: valid: yaml", "demo") == ""
-        assert _mie_trap_banner("schema_info:\n  title: x\n", "demo") == ""
+        assert _mie_trap_banner("discovery:\n  title: x\n", "demo") == ""
 
     def test_real_mie_banner_precedes_yaml_and_parses(self) -> None:
         import yaml
@@ -404,9 +393,7 @@ class TestMIETrapBanner:
         assert "up:reviewed" in banner  # the #1 uniprot trap (reviewed-flag filter)
         # Banner + body must still be loadable as YAML by any downstream consumer.
         doc = yaml.safe_load(banner + content)
-        # v3 renamed schema_info -> discovery; the banner must not break parsing either way.
-        meta = doc.get("discovery") or doc.get("schema_info")
-        assert meta["title"] == "UniProt RDF"
+        assert doc["discovery"]["title"] == "UniProt RDF"
 
 
 class TestUsageGuideEndpointTable:

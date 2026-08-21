@@ -6,8 +6,6 @@ fixture patches api_tools._REST_BACKOFF_BASE (where _rest_get reads it), and
 _strip_html is imported from api_tools where it now lives.
 """
 
-import json
-
 import httpx
 import pytest
 import respx

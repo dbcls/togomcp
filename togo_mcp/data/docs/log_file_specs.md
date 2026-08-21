@@ -97,7 +97,7 @@ Static per-process build/version identifiers plus the reporting client:
 | --- | --- | --- |
 | `server_version` | string \| null | Installed `togo-mcp` package version. |
 | `usage_guide_version` | string \| null | Detected usage-guide bundle version (e.g. `v6`), parsed from the served directory name. |
-| `mie_bundle_version` | string \| null | `sha256[:12]` over sorted `<file>=<mie_version>` lines across all MIE YAMLs — changes whenever any MIE's `mie_version` changes. |
+| `mie_bundle_version` | string \| null | `sha256[:12]` over sorted `<file>=<sha256(bytes)>` across all MIE YAMLs — a derived CONTENT fingerprint, so it moves on any edit to any MIE (and on add/remove/rename). Before 2026-08-21 it hashed a `mie_version:` field that v3 had dropped, leaving it frozen at `91ba06da8a78` — records in that window cannot be attributed to an MIE bundle. |
 | `client` | object \| null | Reporting MCP client `{ "name", "version" }`, when advertised. |
 
 ### `extra` object (SPARQL only)
