@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TogoMCP チュートリアル</title>
+<style>
+:root{
+  --bg:#fbfaf8; --fg:#1a1a1a; --muted:#6b6560; --line:#e0dbd4;
+  --accent:#1f6f8b; --accent2:#0f4c5c;
+  --warn:#b5471f; --warnbg:#fdf3ee;
+  --good:#2d6a4f; --goodbg:#eef6f1;
+  --code:#f2efea;
+}
+html.dark{
+  --bg:#16161a; --fg:#eceae6; --muted:#9b948c; --line:#33323a;
+  --accent:#6cc6de; --accent2:#a8dce8;
+  --warn:#f0916a; --warnbg:#2c1d17;
+  --good:#7fc7a3; --goodbg:#17251e;
+  --code:#23232a;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif;
+  overflow:hidden; line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+#deck{height:100vh;width:100vw;position:relative}
+.slide{
+  position:absolute;inset:0;
+  display:none; flex-direction:column;
+  padding:5vh 7vw 9vh;
+  justify-content:center;
+  animation:in .28s ease;
+}
+.slide.active{display:flex}
+@keyframes in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+h1{font-size:clamp(2rem,4.6vw,3.6rem);line-height:1.25;letter-spacing:-.02em;font-weight:700}
+h2{font-size:clamp(1.5rem,3.1vw,2.5rem);line-height:1.3;letter-spacing:-.015em;margin-bottom:.7em;font-weight:700}
+h3{font-size:clamp(1.05rem,1.7vw,1.4rem);color:var(--accent2);margin-bottom:.5em;font-weight:600}
+p{font-size:clamp(1rem,1.55vw,1.35rem);margin-bottom:.7em;max-width:52ch}
+p.lead{font-size:clamp(1.1rem,1.95vw,1.7rem);color:var(--muted);max-width:44ch}
+ul,ol{margin:.3em 0 .7em 1.2em;font-size:clamp(1rem,1.5vw,1.3rem)}
+li{margin-bottom:.5em;max-width:50ch}
+li::marker{color:var(--accent)}
+strong{font-weight:700}
+em{font-style:normal;color:var(--accent);font-weight:600}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--code);
+     padding:.12em .4em;border-radius:4px;font-size:.87em}
+pre{background:var(--code);padding:1em 1.2em;border-radius:8px;overflow:auto;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:clamp(.75rem,1.15vw,1rem);line-height:1.55;border:1px solid var(--line)}
+a{color:var(--accent)}
+
+.kicker{font-size:clamp(.72rem,1vw,.9rem);letter-spacing:.16em;text-transform:uppercase;
+        color:var(--muted);margin-bottom:1.1em;font-weight:600}
+.big{font-size:clamp(2.6rem,7.5vw,6rem);font-weight:800;line-height:1;letter-spacing:-.03em;color:var(--accent)}
+.big.warn{color:var(--warn)}
+.sub{font-size:clamp(.9rem,1.3vw,1.15rem);color:var(--muted)}
+
+table{border-collapse:collapse;width:100%;max-width:1000px;font-size:clamp(.82rem,1.25vw,1.1rem);margin:.4em 0}
+th,td{text-align:left;padding:.5em .7em;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:.88em;letter-spacing:.03em}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.hl td{background:var(--goodbg)}
+tr.bad td{background:var(--warnbg)}
+
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:2.2rem;align-items:start}
+.cols3{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem;align-items:start}
+.card{border:1px solid var(--line);border-radius:10px;padding:1.1em 1.2em;background:var(--code)}
+.card h3{margin-bottom:.35em}
+.card p,.card ul{font-size:clamp(.85rem,1.25vw,1.05rem);margin-bottom:.3em}
+
+.box{border-left:4px solid var(--accent);padding:.7em 0 .7em 1.1em;margin:.7em 0;max-width:56ch}
+.box.warn{border-color:var(--warn);background:var(--warnbg);padding:.9em 1.1em;border-radius:0 8px 8px 0}
+.box.good{border-color:var(--good);background:var(--goodbg);padding:.9em 1.1em;border-radius:0 8px 8px 0}
+.box p:last-child{margin-bottom:0}
+
+.stats{display:flex;gap:3rem;flex-wrap:wrap;margin:.8em 0}
+.stat{min-width:130px}
+.stat .v{font-size:clamp(1.8rem,4vw,3.2rem);font-weight:800;line-height:1.05;
+         font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.stat .l{font-size:clamp(.75rem,1.05vw,.95rem);color:var(--muted);margin-top:.2em}
+.stat.a .v{color:var(--accent)} .stat.w .v{color:var(--warn)} .stat.g .v{color:var(--good)}
+
+.prompt{background:var(--code);border:1px solid var(--line);border-left:4px solid var(--accent);
+        border-radius:0 8px 8px 0;padding:.9em 1.1em;font-family:ui-monospace,Menlo,monospace;
+        font-size:clamp(.8rem,1.25vw,1.1rem);line-height:1.6;max-width:60ch;white-space:pre-wrap}
+.flow{display:flex;flex-direction:column;gap:.5rem;margin:.6em 0;font-size:clamp(.85rem,1.3vw,1.1rem)}
+.flow div{padding:.55em .9em;background:var(--code);border-radius:6px;border-left:3px solid var(--line);
+          font-family:ui-monospace,Menlo,monospace}
+.flow div.on{border-left-color:var(--accent);background:var(--goodbg)}
+.strike{text-decoration:line-through;opacity:.5}
+
+/* chrome */
+#bar{position:fixed;bottom:0;left:0;height:3px;background:var(--accent);transition:width .25s;z-index:10}
+#num{position:fixed;bottom:1.1rem;right:1.6rem;font-size:.8rem;color:var(--muted);
+     font-variant-numeric:tabular-nums;z-index:10}
+#tag{position:fixed;bottom:1.1rem;left:1.6rem;font-size:.8rem;color:var(--muted);z-index:10;letter-spacing:.05em}
+#help{position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg);z-index:40;
+      display:none;padding:8vh 10vw;overflow:auto}
+#help.on{display:block}
+.center{align-items:flex-start;justify-content:center;text-align:left}
+.title-slide{justify-content:center}
+@media print{
+  body{overflow:visible;height:auto}
+  #deck{height:auto}
+  .slide{display:flex!important;position:relative;page-break-after:always;height:100vh;animation:none}
+  #bar,#num,#tag{display:none}
+}
+</style>
+</head>
+<body>
+
+<div id="deck">
+
+<!-- ============ TITLE ============ -->
+<section class="slide title-slide">
+  <p class="kicker">生命科学データベース × AI アシスタント</p>
+  <h1>TogoMCP<br>チュートリアル</h1>
+  <p class="lead" style="margin-top:1.2em">SPARQL を書かずに、生命科学の主要データベースへ問い合わせる ── そして、返ってきた答えを疑う方法</p>
+  <p class="sub" style="margin-top:2em">本資料の実行結果はすべて実測（2026-08-20 / 08-21 再測定）<br>モデル: claude-opus-5 設定 および claude-sonnet-5 ／ サーバ: togomcp.rdfportal.org</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">今日のゴール</p>
+  <h2>3つあります</h2>
+  <ol>
+    <li><strong>繋いで、使えるようになる</strong></li>
+    <li><strong>なぜ動くのかを理解する</strong> ── これがないと、動かないときに手が出せません</li>
+    <li><strong>答えを疑い、検証できるようになる</strong></li>
+  </ol>
+  <div class="box warn" style="margin-top:1em">
+    <p>今日いちばん時間を割くのは、<strong>うまくいく例ではなく、うまくいかない例</strong>です。</p>
+  </div>
+</section>
+
+<!-- ============ M0 ============ -->
+<section class="slide">
+  <p class="kicker">M0 — 導入</p>
+  <h2>データはもう RDF になっている</h2>
+  <p>UniProt も PDB も ChEMBL も Reactome も、SPARQL で機械的に検索できます。</p>
+  <p>理屈のうえでは、<em>「ヒトのライソゾーム酵素のうち承認薬の標的になっているもの」</em>は 1 本のクエリで答えが出るはずです。</p>
+  <p class="lead" style="margin-top:1em">実際にはそうなっていません。</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M0 — 導入</p>
+  <h2>理由は3つ</h2>
+  <div class="cols3">
+    <div class="card">
+      <h3>1. 書ける人が少ない</h3>
+      <p>能力の問題ではありません。年に数回しか書かないものを習得し続けるのは、投資として合理的ではないというだけです。</p>
+    </div>
+    <div class="card">
+      <h3>2. DB ごとに違う</h3>
+      <p>UniProt では <code>up:Protein</code>。PDB では <code>pdbo:datablock</code> から辿る。1つ覚えても次で使えません。</p>
+    </div>
+    <div class="card">
+      <h3>3. 癖を知らないと書けない</h3>
+      <p>どのグラフを指定するか、どの述語が速いか、どこで壊れるか。文書化されていないことが多い。</p>
+    </div>
+  </div>
+  <div class="box warn" style="margin-top:1.4em">
+    <p>そして<strong>失敗が静かです</strong>。エラーではなく、<strong>間違った件数</strong>が返ってきます。</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M0 — MCP とは</p>
+  <h2>AI に「道具」を配る規格</h2>
+  <pre>   あなた  ──→  Claude など  ──→  MCP サーバ  ──→  外部のデータ
+    (質問)        (道具を選ぶ)      (TogoMCP)      (SPARQL / REST)</pre>
+  <div class="box">
+    <p>重要なのは、AI が<strong>「知っていること」ではなく「取りに行けること」</strong>に変わる点です。</p>
+    <p>訓練データの記憶を思い出すのではなく、いま生きているデータベースに問い合わせて答えを作る。</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M0 — TogoMCP とは</p>
+  <h2>RDF Portal の約37DBに<br>自然言語で問い合わせる</h2>
+  <table>
+    <tr><th>分野</th><th>データベース</th></tr>
+    <tr><td>タンパク質</td><td>UniProt, PDB, jPOST</td></tr>
+    <tr><td>遺伝子・ゲノム</td><td>NCBI Gene, Ensembl, HGNC, OMA, Bgee, DDBJ, MoG+, TogoVar, GWAS Catalog</td></tr>
+    <tr><td>化学</td><td>ChEMBL, PubChem, ChEBI, Rhea, BRENDA, MassBank</td></tr>
+    <tr><td>パスウェイ / 疾患</td><td>Reactome / ClinVar, MedGen, MONDO, NANDO</td></tr>
+    <tr><td>文献 / 微生物</td><td>PubMed, PubTator / BacDive, MediaDive, AMR Portal, NBRC</td></tr>
+    <tr><td>糖鎖 / オントロジー</td><td>GlyCosmos / MeSH, GO, HP, UBERON, CL, SO, ECO …</td></tr>
+  </table>
+  <div class="box good">
+    <p><strong>TogoVar・jPOST・GlyCosmos・NBRC・NANDO</strong> ── 日本発のデータベースが揃っているのは、他では代えがきかない特徴です。</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M0 — 効果の根拠</p>
+  <h2>「便利そう」ではなく<br>「測って効いている」</h2>
+  <div class="stats">
+    <div class="stat a"><div class="v">1.82</div><div class="l">効果量 Cohen's <em>d</em></div></div>
+    <div class="stat a"><div class="v">&lt; 0.001</div><div class="l">Wilcoxon <em>p</em></div></div>
+  </div>
+  <p>行動科学で「大きい」の目安が 0.8。それを大きく超えています。</p>
+  <p class="sub"><strong>出典:</strong> Kinjo <em>et al.</em> (2026) <em>Database</em> <strong>2026</strong>:baag042 · doi.org/10.1093/database/baag042<br>この数値は<strong>論文で報告されたもの</strong>で、本教材の独自測定ではありません。</p>
+  <div class="box warn">
+    <p>ただし、これは<strong>ベンチマーク問題セット上の測定</strong>です。皆さんの研究テーマで同じ差が出る保証はありません。今日は<strong>効かない場合も</strong>見ます。</p>
+  </div>
+</section>
+
+<!-- ============ M1 ============ -->
+<section class="slide">
+  <p class="kicker">M1 — セットアップ</p>
+  <h2>3つの経路。今日は A だけ</h2>
+  <table>
+    <tr><th>経路</th><th>対象</th><th>所要</th><th>インストール</th></tr>
+    <tr class="hl"><td><strong>A. カスタムコネクタ</strong></td><td>ほぼ全員</td><td>3分</td><td><strong>不要</strong></td></tr>
+    <tr><td>B. Claude Code (CLI)</td><td>コマンドラインで作業する人</td><td>5分</td><td>Claude Code のみ</td></tr>
+    <tr><td>C. ローカル stdio</td><td>開発者・KEGG を使う人</td><td>15分</td><td>Python, uv, git</td></tr>
+  </table>
+  <p class="sub" style="margin-top:1em">B と C は手順書に。TogoMCP 側のアカウント登録や API キーは不要です。</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M1 — 経路 A</p>
+  <h2>設定 → コネクタ → 追加</h2>
+  <ol>
+    <li>Claude の <strong>設定 → カスタマイズ → コネクタ</strong></li>
+    <li><strong>「+」→「カスタムコネクタを追加」</strong></li>
+    <li>URL を入力：<br><code>https://togomcp.rdfportal.org/mcp</code></li>
+    <li>チャット画面の <strong>「+」からコネクタを選び、その会話で有効化</strong></li>
+  </ol>
+  <div class="box warn">
+    <p><strong>4 を忘れるのが最頻のつまずきです。</strong>追加しただけでは使えません。</p>
+    <p style="margin-top:.4em">Team / Enterprise は、<strong>先に組織のオーナーが組織全体へ追加</strong>する必要があります。</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M1 — 接続確認</p>
+  <h2>全員でこれを打つ</h2>
+  <div class="prompt">TogoMCP からどんなデータベースが使えるの？</div>
+  <div class="stats" style="margin-top:1.2em">
+    <div class="stat g"><div class="v">10<span style="font-size:.4em">秒</span></div><div class="l">実測</div></div>
+    <div class="stat g"><div class="v">37</div><div class="l">データベース</div></div>
+  </div>
+  <p>分野ごとに整理された一覧が返ってきたら成功です。</p>
+</section>
+
+<!-- ============ M2 ============ -->
+<section class="slide">
+  <p class="kicker">M2 — 最初のデモ</p>
+  <h2>デモ1：1ホップの問い</h2>
+  <div class="prompt">ヒトのインスリン (INS) 遺伝子産物の UniProt エントリを教えて。機能と配列長も。</div>
+  <p class="sub" style="margin-top:1em">⏱ 実測 約35秒</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M2 — デモ1 の結果</p>
+  <h2>P01308</h2>
+  <table style="max-width:820px">
+    <tr><td>Accession</td><td><strong>P01308</strong></td></tr>
+    <tr><td>Mnemonic</td><td>INS_HUMAN</td></tr>
+    <tr><td>名称</td><td>Insulin [Cleaved into: Insulin B chain; Insulin A chain]</td></tr>
+    <tr class="hl"><td>配列長</td><td><strong>110 aa</strong></td></tr>
+    <tr><td>質量</td><td>11,981 Da</td></tr>
+  </table>
+  <p style="margin-top:1em">機能（UniProt の記載そのまま）:</p>
+  <p class="sub" style="max-width:60ch">“Insulin decreases blood glucose concentration. It increases cell permeability to monosaccharides, amino acids and fatty acids…”</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M2 — ★ 引っかかりましたか</p>
+  <h2>インスリンは 51 アミノ酸<br>のはずでは？</h2>
+  <div class="cols">
+    <div>
+      <p class="big warn">110</p>
+      <p class="sub">プレプロインスリン前駆体</p>
+      <p style="margin-top:.8em">シグナルペプチド 24 + B鎖 30 + Cペプチド 31 + A鎖 21 + 切断部位</p>
+    </div>
+    <div>
+      <p class="big">51</p>
+      <p class="sub">成熟インスリン（A鎖21 + B鎖30）</p>
+      <p style="margin-top:.8em">P01308 が指すのは<strong>翻訳産物</strong>であって、循環中のホルモンではありません。</p>
+    </div>
+  </div>
+  <div class="box good" style="margin-top:1em">
+    <p><strong>データベースはあなたの記憶より精密で、そして期待していたのと別のものを指していることがあります。</strong></p>
+    <p style="margin-top:.4em">答えが違うと感じたとき、まず疑うべきは AI の誤りではなく、<strong>自分の期待とデータベースの定義のずれ</strong>です。</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M2 — デモ2</p>
+  <h2>ID を持って別の DB へ渡る</h2>
+  <div class="prompt">その UniProt ID を Ensembl 遺伝子 ID と HGNC ID に変換して。あと PDB の構造も。</div>
+  <table style="max-width:640px;margin-top:1.2em">
+    <tr><th>変換先</th><th>ID</th></tr>
+    <tr><td>Ensembl Gene</td><td><strong>ENSG00000254647</strong></td></tr>
+    <tr><td>HGNC</td><td><strong>HGNC:6081</strong></td></tr>
+    <tr><td>PDB</td><td>実在の構造 ID のリスト</td></tr>
+  </table>
+  <p class="sub" style="margin-top:.8em">⏱ 実測 約15秒 ／ 「その UniProt ID」で文脈が引き継がれています</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M2 — ★ ここが本題</p>
+  <h2>裏で何が起きたか</h2>
+  <div class="flow">
+    <div class="on">1. TogoMCP_Usage_Guide()　　　← 使い方ガイドを読む</div>
+    <div class="on">2. search_uniprot_entity(...)　← INS から P01308 を特定</div>
+    <div class="on">3. get_MIE_file("uniprot")　　← UniProt の説明書を読む</div>
+    <div class="on">4. run_sparql("uniprot", ...)　← SPARQL を組んで実行</div>
+  </div>
+  <p class="lead" style="margin-top:.8em">魔法ではなく、手順です。</p>
+  <div class="box">
+    <p><strong>ステップ2</strong>で「インスリン」という揺れる言葉が <code>P01308</code> という動かない ID に固定された。</p>
+    <p><strong>ステップ3</strong>で、SPARQL を書く<strong>前に</strong>説明書を読んでいる。← 次章の核心</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M2 — 補足</p>
+  <h2>ガイドは<br>「発言するたび」読み直される</h2>
+  <pre>[1往復目] あなた:「ヒトのインスリンの…」
+   └→ <strong>Usage_Guide</strong>, search_uniprot, get_MIE, run_sparql, 回答
+
+[2往復目] あなた:「その ID を Ensembl に…」
+   └→ <strong>Usage_Guide</strong>, togoid_getRelation, togoid_convertId, 回答</pre>
+  <p style="margin-top:.7em"><strong>ツールを何回呼んでも、1往復につき1回。</strong>セッション初回の1回ではありません。</p>
+  <div class="stats" style="margin-top:.5em">
+    <div class="stat a"><div class="v">44,570</div><div class="l">文字 ／ 1回あたり（≒1.1〜1.3万トークン）</div></div>
+  </div>
+  <p class="sub">ツールの説明に「毎ターン、他のどのツールより先に呼べ」と明記。<strong>前の往復の作業内容は引き継がれない</strong>という前提の設計です。</p>
+</section>
+
+<!-- ============ M3 ============ -->
+<section class="slide">
+  <p class="kicker">M3 — 仕組み</p>
+  <h2>ツールは3層に分かれる</h2>
+  <table>
+    <tr><th>層</th><th>役割</th><th>代表的なツール</th></tr>
+    <tr><td><strong>ガイダンス層</strong></td><td>どう使うかを教える</td><td><code>TogoMCP_Usage_Guide</code>, <code>get_MIE_file</code></td></tr>
+    <tr><td><strong>グラウンディング層</strong></td><td>言葉 → ID</td><td><code>search_uniprot_entity</code>, <code>search_mesh_descriptor</code>, <code>togoid_convertId</code></td></tr>
+    <tr class="hl"><td><strong>実行層</strong></td><td>SPARQL を実行</td><td><code>run_sparql</code> ── たった1つ</td></tr>
+  </table>
+  <div class="box warn">
+    <p><strong>ガイダンス層を読まずに実行層へ来てはいけない</strong> ── これが最重要ルールです。</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M3 — グラウンディング</p>
+  <h2>揺れる言葉を<br>動かない ID に固定する</h2>
+  <div class="cols">
+    <div>
+      <p class="sub">揺れる</p>
+      <p style="font-size:1.4em">「インスリン」<br>「膵がん」<br>「ライソゾーム酵素」</p>
+    </div>
+    <div>
+      <p class="sub">動かない</p>
+      <p style="font-size:1.4em"><code>P01308</code><br><code>D010190</code><br><code>GO:0043202</code></p>
+    </div>
+  </div>
+  <div class="box warn" style="margin-top:1.2em">
+    <p><strong>ここを飛ばすと、あとの工程が全部あてずっぽうになります。</strong></p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M3 — 核心</p>
+  <h2>MIE ファイル</h2>
+  <p class="lead">なぜ AI が、教わってもいないデータベースに正しい SPARQL を書けるのか。<br><strong>説明書を渡しているから</strong>です。</p>
+  <div class="box good">
+    <p>設計目標：<strong>LLM が初回で正しく速い SPARQL を書けるだけの情報を、過不足なく与える。</strong></p>
+  </div>
+  <p class="sub">全スキーマを渡せば正確だが巨大すぎる。概要だけでは書けない。<br>MIE は「<strong>モデルが自力で復元できないことだけ</strong>」を載せる。</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M3 — MIE の中身</p>
+  <h2>検証済みの実行例が原子単位</h2>
+  <pre>examples:
+  - id: sequence_mass
+    sparql: |
+      SELECT ?sequence ?mass
+      FROM &lt;http://sparql.uniprot.org/uniprot&gt;
+      WHERE { ?protein up:sequence ?seq .
+              ?seq rdf:value ?sequence ; up:mass ?mass . }
+    traps_avoided:
+      - union_inflation: FROM 句でグラフを固定しないと
+        同居する他データセットの行を拾って件数が膨らむ
+    verified: 2026-07-29</pre>
+  <p style="margin-top:.6em">1つの例が3役を同時に果たす ── <em>①スキーマの形</em> ／ <em>②サンプルデータ</em> ／ <em>③このDB特有の罠</em></p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M3 — なぜ先に読むのか</p>
+  <h2>理由は2つ</h2>
+  <div class="cols">
+    <div class="card">
+      <h3>1. 存在しない述語を書いても<br>エラーは出ない</h3>
+      <p><strong>ゼロ件が返ります。</strong>そして AI は「該当なし」と報告する。検出が非常に困難です。</p>
+    </div>
+    <div class="card">
+      <h3>2. 書き方で実行時間が<br>桁で変わる</h3>
+      <pre style="font-size:.8em;margin-top:.5em">特定の IRI 指定   ≫  FILTER(CONTAINS(...))
+     速い                    遅い</pre>
+      <p style="margin-top:.5em"><strong>実測：</strong>同じ答えを返すクエリが、片方は60秒でタイムアウト、片方は約5秒。</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M3 — 静かな失敗</p>
+  <h2>MIE を守ると、罠は<br>一度も発火しない</h2>
+  <p>1つのエンドポイントに複数のデータセットが同居していると、グラフを指定しないクエリは全部を拾い、<strong>行数が黙って膨らみます</strong>。</p>
+  <p>対策は <code>FROM &lt;グラフ名&gt;</code> でグラフを固定すること。<strong>MIE がそう指示します。</strong></p>
+  <div class="box warn">
+    <p>つまり、黙って守っていると<strong>罠があったことすら分かりません</strong>。</p>
+    <p style="margin-top:.4em">→ <strong>わざと破ってみます。</strong></p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M3 — 実測</p>
+  <h2>こちらは実際に起きます</h2>
+  <div class="stats">
+    <div class="stat w"><div class="v">62</div><div class="l">COUNT(*)</div></div>
+    <div class="stat a"><div class="v">52</div><div class="l">COUNT(DISTINCT ?protein)</div></div>
+    <div class="stat w"><div class="v">19%</div><div class="l">差</div></div>
+  </div>
+  <p>1つのタンパク質が <strong>EC 番号を複数持っていた</strong>ため（該当7個。<strong>GBA1 は4個</strong>、ASAH1 は3個）。<br>素朴に行数を数えていたら「<strong>ライソゾーム内腔酵素62個</strong>」と報告するところでした。正しくは<strong>52</strong>。</p>
+  <div class="box good">
+    <p><strong>件数を報告する前に、<code>COUNT(*)</code> と <code>COUNT(DISTINCT)</code> を比べる。</strong>差があるなら、何が重複しているのか説明できるまで報告しない。</p>
+  </div>
+</section>
+
+<!-- ============ M4 ============ -->
+<section class="slide">
+  <p class="kicker">M4 — デモ4</p>
+  <h2>検索だけでは答えられない問い</h2>
+  <div class="prompt">SARS-CoV-2 の main protease (3CL protease) の PDB 構造を、
+分解能の良い順に上位10件教えて。</div>
+  <p class="sub" style="margin-top:1em">⏱ 実測 39秒 ／ 失敗ゼロ・リトライゼロ ── 5デモ中もっとも堅牢</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M4 — ★ 途中で行き詰まる</p>
+  <h2>検索は 1,872 件を<br>順不同で返した</h2>
+  <p class="lead">この検索ツールでは質問に答えられません。</p>
+  <p>「分解能の良い順に上位10件」を出すには、分解能という数値でソートする必要がある。それは検索 API の仕事ではなく <strong>SPARQL の仕事</strong>です。</p>
+  <div class="box good">
+    <p><strong>SPARQL が必要な理由が、画面の上で目に見える</strong>数少ないデモです。</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M4 — デモ4 の結果</p>
+  <h2>分解能順の上位10件</h2>
+  <div class="cols">
+    <table>
+      <tr><th>#</th><th>PDB</th><th>Å</th></tr>
+      <tr class="hl"><td>1</td><td><strong>9ZNL</strong></td><td class="num">1.16</td></tr>
+      <tr><td>2</td><td>7GEF</td><td class="num">1.18</td></tr>
+      <tr><td>3</td><td>7K3T</td><td class="num">1.20</td></tr>
+      <tr><td>4</td><td>9HJH</td><td class="num">1.20</td></tr>
+      <tr><td>5</td><td>7GBE</td><td class="num">1.224</td></tr>
+    </table>
+    <div>
+      <h3>実験手法別の内訳</h3>
+      <table>
+        <tr><td>X線回折</td><td class="num">1,796</td></tr>
+        <tr><td>クライオEM</td><td class="num">18</td></tr>
+        <tr><td>中性子</td><td class="num">4</td></tr>
+        <tr><td>溶液NMR</td><td class="num">3</td></tr>
+        <tr><td>電子線結晶</td><td class="num">1</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M4 — 言うべき注意</p>
+  <h2>3点だけ</h2>
+  <ol>
+    <li><strong>絞り込みは IRI で。</strong>標題のキーワードではなく EC番号と分類群の IRI を使っています。文字列で絞ると取りこぼしと混入が起きます</li>
+    <li><strong>分解能は X線のみ。</strong>クライオEM は別のフィールド。手法混在の順位表ではありません</li>
+    <li><strong>この結果は動きます。</strong>明日 1.1 Å が登録されれば順位が変わる</li>
+  </ol>
+  <div class="box good">
+    <p><strong>だから、表ではなくクエリを保存してください。</strong></p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M4 — デモ3'</p>
+  <h2>複数DBをまたぐ</h2>
+  <div class="prompt">ヒトのライソゾーム酵素のうち、承認薬のターゲットになっているものを教えて。</div>
+  <p style="margin-top:1em">UniProt の機能アノテーション × ChEMBL の薬剤-標的関係</p>
+  <p class="sub">⏱ 実測 79秒</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M4 — デモ3' の結果</p>
+  <h2>52種のうち、3つ</h2>
+  <table>
+    <tr><th>遺伝子</th><th>承認薬</th><th>作用</th><th>何を意味するか</th></tr>
+    <tr class="hl"><td><strong>GLA</strong></td><td>ミガーラスタット</td><td><strong>STABILISER</strong></td><td>ファブリー病の薬理学的シャペロン。<strong>原因酵素を狙った唯一の低分子</strong></td></tr>
+    <tr class="hl"><td><strong>GAA</strong></td><td>ミグリトール、ボグリボース</td><td>INHIBITOR</td><td>狙いはポンペ病ではなく<strong>2型糖尿病</strong></td></tr>
+    <tr class="bad"><td><strong>PDGFRB</strong></td><td>イマチニブほか11剤</td><td>INHIBITOR</td><td>受容体型チロシンキナーゼ。<strong>ライソゾーム酵素ではない</strong></td></tr>
+  </table>
+  <div class="box good" style="margin-top:1em">
+    <p>PDGFRB を除くと ── <strong>ライソゾーム酵素を直接狙う承認低分子は、実質ミガーラスタット1系統だけ。</strong></p>
+    <p style="margin-top:.4em">意外ではありません。<strong>ライソゾーム病は酵素を「阻害」するのではなく「補充」して治療するから</strong>です。</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M4 — ★ ここが本題</p>
+  <h2>最初の質問文が、実は悪かった</h2>
+  <p class="lead">「ライソゾーム酵素」をどう定義するかで、答えがまったく別物になります。</p>
+  <table style="margin-top:.6em">
+    <tr><th>定義</th><th>候補</th><th>承認薬側の結果</th></tr>
+    <tr class="bad"><td>UniProt キーワード<br><strong>KW-0458「Lysosome」</strong></td><td class="num">161</td><td><strong>インスリン製剤22種<br>PDGFR阻害剤12種</strong></td></tr>
+    <tr class="hl"><td>GO<br><strong>GO:0043202（内腔）</strong></td><td class="num">52</td><td>GLA、GAA</td></tr>
+  </table>
+</section>
+
+<section class="slide">
+  <p class="kicker">M4 — なぜそうなるのか</p>
+  <h2>KW-0458 は<br>局在であって機能ではない</h2>
+  <p>「ライソゾームに局在する（ことがある）タンパク質」という意味なので ──</p>
+  <p style="font-size:1.15em"><strong>INSR ／ PDGFRB ／ mTOR ／ PCSK9 ／ LRRK2 ／ PSEN2</strong>、それに20個ほどの <strong>RAB GTPase</strong> が入ってきます。</p>
+  <div class="box warn">
+    <p><strong>EC番号で加水分解酵素に絞っても直りません。</strong>161のうち113が生き残る ── RAB GTPase は EC 3.6.5.2 で、立派な加水分解酵素だからです。</p>
+  </div>
+</section>
+
+<section class="slide center">
+  <p class="kicker">M4 — 教訓 その1</p>
+  <h2 style="max-width:22ch">答えが変なとき、<br>間違っているのは<br>クエリの文法ではなく<br><em>「対象をどう定義したか」</em></h2>
+</section>
+
+<!-- ===== FAILURE DEMO ===== -->
+<section class="slide center">
+  <p class="kicker">M4 — ★★ 今日の中心</p>
+  <h1>失敗デモ</h1>
+  <p class="lead" style="margin-top:1em">わざと悪い問いを投げます。</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">失敗デモ (a)</p>
+  <h2>悪い問い</h2>
+  <div class="prompt">がんに関係する遺伝子を教えて</div>
+  <div class="stats" style="margin-top:1.4em">
+    <div class="stat w"><div class="v">12<span style="font-size:.4em">秒</span></div><div class="l">実測</div></div>
+    <div class="stat w"><div class="v">1</div><div class="l">ツール呼び出し</div></div>
+    <div class="stat w"><div class="v">0</div><div class="l">SPARQL 実行</div></div>
+  </div>
+  <p style="margin-top:1em">返ってきた答え：<strong>TP53、RB1、PTEN、APC、BRCA1/2、KRAS、MYC、EGFR……</strong></p>
+  <p class="lead">もっともらしい。速い。</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">失敗デモ (b) — ログを開く</p>
+  <h2>実行された唯一の検索<br><span style="font-size:.55em;color:var(--muted)">（あるいは、何も実行されていない）</span></h2>
+  <pre>search_uniprot_entity(query="cancer AND organism_id:9606 AND reviewed:true", limit=20)</pre>
+  <p style="margin-top:.8em">返ってきたもの：</p>
+  <pre>Q9Y238  Deleted in lung and esophageal cancer protein 1
+P51587  Breast cancer type 2 susceptibility protein
+Q5HYN5  Cancer/testis antigen family 45 member A1
+P35243  Recoverin (Cancer-associated retinopathy protein)
+P78358  Cancer/testis antigen 1 (NY-ESO-1)</pre>
+</section>
+
+<section class="slide center">
+  <p class="kicker">失敗デモ (b)</p>
+  <h2 style="max-width:24ch">回答に並んだ<br><em>TP53・KRAS・MYC</em> は<br>この中に1つもありません</h2>
+</section>
+
+<section class="slide">
+  <p class="kicker">失敗デモ (b)</p>
+  <h2>偶然ではありません</h2>
+  <p>この検索は<strong>タンパク質名の文字列に "cancer" が含まれるか</strong>を見ているだけです。</p>
+  <table style="max-width:700px">
+    <tr><th>遺伝子</th><th>UniProt の名称</th></tr>
+    <tr><td>TP53</td><td>Cellular tumor antigen p53</td></tr>
+    <tr><td>KRAS</td><td>GTPase KRas</td></tr>
+  </table>
+  <div class="box warn" style="margin-top:1em">
+    <p>"cancer" という文字列が入っていないので、<strong>原理的に到達不可能</strong>です。</p>
+  </div>
+</section>
+
+<section class="slide center">
+  <p class="kicker">失敗デモ — これが今日いちばん伝えたいこと</p>
+  <h1 style="max-width:20ch">データベースを<br>触った形跡だけがあって、<br><em>答えは記憶由来</em></h1>
+</section>
+
+<section class="slide">
+  <p class="kicker">失敗デモ — なぜ危険か</p>
+  <h2>気づく手がかりが<br>画面上に何もない</h2>
+  <ul>
+    <li>答えは<strong>速い</strong></li>
+    <li>答えは<strong>流暢</strong></li>
+    <li>そして<strong>内容としては概ね正しい</strong> ── TP53 は確かにがん抑制遺伝子です</li>
+  </ul>
+  <p style="margin-top:.6em">問題は正しさではなく、<strong>出どころが不明で、検証も反証も再現もできない</strong>ことです。</p>
+  <div class="box warn">
+    <p style="font-size:1.15em"><strong>遅くて失敗するほうが、速くて自信満々に間違うより、はるかに安全です。</strong></p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">失敗デモ (c)</p>
+  <h2>曖昧だったのは3つの軸</h2>
+  <table>
+    <tr><th>軸</th><th>何が起きたか</th></tr>
+    <tr class="bad"><td><strong>生物種</strong></td><td>誰もヒトとは言っていないのに、勝手に <code>9606</code> が付いた ── <strong>ユーザに見えない形での仕様の捏造</strong></td></tr>
+    <tr><td><strong>がん種</strong></td><td>乳がんも肺がんも大腸がんも無秩序に混ざった</td></tr>
+    <tr><td><strong>エビデンス種別</strong></td><td>生殖細胞系列の易罹患性／体細胞ドライバー／発現バイオマーカー／治療標的／単なる文献共起 ── <strong>どれとも決めずに全部混ぜた</strong></td></tr>
+  </table>
+</section>
+
+<section class="slide">
+  <p class="kicker">失敗デモ (d)</p>
+  <h2>同じ意図を仕様化する</h2>
+  <div class="prompt">MeSH で 'Pancreatic Neoplasms' に対応するディスクリプタを特定した上で、
+その疾患に関連付けられているヒト遺伝子を、典拠となるデータベースと
+フィールド名を明示して、上位20件、関連の強い順に表で出して。
+件数はCOUNTでも裏取りして。</div>
+  <div class="stats" style="margin-top:1.2em">
+    <div class="stat w"><div class="v">12<span style="font-size:.4em">秒</span></div><div class="l">曖昧版</div></div>
+    <div class="stat a"><div class="v">182<span style="font-size:.4em">秒</span></div><div class="l">仕様化版 ── 約15倍</div></div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">失敗デモ (d)</p>
+  <h2>何が変わったか</h2>
+  <table>
+    <tr><th></th><th>曖昧版</th><th>仕様化版</th></tr>
+    <tr><td>ツール呼び出し</td><td class="num">1</td><td class="num">8</td></tr>
+    <tr><td>SPARQL 実行</td><td class="num">0</td><td class="num">4</td></tr>
+    <tr><td>MIE 参照</td><td>なし</td><td>あり</td></tr>
+    <tr><td>ID の実証</td><td><strong>ゼロ</strong></td><td>MeSH D010190 をライブ照会で確定</td></tr>
+    <tr><td>COUNT 裏取り</td><td>なし</td><td>あり</td></tr>
+    <tr class="hl"><td><strong>再現可能性</strong></td><td><strong>なし</strong></td><td>クエリ全文で再現可能</td></tr>
+  </table>
+  <p class="sub" style="margin-top:.8em">12秒は速いのではありません。<strong>何もしていないから速い</strong>のです。</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">失敗デモ (d) — ★ 最大の収穫</p>
+  <h2>COUNT が方法論の欠陥を暴いた</h2>
+  <table style="max-width:760px">
+    <tr><td>疾患の総論文数</td><td class="num"><strong>236,144</strong></td></tr>
+    <tr><td>TP53 の厳密な共起数</td><td class="num"><strong>32,597</strong></td></tr>
+    <tr class="bad"><td>サンプル上で見えていた値</td><td class="num"><strong>1,581</strong></td></tr>
+  </table>
+  <p style="margin-top:1em">タイムアウト回避のため内側で2万件に制限していたが、<strong>その2万件は一様なランダム標本ではなかった</strong>。</p>
+  <p><strong>絶対数だけでなく、順位も入れ替わった。</strong></p>
+  <table style="max-width:640px">
+    <tr><th>遺伝子</th><th>標本での順位</th><th>全件での順位</th></tr>
+    <tr class="bad"><td><strong>MTOR</strong></td><td class="num">20 位</td><td class="num"><strong>9 位</strong></td></tr>
+    <tr class="bad"><td><strong>INS</strong></td><td class="num">6 位</td><td class="num"><strong>16 位</strong></td></tr>
+  </table>
+  <div class="box good">
+    <p>裏取りを要求しなかったら、<strong>それらしい表がそのまま通っていました</strong>。</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">失敗デモ (e) — ★ ここで終わらせない</p>
+  <h2>良い問いにしても<br>限界は残る</h2>
+  <table>
+    <tr><th>順位</th><th>遺伝子</th><th>問題</th></tr>
+    <tr class="bad"><td>6</td><td><strong>INS</strong></td><td>膵臓という臓器の共起。因果関係ではない</td></tr>
+    <tr class="bad"><td>14</td><td><strong>POTEF</strong></td><td>アクチン融合キメラ遺伝子。ACTB と配列が高度に類似 ── <strong>ただし順位の原因かは未確認</strong></td></tr>
+    <tr class="bad"><td>16</td><td><strong>GAPDH</strong></td><td>ハウスキーピング。実験の内部対照として言及されているだけ</td></tr>
+    <tr class="bad"><td>圏外</td><td><strong>SMAD4 / CDKN2A</strong></td><td>膵がんの<strong>主要ドライバーなのに上位20に入らない</strong></td></tr>
+  </table>
+  <p style="margin-top:.8em">共起論文数は「<strong>どれだけ有名で、どれだけ論文が書かれているか</strong>」を測っており、<strong>疾患特異性を測っていない</strong>。</p>
+</section>
+
+<section class="slide center">
+  <p class="kicker">M4 — 教訓 その2</p>
+  <h2 style="max-width:24ch">良い問いは答えを良くする。<br><em>しかし、良い問いにしても<br>なお残る限界がある。</em></h2>
+  <p class="lead" style="margin-top:1em">検証は、問いの改善では終わりません。</p>
+</section>
+
+<!-- ============ M5 ============ -->
+<section class="slide">
+  <p class="kicker">M5 — スキル</p>
+  <h2>MCP と スキルの違い</h2>
+  <div class="cols">
+    <div class="card">
+      <h3>MCP ＝ 能力</h3>
+      <p>何ができるか。UniProt を引ける、SPARQL を投げられる、ID を変換できる。</p>
+    </div>
+    <div class="card">
+      <h3>Skill ＝ 方法論</h3>
+      <p>どういう手順でやるか。どの順で、何を検証するか。</p>
+    </div>
+  </div>
+  <div class="box" style="margin-top:1.2em">
+    <p>同じ道具でも、手順書があるかないかで結果の質が変わる ── <strong>さっき見たとおりです</strong>。</p>
+    <p style="margin-top:.4em">今日の「良い問い」と「検証」を、<strong>毎回手で書かなくて済むようにしたもの</strong>。</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M5 — 3つのスキル</p>
+  <h2>紹介に留めます</h2>
+  <table>
+    <tr><th>スキル</th><th>何をするか</th></tr>
+    <tr><td><strong>research-article-analysis</strong></td><td>論文の主張を、本文を信じずに DB へ照合。ChEBI → Rhea → UniProt → Reactome → GO の証拠チェーンを構築</td></tr>
+    <tr><td><strong>disease-analysis</strong></td><td>疾患を 分子 → 経路 → 細胞 → 組織 → 臨床 → 治療 の多階層でマッピング</td></tr>
+    <tr><td><strong>PRISM</strong></td><td>複数条件の交差。「疾患 X に関連し、かつ創薬可能な標的」。<strong>典拠台帳を自動で残す</strong></td></tr>
+  </table>
+  <p class="sub" style="margin-top:1em">github.com/dbcls/togomcp ── <code>.claude/skills/</code> 以下</p>
+</section>
+
+<section class="slide center">
+  <p class="kicker">M5 — PRISM の説明文より</p>
+  <h2 style="max-width:22ch">「候補遺伝子を<br>記憶から挙げそうになったら、<br>止めて PRISM を使え」</h2>
+  <p class="lead" style="margin-top:1em">さっきの失敗デモそのものですね。</p>
+</section>
+
+<!-- ============ M6 ============ -->
+<section class="slide">
+  <p class="kicker">M6 — 良い問いの書き方</p>
+  <h2>5要素</h2>
+  <table>
+    <tr><th>#</th><th>要素</th><th>観察された効果</th></tr>
+    <tr><td>1</td><td><strong>正規語彙＋特定手段で対象を与える</strong></td><td>ツール選択が全文検索から <strong>ID 解決＋構造化照合</strong>に切り替わった</td></tr>
+    <tr><td>2</td><td><strong>典拠の明示を要求</strong></td><td>書式の要求ではなく <strong>説明書を読ませるトリガ</strong>として機能した</td></tr>
+    <tr><td>3</td><td><strong>生物種・範囲を明示</strong></td><td>絞り込みではなく <strong>混入を防ぐ処理を発生させるスイッチ</strong></td></tr>
+    <tr><td>4</td><td><strong>件数と順序基準を数値で固定</strong></td><td>「強さ」を<strong>測定可能な量に還元</strong>させる</td></tr>
+    <tr class="hl"><td>5</td><td><strong>COUNT で裏取りを要求</strong></td><td><strong>最も効いた。</strong>サンプリング偏りの検出器</td></tr>
+  </table>
+  <p class="sub" style="margin-top:.6em">一般論ではなく、失敗デモで<strong>実際に観察された因果</strong>です。</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M6 — コスト</p>
+  <h2>毎回やる必要はありません</h2>
+  <table style="max-width:760px">
+    <tr><th>場面</th><th>要素</th></tr>
+    <tr><td>探索・当たりをつける</td><td>1 だけ</td></tr>
+    <tr><td>議論・スライドに載せる</td><td>1・3・4</td></tr>
+    <tr class="hl"><td><strong>論文・報告書に書く</strong></td><td><strong>5つ全部。例外なし</strong></td></tr>
+  </table>
+  <div class="box warn" style="margin-top:1.2em">
+    <p><strong>12秒で返ってきた数字を論文に書かないでください。</strong>査読で聞かれたときに答えられません。</p>
+  </div>
+</section>
+
+<!-- ============ M7 ============ -->
+<section class="slide">
+  <p class="kicker">M7 — 検証と再現性</p>
+  <h2>今日見た失敗は<br>全部エラーを出さなかった</h2>
+  <ul>
+    <li>件数の膨張（62 対 52）</li>
+    <li>サンプリング偏り（1,581 対 32,597）</li>
+    <li>定義の取り違え（局在 ≠ 機能）</li>
+    <li>指標の誤解（共起 ≠ 因果）</li>
+  </ul>
+  <p class="lead">もっともらしい数字として返ってきます。</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M7 — 検証の4手順</p>
+  <h2>論文に使う数字は<br>例外なくこの4つ</h2>
+  <ol>
+    <li><strong>実行されたクエリを全文出させて保存</strong> ── 要約させない。これが実験ノートです</li>
+    <li><strong>COUNT で裏取り</strong> ── 差があるのは異常ではない。<strong>説明できないまま報告するのが異常</strong></li>
+    <li><strong>元のDBで1〜2件を目視</strong> ── 30秒。<strong>上位1件より「意外な1件」</strong>を見る</li>
+    <li><strong>実行日とエンドポイントを記録</strong> ── いつ問い合わせたかがない結果は再現できません</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">M7 — 責任</p>
+  <h2>向いていない用途</h2>
+  <table>
+    <tr class="bad"><td><strong>網羅性が要件の解析</strong></td><td>「すべての」を保証できません</td></tr>
+    <tr class="bad"><td><strong>統計的推論</strong></td><td>件数は返しますが、検定の設計はあなたの仕事です</td></tr>
+    <tr class="bad"><td><strong>臨床判断</strong></td><td><strong>絶対に使わないでください。</strong>ClinVar の分類は診断でも助言でもありません</td></tr>
+    <tr class="bad"><td><strong>一次データの生成</strong></td><td>既存のDBを引くだけ。新しい測定はしません</td></tr>
+  </table>
+  <p class="sub" style="margin-top:1em">引用は2段構え ── <strong>TogoMCP と、実際に使ったデータベースの両方</strong>。TogoMCP は入り口であって、データの出どころではありません。</p>
+</section>
+
+<!-- ============ M9 ============ -->
+<section class="slide">
+  <p class="kicker">M9 — 演習</p>
+  <h2>TogoVar：日本人集団のバリアント</h2>
+  <div class="prompt">GBA1 の病原性バリアントは何件？ そのうち日本人集団で頻度が高いものは？</div>
+  <p class="sub" style="margin-top:1em">⏱ 実測 約35秒 ／ REST のみ・SPARQL 不使用なので堅牢</p>
+  <p style="margin-top:.6em">仕込みが3つあります。</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M9 — 仕込み (1)(2)</p>
+  <h2>182件 → 1件</h2>
+  <p><strong>(1)</strong> 「GBA」は完全一致しません。HGNC が <strong>GBA → GBA1</strong> に改名済み。ID の解決は自明ではない。</p>
+  <p><strong>(2)</strong> 病原性バリアント182件に、日本人集団での頻度条件を掛けると ──</p>
+  <table style="max-width:620px">
+    <tr><th>コホート</th><th>アレル頻度</th></tr>
+    <tr class="hl"><td>ToMMo（日本人 n≈54,000）</td><td class="num"><strong>0.000801</strong></td></tr>
+    <tr><td>NCBN（日本人）</td><td class="num">0.000807</td></tr>
+    <tr><td>gnomAD exomes</td><td class="num">0.0000842</td></tr>
+  </table>
+  <div class="box good">
+    <p><strong>国際データベースの約10倍に濃縮。</strong>国際DBだけを見ていたら見落とす情報です。</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M9 — 仕込み (3)</p>
+  <h2>集計単位の罠</h2>
+  <table style="max-width:860px">
+    <tr><th>集計</th><th>数えている単位</th><th>合計</th><th>182 と一致？</th></tr>
+    <tr class="hl"><td>type（SNV 157 / 欠失 23 / 挿入 2）</td><td><strong>バリアント</strong></td><td class="num"><strong>182</strong></td><td>✅ 一致</td></tr>
+    <tr class="bad"><td>significance</td><td>バリアント × <strong>条件</strong></td><td class="num"><strong>457</strong></td><td>❌ 2.5倍</td></tr>
+    <tr class="bad"><td>consequence</td><td>バリアント × <strong>転写産物</strong></td><td class="num"><strong>2,613</strong></td><td>❌ 約14倍</td></tr>
+  </table>
+  <div class="box warn" style="margin-top:1em">
+    <p>「病原性バリアント277個」と言えば<strong>誤り</strong>です。</p>
+    <p style="margin-top:.4em">しかも「病原性」で絞ったのに <em>Uncertain significance</em> が35件、<em>Likely benign</em> が1件出てきます ── <strong>フィルタはバリアント単位、内訳はバリアント×条件レコード単位</strong>だから。<strong>ツール自身が警告を返してきます。</strong></p>
+  </div>
+  <p class="sub" style="margin-top:.8em">⚠️ ClinVar の疾患名は<strong>分類として</strong>述べること。リスクの助言ではありません。</p>
+</section>
+
+<!-- ============ M8 ============ -->
+<section class="slide">
+  <p class="kicker">M8 — まとめ</p>
+  <h2>3つだけ</h2>
+  <ol style="font-size:clamp(1.05rem,1.7vw,1.45rem)">
+    <li><strong>TogoMCP は SPARQL を投げる道具ではなく、どう投げるべきかの知識を配る仕組み。</strong>MIE ファイルが核心</li>
+    <li><strong>失敗はエラーではなく、正しく見える数字として現れる。</strong>今日見たものは全部エラーが出ませんでした</li>
+    <li><strong>12秒で返ってきた数字を論文に書かない。</strong>査読で聞かれたときに答えられません</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">リソース</p>
+  <h2>持ち帰るもの</h2>
+  <p>手順書に全部書いてあります。急いでいる人は <strong>01 セットアップ → 02 最初のデモ → 06 良い問いの書き方</strong> の3章だけでも実用になります。</p>
+  <table style="margin-top:1em">
+    <tr><td>ホスト版</td><td><code>https://togomcp.rdfportal.org/</code></td></tr>
+    <tr><td>リポジトリ</td><td><code>https://github.com/dbcls/togomcp</code></td></tr>
+    <tr><td>RDF Portal</td><td><code>https://rdfportal.org/</code></td></tr>
+    <tr><td>論文</td><td>Kinjo, Yamamoto, Bustamante-Larriet, Labra-Gayo, Fujisawa (2026)<br><em>Database</em> <strong>2026</strong>:baag042 · doi.org/10.1093/database/baag042</td></tr>
+    <tr><td>MIE 設計根拠</td><td>Kinjo &amp; Yamamoto (2026) <em>BioHackrXiv</em> · doi.org/10.37044/osf.io/6v5ra_v1</td></tr>
+  </table>
+  <p class="sub" style="margin-top:1.2em">研究に使ったら、<strong>TogoMCP と、実際に使ったデータベースの両方</strong>を引用してください。</p>
+</section>
+
+<section class="slide title-slide">
+  <h1>ありがとうございました</h1>
+  <p class="lead" style="margin-top:1em">質問をどうぞ</p>
+</section>
+
+</div>
+
+<div id="bar"></div>
+<div id="tag"></div>
+<div id="num"></div>
+
+<div id="help">
+  <h2>キー操作</h2>
+  <table style="max-width:520px">
+    <tr><td><code>→</code> <code>Space</code> <code>PageDown</code></td><td>次へ</td></tr>
+    <tr><td><code>←</code> <code>PageUp</code></td><td>前へ</td></tr>
+    <tr><td><code>Home</code> / <code>End</code></td><td>最初 / 最後</td></tr>
+    <tr><td><code>f</code></td><td>フルスクリーン</td></tr>
+    <tr><td><code>d</code></td><td>ダーク / ライト切替</td></tr>
+    <tr><td><code>数字 + Enter</code></td><td>そのページへジャンプ</td></tr>
+    <tr><td><code>?</code> / <code>Esc</code></td><td>このヘルプ</td></tr>
+  </table>
+  <p style="margin-top:1.5em">印刷（<code>Cmd/Ctrl + P</code>）で全スライドが1ページずつ出力されます。</p>
+</div>
+
+<script>
+(function(){
+  var slides=[].slice.call(document.querySelectorAll('.slide'));
+  var i=0, jump='';
+  var bar=document.getElementById('bar'), num=document.getElementById('num'),
+      tag=document.getElementById('tag'), help=document.getElementById('help');
+
+  // derive section tag from the kicker text
+  function kickerOf(s){
+    var k=s.querySelector('.kicker');
+    if(!k) return '';
+    return k.textContent.split('—')[0].trim();
+  }
+
+  function show(n){
+    if(n<0) n=0; if(n>=slides.length) n=slides.length-1;
+    slides[i].classList.remove('active');
+    i=n;
+    slides[i].classList.add('active');
+    bar.style.width=((i+1)/slides.length*100)+'%';
+    num.textContent=(i+1)+' / '+slides.length;
+    tag.textContent=kickerOf(slides[i]);
+    try{location.hash=i+1;}catch(e){}
+  }
+
+  document.addEventListener('keydown',function(e){
+    if(help.classList.contains('on')){
+      if(e.key==='Escape'||e.key==='?'){help.classList.remove('on');}
+      return;
+    }
+    if(e.key>='0'&&e.key<='9'){ jump+=e.key; return; }
+    if(e.key==='Enter'&&jump){ show(parseInt(jump,10)-1); jump=''; return; }
+    jump='';
+    switch(e.key){
+      case 'ArrowRight': case ' ': case 'PageDown': case 'n': show(i+1); e.preventDefault(); break;
+      case 'ArrowLeft': case 'PageUp': case 'p': show(i-1); e.preventDefault(); break;
+      case 'Home': show(0); break;
+      case 'End': show(slides.length-1); break;
+      case 'f': if(document.fullscreenElement){document.exitFullscreen();}
+                else{document.documentElement.requestFullscreen();} break;
+      case 'd': document.documentElement.classList.toggle('dark'); break;
+      case '?': help.classList.add('on'); break;
+      case 'Escape': help.classList.remove('on'); break;
+    }
+  });
+
+  // click / tap navigation
+  document.getElementById('deck').addEventListener('click',function(e){
+    if(window.getSelection().toString()) return;
+    if(e.target.closest('a')) return;
+    show(e.clientX < window.innerWidth*0.25 ? i-1 : i+1);
+  });
+
+  // swipe
+  var x0=null;
+  document.addEventListener('touchstart',function(e){x0=e.touches[0].clientX;},{passive:true});
+  document.addEventListener('touchend',function(e){
+    if(x0===null) return;
+    var dx=e.changedTouches[0].clientX-x0;
+    if(Math.abs(dx)>50) show(dx<0 ? i+1 : i-1);
+    x0=null;
+  },{passive:true});
+
+  var start=parseInt((location.hash||'').replace('#',''),10);
+  show(isNaN(start)?0:start-1);
+})();
+</script>
+</body>
+</html>

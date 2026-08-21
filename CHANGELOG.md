@@ -13,6 +13,32 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-08-21
+
+A tutorial, and the routes to serve it. Nothing on the tool surface changed — no tool, parameter, or
+return shape — so an agent sees exactly what it saw in 2.7.8. This is MINOR rather than PATCH because
+the server gained a user-facing capability it did not have: it now serves documentation of its own, at
+its own origin, in two languages.
+
+The gap this closes is an onboarding one. The landing page could get a user connected and then left
+them there; the measured failure modes of *using* the thing — asking a question no database can answer,
+believing a fluent answer that came from the model rather than the endpoint, not noticing a count is
+wrong rather than the answer — were written down nowhere a new user would find them.
+
+<!-- whatsnew: 2026-08-21 | A <strong><a href="/tutorial">self-study tutorial</a></strong> now ships with the server — eight chapters taking a life-science researcher from a first question to a result they can defend, plus exercises with worked solutions. No RDF or SPARQL background assumed; also in <a href="/tutorial/ja">日本語</a>. -->
+
+### Added
+
+- **Tutorial pages, served by the server itself** at `/tutorial` (English) and `/tutorial/ja` (Japanese).
+  A single self-contained HTML handbook each, built from `tutorial/` and bundled under
+  `data/docs/tutorial/`, so they deploy with the wheel and need no separate hosting. Content: setup by
+  three routes, two worked demos, how the MIE/SPARQL layer actually works, a deliberate *failure* demo,
+  question-writing patterns, a four-step verification procedure, troubleshooting, and seven exercises
+  with worked solutions. The two languages cross-link to each other.
+- The intro page now points at the tutorial from the hero, the sticky menu, the end of the Setup
+  section, and the footer — previously nothing on the landing page led a new user past "it is
+  connected" to "here is how to use it well".
+
 ## [2.7.8] - 2026-08-20
 
 Three field reports, no tool, parameter, or return shape changed — two MIE files and one docstring.
@@ -1722,6 +1748,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.8...HEAD
+[2.8.0]: https://github.com/dbcls/togomcp/compare/v2.7.8...v2.8.0
 [2.7.8]: https://github.com/dbcls/togomcp/compare/v2.7.7...v2.7.8
 [2.7.7]: https://github.com/dbcls/togomcp/compare/v2.7.6...v2.7.7
 [2.7.6]: https://github.com/dbcls/togomcp/compare/v2.7.5...v2.7.6
