@@ -63,6 +63,17 @@ document carrying one field it did not carry before, and a documented log field 
 - **`MIE_v3_spec.md` contradicted itself** on the `entity_counts` timestamp key: §2 said `on:` while
   §4.1 forbids it (YAML 1.1 parses bare `on` as boolean `True`). §2 now says `date:`. The trap has not
   fired anywhere — 0 boolean-keyed entries corpus-wide.
+- **The tutorial silently lost a table.** `build-handbook.py`'s workshop/public marker patterns ended
+  in `\n?` to swallow the marker's own line. Where a marker sits *inline* — mid-sentence or at
+  end-of-line, as in chapter 1's intro and the exercise files — that ate the line's newline instead,
+  collapsing the blank line after it so the following paragraph and table ran together. python-markdown
+  then gives up on the table and emits it as prose full of pipe characters: **no error, the table just
+  disappears.** Chapter 1's Route A/B/C table was lost this way in all three generated documents. The
+  patterns now match the marker pair only and never touch surrounding whitespace (an earlier attempt to
+  branch on line position swallowed content wherever two markers shared a line). Because the failure is
+  invisible, the build now counts source tables against `<table>` in the output and exits non-zero on a
+  mismatch. Regenerating restores **+1 table** in each of `tutorial-ja`, `tutorial-en`, and the Japanese
+  handbook; the instructor fallback document is unaffected.
 
 ### Removed
 

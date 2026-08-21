@@ -133,12 +133,28 @@ DOCS = [
 ]
 
 
+# マーカーは 2 通りの使われ方をする。
+#
+#   (1) 行取り  ── マーカー対が数行を占有する
+#   (2) 行内    ── 文の途中や行末に埋まっている（例: 第1章の導入文、演習の末尾）
+#
+# **前後の空白・改行には一切手を触れないこと。** 以前はパターン末尾に `\n?` を
+# 付けて「マーカー行ごと消す」をやっていたが、これが (2) で行末の改行を食った。
+# 直後の空行が潰れて段落と表がくっつき、python-markdown が表の認識を諦める ──
+# エラーは出ず、**表だけが静かに消える。** 第1章の経路 A/B/C の表がこれで
+# 消えていた（2026-08-21 修正）。
+#
+# 行取りの場合にマーカー行が空行として残るが、Markdown は連続する空行を
+# 1 つの段落区切りとして扱うので無害。空行が増えるより表が消えるほうが悪い。
+#
+# 行頭・行末の判定でパターンを分けるのも試したが、`<!-- /workshop-only --><!--
+# public-only -->` のように 2 つのマーカーが 1 行を共有する箇所（演習ファイル）で
+# 閉じマーカーを見落とし、次の閉じマーカーまで丸ごと飲み込んだ。
+# **マーカー対だけを見る。行の形は見ない。**
 WORKSHOP_BLOCK = re.compile(
-    r"[ \t]*<!--\s*workshop-only\s*-->.*?<!--\s*/workshop-only\s*-->[ \t]*\n?",
-    re.S)
+    r"<!--\s*workshop-only\s*-->.*?<!--\s*/workshop-only\s*-->", re.S)
 PUBLIC_BLOCK = re.compile(
-    r"[ \t]*<!--\s*public-only\s*-->(.*?)<!--\s*/public-only\s*-->[ \t]*\n?",
-    re.S)
+    r"<!--\s*public-only\s*-->(.*?)<!--\s*/public-only\s*-->", re.S)
 
 
 def apply_variant(text, variant):
@@ -148,8 +164,10 @@ def apply_variant(text, variant):
         text = PUBLIC_BLOCK.sub(lambda m: m.group(1), text)
     else:
         text = PUBLIC_BLOCK.sub("", text)
-        text = re.sub(r"[ \t]*<!--\s*/?workshop-only\s*-->[ \t]*\n?", "", text)
-    return text
+        text = re.sub(r"<!--\s*/?workshop-only\s*-->", "", text)
+    # 行取りブロックの跡に残る空行の連続をならす（表示上の差は出ないが、
+    # 中間 Markdown を目で追うときに読みやすい）。
+    return re.sub(r"\n{3,}", "\n\n", text)
 
 
 def convert(md_text, anchor, idx):
@@ -205,8 +223,38 @@ UI = {
 }
 
 
+def count_md_tables(md_text):
+    """Markdown 中の表の数を数える。区切り行 |---|---| の数で判定する。"""
+    n, in_fence = 0, False
+    for line in md_text.splitlines():
+        s = line.strip()
+        if s.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if re.fullmatch(r"\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?", s):
+            n += 1
+    return n
+
+
+def check_tables(path, md_text, body, problems):
+    """ソースの表がすべて HTML の <table> になったか照合する。
+
+    表の消失はエラーを出さない。段落と表がくっつくと python-markdown は
+    黙って表を諦め、パイプ記号入りの文章として出力する。目視でしか
+    気づけないので、ビルド時に数を突き合わせる。
+    """
+    want, got = count_md_tables(md_text), body.count("<table>")
+    if want != got:
+        problems.append(
+            f"{path}: 表 {want} 個のうち {got} 個しか変換されていません"
+            "（直前に空行がない可能性）")
+
+
 def build(out, brand, subtitle, chapters, variant="workshop", langswitch="", lang="ja"):
     sections, nav = [], []
+    problems = []
 
     for path, label, title, anchor in chapters:
         f = ROOT / path
@@ -219,10 +267,12 @@ def build(out, brand, subtitle, chapters, variant="workshop", langswitch="", lan
         if path == "README.md":
             text = re.sub(r"## 進め方.*?(?=\n## )", "", text, flags=re.S)
 
+        body = convert(text, anchor, len(sections))
+        check_tables(path, text, body, problems)
         sections.append(
             f'<section class="chapter" id="sec-{anchor}">'
             f'<p class="chlabel">{html.escape(label) or "&nbsp;"}</p>'
-            f"{convert(text, anchor, len(sections))}"
+            f"{body}"
             f"</section>"
         )
         subs = "".join(
@@ -251,13 +301,21 @@ def build(out, brand, subtitle, chapters, variant="workshop", langswitch="", lan
         shown = out.relative_to(ROOT)
     except ValueError:              # SERVE_DIR は tutorial/ の外（リポジトリ側）
         shown = out
-    print(f"  → {shown}  ({len(page.encode())/1024:.0f} KB)\n")
+    print(f"  → {shown}  ({len(page.encode())/1024:.0f} KB)")
+    for p in problems:
+        print(f"  ⚠️  {p}")
+    print()
+    return problems
 
 
 def main():
+    all_problems = []
     for out, brand, subtitle, chapters, variant, langswitch, lang in DOCS:
         print(f"[{brand} / {variant} / {lang}]")
-        build(out, brand, subtitle, chapters, variant, langswitch, lang)
+        all_problems += build(out, brand, subtitle, chapters, variant, langswitch, lang)
+    if all_problems:
+        # 表の消失は目視では気づきにくいので、終了コードで落とす。
+        sys.exit(f"表の変換に失敗した箇所が {len(all_problems)} 件あります。上記を確認してください。")
 
 
 TEMPLATE = r"""<!DOCTYPE html>
