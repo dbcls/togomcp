@@ -5,6 +5,13 @@
 > このフォルダは**講習会を開く人向けの教材一式**です。
 
 
+<!-- nobuild -->
+> **⚠️ 作業はこのフォルダで行ってください。** 教材の正本は `togomcp/tutorial/` **だけ**です。
+> 以前は Google Drive にも作業コピーがありましたが（`Work/TogoMCP/Tutorial/`）、
+> **同じものが複数あって正本が曖昧になり、実際に数値の乖離が起きた**ため退役しました。
+> 制作過程の内部文書は `../internal_docs/tutorial-*.md` にあります（`.gitignore` 済み）。
+<!-- /nobuild -->
+
 生命科学のデータベースに、**SPARQL を書かずに自然言語で問い合わせる**ための実践チュートリアルです。
 
 対象は、生命科学の研究者・大学院生。情報系のバックグラウンドは前提としません。RDF や SPARQL を知らなくても最後まで進めます。
@@ -36,9 +43,11 @@
 
 このフォルダの `.html` は**すべて生成物**です。直接編集せず、`.md` を直してビルドし直してください。
 
+**例外はスライドです。** `slides/togomcp-tutorial-ja.html` は手書きで、ビルドの対象外です。本文の数値を直したら、スライドと講師台本にも同じ数値がないか確認してください。`build-handbook.py` の最後に走る `check-consistency.py` が、この 3 者にまたがる実測値のズレを検出します。
+
 **英語版について:** 本文ソースは `handbook/*-en.md` ・ `handson/*-en.md` ・ `public/00-intro-en.md` にあります。**自動翻訳ではありません。** 日本語版を直したら、対応する `-en.md` も手で直してください。数値・識別子・SPARQL は両版で完全に一致させています。
 
-現時点で英語版があるのは**公開版チュートリアル本文だけ**です。スライド・講師台本・フォールバック素材・この文書は日本語のみです。
+現時点で英語版があるのは**公開版チュートリアル本文とスライド**です。講師台本・フォールバック素材・この文書は日本語のみです。
 
 ---
 
@@ -46,10 +55,10 @@
 
 | 章 | 内容 | 目安 |
 |---|---|---|
-| [00 概要](handbook/00-overview.md) | なぜ TogoMCP か。何が解決されるのか | 5 分 |
+| [00 概要](handbook/00-overview.md) | なぜ TogoMCP か。**RDF / SPARQL とは** | 8 分 |
 | [01 セットアップ](handbook/01-setup.md) | 接続する（インストール不要の経路あり） | 10 分 |
 | [02 最初のデモ](handbook/02-first-demo.md) | 動かしてみる。裏で何が起きているかを見る | 10 分 |
-| [03 仕組み](handbook/03-how-it-works.md) | MCP と MIE。なぜ正しい SPARQL が書けるのか | 15 分 |
+| [03 仕組み](handbook/03-how-it-works.md) | MCP と MIE。なぜ正しい SPARQL が書けるのか | 20 分 |
 | [04 やや複雑な問い](handbook/04-advanced-queries.md) | 複数 DB をまたぐ問い、と**失敗する問い** | 20 分 |
 | [05 スキル](handbook/05-skills-workflows.md) | 方法論をパッケージ化したワークフロー | 10 分 |
 | [06 良い問いの書き方](handbook/06-good-questions.md) | ★持ち帰り価値が最も高い章 | 10 分 |
@@ -67,7 +76,7 @@
 
 **→ [RUNNING-A-WORKSHOP.md](RUNNING-A-WORKSHOP.md) を読んでください。** 90 分／60 分の進行表、削り順、開演前チェック、事故対応がまとまっています。
 
-- 投影用スライド: [slides/togomcp-tutorial-ja.html](slides/togomcp-tutorial-ja.html)
+- 投影用スライド: [日本語](slides/togomcp-tutorial-ja.html) ／ [英語](slides/togomcp-tutorial-en.html)
 - 逐語の講師台本: [instructor/script-ja.md](instructor/script-ja.md)
 - **障害時の差し替え素材: [instructor/fallback/](instructor/fallback/)** ── ネットワーク障害は実際に起きます。省略しないでください
 

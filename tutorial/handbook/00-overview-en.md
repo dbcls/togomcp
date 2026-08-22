@@ -14,6 +14,37 @@ In practice it is not. There are three reasons.
 
 TogoMCP is an **MCP server** that hands all three of these off to the AI assistant.
 
+## What RDF and SPARQL are
+
+**This section is not here to teach you to write SPARQL.** Writing it is the AI's job. But to follow what the AI is doing on screen, and to doubt the numbers that come back, **you do need the four words below.**
+
+**RDF** is a way of representing data as nothing but three-part statements — **"the B of A is C."** Instead of tables, you build a database by piling up a great many of these.
+
+```
+insulin ──  organism  ──→ human
+insulin ──  length    ──→ 110
+insulin ── associated ──→ diabetes
+              disease
+```
+
+The middle part — "organism", "length" — is called a **predicate**. **Which predicates exist differs from database to database.** That is what Chapter 3 is about.
+
+**SPARQL** is the query language for these three-part statements. It is to RDF what SQL is to tables.
+
+"Insulin" and "human" are not written as English words. They are written as **names shaped like URLs**, such as `http://purl.uniprot.org/uniprot/P01308`. Such a name is called an **IRI**. **An IRI is a name, not a link.** It is not there to be clicked open; it is there so that **the same thing has the same name everywhere in the world.** If UniProt's "human" and PDB's "human" are the same IRI, the two connect mechanically.
+
+Last, a **graph**: a *compartment* that holds triples inside one database. A single store often houses several datasets side by side, and **forgetting to name the compartment picks up rows from the dataset next door.** Chapter 3 makes this happen on purpose.
+
+| Word | What it means | Where it bites |
+|---|---|---|
+| **RDF** | Data as three-part statements | Background. You can forget it after this |
+| **Predicate** | The middle part — "length", "associated disease" | Get it wrong and you get **zero rows** (Ch. 3) |
+| **IRI** | A name shaped like a URL | The tool that pins down a vague word (Ch. 3, Ch. 6) |
+| **Graph** | A compartment of data | Forget it and **the count goes wrong** (Ch. 3) |
+| **SPARQL** | The query language for triples | The AI writes it. You only read it |
+
+**You do not have to memorize any of this.** Coming back here when a word turns up is enough.
+
 ## What MCP is
 
 **MCP (Model Context Protocol)** is a standard for handing "tools" to an AI assistant. It lets you bolt on connections to external data and services without rebuilding the AI itself.

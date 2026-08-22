@@ -28,10 +28,10 @@ Learning to tell the difference is what this tutorial is for.
 
 | Chapter | Contents | Time |
 |---|---|---|
-| **00 Overview** | Why TogoMCP exists | 5 min |
+| **00 Overview** | Why TogoMCP exists. **What RDF and SPARQL are** | 8 min |
 | **★01 Setup** | Connect (there is a no-install route) | 10 min |
 | **★02 First demo** | Run it. Then look at what happened underneath | 10 min |
-| 03 How it works | MCP and MIE — why correct SPARQL comes out | 15 min |
+| 03 How it works | MCP and MIE — why correct SPARQL comes out | 20 min |
 | 04 Harder questions | Cross-database queries, and **questions that fail** | 20 min |
 | 05 Skills | Methodology packaged as a workflow | 10 min |
 | **★06 How to ask a good question** | The chapter most worth taking away | 10 min |

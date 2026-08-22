@@ -13,6 +13,26 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Changed
+
+- **Tutorial: an RDF/SPARQL primer before the first query.** Chapter 0 gains a "What are RDF and
+  SPARQL" section and chapter 3 a data-model preamble, both in Japanese and English. The framing is
+  deliberately narrow — the reader is not being taught to *write* SPARQL (the AI does that), only the
+  four words needed to follow what it does and to distrust a number that comes back: predicate, IRI,
+  graph, triple. Each is tied to the failure it causes (wrong predicate → 0 rows; unpinned graph →
+  wrong count), so the vocabulary arrives attached to a symptom the reader will actually meet.
+- **Tutorial: an English slide deck** (`slides/togomcp-tutorial-en.html`), 64 sections mirroring the
+  Japanese deck.
+
+### Added
+
+- **`tutorial/check-consistency.py`** — cross-file check that every measured figure in the teaching
+  material agrees. The slide decks are hand-written HTML and sit outside `build-handbook.py`, so
+  editing a number in a handbook `.md` never propagated to them: a re-measured PDB per-method
+  breakdown stayed wrong on the slides for months, and was nearly projected to a room. The figures now
+  live in one table and the build fails on disagreement. Also adds a `<!-- nobuild -->` marker for
+  maintainer-only notes that should reach neither audience.
+
 ## [2.9.0] - 2026-08-21
 
 Repairs five readers that the v2→v3 MIE flip (2026-07-24) silently stranded, and adds the marker that
