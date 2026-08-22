@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TogoMCP Tutorial</title>
+<style>
+:root{
+  --bg:#fbfaf8; --fg:#1a1a1a; --muted:#6b6560; --line:#e0dbd4;
+  --accent:#1f6f8b; --accent2:#0f4c5c;
+  --warn:#b5471f; --warnbg:#fdf3ee;
+  --good:#2d6a4f; --goodbg:#eef6f1;
+  --code:#f2efea;
+}
+html.dark{
+  --bg:#16161a; --fg:#eceae6; --muted:#9b948c; --line:#33323a;
+  --accent:#6cc6de; --accent2:#a8dce8;
+  --warn:#f0916a; --warnbg:#2c1d17;
+  --good:#7fc7a3; --goodbg:#17251e;
+  --code:#23232a;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif;
+  overflow:hidden; line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+#deck{height:100vh;width:100vw;position:relative}
+.slide{
+  position:absolute;inset:0;
+  display:none; flex-direction:column;
+  padding:5vh 7vw 9vh;
+  justify-content:center;
+  animation:in .28s ease;
+}
+.slide.active{display:flex}
+@keyframes in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+h1{font-size:clamp(2rem,4.6vw,3.6rem);line-height:1.25;letter-spacing:-.02em;font-weight:700}
+h2{font-size:clamp(1.5rem,3.1vw,2.5rem);line-height:1.3;letter-spacing:-.015em;margin-bottom:.7em;font-weight:700}
+h3{font-size:clamp(1.05rem,1.7vw,1.4rem);color:var(--accent2);margin-bottom:.5em;font-weight:600}
+p{font-size:clamp(1rem,1.55vw,1.35rem);margin-bottom:.7em;max-width:52ch}
+p.lead{font-size:clamp(1.1rem,1.95vw,1.7rem);color:var(--muted);max-width:44ch}
+ul,ol{margin:.3em 0 .7em 1.2em;font-size:clamp(1rem,1.5vw,1.3rem)}
+li{margin-bottom:.5em;max-width:50ch}
+li::marker{color:var(--accent)}
+strong{font-weight:700}
+em{font-style:normal;color:var(--accent);font-weight:600}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--code);
+     padding:.12em .4em;border-radius:4px;font-size:.87em}
+pre{background:var(--code);padding:1em 1.2em;border-radius:8px;overflow:auto;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:clamp(.75rem,1.15vw,1rem);line-height:1.55;border:1px solid var(--line)}
+a{color:var(--accent)}
+
+.kicker{font-size:clamp(.72rem,1vw,.9rem);letter-spacing:.16em;text-transform:uppercase;
+        color:var(--muted);margin-bottom:1.1em;font-weight:600}
+.big{font-size:clamp(2.6rem,7.5vw,6rem);font-weight:800;line-height:1;letter-spacing:-.03em;color:var(--accent)}
+.big.warn{color:var(--warn)}
+.sub{font-size:clamp(.9rem,1.3vw,1.15rem);color:var(--muted)}
+
+table{border-collapse:collapse;width:100%;max-width:1000px;font-size:clamp(.82rem,1.25vw,1.1rem);margin:.4em 0}
+th,td{text-align:left;padding:.5em .7em;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:.88em;letter-spacing:.03em}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.hl td{background:var(--goodbg)}
+tr.bad td{background:var(--warnbg)}
+
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:2.2rem;align-items:start}
+.cols3{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem;align-items:start}
+.card{border:1px solid var(--line);border-radius:10px;padding:1.1em 1.2em;background:var(--code)}
+.card h3{margin-bottom:.35em}
+.card p,.card ul{font-size:clamp(.85rem,1.25vw,1.05rem);margin-bottom:.3em}
+
+.box{border-left:4px solid var(--accent);padding:.7em 0 .7em 1.1em;margin:.7em 0;max-width:56ch}
+.box.warn{border-color:var(--warn);background:var(--warnbg);padding:.9em 1.1em;border-radius:0 8px 8px 0}
+.box.good{border-color:var(--good);background:var(--goodbg);padding:.9em 1.1em;border-radius:0 8px 8px 0}
+.box p:last-child{margin-bottom:0}
+
+.stats{display:flex;gap:3rem;flex-wrap:wrap;margin:.8em 0}
+.stat{min-width:130px}
+.stat .v{font-size:clamp(1.8rem,4vw,3.2rem);font-weight:800;line-height:1.05;
+         font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.stat .l{font-size:clamp(.75rem,1.05vw,.95rem);color:var(--muted);margin-top:.2em}
+.stat.a .v{color:var(--accent)} .stat.w .v{color:var(--warn)} .stat.g .v{color:var(--good)}
+
+.prompt{background:var(--code);border:1px solid var(--line);border-left:4px solid var(--accent);
+        border-radius:0 8px 8px 0;padding:.9em 1.1em;font-family:ui-monospace,Menlo,monospace;
+        font-size:clamp(.8rem,1.25vw,1.1rem);line-height:1.6;max-width:60ch;white-space:pre-wrap}
+.flow{display:flex;flex-direction:column;gap:.5rem;margin:.6em 0;font-size:clamp(.85rem,1.3vw,1.1rem)}
+.flow div{padding:.55em .9em;background:var(--code);border-radius:6px;border-left:3px solid var(--line);
+          font-family:ui-monospace,Menlo,monospace}
+.flow div.on{border-left-color:var(--accent);background:var(--goodbg)}
+.strike{text-decoration:line-through;opacity:.5}
+
+/* chrome */
+#bar{position:fixed;bottom:0;left:0;height:3px;background:var(--accent);transition:width .25s;z-index:10}
+#num{position:fixed;bottom:1.1rem;right:1.6rem;font-size:.8rem;color:var(--muted);
+     font-variant-numeric:tabular-nums;z-index:10}
+#tag{position:fixed;bottom:1.1rem;left:1.6rem;font-size:.8rem;color:var(--muted);z-index:10;letter-spacing:.05em}
+#help{position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg);z-index:40;
+      display:none;padding:8vh 10vw;overflow:auto}
+#help.on{display:block}
+.center{align-items:flex-start;justify-content:center;text-align:left}
+.title-slide{justify-content:center}
+@media print{
+  body{overflow:visible;height:auto}
+  #deck{height:auto}
+  .slide{display:flex!important;position:relative;page-break-after:always;height:100vh;animation:none}
+  #bar,#num,#tag{display:none}
+}
+</style>
+</head>
+<body>
+
+<div id="deck">
+
+<!-- ============ TITLE ============ -->
+<section class="slide title-slide">
+  <p class="kicker">Life-science databases × AI assistants</p>
+  <h1>TogoMCP<br>Tutorial</h1>
+  <p class="lead" style="margin-top:1.2em">Query the major life-science databases without writing SPARQL — and how to doubt the answer that comes back</p>
+  <p class="sub" style="margin-top:2em">Every result in this deck is measured (re-measured 2026-08-20 / 08-21)<br>Models: sessions configured as claude-opus-5 and as claude-sonnet-5 / Server: togomcp.rdfportal.org</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Today’s goals</p>
+  <h2>There are three</h2>
+  <ol>
+    <li><strong>Get connected and be able to use it</strong></li>
+    <li><strong>Understand why it works</strong> — without this, you are helpless when it does not</li>
+    <li><strong>Be able to doubt an answer and verify it</strong></li>
+  </ol>
+  <div class="box warn" style="margin-top:1em">
+    <p>What we spend the most time on today is <strong>not the examples that work, but the ones that do not</strong>.</p>
+  </div>
+</section>
+
+<!-- ============ M0 ============ -->
+<section class="slide">
+  <p class="kicker">M0 — Introduction</p>
+  <h2>The data is already RDF</h2>
+  <p>UniProt, PDB, ChEMBL, Reactome — all of them are machine-readably searchable with SPARQL.</p>
+  <p>In principle, <em>“which human lysosomal enzymes are targets of approved drugs”</em> should be answerable with a single query.</p>
+  <p class="lead" style="margin-top:1em">In practice it is not.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M0 — Introduction</p>
+  <h2>Three reasons</h2>
+  <div class="cols3">
+    <div class="card">
+      <h3>1. Few can write it</h3>
+      <p>Not a question of ability. It is simply not rational to keep up a skill you use a few times a year.</p>
+    </div>
+    <div class="card">
+      <h3>2. Every DB is different</h3>
+      <p>In UniProt, <code>up:Protein</code>. In PDB you traverse from <code>pdbo:datablock</code>. Learning one gets you nothing for the next.</p>
+    </div>
+    <div class="card">
+      <h3>3. You need the quirks</h3>
+      <p>Which graph to specify, which predicates are fast, where it breaks. Often undocumented.</p>
+    </div>
+  </div>
+  <div class="box warn" style="margin-top:1.4em">
+    <p>And <strong>the failures are silent</strong>. Not an error — what comes back is <strong>the wrong count</strong>.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M0 — What MCP is</p>
+  <h2>A standard for handing “tools” to an AI</h2>
+  <pre>    You    ──→  Claude, etc.  ──→  MCP server  ──→  external data
+ (question)      (picks a tool)     (TogoMCP)      (SPARQL / REST)</pre>
+  <div class="box">
+    <p>What matters is that the AI shifts <strong>from “what it knows” to “what it can go and fetch”</strong>.</p>
+    <p>Instead of recalling memories from its training data, it builds the answer by querying a database that is alive right now.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M0 — What TogoMCP is</p>
+  <h2>Query RDF Portal’s ~37 DBs<br>in natural language</h2>
+  <table>
+    <tr><th>Field</th><th>Databases</th></tr>
+    <tr><td>Proteins</td><td>UniProt, PDB, jPOST</td></tr>
+    <tr><td>Genes &amp; genomes</td><td>NCBI Gene, Ensembl, HGNC, OMA, Bgee, DDBJ, MoG+, TogoVar, GWAS Catalog</td></tr>
+    <tr><td>Chemistry</td><td>ChEMBL, PubChem, ChEBI, Rhea, BRENDA, MassBank</td></tr>
+    <tr><td>Pathways / Disease</td><td>Reactome / ClinVar, MedGen, MONDO, NANDO</td></tr>
+    <tr><td>Literature / Microbes</td><td>PubMed, PubTator / BacDive, MediaDive, AMR Portal, NBRC</td></tr>
+    <tr><td>Glycans / Ontologies</td><td>GlyCosmos / MeSH, GO, HP, UBERON, CL, SO, ECO …</td></tr>
+  </table>
+  <div class="box good">
+    <p><strong>TogoVar, jPOST, GlyCosmos, NBRC, NANDO</strong> — having the Japan-originated databases all in one place is a feature nothing else substitutes for.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M0 — The evidence</p>
+  <h2>Not “looks useful”<br>but “measured and effective”</h2>
+  <div class="stats">
+    <div class="stat a"><div class="v">1.82</div><div class="l">Effect size Cohen’s <em>d</em></div></div>
+    <div class="stat a"><div class="v">&lt; 0.001</div><div class="l">Wilcoxon <em>p</em></div></div>
+  </div>
+  <p>In the behavioral sciences the benchmark for “large” is 0.8. This is far beyond it.</p>
+  <p class="sub"><strong>Source:</strong> Kinjo <em>et al.</em> (2026) <em>Database</em> <strong>2026</strong>:baag042 · doi.org/10.1093/database/baag042<br>These figures are <strong>those reported in that paper</strong>, not an independent measurement made for this tutorial.</p>
+  <div class="box warn">
+    <p>But this is a <strong>measurement on a benchmark problem set</strong>. There is no guarantee you will see the same difference on your own research topic. Today we look at <strong>the cases where it does not work</strong> as well.</p>
+  </div>
+</section>
+
+<!-- ============ M1 ============ -->
+<section class="slide">
+  <p class="kicker">M1 — Setup</p>
+  <h2>Three routes. Today, A only</h2>
+  <table>
+    <tr><th>Route</th><th>For</th><th>Time</th><th>Installation</th></tr>
+    <tr class="hl"><td><strong>A. Custom connector</strong></td><td>almost everyone</td><td>3 min</td><td><strong>none</strong></td></tr>
+    <tr><td>B. Claude Code (CLI)</td><td>people who work on the command line</td><td>5 min</td><td>Claude Code only</td></tr>
+    <tr><td>C. Local stdio</td><td>developers, and anyone using KEGG</td><td>15 min</td><td>Python, uv, git</td></tr>
+  </table>
+  <p class="sub" style="margin-top:1em">B and C are in the handbook. No TogoMCP account or API key is required.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M1 — Route A</p>
+  <h2>Settings → Connectors → Add</h2>
+  <ol>
+    <li>In Claude, <strong>Settings → Customize → Connectors</strong></li>
+    <li><strong>“+” → “Add custom connector”</strong></li>
+    <li>Enter the URL:<br><code>https://togomcp.rdfportal.org/mcp</code></li>
+    <li>In the chat screen, <strong>choose the connector from “+” and enable it for that conversation</strong></li>
+  </ol>
+  <div class="box warn">
+    <p><strong>Forgetting step 4 is the most common stumble.</strong> Adding it is not enough.</p>
+    <p style="margin-top:.4em">On Team / Enterprise, <strong>an organization owner has to add it for the whole organization first</strong>.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M1 — Connection check</p>
+  <h2>Everyone type this</h2>
+  <div class="prompt">What databases can you use from TogoMCP?</div>
+  <div class="stats" style="margin-top:1.2em">
+    <div class="stat g"><div class="v">10<span style="font-size:.4em">s</span></div><div class="l">measured</div></div>
+    <div class="stat g"><div class="v">37</div><div class="l">databases</div></div>
+  </div>
+  <p>If a list organized by field comes back, you are connected.</p>
+</section>
+
+<!-- ============ M2 ============ -->
+<section class="slide">
+  <p class="kicker">M2 — The first demo</p>
+  <h2>Demo 1: a one-hop question</h2>
+  <div class="prompt">Give me the UniProt entry for the human insulin (INS) gene product. Function and sequence length too.</div>
+  <p class="sub" style="margin-top:1em">⏱ Measured 18–28 s (28 s with Sonnet 5)</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M2 — Demo 1 result</p>
+  <h2>P01308</h2>
+  <table style="max-width:820px">
+    <tr><td>Accession</td><td><strong>P01308</strong></td></tr>
+    <tr><td>Mnemonic</td><td>INS_HUMAN</td></tr>
+    <tr><td>Name</td><td>Insulin [Cleaved into: Insulin B chain; Insulin A chain]</td></tr>
+    <tr class="hl"><td>Sequence length</td><td><strong>110 aa</strong></td></tr>
+    <tr><td>Mass</td><td>11,981 Da</td></tr>
+  </table>
+  <p style="margin-top:1em">Function (verbatim from UniProt):</p>
+  <p class="sub" style="max-width:60ch">“Insulin decreases blood glucose concentration. It increases cell permeability to monosaccharides, amino acids and fatty acids…”</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M2 — ★ Did that stop you?</p>
+  <h2>Isn’t insulin supposed to be 51 amino acids?</h2>
+  <div class="cols">
+    <div>
+      <p class="big warn">110</p>
+      <p class="sub">Preproinsulin precursor</p>
+      <p style="margin-top:.5em">Signal peptide 24 + B chain 30 + C peptide 31 + A chain 21 + cleavage sites</p>
+    </div>
+    <div>
+      <p class="big">51</p>
+      <p class="sub">Mature insulin (A chain 21 + B chain 30)</p>
+      <p style="margin-top:.5em">P01308 points at the <strong>translation product</strong>, not the circulating hormone.</p>
+    </div>
+  </div>
+  <div class="box good" style="margin-top:.55em">
+    <p><strong>A database is more precise than your memory — and it can point at something other than what you expected.</strong></p>
+    <p style="margin-top:.3em">When an answer feels wrong, suspect not an AI mistake but <strong>the gap between your expectation and the database’s definition</strong>.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M2 — Demo 2</p>
+  <h2>Carrying an ID to another DB</h2>
+  <div class="prompt">Convert that UniProt ID to an Ensembl gene ID and an HGNC ID. And the PDB structures too.</div>
+  <table style="max-width:640px;margin-top:1.2em">
+    <tr><th>Converted to</th><th>ID</th></tr>
+    <tr><td>Ensembl Gene</td><td><strong>ENSG00000254647</strong></td></tr>
+    <tr><td>HGNC</td><td><strong>HGNC:6081</strong></td></tr>
+    <tr><td>PDB</td><td>a list of real structure IDs</td></tr>
+  </table>
+  <p class="sub" style="margin-top:.8em">⏱ Measured 18–30 s (30 s with Sonnet 5) / “that UniProt ID” is enough — the context carries over</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M2 — ★ This is the real subject</p>
+  <h2>What happened underneath</h2>
+  <div class="flow">
+    <div class="on">1. TogoMCP_Usage_Guide()&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← read the usage guide</div>
+    <div class="on">2. search_uniprot_entity(...)&nbsp;&nbsp;← pin down P01308 from INS</div>
+    <div class="on">3. get_MIE_file("uniprot")&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← read UniProt's schema documentation</div>
+    <div class="on">4. run_sparql("uniprot", ...)&nbsp;&nbsp;← build the SPARQL and run it</div>
+  </div>
+  <p class="lead" style="margin-top:.8em">Not magic. A procedure.</p>
+  <div class="box">
+    <p>In <strong>step 2</strong>, the wobbly word “insulin” was pinned to an ID that does not move: <code>P01308</code>.</p>
+    <p>In <strong>step 3</strong>, it reads the schema documentation <strong>before</strong> writing any SPARQL. ← the core of the next chapter</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M2 — A note</p>
+  <h2>The guide is re-read<br>“every time you say something”</h2>
+  <pre>[Turn 1] You: "The human insulin…"
+   └→ <strong>Usage_Guide</strong>, search_uniprot, get_MIE, run_sparql, answer
+
+[Turn 2] You: "Convert that ID to Ensembl…"
+   └→ <strong>Usage_Guide</strong>, togoid_getRelation, togoid_convertId, answer</pre>
+  <p style="margin-top:.7em"><strong>However many tools get called, it is once per turn.</strong> Not once at the start of the session.</p>
+  <div class="stats" style="margin-top:.5em">
+    <div class="stat a"><div class="v">44,570</div><div class="l">characters / per turn (≈11,000–13,000 tokens)</div></div>
+  </div>
+  <p class="sub">The tool description spells it out: call this <strong>every turn</strong>, before any other tool. It is designed on the premise that <strong>nothing from the previous turn’s work carries over</strong>.</p>
+</section>
+
+<!-- ============ M3 ============ -->
+<section class="slide">
+  <p class="kicker">M3 — Groundwork</p>
+  <h2>RDF is a pile of<br>“the B of A is C”</h2>
+  <pre>  subject         predicate         object
+     │               │                 │
+     ▼               ▼                 ▼
+  insulin ──── organism ────────────→ human
+     │
+     ├──────── length ──────────────→ 110
+     └──────── associated disease ──→ diabetes</pre>
+  <p style="margin-top:.7em">These three parts are called a <strong>triple</strong>, and the middle one the <strong>predicate</strong>. <strong>Which predicates you can use differs from database to database</strong> — that is the subject of this chapter.</p>
+  <p><strong>SPARQL</strong> is the query language for these triples. It is what SQL is to tables.</p>
+  <div class="box warn" style="margin-top:.8em">
+    <p><strong>A “count” is the number of triples matching your conditions.</strong> That fact does the work later in this chapter.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M3 — Groundwork</p>
+  <h2>IRIs and graphs</h2>
+  <pre>&lt;http://purl.uniprot.org/uniprot/P01308&gt;          ← subject   (insulin)
+    &lt;http://purl.uniprot.org/core/organism&gt;       ← predicate (organism)
+        &lt;http://purl.uniprot.org/taxonomy/9606&gt; . ← object    (human)</pre>
+  <p style="margin-top:.7em">A name shaped like a URL is an <strong>IRI</strong>. <strong>It is a name, not a link.</strong> It is not there for you to click open, but so that <strong>the same thing carries the same name everywhere in the world</strong>.</p>
+  <pre style="margin-top:.6em">endpoint (sparql.uniprot.org)
+ ├─ graph &lt;.../uniprot&gt;         ← UniProt's own triples
+ ├─ graph &lt;.../taxonomy&gt;        ← organism triples
+ └─ graph &lt;.../another-dataset&gt; ← something else living here</pre>
+  <p style="margin-top:.6em">Writing <code>FROM &lt;graph&gt;</code> means <strong>look only inside that compartment</strong>. Leaving it out means <strong>search across all of them.</strong></p>
+  <p class="sub">You may be thinking this is a mere detail. <strong>The second half of this chapter demonstrates that it is not.</strong></p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M3 — How it works</p>
+  <h2>The tools come in three layers</h2>
+  <table>
+    <tr><th>Layer</th><th>Role</th><th>Representative tools</th></tr>
+    <tr><td><strong>Guidance layer</strong></td><td>Teaches you how to use it</td><td><code>TogoMCP_Usage_Guide</code>, <code>get_MIE_file</code></td></tr>
+    <tr><td><strong>Grounding layer</strong></td><td>words → IDs</td><td><code>search_uniprot_entity</code>, <code>search_mesh_descriptor</code>, <code>togoid_convertId</code></td></tr>
+    <tr class="hl"><td><strong>Execution layer</strong></td><td>Execute SPARQL</td><td><code>run_sparql</code> — just one</td></tr>
+  </table>
+  <div class="box warn">
+    <p><strong>You must not arrive at the execution layer without reading the guidance layer</strong> — that is the single most important rule.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M3 — Grounding</p>
+  <h2>Pin wobbly words<br>to immovable IDs</h2>
+  <div class="cols">
+    <div>
+      <p class="sub">wobbly</p>
+      <p style="font-size:1.4em">“insulin”<br>“pancreatic cancer”<br>“lysosomal enzyme”</p>
+    </div>
+    <div>
+      <p class="sub">immovable</p>
+      <p style="font-size:1.4em"><code>P01308</code><br><code>D010190</code><br><code>GO:0043202</code></p>
+    </div>
+  </div>
+  <div class="box warn" style="margin-top:1.2em">
+    <p><strong>Skip this layer and every step after it becomes guesswork.</strong></p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M3 — The core</p>
+  <h2>The MIE file</h2>
+  <p class="lead">Why can an AI write correct SPARQL against a database nobody taught it?<br><strong>Because we hand it the schema documentation</strong>.</p>
+  <div class="box good">
+    <p>Design goal: <strong>give the LLM exactly enough information to write correct, fast SPARQL on the first attempt — no more, no less.</strong></p>
+  </div>
+  <p class="sub">The whole schema would be accurate but far too large. An outline alone is not enough to write with.<br>A MIE carries “<strong>only what the model cannot reconstruct on its own</strong>”.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M3 — Inside a MIE</p>
+  <h2>A verified, executable example is the atomic unit</h2>
+  <pre>examples:
+  - id: sequence_mass
+    sparql: |
+      SELECT ?sequence ?mass
+      FROM &lt;http://sparql.uniprot.org/uniprot&gt;
+      WHERE { ?protein up:sequence ?seq .
+              ?seq rdf:value ?sequence ; up:mass ?mass . }
+    traps_avoided:
+      - union_inflation: without pinning the graph in a FROM clause,
+        rows from other co-resident datasets get picked up and the count inflates
+    verified: 2026-07-29</pre>
+  <p style="margin-top:.6em">A single example does three jobs at once — <em>① the shape of the schema</em> / <em>② sample data</em> / <em>③ the trap specific to this DB</em></p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M3 — Why read it first</p>
+  <h2>Two reasons</h2>
+  <div class="cols">
+    <div class="card">
+      <h3>1. A nonexistent predicate<br>raises no error</h3>
+      <p><strong>It returns 0 rows.</strong> And the AI reports “no matches.” This is extremely hard to detect.</p>
+    </div>
+    <div class="card">
+      <h3>2. How you write it changes<br>runtime by orders of magnitude</h3>
+      <pre style="font-size:.8em;margin-top:.5em">specific IRI   ≫  FILTER(CONTAINS(...))
+    fast                  slow</pre>
+      <p style="margin-top:.5em"><strong>Measured:</strong> two queries returning the same answer — one died at the 60-second timeout, the other came back in about 5 seconds.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M3 — Silent failure</p>
+  <h2>Follow the MIE and<br>the trap never fires</h2>
+  <p>When several datasets live side by side at one endpoint, a query that does not specify a graph picks up all of them, and <strong>the row count inflates silently</strong>.</p>
+  <p>The countermeasure is to pin the graph with <code>FROM &lt;graph name&gt;</code>. <strong>The MIE instructs exactly that.</strong></p>
+  <div class="box warn">
+    <p>Which means that if you quietly obey, <strong>you will never even learn the trap was there</strong>.</p>
+    <p style="margin-top:.4em">→ <strong>So let us break the rule on purpose.</strong></p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M3 — Breaking it on purpose</p>
+  <h2>The rows doubled &mdash;<br>but the answer is right</h2>
+  <div class="prompt">Take a query that counts human lysosomal lumen enzymes in UniProt and run it
+both ways — one version with the graph pinned in a FROM clause, one without —
+then compare the counts. Give both COUNT(*) and COUNT(DISTINCT).</div>
+  <table style="margin-top:1em">
+    <tr><th>Version</th><th>COUNT(*)</th><th>COUNT(DISTINCT ?protein)</th></tr>
+    <tr class="hl"><td><strong>FROM pinned</strong></td><td class="num"><strong>98</strong></td><td class="num"><strong>98</strong></td></tr>
+    <tr class="bad"><td><strong>FROM not pinned</strong></td><td class="num"><strong>196</strong></td><td class="num"><strong>98</strong></td></tr>
+  </table>
+  <p class="sub" style="margin-top:.8em">That last sentence matters. <strong>Without it, this trap stays invisible.</strong></p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M3 — How to read that table</p>
+  <h2>The dangerous one is <code>COUNT(*)</code></h2>
+  <div class="box warn">
+    <p><strong>This is not the story of “leave the graph unpinned and the answer changes.”</strong></p>
+    <p style="margin-top:.5em">As long as you use <code>COUNT(DISTINCT)</code>, the answer in this example <strong>comes out right anyway</strong>. Both were 98.</p>
+    <p style="margin-top:.5em">The dangerous one is <code>COUNT(*)</code>: <strong>the wrong number, 196, comes back with no error and no warning.</strong></p>
+  </div>
+  <p style="margin-top:.8em">Worse, <strong>the inflation factor is not fixed</strong> — depending on the target it may or may not be 2×.</p>
+  <p>With <code>AVG</code> / <code>SUM</code>, or joins stacked on re-declared predicates (2<sup>k</sup> for k of them), <strong><code>DISTINCT</code> cannot absorb it and the answer itself goes wrong.</strong></p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M3 — How to diagnose</p>
+  <h2>Track down where it came from</h2>
+  <div class="prompt">Which graph are those doubled rows coming from? Check with GRAPH ?g.</div>
+  <p style="margin-top:.8em">The <code>a up:Protein</code> typing was <strong>supplied by two graphs</strong> — UniProt itself, and another dataset co-resident at the same endpoint.</p>
+  <div class="box good" style="margin-top:1em">
+    <p><strong>Learn this diagnostic move itself.</strong> “When a count looks suspicious, count the suppliers with <code>GRAPH ?g</code>” transfers directly to real work.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M3 — Measured</p>
+  <h2>This one does happen</h2>
+  <div class="stats">
+    <div class="stat w"><div class="v">62</div><div class="l">COUNT(*)</div></div>
+    <div class="stat a"><div class="v">52</div><div class="l">COUNT(DISTINCT ?protein)</div></div>
+    <div class="stat w"><div class="v">19%</div><div class="l">difference</div></div>
+  </div>
+  <p>Because a single protein <strong>carries several EC numbers</strong> (7 proteins affected: <strong>GBA1 has 4</strong>, ASAH1 has 3).<br>Naively counting rows, you would have reported “<strong>62 lysosomal lumen enzymes</strong>.” The correct figure is <strong>52</strong>.</p>
+  <div class="box good">
+    <p><strong>Before reporting a count, compare <code>COUNT(*)</code> against <code>COUNT(DISTINCT)</code>.</strong> If they differ, do not report until you can explain what is being duplicated.</p>
+  </div>
+</section>
+
+<!-- ============ M4 ============ -->
+<section class="slide">
+  <p class="kicker">M4 — Demo 4</p>
+  <h2>A question search alone cannot answer</h2>
+  <div class="prompt">Give me the top 10 PDB structures of the SARS-CoV-2 main protease
+(3CL protease), ordered by best resolution.</div>
+  <p class="sub" style="margin-top:1em">⏱ Measured 39–51 s (47 s on Sonnet 5) / zero failures, zero retries — the most robust of the five demos</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M4 — ★ It stalls midway</p>
+  <h2>Search returned 1,872 hits<br>in no particular order</h2>
+  <p class="lead">This search tool cannot answer the question.</p>
+  <p>To produce “the top 10 ordered by best resolution” you have to sort on resolution as a number. That is not the search API’s job — it is <strong>SPARQL’s job</strong>.</p>
+  <div class="box good">
+    <p>One of the few demos where <strong>the reason SPARQL is needed is visible on screen</strong>.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M4 — Demo 4 results</p>
+  <h2>Top 10 by resolution</h2>
+  <div class="cols">
+    <table>
+      <tr><th>#</th><th>PDB</th><th>Å</th></tr>
+      <tr class="hl"><td>1</td><td><strong>9ZNL</strong></td><td class="num">1.16</td></tr>
+      <tr><td>2</td><td>7GEF</td><td class="num">1.18</td></tr>
+      <tr><td>3</td><td>7K3T</td><td class="num">1.20</td></tr>
+      <tr><td>4</td><td>9HJH</td><td class="num">1.20</td></tr>
+      <tr><td>5</td><td>7GBE</td><td class="num">1.224</td></tr>
+    </table>
+    <div>
+      <h3>Breakdown by experimental method</h3>
+      <table>
+        <tr><td>X-ray diffraction</td><td class="num">1,799</td></tr>
+        <tr><td>Cryo-EM</td><td class="num">25</td></tr>
+        <tr><td>Neutron</td><td class="num">4</td></tr>
+        <tr><td>Solution NMR</td><td class="num">3</td></tr>
+        <tr><td>Electron crystallography</td><td class="num">1</td></tr>
+    <tr class="hl"><td><strong>Total</strong></td><td class="num"><strong>1,832</strong></td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M4 — Caveats to state</p>
+  <h2>Just three</h2>
+  <ol>
+    <li><strong>Filter by IRI.</strong> We use EC-number and taxon IRIs, not title keywords. Filtering by string both misses things and lets the wrong ones in</li>
+    <li><strong>Resolution is X-ray only.</strong> Cryo-EM lives in a different field. This is not a ranking across mixed methods</li>
+    <li><strong>This result moves.</strong> If a 1.1 Å structure is deposited tomorrow, the ranking changes</li>
+  </ol>
+  <div class="box good">
+    <p><strong>So save the query, not the table.</strong></p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M4 — Demo 3'</p>
+  <h2>Across multiple databases</h2>
+  <div class="prompt">Among human lysosomal enzymes, tell me which ones are targets of approved drugs.</div>
+  <p style="margin-top:1em">UniProt function annotations × ChEMBL drug-target relations</p>
+  <p class="sub">⏱ Measured 79 s</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M4 — Demo 3' results</p>
+  <h2>3 of the 52</h2>
+  <table>
+    <tr><th>Gene</th><th>Approved drug</th><th>Action</th><th>What it means</th></tr>
+    <tr class="hl"><td><strong>GLA</strong></td><td>migalastat</td><td><strong>STABILISER</strong></td><td>A pharmacological chaperone for Fabry disease. <strong>Within these 52</strong>, the only small molecule aimed at the causative enzyme</td></tr>
+    <tr class="hl"><td><strong>GAA</strong></td><td>miglitol, voglibose</td><td>INHIBITOR</td><td>The intent is not Pompe disease but <strong>type 2 diabetes</strong></td></tr>
+    <tr class="bad"><td><strong>PDGFRB</strong></td><td>imatinib and 11 other drugs</td><td>INHIBITOR</td><td>A receptor tyrosine kinase. <strong>Not a lysosomal enzyme</strong></td></tr>
+  </table>
+  <div class="box good" style="margin-top:1em">
+    <p>Set PDGFRB aside — <strong>within these 52, the only approved small molecule aimed directly at a lysosomal enzyme is migalastat.</strong></p>
+    <p style="margin-top:.4em">That is not surprising. <strong>Lysosomal diseases are treated by “replacing” the enzyme, not by “inhibiting” it</strong>.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M4 — ★ The main point</p>
+  <h2>The original question was bad</h2>
+  <p class="lead">How you define “lysosomal enzyme” makes the answer an entirely different thing.</p>
+  <table style="margin-top:.6em">
+    <tr><th>Definition</th><th>Candidates</th><th>What the approved-drug side gave</th></tr>
+    <tr class="bad"><td>UniProt keyword<br><strong>KW-0458 “Lysosome”</strong></td><td class="num">161</td><td><strong>22 insulin preparations<br>12 PDGFR inhibitors</strong></td></tr>
+    <tr class="hl"><td>GO<br><strong>GO:0043202 (lumen)</strong></td><td class="num">52</td><td>GLA, GAA<br><span class="sub">+PDGFRB (localization only)</span></td></tr>
+  </table>
+</section>
+
+<section class="slide">
+  <p class="kicker">M4 — Why this happens</p>
+  <h2>KW-0458 is<br>localization, not function</h2>
+  <p>It means “a protein that (sometimes) localizes to the lysosome” — which lets in —</p>
+  <p style="font-size:1.15em"><strong>INSR / PDGFRB / mTOR / PCSK9 / LRRK2 / PSEN2</strong>, plus about 20 <strong>RAB GTPases</strong>.</p>
+  <div class="box warn">
+    <p><strong>Narrowing by EC number to hydrolases does not fix it.</strong> 113 of the 161 survive — RAB GTPases are EC 3.6.5.2, respectable hydrolases.</p>
+  </div>
+</section>
+
+<section class="slide center">
+  <p class="kicker">M4 — Lesson 1</p>
+  <h2 style="max-width:22ch">When the answer looks strange,<br>what is wrong is<br>not the query’s syntax but<br><em>“how you defined the target”</em></h2>
+</section>
+
+<!-- ===== FAILURE DEMO ===== -->
+<section class="slide center">
+  <p class="kicker">M4 — ★★ The center of today</p>
+  <h1>The failure demo</h1>
+  <p class="lead" style="margin-top:1em">We throw a deliberately bad question at it.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Failure demo (a)</p>
+  <h2>A bad question</h2>
+  <div class="prompt">Tell me about genes involved in cancer</div>
+  <div class="stats" style="margin-top:1.4em">
+    <div class="stat w"><div class="v">12<span style="font-size:.4em">s</span></div><div class="l">measured</div></div>
+    <div class="stat w"><div class="v">1</div><div class="l">tool call</div></div>
+    <div class="stat w"><div class="v">0</div><div class="l">SPARQL executions</div></div>
+  </div>
+  <p style="margin-top:1em">What came back: <strong>TP53, RB1, PTEN, APC, BRCA1/2, KRAS, MYC, EGFR…</strong></p>
+  <p class="lead">Plausible. Fast.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Failure demo (b) — Open the log</p>
+  <h2>The one search that ran<br><span style="font-size:.55em;color:var(--muted)">(or nothing ran at all)</span></h2>
+  <pre>search_uniprot_entity(query="cancer AND organism_id:9606 AND reviewed:true", limit=20)</pre>
+  <p style="margin-top:.8em">What came back:</p>
+  <pre>Q9Y238  Deleted in lung and esophageal cancer protein 1
+P51587  Breast cancer type 2 susceptibility protein
+Q5HYN5  Cancer/testis antigen family 45 member A1
+P35243  Recoverin (Cancer-associated retinopathy protein)
+P78358  Cancer/testis antigen 1 (NY-ESO-1)</pre>
+</section>
+
+<section class="slide center">
+  <p class="kicker">Failure demo (b)</p>
+  <h2 style="max-width:24ch">The genes lined up<br>in the answer — <em>TP53, KRAS, MYC</em> —<br>are not among these. Not one</h2>
+</section>
+
+<section class="slide">
+  <p class="kicker">Failure demo (b)</p>
+  <h2>That is no accident</h2>
+  <p>This search only looks at <strong>whether the protein’s name contains the string “cancer”</strong>.</p>
+  <table style="max-width:700px">
+    <tr><th>Gene</th><th>Name in UniProt</th></tr>
+    <tr><td>TP53</td><td>Cellular tumor antigen p53</td></tr>
+    <tr><td>KRAS</td><td>GTPase KRas</td></tr>
+  </table>
+  <div class="box warn" style="margin-top:1em">
+    <p>Neither contains the string “cancer”, so they are <strong>structurally unreachable</strong>.</p>
+  </div>
+</section>
+
+<section class="slide center">
+  <p class="kicker">Failure demo — The one thing to take away today</p>
+  <h1 style="max-width:20ch">There are traces of a<br>database being touched, and<br><em>the answer comes from memory</em></h1>
+</section>
+
+<section class="slide">
+  <p class="kicker">Failure demo — Why this is dangerous</p>
+  <h2>Nothing on the screen<br>tells you so</h2>
+  <ul>
+    <li>The answer is <strong>fast</strong></li>
+    <li>The answer is <strong>fluent</strong></li>
+    <li>And <strong>as content it is broadly correct</strong> — TP53 really is a tumor suppressor</li>
+  </ul>
+  <p style="margin-top:.6em">The problem is not correctness. It is that <strong>the provenance is unknown, and the result can be neither verified nor refuted nor reproduced</strong>.</p>
+  <div class="box warn">
+    <p style="font-size:1.15em"><strong>Being slow and failing is far safer than being fast and confidently wrong.</strong></p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Failure demo (c)</p>
+  <h2>Three axes were left vague</h2>
+  <table>
+    <tr><th>Axis</th><th>What happened</th></tr>
+    <tr class="bad"><td><strong>Species</strong></td><td>Nobody said human, yet <code>9606</code> was added on its own — <strong>a specification fabricated where the user cannot see it</strong></td></tr>
+    <tr><td><strong>Cancer type</strong></td><td>Breast, lung and colorectal cancer mixed together at random</td></tr>
+    <tr><td><strong>Type of evidence</strong></td><td>Germline susceptibility / somatic driver / expression biomarker / therapeutic target / mere literature co-occurrence — <strong>none of them chosen, all of them blended</strong></td></tr>
+  </table>
+</section>
+
+<section class="slide">
+  <p class="kicker">Failure demo (d)</p>
+  <h2>The same intent, specified</h2>
+  <div class="prompt">In MeSH, first identify the descriptor for 'Pancreatic Neoplasms', then give me the
+human genes associated with that disease as a table — the top 20, ordered by strength of
+association — stating the source database and field names.
+Cross-check the counts with COUNT.</div>
+  <div class="stats" style="margin-top:1.2em">
+    <div class="stat w"><div class="v">12<span style="font-size:.4em">s</span></div><div class="l">vague version</div></div>
+    <div class="stat a"><div class="v">182<span style="font-size:.4em">s</span></div><div class="l">specified version — roughly 15×</div></div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Failure demo (d)</p>
+  <h2>What changed</h2>
+  <table>
+    <tr><th></th><th>Vague version</th><th>Specified version</th></tr>
+    <tr><td>Tool calls</td><td class="num">1</td><td class="num">8</td></tr>
+    <tr><td>SPARQL executions</td><td class="num">0</td><td class="num">4</td></tr>
+    <tr><td>MIE consulted</td><td>no</td><td>yes</td></tr>
+    <tr><td>Identifiers verified</td><td><strong>none</strong></td><td>MeSH D010190, resolved live</td></tr>
+    <tr><td>COUNT cross-check</td><td>no</td><td>yes</td></tr>
+    <tr class="hl"><td><strong>Reproducible</strong></td><td><strong>no</strong></td><td>yes, from the full query text</td></tr>
+  </table>
+  <p class="sub" style="margin-top:.8em">Twelve seconds is not fast. <strong>It is fast because nothing happened</strong>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Failure demo (d) — ★ The biggest payoff</p>
+  <h2>COUNT exposed a methodological flaw</h2>
+  <table style="max-width:760px">
+    <tr><td>Total papers annotated with the disease</td><td class="num"><strong>236,144</strong></td></tr>
+    <tr><td>TP53 co-occurrences, counted strictly</td><td class="num"><strong>32,597</strong></td></tr>
+    <tr class="bad"><td>The value seen on the sample</td><td class="num"><strong>1,581</strong></td></tr>
+  </table>
+  <p style="margin-top:.7em">To avoid a timeout, an inner limit of 20,000 rows had been applied — but <strong>those rows were not a uniform random sample</strong>.</p>
+  <p><strong>Not just the numbers — the ranking changed too.</strong></p>
+  <table style="max-width:640px">
+    <tr><th>Gene</th><th>Rank on the sample</th><th>Rank on all rows</th></tr>
+    <tr class="bad"><td><strong>MTOR</strong></td><td class="num">20th</td><td class="num"><strong>9th</strong></td></tr>
+    <tr class="bad"><td><strong>INS</strong></td><td class="num">6th</td><td class="num"><strong>16th</strong></td></tr>
+  </table>
+  <div class="box good">
+    <p>Without the cross-check, <strong>a plausible-looking table would have gone straight through</strong>.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Failure demo (e) — ★ Do not stop here</p>
+  <h2>Even with a good question,<br>limits remain</h2>
+  <table>
+    <tr><th>Rank</th><th>Gene</th><th>The problem</th></tr>
+    <tr class="bad"><td>6</td><td><strong>INS</strong></td><td>Co-occurrence via the organ, the pancreas. Not a causal relationship</td></tr>
+    <tr class="bad"><td>14</td><td><strong>POTEF</strong></td><td>An actin-fusion chimeric gene. Highly similar in sequence to ACTB — <strong>but whether that is the cause of its rank is unconfirmed</strong></td></tr>
+    <tr class="bad"><td>16</td><td><strong>GAPDH</strong></td><td>A housekeeping gene. Mentioned only as an internal control in experiments</td></tr>
+    <tr class="bad"><td>unranked</td><td><strong>SMAD4 / CDKN2A</strong></td><td>Pancreatic cancer’s <strong>principal drivers, yet not in the top 20</strong></td></tr>
+  </table>
+  <p style="margin-top:.8em">Co-occurring paper count measures “<strong>how famous the gene is and how many papers have been written about it</strong>” — <strong>it does not measure disease specificity</strong>.</p>
+</section>
+
+<section class="slide center">
+  <p class="kicker">M4 — Lesson 2</p>
+  <h2 style="max-width:24ch">A good question makes the answer better.<br><em>But there are limits that remain<br>even after the question is good.</em></h2>
+  <p class="lead" style="margin-top:1em">Verification does not end with improving the question.</p>
+</section>
+
+<!-- ============ M5 ============ -->
+<section class="slide">
+  <p class="kicker">M5 — Skills</p>
+  <h2>The difference between MCP and skills</h2>
+  <div class="cols">
+    <div class="card">
+      <h3>MCP = capability</h3>
+      <p>What can be done. Look something up in UniProt, send a SPARQL query, convert an ID.</p>
+    </div>
+    <div class="card">
+      <h3>Skill = methodology</h3>
+      <p>By what procedure. In what order, and what to verify.</p>
+    </div>
+  </div>
+  <div class="box" style="margin-top:1.2em">
+    <p>Same tools, but the quality of the result changes with whether there is a written procedure — <strong>exactly what we just saw</strong>.</p>
+    <p style="margin-top:.4em">Today’s “good question” and “verification”, <strong>packaged so you never write them out by hand again</strong>.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M5 — The three skills</p>
+  <h2>Introduction only</h2>
+  <table>
+    <tr><th>Skill</th><th>What it does</th></tr>
+    <tr><td><strong>research-article-analysis</strong></td><td>Checks a paper’s claims against databases instead of trusting the text. Builds a ChEBI → Rhea → UniProt → Reactome → GO evidence chain</td></tr>
+    <tr><td><strong>disease-analysis</strong></td><td>Maps a disease across scales: molecule → pathway → cell → tissue → clinical → treatment</td></tr>
+    <tr><td><strong>PRISM</strong></td><td>Intersection of several conditions. “Targets associated with disease X that are also druggable”. <strong>Keeps a provenance ledger automatically</strong></td></tr>
+  </table>
+  <p class="sub" style="margin-top:1em">github.com/dbcls/togomcp — under <code>.claude/skills/</code></p>
+</section>
+
+<section class="slide center">
+  <p class="kicker">M5 — From PRISM’s description</p>
+  <h2 style="max-width:22ch">“If you catch yourself<br>about to list candidate genes from memory,<br>stop and use PRISM”</h2>
+  <p class="lead" style="margin-top:1em">That is the failure demo we just saw, precisely.</p>
+</section>
+
+<!-- ============ M6 ============ -->
+<section class="slide">
+  <p class="kicker">M6 — How to ask a good question</p>
+  <h2>The five elements</h2>
+  <table>
+    <tr><th>#</th><th>Element</th><th>Observed effect</th></tr>
+    <tr><td>1</td><td><strong>Name the target with a controlled vocabulary + a way to resolve it</strong></td><td>Tool selection switched from full-text search to <strong>resolve an ID, then match on structure</strong></td></tr>
+    <tr><td>2</td><td><strong>Demand the provenance</strong></td><td>Not a formatting request — it worked as a <strong>trigger that forces the schema documentation to be read</strong></td></tr>
+    <tr><td>3</td><td><strong>State the species and the scope</strong></td><td>Not a filter — a <strong>switch that causes work to happen which prevents contamination</strong></td></tr>
+    <tr><td>4</td><td><strong>Fix the count and the ordering criterion as numbers</strong></td><td>Forces “strength” to be <strong>reduced to a measurable quantity</strong></td></tr>
+    <tr class="hl"><td>5</td><td><strong>Demand a cross-check with COUNT</strong></td><td><strong>Did the most work.</strong> A detector for sampling bias</td></tr>
+  </table>
+  <p class="sub" style="margin-top:.6em">Not general advice — <strong>causes actually observed</strong> in the failure demo.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M6 — Cost</p>
+  <h2>You do not need to do this every time</h2>
+  <table style="max-width:760px">
+    <tr><th>Situation</th><th>Elements</th></tr>
+    <tr><td>Exploring, getting a rough sense</td><td>1 only</td></tr>
+    <tr><td>For discussion, or a slide</td><td>1, 3, 4</td></tr>
+    <tr class="hl"><td><strong>For a paper or a formal report</strong></td><td><strong>All five. No exceptions</strong></td></tr>
+  </table>
+  <div class="box warn" style="margin-top:1.2em">
+    <p><strong>Do not put a number that came back in twelve seconds into a manuscript.</strong> You will not be able to answer for it at review.</p>
+  </div>
+</section>
+
+<!-- ============ M7 ============ -->
+<section class="slide">
+  <p class="kicker">M7 — Verification and reproducibility</p>
+  <h2>Not one of today’s failures<br>raised an error</h2>
+  <ul>
+    <li>Inflated counts (62 vs 52)</li>
+    <li>Sampling bias (1,581 vs 32,597)</li>
+    <li>Mistaking the definition (localization ≠ function)</li>
+    <li>Misunderstanding the metric (co-occurrence ≠ causation)</li>
+  </ul>
+  <p class="lead">They come back as plausible numbers.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M7 — The four verification steps</p>
+  <h2>For any number that goes in a paper,<br>these four, without exception</h2>
+  <ol>
+    <li><strong>Make it output the executed query in full, and save it</strong> — do not let it summarize. This is your lab notebook</li>
+    <li><strong>Cross-check with COUNT</strong> — a difference is not an anomaly. <strong>Reporting it without being able to explain it is the anomaly</strong></li>
+    <li><strong>Check one or two entries by eye in the source DB</strong> — 30 seconds. Look at <strong>“the surprising one” rather than the top hit</strong></li>
+    <li><strong>Record the date of execution and the endpoint</strong> — a result with no “when” cannot be reproduced</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">M7 — Responsibility</p>
+  <h2>What it is not good for</h2>
+  <table>
+    <tr class="bad"><td><strong>Analyses where completeness is a requirement</strong></td><td>“All of them” cannot be guaranteed</td></tr>
+    <tr class="bad"><td><strong>Statistical inference</strong></td><td>It returns counts, but designing the test is your job</td></tr>
+    <tr class="bad"><td><strong>Clinical decisions</strong></td><td><strong>Never use it for this.</strong> ClinVar’s classifications are neither a diagnosis nor advice</td></tr>
+    <tr class="bad"><td><strong>Producing primary data</strong></td><td>It only queries existing DBs. It makes no new measurements</td></tr>
+  </table>
+  <p class="sub" style="margin-top:1em">Cite at two levels — <strong>both TogoMCP and each database you actually used</strong>. TogoMCP is the entrance; it is not where the data came from.</p>
+</section>
+
+<!-- ============ M9 ============ -->
+<section class="slide">
+  <p class="kicker">M9 — Exercise</p>
+  <h2>TogoVar: variants in the Japanese population</h2>
+  <div class="prompt">How many pathogenic variants are there in GBA1?
+Which of them are frequent in the Japanese population?</div>
+  <p class="sub" style="margin-top:1em">⏱ measured about 35 s / REST only, no SPARQL, so it is robust</p>
+  <p style="margin-top:.6em">Three things are built into it.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M9 — Built in (1)(2)</p>
+  <h2>182 variants → 1</h2>
+  <p><strong>(1)</strong> “GBA” is not an exact match. HGNC has already renamed <strong>GBA → GBA1</strong>. Resolving an ID is not trivial.</p>
+  <p><strong>(2)</strong> Apply a frequency condition for the Japanese population to those 182 pathogenic variants, and —</p>
+  <table style="max-width:620px">
+    <tr><th>Cohort</th><th>Allele frequency</th></tr>
+    <tr class="hl"><td>ToMMo (Japanese, n≈54,000)</td><td class="num"><strong>0.000801</strong></td></tr>
+    <tr><td>NCBN (Japanese)</td><td class="num">0.000807</td></tr>
+    <tr><td>gnomAD exomes</td><td class="num">0.0000842</td></tr>
+  </table>
+  <div class="box good">
+    <p><strong>About 10× enriched over the international databases.</strong> Information you would miss looking at international DBs alone.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M9 — Built in (3)</p>
+  <h2>The unit-of-aggregation trap</h2>
+  <table style="max-width:860px">
+    <tr><th>Breakdown</th><th>What it counts</th><th>Total</th><th>Matches 182?</th></tr>
+    <tr class="hl"><td>type (SNV 157 / deletion 23 / insertion 2)</td><td><strong>variants</strong></td><td class="num"><strong>182</strong></td><td>✅ matches</td></tr>
+    <tr class="bad"><td>significance</td><td>variant × <strong>condition</strong></td><td class="num"><strong>457</strong></td><td>❌ 2.5×</td></tr>
+    <tr class="bad"><td>consequence</td><td>variant × <strong>transcript</strong></td><td class="num"><strong>2,613</strong></td><td>❌ about 14×</td></tr>
+  </table>
+  <div class="box warn" style="margin-top:1em">
+    <p>Say “277 pathogenic variants” and you are <strong>wrong</strong>.</p>
+    <p style="margin-top:.4em">And although we filtered on “pathogenic”, 35 <em>Uncertain significance</em> and 1 <em>Likely benign</em> come back — because <strong>the filter is per variant, the breakdown is per variant-condition record</strong>. <strong>The tool itself returns a warning.</strong></p>
+  </div>
+  <p class="sub" style="margin-top:.8em">⚠️ State ClinVar’s disease names <strong>as a classification</strong>. They are not advice about risk.</p>
+</section>
+
+<!-- ============ M8 ============ -->
+<section class="slide">
+  <p class="kicker">M8 — Summary</p>
+  <h2>Just three</h2>
+  <ol style="font-size:clamp(1.05rem,1.7vw,1.45rem)">
+    <li><strong>TogoMCP is not a tool for sending SPARQL; it is machinery for distributing the knowledge of how to send it.</strong> The MIE files are the core</li>
+    <li><strong>Failure shows up not as an error, but as a number that looks correct.</strong> Nothing we saw today raised an error</li>
+    <li><strong>Do not put a number that came back in twelve seconds into a manuscript.</strong> You will not be able to answer for it at review</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resources</p>
+  <h2>What to take away</h2>
+  <p>It is all written in the handbook. If you are in a hurry, three chapters — <strong>01 Setup → 02 The First Demo → 06 How to Ask a Good Question</strong> — are already enough to work with.</p>
+  <table style="margin-top:1em">
+    <tr><td>Hosted version</td><td><code>https://togomcp.rdfportal.org/</code></td></tr>
+    <tr><td>Repository</td><td><code>https://github.com/dbcls/togomcp</code></td></tr>
+    <tr><td>RDF Portal</td><td><code>https://rdfportal.org/</code></td></tr>
+    <tr><td>Paper</td><td>Kinjo, Yamamoto, Bustamante-Larriet, Labra-Gayo, Fujisawa (2026)<br><em>Database</em> <strong>2026</strong>:baag042 · doi.org/10.1093/database/baag042</td></tr>
+    <tr><td>MIE design rationale</td><td>Kinjo &amp; Yamamoto (2026) <em>BioHackrXiv</em> · doi.org/10.37044/osf.io/6v5ra_v1</td></tr>
+  </table>
+  <p class="sub" style="margin-top:1.2em">If you use it in research, cite <strong>both TogoMCP and each database you actually used</strong>.</p>
+</section>
+
+<section class="slide title-slide">
+  <h1>Thank you</h1>
+  <p class="lead" style="margin-top:1em">Questions, please</p>
+</section>
+
+</div>
+
+<div id="bar"></div>
+<div id="tag"></div>
+<div id="num"></div>
+
+<div id="help">
+  <h2>Keyboard controls</h2>
+  <table style="max-width:520px">
+    <tr><td><code>→</code> <code>Space</code> <code>PageDown</code></td><td>Next</td></tr>
+    <tr><td><code>←</code> <code>PageUp</code></td><td>Previous</td></tr>
+    <tr><td><code>Home</code> / <code>End</code></td><td>First / Last</td></tr>
+    <tr><td><code>f</code></td><td>Full screen</td></tr>
+    <tr><td><code>d</code></td><td>Dark / light toggle</td></tr>
+    <tr><td><code>Number + Enter</code></td><td>Jump to that page</td></tr>
+    <tr><td><code>?</code> / <code>Esc</code></td><td>This help</td></tr>
+  </table>
+  <p style="margin-top:1.5em">Printing (<code>Cmd/Ctrl + P</code>) outputs every slide, one per page.</p>
+</div>
+
+<script>
+(function(){
+  var slides=[].slice.call(document.querySelectorAll('.slide'));
+  var i=0, jump='';
+  var bar=document.getElementById('bar'), num=document.getElementById('num'),
+      tag=document.getElementById('tag'), help=document.getElementById('help');
+
+  // derive section tag from the kicker text
+  function kickerOf(s){
+    var k=s.querySelector('.kicker');
+    if(!k) return '';
+    return k.textContent.split('—')[0].trim();
+  }
+
+  function show(n){
+    if(n<0) n=0; if(n>=slides.length) n=slides.length-1;
+    slides[i].classList.remove('active');
+    i=n;
+    slides[i].classList.add('active');
+    bar.style.width=((i+1)/slides.length*100)+'%';
+    num.textContent=(i+1)+' / '+slides.length;
+    tag.textContent=kickerOf(slides[i]);
+    try{location.hash=i+1;}catch(e){}
+  }
+
+  document.addEventListener('keydown',function(e){
+    if(help.classList.contains('on')){
+      if(e.key==='Escape'||e.key==='?'){help.classList.remove('on');}
+      return;
+    }
+    if(e.key>='0'&&e.key<='9'){ jump+=e.key; return; }
+    if(e.key==='Enter'&&jump){ show(parseInt(jump,10)-1); jump=''; return; }
+    jump='';
+    switch(e.key){
+      case 'ArrowRight': case ' ': case 'PageDown': case 'n': show(i+1); e.preventDefault(); break;
+      case 'ArrowLeft': case 'PageUp': case 'p': show(i-1); e.preventDefault(); break;
+      case 'Home': show(0); break;
+      case 'End': show(slides.length-1); break;
+      case 'f': if(document.fullscreenElement){document.exitFullscreen();}
+                else{document.documentElement.requestFullscreen();} break;
+      case 'd': document.documentElement.classList.toggle('dark'); break;
+      case '?': help.classList.add('on'); break;
+      case 'Escape': help.classList.remove('on'); break;
+    }
+  });
+
+  // click / tap navigation
+  document.getElementById('deck').addEventListener('click',function(e){
+    if(window.getSelection().toString()) return;
+    if(e.target.closest('a')) return;
+    show(e.clientX < window.innerWidth*0.25 ? i-1 : i+1);
+  });
+
+  // swipe
+  var x0=null;
+  document.addEventListener('touchstart',function(e){x0=e.touches[0].clientX;},{passive:true});
+  document.addEventListener('touchend',function(e){
+    if(x0===null) return;
+    var dx=e.changedTouches[0].clientX-x0;
+    if(Math.abs(dx)>50) show(dx<0 ? i+1 : i-1);
+    x0=null;
+  },{passive:true});
+
+  var start=parseInt((location.hash||'').replace('#',''),10);
+  show(isNaN(start)?0:start-1);
+})();
+</script>
+</body>
+</html>

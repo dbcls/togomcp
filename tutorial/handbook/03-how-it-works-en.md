@@ -4,7 +4,79 @@ Why can an AI write correct SPARQL against a database nobody taught it? The answ
 
 ---
 
-## 3-1. The overall structure
+## 3-1. The shape of the data — groundwork for this chapter
+
+If Chapter 0's "What RDF and SPARQL are" was enough for you, skip this. **The real subject of this chapter is the traps in its second half.** This section goes just far enough to make those legible.
+
+An RDF database is a pile of **three-part statements — "the B of A is C."** Each of the three positions has a name.
+
+```
+  subject         predicate        object
+     │               │               │
+     ▼               ▼               ▼
+  insulin ──── organism ─────────→ human
+     │
+     ├──────── length ───────────→ 110
+     │
+     └──────── associated ───────→ diabetes
+                disease
+```
+
+Such a statement is called a **triple**. **A "count" is the number of triples matching your conditions** — that fact does the work later in this chapter.
+
+### Names are shaped like URLs
+
+The diagram above used English words. The actual data does not.
+
+```
+<http://purl.uniprot.org/uniprot/P01308>          ← subject   (insulin)
+    <http://purl.uniprot.org/core/organism>       ← predicate (organism)
+        <http://purl.uniprot.org/taxonomy/9606> . ← object    (human)
+```
+
+A name shaped like a URL is an **IRI**. They are long, so you give the leading part an alias — which is all the `PREFIX` lines at the top of a SPARQL query are.
+
+```sparql
+PREFIX up: <http://purl.uniprot.org/core/>
+#      ↑ from here on, up:organism means the long IRI above
+```
+
+> **📖 Why a URL shape?** Not so you can click it open. So that **the same thing carries the same name everywhere in the world.** If UniProt's "human" and NCBI's "human" are both `taxonomy/9606`, the two connect mechanically. That single fact is what lets Chapter 4 walk across several databases.
+>
+> The flip side: **if the IRIs differ, the machine treats them as different things — however identical they look to you.** Chapter 4 runs into exactly this.
+
+### Graphs — compartments for triples
+
+One store (an **endpoint**) often houses several datasets side by side. So triples are kept in compartments called **graphs**.
+
+```
+endpoint (sparql.uniprot.org)
+ ├─ graph <.../uniprot>        ← UniProt's own triples
+ ├─ graph <.../taxonomy>       ← organism triples
+ └─ graph <.../another-dataset> ← something else living here
+```
+
+Writing `FROM <graph>` in SPARQL means **look only inside that compartment.** Leaving it out means **search across all of them.**
+
+You may be thinking that since the answer comes back either way, this is a detail. **Section 3-6 demonstrates that it is not.**
+
+### How to read a query (you do not have to write one)
+
+SPARQL appears several times from here on. You do not need to be able to write it, but **knowing the shape lets you follow what the AI did.**
+
+```sparql
+SELECT ?protein ?mass                     # what to give back
+FROM <http://sparql.uniprot.org/uniprot>  # which compartment to look in
+WHERE {                                   # what shape of triple to look for
+  ?protein up:mass ?mass .                #  subject  predicate  object
+}
+```
+
+Anything starting with `?` is a **blank**. Find every triple of the form "the `up:mass` of `?protein` is `?mass`", and return the values that landed in the blanks as a table. **That is all.**
+
+---
+
+## 3-2. The overall structure
 
 ```
     You
@@ -27,7 +99,7 @@ TogoMCP is **not a mere relay**. On top of the ability to send SPARQL, it has th
 
 ---
 
-## 3-2. The tools come in three layers
+## 3-3. The tools come in three layers
 
 Sorted by role, the TogoMCP tools look like this. **Once you understand this three-layer structure, everything else is application.**
 
@@ -65,7 +137,7 @@ Just one. **But you must not arrive here without reading Layer 1** — that is T
 
 ---
 
-## 3-3. The MIE file — the core of the mechanism
+## 3-4. The MIE file — the core of the mechanism
 
 A **MIE (Metadata Interoperability Exchange) file** is a YAML documentation file, one per database. The design goal is plain.
 
@@ -113,7 +185,7 @@ Show me the UniProt MIE file. Just the examples section is fine.
 
 ---
 
-## 3-4. The rule: "always read the MIE before SPARQL"
+## 3-5. The rule: "always read the MIE before SPARQL"
 
 The TogoMCP usage guide carries several mandatory rules. This is the most important one.
 
@@ -134,7 +206,7 @@ specific IRI  ≫  narrowing by type  ≫  FILTER(CONTAINS(...))
 
 ---
 
-## 3-5. The traps — not "the wrong answer" but "the wrong count"
+## 3-6. The traps — not "the wrong answer" but "the wrong count"
 
 Most failures in life-science RDF happen **silently**. No error appears. A plausible-looking table comes back. The numbers are just wrong.
 
@@ -218,7 +290,7 @@ Chapter 7 organizes this verification procedure.
 
 ---
 
-## 3-6. Summary
+## 3-7. Summary
 
 1. TogoMCP is not "a tool for sending SPARQL" but **"a mechanism for handing out the knowledge of how it should be sent"**
 2. The tools form three layers: **guidance / grounding / execution**

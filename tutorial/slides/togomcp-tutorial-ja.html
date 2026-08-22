@@ -255,7 +255,7 @@ tr.bad td{background:var(--warnbg)}
   <p class="kicker">M2 — 最初のデモ</p>
   <h2>デモ1：1ホップの問い</h2>
   <div class="prompt">ヒトのインスリン (INS) 遺伝子産物の UniProt エントリを教えて。機能と配列長も。</div>
-  <p class="sub" style="margin-top:1em">⏱ 実測 約35秒</p>
+  <p class="sub" style="margin-top:1em">⏱ 実測 18〜28秒（Sonnet 5 では 28 秒）</p>
 </section>
 
 <section class="slide">
@@ -289,7 +289,7 @@ tr.bad td{background:var(--warnbg)}
   </div>
   <div class="box good" style="margin-top:1em">
     <p><strong>データベースはあなたの記憶より精密で、そして期待していたのと別のものを指していることがあります。</strong></p>
-    <p style="margin-top:.4em">答えが違うと感じたとき、まず疑うべきは AI の誤りではなく、<strong>自分の期待とデータベースの定義のずれ</strong>です。</p>
+    <p style="margin-top:.3em">答えが違うと感じたとき、まず疑うべきは AI の誤りではなく、<strong>自分の期待と定義のずれ</strong>です。</p>
   </div>
 </section>
 
@@ -303,7 +303,7 @@ tr.bad td{background:var(--warnbg)}
     <tr><td>HGNC</td><td><strong>HGNC:6081</strong></td></tr>
     <tr><td>PDB</td><td>実在の構造 ID のリスト</td></tr>
   </table>
-  <p class="sub" style="margin-top:.8em">⏱ 実測 約15秒 ／ 「その UniProt ID」で文脈が引き継がれています</p>
+  <p class="sub" style="margin-top:.8em">⏱ 実測 18〜30秒（Sonnet 5 では 30 秒）／ 「その UniProt ID」で文脈が引き継がれています</p>
 </section>
 
 <section class="slide">
@@ -334,10 +334,42 @@ tr.bad td{background:var(--warnbg)}
   <div class="stats" style="margin-top:.5em">
     <div class="stat a"><div class="v">44,570</div><div class="l">文字 ／ 1回あたり（≒1.1〜1.3万トークン）</div></div>
   </div>
-  <p class="sub">ツールの説明に「毎ターン、他のどのツールより先に呼べ」と明記。<strong>前の往復の作業内容は引き継がれない</strong>という前提の設計です。</p>
+  <p class="sub">ツールの説明に「<strong>発言のたびに</strong>、他のどのツールより先に呼べ」と明記。<strong>前の往復の作業内容は引き継がれない</strong>という前提の設計です。</p>
 </section>
 
 <!-- ============ M3 ============ -->
+<section class="slide">
+  <p class="kicker">M3 — 下ごしらえ</p>
+  <h2>RDF とは<br>「A の B は C」の山</h2>
+  <pre>   主語            述語           目的語
+    │               │               │
+    ▼               ▼               ▼
+インスリン ──── 生物種 ─────────→  ヒト
+    │
+    ├──────── 長さ ─────────────→  110
+    └──────── 関連疾患 ─────────→ 糖尿病</pre>
+  <p style="margin-top:.7em">この3つ組を <strong>トリプル</strong>、真ん中を <strong>述語</strong>と呼びます。<strong>どの述語が使えるかはデータベースごとに違う</strong> ── これがこの章の主題です。</p>
+  <p><strong>SPARQL</strong> は、このトリプルへの問い合わせ言語。表に対する SQL にあたります。</p>
+  <div class="box warn" style="margin-top:.8em">
+    <p><strong>「件数」とは、条件に合うトリプルが何本あるかということです。</strong>この章の後半で効いてきます。</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">M3 — 下ごしらえ</p>
+  <h2>IRI とグラフ</h2>
+  <pre>&lt;http://purl.uniprot.org/uniprot/P01308&gt;          ← 主語（インスリン）
+    &lt;http://purl.uniprot.org/core/organism&gt;       ← 述語（生物種）
+        &lt;http://purl.uniprot.org/taxonomy/9606&gt; . ← 目的語（ヒト）</pre>
+  <p style="margin-top:.7em">この URL の形をした名前が <strong>IRI</strong>。<strong>名前であって、リンク先ではありません。</strong>クリックして開くためではなく、<strong>同じものを世界中で同じ名前で呼ぶため</strong>にあります。</p>
+  <pre style="margin-top:.6em">エンドポイント (sparql.uniprot.org)
+ ├─ グラフ &lt;.../uniprot&gt;        ← UniProt 本体のトリプル
+ ├─ グラフ &lt;.../taxonomy&gt;       ← 生物種のトリプル
+ └─ グラフ &lt;.../別データセット&gt;   ← 同居している別のもの</pre>
+  <p style="margin-top:.6em"><code>FROM &lt;グラフ名&gt;</code> と書くと<strong>その仕切りの中だけ</strong>を見ます。書かないと<strong>全部の仕切りをまたいで探します。</strong></p>
+  <p class="sub">「細かい話だろう」と思うかもしれません。<strong>この章の後半で、それが間違いであることを実演します。</strong></p>
+</section>
+
 <section class="slide">
   <p class="kicker">M3 — 仕組み</p>
   <h2>ツールは3層に分かれる</h2>
@@ -426,6 +458,42 @@ tr.bad td{background:var(--warnbg)}
 </section>
 
 <section class="slide">
+  <p class="kicker">M3 — わざと破った結果</p>
+  <h2>行数は2倍。<br>しかし答えは合っている</h2>
+  <div class="prompt">UniProt のヒトのライソゾーム内腔酵素を数えるクエリを、
+FROM 句でグラフを固定した版と、固定しない版の両方で実行して、
+件数を比較して見せて。COUNT(*) と COUNT(DISTINCT) の両方を出して。</div>
+  <table style="margin-top:1em">
+    <tr><th>版</th><th>COUNT(*)</th><th>COUNT(DISTINCT ?protein)</th></tr>
+    <tr class="hl"><td><strong>FROM 固定あり</strong></td><td class="num"><strong>98</strong></td><td class="num"><strong>98</strong></td></tr>
+    <tr class="bad"><td><strong>FROM 固定なし</strong></td><td class="num"><strong>196</strong></td><td class="num"><strong>98</strong></td></tr>
+  </table>
+  <p class="sub" style="margin-top:.8em">最後の一文が重要です。<strong>これを付けないと、この罠は見えません。</strong></p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M3 — この表の読み方</p>
+  <h2>危ないのは<br><code>COUNT(*)</code> のほう</h2>
+  <div class="box warn">
+    <p><strong>「固定しないと答えが変わる」という話ではありません。</strong></p>
+    <p style="margin-top:.5em"><code>COUNT(DISTINCT)</code> を使っている限り、この例では<strong>答えは合ってしまいます</strong>。両方とも 98 でした。</p>
+    <p style="margin-top:.5em">危ないのは <code>COUNT(*)</code> のほうで、<strong>196 という誤った数字が、エラーも警告もなく返ります。</strong></p>
+  </div>
+  <p style="margin-top:1em">さらに悪いことに、<strong>膨張率は固定ではありません。</strong>対象によって2倍になったりならなかったりします。</p>
+  <p><code>AVG</code>／<code>SUM</code> を使う場合、あるいは再宣言された述語で結合を重ねる場合（k本で2<sup>k</sup>倍）には、<strong><code>DISTINCT</code> では吸収しきれず答えそのものが狂います。</strong></p>
+</section>
+
+<section class="slide">
+  <p class="kicker">M3 — 診断のしかた</p>
+  <h2>出どころを突き止める</h2>
+  <div class="prompt">その2倍の行はどのグラフから来ているの？ GRAPH ?g で調べて。</div>
+  <p style="margin-top:.8em"><code>a up:Protein</code> という型付けを<strong>2つのグラフが供給していました</strong> ── UniProt 自身と、同じエンドポイントに同居している別のデータセット。</p>
+  <div class="box good" style="margin-top:1em">
+    <p><strong>この診断のしかた自体を覚えてください。</strong>「怪しい件数が出たら <code>GRAPH ?g</code> で供給元を数える」は、そのまま実務で使えます。</p>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">M3 — 実測</p>
   <h2>こちらは実際に起きます</h2>
   <div class="stats">
@@ -445,7 +513,7 @@ tr.bad td{background:var(--warnbg)}
   <h2>検索だけでは答えられない問い</h2>
   <div class="prompt">SARS-CoV-2 の main protease (3CL protease) の PDB 構造を、
 分解能の良い順に上位10件教えて。</div>
-  <p class="sub" style="margin-top:1em">⏱ 実測 39秒 ／ 失敗ゼロ・リトライゼロ ── 5デモ中もっとも堅牢</p>
+  <p class="sub" style="margin-top:1em">⏱ 実測 39〜51秒（Sonnet 5 では 47 秒）／ 失敗ゼロ・リトライゼロ ── 5デモ中もっとも堅牢</p>
 </section>
 
 <section class="slide">
@@ -473,11 +541,12 @@ tr.bad td{background:var(--warnbg)}
     <div>
       <h3>実験手法別の内訳</h3>
       <table>
-        <tr><td>X線回折</td><td class="num">1,796</td></tr>
-        <tr><td>クライオEM</td><td class="num">18</td></tr>
+        <tr><td>X線回折</td><td class="num">1,799</td></tr>
+        <tr><td>クライオEM</td><td class="num">25</td></tr>
         <tr><td>中性子</td><td class="num">4</td></tr>
         <tr><td>溶液NMR</td><td class="num">3</td></tr>
         <tr><td>電子線結晶</td><td class="num">1</td></tr>
+    <tr class="hl"><td><strong>合計</strong></td><td class="num"><strong>1,832</strong></td></tr>
       </table>
     </div>
   </div>
@@ -509,12 +578,12 @@ tr.bad td{background:var(--warnbg)}
   <h2>52種のうち、3つ</h2>
   <table>
     <tr><th>遺伝子</th><th>承認薬</th><th>作用</th><th>何を意味するか</th></tr>
-    <tr class="hl"><td><strong>GLA</strong></td><td>ミガーラスタット</td><td><strong>STABILISER</strong></td><td>ファブリー病の薬理学的シャペロン。<strong>原因酵素を狙った唯一の低分子</strong></td></tr>
+    <tr class="hl"><td><strong>GLA</strong></td><td>ミガーラスタット</td><td><strong>STABILISER</strong></td><td>ファブリー病の薬理学的シャペロン。<strong>この52種の中では</strong>、原因酵素を狙った唯一の低分子</td></tr>
     <tr class="hl"><td><strong>GAA</strong></td><td>ミグリトール、ボグリボース</td><td>INHIBITOR</td><td>狙いはポンペ病ではなく<strong>2型糖尿病</strong></td></tr>
     <tr class="bad"><td><strong>PDGFRB</strong></td><td>イマチニブほか11剤</td><td>INHIBITOR</td><td>受容体型チロシンキナーゼ。<strong>ライソゾーム酵素ではない</strong></td></tr>
   </table>
   <div class="box good" style="margin-top:1em">
-    <p>PDGFRB を除くと ── <strong>ライソゾーム酵素を直接狙う承認低分子は、実質ミガーラスタット1系統だけ。</strong></p>
+    <p>PDGFRB を除くと ── <strong>この52種の範囲では、ライソゾーム酵素を直接狙う承認低分子はミガーラスタット1系統だけ。</strong></p>
     <p style="margin-top:.4em">意外ではありません。<strong>ライソゾーム病は酵素を「阻害」するのではなく「補充」して治療するから</strong>です。</p>
   </div>
 </section>
@@ -526,7 +595,7 @@ tr.bad td{background:var(--warnbg)}
   <table style="margin-top:.6em">
     <tr><th>定義</th><th>候補</th><th>承認薬側の結果</th></tr>
     <tr class="bad"><td>UniProt キーワード<br><strong>KW-0458「Lysosome」</strong></td><td class="num">161</td><td><strong>インスリン製剤22種<br>PDGFR阻害剤12種</strong></td></tr>
-    <tr class="hl"><td>GO<br><strong>GO:0043202（内腔）</strong></td><td class="num">52</td><td>GLA、GAA</td></tr>
+    <tr class="hl"><td>GO<br><strong>GO:0043202（内腔）</strong></td><td class="num">52</td><td>GLA、GAA<br><span class="sub">＋PDGFRB（局在のみ）</span></td></tr>
   </table>
 </section>
 

@@ -151,6 +151,11 @@ DOCS = [
 # public-only -->` のように 2 つのマーカーが 1 行を共有する箇所（演習ファイル）で
 # 閉じマーカーを見落とし、次の閉じマーカーまで丸ごと飲み込んだ。
 # **マーカー対だけを見る。行の形は見ない。**
+# どちらの成果物にも出さないブロック。README には「作業はこのフォルダで」のような
+# **教材を保守する人にだけ必要な注記**があり、これが受講者への配布物に混ざると
+# 邪魔になる（README は講習会版の「はじめに」の章でもある）。
+NOBUILD_BLOCK = re.compile(
+    r"<!--\s*nobuild\s*-->.*?<!--\s*/nobuild\s*-->", re.S)
 WORKSHOP_BLOCK = re.compile(
     r"<!--\s*workshop-only\s*-->.*?<!--\s*/workshop-only\s*-->", re.S)
 PUBLIC_BLOCK = re.compile(
@@ -158,7 +163,11 @@ PUBLIC_BLOCK = re.compile(
 
 
 def apply_variant(text, variant):
-    """<!-- workshop-only --> / <!-- public-only --> ブロックを出し分ける。"""
+    """<!-- workshop-only --> / <!-- public-only --> ブロックを出し分ける。
+
+    <!-- nobuild --> はどちらにも出さない（保守者向けの注記）。
+    """
+    text = NOBUILD_BLOCK.sub("", text)
     if variant == "public":
         text = WORKSHOP_BLOCK.sub("", text)
         text = PUBLIC_BLOCK.sub(lambda m: m.group(1), text)
@@ -316,6 +325,18 @@ def main():
     if all_problems:
         # 表の消失は目視では気づきにくいので、終了コードで落とす。
         sys.exit(f"表の変換に失敗した箇所が {len(all_problems)} 件あります。上記を確認してください。")
+
+    # スライド・講師台本はこのビルドの対象外なので、数値のズレを別途照合する。
+    print("実測値の整合チェック:")
+    try:
+        import subprocess
+        r = subprocess.run([sys.executable, str(ROOT / "check-consistency.py")],
+                           capture_output=True, text=True)
+        print("  " + (r.stdout + r.stderr).strip().replace("\n", "\n  "))
+        if r.returncode != 0:
+            sys.exit("整合チェックに失敗しました。上記を確認してください。")
+    except OSError as e:
+        print(f"  スキップ（実行できませんでした: {e}）")
 
 
 TEMPLATE = r"""<!DOCTYPE html>
