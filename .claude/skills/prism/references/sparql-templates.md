@@ -213,4 +213,4 @@ togoid_countId(...)        # check convertibility first
 togoid_convertId(route="uniprot → ncbigene", ids=[...])
 ```
 
-Intersection is computed on the normalized IDs. When SPARQL federation is needed but unavailable (SERVICE disabled on rdfportal), run sequential queries and bridge with `VALUES`.
+Intersection is computed on the normalized IDs. When the two axes sit on different endpoints, run sequential queries and bridge with `VALUES` — not `SERVICE`. `SERVICE` is available on rdfportal (this line called it disabled until 2026-08-26, which was wrong), but it is unusable at PRISM's scale: an unbounded federated join runs past 130s without returning, and Virtuoso's federation compiler rejects aggregates and `BIND` inside the block (`SP031`).

@@ -98,8 +98,10 @@ These are not query-specific; they bite everything. Each becomes a `{id, say}`:
   namespace returns 0 rows silently.
 - **Absent labels** — e.g. `up:Protein` has no `rdfs:label`; a label query returns
   0 rows silently, and the names come from a different predicate.
-- **Timeout-prone path** — e.g. a pre-flattened lineage where `rdfs:subClassOf*`
-  times out but single-hop already covers the full ancestry.
+- **A path the engine REJECTS** — e.g. an unanchored property path that Virtuoso
+  refuses outright ("neither end of it is bound by equality"). State the rejection,
+  not a timeout: they call for different fixes (anchor an end vs. narrow the scope),
+  and only one of them is what happens. See the timeout warning below.
 - **Verbatim typo** — a misspelled predicate preserved for compatibility, where
   the corrected spelling returns 0 rows.
 
@@ -110,3 +112,38 @@ must exist on the live endpoint (Phase 5). A warning about a non-existent
 predicate is worse than no warning — the reader avoids the wrong thing while the
 real trap stays unflagged. Traps are collected **during Phase 2** (from surprising
 COUNT distributions and the 2g probe), not reconstructed from memory in Phase 4.
+
+And every trap that asserts something RUNNABLE carries a `check:` (spec §3.6),
+executed by `scripts/check_mie_gotchas.py <db>`. Keep the Phase-2g queries and
+paste them in; do not compose new ones in Phase 4.
+
+## The timeout trap is a trap about traps
+
+**Never write "this times out" without having just watched it not finish.** In the
+2026-08-25 header sweep, six such claims across four MIE files were tested for the
+first time and **all six were false** — the operations returned in 0.2–41 seconds:
+
+| Claimed | Actually |
+|---|---|
+| oma: unpinned gene join "unrunnable" | ×6.29 wrong answer in 0.8s |
+| oma: both whole-class COUNTs time out at 60s | 18s and 41s |
+| oma: unbound prefix scan times out | 30.4s |
+| bgee: unfiltered COUNT times out | 4.7s for 709M rows |
+| rhea: participant-path COUNT times out | 0.2s |
+| uniprot: aggregate cross-DB join >60s | 16.8s |
+
+The asymmetry is structural, not bad luck. Nobody writes "this hangs" right after
+watching something return, so a false timeout is always *inherited* — copied
+forward, or generalised from one slow run on a busy endpoint — and then never
+re-tested, **because the warning's own advice is not to run it.** It is a claim
+that immunises itself against the experiment that would kill it.
+
+Treat it as a §4.4 violation. §4.4 forbids leaving a positive route as a caveat; a
+phantom timeout does the same damage from the other side, turning a route that
+answers in a second into one the reader is told to avoid. Three of the six above
+were doing exactly that.
+
+So: `kind: error` on every such claim, which FAILS if the operation completes. And
+when you inherit one from a previous version, treat it as a hypothesis and run it.
+If it completes, the honest note is not "this became stale" but "this was wrong" —
+dated, in the `say`, so nobody quietly restores it.

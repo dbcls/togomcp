@@ -38,9 +38,24 @@ entity_counts:                     # graph-pinned, live 2026-07-22 (COUNT over t
 global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
   - id: graph_scope_mandatory
     say: >
-      Always FROM <http://rdfportal.org/dataset/amrportal> (or GRAPH-pin it). This endpoint co-hosts
-      ChEMBL/ChEBI/Reactome/Ensembl; an UNPINNED aggregate over 1.7M+ rows scans every graph and times out.
-      Every example below pins the graph.
+      Always FROM <http://rdfportal.org/dataset/amrportal> (or GRAPH-pin it) — but for HYGIENE, not because
+      the alternative fails. This entry claimed an unpinned aggregate "times out" until 2026-08-26; measured
+      that day, the unpinned and pinned forms of the same 1.4M-row PhenotypeMeasurement aggregate BOTH return
+      1,379,999, in 0.4s and 0.2s. No timeout and no inflation: AMRPortal's amr: predicates are graph-local,
+      so no co-tenant (ChEMBL/ChEBI/Reactome/Ensembl) can answer them. Pin anyway — it costs nothing, it
+      keeps the query correct if a co-tenant ever does mint an amr: triple, and every example below does it —
+      but do not diagnose a slow query here as a missing pin.
+    check:
+      kind: ratio            # pinned and unpinned must keep agreeing; a drift here means a co-tenant appeared
+      date: "2026-08-26"
+      unpinned: |
+        PREFIX amr: <http://example.org/ebiamr#>
+        SELECT (COUNT(*) AS ?n) WHERE { ?s a amr:PhenotypeMeasurement ; amr:resistancePhenotype ?p }
+      pinned: |
+        PREFIX amr: <http://example.org/ebiamr#>
+        SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/amrportal>
+        WHERE { ?s a amr:PhenotypeMeasurement ; amr:resistancePhenotype ?p }
+      expect: {ratio: 1.0, tolerance: 0.001}
   - id: blank_node_entities
     say: >
       Both entity types are BLANK NODES — no named entity IRI exists. amr:bioSample (an

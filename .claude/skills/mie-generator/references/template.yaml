@@ -63,10 +63,51 @@ entity_counts:            # OPTIONAL. Every value COUNT(DISTINCT) + graph-pinned
 
 global_gotchas:           # the 2-5 that bite ANY query on this DB. DATABASE-WIDE only —
                           # query-specific traps go inline in the example (traps_avoided).
+                          # Any claim the endpoint can SETTLE — a figure, a multiplier, "0 rows",
+                          # "not here", "does not run" — MUST carry a `check:` (spec §3.6).
+                          # Qualitative advice ("use the IRI") does not. Validate with
+                          #   uv run python scripts/check_mie_gotchas.py [db_key]
+                          # `check:` blocks are stripped before the file is served, so they cost
+                          # the reader nothing — do not economise on them.
   - id: [slug]
     say: "[what silently fails + the fix]"
+
+  # ── kind: ratio — "unpinned inflates ×N". PASTE THE TWO QUERIES YOU ALREADY RAN IN PHASE 2g.
   # - id: union_inflation
-  #   say: "`a ex:Thing` matches in N graphs -> unpinned COUNT(*) inflated ×N. FIX: pin GRAPH <...> or COUNT(DISTINCT)."
+  #   say: "`a ex:Thing` unpinned returns ×N rows (A vs B) in Ss — it does NOT error, so nothing signals it. FIX: pin GRAPH <...>."
+  #   check:
+  #     kind: ratio
+  #     date: "YYYY-MM-DD"
+  #     unpinned: |
+  #       SELECT (COUNT(*) AS ?n) WHERE { ?s a ex:Thing ; ex:p ?o }
+  #     pinned: |
+  #       SELECT (COUNT(*) AS ?n) WHERE { GRAPH <...> { ?s a ex:Thing ; ex:p ?o } }
+  #     expect: {ratio: 6.29, tolerance: 0.05}      # tolerance is FRACTIONAL; default 0.05
+  #
+  # ── kind: count — "this figure is N". Also the right kind for "X is cheap/fast": assert the
+  #    value it returns, which fails if the query ever stops returning it.
+  #   check: {kind: count, date: "YYYY-MM-DD", query: "SELECT (COUNT(*) AS ?n) WHERE {...}", expect: {value: 18854, tolerance: 0.02}}
+  #
+  # ── kind: zero_rows — "written this way it silently returns nothing" (wrong literal type,
+  #    wrong IRI namespace, a label that is not there).
+  #   check: {kind: zero_rows, date: "YYYY-MM-DD", query: "SELECT ?s WHERE {...} LIMIT 1"}
+  #
+  # ── kind: absent — "this predicate / graph is not on this endpoint". Declare absences
+  #    POSITIVELY: a graph merely missing from a list is indistinguishable from one nobody wrote down.
+  #   check: {kind: absent, date: "YYYY-MM-DD", query: "SELECT ?s WHERE { GRAPH <...> { ?s ?p ?o } } LIMIT 1"}
+  #
+  # ── kind: error — "this is rejected / does not complete". THE ONE THAT MATTERS MOST: an
+  #    operation that COMPLETES fails this check. Six timeout claims in this corpus were false
+  #    when first tested (see SKILL.md 5e-2) — every one of them steering readers off a route
+  #    that answers in seconds. Never inherit a timeout warning; re-measure it.
+  # - id: property_path_unanchored
+  #   say: "An unanchored `p+` is REJECTED in 0.2s with 'neither end ... bound by equality' — read that as 'anchor one end', not 'endpoint busy'."
+  #   check:
+  #     kind: error
+  #     date: "YYYY-MM-DD"
+  #     expect: {timeout_s: 60}
+  #     query: |
+  #       SELECT (COUNT(*) AS ?n) WHERE { GRAPH <...> { ?a ex:rel+ ?b } }
 
 # ── examples: the core (required). Each is self-contained, executable, verified,
 #    and dated. Elevate the least-recoverable classes: include at least one
@@ -90,7 +131,7 @@ examples:
                                                       # Use `date:`, NEVER `on:` (YAML parses
                                                       # bare `on` as boolean true — §4.1 trap).
     teaches: "[the reusable idiom in one line]"
-    traps_avoided:             # optional — the inline, query-specific warnings
+    traps_avoided:            # a bare string, OR {say: "...", check: {...}} when the trap is falsifiable             # optional — the inline, query-specific warnings
       - "[what the naive query gets wrong + the fix]"
 
   - id: [enum_slug]            # a set-level enumeration route (§4.4). Check this DB's row in

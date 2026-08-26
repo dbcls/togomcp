@@ -55,7 +55,8 @@ entity_counts:                     # COUNT(DISTINCT), graph-pinned to <dataset/e
   human_lncrna_genes:     36490    # biotype ENSGLOSSARY_0000028 — the single largest biotype
   mane_select_transcripts: 19338   # transcript flag ENSGLOSSARY_0000365 (human-only concept)
   genes_with_uniprot_xref: 24347   # 27.8% of human genes — the ceiling on Ensembl↔UniProt/ChEMBL integration
-  nonvert_note: "Whole-division gene counts for bacteria/metazoa/plants time out (graphs are huge) — always species-scope."
+  bacteria_genes: 124639741        # ensembl_bacteria whole-division COUNT — 1.7s, verified 2026-08-26
+  nonvert_note: "Whole-division gene counts are CHEAP, not impossible — this note said they time out until 2026-08-26. Bacteria = 124,639,741 in 1.7s. Species-scope for relevance, not feasibility (gotcha nonvert_timeout)."
 
 global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
   - id: graph_pin_inflation
@@ -77,7 +78,22 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
       The species IRI lives ONLY on the GENE — transcripts/proteins carry no RO_0002162, so reach a species-scoped
       transcript/protein via `?t so:transcribed_from ?gene` with the species filter on ?gene.
   - id: nonvert_timeout
-    say: "Non-vertebrate graphs (bacteria especially) are massive — ALWAYS include a species IRI filter, or the query times out immediately. There is no cheap whole-division count."
+    say: >
+      Non-vertebrate graphs are massive — ensembl_bacteria alone holds 124,639,741 genes — so a species IRI
+      filter is almost always what you want. But "the query times out immediately" and "there is no cheap
+      whole-division count" were BOTH false, and this entry asserted them until 2026-08-26. Measured that day:
+      the whole-division bacteria gene COUNT returns in 1.7s, and the same count joined to rdfs:label
+      (124,664,544) in 8.4s. Virtuoso answers a typed COUNT from the index regardless of division size. Scope
+      by species because you want one species, not because the division is unreachable — and if a
+      non-vertebrate query IS slow, look at the joins, not the graph size.
+    check:
+      kind: count            # the whole-division count the old text called impossible
+      date: "2026-08-26"
+      query: |
+        PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+        SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/ensembl_bacteria>
+        WHERE { ?g a terms:EnsemblGene }
+      expect: {value: 124639741, tolerance: 0.05}
   - id: glossary_labels_graph
     say: >
       Biotype/flag values are ENSGLOSSARY_* IRIs whose rdfs:label + definition live ONLY in the

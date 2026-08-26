@@ -65,9 +65,22 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
       <http://ddbj.nig.ac.jp/ontologies/taxonomy/> as their rank — see example domain_clades.
   - id: start_iri
     say: >
-      With 2.84M taxa, an UNBOUNDED rdfs:subClassOf(+/*) with an unbound subject times out (60s). Every
-      transitive lineage/subtree MUST anchor on a specific taxon IRI (the start of an ancestor walk, or the
-      clade root of a descendant subtree) and carry a LIMIT on exploratory (non-COUNT) forms.
+      An UNBOUNDED rdfs:subClassOf(+/*) with an unbound subject is REJECTED, not slow — Virtuoso answers in
+      0.2s with HTTP 500 "transitive start not given" / "neither end of it is bound by equality to other
+      columns or parameters" (verified 2026-08-26; this entry blamed a 60s timeout until then). Read the
+      message as "anchor one end", not "the endpoint is loaded" — waiting or retrying will never help.
+      ANCHORED, the transitive walk is cheap and the 2.84M taxa are irrelevant to its cost: a phylum-wide
+      descendant subtree from Chordata (7711) returns 131,915 in 0.8s. So anchor on a specific taxon IRI (the
+      start of an ancestor walk, or the clade root of a descendant subtree) because the engine requires it —
+      and carry a LIMIT on exploratory (non-COUNT) forms for your own sake, not the endpoint's.
+    check:
+      kind: error            # the unanchored transitive form must keep being rejected
+      date: "2026-08-26"
+      expect: {timeout_s: 60}
+      query: |
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/ontology/taxonomy>
+        WHERE { ?t rdfs:subClassOf+ ?anc }
   - id: obo_iri_subject
     say: >
       Taxon subjects use http://identifiers.org/taxonomy/{id} ONLY. The OBO form
@@ -135,7 +148,7 @@ examples:
       ORDER BY DESC(?id)
       LIMIT 50
     verified: {result_rows: 32, date: "2026-07-22", note: "Homo sapiens → Homo → Hominidae → … → Eukaryota → cellular organisms → root (many intervening ranks are 'Clade')"}
-    teaches: "rdfs:subClassOf* from a START taxon IRI walks the ancestor chain (inclusive of self). Anchoring on the specific IRI is mandatory — an unbound subject times out (gotcha start_iri). Note most intermediate nodes carry rank tax:Clade, not a Linnaean rank."
+    teaches: "rdfs:subClassOf* from a START taxon IRI walks the ancestor chain (inclusive of self). Anchoring on the specific IRI is mandatory — with an unbound subject Virtuoso rejects the path outright, in 0.2s, with 'transitive start not given' (gotcha start_iri). Note most intermediate nodes carry rank tax:Clade, not a Linnaean rank."
 
   - id: count_by_rank
     intent: enumerate taxa per taxonomic rank via rank IRIs (THE set-level rank-enumeration route)
@@ -174,7 +187,15 @@ examples:
     verified: {species_in_clade: 23148, date: "2026-07-22", note: "family 543 = Enterobacteriaceae; the subtree spans all descendant genera"}
     teaches: "The subtree-enumeration route: rdfs:subClassOf* <cladeIRI> gathers EVERY descendant at any depth, then a rank filter (tax:Species) selects the level you want. This is THE way to answer 'all X under genus/family/order Y' — a bare rdfs:subClassOf reaches only direct children and misses everything below the next rank."
     traps_avoided:
-      - "ontology/taxonomy is a TRUE hierarchy (rdfs:subClassOf = the single immediate parent), so descending a clade REQUIRES the transitive `*` — not a flattened lineage. Anchor on the clade IRI (gotcha start_iri): an unbounded subtree over 2.84M taxa times out; scope to genus/family/order, a phylum-wide subtree can exceed 60s."
+      - say: "ontology/taxonomy is a TRUE hierarchy (rdfs:subClassOf = the single immediate parent), so descending a clade REQUIRES the transitive `*` — not a flattened lineage. Anchor on the clade IRI (gotcha start_iri): unanchored, Virtuoso REJECTS the path outright. Anchored, size is not the problem — a phylum-wide subtree from Chordata (7711) returns 131,915 taxa in 0.8s, where this line warned it 'can exceed 60s' until 2026-08-26. Go as broad as your question needs."
+        check:
+          kind: count       # the phylum-wide subtree the old text called too big
+          date: "2026-08-26"
+          query: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/ontology/taxonomy>
+            WHERE { ?t rdfs:subClassOf* <http://identifiers.org/taxonomy/7711> }
+          expect: {value: 131915, tolerance: 0.05}
       - "Pin FROM <ontology/taxonomy> — unpinned, gtdb/microbedbjp descendants scope-bleed into the count (gotcha pin_graph)."
 
   - id: domain_clades

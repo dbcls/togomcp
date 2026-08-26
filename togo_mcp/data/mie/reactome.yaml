@@ -66,8 +66,22 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
   - id: from_clause
     say: >
       ALWAYS FROM <http://rdf.ebi.ac.uk/dataset/reactome> (or GRAPH-pin it) — the shared ebi endpoint
-      co-hosts chembl/chebi/ensembl. Omitting does NOT multiply reactome rows (its predicates are graph-local)
-      but forces Virtuoso to scan every co-tenant graph → slow / timeout. Cross-DB queries GRAPH-pin each side.
+      co-hosts chembl/chebi/ensembl. Omitting does NOT multiply reactome rows: its predicates are graph-local,
+      so no co-tenant can answer them. Nor is it slow — this entry said an unpinned query is "slow / timeout"
+      until 2026-08-26, and measured that day the unpinned and pinned pathway counts are IDENTICAL in both
+      value and cost (23,277 in 0.1s either way). Virtuoso prunes graphs that cannot match the predicate; it
+      does not scan them. So pin for hygiene and for the day a co-tenant does mint a bp:* triple — not to
+      dodge a cost that is not there. Cross-DB queries GRAPH-pin each side.
+    check:
+      kind: ratio            # pinned == unpinned; a drift means a co-tenant started declaring bp:*
+      date: "2026-08-26"
+      unpinned: |
+        PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+        SELECT (COUNT(*) AS ?n) WHERE { ?p a bp:Pathway }
+      pinned: |
+        PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+        SELECT (COUNT(*) AS ?n) FROM <http://rdf.ebi.ac.uk/dataset/reactome> WHERE { ?p a bp:Pathway }
+      expect: {ratio: 1.0, tolerance: 0.001}
   - id: subject_iri_unguessable
     say: >
       BioPAX subject IRIs are a per-export counter (…/biopax/95/48887#Pathway2221) — UNGUESSABLE from a

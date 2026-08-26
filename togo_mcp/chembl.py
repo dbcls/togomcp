@@ -548,12 +548,12 @@ async def search_chembl_id_lookup(
             default="",
         ),
     ] = "",
-    search: str = "",
-    term: str = "",
-    keyword: str = "",
-    keywords: str = "",
-    search_term: str = "",
-    name: str = "",
+    search: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    term: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    keyword: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    keywords: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    search_term: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    name: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
 ) -> dict:
     """
     Resolve a name to ChEMBL IDs across several entity kinds in one call.
@@ -603,9 +603,6 @@ async def search_chembl_id_lookup(
     failure this tool does NOT raise — it returns a dict with a single 'error'
     key instead; CHECK FOR 'error' BEFORE READING 'results'.
 
-    Args:
-        entity_type (str, optional): One of COMPOUND, TARGET, CELL_LINE, TISSUE,
-            ASSAY. Omit to search the four name kinds together.
     """
     query = _resolve_query_alias(
         query,
@@ -792,12 +789,12 @@ async def search_chembl_target(
     limit: int = 20,
     organism: str = "",
     target_type: str = "",
-    search: str = "",
-    term: str = "",
-    keyword: str = "",
-    keywords: str = "",
-    search_term: str = "",
-    name: str = "",
+    search: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    term: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    keyword: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    keywords: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    search_term: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    name: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
 ) -> dict:
     """
     Resolve a biological TARGET (protein/receptor/enzyme) to a ChEMBL ID.
@@ -996,12 +993,12 @@ async def search_chembl_molecule(
     query: str = "",
     limit: int = 20,
     mode: str = "exact",
-    search: str = "",
-    term: str = "",
-    keyword: str = "",
-    keywords: str = "",
-    search_term: str = "",
-    name: str = "",
+    search: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    term: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    keyword: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    keywords: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    search_term: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    name: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
 ) -> dict:
     """
     Resolve a DRUG / COMPOUND / MOLECULE (by name or structure) to a ChEMBL ID.

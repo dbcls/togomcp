@@ -51,8 +51,25 @@ entity_counts:                                   # graph-pinned COUNT(DISTINCT);
 global_gotchas:                                  # the few that bite ANY query — verified 2026-07-22
   - id: pin_the_graph
     say: >
-      ALWAYS scope FROM <http://id.nlm.nih.gov/mesh> (or GRAPH for cross-DB). Unscoped, the query
-      runs across the shared 200+-graph "primary" endpoint and returns cross-graph noise or times out.
+      ALWAYS scope FROM <http://id.nlm.nih.gov/mesh> (or GRAPH for cross-DB). Unscoped, the query runs across
+      the shared 200+-graph "primary" endpoint and returns CROSS-GRAPH NOISE — 31,030 descriptor-label rows
+      against 30,262 pinned, the +768 poisoned rows glycovid_pubchem contributes (gotcha glycovid_label_poison).
+      It does not time out; that half was wrong until 2026-08-26 and it answers in 1.2s. A ×1.025 overcount
+      returned in about a second is exactly the shape that gets believed — the pin is the only thing that
+      removes it, and the small size of the error is what makes it dangerous rather than harmless.
+    check:
+      kind: ratio
+      date: "2026-08-26"
+      unpinned: |
+        PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT (COUNT(*) AS ?n) WHERE { ?d a meshv:TopicalDescriptor ; rdfs:label ?l }
+      pinned: |
+        PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT (COUNT(*) AS ?n) FROM <http://id.nlm.nih.gov/mesh>
+        WHERE { ?d a meshv:TopicalDescriptor ; rdfs:label ?l }
+      expect: {ratio: 1.0254, tolerance: 0.01}
   - id: glycovid_label_poison
     say: >
       Unpinned `?d a meshv:TopicalDescriptor ; rdfs:label ?l` returns 31,030 rows for 30,248 descriptors;

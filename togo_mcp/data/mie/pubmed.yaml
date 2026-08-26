@@ -43,7 +43,8 @@ graphs:
     other_ncbi_datasets: "clinvar, ncbigene, medgen also co-located on this endpoint — reach by GRAPH-pinning; join to PubMed on the shared article IRI or via PubTator annotations."
 
 entity_counts:                     # graph-pinned, COUNT(DISTINCT), live 2026-07-22
-  total_articles: "~37M citations — an UNPINNED/unselective full COUNT scans all rows and TIMES OUT (60s, gotcha count_timeout); the total is a documented figure, not one-query countable."
+  total_articles: 38982586         # COUNT(*) over ?a bibo:pmid ?pmid, graph-pinned — 0.4s, verified 2026-08-26
+  total_articles_note: "The corpus total IS one-query countable (0.4s) — this entry said it TIMES OUT until 2026-08-26 and carried a rounded ~37M instead. Only the STRSTARTS topic COUNT times out (gotcha count_timeout)."
   reviews_1985: 10774              # rdfs:seeAlso mesh:D016454 (Review) + dct:issued 1985 — a direct-IRI + date-scoped count (see count_reviews_year)
   complement_system_proteins_articles: 28476   # rdfs:seeAlso mesh:D003165 — selective direct-IRI count
   coverage: "abstract ~85% (older articles lack it) · doi ~70% (absent pre-2000) · MeSH annotation ~95% of MEDLINE-indexed articles"
@@ -57,11 +58,30 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
       graph returns 0 rows SILENTLY. Use a year graph only for a historical vocabulary snapshot, with year-prefixed IRIs.
   - id: count_timeout
     say: >
-      Over 37M articles, two things time out (60s): (a) any full/unselective COUNT with no selective IRI or date scope,
-      and (b) ANY COUNT built on FILTER(STRSTARTS(STR(?term), "…/mesh/Dxxxxx")) — the STRSTARTS scans every subject-term
-      triple and a date filter does NOT rescue it (verified). Countable path: anchor on a direct selective IRI
-      (rdfs:seeAlso mesh:Dxxxxx / exact fabio IRI) and/or a date FILTER; the STRSTARTS topic route is for LIMIT-ed LISTS,
-      not one-scan totals. Always add LIMIT to list queries.
+      ONE thing times out here, not two, and this entry named two until 2026-08-26. What does NOT time out:
+      (a) a full/unselective COUNT. `COUNT(*) { ?a bibo:pmid ?pmid }` over the whole corpus returns 38,982,586
+      in 0.4s — Virtuoso answers a plain predicate COUNT from the index. Ask for the corpus total freely.
+      What is EXPENSIVE: (b) a COUNT built on FILTER(STRSTARTS(STR(?term), "…/mesh/Dxxxxx")). The STRSTARTS
+      forces a scan of every subject-term triple with no index to help, and a date filter does not rescue it.
+      But "times out" overstates it, and this entry said that until 2026-08-26: measured that day the
+      D000544 topic COUNT exceeded 75s on a cold cache and returned 111,583 in 0.1s once warm. It COMPLETES
+      — how long it takes depends on Virtuoso's buffer cache, not on your query — so treat it as an
+      expensive total you may have to wait for, not an impossible one. THE COST IS THE STRSTARTS, NOT THE
+      CORPUS SIZE, which is exactly why conflating (a) with (b) misleads: it blames scale for a
+      predicate-shape problem, and a reader who believes big COUNTs are impossible here will avoid the cheap
+      ones too. Cheaper path when you have one: anchor on a direct selective IRI (rdfs:seeAlso mesh:Dxxxxx /
+      exact fabio IRI) and/or a date FILTER. Always add LIMIT to list queries.
+    check:
+      # NOT kind: error — the cost is cache-state-dependent (>75s cold, 0.1s warm) and would be flaky.
+      # The RESULT is stable, so assert that: it proves the route completes and returns the right total.
+      kind: count
+      date: "2026-08-26"
+      query: |
+        PREFIX fabio: <http://purl.org/spar/fabio/>
+        SELECT (COUNT(DISTINCT ?article) AS ?n) FROM <http://rdfportal.org/dataset/pubmed>
+        WHERE { ?article fabio:hasPrimarySubjectTerm ?term .
+                FILTER(STRSTARTS(STR(?term), "http://id.nlm.nih.gov/mesh/D000544")) }
+      expect: {value: 111583, tolerance: 0.05}
   - id: prism_typo
     say: >
       The PRISM prefix in the DATA is the misspelling <http://prismstandard.org/namespeces/1.2/basic/> ("namespeces",
@@ -114,7 +134,22 @@ examples:
     verified: {result_rows: 10, count_1985: 10774, date: "2026-07-22", first_row: "3908742 — [Differentiation and activation of mouse macrophages]."}
     teaches: "Publication TYPE is enumerated with rdfs:seeAlso → a plain MeSH pub-type descriptor IRI (Review D016454, Journal Article D016428). rdfs:seeAlso is reliable for pub types."
     traps_avoided:
-      - "D016428 (Journal Article) matches almost all of PubMed and D016454 (Review) matches millions — pairing either with an unindexed FILTER(CONTAINS(?journal,…))/ORDER BY over the raw match times out. Add a date FILTER + LIMIT (or a topic IRI) FIRST, always."
+      - say: "D016428 (Journal Article) matches almost all of PubMed and D016454 (Review) matches millions, so narrow before you sort: an ORDER BY over the raw match sorts the whole set before the LIMIT applies. A plain FILTER(CONTAINS(…)) + LIMIT is NOT the problem — that returns 10 rows in 0.2s (2026-08-26), where this line claimed it times out. Add a date FILTER + LIMIT (or a topic IRI) first for relevance and for any ORDER BY, not to survive the CONTAINS."
+        check:
+          kind: count       # the LIMIT-ed CONTAINS form the old text called a timeout
+          date: "2026-08-26"
+          query: |
+            PREFIX bibo: <http://purl.org/ontology/bibo/>
+            PREFIX dct: <http://purl.org/dc/terms/>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
+            SELECT (COUNT(*) AS ?n) WHERE {
+              SELECT ?pmid FROM <http://rdfportal.org/dataset/pubmed> WHERE {
+                ?article bibo:pmid ?pmid ; dct:title ?title ; rdfs:seeAlso mesh:D016428 .
+                FILTER(CONTAINS(STR(?title), "kinase"))
+              } LIMIT 10
+            }
+          expect: {value: 10, tolerance: 0.0}
 
   - id: mesh_topic_enum
     intent: enumerate ALL articles on a MeSH TOPIC via fabio + STRSTARTS (the reliable set-level topic route)
@@ -138,7 +173,7 @@ examples:
     teaches: "THE topic-enumeration route: fabio:hasPrimarySubjectTerm (major topic) / fabio:hasSubjectTerm (supporting) + FILTER(STRSTARTS(STR(?term), '…/mesh/Dxxxxx')). STRSTARTS is required because MeSH annotations append qualifier suffixes; use hasSubjectTerm to widen to supporting topics."
     traps_avoided:
       - "CORRECT-ENUMERATION-PREDICATE caveat: rdfs:seeAlso mesh:D000544 returns 0 ARTICLES — for many disease topics the plain descriptor attaches to BLANK NODES (nodeID://…), not to article IRIs (verified 2026-07-22). rdfs:seeAlso is for PUBLICATION TYPES + a subset of descriptors; the reliable topic route is fabio+STRSTARTS. Different predicates, not interchangeable."
-      - "Do NOT wrap this route in a full COUNT — a STRSTARTS-based total times out (gotcha count_timeout). It is a LIST route; count via a selective direct IRI or a date scope (see count_reviews_year)."
+      - "A STRSTARTS-based total is the EXPENSIVE shape, not an impossible one — it returned 111,583 for D000544 (>75s cold, 0.1s warm, 2026-08-26); this line said it times out until then (gotcha count_timeout). Prefer a selective direct IRI or a date scope when you have one (see count_reviews_year), and wrap this route in a COUNT when you actually need the topic total."
 
   - id: resolve_mesh_labels
     intent: resolve an article's MeSH descriptor IRIs to human labels (cross-graph, PubMed → MeSH vocabulary)
@@ -221,7 +256,7 @@ examples:
     verified: {reviews_1985: 10774, date: "2026-07-22"}
     teaches: "A countable aggregation anchors on a DIRECT MeSH IRI (rdfs:seeAlso mesh:Dxxxxx) + a date scope + graph pin + COUNT(DISTINCT). Direct-IRI matching is index-fast even for a huge pub-type."
     traps_avoided:
-      - "The equivalent STRSTARTS-topic COUNT (fabio:hasPrimarySubjectTerm + FILTER(STRSTARTS…)) TIMES OUT even with a date filter (gotcha count_timeout) — the STRSTARTS scan, not the result size, is the cost. For a comprehensive topic total, count a selective direct descriptor or accept that STRSTARTS is a LIST-only route."
+      - "The equivalent STRSTARTS-topic COUNT (fabio:hasPrimarySubjectTerm + FILTER(STRSTARTS…)) is far more expensive and a date filter does not rescue it — the STRSTARTS scan, not the result size, is the cost. It does COMPLETE though (111,583 for D000544; >75s cold, 0.1s warm on 2026-08-26), where this line said it TIMES OUT until then. This selective-IRI form is the cheap route; STRSTARTS is the slow one, not a LIST-only one (gotcha count_timeout)."
 
   - id: xdb_pubtator_genes
     intent: "cross-DB: PubMed articles on a MeSH topic → PubTator gene mentions, via the shared article IRI"

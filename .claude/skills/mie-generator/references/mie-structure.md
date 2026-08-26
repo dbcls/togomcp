@@ -71,9 +71,15 @@ without the examples).
   "how big is this DB" answers live; also record the inflated unpinned `COUNT(*)`
   with a "never report" note when union inflation exists, so the trap is concrete.
 - `global_gotchas`: the **2–5 that bite ANY query** on this DB (union inflation,
-  a mandatory filter, absent labels, a timeout-prone path). Each is `{id, say}`
-  where `say` states **what silently fails + the fix**. Query-specific traps do
-  **not** go here — they ride inline on the example (`traps_avoided`, §4).
+  a mandatory filter, absent labels, a path the engine rejects). Each is
+  `{id, say}` where `say` states **what silently fails + the fix**, **plus a
+  `check:` whenever the claim is falsifiable** (spec §3.6) — a figure, a
+  multiplier, "0 rows", "not here", "does not run". Qualitative advice needs no
+  check. `scripts/check_mie_gotchas.py <db>` runs them; it must be clean before
+  shipping. `check:` blocks are stripped before the file is served, so they add
+  nothing to what the reader pays for. Query-specific traps do **not** go here —
+  they ride inline on the example (`traps_avoided`, §4), where a falsifiable line
+  is written `{say: ..., check: ...}` instead of a bare string.
 
 ## 4. `examples` (required) — the core
 

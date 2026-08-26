@@ -50,8 +50,29 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
     say: >
       MANDATORY: FROM (or GRAPH) <http://rdfportal.org/ontology/go> on EVERY query. The primary endpoint hosts
       ~30 ontologies AND ten graphs that re-declare GO's own obo:GO_* IRIs (gotcha import_shadows) → ×3.27 row
-      inflation and any COUNT over the unpinned pattern is WRONG. DISTINCT hides the rows but still pays the cost
-      and cannot fix an aggregate. Unpinned queries also drag in BFO/RO/OBI classes and can time out.
+      inflation and any COUNT over the unpinned pattern is WRONG: 158,185 rows unpinned against 48,321 pinned
+      (re-verified 2026-08-26). DISTINCT hides the rows but cannot fix an aggregate. THE INFLATION IS THE WHOLE
+      RISK — the unpinned form also drags in BFO/RO/OBI classes, but it does NOT time out, which this entry
+      claimed until 2026-08-26: it answers in 8.1s against 0.5s pinned. That matters because a timeout announces
+      itself and a 3.27x overcount in 8 seconds does not. Pin the graph; then read the number.
+    check:
+      kind: ratio
+      date: "2026-08-26"
+      unpinned: |
+        PREFIX owl: <http://www.w3.org/2002/07/owl#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT (COUNT(*) AS ?n) WHERE {
+          ?c a owl:Class ; rdfs:label ?l .
+          FILTER(STRSTARTS(STR(?c), "http://purl.obolibrary.org/obo/GO_"))
+        }
+      pinned: |
+        PREFIX owl: <http://www.w3.org/2002/07/owl#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/ontology/go> WHERE {
+          ?c a owl:Class ; rdfs:label ?l .
+          FILTER(STRSTARTS(STR(?c), "http://purl.obolibrary.org/obo/GO_"))
+        }
+      expect: {ratio: 3.27, tolerance: 0.03}
   - id: strstarts_filter
     say: >
       Always add FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_")) to exclude non-GO OWL classes

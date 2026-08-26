@@ -2,6 +2,16 @@
 # Format: togo_mcp/data/docs/MIE_v3_spec.md. Every verified count/result re-run live on the sib endpoint 2026-07-22.
 # Byte count vs the v2 file it replaces (spec §5 item 7): v2 togo_mcp/data/mie/rhea.yaml = 38,764 bytes;
 # this v3 file = 19,017 bytes → 50.9% smaller. See the footer for the exact `wc -c` figures.
+# 2026-08-26 revision: a Rhea release moved every count (18,071 -> 18,854 master, 17,635 -> 18,184 approved,
+# 14,485 -> 17,265 named compounds) and TWO header claims were false. `count_timeout` said a COUNT over the
+# compound-participant path times out — it takes 0.2s, and the whole-DB scan 0.3s; the entry is now
+# `counts_are_cheap_here` and says so, because the old wording pushed readers to a LIMIT-and-eyeball form
+# for a cost that does not exist. `schema_delta` said stoichiometric coefficients cannot be read as numbers;
+# they can, via `?contains rdfs:subPropertyOf rhea:contains ; rhea:coefficient ?c` — now a first-class
+# example (spec 4.4), and the schema_delta line is gone rather than restated (4.2). Added the direct
+# UniProt reaction-level join (`xdb_uniprot_direct`), which is the idiom upstream sparql-examples use and
+# which this file previously reached only via the many-to-one EC detour. Falsifiable header claims now
+# carry a `check:` (spec 3.6): scripts/check_mie_gotchas.py rhea.
 mie_spec: 3                        # format version — see MIE_v3_spec.md §2
 database: rhea
 
@@ -9,7 +19,7 @@ database: rhea
 discovery:
   title: Rhea — Annotated Biochemical Reactions
   description: >
-    Expert-curated, atom-balanced biochemical reactions (18,071 master reactions) with ChEBI-linked
+    Expert-curated, atom-balanced biochemical reactions (18,854 master reactions) with ChEBI-linked
     participants, EC-number and GO cross-references, transport/location annotations, and PubMed citations;
     the reference reaction vocabulary for UniProtKB enzyme annotation.
   keywords: [biochemical reaction, enzyme, substrate, product, cofactor, ec number, stoichiometry,
@@ -34,10 +44,10 @@ graphs:
       endpoint — read names from Rhea's own Compound node (rhea:name, 100%), or resolve ChEBI labels against the
       separate `chebi` database. See gotcha compound_name_source.
 
-entity_counts:                     # graph-pinned COUNT(DISTINCT), live 2026-07-22
-  master_reactions: 18071          # rdfs:subClassOf rhea:Reaction (the usual entry point; excludes the directional/bidirectional forms)
-  approved: 17635                  # rhea:status <…/Approved> — the primary quality filter
-  transport_reactions: 1522        # rhea:isTransport 1 among approved
+entity_counts:                     # graph-pinned COUNT(DISTINCT), re-run live 2026-08-26
+  master_reactions: 18854          # rdfs:subClassOf rhea:Reaction (the usual entry point; excludes the directional/bidirectional forms) — was 18,071 on 2026-07-22
+  approved: 18184                  # rhea:status <…/Approved> — the primary quality filter — was 17,635
+  transport_reactions: 1595        # rhea:isTransport 1 among approved — was 1,522
   coverage: "small molecules 100% ChEBI-linked via rhea:chebi; ~42% of reactions carry rhea:ec; ~93% carry a rhea:citation"
 
 global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
@@ -49,22 +59,62 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
     say: >
       rhea:accession (and rhea:name) match ONLY as a PLAIN literal: `rhea:accession "RHEA:13065"` works, but
       `"RHEA:13065"^^xsd:string` silently returns 0 rows even though the value IS stored as xsd:string. Never add ^^xsd:string.
+    check:
+      kind: zero_rows
+      date: "2026-08-26"
+      query: |
+        PREFIX rhea: <http://rdf.rhea-db.org/>
+        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+        SELECT ?r WHERE { GRAPH <http://rdfportal.org/dataset/rhea> { ?r rhea:accession "RHEA:13065"^^xsd:string } } LIMIT 1
   - id: status_is_iri
     say: >
       rhea:status is an IRI, not a string: use <http://rdf.rhea-db.org/Approved> (also …/Preliminary, …/Obsolete).
-      `rhea:status "Approved"` silently returns 0 rows. Apply Approved early as the quality filter (17,635 of 18,071).
-  - id: count_timeout
+      `rhea:status "Approved"` silently returns 0 rows. Apply Approved early as the quality filter (18,184 of 18,854, 2026-08-26).
+    check:
+      kind: zero_rows          # the string form must keep returning nothing
+      date: "2026-08-26"
+      query: |
+        PREFIX rhea: <http://rdf.rhea-db.org/>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT ?r WHERE {
+          GRAPH <http://rdfportal.org/dataset/rhea> { ?r rdfs:subClassOf rhea:Reaction ; rhea:status "Approved" }
+        } LIMIT 1
+  - id: counts_are_cheap_here
     say: >
-      A COUNT over the compound-participant path (reaction→side→contains→participant→compound) or any unscoped
-      whole-DB scan TIMES OUT on this endpoint (witnessed live 2026-07-22 for the ATP participant count). To count
-      safely, scope to a specific EC/status IRI or a small compound and COUNT(DISTINCT ?reaction); otherwise use the
-      row form with LIMIT, not a COUNT (example count_by_ec).
+      Rhea is SMALL (~2.05M triples in its graph) and nothing in it needs to be counted defensively. This entry
+      said the opposite until 2026-08-26 — that a COUNT over the compound-participant path or any unscoped scan
+      "TIMES OUT", citing an ATP participant count — and it was wrong on both. Re-measured 2026-08-26: the ATP
+      participant count returns 1,384 in 0.2s, and the unscoped whole-DB participant scan returns 82,397 in
+      0.3s. So COUNT freely, and prefer COUNT(DISTINCT ?reaction) over a LIMIT-and-eyeball for any "how many"
+      question — the old advice pushed readers to the row form for a cost that does not exist. The one real
+      rule is still to count REACTIONS, not sides or participants: a reaction has 2 sides and n participants,
+      so COUNT(*) over the participant path answers a different question than it looks like it does.
+    check:
+      kind: count            # the unscoped whole-DB participant scan the old text called a timeout
+      date: "2026-08-26"
+      query: |
+        PREFIX rhea: <http://rdf.rhea-db.org/>
+        SELECT (COUNT(*) AS ?n) WHERE {
+          GRAPH <http://rdfportal.org/dataset/rhea> {
+            ?reaction rhea:side ?side . ?side rhea:contains ?participant .
+            ?participant rhea:compound ?compound . ?compound rhea:chebi ?chebi .
+          }
+        }
+      expect: {value: 82397, tolerance: 0.05}
   - id: compound_name_source
     say: >
-      A participant's name/formula/charge live on RHEA'S OWN Compound node (rhea:name = 100% of 14,485 compounds),
-      NOT on the rhea:chebi object. That object is an OBO ChEBI class: 0% carry rhea:id and only ~3% carry rdfs:label
-      (GDP CHEBI:58189 and GTP CHEBI:37565 have NONE — verified 2026-07-22), so reading a label off the ChEBI IRI
-      SILENTLY drops ~97% of participants as a plausible partial list. Bind `?compound rhea:chebi ?chebi ; rhea:name ?name`.
+      A participant's name/formula/charge live on RHEA'S OWN Compound node (rhea:name on 17,265 compound nodes,
+      re-counted 2026-08-26 — was 14,485 on 2026-07-22), NOT on the rhea:chebi object. That object is an OBO ChEBI
+      class: 0% carry rhea:id and only ~3% carry rdfs:label (GDP CHEBI:58189 and GTP CHEBI:37565 have NONE), so
+      reading a label off the ChEBI IRI SILENTLY drops ~97% of participants as a plausible partial list.
+      Bind `?compound rhea:chebi ?chebi ; rhea:name ?name`.
+    check:
+      kind: count
+      date: "2026-08-26"
+      query: |
+        PREFIX rhea: <http://rdf.rhea-db.org/>
+        SELECT (COUNT(DISTINCT ?c) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/rhea> { ?c rhea:name ?nm } }
+      expect: {value: 17265, tolerance: 0.05}
 
 # ── examples: verified, executable atoms. The compound path is 4 hops (reaction → rhea:side → rhea:contains
 #    → participant → rhea:compound → rhea:chebi); the reaction quartet is master + 2 directional + 1 bidirectional. ──
@@ -95,14 +145,14 @@ examples:
       SELECT ?accession ?equation
       WHERE {
         GRAPH <http://rdfportal.org/dataset/rhea> {
-          ?reaction rdfs:subClassOf rhea:Reaction ;                 # master reactions only (18,071)
+          ?reaction rdfs:subClassOf rhea:Reaction ;                 # master reactions only (18,854)
                     rhea:status <http://rdf.rhea-db.org/Approved> ;  # IRI, not "Approved"
                     rhea:accession ?accession ; rhea:equation ?equation .
         }
       }
       LIMIT 15
-    verified: {result_rows: 15, approved_total: 17635, date: "2026-07-22"}
-    teaches: "`rdfs:subClassOf rhea:Reaction` selects the 18,071 master reactions; pair it with the Approved status IRI as the standard entry point."
+    verified: {result_rows: 15, approved_total: 18184, date: "2026-08-26"}
+    teaches: "`rdfs:subClassOf rhea:Reaction` selects the 18,854 master reactions; pair it with the Approved status IRI as the standard entry point."
 
   - id: compound_participant
     intent: reactions containing a compound via the 4-hop ChEBI-participant path (the flagship compound-enum route)
@@ -128,7 +178,7 @@ examples:
     verified: {result_rows: 10, date: "2026-07-22", first_row: "RHEA:10132 = benzoate + ATP + CoA = benzoyl-CoA + AMP + diphosphate; name 'ATP'"}
     teaches: "To enumerate ALL reactions with a compound, anchor on its ChEBI IRI via rhea:chebi and traverse participant → side → reaction. This is THE set-level compound route — never text-search the equation for a known compound."
     traps_avoided:
-      - "OMITTING `?reaction rhea:side ?side` disconnects the reaction from the side you filtered, turning the query into a cross-join against ALL 17,635 approved reactions (returns the whole set with the right compound name attached — a silent wrong answer, observed live 2026-07-22)."
+      - "OMITTING `?reaction rhea:side ?side` disconnects the reaction from the side you filtered, turning the query into a cross-join against ALL 18,184 approved reactions (returns the whole set with the right compound name attached — a silent wrong answer, observed live 2026-07-22)."
       - "Read the participant name from the Compound node (rhea:name, 100%), NOT from `?chebi rdfs:label` — the ChEBI IRI has no label here for ~97% of compounds (gotcha compound_name_source)."
 
   - id: ec_reactions
@@ -214,7 +264,99 @@ examples:
     verified: {ec_2_7_1_1: 5, ec_1_1_1_1: 3, date: "2026-07-22"}
     teaches: "COUNT(DISTINCT ?reaction) scoped to specific EC/status IRIs completes fast and is graph-pinned; count reactions, not sides or participants."
     traps_avoided:
-      - "The same COUNT over the COMPOUND-participant path (add reaction→side→contains→participant→compound) TIMES OUT (gotcha count_timeout). To count reactions for a compound, scope to that one ChEBI IRI and keep the pattern minimal, or take the row form and count client-side."
+      - say: "Count REACTIONS, not the path: the same query over the compound-participant path (reaction→side→contains→participant→compound) counts participant slots, of which a reaction has many. Scoped to ATP it returns 1,384 distinct reactions in 0.2s — it does NOT time out, which this line claimed until 2026-08-26 (gotcha counts_are_cheap_here). Keep COUNT(DISTINCT ?reaction) on the outside and the ChEBI IRI on the inside."
+        check:
+          kind: count       # the compound-path COUNT runs fine; claiming otherwise sends readers to a worse form
+          date: "2026-08-26"
+          query: |
+            PREFIX rhea: <http://rdf.rhea-db.org/>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT (COUNT(DISTINCT ?reaction) AS ?n) WHERE {
+              GRAPH <http://rdfportal.org/dataset/rhea> {
+                ?reaction rdfs:subClassOf rhea:Reaction ; rhea:side ?side .
+                ?side rhea:contains ?participant .
+                ?participant rhea:compound ?compound .
+                ?compound rhea:chebi <http://purl.obolibrary.org/obo/CHEBI_30616> .
+              }
+            }
+          expect: {value: 1384, tolerance: 0.05}
+
+  - id: stoichiometry
+    intent: read the numeric stoichiometric coefficient of every participant — via the sub-property's own metadata
+    question: "What is the balanced stoichiometry of RHEA:23572, participant by participant?"
+    complexity: intermediate
+    sparql: |
+      PREFIX rhea: <http://rdf.rhea-db.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?side ?coefficient ?name
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/rhea> {
+          ?reaction rhea:accession "RHEA:23572" ; rhea:side ?side .
+          ?side ?contains ?participant .                                  # ?contains stays a VARIABLE — that is the trick
+          ?contains rdfs:subPropertyOf rhea:contains ;                    # ...then constrain it to the contains family
+                    rhea:coefficient ?coefficient .                       # ...and read the number off the PROPERTY node
+          ?participant rhea:compound ?compound .
+          ?compound rhea:name ?name .
+        }
+      }
+      ORDER BY ?side ?name
+    verified: {result_rows: 6, date: "2026-08-26", runtime: "0.2s",
+               left: "1 3-methylbutanoyl-CoA + 3 H(+) + 3 malonyl-CoA", right: "3 CO2 + 4 CoA + 1 phlorisovalerophenone"}
+    teaches: "The coefficient IS machine-readable, and reflection is how you get it: leave the participant predicate as a variable, bind it with `?contains rdfs:subPropertyOf rhea:contains`, then read `rhea:coefficient` off that property node. The coefficient lives on the PREDICATE, not on the participant — 31 such sub-properties exist (contains1..contains40 plus containsN/contains2n/containsNplus1/containsNminus1), and this one pattern covers all of them without enumerating any."
+    traps_avoided:
+      - "Do NOT write `?side rhea:contains ?participant` and expect a number anywhere: rhea:contains is the UNION super-property and carries no coefficient. Binding the sub-property is the whole point of the pattern."
+      - "Do NOT enumerate `rhea:contains1`, `rhea:contains2`, … by hand. Besides being 31 branches, four of the coefficients are SYMBOLIC, not numeric — containsN, contains2n, containsNplus1, containsNminus1 yield \"N\", \"2n\", \"Nplus1\", \"Nminus1\" (polymer reactions). Cast to a number only after checking, or the polymer rows silently vanish."
+      - "The equation string (rhea:equation) already spells the stoichiometry out for a human — use this query when a MACHINE needs the coefficients, not to re-derive what the text says."
+
+  - id: xdb_uniprot_direct
+    intent: "cross-DB: the enzymes annotated with THIS reaction, via UniProt's direct catalytic-activity link (not the EC detour)"
+    question: "Which reviewed enzymes are annotated as catalysing RHEA:16505 (chorismate lyase)?"
+    complexity: cross_db
+    endpoint_name: sib
+    sparql: |
+      PREFIX rhea: <http://rdf.rhea-db.org/>
+      PREFIX up:   <http://purl.uniprot.org/core/>
+      SELECT ?protein ?mnemonic ?equation
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/rhea> {
+          ?reaction rhea:accession "RHEA:16505" ; rhea:equation ?equation .
+        }
+        GRAPH <http://sparql.uniprot.org/uniprot> {
+          ?protein up:reviewed 1 ; up:mnemonic ?mnemonic ; up:annotation ?annot .
+          ?annot a up:Catalytic_Activity_Annotation ;                     # the 3-hop scaffold — no shortcut exists
+                 up:catalyticActivity ?ca .
+          ?ca up:catalyzedReaction ?reaction .                            # points AT the Rhea IRI directly
+        }
+      }
+      LIMIT 10
+    verified: {result_rows: 10, distinct_reviewed_enzymes: 148, date: "2026-08-26", runtime: "0.2s",
+               first_row: "A4STB6 UBIC_AERS4 — chorismate = 4-hydroxybenzoate + pyruvate"}
+    teaches: "UniProt points straight at a Rhea reaction IRI through up:annotation -> up:Catalytic_Activity_Annotation -> up:catalyticActivity -> up:catalyzedReaction. Reverse it and you have a Rhea-to-protein join that needs no EC number and no ID bridge — the idiom sib-swiss/sparql-examples uses throughout. All three hops are required; ?protein up:catalyzedReaction ?reaction returns nothing."
+    traps_avoided:
+      - say: "This is NOT the same question as the EC join (example xdb_uniprot), and the two disagree by more than rounding. For RHEA:13065 the direct link finds 4,827 reviewed enzymes while the rhea:ec route finds 2,568 (measured 2026-08-26): EC is many-to-one — RHEA:13065 carries 7 EC IRIs, so the EC route sweeps in enzymes for OTHER reactions of those classes, while missing every enzyme annotated with this reaction but no matching EC. Use the direct link for 'catalyses THIS reaction'; use EC for 'belongs to this enzyme class'."
+        check:
+          kind: ratio      # the two routes must keep answering different questions
+          date: "2026-08-26"
+          numerator: |
+            PREFIX rhea: <http://rdf.rhea-db.org/>
+            PREFIX up:   <http://purl.uniprot.org/core/>
+            SELECT (COUNT(DISTINCT ?protein) AS ?n) WHERE {
+              GRAPH <http://rdfportal.org/dataset/rhea> { ?reaction rhea:accession "RHEA:13065" . }
+              GRAPH <http://sparql.uniprot.org/uniprot> {
+                ?protein up:reviewed 1 ; up:annotation ?annot .
+                ?annot a up:Catalytic_Activity_Annotation ; up:catalyticActivity ?ca .
+                ?ca up:catalyzedReaction ?reaction .
+              }
+            }
+          denominator: |
+            PREFIX rhea: <http://rdf.rhea-db.org/>
+            PREFIX up:   <http://purl.uniprot.org/core/>
+            SELECT (COUNT(DISTINCT ?protein) AS ?n) WHERE {
+              GRAPH <http://rdfportal.org/dataset/rhea> { ?reaction rhea:accession "RHEA:13065" ; rhea:ec ?ec . }
+              GRAPH <http://sparql.uniprot.org/uniprot> { ?protein up:reviewed 1 ; up:enzyme ?ec . }
+            }
+          expect: {ratio: 1.88, tolerance: 0.05}
+      - "Pin BOTH graphs. The Rhea IRI is the join key and only the rhea graph declares it, but up:annotation/up:catalyticActivity are UniProt-side — an unpinned form leaves the reaction leg matching in the union and gives the co-hosted graphs a chance to answer."
 
   - id: xdb_uniprot
     intent: "cross-DB: human enzymes (UniProt) → the reactions they catalyse (Rhea), joined on the shared EC IRI"
@@ -247,7 +389,6 @@ examples:
 # ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
 schema_delta:
   - "POLYMERS have no rhea:chebi — the 261 Polymer participants carry rhea:underlyingChebi (100%, same OBO IRI form) instead; a compound query using only rhea:chebi silently drops every polymer. ReactivePart/GenericPolypeptide/GenericPolynucleotide (generic macromolecules) carry rhea:chebi on their rhea:reactivePart moiety."
-  - "STOICHIOMETRY is encoded in the PREDICATE NAME, not a literal: rhea:contains is the union; rhea:contains1..contains40 / contains2n / containsNplus1 / containsNminus1 carry the coefficient. There is no numeric coefficient value to read."
   - "rhea:equation / rhea:htmlEquation are unstructured free text — legitimate for bif:contains ONLY as exploratory compound discovery when the ChEBI IRI is unknown (bind ?eq to the literal FIRST, then `?eq bif:contains \"'x' AND 'y'\"`); once found, switch to the rhea:chebi path (example compound_participant). Never text-search for a compound/enzyme you can name by IRI."
   - "GO cross-refs are rdfs:seeAlso → OBO IRIs (http://purl.obolibrary.org/obo/GO_NNNNNNN, ~24% of reactions, near-1:1 specific molecular-function terms); Reactome/BioCyc also ride rdfs:seeAlso as identifiers.org URIs — FILTER on the IRI prefix to target one resource."
 
@@ -258,7 +399,17 @@ id_join_map:
     reaction is `rdfs:subClassOf rhea:Reaction`; its quartet IDs are consecutive (master, =>, <=, <=>). Compounds
     are http://rdf.rhea-db.org/Compound_N with accession "CHEBI:NNNNN".
   same_endpoint_joins:              # co-hosted on the sib endpoint — direct GRAPH join, NO TogoID
-    uniprot: "rhea:ec = up:enzyme — the shared EC-number IRI http://purl.uniprot.org/enzyme/X.X.X.X; join UniProt <http://sparql.uniprot.org/uniprot> ↔ Rhea <http://rdfportal.org/dataset/rhea> (example xdb_uniprot). Many-to-one."
+    uniprot_by_reaction: >
+      THE reaction-level join, and the one to reach for first: UniProt points AT the Rhea reaction IRI via
+      up:annotation -> up:Catalytic_Activity_Annotation -> up:catalyticActivity -> up:catalyzedReaction, in
+      GRAPH <http://sparql.uniprot.org/uniprot>. Reverse it to go Rhea -> proteins (example
+      xdb_uniprot_direct). Dense: 667,167 proteins (4,827 of them reviewed) hang off RHEA:13065 alone.
+      All three hops are required — there is no direct ?protein -> ?reaction predicate.
+    uniprot_by_ec: >
+      The CLASS-level join: rhea:ec == up:enzyme, the shared EC-number IRI
+      http://purl.uniprot.org/enzyme/X.X.X.X (example xdb_uniprot). Many-to-one in both directions, so it
+      answers a DIFFERENT question from the reaction-level join above and returns a different set — 2,568
+      vs 4,827 reviewed enzymes for RHEA:13065 (2026-08-26). Only ~42% of reactions carry an EC at all.
   xrefs:                            # outbound references carried on Rhea reactions/compounds
     chebi:    "rhea:chebi on every SmallMolecule → obo/CHEBI_NNNNN (100%); polymers via rhea:underlyingChebi. Join key only — labels are NOT here (gotcha compound_name_source); resolve names against the `chebi` database."
     ec:       "rhea:ec → http://purl.uniprot.org/enzyme/X.X.X.X (~42% of reactions, multi-valued)"
