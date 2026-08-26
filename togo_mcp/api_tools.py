@@ -23,12 +23,12 @@ _rhea_client = httpx.AsyncClient(base_url="https://www.rhea-db.org", timeout=30.
 def _resolve_query_alias(
     query: str = "",
     *,
-    search: str = "",
-    term: str = "",
-    keyword: str = "",
-    keywords: str = "",
-    search_term: str = "",
-    name: str = "",
+    search: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    term: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    keyword: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    keywords: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    search_term: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    name: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
 ) -> str:
     """Return the first non-empty value among `query` and its accepted aliases.
 
@@ -182,12 +182,12 @@ def _rest_fail_msg(subject: str, detail: str, database: str) -> str:
 async def search_uniprot_entity(
     query: str = "",
     limit: int = 20,
-    search: str = "",
-    term: str = "",
-    keyword: str = "",
-    keywords: str = "",
-    search_term: str = "",
-    name: str = "",
+    search: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    term: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    keyword: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    keywords: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    search_term: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    name: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
 ) -> str:
     """
     Search for a UniProt entity ID by query.
@@ -497,28 +497,60 @@ async def search_pdb_entity(
     query: str = "",
     limit: Annotated[int, Field(ge=0, le=500)] = 20,
     offset: Annotated[int, Field(ge=0)] = 0,
-    method: Literal[
-        "",
-        "xray",
-        "nmr",
-        "em",
-        "neutron",
-        "fiber",
-        "electron-crystallography",
-        "solid-state-nmr",
+    method: Annotated[
+        Literal[
+            "",
+            "xray",
+            "nmr",
+            "em",
+            "neutron",
+            "fiber",
+            "electron-crystallography",
+            "solid-state-nmr",
+        ],
+        Field(
+            description='db="pdb" filter: experimental method. "em" is cryo-EM. '
+            "Filters that do not apply to the chosen `db` are ignored."
+        ),
     ] = "",
-    res_min: Annotated[float, Field(ge=0)] | None = None,
-    res_max: Annotated[float, Field(ge=0)] | None = None,
-    source: str = "",
-    ligand: str = "",
-    formula: str = "",
-    smiles: str = "",
-    search: str = "",
-    term: str = "",
-    keyword: str = "",
-    keywords: str = "",
-    search_term: str = "",
-    name: str = "",
+    # These carry explicit Field descriptions because the docstring documents them
+    # under an INDENTED sub-heading ("Structured filters for db=..."), which FastMCP's
+    # Args: parser does not reach — they shipped with empty schema descriptions until
+    # 2026-08-26. A Field always wins, so it is immune to docstring layout.
+    res_min: Annotated[
+        float | None, Field(ge=0, description='db="pdb" filter: minimum resolution in Angstrom.')
+    ] = None,
+    res_max: Annotated[
+        float | None, Field(ge=0, description='db="pdb" filter: maximum resolution in Angstrom.')
+    ] = None,
+    source: Annotated[
+        str, Field(description='db="pdb" filter: source organism, e.g. "Homo sapiens".')
+    ] = "",
+    ligand: Annotated[
+        str,
+        Field(
+            description='db="pdb" filter: keep entries whose ligand list contains this '
+            'string. SUBSTRING match, not an exact CCD code: "ATP" also matches '
+            '"dATP". Pass the exact ligand name for precision.'
+        ),
+    ] = "",
+    formula: Annotated[
+        str,
+        Field(
+            description='db="cc" filter: molecular formula in the canonical SPACED, '
+            'element-counted form, e.g. "C8 H10 N4 O2". The unspaced form '
+            '("C8H10N4O2") is NOT matched by PDBj.'
+        ),
+    ] = "",
+    smiles: Annotated[
+        str, Field(description='db="cc" filter: SMILES substructure query.')
+    ] = "",
+    search: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    term: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    keyword: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    keywords: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    search_term: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    name: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
 ) -> str:
     """
     Search PDBj for structures, chemical components, or BIRD molecules.
@@ -547,21 +579,10 @@ async def search_pdb_entity(
         offset (int): Number of leading results to skip (server-side
             pagination). Default 0.
 
-        Structured filters for db="pdb" (combine freely with `query`):
-            method (str): Experimental method — one of "xray", "nmr", "em"
-                (cryo-EM), "neutron", "fiber", "electron-crystallography",
-                "solid-state-nmr".
-            res_min / res_max (float): Resolution bounds in Å.
-            source (str): Source organism (e.g. "Homo sapiens").
-            ligand (str): Keep entries whose ligand list contains this string.
-                Matching is a substring, not an exact CCD code — `ATP` also
-                matches `dATP`. Pass the exact ligand name for precision.
-
-        Structured filters for db="cc" (chemical search):
-            formula (str): Molecular formula in the canonical spaced,
-                element-counted form (e.g. "C8 H10 N4 O2"). The unspaced form
-                ("C8H10N4O2") is not matched by PDBj.
-            smiles (str): SMILES substructure query.
+        Structured filters (db="pdb": method, res_min/res_max, source, ligand;
+        db="cc": formula, smiles) are documented on their own `Field(description=...)`
+        in the signature above — that is the copy clients receive, so it is the only
+        one kept. Filters that don't apply to the chosen `db` are ignored.
 
     Note:
         PDBj search hits multiple fields (title, authors, keywords,
@@ -661,12 +682,12 @@ async def search_pdb_entity(
 async def search_mesh_descriptor(
     query: str = "",
     limit: int = 10,
-    search: str = "",
-    term: str = "",
-    keyword: str = "",
-    keywords: str = "",
-    search_term: str = "",
-    name: str = "",
+    search: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    term: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    keyword: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    keywords: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    search_term: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    name: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
 ) -> str:
     """
     Search for MeSH ID by query.
@@ -829,12 +850,12 @@ async def search_reactome_entity(
     limit: int | None = None,
     include_summation: bool = False,
     rows: int | None = None,
-    search: str = "",
-    term: str = "",
-    keyword: str = "",
-    keywords: str = "",
-    search_term: str = "",
-    name: str = "",
+    search: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    term: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    keyword: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    keywords: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    search_term: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    name: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
 ) -> dict:
     """Search the Reactome pathway knowledgebase by keyword (name / fuzzy match).
 
@@ -1059,12 +1080,12 @@ async def search_rhea_entity(
     query: str = "",
     limit: int | None = 25,
     columns: str | list[str] = "rhea-id,equation",
-    search: str = "",
-    term: str = "",
-    keyword: str = "",
-    keywords: str = "",
-    search_term: str = "",
-    name: str = "",
+    search: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    term: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    keyword: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    keywords: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    search_term: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
+    name: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
 ) -> dict:
     """
     Search the Rhea reaction database by keyword and return matching reactions.

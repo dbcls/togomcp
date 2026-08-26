@@ -273,18 +273,26 @@ examples:
       PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
       PREFIX rdfs:   <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX sio:    <http://semanticscience.org/resource/>
-      SELECT ?sample ?text
+      SELECT ?prep ?text
       FROM <http://rdfportal.org/dataset/supercon>
       WHERE {
         ?prep a Schema:SamplePreparation ; rdfs:comment ?text .
-        ?text bif:contains "'sinter'" .
-        ?sample sio:SIO_000008 ?prep .
+        ?text bif:contains "'sinter'" .           # bind ?text FIRST, then hand the literal to the index
       }
       LIMIT 20
-    verified: {matches_for_sinter: 32, date: "2026-07-22"}
+    verified: {result_rows: 20, matches_for_sinter: 32, date: "2026-08-26", runtime: "0.2s"}
     teaches: "rdfs:comment on Schema:SamplePreparation is the ONLY free-text field in SuperCon — every other quantity has a typed Schema: predicate (never bif:contains a name/formula/Tc). Virtuoso bif:contains is the indexed way to search it."
     traps_avoided:
       - "Synthesis notes are heavy LAB SHORTHAND, not prose: SIN=sinter, CAL=calcine, Q=quench, RT=room temp, HIP=hot isostatic press. `bif:contains 'sintering'` returns 0 while 'sinter' returns 32 — search stems/abbreviations, not full English words."
+      - say: "Do NOT join out to a ?sample. SamplePreparation is almost entirely ORPHANED — only 654 of 22,165 nodes (3.0%) have ANY incoming edge, and none of the 32 sinter matches has one (measured 2026-08-26). Until then this example carried `?sample sio:SIO_000008 ?prep`, which made the whole query return 0 rows while its `verified:` block recorded the 32 text matches the query WITHOUT that leg returns — the figure and the query had never described the same thing. The sample identity is in the prep IRI localname instead (`msc_om0001395_SamplePreparation`); parse it, or stay on the prep."
+        check:
+          kind: count       # the orphan rate — if preps ever get linked, restore the join
+          date: "2026-08-26"
+          query: |
+            PREFIX Schema: <http://dice.nims.go.jp/ontology/SuperCon-ont/Schema#>
+            SELECT (COUNT(DISTINCT ?prep) AS ?n) FROM <http://rdfportal.org/dataset/supercon>
+            WHERE { ?prep a Schema:SamplePreparation . ?s ?p ?prep . }
+          expect: {value: 654, tolerance: 0.05}
 
 # ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
 schema_delta:

@@ -13,6 +13,227 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.9.1] - 2026-08-26
+
+<!-- whatsnew: 2026-08-26 | The per-database schema guides that steer every SPARQL query are now <strong>re-checked against the live endpoints automatically</strong>, weekly. The first full audit corrected <strong>28 incorrect warnings</strong> across the corpus — most of them claimed a query would time out when it in fact returns a plausible but <em>wrong</em> answer in seconds, which is the failure that actually costs you. -->
+
+A correctness release, not a feature one: the tool surface is byte-identical (no tool, parameter or
+return shape added, removed or renamed — verified by diffing the assembled schema). What changed is
+the accuracy of what the server *tells* an agent, and whether anything checks it.
+
+Two findings drove it. First, MIE prose was never executed the way MIE examples are, and it had
+rotted: of 37 "this times out" warnings in the corpus, **28 were wrong**, and after accounting for
+Virtuoso's buffer cache exactly **one** survives. Second, the instruction telling agents to read the
+MIE file before querying had been sitting in a docstring that FastMCP does not serve — no client had
+ever received it.
+
+### Added
+
+- **`check:` — falsifiable MIE prose is now machine-testable** (MIE v3 spec §3.6, new
+  `scripts/check_mie_gotchas.py`). A `global_gotchas` `say` or a `traps_avoided` line that asserts a
+  count, a multiplier, "returns 0 rows", "is not here" or "does not run" must now carry a `check:`
+  block — one or two SPARQL queries plus the expected outcome — which the script re-executes against
+  the live endpoint. Five kinds: `count`, `ratio`, `zero_rows`, `absent`, `error`.
+
+  **Why this exists.** `check_mie_examples.py` has executed every example query a reader might copy
+  since 2026-07. Nothing executed the claims a reader is meant to *believe*. On 2026-08-25 four MIE
+  headers were cross-checked against the live SIB endpoint for the first time, and all four carried a
+  factual defect — while their example queries were clean, because examples get run and prose does
+  not. `uniprot`'s `reviewed_filter` prescribed the *reverse* of the portable literal form; `oma`'s
+  `mandatory_graph_pin` claimed ×2.00 where the realistic join measures ×6.29; and **six separate
+  "this times out" warnings turned out to describe operations that finish in 0.2–41 seconds.**
+
+  `kind: error` is the load-bearing one: under it, an operation that **completes** fails the check.
+  Six-for-six in the same direction is structural, not luck — nobody writes "this hangs" just after
+  watching something return, so a false timeout is always inherited and then never re-tested, because
+  the warning's own advice is not to run it. It is a claim that immunises itself against the
+  experiment that would kill it, and it does real damage: it converts a route that answers in a
+  second into one the reader is told to avoid — spec §4.4's failure arriving through the opposite
+  door.
+
+  `check:` blocks are **stripped by `get_MIE_file` before serving** (`_strip_check_blocks`), so they
+  cost the reader nothing and a deliberately-broken `zero_rows`/`error` query is never shown to an
+  agent told that every SPARQL string in the file is a verified route. They are excluded from the
+  §5 item 7 byte-share measurement for the same reason. `mie_spec` stays `3`: the key is additive,
+  and consumers test that field for equality, so bumping it would strand every reader over a change
+  that breaks none — the spec now says so explicitly.
+
+- **`.github/workflows/mie-drift.yml`** — neither MIE checker had ever been wired to CI, so both ran
+  only when someone remembered. A PR touching an MIE now runs both against just the files it
+  changed; a weekly sweep runs the whole corpus and keeps **one** issue updated. Network failure never
+  fails either job — both scripts already separate a dead gateway from a wrong claim, and an outage
+  reading as drift would make the signal worthless inside a month.
+
+### Fixed
+
+- **The `get_MIE_file`-first instruction never reached a single client.** `run_sparql` carries an
+  explicit `description=` on its `@mcp.tool` decorator, and FastMCP serves that *instead of* the
+  docstring — so "Use `get_MIE_file()` to understand the RDF graph structure", which had lived in the
+  docstring body, was invisible to every agent that ever called the tool. Moved into the served
+  description and strengthened: it now orders the call (`FIRST`, per database, per session) and names
+  the real consequence. Deliberately NOT "your query will fail" — skipping the MIE file does not
+  produce an error, it produces a well-formed wrong answer, and an agent told to watch for a failure
+  reads a clean result as success. The description now says so, with the measured inflations (×3.27,
+  ×6.29, ×45,360, all returned in seconds) as evidence.
+
+  The same reminder is now also on the **`sparql_query` parameter**, because that is the field the
+  agent is filling in at the moment it types a triple pattern — the moment CLAUDE.md identifies as
+  where these traps get missed. `endpoint_name`/`endpoint_url` gained the priority rule
+  (`endpoint_url > endpoint_name > database`) they only documented in the dropped docstring body.
+
+- **One source per parameter — the duplicated half had already rotted.** Where a parameter has a
+  `Field(description=...)`, its docstring `Args:` line is dead text that no client ever receives.
+  Measured across the corpus: 107 parameters were Field-only and 28 Args-only (both fine, single
+  source), but 11 carried both — **and 7 of those 11 had already diverged.** A 64% drift rate in
+  exactly the duplicated set, and always in the same direction: the `Field` got improved and the
+  `Args:` line was left behind. `run_sparql.sparql_query`'s dead line still called it merely "the
+  SPARQL query to execute", omitting the entire graph-pinning warning; `endpoint_url`'s omitted the
+  priority rule. The stale copy is the one a maintainer reads.
+
+  All 16 dead entries removed (11 detected plus 5 more nested under PDBj's indented sub-headings —
+  the same nesting that hid them from FastMCP in the first place). Verified by snapshotting all 29
+  tool descriptions and 146 parameter descriptions before and after: **zero served bytes changed.**
+  That check earned its keep — deleting `get_graph_list`'s now-empty `Args:` section removed the
+  boundary FastMCP uses to stop parsing, which silently appended a stray `Returns:` block to its
+  served description. Caught and fixed before it shipped.
+
+  Guarded by a test that detects duplication by provenance (served text absent from the docstring ⇒
+  Field-sourced ⇒ any `Args:` entry for it is dead), so the pattern cannot creep back.
+
+- **Convention settled: docstring by default, `description=` only when the text must
+  interpolate.** The two are not interchangeable and not additive — a `description=` REPLACES the
+  docstring body — so mixing them creates a second copy that rots, which is precisely how the
+  `get_MIE_file` instruction above ended up invisible. The deciding constraint is mechanical, not
+  stylistic: **an f-string cannot be a docstring** (`__doc__` becomes `None`), so a tool whose text
+  injects a runtime value has no choice. `run_sparql` lists the live 37-database registry and the
+  endpoint names, so it keeps `description=`; its docstring now holds no second copy to drift from,
+  only a maintainer note saying where the contract lives.
+
+  `get_graph_list` was using `description=` for a string that interpolates **nothing** — paying the
+  drift tax for no benefit, with a fully dead docstring underneath. Converted to docstring-only:
+  one copy, and the `Args:`/`Field` layering keeps working. All seven substantive claims from the
+  old string were checked present in the new one (an assertion caught one — the graph-ranking rule
+  had been narrowed to the bypass branch — before it shipped). `rdf_portal.py` is down to a single
+  `description=`, on the one tool that genuinely needs it.
+
+- **58 tool parameters shipped with no description a client could read**; now zero. Two distinct
+  causes, neither visible in the source:
+  - **Docstring layout the `Args:` parser cannot map.** PDBj's seven structured filters (`method`,
+    `res_min/res_max`, `source`, `ligand`, `formula`, `smiles`) were documented under an *indented
+    sub-heading*, and TogoVar's four region/frequency filters as *combined* entries ("start, stop:").
+    Both read well to a human and yield nothing to the schema. Now explicit `Field(description=...)`,
+    which beats the docstring regardless of layout.
+  - **`Annotated[T, Field(...)] | None` buries the description in `anyOf[0]`** instead of putting it
+    on the property. Write `Annotated[T | None, Field(...)]` — union *inside* the Annotated. Six
+    parameters were affected.
+  - The 47 query-alias parameters (`search`/`term`/`keyword`/`keywords`/`search_term`/`name`) were
+    blank; they now say what they alias and that supplying two conflicting values raises.
+
+  Guarded by two new tests that assert on the **assembled tool list** rather than on `__doc__` — the
+  only way to catch this class of defect, since the source looks correct in every case. Both fail
+  against the pre-fix tree.
+
+- **The corpus-wide timeout sweep: 31 more claims tested, 22 of them false.** Following the four-file
+  header sweep above, every remaining `timeout`/`unrunnable` claim in the corpus was re-measured against
+  its live endpoint — 31 claims across 14 databases and 6 endpoints (`amrportal`, `chembl`, `ddbj`,
+  `ensembl`, `go`, `hco`, `mesh`, `mogplus`, `ncbigene`, `pubchem`, `pubmed`, `pubtator`, `reactome`,
+  `taxonomy`). **Combined with the earlier six, 28 of 37 timeout claims in this corpus were wrong**, and
+  after accounting for the cache effect below, **exactly one survives**: `ddbj`'s `gene_cds_protein`
+  COUNT(DISTINCT), which failed five consecutive runs, warm and cold.
+
+  What the false ones were hiding, in every case, was a *silent wrong answer* wearing a timeout's
+  clothing. `hco` warned that an unscoped cytoband query "TIMES OUT at 60s"; it returns 78,201,718 rows
+  in 3.8s against HCO's own 1,724 — a **×45,360 scope bleed**, the widest in the corpus, delivered in
+  under four seconds. `ddbj`'s unpinned feature join is a **635,762,148-row Cartesian product**, not a
+  hang. `go`'s unpinned label query is a ×3.27 overcount in 8s. A reader told to expect a hang watches
+  for the wrong symptom entirely — and the ones that answer fastest are the ones that mislead best.
+
+  `pubtator`'s `annotation_count_ceiling` was the sharpest case: it said an unscoped range filter "times
+  out, it does NOT return 0 fast." It returns 0 in 1.4s. The warning was not merely wrong, it was
+  precisely inverted — it named the correct observation and denied it.
+
+  Where a claim was false, the prose now states what actually happens plus the measured figure, and
+  carries a `count`/`ratio` `check:`. Where it was true (`ddbj` ×2, and the shapes that are genuinely
+  expensive) it carries `kind: error` or a calibrated cost. 49 checks now run corpus-wide.
+
+- **Runtime is a property of the cache, not of the query — and it broke three "confirmed" timeouts.**
+  Four claims survived a *first* re-measurement, so they were written up as `kind: error`. Re-running
+  them exposed Virtuoso's buffer cache: `ncbigene`'s un-scoped gene enumeration and `pubmed`'s STRSTARTS
+  topic COUNT both collapsed from >75s to **0.1s on the very next run**, and `pubchem`'s open STRSTARTS
+  did the same after failing three times in a row. A single cold measurement is how a false timeout gets
+  written; a single cold *re*-measurement is how one gets confirmed by mistake.
+
+  All three were rewritten as calibrated costs ("exceeded 75s cold, 0.1s warm — budget for the cold
+  case") and check a stable figure — the result value, or the fix the gotcha prescribes — because a
+  `kind: error` check on a cacheable query is a coin flip that will redden CI for no reason. The spec
+  (§3.6) and the skill (Phase 5e-2) now require running a candidate `kind: error` query **at least
+  twice**, and pass the operational half to the reader: **never diagnose a query's correctness from how
+  long it took.** Fast may only mean warm — and every silent-wrong-answer trap in this corpus is fast.
+
+- **`supercon`'s `synthesis_text_search` example returned 0 rows** (found by the first full-corpus run of
+  `check_mie_examples.py`, outside the sweep). It joined `?sample sio:SIO_000008 ?prep`, but
+  `Schema:SamplePreparation` is 97% orphaned — only 654 of 22,165 nodes have any incoming edge, and none
+  of the 32 sinter matches does. Its `verified: {matches_for_sinter: 32}` was the count for the query
+  *without* that leg: the figure and the shipped query had never described the same thing. The leg is
+  gone, the orphan rate is documented and checked, and the `bif:contains` lesson the example exists for
+  is intact.
+
+- **Four MIE files corrected against the live endpoint** (`uniprot`, `rhea`, `oma`, `bgee`), every
+  figure re-measured 2026-08-26 rather than carried over:
+  - `uniprot`: `reviewed_filter` said to use integer `1` and that `true` returns 0 rows. Backwards for
+    portability — this Virtuoso treats them identically (589,957 either way), but on UniProt's *own*
+    endpoint `1` returns 0 and only `true` matches, which is why replayed upstream queries died.
+    `flat_lineage` and the `xdb_rhea` trap both blamed timeouts that do not happen (the transitive
+    lineage form is *rejected* outright, or merely 30× slower; the aggregate join takes 16.8s).
+    `schema_delta` called `dcterms:identifier` absent from every UniProt graph — six graphs carry it,
+    1.6M triples in `citations` alone. The OMA re-typing was understated 52× (17,544,694, not the
+    335,971 that is just the reviewed overlap).
+  - `oma`: three claims all warned that something *hangs* when it in fact completes — the unpinned
+    gene join returns a ×6.29 wrong answer in 0.8s, the two whole-class COUNTs take 18s and 41s (they
+    were recorded as uncountable estimates), and the unbound prefix scan takes 30.4s. `organism_no_label`
+    forbade the scientific-name route, which works when pinned — a §4.4 violation found inside our own
+    corpus, now the first-class example `species_by_scientific_name`.
+  - `rhea`: a release moved every count (18,071→18,854 master, 17,635→18,184 approved, 14,485→17,265
+    named compounds). `count_timeout` was false end to end (0.2s / 0.3s). `schema_delta` said
+    stoichiometric coefficients cannot be read as numbers; they can, and it is now a worked example.
+    Added the direct UniProt reaction-level join (`up:catalyticActivity`/`up:catalyzedReaction`) that
+    upstream examples use throughout and this file reached only via the many-to-one EC detour.
+  - `bgee`: `huge_call_table` said an unfiltered COUNT times out — the bare typed COUNT returns
+    709,482,280 in 4.7s; what costs 129s is an aggregate that *joins through* the call table, so the
+    old wording had readers avoiding the cheap query to dodge the expensive one. Genes carry seven
+    `rdf:type` assertions, not six, and only 87% carry all seven. `up:commonName` **conflicts by case**
+    across co-tenants ("human" vs "Human") on the predicate most upstream Bgee examples filter by.
+    `lscr:xrefUniprot` is 16-valued for one gene, half of it unjoinable mnemonic forms — not the two
+    forms documented.
+
+- **`graphs.absent_here` (uniprot)** — graphs this endpoint does *not* have, declared positively.
+  `uniparc`, `uniref` and `chebi` are absent; the EC and DB-registry graphs are renamed (`enzyme` vs
+  `enzymes`, `databases` vs `database`); and Rhea is at `rdfportal.org/dataset/rhea`, not the upstream
+  `sparql.rhea-db.org/rhea`. A graph merely missing from a list is indistinguishable from one nobody
+  wrote down, and naming a graph that does not exist returns 0 rows with no error — this was the
+  single largest cause of silent failure when upstream queries were replayed (13 examples on the
+  missing graphs, 6 more on the Rhea IRI alone).
+
+- **`SERVICE` is not disabled on rdfportal** — corrected in the tutorial (EN + JA) and the `prism`
+  skill, which all three said it was. A bounded `SERVICE` reaches out and returns real rows (a
+  nonexistent host fails with `HTCLI HC001`, proving the traffic is real). What fails is federation
+  *in practice*: an unbounded federated join ran past 130s with no result, and Virtuoso rejects
+  aggregates and `BIND` inside a `SERVICE` block (`SP031`). **The advice is unchanged** — join inside
+  one endpoint with `GRAPH` — but "disabled" tells a reader not to try, while "does not scale" leaves
+  a small bounded `SERVICE` available when nothing else reaches.
+
+- **`check_mie_examples.py` no longer walks into `check:` blocks.** Half the check kinds hold a query
+  written to fail, and all of them would have been reported as broken examples.
+
+### Changed
+
+- **`mie-generator` skill: Phase 5e-2 and the Phase-2g→`check:` handoff.** Phase 4 now says to paste
+  the pinned/unpinned queries Phase 2g *already ran* straight into the `check:` rather than composing
+  new ones — the cheapest recurrence prevention available, and it closes the gap where a hand-written
+  check "confirms" a figure measured separately (worse than no check, because it looks verified).
+  Phase 5e-2 requires `check_mie_gotchas.py <db>` clean, and singles out timeout claims: re-measure
+  every inherited one, and if it completes, the note is not "this became stale" but "this was wrong".
+
 ### Changed
 
 - **Tutorial: an RDF/SPARQL primer before the first query.** Chapter 0 gains a "What are RDF and
@@ -1850,6 +2071,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.8...HEAD
+[2.9.1]: https://github.com/dbcls/togomcp/compare/v2.9.0...v2.9.1
 [2.9.0]: https://github.com/dbcls/togomcp/compare/v2.8.0...v2.9.0
 [2.8.0]: https://github.com/dbcls/togomcp/compare/v2.7.8...v2.8.0
 [2.7.8]: https://github.com/dbcls/togomcp/compare/v2.7.7...v2.7.8

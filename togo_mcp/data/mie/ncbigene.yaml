@@ -44,8 +44,28 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
   - id: taxid_mandatory
     say: >
       ncbio:taxid is THE mandatory first filter. Without `?gene ncbio:taxid <http://identifiers.org/taxonomy/N>`
-      a query scans all 57.8M genes and times out. It is an IRI (taxonomy/9606=human, 10090=mouse, 10116=rat,
+      a query scans all 57.8M genes. Two consequences, and the SECOND is the one that actually bites.
+      (1) COST, which is real but not dependable as a signal: the un-scoped type enumeration exceeded 75s on
+      a cold cache and returned in 0.1s immediately afterwards (both measured 2026-08-26) — Virtuoso's buffer
+      cache decides which you get, so a colleague's fast run does not mean yours will be, and your fast run
+      does not mean the query is cheap. Never reason about correctness from how long something took here.
+      (2) SCOPE, which never varies: without the filter you are asking a GENOME-WIDE question. The un-scoped
+      enumeration returns the type distribution across all 57.8M genes of every organism; the taxid-scoped
+      one returns 4,640 genes for E. coli K-12 in 0.2s. Both look like a perfectly good answer to "what gene
+      types are there" — only one answers the question you meant. It is an IRI (taxonomy/9606=human, 10090=mouse, 10116=rat,
       511145=E. coli K-12), never a text/name — never bif:contains an organism name.
+    check:
+      # NOT kind: error — the un-scoped form's failure is cache-state-dependent (75s cold, 0.1s warm)
+      # and would make this check flaky. Assert the SCOPED route instead: it is the fix the gotcha
+      # prescribes, it is stable, and if the taxid IRI form ever stops working the warning is worthless.
+      kind: count
+      date: "2026-08-26"
+      query: |
+        PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+        PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+        SELECT (COUNT(DISTINCT ?gene) AS ?n) FROM <http://rdfportal.org/dataset/ncbigene>
+        WHERE { ?gene a insdc:Gene ; ncbio:taxid <http://identifiers.org/taxonomy/511145> ; ncbio:typeOfGene ?t }
+      expect: {value: 4640, tolerance: 0.05}
   - id: graph_pin
     say: >
       Always FROM <http://rdfportal.org/dataset/ncbigene> (or GRAPH-pin). The endpoint co-hosts medgen/clinvar/
@@ -103,7 +123,7 @@ examples:
     verified: {protein-coding: 4288, pseudo: 145, ncRNA: 98, tRNA: 86, rRNA: 22, other: 1, total: 4640, date: "2026-07-22"}
     teaches: "ncbio:typeOfGene is THE controlled-vocabulary enumeration axis ('protein-coding','ncRNA','pseudo','tRNA','rRNA','biological-region','snoRNA','snRNA'…). To get 'all genes of type X' add `ncbio:typeOfGene \"X\"` alongside the mandatory ncbio:taxid. NEVER text-search a gene type or organism — both are structured predicates."
     traps_avoided:
-      - "Omitting ncbio:taxid makes this a 57.8M-gene scan → timeout (gotcha taxid_mandatory). Enumeration MUST be organism-scoped."
+      - "Omitting ncbio:taxid silently widens this to all 57.8M genes of every organism — the answer still looks well-formed. It may also be slow, but do not rely on that to notice: measured 2026-08-26 the un-scoped form took >75s cold and 0.1s warm (gotcha taxid_mandatory). Enumeration MUST be organism-scoped."
       - "Do NOT bif:contains 'protein coding' on a label — use the ncbio:typeOfGene value directly; a text match misses the typed set and mixes unrelated hits."
 
   - id: xref_navigation
@@ -162,7 +182,15 @@ examples:
     verified: {result_rows: 100, distinct_orthologs_total: 510, date: "2026-07-22", first_row: "ncbigene/30590 'tp53' (Danio rerio, taxonomy/7955)"}
     teaches: "orth:hasOrtholog links a gene IRI to other ncbigene IRIs across species (bidirectional; present for well-annotated genes though ABSENT from the official ShEx). Each ortholog carries its own ncbio:taxid organism IRI."
     traps_avoided:
-      - "ALWAYS anchor on a specific gene IRI and add LIMIT. `?g1 orth:hasOrtholog ?g2` unbounded scans millions of ortholog pairs → timeout."
+      - say: "Anchor on a specific gene IRI and add LIMIT — because you want ONE gene's orthologs, not because the alternative fails. Unbounded, `?g1 orth:hasOrtholog ?g2` counts 26,822,006 pairs in 0.4s; this line said it times out until 2026-08-26. Unlike the taxid case (gotcha taxid_mandatory), there is no scan penalty here: orth:hasOrtholog is a single indexed predicate, not a 57.8M-row type scan."
+        check:
+          kind: count       # the unbounded ortholog scan the old text called a timeout
+          date: "2026-08-26"
+          query: |
+            PREFIX orth: <http://purl.org/net/orth#>
+            SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/ncbigene>
+            WHERE { ?g1 orth:hasOrtholog ?g2 }
+          expect: {value: 26822006, tolerance: 0.05}
 
   - id: xdb_medgen
     intent: "cross-DB: gene → associated diseases via co-hosted MedGen, DIRECT same-IRI join (no conversion)"

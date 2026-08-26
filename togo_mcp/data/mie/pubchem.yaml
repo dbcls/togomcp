@@ -74,15 +74,45 @@ global_gotchas:           # the few that bite ANY query on this DB — verified 
       if you read its label). Omitting measuregroup or endpoint drops the target link with no error.
   - id: endpoint_scan
     say: >
-      The <endpoint> graph holds one record per Substance×Assay and is enormous. Resolve the Substance IRI first
-      (?sub sio:CHEMINF_000477 compound:CID<N>) and enter <endpoint> already bound to that SID — scanning it
-      unbound times out (60s).
+      The <endpoint> graph holds one record per Substance×Assay and is enormous — 881,837,542 triples. Resolve
+      the Substance IRI first (?sub sio:CHEMINF_000477 compound:CID<N>) and enter <endpoint> already bound to
+      that SID, so you transport thousands of rows and not billions. But a plain COUNT over the graph is NOT
+      a timeout: it returns all 881M in 7.5s (measured 2026-08-26; this entry claimed 60s until then). The
+      cost here is JOINING and RETURNING unbound rows, not counting them — bind the SID for that reason.
+    check:
+      kind: count            # the unbound endpoint-graph scan the old text called a timeout
+      date: "2026-08-26"
+      query: |
+        SELECT (COUNT(*) AS ?n)
+        WHERE { GRAPH <http://rdf.ncbi.nlm.nih.gov/pubchem/endpoint> { ?e ?p ?o } }
+      expect: {value: 881837542, tolerance: 0.05}
   - id: compound_scan_timeout
     say: >
-      Broad scans over all ~124M compounds — open STRSTARTS over a CHEBI/namespace, text match on a descriptor
-      value, or a GROUP BY without a type/role filter — TIME OUT. Anchor on specific CID IRIs, CHEMINF descriptor
-      type IRIs, or a drug-role IRI. For ChEBI-class enumeration this means: expand the class to a BOUNDED set of
-      descendant CHEBI IRIs first (see enum_chebi_class), never STRSTARTS the whole compound set.
+      An OPEN STRSTARTS over the type IRIs of all ~124M compounds is the most expensive shape here:
+      FILTER(STRSTARTS(...)) cannot use an index, so it must materialise every compound's type triple.
+      Anchor on specific CID IRIs, CHEMINF descriptor type IRIs, or a drug-role IRI. For ChEBI-class
+      enumeration: expand the class to a BOUNDED set of descendant CHEBI IRIs first (see enum_chebi_class),
+      never STRSTARTS the whole compound set.
+      CALIBRATION, because this entry over-claimed until 2026-08-26. It said the STRSTARTS, a descriptor
+      text match and a bare GROUP BY all "TIME OUT". Measured that day: the GROUP BY completes in 47s (slow
+      — scope it — but it returns), counting the <endpoint> graph is 7.5s (gotcha endpoint_scan), and the
+      STRSTARTS itself exceeded 70s on three cold runs and then returned 179,623 in 0.1s on three warm ones.
+      NONE of them is a wall. Virtuoso's buffer cache, not your query, decides which figure you see — so
+      budget for the cold case and never read a fast run as proof the query was cheap.
+    check:
+      # NOT kind: error — the failure is cache-state-dependent (>70s cold x3, then 0.1s warm x3 on
+      # 2026-08-26) and would make this check flaky. The RESULT is stable; assert that instead.
+      kind: count
+      date: "2026-08-26"
+      query: |
+        SELECT (COUNT(DISTINCT ?compound) AS ?n)
+        WHERE {
+          GRAPH <http://rdf.ncbi.nlm.nih.gov/pubchem/compound> {
+            ?compound a ?chebiClass .
+            FILTER(STRSTARTS(STR(?chebiClass), "http://purl.obolibrary.org/obo/CHEBI_"))
+          }
+        }
+      expect: {value: 179623, tolerance: 0.05}
   - id: synonym_reference_fanout
     say: >
       A single CID is the OBJECT of hundreds of synonym nodes (695 for CID2244 via sio:SIO_000011) and tens of
@@ -181,7 +211,7 @@ examples:
     teaches: "PubChem types each compound ONLY with its most-specific (leaf) ChEBI class — never ancestors. So 'all compounds of ChEBI class X' MUST first expand X to descendant CHEBI IRIs with rdfs:subClassOf* in GRAPH <ontology/efo>, THEN join those IRIs to the compound graph. Expanding to a bounded class set first is what keeps it tractable."
     traps_avoided:
       - "The naive `?c a obo:CHEBI_33575` alone returns 0 — the parent structural class has no directly-typed compounds; you MUST descend subClassOf* to the leaves (verified: 0 direct vs 282 via subtree)."
-      - "A broad open STRSTARTS over CHEBI_ types across all 124M compounds TIMES OUT (gotcha compound_scan_timeout) — the subtree pre-filter avoids it."
+      - "A broad open STRSTARTS over CHEBI_ types across all 124M compounds is the shape to avoid — it exceeded 70s on three cold runs (2026-08-26) before the cache made it fast, where this bounded subtree form is reliably quick (gotcha compound_scan_timeout). The pre-filter turns an un-indexable string scan into a bounded IRI join; that is the whole trick."
       - "The <ontology/efo> ChEBI tree is STRUCTURAL and incomplete: role/application classes (drug, NSAID CHEBI_35475) have NO structural subclasses and 0 directly-typed compounds here (verified) — this route works for STRUCTURAL parents (acid, alcohol, amine), not for pharmacological-role classes. For 'all drugs of role X' use the drug-role IRI (example count_fda) or bridge to the chebi endpoint via TogoID."
 
   - id: compound_targets

@@ -4,6 +4,14 @@
 # 2026-07-29 revision: a UniProt release landed since 2026-07-21 — every count moved. Also added the
 # six UniProt-owned graphs and the co-hosted ontology suite that Phase-2a discovery found missing, and
 # a new `go_label_duplication` gotcha (rdfportal.org/ontology/go duplicates GO labels ×2).
+# 2026-08-26 revision (header only; examples untouched): the header was cross-checked against the live
+# endpoint after the 2026-08-25 sib-swiss/sparql-examples replay, and four claims were WRONG —
+# `reviewed_filter` prescribed the reverse of the portable literal form, `flat_lineage` and the
+# `xdb_rhea` trap both blamed a timeout that does not happen, `schema_delta` called dcterms:identifier
+# absent from UniProt when six graphs carry it, and the OMA re-typing was understated 52x. Every
+# falsifiable claim in `global_gotchas` now carries a machine-runnable `check:` (spec §3.6) so the same
+# class of rot cannot sit unnoticed again: `uv run python scripts/check_mie_gotchas.py uniprot`.
+# Also added `graphs.absent_here` — the graphs this endpoint does NOT have, declared positively.
 mie_spec: 3                        # format version — see MIE_v3_spec.md §2
 database: uniprot
 
@@ -31,15 +39,31 @@ graphs:
   # reviewed entries that a bare COUNT(DISTINCT) silently includes (see gotcha union_inflation).
   supporting: [taxonomy, go, diseases, enzyme, keywords, pathways, locations, citations, core,
                obsolete, citationmapping, databases, journal, proteomes, tissues]
-  co_hosted:                       # NOT UniProt-owned; live in the same union
-    oma:  "584M triples; re-types 335,971 reviewed UniProt IRIs as up:Protein (count-inflation source); reverse-join via lscr:xrefSwissProt"
-    mesh: "join target for up:Disease rdfs:seeAlso -> id.nlm.nih.gov/mesh/"
-    bgee: "expression; join via rdfs:seeAlso purl.uniprot.org/bgee/<ENSG> + IRI transform"
-    rhea: "reactions; join via up:enzyme EC IRI == rhea:ec (same namespace)"
+  co_hosted:                       # NOT UniProt-owned; live in the same union. 68 graphs total (2026-08-26).
+    oma:  "584M triples; re-types 17,544,694 UniProt protein IRIs as up:Protein — 335,971 of them CURRENT reviewed (count-inflation source, gotcha union_inflation); reverse-join via lscr:xrefSwissProt"
+    mesh: "3 graphs (id.nlm.nih.gov/mesh + /vocab + /void); join target for up:Disease rdfs:seeAlso -> id.nlm.nih.gov/mesh/"
+    bgee: "expression; join via rdfs:seeAlso purl.uniprot.org/bgee/<ENSG> + IRI transform. Also re-declares up:scientificName/rank/commonName on 52 taxon nodes (gotcha taxon_multiplication)"
+    rhea: "reactions; join via up:enzyme EC IRI == rhea:ec (same namespace). Its graph IRI here is rdfportal.org/dataset/rhea — see absent_here"
     goa:  "EMPTY STUB (151 triples), purl.jp/bio/11/goa — NOT real GOA data; ignore it"
     ontology_go: "rdfportal.org/ontology/go DUPLICATES GO term rdfs:label and rdfs:subClassOf against UniProt's OWN sparql.uniprot.org/go graph — same label, so ×2 rows on any unpinned GO-label join (see gotcha go_label_duplication)"
-    cellosaurus: "rdfportal.org/dataset/cellosaurus — cell lines; no UniProt IRI overlap probed, no join documented"
-    ontology_suite: "~40 more rdfportal.org/ontology/* graphs (so, eco, efo, mondo, uberon, cl, hp, fma, faldo, taxonomy, …). Only ontology/go was found to collide with a UniProt-owned graph; the rest supply vocabulary UniProt does not re-declare."
+    cellosaurus: >
+      rdfportal.org/dataset/cellosaurus — cell lines. No UniProt IRI overlap, but it OWNS the label
+      namespace: an unpinned `?s rdfs:label \"TP53\"` returns 17,102 rows of which 16,879 (98.7%) are
+      Cellosaurus cell lines and 5 are UniProt (measured 2026-08-26). Any unpinned label text-match on
+      a gene/protein symbol is answered by Cellosaurus, not by UniProt. Pin the graph.
+    ontology_suite: "37 more rdfportal.org/ontology/* graphs (so, eco, efo, mondo, uberon, cl, hp, fma, faldo, taxonomy, …), counted 2026-08-26. Only ontology/go was found to collide with a UniProt-owned graph; the rest supply vocabulary UniProt does not re-declare."
+  # ── DECLARED ABSENCES. Stated positively because a graph that is merely missing from the lists
+  #    above is indistinguishable from one nobody wrote down — and a query naming a graph IRI that
+  #    does not exist here returns 0 rows with NO error. These were the single largest source of
+  #    silent 0-row failures when upstream sib-swiss/sparql-examples queries were replayed here
+  #    (2026-08-25: 13 examples died on the missing graphs, 6 more on the Rhea IRI alone).
+  absent_here:                     # verified 0 triples on this endpoint, 2026-08-26
+    uniparc: "http://sparql.uniprot.org/uniparc — NOT here (188 billion triples on UniProt's own endpoint). No UniParc data at all; do not write the GRAPH clause."
+    uniref:  "http://sparql.uniprot.org/uniref — NOT here (5.4 billion triples upstream). No UniRef clusters."
+    chebi:   "http://sparql.uniprot.org/chebi — NOT here (5.2M triples upstream). For ChEBI use the separate `chebi` database, or Rhea's own rhea:name."
+    renamed_enzymes: "This endpoint's EC graph is <http://sparql.uniprot.org/enzyme> (SINGULAR, 182,276 triples). UniProt's own endpoint calls the same content `enzymes`. Same data, different IRI."
+    renamed_database: "This endpoint's DB-registry graph is <http://sparql.uniprot.org/databases> (PLURAL, 2,376 triples). UniProt's own endpoint calls it `database`. Same data, different IRI."
+    renamed_rhea: "Rhea is at <http://rdfportal.org/dataset/rhea> here. The upstream IRI <https://sparql.rhea-db.org/rhea> has 0 triples on this endpoint — the single most common way a copied UniProt/Rhea example silently returns nothing."
 
 entity_counts:                     # COUNT(DISTINCT), graph-pinned unless noted; verified 2026-07-29
   reviewed_current:      575503    # Swiss-Prot, current (FROM <.../uniprot>)  — the usual "how big is Swiss-Prot" answer
@@ -50,7 +74,25 @@ entity_counts:                     # COUNT(DISTINCT), graph-pinned unless noted;
 
 global_gotchas:                    # the few that bite ANY query — verified 2026-07-29
   - id: reviewed_filter
-    say: "ALWAYS `up:reviewed 1` (integer 1, not \"1\"/true). Omitting it queries ~244M TrEMBL rows -> timeout; wrong type -> 0 rows."
+    say: >
+      ALWAYS filter on up:reviewed — omitting it queries ~244M TrEMBL rows and times out. The LITERAL
+      FORM does not matter HERE: this Virtuoso treats `up:reviewed 1` and `up:reviewed true` as the same
+      value (589,957 either way, 2026-08-26), so both work and the examples below use `1`.
+      PORTABILITY, and the reason not to state a rule about the form: on UniProt's OWN endpoint
+      (sparql.uniprot.org) it is exactly reversed — `up:reviewed 1` returns 0 rows there and only
+      `true` matches. If a query may be moved or was copied from upstream (sib-swiss/sparql-examples
+      uses `true`), write `true`: it is the form that works on both. Until 2026-08-26 this entry
+      prescribed integer `1` and said `true` returns 0 rows, which is the reverse of the portable truth.
+    check:
+      kind: ratio            # the two literal forms must stay interchangeable ON THIS ENDPOINT
+      date: "2026-08-26"
+      numerator: |
+        PREFIX up: <http://purl.uniprot.org/core/>
+        SELECT (COUNT(DISTINCT ?p) AS ?n) WHERE { ?p a up:Protein ; up:reviewed true . }
+      denominator: |
+        PREFIX up: <http://purl.uniprot.org/core/>
+        SELECT (COUNT(DISTINCT ?p) AS ?n) WHERE { ?p a up:Protein ; up:reviewed 1 . }
+      expect: {ratio: 1.0, tolerance: 0.001}
   - id: union_inflation
     say: >
       `a up:Protein ; up:reviewed 1` inflates from TWO independent causes -> unpinned COUNT(*) = 928,116.
@@ -62,12 +104,48 @@ global_gotchas:                    # the few that bite ANY query — verified 20
       A ROW query doubles the same way -> use SELECT DISTINCT or pin the graph. Nothing signals the inflation; it is worse than an empty result.
       NOTE the re-typing is a SUBSET (335,971 of 589,957), so spot-checking one protein can look clean — TP53/P04637 has
       NO triples in the OMA graph. Never conclude "no inflation" from a single-entity probe; count per graph.
+      SCOPE (measured 2026-08-26, and the reason this trap is narrower than it reads): OMA re-declares
+      17,544,694 UniProt protein IRIs as `a up:Protein` in total — 335,971 is only the slice overlapping
+      CURRENT reviewed, not the size of the re-typing. But the contamination is essentially ONE predicate.
+      Per-predicate triples in the co-hosted OMA / Bgee graphs: `a up:Protein` 17,544,694 / 0;
+      up:scientificName 2,927 / 52; up:rank 2,927 / 52; up:mnemonic 1,555 / 0; and up:organism, up:reviewed,
+      up:encodedBy, up:classifiedWith, up:sequence, up:enzyme, up:annotation are ALL exactly 0 in both.
+      So the ENTRY pattern (`a up:Protein`) and the taxon nodes are polluted; every core annotation
+      predicate is untouched. Once your query is anchored on any of those, the union cannot inflate it.
+    check:
+      kind: ratio            # unpinned COUNT(*) 928,116 vs the graph-pinned current-Swiss-Prot 575,503
+      date: "2026-08-26"
+      unpinned: |
+        PREFIX up: <http://purl.uniprot.org/core/>
+        SELECT (COUNT(*) AS ?n) WHERE { ?p a up:Protein ; up:reviewed 1 . }
+      pinned: |
+        PREFIX up: <http://purl.uniprot.org/core/>
+        SELECT (COUNT(DISTINCT ?p) AS ?n) FROM <http://sparql.uniprot.org/uniprot>
+        WHERE { ?p a up:Protein ; up:reviewed 1 . }
+      expect: {ratio: 1.61, tolerance: 0.03}
   - id: taxon_multiplication
     say: >
-      OMA and Bgee RE-DECLARE the same taxon nodes (purl.uniprot.org/taxonomy/N) with their own copies of
-      up:scientificName/rank/commonName/mnemonic. On the default union a protein->organism->scientificName join returns
-      ~3 rows PER protein (product), silently tripling aggregates; up:rank even differs (Taxonomic_Rank_Species vs Species) so
-      DISTINCT can't fully mask it. FIX = pin `GRAPH <http://sparql.uniprot.org/taxonomy>`, not DISTINCT.
+      OMA and Bgee RE-DECLARE some taxon nodes (purl.uniprot.org/taxonomy/N) with their own copies of
+      up:scientificName/rank/commonName/mnemonic, so a protein->organism->scientificName join can return
+      3 rows PER protein and silently triple an aggregate. THE MULTIPLIER IS NOT UNIFORM, which is what
+      makes it hard to spot: OMA carries scientificName for its 2,927 sequenced species and Bgee for its
+      52, against UniProt taxonomy's 2,719,973 — so only ~0.11% of taxa are affected, and they are the
+      MODEL ORGANISMS you are most likely to query. Measured 2026-08-26: taxon 9606 (human) -> 3 rows,
+      taxon 623 (Shigella flexneri) -> 1 row. You cannot divide the inflation out, and a spot-check on a
+      non-model taxon will show it clean. Two values genuinely CONFLICT rather than duplicate, so DISTINCT
+      cannot mask them: up:rank is up:Taxonomic_Rank_Species in UniProt vs up:Species in OMA/Bgee, and
+      up:commonName is \"Human\" in UniProt vs \"human\" in Bgee (case differs — a case-sensitive filter on
+      commonName flips between 0 rows and duplicates depending on which graph answers).
+      FIX = pin `GRAPH <http://sparql.uniprot.org/taxonomy>`, not DISTINCT.
+    check:
+      kind: count            # the model-organism case: 3 graphs supply scientificName for taxon 9606
+      date: "2026-08-26"
+      query: |
+        PREFIX up: <http://purl.uniprot.org/core/>
+        SELECT (COUNT(*) AS ?n) WHERE {
+          GRAPH ?g { <http://purl.uniprot.org/taxonomy/9606> up:scientificName ?name }
+        }
+      expect: {value: 3, tolerance: 0.0}
   - id: go_label_duplication
     say: >
       GO term rdfs:label is supplied by EIGHT graphs on this endpoint, so an unpinned `?goTerm rdfs:label ?l`
@@ -81,11 +159,73 @@ global_gotchas:                    # the few that bite ANY query — verified 20
       FIX = pin `GRAPH <http://sparql.uniprot.org/go>` — note that pinning "UniProt's graphs" is NOT enough,
       since keywords and locations are UniProt-owned and still contribute. Annotation lookups
       (`up:classifiedWith obo:GO_*`) are unaffected — they never touch a label.
+    check:
+      kind: ratio            # P01308's 70 GO terms: 238 rows unpinned, 70 pinned to the `go` graph
+      date: "2026-08-26"
+      unpinned: |
+        PREFIX up: <http://purl.uniprot.org/core/>
+        PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT (COUNT(*) AS ?n) WHERE {
+          GRAPH <http://sparql.uniprot.org/uniprot> {
+            uniprot:P01308 up:classifiedWith ?goTerm .
+            FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
+          }
+          ?goTerm rdfs:label ?label .
+        }
+      pinned: |
+        PREFIX up: <http://purl.uniprot.org/core/>
+        PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT (COUNT(*) AS ?n) WHERE {
+          GRAPH <http://sparql.uniprot.org/uniprot> {
+            uniprot:P01308 up:classifiedWith ?goTerm .
+            FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
+          }
+          GRAPH <http://sparql.uniprot.org/go> { ?goTerm rdfs:label ?label . }
+        }
+      expect: {ratio: 3.4, tolerance: 0.05}
 
   - id: no_protein_label
     say: "up:Protein has NO rdfs:label. Names come from up:recommendedName/up:fullName (Swiss-Prot) or up:submittedName/up:fullName (TrEMBL). rdfs:label on a protein -> 0 rows silently."
+    check:
+      kind: zero_rows
+      date: "2026-08-26"
+      query: |
+        PREFIX up: <http://purl.uniprot.org/core/>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT ?p WHERE { GRAPH <http://sparql.uniprot.org/uniprot> { ?p a up:Protein ; rdfs:label ?l } } LIMIT 1
   - id: flat_lineage
-    say: "Taxonomy lineage is pre-computed as flat single-hop rdfs:subClassOf (every ancestor). NEVER use rdfs:subClassOf* (transitive) — it times out; single-hop already covers the full lineage."
+    say: >
+      Taxonomy lineage is pre-computed as flat single-hop rdfs:subClassOf: EVERY ancestor is a direct
+      edge, so single-hop and the transitive form return the IDENTICAL set (verified 2026-08-26: reviewed
+      proteins under Enterobacterales/91347 = 63,419 both ways). Use the single hop. The `*`/`+` form is
+      wrong for two separate reasons, neither of which is a timeout — that word was in this entry until
+      2026-08-26 and it was never what happened. (1) Where BOTH ends of the path are variables, or the
+      path sits inside an aggregate, Virtuoso REJECTS it outright: HTTP 500 \"transitive start not given\"
+      / \"neither end of it is bound by equality\", in 0.2s. (2) Where it does run, it merely costs ~30×
+      for the same answer (41.3s vs 1.4s on the clade aggregate above). So: single-hop for correctness of
+      effort, not to dodge a hang.
+    check:
+      kind: ratio            # the load-bearing claim: the flat single hop really does cover the whole lineage
+      date: "2026-08-26"
+      numerator: |
+        PREFIX up: <http://purl.uniprot.org/core/>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT (COUNT(DISTINCT ?protein) AS ?n)
+        FROM <http://sparql.uniprot.org/uniprot>
+        FROM <http://sparql.uniprot.org/taxonomy>
+        WHERE { ?protein a up:Protein ; up:reviewed 1 ; up:organism ?organism .
+                ?organism rdfs:subClassOf* <http://purl.uniprot.org/taxonomy/91347> . }
+      denominator: |
+        PREFIX up: <http://purl.uniprot.org/core/>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT (COUNT(DISTINCT ?protein) AS ?n)
+        FROM <http://sparql.uniprot.org/uniprot>
+        FROM <http://sparql.uniprot.org/taxonomy>
+        WHERE { ?protein a up:Protein ; up:reviewed 1 ; up:organism ?organism .
+                ?organism rdfs:subClassOf <http://purl.uniprot.org/taxonomy/91347> . }
+      expect: {ratio: 1.0, tolerance: 0.001}
 
 # ── examples: the load-bearing content. Each is executable, verified, and IS the schema+shape+sample it
 #    would otherwise be written four times over. `traps_avoided` are the inline, query-specific warnings. ──
@@ -132,7 +272,15 @@ examples:
     verified: {n: 4806, date: "2026-07-29"}
     teaches: "GO annotation is up:classifiedWith an OBO IRI. FROM-pin the uniprot graph for a clean DISTINCT count."
     traps_avoided:
-      - "GO terms are OBO IRIs (obo:GO_XXXXXXX), NOT purl.uniprot.org/go/ — wrong namespace returns 0 rows silently."
+      - say: "GO terms are OBO IRIs (obo:GO_XXXXXXX), NOT purl.uniprot.org/go/ — wrong namespace returns 0 rows silently."
+        check:
+          kind: zero_rows
+          date: "2026-08-26"
+          query: |
+            PREFIX up: <http://purl.uniprot.org/core/>
+            SELECT ?protein WHERE {
+              GRAPH <http://sparql.uniprot.org/uniprot> { ?protein up:classifiedWith <http://purl.uniprot.org/go/0004674> }
+            } LIMIT 1
       - "up:classifiedWith ALSO carries UniProt keywords (purl.uniprot.org/keywords/NNN); if mixing, distinguish by FILTER(STRSTARTS(STR(?x), ...))."
 
   - id: go_label_pin
@@ -273,7 +421,7 @@ examples:
     verified: {Enterobacterales_91347: 61, Synechococcales_1890424: 53, date: "2026-07-29"}
     teaches: "Reach a clade with a SINGLE-HOP ?organism rdfs:subClassOf ?order; pin both graphs (FROM uniprot + taxonomy)."
     traps_avoided:
-      - "NEVER rdfs:subClassOf* (transitive) for lineage — it times out; the flat single-hop already lists every ancestor (gotcha flat_lineage). Pinning the taxonomy graph also avoids the taxon-multiplication trap."
+      - "Use the single hop, NOT rdfs:subClassOf* — the lineage is pre-flattened so both return the same set, but the transitive form is ~30x slower where it runs at all and Virtuoso rejects it outright when neither end is bound (gotcha flat_lineage). Pinning the taxonomy graph also avoids the taxon-multiplication trap."
 
   - id: xdb_rhea                    # ELEVATED `cross_db` class
     intent: "cross-DB: human enzymes -> catalysed Rhea reactions via shared EC IRIs (same SIB endpoint)"
@@ -299,7 +447,25 @@ examples:
     verified: {result_rows: 25, date: "2026-07-29", first_row: "P00326 ADH1G_HUMAN -> rhea:10736 (primary alcohol + NAD+ = aldehyde + NADH + H+)"}
     teaches: "UniProt up:enzyme EC IRIs are the SAME IRIs as Rhea rhea:ec — a direct GRAPH join, no text search, no ID bridge."
     traps_avoided:
-      - "The aggregate COUNT form of this join TIMES OUT (>60s). Use the row form with LIMIT, or pre-filter one side to a single EC/organism before counting."
+      - say: "The aggregate COUNT form of this join is expensive but NOT fatal: 16.8s for 5,276 rows (re-measured 2026-08-26 — this line claimed >60s/timeout until then, which was wrong). Pre-filter one side to a single EC or organism if you need it faster; the LIMIT row form above is 0.4s."
+        check:
+          kind: count       # the COUNT form COMPLETES — asserting otherwise steers readers off a working route
+          date: "2026-08-26"
+          query: |
+            PREFIX up: <http://purl.uniprot.org/core/>
+            PREFIX rhea: <http://rdf.rhea-db.org/>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT (COUNT(*) AS ?n) WHERE {
+              GRAPH <http://sparql.uniprot.org/uniprot> {
+                ?protein a up:Protein ; up:reviewed 1 ; up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                         up:mnemonic ?mnemonic ; up:enzyme ?ecNumber .
+              }
+              GRAPH <http://rdfportal.org/dataset/rhea> {
+                ?reaction rdfs:subClassOf rhea:Reaction ; rhea:status rhea:Approved ;
+                          rhea:ec ?ecNumber ; rhea:equation ?equation .
+              }
+            }
+          expect: {value: 5276, tolerance: 0.10}
 
   - id: xdb_mesh
     intent: "cross-DB: human disease proteins -> MeSH descriptor label (co-hosted, direct join)"
@@ -383,7 +549,7 @@ schema_delta:
   - "Gene symbol: ?protein up:encodedBy ?gene . ?gene skos:prefLabel ?symbol (skos:altLabel = synonyms). 87.7% coverage — 46,270 of the 550,744 gene-bearing entries have an unnamed gene node."
   - "Catalytic activity is an indirect 3-hop scaffold: up:annotation -> up:Catalytic_Activity_Annotation -> up:catalyticActivity -> up:catalyzedReaction -> Rhea IRI. Do not reach ?reaction directly from ?protein. (Example xdb_rhea joins the same reactions via the EC IRI instead.)"
   - "Isoforms: canonical = uniprot:ACC-1 (Simple_Sequence); alternates uniprot:ACC-2..N (Modified_Sequence). Suffix -N = isoform number, not an index."
-  - "dcterms:identifier on a protein is OMA-supplied (co-hosted graph ONLY — 335,971 reviewed proteins, zero in any UniProt graph), NOT the native accession. Native accession = STRAFTER(STR(?p),'uniprot/'); up:mnemonic = e.g. 'P53_HUMAN'."
+  - "dcterms:identifier ON A PROTEIN is OMA-supplied (co-hosted graph only; 0 in sparql.uniprot.org/uniprot, verified 2026-08-26), NOT the native accession — so a protein query must not reach for it. But the PREDICATE is not absent from UniProt, which this entry wrongly implied until 2026-08-26: it carries citation DOIs (citations, 1,639,486), proteome IDs (proteomes, 1,044,473), EC numbers (enzyme, 2,554), DB names (databases, 361) and location IDs (locations, 18). Native protein accession = STRAFTER(STR(?p),'uniprot/'); up:mnemonic = e.g. 'P53_HUMAN'."
 
 # ── id_join_map: the least-recoverable asset — how to anchor stably and cross to other DBs. ──
 id_join_map:

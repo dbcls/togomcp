@@ -2,6 +2,14 @@
 # Format: togo_mcp/data/docs/MIE_v3_spec.md. Every verified count/result re-run live on the SIB endpoint 2026-07-22.
 # Byte count vs the v2 file it replaces (spec §5 item 7): v2 togo_mcp/data/mie/bgee.yaml = 37,811 bytes;
 # this v3 file = 20,478 bytes → 45.8% smaller. Exact `wc -c` figures in the footer.
+# 2026-08-26 revision: `huge_call_table` said an unfiltered COUNT times out — the bare typed COUNT returns
+# 709,482,280 in 4.7s; what actually costs 129s is an aggregate that JOINS through the call table, and the
+# old wording made readers avoid the cheap query to dodge the expensive one. Also: the anatomy-label
+# multiplier drifted (x1.64 -> x1.620), genes carry SEVEN rdf:type assertions not six and only 87% carry
+# all seven, up:commonName CONFLICTS BY CASE across co-tenants ("human" vs "Human") on the predicate most
+# upstream Bgee examples filter by, and lscr:xrefUniprot is 16-valued for one gene with half the values
+# unjoinable. co_hosted now enumerates every co-tenant rather than the three traps. Falsifiable header
+# claims carry a `check:` (spec 3.6): scripts/check_mie_gotchas.py bgee.
 mie_spec: 3                        # format version — see MIE_v3_spec.md §2
 database: bgee
 
@@ -22,7 +30,7 @@ endpoint: https://rdfportal.org/sib/sparql       # SIB endpoint — SHARED with 
 base_uri: http://bgee.org/#
 graphs:
   primary: http://bgee.org                        # the only graph that declares genex:Expression/AnatomicalEntity/ExpressionCondition
-  co_hosted:                                      # same SIB endpoint — three distinct co-tenancy traps, all flagged
+  co_hosted:                                      # same SIB endpoint — every co-tenant, trap or not, enumerated 2026-08-26
     oma: >
       GENE-IRI CO-TENANT (×1.30 inflation + value corruption). Bgee mints genes in OMA's OWN namespace
       (<http://omabrowser.org/ontology/oma#GENE_*>), so 908,030 of Bgee's 1,559,014 orth:Gene IRIs are
@@ -37,8 +45,26 @@ graphs:
     ontology_label_hub: >
       Bgee's anatomy IRIs (UBERON_/CL_/GO_) are RE-LABELLED by the ontology co-tenants (uberon, cl, efo,
       clo, go, po, pro) and three UniProt graphs. Bgee's 40,646 genex:AnatomicalEntity joined to rdfs:label
-      = 40,646 pinned vs 66,652 unpinned (×1.64; UBERON_0000955 alone has a label in 5 graphs → ×5). This
-      multiplies as a PRODUCT against any per-gene expression join. FIX: pin the label lookup to GRAPH <http://bgee.org>.
+      = 40,646 pinned vs 65,849 unpinned (×1.620, re-measured 2026-08-26; was 66,652/×1.64 on 2026-07-22 —
+      the ontologies drifted 1.2%, the pinned side did not move). UBERON_0000955 alone has a label in 5
+      graphs → ×5, so the factor is per-term and cannot be divided out. FIX: pin the label lookup to
+      GRAPH <http://bgee.org> (worked in example gene_expression_sites).
+    cellosaurus: >
+      rdfportal.org/dataset/cellosaurus — cell lines. No Bgee IRI overlap, so it never inflates a genex:*
+      query, but it OWNS the symbol-label namespace and answers any unpinned text lookup you write.
+      `?s rdfs:label "TP53"` unpinned returns 17,102 rows, of which 16,879 (98.7%) are Cellosaurus cell
+      lines against Bgee's 27 (measured 2026-08-26). Since a Bgee gene is anchored BY rdfs:label (example
+      gene_lookup), this is the co-tenant most likely to answer a Bgee question wrongly. Pin the graph.
+    mesh: "id.nlm.nih.gov/mesh (+ /vocab, /void) — 3 graphs, no Bgee IRI overlap, no documented join."
+    goa: "purl.jp/bio/11/goa — EMPTY STUB (151 triples), NOT real GOA data. Ignore it."
+    rhea: "rdfportal.org/dataset/rhea — reactions; no Bgee IRI overlap, neither trap nor join target."
+    ontology_suite: >
+      37 rdfportal.org/ontology/* graphs (uberon, cl, clo, efo, go, po, pro, so, eco, hp, mondo, fma,
+      taxonomy, orth, …), counted 2026-08-26. Grouped rather than listed one by one because the note is
+      identical for all of them: they supply vocabulary, they re-declare no Bgee instance IRI, and they are
+      collectively the `ontology_label_hub` above — every one of them is in the default union, so each
+      contributes to any unpinned rdfs:label or rdfs:subClassOf join.
+    endpoint_total: "68 named graphs on this endpoint (enumerated 2026-08-26), of which 7 are Virtuoso/OpenLink internals. Everything not named above is a UniProt-owned graph (16) or one of the ontology suite."
 
 entity_counts:                     # graph-pinned COUNT(DISTINCT), live 2026-07-22
   genes: 1559014                   # orth:Gene in GRAPH <http://bgee.org> (52 species)
@@ -46,15 +72,35 @@ entity_counts:                     # graph-pinned COUNT(DISTINCT), live 2026-07-
   expression_conditions: 123467    # genex:ExpressionCondition (anatomy × stage × sex × strain × species)
   species: 52                      # orth:Organism
   human_genes: 67139               # human orth:Gene with a label, PINNED (unpinned = 87,569 via OMA — never report)
-  call_table_note: "genex:Expression ≈ 709M rows + genex:AbsenceExpression ≈ 4.6M — NOT one-query countable; see gotcha huge_call_table. Never unfiltered-COUNT."
+  expression_calls: 709482280      # genex:Expression, graph-pinned COUNT(*) — 4.7s, verified 2026-08-26
+  absence_calls: 4642933           # genex:AbsenceExpression, graph-pinned COUNT(*) — 0.2s, verified 2026-08-26
+  call_table_note: "Both counts above ARE one-query countable and cheap — this file said they are not until 2026-08-26. It is JOINING through the call table that is expensive; see gotcha huge_call_table."
 
 global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
   - id: mandatory_graph_pin
     say: >
-      ALWAYS wrap Bgee patterns in GRAPH <http://bgee.org>. Unpinned, three co-tenants inflate: OMA re-types
-      genes (×1.30, human genes 67,139→87,569) AND re-declares their orth:organism in a foreign namespace;
-      the ontology graphs re-label anatomy IRIs (×1.64, up to ×5); UniProt+OMA re-declare taxon names (×3).
-      An unpinned query silently returns inflated counts and mixed-namespace values, never an error.
+      ALWAYS wrap Bgee patterns in GRAPH <http://bgee.org>. Three co-tenants inflate an unpinned query, on
+      three different legs — genes (co_hosted.oma), anatomy labels (co_hosted.ontology_label_hub) and taxon
+      names (gotcha taxon_label_triple); each is measured there. What matters here is the shared shape: all
+      three return INFLATED COUNTS AND MIXED-NAMESPACE VALUES WITH NO ERROR, in well under a second, so
+      neither a failure nor a delay will ever tell you. And because the legs multiply as a PRODUCT, a query
+      touching two of them is wrong by more than either figure suggests. Re-measured 2026-08-26.
+    check:
+      kind: ratio            # the gene leg: human genes with a label, unpinned vs pinned
+      date: "2026-08-26"
+      unpinned: |
+        PREFIX orth: <http://purl.org/net/orth#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT (COUNT(*) AS ?n) WHERE {
+          ?g a orth:Gene ; orth:organism <https://bgee.org/species/9606> ; rdfs:label ?l
+        }
+      pinned: |
+        PREFIX orth: <http://purl.org/net/orth#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT (COUNT(*) AS ?n) WHERE {
+          GRAPH <http://bgee.org> { ?g a orth:Gene ; orth:organism <https://bgee.org/species/9606> ; rdfs:label ?l }
+        }
+      expect: {ratio: 1.304, tolerance: 0.02}
   - id: dual_taxon_namespace
     say: >
       Bgee uses TWO parallel taxon-IRI schemes for the same NCBI taxon ID and the WRONG one silently 0-rows.
@@ -64,8 +110,25 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
   - id: taxon_label_triple
     say: >
       up:scientificName on a <http://purl.uniprot.org/taxonomy/N> IRI is declared in THREE graphs on this
-      endpoint (bgee, oma, uniprot/taxonomy): unpinned it returns 3 rows per taxon (verified 2026-07-22 on
-      9606). FIX: pin the taxon lookup to GRAPH <http://bgee.org> (Bgee carries its own copy) or to one graph.
+      endpoint (bgee 52 triples, oma 2,927, uniprot/taxonomy 2,719,973): unpinned it returns 3 rows per taxon
+      for any species Bgee covers (re-verified 2026-08-26 on 9606). ROW COUNT IS ONLY HALF THE PROBLEM, and
+      the half this entry described until 2026-08-26. THE VALUES DISAGREE ACROSS GRAPHS:
+      up:commonName for taxon 9606 is "human" in bgee but "Human" in uniprot/taxonomy — a case difference,
+      on the predicate that 14 of the 26 upstream sib-swiss/sparql-examples Bgee queries filter by. So
+      `?taxon up:commonName "human"` returns the Bgee row only, `"Human"` returns the UniProt row only,
+      and an unfiltered join returns both as if the taxon had two common names. up:rank diverges the same
+      way (up:Species in bgee/oma vs up:Taxonomic_Rank_Species in uniprot/taxonomy). DISTINCT cannot fix a
+      value conflict. FIX: pin the taxon lookup to GRAPH <http://bgee.org> (Bgee carries its own copy),
+      and prefer the taxon IRI over any name literal.
+    check:
+      kind: count            # both spellings of the common name must still be present, in different graphs
+      date: "2026-08-26"
+      query: |
+        PREFIX up: <http://purl.uniprot.org/core/>
+        SELECT (COUNT(DISTINCT ?cn) AS ?n) WHERE {
+          GRAPH ?g { <http://purl.uniprot.org/taxonomy/9606> up:commonName ?cn }
+        }
+      expect: {value: 2, tolerance: 0.0}
   - id: confidence_is_an_iri
     say: >
       genex:hasConfidenceLevel takes a CIO IRI, NOT a number/string: obo:CIO_0000029 (high) or
@@ -77,8 +140,22 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
       A genex:Expression query silently omits every not-expressed (absence) call.
   - id: huge_call_table
     say: >
-      genex:Expression ≈ 709M rows (+ 4.6M AbsenceExpression). An unfiltered COUNT or LIMIT-less scan
-      times out. ALWAYS pre-filter by gene, anatomy IRI, or species (via the condition's taxon) before aggregating.
+      genex:Expression = 709,482,280 and genex:AbsenceExpression = 4,642,933 (2026-08-26). The line that
+      matters is NOT "big table, never COUNT" — this entry said that until 2026-08-26 and it made readers
+      avoid a query that is free. A BARE TYPED COUNT IS CHEAP: `COUNT(*) { GRAPH <http://bgee.org> { ?s a
+      genex:Expression } }` returns the full 709M in 4.7s, and the AbsenceExpression one in 0.2s — Virtuoso
+      answers those from the class index without touching a row. What is genuinely out of reach is an
+      aggregate that JOINS THROUGH the call table: `?s genex:isExpressedIn ?o . ?o a ?t` GROUP BY ?t took
+      129s, which is at or past the usual client timeout, and it only gets worse with a third pattern. So:
+      COUNT a class freely; pre-filter by gene, anatomy IRI, or species (via the condition's taxon) before
+      you join anything to it. The distinction is where the cost lives, not how many rows there are.
+    check:
+      kind: count            # the bare typed COUNT completes — asserting a timeout here is what was wrong
+      date: "2026-08-26"
+      query: |
+        PREFIX genex: <http://purl.org/genex#>
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://bgee.org> { ?s a genex:Expression } }
+      expect: {value: 709482280, tolerance: 0.02}
 
 # ── examples: verified, executable atoms. Hub: Gene ↔ Expression ↔ ExpressionCondition, joined THROUGH
 #    the Expression call (genex:hasSequenceUnit → gene, genex:hasExpressionCondition → condition). ──
@@ -102,7 +179,15 @@ examples:
     verified: {result_rows: 1, gene_iri: "oma#GENE_ENSG00000075624", native_id: "ENSG00000075624", date: "2026-07-22"}
     teaches: "Anchor a gene by rdfs:label (symbol) + orth:organism <https://bgee.org/species/N> (Bgee namespace). The IRI is minted in OMA's namespace off the native accession (Ensembl/WBGene/FB/MGI…), NOT a UniProt/NCBI Gene ID. Symbols repeat across species — always restrict organism."
     traps_avoided:
-      - "?gene orth:organism <http://purl.uniprot.org/taxonomy/9606> returns 0 rows — Gene's organism is the Bgee-species namespace; the UniProt taxon IRI only appears on the ExpressionCondition (gotcha dual_taxon_namespace)."
+      - say: "?gene orth:organism <http://purl.uniprot.org/taxonomy/9606> returns 0 rows — Gene's organism is the Bgee-species namespace; the UniProt taxon IRI only appears on the ExpressionCondition (gotcha dual_taxon_namespace)."
+        check:
+          kind: zero_rows
+          date: "2026-08-26"
+          query: |
+            PREFIX orth: <http://purl.org/net/orth#>
+            SELECT ?gene WHERE {
+              GRAPH <http://bgee.org> { ?gene a orth:Gene ; orth:organism <http://purl.uniprot.org/taxonomy/9606> }
+            } LIMIT 1
 
   - id: one_call
     intent: inspect one Expression call end-to-end — the 5-predicate call shape (replaces the sample triple)
@@ -147,7 +232,19 @@ examples:
     teaches: "Gene → genex:hasSequenceUnit ← Expression → genex:hasExpressionCondition → genex:hasAnatomicalEntity is THE precise site path. Pin the anatomy rdfs:label to GRAPH <http://bgee.org> (Bgee holds its own label for all 40,646 terms)."
     traps_avoided:
       - "Do NOT use ?gene genex:isExpressedIn ?anatomy as a clean anatomy link — it is DENORMALIZED and polymorphic: values mix anatomy IRIs (UBERON/CL) with EXPRESSION_CONDITION_* IRIs that have no rdfs:label. Go through the call/condition path."
-      - "An unpinned anatomy rdfs:label multiplies rows ×1.64 (up to ×5) via the ontology co-tenants (gotcha mandatory_graph_pin)."
+      - say: "An unpinned anatomy rdfs:label multiplies rows ×1.620 (up to ×5 on a single term) via the ontology co-tenants — 40,646 labelled anatomical entities become 65,849 rows (re-measured 2026-08-26; ×1.64 until then). See gotcha mandatory_graph_pin."
+        check:
+          kind: ratio
+          date: "2026-08-26"
+          unpinned: |
+            PREFIX genex: <http://purl.org/genex#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://bgee.org> { ?a a genex:AnatomicalEntity } ?a rdfs:label ?l }
+          pinned: |
+            PREFIX genex: <http://purl.org/genex#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://bgee.org> { ?a a genex:AnatomicalEntity ; rdfs:label ?l } }
+          expect: {ratio: 1.620, tolerance: 0.02}
 
   - id: high_conf_sites
     intent: high-confidence expression sites for a gene, ranked by call count (confidence-IRI filter)
@@ -251,7 +348,7 @@ examples:
 
 # ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
 schema_delta:
-  - "Genes carry 6 rdf:type assertions on the SAME IRI (orth:Gene, orth:GeneTreeNode, orth:SequenceUnit, obo:SO_0000704, obo:CDAO_0000140, obo:BFO_0000001) — a bare `?g a ?class` COUNT multiplies ×6. Filter on orth:Gene as the canonical class."
+  - "Genes carry SEVEN rdf:type assertions on the SAME IRI, and the multiplier is NOT uniform (re-counted 2026-08-26; this line said six and implied a flat ×6). Five are on all 1,559,014 genes — orth:Gene, orth:GeneTreeNode, orth:SequenceUnit, obo:SO_0000704, obo:CDAO_0000140 — while obo:BFO_0000001 and obo:BFO_0000002 are on only 1,362,121 (87.4%). So a bare `?g a ?class` COUNT multiplies ×7 for 87% of genes and ×5 for the other 13%: you cannot divide the inflation out, and the residue looks like a real biological difference. Filter on orth:Gene as the canonical class."
   - "ExpressionCondition bundles 4 axes beyond anatomy: genex:hasDevelopmentalStage (typed efo:EFO_0000399), genex:hasSex ('any'|'male'|'female'|'hermaphrodite' string), genex:hasStrain (mostly the wild-type archetype), and obo:RO_0002162 → the UniProt taxon. Anatomy is multi-valued (a specific tissue + often obo:GO_0005575 fallback)."
   - "Other gene xrefs (all multi-valued, on the gene in GRAPH <http://bgee.org>): lscr:xrefEnsemblGene → http://rdf.ebi.ac.uk/resource/ensembl/<id> (vertebrate-dense); lscr:xrefNCBIGene → ncbi gene URL (sparse — WBGene/FB often absent). dcterms:description carries the HGNC-sourced free-text name."
   - "Anatomy is heterogeneous by clade: UBERON_/CL_ (vertebrates), WBbt_ (worm), FBbt_ (fly), plus GO_0005575. All carry rdfs:label + dcterms:description in GRAPH <http://bgee.org>."
@@ -263,7 +360,17 @@ id_join_map:
     Ensembl ENSG…/ENSDARG…, WBGene…, FB…, MGI:…). rdfs:label = the gene symbol (case-sensitive);
     dcterms:identifier = the native ID. ALWAYS pair a symbol lookup with orth:organism <https://bgee.org/species/N>.
   same_endpoint_joins:            # co-hosted on the SIB endpoint — direct GRAPH join, NO TogoID
-    uniprot: "lscr:xrefUniprot → up:Protein subject IRI in GRAPH <http://sparql.uniprot.org/uniprot> (~95% vertebrate coverage; example xdb_uniprot). Both bare-accession and MNEMONIC IRIs are emitted."
+    uniprot: >
+      lscr:xrefUniprot → an IRI under http://purl.uniprot.org/uniprot/ (~95% vertebrate coverage; example
+      xdb_uniprot). MULTI-VALUED AND HALF OF IT IS UNJOINABLE — this entry said "both bare-accession and
+      MNEMONIC IRIs are emitted" until 2026-08-26, which reads as two values; human APOC1 has SIXTEEN
+      (measured 2026-08-26). The set is every UniProt entry mapped to that gene — 1 reviewed (P02654) plus
+      7 TrEMBL — each emitted TWICE, once as the accession and once as the MNEMONIC (APOC1_HUMAN,
+      K7EJI9_HUMAN, …). Only the ACCESSION form is a real subject in the uniprot graph: <…/uniprot/P02654>
+      has 267 triples, <…/uniprot/APOC1_HUMAN> has 0, so the mnemonic half silently contributes nothing to
+      a join and the accession half fans a single gene out across 8 proteins. Filter to what you want:
+      add `up:reviewed 1` on the UniProt side to keep the one curated entry, and drop the mnemonics with
+      FILTER(!CONTAINS(STR(?x), "_")).
     uniprot_taxonomy: "ExpressionCondition obo:RO_0002162 → <http://purl.uniprot.org/taxonomy/N>; up:scientificName/up:rank there (pin ONE graph — declared in 3, gotcha taxon_label_triple)"
     oma: "genes share OMA's IRIs (oma#GENE_*) — a join is implicit but co-tenancy INFLATES unless graph-pinned (gotcha mandatory_graph_pin); treat OMA as a trap, not a convenience join"
   xrefs:                          # outbound references carried on the Bgee gene

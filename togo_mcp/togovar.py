@@ -730,15 +730,31 @@ async def search_variant(
     disease_source: str | list[str] = "",
     chromosome: str = "",
     position: int | None = None,
-    start: int | None = None,
-    stop: int | None = None,
+    # Explicit Field descriptions: the docstring documents these as COMBINED entries
+    # ("start, stop:", "min_frequency, max_frequency:"), which FastMCP's Args: parser
+    # cannot map onto individual parameters — all four shipped with EMPTY schema
+    # descriptions until 2026-08-26. A Field wins over the docstring either way.
+    start: Annotated[
+        int | None,
+        Field(description="Region start, 1-based inclusive. REQUIRES `chromosome`. Pair with `stop`; mutually exclusive with `position`."),
+    ] = None,
+    stop: Annotated[
+        int | None,
+        Field(description="Region end, 1-based inclusive. REQUIRES `chromosome`. Pair with `start`; mutually exclusive with `position`."),
+    ] = None,
     variant_type: str | list[str] = "",
     consequence: str | list[str] = "",
     clinical_significance: str | list[str] = "",
     significance_source: str | list[str] = "",
     dataset: str = "",
-    min_frequency: float | None = None,
-    max_frequency: float | None = None,
+    min_frequency: Annotated[
+        float | None,
+        Field(ge=0, le=1, description="Minimum allele frequency in [0, 1], applied to the cohort named by `dataset` — set `dataset` too, or the bound has no panel to apply to."),
+    ] = None,
+    max_frequency: Annotated[
+        float | None,
+        Field(ge=0, le=1, description="Maximum allele frequency in [0, 1], applied to the cohort named by `dataset`. E.g. dataset='tommo', max_frequency=0.01 for rare-in-Japan."),
+    ] = None,
     limit: Annotated[int, Field(ge=0, le=1000)] = 100,
     offset: Annotated[int, Field(ge=0)] = 0,
     stat: bool = False,

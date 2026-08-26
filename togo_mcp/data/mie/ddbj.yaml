@@ -38,18 +38,45 @@ graphs:
 entity_counts:                     # graph-pinned division counts, live 2026-07-22 — the unpinned total is not one-query countable
   phg_entries: 52724               # Division#PHG (phage)
   bct_entries: 2973050             # Division#BCT (bacteria)
-  total_note: "~280M entries across 21 divisions; an UNPINNED total COUNT scans all rows and TIMES OUT (gotcha aggregation_scope) — count per-division IRI instead."
+  entries_total: 279979849         # ALL nuc:Entry, graph-pinned COUNT — 4.0s, verified 2026-08-26
+  total_note: "~280M entries across 21 divisions. The whole-DB total IS countable in one query (4.0s) — this note said it TIMES OUT until 2026-08-26. Count per-division for the split or the 20x speed-up, not because the total is unreachable."
 
 global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
   - id: mandatory_entry_scope
     say: >
       Feature types (Gene, Coding_Sequence, RNA, Source) span ~280M entries. Joining them WITHOUT first
-      pinning to one entry — FILTER(CONTAINS(STR(?feature), "ACCESSION")) — builds a Cartesian product and
-      times out in seconds. Always entry-scope (an accession) OR division-scope (a Division# IRI) before a feature join.
+      pinning to one entry — FILTER(CONTAINS(STR(?feature), "ACCESSION")) — builds a Cartesian product:
+      Coding_Sequence joined to Gene with no entry pin is 635,762,148 rows (measured 2026-08-26). THAT is
+      the trap, and it is a WRONG ANSWER, not a failure. This entry said the join "times out in seconds"
+      until 2026-08-26; timing is in fact the least reliable thing about it — cold it can exceed 70s, warm
+      it returns in 0.1s, so whether you notice depends on who ran what before you. The row count does not
+      move. Always entry-scope (an accession) OR division-scope (a Division# IRI) before a feature join.
+      NOTE the cost is the JOIN, not the size: a plain COUNT over all ~280M nuc:Entry finishes in 4s
+      (gotcha aggregation_scope).
+    check:
+      kind: count            # the Cartesian product's SIZE — stable, unlike its runtime
+      date: "2026-08-26"
+      query: |
+        PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+        PREFIX bfo: <http://purl.obolibrary.org/obo/BFO_>
+        SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/ddbj>
+        WHERE { ?cds a nuc:Coding_Sequence ; bfo:0000050 ?gene . ?gene a nuc:Gene . }
+      expect: {value: 635762148, tolerance: 0.05}
   - id: aggregation_scope
     say: >
-      COUNT(*)/GROUP BY over nuc:Entry or any feature WITHOUT a division/entry filter scans all ~280M rows and
-      times out (60s). Scope to a single nuc:division IRI (a per-division COUNT completes in <5s) or use LIMIT sampling.
+      A bare COUNT over nuc:Entry does NOT time out — this entry said it did until 2026-08-26. All ~280M rows
+      count in 4.0s (279,979,849 measured 2026-08-26): Virtuoso answers a plain typed COUNT from the index and
+      never touches a row. Scoping to a nuc:division IRI is still the right habit and is ~20x faster (PHG =
+      52,724 in 0.2s), but for COST, not feasibility — do not abandon a whole-DB total believing it impossible.
+      What genuinely does not return is a COUNT/GROUP BY that JOINS features together without an entry pin
+      (gotcha mandatory_entry_scope); there the cost is the Cartesian product, not the row count.
+    check:
+      kind: count            # the unscoped 280M-row COUNT completes
+      date: "2026-08-26"
+      query: |
+        PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+        SELECT (COUNT(?e) AS ?n) FROM <http://rdfportal.org/dataset/ddbj> WHERE { ?e a nuc:Entry }
+      expect: {value: 279979849, tolerance: 0.05}
   - id: taxon_label_double
     say: >
       The same taxon IRI is typed in TWO graphs and BOTH carry rdfs:label with different values: ontology/taxonomy
@@ -159,7 +186,26 @@ examples:
     teaches: "CDS→Gene is bfo:0000050 (part_of); coordinates are FALDO (faldo:location → faldo:begin/end → faldo:position); NCBI protein is rdfs:seeAlso on the CDS. Entry-scope the CDS FIRST."
     traps_avoided:
       - "sio:SIO_010081 does NOT link CDS→Gene here — it returns 0 rows silently. The real predicate is bfo:0000050."
-      - "The COUNT(DISTINCT ?cds) form of this exact join TIMES OUT (verified live 2026-07-22, 60s). Use the row form with LIMIT, or pre-scope to one entry before counting."
+      - say: "The COUNT(DISTINCT ?cds) form of this exact join TIMES OUT — and it is the ONLY timeout claim in this whole MIE corpus that survived re-measurement (2026-08-26: five consecutive runs, all >70s, warm cache and cold). Every other 'this times out' warning across 37 files turned out to be either false or merely cache-cold. The LIMIT is what makes the row form tractable: it lets Virtuoso stop early, which a COUNT cannot. Use the row form, or pre-scope to one entry before counting."
+        check:
+          kind: error
+          date: "2026-08-26"
+          expect: {timeout_s: 90}
+          query: |
+            PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+            PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+            PREFIX bfo: <http://purl.obolibrary.org/obo/BFO_>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT (COUNT(DISTINCT ?cds) AS ?n)
+            FROM <http://rdfportal.org/dataset/ddbj>
+            WHERE {
+              ?cds a nuc:Coding_Sequence ; nuc:locus_tag ?locus ; nuc:product ?product ;
+                   faldo:location ?region ; rdfs:seeAlso ?protein .
+              FILTER(CONTAINS(STR(?cds), "CP036276.1"))
+              FILTER(CONTAINS(STR(?protein), "ncbiprotein"))
+              ?region faldo:begin/faldo:position ?start ; faldo:end/faldo:position ?end .
+              ?cds bfo:0000050 ?gene . ?gene a nuc:Gene .
+            }
 
   - id: count_division
     intent: count entries in a division correctly (the scoped-aggregation recipe)
@@ -175,7 +221,7 @@ examples:
     verified: {n: 52724, date: "2026-07-22"}
     teaches: "Scope a COUNT to one Division# IRI and it completes in <5s; the whole-DB total must be summed across per-division counts."
     traps_avoided:
-      - "An unscoped COUNT(*) over nuc:Entry scans ~280M rows and times out (gotcha aggregation_scope)."
+      - "An unscoped COUNT(*) over nuc:Entry returns 279,979,849 in 4.0s — it does NOT time out (this line said it did until 2026-08-26). Scope by division for the per-division split or the 20x speed-up, not because the total is unreachable (gotcha aggregation_scope)."
 
   - id: enum_taxonomy_subtree
     intent: enumerate ALL DDBJ entries for a WHOLE CLADE via the taxonomy subtree (the set-level higher-clade route)

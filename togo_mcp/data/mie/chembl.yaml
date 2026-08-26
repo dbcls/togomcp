@@ -71,10 +71,23 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
       smiles/inchi/inchikey/formula) are PLAIN literals; appending ^^xsd:string matches NOTHING (a DATATYPE() probe
       misleadingly reports xsd:string — Virtuoso matches TERMS, not values). Numeric sio:SIO_000300 (full_mwt, alogp,
       psa) genuinely ARE xsd:double. Use the plain form, or FILTER(STR(?x)=...) to be form-agnostic.
-  - id: taxonomy_classification_timeout
+  - id: taxonomy_and_classification
     say: >
-      Combining a cco:taxonomy IRI with cco:hasProteinClassification in one query TIMES OUT. For organism filtering
-      use the typed predicate cco:organismName "Homo sapiens" instead of the taxonomy IRI (see example class_enum).
+      Combining a cco:taxonomy IRI with cco:hasProteinClassification in one query is FINE — 5,820 human
+      SingleProtein/classification pairs in 0.2s (2026-08-26). This entry said the combination "TIMES OUT"
+      until then, and it does not. Either organism filter works: the cco:taxonomy IRI
+      <http://identifiers.org/taxonomy/9606> or the typed literal cco:organismName "Homo sapiens". Prefer the
+      IRI when you already have a taxid and the literal when you have a name — that is a convenience choice,
+      not a performance one, and the old wording made it look like a hazard.
+    check:
+      kind: count            # the combination the old text called a timeout
+      date: "2026-08-26"
+      query: |
+        PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+        SELECT (COUNT(DISTINCT ?t) AS ?n) FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+        WHERE { ?t a cco:SingleProtein ; cco:taxonomy <http://identifiers.org/taxonomy/9606> ;
+                   cco:hasProteinClassification ?c . }
+      expect: {value: 5820, tolerance: 0.10}
 
 # ── examples: the load-bearing content — executable, verified atoms. Core model:
 #    Molecule → Activity → Assay → Target (cco:hasMolecule / cco:hasAssay / cco:hasTarget). ──
@@ -100,7 +113,7 @@ examples:
     verified: {result_rows: 29, date: "2026-07-22", first_row: "CHEMBL254 = 3',5'-cyclic-AMP phosphodiesterase 4A"}
     teaches: "cco:hasProteinClassification <CHEMBL_PC_NNN> is THE set-level route to 'all targets in family X' — a controlled-vocabulary IRI, complete and index-fast, NOT a bif:contains scan of target labels. ~36% of SingleProtein targets carry a classification."
     traps_avoided:
-      - "Filter organism with cco:organismName \"Homo sapiens\" (typed predicate). Combining a cco:taxonomy IRI with the classification IRI times out (gotcha taxonomy_classification_timeout)."
+      - "Either organism filter works here: cco:organismName \"Homo sapiens\" (typed literal) or cco:taxonomy <http://identifiers.org/taxonomy/9606> (IRI). This line said the taxonomy IRI + classification combination times out until 2026-08-26; it returns 5,820 in 0.2s (gotcha taxonomy_and_classification)."
       - "The naive route — bif:contains 'phosphodiesterase' on rdfs:label — misses orthologs/renamed entries and mixes non-target entities; the classification IRI is the complete set."
       - "`a cco:SingleProtein` NARROWS this to single proteins by design — 29 of the 48 typed human PDE targets. Families, complexes, selectivity groups, PPIs and chimeras carry the same classification IRI (PROTEIN FAMILY 8 incl. 'Phosphodiesterase 4', SELECTIVITY GROUP 5, PROTEIN-PROTEIN INTERACTION 4, PROTEIN COMPLEX 1, CHIMERIC PROTEIN 1). For all 48, swap the pin for `cco:targetType ?targetType` — do NOT simply delete it: cco:hasProteinClassification + cco:organismName also sit on TargetComponents, so an unconstrained ?target matches 80 entities, 32 of them components. See example moa_target_types."
 
@@ -222,7 +235,15 @@ examples:
     verified: {result_rows: 50, date: "2026-07-22", first_row: "ATENOLOL 14634.0 nM"}
     teaches: "Activity→target is the property path cco:hasAssay/cco:hasTarget; cco:standardType is a typed controlled-vocabulary value (no text search). Anchor the target by IRI (from name_resolve or search_chembl_target)."
     traps_avoided:
-      - "ALWAYS bind cco:standardUnits when comparing values — 1 nM ≠ 1 uM ≠ 1 % — and keep a LIMIT: an unbounded scan of the 21M-row activity graph times out."
+      - say: "ALWAYS bind cco:standardUnits when comparing values — 1 nM ≠ 1 uM ≠ 1 %. That is the load-bearing half. The LIMIT is for your own sake, not the endpoint's: an unbounded aggregate over the whole activity graph returns 19,816,487 in 1.1s (2026-08-26), so it does NOT time out as this line claimed until then. Keep the LIMIT on ROW queries because you do not want 19M rows back, and drop it without fear when you actually want the total."
+        check:
+          kind: count       # the unbounded activity scan the old text called a timeout
+          date: "2026-08-26"
+          query: |
+            PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+            SELECT (COUNT(*) AS ?n) FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+            WHERE { ?a a cco:Activity ; cco:standardValue ?v ; cco:standardUnits ?u }
+          expect: {value: 19816487, tolerance: 0.10}
 
   - id: assay_search
     intent: keyword-search assay free text (the one legitimate bif:contains field)
@@ -255,7 +276,16 @@ examples:
     verified: {n: 51, date: "2026-07-22"}
     teaches: "Count drugs-per-target via the curated cco:Mechanism link (7,568 rows total, bounded) — combine a classification IRI with cco:Mechanism and COUNT(DISTINCT)."
     traps_avoided:
-      - "Do NOT count via ?activity cco:hasAssay/cco:hasMolecule — that fans out over 21M activities and TIMES OUT at 60s even for a COUNT. The Mechanism link is the curated, bounded path."
+      - say: "Prefer the curated cco:Mechanism link over ?activity cco:hasAssay/cco:hasMolecule, because the two answer DIFFERENT questions — Mechanism is the curated drug-target relationship, the activity fan-out is every molecule ever assayed against the target. It is not a performance choice: the activity route through a bound target IRI returns 18,740 distinct molecules in 1.0s (2026-08-26), where this line claimed it TIMES OUT at 60s. Anchor the target either way; an activity scan with the target unbound is the shape that hurts."
+        check:
+          kind: count       # the activity fan-out the old text called a timeout
+          date: "2026-08-26"
+          query: |
+            PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+            SELECT (COUNT(DISTINCT ?m) AS ?n) FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+            WHERE { ?act a cco:Activity ; cco:hasAssay ?assay ; cco:hasMolecule ?m .
+                    ?assay cco:hasTarget <http://rdf.ebi.ac.uk/resource/chembl/target/CHEMBL203> . }
+          expect: {value: 18740, tolerance: 0.10}
       - "Do NOT scope a comprehensive count by molecule/target IRIs sampled from an exploratory query (circular reasoning) — scope by the classification IRI."
 
   - id: moa_target_types          # the TARGET-side twin of molecule_name_resolve's biologic trap

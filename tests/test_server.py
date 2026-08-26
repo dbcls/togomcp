@@ -396,6 +396,98 @@ class TestMIETrapBanner:
         assert doc["discovery"]["title"] == "UniProt RDF"
 
 
+class TestMIECheckBlockStripping:
+    """`check:` blocks are CI fixtures and must never reach the caller (spec §3.6).
+
+    Half the check kinds hold a query written to FAIL — `zero_rows`, `absent` and
+    `error`. `get_MIE_file` tells the reader every SPARQL string in the file is a
+    verified route to adapt, so shipping a deliberately-broken one is worse than
+    wasting the bytes. Stripping is text-level rather than a YAML round-trip
+    because these files carry load-bearing comments a round-trip would delete.
+    """
+
+    def test_strips_check_keeps_everything_else(self) -> None:
+        import yaml
+
+        from togo_mcp.rdf_portal import _strip_check_blocks
+
+        src = (
+            "global_gotchas:\n"
+            "  - id: a\n"
+            '    say: "keep me"\n'
+            "    check:\n"
+            "      kind: ratio\n"
+            "      unpinned: |\n"
+            "        SELECT (COUNT(*) AS ?n) WHERE { ?s a <X> }\n"
+            "\n"
+            "      pinned: |\n"
+            "        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <G> { ?s a <X> } }\n"
+            "      expect: {ratio: 6.29}\n"
+            "  - id: b\n"
+            '    say: "also keep"\n'
+            "examples:\n"
+            "  - id: e\n"
+            "    sparql: |\n"
+            "      SELECT * WHERE { ?s ?p ?o }\n"
+            "    traps_avoided:\n"
+            '      - say: "trap text"\n'
+            "        check:\n"
+            "          kind: error\n"
+            "          query: |\n"
+            "            SELECT * WHERE { ?a <p>+ ?b }\n"
+            '      - "plain string trap"\n'
+        )
+        out = _strip_check_blocks(src)
+
+        assert "check:" not in out
+        assert "COUNT(*)" not in out and "?a <p>+ ?b" not in out
+        # Everything the reader is meant to see survives, including the sibling
+        # `say` of a trap that carried a check and the real example query.
+        for kept in ("keep me", "also keep", "trap text", "plain string trap",
+                     "SELECT * WHERE { ?s ?p ?o }"):
+            assert kept in out
+        doc = yaml.safe_load(out)
+        assert len(doc["global_gotchas"]) == 2
+        assert len(doc["examples"][0]["traps_avoided"]) == 2
+
+    def test_content_without_checks_is_untouched(self) -> None:
+        """A file with no `check:` must come back byte-identical.
+
+        The fixture is chosen dynamically rather than named: checks are being added
+        to the corpus over time, so hard-coding a file here means this test quietly
+        stops testing anything the day that file gains one.
+        """
+        from togo_mcp.rdf_portal import _strip_check_blocks
+
+        for path in sorted(Path("togo_mcp/data/mie").glob("*.yaml")):
+            src = path.read_text(encoding="utf-8")
+            if "check:" in src:
+                continue
+            assert _strip_check_blocks(src) == src, path.name
+            return
+        pytest.skip("every MIE now carries a check: block")
+
+    def test_shipped_mies_still_parse_after_stripping(self) -> None:
+        """Strip every real MIE and confirm the served form is valid YAML.
+
+        The stripper walks indentation, so a `check:` written at an unexpected
+        depth could in principle eat a sibling key. Running it over the whole
+        corpus is the cheapest guard against that.
+        """
+        import yaml
+
+        from togo_mcp.rdf_portal import _strip_check_blocks
+
+        for path in sorted(Path("togo_mcp/data/mie").glob("*.yaml")):
+            served = _strip_check_blocks(path.read_text(encoding="utf-8"))
+            doc = yaml.safe_load(served)
+            assert isinstance(doc, dict), path.name
+            assert doc.get("mie_spec") == 3, path.name
+            assert doc.get("database") == path.stem, path.name
+            for gotcha in doc.get("global_gotchas") or []:
+                assert "check" not in gotcha, f"{path.name}: {gotcha.get('id')}"
+
+
 class TestUsageGuideEndpointTable:
     """The guide's endpoint table is a hand-written copy of endpoints.csv.
 

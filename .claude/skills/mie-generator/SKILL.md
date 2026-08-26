@@ -366,6 +366,11 @@ sibling graph(s), the multiplier, and whether it is a reference-node LABEL or a 
 this DB's own entity. This list is the source for the `graphs.co_hosted` map and a
 `global_gotchas` entry in Phase 4 — write it down now, do not reconstruct from memory.
 
+**Keep the QUERIES, not just the numbers.** The pinned/unpinned pair you just ran becomes the
+`check:` block on that gotcha verbatim (spec §3.6, Phase 4). Reconstructing it later is how the
+figure and its test end up measuring two different things — and a check that agrees with a
+mis-measured claim is worse than none, because it certifies the error.
+
 **Record the outcome either way — a clean probe is a RESULT, not a skip.** If 2g finds no
 re-declaration, say so AND say what you probed: which legs (type, label/identifier, cross-class,
 hub) and the figure behind the verdict. A bare "no re-declaration found" is not enough — a narrow
@@ -412,7 +417,22 @@ Use `references/template.yaml` as your scaffold. Copy it to the target path, the
 3. **The header** — `endpoint`, optional `base_uri`, `graphs`, optional `entity_counts`, `global_gotchas`.
    - **`graphs.co_hosted` is REQUIRED whenever `get_graph_list()` returned >1 graph.** If 2g found re-declaration: one `{name: note}` entry per sibling graph, naming the re-declared predicate(s), the multiplier, the trap kind (reference-label inflation / entity re-typing / empty stub / join target) and the fix. If 2g found nothing, record it explicitly (`probed_clean: "2g probe run YYYY-MM-DD — no re-declaration found"`) — do NOT omit the field; a silent omission is indistinguishable from never having probed. Copy the shape from `uniprot.yaml`; do not invent a new one.
    - **`entity_counts`** — every value `COUNT(DISTINCT)` + graph-pinned, each with a `date:`. Record the inflated unpinned `COUNT(*)` with a "never report" note where union inflation exists.
-   - **`global_gotchas`** — the 2–5 database-wide traps, each `{id, say}`. If 2g fired, one of them is `union_inflation`: the per-predicate multipliers; that joining several re-declared predicates multiplies as the PRODUCT; that `a <OwnEntityClass>` may be re-typed by a sibling graph so a bare COUNT double-counts; and the SAFE PATTERN — pin this DB's own graph(s) with GRAPH/FROM (or use `COUNT(DISTINCT ?entity)`). Note that `SELECT DISTINCT` only MASKS the symptom and can collapse genuine multi-valued predicates.
+   - **`global_gotchas`** — the 2–5 database-wide traps, each `{id, say}` **plus a `check:` on every falsifiable claim** (spec §3.6; validated in Phase 5e-2). If 2g fired, one of them is `union_inflation`: the per-predicate multipliers; that joining several re-declared predicates multiplies as the PRODUCT; that `a <OwnEntityClass>` may be re-typed by a sibling graph so a bare COUNT double-counts; and the SAFE PATTERN — pin this DB's own graph(s) with GRAPH/FROM (or use `COUNT(DISTINCT ?entity)`). Note that `SELECT DISTINCT` only MASKS the symptom and can collapse genuine multi-valued predicates.
+     - **Paste 2g's own queries into the `check:`. Do not compose new ones.** Phase 2g ends by running the realistic join pinned vs unpinned and reporting THAT — those two queries and their quotient *are* a `kind: ratio` check, already executed, already agreed with the figure you are about to write down:
+
+       ```yaml
+       - id: mandatory_graph_pin
+         say: "…unpinned returns ×6.29 (128,429 vs 20,430) and completes in 0.8s, so nothing signals it…"
+         check:
+           kind: ratio
+           date: "<today>"
+           unpinned: |    <the exact unpinned query from 2g>
+           pinned:   |    <the exact pinned query from 2g>
+           expect: {ratio: 6.29, tolerance: 0.05}
+       ```
+
+       This is the cheapest recurrence-prevention in the whole workflow — the queries have already run, and the only work left is not throwing them away. It also removes the failure mode where the prose and the check are measured separately and quietly disagree: a hand-written check that "confirms" a number the `say` got from somewhere else is worse than no check, because it looks verified.
+     - The same applies to the other kinds: a `zero_rows` claim comes from the probe that returned zero, an `absent` claim from the graph you found empty, a `count` from the count you just ran. **If you are inventing a query to justify a sentence, the sentence is not yet evidence** — go measure it, then write both.
 4. **`examples`** — the core. Each entry: `id`, `intent`, `question`, `complexity`, `sparql`, `verified:` (the live result **+ `date:`**), `teaches`, optional `traps_avoided`; `endpoint_name` on `cross_db` examples only. Include the enumeration route(s), one `aggregation`, and one `cross_db` where the DB supports them (Phase 3). A query-specific trap goes here as a `traps_avoided` line, never in `global_gotchas`.
 5. **`schema_delta`** (optional) — ONLY non-obvious predicates/idioms **no example demonstrates**. If a predicate appears in an example, it does NOT go here. Not a schema dump.
 6. **`id_join_map`** — `stable_anchor`, optional `same_endpoint_joins` (co-hosted direct GRAPH joins — point each at its `cross_db` example), optional `xrefs` (mechanism-agnostic, with coverage), optional `bridged_via_togoid`.
@@ -473,6 +493,34 @@ SELECT ?s WHERE { GRAPH <…> { ?s <cited-predicate> ?o } } LIMIT 1
 
 Zero rows → the cited predicate/IRI is wrong; fix it. A warning about a non-existent predicate is worse than no warning. Also confirm each trap is still accurate against the current snapshot — one documented in a previous version may have been corrected upstream.
 
+**5e-2. Every falsifiable claim carries a `check:`, and the checker is clean.** Read each `say` and each `traps_avoided` line and ask one question: **does this assert something the endpoint can settle?** A number, a multiplier, "returns 0 rows", "is not here", "does not run" — all falsifiable, all get a `check:` (spec §3.6). Qualitative advice ("use the IRI", "filter early") does not. Then:
+
+```bash
+uv run python scripts/check_mie_gotchas.py <db>     # must be clean: 0 drift, 0 malformed
+```
+
+Run it with `--coverage-only` first: it lists claims that *look* falsifiable but carry no check, so you triage a short list instead of re-reading the file. The heuristic over-reports on purpose — a cross-reference to a checked gotcha is fine to leave alone; a fresh assertion is not.
+
+**Timeout and "unrunnable" claims take `kind: error` specifically, and this is the part to slow down on.** Under that kind an operation that COMPLETES fails the check — which is the whole point, because the completing case is the one that has always been wrong here. The 2026-08-25 header sweep found **six** false timeout claims across four files that every prior gate had passed:
+
+| File | Claimed | Actually |
+|---|---|---|
+| `oma` `mandatory_graph_pin` | unpinned join "unrunnable" | ×6.29 wrong answer in **0.8s** |
+| `oma` `entity_counts` | both whole-class COUNTs time out at 60s | **18s** and **41s** |
+| `oma` `property_path_timeout` | unbound prefix scan times out | **30.4s** |
+| `bgee` `huge_call_table` | unfiltered COUNT times out | **4.7s** for 709M |
+| `rhea` `count_timeout` | participant-path COUNT times out | **0.2s** |
+| `uniprot` `xdb_rhea` | aggregate join >60s | **16.8s** |
+
+Six for six in the same direction, which is not chance: nobody writes "this hangs" after watching something return, so a false timeout is only ever *inherited* — copied from an earlier version, or inferred from one slow run on a busy endpoint — and then never re-tested, because the warning's own advice is not to run it.
+
+Treat a false timeout as a **§4.4 violation**, not a harmless over-warning. §4.4 says a positive route must not survive only as a caveat; a phantom timeout is the same failure through the opposite door — it converts a working route into one the reader is told to avoid, and it is *more* durable than the §4.4 case because it actively discourages the experiment that would disprove it. Three of the six above were steering readers away from queries that answer their question in under a second.
+
+Three disciplines when writing the check:
+- **Do not encode a marginal claim.** bgee's join-bearing aggregate measured 129s against a 120s client timeout. "Times out" is a coin flip there, so it is stated as a measured runtime and checked as a `count`. Weaken the claim rather than widening the tolerance.
+- **RUN IT TWICE.** Virtuoso's buffer cache makes the same query take 75s and then 0.1s. In the 2026-08-26 corpus sweep, four timeout claims survived a *first* re-measurement and **two collapsed on the second run** — ncbigene's un-scoped gene enumeration and pubmed's STRSTARTS topic COUNT both went to ~0.1s. A single cold measurement is how a false timeout gets written in the first place; a single cold *re*-measurement is how one gets confirmed by mistake. If run two completes, the claim is cache-state-dependent: give both figures in the `say` and check something stable (the result value, or the fix the gotcha prescribes), because a `kind: error` check on a cacheable query will fail CI at random. Corpus-wide only two claims fail warm (`ddbj` gene_cds_protein, `pubchem` compound_scan_timeout). Pass the lesson on to the reader too: **never diagnose a query's correctness from how long it took** — fast may just mean warm, and every silent-wrong-answer trap in this corpus returns fast.
+- **Re-measure before you keep an inherited warning.** If the previous version says something fails, that is a hypothesis, not evidence. Run it. If it completes, the finding is not "the warning is stale" but "the warning was wrong" — say so in the `say`, dated, so the next author does not quietly restore it.
+
 **5f. Verify `id_join_map` and `entity_counts`.** Mint each xref IRI form by DESCRIBEing a real entity and reading the actual object value (do not trust documentation); if two forms exist, name which is the join key. Every `entity_counts` value is `COUNT(DISTINCT)` + graph-pinned, re-run this pass, with its `date:`. A coverage percentage must equal `(subset count)/(class count)` to within rounding — document ~65.9%, not a loose "~70%".
 
 **5g. Verify every search-wrapper claim.** Rule 2 covers tool-behavior claims, not just SPARQL. For each assertion the file makes about a `search_*` / `ncbi_esearch` / `OLS4:searchClasses` tool (scan `teaches`/`traps_avoided`/`id_join_map`), call the tool exactly as the claim implies and confirm the result. "Tool X maps term T to ID I" passes ONLY if the tool returns I *usably*: at the top, or within a limit a caller would plausibly use — not at rank 5 behind unrelated hits, and present at the limit the claim states. If the tool doesn't satisfy the claim, rewrite it to what the tool actually does (with the rank/limit caveat) or drop it. (Real regression: the ChEMBL MIE claimed `search_chembl_target("EGFR") → CHEMBL203`; the tool returned CHEMBL203 at rank 5, and not at all at `limit=3`.)
@@ -495,6 +543,13 @@ Corpus mean is **64%** (sd 4; range 53–73). Two ways to fail:
 
 Growth is fine when it is verified content in the right section. A raw byte target is not a criterion — the only way to hit one is deleting verified content.
 
+**One carve-out: a header-only CORRECTION pass fails 5i mechanically, and the remedy above is the wrong prescription for it.** If the revision's whole scope was fixing header facts — re-measured counts, a corrected multiplier, an enumerated `co_hosted`, a declared absence — then `examples` did not shrink; the header grew, which is the same ratio moving for the opposite reason. Check which happened before acting: compare the **absolute** `examples` bytes against the previous version, not just the share.
+
+- `examples` bytes FELL, or stayed flat while prose repeating them grew → the real 5i failure. Hunt for restatement (§4.2) and cut it.
+- `examples` bytes held or grew, and the header grew faster → expected. Do NOT compress correct, verified header facts to recover a ratio; that trades an accurate file for a passing metric. Record the share, say why it moved, and move on.
+
+*Worked case (2026-08-26 header sweep):* `bgee` went 61.1% → 48.8%. Its `examples` grew **+143 bytes** while the header grew **+4,746** — the enumerated `co_hosted` the sweep required, a rewritten `huge_call_table`, a 16-valued xref correction. Nothing had crowded anything out; the file was simply half header now, and every added byte was a measured fact that had been wrong. `uniprot` (72.0% → 60.8%) and `oma` (65.4% → 58.5%, and that WITH a new example) moved the same way for the same reason.
+
 ### Phase 6 — Regenerate the catalog, then declare
 
 **If you added, removed, or changed the MIE's `discovery` block** (title, description, keywords, or categories), regenerate the static database catalog so the served Usage Guide stays in sync:
@@ -516,7 +571,9 @@ Only after Phases 1–5 (and the regeneration above) are complete, report to the
     every set-level enumeration route is a first-class example (enumeration_audit tier: [A/B/C/OK])
   - cross-graph inflation: co-hosted endpoint probed (2g), multipliers + safe pattern validated
     and recorded in graphs.co_hosted/global_gotchas — or "single-graph endpoint, N/A"
-  - global_gotchas/traps_avoided: all cited predicate names and IRIs confirmed against endpoint
+  - global_gotchas/traps_avoided: all cited predicate names and IRIs confirmed against endpoint;
+    every falsifiable claim carries a check: and check_mie_gotchas.py <db> is clean (0 drift, 0 malformed);
+    every timeout/"unrunnable" claim re-measured this pass and written as kind: error (5e-2)
   - id_join_map/entity_counts verified: xref IRI forms confirmed by DESCRIBE, counts COUNT(DISTINCT)+pinned+dated
   - search-wrapper claims verified: every search_*/ncbi/OLS4 tool-behavior claim run through
     the tool and confirmed to return the stated result usably (5g) — or "no tool-behavior claims"
@@ -536,7 +593,7 @@ A complete v3 MIE file satisfies:
 - **Every** `examples[].sparql` re-run live, with a `verified:` block carrying the real result + a `date:` (never `on:`). `check_mie_examples.py <db>` clean.
 - Query craft: prioritise specific IRIs / typed predicates over text search; `bif:contains` over `FILTER(CONTAINS())` on Virtuoso, property paths split before it; no circular reasoning (never `VALUES ?x { <search-api results> }` inside a COUNT).
 - At least one `aggregation` and one `cross_db` example where the DB supports them; every set-level enumeration route is a first-class `example` (not a caveat) — spec §4.4.
-- `global_gotchas` documents every database-wide silent-failure trap (mandatory filters, IRI namespace mismatches, absent labels, verbatim typos, union inflation); every cited predicate/IRI confirmed live.
+- `global_gotchas` documents every database-wide silent-failure trap (mandatory filters, IRI namespace mismatches, absent labels, verbatim typos, union inflation); every cited predicate/IRI confirmed live; every falsifiable claim carries a `check:` and `check_mie_gotchas.py <db>` is clean. No timeout claim survives without a `kind: error` check that still fails — six were false when first tested (5e-2).
 - On a multi-graph endpoint, cross-graph re-declaration probed (2g); any union-inflation trap recorded in `graphs.co_hosted` + `global_gotchas` with the graph-pinned safe pattern (or `probed_clean`).
 - Every search-wrapper behavior claim run through the tool and confirmed at a usable rank/limit — not just that the tool ran (5g).
 - No example subject drawn from the benchmark for this DB (spec §4.6).
@@ -548,7 +605,8 @@ A complete v3 MIE file satisfies:
 - `references/template.yaml` — the fillable v3 YAML skeleton with inline comments.
 - `references/anti-patterns.md` — where trap knowledge lives in v3 (`global_gotchas` vs inline `traps_avoided`), and the enumeration-route rule.
 - `references/enumeration_audit.md` — the per-DB §4.4 enumeration-route table (all 36 DBs, Tier A/B/C/OK). **Read this DB's row before Phase 3/5** — it says whether the file must add a new `enum_*` example or keep an existing route+caveat together.
-- `togo_mcp/data/docs/MIE_v3_spec.md` — **the authorable contract.** Read it; it wins over this skill on any disagreement.
+- `scripts/check_mie_gotchas.py` — executes the `check:` on every falsifiable `global_gotchas`/`traps_avoided` claim and warns about claims that carry none (`--coverage-only`). The prose counterpart of `check_mie_examples.py`.
+- `togo_mcp/data/docs/MIE_v3_spec.md` — **the authorable contract.** Read it; it wins over this skill on any disagreement. §3.6 defines the `check:` block.
 - `togo_mcp/data/mie/uniprot.yaml` — the worked v3 reference.
 
 ## One more thing about text search

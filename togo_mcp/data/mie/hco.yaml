@@ -32,8 +32,11 @@ graphs:
       co-tenancy-CLEAN — a 2026-07-17 reverse+label+cross-class probe measured ×1.00 (no row duplication,
       no scope bleed): its faldo:Region/Position nodes are BLANK NODES (graph-scoped by construction) and
       the only addressable IRIs (band/chromosome owl:Class + build-qualified region IRIs) are HCO-exclusive.
-      They are join targets, NOT traps. The GRAPH pin is mandatory for COST, not collision — an UNSCOPED
-      faldo:Region pattern times out at 60s (gotcha graph_pin).
+      They are join targets, NOT traps. The GRAPH pin is mandatory for SCOPE, not collision and not cost —
+      an UNSCOPED faldo:Region pattern returns 78,201,718 rows against HCO's 1,724, a ×45,360 scope bleed,
+      IN 3.8 SECONDS (measured 2026-08-26). This note said it "times out at 60s" until then, which is both
+      wrong and the wrong worry: the danger is that it answers, fast, with 45,000x the right number, made
+      almost entirely of other datasets' regions (gotcha graph_pin).
 
 entity_counts:                     # COUNT(DISTINCT), graph-pinned to <…/dataset/hco>, live 2026-07-22
   cytoband_classes: 862            # rdfs:subClassOf hco:Cytoband
@@ -46,9 +49,25 @@ entity_counts:                     # COUNT(DISTINCT), graph-pinned to <…/datas
 global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
   - id: graph_pin
     say: >
-      Always FROM (or GRAPH-pin) <http://rdfportal.org/dataset/hco> — the 'primary' endpoint hosts ~40
-      datasets and an unscoped faldo:Region / cytoband pattern both pulls in foreign ontologies and TIMES
-      OUT at 60s. HCO's own layer is collision-clean, but the pin is non-negotiable for cost/scope.
+      Always FROM (or GRAPH-pin) <http://rdfportal.org/dataset/hco>. The 'primary' endpoint hosts ~40 datasets
+      and an unscoped faldo:Region / cytoband pattern pulls in every one of their regions: 78,201,718 rows
+      against HCO's 1,724 — a ×45,360 SCOPE BLEED, the widest in this corpus. It does NOT time out; it answers
+      in 3.8s (measured 2026-08-26; this entry said "TIMES OUT at 60s" until then). Read that as the reason to
+      pin, not a reason to relax: a hang would at least tell you something was wrong, whereas 78M well-formed
+      foreign regions in under four seconds look like a successful query. HCO's own layer is collision-clean —
+      its faldo nodes are blank nodes and its IRIs are HCO-exclusive — so DISTINCT cannot help either; nothing
+      is duplicated, the extra rows are simply other datasets' data. Only the pin fixes it.
+    check:
+      kind: ratio
+      date: "2026-08-26"
+      unpinned: |
+        PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+        SELECT (COUNT(*) AS ?n) WHERE { ?r a faldo:Region ; faldo:begin ?b ; faldo:end ?e }
+      pinned: |
+        PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+        SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/hco>
+        WHERE { ?r a faldo:Region ; faldo:begin ?b ; faldo:end ?e }
+      expect: {ratio: 45360, tolerance: 0.10}
   - id: backslash_iri
     say: >
       Build-qualified IRIs join the entity and the build with a LITERAL BACKSLASH, not a slash: band 13q14.2

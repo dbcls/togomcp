@@ -74,7 +74,8 @@ MIE_DIR = ROOT / "togo_mcp" / "data" / "mie"
 ENDPOINTS_CSV = ROOT / "togo_mcp" / "data" / "resources" / "endpoints.csv"
 
 # Keys whose value is a query the reader is meant to COPY. `wrong_sparql` is
-# excluded on purpose — anti-pattern "wrong" queries are supposed to misbehave.
+# excluded on purpose — anti-pattern "wrong" queries are supposed to misbehave, and
+# so is everything under a `check:` (see walk_queries).
 COPY_KEYS = {"sparql", "correct_sparql", "query"}
 
 _FORM_RE = re.compile(r"\b(SELECT|ASK|CONSTRUCT|DESCRIBE)\b", re.IGNORECASE)
@@ -124,10 +125,18 @@ def walk_queries(node, path=""):
     """Yield (jsonpath, key, query_text, expect_empty) for every COPY_KEYS value.
 
     `expect_empty` is the sibling `expect_empty: true` flag on the dict holding the
-    query — the allowlist marker for an example that legitimately returns 0 rows."""
+    query — the allowlist marker for an example that legitimately returns 0 rows.
+
+    `check:` subtrees are skipped wholesale. A gotcha's check (MIE_v3_spec.md §3.6) is
+    owned by `check_mie_gotchas.py`, and half its kinds hold a query written to FAIL —
+    `zero_rows`, `absent` and `error` are all PASSES there and would every one of them
+    be reported here as a broken example. Same reason `wrong_sparql` is excluded above:
+    this script judges queries a reader is meant to COPY."""
     if isinstance(node, dict):
         expect_empty = bool(node.get("expect_empty"))
         for k, v in node.items():
+            if k == "check":
+                continue
             if k in COPY_KEYS and isinstance(v, str):
                 yield f"{path}/{k}", k, v, expect_empty
             else:

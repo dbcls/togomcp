@@ -52,11 +52,26 @@ entity_counts:                     # class totals re-verified live 2026-07-22 (C
 global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
   - id: billion_triple_anchor
     say: >
-      ~1B-triple graph (600M calls, 279M VEP, 146M variants). ANCHOR EVERY QUERY or it times out (60s) / 503s:
-      anchor on a specific variant IRI, a strain via med2rdf:sample, an Ensembl gene via mogplus:overlaps_gene,
-      a release+chromosome IRI-prefix + narrow gvo:pos range, or a specific SO-consequence IRI — and keep a LIMIT.
-      A class-wide ORDER BY is unsafe even with LIMIT 100 (the sort runs first). Simple COUNT-per-type completes;
-      a property survey / walking calls over a pos range does not.
+      ~1B-triple graph (600M calls, 279M VEP, 146M variants), so anchoring is the habit — but NOT because an
+      unanchored query dies, which this entry claimed until 2026-08-26. A genome-wide missense COUNT with NO
+      gene anchor returns 314,332 in 4.0s (measured 2026-08-26). Anchor on a specific variant IRI, a strain via
+      med2rdf:sample, an Ensembl gene via mogplus:overlaps_gene, a release+chromosome IRI-prefix + narrow
+      gvo:pos range, or a specific SO-consequence IRI — and keep a LIMIT on row queries. What genuinely does
+      not work: a class-wide ORDER BY, even with LIMIT 100, because the sort runs before the limit; and a
+      property survey / walking calls over a pos range. Aggregates over a typed pattern are fine at any scale;
+      it is SORTING and per-row WALKING that this graph cannot afford.
+    check:
+      kind: count            # the unanchored genome-wide count the old text called a 503
+      date: "2026-08-26"
+      query: |
+        PREFIX vep: <http://genome-variation.org/resource/vep#>
+        PREFIX obo: <http://purl.obolibrary.org/obo/>
+        SELECT (COUNT(DISTINCT ?variant) AS ?n) WHERE {
+          GRAPH <http://rdfportal.org/dataset/mogplus> {
+            ?variant vep:has_consequence ?ann . ?ann vep:consequence obo:SO_0001583 .
+          }
+        }
+      expect: {value: 314332, tolerance: 0.05}
   - id: strain_scope_bleed
     say: >
       brso:BiologicalResource is shared by co-hosted NBRC + RIKEN JCM (zero IRI overlap → foreign strains are ADDED,
@@ -263,7 +278,7 @@ examples:
     traps_avoided:
       - "NEVER filter consequences by the raw text (snpeff:annotation / *:consequence_label, e.g. CONTAINS 'missense') — those are display strings, slow, and miss the structured SO link. Use the obo:SO_* IRI on vep:consequence / snpeff:normalized_consequence. VEP and SnpEff are INDEPENDENT systems — pick one; snpeff:gene_id/gene_name are STRINGS (not joinable), vep:gene is an Ensembl IRI."
       - "A variant with the consequence on N transcripts fans out to N annotation rows — COUNT(DISTINCT ?variant), not raw rows, for a variant-level total (116 distinct variants; row count is higher)."
-      - "Removing the gene anchor to count missense genome-wide TIMES OUT / 503s (gotcha billion_triple_anchor). The SO-consequence route is a positive enumeration route, but it is only tractable when co-anchored."
+      - "Removing the gene anchor to count missense genome-wide returns 314,332 in 4.0s — it does NOT time out or 503, which this line claimed until 2026-08-26 (gotcha billion_triple_anchor). The gene anchor here answers a narrower QUESTION (this gene's missense variants, 116); it is not load-bearing for tractability, so do run the genome-wide form when that is what you want."
 
   - id: gene_symbol_impact
     intent: resolve a GENE SYMBOL and read its VEP impact distribution — the diagnostic that makes an empty severity result interpretable

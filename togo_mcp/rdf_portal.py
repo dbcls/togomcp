@@ -1,5 +1,6 @@
 import csv as _csv
 import io as _io
+import re as _re
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -146,8 +147,21 @@ async def get_sparql_endpoints() -> dict[str, Any]:
 @mcp.tool(
     annotations=READ_ONLY_TOOL,
     name="run_sparql",
+    # This `description=` is what clients actually receive — FastMCP serves it INSTEAD of
+    # the docstring below, not in addition to it. It has to be a `description=` rather than
+    # a docstring because it interpolates the live registry, and an f-string cannot be a
+    # docstring. Everything agent-facing therefore belongs HERE (and in the per-parameter
+    # Field descriptions); the docstring deliberately holds no second copy to drift from.
     description=(
         "Run a SPARQL query on an RDF database. "
+        "CALL get_MIE_file(database) FIRST — for every database, before its first run_sparql "
+        "each session. This is not background reading: it carries the mandatory graph pins, "
+        "literal types and join paths for that endpoint, each live-verified. "
+        "SKIPPING IT DOES NOT MAKE YOUR QUERY FAIL — that is the danger. It makes it return a "
+        "WRONG ANSWER THAT LOOKS RIGHT: well-formed rows, plausible magnitude, no error, no "
+        "warning. Unpinned queries on these endpoints have been measured returning x3.27, x6.29 "
+        "and x45,360 the correct row count, all in under 4 seconds. Speed and a clean result "
+        "are NOT evidence of correctness here; the graph pin from the MIE file is. "
         f"ALWAYS pass database (required; valid values: {', '.join(SPARQL_ENDPOINT_KEYS)}) "
         "for single-database queries. For cross-database queries on a shared endpoint, "
         "still pass a member database AND add endpoint_name (valid values: "
@@ -160,8 +174,23 @@ async def get_sparql_endpoints() -> dict[str, Any]:
 )
 async def run_sparql(
     *,
+    # The pin reminder belongs HERE, not only in the tool description: this is the
+    # field the agent is filling in at the moment it types a triple pattern, and that
+    # moment is where the trap has repeatedly been missed (CLAUDE.md: the traps that
+    # caused wrong answers were all documented and simply not re-consulted then).
     sparql_query: Annotated[
-        str, Field(description="The SPARQL query to execute. Alias: `query`.", default="")
+        str,
+        Field(
+            description=(
+                "The SPARQL query to execute. Alias: `query`. "
+                "PIN EVERY GRAPH: copy the FROM/GRAPH clause from this database's "
+                "get_MIE_file examples. An unpinned pattern silently reads every "
+                "co-hosted graph on the endpoint — it does not error, it returns "
+                "inflated or foreign rows that look correct (measured: x3.27, x6.29, "
+                "x45,360). DISTINCT does not fix it; only the graph pin does."
+            ),
+            default="",
+        ),
     ] = "",
     database: Annotated[
         str, Field(description=DATABASE_DESCRIPTION)
@@ -170,33 +199,45 @@ async def run_sparql(
         str,
         Field(
             description=f"Endpoint name for cross-database queries. One of: {', '.join(ENDPOINT_NAMES)}. "
-            "Use this when querying multiple databases on the same endpoint.",
+            "Use this when querying multiple databases on the same endpoint — pass it "
+            "ALONGSIDE a member `database`, never instead of it. Overrides `database` for "
+            "endpoint selection (priority: endpoint_url > endpoint_name > database).",
             default="",
         ),
     ] = "",
     endpoint_url: Annotated[
         str,
         Field(
-            description="Direct SPARQL endpoint URL. Use this for explicit control over the endpoint.",
+            description="Direct SPARQL endpoint URL, for an endpoint not in the registry or for "
+            "explicit control. Highest priority — overrides both `endpoint_name` and `database` "
+            "(which is still required, and is then used only as a label).",
             default="",
         ),
     ] = "",
-    query: str = "",
+    query: Annotated[
+        str, Field(description="Alias for `sparql_query`. Pass one or the other.", default="")
+    ] = "",
 ) -> str:
     """
     Run a SPARQL query on an RDF database.
 
-    Use `get_MIE_file()` to understand the RDF graph structure of each database.
+    MAINTAINER NOTE — where the agent-facing text actually lives.
 
-    RETURNS the query results as a CSV-formatted string (first row is the
-    header of SELECT variable names).
+    This tool needs a `description=` on the decorator above, because its text
+    interpolates the live database/endpoint registry and an f-string cannot be a
+    docstring (it makes `__doc__` None). FastMCP serves that string INSTEAD of the
+    body of this docstring, so nothing written below reaches an agent — do not
+    restate the contract here, a second copy only rots.
 
-    Args:
-        sparql_query (str): The SPARQL query to execute. Accepts alias `query`.
-        database (str): Database name for single-database queries (required).
-        endpoint_name (str, optional): Endpoint name for cross-database queries (e.g., 'ebi' for ChEMBL+ChEBI).
-        endpoint_url (str, optional): Direct SPARQL endpoint URL.
-        query (str, optional): Alias for `sparql_query`.
+    Two exact points, because "the docstring is not served" is too coarse and was
+    wrong here until 2026-08-26:
+      - The `Args:` section IS still served: FastMCP uses it for the description of
+        any parameter that has no `Field(description=...)`. Every parameter of this
+        tool now carries a Field, so today the whole docstring is inert — but delete
+        a Field and the corresponding `Args:` line goes live again.
+      - `Note:` and `Returns:` are dropped entirely. A return contract that must
+        reach the agent goes in the decorator string (this one does).
+
 
     Note:
         `database` is required. For cross-database queries on a shared endpoint,
@@ -217,21 +258,13 @@ async def run_sparql(
 # --- Tools for exploring RDF databases ---
 
 
+# No `description=` here on purpose: this text interpolates nothing, so the docstring
+# can carry it and there is exactly ONE copy. `description=` is for tools whose text
+# must inject a runtime value (see run_sparql, which lists the live database registry)
+# — an f-string cannot be a docstring, it makes __doc__ None.
 @mcp.tool(
     annotations=READ_ONLY_TOOL,
     name="get_graph_list",
-    description=(
-        "Get a list of named graphs on a SPARQL endpoint. ALWAYS pass database "
-        "(required). Virtuoso/OpenLink internal graphs are filtered out. Graph URIs "
-        "containing the database substring (case-insensitive) are ranked first — useful "
-        "when the endpoint hosts multiple databases (e.g. SIB hosts UniProt + Rhea + "
-        "Bgee + OMA). For a database not yet in the registry, pass `endpoint_url` (or "
-        "`endpoint_name` if its parent endpoint is registered) to bypass database "
-        "validation; the required `database` value is then used only as a ranking hint. "
-        "RETURNS a CSV-formatted list of named graphs (database-name matches first); "
-        "on missing endpoint selection it returns a string beginning with 'Error:' "
-        "— check for that prefix before use."
-    ),
 )
 async def get_graph_list(
     *,
@@ -279,24 +312,22 @@ async def get_graph_list(
     ] = False,
 ) -> str:
     """
-    Get a list of named graphs on a SPARQL endpoint.
+    Get a list of named graphs on a SPARQL endpoint. ALWAYS pass database (required).
+
+    RETURNS a CSV-formatted list of named graphs (database-name matches first). On
+    missing endpoint selection it returns a string beginning with 'Error:' — check for
+    that prefix before use.
+
+    Graph URIs containing the `database` substring (case-insensitive) are ranked first,
+    always — useful when the endpoint hosts multiple databases (e.g. SIB hosts UniProt +
+    Rhea + Bgee + OMA). Virtuoso/OpenLink internal graphs are filtered out unless
+    `include_system=True`.
 
     The endpoint URL is resolved with the same priority used by `run_sparql`:
-    `endpoint_url` > `endpoint_name` > `database`. `database` is required. If only
-    `database` is given it must be in the registry; otherwise pass `endpoint_url` (or
-    `endpoint_name`) to bypass that check, in which case `database` is used only as a
-    case-insensitive substring to rank matching graph URIs first. Virtuoso/OpenLink
-    internal graphs are filtered out unless `include_system=True`.
-
-    Args:
-        database (str): Database name (required). Doubles as a substring ranking hint.
-        endpoint_name (str, optional): Short endpoint name (e.g. 'primary', 'sib').
-        endpoint_url (str, optional): Direct SPARQL endpoint URL.
-        include_system (bool, optional): If True, include Virtuoso/OpenLink internal
-            graphs. Default False.
-
-    Returns:
-        str: CSV-formatted list of named graphs, with database-name matches first.
+    `endpoint_url` > `endpoint_name` > `database`. If only `database` is given it must be
+    in the registry; otherwise pass `endpoint_url` (or `endpoint_name` if its parent
+    endpoint is registered) to bypass that check, and the required `database` value then
+    serves only as the ranking hint.
     """
     if not database and not endpoint_name and not endpoint_url:
         return (
@@ -376,8 +407,6 @@ async def get_MIE_file(
     tool `description=` on the decorator above; see DATABASE_DESCRIPTION.)
 
     Args:
-        database (str): The name of the database for which to retrieve the shape expression.
-            Accepts aliases `dbname` and `db`.
         dbname (str, optional): Alias for `database`.
         db (str, optional): Alias for `database`.
     """
@@ -404,11 +433,49 @@ async def get_MIE_file(
             f"{valid}.{hint} Do not retry with the same value."
         )
     with open(mie_file, encoding="utf-8") as file:
-        content = file.read()
+        content = _strip_check_blocks(file.read())
     return (
         f"Content-type: application/yaml; charset=utf-8\n"
         f"{_mie_trap_banner(content, database)}{content}"
     )
+
+
+# `check:` opening a mapping on its own line — the only shape MIE_v3_spec.md §3.6
+# sanctions. Requiring the line to be *exactly* `check:` keeps this from matching a
+# stray "check:" inside a SPARQL block scalar, which would eat the rest of a query.
+_CHECK_KEY = _re.compile(r"^(\s*)check:\s*$")
+
+
+def _strip_check_blocks(content: str) -> str:
+    """Remove every `check:` block before the MIE reaches the caller (spec §3.6).
+
+    A `check:` is a CI fixture, not reader content: `scripts/check_mie_gotchas.py`
+    executes it to re-decide the claim its sibling `say:` makes. Serving it would be
+    actively harmful, not merely wasteful — a `kind: zero_rows` or `kind: error`
+    check holds a query written to FAIL, and an agent that has been told every SPARQL
+    string in this file is a verified route to copy has no way to tell it apart.
+
+    Indentation-scoped and text-level on purpose. A YAML round-trip would drop the
+    comments, and in these files the comments carry load-bearing guidance.
+    """
+    out, lines, i = [], content.splitlines(keepends=True), 0
+    while i < len(lines):
+        m = _CHECK_KEY.match(lines[i])
+        if not m:
+            out.append(lines[i])
+            i += 1
+            continue
+        indent = len(m.group(1))
+        i += 1  # drop the `check:` line itself
+        while i < len(lines):
+            line = lines[i]
+            if not line.strip():          # blank lines belong to the block until it ends
+                i += 1
+                continue
+            if len(line) - len(line.lstrip()) <= indent:
+                break                     # dedented to a sibling — block is over
+            i += 1
+    return "".join(out)
 
 
 def _first_sentence(text: str, limit: int = 160) -> str:

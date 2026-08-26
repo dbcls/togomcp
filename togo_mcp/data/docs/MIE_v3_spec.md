@@ -53,6 +53,12 @@ derived, not declared: `server._detect_mie_bundle_version` hashes file bytes, an
 comes from `verified.date` — do not reintroduce a hand-maintained `mie_version`. v2 had one;
 its values ran 1.2–7.1 with no cross-file meaning, and its only consumer hashed it.)
 
+An **additive optional key does not bump `mie_spec`.** Consumers test it for equality
+(`stats.load_mie_dates` skips anything that is not exactly 3), so bumping for a backward-compatible
+addition would strand every one of them — the failure the field exists to prevent, triggered by a
+change that breaks nothing. `check:` (§3.6, added 2026-08-26) is such an addition and files carrying
+it stay `mie_spec: 3`. Bump only when an existing key changes meaning or disappears.
+
 ```
 mie_spec: 3      # format version — bump ONLY on a spec change, never on a content edit
 database:        # the DB key (== filename stem, == SPARQL_ENDPOINT key)
@@ -134,13 +140,94 @@ The `xrefs` bucket is mechanism-agnostic — name each entry after however the D
 out (rdfs:seeAlso by IRI prefix, a `hasLink`/accession string, an ID that needs a transform). A
 DB whose joins are all intra-endpoint may have no `bridged_via_togoid` at all (both are optional).
 
+### 3.6 `check:` (required on any falsifiable claim) — the machine-testable half of a gotcha
+A `global_gotchas` entry's `say`, and each `traps_avoided` line, may assert something the endpoint
+can settle: a count, a multiplier, "this returns 0 rows", "this is not here", "this does not run".
+Every such assertion carries a `check:` — the query (or pair of queries) that re-decides it, so
+`scripts/check_mie_gotchas.py` can catch drift the way `check_mie_examples.py` catches a dead example.
+
+```yaml
+global_gotchas:
+  - id: mandatory_graph_pin
+    say: "<what silently fails + the fix>"
+    check:
+      kind: ratio                 # count | ratio | zero_rows | absent | error
+      date: "YYYY-MM-DD"          # when the expectation below was last measured
+      unpinned: |                 # kind: ratio takes TWO queries, each returning one scalar
+        SELECT (COUNT(*) AS ?n) WHERE { ... }
+      pinned: |
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <…> { ... } }
+      expect: {ratio: 6.29, tolerance: 0.05}
+```
+
+`traps_avoided` entries are plain strings by default; to attach a check, write the entry as a
+mapping instead — `{say: "<the trap + the fix>", check: {...}}`. Both forms may be mixed in one list.
+
+| `kind` | The claim it settles | Passes when |
+|---|---|---|
+| `count` | "this figure is N" | `query` returns one scalar within `expect.tolerance` (fractional, default 0.02) of `expect.value` |
+| `ratio` | "written this way it inflates ×R"; also "these two forms agree" (ratio 1.0) | the two legs' quotient is within `expect.tolerance` (fractional, default 0.05) of `expect.ratio`. Name the legs `unpinned:`/`pinned:` for an inflation claim, `numerator:`/`denominator:` otherwise |
+| `zero_rows` | "written this way it silently returns nothing" | `query` returns 0 rows |
+| `absent` | "this predicate / graph / value is not on this endpoint" | `query` returns 0 rows |
+| `error` | "this is rejected, or does not complete" | `query` fails: a SPARQL compile/execution error, or no result within `expect.timeout_s` (default 60) |
+
+**`kind: error` is the one that matters most.** Of the six factual defects the 2026-08-25 cross-check
+found in `oma`/`bgee`, three were "this TIMES OUT" written over an operation that finishes in 1–30
+seconds. A false timeout warning steers the reader away from a route that works — the same harm as
+§4.4, arriving by the opposite door — and it is invisible to every other check in this spec, because
+a warning that nobody tests is indistinguishable from a warning that is true. Under `kind: error`,
+an operation that completes **fails the check**.
+
+Three rules keep the checks honest:
+- **Do not encode a marginal claim.** The bgee anatomy join measured 129s against a 120s client
+  timeout: "times out" is a coin flip there, so it is written as a measured runtime in the `say` and
+  checked as a `count`, not asserted as an `error`. If a claim only holds sometimes, weaken the
+  claim; do not widen the tolerance.
+- **Runtime is not a property of a query — it is a property of the cache.** Virtuoso's buffer cache
+  makes the same query take 75s and then 0.1s, and this is not a rare edge: of four timeout claims
+  that survived a first re-measurement in the 2026-08-26 sweep, **two collapsed to ~0.1s on the very
+  next run** (ncbigene's un-scoped gene enumeration, pubmed's STRSTARTS topic COUNT). Before writing
+  `kind: error`, run the query **at least twice**. If the second run completes, the claim is
+  cache-state-dependent: state the cold and warm figures in the `say` and check something that does
+  not move — the result value, a row count, or the prescribed fix — because a `kind: error` check on
+  a cacheable query is a coin flip that will eventually fail CI for no reason. Only two claims in the
+  whole corpus fail warm (`ddbj` gene_cds_protein, `pubchem` compound_scan_timeout); those keep
+  `kind: error`.
+  This has a second consequence worth passing to the reader: **never diagnose a query's correctness
+  from how long it took.** A fast run may mean the pages were warm, not that the query was cheap or
+  the scope was right — and every silent-wrong-answer trap in this corpus returns fast.
+- **Reuse the query you already ran.** The Phase-2g redeclaration probe measures every multiplier the
+  header will state. Paste those two queries into the `check:` rather than composing new ones — the
+  figure and the check then cannot disagree, and the marginal cost is zero.
+
+`check:` blocks are **test fixtures, not reader content**: `get_MIE_file` strips them before serving,
+so they cost the reader nothing and a deliberately-broken `zero_rows`/`error` query is never shown to
+an agent that might copy it. For the same reason they are excluded from the §5 item 7 byte-share
+measurement, which is taken over the served form.
+
+Qualitative advice ("use this", "write it in this order", "prefer the IRI") is out of scope — there
+is nothing to run. A `say` that mixes both carries a check for the falsifiable half only.
+
 ## 4. Authoring rules
 
-### 4.1 Everything countable is verified and dated (non-negotiable)
+### 4.1 Every falsifiable claim is verified, dated, and machine-re-decidable (non-negotiable)
 Every `entity_counts` value and every example's `verified:` block is re-run live against the
 endpoint, and carries the date it was run in a `date: "YYYY-MM-DD"` field. A re-run that
 disagrees is a drift signal, not silent rot. This makes the file **machine-testable**: a CI
 job can execute every example and assert its `verified` result.
+
+**The same rule binds the prose.** A `global_gotchas` `say` or a `traps_avoided` line that
+asserts a number, a multiplier, a zero-row outcome, an absence, or a failure-to-run **MUST**
+carry a `check:` that re-decides it (§3.6), and that check must have been run this pass.
+Qualitative advice is exempt — there is nothing to execute.
+
+This clause was added on 2026-08-26 because the narrower rule demonstrably was not enough. A
+2026-08-25 cross-check of four MIE headers against the SIB endpoint found a factual defect in
+**all four**, none of which any existing gate could see: `uniprot` prescribed the *opposite* of
+the working literal form, `oma` stated a ×2.00 inflation that measures ×6.29, and `oma`/`bgee`
+between them warned that three operations "time out" when they finish in 1–30 seconds. The
+examples in those same files were clean — because examples get executed and prose does not.
+Prose is not a lower evidentiary tier than a query; it was only an untested one.
 
 > **YAML trap:** use `date:`, never `on:`, for the timestamp key. YAML 1.1 parses the bare
 > word `on` (also `off`/`yes`/`no`) as a **boolean**, so `on: 2026-07-21` becomes the key
@@ -196,10 +283,17 @@ equivalence run on that question (the MIE "knows" the answer instead of the agen
 1. File parses as YAML; required keys present (§2).
 2. `discovery` has all four fields; description is one sentence.
 3. **Every** example has `verified:` with a `date:` field (not `on:` — §4.1 trap), and was actually re-run this pass.
+3b. **Every falsifiable claim in `global_gotchas` / `traps_avoided` carries a `check:` (§3.6), and
+   `scripts/check_mie_gotchas.py <db>` is clean.** Read each `say` and each trap line and ask: does
+   this assert a figure, a multiplier, a zero-row outcome, an absence, or a failure-to-run? If yes it
+   needs a check. Timeout and "unrunnable" claims take `kind: error` specifically — an operation that
+   completes fails that check, which is the point.
 4. At least one `aggregation` and one `cross_db` example where the DB supports them.
 5. Every `co_hosted` graph that inflates/joins/stubs is flagged.
 6. No fact restated across sections (§4.2); nothing in `schema_delta` that an example shows.
-7. Byte count recorded vs the v2.x file it replaces (the deterministic half of the win).
+7. Byte count recorded vs the v2.x file it replaces (the deterministic half of the win),
+   measured over the **served** form — `check:` blocks are stripped before serving (§3.6) and
+   do not count against the composition budget.
 8. Every set-level enumeration route the DB supports ("**all** entities with property X") has its
    own example, not only a per-instance/text pattern or a `traps_avoided` mention (§4.4). Check this
    DB's row in `.claude/skills/mie-generator/references/enumeration_audit.md` (all 36 DBs pre-scanned): if it is **Tier A**, the v3 file must

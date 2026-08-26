@@ -95,7 +95,7 @@ Some axes are "hard" (a molecular function is what the annotation says). Others 
 
 1. **Normalize every set to one stable identifier** (NCBI Gene ID or UniProt accession). Use `togoid_convertId` to bridge (e.g. UniProt ↔ ncbigene). UniProt RDF also carries the GeneID cross-reference directly (`rdfs:seeAlso` → `.../geneid/NNN`).
 2. **Compute the intersection on IDs, not symbols** (symbols are ambiguous; `ABCA1` vs `ABCA4` differ by one character and are easy to confuse).
-3. **Prefer SPARQL-side intersection** via `VALUES` of the smaller set; only fall back to reading two result sets and matching when federation is unavailable (SERVICE is disabled platform-wide on rdfportal — use sequential queries + `VALUES` bridging).
+3. **Prefer SPARQL-side intersection** via `VALUES` of the smaller set; fall back to reading two result sets and matching when the axes live on different endpoints. Do NOT reach for `SERVICE` to bridge them: it is not disabled on rdfportal (this line said it was until 2026-08-26 — a bounded `SERVICE` does reach out and return real rows), but an unbounded federated join does not finish (>130s measured), and Virtuoso rejects aggregates and `BIND` inside a `SERVICE` block outright (`SP031`). PRISM's axes are set-sized by construction, so federation is exactly the shape that fails. Use sequential queries + `VALUES` bridging.
 
 ---
 

@@ -210,9 +210,16 @@ specific IRI  ≫  narrowing by type  ≫  FILTER(CONTAINS(...))
 
 Most failures in life-science RDF happen **silently**. No error appears. A plausible-looking table comes back. The numbers are just wrong.
 
-### (a) Federation (`SERVICE`) is not available
+### (a) Federation (`SERVICE`) does not survive contact with real data
 
-The `SERVICE` clause, which joins multiple endpoints in a single query, is **disabled** on rdfportal.org. The correct approach is either to **join within a single endpoint using `GRAPH` clauses**, or to **carry IDs and walk across manually** (the Chapter 4 approach).
+The `SERVICE` clause joins multiple endpoints in a single query. On rdfportal.org it is **not disabled** — this handbook said it was until 2026-08-26, and that was wrong. A bounded `SERVICE` genuinely reaches out and returns real rows: 13 of 14 external endpoints tested were reachable in 2026-08, and a query against a nonexistent host fails with a connection error (`HTCLI HC001`) rather than being answered locally, which is how we know the traffic is real.
+
+What fails is `SERVICE` **in practice**, for two reasons that matter more than availability:
+
+- **An unbounded federated join does not finish.** Joining a whole Rhea column to a whole UniProt column across endpoints ran past 130 seconds with no result. Federation makes the remote side re-evaluate for every binding, and neither engine can plan across the boundary.
+- **Virtuoso's federation compiler rejects common SPARQL inside a `SERVICE` block.** An aggregate fails immediately with `SP031` ("the support of aggregate function call syntax is not enabled for the SERVICE"); `BIND` expressions and some syntax hit the same wall.
+
+So the practical advice is unchanged: **join within a single endpoint using `GRAPH` clauses**, or **carry IDs and walk across manually** (the Chapter 4 approach). Only the reason is different — and the difference is worth knowing, because "disabled" tells you not to try, while "does not scale" tells you a small, bounded `SERVICE` is a legitimate tool when nothing else reaches.
 
 ### (b) Row inflation at co-resident endpoints
 

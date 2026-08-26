@@ -53,16 +53,40 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
       annotations have NO dcterms:subject at all (see variant_blank_nodes).
   - id: always_limit_or_scope
     say: >
-      238M annotations. Any query without a LIMIT or a narrowing IRI risks timeout; an UNPINNED COUNT(*)
-      over oa:Annotation times out consistently. Always FROM/GRAPH-pin dataset/pubtator_central AND either
-      scope to a specific body/target IRI or add LIMIT.
+      238M annotations, and a plain COUNT over them is CHEAP: an unpinned `COUNT(*) { ?a a oa:Annotation }`
+      returns 238,227,596 in 1.0s. This entry said that exact query "times out consistently" until
+      2026-08-26 — it does not, and it never needed a pin to work. Still FROM/GRAPH-pin
+      dataset/pubtator_central so a co-tenant cannot answer for you, and still scope or LIMIT any query that
+      RETURNS rows or JOINS annotations to each other — that is where 238M actually costs you (see example
+      top_genes_for_disease, where the inner LIMIT turns 15s into 2s). Typed aggregates are free; row
+      transport and self-joins are not.
+    check:
+      kind: count            # the unpinned 238M-row COUNT the old text called a consistent timeout
+      date: "2026-08-26"
+      query: |
+        PREFIX oa: <http://www.w3.org/ns/oa#>
+        SELECT (COUNT(*) AS ?n) WHERE { ?a a oa:Annotation }
+      expect: {value: 238227596, tolerance: 0.05}
   - id: annotation_count_ceiling
     say: >
       pubtator:annotation_count (per-article mention frequency) has a TYPE-SPECIFIC ceiling: Disease max=5,
       Gene max=9. FILTER(?count > 5) on a Disease query is ALWAYS empty (5 IS the max) — the #1 mistake is
       copying a Gene threshold onto a Disease query. Filter at the ceiling with >= (Disease >=4, Gene >=6),
-      and only AFTER scoping to a specific IRI — an unscoped range filter over 238M rows times out, it does
-      NOT return 0 fast. Note the per-IRI max can be lower than the type max (e.g. Melanoma D008545 tops at 4).
+      and only AFTER scoping to a specific IRI — for RELEVANCE, not cost. (This entry said an unscoped range
+      filter "times out, it does NOT return 0 fast"; measured 2026-08-26 it returns 0 in 1.4s, so the
+      warning was precisely inverted. A fast 0 is still a trap — it reads as "no such articles" when it
+      really means "you filtered above the ceiling" — but you will get it in a second, not a timeout.) Note the per-IRI max can be lower than the type max (e.g. Melanoma D008545 tops at 4).
+    check:
+      kind: zero_rows        # the unscoped above-ceiling filter returns 0 — FAST, not never
+      date: "2026-08-26"
+      query: |
+        PREFIX dcterms: <http://purl.org/dc/terms/>
+        PREFIX pubtator: <http://purl.jp/bio/10/pubtator-central/ontology#>
+        SELECT ?a WHERE {
+          GRAPH <http://rdfportal.org/dataset/pubtator_central> {
+            ?a dcterms:subject "Disease" ; pubtator:annotation_count ?c . FILTER(?c > 5)
+          }
+        } LIMIT 1
   - id: variant_blank_nodes
     say: >
       Variant annotations use BLANK NODE subjects (no dcterms:subject, no annotation_count) — invisible to
@@ -223,7 +247,25 @@ examples:
     verified: {top_gene: "ncbigene/7157 (TP53) = 360", second: "ncbigene/7124 (TNF) = 289", date: "2026-07-22", note: "counts are over the 5000-article sample, not the full corpus"}
     teaches: "Bound the disease's article set with an inner SELECT DISTINCT ?article … LIMIT N BEFORE joining Gene annotations. Without the inner LIMIT this join is timeout-prone even scoped to one disease once its article count exceeds ~10^4–10^5."
     traps_avoided:
-      - "The pre-bound cap makes the co-occurrence a RANKING over a sample, not an exact corpus count — raise/remove the inner LIMIT (at timeout risk) only when an exact total is required."
+      - say: "The pre-bound cap makes the co-occurrence a RANKING over a sample, not an exact corpus count. Removing the inner LIMIT gives the exact total and costs 14.9s instead of ~2s (measured 2026-08-26) — a real cost but not the timeout this line hedged at, so do remove it when you need the true numbers. This is the one place in this file where 238M rows are genuinely felt: the self-join across annotations, not the count."
+        check:
+          kind: count       # the LIMIT-free form completes; it is slow, not impossible
+          date: "2026-08-26"
+          query: |
+            PREFIX oa: <http://www.w3.org/ns/oa#>
+            PREFIX dcterms: <http://purl.org/dc/terms/>
+            SELECT (COUNT(*) AS ?n) WHERE {
+              SELECT ?geneId (COUNT(DISTINCT ?article) AS ?cooccurrence)
+              FROM <http://rdfportal.org/dataset/pubtator_central>
+              WHERE {
+                { SELECT DISTINCT ?article WHERE {
+                    ?diseaseAnn dcterms:subject "Disease" ;
+                                oa:hasBody <http://identifiers.org/mesh/D008545> ; oa:hasTarget ?article . } }
+                ?geneAnn dcterms:subject "Gene" ; oa:hasBody ?geneId ; oa:hasTarget ?article .
+              }
+              GROUP BY ?geneId ORDER BY DESC(?cooccurrence) LIMIT 5
+            }
+          expect: {value: 5, tolerance: 0.0}
       - "Results interleave human and model-organism orthologs of the same symbol — add the ncbigene taxid filter to restrict to one species (example xdb_species_genes)."
 
   - id: xdb_species_genes

@@ -2,6 +2,15 @@
 # Format: togo_mcp/data/docs/MIE_v3_spec.md. Every verified count/result re-run live on the sib (OMA) endpoint 2026-07-22.
 # Byte count vs the v2 file it replaces (spec §5 item 7): v2 togo_mcp/data/mie/oma.yaml = 42,913 bytes;
 # this v3 file = 23,108 bytes → 46.2% smaller. Exact `wc -c` figures in the footer.
+# 2026-08-26 revision: three header claims were checked live and were WRONG, all in the same direction —
+# they warned that something HANGS when it in fact completes, which quietly steers the reader off routes
+# that work. `mandatory_graph_pin` said an unpinned gene join is "unrunnable" at x2.00; it returns a
+# x6.29 wrong answer in 0.8s. `entity_counts.proteins_note` said the two whole-class COUNTs time out;
+# they take 18s and 41s. `property_path_timeout` (renamed `property_path_unanchored`) blamed a timeout
+# for what is really an immediate Virtuoso rejection, and called a 30s prefix scan a timeout too.
+# `organism_no_label` (renamed `organism_named_via_taxon`) was a spec-4.4 violation: it forbade the
+# scientific-name route, which works when pinned — now example `species_by_scientific_name`.
+# Every falsifiable header claim now carries a `check:` (spec 3.6): scripts/check_mie_gotchas.py oma.
 mie_spec: 3                        # format version — see MIE_v3_spec.md §2
 database: oma
 
@@ -26,51 +35,134 @@ graphs:
     "http://bgee.org": >
       Bgee gene-expression — INFLATION + CONFLICT, the reason the graph-pin is load-bearing (gotcha
       mandatory_graph_pin). Bgee mints ITS genes in OMA's OWN namespace (omabrowser.org/ontology/oma#GENE_*),
-      re-typing 908,030 of OMA's orth:Gene IRIs: an unpinned `?g a orth:Gene` join returns ×2 rows (all 20,430
-      OMA human genes carry `a orth:Gene` in BOTH graphs), AND Bgee hangs a CONFLICTING orth:organism
-      → bgee.org/species/NNN on those same IRIs alongside OMA's genome/NNN. Unpinned is not merely wrong,
-      it TIMES OUT. FIX: always pin GRAPH <http://rdfportal.org/dataset/oma>.
+      re-typing 908,030 of OMA's orth:Gene IRIs (re-verified 2026-08-26), AND hanging a CONFLICTING
+      orth:organism → bgee.org/species/NNN on those same IRIs alongside OMA's genome/NNN. The multiplier
+      depends on how many re-declared legs your query joins: ×2.00 on the bare `?g a orth:Gene ;
+      orth:organism <genome/9606>` form, ×6.29 once the organism is reached through obo:RO_0002162 as a
+      species lookup normally is. It COMPLETES IN UNDER A SECOND either way — this note said "it TIMES
+      OUT" until 2026-08-26, which is wrong and, worse, reassuring: a hang is self-announcing, a wrong
+      answer in 0.8s is not. FIX: always pin GRAPH <http://rdfportal.org/dataset/oma>.
     "http://sparql.uniprot.org/uniprot": >
       UniProt — JOIN target (example xdb_uniprot_function). lscr:xrefUniprot IRIs point straight into this
       graph; NOTE the graph name is sparql.uniprot.org/uniprot, NOT rdfportal.org/dataset/uniprot (which
       does not exist on sib). ~78% of orth:Protein carry the xref.
     up_taxon_hub: >
       The purl.uniprot.org/taxonomy/N nodes carry up:scientificName in THREE graphs on this endpoint
-      (dataset/oma, http://bgee.org, sparql.uniprot.org/taxonomy) — an unpinned taxon-name lookup triples.
-      Pin the taxon lookup to one graph. (OMA identifies organisms by taxon IRI only — see gotcha organism_no_label.)
+      (sparql.uniprot.org/taxonomy 2,719,973 triples, dataset/oma 2,927, http://bgee.org 52 — counted
+      2026-08-26) — an unpinned taxon-name lookup triples on any species OMA sequenced. Pin the taxon
+      lookup to one graph; OMA's own copy is enough for OMA's 2,927 species (example
+      species_by_scientific_name). up:rank CONFLICTS across the same nodes (up:Species in oma/bgee vs
+      up:Taxonomic_Rank_Species in uniprot/taxonomy), so DISTINCT cannot flatten that one.
     "http://rdfportal.org/dataset/rhea": "Rhea reactions — co-hosted, no IRI overlap with OMA; join target only, never a co-tenancy trap."
+    "http://rdfportal.org/dataset/cellosaurus": >
+      Cell lines — no OMA IRI overlap, so it never inflates an orth:* query, but it OWNS the label
+      namespace and will answer any unpinned text lookup you write. `?s rdfs:label "TP53"` unpinned
+      returns 17,102 rows, of which 16,879 (98.7%) are Cellosaurus cell lines against OMA's 191
+      (measured 2026-08-26). Pin the graph before matching any symbol-shaped literal.
+    "http://id.nlm.nih.gov/mesh": "MeSH (3 graphs: mesh, mesh/vocab, mesh/void) — no OMA IRI overlap; a join target only if you route through UniProt."
+    "http://purl.jp/bio/11/goa": "EMPTY STUB (151 triples) — NOT real GOA data. Do not read GO annotation from it."
+    ontology_suite: >
+      37 rdfportal.org/ontology/* graphs (cl, clo, cmo, eco, edam, efo, faldo, fma, go, hp, mondo, orth,
+      po, pro, sio, so, taxonomy, uberon, …), counted 2026-08-26. They supply vocabulary, including the
+      `orth` ontology OMA's own terms are defined in; none re-declares an OMA instance IRI. Grouped rather
+      than listed one by one because the note is identical for all of them — but they are part of the
+      union, so they contribute to any unpinned rdfs:label / rdfs:subClassOf join.
+    endpoint_total: "68 named graphs on this endpoint (enumerated 2026-08-26), of which 7 are Virtuoso/OpenLink internals. Everything not listed above is either a UniProt-owned graph (16) or one of the ontology suite."
 
 entity_counts:                     # graph-pinned COUNT(DISTINCT), live 2026-07-22 unless noted
   organisms: 2927                  # orth:Organism (species covered) — verified live 2026-07-22
   vertebrata_hog_clusters: 65299   # OrthologsCluster with hasTaxonomicRange = taxonomy/7742 (Vertebrata) — verified 2026-07-22 (example count_hog_by_taxon)
   human_mouse_hog_families: 8763   # HOG families with BOTH a human and a mouse ortholog leaf — verified 2026-07-22 (example human_mouse_families)
-  proteins_note: "orth:Protein ≈17.4M and orth:OrthologsCluster ≈33.5M (v2 figures) — a live COUNT(DISTINCT) over either TIMES OUT at 60s (verified 2026-07-22), so they are not one-query re-countable; scope every count to a taxon/clade (gotcha property_path_timeout)."
+  proteins:  17383786              # orth:Protein, graph-pinned COUNT(DISTINCT) — 18.0s, verified 2026-08-26
+  ortholog_clusters: 33451292      # orth:OrthologsCluster, graph-pinned COUNT(DISTINCT) — 41.4s, verified 2026-08-26
+  big_count_note: >
+    Both figures above ARE one-query re-countable — this file said they "TIME OUT at 60s" until
+    2026-08-26 and carried rounded v2 estimates instead. They are merely slow (18s / 41s), so budget for
+    that and do not put one inside a larger join. Scoping a count to a taxon/clade via
+    orth:hasTaxonomicRange is still the right habit for anything more specific (gotcha
+    property_path_unanchored), but not because the whole-class count is impossible.
 
 global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
   - id: mandatory_graph_pin
     say: >
-      ALWAYS wrap OMA patterns in GRAPH <http://rdfportal.org/dataset/oma>. The sib endpoint co-hosts
-      UniProt/Rhea/Bgee; without the pin a query joins all datasets and times out. It is NOT just speed:
-      Bgee re-types 908,030 of OMA's orth:Gene IRIs in its own graph (×2.00 exactly on human genes) and
-      puts a CONFLICTING orth:organism on them — an unpinned gene/type join is unrunnable, not merely doubled.
+      ALWAYS wrap OMA patterns in GRAPH <http://rdfportal.org/dataset/oma>. Bgee re-types OMA's gene IRIs and
+      conflicts with their orth:organism (mechanism and counts in co_hosted."http://bgee.org"). Two things
+      about the CONSEQUENCE, both the reverse of what this entry said until 2026-08-26.
+      (1) THE FAILURE IS SILENT AND FAST. Human genes reached the normal way — gene -> orth:organism ->
+      obo:RO_0002162 -> taxonomy/9606 — return 128,429 rows unpinned against 20,430 pinned, ×6.29, IN 0.8
+      SECONDS (2026-08-26). It does not time out, so nothing whatsoever signals that the number is six
+      times too big.
+      (2) `DISTINCT` DOES NOT SAVE YOU, because this is scope bleed and not duplication:
+      COUNT(DISTINCT ?gene) unpinned = 67,139 — Bgee's human gene set, still ×3.29 off OMA's true 20,430 and
+      made of entities that are not OMA's at all. Only the pin fixes it.
+    check:
+      kind: ratio
+      date: "2026-08-26"
+      unpinned: |
+        PREFIX orth: <http://purl.org/net/orth#>
+        PREFIX obo: <http://purl.obolibrary.org/obo/>
+        SELECT (COUNT(*) AS ?n) WHERE {
+          ?g a orth:Gene ; orth:organism ?o . ?o obo:RO_0002162 <http://purl.uniprot.org/taxonomy/9606> .
+        }
+      pinned: |
+        PREFIX orth: <http://purl.org/net/orth#>
+        PREFIX obo: <http://purl.obolibrary.org/obo/>
+        SELECT (COUNT(*) AS ?n) WHERE {
+          GRAPH <http://rdfportal.org/dataset/oma> {
+            ?g a orth:Gene ; orth:organism ?o . ?o obo:RO_0002162 <http://purl.uniprot.org/taxonomy/9606> .
+          }
+        }
+      expect: {ratio: 6.29, tolerance: 0.05}
   - id: identifier_row_explosion
     say: >
       Each orth:Protein carries 5–20 dct:identifier values (OMA 5-letter code + Ensembl gene/transcript/protein
       + UniProt acc + NCBI IDs). Selecting dct:identifier without FILTER(STRSTARTS(?id, "SPECIESCODE")) — e.g.
       "HUMAN", "MOUSE", "YEAST", "ECOLI", "DROME" — returns 10–20 rows per protein and inflates any COUNT/DISTINCT.
-  - id: organism_no_label
+  - id: organism_named_via_taxon
     say: >
-      orth:Organism has NO rdfs:label or scientific-name string — a name text-search returns 0 rows. Identify a
-      species ONLY via obo:RO_0002162 → http://purl.uniprot.org/taxonomy/{NCBI_TAXON} (9606 human, 10090 mouse,
-      10116 rat, 7227 Drosophila, 6239 C. elegans, 4932 yeast). The SAME taxon IRI is also what hasTaxonomicRange uses.
-  - id: property_path_timeout
+      The orth:Organism NODE itself carries exactly two predicates — rdf:type and obo:RO_0002162 — and
+      nothing else, no rdfs:label included (verified 2026-08-26: 2,927 organisms, 5,854 triples, two
+      distinct predicates). So `?organism rdfs:label "Homo sapiens"` returns 0 rows. That does NOT mean
+      you cannot select a species BY NAME, which is what this entry implied until 2026-08-26: the TAXON
+      node one hop away carries up:scientificName inside OMA's own graph (2,927 triples), so
+      `?taxon up:scientificName "Gallus gallus" . ?organism obo:RO_0002162 ?taxon` works and is a
+      first-class route — see example `species_by_scientific_name`. Two ways in, then: the NCBI taxon IRI
+      directly (9606 human, 10090 mouse, 10116 rat, 7227 Drosophila, 6239 C. elegans, 4932 yeast — the
+      same IRI hasTaxonomicRange uses on clusters), or the scientific name via that taxon node. The name
+      route MUST be graph-pinned: up:scientificName is declared in three graphs here (uniprot/taxonomy
+      2,719,973, oma 2,927, bgee 52), so unpinned it multiplies ×3 on any species OMA sequenced.
+    check:
+      kind: zero_rows        # the true half: the Organism node really has no label of its own
+      date: "2026-08-26"
+      query: |
+        PREFIX orth: <http://purl.org/net/orth#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT ?o WHERE { GRAPH <http://rdfportal.org/dataset/oma> { ?o a orth:Organism ; rdfs:label ?l } } LIMIT 1
+  - id: property_path_unanchored
     say: >
-      orth:hasHomologousMember+ (property path) and any organism-subtree / all-cluster scan over the ~33M
-      OrthologsClusters TIME OUT. NEVER traverse with a `+`/`*` path and NEVER filter an UNBOUND ?cluster by
-      dct:identifier string. Enumerate/navigate instead via (a) orth:hasTaxonomicRange <taxon IRI> (index-selective —
-      examples count_hog_by_taxon, human_mouse_families), (b) the shared HOG-family / dotted-path identifier PREFIX
-      after anchoring hasTaxonomicRange to a target taxon (example ortholog_1to1_prefix), or (c) one or two explicit
-      hasHomologousMember hops (examples hog_members, sibling_orthologs, paralogs).
+      An UNANCHORED orth:hasHomologousMember+ over the 33.5M OrthologsClusters does not run — but it does
+      not hang either, and the difference matters when you are debugging. Virtuoso REJECTS it in 0.2s with
+      an explicit error: "Query contains a transitive derived table but neither end of it is bound by
+      equality to other columns or parameters" when both ends are variables, or "transitive start not
+      given" for an inverse path `^orth:hasHomologousMember+` even with the start bound (verified
+      2026-08-26). Read that message as "anchor one end", not as "the endpoint is overloaded". An ANCHORED
+      forward path is fine — `?c a orth:OrthologsCluster ; orth:hasHomologousMember+ <a-protein-IRI>`
+      returns 20 rows in 0.2s. Separately, filtering an UNBOUND ?cluster by a dct:identifier prefix is
+      merely SLOW, not fatal: 30.4s (this entry called it a timeout until 2026-08-26); anchoring
+      hasTaxonomicRange first makes it sub-second, which is why example ortholog_1to1_prefix does that.
+      Preferred routes: (a) orth:hasTaxonomicRange <taxon IRI> (index-selective — examples
+      count_hog_by_taxon, human_mouse_families), (b) the shared HOG-family / dotted-path identifier PREFIX
+      after anchoring hasTaxonomicRange to a target taxon (example ortholog_1to1_prefix), or (c) one or two
+      explicit hasHomologousMember hops (examples hog_members, sibling_orthologs, paralogs).
+    check:
+      kind: error            # the unanchored path must keep FAILING; if it ever runs, this warning is stale
+      date: "2026-08-26"
+      expect: {timeout_s: 60}
+      query: |
+        PREFIX orth: <http://purl.org/net/orth#>
+        SELECT (COUNT(*) AS ?n) WHERE {
+          GRAPH <http://rdfportal.org/dataset/oma> { ?c a orth:OrthologsCluster ; orth:hasHomologousMember+ ?m . }
+        }
 
 # ── examples: verified, executable atoms. The HOG hierarchy is the spine —
 #    HierarchicalGeneTree(root) → OrthologsCluster(clade nodes, hasTaxonomicRange = clade taxon) → … →
@@ -97,6 +189,55 @@ examples:
       LIMIT 5
     verified: {result_rows: 5, date: "2026-07-22", first_row: "HUMAN01315 = jumonji domain containing 1C (JMJD1C)"}
     teaches: "The set-level per-species route: orth:Organism obo:RO_0002162 <taxon IRI>, then ?protein orth:organism ?organism. Species has no label — use the taxon IRI. STRSTARTS on the 5-letter species code collapses the many-valued dct:identifier to the OMA-native ID."
+
+  - id: species_by_scientific_name
+    intent: select a species by its SCIENTIFIC NAME (not by taxid) and count its proteins — the name entry point
+    question: "How many proteins does OMA hold for Gallus gallus, selected by scientific name rather than by taxon ID?"
+    complexity: basic
+    sparql: |
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX obo:  <http://purl.obolibrary.org/obo/>
+      PREFIX up:   <http://purl.uniprot.org/core/>
+      SELECT ?organism ?taxon (COUNT(DISTINCT ?protein) AS ?proteins)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {          # THE PIN — without it the name leg triples (see traps)
+          ?taxon up:scientificName "Gallus gallus" .        # OMA carries its OWN copy for its 2,927 species
+          ?organism a orth:Organism ; obo:RO_0002162 ?taxon .
+          ?protein a orth:Protein ; orth:organism ?organism .
+        }
+      }
+      GROUP BY ?organism ?taxon
+    verified: {result_rows: 1, organism: "https://omabrowser.org/oma/genome/9031", taxon: "http://purl.uniprot.org/taxonomy/9031",
+               proteins: 16617, date: "2026-08-26", runtime: "0.4s"}
+    teaches: "You do NOT need the NCBI taxid to name a species here. up:scientificName sits on the TAXON node inside OMA's own graph (2,927 triples, one per sequenced species), one obo:RO_0002162 hop from the orth:Organism — so `?taxon up:scientificName \"<Genus species>\"` is a first-class entry point, and it hands you the taxid as a by-product for reuse on orth:hasTaxonomicRange."
+    traps_avoided:
+      - say: "Pin the graph or the NAME leg triples: up:scientificName is declared in three graphs here (uniprot/taxonomy, oma, bgee), so this query returns 49,851 rows unpinned against 16,617 pinned — ×3.00, in 0.3s, with the right organism and a silently tripled count (gotcha organism_named_via_taxon)."
+        check:
+          kind: ratio
+          date: "2026-08-26"
+          unpinned: |
+            PREFIX orth: <http://purl.org/net/orth#>
+            PREFIX obo:  <http://purl.obolibrary.org/obo/>
+            PREFIX up:   <http://purl.uniprot.org/core/>
+            SELECT (COUNT(*) AS ?n) WHERE {
+              ?taxon up:scientificName "Gallus gallus" .
+              ?organism a orth:Organism ; obo:RO_0002162 ?taxon .
+              ?protein a orth:Protein ; orth:organism ?organism .
+            }
+          pinned: |
+            PREFIX orth: <http://purl.org/net/orth#>
+            PREFIX obo:  <http://purl.obolibrary.org/obo/>
+            PREFIX up:   <http://purl.uniprot.org/core/>
+            SELECT (COUNT(*) AS ?n) WHERE {
+              GRAPH <http://rdfportal.org/dataset/oma> {
+                ?taxon up:scientificName "Gallus gallus" .
+                ?organism a orth:Organism ; obo:RO_0002162 ?taxon .
+                ?protein a orth:Protein ; orth:organism ?organism .
+              }
+            }
+          expect: {ratio: 3.0, tolerance: 0.02}
+      - "Put the name on the TAXON, never on the orth:Organism: the Organism node carries only rdf:type and obo:RO_0002162, so `?organism up:scientificName ...` or `?organism rdfs:label ...` returns 0 rows with no error."
+      - "OMA's own copy covers only the 2,927 species it has sequenced. For a species OMA does not hold, the pinned name lookup correctly returns 0 — that is the answer, not a broken query. Widen to GRAPH <http://sparql.uniprot.org/taxonomy> only if you need to confirm the name exists at all."
 
   - id: hog_members
     intent: proteins of a named HOG cluster via ONE hasHomologousMember hop (no property path)
@@ -205,8 +346,21 @@ examples:
     verified: {result_rows: 1, date: "2026-07-22", ortholog: "MOUSE57051 in HOG:E0792948.6w.50b.72a.53a_10090 (= mouse Hras)"}
     teaches: "The HOG dotted-path identifier IS the phylogeny: a species leaf is {speciation-node}.{...}_{taxon}. Two leaves sharing the same dotted-path prefix descend from one speciation node = 1:1 orthologs; RAS paralogs (KRAS/NRAS) sit under SIBLING nodes (.72b, .6c) and the prefix filter excludes them. Get the human leaf's cluster ID first (via lscr:xrefUniprot or an OMA ID), strip the _TAXON suffix, use the remainder as the prefix."
     traps_avoided:
-      - "You MUST bind orth:hasTaxonomicRange <target taxon> BEFORE the STRSTARTS prefix filter. Filtering an UNBOUND ?cluster by dct:identifier prefix scans all ~33M clusters and TIMES OUT (observed live 2026-07-22); the taxon anchor makes it index-selective."
-      - "Do NOT use orth:hasHomologousMember+ to walk from the human protein to the mouse ortholog — the property path over 33M clusters times out (gotcha property_path_timeout). The dotted-prefix is the substitute."
+      - say: "You MUST bind orth:hasTaxonomicRange <target taxon> BEFORE the STRSTARTS prefix filter. Filtering an UNBOUND ?cluster by dct:identifier prefix scans all 33.5M clusters: 30.4s versus sub-second with the anchor (re-measured 2026-08-26 — this line said it TIMES OUT, which it does not; it is a ~100x cost, not a wall). Anchor it anyway; just do not go looking for a hang that is not there when you forget."
+        check:
+          kind: count       # the unbound-prefix scan RUNS. It is the third claim in this file that said otherwise.
+          date: "2026-08-26"
+          query: |
+            PREFIX orth: <http://purl.org/net/orth#>
+            PREFIX dct: <http://purl.org/dc/terms/>
+            SELECT (COUNT(*) AS ?n) WHERE {
+              GRAPH <http://rdfportal.org/dataset/oma> {
+                ?cluster a orth:OrthologsCluster ; dct:identifier ?cid .
+                FILTER(STRSTARTS(?cid, "HOG:E0792948.6w.50b.72a"))
+              }
+            }
+          expect: {value: 195, tolerance: 0.05}
+      - "Do NOT use orth:hasHomologousMember+ to walk from the human protein to the mouse ortholog — with the target species unbound the path has no anchor and Virtuoso rejects it outright (gotcha property_path_unanchored). The dotted-prefix is the substitute."
 
   - id: count_hog_by_taxon
     intent: enumerate/count ALL HOG clusters spanning a clade via hasTaxonomicRange (THE set-level enumeration route)
@@ -224,7 +378,7 @@ examples:
     verified: {clusterCount: 65299, date: "2026-07-22"}
     teaches: "orth:hasTaxonomicRange <taxon IRI> is THE first-class route to enumerate 'all HOG clusters at clade X' — index-selective, no text search, works for any level of the NCBI tree. Same taxon-IRI namespace as the orth:organism lookup."
     traps_avoided:
-      - "This is the enumeration route that REPLACES a hasHomologousMember+ traversal — never try to count a clade's clusters by walking the tree with a property path (gotcha property_path_timeout)."
+      - "This is the enumeration route that REPLACES a hasHomologousMember+ traversal — never try to count a clade's clusters by walking the tree with a property path (gotcha property_path_unanchored)."
 
   - id: human_mouse_families
     intent: count HOG families present in BOTH of two species — the shared family-prefix aggregation (no cross-species leaf cluster exists)
@@ -278,7 +432,12 @@ examples:
     verified: {result_rows: 1, date: "2026-07-22", first_row: "Q15652 = 'Jumonji domain-containing protein 1C', function 'Coactivator of androgen receptor.'"}
     teaches: "lscr:xrefUniprot's value IS the UniProt protein IRI (purl.uniprot.org/uniprot/{ACC}) — use it directly as the subject in GRAPH <http://sparql.uniprot.org/uniprot>, no ID conversion. Both graphs live on the sib endpoint (endpoint_name: sib)."
     traps_avoided:
-      - "The UniProt graph on sib is <http://sparql.uniprot.org/uniprot> — <http://rdfportal.org/dataset/uniprot> does NOT exist here and returns 0 rows."
+      - say: "The UniProt graph on sib is <http://sparql.uniprot.org/uniprot> — <http://rdfportal.org/dataset/uniprot> does NOT exist here and returns 0 rows."
+        check:
+          kind: absent
+          date: "2026-08-26"
+          query: |
+            SELECT ?s WHERE { GRAPH <http://rdfportal.org/dataset/uniprot> { ?s ?p ?o } } LIMIT 1
 
 # ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
 schema_delta:
