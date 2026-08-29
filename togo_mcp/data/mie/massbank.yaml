@@ -22,7 +22,25 @@
 # No test leakage (§4.6): illustrative subjects are Nylidrin, Phenazone, fentanyl/sufentanil/alfentanil,
 # paracetamol, aspirin, caffeine, cholic acid, malate. The massbank benchmark questions
 # q056/q059/q061/q068/q097 use PLP / thiamine-PP / decarboxylase / vitamin A / carotenoids — grep-confirmed
-# disjoint 2026-08-14.
+# disjoint 2026-08-14. CORRECTION 2026-08-29: that sweep checked the TOPIC list but not the literal
+# strings — the screen_inchikey_skeleton caveat illustrated its point with the InChIKey skeleton
+# AYEKOFBPNLCAJY, which is exactly thiamine diphosphate's, named in massbank question q059's answer.
+# Swapped to paracetamol's RZVAJINKPMORJF (already used by that example, non-benchmark, same behaviour:
+# 1 distinct key, STRSTARTS on a constant prefix still fast). Grep the accessions, not just the themes.
+#
+# REVISED 2026-08-29 — §3.6 check: sweep. Every falsifiable claim now carries an executable check, and the
+# sweep caught one substantially WRONG gotcha that every prior gate had passed (its examples were clean,
+# because examples get executed and prose did not):
+#   * `numeric_double_bnode` claimed "equality on a double silently returns 0 rows". FALSE — mb:mz 135.08
+#     returns 130. It also named three predicates that do not exist (mb:exact_mass, mb:precursor_mz,
+#     mb:ppm_error; really mb:ch_exact_mass, mb:precursor_mz_value, mb:error->rdf:value) and typed
+#     precursor m/z as double when it is xsd:FLOAT. Rewritten as numeric_rounding_float_double around the
+#     two hazards that ARE real: result cells display ROUNDED values (229.048 shown, 229.0479 stored), and
+#     float equality can never match at all. New example precursor_product_transition carries the fix.
+#   * Everything else re-measured CORRECT and unchanged: all counts/coverage (117,295 / 17,921 / 49; CAS
+#     69.63%, PubChem 55.32%, ChemSpider 38.38%, InChIKey 98.81%), the three REGEX figures (0/30/44), the
+#     misspelling, lowercase-class and schema-prefix 0-row traps, the x1.00 graph-pin ratio, and the
+#     ChEMBL relation-graph IRI form. 2g re-probed via get_graph_list (~430 co-tenants) — still clean.
 mie_spec: 3                        # format version — see MIE_v3_spec.md §2
 database: massbank
 
@@ -65,11 +83,12 @@ graphs:
       (c) Hub leg: unbound-?p probe on two <identifiers.org/inchikey/…> IRIs returned only tid:TIO_000021 from
       the four togoid relation graphs above. No re-declaration, no union inflation on any leg.
 
-entity_counts:                     # graph-pinned, COUNT(DISTINCT), live 2026-08-14 (unchanged since 2026-07-22)
+entity_counts:                     # graph-pinned, COUNT(DISTINCT), re-run live 2026-08-29 (unchanged since 2026-07-22)
   mass_spectra:            117295  # = COUNT of spectrum IRIs; ALSO = COUNT of compound bnodes (not deduplicated!)
   distinct_structures:     17921   # = COUNT(DISTINCT ?inchikey) — the real number of unique molecules
   distinct_instrument_types: 49    # controlled vocabulary on mb:instrument_type
-  coverage: "InChIKey ~98.8% of spectra · rdfs:seeAlso xrefs: CAS ~69.6% / PubChem CID ~55.3% / ChemSpider ~38.4%"
+  coverage: "InChIKey 115,901/117,295 = 98.81% of spectra · rdfs:seeAlso xrefs: CAS 81,668 = 69.63% / PubChem CID 64,892 = 55.32% / ChemSpider 45,023 = 38.38%"
+  date: "2026-08-29"
   size_caveat: >
     17,921 distinct structures is SMALL next to a chemistry database (ChEMBL ~2.4M compounds). Screening an
     arbitrary drug-like compound list against MassBank returns mostly misses BY DESIGN — measured on the
@@ -77,44 +96,115 @@ entity_counts:                     # graph-pinned, COUNT(DISTINCT), live 2026-08
     specific molecule is a real finding ("no reference spectrum published"), not a failed query. Report the
     hit rate; do not rewrite the query.
 
-global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-08-14
+global_gotchas:                    # the few that bite ANY query on this DB — all re-verified 2026-08-29
   - id: mandatory_graph
     say: >
-      The primary endpoint co-hosts ~450 graphs in one Virtuoso store. Always scope to
-      GRAPH <http://rdfportal.org/dataset/massbank>. Omitting it does NOT inflate typed-class counts
-      (mb:* and schema:chemicalsubstance are single-tenant here) but it makes generic/untyped patterns
-      scan unrelated data — slow, or mixing MeSH/GO/BacDive/TogoID triples into an untyped result.
+      The primary endpoint co-hosts ~430 graphs in one Virtuoso store. Always scope to
+      GRAPH <http://rdfportal.org/dataset/massbank>. Re-measured 2026-08-29: omitting it does NOT inflate
+      typed-class counts — mb:MassSpectrum and schema:chemicalsubstance both return 117,295 pinned AND
+      unpinned (x1.00), and DISTINCT inChIKey returns 17,921 either way, because mb:* and the lowercase
+      schema:chemicalsubstance class are genuinely single-tenant here. The pin still earns its keep for
+      generic/untyped patterns, which otherwise scan MeSH/GO/BacDive/TogoID triples — slow, and mixing
+      foreign rows into an untyped result. Do not read this x1.00 as "the pin is optional".
+    check:
+      kind: ratio
+      date: "2026-08-29"
+      unpinned: |
+        PREFIX mb: <http://www.massbank.jp/ontology/>
+        SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE { ?s a mb:MassSpectrum }
+      pinned: |
+        PREFIX mb: <http://www.massbank.jp/ontology/>
+        SELECT (COUNT(DISTINCT ?s) AS ?n) FROM <http://rdfportal.org/dataset/massbank>
+        WHERE { ?s a mb:MassSpectrum }
+      expect: {ratio: 1.0, tolerance: 0.01}
+
   - id: regex_alternation
     say: >
       SILENT 0 ROWS — two-argument REGEX() mishandles alternation AND brace quantifiers. This is ENGINE
       behaviour, not a MassBank fact: both reproduce on all 10 endpoints in the registry, and the rule
       lives in the Usage Guide (SILENT-FAILURE TRAPS #10) — ALWAYS pass a third (flags) argument, even "".
-      Recorded here because MassBank is where it was caught and compound-name
-      search is a common entry point: verified 2026-08-14 on rdfs:label in the massbank graph,
-      REGEX(STR(?n), "Fentanyl|Sufentanil") returns 0 while REGEX(STR(?n), "(Fentanyl)|(Sufentanil)")
-      returns 30 and the "i"-flagged form returns 44. A real session read the 0 as "MassBank has no
-      fentanyls"; it has 44 matching compound nodes. Example find_compound_by_name uses the safe form.
+      Recorded here because MassBank is where it was caught and compound-name search is a common entry
+      point. Re-verified 2026-08-29 on rdfs:label in the massbank graph, all four forms in one query:
+      REGEX(STR(?n), "Fentanyl|Sufentanil") returns 0; the parenthesised "(Fentanyl)|(Sufentanil)" returns
+      30; adding an empty third argument to the BARE pattern also returns 30; and the "i"-flagged form
+      returns 44. A real session read the 0 as "MassBank has no fentanyls"; it has 44 matching compound
+      nodes. Example find_compound_by_name uses the safe form.
+    check:
+      kind: zero_rows
+      date: "2026-08-29"
+      query: |
+        PREFIX schema: <https://schema.org/>
+        SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/massbank>
+        WHERE { ?c a schema:chemicalsubstance ; rdfs:label ?lab .
+                FILTER(REGEX(STR(?lab), "Fentanyl|Sufentanil")) }
+
   - id: spectram_misspelling
     say: >
       The metadata class + predicate are misspelled "Spectram" in the source ontology and are canonical
-      verbatim: mb:MassSpectramMetaData / mb:mass_spectram_meta_data. (The spectrum class itself is correctly
-      mb:MassSpectrum.) The corrected spelling mass_spectrum_meta_data silently returns 0 rows.
+      verbatim: mb:MassSpectramMetaData / mb:mass_spectram_meta_data (117,295 instances). (The spectrum class
+      itself is correctly mb:MassSpectrum.) The corrected spelling mb:MassSpectrumMetaData /
+      mass_spectrum_meta_data silently returns 0 rows.
+    check:
+      kind: zero_rows
+      date: "2026-08-29"
+      query: |
+        PREFIX mb: <http://www.massbank.jp/ontology/>
+        SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/massbank>
+        WHERE { ?s a mb:MassSpectrumMetaData }
+
   - id: lowercase_class_and_iri_inchikey
     say: >
-      Two 0-row traps on the compound node: (1) the chemical-substance class is <https://schema.org/chemicalsubstance>
-      ALL LOWERCASE — canonical schema:ChemicalSubstance returns 0 rows. (2) schema:inChIKey is an IRI
-      <http://identifiers.org/inchikey/KEY> (note http, not https) — matching it as a plain string literal returns 0 rows.
-  - id: numeric_double_bnode
+      Two 0-row traps on the compound node, both re-verified 2026-08-29: (1) the chemical-substance class is
+      <https://schema.org/chemicalsubstance> ALL LOWERCASE (117,295 instances) — the canonical CamelCase
+      schema:ChemicalSubstance returns 0 rows. (2) schema:inChIKey is an IRI
+      <http://identifiers.org/inchikey/KEY> (note http, not https) — matching it as a plain string literal
+      ("VEQOALNAAJBPNY-UHFFFAOYSA-N") returns 0 rows.
+    check:
+      kind: zero_rows
+      date: "2026-08-29"
+      query: |
+        PREFIX schema: <https://schema.org/>
+        SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/massbank>
+        WHERE { ?s a schema:ChemicalSubstance }
+
+  - id: numeric_rounding_float_double
     say: >
-      m/z, intensity, exact mass, precursor m/z and ppm error are xsd:double literals on BLANK NODES reached via
-      mb:has_peak / mb:compound / mb:mass_spectram_meta_data / mb:has_peak_annotations — never on the spectrum IRI.
-      Equality on a double (?p mb:mz 135.08) silently returns 0 rows; use a range filter or a typed literal
-      ("135.08"^^xsd:double). Only mb:relative_intensity / mb:peak_sequential_number / mb:pk_num_peak are xsd:integer.
+      NUMERIC MATCHING IS THE #1 SILENT-WRONG-ANSWER TRAP HERE, and the previous version of this file got it
+      backwards — corrected 2026-08-29 by measurement. Two independent hazards compound:
+      (1) THE DISPLAYED VALUE IS ROUNDED AND IS USUALLY NOT THE STORED TERM. A result cell reading 229.048 is
+      stored as 229.0479 (STR() shows the truth); copying the displayed number into an equality gives 0 rows —
+      mb:ch_exact_mass 229.048 returns 0. Always read the real value with STR(?x) before matching one.
+      (2) THE DATATYPE DECIDES WHETHER EQUALITY CAN EVER WORK. mb:mz, mb:intensity, mb:ch_exact_mass and
+      mb:base_peak are xsd:DOUBLE, and equality does match an exactly-stored value (mb:mz 135.08 returns 130 —
+      NOT 0, as this file previously claimed). But mb:precursor_mz_value is xsd:FLOAT, where NO literal form
+      matches: 195.088 returns 0, and so does the full binary expansion 195.0877075195312, because one
+      displayed value hides three distinct stored terms (195.0877075195312 / 195.0881652832031 /
+      195.087646484375). The correct names matter too — it is mb:ch_exact_mass (not mb:exact_mass),
+      mb:precursor_mz_value (not mb:precursor_mz), and the ppm error is mb:error -> rdf:value (there is no
+      mb:ppm_error). THE RULE: never match a mass or m/z by equality; always use a range filter (example
+      precursor_product_transition). Only mb:relative_intensity / mb:peak_sequential_number / mb:pk_num_peak
+      are xsd:integer and safe to match exactly.
+    check:
+      kind: zero_rows
+      date: "2026-08-29"
+      query: |
+        PREFIX mb: <http://www.massbank.jp/ontology/>
+        SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/massbank>
+        WHERE { ?m mb:precursor_mz_value 195.0877075195312 }
+
   - id: schema_prefix
     say: >
       MassBank's `schema:` IS real schema.org <https://schema.org/> (https). The endpoint auto-declares it, but if
-      you hand-type `PREFIX schema: <http://schema.org/>` (http, no trailing slash mismatch) every schema:* pattern
-      0-rows. Copy the https://schema.org/ form exactly. (Contrast the co-hosted DSMZ dbs whose schema: is purl.dsmz.de.)
+      you hand-type `PREFIX schema: <http://schema.org/>` (http) every schema:* pattern 0-rows — verified
+      2026-08-29: http://schema.org/inChIKey matches 0 triples where the https form matches 115,901.
+      Copy the https://schema.org/ form exactly. (Contrast the co-hosted DSMZ dbs whose schema: is purl.dsmz.de.)
+    check:
+      kind: zero_rows
+      date: "2026-08-29"
+      query: |
+        PREFIX schemahttp: <http://schema.org/>
+        SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/massbank>
+        WHERE { ?s schemahttp:inChIKey ?o }
 
 # ── examples: verified, executable atoms. Central entity = mb:MassSpectrum (~117k). Each owns exactly one
 #    compound / AnalyticalMethods / MassSpectramMetaData BLANK NODE; peaks are untyped blank nodes. Access
@@ -282,7 +372,22 @@ examples:
     verified: {compound_nodes: 117295, distinct_molecules: 17921, date: "2026-08-14"}
     teaches: "Compounds are NOT deduplicated: every spectrum owns a fresh chemicalsubstance blank node, so COUNT(?c) = the spectrum count (117,295), NOT the molecule count. COUNT(DISTINCT ?inchikey) = 17,921 gives unique structures. (bibo:Article literature refs are likewise per-spectrum — dedup on the citation.)"
     traps_avoided:
-      - "COUNT(?c) or COUNT(?c a schema:chemicalsubstance) returns 117,295 — a plausible-looking 'compound total' that is really the spectrum count. Always dedup molecules on the InChIKey."
+      - say: |-
+          COUNT(?c) over schema:chemicalsubstance returns 117,295 — a plausible-looking 'compound total' that
+          is really the spectrum count, x6.55 the true molecule count of 17,921. Always dedup molecules on the
+          InChIKey. DISTINCT on ?c does NOT help: every bnode is already unique.
+        check:
+          kind: ratio
+          date: "2026-08-29"
+          numerator: |
+            PREFIX schema: <https://schema.org/>
+            SELECT (COUNT(?c) AS ?n) FROM <http://rdfportal.org/dataset/massbank>
+            WHERE { ?c a schema:chemicalsubstance }
+          denominator: |
+            PREFIX schema: <https://schema.org/>
+            SELECT (COUNT(DISTINCT ?k) AS ?n) FROM <http://rdfportal.org/dataset/massbank>
+            WHERE { ?c schema:inChIKey ?k }
+          expect: {ratio: 6.55, tolerance: 0.05}
 
   - id: facet_method
     intent: filter spectra by the controlled method vocabularies (instrument_type + ion_mode + ms_type)
@@ -362,8 +467,89 @@ examples:
       The result is compound-level (GROUP BY the InChIKey) because one molecule owns many spectra.
     traps_avoided:
       - "The intuitive forms are 30-50x slower or fatal: `VALUES ?target { … } FILTER(ABS(?mz - ?target) <= …)` over the whole graph took 47-52 s in production when it finished at all, and a UNION of four bare m/z ranges timed out at 90 s repeatedly. The correlated VALUES defeats the m/z index; the UNION also returns one row per (spectrum, ion), which reads as an inflated spectrum count."
-      - "A `{ FILTER(?mz >= a && ?mz <= b) BIND('ion' AS ?ion) }` UNION branch whose ?mz is bound in the ENCLOSING group is silently NOT filtered — verified: it returned 117,295 (the entire spectrum count) for two different ion windows. Put the triple patterns INSIDE each UNION branch."
+      - say: |-
+          A `{ FILTER(?mz >= a && ?mz <= b) BIND('ion' AS ?ion) }` UNION branch whose ?mz is bound in the
+          ENCLOSING group is silently NOT filtered — re-verified 2026-08-29: it returns 117,295, the ENTIRE
+          spectrum count, for two different ion windows. Put the triple patterns INSIDE each UNION branch.
+        check:
+          kind: count
+          date: "2026-08-29"
+          expect: {value: 117295}
+          query: |
+            PREFIX mb: <http://www.massbank.jp/ontology/>
+            SELECT (COUNT(DISTINCT ?spectrum) AS ?n) FROM <http://rdfportal.org/dataset/massbank>
+            WHERE {
+              ?spectrum mb:has_peak ?p . ?p mb:mz ?mz .
+              { FILTER(?mz >= 188.1424 && ?mz <= 188.1444) BIND("A" AS ?ion) }
+              UNION
+              { FILTER(?mz >= 105.0694 && ?mz <= 105.0704) BIND("B" AS ?ion) }
+            }
       - "Virtuoso rejects HAVING(COUNT(DISTINCT ?bucket) = 4) over a BIND-only group with `SQ200: Aggregate function not allowed in context`, and evaluates BOTH arms of IF(cond, ?x, 1/0), raising `SR084: Division by 0`. Both are real production 500s from agents trying to count matched ions per spectrum — count with FILTER EXISTS instead, as above."
+
+  - id: precursor_product_transition   # the precursor-m/z route; the float-matching trap has its fix here
+    intent: find spectra by a precursor->product TRANSITION (precursor m/z + a diagnostic product ion)
+    question: "Which compounds have MS/MS spectra with precursor m/z 195.088 that fragment to m/z 138.066?"
+    complexity: advanced
+    sparql: |
+      PREFIX mb: <http://www.massbank.jp/ontology/>
+      PREFIX schema: <https://schema.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?inchikey (SAMPLE(?nm) AS ?name) (COUNT(DISTINCT ?spectrum) AS ?n_spectra)
+      FROM <http://rdfportal.org/dataset/massbank>
+      WHERE {
+        {                                    # anchor on the PRECURSOR window, in its own subquery
+          SELECT DISTINCT ?spectrum WHERE {
+            ?spectrum mb:mass_spectram_meta_data ?meta .   # note the "Spectram" misspelling
+            ?meta mb:precursor_mz_value ?prec .            # xsd:FLOAT — a range is MANDATORY, see below
+            FILTER(?prec >= 195.0827 && ?prec <= 195.0927) # 195.0877 +- 5 mDa -> 87 spectra
+          }
+        }
+        # the product ion as a FILTER EXISTS against that small anchor set
+        FILTER EXISTS { ?spectrum mb:has_peak ?p . ?p mb:mz ?m . FILTER(?m >= 138.0612 && ?m <= 138.0712) }
+        ?spectrum mb:compound ?c .
+        ?c schema:inChIKey ?inchikey ; rdfs:label ?nm .
+      }
+      GROUP BY ?inchikey
+      ORDER BY DESC(?n_spectra) ?inchikey
+    verified: {result_rows: 3, date: "2026-08-29", rows: "Caffeine (RYYVLZVUVIJVGH-UHFFFAOYSA-N) 43 spectra; Isocaffeine (LPHGQDQBBGAPDZ-UHFFFAOYSA-N) 6; 1,3-Benzenedicarboxylic acid dihydrazide 1", precursor_window_spectra: 87, precursor_coverage: "93,795 of 117,295 spectra (80.0%)"}
+    teaches: >
+      The precursor half of a transition lives on the mass_spectram_meta_data blank node
+      (mb:precursor_mz_value), the product half on the peak blank nodes (mb:mz) — two different scaffolds,
+      joined only through the spectrum. Same shape as peak_diagnostic_ions: anchor the most selective
+      constraint in a DISTINCT subquery, then FILTER EXISTS the rest. That the result separates Caffeine (43)
+      from its isomer Isocaffeine (6) is the point of a transition query — both share the precursor AND the
+      product ion, so a transition alone does not identify a compound; it shortlists candidates.
+    traps_avoided:
+      - say: |-
+          mb:precursor_mz_value is xsd:FLOAT, and NO literal equality form matches it — not the value the
+          result cell displays (195.088 -> 0 rows) and not even the full binary expansion of a value you read
+          back with STR() (195.0877075195312 -> 0 rows). One displayed "195.088" is three distinct stored
+          terms (195.0877075195312 = 54 spectra, 195.0881652832031 = 4, 195.087646484375 = 1), so equality
+          could not return the right answer even if it matched one of them. A range filter is the only
+          correct route, and it is what makes this query return 87 anchor spectra instead of 0. (Contrast
+          the xsd:DOUBLE mb:mz, where equality DOES match — and still gives a wrong-looking-right answer:
+          gotcha numeric_rounding_float_double.)
+        check:
+          kind: zero_rows
+          date: "2026-08-29"
+          query: |
+            PREFIX mb: <http://www.massbank.jp/ontology/>
+            SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/massbank>
+            WHERE { ?m mb:precursor_mz_value 195.088 }
+      - say: |-
+          Coverage is partial: mb:precursor_mz_value is present on 93,795 of 117,295 spectra (80.0%), so a
+          precursor-anchored query silently excludes 20% of the library — including ALL 11,804 EI-B (GC-MS)
+          records, of which exactly 0 carry a precursor, since electron ionisation has no precursor selection
+          by definition. For a fragment-only question use peak_diagnostic_ions instead. (Count spectra, not
+          triples: there are 94,831 precursor triples because ~1,000 spectra carry more than one value.)
+        check:
+          kind: absent
+          date: "2026-08-29"
+          query: |
+            PREFIX mb: <http://www.massbank.jp/ontology/>
+            SELECT (COUNT(DISTINCT ?s) AS ?n) FROM <http://rdfportal.org/dataset/massbank>
+            WHERE { ?s mb:analytical_methods_and_conditions ?a . ?a mb:instrument_type "EI-B" .
+                    ?s mb:mass_spectram_meta_data ?m . ?m mb:precursor_mz_value ?p }
 
   - id: screen_inchikey_skeleton
     intent: stereo/salt-agnostic structure screening via the 14-character InChIKey skeleton block
@@ -392,7 +578,7 @@ examples:
       which Virtuoso hash-joins. Use this whenever your source IDs may differ from MassBank's in stereo
       descriptor, salt or protonation state.
     traps_avoided:
-      - "Do NOT screen a LIST of skeletons with FILTER(STRSTARTS(STR(?ik), CONCAT('http://identifiers.org/inchikey/', ?skel))) — the CONCAT is correlated with ?skel, so it is rebuilt per row and forces a full scan. Measured on an identical 178-skeleton batch, both returning the same answer: STRSTARTS+CONCAT 80.7 s, the BIND(SUBSTR)+VALUES form above 1.07 s (~75x). A SINGLE skeleton with a constant literal prefix — FILTER(STRSTARTS(STR(?ik), 'http://identifiers.org/inchikey/AYEKOFBPNLCAJY')) — has no CONCAT and is perfectly fast; the trap is only the multi-skeleton correlated form."
+      - "Do NOT screen a LIST of skeletons with FILTER(STRSTARTS(STR(?ik), CONCAT('http://identifiers.org/inchikey/', ?skel))) — the CONCAT is correlated with ?skel, so it is rebuilt per row and forces a full scan. Measured on an identical 178-skeleton batch, both returning the same answer: STRSTARTS+CONCAT 80.7 s, the BIND(SUBSTR)+VALUES form above 1.07 s (~75x). A SINGLE skeleton with a constant literal prefix — FILTER(STRSTARTS(STR(?ik), 'http://identifiers.org/inchikey/RZVAJINKPMORJF')) — has no CONCAT and is perfectly fast; the trap is only the multi-skeleton correlated form."
       - "The join here is INNER, so a skeleton absent from MassBank drops out silently (XZQMGGFIVXLGME above). That is fine for 'what does MassBank have', but if you need explicit misses use the OPTIONAL shape from screen_inchikey_batch."
       - "Skeleton matching widens coverage only modestly — on the production log's 191 InChIKeys it lifted 31 exact hits to 32 skeletons (47 full keys). It recovers stereo variants, not an order of magnitude; do not expect it to rescue a mostly-empty screen."
 
@@ -449,7 +635,21 @@ examples:
       validation before the query is ever sent.
     traps_avoided:
       - "The relation triple is <target-ID> tid:TIO_000020 <inchikey-IRI> — the InChIKey IRI is the OBJECT, the DB ID is the SUBJECT. (The inverse tid:TIO_000021 also exists with the InChIKey as SUBJECT — verified 2026-08-14 — and is the more natural direction when starting from MassBank.) Binding the InChIKey once (BIND) and reusing it keeps the join exact and avoids the per-spectrum compound-bnode fan-out (187 spectra -> use DISTINCT)."
-      - "The returned IDs are FULL IRIs in the forms listed in id_join_map.same_endpoint_joins, NOT bare accessions. In particular ChEMBL here is http://identifiers.org/chembl.compound/CHEMBLnnn — the rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBLnnn form used by the `chembl` database itself does NOT exist in this graph and returns 0 rows silently."
+      - say: |-
+          The returned IDs are FULL IRIs in the forms listed in id_join_map.same_endpoint_joins, NOT bare
+          accessions. In particular ChEMBL here is http://identifiers.org/chembl.compound/CHEMBLnnn — the
+          rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBLnnn form used by the `chembl` database ITSELF does not
+          exist in this graph and returns 0 rows silently (re-verified 2026-08-29 for CHEMBL25: 1 triple on
+          the identifiers.org form, 0 on the rdf.ebi.ac.uk form). This is the general TogoID relation-graph
+          rule — each side is keyed by TogoID's canonical form for that dataset, which is often but NOT always
+          identifiers.org; probe one row of the relation graph before writing the join.
+        check:
+          kind: zero_rows
+          date: "2026-08-29"
+          query: |
+            SELECT (COUNT(*) AS ?n) WHERE {
+              GRAPH <http://rdfportal.org/dataset/togoid/relation/chembl_compound-inchi_key> {
+                <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL25> ?p ?o . } }
 
   - id: xdb_ids_to_spectra         # cross_db — the direction real traffic uses: external ID list -> spectra
     intent: "cross-DB (intra-primary): start from a ChEMBL/PubChem compound list and find their MassBank spectra"
@@ -492,7 +692,7 @@ examples:
 
 # ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
 schema_delta:
-  - "SPECTRUM-LEVEL METADATA blank node (note the misspelling): ?spectrum mb:mass_spectram_meta_data ?m . ?m a mb:MassSpectramMetaData ; mb:precursor_mz_value (double, 80.0%) ; mb:precursor_type_value ('[M+H]+' string, 78.4%) ; mb:base_peak (double, 37.4%). This is where precursor m/z lives — distinct from the AnalyticalMethods node. Pair it with peak_diagnostic_ions to turn a fragment hit into a precursor->product transition."
+  - "SPECTRUM-LEVEL METADATA blank node (note the misspelling): ?spectrum mb:mass_spectram_meta_data ?m . ?m a mb:MassSpectramMetaData ; mb:precursor_mz_value (xsd:FLOAT — NOT double, which is what decides that equality can never match it; 93,795 spectra = 80.0%) ; mb:precursor_type_value ('[M+H]+' string, 91,912 = 78.4%) ; mb:base_peak (xsd:double, 43,869 = 37.4%). This is where precursor m/z lives — distinct from the AnalyticalMethods node. Pair it with peak_diagnostic_ions to turn a fragment hit into a precursor->product transition."
   - >
     COLLISION ENERGY is free text and heavily non-uniform — do NOT match it exactly without checking.
     Verified 2026-08-14: 769 DISTINCT strings across 95,772 spectra, top values
@@ -531,5 +731,9 @@ id_join_map:
 
 # ── byte-count footer (spec §5 item 7) ──
 # v2 (superseded): 35,167 bytes. v3 as authored 2026-07-22: 19,023 bytes, examples 66.0%.
-# v3 revised 2026-08-14: see the Phase-5i figure in the changelog/PR — 5 examples added (14 total),
-# 1 global_gotcha added; examples share must not fall below the 66.0% baseline by >5 pts.
+# v3 revised 2026-08-14: 37,091 bytes served, examples 72.2% (14 examples).
+# v3 revised 2026-08-29 (§3.6 check: sweep): 43,214 bytes served, examples 71.8% (15 examples);
+# 53,946 on disk including the check: fixtures, which are stripped before serving and excluded here.
+# Share moved only -0.4 pts and for the RIGHT reason: `examples` grew +4,245 bytes (the new
+# precursor_product_transition + four traps upgraded to checked mappings) against +1,878 in the header,
+# so the load-bearing section absorbed most of the growth. No §5i carve-out needed.
