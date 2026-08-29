@@ -13,6 +13,16 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.10.0] - 2026-08-29
+
+<!-- whatsnew: 2026-08-29 | When a SPARQL query comes back <strong>empty</strong>, the server now says so and explains why. An empty result has two causes that need opposite answers — the data is genuinely absent, or one line of the query is wrong and the real answer is not zero — and the reply now names the fork and the one probe that settles it. In a month of production logs, empty results outnumbered errors <strong>7.6 to 1</strong> and were mostly going unnoticed. -->
+
+A release about the failures that do not look like failures. Across 2026-07-27..08-29,
+`run_sparql` raised 163 times and returned HTTP 200 with an empty result **1,237 times** —
+and agents treated the second like a success, abandoning the task at 50.0% after a zero-row
+result versus 43.8% after a real one. Roughly 342 of those empty results were a broken query
+whose true answer was non-zero, and every one of them reached a user as "there is no data".
+
 ### Added
 
 - **`run_sparql` now diagnoses an empty result instead of returning a bare header.**
@@ -2127,6 +2137,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.8...HEAD
+[2.10.0]: https://github.com/dbcls/togomcp/compare/v2.9.1...v2.10.0
 [2.9.1]: https://github.com/dbcls/togomcp/compare/v2.9.0...v2.9.1
 [2.9.0]: https://github.com/dbcls/togomcp/compare/v2.8.0...v2.9.0
 [2.8.0]: https://github.com/dbcls/togomcp/compare/v2.7.8...v2.8.0
