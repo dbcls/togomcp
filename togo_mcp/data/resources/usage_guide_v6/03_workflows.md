@@ -52,6 +52,11 @@ cross-DB → `ncbi_esummary` for detail → one concise paragraph. Each fact onc
   many narrow queries.
 - **On failure:** max 2 consecutive. At #3: pivot to search, `ncbi_esearch`, TogoID, or
   partial synthesis.
+- **On an empty result:** `run_sparql` prefixes it with a `#` diagnosis block — read it.
+  An empty result is **not** an endpoint failure, and it has two causes needing opposite
+  answers: the data is genuinely absent (report that), or one triple pattern is wrong and
+  the real answer is non-zero. The single `ASK` probe the block names **is** the pivot,
+  not a third query — spend it rather than re-running a variant of the same SELECT.
 
 ---
 
@@ -128,6 +133,30 @@ OMA**, dropping every protein with no OMA record. It returned a wrong count (248
     escapes, `(?:…)`. That asymmetry is why it survives review: the filter works until someone
     widens it to a family or adds a `{n,m}` count, and the empty result reads as "the database
     doesn't have those." A production session concluded MassBank had no fentanyls; it has 44.
+11. **The same entity carries different IRIs in different graphs — the join returns 0, and it
+    reads as "no data".** A TogoID relation graph (`dataset/togoid/relation/<a>-<b>`) keys each
+    side by TogoID's canonical form for that dataset, which is frequently **not** the form the
+    source database's own graph mints. ChEMBL: the `chembl` database uses
+    `http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL25`; the relation graph holds
+    `http://identifiers.org/chembl.compound/CHEMBL25`. Same molecule, no shared RDF term,
+    empty join, HTTP 200.
+
+    **Do not assume `identifiers.org` either** — the form varies per dataset. Verified
+    2026-08-29: `ncbigene-go` and `ensembl_transcript-go` key on `identifiers.org/`, but
+    `chebi-inchi_key` keys ChEBI as `purl.obolibrary.org/obo/CHEBI_15858`, and `nando-mondo`
+    pairs `purl.obolibrary.org/obo/MONDO_…` with `nanbyodata.jp/ontology/NANDO_…`. One row
+    tells you both sides before you write the join:
+
+    ```sparql
+    SELECT ?s ?o WHERE {
+      GRAPH <http://rdfportal.org/dataset/togoid/relation/chembl_compound-inchi_key> { ?s ?p ?o }
+    } LIMIT 1
+    ```
+
+    Why it survives review: on a sparse database an empty join is indistinguishable from a true
+    negative. A production MassBank lookup (2026-08 logs) pinned `VALUES` with native ChEMBL
+    IRIs and returned 0 for every compound — which is also exactly what MassBank returns for a
+    compound it genuinely has no spectra for.
 
 ---
 

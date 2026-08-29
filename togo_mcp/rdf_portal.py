@@ -169,7 +169,13 @@ async def get_sparql_endpoints() -> dict[str, Any]:
         "Invalid database/endpoint_name values fail immediately with a deterministic "
         "error — do not retry. "
         "RETURNS the query results as a CSV-formatted string (first row is the "
-        "header of SELECT variable names)."
+        "header of SELECT variable names). An EMPTY result — no rows, or an "
+        "aggregate that is 0 over an empty match — is prefixed with `#` comment "
+        "lines diagnosing it. READ THEM: an empty result is NOT an endpoint "
+        "failure and must not be reported as one, and it has two causes needing "
+        "opposite answers (the data is genuinely absent, or one triple pattern "
+        "is wrong and the real answer is non-zero). The block names the probe "
+        "that tells them apart."
     ),
 )
 async def run_sparql(
@@ -252,7 +258,154 @@ async def run_sparql(
         raise ValueError(
             "Missing SPARQL query. Pass it as `sparql_query` (canonical) or `query`."
         )
-    return await execute_sparql(sparql_query, database, endpoint_name, endpoint_url)
+    csv_text = await execute_sparql(sparql_query, database, endpoint_name, endpoint_url)
+    # Prepend rather than replace: the aggregate case carries a real `0` the caller
+    # may want, and preserving the body keeps ONE output shape for both empty kinds.
+    note = _empty_result_note(csv_text, sparql_query)
+    return f"{note}{csv_text}" if note else csv_text
+
+
+# --------------------------------------------------------------------------- #
+# Empty-result diagnosis for run_sparql
+#
+# The largest failure mode on this server is not an error. In the 2026-07-27..08-29
+# production logs, 163 `run_sparql` calls raised; 1,237 returned HTTP 200 with an
+# empty result set. Agents do not notice: abandonment after a zero-row result (50.0%)
+# is barely above abandonment after a SUCCESSFUL one (43.8%), and only 6.9% re-read
+# the MIE afterwards — the same rate as after a success.
+#
+# Worse, an empty result has TWO causes needing OPPOSITE responses, and the wire
+# format cannot tell them apart:
+#   (A) true negative  — the pattern is right, the data is genuinely absent. On a
+#       sparse database this IS the answer. 816 of those 1,237 were this.
+#   (B) broken pattern — one triple pattern matches nothing and empties the join.
+#       342 were this, and every one was reported to a user as if it were (A).
+#
+# So this block does not merely say "0 rows": it names the fork and gives the probe
+# that settles it. Follows the ChEMBL convention (chembl.py: an empty result is NOT
+# an endpoint failure and must not be reported as one).
+#
+# Deliberately at the TOOL layer, not in execute_sparql(): chembl.py and
+# get_graph_list() both parse execute_sparql's CSV, and prose in that return value
+# would corrupt both.
+# --------------------------------------------------------------------------- #
+
+# COUNT/SUM/... in the projection with no GROUP BY collapses an empty match to ONE
+# row rather than zero — `SELECT (COUNT(*) AS ?n)` over nothing returns `"n"\n0\n`.
+# Structurally fine, semantically empty, and invisible to a row-count test. Add
+# GROUP BY and the same query returns 0 rows instead (both verified live 2026-08-29).
+# scripts/check_mie_gotchas.py reaches the same rule from the other side ("a lone
+# scalar aggregate returns ONE row even when it counts nothing — read the value, not
+# the row"); keep the two in step if either changes.
+_AGGREGATE_RE = _re.compile(r"\b(count|sum|avg|min|max|sample|group_concat)\s*\(", _re.I)
+_GROUP_BY_RE = _re.compile(r"\bgroup\s+by\b", _re.I)
+# A quoted literal inside a VALUES block, i.e. the literal-typing trap's worst spot.
+_VALUES_IRI_RE = _re.compile(r"\bvalues\b[^{]*\{[^}]*<https?://", _re.I | _re.S)
+_QUOTED_LITERAL_RE = _re.compile(r'"[^"]*"')
+
+_LONG_QUERY_CHARS = 1200
+
+
+def _csv_rows(csv_text: str) -> list[list[str]]:
+    """Parse the endpoint's CSV body.
+
+    A real parse, not a newline count: a literal containing a newline makes
+    `text.count("\n")` over-report. That only matters in the 0-vs-1 direction here,
+    but the log metric `n_rows` is computed the cheap way and is a slight
+    over-estimate for the same reason.
+    """
+    return [r for r in _csv.reader(_io.StringIO(csv_text))]
+
+
+def _empty_result_note(csv_text: str, sparql_query: str) -> str | None:
+    """Return a `#`-prefixed diagnosis block, or None if the result carries data.
+
+    Two shapes count as empty, and they get the SAME message because they pose the
+    same question to the caller:
+      - no data rows at all;
+      - one data row whose every field is `0` or unbound, from an aggregate with no
+        GROUP BY (SUM over an empty match is unbound, not 0 — hence the `""` case).
+
+    ASK is excluded: `ASK {}` returning false is `"bool"\n0\n`, which is a real
+    answer, not an empty result.
+    """
+    try:
+        rows = _csv_rows(csv_text)
+    except Exception:
+        return None
+    if not rows:
+        return None
+
+    header, data = rows[0], rows[1:]
+    query = sparql_query or ""
+    # `ASK` bodies look like a single zero row; they are an answer, not an absence.
+    if _re.search(r"\bask\b", query, _re.I) and not _re.search(r"\bselect\b", query, _re.I):
+        return None
+
+    if not data:
+        kind = "no_rows"
+    elif (
+        len(data) == 1
+        and _AGGREGATE_RE.search(query)
+        and not _GROUP_BY_RE.search(query)
+        and all(f.strip() in ("0", "") for f in data[0])
+    ):
+        kind = "zero_aggregate"
+    else:
+        return None
+
+    cols = ", ".join(c for c in header if c) or "(none)"
+    if kind == "no_rows":
+        opening = "0 rows. The query EXECUTED SUCCESSFULLY — this is not an endpoint error."
+    else:
+        opening = (
+            "The aggregate is 0 over an EMPTY match — no row satisfied the WHERE "
+            "clause. The query executed successfully; this is not an endpoint error."
+        )
+
+    lines = [
+        opening,
+        f"Columns: {cols}",
+        "Do NOT report this as a failure, and do NOT retry the same text.",
+        "TWO causes, needing OPPOSITE answers — decide which BEFORE you answer:",
+        "  (A) TRUE NEGATIVE — pattern correct, data genuinely absent. On a sparse",
+        "      database (spectra, variants, structures) this IS the answer: say so.",
+        "  (B) BROKEN PATTERN — one triple pattern matches nothing and empties the",
+        "      whole join. The real answer is non-zero and you have not found it.",
+        "Settle it with ONE probe — this is the pivot the 2-consecutive-SPARQL rule",
+        "reserves, not a third query: drop to the single most specific pattern, e.g.",
+        "  ASK { GRAPH <the-graph> { <your-anchor-IRI> ?p ?o } }",
+        "false => (A), the entity is absent. true => (B), a later pattern is wrong.",
+    ]
+
+    # Shape-aware additions, ranked by measured zero-row lift in the production logs.
+    # Capped at two: past that the block stops being read.
+    extra: list[str] = []
+    if _VALUES_IRI_RE.search(query):
+        extra.append(
+            "SEEN HERE: a VALUES block of IRIs (17.6% empty vs 8.6% for literals). "
+            "The same entity has DIFFERENT IRIs in different graphs — a TogoID "
+            "relation graph uses TogoID's canonical form, often not the source DB's "
+            "(chembl mints rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL25; the "
+            "relation graph holds identifiers.org/chembl.compound/CHEMBL25). Probe "
+            "one row of the joined graph for its IRI form. Usage Guide trap #11."
+        )
+    if len(query) >= _LONG_QUERY_CHARS and len(extra) < 2:
+        extra.append(
+            f"SEEN HERE: a long query ({len(query)} chars; >=1200 is 25.7% empty vs "
+            "8.0% at 400-700). A long conjunction gives no partial credit. Bisect: "
+            "re-run with the last two patterns removed, then add them back one at a time."
+        )
+    if _QUOTED_LITERAL_RE.search(query) and len(extra) < 2:
+        extra.append(
+            "SEEN HERE: quoted literals. One predicate can carry mixed forms (plain, "
+            "^^xsd:string, @en) — distinct RDF terms, so an exact match on the wrong "
+            "form returns 0 silently. Compare with STR(?x), or check the MIE's "
+            "global_gotchas. Usage Guide trap #7."
+        )
+    lines.extend(extra)
+
+    return "\n".join(f"# {line}" for line in lines) + "\n"
 
 
 # --- Tools for exploring RDF databases ---
