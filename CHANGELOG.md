@@ -13,6 +13,72 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.10.0] - 2026-08-29
+
+<!-- whatsnew: 2026-08-29 | When a SPARQL query comes back <strong>empty</strong>, the server now says so and explains why. An empty result has two causes that need opposite answers — the data is genuinely absent, or one line of the query is wrong and the real answer is not zero — and the reply now names the fork and the one probe that settles it. In a month of production logs, empty results outnumbered errors <strong>7.6 to 1</strong> and were mostly going unnoticed. -->
+
+A release about the failures that do not look like failures. Across 2026-07-27..08-29,
+`run_sparql` raised 163 times and returned HTTP 200 with an empty result **1,237 times** —
+and agents treated the second like a success, abandoning the task at 50.0% after a zero-row
+result versus 43.8% after a real one. Roughly 342 of those empty results were a broken query
+whose true answer was non-zero, and every one of them reached a user as "there is no data".
+
+### Added
+
+- **`run_sparql` now diagnoses an empty result instead of returning a bare header.**
+  This is the server's largest failure mode and it was invisible: across 2026-07-27..08-29,
+  `run_sparql` raised 163 times and returned HTTP 200 with an empty result **1,237 times**.
+  Agents did not react to the second — abandonment after a zero-row result (50.0%) barely
+  exceeded abandonment after a *successful* one (43.8%), and only 6.9% re-read the MIE
+  afterwards, the same rate as after a success.
+
+  An empty result is now prefixed with `#` comment lines (the CSV body is preserved
+  verbatim below them, so nothing that parsed before stops parsing). The block does not
+  merely say "0 rows" — it names the fork the wire format cannot express: **(A)** the
+  pattern is right and the data is genuinely absent, which on a sparse database *is* the
+  answer, versus **(B)** one triple pattern matches nothing and the real answer is
+  non-zero. Of those 1,237, roughly 816 were (A) and 342 were (B), and every (B) was
+  reported to a user as if it were (A). The block gives the single `ASK` probe that
+  settles it, worded as the pivot the 2-consecutive-SPARQL rule already reserves rather
+  than as a third query.
+
+  Two subtler cases are handled deliberately. An **aggregate that is 0 over an empty
+  match** — `SELECT (COUNT(*) AS ?n)` with no `GROUP BY` returns one row of `0`, so it is
+  structurally fine and invisible to any row-count test — gets the same treatment and the
+  same message; add `GROUP BY` and the identical query returns 0 rows instead (both
+  verified live 2026-08-29). An **`ASK` that is false** is left alone: it is an answer,
+  not an absence, and flagging it would teach agents to distrust it.
+
+  Up to two shape-aware lines are appended, ranked by measured lift in those logs: a
+  `VALUES` block of IRIs (17.6% empty vs 8.6% for literal `VALUES`) points at trap #11;
+  a query of >=1,200 chars (25.7% empty vs 8.0% at 400-700) gets bisection advice; quoted
+  literals point at trap #7. Capped at two, because past that the block stops being read.
+
+  Implemented at the tool layer, not in `execute_sparql` — `chembl.py` and `get_graph_list`
+  both parse that CSV, and prose in its return value would corrupt both. Follows the
+  existing ChEMBL convention that an empty result is not an endpoint failure and must not
+  be reported as one. MINOR when released: behaviour on a success path changes, all
+  existing calls still work.
+
+- **Usage Guide: silent-failure trap #11 — cross-namespace joins through TogoID relation
+  graphs.** A relation graph (`dataset/togoid/relation/<a>-<b>`) keys each side by TogoID's
+  canonical IRI for that dataset, which is frequently *not* the form the source database's own
+  graph mints: `chembl` uses `rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL25`, the relation
+  graph holds `identifiers.org/chembl.compound/CHEMBL25`. The join finds no shared RDF term and
+  returns 0 rows with HTTP 200. Production logs (2026-07-27..08-29) show a MassBank spectra
+  lookup failing this way for every compound it asked about.
+
+  The rule is **not** "always use identifiers.org" — the form varies per dataset, and assuming
+  it would introduce the same bug in the other direction. Verified 2026-08-29: `ncbigene-go`
+  and `ensembl_transcript-go` key on `identifiers.org/`, while `chebi-inchi_key` keys ChEBI as
+  an OBO PURL and `nando-mondo` pairs an OBO PURL with a `nanbyodata.jp` IRI. The guide gives a
+  one-row probe that reports both sides before the join is written.
+
+  This was documented only in `massbank.yaml`, so it reached an agent only if it happened to
+  open that file first; the convention belongs to the relation graphs, not to any one database.
+  A matching TROUBLESHOOTING row notes that on a sparse database the empty join is
+  indistinguishable from a true negative.
+
 ## [2.9.1] - 2026-08-26
 
 <!-- whatsnew: 2026-08-26 | The per-database schema guides that steer every SPARQL query are now <strong>re-checked against the live endpoints automatically</strong>, weekly. The first full audit corrected <strong>28 incorrect warnings</strong> across the corpus — most of them claimed a query would time out when it in fact returns a plausible but <em>wrong</em> answer in seconds, which is the failure that actually costs you. -->
@@ -2071,6 +2137,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.8...HEAD
+[2.10.0]: https://github.com/dbcls/togomcp/compare/v2.9.1...v2.10.0
 [2.9.1]: https://github.com/dbcls/togomcp/compare/v2.9.0...v2.9.1
 [2.9.0]: https://github.com/dbcls/togomcp/compare/v2.8.0...v2.9.0
 [2.8.0]: https://github.com/dbcls/togomcp/compare/v2.7.8...v2.8.0

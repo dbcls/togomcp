@@ -28,6 +28,17 @@ been *tested*, not a proof that nothing else is affected.
 The rule itself lives in `usage_guide_v6/03_workflows.md` (SILENT-FAILURE TRAPS
 #10) and in the mie-generator skill's `query-strategy.md`; this test enforces it
 against the corpus that ships.
+
+ONE narrow exemption, added 2026-08-29: a `check:` block whose `kind` is
+`zero_rows` or `error` (MIE v3 spec §3.6) asserts that its query FAILS, and a
+gotcha *about* two-argument REGEX cannot be tested by any other means — the
+broken form is the thing under test. Such queries are not "shipped SPARQL" in
+the sense this guard protects: `get_MIE_file` strips every `check:` block before
+serving (`rdf_portal._strip_check_blocks`), so no agent ever sees one to copy.
+The exemption is deliberately not extended to `kind: count`/`ratio`/`absent`,
+whose queries are meant to return real values — a two-arg REGEX there would
+silently corrupt the figure the check certifies, which is exactly the original
+bug in a new costume.
 """
 
 from __future__ import annotations
@@ -126,13 +137,40 @@ def test_mie_dir_is_populated():
     assert len(mie_files()) >= 30, f"expected the full MIE corpus, found {len(mie_files())}"
 
 
+def failure_expecting_check_paths(node, path: str = "") -> set[str]:
+    """Dotted paths of `check:` blocks that assert their query FAILS (spec §3.6).
+
+    Only `zero_rows` and `error` qualify; those two kinds pass precisely when the
+    query returns nothing / does not run, so a deliberately-broken pattern is the
+    payload rather than a defect.
+    """
+    found: set[str] = set()
+    if isinstance(node, dict):
+        for key, value in node.items():
+            child = f"{path}.{key}"
+            if (
+                key == "check"
+                and isinstance(value, dict)
+                and value.get("kind") in {"zero_rows", "error"}
+            ):
+                found.add(child)
+            found |= failure_expecting_check_paths(value, child)
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            found |= failure_expecting_check_paths(value, f"{path}[{index}]")
+    return found
+
+
 @pytest.mark.parametrize("mie_path", mie_files(), ids=lambda p: p.stem)
 def test_no_two_arg_regex_in_executable_sparql(mie_path: Path):
     """Every REGEX() inside an executable `sparql` field must pass a flags argument."""
     document = yaml.safe_load(mie_path.read_text())
+    exempt = failure_expecting_check_paths(document)
     offenders: list[str] = []
     for path, text in walk_strings(document):
         if not EXECUTABLE_FIELD.search(path):
+            continue
+        if any(path.startswith(prefix + ".") for prefix in exempt):
             continue
         for call, n_args in find_regex_calls(text):
             if n_args < 3:

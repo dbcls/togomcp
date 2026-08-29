@@ -29,8 +29,10 @@
 | Stuck on one DB (≥4 calls in EXPLORATION) | Pivot to the next unexplored DB from your entity→DB map. UniProt annotations don't substitute for direct Rhea/Taxonomy/ChEMBL/PubChem calls. |
 | 3rd consecutive SPARQL | Stop. Pivot to search / NCBI / TogoID / partial synthesis. |
 | Cross-DB SPARQL fails | Check endpoints; use TogoID or NCBI bridge. |
-| Empty SPARQL results | Use structured predicates from MIE; extract IRIs via search first. Typed literal missing (`^^xsd:string`)? Predicate applied to the wrong node? |
+| Empty SPARQL results | **Read the `#` diagnosis block `run_sparql` prepends** — it names the two causes and the probe. Not an endpoint failure. Then: structured predicates from MIE; extract IRIs via search first. Typed literal missing (`^^xsd:string`)? Predicate applied to the wrong node? |
+| Aggregate came back `0` | Same thing in aggregate form — `COUNT` over an empty match is one row of `0`, so it *looks* structurally fine. The diagnosis block fires here too; decide true-negative vs broken-pattern before reporting a zero. |
 | `REGEX` filter returns nothing (pattern uses `A\|B` or `{n,m}`) | Two-arg `REGEX()` mishandles alternation and brace quantifiers on **every** endpoint. Always pass a third argument: `REGEX(?x, "A\|B", "")`. See SILENT-FAILURE TRAPS #10. |
+| Cross-DB join through a TogoID relation graph returns 0 | The two graphs mint **different IRIs for the same entity**. A relation graph uses TogoID's canonical form per dataset — often, but **not always**, `identifiers.org/` — not the source DB's own form (`chembl` mints `rdf.ebi.ac.uk/resource/chembl/molecule/…`, the relation graph holds `identifiers.org/chembl.compound/…`). Probe one row of the relation graph for both IRI forms before joining. Indistinguishable from a true negative on a sparse DB. See SILENT-FAILURE TRAPS #11. |
 | SPARQL timeout | Add LIMIT; replace `bif:contains` with structured IRIs. |
 | Wrong count | Master reactions only? Correct keyword IRI (not EC prefix)? |
 | **Count inflated** (2×, 4×, 8×) — or right but unproven | Co-tenancy. `GRAPH ?g` the pattern with its subject bound: >1 graph → re-declared; none of yours → foreign predicate, i.e. a silent intersection. Pin **every** pattern. `DISTINCT` hides it, doesn't fix it. |
