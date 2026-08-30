@@ -112,6 +112,7 @@ count looks inflated (it hurt scores when called routinely: 16.73 vs. 17.59 with
 Late TogoID use (>50% into the sequence) correlates with worse scores.
 
 ```
+0. togoid_identifyId(ids)          bare accession → dataset key — DON'T GUESS
 1. togoid_getAllRelation()         discover available routes — call EARLY
 2. togoid_countId(src, tgt, ids)   validate before bulk conversion
 3. togoid_convertId(ids, route)    returns [source_id, target_id] pairs
@@ -120,5 +121,15 @@ Late TogoID use (>50% into the sequence) correlates with worse scores.
 Common routes: `ncbigene → uniprot` · `uniprot → pdb` · `uniprot → chembl_target` ·
 `ncbigene → ensembl_gene`. Multi-hop OK (`ncbigene → uniprot → pdb`). If empty, check
 ID format with `togoid_getDataset(src)`.
+
+**Never invent a dataset key.** `ncbi_protein`, `entrez_gene` and `uniprotkb` are not
+TogoID keys and every call using one fails. GenBank/ENA/DDBJ **protein** accessions
+(`AEK21611`) are `insdc_cds`, NOT `ncbi_protein`; NCBI Gene IDs are `ncbigene`. Given a
+bare accession, call `togoid_identifyId` — it returns candidate keys ordered
+most-specific-first, narrowable with `category=`.
+
+`getRelation` direction is not a constraint: TogoID registers most pairs one way only, but
+conversion traverses both. A result tagged `registered_direction: target-source` still
+converts in the direction you asked for.
 
 Skip when: both DBs share an endpoint, or `ncbi_esearch` already cross-references the IDs.

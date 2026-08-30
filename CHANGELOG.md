@@ -13,6 +13,74 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Added
+
+- **`togoid_identifyId` — resolve a bare accession to its TogoID dataset key.**
+  Closes the gap reported in [#213](https://github.com/dbcls/togomcp/issues/213): given
+  an identifier like `AEK21611`, there was no supported way to ask which dataset key
+  `convertId`'s `route` wanted. Agents guessed, and the guesses were wrong in a
+  characteristic way — `ncbi_protein` (GenBank/ENA/DDBJ protein accessions are filed under
+  `insdc_cds`), `entrez_gene`, `uniprotkb`. Each guess cost a failed call.
+
+  Candidates are ordered most-specific-first by `pattern_collisions`: how many of the other
+  118 datasets' published example IDs that dataset's pattern also matches. The measure is
+  data-derived rather than syntactic, which matters — nearly every TogoID pattern contains a
+  `+` or `*` somewhere (the optional `(?:\.\d+)?` version suffix alone), so counting
+  quantifiers ranks everything as loose. Collisions separate `uniprot` (10) from
+  `insdc_cds` (73) from `hgnc_symbol` (1474, a catch-all that matches almost any token,
+  `CHEBI:15377` included). Order is evidence, not an answer, and the tool says so: bare
+  numeric IDs (ncbigene, pubmed, chebi, …) genuinely cannot be told apart by shape and all
+  tie at 170. Narrow with `category=`, or pass a CURIE — `insdc.cds:AEK21611` resolves to
+  exactly one dataset.
+
+- **`regex_python` and `regex_flavor` on `getAllDataset` / `getDataset`.**
+  TogoID publishes every dataset's ID pattern with .NET/JavaScript named groups —
+  `(?<id>...)` — which Python's `re.compile` rejects outright. **All 119 datasets are
+  affected**, so the `regex` field was unusable from Python as served. The dangerous part
+  is the failure mode, not the incompatibility: a consumer wrapping the compile in a bare
+  `try/except` turns "cannot compile" into "matches nothing", which is a silently wrong
+  answer rather than an error — exactly what happened to the reporter of #213.
+
+  `regex` is now left byte-identical to upstream and labelled `regex_flavor: "ecmascript"`,
+  with a `regex_python` twin beside it. The rewrite only touches group openers (the
+  lookahead requires a name character), so lookbehind stays intact.
+
+### Fixed
+
+- **`togoid_getRelation` no longer denies routes that `convertId` traverses.**
+  TogoID's relation config is authored one directory per *directed* pair, and only 32 of
+  302 pairs are registered both ways — so `getRelation(source="insdc_cds",
+  target="uniprot")` returned HTTP 404 `no database config found` while
+  `convertId(route="insdc_cds,uniprot")` returned `[["AEK21611", "G0YV74"]]`. `/count/`
+  and `/convert` both accept either orientation, which left `getRelation` as the only
+  surface that reported a working route as nonexistent — in a *discovery* tool, whose
+  whole job is telling the agent what is possible.
+
+  It now falls back to the swapped pair, re-orients `forward`/`reverse` into the caller's
+  direction (otherwise each label reads as its own opposite), and marks the result
+  `registered_direction: "target-source"`. A pair registered in neither orientation still
+  raises, so "no such route" stays distinguishable from "registered the other way".
+
+- **Unknown dataset keys in a route now fail locally, naming the key and a replacement.**
+  `convertId(route="ncbi_protein,uniprot")` used to surface TogoID's
+  `no route: ncbi_protein <> uniprot` — true, but it does not say which half is wrong or
+  what to use instead. `convertId` and `countId` now validate every key against the dataset
+  list before spending the request and raise
+  `not a TogoID dataset key: 'ncbi_protein' (did you mean: insdc_cds, refseq_protein …?)`.
+  Suggestions come from a curated alias table ahead of edit distance, because string
+  similarity cannot get this right: `ncbi_protein` is lexically closest to
+  `ensembl_protein`, while the answer is `insdc_cds`. If the dataset config cannot be
+  fetched, validation is skipped rather than blocking a call that would have worked.
+
+### Upstream
+
+The root causes of the regex dialect and the one-way relation config belong to
+[togoid/togoid-config](https://github.com/togoid/togoid-config); the changes above are
+wrapper-side compensation. Also worth reporting there: `hgnc_symbol`'s pattern is
+`^(?<id>[A-Z0-9_(?:orf)\-]+\@?)$`, where the `(?:orf)` was evidently meant as an
+alternation but sits *inside* the character class, making `(`, `?`, `:`, `o`, `r`, `f`, `)`
+literal members. That is why it matches `CHEBI:15377`.
+
 ## [2.10.0] - 2026-08-29
 
 <!-- whatsnew: 2026-08-29 | When a SPARQL query comes back <strong>empty</strong>, the server now says so and explains why. An empty result has two causes that need opposite answers — the data is genuinely absent, or one line of the query is wrong and the real answer is not zero — and the reply now names the fork and the one probe that settles it. In a month of production logs, empty results outnumbered errors <strong>7.6 to 1</strong> and were mostly going unnoticed. -->
