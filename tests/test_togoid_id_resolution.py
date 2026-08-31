@@ -32,6 +32,7 @@ from togo_mcp import togoid
 from togo_mcp.togoid import (
     _augment_dataset,
     _collision_scores,
+    _shape_signature,
     _suggest_datasets,
     _to_python_regex,
     convertId,
@@ -57,6 +58,10 @@ _UNIPROT_REGEX = (
 # character class, so `(`, `?`, `:`, `o`, `r`, `f`, `)` are literal members and
 # the pattern matches nearly any token.
 _HGNC_SYMBOL_REGEX = r"^(?<id>[A-Z0-9_(?:orf)\-]+\@?)$"
+_INSDC_REGEX = (
+    r"^(?:insdc:)?(?<id>[A-Z]\d{5}|[A-Z]{2}\d{6}|[A-Z]{4}\d{8}"
+    r"|[A-J][A-Z]{2}\d{5}|[A-Z]{4,}\d{9})(?:\.\d+)?$"
+)
 
 _DATASET_CONFIG = {
     "insdc_cds": {
@@ -64,6 +69,16 @@ _DATASET_CONFIG = {
         "category": "Protein",
         "regex": _INSDC_CDS_REGEX,
         "examples": [["ABU85686", "BAH11229", "DAA12165"]],
+    },
+    # Gene-level INSDC. Its `[A-J][A-Z]{2}\d{5}` branch also matches the protein
+    # accession AEK21611, and it collides with FEWER foreign examples than
+    # insdc_cds — which is precisely how it outranked insdc_cds under the
+    # collisions-only ordering shipped in 2.11.0.
+    "insdc": {
+        "label": "GenBank/ENA/DDBJ",
+        "category": "Gene",
+        "regex": _INSDC_REGEX,
+        "examples": [["U10991", "AF116914", "AK056978", "DQ440258"]],
     },
     "uniprot": {
         "label": "UniProt",
@@ -97,9 +112,11 @@ def _clear_caches():
     """The dataset config and collision table are memoised for the process."""
     togoid._dataset_config_cache = None
     togoid._collision_cache = None
+    togoid._shape_cache = None
     yield
     togoid._dataset_config_cache = None
     togoid._collision_cache = None
+    togoid._shape_cache = None
 
 
 def _mock_dataset_config(router: respx.Router) -> None:
@@ -446,6 +463,75 @@ class TestIdentifyId:
         with respx.mock(using="httpx"):
             with pytest.raises(ValueError, match="no identifiers"):
                 await identifyId(ids="   ")
+
+    @pytest.mark.asyncio
+    async def test_shape_beats_collisions_for_the_reported_case(self) -> None:
+        """The regression Yuna reported on #213: `pattern_collisions` alone put
+        the gene-level `insdc` (63) ahead of `insdc_cds` (73) for a PROTEIN
+        accession, so a client taking candidates[0] got the wrong dataset for
+        the exact case that motivated the tool."""
+        with respx.mock(using="httpx") as router:
+            _mock_dataset_config(router)
+            result = json.loads(await identifyId(ids="AEK21611"))
+        keys = [c["dataset"] for c in result[0]["candidates"]]
+        assert keys[0] == "insdc_cds"
+        assert keys.index("insdc_cds") < keys.index("insdc")
+
+    @pytest.mark.asyncio
+    async def test_shape_match_is_exposed(self) -> None:
+        with respx.mock(using="httpx") as router:
+            _mock_dataset_config(router)
+            result = json.loads(await identifyId(ids="AEK21611"))
+        by_key = {c["dataset"]: c for c in result[0]["candidates"]}
+        assert by_key["insdc_cds"]["shape_matches_examples"] is True
+        assert by_key["hgnc_symbol"]["shape_matches_examples"] is False
+
+    @pytest.mark.asyncio
+    async def test_shape_reorders_but_never_drops_a_match(self) -> None:
+        """Shape is a tie-break, not a filter: a dataset whose ~10 examples
+        happen not to cover the ID's shape must still be offered."""
+        with respx.mock(using="httpx") as router:
+            _mock_dataset_config(router)
+            result = json.loads(await identifyId(ids="AEK21611"))
+        keys = {c["dataset"] for c in result[0]["candidates"]}
+        assert "insdc" in keys and "hgnc_symbol" in keys
+
+    @pytest.mark.asyncio
+    async def test_collisions_still_break_ties_within_a_shape_tier(self) -> None:
+        """P38398's shape matches both uniprot and insdc_cds examples, so the
+        tie falls to collisions — uniprot (fewer) must win."""
+        with respx.mock(using="httpx") as router:
+            _mock_dataset_config(router)
+            result = json.loads(await identifyId(ids="P38398"))
+        tier = [c for c in result[0]["candidates"] if c["shape_matches_examples"]]
+        assert [c["pattern_collisions"] for c in tier] == sorted(
+            c["pattern_collisions"] for c in tier
+        )
+        assert result[0]["candidates"][0]["dataset"] == "uniprot"
+
+    @pytest.mark.asyncio
+    async def test_ranking_is_per_token_not_shared(self) -> None:
+        """Ordering depends on the ID, so two IDs in one call must not share a
+        single precomputed order."""
+        with respx.mock(using="httpx") as router:
+            _mock_dataset_config(router)
+            result = json.loads(await identifyId(ids=["AEK21611", "P38398"]))
+        assert result[0]["candidates"][0]["dataset"] == "insdc_cds"
+        assert result[1]["candidates"][0]["dataset"] == "uniprot"
+
+    @pytest.mark.parametrize(
+        "identifier,signature",
+        [
+            ("AEK21611", "L3D5"),
+            ("P38398", "L1D5"),
+            ("2HHB", "D1L3"),
+            ("NP_009225", "L2_1D6"),
+            ("CHEBI:15377", "L5:1D5"),
+            ("", ""),
+        ],
+    )
+    def test_shape_signature(self, identifier: str, signature: str) -> None:
+        assert _shape_signature(identifier) == signature
 
     def test_collision_scores_rank_the_catch_all_highest(self) -> None:
         scores = _collision_scores(_DATASET_CONFIG)
