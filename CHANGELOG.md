@@ -13,6 +13,19 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.11.0] - 2026-08-31
+
+<!-- whatsnew: 2026-08-31 | TogoID ID conversion stopped misleading callers: a new <code>togoid_identifyId</code> turns a bare accession like <code>AEK21611</code> into the dataset key a conversion route needs, <code>getRelation</code> no longer reports a working route as nonexistent, and dataset ID patterns now ship in a form Python can actually compile. <strong>ChatGPT users must re-run <em>Scan Tools</em></strong> to see the new tool. -->
+
+A release about a discovery surface that lied in three different directions — reported
+from the outside, by someone running an automated pipeline where an LLM picks the tool
+calls ([#213](https://github.com/dbcls/togomcp/issues/213)). Every one of the three was
+a tool saying "no" to something the server would happily have done, which is the worst
+shape a bug can take for an agent: it does not retry, it concludes the task is
+impossible and moves on. Two of the root causes are TogoID's rather than ours; what
+ships here is wrapper-side compensation, with the originals filed at
+[togoid/togoid-config#396](https://github.com/togoid/togoid-config/issues/396).
+
 ### Added
 
 - **`togoid_identifyId` — resolve a bare accession to its TogoID dataset key.**
@@ -2205,6 +2218,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.8...HEAD
+[2.11.0]: https://github.com/dbcls/togomcp/compare/v2.10.0...v2.11.0
 [2.10.0]: https://github.com/dbcls/togomcp/compare/v2.9.1...v2.10.0
 [2.9.1]: https://github.com/dbcls/togomcp/compare/v2.9.0...v2.9.1
 [2.9.0]: https://github.com/dbcls/togomcp/compare/v2.8.0...v2.9.0
