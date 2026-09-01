@@ -13,6 +13,14 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.12.0] - 2026-09-01
+
+A same-week follow-up to 2.11.0, from the same reporter testing the thing we shipped
+them. `identifyId` answered their question with the right *set* of candidates in the
+wrong *order* — which for a client that reads `candidates[0]` is indistinguishable from
+being wrong. The fix is a better signal, not better prose: the previous release already
+warned against trusting rank, in the description the reporter was reading.
+
 ### Changed
 
 - **`togoid_identifyId` now ranks candidates per-ID, not per-pattern.**
@@ -2255,6 +2263,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.8...HEAD
+[2.12.0]: https://github.com/dbcls/togomcp/compare/v2.11.0...v2.12.0
 [2.11.0]: https://github.com/dbcls/togomcp/compare/v2.10.0...v2.11.0
 [2.10.0]: https://github.com/dbcls/togomcp/compare/v2.9.1...v2.10.0
 [2.9.1]: https://github.com/dbcls/togomcp/compare/v2.9.0...v2.9.1
