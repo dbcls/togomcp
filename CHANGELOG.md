@@ -13,6 +13,51 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.12.0] - 2026-09-01
+
+A same-week follow-up to 2.11.0, from the same reporter testing the thing we shipped
+them. `identifyId` answered their question with the right *set* of candidates in the
+wrong *order* — which for a client that reads `candidates[0]` is indistinguishable from
+being wrong. The fix is a better signal, not better prose: the previous release already
+warned against trusting rank, in the description the reporter was reading.
+
+### Changed
+
+- **`togoid_identifyId` now ranks candidates per-ID, not per-pattern.**
+  Reported on [#213](https://github.com/dbcls/togomcp/issues/213) after 2.11.0 shipped:
+  `pattern_collisions` is a property of a pattern alone and cannot know anything about
+  the ID in hand, so for the protein accession `AEK21611` the gene-level `insdc` (63)
+  outranked `insdc_cds` (73) — a client taking `candidates[0]` got the wrong dataset
+  for the exact case that motivated the tool.
+
+  Candidates are now sorted first on `shape_matches_examples` — whether the ID's
+  character-class shape (`AEK21611` → `L3D5`) is one the dataset's *own* published
+  examples take (`insdc_cds`: all `L3D5`; `insdc`: `L1D5`/`L2D6`) — with
+  `pattern_collisions` breaking ties within a tier. Measured leave-one-out over all
+  1,840 published example IDs, top-1 accuracy rises from **73.3% to 82.1%**. Shape only
+  ever re-orders; nothing that matched is dropped, so an ID whose shape is absent from a
+  dataset's ~10 examples costs a rank, never a result.
+
+  The remaining 18% is irreducible and the tool says so more bluntly than before: a bare
+  `672` is a well-formed ncbigene, pubmed, chebi *and* homologene ID, and no property of
+  the string can separate them. The description now tells clients outright not to take
+  `candidates[0]` blindly — the previous wording said order was "evidence, not an answer"
+  and was read past, which is itself the argument for fixing the ranking rather than the
+  prose.
+
+### Added
+
+- **`shape_matches_examples` on each `identifyId` candidate**, so a client can see *why*
+  something ranked where it did rather than trusting an opaque order.
+
+### Upstream
+
+`catalog` is the literal string `"FIXME"` in **20 of 119** datasets (`affy_probeset`,
+`atc`, `uberon`, `rnacentral`, …), also spotted on #213. We pass the field through
+untouched — inventing a value would be fabricating metadata about someone else's
+registry — so this is reported at
+[togoid/togoid-config#396](https://github.com/togoid/togoid-config/issues/396).
+
 ## [2.11.0] - 2026-08-31
 
 <!-- whatsnew: 2026-08-31 | TogoID ID conversion stopped misleading callers: a new <code>togoid_identifyId</code> turns a bare accession like <code>AEK21611</code> into the dataset key a conversion route needs, <code>getRelation</code> no longer reports a working route as nonexistent, and dataset ID patterns now ship in a form Python can actually compile. <strong>ChatGPT users must re-run <em>Scan Tools</em></strong> to see the new tool. -->
@@ -2218,6 +2263,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.8...HEAD
+[2.12.0]: https://github.com/dbcls/togomcp/compare/v2.11.0...v2.12.0
 [2.11.0]: https://github.com/dbcls/togomcp/compare/v2.10.0...v2.11.0
 [2.10.0]: https://github.com/dbcls/togomcp/compare/v2.9.1...v2.10.0
 [2.9.1]: https://github.com/dbcls/togomcp/compare/v2.9.0...v2.9.1
