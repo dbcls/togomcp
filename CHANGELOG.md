@@ -13,6 +13,15 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.12.1] - 2026-09-01
+
+Housekeeping ahead of an upstream deploy. TogoID fixed the malformed `hgnc_symbol`
+pattern we reported ([togoid-config#396](https://github.com/togoid/togoid-config/issues/396),
+commit `352910c0`), but has not yet published it. Our ranking reads collision scores
+from the live config and so needs no change — verified by running `identifyId` against a
+config carrying the revised pattern. What did need changing was one guard and one
+number, both armed for the moment that fix lands.
+
 ### Fixed
 
 - **`getAllDataset`/`getDataset` no longer overwrite a `regex_flavor` TogoID publishes
@@ -2290,6 +2299,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.8...HEAD
+[2.12.1]: https://github.com/dbcls/togomcp/compare/v2.12.0...v2.12.1
 [2.12.0]: https://github.com/dbcls/togomcp/compare/v2.11.0...v2.12.0
 [2.11.0]: https://github.com/dbcls/togomcp/compare/v2.10.0...v2.11.0
 [2.10.0]: https://github.com/dbcls/togomcp/compare/v2.9.1...v2.10.0
