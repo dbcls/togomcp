@@ -125,7 +125,14 @@ def _augment_dataset(config: dict) -> dict:
     if not isinstance(pattern, str):
         return config
     augmented = dict(config)
-    augmented["regex_flavor"] = "ecmascript"
+    # If TogoID starts publishing its own `regex_flavor` — which is what we asked
+    # for in togoid/togoid-config#396 — believe it rather than asserting
+    # "ecmascript" over the top. Should they ever switch the published form to
+    # `(?P<...)` and label it "python", overwriting that would make us the
+    # source of a false claim about someone else's data. The rewrite below is a
+    # no-op on an already-Python pattern, so `regex_python` stays correct either
+    # way.
+    augmented.setdefault("regex_flavor", "ecmascript")
     augmented["regex_python"] = _to_python_regex(pattern)
     return augmented
 
@@ -442,14 +449,25 @@ def _collision_scores(config: dict) -> dict[str, int]:
     1,840 probe IDs; running all 119 patterns over all of them takes ~0.03s and
     is memoised for the process.
 
-    The result separates the genuinely specific from the catch-all: `uniprot`
-    collides with 10, `insdc_cds` with 73, and `hgnc_symbol` with 1,474 —
-    upstream authored it as `^(?<id>[A-Z0-9_(?:orf)\\-]+\\@?)$`, where the
-    `(?:orf)` was meant as an alternation but sits INSIDE the character class,
-    making `(`, `?`, `:`, `o`, `r`, `f`, `)` literal members. It matches almost
-    any token, `CHEBI:15377` included. Bare-numeric datasets (ncbigene, pubmed,
-    chebi, ...) all score 170 because they genuinely cannot be told apart by
-    shape — the tie is the honest answer, not a ranking failure.
+    The result separates the genuinely specific from the catch-all: as of
+    2026-09-01, `uniprot` collides with 10, `insdc_cds` with 73, and
+    `hgnc_symbol` with 1,474. Bare-numeric datasets (ncbigene, pubmed, chebi,
+    ...) all score 170 because they genuinely cannot be told apart by shape —
+    the tie is the honest answer, not a ranking failure.
+
+    Scores are derived from whatever the live config says, so they move when
+    TogoID revises a pattern; treat any figure here as illustrative. The
+    `hgnc_symbol` number is a case in point. It was 1,474 because upstream had
+    authored the pattern as `^(?<id>[A-Z0-9_(?:orf)\\-]+\\@?)$`, where the
+    `(?:orf)` was meant as an alternation but sat INSIDE the character class,
+    making `(`, `?`, `:`, `o`, `r`, `f`, `)` literal members — so it matched
+    almost any token, `CHEBI:15377` included. We reported that
+    (togoid/togoid-config#396) and it is fixed in the config repo as of
+    2026-09-01, not yet on api.togoid.dbcls.jp. When the fix lands the score
+    drops to ~1,115 and the spurious CURIE matches disappear: still a catch-all
+    for bare uppercase alphanumeric tokens, so this measure keeps earning its
+    place. Nothing here needs changing when that happens — the numbers are read,
+    not written.
     """
     global _collision_cache
     if _collision_cache is not None:
@@ -537,8 +555,10 @@ async def identifyId(ids: str | list[str], category: str | None = None) -> str:
       accession sorts above the gene-level dataset.
     - `pattern_collisions` — how many of the OTHER 118 datasets' example IDs
       this dataset's pattern also matches, used to break ties. Low means a
-      distinctive format (`uniprot`: 10); high means a catch-all
-      (`hgnc_symbol`: 1474, which matches nearly any token).
+      distinctive format (`uniprot`: ~10); high means a catch-all
+      (`hgnc_symbol`: over a thousand — it matches nearly any bare uppercase
+      alphanumeric token). Scores are computed from the live config, so the
+      exact figures move when TogoID revises a pattern.
 
     On the 1,840 published example IDs, that ordering puts the right dataset
     first 82% of the time (leave-one-out).

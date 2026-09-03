@@ -54,10 +54,13 @@ _UNIPROT_REGEX = (
     r"^(?:(?<id1>[A-NR-Z][0-9](?:[A-Z][A-Z0-9][A-Z0-9][0-9]){1,2}(?:-\d+)?)"
     r"|(?<id2>[OPQ][0-9][A-Z0-9][A-Z0-9][A-Z0-9][0-9](?:-\d+)?)(?:\.\d+)?)$"
 )
-# Upstream bug: the `(?:orf)` was meant as an alternation but sits inside the
-# character class, so `(`, `?`, `:`, `o`, `r`, `f`, `)` are literal members and
-# the pattern matches nearly any token.
-_HGNC_SYMBOL_REGEX = r"^(?<id>[A-Z0-9_(?:orf)\-]+\@?)$"
+# Upstream, as of togoid-config 352910c0 (2026-09-01). The previous form was
+# `^(?<id>[A-Z0-9_(?:orf)\-]+\@?)$`, where the `(?:orf)` was meant as an
+# alternation but sat inside the character class, making `(`, `?`, `:`, `o`,
+# `r`, `f`, `)` literal members — so it matched even `CHEBI:15377`. We reported
+# it (togoid/togoid-config#396) and it was fixed. Still a catch-all for bare
+# uppercase alphanumeric tokens, which is the property these tests rely on.
+_HGNC_SYMBOL_REGEX = r"^(?<id>[A-Z0-9_\-]+(?:orf[0-9]+[A-Z0-9\-]+)?\@?)$"
 _INSDC_REGEX = (
     r"^(?:insdc:)?(?<id>[A-Z]\d{5}|[A-Z]{2}\d{6}|[A-Z]{4}\d{8}"
     r"|[A-J][A-Z]{2}\d{5}|[A-Z]{4,}\d{9})(?:\.\d+)?$"
@@ -167,6 +170,19 @@ class TestRegexPortability:
         assert augmented["regex"] == _INSDC_CDS_REGEX
         assert augmented["regex_flavor"] == "ecmascript"
         assert re.compile(augmented["regex_python"]).fullmatch("AEK21611")
+
+    def test_upstream_regex_flavor_is_not_overwritten(self) -> None:
+        """If TogoID starts publishing `regex_flavor` — what we asked for in
+        togoid/togoid-config#396 — asserting "ecmascript" over the top would
+        make us the source of a false claim about their data."""
+        augmented = _augment_dataset(
+            {"regex": r"^(?P<id>\d+)$", "regex_flavor": "python"}
+        )
+        assert augmented["regex_flavor"] == "python"
+        assert re.compile(augmented["regex_python"]).fullmatch("672")
+
+    def test_regex_flavor_defaults_when_upstream_omits_it(self) -> None:
+        assert _augment_dataset({"regex": r"^(?<id>\d+)$"})["regex_flavor"] == "ecmascript"
 
     def test_augment_does_not_mutate_input(self) -> None:
         original = dict(_DATASET_CONFIG["uniprot"])
