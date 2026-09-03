@@ -13,6 +13,33 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Fixed
+
+- **`getAllDataset`/`getDataset` no longer overwrite a `regex_flavor` TogoID publishes
+  itself.** We asked upstream to add exactly that field
+  ([togoid/togoid-config#396](https://github.com/togoid/togoid-config/issues/396)), so
+  asserting `"ecmascript"` over the top was a latent bug waiting on our own request
+  being granted: if TogoID ever switches the published form to `(?P<...)` and labels it
+  `"python"`, clobbering that would make us the source of a false claim about someone
+  else's data. We now defer to an upstream value and only fill in the default when the
+  field is absent. `regex_python` stays correct either way — the rewrite is a no-op on a
+  pattern that is already Python-shaped.
+
+### Changed
+
+- **Docs stop hard-coding collision figures that upstream controls.** `hgnc_symbol`'s
+  `pattern_collisions` was quoted as `1474` in the client-visible `identifyId`
+  description. Ikeda fixed the malformed pattern we reported
+  (togoid-config `352910c0`, 2026-09-01), which takes the score to ~1,115 and stops it
+  matching CURIEs like `CHEBI:15377`. Scores are read from the live config, so the code
+  needed no change — but a docstring quoting a stale number is a docstring lying to the
+  model reading it. The description now gives magnitudes and says the figures move.
+
+  No behavioral change on our side, before or after that fix deploys: verified by
+  running `identifyId` against a config carrying the revised pattern. Ranking is
+  identical for `AEK21611`, `P38398`, `2HHB` and `672`; `CHEBI:15377` simply stops
+  offering a spurious `hgnc_symbol` candidate and resolves to `chebi` alone.
+
 ## [2.12.0] - 2026-09-01
 
 A same-week follow-up to 2.11.0, from the same reporter testing the thing we shipped
