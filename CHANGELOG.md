@@ -58,6 +58,10 @@ return shape changed.
   `taxonomy` species (+4.9%), `hgnc` EC-code xrefs (+3.8%), `amrportal` subregion countries, `chembl`
   Parkinson mechanisms, `mediadive` recipe rows, `oma`/UniProt function comments, and `pubchem`
   descriptors (every descriptor is now typed twice, CHEMINF and PubChem vocabulary).
+- **`go`'s graph-pin warning quoted a ×3.27 inflation that is now ×2.84** — caught by this release's
+  own PR check. The set of co-hosted graphs re-declaring GO classes changed upstream (glycosmos'
+  glycoprotein graph dropped out, MONDO joined), so the figure, graph list and `check:` were
+  re-measured together. The advice — pin the graph — is unchanged.
 - **`endpoints.csv` sent NANDO keyword search to OLS4, which does not index NANDO** (0 hits for
   `searchClasses(ontologyId="nando")`). The registry now says `sparql`.
 
