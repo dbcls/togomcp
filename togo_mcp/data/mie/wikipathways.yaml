@@ -1,0 +1,634 @@
+mie_spec: 3
+database: wikipathways
+
+discovery:
+  title: WikiPathways
+  description: >
+    Community-curated biological pathway diagrams for 39 organisms, exposing pathways, their
+    gene-product/protein/metabolite nodes, typed and signed interactions, Pathway/Disease/Cell-type
+    Ontology tags, and BridgeDb cross-references to UniProt, Ensembl, NCBI Gene, HGNC, ChEBI,
+    PubChem, HMDB, KEGG, Rhea, Reactome and Wikidata.
+  keywords: [pathway, pathway diagram, gene product, metabolite, interaction, signaling, metabolism,
+             regulation, inhibition, stimulation, catalysis, conversion, gpml, bridgedb, curation,
+             pathway ontology, disease ontology, cross-reference]
+  categories: [pathway, gene, compound]
+
+# ── provenance + database-wide truths (get_MIE_file only) ──
+endpoint: https://sparql.wikipathways.org/sparql   # WikiPathways' OWN Virtuoso, NOT RDF Portal
+base_uri: https://identifiers.org/                 # entity IRIs are identifiers.org URIs keyed by DATASOURCE, not a WikiPathways namespace (see example pathway_gene_products)
+graphs:
+  primary: http://rdf.wikipathways.org/            # the ONLY data graph — 12,261,000 triples (2026-09-14)
+  co_hosted:
+    probed_clean: >
+      2g probe run 2026-09-14 — NO re-declaration found. Reverse probe (?p and ?g both unbound, no
+      type filter) over 9 IRIs spanning every leg — a revision-pinned pathway, a bare pathway
+      accession, an ncbigene node, and the hub IRIs uniprot/P04637, NCBITaxon_9913, PW_0000004,
+      DOID_1612, pubmed/10618704, chebi/CHEBI:15377 — returned 46 (graph, predicate) rows, ALL of
+      them in http://rdf.wikipathways.org/. The realistic join (GeneProduct -> Pathway -> organismName)
+      measures 78,747 rows unpinned and 78,747 pinned: ratio 1.00, no inflation. The only other
+      graphs on this endpoint are endpoint plumbing totalling 10 triples — `servicedescription` (5,
+      SPARQL service description), `http://www.w3.org/ns/ldp#` (3, LDP container axioms),
+      `urn:activitystreams-owl:map` (2) — plus Virtuoso's internal
+      `http://www.openlinksw.com/schemas/virtrdf#` (2,479). None contains a WikiPathways IRI.
+      Graph-pinning is therefore optional for correctness here, unlike on RDF Portal's shared
+      endpoints; the examples pin anyway so they stay correct if a graph is ever added.
+
+entity_counts:                 # all COUNT(DISTINCT) + graph-pinned, measured 2026-09-14
+  pathway_records: 2087        # wp:Pathway nodes that carry dc:title — the real answer to "how many pathways"
+  wp_pathway_nodes_raw: 2852   # bare `?s a wp:Pathway` — INFLATED by pathway-as-DataNode stubs; never report (gotcha revision_pinned_pathway_iri)
+  organisms: 39                # distinct wp:organismName values; Homo sapiens 1016, Bos taurus 241, Mus musculus 214
+  data_nodes: 55618            # wp:DataNode (semantic layer)
+  gene_products: 38624         # wp:GeneProduct
+  proteins: 7334               # wp:Protein
+  metabolites: 6879            # wp:Metabolite
+  complexes: 3870              # wp:Complex
+  interactions: 62418          # wp:Interaction (40128 of them wp:DirectedInteraction)
+  triples_total: 12261000      # whole graph
+
+global_gotchas:
+  - id: revision_pinned_pathway_iri
+    say: >
+      A pathway's real record lives at a REVISION-PINNED IRI —
+      <https://identifiers.org/wikipathways/WP1062_r120933>, not the bare
+      <https://identifiers.org/wikipathways/WP1062>. The bare IRI is a different node: a
+      "pathway-as-DataNode", i.e. this pathway drawn as a box inside SOME OTHER pathway. Both are
+      typed `wp:Pathway` and BOTH carry `dcterms:identifier "WP1062"`, so the obvious lookup
+      `?p a wp:Pathway ; dcterms:identifier ?acc` silently returns TWO nodes for 445 of the 2,405
+      accessions (and three for one), only one of which has any content. It never errors. FIX:
+      require `dc:title ?t` — only the revision-pinned record carries it, which collapses every
+      accession to exactly one node. `?bare pav:hasVersion ?revisionPinned` is the explicit bridge
+      where you already hold the bare IRI. Note 318 accessions are bare-ONLY: pathways referenced
+      by a diagram but not themselves in this dataset, so they have no record to find.
+    check:
+      kind: ratio
+      date: "2026-09-14"
+      numerator: |
+        SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
+          GRAPH <http://rdf.wikipathways.org/> { ?s a <http://vocabularies.wikipathways.org/wp#Pathway> }
+        }
+      denominator: |
+        SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
+          GRAPH <http://rdf.wikipathways.org/> {
+            ?s a <http://vocabularies.wikipathways.org/wp#Pathway> ;
+               <http://purl.org/dc/elements/1.1/title> ?t
+          }
+        }
+      expect: {ratio: 1.3666, tolerance: 0.05}
+
+  - id: literal_match_forms
+    say: >
+      The exact-match literal form is INCONSISTENT ACROSS PREDICATES on the same subject, and
+      `DATATYPE()` cannot tell you which to use — Virtuoso matches terms, not values. Measured
+      2026-09-14: `dc:title` is `@en` on 2,087 of 2,089 values, so `dc:title "Actin cytoskeleton
+      regulation"` and the `^^xsd:string` form BOTH return 0 rows — you must write
+      `"Actin cytoskeleton regulation"@en`. But `dcterms:identifier`, `wp:organismName` and data-layer
+      `rdfs:label` are the OPPOSITE: they are PLAIN literals, so `"WP1062"^^xsd:string` and
+      `"Bos taurus"^^xsd:string` return 0 rows even though `DATATYPE()` reports `xsd:string` for all
+      three. (`rdfs:label` is mixed graph-wide — 90,232 plain vs 15,172 `@en` — but every `@en` one
+      belongs to the embedded OWL vocabulary, never to a pathway/gene/metabolite node.) FIX: use the
+      plain form for identifiers/organism/label, `@en` for `dc:title`, or `FILTER(STR(?x) = "...")`,
+      which matches every form.
+    check:
+      kind: zero_rows
+      date: "2026-09-14"
+      query: |
+        SELECT ?s WHERE {
+          GRAPH <http://rdf.wikipathways.org/> {
+            ?s <http://purl.org/dc/elements/1.1/title> "Actin cytoskeleton regulation" .
+          }
+        } LIMIT 1
+
+  - id: ispartof_polymorphic
+    say: >
+      `dcterms:isPartOf` is the containment predicate for THREE different parents and does not say
+      which: on gene products it resolves to a Pathway (78,747), an Interaction or one of its
+      subtypes (41,751), and a Complex (11,249). So "which pathways contain gene X" written as
+      `?node dcterms:isPartOf ?pathway` counts interactions and complexes as pathways — for
+      HGNC MTOR that is 304 "pathways" instead of 107, a ×2.84 overcount that returns fast and looks
+      plausible. FIX: always constrain the parent — `?pathway a wp:Pathway ; dc:title ?t` (the
+      `dc:title` also excludes the pathway-as-DataNode nodes; see revision_pinned_pathway_iri).
+    check:
+      kind: ratio
+      date: "2026-09-14"
+      numerator: |
+        SELECT (COUNT(DISTINCT ?pathway) AS ?n) WHERE {
+          GRAPH <http://rdf.wikipathways.org/> {
+            ?node <http://vocabularies.wikipathways.org/wp#bdbHgncSymbol> <https://identifiers.org/hgnc.symbol/MTOR> ;
+                  <http://purl.org/dc/terms/isPartOf> ?pathway .
+          }
+        }
+      denominator: |
+        SELECT (COUNT(DISTINCT ?pathway) AS ?n) WHERE {
+          GRAPH <http://rdf.wikipathways.org/> {
+            ?node <http://vocabularies.wikipathways.org/wp#bdbHgncSymbol> <https://identifiers.org/hgnc.symbol/MTOR> ;
+                  <http://purl.org/dc/terms/isPartOf> ?pathway .
+            ?pathway a <http://vocabularies.wikipathways.org/wp#Pathway> ;
+                     <http://purl.org/dc/elements/1.1/title> ?t .
+          }
+        }
+      expect: {ratio: 2.8411, tolerance: 0.05}
+
+  - id: gpml_is_the_drawing_layer
+    say: >
+      Two parallel vocabularies describe every pathway and they are NOT interchangeable.
+      `http://vocabularies.wikipathways.org/wp#` is the SEMANTIC layer (what the biology means);
+      `http://vocabularies.wikipathways.org/gpml#` is the DRAWING layer (what the diagram looks
+      like — Point, Label, Shape, Anchor, GraphicalLine, coordinates). They share class NAMES, so a
+      prefix typo silently changes the question rather than failing: `gpml:DataNode` has 138,163
+      instances against `wp:DataNode`'s 55,618 (×2.48), because every graphical box counts once per
+      diagram while the semantic node is shared across pathways. `gpml:Interaction` (115,564) vs
+      `wp:Interaction` (62,418) behaves the same way. FIX: for biology always use the `wp#` prefix;
+      reach for `gpml#` only when you genuinely want diagram geometry.
+    check:
+      kind: ratio
+      date: "2026-09-14"
+      numerator: |
+        SELECT (COUNT(DISTINCT ?g) AS ?n) WHERE {
+          GRAPH <http://rdf.wikipathways.org/> { ?g a <http://vocabularies.wikipathways.org/gpml#DataNode> }
+        }
+      denominator: |
+        SELECT (COUNT(DISTINCT ?w) AS ?n) WHERE {
+          GRAPH <http://rdf.wikipathways.org/> { ?w a <http://vocabularies.wikipathways.org/wp#DataNode> }
+        }
+      expect: {ratio: 2.4841, tolerance: 0.05}
+
+  - id: bdb_xref_fanout
+    say: >
+      The `wp:bdb*` cross-reference predicates come from BridgeDb and are MANY-valued by design:
+      33,910 gene products carry 133,726 `wp:bdbUniprot` values (×3.94), because BridgeDb maps a
+      gene to every UniProt accession it has — TrEMBL isoforms included, not just the reviewed one
+      (HGNC TP53 alone yields 19). Any join through `wp:bdbUniprot` therefore multiplies rows, and a
+      `COUNT(*)` over it measures accessions, not genes. FIX: `COUNT(DISTINCT ?gene)` when counting,
+      and when you cross to UniProt add `up:reviewed true` on the remote side to collapse the fan-out
+      to the Swiss-Prot canonical entry (see example xdb_uniprot_reviewed).
+    check:
+      kind: ratio
+      date: "2026-09-14"
+      numerator: |
+        SELECT (COUNT(*) AS ?n) WHERE {
+          GRAPH <http://rdf.wikipathways.org/> {
+            ?s a <http://vocabularies.wikipathways.org/wp#GeneProduct> ;
+               <http://vocabularies.wikipathways.org/wp#bdbUniprot> ?u .
+          }
+        }
+      denominator: |
+        SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
+          GRAPH <http://rdf.wikipathways.org/> {
+            ?s a <http://vocabularies.wikipathways.org/wp#GeneProduct> ;
+               <http://vocabularies.wikipathways.org/wp#bdbUniprot> ?u .
+          }
+        }
+      expect: {ratio: 3.9435, tolerance: 0.05}
+
+examples:
+  - id: pathway_by_accession
+    intent: resolve a bare WP accession to the one revision-pinned record that actually holds the metadata
+    question: "What is WikiPathways pathway WP1062 — its title, organism and web page?"
+    complexity: basic
+    sparql: |
+      PREFIX wp: <http://vocabularies.wikipathways.org/wp#>
+      PREFIX dc: <http://purl.org/dc/elements/1.1/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+      SELECT ?pathway ?title ?organism ?taxon ?page
+      FROM <http://rdf.wikipathways.org/>
+      WHERE {
+        ?pathway a wp:Pathway ;
+                 dcterms:identifier "WP1062" ;      # PLAIN literal — ^^xsd:string returns 0 rows
+                 dc:title ?title ;                  # also the guard that drops the pathway-as-DataNode node
+                 wp:organismName ?organism ;
+                 wp:organism ?taxon ;
+                 foaf:page ?page .
+      }
+    verified:
+      row_count: 1
+      has_values: ["Actin cytoskeleton regulation", "Bos taurus"]
+      first_row: "WP1062_r120933 -> 'Actin cytoskeleton regulation', Bos taurus, NCBITaxon_9913"
+      date: "2026-09-14"
+    teaches: "Anchor a pathway by `dcterms:identifier \"WPnnn\"` (plain literal) AND `dc:title` — the pair resolves to the single revision-pinned record."
+    traps_avoided:
+      - "`wp:organism` gives the NCBITaxon OBO IRI (obo:NCBITaxon_9913) while `wp:organismName` gives the plain-literal name ('Bos taurus'). They are different predicates, not aliases — select whichever you actually need to join on."
+
+  - id: pathway_gene_products
+    intent: list the gene products a pathway contains, anchored on the pathway node rather than on a raw isPartOf traversal
+    question: "Which gene products are in WikiPathways WP1062?"
+    complexity: basic
+    sparql: |
+      PREFIX wp: <http://vocabularies.wikipathways.org/wp#>
+      PREFIX dc: <http://purl.org/dc/elements/1.1/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT DISTINCT ?gene ?label ?id
+      FROM <http://rdf.wikipathways.org/>
+      WHERE {
+        ?pathway a wp:Pathway ;
+                 dcterms:identifier "WP1062" ;
+                 dc:title ?t .
+        ?gene dcterms:isPartOf ?pathway ;
+              a wp:GeneProduct ;
+              rdfs:label ?label ;
+              dcterms:identifier ?id .
+      }
+      ORDER BY ?label
+      LIMIT 25
+    verified:
+      min_rows: 25
+      has_values: ["ABI2", "ACTB", "ACTG1"]
+      date: "2026-09-14"
+    teaches: "Bind the pathway node FIRST, then read members off it with `dcterms:isPartOf` — binding the parent is what keeps the polymorphic predicate honest."
+    traps_avoided:
+      - say: "The node IRI is NOT a WikiPathways URI: it is `https://identifiers.org/<datasource>/<id>`, and the datasource is whatever the curator drew with — ensembl (18,261 nodes), ncbigene (16,019), uniprot (1,207), hgnc.symbol (985), sgd, tair.locus, ec-code and 13 more. Never construct one to look a gene up; match on `wp:bdb*` instead (see enum_pathways_for_gene)."
+        check:
+          kind: count
+          date: "2026-09-14"
+          query: |
+            SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
+              GRAPH <http://rdf.wikipathways.org/> {
+                ?s a <http://vocabularies.wikipathways.org/wp#GeneProduct> .
+                FILTER(STRSTARTS(STR(?s), "https://identifiers.org/ensembl/"))
+              }
+            }
+          expect: {value: 18261, tolerance: 0.02}
+
+  - id: enum_pathways_by_organism
+    intent: enumerate ALL pathways for one species via the controlled organism value
+    question: "Which WikiPathways pathways exist for rat (Rattus norvegicus)?"
+    complexity: basic
+    sparql: |
+      PREFIX wp: <http://vocabularies.wikipathways.org/wp#>
+      PREFIX dc: <http://purl.org/dc/elements/1.1/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT ?pathway ?acc ?title
+      FROM <http://rdf.wikipathways.org/>
+      WHERE {
+        ?pathway a wp:Pathway ;
+                 wp:organismName "Rattus norvegicus" ;   # PLAIN literal
+                 dcterms:identifier ?acc ;
+                 dc:title ?title .
+      }
+      ORDER BY ?acc
+    verified:
+      row_count: 129
+      has_values: ["WP124", "Irinotecan pathway"]
+      date: "2026-09-14"
+    teaches: "`wp:organismName` is a closed 39-value vocabulary — the set-level route for 'all pathways in species X', no text search needed."
+
+  - id: enum_pathways_by_disease
+    intent: enumerate ALL pathways carrying a Disease Ontology tag
+    question: "Which WikiPathways pathways are annotated to epilepsy or any subtype of it?"
+    complexity: intermediate
+    sparql: |
+      PREFIX wp: <http://vocabularies.wikipathways.org/wp#>
+      PREFIX dc: <http://purl.org/dc/elements/1.1/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT DISTINCT ?acc ?title ?organism
+      FROM <http://rdf.wikipathways.org/>
+      WHERE {
+        # this graph EMBEDS the Disease Ontology (12,246 DOID subClassOf edges), so the
+        # subtree walk is local — no federation, no external term expansion
+        ?term rdfs:subClassOf* <http://purl.obolibrary.org/obo/DOID_1826> .   # epilepsy + subtypes
+        ?pathway a wp:Pathway ;
+                 wp:diseaseOntologyTag ?term ;
+                 dcterms:identifier ?acc ;
+                 dc:title ?title ;
+                 wp:organismName ?organism .
+      }
+      ORDER BY ?acc
+    verified:
+      row_count: 17
+      has_values: ["WP5360", "WP5598", "WP5200"]
+      date: "2026-09-14"
+    teaches: "Enumerate a disease subtree with `rdfs:subClassOf*` against the EMBEDDED ontology, then match `wp:diseaseOntologyTag` — the hierarchy ships inside this graph, so no OLS4 round-trip is needed."
+    traps_avoided:
+      - say: "`wp:ontologyTag` is the SUPERPROPERTY and is polymorphic: its 9,647 values are 5,714 OBO terms (PW 3,442 + DOID 1,253 + CL 1,019) PLUS 3,933 `wp:Curation:*` collection flags (AnalysisCollection, Homology_Converted, COVID19, Lipids...). Querying `wp:ontologyTag` when you meant a disease mixes curation workflow tags into the answer; use the specific `wp:diseaseOntologyTag` / `wp:pathwayOntologyTag` / `wp:cellTypeOntologyTag` subproperty."
+        check:
+          kind: count
+          date: "2026-09-14"
+          query: |
+            SELECT (COUNT(*) AS ?n) WHERE {
+              GRAPH <http://rdf.wikipathways.org/> {
+                ?s <http://vocabularies.wikipathways.org/wp#ontologyTag> ?o
+              }
+            }
+          expect: {value: 9647, tolerance: 0.02}
+      - say: "Tags are asserted only at the level the curator chose, so the DIRECT form `wp:diseaseOntologyTag obo:DOID_1826` returns 14 pathways where the subtree walk above returns 17 — it silently misses the ones tagged 'Dravet syndrome' instead of plain 'epilepsy'. Conversely the walk fans out: WP4228 carries three terms inside this subtree and appears three times, which is why the SELECT needs DISTINCT (19 raw rows, 17 pathways)."
+        check:
+          kind: ratio
+          date: "2026-09-14"
+          numerator: |
+            SELECT (COUNT(DISTINCT ?pathway) AS ?n) WHERE {
+              GRAPH <http://rdf.wikipathways.org/> {
+                ?term <http://www.w3.org/2000/01/rdf-schema#subClassOf>* <http://purl.obolibrary.org/obo/DOID_1826> .
+                ?pathway a <http://vocabularies.wikipathways.org/wp#Pathway> ;
+                         <http://vocabularies.wikipathways.org/wp#diseaseOntologyTag> ?term ;
+                         <http://purl.org/dc/elements/1.1/title> ?t .
+              }
+            }
+          denominator: |
+            SELECT (COUNT(DISTINCT ?pathway) AS ?n) WHERE {
+              GRAPH <http://rdf.wikipathways.org/> {
+                ?pathway a <http://vocabularies.wikipathways.org/wp#Pathway> ;
+                         <http://vocabularies.wikipathways.org/wp#diseaseOntologyTag> <http://purl.obolibrary.org/obo/DOID_1826> ;
+                         <http://purl.org/dc/elements/1.1/title> ?t .
+              }
+            }
+          expect: {ratio: 1.2143, tolerance: 0.05}
+  - id: enum_pathways_by_pathway_ontology
+    intent: count/enumerate ALL pathways under a Pathway Ontology class
+    question: "How many WikiPathways pathways are classified as lipid metabolic pathways, including subtypes?"
+    complexity: basic
+    sparql: |
+      PREFIX wp: <http://vocabularies.wikipathways.org/wp#>
+      PREFIX dc: <http://purl.org/dc/elements/1.1/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT (COUNT(DISTINCT ?pathway) AS ?n)
+      FROM <http://rdf.wikipathways.org/>
+      WHERE {
+        ?term rdfs:subClassOf* <http://purl.obolibrary.org/obo/PW_0000010> .   # lipid metabolic pathway + subtypes
+        ?pathway a wp:Pathway ;
+                 wp:pathwayOntologyTag ?term ;
+                 dc:title ?t .
+      }
+    verified: {n: 212, date: "2026-09-14"}
+    teaches: "`wp:pathwayOntologyTag` + `rdfs:subClassOf*` is the set-level route for 'all pathways of kind X'; COUNT(DISTINCT ?pathway) absorbs the multi-tag fan-out the walk creates."
+    traps_avoided:
+      - say: "The direct tag alone UNDERCOUNTS by nearly 5x — `wp:pathwayOntologyTag obo:PW_0000010` with no subtree walk returns 43 pathways against the 212 above, because curators tag at the specific level (PW_0000010 has 9 direct children here) and nothing rolls them up for you. The graph carries 3,234 PW subClassOf edges, so always walk unless you specifically want the literal tag."
+        check:
+          kind: ratio
+          date: "2026-09-14"
+          numerator: |
+            SELECT (COUNT(DISTINCT ?pathway) AS ?n) WHERE {
+              GRAPH <http://rdf.wikipathways.org/> {
+                ?term <http://www.w3.org/2000/01/rdf-schema#subClassOf>* <http://purl.obolibrary.org/obo/PW_0000010> .
+                ?pathway a <http://vocabularies.wikipathways.org/wp#Pathway> ;
+                         <http://vocabularies.wikipathways.org/wp#pathwayOntologyTag> ?term ;
+                         <http://purl.org/dc/elements/1.1/title> ?t .
+              }
+            }
+          denominator: |
+            SELECT (COUNT(DISTINCT ?pathway) AS ?n) WHERE {
+              GRAPH <http://rdf.wikipathways.org/> {
+                ?pathway a <http://vocabularies.wikipathways.org/wp#Pathway> ;
+                         <http://vocabularies.wikipathways.org/wp#pathwayOntologyTag> <http://purl.obolibrary.org/obo/PW_0000010> ;
+                         <http://purl.org/dc/elements/1.1/title> ?t .
+              }
+            }
+          expect: {ratio: 4.9302, tolerance: 0.05}
+
+  - id: enum_pathways_for_gene
+    intent: the reverse route — every pathway containing a gene, found through BridgeDb xrefs rather than a guessed node IRI
+    question: "Which WikiPathways pathways contain the gene MTOR?"
+    complexity: intermediate
+    sparql: |
+      PREFIX wp: <http://vocabularies.wikipathways.org/wp#>
+      PREFIX dc: <http://purl.org/dc/elements/1.1/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT (COUNT(DISTINCT ?pathway) AS ?n)
+      FROM <http://rdf.wikipathways.org/>
+      WHERE {
+        ?node wp:bdbHgncSymbol <https://identifiers.org/hgnc.symbol/MTOR> ;
+              dcterms:isPartOf ?pathway .
+        ?pathway a wp:Pathway ;
+                 dc:title ?t .
+      }
+    verified: {n: 107, date: "2026-09-14"}
+    teaches: "Enter by a BridgeDb xref (`wp:bdbHgncSymbol` / `bdbUniprot` / `bdbEnsembl` / `bdbEntrezGene`), not by the node's own IRI — the xref is the only datasource-independent handle on a gene."
+    traps_avoided:
+      - "Matching the node IRI directly (`<https://identifiers.org/ncbigene/2475> dcterms:isPartOf ?p`) finds only the pathways whose curator happened to draw MTOR from THAT datasource; pathways drawn from Ensembl or HGNC are silently missed. Every `wp:bdb*` predicate is present regardless of which datasource keyed the node, which is why it is the correct entry point."
+
+  - id: signed_regulation
+    intent: read signed, directed regulation (who inhibits whom) off the interaction subtype
+    question: "Which gene products inhibit which other gene products in rat pathways?"
+    complexity: intermediate
+    sparql: |
+      PREFIX wp: <http://vocabularies.wikipathways.org/wp#>
+      PREFIX dc: <http://purl.org/dc/elements/1.1/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?acc ?srcLabel ?tgtLabel
+      FROM <http://rdf.wikipathways.org/>
+      WHERE {
+        ?pathway a wp:Pathway ;
+                 wp:organismName "Rattus norvegicus" ;
+                 dcterms:identifier ?acc ;
+                 dc:title ?t .
+        ?i a wp:Inhibition ;
+           dcterms:isPartOf ?pathway ;
+           wp:source ?s ;
+           wp:target ?tg .
+        ?s a wp:GeneProduct ; rdfs:label ?srcLabel .
+        ?tg a wp:GeneProduct ; rdfs:label ?tgtLabel .
+      }
+      ORDER BY ?acc ?srcLabel ?tgtLabel
+      LIMIT 15
+    verified:
+      min_rows: 15
+      has_values: ["WP1281", "Nisch"]
+      date: "2026-09-14"
+    teaches: "Direction comes from `wp:source`/`wp:target`; the SIGN comes from the interaction's subtype class (`wp:Inhibition`, `wp:Stimulation`, `wp:Catalysis`, `wp:Conversion`, `wp:Binding`, `wp:TranscriptionTranslation`)."
+    traps_avoided:
+      - say: "`wp:source`/`wp:target` are polymorphic: across the 82,260 endpoint slots (40,870 source + 41,390 target), 76,391 are typed wp:DataNode but 5,869 point at ANOTHER Interaction (an arrow aimed at an arrow), 1,857 at a Pathway and 833 at a Complex. The `?s a wp:GeneProduct` guards above are what keep this to protein-protein regulation; drop them and interaction-on-interaction edges join in."
+        check:
+          kind: count
+          date: "2026-09-14"
+          query: |
+            SELECT (COUNT(*) AS ?n) WHERE {
+              GRAPH <http://rdf.wikipathways.org/> {
+                ?i <http://vocabularies.wikipathways.org/wp#source>|<http://vocabularies.wikipathways.org/wp#target> ?o
+              }
+            }
+          expect: {value: 82260, tolerance: 0.02}
+      - say: "Only 76,065 of the 82,260 endpoint slots (92.5%) resolve to a node carrying any `rdfs:label`, so an unguarded `?s rdfs:label ?l` silently drops ~7.5% of edges — use OPTIONAL when you want every edge rather than only the labelled ones. Measure that coverage with EXISTS, never by joining the label in: `rdfs:label` is multi-valued, so a plain join counts (edge, label) pairs and reports 154,522 'endpoints' — nearly double the real 82,260."
+        check:
+          kind: ratio
+          date: "2026-09-14"
+          numerator: |
+            SELECT (SUM(IF(EXISTS { ?o <http://www.w3.org/2000/01/rdf-schema#label> ?l }, 1, 0)) AS ?n) WHERE {
+              GRAPH <http://rdf.wikipathways.org/> {
+                ?i <http://vocabularies.wikipathways.org/wp#source>|<http://vocabularies.wikipathways.org/wp#target> ?o
+              }
+            }
+          denominator: |
+            SELECT (COUNT(*) AS ?n) WHERE {
+              GRAPH <http://rdf.wikipathways.org/> {
+                ?i <http://vocabularies.wikipathways.org/wp#source>|<http://vocabularies.wikipathways.org/wp#target> ?o
+              }
+            }
+          expect: {ratio: 0.9247, tolerance: 0.02}
+      - "Labels are multi-valued (display synonyms): one Mdm2 -| p53 edge returns three rows because the target node carries the labels 'TP53', 'Tp53' and 'p53'. Count edges with COUNT(DISTINCT ?i), not by row."
+
+  - id: pathway_metabolites_chebi
+    intent: pull a pathway's metabolites together with the ChEBI IRIs that let them leave this database
+    question: "Which metabolites does WikiPathways WP1282 contain, and what are their ChEBI IDs?"
+    complexity: intermediate
+    sparql: |
+      PREFIX wp: <http://vocabularies.wikipathways.org/wp#>
+      PREFIX dc: <http://purl.org/dc/elements/1.1/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT DISTINCT ?label ?chebi
+      FROM <http://rdf.wikipathways.org/>
+      WHERE {
+        ?pathway a wp:Pathway ;
+                 dcterms:identifier "WP1282" ;
+                 dc:title ?t .
+        ?m dcterms:isPartOf ?pathway ;
+           a wp:Metabolite ;
+           rdfs:label ?label ;
+           wp:bdbChEBI ?chebi .
+      }
+      ORDER BY ?label
+    verified:
+      row_count: 12
+      has_values: ["CHEBI:15422", "CHEBI:16643"]
+      date: "2026-09-14"
+    teaches: "`wp:bdbChEBI` on `wp:Metabolite` (5,827 of the 6,879 metabolite nodes carry it) is the chemistry hand-off; sibling predicates bdbPubChem, bdbHmdb, bdbKeggCompound, bdbInChIKey, bdbLipidMaps, bdbChemspider work identically."
+    traps_avoided:
+      - "The ChEBI IRI form here is `https://identifiers.org/chebi/CHEBI:15422` — it is NOT the OBO form `http://purl.obolibrary.org/obo/CHEBI_15422` that RDF Portal's chebi graph uses. Rewrite it before joining, exactly as xdb_uniprot_reviewed rewrites the UniProt IRI."
+      - "One metabolite can carry several ChEBI IDs and several labels, so rows are label x id pairs, not metabolites: S-Adenosylhomocysteine here maps to both CHEBI:16680 and CHEBI:57856 (neutral vs charged species)."
+
+  - id: count_pathways_by_organism
+    intent: the un-inflated pathway census, grouped
+    question: "How many WikiPathways pathways are there per organism?"
+    complexity: aggregation
+    sparql: |
+      PREFIX wp: <http://vocabularies.wikipathways.org/wp#>
+      PREFIX dc: <http://purl.org/dc/elements/1.1/>
+      SELECT ?organism (COUNT(DISTINCT ?pathway) AS ?n)
+      FROM <http://rdf.wikipathways.org/>
+      WHERE {
+        ?pathway a wp:Pathway ;
+                 wp:organismName ?organism ;
+                 dc:title ?t .
+      }
+      GROUP BY ?organism
+      ORDER BY DESC(?n) ?organism
+      LIMIT 10
+    verified:
+      min_rows: 10
+      has_values: ["Homo sapiens", 1016]
+      first_row: "Homo sapiens 1016; then Bos taurus 241, Mus musculus 214, Rattus norvegicus 129"
+      date: "2026-09-14"
+    teaches: "COUNT(DISTINCT ?pathway) + the `dc:title` guard + a graph pin is the census recipe; totals 2,087 records across 39 organisms."
+    traps_avoided:
+      - say: "Class counts here OVERLAP — a single node is typed with several `wp:` classes at once, because different pathways annotate the same identifier differently. `https://identifiers.org/ncbigene/7157` is simultaneously a wp:DataNode, wp:GeneProduct, wp:Protein AND wp:Rna. So GeneProduct (38,624) + Protein (7,334) + Metabolite (6,879) + Complex (3,870) + Rna (1,224) = 57,931 exceeds wp:DataNode's 55,618; never add class counts expecting a partition."
+        check:
+          kind: count
+          date: "2026-09-14"
+          query: |
+            SELECT (COUNT(DISTINCT ?t) AS ?n) WHERE {
+              GRAPH <http://rdf.wikipathways.org/> {
+                <https://identifiers.org/ncbigene/7157> a ?t .
+                FILTER(STRSTARTS(STR(?t), "http://vocabularies.wikipathways.org/wp#"))
+              }
+            }
+          expect: {value: 4, tolerance: 0.01}
+
+  - id: xdb_uniprot_reviewed
+    intent: "cross-DB: WikiPathways gene products -> UniProt on RDF Portal, via SERVICE federation"
+    question: "For the genes in a WikiPathways pathway, what are their reviewed Swiss-Prot entries?"
+    complexity: cross_db
+    endpoint_name: wikipathways
+    sparql: |
+      PREFIX wp: <http://vocabularies.wikipathways.org/wp#>
+      PREFIX dc: <http://purl.org/dc/elements/1.1/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      SELECT ?label ?accession ?mnemonic
+      WHERE {
+        # cap the binding set BEFORE crossing: SERVICE costs one round-trip per binding
+        { SELECT DISTINCT ?label ?u WHERE {
+            GRAPH <http://rdf.wikipathways.org/> {
+              ?pathway a wp:Pathway ;
+                       dcterms:identifier "WP4313" ;
+                       dc:title ?t .
+              ?gene dcterms:isPartOf ?pathway ;
+                    a wp:GeneProduct ;
+                    rdfs:label ?label ;
+                    wp:bdbUniprot ?u .
+            }
+          } ORDER BY ?label ?u LIMIT 25 }
+        # identifiers.org -> purl.uniprot.org: the two databases mint DIFFERENT IRIs for one accession
+        BIND(IRI(REPLACE(STR(?u), "^https://identifiers.org/uniprot/", "http://purl.uniprot.org/uniprot/")) AS ?upIri)
+        BIND(STRAFTER(STR(?u), "uniprot/") AS ?accession)
+        SERVICE <https://rdfportal.org/sib/sparql> {
+          ?upIri up:mnemonic ?mnemonic ;
+                 up:reviewed true .
+        }
+      }
+      ORDER BY ?label ?accession
+    verified:
+      row_count: 5
+      has_values: ["P16050", "LOX15_HUMAN", "ACSL1"]
+      runtime_s: 33.5
+      date: "2026-09-14"
+    teaches: "SERVICE federation to RDF Portal WORKS from this endpoint; the join key is the UniProt accession, but the IRI must be rewritten from the identifiers.org form to the purl.uniprot.org form first."
+    traps_avoided:
+      - say: "SERVICE is evaluated one round-trip per binding, so the binding count — not the result count — is what costs you. Dropping the inner `LIMIT 25` hands SERVICE 582 bindings for this one pathway (65 gene products, fanned out by ×3.94 BridgeDb UniProt xrefs and again by multi-valued labels). Always cap the binding set in a subselect before crossing."
+        check:
+          kind: count
+          date: "2026-09-14"
+          query: |
+            SELECT (COUNT(*) AS ?n) WHERE {
+              GRAPH <http://rdf.wikipathways.org/> {
+                ?pathway a <http://vocabularies.wikipathways.org/wp#Pathway> ;
+                         <http://purl.org/dc/terms/identifier> "WP4313" ;
+                         <http://purl.org/dc/elements/1.1/title> ?t .
+                ?gene <http://purl.org/dc/terms/isPartOf> ?pathway ;
+                      a <http://vocabularies.wikipathways.org/wp#GeneProduct> ;
+                      <http://www.w3.org/2000/01/rdf-schema#label> ?l ;
+                      <http://vocabularies.wikipathways.org/wp#bdbUniprot> ?u .
+              }
+            }
+          expect: {value: 582, tolerance: 0.02}
+      - say: "Uncapped, this query does NOT return slowly — it is killed. The endpoint enforces a 60s ANYTIME limit and answers HTTP 500 'Virtuoso S1TAT Error Query did not complete due to ANYTIME timeout'. Re-measured twice on 2026-09-14 (62.4s cold, 63.3s warm), so this is a hard server limit, not a cold-cache artefact. The capped form above returns in ~33s."
+        check:
+          kind: error
+          date: "2026-09-14"
+          expect: {timeout_s: 90}
+          query: |
+            PREFIX wp: <http://vocabularies.wikipathways.org/wp#>
+            PREFIX dc: <http://purl.org/dc/elements/1.1/>
+            PREFIX dcterms: <http://purl.org/dc/terms/>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX up: <http://purl.uniprot.org/core/>
+            SELECT ?label ?mnemonic
+            FROM <http://rdf.wikipathways.org/>
+            WHERE {
+              ?pathway a wp:Pathway ; dcterms:identifier "WP4313" ; dc:title ?t .
+              ?gene dcterms:isPartOf ?pathway ; a wp:GeneProduct ; rdfs:label ?label ; wp:bdbUniprot ?u .
+              BIND(IRI(REPLACE(STR(?u), "^https://identifiers.org/uniprot/", "http://purl.uniprot.org/uniprot/")) AS ?upIri)
+              SERVICE <https://rdfportal.org/sib/sparql> { ?upIri up:mnemonic ?mnemonic ; up:reviewed true . }
+            }
+      - "`up:reviewed true` on the remote side is doing real work here, not tidying: it collapses the BridgeDb fan-out (25 accessions in, 5 Swiss-Prot entries out) so each gene contributes its canonical entry instead of every TrEMBL isoform."
+
+schema_delta:
+  - "`wp:isAbout` bridges the semantic layer to the drawing layer: a `wp:Pathway` points at its `http://rdf.wikipathways.org/Pathway/<WPnnn_rNNN>` GPML node, and a `wp:DataNode` at the per-diagram `gpml:DataNode` boxes that depict it (94,078 links from gene products alone). Follow it only for diagram geometry — coordinates, graph IDs, groups, anchors."
+  - "Interaction subtypes not shown above, all sub-classes of `wp:Interaction`: `wp:Conversion` (6,552 — substrate→product), `wp:Catalysis` (4,804 — enzyme acting on a conversion), `wp:Binding` (5,707) and `wp:ComplexBinding` (3,583 — assembly into a wp:Complex), `wp:TranscriptionTranslation` (1,096), `wp:Stimulation` (2,999). `wp:DirectedInteraction` (40,128) is the parent of the directed ones. A subtype is OPTIONAL: many interactions carry only `wp:Interaction` + `wp:DirectedInteraction`, so a subtype filter silently drops untyped edges."
+  - "`wp:Complex` (3,870) collects its members through the same `dcterms:isPartOf` used for pathways — members point AT the complex IRI `http://rdf.wikipathways.org/Pathway/<pw>/Complex/<id>`, which is itself `dcterms:isPartOf` its pathway."
+  - "Literature: `dcterms:references` links pathways, interactions AND individual nodes straight to `https://identifiers.org/pubmed/<pmid>` (13,163 `cito:cites` on pathways; 9,229 references on interactions). `wp:PublicationReference` (9,792) is the reified citation node; `dcterms:bibliographicCitation` carries free-text citations on 260 interactions."
+  - "Provenance: `wp:hasAuthorship` → `wp:Authorship` (11,101) with `dc:creator` → `foaf:Person`; `pav:hasVersion` on a bare accession points to the revision-pinned record; `foaf:img` gives PNG and SVG diagram URLs (two per pathway), `foaf:page` the WikiPathways web page."
+  - "The graph EMBEDS the ontologies it tags with — 42,896 OBO `owl:Class` nodes (PW, DOID, CL, NCBITaxon and more) carry their own `rdfs:label`, so a tag IRI resolves to a human-readable name in the SAME query with no federation (`obo:PW_0000004` → 'regulatory pathway')."
+
+id_join_map:
+  stable_anchor: >
+    The revision-pinned pathway IRI `https://identifiers.org/wikipathways/WP<n>_r<revision>` is the
+    record, but it is NOT stable across releases — the revision changes whenever a curator edits the
+    diagram. Anchor instead on `dcterms:identifier "WP<n>"` (plain literal) together with `dc:title`,
+    which resolves to the current revision on any snapshot. Entity nodes anchor on the `wp:bdb*`
+    xrefs below, never on their own IRI.
+  xrefs:                  # value counts are triples ON wp:GeneProduct / wp:Metabolite, not graph-wide
+    uniprot: "`wp:bdbUniprot` → https://identifiers.org/uniprot/<acc>; 133,726 values on gene products. Rewrite to http://purl.uniprot.org/uniprot/<acc> to join RDF Portal."
+    ensembl: "`wp:bdbEnsembl` → https://identifiers.org/ensembl/<id>; 39,137 values on gene products."
+    ncbigene: "`wp:bdbEntrezGene` → https://identifiers.org/ncbigene/<id>; 37,361 values on gene products."
+    hgnc: "`wp:bdbHgncSymbol` → https://identifiers.org/hgnc.symbol/<SYMBOL>; 14,077 values on gene products — the easiest entry point for a human query."
+    chebi: "`wp:bdbChEBI` → https://identifiers.org/chebi/CHEBI:<n>, carried by 5,827 wp:Metabolite nodes. RDF Portal's chebi uses obo:CHEBI_<n> — rewrite before joining."
+    rhea: "`wp:bdbRhea` → https://identifiers.org/rhea/<n>, carried by 1,160 wp:Interaction nodes (1,445 nodes of any type) — the reaction-level hand-off to Rhea (endpoint_name sib)."
+    reactome: "`wp:bdbReactome` → Reactome stable IDs, 656 values on interactions; the pathway-level overlap with reactome (endpoint_name ebi)."
+    pubchem: "On metabolites: `wp:bdbPubChem` (6,712), `wp:bdbHmdb` (4,212), `wp:bdbKeggCompound` (3,649), `wp:bdbInChIKey` (6,029), `wp:bdbLipidMaps` (2,466), `wp:bdbChemspider` (5,254) — the chemistry xref set."
+    wikidata: "`wp:bdbWikidata` → https://identifiers.org/wikidata/Q<n>; 11,168 on gene products, 6,749 on metabolites."
+    pubmed: "`dcterms:references` → https://identifiers.org/pubmed/<pmid>, direct from pathways, interactions and nodes."
+  bridged_via_togoid:
+    - "Nothing on this endpoint is co-hosted with another TogoMCP database — WikiPathways runs its own Virtuoso. Cross-DB work goes either through SERVICE federation (see xdb_uniprot_reviewed) or through togoid_convertId on the accessions the wp:bdb* xrefs hand you."
