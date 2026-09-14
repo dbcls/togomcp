@@ -127,9 +127,15 @@ examples:
                 rdfs:label ?label .
       }
       LIMIT 20
-    verified: {result_rows: 20, date: "YYYY-MM-DD"}   # REQUIRED — re-run live this pass.
-                                                      # Use `date:`, NEVER `on:` (YAML parses
-                                                      # bare `on` as boolean true — §4.1 trap).
+    verified: {min_rows: 20, date: "YYYY-MM-DD"}   # REQUIRED — re-run live this pass, with at
+                                                   # least one key the checker asserts (§4.1):
+                                                   #   n: <single COUNT cell>
+                                                   #   row_count: <rows, below any LIMIT>
+                                                   #   min_rows: <for a LIMIT-capped result>
+                                                   #   has_values: [<stable id/label seen>]  (needs
+                                                   #     ORDER BY if the result is capped)
+                                                   # Use `date:`, NEVER `on:` (YAML parses
+                                                   # bare `on` as boolean true — §4.1 trap).
     teaches: "[the reusable idiom in one line]"
     traps_avoided:            # a bare string, OR {say: "...", check: {...}} when the trap is falsifiable             # optional — the inline, query-specific warnings
       - "[what the naive query gets wrong + the fix]"
@@ -145,7 +151,7 @@ examples:
     verified: {n: 0, date: "YYYY-MM-DD"}
     teaches: "To enumerate by class/feature, use the controlled-vocab IRI — NOT a name/text match (which undercounts)."
     # Subject must NOT be a benchmark question's keyword/class/gold entity (§4.6) —
-    # grep it against benchmark/questions/*.yaml; swap to a neutral member if it collides.
+    # scripts/check_mie_leakage.py <db> must exit 0; swap to a neutral member if it collides.
 
   - id: [agg_slug]             # ELEVATED aggregation class — ships its verified total + COUNT(DISTINCT)+pin
     intent: count [entities] with graph-scoping (the union-inflation-safe recipe)
@@ -156,7 +162,7 @@ examples:
       SELECT (COUNT(DISTINCT ?e) AS ?total)
       FROM <http://example.org/dataset>       # graph-pin corrects union inflation
       WHERE { ?e a ex:Thing . }
-    verified: {total: 0, date: "YYYY-MM-DD"}
+    verified: {n: 0, date: "YYYY-MM-DD"}
     teaches: "Graph-pin + COUNT(DISTINCT) gives the un-inflated total."
 
   - id: [xdb_slug]             # ELEVATED cross_db class — least-recoverable, highest-failure
@@ -172,7 +178,7 @@ examples:
         GRAPH <http://otherdb.org/graph>   { ?b other:linkedTo ?shared . }
       }
       LIMIT 20
-    verified: {result_rows: 20, date: "YYYY-MM-DD"}
+    verified: {min_rows: 20, date: "YYYY-MM-DD"}
     teaches: "[which IRI is the shared join key, and that it needs no text search / no ID bridge]"
 
 # ── schema_delta (optional): ONLY non-obvious predicates / vocabularies / entity

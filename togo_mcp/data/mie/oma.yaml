@@ -187,7 +187,7 @@ examples:
         }
       }
       LIMIT 5
-    verified: {result_rows: 5, date: "2026-07-22", first_row: "HUMAN01315 = jumonji domain containing 1C (JMJD1C)"}
+    verified: {min_rows: 5, date: "2026-07-22", first_row: "HUMAN01315 = jumonji domain containing 1C (JMJD1C)"}
     teaches: "The set-level per-species route: orth:Organism obo:RO_0002162 <taxon IRI>, then ?protein orth:organism ?organism. Species has no label — use the taxon IRI. STRSTARTS on the 5-letter species code collapses the many-valued dct:identifier to the OMA-native ID."
 
   - id: species_by_scientific_name
@@ -207,8 +207,7 @@ examples:
         }
       }
       GROUP BY ?organism ?taxon
-    verified: {result_rows: 1, organism: "https://omabrowser.org/oma/genome/9031", taxon: "http://purl.uniprot.org/taxonomy/9031",
-               proteins: 16617, date: "2026-08-26", runtime: "0.4s"}
+    verified: {row_count: 1, has_values: ["https://omabrowser.org/oma/genome/9031", "http://purl.uniprot.org/taxonomy/9031"], organism: "https://omabrowser.org/oma/genome/9031", taxon: "http://purl.uniprot.org/taxonomy/9031", proteins: 16617, date: "2026-08-26", runtime: "0.4s"}
     teaches: "You do NOT need the NCBI taxid to name a species here. up:scientificName sits on the TAXON node inside OMA's own graph (2,927 triples, one per sequenced species), one obo:RO_0002162 hop from the orth:Organism — so `?taxon up:scientificName \"<Genus species>\"` is a first-class entry point, and it hands you the taxid as a by-product for reuse on orth:hasTaxonomicRange."
     traps_avoided:
       - say: "Pin the graph or the NAME leg triples: up:scientificName is declared in three graphs here (uniprot/taxonomy, oma, bgee), so this query returns 49,851 rows unpinned against 16,617 pinned — ×3.00, in 0.3s, with the right organism and a silently tripled count (gotcha organism_named_via_taxon)."
@@ -260,7 +259,7 @@ examples:
         }
       }
       LIMIT 20
-    verified: {result_rows: 2, date: "2026-07-22", members: "HUMAN01315 (9606), GORGO01713 (9595)"}
+    verified: {row_count: 2, has_values: ["GORGO01713", "HUMAN01315"], date: "2026-07-22", members: "HUMAN01315 (9606), GORGO01713 (9595)"}
     teaches: "A multi-species node's hasHomologousMember points to sub-CLUSTERS, not proteins; take a second explicit hop to reach orth:Protein at the single-species leaf. Anchor the cluster by its dct:identifier HOG string."
     traps_avoided:
       - "Members of a clade-level cluster are OrthologsClusters, not proteins — expecting proteins one hop down returns nothing at multi-species nodes."
@@ -292,7 +291,7 @@ examples:
         }
       }
       LIMIT 20
-    verified: {result_rows: 1, date: "2026-07-22", first_row: "GORGO01713 (taxon 9595, gorilla)"}
+    verified: {row_count: 1, has_values: ["GORGO01713"], date: "2026-07-22", first_row: "GORGO01713 (taxon 9595, gorilla)"}
     teaches: "Navigate the HOG tree with explicit up-then-down triples: anchor the query protein's species cluster, hop UP via `?parent hasHomologousMember ?myCluster`, then read `?parent hasHomologousMember ?sibling`. One level up gives the nearest clade's orthologs."
 
   - id: paralogs
@@ -317,7 +316,7 @@ examples:
         }
       }
       LIMIT 20
-    verified: {result_rows: 3, date: "2026-07-22", paralogs: "HUMAN38361, HUMAN38363, HUMAN38364"}
+    verified: {row_count: 3, has_values: ["HUMAN38363", "HUMAN38364"], date: "2026-07-22", paralogs: "HUMAN38361, HUMAN38363, HUMAN38364"}
     teaches: "orth:ParalogsCluster members are species-level OrthologsClusters (not proteins) — a ParalogsCluster→sub-cluster→protein two-hop. Pin hasTaxonomicRange to the query species to keep only in-species paralogs."
 
   - id: ortholog_1to1_prefix
@@ -343,7 +342,7 @@ examples:
           FILTER(STRSTARTS(?mid, "MOUSE"))
         }
       }
-    verified: {result_rows: 1, date: "2026-07-22", ortholog: "MOUSE57051 in HOG:E0792948.6w.50b.72a.53a_10090 (= mouse Hras)"}
+    verified: {row_count: 1, has_values: ["HOG:E0792948.6w.50b.72a.53a_10090", "MOUSE57051"], date: "2026-07-22", ortholog: "MOUSE57051 in HOG:E0792948.6w.50b.72a.53a_10090 (= mouse Hras)"}
     teaches: "The HOG dotted-path identifier IS the phylogeny: a species leaf is {speciation-node}.{...}_{taxon}. Two leaves sharing the same dotted-path prefix descend from one speciation node = 1:1 orthologs; RAS paralogs (KRAS/NRAS) sit under SIBLING nodes (.72b, .6c) and the prefix filter excludes them. Get the human leaf's cluster ID first (via lscr:xrefUniprot or an OMA ID), strip the _TAXON suffix, use the remainder as the prefix."
     traps_avoided:
       - say: "You MUST bind orth:hasTaxonomicRange <target taxon> BEFORE the STRSTARTS prefix filter. Filtering an UNBOUND ?cluster by dct:identifier prefix scans all 33.5M clusters: 30.4s versus sub-second with the anchor (re-measured 2026-08-26 — this line said it TIMES OUT, which it does not; it is a ~100x cost, not a wall). Anchor it anyway; just do not go looking for a hang that is not there when you forget."
@@ -375,7 +374,7 @@ examples:
                    orth:hasTaxonomicRange <http://purl.uniprot.org/taxonomy/7742> .   # 7742 = Vertebrata (any NCBI taxon IRI works)
         }
       }
-    verified: {clusterCount: 65299, date: "2026-07-22"}
+    verified: {n: 65299, date: "2026-07-22"}
     teaches: "orth:hasTaxonomicRange <taxon IRI> is THE first-class route to enumerate 'all HOG clusters at clade X' — index-selective, no text search, works for any level of the NCBI tree. Same taxon-IRI namespace as the orth:organism lookup."
     traps_avoided:
       - "This is the enumeration route that REPLACES a hasHomologousMember+ traversal — never try to count a clade's clusters by walking the tree with a property path (gotcha property_path_unanchored)."
@@ -400,7 +399,7 @@ examples:
         GROUP BY ?family
         HAVING (COUNT(DISTINCT ?sp) = 2)
       }
-    verified: {count: 8763, date: "2026-07-22"}
+    verified: {n: 8763, date: "2026-07-22"}
     teaches: "OMA leaf clusters are SINGLE-species, so no one cluster holds both a human and a mouse member. Anchor both species via hasTaxonomicRange (VALUES), derive the family token with STRBEFORE(?id,'.'), GROUP BY it, HAVING both species present. The species-anchor keeps it tractable — this is the scaled form of the dotted-family-prefix idea."
     traps_avoided:
       - "The class is orth:OrthologsCluster (NOT 'OrthologousCluster'); there is no oma→taxonomy edge on the cluster other than orth:hasTaxonomicRange; and leaves are single-species — so expecting a cluster holding both species returns 0."
@@ -429,7 +428,7 @@ examples:
         }
       }
       LIMIT 5
-    verified: {result_rows: 1, date: "2026-07-22", first_row: "Q15652 = 'Jumonji domain-containing protein 1C', function 'Coactivator of androgen receptor.'"}
+    verified: {row_count: 2, has_values: ["Q15652", "Jumonji domain-containing protein 1C"], first_row: "Q15652 = 'Jumonji domain-containing protein 1C', function 'Coactivator of androgen receptor.'", note: "UniProt now carries two function comments for Q15652 — one row each", date: "2026-09-14"}
     teaches: "lscr:xrefUniprot's value IS the UniProt protein IRI (purl.uniprot.org/uniprot/{ACC}) — use it directly as the subject in GRAPH <http://sparql.uniprot.org/uniprot>, no ID conversion. Both graphs live on the sib endpoint (endpoint_name: sib)."
     traps_avoided:
       - say: "The UniProt graph on sib is <http://sparql.uniprot.org/uniprot> — <http://rdfportal.org/dataset/uniprot> does NOT exist here and returns 0 rows."

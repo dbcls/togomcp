@@ -176,7 +176,7 @@ examples:
                 dcterms:identifier ?native_id .
         }
       } LIMIT 5
-    verified: {result_rows: 1, gene_iri: "oma#GENE_ENSG00000075624", native_id: "ENSG00000075624", date: "2026-07-22"}
+    verified: {row_count: 1, has_values: ["ENSG00000075624", "GENE_ENSG00000075624"], gene_iri: "oma#GENE_ENSG00000075624", native_id: "ENSG00000075624", date: "2026-07-22"}
     teaches: "Anchor a gene by rdfs:label (symbol) + orth:organism <https://bgee.org/species/N> (Bgee namespace). The IRI is minted in OMA's namespace off the native accession (Ensembl/WBGene/FB/MGI…), NOT a UniProt/NCBI Gene ID. Symbols repeat across species — always restrict organism."
     traps_avoided:
       - say: "?gene orth:organism <http://purl.uniprot.org/taxonomy/9606> returns 0 rows — Gene's organism is the Bgee-species namespace; the UniProt taxon IRI only appears on the ExpressionCondition (gotcha dual_taxon_namespace)."
@@ -205,7 +205,7 @@ examples:
                 genex:hasExpressionLevel ?level .          # rank score (lower = stronger)
         }
       } LIMIT 1
-    verified: {result_rows: 1, confidence: "obo:CIO_0000029", date: "2026-07-22", first_row: "GENE_WBGene00006961 in EXPRESSION_CONDITION_91484, high confidence, FDR 0.00278813, level 76.8077"}
+    verified: {min_rows: 1, confidence: "obo:CIO_0000029", date: "2026-07-22", first_row: "GENE_WBGene00006961 in EXPRESSION_CONDITION_91484, high confidence, FDR 0.00278813, level 76.8077"}
     teaches: "The Gene→condition link is genex:hasSequenceUnit (NOT obo:RO_0002206 'expressed in', which Bgee does not use → 0 rows). Every call carries confidence (CIO IRI), FDR p-value, and an expression-level rank score."
 
   - id: gene_expression_sites
@@ -228,7 +228,7 @@ examples:
           FILTER(?anatomy != obo:GO_0005575)               # drop the cellular_component catch-all
         }
       } LIMIT 5
-    verified: {result_rows: 5, date: "2026-07-22", first_row: "UBERON_0000002 = uterine cervix"}
+    verified: {min_rows: 5, date: "2026-07-22", first_row: "UBERON_0000002 = uterine cervix"}
     teaches: "Gene → genex:hasSequenceUnit ← Expression → genex:hasExpressionCondition → genex:hasAnatomicalEntity is THE precise site path. Pin the anatomy rdfs:label to GRAPH <http://bgee.org> (Bgee holds its own label for all 40,646 terms)."
     traps_avoided:
       - "Do NOT use ?gene genex:isExpressedIn ?anatomy as a clean anatomy link — it is DENORMALIZED and polymorphic: values mix anatomy IRIs (UBERON/CL) with EXPRESSION_CONDITION_* IRIs that have no rdfs:label. Go through the call/condition path."
@@ -267,7 +267,7 @@ examples:
           FILTER(?anatomy != obo:GO_0005575)
         }
       } GROUP BY ?anatomy_label ORDER BY DESC(?n_calls) LIMIT 5
-    verified: {result_rows: 5, date: "2026-07-22", first_row: "'material anatomical entity' — 39 calls"}
+    verified: {min_rows: 5, has_values: ["anatomical entity", "material anatomical entity"], date: "2026-07-22", first_row: "'material anatomical entity' — 39 calls"}
     teaches: "Filter quality with genex:hasConfidenceLevel obo:CIO_0000029 (high) or obo:CIO_0000030 (medium) — a CIO IRI, never a number. Anchor to a gene FIRST to keep the 709M-row call table tractable."
 
   - id: enum_genes_in_tissue      # ELEVATED aggregation — the first-class SET-LEVEL enumeration route (audit: first-class)
@@ -288,7 +288,7 @@ examples:
           ?gene a orth:Gene .
         }
       }
-    verified: {n_genes: 45625, date: "2026-07-22"}
+    verified: {n: 45625, date: "2026-07-22"}
     teaches: "THE set-level route for 'all genes with expression property X': scope by the anatomy IRI (genex:hasAnatomicalEntity <UBERON>) and let the DATA supply the gene set — do NOT paste a sampled VALUES list of gene IRIs (that caps the answer at the list size, not the data). Species scope goes on the condition via obo:RO_0002162 → the UniProt taxon IRI."
     traps_avoided:
       - "Species scope here uses <http://purl.uniprot.org/taxonomy/9606> (the ExpressionCondition namespace), NOT <https://bgee.org/species/9606> (the Gene namespace) — mixing them 0-rows (gotcha dual_taxon_namespace)."
@@ -314,7 +314,7 @@ examples:
           ?gene a orth:Gene .
         }
       } GROUP BY ?species_name ORDER BY DESC(?n_genes) LIMIT 6
-    verified: {result_rows: 6, date: "2026-07-22", first_row: "Homo sapiens — 45625 genes"}
+    verified: {min_rows: 6, has_values: ["Homo sapiens"], date: "2026-07-22", first_row: "Homo sapiens — 45625 genes"}
     teaches: "Group the anatomy-scoped call set by the condition's taxon (obo:RO_0002162) → up:scientificName for a per-species distribution. The whole pattern inside GRAPH <http://bgee.org> keeps up:scientificName single-valued."
     traps_avoided:
       - "Leaving up:scientificName UNPINNED returns 3 labels per taxon (bgee + oma + uniprot/taxonomy graphs) and triples every group's row set before DISTINCT collapses it — keep the taxon lookup inside the bgee graph pin (gotcha taxon_label_triple)."
@@ -341,7 +341,7 @@ examples:
                    up:recommendedName/up:fullName ?recName .
         }
       } LIMIT 10
-    verified: {result_rows: 1, protein: "uniprot/P04406", recName: "Glyceraldehyde-3-phosphate dehydrogenase", date: "2026-07-22"}
+    verified: {row_count: 1, has_values: ["Glyceraldehyde-3-phosphate dehydrogenase", "P04406"], protein: "uniprot/P04406", recName: "Glyceraldehyde-3-phosphate dehydrogenase", date: "2026-07-22"}
     teaches: "Bgee and UniProt co-host on the SIB endpoint (endpoint_name sib): lscr:xrefUniprot IS the up:Protein subject IRI — join the two GRAPH blocks directly, no TogoID bridge. Add up:reviewed 1 for Swiss-Prot only."
     traps_avoided:
       - "The UniProt DATA graph is <http://sparql.uniprot.org/uniprot>; <…/core> is the ontology graph (0 protein rows). lscr:xrefUniprot is multi-valued (bare accession AND MNEMONIC form) — DISTINCT on the reviewed subject collapses the pair."

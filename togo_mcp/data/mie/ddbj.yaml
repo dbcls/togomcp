@@ -107,7 +107,7 @@ examples:
                nuc:definition ?definition .
       }
       LIMIT 5
-    verified: {result_rows: 5, division_total: 52724, date: "2026-07-22", first_row: "AF203973.1 = Escherichia phage RB49"}
+    verified: {min_rows: 5, division_total: 52724, date: "2026-07-22", first_row: "AF203973.1 = Escherichia phage RB49"}
     teaches: "nuc:division takes a full Division# IRI (the fragment is part of the IRI, not a placeholder); it is the primary categorical filter and the scope that makes aggregation tractable."
 
   - id: feature_by_locus
@@ -124,7 +124,7 @@ examples:
         OPTIONAL { ?feature nuc:product ?product }
         OPTIONAL { ?feature rdfs:seeAlso ?protein . FILTER(CONTAINS(STR(?protein), "ncbiprotein")) }
       }
-    verified: {result_rows: 4, distinct_types: 2, date: "2026-07-22", note: "Gene 'clpX' + Coding_Sequence 'ATP-dependent Clp protease ATP-binding subunit ClpX' → ncbiprotein/QDU42347.1"}
+    verified: {row_count: 4, has_values: ["Coding_Sequence", "clpX"], distinct_types: 2, date: "2026-07-22", note: "Gene 'clpX' + Coding_Sequence 'ATP-dependent Clp protease ATP-binding subunit ClpX' → ncbiprotein/QDU42347.1"}
     teaches: "A locus_tag returns BOTH its Gene and its Coding_Sequence node; nuc:gene (symbol) is OPTIONAL (~60% coverage) and NCBI-protein is rdfs:seeAlso prefix-filtered on the CDS."
     traps_avoided:
       - "One locus_tag can map to MULTIPLE feature-instance IRIs (…:gene.341869 and …:gene.156917 both = Mal52_08030) — count DISTINCT ?type, not raw rows, and never assume one node per locus."
@@ -143,7 +143,7 @@ examples:
         OPTIONAL { ?gene nuc:gene ?gene_name }
       }
       LIMIT 20
-    verified: {result_rows: 20, date: "2026-07-22", first_row: "Pan258_28100 (srp54)"}
+    verified: {min_rows: 20, date: "2026-07-22", first_row: "Pan258_28100 (srp54)"}
     teaches: "Every Gene/CDS/RNA/Source feature and every Sequence carries ro:0002162 → an identifiers.org/taxonomy/N IRI (>99%). Filtering by a known taxon IRI is exact and index-fast — prefer it over a bif:contains organism name search."
 
   - id: sequence_metadata
@@ -159,7 +159,7 @@ examples:
         ?seq nuc:sequence_length ?length ; nuc:topology ?topology ; rdfs:seeAlso ?fasta .
       }
       GROUP BY ?length ?topology
-    verified: {length: 7767809, topology: "nuc:circular", partner_links: 3, date: "2026-07-22"}
+    verified: {row_count: 1, has_values: [7767809, 3], length: 7767809, topology: "nuc:circular", partner_links: 3, date: "2026-09-14"}
     teaches: "Reach sequence metadata via ?entry nuc:sequence ?seq; the Sequence node holds nuc:sequence_length, nuc:topology (nuc:circular|nuc:linear), and exactly 3 rdfs:seeAlso FASTA links (DDBJ getentry / ENA / NCBI nuccore)."
 
   - id: gene_cds_protein
@@ -182,7 +182,7 @@ examples:
         OPTIONAL { ?gene nuc:gene ?gene_name }
       }
       LIMIT 20
-    verified: {result_rows: 20, date: "2026-07-22", first_row: "Mal52_08030 clpX 1001623–1002915 → ncbiprotein/QDU42347.1"}
+    verified: {min_rows: 20, date: "2026-07-22", first_row: "Mal52_08030 clpX 1001623–1002915 → ncbiprotein/QDU42347.1"}
     teaches: "CDS→Gene is bfo:0000050 (part_of); coordinates are FALDO (faldo:location → faldo:begin/end → faldo:position); NCBI protein is rdfs:seeAlso on the CDS. Entry-scope the CDS FIRST."
     traps_avoided:
       - "sio:SIO_010081 does NOT link CDS→Gene here — it returns 0 rows silently. The real predicate is bfo:0000050."
@@ -239,7 +239,7 @@ examples:
           ?entry a nuc:Entry ; nuc:sequence ?seq . ?seq ro:0002162 ?taxon .
         }
       }
-    verified: {clade_entries: 2925, descendant_taxa: 299, date: "2026-07-22"}
+    verified: {n: 2925, descendant_taxa: 299, date: "2026-07-22"}
     teaches: "To enumerate every entry (or feature) for a whole clade, expand the clade to all descendant taxa with rdfs:subClassOf* IN GRAPH <ontology/taxonomy>, then join those taxon IRIs to dataset/ddbj via ro:0002162. This is THE route for 'all DDBJ records under genus/family/order X' — a per-species taxon-IRI loop misses everything below the queried rank."
     traps_avoided:
       - "ontology/taxonomy is a TRUE hierarchy (rdfs:subClassOf = the single immediate parent), so you MUST use transitive rdfs:subClassOf* to descend a clade — a bare rdfs:subClassOf only reaches direct children. (Contrast UniProt's pre-flattened lineage.) Scope to a genus/family/order to stay under the 60s limit; a phylum-wide subtree can be very heavy."
@@ -265,7 +265,7 @@ examples:
         }
       }
       LIMIT 15
-    verified: {result_rows: 15, date: "2026-07-22", first_row: "AP000400.1 → 'Escherichia coli O157:H7' (NoRank)"}
+    verified: {min_rows: 15, date: "2026-07-22", first_row: "AP000400.1 → 'Escherichia coli O157:H7' (NoRank)"}
     teaches: "The identifiers.org/taxonomy/N IRIs on DDBJ features ARE NCBI Taxonomy's IRIs; the co-hosted ontology/taxonomy graph carries tax:scientificName, tax:rank, tax:authority and the lineage — a direct GRAPH join on the same endpoint, no TogoID bridge."
     traps_avoided:
       - "Do NOT read the organism name from `?taxon rdfs:label` unscoped — dataset/ddbj puts the bare taxid ('9606') on that same predicate (gotcha taxon_label_double). Use tax:scientificName in the ontology/taxonomy graph, or pin that graph for rdfs:label."

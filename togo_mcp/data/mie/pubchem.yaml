@@ -135,7 +135,7 @@ examples:
         compound:CID2244 sio:SIO_000008 ?descriptor .
         ?descriptor a ?descriptorType ; sio:SIO_000300 ?value .
       }
-    verified: {result_rows: 23, date: "2026-07-22", sample: "CHEMINF_000335='C9H8O4', CHEMINF_000334=180.16, CHEMINF_000376='CC(=O)OC1=CC=CC=C1C(=O)O'"}
+    verified: {row_count: 46, has_values: ["C9H8O4", "CC(=O)OC1=CC=CC=C1C(=O)O"], sample: "CHEMINF_000335='C9H8O4', CHEMINF_000334=180.16, CHEMINF_000376='CC(=O)OC1=CC=CC=C1C(=O)O'", note: "23 descriptors, each now typed twice — CHEMINF_* AND a PubChem vocabulary# class (e.g. MolecularFormula); 23 rows on 2026-07-22", date: "2026-09-14"}
     teaches: "Compound -sio:SIO_000008-> typed descriptor node -sio:SIO_000300-> scalar value. rdf:type of the node is the CHEMINF type IRI (formula/MW/SMILES/…). No FROM needed here because compound + descriptor/compound are both in the default union for a CID-pinned lookup."
     traps_avoided:
       - "There is NO single skos:prefLabel-style property carrying 'the formula' — each property is a distinct typed descriptor node reached through sio:SIO_000008, keyed by its CHEMINF rdf:type."
@@ -153,7 +153,7 @@ examples:
         ?descriptor a ?descriptorType ; sio:SIO_000300 ?value .
         VALUES ?descriptorType { sio:CHEMINF_000335 sio:CHEMINF_000334 }   # 335=Molecular Formula, 334=Molecular Weight
       }
-    verified: {formula: "C9H8O4", molecular_weight: 180.16, date: "2026-07-22"}
+    verified: {row_count: 2, has_values: ["C9H8O4"], formula: "C9H8O4", molecular_weight: 180.16, date: "2026-09-14"}
     teaches: "Select a property by pinning its CHEMINF type IRI in VALUES on the descriptor node — the structured alternative to any text/regex over descriptor values."
 
   - id: count_fda
@@ -166,7 +166,7 @@ examples:
       SELECT (COUNT(DISTINCT ?c) AS ?fda_drugs)
       FROM <http://rdf.ncbi.nlm.nih.gov/pubchem/compound>
       WHERE { ?c a vocab:Compound ; obo:RO_0000087 vocab:FDAApprovedDrugs . }
-    verified: {fda_drugs: 15941, date: "2026-07-22"}
+    verified: {n: 15941, date: "2026-07-22"}
     teaches: "Drug status is a typed role: obo:RO_0000087 -> vocab:FDAApprovedDrugs (also vocab:InvestigationalDrugs etc.). A first-class categorical filter, not a title text match; graph-pin <compound> for a clean DISTINCT count."
 
   - id: fda_mw_range
@@ -235,7 +235,7 @@ examples:
         FILTER(CONTAINS(STR(?protein), "/protein/"))
       }
       LIMIT 20
-    verified: {result_rows: 20, date: "2026-07-22", first_targets: "protein/ACCP36888 (FLT3), ACCP30530 (AXL), ACCQ9UM73 (ALK), ACCP24864ACCP24941 (CDK2/cyclin E)"}
+    verified: {min_rows: 20, date: "2026-07-22", first_targets: "protein/ACCP36888 (FLT3), ACCP30530 (AXL), ACCQ9UM73 (ALK), ACCP24864ACCP24941 (CDK2/cyclin E)"}
     teaches: "Forward activity: pin the CID, get its SID via sio:CHEMINF_000477, filter the Endpoint by the controlled outcome vocab:PubChemAssayOutcome vocab:active, then read the target off the MeasureGroup's obo:RO_0000057. Outcome is a controlled IRI (active/inactive/inconclusive/probe/unspecified) — not a text field."
     traps_avoided:
       - "obo:RO_0000057 is HETEROGENEOUS — its object may be a Protein, Taxonomy, Gene, Cell or Anatomy IRI (2026-06 counts: protein 743k, taxonomy 521k, gene 498k, cell 348k, anatomy 202k). FILTER(CONTAINS(STR(?protein),\"/protein/\")) to isolate protein targets."
@@ -258,7 +258,7 @@ examples:
         ?endpoint vocab:PubChemAssayOutcome vocab:active ; obo:IAO_0000136 ?substance .
         ?substance sio:CHEMINF_000477 ?compound .
       }
-    verified: {active_compounds: 4842, date: "2026-07-22"}
+    verified: {n: 4842, date: "2026-07-22"}
     teaches: "Reverse the path from a Protein IRI: anchor RO_0000057 on the protein, walk MeasureGroup->Endpoint(active)->Substance->Compound. Build the protein IRI directly from a UniProt accession: P36888 -> protein/ACCP36888 (no lookup needed)."
     traps_avoided:
       - "COUNT(DISTINCT ?compound) is mandatory — one compound has many active endpoints (multiple assays), so a bare COUNT multiplies by the endpoint count."
@@ -279,7 +279,7 @@ examples:
         ?pathway a vocab:Pathway ; dcterms:title ?title ; obo:RO_0000057 compound:CID2244 ;
                  up:organism <http://rdf.ncbi.nlm.nih.gov/pubchem/taxonomy/TAXID9606> .
       }
-    verified: {result_rows: 9, date: "2026-07-22", first_row: "PWID1184646 = 'Acetylsalicylic Acid Action Pathway'"}
+    verified: {row_count: 9, has_values: ["PWID1184646", "Acetylsalicylic Acid Action Pathway"], date: "2026-07-22", first_row: "PWID1184646 = 'Acetylsalicylic Acid Action Pathway'"}
     teaches: "Pathway participants use obo:RO_0000057 (same predicate as MeasureGroup targets, different graph); organism is up:organism -> a PubChem taxonomy/TAXID<N> IRI. FROM the pathway graph — omitting it returns empty."
 
   - id: protein_detail
@@ -300,7 +300,7 @@ examples:
         OPTIONAL { <http://rdf.ncbi.nlm.nih.gov/pubchem/protein/ACCP36888> pdbo:link_to_pdb ?pdb }
       }
       LIMIT 10
-    verified: {date: "2026-07-22", label: "Receptor-type tyrosine-protein kinase FLT3", id: "P36888", organism: "taxonomy/TAXID9606", pdb_example: "rdf.wwpdb.org/pdb/5X02"}
+    verified: {min_rows: 10, date: "2026-07-22", label: "Receptor-type tyrosine-protein kinase FLT3", id: "P36888", organism: "taxonomy/TAXID9606", pdb_example: "rdf.wwpdb.org/pdb/5X02"}
     teaches: "Protein carries skos:prefLabel (FULL name, not the symbol), dcterms:identifier (= UniProt accession), up:organism (PubChem taxonomy IRI), and pdbo:link_to_pdb PDB structures. FROM the protein graph."
     traps_avoided:
       - "PDB links use the pdbx-v50.owl# prefix. The old pdbx-v40.owl# prefix returns ZERO rows silently — a namespace trap, not a data gap."
@@ -326,7 +326,7 @@ examples:
           FILTER(STRSTARTS(STR(?parent), "http://purl.obolibrary.org/obo/CHEBI_"))
         }
       }
-    verified: {result_rows: 1, date: "2026-07-22", row: "CHEBI_15365 'acetylsalicylic acid' -> CHEBI_33575 'carboxylic acid'"}
+    verified: {row_count: 1, has_values: ["CHEBI_15365", "acetylsalicylic acid"], date: "2026-07-22", row: "CHEBI_15365 'acetylsalicylic acid' -> CHEBI_33575 'carboxylic acid'"}
     teaches: "PubChem's ChEBI rdf:type IRIs ARE resolvable on the same endpoint: the co-hosted <ontology/efo> graph supplies their rdfs:label and structural subClassOf parent — a direct GRAPH join, no TogoID bridge. (Corrects the v2 claim that PubChem supports no cross-DB SPARQL.)"
     traps_avoided:
       - "The label/hierarchy is in <ontology/efo>, NOT in any pubchem partition — pin that graph. MeSH is also co-hosted but has no direct compound link, so MeSH must go through TogoID (id_join_map)."

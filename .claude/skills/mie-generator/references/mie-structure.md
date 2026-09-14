@@ -94,7 +94,10 @@ Each example is self-contained, executable, verified, and dated. Fields:
 - `sparql`: a complete, runnable query (PREFIXes included; `LIMIT` where a row
   query could run away).
 - `verified`: **REQUIRED** — a map of the actual live result plus `date:`
-  (`{n: 108, date: "2026-07-22"}`). Re-run this pass. Use `date:`, **never `on:`**
+  (`{n: 108, date: "2026-07-22"}`), carrying at least one key
+  `scripts/check_mie_examples.py` asserts: `n` (single COUNT cell), `row_count`
+  (below any LIMIT), `min_rows` (LIMIT-capped), `has_values` (stable ids/labels;
+  needs ORDER BY on a capped result). Other keys are annotation. Re-run this pass. Use `date:`, **never `on:`**
   (YAML 1.1 parses the bare word `on` as boolean `true` — spec §4.1 trap); quote
   the date value.
 - `teaches`: the reusable idiom in one line.

@@ -94,7 +94,7 @@ examples:
         OPTIONAL { obo:CHEBI_15422 chemrof:smiles_string ?smiles }
         OPTIONAL { obo:CHEBI_15422 chemrof:inchi_key_string ?inchikey }
       }
-    verified: {label: "ATP", formula: "C10H16N5O13P3", mass: 507.182, inchikey: "ZKHQWZAMYRWXGA-KQYNXXCUSA-N", date: "2026-07-22"}
+    verified: {row_count: 1, has_values: ["ATP", "C10H16N5O13P3"], label: "ATP", formula: "C10H16N5O13P3", mass: 507.182, inchikey: "ZKHQWZAMYRWXGA-KQYNXXCUSA-N", date: "2026-09-14"}
     teaches: "Direct-IRI property lookup: entity IS obo:CHEBI_NNNNN typed owl:Class; molecular data are chemrof:* (OPTIONAL, since abstract classes omit them). Old chebi: predicates return 0 (gotcha namespace_migration)."
 
   - id: enum_subclass_hierarchy
@@ -110,7 +110,7 @@ examples:
         ?entity a owl:Class ; rdfs:subClassOf+ obo:CHEBI_33709 .   # CHEBI:33709 = amino acid
         FILTER(STRSTARTS(STR(?entity), "http://purl.obolibrary.org/obo/CHEBI_"))
       }
-    verified: {count: 1577, date: "2026-07-22"}
+    verified: {n: 1577, date: "2026-07-22"}
     teaches: "THE hierarchy enumeration route: rdfs:subClassOf+ from a parent CHEBI_ IRI reaches every descendant at any depth. Use it for 'all X-type chemicals' where X is a structural class (amino acid, lipid, steroid, alkaloid)."
     traps_avoided:
       - "rdfs:subClassOf (no +) reaches only DIRECT children and undercounts massively; the transitive + is mandatory to descend the tree."
@@ -131,7 +131,7 @@ examples:
            owl:onProperty obo:RO_0000087 ;          # has_role
            owl:someValuesFrom obo:CHEBI_50910 .      # CHEBI:50910 = neurotoxin (swap for any role IRI)
       }
-    verified: {count: 89, date: "2026-07-22", sample_rows: "(S)-nicotine, (R)-sarin, (S)-amphetamine, domoic acid, ibotenic acid"}
+    verified: {n: 89, date: "2026-07-22", sample_rows: "(S)-nicotine, (R)-sarin, (S)-amphetamine, domoic acid, ibotenic acid"}
     teaches: "THE role enumeration route: the 3-triple owl:Restriction on owl:onProperty RO_0000087 + owl:someValuesFrom <role IRI> lists every chemical asserted to have that role. This is a DIFFERENT axis from the class hierarchy — a role (neurotoxin, ligand, solvent) is not a structural subclass."
     traps_avoided:
       - "There is NO direct `?entity obo:RO_0000087 obo:CHEBI_33281` triple — that returns 0 rows. The restriction blank node is mandatory (gotcha restriction_pattern)."
@@ -153,7 +153,7 @@ examples:
            owl:someValuesFrom ?base .
         ?base rdfs:label ?baseLabel .
       }
-    verified: {acidLabel: "acetic acid", baseLabel: "acetate", total_conjugate_acid_restrictions: 8660, date: "2026-07-22"}
+    verified: {row_count: 1, has_values: ["acetic acid", "acetate"], acidLabel: "acetic acid", baseLabel: "acetate", total_conjugate_acid_restrictions: 8660, date: "2026-09-14"}
     teaches: "Chemical relationships reuse the SAME owl:Restriction pattern as roles, only owl:onProperty changes (RO_0018034 is_conjugate_acid_of, RO_0018033 base, RO_0018036 tautomer, RO_0018039 enantiomer). owl:someValuesFrom points at another CHEBI_ entity, so you can label it directly."
 
   - id: xref_coverage
@@ -174,7 +174,7 @@ examples:
       GROUP BY ?dbPrefix
       ORDER BY DESC(?entityCount)
       LIMIT 8
-    verified: {top: "chemspider 53225, lincs.smallmolecule 41390, pubmed 33274, cas 29826, hmdb 19790, reaxys 17597, kegg.compound 17362, lipidmaps 12638", date: "2026-07-22"}
+    verified: {min_rows: 8, has_values: ["chemspider", "lincs.smallmolecule"], top: "chemspider 53225, lincs.smallmolecule 41390, pubmed 33274, cas 29826, hmdb 19790, reaxys 17597, kegg.compound 17362, lipidmaps 12638", date: "2026-07-22"}
     teaches: "Cross-refs are literal 'prefix:id' strings on oboInOwl:hasDbXref; STRBEFORE(?xref, ':') extracts the source prefix. To FILTER for one source, match the exact LOWERCASE dot-notation prefix (kegg.compound:, drugbank:) — see gotcha namespace_migration."
 
   - id: role_and_hierarchy
@@ -185,7 +185,7 @@ examples:
       PREFIX obo: <http://purl.obolibrary.org/obo/>
       PREFIX owl: <http://www.w3.org/2002/07/owl#>
       PREFIX chemrof: <https://w3id.org/chemrof/>
-      SELECT ?entity ?label ?formula
+      SELECT DISTINCT ?entity ?label ?formula
       FROM <http://rdf.ebi.ac.uk/dataset/chebi>
       WHERE {
         ?entity a owl:Class ; rdfs:label ?label ;
@@ -198,10 +198,11 @@ examples:
         FILTER(STRSTARTS(STR(?entity), "http://purl.obolibrary.org/obo/CHEBI_"))
       }
       LIMIT 20
-    verified: {result_rows: 5, date: "2026-07-22", first_row: "L-dopa; also L-BMAA, ibotenic acid, domoic acid, dysiherbaine"}
+    verified: {row_count: 5, has_values: ["L-dopa", "L-BMAA"], first_row: "L-dopa; also L-BMAA, ibotenic acid, domoic acid, dysiherbaine", date: "2026-09-14"}
     teaches: "The two enumeration axes intersect cleanly: subClassOf+ constrains STRUCTURE, the RO_0000087 restriction constrains ROLE, both on the same ?entity. This is the general 'X-type chemicals that do Y' pattern."
     traps_avoided:
       - "Do NOT try to combine two ROLES as two direct restrictions expecting inheritance — a role asserted on a superclass is not repeated as a direct restriction on the entity, so `has_role A AND has_role B` on one node is often 0. Cross a role with the STRUCTURAL hierarchy (as here) instead, which is inherited via subClassOf+."
+      - "Keep SELECT DISTINCT: subClassOf+ yields one solution PER HIERARCHY PATH, so without it an amino acid reachable by several subclass routes (L-dopa) repeats once per route — and a LIMIT then truncates duplicates instead of entities."
 
   - id: xdb_chembl
     intent: "cross-DB: ChEBI ↔ ChEMBL drug molecules via the standard InChIKey (co-hosted on ebi)"
@@ -230,7 +231,7 @@ examples:
         }
       }
       LIMIT 50
-    verified: {result_rows: 3, date: "2026-07-22", first_row: "ASPIRIN → CHEBI_15365 acetylsalicylic acid (C9H8O4); sildenafil→CHEBI_9139; ibuprofen→CHEBI_5855"}
+    verified: {row_count: 3, has_values: ["CHEBI_5855", "ibuprofen"], date: "2026-07-22", first_row: "ASPIRIN → CHEBI_15365 acetylsalicylic acid (C9H8O4); sildenafil→CHEBI_9139; ibuprofen→CHEBI_5855"}
     teaches: "ChEMBL and ChEBI are co-hosted on the ebi endpoint — GRAPH-join both directly (no TogoID). The reliable bridge is the standard InChIKey: ChEMBL sio:CHEMINF_000059/SIO_000300 ↔ ChEBI chemrof:inchi_key_string."
     traps_avoided:
       - "skos:exactMatch does NOT link ChEMBL SmallMolecules to ChEBI IRIs (that join returns 0 rows). Use the InChIKey literal."
@@ -265,7 +266,7 @@ examples:
         }
       }
       LIMIT 30
-    verified: {result_rows: 2, date: "2026-07-22", first_row: "EST17b → 17beta-estradiol (C18H24O2); NO → nitric oxide (NO)"}
+    verified: {row_count: 2, has_values: ["EST17b", "17beta-estradiol"], date: "2026-07-22", first_row: "EST17b → 17beta-estradiol (C18H24O2); NO → nitric oxide (NO)"}
     teaches: "Reactome (co-hosted on ebi) points at ChEBI via bp:UnificationXref (bp:db 'ChEBI', bp:id 'CHEBI:NNNNN'); strip the 'CHEBI:' prefix and CONCAT the obo:CHEBI_NNNNN IRI to join the chebi graph."
     traps_avoided:
       - "BOTH bp:db AND bp:id are ^^xsd:string-typed in Reactome — a bare/untyped literal (incl. one produced by CONCAT) matches 0 rows. Anchor via ^^xsd:string VALUES on bp:id, not via an untyped CONCAT'd id."

@@ -103,7 +103,7 @@ examples:
         FILTER(REGEX(?label, "^13q", ""))  # ISCN: chr 13, q arm. 3rd arg is mandatory — see guide TRAPS #10
       }
       ORDER BY ?label
-    verified: {result_rows: 32, date: "2026-08-14"}
+    verified: {row_count: 32, date: "2026-08-14"}
     teaches: "Band classes are enumerated via rdfs:subClassOf hco:Cytoband; select an arm/chromosome by REGEX on the ISCN rdfs:label (^13q). No coordinates or build needed for the class list."
 
   - id: band_coordinates
@@ -119,7 +119,7 @@ examples:
         ?inst a hco:13q14.2 ; hco:build hco:GRCh38 ; faldo:location ?loc .
         ?loc faldo:begin/faldo:position ?begin ; faldo:end/faldo:position ?end .
       }
-    verified: {begin: 46700001, end: 50300000, date: "2026-07-22"}
+    verified: {row_count: 1, has_values: [46700001, 50300000], begin: 46700001, end: 50300000, date: "2026-09-14"}
     teaches: "Coordinates: ?inst a <bandClass> ; hco:build <build> ; faldo:location → faldo:begin/end → faldo:position (1-based xsd:integer). The class name hco:13q14.2 is a usable IRI; the instance IRI (backslash-joined) is not — navigate to it via `a`."
 
   - id: position_to_band
@@ -140,7 +140,7 @@ examples:
         ?loc faldo:begin/faldo:position ?begin ; faldo:end/faldo:position ?end .
         FILTER(?begin <= 50000000 && 50000000 <= ?end)
       }
-    verified: {bandLabel: "13q14.2", stain: "gpos50", begin: 46700001, end: 50300000, date: "2026-08-14"}
+    verified: {row_count: 1, has_values: ["13q14.2", 46700001], bandLabel: "13q14.2", stain: "gpos50", begin: 46700001, end: 50300000, date: "2026-09-14"}
     teaches: "faldo:position is xsd:integer, so a base position resolves to a band with a numeric BETWEEN filter (?begin <= P && P <= ?end). Restrict to the chromosome by ISCN label REGEX before the range scan."
 
   - id: stain_enum
@@ -159,7 +159,7 @@ examples:
         ?loc faldo:begin/faldo:position ?begin ; faldo:end/faldo:position ?end .
       }
       ORDER BY ?bandLabel
-    verified: {result_rows: 81, date: "2026-07-22", note: "GRCh38 gpos100 count; the full 8-way distribution is in entity_counts"}
+    verified: {row_count: 81, date: "2026-07-22", note: "GRCh38 gpos100 count; the full 8-way distribution is in entity_counts"}
     teaches: "THE enumeration route for 'all bands with stain X': match hco:bandtype by IRI (hco:Gneg/Gpos25/Gpos50/Gpos75/Gpos100/Acen/Gvar/Stalk), NEVER by CONTAINS on the stain label. The 8-value vocabulary is a controlled set — an IRI filter is exact and index-fast."
     traps_avoided:
       - "A free-text `FILTER(CONTAINS(LCASE(?stainLabel), 'gpos100'))` is both slower and fragile; the stain is a controlled IRI vocabulary — filter on hco:Gpos100 directly."
@@ -181,7 +181,7 @@ examples:
         OPTIONAL { ?ref hco:insdc  ?insdc }
       }
       ORDER BY ?chromosomeBuild
-    verified: {distinct_hubs: 24, refseq_coverage: "24/24", insdc_coverage: "24/24", date: "2026-07-22"}
+    verified: {row_count: 24, refseq_coverage: "24/24", insdc_coverage: "24/24", date: "2026-07-22"}
     teaches: "The chromosome-build reference hub (hco:<chr>\\/<build>, a backslash IRI) is the target of faldo:reference and carries hco:refseq/insdc/ensembl/ucsc. Navigate to it — never type the IRI. 24 hubs on GRCh38 (MT has no cytobands)."
     traps_avoided:
       - "STR(?ref) to display the hub IRI safely; a plain-slash IRIREF for it matches nothing (gotcha backslash_iri)."
@@ -201,7 +201,7 @@ examples:
         ?i38 a hco:17p13.1 ; hco:build hco:GRCh38 ; faldo:location ?l38 .
         ?l38 faldo:begin/faldo:position ?begin38 ; faldo:end/faldo:position ?end38 .
       }
-    verified: {begin37: 6500001, end37: 10700000, begin38: 6500001, end38: 10800000, date: "2026-07-22"}
+    verified: {row_count: 1, has_values: [6500001, 10700000], begin37: 6500001, end37: 10700000, begin38: 6500001, end38: 10800000, date: "2026-09-14"}
     teaches: "Both build instances share the band CLASS, so join them on `a hco:<band>` with two different hco:build values to read the coordinate shift between assemblies in one query."
 
   - id: chromosome_extent
@@ -222,7 +222,7 @@ examples:
       }
       GROUP BY ?ref
       ORDER BY ?chromosomeBuild
-    verified: {groups: 24, chr10_minStart: 1, chr10_maxEnd: 133797422, chr10_nBands: 42, date: "2026-07-22"}
+    verified: {row_count: 24, chr10_minStart: 1, chr10_maxEnd: 133797422, chr10_nBands: 42, date: "2026-07-22"}
     teaches: "GROUP BY the faldo:reference hub (one per chromosome-build) to partition bands by chromosome WITHOUT touching the backslash IRI as a literal; COUNT(DISTINCT ?inst) + MIN/MAX give per-chromosome extent. 24 groups (MT unbanded)."
     traps_avoided:
       - "Grouping by ?ref (the hub IRI) is safe; do not try to GROUP BY a constructed chromosome IRI — it can't be written (backslash)."
@@ -249,7 +249,7 @@ examples:
           ?loc faldo:begin/faldo:position ?begin ; faldo:end/faldo:position ?end .
         }
       }
-    verified: {cytoband: "17p13.1", begin: 6500001, end: 10800000, stain: "gneg", date: "2026-07-22"}
+    verified: {row_count: 1, has_values: ["17p13.1", 6500001], cytoband: "17p13.1", begin: 6500001, end: 10800000, stain: "gneg", date: "2026-09-14"}
     teaches: "The canonical way INTO HCO from gene-space: HGNC obo:so_part_of \"17p13.1\" == HCO band rdfs:label \"17p13.1\" (both plain literals, case/format-sensitive ISCN). Both graphs are on the 'primary' endpoint → one GRAPH-joined query, no TogoID bridge."
     traps_avoided:
       - "The join is a plain-literal STRING match on ISCN nomenclature — it is case- and format-sensitive; a sub-band mismatch (e.g. HGNC '17p13' vs HCO '17p13.1') silently drops the row."

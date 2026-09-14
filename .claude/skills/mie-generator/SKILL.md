@@ -17,7 +17,7 @@ This skill lives in a Claude Code environment with filesystem access and SPARQL 
 
 **2. Nothing in the MIE file is invented — and "it ran" is not "it's right."** Every `examples` entry must be executed against the real endpoint before the file is written, its live result recorded in the `verified:` block **with a `date:`**, and that result **confirmed correct**, not merely error-free:
 
-- **SPARQL** (every `examples[].sparql`, including the `aggregation` and `cross_db` ones): must run AND return the right thing. A query that succeeds but returns a union-inflated COUNT is a *failed* test, not a passing one — scope the graph and verify the figure (Phase 2g / 5c). The `verified:` block records the actual figure you saw, so a later re-run that disagrees is a drift signal, not silent rot.
+- **SPARQL** (every `examples[].sparql`, including the `aggregation` and `cross_db` ones): must run AND return the right thing. A query that succeeds but returns a union-inflated COUNT is a *failed* test, not a passing one — scope the graph and verify the figure (Phase 2g / 5c). The `verified:` block records the actual figure you saw **under a reserved key the checker asserts** (`n`, `row_count`, `min_rows`, `has_values` — spec §4.1), so a later re-run that disagrees is a drift signal CI raises, not silent rot.
 - **Search-wrapper claims**: any assertion the file makes about a `search_*` / `ncbi_esearch` / `OLS4:searchClasses` tool's behavior (e.g. "use `search_chembl_target` for targets, EGFR → CHEMBL203") must be run through the actual tool and the claimed hit confirmed to appear at a *usable* rank/limit — not buried at rank 5 behind unrelated hits, and present at the limit the claim implies (Phase 5e).
 
 Fake or unverified examples are worse than missing ones: they train the downstream LLM to write queries *and tool-calls* that look right but fail silently.
@@ -433,7 +433,7 @@ Use `references/template.yaml` as your scaffold. Copy it to the target path, the
 
        This is the cheapest recurrence-prevention in the whole workflow — the queries have already run, and the only work left is not throwing them away. It also removes the failure mode where the prose and the check are measured separately and quietly disagree: a hand-written check that "confirms" a number the `say` got from somewhere else is worse than no check, because it looks verified.
      - The same applies to the other kinds: a `zero_rows` claim comes from the probe that returned zero, an `absent` claim from the graph you found empty, a `count` from the count you just ran. **If you are inventing a query to justify a sentence, the sentence is not yet evidence** — go measure it, then write both.
-4. **`examples`** — the core. Each entry: `id`, `intent`, `question`, `complexity`, `sparql`, `verified:` (the live result **+ `date:`**), `teaches`, optional `traps_avoided`; `endpoint_name` on `cross_db` examples only. Include the enumeration route(s), one `aggregation`, and one `cross_db` where the DB supports them (Phase 3). A query-specific trap goes here as a `traps_avoided` line, never in `global_gotchas`.
+4. **`examples`** — the core. Each entry: `id`, `intent`, `question`, `complexity`, `sparql`, `verified:` (the live result under at least one reserved key — `n` / `row_count` / `min_rows` / `has_values` — **+ `date:`**; see 5b), `teaches`, optional `traps_avoided`; `endpoint_name` on `cross_db` examples only. Include the enumeration route(s), one `aggregation`, and one `cross_db` where the DB supports them (Phase 3). A query-specific trap goes here as a `traps_avoided` line, never in `global_gotchas`.
 5. **`schema_delta`** (optional) — ONLY non-obvious predicates/idioms **no example demonstrates**. If a predicate appears in an example, it does NOT go here. Not a schema dump.
 6. **`id_join_map`** — `stable_anchor`, optional `same_endpoint_joins` (co-hosted direct GRAPH joins — point each at its `cross_db` example), optional `xrefs` (mechanism-agnostic, with coverage), optional `bridged_via_togoid`.
 
@@ -468,10 +468,15 @@ Also confirm `discovery` has all four fields and its `description` is one senten
 **5b. Every example is verified, dated, and actually re-run this pass.** For **every** entry in `examples`:
 
 1. Run its `sparql` against the endpoint. It must execute with no error AND return the right thing — a query that succeeds but returns a union-inflated COUNT is a *failed* test (5d). Record the live result in `verified:` and stamp `date:` with today's date.
-2. **The `verified:` value must match what you just saw.** A `verified: {n: 108}` whose query now returns 112 is a drift you must resolve (fix the query or update the figure), not paper over.
+2. **The `verified:` value must match what you just saw — under a key the checker can assert.** Pick by result shape:
+   - one row, one numeric cell (a COUNT) → `n: 108`
+   - a full result (fewer rows than any `LIMIT`) → `row_count: 13`, plus `has_values: [P04637]` for a stable identity value you saw (an accession, a label; a count only as a bare YAML number, which gets `tolerance` — a quoted one is exact and drifts every release)
+   - a `LIMIT`-capped result → `min_rows: 20`; `has_values` only if the query has `ORDER BY` (otherwise the endpoint may return any 20 rows)
+
+   Prefer `n`/`row_count` where the query allows it: they catch inflation and shrinkage, `min_rows` does not. Prose keys (`first_row`, `note`) are still welcome as annotation; they are just not checked. A `verified: {n: 108}` whose query now returns 112 is a drift you must resolve (fix the query or update the figure and its `date:`), never by widening `tolerance`.
 3. **Check the `date:` key is literally `date:`, not `on:`** (spec §4.1 YAML trap — `on:` parses as boolean `true`). Grep the file: `grep -nE '^\s+on:' <file>` must return nothing.
 
-Automate the zero-row/error half: `uv run python scripts/check_mie_examples.py <db>` runs every `examples[].sparql` against the live endpoint and flags ZERO-row and ERROR results (it harvests the file's PREFIXes; treats a lone `COUNT`→0 as zero-row; reports 5xx as net-fail, not a defect). **Require a clean run — 0 zero-row, 0 error — before shipping.** A genuinely-empty example (rare) must carry a sibling `expect_empty: true`. The tool does NOT catch a query that returns the WRONG rows (a union-inflated COUNT, a mis-scoped join that still yields plausible rows) — that is 5d, by hand.
+Automate the zero-row/error half: `uv run python scripts/check_mie_examples.py <db>` runs every `examples[].sparql` against the live endpoint and flags ZERO-row and ERROR results, asserts each `verified:` against the live result (DRIFT), and rejects blocks that assert nothing or assert wrongly (MALFORMED — e.g. `row_count` equal to the `LIMIT`) (it harvests the file's PREFIXes; treats a lone `COUNT`→0 as zero-row; reports 5xx as net-fail, not a defect). `--lint-only` runs the MALFORMED half offline. **Require a clean run — 0 zero-row, 0 error, 0 drift, 0 malformed — before shipping.** A genuinely-empty example (rare) must carry a sibling `expect_empty: true`. The tool does NOT catch a query that returns the WRONG rows (a union-inflated COUNT, a mis-scoped join that still yields plausible rows) — that is 5d, by hand.
 
 For each `cross_db` example that returns results, spot-check join validity: take one join value from the result and `ASK`/`SELECT` against the second graph to confirm it resolves to a real entity there. A `cross_db` query returning 3 rows when thousands are expected is a join failure (the linking IRI form probably differs between the two DBs), not a passing test.
 
@@ -566,7 +571,7 @@ Only after Phases 1–5 (and the regeneration above) are complete, report to the
 ✓ MIE file (v3) written to ./togo_mcp/data/mie/<db>.yaml
   - YAML parses; required keys present (database, discovery, endpoint, graphs, examples, id_join_map)
   - discovery: 4 fields present, description one sentence; category tokens exact-matched (list_categories() retired)
-  - examples: N/N executed live; every one carries verified: with a date: (no `on:` key); check_mie_examples.py <db> → 0 zero-row / 0 error
+  - examples: N/N executed live; every one carries verified: with a date: (no `on:` key); check_mie_examples.py <db> → 0 zero-row / 0 error / 0 drift / 0 malformed
   - elevated classes: ≥1 aggregation + ≥1 cross_db present (or "DB supports neither: <why>");
     every set-level enumeration route is a first-class example (enumeration_audit tier: [A/B/C/OK])
   - cross-graph inflation: co-hosted endpoint probed (2g), multipliers + safe pattern validated
@@ -590,7 +595,7 @@ A complete v3 MIE file satisfies:
 
 - Required keys present and in order (spec §2); YAML parses.
 - `examples` carries the bulk of the bytes (corpus mean 64%, sd 4) and a revision does not drop that share by >5 points. No fact restated across sections (§4.2): a predicate in an example is not repeated in `schema_delta`; a warning is `global_gotchas` OR `traps_avoided`, never both.
-- **Every** `examples[].sparql` re-run live, with a `verified:` block carrying the real result + a `date:` (never `on:`). `check_mie_examples.py <db>` clean.
+- **Every** `examples[].sparql` re-run live, with a `verified:` block carrying the real result + a `date:` (never `on:`). `check_mie_examples.py <db>` clean (0 zero-row / error / drift / malformed).
 - Query craft: prioritise specific IRIs / typed predicates over text search; `bif:contains` over `FILTER(CONTAINS())` on Virtuoso, property paths split before it; no circular reasoning (never `VALUES ?x { <search-api results> }` inside a COUNT).
 - At least one `aggregation` and one `cross_db` example where the DB supports them; every set-level enumeration route is a first-class `example` (not a caveat) — spec §4.4.
 - `global_gotchas` documents every database-wide silent-failure trap (mandatory filters, IRI namespace mismatches, absent labels, verbatim typos, union inflation); every cited predicate/IRI confirmed live; every falsifiable claim carries a `check:` and `check_mie_gotchas.py <db>` is clean. No timeout claim survives without a `kind: error` check that still fails — six were false when first tested (5e-2).

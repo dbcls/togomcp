@@ -119,7 +119,7 @@ examples:
       }
       ORDER BY ?pvalue
       LIMIT 20
-    verified: {rows: 4, top_trait: "QT interval", top_pvalue: 2e-23, date: "2026-07-31"}
+    verified: {row_count: 4, has_values: ["QT interval"], top_trait: "QT interval", top_pvalue: "2e-23", date: "2026-07-31"}
     teaches: "Reach the blank-node Association through m2r:snps with a PLAIN rsID literal; the whole flat row hangs off that one node."
     traps_avoided:
       - "m2r:odds_ratio is MIXED-TYPED: xsd:decimal where a value exists, xsd:string \"NA\" where it does not (roughly half each). FILTER(?orValue > 1.5) silently drops the \"NA\" rows (harmless), but AVG()/MAX() over it breaks and ORDER BY sorts strings and numbers separately. Same for m2r:beta and m2r:risk_allele_frequency."
@@ -143,7 +143,7 @@ examples:
         OPTIONAL { ?study gwas:has_pubmed_id ?pubmed }
       }
       LIMIT 10
-    verified: {rows: 1, trait: "Stroke", pubmed: "17434096", date: "2026-07-31"}
+    verified: {row_count: 1, has_values: ["Stroke", "17434096"], trait: "Stroke", pubmed: "17434096", date: "2026-07-31"}
     teaches: "Requiring dct:identifier is also the cheapest way to restrict ?s a gwas:Study to the 89,981 real study records."
     traps_avoided:
       - "dct:description holds the study's REPORTED trait as free text (\"Stroke\"), not an EFO IRI — the EFO IRI is on m2r:mapped_trait for a Study (but is a label string on an Association)."
@@ -165,7 +165,7 @@ examples:
         OPTIONAL { ?snp ro:located_in ?region }
       }
       LIMIT 10
-    verified: {rows: 1, position: 3823641, region: "CytogeneticRegion/16p13.3", date: "2026-07-31"}
+    verified: {row_count: 1, has_values: [3823641, "16p13.3"], position: 3823641, region: "CytogeneticRegion/16p13.3", date: "2026-07-31"}
     teaches: "The gwas: vocabulary needs ^^xsd:string on every string match; has_basepair_position (unlike m2r:chr_pos) is a real integer."
     traps_avoided:
       - "You cannot build the SNP IRI from an rsID: .../SingleNucleotidePolymorphism/10064763 holds rs1296720 — the numeric tail is an internal key, NOT the rs number. Always look the SNP up by has_snp_reference_id."
@@ -189,7 +189,7 @@ examples:
       }
       ORDER BY ?pvalue
       LIMIT 10
-    verified: {rows: 10, top_rsid: "rs2074238", distinct_trait_names: ["QT interval", "QTc interval"], date: "2026-07-31"}
+    verified: {min_rows: 10, has_values: ["rs2074238", "QT interval"], top_rsid: "rs2074238", distinct_trait_names: ["QT interval", "QTc interval"], date: "2026-07-31"}
     teaches: "OBAN reification: has_subject is always the SNP and has_object always the EFO trait — the direction never varies, so it is safe to anchor on either end."
     traps_avoided:
       - "gwas:has_p_value is xsd:double, so p-values below ~1e-308 UNDERFLOW TO 0.0 and become mutually indistinguishable (two rows here are both 0.0). To rank the extreme tail, use the rank_by_mlog route below instead."
@@ -213,7 +213,7 @@ examples:
       }
       ORDER BY DESC(?mlog)
       LIMIT 10
-    verified: {rows: 10, top_rsid: "rs12143842", top_mlog: 776, second_mlog: 399.39794000867204, date: "2026-07-31"}
+    verified: {min_rows: 10, has_values: ["rs12143842"], top_rsid: "rs12143842", top_mlog: 776, second_mlog: 399.39794000867204, date: "2026-07-31"}
     teaches: "Rank significance on m2r:p_value_mlog (xsd:decimal), never on the raw p-value: -log10 keeps the extreme tail ordered where xsd:double collapses it to 0.0."
     traps_avoided:
       - "The top two rows here are BOTH p = 0.0 on the raw p-value (see trait_snps_oban) — mlog separates them as 776 vs 399.4. Ranking on the raw p-value silently ties the strongest hits in the catalog."
@@ -233,7 +233,7 @@ examples:
            m2r:mapped_trait_uri <http://www.ebi.ac.uk/efo/EFO_0004682> ;   # IRI, not a string
            m2r:snps ?rsid .
       }
-    verified: {distinct_snps: 631, associations: 858, date: "2026-07-31"}
+    verified: {row_count: 1, has_values: [631, 858], distinct_snps: 631, associations: 858, date: "2026-09-14"}
     teaches: "m2r:mapped_trait_uri is a real IRI — enumerate a trait's variants by that IRI, never by matching the trait NAME."
     traps_avoided:
       - "Associations (858) exceed distinct SNPs (631) because the same SNP is reported by several studies — COUNT(?a) is a study-report count, COUNT(DISTINCT ?rsid) is the variant count. Decide which one the question asks for."
@@ -254,7 +254,7 @@ examples:
            m2r:mapped_trait ?trait .
       }
       GROUP BY ?trait ORDER BY DESC(?n) LIMIT 15
-    verified: {rows: 13, top: {trait: "QT interval", n: 4}, date: "2026-07-31"}
+    verified: {row_count: 13, has_values: ["QT interval"], top: {trait: "QT interval", n: 4}, date: "2026-07-31"}
     teaches: "m2r:snp_gene_ids carries an identifiers.org Ensembl gene IRI, so gene-anchored enumeration is a direct IRI match with no text search and no ID bridge."
     traps_avoided:
       - "m2r:snp_gene_ids is IRI-valued ONLY where a gene was mapped; elsewhere it is an EMPTY STRING (241 IRI vs 89 \"\" in a 330-row sample). `?a m2r:snp_gene_ids ?g` with no filter binds junk — add FILTER(isIRI(?g)) when you leave it as a variable."
@@ -275,7 +275,7 @@ examples:
            m2r:p_value ?p .
         FILTER(?p < 5.0e-8)
       }
-    verified: {genome_wide_significant: 801096, of_total_associations: 955930, date: "2026-07-31"}
+    verified: {n: 801096, of_total_associations: 955930, date: "2026-07-31"}
     teaches: "FROM-pin + COUNT(DISTINCT) is the union-safe counting recipe; m2r:p_value is uniformly xsd:double so the numeric FILTER needs no cast."
     traps_avoided:
       - "m2r:p_value is the only cleanly-typed numeric on the association row (500/500 xsd:double). Its neighbours are not — see the mixed-typing trap on snp_associations_by_rsid before filtering on odds_ratio or beta."
@@ -294,7 +294,7 @@ examples:
                 "real_gcst_study", "ebi_trackable_stub") AS ?family)
       }
       GROUP BY ?family
-    verified: {real_gcst_study: 89981, ebi_trackable_stub: 134602, date: "2026-07-31"}
+    verified: {row_count: 2, has_values: [89981, 134602], real_gcst_study: 89981, ebi_trackable_stub: 134602, date: "2026-07-31"}
     teaches: "When one class spans two IRI namespaces, BIND(STRSTARTS(...)) partitions it in a single pass and shows the split instead of hiding it."
     traps_avoided:
       - "The headline answer is 89,981, NOT the 224,583 that `?s a gwas:Study` returns. The 134,602 Trackable/* stubs carry only has_author and has_publication_date — they are publication nodes, not studies."
@@ -320,7 +320,7 @@ examples:
         }
       }
       GROUP BY ?label ?definition
-    verified: {label: "QT interval", associations: 858, has_definition: true, date: "2026-07-31"}
+    verified: {row_count: 1, has_values: ["QT interval", 858], label: "QT interval", associations: 858, has_definition: true, date: "2026-09-14"}
     teaches: "The EFO IRI is shared verbatim between gwas_catalog and ontology/efo on the SAME endpoint — a direct two-GRAPH join, no ID bridge and no TogoID hop."
     traps_avoided:
       - "gwas_catalog stores NO rdfs:label for a trait IRI (0 of 500 sampled). Querying trait names inside the gwas graph alone returns nothing — the label only exists in ontology/efo."

@@ -12,6 +12,11 @@
 # falsifiable claim in `global_gotchas` now carries a machine-runnable `check:` (spec §3.6) so the same
 # class of rot cannot sit unnoticed again: `uv run python scripts/check_mie_gotchas.py uniprot`.
 # Also added `graphs.absent_here` — the graphs this endpoint does NOT have, declared positively.
+# 2026-09-14 revision (GitHub #219): `sequence_mass` taught "the canonical isoform is isoforms/ACC-1".
+# It is not — 782 reviewed entries have another canonical, and in 613 a non-canonical ACC-1 still
+# exists, so the old lookup returned the WRONG sequence silently. Canonical = up:Simple_Sequence AND
+# own-accession IRI prefix (exactly one per entry). Also removed the false "every node is typed both
+# Simple_Sequence and External_Sequence" trap and the 200s-timeout claim that no longer reproduces.
 mie_spec: 3                        # format version — see MIE_v3_spec.md §2
 database: uniprot
 
@@ -231,30 +236,91 @@ global_gotchas:                    # the few that bite ANY query — verified 20
 #    would otherwise be written four times over. `traps_avoided` are the inline, query-specific warnings. ──
 examples:
   - id: sequence_mass
-    intent: amino-acid sequence + mass of a protein, selected by naming the canonical isoform IRI
+    intent: amino-acid sequence + mass of a protein's canonical isoform (type + own-accession IRI prefix)
     question: "What is the canonical amino-acid sequence and mass of human insulin (P01308)?"
     complexity: basic
     sparql: |
       PREFIX up: <http://purl.uniprot.org/core/>
       PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
-      PREFIX isoform: <http://purl.uniprot.org/isoforms/>
       PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-      SELECT ?sequence ?mass (STRLEN(?sequence) AS ?length)
+      SELECT ?isoform ?sequence ?mass (STRLEN(?sequence) AS ?length)
       FROM <http://sparql.uniprot.org/uniprot>        # load-bearing, not decoration — see traps_avoided
       WHERE {
-        # The canonical sequence node is NAMED <isoforms/ACC-1>. State it as an IRI instead of binding
-        # ?seq and testing the string afterwards: both legs stay index-resolved, nothing is post-filtered.
-        uniprot:P01308 up:sequence isoform:P01308-1 .
-        isoform:P01308-1 rdf:value ?sequence ; up:mass ?mass .
+        # The canonical isoform is the entry's ONE up:Simple_Sequence named after ITS OWN accession.
+        # It is NOT "the -1 node": the suffix is an isoform number (fibronectin P02751's canonical is -15).
+        uniprot:P01308 up:sequence ?isoform .
+        ?isoform a up:Simple_Sequence ;
+                 rdf:value ?sequence ; up:mass ?mass .
+        FILTER(STRSTARTS(STR(?isoform), "http://purl.uniprot.org/isoforms/P01308-"))
       }
-    verified: {result_rows: 1, mass: 11981, length: 110, date: "2026-08-20", runtime: "0.4s",
-               under_extension: "with two OPTIONALs bolted on (rdfs:seeAlso/up:database and up:classifiedWith/rdfs:label) it returns 918 rows in 1.0\u20131.5s; the previous FILTER(CONTAINS)+unpinned form did not finish within 200s"}
-    teaches: "up:sequence \u2192 the isoform node \u2192 rdf:value carries the letters, up:mass the Da. For a known protein, name the isoform IRI: the canonical node for accession ACC is isoforms/ACC-1 in 2,985 of 3,000 sampled reviewed human entries (2026-08-20), so the lookup needs no ?seq variable and no string test at all."
+    verified: {row_count: 1, has_values: ["P01308-1", 11981, 110], date: "2026-09-14", runtime: "0.1–0.9s", under_extension: "with two OPTIONALs bolted on (rdfs:seeAlso/up:database and up:classifiedWith/rdfs:label) it returns 918 rows in 0.2s"}
+    teaches: "up:sequence → the isoform node → rdf:value carries the letters, up:mass the Da. The canonical isoform is `?iso a up:Simple_Sequence` AND an IRI starting isoforms/<own ACC>- — together they select exactly one node for every one of the 575,503 reviewed entries (2026-09-14). Neither condition alone does, and the suffix number is not part of the rule."
     traps_avoided:
-      - "up:sequence on P01308 ALSO returns isoforms/F8WCM5-1 \u2014 the 200-aa INS-IGF2 readthrough, which belongs to a DIFFERENT accession \u2014 so a bare `?protein up:sequence ?seq` yields 2 sequences. Not a one-off: O94854 hangs five Q9UPN3-* isoform nodes off up:sequence and has no O94854-1 node at all."
-      - "Do NOT select the isoform with FILTER(CONTAINS(STR(?seq), \"/P01308-1\")). It passes alone (1.1s pinned) but it is a post-filter over whatever ?seq bound, so it does not survive being extended \u2014 and the query it was written in had no FROM. Measured 2026-08-20 with the two OPTIONALs above: unpinned FILTER form >200s (no result), unpinned direct-IRI form >200s too, pinned FILTER form 5.6s, this form ~1.5s. The FROM pin is the larger half of the fix (gotcha union_inflation); naming the IRI is what removes the remaining 4\u00d7."
-      - "isoforms/ACC-1 is not universal: ~0.5% of entries have no -1 node because the canonical was merged or demoted (Q9Y2K2 starts at -5, Q12955 at -3, Q8N7W2 at -2). If a direct-IRI lookup returns 0 rows, run `?p up:sequence ?seq` once and read the real node name, or scope by accession instead of by number: FILTER(STRSTARTS(STR(?seq), \"http://purl.uniprot.org/isoforms/P01308-\"))."
-      - "Every sequence node is typed BOTH up:Simple_Sequence AND up:External_Sequence, so a `?seq a ?class` binding doubles the rows. Naming the IRI avoids the type triple entirely; a fixed `?seq a up:Simple_Sequence` is safe but buys nothing here."
+      - say: "Do NOT name the canonical as isoforms/ACC-1. The suffix is an isoform number, not a canonical flag: 782 reviewed entries have a canonical other than -1 (up to -15: P02751, P51559; Q9Y2K2 is -5, Q12955 -3)."
+        check:
+          kind: count
+          date: "2026-09-14"
+          query: |
+            PREFIX up: <http://purl.uniprot.org/core/>
+            SELECT (COUNT(DISTINCT ?p) AS ?n) FROM <http://sparql.uniprot.org/uniprot>
+            WHERE { ?p a up:Protein ; up:reviewed 1 ; up:sequence ?s . ?s a up:Simple_Sequence .
+                    FILTER(STRSTARTS(STR(?s), CONCAT("http://purl.uniprot.org/isoforms/", STRAFTER(STR(?p), "uniprot/"), "-"))
+                           && !STRENDS(STR(?s), "-1")) }
+          expect: {value: 782, tolerance: 0.10}
+      - say: "The -1 guess fails SILENTLY, not with 0 rows: in 613 of those entries an ACC-1 node still exists as a non-canonical up:Modified_Sequence. `uniprot:P02751 up:sequence isoform:P02751-1` returns a 2,386-aa splice variant (no up:mass at all); the canonical fibronectin is P02751-15, 2,477 aa, 272,320 Da."
+        check:
+          kind: count
+          date: "2026-09-14"
+          query: |
+            PREFIX up: <http://purl.uniprot.org/core/>
+            SELECT (COUNT(DISTINCT ?p) AS ?n) FROM <http://sparql.uniprot.org/uniprot>
+            WHERE { ?p a up:Protein ; up:reviewed 1 ; up:sequence ?s . ?s a up:Modified_Sequence .
+                    FILTER(STR(?s) = CONCAT("http://purl.uniprot.org/isoforms/", STRAFTER(STR(?p), "uniprot/"), "-1")) }
+          expect: {value: 613, tolerance: 0.10}
+      - say: "The type test alone is not enough: up:sequence also reaches OTHER entries' canonicals, which are up:Simple_Sequence too. P01308 → isoforms/F8WCM5-1 (the 200-aa INS-IGF2 readthrough), so `?iso a up:Simple_Sequence` without the accession prefix yields 2 rows. O94854 hangs five Q9UPN3-* nodes off up:sequence (its own canonical is O94854-3)."
+        check:
+          kind: count
+          date: "2026-09-14"
+          query: |
+            PREFIX up: <http://purl.uniprot.org/core/>
+            PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+            SELECT (COUNT(*) AS ?n) FROM <http://sparql.uniprot.org/uniprot>
+            WHERE { uniprot:P01308 up:sequence ?s . ?s a up:Simple_Sequence . }
+          expect: {value: 2, tolerance: 0.0}
+      - say: "Do not pick the canonical by the absence of up:External_Sequence. That type marks a node some OTHER entry points at, so it lands on canonicals too (P01308-1, O94854-3 carry it) while Q9Y2K2-5 and Q12955-3 do not. Likewise an accession test placed INSIDE an OPTIONAL excludes nothing — a failed OPTIONAL just leaves its flag unbound, and `FILTER(?flag || !BOUND(?flag))` passes the foreign row."
+        check:
+          kind: absent
+          date: "2026-09-14"
+          query: |
+            PREFIX up: <http://purl.uniprot.org/core/>
+            PREFIX isoform: <http://purl.uniprot.org/isoforms/>
+            SELECT ?s FROM <http://sparql.uniprot.org/uniprot>
+            WHERE { VALUES ?s { isoform:Q9Y2K2-5 isoform:Q12955-3 } ?s a up:External_Sequence . }
+      - say: "The FROM pin is what keeps this cheap to extend. With the two OPTIONALs above, the pinned form returns 918 rows; the same query unpinned returns 219,436 (×239) — fast (0.1–0.3s, warm), so nothing looks wrong (gotcha union_inflation). The 2026-08-20 note that the unpinned form did not finish in 200s no longer reproduces."
+        check:
+          kind: ratio
+          date: "2026-09-14"
+          unpinned: |
+            PREFIX up: <http://purl.uniprot.org/core/>
+            PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT (COUNT(*) AS ?n) WHERE {
+              uniprot:P01308 up:sequence ?isoform . ?isoform a up:Simple_Sequence ; rdf:value ?sequence ; up:mass ?mass .
+              FILTER(STRSTARTS(STR(?isoform), "http://purl.uniprot.org/isoforms/P01308-"))
+              OPTIONAL { uniprot:P01308 rdfs:seeAlso ?xref . ?xref up:database ?db }
+              OPTIONAL { uniprot:P01308 up:classifiedWith ?kw . ?kw rdfs:label ?kwLabel } }
+          pinned: |
+            PREFIX up: <http://purl.uniprot.org/core/>
+            PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT (COUNT(*) AS ?n) FROM <http://sparql.uniprot.org/uniprot> WHERE {
+              uniprot:P01308 up:sequence ?isoform . ?isoform a up:Simple_Sequence ; rdf:value ?sequence ; up:mass ?mass .
+              FILTER(STRSTARTS(STR(?isoform), "http://purl.uniprot.org/isoforms/P01308-"))
+              OPTIONAL { uniprot:P01308 rdfs:seeAlso ?xref . ?xref up:database ?db }
+              OPTIONAL { uniprot:P01308 up:classifiedWith ?kw . ?kw rdfs:label ?kwLabel } }
+          expect: {ratio: 239, tolerance: 0.05}
 
   - id: go_function
     intent: proteins by GO molecular-function term (OBO IRI namespace)
@@ -300,8 +366,7 @@ examples:
         GRAPH <http://sparql.uniprot.org/go> { ?goTerm rdfs:label ?label . }      # THE PIN — without it, 238 rows
       }
       ORDER BY ?label
-    verified: {result_rows: 70, distinct_terms: 70, date: "2026-07-29",
-               first_rows: "G protein-coupled receptor signaling pathway; Golgi lumen; Golgi membrane; acute-phase response"}
+    verified: {row_count: 70, has_values: ["G protein-coupled receptor signaling pathway", "Golgi lumen"], distinct_terms: 70, date: "2026-07-29", first_rows: "G protein-coupled receptor signaling pathway; Golgi lumen; Golgi membrane; acute-phase response"}
     teaches: "Pin BOTH sides when labelling GO terms: the annotation from the uniprot graph, the label from sparql.uniprot.org/go. Rows then equal distinct terms (70 = 70) — the 1:1 you should always sanity-check on a label join."
     traps_avoided:
       - "Unpinned, this returns 238 rows for the same 70 terms (~3.4x) — eight graphs supply GO rdfs:label. The labels AGREE, so nothing looks wrong; it reads as a legitimately multi-valued label (gotcha go_label_duplication)."
@@ -336,7 +401,7 @@ examples:
       SELECT (COUNT(DISTINCT ?p) AS ?current_swissprot)
       FROM <http://sparql.uniprot.org/uniprot>            # graph-pin does BOTH corrections at once
       WHERE { ?p a up:Protein ; up:reviewed 1 . }
-    verified: {current_swissprot: 575503, date: "2026-07-29"}
+    verified: {n: 575503, date: "2026-07-29"}
     teaches: "Graph-pinning the uniprot graph gives the current-Swiss-Prot count in one move (drops OMA re-typings AND obsolete)."
     traps_avoided:
       - "Unpinned COUNT(*) = 928,116 (inflated); COUNT(DISTINCT) alone = 589,957 (keeps 14,454 DELETED). See gotcha union_inflation for the full decomposition and the 'include historical' variant."
@@ -358,7 +423,7 @@ examples:
         OPTIONAL { ?annot skos:related ?disease . ?disease skos:prefLabel ?diseaseLabel . }   # ~39% carry a disease
         OPTIONAL { ?annot rdfs:seeAlso ?dbsnp . FILTER(STRSTARTS(STR(?dbsnp), "http://purl.uniprot.org/dbsnp/")) }  # ~66% carry dbSNP
       }
-    verified: {result_rows: 1363, date: "2026-07-29", note: "row count includes the OPTIONAL cross-product; use DISTINCT on ?substitution for unique substitutions"}
+    verified: {row_count: 1363, date: "2026-07-29", note: "row count includes the OPTIONAL cross-product; use DISTINCT on ?substitution for unique substitutions"}
     teaches: "Natural_Variant_Annotation carries up:substitution; disease is skos:related -> up:Disease -> skos:prefLabel (variant-level), dbSNP is rdfs:seeAlso by prefix."
     traps_avoided:
       - "Variant-level disease is skos:related; the PROTEIN-level disease link is a different predicate (up:annotation -> Disease_Annotation -> up:disease). Do not conflate the two tiers."
@@ -381,7 +446,7 @@ examples:
         OPTIONAL { ?annot up:range ?range . ?range faldo:begin/faldo:position ?beginPos ; faldo:end/faldo:position ?endPos . }
         FILTER(?annotType IN (up:Modified_Residue_Annotation, up:Domain_Annotation, up:Binding_Site_Annotation))
       }
-    verified: {result_rows: 36, distinct_types: 3, date: "2026-07-29"}
+    verified: {row_count: 36, distinct_types: 3, date: "2026-07-29"}
     teaches: "ALL positional features use FALDO: up:annotation -> typed *_Annotation -> up:range -> faldo:begin/end -> faldo:position. Filter by annotation type."
 
   - id: ec_class
@@ -418,7 +483,7 @@ examples:
         ?organism rdfs:subClassOf ?order .
       }
       GROUP BY ?order ORDER BY DESC(?count)
-    verified: {Enterobacterales_91347: 61, Synechococcales_1890424: 53, date: "2026-07-29"}
+    verified: {row_count: 2, has_values: ["91347", "1890424", 61, 53], Enterobacterales_91347: 61, Synechococcales_1890424: 53, date: "2026-07-29"}
     teaches: "Reach a clade with a SINGLE-HOP ?organism rdfs:subClassOf ?order; pin both graphs (FROM uniprot + taxonomy)."
     traps_avoided:
       - "Use the single hop, NOT rdfs:subClassOf* — the lineage is pre-flattened so both return the same set, but the transitive form is ~30x slower where it runs at all and Virtuoso rejects it outright when neither end is bound (gotcha flat_lineage). Pinning the taxonomy graph also avoids the taxon-multiplication trap."
@@ -444,7 +509,7 @@ examples:
         }
       }
       LIMIT 25
-    verified: {result_rows: 25, date: "2026-07-29", first_row: "P00326 ADH1G_HUMAN -> rhea:10736 (primary alcohol + NAD+ = aldehyde + NADH + H+)"}
+    verified: {min_rows: 25, date: "2026-07-29", first_row: "P00326 ADH1G_HUMAN -> rhea:10736 (primary alcohol + NAD+ = aldehyde + NADH + H+)"}
     teaches: "UniProt up:enzyme EC IRIs are the SAME IRIs as Rhea rhea:ec — a direct GRAPH join, no text search, no ID bridge."
     traps_avoided:
       - say: "The aggregate COUNT form of this join is expensive but NOT fatal: 16.8s for 5,276 rows (re-measured 2026-08-26 — this line claimed >60s/timeout until then, which was wrong). Pre-filter one side to a single EC or organism if you need it faster; the LIMIT row form above is 0.4s."
@@ -491,7 +556,7 @@ examples:
         GRAPH <http://id.nlm.nih.gov/mesh> { ?meshIRI rdfs:label ?meshLabel . }
       }
       LIMIT 15
-    verified: {result_rows: 15, date: "2026-07-29", first_row: "P25054 APC_HUMAN -> 'Desmoid disease, hereditary' -> MeSH 'Abdominal Neoplasms'"}
+    verified: {min_rows: 15, date: "2026-07-29", first_row: "P25054 APC_HUMAN -> 'Desmoid disease, hereditary' -> MeSH 'Abdominal Neoplasms'"}
     teaches: "up:disease -> up:Disease rdfs:seeAlso -> MeSH descriptor IRI (prefix-filtered), whose rdfs:label lives in the co-hosted mesh graph — one join, no bridge."
 
   - id: xdb_oma
@@ -514,7 +579,7 @@ examples:
         }
       }
       LIMIT 10
-    verified: {result_rows: 4, date: "2026-07-29", first_row: "OMA HUMAN31522 'TP53' -> ENSP00000484409 / NP_001119589"}
+    verified: {row_count: 4, has_values: ["HUMAN31522", "TP53"], date: "2026-07-29", first_row: "OMA HUMAN31522 'TP53' -> ENSP00000484409 / NP_001119589"}
     teaches: "OMA reverse-links to the SAME UniProt IRI via lscr:xrefSwissProt (460,199 triples); the OMA entry then carries Ensembl-protein + RefSeq xrefs. Direct join, no bridge."
     traps_avoided:
       - "This same-IRI reuse is ALSO the count-inflation source (gotcha union_inflation) — the join opportunity and the hazard share one cause."
@@ -540,7 +605,7 @@ examples:
         }
       }
       LIMIT 15
-    verified: {result_rows: 15, date: "2026-07-29", first_rows: "uterine cervix, nose, islet of Langerhans, pituitary gland"}
+    verified: {min_rows: 15, date: "2026-07-29", first_rows: "uterine cervix, nose, islet of Langerhans, pituitary gland"}
     teaches: "Bgee has no direct UniProt IRI: take rdfs:seeAlso purl.uniprot.org/bgee/<ENSG> (94.1% of human reviewed), then BIND-transform to omabrowser.org/ontology/oma#GENE_<ENSG> to reach the bgee graph."
 
 # ── schema_delta: ONLY non-obvious predicates/idioms no example above already demonstrates.
@@ -548,7 +613,7 @@ examples:
 schema_delta:
   - "Gene symbol: ?protein up:encodedBy ?gene . ?gene skos:prefLabel ?symbol (skos:altLabel = synonyms). 87.7% coverage — 46,270 of the 550,744 gene-bearing entries have an unnamed gene node."
   - "Catalytic activity is an indirect 3-hop scaffold: up:annotation -> up:Catalytic_Activity_Annotation -> up:catalyticActivity -> up:catalyzedReaction -> Rhea IRI. Do not reach ?reaction directly from ?protein. (Example xdb_rhea joins the same reactions via the EC IRI instead.)"
-  - "Isoforms: canonical = uniprot:ACC-1 (Simple_Sequence); alternates uniprot:ACC-2..N (Modified_Sequence). Suffix -N = isoform number, not an index."
+  - "Isoforms: an entry's alternative isoforms are up:Modified_Sequence nodes isoforms:ACC-N beside its one up:Simple_Sequence canonical. N is an isoform number, never a canonical flag (example sequence_mass)."
   - "dcterms:identifier ON A PROTEIN is OMA-supplied (co-hosted graph only; 0 in sparql.uniprot.org/uniprot, verified 2026-08-26), NOT the native accession — so a protein query must not reach for it. But the PREDICATE is not absent from UniProt, which this entry wrongly implied until 2026-08-26: it carries citation DOIs (citations, 1,639,486), proteome IDs (proteomes, 1,044,473), EC numbers (enzyme, 2,554), DB names (databases, 361) and location IDs (locations, 18). Native protein accession = STRAFTER(STR(?p),'uniprot/'); up:mnemonic = e.g. 'P53_HUMAN'."
 
 # ── id_join_map: the least-recoverable asset — how to anchor stably and cross to other DBs. ──

@@ -103,7 +103,7 @@ examples:
         ?gene a m2r:Gene ; rdfs:label ?symbol ; dct:identifier ?hgnc_id ; dct:description ?description .
         OPTIONAL { ?gene obo:so_part_of ?location }
       }
-    verified: {result_rows: 2, date: "2026-07-22", first_row: "hgnc/11998 = TP53, 'tumor protein p53', 17p13.1"}
+    verified: {row_count: 2, has_values: ["TP53", "tumor protein p53"], date: "2026-07-22", first_row: "hgnc/11998 = TP53, 'tumor protein p53', 17p13.1"}
     teaches: "rdfs:label = official symbol, dct:identifier = bare numeric HGNC ID string ('11998'), dct:description = full name, obo:so_part_of = band string. Anchor by the HGNC IRI for instant lookup."
 
   - id: gene_xrefs
@@ -119,7 +119,7 @@ examples:
         <http://identifiers.org/hgnc/11998> rdfs:seeAlso ?ref .
         ?ref a ?type ; dct:identifier ?identifier .
       }
-    verified: {result_rows: 23, date: "2026-07-22", note: "ncbigene 7157, uniprot P04637, ensembl ENSG00000141510, mim 191170, orphanet 120204, + 13 CCDS rows"}
+    verified: {row_count: 23, has_values: ["ncbigene", "uniprot"], date: "2026-07-22", note: "ncbigene 7157, uniprot P04637, ensembl ENSG00000141510, mim 191170, orphanet 120204, + 13 CCDS rows"}
     teaches: "One hop rdfs:seeAlso → typed node gives every xref at once; ?type is the idt:<db> class and dct:identifier the string ID. Bind ?type to a specific class (a idt:uniprot) to pick one database."
     traps_avoided:
       - "CCDS returns MANY rows per gene (alternative transcripts — TP53 has 13). Use DISTINCT / GROUP BY, or filter to the type you want, before counting genes."
@@ -140,7 +140,7 @@ examples:
         ?ref a idt:mirbase ; dct:identifier ?mirbase_id .   # swap idt:mirbase → idt:mim / idt:orphanet / idt:ec-code / …
       }
       LIMIT 20
-    verified: {result_rows: 20, set_total: 1912, date: "2026-07-22", first_row: "MIR429 → miRBase MI0001641"}
+    verified: {min_rows: 20, set_total: 1912, date: "2026-07-22", first_row: "MIR429 → miRBase MI0001641"}
     teaches: "THE route for 'all genes with link-type X': ?gene rdfs:seeAlso ?ref . ?ref a idt:<TYPE>. The xref type IS the gene class — miRBase=microRNA genes (1912), ec-code=enzyme genes (2053), mim=OMIM disease genes (17577), orphanet=rare-disease genes (4418). Just swap the idt:<TYPE>; COUNT(DISTINCT ?gene) gives the set size."
     traps_avoided:
       - "This is xref NAVIGATION but it is a first-class ENUMERATION route, not a caveat — do NOT text-search skos:altLabel or dct:description to find 'microRNA genes'; the typed xref is exact and complete, altLabel text is exploratory and undercounts (gotcha no_functional_hierarchy)."
@@ -179,7 +179,7 @@ examples:
         ?ref a ?type .
       }
       GROUP BY ?type
-    verified: {ncbigene: 44382, uniprot: 20288, mim: 17577, orphanet: 4418, ec_code: 2053, mirbase: 1912, date: "2026-07-22"}
+    verified: {row_count: 6, ncbigene: 44413, uniprot: 20288, mim: 17577, orphanet: 4418, ec_code: 2130, mirbase: 1912, has_values: [44413, 20288, 17577, 4418, 2130, 1912], note: "re-measured 2026-09-14: ec_code 2,053 -> 2,130 (+3.8%) since 2026-07-22", date: "2026-09-14"}
     teaches: "COUNT(DISTINCT ?gene) grouped by ?type gives the coverage census in one query — count DISTINCT genes (a gene can hold several refs of one type, e.g. multiple CCDS). Graph-pin so co-hosted graphs don't leak in."
 
   - id: pubmed_refs
@@ -198,7 +198,7 @@ examples:
       GROUP BY ?gene ?symbol
       ORDER BY DESC(?pub_count)
       LIMIT 5
-    verified: {result_rows: 5, top: "WHR1 = 7", date: "2026-07-22", note: "reference counts are small — HGNC lists only nomenclature-supporting PMIDs, not the full literature"}
+    verified: {min_rows: 5, has_values: ["WHR1"], top: "WHR1 = 7", date: "2026-07-22", note: "reference counts are small — HGNC lists only nomenclature-supporting PMIDs, not the full literature"}
     teaches: "Literature is indirect: ?gene dct:references ?ref . ?ref a idt:pubmed ; dct:identifier ?pmid (the PMID string). These are curation-supporting PMIDs (few per gene), NOT a comprehensive publication list."
 
   - id: enzyme_rare_disease
@@ -218,7 +218,7 @@ examples:
         ?orphRef a idt:orphanet ; dct:identifier ?orphanet_id .
       }
       LIMIT 20
-    verified: {result_rows: 20, set_total: 840, date: "2026-07-22", first_row: "ALOXE3 → EC 5.4.4.7 + Orphanet 119637"}
+    verified: {min_rows: 20, set_total: 840, date: "2026-07-22", first_row: "ALOXE3 → EC 5.4.4.7 + Orphanet 119637"}
     teaches: "Intersect two xref classes by attaching two typed-node legs to the same ?gene (rdfs:seeAlso ?ecRef , ?orphRef). This composes any two idt:<type> sets — the general set-intersection idiom for the ID hub."
 
   - id: xdb_brenda                # ELEVATED cross_db — HGNC as ID hub joining out on the same endpoint
@@ -245,7 +245,7 @@ examples:
         }
       }
       LIMIT 10
-    verified: {result_rows: 10, date: "2026-07-22", first_row: "LPIN1 → EC 3.1.3.4 'phosphatidate phosphatase'"}
+    verified: {min_rows: 10, date: "2026-07-22", first_row: "LPIN1 → EC 3.1.3.4 'phosphatidate phosphatase'"}
     teaches: "HGNC and BRENDA co-locate on the primary endpoint; the EC number is the join key but the namespaces DIFFER (HGNC idt:ec-code string vs BRENDA IRI path), so extract BRENDA's EC via STRAFTER and FILTER(STR=STR). Pure GRAPH clauses (no FROM) for the cross-graph join."
     traps_avoided:
       - "The two EC namespaces are NOT the same IRI (HGNC = http://identifiers.org/ec-code/, BRENDA = https://purl.dsmz.de/brenda/ec/) — you cannot join by IRI equality; the STRAFTER+STR normalisation is required, and BIND-then-FILTER (not STRAFTER inside the FILTER) avoids the xsd:string typing mismatch."

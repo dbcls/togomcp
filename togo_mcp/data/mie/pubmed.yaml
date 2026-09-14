@@ -109,7 +109,7 @@ examples:
         OPTIONAL { ?article bibo:abstract ?abstract }
       }
       LIMIT 1
-    verified: {result_rows: 1, journal: "Journal of immunology (Baltimore, Md. : 1950)", issued: "1979-08", date: "2026-07-22"}
+    verified: {min_rows: 1, journal: "Journal of immunology (Baltimore, Md. : 1950)", issued: "1979-08", date: "2026-07-22"}
     teaches: "Anchor on bibo:pmid (a string literal); the article IRI is http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid}. journal is prism:publicationName; abstract (~85%) is OPTIONAL."
 
   - id: pubtype_enum
@@ -131,7 +131,7 @@ examples:
         FILTER(STRSTARTS(STR(?issued), "1985"))
       }
       LIMIT 10
-    verified: {result_rows: 10, count_1985: 10774, date: "2026-07-22", first_row: "3908742 — [Differentiation and activation of mouse macrophages]."}
+    verified: {min_rows: 10, count_1985: 10774, date: "2026-07-22", first_row: "3908742 — [Differentiation and activation of mouse macrophages]."}
     teaches: "Publication TYPE is enumerated with rdfs:seeAlso → a plain MeSH pub-type descriptor IRI (Review D016454, Journal Article D016428). rdfs:seeAlso is reliable for pub types."
     traps_avoided:
       - say: "D016428 (Journal Article) matches almost all of PubMed and D016454 (Review) matches millions, so narrow before you sort: an ORDER BY over the raw match sorts the whole set before the LIMIT applies. A plain FILTER(CONTAINS(…)) + LIMIT is NOT the problem — that returns 10 rows in 0.2s (2026-08-26), where this line claimed it times out. Add a date FILTER + LIMIT (or a topic IRI) first for relevance and for any ORDER BY, not to survive the CONTAINS."
@@ -169,7 +169,7 @@ examples:
         FILTER(STRSTARTS(STR(?term), "http://id.nlm.nih.gov/mesh/D000544"))   # D000544 = Alzheimer Disease
       }
       LIMIT 10
-    verified: {result_rows: 10, date: "2026-07-22", first_row: "90944 — Dopamine in Alzheimer's disease and senile dementia."}
+    verified: {min_rows: 10, date: "2026-07-22", first_row: "90944 — Dopamine in Alzheimer's disease and senile dementia."}
     teaches: "THE topic-enumeration route: fabio:hasPrimarySubjectTerm (major topic) / fabio:hasSubjectTerm (supporting) + FILTER(STRSTARTS(STR(?term), '…/mesh/Dxxxxx')). STRSTARTS is required because MeSH annotations append qualifier suffixes; use hasSubjectTerm to widen to supporting topics."
     traps_avoided:
       - "CORRECT-ENUMERATION-PREDICATE caveat: rdfs:seeAlso mesh:D000544 returns 0 ARTICLES — for many disease topics the plain descriptor attaches to BLANK NODES (nodeID://…), not to article IRIs (verified 2026-07-22). rdfs:seeAlso is for PUBLICATION TYPES + a subset of descriptors; the reliable topic route is fabio+STRSTARTS. Different predicates, not interchangeable."
@@ -191,7 +191,7 @@ examples:
           ?descriptor rdfs:label ?label .
         }
       }
-    verified: {result_rows: 7, date: "2026-07-22", sample: "D003165 = Complement System Proteins; D003176 = Complement C3; D016428 = Journal Article"}
+    verified: {row_count: 7, has_values: ["D003165", "Complement System Proteins"], date: "2026-07-22", sample: "D003165 = Complement System Proteins; D003176 = Complement C3; D016428 = Journal Article"}
     teaches: "PubMed's descriptor IRIs are unversioned mesh/D… — join them to rdfs:label IN GRAPH <http://id.nlm.nih.gov/mesh>. rdfs:seeAlso mixes topic descriptors AND publication types on the same predicate; distinguish by the resolved label."
     traps_avoided:
       - "Resolve in <…/mesh>, NEVER a mesh/YYYY graph: the same IRI in GRAPH <…/mesh/2025> returns 0 (year graphs use mesh/2025/D… IRIs, zero overlap — gotcha mesh_graph_pin)."
@@ -215,7 +215,7 @@ examples:
         OPTIONAL { ?author org:memberOf ?affiliation }
       }
       ORDER BY ?index
-    verified: {result_rows: 4, date: "2026-07-22", order: "1 Carlo JR, 2 Ruddy S, 3 Studer EJ, 4 Conrad DH"}
+    verified: {row_count: 4, has_values: ["Carlo JR", "Ruddy S"], date: "2026-07-22", order: "1 Carlo JR, 2 Ruddy S, 3 Studer EJ, 4 Conrad DH"}
     teaches: "Authors are an OLO ordered list, NOT plain triples: article --dct:creator--> list --olo:slot--> slot (--olo:index--> position, --olo:item--> foaf:Person). foaf:name is 'LastName FI'; org:memberOf (affiliation, partial) may be a concatenated string. ORDER BY ?index to get author order."
 
   - id: title_search
@@ -235,7 +235,7 @@ examples:
       }
       ORDER BY DESC(?issued)
       LIMIT 10
-    verified: {result_rows: 10, date: "2026-07-22", first_row: "37793527 — …TaLhc2 in wheat stress tolerance and photosynthesis (2023-12-31)"}
+    verified: {min_rows: 10, has_values: ["2023-12-31"], date: "2026-07-22", first_row: "37793527 — …TaLhc2 in wheat stress tolerance and photosynthesis (2023-12-31)"}
     teaches: "bif:contains (Virtuoso indexed FTS) is justified ONLY on genuinely unstructured free text — dct:title / bibo:abstract, which have no controlled vocabulary. For any TOPIC use the MeSH route (mesh_topic_enum), not title text. Prefer bif:contains over FILTER(REGEX()) (10-100x faster, indexed)."
 
   - id: count_reviews_year
@@ -253,7 +253,7 @@ examples:
                  dct:issued ?issued .
         FILTER(STRSTARTS(STR(?issued), "1985"))
       }
-    verified: {reviews_1985: 10774, date: "2026-07-22"}
+    verified: {n: 10774, date: "2026-07-22"}
     teaches: "A countable aggregation anchors on a DIRECT MeSH IRI (rdfs:seeAlso mesh:Dxxxxx) + a date scope + graph pin + COUNT(DISTINCT). Direct-IRI matching is index-fast even for a huge pub-type."
     traps_avoided:
       - "The equivalent STRSTARTS-topic COUNT (fabio:hasPrimarySubjectTerm + FILTER(STRSTARTS…)) is far more expensive and a date filter does not rescue it — the STRSTARTS scan, not the result size, is the cost. It does COMPLETE though (111,583 for D000544; >75s cold, 0.1s warm on 2026-08-26), where this line said it TIMES OUT until then. This selective-IRI form is the cheap route; STRSTARTS is the slow one, not a LIST-only one (gotcha count_timeout)."
@@ -284,7 +284,7 @@ examples:
         }
       }
       LIMIT 20
-    verified: {result_rows: 20, date: "2026-07-22", first_row: "1849124 → ncbigene/7153 (TOP2A)"}
+    verified: {min_rows: 20, date: "2026-07-22", first_row: "1849124 → ncbigene/7153 (TOP2A)"}
     teaches: "PubMed↔PubTator join is the SHARED article IRI (pubmed/{pmid}) via PubTator's oa:hasTarget — a direct same-endpoint GRAPH join, no TogoID. MANDATORY: pre-filter PubMed to a MeSH topic INSIDE its GRAPH block (37M → thousands) before the join, or it times out."
     traps_avoided:
       - "BASE MISMATCH: PubMed's MeSH IRIs are http://id.nlm.nih.gov/mesh/… but PubTator's oa:hasBody MeSH/gene IRIs are http://identifiers.org/mesh/… and http://identifiers.org/ncbigene/… — do not assume one base spans both graphs."

@@ -95,7 +95,7 @@ examples:
               gvo:pos ?pos ; gvo:ref ?ref ; gvo:alt ?alt .
         }
       }
-    verified: {result_rows: 1, type: "gvo:SNV", tgv: "tgv47264307", pos: 111803962, date: "2026-07-22"}
+    verified: {row_count: 1, has_values: ["tgv47264307", 111803962], type: "gvo:SNV", tgv: "tgv47264307", pos: 111803962, date: "2026-07-22"}
     teaches: "Variant IRI = http://identifiers.org/hco/{chr}/GRCh38#{pos}-{ref}-{alt}; its core node (type, tgv ID, gvo:pos/ref/alt) lives ONLY in GRAPH <http://togovar.org/variant>."
 
   - id: rsid_consequence
@@ -115,7 +115,7 @@ examples:
           ?soConsequence rdfs:label ?soLabel .
         }
       }
-    verified: {result_rows: 1, soConsequence: "obo:SO_0001583", soLabel: "missense_variant", date: "2026-07-22"}
+    verified: {row_count: 1, has_values: ["missense_variant", "SO_0001583"], soConsequence: "obo:SO_0001583", soLabel: "missense_variant", date: "2026-07-22"}
     teaches: "dbSNP rsIDs are stored as IRIs (rdfs:seeAlso → identifiers.org/dbsnp/rs…) — match the IRI, never a text 'rs…' string. Consequence SO IRIs are opaque; join GRAPH <…/so> for the label."
     traps_avoided:
       - "rdfs:seeAlso can be multi-valued (merged rsIDs + COSMIC COSV… IDs share the predicate) — prefix-filter to identifiers.org/dbsnp/ if you need only refSNPs."
@@ -135,7 +135,7 @@ examples:
         }
       }
       LIMIT 20
-    verified: {result_rows: 20, date: "2026-07-22", note: "first rows SO_0001623 (intron_variant), then SO_0001819 (synonymous), SO_0001583 (missense)"}
+    verified: {min_rows: 20, date: "2026-07-22", note: "first rows SO_0001623 (intron_variant), then SO_0001819 (synonymous), SO_0001583 (missense)"}
     teaches: "Filter the per-transcript consequence bnode by the Ensembl gene IRI (structured lookup, no gene-name text search); DISTINCT collapses the per-transcript fan-out. Resolve a gene NAME→ENSG/HGNC first with togovar_search_gene."
     traps_avoided:
       - "tgvo:gene is POLYMORPHIC: objects are BOTH Ensembl gene IRIs (…/ensembl/ENSG…) AND NCBI Gene IDs (…/ensembl/217), minted under the SAME namespace. Use the ENSG form for Ensembl genes, or filter by tgvo:gene_symbol_source ('HGNC' vs 'EntrezGene')."
@@ -157,7 +157,7 @@ examples:
         }
       }
       LIMIT 20
-    verified: {result_rows: 20, date: "2026-07-22", note: "all rows 'deleterious_low_confidence'"}
+    verified: {min_rows: 20, date: "2026-07-22", note: "all rows 'deleterious_low_confidence'"}
     teaches: "SIFT/PolyPhen/AlphaMissense enumeration uses the controlled *_prediction literal on the consequence bnode — a set-level route. STRSTARTS captures the *_low_confidence variants; an '=' match would drop them."
     traps_avoided:
       - "tgvo:sift / tgvo:polyphen SCORES have MIXED xsd:decimal/xsd:integer datatypes (0 stored as integer) — numeric comparison works, exact equality does not. Prefer the *_prediction literal for categorical enumeration."
@@ -174,7 +174,7 @@ examples:
           ?v a gvo:Insertion .                         # variants are re-typed in …/annotation/clinvar and counted twice
         }
       }
-    verified: {insertions: 22340786, date: "2026-07-22"}
+    verified: {n: 22340786, date: "2026-07-22"}
     teaches: "Pinning GRAPH <http://togovar.org/variant> gives the true class size (a fast Virtuoso type-index scan). Classes: SNV 339,076,968 · Deletion 29,307,469 · Insertion 22,340,786 · MNV 492 · Indel 67 → total 390,725,782."
     traps_avoided:
       - "An unscoped `SELECT (COUNT(?v)) WHERE { ?v a gvo:Insertion }` double-counts ClinVar-annotated variants (gotcha union_inflation)."
@@ -194,7 +194,7 @@ examples:
           ?c tgvo:gene <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000111275> .
         }
       }
-    verified: {missense: 123, date: "2026-07-22"}
+    verified: {n: 123, date: "2026-07-22"}
     teaches: >
       For 'ALL variants with consequence/prediction/significance X', filter on the controlled term — most_severe_consequence
       (SO IRI), a *_prediction literal (see enum_sift_deleterious), or a ClinVar significance literal — NOT a text/name match.
@@ -227,7 +227,7 @@ examples:
         }
       }
       LIMIT 20
-    verified: {result_rows: 20, date: "2026-07-22", first_row: "111766991-C-T rs6490301 p.Arg3="}
+    verified: {min_rows: 20, date: "2026-07-22", first_row: "111766991-C-T rs6490301 p.Arg3="}
     teaches: "Cross-GRAPH join WITHIN the endpoint on the shared variant IRI: VEP + dbSNP from …/annotation/ensembl, coordinates from …/variant. Anchor on a gene IRI; DISTINCT collapses the per-transcript fan-out."
 
   - id: clinvar_significance        # ELEVATED cross_db class — bridges the variant layer to the embedded ClinVar dataset
@@ -256,7 +256,7 @@ examples:
           OPTIONAL { ?gc cvo:review_status ?reviewStatus }
         }
       }
-    verified: {variationId: "18390", gene: "ncbi.nlm.nih.gov/gene/217", significance: "drug response", reviewStatus: "reviewed by expert panel", date: "2026-07-22"}
+    verified: {row_count: 1, has_values: ["18390", "drug response"], variationId: "18390", gene: "ncbi.nlm.nih.gov/gene/217", significance: "drug response", reviewStatus: "reviewed by expert panel", date: "2026-09-14"}
     teaches: "Join the annotation-layer ClinVar VariationID (dcterms:identifier, a string) into the embedded ClinVar RDF by CASTing to xsd:integer and matching clinvar:variation_id. Gene+name come from the allele node; significance from the variation IRI's classified_record→classifications→germline_classification→description chain."
     traps_avoided:
       - "ALLELEID/VARIATIONID COLLISION: joining instead on dcterms:identifier binds the WRONG gene — in the embedded graph dcterms:identifier is the ClinVar AlleleID (rs671's VariationID 18390 matches AlleleID 18390 = a SRD5A2 record). variation_id is the only correct key."

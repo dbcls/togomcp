@@ -102,7 +102,7 @@ examples:
         OPTIONAL { ?gene dct:description ?full_name }
         OPTIONAL { ?gene insdc:chromosome ?chromosome }
       }
-    verified: {result_rows: 3, date: "2026-07-22", first_row: "3630 INS 'insulin' protein-coding chr11"}
+    verified: {row_count: 3, has_values: ["INS", "insulin"], date: "2026-07-22", first_row: "3630 INS 'insulin' protein-coding chr11"}
     teaches: "A gene is <http://identifiers.org/ncbigene/{id}>. rdfs:label = symbol; dct:description = full name (free text); ncbio:typeOfGene = controlled vocab; insdc:chromosome is a plain string ('11','X','MT')."
 
   - id: enum_gene_type
@@ -120,7 +120,7 @@ examples:
               ncbio:typeOfGene ?type .                                 # controlled vocab: swap the taxid, or add a value filter, for any org/type
       }
       GROUP BY ?type ORDER BY DESC(?count)
-    verified: {protein-coding: 4288, pseudo: 145, ncRNA: 98, tRNA: 86, rRNA: 22, other: 1, total: 4640, date: "2026-07-22"}
+    verified: {row_count: 6, has_values: [4288, 145, 98, 86, 22, 1], protein-coding: 4288, pseudo: 145, ncRNA: 98, tRNA: 86, rRNA: 22, other: 1, total: 4640, date: "2026-07-22"}
     teaches: "ncbio:typeOfGene is THE controlled-vocabulary enumeration axis ('protein-coding','ncRNA','pseudo','tRNA','rRNA','biological-region','snoRNA','snRNA'…). To get 'all genes of type X' add `ncbio:typeOfGene \"X\"` alongside the mandatory ncbio:taxid. NEVER text-search a gene type or organism — both are structured predicates."
     traps_avoided:
       - "Omitting ncbio:taxid silently widens this to all 57.8M genes of every organism — the answer still looks well-formed. It may also be slow, but do not rely on that to notice: measured 2026-08-26 the un-scoped form took >75s cold and 0.1s warm (gotcha taxid_mandatory). Enumeration MUST be organism-scoped."
@@ -140,7 +140,7 @@ examples:
                 STRSTARTS(STR(?dblink), "http://identifiers.org/hgnc/")    ||
                 STRSTARTS(STR(?dblink), "http://identifiers.org/mim/") )
       }
-    verified: {result_rows: 3, date: "2026-07-22", rows: "ensembl/ENSG00000254647, hgnc/6081, mim/176730"}
+    verified: {row_count: 3, has_values: ["ENSG00000254647"], date: "2026-07-22", rows: "ensembl/ENSG00000254647, hgnc/6081, mim/176730"}
     teaches: "insdc:dblink carries IRI-based xrefs (identifiers.org/ensembl|hgnc|mim|mirbase/…); STRSTARTS on STR(?dblink) selects one target DB. String-format xrefs ('Database:ID', e.g. AllianceGenome) live on insdc:db_xref instead — filter those with CONTAINS()."
     traps_avoided:
       - "insdc:dblink (IRI) and insdc:db_xref (string) are DIFFERENT predicates; a namespace you don't find under one is often under the other."
@@ -162,7 +162,7 @@ examples:
         OPTIONAL { ?gene ncbio:fullName ?fullName }
       }
       LIMIT 100
-    verified: {result_rows: 100, human_official_total: 45003, date: "2026-07-22"}
+    verified: {min_rows: 100, human_official_total: 45003, date: "2026-07-22"}
     teaches: "ncbio:nomenclatureStatus is a second controlled-vocab filter ('official' vs 'interim'); ncbio:fullName is the curated full name distinct from the free-text dct:description."
 
   - id: orthology
@@ -179,7 +179,7 @@ examples:
         ?ortholog rdfs:label ?symbol ; ncbio:taxid ?taxid .
       }
       LIMIT 100
-    verified: {result_rows: 100, distinct_orthologs_total: 510, date: "2026-07-22", first_row: "ncbigene/30590 'tp53' (Danio rerio, taxonomy/7955)"}
+    verified: {min_rows: 100, distinct_orthologs_total: 510, date: "2026-07-22", first_row: "ncbigene/30590 'tp53' (Danio rerio, taxonomy/7955)"}
     teaches: "orth:hasOrtholog links a gene IRI to other ncbigene IRIs across species (bidirectional; present for well-annotated genes though ABSENT from the official ShEx). Each ortholog carries its own ncbio:taxid organism IRI."
     traps_avoided:
       - say: "Anchor on a specific gene IRI and add LIMIT — because you want ONE gene's orthologs, not because the alternative fails. Unbounded, `?g1 orth:hasOrtholog ?g2` counts 26,822,006 pairs in 0.4s; this line said it times out until 2026-08-26. Unlike the taxid case (gotcha taxid_mandatory), there is no scan penalty here: orth:hasOrtholog is a single indexed predicate, not a 57.8M-row type scan."
@@ -210,7 +210,7 @@ examples:
           ?concept rdfs:label ?disease_label ; dct:identifier ?disease_cui .
         }
       }
-    verified: {result_rows: 4, date: "2026-07-22", first_row: "BRCA1 → C0346153 'Familial cancer of breast'"}
+    verified: {row_count: 4, has_values: ["BRCA1", "C0346153"], date: "2026-07-22", first_row: "BRCA1 → C0346153 'Familial cancer of breast'"}
     teaches: "MedGen is co-hosted and writes gene→disease on the SAME identifiers.org/ncbigene/{id} IRI via obo:RO_0003302 — a direct GRAPH join, NO URI conversion, NO TogoID bridge. The MedGen concept carries rdfs:label (disease name), dct:identifier (UMLS CUI), and skos:definition."
 
   - id: xdb_clinvar
@@ -237,7 +237,7 @@ examples:
         }
       }
       GROUP BY ?gene_symbol
-    verified: {n_variants: 225, date: "2026-07-22", gene_symbol: "INS"}
+    verified: {row_count: 1, has_values: ["INS", 225], n_variants: 225, date: "2026-09-14", gene_symbol: "INS"}
     teaches: "ClinVar keys genes as http://ncbi.nlm.nih.gov/gene/{id}, NOT the identifiers.org IRI. Take dct:identifier (a PLAIN string despite the ShEx saying xsd:integer — use it directly, no STR()), CONCAT it into the ClinVar URI, then join med2rdf:gene."
     traps_avoided:
       - "The BIND(CONCAT(...)) MUST sit BETWEEN the two GRAPH clauses. Placed INSIDE a GRAPH block it silently binds nothing and returns 0 rows."

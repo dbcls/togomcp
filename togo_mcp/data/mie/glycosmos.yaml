@@ -127,7 +127,7 @@ examples:
         <http://rdf.glycoinfo.org/glycan/G00051MO> glycan:has_glycosequence ?seqNode .
         ?seqNode glycan:in_carbohydrate_format ?format ; glycan:has_sequence ?seq .
       }
-    verified: {result_rows: 5, date: "2026-08-07", formats: "wurcs, glycoct, iupac_condensed, iupac_extended, glycam_condensed"}
+    verified: {row_count: 5, date: "2026-08-07", formats: "wurcs, glycoct, iupac_condensed, iupac_extended, glycam_condensed"}
     teaches: "A glycan reaches its sequences via glycan:has_glycosequence -> a named glycosequence node (IRI = <glycan>_<format>, NOT a bnode) carrying glycan:in_carbohydrate_format (the format IRI) + glycan:has_sequence (the string). Pin the glycosequence graph. Glycan IRI = http://rdf.glycoinfo.org/glycan/<GlyTouCanID>."
 
   - id: glycan_xref_chebi
@@ -148,7 +148,7 @@ examples:
         ?res rdfs:label "ChEBI" ; dcterms:identifier ?chebiId .
       }
       LIMIT 20
-    verified: {result_rows: 20, glycans_with_chebi_total: 10598, date: "2026-08-07", first_row: "G00547ZN -> ChEBI 146083 (obo:CHEBI_146083)"}
+    verified: {min_rows: 20, glycans_with_chebi_total: 10598, date: "2026-08-07", first_row: "G00547ZN -> ChEBI 146083 (obo:CHEBI_146083)"}
     teaches: "External xrefs: lowercase glycan:has_resource_entry -> a Resource_entry node with rdfs:label = DB name + dcterms:identifier = the external ID. ChEBI nodes ARE OBO IRIs (obo:CHEBI_<n>) — federation-ready. 10,598 glycans carry a ChEBI ref."
     traps_avoided:
       - "CAPITAL-R glycan:has_Resource_entry returns ONLY the GlyTouCan self-reference (dcterms:identifier = the GlyTouCan ID, no external DB) — it silently yields the wrong IDs (gotcha resource_entry_case)."
@@ -163,7 +163,7 @@ examples:
       SELECT (COUNT(DISTINCT ?glycan) AS ?glycans)
       FROM <http://rdf.glytoucan.org/core>          # pin the authoritative registry — else 13 graphs re-type the same IRIs
       WHERE { ?glycan a glycan:Saccharide . }
-    verified: {glycans: 117864, date: "2026-08-07"}
+    verified: {n: 117864, date: "2026-08-07"}
     teaches: "Pin GRAPH/FROM <http://rdf.glytoucan.org/core> (the authoritative registry) and use COUNT(DISTINCT) to count glycans."
     traps_avoided:
       - "Unscoped `?s a glycan:Saccharide` = 400,948 rows for only 263,402 distinct IRIs (x1.52) — 13 graphs re-type the SAME GlyTouCan IRIs, the bulk from glycans/glycosequence (254,454). Nothing signals the inflation, and the multiplier shifts between reloads (it was x4.16 in 2026-07), so pin the graph rather than expecting a fixed factor (gotcha saccharide_inflation)."
@@ -184,7 +184,7 @@ examples:
       }
       ORDER BY ?pos
       LIMIT 10
-    verified: {result_rows: 10, date: "2026-08-07", total_sites: 116, position_range: "146-5851", first_row: "feature/gly00323976 -> position 146"}
+    verified: {min_rows: 10, has_values: ["gly00323976"], date: "2026-08-07", total_sites: 116, position_range: "146-5851", first_row: "feature/gly00323976 -> position 146"}
     teaches: "Residue-level glycosylation position is a 3-hop FALDO chain: glycoprotein gc:glycosylated_at -> a gc:Glycosylation_Site -> faldo:location -> a faldo:ExactPosition node -> faldo:position (1-based xsd:integer; 330,794 of 331,086 sites carry one, so OPTIONAL is rarely needed). Site IRI = <http://glycosmos.org/feature/gly[NNNNNNNN]>, and its location node IRI is just that site IRI + '/location'. Glycoprotein IRI = <http://glycosmos.org/glycoprotein/[UniProtAC]>."
     traps_avoided:
       - "The faldo: PREFIX MUST end in '#': <http://biohackathon.org/resource/faldo#>, NOT <http://biohackathon.org/resource/faldo>. A PREFIX is concatenated with the local name as a plain string, so the '#'-less form resolves faldo:location to `…/faldolocation` — a URI that exists nowhere. The query PARSES, EXECUTES and returns ZERO ROWS with no error or warning (verified 2026-08-07: 116 rows with the '#', 0 without). This is shared FALDO vocabulary, not a GlyCosmos convention — uniprot, ensembl, ddbj, hco and mogplus all require the identical '#' form, so getting it right on one RDF Portal DB means using the SAME string here."
@@ -211,7 +211,7 @@ examples:
       }
       ORDER BY ?pos
       LIMIT 10
-    verified: {result_rows: 10, date: "2026-08-07", distinct_position_glycan_pairs: 119, distinct_glycans: 4, first_row: "position 146 -> G49108TO"}
+    verified: {min_rows: 10, has_values: ["G49108TO"], date: "2026-08-07", distinct_position_glycan_pairs: 119, distinct_glycans: 4, first_row: "position 146 -> G49108TO"}
     teaches: "The glycan attached at a site hangs off the site's UNTYPED sio:SIO_000255 evidence bnode (which also carries dct:references = PubMed IRIs and dct:source = the source-DB record), then gc:has_saccharide -> a glycan IRI whose GlyTouCan accession comes from glytoucan:has_primary_id in the glytoucan/core graph. This is the site-level counterpart of the position chain in glycosylation_site_position."
     traps_avoided:
       - "gc:has_saccharide is NEVER asserted directly on a gc:Glycosylation_Site — verified 2026-08-07: `?site a gc:Glycosylation_Site ; gc:has_saccharide ?g` returns 0 rows across the whole graph. Skipping the sio:SIO_000255 hop yields silent emptiness, not an error."
@@ -239,7 +239,7 @@ examples:
         GRAPH <http://purl.obolibrary.org/obo/doid> { ?doid rdfs:label ?diseaseName . }
       }
       GROUP BY ?diseaseName
-    verified: {human_genes: 129, all_species: 326, diseaseName: "type 2 diabetes mellitus", date: "2026-08-07"}
+    verified: {row_count: 1, has_values: ["type 2 diabetes mellitus", 129], human_genes: 129, all_species: 326, diseaseName: "type 2 diabetes mellitus", date: "2026-09-14"}
     teaches: "Disease->gene is sio:SIO_000255/sio:SIO_000001 in the disease graph; the disease NAME is on the obo:DOID_ IRI (rdfs:seeAlso) in the obo/doid graph, NOT on the glycosmos.org disease entity."
     traps_avoided:
       - "Disease->gene links are MULTI-SPECIES (the gene IRI is a numeric NCBI GeneID; species is NOT encoded in it). Omitting the has_taxon 9606 join into the glycogenes graph over-counts ~2.5x: DOID:9352 = 326 genes across all species vs 129 human."
@@ -259,7 +259,7 @@ examples:
         }
         GRAPH <http://purl.obolibrary.org/obo/go.owl> { ?goTerm rdfs:label ?goLabel . }
       }
-    verified: {distinct_go_terms: 87, date: "2026-08-07"}
+    verified: {row_count: 87, date: "2026-08-07"}
     teaches: "Gene->GO is sio:SIO_000255/up:classifiedWith in the glycogenes graph (the untyped attribute bnode carries up:classifiedWith = an obo:GO_ IRI); the GO name lives in the go.owl graph. 97.8% of glycogenes carry >=1 GO annotation."
     traps_avoided:
       - "The SAME sio:SIO_000255 scaffold points to a gene (sio:SIO_000001) on a Disease subject and to an attached glycan (gc:has_saccharide) on a Glycosylation_Site — the subject class + inner predicate disambiguate, not the graph (gotcha sio_scaffold_reuse)."
@@ -286,7 +286,7 @@ examples:
           ?glycoprotein a glycan:Glycoprotein ; rdfs:seeAlso ?uniprotAC ; rdfs:label ?gpLabel .
         }
       }
-    verified: {result_rows: 1, date: "2026-08-07", first_row: "geneid/3643 -> uniprot/P06213 -> glycoprotein/P06213 'Insulin receptor'"}
+    verified: {row_count: 1, has_values: ["P06213", "Insulin receptor"], date: "2026-08-07", first_row: "geneid/3643 -> uniprot/P06213 -> glycoprotein/P06213 'Insulin receptor'"}
     teaches: "A glycogene and its glycoprotein share <http://purl.uniprot.org/geneid/[GeneID]> as an implicit join node, but the two legs live in DIFFERENT graphs: the glycogene rdfs:seeAlso the geneid node in the glycogenes graph, while the UniProt IRI rdfs:seeAlso that same node in the Rhea graph (a UniProt-derived annotation graph); the glycoprotein then rdfs:seeAlso the UniProt IRI in the glycoprotein graph. Traverse entirely inside GlyCosmos."
     traps_avoided:
       - "The geneid leg is NOT in the glycoprotein graph. As of 2026-08-07 `purl.uniprot.org/geneid/` appears ZERO times there (it did in 2026-07) — the bridge moved to GRAPH <http://rdf.glycosmos.org/Rhea>. Pinning the intuitive graph returns 0 rows silently. Glycoprotein IRIs are UniProt-AC-keyed (<http://glycosmos.org/glycoprotein/[AC]>), so for a known AC you can skip the bridge entirely."
@@ -306,7 +306,7 @@ examples:
         OPTIONAL { ?family dcterms:description ?description }                        # activities + EC list
       }
       ORDER BY ?title
-    verified: {result_rows: 135, date: "2026-08-07", note: "class breakdown 430 GH · 135 GT · 107 PL · 102 CBM · 27 AA · 20 CE"}
+    verified: {row_count: 135, date: "2026-08-07", note: "class breakdown 430 GH · 135 GT · 107 PL · 102 CBM · 27 AA · 20 CE"}
     teaches: "A CAZy family node (<…/dbid/cazy/[FAM]>) is a up:Resource (NOT a glycan class): dcterms:title = family name, rdfs:label = the CAZy CLASS name (filter it to list a whole class), dcterms:description = activities+EC. Pin the cazy graph."
 
   - id: cazy_family_proteins
@@ -351,7 +351,7 @@ examples:
           OPTIONAL { ?exp glycodm:cellType ?cellType }
         }
       }
-    verified: {distinct_medium_tissues: 29, date: "2026-08-07"}
+    verified: {row_count: 29, date: "2026-08-07"}
     teaches: "GlyCosmos DOES hold HPA IHC expression (in the HPA graph) — the glycoprotein entity does NOT. An HPA gene record (<…/dbid/hpa/ENSG…>) carries glycodm:geneSymbol + rdfs:seeAlso -> untyped expression bnodes (glycodm:tissue/cellType/level, level is xsd:string). Join to a glycogene by SYMBOL (glycodm:geneSymbol == glycogene rdfs:label)."
     traps_avoided:
       - "HPA is Ensembl-keyed, glycogene is NCBI-GeneID-keyed — the ONLY join is the gene SYMBOL, and symbols aren't unique, so anchor the specific glycogene IRI (and taxon-filter) rather than symbol alone. The glycoprotein entity has NO expression predicate; earlier docs wrongly called HPA 'ID cross-references only' — it is real IHC expression."
@@ -371,7 +371,7 @@ examples:
         OPTIONAL { ?lectin rdfs:seeAlso ?xref }
       }
       LIMIT 30
-    verified: {result_rows: 16, distinct_lectins: 7, date: "2026-08-07", first_row: "GL_002303 'Concanavalin-A' -> uniprot/P02866 + LfDB0170 + carbogrove/P02866 + UniLectin3D"}
+    verified: {row_count: 16, has_values: ["GL_002303", "Concanavalin-A"], distinct_lectins: 7, date: "2026-08-07", first_row: "GL_002303 'Concanavalin-A' -> uniprot/P02866 + LfDB0170 + carbogrove/P02866 + UniLectin3D"}
     teaches: "START lectin-name lookups at the GL hub (<http://rdf.glycosmos.org/lectin>, sb:Lectin, GL_###### IRIs): names are on STANDARD rdfs:label (+ skos:altLabel for abbreviations), and rdfs:seeAlso hands off to UniProt (100% of labeled lectins) + UniLectin3D/CarboGrove/LfDB — one lookup grounds the name AND yields every source ID."
     traps_avoided:
       - "The source DBs LfDB and CarboGrove put names on BESPOKE predicates (lfdb:has_lectin_name; cg:LectinName/cg:CommonName), NOT rdfs:label — a naive rdfs:label search over those graphs returns 0. Start at the hub; see schema_delta for direct source-DB grounding."

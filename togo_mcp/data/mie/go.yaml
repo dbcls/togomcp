@@ -102,7 +102,7 @@ examples:
       FROM <http://rdfportal.org/ontology/go>
       WHERE { obo:GO_0004672 ?property ?value . }
       LIMIT 50
-    verified: {label: "protein kinase activity", namespace: "molecular_function", distinct_predicates: 12, date: "2026-07-22"}
+    verified: {row_count: 36, has_values: ["protein kinase activity", "molecular_function"], label: "protein kinase activity", namespace: "molecular_function", distinct_predicates: 12, date: "2026-09-14"}
     teaches: "Once you have the IRI (from OLS4:searchClasses or a cross-ref), a bare ?property ?value dump returns everything: rdfs:label, oboinowl:id 'GO:0004672', IAO_0000115 definition, hasOBONamespace, subClassOf parents, synonyms, hasDbXref, inSubset. Cheapest possible lookup."
 
   - id: enum_namespace              # ELEVATED aggregation — set-level route #1 (the 3-value controlled vocabulary)
@@ -120,7 +120,7 @@ examples:
         FILTER NOT EXISTS { ?go owl:deprecated ?d . FILTER(?d = true) }
       }
       GROUP BY ?namespace ORDER BY DESC(?count)
-    verified: {biological_process: 24136, molecular_function: 10052, cellular_component: 4075, date: "2026-07-22"}
+    verified: {row_count: 3, has_values: [24136, 10052, 4075], biological_process: 24136, molecular_function: 10052, cellular_component: 4075, date: "2026-07-22"}
     teaches: "hasOBONamespace is a controlled 3-value predicate — the STRUCTURED route to enumerate/partition GO by domain. To LIST rather than count, SELECT ?go ?label with the same body. Never bif:contains a namespace name: it is a typed literal, use the predicate."
     traps_avoided:
       - "FILTER(?ns = \"molecular_function\") returns 0 rows (typed literal) — use FILTER(STR(?ns) = ...) (gotcha str_for_typed_literal)."
@@ -140,7 +140,7 @@ examples:
         ?parent rdfs:label ?parentLabel .
         FILTER(STRSTARTS(STR(?parent), "http://purl.obolibrary.org/obo/GO_"))
       }
-    verified: {result_rows: 3, date: "2026-07-22", parents: "GO_0016301 kinase activity; GO_0016773 phosphotransferase activity, alcohol group as acceptor; GO_0140096 catalytic activity, acting on a protein"}
+    verified: {row_count: 3, has_values: ["GO_0016301", "kinase activity"], date: "2026-07-22", parents: "GO_0016301 kinase activity; GO_0016773 phosphotransferase activity, alcohol group as acceptor; GO_0140096 catalytic activity, acting on a protein"}
     teaches: "The DAG is bare rdfs:subClassOf (a term has MULTIPLE parents — here 3). Use rdfs:subClassOf (no +) for immediate parents."
     traps_avoided:
       - "rdfs:subClassOf objects also include anonymous OWL restriction axioms (blank nodes) and non-GO IRIs on many terms — the STRSTARTS(...GO_) filter keeps only real GO parents (gotcha strstarts_filter)."
@@ -161,7 +161,7 @@ examples:
         FILTER(STRSTARTS(STR(?descendant), "http://purl.obolibrary.org/obo/GO_"))
       }
       LIMIT 100
-    verified: {descendant_count: 347, date: "2026-07-22", note: "COUNT(DISTINCT) form over the full subtree = 347 descendants of GO:0016301"}
+    verified: {min_rows: 100, descendant_count: 347, date: "2026-07-22", note: "COUNT(DISTINCT) form over the full subtree = 347 descendants of GO:0016301"}
     teaches: "rdfs:subClassOf+ (transitive) from a PARENT IRI is THE route for 'all terms under concept X' — the complete subtree, not the handful of hits a label search returns. Discover the parent IRI once (OLS4/xref), then expand it. subClassOf* (with *) includes the parent itself; + excludes it."
     traps_avoided:
       - "CIRCULAR REASONING: never load individual OLS4 search hits into VALUES and COUNT them — that just re-counts the hits you already had, bounded by the search LIMIT. Anchor on the parent IRI and let subClassOf+ reach the full set."
@@ -180,7 +180,7 @@ examples:
         FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
         FILTER(STRSTARTS(STR(?xref), "EC:"))
       }
-    verified: {n_terms: 4661, date: "2026-07-22", note: "Swap 'EC:' for 'RHEA:'/'Reactome:'/'MetaCyc:'/'KEGG_REACTION:' to target another DB; add ?xref to SELECT to list the accessions."}
+    verified: {n: 4661, date: "2026-07-22", note: "Swap 'EC:' for 'RHEA:'/'Reactome:'/'MetaCyc:'/'KEGG_REACTION:' to target another DB; add ?xref to SELECT to list the accessions."}
     teaches: "hasDbXref is STRING-typed ('PREFIX:accession', e.g. 'EC:2.7.11.1', 'RHEA:24793', 'Reactome:R-HSA-156832'), NOT an IRI. Filter a target DB with STRSTARTS(STR(?xref), 'EC:'). This is the enumeration route for 'all GO terms linked to database X'."
     traps_avoided:
       - "hasDbXref is not dereferenceable — you cannot follow it as an IRI or GRAPH-join on it directly; parse the string, then bridge to the target DB's own IRI (see id_join_map xrefs)."
@@ -205,7 +205,7 @@ examples:
         }
       }
       GROUP BY ?goTerm ?goLabel
-    verified: {n_genes: 391431, date: "2026-07-22", first_row: "GO_0004672 'protein kinase activity' → 391,431 genes"}
+    verified: {row_count: 1, has_values: ["GO_0004672", "protein kinase activity"], n_genes: 391431, date: "2026-09-14", first_row: "GO_0004672 'protein kinase activity' → 391,431 genes"}
     teaches: "GO annotation lives OUTSIDE the GO graph. TogoID pre-computes the gene↔GO edge as togoid:TIO_000004 in relation graph <dataset/togoid/relation/ncbigene-go> — a direct GRAPH join on the same 'primary' endpoint (no bridge call). Anchor GO IRIs in the ontology/go graph, join gene IRIs in the relation graph. ensembl_transcript-go is the transcript equivalent."
     traps_avoided:
       - "GO's own graph has NO gene-product instances — a GO class is a concept, not a set of genes. Do not look for genes inside ontology/go; use the TogoID relation graph (or reactome/uniprot annotation) instead."

@@ -113,7 +113,8 @@ examples:
     endpoint_name: <group>   # ONLY for cross_db (e.g. sib); omit for single-DB
     sparql: |
       <a complete, runnable query>
-    verified: {<result key>: <value>, date: "YYYY-MM-DD"}   # REQUIRED — see §4.1
+    verified: {n: <value>, date: "YYYY-MM-DD"}   # REQUIRED — assert with n / row_count /
+                                                 # min_rows / has_values; see §4.1
     teaches: "<the reusable idiom in one line>"
     traps_avoided:           # optional; the inline, query-specific warnings
       - "<what the naive query gets wrong + the fix>"
@@ -216,6 +217,27 @@ endpoint, and carries the date it was run in a `date: "YYYY-MM-DD"` field. A re-
 disagrees is a drift signal, not silent rot. This makes the file **machine-testable**: a CI
 job can execute every example and assert its `verified` result.
 
+**`verified:` must carry at least one machine-checkable key** (added 2026-09-14). The sentence
+above was aspirational until then: across 334 examples `verified:` used 198 different key sets,
+mostly prose (`first_row: "GL_002303 'Concanavalin-A' -> uniprot/P02866"`), so no job could
+compare anything and the drift signal existed only for a human reading both. The reserved keys
+are what `scripts/check_mie_examples.py` asserts; every other key stays free-form annotation:
+
+| key | asserts | rule |
+|---|---|---|
+| `n` | the single cell of a one-row, one-variable result (a COUNT) | within `tolerance` |
+| `row_count` | the number of result rows | within `tolerance`; must be **below** the query's `LIMIT` — a count equal to the cap only says the cap was hit |
+| `min_rows` | at least this many rows | the honest assertion for a `LIMIT`-capped result |
+| `has_values` | each listed value appears as a cell: a string exactly (full value or IRI local name), a YAML number within `tolerance` | on a capped result the query needs `ORDER BY`, else it fails at random |
+| `tolerance` | fractional slack for `n`, `row_count` and numeric `has_values` | default 0.02 |
+
+Prefer `n` or `row_count` — they catch a union-inflated or silently shrunken answer, which
+`min_rows` alone cannot. Put stable identity values in `has_values` (an accession, a label). A count
+belongs there only as a YAML number, which gets `tolerance`; a quoted count is exact-match and
+drifts on every upstream release. Conversely quote a numeric identifier (`"18390"`). An
+`expect_empty: true` example is exempt. A drift is resolved by re-measuring, then fixing the query
+or updating the figure **and** its `date:` together — never by widening `tolerance` until it passes.
+
 **The same rule binds the prose.** A `global_gotchas` `say` or a `traps_avoided` line that
 asserts a number, a multiplier, a zero-row outcome, an absence, or a failure-to-run **MUST**
 carry a `check:` that re-decides it (§3.6), and that check must have been run this pass.
@@ -288,7 +310,9 @@ equivalence run on that question (the MIE "knows" the answer instead of the agen
 ## 5. Validation checklist (Phase 5 — non-negotiable)
 1. File parses as YAML; required keys present (§2).
 2. `discovery` has all four fields; description is one sentence.
-3. **Every** example has `verified:` with a `date:` field (not `on:` — §4.1 trap), and was actually re-run this pass.
+3. **Every** example has `verified:` with a `date:` field (not `on:` — §4.1 trap) and at least one
+   reserved assertion key (`n` / `row_count` / `min_rows` / `has_values`, §4.1), and was actually re-run
+   this pass: `scripts/check_mie_examples.py <db>` reports 0 zero-row, 0 error, 0 drift, 0 malformed.
 3b. **Every falsifiable claim in `global_gotchas` / `traps_avoided` carries a `check:` (§3.6), and
    `scripts/check_mie_gotchas.py <db>` is clean.** Read each `say` and each trap line and ask: does
    this assert a figure, a multiplier, a zero-row outcome, an absence, or a failure-to-run? If yes it

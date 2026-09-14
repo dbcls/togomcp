@@ -109,7 +109,7 @@ examples:
         OPTIONAL { ?taxon tax:geneticCode ?geneticCode }
       }
       LIMIT 10
-    verified: {result_rows: 2, date: "2026-07-22", first_row: "taxon:10090 = Mus musculus (Species, common 'mouse', GeneticCode1)"}
+    verified: {row_count: 2, has_values: ["Mus musculus", "Species"], date: "2026-07-22", first_row: "taxon:10090 = Mus musculus (Species, common 'mouse', GeneticCode1)"}
     teaches: "Anchor on the taxon IRI (identifiers.org/taxonomy/{taxid}); rdfs:label == tax:scientificName (the sci name), dcterms:identifier is the integer taxid, tax:rank yields a rank IRI. commonName (~11%) and geneticCode are OPTIONAL. Discover unknown taxids with ncbi_esearch('taxonomy', 'name')."
 
   - id: species_in_genus
@@ -127,7 +127,7 @@ examples:
                  rdfs:subClassOf taxon:561 ; rdfs:label ?label .
       }
       LIMIT 20
-    verified: {result_rows: 10, date: "2026-07-22", first_row: "taxon:562 = Escherichia coli"}
+    verified: {row_count: 10, has_values: ["Escherichia coli"], date: "2026-07-22", first_row: "taxon:562 = Escherichia coli"}
     teaches: "Combine the rank IRI (tax:Species) with a bare rdfs:subClassOf <genusIRI> for direct children at a chosen rank — a controlled-vocab filter, never a label text-search. Escherichia has exactly 10 species. For deeper-than-one-level use subClassOf* (example subtree_enum)."
 
   - id: lineage
@@ -147,7 +147,7 @@ examples:
       }
       ORDER BY DESC(?id)
       LIMIT 50
-    verified: {result_rows: 32, date: "2026-07-22", note: "Homo sapiens → Homo → Hominidae → … → Eukaryota → cellular organisms → root (many intervening ranks are 'Clade')"}
+    verified: {row_count: 32, has_values: ["Clade", "cellular organisms"], date: "2026-07-22", note: "Homo sapiens → Homo → Hominidae → … → Eukaryota → cellular organisms → root (many intervening ranks are 'Clade')"}
     teaches: "rdfs:subClassOf* from a START taxon IRI walks the ancestor chain (inclusive of self). Anchoring on the specific IRI is mandatory — with an unbound subject Virtuoso rejects the path outright, in 0.2s, with 'transitive start not given' (gotcha start_iri). Note most intermediate nodes carry rank tax:Clade, not a Linnaean rank."
 
   - id: count_by_rank
@@ -166,7 +166,7 @@ examples:
       }
       GROUP BY ?rank ?rankLabel
       ORDER BY DESC(?count)
-    verified: {species: 2315826, genus: 132573, family: 11524, order: 2139, class: 627, phylum: 336, kingdom: 22, date: "2026-07-22"}
+    verified: {row_count: 7, has_values: [2428394, 133220, 11564, 2154], species: 2428394, genus: 133220, family: 11564, order: 2154, class: 636, phylum: 338, kingdom: 22, note: "re-measured 2026-09-14: species 2,315,826 -> 2,428,394 (+4.9%) since 2026-07-22", date: "2026-09-14"}
     teaches: "The rank-enumeration route: VALUES over rank IRIs (tax:Species/Genus/Family/…) + COUNT(DISTINCT). Rank IRIs are the controlled vocabulary — filtering by them is exact and index-fast, never a label match. This is the primary 'all taxa at rank X' answer."
     traps_avoided:
       - "MUST pin FROM <ontology/taxonomy>: unpinned, gtdb's ~901K taxa + microbedbjp's re-declared copies inflate every rank count (gotcha pin_graph). DISTINCT does not save you — the surplus rows are distinct entities."
@@ -184,7 +184,7 @@ examples:
       WHERE {
         ?species rdfs:subClassOf* taxon:543 ; tax:rank tax:Species .
       }
-    verified: {species_in_clade: 23148, date: "2026-07-22", note: "family 543 = Enterobacteriaceae; the subtree spans all descendant genera"}
+    verified: {n: 23148, date: "2026-07-22", note: "family 543 = Enterobacteriaceae; the subtree spans all descendant genera"}
     teaches: "The subtree-enumeration route: rdfs:subClassOf* <cladeIRI> gathers EVERY descendant at any depth, then a rank filter (tax:Species) selects the level you want. This is THE way to answer 'all X under genus/family/order Y' — a bare rdfs:subClassOf reaches only direct children and misses everything below the next rank."
     traps_avoided:
       - say: "ontology/taxonomy is a TRUE hierarchy (rdfs:subClassOf = the single immediate parent), so descending a clade REQUIRES the transitive `*` — not a flattened lineage. Anchor on the clade IRI (gotcha start_iri): unanchored, Virtuoso REJECTS the path outright. Anchored, size is not the problem — a phylum-wide subtree from Chordata (7711) returns 131,915 taxa in 0.8s, where this line warned it 'can exceed 60s' until 2026-08-26. Go as broad as your question needs."
@@ -213,7 +213,7 @@ examples:
                rdfs:label ?label .
         FILTER(?taxon != <http://identifiers.org/taxonomy/131567>)        # exclude the "cellular organisms" root
       }
-    verified: {result_rows: 14, date: "2026-07-22", note: "Bacteria(2), Archaea(2157), Eukaryota(2759), Viruses(10239) + ~10 viral realms (Riboviria, Duplodnaviria, Varidnaviria, …)"}
+    verified: {row_count: 14, has_values: ["Viruses", "Riboviria"], date: "2026-07-22", note: "Bacteria(2), Archaea(2157), Eukaryota(2759), Viruses(10239) + ~10 viral realms (Riboviria, Duplodnaviria, Varidnaviria, …)"}
     teaches: "Top-level clades carry the BARE namespace IRI <http://ddbj.nig.ac.jp/ontologies/taxonomy/> as their rank (NCBI leaves them formally rank-less). Select by that IRI and exclude the 'cellular organisms' root (taxon:131567), which shares it, to get the ~14 biological top clades."
     traps_avoided:
       - "tax:Superkingdom does NOT exist (gotcha superkingdom): pinned it 0-rows, unpinned it returns 173,618 legacy microbedbjp rows — a query that 'works' unpinned is reading the wrong graph. Use the bare-namespace rank IRI in the pinned graph instead."
@@ -234,7 +234,7 @@ examples:
       GROUP BY ?genus ?genusLabel
       ORDER BY DESC(?speciesCount)
       LIMIT 10
-    verified: {top: "Cortinarius 2070, Astragalus 1630, Megaselia 1312, Russula 1285", date: "2026-07-22"}
+    verified: {min_rows: 10, has_values: ["Astragalus", "Cortinarius"], top: "Cortinarius 2070, Astragalus 1630, Megaselia 1312, Russula 1285", date: "2026-07-22"}
     teaches: "Join two rank tiers on the single-step rdfs:subClassOf (species → its genus), constrain BOTH ends by rank IRI, then GROUP BY the parent. Direct subClassOf (not `*`) is correct here — a species' genus is its immediate parent."
 
   - id: xdb_bacdive
@@ -258,7 +258,7 @@ examples:
           FILTER(isNumeric(?taxID))
         }
       }
-    verified: {strains: 2450, date: "2026-07-22"}
+    verified: {n: 2450, date: "2026-07-22"}
     teaches: "NCBI Taxonomy is the organism backbone co-hosted on `primary`: expand a clade to its species taxids with subClassOf* IN GRAPH <ontology/taxonomy>, then join dcterms:identifier (int taxid) to another DB's taxid key — here BacDive schema:hasTaxID — as a direct GRAPH join, no TogoID bridge. Same pattern reaches any taxid-keyed DB on the endpoint."
     traps_avoided:
       - "BacDive schema:hasTaxID is xsd:int and ALSO appears as a plain string — FILTER(isNumeric(?taxID)) before the join, and never FILTER(datatype()=xsd:integer) (the values are xsd:int, 0 rows)."

@@ -184,7 +184,7 @@ examples:
       FROM <http://rdfportal.org/dataset/clinvar>
       WHERE { <http://ncbi.nlm.nih.gov/clinvar/variation/856461> ?property ?value . }
       LIMIT 50
-    verified: {result_rows: 21, date: "2026-08-29", note: "VCV000856461 = NM_007294.4(BRCA1):c.2244dup (p.Asp749fs), Duplication, record_type classified, 1 submission; carries 2 med2rdf:disease bnodes"}
+    verified: {row_count: 21, has_values: ["type", "VCV000856461"], date: "2026-08-29", note: "VCV000856461 = NM_007294.4(BRCA1):c.2244dup (p.Asp749fs), Duplication, record_type classified, 1 submission; carries 2 med2rdf:disease bnodes"}
     teaches: "The variation IRI tail = cvo:variation_id (integer); cvo:accession is the VCV string. Direct properties are flat literals; classification/gene/disease all sit BEHIND blank nodes (following examples)."
     traps_avoided:
       - "A variant carries MULTIPLE med2rdf:disease bnodes pointing at the SAME disease (one per SCV submission) — visible here as two nodeIDs on a variant with only ONE submission. This is the seed of the ~3.7x inflation (see disease_xref_count)."
@@ -214,7 +214,7 @@ examples:
                  cvo:classified_record ?classrec .
       }
       LIMIT 10
-    verified: {result_rows: 10, date: "2026-08-29", first_row: "variation/856461 NM_007294.4(BRCA1):c.2244dup"}
+    verified: {min_rows: 10, date: "2026-08-29", first_row: "variation/856461 NM_007294.4(BRCA1):c.2244dup"}
     teaches: "Variant→gene is a 2-hop blank-node walk: variant --cvo:classified_record--> ?classrec --sio:SIO_000628--> ?gene_bn --med2rdf:gene--> gene IRI. VALUES on gene IRIs prunes 3.5M variants to the target gene(s) up front."
     traps_avoided:
       - "rdfs:label is HGVS free text, not a gene symbol — never text-match it to find a gene's variants; resolve the gene id first and use the IRI. bif:contains on the label is exploratory only."
@@ -239,7 +239,7 @@ examples:
       GROUP BY ?significance
       ORDER BY DESC(?n)
       LIMIT 20
-    verified: {result_rows: 20, date: "2026-08-29", top: "Uncertain significance 1,821,577; Likely benign 993,150; Benign 213,802; Pathogenic 200,004; Conflicting classifications of pathogenicity 145,497; Likely pathogenic 107,204"}
+    verified: {min_rows: 20, has_values: ["Uncertain significance", "Likely benign"], date: "2026-08-29", top: "Uncertain significance 1,821,577; Likely benign 993,150; Benign 213,802; Pathogenic 200,004; Conflicting classifications of pathogenicity 145,497; Likely pathogenic 107,204"}
     teaches: "THE set-level significance enumeration: the controlled value lives on cvo:description of the germline classification bnode, reached variant → classified_record → cvo:classifications → cvo:germline_classification → cvo:description. Pin the exact string (e.g. \"Pathogenic\") to count/list one class; COUNT(DISTINCT ?variant) because a variant can have multiple submissions."
     traps_avoided:
       - "THREE classification BRANCHES exist under cvo:classifications: cvo:germline_classification, cvo:oncogenicity_classification, cvo:somatic_clinical_impact. This query enumerates ONLY germline; a cancer/somatic variant classified 'Oncogenic' has NO germline node and is silently absent (see oncogenicity_kras for the other two branches)."
@@ -264,7 +264,7 @@ examples:
       GROUP BY ?source
       ORDER BY DESC(?n)
       LIMIT 15
-    verified: {result_rows: 15, distinct_sources_total: 153, date: "2026-08-29", top: "MedGen 19,973,218; PubMed 15,835,938; OMIM 11,822,932; MONDO 4,650,710; BookShelf 3,006,575; dbSNP 2,978,968; Genetic Testing Registry (GTR) 2,967,616; ClinGen 2,893,282; Orphanet 2,453,877"}
+    verified: {min_rows: 15, has_values: ["MedGen", "PubMed"], distinct_sources_total: 153, date: "2026-08-29", top: "MedGen 19,973,218; PubMed 15,835,938; OMIM 11,822,932; MONDO 4,650,710; BookShelf 3,006,575; dbSNP 2,978,968; Genetic Testing Registry (GTR) 2,967,616; ClinGen 2,893,282; Orphanet 2,453,877"}
     teaches: "Run this FIRST before filtering on any dct:source value. The source vocabulary is 153 free-text strings with no controlled list published anywhere and no case normalization, so the only safe way to pick a filter value is to read the actual values off the data. It also reveals xref targets not advertised elsewhere in this file (dbSNP, ClinGen, GeneReviews, SNOMED CT)."
     traps_avoided:
       - say: |-
@@ -303,7 +303,7 @@ examples:
       GROUP BY ?significance
       ORDER BY DESC(?n)
       LIMIT 20
-    verified: {result_rows: 12, date: "2026-08-29", top: "Uncertain significance 1,570; Likely benign 1,309; Conflicting classifications of pathogenicity 155; Benign/Likely benign 120; Benign 107; Pathogenic 80", runtime: "0.3s"}
+    verified: {row_count: 12, has_values: ["Uncertain significance", "Likely benign"], date: "2026-08-29", top: "Uncertain significance 1,570; Likely benign 1,309; Conflicting classifications of pathogenicity 155; Benign/Likely benign 120; Benign 107; Pathogenic 80", runtime: "0.3s"}
     teaches: "The per-gene significance question is the two walks COMPOSED, both hanging off the SAME ?classrec bnode: enter at the gene (med2rdf:gene → sio:SIO_000628 → ?classrec) and read the classification off that same node. Anchoring on the gene IRI first prunes 3.59M variants before the classification join, so the whole query runs in well under a second."
     traps_avoided:
       - say: |-
@@ -330,7 +330,7 @@ examples:
       GROUP BY ?variation_type
       ORDER BY DESC(?count)
       LIMIT 30
-    verified: {result_rows: 21, date: "2026-08-29", top: "single nucleotide variant 3,236,823; Deletion 160,620; Duplication 73,448; Microsatellite 36,328; copy number gain 24,800; copy number loss 22,592"}
+    verified: {row_count: 21, has_values: ["single nucleotide variant", "Deletion"], date: "2026-08-29", top: "single nucleotide variant 3,236,823; Deletion 160,620; Duplication 73,448; Microsatellite 36,328; copy number gain 24,800; copy number loss 22,592"}
     teaches: "cvo:variation_type is a flat literal directly on the variant (no bnode) — the cheapest categorical facet, and the full vocabulary is only 21 values. Because it needs no classification traversal, this aggregation completes without a per-gene pre-filter."
 
   - id: disease_xref_count
@@ -356,7 +356,7 @@ examples:
         ?dis dct:references ?ref .
         ?ref dct:source "MedGen" ; dct:identifier ?cui .
       }
-    verified: {variants: 3989, diseases: 45, date: "2026-08-29"}
+    verified: {row_count: 1, has_values: [3989, 45], variants: 3989, diseases: 45, date: "2026-09-14"}
     teaches: "Disease xrefs live on TypeXref bnodes: med2rdf:disease → dct:references → node with dct:source (\"MedGen\"/\"OMIM\"/\"Orphanet\"/\"MONDO\"/\"MeSH\") + dct:identifier + optional rdfs:seeAlso. Always aggregate with COUNT(DISTINCT ?variant) / COUNT(DISTINCT ?cui)."
     traps_avoided:
       - say: |-
@@ -393,7 +393,7 @@ examples:
         OPTIONAL { ?classi cvo:somatic_clinical_impact ?sci . ?sci cvo:description ?somatic_impact . }
       }
       LIMIT 50
-    verified: {result_rows: 19, date: "2026-08-29", first_row: "KRAS c.183A>C (p.Gln61His) → Oncogenic / Tier II - Potential", note: "only 1 of the 19 carries a somatic_clinical_impact value — hence the OPTIONAL"}
+    verified: {row_count: 19, has_values: ["Oncogenic", "Tier II - Potential"], date: "2026-08-29", first_row: "KRAS c.183A>C (p.Gln61His) → Oncogenic / Tier II - Potential", note: "only 1 of the 19 carries a somatic_clinical_impact value — hence the OPTIONAL"}
     teaches: "cvo:oncogenicity_classification (\"Oncogenic\"/\"Likely oncogenic\"/…) and cvo:somatic_clinical_impact (\"Tier I–IV\") are SIBLINGS of cvo:germline_classification under the same cvo:classifications node — each on its own bnode with its own cvo:description. Somatic impact is sparse → OPTIONAL it. This is why a germline-only enumeration undercounts cancer variants."
     traps_avoided:
       - "The oncogenicity vocabulary is NOT disjoint from the germline one — the same cvo:description predicate on this branch also yields 'Likely benign' and 'Uncertain significance' (both present among these 19 KRAS rows). So you cannot tell which branch a value came from by inspecting the value; you must read it from the branch predicate you traversed."
@@ -423,7 +423,7 @@ examples:
         }
       }
       LIMIT 10
-    verified: {result_rows: 10, date: "2026-08-29", first_row: "NM_007294.4(BRCA1):c.453T>G (p.Ser151Arg) → 'Hereditary breast ovarian cancer syndrome'"}
+    verified: {min_rows: 10, date: "2026-08-29", first_row: "NM_007294.4(BRCA1):c.453T>G (p.Ser151Arg) → 'Hereditary breast ovarian cancer syndrome'"}
     teaches: "MedGen is co-hosted on the ncbi endpoint — a direct two-GRAPH join, no TogoID. Anchor a MedGen ConceptID, convert its www IRI to ClinVar's no-www form with REPLACE, then match on the TypeXref rdfs:seeAlso. Pre-selecting the concept (VALUES) keeps it fast. SELECT DISTINCT is required, not cosmetic: without it the duplicate disease bnodes return each variant twice."
     traps_avoided:
       - say: |-
