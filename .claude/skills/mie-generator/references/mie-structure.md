@@ -117,10 +117,9 @@ Rules across the set:
   **Tier B/C** DBs must keep the worked query and its load-bearing caveat together.
 - **No test leakage (spec §4.6).** An example's subject (keyword phrase, class
   IRI, gold gene/compound/accession) must **not** be a benchmark question's exact
-  subject for **this DB**. Grep it against `benchmark/questions/*.yaml`
-  (`inspiration_keyword` / `exact_answer`) before finalizing; swap to a neutral
-  member of the same class if it collides. Canonical non-benchmark subjects (ATP,
-  TP53, BRCA1) are fine.
+  subject for **this DB**. `uv run python scripts/check_mie_leakage.py <db>`
+  must exit 0 (CI runs it too); swap to a neutral member of the same class if it
+  collides. Canonical non-benchmark subjects (ATP, TP53, BRCA1) are fine.
 - **One fact, one place (spec §4.2).** A predicate shown in any example is **not**
   repeated in `schema_delta`. A warning is database-wide (`global_gotchas`) **or**
   query-specific (`traps_avoided`) — never both.

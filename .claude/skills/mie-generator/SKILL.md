@@ -403,7 +403,7 @@ Strategy priorities across the set:
 - Prefer specific IRIs / `VALUES` with IRIs, then typed predicates / graph navigation (`rdfs:subClassOf+`, `skos:broader+`).
 - Text search is a last resort: at most one example, and only if the Gate Check in `references/query-strategy.md` passes. If you reach for `bif:contains` / `FILTER(CONTAINS(...))` more than once, stop and re-read that file — almost every "free text" field is backed by a controlled vocabulary or IRI somewhere.
 
-**No test leakage (spec §4.6):** as you pick the subject for each example (keyword phrase, class IRI, gold gene/compound/accession), keep it clear of the benchmark. You will grep it against `benchmark/questions/*.yaml` in Phase 5; it is cheaper to pick a neutral member of the same class now.
+**No test leakage (spec §4.6):** as you pick the subject for each example (keyword phrase, class IRI, gold gene/compound/accession), keep it clear of the benchmark. Phase 5h runs `scripts/check_mie_leakage.py` against it; it is cheaper to pick a neutral member of the same class now.
 
 Read `references/query-strategy.md` now if you haven't — it contains the decision tree, the circular-reasoning trap, and the Virtuoso-specific `bif:contains` pitfalls (especially around property paths).
 
@@ -525,7 +525,7 @@ Three disciplines when writing the check:
 
 **5g. Verify every search-wrapper claim.** Rule 2 covers tool-behavior claims, not just SPARQL. For each assertion the file makes about a `search_*` / `ncbi_esearch` / `OLS4:searchClasses` tool (scan `teaches`/`traps_avoided`/`id_join_map`), call the tool exactly as the claim implies and confirm the result. "Tool X maps term T to ID I" passes ONLY if the tool returns I *usably*: at the top, or within a limit a caller would plausibly use — not at rank 5 behind unrelated hits, and present at the limit the claim states. If the tool doesn't satisfy the claim, rewrite it to what the tool actually does (with the rank/limit caveat) or drop it. (Real regression: the ChEMBL MIE claimed `search_chembl_target("EGFR") → CHEMBL203`; the tool returned CHEMBL203 at rank 5, and not at all at `limit=3`.)
 
-**5h. No test leakage (spec §4.6).** For every example, check its subject (keyword phrase, class IRI, gold gene/compound/accession) against `benchmark/questions/*.yaml` — grep the `inspiration_keyword` and `exact_answer` fields. If a subject collides with a question that uses **this DB**, swap it for a neutral member of the same class and re-verify. Canonical non-benchmark subjects (ATP, TP53, BRCA1) are fine.
+**5h. No test leakage (spec §4.6).** Run `uv run python scripts/check_mie_leakage.py <db>` — it matches every example against each benchmark question that uses **this DB** (keyword name and KW id, answer heads and IDs) and must exit 0; CI gates on it. If a subject collides, swap it for a neutral member of the same class and re-verify it live. Waive (in `scripts/mie_leakage_waivers.yaml`, with a reason) only generic vocabulary the question does not score on — "Chromosome" in mco, not the gold gene. Read its number NOTES too: an example's `verified:` figure equal to a question's integer answer is not gated but may be the q066 leak (a first-step count). Canonical non-benchmark subjects (ATP, TP53, BRCA1) are fine.
 
 **5i. Record the `examples` byte SHARE**, not just the total (the deterministic half of the win — spec §5 item 7):
 

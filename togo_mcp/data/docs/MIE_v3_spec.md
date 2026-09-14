@@ -275,9 +275,15 @@ equivalence run on that question (the MIE "knows" the answer instead of the agen
   live-verified subjects (SH3 domain → 108; neurotoxin → 89) that exercise the identical route.
 - *Rule:* before finalizing an example, check its subject (keyword phrase, class IRI, gold gene /
   compound / accession) against `benchmark/questions/*.yaml` (the `inspiration_keyword` and
-  `exact_answer` fields — a one-line grep). If it collides with a question that uses **this DB**,
+  `exact_answer` fields). If it collides with a question that uses **this DB**,
   pick a different member of the same class. Canonical, non-benchmark subjects (ATP, TP53, BRCA1)
   are fine; the point is only to avoid the specific entities the benchmark scores on.
+- *Enforcement (2026-09-14):* the grep was prescribed here and never run. It is now
+  `scripts/check_mie_leakage.py` — keyword name and KW id (in its `keywords:NNN` IRI forms too),
+  answer heads and prefixed IDs, whole-word across every example field — gated in CI on any PR
+  touching an MIE **or** a question (a new question can leak onto an existing example). Generic
+  vocabulary matches ("Chromosome" in mco) are waived in `scripts/mie_leakage_waivers.yaml` with a
+  reason; a waiver that stops matching fails the run. Fix a real leak in the MIE, never by waiver.
 
 ## 5. Validation checklist (Phase 5 — non-negotiable)
 1. File parses as YAML; required keys present (§2).
@@ -301,5 +307,5 @@ equivalence run on that question (the MIE "knows" the answer instead of the agen
    worked query and its load-bearing caveat together — do not compress the query away and leave only
    the warning.
 9. No example's subject is a benchmark question's keyword / class / gold entity for **this DB**
-   (§4.6) — grep the subject against `benchmark/questions/*.yaml`; swap to a neutral member if it
+   (§4.6) — `scripts/check_mie_leakage.py <db>` exits 0; swap to a neutral member if it
    collides. No test leakage.

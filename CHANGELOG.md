@@ -13,6 +13,17 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Added
+
+- **Benchmark-leakage gate for MIE examples** (`scripts/check_mie_leakage.py`, MIE spec §4.6).
+  §4.6 forbade an example from using a benchmark question's subject as its vehicle and prescribed
+  "a one-line grep" at authoring time — nothing ever ran it, and the two leaks it was written
+  after (LIM domain/q066, antimicrobial/q075) were caught by eye. The checker matches every
+  question's keyword (name and `keywords:NNN` IRI forms), answer heads and answer IDs against
+  the examples of each database the question uses, and runs in CI on any PR touching an MIE
+  *or* a question. First full run: 19 matches over 100 questions × 37 MIEs, all generic
+  vocabulary ("Chromosome" in mco), recorded as reasoned waivers that fail once stale; no leak.
+
 ## [2.12.1] - 2026-09-01
 
 Housekeeping ahead of an upstream deploy. TogoID fixed the malformed `hgnc_symbol`
