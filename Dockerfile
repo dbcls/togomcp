@@ -3,7 +3,7 @@
 # python3.12-trixie-slim (Debian 13) = Python 3.12.13, uv 0.11.28 (image built 2026-07-07).
 # NB: astral froze the bookworm-slim (Debian 12) line at uv 0.9.30 / Python 3.12.12
 # on 2026-02-04 and now ships only trixie variants, so this is a Debian 12->13 bump.
-FROM docker.io/astral/uv:python3.12-trixie-slim@sha256:4bf11151c225e2a4d60e2a576b67d925660055199389d9a64fbdc02b6f3d43d5
+FROM docker.io/astral/uv:python3.12-trixie-slim@sha256:87bc72093c0aa93cc962bd7c0498ddf416dad3ce9e1434724e936e02b72afe5d
 
 # Install tzdata so the TZ env var (set in compose.yaml) resolves correctly
 # instead of silently falling back to UTC.
