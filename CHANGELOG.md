@@ -13,6 +13,36 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.13.0] - 2026-09-14
+
+A new database for gene regulation: **Fanta.bio**, the cis-regulatory elements (promoters and
+enhancers) behind FANTOM. Until now TogoMCP could say where a gene is and what variants sit in it,
+but not which regulatory elements act on it or which transcription factors bind there. No tool,
+parameter or return shape changed; the new `database="fantabio"` value reaches every client
+immediately, including ones with a cached tool list.
+
+<!-- whatsnew: 2026-09-14 | New database: <strong>Fanta.bio</strong> — 821,722 human and mouse cis-regulatory elements (promoter- and enhancer-level), each with linked genes, transcription directionality and overlapping <strong>ChIP-Atlas</strong> transcription-factor peaks, ENCODE SCREEN cCREs and FANTOM5 annotations. Ask things like "which regulatory elements are linked to this gene, and which factors bind them?" -->
+
+### Added
+
+- **`fantabio` — Fanta.bio RDF, the 38th database.** 821,722 CREs defined from CAGE
+  transcription-start activity, 513,895 human (GRCh38) and 307,827 mouse (GRCm38), each classed as
+  promoter-level or enhancer-level activity. Each carries a location, a strand-directionality score,
+  linked genes (27% of CREs), transcript TSSs within ±500 bp, and overlaps with 11.7M ChIP-Atlas
+  antigen peaks (1,839 human / 904 mouse antigens, 51,180 SRA experiments), ENCODE SCREEN cCREs,
+  FANTOM5 CAGE peaks and enhancers, and refTSS. It is on the `primary` endpoint we already query,
+  so this is a registry row plus an MIE — no new infrastructure.
+  The MIE ships 13 live-verified examples (enumeration by gene and by transcription factor, region
+  overlap, two aggregations, and joins to the co-hosted `hgnc` and `hco` graphs). It documents the
+  traps an agent cannot recover on its own. **fantabio and HCO spell the same chromosome
+  differently**: `identifiers.org/hco/11/GRCh38` here versus HCO's backslash form `hco/11\/GRCh38`, so
+  an IRI join returns 0 rows; the example joins on the string instead. **11,104 linked-gene nodes name
+  several genes at once**, and their symbols cannot be paired with their IDs, so gene questions must
+  key on the HGNC/MGI IRI. Labels are plain literals (`^^xsd:string` silently matches nothing),
+  antigen symbols follow each species' capitalisation (`CTCF` human, `Ctcf` mouse), refTSS links are
+  mouse-only, and most FANTOM5 CAGE-peak IDs are hg19/mm9 coordinates, not the CRE's assembly.
+  Every falsifiable claim carries a `check:`; example, gotcha and leakage checks are all clean.
+
 ## [2.12.2] - 2026-09-14
 
 The schema guides now check their own answers. Every worked example in an MIE file records
@@ -2373,7 +2403,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.12.2...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.13.0...HEAD
+[2.13.0]: https://github.com/dbcls/togomcp/compare/v2.12.2...v2.13.0
 [2.12.2]: https://github.com/dbcls/togomcp/compare/v2.12.1...v2.12.2
 [2.12.1]: https://github.com/dbcls/togomcp/compare/v2.12.0...v2.12.1
 [2.12.0]: https://github.com/dbcls/togomcp/compare/v2.11.0...v2.12.0
