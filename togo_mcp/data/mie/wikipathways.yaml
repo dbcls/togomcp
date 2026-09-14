@@ -487,6 +487,48 @@ examples:
     traps_avoided:
       - "The ChEBI IRI form here is `https://identifiers.org/chebi/CHEBI:15422` — it is NOT the OBO form `http://purl.obolibrary.org/obo/CHEBI_15422` that RDF Portal's chebi graph uses. Rewrite it before joining, exactly as xdb_uniprot_reviewed rewrites the UniProt IRI."
       - "One metabolite can carry several ChEBI IDs and several labels, so rows are label x id pairs, not metabolites: S-Adenosylhomocysteine here maps to both CHEBI:16680 and CHEBI:57856 (neutral vs charged species)."
+      - say: >
+          The reverse lookup ("which pathways contain compound X?") UNDERCOUNTS when keyed on one ChEBI ID,
+          because curators file the same compound under different ChEBI entries in different diagrams:
+          metabolite nodes labelled "Glucose" point at glucose (CHEBI:17234), D-glucose (CHEBI:17634),
+          beta-D-glucose (CHEBI:15903), alpha-D-glucose (CHEBI:17925), D-glucopyranose (CHEBI:4167) and
+          aldehydo-D-glucose (CHEBI:42758). Even the most-used ID, CHEBI:15903, finds only 59 pathways, while
+          the six IDs together find 109 (×1.85). FIX: first list the `wp:bdbChEBI` values used by nodes with
+          the compound's label (`FILTER(LCASE(STR(?l)) = "glucose")`), decide which forms you mean — the
+          chebi database on endpoint ebi holds the hierarchy that relates them — and then count DISTINCT
+          pathways over that whole set with a VALUES block.
+        check:
+          kind: ratio
+          date: "2026-09-14"
+          numerator: |
+            PREFIX wp: <http://vocabularies.wikipathways.org/wp#>
+            PREFIX dc: <http://purl.org/dc/elements/1.1/>
+            PREFIX dcterms: <http://purl.org/dc/terms/>
+            SELECT (COUNT(DISTINCT ?p) AS ?n) WHERE { GRAPH <http://rdf.wikipathways.org/> {
+              VALUES ?chebi { <https://identifiers.org/chebi/CHEBI:17234> <https://identifiers.org/chebi/CHEBI:17634>
+                              <https://identifiers.org/chebi/CHEBI:15903> <https://identifiers.org/chebi/CHEBI:17925>
+                              <https://identifiers.org/chebi/CHEBI:4167> <https://identifiers.org/chebi/CHEBI:42758> }
+              ?m a wp:Metabolite ; wp:bdbChEBI ?chebi ; dcterms:isPartOf ?p .
+              ?p a wp:Pathway ; dc:title ?t . } }
+          denominator: |
+            PREFIX wp: <http://vocabularies.wikipathways.org/wp#>
+            PREFIX dc: <http://purl.org/dc/elements/1.1/>
+            PREFIX dcterms: <http://purl.org/dc/terms/>
+            SELECT (COUNT(DISTINCT ?p) AS ?n) WHERE { GRAPH <http://rdf.wikipathways.org/> {
+              ?m a wp:Metabolite ; wp:bdbChEBI <https://identifiers.org/chebi/CHEBI:15903> ; dcterms:isPartOf ?p .
+              ?p a wp:Pathway ; dc:title ?t . } }
+          expect: {ratio: 1.8475, tolerance: 0.05}
+      - say: "Those six ChEBI IDs are every `wp:bdbChEBI` value on a node labelled \"Glucose\" (case-insensitive) — six forms for one compound name."
+        check:
+          kind: count
+          date: "2026-09-14"
+          query: |
+            PREFIX wp: <http://vocabularies.wikipathways.org/wp#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT (COUNT(DISTINCT ?chebi) AS ?n) WHERE { GRAPH <http://rdf.wikipathways.org/> {
+              ?m a wp:Metabolite ; rdfs:label ?l ; wp:bdbChEBI ?chebi .
+              FILTER(LCASE(STR(?l)) = "glucose") } }
+          expect: {value: 6, tolerance: 0}
 
   - id: count_pathways_by_organism
     intent: the un-inflated pathway census, grouped
