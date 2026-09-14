@@ -1,0 +1,523 @@
+mie_spec: 3
+database: idsm
+
+discovery:
+  title: IDSM (Integrated Database of Small Molecules)
+  description: >
+    Chemical structure search engine (substructure, similarity, exact) over nine
+    integrated small-molecule datasets — PubChem, ChEMBL, ChEBI, Wikidata, DrugBank,
+    PDB-CCD, MolMeDB, MoNA and ISDB — queryable directly from SPARQL.
+  keywords: [chemical structure, substructure search, similarity search, smiles,
+             molfile, cheminformatics, small molecule, compound, bioactivity,
+             mass spectra, scaffold, chemical identifier mapping]
+  categories: [compound, drug_target]
+
+endpoint: https://idsm.elixir-czech.cz/sparql/endpoint/idsm
+base_uri: http://bioinfo.uochb.cas.cz/rdf/v1.0/
+
+graphs:
+  # IDSM owns no data graph of its own: it re-hosts nine chemical datasets under their
+  # ORIGINAL IRIs and adds a procedural structure index on top. `primary` is the largest
+  # structure-bearing graph and the pin the endpoint's own shipped examples use — it is
+  # NOT a default for every query. Pin the graph of whichever dataset you are reading.
+  primary: http://rdf.ncbi.nlm.nih.gov/pubchem/compound
+  supporting:
+    - http://rdf.ebi.ac.uk/dataset/chembl
+    - http://rdf.ebi.ac.uk/dataset/chebi
+    - http://www.wikidata.org/entity/
+    - http://wifo5-04.informatik.uni-mannheim.de/drugbank/resource/drugs/
+    - https://identifiers.org/pdb-ccd/
+    - https://rdf.molmedb.upol.cz
+    - https://idsm.elixir-czech.cz/rdf/mona/
+    - https://idsm.elixir-czech.cz/rdf/isdb/
+  co_hosted:
+    bioinfo.iocb.cz/dataset/ontology: >
+      INFLATION (2g, 2026-09-14). A merged OBO/NCIt/NDF-RT/EFO import closure (3,573,768
+      obo:* subjects carry a label here). It RE-DECLARES ChEBI classes under ChEBI's own
+      IRIs — rdf:type, rdfs:label (same value) and rdfs:subClassOf (17 here vs 18 in the
+      chebi graph, so the two closures DIFFER). Type-leg x2 times label-leg x2 = x4 on the
+      standard `?c a ?t ; rdfs:label ?l` join. FIX = pin <http://rdf.ebi.ac.uk/dataset/chebi>.
+    pubchem/{synonym,inchikey,descriptor/*}: >
+      INFLATION, the severest measured here. These graphs hang MORE sio:SIO_000008
+      attributes off the SAME pubchem/compound/CID* IRIs, so an unpinned attribute walk
+      returns x30.125 (723 vs 24 for CID2244) — every row well-formed, so DISTINCT does
+      not help. FIX = pin <http://rdf.ncbi.nlm.nih.gov/pubchem/compound>.
+    id.nlm.nih.gov/mesh: >
+      JOIN target, not an inflation source — MeSH headings, disjoint IRIs from every
+      chemical dataset. No direct subject-position link from a compound; bridge on the CID.
+    .well-known/void: >
+      The endpoint's OWN machine-readable stats: exact void:triples per graph (spot-checked
+      against live COUNT for pdb-ccd and drugbank — both exact) plus sd:propertyFeature /
+      sd:extensionFunction, which is where the whole sachem/fulltext/ms procedural API is
+      declared. void:distinctSubjects does NOT agree with a live COUNT(DISTINCT ?s) — use
+      void:triples, measure subjects yourself.
+
+entity_counts:                        # all verified 2026-09-14, COUNT(DISTINCT) + graph-pinned
+  named_graphs: 39
+  structure_indexed_datasets: 9       # datasets the sachem index spans (see agg_substructure_by_dataset)
+  triples_total: 43950346732          # sum of void:triples over all 39 graphs
+  chebi_classes: 224439
+  chembl_small_molecules: 1920603
+  pdbccd_ligands: 48434
+  drugbank_drugs: 14630
+  mona_spectra: 5010892
+
+global_gotchas:
+  - id: union_default_graph
+    say: >
+      This endpoint declares sd:UnionDefaultGraph: a triple pattern with NO GRAPH clause
+      matches the UNION of all 39 graphs. Because the co-hosted graphs hang extra
+      attributes off the SAME compound IRIs, an unpinned attribute walk on PubChem CID2244
+      returns 723 rows where the pinned one returns 24 (x30.125) — in under a second, with
+      every row well-formed, so neither an error nor DISTINCT will reveal it. FIX = always
+      GRAPH-pin (or FROM) the dataset graph you actually mean.
+    check:
+      kind: ratio
+      date: "2026-09-14"
+      unpinned: |
+        PREFIX sio: <http://semanticscience.org/resource/>
+        SELECT (COUNT(*) AS ?n) WHERE {
+          <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID2244> sio:SIO_000008 ?a
+        }
+      pinned: |
+        PREFIX sio: <http://semanticscience.org/resource/>
+        SELECT (COUNT(*) AS ?n) WHERE {
+          GRAPH <http://rdf.ncbi.nlm.nih.gov/pubchem/compound> {
+            <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID2244> sio:SIO_000008 ?a }
+        }
+      expect: {ratio: 30.125, tolerance: 0.05}
+
+  - id: similarity_search_result_node
+    say: >
+      sachem:similaritySearch binds a STRUCTURED RESULT node, not a compound. Selecting its
+      subject returns the right NUMBER of rows with the variable UNBOUND — empty cells, no
+      error, no warning. You must pull `?r sachem:compound ?c` (and sachem:score) off it.
+      Use sachem:similarCompoundSearch instead when you want the compound bound directly and
+      do not need the score. The same result-node shape applies to sachem:scoredSubstructureSearch
+      and fulltext:compoundSearch; plain sachem:substructureSearch / sachem:exactSearch bind
+      the compound directly.
+    check:
+      kind: zero_rows
+      date: "2026-09-14"
+      query: |
+        PREFIX sachem: <http://bioinfo.uochb.cas.cz/rdf/v1.0/sachem#>
+        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+        SELECT ?result WHERE {
+          ?result sachem:similaritySearch [
+                    sachem:query "CC(=O)Oc1ccccc1C(=O)O" ;
+                    sachem:cutoff "0.8"^^xsd:double ] .
+          FILTER(BOUND(?result))
+        } LIMIT 5
+
+  - id: topn_is_per_dataset
+    say: >
+      sachem:topn caps hits PER INDEXED DATASET, not per query. `sachem:topn 5` over the
+      benzanilide scaffold returns 45 rows — exactly 5 from each of the 9 datasets — so a
+      reader who set topn expecting 5 silently gets 9x their cap, with the cheapest-ranked
+      hit of every dataset mixed in. FIX = keep topn for per-dataset depth and add an outer
+      LIMIT (or a namespace FILTER) for the total you actually want.
+    check:
+      kind: count
+      date: "2026-09-14"
+      query: |
+        PREFIX sachem: <http://bioinfo.uochb.cas.cz/rdf/v1.0/sachem#>
+        SELECT (COUNT(*) AS ?n) WHERE {
+          ?r sachem:scoredSubstructureSearch [
+               sachem:query "O=C(Nc1ccccc1)c1ccccc1" ; sachem:topn 5 ] .
+          ?r sachem:compound ?c .
+        }
+      expect: {value: 45, tolerance: 0.02}
+
+  - id: order_by_predicate_variable_errors
+    say: >
+      This is NOT Virtuoso — it is a PostgreSQL-backed engine, and `ORDER BY ?p` where ?p sits
+      in the PREDICATE position can abort the query with a RAW driver error
+      ("org.postgresql.util.PSQLException: ERROR: syntax error at or near \")\"", HTTP 400)
+      instead of a SPARQL error. It is dataset-dependent — reproducible for pdb-ccd, Wikidata
+      and DrugBank subjects, while the same shape succeeds for PubChem, ChEMBL and ChEBI — and
+      it fails identically on a warm second run, so it is not a load or cache effect. FIX =
+      `ORDER BY STR(?p)`, which returns normally in every case tested; or drop the ORDER BY.
+    check:
+      kind: error
+      date: "2026-09-14"
+      expect: {timeout_s: 60}
+      query: |
+        SELECT ?p ?o WHERE {
+          GRAPH <https://identifiers.org/pdb-ccd/> {
+            <https://identifiers.org/pdb-ccd/AIN> ?p ?o }
+        } ORDER BY ?p
+
+  - id: literals_match_by_value_not_term
+    say: >
+      Unlike the Virtuoso-backed RDF Portal endpoints, this engine matches literals by RDF-1.1
+      VALUE: a plain "IC50" and "IC50"^^xsd:string are interchangeable in a triple pattern and
+      both return the same 452 rows. So the term-vs-value datatype trap that costs whole
+      result sets elsewhere in this corpus does NOT apply here, and you do not need STR() to
+      be safe. A language tag is still a distinct term — "IC50"@en matches nothing.
+    check:
+      kind: ratio
+      date: "2026-09-14"
+      numerator: |
+        PREFIX chembl: <http://rdf.ebi.ac.uk/terms/chembl#>
+        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+        SELECT (COUNT(*) AS ?n) WHERE {
+          GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
+            <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL25> chembl:hasActivity ?a .
+            ?a chembl:standardType "IC50"^^xsd:string }
+        }
+      denominator: |
+        PREFIX chembl: <http://rdf.ebi.ac.uk/terms/chembl#>
+        SELECT (COUNT(*) AS ?n) WHERE {
+          GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
+            <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL25> chembl:hasActivity ?a .
+            ?a chembl:standardType "IC50" }
+        }
+      expect: {ratio: 1.0, tolerance: 0.02}
+
+examples:
+  - id: exact_structure_to_all_database_ids
+    intent: turn one drawn structure into that molecule's identifier in every hosted dataset
+    question: "I have a SMILES for aspirin — what is this molecule's ID in PubChem, ChEMBL, ChEBI, Wikidata, DrugBank and PDB?"
+    complexity: basic
+    sparql: |
+      PREFIX sachem: <http://bioinfo.uochb.cas.cz/rdf/v1.0/sachem#>
+      SELECT ?compound WHERE {
+        ?compound sachem:exactSearch [ sachem:query "CC(=O)Oc1ccccc1C(=O)O" ] .
+      }
+    verified: {row_count: 60, date: "2026-09-14",
+               note: "CID2244, CHEMBL25, CHEBI_15365, wd:Q18216, MM00080, pdb-ccd AIN + 52 MoNA + 1 ISDB + 1 DrugBank"}
+    teaches: "sachem:exactSearch binds the compound IRI DIRECTLY (no result node) and spans all 9 datasets at once — this is a structure-keyed identifier crosswalk, and it needs no xref predicate, no TogoID call and no name matching."
+    traps_avoided:
+      - "This is the ONLY identifier bridge that works for a molecule you have as a drawing rather than as an ID. Do not reach for rdfs:seeAlso first: the datasets cross-reference each other only patchily, whereas every one of them is in the structure index."
+      - say: "Hit counts are NOT one-per-dataset: 8 datasets return exactly 1 aspirin, but MoNA returns 52, because MoNA is a spectral library that mints one compound node per measured spectrum. A naive `COUNT(*)` reads as '60 databases know aspirin'. FIX = COUNT over the DISTINCT dataset namespace, or FILTER MoNA out."
+        check:
+          kind: count
+          date: "2026-09-14"
+          query: |
+            PREFIX sachem: <http://bioinfo.uochb.cas.cz/rdf/v1.0/sachem#>
+            SELECT (COUNT(*) AS ?n) WHERE {
+              ?compound sachem:exactSearch [ sachem:query "CC(=O)Oc1ccccc1C(=O)O" ] .
+              FILTER(STRSTARTS(STR(?compound), "https://idsm.elixir-czech.cz/rdf/mona/"))
+            }
+          expect: {value: 52, tolerance: 0.02}
+      - say: "exactSearch matches the structure you actually drew, INCLUDING protonation and stereochemistry. Neutral glutamic acid \"OC(=O)CCC(N)C(=O)O\" gives CHEBI_18237, the un-stereo anion gives CHEBI_14321, and only \"[O-]C(=O)CC[C@H]([NH3+])C(=O)[O-]\" gives CHEBI_29985 (L-glutamate(1-)) — the one biochemical databases such as Rhea actually use. FIX = draw the physiological ion, or use similaritySearch."
+        check:
+          kind: zero_rows
+          date: "2026-09-14"
+          query: |
+            PREFIX sachem: <http://bioinfo.uochb.cas.cz/rdf/v1.0/sachem#>
+            SELECT ?c WHERE {
+              ?c sachem:exactSearch [ sachem:query "OC(=O)CCC(N)C(=O)O" ] .
+              FILTER(STR(?c) = "http://purl.obolibrary.org/obo/CHEBI_29985")
+            }
+
+  - id: substructure_search_scoped_to_one_dataset
+    intent: run a scaffold search and keep only one dataset's hits, with readable names
+    question: "Which ChEBI compounds contain a coumarin scaffold?"
+    complexity: intermediate
+    sparql: |
+      PREFIX sachem: <http://bioinfo.uochb.cas.cz/rdf/v1.0/sachem#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?compound ?label WHERE {
+        ?compound sachem:substructureSearch [ sachem:query "O=c1ccc2ccccc2o1" ] .
+        FILTER(STRSTARTS(STR(?compound), "http://purl.obolibrary.org/obo/CHEBI_"))
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> { ?compound rdfs:label ?label }
+      } ORDER BY ?label LIMIT 25
+    verified: {min_rows: 25, date: "2026-09-14"}
+    teaches: "The structure index is dataset-agnostic, so you scope it AFTERWARDS by filtering the hit IRI's namespace — then GRAPH-pin that same dataset to pick up labels."
+    traps_avoided:
+      - say: "Do not drop the GRAPH pin when attaching the label: <bioinfo.iocb.cz/dataset/ontology> re-declares ChEBI's rdf:type AND rdfs:label under ChEBI's own IRIs, so an unpinned `?c a ?t ; rdfs:label ?l` returns 4 rows for CHEBI_15365 where the pinned form returns 1 (x4 — the product of a x2 type leg and a x2 label leg)."
+        check:
+          kind: ratio
+          date: "2026-09-14"
+          unpinned: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT (COUNT(*) AS ?n) WHERE {
+              <http://purl.obolibrary.org/obo/CHEBI_15365> a ?t ; rdfs:label ?l .
+            }
+          pinned: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT (COUNT(*) AS ?n) WHERE {
+              GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
+                <http://purl.obolibrary.org/obo/CHEBI_15365> a ?t ; rdfs:label ?l . }
+            }
+          expect: {ratio: 4.0, tolerance: 0.05}
+      - "Filtering the namespace does not make the search cheaper — the index is still scanned across all 9 datasets. If you only ever want one dataset, IDSM also publishes per-dataset endpoints (.../sparql/endpoint/chebi, /chembl, /pubchem, /drugbank, /wikidata) that skip the others entirely."
+
+  - id: similarity_search_with_score
+    intent: rank structurally similar compounds by Tanimoto score
+    question: "Which ChEBI compounds are at least 85% similar to aspirin, and how similar?"
+    complexity: intermediate
+    sparql: |
+      PREFIX sachem: <http://bioinfo.uochb.cas.cz/rdf/v1.0/sachem#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      SELECT ?compound ?label ?score WHERE {
+        ?result sachem:similaritySearch [
+                  sachem:query "CC(=O)Oc1ccccc1C(=O)O" ;
+                  sachem:cutoff "0.85"^^xsd:double ] .
+        ?result sachem:compound ?compound .
+        ?result sachem:score ?score .
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> { ?compound rdfs:label ?label }
+      } ORDER BY DESC(?score) ?compound LIMIT 15
+    verified: {min_rows: 15, date: "2026-09-14",
+               note: "top score 1.0 = CHEBI_13719 acetylsalicylate, CHEBI_15365 acetylsalicylic acid"}
+    teaches: "The scored searches use a RESULT-NODE shape: bind ?result, then read sachem:compound and sachem:score off it — and pass sachem:cutoff as a typed xsd:double."
+    traps_avoided:
+      - "A score of 1.0 does NOT mean 'the same compound': acetylsalicylate (the anion) and acetylsalicylic acid both score 1.0 here because the fingerprint ignores protonation. Use exactSearch when you mean identity."
+
+  - id: enum_chebi_compounds_by_role
+    intent: enumerate ALL compounds carrying a ChEBI role, via the role hierarchy
+    question: "How many ChEBI compounds have the role 'antifungal agent'?"
+    complexity: basic
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT (COUNT(DISTINCT ?compound) AS ?n) WHERE {
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
+          ?role rdfs:subClassOf* obo:CHEBI_35718 .
+          ?compound rdfs:subClassOf [ a owl:Restriction ;
+                                      owl:onProperty obo:RO_0000087 ;
+                                      owl:someValuesFrom ?role ] .
+        }
+      }
+    verified: {n: 706, date: "2026-09-14"}
+    teaches: "A ChEBI role is asserted as an owl:Restriction on RO_0000087 ('has role'), and roles form a hierarchy — so lead with `?role rdfs:subClassOf* <role>` and let the restriction match any descendant role."
+    traps_avoided:
+      - say: "Matching the role IRI DIRECTLY (owl:someValuesFrom obo:CHEBI_35718, no subClassOf*) returns 358 instead of 706 — it silently drops every compound annotated with a more specific role such as an azole antifungal. The naive query undercounts by half and looks perfectly successful."
+        check:
+          kind: ratio
+          date: "2026-09-14"
+          numerator: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX obo: <http://purl.obolibrary.org/obo/>
+            SELECT (COUNT(DISTINCT ?compound) AS ?n) WHERE {
+              GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
+                ?role rdfs:subClassOf* obo:CHEBI_35718 .
+                ?compound rdfs:subClassOf [ a owl:Restriction ;
+                                            owl:onProperty obo:RO_0000087 ;
+                                            owl:someValuesFrom ?role ] . }
+            }
+          denominator: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX obo: <http://purl.obolibrary.org/obo/>
+            SELECT (COUNT(DISTINCT ?compound) AS ?n) WHERE {
+              GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
+                ?compound rdfs:subClassOf [ a owl:Restriction ;
+                                            owl:onProperty obo:RO_0000087 ;
+                                            owl:someValuesFrom obo:CHEBI_35718 ] . }
+            }
+          expect: {ratio: 1.9721, tolerance: 0.05}
+
+  - id: agg_substructure_hits_by_dataset
+    intent: count structure-search hits per dataset — the un-inflated way to size a scaffold
+    question: "How many compounds containing a benzanilide scaffold does each hosted dataset hold?"
+    complexity: aggregation
+    sparql: |
+      PREFIX sachem: <http://bioinfo.uochb.cas.cz/rdf/v1.0/sachem#>
+      SELECT ?dataset (COUNT(DISTINCT ?compound) AS ?hits) WHERE {
+        ?compound sachem:substructureSearch [ sachem:query "O=C(Nc1ccccc1)c1ccccc1" ] .
+        BIND(REPLACE(STR(?compound), "^(.*/)[^/]+$", "$1") AS ?dataset)
+      } GROUP BY ?dataset ORDER BY DESC(?hits)
+    verified: {row_count: 9, date: "2026-09-14",
+               note: "pubchem 1562165, chembl 58922, wikidata 8977, chebi 1605, pdb-ccd 625, molmedb 554, isdb 173, drugbank 156, mona 151 (1,633,328 total)"}
+    teaches: "Bucketing the hit IRI by namespace is how you see WHICH datasets the structure index actually spans — nine of them — and it doubles as the un-inflated per-dataset total because the sachem index returns each compound once."
+    traps_avoided:
+      - "COUNT(DISTINCT) here is honest without a GRAPH pin ONLY because sachem hits come from the procedural index rather than from graph matching. The moment you join anything off ?compound, the union-default-graph rule applies again and you must pin."
+
+  - id: compound_molfile
+    intent: retrieve the stored MDL molfile (atoms and coordinates) for a compound
+    question: "Give me the 3D structure file for the aspirin ligand in the PDB chemical component dictionary."
+    complexity: basic
+    sparql: |
+      PREFIX sachem: <http://bioinfo.uochb.cas.cz/rdf/v1.0/sachem#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      SELECT ?compound ?molfile WHERE {
+        ?compound sachem:exactSearch [ sachem:query "CC(=O)Oc1ccccc1C(=O)O" ] .
+        FILTER(STRSTARTS(STR(?compound), "https://identifiers.org/pdb-ccd/"))
+        GRAPH <https://identifiers.org/pdb-ccd/> {
+          ?compound sio:SIO_000008 [ a sio:SIO_011120 ; sio:SIO_000300 ?molfile ] .
+        }
+      }
+    verified: {row_count: 1, date: "2026-09-14", has_values: ["https://identifiers.org/pdb-ccd/AIN"],
+               note: "molfile begins 'AIN - Model conformer / RDKit 3D / 21 21 0 0...'"}
+    teaches: "Structures are stored as an ATTRIBUTE NODE, not a literal on the compound: compound -sio:SIO_000008-> node, typed sio:SIO_011120 (MDL molfile), whose sio:SIO_000300 carries the text."
+    traps_avoided:
+      - say: "The attribute node lives in a PARALLEL IRI namespace — <https://idsm.elixir-czech.cz/rdf/pdb-ccd/AIN_molfile> for compound <https://identifiers.org/pdb-ccd/AIN>. That is why the graph holds exactly 2 subjects per ligand (96,868 for 48,434 ligands); it is the schema, not duplication, so do NOT try to collapse it with DISTINCT. Never construct the attribute IRI by hand — traverse SIO_000008."
+        check:
+          kind: ratio
+          date: "2026-09-14"
+          numerator: |
+            SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
+              GRAPH <https://identifiers.org/pdb-ccd/> { ?s ?p ?o }
+            }
+          denominator: |
+            PREFIX sio: <http://semanticscience.org/resource/>
+            SELECT (COUNT(DISTINCT ?c) AS ?n) WHERE {
+              GRAPH <https://identifiers.org/pdb-ccd/> { ?c sio:SIO_000008 ?a }
+            }
+          expect: {ratio: 2.0, tolerance: 0.02}
+
+  - id: fulltext_name_to_compound
+    intent: resolve a chemical NAME to compound IRIs when you have no structure and no ID
+    question: "Which compounds are named something like 'ibuprofen'?"
+    complexity: basic
+    sparql: |
+      PREFIX fulltext: <http://bioinfo.uochb.cas.cz/rdf/v1.0/fulltext#>
+      SELECT ?compound ?name WHERE {
+        ?result fulltext:compoundSearch [ fulltext:query "ibuprofen" ] .
+        ?result fulltext:compound ?compound .
+        ?result fulltext:name ?name .
+      } ORDER BY ?compound LIMIT 10
+    verified: {min_rows: 10, date: "2026-09-14",
+               note: "CID10041875 'ibuprofen nitroxybutyl ester', CID101072 'rac-ibuprofen amide', ..."}
+    teaches: "Text search is a first-class INDEXED extension here (fulltext:compoundSearch over PubChem synonyms), not a FILTER(CONTAINS()) scan — so it is the correct route when the user supplies only a name; pivot to a structure search as soon as you have one hit."
+    traps_avoided:
+      - "It matches SYNONYM SUBSTRINGS, so 'ibuprofen' returns esters, amides and impurities alongside the drug — every hit is a different molecule. Treat the result as candidates to disambiguate (via exactSearch or a property lookup), never as the compound."
+
+  - id: pubchem_properties_for_structure
+    intent: read computed physicochemical properties for a drawn structure
+    question: "For the caffeine structure, what are its molecular weight, XLogP and polar surface area?"
+    complexity: intermediate
+    sparql: |
+      PREFIX sachem: <http://bioinfo.uochb.cas.cz/rdf/v1.0/sachem#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX vocab: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
+      SELECT ?compound ?name ?mw ?logp ?tpsa WHERE {
+        ?compound sachem:exactSearch [ sachem:query "CN1C=NC2=C1C(=O)N(C)C(=O)N2C" ] .
+        GRAPH <http://rdf.ncbi.nlm.nih.gov/pubchem/compound> {
+          ?compound skos:prefLabel ?name ;
+                    vocab:molecular_weight ?mw ;
+                    vocab:xlogp3 ?logp ;
+                    vocab:tpsa ?tpsa .
+        }
+      }
+    verified: {row_count: 1, date: "2026-09-14",
+               has_values: ["http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID2519"],
+               note: "Caffeine, MW 194.19, XLogP3 -0.1, TPSA 58.4"}
+    teaches: "PubChem's pre-computed descriptors sit as plain literal predicates in the vocabulary# namespace directly on the compound — no attribute-node hop — so structure search plus a graph-pinned lookup answers a drug-likeness question in one query."
+    traps_avoided:
+      - "The GRAPH pin also does the dataset filtering for free: exactSearch returns hits from all 9 datasets, but only pubchem/compound IRIs join inside this graph, so the non-PubChem hits drop out without an explicit namespace FILTER."
+
+  - id: chembl_activities_for_structure
+    intent: get measured bioactivities for a molecule identified by its structure
+    question: "What IC50 values have been measured for ibuprofen?"
+    complexity: advanced
+    sparql: |
+      PREFIX sachem: <http://bioinfo.uochb.cas.cz/rdf/v1.0/sachem#>
+      PREFIX chembl: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?molecule ?type ?relation ?value ?units ?assayLabel WHERE {
+        ?molecule sachem:exactSearch [ sachem:query "CC(C)Cc1ccc(cc1)C(C)C(=O)O" ] .
+        FILTER(STRSTARTS(STR(?molecule), "http://rdf.ebi.ac.uk/resource/chembl/molecule/"))
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
+          ?molecule chembl:hasActivity ?activity .
+          ?activity chembl:standardType ?type ;
+                    chembl:standardValue ?value ;
+                    chembl:hasAssay ?assay .
+          OPTIONAL { ?activity chembl:standardRelation ?relation }
+          OPTIONAL { ?activity chembl:standardUnits ?units }
+          ?assay rdfs:label ?assayLabel .
+          FILTER(?type = "IC50")
+        }
+      } ORDER BY ?value ?assayLabel LIMIT 15
+    verified: {min_rows: 15, date: "2026-09-14",
+               note: "CHEMBL521; first rows 11.2 ug.mL-1, then 100.0 / 212.0 / 220.0 nM"}
+    teaches: "Structure search hands you the ChEMBL molecule IRI, and chembl:hasActivity fans out to its measurements — each activity carrying standardType / standardValue / standardUnits plus a chembl:hasAssay back-link."
+    traps_avoided:
+      - "chembl:standardValue is meaningless without chembl:standardUnits, and ORDER BY ?value mixes them: this very result sorts 11.2 ug.mL-1 ABOVE 100.0 nM, i.e. it puts a ~1000x weaker measurement first. FIX = filter to one unit before ranking potency."
+      - say: "standardValue is NOT present on every activity — 3,198 of CHEMBL25's 4,073 activities have one (78.5%). Asserting it as a plain triple (as here) therefore DROPS the remaining 875; wrap it in OPTIONAL when you need full coverage rather than a ranked list."
+        check:
+          kind: ratio
+          date: "2026-09-14"
+          numerator: |
+            PREFIX chembl: <http://rdf.ebi.ac.uk/terms/chembl#>
+            SELECT (COUNT(*) AS ?n) WHERE {
+              GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
+                <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL25> chembl:hasActivity ?a .
+                ?a chembl:standardValue ?v }
+            }
+          denominator: |
+            PREFIX chembl: <http://rdf.ebi.ac.uk/terms/chembl#>
+            SELECT (COUNT(*) AS ?n) WHERE {
+              GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
+                <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL25> chembl:hasActivity ?a }
+            }
+          expect: {ratio: 0.785, tolerance: 0.02}
+
+  - id: xdb_structure_to_rhea_reactions
+    intent: "cross-DB: a drawn structure -> ChEBI IRI -> every Rhea reaction using it"
+    question: "Which enzymatic reactions involve the molecule I have drawn (L-glutamate)?"
+    complexity: cross_db
+    endpoint_name: idsm
+    sparql: |
+      PREFIX sachem: <http://bioinfo.uochb.cas.cz/rdf/v1.0/sachem#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX rh: <http://rdf.rhea-db.org/>
+      SELECT DISTINCT ?chebi ?rhea ?equation WHERE {
+        ?chebi sachem:exactSearch [ sachem:query "[O-]C(=O)CC[C@H]([NH3+])C(=O)[O-]" ] .
+        FILTER(STRSTARTS(STR(?chebi), "http://purl.obolibrary.org/obo/CHEBI_"))
+        SERVICE <https://sparql.rhea-db.org/sparql> {
+          ?rhea rdfs:subClassOf rh:Reaction ; rh:equation ?equation ;
+                rh:side/rh:contains/rh:compound ?cmpd .
+          ?cmpd (rh:chebi|rh:reactivePart/rh:chebi|rh:underlyingChebi/rh:chebi) ?chebi .
+        }
+      } ORDER BY ?rhea LIMIT 10
+    verified: {min_rows: 10, date: "2026-09-14",
+               note: "CHEBI_29985 -> RHEA:10020, 10212, 10348, ... ; 1.38s"}
+    teaches: "The ChEBI IRI is the join key out of chemistry into biochemistry: structure-search locally to obtain it, then SERVICE-federate on that same IRI — the endpoint declares sd:BasicFederatedQuery and this runs in ~1.4s."
+    traps_avoided:
+      - "Bind the ChEBI IRI on the LOCAL side and let it flow INTO the SERVICE block, as here. Written the other way round — Rhea's compounds streamed out and matched locally — the join has to ship thousands of bindings across the wire."
+      - "Rhea models reactants as the physiological ion, so this join returns nothing unless the SMILES you draw is the ionized, stereo-correct form; see exact_structure_to_all_database_ids for the three different ChEBI IDs the three forms of glutamate produce."
+
+schema_delta:
+  - "sachem:substructureSearch parameters beyond query/cutoff/topn, all optional and all
+     declared in the endpoint's sd:propertyFeature list: sachem:queryFormat (SMILES vs MDL
+     molfile input), sachem:searchMode, sachem:tautomerMode, sachem:chargeMode,
+     sachem:isotopeMode, sachem:stereoMode, sachem:radicalMode, sachem:aromaticityMode,
+     sachem:similarityRadius and sachem:internalMatchingLimit — the knobs that decide whether
+     two drawings of the same molecule are treated as equal."
+  - "MASS-SPECTRAL similarity exists here as four SPARQL extension FUNCTIONS (not predicates):
+     ms:cosineGreedy, ms:cosineHungarian, ms:modifiedCosine and ms:normalize under
+     <http://bioinfo.uochb.cas.cz/rdf/v1.0/ms#>, alongside the function sachem:similarity
+     (which scores two structures you supply, rather than searching the index). All five are
+     declared in the endpoint's sd:extensionFunction list — that declaration is what is
+     verified here; their argument signatures are NOT, and a guessed call returns 0 rows
+     silently, so read IDSM's manual before using one. The spectra they operate on live in
+     the MoNA (5,010,892 spectra) and ISDB graphs."
+  - "fulltext:bioassaySearch is the assay-side twin of fulltext:compoundSearch, searching
+     PubChem BioAssay text. It does NOT use the result-node shape: it binds the assay IRI
+     DIRECTLY, like substructureSearch — `?assay fulltext:bioassaySearch [ fulltext:query
+     \"acetylcholinesterase\" ]` yields pubchem/bioassay/AID* typed vocabulary#BioAssay."
+  - "<https://idsm.elixir-czech.cz/.well-known/sparql-examples> holds 27 curated example
+     queries as sh:select literals with rdfs:comment questions — a live, machine-readable
+     cookbook for the PubChem side of this endpoint. Note none of the 27 uses sachem."
+  - "MolMeDB (<https://rdf.molmedb.upol.cz>) carries membrane–permeability and transporter
+     interaction data, and ISDB is an in-silico MS/MS spectral library for natural products —
+     neither has a counterpart elsewhere in this corpus."
+
+id_join_map:
+  stable_anchor: >
+    The STRUCTURE is the anchor here, not an accession: a SMILES (or MDL molfile via
+    sachem:queryFormat) resolved with sachem:exactSearch returns the molecule's native IRI in
+    all 9 datasets at once. Where you already hold an ID, anchor on that dataset's own IRI —
+    PubChem <.../pubchem/compound/CID<n>>, ChEMBL <.../chembl/molecule/CHEMBL<n>>, ChEBI
+    <obo:CHEBI_<n>>, Wikidata <wd:Q<n>>, PDB-CCD <https://identifiers.org/pdb-ccd/<CCD>>,
+    MolMeDB <https://identifiers.org/molmedb/MM<n>>.
+  same_endpoint_joins:
+    pubchem: "GRAPH <http://rdf.ncbi.nlm.nih.gov/pubchem/compound> — descriptors, prefLabel (example pubchem_properties_for_structure)"
+    chembl: "GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> — chembl:hasActivity to bioactivities (example chembl_activities_for_structure)"
+    chebi: "GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> — labels, roles, subClassOf (examples substructure_search_scoped_to_one_dataset, enum_chebi_compounds_by_role)"
+    pdb-ccd: "GRAPH <https://identifiers.org/pdb-ccd/> — MDL molfiles via sio:SIO_000008 (example compound_molfile)"
+    drugbank: "GRAPH <http://wifo5-04.informatik.uni-mannheim.de/drugbank/resource/drugs/> — 14,630 drug structures"
+    wikidata: "GRAPH <http://www.wikidata.org/entity/> — the local Wikidata chemical mirror; join to live Wikidata on the same wd: IRI"
+  xrefs:
+    rhea: "no stored xref — join on the ChEBI IRI produced by structure search (example xdb_structure_to_rhea_reactions)"
+    pubchem_seeAlso: "rdfs:seeAlso on pubchem/compound/CID* — 3 values for CID2244, and they are MIXED: an NCI Thesaurus IRI, the same NCIt term as an identifiers.org IRI, and the Wikidata entity. Filter by namespace; do not assume the first is the one you want."
+    chembl_moleculeXref: "chembl:moleculeXref, 22 values for CHEMBL25 — outbound to PubChem/DrugBank/other resources"
+    chebi_hasDbXref: "oboInOwl:hasDbXref on ChEBI classes, 30 values for CHEBI_15365 — string-form accessions, not IRIs"
+  bridged_via_togoid:
+    - "mesh, uniprot, and the gene/protein databases — IDSM carries no subject-position link from a compound to them; convert the CID or ChEMBL ID with togoid_convertId first."
