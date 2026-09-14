@@ -1,0 +1,580 @@
+# MIE v3 — Fanta.bio RDF (FANTOM-derived cis-regulatory elements, human + mouse). Authored 2026-09-14
+# with the mie-generator skill against the rdfportal 'primary' endpoint; dataset metadata on
+# <http://rdf.fanta.bio/>: "Fanta.bio RDF converted from CRE peaks annotation JSONL", pav:version v1.2.1,
+# dct:created 2026-08-19. Every example and count below was run live on 2026-09-14.
+mie_spec: 3
+database: fantabio
+
+discovery:
+  title: Fanta.bio — cis-regulatory elements (CAGE-defined promoters and enhancers)
+  description: >
+    Human (GRCh38) and mouse (GRCm38) cis-regulatory elements defined from transcription-start activity and
+    classed as promoter- or enhancer-level, each with genomic coordinates, transcription directionality,
+    linked genes, nearby transcript TSSs, and overlapping ChIP-Atlas transcription-factor peaks, ENCODE SCREEN
+    cCREs, FANTOM5 CAGE peaks/enhancers and refTSS.
+  keywords: [cis-regulatory element, cre, enhancer, promoter, cage, transcription start site, tss,
+             transcriptional activity, directionality, bidirectional transcription, chip-seq,
+             transcription factor binding, chip-atlas, screen ccre, encode, fantom5, reftss,
+             gene regulation, regulatory region, genomic coordinates, human, mouse]
+  categories: [genomics, gene]
+
+endpoint: https://rdfportal.org/primary/sparql
+base_uri: http://fanta.bio/cre/
+graphs:
+  primary: http://rdfportal.org/dataset/fantabio   # the only graph holding fanta.bio CREs and their annotation bnodes
+  co_hosted:
+    hgnc: >
+      Same-endpoint JOIN target: a CRE's linked-gene node carries fb:hasTSSGeneSource
+      <http://identifiers.org/hgnc/N>, the exact gene IRI the hgnc graph declares (m2r:Gene, rdfs:label = approved
+      symbol, obo:so_part_of = cytoband). Direct GRAPH join (example xdb_hgnc_top_genes).
+    hco: >
+      Same-endpoint join target, but NOT by IRI: fantabio's chromosome refs are http://identifiers.org/hco/11/GRCh38
+      (plain slash) while HCO's own FALDO refs are …/hco/11\/GRCh38 (literal backslash), so an IRI-equality join
+      returns 0 rows. Compare strings with the backslash stripped (example xdb_hco_cytoband). Mouse refs are
+      …/mco/<chr>/GRCm38.
+    refex_fantom5: >
+      <http://refex.dbcls.jp/rdf/fantom5> (RefEx FANTOM5 expression) links genes by the same
+      http://identifiers.org/ncbigene/N IRIs that fantabio uses on gene and ChIP-Atlas antigen nodes — a possible
+      join target by that IRI; not further characterised here.
+    probed_clean: >
+      2g probe run 2026-09-14. Reverse probe (?p unbound, forward + inverse) on a CRE IRI, its chromosome ref,
+      taxon, HGNC and NCBI Gene hubs, an Ensembl transcript, and two fb: class IRIs: the CRE IRI and every fb:
+      class occur ONLY in the fantabio graph (no row duplication, no conflicting values). Realistic fantabio
+      patterns measured pinned vs unpinned are identical: `?c a fb:CisRegulatoryElement` 821,722 both; antigen
+      label "CTCF" 115,094 both; `a obo:SO_0000123` 221,786 both; `a sio:SIO_000994` 71,432,908 both; the
+      chr11 region query 144 both; `?x a <http://identifiers.org/hgnc>` 26,313 both. Hub IRIs are shared
+      (hgnc/homologene/pubcasefinder/refex also describe the ncbigene/hgnc IRIs) but fantabio puts no label on
+      them — names live on its own blank nodes. The one measured bleed is generic vocabulary: faldo classes
+      (gotcha graph_pin).
+
+entity_counts:                     # COUNT(DISTINCT), pinned to the fantabio graph; date "2026-09-14"
+  cres: 821722                     # fb:CisRegulatoryElement; every one is exactly one of fb:ELA / fb:PLA
+  cres_human: 513895               # FCHS_*: ELA 441,268 + PLA 72,627 (taxon 9606, GRCh38)
+  cres_mouse: 307827               # FCMM_*: ELA 260,579 + PLA 47,248 (taxon 10090, GRCm38)
+  cres_with_linked_gene: 221786    # 27.0% (sio:SIO_000395); ELA 142,737, PLA 79,049
+  linked_genes: "hgnc 26,313 + mgi 28,138 + ncbigene-only 1,962 (fb:hasTSSGeneSource IRIs)"
+  multi_gene_nodes: 11104          # linked-gene nodes naming 2-8 genes at once
+  chipatlas_antigens: "human 1,839, mouse 904 distinct labels; 51,180 distinct SRX experiments"
+  chipatlas_overlap_nodes: 11679770   # one per (CRE, antigen) — NOT a CRE count
+  cres_with_reftss: 71357          # mouse only; 0 human
+
+global_gotchas:
+  - id: graph_pin
+    say: >
+      Pin GRAPH <http://rdfportal.org/dataset/fantabio>. Patterns anchored on fb: classes, CRE IRIs or
+      fantabio's chromosome refs return the same counts unpinned (probed 2026-09-14), but anything that
+      touches generic vocabulary does not: `?p a faldo:ExactPosition` returns 349,696,746 unpinned versus
+      fantabio's 1,643,444 — ×212.8 of other datasets' positions, returned in ~2s with no error. A pinned
+      query is also the only one whose answer stays safe when another dataset starts reusing a fb: term.
+    check:
+      kind: ratio
+      date: "2026-09-14"
+      unpinned: |
+        PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+        SELECT (COUNT(*) AS ?n) WHERE { ?p a faldo:ExactPosition }
+      pinned: |
+        PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/fantabio> { ?p a faldo:ExactPosition } }
+      expect: {ratio: 212.8, tolerance: 0.05}
+  - id: blank_node_annotations
+    say: >
+      Only CREs have IRIs (http://fanta.bio/cre/FCHS_N human, FCMM_N mouse). Everything hanging off them —
+      linked genes, TSSs, ChIP-Atlas antigens, experiments, SCREEN/FANTOM5/refTSS overlaps, locations and every
+      numeric score — is a BLANK NODE, so there is nothing to look up directly: enter through the CRE IRI, or
+      through a literal / xref IRI on the blank node (a gene IRI, an antigen label) and walk back to the CRE.
+      Every score is two hops away: node sio:SIO_000216 ?m . ?m sio:SIO_000300 ?value.
+  - id: plain_literals
+    say: >
+      Labels and identifiers (rdfs:label, dct:identifier) are PLAIN literals even though DATATYPE() reports
+      xsd:string. `rdfs:label "CTCF"` matches; `rdfs:label "CTCF"^^xsd:string` returns 0 rows silently.
+      Scores are typed numbers (directionality xsd:decimal, Q-scores / positions / TSS distance xsd:integer) —
+      compare them numerically, not as strings.
+    check:
+      kind: zero_rows
+      date: "2026-09-14"
+      query: |
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+        PREFIX fb: <http://fanta.bio/ontology/>
+        SELECT ?a WHERE { GRAPH <http://rdfportal.org/dataset/fantabio> {
+          ?a a fb:ChipAtlasAntigen ; rdfs:label "CTCF"^^xsd:string } } LIMIT 1
+  - id: two_species_one_graph
+    say: >
+      Human and mouse share the graph and every class. Scope a species with obo:RO_0002162
+      <http://identifiers.org/taxonomy/9606|10090> — otherwise counts mix them. Symbols follow each species'
+      capitalisation ("CTCF" is human, "Ctcf" mouse), coordinates are GRCh38 vs GRCm38, and tracks are not
+      symmetric: refTSS links exist for mouse CREs only (71,357 mouse, 0 human).
+    check:
+      kind: absent
+      date: "2026-09-14"
+      query: |
+        PREFIX fb: <http://fanta.bio/ontology/>
+        PREFIX obo: <http://purl.obolibrary.org/obo/>
+        SELECT ?cre WHERE { GRAPH <http://rdfportal.org/dataset/fantabio> {
+          ?cre fb:hasRefTSS ?r ; obo:RO_0002162 <http://identifiers.org/taxonomy/9606> } } LIMIT 1
+
+examples:
+  - id: cre_record
+    intent: the core record of one CRE — activity class, species, GRCh38 location, directionality
+    question: "Where is CRE FCHS_468377, is it promoter- or enhancer-level, and which strand dominates its transcription?"
+    complexity: basic
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX fb: <http://fanta.bio/ontology/>
+      SELECT ?id ?label ?activity ?taxon ?chrom ?begin ?end ?directionality
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/fantabio> {
+          VALUES ?cre { <http://fanta.bio/cre/FCHS_468377> }
+          ?cre dct:identifier ?id ; rdfs:label ?label ; a ?activity ;
+               obo:RO_0002162 ?taxon ; faldo:location ?loc ; sio:SIO_000216 ?dir .
+          FILTER(?activity IN (fb:PLA, fb:ELA))
+          ?dir a fb:Directionality ; sio:SIO_000300 ?directionality .
+          ?loc faldo:begin ?b ; faldo:end ?e .
+          ?b faldo:reference ?chrom ; faldo:position ?begin .
+          ?e faldo:position ?end .
+        }
+      }
+    verified: {row_count: 1, has_values: ["FCHS_468377", "cp38@MICAL2", "PLA", 12195767, 12196109], date: "2026-09-14"}
+    teaches: >
+      Each CRE is typed twice: fb:CisRegulatoryElement plus exactly one of fb:PLA (promoter-level activity) /
+      fb:ELA (enhancer-level activity) — filter ?activity to those two or the row doubles. Directionality =
+      (forward − reverse)/(forward + reverse) CAGE counts, in [-1, 1]; the location is a FALDO region whose
+      begin/end positions carry the chromosome ref.
+    traps_avoided:
+      - say: "rdfs:label is either the ID itself (most CREs) or a FANTOM CAGE-peak name like cp38@MICAL2 (220,718 CREs) — never a bare gene symbol; get genes from sio:SIO_000395 (enum_cres_for_gene)."
+        check:
+          kind: count
+          date: "2026-09-14"
+          query: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX fb: <http://fanta.bio/ontology/>
+            SELECT (COUNT(DISTINCT ?cre) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/fantabio> {
+              ?cre a fb:CisRegulatoryElement ; rdfs:label ?l . FILTER(CONTAINS(?l, "@")) } }
+          expect: {value: 220718, tolerance: 0.02}
+
+  - id: enum_cres_for_gene
+    intent: enumerate ALL CREs linked to one gene, by the gene's IRI — the gene → regulatory-element route
+    question: "How many promoter-level and enhancer-level CREs are linked to the human gene MICAL2 (HGNC:24693)?"
+    complexity: basic
+    sparql: |
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX fb: <http://fanta.bio/ontology/>
+      SELECT ?activity (COUNT(DISTINCT ?cre) AS ?n_cres)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/fantabio> {
+          ?gene fb:hasTSSGeneSource <http://identifiers.org/hgnc/24693> .
+          ?cre sio:SIO_000395 ?gene ; a ?activity .
+          FILTER(?activity IN (fb:PLA, fb:ELA))
+        }
+      }
+      GROUP BY ?activity
+    verified: {row_count: 2, has_values: ["ELA", "PLA", 26, 9], date: "2026-09-14"}
+    teaches: >
+      CRE → gene is sio:SIO_000395 ("to regulate") to a blank obo:SO_0000123 node; anchor it by
+      fb:hasTSSGeneSource <identifiers.org/hgnc/N> (human), <identifiers.org/mgi/MGI:N> (mouse) or
+      <identifiers.org/ncbigene/N> (1,962 genes with no HGNC/MGI record). The same node's rdfs:seeAlso also
+      lists ncbigene / hgnc / mgi / purl.uniprot.org IRIs, and rdfs:label / skos:altLabel / dct:alternative give
+      symbol, synonyms and full name. Only 27% of CREs have a linked gene.
+    traps_avoided:
+      - say: >
+          A gene node can name SEVERAL genes (11,104 nodes, 2-8 genes each) with no pairing between its labels
+          and its IRIs: selecting `?gene rdfs:label ?symbol ; fb:hasTSSGeneSource ?id` on FCHS_274091's node
+          (TRIOBP + NOL12) returns 4 rows, two of them wrong pairs. Key on the IRI and take the symbol from the
+          owning database (xdb_hgnc_top_genes), not from the same node.
+        check:
+          kind: count
+          date: "2026-09-14"
+          query: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX sio: <http://semanticscience.org/resource/>
+            PREFIX fb: <http://fanta.bio/ontology/>
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/fantabio> {
+              <http://fanta.bio/cre/FCHS_274091> sio:SIO_000395 ?g . ?g rdfs:label ?sym ; fb:hasTSSGeneSource ?id } }
+          expect: {value: 4, tolerance: 0}
+
+  - id: cres_in_region
+    intent: find CREs overlapping a genomic window by FALDO coordinates
+    question: "Which CREs overlap human chr11:12,150,000-12,160,000 (GRCh38)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX fb: <http://fanta.bio/ontology/>
+      SELECT ?cre ?activity ?begin ?end
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/fantabio> {
+          ?b faldo:reference <http://identifiers.org/hco/11/GRCh38> ; faldo:position ?begin .
+          FILTER(?begin >= 12148034 && ?begin <= 12160000)   # window start minus the longest CRE (1,966 bp)
+          ?loc faldo:begin ?b ; faldo:end ?e .
+          ?e faldo:position ?end .
+          FILTER(?end >= 12150000)
+          ?cre faldo:location ?loc ; a ?activity .
+          FILTER(?activity IN (fb:PLA, fb:ELA))
+        }
+      }
+      ORDER BY ?begin
+    verified: {row_count: 6, has_values: ["FCHS_468360", "FCHS_468362", 12159510], date: "2026-09-14"}
+    teaches: >
+      Anchor on the chromosome ref IRI + a begin-position range (fast, index-backed), then require end >= window
+      start for a true overlap. Refs are http://identifiers.org/hco/<chr>/GRCh38 (human) and
+      http://identifiers.org/mco/<chr>/GRCm38 (mouse, including _alt/_fix contigs); positions are xsd:integer.
+      CREs are 19-1,966 bp long, so widen the begin range by 1,966 to catch CREs starting before the window.
+    traps_avoided:
+      - "Do not type these refs from HCO's own IRIs: HCO writes …/hco/11\\/GRCh38 with a backslash, which matches nothing here (see xdb_hco_cytoband)."
+
+  - id: enum_cres_bound_by_antigen
+    intent: enumerate ALL CREs overlapped by ChIP-Atlas peaks of one transcription factor, with a score cut-off
+    question: "How many human promoter- and enhancer-level CREs overlap strong RUNX1 ChIP-seq peaks (max Q-score >= 1000)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX fb: <http://fanta.bio/ontology/>
+      SELECT ?activity (COUNT(DISTINCT ?cre) AS ?n_cres)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/fantabio> {
+          ?a a fb:ChipAtlasAntigen ; rdfs:label "RUNX1" ; sio:SIO_000216 ?mq .
+          ?mq a fb:MaxQscore ; sio:SIO_000300 ?maxq .
+          FILTER(?maxq >= 1000)
+          ?cre fb:hasOverlappedAnnotation ?a ; a ?activity .
+          FILTER(?activity IN (fb:PLA, fb:ELA))
+        }
+      }
+      GROUP BY ?activity
+    verified: {row_count: 2, has_values: ["ELA", "PLA", 15035, 12197], date: "2026-09-14"}
+    teaches: >
+      Each fb:ChipAtlasAntigen node is one (CRE, antigen) overlap: rdfs:label = antigen symbol, rdfs:seeAlso =
+      its NCBI Gene IRI (97.6% of nodes; tags like GFP, O-GlcNAc or AML1-ETO have none), and a fb:MaxQscore =
+      the best ChIP-Atlas peak Q-score among its experiments. Enumerate by label (or by the ncbigene IRI) and
+      count DISTINCT ?cre.
+    traps_avoided:
+      - say: >
+          Stored max Q-scores start at 500 (no overlap below that is in the graph), so a cut-off <= 500 filters
+          nothing (RUNX1: 51,851 CREs with no cut-off and with >= 500). Use a higher value to mean "strong".
+        check:
+          kind: count
+          date: "2026-09-14"
+          query: |
+            PREFIX sio: <http://semanticscience.org/resource/>
+            PREFIX fb: <http://fanta.bio/ontology/>
+            SELECT (MIN(?v) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/fantabio> {
+              ?q a fb:MaxQscore ; sio:SIO_000300 ?v } }
+          expect: {value: 500, tolerance: 0}
+      - say: >
+          Antigen labels are species-cased: "CTCF" hits 115,094 human CREs and no mouse ones; the mouse antigen is
+          "Ctcf" (50,716 CREs). Match both spellings, or the ncbigene IRI of each ortholog, for a two-species question.
+        check:
+          kind: count
+          date: "2026-09-14"
+          query: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX fb: <http://fanta.bio/ontology/>
+            SELECT (COUNT(DISTINCT ?cre) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/fantabio> {
+              ?a a fb:ChipAtlasAntigen ; rdfs:label "Ctcf" . ?cre fb:hasOverlappedAnnotation ?a } }
+          expect: {value: 50716, tolerance: 0.02}
+
+  - id: antigens_at_cre
+    intent: list the transcription factors / chromatin proteins bound at one CRE, strongest first
+    question: "Which ChIP-Atlas antigens overlap CRE FCHS_468377, with their best Q-score and number of experiments?"
+    complexity: intermediate
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX fb: <http://fanta.bio/ontology/>
+      SELECT ?antigen ?ncbigene ?max_qscore (COUNT(?exp) AS ?n_experiments)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/fantabio> {
+          <http://fanta.bio/cre/FCHS_468377> fb:hasOverlappedAnnotation ?a .
+          ?a a fb:ChipAtlasAntigen ; rdfs:label ?antigen ; sio:SIO_000216 ?mq ; fb:hasExperiment ?exp .
+          ?mq sio:SIO_000300 ?max_qscore .
+          OPTIONAL { ?a rdfs:seeAlso ?ncbigene }
+        }
+      }
+      GROUP BY ?antigen ?ncbigene ?max_qscore
+      ORDER BY DESC(?max_qscore)
+    verified: {row_count: 25, has_values: ["ETS1", 1776, "PBX1", "GATA2"], date: "2026-09-14"}
+    teaches: >
+      fb:hasOverlappedAnnotation is POLYMORPHIC: one CRE points to fb:ChipAtlasAntigen, fb:ScreenCcre,
+      fb:Fantom5CagePeak and fb:Fantom5Enhancer nodes alike (FCHS_468377: 25 antigens, 1 SCREEN cCRE, 5 CAGE
+      peaks) — always type the node. Keep OPTIONAL on rdfs:seeAlso for non-gene antigens.
+
+  - id: chipatlas_experiments
+    intent: drill from an antigen overlap to its individual ChIP-Atlas experiments and per-experiment Q-scores
+    question: "Which SRA experiments support ETS1 binding at CRE FCHS_468377, and how strong is each peak?"
+    complexity: advanced
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX fb: <http://fanta.bio/ontology/>
+      SELECT ?srx ?sra_link ?qscore
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/fantabio> {
+          <http://fanta.bio/cre/FCHS_468377> fb:hasOverlappedAnnotation ?a .
+          ?a a fb:ChipAtlasAntigen ; rdfs:label "ETS1" ; fb:hasExperiment ?exp .
+          ?exp dct:identifier ?srx ; rdfs:seeAlso ?sra_link ; sio:SIO_000216 ?q .
+          ?q a fb:Qscore ; sio:SIO_000300 ?qscore .
+        }
+      }
+      ORDER BY DESC(?qscore)
+    verified: {row_count: 5, has_values: ["SRX5574484", 1776, "SRX373733"], date: "2026-09-14"}
+    teaches: >
+      Antigen node fb:hasExperiment → blank sio:SIO_000994 node with dct:identifier = SRX accession,
+      rdfs:seeAlso <http://identifiers.org/insdc.sra/SRX…>, and an fb:Qscore; the antigen's fb:MaxQscore equals
+      the max of these. Experiment metadata (cell type, conditions) is NOT here — take the SRX to ChIP-Atlas/SRA.
+
+  - id: tss_near_cre
+    intent: transcripts whose TSS lies within ±500 bp of a CRE, with signed distance and the nearest flagged
+    question: "Which annotated transcript start sites lie near CRE FCHS_360282, and which is nearest?"
+    complexity: intermediate
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX fb: <http://fanta.bio/ontology/>
+      SELECT ?transcript ?distance_bp ?is_nearest
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/fantabio> {
+          <http://fanta.bio/cre/FCHS_360282> fb:hasTSS ?t .
+          ?t rdfs:seeAlso ?transcript ; sio:SIO_000216 ?d .
+          ?d a fb:TSSDistance ; sio:SIO_000300 ?distance_bp .
+          BIND(EXISTS { ?t a fb:NearestTSS } AS ?is_nearest)
+        }
+      }
+      ORDER BY DESC(?is_nearest) ?transcript
+    verified: {row_count: 6, has_values: ["ENST00000825504.1", -384], date: "2026-09-14"}
+    teaches: >
+      fb:hasTSS nodes (3,082,107) are every fb:TSS within -500..+500 bp (fb:TSSDistance, unit UO_0000244 base
+      pair); the closest ones are additionally typed fb:NearestTSS (1,165,286 — a CRE can have several, e.g. the
+      same start listed as both an Ensembl and an INSDC transcript). rdfs:seeAlso is an Ensembl transcript
+      (identifiers.org/ensembl/ENST…, versioned), RefSeq (identifiers.org/refseq/) or INSDC
+      (identifiers.org/insdc/) IRI.
+    traps_avoided:
+      - "Filtering to fb:NearestTSS drops the other transcripts within 500 bp; typing only fb:TSS keeps them all."
+      - say: "9 TSS nodes have no fb:TSSDistance, so this query's required distance drops them — make the distance OPTIONAL when counting TSSs."
+        check:
+          kind: count
+          date: "2026-09-14"
+          query: |
+            PREFIX sio: <http://semanticscience.org/resource/>
+            PREFIX fb: <http://fanta.bio/ontology/>
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/fantabio> {
+              ?t a fb:TSS . FILTER NOT EXISTS { ?t sio:SIO_000216 ?d } } }
+          expect: {value: 9, tolerance: 0}
+
+  - id: annotation_tracks
+    intent: every external regulatory annotation overlapping one CRE — SCREEN cCREs, FANTOM5 CAGE peaks/enhancers, refTSS
+    question: "Which SCREEN cCREs, FANTOM5 CAGE peaks, FANTOM5 enhancers and refTSS clusters overlap mouse CRE FCMM_1585?"
+    complexity: intermediate
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+      PREFIX fb: <http://fanta.bio/ontology/>
+      SELECT ?track ?id ?link
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/fantabio> {
+          VALUES ?cre { <http://fanta.bio/cre/FCMM_1585> }
+          {
+            ?cre fb:hasOverlappedAnnotation ?a .
+            ?a a ?track ; dct:identifier ?id .
+            FILTER(?track IN (fb:ScreenCcre, fb:Fantom5CagePeak, fb:Fantom5Enhancer))
+            OPTIONAL { ?a foaf:page ?link }
+          } UNION {
+            ?cre fb:hasRefTSS ?r .
+            ?r a ?track ; dct:identifier ?id ; rdfs:seeAlso ?link .
+          }
+        }
+      }
+      ORDER BY ?track ?id
+    verified: {row_count: 8, has_values: ["rfmm_1222.1", "EM10E0934516", "chr1:39192715-39193099", "mm9::chr1:39250584..39250643,+;mm_577.1"], date: "2026-09-14"}
+    teaches: >
+      SCREEN cCREs carry dct:identifier (EH38E… human / EM10E… mouse) + foaf:page to screen.wenglab.org;
+      FANTOM5 CAGE peaks and enhancers carry only a coordinate-string identifier; refTSS hangs off a separate
+      predicate fb:hasRefTSS (not hasOverlappedAnnotation) with rdfs:seeAlso http://reftss.riken.jp/reftss/TSS:<id>.
+    traps_avoided:
+      - say: >
+          A FANTOM5 CAGE-peak identifier starts with ITS OWN assembly, and it is mostly not the CRE's: hg19 207,207
+          + hg38 7,027 human, mm9 141,940 + mm10 4,366 mouse overlap nodes. FCMM_1585 sits at GRCm38
+          chr1:39,193,033 while its peak string says mm9 39,250,584. Do not compare those numbers with faldo
+          positions unless the prefix is hg38::/mm10::. FANTOM5 enhancer strings do match GRCh38/GRCm38.
+        check:
+          kind: count
+          date: "2026-09-14"
+          query: |
+            PREFIX dct: <http://purl.org/dc/terms/>
+            PREFIX fb: <http://fanta.bio/ontology/>
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/fantabio> {
+              ?p a fb:Fantom5CagePeak ; dct:identifier ?id .
+              FILTER(STRSTARTS(?id, "hg19::") || STRSTARTS(?id, "mm9::")) } }
+          expect: {value: 349147, tolerance: 0.02}
+
+  - id: enum_bidirectional_promoters
+    intent: enumerate CREs by a numeric score — bidirectionally transcribed promoter-level CREs
+    question: "How many human promoter-level CREs are transcribed about equally on both strands (|directionality| <= 0.2)?"
+    complexity: basic
+    sparql: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX fb: <http://fanta.bio/ontology/>
+      SELECT (COUNT(DISTINCT ?cre) AS ?n)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/fantabio> {
+          ?cre a fb:PLA ; obo:RO_0002162 <http://identifiers.org/taxonomy/9606> ; sio:SIO_000216 ?d .
+          ?d a fb:Directionality ; sio:SIO_000300 ?v .
+          FILTER(ABS(?v) <= 0.2)
+        }
+      }
+    verified: {n: 3783, date: "2026-09-14"}
+    teaches: >
+      Directionality is on every CRE (xsd:decimal, -1 = all reverse-strand CAGE signal, +1 = all forward):
+      |value| near 0 means bidirectional, near 1 unidirectional. Numeric FILTERs work directly on it.
+
+  - id: agg_cres_by_species_activity
+    intent: size of the database by species and activity class — COUNT(DISTINCT) + graph pin
+    question: "How many promoter-level and enhancer-level CREs does fanta.bio define for human and for mouse?"
+    complexity: aggregation
+    sparql: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX fb: <http://fanta.bio/ontology/>
+      SELECT ?taxon ?activity (COUNT(DISTINCT ?cre) AS ?n_cres)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/fantabio> {
+          ?cre obo:RO_0002162 ?taxon ; a ?activity .
+          FILTER(?activity IN (fb:PLA, fb:ELA))
+        }
+      }
+      GROUP BY ?taxon ?activity
+      ORDER BY ?taxon ?activity
+    verified: {row_count: 4, has_values: [441268, 72627, 260579, 47248], date: "2026-09-14"}
+    teaches: "Group by obo:RO_0002162 taxon and the PLA/ELA subclass; the four cells sum to all 821,722 CREs."
+
+  - id: agg_screen_class
+    intent: distribution of human CREs across ENCODE SCREEN cCRE classes, counting CREs not overlap nodes
+    question: "How many human CREs overlap each ENCODE SCREEN cCRE class (dELS, pELS, PLS, CA-CTCF, …)?"
+    complexity: aggregation
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX fb: <http://fanta.bio/ontology/>
+      SELECT ?screen_class (COUNT(DISTINCT ?cre) AS ?n_cres) (COUNT(?a) AS ?n_overlaps)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/fantabio> {
+          ?cre obo:RO_0002162 <http://identifiers.org/taxonomy/9606> ; fb:hasOverlappedAnnotation ?a .
+          ?a a fb:ScreenCcre ; rdfs:label ?screen_class .
+        }
+      }
+      GROUP BY ?screen_class
+      ORDER BY DESC(?n_cres)
+    verified: {row_count: 8, has_values: ["dELS", 297930, 413339, "PLS", 51535], date: "2026-09-14"}
+    teaches: >
+      A SCREEN node's rdfs:label is its cCRE class (8 values: dELS, pELS, PLS, CA, CA-H3K4me3, CA-CTCF, TF, CA-TF);
+      one CRE can overlap several cCREs, including of different classes.
+    traps_avoided:
+      - "COUNT(?a) counts overlaps, not CREs — compare this query's n_overlaps and n_cres columns. Use COUNT(DISTINCT ?cre), and do not sum per-class CRE counts (a CRE overlapping two classes is counted in both)."
+
+  - id: xdb_hgnc_top_genes
+    intent: "cross-DB: fantabio gene links → HGNC approved symbol and cytoband, by the shared hgnc IRI"
+    question: "Which human genes have the most linked CREs, with their HGNC symbol and chromosome band?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX fb: <http://fanta.bio/ontology/>
+      SELECT ?hgnc ?symbol ?band ?n_cres
+      WHERE {
+        {
+          SELECT ?hgnc (COUNT(DISTINCT ?cre) AS ?n_cres)
+          WHERE {
+            GRAPH <http://rdfportal.org/dataset/fantabio> {
+              ?cre sio:SIO_000395 ?gene .
+              ?gene fb:hasTSSGeneSource ?hgnc .
+              FILTER(STRSTARTS(STR(?hgnc), "http://identifiers.org/hgnc/"))
+            }
+          }
+          GROUP BY ?hgnc ORDER BY DESC(?n_cres) LIMIT 5
+        }
+        GRAPH <http://rdfportal.org/dataset/hgnc> {
+          ?hgnc a m2r:Gene ; rdfs:label ?symbol .
+          OPTIONAL { ?hgnc obo:so_part_of ?band }
+        }
+      }
+      ORDER BY DESC(?n_cres)
+    verified: {row_count: 5, has_values: ["PVT1", 108, "SEPTIN9", 77, "8q24.21"], date: "2026-09-14"}
+    teaches: >
+      fb:hasTSSGeneSource IRIs are the hgnc graph's own gene IRIs, so no bridge is needed; aggregate in a
+      fantabio-pinned subquery, then join HGNC for the symbol. Taking the symbol from HGNC also resolves
+      multi-gene nodes, where fantabio's own labels cannot be paired with IDs.
+
+  - id: xdb_hco_cytoband
+    intent: "cross-DB: place a CRE in its HCO cytoband despite the two graphs spelling chromosome IRIs differently"
+    question: "Which cytogenetic band contains CRE FCHS_468377?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX hco: <http://identifiers.org/hco/>
+      SELECT ?cre ?pos ?band ?band_begin ?band_end
+      WHERE {
+        {
+          SELECT ?cre ?pos (STR(?ref) AS ?chr_key)
+          WHERE {
+            GRAPH <http://rdfportal.org/dataset/fantabio> {
+              VALUES ?cre { <http://fanta.bio/cre/FCHS_468377> }
+              ?cre faldo:location/faldo:begin ?b .
+              ?b faldo:reference ?ref ; faldo:position ?pos .
+            }
+          } LIMIT 1000
+        }
+        GRAPH <http://rdfportal.org/dataset/hco> {
+          ?inst hco:build hco:GRCh38 ; a ?band ; faldo:location ?bl .
+          ?bl faldo:begin ?s ; faldo:end ?e .
+          ?s faldo:position ?band_begin ; faldo:reference ?hco_ref .
+          ?e faldo:position ?band_end .
+        }
+        FILTER(?band_begin <= ?pos)
+        FILTER(?band_end >= ?pos)
+        FILTER(REPLACE(STR(?hco_ref), "[\\\\]", "", "") = ?chr_key)
+      }
+    verified: {row_count: 1, has_values: ["11p15.3", 11700001, 13800000], date: "2026-09-14"}
+    teaches: >
+      Join the two FALDO layers on the chromosome ref STRING with HCO's backslash removed, and pin HCO to one
+      build (hco:build hco:GRCh38). Keep the fantabio side in its own subquery and the coordinate FILTERs at the
+      outer level; the query then answers in under a second.
+    traps_avoided:
+      - say: >
+          Joining on the ref IRI itself returns 0 rows: fantabio writes http://identifiers.org/hco/11/GRCh38, HCO
+          writes …/hco/11\/GRCh38 with a literal backslash, and no graph uses both.
+        check:
+          kind: zero_rows
+          date: "2026-09-14"
+          query: |
+            PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+            SELECT ?p WHERE {
+              GRAPH <http://rdfportal.org/dataset/fantabio> { <http://fanta.bio/cre/FCHS_468377> faldo:location/faldo:begin/faldo:reference ?ref }
+              GRAPH <http://rdfportal.org/dataset/hco> { ?p faldo:reference ?ref } } LIMIT 1
+
+id_join_map:
+  stable_anchor: >
+    CRE IRI http://fanta.bio/cre/<ID>, where dct:identifier = <ID> (FCHS_N human, FCMM_N mouse). All other
+    nodes are blank — anchor on literals/xref IRIs they carry: gene IRIs (fb:hasTSSGeneSource), antigen
+    rdfs:label, SRX accession, SCREEN accession, chromosome ref + position.
+  same_endpoint_joins:
+    hgnc: "fb:hasTSSGeneSource <http://identifiers.org/hgnc/N> == the hgnc graph's m2r:Gene IRI (example xdb_hgnc_top_genes)."
+    hco: "chromosome ref string with the backslash stripped from HCO's faldo:reference, then position-in-band (example xdb_hco_cytoband)."
+  xrefs:
+    ncbigene: "rdfs:seeAlso <http://identifiers.org/ncbigene/N> on linked-gene nodes (216,482 links) and on 97.6% of ChIP-Atlas antigen nodes."
+    hgnc: "fb:hasTSSGeneSource / rdfs:seeAlso <http://identifiers.org/hgnc/N> on human gene nodes (26,313 genes)."
+    mgi: "fb:hasTSSGeneSource / rdfs:seeAlso <http://identifiers.org/mgi/MGI:N> on mouse gene nodes (28,138 genes) — the MGI: prefix is part of the IRI."
+    uniprot: "rdfs:seeAlso <http://purl.uniprot.org/uniprot/ACC> on gene nodes (196,371 links)."
+    ensembl_refseq_insdc: "rdfs:seeAlso on TSS nodes: identifiers.org/ensembl/ENST….N (versioned), identifiers.org/refseq/, identifiers.org/insdc/ transcripts."
+    sra: "experiment dct:identifier SRX… + rdfs:seeAlso <http://identifiers.org/insdc.sra/SRX…> (51,180 distinct experiments; the ChIP-Atlas experiment key)."
+    screen: "SCREEN cCRE dct:identifier EH38E…/EM10E… + foaf:page https://screen.wenglab.org/{GRCh38|mm10}/ccre/<id>."
+    reftss: "fb:hasRefTSS node dct:identifier rfmm_N.N + rdfs:seeAlso http://reftss.riken.jp/reftss/TSS:<id> (mouse only)."
+  bridged_via_togoid:
+    - "NCBI Gene / Ensembl / UniProt / RefSeq records live on other endpoints — convert the ncbigene / hgnc / ENST IDs above with togoid_convertId, or query those databases directly by the same accession."
