@@ -1,6 +1,6 @@
 ## 📚 DATABASE CATALOG
 
-All 37 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
+All 38 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -12,8 +12,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **disease** — `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `togovar`
 - **drug_target** — `chembl`
 - **enzymology** — `brenda`
-- **gene** — `bgee` `ensembl` `glycosmos` `hgnc` `medgen` `ncbigene`
-- **genomics** — `gwascatalog` `hco` `hgnc` `mco` `mogplus` `oma` `togovar`
+- **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `medgen` `ncbigene`
+- **genomics** — `fantabio` `gwascatalog` `hco` `hgnc` `mco` `mogplus` `oma` `togovar`
 - **glycan** — `glycosmos`
 - **literature** — `pubmed` `pubtator`
 - **materials** — `supercon`
@@ -48,6 +48,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: nucleotide sequence, dna, rna, gene, cds, genome, accession, insdc, division, est, patent, organism, taxonomy, feature annotation, locus tag, bioproject, biosample, ncbi protein
 - **ensembl** — Ensembl RDF. Genome annotation for vertebrates and five non-vertebrate divisions (bacteria/fungi/metazoa/plants/ protists): genes typed by biotype (protein-coding, lncRNA, miRNA, pseudogenes), transcripts with qu… _(categories: gene, sequence)_  
   keywords: gene, transcript, mrna, protein, genome, annotation, chromosome, exon, biotype, protein-coding, lncrna, mirna, pseudogene, mane select, coordinates, stable id, species, vertebrate
+- **fantabio** — Fanta.bio — cis-regulatory elements (CAGE-defined promoters and enhancers). Human (GRCh38) and mouse (GRCm38) cis-regulatory elements defined from transcription-start activity and classed as promoter- or enhancer-level, each with genomic coordinates, transcription directiona… _(categories: gene, genomics)_  
+  keywords: cis-regulatory element, cre, enhancer, promoter, cage, transcription start site, tss, transcriptional activity, directionality, bidirectional transcription, chip-seq, transcription factor binding, chip-atlas, screen ccre, encode, fantom5, reftss, gene regulation, regulatory region, genomic coordinates, human, mouse
 - **glycosmos** — GlyCosmos — Glycoscience Portal. Integrated glycoscience: glycan structures (GlyTouCan, multi-format WURCS/IUPAC/GlycoCT), glycoproteins with residue-level glycosylation sites (FALDO), glycogenes with GO annotation, disease→glycogen… _(categories: disease, gene, glycan, protein)_  
   keywords: glycan, glycosylation, glycoprotein, saccharide, wurcs, glytoucan, n-glycan, o-glycan, glycogene, monosaccharide, glycan motif, epitope, lectin, cazy, carbohydrate-active enzyme, glycoside hydrolase, glycosyltransferase, ec number, disease gene, doid, gene ontology, tissue expression, human protein atlas, glycolipid
 - **go** — Gene Ontology (GO). Cross-species controlled vocabulary for gene-product function, organized into three independent domains (biological_process, molecular_function, cellular_component) with a DAG hierarchy, definitions,… _(categories: ontology)_  
