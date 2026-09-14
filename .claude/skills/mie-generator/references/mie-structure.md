@@ -94,7 +94,10 @@ Each example is self-contained, executable, verified, and dated. Fields:
 - `sparql`: a complete, runnable query (PREFIXes included; `LIMIT` where a row
   query could run away).
 - `verified`: **REQUIRED** — a map of the actual live result plus `date:`
-  (`{n: 108, date: "2026-07-22"}`). Re-run this pass. Use `date:`, **never `on:`**
+  (`{n: 108, date: "2026-07-22"}`), carrying at least one key
+  `scripts/check_mie_examples.py` asserts: `n` (single COUNT cell), `row_count`
+  (below any LIMIT), `min_rows` (LIMIT-capped), `has_values` (stable ids/labels;
+  needs ORDER BY on a capped result). Other keys are annotation. Re-run this pass. Use `date:`, **never `on:`**
   (YAML 1.1 parses the bare word `on` as boolean `true` — spec §4.1 trap); quote
   the date value.
 - `teaches`: the reusable idiom in one line.
@@ -117,10 +120,9 @@ Rules across the set:
   **Tier B/C** DBs must keep the worked query and its load-bearing caveat together.
 - **No test leakage (spec §4.6).** An example's subject (keyword phrase, class
   IRI, gold gene/compound/accession) must **not** be a benchmark question's exact
-  subject for **this DB**. Grep it against `benchmark/questions/*.yaml`
-  (`inspiration_keyword` / `exact_answer`) before finalizing; swap to a neutral
-  member of the same class if it collides. Canonical non-benchmark subjects (ATP,
-  TP53, BRCA1) are fine.
+  subject for **this DB**. `uv run python scripts/check_mie_leakage.py <db>`
+  must exit 0 (CI runs it too); swap to a neutral member of the same class if it
+  collides. Canonical non-benchmark subjects (ATP, TP53, BRCA1) are fine.
 - **One fact, one place (spec §4.2).** A predicate shown in any example is **not**
   repeated in `schema_delta`. A warning is database-wide (`global_gotchas`) **or**
   query-specific (`traps_avoided`) — never both.

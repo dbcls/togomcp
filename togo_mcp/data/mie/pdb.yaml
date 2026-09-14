@@ -85,7 +85,7 @@ examples:
         ?entry a pdbo:datablock .
         FILTER(STRSTARTS(STR(?entry), "http://rdf.wwpdb.org/pdb/"))
       }
-    verified: {total: 255508, date: "2026-07-22"}
+    verified: {n: 255508, date: "2026-07-22"}
     teaches: "The universal PDB scaffold: pin FROM <dataset/pdb>, type ?entry a pdbo:datablock, FILTER the pdb/ IRI prefix, COUNT(DISTINCT). Every other example builds on this stem."
     traps_avoided:
       - "Without the STRSTARTS entry FILTER the count is 562,592 — it includes ~307K cc:XXX chemical-component datablocks (gotcha entry_filter)."
@@ -105,7 +105,7 @@ examples:
       }
       GROUP BY ?method
       ORDER BY DESC(?entries)
-    verified: {distinct_methods: 13, top: "X-RAY DIFFRACTION 205340, ELECTRON MICROSCOPY 34846, SOLUTION NMR 14670", date: "2026-07-22"}
+    verified: {row_count: 13, has_values: ["X-RAY DIFFRACTION", "ELECTRON MICROSCOPY"], top: "X-RAY DIFFRACTION 205340, ELECTRON MICROSCOPY 34846, SOLUTION NMR 14670", date: "2026-07-22"}
     teaches: "pdbo:exptl.method is a closed controlled vocabulary (13 exact string values). GROUP BY it to enumerate the whole DB by method — the set-level route, no text search. Filter it (= \"ELECTRON MICROSCOPY\") to scope any query to one technique."
 
   - id: organism_by_taxon
@@ -125,7 +125,7 @@ examples:
         UNION
         { ?entry pdbo:has_entity_src_natCategory/pdbo:has_entity_src_nat/pdbo:link_to_taxonomy_source <http://purl.uniprot.org/taxonomy/9913> }
       }
-    verified: {count: 4058, gen_only: 1986, date: "2026-07-22"}
+    verified: {n: 4058, gen_only: 1986, date: "2026-07-22"}
     teaches: "Filter organism by the UniProt taxonomy IRI (fast + unambiguous vs a name text-search). link_to_taxonomy_source lives on the entity_src_gen AND entity_src_nat nodes — UNION them."
     traps_avoided:
       - "entity_src_gen alone gives 1,986 of the true 4,058 — natural-source (entity_src_nat) entries are missed. A third category, pdbx_entity_src_syn (synthetic), has ONLY the literal ncbi_taxonomy_id (no IRI); UNION it in if you need synthetic sources too."
@@ -146,7 +146,7 @@ examples:
         ?ent pdbo:link_to_enzyme <http://purl.uniprot.org/enzyme/4.2.1.1> .   # IRI route
         # literal equivalent: ?ent pdbo:entity.pdbx_ec "4.2.1.1"  (but see the multi-EC trap)
       }
-    verified: {entries: 1573, literal_exact_match: 1539, date: "2026-07-22"}
+    verified: {n: 1573, literal_exact_match: 1539, date: "2026-07-22"}
     teaches: "EC classification is on the entity (pdbo:has_entity), via the literal pdbo:entity.pdbx_ec (\"4.2.1.1\") OR the IRI pdbo:link_to_enzyme <http://purl.uniprot.org/enzyme/EC>. Query by a single EC to enumerate every structure of that function — the set-level route."
     traps_avoided:
       - "The literal exact match `entity.pdbx_ec \"4.2.1.1\"` gives 1,539 — it MISSES multi-function entities whose value is \"4.2.1.1,4.2.1.69\". link_to_enzyme splits those into one IRI per EC and catches all 1,573. Prefer the IRI for enumeration."
@@ -172,7 +172,7 @@ examples:
       }
       GROUP BY ?entry_id
       LIMIT 20
-    verified: {distinct_structures_total: 203, result_rows: 20, date: "2026-07-22"}
+    verified: {min_rows: 20, distinct_structures_total: 203, date: "2026-07-22"}
     teaches: "SIFTS residue segments are the typed cross-reference route. Filter xref_db (\"Pfam\"|\"GO\"|\"InterPro\"|\"CATH\"|\"SCOP\"|\"SCOP2\"|\"SCOP2B\"|\"Ensembl\") + xref_db_acc (the accession, e.g. \"PF00047\", \"GO:0004089\") to enumerate every structure carrying that domain/annotation — no text search. Drop the GROUP BY and use COUNT(DISTINCT ?entry) for the total (203)."
     traps_avoided:
       - "Each segment also exposes a dedicated IRI (pdbo:link_to_pfam / link_to_interpro / link_to_cath / link_to_scop, and pdbo:link_to_go in obo form <http://purl.obolibrary.org/obo/GO_…>) — use those to join out to the domain/ontology DB (example xdb_go_labels)."
@@ -195,7 +195,7 @@ examples:
       }
       GROUP BY ?entry_id
       LIMIT 10
-    verified: {distinct_structures_total: 1335, result_rows: 10, date: "2026-07-22"}
+    verified: {min_rows: 10, distinct_structures_total: 1335, date: "2026-07-22"}
     teaches: "struct_ref carries the primary UniProt link: pdbo:link_to_uniprot → <http://purl.uniprot.org/uniprot/ACCESSION> (~92% of entries). Filter by a known accession to list every structure of that protein. Residue-level mapping is the sibling pdbx_sifts_unp_segments (unp_acc, unp_start/end)."
 
   - id: oligomeric_state
@@ -216,7 +216,7 @@ examples:
       }
       GROUP BY ?oligomeric_details
       ORDER BY DESC(?entries)
-    verified: {top: "monomeric 1374, dimeric 125, tetrameric 48, trimeric 16", date: "2026-07-22"}
+    verified: {row_count: 8, has_values: ["monomeric", "dimeric"], top: "monomeric 1374, dimeric 125, tetrameric 48, trimeric 16", date: "2026-09-14"}
     teaches: "pdbo:pdbx_struct_assembly.oligomeric_details is the queryable controlled term for the functional oligomer (\"monomeric\", \"dimeric\", …). Present for 100% of entries. Filter assembly.id \"1\" (primary assembly) so entries defining several assemblies are not double-counted."
     traps_avoided:
       - "Values have case variance — \"dimeric\" (125) AND a stray \"Dimeric\" (1) are distinct GROUP BY keys. LCASE(?oligomeric_details) before grouping if you need the true merge."
@@ -242,7 +242,7 @@ examples:
       GROUP BY ?entry_id ?res
       ORDER BY ?res
       LIMIT 10
-    verified: {best_resolution: 0.9, top_entry: "6KM2 (0.9 Å)", date: "2026-07-22"}
+    verified: {min_rows: 10, has_values: ["6KM2"], best_resolution: 0.9, top_entry: "6KM2 (0.9 Å)", date: "2026-07-22"}
     teaches: "For X-ray, resolution is pdbo:refine.ls_d_res_high (ORDER BY ASC = best first). This is the X-ray-only path."
     traps_avoided:
       - "For cryo-EM the SAME query returns nothing — EM entries have no refine node. Use pdbo:em_3d_reconstruction.resolution instead (covers 99.83% of EM; e.g. 343 EM structures resolve ≤2.0 Å DB-wide). NMR has neither (gotcha resolution_is_method_specific)."
@@ -272,7 +272,7 @@ examples:
       GROUP BY ?go_iri
       ORDER BY DESC(?structures)
       LIMIT 10
-    verified: {top: "GO_0004089 'carbonate dehydratase activity' 1226, GO_0016829 'lyase activity' 1225, GO_0046872 'metal ion binding' 1220", date: "2026-07-22"}
+    verified: {min_rows: 10, has_values: ["GO_0004089", "carbonate dehydratase activity"], top: "GO_0004089 'carbonate dehydratase activity' 1226, GO_0016829 'lyase activity' 1225, GO_0046872 'metal ion binding' 1220", date: "2026-07-22"}
     teaches: "The GO ontology is CO-HOSTED on the PDB endpoint. SIFTS pdbo:link_to_go emits obo-form IRIs (<…/obo/GO_NNNN>) that match rdfs:label in GRAPH <http://rdfportal.org/ontology/go> — a direct two-GRAPH join on one endpoint, no SERVICE and no TogoID. Same trick works for the co-hosted taxonomy/mesh/mondo/uberon graphs."
     traps_avoided:
       - "Use pdbo:link_to_go (obo <…/obo/GO_NNNN>) for the join, NOT the xref_db_acc literal (\"GO:0005344\") — the co-hosted GO graph keys terms by the obo IRI, so the literal string joins nothing."

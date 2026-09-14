@@ -82,7 +82,7 @@ examples:
         OPTIONAL { ?strain schema:hasDesignation ?designation }
       }
       LIMIT 10
-    verified: {result_rows: 2, date: "2026-07-21", first_row: "strain/1 = Acetobacter aceti (Proteobacteria, isType 0)"}
+    verified: {row_count: 2, has_values: ["Acetobacter", "Acetobacter aceti"], date: "2026-07-21", first_row: "strain/1 = Acetobacter aceti (Proteobacteria, isType 0)"}
     teaches: "Strain is the hub; taxonomy (hasGenus/hasSpecies/hasPhylum) is stored redundantly ON the Strain — no lineage traversal needed."
 
   - id: count_strains            # ELEVATED aggregation — the scope-bleed recipe
@@ -94,7 +94,7 @@ examples:
       SELECT (COUNT(DISTINCT ?s) AS ?strains)
       FROM <http://rdfportal.org/dataset/bacdive>          # pin — else MediaDive strains bleed in
       WHERE { ?s a schema:Strain . }
-    verified: {strains: 97334, date: "2026-07-21"}
+    verified: {n: 97334, date: "2026-07-21"}
     teaches: "Graph-pin every count on this endpoint; the pinned Strain total is 97,334."
     traps_avoided:
       - "Unpinned = 143,019 (+ 45,685 disjoint MediaDive strains). DISTINCT does NOT fix it — pin the graph (gotcha scope_bleed)."
@@ -112,7 +112,7 @@ examples:
         ?s a schema:Strain ; schema:hasPhylum ?phylum .
       }
       GROUP BY ?phylum
-    verified: {Firmicutes: 13862, Bacillota: 1944, true_total: 15806, date: "2026-07-21"}
+    verified: {row_count: 2, has_values: [13862, 1944], Firmicutes: 13862, Bacillota: 1944, true_total: 15806, date: "2026-07-21"}
     teaches: "A phylum's real count is the SUM of legacy + renamed spellings; match both with VALUES."
     traps_avoided:
       - "Filtering only 'Bacillota' returns 1,944 of the true 15,806 — a plausible wrong number, never an error (gotcha phylum_vintage_split)."
@@ -130,7 +130,7 @@ examples:
         ?ot a schema:OxygenTolerance ; schema:describesStrain ?strain ; schema:hasOxygenTolerance ?oxygenTolerance .
       }
       GROUP BY ?oxygenTolerance
-    verified: {microaerophile: 4472, obligate_anaerobe: 224, date: "2026-07-21"}
+    verified: {row_count: 2, has_values: [4472, 224], microaerophile: 4472, obligate_anaerobe: 224, date: "2026-07-21"}
     teaches: "Phenotype pattern: ?node a schema:<Phenotype> ; schema:describesStrain ?strain ; schema:has<Phenotype> <controlled value>. hasOxygenTolerance is a plain xsd:string."
 
   - id: pathogens_bsl
@@ -186,7 +186,7 @@ examples:
                 schema:hasECNumber ?ecNumber ; schema:hasActivity ?activity .    # activity "+"/"-"
       }
       LIMIT 50
-    verified: {result_rows: 11, date: "2026-07-21", first_row: "lysine decarboxylase (EC 4.1.1.18), activity +"}
+    verified: {row_count: 11, has_values: ["lysine decarboxylase", "4.1.1.18"], date: "2026-07-21", first_row: "lysine decarboxylase (EC 4.1.1.18), activity +"}
     teaches: "Enzyme nodes carry hasECNumber + hasActivity ('+' present / '-' absent), linked to the strain via describesStrain."
 
   - id: halophiles
@@ -224,7 +224,7 @@ examples:
         ?seq a schema:16SSequence ; schema:describesStrain ?strain ; schema:hasSequenceAccession ?accession .
       }
       GROUP BY ?phylum ORDER BY DESC(?count) LIMIT 8
-    verified: {top: "Proteobacteria 2329, Firmicutes 868, Bacteroidetes 321", date: "2026-07-21"}
+    verified: {min_rows: 8, has_values: ["Proteobacteria", "Firmicutes"], top: "Proteobacteria 2329, Firmicutes 868, Bacteroidetes 321", date: "2026-07-21"}
     teaches: "isTypeStrain/isMotile are integer 1; taxID needs FILTER(isNumeric(?taxID))."
     traps_avoided:
       - "NEVER FILTER(datatype(?taxID) = xsd:integer) — the values are xsd:int and it returns 0 rows; isNumeric() is safe (gotcha datatype_variance)."
@@ -252,7 +252,7 @@ examples:
         }
       }
       LIMIT 20
-    verified: {result_rows: 20, date: "2026-07-21", first_row: "Bacillus subtilis 1156 -> NUTRIENT AGAR @ 30C"}
+    verified: {min_rows: 20, date: "2026-07-21", first_row: "Bacillus subtilis 1156 -> NUTRIENT AGAR @ 30C"}
     teaches: "MediaDive is co-hosted on the primary endpoint; join on schema:hasBacDiveID (xsd:integer, ~34% coverage) — direct GRAPH join, no TogoID."
 
   - id: xdb_mediadive_link
@@ -282,7 +282,7 @@ examples:
       }
       ORDER BY ?strainLabel DESC(?gPerL)
       LIMIT 20
-    verified: {result_rows: 20, date: "2026-07-21", first_row: "Bacillus acidicola 1207 -> ALICYCLOBACILLUS MEDIUM -> Agar 15 g/L"}
+    verified: {min_rows: 20, has_values: ["Bacillus acidicola 1207", "Agar"], date: "2026-07-21", first_row: "Bacillus acidicola 1207 -> ALICYCLOBACILLUS MEDIUM -> Agar 15 g/L"}
     teaches: "When only a web-URL link exists (schema:hasMediaLink -> mediadive.dsmz.de/medium/{ID}), REPLACE it to the RDF IRI purl.dsmz.de/mediadive/medium/{ID} to join — the ~20% of strains without a BacDiveID join still reach MediaDive this way."
 
 # ── schema_delta: non-obvious structure no example already shows ──

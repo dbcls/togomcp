@@ -4,6 +4,8 @@ name: MIE drift
 #   scripts/check_mie_examples.py  — every `examples[].sparql` a reader would copy
 #   scripts/check_mie_gotchas.py   — every falsifiable `global_gotchas`/`traps_avoided`
 #                                    claim that carries a `check:` (MIE_v3_spec.md §3.6)
+# plus one OFFLINE checker on PRs:
+#   scripts/check_mie_leakage.py   — no example carries a benchmark question's subject (§4.6)
 # Until 2026-08-26 neither was wired to CI, so both ran only when someone remembered.
 # The 2026-08-25 sweep is what that cost: a header cross-check of four files found a
 # factual defect in all four, including six "this times out" warnings over operations
@@ -29,6 +31,10 @@ on:
       - "togo_mcp/data/mie/**"
       - "scripts/check_mie_examples.py"
       - "scripts/check_mie_gotchas.py"
+      - "scripts/check_mie_leakage.py"
+      - "scripts/mie_leakage_waivers.yaml"
+      # A new QUESTION can leak too — about a subject an existing example already carries.
+      - "benchmark/questions/**"
   schedule:
     # Mondays 06:17 UTC. Off the hour on purpose — GitHub's scheduler queues heavily
     # at :00 and these jobs are already slow (a full corpus run is minutes of live SPARQL).
@@ -54,6 +60,11 @@ jobs:
 
       - name: Install the one dependency the checkers need
         run: pip install "pyyaml>=6.0"
+
+      # Offline and cheap, so it always runs over the whole corpus — a leak is a relation
+      # between an MIE and a question, and this PR may have changed either side.
+      - name: Examples must not carry a benchmark question's subject (spec §4.6)
+        run: python scripts/check_mie_leakage.py
 
       - name: Collect the database names this PR changed
         id: dbs

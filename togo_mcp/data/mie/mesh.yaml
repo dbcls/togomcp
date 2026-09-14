@@ -109,7 +109,7 @@ examples:
         OPTIONAL { mesh:D000110 meshv:treeNumber ?tree . ?tree rdfs:label ?treeNum }
         OPTIONAL { mesh:D000110 meshv:broaderDescriptor ?b . ?b rdfs:label ?broaderLabel }  # NOT meshv:broader
       }
-    verified: {result_rows: 1, label: "Acetylcholinesterase", treeNum: "D08.811.277.352.100.170.176", broader: "Cholinesterases", date: "2026-07-22"}
+    verified: {row_count: 1, has_values: ["Acetylcholinesterase", "D08.811.277.352.100.170.176"], label: "Acetylcholinesterase", treeNum: "D08.811.277.352.100.170.176", broader: "Cholinesterases", date: "2026-07-22"}
     teaches: "Descriptor IRI = mesh:D######. annotation/treeNumber are OPTIONAL (only ~31% have annotation). Batch several IRIs with a VALUES ?descriptor {...} block."
     traps_avoided:
       - "meshv:broader and meshv:scopeNote both return 0 rows on a Descriptor with no error — use meshv:broaderDescriptor and meshv:annotation (gotcha silent_wrong_predicates)."
@@ -148,7 +148,7 @@ examples:
         ?parent rdfs:label ?parentLabel .
       }
       ORDER BY ?parentLabel
-    verified: {distinct_parents: 7, includes: "Alkaloids, Purines, Xanthines, Heterocyclic Compounds", date: "2026-07-22"}
+    verified: {row_count: 7, has_values: ["Alkaloids", "Heterocyclic Compounds"], includes: "Alkaloids, Purines, Xanthines, Heterocyclic Compounds", date: "2026-07-22"}
     teaches: "meshv:broaderDescriptor+ walks the whole ancestor chain from one descriptor; drop the + for direct parents only. The reverse (all descendants of X) is ?d meshv:broaderDescriptor+ mesh:D###### ."
     traps_avoided:
       - "A descriptor can sit at multiple tree positions, so the raw path yields duplicate ancestor rows (Heterocyclic Compounds appears twice for Caffeine) — use SELECT DISTINCT / COUNT(DISTINCT)."
@@ -169,7 +169,7 @@ examples:
       }
       GROUP BY ?category
       ORDER BY DESC(?count)
-    verified: {top: "D (Chemicals/Drugs) 10541, C (Diseases) 5032, B (Organisms) 3964, E 3102, G 2430", date: "2026-07-22"}
+    verified: {row_count: 16, has_values: [10541, 5032], top: "D (Chemicals/Drugs) 10541, C (Diseases) 5032, B (Organisms) 3964, E 3102, G 2430", date: "2026-09-14"}
     teaches: "COUNT(DISTINCT ?descriptor) because a descriptor with N tree numbers yields N rows — DISTINCT collapses them. A descriptor cross-classified across categories is counted once per category (correctly)."
     traps_avoided:
       - "A tiny '[' bucket (74) appears — some tree-number labels start with '[' (a Virtuoso collation artifact); safe to ignore, not a real category."
@@ -189,7 +189,7 @@ examples:
         ?q rdfs:label ?qualLabel .
       }
       ORDER BY ?qualLabel
-    verified: {first_rows: "administration & dosage, adverse effects, agonists, analogs & derivatives", date: "2026-07-22"}
+    verified: {row_count: 27, has_values: ["administration & dosage", "adverse effects"], first_rows: "administration & dosage, adverse effects, agonists, analogs & derivatives", date: "2026-09-14"}
     teaches: "meshv:allowableQualifier lists the 84 subheadings valid for a descriptor. The precomputed cross-product (679k meshv:AllowedDescriptorQualifierPair with hasDescriptor/hasQualifier) is the reverse index: all descriptors that allow a given qualifier."
 
   - id: scr_registry_number
@@ -208,7 +208,7 @@ examples:
         FILTER(?regNum != "0")                             # "0" = no CAS number assigned
       }
       LIMIT 5
-    verified: {first_row: "C086195 N-acetylgalactosaminyl-alpha(1-3)galactose = CAS 66781-75-7", date: "2026-07-22"}
+    verified: {min_rows: 5, first_row: "C086195 N-acetylgalactosaminyl-alpha(1-3)galactose = CAS 66781-75-7", date: "2026-07-22"}
     teaches: "SCR_Chemical (C###### IRI, 250k records) has NO tree numbers — hierarchy is via meshv:mappedTo/meshv:preferredMappedTo to a TopicalDescriptor. Its CAS number lives on meshv:preferredConcept → meshv:registryNumber, never directly on the SCR entity."
 
   - id: descriptor_xref
@@ -227,7 +227,7 @@ examples:
         FILTER(CONTAINS(?xref, "OMIM"))
       }
       LIMIT 5
-    verified: {first_row: "D003550 Cystic Fibrosis = 'OMIM (2013)'", date: "2026-07-22"}
+    verified: {min_rows: 5, first_row: "D003550 Cystic Fibrosis = 'OMIM (2013)'", date: "2026-07-22"}
     teaches: "External xrefs (OMIM, FDA SRS/UNII, INN, ChEBI, SNOMED CT, FMA) are meshv:thesaurusID strings on the Term, reached via meshv:preferredTerm. ~33% of Terms carry one — always OPTIONAL in real queries."
 
   - id: xdb_mondo_mapping
@@ -255,7 +255,7 @@ examples:
         }
       }
       ORDER BY ?mondoLabel
-    verified: {result_rows: 3, mappings: "asthma→D001249, epilepsy→D004827, Parkinson disease→D010300 (all TopicalDescriptor)", date: "2026-07-22"}
+    verified: {row_count: 3, has_values: ["Parkinson disease", "D010300"], mappings: "asthma→D001249, epilepsy→D004827, Parkinson disease→D010300 (all TopicalDescriptor)", date: "2026-07-22"}
     teaches: "MONDO is co-hosted on 'primary'. It points OUT with oboInOwl:hasDbXref 'MESH:D######'; strip the 'MESH:' prefix (SUBSTR from 6) and CONCAT the MeSH base URI to reconstruct the IRI. Pre-filter MONDO IRIs in a VALUES block BEFORE the join, never a label FILTER after it."
     traps_avoided:
       - "A MESH: xref can point to a D-prefix TopicalDescriptor OR a C-prefix SCR record — bind ?type to tell them apart. ~28% of MONDO diseases carry a MESH xref, so a full scan is a partial mapping, never total."

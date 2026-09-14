@@ -13,6 +13,81 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.12.2] - 2026-09-14
+
+The schema guides now check their own answers. Every worked example in an MIE file records
+the result it returned when it was verified; until this release nothing compared that record
+with what the endpoint returns today, so a query that kept running but started answering
+differently looked healthy. Making that comparison — across all 334 examples — is what found
+this release's fixes, most importantly a NANDO guide describing a data release that had been
+replaced, whose MONDO join was silently missing ~88% of mapped diseases. No tool, parameter or
+return shape changed.
+
+<!-- whatsnew: 2026-09-14 | The worked examples in every database schema guide now <strong>check their own answers</strong> against the live endpoints, not just that they still run. The first full comparison found a guide that had quietly gone stale: <strong>NANDO</strong>'s MONDO mapping had moved to a different predicate in an upstream release, so its example join missed about <strong>88%</strong> of mapped diseases. It is fixed, along with two examples that returned duplicate or misdescribed rows. -->
+
+### Added
+
+- **MIE examples now assert their recorded result, and CI checks it.** Spec §4.1 said "a CI job
+  can execute every example and assert its `verified` result", but `verified:` was free-form —
+  334 examples used 198 different key sets, mostly prose — so the weekly drift job could only catch
+  queries that errored or returned nothing. `verified:` now carries at least one reserved key that
+  `scripts/check_mie_examples.py` asserts against the live endpoint: `n` (a COUNT), `row_count`
+  (below any LIMIT), `min_rows` (LIMIT-capped), `has_values` (identity values; numbers within
+  `tolerance`). A mismatch is DRIFT, an unassertable block is MALFORMED, and both fail the PR and
+  weekly jobs. The whole corpus was migrated by re-running every example and comparing against its
+  old record rather than stamping today's figure over it; the comparison is what surfaced the
+  fixes below.
+
+### Fixed
+
+- **NANDO's MIE described a release that is no longer loaded.** NANDO 2026-05-22 moved most
+  MONDO mappings from `skos:closeMatch` to `skos:exactMatch`, so the file's MONDO join
+  (`xdb_mondo`) silently missed ~88% of mapped diseases. The same release also added the pediatric
+  chronic-disease program (notification numbers now repeat across two programs), left 19
+  obsolete classes reachable from the program trees, and moved KEGG links to `oboInOwl:hasDbXref`.
+  The file was revised against the live graph: both mapping predicates in every MONDO query, the
+  designated-disease count scoped to its program (348, matching the official figure), a new
+  pediatric enumeration example, and a Virtuoso trap found on the way (a `FILTER NOT EXISTS` on a
+  variable bound only by `rdfs:subClassOf+` is ignored when an OPTIONAL follows — 47 rows instead of
+  32 — fixed by typing the variable). Every changed claim is dated and carries a `check:`.
+- **`chebi` `role_and_hierarchy` returned duplicate rows** — `rdfs:subClassOf+` yields one solution
+  per hierarchy path, so its 5 amino acids came back as 18 rows under `LIMIT 20`. Now `SELECT DISTINCT`.
+- **`ontology` `part_of_partonomy` named parts that are not in its result** (diencephalon,
+  cerebellum); the recorded examples are now ones the query returns.
+- Re-measured figures that moved with upstream releases, each with a dated note of the old value:
+  `taxonomy` species (+4.9%), `hgnc` EC-code xrefs (+3.8%), `amrportal` subregion countries, `chembl`
+  Parkinson mechanisms, `mediadive` recipe rows, `oma`/UniProt function comments, and `pubchem`
+  descriptors (every descriptor is now typed twice, CHEMINF and PubChem vocabulary).
+- **`go`'s graph-pin warning quoted a ×3.27 inflation that is now ×2.84** — caught by this release's
+  own PR check. The set of co-hosted graphs re-declaring GO classes changed upstream (glycosmos'
+  glycoprotein graph dropped out, MONDO joined), so the figure, graph list and `check:` were
+  re-measured together. The advice — pin the graph — is unchanged.
+- **`endpoints.csv` sent NANDO keyword search to OLS4, which does not index NANDO** (0 hits for
+  `searchClasses(ontologyId="nando")`). The registry now says `sparql`.
+
+- **Benchmark-leakage gate for MIE examples** (`scripts/check_mie_leakage.py`, MIE spec §4.6).
+  §4.6 forbade an example from using a benchmark question's subject as its vehicle and prescribed
+  "a one-line grep" at authoring time — nothing ever ran it, and the two leaks it was written
+  after (LIM domain/q066, antimicrobial/q075) were caught by eye. The checker matches every
+  question's keyword (name and `keywords:NNN` IRI forms), answer heads and answer IDs against
+  the examples of each database the question uses, and runs in CI on any PR touching an MIE
+  *or* a question. First full run: 19 matches over 100 questions × 37 MIEs, all generic
+  vocabulary ("Chromosome" in mco), recorded as reasoned waivers that fail once stale; no leak.
+
+### Fixed
+
+- **UniProt MIE: a protein's canonical isoform is not `isoforms/ACC-1`** ([#219](https://github.com/dbcls/togomcp/issues/219)).
+  The `sequence_mass` example taught agents to fetch the canonical sequence by naming the `-1`
+  node. Measured across all 575,503 reviewed entries, 782 have a different canonical (fibronectin
+  P02751's is `-15`). In 613 of those, a non-canonical `-1` still exists, so the lookup returned
+  the **wrong sequence** instead of no rows. The example now uses the rule that holds for every
+  reviewed entry: `up:Simple_Sequence` **and** an IRI starting with the entry's own accession.
+  Neither condition works alone. The fix also removes two wrong traps: that every sequence node
+  is also typed `up:External_Sequence`, and a 200s timeout that no longer happens. The query
+  posted in the issue has a bug of its own: its accession test sits inside an `OPTIONAL`, so it
+  still returns other entries' sequences. That pitfall is now a trap too. Each new trap carries
+  a `check:`.
+
 ## [2.12.1] - 2026-09-01
 
 Housekeeping ahead of an upstream deploy. TogoID fixed the malformed `hgnc_symbol`
@@ -2298,7 +2373,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.8...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.12.2...HEAD
+[2.12.2]: https://github.com/dbcls/togomcp/compare/v2.12.1...v2.12.2
 [2.12.1]: https://github.com/dbcls/togomcp/compare/v2.12.0...v2.12.1
 [2.12.0]: https://github.com/dbcls/togomcp/compare/v2.11.0...v2.12.0
 [2.11.0]: https://github.com/dbcls/togomcp/compare/v2.10.0...v2.11.0

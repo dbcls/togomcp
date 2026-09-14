@@ -93,7 +93,7 @@ examples:
         ?organism rdfs:label ?orgLabel .
       }
       LIMIT 20
-    verified: {result_rows_capped: 20, date: "2026-07-22", first_row: "enzyme/304634 → Acetivibrio thermocellus DSM 1237"}
+    verified: {min_rows: 20, result_rows_capped: 20, date: "2026-07-22", first_row: "enzyme/304634 → Acetivibrio thermocellus DSM 1237"}
     teaches: "THE enumeration route: ?e d3o:isClassifiedAs <ec/X.X.X.X> gives every enzyme instance of a class; swap the EC IRI for any class. Use the EC IRI directly — do not text-search the name."
     traps_avoided:
       - "Do NOT paste sampled enzyme IRIs into a VALUES list as the scope of a count — that counts only those instances. Use the EC-class IRI for the complete set (gotcha enzyme_vs_ec_iri)."
@@ -114,7 +114,7 @@ examples:
         OPTIONAL { <https://purl.dsmz.de/brenda/ec/1.1.1.1> d3o:hasSynonyms ?syn }
       }
       GROUP BY ?ecLabel ?description ?systematicName
-    verified: {ecLabel: "alcohol dehydrogenase", systematicName: "alcohol:NAD+ oxidoreductase", nSynonyms: 152, date: "2026-07-22"}
+    verified: {row_count: 1, has_values: ["alcohol dehydrogenase", "alcohol:NAD+ oxidoreductase"], ecLabel: "alcohol dehydrogenase", systematicName: "alcohol:NAD+ oxidoreductase", nSynonyms: 152, date: "2026-09-14"}
     teaches: "The EC-class node carries rdfs:label (common name), dct:description (IUBMB text), d3o:hasSystematicName (~91% of classes), and many d3o:hasSynonyms (gene/isoform names)."
 
   - id: count_enzymes            # ELEVATED aggregation — the scope-bleed recipe
@@ -126,7 +126,7 @@ examples:
       SELECT (COUNT(DISTINCT ?e) AS ?enzymes)
       FROM <http://rdfportal.org/dataset/brenda>          # pin — else BacDive enzymes bleed in
       WHERE { ?e a d3o:Enzyme . }
-    verified: {enzymes: 54720, date: "2026-07-22"}
+    verified: {n: 54720, date: "2026-07-22"}
     teaches: "Graph-pin every count on this endpoint; the pinned enzyme-instance total is 54,720."
     traps_avoided:
       - "Unpinned = 627,832 (+ 573,112 disjoint BacDive d3o:Enzyme). DISTINCT does NOT fix it — pin the graph (gotcha scope_bleed). This is the ONE class that silently lies."
@@ -151,7 +151,7 @@ examples:
         ?enzyme d3o:isClassifiedAs ?ec ; d3o:foundIn ?organism .
       }
       GROUP BY ?ec ?ecLabel
-    verified: {alcohol_dehydrogenase: "178 instances / 2182 organisms", ser_thr_kinase: "383 / 1163", caspase_1: "23 / 162", date: "2026-07-22"}
+    verified: {row_count: 3, has_values: [178, 2182], alcohol_dehydrogenase: "178 instances / 2182 organisms", ser_thr_kinase: "383 / 1163", caspase_1: "23 / 162", date: "2026-09-14"}
     teaches: "COUNT(DISTINCT ?enzyme) per EC class over VALUES gives comparable breadth. Note organisms can EXCEED instances (one enzyme node may be foundIn many organisms) — count each independently."
 
   - id: inhibitors_structures
@@ -171,7 +171,7 @@ examples:
         ?structure d3o:hasInChIKey ?inchiKey .
       }
       LIMIT 10
-    verified: {result_rows_capped: 10, date: "2026-07-22", first_row: "fomepizole → InChIKey=RIKMMFOAQPJVMX-UHFFFAOYSA-N (bare RIKMMFOAQPJVMX-UHFFFAOYSA-N)"}
+    verified: {min_rows: 10, result_rows_capped: 10, date: "2026-07-22", first_row: "fomepizole → InChIKey=RIKMMFOAQPJVMX-UHFFFAOYSA-N (bare RIKMMFOAQPJVMX-UHFFFAOYSA-N)"}
     teaches: "Effector navigation: role node (a d3o:Inhibitor ; d3o:affectsClass <ec>) → d3o:refersToCompound → compound (rdfs:label) → d3o:hasStructure → d3o:hasInChIKey."
     traps_avoided:
       - "The InChIKey literal carries an `InChIKey=` prefix — a bare-key filter/VALUES returns 0 rows; strip via STRAFTER for matching or federation (gotcha inchikey_prefix)."
@@ -189,7 +189,7 @@ examples:
         ?organism a d3o:BiologicalMaterial ; d3o:hasTaxID 4932 .   # integer literal, NOT "4932"
         ?enzyme d3o:foundIn ?organism ; d3o:isClassifiedAs ?ec .
       }
-    verified: {ecClasses: 989, date: "2026-07-22"}
+    verified: {n: 989, date: "2026-07-22"}
     teaches: "d3o:hasTaxID is the organism→NCBI-Taxonomy hook; combine with isClassifiedAs to enumerate an organism's enzyme repertoire. hasTaxID covers ~49% of organism nodes."
     traps_avoided:
       - "d3o:hasTaxID is xsd:integer — use the bare integer 4932, not \"4932\" (a string literal returns 0 rows). Organisms are strain-level; ~51% have no taxID and need rdfs:label lookup."
@@ -218,7 +218,7 @@ examples:
         }
       }
       LIMIT 15
-    verified: {result_rows_capped: 15, date: "2026-07-22", first_row: "LPIN1 → EC 3.1.3.4 (phosphatidate phosphatase)"}
+    verified: {min_rows: 15, result_rows_capped: 15, date: "2026-07-22", first_row: "LPIN1 → EC 3.1.3.4 (phosphatidate phosphatase)"}
     teaches: "BRENDA and HGNC are co-hosted on the primary endpoint — join with pure GRAPH clauses (no FROM). The EC number is the key: HGNC gene rdfs:seeAlso → idt:ec-code dct:identifier == the string in BRENDA's EC IRI path."
     traps_avoided:
       - "FILTER(STRAFTER(STR(?ec), prefix) = ?ecNum) can fail in Virtuoso on an xsd:string vs plain-string mismatch — always BIND then FILTER(STR(?a)=STR(?b)). Use only GRAPH clauses (no FROM+GRAPH mix) for cross-graph joins."

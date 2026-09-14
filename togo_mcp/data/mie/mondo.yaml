@@ -93,7 +93,7 @@ examples:
         OPTIONAL { obo:MONDO_0007739 oboInOwl:hasDbXref ?xref }
       }
       LIMIT 50
-    verified: {label: "Huntington disease", synonyms: 6, xrefs: 16, has_definition: true, date: "2026-07-22"}
+    verified: {min_rows: 50, label: "Huntington disease", synonyms: 6, xrefs: 16, has_definition: true, date: "2026-07-22"}
     teaches: "Direct-IRI lookup is the fastest pattern: rdfs:label (required), obo:IAO_0000115 (definition, ~65% coverage), oboInOwl:hasExactSynonym (0..n), oboInOwl:hasDbXref (0..n 'PREFIX:ID' strings). OPTIONAL every non-label field."
 
   - id: ancestors
@@ -111,7 +111,7 @@ examples:
         ?ancestor rdfs:label ?ancestorLabel ; oboInOwl:id ?ancestorId .
         FILTER(isIRI(?ancestor))
       }
-    verified: {distinct_ancestors: 13, date: "2026-07-22"}
+    verified: {row_count: 13, date: "2026-07-22"}
     teaches: "rdfs:subClassOf+ walks up the hierarchy (use `*` to include self). Requiring ?ancestor rdfs:label filters to named classes on its own, but keep FILTER(isIRI(?ancestor)) as the explicit guard against OWL restriction bnodes."
     traps_avoided:
       - "Without FILTER(isIRI(?parent)) a bare `rdfs:subClassOf ?parent` returns OWL restriction blank nodes mixed in (gotcha iri_blank_node)."
@@ -134,7 +134,7 @@ examples:
       }
       ORDER BY ?mondoId
       LIMIT 100
-    verified: {total_in_subtree: 1079, first_row: "MONDO:0000222 = seminal vesicle acute gonorrhea", date: "2026-07-22"}
+    verified: {min_rows: 100, has_values: ["MONDO:0000222", "seminal vesicle acute gonorrhea"], total_in_subtree: 1079, first_row: "MONDO:0000222 = seminal vesicle acute gonorrhea", date: "2026-07-22"}
     teaches: "THE enumeration route: `?d a owl:Class ; rdfs:subClassOf* <categoryIRI>` returns every descendant of a disease category (1,079 for infectious). Category IRIs: MONDO_0003847 hereditary, MONDO_0004992 cancer, MONDO_0005550 infectious, MONDO_0000001 root. Discover an unknown category IRI first (OLS4 / a label lookup), then expand — never paste text-search hits into VALUES (that samples, not enumerates)."
     traps_avoided:
       - "Multiple-inheritance DAG: subClassOf* yields one row PER PATH, so a disease reachable by several routes duplicates. SELECT DISTINCT (here) or COUNT(DISTINCT) is mandatory (gotcha subclassof_star_dag)."
@@ -161,7 +161,7 @@ examples:
       }
       GROUP BY ?categoryLabel
       ORDER BY DESC(?count)
-    verified: {hereditary_disease: 11801, cancer: 2272, infectious_disease: 1079, date: "2026-07-22"}
+    verified: {row_count: 3, has_values: [11801, 2272, 1079], hereditary_disease: 11801, cancer: 2272, infectious_disease: 1079, date: "2026-07-22"}
     teaches: "Aggregate by counting DISTINCT descendants of each category IRI, graph-pinned and deprecated-filtered. COUNT(DISTINCT ?disease) is doubly needed here: it collapses BOTH the DAG multi-path duplicates AND any co-hosted EFO re-declarations."
     traps_avoided:
       - "Unpinned, the same query joins EFO's re-declared copies; a two-variable read would return ×2.46 rows (33,766 → 83,035). Pin the graph (gotcha pin_mondo_graph)."
@@ -183,7 +183,7 @@ examples:
         FILTER NOT EXISTS { ?disease owl:deprecated true }
       }
       LIMIT 50
-    verified: {diseases_with_omim: 9807, date: "2026-07-22", note: "swap COUNT(DISTINCT ?disease) for the total"}
+    verified: {min_rows: 50, diseases_with_omim: 9807, date: "2026-07-22", note: "swap COUNT(DISTINCT ?disease) for the total"}
     teaches: "The second enumeration axis: one predicate (oboInOwl:hasDbXref) covers all 39+ sources; select a source by STRSTARTS on its 'PREFIX:' string (OMIM: ~32.8%, Orphanet:, MESH: ~26.8%, DOID:, UMLS: ~70%). Swap the prefix for a different registry."
     traps_avoided:
       - "CONTAINS(?xref,'OMIM') matches mid-string values too; STRSTARTS with the trailing colon is exact (gotcha xref_prefix)."
@@ -211,7 +211,7 @@ examples:
         GRAPH <http://id.nlm.nih.gov/mesh> { ?meshURI rdfs:label ?meshLabel . }
       }
       LIMIT 20
-    verified: {result_rows: 20, first_row: "cytomegalovirus retinitis → mesh/D017726 'Cytomegalovirus Retinitis'", date: "2026-07-22"}
+    verified: {min_rows: 20, first_row: "cytomegalovirus retinitis → mesh/D017726 'Cytomegalovirus Retinitis'", date: "2026-07-22"}
     teaches: "MeSH is co-hosted on the primary endpoint — direct GRAPH join, no TogoID. hasDbXref stores 'MESH:D…' STRINGS, so BIND(URI(CONCAT('http://id.nlm.nih.gov/mesh/', SUBSTR(?xref,6)))) rebuilds the IRI (drop the 'MESH:' prefix = 5 chars, SUBSTR is 1-based so start at 6). Pre-filter inside the mondo GRAPH before the join."
     traps_avoided:
       - "SELECT DISTINCT is required — a MeSH descriptor with several rdfs:label values (and the DAG multi-path) duplicates rows otherwise."

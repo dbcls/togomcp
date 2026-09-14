@@ -93,7 +93,7 @@ examples:
       }
       ORDER BY ?label
       LIMIT 30
-    verified: {result_rows: 30, distinct_media_total: 468, date: "2026-07-22", first_row: "medium/1398 = 1/10 PYGV MEDIUM modified"}
+    verified: {min_rows: 30, has_values: ["1/10 PYGV MEDIUM modified"], distinct_media_total: 468, date: "2026-07-22", first_row: "medium/1398 = 1/10 PYGV MEDIUM modified"}
     teaches: "MediumComposition is the flat medium↔ingredient link: ?comp schema:partOfMedium ?medium ; schema:containsIngredient <ingredient IRI>. Repeat the block per ingredient for an AND. Common IRIs: ingredient/5 glucose, ingredient/16 yeast extract, ingredient/43 NaCl."
 
   - id: media_by_taxgroup            # §4.4 first-class ENUMERATION route (audit Tier B — keep the worked query)
@@ -112,7 +112,7 @@ examples:
       GROUP BY ?medium ?label
       ORDER BY DESC(?strainCount)
       LIMIT 20
-    verified: {result_rows: 20, date: "2026-07-22", first_row: "POTATO-DEXTROSE AGAR (medium/J30) — 2638 fungal strains"}
+    verified: {min_rows: 20, has_values: ["J30", "POTATO-DEXTROSE AGAR"], date: "2026-07-22", first_row: "POTATO-DEXTROSE AGAR (medium/J30) — 2638 fungal strains"}
     teaches: "schema:belongsTaxGroup is THE set-level route for 'all media/strains for organism group X'. It sits on the Strain; reach media through GrowthCondition (relatedToStrain → partOfMedium). This is a controlled vocabulary — filter by exact value, never bif:contains."
     traps_avoided:
       - "The vocabulary has 12 values (live 2026-07-22), not the 6 v2 documented: Bacterium 32662, Fungus 5079, Yeast 3125 (distinct from Fungus!), Microalgae 1289, Archaeon 952, Macroalgae 884, Phage 602, Protist 380, Diatom 274, Cyanobacteria 154, Dinoflagellate 90, Animal 1. Enumerate it live before assuming a value exists — e.g. yeast strains are NOT under \"Fungus\"."
@@ -127,7 +127,7 @@ examples:
       SELECT (COUNT(DISTINCT ?m) AS ?media)
       FROM <http://rdfportal.org/dataset/mediadive>          # pin — else BacDive's 47,729 culture_medium nodes bleed in
       WHERE { ?m a schema:CultureMedium . }
-    verified: {media: 3289, date: "2026-07-22"}
+    verified: {n: 3289, date: "2026-07-22"}
     teaches: "Graph-pin every count on this endpoint; the pinned CultureMedium total is 3,289."
     traps_avoided:
       - "Unpinned = 51,018 (3,289 + 47,729 disjoint BacDive culture_medium nodes, ×15.5). DISTINCT does NOT fix it — pin the graph (gotcha scope_bleed)."
@@ -147,7 +147,7 @@ examples:
       GROUP BY ?medium ?label
       ORDER BY DESC(?ingredientCount)
       LIMIT 30
-    verified: {result_rows: 30, defined_media_total: 658, date: "2026-07-22", first_row: "ANAEROBIC FRESHWATER (FWM) MEDIUM — 55 ingredients"}
+    verified: {min_rows: 30, has_values: ["ANAEROBIC FRESHWATER (FWM) MEDIUM"], defined_media_total: 658, date: "2026-07-22", first_row: "ANAEROBIC FRESHWATER (FWM) MEDIUM — 55 ingredients"}
     teaches: "schema:isComplex 0 = chemically defined (658 media), 1 = complex (2,631). It is an INTEGER; `isComplex false` returns 0 rows silently (gotcha literal_typing)."
 
   - id: ingredient_xrefs
@@ -168,7 +168,7 @@ examples:
       }
       ORDER BY ?label
       LIMIT 50
-    verified: {result_rows: 50, ingredients_with_chebi: 687, date: "2026-07-22", note: "glucose (ingredient/5) hasChEBI 17234 (xsd:int) → CHEBI_17234"}
+    verified: {min_rows: 50, ingredients_with_chebi: 687, date: "2026-07-22", note: "glucose (ingredient/5) hasChEBI 17234 (xsd:int) → CHEBI_17234"}
     teaches: "Cross-refs are typed predicates, NOT rdfs:seeAlso: hasChEBI/hasPubChem (integers), hasCAS/hasKEGG (strings), hasGMO (IRI). All PARTIAL — wrap each in OPTIONAL + FILTER(BOUND). schema:hasChEBI is a bare integer; CONCAT it into a CHEBI_ IRI to join to ChEBI RDF."
     traps_avoided:
       - "A few ingredients have an empty rdfs:label but a valid ChEBI (e.g. ingredient/1944) — do not use label presence as a coverage proxy."
@@ -190,7 +190,7 @@ examples:
         ?medium rdfs:label ?medLabel .
       }
       LIMIT 20
-    verified: {result_rows: 2, date: "2026-07-22", first_row: "Weizmannia coagulans → NUTRIENT AGAR @ 40C"}
+    verified: {row_count: 2, has_values: ["Weizmannia coagulans", "NUTRIENT AGAR"], date: "2026-07-22", first_row: "Weizmannia coagulans → NUTRIENT AGAR @ 40C"}
     teaches: "GrowthCondition is a per-(strain,medium) node: schema:relatedToStrain ↔ schema:partOfMedium, carrying growthTemperature (integer, ~always present), growthPH (float, OPTIONAL ~70%), hasOxygenRequirement (free-text string, OPTIONAL ~80%)."
 
   - id: solution_recipe
@@ -209,7 +209,7 @@ examples:
         ?ing rdfs:label ?ingLabel .
       }
       LIMIT 50
-    verified: {result_rows: 50, date: "2026-07-22", first_row: "Trace element solution SL-4 → FeSO4 x 7 H2O, 0.2 g"}
+    verified: {row_count: 15, has_values: ["Trace element solution SL-4", "FeSO4 x 7 H2O"], first_row: "Trace element solution SL-4 → FeSO4 x 7 H2O, 0.2 g", note: "recorded as 50 rows on 2026-07-22", date: "2026-09-14"}
     teaches: "Hierarchical path: Medium --includesSolution--> Solution <--partOfSolution-- SolutionRecipe --includesIngredient--> Ingredient, with ingredientAmount + ingredientUnit. This is the detailed-protocol view; MediumComposition (example media_by_ingredient) is the flattened medium-level view."
     traps_avoided:
       - "PREDICATE SPLIT: SolutionRecipe uses schema:includesIngredient; MediumComposition uses schema:containsIngredient. Swapping them returns 0 rows with no error — they are class-specific."
@@ -227,7 +227,7 @@ examples:
               schema:containsIngredient <https://purl.dsmz.de/mediadive/ingredient/5> ;
               schema:partOfMedium ?medium .
       }
-    verified: {media_with_glucose: 568, date: "2026-07-22"}
+    verified: {n: 568, date: "2026-07-22"}
     teaches: "For 'all media with ingredient X', anchor on the ingredient IRI in MediumComposition and COUNT(DISTINCT ?medium) — the set-level route for ingredient membership."
     traps_avoided:
       - "Do NOT scope the count to a handful of medium IRIs sampled from an earlier text search — that counts only those media. Discover the ingredient IRI once, then count all media that reference it (circular-reasoning trap)."
@@ -254,7 +254,7 @@ examples:
       }
       ORDER BY DESC(?temp)
       LIMIT 10
-    verified: {result_rows: 10, date: "2026-07-22", first_row: "Pyrolobus fumarii (BacDiveID 13523, genus Pyrolobus) → PYROLOBUS FUMARII MEDIUM @ 103C"}
+    verified: {min_rows: 10, has_values: ["Pyrolobus fumarii", "Pyrolobus"], date: "2026-07-22", first_row: "Pyrolobus fumarii (BacDiveID 13523, genus Pyrolobus) → PYROLOBUS FUMARII MEDIUM @ 103C"}
     teaches: "BacDive is co-hosted on the primary endpoint; join MediaDive→BacDive on schema:hasBacDiveID (xsd:int, ~73% coverage) via explicit GRAPH blocks — no TogoID. This is the reverse of bacdive.yaml's xdb_mediadive_id. MediaDive supplies media/growth; BacDive supplies genus/phylum/phenotype the MediaDive Strain lacks."
 
 # ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──

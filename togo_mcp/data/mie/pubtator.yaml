@@ -126,7 +126,7 @@ examples:
              pubtator:annotation_count ?count .
       }
       ORDER BY ?type DESC(?count)
-    verified: {result_rows: 7, diseases: 2, genes: 5, date: "2026-07-22", first_row: "Disease mesh/D008545 (Melanoma), annotation_count 2"}
+    verified: {row_count: 7, has_values: ["Disease", "D008545"], diseases: 2, genes: 5, date: "2026-07-22", first_row: "Disease mesh/D008545 (Melanoma), annotation_count 2"}
     teaches: "One oa:Annotation node = one (entity, article) pair; dcterms:subject gives the type ('Disease'/'Gene', exact caps), oa:hasBody the concept IRI (MeSH or NCBI Gene), oa:hasTarget the PubMed IRI, annotation_count the per-article mention frequency."
 
   - id: articles_for_disease
@@ -144,7 +144,7 @@ examples:
              oa:hasTarget ?article .
       }
       LIMIT 100
-    verified: {result_rows: 100, full_distinct_articles: 297446, date: "2026-07-22"}
+    verified: {min_rows: 100, full_distinct_articles: 297446, date: "2026-07-22"}
     teaches: "THE enumeration route: dcterms:subject \"Disease\" + oa:hasBody <MeSH IRI> yields every article mentioning that disease (COUNT(DISTINCT ?article) for the full set). The mirror route enumerates a gene's articles: dcterms:subject \"Gene\" + oa:hasBody <ncbigene IRI>."
     traps_avoided:
       - "Do NOT text-search article titles to find a disease's papers — oa:hasBody is a resolved MeSH IRI over the whole corpus; a title match misses papers that mention the disease only in the abstract/body. Use the concept IRI, not bif:contains, for set-level enumeration."
@@ -163,7 +163,7 @@ examples:
         ?geneAnn    dcterms:subject "Gene" ; oa:hasBody ?geneId ; oa:hasTarget ?article .
       }
       LIMIT 100
-    verified: {result_rows: 100, date: "2026-07-22", first_row: "pubmed/10395863 ↔ ncbigene/1161"}
+    verified: {min_rows: 100, date: "2026-07-22", first_row: "pubmed/10395863 ↔ ncbigene/1161"}
     teaches: "Two annotations are co-mentioned when they share oa:hasTarget (same article IRI). Pin ONE side to a concept IRI first (here the disease) so the join stays bounded; the other side is left as a variable to enumerate its partners."
 
   - id: high_frequency_mentions
@@ -185,7 +185,7 @@ examples:
       }
       ORDER BY DESC(?count)
       LIMIT 20
-    verified: {result_rows: 2, top_count: 6, date: "2026-07-22"}
+    verified: {row_count: 2, top_count: 6, date: "2026-07-22"}
     teaches: "Filter annotation_count AT the ceiling with >= (Gene max=9 → >=6; Disease max=5 → >=4), and ONLY after scoping to a concept IRI. NEVER FILTER(?count > 5) on a Disease query (always empty), and never range-filter unscoped (times out over 238M rows) — gotcha annotation_count_ceiling."
 
   - id: variant_sources
@@ -202,7 +202,7 @@ examples:
         VALUES ?source { "ClinVar" "dbSNP" "dbGAP" "PubTator3" }
       }
       GROUP BY ?source
-    verified: {PubTator3: 2302, dbSNP: 173, ClinVar: 33, date: "2026-07-22"}
+    verified: {row_count: 3, has_values: [2302, 173, 33], PubTator3: 2302, dbSNP: 173, ClinVar: 33, date: "2026-07-22"}
     teaches: "Variant annotations are blank nodes: reach them by oa:hasBody <identifiers.org/dbsnp/rsN>, never by IRI. dcterms:source is their only classifier — and the VALUES list MUST include 'PubTator3', the majority source (91.5% here)."
     traps_avoided:
       - "A VALUES list of { \"ClinVar\" \"dbSNP\" \"dbGAP\" } (no \"PubTator3\") RUNS and returns rows — just the minority. It silently drops the plurality source (gotcha variant_blank_nodes)."
@@ -217,7 +217,7 @@ examples:
       FROM <http://rdfportal.org/dataset/pubtator_central>
       WHERE { ?ann dcterms:subject ?type . }
       GROUP BY ?type
-    verified: {Disease: 162094545, Gene: 72659393, date: "2026-07-22"}
+    verified: {row_count: 2, has_values: [162094545, 72659393], Disease: 162094545, Gene: 72659393, date: "2026-07-22"}
     teaches: "A GROUP BY dcterms:subject over the PINNED graph returns the per-type totals in <10s; the same COUNT unpinned (or as a whole-oa:Annotation COUNT(*)) times out. Pin the graph and count by the typed literal."
     traps_avoided:
       - "This misses the ~3.47M blank-node Variant annotations, which have no dcterms:subject — they are counted only via dcterms:source or oa:hasBody prefix, not here (gotcha variant_blank_nodes)."
@@ -244,7 +244,7 @@ examples:
       GROUP BY ?geneId
       ORDER BY DESC(?cooccurrence)
       LIMIT 5
-    verified: {top_gene: "ncbigene/7157 (TP53) = 360", second: "ncbigene/7124 (TNF) = 289", date: "2026-07-22", note: "counts are over the 5000-article sample, not the full corpus"}
+    verified: {min_rows: 5, has_values: ["7157", 360], top_gene: "ncbigene/7157 (TP53) = 360", second: "ncbigene/7124 (TNF) = 289", date: "2026-07-22", note: "counts are over the 5000-article sample, not the full corpus"}
     teaches: "Bound the disease's article set with an inner SELECT DISTINCT ?article … LIMIT N BEFORE joining Gene annotations. Without the inner LIMIT this join is timeout-prone even scoped to one disease once its article count exceeds ~10^4–10^5."
     traps_avoided:
       - say: "The pre-bound cap makes the co-occurrence a RANKING over a sample, not an exact corpus count. Removing the inner LIMIT gives the exact total and costs 14.9s instead of ~2s (measured 2026-08-26) — a real cost but not the timeout this line hedged at, so do remove it when you need the true numbers. This is the one place in this file where 238M rows are genuinely felt: the self-join across annotations, not the count."
@@ -298,7 +298,7 @@ examples:
       GROUP BY ?geneId ?symbol
       ORDER BY DESC(?cooccurrence)
       LIMIT 5
-    verified: {result_rows: 5, date: "2026-07-22", first_row: "ncbigene/7157 TP53 = 360; then TNF, CD8A, AKT1, IL2"}
+    verified: {min_rows: 5, has_values: ["TP53", "TNF"], date: "2026-07-22", first_row: "ncbigene/7157 TP53 = 360; then TNF, CD8A, AKT1, IL2"}
     teaches: "Gene oa:hasBody IRIs ARE the subject IRIs in the co-located ncbigene graph — a direct same-endpoint GRAPH join (no bridge). ncbigene:taxid <taxonomy/9606> restricts to human and rdfs:label supplies the gene symbol; swap the taxon IRI for another species."
     traps_avoided:
       - "PubTator gene annotations carry no taxon — species can ONLY be resolved through the ncbigene graph (gotcha genes_not_species_scoped)."
@@ -323,7 +323,7 @@ examples:
         }
       }
       LIMIT 20
-    verified: {result_rows: 4, date: "2026-07-22", first_row: "mesh/D008545 → 'Melanoma' (and the D-number string 'D008545')"}
+    verified: {row_count: 4, has_values: ["D008545", "Melanoma"], date: "2026-07-22", first_row: "mesh/D008545 → 'Melanoma' (and the D-number string 'D008545')"}
     teaches: "PubTator's identifiers.org/mesh IRI must be REPLACE-rewritten to id.nlm.nih.gov/mesh/ and resolved via a cross-endpoint SERVICE to primary — mesh is NOT co-located. Virtuoso binds ?meshBody locally before dispatching the SERVICE, so ?meshIRI is already ground."
     traps_avoided:
       - "mesh rdfs:label returns TWO rows per subject — the descriptor name AND the bare D-number string; filter FILTER(!REGEX(?label,'^D[0-9]+$')) if you want only the name."
@@ -349,7 +349,7 @@ examples:
         }
       }
       LIMIT 50
-    verified: {result_rows: 50, date: "2026-07-22", first_row: "pmid 1220917 'Immunotherapy of malignant melanoma.' → mesh/D005153"}
+    verified: {min_rows: 50, date: "2026-07-22", first_row: "pmid 1220917 'Immunotherapy of malignant melanoma.' → mesh/D005153"}
     teaches: "PubMed article metadata (bibo:pmid, dct:title) lives ONLY in the co-hosted dataset/pubmed graph; oa:hasTarget is the same article IRI in both graphs — a direct GRAPH join. Use bif:contains (Virtuoso, indexed) on the free-text title, and pre-filter inside the pubmed GRAPH before joining PubTator."
     traps_avoided:
       - "bif:contains is legitimate here ONLY because dct:title is unstructured free text with no controlled-vocabulary equivalent; the article's DISEASES come from the structured oa:hasBody MeSH IRI, never from title text. Split the property path before the text node (do not chain / into bif:contains) on Virtuoso."

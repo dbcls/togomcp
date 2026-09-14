@@ -217,7 +217,7 @@ The `examples` are not just there to work — in v3 each one **is** the schema s
 
 - Does the query use a pattern that generalises? A reader should be able to swap in a different IRI and get a different-but-sensible result. The `teaches` line names that reusable idiom explicitly.
 - Does it demonstrate a non-obvious access pattern the reader would not guess? (Measurement scaffolds, blank-node activity records, reified statements, FALDO ranges, indirect value hops are prime candidates.)
-- Does its `verified:` block carry the actual live result **and** a `date:`? (Always — spec §4.1.)
+- Does its `verified:` block carry the actual live result under a key the checker asserts (`n` / `row_count` / `min_rows` / `has_values`) **and** a `date:`? (Always — spec §4.1.)
 - Is it a set-level enumeration route where the DB supports one? (Then it is its own example, not a caveat — spec §4.4.)
 - Does it include a `LIMIT` where a row query could run away, and comments explaining non-obvious choices?
 

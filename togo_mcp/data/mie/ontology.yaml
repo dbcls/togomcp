@@ -128,7 +128,7 @@ examples:
         FILTER(LANG(?label) IN ("", "en"))
         BIND(COALESCE(?dep, false) AS ?obsolete)
       }
-    verified: {rows: 6, labels: "leukocyte / evidence used in manual assertion / Heart / gene / Sequence alignment / atmosphere", all_obsolete: false, date: "2026-07-22"}
+    verified: {row_count: 6, has_values: ["Sequence alignment", "leukocyte"], labels: "leukocyte / evidence used in manual assertion / Heart / gene / Sequence alignment / atmosphere", all_obsolete: false, date: "2026-07-22"}
     teaches: "VALUES pairs each IRI with its OWNING graph AND builds each from that ontology's REAL namespace (gotcha namespace_map): obo for CL/ECO, ebi.ac.uk for EFO, purl.org/sig/ont for FMA, semanticscience for SIO, edamontology for EDAM, mdatahub for MEO. One round trip resolves any mixed batch. FILTER(LANG IN ('','en')) is the only form correct across both label-tag halves."
     traps_avoided:
       - "The obo-form variant (<obo/FMA_7088>, <obo/SIO_010035>, <obo/EDAM_0863>, <obo/MEO_0000001>) returns 0 rows for those four — SILENTLY. Assuming obo throughout drops 4 of 6 rows (gotcha namespace_map)."
@@ -152,7 +152,7 @@ examples:
         }
       }
       GROUP BY ?label ?fmaid ?preferred ?definition
-    verified: {label: "Heart", fmaid: 7088, definition_present: true, translations: "Coeur | Cor | Corazon | Cuore | Herz | Puso", date: "2026-07-22"}
+    verified: {row_count: 1, has_values: ["Heart", 7088], label: "Heart", fmaid: 7088, definition_present: true, translations: "Coeur | Cor | Corazon | Cuore | Herz | Puso", date: "2026-09-14"}
     teaches: "FMA carries NO skos:notation, NO oboInOwl:*, NO IAO_0000115 — its ID is fma:FMAID (an integer 7088), its definition is fma:definition, its label is @en-tagged. The obo-family query (skos:notation + IAO_0000115) returns nothing here (gotcha predicate_per_ontology). fma:non-English_equivalent is FMA's multilingual channel."
     traps_avoided:
       - "The IRI is lowercase 'fma' with NO underscore; <obo/FMA_7088> is 0 rows. rdfs:label 'Heart'^^xsd:string also matches nothing here (fma labels are @en) — this query reads label without a literal filter, so it is safe (gotcha literal_form_per_graph)."
@@ -172,7 +172,7 @@ examples:
           FILTER NOT EXISTS { ?term owl:deprecated true }
         }
       }
-    verified: {activeDescendants: 573, raw_path_rows: 1483, date: "2026-07-22", note: "573 distinct from 1,483 path rows — the DAG returns multi-parent terms once per path. To LIST, SELECT DISTINCT ?term ?label with the same body."}
+    verified: {n: 573, raw_path_rows: 1483, date: "2026-07-22", note: "573 distinct from 1,483 path rows — the DAG returns multi-parent terms once per path. To LIST, SELECT DISTINCT ?term ?label with the same body."}
     teaches: "rdfs:subClassOf* is THE route to enumerate 'all terms of kind X' — the complete subtree, not a label-search sample. * includes the anchor, + excludes it. Three requirements, all mandatory: pin the OWNING graph (gotcha graph_pin), FILTER NOT EXISTS owl:deprecated, and COUNT(DISTINCT) because the hierarchy is a DAG (1,483 path rows collapse to 573 terms). Binding rdfs:label also gives Virtuoso the transitive start it needs."
     traps_avoided:
       - "UNPINNED `?term rdfs:subClassOf* CL_0000738` over all 37 graphs EXCEEDED Virtuoso transitive temp memory → HTTP 500 (verified 2026-07-22). Pinning is survival, not just correctness (gotcha graph_pin)."
@@ -196,7 +196,7 @@ examples:
         }
       }
       ORDER BY ?label
-    verified: {directParts: 72, date: "2026-07-22", examples: "diencephalon, cerebellum, ... (72 direct parts)"}
+    verified: {row_count: 72, has_values: ["forebrain", "midbrain", "hindbrain"], examples: "forebrain, midbrain, hindbrain, brainstem, ... (72 direct parts)", note: "until 2026-09-14 this block named diencephalon and cerebellum, which are NOT in the result", date: "2026-09-14"}
     teaches: "TWO hierarchy predicates coexist. In UBERON/FMA/PO anatomical containment is asserted as an owl:Restriction on BFO_0000050 (part_of) BNODE — NOT as subClassOf. subClassOf means 'is a KIND of', part_of means 'is PART of'. Match the bnode restriction inline. This is the second first-class enumeration route (§4.4)."
     traps_avoided:
       - "The is_a expansion `?c rdfs:subClassOf* UBERON_0000955` returns only 5 rows, ALL taxon variants of 'brain' (insect embryonic brain, …) — ZERO body parts. is_a is the WRONG tool for anatomy; an isIRI(?parent) filter would discard the very bnodes that ARE the partonomy."
@@ -217,7 +217,7 @@ examples:
           FILTER(STR(?syn) = "white blood cell")
         }
       }
-    verified: {term: "CL_0000738", label: "leukocyte", date: "2026-07-22"}
+    verified: {row_count: 1, has_values: ["CL_0000738", "leukocyte"], term: "CL_0000738", label: "leukocyte", date: "2026-09-14"}
     teaches: "Synonyms are a controlled field, so an exact match beats bif:contains and beats OLS4 search (which ranks by relevance and can bury an exact hit under its own narrower subtypes). FILTER(STR(?syn) = 'x') is the literal form correct in EVERY graph — use it whenever you are unsure of a graph's typed/plain/@en convention (gotcha literal_form_per_graph)."
     traps_avoided:
       - "A bare `oboInOwl:hasExactSynonym 'white blood cell'` (plain, no ^^xsd:string) returns 0 rows in graphs that store the typed form. STR() sidesteps the whole per-graph typing question."
@@ -242,7 +242,7 @@ examples:
           ?s sio:SIO_000772 ?eco .
         }
       }
-    verified: {ecoTermsUsed: 23, manualAssertions: 463051, raw_rows: 620815, date: "2026-07-22", note: "COUNT(*) gives 620,815 — a 34% over-count vs the 463,051 DISTINCT annotations."}
+    verified: {row_count: 1, has_values: [23], ecoTermsUsed: 23, manualAssertions: 463051, raw_rows: 620815, date: "2026-09-14", note: "COUNT(*) gives 620,815 — a 34% over-count vs the 463,051 DISTINCT annotations."}
     teaches: "The hierarchy-aware ontology→data join: expand ECO_0000352 to its subtree in <ontology/eco>, then join to glycogenes, whose sio:SIO_000772 points at the SAME obo ECO IRIs (no namespace translation). This SPLITS glycogene annotations into manual vs automatic evidence — expansion the data graph cannot do alone. Both graphs share the 'primary' endpoint: a direct GRAPH join, no TogoID bridge."
     traps_avoided:
       - "COUNT(DISTINCT ?s) is mandatory: the ECO subtree is a DAG (path multiplicity), so COUNT(*) inflates 463,051 → 620,815 (+34%). DISTINCT the DATA entity, not the term."

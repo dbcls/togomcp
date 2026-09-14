@@ -71,7 +71,8 @@ TWO HARD RULES (you will be independently re-validated):
   before retrying.
 - Nothing invented: every examples[].sparql (incl. the elevated aggregation + cross_db ones) and
   every entity_counts number must be retrieved live before writing, with the result recorded in the
-  example's verified: block plus a date: key (never on:, which YAML parses as boolean true). A false
+  example's verified: block plus a date: key (never on:, which YAML parses as boolean true) and at least
+  one asserted key (n / row_count / min_rows / has_values — spec §4.1). A false
   "validated" claim is a hard failure.
 
 Return ONLY a compact report: database, file_path, mode (created|revised), validation_summary (the
@@ -96,8 +97,10 @@ Steps:
    executes with no SPARQL error. Count a 0-row result as a FAILURE unless the example carries
    expect_empty: true (then 0 rows is expected). Note the symptom in failures.
 4. For every example, confirm it has a verified: block with a date: field (not on:). An example
-   missing verified:/date: is a FAILURE (record it). If a verified: block states a scalar result
-   (e.g. n: 108) and re-running the query now yields a different number, record it as a drift failure.
+   missing verified:/date: is a FAILURE (record it). Then run the machine check, which asserts every
+   verified: block against the live endpoint:
+   Bash: uv run python scripts/check_mie_examples.py ${db}
+   Every DRIFT or MALFORMED line it prints is a FAILURE (record each); net-fail lines are not.
 5. Report exact counts (queries_total/passed/failed; treat "examples with a valid verified:+date:" as
    sample_entries_passed/total), every failure (one line each: example id + the error/symptom), and a
    verdict. verdict = PASS only if keys OK AND no 'on:' key AND queries_failed == 0 AND every example

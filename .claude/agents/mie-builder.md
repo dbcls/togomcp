@@ -46,7 +46,9 @@ must be terse and machine-checkable — NOT a chat reply.
 - **Nothing invented.** Every `examples[].sparql` (including the elevated `aggregation` and
   `cross_db` ones) and every `entity_counts` number must be retrieved from the live endpoint before
   the file is written, its result recorded in the example's `verified:` block **with a `date:`** (never
-  `on:` — YAML parses that as boolean `true`). A fabricated-but-plausible example is the worst
+  `on:` — YAML parses that as boolean `true`) and at least one asserted key (`n` / `row_count` /
+  `min_rows` / `has_values`, spec §4.1); `uv run python scripts/check_mie_examples.py <db>` must report
+  0 zero-row / error / drift / malformed. A fabricated-but-plausible example is the worst
   possible output: an independent validator WILL re-run your queries against the endpoint, and a
   false "validated" claim is a hard failure. Never report a check as passed unless you actually ran
   it and saw it pass.

@@ -84,7 +84,7 @@ examples:
       FROM <http://rdfportal.org/dataset/mco>
       WHERE { ?chr rdfs:subClassOf mco:MouseChromosome . }
       ORDER BY ?name
-    verified: {n_chromosomes: 22, date: "2026-07-22", note: "1-19, X, Y, MT"}
+    verified: {row_count: 22, date: "2026-07-22", note: "1-19, X, Y, MT"}
     teaches: "THE enumeration axis: ?chr rdfs:subClassOf mco:MouseChromosome gives all 22; identify by IRI, derive the name with STRAFTER — never by rdfs:label."
     traps_avoided:
       - "rdfs:label is the constant 'Mouse chromosome 1' on all 22 classes — a FILTER/CONTAINS on the label is useless (gotcha broken_labels)."
@@ -98,7 +98,7 @@ examples:
       SELECT ?length
       FROM <http://rdfportal.org/dataset/mco>
       WHERE { ?inst a mco:2 ; mco:build mco:GRCm39 ; mco:length ?length . }
-    verified: {length: 181755017, date: "2026-07-22"}
+    verified: {n: 181755017, date: "2026-07-22"}
     teaches: "Length is on the per-build INSTANCE typed by the chromosome class: ?inst a mco:<chr> ; mco:build mco:GRCm39 ; mco:length ?len."
     traps_avoided:
       - "Querying the CLASS (`mco:2 mco:length ?l`) returns 0 rows — length is on the instance (gotcha class_vs_instance)."
@@ -116,7 +116,7 @@ examples:
         ?i38 a mco:2 ; mco:build mco:GRCm38 ; mco:length ?len38 .
         ?i39 a mco:2 ; mco:build mco:GRCm39 ; mco:length ?len39 .
       }
-    verified: {len38: 182113224, len39: 181755017, delta: -358207, date: "2026-07-22"}
+    verified: {row_count: 1, has_values: [182113224, 181755017], len38: 182113224, len39: 181755017, delta: -358207, date: "2026-09-14"}
     teaches: "Each chromosome has one instance per build, both typed by the same class — bind them as two patterns (?i38, ?i39) to compare assemblies."
 
   - id: chromosome_xrefs
@@ -134,7 +134,7 @@ examples:
               mco:refseq ?refseq ; mco:insdc ?insdc ; mco:ucsc ?ucsc .
       }
       ORDER BY ?name
-    verified: {result_rows: 22, date: "2026-07-22", chr2: "refseq NC_000068.8, insdc CM000995.3"}
+    verified: {row_count: 22, has_values: ["NC_000068.8", "CM000995.3"], date: "2026-07-22", chr2: "refseq NC_000068.8, insdc CM000995.3"}
     teaches: "Cross-refs are single-valued instance predicates; pin mco:build mco:GRCm39 and read mco:refseq/insdc/ucsc across all 22 chromosomes."
     traps_avoided:
       - "Without the GRCm39 build filter you get empty placeholder stubs from the GRCm38 instances (gotcha grcm38_stubs)."
@@ -153,7 +153,7 @@ examples:
         ?inst a ?chr ; mco:build mco:GRCm39 ; mco:length ?length .
         FILTER(?chr != mco:MT)          # exclude the mitochondrion (16,299 bp) from the nuclear total
       }
-    verified: {nuclear_length: 2723414844, n_chromosomes: 21, date: "2026-07-22"}
+    verified: {row_count: 1, has_values: [2723414844, 21], nuclear_length: 2723414844, n_chromosomes: 21, date: "2026-07-22"}
     teaches: "Aggregate per-instance lengths with SUM over the GRCm39 build; graph-pin, and exclude mco:MT for a nuclear (non-mitochondrial) total. Drop the FILTER to include MT (22 -> 2,723,431,143 bp)."
 
   - id: gene_chromosome_length    # ELEVATED cross_db — cross-endpoint SERVICE federation (ebi -> primary)
@@ -177,7 +177,7 @@ examples:
           FILTER(STRENDS(STR(?ensChr), CONCAT("/GRCm39/", ?chrName)))
         }
       }
-    verified: {chrName: "5", length: 151758149, date: "2026-07-22", note: "Actb = ENSMUSG00000029580"}
+    verified: {row_count: 1, has_values: ["5", 151758149], chrName: "5", length: 151758149, date: "2026-09-14", note: "Actb = ENSMUSG00000029580"}
     teaches: "MCO has NO same-endpoint join partner; federate cross-endpoint with SERVICE to Ensembl (ebi). Join by chromosome NAME, not IRI: Ensembl's so:part_of chromosome IRI carries a release number (.../ensembl/115/mus_musculus/GRCm39/5) that mco:ensembl lacks, so match the '/GRCm39/<name>' tail."
     traps_avoided:
       - "Do NOT join mco:ensembl directly to Ensembl's chromosome IRI — mco:ensembl is version-less (.../ensembl/mus_musculus/GRCm39/5) but Ensembl's own IRI has a release segment (/115/), so an equality join yields 0 rows. Extract the chromosome name and match on that."

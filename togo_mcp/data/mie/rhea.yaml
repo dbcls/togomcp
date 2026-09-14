@@ -132,7 +132,7 @@ examples:
         }
       }
       LIMIT 40
-    verified: {result_rows: 28, date: "2026-07-22", note: "ATP + H2O = ADP + phosphate + H(+); status Approved, isTransport 0, 7 EC IRIs, 3 citations, quartet links 13066/13067/13068"}
+    verified: {row_count: 28, has_values: ["ATP + H2O = ADP + phosphate + H(+)", "isTransport"], date: "2026-07-22", note: "ATP + H2O = ADP + phosphate + H(+); status Approved, isTransport 0, 7 EC IRIs, 3 citations, quartet links 13066/13067/13068"}
     teaches: "Anchor a reaction by its RHEA:NNNNN accession as a PLAIN literal; one row per predicate reveals the full shape (status IRI, ec IRIs, side IRIs, quartet links)."
 
   - id: approved_reactions
@@ -151,7 +151,7 @@ examples:
         }
       }
       LIMIT 15
-    verified: {result_rows: 15, approved_total: 18184, date: "2026-08-26"}
+    verified: {min_rows: 15, approved_total: 18184, date: "2026-08-26"}
     teaches: "`rdfs:subClassOf rhea:Reaction` selects the 18,854 master reactions; pair it with the Approved status IRI as the standard entry point."
 
   - id: compound_participant
@@ -175,7 +175,7 @@ examples:
         }
       }
       LIMIT 10
-    verified: {result_rows: 10, date: "2026-07-22", first_row: "RHEA:10132 = benzoate + ATP + CoA = benzoyl-CoA + AMP + diphosphate; name 'ATP'"}
+    verified: {min_rows: 10, date: "2026-07-22", first_row: "RHEA:10132 = benzoate + ATP + CoA = benzoyl-CoA + AMP + diphosphate; name 'ATP'"}
     teaches: "To enumerate ALL reactions with a compound, anchor on its ChEBI IRI via rhea:chebi and traverse participant → side → reaction. This is THE set-level compound route — never text-search the equation for a known compound."
     traps_avoided:
       - "OMITTING `?reaction rhea:side ?side` disconnects the reaction from the side you filtered, turning the query into a cross-join against ALL 18,184 approved reactions (returns the whole set with the right compound name attached — a silent wrong answer, observed live 2026-07-22)."
@@ -201,7 +201,7 @@ examples:
         }
       }
       LIMIT 20
-    verified: {result_rows: 8, date: "2026-07-22", note: "2.7.1.1 → 5 reactions (D-glucose/D-mannose/D-fructose... + ATP), 1.1.1.1 → 3"}
+    verified: {row_count: 8, has_values: ["2.7.1.1", "1.1.1.1"], date: "2026-07-22", note: "2.7.1.1 → 5 reactions (D-glucose/D-mannose/D-fructose... + ATP), 1.1.1.1 → 3"}
     teaches: "Filter reactions by enzyme class with rhea:ec IRIs in a VALUES block — http://purl.uniprot.org/enzyme/X.X.X.X. Rhea has no partial-EC codes (no `2.7.-.-`); enumerate the fully-specified members."
 
   - id: transport
@@ -224,7 +224,7 @@ examples:
         }
       }
       LIMIT 8
-    verified: {result_rows: 8, date: "2026-07-22", first_row: "RHEA:28747 = NH4(+)(in) = NH4(+)(out); name 'NH4(+)', location rhea:In / rhea:Out"}
+    verified: {min_rows: 8, date: "2026-07-22", first_row: "RHEA:28747 = NH4(+)(in) = NH4(+)(out); name 'NH4(+)', location rhea:In / rhea:Out"}
     teaches: "rhea:isTransport is a typed boolean (match the bare `1`); rhea:location on a participant (rhea:In/rhea:Out) exists only for transport reactions and names the compartment."
 
   - id: quartet
@@ -242,7 +242,7 @@ examples:
           OPTIONAL { ?m rhea:bidirectionalReaction ?bidir . ?bidir rhea:accession ?bidirAcc . }
         }
       }
-    verified: {result_rows: 2, date: "2026-07-22", note: "13065 → 13066 (=>) & 13067 (reverse =>), bidirectional 13068; IDs are consecutive from the master"}
+    verified: {row_count: 2, date: "2026-07-22", note: "13065 → 13066 (=>) & 13067 (reverse =>), bidirectional 13068; IDs are consecutive from the master"}
     teaches: "Each transformation is a quartet: master (base) + two rhea:directionalReaction (L=>R, R=>L) + one rhea:bidirectionalReaction, with consecutive IDs. The master (rdfs:subClassOf rhea:Reaction) is the right entry point for almost all queries."
 
   - id: count_by_ec
@@ -261,7 +261,7 @@ examples:
         }
       }
       GROUP BY ?ec
-    verified: {ec_2_7_1_1: 5, ec_1_1_1_1: 3, date: "2026-07-22"}
+    verified: {row_count: 2, has_values: [5, 3], ec_2_7_1_1: 5, ec_1_1_1_1: 3, date: "2026-07-22"}
     teaches: "COUNT(DISTINCT ?reaction) scoped to specific EC/status IRIs completes fast and is graph-pinned; count reactions, not sides or participants."
     traps_avoided:
       - say: "Count REACTIONS, not the path: the same query over the compound-participant path (reaction→side→contains→participant→compound) counts participant slots, of which a reaction has many. Scoped to ATP it returns 1,384 distinct reactions in 0.2s — it does NOT time out, which this line claimed until 2026-08-26 (gotcha counts_are_cheap_here). Keep COUNT(DISTINCT ?reaction) on the outside and the ChEBI IRI on the inside."
@@ -300,8 +300,7 @@ examples:
         }
       }
       ORDER BY ?side ?name
-    verified: {result_rows: 6, date: "2026-08-26", runtime: "0.2s",
-               left: "1 3-methylbutanoyl-CoA + 3 H(+) + 3 malonyl-CoA", right: "3 CO2 + 4 CoA + 1 phlorisovalerophenone"}
+    verified: {row_count: 6, has_values: ["3-methylbutanoyl-CoA", "H(+)"], date: "2026-08-26", runtime: "0.2s", left: "1 3-methylbutanoyl-CoA + 3 H(+) + 3 malonyl-CoA", right: "3 CO2 + 4 CoA + 1 phlorisovalerophenone"}
     teaches: "The coefficient IS machine-readable, and reflection is how you get it: leave the participant predicate as a variable, bind it with `?contains rdfs:subPropertyOf rhea:contains`, then read `rhea:coefficient` off that property node. The coefficient lives on the PREDICATE, not on the participant — 31 such sub-properties exist (contains1..contains40 plus containsN/contains2n/containsNplus1/containsNminus1), and this one pattern covers all of them without enumerating any."
     traps_avoided:
       - "Do NOT write `?side rhea:contains ?participant` and expect a number anywhere: rhea:contains is the UNION super-property and carries no coefficient. Binding the sub-property is the whole point of the pattern."
@@ -329,8 +328,7 @@ examples:
         }
       }
       LIMIT 10
-    verified: {result_rows: 10, distinct_reviewed_enzymes: 148, date: "2026-08-26", runtime: "0.2s",
-               first_row: "A4STB6 UBIC_AERS4 — chorismate = 4-hydroxybenzoate + pyruvate"}
+    verified: {min_rows: 10, distinct_reviewed_enzymes: 148, date: "2026-08-26", runtime: "0.2s", first_row: "A4STB6 UBIC_AERS4 — chorismate = 4-hydroxybenzoate + pyruvate"}
     teaches: "UniProt points straight at a Rhea reaction IRI through up:annotation -> up:Catalytic_Activity_Annotation -> up:catalyticActivity -> up:catalyzedReaction. Reverse it and you have a Rhea-to-protein join that needs no EC number and no ID bridge — the idiom sib-swiss/sparql-examples uses throughout. All three hops are required; ?protein up:catalyzedReaction ?reaction returns nothing."
     traps_avoided:
       - say: "This is NOT the same question as the EC join (example xdb_uniprot), and the two disagree by more than rounding. For RHEA:13065 the direct link finds 4,827 reviewed enzymes while the rhea:ec route finds 2,568 (measured 2026-08-26): EC is many-to-one — RHEA:13065 carries 7 EC IRIs, so the EC route sweeps in enzymes for OTHER reactions of those classes, while missing every enzyme annotated with this reaction but no matching EC. Use the direct link for 'catalyses THIS reaction'; use EC for 'belongs to this enzyme class'."
@@ -383,7 +381,7 @@ examples:
         }
       }
       LIMIT 12
-    verified: {result_rows: 12, date: "2026-07-22", first_row: "P35557 HXK4_HUMAN → RHEA:11028 (D-mannose + ATP = D-mannose 6-phosphate + ADP + H(+))"}
+    verified: {min_rows: 12, date: "2026-07-22", first_row: "P35557 HXK4_HUMAN → RHEA:11028 (D-mannose + ATP = D-mannose 6-phosphate + ADP + H(+))"}
     teaches: "Rhea and UniProt are co-hosted on the sib endpoint (distinct graphs) and share the EC-number IRI (rhea:ec = up:enzyme) — a direct GRAPH join, no TogoID bridge. Pre-filter each block (up:reviewed 1 + organism, Approved) before joining; the join is many-to-one (many proteins per reaction)."
 
 # ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──

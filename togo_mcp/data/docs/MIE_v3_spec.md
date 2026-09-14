@@ -113,7 +113,8 @@ examples:
     endpoint_name: <group>   # ONLY for cross_db (e.g. sib); omit for single-DB
     sparql: |
       <a complete, runnable query>
-    verified: {<result key>: <value>, date: "YYYY-MM-DD"}   # REQUIRED — see §4.1
+    verified: {n: <value>, date: "YYYY-MM-DD"}   # REQUIRED — assert with n / row_count /
+                                                 # min_rows / has_values; see §4.1
     teaches: "<the reusable idiom in one line>"
     traps_avoided:           # optional; the inline, query-specific warnings
       - "<what the naive query gets wrong + the fix>"
@@ -216,6 +217,27 @@ endpoint, and carries the date it was run in a `date: "YYYY-MM-DD"` field. A re-
 disagrees is a drift signal, not silent rot. This makes the file **machine-testable**: a CI
 job can execute every example and assert its `verified` result.
 
+**`verified:` must carry at least one machine-checkable key** (added 2026-09-14). The sentence
+above was aspirational until then: across 334 examples `verified:` used 198 different key sets,
+mostly prose (`first_row: "GL_002303 'Concanavalin-A' -> uniprot/P02866"`), so no job could
+compare anything and the drift signal existed only for a human reading both. The reserved keys
+are what `scripts/check_mie_examples.py` asserts; every other key stays free-form annotation:
+
+| key | asserts | rule |
+|---|---|---|
+| `n` | the single cell of a one-row, one-variable result (a COUNT) | within `tolerance` |
+| `row_count` | the number of result rows | within `tolerance`; must be **below** the query's `LIMIT` — a count equal to the cap only says the cap was hit |
+| `min_rows` | at least this many rows | the honest assertion for a `LIMIT`-capped result |
+| `has_values` | each listed value appears as a cell: a string exactly (full value or IRI local name), a YAML number within `tolerance` | on a capped result the query needs `ORDER BY`, else it fails at random |
+| `tolerance` | fractional slack for `n`, `row_count` and numeric `has_values` | default 0.02 |
+
+Prefer `n` or `row_count` — they catch a union-inflated or silently shrunken answer, which
+`min_rows` alone cannot. Put stable identity values in `has_values` (an accession, a label). A count
+belongs there only as a YAML number, which gets `tolerance`; a quoted count is exact-match and
+drifts on every upstream release. Conversely quote a numeric identifier (`"18390"`). An
+`expect_empty: true` example is exempt. A drift is resolved by re-measuring, then fixing the query
+or updating the figure **and** its `date:` together — never by widening `tolerance` until it passes.
+
 **The same rule binds the prose.** A `global_gotchas` `say` or a `traps_avoided` line that
 asserts a number, a multiplier, a zero-row outcome, an absence, or a failure-to-run **MUST**
 carry a `check:` that re-decides it (§3.6), and that check must have been run this pass.
@@ -275,14 +297,22 @@ equivalence run on that question (the MIE "knows" the answer instead of the agen
   live-verified subjects (SH3 domain → 108; neurotoxin → 89) that exercise the identical route.
 - *Rule:* before finalizing an example, check its subject (keyword phrase, class IRI, gold gene /
   compound / accession) against `benchmark/questions/*.yaml` (the `inspiration_keyword` and
-  `exact_answer` fields — a one-line grep). If it collides with a question that uses **this DB**,
+  `exact_answer` fields). If it collides with a question that uses **this DB**,
   pick a different member of the same class. Canonical, non-benchmark subjects (ATP, TP53, BRCA1)
   are fine; the point is only to avoid the specific entities the benchmark scores on.
+- *Enforcement (2026-09-14):* the grep was prescribed here and never run. It is now
+  `scripts/check_mie_leakage.py` — keyword name and KW id (in its `keywords:NNN` IRI forms too),
+  answer heads and prefixed IDs, whole-word across every example field — gated in CI on any PR
+  touching an MIE **or** a question (a new question can leak onto an existing example). Generic
+  vocabulary matches ("Chromosome" in mco) are waived in `scripts/mie_leakage_waivers.yaml` with a
+  reason; a waiver that stops matching fails the run. Fix a real leak in the MIE, never by waiver.
 
 ## 5. Validation checklist (Phase 5 — non-negotiable)
 1. File parses as YAML; required keys present (§2).
 2. `discovery` has all four fields; description is one sentence.
-3. **Every** example has `verified:` with a `date:` field (not `on:` — §4.1 trap), and was actually re-run this pass.
+3. **Every** example has `verified:` with a `date:` field (not `on:` — §4.1 trap) and at least one
+   reserved assertion key (`n` / `row_count` / `min_rows` / `has_values`, §4.1), and was actually re-run
+   this pass: `scripts/check_mie_examples.py <db>` reports 0 zero-row, 0 error, 0 drift, 0 malformed.
 3b. **Every falsifiable claim in `global_gotchas` / `traps_avoided` carries a `check:` (§3.6), and
    `scripts/check_mie_gotchas.py <db>` is clean.** Read each `say` and each trap line and ask: does
    this assert a figure, a multiplier, a zero-row outcome, an absence, or a failure-to-run? If yes it
@@ -301,5 +331,5 @@ equivalence run on that question (the MIE "knows" the answer instead of the agen
    worked query and its load-bearing caveat together — do not compress the query away and leave only
    the warning.
 9. No example's subject is a benchmark question's keyword / class / gold entity for **this DB**
-   (§4.6) — grep the subject against `benchmark/questions/*.yaml`; swap to a neutral member if it
+   (§4.6) — `scripts/check_mie_leakage.py <db>` exits 0; swap to a neutral member if it
    collides. No test leakage.

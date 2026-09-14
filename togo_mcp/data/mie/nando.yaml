@@ -1,8 +1,17 @@
-# MIE v3 — NANDO (Nanbyo Disease Ontology). Hand-authored 2026-07-22 on the `mie-redesign` branch.
-# Format: togo_mcp/data/docs/MIE_v3_spec.md. Every count/result below was re-run live on 2026-07-22.
-# Byte count: v2 togo_mcp/data/mie/nando.yaml = 35,885 B -> v3 = 17,268 B (52% smaller; see footer).
-# enumeration_audit.md tier: OK — rdfs:subClassOf+ + hasNotificationNumber both first-class in v2;
-#   carried across as standalone enum_* examples, re-verified + dated. Traps: language-tag + deprecated subtree.
+# MIE v3 — NANDO (Nanbyo Disease Ontology). Hand-authored 2026-07-22; REVISED 2026-09-14 for NANDO release
+# 2026-05-22 (owl:versionInfo "2026-05-22", versionIRI https://nanbyodata.jp/ontology/2026-05-22/nando.ttl),
+# which was loaded after the first version was written and falsified much of it. Format:
+# togo_mcp/data/docs/MIE_v3_spec.md. Every count/result below was re-run live on 2026-09-14.
+# What changed in the 2026-05-22 release (the earlier claims are kept here, dated, so nobody restores them):
+#   - classes 2,777 -> 3,042; a SECOND program tree appeared (NANDO_2000001 "Specific pediatric chronic disease")
+#     beside NANDO_1000001 "Designated intractable disease" — the 2026-07-22 file documented only the latter;
+#   - the MONDO bridge moved from skos:closeMatch (2,150 diseases) to skos:exactMatch (1,961) + closeMatch (237);
+#   - KEGG links moved from rdfs:seeAlso (kegg.jp, 519) to oboInOwl:hasDbXref identifiers.org (980);
+#   - obsolete classes 8 -> 66, and 19 of them now ALSO sit inside the program trees (the old
+#     "subClassOf+ traversal already excludes them" was true then and is false now).
+# Byte count: v2 togo_mcp/data/mie/nando.yaml = 35,885 B; v3 2026-07-22 = 17,351 B; this revision: see footer.
+# enumeration_audit.md tier: OK — rdfs:subClassOf+ (both program trees) + hasNotificationNumber are first-class
+#   examples. Falsifiable header/trap claims carry a check: (spec 3.6): scripts/check_mie_gotchas.py nando.
 mie_spec: 3                        # format version — see MIE_v3_spec.md §2
 database: nando
 
@@ -10,10 +19,10 @@ database: nando
 discovery:
   title: NANDO — Nanbyo (Intractable) Disease Ontology
   description: >
-    Japanese ontology of ~2,777 designated intractable/rare disease classes in a 5-level hierarchy,
-    with trilingual labels, government notification numbers, and skos:closeMatch mappings to MONDO.
-  keywords: [rare disease, intractable disease, nanbyo, ontology, disease hierarchy, designated disease,
-             notification number, japanese, mondo mapping, classification, kegg]
+    Japanese ontology of ~3,000 disease classes under two national programs (designated intractable diseases,
+    specific pediatric chronic diseases), with trilingual labels, notification numbers, and MONDO/KEGG mappings.
+  keywords: [rare disease, intractable disease, nanbyo, pediatric chronic disease, ontology, disease hierarchy,
+             designated disease, notification number, japanese, mondo mapping, classification, kegg]
   categories: [disease, ontology]
 
 # ── provenance + database-wide truths (get_MIE_file only) ──
@@ -21,62 +30,142 @@ endpoint: https://rdfportal.org/primary/sparql   # RDF Portal "primary" endpoint
 base_uri: http://nanbyodata.jp/ontology/
 graphs:
   primary: http://nanbyodata.jp/ontology/nando          # the DB's own graph — the default pin target
-  co_hosted:                                             # same endpoint; flagged per spec §3.2
-    mondo: >
-      <http://rdfportal.org/ontology/mondo> — the JOIN target for skos:closeMatch (see xdb_mondo). Not
-      an inflation risk for NANDO counts (MONDO never re-declares a NANDO class), but you MUST GRAPH-pin
-      both sides for the cross-DB join.
+  co_hosted:                                             # same endpoint; 2g probe re-run 2026-09-14
     togoid_nando_mondo: >
-      <http://rdfportal.org/dataset/togoid/relation/nando-mondo> — a SECOND, DIVERGENT NANDO->MONDO
-      mapping (togoid tio:* predicates, no rdf:type/rdfs:label so it cannot inflate the everyday
-      `?d a owl:Class ; rdfs:label ?l` join). Covers ~2,091 NANDO terms vs skos:closeMatch's 2,150
-      (verified 2026-07-22) — different predicate, different coverage. Prefer NANDO's own skos:closeMatch;
-      never treat the two as interchangeable.
+      <http://rdfportal.org/dataset/togoid/relation/nando-mondo> — the ONLY other graph that mentions a NANDO IRI
+      (reverse probe on 14 NANDO IRIs across both trees, deprecated classes and test groups: every other triple is
+      in the nando graph). Carries only tio:TIO_000001 (= NANDO's exactMatch|closeMatch union) and tio:TIO_000002
+      (= exactMatch), no rdf:type/rdfs:label, so it cannot inflate a `?d a owl:Class ; rdfs:label ?l` read. As of
+      2026-09-14 it agrees with NANDO's own mapping exactly — the 2026-07-22 note calling it "DIVERGENT (2,091 vs
+      2,150)" compared it with the pre-2026-05-22 closeMatch-only mapping and is obsolete. It stores every pair in
+      BOTH directions (NANDO->MONDO and MONDO->NANDO), so anchor the subject namespace (see mondo_xref_count).
+    mondo: >
+      <http://rdfportal.org/ontology/mondo> — JOIN target for the skos mappings (xdb_mondo). Its MONDO class IRIs
+      are re-declared by <http://rdfportal.org/ontology/efo> (type, label, oboInOwl:id), so the MONDO side of a
+      join must be GRAPH-pinned too. MONDO also carries a reverse oboInOwl:hasDbXref "NANDO:NNNNNNN" (2,345 rows,
+      2,153 NANDO ids) that tracks the PRE-2026-05-22 NANDO mapping; it agrees with NANDO's own skos mapping on
+      1,914 diseases only. Prefer NANDO's skos predicates.
     other_ontologies: >
-      ~30 <http://rdfportal.org/ontology/*> graphs (hp, efo, …) + mesh + goa share the endpoint. Join/xref
-      targets only, NOT co-tenancy traps for NANDO — BUT owl:Class is generic and unscoped, so pinning the
-      nando graph is mandatory (unscoped `?x a owl:Class` pulls tens of thousands of foreign classes).
+      ~40 more rdfportal.org/ontology/* graphs + mesh + goa + glycosmos/togoid datasets share the endpoint. None
+      touches a NANDO IRI (scope bleed only): owl:Class is generic, so an unpinned `?x a owl:Class` reads every
+      ontology's classes (gotcha pin_graph_generic_class).
 
-entity_counts:                                          # COUNT(DISTINCT), graph-pinned; verified 2026-07-22
-  total_classes:     2777        # all owl:Class in the nando graph
-  active_diseases:   2769        # total minus the 8 deprecated (subtree of nando:0000002)
-  deprecated:        8           # under nando:0000002 — exclude from most counts
-  categories:        15          # top-level disease categories (children of nando:1000001)
-  designated:        2454        # carry nando:hasNotificationNumber (88%)
-  mondo_mapped:      2150        # distinct diseases with skos:closeMatch to MONDO (77%)
+entity_counts:                                          # COUNT(DISTINCT), graph-pinned; verified 2026-09-14
+  total_classes:        3042     # every owl:Class in the nando graph (3 roots + 6 test groups + program trees + obsolete)
+  designated_program:   1147     # active classes under NANDO_1000001 (14 categories + diseases/subtypes)
+  pediatric_program:    1818     # active classes under NANDO_2000001 (16 groups + sub-groups + diseases)
+  deprecated:           66       # owl:deprecated true == rdfs:subClassOf NANDO_0000002 (same 66 classes)
+  designated_diseases:  348      # DISTINCT notification numbers under NANDO_1000001 (1,133 classes carry one)
+  notification_classes: 2652     # classes with nando:hasNotificationNumber, both programs together — not a disease count
+  mondo_mapped:         2091     # diseases with skos:exactMatch|closeMatch to MONDO (1,580 MONDO terms)
+  kegg_xref:            980      # oboInOwl:hasDbXref identifiers.org/kegg.disease
+  genetic_test_groups:  6        # NANDO_3000001..6 under NANDO_0000003; 44 diseases nando:memberOf them
 
-global_gotchas:                                         # bite ANY query on this DB — verified 2026-07-22
+global_gotchas:                                         # bite ANY query on this DB — verified 2026-09-14
   - id: language_tag_triplication
     say: >
-      EVERY disease has 3 rdfs:label values (@en, @ja kanji, @ja-hira hiragana phonetic). Omitting
-      FILTER(LANG(?label)="en") TRIPLES your result rows silently (one per language), which quietly
-      inflates any COUNT that includes ?label. Always pin the language, or bind each language to its own
-      variable (rdfs:label ?en; rdfs:label ?ja + two LANG filters).
-  - id: deprecated_subtree
-    say: >
-      nando:0000002 roots 8 deprecated/obsolete disease classes. They are valid owl:Class instances and
-      appear in unfiltered counts (2,777 total vs 2,769 active). Exclude with
-      FILTER NOT EXISTS { ?disease rdfs:subClassOf nando:0000002 }. The 15-category subClassOf+ traversal
-      already excludes them (deprecated classes hang off 0000002, not off the 1000001 category tree).
+      Classes carry up to 3 rdfs:label values (@en, @ja kanji, @ja-hira hiragana): 3,026 have three, 16 have two, and
+      NANDO_2201415 has no @en label at all. Omitting FILTER(LANG(?label)="en") returns ~3 rows per class (9,110 label
+      rows vs 3,041 @en) and inflates any COUNT(*) that includes ?label. Pin the language, or bind each language to
+      its own variable. skos:prefLabel is the @ja label, not English.
+    check:
+      kind: ratio
+      date: "2026-09-14"
+      numerator: |
+        PREFIX owl: <http://www.w3.org/2002/07/owl#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT (COUNT(*) AS ?n) FROM <http://nanbyodata.jp/ontology/nando> WHERE { ?d a owl:Class ; rdfs:label ?l }
+      denominator: |
+        PREFIX owl: <http://www.w3.org/2002/07/owl#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT (COUNT(*) AS ?n) FROM <http://nanbyodata.jp/ontology/nando> WHERE { ?d a owl:Class ; rdfs:label ?l . FILTER(LANG(?l) = "en") }
+      expect: {ratio: 2.996, tolerance: 0.02}
   - id: pin_graph_generic_class
     say: >
-      owl:Class is shared by ~30 co-hosted ontologies. Always FROM <http://nanbyodata.jp/ontology/nando>
-      (or GRAPH it). Unpinned, `?d a owl:Class` reads foreign classes; and `?d skos:closeMatch ?m` without
-      EITHER a graph-pin OR a subject filter reads every co-hosted graph's closeMatch. Pinned to NANDO
-      subjects it is a clean 2,341 rows (verified 2026-07-22).
-  - id: closematch_many_to_many
+      owl:Class is shared by every ontology on this endpoint. Always FROM/GRAPH <http://nanbyodata.jp/ontology/nando>:
+      unpinned, `?c a owl:Class` counts 1,246,314 classes against NANDO's 3,042 (x410 scope bleed; every row is a real,
+      well-formed class, so DISTINCT cannot help). NANDO-specific predicates (hasNotificationNumber) happen to be safe
+      unpinned, but any query that starts from owl:Class, rdfs:label or rdfs:subClassOf is not.
+    check:
+      kind: ratio
+      date: "2026-09-14"
+      unpinned: |
+        PREFIX owl: <http://www.w3.org/2002/07/owl#>
+        SELECT (COUNT(DISTINCT ?c) AS ?n) WHERE { ?c a owl:Class }
+      pinned: |
+        PREFIX owl: <http://www.w3.org/2002/07/owl#>
+        SELECT (COUNT(DISTINCT ?c) AS ?n) WHERE { GRAPH <http://nanbyodata.jp/ontology/nando> { ?c a owl:Class } }
+      expect: {ratio: 409.7, tolerance: 0.05}
+  - id: deprecated_inside_trees
     say: >
-      skos:closeMatch is many-to-many: pinned to nando it is 2,341 mapping ROWS spanning only 2,150
-      distinct diseases and 1,572 distinct MONDO terms. COUNT(*) over-reports diseases by ~191 (+8.9%).
-      Use COUNT(DISTINCT ?disease) or COUNT(DISTINCT ?mondo) — whichever side you actually mean. All 2,341
-      targets are MONDO today, so the STRSTARTS(…"MONDO_") filter in the examples is DEFENSIVE (a no-op now),
-      not corrective — keep it for future-proofing, don't expect it to drop rows.
+      66 obsolete classes carry owl:deprecated true (a "1"^^xsd:boolean; `true` matches it) AND rdfs:subClassOf
+      NANDO_0000002. Changed in the 2026-05-22 release: 19 of them ALSO keep their old parent, so they are reached by
+      `rdfs:subClassOf+` from the program roots — 18 under NANDO_1000001 (15 in Renal and urological disease, plus the
+      obsolete category NANDO_1100015 itself) and 1 under NANDO_2000001. The 2026-07-22 file said the category
+      traversal "already excludes them"; that is no longer true. Every subtree query needs
+      FILTER NOT EXISTS { ?d owl:deprecated true }.
+    check:
+      kind: count
+      date: "2026-09-14"
+      query: |
+        PREFIX owl: <http://www.w3.org/2002/07/owl#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+        SELECT (COUNT(DISTINCT ?d) AS ?n) FROM <http://nanbyodata.jp/ontology/nando>
+        WHERE { ?d rdfs:subClassOf+ nando:1000001 ; owl:deprecated true . }
+      expect: {value: 18, tolerance: 0.0}
+  - id: path_only_subject_drops_not_exists
+    say: >
+      Virtuoso engine trap: when a variable is bound ONLY by a transitive path (`?d rdfs:subClassOf+ X`) and the group
+      also has an OPTIONAL, a FILTER NOT EXISTS on that variable is SILENTLY IGNORED. `?d rdfs:subClassOf+ nando:1100007
+      . FILTER NOT EXISTS { ?d owl:deprecated true } OPTIONAL { ?d nando:hasNotificationNumber ?nn }` counts 47 classes,
+      including the 15 obsolete ones it was meant to drop; the same query with `?d a owl:Class ;` in front counts 32.
+      No error, plausible number. FIX: always give the path subject a plain triple too (`?d a owl:Class ;
+      rdfs:subClassOf+ X`), as every example here does.
+    check:
+      kind: ratio
+      date: "2026-09-14"
+      numerator: |
+        PREFIX owl: <http://www.w3.org/2002/07/owl#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+        SELECT (COUNT(DISTINCT ?d) AS ?n) FROM <http://nanbyodata.jp/ontology/nando> WHERE {
+          ?d rdfs:subClassOf+ nando:1100007 .
+          FILTER NOT EXISTS { ?d owl:deprecated true }
+          OPTIONAL { ?d nando:hasNotificationNumber ?nn } }
+      denominator: |
+        PREFIX owl: <http://www.w3.org/2002/07/owl#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+        SELECT (COUNT(DISTINCT ?d) AS ?n) FROM <http://nanbyodata.jp/ontology/nando> WHERE {
+          ?d a owl:Class ; rdfs:subClassOf+ nando:1100007 .
+          FILTER NOT EXISTS { ?d owl:deprecated true }
+          OPTIONAL { ?d nando:hasNotificationNumber ?nn } }
+      expect: {ratio: 1.469, tolerance: 0.02}
+  - id: mondo_two_predicates
+    say: >
+      The MONDO mapping is split across TWO predicates, all targets MONDO: skos:exactMatch (1,967 rows / 1,961 diseases /
+      1,472 terms) and skos:closeMatch (271 / 237 / 204); 107 diseases carry both, never to the same term. Changed in the
+      2026-05-22 release — the 2026-07-22 file taught skos:closeMatch as THE bridge (2,150 diseases then). closeMatch
+      alone now reaches 237 of the 2,091 mapped diseases (11%), silently missing the rest. Always use
+      `skos:exactMatch|skos:closeMatch` (or VALUES over both, keeping the predicate as a match-type column).
+    check:
+      kind: ratio
+      date: "2026-09-14"
+      numerator: |
+        PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+        SELECT (COUNT(DISTINCT ?d) AS ?n) FROM <http://nanbyodata.jp/ontology/nando> WHERE { ?d skos:closeMatch ?m }
+      denominator: |
+        PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+        SELECT (COUNT(DISTINCT ?d) AS ?n) FROM <http://nanbyodata.jp/ontology/nando> WHERE { ?d skos:exactMatch|skos:closeMatch ?m }
+      expect: {ratio: 0.1133, tolerance: 0.03}
 
-# ── examples: verified, executable atoms. The disease class is the hub; category IRIs (children of
-#    nando:1000001) are the stable enumeration anchors; skos:closeMatch is the MONDO bridge. ──
+# ── examples: verified, executable atoms. Two program trees under NANDO_0000001: 1000001 (designated intractable,
+#    14 active categories 1100001..1100014) and 2000001 (specific pediatric chronic, 16 groups 21000xx). Category/
+#    group IRIs are the stable enumeration anchors. Subjects avoid the nando benchmark questions (§4.6). ──
 examples:
   - id: disease_lookup
-    intent: full metadata for a known disease by IRI (shows the trilingual-label trap concretely)
+    intent: full metadata for a known disease by IRI (shows the trilingual-label shape and the 2026-05-22 xref predicates)
     question: "What are all recorded properties for Parkinson's disease (NANDO:1200010)?"
     complexity: basic
     sparql: |
@@ -85,117 +174,274 @@ examples:
       FROM <http://nanbyodata.jp/ontology/nando>
       WHERE { nando:1200010 ?property ?value . }
       ORDER BY ?property
-    verified: {result_rows: 17, date: "2026-07-22", note: "3 rdfs:label (en/ja/ja-hira), hasNotificationNumber '6', closeMatch MONDO_0005180, subClassOf NANDO_1100001, 3 seeAlso (KEGG/MHLW/nanbyou)"}
-    teaches: "A disease carries: 3 rdfs:label (one per language), skos:prefLabel (kanji), skos:altLabel (synonyms), nando:hasNotificationNumber, skos:closeMatch (MONDO), rdfs:seeAlso (KEGG/govt/patient), dct:source, dct:description (@ja)."
-    traps_avoided:
-      - "The 3 rdfs:label rows are the language-triplication trap up close — any COUNT joining rdfs:label without a LANG filter triples (gotcha language_tag_triplication)."
+    verified: {row_count: 16, has_values: ["Parkinson's disease", "MONDO_0005180", "https://identifiers.org/kegg.disease:H00057", "NANDO_1100001"], date: "2026-09-14", note: "3 rdfs:label (en/ja/ja-hira), hasNotificationNumber '6', skos:exactMatch MONDO_0005180, hasDbXref kegg.disease:H00057, 2 seeAlso (mhlw/nanbyou), dct:source PDF, dct:description @ja; 17 rows before the release"}
+    teaches: "A disease carries: rdfs:label x3 (one per language), skos:prefLabel (@ja), skos:altLabel (synonyms, @en/@ja), dct:identifier \"NANDO:NNNNNNN\", nando:hasNotificationNumber, skos:exactMatch or skos:closeMatch (MONDO), oboInOwl:hasDbXref (KEGG Disease identifiers.org IRI), rdfs:seeAlso (government/patient pages), dct:source (guideline PDF), dct:description (@ja summary)."
 
-  - id: list_categories                # ELEVATED aggregation + the enumeration anchor list
-    intent: enumerate the 15 top-level disease categories with their descendant counts
-    question: "What are NANDO's main disease categories and how many diseases does each contain?"
+  - id: list_categories                # ELEVATED aggregation + the enumeration anchor list for BOTH programs
+    intent: enumerate the top-level categories of both support programs with active class counts
+    question: "What are the disease categories of Japan's two rare-disease support programs, and how many classes does each hold?"
     complexity: aggregation
     sparql: |
       PREFIX owl:   <http://www.w3.org/2002/07/owl#>
       PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
-      SELECT ?category ?label (COUNT(DISTINCT ?disease) AS ?count)
+      SELECT ?program ?category ?label (COUNT(DISTINCT ?disease) AS ?classes)
       FROM <http://nanbyodata.jp/ontology/nando>
       WHERE {
-        ?category a owl:Class ; rdfs:subClassOf nando:1000001 ; rdfs:label ?label .
-        ?disease  a owl:Class ; rdfs:subClassOf+ ?category .
+        ?program  rdfs:subClassOf nando:0000001 .                  # 1000001 designated, 2000001 pediatric
+        ?category rdfs:subClassOf ?program ; rdfs:label ?label .
         FILTER(LANG(?label) = "en")
+        FILTER NOT EXISTS { ?category owl:deprecated true }        # drops obsolete NANDO_1100015
+        ?disease a owl:Class ; rdfs:subClassOf+ ?category .
+        FILTER NOT EXISTS { ?disease owl:deprecated true }
       }
-      GROUP BY ?category ?label
-      ORDER BY DESC(?count)
-    verified: {categories: 15, top: "Metabolic 270, Neuromuscular 258, Blood 84", tail: "Hearing/balance 1", date: "2026-07-22"}
-    teaches: "The 15 category IRIs are the children of nando:1000001; each is the STABLE anchor for `rdfs:subClassOf+` enumeration. Discover them here, then reuse the IRI — never text-match category names."
+      GROUP BY ?program ?category ?label
+      ORDER BY ?program DESC(?classes)
+    verified: {row_count: 30, has_values: ["Metabolic disease", "Inborn errors of metabolism", "Chronic respiratory disease", 291, 344], date: "2026-09-14", note: "14 designated categories (Metabolic 291 .. Hearing and balance 18) + 16 pediatric groups (Inborn errors of metabolism 344 .. Diabetes 16). Categories overlap (multi-parent diseases): do not sum the column."}
+    teaches: "Categories are the children of the two program roots; discover their IRIs here and reuse them as `rdfs:subClassOf+` anchors. The program is part of the category's identity."
     traps_avoided:
-      - "GROUP BY without FILTER(LANG(?label)) would emit 3 rows per category (gotcha language_tag_triplication)."
+      - say: "Category NAMES repeat across programs — 'Neuromuscular disease' is both NANDO_1100001 and NANDO_2100214 (likewise Blood, Endocrine, Immune system, Chromosome abnormality) — so a label match silently merges two programs. Anchor on the IRI."
+        check:
+          kind: count
+          date: "2026-09-14"
+          query: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT (COUNT(DISTINCT ?c) AS ?n) FROM <http://nanbyodata.jp/ontology/nando> WHERE { ?c rdfs:label "Neuromuscular disease"@en }
+          expect: {value: 2, tolerance: 0.0}
+      - say: "Binding the roots only through VALUES (`VALUES ?prog { nando:1000001 nando:2000001 } ?d rdfs:subClassOf+ ?prog`) is REJECTED by Virtuoso with 'transitive start not given'; bind the root with a triple pattern (as `?program rdfs:subClassOf nando:0000001` does here)."
+        check:
+          kind: error
+          date: "2026-09-14"
+          expect: {timeout_s: 60}
+          query: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+            SELECT ?prog (COUNT(DISTINCT ?d) AS ?classes) FROM <http://nanbyodata.jp/ontology/nando>
+            WHERE { VALUES ?prog { nando:1000001 nando:2000001 } ?d rdfs:subClassOf+ ?prog . } GROUP BY ?prog
 
-  - id: enum_category_diseases         # enumeration route #1 (subClassOf+ subtree) — audit item 8
-    intent: enumerate ALL active diseases under one category via transitive subClassOf
-    question: "Which diseases fall under the Blood disease category, and which are government-designated?"
+  - id: enum_category_diseases         # enumeration route #1 — designated-program subtree
+    intent: enumerate ALL active classes under one designated-intractable category via transitive subClassOf
+    question: "Which classes fall under the designated Respiratory disease category, with their notification numbers?"
     complexity: intermediate
     sparql: |
       PREFIX owl:   <http://www.w3.org/2002/07/owl#>
       PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
-      SELECT ?disease ?en_label ?notif_num
+      SELECT DISTINCT ?disease ?en_label ?notif_num
       FROM <http://nanbyodata.jp/ontology/nando>
       WHERE {
-        ?disease a owl:Class ; rdfs:subClassOf+ nando:1100006 ; rdfs:label ?en_label .
-        FILTER NOT EXISTS { ?disease rdfs:subClassOf nando:0000002 }     # drop deprecated
-        OPTIONAL { ?disease nando:hasNotificationNumber ?notif_num }
+        ?disease a owl:Class ; rdfs:subClassOf+ nando:1100010 ; rdfs:label ?en_label .
         FILTER(LANG(?en_label) = "en")
+        FILTER NOT EXISTS { ?disease owl:deprecated true }
+        OPTIONAL { ?disease nando:hasNotificationNumber ?notif_num }
       }
       ORDER BY ?en_label
-    verified: {result_rows: 84, date: "2026-07-22", note: "all 84 Blood diseases are designated"}
-    teaches: "Set-level enumeration = specific category IRI + rdfs:subClassOf+ (NOT a text match on the category name). OPTIONAL hasNotificationNumber surfaces designation status without dropping undesignated rows."
-    traps_avoided:
-      - "Skipping the nando:0000002 FILTER NOT EXISTS leaks deprecated classes into the set (gotcha deprecated_subtree)."
+    verified: {row_count: 35, has_values: ["Sarcoidosis", "NANDO_1200415", "Acute interstitial pneumonia"], date: "2026-09-14", note: "35 classes but only 15 distinct notification numbers — subtypes (e.g. 8 interstitial pneumonias, all '85') repeat their parent's number"}
+    teaches: "Set-level enumeration = category IRI + `rdfs:subClassOf+` + the owl:deprecated filter, never a text match on the category name. SELECT DISTINCT because the hierarchy is multi-parent (a class reached by two paths repeats). OPTIONAL keeps un-numbered rows."
 
-  - id: enum_designated                # enumeration route #2 (typed predicate) — audit item 8
-    intent: enumerate ALL government-designated diseases via the typed predicate
-    question: "How many NANDO diseases carry an official notification number, and what are the first few by number?"
+  - id: enum_pediatric_group           # enumeration route #2 — pediatric-program subtree (new tree in 2026-05-22)
+    intent: enumerate ALL numbered diseases in one specific-pediatric-chronic-disease group, with their parent class
+    question: "Which specific pediatric chronic diseases belong to the Chronic respiratory disease group, and under what numbers?"
     complexity: intermediate
     sparql: |
       PREFIX owl:   <http://www.w3.org/2002/07/owl#>
       PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX xsd:   <http://www.w3.org/2001/XMLSchema#>
       PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
-      SELECT ?disease ?en_label ?notif_num
+      SELECT DISTINCT ?disease ?label ?notif_num ?parent_label
       FROM <http://nanbyodata.jp/ontology/nando>
       WHERE {
-        ?disease a owl:Class ; nando:hasNotificationNumber ?notif_num ; rdfs:label ?en_label .
-        FILTER(LANG(?en_label) = "en")
+        ?disease a owl:Class ; rdfs:subClassOf+ nando:2100029 ;
+                 nando:hasNotificationNumber ?notif_num ;
+                 rdfs:label ?label ; rdfs:subClassOf ?parent .
+        ?parent rdfs:label ?parent_label .
+        FILTER(LANG(?label) = "en" && LANG(?parent_label) = "en")
+        FILTER NOT EXISTS { ?disease owl:deprecated true }
       }
-      ORDER BY xsd:integer(?notif_num)
-    verified: {result_rows: 2454, date: "2026-07-22"}
-    teaches: "nando:hasNotificationNumber IS the designation marker — its mere presence enumerates the ~2,454 designated diseases directly, no hierarchy walk needed. It is a string; sort with xsd:integer()."
+      ORDER BY ?parent_label xsd:integer(?notif_num)
+    verified: {row_count: 25, has_values: ["Cystic fibrosis", "NANDO_2200205", "Kartagener syndrome"], date: "2026-09-14", note: "14 distinct numbers (1..14); intermediate 21xxxxx sub-group classes share their disease's label and carry no number"}
+    teaches: "The pediatric tree is 2000001 -> 16 groups (21000xx) -> un-numbered sub-group classes (21xxxxx) -> numbered diseases (22xxxxx). A pediatric disease is identified by (group IRI, notification number), not by the number alone."
+    traps_avoided:
+      - say: "Pediatric notification numbers RESTART in every group: number '1' is used inside all 16 groups (Spinal and bulbar muscular atrophy is '1' in the designated program too). Filtering `hasNotificationNumber \"1\"` without the group anchor mixes unrelated diseases."
+        check:
+          kind: count
+          date: "2026-09-14"
+          query: |
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+            SELECT (COUNT(DISTINCT ?group) AS ?n) FROM <http://nanbyodata.jp/ontology/nando> WHERE {
+              ?group rdfs:subClassOf nando:2000001 .
+              ?d a owl:Class ; rdfs:subClassOf+ ?group ; nando:hasNotificationNumber "1" . }
+          expect: {value: 16, tolerance: 0.0}
 
-  - id: mondo_xref_count               # ELEVATED aggregation — the many-to-many recipe
-    intent: count diseases with a MONDO mapping correctly (DISTINCT, not raw rows)
-    question: "How many NANDO diseases are mapped to MONDO, over how many MONDO terms?"
+  - id: enum_designated                # enumeration route #3 — the typed predicate, scoped to its program
+    intent: enumerate the designated intractable diseases themselves — one head class per notification number
+    question: "List Japan's designated intractable diseases by notification number."
+    complexity: intermediate
+    sparql: |
+      PREFIX owl:   <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX xsd:   <http://www.w3.org/2001/XMLSchema#>
+      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+      SELECT DISTINCT ?notif_num ?disease ?en_label
+      FROM <http://nanbyodata.jp/ontology/nando>
+      WHERE {
+        ?disease a owl:Class ; rdfs:subClassOf+ nando:1000001 ;     # pin the PROGRAM: numbers repeat across programs
+                 nando:hasNotificationNumber ?notif_num ; rdfs:label ?en_label .
+        FILTER(LANG(?en_label) = "en")
+        FILTER NOT EXISTS {                                          # head class only: drop subtypes that inherit
+          ?disease rdfs:subClassOf ?parent . ?parent nando:hasNotificationNumber ?notif_num }
+      }
+      ORDER BY xsd:integer(?notif_num) ?disease
+    verified: {row_count: 349, has_values: ["Spinal and bulbar muscular atrophy", "NANDO_1200001", "Amyotrophic lateral sclerosis"], date: "2026-09-14", note: "349 head classes for 348 numbers — '338' is carried by two unrelated heads (Phosphorylase kinase deficiency, Progressive familial intrahepatic cholestasis)"}
+    teaches: "Designated disease count = COUNT(DISTINCT ?notif_num) under NANDO_1000001 (348). Changed in the 2026-05-22 release: the 2026-07-22 file called the bare predicate 'the designation marker' and sorted all numbered classes together, which now conflates two numbering schemes and counts subtypes."
+    traps_avoided:
+      - say: "Unscoped, `?d nando:hasNotificationNumber ?nn` returns 2,652 classes — 1,133 designated + 1,519 pediatric, with numbers repeated across programs. Pin the program subtree."
+        check:
+          kind: ratio
+          date: "2026-09-14"
+          unpinned: |
+            PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+            SELECT (COUNT(DISTINCT ?d) AS ?n) FROM <http://nanbyodata.jp/ontology/nando> WHERE { ?d nando:hasNotificationNumber ?nn }
+          pinned: |
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+            SELECT (COUNT(DISTINCT ?d) AS ?n) FROM <http://nanbyodata.jp/ontology/nando>
+            WHERE { ?d a owl:Class ; rdfs:subClassOf+ nando:1000001 ; nando:hasNotificationNumber ?nn }
+          expect: {ratio: 2.341, tolerance: 0.02}
+      - say: "Even inside the program, COUNT(DISTINCT ?disease) over numbered classes (1,133) is not the disease count: 784 subtypes repeat their direct parent's number. Count DISTINCT numbers (348), or keep the head-class filter above."
+        check:
+          kind: ratio
+          date: "2026-09-14"
+          numerator: |
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+            SELECT (COUNT(DISTINCT ?d) AS ?n) FROM <http://nanbyodata.jp/ontology/nando>
+            WHERE { ?d a owl:Class ; rdfs:subClassOf+ nando:1000001 ; nando:hasNotificationNumber ?nn }
+          denominator: |
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+            SELECT (COUNT(DISTINCT ?nn) AS ?n) FROM <http://nanbyodata.jp/ontology/nando>
+            WHERE { ?d a owl:Class ; rdfs:subClassOf+ nando:1000001 ; nando:hasNotificationNumber ?nn }
+          expect: {ratio: 3.256, tolerance: 0.02}
+      - say: "hasNotificationNumber (and dct:identifier) match only as PLAIN literals although DATATYPE() reports xsd:string: `nando:hasNotificationNumber \"6\"` finds Parkinson's disease, `\"6\"^^xsd:string` returns 0 rows. Sort with xsd:integer()."
+        check:
+          kind: zero_rows
+          date: "2026-09-14"
+          query: |
+            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+            PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+            SELECT ?p WHERE { GRAPH <http://nanbyodata.jp/ontology/nando> { nando:1200010 nando:hasNotificationNumber "6"^^xsd:string . BIND(1 AS ?p) } } LIMIT 1
+
+  - id: category_breakdown             # advanced conditional aggregation
+    intent: per-category breakdown of classes vs designated diseases vs MONDO coverage
+    question: "For each designated-intractable category, how many classes, designated diseases and MONDO-mapped classes are there?"
+    complexity: advanced
+    sparql: |
+      PREFIX owl:   <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX skos:  <http://www.w3.org/2004/02/skos/core#>
+      PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+      SELECT ?cat_label (COUNT(DISTINCT ?disease) AS ?classes) (COUNT(DISTINCT ?nn) AS ?designated_diseases)
+             (COUNT(DISTINCT ?mapped) AS ?mondo_mapped) (COUNT(DISTINCT ?close_only) AS ?close_only)
+      FROM <http://nanbyodata.jp/ontology/nando>
+      WHERE {
+        ?category rdfs:subClassOf nando:1000001 ; rdfs:label ?cat_label .
+        FILTER(LANG(?cat_label) = "en")
+        ?disease a owl:Class ; rdfs:subClassOf+ ?category .
+        FILTER NOT EXISTS { ?disease owl:deprecated true }
+        OPTIONAL { ?disease nando:hasNotificationNumber ?nn }
+        OPTIONAL { ?disease skos:exactMatch|skos:closeMatch ?m . BIND(?disease AS ?mapped) }
+        OPTIONAL { ?disease skos:closeMatch ?c . FILTER NOT EXISTS { ?disease skos:exactMatch ?e } BIND(?disease AS ?close_only) }
+      }
+      GROUP BY ?cat_label
+      ORDER BY DESC(?classes)
+    verified: {row_count: 14, has_values: ["Metabolic disease", 291, 233, "Hearing and balance disorder"], date: "2026-09-14", note: "Metabolic 291/47/233/16, Neuromuscular 280/87/236/13, Respiratory 35/15/30/5, Hearing and balance 18/10/14/0"}
+    teaches: "Conditional-count idiom: BIND(?disease AS ?x) inside an OPTIONAL binds ?x only when that OPTIONAL matches, so COUNT(DISTINCT ?x) counts a subset next to the total. Distinct numbers, not numbered classes, are the designated-disease count."
+
+  - id: mondo_xref_count               # ELEVATED aggregation — both mapping predicates in one pass
+    intent: count MONDO-mapped diseases correctly across both skos predicates (DISTINCT, not rows)
+    question: "How many NANDO diseases are mapped to MONDO, over how many MONDO terms, and by which match type?"
     complexity: aggregation
     sparql: |
       PREFIX owl:  <http://www.w3.org/2002/07/owl#>
       PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
       SELECT (COUNT(*) AS ?rows) (COUNT(DISTINCT ?disease) AS ?diseases) (COUNT(DISTINCT ?mondo) AS ?mondo_terms)
+             (COUNT(DISTINCT ?exact_d) AS ?exact_diseases) (COUNT(DISTINCT ?close_d) AS ?close_diseases)
       FROM <http://nanbyodata.jp/ontology/nando>
       WHERE {
-        ?disease a owl:Class ; skos:closeMatch ?mondo .
-        FILTER(STRSTARTS(STR(?mondo), "http://purl.obolibrary.org/obo/MONDO_"))   # defensive no-op today
+        VALUES ?match_type { skos:exactMatch skos:closeMatch }
+        ?disease a owl:Class ; ?match_type ?mondo .
+        FILTER(STRSTARTS(STR(?mondo), "http://purl.obolibrary.org/obo/MONDO_"))   # defensive: all targets are MONDO today
+        BIND(IF(?match_type = skos:exactMatch, ?disease, ?unbound) AS ?exact_d)
+        BIND(IF(?match_type = skos:closeMatch, ?disease, ?unbound) AS ?close_d)
       }
-    verified: {rows: 2341, diseases: 2150, mondo_terms: 1572, date: "2026-07-22"}
-    teaches: "skos:closeMatch is many-to-many: 2,341 rows = 2,150 diseases = 1,572 MONDO terms. COUNT(DISTINCT ?disease) is the disease count; raw COUNT(*) over-reports by 191."
+    verified: {row_count: 1, has_values: [2238, 2091, 1580, 1961, 237], date: "2026-09-14", note: "rows 2238 / diseases 2091 / MONDO terms 1580 / exactMatch 1961 / closeMatch 237 (107 diseases have both). Was closeMatch-only 2341/2150/1572 on 2026-07-22."}
+    teaches: "Mappings are many-to-many: COUNT(DISTINCT ?disease) is the disease count, COUNT(*) the mapping-row count (+147). VALUES over both predicates keeps the match type available as a column."
     traps_avoided:
-      - "COUNT(*) here answers 'mapping rows', NOT 'diseases' (gotcha closematch_many_to_many)."
-      - "Unpinned, `?d skos:closeMatch ?m` would also read the co-hosted ontologies' own closeMatch — pin the nando graph (gotcha pin_graph_generic_class)."
+      - say: "The togoid <dataset/togoid/relation/nando-mondo> graph mirrors this mapping exactly (tio:TIO_000001 = this union, TIO_000002 = exactMatch) but stores each pair in BOTH directions: an unanchored `?a tio:TIO_000001 ?b` counts 4,476 rows for 2,238 pairs. Anchor the subject namespace, or just use NANDO's own skos predicates."
+        check:
+          kind: ratio
+          date: "2026-09-14"
+          unpinned: |
+            PREFIX tio: <http://togoid.dbcls.jp/ontology#>
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/togoid/relation/nando-mondo> { ?a tio:TIO_000001 ?b } }
+          pinned: |
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+            SELECT (COUNT(*) AS ?n) FROM <http://nanbyodata.jp/ontology/nando> WHERE { ?d a owl:Class ; skos:exactMatch|skos:closeMatch ?m }
+          expect: {ratio: 2.0, tolerance: 0.01}
 
-  - id: designated_vs_total            # advanced conditional aggregation
-    intent: per-category breakdown of designated vs total diseases
-    question: "For each major NANDO category, how many diseases are designated vs total?"
-    complexity: advanced
+  - id: cross_program_pairs            # the designated <-> pediatric bridge
+    intent: link pediatric chronic diseases to their designated-intractable counterparts (different IRIs and numbers)
+    question: "Which specific pediatric chronic diseases have a counterpart designated intractable disease, and under which numbers?"
+    complexity: intermediate
     sparql: |
       PREFIX owl:   <http://www.w3.org/2002/07/owl#>
       PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
-      SELECT ?cat_label (COUNT(DISTINCT ?disease) AS ?total) (COUNT(DISTINCT ?desig) AS ?designated)
+      SELECT DISTINCT ?pediatric ?label ?pediatric_num ?designated ?designated_num
       FROM <http://nanbyodata.jp/ontology/nando>
       WHERE {
-        ?category a owl:Class ; rdfs:subClassOf nando:1000001 ; rdfs:label ?cat_label .
-        ?disease  a owl:Class ; rdfs:subClassOf+ ?category .
-        OPTIONAL { ?disease nando:hasNotificationNumber ?nn . BIND(?disease AS ?desig) }
-        FILTER(LANG(?cat_label) = "en")
+        ?pediatric a owl:Class ; rdfs:subClassOf+ nando:2000001 ; rdfs:seeAlso ?designated ;
+                   rdfs:label ?label .
+        ?designated a owl:Class ; rdfs:subClassOf+ nando:1000001 .
+        FILTER(LANG(?label) = "en")
+        OPTIONAL { ?pediatric  nando:hasNotificationNumber ?pediatric_num }
+        OPTIONAL { ?designated nando:hasNotificationNumber ?designated_num }
       }
-      GROUP BY ?cat_label
-      ORDER BY DESC(?total)
-    verified: {rows: 15, note: "Metabolic 270/269, Neuromuscular 258/258, Respiratory 35/33, Chromosome 55/54", date: "2026-07-22"}
-    teaches: "Conditional count idiom: BIND(?disease AS ?desig) inside the OPTIONAL binds ?desig ONLY when hasNotificationNumber exists, so COUNT(DISTINCT ?desig) counts just the designated subset while COUNT(DISTINCT ?disease) counts all."
+      ORDER BY ?label ?pediatric
+      LIMIT 20
+    verified: {min_rows: 20, has_values: ["21-Hydroxylase deficiency", "NANDO_1200399", "NANDO_2200374"], date: "2026-09-14", note: "479 symmetric pairs in total (958 NANDO->NANDO rdfs:seeAlso triples, one each way)"}
+    teaches: "The same disease exists once per program as two classes; rdfs:seeAlso between two NANDO IRIs is the curated bridge (other seeAlso objects are web pages: mhlw.go.jp 1,349, nanbyou.or.jp 1,347, shouman.jp 1,818). Filter the object to a program subtree to separate the bridge from the pages."
+    traps_avoided:
+      - say: "Without DISTINCT the two `rdfs:subClassOf+` legs multiply paths: the join yields 1,016 rows for 479 distinct pairs."
+        check:
+          kind: ratio
+          date: "2026-09-14"
+          numerator: |
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+            SELECT (COUNT(*) AS ?n) FROM <http://nanbyodata.jp/ontology/nando> WHERE {
+              ?ped a owl:Class ; rdfs:subClassOf+ nando:2000001 ; rdfs:seeAlso ?des .
+              ?des a owl:Class ; rdfs:subClassOf+ nando:1000001 . }
+          denominator: |
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+            SELECT (COUNT(DISTINCT ?ped) AS ?n) FROM <http://nanbyodata.jp/ontology/nando> WHERE {
+              ?ped a owl:Class ; rdfs:subClassOf+ nando:2000001 ; rdfs:seeAlso ?des .
+              ?des a owl:Class ; rdfs:subClassOf+ nando:1000001 . }
+          expect: {ratio: 2.121, tolerance: 0.02}
 
   - id: xdb_mondo                      # ELEVATED cross_db — NANDO -> MONDO across graphs
-    intent: "cross-DB (intra-primary): NANDO diseases -> MONDO labels/IDs via skos:closeMatch"
-    question: "For NANDO Blood diseases, what are the matching MONDO IDs and their official labels?"
+    intent: "cross-DB (intra-primary): NANDO diseases -> MONDO IDs/labels via BOTH skos mapping predicates"
+    question: "For the designated Respiratory disease category, what are the matching MONDO IDs, labels and match types?"
     complexity: cross_db
     endpoint_name: primary
     sparql: |
@@ -204,41 +450,72 @@ examples:
       PREFIX skos:     <http://www.w3.org/2004/02/skos/core#>
       PREFIX nando:    <http://nanbyodata.jp/ontology/NANDO_>
       PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
-      SELECT ?nandoEn ?mondoId ?mondoLabel
+      SELECT ?nandoDisease ?nandoEn ?matchType ?mondoId ?mondoLabel
       WHERE {
         GRAPH <http://nanbyodata.jp/ontology/nando> {
-          ?nandoDisease a owl:Class ; rdfs:subClassOf+ nando:1100006 ;   # pre-filter to Blood -> small join
-                        rdfs:label ?nandoEn ; skos:closeMatch ?mondoDisease .
-          FILTER(STRSTARTS(STR(?mondoDisease), "http://purl.obolibrary.org/obo/MONDO_"))
+          VALUES ?matchType { skos:exactMatch skos:closeMatch }
+          ?nandoDisease a owl:Class ; rdfs:subClassOf+ nando:1100010 ;   # pre-filter to one category -> small join
+                        rdfs:label ?nandoEn ; ?matchType ?mondoDisease .
           FILTER(LANG(?nandoEn) = "en")
         }
         GRAPH <http://rdfportal.org/ontology/mondo> {
-          ?mondoDisease a owl:Class ; rdfs:label ?mondoLabel ; oboInOwl:id ?mondoId .
+          ?mondoDisease rdfs:label ?mondoLabel ; oboInOwl:id ?mondoId .
           FILTER NOT EXISTS { ?mondoDisease owl:deprecated true }
         }
       }
-      ORDER BY ?nandoEn
-      LIMIT 10
-    verified: {result_rows: 10, first_row: "Acquired idiopathic thrombotic thrombocytopenic purpura -> MONDO:0019740", date: "2026-07-22"}
-    teaches: "MONDO is co-hosted on the primary endpoint; join NANDO->MONDO by binding skos:closeMatch to ?mondoDisease and re-using it as the MONDO subject in a second GRAPH block. Pre-filter the NANDO side with a category IRI to shrink the join. Add FILTER NOT EXISTS owl:deprecated on the MONDO side."
+      ORDER BY ?nandoEn ?mondoId
+    verified: {row_count: 32, has_values: ["Sarcoidosis", "MONDO:0019338", "Acute interstitial pneumonia", "MONDO:0019203"], date: "2026-09-14", note: "25 exactMatch + 7 closeMatch rows; 2 diseases map to two MONDO terms"}
+    teaches: "Bind the mapping object to ?mondoDisease and reuse it as the subject of a second, MONDO-pinned GRAPH block. VALUES over both skos predicates catches both match types (gotcha mondo_two_predicates); the category IRI shrinks the join."
     traps_avoided:
-      - "Both sides MUST be GRAPH-pinned; an unpinned MONDO subject also matches the divergent togoid nando-mondo graph and hp/efo (gotcha pin_graph_generic_class)."
+      - say: "Leaving the MONDO block unpinned reads EFO's re-declared copies of the same MONDO IRIs (second rdfs:label and oboInOwl:id): this query returns 101 rows instead of 32, all plausible. Pin <http://rdfportal.org/ontology/mondo>."
+        check:
+          kind: ratio
+          date: "2026-09-14"
+          unpinned: |
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+            PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+            PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+            SELECT (COUNT(*) AS ?n) WHERE {
+              GRAPH <http://nanbyodata.jp/ontology/nando> {
+                VALUES ?matchType { skos:exactMatch skos:closeMatch }
+                ?nandoDisease a owl:Class ; rdfs:subClassOf+ nando:1100010 ; rdfs:label ?nandoEn ; ?matchType ?mondoDisease .
+                FILTER(LANG(?nandoEn) = "en") }
+              ?mondoDisease rdfs:label ?mondoLabel ; oboInOwl:id ?mondoId .
+              FILTER NOT EXISTS { ?mondoDisease owl:deprecated true } }
+          pinned: |
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+            PREFIX nando: <http://nanbyodata.jp/ontology/NANDO_>
+            PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+            SELECT (COUNT(*) AS ?n) WHERE {
+              GRAPH <http://nanbyodata.jp/ontology/nando> {
+                VALUES ?matchType { skos:exactMatch skos:closeMatch }
+                ?nandoDisease a owl:Class ; rdfs:subClassOf+ nando:1100010 ; rdfs:label ?nandoEn ; ?matchType ?mondoDisease .
+                FILTER(LANG(?nandoEn) = "en") }
+              GRAPH <http://rdfportal.org/ontology/mondo> {
+                ?mondoDisease rdfs:label ?mondoLabel ; oboInOwl:id ?mondoId .
+                FILTER NOT EXISTS { ?mondoDisease owl:deprecated true } } }
+          expect: {ratio: 3.156, tolerance: 0.05}
 
 # ── schema_delta: non-obvious predicates/idioms NO example above already demonstrates ──
 schema_delta:
-  - "rdfs:seeAlso is a MIXED bag on ONE predicate — KEGG Disease (519 diseases, url kegg.jp), MHLW govt docs (mhlw.go.jp), and nanbyou.or.jp patient pages. Disambiguate by URL substring: FILTER(CONTAINS(STR(?ref),\"kegg.jp\")) etc. dct:source separately holds the clinical-guideline PDF (2,397 diseases)."
-  - "Disease-name discovery has NO controlled-vocabulary code — rdfs:label is free text. To find an IRI from a keyword use OLS4 searchClasses(ontologyId=\"nando\") or Virtuoso bif:contains on the @en label (split the property path: bind ?label first, then `?label bif:contains \"'...'\"`). Use it ONLY to obtain an IRI, then switch to a category IRI + rdfs:subClassOf+ for the comprehensive set."
-  - "dct:description is a Japanese-only clinical summary (@ja), present on ~44% of diseases; skos:prefLabel is the kanji label (100%); skos:altLabel holds synonyms/abbreviations."
+  - "Name -> IRI: there is no search API for NANDO (OLS4 searchClasses with ontologyId=\"nando\" returns 0 hits, checked 2026-09-14). The pinned graph holds only 9,110 class labels, so `?d rdfs:label ?l . FILTER(LANG(?l)=\"en\" && CONTAINS(LCASE(STR(?l)), \"sarcoidosis\"))` is cheap; skos:altLabel (@en 2,081 / @ja 1,032 values) holds synonyms and abbreviations. Use it only to obtain an IRI, then enumerate via category IRI + subClassOf+."
+  - "Genetic-testing disease groups: NANDO_0000003 roots 6 groups (NANDO_3000001..3000006, e.g. 'Muscle weakness group'); 44 diseases point at them with nando:memberOf, and each group lists HPO phenotypes via <http://semanticscience.org/resource/SIO_001279> ('has phenotype', 46 HP_ IRIs; one object carries a trailing space, 'HP_0000961 ')."
+  - "dct:source is a guideline-PDF IRI (2,561 classes); dct:description is a Japanese-only clinical summary (@ja, 1,451 classes); the ontology node <http://nanbyodata.jp/ontology/nando.owl#> carries owl:versionInfo (the release date) — check it before trusting any figure here."
 
 # ── id_join_map ──
 id_join_map:
-  stable_anchor: "Disease IRI http://nanbyodata.jp/ontology/NANDO_NNNNNNN (7 digits) == dct:identifier \"NANDO:NNNNNNN\". Category IRIs (children of nando:1000001, e.g. 1100006 Blood) are the stable enumeration anchors — discover once via list_categories, then reuse."
+  stable_anchor: "Class IRI http://nanbyodata.jp/ontology/NANDO_NNNNNNN (7 digits) == dct:identifier \"NANDO:NNNNNNN\" (plain literal). Leading digits encode the tree: 1100xxx/12xxxxx designated categories/diseases, 2100xxx/21xxxxx/22xxxxx pediatric groups/sub-groups/diseases, 3000xxx genetic-test groups. Anchor enumeration on category IRIs from list_categories."
   same_endpoint_joins:                 # co-hosted on `primary` — direct GRAPH join, NO TogoID
-    mondo: "skos:closeMatch -> MONDO IRI (2,150 diseases / 77%, many-to-many). The endpoint-native, larger mapping — use this (see xdb_mondo)."
-  xrefs:                               # outbound references carried as IRIs/URLs
-    kegg: "rdfs:seeAlso URL kegg.jp/dbget-bin/www_bget?ds_ja:HNNNNN (519 diseases); filter by CONTAINS \"kegg.jp\""
-    mhlw_nanbyou: "rdfs:seeAlso mhlw.go.jp / nanbyou.or.jp docs + dct:source clinical-guideline PDFs (govt/patient resources)"
-  bridged_via_togoid:                  # reachable via togoid graph, but PREFER same_endpoint_joins.mondo
-    - "mondo: a SECOND togoid graph (dataset/togoid/relation/nando-mondo) also maps NANDO->MONDO but DIVERGES from skos:closeMatch (~2,091 vs 2,150 NANDO terms, verified 2026-07-22) — coverage question, not a double-count. Pick skos:closeMatch deliberately."
+    mondo: "skos:exactMatch|skos:closeMatch -> MONDO IRI (2,091 diseases, many-to-many; see xdb_mondo). Pin the MONDO side too (EFO re-declares MONDO IRIs)."
+  xrefs:                               # outbound references carried as IRIs
+    kegg_disease: "oboInOwl:hasDbXref <https://identifiers.org/kegg.disease:HNNNNN> (980 classes; the only hasDbXref kind). Changed in the 2026-05-22 release: rdfs:seeAlso to kegg.jp (519 on 2026-07-22) is now 0."
+    government_patient_pages: "rdfs:seeAlso web pages: mhlw.go.jp (1,349), nanbyou.or.jp (1,347), shouman.jp pediatric portal (1,818); dct:source guideline PDFs. rdfs:seeAlso to another NANDO IRI is the cross-program bridge (cross_program_pairs)."
+  bridged_via_togoid:
+    - "mondo: the togoid nando-mondo graph (TIO_000001/TIO_000002) now equals NANDO's own skos mapping (2,091 / 1,961 NANDO ids) and is stored bidirectionally; it adds nothing over same_endpoint_joins.mondo."
 
-# ── Byte count: v2 = 35,885 B; v3 = 17,268 B (52% smaller). ──
+# ── Byte count: v2 = 35,885 B; v3 2026-07-22 = 17,351 B; this 2026-09-14 revision = 38885 B on disk
+#    (check: blocks included; they are stripped before serving). examples = 68.6% of the served form (was 62.4%). ──

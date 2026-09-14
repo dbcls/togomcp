@@ -23,13 +23,15 @@ endpoint: https://rdfportal.org/primary/sparql   # RDF Portal "primary" endpoint
 base_uri: http://purl.obolibrary.org/obo/
 graphs:
   primary: http://rdfportal.org/ontology/go       # the DB's own graph — the default pin target; internally 1:1 clean
-  co_hosted:                       # same endpoint; several graphs RE-DECLARE GO's own IRIs → ×3.27 row inflation
+  co_hosted:                       # same endpoint; several graphs RE-DECLARE GO's own IRIs → ×2.84 row inflation
     import_shadows: >
-      TEN graphs re-declare the SAME obo:GO_* IRIs as owl:Class (glycosmos/glycoprotein 19,255 type-only + NO
-      label; ontology/cl 7,688, uberon 7,431, efo, clo, pro, pro-reasoned, RIKEN/SSBD, swisslipids, po — most
-      also attach their OWN rdfs:label). These are import shadows of GO terms inside other OBO ontologies.
-      INFLATION: the everyday `?c a owl:Class ; rdfs:label ?l` on obo:GO_* returns 158,185 rows / 48,330 classes
-      UNPINNED vs exactly 48,321 rows / 48,321 classes PINNED to <ontology/go> = ×3.27 (gotcha graph_pin). The
+      TEN graphs re-declare the SAME obo:GO_* IRIs as owl:Class (ontology/cl 7,688, uberon 6,926, mondo 4,142,
+      efo 775, pro 189, pro-reasoned 189, RIKEN/SSBD 17 type-only, clo 15, swisslipids 10, po 3 — all but SSBD
+      also attach their OWN rdfs:label; re-measured 2026-09-14). The set moves between upstream loads: on
+      2026-08-26 it included glycosmos/glycoprotein (19,255 type-only) and not mondo. These are import shadows
+      of GO terms inside other OBO ontologies.
+      INFLATION: the everyday `?c a owl:Class ; rdfs:label ?l` on obo:GO_* returns 137,055 rows / 48,343 classes
+      UNPINNED vs exactly 48,340 rows PINNED to <ontology/go> = ×2.84 (gotcha graph_pin; ×3.27 on 2026-08-26). The
       multiplier is a PRODUCT of legs (n type-matches × m label-matches per co-declared class), so it worsens as
       you add patterns. GO's own graph is 1:1 clean. FIX = FROM/GRAPH <http://rdfportal.org/ontology/go>.
     join_targets: >
@@ -49,15 +51,16 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
   - id: graph_pin
     say: >
       MANDATORY: FROM (or GRAPH) <http://rdfportal.org/ontology/go> on EVERY query. The primary endpoint hosts
-      ~30 ontologies AND ten graphs that re-declare GO's own obo:GO_* IRIs (gotcha import_shadows) → ×3.27 row
-      inflation and any COUNT over the unpinned pattern is WRONG: 158,185 rows unpinned against 48,321 pinned
-      (re-verified 2026-08-26). DISTINCT hides the rows but cannot fix an aggregate. THE INFLATION IS THE WHOLE
+      ~30 ontologies AND ten graphs that re-declare GO's own obo:GO_* IRIs (gotcha import_shadows) → ×2.84 row
+      inflation and any COUNT over the unpinned pattern is WRONG: 137,055 rows unpinned against 48,340 pinned
+      (re-verified 2026-09-14; ×3.27 on 2026-08-26 — the multiplier moves with upstream loads, the need to pin
+      does not). DISTINCT hides the rows but cannot fix an aggregate. THE INFLATION IS THE WHOLE
       RISK — the unpinned form also drags in BFO/RO/OBI classes, but it does NOT time out, which this entry
-      claimed until 2026-08-26: it answers in 8.1s against 0.5s pinned. That matters because a timeout announces
-      itself and a 3.27x overcount in 8 seconds does not. Pin the graph; then read the number.
+      claimed until 2026-08-26: it answers in seconds (8.1s on 2026-08-26, 5.3s on 2026-09-14). That matters because a
+      timeout announces itself and a near-3x overcount in a few seconds does not. Pin the graph; then read the number.
     check:
       kind: ratio
-      date: "2026-08-26"
+      date: "2026-09-14"
       unpinned: |
         PREFIX owl: <http://www.w3.org/2002/07/owl#>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -72,7 +75,7 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
           ?c a owl:Class ; rdfs:label ?l .
           FILTER(STRSTARTS(STR(?c), "http://purl.obolibrary.org/obo/GO_"))
         }
-      expect: {ratio: 3.27, tolerance: 0.03}
+      expect: {ratio: 2.84, tolerance: 0.03}
   - id: strstarts_filter
     say: >
       Always add FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_")) to exclude non-GO OWL classes
@@ -102,7 +105,7 @@ examples:
       FROM <http://rdfportal.org/ontology/go>
       WHERE { obo:GO_0004672 ?property ?value . }
       LIMIT 50
-    verified: {label: "protein kinase activity", namespace: "molecular_function", distinct_predicates: 12, date: "2026-07-22"}
+    verified: {row_count: 36, has_values: ["protein kinase activity", "molecular_function"], label: "protein kinase activity", namespace: "molecular_function", distinct_predicates: 12, date: "2026-09-14"}
     teaches: "Once you have the IRI (from OLS4:searchClasses or a cross-ref), a bare ?property ?value dump returns everything: rdfs:label, oboinowl:id 'GO:0004672', IAO_0000115 definition, hasOBONamespace, subClassOf parents, synonyms, hasDbXref, inSubset. Cheapest possible lookup."
 
   - id: enum_namespace              # ELEVATED aggregation — set-level route #1 (the 3-value controlled vocabulary)
@@ -120,7 +123,7 @@ examples:
         FILTER NOT EXISTS { ?go owl:deprecated ?d . FILTER(?d = true) }
       }
       GROUP BY ?namespace ORDER BY DESC(?count)
-    verified: {biological_process: 24136, molecular_function: 10052, cellular_component: 4075, date: "2026-07-22"}
+    verified: {row_count: 3, has_values: [24136, 10052, 4075], biological_process: 24136, molecular_function: 10052, cellular_component: 4075, date: "2026-07-22"}
     teaches: "hasOBONamespace is a controlled 3-value predicate — the STRUCTURED route to enumerate/partition GO by domain. To LIST rather than count, SELECT ?go ?label with the same body. Never bif:contains a namespace name: it is a typed literal, use the predicate."
     traps_avoided:
       - "FILTER(?ns = \"molecular_function\") returns 0 rows (typed literal) — use FILTER(STR(?ns) = ...) (gotcha str_for_typed_literal)."
@@ -140,7 +143,7 @@ examples:
         ?parent rdfs:label ?parentLabel .
         FILTER(STRSTARTS(STR(?parent), "http://purl.obolibrary.org/obo/GO_"))
       }
-    verified: {result_rows: 3, date: "2026-07-22", parents: "GO_0016301 kinase activity; GO_0016773 phosphotransferase activity, alcohol group as acceptor; GO_0140096 catalytic activity, acting on a protein"}
+    verified: {row_count: 3, has_values: ["GO_0016301", "kinase activity"], date: "2026-07-22", parents: "GO_0016301 kinase activity; GO_0016773 phosphotransferase activity, alcohol group as acceptor; GO_0140096 catalytic activity, acting on a protein"}
     teaches: "The DAG is bare rdfs:subClassOf (a term has MULTIPLE parents — here 3). Use rdfs:subClassOf (no +) for immediate parents."
     traps_avoided:
       - "rdfs:subClassOf objects also include anonymous OWL restriction axioms (blank nodes) and non-GO IRIs on many terms — the STRSTARTS(...GO_) filter keeps only real GO parents (gotcha strstarts_filter)."
@@ -161,7 +164,7 @@ examples:
         FILTER(STRSTARTS(STR(?descendant), "http://purl.obolibrary.org/obo/GO_"))
       }
       LIMIT 100
-    verified: {descendant_count: 347, date: "2026-07-22", note: "COUNT(DISTINCT) form over the full subtree = 347 descendants of GO:0016301"}
+    verified: {min_rows: 100, descendant_count: 347, date: "2026-07-22", note: "COUNT(DISTINCT) form over the full subtree = 347 descendants of GO:0016301"}
     teaches: "rdfs:subClassOf+ (transitive) from a PARENT IRI is THE route for 'all terms under concept X' — the complete subtree, not the handful of hits a label search returns. Discover the parent IRI once (OLS4/xref), then expand it. subClassOf* (with *) includes the parent itself; + excludes it."
     traps_avoided:
       - "CIRCULAR REASONING: never load individual OLS4 search hits into VALUES and COUNT them — that just re-counts the hits you already had, bounded by the search LIMIT. Anchor on the parent IRI and let subClassOf+ reach the full set."
@@ -180,7 +183,7 @@ examples:
         FILTER(STRSTARTS(STR(?go), "http://purl.obolibrary.org/obo/GO_"))
         FILTER(STRSTARTS(STR(?xref), "EC:"))
       }
-    verified: {n_terms: 4661, date: "2026-07-22", note: "Swap 'EC:' for 'RHEA:'/'Reactome:'/'MetaCyc:'/'KEGG_REACTION:' to target another DB; add ?xref to SELECT to list the accessions."}
+    verified: {n: 4661, date: "2026-07-22", note: "Swap 'EC:' for 'RHEA:'/'Reactome:'/'MetaCyc:'/'KEGG_REACTION:' to target another DB; add ?xref to SELECT to list the accessions."}
     teaches: "hasDbXref is STRING-typed ('PREFIX:accession', e.g. 'EC:2.7.11.1', 'RHEA:24793', 'Reactome:R-HSA-156832'), NOT an IRI. Filter a target DB with STRSTARTS(STR(?xref), 'EC:'). This is the enumeration route for 'all GO terms linked to database X'."
     traps_avoided:
       - "hasDbXref is not dereferenceable — you cannot follow it as an IRI or GRAPH-join on it directly; parse the string, then bridge to the target DB's own IRI (see id_join_map xrefs)."
@@ -205,7 +208,7 @@ examples:
         }
       }
       GROUP BY ?goTerm ?goLabel
-    verified: {n_genes: 391431, date: "2026-07-22", first_row: "GO_0004672 'protein kinase activity' → 391,431 genes"}
+    verified: {row_count: 1, has_values: ["GO_0004672", "protein kinase activity"], n_genes: 391431, date: "2026-09-14", first_row: "GO_0004672 'protein kinase activity' → 391,431 genes"}
     teaches: "GO annotation lives OUTSIDE the GO graph. TogoID pre-computes the gene↔GO edge as togoid:TIO_000004 in relation graph <dataset/togoid/relation/ncbigene-go> — a direct GRAPH join on the same 'primary' endpoint (no bridge call). Anchor GO IRIs in the ontology/go graph, join gene IRIs in the relation graph. ensembl_transcript-go is the transcript equivalent."
     traps_avoided:
       - "GO's own graph has NO gene-product instances — a GO class is a concept, not a set of genes. Do not look for genes inside ontology/go; use the TogoID relation graph (or reactome/uniprot annotation) instead."
@@ -242,7 +245,7 @@ id_join_map:
 #  2. discovery has all four fields; description is one sentence. ✓
 #  3. Every example has verified: with a date: field (not on:), all re-run live 2026-07-22. ✓
 #  4. ≥1 aggregation (enum_namespace, xref_by_db) AND ≥1 cross_db (xdb_ncbigene). ✓
-#  5. co_hosted import-shadow graphs flagged (×3.27 inflation, gotcha graph_pin); TogoID join graphs flagged. ✓
+#  5. co_hosted import-shadow graphs flagged (×2.84 inflation, gotcha graph_pin); TogoID join graphs flagged. ✓
 #  6. No fact restated across sections; nothing in schema_delta that an example shows. ✓
 #  7. Byte count recorded vs v2 (33,079 → 17,771, 46.3% smaller). ✓
 #  8. BOTH set-level enumeration routes are standalone examples: hasOBONamespace (enum_namespace),

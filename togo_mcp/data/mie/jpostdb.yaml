@@ -114,7 +114,7 @@ examples:
         }
       }
       LIMIT 10
-    verified: {result_rows: 1, date: "2026-08-07", first_row: "'JPST000349-12 Mouse liver and kidney proteome with antibiotics treatment' (2023-04-01) → RPXD034320"}
+    verified: {row_count: 1, has_values: ["2023-04-01", "RPXD034320"], date: "2026-08-07", first_row: "'JPST000349-12 Mouse liver and kidney proteome with antibiotics treatment' (2023-04-01) → RPXD034320"}
     teaches: "A Project IRI is http://rdf.jpostdb.org/entry/JPST<6-digit>; rdfs:seeAlso carries BOTH the jPOSTrepo page and the ProteomeXchange RPXD id — prefix-filter to pick one."
 
   - id: protein_evidence
@@ -130,7 +130,7 @@ examples:
           ?prot jpost:hasDatabaseSequence <http://purl.uniprot.org/uniprot/P01116> .
         }
       }
-    verified: {nEntries: 106, nProjects: 87, date: "2026-08-07"}
+    verified: {row_count: 1, has_values: [106, 87], nEntries: 106, nProjects: 87, date: "2026-09-14"}
     teaches: "The SAME UniProt protein gets a distinct Protein IRI (entry/PRT<proj>_<ds>_<acc>) in every project that detected it. To find ALL evidence, filter by jpost:hasDatabaseSequence <purl.uniprot.org/uniprot/ACC> — the typed, indexed cross-ref — never by PRT IRI substring."
     traps_avoided:
       - "There is NO reverse `jpost:isDetectedIn` predicate (silent 0 rows). Reach proteins top-down through Dataset (jpost:hasDataset/jpost:hasProtein) or, for peptide coordinates, via jpost:hasPeptideEvidence."
@@ -154,7 +154,7 @@ examples:
       GROUP BY ?seq
       ORDER BY DESC(?nPsms)
       LIMIT 10
-    verified: {result_rows: 10, date: "2026-08-07", first_row: "KVPQVSTPTLVEVSR (616 PSMs)"}
+    verified: {min_rows: 10, has_values: ["KVPQVSTPTLVEVSR"], date: "2026-08-07", first_row: "KVPQVSTPTLVEVSR (616 PSMs)"}
     teaches: "The AA string is on a child blank node typed obo:MS_1001344, reached via jpost:hasSequence [ … rdf:value ?seq ]. Protein→peptide runs through the jpost:hasPeptideEvidence bnode (jpost:hasPeptideEvidence/jpost:hasPeptide), which also carries FALDO start/end coordinates."
     traps_avoided:
       - "A direct `?pep rdf:value ?seq` (or `?pep ?p 'SEQ'`) matches nothing — the sequence is never a direct object of the Peptide (gotcha bnode_scaffolds). This is the single most common jPOST silent failure."
@@ -175,7 +175,7 @@ examples:
         }
       }
       LIMIT 25
-    verified: {result_rows: 16, date: "2026-08-07", first_row: "JPST001775 — SARS-CoV-2 proteomics reanalysis"}
+    verified: {row_count: 16, has_values: ["JPST001775"], date: "2026-08-07", first_row: "JPST001775 — SARS-CoV-2 proteomics reanalysis"}
     teaches: "Sample annotations are pre-typed ontology IRIs, so 'all projects/samples with property X' is an EXACT set enumeration — jpost:disease → obo:DOID_*, jpost:sampleType → NCIt/CLO/BTO, jpost:organ → NCIt/BTO, jpost:species → identifiers.org/taxonomy/*. Filter by the IRI, never bif:contains a name."
     traps_avoided:
       - "Disease is SPARSE (only 6 distinct DOID values across 853 samples, ~10% of samples annotated). An empty result for a disease usually means it was never curated, not a query bug — sampleType (98.9%) and species (100%) are the dense annotations."
@@ -191,7 +191,7 @@ examples:
           ?mod a unimod:UNIMOD_35 .    # UNIMOD_35 = Oxidation; swap the number for any PTM (4=carbamidomethyl, 1=acetyl, …)
         }
       }
-    verified: {nOxidation: 699291, date: "2026-08-07"}
+    verified: {n: 699291, date: "2026-08-07"}
     teaches: "To enumerate/count a specific PTM, type-filter on the Unimod IRI: ?mod a unimod:UNIMOD_<n>. This is THE set-level modification route — exact, no text match. A Modification also chains up via ^jpost:hasModification to its PSM/Peptide/Project when you need to scope the count."
     traps_avoided:
       - "MUST use the unimod: prefix http://www.unimod.org/obo/unimod.obo# — `a obo:UNIMOD_35` (the obo PURL) returns 0 silently (gotcha unimod_prefix). Verified: unimod: = 699,291 vs obo: = 0."
@@ -220,7 +220,7 @@ examples:
       }
       ORDER BY ?protPos
       LIMIT 20
-    verified: {result_rows: 20, total_distinct_rows: 177, date: "2026-08-07", first_rows: "S@18, S@20, T@38, S@41"}
+    verified: {min_rows: 20, total_distinct_rows: 177, date: "2026-08-07", first_rows: "S@18, S@20, T@38, S@41"}
     teaches: "jPOST carries TWO FALDO coordinate frames and a residue-level PTM question needs BOTH. A PeptideEvidence's faldo:location/faldo:begin/faldo:position is PROTEIN-absolute (its faldo:reference is the Protein IRI, e.g. entry/PRT1615_1_Q09666); a Modification's faldo:location/faldo:position is relative to its PARENT PEPTIDE (faldo:reference is a Peptide IRI, e.g. entry/PEP1616_1_354). Compose them: protein_position = peptide_begin + modification_relative_position - 1. faldo:location is near-universal on Unimod-typed mods (1,727,200 of 1,728,710 UNIMOD_21 = 99.9%), so no OPTIONAL is needed."
     traps_avoided:
       - "Treating a Modification's faldo:position as protein-absolute is the silent killer: it yields plausible-looking small residue numbers (here 21 instead of 2431) that are simply wrong for every peptide after the first. Nothing errors. The two ExactPosition nodes are structurally IDENTICAL — same predicate, same rdf:type faldo:ExactPosition — and differ ONLY in what faldo:reference points at, so read faldo:reference to know which frame you are in before doing arithmetic."
@@ -242,7 +242,7 @@ examples:
       GROUP BY ?label
       ORDER BY DESC(?n)
       LIMIT 10
-    verified: {result_rows: 10, date: "2026-08-07", first_row: "'TMT6plex (N-term)' = 444,696; then 'TMTpro (N-term)' 398,192"}
+    verified: {min_rows: 10, has_values: ["TMT6plex (N-term)", "TMTpro (N-term)"], date: "2026-08-07", first_row: "'TMT6plex (N-term)' = 444,696; then 'TMTpro (N-term)' 398,192"}
     teaches: "jpost:Modification carries a denormalised human-readable rdfs:label (the Unimod name); GROUP BY it as-is to rank PTMs. Labels ARE the vocabulary — no join to Unimod needed for the name; use the unimod: type (mod_by_unimod) only to FILTER a specific PTM."
     traps_avoided:
       - "rdfs:label fails on Modification in TWO different ways, and only one is fixable with a FILTER. Of 12,518,574 Modification instances (verified 2026-08-07): 5,624,538 (44.9%) have NO rdfs:label PREDICATE AT ALL, 5,206,460 (41.6%) have rdfs:label \"\", and only 1,687,576 (13.5%) carry a real name. FILTER(?label != '') fixes the empty bucket — it CANNOT help with the absent bucket, because a required (non-OPTIONAL) rdfs:label pattern drops those 5.6M rows before any FILTER runs. Wrap rdfs:label in OPTIONAL whenever the query is not already restricted to the label-bearing population."
@@ -263,7 +263,7 @@ examples:
       GROUP BY ?id
       ORDER BY DESC(?nDatasets)
       LIMIT 5
-    verified: {result_rows: 5, date: "2026-08-07", first_row: "JPST001781 = 30 datasets", totals: "598 projects / 853 datasets"}
+    verified: {min_rows: 5, has_values: ["JPST001781"], date: "2026-08-07", first_row: "JPST001781 = 30 datasets", totals: "598 projects / 853 datasets"}
     teaches: "Project ↔ Dataset is 1:N (598 → 853, ~1.4/project); a few mega-projects bundle dozens of runs. Dataset is the hub that connects DOWN to Profile, Protein, and Peptide via three parallel direct predicates."
 
   - id: xdb_uniprot
@@ -285,7 +285,7 @@ examples:
         }
       }
       LIMIT 5
-    verified: {result_rows: 1, date: "2026-08-07", first_row: "P02768 → 'Albumin' / 'Homo sapiens'"}
+    verified: {row_count: 1, has_values: ["P02768", "Albumin"], date: "2026-08-07", first_row: "P02768 → 'Albumin' / 'Homo sapiens'"}
     teaches: "jPOST and UniProt are on SEPARATE endpoints (primary vs sib), so the join MUST be SPARQL 1.1 SERVICE federation, not a same-endpoint GRAPH block. jpost:hasDatabaseSequence yields the exact purl.uniprot.org/uniprot IRI that UniProt keys on — a clean bridge, no TogoID, no text match."
     traps_avoided:
       - "Querying purl.uniprot.org/uniprot/* as a co-hosted GRAPH on primary returns 0 rows silently (gotcha uniprot_off_endpoint). SELECT DISTINCT because a protein recurs across many projects' PRT IRIs, all sharing one hasDatabaseSequence target."

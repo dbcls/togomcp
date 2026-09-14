@@ -136,6 +136,7 @@ Write the candidate to a scratch path and run:
 ```bash
 python benchmark/scripts/verify_questions.py /path/to/candidate.yaml   # single-file mode
 ```
+Once the question is in `benchmark/questions/`, also run `uv run python scripts/check_mie_leakage.py` — a new question whose keyword or gold entity is already an MIE example's vehicle for one of its databases is a leak (MIE spec §4.6), and CI gates on it. Prefer a different keyword/subject over waiving; waive only generic vocabulary the question does not score on.
 Fix every ❌ error. (Single-file mode checks structure/format only — it does **not** see the rest of the set, so the aggregate gates and the structural near-duplicate guard run later, in the full Phase-11 validation. Phase 0–1 *biases* toward balance; the full run is what *enforces* the coverage caps and surfaces signature/keyword collisions.)
 
 ### Phase 10 — CHECKPOINT: present for approval

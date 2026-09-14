@@ -120,7 +120,7 @@ examples:
                 <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> .
         }
       }
-    verified: {result_rows: 1, label: "BRCA1", biotype: "ENSGLOSSARY_0000026 (protein_coding)", date: "2026-07-22"}
+    verified: {row_count: 1, has_values: ["BRCA1", "ENSGLOSSARY_0000026"], label: "BRCA1", biotype: "ENSGLOSSARY_0000026 (protein_coding)", date: "2026-07-22"}
     teaches: "dcterms:identifier holds the bare accession (ENSG…/ENST…/ENSP…); rdfs:label is the gene symbol; terms:has_biotype is an IRI (resolve its label in ensembl-glossary)."
 
   - id: enum_biotype
@@ -138,7 +138,7 @@ examples:
                 <http://purl.obolibrary.org/obo/RO_0002162> <http://ensembl.org/Homo_sapiens> .
         }
       }
-    verified: {count: 23262, date: "2026-07-22"}
+    verified: {n: 23262, date: "2026-07-22"}
     teaches: "To enumerate 'ALL genes of biotype X', filter terms:has_biotype by the biotype IRI — the PRIMARY set-level route (exact + index-fast). Do NOT text-match a biotype label: labels live in a separate graph and text search silently mis- or under-counts."
     traps_avoided:
       - "MUST graph-pin: unpinned, the co-hosted expressionatlas + ensembl_grch37 re-declare each human gene IRI, inflating a label/row aggregate ~3× (gotcha graph_pin_inflation). This count uses COUNT(DISTINCT ?gene) AND the GRAPH pin — the pin is what protects any downstream ?label/SUM aggregate that DISTINCT alone cannot."
@@ -158,7 +158,7 @@ examples:
                       terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000365> .
         }
       }
-    verified: {count: 19338, date: "2026-07-22"}
+    verified: {n: 19338, date: "2026-07-22"}
     teaches: "Transcript quality is a controlled flag set: terms:has_transcript_flag → ENSGLOSSARY_* IRI. This is the set-level route for 'all MANE Select / canonical / APPRIS-P1 transcripts'. MANE Select is human-only, so no species filter is needed here; for a species-scoped flag count, join via so:transcribed_from a species-filtered gene (transcripts carry no species IRI — gotcha species_iri)."
     traps_avoided:
       - "canonical (ENSGLOSSARY_0000023) is exactly 1 per gene (= the gene total, 87,693 human), NOT a quality signal like MANE Select — do not treat 'canonical' as 'best/reviewed'."
@@ -178,7 +178,7 @@ examples:
         }
       }
       GROUP BY ?biotype ORDER BY DESC(?count)
-    verified: {top: "lncRNA_0000028: 36490, protein_coding_0000026: 23262, processed_pseudogene_0000048: 10234", biotype_iris: 39, sum_equals: 87693, date: "2026-07-22"}
+    verified: {row_count: 39, has_values: [36490, 23262], top: "lncRNA_0000028: 36490, protein_coding_0000026: 23262, processed_pseudogene_0000048: 10234", biotype_iris: 39, sum_equals: 87693, date: "2026-09-14"}
     teaches: "GROUP BY terms:has_biotype yields all 39 human biotype IRIs; the counts SUM to the whole-genome gene total (87,693). Use the returned IRIs directly as filters in enum_biotype-style queries — never guess biotype IRIs from labels."
 
   - id: mane_on_chromosome
@@ -201,7 +201,7 @@ examples:
         }
       }
       LIMIT 10
-    verified: {result_rows: 10, date: "2026-07-22", first_row: "MAP2K6 → ENST00000590474"}
+    verified: {min_rows: 10, date: "2026-07-22", first_row: "MAP2K6 → ENST00000590474"}
     teaches: "so:part_of takes a full chromosome IRI; so:transcribed_from links transcript→gene. Stack structured IRI filters (species + chromosome + flag) rather than text-matching any of them."
     traps_avoided:
       - "The chromosome IRI embeds the release number: .../ensembl/115/homo_sapiens/GRCh38/17. '115' changes each Ensembl release — discover it live (e.g. from a gene's so:part_of) rather than hardcoding a stale version."
@@ -228,7 +228,7 @@ examples:
         }
       }
       LIMIT 10
-    verified: {result_rows: 10, date: "2026-07-22", canonical_uniprot: "P38398", note: "one transcript can map to multiple UniProt (canonical P38398 + TrEMBL isoforms)"}
+    verified: {min_rows: 10, date: "2026-07-22", canonical_uniprot: "P38398", note: "one transcript can map to multiple UniProt (canonical P38398 + TrEMBL isoforms)"}
     teaches: "Protein reaches UniProt via rdfs:seeAlso, prefix-filtered to purl.uniprot.org/uniprot/. Only ~27.8% of human genes have a UniProt xref — this is the coverage ceiling for any Ensembl→UniProt→ChEMBL chain."
 
   - id: gene_coordinates_faldo
@@ -254,7 +254,7 @@ examples:
           FILTER(CONTAINS(STR(?chr), "/GRCh38/"))
         }
       }
-    verified: {result_rows: 1, chr: "…/115/homo_sapiens/GRCh38/17", start: 43044292, end: 43170245, strand: "-", date: "2026-07-22"}
+    verified: {row_count: 1, has_values: [43044292, 43170245], chr: "…/115/homo_sapiens/GRCh38/17", start: 43044292, end: 43170245, strand: "-", date: "2026-07-22"}
     teaches: "Coordinates are FALDO: faldo:location → faldo:begin/end → faldo:position; strand comes from the position's rdf:type (Forward/ReverseStrandPosition)."
     traps_avoided:
       - "FALDO positions are DUAL-typed (ExactPosition + a StrandPosition) — without FILTER(?strand_type IN (faldo:ForwardStrandPosition, faldo:ReverseStrandPosition)) every row DOUBLES silently."
@@ -277,7 +277,7 @@ examples:
         }
       }
       LIMIT 5
-    verified: {result_rows: 5, date: "2026-07-22", first_row: "FBgn0000116 Argk1"}
+    verified: {min_rows: 5, date: "2026-07-22", first_row: "FBgn0000116 Argk1"}
     teaches: "Non-vertebrate divisions use the SAME predicates/biotype IRIs; switch the GRAPH (ensembl_metazoa/_plants/_fungi/_bacteria/_protists) AND the species subdomain ({division}.ensembl.org/Species). The species filter is MANDATORY here (gotcha nonvert_timeout)."
 
   - id: xdb_chembl
@@ -306,7 +306,7 @@ examples:
         }
       }
       LIMIT 15
-    verified: {result_rows: 15, date: "2026-07-22", first_row: "KMO → CHEMBL2145 (Kynurenine 3-monooxygenase)"}
+    verified: {min_rows: 15, date: "2026-07-22", first_row: "KMO → CHEMBL2145 (Kynurenine 3-monooxygenase)"}
     teaches: "Ensembl and ChEMBL are co-hosted on the ebi endpoint: Ensembl's rdfs:seeAlso UniProt IRI is the SAME IRI as ChEMBL's cco:hasTargetComponent/skos:exactMatch target — a direct GRAPH join, no text search and no TogoID bridge."
     traps_avoided:
       - "The bridge is UniProt: coverage is capped at the ~27.8% of human genes that carry a UniProt xref, so this join can never span the whole genome."

@@ -103,7 +103,7 @@ examples:
       WHERE {
         ?pathway a bp:Pathway ; bp:organism/bp:name "Homo sapiens"^^xsd:string .
       }
-    verified: {count: 2848, date: "2026-07-22"}
+    verified: {n: 2848, date: "2026-07-22"}
     teaches: "Organism is the exact-string route: bp:organism/bp:name \"Homo sapiens\"^^xsd:string. Graph-pin + COUNT(DISTINCT) for a clean total; 2,848 of the 23,277 pathways are human."
     traps_avoided:
       - "\"Homo sapiens\" WITHOUT ^^xsd:string returns 0 (gotcha string_typing). bp:name is species-agnostic text — the same pathway name recurs across all 57 species, so filter by organism, not by matching a pathway displayName."
@@ -123,7 +123,7 @@ examples:
         ?reaction a bp:BiochemicalReaction ; bp:displayName ?name ; bp:eCNumber ?ec .
       }
       LIMIT 5
-    verified: {result_rows: 5, ec_reaction_total: 4225, date: "2026-07-22", first_row: "AKT1 phosphorylates eNOS (2.7.11.1)"}
+    verified: {min_rows: 5, ec_reaction_total: 4225, date: "2026-07-22", first_row: "AKT1 phosphorylates eNOS (2.7.11.1)"}
     teaches: "bp:eCNumber is a ^^xsd:string literal (\"2.7.11.1\", NOT an EC IRI). VALUES over EC strings enumerates every reaction of an enzyme class — the structured route, no text search; the two kinase classes cover 4,225 reactions."
 
   - id: enum_go_pathways
@@ -143,7 +143,7 @@ examples:
               bp:db "GENE ONTOLOGY"^^xsd:string ; bp:id ?goTerm .
       }
       GROUP BY ?goTerm
-    verified: {DNA_repair_GO_0006281: 26, autophagy_GO_0006914: 15, date: "2026-07-22"}
+    verified: {row_count: 2, has_values: [26, 15], DNA_repair_GO_0006281: 26, autophagy_GO_0006914: 15, date: "2026-07-22"}
     teaches: "THE GO enumeration route: bp:xref → bp:RelationshipXref with bp:db \"GENE ONTOLOGY\"^^xsd:string and bp:id \"GO:NNNNNNN\"^^xsd:string. GO IDs are colon-prefixed STRINGS here, not OBO IRIs."
     traps_avoided:
       - "Switching bp:RelationshipXref → bp:UnificationXref returns 0 for these terms and misses ~98% of ALL GO annotations (68,949 RelationshipXref links vs 1,529 UnificationXref, verified 2026-07-22). Both use bp:db \"GENE ONTOLOGY\"; only the xref TYPE differs (gotcha go_xref_type)."
@@ -168,7 +168,7 @@ examples:
       }
       ORDER BY ?name
       LIMIT 5
-    verified: {result_rows: 5, date: "2026-07-22", first_row: "4E-BP1-P O-phospho-L-threonine @37"}
+    verified: {min_rows: 5, has_values: ["4E-BP1-P", "O-phospho-L-threonine"], date: "2026-07-22", first_row: "4E-BP1-P O-phospho-L-threonine @37"}
     teaches: "PTMs are structured: Protein → bp:feature → ModificationFeature → bp:modificationType → SequenceModificationVocabulary, whose bp:xref carries a MOD-ontology UnificationXref (MOD:00046/47/48/00696 for phospho). VALUES on MOD IDs beats a bp:term text scan; bp:featureLocation gives the residue position."
 
   - id: cellular_location_proteins
@@ -202,7 +202,7 @@ examples:
         ?entity bp:xref [ bp:db "Reactome"^^xsd:string ; bp:id "R-HSA-109581"^^xsd:string ] ;
                 bp:displayName ?name .
       }
-    verified: {result_rows: 1, date: "2026-07-22", first_row: "…#Pathway2221 = Apoptosis"}
+    verified: {row_count: 1, has_values: ["Pathway2221", "Apoptosis"], date: "2026-07-22", first_row: "…#Pathway2221 = Apoptosis"}
     teaches: "The ONLY safe anchor for a search/stId result: bridge the Reactome stId through bp:xref (bp:db \"Reactome\"^^xsd:string). The stId is species-scoped (R-HSA=human, R-MMU=mouse), so it pins exactly ONE organism's entity — cleaner than matching displayName across 57 species."
     traps_avoided:
       - "Do NOT paste the stId or a hand-built reactome.org URL as the subject IRI — BioPAX subjects are per-export counters (gotcha subject_iri_unguessable), so that returns 0 rows silently."
@@ -239,7 +239,7 @@ examples:
         }
       }
       GROUP BY ?targetAcc
-    verified: {ROCK1_Q13464: 39, ROCK2_O75116: 31, date: "2026-07-22"}
+    verified: {row_count: 2, has_values: [39, 31], ROCK1_Q13464: 39, ROCK2_O75116: 31, date: "2026-07-22"}
     teaches: "Accept BOTH bp:db \"UniProt\" AND \"UniProt Isoform\" (bp:id = ACC-N) and match by equality OR STRSTARTS \"ACC-\". A reaction's bp:left/bp:right points to the GROUP, so UNION direct + complex (bp:component+) + EntitySet (bp:memberPhysicalEntity+, transitive — sets nest) + catalysis controller."
     traps_avoided:
       - "Filtering bp:db \"UniProt\" only drops isoform-only proteins (e.g. NPC1L1 exists ONLY as \"UniProt Isoform\" Q9UHC9-2); a bare \"UniProt\" match returns 0 for them."
@@ -267,13 +267,7 @@ examples:
         ?rxn  bp:displayName ?reactionName .
       }
       ORDER BY ?sign ?reactionName
-    verified:
-      result_rows: 13
-      date: "2026-07-31"
-      note: >
-        12 ACTIVATION + 1 INHIBITION. Includes "MDM2 ubiquitinates TP53" (ACTIVATION) and
-        p14ARF:MDM2 INHIBITION of that same reaction. Dropping bp:memberPhysicalEntity from the
-        path returns only 6 rows — the TP53 row is one of the 7 lost.
+    verified: {row_count: 13, has_values: ["ACTIVATION", "MDM2 ubiquitinates TP53"], date: "2026-07-31", note: "12 ACTIVATION + 1 INHIBITION. Includes \"MDM2 ubiquitinates TP53\" (ACTIVATION) and p14ARF:MDM2 INHIBITION of that same reaction. Dropping bp:memberPhysicalEntity from the path returns only 6 rows — the TP53 row is one of the 7 lost.\n"}
     teaches: >
       Reactome DOES carry signed regulation (61,819 bp:controlType statements) — but the sign is on
       a REACTION, not between two molecules. "MDM2 ubiquitinates TP53" is ACTIVATION: the control
@@ -297,13 +291,7 @@ examples:
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE { ?pw a bp:Pathway ; bp:organism/bp:name ?organism . }
       GROUP BY ?organism ORDER BY DESC(?pathways)
-    verified:
-      result_rows: 15
-      date: "2026-07-31"
-      note: >
-        Homo sapiens 2848, Mus 1822, Gallus 1814, Rattus 1809, Bos 1797, Sus 1780, Canis 1759,
-        Danio 1671, Xenopus tropicalis 1597, Drosophila 1572, C. elegans 1393, Dictyostelium 1070,
-        S. pombe 857, S. cerevisiae 839, Plasmodium falciparum 649. All 15 are eukaryotes.
+    verified: {row_count: 15, has_values: ["Homo sapiens", "Xenopus tropicalis"], date: "2026-07-31", note: "Homo sapiens 2848, Mus 1822, Gallus 1814, Rattus 1809, Bos 1797, Sus 1780, Canis 1759, Danio 1671, Xenopus tropicalis 1597, Drosophila 1572, C. elegans 1393, Dictyostelium 1070, S. pombe 857, S. cerevisiae 839, Plasmodium falciparum 649. All 15 are eukaryotes.\n"}
     teaches: >
       RUN THIS BEFORE SCOPING ANY ORGANISM QUESTION TO REACTOME. Only 15 organisms own a pathway,
       and every one is a eukaryote — non-human ones are orthology-inferred projections of the human
@@ -344,7 +332,7 @@ examples:
         }
       }
       LIMIT 5
-    verified: {result_rows: 5, date: "2026-07-22", first_row: "H2O2 → hydrogen peroxide, H2O2, 34.014"}
+    verified: {min_rows: 5, date: "2026-07-22", first_row: "H2O2 → hydrogen peroxide, H2O2, 34.014"}
     teaches: "Reactome bp:id \"CHEBI:NNNNN\"^^xsd:string → strip \"CHEBI:\" (SUBSTR from char 7) → CONCAT obo/CHEBI_NNNNN IRI to join the co-hosted chebi graph. ChEBI properties are chemrof:generalized_empirical_formula / chemrof:mass (the old chebi:formula/mass were removed upstream — 0 rows)."
 
   - id: xdb_chembl
@@ -379,7 +367,7 @@ examples:
       }
       ORDER BY DESC(?phase)
       LIMIT 10
-    verified: {result_rows: 10, date: "2026-07-22", first_row: "TAOK1 → PAZOPANIB (phase 4)"}
+    verified: {min_rows: 10, has_values: ["TAOK1", "PAZOPANIB"], date: "2026-07-22", first_row: "TAOK1 → PAZOPANIB (phase 4)"}
     teaches: "Reactome UniProt accession STRING → IRI purl.uniprot.org/uniprot/ACC to join ChEMBL's skos:exactMatch on cco:hasTargetComponent. bif:contains on bp:displayName is the ONE legit text route (Virtuoso-indexed free-text pathway names); apply the organism + keyword + phase pre-filters inside each GRAPH before joining."
 
 # ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
