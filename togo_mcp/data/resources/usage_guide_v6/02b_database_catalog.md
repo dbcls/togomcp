@@ -1,6 +1,6 @@
 ## 📚 DATABASE CATALOG
 
-All 38 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
+All 39 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -8,18 +8,18 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 
 - **annotation** — `pubtator` `uniprot`
 - **antimicrobial** — `amrportal`
-- **compound** — `chebi` `chembl` `massbank` `pubchem`
+- **compound** — `chebi` `chembl` `massbank` `pubchem` `wikipathways`
 - **disease** — `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `togovar`
 - **drug_target** — `chembl`
 - **enzymology** — `brenda`
-- **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `medgen` `ncbigene`
+- **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `medgen` `ncbigene` `wikipathways`
 - **genomics** — `fantabio` `gwascatalog` `hco` `hgnc` `mco` `mogplus` `oma` `togovar`
 - **glycan** — `glycosmos`
 - **literature** — `pubmed` `pubtator`
 - **materials** — `supercon`
 - **microbe** — `amrportal` `bacdive` `mediadive` `nbrc`
 - **ontology** — `chebi` `go` `hco` `mco` `mesh` `mondo` `nando` `ontology`
-- **pathway** — `reactome`
+- **pathway** — `reactome` `wikipathways`
 - **physics** — `supercon`
 - **protein** — `brenda` `glycosmos` `jpostdb` `oma` `pdb` `uniprot`
 - **reaction** — `brenda` `rhea`
@@ -106,6 +106,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: variant, variation, mutation, snv, snp, indel, genome, human, japanese, dbsnp, clinvar, vep, consequence, sequence ontology, sift, polyphen, pathogenic, clinical significance
 - **uniprot** — UniProt RDF. Curated (Swiss-Prot) and automatic (TrEMBL) protein sequence + functional annotation: sequences, domains, PTMs, isoforms, natural variants, disease links, GO terms, EC/enzyme activity, catalysed Rhea… _(categories: annotation, protein)_  
   keywords: protein, sequence, swiss-prot, trembl, reviewed, function, domain, isoform, enzyme, ec number, natural variant, disease, gene ontology, cross-reference
+- **wikipathways** — WikiPathways. Community-curated biological pathway diagrams for 39 organisms, exposing pathways, their gene-product/protein/metabolite nodes, typed and signed interactions, Pathway/Disease/Cell-type Ontology tags,… _(categories: compound, gene, pathway)_  
+  keywords: pathway, pathway diagram, gene product, metabolite, interaction, signaling, metabolism, regulation, inhibition, stimulation, catalysis, conversion, gpml, bridgedb, curation, pathway ontology, disease ontology, cross-reference
 
 **Not an RDF Portal database — KEGG:**
 
