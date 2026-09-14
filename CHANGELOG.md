@@ -13,6 +13,18 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.12.2] - 2026-09-14
+
+The schema guides now check their own answers. Every worked example in an MIE file records
+the result it returned when it was verified; until this release nothing compared that record
+with what the endpoint returns today, so a query that kept running but started answering
+differently looked healthy. Making that comparison — across all 334 examples — is what found
+this release's fixes, most importantly a NANDO guide describing a data release that had been
+replaced, whose MONDO join was silently missing ~88% of mapped diseases. No tool, parameter or
+return shape changed.
+
+<!-- whatsnew: 2026-09-14 | The worked examples in every database schema guide now <strong>check their own answers</strong> against the live endpoints, not just that they still run. The first full comparison found a guide that had quietly gone stale: <strong>NANDO</strong>'s MONDO mapping had moved to a different predicate in an upstream release, so its example join missed about <strong>88%</strong> of mapped diseases. It is fixed, along with two examples that returned duplicate or misdescribed rows. -->
+
 ### Added
 
 - **MIE examples now assert their recorded result, and CI checks it.** Spec §4.1 said "a CI job
@@ -46,6 +58,8 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   `taxonomy` species (+4.9%), `hgnc` EC-code xrefs (+3.8%), `amrportal` subregion countries, `chembl`
   Parkinson mechanisms, `mediadive` recipe rows, `oma`/UniProt function comments, and `pubchem`
   descriptors (every descriptor is now typed twice, CHEMINF and PubChem vocabulary).
+- **`endpoints.csv` sent NANDO keyword search to OLS4, which does not index NANDO** (0 hits for
+  `searchClasses(ontologyId="nando")`). The registry now says `sparql`.
 
 - **Benchmark-leakage gate for MIE examples** (`scripts/check_mie_leakage.py`, MIE spec §4.6).
   §4.6 forbade an example from using a benchmark question's subject as its vehicle and prescribed
@@ -2355,7 +2369,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.7.8...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.12.2...HEAD
+[2.12.2]: https://github.com/dbcls/togomcp/compare/v2.12.1...v2.12.2
 [2.12.1]: https://github.com/dbcls/togomcp/compare/v2.12.0...v2.12.1
 [2.12.0]: https://github.com/dbcls/togomcp/compare/v2.11.0...v2.12.0
 [2.11.0]: https://github.com/dbcls/togomcp/compare/v2.10.0...v2.11.0
