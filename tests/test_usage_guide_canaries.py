@@ -100,9 +100,17 @@ def test_canaries_are_real_tools(registered_tool_names: set[str]) -> None:
 
 
 def test_phantom_examples_do_not_exist(registered_tool_names: set[str]) -> None:
-    """The quoted 'unknown tool' examples must stay unregistered."""
+    """The quoted 'unknown tool' examples must stay unregistered — and must not
+    be served by the renamed-tool shim either, which makes an old name succeed
+    without registering it (`_RENAMED_TOOLS` in server.py)."""
+    from togo_mcp.server import _RENAMED_TOOLS
+
     row = _stale_list_row()
-    resurrected = [n for n in _names(_PHANTOMS_RE, row, "phantom examples") if n in registered_tool_names]
+    resurrected = [
+        n
+        for n in _names(_PHANTOMS_RE, row, "phantom examples")
+        if n in registered_tool_names or n in _RENAMED_TOOLS
+    ]
     assert not resurrected, (
         f"Usage Guide cites {resurrected} as example(s) of an 'unknown tool' error, "
         "but they are registered now — calling them succeeds, so the row cites a "

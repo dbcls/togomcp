@@ -1028,3 +1028,94 @@ class TestRawLogDownload:
             href = re.search(r"<a href='([^']+)' download", html).group(1)
             assert href == "/stats/log"
             assert c.get(href, auth=("u", "p")).status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# _StaleToolNames middleware — clients with a cached, out-of-date tool list
+# ---------------------------------------------------------------------------
+class TestStaleToolNames:
+    """ChatGPT connectors never refetch tools/list, so they keep calling names
+    this server dropped. Renamed tools are served under the old name with a
+    notice; retired tools fail with guidance instead of a bare "Unknown tool"."""
+
+    def _run(self, calls):
+        from fastmcp import Client
+
+        from togo_mcp.main import mcp, setup
+
+        async def go():
+            await setup()
+            async with Client(mcp) as client:
+                return await calls(client)
+
+        return asyncio.run(go())
+
+    def test_old_names_stay_out_of_tools_list(self) -> None:
+        from togo_mcp.server import _RENAMED_TOOLS, _RETIRED_TOOLS
+
+        async def calls(client):
+            return {t.name for t in await client.list_tools()}
+
+        names = self._run(calls)
+        assert set(_RENAMED_TOOLS.values()) <= names, "an alias points at a tool that no longer exists"
+        assert not (set(_RENAMED_TOOLS) | set(_RETIRED_TOOLS)) & names
+
+    def test_renamed_tool_is_served_with_notice(self, monkeypatch) -> None:
+        from togo_mcp import ncbi_tools
+
+        seen: dict = {}
+
+        async def fake_api(**kwargs):
+            seen.update(kwargs)
+            return {"esearchresult": {"count": "0", "idlist": []}}
+
+        monkeypatch.setattr(ncbi_tools, "_ncbi_esearch_api", fake_api)
+
+        async def calls(client):
+            return await client.call_tool(
+                "ncbi_ncbi_esearch", {"db": "pubmed", "term": "TDP-43", "max_results": 3}
+            )
+
+        result = self._run(calls)
+        assert not result.is_error
+        assert seen["term"] == "TDP-43" and seen["retmax"] == 3
+        assert "PubMed" in result.content[0].text
+        assert "outdated name for `ncbi_esearch`" in result.content[-1].text
+
+    def test_retired_tool_error_explains_what_to_do(self) -> None:
+        async def calls(client):
+            return await client.call_tool(
+                "find_databases", {"keywords": ["mass spectra"]}, raise_on_error=False
+            )
+
+        result = self._run(calls)
+        assert result.is_error
+        text = result.content[0].text
+        assert text.startswith("Unknown tool: 'find_databases'")
+        assert "TogoMCP_Usage_Guide" in text and "refresh the connector" in text
+
+    def test_log_keeps_the_name_the_client_sent(self) -> None:
+        """The logger reads context.message.name after call_next returns; the
+        shim must run inside it and must not mutate the shared context."""
+        from mcp.types import CallToolRequestParams, TextContent
+        from fastmcp.server.middleware import MiddlewareContext
+        from fastmcp.tools import ToolResult
+
+        from togo_mcp.server import _StaleToolNames, _ToolCallLogger, mcp
+
+        kinds = [type(m) for m in mcp.middleware]
+        assert kinds.index(_StaleToolNames) > kinds.index(_ToolCallLogger)
+
+        ctx = MiddlewareContext(
+            message=CallToolRequestParams(name="ncbi_ncbi_efetch", arguments={}),
+            method="tools/call",
+        )
+        dispatched: list[str] = []
+
+        async def call_next(c):
+            dispatched.append(c.message.name)
+            return ToolResult(content=[TextContent(type="text", text="ok")])
+
+        asyncio.run(_StaleToolNames().on_call_tool(ctx, call_next))
+        assert dispatched == ["ncbi_efetch"]
+        assert ctx.message.name == "ncbi_ncbi_efetch"

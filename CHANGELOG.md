@@ -35,6 +35,15 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   claude.ai, Cursor and scripted clients alike. If both names are sent, `ids` wins over `id`, but
   `retmax`/`retstart` win over `max_results`/`start_index` (those have defaults, so the server can't
   tell whether the caller set them).
+- **Old tool names from out-of-date client tool lists now work or explain themselves.** ChatGPT
+  connectors cache the tool list and never refetch it, so some still call names this server dropped
+  months ago. `ncbi_ncbi_esearch`/`_esummary`/`_efetch`/`_list_databases` (renamed in April) are now
+  served under their current names, with a notice at the end of the result telling the agent to have
+  the user refresh the connector. Before this, every NCBI call from such a client failed: 107 calls
+  in the 2026-07-27→09-15 production log, one Codex user on five separate days in September.
+  `find_databases`/`list_databases`/`list_categories` still fail, but the error now says they were
+  retired and points to the Usage Guide's Database Catalog instead of a bare "Unknown tool". Neither
+  set of names appears in `tools/list`, and the call log keeps the name the client sent.
 
 ## [2.14.0] - 2026-09-15
 
