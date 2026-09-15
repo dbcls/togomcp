@@ -63,6 +63,12 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ### Fixed
 
+- **`run_sparql`'s empty-result advice was wrong on endpoints with no named graphs.** Its probe
+  for telling "the entity is absent" from "the query is broken" was always
+  `ASK { GRAPH <the-graph> { <anchor> ?p ?o } }`. On an endpoint that keeps everything in the
+  default graph (LIPID MAPS, PR #226), that probe is false for every entity, so a broken query was
+  diagnosed as a true negative. The probe now follows the query's own scoping: it uses `GRAPH` only
+  when the query pins a graph.
 - **ChatGPT setup instructions: updating the tool list is now described correctly.** Every page told
   users to "re-run Scan Tools, or remove and re-add the connector." OpenAI's help article
   ("Developer mode and MCP apps in ChatGPT", revised about 2026-08-22, checked from a browser copy

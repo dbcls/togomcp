@@ -41,6 +41,21 @@ def test_note_names_both_causes_and_the_probe() -> None:
     assert "ASK {" in note, "must give the probe that distinguishes the two causes"
 
 
+def test_probe_copies_the_query_graph_scoping() -> None:
+    """The probe must scope itself the way the query does. A hard-coded
+    `GRAPH <the-graph>` probe is false for every entity on an endpoint with no named
+    graphs (lipidmaps), so an unpinned broken query was diagnosed as a true negative."""
+    unpinned = _empty_result_note(NO_ROWS, "SELECT ?s WHERE { ?s <p> <o> }")
+    assert "ASK { <your-anchor-IRI> ?p ?o }" in unpinned
+    assert "GRAPH <the-graph" not in unpinned
+    for q in (
+        "SELECT ?s WHERE { GRAPH <g> { ?s <p> <o> } }",
+        "SELECT ?s FROM <g> WHERE { ?s <p> <o> }",
+        "SELECT ?s FROM NAMED <g> WHERE { graph ?x { ?s <p> <o> } }",
+    ):
+        assert "GRAPH <the-graph-your-query-pins>" in _empty_result_note(NO_ROWS, q), q
+
+
 def test_ask_false_is_not_empty() -> None:
     """`ASK` false is an ANSWER. Flagging it would teach agents to distrust it."""
     assert _empty_result_note(ASK_FALSE, "ASK { ?s ?p ?o }") is None
