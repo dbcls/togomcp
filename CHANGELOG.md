@@ -61,6 +61,14 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   (so @mention it again), and that OpenAI has paused new sign-ups to the $200 Pro plan. The plan tiers
   and menu paths were confirmed unchanged; a third-party blog and OpenAI's undated developer guide
   still disagree with them and were not followed.
+- **ChatGPT Pro: add TogoMCP as a Plugin, not from the "MCP" tab.** A Pro user found that when
+  TogoMCP is registered from the "MCP" tab, some of its tools are not recognized or used. Adding it
+  through the newer **Plugins** page works: Plugins → **+** → Server URL, No Auth → **Create** →
+  **Try in Chat**. The page needs Developer mode and a web browser; it doesn't appear in the desktop
+  app. The intro page and handbook (EN/JA) now give this as the recommended Pro route, keep the
+  App route for Business/Enterprise/Edu, and add a troubleshooting row for "ChatGPT ignores some
+  tools". A plugin has no Refresh button, so on Pro a stale tool list is fixed by deleting the
+  plugin and creating it again; the server's stale-name notice and the Usage Guide say so.
 - **Tutorial HTML regenerated.** The published EN/JA tutorials still said `SERVICE` federation is
   disabled on rdfportal.org, a claim the handbook source had corrected on 2026-08-26 without the
   HTML being rebuilt.

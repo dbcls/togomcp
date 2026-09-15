@@ -956,7 +956,7 @@ _STALE_LIST_ADVICE = (
     "updated. In ChatGPT: on Enterprise/Edu a workspace admin refreshes its "
     "actions (Workspace settings → Apps → ⋯ → Action control → Refresh) and "
     "enables the new tools; on Business an admin recreates and republishes the "
-    "app; on Pro, delete the app and create it again."
+    "app; on Pro, delete the TogoMCP plugin and create it again."
 )
 
 
