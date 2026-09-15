@@ -115,7 +115,8 @@ global_gotchas:
       benzanilide scaffold returns 45 rows — exactly 5 from each of the 9 datasets — so a
       reader who set topn expecting 5 silently gets 9x their cap, with the cheapest-ranked
       hit of every dataset mixed in. FIX = keep topn for per-dataset depth and add an outer
-      LIMIT (or a namespace FILTER) for the total you actually want.
+      LIMIT (or a namespace FILTER) for the total you actually want. Both cap the ROWS you get
+      back, not the work the index does (see broad_scaffold_cost).
     check:
       kind: count
       date: "2026-09-14"
@@ -127,6 +128,29 @@ global_gotchas:
           ?r sachem:compound ?c .
         }
       expect: {value: 45, tolerance: 0.02}
+
+  - id: broad_scaffold_cost
+    say: >
+      A substructure search costs what its SCAFFOLD matches, and neither LIMIT nor sachem:topn
+      makes a broad one cheap. Benzene ("c1ccccc1") matches 93,904,765 compounds across the
+      nine datasets: counting them took 88s (twice), `LIMIT 20` still took 46s (twice), and
+      `sachem:topn 2` took 87-89s — slower than the LIMIT form, not faster. run_sparql gives up
+      at 90s, so these sit right on the edge and may time out when the service is busy. A
+      selective scaffold is fast: benzanilide (1,633,328 hits) counts in about 2s. (Timings
+      measured 2026-09-15 on the public service and will vary with its load; read them as
+      orders of magnitude.) FIX = make the query more specific before you add a cap — a larger
+      or more distinctive scaffold, exactSearch, or similaritySearch with a sachem:cutoff. A
+      timeout on a structure search means the scaffold is too broad, not that the endpoint is
+      down; do not retry it unchanged.
+    check:
+      kind: count
+      date: "2026-09-15"
+      query: |
+        PREFIX sachem: <http://bioinfo.uochb.cas.cz/rdf/v1.0/sachem#>
+        SELECT (COUNT(*) AS ?n) WHERE {
+          ?c sachem:substructureSearch [ sachem:query "c1ccccc1" ] .
+        }
+      expect: {value: 93904765, tolerance: 0.02}
 
   - id: order_by_predicate_variable_errors
     say: >
