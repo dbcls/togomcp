@@ -26,6 +26,16 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   diseases collapse to 14,385 MONDO terms); and the article→MeSH predicate is minted without its
   separator (`fabiohasSubjectTerm`), so the correctly spelled one finds nothing.
 
+### Changed
+
+- **The NCBI tools accept E-utilities' own parameter names**: `retmax`/`retstart` on
+  `ncbi_esearch` (for `max_results`/`start_index`) and `id` on `ncbi_esummary`/`ncbi_efetch` (for
+  `ids`). Agents that know the raw API reach for these names, and until now every such call was
+  rejected before it ran: 134 calls in the 2026-07-27→09-15 production log, from claude-code,
+  claude.ai, Cursor and scripted clients alike. If both names are sent, `ids` wins over `id`, but
+  `retmax`/`retstart` win over `max_results`/`start_index` (those have defaults, so the server can't
+  tell whether the caller set them).
+
 ## [2.14.0] - 2026-09-15
 
 Two new databases, both on endpoints of their own rather than on RDF Portal: **WikiPathways**
