@@ -52,7 +52,7 @@ graphs:
 
 entity_counts:
   # All COUNT(DISTINCT) and pinned to graphs.primary.
-  owl_class_total: 780411          # includes 2,446 non-lipid schema terms — see enum_rank_census
+  owl_class_total: 780411          # includes 2,446 records with no SLM_rank — see enum_rank_census
   ranked_lipids: 777965            # the real lipid count (carries SLM_rank)
   category: 7
   class: 806
@@ -60,12 +60,13 @@ entity_counts:
   molecular_subspecies: 62516
   structural_subspecies: 111867
   isomeric_subspecies: 592422
-  schema_terms_without_rank: 2446  # SLM_Rank, SLM_Part, 23 SLM_could_be_at_*, position/chain terms
+  classes_without_rank: 2446       # 1,511 non-lipid metabolites (H2O, ATP, NADP+) + schema terms
+  non_lipid_metabolites: 1511      # owl:Class with formula/charge but NO SLM_rank
   parts: 2292658                   # SLM_Part nodes (fatty-acid-at-position assertions)
   with_formula: 779292
   with_smiles: 779183
   with_inchikey: 593442
-  with_charge: 779476
+  with_charge: 779476              # = 777,965 ranked lipids + 1,511 non-lipid metabolites
   labelled: 780389                 # unpinned returns 780408 — see graphs.co_hosted
   cited_lipids: 3014               # 9,889 SLM_citation triples -> PubMed
   obsolete_records: 96             # bare stubs; see xref_chebi_equivalentclass
@@ -101,7 +102,7 @@ global_gotchas:
           }
         } LIMIT 1
 
-  - id: depiction_is_a_53gb_base64_blob
+  - id: depiction_is_a_5gb_base64_blob
     say: >
       `foaf:depiction` is NOT an image URL — it is a `data:image/png;base64,...` IRI with the
       whole PNG inlined, on 779,183 lipids, averaging 6,795 characters and peaking at 41,858.
@@ -159,9 +160,15 @@ global_gotchas:
       no numeric property anywhere on a lipid — no mass, no exact mass, no carbon count. So the
       obvious `FILTER(?charge > 0)` compares a string to a number, which is a type error that
       SPARQL evaluates as false: it returns 0 ROWS silently, reading as "no cations here". The
-      database does hold 311 positively-charged lipids. FIX: cast —
-      `FILTER(xsd:integer(?charge) > 0)`. Distribution is 0 (334,341), -1 (226,819),
-      -2 (127,700), -3 (46,075), -5 (28,759), -7 (13,614), -4 (1,857), +1 (23).
+      database does hold 19 positively-charged lipids. FIX: cast —
+      `FILTER(xsd:integer(?charge) > 0)` — AND anchor on `SLM:rank`, because the cast alone
+      exposes a second trap: it returns 311 records, and 288 of them are not cations at all.
+      Besides the lipids, the graph carries 1,511 non-lipid metabolites (`owl:Class`, formula
+      and charge, but NO `SLM:rank`), and on 288 of those the charge slot holds what is plainly
+      the nominal MASS — H2O "18", ATP "503", NADP+ "740", CoA "763". Ranked-lipid distribution
+      (sums to all 777,965): 0 (333,783), -1 (226,445), -2 (127,581), -3 (46,048),
+      -5 (28,747), -7 (13,614), -4 (1,728), +1 (19). Unranked records carry +1 (4) and the
+      288 mass-valued "charges" from 18 up.
     check:
       kind: zero_rows
       date: "2026-09-15"
@@ -304,10 +311,13 @@ examples:
     traps_avoided:
       - "`ORDER BY ?rank` (the rank IRI, as the maintainers' published ex:2 does) sorts alphabetically by IRI — Class, Isomeric, Molecular, Species, Structural — which is NOT the hierarchy order and silently misrepresents the tiers. Order by `SLM:rankPreference`."
       - say: >
-          Counting `?s a owl:Class` instead gives 780,411, over-reporting lipids by 2,446: the
-          surplus is schema vocabulary (`SLM_Rank`, `SLM_Part`, 23 `SLM_could_be_at_*` terms,
-          chain descriptors like `SLM_18C1DB_1Z`) which is typed `owl:Class` but carries no
-          `SLM:rank`. Anchor on `SLM:rank` to mean "a lipid".
+          Counting `?s a owl:Class` instead gives 780,411, over-reporting lipids by 2,446
+          records typed `owl:Class` that carry no `SLM:rank`. 1,511 of them are non-lipid
+          metabolites with a formula and charge (H2O, ATP, NADP+ — see
+          `charge_and_formula_are_strings_not_numbers`), so a chemistry filter does not weed
+          them out; the rest are schema vocabulary (`SLM_Rank`, `SLM_Part`, 23
+          `SLM_could_be_at_*` terms, chain descriptors like `SLM_18C1DB_1Z`). Anchor on
+          `SLM:rank` to mean "a lipid".
         check:
           kind: ratio
           date: "2026-09-15"
@@ -332,8 +342,9 @@ examples:
     sparql: |
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX SLM:  <https://swisslipids.org/rdf/SLM_>
-      # The hierarchy is at most 5 tiers deep, so a class's members are always within 4 hops.
-      # An explicit UNION of fixed-length paths replaces rdfs:subClassOf+ and is ~100x faster.
+      # 1-4 hops is complete for a CLASS-ranked target (shortcut edges keep every member within 4,
+      # even under the deepest Class-in-Class nesting). A CATEGORY target needs 1-5 hops — at 4
+      # it can silently drop most members; see traps_avoided. Replaces rdfs:subClassOf+, ~100x faster.
       SELECT (COUNT(DISTINCT ?id) AS ?n)
       WHERE {
         GRAPH <https://sparql.swisslipids.org/swisslipids> {
@@ -354,8 +365,46 @@ examples:
       Isomeric<-Structural 312,054), but the shortcut is not guaranteed for any given class. The
       bounded UNION is COMPLETE, not merely faster: it returns the same 7,060 that
       `rdfs:subClassOf+` does (checked against the transitive closure on this class), in 3.4s.
-      Drop the `SLM:rank` line to get members of every tier.
+      Drop the `SLM:rank` line to get members of every tier. The bound depends on the TARGET's
+      rank: 4 hops for a Class (verified saturated — 4, 5, 6 and 7 hops agree — on the most
+      deeply nested Classes, Glycosphingolipids 37,061 and Ceramides and derivatives 40,754),
+      5 hops for a Category. When unsure, add one more hop and confirm the count does not move.
     traps_avoided:
+      - say: >
+          Classes NEST — 469 of the 806 Class-rank records sit under another Class, 175 of them
+          four Classes deep — and a CATEGORY does not get the shortcut edges a Class does, so
+          reusing the 4-hop form on a Category silently undercounts. Sphingolipids
+          (SLM:000000525): 5,162 isomeric subspecies at 1-4 hops against 40,777 at 1-5 (5, 6
+          and 7 hops all agree), dropping 87%. Glycerophospholipids (SLM:000001193): 340,652
+          against 360,024, dropping 5.4%. No error either way, and the loss varies by category,
+          so it cannot be spotted from the number. For a Category, use 1-5 hops (~17 s for
+          Sphingolipids, up to ~70 s for Glycerophospholipids, near a 90 s client timeout — prefer
+          querying its Classes separately when the category is large).
+        check:
+          kind: ratio
+          date: "2026-09-15"
+          numerator: |
+            SELECT (COUNT(DISTINCT ?id) AS ?n) WHERE {
+              GRAPH <https://sparql.swisslipids.org/swisslipids> {
+                { ?id <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://swisslipids.org/rdf/SLM_000000525> }
+                UNION { ?id <http://www.w3.org/2000/01/rdf-schema#subClassOf>/<http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://swisslipids.org/rdf/SLM_000000525> }
+                UNION { ?id <http://www.w3.org/2000/01/rdf-schema#subClassOf>/<http://www.w3.org/2000/01/rdf-schema#subClassOf>/<http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://swisslipids.org/rdf/SLM_000000525> }
+                UNION { ?id <http://www.w3.org/2000/01/rdf-schema#subClassOf>/<http://www.w3.org/2000/01/rdf-schema#subClassOf>/<http://www.w3.org/2000/01/rdf-schema#subClassOf>/<http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://swisslipids.org/rdf/SLM_000000525> }
+                ?id <https://swisslipids.org/rdf/SLM_rank> <https://swisslipids.org/rdf/SLM_Isomeric_Subspecies> .
+              }
+            }
+          denominator: |
+            SELECT (COUNT(DISTINCT ?id) AS ?n) WHERE {
+              GRAPH <https://sparql.swisslipids.org/swisslipids> {
+                { ?id <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://swisslipids.org/rdf/SLM_000000525> }
+                UNION { ?id <http://www.w3.org/2000/01/rdf-schema#subClassOf>/<http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://swisslipids.org/rdf/SLM_000000525> }
+                UNION { ?id <http://www.w3.org/2000/01/rdf-schema#subClassOf>/<http://www.w3.org/2000/01/rdf-schema#subClassOf>/<http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://swisslipids.org/rdf/SLM_000000525> }
+                UNION { ?id <http://www.w3.org/2000/01/rdf-schema#subClassOf>/<http://www.w3.org/2000/01/rdf-schema#subClassOf>/<http://www.w3.org/2000/01/rdf-schema#subClassOf>/<http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://swisslipids.org/rdf/SLM_000000525> }
+                UNION { ?id <http://www.w3.org/2000/01/rdf-schema#subClassOf>/<http://www.w3.org/2000/01/rdf-schema#subClassOf>/<http://www.w3.org/2000/01/rdf-schema#subClassOf>/<http://www.w3.org/2000/01/rdf-schema#subClassOf>/<http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://swisslipids.org/rdf/SLM_000000525> }
+                ?id <https://swisslipids.org/rdf/SLM_rank> <https://swisslipids.org/rdf/SLM_Isomeric_Subspecies> .
+              }
+            }
+          expect: {ratio: 0.1266, tolerance: 0.05}
       - "The obvious `?id rdfs:subClassOf+ SLM:000055211` returns the SAME 7,060, so it is not wrong — it is unreliably slow, which is worse to debug. Measured three times on the identical query: timed out at 300s, timed out at 400s, then completed in 111s. Runtime is cache-state dependent, so a client with a 60s or 120s timeout fails intermittently and the failure looks like an endpoint outage rather than a query-shape problem. Transitive closure is expensive here regardless of result size — Ceramide (SLM:000399814) took 103s and then 157s to return 1,317, which the bounded form gives in 1.2s. Deliberately carries NO `check:` — the claim is about VARIANCE, so a `kind: error` check would pass or fail with the buffer cache and flap in CI (SKILL 5e-2). Do not add one; re-measure instead."
       - say: >
           The opposite over-correction — a single `?id rdfs:subClassOf SLM:000055211` hop —

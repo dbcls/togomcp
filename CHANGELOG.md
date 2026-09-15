@@ -13,6 +13,20 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Added
+
+- **`swisslipids` — SwissLipids, the 43rd database** (contributed by @kozo2, #228). SIB's curated
+  lipid reference: 777,965 lipids in a six-level hierarchy, from category down to isomeric
+  subspecies, with formula, charge, SMILES/InChI and cross-references to ChEBI, LIPID MAPS, HMDB and
+  MetaNetX. It is the only database here that records which fatty acid sits at which sn-position,
+  so "lipids with palmitate at sn-1" is a structured query rather than a name match. `lipidmaps`
+  has the shorthand notation but no composition model. The endpoint is SIB's own, and its
+  maintainers' published example queries are unreliable: the ID-mapping ones use `rdfs:seeAlso`,
+  which carries only Wikidata links, so they return 0 rows. The MIE gives the working predicates.
+  It also covers the hierarchy traps: `rdfs:subClassOf+` is right but can take minutes, and a
+  fixed-depth query that is complete for a class undercounts a category (87% of Sphingolipids
+  missed). Unlike `lipidmaps`, it can call out to Rhea with `SERVICE`.
+
 ## [2.15.0] - 2026-09-15
 
 TogoMCP can now help with rare-disease diagnosis. Two new tools wrap the PubCaseFinder service:
