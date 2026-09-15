@@ -13,6 +13,8 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.14.0] - 2026-09-15
+
 Two new databases, both on endpoints of their own rather than on RDF Portal: **WikiPathways**
 for community-curated pathway diagrams, and **IDSM**, which adds something no other database here
 can do — search by chemical structure. No tool, parameter or return shape changed; both
@@ -2462,7 +2464,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.13.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.14.0...HEAD
+[2.14.0]: https://github.com/dbcls/togomcp/compare/v2.13.0...v2.14.0
 [2.13.0]: https://github.com/dbcls/togomcp/compare/v2.12.2...v2.13.0
 [2.12.2]: https://github.com/dbcls/togomcp/compare/v2.12.1...v2.12.2
 [2.12.1]: https://github.com/dbcls/togomcp/compare/v2.12.0...v2.12.1
