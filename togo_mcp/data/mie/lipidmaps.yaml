@@ -40,6 +40,7 @@ entity_counts:
   classified_lipid_ids: 52175      # every LM* IRI carrying rdfs:subClassOf — the honest DB size
   typed_owl_class: 50454           # of those, the ones asserting `a owl:Class`
   with_structure_inchikey: 49882   # chebi:inchi / chebi:inchikey
+  duplicate_inchikeys: 3           # InChIKeys carried by >1 LM id (6 records, all PK)
   with_formula: 49849
   with_monoisotopic_mass: 49850
   with_shorthand_abbrev: 34567     # lipidmaps:abbrev — 6,988 DISTINCT shorthand strings
@@ -50,6 +51,41 @@ entity_counts:
   date: "2026-09-15"
 
 global_gotchas:
+  - id: pr_category_contaminated_by_fa01
+    say: >
+      The Prenol Lipids [PR] category is contaminated by one spurious edge and its count is inflated
+      x3.1. `category/6` (PR) carries five outgoing subClassOf edges: `601`/`602`/`603`/`604` (PR01-PR04,
+      correct) plus `category/101` ("Fatty Acids and Conjugates [FA01]"), which is an upstream LMSD
+      defect. Because category->category edges run broader->narrower here (gotcha inverted_subclassof),
+      that one edge pulls the entire FA01 subtree (17 sub-classes: unsaturated, hydroxy, branched, oxo,
+      amino, halogenated fatty acids and more) into PR. MEASURED 2026-09-15: PR reaches 8,558 lipids;
+      through its four legitimate children it reaches 2,739 (2,674 LMPR ids plus 65 lipids with other
+      id prefixes that PR01-PR04 legitimately hold, e.g. farnesyl esters, lanostane, juvenile hormone
+      II). The edge adds 5,819 lipids, and it is ALSO the whole source of the apparent multi-classification: with it, 5,875
+      lipids sit under 2-3 top categories; without it, 57. Any "how many prenol lipids" answer, any set
+      intersection scoped to PR, and any per-category breakdown is wrong unless the edge is dropped.
+      FIX: exclude that single edge while descending from the top category (the `category_breakdown`
+      example shows it); filtering members on the `LMPR` id prefix instead silently loses those 65.
+      Re-check after every LIPID MAPS release.
+    check:
+      kind: ratio
+      date: "2026-09-15"
+      numerator: |
+        SELECT (COUNT(DISTINCT ?l) AS ?n) WHERE {
+          <https://www.lipidmaps.org/rdf/category/6> <http://www.w3.org/2000/01/rdf-schema#subClassOf>+ ?c .
+          ?l <http://www.w3.org/2000/01/rdf-schema#subClassOf> ?c .
+          FILTER(STRSTARTS(STR(?l), "https://www.lipidmaps.org/rdf/LM"))
+        }
+      denominator: |
+        SELECT (COUNT(DISTINCT ?l) AS ?n) WHERE {
+          VALUES ?pc { <https://www.lipidmaps.org/rdf/category/601> <https://www.lipidmaps.org/rdf/category/602>
+                       <https://www.lipidmaps.org/rdf/category/603> <https://www.lipidmaps.org/rdf/category/604> }
+          ?pc <http://www.w3.org/2000/01/rdf-schema#subClassOf>* ?c .
+          ?l <http://www.w3.org/2000/01/rdf-schema#subClassOf> ?c .
+          FILTER(STRSTARTS(STR(?l), "https://www.lipidmaps.org/rdf/LM"))
+        }
+      expect: {ratio: 3.125, tolerance: 0.05}
+
   - id: inverted_subclassof
     say: >
       `rdfs:subClassOf` runs in TWO OPPOSITE DIRECTIONS here and the OWL-correct one returns
@@ -68,6 +104,29 @@ global_gotchas:
         SELECT ?lipid WHERE {
           ?lipid <http://www.w3.org/2000/01/rdf-schema#subClassOf>+ <https://www.lipidmaps.org/rdf/category/4> .
         } LIMIT 1
+
+  - id: cloudflare_waf_blocks_string_functions
+    say: >
+      The Cloudflare WAF in front of this endpoint returns HTTP 403 for some LEGAL SPARQL. The request
+      never reaches the triplestore: the response is a Cloudflare "Attention Required" HTML page, not a
+      SPARQL error. ISOLATED 2026-09-15, each in a one-line `BIND(<fn>(constants) AS ?x)` query: `SUBSTR(`
+      and `CONCAT(` are BLOCKED; `REPLACE(` and `STRAFTER(` pass, while a control COUNT from the same
+      client succeeds seconds later. The trigger is almost certainly the managed SQL-injection ruleset
+      matching on function names, so it may depend on client and IP and can change without notice. The
+      403 is NOT a syntax error: do not debug the SPARQL, and ignore any "fix the query" advice attached
+      to it. WORKAROUNDS: (1) never derive a prefix or code with SUBSTR; carry the derived value in a
+      `VALUES` block and match with `STRSTARTS`, e.g. `VALUES (?code ?p) { ("LMFA"
+      "https://www.lipidmaps.org/rdf/LMFA") ... } FILTER(STRSTARTS(STR(?lipid), ?p))`; (2) if a string
+      really must be built, use STRAFTER/STRBEFORE/REPLACE, or run the whole query from RDF Portal's `ebi`
+      endpoint with LIPID MAPS inside `SERVICE`, putting SUBSTR/CONCAT in the OUTER (Virtuoso) part. Also
+      confirmed working here: STRSTARTS, CONTAINS, REGEX (anchors, `+`, 3-argument form), SAMPLE,
+      GROUP_CONCAT, FILTER NOT EXISTS, nested sub-SELECT with HAVING.
+    check:
+      kind: error
+      date: "2026-09-15"
+      expect: {timeout_s: 30}
+      query: |
+        SELECT ?x WHERE { BIND(SUBSTR("abcdef", 1, 2) AS ?x) }
 
   - id: no_named_graphs
     say: >
@@ -140,6 +199,55 @@ global_gotchas:
       query: |
         SELECT ?l WHERE { ?l bif:contains "'cholesterol'" } LIMIT 1
 
+  - id: formula_not_hill_normalised_for_arsenic
+    say: >
+      `chebi:formula` is NOT Hill-normalised for arsenic, so exact formula matches against ChEBI/PubChem
+      fail silently for every arsenolipid. Hill order puts C, then H, then the other elements
+      alphabetically, so As precedes O, P and S. LIPID MAPS appends As LAST: LMFA00000032 `C18H35O3As`
+      where ChEBI (CHEBI_187398) writes `C18H35AsO3`; LMFA00000033 `C25H53OAs` vs `C25H53AsO`
+      (CHEBI_185625); LMFA00000041 `C6H13O2SAs` vs `C6H13AsO2S` (CHEBI_186149). MEASURED 2026-09-15: 42
+      lipids carry As in the formula and 0 of them are in Hill order, so a formula string copied from
+      ChEBI, PubChem or MS software returns 0 rows for all of them. Deuterium, by contrast, is consistent
+      (218 of 219 D-bearing lipids place D immediately after H). Do not use `chebi:formula` as a
+      cross-database join key; use `chebi:inchikey`.
+    check:
+      kind: count
+      date: "2026-09-15"
+      query: |
+        SELECT (COUNT(DISTINCT ?l) AS ?n) WHERE {
+          ?l <http://purl.obolibrary.org/obo/chebi/formula> ?f .
+          FILTER(REGEX(?f, "As", ""))
+          FILTER(!REGEX(?f, "^C[0-9]*H[0-9]*As", ""))
+        }
+      expect: {value: 42, tolerance: 0.02}
+
+  - id: deuterated_standard_formula_errors
+    say: >
+      Four deuterated internal standards carry a formula that contradicts their own mass or their ChEBI
+      counterpart. These are exactly the records lipidomics labs use for absolute quantitation, so a wrong
+      formula propagates straight into an m/z calculation. LMFA03010037 (6keto-PGF1alpha-d4): formula
+      `C20H34O6` but mass 374.260648, which is the mass of `C20H30D4O6`; the 278 other `C20H34O6` lipids
+      weigh 370.235541, exactly 4 x (D-H) less. LMGP02011284 (PE 15:0/18:1(9Z)-d7) and LMGP06010972
+      (PI 15:0/18:1(9Z)-d7): formula says `D5` while the mass says d7, off by exactly 2 x (D-H) = 2.012554
+      from their d5 siblings LMGP02011282 / LMGP06010968, which carry the identical formula string.
+      LMFA01030003 (arachidonic acid-d8): `C20H24D8O2` against ChEBI's `C28H48O2` for the identical
+      InChIKey `YZXBAPSDXZZRGB-FBFLGLDDSA-N` (CHEBI_137828). TRUST THE MASS, not the formula, for any
+      record whose name ends in `-d<N>`. More broadly, 22 molecular formulas carry more than one
+      `chebi:monoisotopicmass` value: those 3 formula strings, plus 19 that differ only in the last
+      stored digit (`2.722504E2` vs `2.72250401E2`, `3.20235145E2` vs `3.20235146E2`). The 19 are
+      harmless in a numeric window but split a GROUP BY or an equality match on mass.
+    check:
+      kind: count
+      date: "2026-09-15"
+      query: |
+        SELECT (COUNT(*) AS ?n) WHERE {
+          { SELECT ?f WHERE {
+              ?l <http://purl.obolibrary.org/obo/chebi/formula> ?f ;
+                 <http://purl.obolibrary.org/obo/chebi/monoisotopicmass> ?m }
+            GROUP BY ?f HAVING (COUNT(DISTINCT ?m) > 1) }
+        }
+      expect: {value: 22, tolerance: 0.02}
+
 examples:
   - id: lipid_core_record
     intent: retrieve the complete attribute set of one lipid from its LM ID
@@ -192,6 +300,7 @@ examples:
     traps_avoided:
       - "The FILTER is load-bearing: `?lipid rdfs:subClassOf ?cat` also binds the 100 category nodes that are themselves children in the tree, so without it you count categories alongside lipids."
       - "Lipids attach at THREE depths (3-, 5- and 7-character category IDs), which is why the `+` path is required — a fixed one- or two-hop pattern silently misses whole branches. All 183 of the deepest-tier categories are reachable this way."
+      - "This route is correct for every node EXCEPT `category/6` (Prenol Lipids): there the bare `+` path also follows a spurious edge into FA01 and returns 8,558 instead of 2,739. Use the edge-excluding form in `category_breakdown` (gotcha pr_category_contaminated_by_fa01)."
 
   - id: category_breakdown
     intent: count lipids per top-level category with COUNT(DISTINCT) over a multi-parent hierarchy
@@ -207,8 +316,13 @@ examples:
           <https://www.lipidmaps.org/rdf/category/5> <https://www.lipidmaps.org/rdf/category/6>
           <https://www.lipidmaps.org/rdf/category/7> <https://www.lipidmaps.org/rdf/category/8>
         }
-        ?category rdfs:label ?categoryLabel .
-        ?category rdfs:subClassOf+ ?cat .
+        ?category rdfs:label ?categoryLabel ;
+                  rdfs:subClassOf ?mainClass .
+        # Upstream LMSD defect: category/6 (PR) -> category/101 (FA01) is spurious.
+        # Drop that ONE edge (gotcha pr_category_contaminated_by_fa01).
+        FILTER(!(?category = <https://www.lipidmaps.org/rdf/category/6> &&
+                 ?mainClass = <https://www.lipidmaps.org/rdf/category/101>))
+        ?mainClass rdfs:subClassOf* ?cat .
         ?lipid rdfs:subClassOf ?cat .
         FILTER(STRSTARTS(STR(?lipid), "https://www.lipidmaps.org/rdf/LM"))
       }
@@ -216,16 +330,23 @@ examples:
       ORDER BY DESC(?nLipids)
     verified:
       row_count: 8
-      has_values: ["Fatty Acyls [FA]", "Saccharolipids [SL]", 11979, 1353]
+      has_values: ["Fatty Acyls [FA]", "Prenol Lipids [PR]", "Saccharolipids [SL]", 11979, 2739, 1353]
       date: "2026-09-15"
-      note: "Column total is 58,051 against 52,175 distinct lipids — 4,599 lipids sit in 2-7 categories at once."
+      note: >
+        8 rows totalling 52,232 against 52,175 distinct lipids: 57 lipids are genuinely classified under
+        two top categories. Without the edge filter the PR row reads 8,558 and the total 58,051. That
+        excess of 5,876 reconciles exactly: 5,819 assignments come from the spurious edge and 57 are
+        genuine (per-lipid top-category counts, 2026-09-15: 46,300 x1 + 5,874 x2 + 1 x3 unfiltered;
+        52,118 x1 + 57 x2 filtered).
     teaches: >
-      COUNT(DISTINCT ?lipid) is mandatory in ANY aggregate here: 4,599 lipids carry 2-7 parent
-      categories, so a bare COUNT(?lipid) double-counts them, and the ×1.72 label fan-out compounds
-      it if you also select a name. The category's own classification code (GL0301, SP0601) is
-      embedded in its rdfs:label, not in its IRI.
+      Splitting `rdfs:subClassOf+` into one explicit first hop plus `rdfs:subClassOf*` gives a place to
+      drop a single bad edge while keeping the rest of the traversal intact. COUNT(DISTINCT ?lipid) is
+      still mandatory in any aggregate (the 57 dual-classified lipids, and the x1.72 label fan-out if
+      you also select a name). The category's own classification code (GL0301, SP0601) is embedded in
+      its rdfs:label, not in its IRI.
     traps_avoided:
-      - "The 8 category counts sum to MORE than the database size; that is genuine multi-classification, not a join bug. Do not 'fix' it by dropping DISTINCT."
+      - "Do NOT read a sum-exceeds-total as evidence of rich multi-classification. The unfiltered form of this query overshoots by 5,876, and 99% of that is one spurious edge. Cross-check any per-category count against the id prefix of its members before quoting it."
+      - "Filtering PR members on the `LMPR` id prefix is NOT an equivalent fix: it returns 2,674 and silently drops the 65 other-prefix lipids that PR01-PR04 legitimately hold (farnesyl esters, lanostane, juvenile hormone II), which the edge filter keeps."
 
   - id: enum_shorthand_isomers
     intent: resolve one lipidomics shorthand name to every structure LIPID MAPS records for it
@@ -288,6 +409,7 @@ examples:
       structures. Widen or narrow the window by changing the two bounds.
     traps_avoided:
       - "Accurate mass does NOT identify a lipid species: this window returns PC 34:1 AND PE 37:1, which share the formula C42H82NO8P exactly and cannot be separated by mass at any resolution. Reporting the top hit as 'the' identification is wrong — carry both forward to MS/MS."
+      - "Keep mass a numeric WINDOW, never a GROUP BY key or an equality match: the same formula is stored at two slightly different mass values in 22 cases, and for three deuterated standards the formula itself is wrong while the mass is right (gotcha deuterated_standard_formula_errors)."
       - say: "Requiring `lm:abbrev` restricts the candidate set to the 34,567 lipids that HAVE a shorthand — 66.2% of the database — so in a window where some structures lack one they drop out unannounced. It is NOT costing you anything in THIS window (all 36 structures carry a shorthand, so the abbrev-bearing and unrestricted counts agree exactly), but verify that before trusting the species list on any other mass."
         check:
           kind: ratio
@@ -321,6 +443,7 @@ examples:
       corpus, where only one form joins.
     traps_avoided:
       - "Formula strings are not normalised for isotopic labelling: deuterated standards appear as separate formulae such as `C42H73D5NO8P`, so an exact match on the unlabelled formula excludes them."
+      - "A formula copied from ChEBI or PubChem matches 0 rows for every arsenolipid, because LIPID MAPS writes As last rather than in Hill order (gotcha formula_not_hill_normalised_for_arsenic)."
 
   - id: xrefs_chebi_swisslipids
     intent: "split the polymorphic owl:equivalentClass into its two target databases"
@@ -394,8 +517,10 @@ examples:
       - "Running THIS query against the lipidmaps endpoint (instead of ebi) 502s, because it inverts the working direction and the `GRAPH <...chebi>` block matches nothing there."
 
 schema_delta:
-  - "`chebi:inchi` (49,882 lipids) holds the full InChI string; `chebi:inchikey` holds the 27-character hashed key and is the practical structure-identity join key to PubChem/ChEBI/MassBank. Both are plain strings; neither is shown in an example that matches on them."
-  - "The category IRI is an opaque number whose digits encode the classification: the FIRST digit is the category (1=FA, 2=GL, 3=GP, 4=SP, 5=ST, 6=PR, 7=SL, 8=PK) and the rest is the LIPID MAPS code, so `category/10103` is FA0103 and `category/81211` is PK1211. The human-readable code appears ONLY inside rdfs:label, as a bracketed suffix ('Unsaturated fatty acids [FA0103]') — there is no separate code predicate to match on."
+  - "`chebi:inchi` (49,882 lipids) holds the full InChI string; `chebi:inchikey` holds the 27-character hashed key and is the practical structure-identity join key to PubChem/ChEBI/MassBank. Both are plain strings; neither is shown in an example that matches on them. The InChIKey is NOT unique: 3 keys are each carried by 2 LM ids (LMPK09000012/13, LMPK12010169/228, LMPK12010142/215, all Polyketides with identical formulas), so a key-to-id lookup can return 2 rows. Use COUNT(DISTINCT) and expect the fan-out."
+  - "The category IRI is an opaque number whose digits encode the classification: the FIRST digit is the category (1=FA, 2=GL, 3=GP, 4=SP, 5=ST, 6=PR, 7=SL, 8=PK) and the rest is the LIPID MAPS code, so `category/10103` is FA0103 and `category/81211` is PK1211. The human-readable code appears ONLY inside rdfs:label, as a bracketed suffix ('Unsaturated fatty acids [FA0103]') — there is no separate code predicate to match on. Do NOT extract the digit with SUBSTR: it is blocked by the WAF (gotcha cloudflare_waf_blocks_string_functions). Use a VALUES table of (code, IRI) pairs, matched with STRSTARTS or `=`."
+  - "`d<N>` in a label does NOT mean deuterium. A loose `REGEX(?label, \"-d[0-9]\")` over lipids with a formula matches 1,052, of which 907 have no D in the formula at all: 128 phytofuran names (`(9R,12R,15R)-d10-13-PhytoF[13R,16R]`) and sphingoid-base notation (`15-methyl-d16:2`) use the same token. Anchor to `-d[0-9]+$` for genuine deuterated standards: 140 lipids, 139 with D in the formula. The one exception, LMFA03010037, is itself a formula error (gotcha deuterated_standard_formula_errors). 219 lipids carry D in the formula overall."
+  - "The two-letter category in the LM id does not always match where the lipid is classified. With the spurious PR->FA01 edge excluded, 57 lipids sit under two top categories, and 19 of those are not under their own id-prefix category at all. Five look like upstream identifier errors rather than dual classification: LMGP01050149-153 carry glycerophospholipid ids but are plain monoacylglycerols with no phosphate (`MG 14:0(13Me)/0:0`, `MG 15:0/0:0`, `MG 18:3(5Y,7Z,17)(2OMe[S],12Me)/0:0`, `MG 13:0(2Me,12Me)/0:0`, `MG 21:1(5Z)(20Me)`) and classify only under GL. Thirteen LMFA ids (juvenile hormone II, gyrinidal, faranal, ingenol mebutate, ...) classify only under PR, and cornudentanone LMFA07010822 only under PK. The other 38 are defensible dual assignments that keep their own category as well (myriocin LMFA01060203 under FA+SP, lanostane LMST01010190 under ST+PR, farnesyl esters under FA+PR). Scope by classification, not by id prefix, when the two disagree."
   - "36 of the 607 category nodes have NO rdfs:label, and 32 of those still hold lipids (2,592 of them, 5.0%). Joining `?cat rdfs:label ?name` as a plain triple therefore drops those lipids from a classification listing — wrap it in OPTIONAL when the lipids matter more than the category name."
 
 id_join_map:
@@ -410,6 +535,22 @@ id_join_map:
       `owl:equivalentClass` -> `http://purl.obolibrary.org/obo/CHEBI_<n>` (OBO form, joins directly
       to RDF Portal's `chebi` graph `http://rdf.ebi.ac.uk/dataset/chebi`). 14,572 lipids (27.9% of
       52,175). Namespace-filter it: the same predicate also emits SwissLipids.
+      ChEBI IS a TogoMCP database (`database=chebi`, endpoint `ebi`) with its own MIE: read it before
+      writing the remote half of any join, and drive the join from `ebi` (see `xdb_chebi_labels`).
+      TWO TRAPS. (1) PREDICATE NAMES DO NOT TRANSFER. LIPID MAPS borrows the old ChEBI namespace
+      (`chebi:formula`, `chebi:inchikey`, `chebi:monoisotopicmass`), but ChEBI's own RDF on `ebi` moved
+      those properties to `chemrof:` (`chemrof:generalized_empirical_formula`,
+      `chemrof:inchi_key_string`, `chemrof:monoisotopic_mass`). Writing `chebi:formula` inside the
+      `GRAPH <...dataset/chebi>` block returns 0 rows with no error, which is indistinguishable from
+      "nothing matched". (2) JOIN ON THE INCHIKEY, NOT THE FORMULA. Over the first 1,500
+      equivalentClass pairs by LM id (2026-09-15), the LIPID MAPS `chebi:inchikey` and ChEBI
+      `chemrof:inchi_key_string` agree 1,498 times, with 2 stereo-layer disagreements
+      (LMFA01020334/CHEBI_139484, LMFA01020332/CHEBI_139485) and 0 skeleton disagreements. Formulas
+      disagree systematically for arsenolipids (gotcha formula_not_hill_normalised_for_arsenic).
+      FEDERATION-FREE ALTERNATIVE: ChEBI carries the reverse link as a literal,
+      `oboInOwl:hasDbXref "lipidmaps:LM<id>"`, on 12,638 terms; that join runs entirely inside `ebi`
+      with no SERVICE call. The 14,572 vs 12,638 asymmetry between the two directions is unexplained,
+      so check coverage before relying on either as complete.
     swisslipids: >
       `owl:equivalentClass` -> `https://swisslipids.org/rdf/SLM_<n>`. 12,559 lipids (24.1%).
       SwissLipids has no RDF Portal endpoint; the IRI is a reference, not a local join target.
