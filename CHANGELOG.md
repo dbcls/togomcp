@@ -13,6 +13,19 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Added
+
+- **`pubcasefinder` — PubCaseFinder RDF, the 41st database** (RDF Portal `primary`). The knowledge
+  base behind DBCLS's rare-disease diagnosis-support service: 18,375 OMIM and Orphanet diseases,
+  379,263 disease–phenotype (HPO) annotations from the HPO consortium, Orphanet and DBCLS text
+  mining (the text-mined ones cite PubMed articles that carry MeSH subject terms), 15,446
+  gene–disease associations, inheritance modes, and the endpoint's only Japanese HPO and disease
+  names. The MIE documents traps that return a plausible wrong answer rather than an error: HP
+  labels are re-declared by three ontology graphs (×3.15 rows unpinned); 82% of Marfan syndrome's
+  322 phenotypes are text-mined only; OMIM and Orphanet list the same syndromes separately (17,830
+  diseases collapse to 14,385 MONDO terms); and the article→MeSH predicate is minted without its
+  separator (`fabiohasSubjectTerm`), so the correctly spelled one finds nothing.
+
 ## [2.14.0] - 2026-09-15
 
 Two new databases, both on endpoints of their own rather than on RDF Portal: **WikiPathways**

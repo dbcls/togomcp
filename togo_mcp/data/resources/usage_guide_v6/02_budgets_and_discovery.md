@@ -81,7 +81,7 @@ is the bold row label.
 
 | Endpoint | n | `database` keys |
 |---|---:|---|
-| **primary** | 17 | `mesh` `go` `taxonomy` `mondo` `nando` `bacdive` `mediadive` `brenda` `hgnc` `jpostdb` `massbank` `nbrc` `mogplus` `hco` `mco` `ontology` `fantabio` |
+| **primary** | 18 | `mesh` `go` `taxonomy` `mondo` `nando` `bacdive` `mediadive` `brenda` `hgnc` `jpostdb` `massbank` `nbrc` `mogplus` `hco` `mco` `ontology` `fantabio` `pubcasefinder` |
 | **ebi** | 6 | `chembl` `chebi` `reactome` `ensembl` `amrportal` `gwascatalog` |
 | **ncbi** | 5 | `clinvar` `pubmed` `pubtator` `ncbigene` `medgen` |
 | **sib** | 4 | `uniprot` `rhea` `bgee` **`oma`** |
