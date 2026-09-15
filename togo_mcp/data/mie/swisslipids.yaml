@@ -1,0 +1,662 @@
+mie_spec: 3
+database: swisslipids
+
+discovery:
+  title: SwissLipids
+  description: >
+    Expert-curated lipid reference knowledge base of ~778,000 lipids arranged in a six-level
+    classification hierarchy, with molecular formula, charge, SMILES/InChI, fatty-acid
+    composition by sn-position, and cross-references to ChEBI, LIPID MAPS, HMDB and MetaNetX.
+  keywords:
+    - lipid
+    - lipidomics
+    - fatty acid
+    - glycerophospholipid
+    - sphingolipid
+    - sterol
+    - metabolite
+    - molecular formula
+    - smiles
+    - inchikey
+    - sn-position
+    - lipid hierarchy
+    - mass spectrometry
+  categories:
+    - compound
+    - ontology
+
+endpoint: https://beta.sparql.swisslipids.org/sparql
+base_uri: https://swisslipids.org/rdf/
+
+graphs:
+  primary: https://sparql.swisslipids.org/swisslipids
+  supporting: []
+  co_hosted:
+    probed_clean: >
+      2g probe run 2026-09-15 — NO re-declaration found. Reverse probe (?p unbound, no type
+      filter) over 12 IRIs covering all legs: two representative lipids, the rank vocabulary
+      terms (SLM_Class, SLM_Isomeric_Subspecies), the sn1 position term, and every outbound hub
+      (ChEBI, HMDB, MetaNetX, LIPID MAPS, PubMed, Wikidata). All 25 predicate/graph rows landed
+      in `swisslipids`; zero triples in either `.well-known` graph for any probed node. No other
+      DATABASE shares this endpoint, so there is no co-tenant to defend against.
+    .well-known/void: >
+      1,171 triples of VoID service description. NOT a data graph, but it is unioned into an
+      unpinned query — and its VoID triple total (25,999,422) DISAGREES with the sum of the
+      actual graph counts (25,999,926), so do not quote it as the database size.
+    .well-known/sparql-examples: >
+      386 triples — the maintainers' 24 curated SHACL-wrapped example queries. Useful to read
+      (`sh:select` / `rdfs:comment`), but 19 of its triples are `rdfs:label`, so an UNPINNED
+      `?s rdfs:label ?l` returns 780,408 rows against 780,389 pinned: +19 foreign rows of
+      query metadata, every one well-formed, so DISTINCT cannot spot them. Scope bleed, not
+      duplication — pin the data graph.
+
+entity_counts:
+  # All COUNT(DISTINCT) and pinned to graphs.primary.
+  owl_class_total: 780411          # includes 2,446 non-lipid schema terms — see enum_rank_census
+  ranked_lipids: 777965            # the real lipid count (carries SLM_rank)
+  category: 7
+  class: 806
+  species: 10347
+  molecular_subspecies: 62516
+  structural_subspecies: 111867
+  isomeric_subspecies: 592422
+  schema_terms_without_rank: 2446  # SLM_Rank, SLM_Part, 23 SLM_could_be_at_*, position/chain terms
+  parts: 2292658                   # SLM_Part nodes (fatty-acid-at-position assertions)
+  with_formula: 779292
+  with_smiles: 779183
+  with_inchikey: 593442
+  with_charge: 779476
+  labelled: 780389                 # unpinned returns 780408 — see graphs.co_hosted
+  cited_lipids: 3014               # 9,889 SLM_citation triples -> PubMed
+  obsolete_records: 96             # bare stubs; see xref_chebi_equivalentclass
+  xref_metanetx: 505003
+  xref_hmdb: 26026
+  xref_lipidmaps: 12117
+  xref_wikidata_seealso: 21256
+  equivalentclass_chebi: 4547
+  total_triples_data_graph: 25998369
+  date: "2026-09-15"
+
+global_gotchas:
+  - id: seealso_is_wikidata_only_published_examples_are_stale
+    say: >
+      `rdfs:seeAlso` on this endpoint points at WIKIDATA AND NOTHING ELSE (21,256 objects, one
+      namespace). It is NOT the cross-reference predicate, and that matters more than usual here
+      because the maintainers' own PUBLISHED example queries still use it: ex:8, ex:9 (LIPID
+      MAPS), ex:10, ex:11 (HMDB) and ex:14 all read `?slm rdfs:seeAlso ?x` + a namespace FILTER,
+      and every one of them returns 0 ROWS in under a second with no error — reading as "this
+      lipid has no LIPID MAPS/HMDB mapping" rather than "wrong predicate". Their namespace
+      filters are actually correct; only the predicate is wrong. FIX: real xrefs live on
+      `oboInOwl:hasDbXref` as IRIs — MetaNetX 505,003, HMDB 26,026, LIPID MAPS 12,117 — and
+      ChEBI lives on `owl:equivalentClass`. See the `enum_xrefs_by_target_db` example. Read the
+      `.well-known/sparql-examples` graph for ideas, but re-verify every query in it.
+    check:
+      kind: zero_rows
+      date: "2026-09-15"
+      query: |
+        SELECT ?slm WHERE {
+          GRAPH <https://sparql.swisslipids.org/swisslipids> {
+            ?slm <http://www.w3.org/2000/01/rdf-schema#seeAlso> ?x .
+            FILTER(STRSTARTS(STR(?x), "https://www.lipidmaps.org/rdf/"))
+          }
+        } LIMIT 1
+
+  - id: depiction_is_a_53gb_base64_blob
+    say: >
+      `foaf:depiction` is NOT an image URL — it is a `data:image/png;base64,...` IRI with the
+      whole PNG inlined, on 779,183 lipids, averaging 6,795 characters and peaking at 41,858.
+      That is 5,294,709,266 characters (~5.3 GB) of base64 in one predicate, roughly 20% of the
+      database by volume. Consequences: `SELECT *`, `DESCRIBE <lipid>`, and any `?lipid ?p ?o`
+      pattern drag it in — 100 lipids is ~680 KB of payload, and a naive listing of a whole
+      lipid class can exceed a client's response limit or stall the transfer while the query
+      itself looks fine. FIX: always enumerate the predicates you want (see
+      `lipid_core_record`); never `SELECT *` on a lipid, and if you must scan predicates add
+      `FILTER(?p != foaf:depiction)`.
+    check:
+      kind: count
+      date: "2026-09-15"
+      query: |
+        SELECT (COUNT(*) AS ?n) WHERE {
+          GRAPH <https://sparql.swisslipids.org/swisslipids> {
+            ?s <http://xmlns.com/foaf/0.1/depiction> ?d
+          }
+        }
+      expect: {value: 779183, tolerance: 0.02}
+
+  - id: every_chemical_property_is_emitted_twice
+    say: >
+      SwissLipids publishes each chemical property under TWO parallel vocabularies with
+      identical values and identical counts — `obo:chebi/formula` AND
+      `chemrof:generalized_empirical_formula` (779,292 each), `obo:chebi/charge` AND
+      `chemrof:charge` (779,476), `obo:chebi/smiles` AND `chemrof:smiles_string` (779,183),
+      `obo:chebi/inchi(key)` AND `chemrof:inchi_string`/`inchi_key_string`, plus
+      `skos:prefLabel` AND `sio:CHEMINF_000570` (779,600). Either one alone is correct and
+      complete; naming BOTH in one query multiplies rows x2 per duplicated property, and two
+      duplicated properties give x4. Nothing errors. FIX: pick ONE family and stay in it — this
+      file uses the `obo:chebi/*` form throughout, since it is the form ChEBI itself uses and
+      so the one that transfers to other RDF Portal chemistry databases.
+    check:
+      kind: ratio
+      date: "2026-09-15"
+      numerator: |
+        SELECT (COUNT(*) AS ?n) WHERE {
+          GRAPH <https://sparql.swisslipids.org/swisslipids> {
+            ?s <http://purl.obolibrary.org/obo/chebi/formula> ?f1 ;
+               <https://w3id.org/chemrof/generalized_empirical_formula> ?f2 .
+          }
+        }
+      denominator: |
+        SELECT (COUNT(*) AS ?n) WHERE {
+          GRAPH <https://sparql.swisslipids.org/swisslipids> {
+            ?s <http://purl.obolibrary.org/obo/chebi/formula> ?f1 .
+          }
+        }
+      expect: {ratio: 1.0, tolerance: 0.02}
+
+  - id: charge_and_formula_are_strings_not_numbers
+    say: >
+      `chebi:charge` is stored as a STRING ("0", "-1", "-7"), not as `xsd:integer`, and there is
+      no numeric property anywhere on a lipid — no mass, no exact mass, no carbon count. So the
+      obvious `FILTER(?charge > 0)` compares a string to a number, which is a type error that
+      SPARQL evaluates as false: it returns 0 ROWS silently, reading as "no cations here". The
+      database does hold 311 positively-charged lipids. FIX: cast —
+      `FILTER(xsd:integer(?charge) > 0)`. Distribution is 0 (334,341), -1 (226,819),
+      -2 (127,700), -3 (46,075), -5 (28,759), -7 (13,614), -4 (1,857), +1 (23).
+    check:
+      kind: zero_rows
+      date: "2026-09-15"
+      query: |
+        SELECT ?s WHERE {
+          GRAPH <https://sparql.swisslipids.org/swisslipids> {
+            ?s <http://purl.obolibrary.org/obo/chebi/charge> ?c .
+            FILTER(?c > 0)
+          }
+        } LIMIT 1
+
+  # NOTE: this is the sib.swiss beta store, not Virtuoso — unlike every rdfportal.org endpoint.
+  - id: not_virtuoso_bif_contains_fails_two_different_ways
+    say: >
+      This endpoint is NOT Virtuoso, and `bif:contains` fails in two ways that look nothing
+      alike. Written the normal way (`?l bif:contains "Ceramide"`, prefix undeclared) it is
+      HTTP 400 with an `text/html` SwissLipids error PAGE, not a SPARQL JSON error — so a client
+      parsing the response gets a markup blob rather than a message. Written as a full IRI
+      (`?l <bif:contains> "Ceramide"`) it is accepted as an ordinary predicate and returns
+      0 ROWS, HTTP 200, silently. FIX: use `FILTER(CONTAINS(STR(?l), "..."))`, which is
+      affordable here — a full scan of all 780,389 labels returns 2,259 "Ceramide" matches in
+      ~11s. Literal matching is also VALUE-based, not term-based: `"Ceramide"` and
+      `"Ceramide"^^xsd:string` BOTH match, so the datatype-mismatch trap the Virtuoso-backed
+      MIEs in this corpus warn about does not apply (`@en` matches nothing — no label is tagged).
+    check:
+      kind: error
+      date: "2026-09-15"
+      expect: {timeout_s: 60}
+      query: |
+        SELECT ?s WHERE {
+          GRAPH <https://sparql.swisslipids.org/swisslipids> {
+            ?s <http://www.w3.org/2000/01/rdf-schema#label> ?l .
+            ?l bif:contains "Ceramide"
+          }
+        } LIMIT 1
+
+examples:
+  - id: lipid_core_record
+    intent: fetch one lipid's curated attributes, naming predicates explicitly to dodge the depiction blob
+    question: "What are the name, rank, formula, charge and structure of SwissLipids SLM:000000567?"
+    complexity: basic
+    sparql: |
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX SLM:   <https://swisslipids.org/rdf/SLM_>
+      PREFIX chebi: <http://purl.obolibrary.org/obo/chebi/>
+      PREFIX skos:  <http://www.w3.org/2004/02/skos/core#>
+      SELECT ?name ?rank ?formula ?charge ?smiles ?inchikey ?abbrev
+      WHERE {
+        GRAPH <https://sparql.swisslipids.org/swisslipids> {
+          SLM:000000567 rdfs:label     ?name ;
+                        SLM:rank       ?rankIri ;
+                        chebi:formula  ?formula ;
+                        chebi:charge   ?charge ;
+                        chebi:smiles   ?smiles .
+          # Class-rank lipids are generic structures with R groups, so they have no InChIKey.
+          OPTIONAL { SLM:000000567 chebi:inchikey ?inchikey }
+          OPTIONAL { SLM:000000567 skos:altLabel  ?abbrev }
+          BIND(REPLACE(STR(?rankIri), ".*SLM_", "") AS ?rank)
+        }
+      }
+    verified:
+      row_count: 1
+      has_values: ["Sphingomyelin (d18:1(4E))", "Class", "C24H48N2O6PR"]
+      date: "2026-09-15"
+    teaches: >
+      The anchor pattern for a single lipid: name the predicates you want one by one. Every
+      curated attribute hangs directly off the lipid IRI — there is no intermediate node for
+      chemical properties — and `SLM:rank` tells you which of the six hierarchy levels the
+      record sits at, which determines what else is populated.
+    traps_avoided:
+      - "`SELECT *` or `DESCRIBE SLM:000000567` here returns the `foaf:depiction` base64 PNG — thousands of characters of payload for one lipid. Name your predicates."
+      - say: >
+          `chebi:inchikey` must be OPTIONAL: only 593,442 of 777,965 lipids have one (76.3%),
+          because Class- and Species-rank records are generic structures carrying R groups in
+          the formula (here `C24H48N2O6PR`) and so have no single InChI. Without OPTIONAL this
+          query returns 0 rows for SLM:000000567 and drops a quarter of the database elsewhere.
+        check:
+          kind: count
+          date: "2026-09-15"
+          query: |
+            SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
+              GRAPH <https://sparql.swisslipids.org/swisslipids> {
+                ?s <http://purl.obolibrary.org/obo/chebi/inchikey> ?ik
+              }
+            }
+          expect: {value: 593442, tolerance: 0.02}
+
+  - id: enum_categories
+    intent: enumerate the top of the classification hierarchy via the controlled rank vocabulary
+    question: "What are the top-level lipid categories in SwissLipids?"
+    complexity: basic
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX SLM:  <https://swisslipids.org/rdf/SLM_>
+      SELECT ?category ?label
+      WHERE {
+        GRAPH <https://sparql.swisslipids.org/swisslipids> {
+          ?category SLM:rank  SLM:Category ;
+                    rdfs:label ?label .
+        }
+      }
+      ORDER BY ?label
+    verified:
+      row_count: 7
+      has_values: ["Glycerophospholipids", "Sphingolipids", "Fatty acyls and derivatives"]
+      date: "2026-09-15"
+    teaches: >
+      `SLM:rank` is the controlled vocabulary for the hierarchy level and the only correct way to
+      select a tier: its six values are `SLM:Category`, `SLM:Class`, `SLM:Species`,
+      `SLM:Molecular_Subspecies`, `SLM:Structural_Subspecies` and `SLM:Isomeric_Subspecies`.
+      Swap the rank IRI to enumerate any other tier.
+    traps_avoided:
+      - "There are 7 Category rows, not 6: `SLM_000389145` \"Lipid\" is the artificial root of the tree and is itself ranked `SLM:Category`, alongside the 6 real LIPID MAPS-style categories. Exclude it when you want genuine categories."
+
+  - id: enum_rank_census
+    intent: count lipids per hierarchy level, graph-pinned with COUNT(DISTINCT), ordered by the real tier order
+    question: "How many lipids does SwissLipids hold at each level of its classification hierarchy?"
+    complexity: aggregation
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX SLM:  <https://swisslipids.org/rdf/SLM_>
+      SELECT ?rankLabel (COUNT(DISTINCT ?lipid) AS ?n)
+      WHERE {
+        GRAPH <https://sparql.swisslipids.org/swisslipids> {
+          ?lipid SLM:rank ?rank .
+          ?rank  rdfs:label          ?rankLabel ;
+                 SLM:rankPreference  ?pref .
+        }
+      }
+      GROUP BY ?rankLabel ?pref
+      ORDER BY ?pref
+    verified:
+      row_count: 6
+      has_values: ["592422", "111867", "62516", "10347", "806", "7"]
+      date: "2026-09-15"
+    teaches: >
+      The un-inflated database census, and the ordering key nobody guesses: `SLM:rankPreference`
+      carries an integer 1-6 on each rank term (Category=1 ... Isomeric_Subspecies=6). Sum is
+      777,965 lipids — the figure to quote as "how big is SwissLipids". Takes ~60s.
+    traps_avoided:
+      - "`ORDER BY ?rank` (the rank IRI, as the maintainers' published ex:2 does) sorts alphabetically by IRI — Class, Isomeric, Molecular, Species, Structural — which is NOT the hierarchy order and silently misrepresents the tiers. Order by `SLM:rankPreference`."
+      - say: >
+          Counting `?s a owl:Class` instead gives 780,411, over-reporting lipids by 2,446: the
+          surplus is schema vocabulary (`SLM_Rank`, `SLM_Part`, 23 `SLM_could_be_at_*` terms,
+          chain descriptors like `SLM_18C1DB_1Z`) which is typed `owl:Class` but carries no
+          `SLM:rank`. Anchor on `SLM:rank` to mean "a lipid".
+        check:
+          kind: ratio
+          date: "2026-09-15"
+          numerator: |
+            SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
+              GRAPH <https://sparql.swisslipids.org/swisslipids> {
+                ?s a <http://www.w3.org/2002/07/owl#Class>
+              }
+            }
+          denominator: |
+            SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
+              GRAPH <https://sparql.swisslipids.org/swisslipids> {
+                ?s <https://swisslipids.org/rdf/SLM_rank> ?r
+              }
+            }
+          expect: {ratio: 1.00314, tolerance: 0.002}
+
+  - id: enum_class_members_bounded
+    intent: enumerate every member of a lipid class using a BOUNDED path, not a transitive closure
+    question: "Which isomeric subspecies belong to the lipid class 1,2-diacylglycero-3-phosphocholine (SLM:000055211)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX SLM:  <https://swisslipids.org/rdf/SLM_>
+      # The hierarchy is at most 5 tiers deep, so a class's members are always within 4 hops.
+      # An explicit UNION of fixed-length paths replaces rdfs:subClassOf+ and is ~100x faster.
+      SELECT (COUNT(DISTINCT ?id) AS ?n)
+      WHERE {
+        GRAPH <https://sparql.swisslipids.org/swisslipids> {
+          { ?id rdfs:subClassOf SLM:000055211 }
+          UNION { ?id rdfs:subClassOf/rdfs:subClassOf SLM:000055211 }
+          UNION { ?id rdfs:subClassOf/rdfs:subClassOf/rdfs:subClassOf SLM:000055211 }
+          UNION { ?id rdfs:subClassOf/rdfs:subClassOf/rdfs:subClassOf/rdfs:subClassOf SLM:000055211 }
+          ?id SLM:rank SLM:Isomeric_Subspecies .
+        }
+      }
+    verified:
+      n: 7060
+      date: "2026-09-15"
+    teaches: >
+      How to descend this hierarchy at all. `rdfs:subClassOf` is PARTLY MATERIALIZED: a
+      subspecies usually carries a direct shortcut edge to its Class in ADDITION to the
+      tier-by-tier ladder edge (Isomeric<-Class 488,237 direct edges alongside
+      Isomeric<-Structural 312,054), but the shortcut is not guaranteed for any given class. The
+      bounded UNION is COMPLETE, not merely faster: it returns the same 7,060 that
+      `rdfs:subClassOf+` does (checked against the transitive closure on this class), in 3.4s.
+      Drop the `SLM:rank` line to get members of every tier.
+    traps_avoided:
+      - "The obvious `?id rdfs:subClassOf+ SLM:000055211` returns the SAME 7,060, so it is not wrong — it is unreliably slow, which is worse to debug. Measured three times on the identical query: timed out at 300s, timed out at 400s, then completed in 111s. Runtime is cache-state dependent, so a client with a 60s or 120s timeout fails intermittently and the failure looks like an endpoint outage rather than a query-shape problem. Transitive closure is expensive here regardless of result size — Ceramide (SLM:000399814) took 103s and then 157s to return 1,317, which the bounded form gives in 1.2s. Deliberately carries NO `check:` — the claim is about VARIANCE, so a `kind: error` check would pass or fail with the buffer cache and flap in CI (SKILL 5e-2). Do not add one; re-measure instead."
+      - say: >
+          The opposite over-correction — a single `?id rdfs:subClassOf SLM:000055211` hop —
+          returns 0 ROWS for THIS class in ~1s, reading as "the class is empty" when it has
+          7,060 members. Depth-1 happens to be complete for Ceramide (1,317 either way) and
+          not for this one, so never generalize from one class; use the bounded UNION.
+        check:
+          kind: zero_rows
+          date: "2026-09-15"
+          query: |
+            SELECT ?id WHERE {
+              GRAPH <https://sparql.swisslipids.org/swisslipids> {
+                ?id <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://swisslipids.org/rdf/SLM_000055211> ;
+                    <https://swisslipids.org/rdf/SLM_rank> <https://swisslipids.org/rdf/SLM_Isomeric_Subspecies> .
+              }
+            } LIMIT 1
+
+  - id: enum_by_fatty_acid_position
+    intent: enumerate lipids by which fatty acid sits at which sn-position, via the SLM_Part node
+    question: "Which lipids carry hexadecanoate (palmitate) at position sn-1?"
+    complexity: intermediate
+    sparql: |
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX SLM: <https://swisslipids.org/rdf/SLM_>
+      SELECT (COUNT(DISTINCT ?lipid) AS ?n)
+      WHERE {
+        GRAPH <https://sparql.swisslipids.org/swisslipids> {
+          # Anchor the fatty acid through ChEBI rather than by name. CHEBI_7896 = hexadecanoate.
+          ?fattyAcid owl:equivalentClass <http://purl.obolibrary.org/obo/CHEBI_7896> .
+          ?lipid SLM:hasPart ?part .
+          ?part  SLM:derivedFrom ?fattyAcid ;
+                 SLM:position    SLM:sn1 .
+        }
+      }
+    verified:
+      n: 13410
+      date: "2026-09-15"
+    teaches: >
+      The composition model, which is the thing SwissLipids can answer and its sibling databases
+      cannot. Each lipid links via `SLM:hasPart` to an `SLM_Part` node — an IRI of the form
+      `<lipidIRI>#<faNumber>_at_<position>`, NOT a blank node — carrying exactly
+      `SLM:derivedFrom` (the fatty-acid lipid) and `SLM:position`. Both are present on all
+      2,292,658 parts, so neither needs OPTIONAL. Repeat the `?part` block to require a second
+      fatty acid at another position.
+    traps_avoided:
+      - say: >
+          The maintainers' published ex:35 contains a variable-name TYPO — it binds
+          `?swisslipidHexadeconate` from the ChEBI triple but joins on
+          `?swisslipidHexadecanoate` in the part. The misspelled variable then occurs only
+          once, so it constrains nothing, the fatty-acid filter silently vanishes, and the
+          query degenerates into "any lipid with anything at sn1": 710,600 lipids instead of
+          13,410, a x53 over-count returned with no error. This is the dangerous shape of the
+          bug — it does not fail, it answers a different question. Copy the corrected form above.
+        check:
+          kind: count
+          date: "2026-09-15"
+          query: |
+            SELECT (COUNT(DISTINCT ?lipid) AS ?n) WHERE {
+              GRAPH <https://sparql.swisslipids.org/swisslipids> {
+                ?lipid <https://swisslipids.org/rdf/SLM_hasPart> ?part .
+                ?part <https://swisslipids.org/rdf/SLM_position> <https://swisslipids.org/rdf/SLM_sn1> .
+              }
+            }
+          expect: {value: 710600, tolerance: 0.02}
+      - say: >
+          `SLM:position` has EIGHT values, not three: sn1 (833,025), sn2 (785,121), sn3
+          (442,723), sn1prime (92,442), sn2prime (90,117), nAcyPosition (45,049), sn3prime
+          (4,032), acylPosition (149). Restricting to sn1/sn2/sn3 silently drops 231,789 part
+          assertions — cardiolipins use the prime positions and sphingolipids use
+          `nAcyPosition` (note the spelling: no "l").
+        check:
+          kind: count
+          date: "2026-09-15"
+          query: |
+            SELECT (COUNT(*) AS ?n) WHERE {
+              GRAPH <https://sparql.swisslipids.org/swisslipids> {
+                ?part <https://swisslipids.org/rdf/SLM_position> ?pos .
+                FILTER(?pos NOT IN (<https://swisslipids.org/rdf/SLM_sn1>,
+                                    <https://swisslipids.org/rdf/SLM_sn2>,
+                                    <https://swisslipids.org/rdf/SLM_sn3>))
+              }
+            }
+          expect: {value: 231789, tolerance: 0.02}
+      - "There is also a 23-term `SLM_could_be_at_*` vocabulary (e.g. `SLM_could_be_at_sn1_sn1prime_sn2`) defined as `owl:Class` for ambiguous positions, but it is used ZERO times as a `SLM:position` value in this snapshot — filtering on it returns nothing."
+
+  - id: enum_xrefs_by_target_db
+    intent: enumerate cross-references, splitting the single polymorphic xref predicate by target namespace
+    question: "What are the HMDB, LIPID MAPS and MetaNetX identifiers for sphinganine (SLM:000000035)?"
+    complexity: basic
+    sparql: |
+      PREFIX rdfs:     <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+      PREFIX SLM:      <https://swisslipids.org/rdf/SLM_>
+      SELECT ?name ?hmdb ?lipidmaps ?metanetx
+      WHERE {
+        GRAPH <https://sparql.swisslipids.org/swisslipids> {
+          SLM:000000035 rdfs:label ?name .
+          OPTIONAL { SLM:000000035 oboInOwl:hasDbXref ?hmdb .
+                     FILTER(STRSTARTS(STR(?hmdb), "http://identifiers.org/hmdb/")) }
+          OPTIONAL { SLM:000000035 oboInOwl:hasDbXref ?lipidmaps .
+                     FILTER(STRSTARTS(STR(?lipidmaps), "https://www.lipidmaps.org/rdf/")) }
+          OPTIONAL { SLM:000000035 oboInOwl:hasDbXref ?metanetx .
+                     FILTER(STRSTARTS(STR(?metanetx), "http://rdf.metanetx.org/")) }
+        }
+      }
+    verified:
+      row_count: 1
+      has_values: ["sphinganine", "HMDB00269", "LMSP01020001"]
+      date: "2026-09-15"
+    teaches: >
+      `oboInOwl:hasDbXref` is the real cross-reference predicate (543,146 triples on 509,245
+      lipids) and it is POLYMORPHIC over exactly three target namespaces with no qualifier to
+      tell them apart — MetaNetX 505,003, HMDB 26,026, LIPID MAPS 12,117. Always split it by
+      `STRSTARTS` on the target namespace; an unfiltered `?x hasDbXref ?y` hands back a mixed
+      bag in which MetaNetX outnumbers everything else 19:1.
+    traps_avoided:
+      - "Do NOT reach for `rdfs:seeAlso` (it is Wikidata-only, and the published examples that use it for these three databases all return 0 rows — see the `seealso_is_wikidata_only_published_examples_are_stale` gotcha)."
+      - "HMDB is minted in the OLD 5-digit style, `http://identifiers.org/hmdb/HMDB00269`, not the modern 7-digit `HMDB0000269`. Joining to a source that uses the current form needs a zero-pad rewrite, and matching the modern accession verbatim returns nothing."
+
+  - id: xref_chebi_equivalentclass
+    intent: get ChEBI equivalents while excluding the obsolete-record half of the same predicate
+    question: "What is the ChEBI equivalent of sphinganine (SLM:000000035), and how many lipids carry one?"
+    complexity: intermediate
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX owl:  <http://www.w3.org/2002/07/owl#>
+      PREFIX SLM:  <https://swisslipids.org/rdf/SLM_>
+      SELECT ?chebi (COUNT(DISTINCT ?anyLipid) AS ?lipidsWithChebi)
+      WHERE {
+        GRAPH <https://sparql.swisslipids.org/swisslipids> {
+          SLM:000000035 owl:equivalentClass ?chebi .
+          FILTER(STRSTARTS(STR(?chebi), "http://purl.obolibrary.org/obo/CHEBI_"))
+          ?anyLipid owl:equivalentClass ?someChebi .
+          FILTER(STRSTARTS(STR(?someChebi), "http://purl.obolibrary.org/obo/CHEBI_"))
+        }
+      }
+      GROUP BY ?chebi
+    verified:
+      row_count: 1
+      has_values: ["http://purl.obolibrary.org/obo/CHEBI_57817", "4547"]
+      date: "2026-09-15"
+    teaches: >
+      ChEBI is reached by `owl:equivalentClass` (NOT `hasDbXref`), in the OBO IRI form
+      `http://purl.obolibrary.org/obo/CHEBI_<n>` that joins directly against RDF Portal's
+      `chebi` graph with no rewrite. Coverage is only 4,547 of 777,965 lipids (0.58%), because
+      ChEBI equivalence is asserted at the curated upper tiers rather than for every isomeric
+      subspecies — so treat a missing ChEBI link as normal, and reach ChEBI for a subspecies by
+      walking up to its class first.
+    traps_avoided:
+      - "`owl:equivalentClass` is polymorphic and its second target is a trap: 96 triples point at `http://rdf.rhea-db.org/Compound_<n>` instead of ChEBI, and ALL 96 sit on `owl:obsolete` records that carry nothing else at all — no label, no rank, no formula, not even an `rdf:type`. They are invisible to any `?s a owl:Class` survey, so an unfiltered equivalentClass query silently mixes retired stubs into a live result. Filter by the CHEBI_ namespace."
+
+  - id: lipid_citations
+    intent: retrieve the literature supporting a lipid, following the citation IRI to a PMID
+    question: "Which publications support Sphingomyelin (d18:1(4E)) (SLM:000000567)?"
+    complexity: basic
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX SLM:  <https://swisslipids.org/rdf/SLM_>
+      SELECT ?name ?pmid
+      WHERE {
+        GRAPH <https://sparql.swisslipids.org/swisslipids> {
+          SLM:000000567 rdfs:label    ?name ;
+                        SLM:citation  ?citation .
+          BIND(REPLACE(STR(?citation), "^.*/", "") AS ?pmid)
+        }
+      }
+      ORDER BY ?pmid
+    verified:
+      row_count: 14
+      has_values: ["Sphingomyelin (d18:1(4E))"]
+      date: "2026-09-15"
+    teaches: >
+      `SLM:citation` points at a resolvable PubMed URL (`https://pubmed.ncbi.nlm.nih.gov/<pmid>`),
+      not a bare PMID literal or a DOI — strip the path to get the PMID for `ncbi_efetch`. It is
+      multi-valued, so it fans out rows: use COUNT(DISTINCT ?lipid) in any aggregate over it.
+    traps_avoided:
+      - say: >
+          Literature coverage is very thin and very uneven: only 3,014 of 777,965 lipids
+          (0.39%) carry any citation at all, across 9,889 citation triples. An empty result is
+          the normal case, not a query bug — do not treat `SLM:citation` as a filter for
+          "well-characterised lipids" without saying so.
+        check:
+          kind: count
+          date: "2026-09-15"
+          query: |
+            SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
+              GRAPH <https://sparql.swisslipids.org/swisslipids> {
+                ?s <https://swisslipids.org/rdf/SLM_citation> ?c
+              }
+            }
+          expect: {value: 3014, tolerance: 0.02}
+
+  - id: enum_by_formula_isobars
+    intent: group isomeric subspecies by molecular formula to find mass-spectrometry isobars
+    question: "Which molecular formulas are shared by the most isomeric lipid subspecies?"
+    complexity: aggregation
+    sparql: |
+      PREFIX SLM:   <https://swisslipids.org/rdf/SLM_>
+      PREFIX chebi: <http://purl.obolibrary.org/obo/chebi/>
+      SELECT ?formula (COUNT(DISTINCT ?slm) AS ?nLipids)
+      WHERE {
+        GRAPH <https://sparql.swisslipids.org/swisslipids> {
+          ?slm chebi:formula ?formula ;
+               SLM:rank      SLM:Isomeric_Subspecies .
+        }
+      }
+      GROUP BY ?formula
+      ORDER BY DESC(?nLipids)
+      LIMIT 5
+    verified:
+      min_rows: 5
+      has_values: ["C85H144O17P2", "2314"]
+      date: "2026-09-15"
+    teaches: >
+      The lipidomics-relevant aggregation: a molecular formula is massively degenerate at the
+      isomeric tier, so this is the query that quantifies how much structural ambiguity an MS
+      measurement leaves. The worst case, C85H144O17P2 (a cardiolipin), covers 2,314 distinct
+      isomeric subspecies. Runs in ~56s.
+    traps_avoided:
+      - "Restrict to one rank. Without the `SLM:rank` line the formula groups mix the generic upper-tier records — whose formulas contain R-group placeholders like `C24H48N2O6PR` and are therefore not comparable to a real measured composition — in with the fully-specified isomeric ones."
+
+  - id: xdb_rhea_reactions
+    intent: "cross-DB: SwissLipids -> Rhea reactions, bridged by the ChEBI IRI, via SERVICE"
+    question: "Which Rhea reactions involve sphinganine, and what are their equations?"
+    complexity: cross_db
+    endpoint_name: swisslipids
+    sparql: |
+      # RUN THIS ON SwissLipids (database=swisslipids). Rhea is the REMOTE side via SERVICE;
+      # SwissLipids declares sparql.rhea-db.org as a federation target and it resolves in ~3s.
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX owl:  <http://www.w3.org/2002/07/owl#>
+      PREFIX rh:   <http://rdf.rhea-db.org/>
+      PREFIX SLM:  <https://swisslipids.org/rdf/SLM_>
+      SELECT ?lipidName ?rheaId ?equation
+      WHERE {
+        GRAPH <https://sparql.swisslipids.org/swisslipids> {
+          SLM:000000035 rdfs:label ?lipidName ;
+                        owl:equivalentClass ?chebi .
+          FILTER(STRSTARTS(STR(?chebi), "http://purl.obolibrary.org/obo/CHEBI_"))
+        }
+        SERVICE <https://sparql.rhea-db.org/sparql> {
+          ?reaction rdfs:subClassOf rh:Reaction ;
+                    rh:accession ?rheaId ;
+                    rh:equation  ?equation ;
+                    rh:side/rh:contains/rh:compound/rh:chebi ?chebi .
+        }
+      }
+      ORDER BY ?rheaId
+      LIMIT 5
+    verified:
+      min_rows: 5
+      has_values: ["RHEA:15465", "sphinganine"]
+      date: "2026-09-15"
+    teaches: >
+      The ChEBI IRI is the join key out of SwissLipids into the whole RDF Portal chemistry
+      stack, and it needs no rewrite: the `owl:equivalentClass` object is already the OBO form
+      Rhea's `rh:chebi` uses. `SERVICE` works from this endpoint (sparql.rhea-db.org,
+      sparql.uniprot.org and the MolMeDB IDSM endpoint are the maintainers' declared federation
+      targets), so the lipid hierarchy can be joined to reactions and, one hop further through
+      Rhea, to the UniProt enzymes that catalyse them.
+    traps_avoided:
+      - "Bridge on ChEBI, not on the 96 `rdf.rhea-db.org/Compound_<n>` equivalentClass objects: those are all attached to obsolete stubs and are Rhea COMPOUND IRIs, which do not join to `rh:accession` or `rh:equation` — only a reaction has those."
+      - "Only 4,547 lipids carry a ChEBI equivalence, so driving this join from an arbitrary isomeric subspecies usually yields nothing. Anchor it at a curated Class/Species-tier lipid, or walk up the hierarchy first."
+
+schema_delta:
+  - "`skos:prefLabel` (779,600) duplicates `rdfs:label`; `skos:altLabel` (777,251) holds the lipidomics shorthand abbreviation (e.g. \"Cer\" for Ceramide) and `oboInOwl:hasRelatedSynonym` (549,837 triples on 548,568 lipids) the free-text synonyms. `sio:CHEMINF_000570` (779,600) restates the accession as a `\"SLM:000399814\"` literal — prefixed, so it does NOT match the local part of the IRI."
+  - "`SLM_Part` nodes carry an extra `rdfs:subClassOf` (1,911,133 of 2,292,658, 83.4%) pointing at an acyl-chain descriptor term such as `SLM_18C1DB_1Z` (18 carbons, 1 double bond, 1Z geometry) or `SLM_13C0DB`. This is the route to \"any lipid with an 18:1 chain\" without naming a specific fatty acid, and those descriptor terms are among the 2,446 `owl:Class` records that carry no `SLM:rank`."
+  - "Labels never use Greek characters: 0 of 780,389 contain one, while 5,611 spell them out (\"cholesta-5,7-dien-3beta-ol\", \"5alpha-cholest-7-en-3beta-ol\"). Matching \"3\\u03b2-ol\" returns nothing; match \"3beta-ol\". Exactly ONE label is corrupted to literal ASCII question marks (`SLM_000000195`, \"4?-methyl-5?-cholest-7-en-3?-ol\", whose correctly-spelled sibling `SLM_000000194` is \"4alpha-methyl-5alpha-cholest-8(14)-en-3beta-ol\") — a single bad record, not a systemic encoding problem."
+  - "`owl:obsolete` is the only retirement marker (96 records) and there is no replacement/`obsoleteSince` predicate, so a retired accession cannot be forwarded to its successor from this endpoint."
+
+id_join_map:
+  stable_anchor: >
+    `https://swisslipids.org/rdf/SLM_<9-digit zero-padded>` (e.g. `SLM_000000035`), the SLM
+    accession. Human-facing forms are the `SLM:000000035` string in `sio:CHEMINF_000570` and the
+    `rdfs:label` name; anchor on the IRI. Always pair an accession with its `SLM:rank` — the same
+    lipid concept exists at several tiers and only the rank tells you how specific a record is.
+  same_endpoint_joins: {}   # no other database shares this endpoint (2g probed clean)
+  xrefs:
+    chebi: >
+      `owl:equivalentClass` -> `http://purl.obolibrary.org/obo/CHEBI_<n>` (OBO form; joins
+      directly to RDF Portal's `chebi` graph, and to Rhea's `rh:chebi`, with no rewrite). 4,547
+      lipids (0.58% of 777,965) — asserted at curated upper tiers, not for isomeric subspecies.
+      Namespace-filter it: the same predicate also emits 96 Rhea Compound IRIs on obsolete stubs.
+    lipidmaps: >
+      `oboInOwl:hasDbXref` -> `https://www.lipidmaps.org/rdf/LMSP01020001`. 12,117 lipids. The IRI
+      is byte-identical to `lipidmaps.yaml`'s `base_uri`, so it joins to that database with no
+      transform. Reciprocal and near-symmetric: LIPID MAPS emits 12,559 SwissLipids links back
+      via its own `owl:equivalentClass`.
+    hmdb: >
+      `oboInOwl:hasDbXref` -> `http://identifiers.org/hmdb/HMDB00269`. 26,026 lipids. NOTE the
+      legacy 5-digit accession; the modern 7-digit form (`HMDB0000269`) needs a zero-pad rewrite.
+    metanetx: >
+      `oboInOwl:hasDbXref` -> `http://rdf.metanetx.org/MNXM<n>`. 505,003 lipids — by far the
+      broadest xref, and the one an unfiltered `hasDbXref` query will drown in.
+    wikidata: >
+      `rdfs:seeAlso` -> `http://www.wikidata.org/entity/Q<n>`, 21,256 links. This is the ONLY
+      thing `rdfs:seeAlso` carries — see the gotcha; it is not a general xref predicate.
+    rhea: >
+      No usable direct link (the 96 `owl:equivalentClass` -> `rh:Compound_<n>` triples are all on
+      obsolete stubs). Reach Rhea through the ChEBI IRI instead — see `xdb_rhea_reactions`.
+  bridged_via_togoid: >
+    SwissLipids is NOT a TogoID namespace. Bridge through ChEBI (`chebi` is a TogoID node) or
+    through the LIPID MAPS / HMDB accessions above when you need an ID class this file's xrefs
+    do not cover.

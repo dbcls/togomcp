@@ -1,6 +1,6 @@
 ## 📚 DATABASE CATALOG
 
-All 42 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
+All 43 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -8,7 +8,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 
 - **annotation** — `pubtator` `uniprot`
 - **antimicrobial** — `amrportal`
-- **compound** — `chebi` `chembl` `idsm` `lipidmaps` `massbank` `pubchem` `wikipathways`
+- **compound** — `chebi` `chembl` `idsm` `lipidmaps` `massbank` `pubchem` `swisslipids` `wikipathways`
 - **disease** — `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `togovar`
 - **drug_target** — `chembl` `idsm`
 - **enzymology** — `brenda`
@@ -18,7 +18,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **literature** — `pubmed` `pubtator`
 - **materials** — `supercon`
 - **microbe** — `amrportal` `bacdive` `mediadive` `nbrc`
-- **ontology** — `chebi` `go` `hco` `lipidmaps` `mco` `mesh` `mondo` `nando` `ontology`
+- **ontology** — `chebi` `go` `hco` `lipidmaps` `mco` `mesh` `mondo` `nando` `ontology` `swisslipids`
 - **pathway** — `reactome` `wikipathways`
 - **physics** — `supercon`
 - **protein** — `brenda` `glycosmos` `jpostdb` `oma` `pdb` `uniprot`
@@ -106,6 +106,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: biochemical reaction, enzyme, substrate, product, cofactor, ec number, stoichiometry, mass balance, chebi, metabolite, transport, directional reaction, catalysis
 - **supercon** — SuperCon — NIMS Superconducting Materials Database. Curated experimental records for oxide and metallic superconductors (NIMS), extracted from ~7,249 journal articles: critical temperature (Tc and variants), critical magnetic fields, crystal structure… _(categories: materials, physics)_  
   keywords: superconductor, superconducting material, critical temperature, tc, critical field, cuprate, oxide, inorganic compound, crystal structure, lattice parameter, materials informatics, nims, physical property, experimental measurement
+- **swisslipids** — SwissLipids. Expert-curated lipid reference knowledge base of ~778,000 lipids arranged in a six-level classification hierarchy, with molecular formula, charge, SMILES/InChI, fatty-acid composition by sn-position,… _(categories: compound, ontology)_  
+  keywords: lipid, lipidomics, fatty acid, glycerophospholipid, sphingolipid, sterol, metabolite, molecular formula, smiles, inchikey, sn-position, lipid hierarchy, mass spectrometry
 - **taxonomy** — NCBI Taxonomy RDF. Hierarchical biological classification of ~2.84M taxa (species → root) with scientific/common names, synonyms, 45 rank IRIs, nuclear+mitochondrial genetic codes, and owl:sameAs/rdfs:seeAlso cross-lin… _(categories: taxonomy)_  
   keywords: taxonomy, organism, species, taxon, rank, lineage, phylogeny, classification, scientific name, common name, synonym, genetic code, subtree, clade, ncbi taxonomy
 - **togovar** — TogoVar — Japanese/human genome variation. GRCh38 human genome variants (SNV/Deletion/Insertion/MNV/Indel) with normalized+VCF coordinates, Ensembl-VEP per-transcript consequences (SO terms, SIFT/PolyPhen/AlphaMissense, HGVS), dbSNP links, an… _(categories: disease, genomics, variant)_  

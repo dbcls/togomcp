@@ -94,13 +94,16 @@ is the bold row label.
 | **wikipathways** | 1 | `wikipathways` |
 | **idsm** | 1 | `idsm` |
 | **lipidmaps** | 1 | `lipidmaps` |
+| **swisslipids** | 1 | `swisslipids` |
 
 > **One database ≠ one graph.** GlyCosmos (~150 graphs), PubChem (68), PDB (46), DDBJ
 > (43), IDSM (39) and TogoVar serve many graphs from their *own* endpoint — TogoVar
 > re-types 2.9M variant IRIs across two of its own, and IDSM re-hosts nine chemical
 > datasets under their original IRIs with a union default graph. Co-tenancy is a property
-> of **graphs**, not of this table. Only SuperCon (2) is near-single-graph — and LIPID MAPS
-> declares **no named graphs at all**, so every `GRAPH`/`FROM` pin returns 0 rows there.
+> of **graphs**, not of this table. Only SuperCon (2) and SwissLipids (3, of which just one
+> holds data — the other two are `.well-known/void` and `.well-known/sparql-examples`) are
+> near-single-graph — and LIPID MAPS declares **no named graphs at all**, so every
+> `GRAPH`/`FROM` pin returns 0 rows there.
 
 Copied from `endpoints.csv` and it **drifts**: a database mounted beside yours silently
 rewrites what your unpinned query means (OMA landed on `sib` 2026-04-28 and changed
@@ -112,12 +115,15 @@ count looks inflated (it hurt scores when called routinely: 16.73 vs. 17.59 with
 
 **Third route, from a few verified callers only: `SERVICE` federation.** Some endpoints
 can send part of a query to another endpoint in a `SERVICE <url> { … }` block — verified
-2026-09-15: WikiPathways → UniProt on SIB, IDSM → Rhea, and RDF Portal's `ebi` → LIPID MAPS.
-Run the query on the **calling** endpoint (`database=wikipathways` / `idsm`; for the
-LIPID MAPS join, `database=lipidmaps` with `endpoint_name=ebi`), not the one inside
+2026-09-15: WikiPathways → UniProt on SIB, IDSM → Rhea, SwissLipids → Rhea, and RDF
+Portal's `ebi` → LIPID MAPS. Run the query on the **calling** endpoint
+(`database=wikipathways` / `idsm` / `swisslipids`; for the LIPID MAPS join,
+`database=lipidmaps` with `endpoint_name=ebi`), not the one inside
 `SERVICE`: routed to the remote endpoint instead it fails or returns 0 rows. The direction
-matters — `lipidmaps` cannot call out: every `SERVICE` from it returned HTTP 502 after
-~60 s. Copy the MIE's `cross_db` example rather than writing one; each carries its own
+matters, and it is NOT a property of the domain: `swisslipids` calls out to Rhea in ~3 s,
+while `lipidmaps` — the other lipid database — cannot call out at all, every `SERVICE`
+from it returning HTTP 502 after ~60 s. Do not carry one lipid DB's answer over to the
+other. Copy the MIE's `cross_db` example rather than writing one; each carries its own
 limits (bind the join key locally first, cap the bindings before crossing). Other RDF
 Portal endpoints have not been verified as callers — do not assume it works there.
 
