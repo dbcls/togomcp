@@ -45,6 +45,26 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   retired and points to the Usage Guide's Database Catalog instead of a bare "Unknown tool". Neither
   set of names appears in `tools/list`, and the call log keeps the name the client sent.
 
+### Fixed
+
+- **ChatGPT setup instructions: updating the tool list is now described correctly.** Every page told
+  users to "re-run Scan Tools, or remove and re-add the connector." OpenAI's help article
+  ("Developer mode and MCP apps in ChatGPT", revised about 2026-08-22, checked from a browser copy
+  because the page blocks automated fetches) says ChatGPT uses a *frozen snapshot* of the tool list
+  and updating it depends on the plan. On **Business**, published apps can't be updated at all, so an
+  admin must recreate and republish. On **Enterprise/Edu**, an admin clicks **Refresh** under
+  *Action control*, and new tools arrive **disabled** until switched on. So a workspace user following
+  the old advice couldn't have fixed it, and an Enterprise admin who refreshed still wouldn't see new
+  tools. The intro page, the handbook (EN/JA), the Usage Guide's stale-tool-list row, and the notice
+  the server attaches to old tool names now give the per-plan steps. The intro page also notes that
+  deep research can use TogoMCP but agent mode can't, that a tool selection applies to one message
+  (so @mention it again), and that OpenAI has paused new sign-ups to the $200 Pro plan. The plan tiers
+  and menu paths were confirmed unchanged; a third-party blog and OpenAI's undated developer guide
+  still disagree with them and were not followed.
+- **Tutorial HTML regenerated.** The published EN/JA tutorials still said `SERVICE` federation is
+  disabled on rdfportal.org, a claim the handbook source had corrected on 2026-08-26 without the
+  HTML being rebuilt.
+
 ## [2.14.0] - 2026-09-15
 
 Two new databases, both on endpoints of their own rather than on RDF Portal: **WikiPathways**

@@ -10,7 +10,7 @@
 | It worked yesterday but not today (Claude Code) | Scope. The default `--scope local` only takes effect in that directory. Re-add it with `--scope user` |
 | `claude mcp add` comes back with "no such command" | Are you typing it **inside** a Claude session? This is a command for **the terminal** |
 | A tool call fails | Network. Possibly a corporate proxy or a VPN |
-| ChatGPT says "there is no such tool" | **Re-run Scan Tools**, or delete the connector and add it again. ChatGPT does not re-fetch the tool list on its own |
+| ChatGPT says "there is no such tool" | The app's tool list is out of date — ChatGPT never re-fetches it. **Pro:** delete the app and create it again. **Business:** an admin recreates and republishes it. **Enterprise/Edu:** an admin clicks **Refresh** under Action control and enables the new tools |
 
 ---
 

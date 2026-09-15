@@ -1092,7 +1092,7 @@ class TestStaleToolNames:
         assert result.is_error
         text = result.content[0].text
         assert text.startswith("Unknown tool: 'find_databases'")
-        assert "TogoMCP_Usage_Guide" in text and "refresh the connector" in text
+        assert "TogoMCP_Usage_Guide" in text and "out-of-date TogoMCP tool list" in text
 
     def test_log_keeps_the_name_the_client_sent(self) -> None:
         """The logger reads context.message.name after call_next returns; the

@@ -947,10 +947,16 @@ _RETIRED_TOOLS: dict[str, str] = {
     for name in ("find_databases", "list_databases", "list_categories")
 }
 
+# Per OpenAI's help article "Developer mode and MCP apps in ChatGPT" (as of
+# 2026-08): the tool list is a frozen snapshot, and updating it is plan-specific
+# and mostly an admin task. Keep this in step with the intro page's ChatGPT tab.
 _STALE_LIST_ADVICE = (
-    "Your MCP client is using a cached, out-of-date TogoMCP tool list. Tell the "
-    "user to refresh the connector (ChatGPT: re-run Scan Tools, or remove and "
-    "re-add it) — tools added since the list was cached are invisible until then."
+    "Your MCP client is using a cached, out-of-date TogoMCP tool list, so tools "
+    "added since then are invisible to it. Tell the user the TogoMCP app must be "
+    "updated. In ChatGPT: on Enterprise/Edu a workspace admin refreshes its "
+    "actions (Workspace settings → Apps → ⋯ → Action control → Refresh) and "
+    "enables the new tools; on Business an admin recreates and republishes the "
+    "app; on Pro, delete the app and create it again."
 )
 
 
