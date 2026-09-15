@@ -108,6 +108,15 @@ Same endpoint → single SPARQL. Different endpoints → `togoid_convertId` or N
 cross-reference. Call `get_sparql_endpoints()` when planning a bridge, or when a
 count looks inflated (it hurt scores when called routinely: 16.73 vs. 17.59 without).
 
+**Third route, from two endpoints only: `SERVICE` federation.** `wikipathways` and
+`idsm` can send part of a query to another endpoint in a `SERVICE <url> { … }` block —
+verified 2026-09-15: WikiPathways → UniProt on SIB, IDSM → Rhea. Run the query on the
+**calling** endpoint (`database=wikipathways` / `idsm`), not the one inside `SERVICE`:
+routed to the remote endpoint instead it fails or returns 0 rows. Copy the MIE's
+`cross_db` example rather than writing one; both carry their own limits (bind the join
+key locally first, cap the bindings before crossing). This has not been verified from
+the RDF Portal endpoints — do not assume it works there.
+
 ---
 
 ## 🔗 TogoID — PLAN EARLY

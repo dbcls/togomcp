@@ -55,6 +55,15 @@ can do — search by chemical structure. No tool, parameter or return shape chan
   because `check_mie_examples.py` routes by `database` and ignores an example's `endpoint_name`.
 - **`endpoints.csv` had mixed line endings** — the `fantabio` row added in 2.13.0 used LF where
   every other row uses CRLF. Content unchanged.
+- **Usage Guide statements that the new databases made untrue.** None of these are generated or
+  tested, so they drifted silently:
+  - "`primary` hosts 16 databases" — 17 since `fantabio`.
+  - Cross-endpoint work was described as TogoID or NCBI only. `wikipathways` and `idsm` can also
+    federate with `SERVICE` (to UniProt on SIB and to Rhea); the guide now says so, and that the
+    query must run on the calling endpoint.
+  - The two-argument `REGEX()` trap claimed to hold on "every endpoint". Re-tested on the two new
+    ones: WikiPathways has the bug, IDSM (PostgreSQL, not Virtuoso) does not — so it is 11 of 12.
+    The advice (always pass a third argument) is unchanged.
 
 ### Changed
 
