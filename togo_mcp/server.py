@@ -915,6 +915,88 @@ class _ToolCallLogger(_Middleware):
 mcp.add_middleware(_ToolCallLogger())
 
 
+# --- Stale client tool lists: renamed and retired tool names -----------------
+# ChatGPT connectors record the tool list at Scan Tools time and never refetch
+# it, so they keep calling names this server dropped months ago (see CLAUDE.md,
+# "Clients cache the tool list"). A renamed tool is the costly case: the client
+# does not have the new name either, so the capability is simply gone for that
+# user — every NCBI call from one Codex user failed for three weeks in 2026-09.
+#
+# The shim lives in middleware, not as registered tools, so none of these names
+# ever reappears in tools/list: fresh clients see only the canonical surface.
+# Registered AFTER _ToolCallLogger so it runs inside it — the log keeps the name
+# the client actually sent, which is the signal for when this shim can go.
+
+# Old name -> current name. Arguments must be compatible as-is.
+_RENAMED_TOOLS: dict[str, str] = {
+    # 72f407b (2026-04-28) dropped the doubled prefix: the functions were named
+    # ncbi_* and mounted under "ncbi", so clients saw ncbi_ncbi_*.
+    "ncbi_ncbi_esearch": "ncbi_esearch",
+    "ncbi_ncbi_esummary": "ncbi_esummary",
+    "ncbi_ncbi_efetch": "ncbi_efetch",
+    "ncbi_ncbi_list_databases": "ncbi_list_databases",
+}
+
+# Removed name -> what to use instead. Still an error, but one that says why.
+_RETIRED_TOOLS: dict[str, str] = {
+    name: (
+        "call `TogoMCP_Usage_Guide` — its Database Catalog section lists every "
+        "database with a description and keywords — then `get_MIE_file` and "
+        "`run_sparql` with `database=<key>`"
+    )
+    for name in ("find_databases", "list_databases", "list_categories")
+}
+
+# Per OpenAI's help article "Developer mode and MCP apps in ChatGPT" (as of
+# 2026-08): the tool list is a frozen snapshot, and updating it is plan-specific
+# and mostly an admin task. Keep this in step with the intro page's ChatGPT tab.
+_STALE_LIST_ADVICE = (
+    "Your MCP client is using a cached, out-of-date TogoMCP tool list, so tools "
+    "added since then are invisible to it. Tell the user the TogoMCP app must be "
+    "updated. In ChatGPT: on Enterprise/Edu a workspace admin refreshes its "
+    "actions (Workspace settings → Apps → ⋯ → Action control → Refresh) and "
+    "enables the new tools; on Business an admin recreates and republishes the "
+    "app; on Pro, delete the TogoMCP plugin and create it again."
+)
+
+
+class _StaleToolNames(_Middleware):
+    """Serve renamed tools under their old names; explain retired ones."""
+
+    async def on_call_tool(self, context, call_next):
+        from fastmcp.exceptions import ToolError
+        from mcp.types import TextContent
+
+        name = context.message.name
+        if name in _RETIRED_TOOLS:
+            raise ToolError(
+                f"Unknown tool: '{name}' — it was retired from TogoMCP. Instead, "
+                f"{_RETIRED_TOOLS[name]}. {_STALE_LIST_ADVICE}"
+            )
+        new_name = _RENAMED_TOOLS.get(name)
+        if new_name is None:
+            return await call_next(context)
+
+        # Copy rather than mutate: the enclosing logger reads context.message.name
+        # after the call returns, and must still see the name the client sent.
+        renamed = context.copy(
+            message=context.message.model_copy(update={"name": new_name})
+        )
+        result = await call_next(renamed)
+        notice = TextContent(
+            type="text",
+            text=(
+                f"[TogoMCP notice] `{name}` is an outdated name for `{new_name}`; "
+                f"this call was served under the current name. {_STALE_LIST_ADVICE}"
+            ),
+        )
+        result.content = [*result.content, notice]
+        return result
+
+
+mcp.add_middleware(_StaleToolNames())
+
+
 @mcp.custom_route("/health", methods=["GET"])
 async def health_check(request: Request) -> PlainTextResponse:
     return PlainTextResponse("OK")

@@ -1,0 +1,524 @@
+# MIE v3 — PubCaseFinder RDF (DBCLS). Hand-authored 2026-09-15 against the RDF Portal primary endpoint.
+# Format: togo_mcp/data/docs/MIE_v3_spec.md. Every count/result below was run live on 2026-09-15.
+# New database (no v2 predecessor; the legacy shex/pubcasefinder.shex and sparql-examples/*.rq were empty files).
+# enumeration_audit.md tier: not yet listed (new DB). Set-level routes are first-class examples:
+#   phenotype -> diseases via the HPO hierarchy (enum_diseases_by_phenotype), inheritance mode -> diseases
+#   (enum_inheritance_modes), gene -> diseases (gene_to_diseases).
+mie_spec: 3
+database: pubcasefinder
+
+discovery:
+  title: PubCaseFinder RDF
+  description: >
+    Rare-disease knowledge base behind the PubCaseFinder diagnosis-support service: OMIM and Orphanet diseases
+    linked to HPO phenotypes (curated and text-mined, with PubMed evidence), causal genes, inheritance modes, and
+    Japanese disease/phenotype names.
+  keywords: [rare disease, phenotype, hpo, disease-phenotype association, gene-disease association, omim, orphanet,
+             inheritance, differential diagnosis, text mining, japanese, mondo mapping]
+  categories: [disease, gene]
+
+endpoint: https://rdfportal.org/primary/sparql
+base_uri: https://pubcasefinder.dbcls.jp/
+graphs:
+  primary: https://pubcasefinder.dbcls.jp/rdf     # the only PubCaseFinder graph — the default pin target
+  co_hosted:                                      # 2g reverse probe run 2026-09-15 on 11 IRIs (disease x2, gene,
+                                                  # symbol node, HP x2, MONDO, PubMed, MeSH, annotation, GDA)
+    ontology_hp: >
+      <http://rdfportal.org/ontology/hp> — re-declares rdfs:label (English, ^^xsd:string) and rdfs:subClassOf on every
+      HP IRI this graph annotates (all 322 of Marfan syndrome's phenotypes; this graph's own labels are @ja). Label
+      inflation + conflicting value (gotcha mandatory_graph_pin). It is also the JOIN target for English phenotype
+      names and the HPO hierarchy (enum_diseases_by_phenotype).
+    ontology_efo_mondo: >
+      <http://rdfportal.org/ontology/efo> and <.../mondo> each re-declare rdfs:label + rdfs:subClassOf on HP IRIs
+      (efo 171, mondo 145 of Marfan's 322). EFO also gives 5,858 of the 9,004 Orphanet disease IRIs an English label
+      (see disease_lookup), and re-declares MONDO labels (x2 in xdb_mondo_names). ontology/mondo is the JOIN target for
+      rdfs:seeAlso MONDO_ (17,830 diseases).
+    hgnc: >
+      <http://rdfportal.org/dataset/hgnc> — re-declares dcterms:identifier on 40,301 of the 40,479 identifiers.org/ncbigene
+      gene IRIs (x2, see gene_to_diseases) and on 68 identifiers.org/mim disease IRIs; types them `identifiers.org/ncbigene`,
+      not m2r:Gene, so a type-first probe looks clean. JOIN: an HGNC record points at the gene with
+      `<http://identifiers.org/hgnc/N> rdfs:seeAlso <http://identifiers.org/ncbigene/N>`.
+    mesh: "<http://id.nlm.nih.gov/mesh> — JOIN target for article subject terms (xdb_literature_mesh); labels MeSH IRIs only there."
+    article_scope_bleed: >
+      bibo:Article is also typed in massbank (29,151), xsearch_jcm_brso (5,645), glycosmos/pubmed (4,510), dbcatalog
+      (2,246), polyinfo, milkoligodb, glycomeatlas: unpinned `?a a bibo:Article` = 1,265,577 vs 1,223,574 here
+      (x1.034 scope bleed, every row a real article). Pin the graph.
+    togoid_and_others: >
+      togoid relation graphs (hp_phenotype-omim_phenotype, mondo-omim_phenotype, hgnc-ncbigene, ...) and glycosmos/hpo,
+      homologene, refex, fantabio, glycogenes reference the same OMIM/Orphanet/HP/NCBI Gene IRIs, but only through
+      their own predicates (tio:TIO_*, SIO_000255, orth:*) — no oa:*, sio:SIO_000628 or nandov:hasInheritance anywhere
+      else, and m2r:Disease / m2r:Gene / oa:Annotation / sio:SIO_000983 counts are identical pinned and unpinned.
+
+entity_counts:                                    # COUNT(DISTINCT), graph-pinned; verified 2026-09-15
+  diseases:               18375   # m2r:Disease (also typed ncit:C7057): 9,371 OMIM (identifiers.org/mim/) + 9,004 Orphanet (orpha.net/ORDO/)
+  diseases_mondo_terms:   14385   # distinct MONDO terms over the 17,830 diseases with rdfs:seeAlso MONDO_ (dedup unit, count_diseases)
+  diseases_with_ja_label: 10680   # 58.1% — the ONLY rdfs:label on a disease, always @ja (gotcha japanese_only_labels)
+  phenotype_annotations: 379263   # oa:Annotation, one disease (oa:hasTarget) x one HP term (oa:hasBody) each
+  annotated_diseases:     14012   # typed diseases with >=1 annotation (14,174 distinct targets incl. 162 untyped IRIs)
+  hp_terms_annotated:     10392   # distinct oa:hasBody HP IRIs; 10,329 HP IRIs carry a @ja label here, 32 also @en
+  genes:                  40479   # m2r:Gene (also ncit:C16612) = identifiers.org/ncbigene/N
+  gene_symbol_nodes:      42427   # ncit:C43568 "Gene Symbol" nodes (genenames.org IRI, plain rdfs:label); 2,089 unlinked
+  gene_disease_assoc:     15446   # sio:SIO_000983; 9,684 diseases x 5,021 genes
+  articles:             1223574   # bibo:Article (identifiers.org/pubmed/N) with MeSH subject terms; 284,628 cited as evidence
+
+global_gotchas:
+  - id: mandatory_graph_pin
+    say: >
+      HP phenotype IRIs are re-labelled by ontology/hp, efo and mondo, so an unpinned `?hp rdfs:label ?l` after a
+      phenotype join returns x3.15 rows (935 vs 297 for Marfan syndrome's phenotypes) mixing this graph's Japanese label
+      with three English copies — well-formed, fast, no error. DISTINCT does not collapse them (different literals).
+      FIX: put every PubCaseFinder pattern in GRAPH <https://pubcasefinder.dbcls.jp/rdf>, and take English phenotype
+      names from an explicit GRAPH <http://rdfportal.org/ontology/hp> block.
+    check:
+      kind: ratio
+      date: "2026-09-15"
+      unpinned: |
+        PREFIX oa: <http://www.w3.org/ns/oa#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT (COUNT(*) AS ?n) WHERE { ?ann oa:hasTarget <http://identifiers.org/mim/154700> ; oa:hasBody ?hp . ?hp rdfs:label ?l }
+      pinned: |
+        PREFIX oa: <http://www.w3.org/ns/oa#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <https://pubcasefinder.dbcls.jp/rdf> { ?ann oa:hasTarget <http://identifiers.org/mim/154700> ; oa:hasBody ?hp . ?hp rdfs:label ?l } }
+      expect: {ratio: 3.148, tolerance: 0.05}
+  - id: japanese_only_labels
+    say: >
+      Every disease rdfs:label in this graph is Japanese (@ja) and only 10,680 of 18,375 diseases have one; there is no
+      English disease label at all, so `FILTER(LANG(?l) = "en")` on a disease returns 0 rows. HP terms likewise carry
+      @ja labels here (10,329), with @en only on 32 inheritance-mode terms. Exact matches need the tag: `"発作"@ja`
+      finds HP_0001250, plain `"発作"` finds nothing. English names: MONDO via rdfs:seeAlso (xdb_mondo_names) for
+      diseases, ontology/hp for phenotypes.
+    check:
+      kind: zero_rows
+      date: "2026-09-15"
+      query: |
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX m2r: <http://med2rdf.org/ontology/>
+        SELECT ?d WHERE { GRAPH <https://pubcasefinder.dbcls.jp/rdf> { ?d a m2r:Disease ; rdfs:label ?l . FILTER(LANG(?l) = "en") } } LIMIT 1
+  - id: identifier_not_unique
+    say: >
+      dcterms:identifier is the bare local number as a PLAIN literal ("154700", "558", "2200"; `^^xsd:string` matches
+      nothing), without the OMIM/Orphanet/NCBI Gene prefix. The same number names different things: 55 values are both an
+      OMIM and an Orphanet disease, and 2,108 disease numbers are also NCBI Gene IDs. Never anchor on the identifier —
+      build the IRI (identifiers.org/mim/N, www.orpha.net/ORDO/Orphanet_N, identifiers.org/ncbigene/N).
+    check:
+      kind: count
+      date: "2026-09-15"
+      query: |
+        PREFIX dcterms: <http://purl.org/dc/terms/>
+        PREFIX m2r: <http://med2rdf.org/ontology/>
+        SELECT (COUNT(DISTINCT ?id) AS ?n) WHERE { GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+          ?d a m2r:Disease ; dcterms:identifier ?id . ?g a m2r:Gene ; dcterms:identifier ?id } }
+      expect: {value: 2108, tolerance: 0.02}
+  - id: verbatim_typo_predicates
+    say: >
+      Two predicate IRIs are minted without their separator and must be written verbatim:
+      `<http://purl.org/spar/fabiohasSubjectTerm>` (article -> MeSH, 10.26M triples) and `<http://xmlns.com/foaf/0.1page>`
+      (evidence-source -> download URL). The correctly spelled fabio:hasSubjectTerm and foaf:page return 0 rows, so a
+      PREFIX-based query silently finds no subject terms.
+    check:
+      kind: absent
+      date: "2026-09-15"
+      query: |
+        SELECT ?s WHERE { GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+          { ?s <http://purl.org/spar/fabio/hasSubjectTerm> ?o } UNION { ?s <http://xmlns.com/foaf/0.1/page> ?o } } } LIMIT 1
+
+examples:
+  - id: disease_lookup
+    intent: full record of one disease by IRI — the disease shape (types, @ja label, bare identifier, seeAlso links, inheritance)
+    question: "What does PubCaseFinder record for Marfan syndrome (OMIM:154700)?"
+    complexity: basic
+    sparql: |
+      SELECT ?property ?value
+      WHERE {
+        GRAPH <https://pubcasefinder.dbcls.jp/rdf> { <http://identifiers.org/mim/154700> ?property ?value . }
+      }
+      ORDER BY ?property ?value
+    verified: {row_count: 11, has_values: ["MONDO_0007947", "HP_0000006", "154700", "Marfan 症候群(MFS)"], date: "2026-09-15", note: "2 types (m2r:Disease, ncit:C7057), 1 @ja label, identifier, nandov:hasInheritance HP_0000006, 6 rdfs:seeAlso (MONDO, GeneReviews NBK1335, 2 GTR, KEGG H00653, SyndromeFinder)"}
+    teaches: "A disease IRI is identifiers.org/mim/N (OMIM) or www.orpha.net/ORDO/Orphanet_N; rdfs:seeAlso mixes one MONDO class (17,830 diseases) with web pages (GTR, GeneReviews NCBI Books, KEGG Disease, SyndromeFinder) — filter by STRSTARTS on the MONDO_ prefix."
+    traps_avoided:
+      - say: "Unpinned, `?d a m2r:Disease ; rdfs:label ?l` returns 16,538 rows instead of 10,680 (x1.55): ontology/efo adds an ENGLISH label to 5,858 Orphanet IRIs. Pinned you get only the @ja names; if you want English, take it deliberately from MONDO."
+        check:
+          kind: ratio
+          date: "2026-09-15"
+          unpinned: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX m2r: <http://med2rdf.org/ontology/>
+            SELECT (COUNT(*) AS ?n) WHERE { ?d a m2r:Disease ; rdfs:label ?l }
+          pinned: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX m2r: <http://med2rdf.org/ontology/>
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <https://pubcasefinder.dbcls.jp/rdf> { ?d a m2r:Disease ; rdfs:label ?l } }
+          expect: {ratio: 1.548, tolerance: 0.05}
+
+  - id: hp_from_japanese_name
+    intent: resolve a Japanese phenotype name to its HPO IRI (PubCaseFinder is the endpoint's Japanese HPO dictionary)
+    question: "Which HPO term is the Japanese phenotype name 発作 (seizure)?"
+    complexity: basic
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?hp ?hpo_page
+      WHERE {
+        GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+          ?hp rdfs:label "発作"@ja .
+          OPTIONAL { ?hp rdfs:seeAlso ?hpo_page }
+        }
+      }
+    verified: {row_count: 1, has_values: ["HP_0001250"], date: "2026-09-15", note: "HP nodes here are untyped: only rdfs:label @ja and rdfs:seeAlso identifiers.org/HP:NNNNNNN"}
+    teaches: "Japanese HPO names live only in this graph, as @ja labels on otherwise untyped HP IRIs; match with the @ja tag (gotcha japanese_only_labels), then use the IRI everywhere else."
+    traps_avoided:
+      - say: "Japanese names are not unique: 70 @ja labels are shared by two or more HP terms, so a name lookup can return several IRIs — check each before enumerating."
+        check:
+          kind: count
+          date: "2026-09-15"
+          query: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT (COUNT(*) AS ?n) WHERE { { SELECT ?l WHERE { GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+              ?hp rdfs:label ?l . FILTER(LANG(?l) = "ja" && STRSTARTS(STR(?hp), "http://purl.obolibrary.org/obo/HP_")) } }
+              GROUP BY ?l HAVING(COUNT(DISTINCT ?hp) > 1) } }
+          expect: {value: 70, tolerance: 0.05}
+
+  - id: disease_phenotypes_curated
+    intent: a disease's phenotype profile, restricted to curated annotations, with the evidence source of each
+    question: "Which HPO phenotypes are curated (HPO consortium or Orphanet) for Marfan syndrome, with their Japanese names?"
+    complexity: intermediate
+    sparql: |
+      PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX oa:      <http://www.w3.org/ns/oa#>
+      SELECT ?hp ?name_ja (GROUP_CONCAT(DISTINCT ?creator; separator=" | ") AS ?sources)
+      WHERE {
+        GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+          ?ann a oa:Annotation ;
+               oa:hasTarget <http://identifiers.org/mim/154700> ;
+               oa:hasBody ?hp ;
+               dcterms:source ?src .
+          ?src dcterms:creator ?creator .                     # blank node per evidence source
+          FILTER(?creator IN ("Human Phenotype Ontology Consortium", "Orphanet"))
+          OPTIONAL { ?hp rdfs:label ?name_ja . FILTER(LANG(?name_ja) = "ja") }
+        }
+      }
+      GROUP BY ?hp ?name_ja
+      ORDER BY ?hp
+    verified: {row_count: 57, has_values: ["HP_0001166", "Human Phenotype Ontology Consortium"], date: "2026-09-15"}
+    teaches: "Annotation = oa:hasTarget (disease) + oa:hasBody (HP term) + one dcterms:source blank node per evidence source carrying dcterms:creator (a PLAIN literal). Creators: 'Human Phenotype Ontology Consortium' and 'Orphanet' (obo:ECO_9000001 ECO_0000218 manual assertion) vs 'Database Center for Life Science' (ECO_0007669 automatic; text-mined, with dcterms:references to PubMed). Filter on the creator, not on ECO — ECO sits on the annotation, not on the source, so a two-source annotation carries both codes."
+    traps_avoided:
+      - say: "Without the creator filter the same query returns 322 phenotypes for Marfan syndrome — x5.65, because 265 come only from DBCLS text mining. Across the graph 163,578 of 379,263 annotations (43%) are text-mined only. Decide deliberately whether a 'phenotype of X' question wants those."
+        check:
+          kind: ratio
+          date: "2026-09-15"
+          numerator: |
+            PREFIX oa: <http://www.w3.org/ns/oa#>
+            SELECT (COUNT(DISTINCT ?hp) AS ?n) WHERE { GRAPH <https://pubcasefinder.dbcls.jp/rdf> { ?ann oa:hasTarget <http://identifiers.org/mim/154700> ; oa:hasBody ?hp } }
+          denominator: |
+            PREFIX oa: <http://www.w3.org/ns/oa#>
+            PREFIX dcterms: <http://purl.org/dc/terms/>
+            SELECT (COUNT(DISTINCT ?hp) AS ?n) WHERE { GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+              ?ann oa:hasTarget <http://identifiers.org/mim/154700> ; oa:hasBody ?hp ; dcterms:source ?src . ?src dcterms:creator ?cr .
+              FILTER(?cr IN ("Human Phenotype Ontology Consortium", "Orphanet")) } }
+          expect: {ratio: 5.649, tolerance: 0.03}
+      - say: "dcterms:creator is a plain literal: `dcterms:creator \"Orphanet\"^^xsd:string` matches 0 of Orphanet's 103,333 sources."
+        check:
+          kind: zero_rows
+          date: "2026-09-15"
+          query: |
+            PREFIX dcterms: <http://purl.org/dc/terms/>
+            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+            SELECT ?s WHERE { GRAPH <https://pubcasefinder.dbcls.jp/rdf> { ?s dcterms:creator "Orphanet"^^xsd:string } } LIMIT 1
+
+  - id: enum_diseases_by_phenotype        # set-level enumeration: phenotype + HPO descendants -> diseases
+    intent: count ALL diseases annotated with a phenotype OR any of its HPO descendants, split by disease vocabulary
+    question: "How many OMIM and Orphanet diseases are annotated with Seizure (HP:0001250) or a more specific seizure type?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo:  <http://purl.obolibrary.org/obo/>
+      PREFIX oa:   <http://www.w3.org/ns/oa#>
+      PREFIX m2r:  <http://med2rdf.org/ontology/>
+      SELECT ?vocabulary (COUNT(DISTINCT ?hp) AS ?hp_terms) (COUNT(DISTINCT ?disease) AS ?diseases)
+      WHERE {
+        GRAPH <http://rdfportal.org/ontology/hp> { ?hp rdfs:subClassOf* obo:HP_0001250 . }   # hierarchy lives in ontology/hp
+        GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+          ?ann oa:hasBody ?hp ; oa:hasTarget ?disease .
+          ?disease a m2r:Disease .
+        }
+        BIND(IF(STRSTARTS(STR(?disease), "http://identifiers.org/mim/"), "OMIM", "Orphanet") AS ?vocabulary)
+      }
+      GROUP BY ?vocabulary
+      ORDER BY ?vocabulary
+    verified: {row_count: 2, has_values: ["OMIM", "Orphanet"], date: "2026-09-15", note: "3,311 diseases in total over 68 HP terms (seizure + 67 descendants); OMIM and Orphanet rows overlap in meaning (see count_diseases)"}
+    teaches: "This graph has no HPO hierarchy — oa:hasBody holds the most specific term an annotator chose. For 'all diseases with phenotype X' expand X with rdfs:subClassOf* in a GRAPH <ontology/hp> block and join on the HP IRI."
+    traps_avoided:
+      - say: "Matching only the parent term (`oa:hasBody obo:HP_0001250`) finds 2,960 diseases, missing 351 (10.6%) that are annotated only with a specific seizure type."
+        check:
+          kind: ratio
+          date: "2026-09-15"
+          numerator: |
+            PREFIX oa: <http://www.w3.org/ns/oa#>
+            PREFIX m2r: <http://med2rdf.org/ontology/>
+            PREFIX obo: <http://purl.obolibrary.org/obo/>
+            SELECT (COUNT(DISTINCT ?d) AS ?n) WHERE { GRAPH <https://pubcasefinder.dbcls.jp/rdf> { ?ann oa:hasBody obo:HP_0001250 ; oa:hasTarget ?d . ?d a m2r:Disease } }
+          denominator: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX oa: <http://www.w3.org/ns/oa#>
+            PREFIX m2r: <http://med2rdf.org/ontology/>
+            PREFIX obo: <http://purl.obolibrary.org/obo/>
+            SELECT (COUNT(DISTINCT ?d) AS ?n) WHERE { GRAPH <http://rdfportal.org/ontology/hp> { ?hp rdfs:subClassOf* obo:HP_0001250 }
+              GRAPH <https://pubcasefinder.dbcls.jp/rdf> { ?ann oa:hasBody ?hp ; oa:hasTarget ?d . ?d a m2r:Disease } }
+          expect: {ratio: 0.894, tolerance: 0.02}
+      - say: "Leaving the subClassOf* leg unpinned also walks efo's and mondo's copies of the HPO hierarchy: COUNT(DISTINCT ?disease) survives (3,311) but the joined rows grow x2.31 (13,223 vs 5,720), so any COUNT(*) or per-row tally is inflated."
+        check:
+          kind: ratio
+          date: "2026-09-15"
+          unpinned: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX oa: <http://www.w3.org/ns/oa#>
+            PREFIX m2r: <http://med2rdf.org/ontology/>
+            PREFIX obo: <http://purl.obolibrary.org/obo/>
+            SELECT (COUNT(*) AS ?n) WHERE { ?hp rdfs:subClassOf* obo:HP_0001250 .
+              GRAPH <https://pubcasefinder.dbcls.jp/rdf> { ?ann oa:hasBody ?hp ; oa:hasTarget ?d . ?d a m2r:Disease } }
+          pinned: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX oa: <http://www.w3.org/ns/oa#>
+            PREFIX m2r: <http://med2rdf.org/ontology/>
+            PREFIX obo: <http://purl.obolibrary.org/obo/>
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://rdfportal.org/ontology/hp> { ?hp rdfs:subClassOf* obo:HP_0001250 }
+              GRAPH <https://pubcasefinder.dbcls.jp/rdf> { ?ann oa:hasBody ?hp ; oa:hasTarget ?d . ?d a m2r:Disease } }
+          expect: {ratio: 2.312, tolerance: 0.05}
+
+  - id: enum_inheritance_modes           # set-level enumeration + aggregation over the inheritance vocabulary
+    intent: enumerate the inheritance-mode vocabulary with disease counts per vocabulary (OMIM vs Orphanet)
+    question: "How many diseases have each mode of inheritance?"
+    complexity: aggregation
+    sparql: |
+      PREFIX rdfs:   <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX m2r:    <http://med2rdf.org/ontology/>
+      PREFIX nandov: <http://nanbyodata.jp/ontology/nando#>
+      SELECT ?mode ?mode_label (COUNT(DISTINCT ?d) AS ?diseases) (COUNT(DISTINCT ?omim) AS ?omim) (COUNT(DISTINCT ?orpha) AS ?orphanet)
+      WHERE {
+        GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+          ?d a m2r:Disease ; nandov:hasInheritance ?mode .
+          OPTIONAL { ?mode rdfs:label ?mode_label . FILTER(LANG(?mode_label) = "en") }
+        }
+        BIND(IF(STRSTARTS(STR(?d), "http://identifiers.org/mim/"), ?d, ?unbound1) AS ?omim)
+        BIND(IF(STRSTARTS(STR(?d), "http://www.orpha.net/"), ?d, ?unbound2) AS ?orpha)
+      }
+      GROUP BY ?mode ?mode_label
+      ORDER BY DESC(?diseases)
+    verified: {row_count: 25, has_values: ["Autosomal recessive inheritance", 5571, "Autosomal dominant inheritance", 4690, "X-linked recessive inheritance"], date: "2026-09-15", note: "11,026 diseases carry 12,143 mode assertions (a disease can have several); 7,349 have none. HP_0001425 'Heterogeneous' and HP_0001428 'Somatic mutation' are OBSOLETE in HPO (ontology/hp labels them 'obsolete ...') but unprefixed here"}
+    teaches: "nandov:hasInheritance (namespace http://nanbyodata.jp/ontology/nando# — NOT the nando DB's NANDO_ class prefix) points at HP inheritance-term IRIs, which carry @en labels in this graph. Enumerate a mode by its HP IRI; the conditional BIND splits the count per vocabulary in one pass."
+
+  - id: gene_to_diseases
+    intent: gene symbol -> NCBI Gene -> gene-disease associations -> diseases, with the association's source file
+    question: "Which diseases is FBN1 associated with, and according to which source?"
+    complexity: intermediate
+    sparql: |
+      PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX sio:     <http://semanticscience.org/resource/>
+      PREFIX m2r:     <http://med2rdf.org/ontology/>
+      PREFIX ncit:    <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
+      SELECT ?disease ?name_ja (GROUP_CONCAT(DISTINCT STR(?src); separator=" | ") AS ?sources)
+      WHERE {
+        GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+          ?symbol a ncit:C43568 ; rdfs:label "FBN1" .              # Gene Symbol node, plain literal
+          ?gene sio:SIO_000205 ?symbol .                           # 'is represented by'
+          ?gda a sio:SIO_000983 ;                                  # gene-disease association
+               sio:SIO_000628 ?gene , ?disease ;                   # 'refers to' BOTH ends
+               dcterms:source ?src .
+          ?disease a m2r:Disease .
+          OPTIONAL { ?disease rdfs:label ?name_ja }
+        }
+      }
+      GROUP BY ?disease ?name_ja
+      ORDER BY ?disease
+    verified: {row_count: 22, has_values: ["154700", "Orphanet_558", "Orphanet_1885"], date: "2026-09-15", note: "9 OMIM + 13 Orphanet; the same syndrome appears under both vocabularies (see count_diseases)"}
+    teaches: "Genes have no label: the symbol hangs off a separate ncit:C43568 node whose IRI embeds the HGNC id (genenames.org/.../hgnc_id/HGNC:3603). A sio:SIO_000983 association has no gene/disease roles — sio:SIO_000628 points at both. dcterms:source is an IRI naming the input file: Orphadata en_product6.xml (7,630), NCBI mim2gene_medgen (6,609), GenCC submissions (4,545)."
+    traps_avoided:
+      - say: "Without `?disease a m2r:Disease` the second SIO_000628 leg also binds the gene itself, adding a spurious row (23 instead of 22 here: one per gene)."
+        check:
+          kind: ratio
+          date: "2026-09-15"
+          numerator: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX sio: <http://semanticscience.org/resource/>
+            PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
+            SELECT (COUNT(DISTINCT ?x) AS ?n) WHERE { GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+              ?sym a ncit:C43568 ; rdfs:label "FBN1" . ?gene sio:SIO_000205 ?sym . ?gda a sio:SIO_000983 ; sio:SIO_000628 ?gene , ?x } }
+          denominator: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX sio: <http://semanticscience.org/resource/>
+            PREFIX m2r: <http://med2rdf.org/ontology/>
+            PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
+            SELECT (COUNT(DISTINCT ?x) AS ?n) WHERE { GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+              ?sym a ncit:C43568 ; rdfs:label "FBN1" . ?gene sio:SIO_000205 ?sym . ?gda a sio:SIO_000983 ; sio:SIO_000628 ?gene , ?x . ?x a m2r:Disease } }
+          expect: {ratio: 1.0455, tolerance: 0.01}
+      - say: "The symbol label is a plain literal: `rdfs:label \"FBN1\"^^xsd:string` matches no symbol node."
+        check:
+          kind: zero_rows
+          date: "2026-09-15"
+          query: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+            SELECT ?s WHERE { GRAPH <https://pubcasefinder.dbcls.jp/rdf> { ?s rdfs:label "FBN1"^^xsd:string } } LIMIT 1
+      - say: "Gene numbers from `?gene dcterms:identifier ?id` must be read pinned: dataset/hgnc re-declares dcterms:identifier on the same NCBI Gene IRIs, so unpinned `?g a m2r:Gene ; dcterms:identifier ?id` returns 80,780 rows for 40,479 genes (x2.00)."
+        check:
+          kind: ratio
+          date: "2026-09-15"
+          unpinned: |
+            PREFIX dcterms: <http://purl.org/dc/terms/>
+            PREFIX m2r: <http://med2rdf.org/ontology/>
+            SELECT (COUNT(*) AS ?n) WHERE { ?g a m2r:Gene ; dcterms:identifier ?id }
+          pinned: |
+            PREFIX dcterms: <http://purl.org/dc/terms/>
+            PREFIX m2r: <http://med2rdf.org/ontology/>
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <https://pubcasefinder.dbcls.jp/rdf> { ?g a m2r:Gene ; dcterms:identifier ?id } }
+          expect: {ratio: 1.996, tolerance: 0.03}
+
+  - id: evidence_breakdown
+    intent: graph-wide phenotype-annotation volume per evidence source (the union-safe aggregation recipe)
+    question: "How many disease-phenotype annotations, diseases and phenotypes does each evidence source contribute?"
+    complexity: aggregation
+    sparql: |
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX oa:      <http://www.w3.org/ns/oa#>
+      SELECT ?creator (COUNT(DISTINCT ?ann) AS ?annotations) (COUNT(DISTINCT ?disease) AS ?diseases) (COUNT(DISTINCT ?hp) AS ?phenotypes)
+      WHERE {
+        GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+          ?ann a oa:Annotation ; oa:hasTarget ?disease ; oa:hasBody ?hp ; dcterms:source ?src .
+          ?src dcterms:creator ?creator .
+        }
+      }
+      GROUP BY ?creator
+      ORDER BY DESC(?annotations)
+    verified: {row_count: 3, has_values: ["Database Center for Life Science", 176937, "Human Phenotype Ontology Consortium", 112352, "Orphanet", 103333], date: "2026-09-15", note: "sums to 392,622 > 379,263 annotations: 13,359 annotations have two sources (DBCLS+Orphanet 8,490, DBCLS+HPO 4,869)"}
+    teaches: "Graph pin + COUNT(DISTINCT ?ann): per-source totals overlap, so never add the column to get the annotation total (379,263)."
+
+  - id: count_diseases
+    intent: count diseases correctly when every syndrome may exist as an OMIM and several Orphanet IRIs
+    question: "How many distinct diseases does PubCaseFinder cover, per vocabulary and after merging OMIM/Orphanet via MONDO?"
+    complexity: aggregation
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX m2r:  <http://med2rdf.org/ontology/>
+      SELECT (COUNT(DISTINCT ?d) AS ?disease_iris) (COUNT(DISTINCT ?omim) AS ?omim) (COUNT(DISTINCT ?orpha) AS ?orphanet)
+             (COUNT(DISTINCT ?mondo) AS ?mondo_terms)
+      WHERE {
+        GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+          ?d a m2r:Disease .
+          OPTIONAL { ?d rdfs:seeAlso ?mondo . FILTER(STRSTARTS(STR(?mondo), "http://purl.obolibrary.org/obo/MONDO_")) }
+        }
+        BIND(IF(STRSTARTS(STR(?d), "http://identifiers.org/mim/"), ?d, ?unbound1) AS ?omim)
+        BIND(IF(STRSTARTS(STR(?d), "http://www.orpha.net/"), ?d, ?unbound2) AS ?orpha)
+      }
+    verified: {row_count: 1, has_values: [18375, 9371, 9004, 14385], date: "2026-09-15", note: "545 diseases have no MONDO link; 1 disease has two"}
+    teaches: "OMIM and Orphanet are parallel vocabularies for overlapping diseases (Marfan syndrome = mim/154700 + Orphanet_558 + Orphanet_284963, all MONDO_0007947). Report disease IRIs per vocabulary, or merge on the single rdfs:seeAlso MONDO class — not a raw disease-IRI total."
+    traps_avoided:
+      - say: "Counting disease IRIs as diseases over-counts: the 17,830 MONDO-linked diseases collapse to 14,385 MONDO terms (x1.24)."
+        check:
+          kind: ratio
+          date: "2026-09-15"
+          numerator: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX m2r: <http://med2rdf.org/ontology/>
+            SELECT (COUNT(DISTINCT ?d) AS ?n) WHERE { GRAPH <https://pubcasefinder.dbcls.jp/rdf> { ?d a m2r:Disease ; rdfs:seeAlso ?m . FILTER(STRSTARTS(STR(?m), "http://purl.obolibrary.org/obo/MONDO_")) } }
+          denominator: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX m2r: <http://med2rdf.org/ontology/>
+            SELECT (COUNT(DISTINCT ?m) AS ?n) WHERE { GRAPH <https://pubcasefinder.dbcls.jp/rdf> { ?d a m2r:Disease ; rdfs:seeAlso ?m . FILTER(STRSTARTS(STR(?m), "http://purl.obolibrary.org/obo/MONDO_")) } }
+          expect: {ratio: 1.2395, tolerance: 0.02}
+
+  - id: xdb_mondo_names
+    intent: "cross-DB: PubCaseFinder gene-disease associations -> English MONDO names, merging OMIM/Orphanet duplicates"
+    question: "What are the English names of the diseases associated with FBN1, one row per MONDO disease?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio:  <http://semanticscience.org/resource/>
+      PREFIX m2r:  <http://med2rdf.org/ontology/>
+      PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
+      SELECT ?mondo ?mondo_label (GROUP_CONCAT(DISTINCT STR(?disease); separator=" | ") AS ?pcf_diseases)
+      WHERE {
+        GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+          ?symbol a ncit:C43568 ; rdfs:label "FBN1" .
+          ?gene sio:SIO_000205 ?symbol .
+          ?gda a sio:SIO_000983 ; sio:SIO_000628 ?gene , ?disease .
+          ?disease a m2r:Disease ; rdfs:seeAlso ?mondo .
+          FILTER(STRSTARTS(STR(?mondo), "http://purl.obolibrary.org/obo/MONDO_"))
+        }
+        GRAPH <http://rdfportal.org/ontology/mondo> { ?mondo rdfs:label ?mondo_label . }
+      }
+      GROUP BY ?mondo ?mondo_label
+      ORDER BY ?mondo_label
+    verified: {row_count: 14, has_values: ["Marfan syndrome", "MONDO_0007947", "stiff skin syndrome", "Acromicric dysplasia"], date: "2026-09-15", note: "22 PubCaseFinder disease IRIs -> 14 MONDO diseases; Marfan syndrome merges 3 IRIs"}
+    teaches: "rdfs:seeAlso <MONDO_...> is the in-endpoint bridge to English disease names and the OMIM/Orphanet merge key; bind it in the PubCaseFinder block and reuse it as the subject of a MONDO-pinned block."
+    traps_avoided:
+      - say: "An unpinned MONDO label leg reads EFO's re-declared MONDO labels too: 44 joined rows instead of 22 (x2.00)."
+        check:
+          kind: ratio
+          date: "2026-09-15"
+          unpinned: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX sio: <http://semanticscience.org/resource/>
+            PREFIX m2r: <http://med2rdf.org/ontology/>
+            PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+              ?sym a ncit:C43568 ; rdfs:label "FBN1" . ?gene sio:SIO_000205 ?sym . ?gda a sio:SIO_000983 ; sio:SIO_000628 ?gene , ?disease .
+              ?disease a m2r:Disease ; rdfs:seeAlso ?mondo . FILTER(STRSTARTS(STR(?mondo), "http://purl.obolibrary.org/obo/MONDO_")) }
+              ?mondo rdfs:label ?mondo_label }
+          pinned: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX sio: <http://semanticscience.org/resource/>
+            PREFIX m2r: <http://med2rdf.org/ontology/>
+            PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+              ?sym a ncit:C43568 ; rdfs:label "FBN1" . ?gene sio:SIO_000205 ?sym . ?gda a sio:SIO_000983 ; sio:SIO_000628 ?gene , ?disease .
+              ?disease a m2r:Disease ; rdfs:seeAlso ?mondo . FILTER(STRSTARTS(STR(?mondo), "http://purl.obolibrary.org/obo/MONDO_")) }
+              GRAPH <http://rdfportal.org/ontology/mondo> { ?mondo rdfs:label ?mondo_label } }
+          expect: {ratio: 2.0, tolerance: 0.02}
+
+  - id: xdb_literature_mesh
+    intent: "cross-DB: the PubMed evidence behind a text-mined disease-phenotype annotation, summarised by MeSH subject"
+    question: "Which MeSH topics dominate the articles that support the link between Marfan syndrome and arachnodactyly?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT ?mesh ?mesh_label (COUNT(DISTINCT ?pmid) AS ?articles)
+      WHERE {
+        GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+          # annotation IRIs are minted as phenotype_context/disease:{OMIM|ORDO}:N/phenotype:HP:NNNNNNN
+          <https://pubcasefinder.dbcls.jp/phenotype_context/disease:OMIM:154700/phenotype:HP:0001166>
+              dcterms:source ?src .
+          ?src dcterms:references ?pmid .                                   # only DBCLS sources cite PubMed
+          ?pmid <http://purl.org/spar/fabiohasSubjectTerm> ?mesh .          # verbatim typo IRI (gotcha)
+        }
+        GRAPH <http://id.nlm.nih.gov/mesh> { ?mesh rdfs:label ?mesh_label . }
+      }
+      GROUP BY ?mesh ?mesh_label
+      ORDER BY DESC(?articles) ?mesh_label
+      LIMIT 10
+    verified: {min_rows: 10, has_values: ["Marfan Syndrome", "Humans", "Arachnodactyly"], date: "2026-09-15", note: "13 PubMed articles; top subjects Humans 13, Marfan Syndrome 13, Male 10"}
+    teaches: "Text-mined (DBCLS) evidence is a dcterms:source blank node with dcterms:references identifiers.org/pubmed/N; each cited article is a bibo:Article here with MeSH descriptor IRIs that join directly to the co-hosted MeSH graph. The annotation IRI is predictable from disease and HP IDs (note ORDO, not Orphanet, in the IRI)."
+
+schema_delta:
+  - "NOT in this RDF — use the tools: PubCaseFinder's phenotype->disease RANKING (similarity-scored partial matches over the HPO hierarchy, not the unordered all-terms set a SPARQL join gives) is `pubcasefinder_rank_by_phenotypes(hpo_ids, target=omim|orphanet|gene)`, and per-disease case reports (PubMed, or Japanese J-STAGE with lang='ja') are `pubcasefinder_get_case_reports(mondo_id)`. Both read the live service, a different release from this graph, so their phenotype counts do not match SPARQL counts."
+  - "An annotation IRI embeds ORDO where the disease IRI says Orphanet: phenotype_context/disease:ORDO:100/phenotype:HP:0006254 targets <http://www.orpha.net/ORDO/Orphanet_100>; gene_context/disease:OMIM:100100/gene:ENT:1131 is the association for mim/100100 x ncbigene/1131. Useful for direct lookup, but join through oa:hasTarget/sio:SIO_000628, not by parsing."
+  - "Curated evidence sources (HPO consortium, Orphanet) carry `<http://xmlns.com/foaf/0.1page>` (verbatim typo IRI) -> the download file (phenotype.hpoa, Orphadata XML) instead of dcterms:references; 2,129 DBCLS sources cite no PubMed ID."
+  - "Each article also has rdfs:seeAlso <http://rdf.ncbi.nlm.nih.gov/pubmed/N> — the IRI form used by the pubmed database on the ncbi endpoint (not co-hosted)."
+
+id_join_map:
+  stable_anchor: "Disease IRI <http://identifiers.org/mim/N> (OMIM) or <http://www.orpha.net/ORDO/Orphanet_N>; gene IRI <http://identifiers.org/ncbigene/N>; phenotype = HPO IRI <http://purl.obolibrary.org/obo/HP_NNNNNNN>; article <http://identifiers.org/pubmed/N>. dcterms:identifier is the bare number and is ambiguous across these namespaces (gotcha identifier_not_unique)."
+  same_endpoint_joins:
+    mondo: "disease rdfs:seeAlso <MONDO_...> (17,830 diseases, 14,385 terms) -> GRAPH <http://rdfportal.org/ontology/mondo> for English names / hierarchy (xdb_mondo_names). Also the OMIM<->Orphanet merge key."
+    hp_ontology: "oa:hasBody / nandov:hasInheritance HP IRI -> GRAPH <http://rdfportal.org/ontology/hp> for English labels, definitions and rdfs:subClassOf (enum_diseases_by_phenotype)."
+    mesh: "article <http://purl.org/spar/fabiohasSubjectTerm> <http://id.nlm.nih.gov/mesh/D...> -> GRAPH <http://id.nlm.nih.gov/mesh> (xdb_literature_mesh)."
+    hgnc: "gene <http://identifiers.org/ncbigene/N> is the object of `<http://identifiers.org/hgnc/N> rdfs:seeAlso` in GRAPH <http://rdfportal.org/dataset/hgnc>; the symbol node IRI here embeds the same HGNC number (…/hgnc_id/HGNC:N)."
+  xrefs:
+    omim_gene: "m2r:Gene rdfs:seeAlso <http://identifiers.org/mim/N> — the gene's OMIM entry (16,343 genes; same namespace as OMIM disease IRIs, and 28 of them are also typed m2r:Disease)."
+    disease_web_pages: "disease rdfs:seeAlso web pages: NCBI GTR (13,928), SyndromeFinder ncchd.go.jp (10,749), KEGG Disease www_bget?H (2,757), GeneReviews NCBI Books (2,638)."
+  bridged_via_togoid:
+    - "medgen, doid, clinvar, uniprot, ensembl: via togoid_convertId from omim_phenotype / orphanet_phenotype / hp_phenotype / ncbigene IDs."

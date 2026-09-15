@@ -81,7 +81,7 @@ is the bold row label.
 
 | Endpoint | n | `database` keys |
 |---|---:|---|
-| **primary** | 17 | `mesh` `go` `taxonomy` `mondo` `nando` `bacdive` `mediadive` `brenda` `hgnc` `jpostdb` `massbank` `nbrc` `mogplus` `hco` `mco` `ontology` `fantabio` |
+| **primary** | 18 | `mesh` `go` `taxonomy` `mondo` `nando` `bacdive` `mediadive` `brenda` `hgnc` `jpostdb` `massbank` `nbrc` `mogplus` `hco` `mco` `ontology` `fantabio` `pubcasefinder` |
 | **ebi** | 6 | `chembl` `chebi` `reactome` `ensembl` `amrportal` `gwascatalog` |
 | **ncbi** | 5 | `clinvar` `pubmed` `pubtator` `ncbigene` `medgen` |
 | **sib** | 4 | `uniprot` `rhea` `bgee` **`oma`** |
@@ -93,12 +93,14 @@ is the bold row label.
 | **togovar** | 1 | `togovar` |
 | **wikipathways** | 1 | `wikipathways` |
 | **idsm** | 1 | `idsm` |
+| **lipidmaps** | 1 | `lipidmaps` |
 
 > **One database ≠ one graph.** GlyCosmos (~150 graphs), PubChem (68), PDB (46), DDBJ
 > (43), IDSM (39) and TogoVar serve many graphs from their *own* endpoint — TogoVar
 > re-types 2.9M variant IRIs across two of its own, and IDSM re-hosts nine chemical
 > datasets under their original IRIs with a union default graph. Co-tenancy is a property
-> of **graphs**, not of this table. Only SuperCon (2) is near-single-graph.
+> of **graphs**, not of this table. Only SuperCon (2) is near-single-graph — and LIPID MAPS
+> declares **no named graphs at all**, so every `GRAPH`/`FROM` pin returns 0 rows there.
 
 Copied from `endpoints.csv` and it **drifts**: a database mounted beside yours silently
 rewrites what your unpinned query means (OMA landed on `sib` 2026-04-28 and changed
@@ -108,14 +110,16 @@ Same endpoint → single SPARQL. Different endpoints → `togoid_convertId` or N
 cross-reference. Call `get_sparql_endpoints()` when planning a bridge, or when a
 count looks inflated (it hurt scores when called routinely: 16.73 vs. 17.59 without).
 
-**Third route, from two endpoints only: `SERVICE` federation.** `wikipathways` and
-`idsm` can send part of a query to another endpoint in a `SERVICE <url> { … }` block —
-verified 2026-09-15: WikiPathways → UniProt on SIB, IDSM → Rhea. Run the query on the
-**calling** endpoint (`database=wikipathways` / `idsm`), not the one inside `SERVICE`:
-routed to the remote endpoint instead it fails or returns 0 rows. Copy the MIE's
-`cross_db` example rather than writing one; both carry their own limits (bind the join
-key locally first, cap the bindings before crossing). This has not been verified from
-the RDF Portal endpoints — do not assume it works there.
+**Third route, from a few verified callers only: `SERVICE` federation.** Some endpoints
+can send part of a query to another endpoint in a `SERVICE <url> { … }` block — verified
+2026-09-15: WikiPathways → UniProt on SIB, IDSM → Rhea, and RDF Portal's `ebi` → LIPID MAPS.
+Run the query on the **calling** endpoint (`database=wikipathways` / `idsm`; for the
+LIPID MAPS join, `database=lipidmaps` with `endpoint_name=ebi`), not the one inside
+`SERVICE`: routed to the remote endpoint instead it fails or returns 0 rows. The direction
+matters — `lipidmaps` cannot call out: every `SERVICE` from it returned HTTP 502 after
+~60 s. Copy the MIE's `cross_db` example rather than writing one; each carries its own
+limits (bind the join key locally first, cap the bindings before crossing). Other RDF
+Portal endpoints have not been verified as callers — do not assume it works there.
 
 ---
 

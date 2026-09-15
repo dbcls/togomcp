@@ -558,7 +558,8 @@ claude mcp remove togomcp --scope user   # スコープを指定して削除
 <p>TogoMCP は Claude 専用ではありません。ただしホスト側の事情で癖があります。</p>
 <ul>
 <li><strong>ChatGPT:</strong> Developer Mode（Web のみ、モバイル非対応）。Pro は read/fetch のみですが<strong>それで足ります</strong>。Plus はカスタム MCP コネクタが使えません。
-  ⚠️ <strong>ChatGPT はコネクタ追加時にツール一覧を記録したきり、自動で取り直しません。</strong> 後から追加されたツールは見えないままです。「あるはずのツールが無い」と言われたら <strong>Scan Tools を再実行</strong>するか、コネクタを削除して追加し直してください。なお<strong>データベースの追加は影響しません</strong>（データベース目録は問い合わせ時に配信されるため常に最新です）。</li>
+  <strong>Pro</strong> では、Web ブラウザから TogoMCP を<strong>プラグイン</strong>として追加します（デスクトップアプリにはこの画面がありません）。サイドバーの <strong>Plugins</strong> → <strong>+</strong> → Name に <code>TogoMCP</code>、Connection は <strong>Server URL</strong> に <code>https://togomcp.rdfportal.org/mcp</code>、Authentication は <strong>No Auth</strong> → リスク確認にチェック → <strong>Create</strong> → <strong>Try in Chat</strong>。<strong>「MCP」タブから登録しないでください</strong>。一部のツールが認識・使用されなくなります。
+  ⚠️ <strong>ChatGPT はコネクタ追加時にツール一覧を記録したきり、自動で取り直しません。</strong> 後から追加されたツールは見えないままです。「あるはずのツールが無い」と言われたらアプリの更新が必要です。<strong>Pro</strong> はプラグインを削除して作り直す（Refresh ボタンはありません）、<strong>Business</strong> は管理者が作り直して再公開する、<strong>Enterprise/Edu</strong> は管理者が <strong>Workspace settings → Apps → ⋯ → Action control → Refresh</strong> で更新し、新しいツールを有効にします。なお<strong>データベースの追加は影響しません</strong>（データベース目録は問い合わせ時に配信されるため常に最新です）。</li>
 <li><strong>Gemini / Antigravity:</strong> <code>~/.gemini/config/mcp_config.json</code> に <code>"serverUrl"</code> として指定。TogoMCP は <strong>Streamable HTTP であって SSE ではない</strong>点に注意。</li>
 </ul>
 <hr />
@@ -985,8 +986,14 @@ WHERE {                                   # どんな形のトリプルを探す
 <hr />
 <h2 id="ch03-6">3-6. 落とし穴 — 「間違った答え」ではなく「間違った件数」</h2>
 <p>生命科学 RDF の失敗の多くは<strong>静かに</strong>起きます。エラーは出ません。もっともらしい表が返ってきます。ただし数字が違います。</p>
-<h3>(a) フェデレーション（<code>SERVICE</code>）は使えない</h3>
-<p>複数のエンドポイントを 1 本のクエリで繋ぐ <code>SERVICE</code> 句は、rdfportal.org では<strong>無効化されています</strong>。正しいやり方は、<strong>同一エンドポイント内で <code>GRAPH</code> 句を使って結合する</strong>か、<strong>ID を持って手動で渡り歩く</strong>（第 4 章のやり方）です。</p>
+<h3>(a) フェデレーション（<code>SERVICE</code>）は実用に耐えない</h3>
+<p>複数のエンドポイントを 1 本のクエリで繋ぐ <code>SERVICE</code> 句は、rdfportal.org で<strong>無効化されてはいません</strong>。本書は 2026-08-26 まで「無効化されている」と書いていましたが、これは誤りでした。範囲を絞った <code>SERVICE</code> は実際に外部へ到達し、本物の行を返します（2026-08 の実測で 14 先中 13 先が疎通。存在しないホストを指定すると接続エラー <code>HTCLI HC001</code> で失敗するので、ローカルで代替評価されているのではないことが確認できます）。</p>
+<p>問題は「使えるかどうか」ではなく、<strong>実用に耐えるかどうか</strong>で、理由は 2 つあります。</p>
+<ul>
+<li><strong>無制限のフェデレーション結合は完走しない。</strong> Rhea の 1 列と UniProt の 1 列をエンドポイント跨ぎで結合させたところ、130 秒を超えても結果が返りませんでした。フェデレーションは束縛ごとにリモート側を再評価させるため、どちらのエンジンも境界を越えた実行計画を立てられません。</li>
+<li><strong>Virtuoso のフェデレーションコンパイラが <code>SERVICE</code> ブロック内の一般的な SPARQL を拒否します。</strong> 集約関数は <code>SP031</code>（"the support of aggregate function call syntax is not enabled for the SERVICE"）で即座に失敗し、<code>BIND</code> 式や一部の構文も同じ壁に当たります。</li>
+</ul>
+<p>したがって実務上の指針は変わりません。<strong>同一エンドポイント内で <code>GRAPH</code> 句を使って結合する</strong>か、<strong>ID を持って手動で渡り歩く</strong>（第 4 章のやり方）です。変わるのは理由づけだけですが、その差は重要です。「無効化されている」は試すなという意味になりますが、「規模に耐えない」なら、他に手段がないときに範囲を絞った小さな <code>SERVICE</code> を使うのは正当な選択だからです。</p>
 <h3>(b) 同居エンドポイントでの行数膨張</h3>
 <p>1 つの SPARQL エンドポイントに複数のデータセットが同居していることがあります。共有されるノード（生物種の IRI など）に対して、複数のデータセットが<strong>それぞれ述語を宣言している</strong>と、グラフを指定しないクエリは全部を拾い、<strong>行数が黙って膨らみます</strong>。</p>
 <p>対策は、MIE が指示するとおり <code>FROM &lt;グラフ名&gt;</code> でグラフを固定することです。</p>
@@ -2211,7 +2218,11 @@ COUNT(DISTINCT ?protein) = 52      ← 19% の差
 </tr>
 <tr>
 <td>ChatGPT で「そのツールは無い」と言われる</td>
-<td><strong>Scan Tools を再実行</strong>するか、コネクタを削除して追加し直す。ChatGPT はツール一覧を自動で取り直しません</td>
+<td>アプリのツール一覧が古い（ChatGPT は自動で取り直しません）。<strong>Pro:</strong> プラグインを削除して作り直す（Refresh ボタンはありません）。<strong>Business:</strong> 管理者が作り直して再公開。<strong>Enterprise/Edu:</strong> 管理者が Action control の <strong>Refresh</strong> で更新し、新しいツールを有効化</td>
+</tr>
+<tr>
+<td>ChatGPT（Pro）が TogoMCP の一部のツールを使わない</td>
+<td>「MCP」タブから登録した可能性があります。削除して、<strong>Plugins</strong> → <strong>+</strong>（Web ブラウザのみ）から<strong>プラグイン</strong>として追加し直す</td>
 </tr>
 </tbody>
 </table>

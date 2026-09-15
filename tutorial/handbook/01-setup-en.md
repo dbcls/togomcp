@@ -141,7 +141,8 @@ For details, go to [08. Troubleshooting](08-troubleshooting-en.md).
 TogoMCP is not Claude-only. But each host has its quirks.
 
 - **ChatGPT:** Developer Mode (Web only, not supported on mobile). Pro has read/fetch only, but **that is enough**. Plus cannot use custom MCP connectors.
-  ⚠️ **ChatGPT records the tool list once, when the connector is added, and never re-fetches it automatically.** Tools added later stay invisible. If it tells you a tool that should exist is not there, **run Scan Tools again**, or delete the connector and add it back. Note that **adding databases is not affected** (the database catalog is delivered at query time, so it is always current).
+  On **Pro**, add TogoMCP as a **plugin** from a web browser (the desktop app does not show this page): **Plugins** in the sidebar → **+** → Name `TogoMCP`, Connection **Server URL** `https://togomcp.rdfportal.org/mcp`, Authentication **No Auth** → tick the risk confirmation → **Create** → **Try in Chat**. **Do not register it from the “MCP” tab**: some tools are then not recognized or used.
+  ⚠️ **ChatGPT records the tool list once, when the connector is added, and never re-fetches it automatically.** Tools added later stay invisible. If it tells you a tool that should exist is not there, the app must be updated: on **Pro**, delete the plugin and create it again (there is no Refresh button); on **Business**, an admin recreates and republishes it; on **Enterprise/Edu**, an admin refreshes it under **Workspace settings → Apps → ⋯ → Action control → Refresh** and switches on the new tools. Note that **adding databases is not affected** (the database catalog is delivered at query time, so it is always current).
 - **Gemini / Antigravity:** specify it as `"serverUrl"` in `~/.gemini/config/mcp_config.json`. Note that TogoMCP is **Streamable HTTP, not SSE**.
 
 ---

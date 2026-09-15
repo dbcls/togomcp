@@ -141,7 +141,8 @@ TogoMCP からどんなデータベースが使えるの？
 TogoMCP は Claude 専用ではありません。ただしホスト側の事情で癖があります。
 
 - **ChatGPT:** Developer Mode（Web のみ、モバイル非対応）。Pro は read/fetch のみですが**それで足ります**。Plus はカスタム MCP コネクタが使えません。
-  ⚠️ **ChatGPT はコネクタ追加時にツール一覧を記録したきり、自動で取り直しません。** 後から追加されたツールは見えないままです。「あるはずのツールが無い」と言われたら **Scan Tools を再実行**するか、コネクタを削除して追加し直してください。なお**データベースの追加は影響しません**（データベース目録は問い合わせ時に配信されるため常に最新です）。
+  **Pro** では、Web ブラウザから TogoMCP を**プラグイン**として追加します（デスクトップアプリにはこの画面がありません）。サイドバーの **Plugins** → **+** → Name に `TogoMCP`、Connection は **Server URL** に `https://togomcp.rdfportal.org/mcp`、Authentication は **No Auth** → リスク確認にチェック → **Create** → **Try in Chat**。**「MCP」タブから登録しないでください**。一部のツールが認識・使用されなくなります。
+  ⚠️ **ChatGPT はコネクタ追加時にツール一覧を記録したきり、自動で取り直しません。** 後から追加されたツールは見えないままです。「あるはずのツールが無い」と言われたらアプリの更新が必要です。**Pro** はプラグインを削除して作り直す（Refresh ボタンはありません）、**Business** は管理者が作り直して再公開する、**Enterprise/Edu** は管理者が **Workspace settings → Apps → ⋯ → Action control → Refresh** で更新し、新しいツールを有効にします。なお**データベースの追加は影響しません**（データベース目録は問い合わせ時に配信されるため常に最新です）。
 - **Gemini / Antigravity:** `~/.gemini/config/mcp_config.json` に `"serverUrl"` として指定。TogoMCP は **Streamable HTTP であって SSE ではない**点に注意。
 
 ---

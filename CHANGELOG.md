@@ -13,6 +13,109 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.15.0] - 2026-09-15
+
+TogoMCP can now help with rare-disease diagnosis. Two new tools wrap the PubCaseFinder service:
+one ranks diseases or genes against a patient's HPO phenotypes, the other lists published case
+reports for a disease. Two new databases arrive with them: **PubCaseFinder**'s own RDF and
+**LIPID MAPS**, the reference lipid classification. The tool list grew, so a client with a cached
+tool list sees the two tools only after it refreshes; the two `database=` values work everywhere
+immediately. No existing tool, parameter or return shape changed.
+
+<!-- whatsnew: 2026-09-15 | Rare-disease diagnosis support: <strong>PubCaseFinder</strong> now ranks diseases and genes against a patient's HPO phenotypes and lists published case reports, in English and Japanese — plus <strong>LIPID MAPS</strong>, 52,175 classified lipids searchable by the lipidomics shorthand (such as <code>PC 34:1</code>) that result tables report. -->
+
+### Added
+
+- **`pubcasefinder_rank_by_phenotypes` and `pubcasefinder_get_case_reports` — two tools on a new
+  `pubcasefinder` sub-server.** The first ranks OMIM diseases, Orphanet diseases or genes by how well
+  they match a set of HPO phenotypes: PubCaseFinder's differential-diagnosis scoring, which weights
+  terms by information content and matches through the HPO hierarchy. The RDF cannot reproduce this.
+  For three Marfan-like phenotypes, a SPARQL "has all three" query finds 6 unordered diseases; the
+  ranking puts 9 at score 1.0 and grades every partial match below them. The second lists published
+  case reports per MONDO disease, in English (PubMed) or Japanese (J-STAGE). That index is built by
+  text mining, not MeSH: 507 of Marfan syndrome's 1,615 reports carry no Marfan MeSH heading, and the
+  MeSH route over the pubmed RDF did not finish in 200 s. Results carry names, MONDO IDs and genes, so
+  the output of one tool feeds the other. Why only these two: most of the PubCaseFinder REST API is a
+  front end over the same RDF that `database="pubcasefinder"` already serves. Two things to know. The
+  documented ranking endpoint returns 404, so the tool uses the path the PubCaseFinder web app calls.
+  And DBCLS caps API use at 10 requests/minute, 100/hour and 1,000/day for the whole server; the tools
+  cache results and refuse with an error, rather than exceed that. New tools reach a client only
+  after it refreshes its tool list, so the Usage Guide's stale-tool-list canary now names
+  `pubcasefinder_rank_by_phenotypes`.
+- **`pubcasefinder` — PubCaseFinder RDF, the 41st database** (RDF Portal `primary`). The knowledge
+  base behind DBCLS's rare-disease diagnosis-support service: 18,375 OMIM and Orphanet diseases,
+  379,263 disease–phenotype (HPO) annotations from the HPO consortium, Orphanet and DBCLS text
+  mining (the text-mined ones cite PubMed articles that carry MeSH subject terms), 15,446
+  gene–disease associations, inheritance modes, and the endpoint's only Japanese HPO and disease
+  names. The MIE documents traps that return a plausible wrong answer rather than an error: HP
+  labels are re-declared by three ontology graphs (×3.15 rows unpinned); 82% of Marfan syndrome's
+  322 phenotypes are text-mined only; OMIM and Orphanet list the same syndromes separately (17,830
+  diseases collapse to 14,385 MONDO terms); and the article→MeSH predicate is minted without its
+  separator (`fabiohasSubjectTerm`), so the correctly spelled one finds nothing.
+- **`lipidmaps` — LIPID MAPS Structure Database, the 42nd database** (contributed by @kozo2, #226).
+  52,175 classified lipids under the eight-category LIPID MAPS hierarchy, with formula, monoisotopic
+  mass, InChIKey, ChEBI/SwissLipids cross-references, and the lipidomics shorthand used in result
+  tables (`PC 34:1`): 34,567 structures map onto 6,988 shorthand strings. No other database here
+  resolves that notation. It runs on LIPID MAPS' own endpoint, and it breaks habits the rest of the
+  corpus teaches. It has no named graphs, so a `GRAPH`/`FROM` pin returns nothing. Its
+  category-to-category `rdfs:subClassOf` runs upside down, so the obvious "all lipids in category X"
+  query returns 0 rows. Cross-database joins work only when driven from RDF Portal's `ebi` endpoint
+  with LIPID MAPS inside `SERVICE`; every outbound `SERVICE` from LIPID MAPS returned a gateway 502.
+  The data is CC BY 4.0, so cite LIPID MAPS when you use it.
+
+### Changed
+
+- **The NCBI tools accept E-utilities' own parameter names**: `retmax`/`retstart` on
+  `ncbi_esearch` (for `max_results`/`start_index`) and `id` on `ncbi_esummary`/`ncbi_efetch` (for
+  `ids`). Agents that know the raw API reach for these names, and until now every such call was
+  rejected before it ran: 134 calls in the 2026-07-27→09-15 production log, from claude-code,
+  claude.ai, Cursor and scripted clients alike. If both names are sent, `ids` wins over `id`, but
+  `retmax`/`retstart` win over `max_results`/`start_index` (those have defaults, so the server can't
+  tell whether the caller set them).
+- **Old tool names from out-of-date client tool lists now work or explain themselves.** ChatGPT
+  connectors cache the tool list and never refetch it, so some still call names this server dropped
+  months ago. `ncbi_ncbi_esearch`/`_esummary`/`_efetch`/`_list_databases` (renamed in April) are now
+  served under their current names, with a notice at the end of the result telling the agent to have
+  the user refresh the connector. Before this, every NCBI call from such a client failed: 107 calls
+  in the 2026-07-27→09-15 production log, one Codex user on five separate days in September.
+  `find_databases`/`list_databases`/`list_categories` still fail, but the error now says they were
+  retired and points to the Usage Guide's Database Catalog instead of a bare "Unknown tool". Neither
+  set of names appears in `tools/list`, and the call log keeps the name the client sent.
+
+### Fixed
+
+- **`run_sparql`'s empty-result advice was wrong on endpoints with no named graphs.** Its probe
+  for telling "the entity is absent" from "the query is broken" was always
+  `ASK { GRAPH <the-graph> { <anchor> ?p ?o } }`. On an endpoint that keeps everything in the
+  default graph (LIPID MAPS, PR #226), that probe is false for every entity, so a broken query was
+  diagnosed as a true negative. The probe now follows the query's own scoping: it uses `GRAPH` only
+  when the query pins a graph.
+- **ChatGPT setup instructions: updating the tool list is now described correctly.** Every page told
+  users to "re-run Scan Tools, or remove and re-add the connector." OpenAI's help article
+  ("Developer mode and MCP apps in ChatGPT", revised about 2026-08-22, checked from a browser copy
+  because the page blocks automated fetches) says ChatGPT uses a *frozen snapshot* of the tool list
+  and updating it depends on the plan. On **Business**, published apps can't be updated at all, so an
+  admin must recreate and republish. On **Enterprise/Edu**, an admin clicks **Refresh** under
+  *Action control*, and new tools arrive **disabled** until switched on. So a workspace user following
+  the old advice couldn't have fixed it, and an Enterprise admin who refreshed still wouldn't see new
+  tools. The intro page, the handbook (EN/JA), the Usage Guide's stale-tool-list row, and the notice
+  the server attaches to old tool names now give the per-plan steps. The intro page also notes that
+  deep research can use TogoMCP but agent mode can't, that a tool selection applies to one message
+  (so @mention it again), and that OpenAI has paused new sign-ups to the $200 Pro plan. The plan tiers
+  and menu paths were confirmed unchanged; a third-party blog and OpenAI's undated developer guide
+  still disagree with them and were not followed.
+- **ChatGPT Pro: add TogoMCP as a Plugin, not from the "MCP" tab.** A Pro user found that when
+  TogoMCP is registered from the "MCP" tab, some of its tools are not recognized or used. Adding it
+  through the newer **Plugins** page works: Plugins → **+** → Server URL, No Auth → **Create** →
+  **Try in Chat**. The page needs Developer mode and a web browser; it doesn't appear in the desktop
+  app. The intro page and handbook (EN/JA) now give this as the recommended Pro route, keep the
+  App route for Business/Enterprise/Edu, and add a troubleshooting row for "ChatGPT ignores some
+  tools". A plugin has no Refresh button, so on Pro a stale tool list is fixed by deleting the
+  plugin and creating it again; the server's stale-name notice and the Usage Guide say so.
+- **Tutorial HTML regenerated.** The published EN/JA tutorials still said `SERVICE` federation is
+  disabled on rdfportal.org, a claim the handbook source had corrected on 2026-08-26 without the
+  HTML being rebuilt.
+
 ## [2.14.0] - 2026-09-15
 
 Two new databases, both on endpoints of their own rather than on RDF Portal: **WikiPathways**
@@ -2464,7 +2567,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.14.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.15.0...HEAD
+[2.15.0]: https://github.com/dbcls/togomcp/compare/v2.14.0...v2.15.0
 [2.14.0]: https://github.com/dbcls/togomcp/compare/v2.13.0...v2.14.0
 [2.13.0]: https://github.com/dbcls/togomcp/compare/v2.12.2...v2.13.0
 [2.12.2]: https://github.com/dbcls/togomcp/compare/v2.12.1...v2.12.2

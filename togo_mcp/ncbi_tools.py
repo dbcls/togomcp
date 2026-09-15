@@ -348,6 +348,8 @@ async def esearch(
     search_field: str | None = None,
     db: str = "",
     term: str = "",
+    retmax: int | None = None,
+    retstart: int | None = None,
 ) -> list[TextContent]:
     """
     Search NCBI databases using E-utilities esearch API.
@@ -386,12 +388,14 @@ async def esearch(
             - "pcsubstance": PubChem Substance
             - "pcassay": PubChem BioAssay
         query: Search query with NCBI field tags and boolean operators (alias: `term`)
-        max_results: Maximum number of results to return (default: 20)
-        start_index: Starting index for pagination (default: 0)
+        max_results: Maximum number of results to return (default: 20; alias: `retmax`)
+        start_index: Starting index for pagination (default: 0; alias: `retstart`)
         sort_by: Optional sort order (e.g., "relevance", "pub_date" for PubMed)
         search_field: Optional specific field to search in
         db: Alias for `database`.
         term: Alias for `query`.
+        retmax: Alias for `max_results` (the E-utilities name).
+        retstart: Alias for `start_index` (the E-utilities name).
 
     Returns:
         Formatted search results with database-specific IDs
@@ -422,9 +426,14 @@ async def esearch(
 
     Learn more: https://www.ncbi.nlm.nih.gov/books/NBK3837/
     """
-    # Accept `db` as alias for `database`, and `term` as alias for `query`.
+    # Accept the E-utilities parameter names as aliases (`db`, `term`,
+    # `retmax`, `retstart`): agents that know the raw API reach for them.
     database = database or db
     query = query or term
+    if retmax is not None:
+        max_results = retmax
+    if retstart is not None:
+        start_index = retstart
     if not database:
         return [
             TextContent(
@@ -520,6 +529,7 @@ async def esummary(
     database: str = "",
     ids: str | list[str] = "",
     db: str = "",
+    id: str | list[str] = "",
 ) -> list[TextContent]:
     """
     Fetch summary information for given IDs using esummary.
@@ -533,13 +543,15 @@ async def esummary(
         database: NCBI database name (alias: `db`)
         ids: IDs to fetch summaries for. Accepts either a list of strings
             (e.g., ["123", "456"]) or a comma-separated string ("123,456").
+            (alias: `id`)
         db: Alias for `database`.
+        id: Alias for `ids` (the E-utilities name).
 
     Returns:
         Parsed JSON response with summary data
     """
     database = database or db
-    id_list = _normalize_ids(ids)
+    id_list = _normalize_ids(ids or id)
     if not database:
         return [
             TextContent(
@@ -548,7 +560,7 @@ async def esummary(
             )
         ]
     if not id_list:
-        return [TextContent(type="text", text="Error: `ids` must not be empty.")]
+        return [TextContent(type="text", text="Error: `ids` (or alias `id`) must not be empty.")]
 
     # Normalize database name
     db_aliases = {"ncbigene": "gene"}
@@ -602,6 +614,7 @@ async def efetch(
     rettype: str = "xml",
     retmode: str = "text",
     db: str = "",
+    id: str | list[str] = "",
 ) -> list[TextContent]:
     """
     Fetch full records using efetch.
@@ -611,15 +624,17 @@ async def efetch(
         database: NCBI database name (alias: `db`)
         ids: IDs to fetch. Accepts either a list of strings
             (e.g., ["123", "456"]) or a comma-separated string ("123,456").
+            (alias: `id`)
         rettype: Return type (xml, fasta, gb, etc.)
         retmode: Return mode (text, xml, json where applicable)
         db: Alias for `database`.
+        id: Alias for `ids` (the E-utilities name).
 
     Returns:
         Response text in requested format
     """
     database = database or db
-    id_list = _normalize_ids(ids)
+    id_list = _normalize_ids(ids or id)
     if not database:
         return [
             TextContent(
@@ -628,7 +643,7 @@ async def efetch(
             )
         ]
     if not id_list:
-        return [TextContent(type="text", text="Error: `ids` must not be empty.")]
+        return [TextContent(type="text", text="Error: `ids` (or alias `id`) must not be empty.")]
 
     # Normalize database name
     db_aliases = {"ncbigene": "gene"}

@@ -302,6 +302,11 @@ _GROUP_BY_RE = _re.compile(r"\bgroup\s+by\b", _re.I)
 # A quoted literal inside a VALUES block, i.e. the literal-typing trap's worst spot.
 _VALUES_IRI_RE = _re.compile(r"\bvalues\b[^{]*\{[^}]*<https?://", _re.I | _re.S)
 _QUOTED_LITERAL_RE = _re.compile(r'"[^"]*"')
+# Does the query scope itself to a graph? The settling probe must copy that scoping
+# EXACTLY. A probe that always says `GRAPH <the-graph>` is false for every entity on an
+# endpoint with no named graphs (lipidmaps keeps everything in the default graph), so
+# it reported cause (A) "the entity is absent" for queries that were merely broken.
+_GRAPH_SCOPED_RE = _re.compile(r"\b(?:graph|from(?:\s+named)?)\s*<", _re.I)
 
 _LONG_QUERY_CHARS = 1200
 
@@ -374,7 +379,12 @@ def _empty_result_note(csv_text: str, sparql_query: str) -> str | None:
         "      whole join. The real answer is non-zero and you have not found it.",
         "Settle it with ONE probe — this is the pivot the 2-consecutive-SPARQL rule",
         "reserves, not a third query: drop to the single most specific pattern, e.g.",
-        "  ASK { GRAPH <the-graph> { <your-anchor-IRI> ?p ?o } }",
+        (
+            "  ASK { GRAPH <the-graph-your-query-pins> { <your-anchor-IRI> ?p ?o } }"
+            if _GRAPH_SCOPED_RE.search(query)
+            else "  ASK { <your-anchor-IRI> ?p ?o }   (unpinned, like your query — adding "
+            "GRAPH here is false for everything on a database with no named graphs)"
+        ),
         "false => (A), the entity is absent. true => (B), a later pattern is wrong.",
     ]
 

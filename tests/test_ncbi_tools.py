@@ -1,7 +1,11 @@
 """Tests for togo_mcp.ncbi_tools module."""
 
+import asyncio
 
-from togo_mcp.ncbi_tools import _validate_query_field_tags
+from fastmcp import Client
+
+from togo_mcp import ncbi_tools
+from togo_mcp.ncbi_tools import _validate_query_field_tags, ncbi_mcp
 
 
 class TestValidateQueryFieldTags:
@@ -79,3 +83,79 @@ class TestValidateQueryFieldTags:
         result = _validate_query_field_tags("test query", "unknown_db")
         assert result["is_critical"] is False
         assert isinstance(result["issues"], list)
+
+
+class _FakeResponse:
+    status_code = 200
+    is_success = True
+    text = "record"
+
+    def json(self) -> dict:
+        return {"result": {}}
+
+
+class _FakeAsyncClient:
+    """Stands in for httpx.AsyncClient; records the params of each GET."""
+
+    calls: list[dict] = []
+
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    async def __aenter__(self) -> "_FakeAsyncClient":
+        return self
+
+    async def __aexit__(self, *exc) -> None:
+        return None
+
+    async def get(self, url: str, params: dict) -> _FakeResponse:
+        _FakeAsyncClient.calls.append(params)
+        return _FakeResponse()
+
+
+def _call(tool: str, args: dict):
+    async def run():
+        async with Client(ncbi_mcp) as client:
+            return await client.call_tool(tool, args)
+
+    return asyncio.run(run())
+
+
+class TestEutilsParameterAliases:
+    """Agents that know the raw E-utilities API send its parameter names
+    (`id`, `retmax`, `retstart`). The 2026-07-27→09-15 production log carried
+    134 calls rejected for exactly these; they must now validate and map."""
+
+    def _stub_http(self, monkeypatch) -> None:
+        _FakeAsyncClient.calls = []
+        monkeypatch.setattr(ncbi_tools, "RATE_LIMIT_DELAY", 0)
+        monkeypatch.setattr(ncbi_tools.httpx, "AsyncClient", _FakeAsyncClient)
+        monkeypatch.setattr(ncbi_tools, "raise_for_status_with_body", lambda *a, **k: None)
+
+    def test_efetch_accepts_id(self, monkeypatch) -> None:
+        self._stub_http(monkeypatch)
+        _call("efetch", {"db": "pubmed", "id": "10194345", "rettype": "abstract"})
+        assert _FakeAsyncClient.calls[-1]["id"] == "10194345"
+
+    def test_esummary_accepts_id_list(self, monkeypatch) -> None:
+        self._stub_http(monkeypatch)
+        _call("esummary", {"database": "pubmed", "id": ["1", "2"]})
+        assert _FakeAsyncClient.calls[-1]["id"] == "1,2"
+
+    def test_ids_wins_over_id(self, monkeypatch) -> None:
+        self._stub_http(monkeypatch)
+        _call("efetch", {"database": "pubmed", "ids": "7", "id": "8"})
+        assert _FakeAsyncClient.calls[-1]["id"] == "7"
+
+    def test_esearch_accepts_retmax_and_retstart(self, monkeypatch) -> None:
+        seen: dict = {}
+
+        async def fake_api(**kwargs):
+            seen.update(kwargs)
+            return {"esearchresult": {"count": "0", "idlist": []}}
+
+        monkeypatch.setattr(ncbi_tools, "_ncbi_esearch_api", fake_api)
+        # A string retmax ("40") was among the rejected calls; it must coerce.
+        _call("esearch", {"db": "pubmed", "term": "TDP-43", "retmax": "40", "retstart": 5})
+        assert seen["retmax"] == 40
+        assert seen["retstart"] == 5

@@ -1,6 +1,6 @@
 ## 📚 DATABASE CATALOG
 
-All 40 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
+All 42 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -8,17 +8,17 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 
 - **annotation** — `pubtator` `uniprot`
 - **antimicrobial** — `amrportal`
-- **compound** — `chebi` `chembl` `idsm` `massbank` `pubchem` `wikipathways`
-- **disease** — `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `togovar`
+- **compound** — `chebi` `chembl` `idsm` `lipidmaps` `massbank` `pubchem` `wikipathways`
+- **disease** — `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `togovar`
 - **drug_target** — `chembl` `idsm`
 - **enzymology** — `brenda`
-- **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `medgen` `ncbigene` `wikipathways`
+- **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `medgen` `ncbigene` `pubcasefinder` `wikipathways`
 - **genomics** — `fantabio` `gwascatalog` `hco` `hgnc` `mco` `mogplus` `oma` `togovar`
 - **glycan** — `glycosmos`
 - **literature** — `pubmed` `pubtator`
 - **materials** — `supercon`
 - **microbe** — `amrportal` `bacdive` `mediadive` `nbrc`
-- **ontology** — `chebi` `go` `hco` `mco` `mesh` `mondo` `nando` `ontology`
+- **ontology** — `chebi` `go` `hco` `lipidmaps` `mco` `mesh` `mondo` `nando` `ontology`
 - **pathway** — `reactome` `wikipathways`
 - **physics** — `supercon`
 - **protein** — `brenda` `glycosmos` `jpostdb` `oma` `pdb` `uniprot`
@@ -64,6 +64,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: chemical structure, substructure search, similarity search, smiles, molfile, cheminformatics, small molecule, compound, bioactivity, mass spectra, scaffold, chemical identifier mapping
 - **jpostdb** — jPOST — Japan ProteOme STandard repository. Reanalysed mass-spectrometry proteomics submissions: each Project (JPST id) bundles Datasets with experimental Profiles (sample tissue/disease/species, enzyme, MS mode) plus identified Peptides, PSMs… _(categories: protein)_  
   keywords: proteomics, mass spectrometry, peptide, psm, peptide spectrum match, protein identification, post-translational modification, ptm, unimod, psi-ms, reanalysis, proteome, shotgun proteomics
+- **lipidmaps** — LIPID MAPS Structure Database (LMSD). Classified lipid structures with molecular formula, monoisotopic mass, InChI/InChIKey and lipidomics shorthand notation, organised under the eight-category LIPID MAPS classification hierarchy. _(categories: compound, ontology)_  
+  keywords: lipid, lipidomics, fatty acid, glycerophospholipid, sphingolipid, sterol, metabolite, molecular formula, monoisotopic mass, inchikey, shorthand notation, mass spectrometry
 - **massbank** — MassBank — reference mass spectra for small molecules. Open repository of reference MS/MS mass spectra for small molecules (metabolites, drugs, natural products, environmental chemicals): each record links a measured peak list + analytical/instrument met… _(categories: compound)_  
   keywords: mass spectrometry, mass spectra, ms/ms, tandem ms, metabolomics, metabolite, spectral library, fragmentation, peak, molecular formula, inchikey, small molecule, compound identification, splash, exposomics, instrument type, ion mode
 - **mco** — MCO — Mouse Chromosome Ontology. Reference ontology of the mouse (Mus musculus) chromosome set — the 22 chromosomes (1-19, X, Y, MT) as owl:Classes, each with per-build GRCm38 (mm10) and GRCm39 (mm39) instances carrying chromosome l… _(categories: genomics, ontology)_  
@@ -90,6 +92,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: ontology, controlled vocabulary, term resolution, iri resolution, label, synonym, subsumption, subclassof, part of, partonomy, anatomy, phenotype, cell type, evidence code, sequence feature, obsolete term, obo, hierarchy expansion
 - **pdb** — PDB — Protein Data Bank. 3D structural data for biological macromolecules (~255,508 entries) from X-ray crystallography, cryo-EM, and NMR, with experimental method, resolution, biological assembly / oligomeric state, EC enzy… _(categories: protein, structure)_  
   keywords: protein structure, 3d structure, x-ray crystallography, cryo-em, nmr, macromolecule, resolution, biological assembly, oligomeric state, ec number, enzyme, mutation, disulfide, metal coordination, sifts, pfam, interpro, cath, scop, ligand, binding site
+- **pubcasefinder** — PubCaseFinder RDF. Rare-disease knowledge base behind the PubCaseFinder diagnosis-support service: OMIM and Orphanet diseases linked to HPO phenotypes (curated and text-mined, with PubMed evidence), causal genes, inher… _(categories: disease, gene)_  
+  keywords: rare disease, phenotype, hpo, disease-phenotype association, gene-disease association, omim, orphanet, inheritance, differential diagnosis, text mining, japanese, mondo mapping
 - **pubchem** — PubChem RDF. Chemical compounds + substances with typed molecular descriptors (SMILES, InChI, MW, formula, XLogP3), ontology classifications (ChEBI/SNOMED/NCI), FDA drug roles, stereoisomer links, and a structure… _(categories: compound)_  
   keywords: compound, chemical, molecule, drug, cid, smiles, inchi, molecular weight, descriptor, substance, bioassay, bioactivity, assay outcome, protein target, ic50, pathway, chebi, fda approved, patent
 - **pubmed** — PubMed — NCBI biomedical literature. 37M+ MEDLINE citations (articles, reviews) with title/abstract, journal + bibliographic metadata, ordered author lists, and MeSH controlled-vocabulary topic/publication-type annotations — the literat… _(categories: literature)_  

@@ -623,7 +623,8 @@ claude mcp remove togomcp --scope user   # remove within a specified scope
 <p>TogoMCP is not Claude-only. But each host has its quirks.</p>
 <ul>
 <li><strong>ChatGPT:</strong> Developer Mode (Web only, not supported on mobile). Pro has read/fetch only, but <strong>that is enough</strong>. Plus cannot use custom MCP connectors.
-  ⚠️ <strong>ChatGPT records the tool list once, when the connector is added, and never re-fetches it automatically.</strong> Tools added later stay invisible. If it tells you a tool that should exist is not there, <strong>run Scan Tools again</strong>, or delete the connector and add it back. Note that <strong>adding databases is not affected</strong> (the database catalog is delivered at query time, so it is always current).</li>
+  On <strong>Pro</strong>, add TogoMCP as a <strong>plugin</strong> from a web browser (the desktop app does not show this page): <strong>Plugins</strong> in the sidebar → <strong>+</strong> → Name <code>TogoMCP</code>, Connection <strong>Server URL</strong> <code>https://togomcp.rdfportal.org/mcp</code>, Authentication <strong>No Auth</strong> → tick the risk confirmation → <strong>Create</strong> → <strong>Try in Chat</strong>. <strong>Do not register it from the “MCP” tab</strong>: some tools are then not recognized or used.
+  ⚠️ <strong>ChatGPT records the tool list once, when the connector is added, and never re-fetches it automatically.</strong> Tools added later stay invisible. If it tells you a tool that should exist is not there, the app must be updated: on <strong>Pro</strong>, delete the plugin and create it again (there is no Refresh button); on <strong>Business</strong>, an admin recreates and republishes it; on <strong>Enterprise/Edu</strong>, an admin refreshes it under <strong>Workspace settings → Apps → ⋯ → Action control → Refresh</strong> and switches on the new tools. Note that <strong>adding databases is not affected</strong> (the database catalog is delivered at query time, so it is always current).</li>
 <li><strong>Gemini / Antigravity:</strong> specify it as <code>"serverUrl"</code> in <code>~/.gemini/config/mcp_config.json</code>. Note that TogoMCP is <strong>Streamable HTTP, not SSE</strong>.</li>
 </ul>
 <hr />
@@ -1051,8 +1052,14 @@ WHERE {                                   # what shape of triple to look for
 <hr />
 <h2 id="ch03-6">3-6. The traps — not "the wrong answer" but "the wrong count"</h2>
 <p>Most failures in life-science RDF happen <strong>silently</strong>. No error appears. A plausible-looking table comes back. The numbers are just wrong.</p>
-<h3>(a) Federation (<code>SERVICE</code>) is not available</h3>
-<p>The <code>SERVICE</code> clause, which joins multiple endpoints in a single query, is <strong>disabled</strong> on rdfportal.org. The correct approach is either to <strong>join within a single endpoint using <code>GRAPH</code> clauses</strong>, or to <strong>carry IDs and walk across manually</strong> (the Chapter 4 approach).</p>
+<h3>(a) Federation (<code>SERVICE</code>) does not survive contact with real data</h3>
+<p>The <code>SERVICE</code> clause joins multiple endpoints in a single query. On rdfportal.org it is <strong>not disabled</strong> — this handbook said it was until 2026-08-26, and that was wrong. A bounded <code>SERVICE</code> genuinely reaches out and returns real rows: 13 of 14 external endpoints tested were reachable in 2026-08, and a query against a nonexistent host fails with a connection error (<code>HTCLI HC001</code>) rather than being answered locally, which is how we know the traffic is real.</p>
+<p>What fails is <code>SERVICE</code> <strong>in practice</strong>, for two reasons that matter more than availability:</p>
+<ul>
+<li><strong>An unbounded federated join does not finish.</strong> Joining a whole Rhea column to a whole UniProt column across endpoints ran past 130 seconds with no result. Federation makes the remote side re-evaluate for every binding, and neither engine can plan across the boundary.</li>
+<li><strong>Virtuoso's federation compiler rejects common SPARQL inside a <code>SERVICE</code> block.</strong> An aggregate fails immediately with <code>SP031</code> ("the support of aggregate function call syntax is not enabled for the SERVICE"); <code>BIND</code> expressions and some syntax hit the same wall.</li>
+</ul>
+<p>So the practical advice is unchanged: <strong>join within a single endpoint using <code>GRAPH</code> clauses</strong>, or <strong>carry IDs and walk across manually</strong> (the Chapter 4 approach). Only the reason is different — and the difference is worth knowing, because "disabled" tells you not to try, while "does not scale" tells you a small, bounded <code>SERVICE</code> is a legitimate tool when nothing else reaches.</p>
 <h3>(b) Row inflation at co-resident endpoints</h3>
 <p>A single SPARQL endpoint may host several datasets side by side. When multiple datasets <strong>each declare predicates</strong> on a shared node (an organism IRI, say), a query that does not specify a graph picks up all of them, and <strong>the row count inflates silently</strong>.</p>
 <p>The countermeasure is to pin the graph with <code>FROM &lt;graph name&gt;</code>, exactly as the MIE instructs.</p>
@@ -2273,7 +2280,11 @@ in a form I can save to files as-is.
 </tr>
 <tr>
 <td>ChatGPT says "there is no such tool"</td>
-<td><strong>Re-run Scan Tools</strong>, or delete the connector and add it again. ChatGPT does not re-fetch the tool list on its own</td>
+<td>The app's tool list is out of date — ChatGPT never re-fetches it. <strong>Pro:</strong> delete the plugin and create it again (there is no Refresh button). <strong>Business:</strong> an admin recreates and republishes it. <strong>Enterprise/Edu:</strong> an admin clicks <strong>Refresh</strong> under Action control and enables the new tools</td>
+</tr>
+<tr>
+<td>ChatGPT (Pro) ignores some TogoMCP tools</td>
+<td>It was probably registered from the “MCP” tab. Delete it and add TogoMCP as a <strong>plugin</strong> instead: <strong>Plugins</strong> → <strong>+</strong> (web browser only)</td>
 </tr>
 </tbody>
 </table>
