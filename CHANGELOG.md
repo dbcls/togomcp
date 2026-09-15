@@ -13,6 +13,17 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.15.0] - 2026-09-15
+
+TogoMCP can now help with rare-disease diagnosis. Two new tools wrap the PubCaseFinder service:
+one ranks diseases or genes against a patient's HPO phenotypes, the other lists published case
+reports for a disease. Two new databases arrive with them: **PubCaseFinder**'s own RDF and
+**LIPID MAPS**, the reference lipid classification. The tool list grew, so a client with a cached
+tool list sees the two tools only after it refreshes; the two `database=` values work everywhere
+immediately. No existing tool, parameter or return shape changed.
+
+<!-- whatsnew: 2026-09-15 | Rare-disease diagnosis support: <strong>PubCaseFinder</strong> now ranks diseases and genes against a patient's HPO phenotypes and lists published case reports, in English and Japanese — plus <strong>LIPID MAPS</strong>, 52,175 classified lipids searchable by the lipidomics shorthand (such as <code>PC 34:1</code>) that result tables report. -->
+
 ### Added
 
 - **`pubcasefinder_rank_by_phenotypes` and `pubcasefinder_get_case_reports` — two tools on a new
@@ -41,6 +52,16 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   322 phenotypes are text-mined only; OMIM and Orphanet list the same syndromes separately (17,830
   diseases collapse to 14,385 MONDO terms); and the article→MeSH predicate is minted without its
   separator (`fabiohasSubjectTerm`), so the correctly spelled one finds nothing.
+- **`lipidmaps` — LIPID MAPS Structure Database, the 42nd database** (contributed by @kozo2, #226).
+  52,175 classified lipids under the eight-category LIPID MAPS hierarchy, with formula, monoisotopic
+  mass, InChIKey, ChEBI/SwissLipids cross-references, and the lipidomics shorthand used in result
+  tables (`PC 34:1`): 34,567 structures map onto 6,988 shorthand strings. No other database here
+  resolves that notation. It runs on LIPID MAPS' own endpoint, and it breaks habits the rest of the
+  corpus teaches. It has no named graphs, so a `GRAPH`/`FROM` pin returns nothing. Its
+  category-to-category `rdfs:subClassOf` runs upside down, so the obvious "all lipids in category X"
+  query returns 0 rows. Cross-database joins work only when driven from RDF Portal's `ebi` endpoint
+  with LIPID MAPS inside `SERVICE`; every outbound `SERVICE` from LIPID MAPS returned a gateway 502.
+  The data is CC BY 4.0, so cite LIPID MAPS when you use it.
 
 ### Changed
 
@@ -2546,7 +2567,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.14.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.15.0...HEAD
+[2.15.0]: https://github.com/dbcls/togomcp/compare/v2.14.0...v2.15.0
 [2.14.0]: https://github.com/dbcls/togomcp/compare/v2.13.0...v2.14.0
 [2.13.0]: https://github.com/dbcls/togomcp/compare/v2.12.2...v2.13.0
 [2.12.2]: https://github.com/dbcls/togomcp/compare/v2.12.1...v2.12.2
