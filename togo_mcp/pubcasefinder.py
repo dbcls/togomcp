@@ -28,11 +28,15 @@ MODULE CONVENTIONS (same as togovar.py / kegg.py — keep uniform)
 ENDPOINT PATHS — READ BEFORE "FIXING" THEM
 ------------------------------------------
 The published OpenAPI spec (https://pubcasefinder.dbcls.jp/api) documents the
-ranking as `/api/pcf_get_ranked_list`, which returns HTTP 404 (checked
-2026-09-15). The PubCaseFinder web app itself calls `/pcf_get_ranking_by_hpo_id`
-(no `/api` prefix, `phenotype=` rather than `hpo_id=`), and that is what is used
-here. If it starts failing, compare with the web app's `pcf-content.js` before
-switching to the documented path.
+ranking as `/api/pcf_get_ranked_list`. It returned HTTP 404 during a service
+outage in 2026-09 and 200 again once the service was back (2026-09-15), but it
+answers with every candidate plus its full description: ~10 MB and ~11 s for a
+single HPO term. The PubCaseFinder web app itself calls
+`/pcf_get_ranking_by_hpo_id` (no `/api` prefix, `phenotype=` rather than
+`hpo_id=`), which returns compact rows (~1.8 MB, ~1.5 s for two terms); that is
+what is used here, with names fetched separately for the returned rows only. If
+it starts failing, compare with the web app's `pcf-content.js` before switching
+to the documented path.
 
 RATE LIMIT — A SHARED, SMALL BUDGET
 -----------------------------------

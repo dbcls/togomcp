@@ -27,6 +27,30 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   fixed-depth query that is complete for a class undercounts a category (87% of Sphingolipids
   missed). Unlike `lipidmaps`, it can call out to Rhea with `SERVICE`.
 
+### Fixed
+
+- **LIPID MAPS MIE: the Prenol Lipids count was inflated 3.1× and the MIE called it genuine.** An
+  upstream LIPID MAPS defect, a spurious `category/6 → category/101` edge, pulls the whole
+  Fatty Acids and Conjugates [FA01] subtree into Prenol Lipids [PR]. Any category-scoped query
+  therefore reported 8,558 prenol lipids instead of 2,739. The MIE's `category_breakdown` example
+  presented the resulting overcount as "4,599 lipids in 2–7 categories" of real multi-classification.
+  Without the edge, only 57 lipids sit in two categories. The example now drops that edge and
+  returns correct counts, and a new warning explains the trap. Three more upstream data defects are
+  now flagged where they cause silent wrong answers:
+  - arsenolipid formulas are not in Hill order (`C18H35O3As` where ChEBI has `C18H35AsO3`), so a
+    formula copied from ChEBI or PubChem matches nothing;
+  - four deuterated internal standards carry a formula that contradicts their own mass or ChEBI;
+  - three InChIKeys are each shared by two LIPID MAPS IDs.
+
+  A fifth warning is not a data defect: the endpoint sits behind a Cloudflare firewall that answers
+  valid SPARQL containing `SUBSTR(` or `CONCAT(` with HTTP 403. The MIE now names the workaround,
+  so an agent stops debugging a query that has nothing wrong with it.
+- **ChEBI ↔ LIPID MAPS joins returned 0 rows with no error.** LIPID MAPS uses the old `chebi:`
+  property names (`chebi:formula`, `chebi:inchikey`), while ChEBI's own RDF moved them to
+  `chemrof:`. Neither MIE mentioned the other database. Each now points to its counterpart,
+  recommends the InChIKey as the join key (1,498 of 1,500 pairs agree), and says to run the join
+  from the `ebi` endpoint.
+
 ## [2.15.0] - 2026-09-15
 
 TogoMCP can now help with rare-disease diagnosis. Two new tools wrap the PubCaseFinder service:
