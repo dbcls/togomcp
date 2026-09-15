@@ -1,6 +1,6 @@
 ## 📚 DATABASE CATALOG
 
-All 38 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
+All 40 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -8,18 +8,18 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 
 - **annotation** — `pubtator` `uniprot`
 - **antimicrobial** — `amrportal`
-- **compound** — `chebi` `chembl` `massbank` `pubchem`
+- **compound** — `chebi` `chembl` `idsm` `massbank` `pubchem` `wikipathways`
 - **disease** — `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `togovar`
-- **drug_target** — `chembl`
+- **drug_target** — `chembl` `idsm`
 - **enzymology** — `brenda`
-- **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `medgen` `ncbigene`
+- **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `medgen` `ncbigene` `wikipathways`
 - **genomics** — `fantabio` `gwascatalog` `hco` `hgnc` `mco` `mogplus` `oma` `togovar`
 - **glycan** — `glycosmos`
 - **literature** — `pubmed` `pubtator`
 - **materials** — `supercon`
 - **microbe** — `amrportal` `bacdive` `mediadive` `nbrc`
 - **ontology** — `chebi` `go` `hco` `mco` `mesh` `mondo` `nando` `ontology`
-- **pathway** — `reactome`
+- **pathway** — `reactome` `wikipathways`
 - **physics** — `supercon`
 - **protein** — `brenda` `glycosmos` `jpostdb` `oma` `pdb` `uniprot`
 - **reaction** — `brenda` `rhea`
@@ -60,6 +60,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: cytoband, chromosome band, karyotype, cytogenetic, giemsa stain, ideogram, genomic coordinates, grch37, grch38, genome build, faldo, chromosome location, iscn, human chromosome
 - **hgnc** — HGNC — HUGO Gene Nomenclature Committee. Authoritative approved human gene nomenclature: official symbol, full name, HGNC ID, chromosomal band, and a central hub of typed cross-references (NCBI Gene, Ensembl, RefSeq, UniProt, OMIM, Orphanet… _(categories: gene, genomics)_  
   keywords: human gene, gene nomenclature, gene symbol, approved gene, gene name, hgnc id, chromosomal location, cross-reference, id mapping, ncbi gene, ensembl, uniprot, omim, orphanet, ec code, mirbase, ortholog, gene alias
+- **idsm** — IDSM (Integrated Database of Small Molecules). Chemical structure search engine (substructure, similarity, exact) over nine integrated small-molecule datasets — PubChem, ChEMBL, ChEBI, Wikidata, DrugBank, PDB-CCD, MolMeDB, MoNA and ISDB — queryab… _(categories: compound, drug_target)_  
+  keywords: chemical structure, substructure search, similarity search, smiles, molfile, cheminformatics, small molecule, compound, bioactivity, mass spectra, scaffold, chemical identifier mapping
 - **jpostdb** — jPOST — Japan ProteOme STandard repository. Reanalysed mass-spectrometry proteomics submissions: each Project (JPST id) bundles Datasets with experimental Profiles (sample tissue/disease/species, enzyme, MS mode) plus identified Peptides, PSMs… _(categories: protein)_  
   keywords: proteomics, mass spectrometry, peptide, psm, peptide spectrum match, protein identification, post-translational modification, ptm, unimod, psi-ms, reanalysis, proteome, shotgun proteomics
 - **massbank** — MassBank — reference mass spectra for small molecules. Open repository of reference MS/MS mass spectra for small molecules (metabolites, drugs, natural products, environmental chemicals): each record links a measured peak list + analytical/instrument met… _(categories: compound)_  
@@ -106,6 +108,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: variant, variation, mutation, snv, snp, indel, genome, human, japanese, dbsnp, clinvar, vep, consequence, sequence ontology, sift, polyphen, pathogenic, clinical significance
 - **uniprot** — UniProt RDF. Curated (Swiss-Prot) and automatic (TrEMBL) protein sequence + functional annotation: sequences, domains, PTMs, isoforms, natural variants, disease links, GO terms, EC/enzyme activity, catalysed Rhea… _(categories: annotation, protein)_  
   keywords: protein, sequence, swiss-prot, trembl, reviewed, function, domain, isoform, enzyme, ec number, natural variant, disease, gene ontology, cross-reference
+- **wikipathways** — WikiPathways. Community-curated biological pathway diagrams for 39 organisms, exposing pathways, their gene-product/protein/metabolite nodes, typed and signed interactions, Pathway/Disease/Cell-type Ontology tags,… _(categories: compound, gene, pathway)_  
+  keywords: pathway, pathway diagram, gene product, metabolite, interaction, signaling, metabolism, regulation, inhibition, stimulation, catalysis, conversion, gpml, bridgedb, curation, pathway ontology, disease ontology, cross-reference
 
 **Not an RDF Portal database — KEGG:**
 

@@ -13,6 +13,67 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.14.0] - 2026-09-15
+
+Two new databases, both on endpoints of their own rather than on RDF Portal: **WikiPathways**
+for community-curated pathway diagrams, and **IDSM**, which adds something no other database here
+can do — search by chemical structure. No tool, parameter or return shape changed; both
+`database=` values reach every client immediately, including ones with a cached tool list.
+
+<!-- whatsnew: 2026-09-15 | Two new databases: <strong>WikiPathways</strong> — 2,087 community-curated pathway diagrams across 39 organisms, with signed interactions and ontology tags — and <strong>IDSM</strong>, which lets you <strong>search by chemical structure</strong>: one SMILES returns the molecule's identifier in PubChem, ChEMBL, ChEBI, Wikidata, DrugBank and four more datasets at once. -->
+
+### Added
+
+- **`wikipathways` — WikiPathways, the 39th database** (contributed by @kozo2, #223). 2,087
+  pathway records across 39 organisms, with gene-product, protein and metabolite nodes, signed and
+  directed interactions, Pathway/Disease/Cell-type Ontology tags, and BridgeDb cross-references. It
+  runs on WikiPathways' own Virtuoso (`endpoint_name` `wikipathways`), and `SERVICE` federation to
+  RDF Portal works from it. The MIE documents five traps that return a plausible wrong answer rather
+  than an error — among them that a pathway's record lives at a revision-pinned IRI while the bare
+  accession is a different node, and that `dcterms:isPartOf` also points at interactions and
+  complexes, so "pathways containing MTOR" reads 304 instead of 107.
+- **`idsm` — IDSM (Integrated Database of Small Molecules), the 40th database** (contributed by
+  @kozo2, #224). The first database here that searches by **structure**: its `sachem` extension
+  runs exact, substructure and similarity searches over nine small-molecule datasets (PubChem,
+  ChEMBL, ChEBI, Wikidata, DrugBank, PDB-CCD, MolMeDB, MoNA, ISDB), turning one SMILES into that
+  molecule's identifier in all of them — a crosswalk that xref predicates and TogoID cover only
+  patchily. The endpoint is PostgreSQL-backed, not Virtuoso, so the literal-typing trap documented
+  across the rest of the corpus does not apply there (plain and `^^xsd:string` literals match
+  alike), while its own traps do: a union default graph (×30 unpinned), `sachem:topn` capping per
+  dataset rather than per query, and broad scaffolds that stay slow however they are capped —
+  benzene's 93.9M hits take ~46s even with `LIMIT 20`, against `run_sparql`'s 90s timeout.
+- **Intro-page cards for WikiPathways and IDSM.** The database grid is hand-written and not
+  checked against the registry, so new databases do not get a card unless someone adds one.
+
+### Fixed
+
+- **WikiPathways: one compound is filed under several ChEBI IDs.** "Which pathways contain
+  compound X?" keyed on one ChEBI ID undercounts — nodes labelled "Glucose" point at six ChEBI
+  entries, and the most-used one finds 59 pathways where the six together find 109 (×1.85). The
+  MIE now says so and shows how to collect the full ID set first.
+- **WikiPathways cross-DB example pointed agents at the wrong endpoint** (fixed before merge in
+  #223). `xdb_uniprot_reviewed` said `endpoint_name: sib`, but the query reads the WikiPathways
+  graph and federates out to SIB, so following it literally returned 0 rows. CI did not catch it
+  because `check_mie_examples.py` routes by `database` and ignores an example's `endpoint_name`.
+- **`endpoints.csv` had mixed line endings** — the `fantabio` row added in 2.13.0 used LF where
+  every other row uses CRLF. Content unchanged.
+- **Usage Guide statements that the new databases made untrue.** None of these are generated or
+  tested, so they drifted silently:
+  - "`primary` hosts 16 databases" — 17 since `fantabio`.
+  - Cross-endpoint work was described as TogoID or NCBI only. `wikipathways` and `idsm` can also
+    federate with `SERVICE` (to UniProt on SIB and to Rhea); the guide now says so, and that the
+    query must run on the calling endpoint.
+  - The two-argument `REGEX()` trap claimed to hold on "every endpoint". Re-tested on the two new
+    ones: WikiPathways has the bug, IDSM (PostgreSQL, not Virtuoso) does not — so it is 11 of 12.
+    The advice (always pass a third argument) is unchanged.
+
+### Changed
+
+- **CI actions moved to their Node 24 releases** — `actions/setup-python` v5 → v7 and
+  `actions/github-script` v7 → v9 — clearing the "Node.js 20 is deprecated" warning on every
+  Python job. Neither upgrade's breaking changes touch how these workflows use them.
+- Container base image digest updated (`astral/uv:python3.12-trixie-slim`, via Renovate).
+
 ## [2.13.0] - 2026-09-14
 
 A new database for gene regulation: **Fanta.bio**, the cis-regulatory elements (promoters and
@@ -2403,7 +2464,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.13.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.14.0...HEAD
+[2.14.0]: https://github.com/dbcls/togomcp/compare/v2.13.0...v2.14.0
 [2.13.0]: https://github.com/dbcls/togomcp/compare/v2.12.2...v2.13.0
 [2.12.2]: https://github.com/dbcls/togomcp/compare/v2.12.1...v2.12.2
 [2.12.1]: https://github.com/dbcls/togomcp/compare/v2.12.0...v2.12.1

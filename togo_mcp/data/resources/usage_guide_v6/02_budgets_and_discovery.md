@@ -91,11 +91,14 @@ is the bold row label.
 | **glycosmos** | 1 | `glycosmos` |
 | **nims** | 1 | `supercon` ← key ≠ endpoint name |
 | **togovar** | 1 | `togovar` |
+| **wikipathways** | 1 | `wikipathways` |
+| **idsm** | 1 | `idsm` |
 
 > **One database ≠ one graph.** GlyCosmos (~150 graphs), PubChem (68), PDB (46), DDBJ
-> (43) and TogoVar serve many graphs from their *own* endpoint — TogoVar re-types 2.9M
-> variant IRIs across two of its own. Co-tenancy is a property of **graphs**, not of this
-> table. Only SuperCon (2) is near-single-graph.
+> (43), IDSM (39) and TogoVar serve many graphs from their *own* endpoint — TogoVar
+> re-types 2.9M variant IRIs across two of its own, and IDSM re-hosts nine chemical
+> datasets under their original IRIs with a union default graph. Co-tenancy is a property
+> of **graphs**, not of this table. Only SuperCon (2) is near-single-graph.
 
 Copied from `endpoints.csv` and it **drifts**: a database mounted beside yours silently
 rewrites what your unpinned query means (OMA landed on `sib` 2026-04-28 and changed
@@ -104,6 +107,15 @@ answers written months earlier). `get_sparql_endpoints()` is authoritative.
 Same endpoint → single SPARQL. Different endpoints → `togoid_convertId` or NCBI
 cross-reference. Call `get_sparql_endpoints()` when planning a bridge, or when a
 count looks inflated (it hurt scores when called routinely: 16.73 vs. 17.59 without).
+
+**Third route, from two endpoints only: `SERVICE` federation.** `wikipathways` and
+`idsm` can send part of a query to another endpoint in a `SERVICE <url> { … }` block —
+verified 2026-09-15: WikiPathways → UniProt on SIB, IDSM → Rhea. Run the query on the
+**calling** endpoint (`database=wikipathways` / `idsm`), not the one inside `SERVICE`:
+routed to the remote endpoint instead it fails or returns 0 rows. Copy the MIE's
+`cross_db` example rather than writing one; both carry their own limits (bind the join
+key locally first, cap the bindings before crossing). This has not been verified from
+the RDF Portal endpoints — do not assume it works there.
 
 ---
 
