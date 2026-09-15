@@ -122,10 +122,11 @@ OMA**, dropping every protein with no OMA record. It returned a wrong count (248
     FILTER(REGEX(?label, "Fentanyl|Sufentanil", ""))     # <- the fix, every time
     ```
 
-    Verified by queries needing no data on **11 of the 12 endpoints** — the original 10 (2026-08-14)
-    and `wikipathways` (2026-09-15), all Virtuoso. The exception is `idsm`, which is
-    PostgreSQL-backed and handles both forms correctly; pass the third argument there anyway, so one
-    habit is safe everywhere. Two constructs are known broken in the 2-argument form, each returning
+    Verified by queries needing no data on **11 of the 13 endpoints** — the original 10 (2026-08-14)
+    and `wikipathways` (2026-09-15), all Virtuoso. The exceptions are `idsm` (PostgreSQL-backed)
+    and `lipidmaps` (not Virtuoso, 2026-09-15), which handle both forms correctly; pass the third
+    argument there anyway, so one habit is safe everywhere. Two constructs are known broken in the
+    2-argument form, each returning
     **0** where the answer is not zero:
     alternation — `VALUES ?s { "Fentanyl" "Sufentanil" } FILTER(REGEX(?s, "Fentanyl|Sufentanil"))`
     → 0, want 2 (even `"A|A"` → 0); and brace quantifiers —

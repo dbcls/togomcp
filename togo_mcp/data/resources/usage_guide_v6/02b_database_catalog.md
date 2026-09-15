@@ -1,6 +1,6 @@
 ## 📚 DATABASE CATALOG
 
-All 41 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
+All 42 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -8,7 +8,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 
 - **annotation** — `pubtator` `uniprot`
 - **antimicrobial** — `amrportal`
-- **compound** — `chebi` `chembl` `idsm` `massbank` `pubchem` `wikipathways`
+- **compound** — `chebi` `chembl` `idsm` `lipidmaps` `massbank` `pubchem` `wikipathways`
 - **disease** — `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `togovar`
 - **drug_target** — `chembl` `idsm`
 - **enzymology** — `brenda`
@@ -18,7 +18,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **literature** — `pubmed` `pubtator`
 - **materials** — `supercon`
 - **microbe** — `amrportal` `bacdive` `mediadive` `nbrc`
-- **ontology** — `chebi` `go` `hco` `mco` `mesh` `mondo` `nando` `ontology`
+- **ontology** — `chebi` `go` `hco` `lipidmaps` `mco` `mesh` `mondo` `nando` `ontology`
 - **pathway** — `reactome` `wikipathways`
 - **physics** — `supercon`
 - **protein** — `brenda` `glycosmos` `jpostdb` `oma` `pdb` `uniprot`
@@ -64,6 +64,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: chemical structure, substructure search, similarity search, smiles, molfile, cheminformatics, small molecule, compound, bioactivity, mass spectra, scaffold, chemical identifier mapping
 - **jpostdb** — jPOST — Japan ProteOme STandard repository. Reanalysed mass-spectrometry proteomics submissions: each Project (JPST id) bundles Datasets with experimental Profiles (sample tissue/disease/species, enzyme, MS mode) plus identified Peptides, PSMs… _(categories: protein)_  
   keywords: proteomics, mass spectrometry, peptide, psm, peptide spectrum match, protein identification, post-translational modification, ptm, unimod, psi-ms, reanalysis, proteome, shotgun proteomics
+- **lipidmaps** — LIPID MAPS Structure Database (LMSD). Classified lipid structures with molecular formula, monoisotopic mass, InChI/InChIKey and lipidomics shorthand notation, organised under the eight-category LIPID MAPS classification hierarchy. _(categories: compound, ontology)_  
+  keywords: lipid, lipidomics, fatty acid, glycerophospholipid, sphingolipid, sterol, metabolite, molecular formula, monoisotopic mass, inchikey, shorthand notation, mass spectrometry
 - **massbank** — MassBank — reference mass spectra for small molecules. Open repository of reference MS/MS mass spectra for small molecules (metabolites, drugs, natural products, environmental chemicals): each record links a measured peak list + analytical/instrument met… _(categories: compound)_  
   keywords: mass spectrometry, mass spectra, ms/ms, tandem ms, metabolomics, metabolite, spectral library, fragmentation, peak, molecular formula, inchikey, small molecule, compound identification, splash, exposomics, instrument type, ion mode
 - **mco** — MCO — Mouse Chromosome Ontology. Reference ontology of the mouse (Mus musculus) chromosome set — the 22 chromosomes (1-19, X, Y, MT) as owl:Classes, each with per-build GRCm38 (mm10) and GRCm39 (mm39) instances carrying chromosome l… _(categories: genomics, ontology)_  
