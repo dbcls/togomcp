@@ -15,6 +15,22 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ### Added
 
+- **`pubcasefinder_rank_by_phenotypes` and `pubcasefinder_get_case_reports` — two tools on a new
+  `pubcasefinder` sub-server.** The first ranks OMIM diseases, Orphanet diseases or genes by how well
+  they match a set of HPO phenotypes: PubCaseFinder's differential-diagnosis scoring, which weights
+  terms by information content and matches through the HPO hierarchy. The RDF cannot reproduce this.
+  For three Marfan-like phenotypes, a SPARQL "has all three" query finds 6 unordered diseases; the
+  ranking puts 9 at score 1.0 and grades every partial match below them. The second lists published
+  case reports per MONDO disease, in English (PubMed) or Japanese (J-STAGE). That index is built by
+  text mining, not MeSH: 507 of Marfan syndrome's 1,615 reports carry no Marfan MeSH heading, and the
+  MeSH route over the pubmed RDF did not finish in 200 s. Results carry names, MONDO IDs and genes, so
+  the output of one tool feeds the other. Why only these two: most of the PubCaseFinder REST API is a
+  front end over the same RDF that `database="pubcasefinder"` already serves. Two things to know. The
+  documented ranking endpoint returns 404, so the tool uses the path the PubCaseFinder web app calls.
+  And DBCLS caps API use at 10 requests/minute, 100/hour and 1,000/day for the whole server; the tools
+  cache results and refuse with an error, rather than exceed that. New tools reach a client only
+  after it refreshes its tool list, so the Usage Guide's stale-tool-list canary now names
+  `pubcasefinder_rank_by_phenotypes`.
 - **`pubcasefinder` — PubCaseFinder RDF, the 41st database** (RDF Portal `primary`). The knowledge
   base behind DBCLS's rare-disease diagnosis-support service: 18,375 OMIM and Orphanet diseases,
   379,263 disease–phenotype (HPO) annotations from the HPO consortium, Orphanet and DBCLS text

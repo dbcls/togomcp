@@ -5,6 +5,7 @@ from .chembl import *
 from .togoid import togoid_mcp
 from .ncbi_tools import ncbi_mcp
 from .togovar import togovar_mcp
+from .pubcasefinder import pubcasefinder_mcp
 import asyncio
 import os
 
@@ -86,6 +87,7 @@ async def setup(*, local: bool = False):
     mcp.mount(togoid_mcp, "togoid")
     mcp.mount(ncbi_mcp, "ncbi")
     mcp.mount(togovar_mcp, "togovar")
+    mcp.mount(pubcasefinder_mcp, "pubcasefinder")
     if local and _kegg_enabled():
         from .kegg import kegg_mcp
         mcp.mount(kegg_mcp, "kegg")
