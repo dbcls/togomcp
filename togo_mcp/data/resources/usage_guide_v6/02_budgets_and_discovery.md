@@ -93,12 +93,14 @@ is the bold row label.
 | **togovar** | 1 | `togovar` |
 | **wikipathways** | 1 | `wikipathways` |
 | **idsm** | 1 | `idsm` |
+| **lipidmaps** | 1 | `lipidmaps` |
 
 > **One database ≠ one graph.** GlyCosmos (~150 graphs), PubChem (68), PDB (46), DDBJ
 > (43), IDSM (39) and TogoVar serve many graphs from their *own* endpoint — TogoVar
 > re-types 2.9M variant IRIs across two of its own, and IDSM re-hosts nine chemical
 > datasets under their original IRIs with a union default graph. Co-tenancy is a property
-> of **graphs**, not of this table. Only SuperCon (2) is near-single-graph.
+> of **graphs**, not of this table. Only SuperCon (2) is near-single-graph — and LIPID MAPS
+> declares **no named graphs at all**, so every `GRAPH`/`FROM` pin returns 0 rows there.
 
 Copied from `endpoints.csv` and it **drifts**: a database mounted beside yours silently
 rewrites what your unpinned query means (OMA landed on `sib` 2026-04-28 and changed

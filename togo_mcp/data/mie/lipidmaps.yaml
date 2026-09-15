@@ -1,0 +1,414 @@
+mie_spec: 3
+database: lipidmaps
+
+discovery:
+  title: LIPID MAPS Structure Database (LMSD)
+  description: >
+    Classified lipid structures with molecular formula, monoisotopic mass, InChI/InChIKey
+    and lipidomics shorthand notation, organised under the eight-category LIPID MAPS
+    classification hierarchy.
+  keywords:
+    - lipid
+    - lipidomics
+    - fatty acid
+    - glycerophospholipid
+    - sphingolipid
+    - sterol
+    - metabolite
+    - molecular formula
+    - monoisotopic mass
+    - inchikey
+    - shorthand notation
+    - mass spectrometry
+  categories: [compound, ontology]
+
+endpoint: https://lipidmaps.org/sparql
+base_uri: https://www.lipidmaps.org/rdf/
+
+graphs:
+  # This endpoint exposes NO named graphs: `SELECT ?g WHERE { GRAPH ?g { ?s ?p ?o } }` returns
+  # 0 rows (verified 2026-09-15). All 479,072 triples live in the DEFAULT graph, so there is
+  # nothing to GRAPH/FROM-pin and no co-tenant that could re-declare a predicate. `co_hosted`
+  # is therefore genuinely N/A rather than un-probed — the `no_named_graphs` gotcha below
+  # carries the `kind: absent` check that re-decides it.
+  primary: "(default graph — this endpoint declares no named graphs)"
+  supporting: []
+
+entity_counts:
+  # Nothing here is graph-pinned because there are no graphs to pin (see `graphs`); every
+  # figure is COUNT(DISTINCT) so the multi-parent classification cannot inflate it.
+  classified_lipid_ids: 52175      # every LM* IRI carrying rdfs:subClassOf — the honest DB size
+  typed_owl_class: 50454           # of those, the ones asserting `a owl:Class`
+  with_structure_inchikey: 49882   # chebi:inchi / chebi:inchikey
+  with_formula: 49849
+  with_monoisotopic_mass: 49850
+  with_shorthand_abbrev: 34567     # lipidmaps:abbrev — 6,988 DISTINCT shorthand strings
+  classification_nodes: 607        # category/* IRIs; 571 labelled, 36 not
+  chebi_xrefs: 14572
+  swisslipids_xrefs: 12559
+  total_triples: 479072
+  date: "2026-09-15"
+
+global_gotchas:
+  - id: inverted_subclassof
+    say: >
+      `rdfs:subClassOf` runs in TWO OPPOSITE DIRECTIONS here and the OWL-correct one returns
+      NOTHING. Lipid -> category is normal (`LMST01010001 rdfs:subClassOf category/50101`), but
+      category -> category is INVERTED: `category/1` ("Fatty Acyls [FA]", the top of the tree) has
+      0 incoming and 14 OUTGOING subClassOf, i.e. the broader term is asserted as a subClassOf the
+      narrower one. So the query everyone writes — `?lipid rdfs:subClassOf+ <category/N>` — returns
+      0 rows in ~1s with no error, reading as "this category is empty". FIX: descend the categories
+      first, then collect members: `<category/N> rdfs:subClassOf+ ?cat . ?lipid rdfs:subClassOf ?cat`.
+      That route is provably complete — it reaches all 52,175 classified LM IDs from the 8 top
+      categories. See the `enum_category_members` example.
+    check:
+      kind: zero_rows
+      date: "2026-09-15"
+      query: |
+        SELECT ?lipid WHERE {
+          ?lipid <http://www.w3.org/2000/01/rdf-schema#subClassOf>+ <https://www.lipidmaps.org/rdf/category/4> .
+        } LIMIT 1
+
+  - id: no_named_graphs
+    say: >
+      This endpoint declares NO named graphs — every triple is in the default graph. Any query
+      written with the `GRAPH <...> { }` or `FROM <...>` pinning that the rest of the RDF Portal
+      corpus teaches returns 0 rows here, silently. Write unpinned patterns. There is correspondingly
+      no union inflation and no co-tenant to defend against.
+    check:
+      kind: absent
+      date: "2026-09-15"
+      query: |
+        SELECT ?g WHERE { GRAPH ?g { ?s ?p ?o } } LIMIT 1
+
+  - id: duplicate_labels_fan_out
+    say: >
+      Most lipids carry TWO `rdfs:label` values — a systematic name and a common name — and NOTHING
+      distinguishes them: same predicate, no language tag, no skos:prefLabel. 36,462 entities have 2
+      labels and 13,989 have 1, so selecting ?label multiplies rows x1.72 overall (86,913 label
+      triples over 50,451 labelled entities) and every other column is duplicated with it. FIX: use
+      COUNT(DISTINCT ?lipid) in aggregates, and expect 2 rows per lipid in listings (cholesterol
+      LMST01010001 returns both "Cholesterol" and "cholest-5-en-3beta-ol"). For a single canonical
+      short name use `lipidmaps:abbrev` instead, which is single-valued.
+    check:
+      kind: ratio
+      date: "2026-09-15"
+      numerator: |
+        SELECT (COUNT(*) AS ?n) WHERE {
+          ?s a <http://www.w3.org/2002/07/owl#Class> ; <http://www.w3.org/2000/01/rdf-schema#label> ?l .
+        }
+      denominator: |
+        SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
+          ?s a <http://www.w3.org/2002/07/owl#Class> ; <http://www.w3.org/2000/01/rdf-schema#label> ?l .
+        }
+      expect: {ratio: 1.723, tolerance: 0.05}
+
+  - id: untyped_classification_stubs
+    say: >
+      Anchoring on `?lipid a owl:Class` silently drops 1,721 lipids (3.3%). 52,175 LM IDs carry a
+      classification, but only 50,454 assert `a owl:Class`; the remaining 1,721 are
+      classification-only stubs with a `rdfs:subClassOf` and nothing else — no label, no formula, no
+      InChIKey. `owl:Class` is also the ONLY class on this endpoint, and the 607 category/* nodes are
+      NOT typed at all, so `?s a owl:Class` is a lipid filter, not a category filter. FIX: anchor on
+      the IRI prefix (`STRSTARTS(STR(?lipid), "https://www.lipidmaps.org/rdf/LM")`) or on the
+      classification edge when you want all classified IDs; anchor on `a owl:Class` only when you
+      specifically want records that carry data.
+    check:
+      kind: ratio
+      date: "2026-09-15"
+      numerator: |
+        SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
+          ?s <http://www.w3.org/2000/01/rdf-schema#subClassOf> ?c .
+          FILTER(STRSTARTS(STR(?s), "https://www.lipidmaps.org/rdf/LM"))
+        }
+      denominator: |
+        SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE { ?s a <http://www.w3.org/2002/07/owl#Class> }
+      expect: {ratio: 1.034, tolerance: 0.02}
+
+  - id: not_virtuoso_no_bif_contains
+    say: >
+      This endpoint is NOT Virtuoso, unlike every rdfportal.org endpoint in this corpus. `bif:contains`
+      is a PARSE ERROR ("Unresolved prefixed name: bif:contains"), so the corpus-standard indexed
+      text-search idiom does not exist here — use `FILTER(CONTAINS(...))`, which is affordable because
+      the whole database is only 479,072 triples (a full unindexed scan runs in ~2s). Literal matching
+      is value-based, not term-based: a plain `"C27H46O"` and `"C27H46O"^^xsd:string` BOTH match, so
+      the datatype-mismatch trap the Virtuoso-backed MIEs warn about does not apply.
+    check:
+      kind: error
+      date: "2026-09-15"
+      expect: {timeout_s: 30}
+      query: |
+        SELECT ?l WHERE { ?l bif:contains "'cholesterol'" } LIMIT 1
+
+examples:
+  - id: lipid_core_record
+    intent: retrieve the complete attribute set of one lipid from its LM ID
+    question: "What are the formula, monoisotopic mass, InChIKey and names of cholesterol (LMST01010001)?"
+    complexity: basic
+    sparql: |
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX chebi: <http://purl.obolibrary.org/obo/chebi/>
+      SELECT ?label ?formula ?mass ?inchikey
+      WHERE {
+        <https://www.lipidmaps.org/rdf/LMST01010001>
+            rdfs:label            ?label ;
+            chebi:formula         ?formula ;
+            chebi:monoisotopicmass ?mass ;
+            chebi:inchikey        ?inchikey .
+      }
+    verified:
+      row_count: 2
+      has_values: ["Cholesterol", "cholest-5-en-3beta-ol", "C27H46O", "HVYWMOMLDIMFJA-DPAQBDIFSA-N"]
+      date: "2026-09-15"
+      note: "2 rows, not 1 — the two rdfs:label values duplicate every other column."
+    teaches: >
+      The whole per-lipid attribute set is five predicates on the LM IRI itself, with NO
+      intermediate node: rdfs:label, and chebi:formula / chebi:monoisotopicmass / chebi:inchi /
+      chebi:inchikey borrowed from the ChEBI vocabulary.
+    traps_avoided:
+      - "The structural predicates live in the ChEBI namespace (`http://purl.obolibrary.org/obo/chebi/formula`), NOT a lipidmaps one — only `abbrev`/`abbrevChains` use `https://www.lipidmaps.org/ontology/`."
+      - "`chebi:monoisotopicmass` is `xsd:double` and serialises in E-notation (`3.86354866E2`), so compare it numerically (`FILTER(?mass > 400)`); a string comparison against \"386.35\" matches nothing."
+
+  - id: enum_category_members
+    intent: enumerate ALL lipids in a LIPID MAPS category, traversing the inverted hierarchy correctly
+    question: "How many lipids are classified as Sphingolipids [SP]?"
+    complexity: basic
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      # Descend the category tree FIRST (category->category subClassOf is INVERTED),
+      # then collect the lipids that point UP into each category reached.
+      SELECT (COUNT(DISTINCT ?lipid) AS ?n)
+      WHERE {
+        <https://www.lipidmaps.org/rdf/category/4> rdfs:subClassOf+ ?cat .
+        ?lipid rdfs:subClassOf ?cat .
+        FILTER(STRSTARTS(STR(?lipid), "https://www.lipidmaps.org/rdf/LM"))
+      }
+    verified: {n: 5110, date: "2026-09-15"}
+    teaches: >
+      THE set-level enumeration route for this database: `<category/N> rdfs:subClassOf+ ?cat .
+      ?lipid rdfs:subClassOf ?cat`. The 8 top categories are category/1..8 = FA, GL, GP, SP, ST,
+      PR, SL, PK in that order. Swap the category IRI for any other node in the tree (main class
+      or sub class) to scope the enumeration narrower.
+    traps_avoided:
+      - "The FILTER is load-bearing: `?lipid rdfs:subClassOf ?cat` also binds the 100 category nodes that are themselves children in the tree, so without it you count categories alongside lipids."
+      - "Lipids attach at THREE depths (3-, 5- and 7-character category IDs), which is why the `+` path is required — a fixed one- or two-hop pattern silently misses whole branches. All 183 of the deepest-tier categories are reachable this way."
+
+  - id: category_breakdown
+    intent: count lipids per top-level category with COUNT(DISTINCT) over a multi-parent hierarchy
+    question: "How are LIPID MAPS structures distributed across the eight lipid categories?"
+    complexity: aggregation
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?categoryLabel (COUNT(DISTINCT ?lipid) AS ?nLipids)
+      WHERE {
+        VALUES ?category {
+          <https://www.lipidmaps.org/rdf/category/1> <https://www.lipidmaps.org/rdf/category/2>
+          <https://www.lipidmaps.org/rdf/category/3> <https://www.lipidmaps.org/rdf/category/4>
+          <https://www.lipidmaps.org/rdf/category/5> <https://www.lipidmaps.org/rdf/category/6>
+          <https://www.lipidmaps.org/rdf/category/7> <https://www.lipidmaps.org/rdf/category/8>
+        }
+        ?category rdfs:label ?categoryLabel .
+        ?category rdfs:subClassOf+ ?cat .
+        ?lipid rdfs:subClassOf ?cat .
+        FILTER(STRSTARTS(STR(?lipid), "https://www.lipidmaps.org/rdf/LM"))
+      }
+      GROUP BY ?categoryLabel
+      ORDER BY DESC(?nLipids)
+    verified:
+      row_count: 8
+      has_values: ["Fatty Acyls [FA]", "Saccharolipids [SL]", 11979, 1353]
+      date: "2026-09-15"
+      note: "Column total is 58,051 against 52,175 distinct lipids — 4,599 lipids sit in 2-7 categories at once."
+    teaches: >
+      COUNT(DISTINCT ?lipid) is mandatory in ANY aggregate here: 4,599 lipids carry 2-7 parent
+      categories, so a bare COUNT(?lipid) double-counts them, and the ×1.72 label fan-out compounds
+      it if you also select a name. The category's own classification code (GL0301, SP0601) is
+      embedded in its rdfs:label, not in its IRI.
+    traps_avoided:
+      - "The 8 category counts sum to MORE than the database size; that is genuine multi-classification, not a join bug. Do not 'fix' it by dropping DISTINCT."
+
+  - id: enum_shorthand_isomers
+    intent: resolve one lipidomics shorthand name to every structure LIPID MAPS records for it
+    question: "Which structures does LIPID MAPS hold for the shorthand species PC 34:1?"
+    complexity: intermediate
+    sparql: |
+      PREFIX lm: <https://www.lipidmaps.org/ontology/>
+      SELECT ?lipid ?chains
+      WHERE {
+        ?lipid lm:abbrev "PC 34:1" .
+        OPTIONAL { ?lipid lm:abbrevChains ?chains }
+      }
+      ORDER BY ?lipid
+      LIMIT 25
+    verified:
+      row_count: 22
+      has_values: ["LMGP01010005", "PC 16:0_18:1", "PC 12:0_22:1"]
+      date: "2026-09-15"
+    teaches: >
+      `lm:abbrev` is the species-level lipidomics shorthand (headgroup + total carbons:double bonds)
+      and is MANY-TO-ONE: 34,567 lipids collapse onto 6,988 distinct shorthand strings. This is the
+      join key for lipidomics result tables, which report exactly this notation. `lm:abbrevChains`
+      resolves the individual acyl chains (PC 16:0_18:1) where LIPID MAPS knows them (18,778 lipids).
+    traps_avoided:
+      - "One shorthand is NOT one lipid: PC 34:1 expands to 22 distinct LM IDs spanning several chain compositions (16:0_18:1, 16:1_18:0, 12:0_22:1, 14:0_20:1 ...). Treating an abbrev as an identifier silently picks one arbitrary isomer."
+      - say: "`lm:abbrevChains` must be OPTIONAL — only 18,778 lipids carry it against 34,567 with an `abbrev`, so promoting it to a plain triple pattern silently drops 45.7% of the isomers (for PC 34:1 the row count is unaffected, which is exactly why the habit survives untested elsewhere)."
+        check:
+          kind: count
+          date: "2026-09-15"
+          query: |
+            SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
+              ?s <https://www.lipidmaps.org/ontology/abbrevChains> ?o .
+            }
+          expect: {value: 18778, tolerance: 0.02}
+
+  - id: mass_window_isobars
+    intent: "match an MS peak to candidate lipid species, and see the ambiguity the mass alone leaves"
+    question: "Which lipid species have a neutral monoisotopic mass of 759.5778 within 5 ppm?"
+    complexity: intermediate
+    sparql: |
+      PREFIX chebi: <http://purl.obolibrary.org/obo/chebi/>
+      PREFIX lm:    <https://www.lipidmaps.org/ontology/>
+      # 759.5778 +/- 5 ppm  ->  759.5740 .. 759.5816
+      SELECT ?abbrev (COUNT(DISTINCT ?lipid) AS ?nStructures)
+      WHERE {
+        ?lipid chebi:monoisotopicmass ?mass ;
+               lm:abbrev              ?abbrev .
+        FILTER(?mass >= 759.5740 && ?mass <= 759.5816)
+      }
+      GROUP BY ?abbrev
+      ORDER BY DESC(?nStructures) ?abbrev
+    verified:
+      row_count: 2
+      has_values: ["PC 34:1", "PE 37:1", 22, 14]
+      date: "2026-09-15"
+      note: "36 structures across 2 species; the whole window is one formula, C42H82NO8P. 0.8s."
+    teaches: >
+      The accurate-mass lookup idiom: a numeric window on `chebi:monoisotopicmass`, grouped by
+      `lm:abbrev` so the answer comes back as lipid SPECIES rather than as a long list of isomeric
+      structures. Widen or narrow the window by changing the two bounds.
+    traps_avoided:
+      - "Accurate mass does NOT identify a lipid species: this window returns PC 34:1 AND PE 37:1, which share the formula C42H82NO8P exactly and cannot be separated by mass at any resolution. Reporting the top hit as 'the' identification is wrong — carry both forward to MS/MS."
+      - say: "Requiring `lm:abbrev` restricts the candidate set to the 34,567 lipids that HAVE a shorthand — 66.2% of the database — so in a window where some structures lack one they drop out unannounced. It is NOT costing you anything in THIS window (all 36 structures carry a shorthand, so the abbrev-bearing and unrestricted counts agree exactly), but verify that before trusting the species list on any other mass."
+        check:
+          kind: ratio
+          date: "2026-09-15"
+          numerator: |
+            SELECT (COUNT(DISTINCT ?lipid) AS ?n) WHERE {
+              ?lipid <http://purl.obolibrary.org/obo/chebi/monoisotopicmass> ?mass .
+              FILTER(?mass >= 759.5740 && ?mass <= 759.5816)
+            }
+          denominator: |
+            SELECT (COUNT(DISTINCT ?lipid) AS ?n) WHERE {
+              ?lipid <http://purl.obolibrary.org/obo/chebi/monoisotopicmass> ?mass ;
+                     <https://www.lipidmaps.org/ontology/abbrev> ?a .
+              FILTER(?mass >= 759.5740 && ?mass <= 759.5816)
+            }
+          expect: {ratio: 1.0, tolerance: 0.02}
+
+  - id: enum_by_formula
+    intent: enumerate every structure sharing a molecular formula
+    question: "How many LIPID MAPS structures have the molecular formula C27H46O?"
+    complexity: basic
+    sparql: |
+      PREFIX chebi: <http://purl.obolibrary.org/obo/chebi/>
+      SELECT (COUNT(DISTINCT ?lipid) AS ?n)
+      WHERE { ?lipid chebi:formula "C27H46O" . }
+    verified: {n: 17, date: "2026-09-15"}
+    teaches: >
+      `chebi:formula` is a plain Hill-notation string and an exact-match enumeration route in its own
+      right (49,849 lipids carry one). Literal matching here is value-based, so the bare `"C27H46O"`
+      and `"C27H46O"^^xsd:string` are interchangeable — unlike the Virtuoso-backed endpoints in this
+      corpus, where only one form joins.
+    traps_avoided:
+      - "Formula strings are not normalised for isotopic labelling: deuterated standards appear as separate formulae such as `C42H73D5NO8P`, so an exact match on the unlabelled formula excludes them."
+
+  - id: xrefs_chebi_swisslipids
+    intent: "split the polymorphic owl:equivalentClass into its two target databases"
+    question: "What are the ChEBI and SwissLipids equivalents of cholesterol (LMST01010001)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      SELECT ?chebi ?swisslipids
+      WHERE {
+        VALUES ?lipid { <https://www.lipidmaps.org/rdf/LMST01010001> }
+        OPTIONAL { ?lipid owl:equivalentClass ?chebi .
+                   FILTER(STRSTARTS(STR(?chebi), "http://purl.obolibrary.org/obo/CHEBI_")) }
+        OPTIONAL { ?lipid owl:equivalentClass ?swisslipids .
+                   FILTER(STRSTARTS(STR(?swisslipids), "https://swisslipids.org/rdf/SLM_")) }
+      }
+    verified:
+      row_count: 1
+      has_values: ["CHEBI_16113", "SLM_000000287"]
+      date: "2026-09-15"
+    teaches: >
+      `owl:equivalentClass` is the ONLY outbound cross-reference predicate and it is POLYMORPHIC —
+      it points at ChEBI (14,572 lipids) and SwissLipids (12,559 lipids) with no predicate or
+      qualifier distinguishing them. Always filter by target namespace; 3,526 lipids carry both.
+    traps_avoided:
+      - "An unfiltered `?lipid owl:equivalentClass ?x` returns a mixed bag of ChEBI and SwissLipids IRIs, so downstream code that assumes ChEBI silently receives SLM_ IRIs and finds nothing."
+      - "The ChEBI form is the OBO IRI `http://purl.obolibrary.org/obo/CHEBI_16113`, which joins directly to RDF Portal's `chebi` graph. It is NOT the `https://identifiers.org/chebi/CHEBI:16113` form WikiPathways uses — that one needs a rewrite."
+
+  - id: xdb_chebi_labels
+    intent: "cross-DB: join LIPID MAPS shorthand to ChEBI names, driven FROM the RDF Portal side"
+    question: "What are the ChEBI names of LIPID MAPS lipids that carry a shorthand abbreviation?"
+    complexity: cross_db
+    endpoint_name: ebi
+    sparql: |
+      # RUN THIS ON https://rdfportal.org/ebi/sparql (endpoint_name: ebi), NOT on lipidmaps.
+      # LIPID MAPS is fetched as the REMOTE side via SERVICE; the ChEBI graph is local to EBI.
+      PREFIX owl:  <http://www.w3.org/2002/07/owl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?lipid ?abbrev ?chebi ?chebiLabel
+      WHERE {
+        SERVICE <https://lipidmaps.org/sparql> {
+          ?lipid owl:equivalentClass ?chebi ;
+                 <https://www.lipidmaps.org/ontology/abbrev> ?abbrev .
+          FILTER(STRSTARTS(STR(?chebi), "http://purl.obolibrary.org/obo/CHEBI_"))
+        }
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> { ?chebi rdfs:label ?chebiLabel . }
+      }
+      ORDER BY ?lipid
+      LIMIT 15
+    verified:
+      min_rows: 15
+      has_values: ["LMFA01010001", "FA 16:0", "hexadecanoic acid"]
+      date: "2026-09-15"
+      note: "15 rows in 9.8s cold from endpoint ebi. LMFA01010001 'FA 16:0' -> CHEBI_15756 'hexadecanoic acid'."
+    teaches: >
+      Cross-DB work with LIPID MAPS must be driven FROM the RDF Portal endpoint, pulling LIPID MAPS
+      in as the remote SERVICE — the reverse direction does not work. `owl:equivalentClass` already
+      emits the OBO ChEBI IRI, so the join needs no rewriting, and it is the bridge onward to every
+      ChEBI-linked resource on the EBI endpoint.
+    traps_avoided:
+      - "OUTBOUND SERVICE FROM lipidmaps IS UNUSABLE FOR JOINS. Any remote block that receives a bound variable hangs and returns HTTP 502 after ~60s — measured on four different queries, including a single-pattern one, while the identical query answers in under a second run directly against the remote endpoint. Only a remote block with no incoming bindings completes. Put LIPID MAPS on the SERVICE side, as this example does."
+      - "A `SERVICE <https://rdfportal.org/...>` call from lipidmaps fails differently and immediately, with `Endpoint returned Content-Type: text/html which is not recognized for SELECT queries` — that is content negotiation failing, not a bad query; do not debug the SPARQL."
+      - "Running THIS query against the lipidmaps endpoint (instead of ebi) 502s, because it inverts the working direction and the `GRAPH <...chebi>` block matches nothing there."
+
+schema_delta:
+  - "`chebi:inchi` (49,882 lipids) holds the full InChI string; `chebi:inchikey` holds the 27-character hashed key and is the practical structure-identity join key to PubChem/ChEBI/MassBank. Both are plain strings; neither is shown in an example that matches on them."
+  - "The category IRI is an opaque number whose digits encode the classification: the FIRST digit is the category (1=FA, 2=GL, 3=GP, 4=SP, 5=ST, 6=PR, 7=SL, 8=PK) and the rest is the LIPID MAPS code, so `category/10103` is FA0103 and `category/81211` is PK1211. The human-readable code appears ONLY inside rdfs:label, as a bracketed suffix ('Unsaturated fatty acids [FA0103]') — there is no separate code predicate to match on."
+  - "36 of the 607 category nodes have NO rdfs:label, and 32 of those still hold lipids (2,592 of them, 5.0%). Joining `?cat rdfs:label ?name` as a plain triple therefore drops those lipids from a classification listing — wrap it in OPTIONAL when the lipids matter more than the category name."
+
+id_join_map:
+  stable_anchor: >
+    The LIPID MAPS ID, as the IRI `https://www.lipidmaps.org/rdf/LM<CC><NNNNNNNN>` (e.g.
+    LMST01010001), where the first two letters after LM are the category (FA/GL/GP/SP/ST/PR/SL/PK).
+    The bare accession is the IRI's local name. Secondary keys: `chebi:inchikey` for structure
+    identity, and `lm:abbrev` for the lipidomics shorthand — the latter is many-to-one and must not
+    be used as an identifier.
+  xrefs:
+    chebi: >
+      `owl:equivalentClass` -> `http://purl.obolibrary.org/obo/CHEBI_<n>` (OBO form, joins directly
+      to RDF Portal's `chebi` graph `http://rdf.ebi.ac.uk/dataset/chebi`). 14,572 lipids (27.9% of
+      52,175). Namespace-filter it: the same predicate also emits SwissLipids.
+    swisslipids: >
+      `owl:equivalentClass` -> `https://swisslipids.org/rdf/SLM_<n>`. 12,559 lipids (24.1%).
+      SwissLipids has no RDF Portal endpoint; the IRI is a reference, not a local join target.
+    wikipathways: >
+      NOT emitted by LIPID MAPS — the link exists only in the OTHER direction. WikiPathways carries
+      `owl:sameAs https://www.lipidmaps.org/rdf/LM<id>` on its metabolite nodes (plus
+      `wp:bdbLipidMaps -> https://identifiers.org/lipidmaps/LM<id>`, 2,466 triples), so join from a
+      WikiPathways query. Its pathway titles use `dc:title`
+      (http://purl.org/dc/elements/1.1/title), NOT `dcterms:title` — the dcterms form returns 0 rows.
+  bridged_via_togoid:
+    - "pubchem, hmdb, kegg and chemspider carry no equivalentClass link here; bridge them with togoid_convertId from the LIPID MAPS accession, or via the InChIKey."
