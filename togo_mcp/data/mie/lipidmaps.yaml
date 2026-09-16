@@ -138,8 +138,10 @@ global_gotchas:
       `SUBSTR (?s, 33, 2)` and `CONCAT (?a, ?b)` are valid SPARQL, clear the WAF and return correct
       values (verified) — prefer this to restructuring a query around VALUES/STRSTARTS. The host DOES
       discriminate by client, as suspected above, but on USER-AGENT rather than IP: urllib's default
-      `Python-urllib/3.x` is 403'd wholesale, control query included. A script that sends no UA header
-      therefore sees EVERY query blocked and cannot distinguish that from this rule — set one.
+      `Python-urllib/3.x` is 403'd wholesale, control query included. It is that STRING that is
+      blocked, not a missing header — omitting User-Agent entirely returns 200 — but a Python script
+      that never sets one sends the urllib default and so sees EVERY query blocked, which is
+      indistinguishable from this rule. Set an explicit User-Agent.
     check:
       kind: error
       date: "2026-09-15"
@@ -282,20 +284,25 @@ global_gotchas:
       sphingosine-1-phosphate needs "sphingosine-1-phosphate" AND "sphingosine 1-phosphate" to come back
       complete. This is the label-side counterpart of the formula-side defects above: the identifier a
       human would search on is the one the record does not carry.
+    # Checks the PROSTAGLANDIN case (291 in class FA0301 / 11 label matches = 26.5), not the
+    # cardiolipin one, because a ratio over a denominator of 2 has no slack: at tolerance 0.3
+    # the band [457, 849] admits a denominator of 2 and NOTHING else — 3 gives 435 and fails —
+    # so it would assert "exactly two labels contain cardiolipin" and drift on any upstream
+    # label addition. Here the same band spans 9-15 label matches. Same claim, real headroom.
     check:
       kind: ratio
       date: "2026-09-16"
       numerator: |
         SELECT (COUNT(DISTINCT ?l) AS ?n) WHERE {
           ?l <http://www.w3.org/2000/01/rdf-schema#subClassOf>
-             <https://www.lipidmaps.org/rdf/category/31201> .
+             <https://www.lipidmaps.org/rdf/category/10301> .
         }
       denominator: |
         SELECT (COUNT(DISTINCT ?l) AS ?n) WHERE {
           ?l <http://www.w3.org/2000/01/rdf-schema#label> ?lab .
-          FILTER(CONTAINS(LCASE(?lab), "cardiolipin"))
+          FILTER(CONTAINS(LCASE(?lab), "prostaglandin"))
         }
-      expect: {ratio: 653.0, tolerance: 0.3}
+      expect: {ratio: 26.45, tolerance: 0.3}
 
 examples:
   - id: lipid_core_record
@@ -615,7 +622,7 @@ schema_delta:
   - "The category IRI is an opaque number whose digits encode the classification: the FIRST digit is the category (1=FA, 2=GL, 3=GP, 4=SP, 5=ST, 6=PR, 7=SL, 8=PK) and the rest is the LIPID MAPS code, so `category/10103` is FA0103 and `category/81211` is PK1211. The human-readable code appears ONLY inside rdfs:label, as a bracketed suffix ('Unsaturated fatty acids [FA0103]') — there is no separate code predicate to match on. Do NOT extract the digit with SUBSTR: it is blocked by the WAF (gotcha cloudflare_waf_blocks_string_functions). Use a VALUES table of (code, IRI) pairs, matched with STRSTARTS or `=`."
   - "`d<N>` in a label does NOT mean deuterium. A loose `REGEX(?label, \"-d[0-9]\")` over lipids with a formula matches 1,052, of which 907 have no D in the formula at all: 128 phytofuran names (`(9R,12R,15R)-d10-13-PhytoF[13R,16R]`) and sphingoid-base notation (`15-methyl-d16:2`) use the same token. Anchor to `-d[0-9]+$` for genuine deuterated standards: 140 lipids, 139 with D in the formula. The one exception, LMFA03010037, is itself a formula error (gotcha deuterated_standard_formula_errors). 219 lipids carry D in the formula overall."
   - "The two-letter category in the LM id does not always match where the lipid is classified. With the spurious PR->FA01 edge excluded, 57 lipids sit under two top categories, and 19 of those are not under their own id-prefix category at all. Five look like upstream identifier errors rather than dual classification: LMGP01050149-153 carry glycerophospholipid ids but are plain monoacylglycerols with no phosphate (`MG 14:0(13Me)/0:0`, `MG 15:0/0:0`, `MG 18:3(5Y,7Z,17)(2OMe[S],12Me)/0:0`, `MG 13:0(2Me,12Me)/0:0`, `MG 21:1(5Z)(20Me)`) and classify only under GL. Thirteen LMFA ids (juvenile hormone II, gyrinidal, faranal, ingenol mebutate, ...) classify only under PR, and cornudentanone LMFA07010822 only under PK. The other 38 are defensible dual assignments that keep their own category as well (myriocin LMFA01060203 under FA+SP, lanostane LMST01010190 under ST+PR, farnesyl esters under FA+PR). Scope by classification, not by id prefix, when the two disagree."
-  - "36 of the 607 category nodes have NO rdfs:label, and 32 of those still hold lipids (2,592 of them, 5.0%). Joining `?cat rdfs:label ?name` as a plain triple therefore drops those lipids from a classification listing — wrap it in OPTIONAL when the lipids matter more than the category name."
+  - "36 of the 708 category nodes have NO rdfs:label — they are exactly the 36 that have children but no label (607 with children minus 571 labelled-with-children), so the same count holds whichever denominator you start from; see entity_counts, which keeps the three quantities apart. 32 of the 36 still hold lipids (2,592 of them, 5.0%). Joining `?cat rdfs:label ?name` as a plain triple therefore drops those lipids from a classification listing — wrap it in OPTIONAL when the lipids matter more than the category name."
 
 id_join_map:
   stable_anchor: >

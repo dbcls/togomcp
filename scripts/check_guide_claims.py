@@ -57,8 +57,9 @@ ENDPOINTS_CSV = REPO / "togo_mcp" / "data" / "resources" / "endpoints.csv"
 
 # Sent on every request. Not cosmetic: `lipidmaps` sits behind a Cloudflare bot filter
 # that 403s urllib's default `Python-urllib/3.x` outright — a plain STRLEN control query
-# gets the same 403 as a blocked one, so a missing UA is indistinguishable from the
-# very rule the lipidmaps_waf_blocks_substr claim asserts. The other two MIE checkers
+# gets the same 403 as a blocked one, so leaving urllib to supply its default UA is
+# indistinguishable from the very rule the lipidmaps_waf_blocks_substr claim asserts.
+# (It is that string that is blocked, not a missing header: no User-Agent at all gets 200.) The other two MIE checkers
 # have always set one; this script had not, because no claim targeted such a host before.
 HEADERS = {"Accept": "text/csv", "User-Agent": "togomcp-guide-claim-check"}
 

@@ -118,6 +118,21 @@ def is_runnable_sparql_like(q):
 
 
 def load_endpoint_map():
+    """One URL per DATABASE. This script deliberately does NOT honour an example's
+    `endpoint_name:`, and that asymmetry with check_mie_examples.py is load-bearing.
+
+    A check runs the query that PROVES a trap, which for a cross_db example is usually
+    the query that must fail on the database's OWN endpoint. lipidmaps is the live case:
+    `xdb_chebi_labels` carries `endpoint_name: ebi` because the example must be driven
+    from EBI, but its traps_avoided[0] check is `kind: error` asserting that outbound
+    SERVICE *from lipidmaps* 502s. Resolving `ebi` there would run that query on the one
+    endpoint where it succeeds and flip a correct check into a failure.
+
+    So: check_mie_examples.py resolves per query (an example is judged where a reader
+    would RUN it); this script resolves per file (a check is judged where the trap
+    BITES). Do not "fix" one to match the other — see the "Which endpoint" section of
+    check_mie_examples.py for the other half of the story.
+    """
     m = {}
     with open(ENDPOINTS_CSV, newline="", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
