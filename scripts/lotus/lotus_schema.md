@@ -31,6 +31,24 @@ Querying Wikidata live was measured and rejected for three reasons:
 A converted graph fixes all three: one named graph, DBCLS-controlled
 performance, and a `pav:version` in the data.
 
+## A release ships two tables, and they disagree
+
+The metadata table carries every attribute, but the **core table is
+authoritative for which triples the release contains**. In v11 the core table
+holds 48 `(structure, organism, reference)` triples the metadata table never
+mentions, and flags 2 manually-validated triples the metadata table leaves
+unflagged. The metadata table contains nothing the core table omits.
+
+So a conversion needs both files: `--metadata` for the attributes, `--core` for
+completeness. Converting from the metadata table alone loses those 48
+occurrences with no error and no warning — 0.007% of the data, which is exactly
+the size of defect that never gets noticed.
+
+Entities reached only through the core table are thin: it carries just an
+InChIKey, an organism name and a DOI. That is the deliberate trade — an
+occurrence with three attributes can be enriched later, a missing one is
+invisible.
+
 ## Identity and namespaces
 
 | Prefix | IRI | Use |
@@ -76,7 +94,7 @@ An **occurrence** is the unit of assertion: *this structure was reported in this
 organism by this reference*. It is a first-class node rather than a
 `structure → organism` edge because the reference is not decoration — it is the
 evidence, and the same structure–organism pair is typically reported by several
-papers (672,365 occurrences over 227,247 structures and 37,476 organisms in
+papers (672,413 occurrences over 227,256 structures and 37,486 organisms in
 v11).
 
 ### `lotus:Occurrence`
@@ -86,7 +104,7 @@ v11).
 | `lotus:structure` | `lotus:Structure` | exactly 1 |
 | `lotus:organism` | `lotus:Organism` | exactly 1 |
 | `lotus:reference` | `lotus:Reference` | exactly 1 |
-| `lotus:manuallyValidated` | `xsd:boolean` | **emitted only when true** (176 of 672,365 in v11) |
+| `lotus:manuallyValidated` | `xsd:boolean` | **emitted only when true** (178 of 672,413 in v11) |
 
 `manual_validation` is `Y` or `NA` in the CSV, where `NA` means "not manually
 checked", not "checked and rejected". Emitting `false` for it would assert
@@ -95,7 +113,7 @@ counting validated occurrences must therefore not expect it on every node.
 
 ### `lotus:Structure` (subject: `wd:Q…`)
 
-Coverage is the share of the 227,247 structures carrying the property.
+Coverage is the share of the 227,256 structures carrying the property.
 
 | Property | Range | Coverage |
 | --- | --- | --- |
@@ -112,8 +130,8 @@ Coverage is the share of the 227,247 structures carrying the property.
 | `lotus:npclassifierPathway` / `…Superclass` / `…Class` | `xsd:string` | 97.1% / 91.5% / 88.6%, **repeatable** |
 | `lotus:classyfireKingdom` / `…Superclass` / `…Class` / `…DirectParent` | `xsd:string` | 98.6% / 98.6% / 97.9% / 83.2% |
 | `lotus:chemontId` | `xsd:string` | 98.6%, as `CHEMONTID:0002518` |
-| `lotus:pubchemCompoundId` | `xsd:string` | 97.4% |
-| `skos:exactMatch` | IRI | 97.4%, PubChem compound |
+| `lotus:pubchemCompoundId` | `xsd:string` | 97.3% |
+| `skos:exactMatch` | IRI | 97.3%, PubChem compound |
 
 The three NPClassifier properties are **repeatable**: a compound with a mixed
 biosynthetic origin packs its classes into one CSV cell as
@@ -127,20 +145,20 @@ namespace. Minting one is an open question below.
 
 ### `lotus:Organism` (subject: `wd:Q…`)
 
-Coverage is the share of the 37,476 organisms carrying the property.
+Coverage is the share of the 37,486 organisms carrying the property.
 
 | Property | Range | Coverage |
 | --- | --- | --- |
 | `lotus:scientificName` | `xsd:string` | 100%, also `rdfs:label` |
-| `lotus:gbifTaxonId` | `xsd:string` | 98.2% |
+| `lotus:gbifTaxonId` | `xsd:string` | 98.1% |
 | `lotus:ottTaxonId` | `xsd:string` | 97.8% |
 | `lotus:ncbiTaxonId` | `xsd:string` | **78.0%** |
-| `lotus:taxonDomain` … `lotus:taxonVarietas` | `xsd:string` | 0.7–97.3%, see below |
+| `lotus:taxonDomain` … `lotus:taxonVarietas` | `xsd:string` | 0.7–97.2%, see below |
 | `skos:exactMatch` | IRI | 78.0%, `http://identifiers.org/taxonomy/<taxid>` |
-| `rdfs:seeAlso` | IRI | 98.2%, GBIF species page |
+| `rdfs:seeAlso` | IRI | 98.1%, GBIF species page |
 
 **Only 78% of organisms have an NCBI taxon id**, so a query that joins through
-`skos:exactMatch` into the `taxonomy` database silently drops about 8,200
+`skos:exactMatch` into the `taxonomy` database silently drops 8,252
 organisms. Prefer GBIF or OTT coverage when completeness matters more than
 reaching the NCBI tree, and say which one an answer used. (Per *row* the NCBI
 figure looks like 86.6%; the well-studied organisms appear in many more rows.
@@ -160,11 +178,11 @@ division of labor: LOTUS supplies occurrences, `taxonomy` supplies the tree.
 
 ### `lotus:Reference` (subject: `wd:Q…`)
 
-Coverage is the share of the 91,421 references carrying the property.
+Coverage is the share of the 91,426 references carrying the property.
 
 | Property | Range | Coverage |
 | --- | --- | --- |
-| `lotus:doi` | `xsd:string` | 100% (91,381 of 91,421) |
+| `lotus:doi` | `xsd:string` | 100% (91,386 of 91,426) |
 | `rdfs:seeAlso` | IRI | 100%, `https://doi.org/<doi>`, percent-encoded |
 | `lotus:title` | `xsd:string` | 99.7%, `--refs-nt` only, also `rdfs:label` |
 | `lotus:publishedIn` | IRI (`wd:Q…`) | 99.2%, `--refs-nt` only |
@@ -174,7 +192,7 @@ Coverage is the share of the 91,421 references carrying the property.
 | `skos:exactMatch` | IRI | 47.1%, PubMed, from the PMID |
 
 Fewer than half the references carry a PMID, so joining LOTUS to RDF Portal's
-`pubmed` database reaches at most 43,074 of the 91,421 papers. The DOI is the
+`pubmed` database reaches at most 43,075 of the 91,426 papers. The DOI is the
 complete identifier here; the PMID is the joinable one.
 
 Titles, dates and PMIDs are **not in the CSV**, despite the Zenodo description
@@ -297,17 +315,17 @@ WHERE {
 
 ## Load notes
 
-Output of one v11 conversion, with reference metadata folded in:
+Output of one v11 conversion from both CSV tables, with reference metadata folded in:
 
 | | |
 | --- | --- |
-| Triples | 9,137,465 |
-| Occurrences | 672,365 |
-| Structures / organisms / references | 227,247 / 37,476 / 91,421 |
+| Triples | 9,137,722 |
+| Occurrences | 672,413 |
+| Structures / organisms / references | 227,256 / 37,486 / 91,426 |
 | Size | 1.3 GB N-Triples, 111 MB gzipped |
 | Conversion time | ~100 s, single process, stdlib only |
 
-Validated with `rapper -i ntriples -c` (all 9,137,465 triples parse) and
+Validated with `rapper -i ntriples -c` (all 9,137,722 triples parse) and
 `sort | uniq -d` (no duplicate lines). This is a small graph by RDF Portal
 standards — roughly the size of one mid-tier existing database — so load cost
 should not be a concern.

@@ -25,8 +25,9 @@ they answer different questions:
 ## Build the graph
 
 ```bash
-# 1. get a release (v11 = 2026-04-13)
+# 1. get a release (v11 = 2026-04-13) -- BOTH tables, see below
 curl -LO https://zenodo.org/records/19360665/files/260413_frozen_metadata.csv.gz
+curl -LO https://zenodo.org/records/19360665/files/260413_frozen.csv.gz
 
 # 2. (optional) reference titles, dates and PMIDs, absent from the CSV
 ./export_lotus.sh out/          # ~20 min, writes out/ref_*.nt among others
@@ -34,6 +35,7 @@ curl -LO https://zenodo.org/records/19360665/files/260413_frozen_metadata.csv.gz
 # 3. convert
 ./lotus_csv_to_rdf.py \
     --metadata 260413_frozen_metadata.csv.gz \
+    --core 260413_frozen.csv.gz \
     --refs-nt out/ \
     --version v11 --issued 2026-04-13 \
     --out lotus_v11.nt.gz
@@ -46,10 +48,15 @@ LC_ALL=C sort lotus_v11.nt | uniq -d | wc -l   # must be 0
 
 Step 3 takes about 100 s and needs no third-party packages (stdlib only, ~400 MB
 RAM for deduplication; `--no-dedupe` trades that for piping through
-`LC_ALL=C sort -u`). v11 yields **9,137,465 triples**, 111 MB gzipped.
+`LC_ALL=C sort -u`). v11 yields **9,137,722 triples**, 111 MB gzipped.
 
 ## Things that already bit us
 
+* **The two CSV tables disagree, and the metadata table is not the superset.**
+  The core table is authoritative for which triples a release contains: in v11
+  it holds 48 occurrences the metadata table never mentions and 2
+  manual-validation flags it lacks. Converting from `--metadata` alone drops
+  them with no error. Pass `--core` too; it only adds.
 * **QLever reports a timeout as HTTP 200 with a truncated body**, appending
   `!!!!>>#` and an error message to whatever it had streamed. Two of four
   slices were silently incomplete on the first run. `export_lotus.sh` checks

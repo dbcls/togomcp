@@ -11,6 +11,25 @@ Versions follow the **agent-pragmatic** semver policy documented in
 database or a tool is MINOR; a return-shape change rides there too, because our
 dominant client re-reads the schema each session. Only a removal/rename is MAJOR.
 
+## [Unreleased]
+
+### Fixed
+
+- **LOTUS converter read one of the release's two CSV tables and silently dropped 48 occurrences**
+  (`scripts/lotus/`; developer tooling, nothing in the wheel, tool surface unchanged). A LOTUS
+  release ships a core table and a metadata table. The metadata table carries every attribute, so
+  the converter read only that one — but the **core table is authoritative for which triples the
+  release contains**. Measured on v11: 48 `(structure, organism, reference)` triples are in core
+  and absent from metadata, and 2 manually-validated triples are flagged in core but not in
+  metadata (178 validated keys vs 176); metadata contains nothing core omits. So the conversion
+  lost 0.007% of the data with no error and no warning — and what it lost was the triple *set*,
+  the one thing a frozen release exists to pin down. `--core` now adds the missing occurrences and
+  validation flags and touches nothing else (257 triples added, none removed). Totals for v11 are
+  now 9,137,722 triples over 672,413 occurrences, 227,256 structures, 37,486 organisms and 91,426
+  references; the schema doc's coverage figures are recomputed on those denominators, and every
+  number in `scripts/lotus/` is cross-checked against a run's output rather than quoted from an
+  earlier one.
+
 ## [2.16.0] - 2026-09-16
 
 A lipid release. **SwissLipids** joins as the 43rd database: SIB's curated reference, 777,965
