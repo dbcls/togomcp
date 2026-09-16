@@ -13,7 +13,15 @@ compound mirror without any mapping table. Cross-reference IRIs use the same
 forms as the RDF Portal databases they point at (PubChem compound, NCBI
 taxonomy, PubMed), so a federated join needs no rewriting.
 
-Two properties of the source drive the design:
+A release ships TWO tables and they disagree. The metadata table carries all
+the attributes, but the **core table is authoritative for which triples exist**:
+in v11 the core table holds 48 (structure, organism, reference) triples the
+metadata table never mentions, and flags 2 manually-validated triples the
+metadata table does not. Converting from `--metadata` alone therefore drops
+them silently, so pass `--core` as well; it adds what is missing and leaves
+everything else untouched.
+
+Three more properties of the source drive the design:
 
 * The CSV is DENORMALIZED and its entity attributes are MULTI-VALUED: one
   (structure, organism, reference) triple can span several rows because a
@@ -267,41 +275,109 @@ def occurrence_iri(structure: str, organism: str, reference: str) -> str:
     )
 
 
-def convert(metadata: Path, sink: Sink) -> dict[str, Any]:
-    structures: set[str] = set()
-    organisms: set[str] = set()
-    references: set[str] = set()
-    occurrences: set[str] = set()
-    rows = 0
-    validated = 0
+def emit_occurrence(
+    sink: Sink, structure: str, organism: str, reference: str, *, validated: bool
+) -> str:
+    iri = occurrence_iri(structure, organism, reference)
+    sink.triple(iri, RDF_TYPE, f"<{LOTUS}Occurrence>")
+    sink.lotus(iri, "structure", f"<{structure}>")
+    sink.lotus(iri, "organism", f"<{organism}>")
+    sink.lotus(iri, "reference", f"<{reference}>")
+    if validated:
+        sink.lotus(iri, "manuallyValidated", typed("true", "boolean"))
+    return iri
 
+
+class Corpus:
+    """What the metadata pass saw, so later passes can extend without re-reading."""
+
+    def __init__(self) -> None:
+        self.structures: set[str] = set()
+        self.organisms: set[str] = set()
+        self.references: set[str] = set()
+        self.occurrences: set[str] = set()
+        self.rows = 0
+        self.validated: set[str] = set()
+
+    def stats(self) -> dict[str, Any]:
+        return {
+            "rows": self.rows,
+            "occurrences": len(self.occurrences),
+            "structures": len(self.structures),
+            "organisms": len(self.organisms),
+            "references": len(self.references),
+            "manually_validated": len(self.validated),
+        }
+
+
+def convert(metadata: Path, sink: Sink) -> Corpus:
+    corpus = Corpus()
     for row in rows_of(metadata):
-        rows += 1
+        corpus.rows += 1
         structure = emit_structure(sink, row)
         organism = emit_organism(sink, row)
         reference = emit_reference(sink, row)
-        structures.add(structure)
-        organisms.add(organism)
-        references.add(reference)
+        corpus.structures.add(structure)
+        corpus.organisms.add(organism)
+        corpus.references.add(reference)
 
         iri = occurrence_iri(structure, organism, reference)
-        if iri not in occurrences:
-            occurrences.add(iri)
-            sink.triple(iri, RDF_TYPE, f"<{LOTUS}Occurrence>")
-            sink.lotus(iri, "structure", f"<{structure}>")
-            sink.lotus(iri, "organism", f"<{organism}>")
-            sink.lotus(iri, "reference", f"<{reference}>")
-            if row.get("manual_validation", "") == "Y":
-                validated += 1
-                sink.lotus(iri, "manuallyValidated", typed("true", "boolean"))
+        if iri in corpus.occurrences:
+            continue
+        validated = row.get("manual_validation", "") == "Y"
+        emit_occurrence(sink, structure, organism, reference, validated=validated)
+        corpus.occurrences.add(iri)
+        if validated:
+            corpus.validated.add(iri)
+    return corpus
+
+
+def fold_core(sink: Sink, core: Path, corpus: Corpus) -> dict[str, int]:
+    """Add the occurrences the CORE table has and the metadata table lacks.
+
+    The core table — not the metadata table — is authoritative for which
+    triples the release contains. In v11 it holds 48 triples absent from the
+    metadata table and flags 2 manually-validated triples the metadata table
+    does not, so converting from `--metadata` alone silently drops them.
+
+    Core carries only InChIKey, organism name and DOI, so entities reached this
+    way are thin. That is the correct trade: an occurrence with three
+    attributes is recoverable, a missing one is invisible.
+    """
+    added_occurrences = 0
+    added_validations = 0
+    for row in rows_of(core):
+        structure = row["structure_wikidata"]
+        organism = row["organism_wikidata"]
+        reference = row["reference_wikidata"]
+        iri = occurrence_iri(structure, organism, reference)
+        validated = row.get("manual_validation", "") == "Y"
+
+        if iri not in corpus.occurrences:
+            emit_occurrence(sink, structure, organism, reference, validated=validated)
+            corpus.occurrences.add(iri)
+            added_occurrences += 1
+            if inchikey := row.get("structure_inchikey", ""):
+                sink.triple(structure, RDF_TYPE, f"<{LOTUS}Structure>")
+                sink.lotus(structure, "inchikey", lit(inchikey))
+                corpus.structures.add(structure)
+            sink.triple(organism, RDF_TYPE, f"<{LOTUS}Organism>")
+            corpus.organisms.add(organism)
+            if name := row.get("organism_name", ""):
+                sink.lotus(organism, "scientificName", lit(name))
+                sink.triple(organism, RDFS_LABEL, lit(name))
+            emit_reference(sink, row)
+            corpus.references.add(reference)
+        elif validated and iri not in corpus.validated:
+            sink.lotus(iri, "manuallyValidated", typed("true", "boolean"))
+            added_validations += 1
+
+        if validated:
+            corpus.validated.add(iri)
 
     return {
-        "rows": rows,
-        "occurrences": len(occurrences),
-        "structures": len(structures),
-        "organisms": len(organisms),
-        "references": len(references),
-        "manually_validated": validated,
+        "core_only_occurrences": added_occurrences,
+        "core_only_validations": added_validations,
     }
 
 
@@ -395,6 +471,13 @@ def main(argv: list[str] | None = None) -> int:
         help="endpoint this graph will be served from (DBCLS decides which)",
     )
     ap.add_argument(
+        "--core",
+        type=Path,
+        help="*_frozen.csv[.gz] — RECOMMENDED. The core table is authoritative for "
+        "which triples the release contains: in v11 it holds 48 occurrences the "
+        "metadata table lacks, and 2 manual-validation flags it lacks.",
+    )
+    ap.add_argument(
         "--refs-nt",
         type=Path,
         help="directory of ref_*.nt slices from a Wikidata export, for reference "
@@ -419,13 +502,12 @@ def main(argv: list[str] | None = None) -> int:
             source=args.source,
             endpoint=args.endpoint,
         )
-        stats = convert(args.metadata, sink)
+        corpus = convert(args.metadata, sink)
+        extra = fold_core(sink, args.core, corpus) if args.core else {}
+        stats = corpus.stats() | extra
         if args.refs_nt:
-            references = {
-                row["reference_wikidata"] for row in rows_of(args.metadata)
-            }
             stats["reference_triples_folded_in"] = fold_reference_slices(
-                sink, args.refs_nt, references
+                sink, args.refs_nt, corpus.references
             )
         stats["triples"] = sink.written
     finally:

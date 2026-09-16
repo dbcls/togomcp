@@ -50,7 +50,9 @@ immediately, and no tool, parameter or return shape changed.
   from its conversion timestamp. `scripts/lotus/README.md` records the traps found while building
   it — QLever reports a timeout as HTTP 200 with a truncated body, Wiley DOIs contain `<`/`>` which
   terminate an N-Triples IRI, NPClassifier cells pack several classes behind `" $ "`, and per-row
-  coverage overstates per-entity coverage (NCBI taxon ids: 86.6% of rows but 78.0% of organisms).
+  coverage overstates per-entity coverage (NCBI taxon ids: 86.6% of rows but 78.0% of organisms),
+  and a release's two CSV tables disagree — the core table is authoritative for which triples
+  exist, holding 48 the metadata table never mentions, so the converter takes both.
 
 ### Fixed
 
