@@ -44,7 +44,16 @@ entity_counts:
   with_formula: 49849
   with_monoisotopic_mass: 49850
   with_shorthand_abbrev: 34567     # lipidmaps:abbrev — 6,988 DISTINCT shorthand strings
-  classification_nodes: 607        # category/* IRIs; 571 labelled, 36 not
+  classification_nodes: 708        # EVERY category/* IRI. 672 are labelled (all appear in subject
+                                   # position); 36 are unlabelled and appear ONLY as objects.
+  classification_nodes_with_children: 607   # the subset that is an object of rdfs:subClassOf, i.e. holds
+                                   # >=1 child. This is NOT the node total — an earlier revision published
+                                   # it as such, and 571 (labelled AND has a child) as its labelled share.
+                                   # Three different quantities; keep them apart.
+  empty_classification_leaves: 93  # labelled classes with NO members and NO children (e.g. GL0303
+                                   # Dialkylmonoacylglycerols, GP0502). With the 8 roots they make up the
+                                   # 101 nodes appearing only as SUBJECTS. Set arithmetic, for reference:
+                                   # |subject|=672, |object|=607, |both|=571, |union|=708.
   chebi_xrefs: 14572
   swisslipids_xrefs: 12559
   total_triples: 479072
@@ -121,6 +130,16 @@ global_gotchas:
       endpoint with LIPID MAPS inside `SERVICE`, putting SUBSTR/CONCAT in the OUTER (Virtuoso) part. Also
       confirmed working here: STRSTARTS, CONTAINS, REGEX (anchors, `+`, 3-argument form), SAMPLE,
       GROUP_CONCAT, FILTER NOT EXISTS, nested sub-SELECT with HAVING.
+      REFINED 2026-09-16: the rule is `\b(substr|concat|char)\(` matched case-insensitively against the
+      RAW REQUEST BODY, not the parsed query. `SELECT ?x WHERE { BIND("SUBSTR(" AS ?x) }` — where the
+      token is only a string LITERAL — is blocked too, which is the proof it never reaches SPARQL, and
+      which is also why `GROUP_CONCAT(` passes: the preceding `_` defeats the word boundary. `char(` is
+      blocked on the same rule. That makes the fix ONE CHARACTER: PUT A SPACE BEFORE THE PAREN.
+      `SUBSTR (?s, 33, 2)` and `CONCAT (?a, ?b)` are valid SPARQL, clear the WAF and return correct
+      values (verified) — prefer this to restructuring a query around VALUES/STRSTARTS. The host DOES
+      discriminate by client, as suspected above, but on USER-AGENT rather than IP: urllib's default
+      `Python-urllib/3.x` is 403'd wholesale, control query included. A script that sends no UA header
+      therefore sees EVERY query blocked and cannot distinguish that from this rule — set one.
     check:
       kind: error
       date: "2026-09-15"
@@ -248,6 +267,36 @@ global_gotchas:
         }
       expect: {value: 22, tolerance: 0.02}
 
+  - id: label_search_low_recall
+    say: >
+      KEYWORD SEARCH ON `rdfs:label` HAS 0.2-4% RECALL FOR LIPID CLASS NAMES — it fails silently,
+      returning a short plausible list instead of an error. Each lipid carries a SYSTEMATIC name and an
+      ABBREVIATION, and the class noun a biologist types appears in NEITHER; it lives only in the
+      `category/*` label. "cardiolipin" matches 2 lipids while class GP1201 holds 1,306;
+      "prostaglandin" matches 11 while class FA0301 holds 291. PGE2, the most cited eicosanoid there is,
+      carries exactly two labels — "PGE2" and "9-oxo-11R,15S-dihydroxy-5Z,13E-prostadienoic acid" — and
+      neither contains "prostaglandin". FIX: resolve a CLASS through the category tree (see
+      `enum_category_members`), or through the shorthand head group `STRBEFORE(?abbrev, " ")` (see
+      `enum_by_headgroup`); the two agree exactly for CL (1,306 either way). Reserve
+      `FILTER(CONTAINS(...))` on labels for a SPECIFIC compound, and even then try both punctuations —
+      sphingosine-1-phosphate needs "sphingosine-1-phosphate" AND "sphingosine 1-phosphate" to come back
+      complete. This is the label-side counterpart of the formula-side defects above: the identifier a
+      human would search on is the one the record does not carry.
+    check:
+      kind: ratio
+      date: "2026-09-16"
+      numerator: |
+        SELECT (COUNT(DISTINCT ?l) AS ?n) WHERE {
+          ?l <http://www.w3.org/2000/01/rdf-schema#subClassOf>
+             <https://www.lipidmaps.org/rdf/category/31201> .
+        }
+      denominator: |
+        SELECT (COUNT(DISTINCT ?l) AS ?n) WHERE {
+          ?l <http://www.w3.org/2000/01/rdf-schema#label> ?lab .
+          FILTER(CONTAINS(LCASE(?lab), "cardiolipin"))
+        }
+      expect: {ratio: 653.0, tolerance: 0.3}
+
 examples:
   - id: lipid_core_record
     intent: retrieve the complete attribute set of one lipid from its LM ID
@@ -299,7 +348,7 @@ examples:
       or sub class) to scope the enumeration narrower.
     traps_avoided:
       - "The FILTER is load-bearing: `?lipid rdfs:subClassOf ?cat` also binds the 100 category nodes that are themselves children in the tree, so without it you count categories alongside lipids."
-      - "Lipids attach at THREE depths (3-, 5- and 7-character category IDs), which is why the `+` path is required — a fixed one- or two-hop pattern silently misses whole branches. All 183 of the deepest-tier categories are reachable this way."
+      - "Lipids attach at THREE depths (3-, 5- and 7-character category IDs), which is why the `+` path is required — a fixed one- or two-hop pattern silently misses whole branches. The tree is four levels deep: 8 categories, 91 main classes, 383 sub classes, 190 deepest-tier — and of the deepest tier, 164 actually hold lipids (the other 26 are empty classes)."
       - "This route is correct for every node EXCEPT `category/6` (Prenol Lipids): there the bare `+` path also follows a spurious edge into FA01 and returns 8,558 instead of 2,739. Use the edge-excluding form in `category_breakdown` (gotcha pr_category_contaminated_by_fa01)."
 
   - id: category_breakdown
@@ -381,6 +430,51 @@ examples:
               ?s <https://www.lipidmaps.org/ontology/abbrevChains> ?o .
             }
           expect: {value: 18778, tolerance: 0.02}
+
+  - id: enum_by_headgroup
+    intent: enumerate a lipid class by shorthand head group — the route that survives the label-recall trap
+    question: "How many cardiolipins does LIPID MAPS hold, and which shorthand head groups are the largest?"
+    complexity: aggregation
+    sparql: |
+      PREFIX lm: <https://www.lipidmaps.org/ontology/>
+      # The head group is everything before the first space in the shorthand: "PC 34:1" -> "PC".
+      # STRBEFORE is deliberate: SUBSTR would be 403'd by the WAF (see the gotcha).
+      SELECT ?headGroup (COUNT(DISTINCT ?lipid) AS ?nLipids)
+      WHERE {
+        ?lipid lm:abbrev ?abbrev .
+        BIND(STRBEFORE(?abbrev, " ") AS ?headGroup)
+        FILTER(?headGroup != "")
+      }
+      GROUP BY ?headGroup
+      ORDER BY DESC(?nLipids)
+      LIMIT 15
+    verified:
+      min_rows: 15
+      has_values: ["TG", 6913, "FA", 6206, "CL", 1306]
+      date: "2026-09-16"
+      note: >
+        TG 6,913 / FA 6,206 / ST 2,648 / PC 1,838 / PE 1,474 / CL 1,306 / PG 1,209 / PA 1,191 /
+        PS 1,190 / PI 1,189. The CL figure equals category GP1201 exactly — two independent routes,
+        same answer.
+    teaches: >
+      The SECOND way into a lipid class, and the one to reach for when a biologist names the class
+      rather than a compound. `lm:abbrev` is the lipidomics shorthand, and `STRBEFORE(?abbrev, " ")`
+      splits off the head group that lipidomics result tables actually report. It cross-checks the
+      category tree: "CL " gives 1,306 and so does class GP1201, which is how you know neither route is
+      quietly dropping rows. Use it to scope a mass search, or to turn a lipidomics table's head-group
+      column into LM IDs.
+    traps_avoided:
+      - "Do NOT reach for `FILTER(CONTAINS(?label, \"cardiolipin\"))` instead — a label keyword search finds only a tiny fraction of the cardiolipins that exist, and looks like a successful answer. The `label_search_low_recall` gotcha owns the measured ratio; do not restate it here, so the two cannot drift apart."
+      - say: "This covers only the 34,567 lipids that HAVE a shorthand (66.2%); the other 17,608 have no head group to extract. It is a lipid-CLASS route, not a whole-database census — use the category tree when you need every structure."
+        check:
+          kind: count
+          date: "2026-09-16"
+          query: |
+            SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
+              ?s <https://www.lipidmaps.org/ontology/abbrev> ?a .
+            }
+          expect: {value: 34567, tolerance: 0.02}
+      - "Head groups are NOT unique across categories: `PG` is phosphatidylglycerol in the shorthand but also the prefix of every prostaglandin common name (PGE2, PGD2), so `STRSTARTS(?label, \"PG\")` and this head-group split answer different questions."
 
   - id: mass_window_isobars
     intent: "match an MS peak to candidate lipid species, and see the ambiguity the mass alone leaves"
