@@ -13,6 +13,12 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.17.0] - 2026-09-16
+
+TogoID errors now say which routes DO work, and `togoid_identifyId` can check which datasets
+actually hold an ID. One new optional parameter; no existing call changes behaviour except that
+no-route errors carry more text.
+
 ### Added
 
 - **`togoid_identifyId` takes `verify=True`**, which asks TogoID's `/lookup/id` which
@@ -2760,7 +2766,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.16.2...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.17.0...HEAD
+[2.17.0]: https://github.com/dbcls/togomcp/compare/v2.16.2...v2.17.0
 [2.16.2]: https://github.com/dbcls/togomcp/compare/v2.16.1...v2.16.2
 [2.16.1]: https://github.com/dbcls/togomcp/compare/v2.16.0...v2.16.1
 [2.16.0]: https://github.com/dbcls/togomcp/compare/v2.15.0...v2.16.0
