@@ -315,7 +315,7 @@ WHERE {
 
 ## Load notes
 
-Output of one v11 conversion, with reference metadata folded in:
+Output of one v11 conversion from both CSV tables, with reference metadata folded in:
 
 | | |
 | --- | --- |

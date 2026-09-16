@@ -46,7 +46,7 @@ immediately, and no tool, parameter or return shape changed.
   proposal instead converts LOTUS's frozen CSV release (v11, 2026-04-13) into a dated graph for
   RDF Portal to host: entities keep their Wikidata IRIs so the graph joins to `idsm`'s Wikidata
   mirror with no mapping table, and cross-references use the IRI forms `pubchem`/`taxonomy`/`pubmed`
-  already use. v11 converts to 9,137,465 triples, verified with `rapper` and reproducible apart
+  already use. v11 converts to 9,137,722 triples, verified with `rapper` and reproducible apart
   from its conversion timestamp. `scripts/lotus/README.md` records the traps found while building
   it — QLever reports a timeout as HTTP 200 with a truncated body, Wiley DOIs contain `<`/`>` which
   terminate an N-Triples IRI, NPClassifier cells pack several classes behind `" $ "`, and per-row

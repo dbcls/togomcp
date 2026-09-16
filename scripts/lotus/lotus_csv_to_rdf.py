@@ -3,7 +3,7 @@
 
 LOTUS publishes no RDF. Its releases are frozen CSV tables on Zenodo (v11 =
 2026-04-13, DOI 10.5281/zenodo.19360665), regenerated from live Wikidata by the
-project's own exporter. This script turns the metadata table into the graph
+project's own exporter. This script turns those tables into the graph
 described in `lotus_schema.md`, so RDF Portal can host a *dated, citable*
 LOTUS instead of re-deriving a moving target from Wikidata at query time.
 
@@ -21,7 +21,7 @@ metadata table does not. Converting from `--metadata` alone therefore drops
 them silently, so pass `--core` as well; it adds what is missing and leaves
 everything else untouched.
 
-Three more properties of the source drive the design:
+Two more properties of the source drive the design:
 
 * The CSV is DENORMALIZED and its entity attributes are MULTI-VALUED: one
   (structure, organism, reference) triple can span several rows because a
@@ -36,11 +36,13 @@ CSV despite what the Zenodo description says, so `--refs-nt` optionally folds
 in the reference slices of a Wikidata CONSTRUCT export (see `export_lotus.sh`).
 
 Usage:
+    # both tables: --metadata for the attributes, --core for completeness
     python scripts/lotus/lotus_csv_to_rdf.py \
         --metadata 260413_frozen_metadata.csv.gz \
+        --core 260413_frozen.csv.gz \
         --out lotus.nt.gz --version v11 --issued 2026-04-13
 
-    # fold in reference titles/dates/PMIDs from a Wikidata export
+    # and fold in reference titles/dates/PMIDs from a Wikidata export
     python scripts/lotus/lotus_csv_to_rdf.py ... --refs-nt out/
 
 Output is N-Triples, deduplicated in memory (~400 MB peak for v11). With
