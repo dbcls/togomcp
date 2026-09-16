@@ -35,6 +35,14 @@ The reference rows carry just a DOI. Titles, dates and PMIDs are not in the
 CSV despite what the Zenodo description says, so `--refs-nt` optionally folds
 in the reference slices of a Wikidata CONSTRUCT export (see `export_lotus.sh`).
 
+The 290-triple vocabulary in `lotus_ontology.ttl` is emitted BY DEFAULT, into
+the same named graph as the data, so a conversion cannot ship 9.1 M triples
+whose every `lotus:` term is undefined. It is a separate file because it is
+hand-authored prose on a review cycle of its own, and it goes in the same
+graph because a TogoMCP query pins its graph — a vocabulary in a second graph
+is invisible under that pin. `--no-ontology` opts out; `--ontology PATH`
+points elsewhere.
+
 Usage:
     # both tables: --metadata for the attributes, --core for completeness
     python scripts/lotus/lotus_csv_to_rdf.py \
@@ -64,6 +72,7 @@ from urllib.parse import quote
 
 LOTUS = "http://rdfportal.org/ontology/lotus#"
 DATASET = "http://rdfportal.org/dataset/lotus"
+DEFAULT_ONTOLOGY = Path(__file__).resolve().parent / "lotus_ontology.ttl"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 RDFS_SEEALSO = "http://www.w3.org/2000/01/rdf-schema#seeAlso"
@@ -427,6 +436,161 @@ def _plain_literal(raw: str) -> str | None:
     return _UNESCAPE_RE.sub(lambda m: _NT_UNESCAPES[m.group(1)], raw[1:end])
 
 
+class TurtleSubsetError(ValueError):
+    """The ontology file uses Turtle this reader deliberately does not accept."""
+
+
+# A small Turtle reader, enough for `lotus_ontology.ttl` and nothing more.
+# Supported: @prefix, `a`, IRIs, prefixed names, plain/long/typed/language
+# literals, `;` and `,` lists, `#` comments. NOT supported: blank nodes, `[]`,
+# collections, numeric and boolean shorthand, @base. Anything else raises with
+# a line number rather than being guessed at — the alternative to a parser here
+# is a second, drifting copy of the vocabulary inside this file.
+_TTL_TOKEN = re.compile(
+    r"""  (?P<ws>\s+)
+        | (?P<comment>\#[^\n]*)
+        | (?P<directive>@prefix\b)
+        | (?P<longstr>\"\"\"(?:[^"\\]|\\.|"(?!""))*\"\"\")
+        | (?P<string>"(?:[^"\\\n]|\\.)*")
+        | (?P<iri><[^>\s]*>)
+        | (?P<pname>[A-Za-z][A-Za-z0-9_-]*:(?:[A-Za-z0-9_][A-Za-z0-9_-]*)?)
+        | (?P<lang>@[A-Za-z]+(?:-[A-Za-z0-9]+)*)
+        | (?P<dtsep>\^\^)
+        | (?P<keyword>a(?![A-Za-z0-9_:-]))
+        | (?P<punct>[;,.])
+    """,
+    re.VERBOSE,
+)
+
+
+_TTL_BAD_ESCAPE = re.compile(r"\\(?![nrt\"\\'])")
+
+
+def _ttl_tokens(text: str, label: str) -> list[tuple[str, str, int]]:
+    tokens: list[tuple[str, str, int]] = []
+    pos, line = 0, 1
+    while pos < len(text):
+        m = _TTL_TOKEN.match(text, pos)
+        if m is None:
+            snippet = text[pos : pos + 40].split("\n", 1)[0]
+            raise TurtleSubsetError(f"{label}:{line}: unsupported Turtle at {snippet!r}")
+        kind, value = m.lastgroup, m.group()
+        if kind not in ("ws", "comment"):
+            tokens.append((kind or "", value, line))
+        line += value.count("\n")
+        pos = m.end()
+    return tokens
+
+
+def parse_turtle_subset(text: str, label: str) -> list[tuple[str, str, str]]:
+    """Parse the ontology file into (subject IRI, predicate IRI, N-Triples object)."""
+    tokens = _ttl_tokens(text, label)
+    prefixes: dict[str, str] = {}
+    triples: list[tuple[str, str, str]] = []
+    i, n = 0, len(tokens)
+
+    def fail(what: str) -> TurtleSubsetError:
+        got, line = (tokens[i][1], tokens[i][2]) if i < n else ("end of file", "EOF")
+        return TurtleSubsetError(f"{label}:{line}: expected {what}, got {got!r}")
+
+    def take(*kinds: str, what: str) -> tuple[str, str, int]:
+        nonlocal i
+        if i >= n or tokens[i][0] not in kinds:
+            raise fail(what)
+        token = tokens[i]
+        i += 1
+        return token
+
+    def take_punct(char: str) -> None:
+        nonlocal i
+        if i >= n or tokens[i][0] != "punct" or tokens[i][1] != char:
+            raise fail(f"{char!r}")
+        i += 1
+
+    def at_punct(char: str) -> bool:
+        return i < n and tokens[i][0] == "punct" and tokens[i][1] == char
+
+    def as_iri(kind: str, value: str, line: int) -> str:
+        if kind == "iri":
+            return value[1:-1]
+        prefix, _, local = value.partition(":")
+        if prefix not in prefixes:
+            raise TurtleSubsetError(f"{label}:{line}: undeclared prefix {prefix}:")
+        return prefixes[prefix] + local
+
+    def read_object() -> str:
+        nonlocal i
+        kind, value, line = take("iri", "pname", "string", "longstr", what="an object")
+        if kind in ("iri", "pname"):
+            return f"<{as_iri(kind, value, line)}>"
+        body = value[3:-3] if kind == "longstr" else value[1:-1]
+        # \uXXXX and friends would survive unescaping as literal backslash text
+        # and then be re-escaped into the output — wrong, and silently so.
+        if _TTL_BAD_ESCAPE.search(body):
+            raise TurtleSubsetError(
+                f"{label}:{line}: unsupported string escape; this reader takes only "
+                r"\n \r \t \" \\ \' — write the character itself, the file is UTF-8"
+            )
+        obj = lit(_UNESCAPE_RE.sub(lambda m: _NT_UNESCAPES[m.group(1)], body))
+        if i < n and tokens[i][0] == "lang":
+            tag = tokens[i][1]
+            i += 1
+            return obj + tag
+        if i < n and tokens[i][0] == "dtsep":
+            i += 1
+            dt_kind, dt_value, dt_line = take("iri", "pname", what="a datatype IRI")
+            return f"{obj}^^<{as_iri(dt_kind, dt_value, dt_line)}>"
+        return obj
+
+    while i < n:
+        if tokens[i][0] == "directive":
+            i += 1
+            prefix_token = take("pname", what="a prefix such as `lotus:`")
+            if not prefix_token[1].endswith(":"):
+                raise TurtleSubsetError(
+                    f"{label}:{prefix_token[2]}: expected a bare prefix such as "
+                    f"`lotus:`, got {prefix_token[1]!r}"
+                )
+            namespace = take("iri", what="a namespace IRI")[1]
+            take_punct(".")
+            prefixes[prefix_token[1][:-1]] = namespace[1:-1]
+            continue
+
+        subject = as_iri(*take("iri", "pname", what="a subject IRI"))
+        while True:
+            kind, value, line = take("iri", "pname", "keyword", what="a predicate")
+            predicate = RDF_TYPE if kind == "keyword" else as_iri(kind, value, line)
+            while True:
+                triples.append((subject, predicate, read_object()))
+                if not at_punct(","):
+                    break
+                i += 1
+            if at_punct(";"):
+                i += 1
+                if at_punct("."):  # trailing `;` before the terminator
+                    break
+                continue
+            break
+        take_punct(".")
+
+    return triples
+
+
+def emit_ontology(sink: Sink, triples: list[tuple[str, str, str]]) -> int:
+    """Write the vocabulary into the same graph as the data.
+
+    Not a separate graph, deliberately. Every TogoMCP query pins its graph, and
+    a vocabulary sitting in a second graph is invisible under that pin: schema
+    discovery through SPARQL returns 0 rows and the properties look
+    undocumented. RDF Portal's `taxonomy` graph carries its DDBJ TBox inline
+    the same way, and 290 triples against 9.1 M costs nothing.
+    """
+    before = sink.written
+    for subject, predicate, obj in triples:
+        sink.triple(subject, predicate, obj)
+    return sink.written - before
+
+
 def emit_dataset_metadata(
     sink: Sink, *, version: str, issued: str, source: str, endpoint: str
 ) -> None:
@@ -485,8 +649,42 @@ def main(argv: list[str] | None = None) -> int:
         help="directory of ref_*.nt slices from a Wikidata export, for reference "
         "titles/dates/PMIDs (absent from the CSV)",
     )
+    ap.add_argument(
+        "--ontology",
+        type=Path,
+        default=DEFAULT_ONTOLOGY,
+        help=f"vocabulary to emit into the same graph as the data (default: {DEFAULT_ONTOLOGY.name})",
+    )
+    ap.add_argument(
+        "--no-ontology",
+        action="store_true",
+        help="build the graph WITHOUT its vocabulary — every lotus: term then goes undefined",
+    )
     ap.add_argument("--no-dedupe", action="store_true", help="skip in-memory dedupe; pipe through `sort -u`")
     args = ap.parse_args(argv)
+
+    # Read and parse the vocabulary BEFORE touching the output: a typo in the
+    # Turtle should cost a second, not 100 s of conversion and a 1.3 GB file.
+    ontology: list[tuple[str, str, str]] = []
+    if not args.no_ontology:
+        if not args.ontology.is_file():
+            ap.error(
+                f"ontology file not found: {args.ontology}\n"
+                "Pass --ontology PATH, or --no-ontology to build a graph whose "
+                "lotus: terms are all undefined."
+            )
+        try:
+            ontology = parse_turtle_subset(
+                args.ontology.read_text(encoding="utf-8"), str(args.ontology)
+            )
+        except TurtleSubsetError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            print(
+                "This reader takes only the Turtle subset the vocabulary uses "
+                "(see the header of lotus_ontology.ttl).",
+                file=sys.stderr,
+            )
+            return 1
 
     if args.out and args.out.suffix == ".gz":
         out: IO[str] = gzip.open(args.out, "wt", encoding="utf-8")  # noqa: SIM115
@@ -497,6 +695,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         sink = Sink(out, dedupe=not args.no_dedupe)
+        ontology_triples = emit_ontology(sink, ontology)
         emit_dataset_metadata(
             sink,
             version=args.version,
@@ -507,6 +706,7 @@ def main(argv: list[str] | None = None) -> int:
         corpus = convert(args.metadata, sink)
         extra = fold_core(sink, args.core, corpus) if args.core else {}
         stats = corpus.stats() | extra
+        stats["ontology_triples"] = ontology_triples
         if args.refs_nt:
             stats["reference_triples_folded_in"] = fold_reference_slices(
                 sink, args.refs_nt, corpus.references
