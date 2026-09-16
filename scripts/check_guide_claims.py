@@ -55,6 +55,13 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 ENDPOINTS_CSV = REPO / "togo_mcp" / "data" / "resources" / "endpoints.csv"
 
+# Sent on every request. Not cosmetic: `lipidmaps` sits behind a Cloudflare bot filter
+# that 403s urllib's default `Python-urllib/3.x` outright — a plain STRLEN control query
+# gets the same 403 as a blocked one, so a missing UA is indistinguishable from the
+# very rule the lipidmaps_waf_blocks_substr claim asserts. The other two MIE checkers
+# have always set one; this script had not, because no claim targeted such a host before.
+HEADERS = {"Accept": "text/csv", "User-Agent": "togomcp-guide-claim-check"}
+
 XSD = "PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>"
 RDFS = "PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>"
 
@@ -84,7 +91,7 @@ def run(url: str, query: str, tries: int = 4, timeout: int = 90) -> tuple[str | 
     last = ""
     for attempt in range(tries):
         data = urllib.parse.urlencode({"query": query}).encode()
-        req = urllib.request.Request(url, data=data, headers={"Accept": "text/csv"})
+        req = urllib.request.Request(url, data=data, headers=HEADERS)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 body = resp.read().decode("utf-8", "replace")
@@ -98,6 +105,31 @@ def run(url: str, query: str, tries: int = 4, timeout: int = 90) -> tuple[str | 
         if attempt < tries - 1:
             time.sleep(15)
     return None, last
+
+
+class NetFail(Exception):
+    """The endpoint could not be reached — a NET-FAIL, not a claim failure."""
+
+
+def http_status(url: str, query: str, timeout: int = 60) -> int:
+    """One request, no retry; return the HTTP status the endpoint answered with.
+
+    `run()` retries four times and collapses everything to (None, err). That is right
+    for a claim asserting a RESULT, but wrong for one asserting a REJECTION: a
+    deterministic 403 would burn four attempts and then report NET-FAIL — the checker
+    would say "endpoint unreachable" about an endpoint that answered immediately and
+    correctly. Raises NetFail only for a connection-level failure, where there is no
+    status to judge.
+    """
+    data = urllib.parse.urlencode({"query": query}).encode()
+    req = urllib.request.Request(url, data=data, headers=HEADERS)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status
+    except urllib.error.HTTPError as exc:
+        return exc.code
+    except Exception as exc:  # noqa: BLE001 — no HTTP status means nothing to assert
+        raise NetFail(f"{type(exc).__name__}: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +227,32 @@ CLAIMS: list[dict] = [
         ),
     },
     {
+        "id": "lipidmaps_waf_blocks_substr",
+        "endpoint": "lipidmaps",
+        # NB: anchors are matched against the raw markdown, which is hard-wrapped —
+        # keep every anchor within a single source line.
+        "anchor": "put a space before the paren",
+        "says": "lipidmaps 403s a query containing substr(; a space before the paren clears it",
+        # `q` is unused: this claim is about the REJECTION, so it reads status codes
+        # directly rather than parsing a body that is deliberately never SPARQL.
+        "check": lambda q: (
+            lambda blocked, spaced, literal: (
+                (blocked, spaced, literal) == (403, 200, 403),
+                f"SUBSTR(={blocked} (guide: 403), 'SUBSTR ('={spaced} (guide: 200), "
+                f"bare literal={literal} (guide: 403)",
+            )
+        )(
+            http_status(endpoint_url("lipidmaps"),
+                        'SELECT (SUBSTR("abcdefgh", 3, 4) AS ?x) WHERE { }'),
+            http_status(endpoint_url("lipidmaps"),
+                        'SELECT (SUBSTR ("abcdefgh", 3, 4) AS ?x) WHERE { }'),
+            # the load-bearing half of the guide's claim: the WAF matches the request
+            # BODY, so the token is blocked even where SPARQL would treat it as text.
+            http_status(endpoint_url("lipidmaps"),
+                        'SELECT ?x WHERE { BIND("SUBSTR(" AS ?x) }'),
+        ),
+    },
+    {
         "id": "mixed_literal_forms_need_str",
         "endpoint": "primary",
         "anchor": "Normalize literals with `STR(?label)`",
@@ -251,6 +309,9 @@ def main() -> int:
 
         try:
             passed, detail = claim["check"](q)
+        except NetFail as exc:
+            net_error.append(str(exc))
+            passed, detail = False, str(exc)
         except Exception as exc:  # noqa: BLE001 — a malformed claim is a claim failure
             passed, detail = False, f"checker raised {type(exc).__name__}: {exc}"
 
