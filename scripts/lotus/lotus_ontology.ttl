@@ -1,0 +1,512 @@
+# LOTUS vocabulary for RDF Portal.
+#
+# 48 terms (4 classes, 44 properties) describing the graph that
+# lotus_csv_to_rdf.py builds from the LOTUS frozen CSV export. The converter
+# emits this file into the SAME named graph as the instance data
+# (<http://rdfportal.org/dataset/lotus>) and does so by default, so a
+# conversion cannot ship data without the vocabulary that explains it.
+#
+# Why the same graph: every TogoMCP query pins its graph. A vocabulary in a
+# second graph is invisible under that pin — schema discovery through SPARQL
+# would return 0 rows and an agent would conclude the properties are
+# undocumented. RDF Portal's `taxonomy` graph carries its DDBJ TBox inline the
+# same way. 290 triples against 9.1 M is not a cost.
+#
+# Why a separate FILE: this is hand-authored prose reviewed once by DBCLS and
+# the LOTUS team, while the instance data is re-converted per release. A typo
+# fixed here must not cost a 100 s re-conversion of a 1.3 GB file.
+#
+# TURTLE SUBSET: the converter parses this file with a deliberately small
+# reader (stdlib only, no rdflib). Supported: @prefix, `a`, IRIs, prefixed
+# names, plain/long/typed/language literals, `;` and `,` lists. NOT supported:
+# blank nodes, `[]`, collections, numeric and boolean shorthand, @base. The
+# reader raises a TurtleSubsetError naming the line rather than guessing, so
+# keep edits inside the subset — or re-render with `rapper -i turtle`.
+#
+# Coverage percentages are v11 (2026-04-13), per entity, not per CSV row.
+
+@prefix lotus:   <http://rdfportal.org/ontology/lotus#> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix vann:    <http://purl.org/vocab/vann/> .
+
+########################################################################
+# Ontology header
+########################################################################
+
+<http://rdfportal.org/ontology/lotus>
+    a owl:Ontology ;
+    dcterms:title "LOTUS vocabulary" ;
+    dcterms:description """Classes and properties for LOTUS referenced structure-organism
+occurrences of natural products, as hosted by RDF Portal. Versioned independently of the
+LOTUS data release: this vocabulary is 1.0 whatever release the graph holds, and the release
+is stated by pav:version on <http://rdfportal.org/dataset/lotus>.""" ;
+    owl:versionInfo "1.0" ;
+    vann:preferredNamespacePrefix "lotus" ;
+    vann:preferredNamespaceUri "http://rdfportal.org/ontology/lotus#" ;
+    rdfs:seeAlso <https://lotus.nprod.net/> ;
+    rdfs:comment """No property is declared owl:FunctionalProperty except the three links out of
+lotus:Occurrence, which are single-valued by construction (an occurrence IRI is minted from
+exactly one structure, organism and reference QID). The omission elsewhere is deliberate, not an
+oversight: lotus:inchikey and the three lotus:npclassifier* properties are genuinely repeatable,
+and asserting functionality on them would license a reasoner to merge distinct values.""" .
+
+########################################################################
+# Classes
+########################################################################
+
+lotus:Occurrence
+    a owl:Class ;
+    rdfs:label "Occurrence" ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment """A report that one chemical structure was found in one organism, documented by
+one literature reference (672,413 in v11). This is the unit of assertion in LOTUS, and a
+first-class node rather than a structure-to-organism edge because the reference is the evidence,
+not decoration: the same structure-organism pair is typically reported by several papers.
+Occurrence IRIs are the only minted ones in the graph, built deterministically from the three
+Wikidata QIDs as <http://rdfportal.org/dataset/lotus/occurrence/QSTRUCT_QORG_QREF>, so
+re-converting a release reproduces them byte for byte and two releases can be diffed directly.""" .
+
+lotus:Structure
+    a owl:Class ;
+    rdfs:label "Structure" ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment """A chemical structure of a natural product (227,256 in v11). Identified by its
+Wikidata IRI (http://www.wikidata.org/entity/Q...), not a minted one, so the graph joins to
+Wikidata and to IDSM's Wikidata compound mirror with no mapping table. Carries skos:exactMatch to
+an http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID... IRI on 97.3% of structures.""" .
+
+lotus:Organism
+    a owl:Class ;
+    rdfs:label "Organism" ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment """An organism a natural product was reported from (37,486 in v11). Identified by
+its Wikidata IRI. Carries skos:exactMatch to http://identifiers.org/taxonomy/<taxid> on 78.0% (see
+lotus:ncbiTaxonId for what that costs a join) and rdfs:seeAlso to a GBIF species page on 98.1%.
+The ten rank properties lotus:taxonDomain..lotus:taxonVarietas hold NAMES, not IRIs, because that
+is all the source CSV has, and their coverage is uneven by rank (97.2% down to 0.7%). For real
+hierarchy traversal, join skos:exactMatch into RDF Portal's `taxonomy` database and walk
+rdfs:subClassOf* there: LOTUS supplies occurrences, `taxonomy` supplies the tree.""" .
+
+lotus:Reference
+    a owl:Class ;
+    rdfs:label "Reference" ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment """A publication reporting an occurrence (91,426 in v11). Identified by its
+Wikidata IRI. The DOI is the complete identifier here and the PMID is the joinable one:
+rdfs:seeAlso reaches https://doi.org/<doi> for essentially every reference, while skos:exactMatch
+to PubMed exists for only 47.1%. Everything beyond the DOI (title, date, PMID, PMCID, venue) is
+absent from the frozen CSV and folded in from a Wikidata export by the converter's --refs-nt
+option; a graph built without it has references carrying a DOI and nothing else.""" .
+
+########################################################################
+# Occurrence properties
+########################################################################
+
+lotus:structure
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "structure" ;
+    rdfs:domain lotus:Occurrence ;
+    rdfs:range lotus:Structure ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "The structure reported by this occurrence. Exactly one." .
+
+lotus:organism
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "organism" ;
+    rdfs:domain lotus:Occurrence ;
+    rdfs:range lotus:Organism ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "The organism the structure was reported from. Exactly one." .
+
+lotus:reference
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "reference" ;
+    rdfs:domain lotus:Occurrence ;
+    rdfs:range lotus:Reference ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "The publication reporting this occurrence. Exactly one." .
+
+lotus:manuallyValidated
+    a owl:DatatypeProperty ;
+    rdfs:label "manually validated" ;
+    rdfs:domain lotus:Occurrence ;
+    rdfs:range xsd:boolean ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment """True when LOTUS curators manually validated this occurrence (178 of 672,413 in
+v11). ABSENT MEANS NOT CHECKED, NOT FALSE. The source records "NA" for everything else, so
+emitting false would assert something the source does not say, and the property is therefore
+emitted only when true. A query for unvalidated occurrences must test for ABSENCE
+(FILTER NOT EXISTS / OPTIONAL + !BOUND), never for the value false, which matches nothing.""" .
+
+########################################################################
+# Structure properties
+########################################################################
+
+lotus:inchikey
+    a owl:DatatypeProperty ;
+    rdfs:label "InChIKey" ;
+    rdfs:domain lotus:Structure ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment """InChIKey of the structure. 100%. REPEATABLE in rare cases: 87 structure QIDs
+carry more than one InChIKey in v11 (at most 3), and the converter emits all of them rather than
+silently choosing. Anything keying on InChIKey should expect that, and this is why the property is
+not declared functional.""" .
+
+lotus:inchi
+    a owl:DatatypeProperty ;
+    rdfs:label "InChI" ;
+    rdfs:domain lotus:Structure ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Full InChI string. 100%." .
+
+lotus:smiles
+    a owl:DatatypeProperty ;
+    rdfs:label "SMILES" ;
+    rdfs:domain lotus:Structure ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Isomeric SMILES, i.e. stereochemistry retained. 100%. See lotus:smiles2D for the flat form." .
+
+lotus:smiles2D
+    a owl:DatatypeProperty ;
+    rdfs:label "2D SMILES" ;
+    rdfs:domain lotus:Structure ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment """Flat SMILES with stereochemistry stripped. 100%. The right key for matching
+across sources that disagree about stereochemistry; lotus:smiles is the right one for identity.""" .
+
+lotus:molecularFormula
+    a owl:DatatypeProperty ;
+    rdfs:label "molecular formula" ;
+    rdfs:domain lotus:Structure ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Molecular formula in Hill order, e.g. \"C37H66O7\". 100%. A string: compare it literally, do not parse it for arithmetic." .
+
+lotus:exactMass
+    a owl:DatatypeProperty ;
+    rdfs:label "exact mass" ;
+    rdfs:domain lotus:Structure ;
+    rdfs:range xsd:decimal ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Monoisotopic exact mass in daltons. 100%. Typed xsd:decimal, so numeric range filters work directly." .
+
+lotus:xlogp
+    a owl:DatatypeProperty ;
+    rdfs:label "XLogP" ;
+    rdfs:domain lotus:Structure ;
+    rdfs:range xsd:decimal ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Computed octanol-water partition coefficient. 99.7%." .
+
+lotus:iupacName
+    a owl:DatatypeProperty ;
+    rdfs:label "IUPAC name" ;
+    rdfs:domain lotus:Structure ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Systematic IUPAC name. 96.6%." .
+
+lotus:traditionalName
+    a owl:DatatypeProperty ;
+    rdfs:label "traditional name" ;
+    rdfs:domain lotus:Structure ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment """Common or trivial name, e.g. "(+)-Annonacin". 96.9%, and also emitted as
+rdfs:label — so 3.1% of structures have no label at all and a query joining on rdfs:label drops
+them. Use OPTIONAL unless you mean to filter.""" .
+
+lotus:stereocenterCount
+    a owl:DatatypeProperty ;
+    rdfs:label "stereocenter count" ;
+    rdfs:domain lotus:Structure ;
+    rdfs:range xsd:integer ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Total number of stereocenters. 100%." .
+
+lotus:unspecifiedStereocenterCount
+    a owl:DatatypeProperty ;
+    rdfs:label "unspecified stereocenter count" ;
+    rdfs:domain lotus:Structure ;
+    rdfs:range xsd:integer ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment """Number of stereocenters whose configuration is not specified. 100%. Zero here
+means the structure is fully resolved stereochemically; a non-zero value means the SMILES is
+partially ambiguous.""" .
+
+lotus:npclassifierPathway
+    a owl:DatatypeProperty ;
+    rdfs:label "NPClassifier pathway" ;
+    rdfs:domain lotus:Structure ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment """Biosynthetic pathway from NPClassifier, e.g. "Polyketides". 97.1%. REPEATABLE:
+a compound of mixed biosynthetic origin carries several. The source packs them into one CSV cell
+as "Fatty acids $ Polyketides" (up to 11.6% of rows) and the converter splits them, so a filter on
+one value also matches co-classified compounds — which is correct, and the opposite of what the
+raw CSV gives you.""" .
+
+lotus:npclassifierSuperclass
+    a owl:DatatypeProperty ;
+    rdfs:label "NPClassifier superclass" ;
+    rdfs:domain lotus:Structure ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Superclass from NPClassifier. 91.5%. REPEATABLE, see lotus:npclassifierPathway." .
+
+lotus:npclassifierClass
+    a owl:DatatypeProperty ;
+    rdfs:label "NPClassifier class" ;
+    rdfs:domain lotus:Structure ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Class from NPClassifier, the most specific of its three levels. 88.6%. REPEATABLE, see lotus:npclassifierPathway." .
+
+lotus:classyfireKingdom
+    a owl:DatatypeProperty ;
+    rdfs:label "ClassyFire kingdom" ;
+    rdfs:domain lotus:Structure ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment """Kingdom in the ClassyFire chemical taxonomy. 98.6%. ClassyFire and NPClassifier
+are two independent classifications of the same structure, not two levels of one: ClassyFire is
+structural, NPClassifier is biosynthetic. Do not mix their levels in one rollup.""" .
+
+lotus:classyfireSuperclass
+    a owl:DatatypeProperty ;
+    rdfs:label "ClassyFire superclass" ;
+    rdfs:domain lotus:Structure ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Superclass in the ClassyFire chemical taxonomy. 98.6%." .
+
+lotus:classyfireClass
+    a owl:DatatypeProperty ;
+    rdfs:label "ClassyFire class" ;
+    rdfs:domain lotus:Structure ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Class in the ClassyFire chemical taxonomy. 97.9%." .
+
+lotus:classyfireDirectParent
+    a owl:DatatypeProperty ;
+    rdfs:label "ClassyFire direct parent" ;
+    rdfs:domain lotus:Structure ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Most specific ClassyFire term assigned to the structure. 83.2% — notably sparser than the three levels above it." .
+
+lotus:chemontId
+    a owl:DatatypeProperty ;
+    rdfs:label "ChemOnt ID" ;
+    rdfs:domain lotus:Structure ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment """ClassyFire ChemOnt identifier in canonical zero-padded form, e.g.
+"CHEMONTID:0002518". 98.6%. Deliberately a literal rather than an IRI: ChemOnt has no agreed
+resolvable IRI namespace. If one is adopted this becomes an object property and connects to
+ontology tooling.""" .
+
+lotus:pubchemCompoundId
+    a owl:DatatypeProperty ;
+    rdfs:label "PubChem compound ID" ;
+    rdfs:domain lotus:Structure ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment """PubChem CID as a bare literal, e.g. "441555". 97.3%. The same link is emitted
+as skos:exactMatch to the http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID... IRI; use that form
+to join the `pubchem` database, and this one only to display or match the number.""" .
+
+########################################################################
+# Organism properties
+########################################################################
+
+lotus:scientificName
+    a owl:DatatypeProperty ;
+    rdfs:label "scientific name" ;
+    rdfs:domain lotus:Organism ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Scientific name of the organism, e.g. \"Annona muricata\". 100%, and also emitted as rdfs:label." .
+
+lotus:gbifTaxonId
+    a owl:DatatypeProperty ;
+    rdfs:label "GBIF taxon ID" ;
+    rdfs:domain lotus:Organism ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "GBIF taxon key. 98.1% — the best-covered of the three taxonomy ids. Also emitted as rdfs:seeAlso to the GBIF species page." .
+
+lotus:ncbiTaxonId
+    a owl:DatatypeProperty ;
+    rdfs:label "NCBI taxon ID" ;
+    rdfs:domain lotus:Organism ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment """NCBI Taxonomy id. 78.0% of organisms — the lowest-covered identifier on this
+class, and the trap on this graph: a join into RDF Portal's `taxonomy` database through
+skos:exactMatch silently drops 8,252 organisms, with no error and a plausible-looking result.
+Prefer lotus:gbifTaxonId (98.1%) or lotus:ottTaxonId (97.8%) when completeness matters more than
+reaching the NCBI tree, and say which one an answer used. Per CSV ROW the figure looks like 86.6%
+because well-studied organisms recur in many rows; 78.0% per entity is the honest number.""" .
+
+lotus:ottTaxonId
+    a owl:DatatypeProperty ;
+    rdfs:label "OTT taxon ID" ;
+    rdfs:domain lotus:Organism ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Open Tree of Life taxonomy id. 97.8%." .
+
+lotus:taxonDomain
+    a owl:DatatypeProperty ;
+    rdfs:label "domain" ;
+    rdfs:domain lotus:Organism ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Name of the organism's domain. One of ten flat rank properties holding names, not IRIs; see lotus:Organism for what that means for rollups." .
+
+lotus:taxonKingdom
+    a owl:DatatypeProperty ;
+    rdfs:label "kingdom" ;
+    rdfs:domain lotus:Organism ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Name of the organism's kingdom. See lotus:Organism for the rank-coverage caveat." .
+
+lotus:taxonPhylum
+    a owl:DatatypeProperty ;
+    rdfs:label "phylum" ;
+    rdfs:domain lotus:Organism ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Name of the organism's phylum. See lotus:Organism for the rank-coverage caveat." .
+
+lotus:taxonClass
+    a owl:DatatypeProperty ;
+    rdfs:label "class (taxonomic)" ;
+    rdfs:domain lotus:Organism ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Name of the organism's taxonomic class. Unrelated to the ClassyFire and NPClassifier `class` properties on lotus:Structure. See lotus:Organism for the rank-coverage caveat." .
+
+lotus:taxonOrder
+    a owl:DatatypeProperty ;
+    rdfs:label "order" ;
+    rdfs:domain lotus:Organism ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Name of the organism's order. See lotus:Organism for the rank-coverage caveat." .
+
+lotus:taxonFamily
+    a owl:DatatypeProperty ;
+    rdfs:label "family" ;
+    rdfs:domain lotus:Organism ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Name of the organism's family, e.g. \"Annonaceae\". The most useful rank for a biosynthetic rollup. See lotus:Organism for the rank-coverage caveat." .
+
+lotus:taxonTribe
+    a owl:DatatypeProperty ;
+    rdfs:label "tribe" ;
+    rdfs:domain lotus:Organism ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Name of the organism's tribe. 44.7% — absence is unknown, not exclusion, so grouping on this rank hides more than half the organisms." .
+
+lotus:taxonGenus
+    a owl:DatatypeProperty ;
+    rdfs:label "genus" ;
+    rdfs:domain lotus:Organism ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Name of the organism's genus. See lotus:Organism for the rank-coverage caveat." .
+
+lotus:taxonSpecies
+    a owl:DatatypeProperty ;
+    rdfs:label "species" ;
+    rdfs:domain lotus:Organism ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Name of the organism's species. See lotus:Organism for the rank-coverage caveat." .
+
+lotus:taxonVarietas
+    a owl:DatatypeProperty ;
+    rdfs:label "varietas" ;
+    rdfs:domain lotus:Organism ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Name of the organism's variety. 0.7% — the sparsest rank in the graph; treat it as incidental detail, never as a grouping key." .
+
+########################################################################
+# Reference properties
+#
+# Everything except lotus:doi comes from the Wikidata export folded in by the
+# converter's --refs-nt option. Without it, a reference has a DOI and nothing
+# else; the coverage figures below all assume it was used.
+########################################################################
+
+lotus:doi
+    a owl:DatatypeProperty ;
+    rdfs:label "DOI" ;
+    rdfs:domain lotus:Reference ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment """DOI as a bare literal, e.g. "10.1055/S-2003-38485". 99.96% (91,386 of 91,426)
+and the only reference attribute present in the frozen CSV itself. Also emitted as rdfs:seeAlso to
+https://doi.org/<doi>, percent-encoded — thousands of Wiley DOIs contain < and >, which would
+otherwise terminate the IRI.""" .
+
+lotus:title
+    a owl:DatatypeProperty ;
+    rdfs:label "title" ;
+    rdfs:domain lotus:Reference ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "Title of the publication. 99.7%, --refs-nt only, and also emitted as rdfs:label." .
+
+lotus:publicationDate
+    a owl:DatatypeProperty ;
+    rdfs:label "publication date" ;
+    rdfs:domain lotus:Reference ;
+    rdfs:range xsd:date ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment """Date of publication, truncated from Wikidata's dateTime to xsd:date. 99.1%,
+--refs-nt only. Wikidata records an unknown month or day as 01, so a date is reliable to the year
+and no further.""" .
+
+lotus:pmid
+    a owl:DatatypeProperty ;
+    rdfs:label "PubMed ID" ;
+    rdfs:domain lotus:Reference ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment """PubMed identifier. 47.1%, --refs-nt only. Fewer than half the references carry
+one, so a join to RDF Portal's `pubmed` database reaches at most 43,075 of the 91,426 papers —
+that is a property of the literature, not a defect to work around. Also emitted as skos:exactMatch
+to http://rdf.ncbi.nlm.nih.gov/pubmed/<pmid>.""" .
+
+lotus:pmcid
+    a owl:DatatypeProperty ;
+    rdfs:label "PMC ID" ;
+    rdfs:domain lotus:Reference ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment "PubMed Central identifier. 5.0%, --refs-nt only. Too sparse to filter on; useful only opportunistically, to reach full text." .
+
+lotus:publishedIn
+    a owl:ObjectProperty ;
+    rdfs:label "published in" ;
+    rdfs:domain lotus:Reference ;
+    rdfs:isDefinedBy <http://rdfportal.org/ontology/lotus> ;
+    rdfs:comment """The journal, as a Wikidata IRI (http://www.wikidata.org/entity/Q...). 99.2%,
+--refs-nt only. No range is declared: the venue is a Wikidata entity that this graph does not
+describe, so it carries no label here — resolve it against Wikidata or IDSM to name a journal.""" .

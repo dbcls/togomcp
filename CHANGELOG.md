@@ -13,6 +13,38 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.16.1] - 2026-09-16
+
+LOTUS tooling only — `scripts/lotus/` is developer tooling for the proposal to host LOTUS on
+RDF Portal, is not in the wheel, and the tool surface a client sees is unchanged. The served
+server is byte-identical to 2.16.0; the bump is here so the two LOTUS fixes below are citable
+against a version rather than a commit range.
+
+### Added
+
+- **LOTUS graph now ships its own vocabulary, on by default** (`scripts/lotus/lotus_ontology.ttl`;
+  developer tooling, nothing in the wheel, tool surface unchanged). The converter emitted 9.1 M
+  triples in which every one of the 48 `lotus:` terms was used and none was defined — a consumer
+  asking the graph what `lotus:manuallyValidated` means got silence. The vocabulary is now a
+  hand-authored Turtle file (4 classes, 44 properties, 290 triples) with `rdfs:label`,
+  `rdfs:comment`, `rdfs:domain` and `rdfs:range` on every term, emitted **into the same named
+  graph as the data** because every TogoMCP query pins its graph: a vocabulary in a second graph
+  is invisible under that pin, so SPARQL schema discovery would return 0 rows and the properties
+  would merely look undocumented instead of obviously absent. RDF Portal's `taxonomy` graph
+  carries its DDBJ TBox inline the same way (verified live 2026-09-16). It is a separate *file*
+  because it is prose on its own review cycle — a comment fix must not cost a 100 s re-conversion
+  of a 1.3 GB output — and the flag defaults **on** because leaving it out is precisely how the
+  vocabulary went missing in the first place. The comments carry the traps an agent would
+  otherwise learn only from the MIE file: `lotus:manuallyValidated` is *absent*, not `false`, when
+  unchecked; `lotus:ncbiTaxonId` reaches only 78.0% of organisms; and `lotus:inchikey` plus the
+  three `lotus:npclassifier*` properties are repeatable, so they are deliberately **not**
+  `owl:FunctionalProperty` (only the three `lotus:Occurrence` links are). Parsed by a small
+  stdlib-only Turtle-subset reader whose output was checked byte-for-byte against
+  `rapper -i turtle -o ntriples`; it raises with a file and line rather than guessing.
+  `tests/test_lotus_ontology_in_sync.py` fails if the converter ever emits a property the
+  vocabulary does not define, or defines one it never emits. v11 totals become 9,138,012 triples
+  (9,137,722 data + 290 vocabulary).
+
 ### Fixed
 
 - **LOTUS converter read one of the release's two CSV tables and silently dropped 48 occurrences**
@@ -2649,7 +2681,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.15.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.16.1...HEAD
+[2.16.1]: https://github.com/dbcls/togomcp/compare/v2.16.0...v2.16.1
 [2.16.0]: https://github.com/dbcls/togomcp/compare/v2.15.0...v2.16.0
 [2.15.0]: https://github.com/dbcls/togomcp/compare/v2.14.0...v2.15.0
 [2.14.0]: https://github.com/dbcls/togomcp/compare/v2.13.0...v2.14.0

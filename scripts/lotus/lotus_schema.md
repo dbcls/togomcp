@@ -182,7 +182,7 @@ Coverage is the share of the 91,426 references carrying the property.
 
 | Property | Range | Coverage |
 | --- | --- | --- |
-| `lotus:doi` | `xsd:string` | 100% (91,386 of 91,426) |
+| `lotus:doi` | `xsd:string` | 99.96% (91,386 of 91,426) |
 | `rdfs:seeAlso` | IRI | 100%, `https://doi.org/<doi>`, percent-encoded |
 | `lotus:title` | `xsd:string` | 99.7%, `--refs-nt` only, also `rdfs:label` |
 | `lotus:publishedIn` | IRI (`wd:Q…`) | 99.2%, `--refs-nt` only |
@@ -204,6 +204,43 @@ Percent-encoding the DOI IRI is not cosmetic: Wiley DOIs such as
 and `>`, which terminate an N-Triples IRI early. Two lines in nine million were
 malformed before this was fixed, and every one of the other 9,094,796 parsed
 fine — exactly the kind of defect a spot check misses.
+
+## Vocabulary
+
+The 48 `lotus:` terms are defined in
+[lotus_ontology.ttl](lotus_ontology.ttl) — `rdfs:label`, `rdfs:comment`,
+`rdfs:domain` and `rdfs:range` on each of 4 classes and 44 properties, 290
+triples in all — and the converter emits them **into this same named graph, by
+default**.
+
+They go in the data graph rather than a graph of their own because every
+TogoMCP query pins its graph: a vocabulary in a second graph is invisible under
+that pin, so schema discovery through SPARQL (`?p rdfs:comment ?c`) would
+return 0 rows and the properties would look undocumented. RDF Portal's
+`taxonomy` graph already does it this way, carrying the DDBJ taxonomy TBox
+inline with 2.8 M instance triples (1 `owl:Ontology`, 4 `owl:Class`, 7
+`owl:ObjectProperty`, 28 `owl:DatatypeProperty`, checked live 2026-09-16). The
+portal does host standalone ontology graphs at
+`http://rdfportal.org/ontology/<name>` — `go`, `mondo`, `hp`, `efo`, `uberon`
+and the rest — but those are third-party ontologies with an independent
+existence and many consumers; this one is private to a single graph.
+
+The comments carry the traps, so an agent reading the schema through SPARQL
+learns the same things the MIE file will tell it:
+
+* `lotus:manuallyValidated` is **absent, not false**, when an occurrence was
+  not checked — so count unvalidated occurrences by absence, never by `false`.
+* `lotus:ncbiTaxonId` reaches only 78.0% of organisms, so the `taxonomy` join
+  drops 8,252 of them silently.
+* `lotus:inchikey` and the three `lotus:npclassifier*` properties are
+  **repeatable**, and are deliberately not declared `owl:FunctionalProperty`.
+  The only functional properties are `lotus:structure`, `lotus:organism` and
+  `lotus:reference`, which are single-valued by construction.
+
+The vocabulary is versioned separately from the data (`owl:versionInfo "1.0"`
+against the release's `pav:version "v11"`): it is hand-authored prose with its
+own review cycle, and a fix to a comment should not require re-converting a
+1.3 GB file.
 
 ### Dataset metadata
 
@@ -319,7 +356,7 @@ Output of one v11 conversion from both CSV tables, with reference metadata folde
 
 | | |
 | --- | --- |
-| Triples | 9,137,722 |
+| Triples | 9,138,012 (9,137,722 data + 290 vocabulary) |
 | Occurrences | 672,413 |
 | Structures / organisms / references | 227,256 / 37,486 / 91,426 |
 | Size | 1.3 GB N-Triples, 111 MB gzipped |
@@ -336,17 +373,23 @@ should not be a concern.
    `http://rdfportal.org/dataset/lotus` follow the pattern already used by the
    `taxonomy` database, but DBCLS owns that space and should confirm. The LOTUS
    team may prefer a `lotus.nprod.net` namespace they control.
-2. **Licence.** The LOTUS site says the data is CC0, while the Zenodo record for
+2. **Ontology IRI.** The vocabulary declares itself as
+   `<http://rdfportal.org/ontology/lotus>`, the namespace minus its `#`. That is
+   the conventional shape, but RDF Portal uses exactly that pattern to *name
+   ontology graphs* (`http://rdfportal.org/ontology/go` and friends). If DBCLS
+   would rather keep that space for graph names, the ontology IRI should move
+   before anything cites it.
+3. **Licence.** The LOTUS site says the data is CC0, while the Zenodo record for
    this export is tagged CC-BY-4.0. Worth confirming with the LOTUS team before
    the graph asserts either one; the converter currently asserts neither.
-3. **ChemOnt IRIs.** `lotus:chemontId` is a literal. If a resolvable ChemOnt
+4. **ChemOnt IRIs.** `lotus:chemontId` is a literal. If a resolvable ChemOnt
    namespace is chosen, it can become an IRI and connect to ontology tooling.
-4. **Endpoint.** `primary` is assumed. DBCLS decides.
-5. **Refresh cadence.** LOTUS ships roughly one frozen release a year (v11
+5. **Endpoint.** `primary` is assumed. DBCLS decides.
+6. **Refresh cadence.** LOTUS ships roughly one frozen release a year (v11
    followed v10 by the change report). A re-conversion per release, keeping the
    previous graph, would let queries cite a release — and the deterministic
    occurrence IRIs make the diff between two releases directly computable.
-6. **Structure identity across releases.** 87 structure QIDs carry more than one
+7. **Structure identity across releases.** 87 structure QIDs carry more than one
    InChIKey in v11 (max 3). The schema emits all of them rather than choosing,
    so `lotus:inchikey` is repeatable in rare cases. Consumers keying on InChIKey
    should be aware.
