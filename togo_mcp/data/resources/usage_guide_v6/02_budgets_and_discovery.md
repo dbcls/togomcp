@@ -127,6 +127,20 @@ other. Copy the MIE's `cross_db` example rather than writing one; each carries i
 limits (bind the join key locally first, cap the bindings before crossing). Other RDF
 Portal endpoints have not been verified as callers — do not assume it works there.
 
+**Endpoints outside RDF Portal carry their own infrastructure, and it can reject valid
+SPARQL before the engine ever sees it.** Verified 2026-09-16: a Cloudflare WAF rejects `substr(`,
+`concat(` and `char(` on `lipidmaps` with **HTTP 403 and an HTML body**. The rule matches the
+**raw request body**, not the parsed query — a bare string literal `"SUBSTR("` inside a `BIND`
+is blocked too, which is the proof it never reaches SPARQL. It is deterministic, so retrying
+does not help, and because the reply is not SPARQL it reads as an endpoint outage rather than a
+rejected query. The fix is one character: **put a space before the paren** — `SUBSTR (?s, 33, 2)`
+and `CONCAT (?a, ?b)` are valid SPARQL and clear the rule. `GROUP_CONCAT(` already passes (the
+preceding `_` defeats the word boundary), as do `REPLACE`, `STRBEFORE`, `STRAFTER`, `REGEX`,
+`STRLEN`, `UCASE`, `CONTAINS` and `STRSTARTS`. Slicing an accession is the obvious thing to reach
+for, so this bites on a first attempt. Two more non-SPARQL bodies from the same host: a ~30 s
+timeout answers `HTTP 503 Query timed out`, and rapid sequential querying draws transient 403s
+that clear on retry. Expect the same class of thing on the next non-RDF-Portal endpoint added.
+
 ---
 
 ## 🔗 TogoID — PLAN EARLY
