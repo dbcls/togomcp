@@ -69,6 +69,12 @@ away*, ranked by exposure.
 | reactome | GO via `RelationshipXref`; EC VALUES; organism; MOD | first-class | OK | UnificationXref-vs-RelationshipXref trap documented |
 | rhea | ChEBI participant class (`rhea:chebi`); EC IRI; `isTransport` | first-class | OK | ChEBI-class is the flagship compound-enum path |
 | supercon | typed property classes (`a Schema:tc` …) + subClassOf nav | first-class | OK | property-filter, "vocab" is the co-loaded ontology |
+| swisslipids | `SLM:rank` (6-val tier vocab); fatty-acid-at-`SLM:position` via `SLM_Part`; `chebi:formula` | first-class (v3, 2026-09-15) | OK/C | rank/position/formula enums are robust; the CLASS-MEMBERSHIP subtree route must keep its bounded-path caveat — `rdfs:subClassOf+` is cache-dependently slow (111s-timeout) and a single hop silently returns 0 for some classes |
+
+> **Table scope note (2026-09-15):** this table was built for the 36-DB corpus and the tier
+> counts above exclude the databases onboarded since — `gwascatalog`, `fantabio`,
+> `wikipathways`, `idsm`, `pubcasefinder`, `lipidmaps` (unaudited) and `swisslipids` (row added
+> above, audited at authoring time).
 
 ## What this means for step 4
 

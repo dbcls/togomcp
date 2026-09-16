@@ -11,7 +11,70 @@ Versions follow the **agent-pragmatic** semver policy documented in
 database or a tool is MINOR; a return-shape change rides there too, because our
 dominant client re-reads the schema each session. Only a removal/rename is MAJOR.
 
-## [Unreleased]
+## [2.16.0] - 2026-09-16
+
+A lipid release. **SwissLipids** joins as the 43rd database: SIB's curated reference, 777,965
+lipids in a six-level hierarchy, and the only database here that records which fatty acid sits at
+which sn-position — so "lipids with palmitate at sn-1" becomes a structured query instead of a
+name match. Alongside it, an audit of the **LIPID MAPS** MIE found a category count inflated 3.1x
+by an upstream data defect, which the MIE had presented as genuine multi-classification, and
+found that ChEBI ↔ LIPID MAPS joins returned 0 rows because the two databases use different
+property names for the same fields. Both are fixed. The `database=` values work everywhere
+immediately, and no tool, parameter or return shape changed.
+
+<!-- whatsnew: 2026-09-16 | New database: <strong>SwissLipids</strong> — SIB's curated reference, 777,965 lipids from category down to isomeric subspecies, and the only one here that records <strong>which fatty acid sits at which sn-position</strong>, so "lipids with palmitate at sn-1" is a structured query rather than a name match. -->
+
+### Added
+
+- **`swisslipids` — SwissLipids, the 43rd database** (contributed by @kozo2, #228). SIB's curated
+  lipid reference: 777,965 lipids in a six-level hierarchy, from category down to isomeric
+  subspecies, with formula, charge, SMILES/InChI and cross-references to ChEBI, LIPID MAPS, HMDB and
+  MetaNetX. It is the only database here that records which fatty acid sits at which sn-position,
+  so "lipids with palmitate at sn-1" is a structured query rather than a name match. `lipidmaps`
+  has the shorthand notation but no composition model. The endpoint is SIB's own, and its
+  maintainers' published example queries are unreliable: the ID-mapping ones use `rdfs:seeAlso`,
+  which carries only Wikidata links, so they return 0 rows. The MIE gives the working predicates.
+  It also covers the hierarchy traps: `rdfs:subClassOf+` is right but can take minutes, and a
+  fixed-depth query that is complete for a class undercounts a category (87% of Sphingolipids
+  missed). Unlike `lipidmaps`, it can call out to Rhea with `SERVICE`.
+- **LOTUS onboarding proposal: schema draft + CSV→RDF converter** in `scripts/lotus/` (developer
+  tooling; nothing ships in the wheel and the tool surface is unchanged). LOTUS — referenced
+  structure–organism occurrences of natural products — lives in Wikidata and publishes no RDF, so
+  it cannot be added as a `database=` pointing at a live endpoint: there is no named graph to pin
+  (the subset is a query pattern), Wikidata's endpoint cuts every query at 60 s (six of twelve of
+  LOTUS's own published examples exceed it), and the live data carries no version string. The
+  proposal instead converts LOTUS's frozen CSV release (v11, 2026-04-13) into a dated graph for
+  RDF Portal to host: entities keep their Wikidata IRIs so the graph joins to `idsm`'s Wikidata
+  mirror with no mapping table, and cross-references use the IRI forms `pubchem`/`taxonomy`/`pubmed`
+  already use. v11 converts to 9,137,465 triples, verified with `rapper` and reproducible apart
+  from its conversion timestamp. `scripts/lotus/README.md` records the traps found while building
+  it — QLever reports a timeout as HTTP 200 with a truncated body, Wiley DOIs contain `<`/`>` which
+  terminate an N-Triples IRI, NPClassifier cells pack several classes behind `" $ "`, and per-row
+  coverage overstates per-entity coverage (NCBI taxon ids: 86.6% of rows but 78.0% of organisms).
+
+### Fixed
+
+- **LIPID MAPS MIE: the Prenol Lipids count was inflated 3.1× and the MIE called it genuine.** An
+  upstream LIPID MAPS defect, a spurious `category/6 → category/101` edge, pulls the whole
+  Fatty Acids and Conjugates [FA01] subtree into Prenol Lipids [PR]. Any category-scoped query
+  therefore reported 8,558 prenol lipids instead of 2,739. The MIE's `category_breakdown` example
+  presented the resulting overcount as "4,599 lipids in 2–7 categories" of real multi-classification.
+  Without the edge, only 57 lipids sit in two categories. The example now drops that edge and
+  returns correct counts, and a new warning explains the trap. Three more upstream data defects are
+  now flagged where they cause silent wrong answers:
+  - arsenolipid formulas are not in Hill order (`C18H35O3As` where ChEBI has `C18H35AsO3`), so a
+    formula copied from ChEBI or PubChem matches nothing;
+  - four deuterated internal standards carry a formula that contradicts their own mass or ChEBI;
+  - three InChIKeys are each shared by two LIPID MAPS IDs.
+
+  A fifth warning is not a data defect: the endpoint sits behind a Cloudflare firewall that answers
+  valid SPARQL containing `SUBSTR(` or `CONCAT(` with HTTP 403. The MIE now names the workaround,
+  so an agent stops debugging a query that has nothing wrong with it.
+- **ChEBI ↔ LIPID MAPS joins returned 0 rows with no error.** LIPID MAPS uses the old `chebi:`
+  property names (`chebi:formula`, `chebi:inchikey`), while ChEBI's own RDF moved them to
+  `chemrof:`. Neither MIE mentioned the other database. Each now points to its counterpart,
+  recommends the InChIKey as the join key (1,498 of 1,500 pairs agree), and says to run the join
+  from the `ebi` endpoint.
 
 ## [2.15.0] - 2026-09-15
 
@@ -2568,6 +2631,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v2.15.0...HEAD
+[2.16.0]: https://github.com/dbcls/togomcp/compare/v2.15.0...v2.16.0
 [2.15.0]: https://github.com/dbcls/togomcp/compare/v2.14.0...v2.15.0
 [2.14.0]: https://github.com/dbcls/togomcp/compare/v2.13.0...v2.14.0
 [2.13.0]: https://github.com/dbcls/togomcp/compare/v2.12.2...v2.13.0

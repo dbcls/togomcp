@@ -293,7 +293,24 @@ id_join_map:
     drugbank:  "drugbank: (3,602)"
     hmdb:      "hmdb: Human Metabolome Database (19,790)"
     cas:       "cas: Chemical Abstracts registry (29,826)"
-    lipidmaps: "lipidmaps: (12,638)"
+    lipidmaps: >                  # NOT co-hosted and NOT TogoID-only: `ebi` reaches it via SERVICE
+      `lipidmaps:` prefix (12,638 entities). LIPID MAPS (LMSD) is a TogoMCP database (`database=lipidmaps`) on its own endpoint
+      `https://lipidmaps.org/sparql`, with its own MIE: read it before writing the remote block. Direction
+      matters: `ebi` CAN call it in a `SERVICE <https://lipidmaps.org/sparql> { ... }` block, but LIPID MAPS
+      cannot call out (every outbound SERVICE from it returns HTTP 502 after ~60 s), so drive the join from
+      here (the lipidmaps MIE's `xdb_chebi_labels` example). It emits the OBO form
+      `http://purl.obolibrary.org/obo/CHEBI_<n>` via `owl:equivalentClass` on 14,572 lipids, so no IRI
+      rewriting is needed. Its molecular properties use the OLD `chebi:` namespace (`chebi:formula`,
+      `chebi:inchikey`, `chebi:monoisotopicmass`) that THIS database migrated to `chemrof:` (gotcha
+      namespace_migration): never carry a `chemrof:` predicate into the remote block, or a `chebi:` one into
+      the local block; either way the join returns 0 rows with no error. Join on the InChIKey
+      (`chemrof:inchi_key_string` here, `chebi:inchikey` there): over the first 1,500 pairs (2026-09-15) the
+      keys agree 1,498 times, with 2 stereo-layer disagreements and 0 skeleton disagreements. Formula strings
+      are NOT comparable, since LIPID MAPS writes arsenic last instead of in Hill order (`C18H35O3As` there,
+      `C18H35AsO3` here for CHEBI_187398). The LIPID MAPS endpoint sits behind a Cloudflare WAF that 403s
+      `SUBSTR(`/`CONCAT(`, so keep string functions in the outer query here, never inside the SERVICE block.
+      FEDERATION-FREE, from this side: the literal `oboInOwl:hasDbXref "lipidmaps:LM<id>"` on those 12,638
+      ChEBI terms. That is fewer than the 14,572 lipids linking the other way, and the gap is unexplained.
     pdb_ccd:   "pdb-ccd: PDB Chemical Component Dictionary (4,956)"
     others:    "chemspider (53,225), lincs.smallmolecule (41,390), reaxys, kegg.compound, glytoucan, wikipedia.en, pubmed, patent — enumerate live via the xref_coverage example"
   bridged_via_togoid:             # DBs NOT on the ebi endpoint reach ChEBI via TogoID on the CHEBI id
