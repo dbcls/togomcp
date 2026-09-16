@@ -156,3 +156,67 @@ def test_example_path_pattern_matches_walk_queries() -> None:
     d = {"examples": [{"sparql": "SELECT * WHERE {?s ?p ?o}", "verified": {"date": "x"}}]}
     paths = [p for p, *_ in checker.walk_queries(d)]
     assert paths and re.fullmatch(r"/examples\[\d+\]/sparql", paths[0])
+
+
+class TestEndpointResolution:
+    """`endpoint_name:` on an example was ignored until 2026-09-16, so every cross_db
+    example ran against its own database's endpoint — the one place such an example
+    frequently CANNOT run. lipidmaps made it visible (it cannot SERVICE out, so its
+    correct cross-DB example net-failed on every run); 61 examples corpus-wide were
+    being graded against the wrong server."""
+
+    @staticmethod
+    def _maps():
+        return checker.load_endpoint_map()
+
+    def test_csv_yields_both_indexes(self) -> None:
+        by_db, by_name = self._maps()
+        assert by_db["lipidmaps"] == "https://lipidmaps.org/sparql"
+        # `ebi` is an endpoint GROUP, not a database — it must resolve by NAME only.
+        assert "ebi" in by_name
+        assert "ebi" not in by_db
+
+    def test_endpoint_name_beats_own_database(self) -> None:
+        by_db, by_name = self._maps()
+        url, problem = checker.resolve_endpoint(
+            {"endpoint_name": "ebi"}, "lipidmaps", by_db, by_name)
+        assert problem is None
+        assert url == by_name["ebi"]
+        assert url != by_db["lipidmaps"]  # the whole point
+
+    def test_endpoint_url_beats_endpoint_name(self) -> None:
+        by_db, by_name = self._maps()
+        url, problem = checker.resolve_endpoint(
+            {"endpoint_url": "https://example.org/sparql", "endpoint_name": "ebi"},
+            "lipidmaps", by_db, by_name)
+        assert (url, problem) == ("https://example.org/sparql", None)
+
+    def test_falls_back_to_own_database(self) -> None:
+        by_db, by_name = self._maps()
+        url, problem = checker.resolve_endpoint({}, "lipidmaps", by_db, by_name)
+        assert (url, problem) == (by_db["lipidmaps"], None)
+
+    def test_unknown_name_is_a_problem_not_a_fallback(self) -> None:
+        # Falling back here would silently recreate the original bug, one typo at a time.
+        by_db, by_name = self._maps()
+        url, problem = checker.resolve_endpoint(
+            {"endpoint_name": "ebii"}, "lipidmaps", by_db, by_name)
+        assert url is None
+        assert problem and "unknown endpoint_name" in problem
+
+    def test_every_shipped_endpoint_name_resolves(self) -> None:
+        by_db, by_name = self._maps()
+        unresolved = []
+        for db, ex in ALL_EXAMPLES:
+            if not isinstance(ex, dict) or "endpoint_name" not in ex:
+                continue
+            _, problem = checker.resolve_endpoint(ex, db, by_db, by_name)
+            if problem:
+                unresolved.append((db, ex.get("id"), ex["endpoint_name"]))
+        assert not unresolved, f"unresolvable endpoint_name in shipped MIEs: {unresolved}"
+
+    def test_corpus_actually_exercises_the_override(self) -> None:
+        # If this ever hits 0 the override is dead code and the tests above prove nothing.
+        overrides = [ex for _, ex in ALL_EXAMPLES
+                     if isinstance(ex, dict) and ex.get("endpoint_name")]
+        assert len(overrides) > 50
