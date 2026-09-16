@@ -1,7 +1,9 @@
+import asyncio
 import atexit
 import difflib
 import json
 import re
+from urllib.parse import quote
 
 import httpx
 
@@ -243,6 +245,91 @@ async def _validate_dataset_keys(keys: list[str], *, context: str) -> None:
 
 
 # ============================================================================
+# ROUTE SUGGESTIONS
+#
+# TogoID's `/route/{src}/{dst}?max_hops=N` enumerates the dataset paths
+# `/convert` can walk (upstream pointed us at it in togoid/togoid-config#396,
+# rather than making `/config/relation` bidirectional). We only consult it when
+# a direct pair is missing, to turn "no route" into "these routes work".
+#
+# Two properties of the live endpoint shape the helper below (probed
+# 2026-09-16): the path ORDER changes from call to call, so we sort; and an
+# unknown dataset key yields a silent `[]`, so callers validate keys first.
+# ============================================================================
+
+# Categories whose IDs name one molecular entity. A hop through any OTHER
+# category — Organism, Function, Pathway, Literature, Phenotype, Domain, ... —
+# links every member of a group: `ncbigene,taxonomy,uniprot` maps a gene to
+# every protein of its species. `/route` offers such paths alongside the real
+# bridges (it proposes exactly that one for ncbigene→uniprot), so we rank them
+# last and name the grouping hop.
+_NO_ROUTE_RE = re.compile(r"^no route: (\S+) <> (\S+)$")
+_ENTITY_CATEGORIES = frozenset({"Gene", "Protein", "Transcript", "Compound", "Lipid"})
+_ROUTE_SUGGESTION_HOPS = 2
+_ROUTE_SUGGESTION_LIMIT = 5
+
+
+async def _suggest_routes(source: str, target: str) -> list[dict]:
+    """Shortest TogoID routes from `source` to `target`, best-first.
+
+    Each entry is `{"route": "a,b,c", "via_grouping": [...]}`. Any failure
+    returns `[]` — this only ever enriches an error that is raised anyway.
+    """
+    try:
+        response = await _client.get(
+            f"/route/{source}/{target}",
+            params={"max_hops": _ROUTE_SUGGESTION_HOPS},
+        )
+        response.raise_for_status()
+        paths = response.json()
+    except Exception:
+        return []
+    if not isinstance(paths, list):
+        return []
+    config = await _dataset_config()
+
+    def _grouping(path: list[str]) -> list[str]:
+        return [
+            hop for hop in path[1:-1]
+            if config.get(hop, {}).get("category") not in _ENTITY_CATEGORIES
+        ]
+
+    routes = [
+        [str(hop) for hop in path]
+        for path in paths
+        if isinstance(path, list) and len(path) >= 2
+    ]
+    routes.sort(key=lambda path: (len(path), len(_grouping(path)), path))
+    return [
+        {"route": ",".join(path), "via_grouping": _grouping(path)}
+        for path in routes[:_ROUTE_SUGGESTION_LIMIT]
+    ]
+
+
+def _format_route_suggestions(routes: list[dict]) -> str:
+    """Render `_suggest_routes` output as one hint sentence."""
+    if not routes:
+        return (
+            f"TogoID has no route within {_ROUTE_SUGGESTION_HOPS} hops either — "
+            "these datasets are not convertible via TogoID."
+        )
+    rendered = []
+    for entry in routes:
+        text = f"'{entry['route']}'"
+        if entry["via_grouping"]:
+            text += (
+                f" (via {', '.join(entry['via_grouping'])}: links a whole group, "
+                "not equivalent IDs — check with countId)"
+            )
+        rendered.append(text)
+    return (
+        "Multi-hop routes TogoID can walk — pass one to convertId as route=: "
+        + "; ".join(rendered)
+        + "."
+    )
+
+
+# ============================================================================
 # DISCOVERY TOOLS — Use these EARLY in multi-database workflows
 # ============================================================================
 
@@ -310,6 +397,12 @@ async def getRelation(source: str, target: str) -> str:
     `"registered_direction": "target-source"` to say so. A non-empty result
     means the conversion works in the direction you asked for.
 
+    NO DIRECT PAIR is an error, not an empty array. The error names an unknown
+    dataset key if there is one; otherwise it lists up to 5 multi-hop routes
+    (at most 2 hops) that convertId can walk, e.g. `chebi,hmdb,pdb_ccd`. A route
+    through a grouping dataset (taxonomy, go, a pathway) is flagged: it links
+    every member of the group, not equivalent IDs.
+
     Args:
         source: Source database key (e.g., 'uniprot', 'ncbigene', 'chembl_target')
         target: Target database key (e.g., 'pdb', 'ensembl_gene', 'hgnc')
@@ -344,14 +437,20 @@ async def getRelation(source: str, target: str) -> str:
         reverse = await _client.get(f"/config/relation/{target}-{source}")
         if reverse.status_code == 200:
             return json.dumps(_orient_relations(reverse.json()))
+        # A 404 here conflates "no such dataset" with "no such pair"; name the
+        # bad key if there is one, before suggesting routes /route would
+        # silently return nothing for.
+        await _validate_dataset_keys([source, target], context="TogoID getRelation")
+        routes = _format_route_suggestions(await _suggest_routes(source, target))
+    else:
+        routes = ""
     raise_for_status_with_body(
         response,
         context="TogoID getRelation",
         client_error_hint=(
-            "Verify both source and target dataset names (getAllDataset lists "
-            "them). Neither orientation of this pair is registered, so no direct "
-            "route exists — getAllRelation() lists every registered pair."
-        ),
+            "Neither orientation of this pair is registered, so no DIRECT route "
+            f"exists. {routes}"
+        ).strip(),
     )
     return json.dumps(_orient_relations(response.json(), registered=True))
 
@@ -532,8 +631,53 @@ def _example_shapes(config: dict) -> dict[str, set[str]]:
     return shapes
 
 
+# `/lookup/id/{id}` lists the relation TABLES an ID string actually occurs in —
+# evidence the pattern match cannot give, since `672` is well-formed for a dozen
+# datasets but only present in some. Upstream built it for us
+# (togoid/togoid-config#396) and warns it is slow: live probes on 2026-09-16
+# took 0.2 s for an accession and 14 s for the bare number `672`, well past the
+# shared client's 5 s default, hence the dedicated timeout. It takes ONE bare
+# local ID (a comma list, or a CURIE like `GO:0005515`, yields `[]`), and a
+# table name does not say which side the ID sits on.
+_LOOKUP_TIMEOUT = 45.0
+_LOOKUP_MAX_IDS = 10
+_LOOKUP_CONCURRENCY = 4
+_ATTESTED_RANK = {"yes": 0, "ambiguous": 1, "unknown": 2, "no": 3}
+
+
+def _local_id(match: re.Match, token: str) -> str:
+    """The bare accession a dataset pattern captured (`GO:0005515` -> `0005515`).
+
+    TogoID patterns name the capture `id`, or `id1`..`idN` across alternations
+    (uniprot, ensembl_*); take the one that participated.
+    """
+    for name, value in match.groupdict().items():
+        if name.startswith("id") and value:
+            return value
+    return token
+
+
+async def _lookup_tables(local_id: str) -> list[str] | None:
+    """Relation tables containing `local_id`, or None if TogoID timed out."""
+    try:
+        response = await _client.get(
+            f"/lookup/id/{quote(local_id, safe='')}", timeout=_LOOKUP_TIMEOUT
+        )
+    except httpx.TimeoutException:
+        return None
+    raise_for_status_with_body(response, context="TogoID identifyId (verify)")
+    payload = response.json()
+    if not isinstance(payload, list):
+        return None
+    return [table for table in payload if isinstance(table, str)]
+
+
 @togoid_mcp.tool(annotations=READ_ONLY_TOOL)
-async def identifyId(ids: str | list[str], category: str | None = None) -> str:
+async def identifyId(
+    ids: str | list[str],
+    category: str | None = None,
+    verify: bool = False,
+) -> str:
     """Resolve a bare accession to the TogoID dataset key(s) it could belong to.
 
     The inverse of getDataset: you have an identifier like `AEK21611` or
@@ -567,10 +711,30 @@ async def identifyId(ids: str | list[str], category: str | None = None) -> str:
     accession formats simply do not distinguish: a bare `672` is a well-formed
     ncbigene, pubmed, chebi and homologene ID, and nothing about the string can
     say which. **Do not build a client that blindly takes `candidates[0]`.**
-    Pass `category=` when you know what kind of thing the ID names, use what you
-    know about where the ID came from, or run countId on the top candidates and
-    keep the one that resolves. An empty `candidates` list means no registered
-    dataset's pattern matches — that ID is not convertible by TogoID.
+    Pass `category=` when you know what kind of thing the ID names, pass
+    `verify=True` (below), or use what you know about where the ID came from.
+    An empty `candidates` list means no registered dataset's pattern matches —
+    that ID is not convertible by TogoID.
+
+    VERIFY (`verify=True`) asks TogoID which of its conversion tables actually
+    CONTAIN the ID, which settles what the string's shape cannot. Each candidate
+    then also carries:
+
+    - `attested` — "yes": a table pairing this dataset with a non-candidate
+      holds the ID. "ambiguous": the only such tables pair it with ANOTHER
+      candidate for this ID, and a table name does not say which side holds it
+      (`P04637` is in uniprot-insdc_cds, so insdc_cds is ambiguous, uniprot is
+      yes). "no": no table on this dataset holds it — TogoID cannot convert it
+      FROM this dataset, however well-formed. "unknown": TogoID did not answer
+      in time (the row then has a `verify_note`).
+    - `pairs_with` — datasets this ID shares a direct table with (null when
+      unknown); for a "yes" candidate these are single-hop convertId targets.
+
+    Candidates sort yes, ambiguous, unknown, no, then as above. Verification
+    rules out datasets far better than it picks one: a short bare number like
+    `672` is genuinely present in a dozen datasets. It is also slow — one
+    lookup per ID, over 10 s for such a number — so it is off by default and
+    limited to 10 IDs per call; use it on the IDs you need to settle.
 
     Matching uses each dataset's published ID pattern, rewritten to Python
     syntax (see getAllDataset's `regex_python`). A CURIE or full IRI
@@ -584,13 +748,17 @@ async def identifyId(ids: str | list[str], category: str | None = None) -> str:
             case-insensitively — e.g. 'Gene', 'Protein', 'Compound',
             'Transcript', 'Variant', 'Pathway', 'Phenotype'. Use it to break
             ties when you know what kind of thing the ID names.
+        verify: Check each candidate against TogoID's conversion tables and
+            add `attested`/`pairs_with` (default False; at most 10 IDs).
 
     Example:
         >>> identifyId("AEK21611")
         # insdc_cds first (shape L3D5 matches its examples), then insdc,
         # then hgnc_symbol
         >>> identifyId("672")
-        # a true tie: several bare-numeric datasets, none distinguishable
+        # a true tie by shape: several bare-numeric datasets
+        >>> identifyId("672", verify=True)
+        # chebi, meddra, pubchem_substance, ... drop to attested="no"
     """
     tokens = _ids_to_tokens(ids)
     if not tokens:
@@ -611,6 +779,13 @@ async def identifyId(ids: str | list[str], category: str | None = None) -> str:
         raise ValueError(
             f"TogoID identifyId: unknown category {category!r}. "
             f"Valid categories: {', '.join(known)}."
+        )
+
+    if verify and len(tokens) > _LOOKUP_MAX_IDS:
+        raise ValueError(
+            f"TogoID identifyId: verify=True accepts at most {_LOOKUP_MAX_IDS} "
+            f"IDs per call, got {len(tokens)}. Each ID costs a lookup that can "
+            "take over 10 s. Split the list, or verify only the ambiguous IDs."
         )
 
     collisions = _collision_scores(config)
@@ -635,7 +810,7 @@ async def identifyId(ids: str | list[str], category: str | None = None) -> str:
             "pattern_collisions": collisions.get(key, 0),
         }))
 
-    def _candidates(token: str) -> list[dict]:
+    def _matches(token: str) -> list[tuple[dict, str]]:
         # Ranking is PER TOKEN: `pattern_collisions` is a property of the
         # pattern alone and cannot know anything about the ID in hand, which is
         # how the gene-level `insdc` (63) came to outrank `insdc_cds` (73) for a
@@ -648,19 +823,74 @@ async def identifyId(ids: str | list[str], category: str | None = None) -> str:
         signature = _shape_signature(token)
         matched = []
         for key, matcher, meta in compiled:
-            if not matcher.fullmatch(token):
+            hit = matcher.fullmatch(token)
+            if not hit:
                 continue
             shape_match = signature in shapes.get(key, ())
             matched.append((
-                0 if shape_match else 1,
-                meta["pattern_collisions"],
-                key,
                 dict(meta, shape_matches_examples=shape_match),
+                _local_id(hit, token),
             ))
-        matched.sort(key=lambda entry: entry[:3])
-        return [entry[3] for entry in matched]
+        return matched
 
-    return json.dumps([{"id": t, "candidates": _candidates(t)} for t in tokens])
+    rows = [(token, _matches(token)) for token in tokens]
+
+    tables: dict[str, list[str] | None] = {}
+    if verify:
+        local_ids = sorted({local for _, matched in rows for _, local in matched})
+        semaphore = asyncio.Semaphore(_LOOKUP_CONCURRENCY)
+
+        async def _bounded(local: str) -> list[str] | None:
+            async with semaphore:
+                return await _lookup_tables(local)
+
+        results = await asyncio.gather(*(_bounded(local) for local in local_ids))
+        tables = dict(zip(local_ids, results))
+
+    def _verified(candidate: dict, local: str, rivals: set[str]) -> dict:
+        found = tables.get(local)
+        if found is None:
+            return dict(candidate, attested="unknown", pairs_with=None)
+        partners = set()
+        for table in found:
+            left, _, right = table.partition("-")
+            if left == candidate["dataset"]:
+                partners.add(right)
+            if right == candidate["dataset"]:
+                partners.add(left)
+        # A table name does not say which side holds the ID. If every table
+        # naming this dataset pairs it with ANOTHER candidate for the same
+        # token, the ID may sit on that other side: `P04637` shows up in
+        # uniprot-insdc_cds, which "attests" insdc_cds for a UniProt accession.
+        if not partners:
+            attested = "no"
+        elif partners <= rivals - {candidate["dataset"]}:
+            attested = "ambiguous"
+        else:
+            attested = "yes"
+        return dict(candidate, attested=attested, pairs_with=sorted(partners))
+
+    output = []
+    for token, matched in rows:
+        rivals = {candidate["dataset"] for candidate, _ in matched}
+        candidates = [
+            _verified(candidate, local, rivals) if verify else candidate
+            for candidate, local in matched
+        ]
+        candidates.sort(key=lambda c: (
+            _ATTESTED_RANK[c["attested"]] if verify else 0,
+            0 if c["shape_matches_examples"] else 1,
+            c["pattern_collisions"],
+            c["dataset"],
+        ))
+        row = {"id": token, "candidates": candidates}
+        if verify and any(tables.get(local) is None for _, local in matched):
+            row["verify_note"] = (
+                f"TogoID's /lookup/id did not answer within {_LOOKUP_TIMEOUT:.0f} s "
+                "for this ID; `attested` is \"unknown\", not \"no\"."
+            )
+        output.append(row)
+    return json.dumps(output)
 
 
 @togoid_mcp.tool(annotations=READ_ONLY_TOOL)
@@ -701,8 +931,8 @@ async def convertId(
     of the input IDs converted along the route.
 
     IMPORTANT WORKFLOW:
-        1. First call getAllRelation() or getRelation() to verify the conversion
-           route exists
+        1. First call getRelation() to verify the conversion route exists (when
+           no direct pair exists, its error lists multi-hop routes)
         2. Optionally call countId() to check how many IDs will convert
         3. Then call convertId() with your IDs
 
@@ -762,14 +992,27 @@ async def convertId(
     }
 
     response = await _client.get("/convert", params=params)
+    routes = ""
+    if response.status_code == 400:
+        # `{"message": "no route: uniprot <> pdb_ccd"}` names the failing HOP,
+        # which for a multi-hop route is not the caller's source/target.
+        try:
+            message = str(response.json().get("message", ""))
+        except (ValueError, AttributeError):
+            message = ""
+        broken = _NO_ROUTE_RE.match(message.strip())
+        if broken:
+            routes = _format_route_suggestions(
+                await _suggest_routes(broken.group(1), broken.group(2))
+            )
     raise_for_status_with_body(
         response,
         context="TogoID convertId",
         client_error_hint=(
-            "Verify the route exists (getAllRelation lists valid routes) and that "
+            routes
+            or "Verify the route exists (getRelation checks a pair) and that "
             "the IDs match the source dataset's expected format (getDataset shows "
-            "the format pattern). Common cause: wrong source/target ordering, or "
-            "no direct route between the two datasets."
+            "the format pattern)."
         ),
     )
     # `results` is absent (not []) when nothing converts — coalesce so the
@@ -810,11 +1053,19 @@ async def countId(source: str, target: str, ids: str | list[str]) -> dict:
     response = await _client.get(
         f"/count/{source}-{target}", params={"ids": _ids_to_csv(ids)}
     )
+    routes = ""
+    if response.status_code == 400:
+        # `/count` answers an unregistered pair with `{"message": "no table"}`.
+        # It is single-hop only, so point at the multi-hop routes convertId can
+        # walk instead.
+        routes = _format_route_suggestions(await _suggest_routes(source, target))
     raise_for_status_with_body(
         response,
         context="TogoID countId",
         client_error_hint=(
-            "Verify the route exists (getAllRelation) and IDs match the source "
+            f"countId is single-hop and this pair has no direct table. {routes}"
+            if routes
+            else "Verify the route exists (getRelation) and IDs match the source "
             "dataset's format (getDataset)."
         ),
     )

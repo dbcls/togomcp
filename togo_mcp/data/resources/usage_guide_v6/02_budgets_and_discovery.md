@@ -162,10 +162,14 @@ ID format with `togoid_getDataset(src)`.
 TogoID keys and every call using one fails. GenBank/ENA/DDBJ **protein** accessions
 (`AEK21611`) are `insdc_cds`, NOT `ncbi_protein`; NCBI Gene IDs are `ncbigene`. Given a
 bare accession, call `togoid_identifyId` — it returns candidate keys ordered
-most-specific-first, narrowable with `category=`.
+most-specific-first, narrowable with `category=`. When the shape cannot decide (a bare
+number fits a dozen datasets), `verify=True` marks which datasets actually hold the ID
+(`attested`: yes/ambiguous/no) — slow, ≤10 IDs per call.
 
 `getRelation` direction is not a constraint: TogoID registers most pairs one way only, but
 conversion traverses both. A result tagged `registered_direction: target-source` still
-converts in the direction you asked for.
+converts in the direction you asked for. When NO direct pair exists, the error from
+`getRelation`/`countId`/`convertId` lists multi-hop routes that work — use one as `route=`.
+A route flagged `via taxonomy`/`go`/a pathway links a whole group, not equivalent IDs.
 
 Skip when: both DBs share an endpoint, or `ncbi_esearch` already cross-references the IDs.

@@ -13,6 +13,35 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.17.0] - 2026-09-16
+
+TogoID errors now say which routes DO work, and `togoid_identifyId` can check which datasets
+actually hold an ID. One new optional parameter; no existing call changes behaviour except that
+no-route errors carry more text.
+
+### Added
+
+- **`togoid_identifyId` takes `verify=True`**, which asks TogoID's `/lookup/id` which
+  conversion tables actually contain each ID. Pattern matching can say `672` is a
+  well-formed ID for 17 datasets, but not which ones hold it; verification marks each
+  candidate `attested` = `yes` / `ambiguous` / `no` / `unknown` and sorts on it (live:
+  chebi, meddra, pubchem_substance, iuphar_ligand drop to `no`). `ambiguous` exists
+  because a table name does not say which side holds the ID — `P04637` sits in
+  `uniprot-insdc_cds`, which would otherwise "attest" a UniProt accession as INSDC CDS.
+  Opt-in and capped at 10 IDs: a short bare number takes 8–14 s to look up.
+- **No-route errors now list routes that work.** When `togoid_getRelation`,
+  `togoid_countId` or `togoid_convertId` hit a pair with no direct table, the error
+  carries up to five ≤2-hop routes from TogoID's `/route` (for a multi-hop `convertId`,
+  for the hop that broke), shortest first. Routes through a non-entity dataset
+  (`ncbigene,taxonomy,uniprot`) are named as group links, since `/route` offers them
+  beside real bridges. `getRelation` also names an unknown dataset key on that path
+  instead of reporting "no pair". Both endpoints were pointed out by TogoID's
+  maintainers in togoid/togoid-config#396 in place of the config changes we asked for.
+
+  We did **not** switch candidate generation to `/search/id`: across one example ID
+  per dataset plus CURIE forms (127 probes) it returned exactly our local matches,
+  unranked, at one request per ID.
+
 ## [2.16.2] - 2026-09-16
 
 LIPID MAPS schema-guide corrections, plus a checker bug that only a non-RDF-Portal database could
@@ -2737,7 +2766,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.16.2...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.17.0...HEAD
+[2.17.0]: https://github.com/dbcls/togomcp/compare/v2.16.2...v2.17.0
 [2.16.2]: https://github.com/dbcls/togomcp/compare/v2.16.1...v2.16.2
 [2.16.1]: https://github.com/dbcls/togomcp/compare/v2.16.0...v2.16.1
 [2.16.0]: https://github.com/dbcls/togomcp/compare/v2.15.0...v2.16.0

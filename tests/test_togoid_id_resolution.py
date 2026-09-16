@@ -107,6 +107,18 @@ _DATASET_CONFIG = {
         "regex": r"^(?<id>[NXWAY]P_\d+)(?:\.\d+)?$",
         "examples": [["NP_009225"]],
     },
+    "chebi": {
+        "label": "ChEBI",
+        "category": "Compound",
+        "regex": r"^(?:CHEBI[:_])?(?<id>\d+)$",
+        "examples": [["15377"]],
+    },
+    "taxonomy": {
+        "label": "NCBI Taxonomy",
+        "category": "Organism",
+        "regex": r"^(?<id>\d+)$",
+        "examples": [["9606"]],
+    },
 }
 
 
@@ -553,3 +565,234 @@ class TestIdentifyId:
         scores = _collision_scores(_DATASET_CONFIG)
         assert scores["hgnc_symbol"] == max(scores.values())
         assert scores["uniprot"] < scores["hgnc_symbol"]
+
+
+# ---------------------------------------------------------------------------
+# 4. Route suggestions from /route (togoid/togoid-config#396)
+# ---------------------------------------------------------------------------
+
+
+class TestRouteSuggestions:
+    @pytest.mark.asyncio
+    async def test_getrelation_lists_multi_hop_routes_when_no_pair_exists(self) -> None:
+        with respx.mock(using="httpx") as router:
+            _mock_dataset_config(router)
+            router.get(f"{_TOGOID}/config/relation/chebi-uniprot").mock(
+                return_value=httpx.Response(404, json={"message": "no database config found"})
+            )
+            router.get(f"{_TOGOID}/config/relation/uniprot-chebi").mock(
+                return_value=httpx.Response(404, json={"message": "no database config found"})
+            )
+            router.get(f"{_TOGOID}/route/chebi/uniprot").mock(
+                return_value=httpx.Response(200, json=[["chebi", "refseq_protein", "uniprot"]])
+            )
+            with pytest.raises(ValueError) as excinfo:
+                await getRelation(source="chebi", target="uniprot")
+        message = str(excinfo.value)
+        assert "Neither orientation" in message
+        assert "'chebi,refseq_protein,uniprot'" in message
+
+    @pytest.mark.asyncio
+    async def test_grouping_hops_rank_last_and_are_named(self) -> None:
+        """`/route` offers `ncbigene,taxonomy,uniprot` beside real bridges; it
+        maps a gene to every protein of its species."""
+        with respx.mock(using="httpx") as router:
+            _mock_dataset_config(router)
+            router.get(f"{_TOGOID}/route/ncbigene/chebi").mock(
+                return_value=httpx.Response(200, json=[
+                    ["ncbigene", "taxonomy", "chebi"],
+                    ["ncbigene", "uniprot", "chebi"],
+                ])
+            )
+            routes = await togoid._suggest_routes("ncbigene", "chebi")
+        assert [r["route"] for r in routes] == [
+            "ncbigene,uniprot,chebi", "ncbigene,taxonomy,chebi",
+        ]
+        assert routes[0]["via_grouping"] == []
+        assert routes[1]["via_grouping"] == ["taxonomy"]
+        assert "via taxonomy" in togoid._format_route_suggestions(routes)
+
+    @pytest.mark.asyncio
+    async def test_order_is_deterministic_shortest_first(self) -> None:
+        """The live endpoint returns paths in a different order per call."""
+        paths = [["a", "x", "y", "b"], ["a", "b"], ["a", "z", "b"]]
+        with respx.mock(using="httpx") as router:
+            router.get(f"{_TOGOID}/config/dataset").mock(
+                return_value=httpx.Response(200, json={})
+            )
+            router.get(f"{_TOGOID}/route/a/b").mock(
+                return_value=httpx.Response(200, json=paths)
+            )
+            routes = await togoid._suggest_routes("a", "b")
+        assert [r["route"] for r in routes] == ["a,b", "a,z,b", "a,x,y,b"]
+
+    @pytest.mark.asyncio
+    async def test_getrelation_names_an_unknown_key_before_routing(self) -> None:
+        """`/route` answers an unknown key with a silent `[]`."""
+        with respx.mock(using="httpx", assert_all_called=False) as router:
+            _mock_dataset_config(router)
+            router.get(f"{_TOGOID}/config/relation/ncbi_protein-uniprot").mock(
+                return_value=httpx.Response(404, json={})
+            )
+            router.get(f"{_TOGOID}/config/relation/uniprot-ncbi_protein").mock(
+                return_value=httpx.Response(404, json={})
+            )
+            route = router.get(f"{_TOGOID}/route/ncbi_protein/uniprot").mock(
+                return_value=httpx.Response(200, json=[])
+            )
+            with pytest.raises(ValueError, match="'ncbi_protein'.*insdc_cds"):
+                await getRelation(source="ncbi_protein", target="uniprot")
+        assert not route.called
+
+    @pytest.mark.asyncio
+    async def test_no_route_at_all_says_so(self) -> None:
+        with respx.mock(using="httpx") as router:
+            _mock_dataset_config(router)
+            router.get(f"{_TOGOID}/config/relation/chebi-taxonomy").mock(
+                return_value=httpx.Response(404, json={})
+            )
+            router.get(f"{_TOGOID}/config/relation/taxonomy-chebi").mock(
+                return_value=httpx.Response(404, json={})
+            )
+            router.get(f"{_TOGOID}/route/chebi/taxonomy").mock(
+                return_value=httpx.Response(200, json=[])
+            )
+            with pytest.raises(ValueError, match="not convertible via TogoID"):
+                await getRelation(source="chebi", target="taxonomy")
+
+    @pytest.mark.asyncio
+    async def test_route_failure_does_not_mask_the_original_error(self) -> None:
+        with respx.mock(using="httpx") as router:
+            router.get(f"{_TOGOID}/route/chebi/uniprot").mock(
+                return_value=httpx.Response(503, text="down")
+            )
+            assert await togoid._suggest_routes("chebi", "uniprot") == []
+
+    @pytest.mark.asyncio
+    async def test_convertid_suggests_routes_for_the_failing_hop(self) -> None:
+        """TogoID's 400 names the broken HOP, not the caller's endpoints."""
+        with respx.mock(using="httpx") as router:
+            _mock_dataset_config(router)
+            router.get(f"{_TOGOID}/convert").mock(
+                return_value=httpx.Response(400, json={"message": "no route: uniprot <> chebi"})
+            )
+            router.get(f"{_TOGOID}/route/uniprot/chebi").mock(
+                return_value=httpx.Response(200, json=[["uniprot", "refseq_protein", "chebi"]])
+            )
+            with pytest.raises(ValueError, match="'uniprot,refseq_protein,chebi'"):
+                await convertId(ids="672", route="ncbigene,uniprot,chebi")
+
+    @pytest.mark.asyncio
+    async def test_countid_suggests_routes_for_a_missing_table(self) -> None:
+        with respx.mock(using="httpx") as router:
+            _mock_dataset_config(router)
+            router.get(f"{_TOGOID}/count/chebi-uniprot").mock(
+                return_value=httpx.Response(400, json={"message": "no table"})
+            )
+            router.get(f"{_TOGOID}/route/chebi/uniprot").mock(
+                return_value=httpx.Response(200, json=[["chebi", "refseq_protein", "uniprot"]])
+            )
+            with pytest.raises(ValueError, match="single-hop.*'chebi,refseq_protein,uniprot'"):
+                await countId(source="chebi", target="uniprot", ids="15377")
+
+
+# ---------------------------------------------------------------------------
+# 5. identifyId verify=True via /lookup/id
+# ---------------------------------------------------------------------------
+
+
+class TestIdentifyIdVerify:
+    @pytest.mark.asyncio
+    async def test_attested_candidates_sort_first(self) -> None:
+        """`672` is well-formed for ncbigene, chebi and taxonomy; only the
+        tables say which actually hold it."""
+        with respx.mock(using="httpx") as router:
+            _mock_dataset_config(router)
+            router.get(f"{_TOGOID}/lookup/id/672").mock(
+                return_value=httpx.Response(200, json=["ncbigene-uniprot", "hgnc-ncbigene"])
+            )
+            result = json.loads(await identifyId(ids="672", verify=True))
+        by_key = {c["dataset"]: c for c in result[0]["candidates"]}
+        assert result[0]["candidates"][0]["dataset"] == "ncbigene"
+        assert by_key["ncbigene"]["attested"] == "yes"
+        assert by_key["ncbigene"]["pairs_with"] == ["hgnc", "uniprot"]
+        assert by_key["chebi"]["attested"] == "no"
+        assert by_key["chebi"]["pairs_with"] == []
+        assert result[0]["candidates"][-1]["attested"] == "no"
+
+    @pytest.mark.asyncio
+    async def test_lookup_uses_the_captured_local_id_not_the_curie(self) -> None:
+        """`/lookup/id/CHEBI:15377` returns `[]`; the tables store `15377`."""
+        with respx.mock(using="httpx") as router:
+            _mock_dataset_config(router)
+            lookup = router.get(f"{_TOGOID}/lookup/id/15377").mock(
+                return_value=httpx.Response(200, json=["chebi-inchi_key"])
+            )
+            result = json.loads(await identifyId(ids="CHEBI:15377", verify=True))
+        assert lookup.called
+        assert result[0]["candidates"][0]["attested"] == "yes"
+
+    @pytest.mark.asyncio
+    async def test_a_table_shared_with_another_candidate_is_ambiguous(self) -> None:
+        """Live: `P04637` is in uniprot-insdc_cds, which named insdc_cds as a
+        holder of a UniProt accession."""
+        with respx.mock(using="httpx") as router:
+            _mock_dataset_config(router)
+            router.get(f"{_TOGOID}/lookup/id/P04637").mock(
+                return_value=httpx.Response(
+                    200, json=["uniprot-insdc_cds", "uniprot-pdb", "hgnc-uniprot"]
+                )
+            )
+            result = json.loads(await identifyId(ids="P04637", verify=True))
+        by_key = {c["dataset"]: c for c in result[0]["candidates"]}
+        assert by_key["uniprot"]["attested"] == "yes"
+        assert by_key["insdc_cds"]["attested"] == "ambiguous"
+        assert by_key["hgnc_symbol"]["attested"] == "no"
+        assert [c["attested"] for c in result[0]["candidates"]][:2] == ["yes", "ambiguous"]
+
+    @pytest.mark.asyncio
+    async def test_one_lookup_per_distinct_local_id(self) -> None:
+        with respx.mock(using="httpx") as router:
+            _mock_dataset_config(router)
+            lookup = router.get(f"{_TOGOID}/lookup/id/15377").mock(
+                return_value=httpx.Response(200, json=[])
+            )
+            await identifyId(ids=["CHEBI:15377", "15377"], verify=True)
+        assert lookup.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_timeout_is_unknown_not_false(self) -> None:
+        with respx.mock(using="httpx") as router:
+            _mock_dataset_config(router)
+            router.get(f"{_TOGOID}/lookup/id/672").mock(
+                side_effect=httpx.ReadTimeout("slow")
+            )
+            result = json.loads(await identifyId(ids="672", verify=True))
+        assert all(c["attested"] == "unknown" for c in result[0]["candidates"])
+        assert "verify_note" in result[0]
+
+    @pytest.mark.asyncio
+    async def test_too_many_ids_rejected_before_any_lookup(self) -> None:
+        with respx.mock(using="httpx", assert_all_called=False) as router:
+            _mock_dataset_config(router)
+            lookup = router.get(url__startswith=f"{_TOGOID}/lookup/id/").mock(
+                return_value=httpx.Response(200, json=[])
+            )
+            with pytest.raises(ValueError, match="at most 10"):
+                await identifyId(ids=[str(n) for n in range(11)], verify=True)
+        assert not lookup.called
+
+    @pytest.mark.asyncio
+    async def test_default_makes_no_lookup_and_adds_no_fields(self) -> None:
+        with respx.mock(using="httpx") as router:
+            _mock_dataset_config(router)
+            result = json.loads(await identifyId(ids="672"))
+        assert "attested" not in result[0]["candidates"][0]
+        assert "verify_note" not in result[0]
+
+    def test_local_id_takes_the_participating_alternation_group(self) -> None:
+        matcher = re.compile(_to_python_regex(_UNIPROT_REGEX))
+        assert togoid._local_id(matcher.fullmatch("Q9NYF8"), "Q9NYF8") == "Q9NYF8"
+        matcher = re.compile(_to_python_regex(_INSDC_CDS_REGEX))
+        hit = matcher.fullmatch("insdc.cds:AEK21611.1")
+        assert togoid._local_id(hit, "insdc.cds:AEK21611.1") == "AEK21611"
