@@ -14,8 +14,8 @@ This script closes that gap for the runnable part. It is FORMAT-AGNOSTIC: a gene
 recursive walk yields every value under a `sparql`, `correct_sparql`, or `query` key,
 so it covers both v3 (`examples[].sparql` — the queries a reader copies) and any
 lingering v2 files (`sparql_query_examples` / `cross_database_queries` `.sparql` and
-`anti_patterns.correct_sparql`). It runs each against the database's own endpoint
-(resolved from endpoints.csv) and flags ZERO-row and ERROR results. It deliberately
+`anti_patterns.correct_sparql`). It runs each against the endpoint the EXAMPLE names
+(see "Which endpoint" below) and flags ZERO-row and ERROR results. It deliberately
 SKIPS `wrong_sparql` (those are meant to fail). In v3 there are no `correct_sparql`
 blocks, so the "high confidence" bucket below is simply empty for a v3 file — every
 example query is judged on the same ZERO/ERROR gate.
@@ -48,6 +48,32 @@ Every v3 example must carry at least one of n / row_count / min_rows / has_value
 (`expect_empty: true` examples are exempt). A wrong or missing assertion is MALFORMED; a
 well-formed one the live result no longer satisfies is DRIFT. Both count toward the exit
 code. `--lint-only` runs the MALFORMED half offline, without touching an endpoint.
+
+Which endpoint (fixed 2026-09-16)
+----------------------------------
+Until then this script resolved ONE endpoint per file — the database's own, from
+endpoints.csv — and ignored an example's `endpoint_name:`. That is wrong for exactly the
+examples that carry the key: a `complexity: cross_db` example names another endpoint
+BECAUSE its own database is the wrong place to run it. lipidmaps made the bug visible —
+it cannot `SERVICE` out at all, so its cross-DB example (correct, 15 rows from `ebi`)
+net-failed on every run with the same Cloudflare 502 its own MIE documents.
+
+It went unnoticed for a simple reason worth recording: of the 61 examples across 41 of
+42 files that carry `endpoint_name`, 60 resolve to the endpoint the file would have used
+anyway. For a database hosted ON RDF Portal, its own endpoint IS the named group's — the
+chebi MIE's `endpoint_name: ebi` and chebi's own row in endpoints.csv are the same URL,
+so ignoring the key was a no-op. Only lipidmaps, the first database here whose own
+endpoint is not an RDF Portal one, could ever expose it. Honouring the key therefore
+changes where exactly ONE shipped example runs — but it is the difference between a
+permanent false failure and a pass, and the next non-RDF-Portal database would have hit
+it too.
+
+Resolution order is `endpoint_url` > `endpoint_name` > the database's own — the same
+priority `run_sparql` applies, so the checker exercises what a reader's tool call does.
+`endpoint_name` is an endpoint GROUP (`ebi`, `sib`), not a database; it is looked up in
+the endpoint_name column of endpoints.csv, which is 1:1 with a URL. An `endpoint_name`
+that is not in that column is MALFORMED — it would otherwise fall back to the database's
+own endpoint and reintroduce the bug one typo at a time.
 
 Limits — this catches only the runnable-and-empty failure mode:
   - A query that returns the WRONG rows (e.g. taxonomy's bare-namespace-rank
@@ -107,14 +133,46 @@ _FORM_RE = re.compile(r"\b(SELECT|ASK|CONSTRUCT|DESCRIBE)\b", re.IGNORECASE)
 
 
 def load_endpoint_map():
-    m = {}
+    """Two indexes over endpoints.csv: by `database` (one RDF database) and by
+    `endpoint_name` (an endpoint GROUP several databases share — `ebi`, `sib`).
+
+    They are different namespaces, and an example's `endpoint_name:` names the second.
+    Resolving it against the first — or not at all — is what ran every cross_db example
+    on the wrong endpoint until 2026-09-16.
+    """
+    by_db, by_name = {}, {}
     with open(ENDPOINTS_CSV, newline="", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
             db = (row.get("database") or "").strip()
             url = (row.get("endpoint_url") or "").strip()
+            name = (row.get("endpoint_name") or "").strip()
             if db and url:
-                m[db] = url
-    return m
+                by_db[db] = url
+            if name and url:
+                by_name.setdefault(name, url)
+    return by_db, by_name
+
+
+def resolve_endpoint(node, db, by_db, by_name):
+    """Where does THIS query run? Returns (url_or_None, problem_or_None).
+
+    Priority `endpoint_url` > `endpoint_name` > the database's own, matching
+    `run_sparql`. An unresolvable `endpoint_name` returns a problem rather than
+    falling back: silently running on the database's own endpoint is the bug this
+    function exists to fix, and a typo must not recreate it.
+    """
+    if isinstance(node, dict):
+        url = node.get("endpoint_url")
+        if isinstance(url, str) and url.strip():
+            return url.strip(), None
+        name = node.get("endpoint_name")
+        if isinstance(name, str) and name.strip():
+            name = name.strip()
+            if name in by_name:
+                return by_name[name], None
+            return None, (f"unknown endpoint_name {name!r} — not in the endpoint_name "
+                          f"column of endpoints.csv (known: {', '.join(sorted(by_name))})")
+    return by_db.get(db), None
 
 
 def is_runnable_sparql(q):
@@ -360,7 +418,7 @@ def main():
                     help="check verified: shape offline; run no queries")
     args = ap.parse_args()
 
-    endpoints = load_endpoint_map()
+    endpoints_by_db, endpoints_by_name = load_endpoint_map()
     files = sorted(MIE_DIR.glob("*.yaml"))
     if args.dbs:
         want = set(args.dbs)
@@ -377,10 +435,18 @@ def main():
             print(f"  ⚠  {db}: YAML parse error ({e})")
             continue
         file_prefixes = harvest_prefixes(text)
-        ep = endpoints.get(db)
+        own_ep = endpoints_by_db.get(db)
         for jpath, key, q, expect_empty, node in walk_queries(d):
+            # Resolve per QUERY, not per file: a cross_db example names the endpoint it
+            # must run on, and its own database is often the one place it cannot run.
+            ep, ep_problem = resolve_endpoint(node, db, endpoints_by_db, endpoints_by_name)
             tag = f"{db} {jpath.lstrip('/')}"
+            if ep and own_ep and ep != own_ep:
+                tag += f" @{node.get('endpoint_name') or 'endpoint_url'}"
             is_example = key == "sparql" and re.fullmatch(r"/examples\[\d+\]/sparql", jpath)
+            if ep_problem:
+                malformed.append((tag, ep_problem))
+                print(f"  ✗  {tag} MALFORMED: {ep_problem}", flush=True)
             if is_example:
                 for problem in lint_verified(node):
                     malformed.append((tag, problem))
