@@ -11,7 +11,18 @@ Versions follow the **agent-pragmatic** semver policy documented in
 database or a tool is MINOR; a return-shape change rides there too, because our
 dominant client re-reads the schema each session. Only a removal/rename is MAJOR.
 
-## [Unreleased]
+## [2.16.0] - 2026-09-16
+
+A lipid release. **SwissLipids** joins as the 43rd database: SIB's curated reference, 777,965
+lipids in a six-level hierarchy, and the only database here that records which fatty acid sits at
+which sn-position — so "lipids with palmitate at sn-1" becomes a structured query instead of a
+name match. Alongside it, an audit of the **LIPID MAPS** MIE found a category count inflated 3.1x
+by an upstream data defect, which the MIE had presented as genuine multi-classification, and
+found that ChEBI ↔ LIPID MAPS joins returned 0 rows because the two databases use different
+property names for the same fields. Both are fixed. The `database=` values work everywhere
+immediately, and no tool, parameter or return shape changed.
+
+<!-- whatsnew: 2026-09-16 | New database: <strong>SwissLipids</strong> — SIB's curated reference, 777,965 lipids from category down to isomeric subspecies, and the only one here that records <strong>which fatty acid sits at which sn-position</strong>, so "lipids with palmitate at sn-1" is a structured query rather than a name match. -->
 
 ### Added
 
@@ -2620,6 +2631,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v2.15.0...HEAD
+[2.16.0]: https://github.com/dbcls/togomcp/compare/v2.15.0...v2.16.0
 [2.15.0]: https://github.com/dbcls/togomcp/compare/v2.14.0...v2.15.0
 [2.14.0]: https://github.com/dbcls/togomcp/compare/v2.13.0...v2.14.0
 [2.13.0]: https://github.com/dbcls/togomcp/compare/v2.12.2...v2.13.0
