@@ -13,6 +13,62 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.16.2] - 2026-09-16
+
+LIPID MAPS schema-guide corrections, plus a checker bug that only a non-RDF-Portal database could
+expose. No tool, parameter, or return shape changed.
+
+### Fixed
+
+- **`lipidmaps` published one number where there were three.** `classification_nodes: 607` was
+  presented as the count of classification nodes; it is in fact the count of nodes holding at least
+  one child. There are **708** `category/*` IRIs — 672 labelled (all of which appear in subject
+  position), 36 unlabelled and object-only, 607 with ≥1 child, and 571 in the intersection. The
+  three are now three keys with the set arithmetic recorded beside them, so they cannot be silently
+  re-merged. The 101 subject-only nodes resolve as the 8 roots plus **93 orphaned empty classes**
+  (`GL0303` Dialkylmonoacylglycerols, `GP0502`) — orphaned specifically: "no members and no
+  children" alone describes a set of 112, because 19 further empty leaves do have a parent. The
+  deepest tier is **190** nodes, 164 of which actually hold lipids, correcting a `183` that
+  conflated "reachable" with "holds lipids".
+- **Keyword search on `rdfs:label` has 0.2–4% recall for a lipid CLASS, and fails silently.** New
+  `label_search_low_recall` gotcha. "cardiolipin" matches 2 records while class GP1201 holds 1,306;
+  "prostaglandin" matches 11 against FA0301's 291. The cause is structural rather than a data
+  defect: every lipid carries a systematic name and a shorthand abbreviation, and the class noun a
+  biologist would type appears in neither — it lives only on the category node. PGE2, the most
+  cited eicosanoid there is, has exactly two labels and neither contains "prostaglandin". The new
+  `enum_by_headgroup` example gives the route that survives this (`STRBEFORE(?abbrev, " ")`), and
+  it agrees with the category tree exactly for CL — 1,306 either way — so the two check each other.
+  This is the label-side counterpart of the formula-side defects found in 2.16.0: the identifier a
+  human would search on is the one the record does not carry.
+- **The LIPID MAPS WAF workaround is one character.** 2.16.0 documented that Cloudflare 403s legal
+  SPARQL containing `SUBSTR(` or `CONCAT(` and suspected the trigger depended on client and IP. It
+  depends on client, not IP, and the rule is `\b(substr|concat|char)\(` matched against the **raw
+  request body** — a query whose only occurrence is inside a string literal is blocked too, which
+  is what proves it never reaches SPARQL, and is why `GROUP_CONCAT(` passes (the `_` defeats the
+  word boundary). So `SUBSTR (?s, 33, 2)` — one space before the paren — is valid SPARQL, clears
+  the WAF and returns correct values, which is far lighter than restructuring a query around
+  `VALUES`/`STRSTARTS` as previously advised. Separately, a Python client that never sets a
+  User-Agent sends `Python-urllib/3.x`, which is 403'd wholesale including the control query, and
+  so cannot tell that condition from the token rule. Both now carry live checks, and the trap is in
+  the Usage Guide (endpoint behaviour in `02`, symptom-first rows in `04`) rather than only in the
+  MIE, because the symptom presents as "the endpoint rejected my query" long before a reader thinks
+  to open a schema guide.
+- **`check_mie_examples.py` ignored an example's `endpoint_name`** and ran every query against its
+  own database's endpoint — wrong for precisely the examples carrying the key, since a `cross_db`
+  example names another endpoint *because* its own database is the wrong place to run it.
+  Resolution is now per query, `endpoint_url` > `endpoint_name` > the database's own, matching
+  `run_sparql`; an unknown name is MALFORMED rather than a fallback, since falling back is the bug.
+  It survived 41 files because 61 of the 62 examples carrying the key resolve to the endpoint the
+  file would have used anyway — for a database hosted *on* RDF Portal its own endpoint IS the named
+  group's, making the key a no-op. Only `lipidmaps`, which cannot `SERVICE` out, could expose it,
+  and its cross-DB example had been net-failing on every run with the same Cloudflare 502 its own
+  MIE documents. It is correct: 15 rows from `ebi`. Two corpus guards now assert that every shipped
+  `endpoint_name` resolves and that the override is still exercised, so the feature cannot quietly
+  become dead code and leave the other assertions vacuous.
+- `check_guide_claims.py` gains the User-Agent it alone lacked, plus a one-shot status probe:
+  `run()` retries four times and collapses everything into "unreachable", which is right for a
+  claim asserting a result and wrong for one asserting a rejection.
+
 ## [2.16.1] - 2026-09-16
 
 LOTUS tooling only — `scripts/lotus/` is developer tooling for the proposal to host LOTUS on
@@ -2681,7 +2737,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.16.1...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.16.2...HEAD
+[2.16.2]: https://github.com/dbcls/togomcp/compare/v2.16.1...v2.16.2
 [2.16.1]: https://github.com/dbcls/togomcp/compare/v2.16.0...v2.16.1
 [2.16.0]: https://github.com/dbcls/togomcp/compare/v2.15.0...v2.16.0
 [2.15.0]: https://github.com/dbcls/togomcp/compare/v2.14.0...v2.15.0
