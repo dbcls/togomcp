@@ -60,14 +60,14 @@ net-failed on every run with the same Cloudflare 502 its own MIE documents.
 
 It went unnoticed for a simple reason worth recording: of the 62 examples across 42 of
 the 43 files that carry `endpoint_name`, 61 resolve to the endpoint the file would have
-used anyway (counted 2026-09-16; `test_corpus_actually_exercises_the_override` guards the
-floor, not the exact figure). For a database hosted ON RDF Portal, its own endpoint IS the named group's — the
-chebi MIE's `endpoint_name: ebi` and chebi's own row in endpoints.csv are the same URL,
-so ignoring the key was a no-op. Only lipidmaps, the first database here whose own
-endpoint is not an RDF Portal one, could ever expose it. Honouring the key therefore
-changes where exactly ONE shipped example runs — but it is the difference between a
-permanent false failure and a pass, and the next non-RDF-Portal database would have hit
-it too.
+used anyway (counted 2026-09-16; `test_corpus_actually_exercises_the_override` guards
+the floor, not the exact figure). For a database hosted ON RDF Portal, its own endpoint
+IS the named group's — the chebi MIE's `endpoint_name: ebi` and chebi's own row in
+endpoints.csv are the same URL, so ignoring the key was a no-op. Only lipidmaps, the
+first database here whose own endpoint is not an RDF Portal one, could ever expose it.
+Honouring the key therefore changes where exactly ONE shipped example runs — but it is
+the difference between a permanent false failure and a pass, and the next non-RDF-Portal
+database would have hit it too.
 
 This is NOT the rule check_mie_gotchas.py follows, on purpose: a `check:` proves a trap,
 and for a cross_db example the trap usually bites on the database's OWN endpoint (see
