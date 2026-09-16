@@ -26,6 +26,20 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   It also covers the hierarchy traps: `rdfs:subClassOf+` is right but can take minutes, and a
   fixed-depth query that is complete for a class undercounts a category (87% of Sphingolipids
   missed). Unlike `lipidmaps`, it can call out to Rhea with `SERVICE`.
+- **LOTUS onboarding proposal: schema draft + CSV→RDF converter** in `scripts/lotus/` (developer
+  tooling; nothing ships in the wheel and the tool surface is unchanged). LOTUS — referenced
+  structure–organism occurrences of natural products — lives in Wikidata and publishes no RDF, so
+  it cannot be added as a `database=` pointing at a live endpoint: there is no named graph to pin
+  (the subset is a query pattern), Wikidata's endpoint cuts every query at 60 s (six of twelve of
+  LOTUS's own published examples exceed it), and the live data carries no version string. The
+  proposal instead converts LOTUS's frozen CSV release (v11, 2026-04-13) into a dated graph for
+  RDF Portal to host: entities keep their Wikidata IRIs so the graph joins to `idsm`'s Wikidata
+  mirror with no mapping table, and cross-references use the IRI forms `pubchem`/`taxonomy`/`pubmed`
+  already use. v11 converts to 9,137,465 triples, verified with `rapper` and reproducible apart
+  from its conversion timestamp. `scripts/lotus/README.md` records the traps found while building
+  it — QLever reports a timeout as HTTP 200 with a truncated body, Wiley DOIs contain `<`/`>` which
+  terminate an N-Triples IRI, NPClassifier cells pack several classes behind `" $ "`, and per-row
+  coverage overstates per-entity coverage (NCBI taxon ids: 86.6% of rows but 78.0% of organisms).
 
 ### Fixed
 
