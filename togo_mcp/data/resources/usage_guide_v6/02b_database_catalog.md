@@ -1,23 +1,23 @@
 ## 📚 DATABASE CATALOG
 
-All 43 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
+All 44 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
 **By category** (a database may appear under several):
 
-- **annotation** — `pubtator` `uniprot`
+- **annotation** — `bh26microbes` `pubtator` `uniprot`
 - **antimicrobial** — `amrportal`
 - **compound** — `chebi` `chembl` `idsm` `lipidmaps` `massbank` `pubchem` `swisslipids` `wikipathways`
 - **disease** — `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `togovar`
 - **drug_target** — `chembl` `idsm`
 - **enzymology** — `brenda`
 - **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `medgen` `ncbigene` `pubcasefinder` `wikipathways`
-- **genomics** — `fantabio` `gwascatalog` `hco` `hgnc` `mco` `mogplus` `oma` `togovar`
+- **genomics** — `bh26microbes` `fantabio` `gwascatalog` `hco` `hgnc` `mco` `mogplus` `oma` `togovar`
 - **glycan** — `glycosmos`
 - **literature** — `pubmed` `pubtator`
 - **materials** — `supercon`
-- **microbe** — `amrportal` `bacdive` `mediadive` `nbrc`
+- **microbe** — `amrportal` `bacdive` `bh26microbes` `mediadive` `nbrc`
 - **ontology** — `chebi` `go` `hco` `lipidmaps` `mco` `mesh` `mondo` `nando` `ontology` `swisslipids`
 - **pathway** — `reactome` `wikipathways`
 - **physics** — `supercon`
@@ -36,6 +36,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: bacteria, archaea, strain, culture, growth condition, medium, morphology, physiology, 16s rrna, genome, isolation, habitat, temperature, oxygen tolerance, gram stain, enzyme, biosafety
 - **bgee** — Bgee — gene expression across animal species. Curated gene-expression calls (present / absent) integrating RNA-Seq, Affymetrix, EST, and in-situ data across 52 animal species, each call tagged with anatomy (UBERON/CL), developmental stage, sex,… _(categories: gene, taxonomy)_  
   keywords: gene expression, tissue, anatomical entity, developmental stage, rna-seq, in situ hybridization, cross-species, expression call, absence call, confidence, uberon, cell type, orthology, taxon
+- **bh26microbes** — BH26 Microbes (KofamScan KEGG Orthology annotations). Experimental BioHackathon 2026 dataset of KofamScan KEGG Orthology (KO) assignments — with HMM score, E-value, threshold and significance per hit — for ~57.6 million RefSeq proteins across 23,434 pro… _(categories: annotation, genomics, microbe)_  
+  keywords: kegg orthology, ko, kofamscan, functional annotation, hmm profile, prokaryotic genome, bacteria, refseq protein, genome assembly, gene content, metabolic potential, comparative genomics
 - **brenda** — BRENDA (Braunschweig Enzyme Database). Manually curated enzyme data classified by EC number: enzyme instances (one per organism), EC-class definitions, inhibitors/activators/cofactors, substrates/products, reactions, tissue and subcellula… _(categories: enzymology, protein, reaction)_  
   keywords: enzyme, ec number, enzymatic reaction, substrate, product, inhibitor, activator, cofactor, biochemistry, catalysis, inchi, inchikey, tissue expression, subcellular localization
 - **chebi** — ChEBI — Chemical Entities of Biological Interest. OWL ontology of 224k+ chemical entities (small molecules, ions, radicals, functional groups) with a rdfs:subClassOf class hierarchy, molecular properties (formula/mass/InChI/SMILES/charge) in the che… _(categories: compound, ontology)_  

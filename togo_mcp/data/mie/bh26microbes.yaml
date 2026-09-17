@@ -1,0 +1,504 @@
+mie_spec: 3
+database: bh26microbes
+
+discovery:
+  title: BH26 Microbes (KofamScan KEGG Orthology annotations)
+  description: >
+    Experimental BioHackathon 2026 dataset of KofamScan KEGG Orthology (KO) assignments — with
+    HMM score, E-value, threshold and significance per hit — for ~57.6 million RefSeq proteins
+    across 23,434 prokaryotic RefSeq genome assemblies.
+  keywords:
+    - kegg orthology
+    - ko
+    - kofamscan
+    - functional annotation
+    - hmm profile
+    - prokaryotic genome
+    - bacteria
+    - refseq protein
+    - genome assembly
+    - gene content
+    - metabolic potential
+    - comparative genomics
+  categories:
+    - microbe
+    - genomics
+    - annotation
+
+endpoint: https://rdfportal.org/microbes/sparql
+base_uri: https://2026.biohackathon.org/microbes/
+
+graphs:
+  primary: https://2026.biohackathon.org/microbes/kofamscan
+  supporting:
+    - ko_list      # https://2026.biohackathon.org/microbes/ko_list — KO definitions + KofamScan profile parameters
+  co_hosted:
+    probed_clean: >
+      2g probe run 2026-09-17 — NO re-declaration found. The endpoint holds exactly two graphs
+      (`kofamscan`, `ko_list`) and no other database. Reverse probe (?p unbound, no type filter)
+      over a protein (NP_414542.1), a genome (GCF_000005845.2), two KO IRIs (K08278, K03553) and a
+      kofamscan property IRI, forward and backward: every predicate lands in exactly one graph
+      (protein/genome/statement triples in `kofamscan`, KO definitions and profile parameters in
+      `ko_list`). Every predicate's per-graph counts sum to its endpoint total (e.g. rdf:type
+      119,213,944 + 10 = 119,213,954; the 10 are rdf:Property typings in `ko_list`), and an
+      unpinned Genome count equals the pinned one (23,434). Pinning is still good practice.
+
+entity_counts:
+  # COUNT(DISTINCT), pinned to the owning graph.
+  proteins: 57612257            # med2rdf:Protein, only proteins with >=1 KofamScan hit are present
+  genomes: 23434                # med2rdf:Genome, RefSeq GCF assemblies
+  hit_statements: 61578253      # rdf:Statement, one per (genome copy, protein, KO) — see gotcha
+  protein_ko_links: 59595575    # rdfs:seeAlso triples (distinct protein-KO pairs, significant OR not)
+  non_significant_hits: 14818090  # statements whose "significant" attribute is false (24.1%)
+  kos_defined: 28387            # ko_list skos:definition
+  kos_with_threshold: 26530     # ko_list kofam:threshold; the rest can never be "significant"
+  kos_with_any_hit: 11482       # distinct rdf:object in kofamscan
+  date: "2026-09-17"
+
+global_gotchas:
+  - id: experimental_dataset
+    say: >
+      EXPERIMENTAL: a BioHackathon 2026 dataset that may change shape or be withdrawn. Genomes
+      and proteins carry NO names, taxonomy or other metadata here — a `med2rdf:Genome` has only
+      its rdf:type, so "which organism is GCF_x" cannot be answered on this endpoint. Resolve it
+      through UniProt proteomes (see `xdb_genome_organism`).
+    check:
+      kind: zero_rows
+      date: "2026-09-17"
+      query: |
+        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+        SELECT ?p WHERE {
+          GRAPH <https://2026.biohackathon.org/microbes/kofamscan> {
+            ?g a <http://med2rdf.org/ontology/med2rdf#Genome> ; ?p ?o FILTER(?p != rdf:type)
+          }
+        } LIMIT 1
+
+  - id: seealso_includes_below_threshold_hits
+    say: >
+      The direct `?protein rdfs:seeAlso ?ko` link is asserted for EVERY KofamScan hit, including
+      the 14,818,090 hits (24.1% of statements) KofamScan marks NOT significant (score below the
+      KO's threshold, or a KO with no threshold at all). Querying the link alone silently
+      over-annotates: for E. coli K-12 it yields 3,777 protein-KO pairs where only 3,526 are
+      significant (×1.07); for nifH (K02588) 2,292 genomes where 2,246 are significant. FIX: go
+      through the reified statement and require the attribute labelled "significant" to be
+      `true` (see `enum_genomes_with_ko`). Use bare `rdfs:seeAlso` only when you deliberately want
+      all hits.
+    check:
+      kind: ratio
+      date: "2026-09-17"
+      unpinned: |
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX obo: <http://purl.obolibrary.org/obo/>
+        SELECT (COUNT(*) AS ?n) WHERE {
+          GRAPH <https://2026.biohackathon.org/microbes/kofamscan> {
+            ?p obo:RO_0002162 <http://identifiers.org/refseq.gcf/GCF_000005845.2> ; rdfs:seeAlso ?ko
+          }
+        }
+      pinned: |
+        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX sio: <http://semanticscience.org/resource/>
+        PREFIX obo: <http://purl.obolibrary.org/obo/>
+        SELECT (COUNT(*) AS ?n) WHERE {
+          GRAPH <https://2026.biohackathon.org/microbes/kofamscan> {
+            ?p obo:RO_0002162 <http://identifiers.org/refseq.gcf/GCF_000005845.2> .
+            ?s rdf:subject ?p ; rdf:object ?ko ; sio:SIO_000008 ?a .
+            ?a rdfs:label "significant" ; sio:SIO_000300 true .
+          }
+        }
+      expect: {ratio: 1.0712, tolerance: 0.02}
+
+  - id: statements_duplicated_per_genome_copy
+    say: >
+      A RefSeq WP_ protein shared by k genomes carries k identical rdf:Statements (same subject,
+      object and scores) — and a statement has no link to its genome, so the copies cannot be
+      told apart. 873,098 proteins sit in 2 genomes, 141,386 in 3, and so on. Counting statements
+      (`COUNT(?hit)`) therefore inflates: 61,578,253 statements vs 59,595,575 distinct protein-KO
+      links (×1.033), far more for widespread proteins. FIX: count `COUNT(DISTINCT ?protein)` /
+      `COUNT(DISTINCT ?genome)`, never hits.
+    check:
+      kind: ratio
+      date: "2026-09-17"
+      numerator: |
+        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <https://2026.biohackathon.org/microbes/kofamscan> { ?s rdf:subject ?p } }
+      denominator: |
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <https://2026.biohackathon.org/microbes/kofamscan> { ?p rdfs:seeAlso ?ko } }
+      expect: {ratio: 1.0333, tolerance: 0.01}
+
+  - id: qlever_not_virtuoso
+    say: >
+      The endpoint is QLever, not Virtuoso. (1) Every prefix must be declared — even `rdf:` —
+      or the query is rejected ("Prefix rdf was not registered"; same for `owl:` etc.). (2) No Virtuoso `bif:` text
+      index (see `ko_by_definition`). (3) Memory is capped per query, so plan shape matters: an
+      out-of-memory "Tried to allocate ... MB" error means rewrite the query (see
+      `agg_genomes_per_ko`), not that the endpoint is down.
+    check:
+      kind: error
+      date: "2026-09-17"
+      expect: {timeout_s: 60}
+      query: |
+        SELECT ?c WHERE { ?c a owl:Class } LIMIT 1
+
+  - id: literals_are_plain
+    say: >
+      Every string literal (attribute labels "significant"/"score"/"E-value"/"threshold",
+      `dct:identifier`, `skos:definition`, `kofam:score_type`) matches only in PLAIN form, even
+      though `DATATYPE()` reports xsd:string: `rdfs:label "significant"^^xsd:string` returns 0
+      rows. Booleans match as `true` or `"true"^^xsd:boolean` but NOT `1` or `"true"`. Scores and
+      thresholds are xsd:double; E-values are xsd:double except exact zeros, which are xsd:int —
+      compare numerically, never as strings.
+    check:
+      kind: zero_rows
+      date: "2026-09-17"
+      query: |
+        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX sio: <http://semanticscience.org/resource/>
+        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+        SELECT ?a WHERE {
+          ?s rdf:subject <http://identifiers.org/ncbiprotein/NP_414542.1> ; sio:SIO_000008 ?a .
+          ?a rdfs:label "significant"^^xsd:string
+        } LIMIT 1
+
+examples:
+  - id: protein_ko_hits
+    intent: all KofamScan hits of one protein, with score/threshold/E-value/significance and KO definition
+    question: "Which KEGG orthologs does RefSeq protein NP_414901.1 match, and how strong are the hits?"
+    complexity: basic
+    sparql: |
+      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      SELECT ?ko ?definition ?label ?value
+      WHERE {
+        GRAPH <https://2026.biohackathon.org/microbes/kofamscan> {
+          ?hit rdf:subject <http://identifiers.org/ncbiprotein/NP_414901.1> ;
+               rdf:object ?ko ;
+               sio:SIO_000008 ?attr .
+          ?attr rdfs:label ?label ; sio:SIO_000300 ?value .
+        }
+        GRAPH <https://2026.biohackathon.org/microbes/ko_list> { ?ko skos:definition ?definition }
+      }
+      ORDER BY ?ko ?label
+    verified:
+      row_count: 12
+      has_values: [K02050, K15552, K15554]
+      note: "3 KOs x 4 attributes; K15552 taurine transport permease score 375.7 > threshold 274.17, significant true"
+      date: "2026-09-17"
+    teaches: >
+      A hit is an rdf:Statement (rdf:subject protein, rdf:predicate rdfs:seeAlso, rdf:object KO)
+      carrying sio:SIO_000008 attribute bnodes, each an rdfs:label name + sio:SIO_000300 value.
+      Protein IRIs are `http://identifiers.org/ncbiprotein/<accession.version>`; KO IRIs are
+      `http://identifiers.org/kegg.orthology/K#####` and are untyped (no rdf:type).
+    traps_avoided:
+      - "Return the attributes long-form (?label ?value) and pivot client-side. Pivoting in SPARQL by joining four label-constant attribute bnodes is correct but far slower on QLever."
+      - "The `threshold` attribute is absent on hits to KOs that have no KofamScan threshold (every such hit is non-significant) — if you pivot, make threshold OPTIONAL or those hits vanish."
+
+  - id: genome_ko_profile
+    intent: size of a genome's significant KO repertoire
+    question: "How many proteins and distinct KEGG orthologs are significantly annotated in the E. coli K-12 MG1655 assembly GCF_000005845.2?"
+    complexity: intermediate
+    sparql: |
+      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX gcf: <http://identifiers.org/refseq.gcf/>
+      SELECT (COUNT(DISTINCT ?protein) AS ?proteins) (COUNT(DISTINCT ?ko) AS ?kos)
+      WHERE {
+        GRAPH <https://2026.biohackathon.org/microbes/kofamscan> {
+          ?protein obo:RO_0002162 gcf:GCF_000005845.2 .
+          ?hit rdf:subject ?protein ; rdf:object ?ko ; sio:SIO_000008 ?a .
+          ?a rdfs:label "significant" ; sio:SIO_000300 true .
+        }
+      }
+    verified:
+      has_values: [3272, 2979]
+      note: "3,523 proteins of this genome are present (only proteins with >=1 hit are loaded); 251 have only a non-significant hit"
+      date: "2026-09-17"
+    teaches: >
+      protein -> genome is obo:RO_0002162 ("in taxon", used here for "in assembly") with genome IRI
+      `http://identifiers.org/refseq.gcf/GCF_#########.v`; the membership list only covers proteins
+      that received at least one KofamScan hit, so it is not a full proteome.
+
+  - id: enum_genomes_with_ko
+    intent: enumerate every genome (and protein) carrying a significant hit to one KO — the set-level route
+    question: "How many genomes encode a nitrogenase iron protein NifH (K02588)?"
+    complexity: basic
+    sparql: |
+      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT (COUNT(DISTINCT ?genome) AS ?genomes) (COUNT(DISTINCT ?protein) AS ?proteins)
+      WHERE {
+        GRAPH <https://2026.biohackathon.org/microbes/kofamscan> {
+          ?hit rdf:object <http://identifiers.org/kegg.orthology/K02588> ;
+               rdf:subject ?protein ;
+               sio:SIO_000008 ?a .
+          ?a rdfs:label "significant" ; sio:SIO_000300 true .
+          ?protein obo:RO_0002162 ?genome .
+        }
+      }
+    verified:
+      has_values: [2246, 2807]
+      date: "2026-09-17"
+    teaches: >
+      "All genomes/proteins with function X" = bind rdf:object to the KO IRI, require
+      significant=true, then COUNT(DISTINCT) over proteins/genomes. Find the KO IRI first with
+      `ko_by_definition` — do not text-match protein names (there are none here).
+    traps_avoided:
+      - say: "The bare-link form `?protein rdfs:seeAlso ko:K02588 ; obo:RO_0002162 ?genome` returns 2,292 genomes / 2,915 proteins — it includes below-threshold hits."
+        check:
+          kind: count
+          date: "2026-09-17"
+          query: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX obo: <http://purl.obolibrary.org/obo/>
+            SELECT (COUNT(DISTINCT ?genome) AS ?genomes) WHERE {
+              GRAPH <https://2026.biohackathon.org/microbes/kofamscan> {
+                ?protein rdfs:seeAlso <http://identifiers.org/kegg.orthology/K02588> ; obo:RO_0002162 ?genome .
+              }
+            }
+          expect: {value: 2292, tolerance: 0.02}
+
+  - id: ko_by_definition
+    intent: map a function name to KO IRIs via the ko_list definitions
+    question: "Which KEGG orthology groups are nitrogenase components?"
+    complexity: basic
+    sparql: |
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      SELECT ?ko ?id ?definition
+      WHERE {
+        GRAPH <https://2026.biohackathon.org/microbes/ko_list> {
+          ?ko skos:definition ?definition ; dct:identifier ?id .
+          FILTER(CONTAINS(LCASE(?definition), "nitrogenase"))
+        }
+      }
+      ORDER BY ?id
+    verified:
+      row_count: 12
+      has_values: [K02586, K02588, K02591, K22896]
+      date: "2026-09-17"
+    teaches: >
+      Text search is justified here: KO definitions are the only names in the dataset, no search
+      tool covers KEGG KO, and `ko_list` is only 28,387 KOs (sub-second). The definition string
+      embeds EC numbers as "[EC:1.18.6.1]", so CONTAINS on "EC:1.18.6.1" enumerates by EC too.
+      Filter the result by hand — substring matches also catch assembly/stabilizing proteins.
+    traps_avoided:
+      - say: "Virtuoso's `?d bif:contains \"nitrogenase\"` (with `PREFIX bif: <bif:>` declared) does not error on QLever — it returns 0 rows silently. Use FILTER(CONTAINS(LCASE(...)))."
+        check:
+          kind: zero_rows
+          date: "2026-09-17"
+          query: |
+            PREFIX bif: <bif:>
+            PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+            SELECT ?ko WHERE {
+              GRAPH <https://2026.biohackathon.org/microbes/ko_list> { ?ko skos:definition ?d . ?d bif:contains "nitrogenase" }
+            } LIMIT 1
+
+  - id: ko_profile_parameters
+    intent: KofamScan HMM profile parameters that decide significance for a KO
+    question: "What score threshold and score type does KofamScan use for RecA (K03553), and how many sequences built the profile?"
+    complexity: intermediate
+    sparql: |
+      PREFIX kofam: <http://purl.jp/bio/kofamscan/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      SELECT ?ko ?definition ?threshold ?score_type ?profile_type ?f_measure ?nseq
+      WHERE {
+        GRAPH <https://2026.biohackathon.org/microbes/ko_list> {
+          VALUES ?ko { <http://identifiers.org/kegg.orthology/K03553>
+                       <http://identifiers.org/kegg.orthology/K08278>
+                       <http://identifiers.org/kegg.orthology/K00001> }
+          ?ko skos:definition ?definition .
+          OPTIONAL { ?ko kofam:threshold ?threshold ; kofam:score_type ?score_type ;
+                         kofam:profile_type ?profile_type ; kofam:f_measure ?f_measure }
+          OPTIONAL { ?ko kofam:nseq ?nseq }
+        }
+      }
+      ORDER BY ?ko
+    verified:
+      row_count: 3
+      has_values: [K03553, "recombination protein RecA", 190.47, domain]
+      date: "2026-09-17"
+    teaches: >
+      `ko_list` carries per-KO profile metadata under `http://purl.jp/bio/kofamscan/`: threshold,
+      score_type ("full" | "domain"), profile_type ("all" | "trim"), f_measure, nseq, nseq_used,
+      alen, mlen, eff_nseq, re_pos. VALUES over KO IRIs is fine in this small graph (the memory
+      trap is only against the 61M-statement kofamscan graph).
+    traps_avoided:
+      - say: "threshold/score_type/profile_type/f_measure exist for only 26,530 of the 28,387 KOs (the nseq-family fields for slightly more) — keep them OPTIONAL or KOs without a profile threshold disappear."
+        check:
+          kind: count
+          date: "2026-09-17"
+          query: |
+            PREFIX kofam: <http://purl.jp/bio/kofamscan/>
+            SELECT (COUNT(DISTINCT ?ko) AS ?n) WHERE {
+              GRAPH <https://2026.biohackathon.org/microbes/ko_list> { ?ko kofam:threshold ?t }
+            }
+          expect: {value: 26530, tolerance: 0.02}
+
+  - id: cooccurring_kos
+    intent: genomes carrying significant hits to two KOs at once (gene-content intersection)
+    question: "How many genomes encode both NifH (K02588) and the nitrogenase MoFe alpha chain NifD (K02586)?"
+    complexity: advanced
+    sparql: |
+      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX ko: <http://identifiers.org/kegg.orthology/>
+      SELECT (COUNT(DISTINCT ?genome) AS ?genomes)
+      WHERE {
+        GRAPH <https://2026.biohackathon.org/microbes/kofamscan> {
+          ?h1 rdf:object ko:K02588 ; rdf:subject ?p1 ; sio:SIO_000008 ?s1 .
+          ?s1 rdfs:label "significant" ; sio:SIO_000300 true .
+          ?p1 obo:RO_0002162 ?genome .
+          ?h2 rdf:object ko:K02586 ; rdf:subject ?p2 ; sio:SIO_000008 ?s2 .
+          ?s2 rdfs:label "significant" ; sio:SIO_000300 true .
+          ?p2 obo:RO_0002162 ?genome .
+        }
+      }
+    verified: {n: 1839, date: "2026-09-17"}
+    teaches: "Intersect gene content by joining two independent significant-hit patterns on the shared ?genome variable; each KO bound as a constant keeps it cheap."
+
+  - id: agg_genomes_per_ko
+    intent: per-KO genome/protein counts for several KOs, in the memory-safe UNION shape
+    question: "For the three core nitrogenase subunits (K02586, K02588, K02591), how many genomes and proteins carry a significant hit?"
+    complexity: aggregation
+    sparql: |
+      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX ko: <http://identifiers.org/kegg.orthology/>
+      SELECT ?ko (COUNT(DISTINCT ?genome) AS ?genomes) (COUNT(DISTINCT ?protein) AS ?proteins)
+      WHERE {
+        GRAPH <https://2026.biohackathon.org/microbes/kofamscan> {
+          { BIND(ko:K02586 AS ?ko)
+            ?hit rdf:object ko:K02586 ; rdf:subject ?protein ; sio:SIO_000008 ?a .
+            ?a rdfs:label "significant" ; sio:SIO_000300 true . }
+          UNION
+          { BIND(ko:K02588 AS ?ko)
+            ?hit rdf:object ko:K02588 ; rdf:subject ?protein ; sio:SIO_000008 ?a .
+            ?a rdfs:label "significant" ; sio:SIO_000300 true . }
+          UNION
+          { BIND(ko:K02591 AS ?ko)
+            ?hit rdf:object ko:K02591 ; rdf:subject ?protein ; sio:SIO_000008 ?a .
+            ?a rdfs:label "significant" ; sio:SIO_000300 true . }
+          ?protein obo:RO_0002162 ?genome .
+        }
+      }
+      GROUP BY ?ko
+      ORDER BY ?ko
+    verified:
+      row_count: 3
+      has_values: [K02586, 1873, K02588, 2246, K02591, 1922]
+      date: "2026-09-17"
+    teaches: "Graph-pinned COUNT(DISTINCT) per KO; one constant-bound UNION branch per KO is the shape QLever plans within its memory cap."
+    traps_avoided:
+      - "The natural `VALUES ?ko { ko:K02586 ko:K02588 ko:K02591 }` form joined against `rdf:object` is planned badly by QLever: it can abort with an out-of-memory error (\"Tried to allocate ... MB\"), and even when it completes it is roughly ten times slower than this UNION shape. Whether it fails depends on endpoint load, so do not read a success as proof the form is safe — use one constant-bound UNION branch per KO."
+
+  - id: xdb_genome_organism
+    intent: "cross-DB: RefSeq genome (GCF) -> paired GenBank assembly (GCA) -> UniProt proteome -> organism, via SERVICE"
+    question: "Which organisms are the genome assemblies GCF_000005845.2, GCF_000006765.1 and GCF_000006945.2?"
+    complexity: cross_db
+    endpoint_name: microbes
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX gcf: <http://identifiers.org/refseq.gcf/>
+      SELECT ?genome ?proteome ?taxon ?name
+      WHERE {
+        VALUES ?genome { gcf:GCF_000005845.2 gcf:GCF_000006765.1 gcf:GCF_000006945.2 }
+        GRAPH <https://2026.biohackathon.org/microbes/kofamscan> {
+          ?genome a <http://med2rdf.org/ontology/med2rdf#Genome> .
+        }
+        BIND(REPLACE(STR(?genome), "^http://identifiers.org/refseq.gcf/GCF_", "GCA_") AS ?gca)
+        SERVICE <https://rdfportal.org/sib/sparql> {
+          GRAPH <http://sparql.uniprot.org/proteomes> {
+            ?asm dct:identifier ?gca .
+            ?proteome rdfs:seeAlso ?asm ; up:organism ?taxon .
+          }
+          GRAPH <http://sparql.uniprot.org/taxonomy> { ?taxon up:scientificName ?name }
+        }
+      }
+      ORDER BY ?genome
+    verified:
+      row_count: 3
+      has_values: [UP000000625, "Escherichia coli (strain K12)", UP000002438, UP000001014]
+      date: "2026-09-17"
+    teaches: >
+      Organism names are not on this endpoint. The RefSeq accession GCF_X.v is paired with GenBank
+      GCA_X.v, which UniProt proteomes store as a plain `dct:identifier` on the proteome's
+      `#assembly` node; up:organism then gives the taxon. QLever federates to the SIB endpoint via
+      SERVICE.
+    traps_avoided:
+      - "Keep the genome set small and bound (VALUES) BEFORE the SERVICE: with an unbound or subquery-produced genome set QLever may not push the bindings, and the federated call becomes minutes long."
+      - "The GCF->GCA digit swap assumes the paired assemblies share number and version (true for these) and only genomes that have a UniProt proteome resolve — unmatched genomes silently drop; wrap the SERVICE in OPTIONAL if you need every genome listed."
+
+  - id: xdb_protein_uniprot
+    intent: "cross-DB: significant KofamScan hit -> RefSeq protein -> UniProtKB entry, via SERVICE"
+    question: "Which UniProt entry corresponds to the E. coli K-12 protein annotated as RecA (K03553)?"
+    complexity: cross_db
+    endpoint_name: microbes
+    sparql: |
+      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX gcf: <http://identifiers.org/refseq.gcf/>
+      SELECT ?refseq ?uniprot ?mnemonic
+      WHERE {
+        GRAPH <https://2026.biohackathon.org/microbes/kofamscan> {
+          ?refseq obo:RO_0002162 gcf:GCF_000005845.2 .
+          ?hit rdf:subject ?refseq ;
+               rdf:object <http://identifiers.org/kegg.orthology/K03553> ;
+               sio:SIO_000008 ?a .
+          ?a rdfs:label "significant" ; sio:SIO_000300 true .
+        }
+        BIND(IRI(REPLACE(STR(?refseq), "^http://identifiers.org/ncbiprotein/", "http://purl.uniprot.org/refseq/")) AS ?up_refseq)
+        SERVICE <https://rdfportal.org/sib/sparql> {
+          GRAPH <http://sparql.uniprot.org/uniprot> {
+            ?uniprot rdfs:seeAlso ?up_refseq ;
+                     up:mnemonic ?mnemonic .
+          }
+        }
+      }
+      ORDER BY ?uniprot
+    verified:
+      row_count: 1
+      has_values: [NP_417179.1, P0A7G6, RECA_ECOLI]
+      date: "2026-09-17"
+    teaches: >
+      The same RefSeq accession.version is `identifiers.org/ncbiprotein/NP_...` here but
+      `purl.uniprot.org/refseq/NP_...` in UniProt — rewrite the IRI, then join. UniProt no longer
+      carries KEGG KO cross-references, so this RefSeq hop is the route from a KO hit to UniProt.
+    traps_avoided:
+      - "A WP_ (non-redundant, multi-organism) accession maps to MANY UniProt entries, one per strain/species, so the join fans out; NP_/YP_ accessions from reference genomes usually map 1:1."
+
+schema_delta:
+  - "Hit statements also carry `rdf:predicate rdfs:seeAlso` and `rdf:type rdf:Statement`; no need to match them — `rdf:subject` + `rdf:object` identify a hit."
+  - "`kofam:*` property IRIs are declared in `ko_list` as rdf:Property with rdfs:label (e.g. `kofam:re_pos` label \"re/pos\") — 10 such nodes; they are why a bare `?s a ?c` survey shows rdf:Property."
+
+id_join_map:
+  stable_anchor: >
+    Proteins: `http://identifiers.org/ncbiprotein/<RefSeq accession.version>` (WP_/NP_/YP_...;
+    version required). Genomes: `http://identifiers.org/refseq.gcf/GCF_#########.v`. KOs:
+    `http://identifiers.org/kegg.orthology/K#####` (also `dct:identifier "K#####"` in ko_list).
+  same_endpoint_joins: {}   # no other database shares this endpoint (2g probed clean)
+  xrefs:
+    uniprot: >
+      No stored xref. Rewrite the protein IRI to `http://purl.uniprot.org/refseq/<acc.v>` and
+      match UniProt's `rdfs:seeAlso` over SERVICE <https://rdfportal.org/sib/sparql> — see
+      `xdb_protein_uniprot`. For organism, GCF->GCA -> UniProt proteome — see `xdb_genome_organism`.
+    kegg: "KO IRIs are identifiers.org/kegg.orthology/K#####; KEGG itself is not on RDF Portal, so KO pathway/module membership is not reachable by SPARQL."
+  bridged_via_togoid:
+    - "refseq_protein -> uniprot works but DISAGREES with the SPARQL route: TogoID maps NP_417179 (RecA) only to A0A485JBB4, not Swiss-Prot P0A7G6 — prefer `xdb_protein_uniprot`. Its output drops the version suffix."
+    - "assembly_refseq -> taxonomy has NO direct TogoID route; only group-level multi-hop via uniprot_proteome"

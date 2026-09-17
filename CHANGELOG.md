@@ -13,6 +13,18 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Added
+- **`bh26microbes` database (experimental)** — the BioHackathon 2026 KofamScan KEGG Orthology
+  assignments for 57.6M RefSeq proteins across 23,434 prokaryotic genomes
+  (`https://rdfportal.org/microbes/sparql`, endpoint group `microbes`). It is the only source in
+  the corpus for "which genomes encode function X" as KO gene content. It may change shape or be
+  withdrawn. It reaches every client at once through the Usage Guide catalog; no tool changed. The
+  MIE flags the traps that return wrong answers without any error: `rdfs:seeAlso` includes the 24%
+  of hits KofamScan marks not significant, and hit records are duplicated once per genome that
+  shares a protein. It also covers QLever's quirks: every prefix must be declared, `bif:contains`
+  returns nothing, and multi-KO `VALUES` can run out of memory. Genomes carry no organism names;
+  the MIE shows how to get them from UniProt proteomes via `SERVICE`.
+
 ## [2.18.0] - 2026-09-17
 
 TogoMCP now serves its analysis workflows itself. PRISM (set-intersection mining), research-article
