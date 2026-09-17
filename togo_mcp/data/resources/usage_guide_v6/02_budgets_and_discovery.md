@@ -95,6 +95,7 @@ is the bold row label.
 | **idsm** | 1 | `idsm` |
 | **lipidmaps** | 1 | `lipidmaps` |
 | **swisslipids** | 1 | `swisslipids` |
+| **microbes** | 1 | `bh26microbes` ← key ≠ endpoint name; experimental (QLever) |
 
 > **One database ≠ one graph.** GlyCosmos (~150 graphs), PubChem (68), PDB (46), DDBJ
 > (43), IDSM (39) and TogoVar serve many graphs from their *own* endpoint — TogoVar
@@ -116,8 +117,8 @@ count looks inflated (it hurt scores when called routinely: 16.73 vs. 17.59 with
 **Third route, from a few verified callers only: `SERVICE` federation.** Some endpoints
 can send part of a query to another endpoint in a `SERVICE <url> { … }` block — verified
 2026-09-15: WikiPathways → UniProt on SIB, IDSM → Rhea, SwissLipids → Rhea, and RDF
-Portal's `ebi` → LIPID MAPS. Run the query on the **calling** endpoint
-(`database=wikipathways` / `idsm` / `swisslipids`; for the LIPID MAPS join,
+Portal's `ebi` → LIPID MAPS; 2026-09-17: `microbes` → UniProt on SIB. Run the query on the
+**calling** endpoint (`database=wikipathways` / `idsm` / `swisslipids` / `bh26microbes`; for the LIPID MAPS join,
 `database=lipidmaps` with `endpoint_name=ebi`), not the one inside
 `SERVICE`: routed to the remote endpoint instead it fails or returns 0 rows. The direction
 matters, and it is NOT a property of the domain: `swisslipids` calls out to Rhea in ~3 s,
