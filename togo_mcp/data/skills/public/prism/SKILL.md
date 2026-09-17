@@ -10,6 +10,9 @@ description: >
   "intersection of ... and ...". PRISM makes each axis a reproducible predicate expanded over the ontology
   hierarchy, triangulated across evidence sources, and intersected by stable IDs with a provenance ledger. If
   you catch yourself listing candidate genes from memory, STOP and use it.
+metadata:
+  version: "1.0"
+  catalog: "Entities at the intersection of property sets (disease × function × druggability), via predicate-defined queries"
 ---
 
 # PRISM — Predicate-defined, Reproducible, Identifier-bridged, Set-intersection Mining
@@ -18,7 +21,8 @@ PRISM answers "what entities are common to property set A and property set B?" o
 
 ## Before you begin
 
-- Call `TogoMCP_Usage_Guide` (or `TogoMCP-Test:TogoMCP_Usage_Guide`) **first**, and run its GATE 0 classification.
+- Files under `references/` are fetched with `get_workflow(name="prism", path="references/...")` (when this skill is installed locally, read them as files instead).
+- Call `TogoMCP_Usage_Guide` **first**, and run its GATE 0 classification.
 - Read `references/sparql-templates.md` — parameterized queries for every phase (hierarchy expansion, GO→UniProt, PubTator co-occurrence, ClinVar gene-anchored significance, ChEMBL targets, Reactome membership, TogoID bridging).
 - Read `references/worked-example.md` for a full end-to-end run with a filled-in provenance ledger.
 

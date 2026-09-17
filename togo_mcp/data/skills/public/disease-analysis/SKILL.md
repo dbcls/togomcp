@@ -10,6 +10,9 @@ description: >-
   a disease. Also triggers on "disease analysis", "pathophysiology of X",
   "what proteins/pathways/drugs are involved in X". The full method lives in
   references/disease_analysis.md.
+metadata:
+  version: "1.0"
+  catalog: "Multi-scale disease pathophysiology, from molecular defect to clinical symptom and treatment"
 ---
 
 # Disease Analysis (multi-scale, TogoMCP-driven)
@@ -24,11 +27,12 @@ live in [references/disease_analysis.md](references/disease_analysis.md) — rea
 for the deliverable structure. This SKILL.md is the *operational* path: verified
 queries, the exact tool calls, and the traps.
 
+Files under `references/` are fetched with `get_workflow(name="disease-analysis", path="references/...")` (when this skill is installed locally, read them as files instead).
+
 ## Prerequisites
 
-- The **TogoMCP MCP server** connected to your client (e.g. Claude Desktop,
-  Claude Code). Its `run_sparql`, `togoid_*`, `search_*`, and `get_MIE_file`
-  tools are what drive this skill.
+- The TogoMCP tools (`run_sparql`, `togoid_*`, `search_*`, `get_MIE_file`) drive
+  this skill.
 - The **OLS4** and **PubMed** MCP tools (used in Phase 1 and Phase 6).
 - Network access from those servers to `rdfportal.org` and `api.togoid.dbcls.jp`.
 
