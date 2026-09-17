@@ -112,6 +112,12 @@ async def togomcp_usage_guide() -> str:
     # tool they document is actually mounted here.
     parts = sorted(Path(TOGOMCP_USAGE_GUIDE).glob("*.md"))
     sections = [p.read_text(encoding="utf-8") for p in parts]
+    # The Workflows section routes to get_workflow right after GATE 0 (part 01) —
+    # the tool route has no description-based skill triggering, so the guide does it.
+    # Generated from the registry at call time, never hand-copied into a part file.
+    gate_idx = next((i for i, p in enumerate(parts) if p.name.startswith("01_")), 0)
+    if WORKFLOWS:
+        sections.insert(gate_idx + 1, workflow_catalog_section())
     sections.extend(await _conditional_guide_parts())
     return "\n\n---\n\n".join(sections)
 
@@ -718,3 +724,133 @@ def _mie_trap_banner(content: str, database: str) -> str:
         "name it?"
     )
     return "\n".join(lines) + "\n"
+
+
+# --- Workflows (Agent Skills) --- #
+#
+# One registry, two routes to the SAME in-memory files: the `get_workflow` tool (for
+# hosts whose models only call tools) and `skill://` resources (for skills-over-MCP
+# hosts). Registry details and the public/internal split are in skills.py.
+
+from fastmcp.server.providers.skills import SkillsDirectoryProvider
+
+from . import skills as _skills
+
+SKILLS_DIR = CWD.joinpath("skills", "public")
+WORKFLOWS: dict[str, _skills.Skill] = _skills.load_registry(SKILLS_DIR)
+
+# TODO(fastmcp#5016): enable SkillsExtension (SEP-2640 `skills/list` / `skills/get`)
+# once FastMCP ships it — absent in 3.4.3 and in 4.0.4 (checked 2026-09-17). Until
+# then skills reach resource-reading hosts through the provider below.
+_skills_provider = SkillsDirectoryProvider(roots=SKILLS_DIR)
+# FastMCP's frontmatter reader is a line splitter, so a folded `description: >` comes
+# out as the literal ">" in resources/list. Overwrite it with the registry's real YAML
+# parse so both routes describe a skill identically.
+for _child in _skills_provider.providers:
+    _info = _child.skill_info
+    if _info.name in WORKFLOWS:
+        _info.description = WORKFLOWS[_info.name].description
+mcp.add_provider(_skills_provider)
+
+
+def workflow_catalog_section() -> str:
+    """The Usage Guide's Workflows section, generated from the registry so the guide
+    can never list a workflow the server does not serve (or omit one it does)."""
+    lines = ["## Workflows (fetch with get_workflow(name))", ""]
+    lines += [f"- {s.name}: {s.catalog}" for s in WORKFLOWS.values()]
+    lines += [
+        "",
+        "Use a workflow only when the question matches; single-fact lookups do not need one.",
+    ]
+    return "\n".join(lines)
+
+
+def _workflow_names() -> str:
+    return ", ".join(WORKFLOWS) or "(none)"
+
+
+def _workflow_listing() -> str:
+    lines = [
+        "TogoMCP workflows. Fetch one with get_workflow(name=...).",
+        "",
+    ]
+    for s in WORKFLOWS.values():
+        version = f" | version: {s.version}" if s.version else ""
+        lines.append(
+            f"- {s.name}: {s.catalog} [digest: {s.short_digest}{version} | "
+            f"{_skills.format_size(s.total_size)}]"
+        )
+    return "\n".join(lines)
+
+
+def _workflow_header(s: _skills.Skill) -> str:
+    version = f" | version: {s.version}" if s.version else ""
+    others = [f for p, f in s.files.items() if p != _skills.MAIN_FILE]
+    lines = [f"[workflow: {s.name}{version} | digest: {s.short_digest}]"]
+    if others:
+        width = max(len(f.path) for f in others)
+        lines.append(f'Files (fetch with get_workflow(name="{s.name}", path=...)):')
+        lines += [f"  {f.path.ljust(width)}  ({_skills.format_size(f.size)})" for f in others]
+    lines.append(
+        "This server copy is canonical. If a locally installed copy differs, prefer this one."
+    )
+    lines.append("---")
+    return "\n".join(lines)
+
+
+@mcp.tool(
+    annotations=READ_ONLY_TOOL,
+    name="get_workflow",
+    description=(
+        "Retrieve a TogoMCP workflow: a multi-step analysis protocol that drives the "
+        "TogoMCP tools. Call with no arguments to list available workflows. Call with "
+        "`name` to get its SKILL.md. Relative links inside it (e.g. references/x.md) are "
+        'fetched with get_workflow(name, path="references/x.md"). Read-only. RETURNS a '
+        "text listing, or a short header (files + sizes, digest) followed by the raw "
+        "SKILL.md, or the raw requested file. An unknown name or an invalid path returns "
+        "a string beginning with 'Error:' (listing the valid names or files); retrying "
+        "the same arguments will not change the result."
+    ),
+)
+async def get_workflow(
+    name: Annotated[
+        str | None,
+        Field(description="Workflow name. Omit to list all workflows."),
+    ] = None,
+    path: Annotated[
+        str | None,
+        Field(
+            description=(
+                "File inside the workflow, relative to its root (e.g. "
+                "`references/sparql-templates.md`). Requires `name`. Omit to get SKILL.md."
+            )
+        ),
+    ] = None,
+) -> str:
+    # Errors are returned as 'Error:' strings, the get_MIE_file convention for this
+    # module's local-file readers, so the model reads the diagnostic and recovers.
+    if not name:
+        if path:
+            return (
+                "Error: `path` requires `name`. Call get_workflow() to list workflows. "
+                "Do not retry with the same arguments."
+            )
+        return _workflow_listing()
+    skill = WORKFLOWS.get(name)
+    if skill is None:
+        # Internal skills are not in the registry at all, so they land here too and
+        # the message does not hint that they exist.
+        return (
+            f"Error: No workflow named {name!r}. Valid names: {_workflow_names()}. "
+            "Do not retry with the same value."
+        )
+    if not path:
+        return _workflow_header(skill) + "\n" + skill.main.content
+    try:
+        return _skills.resolve_path(skill, path).content
+    except _skills.SkillRegistryError as exc:
+        files = ", ".join(skill.files)
+        return (
+            f"Error: {exc}. Files in {skill.name!r}: {files}. "
+            "Do not retry with the same value."
+        )

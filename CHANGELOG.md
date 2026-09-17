@@ -13,6 +13,24 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Added
+- **`get_workflow` tool** serving the three public analysis workflows (`prism`,
+  `research-article-analysis`, `disease-analysis`) from the server. Until now they only worked
+  if a user had installed them locally, and a fix to one reached nobody who already had a copy.
+  The server copy is now canonical, and hosts whose models only call tools (Claude Desktop,
+  claude.ai) can use them. `get_workflow()` lists them; `get_workflow(name)` returns a header
+  (files, sizes, content digest) plus `SKILL.md`; `get_workflow(name, path)` returns a reference file.
+- **`skill://` resources** for the same files (FastMCP `SkillsDirectoryProvider`), for hosts that
+  read skills over MCP resources. Both routes read one directory, `togo_mcp/data/skills/public/`.
+- **Workflows section in `TogoMCP_Usage_Guide`**, placed after GATE 0 and generated from the
+  registry: the tool route has no description-based skill triggering, so the guide routes instead.
+
+### Changed
+- The stale-tool-list canary in the Usage Guide now names `get_workflow`.
+- The public skills moved from `.claude/skills/` to `togo_mcp/data/skills/public/` (symlinked
+  back, so Claude Code still finds them); `package-skills.yml` packages from the new location.
+  Developer skills stay in `.claude/skills/` and are served by neither route.
+
 ## [2.17.0] - 2026-09-16
 
 TogoID errors now say which routes DO work, and `togoid_identifyId` can check which datasets
