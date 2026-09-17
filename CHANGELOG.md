@@ -13,6 +13,17 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.18.0] - 2026-09-17
+
+TogoMCP now serves its analysis workflows itself. PRISM (set-intersection mining), research-article
+claim validation and multi-scale disease analysis were client-installed skills, so a fix reached
+nobody who already had a copy and tool-only hosts (Claude Desktop, claude.ai) could not use them at
+all. One new tool and new `skill://` resources; no existing tool, parameter or return shape changed.
+Clients with a cached tool list (ChatGPT connectors) will not see `get_workflow` until re-scanned,
+though the Usage Guide's new Workflows section reaches them immediately.
+
+<!-- whatsnew: 2026-09-17 | Analysis workflows served from the server: the new <code>get_workflow</code> tool delivers <strong>PRISM</strong> set-intersection mining, <strong>research-article claim validation</strong> and <strong>multi-scale disease analysis</strong> to any client — no local skill install, and always the current version. -->
+
 ### Added
 - **`get_workflow` tool** serving the three public analysis workflows (`prism`,
   `research-article-analysis`, `disease-analysis`) from the server. Until now they only worked
@@ -2784,7 +2795,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.17.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.18.0...HEAD
+[2.18.0]: https://github.com/dbcls/togomcp/compare/v2.17.0...v2.18.0
 [2.17.0]: https://github.com/dbcls/togomcp/compare/v2.16.2...v2.17.0
 [2.16.2]: https://github.com/dbcls/togomcp/compare/v2.16.1...v2.16.2
 [2.16.1]: https://github.com/dbcls/togomcp/compare/v2.16.0...v2.16.1
