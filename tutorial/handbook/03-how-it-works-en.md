@@ -111,6 +111,7 @@ Sorted by role, the TogoMCP tools look like this. **Once you understand this thr
 | `get_MIE_file` | **The schema documentation for each database** (below — the most important one) |
 | `get_sparql_endpoints` | Which DB lives at which endpoint |
 | `get_graph_list` | The graphs inside an endpoint |
+| `get_workflow` | Step-by-step procedures for multi-step analyses (Chapter 5) |
 
 ### Layer 2: the grounding layer — turns "words" into "IDs"
 

@@ -19,11 +19,13 @@ Think of a skill as what saves you from writing out by hand, every single time, 
 
 ## The three skills
 
-The TogoMCP repository ships with the following skills.
+The TogoMCP server provides the following skills (it calls them *workflows*).
 
-> **Where to get them:** https://github.com/dbcls/togomcp (under `.claude/skills/`)
+> **Where to get them:** nowhere — they come with the connection. Any client connected to TogoMCP (Claude, ChatGPT, Gemini, …) can use them with no installation. The Usage Guide lists them, and the model fetches the one it needs with the `get_workflow` tool. The copy on the server is always the current one, so a fix reaches you without doing anything.
 >
-> To use them in Claude Code, put the skill's directory in `~/.claude/skills/<name>/` to enable it for every project, or in `.claude/skills/<name>/` at the root of a project to enable it for that project. The easiest route is to clone the repository and start `claude` inside it.
+> A local copy is optional. If you use Claude Code and want a skill to trigger on its own, the source is at https://github.com/dbcls/togomcp (under `togo_mcp/data/skills/public/`): put the skill's directory in `~/.claude/skills/<name>/`. If a local copy and the server's copy ever differ, the server's copy wins.
+>
+> ChatGPT note: ChatGPT keeps the tool list it saw when the connector was added. If `get_workflow` is missing from it, the connector needs refreshing (see Chapter 1).
 
 ### research-article-analysis — verify a paper's claims against databases
 
@@ -87,7 +89,7 @@ Applications with a track record include lipid transport in age-related macular 
 - For the remaining two, **complete outputs produced in advance** are handed out as materials
 - If you want to try them, install them yourself from the GitHub repository above<!-- /workshop-only --><!-- public-only -->## To try them
 
-The skills are in the repository. **If you are trying one first, we recommend `research-article-analysis`** — the input is a single paper, which is easy to follow, and the output is a "verification result per claim" table, which makes it easy to read what happened.
+You do not need to install anything: just ask, naming the skill if you want to be sure it is used (for example, "Use the research-article-analysis workflow to …"). `disease-analysis` also uses the OLS4 and PubMed MCP servers (Chapter 1), so connect those for it. **If you are trying one first, we recommend `research-article-analysis`** — the input is a single paper, which is easy to follow, and the output is a "verification result per claim" table, which makes it easy to read what happened.
 
 Hand it a paper from your own field, and see **how far the claims can be backed up by databases**. You will see the verification discipline of Chapter 7 automated as it stands.<!-- /public-only -->
 
