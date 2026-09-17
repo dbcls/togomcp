@@ -27,6 +27,7 @@ Bundled under [togo_mcp/data/](togo_mcp/data/) and shipped in the wheel via `pac
 - `resources/endpoints.csv` — SPARQL endpoint registry consumed by `load_sparql_endpoints`
 - `resources/togomcp_usage_guide*.md` — static guidance served as a resource
 - `docs/` — developer docs (MIE spec, examples)
+- `skills/public/<name>/` — Agent Skills served by `get_workflow` and as `skill://` resources (registry: [skills.py](togo_mcp/skills.py); loaded at startup, a malformed skill fails the boot). `.claude/skills/<name>` for these are symlinks into here. Developer skills (mie-generator, qa-generator, intro-page-updater) stay real directories in `.claude/skills/` and must never be put under `public/`.
 
 ## Parameter conventions
 

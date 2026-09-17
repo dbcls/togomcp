@@ -10,6 +10,9 @@ description: >-
   or build a cross-database evidence chain (ChEBI → Rhea → UniProt → Reactome →
   GO). Triggers on "article analysis", "validate this study", "check this paper's
   claims". The full method lives in references/research_article_analysis.md.
+metadata:
+  version: "1.0"
+  catalog: "Validate a paper's biological claims (formulas, reactions, pathways, protein function) against RDF databases"
 ---
 
 # Research Article Analysis (claim validation via TogoMCP SPARQL)
@@ -27,11 +30,11 @@ anti-skipping safeguards live in
 operational path: the SPARQL that actually works (the printed templates have two
 bugs — see Gotchas), the verified tool calls, and the traps.**
 
+Files under `references/` are fetched with `get_workflow(name="research-article-analysis", path="references/...")` (when this skill is installed locally, read them as files instead).
+
 ## Prerequisites
 
-- The **TogoMCP MCP server** connected to your client (e.g. Claude Desktop,
-  Claude Code). Its `run_sparql`, `search_*`, and `get_MIE_file` tools are what
-  drive this skill.
+- The TogoMCP tools (`run_sparql`, `search_*`, `get_MIE_file`) drive this skill.
 - Network access from that server to `rdfportal.org`.
 
 ## Warm-up check (confirm connectivity before trusting the templates)

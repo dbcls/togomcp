@@ -1,12 +1,14 @@
 name: Package skills
 
-# Bundles the DISTRIBUTABLE Claude Code skills under .claude/skills/<name>/ into
+# Bundles the DISTRIBUTABLE skills under togo_mcp/data/skills/public/<name>/ into
 # their own <name>.skill zip archives, uploaded as a SEPARATE artifact per skill
 # (and attached individually to a GitHub Release on skills-v* tags).
 #
-# Only the portable, MCP-driven analysis skills are packaged. Repo-bound dev /
-# maintenance skills (they need Bash, git, and this repo's files, so they cannot
-# run on Claude Desktop) are EXCLUDED — see EXCLUDE below.
+# public/ holds exactly the portable, MCP-driven analysis skills — the same set the
+# server serves via get_workflow and skill:// resources. Repo-bound dev /
+# maintenance skills (mie-generator, qa-generator, intro-page-updater) live only in
+# .claude/skills/ and so are never packaged. (.claude/skills/<public name> are
+# symlinks into public/.)
 #
 # NOTE: `.skill` is NOT an official Claude Code format — it is a local packaging
 # convention here. To install one, unzip it into a skills directory, e.g.
@@ -32,11 +34,8 @@ jobs:
         name: List packageable skills as a JSON array
         run: |
           set -euo pipefail
-          # Repo-bound dev/maintenance skills are NOT distributed to Claude
-          # Desktop (they need Bash/git/repo files). Exclude them from packaging.
-          EXCLUDE='^(mie-generator|intro-page-updater|qa-generator)$'
-          skills="$(ls -d .claude/skills/*/ | xargs -n1 basename \
-                    | grep -Ev "$EXCLUDE" | jq -R . | jq -cs .)"
+          skills="$(ls -d togo_mcp/data/skills/public/*/ | xargs -n1 basename \
+                    | jq -R . | jq -cs .)"
           echo "Packaging skills: $skills"
           echo "skills=$skills" >> "$GITHUB_OUTPUT"
 
@@ -57,8 +56,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          ( cd .claude/skills && \
-            zip -r "../../dist/${SKILL}.skill" "$SKILL" \
+          ( cd togo_mcp/data/skills/public && \
+            zip -r "../../../../dist/${SKILL}.skill" "$SKILL" \
                 -x '*/worktrees/*' '*/.DS_Store' '*/__pycache__/*' )
           ls -la "dist/${SKILL}.skill"
 
