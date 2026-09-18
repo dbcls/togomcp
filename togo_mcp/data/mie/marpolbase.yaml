@@ -1,0 +1,1025 @@
+mie_spec: 3
+database: marpolbase
+
+discovery:
+  title: MarpolBase (Marchantia polymorpha)
+  description: >
+    Genome structural annotation, functional annotation, co-expression, orthogroups and
+    curated gene-literature assertions for the liverwort Marchantia polymorpha (MpTak_v7.1).
+  keywords:
+    - plant
+    - liverwort
+    - bryophyte
+    - genome
+    - gene model
+    - genome annotation
+    - functional annotation
+    - gene expression
+    - co-expression
+    - orthology
+    - gene symbol
+    - literature curation
+  categories: [genomics, gene, annotation]
+
+endpoint: https://marchantia.info/sparql
+base_uri: http://marchantia.info/rdf/
+
+graphs:
+  primary: http://marchantia.info/rdf/graph/MpTak_v7.1/function
+  supporting:
+    - MpTak_v7.1/annotation
+    - xref/uniprot
+    - metadata
+    - ontology/so
+    - ontology/sio
+    - ontology/faldo
+  co_hosted:
+    # 2g probe re-run 2026-09-18 on the 7-graph state. This endpoint hosts ONLY MarpolBase,
+    # which is exactly why the union trap is easy to miss: the DB's OWN two main graphs
+    # re-declare each other on the SAME gene IRIs. "Pin the database's graphs" does not help;
+    # you must pin the ONE graph that answers the question.
+    MpTak_v7.1/annotation: >
+      Same-DB sibling of the primary graph, NOT a foreign dataset (5,774,297 triples).
+      Re-declares dcterms:identifier, rdfs:label, skos:prefLabel, skos:altLabel and
+      rdfs:seeAlso on the SAME http://marchantia.info/rdf/gene/* IRIs the function graph
+      declares, and re-types them (obo:SO_0001217 here vs mpo:Gene there). Kind: entity
+      re-typing + count inflation, measured x2.00 on the canonical gene lookup. Fix: pin
+      exactly one graph with FROM/GRAPH. Structural annotation — coordinates, exons, CDS
+      segments, UTRs, transcripts, proteins — lives ONLY here.
+    xref/uniprot: >
+      Join target, 21,978 rdfs:seeAlso triples and nothing else. Keyed on PROTEIN IRIs
+      (http://marchantia.info/rdf/protein/<transcript-id>), never on gene IRIs, so reaching it
+      costs the gene -> transcript -> CDS -> protein hop in the annotation graph (see xdb_uniprot).
+      BLAST top-hit inference, not identity — the graph deliberately uses rdfs:seeAlso, not owl:sameAs.
+    metadata: >
+      47 triples of void:Dataset provenance for the data graphs (licence, source, dumps,
+      and the producers' own query caveats). Not queryable biology, but worth reading once.
+    ontology/so: "Redistributed Sequence Ontology (45,661 triples) — makes obo:SO_* class IRIs resolvable and rdfs:subClassOf* traversable in the same endpoint."
+    ontology/sio: "Redistributed SIO (14,675 triples) — resolves SIO_000300/000628/000974, the exon/CDS ordering scaffold."
+    ontology/faldo: "Redistributed FALDO (235 triples) — resolves the faldo:* position/region vocabulary."
+    literature/unmapped: >
+      RETIRED 2026-09-18 and now returns 0 triples — do not pin it. Its 32 gene-unlinked
+      papers were folded into the function graph, which is where they are queried now
+      (see the orphan_papers trap on gene_literature). Recorded here because an agent
+      working from the 2026-09-17 documentation will otherwise pin a graph that silently
+      answers nothing.
+
+entity_counts:
+  # every value COUNT(DISTINCT) + graph-pinned, re-measured 2026-09-18 after the
+  # same-day regeneration that took the function graph from 4,831,774 to 5,321,527 triples
+  genes_function_graph: 18080             # mpo:Gene in the function graph — the headline gene count
+  protein_coding_genes_annotation: 18007  # obo:SO_0001217 in the annotation graph; 73 function-graph genes have no structural annotation at all
+  genes_with_symbol: 3215                 # mpo:Gene carrying skos:prefLabel — NOT 15,848 (see prefLabel_is_polymorphic)
+  genes_with_secondary_symbol: 92         # a second symbol reachable ONLY via skos:altLabel
+  genes_with_go: 10366
+  genes_with_pfam: 11462
+  genes_with_kog: 9501
+  genes_with_kegg: 6332
+  genes_with_orthogroup: 12980
+  genes_with_product: 3162
+  genes_with_function_summary: 1097
+  transcripts: 22248                      # obo:SO_0000234 mRNA (+1 obo:SO_0001877 lnc_RNA)
+  polypeptides: 22248
+  cds: 22248                              # obo:SO_0000316, the whole CDS
+  cds_segments: 123462                    # obo:SO_0000851 CDS_region, the per-exon pieces carrying mpo:phase
+  exons: 135020
+  chromosomes: 10                         # chr1-chr8 plus the U and V sex chromosomes
+  minus_strand_genes: 9024                # 50.1% of 18,007 — the reason faldo:begin/end range queries are unsafe
+  coexpression_edges: 740830              # stored ONE-DIRECTIONALLY, and only where HRR <= 200
+  orthogroups: 18232
+  conditions: 164
+  condition_enriched_gene_rows: 77834
+  sequencing_runs: 460
+  literature_assertions: 2609
+  papers: 510                             # 474 fabio:ResearchPaper + 24 fabio:ReviewArticle + 12 fabio:Expression
+  papers_without_any_assertion: 32        # present, titled, but joined to no gene
+  vocabulary_concepts_in_schemes: 338      # condition-attribute vocabulary; 7 more in the GeneRole/EvidenceType schemes
+  vocabulary_concepts_mapped_to_obo: 37    # skos:exactMatch -> 21 PECO + 16 PO
+  uniprot_mapped_proteins: 21978          # 98.8% of 22,248; 18,902 distinct accessions
+  # union_raw_gene_lookup: 36087          # UNPINNED `?g a mpo:Gene ; dcterms:identifier ?id` — INFLATED, never report
+
+global_gotchas:
+  - id: result_set_capped_at_10000
+    say: >
+      The endpoint truncates every result at 10,000 rows and a larger LIMIT does NOT lift it:
+      enumerating the 18,080 genes returns exactly 10,000 rows with LIMIT 20000, with LIMIT 12000,
+      and with no LIMIT at all — no warning, no error, and COUNT over the same pattern correctly
+      says 18,080. Paging past it with ORDER BY does not work either, and fails two different ways
+      depending on the LIMIT: with ORDER BY, `OFFSET + LIMIT` must stay within 10,000 (offset 9000
+      limit 1000 returns its 1,000 rows; offset 9500 limit 1000 is REJECTED with "Virtuoso 22023
+      Error SR353: Sorted TOP clause specifies more then 10500 rows to sort. Only 10000 are
+      allowed"), while an ordered OFFSET 10000 with NO LIMIT silently returns 0 rows, which reads
+      as "the data ran out". Dropping the ORDER BY does return the remaining 8,080 rows, but then
+      the paging is unordered and can overlap or drop rows. FIX: never enumerate a >10k set in one
+      query — aggregate server-side (COUNT/GROUP BY is not capped) or PARTITION into ordered
+      sub-10k slices, one chromosome at a time (largest is chr1 at 2,702 genes) or one gene-ID
+      prefix at a time (`FILTER(STRSTARTS(?id, "Mp1g"))` -> 2,707). See enum_all_genes_partitioned.
+    check:
+      # The 10,000 cap is applied when the result is serialised, so no single-scalar query can
+      # assert it (an aggregate over a LIMIT-20000 subquery is evaluated internally and still
+      # returns 18,080). What IS decidable is the workaround's rejection, which is the operative
+      # consequence: you cannot page past the cap with an ordered OFFSET.
+      kind: error
+      date: "2026-09-18"
+      expect: {timeout_s: 60}
+      query: |
+        PREFIX mpo: <http://marchantia.info/ontology/>
+        PREFIX dcterms: <http://purl.org/dc/terms/>
+        SELECT ?id
+        FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+        WHERE { ?gene a mpo:Gene ; dcterms:identifier ?id }
+        ORDER BY ?id
+        OFFSET 10000
+        LIMIT 10000
+
+  - id: aggregate_plus_order_by_regroups
+    say: >
+      Adding ORDER BY to an aggregate that has no GROUP BY silently changes the question.
+      Virtuoso implicitly groups by the ORDER BY variable, so one row holding the total becomes
+      many rows holding partial counts: `SELECT (COUNT(DISTINCT ?g) AS ?n) WHERE { ?g a mpo:Gene }`
+      returns 1 row of 18,080, while the same query plus `ORDER BY ?g` returns one row per gene,
+      each reading 1. An agent that reads the first row gets 1 instead of 18,080. This is legal-looking
+      SPARQL, raises nothing, and is how a plausible-but-wrong figure gets reported. FIX: never put
+      ORDER BY on an ungrouped aggregate; if you want per-group counts, write the GROUP BY explicitly.
+    check:
+      kind: count
+      date: "2026-09-18"
+      query: |
+        PREFIX mpo: <http://marchantia.info/ontology/>
+        SELECT (COUNT(DISTINCT ?g) AS ?n)
+        FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+        WHERE { ?g a mpo:Gene }
+        ORDER BY ?g
+        LIMIT 1
+      expect: {value: 1, tolerance: 0.001}
+
+  - id: mandatory_single_graph_pin
+    say: >
+      This endpoint serves ONE database, which is why the union trap is easy to miss: the function
+      and annotation graphs re-declare dcterms:identifier, rdfs:label, skos:prefLabel, skos:altLabel
+      and rdfs:seeAlso on the SAME gene IRIs. The canonical lookup
+      `?g a mpo:Gene ; dcterms:identifier ?id` returns 36,087 rows unpinned versus 18,080 pinned
+      (x2.00) and completes in under a second, so nothing signals the error. Leaving the graph
+      unpinned also drags in Virtuoso's own system graphs (virtrdf#, DAV). FIX: pin ONE graph with
+      FROM/GRAPH — pinning "the database's graphs" does not help, because both offenders belong to
+      this database. Use the function graph for gene/function/expression/literature and the
+      annotation graph for coordinates, exons, CDS, transcripts and proteins. SELECT DISTINCT only
+      masks the row count and will also collapse genuinely multi-valued predicates such as mpo:hasGOTerm.
+    check:
+      kind: ratio
+      date: "2026-09-18"
+      unpinned: |
+        PREFIX mpo: <http://marchantia.info/ontology/>
+        PREFIX dcterms: <http://purl.org/dc/terms/>
+        SELECT (COUNT(*) AS ?n) WHERE { ?gene a mpo:Gene ; dcterms:identifier ?id }
+      pinned: |
+        PREFIX mpo: <http://marchantia.info/ontology/>
+        PREFIX dcterms: <http://purl.org/dc/terms/>
+        SELECT (COUNT(*) AS ?n)
+        FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+        WHERE { ?gene a mpo:Gene ; dcterms:identifier ?id }
+      expect: {ratio: 1.996, tolerance: 0.05}
+
+  - id: labels_are_en_identifiers_are_plain
+    say: >
+      Two OPPOSITE literal forms sit on the same subject in the same graph, and both fail silently.
+      Every label-family literal — rdfs:label, skos:prefLabel, skos:altLabel — is an @en langString,
+      so `skos:prefLabel "MpCEN1"` and `"MpCEN1"^^xsd:string` both return 0 rows; only `"MpCEN1"@en`
+      matches. Every identifier-family literal — dcterms:identifier, mpo:v3Identifier, mpo:hasMember,
+      mpo:pmid — is a PLAIN literal, so `dcterms:identifier "Mp1g00710"^^xsd:string` returns 0 rows
+      and only the bare `"Mp1g00710"` matches, even though DATATYPE() reports xsd:string for it
+      (Virtuoso matches terms, not values). The two families do not join to each other either:
+      `?g skos:altLabel ?a . FILTER NOT EXISTS { ?g mpo:v3Identifier ?a }` succeeds for ALL 17,213
+      genes, because the @en altLabel can never equal the plain v3Identifier — the comparison has to
+      go through STR(). FIX: `@en` for labels, bare for identifiers, and FILTER(STR(?x) = STR(?y))
+      whenever the two families meet.
+    check:
+      kind: zero_rows
+      date: "2026-09-18"
+      query: |
+        PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+        SELECT ?g FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+        WHERE { ?g skos:prefLabel "MpCEN1" } LIMIT 1
+
+  - id: numeric_order_by_sorts_lexically
+    say: >
+      ORDER BY on a numeric literal sorts it as a STRING, silently. Every ranking predicate is
+      affected and all are uniformly typed — mpo:pcc, mpo:mr, mpo:meanTPM, mpo:foldVsMedian
+      (xsd:double) and mpo:hrr (xsd:integer). `ORDER BY DESC(?fold)` puts 999.8228 on top while the
+      true maximum is 48226.3445, and `ORDER BY DESC(?hrr)` tops out at 99 when the real ceiling is
+      200. No error, plausible rows, wrong ranking — and it is invisible on mpo:pcc, whose values are
+      all 0.x and therefore sort the same either way, which is why it survives review. MAX()/MIN()/AVG()
+      are NOT affected and return the correct figure. FIX: cast in the sort key —
+      `ORDER BY DESC(xsd:double(?fold))`, `ORDER BY xsd:integer(?hrr)`. A cast inside FILTER is fine
+      and is NOT invalidated by adding ORDER BY: re-measured 2026-09-18, `FILTER(xsd:integer(?year) > 0)`
+      returns 465 rows with and without ORDER BY, and 312 both ways for `> 2020`. The producers'
+      2026-09-18 note to the contrary does not reproduce; do not restore it.
+    check:
+      kind: count
+      date: "2026-09-18"
+      query: |
+        PREFIX mpo: <http://marchantia.info/ontology/>
+        SELECT ?f FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+        WHERE { ?e mpo:foldVsMedian ?f } ORDER BY DESC(?f) LIMIT 1
+      expect: {value: 999.8228, tolerance: 0.001}
+
+  - id: service_federation_refused
+    say: >
+      SERVICE is refused outright, in 0.1s, with HTTP 500 and
+      "Virtuoso 42000 Error SQ070:SECURITY: Must have select privileges on view
+      DB.DBA.SPARQL_SINV_2" — a permissions decision, not a busy endpoint, so retrying or
+      simplifying the remote pattern will never help. A federated query CANNOT be written from
+      here. FIX: split the work, taking the IRIs this endpoint emits (UniProt accessions, PMIDs,
+      GO/Pfam/KEGG terms, PO/PECO terms) into a SECOND, separate run_sparql call against the
+      other database.
+    check:
+      kind: error
+      date: "2026-09-18"
+      expect: {timeout_s: 60}
+      query: |
+        SELECT * WHERE {
+          SERVICE <https://rdfportal.org/sib/sparql> { ?s ?p ?o }
+        } LIMIT 1
+
+  - id: external_iris_are_unlabelled
+    say: >
+      The big external vocabularies this database points at — obo:GO_*, identifiers.org/pfam/*,
+      identifiers.org/kegg.orthology/* — carry NO rdfs:label anywhere on this endpoint (0 GO labels
+      present). You cannot find those terms by name here and cannot render one in a result: arrive
+      already knowing the IRI. Verified 2026-09-18 that run_sparql with database=go resolves
+      obo:GO_0004672 to "protein kinase activity" on RDF Portal, and OLS4 works for terms outside it.
+      Three vocabularies are the exception and DO resolve locally: SO, SIO and FALDO are
+      redistributed as graphs, the 37 PO/PECO terms reached by skos:exactMatch carry rdfs:label
+      (obo:PO_0025126 -> "archegonium") along with 78 imported OBO ancestors, and mpo:KOG IRIs carry
+      a local skos:prefLabel.
+    check:
+      kind: absent
+      date: "2026-09-18"
+      query: |
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT ?s WHERE {
+          GRAPH ?g { ?s rdfs:label ?l }
+          FILTER(STRSTARTS(STR(?s), "http://purl.obolibrary.org/obo/GO_"))
+        } LIMIT 1
+
+examples:
+  - id: gene_by_symbol
+    intent: resolve a gene symbol — primary OR secondary — to its gene IRI and functional summary
+    question: "What is the MpCEN1 gene — its gene ID, product and what is known about it?"
+    complexity: basic
+    sparql: |
+      PREFIX mpo: <http://marchantia.info/ontology/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT DISTINCT ?gene ?id ?symbol ?v3id ?product ?summary
+      FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+      WHERE {
+        { ?gene skos:prefLabel "MpCEN1"@en } UNION { ?gene skos:altLabel "MpCEN1"@en }
+        ?gene a mpo:Gene ; dcterms:identifier ?id .
+        OPTIONAL { ?gene skos:prefLabel     ?symbol }
+        OPTIONAL { ?gene mpo:v3Identifier   ?v3id }
+        OPTIONAL { ?gene mpo:product        ?product }
+        OPTIONAL { ?gene mpo:functionSummary ?summary }
+      }
+    verified:
+      row_count: 1
+      date: "2026-09-18"
+      has_values: ["Mp1g00710", "MpCEN1"]
+    teaches: >
+      Search a symbol across BOTH skos:prefLabel and skos:altLabel as @en langStrings; the stable
+      gene IRI is http://marchantia.info/rdf/gene/<id> and dcterms:identifier repeats the id as a
+      PLAIN literal.
+    traps_avoided:
+      - say: >
+          Searching prefLabel alone misses the 92 genes whose name you have is their SECOND symbol —
+          "MpHD9" returns nothing on prefLabel but resolves to Mp1g01010 (prefLabel MpPINTOX) on
+          altLabel. Note that altLabel is doing double duty: it also carries the legacy v3 Mapoly id
+          for 17,210 genes, so a symbol search over altLabel will match Mapoly ids too, which is
+          harmless but worth knowing.
+        check:
+          kind: zero_rows
+          date: "2026-09-18"
+          query: |
+            PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+            SELECT ?g FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+            WHERE { ?g skos:prefLabel "MpHD9"@en } LIMIT 1
+      - say: >
+          skos:prefLabel is POLYMORPHIC. Of its 15,848 subjects in the function graph only 3,215 are
+          genes; 12,280 are mpo:KOG IRIs whose prefLabel is a functional DESCRIPTION ("Catalase"),
+          plus 345 skos:Concept vocabulary terms. An unconstrained `?s skos:prefLabel ?sym` mixes gene
+          symbols with KOG descriptions. FIX: constrain with `?gene a mpo:Gene`, as above.
+        check:
+          kind: count
+          date: "2026-09-18"
+          query: |
+            PREFIX mpo: <http://marchantia.info/ontology/>
+            PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+            SELECT (COUNT(DISTINCT ?s) AS ?n)
+            FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+            WHERE { ?s a mpo:Gene ; skos:prefLabel ?l }
+          expect: {value: 3215, tolerance: 0.02}
+      - "Do not reach for rdfs:label to get a symbol: in the annotation graph it holds the symbol when there is one and the bare gene ID otherwise (Mp1g00710 -> \"MpCEN1\", Mp1g00070 -> \"Mp1g00070\"), so it is neither a reliable symbol nor a reliable identifier."
+
+  - id: gene_location
+    intent: read a gene's chromosome, coordinates and strand out of the FALDO scaffold
+    question: "Where on the genome is MpCEN1 (Mp1g00710), and on which strand?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mpo: <http://marchantia.info/ontology/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT ?id ?chr ?min ?max ?strand
+      FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/annotation>
+      WHERE {
+        ?gene a obo:SO_0001217 ;
+              dcterms:identifier ?id ;
+              faldo:location ?region .
+        ?region faldo:reference/dcterms:identifier ?chr ;
+                mpo:minPosition ?min ;
+                mpo:maxPosition ?max ;
+                faldo:begin ?beginPos .
+        BIND(IF(EXISTS { ?beginPos a faldo:ReverseStrandPosition }, "-", "+") AS ?strand)
+        VALUES ?id { "Mp1g00710" }
+      }
+    verified:
+      row_count: 1
+      date: "2026-09-18"
+      has_values: ["Mp1g00710", "chr1", 635664, 638217, "-"]
+    teaches: >
+      Coordinates come from mpo:minPosition / mpo:maxPosition on the faldo:Region — strand-independent
+      integers — and strand is a TYPE on the position node, read with
+      `BIND(IF(EXISTS { ?p a faldo:ReverseStrandPosition }, "-", "+") AS ?strand)` rather than a
+      property value.
+    traps_avoided:
+      - say: "Coordinates exist ONLY in the annotation graph. Pinning the function graph here returns 0 rows — the gene IRI is the same, the location triples are not."
+        check:
+          kind: zero_rows
+          date: "2026-09-18"
+          query: |
+            PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+            PREFIX obo: <http://purl.obolibrary.org/obo/>
+            SELECT ?region FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+            WHERE { ?gene a obo:SO_0001217 ; faldo:location ?region } LIMIT 1
+      - "Every faldo:Region and faldo:Position is a real IRI, not a blank node, so they can be selected and joined directly; do not write bnode-walking boilerplate."
+      - "A position node carries TWO rdf:type values (faldo:ExactPosition plus the strand class), so binding `?pos a ?type` instead of the EXISTS test above returns each gene twice."
+
+  - id: genes_in_window
+    intent: find every feature overlapping a genomic interval, including minus-strand ones
+    question: "Which protein-coding genes overlap chr1:630,000-640,000?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mpo: <http://marchantia.info/ontology/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT ?id ?min ?max ?strand
+      FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/annotation>
+      WHERE {
+        ?gene a obo:SO_0001217 ;
+              dcterms:identifier ?id ;
+              faldo:location ?region .
+        ?region faldo:reference <http://marchantia.info/rdf/MpTak_v7.1/sequence/chr1> ;
+                mpo:minPosition ?min ;
+                mpo:maxPosition ?max ;
+                faldo:begin ?beginPos .
+        BIND(IF(EXISTS { ?beginPos a faldo:ReverseStrandPosition }, "-", "+") AS ?strand)
+        FILTER(?min <= 640000 && ?max >= 630000)
+      }
+      ORDER BY ?min
+    verified:
+      row_count: 3
+      date: "2026-09-18"
+      has_values: ["Mp1g00710"]
+    teaches: >
+      Overlap is `?min <= windowEnd && ?max >= windowStart` against mpo:minPosition /
+      mpo:maxPosition. Chromosome IRIs are the fixed set chr1-chr8, chrU, chrV (8 autosomes plus the
+      U and V sex chromosomes); bind the chromosome on the REGION, since faldo:reference is asserted
+      on the position nodes too.
+    traps_avoided:
+      - say: >
+          Writing the range against faldo:begin / faldo:end instead silently loses minus-strand
+          features. FALDO puts begin at the 5' end, so on the minus strand begin > end — MpCEN1 has
+          begin 638217, end 635664 — and `?begin <= X && ?end >= Y` degenerates from an overlap test
+          into a reversed-containment test that no minus-strand gene can satisfy for a point and that
+          drops every boundary-straddling one for a window. 9,024 of the 18,007 genes (50.1%) are on
+          the minus strand. Measured on this window: min/max finds 3 genes, begin/end finds 2.
+        check:
+          kind: zero_rows
+          date: "2026-09-18"
+          query: |
+            PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+            SELECT ?gene FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/annotation>
+            WHERE {
+              BIND(<http://marchantia.info/rdf/gene/Mp1g00710> AS ?gene)
+              ?gene faldo:location ?r .
+              ?r faldo:begin/faldo:position ?b ; faldo:end/faldo:position ?e .
+              FILTER(?b <= 636000 && ?e >= 636000)
+            } LIMIT 1
+      - "Comparison operators DO work numerically on these xsd:integer values — it is only ORDER BY that falls back to string collation — so the FILTER range above is safe as written while `ORDER BY ?min` is not once coordinates differ in digit count. Cast the sort key if the ordering matters."
+
+  - id: transcript_structure
+    intent: reconstruct a transcript's exons, CDS segments and UTRs in 5'->3' order
+    question: "What is the exon and CDS structure of transcript Mp1g00710.1, with reading-frame phases?"
+    complexity: advanced
+    sparql: |
+      PREFIX mpo: <http://marchantia.info/ontology/>
+      PREFIX so:  <http://purl.obolibrary.org/obo/so#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT ?part ?rank ?id ?min ?max ?phase
+      FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/annotation>
+      WHERE {
+        ?tx so:transcribed_from <http://marchantia.info/rdf/gene/Mp1g00710> ;
+            dcterms:identifier "Mp1g00710.1" .
+        {
+          ?tx sio:SIO_000974 ?item .
+          ?item sio:SIO_000628 ?seg ; sio:SIO_000300 ?rank .
+          BIND("exon" AS ?part)
+        } UNION {
+          ?tx mpo:hasCds ?cds .
+          ?cds sio:SIO_000974 ?item2 .
+          ?item2 sio:SIO_000628 ?seg ; sio:SIO_000300 ?rank .
+          ?seg mpo:phase ?phase .
+          BIND("cds_segment" AS ?part)
+        } UNION {
+          ?tx mpo:hasUtrSegment ?seg .
+          ?seg a ?utrType .
+          BIND(IF(?utrType = obo:SO_0000204, "utr_5prime", "utr_3prime") AS ?part)
+        }
+        ?seg dcterms:identifier ?id ; faldo:location ?r .
+        ?r mpo:minPosition ?min ; mpo:maxPosition ?max .
+      }
+      ORDER BY ?part ?rank
+    verified:
+      row_count: 16
+      date: "2026-09-18"
+      has_values: ["Mp1g00710.1.exon1", "Mp1g00710.1.cds1"]
+    teaches: >
+      The three component series hang off the transcript by THREE DIFFERENT predicates — exons by
+      obo:BFO_0000051, CDS by mpo:hasCds, UTRs by mpo:hasUtrSegment — and rank comes from an
+      intermediate SIO node (mpo/sio:SIO_000974 -> SIO_001261 item -> SIO_000628 target +
+      SIO_000300 integer rank), needed because SIO_000300 is an owl:FunctionalProperty.
+    traps_avoided:
+      - say: >
+          Do not walk all three series with obo:BFO_0000051: on the transcript that predicate reaches
+          EXONS ONLY (7 for Mp1g00710.1, all obo:SO_0000147). UTRs use mpo:utrSegmentOf / hasUtrSegment
+          and CDS uses mpo:cdsOf / hasCds precisely so that the three overlapping partitions of the same
+          span are not siblings under one predicate — using one predicate for all three would double- or
+          triple-count the same bases.
+        check:
+          kind: count
+          date: "2026-09-18"
+          query: |
+            PREFIX obo: <http://purl.obolibrary.org/obo/>
+            SELECT (COUNT(DISTINCT ?type) AS ?n)
+            FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/annotation>
+            WHERE { <http://marchantia.info/rdf/transcript/Mp1g00710.1> obo:BFO_0000051 ?part .
+                    ?part a ?type }
+          expect: {value: 1, tolerance: 0.001}
+      - "Rank is transcript order (5'->3'), NOT coordinate order: MpCEN1 is on the minus strand, so its exon 1 sits at the HIGHEST coordinates (637779-638217) and exon 7 at the lowest (635664-636193). Sorting by ?min gives the reverse of the biological order on half the genome."
+      - "mpo:phase is the GFF3 column-8 value and is offset by one from INSDC /codon_start (codon_start = phase + 1) — do not pass it straight into a tool that expects the INSDC convention."
+      - say: "obo:SO_0000316 (22,248) is the whole CDS; obo:SO_0000851 CDS_region (123,462) is the per-exon segment that carries mpo:phase. Counting SO_0000851 is not counting coding genes."
+        check:
+          kind: count
+          date: "2026-09-18"
+          query: |
+            PREFIX obo: <http://purl.obolibrary.org/obo/>
+            SELECT (COUNT(DISTINCT ?s) AS ?n)
+            FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/annotation>
+            WHERE { ?s a obo:SO_0000851 }
+          expect: {value: 123462, tolerance: 0.02}
+
+  - id: coexpression_partners
+    intent: retrieve a gene's co-expression neighbours from a ONE-DIRECTIONAL edge table
+    question: "Which genes are co-expressed with MpCEN1, and how strongly?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mpo: <http://marchantia.info/ontology/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      SELECT ?partnerId ?partnerSymbol ?pcc ?hrr
+      FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+      WHERE {
+        BIND(<http://marchantia.info/rdf/gene/Mp1g00710> AS ?gene)
+        { ?edge mpo:gene1 ?gene ; mpo:gene2 ?partner }
+        UNION
+        { ?edge mpo:gene2 ?gene ; mpo:gene1 ?partner }
+        ?edge mpo:pcc ?pcc ; mpo:hrr ?hrr .
+        ?partner dcterms:identifier ?partnerId .
+        OPTIONAL { ?partner skos:prefLabel ?partnerSymbol }
+      }
+      ORDER BY xsd:integer(?hrr)
+      LIMIT 10
+    verified:
+      min_rows: 10
+      date: "2026-09-18"
+    teaches: >
+      Each mpo:CoexpressionEdge is stored ONCE, with the two genes sorted into mpo:gene1 / mpo:gene2
+      by identifier, so every neighbour query needs both directions — UNION with the gene bound to an
+      IRI, or the alternation `mpo:gene1|mpo:gene2` when you only need the edge and not the partner.
+    traps_avoided:
+      - say: >
+          Querying only mpo:gene1 silently returns a fraction of the neighbourhood, with no error and
+          plausible-looking rows: MpPWWP3 has 200 edges of which just 6 have it as gene1, a 97% loss,
+          and 690 of the 17,104 genes that carry any edge appear ONLY as gene2, so for those the naive
+          query returns exactly 0 and reads as "not co-expressed with anything". Verified 0 reciprocal
+          pairs across all 740,830 edges.
+        check:
+          kind: ratio
+          date: "2026-09-18"
+          numerator: |
+            PREFIX mpo: <http://marchantia.info/ontology/>
+            PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+            SELECT (COUNT(*) AS ?n)
+            FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+            WHERE { ?g skos:prefLabel "MpPWWP3"@en . ?e mpo:gene1 ?g }
+          denominator: |
+            PREFIX mpo: <http://marchantia.info/ontology/>
+            PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+            SELECT (COUNT(*) AS ?n)
+            FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+            WHERE { ?g skos:prefLabel "MpPWWP3"@en . ?e mpo:gene1|mpo:gene2 ?g }
+          expect: {ratio: 0.03, tolerance: 0.35}
+      - say: "The UNION form above is NOT slow when the gene is bound to an IRI: re-measured twice on 2026-09-18 at 0.04s, against 0.24s for the `FILTER(?g1 = ?gene || ?g2 = ?gene)` + BIND alternative and 0.04s for the alternation path. The producers' note that UNION \"did not finish in 43 minutes\" does not reproduce in any shape tested, including the unanchored COUNT over all 740,830 edges checked here, which completes in 0.11s and returns 1,481,660 (each edge once per direction); do not avoid UNION on that basis."
+        check:
+          kind: count
+          date: "2026-09-18"
+          query: |
+            PREFIX mpo: <http://marchantia.info/ontology/>
+            SELECT (COUNT(*) AS ?n)
+            FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+            WHERE { { ?e mpo:gene1 ?a ; mpo:gene2 ?b } UNION { ?e mpo:gene2 ?a ; mpo:gene1 ?b } }
+          expect: {value: 1481660, tolerance: 0.02}
+      - "The edge table is PRUNED, not complete: only pairs with HRR <= 200 and both ends on known genes are stored, so an absent edge means \"not in the top 200 mutual ranks\", never \"correlation measured as low\"."
+      - "The xsd:integer() cast in ORDER BY is load-bearing — see numeric_order_by_sorts_lexically. Uncast, mpo:hrr sorts lexically and 99 ranks above 200."
+
+  - id: enum_tissue_enriched
+    intent: enumerate ALL genes enriched in a tissue via the controlled-vocabulary IRI
+    question: "Which genes are enriched in archegonia?"
+    complexity: basic
+    sparql: |
+      PREFIX mpo: <http://marchantia.info/ontology/>
+      SELECT (COUNT(DISTINCT ?gene) AS ?n)
+      FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+      WHERE {
+        ?cond mpo:tissue <http://marchantia.info/rdf/vocab/tissue/archegonia> .
+        ?enr  mpo:refCondition ?cond ;
+              mpo:refGene ?gene .
+      }
+    verified: {n: 2102, date: "2026-09-18"}
+    teaches: >
+      Expression enrichment is reached through the CONDITION, not the gene: pick a vocabulary IRI
+      (mpo:tissue / strain / sex / stage / mutation / administration / infection), collect the
+      conditions carrying it, then follow mpo:refCondition <- mpo:ConditionEnrichedGene -> mpo:refGene.
+      Discover the IRIs with `?c skos:inScheme <http://marchantia.info/rdf/vocab/scheme/tissue>` —
+      338 concepts across tissue, mutation (172), stage (46), administration (36), strain (24),
+      infection (13), growth_protocol (9) and sex (2).
+    traps_avoided:
+      - say: >
+          COUNT(DISTINCT ?gene) is mandatory: a tissue term maps to SEVERAL conditions (archegonia has
+          2), so the same gene returns once per condition and the raw row count is 2,996 against 2,102
+          real genes — a 43% overcount that looks like a perfectly ordinary result.
+        check:
+          kind: ratio
+          date: "2026-09-18"
+          numerator: |
+            PREFIX mpo: <http://marchantia.info/ontology/>
+            SELECT (COUNT(*) AS ?n)
+            FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+            WHERE { ?c mpo:tissue <http://marchantia.info/rdf/vocab/tissue/archegonia> .
+                    ?e mpo:refCondition ?c ; mpo:refGene ?g }
+          denominator: |
+            PREFIX mpo: <http://marchantia.info/ontology/>
+            SELECT (COUNT(DISTINCT ?g) AS ?n)
+            FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+            WHERE { ?c mpo:tissue <http://marchantia.info/rdf/vocab/tissue/archegonia> .
+                    ?e mpo:refCondition ?c ; mpo:refGene ?g }
+          expect: {ratio: 1.43, tolerance: 0.1}
+      - "Do not text-match on mpo:tissueLabel: those labels are the source studies' free-text sample descriptions, some carrying study codes (\"HATO:Tak1 thalli, cut-24h\"), whereas the mpo:tissue IRI is the normalised term."
+      - "The table is SPARSE by design — only (condition, gene) pairs that passed the enrichment threshold are stored (mean TPM >= 10 and >= 4x the cross-condition median, readable from prov:wasGeneratedBy). There is no dense condition x gene expression matrix here, so absence is not evidence of low expression."
+
+  - id: enum_po_term
+    intent: enumerate enriched genes by a Plant Ontology / PECO term instead of a local IRI
+    question: "Which genes are enriched in the archegonium (PO:0025126)?"
+    complexity: basic
+    sparql: |
+      PREFIX mpo: <http://marchantia.info/ontology/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      SELECT (COUNT(DISTINCT ?gene) AS ?n)
+      FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+      WHERE {
+        ?concept skos:exactMatch <http://purl.obolibrary.org/obo/PO_0025126> .
+        ?cond mpo:tissue ?concept .
+        ?enr  mpo:refCondition ?cond ;
+              mpo:refGene ?gene .
+      }
+    verified: {n: 2102, date: "2026-09-18"}
+    teaches: >
+      skos:exactMatch bridges the local condition vocabulary to Plant Ontology and PECO, so a
+      question posed in ontology terms needs no knowledge of MarpolBase's own IRIs — and the answer
+      agrees exactly with the local-IRI route (2,102 both ways).
+    traps_avoided:
+      - say: >
+          Coverage is partial and silent: only 37 of the 338 vocabulary concepts carry a
+          skos:exactMatch (21 PECO + 16 PO), so an ontology-term query returns 0 rows for most
+          attributes with nothing to distinguish "no mapping" from "no genes". Check the mapping
+          exists before concluding anything, and fall back to the mpo:tissue IRI route.
+        check:
+          kind: count
+          date: "2026-09-18"
+          query: |
+            PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+            SELECT (COUNT(DISTINCT ?c) AS ?n)
+            FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+            WHERE { ?c a skos:Concept ; skos:exactMatch ?m }
+          expect: {value: 37, tolerance: 0.02}
+      - "`?c a skos:Concept` alone is not the vocabulary: 423 subjects carry that type, of which 338 are condition-attribute terms, 7 belong to the GeneRole/EvidenceType schemes and 78 are imported OBO/BFO ancestors pulled in with the PO/PECO subtrees. Constrain with skos:inScheme <.../vocab/scheme/*> to get the vocabulary itself."
+
+  - id: enum_go_term
+    intent: enumerate ALL genes carrying a GO term, with their symbols
+    question: "Which Marchantia genes have protein kinase activity (GO:0004672)?"
+    complexity: basic
+    sparql: |
+      PREFIX mpo: <http://marchantia.info/ontology/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT ?id ?symbol
+      FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+      WHERE {
+        ?gene mpo:hasGOTerm obo:GO_0004672 ;
+              dcterms:identifier ?id .
+        OPTIONAL { ?gene skos:prefLabel ?symbol }
+      }
+      ORDER BY ?id
+      LIMIT 25
+    verified:
+      min_rows: 25
+      date: "2026-09-18"
+      has_values: ["Mp1g00210"]
+    teaches: >
+      mpo:hasGOTerm points straight at the bare obo:GO_NNNNNNN IRI, so GO enumeration is a one-hop
+      typed-predicate query — no text search and no ontology join.
+    traps_avoided:
+      - say: >
+          The GO annotation is FLAT: no subClassOf closure is loaded for GO, so obo:GO_0004672 returns
+          only genes annotated to that exact term, never to its descendants. To enumerate a GO subtree,
+          expand the term set elsewhere (OLS4, or run_sparql against database=go) and feed it back as a
+          VALUES block. Contrast SO, which IS redistributed here and can be traversed with
+          rdfs:subClassOf* in the same query.
+        check:
+          kind: absent
+          date: "2026-09-18"
+          query: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX obo: <http://purl.obolibrary.org/obo/>
+            SELECT ?sub WHERE {
+              GRAPH ?g { ?sub rdfs:subClassOf obo:GO_0004672 }
+            } LIMIT 1
+      - say: >
+          Only 10,366 of 18,080 genes carry any GO term, so a GO-based enumeration silently excludes
+          43% of the gene set — say so when reporting a count as a proportion.
+        check:
+          kind: count
+          date: "2026-09-18"
+          query: |
+            PREFIX mpo: <http://marchantia.info/ontology/>
+            SELECT (COUNT(DISTINCT ?g) AS ?n)
+            FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+            WHERE { ?g mpo:hasGOTerm ?go }
+          expect: {value: 10366, tolerance: 0.02}
+
+  - id: enum_all_genes_partitioned
+    intent: enumerate a set larger than the endpoint's 10,000-row ceiling, by partitioning it
+    question: "List every gene ID on chromosome 1 — and how do I get all 18,080 without silent truncation?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mpo: <http://marchantia.info/ontology/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT ?id
+      FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+      WHERE {
+        ?gene a mpo:Gene ;
+              dcterms:identifier ?id .
+        FILTER(STRSTARTS(?id, "Mp1g"))
+      }
+      ORDER BY ?id
+    verified:
+      row_count: 2707
+      date: "2026-09-18"
+      has_values: ["Mp1g00710"]
+    teaches: >
+      Partition a large enumeration into ordered slices that each stay under 10,000 rows, then union
+      the pages client-side. Gene IDs encode their sequence, so STRSTARTS on the ID prefix is the
+      cheapest partition key: the ELEVEN prefixes are Mp1g (2,707), Mp2g (2,522), Mp3g (2,380),
+      Mp4g (2,257), Mp5g (2,360), Mp6g (2,085), Mp7g (1,845), Mp8g (1,752), MpUg (63), MpVg (94)
+      and Mpzg (15), summing to 18,080. The largest slice is well under the cap.
+    traps_avoided:
+      - say: >
+          Do not reach for OFFSET to page past 10,000. The quietest failure is the one checked here:
+          an ordered `OFFSET 10000` with no LIMIT returns 0 rows — not an error, just an empty page
+          that reads as "the data ran out" — while adding a LIMIT that pushes offset+limit past
+          10,000 is rejected with SR353 instead. Dropping the ORDER BY returns the remaining 8,080
+          rows but in no guaranteed order, so pages can overlap or drop rows. Partitioning on a
+          stored value, as above, is the only stable route.
+        check:
+          kind: zero_rows
+          date: "2026-09-18"
+          query: |
+            PREFIX mpo: <http://marchantia.info/ontology/>
+            PREFIX dcterms: <http://purl.org/dc/terms/>
+            SELECT ?id
+            FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+            WHERE { ?gene a mpo:Gene ; dcterms:identifier ?id }
+            ORDER BY ?id
+            OFFSET 10000
+      - say: >
+          Do not assume the prefixes are the ten chromosomes. There is an eleventh, `Mpzg`, holding
+          15 UNPLACED genes that exist only in the function graph — they have symbols (MpLRL,
+          MpPR1y, ...) but no faldo:location and no chromosome at all, so both a ten-slice ID
+          partition and any chromosome-driven enumeration silently drop them. They are part of the
+          73-gene function/annotation gap; the other 58 carry ordinary chromosome-style IDs but
+          likewise have no structural annotation.
+        check:
+          kind: count
+          date: "2026-09-18"
+          query: |
+            PREFIX mpo: <http://marchantia.info/ontology/>
+            PREFIX dcterms: <http://purl.org/dc/terms/>
+            SELECT (COUNT(DISTINCT ?g) AS ?n)
+            FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+            WHERE { ?g a mpo:Gene ; dcterms:identifier ?id . FILTER(STRSTARTS(?id, "Mpzg")) }
+          expect: {value: 15, tolerance: 0.02}
+      - "Use this only when you genuinely need the members. For a total, COUNT is not capped and one query answers it (see count_genes); for a proportion, GROUP BY on the server beats fetching rows and counting them locally."
+
+  - id: gene_literature
+    intent: retrieve curated, per-gene literature assertions with their evidence typing
+    question: "What has been published about MpCEN1, and what role did the gene play in each study?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mpo: <http://marchantia.info/ontology/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT ?pmid ?year ?title ?role ?evidence ?core ?statement
+      FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+      WHERE {
+        ?assertion mpo:aboutGene <http://marchantia.info/rdf/gene/Mp1g00710> ;
+                   mpo:fromPaper ?paper ;
+                   mpo:geneRole ?role ;
+                   mpo:evidenceType ?evidence ;
+                   mpo:isCoreReference ?core ;
+                   dcterms:description ?statement .
+        ?paper dcterms:title ?title .
+        OPTIONAL { ?paper mpo:pmid ?pmid }
+        OPTIONAL { ?paper dcterms:date ?year }
+      }
+      ORDER BY ?pmid
+    verified:
+      row_count: 3
+      date: "2026-09-18"
+    teaches: >
+      mpo:GeneLiteratureAssertion is a reified gene-paper link carrying a hand-written
+      dcterms:description of what that paper actually says about that gene — the highest-value free
+      text in this database and not reproducible from any external source. mpo:isCoreReference is the
+      stored shorthand for evidenceType=Experimental AND geneRole=Subject.
+    traps_avoided:
+      - say: >
+          Do not anchor the paper on `?paper a fabio:ResearchPaper`: the 510 papers are split across
+          fabio:ResearchPaper (474), fabio:ReviewArticle (24) and fabio:Expression (12), so the type
+          filter drops 36 of them (7.1%). Anchor on mpo:fromPaper, which reaches all three.
+        check:
+          kind: count
+          date: "2026-09-18"
+          query: |
+            PREFIX fabio: <http://purl.org/spar/fabio/>
+            SELECT (COUNT(DISTINCT ?p) AS ?n)
+            FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+            WHERE { ?p a fabio:ResearchPaper }
+          expect: {value: 474, tolerance: 0.02}
+      - say: >
+          32 of the 510 papers are joined to NO gene at all — they are titled and have PMIDs but the
+          gene they discuss could not be resolved to an MpTak_v7.1 ID. Any gene-anchored literature
+          query therefore cannot see them, and a "papers in MarpolBase" count taken through
+          mpo:fromPaper undercounts by 32. They lived in a separate literature/unmapped graph until
+          2026-09-18 and are now in the function graph, reachable only as
+          `FILTER NOT EXISTS { ?a mpo:fromPaper ?paper }`.
+        check:
+          kind: count
+          date: "2026-09-18"
+          query: |
+            PREFIX mpo: <http://marchantia.info/ontology/>
+            PREFIX dcterms: <http://purl.org/dc/terms/>
+            SELECT (COUNT(DISTINCT ?p) AS ?n)
+            FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+            WHERE { ?p dcterms:title ?t .
+                    FILTER(STRSTARTS(STR(?p), "http://marchantia.info/rdf/paper/"))
+                    FILTER NOT EXISTS { ?a mpo:fromPaper ?p } }
+          expect: {value: 32, tolerance: 0.02}
+      - say: >
+          dcterms:date is a STRING and 46 of the 510 values carry a disambiguation suffix ("2024a",
+          "2019b"). `FILTER(xsd:integer(?year) > 0)` silently drops 45 papers, and any numeric year
+          comparison drops the same ones. Filter on STR/REGEX, or accept the loss knowingly.
+        check:
+          kind: ratio
+          date: "2026-09-18"
+          numerator: |
+            PREFIX dcterms: <http://purl.org/dc/terms/>
+            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+            SELECT (COUNT(*) AS ?n)
+            FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+            WHERE { ?p dcterms:date ?y .
+                    FILTER(STRSTARTS(STR(?p), "http://marchantia.info/rdf/paper/"))
+                    FILTER(xsd:integer(?y) > 0) }
+          denominator: |
+            PREFIX dcterms: <http://purl.org/dc/terms/>
+            SELECT (COUNT(*) AS ?n)
+            FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+            WHERE { ?p dcterms:date ?y .
+                    FILTER(STRSTARTS(STR(?p), "http://marchantia.info/rdf/paper/")) }
+          expect: {ratio: 0.912, tolerance: 0.02}
+      - say: "mpo:geneRole distinguishes Subject (902) / Background (980) / Comparator (395) / Tool (332) and mpo:evidenceType distinguishes Experimental (1,876) / Citation (462) / Sequence (271). \"Papers about gene X\" almost always means mpo:isCoreReference true; without that filter, background mentions dominate."
+        check:
+          kind: count
+          date: "2026-09-18"
+          query: |
+            PREFIX mpo: <http://marchantia.info/ontology/>
+            SELECT (COUNT(*) AS ?n)
+            FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+            WHERE { ?a mpo:geneRole mpo:Subject }
+          expect: {value: 902, tolerance: 0.02}
+
+  - id: orthogroup_members
+    intent: cross-species orthogroup membership, joined through a LITERAL not an IRI
+    question: "Which genes from other species share an orthogroup with MpCEN1?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mpo: <http://marchantia.info/ontology/>
+      SELECT ?og ?member
+      FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+      WHERE {
+        <http://marchantia.info/rdf/gene/Mp1g00710> mpo:inOrthoGroup ?og .
+        ?og mpo:hasMember ?member .
+        FILTER(!STRSTARTS(?member, "Mp"))
+      }
+      ORDER BY ?member
+    verified:
+      row_count: 4
+      date: "2026-09-18"
+    teaches: >
+      mpo:inOrthoGroup points gene -> group by IRI, but mpo:hasMember points group -> member as a
+      PLAIN STRING identifier (all 122,389 of them), mixing Marchantia "Mp..." ids with each other
+      species' native ids (TAIR "AT3G50360", Physcomitrium "Pp3c3_34260V3", Klebsormidium
+      "kfl00154_0210_v1") — so membership is a string set, not an IRI graph, and those strings are the
+      handoff point to TogoID or another database.
+    traps_avoided:
+      - say: >
+          `?og mpo:hasMember ?m . ?m dcterms:identifier ?x` returns 0 rows — ?m is a literal and can
+          never be a subject. To get back to a gene IRI, join literal-to-literal against
+          dcterms:identifier, which works only because BOTH are plain literals; adding ^^xsd:string to
+          either side breaks it silently.
+        check:
+          kind: zero_rows
+          date: "2026-09-18"
+          query: |
+            PREFIX mpo: <http://marchantia.info/ontology/>
+            PREFIX dcterms: <http://purl.org/dc/terms/>
+            SELECT ?x FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+            WHERE { ?og mpo:hasMember ?m . ?m dcterms:identifier ?x } LIMIT 1
+      - say: "There are 18,232 orthogroups against 12,980 genes that belong to one, so most groups contain no Marchantia gene at all and counting groups is not counting Marchantia genes."
+        check:
+          kind: count
+          date: "2026-09-18"
+          query: |
+            PREFIX mpo: <http://marchantia.info/ontology/>
+            SELECT (COUNT(DISTINCT ?og) AS ?n)
+            FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+            WHERE { ?og a mpo:OrthoGroup }
+          expect: {value: 18232, tolerance: 0.02}
+
+  - id: count_genes
+    intent: the un-inflated gene total, with the graph pin that makes it correct
+    question: "How many genes does MarpolBase contain?"
+    complexity: aggregation
+    sparql: |
+      PREFIX mpo: <http://marchantia.info/ontology/>
+      SELECT (COUNT(DISTINCT ?gene) AS ?genes)
+      FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/function>
+      WHERE { ?gene a mpo:Gene }
+    verified: {n: 18080, date: "2026-09-18"}
+    teaches: "COUNT(DISTINCT) plus a single-graph FROM is the only shape that gives the true total, and COUNT is exempt from the 10,000-row result cap that truncates the corresponding enumeration."
+    traps_avoided:
+      - say: >
+          The annotation graph answers this question DIFFERENTLY and both answers are correct for their
+          own graph: obo:SO_0001217 returns 18,007 protein-coding genes there, while mpo:Gene returns
+          18,080 here. The 73-gene gap is real — those genes have functional annotation but no
+          structural annotation at all (they are also the ones with no CDS, hence no UniProt link), so
+          any query joining the two graphs silently drops them. Say which graph a gene count came from.
+        check:
+          kind: count
+          date: "2026-09-18"
+          query: |
+            PREFIX obo: <http://purl.obolibrary.org/obo/>
+            SELECT (COUNT(DISTINCT ?g) AS ?n)
+            FROM <http://marchantia.info/rdf/graph/MpTak_v7.1/annotation>
+            WHERE { ?g a obo:SO_0001217 }
+          expect: {value: 18007, tolerance: 0.02}
+
+  - id: xdb_uniprot
+    intent: "cross-DB: MarpolBase gene -> its protein -> UniProtKB accession"
+    question: "Which UniProt entry corresponds to the MpCEN1 gene product?"
+    complexity: cross_db
+    endpoint_name: marpolbase
+    sparql: |
+      PREFIX mpo: <http://marchantia.info/ontology/>
+      PREFIX so:  <http://purl.obolibrary.org/obo/so#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT DISTINCT ?geneId ?protein ?productName ?uniprot
+      WHERE {
+        GRAPH <http://marchantia.info/rdf/graph/MpTak_v7.1/function> {
+          ?gene skos:prefLabel "MpCEN1"@en ;
+                dcterms:identifier ?geneId .
+        }
+        GRAPH <http://marchantia.info/rdf/graph/MpTak_v7.1/annotation> {
+          ?transcript so:transcribed_from ?gene ;
+                      mpo:hasCds ?cds .
+          ?cds so:translates_to ?protein .
+          OPTIONAL { ?protein rdfs:label ?productName }
+        }
+        GRAPH <http://marchantia.info/rdf/graph/xref/uniprot> {
+          ?protein rdfs:seeAlso ?uniprot .
+        }
+      }
+    verified:
+      row_count: 2
+      date: "2026-09-18"
+      has_values: ["Mp1g00710", "A0A176WPY9"]
+    teaches: >
+      The bridge to UniProt is gene -> (so:transcribed_from) transcript -> (mpo:hasCds) CDS ->
+      (so:translates_to) protein -> (rdfs:seeAlso) http://purl.uniprot.org/uniprot/ACC, spanning three
+      graphs. The emitted IRI is UniProt's own canonical form, so it drops straight into a second
+      run_sparql call against database=uniprot with no ID conversion — verified 2026-09-18 that
+      A0A176WPY9 resolves as up:Protein on the RDF Portal SIB endpoint. This is the shortest handoff
+      out of MarpolBase, and from a UniProt accession TogoID reaches PDB, ChEMBL and the rest directly.
+    traps_avoided:
+      - "The predicate IRIs are http://purl.obolibrary.org/obo/so#transcribed_from — note the `#`. Writing them as `obo:so#transcribed_from` against `PREFIX obo: <http://purl.obolibrary.org/obo/>` is a SPARQL SYNTAX ERROR (`syntax error at 'obo:so'`), because `#` cannot appear in a prefixed local name. Declare a separate `PREFIX so: <http://purl.obolibrary.org/obo/so#>` as above, or write the full IRI."
+      - "The xref graph is keyed on PROTEIN IRIs, never gene IRIs, so `?gene rdfs:seeAlso ?uniprot` inside the xref graph returns nothing — the transcript/CDS hop is not optional. One gene can yield several transcripts mapping to the SAME accession (MpCEN1 gives 2 rows, both A0A176WPY9), so DISTINCT on the accession if you want entries rather than isoform rows."
+      - say: >
+          This mapping is BLAST top-hit inference (blastp, e-value 1e-5, UniProt release 2026_03),
+          which is why the data uses rdfs:seeAlso and not owl:sameAs: 21,978 of 22,248 proteins (98.8%)
+          carry a mapping onto 18,902 distinct accessions. Per the dataset's own metadata graph, 20% had
+          tied top hits and 104 were resolved by alphabetical accession order alone. 333 genes have no
+          link — 73 have no CDS at all (ncRNA and the structurally unannotated), and the other 260 are
+          short novel ORFs (median 86 aa against 343 aa genome-wide) with no UniProt counterpart.
+          Treat it as a strong lead, not an identity claim.
+        check:
+          kind: count
+          date: "2026-09-18"
+          query: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT (COUNT(DISTINCT ?s) AS ?n)
+            FROM <http://marchantia.info/rdf/graph/xref/uniprot>
+            WHERE { ?s rdfs:seeAlso ?u }
+          expect: {value: 21978, tolerance: 0.02}
+      - "SERVICE federation is refused by this endpoint (see service_federation_refused), so the UniProt half genuinely has to be a second, separate query — do not try to inline it."
+
+schema_delta:
+  - "The dataset ships FIVE example queries as data: `<http://marchantia.info/rdf/dataset/marpolbase> mpo:hasExampleQuery ?q . ?q mpo:sparql ?text` gives runnable SPARQL for gene-to-literature, paper-to-genes, paper-to-coexpressed, condition-to-literature and peco-to-conditions (titles are Japanese). Read them before inventing a query in those areas."
+  - "mpo:timepoint is xsd:duration and Virtuoso returns it NORMALISED TO SECONDS — a stored \"P4D\" comes back as 345600.0, and STR() gives \"345600\", not the ISO form. Divide by 86400 for days; never string-match the lexical duration."
+  - "mpo:hasKOG -> rdf/kog/KOG* is the one external vocabulary you can filter by NAME here: KOG IRIs carry a local skos:prefLabel with a functional description (\"Catalase\") and a dcterms:identifier, unlike GO/Pfam/KEGG. The cost is that those 12,280 descriptions share skos:prefLabel with gene symbols."
+  - "Conditions carry more than the tissue axis: mpo:dose (plain string, \"100 mM\"), dcterms:description, mpo:efpCode (the eFP-browser sample code), mpo:referenceLabel, mpo:runCount, and dcterms:source -> Paper for 148 of 164. Three conditions have no mpo:hasRun at all. Each mpo:SequencingRun adds only mpo:sampleTitle (395 of 460) — BioSample/BioProject/instrument are empty upstream."
+  - "147 vocabulary concepts carry a Japanese skos:note (`FILTER(LANG(?note) = \"ja\")`); skos:broader holds the imported PO/PECO ancestry of the mapped terms."
+  - "Chromosomes carry insdc_ontology:sequence_length (`<http://ddbj.nig.ac.jp/ontologies/nucleotide/sequence_length>`) and sit under obo:BFO_0000050 -> the obo:SO_0000353 assembly `rdf/assembly/MpTak_v7.1`. Taxon is asserted twice, as obo:RO_0002162 -> obo:NCBITaxon_3197 and rdfs:seeAlso -> identifiers.org/taxonomy/3197; the RO form is the one to join on."
+  - "foaf:page (18,008, annotation graph) and rdfs:seeAlso (18,080, function graph) both give the human MarpolBase page for a gene, e.g. https://marchantia.info/MpTak_v7.1/Mp1g00710/ — cite it rather than constructing a URL. Exactly one gene also carries rdfs:seeAlso -> identifiers.org/insdc/AY583464."
+  - "The retired namespace `mpbo: <http://marchantia.info/rdf/ontology/>` was removed on 2026-09-17 in favour of `mpo: <http://marchantia.info/ontology/>`. Queries written against documentation older than that return 0 rows with no error."
+
+id_join_map:
+  stable_anchor: >
+    Gene IRI http://marchantia.info/rdf/gene/<MpNgNNNNN> (e.g. Mp1g00710) — shared verbatim by both
+    main graphs and the anchor for everything. dcterms:identifier repeats the id as a PLAIN literal;
+    skos:prefLabel carries the symbol as an @en langString for 3,215 of 18,080 genes, with 92 further
+    symbols only on skos:altLabel. Derived IRIs are predictable: rdf/transcript/<gene>.<n>,
+    rdf/cds/<gene>.<n>, rdf/protein/<gene>.<n>. Legacy v3.1 ids (Mapoly...) live on mpo:v3Identifier
+    (plain) and skos:altLabel (@en) — the same string in two literal forms that do not join without STR().
+  same_endpoint_joins:
+    annotation_graph: "Same gene IRI, different graph — join gene -> coordinates/exons/CDS/transcripts/proteins by pinning GRAPH <http://marchantia.info/rdf/graph/MpTak_v7.1/annotation>; 73 function-graph genes have no row there."
+    uniprot_xref_graph: "Keyed on the PROTEIN IRI, reached via so:transcribed_from / mpo:hasCds / so:translates_to — see the xdb_uniprot example."
+    ontology_graphs: "SO, SIO and FALDO are loaded as graphs, so obo:SO_* types can be generalised with rdfs:subClassOf* in the same query (SO_0001217 -> SO_0000704 gene). GO, Pfam and KEGG have no such graph here."
+  xrefs:
+    uniprot: "rdfs:seeAlso -> http://purl.uniprot.org/uniprot/<ACC> in the xref/uniprot graph, on protein IRIs; 21,978/22,248 proteins (98.8%) onto 18,902 accessions. BLAST top-hit inference, NOT owl:sameAs."
+    pubmed: "mpo:pmid (plain literal) and rdfs:seeAlso -> https://pubmed.ncbi.nlm.nih.gov/<pmid> on rdf/paper/pmid/<pmid>; also mpo:pmcid and mpo:doi. 506 pubmed + 515 doi links over 510 papers."
+    go: "mpo:hasGOTerm -> http://purl.obolibrary.org/obo/GO_NNNNNNN, 10,366 genes / 39,885 triples. Bare IRIs — unlabelled here, and no subClassOf closure."
+    pfam: "mpo:hasPfam -> http://identifiers.org/pfam/PF#####, 11,462 genes / 16,703 triples."
+    kegg: "mpo:hasKEGG -> http://identifiers.org/kegg.orthology/K#####, 6,332 genes / 6,563 triples."
+    plant_ontology_peco: "skos:exactMatch on condition-vocabulary concepts -> obo:PO_* (16) and obo:PECO_* (21); these DO carry rdfs:label locally, unlike GO."
+    ddbj_sra: "mpo:hasRun -> http://marchantia.info/rdf/run/<DRR accession>; the local name IS the DDBJ run accession, and dcterms:identifier repeats it."
+    ncbi_taxonomy: "obo:RO_0002162 -> obo:NCBITaxon_3197 on the assembly and each chromosome, with a parallel rdfs:seeAlso -> identifiers.org/taxonomy/3197."
+    other_species_genes: "mpo:hasMember on an OrthoGroup, as a PLAIN STRING in each species' own scheme (TAIR AT3G50360, Physcomitrium Pp3c3_34260V3, Klebsormidium kfl00154_0210_v1) — no IRI is minted, so these are the strings to hand to TogoID."
+  bridged_via_togoid:
+    - "UniProt and PubMed need no bridge — both are emitted as native IRIs, and a UniProt accession is the shortest route onward (uniprot -> pdb / chembl_target)."
+    - "For the other-species orthologs, convert the mpo:hasMember string with togoid_convertId (AGI -> ensembl_gene -> uniprot); there is no direct node for TAIR here."
+    - "For anything keyed on the legacy Mapoly (v3.1) identifiers, convert from mpo:v3Identifier rather than from the MpTak_v7.1 id."
