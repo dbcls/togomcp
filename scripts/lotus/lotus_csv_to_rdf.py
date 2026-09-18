@@ -9,8 +9,9 @@ LOTUS instead of re-deriving a moving target from Wikidata at query time.
 
 Entity identity is the Wikidata IRI (`wd:Q…`) for structures, organisms and
 references, so the graph joins to Wikidata itself and to IDSM's Wikidata
-compound mirror without any mapping table. PubChem cross-references use web
-IRIs; NCBI taxonomy and PubMed retain their original cross-reference IRIs.
+compound mirror without any mapping table. Cross-reference IRIs use the same
+forms as the RDF Portal databases they point at (PubChem compound, NCBI
+taxonomy, PubMed), so a federated join needs no rewriting.
 
 A release ships TWO tables and they disagree. The metadata table carries all
 the attributes, but the **core table is authoritative for which triples exist**:
@@ -41,9 +42,15 @@ are embedded and emitted by default, without rdfs:isDefinedBy. --ontology PATH a
 --no-ontology omits all vocabulary triples. Legacy vocabulary files are rejected
 rather than assigning obsolete class constraints to reused standard terms.
 
-The PubChem CID is emitted as rdfs:seeAlso with a PubChem web IRI, e.g.
-https://pubchem.ncbi.nlm.nih.gov/compound/56667858. NCBI Taxonomy, OTT,
-GBIF and PMC cross-references also use rdfs:seeAlso with IRI objects.
+The PubChem CID is emitted as rdfs:seeAlso with the PubChem RDF IRI, e.g.
+http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID56667858 — the form the
+`pubchem` and `idsm` graphs key on, so the join needs no string rewriting.
+rdfs:seeAlso rather than skos:exactMatch is deliberate and kept: exactMatch is
+a SKOS concept-mapping predicate and asserts more than a cross-reference should.
+The predicate states the strength of the claim; the IRI decides whether the
+claim is usable. NCBI Taxonomy, OTT, GBIF and PMC cross-references also use
+rdfs:seeAlso with IRI objects; OTT, GBIF and PMC have no RDF Portal counterpart,
+so those are web IRIs by necessity.
 dcterms:identifier is reserved for an identifier of the subject itself;
 no such triples are currently emitted. DOI and PMID retain BIBO literals.
 ChemOnt classification IDs remain lotus:chemontId literals until a target
@@ -94,7 +101,7 @@ RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 RDFS_SEEALSO = "http://www.w3.org/2000/01/rdf-schema#seeAlso"
 XSD = "http://www.w3.org/2001/XMLSchema#"
 
-PUBCHEM_CID = "https://pubchem.ncbi.nlm.nih.gov/compound/"
+PUBCHEM_CID = "http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID"
 NCBI_TAXON = "http://identifiers.org/taxonomy/"
 PUBMED = "http://rdf.ncbi.nlm.nih.gov/pubmed/"
 DOI_ORG = "https://doi.org/"

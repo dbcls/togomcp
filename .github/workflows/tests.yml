@@ -1,0 +1,65 @@
+name: Tests
+
+# The test suite must pass before a change lands.
+#
+# This is enforced mechanically because, until 2026-09-18, it was not enforced at
+# all. Every other workflow here is a narrow targeted guard — the catalog, the
+# changelog, the MIE claims, the What's New block — and `uv run pytest` ran only
+# on a developer's machine. PR #243 merged into `main` with three failing tests
+# and a fully green check list, because nothing in CI had ever run them.
+#
+# That is the same shape as the two failures CLAUDE.md already records: silent,
+# and passing a test suite that was never consulted. The fix is the cheap one.
+#
+# Deliberately narrow, to stay a signal rather than noise:
+#   - runs on EVERY pull request, with no path filter. A path filter is the wrong
+#     instinct for a test suite: the whole point is that a change to one file can
+#     break a test over another, which is exactly what #243 did.
+#   - also runs on push to main and dev, so a direct push (not every merge here
+#     arrives as a PR) cannot leave a branch red unnoticed.
+#   - installs from uv.lock with --frozen, so CI runs the dependency set the
+#     lockfile pins. A resolve-fresh install would drift from what developers
+#     run, and lockfile drift has already cost this repo one production incident.
+#
+# The suite is hermetic — no live endpoint, no API key — so it needs no secrets
+# and is safe on pull_request from a fork. Live-endpoint checking is mie-drift.yml's
+# job, deliberately kept separate: this one must stay fast and deterministic.
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+# A force-push mid-run should cancel the superseded run, not race it.
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pinned to an exact version on purpose: unlike actions/checkout, setup-uv
+      # publishes no floating major tag from v8 on (only v10.1.0, v10.0.1, …), so
+      # `@v10` does not resolve. Bump it by hand — Renovate's github-actions manager
+      # is disabled here, because GITHUB_TOKEN cannot push to .github/workflows/.
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+
+      - name: Install the locked dependency set
+        run: uv sync --extra dev --frozen
+
+      - name: Run the test suite
+        run: |
+          set -euo pipefail
+          if ! uv run pytest -q; then
+            echo "::error::Test suite failed. Reproduce locally with: uv sync --extra dev && uv run pytest"
+            exit 1
+          fi

@@ -13,6 +13,90 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+LOTUS tooling only — `scripts/lotus/` is developer tooling for the proposal to host LOTUS on
+RDF Portal, is not in the wheel, and the tool surface a client sees is unchanged.
+
+### Changed
+
+- **LOTUS RDF reuses existing vocabularies instead of minting its own terms** (#243). Of the 43
+  fields the converter emits, 20 now carry a standard predicate — Schema.org (`schema:inChIKey`,
+  `schema:smiles`, `schema:molecularFormula`), Darwin Core (`dwc:scientificName` and the seven
+  rank properties), Dublin Core (`dcterms:references`, `dcterms:title`, `dcterms:issued`) and
+  BIBO (`bibo:doi`, `bibo:pmid`) — and 4 more are emitted as `rdfs:seeAlso` IRI links, on the
+  principle that an external identifier points at another resource rather than describing the
+  Wikidata subject. Only the 19 fields with no standard equivalent stay in the LOTUS namespace,
+  which moves from the retired `http://rdfportal.org/ontology/lotus#` to
+  `http://purl.jp/bio/lotus/ontology/`. Class IRIs follow: a structure is a
+  `schema:MolecularEntity`, an organism a `dwc:Taxon`, a reference a
+  `dcterms:BibliographicResource`; only `lotus:Occurrence` remains ours, because a
+  literature-supported compound–taxon association is not a Darwin Core observation at a place
+  and time. Several near-misses were deliberately left unmapped rather than forced: exact mass is
+  not `schema:molecularWeight`, and a full species name is not a `dwc:specificEpithet`.
+
+  The vocabulary is now inline (`builtin_ontology()`, 100 triples covering exactly the 19
+  residual terms) rather than the hand-authored `lotus_ontology.ttl` added in 2.16.1, and it is
+  still emitted into the same named graph as the data for the same reason as before — every
+  TogoMCP query pins its graph. `--ontology PATH` now *adds* a vocabulary and rejects one in the
+  retired namespace, so the shipped `lotus_ontology.ttl` is legacy and no longer loadable; it is
+  kept in the tree for reference only. `rdfs:isDefinedBy` is dropped on emit: the graph is the
+  definition, so pointing at an external document would be a promise the graph cannot keep.
+
+  **Cross-reference predicates move to `rdfs:seeAlso`; the IRIs stay joinable.** `skos:exactMatch`
+  is a SKOS concept-mapping predicate and asserted more than a cross-reference should, so #243 was
+  right to drop it. The IRI is a separate question: #243 also moved the PubChem object to
+  `https://pubchem.ncbi.nlm.nih.gov/compound/<n>`, the web page rather than the RDF resource, and
+  both `pubchem` and `idsm` key on `http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID<n>` — so a
+  LOTUS→PubChem join, on 97.3% of structures, silently stopped lining up. The RDF form is
+  restored, keeping `rdfs:seeAlso`: the predicate states the strength of the claim, the IRI
+  decides whether the claim is usable. NCBI Taxonomy and PubMed were unaffected — `pubmed` keys on
+  the form LOTUS already emits, and `taxonomy` keys on both DDBJ and identifiers.org forms. OTT,
+  GBIF and PMC have no RDF Portal counterpart, so their web IRIs are correct.
+
+  One casualty of the same change is not restored: the CID no longer also appears as a
+  `lotus:pubchemCompoundId` literal. With the RDF IRI back it is derivable from the link, and
+  re-minting a `lotus:` term would cut against the point of the release — but `pubchem` exposes
+  the bare CID as `dcterms:identifier` if a literal join is wanted, and `schema:inChIKey` at 100%
+  coverage is a CID-independent route.
+
+### Added
+
+- **CI now runs the test suite** ([tests.yml](.github/workflows/tests.yml)). Until now every
+  workflow here was a narrow targeted guard — the catalog, the changelog, the MIE claims, the
+  What's New block — and `uv run pytest` ran only on a developer's machine, so #243 merged into
+  `main` with three failing tests and a fully green check list. It runs on every pull request with
+  **no path filter** (the whole point is that a change to one file breaks a test over another,
+  which is exactly what happened) and on pushes to `main` and `dev`, and installs from `uv.lock`
+  with `--frozen` so CI runs the dependency set the lockfile pins rather than a fresh resolve.
+  The suite is hermetic, so it needs no secrets and is safe on a fork PR; live-endpoint checking
+  stays with `mie-drift.yml`.
+
+### Fixed
+
+- **`tests/test_lotus_ontology_in_sync.py` was left behind by #243 and `main` was briefly red.**
+  The suite still checked the converter against `lotus_ontology.ttl`, which the same change had
+  just retired, so three tests failed on a file that is no longer the source of truth. They now
+  check `builtin_ontology()`, and the drift guard is sharper than before because the new model
+  has three ways to emit a field and each can rot differently: a residual `lotus:` term must be
+  defined (and nothing may be defined that is never emitted), a `PROPERTY_IRIS` mapping must
+  actually leave the LOTUS namespace or the reuse is cosmetic, and a link field must never reach
+  `sink.lotus` — the subtle one, since `pmcid` is listed in `REF_WD_PROPS` but intercepted into a
+  PMC `rdfs:seeAlso`. Also pinned: `emit_ontology` strips `rdfs:isDefinedBy`, the legacy
+  `lotus_ontology.ttl` is still rejected by `--ontology`, and the cross-reference IRIs still match
+  the graphs they point at. 8 tests become 13, and each new assertion was mutation-tested to
+  confirm it fails when the invariant it names is broken.
+
+- **`scripts/lotus/lotus_schema.md` described the pre-#243 model throughout.** Same drift, second
+  file, and unlike the tests nothing would ever have failed because of it: the namespace table,
+  the model diagram, all four property tables, the vocabulary section, the worked instance, all
+  four example queries and two of the open questions still documented `lotus:` terms that had
+  moved to Schema.org, Darwin Core, Dublin Core and BIBO, and `skos:exactMatch` arrows that are
+  now `rdfs:seeAlso`. Rewritten against the current model, with the mapping derived from the
+  converter rather than transcribed. Two figures are deliberately **not** restated as fact — the
+  total triple count and the output size both moved when the CID literal was dropped and the
+  taxon ids became links, and re-measuring needs a fresh conversion of the 1.3 GB source, so they
+  are marked for re-measurement rather than guessed. The example queries are retargeted but
+  flagged as not re-run for the same reason.
+
 ## [2.20.0] - 2026-09-18
 
 Adds one database and changes nothing else: no tool, parameter or return shape moved, so every
