@@ -96,10 +96,12 @@ is the bold row label.
 | **lipidmaps** | 1 | `lipidmaps` |
 | **swisslipids** | 1 | `swisslipids` |
 | **microbes** | 1 | `bh26microbes` ← key ≠ endpoint name; experimental (QLever) |
+| **marpolbase** | 1 | `marpolbase` ← Marchantia polymorpha genome; own endpoint, 7 graphs, 10k row cap, no `SERVICE` |
 
 > **One database ≠ one graph.** GlyCosmos (~150 graphs), PubChem (68), PDB (46), DDBJ
-> (43), IDSM (39) and TogoVar serve many graphs from their *own* endpoint — TogoVar
-> re-types 2.9M variant IRIs across two of its own, and IDSM re-hosts nine chemical
+> (43), IDSM (39), MarpolBase (7) and TogoVar serve many graphs from their *own* endpoint —
+> TogoVar re-types 2.9M variant IRIs across two of its own, MarpolBase re-declares gene
+> identifiers and symbols across two of its own (×2.00 on the plain gene lookup), and IDSM re-hosts nine chemical
 > datasets under their original IRIs with a union default graph. Co-tenancy is a property
 > of **graphs**, not of this table. Only SuperCon (2) and SwissLipids (3, of which just one
 > holds data — the other two are `.well-known/void` and `.well-known/sparql-examples`) are
@@ -123,7 +125,10 @@ Portal's `ebi` → LIPID MAPS; 2026-09-17: `microbes` → UniProt on SIB. Run th
 `SERVICE`: routed to the remote endpoint instead it fails or returns 0 rows. The direction
 matters, and it is NOT a property of the domain: `swisslipids` calls out to Rhea in ~3 s,
 while `lipidmaps` — the other lipid database — cannot call out at all, every `SERVICE`
-from it returning HTTP 502 after ~60 s. Do not carry one lipid DB's answer over to the
+from it returning HTTP 502 after ~60 s. `marpolbase` refuses `SERVICE` by permission
+(verified 2026-09-18: HTTP 500, `SQ070:SECURITY: Must have select privileges on view
+DB.DBA.SPARQL_SINV_2`, in 0.1 s) — a deterministic refusal, not an outage, so its
+cross-DB work is always two separate calls. Do not carry one lipid DB's answer over to the
 other. Copy the MIE's `cross_db` example rather than writing one; each carries its own
 limits (bind the join key locally first, cap the bindings before crossing). Other RDF
 Portal endpoints have not been verified as callers — do not assume it works there.

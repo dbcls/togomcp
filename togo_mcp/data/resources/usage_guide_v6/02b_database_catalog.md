@@ -1,19 +1,19 @@
 ## 📚 DATABASE CATALOG
 
-All 44 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
+All 45 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
 **By category** (a database may appear under several):
 
-- **annotation** — `bh26microbes` `pubtator` `uniprot`
+- **annotation** — `bh26microbes` `marpolbase` `pubtator` `uniprot`
 - **antimicrobial** — `amrportal`
 - **compound** — `chebi` `chembl` `idsm` `lipidmaps` `massbank` `pubchem` `swisslipids` `wikipathways`
 - **disease** — `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `togovar`
 - **drug_target** — `chembl` `idsm`
 - **enzymology** — `brenda`
-- **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `medgen` `ncbigene` `pubcasefinder` `wikipathways`
-- **genomics** — `bh26microbes` `fantabio` `gwascatalog` `hco` `hgnc` `mco` `mogplus` `oma` `togovar`
+- **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `marpolbase` `medgen` `ncbigene` `pubcasefinder` `wikipathways`
+- **genomics** — `bh26microbes` `fantabio` `gwascatalog` `hco` `hgnc` `marpolbase` `mco` `mogplus` `oma` `togovar`
 - **glycan** — `glycosmos`
 - **literature** — `pubmed` `pubtator`
 - **materials** — `supercon`
@@ -68,6 +68,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: proteomics, mass spectrometry, peptide, psm, peptide spectrum match, protein identification, post-translational modification, ptm, unimod, psi-ms, reanalysis, proteome, shotgun proteomics
 - **lipidmaps** — LIPID MAPS Structure Database (LMSD). Classified lipid structures with molecular formula, monoisotopic mass, InChI/InChIKey and lipidomics shorthand notation, organised under the eight-category LIPID MAPS classification hierarchy. _(categories: compound, ontology)_  
   keywords: lipid, lipidomics, fatty acid, glycerophospholipid, sphingolipid, sterol, metabolite, molecular formula, monoisotopic mass, inchikey, shorthand notation, mass spectrometry
+- **marpolbase** — MarpolBase (Marchantia polymorpha). Genome structural annotation, functional annotation, co-expression, orthogroups and curated gene-literature assertions for the liverwort Marchantia polymorpha (MpTak_v7.1). _(categories: annotation, gene, genomics)_  
+  keywords: plant, liverwort, bryophyte, genome, gene model, genome annotation, functional annotation, gene expression, co-expression, orthology, gene symbol, literature curation
 - **massbank** — MassBank — reference mass spectra for small molecules. Open repository of reference MS/MS mass spectra for small molecules (metabolites, drugs, natural products, environmental chemicals): each record links a measured peak list + analytical/instrument met… _(categories: compound)_  
   keywords: mass spectrometry, mass spectra, ms/ms, tandem ms, metabolomics, metabolite, spectral library, fragmentation, peak, molecular formula, inchikey, small molecule, compound identification, splash, exposomics, instrument type, ion mode
 - **mco** — MCO — Mouse Chromosome Ontology. Reference ontology of the mouse (Mus musculus) chromosome set — the 22 chromosomes (1-19, X, Y, MT) as owl:Classes, each with per-build GRCm38 (mm10) and GRCm39 (mm39) instances carrying chromosome l… _(categories: genomics, ontology)_  
