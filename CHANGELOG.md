@@ -49,6 +49,18 @@ RDF Portal, is not in the wheel, and the tool surface a client sees is unchanged
   NCBI Taxonomy and PubMed keep their IRI forms and only move to `rdfs:seeAlso`, so those joins
   are unaffected.
 
+### Added
+
+- **CI now runs the test suite** ([tests.yml](.github/workflows/tests.yml)). Until now every
+  workflow here was a narrow targeted guard — the catalog, the changelog, the MIE claims, the
+  What's New block — and `uv run pytest` ran only on a developer's machine, so #243 merged into
+  `main` with three failing tests and a fully green check list. It runs on every pull request with
+  **no path filter** (the whole point is that a change to one file breaks a test over another,
+  which is exactly what happened) and on pushes to `main` and `dev`, and installs from `uv.lock`
+  with `--frozen` so CI runs the dependency set the lockfile pins rather than a fresh resolve.
+  The suite is hermetic, so it needs no secrets and is safe on a fork PR; live-endpoint checking
+  stays with `mie-drift.yml`.
+
 ### Fixed
 
 - **`tests/test_lotus_ontology_in_sync.py` was left behind by #243 and `main` was briefly red.**
