@@ -36,8 +36,8 @@ in the reference slices of a Wikidata CONSTRUCT export (see `export_lotus.sh`).
 
 Existing predicates are reused through PROPERTY_IRIS (Schema.org, Darwin Core,
 Dublin Core and BIBO). Remaining LOTUS terms use
-http://purl.jp/bio/lotus/ontology/. Basic definitions for these terms are
-embedded and emitted by default. --ontology PATH adds a Turtle vocabulary;
+http://purl.jp/bio/lotus/ontology/. Definitions for these terms (types, labels, comments, domains and ranges)
+are embedded and emitted by default, without rdfs:isDefinedBy. --ontology PATH adds a Turtle vocabulary;
 --no-ontology omits all vocabulary triples. Legacy vocabulary files are rejected
 rather than assigning obsolete class constraints to reused standard terms.
 
@@ -633,44 +633,113 @@ def parse_turtle_subset(text: str, label: str) -> list[tuple[str, str, str]]:
 
 
 def builtin_ontology() -> list[tuple[str, str, str]]:
-    """Basic definitions for remaining LOTUS terms; no redefinition of standards."""
-    rdfs = "http://www.w3.org/2000/01/rdf-schema#"
-    rdf = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-    comments = {
-        "Occurrence": "A literature-supported association between a chemical structure and a taxon, keyed by structure, taxon and reference; not a spatiotemporal occurrence.",
-        "structure": "The chemical structure in a LOTUS compound-taxon-reference association.",
-        "organism": "The taxon in a LOTUS compound-taxon-reference association.",
-        "manuallyValidated": "True when the source marks this association as manually validated; absence does not mean false.",
-        "smiles2D": "The structure_smiles_2D value supplied by LOTUS, kept distinct from structure_smiles.",
-        "exactMass": "The numeric structure_exact_mass value supplied by LOTUS, without an inferred unit or mass convention.",
-        "chemontId": "The CHEMONTID classification identifier supplied by LOTUS, not an identifier of the compound itself.",
-        "xlogp": "The calculated XlogP value supplied by LOTUS, not a generic experimental partition coefficient.",
-        "stereocenterCount": "The total stereocenter count supplied by LOTUS.",
-        "unspecifiedStereocenterCount": "The count of unspecified stereocenters supplied by LOTUS.",
-        "taxonDomain": "The domain name in the LOTUS taxonomic classification.",
-        "taxonSpecies": "The species-level name in the LOTUS taxonomy; not assumed to be a specific epithet.",
-        "taxonVarietas": "The variety-level name in the LOTUS taxonomy; not assumed to be an infraspecific epithet.",
-    }
-    for classifier, levels in (
-        ("npclassifier", ("Pathway", "Superclass", "Class")),
-        ("classyfire", ("Kingdom", "Superclass", "Class", "DirectParent")),
-    ):
-        for level in levels:
-            comments[classifier + level] = (
-                f"The {level} classification label assigned by {classifier} in LOTUS."
-            )
-    triples = []
-    for term, comment in comments.items():
-        subject = LOTUS + term
-        term_type = rdfs + "Class" if term == "Occurrence" else rdf + "Property"
-        label = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", term)
-        triples.extend([
-            (subject, RDF_TYPE, iri_ref(term_type)),
-            (subject, RDFS_LABEL, lit(label)),
-            (subject, rdfs + "comment", lit(comment)),
-            (subject, rdfs + "isDefinedBy", iri_ref(LOTUS)),
-        ])
-    return triples
+    """Inline definitions adapted from the supplied lotus_ontology.ttl.
+
+    Only remaining LOTUS terms are defined. Domains/ranges follow current
+    standard classes. Release-specific statistics and isDefinedBy are omitted.
+    """
+    return [
+        ('http://purl.jp/bio/lotus/ontology/Occurrence', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#Class>'),
+        ('http://purl.jp/bio/lotus/ontology/Occurrence', 'http://www.w3.org/2000/01/rdf-schema#label', '"Occurrence"'),
+        ('http://purl.jp/bio/lotus/ontology/Occurrence', 'http://www.w3.org/2000/01/rdf-schema#comment', '"A report that one chemical structure was found in one taxon, documented by one literature reference. The same structure-taxon pair can have multiple occurrences supported by different references. The occurrence IRI is deterministically constructed from the three Wikidata QIDs."'),
+        ('http://purl.jp/bio/lotus/ontology/structure', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#ObjectProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/structure', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#FunctionalProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/structure', 'http://www.w3.org/2000/01/rdf-schema#label', '"structure"'),
+        ('http://purl.jp/bio/lotus/ontology/structure', 'http://www.w3.org/2000/01/rdf-schema#domain', '<http://purl.jp/bio/lotus/ontology/Occurrence>'),
+        ('http://purl.jp/bio/lotus/ontology/structure', 'http://www.w3.org/2000/01/rdf-schema#range', '<https://schema.org/MolecularEntity>'),
+        ('http://purl.jp/bio/lotus/ontology/structure', 'http://www.w3.org/2000/01/rdf-schema#comment', '"The chemical structure reported by this occurrence. Exactly one."'),
+        ('http://purl.jp/bio/lotus/ontology/organism', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#ObjectProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/organism', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#FunctionalProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/organism', 'http://www.w3.org/2000/01/rdf-schema#label', '"organism"'),
+        ('http://purl.jp/bio/lotus/ontology/organism', 'http://www.w3.org/2000/01/rdf-schema#domain', '<http://purl.jp/bio/lotus/ontology/Occurrence>'),
+        ('http://purl.jp/bio/lotus/ontology/organism', 'http://www.w3.org/2000/01/rdf-schema#range', '<http://rs.tdwg.org/dwc/terms/Taxon>'),
+        ('http://purl.jp/bio/lotus/ontology/organism', 'http://www.w3.org/2000/01/rdf-schema#comment', '"The taxon from which the chemical structure was reported. Exactly one."'),
+        ('http://purl.jp/bio/lotus/ontology/manuallyValidated', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#DatatypeProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/manuallyValidated', 'http://www.w3.org/2000/01/rdf-schema#label', '"manually validated"'),
+        ('http://purl.jp/bio/lotus/ontology/manuallyValidated', 'http://www.w3.org/2000/01/rdf-schema#domain', '<http://purl.jp/bio/lotus/ontology/Occurrence>'),
+        ('http://purl.jp/bio/lotus/ontology/manuallyValidated', 'http://www.w3.org/2000/01/rdf-schema#range', '<http://www.w3.org/2001/XMLSchema#boolean>'),
+        ('http://purl.jp/bio/lotus/ontology/manuallyValidated', 'http://www.w3.org/2000/01/rdf-schema#comment', '"True when LOTUS curators manually validated this occurrence. Absence means not checked, not false. The CSV value NA is not emitted as false. To find records without this flag, use FILTER NOT EXISTS or OPTIONAL."'),
+        ('http://purl.jp/bio/lotus/ontology/smiles2D', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#DatatypeProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/smiles2D', 'http://www.w3.org/2000/01/rdf-schema#label', '"2D SMILES"'),
+        ('http://purl.jp/bio/lotus/ontology/smiles2D', 'http://www.w3.org/2000/01/rdf-schema#domain', '<https://schema.org/MolecularEntity>'),
+        ('http://purl.jp/bio/lotus/ontology/smiles2D', 'http://www.w3.org/2000/01/rdf-schema#range', '<http://www.w3.org/2001/XMLSchema#string>'),
+        ('http://purl.jp/bio/lotus/ontology/smiles2D', 'http://www.w3.org/2000/01/rdf-schema#comment', '"Flat SMILES with stereochemistry removed, supplied by structure_smiles_2D. Kept distinct from the stereochemistry-preserving representation emitted with schema:smiles."'),
+        ('http://purl.jp/bio/lotus/ontology/exactMass', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#DatatypeProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/exactMass', 'http://www.w3.org/2000/01/rdf-schema#label', '"exact mass"'),
+        ('http://purl.jp/bio/lotus/ontology/exactMass', 'http://www.w3.org/2000/01/rdf-schema#domain', '<https://schema.org/MolecularEntity>'),
+        ('http://purl.jp/bio/lotus/ontology/exactMass', 'http://www.w3.org/2000/01/rdf-schema#range', '<http://www.w3.org/2001/XMLSchema#decimal>'),
+        ('http://purl.jp/bio/lotus/ontology/exactMass', 'http://www.w3.org/2000/01/rdf-schema#comment', '"Monoisotopic exact mass in daltons, as described in the supplied LOTUS vocabulary. Emitted as xsd:decimal for numeric filtering."'),
+        ('http://purl.jp/bio/lotus/ontology/xlogp', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#DatatypeProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/xlogp', 'http://www.w3.org/2000/01/rdf-schema#label', '"XLogP"'),
+        ('http://purl.jp/bio/lotus/ontology/xlogp', 'http://www.w3.org/2000/01/rdf-schema#domain', '<https://schema.org/MolecularEntity>'),
+        ('http://purl.jp/bio/lotus/ontology/xlogp', 'http://www.w3.org/2000/01/rdf-schema#range', '<http://www.w3.org/2001/XMLSchema#decimal>'),
+        ('http://purl.jp/bio/lotus/ontology/xlogp', 'http://www.w3.org/2000/01/rdf-schema#comment', '"Computed octanol-water partition coefficient (XLogP), supplied by LOTUS and emitted as xsd:decimal."'),
+        ('http://purl.jp/bio/lotus/ontology/stereocenterCount', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#DatatypeProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/stereocenterCount', 'http://www.w3.org/2000/01/rdf-schema#label', '"stereocenter count"'),
+        ('http://purl.jp/bio/lotus/ontology/stereocenterCount', 'http://www.w3.org/2000/01/rdf-schema#domain', '<https://schema.org/MolecularEntity>'),
+        ('http://purl.jp/bio/lotus/ontology/stereocenterCount', 'http://www.w3.org/2000/01/rdf-schema#range', '<http://www.w3.org/2001/XMLSchema#integer>'),
+        ('http://purl.jp/bio/lotus/ontology/stereocenterCount', 'http://www.w3.org/2000/01/rdf-schema#comment', '"The total stereocenter count supplied by LOTUS."'),
+        ('http://purl.jp/bio/lotus/ontology/unspecifiedStereocenterCount', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#DatatypeProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/unspecifiedStereocenterCount', 'http://www.w3.org/2000/01/rdf-schema#label', '"unspecified stereocenter count"'),
+        ('http://purl.jp/bio/lotus/ontology/unspecifiedStereocenterCount', 'http://www.w3.org/2000/01/rdf-schema#domain', '<https://schema.org/MolecularEntity>'),
+        ('http://purl.jp/bio/lotus/ontology/unspecifiedStereocenterCount', 'http://www.w3.org/2000/01/rdf-schema#range', '<http://www.w3.org/2001/XMLSchema#integer>'),
+        ('http://purl.jp/bio/lotus/ontology/unspecifiedStereocenterCount', 'http://www.w3.org/2000/01/rdf-schema#comment', '"The count of unspecified stereocenters supplied by LOTUS."'),
+        ('http://purl.jp/bio/lotus/ontology/npclassifierPathway', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#DatatypeProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/npclassifierPathway', 'http://www.w3.org/2000/01/rdf-schema#label', '"NPClassifier pathway"'),
+        ('http://purl.jp/bio/lotus/ontology/npclassifierPathway', 'http://www.w3.org/2000/01/rdf-schema#domain', '<https://schema.org/MolecularEntity>'),
+        ('http://purl.jp/bio/lotus/ontology/npclassifierPathway', 'http://www.w3.org/2000/01/rdf-schema#range', '<http://www.w3.org/2001/XMLSchema#string>'),
+        ('http://purl.jp/bio/lotus/ontology/npclassifierPathway', 'http://www.w3.org/2000/01/rdf-schema#comment', '"Biosynthetic pathway classification from NPClassifier, for example Polyketides. Repeatable: values separated by \\" $ \\" in a CSV cell are emitted as separate triples."'),
+        ('http://purl.jp/bio/lotus/ontology/npclassifierSuperclass', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#DatatypeProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/npclassifierSuperclass', 'http://www.w3.org/2000/01/rdf-schema#label', '"NPClassifier superclass"'),
+        ('http://purl.jp/bio/lotus/ontology/npclassifierSuperclass', 'http://www.w3.org/2000/01/rdf-schema#domain', '<https://schema.org/MolecularEntity>'),
+        ('http://purl.jp/bio/lotus/ontology/npclassifierSuperclass', 'http://www.w3.org/2000/01/rdf-schema#range', '<http://www.w3.org/2001/XMLSchema#string>'),
+        ('http://purl.jp/bio/lotus/ontology/npclassifierSuperclass', 'http://www.w3.org/2000/01/rdf-schema#comment', '"Superclass from NPClassifier. Repeatable, with multiple values emitted as separate triples."'),
+        ('http://purl.jp/bio/lotus/ontology/npclassifierClass', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#DatatypeProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/npclassifierClass', 'http://www.w3.org/2000/01/rdf-schema#label', '"NPClassifier class"'),
+        ('http://purl.jp/bio/lotus/ontology/npclassifierClass', 'http://www.w3.org/2000/01/rdf-schema#domain', '<https://schema.org/MolecularEntity>'),
+        ('http://purl.jp/bio/lotus/ontology/npclassifierClass', 'http://www.w3.org/2000/01/rdf-schema#range', '<http://www.w3.org/2001/XMLSchema#string>'),
+        ('http://purl.jp/bio/lotus/ontology/npclassifierClass', 'http://www.w3.org/2000/01/rdf-schema#comment', '"Class from NPClassifier, the most specific of its three levels. Repeatable, with multiple values emitted as separate triples."'),
+        ('http://purl.jp/bio/lotus/ontology/classyfireKingdom', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#DatatypeProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/classyfireKingdom', 'http://www.w3.org/2000/01/rdf-schema#label', '"ClassyFire kingdom"'),
+        ('http://purl.jp/bio/lotus/ontology/classyfireKingdom', 'http://www.w3.org/2000/01/rdf-schema#domain', '<https://schema.org/MolecularEntity>'),
+        ('http://purl.jp/bio/lotus/ontology/classyfireKingdom', 'http://www.w3.org/2000/01/rdf-schema#range', '<http://www.w3.org/2001/XMLSchema#string>'),
+        ('http://purl.jp/bio/lotus/ontology/classyfireKingdom', 'http://www.w3.org/2000/01/rdf-schema#comment', '"Kingdom in the ClassyFire chemical taxonomy. ClassyFire describes structural classification; NPClassifier describes biosynthetic classification. These are independent classification systems."'),
+        ('http://purl.jp/bio/lotus/ontology/classyfireSuperclass', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#DatatypeProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/classyfireSuperclass', 'http://www.w3.org/2000/01/rdf-schema#label', '"ClassyFire superclass"'),
+        ('http://purl.jp/bio/lotus/ontology/classyfireSuperclass', 'http://www.w3.org/2000/01/rdf-schema#domain', '<https://schema.org/MolecularEntity>'),
+        ('http://purl.jp/bio/lotus/ontology/classyfireSuperclass', 'http://www.w3.org/2000/01/rdf-schema#range', '<http://www.w3.org/2001/XMLSchema#string>'),
+        ('http://purl.jp/bio/lotus/ontology/classyfireSuperclass', 'http://www.w3.org/2000/01/rdf-schema#comment', '"The Superclass classification label assigned by classyfire in LOTUS."'),
+        ('http://purl.jp/bio/lotus/ontology/classyfireClass', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#DatatypeProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/classyfireClass', 'http://www.w3.org/2000/01/rdf-schema#label', '"ClassyFire class"'),
+        ('http://purl.jp/bio/lotus/ontology/classyfireClass', 'http://www.w3.org/2000/01/rdf-schema#domain', '<https://schema.org/MolecularEntity>'),
+        ('http://purl.jp/bio/lotus/ontology/classyfireClass', 'http://www.w3.org/2000/01/rdf-schema#range', '<http://www.w3.org/2001/XMLSchema#string>'),
+        ('http://purl.jp/bio/lotus/ontology/classyfireClass', 'http://www.w3.org/2000/01/rdf-schema#comment', '"The Class classification label assigned by classyfire in LOTUS."'),
+        ('http://purl.jp/bio/lotus/ontology/classyfireDirectParent', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#DatatypeProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/classyfireDirectParent', 'http://www.w3.org/2000/01/rdf-schema#label', '"ClassyFire direct parent"'),
+        ('http://purl.jp/bio/lotus/ontology/classyfireDirectParent', 'http://www.w3.org/2000/01/rdf-schema#domain', '<https://schema.org/MolecularEntity>'),
+        ('http://purl.jp/bio/lotus/ontology/classyfireDirectParent', 'http://www.w3.org/2000/01/rdf-schema#range', '<http://www.w3.org/2001/XMLSchema#string>'),
+        ('http://purl.jp/bio/lotus/ontology/classyfireDirectParent', 'http://www.w3.org/2000/01/rdf-schema#comment', '"The most specific ClassyFire chemical taxonomy term assigned to the structure."'),
+        ('http://purl.jp/bio/lotus/ontology/chemontId', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#DatatypeProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/chemontId', 'http://www.w3.org/2000/01/rdf-schema#label', '"ChemOnt ID"'),
+        ('http://purl.jp/bio/lotus/ontology/chemontId', 'http://www.w3.org/2000/01/rdf-schema#domain', '<https://schema.org/MolecularEntity>'),
+        ('http://purl.jp/bio/lotus/ontology/chemontId', 'http://www.w3.org/2000/01/rdf-schema#range', '<http://www.w3.org/2001/XMLSchema#string>'),
+        ('http://purl.jp/bio/lotus/ontology/chemontId', 'http://www.w3.org/2000/01/rdf-schema#comment', '"ClassyFire ChemOnt classification identifier in zero-padded form, for example CHEMONTID:0002518. A string identifying the assigned chemical class, not an identifier of the compound itself."'),
+        ('http://purl.jp/bio/lotus/ontology/taxonDomain', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#DatatypeProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/taxonDomain', 'http://www.w3.org/2000/01/rdf-schema#label', '"domain"'),
+        ('http://purl.jp/bio/lotus/ontology/taxonDomain', 'http://www.w3.org/2000/01/rdf-schema#domain', '<http://rs.tdwg.org/dwc/terms/Taxon>'),
+        ('http://purl.jp/bio/lotus/ontology/taxonDomain', 'http://www.w3.org/2000/01/rdf-schema#range', '<http://www.w3.org/2001/XMLSchema#string>'),
+        ('http://purl.jp/bio/lotus/ontology/taxonDomain', 'http://www.w3.org/2000/01/rdf-schema#comment', '"The domain name in the LOTUS taxonomic classification."'),
+        ('http://purl.jp/bio/lotus/ontology/taxonSpecies', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#DatatypeProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/taxonSpecies', 'http://www.w3.org/2000/01/rdf-schema#label', '"species"'),
+        ('http://purl.jp/bio/lotus/ontology/taxonSpecies', 'http://www.w3.org/2000/01/rdf-schema#domain', '<http://rs.tdwg.org/dwc/terms/Taxon>'),
+        ('http://purl.jp/bio/lotus/ontology/taxonSpecies', 'http://www.w3.org/2000/01/rdf-schema#range', '<http://www.w3.org/2001/XMLSchema#string>'),
+        ('http://purl.jp/bio/lotus/ontology/taxonSpecies', 'http://www.w3.org/2000/01/rdf-schema#comment', '"The species-level name in the LOTUS taxonomy; not assumed to be a specific epithet."'),
+        ('http://purl.jp/bio/lotus/ontology/taxonVarietas', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', '<http://www.w3.org/2002/07/owl#DatatypeProperty>'),
+        ('http://purl.jp/bio/lotus/ontology/taxonVarietas', 'http://www.w3.org/2000/01/rdf-schema#label', '"varietas"'),
+        ('http://purl.jp/bio/lotus/ontology/taxonVarietas', 'http://www.w3.org/2000/01/rdf-schema#domain', '<http://rs.tdwg.org/dwc/terms/Taxon>'),
+        ('http://purl.jp/bio/lotus/ontology/taxonVarietas', 'http://www.w3.org/2000/01/rdf-schema#range', '<http://www.w3.org/2001/XMLSchema#string>'),
+        ('http://purl.jp/bio/lotus/ontology/taxonVarietas', 'http://www.w3.org/2000/01/rdf-schema#comment', '"The variety-level name in the LOTUS taxonomy; not assumed to be an infraspecific epithet."'),
+    ]
 
 
 def emit_ontology(sink: Sink, triples: list[tuple[str, str, str]]) -> int:
@@ -684,6 +753,9 @@ def emit_ontology(sink: Sink, triples: list[tuple[str, str, str]]) -> int:
     """
     before = sink.written
     for subject, predicate, obj in triples:
+        # Also suppress this predicate in additional --ontology definitions.
+        if predicate == "http://www.w3.org/2000/01/rdf-schema#isDefinedBy":
+            continue
         sink.triple(subject, predicate, obj)
     return sink.written - before
 
