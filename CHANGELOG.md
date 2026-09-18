@@ -13,6 +13,30 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+<!-- whatsnew: 2026-09-18 | New database <code>marpolbase</code> — the <em>Marchantia polymorpha</em> reference genome (MpTak_v7.1): 18,007 annotated genes, 18,232 orthogroups, a 740,830-edge co-expression network and 2,609 curated gene-literature assertions. -->
+
+### Added
+- **`marpolbase` database** — MarpolBase, the *Marchantia polymorpha* reference genome
+  (MpTak_v7.1), on its own Virtuoso endpoint (`https://marchantia.info/sparql`, endpoint group
+  `marpolbase`). The first plant genome in the corpus, and the first bryophyte: 18,007
+  protein-coding genes with structural and functional annotation (GO, Pfam, KEGG, KOG), 18,232
+  orthogroups, a 740,830-edge co-expression network over 164 RNA-seq conditions with a PECO/PO-mapped
+  controlled vocabulary, and 2,609 hand-curated gene–literature assertions across 510 papers. No
+  tool, parameter or return shape changed, and it reaches every client at once through the Usage
+  Guide catalog — no connector re-scan needed.
+
+  The MIE carries 13 verified examples and 7 database-wide gotchas, every falsifiable claim
+  machine-checked. The traps are the reason it is worth its bytes: each returns a plausible wrong
+  answer rather than an error. Results are capped at 10,000 rows and a larger `LIMIT` does not lift
+  it (enumerating the 18,080 genes silently returns 10,000, while `COUNT` correctly says 18,080, and
+  ordered `OFFSET` paging fails two different ways) — partition instead. `ORDER BY` on an ungrouped
+  aggregate is silently regrouped, turning one row of 18,080 into 18,080 rows of 1. The database's
+  own two main graphs re-declare identifiers and labels on the same gene IRIs, so an unpinned lookup
+  inflates ×2.00 — pinning "the database's graphs" is not enough here, exactly one graph must be
+  pinned. `ORDER BY` sorts `xsd:double`/`xsd:integer` lexically. `faldo:begin > faldo:end` on the
+  minus strand (50.1% of genes), so a `begin`/`end` range query silently drops half the genome.
+  `SERVICE` is refused by permission, so every cross-DB hop is a second query.
+
 ## [2.19.0] - 2026-09-18
 
 Adds one experimental database and changes nothing else: no tool, parameter or return shape moved,
