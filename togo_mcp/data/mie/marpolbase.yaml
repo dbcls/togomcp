@@ -60,7 +60,7 @@ graphs:
     literature/unmapped: >
       RETIRED 2026-09-18 and now returns 0 triples — do not pin it. Its 32 gene-unlinked
       papers were folded into the function graph, which is where they are queried now
-      (see the orphan_papers trap on gene_literature). Recorded here because an agent
+      (see gene_literature's trap on papers joined to no gene). Recorded here because an agent
       working from the 2026-09-17 documentation will otherwise pin a graph that silently
       answers nothing.
 
@@ -69,7 +69,7 @@ entity_counts:
   # same-day regeneration that took the function graph from 4,831,774 to 5,321,527 triples
   genes_function_graph: 18080             # mpo:Gene in the function graph — the headline gene count
   protein_coding_genes_annotation: 18007  # obo:SO_0001217 in the annotation graph; 73 function-graph genes have no structural annotation at all
-  genes_with_symbol: 3215                 # mpo:Gene carrying skos:prefLabel — NOT 15,848 (see prefLabel_is_polymorphic)
+  genes_with_symbol: 3215                 # mpo:Gene carrying skos:prefLabel — NOT 15,848 (see gene_by_symbol)
   genes_with_secondary_symbol: 92         # a second symbol reachable ONLY via skos:altLabel
   genes_with_go: 10366
   genes_with_pfam: 11462
@@ -1021,5 +1021,16 @@ id_join_map:
     other_species_genes: "mpo:hasMember on an OrthoGroup, as a PLAIN STRING in each species' own scheme (TAIR AT3G50360, Physcomitrium Pp3c3_34260V3, Klebsormidium kfl00154_0210_v1) — no IRI is minted, so these are the strings to hand to TogoID."
   bridged_via_togoid:
     - "UniProt and PubMed need no bridge — both are emitted as native IRIs, and a UniProt accession is the shortest route onward (uniprot -> pdb / chembl_target)."
-    - "For the other-species orthologs, convert the mpo:hasMember string with togoid_convertId (AGI -> ensembl_gene -> uniprot); there is no direct node for TAIR here."
-    - "For anything keyed on the legacy Mapoly (v3.1) identifiers, convert from mpo:v3Identifier rather than from the MpTak_v7.1 id."
+    - >
+      For the other-species orthologs, convert the mpo:hasMember string with togoid_convertId;
+      there is no direct node for TAIR here. The TogoID dataset key is `tair` (identifyId resolves
+      AT3G20980 to it) — NOT "AGI", which convertId rejects outright as not a dataset key. There is
+      also no tair <> ensembl_gene relation, so the working route is `tair,ncbigene,uniprot`,
+      verified 2026-09-18: AT3G20980 -> F4IWC6, AT3G21000 -> Q1PEN6, AT1G03800 -> Q9ZWA2 + Q08A59.
+      Of TogoID's 119 datasets `tair` is the only plant-gene one, so the Physcomitrium and
+      Klebsormidium members in the same orthogroup cannot be bridged this way at all.
+    - >
+      For anything keyed on the legacy Mapoly (v3.1) identifiers, join on mpo:v3Identifier rather
+      than the MpTak_v7.1 id. This is a LOCAL join, not a TogoID hop: TogoID carries no Marchantia
+      or Mapoly dataset (checked 2026-09-18 across all 119 keys), so an external resource on
+      Mapoly ids has to be matched on the string itself.
