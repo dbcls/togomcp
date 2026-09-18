@@ -45,7 +45,7 @@ entity_counts:                     # SPARQL counts COUNT(DISTINCT)/graph-pinned,
   mnv: 492
   indel: 67
   clinvar_annotated: 2944525       # variants carrying a ClinVar annotation (~0.75% of total); in GRAPH <…/variant/annotation/clinvar>
-  rest_api_total_variants: 1097708150   # REST togovar_search_variant total — ~2.81x the SPARQL subset. SOURCE: REST tool, verified 2026-07-15 (NOT a SPARQL count; see gotcha sparql_is_subset)
+  rest_api_total_variants: 1097708150   # REST togovar_search_variant total. SOURCE: REST tool, verified 2026-07-15; do not compare directly with RDF counts without matching the response scope.
 
 global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
   - id: graph_scoped_predicates
@@ -83,15 +83,11 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
 
   - id: sparql_is_subset
     say: >
-      This SPARQL endpoint is the ANNOTATED SUBSET (390,725,782 variants); the TogoVar REST API reports
-      1,097,708,150 (~2.8x more). Do NOT reconcile counts across backends or quote the SPARQL total as "the size
-      of TogoVar". The gap INCLUDES clinically important variants: e.g. the ClinVar-PATHOGENIC CFTR 7:117480132-C-T
-      has NO node in <…/variant> (verified 2026-07-22: positional lookup returns 0) and tgv_id=null in REST. Use the
-      REST tool togovar_search_variant for whole-DB totals, allele frequencies, and comprehensive/pathogenic enumeration.
-      For the 2026.1 release, the variants listed in the TogoVar dataset documentation
-      (https://stg-grch38.togovar.org/doc/datasets) are represented in this endpoint.
-      Population allele frequencies are not included in RDF. Do not use a SPARQL count
-      as the total number of TogoVar variants.
+      For the TogoVar 2026.1 release, the RDF endpoint contains all TogoVar variant records
+      listed in the dataset documentation (https://stg-grch38.togovar.org/doc/datasets),
+      except population allele-frequency information. Use REST for whole-result retrieval
+      and population allele frequencies; use SPARQL for variant annotations and RDF joins.
+      Do not interpret an RDF count as including population allele-frequency records.
   - id: no_frequencies
     say: >
       Per-population allele frequencies (ToMMo/54KJPN, gnomAD, JGA, GEM-J, NCBN, BBJ) are NOT in this SPARQL endpoint
@@ -199,7 +195,7 @@ examples:
 
   - id: count_variant_class
     intent: count a variant class correctly, avoiding the cross-graph re-typing inflation (the scoped-aggregation recipe)
-    question: "How many Insertion variants are in TogoVar (the SPARQL subset)?"
+    question: "How many Insertion variants are in the TogoVar RDF variant graph?"
     complexity: aggregation
     sparql: |
       PREFIX gvo: <http://genome-variation.org/resource#>
@@ -210,13 +206,13 @@ examples:
         }
       }
     verified: {n: 22340786, date: "2026-07-22"}
-    teaches: "Pinning GRAPH <http://togovar.org/variant> gives the true class size (a fast Virtuoso type-index scan). Classes: SNV 339,076,968 · Deletion 29,307,469 · Insertion 22,340,786 · MNV 492 · Indel 67 → total 390,725,782."
+    teaches: "Pinning GRAPH <http://togovar.org/variant> gives the class size for the current RDF release (a fast Virtuoso type-index scan). Classes: SNV 339,076,968 · Deletion 29,307,469 · Insertion 22,340,786 · MNV 492 · Indel 67. Population allele frequencies are not represented in this graph."
     traps_avoided:
       - "An unscoped `SELECT (COUNT(?v)) WHERE { ?v a gvo:Insertion }` double-counts ClinVar-annotated variants (gotcha union_inflation)."
 
-  - id: enum_consequence            # §4.4 FLAGGED enumeration example — set-level SO-consequence route + the welded SPARQL-subset caveat
+  - id: enum_consequence            # §4.4 FLAGGED enumeration example — set-level SO-consequence route
     intent: enumerate ALL variants of a given functional class (SO consequence) in a gene — the controlled-vocabulary set route
-    question: "How many missense variants does ALDH2 have (in the annotated SPARQL subset)?"
+    question: "How many missense variants does ALDH2 have in the TogoVar RDF endpoint?"
     complexity: aggregation
     sparql: |
       PREFIX tgvo: <http://togovar.biosciencedbc.jp/vocabulary/>
@@ -235,10 +231,7 @@ examples:
       (SO IRI), a *_prediction literal (see enum_sift_deleterious), or a ClinVar significance literal — NOT a text/name match.
       This is the set-level route; anchor on a gene/region IRI (an unanchored scan hits 390M rows).
     traps_avoided:
-      - "SUBSET CAVEAT (load-bearing, do NOT drop): this SPARQL endpoint is the ~2.8x-smaller ANNOTATED SUBSET and MISSES
-         variants outright — including ClinVar-PATHOGENIC ones (e.g. CFTR 7:117480132-C-T, tgv_id=null, verified absent
-         2026-07-22). SPARQL enumeration is therefore NOT comprehensive. For COMPLETE clinical/pathogenic enumeration use the
-         REST tool togovar_search_variant (filter by significance/consequence), NOT SPARQL — SPARQL enumerates only the subset it carries."
+      - "Population allele frequencies are not represented in RDF. Use togovar_search_variant for frequency values and frequency filters; use the RDF endpoint for annotation and RDF joins."
       - "most_severe_consequence is per-variant (one SO term); tgvo:hasConsequence rdf:types are per-transcript. Count DISTINCT variants (gotcha per_transcript_fanout)."
 
   - id: variant_report
@@ -314,7 +307,7 @@ id_join_map:
     Variant = IRI http://identifiers.org/hco/{chr}/GRCh38#{pos}-{ref}-{alt} (built from GRCh38 coords + NORMALIZED
     alleles). dcterms:identifier = the tgv ID (e.g. "tgv47264307"); dbSNP rsID (rdfs:seeAlso IRI) is a stable
     secondary key. In REST, gate any REST→SPARQL round-trip on tgv_id != null (variant_iri is constructed for every
-    row, incl. variants absent from this endpoint — see gotcha sparql_is_subset).
+    row; verify tgv_id before performing an RDF round-trip.)
   same_endpoint_joins:            # embedded on the TogoVar endpoint — direct cross-GRAPH join, NO TogoID bridge
     sequence_ontology: "tgvo:most_severe_consequence / consequence rdf:type → obo/SO_… IRI; labels in GRAPH <…/so> (examples rsid_consequence, enum_consequence)"
     ensembl_gene:      "tgvo:gene → …/ensembl/ENSG… IRI (POLYMORPHIC — also NCBI Gene IDs under the same namespace; split via tgvo:gene_symbol_source) (example gene_variants)"
@@ -326,7 +319,7 @@ id_join_map:
     ncbi_gene: "embedded-ClinVar med2rdf:gene → ncbi.nlm.nih.gov/gene/{n} (multi-valued)"
   bridged_via_togoid:             # TogoVar is a STANDALONE endpoint, NOT federated with RDF Portal — external DBs route via TogoID
     - "RDF Portal DBs (uniprot, chembl, ensembl, clinvar-standalone, etc.) reach TogoVar's entities only via togoid_convertId on the dbSNP rsID, ENSG gene, HGNC IRI, or NCBI gene — there is no federated SPARQL join."
-    - "REST companion tools (togovar sub-server): togovar_search_gene and togovar_search_disease are candidate-search routes, not canonical resolvers. Resolve gene identifiers with HGNC and disease identifiers with MONDO before passing them to TogoVar. togovar_search_variant remains the PRIMARY path for allele frequencies and comprehensive/pathogenic enumeration (SPARQL is only the annotated subset)."
+    - "REST companion tools (togovar sub-server): togovar_search_gene and togovar_search_disease are candidate-search routes, not canonical resolvers. Resolve gene identifiers with HGNC and disease identifiers with MONDO before passing them to TogoVar. togovar_search_variant remains the PRIMARY path for population allele frequencies and REST-specific variant fields."
 
 # ── byte-count footer (spec §5 item 7) ──
 # v2: `wc -c togo_mcp/data/mie/togovar.yaml` = 57925 bytes
