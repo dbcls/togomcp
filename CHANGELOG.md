@@ -13,6 +13,13 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.19.0] - 2026-09-18
+
+Adds one experimental database and changes nothing else: no tool, parameter or return shape moved,
+so every existing call keeps working. A new database reaches every client immediately — the catalog
+ships inside `TogoMCP_Usage_Guide` at query time and `database=` is validated server-side — so no
+connector re-scan is needed to use it.
+
 ### Added
 - **`bh26microbes` database (experimental)** — the BioHackathon 2026 KofamScan KEGG Orthology
   assignments for 57.6M RefSeq proteins across 23,434 prokaryotic genomes
@@ -2808,6 +2815,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v2.18.0...HEAD
+[2.19.0]: https://github.com/dbcls/togomcp/compare/v2.18.0...v2.19.0
 [2.18.0]: https://github.com/dbcls/togomcp/compare/v2.17.0...v2.18.0
 [2.17.0]: https://github.com/dbcls/togomcp/compare/v2.16.2...v2.17.0
 [2.16.2]: https://github.com/dbcls/togomcp/compare/v2.16.1...v2.16.2
