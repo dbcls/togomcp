@@ -80,9 +80,22 @@ RDF Portal, is not in the wheel, and the tool surface a client sees is unchanged
   defined (and nothing may be defined that is never emitted), a `PROPERTY_IRIS` mapping must
   actually leave the LOTUS namespace or the reuse is cosmetic, and a link field must never reach
   `sink.lotus` — the subtle one, since `pmcid` is listed in `REF_WD_PROPS` but intercepted into a
-  PMC `rdfs:seeAlso`. Also pinned: `emit_ontology` strips `rdfs:isDefinedBy`, and the legacy
-  `lotus_ontology.ttl` is still rejected by `--ontology`. 8 tests become 12, and each new
-  assertion was mutation-tested to confirm it fails when the invariant it names is broken.
+  PMC `rdfs:seeAlso`. Also pinned: `emit_ontology` strips `rdfs:isDefinedBy`, the legacy
+  `lotus_ontology.ttl` is still rejected by `--ontology`, and the cross-reference IRIs still match
+  the graphs they point at. 8 tests become 13, and each new assertion was mutation-tested to
+  confirm it fails when the invariant it names is broken.
+
+- **`scripts/lotus/lotus_schema.md` described the pre-#243 model throughout.** Same drift, second
+  file, and unlike the tests nothing would ever have failed because of it: the namespace table,
+  the model diagram, all four property tables, the vocabulary section, the worked instance, all
+  four example queries and two of the open questions still documented `lotus:` terms that had
+  moved to Schema.org, Darwin Core, Dublin Core and BIBO, and `skos:exactMatch` arrows that are
+  now `rdfs:seeAlso`. Rewritten against the current model, with the mapping derived from the
+  converter rather than transcribed. Two figures are deliberately **not** restated as fact — the
+  total triple count and the output size both moved when the CID literal was dropped and the
+  taxon ids became links, and re-measuring needs a fresh conversion of the 1.3 GB source, so they
+  are marked for re-measurement rather than guessed. The example queries are retargeted but
+  flagged as not re-run for the same reason.
 
 ## [2.20.0] - 2026-09-18
 

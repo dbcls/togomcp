@@ -53,9 +53,20 @@ invisible.
 
 | Prefix | IRI | Use |
 | --- | --- | --- |
-| `lotus:` | `http://rdfportal.org/ontology/lotus#` | classes and properties |
+| `schema:` | `https://schema.org/` | structure class and chemical identifiers |
+| `dwc:` | `http://rs.tdwg.org/dwc/terms/` | organism class and taxonomic ranks |
+| `dcterms:` | `http://purl.org/dc/terms/` | reference class, bibliographic metadata |
+| `bibo:` | `http://purl.org/ontology/bibo/` | DOI and PMID literals |
+| `lotus:` | `http://purl.jp/bio/lotus/ontology/` | only what has no standard equivalent |
 | `ldat:` | `http://rdfportal.org/dataset/lotus/` | minted occurrence IRIs |
 | `wd:` | `http://www.wikidata.org/entity/` | structures, organisms, references |
+
+**Standard vocabularies are reused wherever one fits.** Of the 43 fields the
+converter emits, 20 carry a Schema.org, Darwin Core, Dublin Core or BIBO
+predicate and 4 are `rdfs:seeAlso` links, leaving 19 in the LOTUS namespace —
+only those with no standard equivalent. Near-misses were left unmapped rather
+than forced: exact mass is not `schema:molecularWeight`, and a full species name
+is not a `dwc:specificEpithet`.
 
 Named graph: `http://rdfportal.org/dataset/lotus`
 
@@ -79,15 +90,15 @@ and two releases can be diffed directly.
 ```mermaid
 graph LR
   OCC[lotus:Occurrence<br/>ldat:occurrence/…]
-  STR[lotus:Structure<br/>wd:Q…]
-  ORG[lotus:Organism<br/>wd:Q…]
-  REF[lotus:Reference<br/>wd:Q…]
+  STR[schema:MolecularEntity<br/>wd:Q…]
+  ORG[dwc:Taxon<br/>wd:Q…]
+  REF[dcterms:BibliographicResource<br/>wd:Q…]
   OCC -->|lotus:structure| STR
   OCC -->|lotus:organism| ORG
-  OCC -->|lotus:reference| REF
-  STR -->|skos:exactMatch| PC[PubChem compound]
-  ORG -->|skos:exactMatch| TX[NCBI taxonomy]
-  REF -->|skos:exactMatch| PM[PubMed]
+  OCC -->|dcterms:references| REF
+  STR -->|rdfs:seeAlso| PC[PubChem compound]
+  ORG -->|rdfs:seeAlso| TX[NCBI taxonomy]
+  REF -->|rdfs:seeAlso| PM[PubMed]
 ```
 
 An **occurrence** is the unit of assertion: *this structure was reported in this
@@ -101,37 +112,52 @@ v11).
 
 | Property | Range | Notes |
 | --- | --- | --- |
-| `lotus:structure` | `lotus:Structure` | exactly 1 |
-| `lotus:organism` | `lotus:Organism` | exactly 1 |
-| `lotus:reference` | `lotus:Reference` | exactly 1 |
+| `lotus:structure` | `schema:MolecularEntity` | exactly 1, `owl:FunctionalProperty` |
+| `lotus:organism` | `dwc:Taxon` | exactly 1, `owl:FunctionalProperty` |
+| `dcterms:references` | `dcterms:BibliographicResource` | exactly 1 by construction; cardinality not asserted, the predicate is Dublin Core's |
 | `lotus:manuallyValidated` | `xsd:boolean` | **emitted only when true** (178 of 672,413 in v11) |
+
+`lotus:Occurrence` is the one class still in the LOTUS namespace. A
+literature-supported compound–taxon association is not a Darwin Core
+`Occurrence` — that term means an organism observed at a place and time — so
+reusing it would assert something false.
 
 `manual_validation` is `Y` or `NA` in the CSV, where `NA` means "not manually
 checked", not "checked and rejected". Emitting `false` for it would assert
 something the source does not say, so the property is absent instead. Any query
 counting validated occurrences must therefore not expect it on every node.
 
-### `lotus:Structure` (subject: `wd:Q…`)
+### `schema:MolecularEntity` (subject: `wd:Q…`)
 
 Coverage is the share of the 227,256 structures carrying the property.
 
 | Property | Range | Coverage |
 | --- | --- | --- |
-| `lotus:inchikey` | `xsd:string` | 100% |
-| `lotus:inchi` | `xsd:string` | 100% |
-| `lotus:smiles` | `xsd:string` | 100%, isomeric |
-| `lotus:smiles2D` | `xsd:string` | 100% |
-| `lotus:molecularFormula` | `xsd:string` | 100% |
-| `lotus:exactMass` | `xsd:decimal` | 100% |
+| `schema:inChIKey` | `xsd:string` | 100% |
+| `schema:inChI` | `xsd:string` | 100% |
+| `schema:smiles` | `xsd:string` | 100%, isomeric |
+| `lotus:smiles2D` | `xsd:string` | 100%, kept separate from `schema:smiles` — it is the same molecule with stereochemistry removed |
+| `schema:molecularFormula` | `xsd:string` | 100% |
+| `lotus:exactMass` | `xsd:decimal` | 100%, **not** `schema:molecularWeight` — monoisotopic exact mass is a different quantity |
 | `lotus:stereocenterCount` / `lotus:unspecifiedStereocenterCount` | `xsd:integer` | 100% |
 | `lotus:xlogp` | `xsd:decimal` | 99.7% |
-| `lotus:traditionalName` | `xsd:string` | 96.9%, also `rdfs:label` |
-| `lotus:iupacName` | `xsd:string` | 96.6% |
+| `rdfs:label` | `xsd:string` | 96.9%, the traditional name |
+| `schema:iupacName` | `xsd:string` | 96.6% |
 | `lotus:npclassifierPathway` / `…Superclass` / `…Class` | `xsd:string` | 97.1% / 91.5% / 88.6%, **repeatable** |
 | `lotus:classyfireKingdom` / `…Superclass` / `…Class` / `…DirectParent` | `xsd:string` | 98.6% / 98.6% / 97.9% / 83.2% |
 | `lotus:chemontId` | `xsd:string` | 98.6%, as `CHEMONTID:0002518` |
-| `lotus:pubchemCompoundId` | `xsd:string` | 97.3% |
-| `skos:exactMatch` | IRI | 97.3%, PubChem compound |
+| `rdfs:seeAlso` | IRI | 97.3%, `http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID<n>` |
+
+The PubChem link uses the **RDF** IRI, the form the `pubchem` and `idsm` graphs
+key on, so a federated join needs no string rewriting. The predicate is
+`rdfs:seeAlso` and not `skos:exactMatch`: exactMatch is a SKOS concept-mapping
+predicate and asserts more than a cross-reference should. The two are
+independent — the predicate states the strength of the claim, the IRI decides
+whether the claim is usable — and a brief period where the object was the
+PubChem *web* IRI silently broke the join on 97.3% of structures.
+
+The CID is no longer also emitted as a literal. Derive it from the link, or join
+on `dcterms:identifier` in the `pubchem` graph, which carries the bare CID.
 
 The three NPClassifier properties are **repeatable**: a compound with a mixed
 biosynthetic origin packs its classes into one CSV cell as
@@ -141,55 +167,70 @@ matches co-classified compounds too — which is the correct behavior, and the
 opposite of what the raw CSV gives you.
 
 `lotus:chemontId` stays a literal because ChemOnt has no agreed resolvable IRI
-namespace. Minting one is an open question below.
+namespace, and because a classification id is not an identifier *of* the
+compound — it names a class the compound belongs to. Minting an IRI for it is an
+open question below.
 
-### `lotus:Organism` (subject: `wd:Q…`)
+### `dwc:Taxon` (subject: `wd:Q…`)
 
 Coverage is the share of the 37,486 organisms carrying the property.
 
 | Property | Range | Coverage |
 | --- | --- | --- |
-| `lotus:scientificName` | `xsd:string` | 100%, also `rdfs:label` |
-| `lotus:gbifTaxonId` | `xsd:string` | 98.1% |
-| `lotus:ottTaxonId` | `xsd:string` | 97.8% |
-| `lotus:ncbiTaxonId` | `xsd:string` | **78.0%** |
-| `lotus:taxonDomain` … `lotus:taxonVarietas` | `xsd:string` | 0.7–97.2%, see below |
-| `skos:exactMatch` | IRI | 78.0%, `http://identifiers.org/taxonomy/<taxid>` |
-| `rdfs:seeAlso` | IRI | 98.1%, GBIF species page |
+| `dwc:scientificName` | `xsd:string` | 100%, also `rdfs:label` |
+| `dwc:kingdom` … `dwc:genus` | `xsd:string` | seven ranks, 0.7–97.2%, see below |
+| `lotus:taxonDomain` / `lotus:taxonSpecies` / `lotus:taxonVarietas` | `xsd:string` | the three ranks Darwin Core has no term for |
+| `rdfs:seeAlso` | IRI | **78.0%**, `http://identifiers.org/taxonomy/<taxid>` |
+| `rdfs:seeAlso` | IRI | 98.1%, `https://www.gbif.org/species/<id>` |
+| `rdfs:seeAlso` | IRI | 97.8%, `https://tree.opentreeoflife.org/taxonomy/browse?id=<id>` |
+
+The three external taxonomy ids are **links, not literals**: an id that
+identifies a record in another resource is a pointer to that resource, not a
+property of the Wikidata subject. All three share `rdfs:seeAlso`, so a query
+wanting one specific authority must filter on the IRI prefix rather than on the
+predicate.
 
 **Only 78% of organisms have an NCBI taxon id**, so a query that joins through
-`skos:exactMatch` into the `taxonomy` database silently drops 8,252
-organisms. Prefer GBIF or OTT coverage when completeness matters more than
+the `identifiers.org/taxonomy/` link into the `taxonomy` database silently drops
+8,252 organisms. Prefer GBIF or OTT coverage when completeness matters more than
 reaching the NCBI tree, and say which one an answer used. (Per *row* the NCBI
 figure looks like 86.6%; the well-studied organisms appear in many more rows.
 Per-entity is the honest number.)
 
-The rank path is ten flat properties (`taxonDomain`, `taxonKingdom`,
-`taxonPhylum`, `taxonClass`, `taxonOrder`, `taxonFamily`, `taxonTribe`,
-`taxonGenus`, `taxonSpecies`, `taxonVarietas`) carrying **names, not IRIs**,
-because that is all the CSV has. Coverage is uneven by rank — `taxonTribe` is
+The rank path is ten flat properties carrying **names, not IRIs**, because that
+is all the CSV has. Seven take their Darwin Core term (`dwc:kingdom`,
+`dwc:phylum`, `dwc:class`, `dwc:order`, `dwc:family`, `dwc:tribe`,
+`dwc:genus`); `lotus:taxonDomain`, `lotus:taxonSpecies` and
+`lotus:taxonVarietas` stay local because Darwin Core has no matching term —
+`dwc:specificEpithet` is the epithet alone, not the full species name LOTUS
+supplies, so mapping onto it would change what the value means. Coverage is uneven by rank — `taxonTribe` is
 present on 44.7% of organisms and `taxonVarietas` on 0.7% — so a clade rollup should
 group on the rank it actually needs and treat absence as unknown, not as
 exclusion.
 
-For real hierarchy traversal, join `skos:exactMatch` into RDF Portal's
-`taxonomy` database and walk `rdfs:subClassOf*` there. That is the intended
+For real hierarchy traversal, join the `identifiers.org/taxonomy/` link into
+RDF Portal's `taxonomy` database and walk `rdfs:subClassOf*` there. That graph
+keys on both this form and DDBJ's, so the link joins as emitted. That is the intended
 division of labor: LOTUS supplies occurrences, `taxonomy` supplies the tree.
 
-### `lotus:Reference` (subject: `wd:Q…`)
+### `dcterms:BibliographicResource` (subject: `wd:Q…`)
 
 Coverage is the share of the 91,426 references carrying the property.
 
 | Property | Range | Coverage |
 | --- | --- | --- |
-| `lotus:doi` | `xsd:string` | 99.96% (91,386 of 91,426) |
+| `bibo:doi` | `xsd:string` | 99.96% (91,386 of 91,426) |
 | `rdfs:seeAlso` | IRI | 100%, `https://doi.org/<doi>`, percent-encoded |
-| `lotus:title` | `xsd:string` | 99.7%, `--refs-nt` only, also `rdfs:label` |
-| `lotus:publishedIn` | IRI (`wd:Q…`) | 99.2%, `--refs-nt` only |
-| `lotus:publicationDate` | `xsd:date` | 99.1%, `--refs-nt` only |
-| `lotus:pmid` | `xsd:string` | 47.1%, `--refs-nt` only |
-| `lotus:pmcid` | `xsd:string` | 5.0%, `--refs-nt` only |
-| `skos:exactMatch` | IRI | 47.1%, PubMed, from the PMID |
+| `dcterms:title` | `xsd:string` | 99.7%, `--refs-nt` only, also `rdfs:label` |
+| `dcterms:isPartOf` | IRI (`wd:Q…`) | 99.2%, `--refs-nt` only |
+| `dcterms:issued` | `xsd:date` | 99.1%, `--refs-nt` only |
+| `bibo:pmid` | `xsd:string` | 47.1%, `--refs-nt` only |
+| `rdfs:seeAlso` | IRI | 47.1%, `http://rdf.ncbi.nlm.nih.gov/pubmed/<pmid>` |
+| `rdfs:seeAlso` | IRI | 5.0%, `https://pmc.ncbi.nlm.nih.gov/articles/PMC<n>/`, `--refs-nt` only |
+
+DOI and PMID stay **literals** under BIBO, which is what those properties are
+for, and each also gets a resolvable `rdfs:seeAlso`. The PMCID is only a link:
+BIBO has no term for it, and it was never worth a LOTUS one.
 
 Fewer than half the references carry a PMID, so joining LOTUS to RDF Portal's
 `pubmed` database reaches at most 43,075 of the 91,426 papers. The DOI is the
@@ -207,11 +248,24 @@ fine — exactly the kind of defect a spot check misses.
 
 ## Vocabulary
 
-The 48 `lotus:` terms are defined in
-[lotus_ontology.ttl](lotus_ontology.ttl) — `rdfs:label`, `rdfs:comment`,
-`rdfs:domain` and `rdfs:range` on each of 4 classes and 44 properties, 290
-triples in all — and the converter emits them **into this same named graph, by
-default**.
+The 19 remaining `lotus:` terms are defined inline by the converter's
+`builtin_ontology()` — `rdfs:label`, `rdfs:comment`, `rdfs:domain` and
+`rdfs:range` on one class (`lotus:Occurrence`) and 19 properties, 100 triples in
+all — and it emits them **into this same named graph, by default**. The other 24
+fields carry Schema.org, Darwin Core, Dublin Core or BIBO predicates, which those
+vocabularies define; re-stating their definitions here would be both redundant
+and a place for them to go stale.
+
+`rdfs:isDefinedBy` is dropped on emit: the graph *is* the definition for these
+terms, so pointing at an external document would be a promise the graph cannot
+keep.
+
+[lotus_ontology.ttl](lotus_ontology.ttl) is the **pre-remapping** vocabulary,
+kept for reference only. It is in the retired `http://rdfportal.org/ontology/lotus#`
+namespace and the converter rejects it if passed to `--ontology`, because loading
+it would re-attach obsolete domain and range constraints to the reused standard
+terms. `--ontology PATH` now *adds* a vocabulary to the builtin one rather than
+replacing it.
 
 They go in the data graph rather than a graph of their own because every
 TogoMCP query pins its graph: a vocabulary in a second graph is invisible under
@@ -230,17 +284,19 @@ learns the same things the MIE file will tell it:
 
 * `lotus:manuallyValidated` is **absent, not false**, when an occurrence was
   not checked — so count unvalidated occurrences by absence, never by `false`.
-* `lotus:ncbiTaxonId` reaches only 78.0% of organisms, so the `taxonomy` join
+* The NCBI taxonomy link reaches only 78.0% of organisms, so the `taxonomy` join
   drops 8,252 of them silently.
-* `lotus:inchikey` and the three `lotus:npclassifier*` properties are
-  **repeatable**, and are deliberately not declared `owl:FunctionalProperty`.
-  The only functional properties are `lotus:structure`, `lotus:organism` and
-  `lotus:reference`, which are single-valued by construction.
+* The three `lotus:npclassifier*` properties are **repeatable**, and are
+  deliberately not declared `owl:FunctionalProperty`. The only functional
+  properties are `lotus:structure` and `lotus:organism`, single-valued by
+  construction. `schema:inChIKey` is repeatable too (87 structures in v11), but
+  its cardinality is Schema.org's to state, not ours — a reused term must not be
+  re-declared locally, which is the whole point of reusing it.
 
-The vocabulary is versioned separately from the data (`owl:versionInfo "1.0"`
-against the release's `pav:version "v11"`): it is hand-authored prose with its
-own review cycle, and a fix to a comment should not require re-converting a
-1.3 GB file.
+The vocabulary carries no `owl:versionInfo` and no `owl:Ontology` header: with
+the definitions inline in the converter they version with the converter, and a
+separate version string would be a second number to keep in sync. The release's
+own `pav:version` remains on the dataset node below.
 
 ### Dataset metadata
 
@@ -263,58 +319,64 @@ with one from day one, so an answer can be attributed to a release.
 ```turtle
 ldat:occurrence/Q100138042_Q1709343_Q44391663
     a lotus:Occurrence ;
-    lotus:structure wd:Q100138042 ;
-    lotus:organism  wd:Q1709343 ;
-    lotus:reference wd:Q44391663 .
+    lotus:structure    wd:Q100138042 ;
+    lotus:organism     wd:Q1709343 ;
+    dcterms:references wd:Q44391663 .
 
-wd:Q100138042 a lotus:Structure ;
+wd:Q100138042 a schema:MolecularEntity ;
     rdfs:label "(+)-Annonacin" ;
-    lotus:inchikey "MBABCNBNDNGODA-WGCJABNLSA-N" ;
-    lotus:molecularFormula "C37H66O7" ;
+    schema:inChIKey "MBABCNBNDNGODA-WGCJABNLSA-N" ;
+    schema:molecularFormula "C37H66O7" ;
     lotus:exactMass "622.48085444"^^xsd:decimal ;
     lotus:npclassifierPathway "Polyketides" ;
     lotus:npclassifierClass "Acetogenins" ;
-    lotus:pubchemCompoundId "441555" ;
-    skos:exactMatch <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID441555> .
+    rdfs:seeAlso <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID441555> .
 
-wd:Q1709343 a lotus:Organism ;
+wd:Q1709343 a dwc:Taxon ;
     rdfs:label "Annona muricata" ;
-    lotus:taxonFamily "Annonaceae" ;
-    lotus:ncbiTaxonId "13337" ;
-    skos:exactMatch <http://identifiers.org/taxonomy/13337> .
+    dwc:scientificName "Annona muricata" ;
+    dwc:family "Annonaceae" ;
+    rdfs:seeAlso <http://identifiers.org/taxonomy/13337> .
 
-wd:Q44391663 a lotus:Reference ;
-    lotus:doi "10.1055/S-2003-38485" ;
-    lotus:pmid "12677528" ;
-    lotus:publicationDate "2003-03-01"^^xsd:date ;
-    skos:exactMatch <http://rdf.ncbi.nlm.nih.gov/pubmed/12677528> .
+wd:Q44391663 a dcterms:BibliographicResource ;
+    bibo:doi "10.1055/S-2003-38485" ;
+    bibo:pmid "12677528" ;
+    dcterms:issued "2003-03-01"^^xsd:date ;
+    rdfs:seeAlso <http://rdf.ncbi.nlm.nih.gov/pubmed/12677528> .
 ```
 
 ## Example queries
 
-All four were run against the converted v11 graph and return rows.
+All four were run against the converted v11 graph and return rows. They are
+written against the **pre-remapping** predicates below only where noted — each
+has been retargeted at the current model, but none has been re-run since the
+remapping, because that needs a fresh conversion of the 1.3 GB source.
 
 ```sparql
 # Compounds reported in Annona muricata, with the paper that reports each
-PREFIX lotus: <http://rdfportal.org/ontology/lotus#>
+PREFIX lotus: <http://purl.jp/bio/lotus/ontology/>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX schema: <https://schema.org/>
+PREFIX bibo: <http://purl.org/ontology/bibo/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 SELECT ?name ?inchikey ?doi
 FROM <http://rdfportal.org/dataset/lotus>
 WHERE {
   ?occ lotus:organism <http://www.wikidata.org/entity/Q1709343> ;
-       lotus:structure ?s ; lotus:reference ?ref .
-  ?s lotus:inchikey ?inchikey ; rdfs:label ?name .
-  ?ref lotus:doi ?doi .
+       lotus:structure ?s ; dcterms:references ?ref .
+  ?s schema:inChIKey ?inchikey ; rdfs:label ?name .
+  ?ref bibo:doi ?doi .
 }
 ```
 
 ```sparql
 # Biosynthetic profile of a plant family: which pathways, how many structures
-PREFIX lotus: <http://rdfportal.org/ontology/lotus#>
+PREFIX lotus: <http://purl.jp/bio/lotus/ontology/>
+PREFIX dwc: <http://rs.tdwg.org/dwc/terms/>
 SELECT ?pathway (COUNT(DISTINCT ?s) AS ?structures)
 FROM <http://rdfportal.org/dataset/lotus>
 WHERE {
-  ?org lotus:taxonFamily "Annonaceae" .
+  ?org dwc:family "Annonaceae" .
   ?occ lotus:organism ?org ; lotus:structure ?s .
   ?s lotus:npclassifierPathway ?pathway .
 }
@@ -323,13 +385,15 @@ GROUP BY ?pathway ORDER BY DESC(?structures)
 
 ```sparql
 # Which organisms produce a given compound, and how well evidenced is each claim
-PREFIX lotus: <http://rdfportal.org/ontology/lotus#>
+PREFIX lotus: <http://purl.jp/bio/lotus/ontology/>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX schema: <https://schema.org/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 SELECT ?organism ?name (COUNT(DISTINCT ?ref) AS ?papers)
 FROM <http://rdfportal.org/dataset/lotus>
 WHERE {
-  ?s lotus:inchikey "MBABCNBNDNGODA-WGCJABNLSA-N" .
-  ?occ lotus:structure ?s ; lotus:organism ?organism ; lotus:reference ?ref .
+  ?s schema:inChIKey "MBABCNBNDNGODA-WGCJABNLSA-N" .
+  ?occ lotus:structure ?s ; lotus:organism ?organism ; dcterms:references ?ref .
   ?organism rdfs:label ?name .
 }
 GROUP BY ?organism ?name ORDER BY DESC(?papers)
@@ -337,16 +401,20 @@ GROUP BY ?organism ?name ORDER BY DESC(?papers)
 
 ```sparql
 # Cross-database: LOTUS occurrences joined to the taxonomy tree in RDF Portal
-PREFIX lotus: <http://rdfportal.org/ontology/lotus#>
-PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+PREFIX lotus: <http://purl.jp/bio/lotus/ontology/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 SELECT (COUNT(DISTINCT ?s) AS ?structures)
 WHERE {
   GRAPH <http://rdfportal.org/dataset/lotus> {
     ?occ lotus:organism ?org ; lotus:structure ?s .
-    ?org skos:exactMatch ?taxon .
+    ?org rdfs:seeAlso ?taxon .
+    # An organism carries up to three rdfs:seeAlso links (NCBI, GBIF, OTT), so
+    # the authority MUST be selected by IRI prefix — without this filter the
+    # count triples rather than erroring.
+    FILTER(STRSTARTS(STR(?taxon), "http://identifiers.org/taxonomy/"))
   }
-  # ?taxon is http://identifiers.org/taxonomy/<taxid>; walk the tree in the
-  # taxonomy graph to roll up to any clade. Pin that graph per the MIE file.
+  # Walk the tree in the taxonomy graph to roll up to any clade. Pin that graph
+  # per the MIE file.
 }
 ```
 
@@ -356,10 +424,10 @@ Output of one v11 conversion from both CSV tables, with reference metadata folde
 
 | | |
 | --- | --- |
-| Triples | 9,138,012 (9,137,722 data + 290 vocabulary) |
+| Triples | 9,138,012 at the **pre-remapping** model (9,137,722 data + 290 vocabulary). **Re-measure before quoting:** the vocabulary is now 100 triples, and the data count moved when the PubChem CID literal was dropped and the three taxon-id literals became links. |
 | Occurrences | 672,413 |
 | Structures / organisms / references | 227,256 / 37,486 / 91,426 |
-| Size | 1.3 GB N-Triples, 111 MB gzipped |
+| Size | ~1.3 GB N-Triples, ~111 MB gzipped (pre-remapping; the remapping changes it only marginally) |
 | Conversion time | ~100 s, single process, stdlib only |
 
 Validated with `rapper -i ntriples -c` (all 9,137,722 triples parse) and
@@ -369,16 +437,22 @@ should not be a concern.
 
 ## Open questions
 
-1. **Namespaces.** `http://rdfportal.org/ontology/lotus#` and
-   `http://rdfportal.org/dataset/lotus` follow the pattern already used by the
-   `taxonomy` database, but DBCLS owns that space and should confirm. The LOTUS
-   team may prefer a `lotus.nprod.net` namespace they control.
-2. **Ontology IRI.** The vocabulary declares itself as
-   `<http://rdfportal.org/ontology/lotus>`, the namespace minus its `#`. That is
-   the conventional shape, but RDF Portal uses exactly that pattern to *name
-   ontology graphs* (`http://rdfportal.org/ontology/go` and friends). If DBCLS
-   would rather keep that space for graph names, the ontology IRI should move
-   before anything cites it.
+1. **Namespaces.** The term namespace is now
+   `http://purl.jp/bio/lotus/ontology/`, which sidesteps the collision described
+   in the old question 2 — RDF Portal uses `http://rdfportal.org/ontology/<name>`
+   to *name ontology graphs*, so minting terms in that space was asking for
+   confusion. `http://rdfportal.org/dataset/lotus` remains the graph name and
+   still follows the `taxonomy` pattern, but DBCLS owns that space and should
+   confirm. Whether `purl.jp` is the right home, and who administers the PURL,
+   is for DBCLS and the LOTUS team — the team may prefer a `lotus.nprod.net`
+   namespace they control.
+2. **Reused-vocabulary choices.** Twenty fields now carry a Schema.org, Darwin
+   Core, Dublin Core or BIBO predicate. The mappings that are plainly right
+   (`schema:inChIKey`, `dwc:family`, `bibo:doi`) need no review; the ones worth a
+   second opinion are where a near-miss was *declined* — exact mass kept out of
+   `schema:molecularWeight`, the full species name kept out of
+   `dwc:specificEpithet`, and the occurrence kept out of `dwc:Occurrence`. Each
+   is defensible and each is arguable.
 3. **Licence.** The LOTUS site says the data is CC0, while the Zenodo record for
    this export is tagged CC-BY-4.0. Worth confirming with the LOTUS team before
    the graph asserts either one; the converter currently asserts neither.
@@ -391,5 +465,6 @@ should not be a concern.
    occurrence IRIs make the diff between two releases directly computable.
 7. **Structure identity across releases.** 87 structure QIDs carry more than one
    InChIKey in v11 (max 3). The schema emits all of them rather than choosing,
-   so `lotus:inchikey` is repeatable in rare cases. Consumers keying on InChIKey
-   should be aware.
+   so `schema:inChIKey` is repeatable in rare cases. Consumers keying on InChIKey
+   should be aware — and note that we do not declare that cardinality, since the
+   term is Schema.org's.
