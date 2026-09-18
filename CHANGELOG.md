@@ -13,6 +13,13 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.20.0] - 2026-09-18
+
+Adds one database and changes nothing else: no tool, parameter or return shape moved, so every
+existing call keeps working. A new database reaches every client immediately — the catalog ships
+inside `TogoMCP_Usage_Guide` at query time and `database=` is validated server-side — so no
+connector re-scan is needed to use it.
+
 <!-- whatsnew: 2026-09-18 | New database <code>marpolbase</code> — the <em>Marchantia polymorpha</em> reference genome (MpTak_v7.1): 18,007 annotated genes, 18,232 orthogroups, a 740,830-edge co-expression network and 2,609 curated gene-literature assertions. -->
 
 ### Added
@@ -2839,6 +2846,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v2.18.0...HEAD
+[2.20.0]: https://github.com/dbcls/togomcp/compare/v2.19.0...v2.20.0
 [2.19.0]: https://github.com/dbcls/togomcp/compare/v2.18.0...v2.19.0
 [2.18.0]: https://github.com/dbcls/togomcp/compare/v2.17.0...v2.18.0
 [2.17.0]: https://github.com/dbcls/togomcp/compare/v2.16.2...v2.17.0
