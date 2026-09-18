@@ -13,6 +13,56 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+LOTUS tooling only — `scripts/lotus/` is developer tooling for the proposal to host LOTUS on
+RDF Portal, is not in the wheel, and the tool surface a client sees is unchanged.
+
+### Changed
+
+- **LOTUS RDF reuses existing vocabularies instead of minting its own terms** (#243). Of the 43
+  fields the converter emits, 20 now carry a standard predicate — Schema.org (`schema:inChIKey`,
+  `schema:smiles`, `schema:molecularFormula`), Darwin Core (`dwc:scientificName` and the seven
+  rank properties), Dublin Core (`dcterms:references`, `dcterms:title`, `dcterms:issued`) and
+  BIBO (`bibo:doi`, `bibo:pmid`) — and 4 more are emitted as `rdfs:seeAlso` IRI links, on the
+  principle that an external identifier points at another resource rather than describing the
+  Wikidata subject. Only the 19 fields with no standard equivalent stay in the LOTUS namespace,
+  which moves from the retired `http://rdfportal.org/ontology/lotus#` to
+  `http://purl.jp/bio/lotus/ontology/`. Class IRIs follow: a structure is a
+  `schema:MolecularEntity`, an organism a `dwc:Taxon`, a reference a
+  `dcterms:BibliographicResource`; only `lotus:Occurrence` remains ours, because a
+  literature-supported compound–taxon association is not a Darwin Core observation at a place
+  and time. Several near-misses were deliberately left unmapped rather than forced: exact mass is
+  not `schema:molecularWeight`, and a full species name is not a `dwc:specificEpithet`.
+
+  The vocabulary is now inline (`builtin_ontology()`, 100 triples covering exactly the 19
+  residual terms) rather than the hand-authored `lotus_ontology.ttl` added in 2.16.1, and it is
+  still emitted into the same named graph as the data for the same reason as before — every
+  TogoMCP query pins its graph. `--ontology PATH` now *adds* a vocabulary and rejects one in the
+  retired namespace, so the shipped `lotus_ontology.ttl` is legacy and no longer loadable; it is
+  kept in the tree for reference only. `rdfs:isDefinedBy` is dropped on emit: the graph is the
+  definition, so pointing at an external document would be a promise the graph cannot keep.
+
+  **One consequence worth knowing before writing a federated query.** The PubChem cross-reference
+  changes from `skos:exactMatch` → `http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID<n>` to
+  `rdfs:seeAlso` → `https://pubchem.ncbi.nlm.nih.gov/compound/<n>`. The new IRI is the web page,
+  not the RDF resource, and both the `pubchem` and `idsm` databases in this corpus key on the
+  former — so a LOTUS→PubChem join now needs a string rewrite where it previously needed none.
+  NCBI Taxonomy and PubMed keep their IRI forms and only move to `rdfs:seeAlso`, so those joins
+  are unaffected.
+
+### Fixed
+
+- **`tests/test_lotus_ontology_in_sync.py` was left behind by #243 and `main` was briefly red.**
+  The suite still checked the converter against `lotus_ontology.ttl`, which the same change had
+  just retired, so three tests failed on a file that is no longer the source of truth. They now
+  check `builtin_ontology()`, and the drift guard is sharper than before because the new model
+  has three ways to emit a field and each can rot differently: a residual `lotus:` term must be
+  defined (and nothing may be defined that is never emitted), a `PROPERTY_IRIS` mapping must
+  actually leave the LOTUS namespace or the reuse is cosmetic, and a link field must never reach
+  `sink.lotus` — the subtle one, since `pmcid` is listed in `REF_WD_PROPS` but intercepted into a
+  PMC `rdfs:seeAlso`. Also pinned: `emit_ontology` strips `rdfs:isDefinedBy`, and the legacy
+  `lotus_ontology.ttl` is still rejected by `--ontology`. 8 tests become 12, and each new
+  assertion was mutation-tested to confirm it fails when the invariant it names is broken.
+
 ## [2.20.0] - 2026-09-18
 
 Adds one database and changes nothing else: no tool, parameter or return shape moved, so every
