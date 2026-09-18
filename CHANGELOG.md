@@ -41,13 +41,22 @@ RDF Portal, is not in the wheel, and the tool surface a client sees is unchanged
   kept in the tree for reference only. `rdfs:isDefinedBy` is dropped on emit: the graph is the
   definition, so pointing at an external document would be a promise the graph cannot keep.
 
-  **One consequence worth knowing before writing a federated query.** The PubChem cross-reference
-  changes from `skos:exactMatch` → `http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID<n>` to
-  `rdfs:seeAlso` → `https://pubchem.ncbi.nlm.nih.gov/compound/<n>`. The new IRI is the web page,
-  not the RDF resource, and both the `pubchem` and `idsm` databases in this corpus key on the
-  former — so a LOTUS→PubChem join now needs a string rewrite where it previously needed none.
-  NCBI Taxonomy and PubMed keep their IRI forms and only move to `rdfs:seeAlso`, so those joins
-  are unaffected.
+  **Cross-reference predicates move to `rdfs:seeAlso`; the IRIs stay joinable.** `skos:exactMatch`
+  is a SKOS concept-mapping predicate and asserted more than a cross-reference should, so #243 was
+  right to drop it. The IRI is a separate question: #243 also moved the PubChem object to
+  `https://pubchem.ncbi.nlm.nih.gov/compound/<n>`, the web page rather than the RDF resource, and
+  both `pubchem` and `idsm` key on `http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID<n>` — so a
+  LOTUS→PubChem join, on 97.3% of structures, silently stopped lining up. The RDF form is
+  restored, keeping `rdfs:seeAlso`: the predicate states the strength of the claim, the IRI
+  decides whether the claim is usable. NCBI Taxonomy and PubMed were unaffected — `pubmed` keys on
+  the form LOTUS already emits, and `taxonomy` keys on both DDBJ and identifiers.org forms. OTT,
+  GBIF and PMC have no RDF Portal counterpart, so their web IRIs are correct.
+
+  One casualty of the same change is not restored: the CID no longer also appears as a
+  `lotus:pubchemCompoundId` literal. With the RDF IRI back it is derivable from the link, and
+  re-minting a `lotus:` term would cut against the point of the release — but `pubchem` exposes
+  the bare CID as `dcterms:identifier` if a literal join is wanted, and `schema:inChIKey` at 100%
+  coverage is a CID-independent route.
 
 ### Added
 

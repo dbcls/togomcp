@@ -186,6 +186,36 @@ def test_link_fields_never_become_lotus_properties(converter):
     assert not leaked, f"link fields emitted as lotus: properties: {leaked}"
 
 
+def test_cross_reference_iris_match_the_graphs_they_point_at(converter):
+    """A cross-reference is only useful if it joins without a string rewrite.
+
+    #243 moved the PubChem link to a web IRI, which is a different string for
+    the same compound: `pubchem` and `idsm` both key on the RDF form, so the
+    join silently stopped lining up. Restored here and pinned, because nothing
+    else would notice — the graph still loads and the triple still looks right.
+
+    The predicate is a separate question from the IRI and stays as #243 left it:
+    rdfs:seeAlso, not skos:exactMatch. OTT, GBIF and PMC have no RDF Portal
+    counterpart, so their web IRIs are correct and are not pinned here.
+    """
+    assert converter.PUBCHEM_CID == "http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID"
+    assert converter.PUBMED == "http://rdf.ncbi.nlm.nih.gov/pubmed/"
+    # One of the two forms the corpus `taxonomy` graph uses; the other is DDBJ's.
+    assert converter.NCBI_TAXON == "http://identifiers.org/taxonomy/"
+
+    # ...and the compound link is actually emitted with it, via rdfs:seeAlso.
+    out = io.StringIO()
+    sink = converter.Sink(out, dedupe=True)
+    converter.emit_structure(sink, {"structure_wikidata": "http://www.wikidata.org/entity/Q27125095",
+                                    "structure_cid": "441555"})
+    written = out.getvalue()
+    assert (
+        "<http://www.w3.org/2000/01/rdf-schema#seeAlso> "
+        "<http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CID441555>"
+    ) in written, written
+    assert "pubchem.ncbi.nlm.nih.gov" not in written, "web IRI is back — it does not join"
+
+
 def test_turtle_subset_reader_rejects_what_it_cannot_parse(converter):
     with pytest.raises(converter.TurtleSubsetError, match=r":4: unsupported Turtle"):
         converter.parse_turtle_subset(
