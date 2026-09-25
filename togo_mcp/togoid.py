@@ -928,7 +928,10 @@ async def convertId(
 
     RETURNS a JSON string of a bare array of [source_id, target_id] pairs,
     e.g. '[["672", "P38398"], ["675", "O15129"]]'. An empty array means none
-    of the input IDs converted along the route.
+    of the input IDs converted along the route. Ontology-style datasets (go,
+    mondo, doid, hp_*, orphanet_*, mgi_*, uberon, …) come back as CURIEs on
+    both sides (`GO:0005515`), even for bare input; SPARQL needs the IRI form
+    (`obo:GO_0005515`).
 
     IMPORTANT WORKFLOW:
         1. First call getRelation() to verify the conversion route exists (when

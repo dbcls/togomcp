@@ -188,16 +188,18 @@ TogoMCP exposes tools for querying the following (via SPARQL or REST APIs):
 | Category | Resources |
 |---|---|
 | Proteins / Proteomics | UniProt, PDB, jPOST |
-| Genes / Genomics | NCBI Gene, Ensembl, HGNC, OMA, Bgee, HCO, MCO, DDBJ, MoG+, TogoVar, GWAS Catalog |
-| Chemistry | ChEMBL, PubChem, ChEBI, Rhea, BRENDA, MassBank |
-| Pathways | Reactome |
-| Disease / Clinical | ClinVar, MedGen, MONDO, NANDO |
+| Genes / Genomics | NCBI Gene, Ensembl, HGNC, OMA, Bgee, HCO, MCO, DDBJ, MoG+, TogoVar, GWAS Catalog, Fanta.bio, MarpolBase |
+| Chemistry | ChEMBL, PubChem, ChEBI, Rhea, BRENDA, MassBank, IDSM |
+| Lipidomics | LIPID MAPS, SwissLipids |
+| Pathways | Reactome, WikiPathways |
+| Disease / Clinical | ClinVar, MedGen, MONDO, NANDO, PubCaseFinder |
 | Literature | PubMed, PubTator |
 | Microbiology | BacDive, MediaDive, AMR Portal, NBRC |
 | Glycomics | GlyCosmos |
 | Ontologies / Vocabulary | MeSH, GO, Ontology Graphs (HP, UBERON, CL, SO, ECO, EFO, PRO, FMA, …) |
 | Taxonomy | NCBI Taxonomy |
 | Materials Science | SuperCon |
+| Identifier conversion | TogoID |
 
 ### KEGG (opt-in, local `stdio` only)
 

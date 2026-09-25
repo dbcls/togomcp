@@ -13,8 +13,12 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
-LOTUS tooling only — `scripts/lotus/` is developer tooling for the proposal to host LOTUS on
-RDF Portal, is not in the wheel, and the tool surface a client sees is unchanged.
+## [2.20.1] - 2026-09-25
+
+No tool, parameter or return shape moved. The bulk is LOTUS tooling (`scripts/lotus/` is
+developer tooling for the proposal to host LOTUS on RDF Portal and is not in the wheel), plus CI
+now running the test suite, a `togoid_convertId` description note for an upstream TogoID
+behaviour change, and a README catch-up.
 
 ### Changed
 
@@ -96,6 +100,23 @@ RDF Portal, is not in the wheel, and the tool surface a client sees is unchanged
   taxon ids became links, and re-measuring needs a fresh conversion of the 1.3 GB source, so they
   are marked for re-measurement rather than guessed. The example queries are retargeted but
   flagged as not re-run for the same reason.
+
+- **`togoid_convertId` now tells the agent that ontology IDs come back as CURIEs.** TogoID
+  changed the default of its `/convert` endpoint (announced by the TogoID team, 2026-09): a
+  dataset whose first `format` is not a bare `%s` is now returned prefixed on *both* sides of
+  each pair — `GO:0000151`, `MONDO:0005015`, `DOID:…`, `HP:…`, `ORPHA:…`, `MGI:…`, `UBERON:…`,
+  21 of 119 datasets — even when the input was bare. `convertId` passes TogoID's pairs through
+  untouched, so nothing broke, and the new default is kept rather than pinned back with
+  `prefix=no`: a CURIE is the form agents already use with OLS4 and the MIEs, while a bare
+  `0005515` is ambiguous across ontologies. What an agent could still get wrong is dropping the
+  CURIE straight into SPARQL, so the description now says the IRI form (`obo:GO_0005515`) is
+  needed there. UniProt, NCBI Gene, HGNC, ChEBI, EC and the other unprefixed datasets are
+  unchanged.
+
+- **README database table was several releases behind.** Added Fanta.bio, MarpolBase, IDSM,
+  LIPID MAPS and SwissLipids (a new Lipidomics row), WikiPathways and PubCaseFinder, plus a row
+  for TogoID identifier conversion. `bh26microbes` stays unlisted, as on the intro page, because
+  it is experimental.
 
 ## [2.20.0] - 2026-09-18
 
@@ -2929,7 +2950,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.18.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.20.1...HEAD
+[2.20.1]: https://github.com/dbcls/togomcp/compare/v2.20.0...v2.20.1
 [2.20.0]: https://github.com/dbcls/togomcp/compare/v2.19.0...v2.20.0
 [2.19.0]: https://github.com/dbcls/togomcp/compare/v2.18.0...v2.19.0
 [2.18.0]: https://github.com/dbcls/togomcp/compare/v2.17.0...v2.18.0
