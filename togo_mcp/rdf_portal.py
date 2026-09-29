@@ -740,7 +740,7 @@ SKILLS_DIR = CWD.joinpath("skills", "public")
 WORKFLOWS: dict[str, _skills.Skill] = _skills.load_registry(SKILLS_DIR)
 
 # TODO(fastmcp#5016): enable SkillsExtension (SEP-2640 `skills/list` / `skills/get`)
-# once FastMCP ships it — absent in 3.4.3 and in 4.0.4 (checked 2026-09-17). Until
+# once FastMCP ships it — absent in 3.4.3, 4.0.4 and 4.0.10 (checked 2026-09-29). Until
 # then skills reach resource-reading hosts through the provider below.
 _skills_provider = SkillsDirectoryProvider(roots=SKILLS_DIR)
 # FastMCP's frontmatter reader is a line splitter, so a folded `description: >` comes

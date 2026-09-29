@@ -1119,3 +1119,56 @@ class TestStaleToolNames:
         asyncio.run(_StaleToolNames().on_call_tool(ctx, call_next))
         assert dispatched == ["ncbi_efetch"]
         assert ctx.message.name == "ncbi_ncbi_efetch"
+
+
+class TestHttpRunConfig:
+    """The HTTP settings `run()` hands to FastMCP, checked through a real app.
+
+    FastMCP 4 defaults Host/Origin protection to OFF, and with it off the
+    `allowed_hosts` list is accepted and silently ignored — a foreign Host got
+    200 where 3.4.3 answered 421, with the suite green. So these tests build the
+    app from the same kwargs `run()` uses rather than asserting a default.
+    """
+
+    @staticmethod
+    def _client():
+        from starlette.testclient import TestClient
+
+        from togo_mcp import main
+
+        kw = main._http_run_kwargs()
+        app = main.mcp.http_app(
+            transport=kw["transport"],
+            host_origin_protection=kw["host_origin_protection"],
+            allowed_hosts=kw["allowed_hosts"],
+        )
+        return TestClient(app)
+
+    def test_allowed_host_is_served(self) -> None:
+        with self._client() as c:
+            r = c.get("/health", headers={"Host": "togomcp.rdfportal.org"})
+        assert r.status_code == 200
+
+    def test_foreign_host_is_rejected(self) -> None:
+        with self._client() as c:
+            r = c.get("/health", headers={"Host": "evil.example.com"})
+        assert r.status_code == 421
+
+    def test_run_sets_session_idle_timeout(self, monkeypatch) -> None:
+        """Without an idle timeout, handshake sessions never expire and the SDK's
+        10,000-session cap eventually 503s every new client."""
+        import fastmcp
+
+        from togo_mcp import main
+
+        captured: dict = {}
+
+        async def _no_setup(local: bool = False) -> None:
+            return None
+
+        monkeypatch.setattr(main, "setup", _no_setup)
+        monkeypatch.setattr(main.mcp, "run", lambda **kw: captured.update(kw))
+        monkeypatch.setattr(fastmcp.settings, "http_session_idle_timeout", None)
+        main.run()
+        assert fastmcp.settings.http_session_idle_timeout == main._SESSION_IDLE_TIMEOUT_SECONDS
+        assert captured == main._http_run_kwargs()

@@ -207,3 +207,73 @@ def test_mie_bundle_version_tracks_content(tmp_path, monkeypatch):
 def test_mie_bundle_version_none_on_empty_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "MIE_DIR", str(tmp_path))
     assert server._detect_mie_bundle_version() is None
+
+
+# --------------------------------------------------------------------------- #
+# End-to-end: what the middleware actually records, per protocol era.
+# --------------------------------------------------------------------------- #
+
+
+def _log_calls(tmp_path, monkeypatch, mode: str) -> list[dict]:
+    """Call a tool twice through a real Client and return the JSONL records.
+
+    A pure-helper test cannot catch this class of bug: in mcp 2.x the handshake
+    field became `client_info`, `getattr(params, "clientInfo")` returned None for
+    every client, and the whole suite stayed green while the `client` column of
+    the production log went blank.
+    """
+    import asyncio
+    import logging
+
+    from fastmcp import Client, FastMCP
+    from mcp.types import Implementation
+
+    log_path = tmp_path / "calls.jsonl"
+    monkeypatch.setenv("TOGOMCP_QUERY_LOG", str(log_path))
+    toolcall_log = logging.getLogger("togomcp.toolcalls")
+    saved = (toolcall_log.handlers[:], toolcall_log.level, toolcall_log.propagate)
+
+    srv = FastMCP("log-probe")
+    srv.add_middleware(server._ToolCallLogger())
+
+    @srv.tool
+    def echo() -> str:
+        return "ok"
+
+    async def go():
+        info = Implementation(name=f"probe-{mode}", version="7")
+        async with Client(srv, mode=mode, client_info=info) as c:
+            await c.call_tool("echo", {})
+            await c.call_tool("echo", {})
+
+    try:
+        asyncio.run(go())
+        for h in toolcall_log.handlers:
+            h.flush()
+    finally:
+        for h in toolcall_log.handlers:
+            h.close()
+        toolcall_log.handlers, toolcall_log.level, toolcall_log.propagate = saved
+    return [json.loads(line) for line in log_path.read_text().splitlines()]
+
+
+def test_log_records_handshake_client(tmp_path, monkeypatch):
+    recs = _log_calls(tmp_path, monkeypatch, "legacy")
+    assert len(recs) == 2
+    for r in recs:
+        assert r["meta"]["client"] == {"name": "probe-legacy", "version": "7"}
+        assert r["meta"]["protocol_version"] not in server.MODERN_PROTOCOL_VERSIONS
+    # A real session: present, and the same across calls.
+    assert recs[0]["session_id"] and recs[0]["session_id"] == recs[1]["session_id"]
+
+
+def test_log_records_stateless_client(tmp_path, monkeypatch):
+    recs = _log_calls(tmp_path, monkeypatch, "auto")  # auto = 2026-07-28, sessionless
+    assert len(recs) == 2
+    for r in recs:
+        # clientInfo comes from the per-request `_meta` envelope here.
+        assert r["meta"]["client"] == {"name": "probe-auto", "version": "7"}
+        assert r["meta"]["protocol_version"] in server.MODERN_PROTOCOL_VERSIONS
+        # FastMCP invents a fresh uuid per stateless call; it must not be logged
+        # as if it were a session.
+        assert r["session_id"] is None
