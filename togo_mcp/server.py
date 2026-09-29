@@ -18,6 +18,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_request
+from mcp_types.version import MODERN_PROTOCOL_VERSIONS
 import httpx
 from starlette.requests import Request
 from starlette.responses import (
@@ -738,16 +739,52 @@ def _hash_ip(ip: str | None) -> str | None:
 
 
 def _client_info(fctx: Any) -> dict[str, str | None] | None:
-    """LLM client (name/version) from the MCP initialize handshake, if present."""
+    """LLM client (name/version), if the client sent one.
+
+    One accessor covers both protocol eras: for a stateless (2026-07-28) request
+    the SDK synthesizes `client_params` from the request's `_meta` envelope, where
+    clientInfo is optional (so None is a legitimate answer there). The field is
+    `client_info` since mcp 2.x — its models are snake_case with camelCase
+    aliases, so reading the old `clientInfo` attribute silently returns None for
+    EVERY client; the camelCase read is kept only as a fallback.
+    """
     try:
         params = fctx.session.client_params if fctx else None
-        info = getattr(params, "clientInfo", None) if params else None
+        info = (
+            getattr(params, "client_info", None) or getattr(params, "clientInfo", None)
+            if params
+            else None
+        )
         if info is None:
             return None
         return {
             "name": getattr(info, "name", None),
             "version": getattr(info, "version", None),
         }
+    except Exception:
+        return None
+
+
+def _protocol_version(fctx: Any) -> str | None:
+    """MCP protocol version of the current request (handshake-negotiated or per-request)."""
+    try:
+        rctx = fctx.request_context if fctx else None
+        return getattr(rctx, "protocol_version", None) if rctx else None
+    except Exception:
+        return None
+
+
+def _session_id(fctx: Any, protocol_version: str | None) -> str | None:
+    """The MCP session id, or None for a stateless request.
+
+    A 2026-07-28 request has no session; FastMCP still returns a `session_id`
+    for it, but a fresh uuid4 per call — logging that would pass for a session
+    that never repeats, so record None instead.
+    """
+    if not fctx or protocol_version in MODERN_PROTOCOL_VERSIONS:
+        return None
+    try:
+        return fctx.session_id
     except Exception:
         return None
 
@@ -878,6 +915,7 @@ class _ToolCallLogger(_Middleware):
             _sparql_extra_var.reset(token)
             fctx = context.fastmcp_context
             client_ip = self._client_ip()
+            protocol_version = _protocol_version(fctx)
             record: dict[str, Any] = {
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "tool": context.message.name,
@@ -885,7 +923,7 @@ class _ToolCallLogger(_Middleware):
                 "status": status,
                 "elapsed_ms": elapsed_ms,
                 "output_bytes": _result_size(result),
-                "session_id": getattr(fctx, "session_id", None) if fctx else None,
+                "session_id": _session_id(fctx, protocol_version),
                 "request_id": getattr(fctx, "request_id", None) if fctx else None,
                 "origin_request_id": (
                     getattr(fctx, "origin_request_id", None) if fctx else None
@@ -893,7 +931,11 @@ class _ToolCallLogger(_Middleware):
                 "client_id": getattr(fctx, "client_id", None) if fctx else None,
                 "transport": getattr(fctx, "transport", None) if fctx else None,
                 "ip_hash": _hash_ip(client_ip),
-                "meta": {**_STATIC_META, "client": _client_info(fctx)},
+                "meta": {
+                    **_STATIC_META,
+                    "client": _client_info(fctx),
+                    "protocol_version": protocol_version,
+                },
             }
             if self._raw_ip:
                 record["ip"] = client_ip

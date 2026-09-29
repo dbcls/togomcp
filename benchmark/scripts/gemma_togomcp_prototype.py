@@ -74,10 +74,9 @@ except ImportError:
     sys.exit(1)
 
 try:
-    from mcp import ClientSession
-    from mcp.client.streamable_http import streamablehttp_client
+    from fastmcp import Client as MCPClient
 except ImportError:
-    print("Error: mcp SDK not installed. pip install mcp")
+    print("Error: fastmcp not installed. pip install fastmcp")
     sys.exit(1)
 
 
@@ -256,7 +255,7 @@ def mcp_tools_to_ollama(mcp_tools, hide_substrings: List[str], prefix: str = "")
             hidden.append(t.name)
             continue
         advertised = f"{prefix}{t.name}" if prefix else t.name
-        params = t.inputSchema or {"type": "object", "properties": {}}
+        params = t.input_schema or {"type": "object", "properties": {}}
         out.append({
             "type": "function",
             "function": {
@@ -279,7 +278,7 @@ def flatten_tool_result(result, max_chars: int) -> str:
         else:
             parts.append(str(block))
     text = "\n".join(parts) if parts else "(tool returned no content)"
-    if getattr(result, "isError", False):
+    if getattr(result, "is_error", False):
         text = "ERROR: " + text
     if len(text) > max_chars:
         text = text[:max_chars] + f"\n...[truncated {len(text) - max_chars} chars]"
@@ -449,17 +448,15 @@ async def connect_servers(stack: AsyncExitStack, servers: Dict[str, str],
     A per-server failure is logged and skipped (graceful degradation), so one
     unreachable/auth-gated server never aborts the whole run.
     """
-    sessions: Dict[str, ClientSession] = {}
+    sessions: Dict[str, MCPClient] = {}
     ollama_tools: List[Dict[str, Any]] = []
     hidden: List[str] = []
     static_routes: Dict[str, tuple] = {}
     for sname, surl in servers.items():
         try:
-            read, write, _sid = await stack.enter_async_context(streamablehttp_client(surl))
-            session = await stack.enter_async_context(ClientSession(read, write))
-            await session.initialize()
+            session = await stack.enter_async_context(MCPClient(surl))
             sessions[sname] = session
-            stools = (await session.list_tools()).tools
+            stools = await session.list_tools()
             prefix = f"mcp__{sname}__" if multi else ""
             s_ollama, s_hidden, pairs = mcp_tools_to_ollama(stools, hide_substrings, prefix)
             ollama_tools.extend(s_ollama)
@@ -548,8 +545,8 @@ async def run(args: argparse.Namespace) -> int:
             if rt is not None:
                 try:
                     sname, orig = rt
-                    gr = await sessions[sname].call_tool(
-                        orig, {}, read_timeout_seconds=timedelta(seconds=60))
+                    gr = await sessions[sname].call_tool_mcp(
+                        orig, {}, timeout=timedelta(seconds=60))
                     guide_text = flatten_tool_result(gr, args.guide_chars)
                     system_prompt = (
                         base_system_prompt
@@ -609,9 +606,9 @@ async def run(args: argparse.Namespace) -> int:
                         if sess is None:
                             return (f"ERROR: MCP server {sname!r} is not connected for "
                                     "this question; try a tool from another server.")
-                        result = await sess.call_tool(
+                        result = await sess.call_tool_mcp(
                             original, args_dict or {},
-                            read_timeout_seconds=timedelta(seconds=90))
+                            timeout=timedelta(seconds=90))
                         return flatten_tool_result(result, max_chars)
 
                     res = await asyncio.wait_for(

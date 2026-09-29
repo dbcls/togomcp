@@ -13,6 +13,36 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+Upgrade to FastMCP 4 (`fastmcp>=4.0.10,<5`, `mcp` 2.2.0), which adds support for the MCP
+2026-07-28 stateless protocol: clients that skip the `initialize` handshake and describe
+themselves per request are now served, and handshake clients keep working unchanged. The tool
+surface is identical — same 33 tools, schemas, descriptions and annotations — but a plain
+dependency bump would have shipped three silent regressions, all passing the old test suite.
+This release is the bump plus the fixes (#174).
+
+### Fixed
+
+- **Tool-call log kept its client attribution.** In `mcp` 2.x the handshake field is
+  `client_info`, so the old `clientInfo` read returned `None` for *every* client and the `client`
+  column that `/stats` groups by would have gone blank. Both protocol eras now resolve through
+  one accessor, since the SDK builds the client params from a stateless request's `_meta`.
+- **Host-header allow-list is enforced again.** FastMCP 4 turned Host/Origin protection off by
+  default, and with it off `allowed_hosts` is accepted but ignored: a forged `Host` got 200 where
+  3.4.3 answered 421. `run()` now passes `host_origin_protection=True`.
+- **Handshake sessions expire after 30 minutes idle.** `mcp` 2.x refuses new sessions with 503
+  once 10,000 are open, while FastMCP 4 never expires them, and most clients never close theirs,
+  so a long-running server would eventually lock out every new handshake client. The timeout is
+  set in code rather than via `FASTMCP_HTTP_SESSION_IDLE_TIMEOUT`, which `deploy.sh` would not
+  forward.
+
+### Changed
+
+- **Log records gain `meta.protocol_version`**, so `/stats` can show how much traffic has moved
+  to the stateless protocol. For stateless calls `session_id` is `null`: FastMCP generates a
+  fresh UUID per call there, which would read as a session that never repeats.
+- `benchmark/scripts/gemma_togomcp_prototype.py` uses `fastmcp.Client`, because
+  `mcp.client.streamable_http.streamablehttp_client` was removed in `mcp` 2.x.
+
 ## [2.20.1] - 2026-09-25
 
 No tool, parameter or return shape moved. The bulk is LOTUS tooling (`scripts/lotus/` is

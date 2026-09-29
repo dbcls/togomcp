@@ -9,10 +9,11 @@ from .pubcasefinder import pubcasefinder_mcp
 import asyncio
 import os
 
-# FastMCP >= 3.4.3 validates the Host header (DNS-rebinding protection) and 421s
-# any host not on the allow-list. The default list is localhost only, so the
-# public vhosts served through the reverse proxy must be added explicitly or every
-# proxied request is rejected. Operators can append internal names (e.g. the
+# Host-header validation (DNS-rebinding protection): 421 for any host not on the
+# allow-list. The public vhosts served through the reverse proxy must be listed or
+# every proxied request is rejected. FastMCP 4 turned the guard OFF by default
+# (`http_host_origin_protection=False`), and with it off `allowed_hosts` is accepted
+# but silently ignored — so `_http_run_kwargs` must pass `host_origin_protection=True`. Operators can append internal names (e.g. the
 # container host) via TOGOMCP_ALLOWED_HOSTS="host1,host2" without editing source.
 _DEFAULT_ALLOWED_HOSTS = ["togomcp.rdfportal.org", "test-togomcp.rdfportal.org"]
 
@@ -92,15 +93,31 @@ async def setup(*, local: bool = False):
         from .kegg import kegg_mcp
         mcp.mount(kegg_mcp, "kegg")
 
+# Idle expiry for handshake (pre-2026-07-28) sessions. The mcp 2.x session manager
+# 503s every new session once `max_sessions` (10,000) are open, and FastMCP 4 passes
+# `session_idle_timeout=None` (never expire) — most clients never DELETE their
+# session, so without this a long-running server eventually refuses all new ones.
+# Set in code, not via FASTMCP_HTTP_SESSION_IDLE_TIMEOUT: deploy.sh forwards only a
+# fixed env-var list, and an unforwarded var is silently inert in production.
+_SESSION_IDLE_TIMEOUT_SECONDS = 1800.0
+
+def _http_run_kwargs() -> dict:
+    """HTTP settings for `mcp.run`, shared with the tests that check them."""
+    return {
+        "transport": "http",
+        "host": "0.0.0.0",
+        "port": 8000,
+        "host_origin_protection": True,
+        "allowed_hosts": _allowed_hosts(),
+        "uvicorn_config": {"forwarded_allow_ips": _forwarded_allow_ips()},
+    }
+
 def run():
+    import fastmcp
+
     asyncio.run(setup())
-    mcp.run(
-        transport="http",
-        host="0.0.0.0",
-        port=8000,
-        allowed_hosts=_allowed_hosts(),
-        uvicorn_config={"forwarded_allow_ips": _forwarded_allow_ips()},
-    )
+    fastmcp.settings.http_session_idle_timeout = _SESSION_IDLE_TIMEOUT_SECONDS
+    mcp.run(**_http_run_kwargs())
 
 def run_local():
     asyncio.run(setup(local=True))
