@@ -13,6 +13,8 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.21.0] - 2026-09-29
+
 Upgrade to FastMCP 4 (`fastmcp>=4.0.10,<5`, `mcp` 2.2.0), which adds support for the MCP
 2026-07-28 stateless protocol: clients that skip the `initialize` handshake and describe
 themselves per request are now served, and handshake clients keep working unchanged. The tool
@@ -2980,7 +2982,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.20.1...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.21.0...HEAD
+[2.21.0]: https://github.com/dbcls/togomcp/compare/v2.20.1...v2.21.0
 [2.20.1]: https://github.com/dbcls/togomcp/compare/v2.20.0...v2.20.1
 [2.20.0]: https://github.com/dbcls/togomcp/compare/v2.19.0...v2.20.0
 [2.19.0]: https://github.com/dbcls/togomcp/compare/v2.18.0...v2.19.0
