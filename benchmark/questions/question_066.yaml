@@ -1,272 +1,436 @@
----
 id: question_066
 type: factoid
-body: >-
-  Consider the complete set of reviewed human proteins that are annotated as
-  containing a LIM domain. Across publicly reanalyzed shotgun mass-spectrometry
-  proteomics datasets, each of these proteins can be identified with some number
-  of distinct phosphorylated peptide sequences (peptides for which at least one
-  supporting spectrum carries a phospho modification). Which single LIM-domain
-  protein has been detected with the greatest number of distinct phosphopeptide
-  sequences, and how many distinct phosphopeptide sequences is that?
+held_out: true   # created 2026-09-30 to replace the dev-exposed original (see benchmark/questions/retired/); never used for MIE development
+body: "Consider all reviewed human proteins annotated with the biological process 'defense
+  response to virus' (GO:0051607) or any of its descendant terms. Across publicly
+  reanalyzed shotgun mass-spectrometry proteomics datasets, which of these proteins has
+  been observed phosphorylated at the largest number of distinct residue positions, and
+  how many positions is that?"
 
 inspiration_keyword:
-  keyword_id: KW-0440
-  name: LIM domain
-  category: Domain
+  keyword_id: KW-0051
+  name: Antiviral defense
+  category: Biological process
 
 togomcp_databases_used:
+  - go
   - uniprot
   - jpostdb
 
 verification_score:
   biological_insight: 2
-  multi_database: 2
+  multi_database: 3
   verifiability: 3
   rdf_necessity: 3
-  total: 10
+  total: 11
   passed: true
 
 pubmed_test:
-  time_spent: 12 minutes
-  method: >-
-    Attempted to answer the specific ranking question from the literature with
-    four PubMed searches: (1) "LIM domain protein family phosphoproteome
-    phosphopeptide comparison"; (2) "LMO7 phosphorylation phosphopeptides mass
-    spectrometry proteomics"; (3) "LMO7 phosphorylation" (7 hits, abstracts
-    read); (4) "LIM domain proteins comparative phosphorylation sites paxillin
-    zyxin". Read the abstracts of the LMO7 phosphorylation hits.
+  time_spent: 10 minutes
+  method: |
+    Four PubMed searches: "TRIM28 phosphorylation sites phosphoproteomics number of
+    sites" (0 hits), "antiviral proteins phosphoproteome most phosphorylated protein
+    reanalysis" (0 hits), "KAP1 TRIM28 multiple phosphorylation sites mass spectrometry"
+    (0 hits) and "TRIM28 phosphorylation" (156 hits; top 3 abstracts read).
   result: |
-    No article compares distinct phosphopeptide counts across the human
-    LIM-domain family or ranks its members by phosphoproteomic evidence. The
-    LMO7-phosphorylation hits describe single-protein biology — a DAPK3-specific
-    phospho-site on LMO7 controlling STING ubiquitination (Nat Immunol 2021,
-    doi:10.1038/s41590-021-00896-3), LMO7 as a TGF-beta feedback regulator in
-    fibrosis (Circulation 2019, doi:10.1161/CIRCULATIONAHA.118.034615), and an
-    LMO7-BRAF fusion in thyroid carcinoma (Thyroid 2018,
-    doi:10.1089/thy.2017.0258) — none of which enumerates phosphopeptides or
-    compares LIM-domain proteins against one another. The answer is a
-    repository-state-dependent aggregate over reanalyzed proteomics datasets and
-    cannot be recovered from the literature.
-  conclusion: PASS (cannot answer from literature - requires RDF)
-
-# STRUCTURED VOCABULARY DISCOVERY
-# Scope is fixed by the UniProt keyword KW-0440 (LIM domain), not by an ontology
-# subtree, so no OLS4 getDescendants expansion applies. The full 71-protein
-# family (Query 1) is carried verbatim into the jPOST VALUES block (Query 2) —
-# no sampling.
+    The literature reports individual TRIM28 phosphosites studied one at a time (S473 by
+    RSK1, PMID 40519166; S824 by DNA-PK, PMID 39229050), never a total count of observed
+    positions, and no source compares phosphosite counts across the antiviral-defense
+    protein set. Both the winner and the value depend on the current reanalyzed
+    repository joined to the current GO annotations.
+  conclusion: PASS (cannot answer from literature - requires current database state)
 
 sparql_queries:
   - query_number: 1
+    database: go
+    description: >
+      Expand 'defense response to virus' (GO:0051607) over the authoritative Gene
+      Ontology on the `go` database: the anchor plus every rdfs:subClassOf descendant,
+      deprecated classes excluded. 6 terms, pasted verbatim into the VALUES blocks of
+      Queries 2 and 3 (Rule 2: the full subtree).
+    query: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+      SELECT DISTINCT ?term ?label
+      FROM <http://rdfportal.org/ontology/go>
+      WHERE {
+        ?term rdfs:subClassOf* obo:GO_0051607 ;
+              rdfs:label ?label .
+        FILTER(STRSTARTS(STR(?term), "http://purl.obolibrary.org/obo/GO_"))
+        FILTER NOT EXISTS { ?term owl:deprecated true }
+      }
+      ORDER BY ?term
+    result_count: 6
+
+  - query_number: 2
     database: uniprot
-    description: >-
-      Establish the complete family scope — all reviewed Homo sapiens
-      (taxon 9606) proteins classified with keyword KW-0440 (LIM domain).
-      Returns 71 distinct accessions; this exact set is the VALUES block for
-      Query 2 (no sampling).
+    description: >
+      All reviewed human proteins annotated to any of the 6 terms. Pinned to the UniProt
+      graph with deleted entries excluded (up:obsolete). 271 proteins. Rule 4: the same
+      pattern unpinned gives 271 distinct proteins over 596 rows - the extra rows are
+      proteins matching several in-scope terms, not foreign entities (OMA re-types only
+      the `a up:Protein` leg, and up:classifiedWith is UniProt-only). This accession set
+      is the VALUES block of Queries 4 and 5.
     query: |
       PREFIX up: <http://purl.uniprot.org/core/>
-      PREFIX keywords: <http://purl.uniprot.org/keywords/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
 
-      SELECT DISTINCT ?protein
+      SELECT DISTINCT ?protein ?mnemonic
+      FROM <http://sparql.uniprot.org/uniprot>
       WHERE {
+        VALUES ?goTerm { obo:GO_0009616 obo:GO_0044790 obo:GO_0051214 obo:GO_0051215 obo:GO_0051607 obo:GO_0140374 }
         ?protein a up:Protein ;
                  up:reviewed 1 ;
                  up:organism <http://purl.uniprot.org/taxonomy/9606> ;
-                 up:classifiedWith keywords:440 .
+                 up:classifiedWith ?goTerm ;
+                 up:mnemonic ?mnemonic .
+        FILTER NOT EXISTS { ?protein up:obsolete 1 }
       }
-    result_count: 71
-
-  - query_number: 2
-    database: jpostdb
-    description: >-
-      For every one of the 71 LIM-domain UniProt accessions, count the distinct
-      phosphopeptide sequences: peptides whose supporting PSM carries a phospho
-      modification (Unimod:21), reached via Protein -> hasPeptideEvidence ->
-      hasPeptide -> hasPsm -> hasModification, with the amino-acid string taken
-      from the sequence blank node. Grouped per protein, ordered descending.
-      41 of the 71 proteins return >=1 phosphopeptide; the top row is LMO7
-      (Q8WWI1) with 50, ahead of LIMA1 (Q9UHB6, 39) and LIMCH1 (Q9UPQ0, 36).
-    query: |
-      PREFIX jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-      PREFIX unimod: <http://www.unimod.org/obo/unimod.obo#>
-
-      SELECT ?up (COUNT(DISTINCT ?seq) AS ?nPhosphoPep)
-      WHERE {
-        GRAPH <http://jpost.org/graph/database> {
-          VALUES ?up {
-            <http://purl.uniprot.org/uniprot/O14639> <http://purl.uniprot.org/uniprot/Q6H8Q1> <http://purl.uniprot.org/uniprot/O94929>
-            <http://purl.uniprot.org/uniprot/Q96IF1> <http://purl.uniprot.org/uniprot/P50238> <http://purl.uniprot.org/uniprot/P52943>
-            <http://purl.uniprot.org/uniprot/Q6Q6R5> <http://purl.uniprot.org/uniprot/P21291> <http://purl.uniprot.org/uniprot/Q16527>
-            <http://purl.uniprot.org/uniprot/P50461> <http://purl.uniprot.org/uniprot/Q8WUP2> <http://purl.uniprot.org/uniprot/Q13642>
-            <http://purl.uniprot.org/uniprot/Q14192> <http://purl.uniprot.org/uniprot/Q13643> <http://purl.uniprot.org/uniprot/Q5TD97>
-            <http://purl.uniprot.org/uniprot/P61371> <http://purl.uniprot.org/uniprot/Q96A47> <http://purl.uniprot.org/uniprot/Q14847>
-            <http://purl.uniprot.org/uniprot/O75112> <http://purl.uniprot.org/uniprot/P48742> <http://purl.uniprot.org/uniprot/P50458>
-            <http://purl.uniprot.org/uniprot/Q9UBR4> <http://purl.uniprot.org/uniprot/Q969G2> <http://purl.uniprot.org/uniprot/Q9H2C1>
-            <http://purl.uniprot.org/uniprot/Q9UPM6> <http://purl.uniprot.org/uniprot/Q68G74> <http://purl.uniprot.org/uniprot/Q9NQ69>
-            <http://purl.uniprot.org/uniprot/Q9UHB6> <http://purl.uniprot.org/uniprot/Q9UPQ0> <http://purl.uniprot.org/uniprot/Q9UGP4>
-            <http://purl.uniprot.org/uniprot/Q9BT23> <http://purl.uniprot.org/uniprot/P53667> <http://purl.uniprot.org/uniprot/P53671>
-            <http://purl.uniprot.org/uniprot/P48059> <http://purl.uniprot.org/uniprot/Q7Z4I7> <http://purl.uniprot.org/uniprot/P0CW19>
-            <http://purl.uniprot.org/uniprot/P0CW20> <http://purl.uniprot.org/uniprot/Q9NZU5> <http://purl.uniprot.org/uniprot/P25800>
-            <http://purl.uniprot.org/uniprot/P25791> <http://purl.uniprot.org/uniprot/Q8TAP4> <http://purl.uniprot.org/uniprot/P61968>
-            <http://purl.uniprot.org/uniprot/Q8WWI1> <http://purl.uniprot.org/uniprot/Q8TE12> <http://purl.uniprot.org/uniprot/O60663>
-            <http://purl.uniprot.org/uniprot/Q93052> <http://purl.uniprot.org/uniprot/O60711> <http://purl.uniprot.org/uniprot/Q8TDZ2>
-            <http://purl.uniprot.org/uniprot/O94851> <http://purl.uniprot.org/uniprot/Q7RTP6> <http://purl.uniprot.org/uniprot/Q8N3F8>
-            <http://purl.uniprot.org/uniprot/Q8IY33> <http://purl.uniprot.org/uniprot/Q86VF7> <http://purl.uniprot.org/uniprot/O00151>
-            <http://purl.uniprot.org/uniprot/Q96JY6> <http://purl.uniprot.org/uniprot/Q53GG5> <http://purl.uniprot.org/uniprot/P50479>
-            <http://purl.uniprot.org/uniprot/Q96HC4> <http://purl.uniprot.org/uniprot/Q9NR12> <http://purl.uniprot.org/uniprot/Q96MT3>
-            <http://purl.uniprot.org/uniprot/Q7Z3G6> <http://purl.uniprot.org/uniprot/O43900> <http://purl.uniprot.org/uniprot/Q2TBC4>
-            <http://purl.uniprot.org/uniprot/P49023> <http://purl.uniprot.org/uniprot/O95171> <http://purl.uniprot.org/uniprot/Q9UGI8>
-            <http://purl.uniprot.org/uniprot/O43294> <http://purl.uniprot.org/uniprot/Q15654> <http://purl.uniprot.org/uniprot/A6NIX2>
-            <http://purl.uniprot.org/uniprot/O15231> <http://purl.uniprot.org/uniprot/Q15942>
-          }
-          ?prot a jpost:Protein ;
-                jpost:hasDatabaseSequence ?up ;
-                jpost:hasPeptideEvidence/jpost:hasPeptide ?pep .
-          ?pep jpost:hasPsm/jpost:hasModification ?mod .
-          ?mod a unimod:UNIMOD_21 .
-          ?pep jpost:hasSequence [ a obo:MS_1001344 ; rdf:value ?seq ] .
-        }
-      }
-      GROUP BY ?up
-      ORDER BY DESC(?nPhosphoPep)
-    result_count: 41
+      ORDER BY ?protein
+    result_count: 271
 
   - query_number: 3
-    database: jpostdb
-    description: >-
-      Arithmetic verification for the Query 2 GROUP BY: independently count how
-      many of the 71 LIM-domain proteins have at least one phosphopeptide
-      (Unimod:21) in jPOST. Returns 41, matching the 41 grouped rows of Query 2
-      (no protein dropped; the 30 proteins absent from Query 2 have zero
-      phosphopeptides).
+    database: uniprot
+    description: >
+      Scope check on the eventual answer: TRIM28 (Q13263) carries ONLY the descendant
+      term GO:0044790 (suppression of viral release by host) within the subtree, not the
+      root GO:0051607. A root-only question therefore misses the answer entirely (ILF3,
+      annotated to the root, would appear to lead with 44).
     query: |
-      PREFIX jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#>
-      PREFIX unimod: <http://www.unimod.org/obo/unimod.obo#>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
 
-      SELECT (COUNT(DISTINCT ?up) AS ?nProteinsWithPhospho)
+      SELECT ?goTerm
+      FROM <http://sparql.uniprot.org/uniprot>
       WHERE {
-        GRAPH <http://jpost.org/graph/database> {
-          VALUES ?up {
-            <http://purl.uniprot.org/uniprot/O14639> <http://purl.uniprot.org/uniprot/Q6H8Q1> <http://purl.uniprot.org/uniprot/O94929>
-            <http://purl.uniprot.org/uniprot/Q96IF1> <http://purl.uniprot.org/uniprot/P50238> <http://purl.uniprot.org/uniprot/P52943>
-            <http://purl.uniprot.org/uniprot/Q6Q6R5> <http://purl.uniprot.org/uniprot/P21291> <http://purl.uniprot.org/uniprot/Q16527>
-            <http://purl.uniprot.org/uniprot/P50461> <http://purl.uniprot.org/uniprot/Q8WUP2> <http://purl.uniprot.org/uniprot/Q13642>
-            <http://purl.uniprot.org/uniprot/Q14192> <http://purl.uniprot.org/uniprot/Q13643> <http://purl.uniprot.org/uniprot/Q5TD97>
-            <http://purl.uniprot.org/uniprot/P61371> <http://purl.uniprot.org/uniprot/Q96A47> <http://purl.uniprot.org/uniprot/Q14847>
-            <http://purl.uniprot.org/uniprot/O75112> <http://purl.uniprot.org/uniprot/P48742> <http://purl.uniprot.org/uniprot/P50458>
-            <http://purl.uniprot.org/uniprot/Q9UBR4> <http://purl.uniprot.org/uniprot/Q969G2> <http://purl.uniprot.org/uniprot/Q9H2C1>
-            <http://purl.uniprot.org/uniprot/Q9UPM6> <http://purl.uniprot.org/uniprot/Q68G74> <http://purl.uniprot.org/uniprot/Q9NQ69>
-            <http://purl.uniprot.org/uniprot/Q9UHB6> <http://purl.uniprot.org/uniprot/Q9UPQ0> <http://purl.uniprot.org/uniprot/Q9UGP4>
-            <http://purl.uniprot.org/uniprot/Q9BT23> <http://purl.uniprot.org/uniprot/P53667> <http://purl.uniprot.org/uniprot/P53671>
-            <http://purl.uniprot.org/uniprot/P48059> <http://purl.uniprot.org/uniprot/Q7Z4I7> <http://purl.uniprot.org/uniprot/P0CW19>
-            <http://purl.uniprot.org/uniprot/P0CW20> <http://purl.uniprot.org/uniprot/Q9NZU5> <http://purl.uniprot.org/uniprot/P25800>
-            <http://purl.uniprot.org/uniprot/P25791> <http://purl.uniprot.org/uniprot/Q8TAP4> <http://purl.uniprot.org/uniprot/P61968>
-            <http://purl.uniprot.org/uniprot/Q8WWI1> <http://purl.uniprot.org/uniprot/Q8TE12> <http://purl.uniprot.org/uniprot/O60663>
-            <http://purl.uniprot.org/uniprot/Q93052> <http://purl.uniprot.org/uniprot/O60711> <http://purl.uniprot.org/uniprot/Q8TDZ2>
-            <http://purl.uniprot.org/uniprot/O94851> <http://purl.uniprot.org/uniprot/Q7RTP6> <http://purl.uniprot.org/uniprot/Q8N3F8>
-            <http://purl.uniprot.org/uniprot/Q8IY33> <http://purl.uniprot.org/uniprot/Q86VF7> <http://purl.uniprot.org/uniprot/O00151>
-            <http://purl.uniprot.org/uniprot/Q96JY6> <http://purl.uniprot.org/uniprot/Q53GG5> <http://purl.uniprot.org/uniprot/P50479>
-            <http://purl.uniprot.org/uniprot/Q96HC4> <http://purl.uniprot.org/uniprot/Q9NR12> <http://purl.uniprot.org/uniprot/Q96MT3>
-            <http://purl.uniprot.org/uniprot/Q7Z3G6> <http://purl.uniprot.org/uniprot/O43900> <http://purl.uniprot.org/uniprot/Q2TBC4>
-            <http://purl.uniprot.org/uniprot/P49023> <http://purl.uniprot.org/uniprot/O95171> <http://purl.uniprot.org/uniprot/Q9UGI8>
-            <http://purl.uniprot.org/uniprot/O43294> <http://purl.uniprot.org/uniprot/Q15654> <http://purl.uniprot.org/uniprot/A6NIX2>
-            <http://purl.uniprot.org/uniprot/O15231> <http://purl.uniprot.org/uniprot/Q15942>
-          }
-          ?prot a jpost:Protein ;
-                jpost:hasDatabaseSequence ?up ;
-                jpost:hasPeptideEvidence/jpost:hasPeptide ?pep .
-          ?pep jpost:hasPsm/jpost:hasModification ?mod .
-          ?mod a unimod:UNIMOD_21 .
-        }
+        VALUES ?goTerm { obo:GO_0009616 obo:GO_0044790 obo:GO_0051214 obo:GO_0051215 obo:GO_0051607 obo:GO_0140374 }
+        <http://purl.uniprot.org/uniprot/Q13263> up:classifiedWith ?goTerm .
       }
     result_count: 1
 
   - query_number: 4
     database: jpostdb
-    description: >-
-      Independent confirmation of the winner's value: count distinct
-      phosphopeptide sequences for LMO7 (UniProt Q8WWI1) alone, anchored solely
-      on its hasDatabaseSequence link (no VALUES block). Returns 50, matching
-      the top row of Query 2.
+    description: >
+      Distinct phosphorylated residue positions per protein. jPOST records two FALDO
+      frames: the peptide evidence's begin is protein-absolute, the modification's
+      position is peptide-relative, so protein position = peptide begin + modification
+      position - 1 (MIE ptm_absolute_position). Phospho = unimod:UNIMOD_21 (unimod.obo#
+      namespace). Graph-pinned; jPOST maps to canonical accessions only (0 isoform IRIs
+      among 76,820 hasDatabaseSequence targets), so no isoform-mapped peptides are
+      missed. 126 of the 271 proteins have at least one phosphosite; TRIM28 is the unique
+      maximum with 68, ahead of ILF3 (44), SETD2 (38) and ZC3HAV1 (37).
     query: |
       PREFIX jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#>
-      PREFIX obo: <http://purl.obolibrary.org/obo/>
-      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
       PREFIX unimod: <http://www.unimod.org/obo/unimod.obo#>
 
-      SELECT (COUNT(DISTINCT ?seq) AS ?nSeqLMO7)
+      SELECT ?up (COUNT(DISTINCT ?protPos) AS ?phosphoPositions)
       WHERE {
         GRAPH <http://jpost.org/graph/database> {
-          ?prot a jpost:Protein ;
-                jpost:hasDatabaseSequence <http://purl.uniprot.org/uniprot/Q8WWI1> ;
-                jpost:hasPeptideEvidence/jpost:hasPeptide ?pep .
+          VALUES ?up {
+          <http://purl.uniprot.org/uniprot/A0A087WWS6> <http://purl.uniprot.org/uniprot/A6NK06> <http://purl.uniprot.org/uniprot/A6NNY8>
+          <http://purl.uniprot.org/uniprot/A7MCY6> <http://purl.uniprot.org/uniprot/C9JQL5> <http://purl.uniprot.org/uniprot/K9M1U5>
+          <http://purl.uniprot.org/uniprot/O14730> <http://purl.uniprot.org/uniprot/O14802> <http://purl.uniprot.org/uniprot/O14862>
+          <http://purl.uniprot.org/uniprot/O14879> <http://purl.uniprot.org/uniprot/O15162> <http://purl.uniprot.org/uniprot/O15318>
+          <http://purl.uniprot.org/uniprot/O15455> <http://purl.uniprot.org/uniprot/O15496> <http://purl.uniprot.org/uniprot/O43143>
+          <http://purl.uniprot.org/uniprot/O60231> <http://purl.uniprot.org/uniprot/O60238> <http://purl.uniprot.org/uniprot/O60264>
+          <http://purl.uniprot.org/uniprot/O60603> <http://purl.uniprot.org/uniprot/O60706> <http://purl.uniprot.org/uniprot/O60828>
+          <http://purl.uniprot.org/uniprot/O60858> <http://purl.uniprot.org/uniprot/O75569> <http://purl.uniprot.org/uniprot/O75575>
+          <http://purl.uniprot.org/uniprot/O75636> <http://purl.uniprot.org/uniprot/O95292> <http://purl.uniprot.org/uniprot/O95352>
+          <http://purl.uniprot.org/uniprot/O95786> <http://purl.uniprot.org/uniprot/O95801> <http://purl.uniprot.org/uniprot/P00973>
+          <http://purl.uniprot.org/uniprot/P01375> <http://purl.uniprot.org/uniprot/P01563> <http://purl.uniprot.org/uniprot/P01566>
+          <http://purl.uniprot.org/uniprot/P01567> <http://purl.uniprot.org/uniprot/P01568> <http://purl.uniprot.org/uniprot/P01569>
+          <http://purl.uniprot.org/uniprot/P01570> <http://purl.uniprot.org/uniprot/P01571> <http://purl.uniprot.org/uniprot/P01574>
+          <http://purl.uniprot.org/uniprot/P01579> <http://purl.uniprot.org/uniprot/P02778> <http://purl.uniprot.org/uniprot/P05000>
+          <http://purl.uniprot.org/uniprot/P05013> <http://purl.uniprot.org/uniprot/P05014> <http://purl.uniprot.org/uniprot/P05015>
+          <http://purl.uniprot.org/uniprot/P05161> <http://purl.uniprot.org/uniprot/P05231> <http://purl.uniprot.org/uniprot/P05423>
+          <http://purl.uniprot.org/uniprot/P08575> <http://purl.uniprot.org/uniprot/P08865> <http://purl.uniprot.org/uniprot/P08949>
+          <http://purl.uniprot.org/uniprot/P09912> <http://purl.uniprot.org/uniprot/P09913> <http://purl.uniprot.org/uniprot/P09914>
+          <http://purl.uniprot.org/uniprot/P0C7U3> <http://purl.uniprot.org/uniprot/P0DY56> <http://purl.uniprot.org/uniprot/P10153>
+          <http://purl.uniprot.org/uniprot/P10415> <http://purl.uniprot.org/uniprot/P10914> <http://purl.uniprot.org/uniprot/P11226>
+          <http://purl.uniprot.org/uniprot/P13164> <http://purl.uniprot.org/uniprot/P14222> <http://purl.uniprot.org/uniprot/P14316>
+          <http://purl.uniprot.org/uniprot/P14373> <http://purl.uniprot.org/uniprot/P16333> <http://purl.uniprot.org/uniprot/P19474>
+          <http://purl.uniprot.org/uniprot/P19525> <http://purl.uniprot.org/uniprot/P20160> <http://purl.uniprot.org/uniprot/P20591>
+          <http://purl.uniprot.org/uniprot/P20592> <http://purl.uniprot.org/uniprot/P28336> <http://purl.uniprot.org/uniprot/P29466>
+          <http://purl.uniprot.org/uniprot/P29590> <http://purl.uniprot.org/uniprot/P29728> <http://purl.uniprot.org/uniprot/P30039>
+          <http://purl.uniprot.org/uniprot/P31941> <http://purl.uniprot.org/uniprot/P32455> <http://purl.uniprot.org/uniprot/P32456>
+          <http://purl.uniprot.org/uniprot/P32881> <http://purl.uniprot.org/uniprot/P35232> <http://purl.uniprot.org/uniprot/P40305>
+          <http://purl.uniprot.org/uniprot/P41145> <http://purl.uniprot.org/uniprot/P42224> <http://purl.uniprot.org/uniprot/P48551>
+          <http://purl.uniprot.org/uniprot/P52630> <http://purl.uniprot.org/uniprot/P55085> <http://purl.uniprot.org/uniprot/P55265>
+          <http://purl.uniprot.org/uniprot/P59044> <http://purl.uniprot.org/uniprot/P59665> <http://purl.uniprot.org/uniprot/P59666>
+          <http://purl.uniprot.org/uniprot/P61088> <http://purl.uniprot.org/uniprot/P78310> <http://purl.uniprot.org/uniprot/P78563>
+          <http://purl.uniprot.org/uniprot/Q00978> <http://purl.uniprot.org/uniprot/Q01628> <http://purl.uniprot.org/uniprot/Q01629>
+          <http://purl.uniprot.org/uniprot/Q01804> <http://purl.uniprot.org/uniprot/Q04206> <http://purl.uniprot.org/uniprot/Q05823>
+          <http://purl.uniprot.org/uniprot/Q07817> <http://purl.uniprot.org/uniprot/Q07869> <http://purl.uniprot.org/uniprot/Q08334>
+          <http://purl.uniprot.org/uniprot/Q09161> <http://purl.uniprot.org/uniprot/Q10589> <http://purl.uniprot.org/uniprot/Q12891>
+          <http://purl.uniprot.org/uniprot/Q12899> <http://purl.uniprot.org/uniprot/Q12904> <http://purl.uniprot.org/uniprot/Q12906>
+          <http://purl.uniprot.org/uniprot/Q12983> <http://purl.uniprot.org/uniprot/Q13049> <http://purl.uniprot.org/uniprot/Q13114>
+          <http://purl.uniprot.org/uniprot/Q13158> <http://purl.uniprot.org/uniprot/Q13217> <http://purl.uniprot.org/uniprot/Q13263>
+          <http://purl.uniprot.org/uniprot/Q13283> <http://purl.uniprot.org/uniprot/Q13309> <http://purl.uniprot.org/uniprot/Q13325>
+          <http://purl.uniprot.org/uniprot/Q13530> <http://purl.uniprot.org/uniprot/Q13568> <http://purl.uniprot.org/uniprot/Q13794>
+          <http://purl.uniprot.org/uniprot/Q14149> <http://purl.uniprot.org/uniprot/Q14164> <http://purl.uniprot.org/uniprot/Q14258>
+          <http://purl.uniprot.org/uniprot/Q14457> <http://purl.uniprot.org/uniprot/Q14653> <http://purl.uniprot.org/uniprot/Q15326>
+          <http://purl.uniprot.org/uniprot/Q15366> <http://purl.uniprot.org/uniprot/Q15646> <http://purl.uniprot.org/uniprot/Q16222>
+          <http://purl.uniprot.org/uniprot/Q16666> <http://purl.uniprot.org/uniprot/Q29983> <http://purl.uniprot.org/uniprot/Q53F19>
+          <http://purl.uniprot.org/uniprot/Q53G44> <http://purl.uniprot.org/uniprot/Q5D1E8> <http://purl.uniprot.org/uniprot/Q5H9U9>
+          <http://purl.uniprot.org/uniprot/Q5T764> <http://purl.uniprot.org/uniprot/Q5VU57> <http://purl.uniprot.org/uniprot/Q676U5>
+          <http://purl.uniprot.org/uniprot/Q68D06> <http://purl.uniprot.org/uniprot/Q6IPT2> <http://purl.uniprot.org/uniprot/Q6L8Q7>
+          <http://purl.uniprot.org/uniprot/Q6NTF7> <http://purl.uniprot.org/uniprot/Q6PJ69> <http://purl.uniprot.org/uniprot/Q7RTR0>
+          <http://purl.uniprot.org/uniprot/Q7Z2W4> <http://purl.uniprot.org/uniprot/Q7Z434> <http://purl.uniprot.org/uniprot/Q7Z7L1>
+          <http://purl.uniprot.org/uniprot/Q86VE9> <http://purl.uniprot.org/uniprot/Q86WI3> <http://purl.uniprot.org/uniprot/Q86WN2>
+          <http://purl.uniprot.org/uniprot/Q86WV6> <http://purl.uniprot.org/uniprot/Q8IU54> <http://purl.uniprot.org/uniprot/Q8IU57>
+          <http://purl.uniprot.org/uniprot/Q8IUC6> <http://purl.uniprot.org/uniprot/Q8IUD6> <http://purl.uniprot.org/uniprot/Q8IUX4>
+          <http://purl.uniprot.org/uniprot/Q8IXQ6> <http://purl.uniprot.org/uniprot/Q8IY21> <http://purl.uniprot.org/uniprot/Q8IYM9>
+          <http://purl.uniprot.org/uniprot/Q8IZ81> <http://purl.uniprot.org/uniprot/Q8IZI9> <http://purl.uniprot.org/uniprot/Q8IZJ0>
+          <http://purl.uniprot.org/uniprot/Q8N884> <http://purl.uniprot.org/uniprot/Q8N8V2> <http://purl.uniprot.org/uniprot/Q8NB16>
+          <http://purl.uniprot.org/uniprot/Q8NDL9> <http://purl.uniprot.org/uniprot/Q8NHL6> <http://purl.uniprot.org/uniprot/Q8TDB6>
+          <http://purl.uniprot.org/uniprot/Q8WTX9> <http://purl.uniprot.org/uniprot/Q8WUD1> <http://purl.uniprot.org/uniprot/Q8WV44>
+          <http://purl.uniprot.org/uniprot/Q8WXG1> <http://purl.uniprot.org/uniprot/Q92499> <http://purl.uniprot.org/uniprot/Q92667>
+          <http://purl.uniprot.org/uniprot/Q92841> <http://purl.uniprot.org/uniprot/Q92844> <http://purl.uniprot.org/uniprot/Q92985>
+          <http://purl.uniprot.org/uniprot/Q93009> <http://purl.uniprot.org/uniprot/Q93091> <http://purl.uniprot.org/uniprot/Q96A61>
+          <http://purl.uniprot.org/uniprot/Q96AK3> <http://purl.uniprot.org/uniprot/Q96AZ6> <http://purl.uniprot.org/uniprot/Q96B02>
+          <http://purl.uniprot.org/uniprot/Q96C10> <http://purl.uniprot.org/uniprot/Q96DX8> <http://purl.uniprot.org/uniprot/Q96F44>
+          <http://purl.uniprot.org/uniprot/Q96GF1> <http://purl.uniprot.org/uniprot/Q96J02> <http://purl.uniprot.org/uniprot/Q96PP8>
+          <http://purl.uniprot.org/uniprot/Q96S82> <http://purl.uniprot.org/uniprot/Q99558> <http://purl.uniprot.org/uniprot/Q99623>
+          <http://purl.uniprot.org/uniprot/Q99698> <http://purl.uniprot.org/uniprot/Q99836> <http://purl.uniprot.org/uniprot/Q9BQF6>
+          <http://purl.uniprot.org/uniprot/Q9BRZ2> <http://purl.uniprot.org/uniprot/Q9BUI4> <http://purl.uniprot.org/uniprot/Q9BV40>
+          <http://purl.uniprot.org/uniprot/Q9BXJ8> <http://purl.uniprot.org/uniprot/Q9BYH8> <http://purl.uniprot.org/uniprot/Q9BYJ4>
+          <http://purl.uniprot.org/uniprot/Q9BYW2> <http://purl.uniprot.org/uniprot/Q9BYX4> <http://purl.uniprot.org/uniprot/Q9BZR9>
+          <http://purl.uniprot.org/uniprot/Q9BZY9> <http://purl.uniprot.org/uniprot/Q9C000> <http://purl.uniprot.org/uniprot/Q9C019>
+          <http://purl.uniprot.org/uniprot/Q9C029> <http://purl.uniprot.org/uniprot/Q9C030> <http://purl.uniprot.org/uniprot/Q9C035>
+          <http://purl.uniprot.org/uniprot/Q9GZX7> <http://purl.uniprot.org/uniprot/Q9H078> <http://purl.uniprot.org/uniprot/Q9H0E7>
+          <http://purl.uniprot.org/uniprot/Q9H0P0> <http://purl.uniprot.org/uniprot/Q9H0R5> <http://purl.uniprot.org/uniprot/Q9H171>
+          <http://purl.uniprot.org/uniprot/Q9H1C4> <http://purl.uniprot.org/uniprot/Q9H1D9> <http://purl.uniprot.org/uniprot/Q9H2U1>
+          <http://purl.uniprot.org/uniprot/Q9H6S1> <http://purl.uniprot.org/uniprot/Q9H8X9> <http://purl.uniprot.org/uniprot/Q9HBE4>
+          <http://purl.uniprot.org/uniprot/Q9HBJ7> <http://purl.uniprot.org/uniprot/Q9HC16> <http://purl.uniprot.org/uniprot/Q9HCE1>
+          <http://purl.uniprot.org/uniprot/Q9NP55> <http://purl.uniprot.org/uniprot/Q9NPD3> <http://purl.uniprot.org/uniprot/Q9NPF7>
+          <http://purl.uniprot.org/uniprot/Q9NQT4> <http://purl.uniprot.org/uniprot/Q9NR30> <http://purl.uniprot.org/uniprot/Q9NR96>
+          <http://purl.uniprot.org/uniprot/Q9NR97> <http://purl.uniprot.org/uniprot/Q9NRD9> <http://purl.uniprot.org/uniprot/Q9NRW3>
+          <http://purl.uniprot.org/uniprot/Q9NUD5> <http://purl.uniprot.org/uniprot/Q9NUL5> <http://purl.uniprot.org/uniprot/Q9NUQ8>
+          <http://purl.uniprot.org/uniprot/Q9NV70> <http://purl.uniprot.org/uniprot/Q9NVI7> <http://purl.uniprot.org/uniprot/Q9NVU0>
+          <http://purl.uniprot.org/uniprot/Q9NW08> <http://purl.uniprot.org/uniprot/Q9NX09> <http://purl.uniprot.org/uniprot/Q9NX74>
+          <http://purl.uniprot.org/uniprot/Q9NY93> <http://purl.uniprot.org/uniprot/Q9NYK1> <http://purl.uniprot.org/uniprot/Q9P032>
+          <http://purl.uniprot.org/uniprot/Q9P0N8> <http://purl.uniprot.org/uniprot/Q9P0W0> <http://purl.uniprot.org/uniprot/Q9P2E3>
+          <http://purl.uniprot.org/uniprot/Q9P2K8> <http://purl.uniprot.org/uniprot/Q9UGM3> <http://purl.uniprot.org/uniprot/Q9UH17>
+          <http://purl.uniprot.org/uniprot/Q9UHD2> <http://purl.uniprot.org/uniprot/Q9UII4> <http://purl.uniprot.org/uniprot/Q9UIV1>
+          <http://purl.uniprot.org/uniprot/Q9UJ71> <http://purl.uniprot.org/uniprot/Q9UJV3> <http://purl.uniprot.org/uniprot/Q9ULZ3>
+          <http://purl.uniprot.org/uniprot/Q9UMW8> <http://purl.uniprot.org/uniprot/Q9UPQ4> <http://purl.uniprot.org/uniprot/Q9Y228>
+          <http://purl.uniprot.org/uniprot/Q9Y2G2> <http://purl.uniprot.org/uniprot/Q9Y2K6> <http://purl.uniprot.org/uniprot/Q9Y2Y1>
+          <http://purl.uniprot.org/uniprot/Q9Y3E7> <http://purl.uniprot.org/uniprot/Q9Y3Z3> <http://purl.uniprot.org/uniprot/Q9Y473>
+          <http://purl.uniprot.org/uniprot/Q9Y4K3> <http://purl.uniprot.org/uniprot/Q9Y535> <http://purl.uniprot.org/uniprot/Q9Y572>
+          <http://purl.uniprot.org/uniprot/Q9Y6K5>
+          }
+          ?prot jpost:hasDatabaseSequence ?up ;
+                jpost:hasPeptideEvidence ?ev .
+          ?ev jpost:hasPeptide ?pep ;
+              faldo:location [ faldo:begin [ faldo:position ?peptBegin ] ] .   # protein-absolute
           ?pep jpost:hasPsm/jpost:hasModification ?mod .
-          ?mod a unimod:UNIMOD_21 .
-          ?pep jpost:hasSequence [ a obo:MS_1001344 ; rdf:value ?seq ] .
+          ?mod a unimod:UNIMOD_21 ;                                             # Phospho
+               jpost:modificationSite ?residue ;
+               faldo:location [ faldo:position ?modPos ] .                      # peptide-relative
+          BIND(?peptBegin + ?modPos - 1 AS ?protPos)
+        }
+      }
+      GROUP BY ?up
+      ORDER BY DESC(?phosphoPositions) ?up
+    result_count: 126
+
+  - query_number: 5
+    database: jpostdb
+    description: >
+      Rule-3 arithmetic check for Query 4: 126 proteins and 895 distinct
+      (protein, position) pairs; the per-protein counts in Query 4 sum to exactly 895.
+      Provenance probe: every jpost:hasDatabaseSequence triple pointing at Q13263 (307)
+      lies in http://jpost.org/graph/database, so no co-tenant contributes.
+    query: |
+      PREFIX jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX unimod: <http://www.unimod.org/obo/unimod.obo#>
+
+      SELECT (COUNT(DISTINCT ?up) AS ?proteins)
+             (COUNT(DISTINCT CONCAT(STR(?up), "@", STR(?protPos))) AS ?proteinPositions)
+      WHERE {
+        GRAPH <http://jpost.org/graph/database> {
+          VALUES ?up {
+          <http://purl.uniprot.org/uniprot/A0A087WWS6> <http://purl.uniprot.org/uniprot/A6NK06> <http://purl.uniprot.org/uniprot/A6NNY8>
+          <http://purl.uniprot.org/uniprot/A7MCY6> <http://purl.uniprot.org/uniprot/C9JQL5> <http://purl.uniprot.org/uniprot/K9M1U5>
+          <http://purl.uniprot.org/uniprot/O14730> <http://purl.uniprot.org/uniprot/O14802> <http://purl.uniprot.org/uniprot/O14862>
+          <http://purl.uniprot.org/uniprot/O14879> <http://purl.uniprot.org/uniprot/O15162> <http://purl.uniprot.org/uniprot/O15318>
+          <http://purl.uniprot.org/uniprot/O15455> <http://purl.uniprot.org/uniprot/O15496> <http://purl.uniprot.org/uniprot/O43143>
+          <http://purl.uniprot.org/uniprot/O60231> <http://purl.uniprot.org/uniprot/O60238> <http://purl.uniprot.org/uniprot/O60264>
+          <http://purl.uniprot.org/uniprot/O60603> <http://purl.uniprot.org/uniprot/O60706> <http://purl.uniprot.org/uniprot/O60828>
+          <http://purl.uniprot.org/uniprot/O60858> <http://purl.uniprot.org/uniprot/O75569> <http://purl.uniprot.org/uniprot/O75575>
+          <http://purl.uniprot.org/uniprot/O75636> <http://purl.uniprot.org/uniprot/O95292> <http://purl.uniprot.org/uniprot/O95352>
+          <http://purl.uniprot.org/uniprot/O95786> <http://purl.uniprot.org/uniprot/O95801> <http://purl.uniprot.org/uniprot/P00973>
+          <http://purl.uniprot.org/uniprot/P01375> <http://purl.uniprot.org/uniprot/P01563> <http://purl.uniprot.org/uniprot/P01566>
+          <http://purl.uniprot.org/uniprot/P01567> <http://purl.uniprot.org/uniprot/P01568> <http://purl.uniprot.org/uniprot/P01569>
+          <http://purl.uniprot.org/uniprot/P01570> <http://purl.uniprot.org/uniprot/P01571> <http://purl.uniprot.org/uniprot/P01574>
+          <http://purl.uniprot.org/uniprot/P01579> <http://purl.uniprot.org/uniprot/P02778> <http://purl.uniprot.org/uniprot/P05000>
+          <http://purl.uniprot.org/uniprot/P05013> <http://purl.uniprot.org/uniprot/P05014> <http://purl.uniprot.org/uniprot/P05015>
+          <http://purl.uniprot.org/uniprot/P05161> <http://purl.uniprot.org/uniprot/P05231> <http://purl.uniprot.org/uniprot/P05423>
+          <http://purl.uniprot.org/uniprot/P08575> <http://purl.uniprot.org/uniprot/P08865> <http://purl.uniprot.org/uniprot/P08949>
+          <http://purl.uniprot.org/uniprot/P09912> <http://purl.uniprot.org/uniprot/P09913> <http://purl.uniprot.org/uniprot/P09914>
+          <http://purl.uniprot.org/uniprot/P0C7U3> <http://purl.uniprot.org/uniprot/P0DY56> <http://purl.uniprot.org/uniprot/P10153>
+          <http://purl.uniprot.org/uniprot/P10415> <http://purl.uniprot.org/uniprot/P10914> <http://purl.uniprot.org/uniprot/P11226>
+          <http://purl.uniprot.org/uniprot/P13164> <http://purl.uniprot.org/uniprot/P14222> <http://purl.uniprot.org/uniprot/P14316>
+          <http://purl.uniprot.org/uniprot/P14373> <http://purl.uniprot.org/uniprot/P16333> <http://purl.uniprot.org/uniprot/P19474>
+          <http://purl.uniprot.org/uniprot/P19525> <http://purl.uniprot.org/uniprot/P20160> <http://purl.uniprot.org/uniprot/P20591>
+          <http://purl.uniprot.org/uniprot/P20592> <http://purl.uniprot.org/uniprot/P28336> <http://purl.uniprot.org/uniprot/P29466>
+          <http://purl.uniprot.org/uniprot/P29590> <http://purl.uniprot.org/uniprot/P29728> <http://purl.uniprot.org/uniprot/P30039>
+          <http://purl.uniprot.org/uniprot/P31941> <http://purl.uniprot.org/uniprot/P32455> <http://purl.uniprot.org/uniprot/P32456>
+          <http://purl.uniprot.org/uniprot/P32881> <http://purl.uniprot.org/uniprot/P35232> <http://purl.uniprot.org/uniprot/P40305>
+          <http://purl.uniprot.org/uniprot/P41145> <http://purl.uniprot.org/uniprot/P42224> <http://purl.uniprot.org/uniprot/P48551>
+          <http://purl.uniprot.org/uniprot/P52630> <http://purl.uniprot.org/uniprot/P55085> <http://purl.uniprot.org/uniprot/P55265>
+          <http://purl.uniprot.org/uniprot/P59044> <http://purl.uniprot.org/uniprot/P59665> <http://purl.uniprot.org/uniprot/P59666>
+          <http://purl.uniprot.org/uniprot/P61088> <http://purl.uniprot.org/uniprot/P78310> <http://purl.uniprot.org/uniprot/P78563>
+          <http://purl.uniprot.org/uniprot/Q00978> <http://purl.uniprot.org/uniprot/Q01628> <http://purl.uniprot.org/uniprot/Q01629>
+          <http://purl.uniprot.org/uniprot/Q01804> <http://purl.uniprot.org/uniprot/Q04206> <http://purl.uniprot.org/uniprot/Q05823>
+          <http://purl.uniprot.org/uniprot/Q07817> <http://purl.uniprot.org/uniprot/Q07869> <http://purl.uniprot.org/uniprot/Q08334>
+          <http://purl.uniprot.org/uniprot/Q09161> <http://purl.uniprot.org/uniprot/Q10589> <http://purl.uniprot.org/uniprot/Q12891>
+          <http://purl.uniprot.org/uniprot/Q12899> <http://purl.uniprot.org/uniprot/Q12904> <http://purl.uniprot.org/uniprot/Q12906>
+          <http://purl.uniprot.org/uniprot/Q12983> <http://purl.uniprot.org/uniprot/Q13049> <http://purl.uniprot.org/uniprot/Q13114>
+          <http://purl.uniprot.org/uniprot/Q13158> <http://purl.uniprot.org/uniprot/Q13217> <http://purl.uniprot.org/uniprot/Q13263>
+          <http://purl.uniprot.org/uniprot/Q13283> <http://purl.uniprot.org/uniprot/Q13309> <http://purl.uniprot.org/uniprot/Q13325>
+          <http://purl.uniprot.org/uniprot/Q13530> <http://purl.uniprot.org/uniprot/Q13568> <http://purl.uniprot.org/uniprot/Q13794>
+          <http://purl.uniprot.org/uniprot/Q14149> <http://purl.uniprot.org/uniprot/Q14164> <http://purl.uniprot.org/uniprot/Q14258>
+          <http://purl.uniprot.org/uniprot/Q14457> <http://purl.uniprot.org/uniprot/Q14653> <http://purl.uniprot.org/uniprot/Q15326>
+          <http://purl.uniprot.org/uniprot/Q15366> <http://purl.uniprot.org/uniprot/Q15646> <http://purl.uniprot.org/uniprot/Q16222>
+          <http://purl.uniprot.org/uniprot/Q16666> <http://purl.uniprot.org/uniprot/Q29983> <http://purl.uniprot.org/uniprot/Q53F19>
+          <http://purl.uniprot.org/uniprot/Q53G44> <http://purl.uniprot.org/uniprot/Q5D1E8> <http://purl.uniprot.org/uniprot/Q5H9U9>
+          <http://purl.uniprot.org/uniprot/Q5T764> <http://purl.uniprot.org/uniprot/Q5VU57> <http://purl.uniprot.org/uniprot/Q676U5>
+          <http://purl.uniprot.org/uniprot/Q68D06> <http://purl.uniprot.org/uniprot/Q6IPT2> <http://purl.uniprot.org/uniprot/Q6L8Q7>
+          <http://purl.uniprot.org/uniprot/Q6NTF7> <http://purl.uniprot.org/uniprot/Q6PJ69> <http://purl.uniprot.org/uniprot/Q7RTR0>
+          <http://purl.uniprot.org/uniprot/Q7Z2W4> <http://purl.uniprot.org/uniprot/Q7Z434> <http://purl.uniprot.org/uniprot/Q7Z7L1>
+          <http://purl.uniprot.org/uniprot/Q86VE9> <http://purl.uniprot.org/uniprot/Q86WI3> <http://purl.uniprot.org/uniprot/Q86WN2>
+          <http://purl.uniprot.org/uniprot/Q86WV6> <http://purl.uniprot.org/uniprot/Q8IU54> <http://purl.uniprot.org/uniprot/Q8IU57>
+          <http://purl.uniprot.org/uniprot/Q8IUC6> <http://purl.uniprot.org/uniprot/Q8IUD6> <http://purl.uniprot.org/uniprot/Q8IUX4>
+          <http://purl.uniprot.org/uniprot/Q8IXQ6> <http://purl.uniprot.org/uniprot/Q8IY21> <http://purl.uniprot.org/uniprot/Q8IYM9>
+          <http://purl.uniprot.org/uniprot/Q8IZ81> <http://purl.uniprot.org/uniprot/Q8IZI9> <http://purl.uniprot.org/uniprot/Q8IZJ0>
+          <http://purl.uniprot.org/uniprot/Q8N884> <http://purl.uniprot.org/uniprot/Q8N8V2> <http://purl.uniprot.org/uniprot/Q8NB16>
+          <http://purl.uniprot.org/uniprot/Q8NDL9> <http://purl.uniprot.org/uniprot/Q8NHL6> <http://purl.uniprot.org/uniprot/Q8TDB6>
+          <http://purl.uniprot.org/uniprot/Q8WTX9> <http://purl.uniprot.org/uniprot/Q8WUD1> <http://purl.uniprot.org/uniprot/Q8WV44>
+          <http://purl.uniprot.org/uniprot/Q8WXG1> <http://purl.uniprot.org/uniprot/Q92499> <http://purl.uniprot.org/uniprot/Q92667>
+          <http://purl.uniprot.org/uniprot/Q92841> <http://purl.uniprot.org/uniprot/Q92844> <http://purl.uniprot.org/uniprot/Q92985>
+          <http://purl.uniprot.org/uniprot/Q93009> <http://purl.uniprot.org/uniprot/Q93091> <http://purl.uniprot.org/uniprot/Q96A61>
+          <http://purl.uniprot.org/uniprot/Q96AK3> <http://purl.uniprot.org/uniprot/Q96AZ6> <http://purl.uniprot.org/uniprot/Q96B02>
+          <http://purl.uniprot.org/uniprot/Q96C10> <http://purl.uniprot.org/uniprot/Q96DX8> <http://purl.uniprot.org/uniprot/Q96F44>
+          <http://purl.uniprot.org/uniprot/Q96GF1> <http://purl.uniprot.org/uniprot/Q96J02> <http://purl.uniprot.org/uniprot/Q96PP8>
+          <http://purl.uniprot.org/uniprot/Q96S82> <http://purl.uniprot.org/uniprot/Q99558> <http://purl.uniprot.org/uniprot/Q99623>
+          <http://purl.uniprot.org/uniprot/Q99698> <http://purl.uniprot.org/uniprot/Q99836> <http://purl.uniprot.org/uniprot/Q9BQF6>
+          <http://purl.uniprot.org/uniprot/Q9BRZ2> <http://purl.uniprot.org/uniprot/Q9BUI4> <http://purl.uniprot.org/uniprot/Q9BV40>
+          <http://purl.uniprot.org/uniprot/Q9BXJ8> <http://purl.uniprot.org/uniprot/Q9BYH8> <http://purl.uniprot.org/uniprot/Q9BYJ4>
+          <http://purl.uniprot.org/uniprot/Q9BYW2> <http://purl.uniprot.org/uniprot/Q9BYX4> <http://purl.uniprot.org/uniprot/Q9BZR9>
+          <http://purl.uniprot.org/uniprot/Q9BZY9> <http://purl.uniprot.org/uniprot/Q9C000> <http://purl.uniprot.org/uniprot/Q9C019>
+          <http://purl.uniprot.org/uniprot/Q9C029> <http://purl.uniprot.org/uniprot/Q9C030> <http://purl.uniprot.org/uniprot/Q9C035>
+          <http://purl.uniprot.org/uniprot/Q9GZX7> <http://purl.uniprot.org/uniprot/Q9H078> <http://purl.uniprot.org/uniprot/Q9H0E7>
+          <http://purl.uniprot.org/uniprot/Q9H0P0> <http://purl.uniprot.org/uniprot/Q9H0R5> <http://purl.uniprot.org/uniprot/Q9H171>
+          <http://purl.uniprot.org/uniprot/Q9H1C4> <http://purl.uniprot.org/uniprot/Q9H1D9> <http://purl.uniprot.org/uniprot/Q9H2U1>
+          <http://purl.uniprot.org/uniprot/Q9H6S1> <http://purl.uniprot.org/uniprot/Q9H8X9> <http://purl.uniprot.org/uniprot/Q9HBE4>
+          <http://purl.uniprot.org/uniprot/Q9HBJ7> <http://purl.uniprot.org/uniprot/Q9HC16> <http://purl.uniprot.org/uniprot/Q9HCE1>
+          <http://purl.uniprot.org/uniprot/Q9NP55> <http://purl.uniprot.org/uniprot/Q9NPD3> <http://purl.uniprot.org/uniprot/Q9NPF7>
+          <http://purl.uniprot.org/uniprot/Q9NQT4> <http://purl.uniprot.org/uniprot/Q9NR30> <http://purl.uniprot.org/uniprot/Q9NR96>
+          <http://purl.uniprot.org/uniprot/Q9NR97> <http://purl.uniprot.org/uniprot/Q9NRD9> <http://purl.uniprot.org/uniprot/Q9NRW3>
+          <http://purl.uniprot.org/uniprot/Q9NUD5> <http://purl.uniprot.org/uniprot/Q9NUL5> <http://purl.uniprot.org/uniprot/Q9NUQ8>
+          <http://purl.uniprot.org/uniprot/Q9NV70> <http://purl.uniprot.org/uniprot/Q9NVI7> <http://purl.uniprot.org/uniprot/Q9NVU0>
+          <http://purl.uniprot.org/uniprot/Q9NW08> <http://purl.uniprot.org/uniprot/Q9NX09> <http://purl.uniprot.org/uniprot/Q9NX74>
+          <http://purl.uniprot.org/uniprot/Q9NY93> <http://purl.uniprot.org/uniprot/Q9NYK1> <http://purl.uniprot.org/uniprot/Q9P032>
+          <http://purl.uniprot.org/uniprot/Q9P0N8> <http://purl.uniprot.org/uniprot/Q9P0W0> <http://purl.uniprot.org/uniprot/Q9P2E3>
+          <http://purl.uniprot.org/uniprot/Q9P2K8> <http://purl.uniprot.org/uniprot/Q9UGM3> <http://purl.uniprot.org/uniprot/Q9UH17>
+          <http://purl.uniprot.org/uniprot/Q9UHD2> <http://purl.uniprot.org/uniprot/Q9UII4> <http://purl.uniprot.org/uniprot/Q9UIV1>
+          <http://purl.uniprot.org/uniprot/Q9UJ71> <http://purl.uniprot.org/uniprot/Q9UJV3> <http://purl.uniprot.org/uniprot/Q9ULZ3>
+          <http://purl.uniprot.org/uniprot/Q9UMW8> <http://purl.uniprot.org/uniprot/Q9UPQ4> <http://purl.uniprot.org/uniprot/Q9Y228>
+          <http://purl.uniprot.org/uniprot/Q9Y2G2> <http://purl.uniprot.org/uniprot/Q9Y2K6> <http://purl.uniprot.org/uniprot/Q9Y2Y1>
+          <http://purl.uniprot.org/uniprot/Q9Y3E7> <http://purl.uniprot.org/uniprot/Q9Y3Z3> <http://purl.uniprot.org/uniprot/Q9Y473>
+          <http://purl.uniprot.org/uniprot/Q9Y4K3> <http://purl.uniprot.org/uniprot/Q9Y535> <http://purl.uniprot.org/uniprot/Q9Y572>
+          <http://purl.uniprot.org/uniprot/Q9Y6K5>
+          }
+          ?prot jpost:hasDatabaseSequence ?up ;
+                jpost:hasPeptideEvidence ?ev .
+          ?ev jpost:hasPeptide ?pep ;
+              faldo:location [ faldo:begin [ faldo:position ?peptBegin ] ] .   # protein-absolute
+          ?pep jpost:hasPsm/jpost:hasModification ?mod .
+          ?mod a unimod:UNIMOD_21 ;                                             # Phospho
+               jpost:modificationSite ?residue ;
+               faldo:location [ faldo:position ?modPos ] .                      # peptide-relative
+          BIND(?peptBegin + ?modPos - 1 AS ?protPos)
         }
       }
     result_count: 1
 
+  - query_number: 6
+    database: jpostdb
+    description: >
+      Independent check of the winning value, anchored on TRIM28 alone: its phosphorylated
+      positions split by residue as 50 Ser + 12 Thr + 6 Tyr = 68, matching Query 4.
+    query: |
+      PREFIX jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX unimod: <http://www.unimod.org/obo/unimod.obo#>
+
+      SELECT ?residue (COUNT(DISTINCT ?protPos) AS ?positions)
+      WHERE {
+        GRAPH <http://jpost.org/graph/database> {
+          VALUES ?up { <http://purl.uniprot.org/uniprot/Q13263> }
+          ?prot jpost:hasDatabaseSequence ?up ;
+                jpost:hasPeptideEvidence ?ev .
+          ?ev jpost:hasPeptide ?pep ;
+              faldo:location [ faldo:begin [ faldo:position ?peptBegin ] ] .   # protein-absolute
+          ?pep jpost:hasPsm/jpost:hasModification ?mod .
+          ?mod a unimod:UNIMOD_21 ;                                             # Phospho
+               jpost:modificationSite ?residue ;
+               faldo:location [ faldo:position ?modPos ] .                      # peptide-relative
+          BIND(?peptBegin + ?modPos - 1 AS ?protPos)
+        }
+      }
+      GROUP BY ?residue
+      ORDER BY DESC(?positions)
+    result_count: 3
+
 rdf_triples: |
-  @prefix up: <http://purl.uniprot.org/core/> .
-  @prefix keywords: <http://purl.uniprot.org/keywords/> .
-  @prefix jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#> .
   @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix up: <http://purl.uniprot.org/core/> .
+  @prefix uniprot: <http://purl.uniprot.org/uniprot/> .
+  @prefix jpost: <http://rdf.jpostdb.org/ontology/jpost.owl#> .
   @prefix unimod: <http://www.unimod.org/obo/unimod.obo#> .
-  @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 
-  <http://purl.uniprot.org/uniprot/Q8WWI1> a up:Protein .
-  # Database: UniProt | Query: 1 | Comment: LMO7, the winning protein, a reviewed human entry
-  <http://purl.uniprot.org/uniprot/Q8WWI1> up:reviewed 1 .
-  # Database: UniProt | Query: 1 | Comment: Swiss-Prot reviewed, one of the 71 in-scope proteins
-  <http://purl.uniprot.org/uniprot/Q8WWI1> up:organism <http://purl.uniprot.org/taxonomy/9606> .
-  # Database: UniProt | Query: 1 | Comment: human (taxon 9606) — the fixed species scope
-  <http://purl.uniprot.org/uniprot/Q8WWI1> up:classifiedWith keywords:440 .
-  # Database: UniProt | Query: 1 | Comment: annotated with keyword KW-0440 (LIM domain), defining the family
-  <http://rdf.jpostdb.org/entry/PRT1780_1_Q8WWI1> a jpost:Protein .
-  # Database: jPOST | Query: 2 | Comment: an identified-protein record for LMO7 (project 1780, dataset 1)
-  <http://rdf.jpostdb.org/entry/PRT1780_1_Q8WWI1> jpost:hasDatabaseSequence <http://purl.uniprot.org/uniprot/Q8WWI1> .
-  # Database: jPOST | Query: 2 | Comment: typed cross-reference tying the jPOST protein record to UniProt Q8WWI1
-  <http://rdf.jpostdb.org/entry/PRT1780_1_Q8WWI1> jpost:hasPeptideEvidence _:ev .
-  # Database: jPOST | Query: 2 | Comment: the LMO7 record links to peptide-level evidence
-  _:ev jpost:hasPeptide _:pep .
-  # Database: jPOST | Query: 2 | Comment: the evidence node points to a detected peptide
-  _:pep jpost:hasSequence _:seqnode .
-  # Database: jPOST | Query: 2 | Comment: the peptide's amino-acid string lives on a child sequence node
-  _:seqnode rdf:value "AGSPETK" .
-  # Database: jPOST | Query: 2 | Comment: one of LMO7's 50 distinct detected phosphopeptide sequences
-  _:pep jpost:hasPsm _:psm .
-  # Database: jPOST | Query: 2 | Comment: the peptide is supported by a peptide-spectrum match
-  _:psm jpost:hasModification _:mod .
-  # Database: jPOST | Query: 2 | Comment: that PSM carries a modification
-  _:mod a unimod:UNIMOD_21 .
-  # Database: jPOST | Query: 2 | Comment: the modification is a phospho group (Unimod:21), qualifying AGSPETK as a phosphopeptide
+  obo:GO_0044790 rdfs:subClassOf+ obo:GO_0051607 .
+  # Database: go | Query: 1 | Comment: suppression of viral release by host is a descendant of defense response to virus
+  uniprot:Q13263 up:reviewed 1 ; up:organism <http://purl.uniprot.org/taxonomy/9606> ; up:mnemonic "TIF1B_HUMAN" .
+  # Database: uniprot | Query: 2 | Comment: TRIM28 (transcription intermediary factor 1-beta) is in the 271-protein scope
+  uniprot:Q13263 up:classifiedWith obo:GO_0044790 .
+  # Database: uniprot | Query: 3 | Comment: TRIM28's only in-scope annotation is this descendant term, not the root
+  uniprot:Q12906 up:classifiedWith obo:GO_0051607 .
+  # Database: uniprot | Query: 2 | Comment: ILF3, the runner-up, is annotated to the root term itself
+  ?prot jpost:hasDatabaseSequence uniprot:Q13263 .
+  # Database: jpostdb | Query: 4 | Comment: jPOST protein entries map to the canonical TRIM28 accession
+  ?mod a unimod:UNIMOD_21 ; jpost:modificationSite "S" .
+  # Database: jpostdb | Query: 6 | Comment: 50 of TRIM28's 68 phosphorylated positions are serines (plus 12 Thr, 6 Tyr)
 
-exact_answer: "LMO7 (UniProt:Q8WWI1); 50 distinct phosphopeptide sequences"
+exact_answer: "TRIM28 (UniProt:Q13263); 68 distinct phosphorylated residue positions"
 
 ideal_answer: |
-  Of the 71 reviewed human proteins carrying a LIM domain, LMO7 (UniProt Q8WWI1)
-  has been detected with more distinct phosphopeptide sequences than any other
-  member — 50 distinct phospho-modified peptide sequences across the reanalyzed
-  proteomics datasets. It leads the family clearly, ahead of LIMA1 (Q9UHB6, 39)
-  and LIMCH1 (Q9UPQ0, 36), with MICAL3 (29), MICALL1 and ABLIM1 (22 each), and
-  paxillin (PXN, 20) following. Only 41 of the 71 LIM-domain proteins are
-  observed with any phosphopeptide at all, so the remaining 30 contribute none.
-  LMO7 is a large multidomain LIM protein that acts as an E3-ligase adaptor and
-  transcriptional/cytoskeletal regulator; its position at the top of this ranking
-  reflects both its size and its extensive phosphoregulation, and the value is a
-  live aggregate over deposited spectra rather than a curated annotation.
+  Transcription intermediary factor 1-beta (TRIM28, also called KAP-1; UniProt Q13263)
+  has been observed phosphorylated at the most positions: 68 distinct residues, 50 serines,
+  12 threonines and 6 tyrosines. It is well ahead of the next proteins, interleukin
+  enhancer-binding factor 3 (ILF3, 44 positions), the histone-lysine N-methyltransferase
+  SETD2 (38) and zinc finger CCCH-type antiviral protein 1 (ZC3HAV1, 37). The comparison
+  covers 271 reviewed human proteins annotated with defense response to virus or one of
+  its five descendant terms; 126 of them have at least one observed phosphosite, 895
+  distinct phosphorylated positions in total. TRIM28 enters the set only through the
+  narrower term 'suppression of viral release by host', not through defense response to
+  virus itself, so a search restricted to the parent term would miss it and wrongly put
+  ILF3 first.
 
-question_template_used: family-wide PTM-evidence ranking (UniProt keyword scope -> jPOST distinct-phosphopeptide count -> argmax)
+question_template_used: Template 2 (Cross-Database Counting) - ontology-subtree expansion, cross-endpoint accession join, per-entity maximum over PTM positions
 
 time_spent:
-  exploration: 20
-  formulation: 15
-  verification: 10
-  pubmed_test: 12
-  extraction: 10
-  documentation: 15
-  total: 82
+  exploration: 30 minutes
+  formulation: 20 minutes
+  verification: 25 minutes
+  pubmed_test: 10 minutes
+  extraction: 10 minutes
+  documentation: 20 minutes
+  total: 115 minutes
