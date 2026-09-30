@@ -1,0 +1,301 @@
+id: question_101
+type: list
+held_out: true   # created 2026-09-30; never used for MIE development
+body: "Which human genes are causally associated with OMIM-catalogued rare diseases whose
+  curated phenotype annotations record both an abnormality of the sense of smell
+  (HP:0004408 or any of its descendant terms) and hypogonadotropic hypogonadism
+  (HP:0000044) as present? Exclude any disease-phenotype annotation that the curators
+  mark as absent (a NOT annotation) or as observed in none of the reported patients."
+
+inspiration_keyword:
+  keyword_id: KW-0956
+  name: Kallmann syndrome
+  category: Disease
+
+togomcp_databases_used:
+  - pubcasefinder
+  - ontology
+
+verification_score:
+  biological_insight: 2
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 10
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: |
+    Two PubMed searches: "genes hypogonadotropic hypogonadism with anosmia OMIM phenotype
+    annotation Human Phenotype Ontology" (0 hits) and "Kallmann syndrome genes review
+    anosmia congenital hypogonadotropic hypogonadism genetics" (19 hits; top 2 read,
+    including the European consensus statement, PMID 26194704).
+  result: |
+    The literature describes more than 25 causal genes for congenital hypogonadotropic
+    hypogonadism, with Kallmann syndrome as the anosmic subset, but no source gives the
+    set defined here: genes of OMIM entries whose curated annotations record both
+    phenotypes as present. That set depends on the current curated annotations and their
+    qualifiers and frequencies, and it differs from any literature gene panel (it
+    includes SMCHD1 via Bosma arhinia microphthalmia syndrome and excludes many
+    Kallmann-panel genes).
+  conclusion: PASS (cannot answer from literature - requires current database state)
+
+sparql_queries:
+  - query_number: 1
+    database: ontology
+    description: >
+      Expand 'Abnormality of the sense of smell' (HP:0004408) over the HPO hierarchy in
+      the `ontology` database's HP graph (the PubCaseFinder graph has no hierarchy): 13
+      non-deprecated terms, matching OLS4 getDescendants. Load-bearing: every disease in
+      the final answer is annotated to a descendant (anosmia HP:0000458 or hyposmia
+      HP:0004409), never to the root itself (see Query 6).
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+      SELECT DISTINCT ?term ?label
+      FROM <http://rdfportal.org/ontology/hp>
+      WHERE {
+        ?term rdfs:subClassOf* obo:HP_0004408 ;
+              rdfs:label ?label .
+        FILTER NOT EXISTS { ?term owl:deprecated true }
+      }
+      ORDER BY ?term
+    result_count: 13
+
+  - query_number: 2
+    database: ontology
+    description: >
+      Expand 'Hypogonadotropic hypogonadism' (HP:0000044) the same way: it has no
+      descendants today (1 term). Kept as a subClassOf* leg so the scope stays exhaustive
+      if HPO adds children (Rule 2).
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+      SELECT DISTINCT ?term ?label
+      FROM <http://rdfportal.org/ontology/hp>
+      WHERE {
+        ?term rdfs:subClassOf* obo:HP_0000044 ;
+              rdfs:label ?label .
+        FILTER NOT EXISTS { ?term owl:deprecated true }
+      }
+    result_count: 1
+
+  - query_number: 3
+    database: pubcasefinder
+    description: >
+      OMIM diseases whose curated annotations (creator HPO Consortium or Orphanet; the
+      DBCLS text-mined source excluded) include BOTH a smell term and the HH term, one row
+      per (disease, smell term, HH term) with the disease's linked genes. 22 rows over 19
+      diseases. Graph-pinned; the same query with the PubCaseFinder leg unpinned also
+      returns 22 rows (oa:Annotation is declared only in this graph).
+      NOT-FILTERABLE IN SPARQL (MIE gotcha absent_phenotypes_as_present): each
+      supporting (disease, HP) pair was checked against HPO phenotype.hpoa (release
+      2026-09-02, downloaded 2026-09-30). Three diseases are supported only by pairs the
+      source records as ABSENT and are excluded from the answer: OMIM 146110
+      (hypogonadotropic hypogonadism 7 without anosmia; smell 0/2 patients), 228300
+      (hypogonadotropic hypogonadism 23 without anosmia; smell 0/2) and 614842
+      (hypogonadotropic hypogonadism 13; anosmia 0/4). Three more (113480, 147770,
+      308200) have no hpoa record for these pairs and no linked gene, so they cannot
+      contribute. The remaining 13 diseases have both axes recorded as present.
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX m2r: <http://med2rdf.org/ontology/>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
+
+      SELECT ?disease ?smellTerm ?hhTerm (GROUP_CONCAT(DISTINCT ?symbol; separator=",") AS ?genes)
+      WHERE {
+        GRAPH <http://rdfportal.org/ontology/hp> {
+          ?smellTerm rdfs:subClassOf* obo:HP_0004408 .
+          ?hhTerm    rdfs:subClassOf* obo:HP_0000044 .
+        }
+        GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+          ?a1 oa:hasTarget ?disease ; oa:hasBody ?smellTerm ; dcterms:source ?s1 .
+          ?s1 dcterms:creator ?c1 .
+          FILTER(?c1 IN ("Human Phenotype Ontology Consortium", "Orphanet"))
+          ?a2 oa:hasTarget ?disease ; oa:hasBody ?hhTerm ; dcterms:source ?s2 .
+          ?s2 dcterms:creator ?c2 .
+          FILTER(?c2 IN ("Human Phenotype Ontology Consortium", "Orphanet"))
+          ?disease a m2r:Disease .
+          FILTER(STRSTARTS(STR(?disease), "http://identifiers.org/mim/"))
+          OPTIONAL {
+            ?gda a sio:SIO_000983 ; sio:SIO_000628 ?disease , ?gene .
+            ?gene a m2r:Gene ; sio:SIO_000205 ?sym .
+            ?sym a ncit:C43568 ; rdfs:label ?symbol .
+          }
+        }
+      }
+      GROUP BY ?disease ?smellTerm ?hhTerm
+      ORDER BY ?disease ?smellTerm
+    result_count: 22
+
+  - query_number: 4
+    database: pubcasefinder
+    description: >
+      Genes linked to the 13 diseases retained after the hpoa check: 12 genes. This is
+      the answer set. The 12 genes dropped with the three excluded diseases (AXL, CCDC141,
+      DUSP6, FEZF1, FGF17, GNRHR, KISS1, LHB, SPRY4, SRA1, TACR3, WDR11) would appear in a
+      SPARQL-only answer (24 genes).
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX m2r: <http://med2rdf.org/ontology/>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
+
+      SELECT DISTINCT ?symbol ?gene (GROUP_CONCAT(DISTINCT STRAFTER(STR(?disease), "/mim/"); separator=",") AS ?omim)
+      WHERE {
+        GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+          VALUES ?disease {
+            <http://identifiers.org/mim/147950> <http://identifiers.org/mim/214800> <http://identifiers.org/mim/244200> <http://identifiers.org/mim/308700>
+            <http://identifiers.org/mim/308750> <http://identifiers.org/mim/603457> <http://identifiers.org/mim/610628> <http://identifiers.org/mim/612370>
+            <http://identifiers.org/mim/612702> <http://identifiers.org/mim/614837> <http://identifiers.org/mim/614838> <http://identifiers.org/mim/614839>
+            <http://identifiers.org/mim/614841>
+          }
+          ?gda a sio:SIO_000983 ; sio:SIO_000628 ?disease , ?gene .
+          ?gene a m2r:Gene ; sio:SIO_000205 ?sym .
+          ?sym a ncit:C43568 ; rdfs:label ?symbol .
+        }
+      }
+      GROUP BY ?symbol ?gene
+      ORDER BY ?symbol
+    result_count: 12
+
+  - query_number: 5
+    database: pubcasefinder
+    description: >
+      Rule-3 check for Query 4: 13 retained diseases, 12 distinct genes. The per-disease
+      gene links in Query 3 sum to 13 for these diseases (308750 has none; CHD7 is linked
+      to both 214800 and 612370; SEMA3E shares 214800 with CHD7), so sum > total is
+      explained by CHD7's two diseases.
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX m2r: <http://med2rdf.org/ontology/>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
+
+      SELECT (COUNT(DISTINCT ?disease) AS ?diseases) (COUNT(DISTINCT ?gene) AS ?genes)
+      WHERE {
+        GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+          VALUES ?disease {
+            <http://identifiers.org/mim/147950> <http://identifiers.org/mim/214800> <http://identifiers.org/mim/244200> <http://identifiers.org/mim/308700>
+            <http://identifiers.org/mim/308750> <http://identifiers.org/mim/603457> <http://identifiers.org/mim/610628> <http://identifiers.org/mim/612370>
+            <http://identifiers.org/mim/612702> <http://identifiers.org/mim/614837> <http://identifiers.org/mim/614838> <http://identifiers.org/mim/614839>
+            <http://identifiers.org/mim/614841>
+          }
+          OPTIONAL { ?gda a sio:SIO_000983 ; sio:SIO_000628 ?disease , ?gene . ?gene a m2r:Gene . }
+        }
+      }
+    result_count: 1
+
+  - query_number: 6
+    database: pubcasefinder
+    description: >
+      Scope check: the ROOT term alone. Only OMIM 146110 and 228300 carry
+      HP:0004408 directly - precisely the two 'without anosmia' entries excluded above.
+      A root-only query would therefore return only wrong diseases.
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX oa: <http://www.w3.org/ns/oa#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX m2r: <http://med2rdf.org/ontology/>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
+
+      SELECT DISTINCT ?disease
+      WHERE {
+        GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+          ?a1 oa:hasTarget ?disease ; oa:hasBody obo:HP_0004408 ; dcterms:source ?s1 .
+          ?s1 dcterms:creator ?c1 .
+          FILTER(?c1 IN ("Human Phenotype Ontology Consortium", "Orphanet"))
+          ?a2 oa:hasTarget ?disease ; oa:hasBody obo:HP_0000044 ; dcterms:source ?s2 .
+          ?s2 dcterms:creator ?c2 .
+          FILTER(?c2 IN ("Human Phenotype Ontology Consortium", "Orphanet"))
+          ?disease a m2r:Disease .
+          FILTER(STRSTARTS(STR(?disease), "http://identifiers.org/mim/"))
+        }
+      }
+    result_count: 2
+
+rdf_triples: |
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix oa: <http://www.w3.org/ns/oa#> .
+  @prefix sio: <http://semanticscience.org/resource/> .
+  @prefix mim: <http://identifiers.org/mim/> .
+  @prefix ncbigene: <http://identifiers.org/ncbigene/> .
+
+  obo:HP_0000458 rdfs:subClassOf+ obo:HP_0004408 .
+  # Database: ontology | Query: 1 | Comment: anosmia is a descendant of abnormality of the sense of smell
+  ?a oa:hasTarget mim:308700 ; oa:hasBody obo:HP_0000458 .
+  # Database: pubcasefinder | Query: 3 | Comment: HH1 with or without anosmia carries a curated anosmia annotation (present in hpoa)
+  ?b oa:hasTarget mim:308700 ; oa:hasBody obo:HP_0000044 .
+  # Database: pubcasefinder | Query: 3 | Comment: and a curated hypogonadotropic hypogonadism annotation
+  ?gda sio:SIO_000628 mim:308700 , ncbigene:3730 .
+  # Database: pubcasefinder | Query: 4 | Comment: gene-disease association to ANOS1
+  ?c oa:hasTarget mim:146110 ; oa:hasBody obo:HP_0004408 .
+  # Database: pubcasefinder | Query: 6 | Comment: HH7 without anosmia - hpoa frequency 0/2, stored as if present; excluded
+  ?e sio:SIO_000628 mim:603457 , ncbigene:23347 .
+  # Database: pubcasefinder | Query: 4 | Comment: SMCHD1 via Bosma arhinia microphthalmia syndrome, a non-Kallmann member of the set
+
+exact_answer:
+  - ANOS1
+  - CHD7
+  - FGF8
+  - FGFR1
+  - GNRH1
+  - KISS1R
+  - NSMF
+  - PROK2
+  - PROKR2
+  - SEMA3E
+  - SMCHD1
+  - TAC3
+
+ideal_answer: |
+  Twelve genes: ANOS1, CHD7, FGF8, FGFR1, GNRH1, KISS1R, NSMF, PROK2, PROKR2, SEMA3E,
+  SMCHD1 and TAC3. They come from 13 OMIM entries in which curators record both a smell
+  defect (anosmia or hyposmia) and hypogonadotropic hypogonadism as present: the numbered
+  "hypogonadotropic hypogonadism with or without anosmia" entries 1, 2, 3, 4, 5, 6, 8, 9,
+  10 and 12 (ANOS1, FGFR1, PROKR2, PROK2, CHD7, FGF8, KISS1R, NSMF, TAC3 and GNRH1), CHARGE
+  syndrome (CHD7 and SEMA3E), Bosma arhinia microphthalmia syndrome (SMCHD1), and Kallmann
+  syndrome with spastic paraplegia, which has no linked gene. CHD7 is counted once although
+  it underlies two of these entries. Three entries that a plain annotation search also
+  returns are excluded because the source records the smell defect as absent: the two
+  forms named "without anosmia" (types 7 and 23, smell abnormal in 0 of 2 patients) and
+  type 13 (anosmia in 0 of 4). Including them would add twelve genes (among them GNRHR,
+  LHB, KISS1, TACR3, WDR11 and FEZF1). The two defects share a developmental origin: in
+  Kallmann syndrome, the anosmic form of the disorder, gonadotropin-releasing hormone
+  neurons fail to complete their embryonic migration. All the qualifying
+  entries are annotated to anosmia or hyposmia specifically; the broad term 'abnormality
+  of the sense of smell' appears directly only on the two excluded 'without anosmia'
+  entries.
+
+question_template_used: Two-phenotype intersection over expanded HPO subtrees -> diseases -> causal genes, with source-qualifier (NOT / 0-of-N) exclusion checked outside SPARQL
+
+time_spent:
+  exploration: 60 minutes
+  formulation: 25 minutes
+  verification: 35 minutes
+  pubmed_test: 10 minutes
+  extraction: 10 minutes
+  documentation: 25 minutes
+  total: 165 minutes
