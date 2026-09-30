@@ -44,7 +44,7 @@ question_{sequential_number}.yaml
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `held_out` | boolean | `true` if the question has never been used to develop or fix MIE files (out-of-sample); absent means `false` |
+| `held_out` | boolean | `true` if the question has never been used to develop or fix MIE files, and no MIE documents the trap it tests (out-of-sample); absent means `false` |
 | `documents` | array | PubMed articles referenced (if any) |
 | `snippets` | array | Text snippets from literature (if needed) |
 
@@ -142,12 +142,14 @@ choices:
 - New questions are created with `held_out: true` (default since 2026-09-30).
 - If an MIE file is later edited **in response to a failure observed on a held-out question**, that question is no longer out-of-sample: set `held_out: false` and add a comment saying when and why. Alternatively, retire it to `benchmark/questions/retired/` and mint a held-out replacement under the same id (Replace mode).
 - A refresh that only updates the recorded answer (no MIE change) leaves `held_out` unchanged.
+- **Strict definition (decided 2026-10-01).** Any MIE change that documents the trap a question tests disqualifies it, whatever prompted the change. This includes gotchas written while *authoring* the question (a data trap found during validation), not only fixes made after an agent failed on it. A `check:` that avoids the question's subject (so `check_mie_leakage.py` passes) does not change this: the agent is still told the trick. On these grounds Q101, Q102, Q103, Q106, Q109 and Q110 were set to `held_out: false` on 2026-10-01, leaving Q022, Q066, Q104, Q105, Q107 and Q108 as the held-out set.
+- When authoring a new held-out question surfaces a generic data trap worth an MIE gotcha, choose: write the gotcha and set the question `held_out: false`, or leave the MIE unchanged until the question is no longer needed as held-out.
 - `verify_questions.py` rejects non-boolean values and reports the held-out count; `results_analyzer.py` reports scores split into held-out vs development questions; `automated_test_runner.py` copies the flag into the results CSV.
 
 **Example:**
 ```yaml
-id: question_101
-type: list
+id: question_104
+type: choice
 held_out: true   # created 2026-09-30; never used for MIE development
 ```
 
