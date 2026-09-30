@@ -1,0 +1,405 @@
+id: question_109
+type: choice
+held_out: true   # created 2026-09-30; never used for MIE development
+body: "Phospholipid degradation by phospholipases leaves lysophospholipids that carry their single
+  acyl chain either at sn-1 (1-acyl) or at sn-2 (2-acyl), and a cell can re-acylate them with an
+  acyl-CoA. In curated biochemical reactions, for which of the following headgroup classes is the
+  1-acyl lysophospholipid recorded as an acyl-CoA acceptor while the 2-acyl lysophospholipid, although
+  produced by recorded reactions, never is?"
+
+choices:
+  - phosphatidylcholine
+  - phosphatidylethanolamine
+  - phosphatidylserine
+  - phosphatidylinositol
+  - phosphatidylglycerol
+
+inspiration_keyword:
+  keyword_id: KW-0595
+  name: Phospholipid degradation
+  category: Biological process
+
+togomcp_databases_used:
+  - swisslipids
+  - chebi
+  - rhea
+
+verification_score:
+  biological_insight: 2
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 6 minutes
+  method: |
+    Two PubMed searches: "2-acyl lysophosphatidylglycerol acyltransferase acyl-CoA" (0 hits) and
+    "acyl-CoA acylation 2-acyl lysophospholipids sn-1 position headgroup comparison
+    lysophosphatidylcholine lysophosphatidylethanolamine lysophosphatidylglycerol" (0 hits).
+  result: |
+    No source compares, across headgroups, whether the 1-acyl and 2-acyl lysophospholipids are recorded
+    as acyl-CoA acceptors. The answer comes from classifying curated reactions by the positional class
+    of their lysophospholipid and by the presence of an acyl-CoA on the same side.
+  conclusion: PASS (cannot answer from literature - requires current database state)
+
+sparql_queries:
+  - query_number: 1
+    database: swisslipids
+    description: >
+      The ten SwissLipids lysophospholipid classes (1-acyl and 2-acyl, for choline, ethanolamine,
+      L-serine, 1D-myo-inositol and sn-glycerol headgroups) with the ChEBI entity each is declared
+      equivalent to. All ten point at the pH-7.3 form Rhea records (e.g. 2-acyl-lysoPG at CHEBI:76528).
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX SLM: <https://swisslipids.org/rdf/SLM_>
+      SELECT ?class ?label ?chebi
+      WHERE {
+        GRAPH <https://sparql.swisslipids.org/swisslipids> {
+          VALUES ?class {
+            SLM:000000724 SLM:000000352 SLM:000043286 SLM:000000354 SLM:000043367
+            SLM:000000335 SLM:000000552 SLM:000000334 SLM:000046347 SLM:000000381
+          }
+          ?class SLM:rank SLM:Class ; rdfs:label ?label ; owl:equivalentClass ?chebi .
+          FILTER(STRSTARTS(STR(?chebi), "http://purl.obolibrary.org/obo/CHEBI_"))
+        }
+      }
+      ORDER BY ?label
+    result_count: 10
+
+  - query_number: 2
+    database: chebi
+    description: >
+      ChEBI descendants of the ten anchors: 154 entities, none under two anchors. Of these
+      descendants and the ten anchors, 79 occur as Rhea compounds; they form the VALUES table of
+      Queries 4 and 6.
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT DISTINCT ?root ?entity
+      WHERE {
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
+          VALUES ?root { obo:CHEBI_57875 obo:CHEBI_58168 obo:CHEBI_65213 obo:CHEBI_64381 obo:CHEBI_65214 obo:CHEBI_64379 obo:CHEBI_64872 obo:CHEBI_64771 obo:CHEBI_76528 obo:CHEBI_64840 }
+          ?entity a owl:Class ; rdfs:subClassOf+ ?root .
+          FILTER(STRSTARTS(STR(?entity), "http://purl.obolibrary.org/obo/CHEBI_"))
+        }
+      }
+    result_count: 154
+
+  - query_number: 3
+    database: chebi
+    description: >
+      Structural check on the acyl-CoA test of Query 4: the 995 ChEBI descendants of acyl-CoA(4-)
+      (CHEBI:58342), the pH-7.3 form Rhea uses. Requiring one of these (or the root) on the same side as
+      the lysolipid gives exactly the per-class acylation counts of Query 4, so the name test
+      STRENDS(name, "-CoA") used there selects the same reactions.
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT DISTINCT ?root ?entity
+      WHERE {
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
+          VALUES ?root { obo:CHEBI_58342 }
+          ?entity a owl:Class ; rdfs:subClassOf+ ?root .
+          FILTER(STRSTARTS(STR(?entity), "http://purl.obolibrary.org/obo/CHEBI_"))
+        }
+      }
+    result_count: 995
+
+  - query_number: 4
+    database: rhea
+    description: >
+      The answer. For each headgroup and lyso class: approved, non-transport reactions containing the
+      lysolipid, and those with an acyl-CoA on the same side (acyl-CoA-dependent acylation of it).
+      1-acyl: PC 34, PE 26, PG 16, PI 14, PS 14 acylations. 2-acyl: PC 9, PE 6, PI 2, PS 2 and PG 0,
+      although 2-acyl-lysoPG occurs in 4 reactions. Only phosphatidylglycerol has 1-acyl acylations and
+      no 2-acyl acylation. Pinned and unpinned runs return identical rows. (The acylation flag is an
+      IF(EXISTS ...) BIND; the same test inside OPTIONAL returns 0 on this Virtuoso.)
+    query: |
+      PREFIX rhea: <http://rdf.rhea-db.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX CHEBI: <http://purl.obolibrary.org/obo/CHEBI_>
+      # (ChEBI entity, headgroup, position of the remaining acyl chain): the lysophospholipid entities of
+      # Query 2 (ChEBI descendants of the Query 1 SwissLipids class anchors) that occur in Rhea
+      SELECT ?headgroup ?lyso_class
+             (COUNT(DISTINCT ?reaction) AS ?reactions_with_lyso)
+             (COUNT(DISTINCT ?acylation) AS ?acyl_CoA_acylations)
+      WHERE {
+        VALUES (?lyso ?headgroup ?lyso_class) {
+          (CHEBI:28610 "PC" "1-acyl")
+          (CHEBI:28733 "PC" "1-acyl")
+          (CHEBI:58168 "PC" "1-acyl")
+          (CHEBI:64489 "PC" "1-acyl")
+          (CHEBI:72998 "PC" "1-acyl")
+          (CHEBI:73851 "PC" "1-acyl")
+          (CHEBI:73858 "PC" "1-acyl")
+          (CHEBI:73873 "PC" "1-acyl")
+          (CHEBI:74344 "PC" "1-acyl")
+          (CHEBI:74966 "PC" "1-acyl")
+          (CHEBI:74968 "PC" "1-acyl")
+          (CHEBI:77726 "PC" "1-acyl")
+          (CHEBI:78215 "PC" "1-acyl")
+          (CHEBI:131989 "PC" "1-acyl")
+          (CHEBI:132278 "PC" "1-acyl")
+          (CHEBI:132280 "PC" "1-acyl")
+          (CHEBI:132285 "PC" "1-acyl")
+          (CHEBI:132286 "PC" "1-acyl")
+          (CHEBI:133456 "PC" "1-acyl")
+          (CHEBI:143866 "PC" "1-acyl")
+          (CHEBI:57875 "PC" "2-acyl")
+          (CHEBI:76071 "PC" "2-acyl")
+          (CHEBI:76076 "PC" "2-acyl")
+          (CHEBI:76078 "PC" "2-acyl")
+          (CHEBI:76079 "PC" "2-acyl")
+          (CHEBI:76084 "PC" "2-acyl")
+          (CHEBI:76085 "PC" "2-acyl")
+          (CHEBI:131738 "PC" "2-acyl")
+          (CHEBI:137582 "PC" "2-acyl")
+          (CHEBI:137583 "PC" "2-acyl")
+          (CHEBI:137584 "PC" "2-acyl")
+          (CHEBI:137585 "PC" "2-acyl")
+          (CHEBI:138100 "PC" "2-acyl")
+          (CHEBI:138101 "PC" "2-acyl")
+          (CHEBI:138266 "PC" "2-acyl")
+          (CHEBI:140082 "PC" "2-acyl")
+          (CHEBI:140088 "PC" "2-acyl")
+          (CHEBI:145782 "PC" "2-acyl")
+          (CHEBI:145783 "PC" "2-acyl")
+          (CHEBI:64381 "PE" "1-acyl")
+          (CHEBI:73004 "PE" "1-acyl")
+          (CHEBI:74971 "PE" "1-acyl")
+          (CHEBI:75036 "PE" "1-acyl")
+          (CHEBI:84299 "PE" "1-acyl")
+          (CHEBI:84490 "PE" "1-acyl")
+          (CHEBI:133732 "PE" "1-acyl")
+          (CHEBI:149768 "PE" "1-acyl")
+          (CHEBI:65213 "PE" "2-acyl")
+          (CHEBI:76088 "PE" "2-acyl")
+          (CHEBI:76090 "PE" "2-acyl")
+          (CHEBI:76091 "PE" "2-acyl")
+          (CHEBI:137580 "PE" "2-acyl")
+          (CHEBI:137581 "PE" "2-acyl")
+          (CHEBI:138098 "PE" "2-acyl")
+          (CHEBI:138099 "PE" "2-acyl")
+          (CHEBI:64840 "PG" "1-acyl")
+          (CHEBI:72826 "PG" "1-acyl")
+          (CHEBI:72827 "PG" "1-acyl")
+          (CHEBI:72828 "PG" "1-acyl")
+          (CHEBI:75158 "PG" "1-acyl")
+          (CHEBI:76528 "PG" "2-acyl")
+          (CHEBI:141490 "PG" "2-acyl")
+          (CHEBI:64771 "PI" "1-acyl")
+          (CHEBI:72833 "PI" "1-acyl")
+          (CHEBI:74243 "PI" "1-acyl")
+          (CHEBI:78762 "PI" "1-acyl")
+          (CHEBI:64872 "PI" "2-acyl")
+          (CHEBI:193055 "PI" "2-acyl")
+          (CHEBI:195486 "PI" "2-acyl")
+          (CHEBI:195487 "PI" "2-acyl")
+          (CHEBI:195489 "PI" "2-acyl")
+          (CHEBI:64379 "PS" "1-acyl")
+          (CHEBI:74617 "PS" "1-acyl")
+          (CHEBI:75020 "PS" "1-acyl")
+          (CHEBI:84462 "PS" "1-acyl")
+          (CHEBI:84467 "PS" "1-acyl")
+          (CHEBI:65214 "PS" "2-acyl")
+          (CHEBI:77342 "PS" "2-acyl")
+          (CHEBI:77830 "PS" "2-acyl")
+        }
+        GRAPH <http://rdfportal.org/dataset/rhea> {
+          ?reaction rdfs:subClassOf rhea:Reaction ; rhea:status <http://rdf.rhea-db.org/Approved> ;
+                    rhea:isTransport false ; rhea:side ?side .
+          ?side rhea:contains/rhea:compound/rhea:chebi ?lyso .
+          # acyl-CoA on the same side as the lysolipid = acyl-CoA-dependent acylation of it
+          BIND(IF(EXISTS { ?side rhea:contains/rhea:compound/rhea:name ?donor_name .
+                           FILTER(STRENDS(?donor_name, "-CoA")) },
+                  ?reaction, ?no_acylation) AS ?acylation)
+        }
+      }
+      GROUP BY ?headgroup ?lyso_class
+      ORDER BY ?headgroup ?lyso_class
+    result_count: 10
+
+  - query_number: 5
+    database: rhea
+    description: >
+      Rule-3 totals: 123 distinct acylation reactions, equal to the sum of the acylation column
+      (34+9+26+6+16+0+14+2+14+2), so no acylation is counted twice. The reactions-with-lyso column sums
+      to 492 against 477 distinct reactions: 15 reactions contain lysolipids of two classes (e.g. a
+      1-acyl and a 2-acyl isomer), which does not affect the acylation column.
+    query: |
+      PREFIX rhea: <http://rdf.rhea-db.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX CHEBI: <http://purl.obolibrary.org/obo/CHEBI_>
+      # (ChEBI entity, headgroup, position of the remaining acyl chain): the lysophospholipid entities of
+      # Query 2 (ChEBI descendants of the Query 1 SwissLipids class anchors) that occur in Rhea
+      SELECT (COUNT(DISTINCT ?acylation) AS ?acyl_CoA_acylations) (COUNT(DISTINCT ?reaction) AS ?reactions_with_lyso)
+      WHERE {
+        VALUES (?lyso ?headgroup ?lyso_class) {
+          (CHEBI:28610 "PC" "1-acyl")
+          (CHEBI:28733 "PC" "1-acyl")
+          (CHEBI:58168 "PC" "1-acyl")
+          (CHEBI:64489 "PC" "1-acyl")
+          (CHEBI:72998 "PC" "1-acyl")
+          (CHEBI:73851 "PC" "1-acyl")
+          (CHEBI:73858 "PC" "1-acyl")
+          (CHEBI:73873 "PC" "1-acyl")
+          (CHEBI:74344 "PC" "1-acyl")
+          (CHEBI:74966 "PC" "1-acyl")
+          (CHEBI:74968 "PC" "1-acyl")
+          (CHEBI:77726 "PC" "1-acyl")
+          (CHEBI:78215 "PC" "1-acyl")
+          (CHEBI:131989 "PC" "1-acyl")
+          (CHEBI:132278 "PC" "1-acyl")
+          (CHEBI:132280 "PC" "1-acyl")
+          (CHEBI:132285 "PC" "1-acyl")
+          (CHEBI:132286 "PC" "1-acyl")
+          (CHEBI:133456 "PC" "1-acyl")
+          (CHEBI:143866 "PC" "1-acyl")
+          (CHEBI:57875 "PC" "2-acyl")
+          (CHEBI:76071 "PC" "2-acyl")
+          (CHEBI:76076 "PC" "2-acyl")
+          (CHEBI:76078 "PC" "2-acyl")
+          (CHEBI:76079 "PC" "2-acyl")
+          (CHEBI:76084 "PC" "2-acyl")
+          (CHEBI:76085 "PC" "2-acyl")
+          (CHEBI:131738 "PC" "2-acyl")
+          (CHEBI:137582 "PC" "2-acyl")
+          (CHEBI:137583 "PC" "2-acyl")
+          (CHEBI:137584 "PC" "2-acyl")
+          (CHEBI:137585 "PC" "2-acyl")
+          (CHEBI:138100 "PC" "2-acyl")
+          (CHEBI:138101 "PC" "2-acyl")
+          (CHEBI:138266 "PC" "2-acyl")
+          (CHEBI:140082 "PC" "2-acyl")
+          (CHEBI:140088 "PC" "2-acyl")
+          (CHEBI:145782 "PC" "2-acyl")
+          (CHEBI:145783 "PC" "2-acyl")
+          (CHEBI:64381 "PE" "1-acyl")
+          (CHEBI:73004 "PE" "1-acyl")
+          (CHEBI:74971 "PE" "1-acyl")
+          (CHEBI:75036 "PE" "1-acyl")
+          (CHEBI:84299 "PE" "1-acyl")
+          (CHEBI:84490 "PE" "1-acyl")
+          (CHEBI:133732 "PE" "1-acyl")
+          (CHEBI:149768 "PE" "1-acyl")
+          (CHEBI:65213 "PE" "2-acyl")
+          (CHEBI:76088 "PE" "2-acyl")
+          (CHEBI:76090 "PE" "2-acyl")
+          (CHEBI:76091 "PE" "2-acyl")
+          (CHEBI:137580 "PE" "2-acyl")
+          (CHEBI:137581 "PE" "2-acyl")
+          (CHEBI:138098 "PE" "2-acyl")
+          (CHEBI:138099 "PE" "2-acyl")
+          (CHEBI:64840 "PG" "1-acyl")
+          (CHEBI:72826 "PG" "1-acyl")
+          (CHEBI:72827 "PG" "1-acyl")
+          (CHEBI:72828 "PG" "1-acyl")
+          (CHEBI:75158 "PG" "1-acyl")
+          (CHEBI:76528 "PG" "2-acyl")
+          (CHEBI:141490 "PG" "2-acyl")
+          (CHEBI:64771 "PI" "1-acyl")
+          (CHEBI:72833 "PI" "1-acyl")
+          (CHEBI:74243 "PI" "1-acyl")
+          (CHEBI:78762 "PI" "1-acyl")
+          (CHEBI:64872 "PI" "2-acyl")
+          (CHEBI:193055 "PI" "2-acyl")
+          (CHEBI:195486 "PI" "2-acyl")
+          (CHEBI:195487 "PI" "2-acyl")
+          (CHEBI:195489 "PI" "2-acyl")
+          (CHEBI:64379 "PS" "1-acyl")
+          (CHEBI:74617 "PS" "1-acyl")
+          (CHEBI:75020 "PS" "1-acyl")
+          (CHEBI:84462 "PS" "1-acyl")
+          (CHEBI:84467 "PS" "1-acyl")
+          (CHEBI:65214 "PS" "2-acyl")
+          (CHEBI:77342 "PS" "2-acyl")
+          (CHEBI:77830 "PS" "2-acyl")
+        }
+        GRAPH <http://rdfportal.org/dataset/rhea> {
+          ?reaction rdfs:subClassOf rhea:Reaction ; rhea:status <http://rdf.rhea-db.org/Approved> ;
+                    rhea:isTransport false ; rhea:side ?side .
+          ?side rhea:contains/rhea:compound/rhea:chebi ?lyso .
+          # acyl-CoA on the same side as the lysolipid = acyl-CoA-dependent acylation of it
+          BIND(IF(EXISTS { ?side rhea:contains/rhea:compound/rhea:name ?donor_name .
+                           FILTER(STRENDS(?donor_name, "-CoA")) },
+                  ?reaction, ?no_acylation) AS ?acylation)
+        }
+      }
+    result_count: 1
+
+  - query_number: 6
+    database: rhea
+    description: >
+      Every reaction containing a 2-acyl-lysoPG entity, with the other compounds on its side: 4
+      reactions, all producing it. RHEA:67428 and RHEA:74103 are sn-1 hydrolyses of
+      phosphatidylglycerol (with a fatty acid on the product side); RHEA:57144 and RHEA:78359 transfer
+      the sn-1 acyl chain of phosphatidylglycerol to N-acetylsphingosine (with the 1-O-acyl ceramide on
+      the product side). None consumes it.
+    query: |
+      PREFIX rhea: <http://rdf.rhea-db.org/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX CHEBI: <http://purl.obolibrary.org/obo/CHEBI_>
+      SELECT DISTINCT ?accession ?equation ?lyso_on_side_with
+      WHERE {
+        VALUES (?lyso ?headgroup ?lyso_class) {
+          (CHEBI:76528 "PG" "2-acyl")
+          (CHEBI:141490 "PG" "2-acyl")
+        }
+        GRAPH <http://rdfportal.org/dataset/rhea> {
+          ?reaction rdfs:subClassOf rhea:Reaction ; rhea:status <http://rdf.rhea-db.org/Approved> ;
+                    rhea:isTransport false ; rhea:accession ?accession ; rhea:equation ?equation ; rhea:side ?side .
+          ?side rhea:contains/rhea:compound/rhea:chebi ?lyso .
+          ?side rhea:contains/rhea:compound ?partner .
+          ?partner rhea:chebi ?pchebi ; rhea:name ?lyso_on_side_with .
+          FILTER(?pchebi != ?lyso)
+        }
+      }
+      ORDER BY ?accession
+    result_count: 6
+
+rdf_triples: |
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix owl: <http://www.w3.org/2002/07/owl#> .
+  @prefix SLM: <https://swisslipids.org/rdf/SLM_> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix rhea: <http://rdf.rhea-db.org/> .
+
+  SLM:000046347 rdfs:label "2-acyl-sn-glycero-3-phospho-(1'-sn-glycerol)" ; owl:equivalentClass obo:CHEBI_76528 .
+  # Database: swisslipids | Query: 1 | Comment: the 2-acyl-lysoPG class anchor, pH-7.3 form
+  SLM:000000381 rdfs:label "1-acyl-sn-glycero-3-phospho-(1'-sn-glycerol)" ; owl:equivalentClass obo:CHEBI_64840 .
+  # Database: swisslipids | Query: 1 | Comment: the 1-acyl-lysoPG class anchor; 16 acyl-CoA acylations in Query 4
+  rhea:67428 rhea:accession "RHEA:67428" ; rhea:status rhea:Approved .
+  # Database: rhea | Query: 6 | Comment: a 1,2-diacyl-PG + H2O = 2-acyl-lysoPG + a fatty acid; produces the 2-acyl form
+  rhea:78359 rhea:accession "RHEA:78359" .
+  # Database: rhea | Query: 6 | Comment: diacyl-PG + N-acetylsphingosine = 2-acyl-lysoPG + 1-O-acyl-N-acetylsphingosine; produces it again
+  obo:CHEBI_58342 rdfs:label "acyl-CoA(4-)" .
+  # Database: chebi | Query: 3 | Comment: the acyl-donor class; none of its 995 descendants shares a side with 2-acyl-lysoPG
+
+exact_answer:
+  - phosphatidylglycerol
+
+ideal_answer: |
+  Phosphatidylglycerol. Its 1-acyl lysophospholipid is the acyl-CoA acceptor in 16 approved reactions,
+  but its 2-acyl form, which appears in four reactions, is never acylated: all four produce it, two by
+  hydrolysis of the sn-1 chain of phosphatidylglycerol and two by transfer of that chain to
+  N-acetylsphingosine. For every other headgroup both isomers are recorded as acyl-CoA acceptors, the
+  1-acyl form far more often: phosphatidylcholine 34 against 9 reactions, phosphatidylethanolamine 26
+  against 6, and phosphatidylinositol and phosphatidylserine 14 against 2 each. In the curated
+  chemistry, then, 2-acyl lysophosphatidylglycerol is a dead end, and re-acylation of every lyso class
+  runs mainly through the 1-acyl isomer, adding the sn-2 chain.
+
+question_template_used: Lipid-class anchors (reference lyso classes -> pH-7.3 ChEBI) -> ChEBI hierarchy expansion -> curated reactions classified by lyso position and by an acyl-CoA co-substrate -> per-class presence/absence
+
+time_spent:
+  exploration: 150 minutes
+  formulation: 30 minutes
+  verification: 20 minutes
+  pubmed_test: 6 minutes
+  extraction: 10 minutes
+  documentation: 25 minutes
+  total: 241 minutes
