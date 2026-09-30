@@ -4,6 +4,9 @@
 # enumeration_audit.md tier: not yet listed (new DB). Set-level routes are first-class examples:
 #   phenotype -> diseases via the HPO hierarchy (enum_diseases_by_phenotype), inheritance mode -> diseases
 #   (enum_inheritance_modes), gene -> diseases (gene_to_diseases).
+# 2026-09-30 revision: added gotcha absent_phenotypes_as_present — the hpoa NOT qualifier and 0/N frequency are
+#   dropped on conversion, so absent phenotypes read as curated annotations. Found while authoring a held-out
+#   benchmark question; the check uses an unrelated pair (SCA26 x Seizure) so it gives nothing away.
 mie_spec: 3
 database: pubcasefinder
 
@@ -122,6 +125,29 @@ global_gotchas:
       query: |
         SELECT ?s WHERE { GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
           { ?s <http://purl.org/spar/fabio/hasSubjectTerm> ?o } UNION { ?s <http://xmlns.com/foaf/0.1/page> ?o } } } LIMIT 1
+  - id: absent_phenotypes_as_present
+    say: >
+      The conversion from HPO's phenotype.hpoa drops the qualifier and frequency columns, so a phenotype the
+      source records as ABSENT is stored as an ordinary curated annotation — nothing in the RDF tells them apart,
+      and the curated-creator filter keeps them. Two kinds, measured 2026-09-30 against phenotype.hpoa 2026-09-02:
+      (1) Orphanet `NOT` annotations — 519 of Orphanet's 733 are present here as "Orphanet" annotations, e.g.
+      spinocerebellar ataxia type 26 (Orphanet_101112) x Seizure (HP_0001250), which the source excludes;
+      (2) OMIM annotations observed in no patient (frequency 0/N) — 853 are present as "Human Phenotype Ontology
+      Consortium" annotations. Aggregates move little (33 of enum_diseases_by_phenotype's 3,311 seizure diseases
+      rest only on such pairs) but a short disease or gene list can be wrong outright. SPARQL cannot filter this:
+      for an exact phenotype -> disease answer, check each supporting (disease, HP) pair against phenotype.hpoa
+      (qualifier column = NOT, or frequency 0/N) and drop those.
+    check:
+      kind: count
+      date: "2026-09-30"
+      query: |
+        PREFIX oa: <http://www.w3.org/ns/oa#>
+        PREFIX dcterms: <http://purl.org/dc/terms/>
+        PREFIX obo: <http://purl.obolibrary.org/obo/>
+        SELECT (COUNT(DISTINCT ?ann) AS ?n) WHERE { GRAPH <https://pubcasefinder.dbcls.jp/rdf> {
+          ?ann oa:hasTarget <http://www.orpha.net/ORDO/Orphanet_101112> ; oa:hasBody obo:HP_0001250 ;
+               dcterms:source ?src . ?src dcterms:creator "Orphanet" } }
+      expect: {value: 1, tolerance: 0.0}
 
 examples:
   - id: disease_lookup
