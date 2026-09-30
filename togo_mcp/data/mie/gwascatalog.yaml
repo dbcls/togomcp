@@ -97,6 +97,31 @@ global_gotchas:
       gwas_catalog 1,500 + ontology/efo 500 + biosamples 81 + ontology/clo 8). FIX: never count
       traits via rdf:type — COUNT(DISTINCT ?trait) anchored on oban:has_object or
       m2r:mapped_trait_uri, with FROM <http://rdf.ebi.ac.uk/dataset/gwas_catalog>.
+  - id: deprecated_trait_iris
+    say: >
+      The catalog still maps many associations to EFO classes that the co-hosted current EFO has
+      DEPRECATED (owl:deprecated true, label "obsolete_…") and replaced — mostly by MONDO classes.
+      Measured 2026-09-30: 81,805 of 955,930 associations (8.6%) sit on 805 deprecated trait IRIs,
+      all carrying obo:IAO_0100001 'term replaced by'. E.g. coronary artery disease: 3,950
+      associations on EFO_0001645, 0 on its replacement MONDO_0005010. So a query that starts from
+      the CURRENT disease term (a MONDO or EFO class, or its subtree) silently misses them. FIX: map
+      each current term back through the replacement in GRAPH <http://rdfportal.org/ontology/efo>,
+      and query the catalog with both the term and the deprecated classes that point to it. The
+      replacement is an xsd:string literal for 9,176 of 9,454 deprecated EFO classes (278 are IRIs),
+      so join by string on BOTH sides: FILTER(STR(?rep) = STR(?current)). Comparing it to a plain
+      VALUES string without STR() returns 0 rows.
+    check:
+      kind: count
+      date: "2026-09-30"
+      query: |
+        PREFIX obo: <http://purl.obolibrary.org/obo/>
+        PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+        PREFIX m2r: <http://med2rdf.org/gwascatalog/terms/>
+        SELECT (COUNT(DISTINCT ?a) AS ?n) WHERE {
+          VALUES ?current { obo:MONDO_0005010 }
+          GRAPH <http://rdfportal.org/ontology/efo> { ?trait obo:IAO_0100001 ?rep . FILTER(STR(?rep) = STR(?current)) }
+          GRAPH <http://rdf.ebi.ac.uk/dataset/gwas_catalog> { ?a a gwas:Association ; m2r:mapped_trait_uri ?trait } }
+      expect: {value: 3950, tolerance: 0.05}
 
 examples:
   - id: snp_associations_by_rsid
