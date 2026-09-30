@@ -1,22 +1,47 @@
 # MIE Subcomponent Ablation Harness
 
-> [!WARNING]
-> **This harness is pinned to the v2 MIE corpus and no longer runs against the
-> tree.** `CANONICAL_SECTIONS` names v2 top-level sections (`schema_info`,
-> `critical_warnings`, `shape_expressions`, …). The served corpus flipped to v3 on
-> 2026-07-24 (1b58cfe), whose top-level keys are `database`, `discovery`,
-> `endpoint`, `base_uri`, `graphs`, `entity_counts`, `global_gotchas`, `examples`,
-> `schema_delta`, `id_join_map` — **zero overlap**. Since `ablate_mie.py` defaults
-> `--mie-dir` to the live `togo_mcp/data/mie/`, re-running it today strips **0 of
-> 11 sections from all 37 databases** and every "ablated" condition is really a
-> duplicate baseline. The failure is silent: variants get written, the run
-> completes, and the null result looks like a finding.
+> [!NOTE]
+> **v3 support (2026-10-01).** The corpus flipped to MIE v3 on 2026-07-24 (1b58cfe),
+> whose top-level keys share nothing with the v2 sections below. Until this port the
+> harness stripped **0 sections from every file** against the live tree, so every
+> "ablated" condition was silently a duplicate baseline. Both scripts now take a
+> format switch, **defaulting to v3**:
 >
-> The results in `FINDINGS.md` are valid — they were produced against the v2
-> corpus that was live at the time. Reviving the harness means re-deriving the
-> sections and the `GROUPS` partition against `MIE_v3_spec.md` §1.3 (the v2→v3
-> mapping), not editing the section list in place: v3 deliberately merged and
-> relocated content, so the groups no longer partition anything cleanly.
+> | | v3 (`--format v3` / `--mie-format v3`) | v2 (reproduction only) |
+> |---|---|---|
+> | never stripped | `mie_spec`, `database`, `endpoint`, `base_uri`, `graphs` | (none) |
+> | units (`--groups` / `--keep-groups`) | `discovery`; `header` = `entity_counts` + `global_gotchas`; `examples`; `schema_delta`; `id_join_map` | `query`, `guardrails`, `orientation` |
+> | variants dir | `mie_variants_v3/` (+ `no_mie/` copy) | `mie_variants/` |
+> | default base config | `config_2026_10.yaml` (no `find_databases`) | `config.yaml` (as run) |
+> | default questions | the frozen set, checked against `SET_MANIFEST.json` | `pilot_questions.txt` |
+> | default conditions | stage 1: `baseline`, `no_mie`, `ablate_examples`, `keep_examples` | baseline + 11 sections |
+>
+> Guards that make the old silent failure loud: `ablate_mie.py` refuses a corpus of the
+> wrong format and exits 1 if any condition strips nothing or a file keeps a key it should
+> have lost; `run_ablation.py` refuses variants built from a corpus that no longer matches
+> `togo_mcp/data/mie/`, a prompt that names `find_databases()`, and a no-MIE config mixed
+> with MIE-serving conditions. Each condition's server writes `<cond>-toolcalls.jsonl`;
+> after answering (before judging), a condition is marked `error` if the server executed
+> zero tool calls, if `get_MIE_file` never ran (MIE conditions), or if it ran at all
+> (`no_mie`). `run_manifest.json` records the question-set hash, models, configs, variant
+> hashes and tool counts. Stage 1 is two invocations into one absolute `--results-dir`:
+>
+> ```bash
+> python ablate_mie.py --sections examples --keep-groups examples
+> R=$PWD/results_v3_stage1
+> python run_ablation.py --answer-use-api --judge-use-api --runs 3 --results-dir $R \
+>     --conditions baseline,ablate_examples,keep_examples
+> python run_ablation.py --answer-use-api --judge-use-api --runs 3 --results-dir $R \
+>     --conditions no_mie --base-config ../../scripts/config_no_mie_2026_10.yaml
+> ```
+>
+> Known residue: column-0 comments outside a stripped section (the file-header change
+> log, 2.3% of corpus bytes) are served in every condition, as in production, and can
+> mention an idiom a condition removed. That biases ablation effects toward zero, not
+> away from it.
+>
+> The results in `FINDINGS.md` are valid for the v2 corpus that was live at the time;
+> the rest of this README describes that v2 design.
 
 Quantifies how much each **MIE section** contributes to TogoMCP benchmark
 performance by removing one section at a time from the MIE corpus and measuring

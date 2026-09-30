@@ -16,12 +16,25 @@ skipped (delete it or pass --force to re-run), so a partial sweep resumes safely
 
 Prerequisites: `uv sync`; ANTHROPIC_API_KEY (answering + default judge);
 NCBI_API_KEY (local server's NCBI tools). Generate inputs first:
-    python ablate_mie.py
-    python select_pilot.py
+    python ablate_mie.py --sections examples --keep-groups examples     # v3 stage 1
+
+MIE format (--mie-format, default v3). v3 serves mie_variants_v3/, defaults to the
+2026-10 configs and to the frozen question set (every benchmark/questions/question_*.yaml,
+verified against SET_MANIFEST.json), and refuses to start on variants built from a
+corpus that no longer matches togo_mcp/data/mie/ or on a prompt that names the retired
+find_databases(). v2 reproduces the 2026-07 sweeps (mie_variants/, config.yaml,
+pilot_questions.txt) exactly as before.
+
+Every condition's server writes a JSONL tool-call log (<cond>-toolcalls.jsonl, via
+TOGOMCP_QUERY_LOG). After answering, a condition is marked `error` if its server
+executed zero tool calls (the relative --results-dir failure mode), or, for no_mie, if
+get_MIE_file executed at all. run_manifest.json in the results dir records the
+question-set hash, models, configs, variant hashes and the per-condition tool counts.
 
 Usage:
-    python run_ablation.py                              # full sweep, pilot subset
-    python run_ablation.py --conditions baseline,ablate_shape_expressions
+    python run_ablation.py --answer-use-api --judge-use-api --runs 3 \
+        --results-dir $PWD/results_v3_stage1                # v3 stage 1 (4 conditions)
+    python run_ablation.py --mie-format v2 --conditions baseline,ablate_shape_expressions
     python run_ablation.py --questions q1.yaml q2.yaml  # ad-hoc subset
     python run_ablation.py --model claude-sonnet-4-5-20250929 --judge-model claude-opus-4-8
     python run_ablation.py --runs 5                      # 5 answer+judge reps/question
@@ -46,6 +59,9 @@ from __future__ import annotations
 
 import argparse
 import csv
+import datetime
+import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -57,7 +73,8 @@ from statistics import mean
 
 import yaml
 
-from ablate_mie import CANONICAL_SECTIONS, GROUPS  # single source of truth
+from ablate_mie import (CANONICAL_SECTIONS, EXCLUDED_DATABASES, GROUPS,  # single source of truth
+                        V3_SECTIONS, V3_UNITS)
 
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[2]  # benchmark/studies/ablation/ -> repo root
@@ -66,6 +83,11 @@ DEFAULT_BASE_CONFIG = SCRIPTS_DIR / "config.yaml"
 RUNNER = SCRIPTS_DIR / "automated_test_runner.py"
 EVALUATOR = SCRIPTS_DIR / "add_llm_evaluation.py"
 VARIANTS_DIR = HERE / "mie_variants"
+VARIANTS_DIR_V3 = HERE / "mie_variants_v3"
+DEFAULT_BASE_CONFIG_V3 = SCRIPTS_DIR / "config_2026_10.yaml"
+LIVE_MIE_DIR = REPO_ROOT / "togo_mcp" / "data" / "mie"
+QUESTIONS_DIR = REPO_ROOT / "benchmark" / "questions"
+SET_MANIFEST = QUESTIONS_DIR / "SET_MANIFEST.json"
 PILOT_FILE = HERE / "pilot_questions.txt"
 RESULTS_DIR = HERE / "results"
 RENDERED_DIR = RESULTS_DIR / "rendered_configs"
@@ -104,6 +126,87 @@ RELEASE_CONDITIONS = ["full_v3"]
 ALL_CONDITIONS = (SECTION_CONDITIONS + GROUP_CONDITIONS + NON_MIE_CONDITIONS
                   + KEEP_CONDITIONS + SMOKE_CONDITIONS + RELEASE_CONDITIONS)
 DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
+
+# v3 condition families (names follow the v2 ones; the variants live in mie_variants_v3/).
+V3_SECTION_CONDITIONS = ["baseline"] + [f"ablate_{s}" for s in V3_SECTIONS]
+V3_GROUP_CONDITIONS = [f"ablate_group_{u}" for u in V3_UNITS]
+V3_KEEP_CONDITIONS = [f"keep_{u}" for u in V3_UNITS]
+# 2026-10 stage 1: whole removal first, then leave-one-in before leave-one-out.
+V3_STAGE1 = ["baseline", "no_mie", "ablate_examples", "keep_examples"]
+V3_ALL_CONDITIONS = (V3_SECTION_CONDITIONS + V3_GROUP_CONDITIONS + NON_MIE_CONDITIONS
+                     + V3_KEEP_CONDITIONS)
+
+
+def _sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def check_variants_fresh(variants_dir: Path) -> None:
+    """Refuse v3 variants built from a corpus that is no longer the live one.
+
+    The variants are a snapshot; an MIE commit after `ablate_mie.py` ran would make
+    "baseline" silently differ from what production serves.
+    """
+    manifest_path = variants_dir / "manifest.json"
+    if not manifest_path.exists():
+        raise SystemExit(f"{manifest_path} missing — run ablate_mie.py first")
+    built = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if built.get("format") != "v3":
+        raise SystemExit(f"{variants_dir} was not built with --format v3")
+    excluded = set(built.get("excluded_databases", sorted(EXCLUDED_DATABASES)))
+    live = {f.name: _sha256_file(f) for f in sorted(LIVE_MIE_DIR.glob("*.yaml"))
+            if f.stem not in excluded}
+    if live != built.get("source_sha256"):
+        changed = sorted(n for n in set(live) | set(built.get("source_sha256", {}))
+                         if live.get(n) != built["source_sha256"].get(n))
+        raise SystemExit(
+            f"variants in {variants_dir} are stale: {len(changed)} MIE file(s) differ from "
+            f"{LIVE_MIE_DIR} ({', '.join(changed[:8])}{' ...' if len(changed) > 8 else ''}). "
+            f"Re-run ablate_mie.py.")
+
+
+def frozen_question_set() -> tuple[list[str], dict]:
+    """All question files, verified against SET_MANIFEST.json."""
+    if not SET_MANIFEST.exists():
+        raise SystemExit(f"{SET_MANIFEST} missing — run benchmark/scripts/make_set_manifest.py")
+    m = json.loads(SET_MANIFEST.read_text(encoding="utf-8"))
+    files = sorted(QUESTIONS_DIR.glob("question_*.yaml"))
+    cur = {f.name: _sha256_file(f) for f in files}
+    if cur != m["files"]:
+        raise SystemExit(
+            f"question files differ from {SET_MANIFEST.name} (set {m['set_hash'][:12]}). "
+            f"Run make_set_manifest.py --check; commit and re-freeze before a run.")
+    return [str(f) for f in files], m
+
+
+def count_tool_calls(log_path: Path) -> dict[str, int]:
+    """Per-tool counts of calls the server actually executed (JSONL `tool` field)."""
+    counts: dict[str, int] = {}
+    if not log_path.exists():
+        return counts
+    for line in log_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            tool = json.loads(line).get("tool")
+        except (json.JSONDecodeError, AttributeError):
+            continue
+        if tool:
+            counts[tool] = counts.get(tool, 0) + 1
+    return counts
+
+
+def tool_call_errors(cond: str, counts: dict[str, int]) -> list[str]:
+    errs = []
+    if sum(counts.values()) == 0:
+        errs.append(f"[{cond}] the local server executed ZERO tool calls: the agent did not "
+                    f"use this condition's server (check --results-dir / rendered config)")
+    mie_calls = counts.get("get_MIE_file", 0)
+    if cond == "no_mie" and mie_calls:
+        errs.append(f"[{cond}] get_MIE_file executed {mie_calls} time(s): the MIE leaked "
+                    f"into the no-MIE condition")
+    if cond != "no_mie" and sum(counts.values()) and not mie_calls:
+        errs.append(f"[{cond}] get_MIE_file never executed: this condition's MIE variant "
+                    f"was never served, so it measured nothing")
+    return errs
 
 
 def wait_ready(port: int, proc: subprocess.Popen, timeout: float = 90.0) -> bool:
@@ -289,7 +392,8 @@ def _server_log_tail(log_path: Path, n: int = 15) -> str:
 def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
                   model: str, judge_model: str | None, force: bool, dry_run: bool,
                   python: str, runs: int = 1, judge_use_api: bool = False,
-                  answer_use_api: bool = False, judge_runs: int = 1) -> str:
+                  answer_use_api: bool = False, judge_runs: int = 1,
+                  tool_counts: dict | None = None) -> str:
     final_scored = RESULTS_DIR / f"{cond}-scored.csv"
     if final_scored.exists() and not force:
         print(f"[{cond}] scored CSV exists — skipping (delete it or --force to re-run)")
@@ -305,6 +409,10 @@ def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
     env = dict(os.environ)
     env["TOGOMCP_MIE_DIR"] = str(variant_dir)
     env["ABLATION_PORT"] = str(port)
+    # JSONL record of every tool call the server executes: the ground truth for the
+    # post-run checks (the plain server log only says "CallToolRequest", not which tool).
+    toolcall_log = RESULTS_DIR / f"{cond}-toolcalls.jsonl"
+    env["TOGOMCP_QUERY_LOG"] = str(toolcall_log)
 
     # Answering runs on the claude_agent_sdk bundled CLI. If ANTHROPIC_API_KEY is in
     # its env, the CLI bills the Anthropic API; if absent, it uses the `claude login`
@@ -345,6 +453,7 @@ def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
                      "need_answer": need_answer})
 
     # --- answering passes: one server boot serves every run that needs answers ---
+    answered = False
     if any(p["need_answer"] for p in plan):
         print(f"[{cond}] booting local server on :{port} (MIE={variant_dir.name})")
         server_log = RESULTS_DIR / f"{cond}-server.log"
@@ -377,6 +486,7 @@ def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
                      "-c", str(cfg_path), "--model", model, "-o", str(p["answers"])],
                     check=True, cwd=str(SCRIPTS_DIR), env=answer_env,
                 )
+                answered = True
         finally:
             log_fh.close()
             server.terminate()
@@ -390,6 +500,20 @@ def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
         # every replicate already answered — honor the dry-run contract without a boot
         print(f"[{cond}] DRY-RUN: all {runs} run(s) already answered; nothing to do")
         return "dry-run"
+
+    # --- post-answer guards: did this condition's server really do the work? ---
+    # Checked whenever a tool-call log exists (also on a resumed run), before any
+    # judging money is spent on answers that measured nothing.
+    if answered or toolcall_log.exists():
+        counts = count_tool_calls(toolcall_log)
+        if tool_counts is not None:
+            tool_counts[cond] = counts
+        total = sum(counts.values())
+        print(f"[{cond}] server executed {total} tool call(s); "
+              f"get_MIE_file={counts.get('get_MIE_file', 0)}")
+        errs = tool_call_errors(cond, counts)
+        if errs:
+            raise SystemExit("\n".join(errs))
 
     # --- judging passes (no server needed) ---
     for p in plan:
@@ -419,17 +543,65 @@ def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
     return "done"
 
 
+def write_run_manifest(args, conditions, questions, base_config, set_manifest,
+                       summary, tool_counts) -> None:
+    """Append this invocation to <results>/run_manifest.json (one entry per invocation)."""
+    qhash = {Path(q).name: _sha256_file(Path(q)) for q in questions}
+    full_set = bool(set_manifest) and qhash == set_manifest.get("files")
+    variants_manifest = VARIANTS_DIR / "manifest.json"
+    try:
+        commit = subprocess.check_output(["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
+                                         text=True).strip()
+    except (OSError, subprocess.CalledProcessError):
+        commit = None
+    entry = {
+        "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
+        "git_commit": commit,
+        "mie_format": args.mie_format,
+        "conditions": conditions,
+        "status": summary,
+        "question_set_hash": set_manifest.get("set_hash") if full_set else None,
+        "question_subset_of": set_manifest.get("set_hash") if set_manifest and not full_set else None,
+        "n_questions": len(questions),
+        "question_files": qhash if not full_set else None,
+        "answer_model": args.model,
+        "judge_model": args.judge_model,
+        "runs": args.runs,
+        "judge_runs": args.judge_runs,
+        "answer_use_api": args.answer_use_api,
+        "judge_use_api": args.judge_use_api,
+        "base_config": str(base_config),
+        "base_config_sha256": _sha256_file(base_config),
+        "variants_dir": str(VARIANTS_DIR),
+        "variants_manifest_sha256": (_sha256_file(variants_manifest)
+                                     if variants_manifest.exists() else None),
+        "tool_calls": tool_counts,
+    }
+    path = RESULTS_DIR / "run_manifest.json"
+    entries = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+    entries.append(entry)
+    path.write_text(json.dumps(entries, indent=2) + "\n", encoding="utf-8")
+    print(f"run manifest -> {path}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--conditions", default=",".join(SECTION_CONDITIONS),
-                    help="comma-separated conditions (default: baseline + all 11 "
-                         "single-section ablations). Use 'groups' for baseline + every "
-                         "GROUP ablation (build them first: ablate_mie.py --groups all).")
+    ap.add_argument("--mie-format", choices=["v2", "v3"], default="v3",
+                    help="MIE corpus format (default v3). v2 reproduces the 2026-07 sweeps.")
+    ap.add_argument("--conditions", default=None,
+                    help="comma-separated conditions. Default: v3 = stage1 (baseline, no_mie, "
+                         "ablate_examples, keep_examples); v2 = baseline + all 11 single-"
+                         "section ablations. Aliases: 'groups' (baseline + every group "
+                         "ablation), 'keep' (baseline + every leave-one-in), 'stage1' (v3).")
     ap.add_argument("--questions", nargs="+", default=None,
-                    help="explicit question YAML paths (default: pilot_questions.txt)")
-    ap.add_argument("--base-config", default=str(DEFAULT_BASE_CONFIG),
-                    help=f"benchmark config to clone (default: {DEFAULT_BASE_CONFIG})")
+                    help="explicit question YAML paths (default: v3 = the frozen set, all "
+                         "benchmark/questions/question_*.yaml checked against "
+                         "SET_MANIFEST.json; v2 = pilot_questions.txt)")
+    ap.add_argument("--base-config", default=None,
+                    help=f"benchmark config to clone (default: v3 = {DEFAULT_BASE_CONFIG_V3.name}, "
+                         f"v2 = {DEFAULT_BASE_CONFIG.name}). no_mie needs one that denies "
+                         f"get_MIE_file, e.g. config_no_mie_2026_10.yaml.")
     ap.add_argument("--results-dir", default=None, metavar="DIR",
                     help="write results here instead of ./results. Use to stage a NEW batch of "
                          "questions (run every condition for them in one batch, then fold in with "
@@ -496,33 +668,65 @@ def main() -> int:
         raise SystemExit("--judge-use-api/--answer-use-api require ANTHROPIC_API_KEY in the "
                          "environment (e.g. `ANTHROPIC_API_KEY=$MY_ANTHROPIC_API_KEY ...`).")
 
-    conditions = [c.strip() for c in args.conditions.split(",") if c.strip()]
+    global VARIANTS_DIR
+    v3 = args.mie_format == "v3"
+    if v3:
+        VARIANTS_DIR = VARIANTS_DIR_V3
+        valid, groups_c, keep_c = V3_ALL_CONDITIONS, V3_GROUP_CONDITIONS, V3_KEEP_CONDITIONS
+        default_conditions = V3_STAGE1
+    else:
+        valid, groups_c, keep_c = ALL_CONDITIONS, GROUP_CONDITIONS, KEEP_CONDITIONS
+        default_conditions = SECTION_CONDITIONS
+    cond_arg = args.conditions if args.conditions is not None else ",".join(default_conditions)
+    conditions = [c.strip() for c in cond_arg.split(",") if c.strip()]
     if conditions == ["groups"]:
-        conditions = ["baseline"] + GROUP_CONDITIONS
+        conditions = ["baseline"] + groups_c
     elif conditions == ["keep"]:
-        conditions = ["baseline"] + KEEP_CONDITIONS
-    unknown = [c for c in conditions if c not in ALL_CONDITIONS]
+        conditions = ["baseline"] + keep_c
+    elif conditions == ["stage1"] and v3:
+        conditions = list(V3_STAGE1)
+    unknown = [c for c in conditions if c not in valid]
     if unknown:
-        raise SystemExit(f"unknown condition(s): {', '.join(unknown)}\nvalid: {', '.join(ALL_CONDITIONS)}")
+        raise SystemExit(f"unknown {args.mie_format} condition(s): {', '.join(unknown)}\n"
+                         f"valid: {', '.join(valid)}")
 
-    base_config = Path(args.base_config)
+    base_config = Path(args.base_config or (DEFAULT_BASE_CONFIG_V3 if v3 else DEFAULT_BASE_CONFIG))
     if not base_config.exists():
         raise SystemExit(f"base config not found: {base_config}")
+    base_cfg = yaml.safe_load(base_config.read_text(encoding="utf-8")) or {}
+    if v3 and "find_databases" in str(base_cfg.get("togomcp_system_prompt", "")):
+        raise SystemExit(
+            f"{base_config} tells the agent to call find_databases(), retired in 2.0.0. "
+            f"Use config_2026_10.yaml / config_no_mie_2026_10.yaml.")
+    # no_mie and the MIE-serving conditions need DIFFERENT base configs, so they cannot
+    # share one invocation: run no_mie on its own with the no-MIE config.
+    denies_mie = any("get_MIE_file" in str(d) for d in (base_cfg.get("disallowed_tools") or []))
+    if denies_mie and any(c != "no_mie" for c in conditions):
+        raise SystemExit(
+            f"{base_config} denies get_MIE_file, so every condition except no_mie would run "
+            f"without the MIE. Run no_mie in a separate invocation with this config.")
 
     # Footgun guard: no_mie MUST run on a base config that denies get_MIE_file.
     # With the default config.yaml the tool stays available and it becomes a silent
     # WITH-MIE run — the same class of silent-invalid failure as the --results-dir bug.
-    if "no_mie" in conditions:
-        denied = (yaml.safe_load(base_config.read_text(encoding="utf-8")) or {}).get(
-            "disallowed_tools") or []
-        if not any("get_MIE_file" in str(d) for d in denied):
-            raise SystemExit(
-                f"condition 'no_mie' requires a --base-config that denies get_MIE_file, "
-                f"but {base_config} does not. Use "
-                f"benchmark/scripts/config_no_mie.yaml. Running no_mie on the default "
-                f"config.yaml would silently serve WITH the MIE.")
+    if "no_mie" in conditions and not denies_mie:
+        raise SystemExit(
+            f"condition 'no_mie' requires a --base-config that denies get_MIE_file, "
+            f"but {base_config} does not. Use benchmark/scripts/"
+            f"{'config_no_mie_2026_10.yaml' if v3 else 'config_no_mie.yaml'}. Running "
+            f"no_mie on a config that allows the tool would silently serve WITH the MIE.")
 
-    questions = load_pilot(args.questions)
+    set_manifest = None
+    if v3:
+        check_variants_fresh(VARIANTS_DIR)
+        if args.questions:
+            questions = args.questions
+            if SET_MANIFEST.exists():
+                set_manifest = json.loads(SET_MANIFEST.read_text(encoding="utf-8"))
+        else:
+            questions, set_manifest = frozen_question_set()
+    else:
+        questions = load_pilot(args.questions)
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     if not args.skip_preflight:
@@ -541,6 +745,7 @@ def main() -> int:
           f"  port={args.port}  python={args.python}\n")
 
     summary: dict[str, str] = {}
+    tool_counts: dict[str, dict[str, int]] = {}
     started = time.monotonic()
     for cond in conditions:
         try:
@@ -548,11 +753,15 @@ def main() -> int:
                                           args.model, args.judge_model, args.force,
                                           args.dry_run, args.python, args.runs,
                                           args.judge_use_api, args.answer_use_api,
-                                          args.judge_runs)
+                                          args.judge_runs, tool_counts)
         except SystemExit as e:
             print(f"[{cond}] ABORTED: {e}", file=sys.stderr)
             summary[cond] = "error"
         print()
+
+    if not args.dry_run:
+        write_run_manifest(args, conditions, questions, base_config, set_manifest,
+                           summary, tool_counts)
 
     mins = (time.monotonic() - started) / 60
     print("=" * 60)
