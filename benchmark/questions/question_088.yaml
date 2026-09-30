@@ -43,8 +43,11 @@ sparql_queries:
     description: >-
       Partition the eye-and-visual-system category (NANDO_1100011) by international-ontology coverage.
       All disease classes at or below that category (rdfs:subClassOf+, NANDO IRIs only), graph-pinned to
-      the NANDO graph on the shared primary endpoint, split by whether they carry a skos:closeMatch to a
-      MONDO IRI. Returns 26 diseases total, 20 with a MONDO cross-reference and 6 without (26 = 20 + 6).
+      the NANDO graph on the shared primary endpoint, split by whether they carry a skos:exactMatch or skos:closeMatch to a
+      MONDO IRI. Returns 30 diseases total, 24 with a MONDO cross-reference and 6 without (30 = 24 + 6); all 30
+      carry a notification number. Refreshed 2026-10-01: 26 = 20 + 6 when written; NANDO's 2026-05-22 release
+      moved most MONDO links to skos:exactMatch (the closeMatch-only form now counts 3 mapped) and the
+      category grew to 30.
     query: |
       PREFIX owl:   <http://www.w3.org/2002/07/owl#>
       PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
@@ -58,19 +61,19 @@ sparql_queries:
         ?disease a owl:Class ; rdfs:subClassOf+ nando:1100011 .
         FILTER(STRSTARTS(STR(?disease), "http://nanbyodata.jp/ontology/NANDO_"))
         OPTIONAL {
-          ?disease skos:closeMatch ?m .
+          ?disease skos:exactMatch|skos:closeMatch ?m .
           FILTER(STRSTARTS(STR(?m), "http://purl.obolibrary.org/obo/MONDO_"))
           BIND(?disease AS ?mapped)
         }
       }
-    result_count: 1   # total=26, withMondo=20 -> 6 without a MONDO cross-reference (Rule 3: 20 + 6 = 26)
+    result_count: 1   # total=30, withMondo=24 -> 6 without a MONDO cross-reference (Rule 3: 24 + 6 = 30)
 
   - query_number: 2
     database: nando
     description: >-
       The answer list. The 6 officially-designated eye-category diseases (each carries a
-      nando:hasNotificationNumber) with NO MONDO cross-reference (FILTER NOT EXISTS on the MONDO
-      closeMatch). Returns exactly 6, with their government notification numbers: five inheritance-mode
+      nando:hasNotificationNumber) with NO MONDO cross-reference (FILTER NOT EXISTS on a MONDO
+      exactMatch or closeMatch; the closeMatch-only form returned 27 rows after NANDO's 2026-05-22 release). Returns exactly 6, with their government notification numbers: five inheritance-mode
       subtypes of retinitis pigmentosa - Autosomal dominant / Autosomal recessive / X-linked recessive /
       Digenic / Sporadic - which all share the single RP designation number 90, plus "Cone-rod dystrophy and
       cone dystrophy" (number 301).
@@ -88,7 +91,7 @@ sparql_queries:
         FILTER(STRSTARTS(STR(?disease), "http://nanbyodata.jp/ontology/NANDO_"))
         FILTER(LANG(?en_label) = "en")
         FILTER NOT EXISTS {
-          ?disease skos:closeMatch ?m .
+          ?disease skos:exactMatch|skos:closeMatch ?m .
           FILTER(STRSTARTS(STR(?m), "http://purl.obolibrary.org/obo/MONDO_"))
         }
       }
@@ -133,8 +136,8 @@ rdf_triples: |
   @prefix mondo: <http://purl.obolibrary.org/obo/> .
   @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
 
-  ex:eyeCategory ex:label "Eye and visual system disease" ; ex:totalDiseases "26"^^xsd:integer ; ex:withMondoXref "20"^^xsd:integer ; ex:withoutMondoXref "6"^^xsd:integer .
-  # Database: nando | Query: 1 | Comment: the eye-and-visual-system category (NANDO_1100011) holds 26 designated diseases; 20 carry a MONDO cross-reference and 6 do not (Rule 3: 20 + 6 = 26)
+  ex:eyeCategory ex:label "Eye and visual system disease" ; ex:totalDiseases "30"^^xsd:integer ; ex:withMondoXref "24"^^xsd:integer ; ex:withoutMondoXref "6"^^xsd:integer .
+  # Database: nando | Query: 1 | Comment: the eye-and-visual-system category (NANDO_1100011) holds 30 designated diseases; 24 carry a MONDO cross-reference and 6 do not (Rule 3: 20 + 6 = 26)
   ex:answer ex:unharmonisedDiseases "Autosomal dominant retinitis pigmentosa; Autosomal recessive retinitis pigmentosa; X-linked recessive retinitis pigmentosa; Digenic retinitis pigmentosa; Sporadic retinitis pigmentosa; Cone-rod dystrophy and cone dystrophy" .
   # Database: nando | Query: 2 | Comment: THE ANSWER - the 6 designated eye diseases with no MONDO cross-reference; five are inheritance-mode subtypes of retinitis pigmentosa
   ex:rpSubtypes ex:sharedNotificationNumber "90"^^xsd:integer ; ex:count "5"^^xsd:integer .
@@ -155,7 +158,7 @@ exact_answer:
   - "Cone-rod dystrophy and cone dystrophy"
 
 ideal_answer: |
-  Six of the twenty-six officially-designated intractable diseases in the eye-and-visual-system category have no cross-reference to the international disease ontology: Autosomal dominant retinitis pigmentosa, Autosomal recessive retinitis pigmentosa, X-linked recessive retinitis pigmentosa, Digenic retinitis pigmentosa, Sporadic retinitis pigmentosa, and "Cone-rod dystrophy and cone dystrophy" (the other 20 are all cross-referenced, so 20 + 6 = 26). Five of the six are simply retinitis pigmentosa split by inheritance pattern, and tellingly they all carry the single government notification number 90 - the country designates "retinitis pigmentosa" as one supported intractable disease, but the national ontology subdivides it into inheritance-mode classes for modelling. The international ontology does not: it keeps a single umbrella class, "retinitis pigmentosa" (MONDO_0019200) - to which the national ontology's own umbrella retinitis pigmentosa entry (also number 90) is duly cross-referenced - and otherwise models the disease only by gene number or syndrome (for instance "retinitis pigmentosa 7, digenic"), never by general inheritance mode. The sixth unmapped entry, "Cone-rod dystrophy and cone dystrophy", is a combined class the international ontology instead represents as two separate diseases. The list therefore is not an arbitrary set of missing links but the signature of a real granularity mismatch between the two resources: where a national ontology enumerates inheritance-mode and combined disease variants, the international ontology harmonises them into single gene- or umbrella-level classes, leaving these designations without an international counterpart.
+  Six of the thirty officially-designated intractable diseases in the eye-and-visual-system category have no cross-reference to the international disease ontology: Autosomal dominant retinitis pigmentosa, Autosomal recessive retinitis pigmentosa, X-linked recessive retinitis pigmentosa, Digenic retinitis pigmentosa, Sporadic retinitis pigmentosa, and "Cone-rod dystrophy and cone dystrophy" (the other 24 are all cross-referenced, so 24 + 6 = 30). Five of the six are simply retinitis pigmentosa split by inheritance pattern, and tellingly they all carry the single government notification number 90 - the country designates "retinitis pigmentosa" as one supported intractable disease, but the national ontology subdivides it into inheritance-mode classes for modelling. The international ontology does not: it keeps a single umbrella class, "retinitis pigmentosa" (MONDO_0019200) - to which the national ontology's own umbrella retinitis pigmentosa entry (also number 90) is duly cross-referenced - and otherwise models the disease only by gene number or syndrome (for instance "retinitis pigmentosa 7, digenic"), never by general inheritance mode. The sixth unmapped entry, "Cone-rod dystrophy and cone dystrophy", is a combined class the international ontology instead represents as two separate diseases. The list therefore is not an arbitrary set of missing links but the signature of a real granularity mismatch between the two resources: where a national ontology enumerates inheritance-mode and combined disease variants, the international ontology harmonises them into single gene- or umbrella-level classes, leaving these designations without an international counterpart.
 
 question_template_used: "List cross-ontology harmonisation gap (members of one ontology's clinical category that carry no cross-reference to a second ontology; a national rare-disease ontology's category set-minus the international ontology's coverage, with the second ontology queried to confirm the gap is a genuine granularity difference rather than a linking oversight)"
 
