@@ -44,6 +44,7 @@ question_{sequential_number}.yaml
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `held_out` | boolean | `true` if the question has never been used to develop or fix MIE files (out-of-sample); absent means `false` |
 | `documents` | array | PubMed articles referenced (if any) |
 | `snippets` | array | Text snippets from literature (if needed) |
 
@@ -125,6 +126,29 @@ choices:
   - "Firmicutes"
   - "Actinobacteria"
   - "Bacteroidetes"
+```
+
+---
+
+### `held_out`
+
+**Type:** Boolean  
+**Required:** No (absent means `false`)  
+**Placement:** directly after `type`, by convention
+
+**Description:** Marks an **out-of-sample** question: one that has never been used to develop, diagnose, or fix an MIE file. Scores on held-out questions measure how MIE changes generalize; scores on the rest may include in-sample fit, because MIE examples and gotchas were at times written in response to failures observed on specific benchmark questions (e.g. the retired Q022/Q066, see `benchmark/questions/retired/README.md`).
+
+**Rules:**
+- New questions are created with `held_out: true` (default since 2026-09-30).
+- If an MIE file is later edited **in response to a failure observed on a held-out question**, that question is no longer out-of-sample: set `held_out: false` and add a comment saying when and why. Alternatively, retire it to `benchmark/questions/retired/` and mint a held-out replacement under the same id (Replace mode).
+- A refresh that only updates the recorded answer (no MIE change) leaves `held_out` unchanged.
+- `verify_questions.py` rejects non-boolean values and reports the held-out count; `results_analyzer.py` reports scores split into held-out vs development questions; `automated_test_runner.py` copies the flag into the results CSV.
+
+**Example:**
+```yaml
+id: question_101
+type: list
+held_out: true   # created 2026-09-30; never used for MIE development
 ```
 
 ---

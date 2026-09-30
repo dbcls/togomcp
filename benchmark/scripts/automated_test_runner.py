@@ -970,6 +970,7 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
         result = {
             "question_id":           q_id,
             "question_type":         q_type,
+            "held_out":              bool(question.get("held_out", False)),
             "question":              q_body,
             "ideal_answer":          ideal_answer,
             # Baseline
@@ -1057,6 +1058,7 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                 results.append({
                     "question_id":           question.get("id", f"question_{i}"),
                     "question_type":         question.get("type", "unknown"),
+                    "held_out":              bool(question.get("held_out", False)),
                     "question":              question.get("body", ""),
                     "ideal_answer":          question.get("ideal_answer", ""),
                     "baseline_success":      False,
@@ -1106,6 +1108,7 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
         fieldnames = [
             "question_id",
             "question_type",
+            "held_out",
             "question",
             "ideal_answer",
             # Baseline

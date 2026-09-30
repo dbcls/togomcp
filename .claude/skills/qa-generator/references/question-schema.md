@@ -21,7 +21,7 @@
 | `question_template_used` | str | name of the template/pattern used |
 | `time_spent` | map | `exploration`, `formulation`, `verification`, `pubmed_test`, `extraction`, `documentation`, `total` |
 
-**Optional:** `documents` (`{pmid, title, url}`), `snippets` (`{text, document, offsetInBeginSection, offsetInEndSection}`) — only if literature is referenced.
+**Optional:** `held_out` (boolean, directly after `type`; **set `true` on every new question**, meaning it has never been used to develop or fix an MIE file; the validator rejects non-boolean values). `documents` (`{pmid, title, url}`), `snippets` (`{text, document, offsetInBeginSection, offsetInEndSection}`): only if literature is referenced.
 
 ## `exact_answer` format by type (validator-enforced)
 

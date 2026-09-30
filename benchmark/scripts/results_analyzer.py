@@ -14,14 +14,31 @@ Expected CSV columns (from the pipeline):
     togomcp_recall, togomcp_precision, togomcp_repetition,
     togomcp_readability, togomcp_total_score, togomcp_evaluation_explanation
 
+Optional column (runner output since 2026-09-30):
+    held_out   true if the question was never used to develop or fix MIE files
+
 Usage:
-    python results_analyzer.py evaluation_results.csv
+    python results_analyzer.py evaluation_results.csv [--questions-dir DIR]
+
+The held-out split reads `held_out` from the CSV when present. For older CSVs it
+falls back to the question YAMLs in --questions-dir (default: ../questions), but
+only for rows whose question text still matches the YAML body; a row whose
+question was replaced since the run (e.g. a retired, dev-exposed question whose
+id was reused) is reported as "unmatched" instead of being misclassified.
 """
 
+import argparse
 import csv
 import sys
 from pathlib import Path
 from collections import defaultdict
+
+try:
+    import yaml
+except ImportError:  # only needed for the YAML fallback of the held-out split
+    yaml = None
+
+DEFAULT_QUESTIONS_DIR = Path(__file__).resolve().parent.parent / "questions"
 
 
 SCORE_COLS = ["recall", "precision", "repetition", "readability", "total_score"]
@@ -31,8 +48,9 @@ QUESTION_TYPES = ["yes_no", "factoid", "list", "summary", "choice"]
 class ResultsAnalyzer:
     """Analyzes TogoMCP evaluation results."""
 
-    def __init__(self, csv_path: str):
+    def __init__(self, csv_path: str, questions_dir: Path = DEFAULT_QUESTIONS_DIR):
         self.csv_path = Path(csv_path)
+        self.questions_dir = Path(questions_dir)
         self.results = []
         self._load()
 
@@ -172,6 +190,81 @@ class ResultsAnalyzer:
 
         print()
 
+    # ------------------------------------------------------------------
+    # Held-out (out-of-sample) split
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _norm(text) -> str:
+        return " ".join(str(text or "").split())
+
+    def _question_meta(self) -> dict:
+        """id -> (held_out, normalized body) from the question YAMLs."""
+        meta = {}
+        if yaml is None or not self.questions_dir.is_dir():
+            return meta
+        for f in sorted(self.questions_dir.glob("question_*.yaml")):
+            try:
+                d = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+            except Exception:
+                continue
+            meta[d.get("id", f.stem)] = (d.get("held_out") is True, self._norm(d.get("body")))
+        return meta
+
+    def _held_out_label(self, row: dict, meta: dict) -> str:
+        """'held_out', 'development' or 'unmatched' for one result row."""
+        raw = str(row.get("held_out", "")).strip().lower()
+        if raw in ("true", "1", "yes"):
+            return "held_out"
+        if raw in ("false", "0", "no"):
+            return "development"
+        # Older CSV without the column: fall back to the YAML, but only if the
+        # question text is unchanged (choice questions carry appended options,
+        # hence startswith).
+        entry = meta.get(row.get("question_id", ""))
+        if entry is None:
+            return "unmatched"
+        held, body = entry
+        if not body or not self._norm(row.get("question")).startswith(body):
+            return "unmatched"
+        return "held_out" if held else "development"
+
+    def held_out_breakdown(self):
+        """Scores split into held-out vs development questions."""
+        rows = self._evaluated_rows()
+        meta = {} if all("held_out" in r for r in self.results) else self._question_meta()
+        groups = defaultdict(list)
+        for r in rows:
+            groups[self._held_out_label(r, meta)].append(r)
+
+        if not groups.get("held_out"):
+            return  # nothing to split: no held-out question in this run
+
+        print("=" * 70)
+        print("HELD-OUT vs DEVELOPMENT QUESTIONS")
+        print("=" * 70)
+        print("  held_out    = never used to develop or fix MIE files (out-of-sample)")
+        print("  development = the rest; MIE work may have been tuned on these")
+        print()
+        print(f"  {'Group':12}  {'n':>4}  {'Baseline':>9}  {'TogoMCP':>9}  {'Δ (T−B)':>9}  {'Win %':>6}")
+        print("  " + "-" * 58)
+        for label in ("held_out", "development", "unmatched"):
+            g = groups.get(label, [])
+            if not g:
+                continue
+            n = len(g)
+            b = sum(self._score(r, "baseline", "total_score") for r in g) / n
+            t = sum(self._score(r, "togomcp", "total_score") for r in g) / n
+            w = sum(1 for r in g if self._score(r, "togomcp", "total_score")
+                    > self._score(r, "baseline", "total_score")) / n * 100
+            print(f"  {label:12}  {n:>4}  {b:>9.2f}  {t:>9.2f}  {t - b:>+9.2f}  {w:>5.1f}%")
+        if groups.get("unmatched"):
+            ids = sorted({r.get("question_id", "?") for r in groups["unmatched"]})
+            print(f"\n  unmatched: question changed or missing since this run: {', '.join(ids)}")
+        if len(groups["held_out"]) < 30:
+            print(f"\n  Note: n={len(groups['held_out'])} held-out rows; treat the split as indicative only.")
+        print()
+
     def per_question_scores(self):
         """Table of individual question scores."""
         print("=" * 70)
@@ -285,14 +378,18 @@ class ResultsAnalyzer:
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python results_analyzer.py <evaluated_results.csv>")
-        sys.exit(1)
+    ap = argparse.ArgumentParser(description="Analyze TogoMCP evaluation results.")
+    ap.add_argument("csv", help="evaluated results CSV")
+    ap.add_argument("--questions-dir", default=str(DEFAULT_QUESTIONS_DIR),
+                    help="question YAMLs, used for the held-out split of older CSVs "
+                         "(default: %(default)s)")
+    args = ap.parse_args()
 
     try:
-        analyzer = ResultsAnalyzer(sys.argv[1])
+        analyzer = ResultsAnalyzer(args.csv, args.questions_dir)
         analyzer.overall_stats()
         analyzer.type_breakdown()
+        analyzer.held_out_breakdown()
         analyzer.timing_stats()
         analyzer.per_question_scores()
         analyzer.low_scoring_questions()
