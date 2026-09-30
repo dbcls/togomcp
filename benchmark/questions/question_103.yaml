@@ -1,0 +1,185 @@
+id: question_103
+type: yes_no
+held_out: true   # created 2026-09-30; never used for MIE development
+body: "Gut bacteria convert the primary bile acids into the secondary bile acids deoxycholic
+  acid and lithocholic acid by 7-alpha-dehydroxylation, and both are then conjugated with
+  glycine or taurine. Does the expert-curated lipid knowledge base whose accessions have the
+  form SLM:nnnnnnnnn contain an entry for all four resulting conjugates (glycodeoxycholate,
+  taurodeoxycholate, glycolithocholate and taurolithocholate)?"
+
+inspiration_keyword:
+  keyword_id: KW-0088
+  name: Bile acid catabolism
+  category: Biological process
+
+togomcp_databases_used:
+  - lipidmaps
+  - chebi
+  - swisslipids
+
+verification_score:
+  biological_insight: 2
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 5 minutes
+  method: |
+    Two PubMed searches: "SwissLipids bile acid conjugates coverage glycodeoxycholate
+    taurolithocholate" (0 hits) and "SwissLipids knowledge resource lipids" (1 hit, the 2015
+    resource paper PMID 25943471, read).
+  result: |
+    The resource paper describes the database's scope and hierarchy, not individual records.
+    Whether these four conjugates have entries depends on the current content of the
+    database.
+  conclusion: PASS (cannot answer from literature - requires current database state)
+
+sparql_queries:
+  - query_number: 1
+    database: lipidmaps
+    description: >
+      The four conjugates in LIPID MAPS, anchored by name: glycodeoxycholic acid
+      (LMST05030006), taurodeoxycholic acid (LMST05040013, labelled by its systematic name
+      only), glycolithocholic acid (LMST05030009) and taurolithocholic acid (LMST05040003),
+      with their (neutral) InChIKeys and owl:equivalentClass cross-references. All four carry
+      a ChEBI link; only taurolithocholic acid carries a SwissLipids link (SLM_000501304), so
+      the direct cross-reference route answers for one conjugate out of four. Note that
+      the lithocholic conjugates are classified only under steroid conjugates [ST05],
+      not under the C24 bile acid class [ST0401], so enumerating the bile-acid class would
+      miss them.
+    query: |
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX chebi: <http://purl.obolibrary.org/obo/chebi/>
+      PREFIX owl:   <http://www.w3.org/2002/07/owl#>
+      SELECT ?lipid ?name ?inchikey ?xref
+      WHERE {
+        VALUES ?name { "glycodeoxycholic acid" "N-(3alpha,12alpha-dihydroxy-5beta-cholan-24-oyl)-taurine"
+                       "Glycolithocholic Acid" "Taurolithocholic acid" }
+        ?lipid rdfs:label ?name ;
+               chebi:inchikey ?inchikey .
+        OPTIONAL { ?lipid owl:equivalentClass ?xref }
+      }
+      ORDER BY ?lipid ?xref
+    result_count: 5
+
+  - query_number: 2
+    database: chebi
+    description: >
+      ChEBI's conjugate base of each acid (is_conjugate_acid_of, obo:RO_0018034) with its
+      InChIKey. Each base key equals the acid key except for the final protonation
+      character (-M for the carboxylate or sulfonate anion vs -N for the neutral acid).
+    query: |
+      PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo:     <http://purl.obolibrary.org/obo/>
+      PREFIX owl:     <http://www.w3.org/2002/07/owl#>
+      PREFIX chemrof: <https://w3id.org/chemrof/>
+      SELECT ?acid ?acidLabel ?base ?baseLabel ?baseKey
+      FROM <http://rdf.ebi.ac.uk/dataset/chebi>
+      WHERE {
+        VALUES ?acid { obo:CHEBI_27471 obo:CHEBI_9410 obo:CHEBI_37998 obo:CHEBI_36259 }
+        ?acid rdfs:label ?acidLabel ;
+              rdfs:subClassOf ?r .
+        ?r a owl:Restriction ;
+           owl:onProperty obo:RO_0018034 ;          # is_conjugate_acid_of
+           owl:someValuesFrom ?base .
+        ?base rdfs:label ?baseLabel ;
+              chemrof:inchi_key_string ?baseKey .
+      }
+      ORDER BY ?acid
+    result_count: 4
+
+  - query_number: 3
+    database: swisslipids
+    description: >
+      SwissLipids stores structures as the major form at pH 7.3, i.e. these anions. An exact
+      match on the four anion keys finds all four conjugates: glycodeoxycholate
+      SLM_000501213, taurodeoxycholate SLM_000501214, glycolithocholate SLM_000501338 and
+      taurolithocholate SLM_000501304. Three of them carry NO SLM:rank - they sit outside the
+      six-level lipid hierarchy - so a query restricted to ranked lipids would miss them.
+      None of the four is among the SwissLipids records whose InChI and InChIKey disagree
+      (MIE gotcha inchi_and_inchikey_disagree), so the key match is reliable here.
+    query: |
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX chebi: <http://purl.obolibrary.org/obo/chebi/>
+      SELECT ?key ?lipid ?name ?rank
+      WHERE {
+        GRAPH <https://sparql.swisslipids.org/swisslipids> {
+          VALUES ?key { "WVULKSPCQVQLCU-BUXLTGKBSA-M" "AWDRATDZQPNJFN-VAYUFCLWSA-M"
+                        "XBSQTYHEGZTYJE-OETIFKLTSA-M" "QBYUNVOYXHFVKC-GBURMNQMSA-M" }
+          ?lipid chebi:inchikey ?k .
+          FILTER(STR(?k) = ?key)
+          ?lipid rdfs:label ?name .
+          OPTIONAL { ?lipid <https://swisslipids.org/rdf/SLM_rank> ?rank }
+        }
+      }
+      ORDER BY ?key
+    result_count: 4
+
+  - query_number: 4
+    database: swisslipids
+    description: >
+      Trap check: the same lookup with the neutral LIPID MAPS / ChEBI-acid keys returns 0 rows.
+      A naive exact InChIKey join between the two lipid databases therefore concludes that
+      none of the four conjugates is present.
+    query: |
+      PREFIX chebi: <http://purl.obolibrary.org/obo/chebi/>
+      SELECT ?key ?lipid
+      WHERE {
+        GRAPH <https://sparql.swisslipids.org/swisslipids> {
+          VALUES ?key { "WVULKSPCQVQLCU-BUXLTGKBSA-N" "AWDRATDZQPNJFN-VAYUFCLWSA-N"
+                        "XBSQTYHEGZTYJE-OETIFKLTSA-N" "QBYUNVOYXHFVKC-GBURMNQMSA-N" }
+          ?lipid chebi:inchikey ?k .
+          FILTER(STR(?k) = ?key)
+        }
+      }
+    result_count: 0
+
+rdf_triples: |
+  @prefix lm: <https://www.lipidmaps.org/rdf/> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix owl: <http://www.w3.org/2002/07/owl#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix chebi: <http://purl.obolibrary.org/obo/chebi/> .
+  @prefix chemrof: <https://w3id.org/chemrof/> .
+  @prefix slm: <https://swisslipids.org/rdf/> .
+
+  lm:LMST05030006 rdfs:label "glycodeoxycholic acid" ; chebi:inchikey "WVULKSPCQVQLCU-BUXLTGKBSA-N" ; owl:equivalentClass obo:CHEBI_27471 .
+  # Database: lipidmaps | Query: 1 | Comment: neutral acid, linked to ChEBI but not to the target knowledge base
+  obo:CHEBI_27471 rdfs:subClassOf [ owl:onProperty obo:RO_0018034 ; owl:someValuesFrom obo:CHEBI_82982 ] .
+  # Database: chebi | Query: 2 | Comment: glycodeoxycholic acid is the conjugate acid of glycodeoxycholate
+  obo:CHEBI_82982 chemrof:inchi_key_string "WVULKSPCQVQLCU-BUXLTGKBSA-M" .
+  # Database: chebi | Query: 2 | Comment: the anion's key differs only in the final protonation character
+  slm:SLM_000501213 rdfs:label "glycodeoxycholate" ; chebi:inchikey "WVULKSPCQVQLCU-BUXLTGKBSA-M" .
+  # Database: swisslipids | Query: 3 | Comment: present, stored as the pH 7.3 anion, with no SLM:rank
+  slm:SLM_000501304 rdfs:label "Taurolithocholate" ; slm:SLM_rank slm:SLM_Isomeric_Subspecies .
+  # Database: swisslipids | Query: 3 | Comment: the only one of the four that is ranked, and the only one LIPID MAPS links to
+
+exact_answer: "yes"
+
+ideal_answer: |
+  Yes. All four conjugates have entries: glycodeoxycholate (SLM:000501213), taurodeoxycholate
+  (SLM:000501214), glycolithocholate (SLM:000501338) and taurolithocholate (SLM:000501304).
+  They are recorded as the anions that predominate at physiological pH, whereas LIPID MAPS
+  and ChEBI's parent entries describe the neutral acids. The two forms share their skeleton
+  and stereochemistry and differ only in protonation, so an exact structure-key comparison
+  between the resources finds none of the four. ChEBI's conjugate-acid/base links bridge
+  them. Only taurolithocholic acid is directly cross-referenced from LIPID MAPS to its entry.
+  Three of the four (glycodeoxycholate, taurodeoxycholate and glycolithocholate) sit outside
+  the knowledge base's six-level lipid classification, with no hierarchy level assigned; only
+  taurolithocholate is placed as an isomeric subspecies. Biologically, these are the
+  glycine- and taurine-amidated forms of the two major secondary bile acids produced when gut
+  bacteria remove the 7-alpha-hydroxyl group from cholic and chenodeoxycholic acid.
+
+question_template_used: Cross-database entity presence check across ionisation states (neutral parent -> ChEBI conjugate base -> exact key in a pH-7.3 structure database), with cross-reference and hierarchy traps
+
+time_spent:
+  exploration: 90 minutes
+  formulation: 20 minutes
+  verification: 30 minutes
+  pubmed_test: 5 minutes
+  extraction: 10 minutes
+  documentation: 25 minutes
+  total: 180 minutes
