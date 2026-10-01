@@ -27,11 +27,15 @@ the question's subject so the MIE does not leak the answer.
   They are mostly metal-containing compounds; cisplatin and manganese chloride keep only formula
   and weight. SMILES/InChI routes, including IDSM, whose ChEMBL index is built from this RDF, miss
   them silently. Fall back to the name or the formula.
-- **`swisslipids`: InChI and InChIKey disagree for 15% of records** (`inchi_and_inchikey_disagree`).
-  88,578 records have a wrong (neutral, stereo-less) InChI and 106 have a stale key, including
-  cholesterol. Separately, SwissLipids stores the pH 7.3 major microspecies, so exact InChIKey joins
-  to LIPID MAPS/ChEBI miss about 40% of curated links. Compare the first 25 characters, or use
-  ChEBI's conjugate-base link. Reported to the SwissLipids team.
+- **`swisslipids`: exact InChIKey joins to LIPID MAPS/ChEBI miss about 40% of curated links**
+  (`inchi_and_inchikey_disagree`). SwissLipids stores the major microspecies at pH 7.3, so acids
+  and phospholipids are anions whose key differs from the neutral parent in its last character:
+  of LIPID MAPS' 12,558 links, 7,563 match exactly, 4,253 differ only there and 739 in the stereo
+  block. Compare the first 25 characters, or use ChEBI's conjugate-base link. This gotcha first
+  warned that 15% of records had an InChI and InChIKey describing different structures. That
+  was true until SwissLipids' 2026_09_30 RDF release, which fixed all of them a day after we
+  reported it, and the release check caught the drift. The gotcha now records it as history
+  and warns that the `lipids.tsv` export of the same date still carries the old values.
 - **`gwascatalog`: 8.6% of associations sit on deprecated EFO traits** (`deprecated_trait_iris`).
   A query that starts from the current term (often MONDO) misses them; coronary artery disease
   has 3,950 associations on the old EFO IRI and 0 on its MONDO replacement. The gotcha gives the
