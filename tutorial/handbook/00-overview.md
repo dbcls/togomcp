@@ -59,15 +59,16 @@ TogoMCP は、この 3 つを AI アシスタント側に肩代わりさせる�
 
 一言でいうと：
 
-> **RDF Portal の約 37 データベースを、自然言語で問い合わせられるようにする MCP サーバ**
+> **RDF Portal を中心とする 45 の生命科学データベースを、自然言語で問い合わせられるようにする MCP サーバ**
 
 | 分野 | データベース |
 |---|---|
 | タンパク質・プロテオミクス | UniProt, PDB, jPOST |
-| 遺伝子・ゲノム | NCBI Gene, Ensembl, HGNC, OMA, Bgee, HCO, MCO, DDBJ, MoG+, TogoVar, GWAS Catalog |
-| 化学 | ChEMBL, PubChem, ChEBI, Rhea, BRENDA, MassBank |
-| パスウェイ | Reactome |
-| 疾患・臨床 | ClinVar, MedGen, MONDO, NANDO |
+| 遺伝子・ゲノム | NCBI Gene, Ensembl, HGNC, OMA, Bgee, HCO, MCO, DDBJ, MoG+, TogoVar, GWAS Catalog, Fanta.bio, MarpolBase |
+| 化学 | ChEMBL, PubChem, ChEBI, Rhea, BRENDA, MassBank, IDSM |
+| 脂質 | LIPID MAPS, SwissLipids |
+| パスウェイ | Reactome, WikiPathways |
+| 疾患・臨床 | ClinVar, MedGen, MONDO, NANDO, PubCaseFinder |
 | 文献 | PubMed, PubTator |
 | 微生物 | BacDive, MediaDive, AMR Portal, NBRC |
 | 糖鎖 | GlyCosmos |
@@ -75,7 +76,9 @@ TogoMCP は、この 3 つを AI アシスタント側に肩代わりさせる�
 | 分類 | NCBI Taxonomy |
 | 材料科学 | SuperCon |
 
-日本発のデータベース（TogoVar、jPOST、GlyCosmos、NBRC、MoG+、NANDO、MediaDive）が揃っている点は、他では代えがきかない特徴です。第 4 章でその価値が具体的に見えます。
+（2026-10-01 時点。このほか試験運用中のものが 1 つあります。2026-08 の時点では 37 でした。DB は今後も増えます。最新の一覧は接続して「どんなデータベースが使える？」と聞くのが確実です）
+
+日本発のデータベース（TogoVar、jPOST、GlyCosmos、NBRC、MoG+、NANDO、MediaDive、PubCaseFinder）が揃っている点は、他では代えがきかない特徴です。第 4 章でその価値が具体的に見えます。
 
 ## 「便利そう」ではなく「測って効いている」
 

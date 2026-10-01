@@ -21,7 +21,7 @@ Protein names are not unique. "Amylase" covers AMY1A/AMY1B/AMY1C/AMY2A/AMY2B. **
 | Cause | Example |
 |---|---|
 | **You are looking at the precursor** | Insulin: expected 51 aa → actually **110 aa** (preproinsulin) |
-| **There are multiple isoforms** | The default is the canonical one (`-1`). Other isoforms have different lengths |
+| **There are multiple isoforms** | The default is the canonical one. Other isoforms have different lengths. ⚠️ The canonical is not always `-1` (fibronectin P02751's is `-15`; Chapter 3) |
 | **The signal peptide or propeptide is included** | Common with secreted proteins |
 
 **How to check:**

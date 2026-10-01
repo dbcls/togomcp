@@ -60,15 +60,16 @@ What matters is the shift: **from what the AI "knows" to what it can "go and fet
 
 In one line:
 
-> **An MCP server that makes the roughly 37 databases of RDF Portal queryable in natural language**
+> **An MCP server that makes 45 life-science databases, centred on RDF Portal, queryable in natural language**
 
 | Field | Databases |
 |---|---|
 | Proteins & proteomics | UniProt, PDB, jPOST |
-| Genes & genomes | NCBI Gene, Ensembl, HGNC, OMA, Bgee, HCO, MCO, DDBJ, MoG+, TogoVar, GWAS Catalog |
-| Chemistry | ChEMBL, PubChem, ChEBI, Rhea, BRENDA, MassBank |
-| Pathways | Reactome |
-| Disease & clinical | ClinVar, MedGen, MONDO, NANDO |
+| Genes & genomes | NCBI Gene, Ensembl, HGNC, OMA, Bgee, HCO, MCO, DDBJ, MoG+, TogoVar, GWAS Catalog, Fanta.bio, MarpolBase |
+| Chemistry | ChEMBL, PubChem, ChEBI, Rhea, BRENDA, MassBank, IDSM |
+| Lipids | LIPID MAPS, SwissLipids |
+| Pathways | Reactome, WikiPathways |
+| Disease & clinical | ClinVar, MedGen, MONDO, NANDO, PubCaseFinder |
 | Literature | PubMed, PubTator |
 | Microbiology | BacDive, MediaDive, AMR Portal, NBRC |
 | Glycans | GlyCosmos |
@@ -76,7 +77,9 @@ In one line:
 | Taxonomy | NCBI Taxonomy |
 | Materials science | SuperCon |
 
-Having the Japan-originated databases (TogoVar, jPOST, GlyCosmos, NBRC, MoG+, NANDO, MediaDive) all in one place is a feature nothing else substitutes for. Chapter 4 makes that value concrete.
+(As of 2026-10-01, plus one experimental database. In 2026-08 the count was 37, and it keeps growing. The surest way to see the current list is to connect and ask "what databases can you use?")
+
+Having the Japan-originated databases (TogoVar, jPOST, GlyCosmos, NBRC, MoG+, NANDO, MediaDive, PubCaseFinder) all in one place is a feature nothing else substitutes for. Chapter 4 makes that value concrete.
 
 ## Not "looks useful" but "measured and effective"
 

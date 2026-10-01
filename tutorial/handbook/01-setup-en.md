@@ -122,7 +122,7 @@ Ask Claude this.
 What databases can you use from TogoMCP?
 ```
 
-**What you should see:** in about ten seconds, a list of 37 databases including UniProt, PDB, ChEMBL and TogoVar, organized by field.
+**What you should see:** in about ten seconds, a list of 45 databases (as of 2026-10-01) including UniProt, PDB, ChEMBL and TogoVar, organized by field.
 
 **If it does not work:**
 

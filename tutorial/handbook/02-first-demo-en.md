@@ -113,7 +113,7 @@ In Demo 1, this was the order of operations.
 
 This is by design — the tool description says explicitly "call this every turn, before any other tool," on the premise that **nothing from the previous turn's work carries over**.
 
-The guide itself is **44,570 characters** (five English markdown files concatenated; roughly 11,000–13,000 tokens). It stacks up as a conversation gets long, so if you care about your usage, keep it in mind.
+The guide itself is **58,118 characters** (as of 2026-10-01; five English markdown files concatenated; a rough estimate of 14,000–17,000 tokens). It grows with the database catalog each time a database is added (it was 44,570 characters in 2026-08). It stacks up as a conversation gets long, so if you care about your usage, keep it in mind.
 
 > 💡 If you have KEGG enabled in a local installation, the KEGG section is added and it grows further.
 

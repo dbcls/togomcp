@@ -23,12 +23,15 @@ SPARQL has an upper limit on execution time. **Do not re-send the same query.** 
 
 Remedies, in descending order of effect:
 
-**1. Narrow the target by IRI.** `FILTER(CONTAINS(...))` and `FILTER(regex(...))` are effectively unusable on large graphs. Consider whether you can specify the IRI directly.
+**1. Pin the graph, and narrow the target by IRI.** A query without a graph pin also reads every co-resident dataset. `FILTER(CONTAINS(...))` and `FILTER(regex(...))` are effectively unusable on large graphs. Consider whether you can specify the IRI directly.
 
 ```
-Measured: FILTER(CONTAINS(STR(?seq), "/P01308-1"))  → timeout at 60 s
-          rewritten to specify the IRI directly     → about 5 s
+Measured (2026-10-01, a query fetching insulin's sequence):
+  no graph pin + FILTER(CONTAINS)  → 10 s, 219,437 rows (inflated)
+  graph pinned with FROM           → 1.4 s, 919 rows
 ```
+
+> ⚠️ The same form died at 60 seconds on 2026-08-20. **Runtime also depends on the state of the endpoint's cache.** A query that passed once will not necessarily pass again, and one that timed out once is not necessarily badly written ([Chapter 3](03-how-it-works-en.md)).
 
 **2. Cut down the `OPTIONAL`s.** Each one added makes it heavier. Get it working with the mandatory part first, and add the rest afterwards.
 
@@ -48,6 +51,10 @@ Also propose a version with fewer OPTIONALs, or split into two stages.
 
 The order in which to check:
 
+0. **Did the result come with notes starting with `#`?** Since TogoMCP 2.10 (2026-08-29), `run_sparql` annotates an empty result with how to tell "the data is genuinely absent" from "the query is wrong." The AI sometimes skips over them
+   ```
+   Read the notes that came with the empty result and run the check they describe
+   ```
 1. **Did you read the MIE?** The predicate names in a query written without reading it are guesses
    ```
    Check the MIE file for [DATABASE] and confirm that the predicate names used actually exist
@@ -151,7 +158,7 @@ The SPARQL endpoint is not responding. Can you answer the same question using on
 
 | Question | How to answer |
 |---|---|
-| "How many tokens does it use?" | The usage guide is **re-read on every message** (once per round trip, no matter how many times tools are called; it is designed that way). It is 44,570 characters ≒ 11,000–13,000 tokens. It accumulates over a long conversation |
+| "How many tokens does it use?" | The usage guide is **re-read on every message** (once per round trip, no matter how many times tools are called; it is designed that way). It is 58,118 characters (2026-10-01) ≒ 14,000–17,000 tokens (rough estimate). It accumulates over a long conversation |
 | "Does it work on the free plan?" | It does. On Free you get one custom connector |
 | "What about KEGG?" | Local stdio only. Because of the licence conditions for academic use (→ [appendix](99-appendix-local-install-en.md)) |
 | "Is my own data sent anywhere?" | The question text, and the query where needed, are passed to the server. Tell people not to paste sensitive data |
