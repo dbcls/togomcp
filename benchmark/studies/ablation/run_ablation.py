@@ -126,6 +126,9 @@ RELEASE_CONDITIONS = ["full_v3"]
 ALL_CONDITIONS = (SECTION_CONDITIONS + GROUP_CONDITIONS + NON_MIE_CONDITIONS
                   + KEEP_CONDITIONS + SMOKE_CONDITIONS + RELEASE_CONDITIONS)
 DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
+# The judge is the measuring instrument: pin it rather than inherit add_llm_evaluation.py's
+# default, which can change under a running study. v3 always passes it explicitly.
+DEFAULT_JUDGE_MODEL_V3 = "claude-opus-4-8"
 
 # v3 condition families (names follow the v2 ones; the variants live in mie_variants_v3/).
 V3_SECTION_CONDITIONS = ["baseline"] + [f"ablate_{s}" for s in V3_SECTIONS]
@@ -608,7 +611,9 @@ def main() -> int:
                          "append_results.py) — extends n without re-running the existing set.")
     ap.add_argument("--model", default=DEFAULT_MODEL, help="answering model")
     ap.add_argument("--judge-model", default=None,
-                    help="LLM-judge model (default: add_llm_evaluation.py's own default)")
+                    help=f"LLM-judge model (default: v3 = {DEFAULT_JUDGE_MODEL_V3}, always passed "
+                         "explicitly and recorded in run_manifest.json; v2 = add_llm_evaluation.py's "
+                         "own default)")
     ap.add_argument("--runs", type=int, default=1, metavar="N",
                     help="answer+judge each question N times per condition and average "
                          "per question (default 1). Replicates land in <cond>-scored-vN.csv; "
@@ -670,6 +675,8 @@ def main() -> int:
 
     global VARIANTS_DIR
     v3 = args.mie_format == "v3"
+    if v3 and not args.judge_model:
+        args.judge_model = DEFAULT_JUDGE_MODEL_V3
     if v3:
         VARIANTS_DIR = VARIANTS_DIR_V3
         valid, groups_c, keep_c = V3_ALL_CONDITIONS, V3_GROUP_CONDITIONS, V3_KEEP_CONDITIONS
