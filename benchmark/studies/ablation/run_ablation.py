@@ -727,6 +727,10 @@ def main() -> int:
             questions, set_manifest = frozen_question_set()
     else:
         questions = load_pilot(args.questions)
+    missing = [q for q in questions if not Path(q).is_file()]
+    if missing:
+        raise SystemExit("question file(s) not found (one path per argument):\n  "
+                         + "\n  ".join(missing))
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     if not args.skip_preflight:
