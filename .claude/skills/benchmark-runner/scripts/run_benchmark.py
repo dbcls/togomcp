@@ -93,6 +93,13 @@ def frozen_questions(mode: str, canary_file: Path) -> tuple[list[Path], dict]:
     return paths, m
 
 
+def ollama_options() -> dict:
+    """The pinned Ollama judge settings, read from the evaluator so the manifest cannot drift."""
+    sys.path.insert(0, str(SCRIPTS))
+    import add_llm_evaluation as ev
+    return {"num_ctx": ev.OLLAMA_NUM_CTX, "think": ev.OLLAMA_THINK, "temperature": 0}
+
+
 def is_claude(model: str) -> bool:
     return model.startswith("claude")
 
@@ -296,6 +303,7 @@ def main() -> int:
         "base_config": str(Path(args.base_config).resolve().relative_to(REPO)),
         "base_config_sha256": sha256_file(Path(args.base_config)),
         "pricing_usd_per_mtok": list(price),
+        "ollama_judge_options": ollama_options() if any(not is_claude(j) for j in judges) else None,
         "tool_calls": counts,
     }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

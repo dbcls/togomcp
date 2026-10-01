@@ -70,6 +70,10 @@ retired Q022 and the v3 MIEs were tuned on it. It stays unchanged for the releas
   records them.
 - **Judges:** `claude-opus-4-8` (primary, via the API) and `gemma4` (via Ollama, no API cost). The
   first judge listed is the primary one used for the by-type, held-out and diff tables.
+  The Ollama judge settings are pinned in `add_llm_evaluation.py` (`num_ctx` 16384, because
+  Ollama's 4096 default silently drops the rubric once prompt + reasoning outgrow it; `think`
+  on, as for every Gemma4 judgement since 2026-10-01; temperature 0) and recorded in the
+  manifest as `ollama_judge_options`. Changing either is a judge change: bridge it.
 - **Bridge on any model change.** When the answering or judge model changes (including ahead of an
   announced retirement: Sonnet 4.5 retires 2026-11-30), the time series breaks unless both models
   are measured on the same answers:

@@ -441,6 +441,16 @@ def _model_available(model: str, available: List[str]) -> bool:
     return False
 
 
+# Ollama's default context is 4096 tokens, and it silently drops the START of the
+# conversation (the system prompt, i.e. the rubric) once prompt + hidden reasoning +
+# output outgrow it. Judge prompts reach ~2.3k tokens and Gemma4 reasons before
+# answering, so pin a window with room to spare. Reasoning ("think") is pinned ON:
+# it is how every Gemma4 judgement so far was made (decided 2026-10-01), and leaving it
+# to the model default would let the instrument change with an Ollama/model update.
+OLLAMA_NUM_CTX = 16384
+OLLAMA_THINK = True
+
+
 class OllamaJudge(JudgeBackend):
     """Local judge (e.g. Gemma, Qwen) via Ollama. Uses structured outputs
     (`format=<JSON schema>`) rather than tool calling, since not every local
@@ -480,8 +490,13 @@ class OllamaJudge(JudgeBackend):
             # local models return the same object Claude does. Ollama grammar-
             # constrains generation to it; the clamp below stays as a guard.
             format=EVAL_TOOL["input_schema"],
-            options={"temperature": 0},
+            options={"temperature": 0, "num_ctx": OLLAMA_NUM_CTX},
+            think=OLLAMA_THINK,
         )
+        used = (getattr(response, "prompt_eval_count", 0) or 0) + (getattr(response, "eval_count", 0) or 0)
+        if used > 0.9 * OLLAMA_NUM_CTX:
+            print(f"  WARNING: judge used {used} of {OLLAMA_NUM_CTX} context tokens; "
+                  "the rubric may have been truncated", file=sys.stderr)
         self.total_input_tokens += getattr(response, "prompt_eval_count", 0) or 0
         self.total_output_tokens += getattr(response, "eval_count", 0) or 0
         content = (getattr(response.message, "content", "") or "").strip()
