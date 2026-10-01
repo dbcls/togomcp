@@ -1,0 +1,424 @@
+id: question_108
+type: yes_no
+held_out: true   # created 2026-09-30; never used for MIE development
+body: "Among the genomes of the bacterial genus Sodalis that carry genome-wide HMM-profile
+  ortholog assignments, and counting only assignments that pass each ortholog group's score
+  threshold, is there any genome that encodes both the cAMP receptor protein (CRP) and a
+  3',5'-cyclic-AMP phosphodiesterase but no class I adenylate cyclase?"
+
+inspiration_keyword:
+  keyword_id: KW-0116
+  name: cAMP-binding
+  category: Ligand
+
+togomcp_databases_used:
+  - taxonomy
+  - uniprot
+  - bh26microbes
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 2
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 8 minutes
+  method: |
+    Three PubMed searches: "endosymbiont genome cyaA crp adenylate cyclase loss cAMP receptor
+    protein retained" (0 hits), "Hamiltonella defensa crp adenylate cyclase" (0 hits), and
+    "Sodalis Proechinophthirus fluctus endosymbiont genome" (1 hit, PMID 26994086).
+  result: |
+    The one paper on the seal-louse Sodalis endosymbiont reports that its genome is degrading, but
+    says nothing about adenylate cyclase, CRP or cAMP phosphodiesterase. No source compares the
+    cAMP system across Sodalis genomes; the answer comes from per-genome ortholog assignments and
+    their score thresholds.
+  conclusion: PASS (cannot answer from literature - requires current database state)
+
+sparql_queries:
+  - query_number: 1
+    database: taxonomy
+    description: >
+      The genus Sodalis (taxon 84565) and every taxon below it in NCBI taxonomy, pinned to the
+      authoritative graph: 142 taxa. The Sodalis-like endosymbiont of the seal louse Proechinophthirus
+      fluctus (taxon 1462730) sits here under 'unclassified Sodalis'.
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX tax: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      SELECT ?taxon ?name ?rank
+      FROM <http://rdfportal.org/ontology/taxonomy>
+      WHERE {
+        ?taxon rdfs:subClassOf* taxon:84565 ; rdfs:label ?name ; tax:rank ?rank .
+      }
+      ORDER BY ?name
+    result_count: 142
+
+  - query_number: 2
+    database: uniprot
+    description: >
+      The same subtree mapped to UniProt proteomes and their GenBank assembly accessions (GCA_) by
+      a SERVICE call from the primary endpoint to the SIB UniProt endpoint (taxon IRI rewritten to
+      the purl.uniprot.org form): 34 proteomes over 30 taxa, about 25 s.
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX taxon: <http://identifiers.org/taxonomy/>
+      SELECT DISTINCT ?name ?up_taxon ?gca
+      WHERE {
+        {
+          SELECT ?name ?up_taxon WHERE {
+            GRAPH <http://rdfportal.org/ontology/taxonomy> {
+              ?taxon rdfs:subClassOf* taxon:84565 ; rdfs:label ?name .
+            }
+            BIND(IRI(REPLACE(STR(?taxon), "^http://identifiers.org/taxonomy/", "http://purl.uniprot.org/taxonomy/")) AS ?up_taxon)
+          }
+        }
+        SERVICE <https://rdfportal.org/sib/sparql> {
+          GRAPH <http://sparql.uniprot.org/proteomes> {
+            ?proteome up:organism ?up_taxon ; rdfs:seeAlso ?asm .
+            ?asm dct:identifier ?gca .
+            FILTER(STRSTARTS(?gca, "GCA_"))
+          }
+        }
+      }
+      ORDER BY ?name ?gca
+    result_count: 34
+
+  - query_number: 3
+    database: bh26microbes
+    description: >
+      The 34 assemblies as paired RefSeq accessions (GCA_ -> GCF_, same number and version, per the
+      MIE's xdb_genome_organism route) checked against the KofamScan genome set: 7 are present.
+    query: |
+      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX ko: <http://identifiers.org/kegg.orthology/>
+      PREFIX gcf: <http://identifiers.org/refseq.gcf/>
+      SELECT ?genome
+      WHERE {
+        VALUES ?genome {
+            gcf:GCF_000010085.1
+            gcf:GCF_000517405.1
+            gcf:GCF_000517425.1
+            gcf:GCF_001602625.1
+            gcf:GCF_001879235.1
+            gcf:GCF_002261105.1
+            gcf:GCF_003668825.1
+            gcf:GCF_004346745.1
+            gcf:GCF_018777395.1
+            gcf:GCF_019646055.1
+            gcf:GCF_024748555.1
+            gcf:GCF_024748575.1
+            gcf:GCF_024748595.1
+            gcf:GCF_039646275.1
+            gcf:GCF_046352915.1
+            gcf:GCF_047324135.1
+            gcf:GCF_047324145.1
+            gcf:GCF_047324155.1
+            gcf:GCF_047324165.1
+            gcf:GCF_047324175.1
+            gcf:GCF_047324205.1
+            gcf:GCF_047324215.1
+            gcf:GCF_047324225.1
+            gcf:GCF_047324235.1
+            gcf:GCF_047324245.1
+            gcf:GCF_047324255.1
+            gcf:GCF_047324285.1
+            gcf:GCF_047324305.1
+            gcf:GCF_047528285.1
+            gcf:GCF_047607725.1
+            gcf:GCF_900004845.1
+            gcf:GCF_900161835.1
+            gcf:GCF_960934445.1
+            gcf:GCF_963969435.1
+        }
+        GRAPH <https://2026.biohackathon.org/microbes/kofamscan> { ?genome a m2r:Genome }
+      }
+      ORDER BY ?genome
+    result_count: 7
+
+  - query_number: 4
+    database: bh26microbes
+    description: >
+      Every KofamScan hit to CRP (K10914), class I adenylate cyclase (K05851) and cAMP
+      phosphodiesterase (K03651) in the 7 genomes, with the significance flag, one row per genome and
+      KO (DISTINCT inside GROUP_CONCAT, because a WP_ protein shared by several genomes carries one
+      identical statement per genome copy). Five genomes have significant hits to all three; the
+      Henestaris halophilus endosymbiont (GCF_900161835.1) has only CRP; GCF_001602625.1 has
+      significant CRP and phosphodiesterase hits but its only K05851 hit is not significant.
+      Rule 3: 5 + 1 + 1 = 7 genomes.
+    query: |
+      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX ko: <http://identifiers.org/kegg.orthology/>
+      PREFIX gcf: <http://identifiers.org/refseq.gcf/>
+      SELECT ?genome ?ko (GROUP_CONCAT(DISTINCT CONCAT(STRAFTER(STR(?protein), "ncbiprotein/"), " significant=", STR(?significant)); separator="; ") AS ?hits)
+      WHERE {
+        VALUES ?genome {
+            gcf:GCF_000010085.1
+            gcf:GCF_000517405.1
+            gcf:GCF_000517425.1
+            gcf:GCF_001602625.1
+            gcf:GCF_001879235.1
+            gcf:GCF_002261105.1
+            gcf:GCF_003668825.1
+            gcf:GCF_004346745.1
+            gcf:GCF_018777395.1
+            gcf:GCF_019646055.1
+            gcf:GCF_024748555.1
+            gcf:GCF_024748575.1
+            gcf:GCF_024748595.1
+            gcf:GCF_039646275.1
+            gcf:GCF_046352915.1
+            gcf:GCF_047324135.1
+            gcf:GCF_047324145.1
+            gcf:GCF_047324155.1
+            gcf:GCF_047324165.1
+            gcf:GCF_047324175.1
+            gcf:GCF_047324205.1
+            gcf:GCF_047324215.1
+            gcf:GCF_047324225.1
+            gcf:GCF_047324235.1
+            gcf:GCF_047324245.1
+            gcf:GCF_047324255.1
+            gcf:GCF_047324285.1
+            gcf:GCF_047324305.1
+            gcf:GCF_047528285.1
+            gcf:GCF_047607725.1
+            gcf:GCF_900004845.1
+            gcf:GCF_900161835.1
+            gcf:GCF_960934445.1
+            gcf:GCF_963969435.1
+        }
+        GRAPH <https://2026.biohackathon.org/microbes/kofamscan> {
+          { BIND(ko:K10914 AS ?ko)
+            ?hit rdf:object ko:K10914 ; rdf:subject ?protein ; sio:SIO_000008 ?a .
+            ?a rdfs:label "significant" ; sio:SIO_000300 ?significant . }
+          UNION
+          { BIND(ko:K05851 AS ?ko)
+            ?hit rdf:object ko:K05851 ; rdf:subject ?protein ; sio:SIO_000008 ?a .
+            ?a rdfs:label "significant" ; sio:SIO_000300 ?significant . }
+          UNION
+          { BIND(ko:K03651 AS ?ko)
+            ?hit rdf:object ko:K03651 ; rdf:subject ?protein ; sio:SIO_000008 ?a .
+            ?a rdfs:label "significant" ; sio:SIO_000300 ?significant . }
+          ?protein obo:RO_0002162 ?genome .
+        }
+      }
+      GROUP BY ?genome ?ko
+      ORDER BY ?genome ?ko
+    result_count: 19
+
+  - query_number: 5
+    database: bh26microbes
+    description: >
+      The answer query, significant hits only: genomes with a significant CRP hit and a significant
+      phosphodiesterase hit and no significant class I adenylate cyclase hit. One genome,
+      GCF_001602625.1 (Sodalis-like endosymbiont of Proechinophthirus fluctus). Hence YES.
+    query: |
+      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX ko: <http://identifiers.org/kegg.orthology/>
+      PREFIX gcf: <http://identifiers.org/refseq.gcf/>
+      SELECT DISTINCT ?genome
+      WHERE {
+        VALUES ?genome {
+            gcf:GCF_000010085.1
+            gcf:GCF_000517405.1
+            gcf:GCF_000517425.1
+            gcf:GCF_001602625.1
+            gcf:GCF_001879235.1
+            gcf:GCF_002261105.1
+            gcf:GCF_003668825.1
+            gcf:GCF_004346745.1
+            gcf:GCF_018777395.1
+            gcf:GCF_019646055.1
+            gcf:GCF_024748555.1
+            gcf:GCF_024748575.1
+            gcf:GCF_024748595.1
+            gcf:GCF_039646275.1
+            gcf:GCF_046352915.1
+            gcf:GCF_047324135.1
+            gcf:GCF_047324145.1
+            gcf:GCF_047324155.1
+            gcf:GCF_047324165.1
+            gcf:GCF_047324175.1
+            gcf:GCF_047324205.1
+            gcf:GCF_047324215.1
+            gcf:GCF_047324225.1
+            gcf:GCF_047324235.1
+            gcf:GCF_047324245.1
+            gcf:GCF_047324255.1
+            gcf:GCF_047324285.1
+            gcf:GCF_047324305.1
+            gcf:GCF_047528285.1
+            gcf:GCF_047607725.1
+            gcf:GCF_900004845.1
+            gcf:GCF_900161835.1
+            gcf:GCF_960934445.1
+            gcf:GCF_963969435.1
+        }
+        GRAPH <https://2026.biohackathon.org/microbes/kofamscan> {
+          ?h1 rdf:object ko:K10914 ; rdf:subject ?crp ; sio:SIO_000008 ?s1 .
+          ?s1 rdfs:label "significant" ; sio:SIO_000300 true .
+          ?crp obo:RO_0002162 ?genome .
+          ?h2 rdf:object ko:K03651 ; rdf:subject ?pde ; sio:SIO_000008 ?s2 .
+          ?s2 rdfs:label "significant" ; sio:SIO_000300 true .
+          ?pde obo:RO_0002162 ?genome .
+          FILTER NOT EXISTS {
+            ?h3 rdf:object ko:K05851 ; rdf:subject ?cya ; sio:SIO_000008 ?s3 .
+            ?s3 rdfs:label "significant" ; sio:SIO_000300 true .
+            ?cya obo:RO_0002162 ?genome .
+          }
+        }
+      }
+    result_count: 1
+
+  - query_number: 6
+    database: bh26microbes
+    description: >
+      Trap route, recorded for contrast: the same test on the bare protein-KO links
+      (rdfs:seeAlso), which include below-threshold hits. It returns 0 genomes, because
+      GCF_001602625.1's non-significant K05851 hit counts as an adenylate cyclase, and the answer
+      flips to NO (MIE gotcha seealso_includes_below_threshold_hits).
+    query: |
+      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX ko: <http://identifiers.org/kegg.orthology/>
+      PREFIX gcf: <http://identifiers.org/refseq.gcf/>
+      SELECT ?genome
+      WHERE {
+        VALUES ?genome {
+            gcf:GCF_000010085.1
+            gcf:GCF_000517405.1
+            gcf:GCF_000517425.1
+            gcf:GCF_001602625.1
+            gcf:GCF_001879235.1
+            gcf:GCF_002261105.1
+            gcf:GCF_003668825.1
+            gcf:GCF_004346745.1
+            gcf:GCF_018777395.1
+            gcf:GCF_019646055.1
+            gcf:GCF_024748555.1
+            gcf:GCF_024748575.1
+            gcf:GCF_024748595.1
+            gcf:GCF_039646275.1
+            gcf:GCF_046352915.1
+            gcf:GCF_047324135.1
+            gcf:GCF_047324145.1
+            gcf:GCF_047324155.1
+            gcf:GCF_047324165.1
+            gcf:GCF_047324175.1
+            gcf:GCF_047324205.1
+            gcf:GCF_047324215.1
+            gcf:GCF_047324225.1
+            gcf:GCF_047324235.1
+            gcf:GCF_047324245.1
+            gcf:GCF_047324255.1
+            gcf:GCF_047324285.1
+            gcf:GCF_047324305.1
+            gcf:GCF_047528285.1
+            gcf:GCF_047607725.1
+            gcf:GCF_900004845.1
+            gcf:GCF_900161835.1
+            gcf:GCF_960934445.1
+            gcf:GCF_963969435.1
+        }
+        GRAPH <https://2026.biohackathon.org/microbes/kofamscan> {
+          ?crp rdfs:seeAlso ko:K10914 ; obo:RO_0002162 ?genome .
+          ?pde rdfs:seeAlso ko:K03651 ; obo:RO_0002162 ?genome .
+          FILTER NOT EXISTS { ?cya rdfs:seeAlso ko:K05851 ; obo:RO_0002162 ?genome . }
+        }
+      }
+    result_count: 0
+
+  - query_number: 7
+    database: bh26microbes
+    description: >
+      Scores behind the answer for GCF_001602625.1: CRP WP_066596293.1 scores 198.6 (threshold
+      148.8), phosphodiesterase WP_066596552.1 234.3 (110.17), but the class I adenylate cyclase
+      match WP_244267252.1 scores 312.8, below the 322.8 threshold, although its E-value is
+      5.4e-94. The NCBI Protein record for WP_244267252.1 (ncbi esummary) is a 199-residue
+      "class I adenylate cyclase domain-containing protein, partial".
+    query: |
+      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX ko: <http://identifiers.org/kegg.orthology/>
+      PREFIX gcf: <http://identifiers.org/refseq.gcf/>
+      SELECT ?ko ?protein ?label ?value
+      WHERE {
+        GRAPH <https://2026.biohackathon.org/microbes/kofamscan> {
+          ?protein obo:RO_0002162 gcf:GCF_001602625.1 .
+          ?hit rdf:subject ?protein ; rdf:object ?ko ; sio:SIO_000008 ?a .
+          FILTER(?ko IN (ko:K10914, ko:K05851, ko:K03651))
+          ?a rdfs:label ?label ; sio:SIO_000300 ?value .
+        }
+      }
+      ORDER BY ?ko ?label
+    result_count: 12
+
+rdf_triples: |
+  @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix sio: <http://semanticscience.org/resource/> .
+  @prefix ko: <http://identifiers.org/kegg.orthology/> .
+  @prefix gcf: <http://identifiers.org/refseq.gcf/> .
+  @prefix ncbiprotein: <http://identifiers.org/ncbiprotein/> .
+  @prefix taxon: <http://identifiers.org/taxonomy/> .
+
+  taxon:1462730 rdfs:label "Sodalis-like endosymbiont of Proechinophthirus fluctus" ; rdfs:subClassOf taxon:2636512 .
+  # Database: taxonomy | Query: 1 | Comment: under 'unclassified Sodalis', within genus Sodalis (taxon 84565)
+  ncbiprotein:WP_066596293.1 obo:RO_0002162 gcf:GCF_001602625.1 ; rdfs:seeAlso ko:K10914 .
+  # Database: bh26microbes | Query: 7 | Comment: CRP, score 198.6 over threshold 148.8, significant
+  ncbiprotein:WP_066596552.1 obo:RO_0002162 gcf:GCF_001602625.1 ; rdfs:seeAlso ko:K03651 .
+  # Database: bh26microbes | Query: 7 | Comment: cAMP phosphodiesterase, score 234.3 over threshold 110.17, significant
+  ncbiprotein:WP_244267252.1 obo:RO_0002162 gcf:GCF_001602625.1 ; rdfs:seeAlso ko:K05851 .
+  # Database: bh26microbes | Query: 7 | Comment: class I adenylate cyclase link exists, but score 312.8 is below threshold 322.8
+  _:hit rdf:subject ncbiprotein:WP_244267252.1 ; rdf:object ko:K05851 ; sio:SIO_000008 [ rdfs:label "significant" ; sio:SIO_000300 false ] .
+  # Database: bh26microbes | Query: 4 | Comment: the flag that separates the answer (yes) from the bare-link route (no)
+
+exact_answer: "yes"
+
+ideal_answer: |
+  Yes, one: the Sodalis-like endosymbiont of the seal louse Proechinophthirus fluctus (assembly
+  GCF_001602625.1). Seven Sodalis genomes carry these assignments. Five of them (S. glossinidius
+  'morsitans', Candidatus S. pierantonii SOPE, S. ligni, Candidatus S. endolongispinus and
+  S. praecaptivus subsp. spalangiae) have the complete cAMP system: CRP, class I adenylate cyclase
+  and cAMP phosphodiesterase. The Sodalis endosymbiont of Henestaris halophilus keeps only CRP.
+  The louse symbiont keeps CRP (score 198.6 over a threshold of 148.8) and the phosphodiesterase
+  (234.3 over 110.17), but its only adenylate cyclase-like protein, WP_244267252.1, scores 312.8,
+  just below the 322.8 threshold, and is a 199-residue partial protein. This endosymbiont's genome
+  is known to be degrading, which fits a cyclase reduced to a fragment while the cAMP receptor and
+  the cAMP-degrading enzyme persist. The flag decides the answer: counting every hit whatever its
+  score treats the fragment as an adenylate cyclase and finds no such genome.
+
+question_template_used: Clade subtree (taxonomy) -> proteome assemblies (federated) -> per-genome KO significance profile -> presence/absence pattern with a threshold trap
+
+time_spent:
+  exploration: 90 minutes
+  formulation: 30 minutes
+  verification: 15 minutes
+  pubmed_test: 8 minutes
+  extraction: 10 minutes
+  documentation: 20 minutes
+  total: 173 minutes

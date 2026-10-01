@@ -184,6 +184,16 @@ def verify_question(filepath: Path, issues_out: list, warnings_out: list):
     else:
         print(f"    ✓ type: {q_type}")
 
+    # -- held_out (optional) -----------------------------------------------
+    # true = never used to develop or fix MIE files (out-of-sample). See
+    # QUESTION_FORMAT.md; absent means false.
+    if "held_out" in data:
+        if not isinstance(data["held_out"], bool):
+            print(f"    ❌ 'held_out' must be a boolean (true/false), got {data['held_out']!r}")
+            issue(f"'held_out' must be a boolean, got {data['held_out']!r}")
+        elif data["held_out"]:
+            print(f"    ✓ held_out: true")
+
     # -- body ---------------------------------------------------------------
     body = data.get("body", "")
     if not isinstance(body, str) or not body.strip():
@@ -708,6 +718,15 @@ def verify_questions(targets=None):
     else:
         pct = total_questions / 100 * 100
         print(f"  ⚠  PROGRESS: {total_questions}/100 ({pct:.0f}%)")
+
+    # -- Held-out (out-of-sample) questions ----------------------------------
+    held_out_ids = []
+    for _qf in question_files:
+        _d, _e = load_yaml(_qf)
+        if not _e and isinstance(_d, dict) and _d.get("held_out") is True:
+            held_out_ids.append(_qf.stem)
+    print(f"\nHeld-out questions (never used for MIE development): "
+          f"{len(held_out_ids)}/{total_questions}")
 
     # -- Type distribution (scales with set size; balanced band ±2) --------
     # Target is total/5 (5 types), not a hard-coded 10, so the check stays

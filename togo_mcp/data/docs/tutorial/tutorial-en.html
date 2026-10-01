@@ -358,7 +358,7 @@ insulin ── associated ──→ diabetes
 <h2 id="ch00-4">What TogoMCP is</h2>
 <p>In one line:</p>
 <blockquote>
-<p><strong>An MCP server that makes the roughly 37 databases of RDF Portal queryable in natural language</strong></p>
+<p><strong>An MCP server that makes 45 life-science databases, centred on RDF Portal, queryable in natural language</strong></p>
 </blockquote>
 <table>
 <thead>
@@ -374,19 +374,23 @@ insulin ── associated ──→ diabetes
 </tr>
 <tr>
 <td>Genes &amp; genomes</td>
-<td>NCBI Gene, Ensembl, HGNC, OMA, Bgee, HCO, MCO, DDBJ, MoG+, TogoVar, GWAS Catalog</td>
+<td>NCBI Gene, Ensembl, HGNC, OMA, Bgee, HCO, MCO, DDBJ, MoG+, TogoVar, GWAS Catalog, Fanta.bio, MarpolBase</td>
 </tr>
 <tr>
 <td>Chemistry</td>
-<td>ChEMBL, PubChem, ChEBI, Rhea, BRENDA, MassBank</td>
+<td>ChEMBL, PubChem, ChEBI, Rhea, BRENDA, MassBank, IDSM</td>
+</tr>
+<tr>
+<td>Lipids</td>
+<td>LIPID MAPS, SwissLipids</td>
 </tr>
 <tr>
 <td>Pathways</td>
-<td>Reactome</td>
+<td>Reactome, WikiPathways</td>
 </tr>
 <tr>
 <td>Disease &amp; clinical</td>
-<td>ClinVar, MedGen, MONDO, NANDO</td>
+<td>ClinVar, MedGen, MONDO, NANDO, PubCaseFinder</td>
 </tr>
 <tr>
 <td>Literature</td>
@@ -414,7 +418,8 @@ insulin ── associated ──→ diabetes
 </tr>
 </tbody>
 </table>
-<p>Having the Japan-originated databases (TogoVar, jPOST, GlyCosmos, NBRC, MoG+, NANDO, MediaDive) all in one place is a feature nothing else substitutes for. Chapter 4 makes that value concrete.</p>
+<p>(As of 2026-10-01, plus one experimental database. In 2026-08 the count was 37, and it keeps growing. The surest way to see the current list is to connect and ask "what databases can you use?")</p>
+<p>Having the Japan-originated databases (TogoVar, jPOST, GlyCosmos, NBRC, MoG+, NANDO, MediaDive, PubCaseFinder) all in one place is a feature nothing else substitutes for. Chapter 4 makes that value concrete.</p>
 <h2 id="ch00-5">Not "looks useful" but "measured and effective"</h2>
 <p>Tools of this kind are often impressive in a demo and useless in real work. For TogoMCP there is a quantitative evaluation.</p>
 <p>In a comparison where the same problem set was solved with and without TogoMCP, the effect size was <strong>Cohen's <em>d<em> = 1.82</em>*, with </em></strong>p<em> &lt; 0.001</em>* by the Wilcoxon test.</p>
@@ -593,7 +598,7 @@ claude mcp remove togomcp --scope user   # remove within a specified scope
 <p>Ask Claude this.</p>
 <pre><code>What databases can you use from TogoMCP?
 </code></pre>
-<p><strong>What you should see:</strong> in about ten seconds, a list of 37 databases including UniProt, PDB, ChEMBL and TogoVar, organized by field.</p>
+<p><strong>What you should see:</strong> in about ten seconds, a list of 45 databases (as of 2026-10-01) including UniProt, PDB, ChEMBL and TogoVar, organized by field.</p>
 <p><strong>If it does not work:</strong></p>
 <table>
 <thead>
@@ -805,7 +810,7 @@ claude mcp remove togomcp --scope user   # remove within a specified scope
             ↑ and once again</code></p>
 </blockquote>
 <p>This is by design — the tool description says explicitly "call this every turn, before any other tool," on the premise that <strong>nothing from the previous turn's work carries over</strong>.</p>
-<p>The guide itself is <strong>44,570 characters</strong> (five English markdown files concatenated; roughly 11,000–13,000 tokens). It stacks up as a conversation gets long, so if you care about your usage, keep it in mind.</p>
+<p>The guide itself is <strong>58,118 characters</strong> (as of 2026-10-01; five English markdown files concatenated; a rough estimate of 14,000–17,000 tokens). It grows with the database catalog each time a database is added (it was 44,570 characters in 2026-08). It stacks up as a conversation gets long, so if you care about your usage, keep it in mind.</p>
 <blockquote>
 <p>💡 If you have KEGG enabled in a local installation, the KEGG section is added and it grows further.</p>
 </blockquote>
@@ -958,6 +963,10 @@ WHERE {                                   # what shape of triple to look for
 <td>pathway name, reaction → ID</td>
 </tr>
 <tr>
+<td><code>togoid_identifyId</code></td>
+<td>an ID of unknown origin → which DB it belongs to</td>
+</tr>
+<tr>
 <td><code>togoid_convertId</code></td>
 <td><strong>ID → ID in another DB</strong></td>
 </tr>
@@ -968,6 +977,10 @@ WHERE {                                   # what shape of triple to look for
 <tr>
 <td><code>togovar_search_gene</code> / <code>_variant</code> / <code>_disease</code></td>
 <td>genes, variants, diseases (Japanese population data)</td>
+</tr>
+<tr>
+<td><code>pubcasefinder_rank_by_phenotypes</code> / <code>_get_case_reports</code></td>
+<td>symptoms (HPO) → ranked candidate rare diseases, case reports</td>
 </tr>
 </tbody>
 </table>
@@ -999,20 +1012,27 @@ WHERE {                                   # what shape of triple to look for
 <p>At the center of a MIE are <strong>verified worked examples</strong>. A single example does three jobs at once.</p>
 <pre><code class="language-yaml">examples:
   - id: sequence_mass
-    description: Retrieve a protein's sequence and mass
+    intent: sequence + mass of a protein's canonical isoform
     sparql: |
       PREFIX up: &lt;http://purl.uniprot.org/core/&gt;
-      SELECT ?sequence ?mass
+      PREFIX uniprot: &lt;http://purl.uniprot.org/uniprot/&gt;
+      PREFIX rdf: &lt;http://www.w3.org/1999/02/22-rdf-syntax-ns#&gt;
+      SELECT ?isoform ?sequence ?mass
       FROM &lt;http://sparql.uniprot.org/uniprot&gt;
       WHERE {
-        ?protein up:sequence ?seq .
-        ?seq rdf:value ?sequence ; up:mass ?mass .
+        uniprot:P01308 up:sequence ?isoform .
+        ?isoform a up:Simple_Sequence ;
+                 rdf:value ?sequence ; up:mass ?mass .
+        FILTER(STRSTARTS(STR(?isoform),
+               &quot;http://purl.uniprot.org/isoforms/P01308-&quot;))
       }
+    verified: {row_count: 1, date: &quot;2026-09-14&quot;}
     traps_avoided:
-      - union_inflation: without pinning the graph in a FROM clause,
-        rows from other co-resident datasets get picked up and the count inflates
-    verified: 2026-07-29
+      - say: Do not hard-code the canonical as isoforms/ACC-1.
+             782 entries have a canonical other than -1
+        check: {kind: count, expect: 782}
 </code></pre>
+<p>(Excerpted and simplified from the UniProt MIE as of 2026-10-01.)</p>
 <table>
 <thead>
 <tr>
@@ -1026,8 +1046,8 @@ WHERE {                                   # what shape of triple to look for
 <td>① <strong>the shape of the schema itself</strong> (which predicates connect to what)</td>
 </tr>
 <tr>
-<td>the execution result</td>
-<td>② <strong>sample real data</strong> (what actually comes back)</td>
+<td><code>verified</code></td>
+<td>② <strong>sample real data</strong> (how many rows, and which values, actually came back)</td>
 </tr>
 <tr>
 <td><code>traps_avoided</code></td>
@@ -1036,6 +1056,7 @@ WHERE {                                   # what shape of triple to look for
 </tbody>
 </table>
 <p>Instead of writing the same content three times as "schema description," "sample," and "note," it is <strong>condensed into one example that runs</strong>.</p>
+<p>The warning also carries a <code>check:</code>: a query that asks the live endpoint whether "782 entries" is still true. <strong>What a MIE says is managed not as its author's memory but as a claim that gets re-verified.</strong></p>
 <h3>See it for yourself</h3>
 <p>You can check this yourself. Ask Claude:</p>
 <pre><code>Show me the UniProt MIE file. Just the examples section is fine.
@@ -1047,23 +1068,33 @@ WHERE {                                   # what shape of triple to look for
 <p><strong>Before calling <code>run_sparql</code>, always call <code>get_MIE_file</code> for that database.</strong></p>
 </blockquote>
 <p>The rule is not there to be difficult. There are two reasons.</p>
-<p><strong>Reason 1: it prevents IRI hallucination.</strong> Without reading the MIE, the AI guesses — "the predicate is probably called something like this." Write a <strong>nonexistent predicate</strong> such as <code>up:hasSequence</code> and SPARQL will not raise an error. <strong>It returns 0 rows.</strong> And the AI reports "no matches." This is an extremely hard failure to detect.</p>
-<p><strong>Reason 2: it prevents timeouts.</strong> Two queries that return the same answer can differ in runtime by orders of magnitude depending on how they are written. The guide spells out a speed hierarchy.</p>
+<p><strong>Reason 1: it prevents IRI hallucination.</strong> Without reading the MIE, the AI guesses — "the predicate is probably called something like this." Write a <strong>nonexistent predicate</strong> such as <code>up:hasSequence</code> and SPARQL will not raise an error. <strong>It returns 0 rows.</strong> And the AI tends to report "no matches." This is an extremely hard failure to detect.</p>
+<blockquote>
+<p>📝 <strong>Since 2026-08-29 (TogoMCP 2.10), <code>run_sparql</code> annotates an empty result.</strong> Is the data genuinely absent, or is one line of the query wrong and the real answer non-zero? The note tells the AI how to tell those two apart. In the server's logs, empty results were about 7.6 times as frequent as errors, and before the note existed most of them reached users as "no matches."</p>
+<p>But it is <strong>a note, not an error</strong>. Nothing guarantees the AI reads it and acts on it. <strong>When the answer is 0 rows, be suspicious first</strong> (Chapter 8).</p>
+</blockquote>
+<p><strong>Reason 2: it steers you away from slow forms.</strong> Two queries that return the same answer can differ a great deal in runtime depending on how they are written. The guide spells out a speed hierarchy.</p>
 <pre><code>specific IRI  ≫  narrowing by type  ≫  FILTER(CONTAINS(...))
     fast                              slow (effectively impossible on large graphs)
 </code></pre>
-<p><strong>A measured example:</strong> a query that fetched insulin's sequence using <code>FILTER(CONTAINS(STR(?seq), "/P01308-1"))</code> <strong>died at the 60-second timeout</strong>. Rewritten to name the isoform IRI directly, it came back in about 5 seconds.</p>
+<p><strong>But do not use elapsed time as your yardstick.</strong> The August edition of this handbook said that a query fetching insulin's sequence with <code>FILTER(CONTAINS(STR(?seq), "/P01308-1"))</code> died at the 60-second timeout, and that naming the IRI directly brought it back in about 5 seconds. Re-run on 2026-10-01 in nearly the same form (no graph pin, <code>FILTER(CONTAINS)</code>, two <code>OPTIONAL</code>s), it <strong>came back in 10 seconds</strong>, but with <strong>219,437 rows</strong>. Pinning the graph with <code>FROM</code> gives <strong>919 rows in 1.4 seconds</strong>.</p>
+<p>Runtime depends not only on how a query is written but on the state of the endpoint's cache. TogoMCP's own records include a query that took over 75 seconds and returned in 0.1 seconds on the very next run. Hence TogoMCP's policy: <strong>never judge a query's correctness from how long it took.</strong> Fast may only mean warm. And every silent-wrong-answer trap in this handbook comes back fast.</p>
+<blockquote>
+<p>📝 <strong>One more correction.</strong> The August edition taught "name the canonical sequence directly as <code>isoforms/P01308-1</code>." For insulin that happens to be right, but as a general rule it is wrong. Swiss-Prot has <strong>782 entries</strong> whose canonical isoform is not <code>-1</code> (fibronectin P02751's is <code>-15</code>), and in 613 of them a <code>-1</code> node still exists as a different isoform. Hard-coding <code>-1</code> does not give you 0 rows; it <strong>silently gives you a different sequence</strong>. The UniProt MIE fixed this rule on 2026-09-14 (the example above).</p>
+<p><strong>MIE files can be wrong too. When they are, the endpoint's actual data decides</strong> (in the usage guide's words: "The MIE describes; the ENDPOINT decides").</p>
+</blockquote>
 <hr />
 <h2 id="ch03-6">3-6. The traps — not "the wrong answer" but "the wrong count"</h2>
 <p>Most failures in life-science RDF happen <strong>silently</strong>. No error appears. A plausible-looking table comes back. The numbers are just wrong.</p>
-<h3>(a) Federation (<code>SERVICE</code>) does not survive contact with real data</h3>
+<h3>(a) Federation (<code>SERVICE</code>): only the verified combinations</h3>
 <p>The <code>SERVICE</code> clause joins multiple endpoints in a single query. On rdfportal.org it is <strong>not disabled</strong> — this handbook said it was until 2026-08-26, and that was wrong. A bounded <code>SERVICE</code> genuinely reaches out and returns real rows: 13 of 14 external endpoints tested were reachable in 2026-08, and a query against a nonexistent host fails with a connection error (<code>HTCLI HC001</code>) rather than being answered locally, which is how we know the traffic is real.</p>
 <p>What fails is <code>SERVICE</code> <strong>in practice</strong>, for two reasons that matter more than availability:</p>
 <ul>
 <li><strong>An unbounded federated join does not finish.</strong> Joining a whole Rhea column to a whole UniProt column across endpoints ran past 130 seconds with no result. Federation makes the remote side re-evaluate for every binding, and neither engine can plan across the boundary.</li>
 <li><strong>Virtuoso's federation compiler rejects common SPARQL inside a <code>SERVICE</code> block.</strong> An aggregate fails immediately with <code>SP031</code> ("the support of aggregate function call syntax is not enabled for the SERVICE"); <code>BIND</code> expressions and some syntax hit the same wall.</li>
 </ul>
-<p>So the practical advice is unchanged: <strong>join within a single endpoint using <code>GRAPH</code> clauses</strong>, or <strong>carry IDs and walk across manually</strong> (the Chapter 4 approach). Only the reason is different — and the difference is worth knowing, because "disabled" tells you not to try, while "does not scale" tells you a small, bounded <code>SERVICE</code> is a legitimate tool when nothing else reaches.</p>
+<p><strong>Since 2026-09, a few combinations have been verified on the TogoMCP side.</strong> WikiPathways → UniProt, IDSM → Rhea, SwissLipids → Rhea, RDF Portal's <code>ebi</code> → LIPID MAPS and a few more now have a worked example (<code>cross_db</code>) in the relevant MIE, including how to narrow the join key first. <strong>Direction matters.</strong> Of the two lipid databases, SwissLipids reaches out in a few seconds while LIPID MAPS cannot reach out at all, and MarpolBase refuses <code>SERVICE</code> outright by permission.</p>
+<p>So the practical advice is this: <strong>if the MIE has a <code>cross_db</code> example, copy it.</strong> Otherwise, <strong>join within a single endpoint using <code>GRAPH</code> clauses</strong>, or <strong>carry IDs and walk across manually</strong> (the Chapter 4 approach). "Disabled" would tell you not to try; "does not scale" tells you a small, bounded <code>SERVICE</code> is a legitimate tool when nothing else reaches. An unverified combination, though, comes with no guarantee.</p>
 <h3>(b) Row inflation at co-resident endpoints</h3>
 <p>A single SPARQL endpoint may host several datasets side by side. When multiple datasets <strong>each declare predicates</strong> on a shared node (an organism IRI, say), a query that does not specify a graph picks up all of them, and <strong>the row count inflates silently</strong>.</p>
 <p>The countermeasure is to pin the graph with <code>FROM &lt;graph name&gt;</code>, exactly as the MIE instructs.</p>
@@ -2298,10 +2329,14 @@ in a form I can save to files as-is.
 <h3>It times out at 60 seconds</h3>
 <p>SPARQL has an upper limit on execution time. <strong>Do not re-send the same query.</strong> You will get the same result.</p>
 <p>Remedies, in descending order of effect:</p>
-<p><strong>1. Narrow the target by IRI.</strong> <code>FILTER(CONTAINS(...))</code> and <code>FILTER(regex(...))</code> are effectively unusable on large graphs. Consider whether you can specify the IRI directly.</p>
-<pre><code>Measured: FILTER(CONTAINS(STR(?seq), &quot;/P01308-1&quot;))  → timeout at 60 s
-          rewritten to specify the IRI directly     → about 5 s
+<p><strong>1. Pin the graph, and narrow the target by IRI.</strong> A query without a graph pin also reads every co-resident dataset. <code>FILTER(CONTAINS(...))</code> and <code>FILTER(regex(...))</code> are effectively unusable on large graphs. Consider whether you can specify the IRI directly.</p>
+<pre><code>Measured (2026-10-01, a query fetching insulin's sequence):
+  no graph pin + FILTER(CONTAINS)  → 10 s, 219,437 rows (inflated)
+  graph pinned with FROM           → 1.4 s, 919 rows
 </code></pre>
+<blockquote>
+<p>⚠️ The same form died at 60 seconds on 2026-08-20. <strong>Runtime also depends on the state of the endpoint's cache.</strong> A query that passed once will not necessarily pass again, and one that timed out once is not necessarily badly written (<a href="#ch03">Chapter 3</a>).</p>
+</blockquote>
 <p><strong>2. Cut down the <code>OPTIONAL</code>s.</strong> Each one added makes it heavier. Get it working with the mandatory part first, and add the rest afterwards.</p>
 <p><strong>3. Apply a <code>LIMIT</code>.</strong> But ⚠️ <strong>an inner LIMIT is not a uniform sample.</strong> Read <a href="#ch07">Chapter 7</a> — this is not optional. If you are going to report counts, you need a separate COUNT.</p>
 <p><strong>4. Split it into stages.</strong> Getting the IDs and then sending the next query is faster than one enormous query, and you can see what is happening on the way.</p>
@@ -2312,7 +2347,9 @@ Also propose a version with fewer OPTIONALs, or split into two stages.
 <h3>It returns zero rows</h3>
 <p><strong>Zero rows with no error is the most dangerous pattern of all.</strong> SPARQL does not raise an error when a predicate name or a graph name is wrong.</p>
 <p>The order in which to check:</p>
-<ol>
+<ol start="0">
+<li><strong>Did the result come with notes starting with <code>#</code>?</strong> Since TogoMCP 2.10 (2026-08-29), <code>run_sparql</code> annotates an empty result with how to tell "the data is genuinely absent" from "the query is wrong." The AI sometimes skips over them
+   <code>Read the notes that came with the empty result and run the check they describe</code></li>
 <li><strong>Did you read the MIE?</strong> The predicate names in a query written without reading it are guesses
    <code>Check the MIE file for [DATABASE] and confirm that the predicate names used actually exist</code></li>
 <li><strong>Is the graph name right?</strong> Graph names do get renamed. Specifying an old one gives you <strong>a silent zero rows</strong></li>
@@ -2613,7 +2650,7 @@ Which of them are frequent in the Japanese population?
 </tr>
 <tr>
 <td><strong>There are multiple isoforms</strong></td>
-<td>The default is the canonical one (<code>-1</code>). Other isoforms have different lengths</td>
+<td>The default is the canonical one. Other isoforms have different lengths. ⚠️ The canonical is not always <code>-1</code> (fibronectin P02751's is <code>-15</code>; Chapter 3)</td>
 </tr>
 <tr>
 <td><strong>The signal peptide or propeptide is included</strong></td>

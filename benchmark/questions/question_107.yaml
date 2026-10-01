@@ -1,0 +1,263 @@
+id: question_107
+type: factoid
+held_out: true   # created 2026-09-30; never used for MIE development
+body: "Consider every human gene whose approved gene symbol begins with 'SH3', and all the
+  enhancer-level cis-regulatory elements (defined from CAGE transcription-start activity) that
+  are linked to those genes. Placing each element by its GRCh38 start coordinate, how many of
+  these enhancer-level elements lie in Giemsa-positive (G-dark: gpos25, gpos50, gpos75 or
+  gpos100) cytogenetic bands?"
+
+inspiration_keyword:
+  keyword_id: KW-0728
+  name: SH3 domain
+  category: Domain
+
+togomcp_databases_used:
+  - fantabio
+  - hgnc
+  - hco
+
+verification_score:
+  biological_insight: 2
+  multi_database: 3
+  verifiability: 3
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 5 minutes
+  method: |
+    Two PubMed searches: "SH3 domain genes enhancer CAGE cytogenetic band Giemsa" (0 hits) and
+    "FANTOM enhancers G-band gene-poor chromatin regulatory elements distribution" (0 hits).
+  result: |
+    No source lists the enhancer-level regulatory elements linked to the SH3-root gene family, let
+    alone places them in Giemsa bands. The count comes from joining a CAGE-defined regulatory-element
+    set, the nomenclature authority's symbols and a cytoband coordinate map.
+  conclusion: PASS (cannot answer from literature - requires current database state)
+
+sparql_queries:
+  - query_number: 1
+    database: fantabio
+    description: >
+      Genes with the approved-symbol root SH3 (HGNC graph) and their linked enhancer-level (fb:ELA)
+      CREs, joined on the shared HGNC IRI (fb:hasTSSGeneSource). 28 of the 34 SH3-root loci have at
+      least one enhancer-level CRE; the per-gene counts sum to 167 and no enhancer-level CRE is shared
+      by two SH3 genes. SH3RF1's HGNC location is the range string '4q32.3-q33'.
+    query: |
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX fb: <http://fanta.bio/ontology/>
+      SELECT ?symbol ?hgnc_band (COUNT(DISTINCT ?cre) AS ?n_enhancer_cres)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/hgnc> {
+          ?hgnc a m2r:Gene ; rdfs:label ?symbol .
+          FILTER(STRSTARTS(?symbol, "SH3"))
+          OPTIONAL { ?hgnc obo:so_part_of ?hgnc_band }
+        }
+        GRAPH <http://rdfportal.org/dataset/fantabio> {
+          ?g fb:hasTSSGeneSource ?hgnc .
+          ?cre sio:SIO_000395 ?g ; a fb:ELA .
+        }
+      }
+      GROUP BY ?symbol ?hgnc_band
+      ORDER BY DESC(?n_enhancer_cres) ?symbol
+    result_count: 28
+
+  - query_number: 2
+    database: hco
+    description: >
+      Each enhancer-level CRE placed in its GRCh38 HCO band by start coordinate, per gene. The two
+      layers spell the chromosome IRI differently (fantabio .../hco/4/GRCh38, HCO .../hco/4\/GRCh38),
+      so the join compares strings with HCO's backslash removed. Both sides are materialised in
+      LIMIT subqueries (without that the same join runs ~55 s). 29 rows because SH3RF1's CREs split
+      across 4q33 (gneg, 6) and 4q32.3 (gpos100, 2).
+    query: |
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX hco: <http://identifiers.org/hco/>
+      PREFIX fb: <http://fanta.bio/ontology/>
+      SELECT ?symbol ?band ?stain (COUNT(DISTINCT ?cre) AS ?n_enhancer_cres)
+      WHERE {
+        {
+          SELECT DISTINCT ?symbol ?cre ?pos (STR(?ref) AS ?chr_key)
+          WHERE {
+            GRAPH <http://rdfportal.org/dataset/hgnc> {
+              ?hgnc a m2r:Gene ; rdfs:label ?symbol .
+              FILTER(STRSTARTS(?symbol, "SH3"))
+            }
+            GRAPH <http://rdfportal.org/dataset/fantabio> {
+              ?g fb:hasTSSGeneSource ?hgnc .
+              ?cre sio:SIO_000395 ?g ; a fb:ELA ;
+                   faldo:location/faldo:begin ?b .
+              ?b faldo:reference ?ref ; faldo:position ?pos .
+            }
+          } LIMIT 10000
+        }
+        {
+          SELECT ?band ?stain ?bb ?be (REPLACE(STR(?hco_ref), "[\\\\]", "", "") AS ?band_chr_key)
+          WHERE {
+            GRAPH <http://rdfportal.org/dataset/hco> {
+              ?inst hco:build hco:GRCh38 ; hco:bandtype ?bt ; faldo:location ?bl ; a ?cls .
+              ?cls rdfs:label ?band .
+              ?bt rdfs:label ?stain .
+              ?bl faldo:begin ?s ; faldo:end ?e .
+              ?s faldo:position ?bb ; faldo:reference ?hco_ref .
+              ?e faldo:position ?be .
+            }
+          } LIMIT 10000
+        }
+        FILTER(?band_chr_key = ?chr_key && ?bb <= ?pos && ?be >= ?pos)
+      }
+      GROUP BY ?symbol ?band ?stain
+      ORDER BY ?stain ?symbol
+    result_count: 29
+
+  - query_number: 3
+    database: fantabio
+    description: >
+      Rule-3 total: 167 distinct enhancer-level CREs over 28 genes. The same pattern unpinned also
+      gives 167 distinct CREs but 195 rows (COUNT(*)), so DISTINCT is required; the pinned and union
+      distinct counts agree (Rule 4).
+    query: |
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX fb: <http://fanta.bio/ontology/>
+      SELECT (COUNT(DISTINCT ?cre) AS ?n_enhancer_cres) (COUNT(DISTINCT ?hgnc) AS ?n_genes)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/hgnc> {
+          ?hgnc a m2r:Gene ; rdfs:label ?symbol .
+          FILTER(STRSTARTS(?symbol, "SH3"))
+        }
+        GRAPH <http://rdfportal.org/dataset/fantabio> {
+          ?g fb:hasTSSGeneSource ?hgnc .
+          ?cre sio:SIO_000395 ?g ; a fb:ELA .
+        }
+      }
+    result_count: 1
+
+  - query_number: 4
+    database: hco
+    description: >
+      The answer: enhancer-level CREs by Giemsa stain of the band containing their start. gneg 120,
+      gpos25 4, gpos50 30, gpos75 9, gpos100 4; 120 + 4 + 30 + 9 + 4 = 167 = Query 3. Giemsa-positive
+      = 47. No CRE falls in an acen, gvar or stalk band.
+    query: |
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX hco: <http://identifiers.org/hco/>
+      PREFIX fb: <http://fanta.bio/ontology/>
+      SELECT ?stain (COUNT(DISTINCT ?cre) AS ?n_enhancer_cres)
+      WHERE {
+        {
+          SELECT DISTINCT ?cre ?pos (STR(?ref) AS ?chr_key)
+          WHERE {
+            GRAPH <http://rdfportal.org/dataset/hgnc> {
+              ?hgnc a m2r:Gene ; rdfs:label ?symbol . FILTER(STRSTARTS(?symbol, "SH3"))
+            }
+            GRAPH <http://rdfportal.org/dataset/fantabio> {
+              ?g fb:hasTSSGeneSource ?hgnc . ?cre sio:SIO_000395 ?g ; a fb:ELA .
+              ?cre faldo:location/faldo:begin ?b . ?b faldo:reference ?ref ; faldo:position ?pos .
+            }
+          } LIMIT 10000
+        }
+        {
+          SELECT ?stain ?bb ?be (REPLACE(STR(?hco_ref), "[\\\\]", "", "") AS ?band_chr_key)
+          WHERE { GRAPH <http://rdfportal.org/dataset/hco> {
+            ?inst hco:build hco:GRCh38 ; hco:bandtype ?bt ; faldo:location ?bl .
+            ?bt rdfs:label ?stain .
+            ?bl faldo:begin ?s ; faldo:end ?e .
+            ?s faldo:position ?bb ; faldo:reference ?hco_ref .
+            ?e faldo:position ?be .
+          } } LIMIT 10000
+        }
+        FILTER(?band_chr_key = ?chr_key && ?bb <= ?pos && ?be >= ?pos)
+      }
+      GROUP BY ?stain ORDER BY ?stain
+    result_count: 5
+
+  - query_number: 5
+    database: hgnc
+    description: >
+      Trap route, recorded for contrast: placing CREs via the gene's HGNC band string instead of
+      their own coordinates. The ISCN string join drops SH3RF1 ('4q32.3-q33' matches no HCO band
+      label), losing 8 CREs: 159 total, 45 Giemsa-positive. The coordinate route of Query 4 is the
+      correct one.
+    query: |
+      PREFIX m2r: <http://med2rdf.org/ontology/med2rdf#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX hco: <http://identifiers.org/hco/>
+      PREFIX fb: <http://fanta.bio/ontology/>
+      SELECT ?stain (COUNT(DISTINCT ?cre) AS ?n_enhancer_cres)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/hgnc> {
+          ?hgnc a m2r:Gene ; rdfs:label ?symbol ; obo:so_part_of ?band .
+          FILTER(STRSTARTS(?symbol, "SH3"))
+        }
+        GRAPH <http://rdfportal.org/dataset/fantabio> {
+          ?g fb:hasTSSGeneSource ?hgnc .
+          ?cre sio:SIO_000395 ?g ; a fb:ELA .
+        }
+        GRAPH <http://rdfportal.org/dataset/hco> {
+          ?cls rdfs:subClassOf hco:Cytoband ; rdfs:label ?band .
+          ?inst a ?cls ; hco:build hco:GRCh38 ; hco:bandtype ?bt .
+          ?bt rdfs:label ?stain .
+        }
+      }
+      GROUP BY ?stain
+      ORDER BY ?stain
+    result_count: 5
+
+rdf_triples: |
+  @prefix fb: <http://fanta.bio/ontology/> .
+  @prefix sio: <http://semanticscience.org/resource/> .
+  @prefix hgnc: <http://identifiers.org/hgnc/> .
+  @prefix hco: <http://identifiers.org/hco/> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+  hgnc:17650 rdfs:label "SH3RF1" ; obo:so_part_of "4q32.3-q33" .
+  # Database: hgnc | Query: 1 | Comment: range string, matches no single HCO band label
+  _:gene fb:hasTSSGeneSource hgnc:17650 . ?cre sio:SIO_000395 _:gene ; a fb:ELA .
+  # Database: fantabio | Query: 1 | Comment: 8 enhancer-level CREs linked to SH3RF1
+  hco:4q32.3 rdfs:label "4q32.3" . ?inst a hco:4q32.3 ; hco:build hco:GRCh38 ; hco:bandtype hco:Gpos100 .
+  # Database: hco | Query: 2 | Comment: 2 of SH3RF1's enhancer CREs start in this gpos100 band, 6 in 4q33 (gneg)
+  hgnc:10826 rdfs:label "SH3BP4" ; obo:so_part_of "2q37.2" .
+  # Database: hgnc | Query: 1 | Comment: 17 enhancer-level CREs, all in 2q37.2 (gpos50) per Query 2
+  hgnc:23664 rdfs:label "SH3PXD2A" ; obo:so_part_of "10q24.33" .
+  # Database: hgnc | Query: 1 | Comment: most enhancer-level CREs (20), all in gneg 10q24.33
+
+exact_answer: 47
+
+ideal_answer: |
+  47. The 28 SH3-root genes that have enhancer-level elements carry 167 of them (no element is
+  linked to two of these genes). By the Giemsa stain of the GRCh38 band containing each element's
+  start, 120 lie in G-negative bands and 47 in G-positive ones: 30 in gpos50, 9 in gpos75, 4 in
+  gpos25 and 4 in gpos100. The G-positive elements belong to nine genes: SH3BP4 (17, 2q37.2),
+  SH3KBP1 (7, Xp22.12), SH3TC2 (6, 5q32), SH3GL2 (4, 9p22.2), SH3BGR (3, 21q22.2), SH3BGRL2 (3,
+  6q14.1), SH3RF2 (3, 5q32), SH3BGRL (2, Xq21.1) and SH3RF1 (2). SH3RF1 spans a band boundary, and
+  its location is recorded only as the range 4q32.3-q33: two of its eight enhancer elements start
+  in the dark gpos100 band 4q32.3 and six in the G-negative 4q33. Assigning elements through the
+  gene's band name rather than their own coordinates therefore loses SH3RF1 entirely and gives 45.
+  The genes with the most enhancer elements, SH3PXD2A (20) and SH3BP2 (15), sit in G-negative
+  bands, so about 72% of these elements are in gene-rich light bands.
+
+question_template_used: Nomenclature-defined gene set -> linked enhancer-level CREs -> coordinate placement in cytobands -> count by Giemsa stain
+
+time_spent:
+  exploration: 50 minutes
+  formulation: 30 minutes
+  verification: 15 minutes
+  pubmed_test: 5 minutes
+  extraction: 10 minutes
+  documentation: 20 minutes
+  total: 130 minutes

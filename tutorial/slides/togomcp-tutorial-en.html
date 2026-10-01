@@ -122,7 +122,7 @@ tr.bad td{background:var(--warnbg)}
   <p class="kicker">Life-science databases × AI assistants</p>
   <h1>TogoMCP<br>Tutorial</h1>
   <p class="lead" style="margin-top:1.2em">Query the major life-science databases without writing SPARQL — and how to doubt the answer that comes back</p>
-  <p class="sub" style="margin-top:2em">Every result in this deck is measured (re-measured 2026-08-20 / 08-21)<br>Models: sessions configured as claude-opus-5 and as claude-sonnet-5 / Server: togomcp.rdfportal.org</p>
+  <p class="sub" style="margin-top:2em">Every result in this deck is measured (2026-08-20 / 08-21, re-checked 2026-10-01)<br>Models: sessions configured as claude-opus-5 and as claude-sonnet-5 / Server: togomcp.rdfportal.org</p>
 </section>
 
 <section class="slide">
@@ -182,18 +182,18 @@ tr.bad td{background:var(--warnbg)}
 
 <section class="slide">
   <p class="kicker">M0 — What TogoMCP is</p>
-  <h2>Query RDF Portal’s ~37 DBs<br>in natural language</h2>
+  <h2>Query 45 databases<br>in natural language</h2>
   <table>
     <tr><th>Field</th><th>Databases</th></tr>
     <tr><td>Proteins</td><td>UniProt, PDB, jPOST</td></tr>
-    <tr><td>Genes &amp; genomes</td><td>NCBI Gene, Ensembl, HGNC, OMA, Bgee, DDBJ, MoG+, TogoVar, GWAS Catalog</td></tr>
-    <tr><td>Chemistry</td><td>ChEMBL, PubChem, ChEBI, Rhea, BRENDA, MassBank</td></tr>
-    <tr><td>Pathways / Disease</td><td>Reactome / ClinVar, MedGen, MONDO, NANDO</td></tr>
+    <tr><td>Genes &amp; genomes</td><td>NCBI Gene, Ensembl, HGNC, OMA, Bgee, DDBJ, MoG+, TogoVar, GWAS Catalog, Fanta.bio, MarpolBase</td></tr>
+    <tr><td>Chemistry / Lipids</td><td>ChEMBL, PubChem, ChEBI, Rhea, BRENDA, MassBank, IDSM / LIPID MAPS, SwissLipids</td></tr>
+    <tr><td>Pathways / Disease</td><td>Reactome, WikiPathways / ClinVar, MedGen, MONDO, NANDO, PubCaseFinder</td></tr>
     <tr><td>Literature / Microbes</td><td>PubMed, PubTator / BacDive, MediaDive, AMR Portal, NBRC</td></tr>
     <tr><td>Glycans / Ontologies</td><td>GlyCosmos / MeSH, GO, HP, UBERON, CL, SO, ECO …</td></tr>
   </table>
   <div class="box good">
-    <p><strong>TogoVar, jPOST, GlyCosmos, NBRC, NANDO</strong> — having the Japan-originated databases all in one place is a feature nothing else substitutes for.</p>
+    <p><strong>TogoVar, jPOST, GlyCosmos, NBRC, NANDO, PubCaseFinder</strong> — having the Japan-originated databases all in one place is a feature nothing else substitutes for.</p>
   </div>
 </section>
 
@@ -245,7 +245,7 @@ tr.bad td{background:var(--warnbg)}
   <div class="prompt">What databases can you use from TogoMCP?</div>
   <div class="stats" style="margin-top:1.2em">
     <div class="stat g"><div class="v">10<span style="font-size:.4em">s</span></div><div class="l">measured</div></div>
-    <div class="stat g"><div class="v">37</div><div class="l">databases</div></div>
+    <div class="stat g"><div class="v">45</div><div class="l">databases (as of 10-01)</div></div>
   </div>
   <p>If a list organized by field comes back, you are connected.</p>
 </section>
@@ -332,7 +332,7 @@ tr.bad td{background:var(--warnbg)}
    └→ <strong>Usage_Guide</strong>, togoid_getRelation, togoid_convertId, answer</pre>
   <p style="margin-top:.7em"><strong>However many tools get called, it is once per turn.</strong> Not once at the start of the session.</p>
   <div class="stats" style="margin-top:.5em">
-    <div class="stat a"><div class="v">44,570</div><div class="l">characters / per turn (≈11,000–13,000 tokens)</div></div>
+    <div class="stat a"><div class="v">58,118</div><div class="l">characters / per turn (≈14,000–17,000 tokens, rough)</div></div>
   </div>
   <p class="sub">The tool description spells it out: call this <strong>every turn</strong>, before any other tool. It is designed on the premise that <strong>nothing from the previous turn’s work carries over</strong>.</p>
 </section>
@@ -375,7 +375,7 @@ tr.bad td{background:var(--warnbg)}
   <h2>The tools come in three layers</h2>
   <table>
     <tr><th>Layer</th><th>Role</th><th>Representative tools</th></tr>
-    <tr><td><strong>Guidance layer</strong></td><td>Teaches you how to use it</td><td><code>TogoMCP_Usage_Guide</code>, <code>get_MIE_file</code></td></tr>
+    <tr><td><strong>Guidance layer</strong></td><td>Teaches you how to use it</td><td><code>TogoMCP_Usage_Guide</code>, <code>get_MIE_file</code>, <code>get_workflow</code></td></tr>
     <tr><td><strong>Grounding layer</strong></td><td>words → IDs</td><td><code>search_uniprot_entity</code>, <code>search_mesh_descriptor</code>, <code>togoid_convertId</code></td></tr>
     <tr class="hl"><td><strong>Execution layer</strong></td><td>Execute SPARQL</td><td><code>run_sparql</code> — just one</td></tr>
   </table>
@@ -418,15 +418,19 @@ tr.bad td{background:var(--warnbg)}
   <pre>examples:
   - id: sequence_mass
     sparql: |
-      SELECT ?sequence ?mass
+      SELECT ?isoform ?sequence ?mass
       FROM &lt;http://sparql.uniprot.org/uniprot&gt;
-      WHERE { ?protein up:sequence ?seq .
-              ?seq rdf:value ?sequence ; up:mass ?mass . }
+      WHERE { uniprot:P01308 up:sequence ?isoform .
+              ?isoform a up:Simple_Sequence ;
+                       rdf:value ?sequence ; up:mass ?mass .
+              FILTER(STRSTARTS(STR(?isoform), ".../isoforms/P01308-")) }
+    verified: {row_count: 1, date: "2026-09-14"}
     traps_avoided:
-      - union_inflation: without pinning the graph in a FROM clause,
-        rows from other co-resident datasets get picked up and the count inflates
-    verified: 2026-07-29</pre>
+      - say: Do not hard-code the canonical as isoforms/ACC-1
+             (782 entries have a canonical other than -1)
+        check: {kind: count, expect: 782}</pre>
   <p style="margin-top:.6em">A single example does three jobs at once — <em>① the shape of the schema</em> / <em>② sample data</em> / <em>③ the trap specific to this DB</em></p>
+  <p class="sub">Each trap carries a <code>check:</code>, so the claim itself is re-verified against the live data.</p>
 </section>
 
 <section class="slide">
@@ -435,13 +439,15 @@ tr.bad td{background:var(--warnbg)}
   <div class="cols">
     <div class="card">
       <h3>1. A nonexistent predicate<br>raises no error</h3>
-      <p><strong>It returns 0 rows.</strong> And the AI reports “no matches.” This is extremely hard to detect.</p>
+      <p><strong>It returns 0 rows.</strong> And the AI tends to report “no matches.” This is extremely hard to detect.</p>
+      <p class="sub" style="margin-top:.5em">Since 2.10 (2026-08-29) the server annotates an empty result: “genuinely absent, or a wrong query?” But it is a note, not an error.</p>
     </div>
     <div class="card">
-      <h3>2. How you write it changes<br>runtime by orders of magnitude</h3>
+      <h3>2. Speed is<br>not evidence of correctness</h3>
       <pre style="font-size:.8em;margin-top:.5em">specific IRI   ≫  FILTER(CONTAINS(...))
     fast                  slow</pre>
-      <p style="margin-top:.5em"><strong>Measured:</strong> two queries returning the same answer — one died at the 60-second timeout, the other came back in about 5 seconds.</p>
+      <p style="margin-top:.5em"><strong>Measured:</strong> a form that died at 60 s in August came back in <strong>10 s</strong> in October, but with <strong>219,437 rows</strong>. Pinned with FROM: 919 rows, 1.4 s.</p>
+      <p class="sub">Runtime also depends on the state of the cache.</p>
     </div>
   </div>
 </section>

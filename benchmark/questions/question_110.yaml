@@ -1,0 +1,302 @@
+id: question_110
+type: summary
+held_out: false  # 2026-10-01: flipped from true (created 2026-09-30). MIE gotcha gwascatalog deprecated_trait_iris (8111753), written while authoring this question, documents the trap it tests
+body: "Take the genes of the human visual cycle pathway as drawn in a curated community pathway
+  collection. Characterise their genome-wide significant (p < 5e-8) genetic association record: which of
+  the genes carry such associations and how many, which of them are linked to eye traits and which only
+  to traits outside the eye, where the genes without associations or with only incidental ones sit in
+  the genome, and how much of the leading gene's record is filed under disease terms that have since
+  been retired."
+
+inspiration_keyword:
+  keyword_id: KW-0600
+  name: Photoreceptor protein
+  category: Molecular function
+
+togomcp_databases_used:
+  - wikipathways
+  - ncbigene
+  - gwascatalog
+
+verification_score:
+  biological_insight: 3
+  multi_database: 3
+  verifiability: 2
+  rdf_necessity: 3
+  total: 11
+  passed: true
+
+pubmed_test:
+  time_spent: 5 minutes
+  method: |
+    Two PubMed searches: "visual cycle genes genome-wide association RDH5 ABCA4 RPE65 LRAT RLBP1 traits"
+    (0 hits) and "retinoid cycle pathway GWAS catalog associations across genes" (0 hits).
+  result: |
+    Single-locus papers exist (RDH5 as a refractive-error locus is known), but no source surveys the
+    GWAS record of all fifteen pathway genes, their ocular versus non-ocular traits, or how many of those
+    associations sit on retired trait identifiers. That comes from the current catalog and ontology state.
+  conclusion: PASS (cannot answer from literature - requires current database state)
+
+sparql_queries:
+  - query_number: 1
+    database: wikipathways
+    description: >
+      The human Visual cycle pathway WP5534 and its 15 gene products with their BridgeDb NCBI Gene and
+      Ensembl xrefs (ABCA4, LRAT, OPN1LW, OPN1MW, OPN1SW, RBP1, RBP3, RDH5, RDH8, RDH10, RDH11, RDH12, RHO,
+      RLBP1, RPE65). The Ensembl xrefs use the https://identifiers.org scheme (see Query 7).
+    query: |
+      PREFIX wp: <http://vocabularies.wikipathways.org/wp#>
+      PREFIX dc: <http://purl.org/dc/elements/1.1/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT DISTINCT ?title ?gene ?label ?ncbigene ?ensembl
+      FROM <http://rdf.wikipathways.org/>
+      WHERE {
+        ?pathway a wp:Pathway ;
+                 dcterms:identifier "WP5534" ;          # plain literal
+                 dc:title ?title ;                     # the revision-pinned record (drops the pathway-as-DataNode stub)
+                 wp:organismName "Homo sapiens" .
+        ?gene dcterms:isPartOf ?pathway ;
+              a wp:GeneProduct ;
+              rdfs:label ?label .
+        OPTIONAL { ?gene wp:bdbEntrezGene ?ncbigene }
+        OPTIONAL { ?gene wp:bdbEnsembl ?ensembl }
+      }
+      ORDER BY ?label
+    result_count: 15
+
+  - query_number: 2
+    database: ncbigene
+    description: >
+      The 15 NCBI GeneIDs: all protein-coding, human (taxid-scoped), with chromosome, cytogenetic map and
+      the Ensembl gene each links to (identical to the pathway's Ensembl xrefs, but in the
+      http://identifiers.org form the association catalog uses). OPN1LW and OPN1MW sit at Xq28; RDH11 and
+      RDH12 share 14q24.1; LRAT is at 4q32.1 and RDH8 at 19p13.2.
+    query: |
+      PREFIX insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX ncbio: <https://dbcls.github.io/ncbigene-rdf/ontology.ttl#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX ncbigene: <http://identifiers.org/ncbigene/>
+      SELECT ?gene ?symbol ?type ?chromosome ?map (GROUP_CONCAT(DISTINCT STR(?ens); separator=" ") AS ?ensembl)
+      FROM <http://rdfportal.org/dataset/ncbigene>
+      WHERE {
+        VALUES ?gene { ncbigene:24 ncbigene:9227 ncbigene:5956 ncbigene:2652 ncbigene:611 ncbigene:5947 ncbigene:5949 ncbigene:157506
+                       ncbigene:51109 ncbigene:145226 ncbigene:5959 ncbigene:50700 ncbigene:6010 ncbigene:6017 ncbigene:6121 }
+        ?gene rdfs:label ?symbol ; ncbio:typeOfGene ?type ; ncbio:taxid <http://identifiers.org/taxonomy/9606> .
+        OPTIONAL { ?gene insdc:chromosome ?chromosome }
+        OPTIONAL { ?gene insdc:map ?map }
+        OPTIONAL { ?gene insdc:dblink ?ens . FILTER(STRSTARTS(STR(?ens), "http://identifiers.org/ensembl/")) }
+      }
+      GROUP BY ?gene ?symbol ?type ?chromosome ?map
+      ORDER BY ?symbol
+    result_count: 15
+
+  - query_number: 3
+    database: gwascatalog
+    description: >
+      Genome-wide significant associations per gene (m2r:snp_gene_ids = the Query 2 Ensembl IRIs, graph
+      pinned), with distinct SNPs, distinct traits, associations on deprecated EFO traits and the best p.
+      12 of 15 genes: RDH5 37 associations (3 SNPs, 21 traits, 10 on deprecated traits, best p 6e-174),
+      ABCA4 11 (8, 10, 1), RDH10 7, RBP1 5, RBP3 4, OPN1SW 2 (1 deprecated), RDH12 2, RPE65 2, RHO, OPN1LW,
+      OPN1MW and RLBP1 1 each. LRAT, RDH8 and RDH11 have none. (The deprecated-trait count uses
+      IF(BOUND(...)); an OPTIONAL with an inner BIND returns 0 on this Virtuoso.)
+    query: |
+      PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+      PREFIX m2r: <http://med2rdf.org/gwascatalog/terms/>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX ens: <http://identifiers.org/ensembl/>
+      SELECT ?gene (COUNT(DISTINCT ?a) AS ?associations) (COUNT(DISTINCT ?rs) AS ?snps) (COUNT(DISTINCT ?trait) AS ?traits)
+             (COUNT(DISTINCT ?dep_a) AS ?assocs_on_deprecated_traits) (MIN(?p) AS ?best_p)
+      WHERE {
+        VALUES ?gene { ens:ENSG00000198691 ens:ENSG00000121207 ens:ENSG00000102076 ens:ENSG00000268221 ens:ENSG00000128617
+                       ens:ENSG00000114115 ens:ENSG00000265203 ens:ENSG00000121039 ens:ENSG00000072042 ens:ENSG00000139988
+                       ens:ENSG00000135437 ens:ENSG00000080511 ens:ENSG00000163914 ens:ENSG00000140522 ens:ENSG00000116745 }
+        GRAPH <http://rdf.ebi.ac.uk/dataset/gwas_catalog> {
+          ?a a gwas:Association ; m2r:snp_gene_ids ?gene ; m2r:mapped_trait_uri ?trait ; m2r:snps ?rs ; m2r:p_value ?p .
+          FILTER(?p < 5.0e-8)
+        }
+        OPTIONAL { GRAPH <http://rdfportal.org/ontology/efo> { ?trait owl:deprecated ?deprecated } }
+        BIND(IF(BOUND(?deprecated), ?a, ?not_deprecated) AS ?dep_a)
+      }
+      GROUP BY ?gene
+      ORDER BY DESC(?associations)
+    result_count: 12
+
+  - query_number: 4
+    database: gwascatalog
+    description: >
+      Rule-3 totals over the whole gene set: 74 associations, 28 SNPs, 49 traits, 12 associations on
+      deprecated traits. The per-gene associations (74), SNPs (28) and deprecated counts (12) sum exactly
+      to these, so no association or SNP is mapped to two of the genes. Per-gene traits sum to 54: five
+      traits are shared (photoreceptor cell layer thickness by RDH5, RBP3 and RLBP1; retinal layer
+      thickness by RDH5 and RDH10; axial length by RDH5 and RBP3; gut microbiome by ABCA4 and RDH12).
+      The unpinned (union) run returns the same totals.
+    query: |
+      PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+      PREFIX m2r: <http://med2rdf.org/gwascatalog/terms/>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX ens: <http://identifiers.org/ensembl/>
+      SELECT (COUNT(DISTINCT ?a) AS ?associations) (COUNT(DISTINCT ?rs) AS ?snps) (COUNT(DISTINCT ?trait) AS ?traits)
+             (COUNT(DISTINCT ?dep_a) AS ?assocs_on_deprecated_traits) (MIN(?p) AS ?best_p)
+      WHERE {
+        VALUES ?gene { ens:ENSG00000198691 ens:ENSG00000121207 ens:ENSG00000102076 ens:ENSG00000268221 ens:ENSG00000128617
+                       ens:ENSG00000114115 ens:ENSG00000265203 ens:ENSG00000121039 ens:ENSG00000072042 ens:ENSG00000139988
+                       ens:ENSG00000135437 ens:ENSG00000080511 ens:ENSG00000163914 ens:ENSG00000140522 ens:ENSG00000116745 }
+        GRAPH <http://rdf.ebi.ac.uk/dataset/gwas_catalog> {
+          ?a a gwas:Association ; m2r:snp_gene_ids ?gene ; m2r:mapped_trait_uri ?trait ; m2r:snps ?rs ; m2r:p_value ?p .
+          FILTER(?p < 5.0e-8)
+        }
+        OPTIONAL { GRAPH <http://rdfportal.org/ontology/efo> { ?trait owl:deprecated ?deprecated } }
+        BIND(IF(BOUND(?deprecated), ?a, ?not_deprecated) AS ?dep_a)
+      }
+
+
+    result_count: 1
+
+  - query_number: 5
+    database: gwascatalog
+    description: >
+      Every gene-trait pair with EFO label, association count and, for deprecated traits, the replacement
+      term and its label: 54 rows. Ocular traits sit on RDH5 (Myopia 8, refractive error 6, Hypermetropia 4,
+      Abnormality of refraction 2 with p 6e-174, retinal layer thickness, macula attribute, photoreceptor
+      cell layer thickness, axial length, progressive visual loss, and macular degeneration terms), RBP3
+      (corneal topography, axial length, photoreceptor layer), RDH10 (retinal nerve fibre and retinal layer
+      thickness) and RLBP1 (photoreceptor layer). ABCA4's are orofacial clefts (cleft lip 3, cleft palate
+      3), breast cancer, cortical thickness and others; the opsins' are lymphocyte count (OPN1LW),
+      neuroimaging (OPN1MW), Hodgkin lymphoma and odontogenesis (OPN1SW); RPE65 facial morphology; RHO bone
+      density; RBP1 protein measurements; RDH12 creatinine, breastfeeding, gut microbiome.
+    query: |
+      PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+      PREFIX m2r: <http://med2rdf.org/gwascatalog/terms/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX ens: <http://identifiers.org/ensembl/>
+      SELECT ?gene ?trait ?label ?replaced_by ?replacement_label (COUNT(DISTINCT ?a) AS ?associations) (MIN(?p) AS ?best_p)
+      WHERE {
+        VALUES ?gene { ens:ENSG00000198691 ens:ENSG00000121207 ens:ENSG00000102076 ens:ENSG00000268221 ens:ENSG00000128617
+                       ens:ENSG00000114115 ens:ENSG00000265203 ens:ENSG00000121039 ens:ENSG00000072042 ens:ENSG00000139988
+                       ens:ENSG00000135437 ens:ENSG00000080511 ens:ENSG00000163914 ens:ENSG00000140522 ens:ENSG00000116745 }
+        GRAPH <http://rdf.ebi.ac.uk/dataset/gwas_catalog> {
+          ?a a gwas:Association ; m2r:snp_gene_ids ?gene ; m2r:mapped_trait_uri ?trait ; m2r:p_value ?p .
+          FILTER(?p < 5.0e-8)
+        }
+        GRAPH <http://rdfportal.org/ontology/efo> {
+          ?trait rdfs:label ?label .
+          OPTIONAL { ?trait owl:deprecated true ; obo:IAO_0100001 ?replaced_by .
+                     OPTIONAL { ?rep rdfs:label ?replacement_label . FILTER(STR(?rep) = STR(?replaced_by)) } }
+        }
+      }
+      GROUP BY ?gene ?trait ?label ?replaced_by ?replacement_label
+      ORDER BY ?gene DESC(?associations)
+    result_count: 54
+
+  - query_number: 6
+    database: gwascatalog
+    description: >
+      Trap route for the leading gene: RDH5's macular-degeneration associations looked up by the CURRENT
+      MONDO terms (age-related MONDO_0005150, unspecified MONDO_0003004, wet MONDO_0005417) return no row,
+      while the deprecated EFO classes they replaced (EFO_0001365, EFO_0009606, EFO_0004683) carry 6
+      associations (MIE gotcha deprecated_trait_iris).
+    query: |
+      PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+      PREFIX m2r: <http://med2rdf.org/gwascatalog/terms/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX ens: <http://identifiers.org/ensembl/>
+      # RDH5 associations with age-related, wet or unspecified macular degeneration: by the CURRENT MONDO
+      # terms (MONDO_0005150, MONDO_0003004, MONDO_0005417) versus through the deprecated EFO classes they replaced
+      SELECT ?route (COUNT(DISTINCT ?a) AS ?associations) (GROUP_CONCAT(DISTINCT STR(?trait); separator=" ") AS ?traits)
+      WHERE {
+        {
+          BIND("current MONDO term" AS ?route)
+          GRAPH <http://rdf.ebi.ac.uk/dataset/gwas_catalog> {
+            ?a a gwas:Association ; m2r:snp_gene_ids ens:ENSG00000135437 ; m2r:mapped_trait_uri ?trait ; m2r:p_value ?p .
+            FILTER(?trait IN (obo:MONDO_0005150, obo:MONDO_0003004, obo:MONDO_0005417))
+            FILTER(?p < 5.0e-8)
+          }
+        } UNION {
+          BIND("deprecated EFO term replaced by it" AS ?route)
+          GRAPH <http://rdfportal.org/ontology/efo> {
+            ?trait obo:IAO_0100001 ?rep .
+            FILTER(STR(?rep) IN ("http://purl.obolibrary.org/obo/MONDO_0005150",
+                                 "http://purl.obolibrary.org/obo/MONDO_0003004",
+                                 "http://purl.obolibrary.org/obo/MONDO_0005417"))
+          }
+          GRAPH <http://rdf.ebi.ac.uk/dataset/gwas_catalog> {
+            ?a a gwas:Association ; m2r:snp_gene_ids ens:ENSG00000135437 ; m2r:mapped_trait_uri ?trait ; m2r:p_value ?p .
+            FILTER(?p < 5.0e-8)
+          }
+        }
+      }
+      GROUP BY ?route
+    result_count: 1
+
+  - query_number: 7
+    database: gwascatalog
+    description: >
+      Scheme trap: the pathway's Ensembl xrefs written as they come (https://identifiers.org/ensembl/…)
+      match 0 associations even for RDH5 and ABCA4; the catalog uses http://identifiers.org. Taking the
+      Ensembl IRI from NCBI Gene (Query 2), or rewriting the scheme, is required.
+    query: |
+      PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+      PREFIX m2r: <http://med2rdf.org/gwascatalog/terms/>
+      # the Ensembl IRIs exactly as the pathway resource writes them (https scheme)
+      SELECT (COUNT(DISTINCT ?a) AS ?associations)
+      WHERE {
+        VALUES ?gene { <https://identifiers.org/ensembl/ENSG00000135437> <https://identifiers.org/ensembl/ENSG00000198691> }
+        GRAPH <http://rdf.ebi.ac.uk/dataset/gwas_catalog> { ?a a gwas:Association ; m2r:snp_gene_ids ?gene }
+      }
+    result_count: 1
+
+rdf_triples: |
+  @prefix wp: <http://vocabularies.wikipathways.org/wp#> .
+  @prefix dcterms: <http://purl.org/dc/terms/> .
+  @prefix insdc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/> .
+  @prefix m2r: <http://med2rdf.org/gwascatalog/terms/> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix owl: <http://www.w3.org/2002/07/owl#> .
+
+  <https://identifiers.org/ensembl/ENSG00000135437> dcterms:isPartOf ?wp5534 ; wp:bdbEntrezGene <https://identifiers.org/ncbigene/5959> .
+  # Database: wikipathways | Query: 1 | Comment: RDH5 in the Visual cycle pathway, https-scheme xrefs
+  <http://identifiers.org/ncbigene/5959> insdc:dblink <http://identifiers.org/ensembl/ENSG00000135437> ; insdc:map "12q13.2" .
+  # Database: ncbigene | Query: 2 | Comment: the http-scheme Ensembl IRI the association catalog uses
+  _:assoc m2r:snp_gene_ids <http://identifiers.org/ensembl/ENSG00000135437> ; m2r:mapped_trait_uri obo:HP_0000539 .
+  # Database: gwascatalog | Query: 5 | Comment: Abnormality of refraction, best p 6e-174
+  <http://www.ebi.ac.uk/efo/EFO_0001365> owl:deprecated true ; obo:IAO_0100001 "http://purl.obolibrary.org/obo/MONDO_0005150" .
+  # Database: gwascatalog | Query: 6 | Comment: obsolete age-related macular degeneration, still carrying 4 RDH5 associations
+  <http://identifiers.org/ncbigene/5956> insdc:chromosome "X" ; insdc:map "Xq28" .
+  # Database: ncbigene | Query: 2 | Comment: OPN1LW, one association (lymphocyte count)
+
+exact_answer: ""
+
+ideal_answer: |
+  Twelve of the fifteen visual cycle genes carry genome-wide significant associations, 74 in all across 28
+  variants and 49 traits, but the record is lopsided. RDH5 (retinol dehydrogenase 5, at
+  12q13.2) holds half of it (37 associations from only 3 variants over 21 traits) and nearly all the eye
+  genetics: myopia, refractive error, hypermetropia and abnormality of refraction (down to p 6e-174),
+  retinal, macular and photoreceptor layer thickness, axial length, and macular degeneration. Three more
+  genes add smaller ocular signals (RBP3 corneal topography, axial length and photoreceptor layer
+  thickness; RDH10 retinal and nerve-fibre layer thickness; RLBP1 photoreceptor layer thickness). The
+  others are linked only to traits outside the eye: ABCA4, the second-largest record with 11 associations,
+  maps to orofacial clefts, breast cancer, cortical thickness and heart failure among others; RBP1 to
+  protein levels and educational attainment;
+  RPE65 to facial morphology; RHO to bone density; RDH12 to creatinine, breastfeeding and gut microbiome;
+  and the cone opsins each carry at most two incidental hits (OPN1LW lymphocyte count, OPN1MW a
+  neuroimaging measure, OPN1SW Hodgkin lymphoma and tooth development). The long- and middle-wave opsins
+  are the X-linked pair at Xq28, and LRAT (4q32.1), RDH8 (19p13.2) and RDH11 (14q24.1) have no
+  associations at all. Twelve associations sit on retired EFO trait classes, ten of them RDH5's, including
+  every one of its age-related, wet and unspecified macular degeneration associations: looked up by the
+  current disease terms those classes were replaced with, RDH5 shows no macular degeneration association,
+  while the retired classes hold six.
+
+question_template_used: Curated pathway gene set -> gene hub (NCBI Gene, Ensembl bridge and location) -> genome-wide significant associations per gene -> ocular vs non-ocular traits -> retired-trait audit of the leading gene
+
+time_spent:
+  exploration: 50 minutes
+  formulation: 25 minutes
+  verification: 15 minutes
+  pubmed_test: 5 minutes
+  extraction: 10 minutes
+  documentation: 25 minutes
+  total: 130 minutes

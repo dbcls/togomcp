@@ -1,13 +1,15 @@
 id: question_022
 type: factoid
-body: "How many distinct human glycogenes in the GlyCosmos glycobiology database
-  are annotated with the biological process 'glycoprotein biosynthetic process'
-  (GO:0009101) or any of its descendant terms in the Gene Ontology?"
+held_out: true   # created 2026-09-30 to replace the dev-exposed original (see benchmark/questions/retired/); never used for MIE development
+body: "Among human glycoproteins annotated with the biological process 'tRNA processing'
+  (GO:0008033) or any of its descendant terms, which protein has the largest number of
+  glycosylation sites recorded in an integrated glycoscience knowledge base, and how many
+  sites is that?"
 
 inspiration_keyword:
-  keyword_id: KW-0900
-  name: Congenital disorder of glycosylation
-  category: Disease
+  keyword_id: KW-0819
+  name: tRNA processing
+  category: Biological process
 
 togomcp_databases_used:
   - go
@@ -24,170 +26,235 @@ verification_score:
 pubmed_test:
   time_spent: 10 minutes
   method: |
-    Searched PubMed for "number of human glycogenes glycoprotein biosynthetic
-    process GlyCosmos Gene Ontology count" and "total human glycosyltransferase
-    genes glycoprotein biosynthesis N-linked O-linked proteoglycan complete
-    count". Both returned zero results.
+    Four PubMed searches: "TRUB1 glycosylation O-GlcNAc sites" (0 hits), "O-GlcNAc
+    glycosylation tRNA modification enzymes proteome-wide glycosylation sites" (0 hits),
+    "O-GlcNAc tRNA pseudouridine synthase glycosylation" (0 hits) and "glycosylation tRNA
+    processing proteins human" (28 hits; top 5 abstracts read).
   result: |
-    No publication reports the number of human glycogenes in GlyCosmos carrying
-    a GO:0009101 (or descendant) annotation. The figure depends on the present
-    GlyCosmos gene set joined to the current Gene Ontology subclass hierarchy and
-    cannot be recovered from the literature.
+    No abstract reports glycosylation-site counts for tRNA-processing enzymes, let alone
+    ranks them. The only relevant hit is a review of seryl-tRNA synthetase noting that
+    nutrient deprivation triggers SerRS glycosylation (PMID 38255739), with no site count.
+    The ranking depends on the current aggregated site set joined to the current GO
+    subtree and annotations.
   conclusion: PASS (cannot answer from literature - requires current database state)
 
 sparql_queries:
   - query_number: 1
     database: go
     description: >
-      Enumerate every descendant of GO:0009101 (glycoprotein biosynthetic
-      process) by transitive subClassOf traversal in the Gene Ontology RDF.
-      Returns 32 descendant terms, matching canonical GO (OLS4). This is the
-      live scope the count in Query 2 must cover (Rule 2: no hard-coded subset).
+      Expand 'tRNA processing' (GO:0008033) over the authoritative Gene Ontology on the
+      `go` database: the anchor term plus every rdfs:subClassOf descendant, excluding
+      deprecated classes. 64 non-deprecated terms. These IRIs are pasted verbatim into the
+      VALUES blocks of Queries 2 and 3 (Rule 2: the full subtree, no sampling). The
+      glycosmos endpoint's embedded go.owl copy yields the same 64 terms today, but the
+      native GO is used because that embedded copy has diverged before.
     query: |
       PREFIX obo: <http://purl.obolibrary.org/obo/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
 
-      SELECT DISTINCT ?descendant ?label
+      SELECT DISTINCT ?term ?label
       FROM <http://rdfportal.org/ontology/go>
       WHERE {
-        ?descendant rdfs:subClassOf+ obo:GO_0009101 ;
-                    rdfs:label ?label .
-        FILTER(STRSTARTS(STR(?descendant), "http://purl.obolibrary.org/obo/GO_"))
+        ?term rdfs:subClassOf* obo:GO_0008033 ;
+              rdfs:label ?label .
+        FILTER(STRSTARTS(STR(?term), "http://purl.obolibrary.org/obo/GO_"))
+        FILTER NOT EXISTS { ?term owl:deprecated true }
       }
-    result_count: 32
+      ORDER BY ?term
+    result_count: 64
 
   - query_number: 2
-    database: go
+    database: glycosmos
     description: >
-      Count distinct human glycogenes annotated with GO:0009101 OR any of its
-      descendants. Runs on the shared `primary` endpoint as a cross-graph join
-      (routed via database: go — a primary-endpoint member — so both the GO graph
-      and the co-hosted GlyCosmos glycogene graph are reachable in one query):
-      the GO graph supplies the subClassOf* closure of GO:0009101 (anchor +
-      32 descendants), the GlyCosmos glycogene graph supplies the per-gene GO
-      annotations (via sio:SIO_000255 -> up:classifiedWith). The reflexive
-      subClassOf* makes the scope exhaustive without a hard-coded VALUES list.
+      Per-protein glycosylation-site counts for every human glycoprotein annotated with
+      any of the 64 terms. GO annotation on a glycoprotein is the
+      sio:SIO_000255/up:classifiedWith scaffold; sites are gc:glycosylated_at. Pinned to
+      the glycoprotein graph (gpdb re-types the same glycoprotein IRIs). COUNT(DISTINCT
+      ?site) is required: a protein matching several in-scope terms repeats each site once
+      per term (TRUB1: 6 sites x 3 term-annotations = 18 raw rows). 45 proteins; TRUB1
+      (Q8WWH5) is the unique maximum with 6, followed by four proteins tied at 4.
     query: |
       PREFIX obo: <http://purl.obolibrary.org/obo/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
       PREFIX sio: <http://semanticscience.org/resource/>
       PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX gc: <http://purl.jp/bio/12/glyco/conjugate#>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
 
-      SELECT (COUNT(DISTINCT ?gene) AS ?count)
+      SELECT ?glycoprotein ?name (COUNT(DISTINCT ?site) AS ?sites)
       WHERE {
-        GRAPH <http://rdfportal.org/ontology/go> {
-          ?goTerm rdfs:subClassOf* obo:GO_0009101 .
-          FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
+        VALUES ?goTerm {
+          obo:GO_0001680 obo:GO_0001682 obo:GO_0001717 obo:GO_0001720 obo:GO_0002097
+          obo:GO_0002098 obo:GO_0002099 obo:GO_0002100 obo:GO_0002101 obo:GO_0002127
+          obo:GO_0002128 obo:GO_0002129 obo:GO_0002130 obo:GO_0002131 obo:GO_0002132
+          obo:GO_0002136 obo:GO_0002143 obo:GO_0002926 obo:GO_0002927 obo:GO_0002937
+          obo:GO_0002938 obo:GO_0002939 obo:GO_0002940 obo:GO_0002942 obo:GO_0002943
+          obo:GO_0002946 obo:GO_0002949 obo:GO_0006388 obo:GO_0006400 obo:GO_0008033
+          obo:GO_0008616 obo:GO_0019988 obo:GO_0030488 obo:GO_0031119 obo:GO_0031591
+          obo:GO_0034227 obo:GO_0035600 obo:GO_0042780 obo:GO_0043685 obo:GO_0043688
+          obo:GO_0051391 obo:GO_0061504 obo:GO_0070329 obo:GO_0070899 obo:GO_0070900
+          obo:GO_0070901 obo:GO_0070902 obo:GO_0070903 obo:GO_0071951 obo:GO_0071952
+          obo:GO_0072670 obo:GO_0080178 obo:GO_0090646 obo:GO_0097745 obo:GO_0099116
+          obo:GO_0106004 obo:GO_0106217 obo:GO_0140023 obo:GO_0160253 obo:GO_0160254
+          obo:GO_0160255 obo:GO_1990180 obo:GO_1990799 obo:GO_1990983
         }
-        GRAPH <http://rdf.glycosmos.org/glycogenes> {
-          ?gene a glycan:Glycogene ;
-                glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
-                sio:SIO_000255 ?bn .
-          ?bn up:classifiedWith ?goTerm .
+        GRAPH <http://rdf.glycosmos.org/glycoprotein> {
+          ?glycoprotein glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
+                        sio:SIO_000255/up:classifiedWith ?goTerm ;
+                        rdfs:label ?name ;
+                        gc:glycosylated_at ?site .
+        }
+      }
+      GROUP BY ?glycoprotein ?name
+      ORDER BY DESC(?sites) ?glycoprotein
+    result_count: 45
+
+  - query_number: 3
+    database: glycosmos
+    description: >
+      Rule-3 arithmetic check for Query 2: distinct proteins and distinct sites over the
+      same criteria. 45 proteins and 84 sites; the per-protein counts of Query 2 sum to
+      exactly 84 (a site belongs to one protein, so no overlap is possible). The same
+      query run WITHOUT the GRAPH pin also returns 45 / 84, and a GRAPH ?g provenance
+      probe on Q8WWH5 finds only the glycoprotein graph (44 triples) plus one HPA
+      cross-reference triple, so the union adds no entities (Rule 4).
+    query: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX gc: <http://purl.jp/bio/12/glyco/conjugate#>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+
+      SELECT (COUNT(DISTINCT ?glycoprotein) AS ?proteins) (COUNT(DISTINCT ?site) AS ?sites)
+      WHERE {
+        VALUES ?goTerm {
+          obo:GO_0001680 obo:GO_0001682 obo:GO_0001717 obo:GO_0001720 obo:GO_0002097
+          obo:GO_0002098 obo:GO_0002099 obo:GO_0002100 obo:GO_0002101 obo:GO_0002127
+          obo:GO_0002128 obo:GO_0002129 obo:GO_0002130 obo:GO_0002131 obo:GO_0002132
+          obo:GO_0002136 obo:GO_0002143 obo:GO_0002926 obo:GO_0002927 obo:GO_0002937
+          obo:GO_0002938 obo:GO_0002939 obo:GO_0002940 obo:GO_0002942 obo:GO_0002943
+          obo:GO_0002946 obo:GO_0002949 obo:GO_0006388 obo:GO_0006400 obo:GO_0008033
+          obo:GO_0008616 obo:GO_0019988 obo:GO_0030488 obo:GO_0031119 obo:GO_0031591
+          obo:GO_0034227 obo:GO_0035600 obo:GO_0042780 obo:GO_0043685 obo:GO_0043688
+          obo:GO_0051391 obo:GO_0061504 obo:GO_0070329 obo:GO_0070899 obo:GO_0070900
+          obo:GO_0070901 obo:GO_0070902 obo:GO_0070903 obo:GO_0071951 obo:GO_0071952
+          obo:GO_0072670 obo:GO_0080178 obo:GO_0090646 obo:GO_0097745 obo:GO_0099116
+          obo:GO_0106004 obo:GO_0106217 obo:GO_0140023 obo:GO_0160253 obo:GO_0160254
+          obo:GO_0160255 obo:GO_1990180 obo:GO_1990799 obo:GO_1990983
+        }
+        GRAPH <http://rdf.glycosmos.org/glycoprotein> {
+          ?glycoprotein glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
+                        sio:SIO_000255/up:classifiedWith ?goTerm ;
+                        gc:glycosylated_at ?site .
         }
       }
     result_count: 1
 
-  - query_number: 3
-    database: go
+  - query_number: 4
+    database: glycosmos
     description: >
-      Per-GO-term gene counts (arithmetic check for Query 2's GROUP-free total).
-      Routed via database: go on the shared `primary` endpoint (see Query 2).
-      15 of the 33 in-scope terms carry human glycogenes; the per-term counts sum
-      to 296 while the distinct-gene total is 208, so 88 gene-term assignments are
-      shared — i.e. 88 genes carry more than one in-scope annotation (sum > total,
-      overlap documented per Rule 3). Cross-graph join on the `primary` endpoint.
+      The six glycosylation sites of TRUB1 with residue positions (FALDO chain). Each site
+      node is one residue position (84 site nodes = 84 distinct protein-position pairs
+      across the set). Positions 10, 34, 81, 144, 146 and 335.
     query: |
       PREFIX obo: <http://purl.obolibrary.org/obo/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
       PREFIX sio: <http://semanticscience.org/resource/>
       PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX gc: <http://purl.jp/bio/12/glyco/conjugate#>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
 
-      SELECT ?goTerm ?goLabel (COUNT(DISTINCT ?gene) AS ?n)
+      SELECT DISTINCT ?site ?position
+      FROM <http://rdf.glycosmos.org/glycoprotein>
       WHERE {
-        GRAPH <http://rdfportal.org/ontology/go> {
-          ?goTerm rdfs:subClassOf* obo:GO_0009101 ;
-                  rdfs:label ?goLabel .
-          FILTER(STRSTARTS(STR(?goTerm), "http://purl.obolibrary.org/obo/GO_"))
-        }
-        GRAPH <http://rdf.glycosmos.org/glycogenes> {
-          ?gene a glycan:Glycogene ;
-                glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
-                sio:SIO_000255 ?bn .
-          ?bn up:classifiedWith ?goTerm .
+        <http://glycosmos.org/glycoprotein/Q8WWH5> gc:glycosylated_at ?site .
+        ?site faldo:location/faldo:position ?position .
+      }
+      ORDER BY ?position
+    result_count: 6
+
+  - query_number: 5
+    database: glycosmos
+    description: >
+      Scope check: proteins carrying the ROOT term GO:0008033 alone. Only 7 of the 45
+      proteins; TRUB1 is annotated only to descendants (GO:0006400 tRNA modification,
+      GO:0031119 tRNA pseudouridine synthesis), so a root-only query misses the answer.
+      This is why the descendant expansion is load-bearing.
+    query: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
+      PREFIX gc: <http://purl.jp/bio/12/glyco/conjugate#>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+
+      SELECT (COUNT(DISTINCT ?glycoprotein) AS ?proteins_root_only)
+      WHERE {
+        GRAPH <http://rdf.glycosmos.org/glycoprotein> {
+          ?glycoprotein glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
+                        sio:SIO_000255/up:classifiedWith obo:GO_0008033 ;
+                        gc:glycosylated_at ?site .
         }
       }
-      GROUP BY ?goTerm ?goLabel
-      ORDER BY DESC(?n)
-    result_count: 15
+    result_count: 1
 
 rdf_triples: |
   @prefix obo: <http://purl.obolibrary.org/obo/> .
   @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix glycan: <http://purl.jp/bio/12/glyco/glycan#> .
-  @prefix glycosmos: <http://glycosmos.org/glycogene/> .
   @prefix sio: <http://semanticscience.org/resource/> .
   @prefix up: <http://purl.uniprot.org/core/> .
-  @prefix taxon: <http://identifiers.org/taxonomy/> .
+  @prefix glycan: <http://purl.jp/bio/12/glyco/glycan#> .
+  @prefix gc: <http://purl.jp/bio/12/glyco/conjugate#> .
+  @prefix faldo: <http://biohackathon.org/resource/faldo#> .
+  @prefix gp: <http://glycosmos.org/glycoprotein/> .
+  @prefix feature: <http://glycosmos.org/feature/> .
 
-  # --- GO ontology hierarchy under GO:0009101 (Query 1) ---
-  obo:GO_0006487 rdfs:subClassOf+ obo:GO_0009101 .
-  # Database: go | Query: 1 | Comment: protein N-linked glycosylation is a descendant of glycoprotein biosynthetic process
-  obo:GO_0006493 rdfs:subClassOf+ obo:GO_0009101 .
-  # Database: go | Query: 1 | Comment: protein O-linked glycosylation is a descendant of glycoprotein biosynthetic process
-  obo:GO_0030166 rdfs:subClassOf+ obo:GO_0009101 .
-  # Database: go | Query: 1 | Comment: proteoglycan biosynthetic process is a descendant of glycoprotein biosynthetic process
+  obo:GO_0006400 rdfs:subClassOf+ obo:GO_0008033 .
+  # Database: go | Query: 1 | Comment: tRNA modification is a descendant of tRNA processing
+  obo:GO_0031119 rdfs:subClassOf+ obo:GO_0008033 .
+  # Database: go | Query: 1 | Comment: tRNA pseudouridine synthesis is a descendant of tRNA processing
+  gp:Q8WWH5 rdfs:label "Pseudouridylate synthase TRUB1" ; glycan:has_taxon <http://identifiers.org/taxonomy/9606> .
+  # Database: glycosmos | Query: 2 | Comment: TRUB1 is a human glycoprotein entry keyed by its UniProt accession
+  gp:Q8WWH5 sio:SIO_000255 [ up:classifiedWith obo:GO_0031119 ] .
+  # Database: glycosmos | Query: 2 | Comment: TRUB1 reaches the scope only through descendant terms, never the root (Query 5)
+  gp:Q8WWH5 gc:glycosylated_at feature:gly00030996 , feature:gly00018589 , feature:gly00018590 , feature:gly00030997 , feature:gly00030998 , feature:gly00030999 .
+  # Database: glycosmos | Query: 2 | Comment: six distinct glycosylation sites, the maximum among the 45 in-scope proteins
+  feature:gly00030996 faldo:location [ faldo:position 10 ] .
+  # Database: glycosmos | Query: 4 | Comment: site at residue 10 (sites at 34, 81, 144, 146, 335 follow the same pattern)
+  gp:Q12849 rdfs:label "G-rich sequence factor 1" .
+  # Database: glycosmos | Query: 2 | Comment: one of four runners-up tied at 4 sites (with Q7Z2T5, Q99575, Q9H0A0)
 
-  # --- GlyCosmos glycogene annotations (Query 2 / 3) ---
-  glycosmos:3703 a glycan:Glycogene ; rdfs:label "STT3A" ; glycan:has_taxon taxon:9606 .
-  # Database: glycosmos | Query: 2 | Comment: STT3A (OST catalytic subunit) annotated with GO:0006487 — N-linked branch
-  glycosmos:2589 a glycan:Glycogene ; rdfs:label "GALNT1" ; glycan:has_taxon taxon:9606 .
-  # Database: glycosmos | Query: 3 | Comment: GALNT1 annotated with GO:0006493 AND its child GO:0016266 — O-GalNAc branch (a source of overlap)
-  glycosmos:10585 a glycan:Glycogene ; rdfs:label "POMT1" ; glycan:has_taxon taxon:9606 .
-  # Database: glycosmos | Query: 3 | Comment: POMT1 annotated with GO:0035269 (protein O-linked glycosylation via mannose) — O-mannose branch
-  glycosmos:2131 a glycan:Glycogene ; rdfs:label "EXT1" ; glycan:has_taxon taxon:9606 .
-  # Database: glycosmos | Query: 3 | Comment: EXT1 annotated with GO:0015012 and GO:0030210 — heparan sulfate/heparin proteoglycan branch
-  glycosmos:64131 a glycan:Glycogene ; rdfs:label "XYLT1" ; glycan:has_taxon taxon:9606 .
-  # Database: glycosmos | Query: 3 | Comment: XYLT1 annotated with GO:0030166, GO:0050650 and GO:0015012 simultaneously — proteoglycan linkage enzyme, a multi-term overlap example
-
-exact_answer: 208
+exact_answer: "TRUB1 (UniProt:Q8WWH5); 6 glycosylation sites"
 
 ideal_answer: |
-  Two hundred and eight distinct human glycogenes registered in GlyCosmos are
-  annotated with the Gene Ontology biological process 'glycoprotein biosynthetic
-  process' (GO:0009101) or one of its 32 descendant terms. The set spans the
-  three major branches of protein glycosylation. The N-linked branch contributes
-  the dolichol-pathway and oligosaccharyltransferase machinery (ALG1-ALG14,
-  DPAGT1, RFT1, STT3A/STT3B, DDOST, RPN1/RPN2, MAGT1, TUSC3), the dolichol-
-  phosphate-mannose donors DPM1-DPM3, and the branching/processing enzymes
-  MGAT1-MGAT5, MOGS and MAN1A1/MAN1A2/MAN2A1/MAN2A2. The O-linked branch
-  contributes the full GalNAc-transferase family (GALNT1-GALNT18, plus C1GALT1
-  and its chaperone C1GALT1C1), the O-mannosylation genes POMT1/POMT2,
-  POMGNT1/POMGNT2, FKTN, FKRP and LARGE1/LARGE2, and the O-fucosylation genes
-  POFUT1/POFUT2 and POGLUT1. The proteoglycan/glycosaminoglycan branch
-  contributes the linkage-region and chain-extension enzymes XYLT1/XYLT2,
-  B4GALT7, B3GAT3, EXT1/EXT2 and EXTL1-EXTL3, the sulfotransferases NDST1-NDST4,
-  the CHST family and HS3ST genes, and CSGALNACT1/CSGALNACT2. Because many
-  glycogenes carry more than one of these annotations, the per-term counts sum to
-  296 across the 208 unique genes — an overlap of 88 reflecting enzymes shared
-  between pathways or annotated at several levels of the hierarchy (for example
-  XYLT1 appears under proteoglycan, chondroitin-sulfate and heparan-sulfate
-  biosynthesis at once, and GALNT1 under both 'protein O-linked glycosylation' and
-  its 'via N-acetylgalactosamine' child). Many of these genes underlie congenital
-  disorders of glycosylation and the dystroglycanopathies when mutated, spanning
-  N-glycosylation CDG (e.g. ALG1, PMM2, MGAT2), O-mannosylation muscular
-  dystrophies (POMT1, FKTN, FKRP, LARGE1) and proteoglycan linkeropathies
-  (B4GALT7, B3GAT3, XYLT1).
+  The protein with the most recorded glycosylation sites is pseudouridylate synthase
+  TRUB1 (tRNA pseudouridine 55 synthase; UniProt Q8WWH5), with six sites at residues 10,
+  34, 81, 144, 146 and 335. Four of them (10, 144, 146 and 335) carry a single
+  beta-N-acetylglucosamine (O-GlcNAc), while 34 and 81 are recorded as sites without an
+  attached glycan structure. The comparison spans 45 human glycoproteins annotated with
+  tRNA processing or one of its 63 non-deprecated descendant terms, carrying 84
+  glycosylation sites between them. Four proteins tie for second place with four sites
+  each: G-rich sequence factor 1 (GRSF-1, Q12849), the tRNA (guanine(27)-N(2))-
+  dimethyltransferase TRMT1-like protein (Q7Z2T5), the ribonucleases P/MRP subunit POP1
+  (Q99575) and the RNA cytidine acetyltransferase N-acetyltransferase 10 (Q9H0A0). TRUB1
+  is annotated only to specific branches of the process (tRNA modification and tRNA
+  pseudouridine synthesis), not to the parent term, which only 7 of the 45 proteins carry
+  directly, so the answer is reachable only by expanding the process over its full
+  hierarchy.
 
-question_template_used: Template 2 (Cross-Database Counting)
+question_template_used: Template 2 (Cross-Database Counting) - ontology-subtree expansion joined to a per-entity maximum
 
 time_spent:
-  exploration: 40 minutes
+  exploration: 30 minutes
   formulation: 20 minutes
-  verification: 30 minutes
+  verification: 25 minutes
   pubmed_test: 10 minutes
-  extraction: 20 minutes
-  documentation: 25 minutes
-  total: 145 minutes
+  extraction: 10 minutes
+  documentation: 20 minutes
+  total: 115 minutes

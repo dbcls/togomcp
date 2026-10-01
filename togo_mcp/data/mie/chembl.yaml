@@ -88,6 +88,28 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
         WHERE { ?t a cco:SingleProtein ; cco:taxonomy <http://identifiers.org/taxonomy/9606> ;
                    cco:hasProteinClassification ?c . }
       expect: {value: 5820, tolerance: 0.10}
+  - id: structureless_small_molecules
+    say: >
+      5,189 of the 1,920,603 cco:SmallMolecule entries carry NO structure in this RDF: no SMILES
+      (CHEMINF_000018), InChI or InChIKey node (measured 2026-09-30). They are mostly
+      metal-containing compounds. Cisplatin (CHEMBL11359) and manganese chloride
+      (CHEMBL1200693, 542 activities) keep only formula and weight nodes, and 1,780 carry no property
+      node at all. Every structure route therefore misses them silently: an InChIKey join returns
+      nothing, and IDSM, whose ChEMBL index is built from this RDF, finds no ChEMBL compound
+      containing Mn, Fe, Pt, Cu, Co or Gd (Zn, As, B, Se and Si compounds are indexed). FIX: when a
+      structure lookup finds no ChEMBL entry, fall back to the name (example molecule_name_resolve)
+      or to the molecular-formula node (CHEMINF_000042, e.g. "H6Cl2N2Pt+2" for cisplatin), and do
+      not read an empty structure search as "ChEMBL has no such compound".
+    check:
+      kind: count
+      date: "2026-09-30"
+      query: |
+        PREFIX sio: <http://semanticscience.org/resource/>
+        PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+        SELECT (COUNT(DISTINCT ?m) AS ?n) WHERE { GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
+          ?m a cco:SmallMolecule .
+          FILTER NOT EXISTS { ?m sio:SIO_000008 ?sn . ?sn a sio:CHEMINF_000018 } } }
+      expect: {value: 5189, tolerance: 0.05}
 
 # ── examples: the load-bearing content — executable, verified atoms. Core model:
 #    Molecule → Activity → Assay → Target (cco:hasMolecule / cco:hasAssay / cco:hasTarget). ──

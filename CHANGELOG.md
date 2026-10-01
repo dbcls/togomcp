@@ -13,6 +13,50 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.21.1] - 2026-10-01
+
+No tool, parameter or return shape moved. Four MIE files gain a global gotcha for a defect in
+the underlying RDF that makes a natural query return a wrong answer without any error. Each
+gotcha carries a `check:` count, so it is re-verified against the live endpoint instead of
+going stale. All four were found while writing held-out benchmark questions; each check avoids
+the question's subject so the MIE does not leak the answer.
+
+### Fixed
+
+- **`chembl`: 5,189 small molecules have no structure in the RDF** (`structureless_small_molecules`).
+  They are mostly metal-containing compounds; cisplatin and manganese chloride keep only formula
+  and weight. SMILES/InChI routes, including IDSM, whose ChEMBL index is built from this RDF, miss
+  them silently. Fall back to the name or the formula.
+- **`swisslipids`: exact InChIKey joins to LIPID MAPS/ChEBI miss about 40% of curated links**
+  (`inchi_and_inchikey_disagree`). SwissLipids stores the major microspecies at pH 7.3, so acids
+  and phospholipids are anions whose key differs from the neutral parent in its last character:
+  of LIPID MAPS' 12,558 links, 7,563 match exactly, 4,253 differ only there and 739 in the stereo
+  block. Compare the first 25 characters, or use ChEBI's conjugate-base link. This gotcha first
+  warned that 15% of records had an InChI and InChIKey describing different structures. That
+  was true until SwissLipids' 2026_09_30 RDF release, which fixed all of them a day after we
+  reported it, and the release check caught the drift. The gotcha now records it as history
+  and warns that the `lipids.tsv` export of the same date still carries the old values.
+- **`gwascatalog`: 8.6% of associations sit on deprecated EFO traits** (`deprecated_trait_iris`).
+  A query that starts from the current term (often MONDO) misses them; coronary artery disease
+  has 3,950 associations on the old EFO IRI and 0 on its MONDO replacement. The gotcha gives the
+  reverse mapping, which needs `STR()` because `term replaced by` is usually a string. Upstream has
+  stopped publishing GWAS Catalog RDF, so this drift is permanent.
+- **`pubcasefinder`: absent phenotypes are stored as present** (`absent_phenotypes_as_present`).
+  The HPO annotation conversion drops the NOT qualifier and 0/N frequencies (519 Orphanet NOT
+  annotations, 853 OMIM 0/N), and SPARQL cannot tell them apart. Reported upstream
+  (PubCaseFinder/pubcasefinder-rdf#8).
+
+### Changed
+
+- **Tutorial refreshed for 2.21** (served at `/tutorial` and `/tutorial/ja`). It now lists 45 databases (37 in
+  August). Chapter 3 shows the v3 MIE example, corrects the "the canonical isoform is `-1`" rule
+  (782 Swiss-Prot entries differ), re-measures the insulin timeout example (the lesson is graph
+  pinning, not speed), lists the verified federated `cross_db` combinations, and explains the
+  empty-result notes from `run_sparql`.
+- Benchmark (not in the wheel): 110-question set frozen with a strict `held_out` field, 16
+  questions refreshed against the current data, a `benchmark-runner` skill for periodic
+  evaluation, and the ablation harness ported to MIE v3.
+
 ## [2.21.0] - 2026-09-29
 
 Upgrade to FastMCP 4 (`fastmcp>=4.0.10,<5`, `mcp` 2.2.0), which adds support for the MCP
@@ -2982,7 +3026,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.21.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.21.1...HEAD
+[2.21.1]: https://github.com/dbcls/togomcp/compare/v2.21.0...v2.21.1
 [2.21.0]: https://github.com/dbcls/togomcp/compare/v2.20.1...v2.21.0
 [2.20.1]: https://github.com/dbcls/togomcp/compare/v2.20.0...v2.20.1
 [2.20.0]: https://github.com/dbcls/togomcp/compare/v2.19.0...v2.20.0

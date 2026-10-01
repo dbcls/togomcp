@@ -1,6 +1,6 @@
 id: question_044
 type: list
-body: "Which human sialic acid-binding Ig-like lectin (siglec) proteins have experimentally characterized N-glycan structures curated at specific glycosylation sites in glycoproteomic databases?"
+body: "Which human sialic acid-binding Ig-like lectin (siglec) proteins have glycan structures, determined by site-resolved glycoproteomic mass spectrometry, curated at specific glycosylation sites by an experimental glycoprotein knowledgebase (not merely inherited from a general aggregator or a predicted-site resource)?"
 
 inspiration_keyword:
   keyword_id: KW-0430
@@ -58,16 +58,20 @@ sparql_queries:
   - query_number: 2
     database: glycosmos
     description: >
-      Identify siglecs with GlyConnect-curated site-specific glycosylation data:
-      filter glycosylation sites cross-referenced to GlyConnect (https://purl.org/glyconnect/)
-      and count distinct glycosylation sites and glycan structures per protein.
+      Siglecs whose glycosylation sites carry glycan structures with experimental-knowledgebase provenance.
+      Refreshed 2026-10-01: GlyCosmos moved the GlyConnect link from sio:SIO_000772 on the site (the old
+      query now returns 0 rows) to dct:source on each per-site annotation node (sio:SIO_000255), which also
+      carries the glycan (has_saccharide) and a PubMed reference. Returns the same 4 siglecs: SIGLEC5 (1 site,
+      33 glycans, GlyConnect 568), SIGLEC7 (1 site, 31, 569), SIGLEC8 (1 site, 27, 570) and SIGLEC14 (5
+      sites, 9, 1978).
     query: |
       PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
       PREFIX glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX dct: <http://purl.org/dc/terms/>
 
-      SELECT DISTINCT ?protein ?label ?uniprot_ref ?glyconnect_ref
+      SELECT ?protein ?label ?glyconnect_ref
              (COUNT(DISTINCT ?site) AS ?site_count)
              (COUNT(DISTINCT ?glycan) AS ?glycan_count)
       FROM <http://rdf.glycosmos.org/glycoprotein>
@@ -77,17 +81,13 @@ sparql_queries:
                  rdfs:label ?label ;
                  glycoconjugate:glycosylated_at ?site .
         FILTER(CONTAINS(LCASE(?label), "sialic acid-binding ig"))
-
-        ?site sio:SIO_000772 ?glyconnect_ref .
-        FILTER(CONTAINS(STR(?glyconnect_ref), "glyconnect"))
-
-        OPTIONAL {
-          ?protein rdfs:seeAlso ?uniprot_ref .
-          FILTER(CONTAINS(STR(?uniprot_ref), "uniprot.org"))
-        }
-        OPTIONAL { ?site glycoconjugate:has_saccharide ?glycan }
+        # site-level glycan annotation whose provenance is the experimental glycoprotein knowledgebase
+        ?site sio:SIO_000255 ?annotation .
+        ?annotation glycoconjugate:has_saccharide ?glycan ;
+                    dct:source ?glyconnect_ref .
+        FILTER(STRSTARTS(STR(?glyconnect_ref), "https://purl.org/glyconnect/"))
       }
-      GROUP BY ?protein ?label ?uniprot_ref ?glyconnect_ref
+      GROUP BY ?protein ?label ?glyconnect_ref
       ORDER BY ?label
     result_count: 4
 
@@ -120,45 +120,44 @@ sparql_queries:
   - query_number: 4
     database: glycosmos
     description: >
-      Arithmetic verification: count human siglecs in GlycoSMOS that lack
-      any GlyConnect cross-reference (expected 7; with 4 from Query 2 must sum to 11).
+      Rule-3 verification on the new model: of the 11 human siglecs, 4 have at least one site-level glycan
+      with GlyConnect provenance, so 7 do not (4 + 7 = 11). Refreshed 2026-10-01 (the old SIO_000772 form
+      returned 0).
     query: |
       PREFIX glycan: <http://purl.jp/bio/12/glyco/glycan#>
       PREFIX glycoconjugate: <http://purl.jp/bio/12/glyco/conjugate#>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX dct: <http://purl.org/dc/terms/>
 
-      SELECT (COUNT(DISTINCT ?protein) AS ?without_glyconnect)
+      SELECT (COUNT(DISTINCT ?protein) AS ?all_siglecs)
+             (COUNT(DISTINCT ?with) AS ?with_glyconnect_site_glycans)
       FROM <http://rdf.glycosmos.org/glycoprotein>
       WHERE {
         ?protein a glycan:Glycoprotein ;
                  glycan:has_taxon <http://identifiers.org/taxonomy/9606> ;
-                 rdfs:label ?label ;
-                 glycoconjugate:glycosylated_at ?site .
+                 rdfs:label ?label .
         FILTER(CONTAINS(LCASE(?label), "sialic acid-binding ig"))
-
-        ?site sio:SIO_000772 ?ref .
-        FILTER(!CONTAINS(STR(?ref), "glyconnect"))
-
-        FILTER NOT EXISTS {
-          ?protein glycoconjugate:glycosylated_at ?site2 .
-          ?site2 sio:SIO_000772 ?ref2 .
-          FILTER(CONTAINS(STR(?ref2), "glyconnect"))
-        }
+        BIND(IF(EXISTS {
+               ?protein glycoconjugate:glycosylated_at ?site .
+               ?site sio:SIO_000255 ?annotation .
+               ?annotation glycoconjugate:has_saccharide ?glycan ; dct:source ?src .
+               FILTER(STRSTARTS(STR(?src), "https://purl.org/glyconnect/"))
+             }, ?protein, ?none) AS ?with)
       }
-    result_count: 7
+    result_count: 1
 
 arithmetic_verification:
   query: "GlycoSMOS: siglecs with GlyConnect data (Q2) vs. without (Q4)"
   sum_of_category_counts: 11
   total_distinct_entities: 11
-  result: "Sum (4 + 7 = 11) = Total (11) — VALID, mutually exclusive categories"
+  result: "Sum (4 + 7 = 11) = Total (11) — VALID, mutually exclusive categories (Query 4, refreshed 2026-10-01)"
   interpretation: |
-    11 human siglec glycoproteins exist in GlycoSMOS. Exactly 4 have at least one
-    glycosylation site cross-referenced to GlyConnect (SIGLEC5, 7, 8, 14). The
-    remaining 7 (SIGLEC6, 9, 10, 11, 12, 15, 16) have glycosylation site records
-    sourced only from GlyGen and/or the O-GlcNAc database, without GlyConnect
-    curated site-specific glycan compositions. Categories are mutually exclusive.
+    11 human siglec glycoproteins exist in GlyCosmos. Exactly 4 have site-level glycan
+    annotations whose dct:source is GlyConnect (SIGLEC5, 7, 8, 14). Of the remaining 7,
+    SIGLEC6, 9, 10, 11 and 16 carry site-level glycans sourced from GlyGen, SIGLEC12 and 16
+    O-GlcNAc from the O-GlcNAc database, and SIGLEC15 none; none of these has GlyConnect
+    provenance. Categories are mutually exclusive.
 
 rdf_triples: |
   @prefix glycan: <http://purl.jp/bio/12/glyco/glycan#> .
@@ -167,6 +166,7 @@ rdf_triples: |
   @prefix sio: <http://semanticscience.org/resource/> .
   @prefix up: <http://purl.uniprot.org/core/> .
   @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+  @prefix dct: <http://purl.org/dc/terms/> .
 
   <http://glycosmos.org/glycoprotein/O15389> a glycan:Glycoprotein .
   # Database: GlyCosmos | Query: 1 | Comment: SIGLEC5 glycoprotein entry (human)
@@ -180,26 +180,26 @@ rdf_triples: |
   <http://glycosmos.org/glycoprotein/O15389> rdfs:seeAlso <http://purl.uniprot.org/uniprot/O15389> .
   # Database: GlyCosmos | Query: 2 | Comment: Cross-reference to UniProt entry O15389
 
-  <http://glycosmos.org/glycoprotein/O15389> glycoconjugate:glycosylated_at <http://glycosmos.org/glycosylationsite/SITE_O15389_example> .
-  # Database: GlyCosmos | Query: 2 | Comment: Protein links to glycosylation site (34 sites total)
+  <http://glycosmos.org/glycoprotein/O15389> glycoconjugate:glycosylated_at <http://glycosmos.org/feature/gly00045963> .
+  # Database: GlyCosmos | Query: 2 | Comment: SIGLEC5 glycosylation site carrying the GlyConnect-sourced glycans (replaces an illustrative placeholder IRI, 2026-10-01)
 
-  <http://glycosmos.org/glycosylationsite/SITE_O15389_example> sio:SIO_000772 <https://purl.org/glyconnect/protein/568> .
-  # Database: GlyCosmos | Query: 2 | Comment: Site cross-referenced to GlyConnect entry 568 for SIGLEC5
+  <http://glycosmos.org/feature/gly00045963> sio:SIO_000255 [ glycoconjugate:has_saccharide <http://rdf.glycoinfo.org/glycan/G08606CV> ; dct:source <https://purl.org/glyconnect/protein/568> ; dct:references <http://identifiers.org/pubmed/11231274> ] .
+  # Database: GlyCosmos | Query: 2 | Comment: per-site annotation with GlyConnect 568 provenance; 33 distinct glycans at this site
 
   <http://glycosmos.org/glycoprotein/Q9Y286> a glycan:Glycoprotein ;
       rdfs:label "Sialic acid-binding Ig-like lectin 7" ;
       rdfs:seeAlso <http://purl.uniprot.org/uniprot/Q9Y286> .
-  # Database: GlyCosmos | Query: 2 | Comment: SIGLEC7 — 32 sites, 31 glycan compositions, GlyConnect 569
+  # Database: GlyCosmos | Query: 2 | Comment: SIGLEC7 — 1 site, 31 glycans, GlyConnect 569
 
   <http://glycosmos.org/glycoprotein/Q9NYZ4> a glycan:Glycoprotein ;
       rdfs:label "Sialic acid-binding Ig-like lectin 8" ;
       rdfs:seeAlso <http://purl.uniprot.org/uniprot/Q9NYZ4> .
-  # Database: GlyCosmos | Query: 2 | Comment: SIGLEC8 — 28 sites, 27 glycan compositions, GlyConnect 570
+  # Database: GlyCosmos | Query: 2 | Comment: SIGLEC8 — 1 site, 27 glycans, GlyConnect 570
 
   <http://glycosmos.org/glycoprotein/Q08ET2> a glycan:Glycoprotein ;
       rdfs:label "Sialic acid-binding Ig-like lectin 14" ;
       rdfs:seeAlso <http://purl.uniprot.org/uniprot/Q08ET2> .
-  # Database: GlyCosmos | Query: 2 | Comment: SIGLEC14 — 14 sites, 9 glycan compositions, GlyConnect 1978
+  # Database: GlyCosmos | Query: 2 | Comment: SIGLEC14 — 5 sites, 9 glycans, GlyConnect 1978
 
   <http://purl.uniprot.org/uniprot/O15389> a up:Protein ;
       up:mnemonic "SIGL5_HUMAN" ;
@@ -234,7 +234,14 @@ exact_answer:
   - "SIGLEC14 (UniProt:Q08ET2)"
 
 ideal_answer: |
-  Four human sialic acid-binding Ig-like lectin proteins — SIGLEC5 (UniProt O15389), SIGLEC7 (Q9Y286), SIGLEC8 (Q9NYZ4), and SIGLEC14 (Q08ET2) — have experimentally characterized N-glycan structures curated at specific glycosylation sites in GlyConnect, the experimental glycoprotein knowledgebase integrated within GlyCosmos. Of the eleven human siglec-family glycoproteins represented in GlyCosmos (SIGLEC5, 6, 7, 8, 9, 10, 11, 12, 14, 15, and 16), these four are the only members for which site-resolved glycoproteomic mass spectrometry data have been curated: SIGLEC5 has 34 annotated glycosylation sites with 33 associated glycan structures (GlyConnect entry 568), SIGLEC7 has 32 sites with 31 glycan compositions (GlyConnect 569), SIGLEC8 has 28 sites with 27 glycan compositions (GlyConnect 570), and SIGLEC14 has 14 sites with 9 glycan compositions (GlyConnect 1978). The remaining seven siglecs (SIGLEC6, 9, 10, 11, 12, 15, 16) are recorded in GlyCosmos with glycosylation site predictions from GlyGen but lack curated per-site glycan composition data. Three of the four characterized siglecs (SIGLEC5, 7, 8) are CD33-related inhibitory receptors carrying cytoplasmic ITIMs, while SIGLEC14 is an activating receptor paired with DAP12; all four are expressed primarily on myeloid or NK cells and play roles in immune tolerance, allergy regulation, and innate immune modulation. Dense N-glycosylation of siglec ectodomains is biologically significant because the glycan shield can occlude the V-set sialic acid-binding domain, favoring cis-ligand masking on the cell surface over trans-ligand engagement, and modulating receptor clustering and signaling thresholds.
+  Four: SIGLEC5 (UniProt O15389), SIGLEC7 (Q9Y286), SIGLEC8 (Q9NYZ4) and SIGLEC14 (Q08ET2). Of the eleven
+  human siglecs (SIGLEC5, 6, 7, 8, 9, 10, 11, 12, 14, 15 and 16), these are the only ones whose
+  glycosylation sites carry glycan structures from the experimental glycoprotein knowledgebase GlyConnect,
+  which curates site-resolved glycoproteomic mass spectrometry: SIGLEC5 has 33 distinct glycans at one
+  site (GlyConnect 568), SIGLEC7 31 at one site (569), SIGLEC8 27 at one site (570), and SIGLEC14 9 across
+  five sites (1978). The other siglecs are not bare: SIGLEC6, 9, 10, 11 and 16 carry a few site-level
+  glycans relayed by the GlyGen aggregator, and SIGLEC12 and 16 O-GlcNAc records, but none of these has
+  knowledgebase-curated glycoproteomic provenance.
 
 question_template_used: Template 1 (Ontology Counting — cross-database existence filter)
 

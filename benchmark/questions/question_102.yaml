@@ -1,0 +1,218 @@
+id: question_102
+type: factoid
+held_out: false  # 2026-10-01: flipped from true (created 2026-09-30). MIE gotcha gwascatalog deprecated_trait_iris (8111753), written while authoring this question, documents the trap it tests
+body: "How many distinct genetic variants (rsIDs) have been reported at genome-wide
+  significance (p < 5 x 10^-8) for malaria, including any of its subtypes, in the curated
+  catalog of published genome-wide association studies?"
+
+inspiration_keyword:
+  keyword_id: KW-0461
+  name: Malaria
+  category: Disease
+
+togomcp_databases_used:
+  - mondo
+  - gwascatalog
+
+verification_score:
+  biological_insight: 2
+  multi_database: 2
+  verifiability: 3
+  rdf_necessity: 3
+  total: 10
+  passed: true
+
+pubmed_test:
+  time_spent: 10 minutes
+  method: |
+    Two PubMed searches: "malaria genome-wide association study genome-wide significant
+    loci severe malaria" (5 hits; top 2 abstracts read) and "number of variants
+    associated with malaria GWAS catalog" (0 hits).
+  result: |
+    Individual studies report their own loci (for example a Cameroonian GWAS reporting
+    CHST15 and SOD2 at FDR thresholds, PMID 36752565), but no source counts the distinct
+    genome-wide-significant variants aggregated across all catalogued malaria studies.
+    The count depends on the catalog's current curated content.
+  conclusion: PASS (cannot answer from literature - requires current database state)
+
+sparql_queries:
+  - query_number: 1
+    database: mondo
+    description: >
+      Expand 'malaria' (MONDO:0005136) over the current MONDO hierarchy in the `mondo`
+      database: the root plus 7 subtypes (P. falciparum, vivax, ovale, malariae, mixed,
+      cerebral malaria, blackwater fever), deprecated classes excluded.
+    query: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+      SELECT DISTINCT ?term ?label
+      FROM <http://rdfportal.org/ontology/mondo>
+      WHERE {
+        ?term rdfs:subClassOf* obo:MONDO_0005136 ;
+              rdfs:label ?label .
+        FILTER(STRSTARTS(STR(?term), "http://purl.obolibrary.org/obo/MONDO_"))
+        FILTER NOT EXISTS { ?term owl:deprecated true }
+      }
+      ORDER BY ?term
+    result_count: 8
+
+  - query_number: 2
+    database: gwascatalog
+    description: >
+      Trap check: associations mapped DIRECTLY to any of the 8 current MONDO malaria IRIs.
+      0 rows - the GWAS Catalog still annotates malaria to EFO_0001068, a term the current
+      EFO has deprecated (label 'obsolete_malaria') and replaced by MONDO:0005136. A query
+      built from the current disease term finds nothing.
+    query: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+      PREFIX m2r: <http://med2rdf.org/gwascatalog/terms/>
+
+      SELECT ?association
+      WHERE {
+        VALUES ?trait {
+          <http://purl.obolibrary.org/obo/MONDO_0001601> <http://purl.obolibrary.org/obo/MONDO_0001943>
+          <http://purl.obolibrary.org/obo/MONDO_0001944> <http://purl.obolibrary.org/obo/MONDO_0005136>
+          <http://purl.obolibrary.org/obo/MONDO_0005625> <http://purl.obolibrary.org/obo/MONDO_0005670>
+          <http://purl.obolibrary.org/obo/MONDO_0005920> <http://purl.obolibrary.org/obo/MONDO_0005921>
+        }
+        GRAPH <http://rdf.ebi.ac.uk/dataset/gwas_catalog> {
+          ?association a gwas:Association ; m2r:mapped_trait_uri ?trait .
+        }
+      }
+    result_count: 0
+
+  - query_number: 3
+    database: gwascatalog
+    description: >
+      Resolve each MONDO term to the trait IRIs the catalog actually uses: either the term
+      itself, or any EFO class whose 'term replaced by' (obo:IAO_0100001, in the
+      co-hosted ontology/efo graph) names it. That value is an xsd:string literal for 9,176
+      of 9,454 EFO replacements, so the join compares STR() on both sides (a bare
+      comparison against a plain VALUES literal returns 0 rows). Only MONDO:0005136 maps,
+      via EFO_0001068: 158 associations, 87 distinct SNPs, 13 at p < 5e-8. No subtype has
+      catalog associations of its own.
+    query: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+      PREFIX m2r: <http://med2rdf.org/gwascatalog/terms/>
+
+      SELECT ?mondoTerm ?gwasTrait (COUNT(DISTINCT ?association) AS ?associations)
+             (COUNT(DISTINCT ?rsid) AS ?snps) (COUNT(DISTINCT ?sigRsid) AS ?significantSnps)
+      WHERE {
+        VALUES ?mondoTerm {
+          "http://purl.obolibrary.org/obo/MONDO_0001601" "http://purl.obolibrary.org/obo/MONDO_0001943"
+          "http://purl.obolibrary.org/obo/MONDO_0001944" "http://purl.obolibrary.org/obo/MONDO_0005136"
+          "http://purl.obolibrary.org/obo/MONDO_0005625" "http://purl.obolibrary.org/obo/MONDO_0005670"
+          "http://purl.obolibrary.org/obo/MONDO_0005920" "http://purl.obolibrary.org/obo/MONDO_0005921"
+        }
+        { GRAPH <http://rdfportal.org/ontology/efo> {
+             ?gwasTrait obo:IAO_0100001 ?replacement .          # 'term replaced by' - mostly an xsd:string
+             FILTER(STR(?replacement) = STR(?mondoTerm))
+        } }
+        UNION
+        { BIND(IRI(?mondoTerm) AS ?gwasTrait) }                 # the current term used directly
+        GRAPH <http://rdf.ebi.ac.uk/dataset/gwas_catalog> {
+          ?association a gwas:Association ;
+                       m2r:mapped_trait_uri ?gwasTrait ;
+                       m2r:snps ?rsid ;                           # plain literal on the med2rdf side
+                       m2r:p_value ?p .
+          BIND(IF(?p < 5.0e-8, ?rsid, ?unbound) AS ?sigRsid)
+        }
+      }
+      GROUP BY ?mondoTerm ?gwasTrait
+    result_count: 1
+
+  - query_number: 4
+    database: gwascatalog
+    description: >
+      The 13 genome-wide-significant SNPs themselves (the answer), ranked on -log10(p)
+      (m2r:p_value_mlog; raw p underflows for extreme hits). Distinct rsIDs, each a single
+      variant (no haplotype strings). Rule 4: the same query with the GRAPH pin removed
+      also returns 13 rows.
+    query: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+      PREFIX m2r: <http://med2rdf.org/gwascatalog/terms/>
+
+      SELECT ?rsid (MIN(?p) AS ?bestP) (MAX(?mlog) AS ?bestMlog) (COUNT(DISTINCT ?association) AS ?reports)
+      WHERE {
+        GRAPH <http://rdf.ebi.ac.uk/dataset/gwas_catalog> {
+          ?association a gwas:Association ;
+                       m2r:mapped_trait_uri <http://www.ebi.ac.uk/efo/EFO_0001068> ;
+                       m2r:snps ?rsid ;
+                       m2r:p_value ?p ;
+                       m2r:p_value_mlog ?mlog .
+          FILTER(?p < 5.0e-8)
+        }
+      }
+      GROUP BY ?rsid
+      ORDER BY DESC(?bestMlog)
+    result_count: 13
+
+  - query_number: 5
+    database: gwascatalog
+    description: >
+      Cross-check on the catalog's second association model (EBI OBAN
+      gwas:TraitAssociation): 158 associations and 87 distinct SNPs on EFO_0001068,
+      identical to Query 3's totals from the med2rdf model.
+    query: |
+      PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+      PREFIX oban: <http://purl.org/oban/>
+
+      SELECT (COUNT(DISTINCT ?traitAssociation) AS ?associations) (COUNT(DISTINCT ?snp) AS ?snps)
+      WHERE {
+        GRAPH <http://rdf.ebi.ac.uk/dataset/gwas_catalog> {
+          ?traitAssociation a gwas:TraitAssociation ;
+                            oban:has_object <http://www.ebi.ac.uk/efo/EFO_0001068> ;
+                            oban:has_subject ?snp .
+        }
+      }
+    result_count: 1
+
+rdf_triples: |
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix owl: <http://www.w3.org/2002/07/owl#> .
+  @prefix efo: <http://www.ebi.ac.uk/efo/> .
+  @prefix m2r: <http://med2rdf.org/gwascatalog/terms/> .
+  @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+  obo:MONDO_0005920 rdfs:subClassOf+ obo:MONDO_0005136 .
+  # Database: mondo | Query: 1 | Comment: Plasmodium falciparum malaria is a subtype of malaria (no catalog associations of its own)
+  efo:EFO_0001068 rdfs:label "obsolete_malaria" ; owl:deprecated true .
+  # Database: gwascatalog | Query: 3 | Comment: the trait IRI the catalog uses is deprecated in current EFO (ontology/efo graph)
+  efo:EFO_0001068 obo:IAO_0100001 "http://purl.obolibrary.org/obo/MONDO_0005136"^^xsd:string .
+  # Database: gwascatalog | Query: 3 | Comment: 'term replaced by' stored as a string literal, not an IRI
+  _:a m2r:mapped_trait_uri efo:EFO_0001068 ; m2r:snps "rs334" ; m2r:p_value 4.0e-69 ; m2r:reported_genes "HBB" .
+  # Database: gwascatalog | Query: 4 | Comment: the strongest of the 13 significant variants
+  _:b m2r:mapped_trait_uri efo:EFO_0001068 ; m2r:snps "rs8176719" ; m2r:p_value 4.0e-21 ; m2r:reported_genes "ABO" .
+  # Database: gwascatalog | Query: 4 | Comment: second strongest
+
+exact_answer: 13
+
+ideal_answer: |
+  Thirteen distinct variants reach genome-wide significance for malaria. They come from 158
+  reported associations involving 87 distinct variants, all annotated to malaria as a
+  whole: none of the subtypes (falciparum, vivax, ovale or malariae malaria, mixed or
+  cerebral malaria, blackwater fever) carries catalogued associations of its own. The
+  strongest signals are rs334 (p = 4 x 10^-69, reported gene HBB) and rs8176719
+  (p = 4 x 10^-21, reported gene ABO), followed by rs12788102 (2 x 10^-16) and rs372091
+  (6 x 10^-14); the weakest of the thirteen is rs57032711 at 1 x 10^-8. A practical
+  complication is that the catalog still files these associations under a malaria trait
+  identifier that the current Experimental Factor Ontology has retired in favour of the
+  MONDO malaria class, so a search starting from the current disease term finds no
+  associations at all. The retired class's 'replaced by' annotation leads back to it.
+
+question_template_used: Ontology-subtree expansion with obsolete-term resolution (current MONDO class -> deprecated EFO trait IRI via 'term replaced by') -> significance-filtered distinct-variant count
+
+time_spent:
+  exploration: 45 minutes
+  formulation: 20 minutes
+  verification: 25 minutes
+  pubmed_test: 10 minutes
+  extraction: 10 minutes
+  documentation: 20 minutes
+  total: 130 minutes

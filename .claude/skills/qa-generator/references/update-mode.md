@@ -86,6 +86,19 @@ adopt a newly added or better-fit database.
 inferior, or made redundant — replacement keeps the set size flat and *loses* the old question's
 coverage. State the justification.
 
+**Dev-exposed questions: retire, then replace.** A question is *dev-exposed* when an MIE example
+or gotcha was written in response to a failure observed on it (the v3 MIE canary/smoke questions
+Q022 and Q066 were the first cases). Its later scores measure in-sample fit, so it should leave the
+evaluation set even if its answer is still correct:
+- Move the old file **unchanged** to `benchmark/questions/retired/question_0NN_dev_exposed.yaml`
+  (do not refresh it first: it must still record the answer earlier runs were judged against), and
+  add a row to `retired/README.md` (file, date, replacement, why).
+- Mint the replacement under the same id with `held_out: true`, ideally testing the same skill on a
+  different subject.
+- A **held-out** question you use to diagnose and fix an MIE becomes dev-exposed at that moment:
+  either flip it to `held_out: false` with a dated comment, or retire and replace it as above.
+- A pure answer refresh (no MIE change) never changes `held_out`.
+
 **X1–X9. Run create Phases 0–9** (type → databases → keyword → vocab discovery → explore → arithmetic
 → necessity gates → assemble → self-review → single-file validate) with two changes:
 - **Pin the id** to the existing `0NN` (filename and `id` field), not `highest + 1`.

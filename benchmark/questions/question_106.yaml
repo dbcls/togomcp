@@ -1,0 +1,220 @@
+id: question_106
+type: list
+held_out: false  # 2026-10-01: flipped from true (created 2026-09-30). MIE gotcha chembl structureless_small_molecules (7bb84b9), written while authoring this question, documents the trap it tests
+body: "Which molecules in the large open database of bioactive drug-like compounds contain the
+  bilirubin tetrapyrrole core (two pyrrolinone end rings joined through a central
+  dipyrromethane with a saturated methylene bridge) and have at least one recorded
+  bioactivity measurement? Identify each by its database identifier and state what compound
+  it actually is."
+
+inspiration_keyword:
+  keyword_id: KW-0089
+  name: Bile pigment
+  category: Ligand
+
+togomcp_databases_used:
+  - idsm
+  - chembl
+  - chebi
+
+verification_score:
+  biological_insight: 2
+  multi_database: 3
+  verifiability: 2
+  rdf_necessity: 3
+  total: 10
+  passed: true
+
+pubmed_test:
+  time_spent: 5 minutes
+  method: |
+    Two PubMed searches: "bilirubin IIIalpha XIIIalpha isomers bioactivity assay" (0 hits)
+    and "ChEMBL bilirubin analogues bioactivity data" (0 hits).
+  result: |
+    No source enumerates which bilirubin-core structures carry bioactivity records in a
+    bioactivity database, or identifies the isomers hidden behind generic names there. The
+    set and the identities come from a structure search plus a key comparison against a
+    chemical ontology.
+  conclusion: PASS (cannot answer from literature - requires current database state)
+
+sparql_queries:
+  - query_number: 1
+    database: idsm
+    description: >
+      IDSM substructure search for the bilirubin core (two pyrrolinone end rings joined through
+      a central dipyrromethane; the sp3 C10 bridge distinguishes it from biliverdin), scoped to
+      ChEMBL molecule IRIs by namespace. 8 molecules. The structure index is dataset-agnostic,
+      so the namespace filter is what restricts it to ChEMBL (MIE
+      substructure_search_scoped_to_one_dataset).
+    query: |
+      PREFIX sachem: <http://bioinfo.uochb.cas.cz/rdf/v1.0/sachem#>
+      # bilirubin core: two pyrrolinone end rings linked through a central dipyrromethane (sp3 C10 bridge)
+      SELECT ?molecule
+      WHERE {
+        ?molecule sachem:substructureSearch [ sachem:query "O=C1C=CC(=Cc2ccc(Cc3ccc(C=C4NC(=O)C=C4)[nH]3)[nH]2)N1" ] .
+        FILTER(STRSTARTS(STR(?molecule), "http://rdf.ebi.ac.uk/resource/chembl/molecule/"))
+      }
+      ORDER BY ?molecule
+    result_count: 8
+
+  - query_number: 2
+    database: chembl
+    description: >
+      Bioactivity per molecule in RDF Portal's ChEMBL graph: all 8 have at least one activity
+      record (bilirubin 73 activities over 33 targets, down to 1 each for CHEMBL4075641 and
+      CHEMBL1743142). Four of the eight carry no preferred name - their rdfs:label is the
+      bare ChEMBL ID.
+    query: |
+      PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?molecule ?label (COUNT(DISTINCT ?activity) AS ?activities) (COUNT(DISTINCT ?target) AS ?targets)
+      WHERE {
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
+          VALUES ?molecule {
+            <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL1743142> <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL2074720>
+            <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL3038248> <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL3121623>
+            <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL4075641> <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL501680>
+            <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL504880> <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL5083184>
+          }
+          OPTIONAL { ?molecule rdfs:label ?label }
+          OPTIONAL { ?molecule cco:hasActivity ?activity .
+                     OPTIONAL { ?activity cco:hasAssay/cco:hasTarget ?target } }
+        }
+      }
+      GROUP BY ?molecule ?label
+      ORDER BY DESC(?activities)
+    result_count: 8
+
+  - query_number: 3
+    database: idsm
+    description: >
+      The same substructure search scoped to ChEBI: 21 entities (bilirubin IX-alpha and its
+      III-alpha, XIII-alpha, IX-beta and meso isomers, glucuronides, oxo derivatives, and the
+      corresponding dianions), labels from the GRAPH-pinned ChEBI graph.
+    query: |
+      PREFIX sachem: <http://bioinfo.uochb.cas.cz/rdf/v1.0/sachem#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?entity ?label
+      WHERE {
+        ?entity sachem:substructureSearch [ sachem:query "O=C1C=CC(=Cc2ccc(Cc3ccc(C=C4NC(=O)C=C4)[nH]3)[nH]2)N1" ] .
+        FILTER(STRSTARTS(STR(?entity), "http://purl.obolibrary.org/obo/CHEBI_"))
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> { ?entity rdfs:label ?label }
+      }
+      ORDER BY ?label
+    result_count: 21
+
+  - query_number: 4
+    database: chembl
+    description: >
+      Standard InChIKeys and synonyms of the 8 ChEMBL molecules. The keys identify what the
+      unnamed or loosely named entries are: CHEMBL5083184 (synonym only 'Bilirubin') has key
+      SJDJRWBCNPRKRW-IFADSCNNSA-N, CHEMBL4075641 (synonym only 'Bilirubin') has skeleton block
+      OQNSGJHDCGJNHV, and CHEMBL1743142 ('BILIRUBIN GLUCURONIDE') has skeleton block
+      SCJLWMXOOYZBTH, the same as CHEMBL3038248 'Bilirubin bisglucuronide'.
+    query: |
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      SELECT ?molecule ?inchiKey (GROUP_CONCAT(DISTINCT ?synonym; separator="; ") AS ?synonyms)
+      WHERE {
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chembl> {
+          VALUES ?molecule {
+            <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL1743142> <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL2074720>
+            <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL3038248> <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL3121623>
+            <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL4075641> <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL501680>
+            <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL504880> <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL5083184>
+          }
+          ?molecule sio:SIO_000008 ?keyNode .
+          ?keyNode a sio:CHEMINF_000059 ; sio:SIO_000300 ?inchiKey .    # standard InChIKey
+          OPTIONAL { ?molecule skos:altLabel ?synonym }
+        }
+      }
+      GROUP BY ?molecule ?inchiKey
+      ORDER BY ?inchiKey
+    result_count: 8
+
+  - query_number: 5
+    database: chebi
+    description: >
+      InChIKeys of the 21 ChEBI entities, used as the structural reference. Comparing with Query
+      4: CHEMBL501680 = bilirubin IXalpha (CHEBI:16990, exact key); CHEMBL5083184 = bilirubin
+      XIIIalpha (CHEBI:142137, exact key); CHEMBL4075641 shares the skeleton of bilirubin
+      IIIalpha (CHEBI:142136) but not its stereo block; CHEMBL1743142 shares skeleton and stereo
+      with the bisglucuronoside dianion CHEBI:229706 (keys differ only in the protonation
+      character), i.e. it is a BIS-glucuronide despite its name. The ditaurate and dimethyl
+      ester have no ChEBI counterpart among the 21.
+    query: |
+      PREFIX chemrof: <https://w3id.org/chemrof/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?entity ?label ?inchiKey
+      WHERE {
+        GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
+          VALUES ?entity {
+            <http://purl.obolibrary.org/obo/CHEBI_74622> <http://purl.obolibrary.org/obo/CHEBI_74362> <http://purl.obolibrary.org/obo/CHEBI_229699>
+            <http://purl.obolibrary.org/obo/CHEBI_72719> <http://purl.obolibrary.org/obo/CHEBI_229705> <http://purl.obolibrary.org/obo/CHEBI_229704>
+            <http://purl.obolibrary.org/obo/CHEBI_229706> <http://purl.obolibrary.org/obo/CHEBI_229696> <http://purl.obolibrary.org/obo/CHEBI_74621>
+            <http://purl.obolibrary.org/obo/CHEBI_74361> <http://purl.obolibrary.org/obo/CHEBI_57977> <http://purl.obolibrary.org/obo/CHEBI_142136>
+            <http://purl.obolibrary.org/obo/CHEBI_16990> <http://purl.obolibrary.org/obo/CHEBI_228295> <http://purl.obolibrary.org/obo/CHEBI_142137>
+            <http://purl.obolibrary.org/obo/CHEBI_58471> <http://purl.obolibrary.org/obo/CHEBI_18392> <http://purl.obolibrary.org/obo/CHEBI_132996>
+            <http://purl.obolibrary.org/obo/CHEBI_25208> <http://purl.obolibrary.org/obo/CHEBI_16427> <http://purl.obolibrary.org/obo/CHEBI_57767>
+          }
+          ?entity rdfs:label ?label ;
+                  chemrof:inchi_key_string ?inchiKey .
+        }
+      }
+      ORDER BY ?inchiKey
+    result_count: 21
+
+rdf_triples: |
+  @prefix cco: <http://rdf.ebi.ac.uk/terms/chembl#> .
+  @prefix chembl: <http://rdf.ebi.ac.uk/resource/chembl/molecule/> .
+  @prefix obo: <http://purl.obolibrary.org/obo/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+  @prefix chemrof: <https://w3id.org/chemrof/> .
+
+  chembl:CHEMBL501680 rdfs:label "BILIRUBIN" ; cco:hasActivity ?a1 .
+  # Database: chembl | Query: 2 | Comment: bilirubin IXalpha, 73 activities over 33 targets
+  chembl:CHEMBL5083184 rdfs:label "CHEMBL5083184" ; skos:altLabel "Bilirubin" .
+  # Database: chembl | Query: 4 | Comment: named only 'Bilirubin', key SJDJRWBCNPRKRW-IFADSCNNSA-N
+  obo:CHEBI_142137 rdfs:label "bilirubin XIIIalpha" ; chemrof:inchi_key_string "SJDJRWBCNPRKRW-IFADSCNNSA-N" .
+  # Database: chebi | Query: 5 | Comment: identical key, so CHEMBL5083184 is the XIIIalpha isomer
+  chembl:CHEMBL1743142 rdfs:label "BILIRUBIN GLUCURONIDE" .
+  # Database: chembl | Query: 2 | Comment: key SCJLWMXOOYZBTH-BTVQFETGSA-N, the bisglucuronide skeleton
+  obo:CHEBI_229706 chemrof:inchi_key_string "SCJLWMXOOYZBTH-BTVQFETGSA-L" .
+  # Database: chebi | Query: 5 | Comment: (4Z,15Z)-bilirubin IXalpha C8,C12-bisglucuronoside(2-), same skeleton and stereo block
+
+exact_answer:
+  - CHEMBL501680
+  - CHEMBL5083184
+  - CHEMBL504880
+  - CHEMBL2074720
+  - CHEMBL3038248
+  - CHEMBL3121623
+  - CHEMBL4075641
+  - CHEMBL1743142
+
+ideal_answer: |
+  Eight molecules: CHEMBL501680 (bilirubin IXalpha, the physiological bilirubin, with 73
+  activity records against 33 targets), CHEMBL5083184, CHEMBL504880 (bilirubin ditaurate),
+  CHEMBL2074720 (bilirubin monoglucuronide), CHEMBL3038248 (bilirubin bisglucuronide),
+  CHEMBL3121623 (bilirubin dimethyl ester), CHEMBL4075641 and CHEMBL1743142. Several names do
+  not match the structures. CHEMBL5083184 carries no preferred name, only the synonym
+  'Bilirubin', but its structure key is identical to that of bilirubin XIIIalpha, a symmetric
+  scrambling isomer rather than natural IXalpha bilirubin. CHEMBL4075641, likewise listed only
+  as 'Bilirubin', has the skeleton of the IIIalpha isomer, with a geometry differing from that
+  of the reference IIIalpha entry. CHEMBL1743142, named 'bilirubin glucuronide', has the
+  skeleton of the bisglucuronide (the diglucuronide), the same as CHEMBL3038248, rather than
+  that of a monoglucuronide. The ditaurate and the dimethyl ester are synthetic derivatives with
+  no reference counterpart. The glucuronides are the conjugated forms that the liver excretes
+  into bile.
+
+question_template_used: Substructure search scoped to one dataset -> bioactivity filter -> structural identity check against a reference chemical ontology by InChIKey
+
+time_spent:
+  exploration: 60 minutes
+  formulation: 20 minutes
+  verification: 20 minutes
+  pubmed_test: 5 minutes
+  extraction: 10 minutes
+  documentation: 20 minutes
+  total: 135 minutes

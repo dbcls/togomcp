@@ -205,6 +205,34 @@ global_gotchas:
             ?l bif:contains "Ceramide"
           }
         } LIMIT 1
+  - id: inchi_and_inchikey_disagree
+    say: >
+      Exact InChIKey (or InChI) equality with LIPID MAPS or ChEBI misses ionised lipids, by design.
+      Every structure here is the major form at pH 7.3 (the export's column headers say "(pH7.3)"),
+      so acids and phospholipids are stored as their ANIONS, while LIPID MAPS and ChEBI's parent
+      entries hold the neutral molecule. The standard InChIKey then differs only in its last
+      character (-M or -L here, -N there): palmitic acid is IPCSVZSSVZVIGE-UHFFFAOYSA-N in LIPID
+      MAPS and -M on SLM_000000510. Of LIPID MAPS' own 12,558 curated owl:equivalentClass links to
+      SwissLipids, only 7,563 match on the exact key; 4,253 differ only in that protonation
+      character and 739 in the stereo block (measured 2026-10-01 against release 2026_09_30).
+      FIX: compare the first TWO key blocks (the first 25 characters: skeleton and stereo), or go
+      through ChEBI's conjugate-base link (obo:RO_0018034) to the anion and match its key exactly.
+      HISTORY: releases before 2026_09_30 also carried internally inconsistent structures (88,580
+      neutral, stereo-less InChIs, mostly cardiolipins, and 106 stale InChIKeys, including
+      cholesterol SLM_000000287). The 2026_09_30 RDF fixed all of them (the 106 and a 2,000-record
+      sample re-checked 2026-10-01), but the lipids.tsv export of the same date still carries the
+      old values: take structures from this endpoint, not from that file.
+    check:
+      kind: count
+      date: "2026-10-01"
+      query: |
+        SELECT (COUNT(*) AS ?n) WHERE {
+          GRAPH <https://sparql.swisslipids.org/swisslipids> {
+            <https://swisslipids.org/rdf/SLM_000000510> <http://purl.obolibrary.org/obo/chebi/inchikey> ?k .
+            FILTER(STR(?k) = "IPCSVZSSVZVIGE-UHFFFAOYSA-M")
+          }
+        }
+      expect: {value: 1, tolerance: 0.0}
 
 examples:
   - id: lipid_core_record
